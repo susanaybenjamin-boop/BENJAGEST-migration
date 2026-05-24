@@ -15,6 +15,7 @@ Este repositorio contiene solo la migracion nueva. El proyecto original queda se
 ## Desarrollo
 
 ```powershell
+docker compose up -d
 mvn clean verify
 mvn -pl backend-java spring-boot:run
 mvn -pl ui javafx:run
@@ -24,10 +25,10 @@ Si Maven falla con `PKIX path building failed`, revisa la confianza de certifica
 
 ## Clonar el proyecto
 
-Cuando el repositorio exista en GitHub, cada colaborador podra bajarlo asi:
+Cada colaborador podra bajarlo asi:
 
 ```powershell
-git clone https://github.com/TU_USUARIO/benjagest-migration.git
+git clone https://github.com/pcs001es/benjagest-migration.git
 cd benjagest-migration
 mvn clean verify
 ```
@@ -36,11 +37,11 @@ Despues se abre la carpeta `benjagest-migration` desde VS Code o IntelliJ IDEA c
 
 ## Trabajo con ramas
 
-La rama principal sera `main`. Cada cambio deberia hacerse en una rama propia:
+La rama estable sera `main` y la rama central de trabajo sera `develop`. Cada cambio deberia hacerse en una rama propia creada desde `develop`:
 
 ```powershell
-git checkout main
-git pull
+git checkout develop
+git pull origin develop
 git checkout -b feature/nombre-del-cambio
 ```
 
@@ -53,4 +54,4 @@ git commit -m "Descripcion clara del cambio"
 git push -u origin feature/nombre-del-cambio
 ```
 
-En GitHub se abre una Pull Request desde esa rama hacia `main`. La rama se mezcla cuando el cambio este revisado y probado.
+En GitHub se abre una Pull Request desde esa rama hacia `develop`. La rama se mezcla cuando el cambio este revisado y probado.

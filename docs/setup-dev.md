@@ -6,9 +6,20 @@
 - Maven
 - Git
 - IntelliJ IDEA
-- MariaDB/MySQL
+- Docker Desktop
+- MariaDB/MySQL mediante contenedor Docker
 - Node.js solo si se mantiene o migra el frontend React/Next
-- Docker Desktop mas adelante
+
+## Arrancar MariaDB local
+
+Con Docker Desktop abierto:
+
+```powershell
+docker compose up -d
+docker compose ps
+```
+
+El contenedor crea la base `benjagest` y el usuario `benjagest`. El esquema no se crea a mano: lo ejecuta Flyway al arrancar el backend.
 
 ## Compilar todo
 
@@ -27,10 +38,17 @@ $env:BENJAGEST_DB_PASSWORD="benjagest"
 mvn -pl backend-java spring-boot:run
 ```
 
+Al arrancar, el backend aplica automaticamente los scripts de:
+
+```text
+backend-java/src/main/resources/db/migration
+```
+
 Endpoint de prueba:
 
 ```text
 http://localhost:8080/api/health
+http://localhost:8080/api/customers
 ```
 
 ## Arrancar UI JavaFX
@@ -39,6 +57,8 @@ http://localhost:8080/api/health
 $env:BENJAGEST_API_BASE_URL="http://localhost:8080/api"
 mvn -pl ui javafx:run
 ```
+
+Desde la UI, en Clientes > Nuevo cliente, se puede crear un cliente y comprobar que queda guardado en MariaDB a traves del backend.
 
 ## IntelliJ
 

@@ -1,7 +1,10 @@
 package com.benjagest.ui;
 
 import com.benjagest.ui.model.BackendStatus;
+import com.benjagest.ui.model.CustomerCreateRequest;
+import com.benjagest.ui.model.CustomerSummary;
 import com.benjagest.ui.service.BackendStatusService;
+import com.benjagest.ui.service.CustomerApiClient;
 import javafx.application.Application;
 import javafx.concurrent.Task;
 import javafx.geometry.Pos;
@@ -11,12 +14,15 @@ import javafx.scene.Node;
 import javafx.scene.control.Alert;
 import javafx.scene.control.Button;
 import javafx.scene.control.ButtonType;
+import javafx.scene.control.Dialog;
 import javafx.scene.control.Label;
 import javafx.scene.control.Menu;
 import javafx.scene.control.MenuBar;
 import javafx.scene.control.MenuItem;
 import javafx.scene.control.ScrollPane;
+import javafx.scene.control.TextField;
 import javafx.scene.layout.BorderPane;
+import javafx.scene.layout.GridPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
@@ -31,11 +37,14 @@ import javafx.stage.Stage;
 import org.kordamp.ikonli.javafx.FontIcon;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 public class BenjagestUiApplication extends Application {
 
     private final BackendStatusService backendStatusService = new BackendStatusService();
+    private final CustomerApiClient customerApiClient = new CustomerApiClient();
     private final Map<String, Button> navigationButtons = new HashMap<>();
     private BorderPane root;
 
@@ -724,10 +733,154 @@ public class BenjagestUiApplication extends Application {
     }
 
     private void showActionDialog(String action) {
+        if ("Nuevo cliente".equals(action)) {
+            showNewCustomerDialog();
+            return;
+        }
+        if ("Buscar cliente".equals(action) || "Clientes".equals(action)) {
+            loadCustomers();
+            return;
+        }
+
         Alert alert = new Alert(Alert.AlertType.INFORMATION, "Accion seleccionada: " + action, ButtonType.OK);
         alert.setTitle("BENJAGEST");
         alert.setHeaderText(action);
         alert.showAndWait();
+    }
+
+    private void showNewCustomerDialog() {
+        Dialog<CustomerCreateRequest> dialog = new Dialog<>();
+        dialog.setTitle("BENJAGEST");
+        dialog.setHeaderText("Nuevo cliente");
+
+        TextField legalName = new TextField();
+        legalName.setPromptText("Nombre fiscal");
+        TextField tradeName = new TextField();
+        tradeName.setPromptText("Nombre comercial");
+        TextField taxIdentifier = new TextField();
+        taxIdentifier.setPromptText("CIF/NIF");
+        TextField contactName = new TextField();
+        contactName.setPromptText("Persona de contacto");
+        TextField email = new TextField();
+        email.setPromptText("Correo");
+        TextField phone = new TextField();
+        phone.setPromptText("Telefono");
+
+        GridPane form = new GridPane();
+        form.setHgap(10);
+        form.setVgap(10);
+        form.addRow(0, new Label("Nombre fiscal"), legalName);
+        form.addRow(1, new Label("Nombre comercial"), tradeName);
+        form.addRow(2, new Label("CIF/NIF"), taxIdentifier);
+        form.addRow(3, new Label("Contacto"), contactName);
+        form.addRow(4, new Label("Correo"), email);
+        form.addRow(5, new Label("Telefono"), phone);
+
+        dialog.getDialogPane().setContent(form);
+        dialog.getDialogPane().getButtonTypes().addAll(ButtonType.OK, ButtonType.CANCEL);
+        dialog.setResultConverter(button -> {
+            if (button != ButtonType.OK) {
+                return null;
+            }
+            return new CustomerCreateRequest(
+                    legalName.getText(),
+                    tradeName.getText(),
+                    taxIdentifier.getText(),
+                    contactName.getText(),
+                    email.getText(),
+                    phone.getText()
+            );
+        });
+
+        Optional<CustomerCreateRequest> result = dialog.showAndWait();
+        result.ifPresent(request -> {
+            if (isBlank(request.legalName()) || isBlank(request.taxIdentifier())) {
+                showErrorDialog("Faltan datos", "El nombre fiscal y el CIF/NIF son obligatorios.");
+                return;
+            }
+            createCustomer(request);
+        });
+    }
+
+    private void createCustomer(CustomerCreateRequest request) {
+        Task<CustomerSummary> task = new Task<>() {
+            @Override
+            protected CustomerSummary call() throws Exception {
+                return customerApiClient.create(request);
+            }
+        };
+
+        task.setOnSucceeded(event -> {
+            CustomerSummary customer = task.getValue();
+            Alert alert = new Alert(Alert.AlertType.INFORMATION,
+                    "Cliente guardado correctamente:\n" + customer.legalName(),
+                    ButtonType.OK);
+            alert.setTitle("BENJAGEST");
+            alert.setHeaderText("Cliente creado");
+            alert.showAndWait();
+        });
+        task.setOnFailed(event -> showErrorDialog(
+                "No se pudo guardar el cliente",
+                "Comprueba que el servicio esta iniciado y que la base de datos esta disponible."
+        ));
+
+        Thread worker = new Thread(task, "customer-create");
+        worker.setDaemon(true);
+        worker.start();
+    }
+
+    private void loadCustomers() {
+        Task<List<CustomerSummary>> task = new Task<>() {
+            @Override
+            protected List<CustomerSummary> call() throws Exception {
+                return customerApiClient.list();
+            }
+        };
+
+        task.setOnSucceeded(event -> {
+            List<CustomerSummary> customers = task.getValue();
+            String message = customers.isEmpty()
+                    ? "Todavia no hay clientes registrados."
+                    : customerListMessage(customers);
+            Alert alert = new Alert(Alert.AlertType.INFORMATION, message, ButtonType.OK);
+            alert.setTitle("BENJAGEST");
+            alert.setHeaderText("Clientes");
+            alert.showAndWait();
+        });
+        task.setOnFailed(event -> showErrorDialog(
+                "No se pudieron cargar los clientes",
+                "Comprueba que el servicio esta iniciado y que la base de datos esta disponible."
+        ));
+
+        Thread worker = new Thread(task, "customer-list");
+        worker.setDaemon(true);
+        worker.start();
+    }
+
+    private String customerListMessage(List<CustomerSummary> customers) {
+        StringBuilder message = new StringBuilder();
+        customers.stream().limit(10).forEach(customer -> {
+            message.append("- ").append(customer.legalName());
+            if (!isBlank(customer.taxIdentifier())) {
+                message.append(" (").append(customer.taxIdentifier()).append(")");
+            }
+            message.append("\n");
+        });
+        if (customers.size() > 10) {
+            message.append("\nMostrando 10 de ").append(customers.size()).append(" clientes.");
+        }
+        return message.toString();
+    }
+
+    private void showErrorDialog(String title, String message) {
+        Alert alert = new Alert(Alert.AlertType.ERROR, message, ButtonType.OK);
+        alert.setTitle("BENJAGEST");
+        alert.setHeaderText(title);
+        alert.showAndWait();
+    }
+
+    private boolean isBlank(String value) {
+        return value == null || value.trim().isEmpty();
     }
 
     private void showServiceStatusDialog(String title, String message) {

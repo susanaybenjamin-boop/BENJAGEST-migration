@@ -14,7 +14,7 @@ Por tanto, la migracion a MariaDB/MySQL no es un cambio directo de driver.
 
 ## Objetivo de la migracion
 
-La carpeta `BENJAGEST-migration` prepara MariaDB/MySQL como destino, pero todavia no hay migracion real de datos ni modelo relacional definitivo. El backend Java solo tiene una configuracion inicial de conexion para MariaDB y un endpoint de salud.
+La carpeta `BENJAGEST-migration` prepara MariaDB como destino local de desarrollo. El backend Java ya tiene conexion, migraciones Flyway y un primer modulo persistente de clientes.
 
 ## Riesgos principales
 
@@ -34,10 +34,11 @@ La carpeta `BENJAGEST-migration` prepara MariaDB/MySQL como destino, pero todavi
 5. Crear pruebas de equivalencia entre datos origen y destino.
 6. Solo despues conectar los repositorios Java reales.
 
-## Decision pendiente
+## Decision actual
 
-Antes de avanzar con persistencia real hay que confirmar si el destino definitivo sera:
+La decision de trabajo para esta fase es:
 
-- MariaDB/MySQL local, como se propuso inicialmente.
-- PostgreSQL local, para reducir el coste de migracion desde Supabase.
-- Un paso intermedio: backend Java contra PostgreSQL y migracion a MariaDB mas adelante.
+- MariaDB local mediante Docker.
+- Scripts versionados con Flyway.
+- Modelo relacional normalizado en destino.
+- Migracion de datos real en fases, modulo a modulo, cuando el origen este inventariado.

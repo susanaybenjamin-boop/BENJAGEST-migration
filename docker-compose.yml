@@ -1,0 +1,22 @@
+services:
+  mariadb:
+    image: mariadb:11.4
+    container_name: benjagest-mariadb
+    restart: unless-stopped
+    environment:
+      MARIADB_ROOT_PASSWORD: ${BENJAGEST_DB_ROOT_PASSWORD:-root}
+      MARIADB_DATABASE: ${BENJAGEST_DB_NAME:-benjagest}
+      MARIADB_USER: ${BENJAGEST_DB_USER:-benjagest}
+      MARIADB_PASSWORD: ${BENJAGEST_DB_PASSWORD:-benjagest}
+    ports:
+      - "${BENJAGEST_DB_PORT:-3306}:3306"
+    volumes:
+      - benjagest_mariadb_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  benjagest_mariadb_data:
