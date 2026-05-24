@@ -422,6 +422,39 @@
     -fx-background-color: #ffffff;
 }
 
+.module-detail-header {
+    -fx-padding: 28;
+    -fx-spacing: 18;
+    -fx-background-color: linear-gradient(to bottom right, #ffffff, #eef9f6);
+    -fx-background-radius: 24;
+    -fx-border-color: #dbe3ef;
+    -fx-border-radius: 24;
+    -fx-effect: dropshadow(gaussian, rgba(15, 27, 45, 0.07), 16, 0.16, 0, 7);
+}
+
+.module-detail-icon {
+    -fx-min-width: 72;
+    -fx-min-height: 72;
+    -fx-max-width: 72;
+    -fx-max-height: 72;
+    -fx-background-radius: 999;
+}
+
+.module-detail-icon .font-icon {
+    -fx-icon-size: 34px;
+}
+
+.module-detail-title {
+    -fx-text-fill: #0f172a;
+    -fx-font-size: 30px;
+    -fx-font-weight: 900;
+}
+
+.module-detail-description {
+    -fx-text-fill: #40516a;
+    -fx-font-size: 15px;
+}
+
 .module-title {
     -fx-text-fill: #111827;
     -fx-font-size: 18px;
