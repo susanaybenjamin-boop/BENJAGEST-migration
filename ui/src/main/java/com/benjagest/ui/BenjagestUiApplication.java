@@ -5,6 +5,7 @@ import com.benjagest.ui.service.BackendStatusService;
 import javafx.application.Application;
 import javafx.concurrent.Task;
 import javafx.geometry.Pos;
+import javafx.scene.Cursor;
 import javafx.scene.Scene;
 import javafx.scene.Node;
 import javafx.scene.control.Alert;
@@ -29,13 +30,18 @@ import javafx.scene.shape.Rectangle;
 import javafx.stage.Stage;
 import org.kordamp.ikonli.javafx.FontIcon;
 
+import java.util.HashMap;
+import java.util.Map;
+
 public class BenjagestUiApplication extends Application {
 
     private final BackendStatusService backendStatusService = new BackendStatusService();
+    private final Map<String, Button> navigationButtons = new HashMap<>();
+    private BorderPane root;
 
     @Override
     public void start(Stage stage) {
-        BorderPane root = new BorderPane();
+        root = new BorderPane();
         root.getStyleClass().add("app-root");
 
         VBox sidebar = createSidebar();
@@ -72,9 +78,9 @@ public class BenjagestUiApplication extends Application {
         fileMenu.getItems().addAll(checkBackendItem, exitItem);
 
         MenuItem dashboardItem = new MenuItem("Panel principal");
-        dashboardItem.setOnAction(event -> { });
+        dashboardItem.setOnAction(event -> showDashboard());
         MenuItem systemStatusItem = new MenuItem("Resumen");
-        systemStatusItem.setOnAction(event -> { });
+        systemStatusItem.setOnAction(event -> showActionDialog("Resumen de actividad"));
         Menu viewMenu = new Menu("Vista");
         viewMenu.getItems().addAll(dashboardItem, systemStatusItem);
 
@@ -114,13 +120,13 @@ public class BenjagestUiApplication extends Application {
 
         sidebar.getChildren().add(section);
         sidebar.getChildren().addAll(
-                navItem("Inicio", "home", true),
-                navItem("Clientes", "clients", false),
-                navItem("Facturacion", "invoice", false),
-                navItem("Laboral", "labor", false),
-                navItem("Fiscal", "tax", false),
-                navItem("Informes", "reports", false),
-                navItem("Configuracion", "settings", false)
+                navItem("Inicio", "home", true, this::showDashboard),
+                navItem("Clientes", "clients", false, () -> showModule("Clientes", "clients", "Empresas, contactos y datos fiscales.", "module-teal")),
+                navItem("Facturacion", "invoice", false, () -> showModule("Facturacion", "invoice", "Facturas, proformas, cobros y gastos.", "module-blue")),
+                navItem("Laboral", "labor", false, () -> showModule("Laboral", "labor", "Empleados, jornadas, nominas y fichajes.", "module-violet")),
+                navItem("Fiscal", "tax", false, () -> showModule("Fiscal", "tax", "Modelos, cierres y certificados.", "module-red")),
+                navItem("Informes", "reports", false, () -> showModule("Informes", "reports", "Indicadores y reportes operativos.", "module-green")),
+                navItem("Configuracion", "settings", false, () -> showModule("Configuracion", "settings", "Empresa, usuarios y permisos.", "module-slate"))
         );
 
         Region spacer = new Region();
@@ -134,7 +140,7 @@ public class BenjagestUiApplication extends Application {
         return sidebar;
     }
 
-    private Button navItem(String text, String icon, boolean selected) {
+    private Button navItem(String text, String icon, boolean selected, Runnable action) {
         Button button = new Button(text);
         button.setGraphic(sidebarIcon(icon));
         button.getStyleClass().add("nav-item");
@@ -142,7 +148,34 @@ public class BenjagestUiApplication extends Application {
             button.getStyleClass().add("nav-item-selected");
         }
         button.setMaxWidth(Double.MAX_VALUE);
+        button.setOnAction(event -> {
+            selectNavigation(text);
+            action.run();
+        });
+        navigationButtons.put(text, button);
         return button;
+    }
+
+    private void selectNavigation(String text) {
+        navigationButtons.values().forEach(button -> button.getStyleClass().remove("nav-item-selected"));
+        Button selected = navigationButtons.get(text);
+        if (selected != null && !selected.getStyleClass().contains("nav-item-selected")) {
+            selected.getStyleClass().add("nav-item-selected");
+        }
+    }
+
+    private void showDashboard() {
+        if (root != null) {
+            selectNavigation("Inicio");
+            root.setCenter(createDashboardScroll());
+        }
+    }
+
+    private void showModule(String title, String icon, String description, String colorClass) {
+        if (root != null) {
+            selectNavigation(title);
+            root.setCenter(createModuleScroll(title, icon, description, colorClass));
+        }
     }
 
     private ScrollPane createDashboardScroll() {
@@ -164,6 +197,95 @@ public class BenjagestUiApplication extends Application {
 
         content.getChildren().addAll(createWelcomePanel(), modulesTitle, modules);
         return content;
+    }
+
+    private ScrollPane createModuleScroll(String title, String icon, String description, String colorClass) {
+        ScrollPane scrollPane = new ScrollPane(createModuleDetail(title, icon, description, colorClass));
+        scrollPane.getStyleClass().add("content-scroll");
+        scrollPane.setFitToWidth(true);
+        scrollPane.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
+        return scrollPane;
+    }
+
+    private VBox createModuleDetail(String title, String icon, String description, String colorClass) {
+        VBox content = new VBox(22);
+        content.getStyleClass().add("content");
+
+        StackPane bubble = iconBubble(icon, "module-detail-icon", colorClass);
+        Label titleLabel = new Label(title);
+        titleLabel.getStyleClass().add("module-detail-title");
+
+        Label descriptionLabel = new Label(description);
+        descriptionLabel.getStyleClass().add("module-detail-description");
+        descriptionLabel.setWrapText(true);
+
+        VBox copy = new VBox(8, titleLabel, descriptionLabel);
+        copy.setAlignment(Pos.CENTER_LEFT);
+        HBox.setHgrow(copy, Priority.ALWAYS);
+
+        HBox header = new HBox(18, bubble, copy);
+        header.setAlignment(Pos.CENTER_LEFT);
+        header.getStyleClass().add("module-detail-header");
+
+        Label actionsTitle = new Label("Acciones principales");
+        actionsTitle.getStyleClass().add("section-title");
+
+        TilePane actions = new TilePane();
+        actions.getStyleClass().add("launcher-grid");
+        actions.setHgap(12);
+        actions.setVgap(12);
+        actions.setPrefTileWidth(134);
+        actions.setPrefTileHeight(132);
+        actions.getChildren().addAll(createModuleActions(title));
+
+        Label infoTitle = new Label("Actividad");
+        infoTitle.getStyleClass().add("section-title");
+
+        VBox activity = new VBox(10,
+                quickLine("Pendiente de revisar", "tasks", "--"),
+                quickLine("Ultimos movimientos", "reports", "--"),
+                quickLine("Avisos", "alert", "--")
+        );
+        activity.getStyleClass().add("summary-card");
+
+        content.getChildren().addAll(header, actionsTitle, actions, infoTitle, activity);
+        return content;
+    }
+
+    private Node[] createModuleActions(String module) {
+        return switch (module) {
+            case "Clientes" -> new Node[]{
+                    actionTile("Nuevo cliente", "client-plus", "Alta"),
+                    actionTile("Buscar cliente", "clients", "Buscar"),
+                    actionTile("Datos fiscales", "tax", "Fiscal")
+            };
+            case "Facturacion" -> new Node[]{
+                    actionTile("Nueva factura", "invoice-plus", "Crear"),
+                    actionTile("Ver cobros", "cash", "Cobros"),
+                    actionTile("Registrar gasto", "expense", "Gasto")
+            };
+            case "Laboral" -> new Node[]{
+                    actionTile("Registrar jornada", "calendar", "Hoy"),
+                    actionTile("Empleados", "labor", "Equipo"),
+                    actionTile("Avisos", "alert", "Avisos")
+            };
+            case "Fiscal" -> new Node[]{
+                    actionTile("Modelos", "tax", "Fiscal"),
+                    actionTile("Calendario", "calendar", "Fechas"),
+                    actionTile("Informes", "reports", "Datos")
+            };
+            case "Informes" -> new Node[]{
+                    actionTile("Panel de datos", "reports", "Datos"),
+                    actionTile("Cobros", "cash", "Cobros"),
+                    actionTile("Tareas", "tasks", "Tareas")
+            };
+            case "Configuracion" -> new Node[]{
+                    actionTile("Empresa", "settings", "Ajustes"),
+                    actionTile("Usuarios", "clients", "Usuarios"),
+                    actionTile("Permisos", "settings", "Permisos")
+            };
+            default -> new Node[]{actionTile("Volver", "home", "Inicio")};
+        };
     }
 
     private HBox createWelcomePanel() {
@@ -225,6 +347,8 @@ public class BenjagestUiApplication extends Application {
         HBox row = new HBox(10, bubble, titleLabel, spacer, valueLabel);
         row.setAlignment(Pos.CENTER_LEFT);
         row.getStyleClass().add("quick-line");
+        row.setCursor(Cursor.HAND);
+        row.setOnMouseClicked(event -> showActionDialog(title));
         return row;
     }
 
@@ -285,6 +409,8 @@ public class BenjagestUiApplication extends Application {
 
         VBox card = new VBox(14, moduleHeader, descriptionLabel);
         card.getStyleClass().add("module-card");
+        card.setCursor(Cursor.HAND);
+        card.setOnMouseClicked(event -> showModule(title, icon, description, colorClass));
         return card;
     }
 
@@ -301,6 +427,8 @@ public class BenjagestUiApplication extends Application {
         VBox tile = new VBox(12, bubble, label(caption, "action-caption"), label(text, "action-title"));
         tile.getStyleClass().add("action-tile");
         tile.setAlignment(Pos.CENTER);
+        tile.setCursor(Cursor.HAND);
+        tile.setOnMouseClicked(event -> showActionDialog(text));
         return tile;
     }
 
@@ -592,6 +720,13 @@ public class BenjagestUiApplication extends Application {
         Alert alert = new Alert(Alert.AlertType.INFORMATION, "BENJAGEST\nGestion empresarial.", ButtonType.OK);
         alert.setTitle("Acerca de BENJAGEST");
         alert.setHeaderText("BENJAGEST");
+        alert.showAndWait();
+    }
+
+    private void showActionDialog(String action) {
+        Alert alert = new Alert(Alert.AlertType.INFORMATION, "Accion seleccionada: " + action, ButtonType.OK);
+        alert.setTitle("BENJAGEST");
+        alert.setHeaderText(action);
         alert.showAndWait();
     }
 
