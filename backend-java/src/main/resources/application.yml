@@ -1,0 +1,25 @@
+server:
+  port: ${BENJAGEST_BACKEND_PORT:8080}
+
+spring:
+  application:
+    name: benjagest-backend
+  datasource:
+    url: ${BENJAGEST_DB_URL:jdbc:mariadb://localhost:3306/benjagest}
+    username: ${BENJAGEST_DB_USER:benjagest}
+    password: ${BENJAGEST_DB_PASSWORD:benjagest}
+    driver-class-name: org.mariadb.jdbc.Driver
+    hikari:
+      initialization-fail-timeout: 0
+  sql:
+    init:
+      mode: never
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+
+benjagest:
+  api-version: v1

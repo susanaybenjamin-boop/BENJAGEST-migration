@@ -1,0 +1,31 @@
+.app-root {
+    -fx-background-color: #f7f9fb;
+}
+
+.app-title {
+    -fx-font-size: 30px;
+    -fx-font-weight: 700;
+    -fx-text-fill: #172033;
+}
+
+.app-subtitle {
+    -fx-font-size: 14px;
+    -fx-text-fill: #596579;
+}
+
+.button {
+    -fx-background-color: #1d4ed8;
+    -fx-text-fill: white;
+    -fx-font-weight: 600;
+    -fx-padding: 10 16;
+    -fx-background-radius: 6;
+}
+
+.button:disabled {
+    -fx-opacity: 0.75;
+}
+
+.status-label {
+    -fx-font-size: 13px;
+    -fx-text-fill: #334155;
+}
