@@ -1,0 +1,25 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Maven: clean verify",
+      "type": "shell",
+      "command": "mvn clean verify",
+      "group": "build",
+      "problemMatcher": []
+    },
+    {
+      "label": "Backend: run Spring Boot",
+      "type": "shell",
+      "command": "mvn -pl backend-java spring-boot:run",
+      "isBackground": true,
+      "problemMatcher": []
+    },
+    {
+      "label": "UI: run JavaFX",
+      "type": "shell",
+      "command": "mvn -pl ui javafx:run",
+      "problemMatcher": []
+    }
+  ]
+}

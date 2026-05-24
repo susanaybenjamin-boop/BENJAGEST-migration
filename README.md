@@ -32,7 +32,7 @@ cd benjagest-migration
 mvn clean verify
 ```
 
-Despues se abre la carpeta `benjagest-migration` desde IntelliJ IDEA como proyecto Maven.
+Despues se abre la carpeta `benjagest-migration` desde VS Code o IntelliJ IDEA como proyecto Maven.
 
 ## Trabajo con ramas
 

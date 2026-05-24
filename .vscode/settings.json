@@ -1,0 +1,9 @@
+{
+  "java.configuration.updateBuildConfiguration": "automatic",
+  "java.compile.nullAnalysis.mode": "automatic",
+  "java.format.settings.url": "",
+  "maven.terminal.useJavaHome": true,
+  "files.exclude": {
+    "**/target": true
+  }
+}

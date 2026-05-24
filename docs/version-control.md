@@ -35,7 +35,7 @@ cd benjagest-migration
 mvn clean verify
 ```
 
-Cada colaborador debe abrir la carpeta clonada desde IntelliJ IDEA. No hace falta importar subcarpetas sueltas; IntelliJ debe detectar el `pom.xml` raiz.
+Cada colaborador debe abrir la carpeta clonada desde VS Code o IntelliJ IDEA. No hace falta abrir subcarpetas sueltas; el IDE debe detectar el `pom.xml` raiz.
 
 ## Ramas y Pull Requests
 

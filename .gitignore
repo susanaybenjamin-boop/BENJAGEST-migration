@@ -4,7 +4,10 @@ target/
 
 # IDEs
 .idea/
-.vscode/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/tasks.json
+!.vscode/settings.json
 *.iml
 
 # Environment and secrets
