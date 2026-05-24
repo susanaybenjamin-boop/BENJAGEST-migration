@@ -1,5 +1,7 @@
 # Arranque de desarrollo
 
+Para una incorporacion paso a paso desde cero, incluyendo Docker Desktop, WSL, DBeaver y comprobaciones, ver tambien `docs/how-to-start-benjamin.md`.
+
 ## Requisitos
 
 - JDK 21

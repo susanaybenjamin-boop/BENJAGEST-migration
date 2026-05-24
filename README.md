@@ -23,6 +23,14 @@ mvn -pl ui javafx:run
 
 Si Maven falla con `PKIX path building failed`, revisa la confianza de certificados del JDK/Maven antes de continuar.
 
+## Guia de arranque
+
+Para preparar un equipo nuevo con Docker, MariaDB, DBeaver, backend y UI, sigue:
+
+```text
+docs/how-to-start-benjamin.md
+```
+
 ## Clonar el proyecto
 
 Cada colaborador podra bajarlo asi:
