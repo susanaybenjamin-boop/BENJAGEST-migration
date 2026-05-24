@@ -34,11 +34,11 @@ public class BackendStatusService {
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
             boolean ok = response.statusCode() >= 200 && response.statusCode() < 300;
             String message = ok
-                    ? "Backend operativo (" + response.statusCode() + ")"
-                    : "Backend responde con HTTP " + response.statusCode();
+                    ? "Servicio disponible (" + response.statusCode() + ")"
+                    : "El servicio responde con HTTP " + response.statusCode();
             return new BackendStatus(ok, response.statusCode(), message);
         } catch (IOException exception) {
-            return new BackendStatus(false, 0, "Backend no disponible: " + exception.getMessage());
+            return new BackendStatus(false, 0, "Servicio no disponible: " + exception.getMessage());
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
             return new BackendStatus(false, 0, "Comprobacion interrumpida");
