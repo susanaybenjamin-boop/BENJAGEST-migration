@@ -1,5 +1,6 @@
 package com.benjagest.backend.customer;
 
+import com.benjagest.backend.workspace.DemoCompany;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
@@ -19,10 +20,11 @@ public class CustomerRepository {
 
     public void insertCustomer(String id, CustomerCreateRequest request) {
         jdbcTemplate.update("""
-                INSERT INTO customers (id, legal_name, trade_name, tax_identifier)
-                VALUES (?, ?, ?, ?)
+                INSERT INTO customers (id, company_id, legal_name, trade_name, tax_identifier)
+                VALUES (?, ?, ?, ?, ?)
                 """,
                 id,
+                DemoCompany.ID,
                 request.legalName().trim(),
                 blankToNull(request.tradeName()),
                 request.taxIdentifier().trim()
