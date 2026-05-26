@@ -1,16 +1,24 @@
 package com.benjagest.ui;
 
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+
+import org.kordamp.ikonli.javafx.FontIcon;
+
 import com.benjagest.ui.model.BackendStatus;
 import com.benjagest.ui.model.CustomerCreateRequest;
 import com.benjagest.ui.model.CustomerSummary;
 import com.benjagest.ui.service.BackendStatusService;
 import com.benjagest.ui.service.CustomerApiClient;
+
 import javafx.application.Application;
 import javafx.concurrent.Task;
 import javafx.geometry.Pos;
 import javafx.scene.Cursor;
-import javafx.scene.Scene;
 import javafx.scene.Node;
+import javafx.scene.Scene;
 import javafx.scene.control.Alert;
 import javafx.scene.control.Button;
 import javafx.scene.control.ButtonType;
@@ -34,12 +42,6 @@ import javafx.scene.shape.Line;
 import javafx.scene.shape.Polygon;
 import javafx.scene.shape.Rectangle;
 import javafx.stage.Stage;
-import org.kordamp.ikonli.javafx.FontIcon;
-
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
 
 public class BenjagestUiApplication extends Application {
 
