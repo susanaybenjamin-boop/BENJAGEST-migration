@@ -9,7 +9,7 @@ services:
       MARIADB_USER: ${BENJAGEST_DB_USER:-benjagest}
       MARIADB_PASSWORD: ${BENJAGEST_DB_PASSWORD:-benjagest}
     ports:
-      - "${BENJAGEST_DB_PORT:-3306}:3306"
+      - "${BENJAGEST_DB_PORT:-3307}:3306"
     volumes:
       - benjagest_mariadb_data:/var/lib/mysql
     healthcheck:
