@@ -2,7 +2,7 @@
 
 > Apuntes para imprimir y repasar. Material vivo: se va ampliando con cada lección. Cada concepto está explicado en lenguaje de obra/albañilería para fijarlo mejor.
 >
-> **Lecciones recogidas hasta ahora:** 1, 2, 3 y 4.
+> **Lecciones recogidas hasta ahora:** 1, 2, 3, 4, 5 y 6.
 >
 > **Mantra del aprendiz:** *No tengo prisa. Cada concepto, cuando lo entienda, será mío para siempre.*
 
@@ -16,11 +16,11 @@
 | 2 | Variables y tipos de datos | ✅ Hecha |
 | 3 | Funciones (bloques reutilizables) | ✅ Hecha |
 | 4 | Decisiones (`if`) y bucles (`for`) | ✅ Hecha |
-| 5 | Listas y mapas | ⏳ Siguiente |
-| 6 | Objetos y clases | Pendiente |
-| 7 | Cómo se monta una app por capas | Pendiente |
+| 5 | Listas y mapas (colecciones) | ✅ Hecha |
+| 6 | Objetos y clases | ✅ Hecha |
+| 7 | Cómo se monta una app por capas | ⏳ Última |
 
-Al terminar las 7, podrás abrir cualquier archivo de BENJAGEST y entender el **80%** de lo que hace.
+Al terminar la 7, podrás abrir cualquier archivo de BENJAGEST y entender el **80%** de lo que hace.
 
 ---
 
@@ -304,7 +304,7 @@ public BigDecimal calcularIva(BigDecimal base, BigDecimal porcentaje) {
 
 > ⚠️ **Detalle importante con BigDecimal**: no puedes usar `*` y `/` directamente. Tienes que usar `.multiply(...)` y `.divide(...)`. Es por la precisión del dinero. Lo verás constantemente en código de facturación.
 >
-> La palabra `public` significa "esta técnica está abierta para que cualquiera la use". La veremos a fondo en la Lección 6.
+> La palabra `public` significa "esta técnica está abierta para que cualquiera la use". A fondo en la Lección 6.
 
 ## Llamar a la función (usarla)
 
@@ -368,6 +368,18 @@ Analogía: hay técnicas en obra que te devuelven algo (la mezcla, el ladrillo c
 ❌ `iva`, `factura`, `email`, `nif`, `cliente`
 
 **Variables = cosas (sustantivos). Funciones = acciones (verbos).** Si abres un archivo y todo está bien nombrado, **lees el código casi como castellano**.
+
+## Truco potente: los nombres son chivatos del tipo de retorno
+
+| Prefijo del nombre | Tipo que casi siempre devuelve |
+|---|---|
+| `contar...` | `int` (cuentas cosas enteras) |
+| `calcular...` con dinero | `BigDecimal` |
+| `es...`, `tiene...`, `puede...` | `boolean` |
+| `obtener...`, `buscar...` | el tipo de la cosa que buscas |
+| `validar...` | a veces `boolean`, a veces `void` (si lanza excepción) |
+
+Esto te permite **leer código deprisa** sin mirar línea a línea.
 
 ## Lo que se lleva de la Lección 3
 
@@ -524,14 +536,6 @@ public BigDecimal calcularBaseImponible(List<LineaFactura> lineas) {
 }
 ```
 
-Si la factura tiene 3 líneas (50, 75, 100):
-- Vuelta 1: total = 0 + 50 = 50
-- Vuelta 2: total = 50 + 75 = 125
-- Vuelta 3: total = 125 + 100 = 225
-- Devuelve 225.
-
-**Sin bucle**, no podrías procesar facturas con número variable de líneas. Con bucle, **funciona con 1 línea o con 1000**.
-
 ### El bucle clásico con contador (lo verás también)
 
 ```java
@@ -545,11 +549,7 @@ Lectura:
 - `i < 10` → mientras `i` sea menor que 10, sigo.
 - `i++` → al final de cada vuelta, sumo 1 a `i`.
 
-**Para casi todo lo que vas a hacer, prefiere `for-each`** (más legible). El for clásico solo cuando de verdad necesites contar.
-
-### Hay también `while`
-
-Existe otro tipo de bucle que repite *"mientras se cumpla una condición"*. No te lo enseño hoy a fondo, basta saber que existe.
+**Para casi todo lo que vas a hacer, prefiere `for-each`** (más legible).
 
 ### Truco crítico: el `return` dentro del bucle
 
@@ -572,8 +572,8 @@ public boolean tieneFacturasImpagadas(List<Factura> facturas) {
 
 ```
 ┌──────────────────────────────────────────────────────────┐
-│  Comparar:    ==  !=  >  <  >=  <=                      │
-│  Combinar:    &&  (Y)   ||  (O)   !  (NO)               │
+│  Comparar:    ==  !=  >  <  >=  <=                       │
+│  Combinar:    &&  (Y)   ||  (O)   !  (NO)                │
 │  ⚠️  El "=" simple es ASIGNAR, no comparar               │
 └──────────────────────────────────────────────────────────┘
 ```
@@ -586,6 +586,386 @@ public boolean tieneFacturasImpagadas(List<Factura> facturas) {
 4. **`for-each` = "para cada"**. Repetir lo mismo sobre una colección.
 5. **`return` dentro de bucle** sale inmediatamente de la función. Útil para "buscar el primero que cumple".
 6. Con variables + funciones + `if` + `for` ya tienes el 80% de lo que hace cualquier programa.
+
+---
+
+# Lección 5: Listas y mapas (las colecciones)
+
+## Idea fundamental
+
+Una **colección** es una caja que guarda **muchos elementos**. Las dos más usadas:
+
+- **`List`** — fila ordenada de cosas (puede haber repetidos), acceso por posición.
+- **`Map`** — fichero llave → valor, acceso directo por la clave.
+
+## 🅰️ Las listas (`List`)
+
+### La idea
+
+- **Muchas cosas** del mismo tipo metidas en una fila.
+- El **orden importa** (hay un primero, un segundo…).
+- Puede haber **repetidos**.
+- Se puede **añadir, quitar, recorrer**.
+
+### Analogía de obra
+
+Un **palet de ladrillos** o una **caja de tornillos**: están en orden, puedes contar, recorrer uno a uno, hay repetidos, son del mismo tipo.
+
+### ⚠️ Detalle crítico: cuentan desde 0
+
+```
+Posición 0 → el primero
+Posición 1 → el segundo
+Posición 2 → el tercero
+Posición 4 → el quinto (no el cuarto)
+```
+
+**En programación, "el primero" se dice "el cero"**. Es responsable del 30% de los bugs de principiante.
+
+### Sintaxis
+
+```java
+List<String> nombresClientes;         // una lista DE textos
+List<BigDecimal> importesFactura;     // una lista DE cantidades de dinero
+List<LineaFactura> lineas;            // una lista DE líneas de factura
+```
+
+Los `< >` dicen **de qué tipo son los elementos** que contiene la lista.
+
+### Crear una lista vacía
+
+```java
+List<String> nombresClientes = new ArrayList<>();
+```
+
+`ArrayList` es el tipo concreto de lista más usado. *"Crea una lista vacía nueva, lista para ir metiendo cosas"*.
+
+### Operaciones
+
+| Operación | Para qué |
+|---|---|
+| `.add(elemento)` | Añadir al final |
+| `.get(posición)` | Obtener el de la posición (empieza en 0) |
+| `.size()` | Cuántos elementos tiene |
+| `.contains(elemento)` | ¿Está dentro? (true/false) |
+| `.remove(elemento)` | Quitar el elemento (si está) |
+| `.isEmpty()` | ¿Está vacía? |
+
+Ejemplo:
+
+```java
+nombresClientes.add("Miguel López");
+nombresClientes.add("Construcciones García");
+
+String primero = nombresClientes.get(0);      // "Miguel López"
+int cuantos = nombresClientes.size();          // 2
+boolean estaMiguel = nombresClientes.contains("Miguel López");  // true
+```
+
+### Recorrer una lista
+
+Esto **ya lo sabes** (Lección 4):
+
+```java
+for (String nombre : nombresClientes) {
+    System.out.println(nombre);
+}
+```
+
+## 🅱️ Los mapas (`Map`)
+
+### La idea
+
+Un **fichero**: por cada **llave** (clave), te devuelve el **valor** asociado. Como una agenda telefónica.
+
+```
+"GENERAL"       → 21
+"REDUCIDO"      → 10
+"SUPERREDUCIDO" → 4
+```
+
+**Acceso instantáneo por la llave**. No recorres todo: pides la clave, recibes el valor.
+
+### Analogía de obra
+
+El **fichero del almacén**: por código del material, te devuelve su ficha (precio, dimensiones, stock).
+
+### Sintaxis
+
+Los mapas tienen **dos tipos**: la clave y el valor.
+
+```java
+Map<String, BigDecimal> tiposIva;            // llave texto, valor dinero
+Map<Long, Cliente> clientesPorId;            // llave número, valor cliente
+Map<String, Integer> stockMaterial;          // llave texto, valor entero
+```
+
+Léelo: *"Map DE String A BigDecimal"*.
+
+### Crear un mapa vacío
+
+```java
+Map<String, BigDecimal> tiposIva = new HashMap<>();
+```
+
+### Operaciones
+
+| Operación | Para qué |
+|---|---|
+| `.put(clave, valor)` | Meter o actualizar el valor de esa clave |
+| `.get(clave)` | Obtener el valor de esa clave |
+| `.containsKey(clave)` | ¿Existe esa clave? |
+| `.size()` | Cuántas entradas tiene |
+| `.remove(clave)` | Quitar una entrada |
+| `.isEmpty()` | ¿Está vacío? |
+
+Ejemplo:
+
+```java
+tiposIva.put("GENERAL", new BigDecimal("21"));
+tiposIva.put("REDUCIDO", new BigDecimal("10"));
+
+BigDecimal pct = tiposIva.get("GENERAL");          // 21
+boolean tieneCero = tiposIva.containsKey("CERO");  // false
+```
+
+> ⚠️ **Si pides `.get("CLAVE_QUE_NO_EXISTE")` el mapa devuelve `null` (vacío)**. Si después usas ese resultado, el programa explota. Por eso muchas veces se comprueba antes con `.containsKey(...)`.
+
+### Recorrer un mapa
+
+```java
+for (String clave : tiposIva.keySet()) {
+    BigDecimal porcentaje = tiposIva.get(clave);
+    System.out.println(clave + " → " + porcentaje);
+}
+```
+
+## 🅲 Mención: `Set`
+
+Existe una tercera colección, **`Set`**: como una `List` pero **sin duplicados**. Cuando la veas, ya sabes qué es.
+
+## La gran idea de la Lección 5
+
+> **`List` para orden, `Map` para búsqueda por clave.**
+>
+> - ¿Te interesa **el orden**? → `List`.
+> - ¿Te interesa **encontrar algo por nombre/clave**? → `Map`.
+
+## Resumen visual
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  LIST<Tipo>     →   fila ordenada, índices desde 0              │
+│                     .add()  .get(i)  .size()  .contains()        │
+│                                                                 │
+│  MAP<Clave,Val> →   fichero llave→valor                          │
+│                     .put()  .get(k)  .containsKey()  .size()     │
+│                                                                 │
+│  SET<Tipo>      →   sin duplicados (mención)                     │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+## Lo que se lleva de la Lección 5
+
+1. Una **colección** es una caja que guarda muchos elementos.
+2. **`List`** = fila ordenada, índice desde **0**, hay repetidos.
+3. **`Map`** = fichero llave → valor, acceso directo por la clave.
+4. La sintaxis `<...>` dice de qué tipo son los elementos.
+5. `ArrayList` y `HashMap` son los tipos concretos más usados.
+6. ⚠️ `.get(clave)` de Map devuelve `null` si la clave no existe — siempre comprueba con `containsKey()` si dudas.
+
+---
+
+# Lección 6: Objetos y clases
+
+## La idea fundamental
+
+Hasta ahora cada variable guardaba **un dato suelto**. Pero las cosas del mundo real no son datos sueltos — son cosas **con muchos datos juntos y comportamientos asociados**.
+
+Para representar "cosas complejas", Java te deja **crear tus propios tipos**:
+
+- **Clase** = el **plano** (la plantilla que define cómo es algo).
+- **Objeto** = una **instancia concreta** construida con ese plano.
+
+## Analogía de obra
+
+```
+PLANO "VIVIENDA UNIFAMILIAR TIPO A" (= CLASE)
+─────────────────────────────────────────────
+Define que la vivienda tiene:
+  - dirección (texto)
+  - número de habitaciones (entero)
+  - metros cuadrados (decimal)
+  - propietario (texto)
+
+Y que se le pueden hacer cosas como:
+  - cambiar el propietario
+  - calcular el precio según m²
+```
+
+```
+CASAS CONCRETAS CONSTRUIDAS CON ESE PLANO (= OBJETOS)
+
+  Casa #1            Casa #2            Casa #3
+  Calle Mayor 5      Plaza Sol 12       Av. Mar 33
+  4 hab, 120 m²      3 hab, 80 m²       5 hab, 180 m²
+  Miguel López       Ana García         Pedro Pérez
+```
+
+**Mismo plano, datos distintos.** En BENJAGEST: `Cliente` es la clase, Miguel López y Construcciones García son **objetos** de esa clase.
+
+## El "aha!" que se te ha aclarado
+
+`BigDecimal`, `LocalDate`, `ArrayList`… **son todas clases que Java te da hechas**. Cuando escribes `new BigDecimal(...)` estás creando un **objeto** de la clase `BigDecimal`. Llevas creando objetos desde la Lección 2 sin saberlo.
+
+> **Cada vez que ves `new TipoConMayuscula(...)`, eso es construir un objeto nuevo de esa clase.**
+
+## Anatomía de una clase
+
+Una clase tiene **3 partes**:
+
+```java
+public class Cliente {
+
+    // 1. CAMPOS (los datos)
+    private String id;
+    private String nombre;
+    private String nif;
+    private BigDecimal saldo;
+
+    // 2. CONSTRUCTOR (cómo se crea un objeto nuevo)
+    public Cliente(String id, String nombre, String nif) {
+        this.id = id;
+        this.nombre = nombre;
+        this.nif = nif;
+        this.saldo = BigDecimal.ZERO;
+    }
+
+    // 3. MÉTODOS (qué sabe hacer el objeto)
+    public String getNombre() {
+        return nombre;
+    }
+
+    public void pagar(BigDecimal cantidad) {
+        this.saldo = this.saldo.subtract(cantidad);
+    }
+}
+```
+
+### Parte 1: los campos (los datos)
+
+```java
+private String nombre;
+private BigDecimal saldo;
+```
+
+Son como variables, pero **viven dentro del objeto**. Cada objeto tendrá los suyos.
+
+### `public` vs `private`: la encapsulación
+
+| Palabra | Significa | En obra |
+|---|---|---|
+| `private` | Solo se toca **desde dentro** de la clase | La fontanería dentro del tabique. Nadie de fuera la toca. |
+| `public` | Cualquiera **desde fuera** lo puede usar | El grifo. La cara visible. Lo que está pensado para que otros usen. |
+
+**Por qué se hace así:** si dejas los datos en `public`, cualquiera puede hacer `cliente.saldo = -999999;` y romperte el sistema. En `private`, solo se modifican a través de métodos `public` que controlan qué se puede hacer. Esto se llama **encapsulación**.
+
+### Parte 2: el constructor
+
+```java
+public Cliente(String id, String nombre, String nif) {
+    this.id = id;
+    this.nombre = nombre;
+    this.nif = nif;
+    this.saldo = BigDecimal.ZERO;
+}
+```
+
+Es **una función especial** que se ejecuta cuando creas un objeto con `new`. Tres cosas:
+
+1. **Se llama exactamente igual que la clase** (`Cliente`).
+2. **NO tiene tipo de retorno** (ni siquiera `void`).
+3. **Recibe los datos iniciales** del objeto.
+
+### El `this`
+
+```java
+this.id = id;
+```
+
+**`this` quiere decir "este objeto"**, el que se está construyendo. Sin `this.`, Java no sabría a cuál `id` te refieres (al campo o al parámetro).
+
+Tradúcelo: *"el campo `id` de ESTE objeto concreto lo igualo al parámetro `id` que me han dado"*.
+
+### Parte 3: los métodos
+
+```java
+public String getNombre() {
+    return nombre;
+}
+
+public void pagar(BigDecimal cantidad) {
+    this.saldo = this.saldo.subtract(cantidad);
+}
+```
+
+Son **funciones que pertenecen a la clase**. Por convención:
+
+- Empieza por `get...` → **getter** (lee un campo).
+- Empieza por `set...` → **setter** (modifica un campo).
+
+## Crear y usar un objeto
+
+```java
+Cliente c1 = new Cliente("c001", "Miguel López", "12345678A");
+Cliente c2 = new Cliente("c002", "Construcciones García SL", "B87654321");
+
+String nombre = c1.getNombre();           // "Miguel López"
+c1.pagar(new BigDecimal("125.50"));        // a Miguel se le baja el saldo
+```
+
+Cada `new Cliente(...)` **construye una casa nueva** con el plano. **`c1.pagar(...)` no afecta a `c2`** — cada uno tiene sus propios datos.
+
+## Diferencia con funciones sueltas
+
+| Función suelta (Lección 3) | Método de objeto (Lección 6) |
+|---|---|
+| `calcularImporteLinea(cantidad, precio)` | `linea.getImporte()` |
+| Le das **todos los datos** como parámetros | El objeto **ya tiene los datos dentro** |
+
+Los objetos son útiles porque **agrupan datos relacionados + el comportamiento que opera sobre ellos**.
+
+## Resumen visual
+
+```
+┌────────────────────────────────────────────────────────────────┐
+│  CLASE = el PLANO (define cómo es algo)                        │
+│  OBJETO = una INSTANCIA construida con el plano                │
+│                                                                │
+│  public class Cliente {                                        │
+│    private String nombre;          ← campo (dato)              │
+│    public Cliente(String n) {...}  ← constructor               │
+│    public String getNombre() {...} ← método (acción)           │
+│  }                                                             │
+│                                                                │
+│  Cliente c = new Cliente("Miguel");  ← creas un objeto         │
+│  c.getNombre();                       ← le pides algo          │
+│                                                                │
+│  private = solo desde dentro (datos protegidos)                │
+│  public  = desde cualquier sitio (interfaz pública)            │
+│  this    = "este objeto concreto"                              │
+└────────────────────────────────────────────────────────────────┘
+```
+
+## Lo que se lleva de la Lección 6
+
+1. **Una clase es un plano**, un objeto es **una instancia construida con el plano**.
+2. Las clases tienen **3 partes**: campos (datos), constructor (cómo se crea), métodos (qué sabe hacer).
+3. **`private`** esconde los datos, **`public`** expone la interfaz. A eso se le llama **encapsulación**.
+4. **`new TipoConMayuscula(...)`** crea un objeto nuevo. Lo hacías ya con `BigDecimal`, `LocalDate`, `ArrayList`.
+5. **`objeto.metodo()`** llama a un método sobre un objeto concreto.
+6. **`this.x`** quiere decir *"el campo `x` de este objeto"*.
+7. **Getters y setters** son la convención para leer y escribir datos protegidos.
 
 ---
 
@@ -624,100 +1004,180 @@ public boolean tieneFacturasImpagadas(List<Factura> facturas) {
 | **`new BigDecimal(x)`** | Convertir un número (`int`, etc.) en BigDecimal para poder operarlo con otros BigDecimal |
 | **`.multiply()` / `.divide()` / `.add()` / `.subtract()`** | Operaciones de BigDecimal (no se usan `*` `/` `+` `-` directos) |
 | **`.compareTo()`** | Comparar dos BigDecimal (`a.compareTo(b) > 0` = a mayor que b) |
+| **Colección** | Caja que guarda muchos elementos |
+| **`List<Tipo>`** | Fila ordenada de elementos, índices desde 0 |
+| **`ArrayList`** | Tipo concreto de lista más usado |
+| **Índice** | La posición en una lista. Empieza en 0. |
+| **`Map<K, V>`** | Fichero llave→valor, acceso directo por la clave |
+| **`HashMap`** | Tipo concreto de mapa más usado |
+| **`Set`** | Colección sin duplicados |
+| **`null`** | Vacío, ausencia de dato. Devuelto por `Map.get()` si la clave no existe. |
+| **Clase** | Plano/plantilla que define cómo es un tipo |
+| **Objeto** / **Instancia** | Una "cosa" concreta construida con el plano de una clase |
+| **Campo** / **Atributo** | Dato que tiene cada objeto (declarado dentro de la clase) |
+| **Constructor** | Función especial que se ejecuta al crear un objeto con `new` |
+| **`this`** | "Este objeto concreto" (el que se está manipulando) |
+| **`private`** | Visible solo desde dentro de la clase |
+| **`public`** | Visible desde cualquier sitio |
+| **Encapsulación** | Esconder los datos (private) y exponer solo el comportamiento (public) |
+| **Getter** | Método que empieza por `get...` y devuelve un campo |
+| **Setter** | Método que empieza por `set...` y modifica un campo |
+| **`new`** | Operador para construir un objeto nuevo de una clase |
 
 ---
 
 # Ejercicios resueltos
 
-## Ejercicio 1 — Lección 1: escribir un parte de obra para crear una factura
+## Ejercicio 1 — Lección 1: parte de obra para crear una factura
 
 **Lo que escribí (perspectiva del usuario):**
 
 ```
 1. Enciende la app
-2. Click en "Facturas"
-3. Click en "Nueva"
-4. Selecciona cliente Miguel
-5. Selecciona fecha hoy
-6. Escribe concepto "ejemplo"
-7. Escribe unidades 5
-8. Escribe precio 25
-9. Selecciona IVA 21
-10. Click en "Guardar factura"
+2. Click en "Facturas" → "Nueva"
+3. Selecciona cliente Miguel
+4. Selecciona fecha hoy
+5. Escribe concepto, unidades, precio, IVA
+6. Click en "Guardar factura"
 ```
 
-**Aprendizaje:** lo que escribí es **el guion del usuario** (caso de uso). El programa hace por debajo unas 200 instrucciones invisibles. Mi rol natural = describir lo que el usuario hace y espera. El programador (Pablo) traduce eso al guion invisible.
+**Aprendizaje:** lo que escribí es **el guion del usuario** (caso de uso). El programa hace por debajo ~200 instrucciones invisibles. Mi rol natural = describir lo que el usuario hace y espera.
 
-## Ejercicio 2 — Lección 2: identificar tipos de los campos de una factura
+## Ejercicio 2 — Lección 2: tipos de los campos de una factura
 
-| Campo | Tipo que asigné | Correcto | Notas |
-|---|---|---|---|
-| Cliente: "Construcciones García SL" | `String` | ✅ | Texto puro |
-| NIF: "B12345678" | `String` | ✅ | Lleva letra, no es número |
-| Fecha: 27/05/2026 | `String` ❌ | Debería ser `LocalDate` | Las fechas NUNCA como texto |
-| Número: "F2026/0123" | `String` | ✅ | Lleva letras y barra |
-| Concepto: "Reparación de tabique" | `String` | ✅ | Texto |
-| Cantidad: 5 | `int` | ✅ | Entero |
-| Precio unitario: 25,00 € | `BigDecimal` | ✅ | Dinero |
-| IVA aplicado: 21 | `int` | ✅ (matiz) | Acepta entero; `BigDecimal` si quieres soportar 4,5% |
-| Total factura: 151,25 € | `BigDecimal` | ✅ | Dinero |
-| Pagada: No | `boolean` | ✅ | Sí/No |
+**9/10 con razonamiento correcto.** Único fallo: dije `String` para la fecha. Debería ser `LocalDate`. Regla aprendida: *si es fecha, `LocalDate`, nunca `String`*.
 
-**Resultado: 9/10 con razonamiento correcto.** La que se me escapó fue la fecha (error típico, le pasa a todo el mundo la primera vez). Aprendí la regla: *si es fecha, `LocalDate`, nunca `String`*.
+## Ejercicio 3 — Lección 3: los 4 componentes de `calcularImporteLinea`
 
-## Ejercicio 3 — Lección 3: identificar los 4 componentes de una función
+**4/4 con asterisco.** Identifiqué nombre, parámetros, tipo de retorno y la operación. Me faltó entender que `new BigDecimal(cantidad)` **convierte el `int` a `BigDecimal`** para poder multiplicar (Java es estricto con los tipos). Lección aprendida: cuando veas esa conversión, no es decoración — es conversión obligatoria.
 
-Función analizada:
+## Ejercicio 4 — Lección 4: traducir `tieneFacturasImpagadas`
 
-```java
-public BigDecimal calcularImporteLinea(int cantidad, BigDecimal precioUnitario) {
-    BigDecimal cantidadComoDecimal = new BigDecimal(cantidad);
-    BigDecimal importe = cantidadComoDecimal.multiply(precioUnitario);
-    return importe;
-}
-```
+**6,5/10 — lección aprendida en sangre.** Se me escapó el `!` y leí la condición al revés. La regla:
 
-| Componente | Mi respuesta | Correcto |
-|---|---|---|
-| Nombre | `calcularImporteLinea` | ✅ |
-| Parámetros | 2: `cantidad` (entero) y `precioUnitario` (dinero) | ✅ |
-| Tipo que devuelve | `BigDecimal` (dinero) | ✅ (lo identifiqué al revisar) |
-| Qué hace | Multiplica cantidad por precio | ✅ parcial |
+> **Cuando veas un `!`, léelo en voz alta como "NO".** Si te lo saltas, interpretas el código al revés.
 
-**Lo que me faltó entender:** la primera línea (`new BigDecimal(cantidad)`) **convierte el `int` a `BigDecimal`** para poder multiplicarlo con `precioUnitario`. Java no deja multiplicar tipos distintos directamente, por eso esa conversión "aparentemente tonta" es necesaria. Lo veré muchas veces en código de facturación.
+Truco extra: **si el nombre de la función y mi traducción se contradicen, casi seguro me he saltado un `!` o confundido `==` con `!=`**.
 
-**Resultado: 4/4 con un asterisco.** Bien.
+## Ejercicio 5 — Lección 5: `sumarLineasGrandes` (acumulador con List + if)
 
-## Ejercicio 4 — Lección 4: traducir una función con `if` dentro de un `for`
-
-Función analizada:
+Función:
 
 ```java
-public boolean tieneFacturasImpagadas(List<Factura> facturas) {
-    for (Factura factura : facturas) {
-        if (!factura.isPagada()) {
-            return true;
+public BigDecimal sumarLineasGrandes(List<LineaFactura> lineas, BigDecimal umbral) {
+    BigDecimal total = new BigDecimal("0");
+    for (LineaFactura linea : lineas) {
+        if (linea.getImporte().compareTo(umbral) > 0) {
+            total = total.add(linea.getImporte());
         }
     }
-    return false;
+    return total;
 }
 ```
 
-**Lo que escribí:** "para cada factura, si la factura está pagada, devuelve verdadero; si no, falso".
+**Acerté:** nombre, tipo de retorno, parámetro `umbral`, que `total` empieza en 0 BigDecimal.
 
-**Lo que se me escapó:** **el `!` cambia el sentido**. La condición real es `!factura.isPagada()` = "si NO está pagada". Mi lectura era la inversa.
+**Lo que se me escapó:**
+- Un parámetro (la `List<LineaFactura>`).
+- Leí mal `compareTo(umbral) > 0` como "mayor que 0" — en realidad es "**mayor que `umbral`**".
+- Me faltó el paso de **acumular** dentro del if (`total = total.add(...)`).
 
-**Lectura correcta:**
+**Lección aprendida:** el patrón **acumulador + for + if** es el más común en código de facturación: *"de todas las cosas, súmame solo las que cumplen una condición"*. Cuando lo reconozca, ya sé qué está pasando.
 
+**Traza con ejemplo:** facturas de 50€, 150€, 30€, 200€ con umbral 100€:
+
+| Vuelta | Importe | ¿>100? | total |
+|---|---|---|---|
+| 1 | 50 | NO | 0 |
+| 2 | 150 | SÍ | 150 |
+| 3 | 30 | NO | 150 |
+| 4 | 200 | SÍ | 350 |
+
+Devuelve **350€**.
+
+## Ejercicio 6 — Lección 5: `contarFacturasImpagadas` (acumulador con contador)
+
+Función:
+
+```java
+public int contarFacturasImpagadas(List<Factura> facturas) {
+    int contador = 0;
+    for (Factura factura : facturas) {
+        if (!factura.isPagada()) {
+            contador = contador + 1;
+        }
+    }
+    return contador;
+}
 ```
-Recorro la lista. Si encuentro UNA factura sin pagar, contesto SÍ
-y me voy (return dentro del bucle). Si llego al final sin encontrar
-ninguna, contesto NO (return de fuera).
+
+**¡¡¡5/5!!!** Identifiqué nombre, parámetro `List<Factura>`, contador `int` que empieza en 0, leí bien el `!` ("si NO está pagada"), entendí el incremento (`contador + 1`) y el `return` después del bucle.
+
+**Lección aprendida (estratégica):** los **nombres son chivatos del tipo de retorno**:
+
+| Prefijo | Tipo que casi siempre devuelve |
+|---|---|
+| `contar...` | `int` |
+| `calcular...` con dinero | `BigDecimal` |
+| `es...`, `tiene...`, `puede...` | `boolean` |
+| `obtener...`, `buscar...` | el tipo de la cosa que buscas |
+
+## Ejercicio 7 — Lección 6: analizar la clase `LineaFactura`
+
+Clase:
+
+```java
+public class LineaFactura {
+    private String concepto;
+    private int cantidad;
+    private BigDecimal precioUnitario;
+
+    public LineaFactura(String concepto, int cantidad, BigDecimal precioUnitario) {
+        this.concepto = concepto;
+        this.cantidad = cantidad;
+        this.precioUnitario = precioUnitario;
+    }
+
+    public BigDecimal getImporte() {
+        return precioUnitario.multiply(new BigDecimal(cantidad));
+    }
+
+    public String getConcepto() {
+        return concepto;
+    }
+}
 ```
 
-**Aprendizaje crítico:** **cuando veas un `!`, léelo en voz alta como "NO".** Si te lo saltas mentalmente, interpretas el código al revés. Y un truco más: **si el nombre de la función y tu traducción se contradicen, casi seguro te has saltado un `!` o confundido un `==` con un `!=`**.
+**4/4 en las preguntas que respondí:**
+- Clase: `LineaFactura`.
+- 3 campos: `concepto` (String), `cantidad` (int), `precioUnitario` (BigDecimal).
+- Constructor: rellena los 3 campos del nuevo objeto.
+- Métodos: `getImporte()` multiplica precio × cantidad (convirtiendo `int` a `BigDecimal` primero); `getConcepto()` devuelve el concepto.
 
-**Resultado: 6,5/10. Ejercicio más difícil, aprendido en sangre.** Ya no se me olvida.
+**Lo que me alegró mucho:** **recordé yo solo, sin pista**, que `new BigDecimal(cantidad)` es la conversión `int → BigDecimal` del Ejercicio 3. Eso es **conectar conceptos entre lecciones**, no memorizar.
+
+**Pregunta 5 (resuelta acompañado):**
+
+```java
+LineaFactura linea = new LineaFactura("Reparación", 5, new BigDecimal("25.00"));
+BigDecimal importe = linea.getImporte();
+```
+
+Paso a paso:
+1. El constructor rellena: `concepto="Reparación"`, `cantidad=5`, `precioUnitario=25.00`.
+2. Al llamar `linea.getImporte()`, el método accede a los campos del propio objeto.
+3. Convierte `cantidad` (5, int) a `BigDecimal(5)`.
+4. Multiplica `25.00 × 5 = 125.00`.
+5. Devuelve `125.00`.
+
+**`importe` vale `125.00 €`.**
+
+**Lección estratégica:** los **métodos de un objeto usan los datos del propio objeto**, no necesitan que se los pases como parámetros. Por eso `getImporte()` no recibe nada — usa el `precioUnitario` y `cantidad` que el objeto ya tiene dentro. Diferencia clave con una función suelta:
+
+| Función suelta | Método de objeto |
+|---|---|
+| `calcularImporteLinea(5, 25.00)` | `linea.getImporte()` |
+| Le pasas TODOS los datos | El objeto YA tiene los datos |
 
 ---
 
@@ -733,27 +1193,29 @@ backend-java/src/main/java/com/benjagest/backend/workspace/PinLoginRequest.java
 backend-java/src/main/java/com/benjagest/backend/workspace/DashboardItem.java
 ```
 
-Para cada archivo, intenta identificar:
+Para cada archivo, identifica:
 
-- **Variables**: nombre, tipo, qué guarda.
-- **Funciones**: nombre, parámetros, qué devuelve, qué hace por dentro.
-- **Si hay algún `if`**: ¿qué condición evalúa? ¿hay un `!` que se pueda escapar?
-- **Si hay algún `for`**: ¿sobre qué colección itera?
+- **¿Es una CLASE?** ¿Cómo se llama?
+- **Campos** (`private` arriba): nombre, tipo, qué guarda.
+- **Constructor** (función con el mismo nombre que la clase): qué parámetros recibe.
+- **Métodos**: nombre, parámetros, tipo de retorno, qué hace. ¿Es getter? ¿Setter? ¿Acción?
+- **Si hay `if`**: condición, ¿hay un `!`?
+- **Si hay `for`**: sobre qué colección itera.
 
-No tienes que entender el resto del archivo. Es como ir a una obra ajena y reconocer materiales y técnicas — todavía no sabes construirla, pero ya distingues lo que hay.
+Ya tienes el vocabulario para reconocer todo lo que ves.
 
 ---
 
 # Resumen ultra-condensado (para tener todo en una página)
 
 **Lección 1 — Programa**
-- Es un parte de obra para una máquina que no rellena huecos.
-- Por cada acción visible, hay docenas de pasos invisibles.
+- Parte de obra para una máquina que no rellena huecos.
+- Visible vs invisible.
 - DRY: si lo haces dos veces, hazlo función.
 
 **Lección 2 — Variables y tipos**
 - Variable = caja con etiqueta (nombre) y contenido.
-- Cada caja es de un tipo. Java es estricto.
+- Java es estricto con tipos.
 - **3 reglas de oro**: tiene letras → `String`; es fecha → `LocalDate`; es dinero → `BigDecimal`.
 - camelCase para nombres.
 
@@ -761,16 +1223,31 @@ No tienes que entender el resto del archivo. Es como ir a una obra ajena y recon
 - 4 componentes: nombre, parámetros, cuerpo, valor de retorno.
 - Una vez definida, se llama con `nombre(argumentos)`.
 - `void` = no devuelve nada.
-- Funciones llaman a otras (orquestación).
 - Verbos para nombrar (`calcularIva`, no `iva`).
+- Los nombres son chivatos del tipo: `contar...` → `int`, `es...` → `boolean`.
 
 **Lección 4 — Decisiones y bucles**
 - `if (condición) { ... } else { ... }` para decidir.
-- Comparar con `==`, no `=`.
-- `&&` = Y, `||` = O, `!` = NO. Léelos siempre.
+- Comparar con `==`, no `=`. NUNCA olvides el doble igual.
+- `&&` = Y, `||` = O, `!` = NO. **Lee siempre el `!` en voz alta**.
 - `for (Tipo x : coleccion) { ... }` para repetir.
 - `return` dentro de bucle = salir inmediatamente.
 
+**Lección 5 — Colecciones**
+- **`List<Tipo>`**: fila ordenada, índices desde **0**. `.add()`, `.get(i)`, `.size()`.
+- **`Map<K, V>`**: fichero llave→valor. `.put()`, `.get(k)`, `.containsKey()`.
+- ⚠️ `Map.get()` devuelve `null` si la clave no existe.
+- Patrón típico: **acumulador + for + if** ("de todas las cosas, súmame las que cumplen X").
+
+**Lección 6 — Objetos y clases**
+- **Clase** = plano. **Objeto** = casa construida con el plano.
+- Una clase tiene campos (datos), constructor (cómo se crea), métodos (qué hace).
+- **`private` = oculto**, **`public` = expuesto** → encapsulación.
+- **`new ClaseConMayuscula(...)`** crea un objeto.
+- **`objeto.metodo()`** llama a algo sobre el objeto.
+- **`this`** = "este objeto concreto".
+- Los métodos del objeto usan los datos del propio objeto, no parámetros.
+
 ---
 
-*Última actualización: 2026-05-27. Lecciones recogidas: 1, 2, 3 y 4. Siguiente: Lección 5 (Listas y mapas).*
+*Última actualización: 2026-05-27. Lecciones recogidas: 1, 2, 3, 4, 5 y 6. Siguiente y última: Lección 7 (cómo se monta una app por capas).*
