@@ -99,6 +99,7 @@ public class BenjagestUiApplication extends Application {
 
     private BorderPane root;
     private SessionInfo session;
+    private IssuerSummary activeIssuer;
     private Language language = Language.ES;
     private AppMode appMode = AppMode.ADVISORY;
     private String currentModule = "dashboard";
@@ -164,7 +165,17 @@ public class BenjagestUiApplication extends Application {
         Task<SessionInfo> task = new Task<>() {
             @Override
             protected SessionInfo call() throws Exception {
-                return apiClient.loginWithPin(pin);
+                SessionInfo info = apiClient.loginWithPin(pin);
+                // Cargo tambien el emisor activo en la misma llamada para que
+                // el header ya lo tenga al pintarse. Si el backend devuelve
+                // 404, getDefault() devuelve null y la linea simplemente no
+                // aparecera.
+                try {
+                    activeIssuer = issuerApiClient.getDefault();
+                } catch (Exception ignored) {
+                    activeIssuer = null;
+                }
+                return info;
             }
         };
         task.setOnSucceeded(event -> {
@@ -189,6 +200,15 @@ public class BenjagestUiApplication extends Application {
         Label subtitle = new Label(session.companyName());
         subtitle.getStyleClass().add("app-subtitle");
         VBox titleBlock = new VBox(2, title, subtitle);
+        // Linea persistente con el emisor activo. Asi, trabajes donde
+        // trabajes (factura, gasto, etc.) siempre ves con que empresa
+        // estas operando.
+        if (activeIssuer != null) {
+            Label activeIssuerLine = new Label("Facturando como: " + activeIssuer.legalName());
+            activeIssuerLine.setGraphic(icon("fas-file-signature"));
+            activeIssuerLine.getStyleClass().add("status-detail");
+            titleBlock.getChildren().add(activeIssuerLine);
+        }
 
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
@@ -434,6 +454,9 @@ public class BenjagestUiApplication extends Application {
             table.setPlaceholder(new Label(t("noRecords")));
         }
 
+        TableColumn<IssuerSummary, String> colDefault = new TableColumn<>("");
+        colDefault.setCellValueFactory(cell -> new SimpleStringProperty(cell.getValue().isDefault() ? "★" : ""));
+        colDefault.setPrefWidth(40);
         TableColumn<IssuerSummary, String> colName = new TableColumn<>("Razon social");
         colName.setCellValueFactory(cell -> new SimpleStringProperty(cell.getValue().legalName()));
         TableColumn<IssuerSummary, String> colTax = new TableColumn<>("NIF/CIF");
@@ -444,7 +467,7 @@ public class BenjagestUiApplication extends Application {
         colEmail.setCellValueFactory(cell -> new SimpleStringProperty(cell.getValue().email()));
         TableColumn<IssuerSummary, String> colPhone = new TableColumn<>(t("field.phone"));
         colPhone.setCellValueFactory(cell -> new SimpleStringProperty(cell.getValue().phone()));
-        table.getColumns().addAll(java.util.List.of(colName, colTax, colCity, colEmail, colPhone));
+        table.getColumns().addAll(java.util.List.of(colDefault, colName, colTax, colCity, colEmail, colPhone));
 
         // Doble click se engancha a cada FILA, no a la tabla.
         // Asi, click en zona vacia o en cabecera no dispara nada.
@@ -486,7 +509,25 @@ public class BenjagestUiApplication extends Application {
             confirmAndDeleteIssuer(selected);
         });
 
-        HBox header = new HBox(16, titleBox, moduleIcon, spacer, delete, edit, create);
+        Button markActive = new Button("Marcar como activo");
+        markActive.setGraphic(icon("fas-star"));
+        markActive.setOnAction(event -> {
+            IssuerSummary selected = table.getSelectionModel().getSelectedItem();
+            if (selected == null) {
+                showError(t("selectRecord"), t("selectRecordDetail"));
+                return;
+            }
+            if (selected.isDefault()) {
+                Alert info = new Alert(Alert.AlertType.INFORMATION,
+                        "Este emisor ya es el activo.", ButtonType.OK);
+                info.setHeaderText(null);
+                info.showAndWait();
+                return;
+            }
+            markIssuerAsDefault(selected);
+        });
+
+        HBox header = new HBox(16, titleBox, moduleIcon, spacer, delete, markActive, edit, create);
         header.setAlignment(Pos.CENTER_LEFT);
         header.getStyleClass().add("module-detail-header");
 
@@ -629,6 +670,26 @@ public class BenjagestUiApplication extends Application {
         task.setOnSucceeded(event -> showIssuers());
         task.setOnFailed(event -> showError(t("updateFailed"), t("backendCheck")));
         start(task, "issuer-update-" + id);
+    }
+
+    private void markIssuerAsDefault(IssuerSummary issuer) {
+        Task<IssuerSummary> task = new Task<>() {
+            @Override
+            protected IssuerSummary call() throws Exception {
+                IssuerSummary updated = issuerApiClient.markAsDefault(issuer.id());
+                activeIssuer = issuerApiClient.getDefault();
+                return updated;
+            }
+        };
+        task.setOnSucceeded(event -> {
+            // showShell repinta header (con la nueva linea "Facturando como...")
+            // y sidebar. showIssuers refresca la tabla con la estrella en
+            // su nueva posicion.
+            showShell();
+            showIssuers();
+        });
+        task.setOnFailed(event -> showError(t("updateFailed"), t("backendCheck")));
+        start(task, "issuer-mark-default-" + issuer.id());
     }
 
     private void confirmAndDeleteIssuer(IssuerSummary issuer) {

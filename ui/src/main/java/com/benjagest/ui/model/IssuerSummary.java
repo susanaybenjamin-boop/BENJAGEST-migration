@@ -21,6 +21,7 @@ public record IssuerSummary(
         String registryInformation,
         String legalTerms,
         String invoiceFooter,
-        boolean active
+        boolean active,
+        boolean isDefault
 ) {
 }

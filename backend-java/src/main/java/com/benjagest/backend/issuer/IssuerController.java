@@ -40,6 +40,18 @@ public class IssuerController {
         return service.list();
     }
 
+    /**
+     * Devuelve el emisor activo (is_default=TRUE) de la empresa actual.
+     * 404 si la empresa no ha marcado ninguno.
+     * Importante: este mapping debe declararse ANTES que /{id} para que
+     * "default" no se interprete como un id (Spring resuelve por
+     * especificidad, pero el orden explicito en el codigo es mas claro).
+     */
+    @GetMapping("/default")
+    public IssuerResponse getDefault() {
+        return service.getDefault();
+    }
+
     @GetMapping("/{id}")
     public IssuerResponse get(@PathVariable("id") String id) {
         return service.findById(id);
@@ -63,5 +75,15 @@ public class IssuerController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void delete(@PathVariable("id") String id) {
         service.delete(id);
+    }
+
+    /**
+     * Marca el emisor con este id como activo de la empresa.
+     * Pone todos los demas a is_default=FALSE dentro de la misma
+     * transaccion.
+     */
+    @PutMapping("/{id}/default")
+    public IssuerResponse markAsDefault(@PathVariable("id") String id) {
+        return service.markAsDefault(id);
     }
 }

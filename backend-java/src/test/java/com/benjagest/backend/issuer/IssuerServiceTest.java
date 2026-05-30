@@ -118,13 +118,59 @@ class IssuerServiceTest {
     }
 
     private IssuerResponse sampleResponse(String id, String tax) {
+        return sampleResponse(id, tax, false);
+    }
+
+    private IssuerResponse sampleResponse(String id, String tax, boolean isDefault) {
         return new IssuerResponse(
                 id, "Razon social SL", tax,
                 "Calle Falsa 1", "Madrid", "Madrid", "28001", "Espana",
                 "facturacion@demo.local", "910000000",
                 "ES7620770024003102575766",
                 null, null, null,
-                true, Instant.now(), Instant.now()
+                true, isDefault, Instant.now(), Instant.now()
         );
+    }
+
+    @Test
+    void markAsDefault_pone_el_emisor_como_activo() {
+        when(repository.setDefault("known-id")).thenReturn(1);
+        when(repository.findById("known-id")).thenReturn(Optional.of(sampleResponse("known-id", "B11111111", true)));
+
+        IssuerResponse response = service.markAsDefault("known-id");
+
+        assertThat(response.isDefault()).isTrue();
+        verify(repository).clearDefaultsForCompany();
+        verify(repository).setDefault("known-id");
+    }
+
+    @Test
+    void markAsDefault_lanza_404_si_no_existe_o_esta_inactivo() {
+        when(repository.setDefault("missing-id")).thenReturn(0);
+
+        assertThatThrownBy(() -> service.markAsDefault("missing-id"))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(ex -> ((ResponseStatusException) ex).getStatusCode())
+                .isEqualTo(HttpStatus.NOT_FOUND);
+    }
+
+    @Test
+    void getDefault_devuelve_el_emisor_activo() {
+        when(repository.findDefault()).thenReturn(Optional.of(sampleResponse("id-default", "B22222222", true)));
+
+        IssuerResponse response = service.getDefault();
+
+        assertThat(response.id()).isEqualTo("id-default");
+        assertThat(response.isDefault()).isTrue();
+    }
+
+    @Test
+    void getDefault_lanza_404_si_no_hay_activo() {
+        when(repository.findDefault()).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.getDefault())
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(ex -> ((ResponseStatusException) ex).getStatusCode())
+                .isEqualTo(HttpStatus.NOT_FOUND);
     }
 }

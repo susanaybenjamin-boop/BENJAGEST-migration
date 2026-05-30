@@ -56,7 +56,7 @@ Antes de empezar fases nuevas hay que tener respuesta a estas preguntas
 |---|---|---|---|---|
 | `companies`, `user_accounts`, `company_memberships`, `company_settings` | ✅ V2 | 🟡 solo `workspace` PIN | ⏳ | Falta CRUD real de empresa y usuario. |
 | `customers` + `customer_billing_profiles` | ✅ V1+V2 | ✅ | ✅ básica | CRUD ya funciona end-to-end. |
-| `issuers` (emisores de factura) | ✅ V2 | ⏳ | ⏳ | Tabla creada pero sin código que la use. |
+| `issuers` (emisores de factura) | ✅ V2 + V6 | ✅ | ✅ | CRUD completo + emisor activo (`is_default`) + indicador en header. Pendiente: validacion duplicado por NIF a nivel UI. |
 | `digital_certificates` | ✅ V2 | ⏳ | ⏳ | |
 | `document_files` | ✅ V2 | ⏳ | ⏳ | Decidir estrategia de storage (FS vs S3). |
 | `audit_events` (genérica) | ✅ V2 | ⏳ | — | Apartado 3.O: confirmar si una sola tabla cubre VeriFactu y RD 8/2019. |
@@ -73,7 +73,8 @@ Antes de empezar fases nuevas hay que tener respuesta a estas preguntas
 | `recurring_invoices` | ✅ V2 | ⏳ | ⏳ | |
 | `verifactu_records` + `verifactu_events` | ✅ V2 | ⏳ | ⏳ | Falta documentar hash encadenado, firma XML, anulación con vínculo. |
 | Envío de facturas por email (`envios_email_180`) | ⏳ | ⏳ | ⏳ | No contemplado todavía. |
-| Configuración avanzada de emisor (`configuracionsistema_180`) | ⏳ | ⏳ | ⏳ | |
+| Emisor activo por empresa (`is_default`) | ✅ V6 | ✅ | ✅ | `PUT /api/issuers/{id}/default` + linea persistente "Facturando como..." en el header. |
+| Configuración avanzada de emisor (`configuracionsistema_180`) | ⏳ | ⏳ | ⏳ | Plantillas, series por emisor, etc. — no esta hecho. |
 | Auditoría específica de facturación | ❓ | — | — | Decidir si genérica `audit_events` cubre o se separa. |
 | Almacenamiento documental de facturas | ⏳ | ⏳ | ⏳ | Ruta `facturacion/almacenamiento` en CONTENDO. |
 | **Obligaciones de fabricante VeriFactu** (auditoría propia del software) | ⏳ | ⏳ | ⏳ | Leer `VERIFACTU_OBLIGACIONES_FABRICANTE.md` de CONTENDO. |
@@ -262,7 +263,12 @@ Antes de empezar fases nuevas hay que tener respuesta a estas preguntas
 | `4874855` | 5, 7 | V4: PGC seed (326 cuentas para demo) + tramos RETA (30 filas) + tabla `self_employed_contribution_brackets` |
 | `a0340af` | 7 | V5: tablas `self_employed_base_changes` y `self_employed_preonboarding` |
 | `a0d0f53` | — | Limpieza: borrado de `BUILD` + `.gitignore` |
+| `b9f5be7` | — | Doc: roadmap de migracion con tracking por fase |
+| `17b251d` | 1 | Issuers slice 1: CRUD backend (issuer/) + pantalla JavaFX dedicada + chuleta con comandos de arranque |
+| (siguiente) | 1, 2 | Issuers slice 2: V6 + flag `is_default` + endpoint `markAsDefault` + columna ★ y header "Facturando como..." |
 
 ---
 
 *Última actualización: 2026-05-30 por Benjamin. Actualizar conforme se cierren items.*
+
+*Cambios desde la creación: ítem `issuers` cerrado end-to-end (V6 + emisor activo). Pendiente: configuración avanzada (plantillas, series).*

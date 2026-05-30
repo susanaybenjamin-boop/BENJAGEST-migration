@@ -22,6 +22,7 @@ public record IssuerResponse(
         String legalTerms,
         String invoiceFooter,
         boolean active,
+        boolean isDefault,
         Instant createdAt,
         Instant updatedAt
 ) {

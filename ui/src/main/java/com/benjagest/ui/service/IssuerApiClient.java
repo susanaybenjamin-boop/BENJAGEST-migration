@@ -81,6 +81,37 @@ public class IssuerApiClient {
         ensureOk(response);
     }
 
+    public IssuerSummary markAsDefault(String id) throws IOException, InterruptedException {
+        URI uri = URI.create(issuersUri.toString() + "/" + id + "/default");
+        HttpRequest httpRequest = HttpRequest.newBuilder(uri)
+                .timeout(Duration.ofSeconds(8))
+                .header("Content-Type", "application/json")
+                .PUT(HttpRequest.BodyPublishers.noBody())
+                .build();
+        HttpResponse<String> response = httpClient.send(httpRequest, HttpResponse.BodyHandlers.ofString());
+        ensureOk(response);
+        return parseIssuer(response.body());
+    }
+
+    /**
+     * Devuelve el emisor activo de la empresa, o null si el backend
+     * responde 404 (todavia no hay ninguno marcado como activo).
+     * Diferente del resto de metodos: 404 no se traduce a IOException,
+     * porque "no hay activo" es un estado normal del sistema.
+     */
+    public IssuerSummary getDefault() throws IOException, InterruptedException {
+        HttpRequest request = HttpRequest.newBuilder(URI.create(issuersUri.toString() + "/default"))
+                .timeout(Duration.ofSeconds(8))
+                .GET()
+                .build();
+        HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+        if (response.statusCode() == 404) {
+            return null;
+        }
+        ensureOk(response);
+        return parseIssuer(response.body());
+    }
+
     private void ensureOk(HttpResponse<String> response) throws IOException {
         if (response.statusCode() < 200 || response.statusCode() >= 300) {
             throw new IOException("El servicio respondio con HTTP " + response.statusCode());
@@ -149,7 +180,8 @@ public class IssuerApiClient {
                 textField(json, "registryInformation"),
                 textField(json, "legalTerms"),
                 textField(json, "invoiceFooter"),
-                boolField(json, "active")
+                boolField(json, "active"),
+                boolField(json, "isDefault")
         );
     }
 

@@ -80,4 +80,27 @@ public class IssuerService {
                 new ResponseStatusException(HttpStatus.NOT_FOUND, "Emisor no encontrado")
         );
     }
+
+    public IssuerResponse getDefault() {
+        return repository.findDefault().orElseThrow(() ->
+                new ResponseStatusException(HttpStatus.NOT_FOUND, "No hay emisor activo configurado para esta empresa")
+        );
+    }
+
+    /**
+     * Marca un emisor como el activo de la empresa. Dentro de la misma
+     * transaccion pone todos los demas a is_default=FALSE y el elegido
+     * a TRUE; asi nunca queda la empresa con dos activos a la vez.
+     */
+    @Transactional
+    public IssuerResponse markAsDefault(String id) {
+        repository.clearDefaultsForCompany();
+        int affected = repository.setDefault(id);
+        if (affected == 0) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Emisor no encontrado o inactivo");
+        }
+        return repository.findById(id).orElseThrow(() ->
+                new ResponseStatusException(HttpStatus.NOT_FOUND, "Emisor no encontrado")
+        );
+    }
 }

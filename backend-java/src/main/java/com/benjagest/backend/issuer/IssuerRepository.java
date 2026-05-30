@@ -108,7 +108,7 @@ public class IssuerRepository {
                        address_line, city, province, postal_code, country,
                        email, phone, iban,
                        registry_information, legal_terms, invoice_footer,
-                       active, created_at, updated_at
+                       active, is_default, created_at, updated_at
                   FROM issuers
                  WHERE id = ?
                    AND company_id = ?
@@ -126,14 +126,57 @@ public class IssuerRepository {
                        address_line, city, province, postal_code, country,
                        email, phone, iban,
                        registry_information, legal_terms, invoice_footer,
-                       active, created_at, updated_at
+                       active, is_default, created_at, updated_at
                   FROM issuers
                  WHERE company_id = ?
                    AND active = TRUE
-                 ORDER BY legal_name
+                 ORDER BY is_default DESC, legal_name
                  LIMIT 200
                 """,
                 this::mapIssuer,
+                DemoCompany.ID
+        );
+    }
+
+    public Optional<IssuerResponse> findDefault() {
+        List<IssuerResponse> matches = jdbcTemplate.query("""
+                SELECT id, legal_name, tax_identifier,
+                       address_line, city, province, postal_code, country,
+                       email, phone, iban,
+                       registry_information, legal_terms, invoice_footer,
+                       active, is_default, created_at, updated_at
+                  FROM issuers
+                 WHERE company_id = ?
+                   AND is_default = TRUE
+                   AND active = TRUE
+                 LIMIT 1
+                """,
+                this::mapIssuer,
+                DemoCompany.ID
+        );
+        return matches.stream().findFirst();
+    }
+
+    public void clearDefaultsForCompany() {
+        jdbcTemplate.update("""
+                UPDATE issuers
+                   SET is_default = FALSE
+                 WHERE company_id = ?
+                   AND is_default = TRUE
+                """,
+                DemoCompany.ID
+        );
+    }
+
+    public int setDefault(String id) {
+        return jdbcTemplate.update("""
+                UPDATE issuers
+                   SET is_default = TRUE
+                 WHERE id = ?
+                   AND company_id = ?
+                   AND active = TRUE
+                """,
+                id,
                 DemoCompany.ID
         );
     }
@@ -157,6 +200,7 @@ public class IssuerRepository {
                 rs.getString("legal_terms"),
                 rs.getString("invoice_footer"),
                 rs.getBoolean("active"),
+                rs.getBoolean("is_default"),
                 createdAt == null ? null : createdAt.toInstant(),
                 updatedAt == null ? null : updatedAt.toInstant()
         );
