@@ -1,6 +1,6 @@
 package com.benjagest.backend.issuer;
 
-import com.benjagest.backend.workspace.DemoCompany;
+import com.benjagest.backend.tenant.TenantContext;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
@@ -13,16 +13,24 @@ import org.springframework.util.StringUtils;
 /**
  * Unica clase que habla con la tabla issuers.
  * El resto del backend pasa por aqui — nadie hace SQL directo a issuers.
- * Hoy todos los emisores se atribuyen a la empresa demo (DemoCompany.ID)
- * porque todavia no hay sesion real con company_id por usuario.
+ *
+ * El company_id sale del TenantContext (request-scoped). Hoy lo alimenta
+ * el header X-Company-Id; manana lo alimentara el JWT del usuario
+ * logueado. La diferencia es transparente para esta clase.
  */
 @Repository
 public class IssuerRepository {
 
     private final JdbcTemplate jdbcTemplate;
+    private final TenantContext tenantContext;
 
-    public IssuerRepository(JdbcTemplate jdbcTemplate) {
+    public IssuerRepository(JdbcTemplate jdbcTemplate, TenantContext tenantContext) {
         this.jdbcTemplate = jdbcTemplate;
+        this.tenantContext = tenantContext;
+    }
+
+    private String currentCompanyId() {
+        return tenantContext.getCurrentCompanyId();
     }
 
     public void insert(String id, IssuerCreateRequest request) {
@@ -36,7 +44,7 @@ public class IssuerRepository {
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 id,
-                DemoCompany.ID,
+                currentCompanyId(),
                 request.legalName().trim(),
                 request.taxIdentifier().trim(),
                 blankToNull(request.addressLine()),
@@ -86,7 +94,7 @@ public class IssuerRepository {
                 blankToNull(request.legalTerms()),
                 blankToNull(request.invoiceFooter()),
                 id,
-                DemoCompany.ID
+                currentCompanyId()
         );
     }
 
@@ -98,7 +106,7 @@ public class IssuerRepository {
                    AND company_id = ?
                 """,
                 id,
-                DemoCompany.ID
+                currentCompanyId()
         );
     }
 
@@ -115,7 +123,7 @@ public class IssuerRepository {
                 """,
                 this::mapIssuer,
                 id,
-                DemoCompany.ID
+                currentCompanyId()
         );
         return matches.stream().findFirst();
     }
@@ -134,7 +142,7 @@ public class IssuerRepository {
                  LIMIT 200
                 """,
                 this::mapIssuer,
-                DemoCompany.ID
+                currentCompanyId()
         );
     }
 
@@ -152,7 +160,7 @@ public class IssuerRepository {
                  LIMIT 1
                 """,
                 this::mapIssuer,
-                DemoCompany.ID
+                currentCompanyId()
         );
         return matches.stream().findFirst();
     }
@@ -164,7 +172,7 @@ public class IssuerRepository {
                  WHERE company_id = ?
                    AND is_default = TRUE
                 """,
-                DemoCompany.ID
+                currentCompanyId()
         );
     }
 
@@ -177,7 +185,7 @@ public class IssuerRepository {
                    AND active = TRUE
                 """,
                 id,
-                DemoCompany.ID
+                currentCompanyId()
         );
     }
 

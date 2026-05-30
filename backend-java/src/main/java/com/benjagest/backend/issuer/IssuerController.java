@@ -1,5 +1,6 @@
 package com.benjagest.backend.issuer;
 
+import com.benjagest.backend.modules.RequiresModule;
 import jakarta.validation.Valid;
 import java.util.List;
 import org.springframework.http.HttpStatus;
@@ -27,6 +28,7 @@ import org.springframework.web.bind.annotation.RestController;
  */
 @RestController
 @RequestMapping("/api/issuers")
+@RequiresModule("issuers")
 public class IssuerController {
 
     private final IssuerService service;

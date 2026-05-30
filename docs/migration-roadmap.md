@@ -267,7 +267,8 @@ Antes de empezar fases nuevas hay que tener respuesta a estas preguntas
 | `17b251d` | 1 | Issuers slice 1: CRUD backend (issuer/) + pantalla JavaFX dedicada + chuleta con comandos de arranque |
 | `adf1766` | 1, 2 | Issuers slice 2: V6 + flag `is_default` + endpoint `markAsDefault` + columna ★ y header "Facturando como..." |
 | `e651879` | — | Reordenacion de imports en BenjagestUiApplication |
-| (siguiente) | infra | Slice A1: V7 con catalogo de modulos (`module_catalog`) y activacion por empresa (`company_modules`). 14 categorias, 38 sub-modulos, demo BENJAGEST con todo activo, Obras Norte sin advisory/kiosk. |
+| `83ac83b` | infra | Slice A1: V7 con catalogo de modulos (`module_catalog`) y activacion por empresa (`company_modules`). 14 categorias, 38 sub-modulos, demo BENJAGEST con todo activo, Obras Norte sin advisory/kiosk. |
+| (siguiente) | infra | Slice A2: TenantContext request-scoped + TenantInterceptor (X-Company-Id header) + ModuleAccessService + @RequiresModule + 403 si modulo inactivo. Repository de Issuer y Customer ya leen company_id del TenantContext (no DemoCompany.ID hardcodeado). Fix: CustomerRepository ahora filtra por company_id en findById/findAllActive (era fuga entre empresas pre-existente). |
 
 ---
 
