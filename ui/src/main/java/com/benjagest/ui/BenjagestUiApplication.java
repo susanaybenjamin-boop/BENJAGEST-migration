@@ -1,14 +1,5 @@
 package com.benjagest.ui;
 
-import com.benjagest.ui.model.DashboardData;
-import com.benjagest.ui.model.DashboardItem;
-import com.benjagest.ui.model.IssuerCreateRequest;
-import com.benjagest.ui.model.IssuerSummary;
-import com.benjagest.ui.model.ModuleData;
-import com.benjagest.ui.model.ModuleRow;
-import com.benjagest.ui.model.SessionInfo;
-import com.benjagest.ui.service.IssuerApiClient;
-import com.benjagest.ui.service.WorkspaceApiClient;
 import java.math.BigDecimal;
 import java.text.NumberFormat;
 import java.time.LocalDate;
@@ -22,6 +13,19 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.TreeMap;
+
+import org.kordamp.ikonli.javafx.FontIcon;
+
+import com.benjagest.ui.model.DashboardData;
+import com.benjagest.ui.model.DashboardItem;
+import com.benjagest.ui.model.IssuerCreateRequest;
+import com.benjagest.ui.model.IssuerSummary;
+import com.benjagest.ui.model.ModuleData;
+import com.benjagest.ui.model.ModuleRow;
+import com.benjagest.ui.model.SessionInfo;
+import com.benjagest.ui.service.IssuerApiClient;
+import com.benjagest.ui.service.WorkspaceApiClient;
+
 import javafx.animation.FadeTransition;
 import javafx.animation.Interpolator;
 import javafx.animation.ParallelTransition;
@@ -33,8 +37,8 @@ import javafx.collections.FXCollections;
 import javafx.concurrent.Task;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
-import javafx.scene.Scene;
 import javafx.scene.Node;
+import javafx.scene.Scene;
 import javafx.scene.chart.BarChart;
 import javafx.scene.chart.CategoryAxis;
 import javafx.scene.chart.NumberAxis;
@@ -62,7 +66,6 @@ import javafx.scene.layout.TilePane;
 import javafx.scene.layout.VBox;
 import javafx.stage.Stage;
 import javafx.util.Duration;
-import org.kordamp.ikonli.javafx.FontIcon;
 
 public class BenjagestUiApplication extends Application {
 
