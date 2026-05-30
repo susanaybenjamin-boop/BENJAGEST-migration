@@ -265,7 +265,9 @@ Antes de empezar fases nuevas hay que tener respuesta a estas preguntas
 | `a0d0f53` | — | Limpieza: borrado de `BUILD` + `.gitignore` |
 | `b9f5be7` | — | Doc: roadmap de migracion con tracking por fase |
 | `17b251d` | 1 | Issuers slice 1: CRUD backend (issuer/) + pantalla JavaFX dedicada + chuleta con comandos de arranque |
-| (siguiente) | 1, 2 | Issuers slice 2: V6 + flag `is_default` + endpoint `markAsDefault` + columna ★ y header "Facturando como..." |
+| `adf1766` | 1, 2 | Issuers slice 2: V6 + flag `is_default` + endpoint `markAsDefault` + columna ★ y header "Facturando como..." |
+| `e651879` | — | Reordenacion de imports en BenjagestUiApplication |
+| (siguiente) | infra | Slice A1: V7 con catalogo de modulos (`module_catalog`) y activacion por empresa (`company_modules`). 14 categorias, 38 sub-modulos, demo BENJAGEST con todo activo, Obras Norte sin advisory/kiosk. |
 
 ---
 
