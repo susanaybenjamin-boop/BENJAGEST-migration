@@ -1,6 +1,6 @@
 package com.benjagest.backend.customer;
 
-import com.benjagest.backend.workspace.DemoCompany;
+import com.benjagest.backend.tenant.TenantContext;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
@@ -13,9 +13,11 @@ import org.springframework.util.StringUtils;
 public class CustomerRepository {
 
     private final JdbcTemplate jdbcTemplate;
+    private final TenantContext tenantContext;
 
-    public CustomerRepository(JdbcTemplate jdbcTemplate) {
+    public CustomerRepository(JdbcTemplate jdbcTemplate, TenantContext tenantContext) {
         this.jdbcTemplate = jdbcTemplate;
+        this.tenantContext = tenantContext;
     }
 
     public void insertCustomer(String id, CustomerCreateRequest request) {
@@ -24,7 +26,7 @@ public class CustomerRepository {
                 VALUES (?, ?, ?, ?, ?)
                 """,
                 id,
-                DemoCompany.ID,
+                tenantContext.getCurrentCompanyId(),
                 request.legalName().trim(),
                 blankToNull(request.tradeName()),
                 request.taxIdentifier().trim()
@@ -66,7 +68,8 @@ public class CustomerRepository {
                       AND pc.primary_contact = TRUE
                       AND pc.active = TRUE
                 WHERE c.id = ?
-                """, this::mapCustomer, id);
+                  AND c.company_id = ?
+                """, this::mapCustomer, id, tenantContext.getCurrentCompanyId());
     }
 
     public List<CustomerResponse> findAllActive() {
@@ -85,9 +88,10 @@ public class CustomerRepository {
                       AND pc.primary_contact = TRUE
                       AND pc.active = TRUE
                 WHERE c.active = TRUE
+                  AND c.company_id = ?
                 ORDER BY c.legal_name
                 LIMIT 100
-                """, this::mapCustomer);
+                """, this::mapCustomer, tenantContext.getCurrentCompanyId());
     }
 
     private CustomerResponse mapCustomer(ResultSet rs, int rowNum) throws SQLException {
