@@ -26,3 +26,5 @@ Thumbs.db
 # Build outputs
 build/
 out/
+# Stray Maven output captures (e.g. `mvn ... > BUILD`)
+/BUILD
