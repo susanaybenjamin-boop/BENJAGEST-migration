@@ -375,6 +375,106 @@ Esto **no autentica nada**; solo cambia el nombre que aparece como autor en `git
 
 ---
 
+## SITUACIÓN 9 — "Lanzar BENJAGEST en local para probar"
+
+Esto no es Git, pero lo pones aquí porque es donde lo vas a venir a buscar. La app tiene tres piezas que arrancas por separado, en este orden:
+
+### 1. La base de datos (MariaDB en Docker)
+
+Solo la primera vez del día, o si reiniciaste el PC:
+
+```powershell
+cd C:\Proyectos\git\benjagest-migration
+docker compose up -d              # arranca MariaDB en el puerto 3307 (no 3306)
+docker ps                         # debe aparecer 'benjagest-mariadb' como 'healthy'
+```
+
+Para apagarla al final del día (opcional, no es necesario):
+
+```powershell
+docker compose down               # para sin borrar datos
+```
+
+### 2. El backend Spring Boot
+
+En **una PowerShell dedicada** (queda ocupada mientras corre):
+
+```powershell
+cd C:\Proyectos\git\benjagest-migration
+$env:BENJAGEST_DB_URL = "jdbc:mariadb://localhost:3307/benjagest"
+mvn -pl backend-java spring-boot:run
+```
+
+Espera a ver una línea tipo:
+
+```
+Started BenjagestBackendApplication in X.XXX seconds
+```
+
+Verificar que responde:
+
+```powershell
+# En OTRA PowerShell
+curl http://localhost:8080/api/health
+curl http://localhost:8080/api/issuers
+```
+
+Para pararlo: **Ctrl+C** en la PowerShell donde corre.
+
+### 3. La UI JavaFX
+
+En **otra PowerShell distinta** (no en la del backend):
+
+```powershell
+cd C:\Proyectos\git\benjagest-migration
+mvn -pl ui javafx:run
+```
+
+Se abre la ventana. PIN demo: `1234`, `5678` o `2468`.
+
+Para cerrar: la X de la ventana, o Ctrl+C en su PowerShell.
+
+### Ciclo típico de "he cambiado código, quiero ver el cambio"
+
+| ¿Qué cambiaste? | Qué reiniciar |
+|---|---|
+| Solo SQL en `backend-java/src/main/resources/db/migration/V*.sql` | Solo el backend (Flyway aplica las nuevas migraciones al arrancar) |
+| Código Java del backend | Solo el backend |
+| Código Java de la UI | Solo la UI |
+| Algo en ambos | Los dos |
+
+### Compilar sin lanzar (útil antes de commitear)
+
+```powershell
+mvn -pl backend-java,ui compile           # solo compila, te dice si rompiste algo
+mvn -pl backend-java test                 # corre los tests del backend
+mvn -pl backend-java,ui clean compile     # limpia todo y recompila desde cero
+```
+
+### Problemas típicos
+
+**"Port 8080 was already in use"** al arrancar el backend
+Quedó un Java vivo de la sesión anterior (Ctrl+C en Maven no siempre mata el Java de fondo). Buscar y matar:
+
+```powershell
+Get-NetTCPConnection -LocalPort 8080 -State Listen | ForEach-Object { Get-Process -Id $_.OwningProcess }
+# Coge el Id del java.exe que sale
+Stop-Process -Id <ID> -Force
+```
+
+**"Communications link failure"** o el backend no encuentra MariaDB
+Comprueba que Docker está arriba:
+
+```powershell
+docker ps
+# Si no aparece benjagest-mariadb, vuelve a 'docker compose up -d'
+```
+
+**La UI dice "No se pudo iniciar sesión" tras meter el PIN**
+El backend no está corriendo o no llega. Comprueba en otra terminal: `curl http://localhost:8080/api/health`.
+
+---
+
 ## Comandos que aún NO te he enseñado pero podrían venirte bien
 
 - **`git stash`** — guardar temporalmente cambios sin commitear, para hacer otra cosa primero (cambiar de rama, hacer un pull, etc.).
@@ -386,4 +486,4 @@ Cuando los necesites, pídelos.
 
 ---
 
-*Última actualización: 2026-05-27. Adaptada al flujo de BENJAGEST (PR-based) sin perder la utilidad de CONTENDO.*
+*Última actualización: 2026-05-30. Añadida SITUACIÓN 9 (lanzar backend y UI en local).*
