@@ -4,8 +4,36 @@
 >
 > Este documento **NO** propone implementaciones ni decide alcance. Solo lista lo detectado para que Pablo pueda planificar.
 >
-> Fecha de inventario: 2026-05-27
-> Fuentes: `C:\Proyectos\CONTENDO GESTIONES\app180-frontend\app\*`, `C:\Proyectos\CONTENDO GESTIONES\backend\*`, proyecto Supabase `APP360` (id `qexnthgfdvtvwoeykgun`), y para el destino: `docs/domain-model.md`, `docs/legacy-schema-inventory.md`, `docs/migration-plan.md`, y código actual en `develop`.
+> Fecha de inventario inicial: 2026-05-27.
+> **Actualización (estado + hallazgos adicionales): 2026-05-31** — ver secciones 0 y 11 al final.
+>
+> Fuentes: `C:\Proyectos\CONTENDO GESTIONES\app180-frontend\app\*`, `C:\Proyectos\CONTENDO GESTIONES\backend\*`, proyecto Supabase `APP360` (id `qexnthgfdvtvwoeykgun`), y para el destino: `docs/domain-model.md`, `docs/legacy-schema-inventory.md`, `docs/migration-plan.md`, [`docs/migration-roadmap.md`](migration-roadmap.md), y código actual en `develop`.
+
+---
+
+## 0. Estado de avance — actualización 2026-05-31
+
+Desde la fecha de inventario inicial (27/05) se han cerrado los siguientes items del documento. Para ver el detalle de cada commit ver [`migration-roadmap.md`](migration-roadmap.md).
+
+| Sección | Item | Estado | Commits |
+|---|---|---|---|
+| 3.B | Emisores (`issuers`) — CRUD end-to-end + emisor activo (is_default) + indicador en header | ✅ | `17b251d`, `adf1766` |
+| 3.E | Carga del PGC español (326 cuentas estándar sembradas para la empresa demo) | ✅ | `4874855` (V4) |
+| 3.G | Schema RETA cerrado: tabla `self_employed_contribution_brackets` + `self_employed_base_changes` + `self_employed_preonboarding` | ✅ schema | `4874855` (V4), `a0340af` (V5) |
+| Infra | Catálogo de módulos (`module_catalog` + `company_modules`) — 14 categorías, 38 sub-módulos, activación por empresa | ✅ | `83ac83b` (V7) |
+| Infra | TenantContext + `@RequiresModule` + control de acceso 403. **Fix de seguridad**: `CustomerRepository.findById/findAllActive` ahora filtran por `company_id` (era fuga entre empresas pre-existente) | ✅ | `7c48684` |
+| Infra | Login real email/password con JWT (8h access + 30d refresh) + dos usuarios demo (`admin@benjagest.local` y `empresario@benjagest.local`) + empresa Marcos Construcciones SL | ✅ | `bf511d7` (backend), `02f75e5` (UI) (V8) |
+| Infra | UI: pantalla email/password, AuthSession con Bearer automático en todos los ApiClients, selector de empresa, modo derivado de `company_type`, toggle eliminado | ✅ | `02f75e5` |
+
+**Decisiones arquitectónicas tomadas el 2026-05-30** que afectan al alcance de varios items pendientes (memoria/`project_benjagest_architecture`):
+
+1. Modular: árbol de 2 niveles (categoría + sub-módulo) con activación por empresa y dependencias auto-activadas.
+2. Modo asesoría/empresario **se deriva** de `company_type`, no se elige en la UI.
+3. PIN coexiste con email/password (PIN solo para fichaje kiosko y desbloqueo de pantalla).
+4. Cifrado de columnas sensibles en aplicación (Jasypt), no en BD.
+5. "Borrado" en facturas/nóminas/fichajes = anonimizado (retención legal).
+
+---
 
 ---
 
@@ -447,4 +475,184 @@ Estas son las preguntas cuya respuesta cambia mucho el alcance:
 
 ---
 
-*Fin del análisis. Documento generado localmente, sin commit, para que Benjamin lo revise antes de compartirlo con Pablo.*
+## 11. Hallazgos adicionales — Claude 2026-05-31
+
+Pasada hecha cruzando el inventario completo de Supabase (192 tablas, todas las del schema `public` al 31/05/2026) con las áreas que las secciones 3 y 4 del documento original cubren. Lista lo que **no estaba contemplado** o estaba **infra-detallado**.
+
+### 11.A. `clients_180` no es "clientes" — son OBRAS / CENTROS DE TRABAJO con geolocalización
+
+Esto es el hallazgo más importante. `clients_180` tiene **45 columnas** que cuentan una historia muy distinta a "lista de clientes":
+
+| Concepto | Columnas |
+|---|---|
+| Identidad fiscal | `razon_social`, `nif_cif`, `tipo_fiscal`, `pais`, `provincia`, `municipio`, `codigo_postal`, `direccion_fiscal` |
+| Contacto facturación | `email_factura`, `telefono_factura`, `persona_contacto` |
+| **Geolocalización para fichaje** | `lat`, `lng`, `radio_m`, `requiere_geo`, `geo_policy` |
+| Configuración de facturación | `iva_defecto`, `exento_iva`, `forma_pago`, `iban`, `aplicar_retencion`, `retencion_tipo` |
+| Tarifas por defecto | `precio_default_hora`, `precio_default_dia`, `precio_default_mes`, `precio_default_trabajo` |
+| Modo de trabajo | `modo_defecto` (hora / día / mes / trabajo) |
+| Vinculación | `vinculado_empresa_id` (link a `empresa_180`) |
+| Período | `fecha_inicio`, `fecha_fin` |
+
+**Implicación**: el "cliente" en CONTENDO es a la vez:
+1. Un cliente fiscal (datos para facturar).
+2. **Un centro de trabajo con coordenadas GPS y radio de tolerancia**, contra el que se verifica que el empleado realmente está allí al fichar.
+3. Una "obra" o "proyecto" con fechas de inicio y fin.
+4. Una configuración de tarifa y modo de cobro.
+
+El destino BENJAGEST tiene `customers` (datos fiscales), pero **no tiene nada de geolocalización para fichajes**, ni el concepto de "obra/centro" con coordenadas. Esto es un hueco grande de cara a:
+- Fichajes con verificación GPS (decision 5 del RD 8/2019 no lo exige pero los clientes lo piden).
+- Cumplimiento por obra (muy común en construcción).
+- Modos de facturación por defecto del cliente.
+
+**Prioridad: ALTA si los clientes de CONTENDO usan fichaje con geolocalización.**
+
+### 11.B. Work logs con facturación embebida (`work_logs_180`, 37 filas)
+
+A diferencia del destino BENJAGEST (`work_logs` separado de billing), aquí cada parte de trabajo lleva su **propio estado de cobro y vínculo a factura**:
+
+| Campo | Para qué |
+|---|---|
+| `valor` | Importe que vale ese parte de trabajo |
+| `pagado` | Importe ya cobrado |
+| `estado_pago` | Estado individual del cobro |
+| `tipo_facturacion` | hora / día / mes / trabajo |
+| `factura_id` | A qué factura ha ido (NULL si aún no facturado) |
+| `parte_config_id` | Configuración del parte |
+| `metodo_pago_directo` | Si se cobró directo sin pasar por factura |
+| `pagado_at` | Cuándo se cobró |
+| `campos_extra` (JSONB) | Flexibilidad para campos específicos por cliente |
+
+Esto cambia el modelo: en CONTENDO **cada trabajo es facturable individualmente** y puede cobrarse fuera de una factura. En BENJAGEST hoy work_logs no tiene billing.
+
+### 11.C. `partes_dia_180` (37 filas) — workflow de validación admin
+
+El empleado crea un parte por día (empleado + cliente + fecha + horas_trabajadas + resumen). Luego el admin lo valida (`validado`, `validado_at`, `nota_admin`) antes de que entre en la facturación. **Workflow no contemplado** en BENJAGEST.
+
+### 11.D. `titulares_empresa_180` (2 filas) — governance de empresa
+
+Tabla de titulares/administradores de la empresa para fines fiscales y SS:
+
+| Campo | Para qué |
+|---|---|
+| `employee_id` | Link al empleado (algunos titulares son trabajadores) |
+| `nombre`, `nif` | Identidad |
+| `porcentaje_participacion` | Para Sociedades (modelo 200) |
+| `es_administrador` | Booleano legal |
+| `regimen_ss`, `fecha_alta_ss`, `fecha_baja_ss` | Para informes laborales |
+
+**No contemplado** en BENJAGEST. Imprescindible para:
+- Modelo 200 (Impuesto de Sociedades): porcentajes de participación.
+- Informe de SS: régimen de los administradores.
+- Cumplimiento legal de "representantes" de la sociedad.
+
+**Prioridad: ALTA** cuando se aborde la Fase 6 (fiscal) y 8 (laboral).
+
+### 11.E. `payment_allocations_180` (30 filas) — un pago a varios destinos
+
+Tabla intermedia: un pago concreto se distribuye en partes hacia múltiples destinos. Columnas: `payment_id`, **`work_log_id`** o **`invoice_id`** o **`factura_id`**, `importe`.
+
+Un pago de 500 € puede repartirse así:
+- 200 € → factura 1
+- 200 € → factura 2
+- 100 € → trabajo suelto (sin factura)
+
+El destino tiene `sales_invoice_payments` pero **no permite multi-allocation** desde un mismo pago. Hueco no documentado.
+
+### 11.F. Tablas legacy pre-CONTENDO (~17 tablas sin sufijo `_180`)
+
+Restos del proyecto anterior (probablemente FERRAPP). Identificables porque los `id` son `bigint`/`integer` en vez de `uuid`:
+
+| Tabla | Filas | Concepto |
+|---|---|---|
+| `categorias` | 51 | Categorías de trabajos |
+| `categorias_pendientes`, `categorias_solicitud`, `categorias_usuario` | 0 | Solicitud de nuevas categorías |
+| `clientes` | 10 | Clientes en esquema antiguo |
+| `documentos` | 0 | Documentos antiguos |
+| `materiales` | 2 | Materiales |
+| `mensajes` | 0 | Mensajes |
+| `notificaciones` | 0 | Notificaciones antiguas |
+| `pagos` | 39 | Pagos en esquema antiguo (id bigint) |
+| `postulaciones` | 0 | Postulaciones de trabajadores |
+| `resumen_mensual` | 14 | Cache mensual de totales |
+| `reseñas` | 0 | Reseñas |
+| `solicitudes` | 0 | Solicitudes de trabajo |
+| `trabajos` | **248** | Trabajos en esquema antiguo |
+| `usuarios` | 2 | Usuarios antiguos |
+| `zonas_trabajo` | 0 | Zonas geográficas |
+
+**Recomendación**: **fuera de scope** salvo que Pablo confirme que el dato actual de `trabajos` (248 filas) o `pagos` (39 filas) tiene valor histórico recuperable. Si lo tiene, migrar como una sola tabla `legacy_imports` y luego reconciliar.
+
+### 11.G. `pj_pagos`, `pj_transacciones` — sistema P2P (probablemente FERRAPP)
+
+Pagos entre usuarios: `solicitud_id`, `pagador_id`, `receptor_id`, `monto`, `moneda`, `estado`, `metodo_pago`. Tablas vacías hoy. Apuntan al ecosistema de "solicitudes/postulaciones" del FERRAPP original. **Fuera de scope** salvo decisión expresa.
+
+### 11.H. Detalle del módulo construcción (`cons_*`, 50 tablas)
+
+El doc lo mencionaba como bloque. Lo desgloso para que Pablo decida con más finura:
+
+**Organización / multi-empresa de obras** (~6 tablas): `cons_organizations`, `cons_organization_members`, `cons_branch_links`, `cons_branch_invitations`, `cons_branch_project_visibility`, `cons_users`.
+
+**Proyectos** (~3): `cons_projects`, `cons_project_files`, `cons_project_expenses`.
+
+**Planos** (~3): `cons_plan_annotations`, `cons_plan_calibrations`, `cons_plan_extractions`. Detección automática vía OCR/IA.
+
+**Presupuestos** (~8): `cons_budgets`, `cons_budget_items`, `cons_budget_item_templates`, `cons_budget_chapter_templates`, `cons_budget_comparison_groups`, `cons_budget_comparison_group_items`, `cons_budget_comparison_exclusions`, `cons_saved_partidas` (627 filas).
+
+**Capítulos / librería** (~2): `cons_chapters`, `cons_library_chapters`.
+
+**Mediciones** (~1): `cons_measurements`.
+
+**Certificaciones** (~3): `cons_certifications`, `cons_certification_items`, `cons_certification_work_log_links`.
+
+**Materiales + proveedores** (~6): `cons_materials`, `cons_material_categories`, `cons_material_price_history`, `cons_suppliers`, `cons_supplier_materials`, `cons_price_breakdown`.
+
+**Equipos** (~2): `cons_equipment_catalog`, `cons_equipment_materials`.
+
+**Subcontratistas** (~2): `cons_subcontractors`, `cons_subcontractor_documents`.
+
+**Trabajadores** (~1): `cons_workers`.
+
+**Partes de trabajo** (~5): `cons_work_logs`, `cons_work_log_budget_links`, `cons_work_log_equipment`, `cons_work_log_labor`, `cons_work_log_materials`.
+
+**Buzón interno** (~4): `cons_mailbox_messages`, `cons_mailbox_attachments`, `cons_mailbox_contacts`, `cons_mailbox_shared_access`.
+
+**IA específica** (~3): `cons_ai_consumption`, `cons_ai_pricing`, `cons_ai_provider_credits`.
+
+**Notificaciones** (~1): `cons_notifications`.
+
+**Settings** (~1): `cons_app_settings` (143 filas).
+
+Es **un producto entero dentro del producto**. Decisión arquitectónica para Pablo: ¿módulo separado de BENJAGEST con su propio backend Spring + UI? ¿Aplicación independiente que comparte autenticación? ¿Fuera de scope?
+
+### 11.I. Otras tablas no contempladas y de prioridad baja
+
+| Tabla | Filas | Para qué |
+|---|---|---|
+| `client_fiscal_data_180` | 6 | Datos fiscales por cliente (probablemente separable de clients_180) |
+| `client_tariffs_180` | 3 | Tarifas por cliente (overlap con destino `customer_tariffs`) |
+| `cliente_seq_180` | 3 | Secuencia de numeración por cliente |
+| `time_logs_180` | 0 | Time tracking simple (empleado, proyecto, inicio, fin, duración). Vacía. Posible candidato a reemplazo futuro. |
+| `work_items_180` | 3 | Items de trabajo facturables. Overlap con destino `work_items`. |
+| `invoices_180` | 0 | Tabla nueva vacía. Posible reemplazo planificado de `factura_180`. |
+| `fiscal_rules_180` | 0 | Tabla nueva vacía. Posible reemplazo de `fiscal_reglas_180`. |
+| `modelos_fiscales_180` | 0 | Vacía. Posible candidata a deprecación. |
+| `cierre_ejercicio_180` | 2 | Cierres anuales. Mencionada de paso en 3.E. |
+| `cierre_ejercicio_log_180` | 0 | Log de cierres. |
+| `test_reports_180` | 1 | Sin uso aparente. |
+
+### 11.J. Resumen de prioridades adicionales (mi visión)
+
+Ordenadas por impacto en paridad funcional:
+
+1. **CRÍTICA** — Geolocalización en clients/obras (11.A) para fichaje. Sin esto el módulo de fichajes no es competitivo.
+2. **ALTA** — Titulares de empresa (11.D) para modelo 200 y SS.
+3. **ALTA** — Workflow de validación de partes (11.C).
+4. **MEDIA-ALTA** — Multi-allocation de pagos (11.E).
+5. **MEDIA** — Work logs con billing embebido (11.B) si la decisión es replicar el modelo de CONTENDO; **BAJA** si el destino prefiere separar billing como entidad propia.
+6. **BAJA-MEDIA** — Detalle de `cons_*` (11.H) si y solo si construcción entra en alcance.
+7. **BAJA** — Legacy pre-`_180` (11.F), `pj_*` (11.G), y resto de tablas vacías (11.I).
+
+---
+
+*Sección 11 añadida por Claude el 2026-05-31 tras pasada de cruce con inventario completo de Supabase. La sección 0 al inicio refleja el avance desde 27/05.*

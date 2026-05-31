@@ -135,3 +135,33 @@ Otros módulos de configuración de CONTENDO (calendario, sistema, partes, fabri
 - [`migration-roadmap.md`](migration-roadmap.md) — visión por fases funcionales del proyecto entero.
 - [`gap-analysis-contendo.md`](gap-analysis-contendo.md) — comparativa CONTENDO vs BENJAGEST (fuente del scope).
 - [`git-chuleta-personal.md`](git-chuleta-personal.md) — comandos de Git y de arranque local.
+
+---
+
+## Slices Futuros (Backlog de Gap Analysis)
+
+A partir del análisis en `gap-analysis-contendo.md`, se han identificado áreas funcionales de CONTENDO que todavía no están implementadas ni (en su mayoría) modeladas en BENJAGEST. Estas se deberán ir empaquetando en nuevos Slices (probablemente D1, D2...) tras finalizar C1, C2 y C3:
+
+### Funcionalidad Core y Legal
+- **Facturación y VeriFactu (Crítica):** Series, proformas, rectificativas, anulaciones con vínculo (hash encadenado), firma digital XML, almacenamiento de facturas y cumplimiento de obligaciones de fabricante.
+- **Fichajes y Kiosko (Crítica):** Cumplimiento legal estricto del RD 8/2019 (prohibición de modificación; uso de apuntes correctores vinculados), plantillas complejas de turnos/jornadas y módulo de **Kiosko** con sincronización offline.
+- **Auditoría (Crítica):** Tablas específicas de auditoría (para facturación y accesos) y trazabilidad que exige la normativa técnica.
+- **Fiscal y Contable (Alta):** Carga inicial del PGC (668 cuentas), log de cambios en asientos (exigencia fiscal), reglas fiscales con duplicación anual, mapeos de la AEAT, inmovilizado y flujos de cierre de ejercicio.
+
+### Portales y Módulos Específicos
+- **Asesoría (Alta):** Portal asesor con dashboard propio, gestión de invitaciones (`invite_180`), relación M:N con clientes, mensajería y configuración granular.
+- **Autónomos / RETA (Alta):** Tramos de cotización, tracking de cambios de base y pre-onboarding específico.
+- **Portal Empleado (Media):** Acceso aislado para empleados a nóminas (con registro de entregas/firmas), incidencias, calendarios y notificaciones de RRHH.
+
+### Integraciones y Externalidades
+- **Certificados Digitales y DEHú (Alta):** Gestión de credenciales seguras (cifradas por empresa), log de uso de certificados y módulo de recepción de notificaciones DEHú.
+- **SII (Alta):** Suministro Inmediato de Información (AEAT) con framework de estados y reintentos.
+- **Google Calendar (Media):** Webhooks bidireccionales y flujos de sincronización.
+
+### Áreas Pendientes de Decisión de Alcance (A validar con Pablo)
+- **Construcción (`cons_*`):** ¿Se incluye en el core de BENJAGEST, como un módulo adicional, o queda fuera de la migración inicial?
+- **MCP / Inteligencia Artificial:** Control de consumo de tokens y cuotas de usuario.
+- **Modelo de Negocio (SaaS):** Planes, pagos y facturación del propio servicio (`plans_180`).
+- **Flujos Públicos y Legales:** Onboarding abierto, registro y páginas de aviso legal/privacidad.
+
+*(Consultar el documento `gap-analysis-contendo.md` para el detalle de tablas afectadas y listado completo de dudas estratégicas).*
