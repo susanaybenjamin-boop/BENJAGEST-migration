@@ -39,56 +39,51 @@ public class IssuerApiClient {
     }
 
     public List<IssuerSummary> list() throws IOException, InterruptedException {
-        HttpRequest request = HttpRequest.newBuilder(issuersUri)
+        HttpRequest.Builder builder = HttpRequest.newBuilder(issuersUri)
                 .timeout(Duration.ofSeconds(8))
-                .GET()
-                .build();
-        HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+                .GET();
+        HttpResponse<String> response = sendAuthorized(builder);
         ensureOk(response);
         return parseList(response.body());
     }
 
     public IssuerSummary create(IssuerCreateRequest request) throws IOException, InterruptedException {
-        HttpRequest httpRequest = HttpRequest.newBuilder(issuersUri)
+        HttpRequest.Builder builder = HttpRequest.newBuilder(issuersUri)
                 .timeout(Duration.ofSeconds(8))
                 .header("Content-Type", "application/json")
-                .POST(HttpRequest.BodyPublishers.ofString(toJson(request)))
-                .build();
-        HttpResponse<String> response = httpClient.send(httpRequest, HttpResponse.BodyHandlers.ofString());
+                .POST(HttpRequest.BodyPublishers.ofString(toJson(request)));
+        HttpResponse<String> response = sendAuthorized(builder);
         ensureOk(response);
         return parseIssuer(response.body());
     }
 
     public IssuerSummary update(String id, IssuerCreateRequest request) throws IOException, InterruptedException {
         URI uri = URI.create(issuersUri.toString() + "/" + id);
-        HttpRequest httpRequest = HttpRequest.newBuilder(uri)
+        HttpRequest.Builder builder = HttpRequest.newBuilder(uri)
                 .timeout(Duration.ofSeconds(8))
                 .header("Content-Type", "application/json")
-                .PUT(HttpRequest.BodyPublishers.ofString(toJson(request)))
-                .build();
-        HttpResponse<String> response = httpClient.send(httpRequest, HttpResponse.BodyHandlers.ofString());
+                .PUT(HttpRequest.BodyPublishers.ofString(toJson(request)));
+        HttpResponse<String> response = sendAuthorized(builder);
         ensureOk(response);
         return parseIssuer(response.body());
     }
 
     public void delete(String id) throws IOException, InterruptedException {
         URI uri = URI.create(issuersUri.toString() + "/" + id);
-        HttpRequest httpRequest = HttpRequest.newBuilder(uri)
+        HttpRequest.Builder builder = HttpRequest.newBuilder(uri)
                 .timeout(Duration.ofSeconds(8))
-                .DELETE()
-                .build();
-        HttpResponse<String> response = httpClient.send(httpRequest, HttpResponse.BodyHandlers.ofString());
+                .DELETE();
+        HttpResponse<String> response = sendAuthorized(builder);
         ensureOk(response);
     }
 
     public IssuerSummary markAsDefault(String id) throws IOException, InterruptedException {
         URI uri = URI.create(issuersUri.toString() + "/" + id + "/default");
-        HttpRequest httpRequest = HttpRequest.newBuilder(uri)
+        HttpRequest.Builder builder = HttpRequest.newBuilder(uri)
                 .timeout(Duration.ofSeconds(8))
                 .header("Content-Type", "application/json")
-                .PUT(HttpRequest.BodyPublishers.noBody())
-                .build();
-        HttpResponse<String> response = httpClient.send(httpRequest, HttpResponse.BodyHandlers.ofString());
+                .PUT(HttpRequest.BodyPublishers.noBody());
+        HttpResponse<String> response = sendAuthorized(builder);
         ensureOk(response);
         return parseIssuer(response.body());
     }
@@ -100,16 +95,20 @@ public class IssuerApiClient {
      * porque "no hay activo" es un estado normal del sistema.
      */
     public IssuerSummary getDefault() throws IOException, InterruptedException {
-        HttpRequest request = HttpRequest.newBuilder(URI.create(issuersUri.toString() + "/default"))
+        HttpRequest.Builder builder = HttpRequest.newBuilder(URI.create(issuersUri.toString() + "/default"))
                 .timeout(Duration.ofSeconds(8))
-                .GET()
-                .build();
-        HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+                .GET();
+        HttpResponse<String> response = sendAuthorized(builder);
         if (response.statusCode() == 404) {
             return null;
         }
         ensureOk(response);
         return parseIssuer(response.body());
+    }
+
+    private HttpResponse<String> sendAuthorized(HttpRequest.Builder builder) throws IOException, InterruptedException {
+        AuthSession.get().authorize(builder);
+        return httpClient.send(builder.build(), HttpResponse.BodyHandlers.ofString());
     }
 
     private void ensureOk(HttpResponse<String> response) throws IOException {

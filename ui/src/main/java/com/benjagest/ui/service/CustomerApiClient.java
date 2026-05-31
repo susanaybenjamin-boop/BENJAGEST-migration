@@ -30,13 +30,13 @@ public class CustomerApiClient {
     }
 
     public CustomerSummary create(CustomerCreateRequest request) throws IOException, InterruptedException {
-        HttpRequest httpRequest = HttpRequest.newBuilder(customersUri)
+        HttpRequest.Builder builder = HttpRequest.newBuilder(customersUri)
                 .timeout(Duration.ofSeconds(8))
                 .header("Content-Type", "application/json")
-                .POST(HttpRequest.BodyPublishers.ofString(toJson(request)))
-                .build();
+                .POST(HttpRequest.BodyPublishers.ofString(toJson(request)));
+        AuthSession.get().authorize(builder);
 
-        HttpResponse<String> response = httpClient.send(httpRequest, HttpResponse.BodyHandlers.ofString());
+        HttpResponse<String> response = httpClient.send(builder.build(), HttpResponse.BodyHandlers.ofString());
         if (response.statusCode() < 200 || response.statusCode() >= 300) {
             throw new IOException("El servicio respondio con HTTP " + response.statusCode());
         }
@@ -45,12 +45,12 @@ public class CustomerApiClient {
     }
 
     public List<CustomerSummary> list() throws IOException, InterruptedException {
-        HttpRequest request = HttpRequest.newBuilder(customersUri)
+        HttpRequest.Builder builder = HttpRequest.newBuilder(customersUri)
                 .timeout(Duration.ofSeconds(8))
-                .GET()
-                .build();
+                .GET();
+        AuthSession.get().authorize(builder);
 
-        HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+        HttpResponse<String> response = httpClient.send(builder.build(), HttpResponse.BodyHandlers.ofString());
         if (response.statusCode() < 200 || response.statusCode() >= 300) {
             throw new IOException("El servicio respondio con HTTP " + response.statusCode());
         }

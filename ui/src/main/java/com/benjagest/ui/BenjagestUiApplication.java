@@ -20,9 +20,12 @@ import com.benjagest.ui.model.DashboardData;
 import com.benjagest.ui.model.DashboardItem;
 import com.benjagest.ui.model.IssuerCreateRequest;
 import com.benjagest.ui.model.IssuerSummary;
+import com.benjagest.ui.model.Membership;
 import com.benjagest.ui.model.ModuleData;
 import com.benjagest.ui.model.ModuleRow;
 import com.benjagest.ui.model.SessionInfo;
+import com.benjagest.ui.service.AuthApiClient;
+import com.benjagest.ui.service.AuthSession;
 import com.benjagest.ui.service.IssuerApiClient;
 import com.benjagest.ui.service.WorkspaceApiClient;
 
@@ -98,6 +101,7 @@ public class BenjagestUiApplication extends Application {
 
     private final WorkspaceApiClient apiClient = new WorkspaceApiClient();
     private final IssuerApiClient issuerApiClient = new IssuerApiClient();
+    private final AuthApiClient authApiClient = new AuthApiClient();
     private final Map<String, Button> navigationButtons = new LinkedHashMap<>();
 
     private BorderPane root;
@@ -125,7 +129,7 @@ public class BenjagestUiApplication extends Application {
     }
 
     private void showLogin() {
-        VBox panel = new VBox(18);
+        VBox panel = new VBox(14);
         panel.setAlignment(Pos.CENTER);
         panel.setPadding(new Insets(42));
         panel.setMaxWidth(420);
@@ -133,23 +137,41 @@ public class BenjagestUiApplication extends Application {
 
         Label title = new Label("BENJAGEST");
         title.getStyleClass().add("hero-title");
-        Label subtitle = new Label(t("pinIdentification"));
+        Label subtitle = new Label("Inicia sesion con tu email y contrasena");
         subtitle.getStyleClass().add("hero-body");
 
-        PasswordField pinField = new PasswordField();
-        pinField.setPromptText("PIN");
-        pinField.setMaxWidth(Double.MAX_VALUE);
+        TextField emailField = new TextField();
+        emailField.setPromptText("email");
+        emailField.setMaxWidth(Double.MAX_VALUE);
+
+        PasswordField passwordField = new PasswordField();
+        passwordField.setPromptText("contrasena");
+        passwordField.setMaxWidth(Double.MAX_VALUE);
 
         Button loginButton = new Button(t("login"));
         loginButton.setGraphic(icon("fas-sign-in-alt"));
         loginButton.setMaxWidth(Double.MAX_VALUE);
-        loginButton.setOnAction(event -> login(pinField.getText()));
-        pinField.setOnAction(event -> login(pinField.getText()));
+        loginButton.setOnAction(event -> login(emailField.getText(), passwordField.getText()));
+        passwordField.setOnAction(event -> login(emailField.getText(), passwordField.getText()));
 
-        Label hint = new Label(t("demoPin"));
+        Button googleButton = new Button("Iniciar sesion con Google");
+        googleButton.setGraphic(icon("fab-google"));
+        googleButton.setMaxWidth(Double.MAX_VALUE);
+        googleButton.setDisable(true);
+        googleButton.setTooltip(new javafx.scene.control.Tooltip("Pendiente de configurar (Slice C2)"));
+
+        Label hint = new Label("Demos: admin@benjagest.local | empresario@benjagest.local");
         hint.getStyleClass().add("status-detail");
+        Label hint2 = new Label("Contrasena: Benjamin123456$");
+        hint2.getStyleClass().add("status-detail");
 
-        panel.getChildren().addAll(AppBrand.createLogoMark(), title, subtitle, pinField, loginButton, hint);
+        panel.getChildren().addAll(
+                AppBrand.createLogoMark(), title, subtitle,
+                emailField, passwordField, loginButton,
+                new Separator(),
+                googleButton,
+                hint, hint2
+        );
 
         BorderPane wrapper = new BorderPane(panel);
         wrapper.setPadding(new Insets(70));
@@ -160,35 +182,104 @@ public class BenjagestUiApplication extends Application {
         root.setBottom(null);
     }
 
-    private void login(String pin) {
-        if (pin == null || pin.isBlank()) {
-            showError(t("pinRequired"), t("pinRequiredDetail"));
+    private void login(String email, String password) {
+        if (email == null || email.isBlank() || password == null || password.isBlank()) {
+            showError("Faltan datos", "Introduce email y contrasena para continuar.");
             return;
         }
-        Task<SessionInfo> task = new Task<>() {
+        Task<Void> task = new Task<>() {
             @Override
-            protected SessionInfo call() throws Exception {
-                SessionInfo info = apiClient.loginWithPin(pin);
-                // Cargo tambien el emisor activo en la misma llamada para que
-                // el header ya lo tenga al pintarse. Si el backend devuelve
-                // 404, getDefault() devuelve null y la linea simplemente no
-                // aparecera.
+            protected Void call() throws Exception {
+                authApiClient.login(email.trim(), password);
                 try {
                     activeIssuer = issuerApiClient.getDefault();
                 } catch (Exception ignored) {
                     activeIssuer = null;
                 }
-                return info;
+                return null;
             }
         };
-        task.setOnSucceeded(event -> {
-            session = task.getValue();
-            appMode = AppMode.from(session.defaultMode());
-            showShell();
-            showDashboard();
-        });
+        task.setOnSucceeded(event -> handleLoginSuccess());
         task.setOnFailed(event -> showError(t("loginFailed"), t("loginFailedDetail")));
-        start(task, "pin-login");
+        start(task, "auth-login");
+    }
+
+    private void handleLoginSuccess() {
+        AuthSession auth = AuthSession.get();
+        if (auth.memberships().size() > 1) {
+            showCompanyChooser(auth.memberships());
+            return;
+        }
+        enterApp();
+    }
+
+    private void enterApp() {
+        AuthSession auth = AuthSession.get();
+        session = new SessionInfo(
+                auth.userId(),
+                auth.userDisplayName(),
+                auth.activeCompanyId(),
+                auth.activeCompanyLegalName() == null || auth.activeCompanyLegalName().isBlank()
+                        ? "BENJAGEST"
+                        : auth.activeCompanyLegalName(),
+                auth.roleInActiveCompany(),
+                auth.accessToken(),
+                deriveDefaultMode(auth.activeCompanyType())
+        );
+        appMode = AppMode.from(session.defaultMode());
+        showShell();
+        showDashboard();
+    }
+
+    private String deriveDefaultMode(String companyType) {
+        if ("INTERNAL".equalsIgnoreCase(companyType) || "ADVISORY".equalsIgnoreCase(companyType)) {
+            return "ADVISORY";
+        }
+        return "BUSINESS";
+    }
+
+    private void showCompanyChooser(List<Membership> memberships) {
+        Dialog<Membership> dialog = new Dialog<>();
+        dialog.setTitle("BENJAGEST");
+        dialog.setHeaderText("Tienes varias empresas - elige cual abrir");
+
+        VBox list = new VBox(10);
+        list.setPadding(new Insets(8));
+        for (Membership m : memberships) {
+            Button card = new Button();
+            card.setMaxWidth(Double.MAX_VALUE);
+            VBox cardContent = new VBox(2,
+                    label(m.companyLegalName(), "form-title"),
+                    label(m.roleName() + " | " + m.companyType(), "status-detail")
+            );
+            card.setGraphic(cardContent);
+            card.setOnAction(event -> dialog.setResult(m));
+            list.getChildren().add(card);
+        }
+        dialog.getDialogPane().setContent(list);
+        dialog.getDialogPane().getButtonTypes().add(ButtonType.CANCEL);
+
+        Optional<Membership> chosen = dialog.showAndWait();
+        chosen.ifPresentOrElse(m -> switchToCompany(m.companyId()),
+                this::enterApp);
+    }
+
+    private void switchToCompany(String companyId) {
+        Task<Void> task = new Task<>() {
+            @Override
+            protected Void call() throws Exception {
+                authApiClient.switchCompany(companyId);
+                try {
+                    activeIssuer = issuerApiClient.getDefault();
+                } catch (Exception ignored) {
+                    activeIssuer = null;
+                }
+                return null;
+            }
+        };
+        task.setOnSucceeded(event -> enterApp());
+        task.setOnFailed(event -> showError(t("loginFailed"), "No se pudo cambiar de empresa"));
+        start(task, "auth-switch-company");
     }
 
     private void showShell() {
@@ -198,7 +289,10 @@ public class BenjagestUiApplication extends Application {
     }
 
     private HBox header() {
-        Label title = new Label("BENJAGEST");
+        // El titulo refleja el modo derivado de company_type, no es
+        // elegible por el usuario. ADVISORY -> "Asesoria", BUSINESS ->
+        // "Empresario". Se decidio en el registro de la empresa.
+        Label title = new Label(t(appMode.labelKey()));
         title.getStyleClass().add("app-title");
         Label subtitle = new Label(session.companyName());
         subtitle.getStyleClass().add("app-subtitle");
@@ -216,8 +310,6 @@ public class BenjagestUiApplication extends Application {
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
 
-        HBox modeSwitch = modeSwitch();
-
         Button refresh = new Button(t("refresh"));
         refresh.setGraphic(icon("fas-sync-alt"));
         refresh.setOnAction(event -> showDashboard());
@@ -230,43 +322,14 @@ public class BenjagestUiApplication extends Application {
         logout.setGraphic(icon("fas-sign-out-alt"));
         logout.setOnAction(event -> {
             session = null;
+            AuthSession.get().clear();
             showLogin();
         });
 
-        HBox header = new HBox(14, AppBrand.createLogoMark(), titleBlock, spacer, modeSwitch, languageButton, refresh, logout);
+        HBox header = new HBox(14, AppBrand.createLogoMark(), titleBlock, spacer, languageButton, refresh, logout);
         header.setAlignment(Pos.CENTER_LEFT);
         header.getStyleClass().add("app-header");
         return header;
-    }
-
-    private HBox modeSwitch() {
-        Button advisory = modeButton(AppMode.ADVISORY);
-        Button business = modeButton(AppMode.BUSINESS);
-        HBox switcher = new HBox(6, advisory, business);
-        switcher.getStyleClass().add("mode-switch");
-        switcher.setAlignment(Pos.CENTER);
-        return switcher;
-    }
-
-    private Button modeButton(AppMode mode) {
-        Button button = new Button(t(mode.labelKey()));
-        button.setGraphic(icon(mode.icon()));
-        button.getStyleClass().add("mode-button");
-        if (appMode == mode) {
-            button.getStyleClass().add("mode-button-selected");
-        }
-        button.setOnAction(event -> switchMode(mode));
-        return button;
-    }
-
-    private void switchMode(AppMode mode) {
-        if (appMode == mode) {
-            return;
-        }
-        appMode = mode;
-        currentModule = "dashboard";
-        showShell();
-        showDashboard();
     }
 
     private VBox sidebar() {
