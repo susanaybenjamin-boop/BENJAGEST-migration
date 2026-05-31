@@ -1,18 +1,27 @@
 package com.benjagest.backend.tenant;
 
+import com.benjagest.backend.auth.AuthenticatedUser;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
 import org.springframework.web.servlet.HandlerInterceptor;
 
 /**
- * Interceptor que se ejecuta antes de cada controller. Lee el header
- * X-Company-Id de la peticion y lo deja en el TenantContext.
+ * Interceptor que se ejecuta antes de cada controller para poner el
+ * company_id activo en el TenantContext. Lee dos fuentes en orden:
  *
- * Si el header falta o esta vacio, el TenantContext mantiene su
- * fallback a la empresa demo (definido en RequestScopedTenantContext).
+ *   1) El header X-Company-Id (override de testing/curl).
+ *   2) El JWT validado por JwtAuthenticationFilter (claim
+ *      activeCompanyId del usuario autenticado).
  *
- * Registrado en WebMvcConfig para que se aplique a /api/**.
+ * Si ninguno esta presente, el TenantContext mantiene el fallback a
+ * la empresa demo (RequestScopedTenantContext).
+ *
+ * Orden de prioridad: el header SIEMPRE gana cuando esta presente.
+ * Esto permite probar endpoints con curl simulando empresas
+ * distintas sin necesidad de loguearse.
  */
 @Component
 public class TenantInterceptor implements HandlerInterceptor {
@@ -28,6 +37,15 @@ public class TenantInterceptor implements HandlerInterceptor {
         String header = request.getHeader("X-Company-Id");
         if (header != null && !header.isBlank()) {
             tenantContext.setCurrentCompanyId(header.trim());
+            return true;
+        }
+
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (authentication != null
+                && authentication.getPrincipal() instanceof AuthenticatedUser user
+                && user.activeCompanyId() != null
+                && !user.activeCompanyId().isBlank()) {
+            tenantContext.setCurrentCompanyId(user.activeCompanyId());
         }
         return true;
     }

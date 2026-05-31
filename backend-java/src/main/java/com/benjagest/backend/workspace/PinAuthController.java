@@ -11,13 +11,18 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
+/**
+ * Auth legacy via PIN, mantenida para fichaje en kiosko y futuro
+ * desbloqueo de pantalla (decision 6 de architecture memory).
+ * El login principal de la app pasa por auth/AuthController (JWT).
+ */
 @RestController
 @RequestMapping("/api/auth")
-public class AuthController {
+public class PinAuthController {
 
     private final WorkspaceRepository repository;
 
-    public AuthController(WorkspaceRepository repository) {
+    public PinAuthController(WorkspaceRepository repository) {
         this.repository = repository;
     }
 

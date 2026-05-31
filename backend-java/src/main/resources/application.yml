@@ -29,3 +29,7 @@ management:
 
 benjagest:
   api-version: v1
+  jwt:
+    secret: ${BENJAGEST_JWT_SECRET:devSecretBenjagestNotForProduction_PleaseSetEnvVarBeforeDeployingForReal_2026}
+    access-ttl-minutes: ${BENJAGEST_JWT_ACCESS_TTL:480}
+    refresh-ttl-minutes: ${BENJAGEST_JWT_REFRESH_TTL:43200}
