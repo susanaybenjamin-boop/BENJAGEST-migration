@@ -95,6 +95,7 @@ public class WorkspaceApiClient {
         } else {
             builder.GET();
         }
+        AuthSession.get().authorize(builder);
         HttpResponse<String> response = httpClient.send(builder.build(), HttpResponse.BodyHandlers.ofString());
         if (response.statusCode() < 200 || response.statusCode() >= 300) {
             throw new IOException("HTTP " + response.statusCode() + ": " + response.body());

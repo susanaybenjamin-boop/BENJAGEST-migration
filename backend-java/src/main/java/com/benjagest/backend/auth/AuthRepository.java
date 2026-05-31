@@ -1,0 +1,134 @@
+package com.benjagest.backend.auth;
+
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.util.List;
+import java.util.Optional;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.stereotype.Repository;
+
+/**
+ * Acceso a user_accounts y company_memberships para el flujo de
+ * autenticacion. No usa TenantContext: la auth es PREVIA a saber
+ * en que empresa estoy.
+ */
+@Repository
+public class AuthRepository {
+
+    private final JdbcTemplate jdbcTemplate;
+
+    public AuthRepository(JdbcTemplate jdbcTemplate) {
+        this.jdbcTemplate = jdbcTemplate;
+    }
+
+    public Optional<UserRecord> findUserByEmail(String email) {
+        List<UserRecord> matches = jdbcTemplate.query("""
+                SELECT id, email, password_hash, display_name, global_role, active
+                  FROM user_accounts
+                 WHERE LOWER(email) = LOWER(?)
+                   AND active = TRUE
+                 LIMIT 1
+                """,
+                (rs, rowNum) -> mapUser(rs),
+                email
+        );
+        return matches.stream().findFirst();
+    }
+
+    public Optional<UserRecord> findUserById(String id) {
+        List<UserRecord> matches = jdbcTemplate.query("""
+                SELECT id, email, password_hash, display_name, global_role, active
+                  FROM user_accounts
+                 WHERE id = ?
+                   AND active = TRUE
+                 LIMIT 1
+                """,
+                (rs, rowNum) -> mapUser(rs),
+                id
+        );
+        return matches.stream().findFirst();
+    }
+
+    public List<MembershipRecord> findMembershipsForUser(String userId) {
+        return jdbcTemplate.query("""
+                SELECT m.company_id,
+                       c.legal_name,
+                       c.trade_name,
+                       c.company_type,
+                       m.role_name
+                  FROM company_memberships m
+                  JOIN companies c ON c.id = m.company_id
+                 WHERE m.user_id = ?
+                   AND m.active = TRUE
+                   AND c.active = TRUE
+                 ORDER BY c.legal_name
+                """,
+                (rs, rowNum) -> new MembershipRecord(
+                        rs.getString("company_id"),
+                        rs.getString("legal_name"),
+                        rs.getString("trade_name"),
+                        rs.getString("company_type"),
+                        rs.getString("role_name")
+                ),
+                userId
+        );
+    }
+
+    public Optional<MembershipRecord> findMembership(String userId, String companyId) {
+        List<MembershipRecord> matches = jdbcTemplate.query("""
+                SELECT m.company_id,
+                       c.legal_name,
+                       c.trade_name,
+                       c.company_type,
+                       m.role_name
+                  FROM company_memberships m
+                  JOIN companies c ON c.id = m.company_id
+                 WHERE m.user_id = ?
+                   AND m.company_id = ?
+                   AND m.active = TRUE
+                   AND c.active = TRUE
+                 LIMIT 1
+                """,
+                (rs, rowNum) -> new MembershipRecord(
+                        rs.getString("company_id"),
+                        rs.getString("legal_name"),
+                        rs.getString("trade_name"),
+                        rs.getString("company_type"),
+                        rs.getString("role_name")
+                ),
+                userId,
+                companyId
+        );
+        return matches.stream().findFirst();
+    }
+
+    private UserRecord mapUser(ResultSet rs) throws SQLException {
+        return new UserRecord(
+                rs.getString("id"),
+                rs.getString("email"),
+                rs.getString("password_hash"),
+                rs.getString("display_name"),
+                rs.getString("global_role"),
+                rs.getBoolean("active")
+        );
+    }
+
+    public record UserRecord(
+            String id,
+            String email,
+            String passwordHash,
+            String displayName,
+            String globalRole,
+            boolean active
+    ) {
+    }
+
+    public record MembershipRecord(
+            String companyId,
+            String companyLegalName,
+            String companyTradeName,
+            String companyType,
+            String roleName
+    ) {
+    }
+}
