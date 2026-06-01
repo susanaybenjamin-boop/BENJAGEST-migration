@@ -126,6 +126,11 @@ public class BenjagestUiApplication extends Application {
     // Vacio = no hay cambios sin guardar. Se vacia al guardar o al
     // entrar otra vez en Configuracion.
     private final java.util.Map<String, Boolean> pendingModuleChanges = new java.util.LinkedHashMap<>();
+    // Estado "real" de cada modulo segun backend. Mutable: tras guardar
+    // se sincroniza con lo que acabamos de persistir, asi el listener
+    // del checkbox compara contra el valor actualizado en lugar de uno
+    // capturado al pintar la pestana (que quedaria obsoleto).
+    private final java.util.Map<String, Boolean> moduleBaselineState = new java.util.LinkedHashMap<>();
     private Button saveModulesButton;
     private Label modulesDirtyHint;
 
@@ -1909,6 +1914,7 @@ public class BenjagestUiApplication extends Application {
 
     private Node settingsModulesTab(List<CompanyModuleEntry> modules) {
         pendingModuleChanges.clear();
+        moduleBaselineState.clear();
 
         Label sectionTitle = label("Modulos activos por empresa", "settings-section-title");
         Label hint = new Label("Marca o desmarca cada modulo y pulsa Guardar cambios. "
@@ -1925,12 +1931,15 @@ public class BenjagestUiApplication extends Application {
             CheckBox toggle = new CheckBox(category.label());
             toggle.setSelected(category.active());
             toggle.setDisable("settings".equals(category.slug()));
-            final boolean originalActive = category.active();
+            moduleBaselineState.put(category.slug(), category.active());
+            String slug = category.slug();
             toggle.selectedProperty().addListener((obs, was, now) -> {
-                if (now == null || now.booleanValue() == originalActive) {
-                    pendingModuleChanges.remove(category.slug());
+                Boolean baseline = moduleBaselineState.get(slug);
+                boolean baselineValue = baseline != null && baseline;
+                if (now == null || now.booleanValue() == baselineValue) {
+                    pendingModuleChanges.remove(slug);
                 } else {
-                    pendingModuleChanges.put(category.slug(), now);
+                    pendingModuleChanges.put(slug, now);
                 }
                 refreshSaveModulesButton();
             });
@@ -2009,6 +2018,13 @@ public class BenjagestUiApplication extends Application {
             }
         };
         task.setOnSucceeded(event -> {
+            // Sincroniza el baseline con lo que acabamos de guardar para
+            // que los proximos clicks vuelvan a detectar cambios. Sin
+            // esto, reactivar un modulo recien desactivado se descartaba
+            // al comparar contra el valor original obsoleto.
+            for (java.util.Map.Entry<String, Boolean> change : batch.entrySet()) {
+                moduleBaselineState.put(change.getKey(), change.getValue());
+            }
             pendingModuleChanges.clear();
             activeModulesCache = mapToModuleLinks(task.getValue());
             // Repintamos el sidebar (asi entra/sale Facturacion en el menu)

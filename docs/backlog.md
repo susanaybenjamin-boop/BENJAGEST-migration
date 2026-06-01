@@ -3,7 +3,7 @@
 > Lista única ordenada de mayor a menor importancia con TODO lo que hay que hacer en BENJAGEST.
 > Se va tachando conforme cada item se crea, prueba, commitea y mergea a `develop`.
 >
-> **Última revisión:** 2026-06-01.
+> **Última revisión:** 2026-06-01 (Slice C3 cerrado + decisión arquitectónica: empresa = emisor).
 > **Fuentes:** [`gap-analysis-contendo.md`](gap-analysis-contendo.md), [`gap-analysis-config-ui.md`](gap-analysis-config-ui.md), [`next-sessions-plan.md`](next-sessions-plan.md), [`migration-roadmap.md`](migration-roadmap.md).
 >
 > **Forma de trabajo (junio 2026):** Pablo ya no participa de forma activa (solo entra de uvas a peras). Benjamin lidera y decide. Todo el trabajo se hace en la rama `feat/Benjamin` → se prueba localmente → se commitea → se mergea a `develop` con `--no-ff`. Cada item cerrado se marca `✅` aquí con el hash del commit.
@@ -20,10 +20,11 @@
 
 Para no repetir en cada sección lo que ya está:
 
-- ✅ V1-V3 esqueleto, V4 PGC + RETA tramos, V5 RETA extension, V6 issuers.is_default, V7 catálogo módulos, V8 auth seed.
-- ✅ Issuer módulo end-to-end (CRUD + emisor activo + indicador header).
+- ✅ V1-V3 esqueleto, V4 PGC + RETA tramos, V5 RETA extension, V6 issuers.is_default, V7 catálogo módulos, V8 auth seed, V9 `company_email_config`.
+- ✅ Issuer módulo end-to-end (CRUD + emisor activo + indicador header). ⚠️ **Deprecado por V10-V12**: la tabla `issuers` se absorbe en `companies` (decisión 2026-06-01 — empresa = emisor por defecto).
 - ✅ Infra modular: `module_catalog`, `company_modules`, `TenantContext`, `@RequiresModule`, interceptor 403.
 - ✅ Slice C1: login real email/password con JWT, AuthSession con Bearer automático, selector de empresa, modo derivado de `company_type` (toggle eliminado).
+- ✅ Slice C3: módulo Configuración MVP — V9 + Jasypt + 3 controllers `/api/settings/*` con `@RequiresRole`/`@RequiresModule` + UI con TabPane (Empresa/Email SMTP/Módulos) + sticky footer + batched save de módulos + A4 sidebar dinámico (`/api/modules-catalog/active`).
 - ✅ Fix de seguridad: `CustomerRepository.findById/findAllActive` filtran por `company_id` (era fuga pre-existente).
 
 ---
@@ -32,12 +33,10 @@ Para no repetir en cada sección lo que ya está:
 
 Lo que toca **antes** de seguir con features funcionales. Cubre: legalidad, seguridad multi-tenant, y los dos slices que dejamos preparados.
 
-### Inmediato (continúa desde el plan C)
+### Inmediato (siguiente bloque a atacar)
 
-- ⬜ **C3** — Pantalla Configuración (MVP). V9 con `company_email_config` + tres pestañas en JavaFX (Empresa / Email SMTP / Módulos activos). `@RequiresRole("OWNER","ADMIN")` + `@RequiresModule("settings")`. [`next-sessions-plan.md §Slice C3`](next-sessions-plan.md).
+- ⬜ **D1** — Unificación de tablas fiscales (decisión 2026-06-01). Pasos: V10 añade campos fiscales a `companies` (address_line, city, province, postal_code, country, iban, registry_information, legal_terms, invoice_footer) + UPDATE JOIN desde `issuers` por defecto. V11 quita FK `sales_invoices.issuer_id`. V12 `DROP TABLE issuers`. V13/V14 mismo patrón para `customer_billing_profiles` → `customers`. Backend: borrar `issuer/*`, ampliar `CompanyDataController`, mover `/api/issuers/default` → `/api/settings/company`. UI: quitar módulo "Emisores" del sidebar y la línea "Facturando como:" del header; añadir secciones Postal/Bancarios/Textos de factura en pestaña Empresa; refrescar `AuthSession.activeCompanyLegalName` en silencio tras guardar.
 - ⬜ **C2** — Google Sign-In con OAuth2. Bloqueado hasta que Benjamin cree credenciales en Google Cloud Console. [`next-sessions-plan.md §Slice C2`](next-sessions-plan.md).
-- ⬜ **A3** — Pantalla admin para activar/desactivar módulos por empresa (parte de C3 o slice aparte). [§3.P y §4 del gap-analysis](gap-analysis-contendo.md).
-- ⬜ **A4** — UI dinámica: sidebar y dashboard se construyen leyendo `/api/modules-catalog/active` en vez de listas hardcodeadas. Sustituye `BUSINESS_MODULES` / `ADVISORY_MODULES`.
 
 ### Seguridad y trazabilidad
 
