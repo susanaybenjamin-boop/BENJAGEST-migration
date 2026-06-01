@@ -1,5 +1,6 @@
 package com.benjagest.backend.workspace;
 
+import com.benjagest.backend.tenant.TenantContext;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -18,13 +19,34 @@ import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
+/**
+ * Acceso JDBC del dashboard + modulos genericos. Hereda 27 queries que
+ * Pablo escribio con el companyId hardcodeado en `currentCompanyId()` para
+ * salir del paso mientras no existia TenantContext.
+ *
+ * Refactor 2026-06-01: cada query pasa a leer el companyId del
+ * TenantContext (request-scoped, alimentado por el JWT o por el header
+ * X-Company-Id en tests). El metodo `findEmployeeByPinHash` queda intacto
+ * porque el PIN se busca global (no tiene companyId antes del login).
+ *
+ * Esto es la pieza fundacional para que las pantallas de dominio (cuando
+ * lleguen facturacion real, contabilidad, etc.) sirvan a la vez al modo
+ * Empresario y al modo Asesoria (un asesor con switch-company ve la
+ * misma pantalla con datos de su cliente, sin codigo duplicado).
+ */
 @Repository
 public class WorkspaceRepository {
 
     private final JdbcTemplate jdbcTemplate;
+    private final TenantContext tenantContext;
 
-    public WorkspaceRepository(JdbcTemplate jdbcTemplate) {
+    public WorkspaceRepository(JdbcTemplate jdbcTemplate, TenantContext tenantContext) {
         this.jdbcTemplate = jdbcTemplate;
+        this.tenantContext = tenantContext;
+    }
+
+    private String currentCompanyId() {
+        return tenantContext.getCurrentCompanyId();
     }
 
     public Optional<PinLoginResponse> findEmployeeByPinHash(String pinHash) {
@@ -66,10 +88,10 @@ public class WorkspaceRepository {
                 count("sales_invoices", "company_id = ?"),
                 count("employees", "company_id = ? AND active = TRUE"),
                 count("notifications", "company_id = ? AND status <> 'READ'"),
-                amount("SELECT COALESCE(SUM(total), 0) FROM sales_invoices WHERE company_id = ?", DemoCompany.ID),
-                amount("SELECT COALESCE(SUM(total - paid_amount), 0) FROM sales_invoices WHERE company_id = ? AND payment_status <> 'PAID'", DemoCompany.ID),
-                amount("SELECT COALESCE(SUM(total), 0) FROM purchase_invoices WHERE company_id = ?", DemoCompany.ID),
-                amount("SELECT COALESCE(SUM(net_amount), 0) FROM payrolls WHERE company_id = ?", DemoCompany.ID),
+                amount("SELECT COALESCE(SUM(total), 0) FROM sales_invoices WHERE company_id = ?", currentCompanyId()),
+                amount("SELECT COALESCE(SUM(total - paid_amount), 0) FROM sales_invoices WHERE company_id = ? AND payment_status <> 'PAID'", currentCompanyId()),
+                amount("SELECT COALESCE(SUM(total), 0) FROM purchase_invoices WHERE company_id = ?", currentCompanyId()),
+                amount("SELECT COALESCE(SUM(net_amount), 0) FROM payrolls WHERE company_id = ?", currentCompanyId()),
                 dashboardItems("""
                         SELECT invoice_number AS title,
                                CONCAT(customer.legal_name, ' - ', payment_status) AS subtitle,
@@ -170,12 +192,12 @@ public class WorkspaceRepository {
             case "calendar" -> jdbcTemplate.update(
                     "DELETE FROM calendar_events WHERE id = ? AND company_id = ?",
                     recordId,
-                    DemoCompany.ID
+                    currentCompanyId()
             );
             case "reports" -> jdbcTemplate.update(
                     "UPDATE notifications SET status = 'READ' WHERE id = ? AND company_id = ?",
                     recordId,
-                    DemoCompany.ID
+                    currentCompanyId()
             );
             default -> throw new IllegalArgumentException("Eliminacion no soportada para el modulo " + module);
         }
@@ -317,7 +339,7 @@ public class WorkspaceRepository {
                 VALUES (?, ?, ?, ?, ?, 'COMPANY')
                 """,
                 customerId,
-                DemoCompany.ID,
+                currentCompanyId(),
                 text(request.legalName(), "Cliente sin nombre"),
                 blankToNull(request.tradeName()),
                 text(request.taxIdentifier(), "SIN-" + customerId.substring(0, 8))
@@ -350,7 +372,7 @@ public class WorkspaceRepository {
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'DRAFT', 'PENDING', ?, ?, 0, ?, 0, ?)
                 """,
                 invoiceId,
-                DemoCompany.ID,
+                currentCompanyId(),
                 "40000000-0000-0000-0000-000000000001",
                 valueOrDefault(request.customerId(), customerId),
                 "42000000-0000-0000-0000-000000000001",
@@ -391,7 +413,7 @@ public class WorkspaceRepository {
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'PENDING')
                 """,
                 purchaseId,
-                DemoCompany.ID,
+                currentCompanyId(),
                 supplierId,
                 supplierName(supplierId),
                 "G-" + purchaseId.substring(0, 8).toUpperCase(),
@@ -426,7 +448,7 @@ public class WorkspaceRepository {
                     VALUES (?, ?, ?, ?, ?, 'PIN_KIOSK', 'VALID')
                     """,
                     eventId,
-                    DemoCompany.ID,
+                    currentCompanyId(),
                     employeeId,
                     request.eventType(),
                     LocalDateTime.now()
@@ -439,7 +461,7 @@ public class WorkspaceRepository {
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'PENDING')
                 """,
                 workLogId,
-                DemoCompany.ID,
+                currentCompanyId(),
                 employeeId,
                 valueOrDefault(request.customerId(), firstId("customers", "company_id = ? AND active = TRUE")),
                 dateOrToday(request.date()),
@@ -460,7 +482,7 @@ public class WorkspaceRepository {
                 VALUES (?, ?, ?, ?, ?, ?, ?)
                 """,
                 filingId,
-                DemoCompany.ID,
+                currentCompanyId(),
                 modelId,
                 dateOrToday(request.date()).getYear(),
                 "A" + filingId.substring(0, 8).toUpperCase(),
@@ -477,7 +499,7 @@ public class WorkspaceRepository {
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 employeeId,
-                DemoCompany.ID,
+                currentCompanyId(),
                 text(request.legalName(), "Empleado demo"),
                 blankToNull(request.taxIdentifier()),
                 blankToNull(request.email()),
@@ -496,7 +518,7 @@ public class WorkspaceRepository {
                 VALUES (?, ?, ?, ?, ?, ?)
                 """,
                 eventId,
-                DemoCompany.ID,
+                currentCompanyId(),
                 dateOrToday(request.date()),
                 text(request.title(), "Evento"),
                 blankToNull(request.description()),
@@ -512,7 +534,7 @@ public class WorkspaceRepository {
                 VALUES (?, ?, 'MANUAL', ?, ?, ?, 'UNREAD')
                 """,
                 notificationId,
-                DemoCompany.ID,
+                currentCompanyId(),
                 text(request.title(), "Aviso"),
                 blankToNull(request.description()),
                 text(request.category(), "INFO")
@@ -532,7 +554,7 @@ public class WorkspaceRepository {
                 blankToNull(request.tradeName()),
                 text(request.taxIdentifier(), "SIN-" + recordId.substring(0, 8)),
                 recordId,
-                DemoCompany.ID
+                currentCompanyId()
         );
         jdbcTemplate.update("""
                 UPDATE customer_contacts
@@ -569,7 +591,7 @@ public class WorkspaceRepository {
                 total,
                 blankToNull(request.description()),
                 recordId,
-                DemoCompany.ID
+                currentCompanyId()
         );
         if (StringUtils.hasText(request.title())) {
             jdbcTemplate.update("""
@@ -601,7 +623,7 @@ public class WorkspaceRepository {
                 total,
                 total,
                 recordId,
-                DemoCompany.ID
+                currentCompanyId()
         );
         if (StringUtils.hasText(request.description())) {
             jdbcTemplate.update("""
@@ -633,7 +655,7 @@ public class WorkspaceRepository {
                 amountOrDefault(request.amount(), BigDecimal.ZERO),
                 allowed(request.status(), List.of("PENDING", "PARTIAL", "PAID", "OVERDUE"), "PENDING"),
                 recordId,
-                DemoCompany.ID
+                currentCompanyId()
         );
         return findRecord("labor", recordId);
     }
@@ -650,7 +672,7 @@ public class WorkspaceRepository {
                 text(request.status(), "DRAFT"),
                 amountOrDefault(request.amount(), BigDecimal.ZERO),
                 recordId,
-                DemoCompany.ID
+                currentCompanyId()
         );
         return findRecord("tax", recordId);
     }
@@ -676,7 +698,7 @@ public class WorkspaceRepository {
                 StringUtils.hasText(request.pin()) ? sha256(request.pin().trim()) : null,
                 StringUtils.hasText(request.pin()) ? sha256(request.pin().trim()) : null,
                 recordId,
-                DemoCompany.ID
+                currentCompanyId()
         );
         return findRecord("settings", recordId);
     }
@@ -695,7 +717,7 @@ public class WorkspaceRepository {
                 blankToNull(request.description()),
                 text(request.category(), "GENERAL"),
                 recordId,
-                DemoCompany.ID
+                currentCompanyId()
         );
         return findRecord("calendar", recordId);
     }
@@ -714,7 +736,7 @@ public class WorkspaceRepository {
                 text(request.category(), "INFO"),
                 text(request.status(), "UNREAD"),
                 recordId,
-                DemoCompany.ID
+                currentCompanyId()
         );
         return findRecord("reports", recordId);
     }
@@ -727,7 +749,7 @@ public class WorkspaceRepository {
     }
 
     private List<ModuleRecord> rows(String sql) {
-        return jdbcTemplate.query(sql, this::mapRecord, DemoCompany.ID);
+        return jdbcTemplate.query(sql, this::mapRecord, currentCompanyId());
     }
 
     private ModuleRecord mapRecord(ResultSet rs, int rowNum) throws SQLException {
@@ -747,7 +769,7 @@ public class WorkspaceRepository {
         Long value = jdbcTemplate.queryForObject(
                 "SELECT COUNT(*) FROM " + table + " WHERE " + where,
                 Long.class,
-                DemoCompany.ID
+                currentCompanyId()
         );
         return value == null ? 0 : value;
     }
@@ -764,7 +786,7 @@ public class WorkspaceRepository {
                         rs.getString("subtitle"),
                         rs.getString("value")
                 ),
-                DemoCompany.ID
+                currentCompanyId()
         );
     }
 
@@ -772,7 +794,7 @@ public class WorkspaceRepository {
         return jdbcTemplate.queryForObject(
                 "SELECT id FROM " + table + " WHERE " + where + " ORDER BY created_at LIMIT 1",
                 String.class,
-                DemoCompany.ID
+                currentCompanyId()
         );
     }
 
