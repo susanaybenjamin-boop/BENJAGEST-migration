@@ -49,7 +49,10 @@ Lo que toca **antes** de seguir con features funcionales. Cubre: legalidad, segu
 ### VeriFactu / Facturación (legal obligatoria)
 
 > **F1 cerrado (2026-06-01):** dominio de facturas dedicado en `billing/invoices/` (SalesInvoice + InvoiceLine + Repository + Service + Controller). Antes vivía mezclado dentro de WorkspaceRepository genérico; ahora tiene su propio paquete con endpoints `/api/billing/invoices`, lógica de transición DRAFT→VALIDATED, cálculo de totales (subtotal, IVA, retención, total) con BigDecimal HALF_UP y enganche a SeriesService para emitir el número al validar.
-> Los próximos items (hash, firma, anulación, almacenamiento, email) se enchufan sobre `SalesInvoiceService.validate` y futuros endpoints.
+>
+> **F2/F3/F5 cerrado (2026-06-01):** pantalla "Facturación" en la UI con sub-tabs estilo CONTENDO (Dashboard/Facturas/Configuración), reutilizando `settings-tabs` y `settings-tab-body` sin tocar paletas. V13 + backend `billing/verifactu/` (VerifactuConfig + Service + Controller con GET/PUT `/api/billing/verifactu-config`, defensa PROD-sin-cert → 400). UI: header con icono + botón "Nueva factura" (placeholder hasta F4), tab Facturas con filtros (status/cobro) + tabla, tab Configuración con modo VeriFactu + selector certificado + pie + listado de series read-only. BillingApiClient en `service/`.
+>
+> Los próximos items (hash, firma, anulación, almacenamiento, email) se enchufan sobre `SalesInvoiceService.validate` y futuros endpoints. F4 (crear/editar + PDF multipágina), F6 (dashboard real con KPIs y gráficos) pendientes.
 
 - ✅ Series de numeración: paquete `billing/series/` (Series record + Repository con `SELECT … FOR UPDATE` para emisión atómica + Service con reset BY_YEAR + Controller `/api/billing/series`). Tipos soportados: STANDARD, PROFORMA, RECTIFYING, TEST. Anulaciones quedan como evento sobre la factura existente (no es serie nueva — modelo VeriFactu). Smoke tests verdes: 3 claims secuenciales `PROF-2026-0001/2/3`, duplicate code → 409, locked → 409.
 - ⬜ Hash encadenado + firma XML + reintentos.
