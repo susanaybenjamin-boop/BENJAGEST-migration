@@ -276,14 +276,20 @@ public class BenjagestUiApplication extends Application {
      * Filtra los modulos activos por la whitelist KNOWN_VIEWS, los
      * ordena por displayOrder y los convierte a ModuleLink (slug + label
      * + icon) que es lo que consume el sidebar.
+     *
+     * El modulo "settings" siempre queda al final del sidebar, aunque su
+     * displayOrder en BD sea bajo (es sub-modulo de "core" con orden 2).
+     * Es una opcion de mantenimiento, no de uso diario.
      */
     private List<ModuleLink> mapToModuleLinks(List<CompanyModuleEntry> active) {
         return active.stream()
                 .filter(m -> KNOWN_VIEWS.contains(m.slug()))
-                .sorted(Comparator.comparingInt(CompanyModuleEntry::displayOrder))
+                .sorted(Comparator
+                        .comparingInt((CompanyModuleEntry m) -> "settings".equals(m.slug()) ? 1 : 0)
+                        .thenComparingInt(CompanyModuleEntry::displayOrder))
                 .map(m -> new ModuleLink(
                         m.slug(),
-                        m.label(),
+                        moduleTitle(m.slug()),
                         m.icon() == null || m.icon().isBlank() ? "fas-cube" : m.icon()
                 ))
                 .toList();
@@ -2030,7 +2036,7 @@ public class BenjagestUiApplication extends Application {
                 case "module.tax" -> "Tax";
                 case "module.reports" -> "Reports";
                 case "module.calendar" -> "Calendar";
-                case "module.settings" -> "Users";
+                case "module.settings" -> "Settings";
                 case "module.advisory.customers" -> "Client portfolio";
                 case "module.advisory.billing" -> "Client billing";
                 case "module.advisory.issuers" -> "Client issuers";
@@ -2039,7 +2045,7 @@ public class BenjagestUiApplication extends Application {
                 case "module.advisory.tax" -> "Client tax";
                 case "module.advisory.reports" -> "Advisory reports";
                 case "module.advisory.calendar" -> "Advisory calendar";
-                case "module.advisory.settings" -> "Advisory team";
+                case "module.advisory.settings" -> "Settings";
                 case "field.name" -> "Name";
                 case "field.taxId" -> "Tax ID";
                 case "field.contact" -> "Contact";
@@ -2155,7 +2161,7 @@ public class BenjagestUiApplication extends Application {
             case "module.tax" -> "Fiscal";
             case "module.reports" -> "Informes";
             case "module.calendar" -> "Agenda";
-            case "module.settings" -> "Usuarios";
+            case "module.settings" -> "Configuracion";
             case "module.advisory.customers" -> "Cartera clientes";
             case "module.advisory.billing" -> "Facturacion clientes";
             case "module.advisory.issuers" -> "Emisores clientes";
@@ -2164,7 +2170,7 @@ public class BenjagestUiApplication extends Application {
             case "module.advisory.tax" -> "Fiscal clientes";
             case "module.advisory.reports" -> "Informes asesoria";
             case "module.advisory.calendar" -> "Agenda asesoria";
-            case "module.advisory.settings" -> "Equipo asesoria";
+            case "module.advisory.settings" -> "Configuracion";
             default -> key.startsWith("column.") ? key.substring(7) : switch (key) {
                 case "field.name" -> "Nombre";
                 case "field.taxId" -> "NIF/CIF";
