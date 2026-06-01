@@ -59,6 +59,32 @@ public class AuthApiClient {
         storeResponse(response.body());
     }
 
+    /**
+     * Revoca el refresh token actual en el backend (denylist). Si la
+     * llamada falla (sin red, backend caido, etc.) la tragamos: el
+     * cleanup local del cliente (clear()) se hace de todos modos para
+     * no dejar al usuario logueado en la UI.
+     */
+    public void logout() {
+        try {
+            String refreshToken = AuthSession.get().refreshToken();
+            if (refreshToken == null || refreshToken.isBlank()) {
+                return;
+            }
+            String body = "{\"refreshToken\":\"" + escape(refreshToken) + "\"}";
+            HttpRequest request = HttpRequest.newBuilder(URI.create(baseUrl + "/auth/logout"))
+                    .timeout(Duration.ofSeconds(5))
+                    .header("Content-Type", "application/json")
+                    .POST(HttpRequest.BodyPublishers.ofString(body))
+                    .build();
+            httpClient.send(request, HttpResponse.BodyHandlers.discarding());
+        } catch (Exception ignored) {
+            // El logout local debe seguir ocurriendo aunque el backend
+            // no responda. Si el token sigue siendo valido cuando el
+            // backend vuelva, caducara solo en su TTL.
+        }
+    }
+
     public void switchCompany(String companyId) throws IOException, InterruptedException {
         URI uri = URI.create(baseUrl + "/auth/switch-company/" + companyId);
         HttpRequest.Builder builder = HttpRequest.newBuilder(uri)

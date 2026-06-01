@@ -30,13 +30,16 @@ public class AuthService {
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
     private final AuditService auditService;
+    private final RevokedRefreshTokenRepository revokedTokens;
 
     public AuthService(AuthRepository repository, PasswordEncoder passwordEncoder,
-                       JwtService jwtService, AuditService auditService) {
+                       JwtService jwtService, AuditService auditService,
+                       RevokedRefreshTokenRepository revokedTokens) {
         this.repository = repository;
         this.passwordEncoder = passwordEncoder;
         this.jwtService = jwtService;
         this.auditService = auditService;
+        this.revokedTokens = revokedTokens;
     }
 
     public LoginResponse login(LoginRequest request) {
@@ -94,6 +97,10 @@ public class AuthService {
         }
         if (!jwtService.isRefreshToken(claims)) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Tipo de token incorrecto");
+        }
+        String jti = claims.getId();
+        if (jti != null && revokedTokens.isRevoked(jti)) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Refresh token revocado");
         }
 
         String userId = claims.getSubject();
@@ -171,6 +178,25 @@ public class AuthService {
                 membership.roleName(),
                 toMembershipDtos(memberships)
         );
+    }
+
+    /**
+     * Revoca un refresh token. Si el token es valido, anade su jti a la
+     * denylist; si esta caducado o malformado lo ignoramos (de todos
+     * modos ya no sirve). Idempotente.
+     */
+    public void logout(String refreshToken) {
+        if (refreshToken == null || refreshToken.isBlank()) {
+            return;
+        }
+        try {
+            Claims claims = jwtService.parseAndValidate(refreshToken);
+            if (jwtService.isRefreshToken(claims) && claims.getId() != null) {
+                revokedTokens.revoke(claims.getId(), claims.getSubject());
+            }
+        } catch (Exception ignored) {
+            // Token invalido o caducado: nada que revocar.
+        }
     }
 
     private List<MembershipResponse> toMembershipDtos(List<AuthRepository.MembershipRecord> memberships) {
