@@ -48,7 +48,7 @@ Lo que toca **antes** de seguir con features funcionales. Cubre: legalidad, segu
 
 ### VeriFactu / Facturación (legal obligatoria)
 
-- ⬜ Series de numeración: proformas, rectificativas, anulaciones con vínculo (`factura_rectificada_link`).
+- ✅ Series de numeración: paquete `billing/series/` (Series record + Repository con `SELECT … FOR UPDATE` para emisión atómica + Service con reset BY_YEAR + Controller `/api/billing/series`). Tipos soportados: STANDARD, PROFORMA, RECTIFYING, TEST. Anulaciones quedan como evento sobre la factura existente (no es serie nueva — modelo VeriFactu). Smoke tests verdes: 3 claims secuenciales `PROF-2026-0001/2/3`, duplicate code → 409, locked → 409.
 - ⬜ Hash encadenado + firma XML + reintentos.
 - ⬜ Anulación con vínculo (`verifactu_anulacion_columns`).
 - ⬜ Almacenamiento documental de facturas (ruta `facturacion/almacenamiento`).
