@@ -17,6 +17,7 @@ import java.util.TreeMap;
 import org.kordamp.ikonli.javafx.FontIcon;
 
 import com.benjagest.ui.model.AuditEvent;
+import com.benjagest.ui.model.CertificateOption;
 import com.benjagest.ui.model.CompanyData;
 import com.benjagest.ui.model.CompanyModuleEntry;
 import com.benjagest.ui.model.DashboardData;
@@ -25,9 +26,13 @@ import com.benjagest.ui.model.EmailConfig;
 import com.benjagest.ui.model.Membership;
 import com.benjagest.ui.model.ModuleData;
 import com.benjagest.ui.model.ModuleRow;
+import com.benjagest.ui.model.SalesInvoiceSummary;
+import com.benjagest.ui.model.SeriesEntry;
 import com.benjagest.ui.model.SessionInfo;
+import com.benjagest.ui.model.VerifactuConfig;
 import com.benjagest.ui.service.AuthApiClient;
 import com.benjagest.ui.service.AuthSession;
+import com.benjagest.ui.service.BillingApiClient;
 import com.benjagest.ui.service.SettingsApiClient;
 import com.benjagest.ui.service.WorkspaceApiClient;
 
@@ -56,6 +61,7 @@ import javafx.scene.control.ButtonType;
 import javafx.scene.control.Dialog;
 import javafx.scene.control.Label;
 import javafx.scene.control.CheckBox;
+import javafx.scene.control.ComboBox;
 import javafx.scene.control.PasswordField;
 import javafx.scene.control.ScrollPane;
 import javafx.scene.control.Tab;
@@ -105,6 +111,7 @@ public class BenjagestUiApplication extends Application {
     private final WorkspaceApiClient apiClient = new WorkspaceApiClient();
     private final AuthApiClient authApiClient = new AuthApiClient();
     private final SettingsApiClient settingsApiClient = new SettingsApiClient();
+    private final BillingApiClient billingApiClient = new BillingApiClient();
     private final Map<String, Button> navigationButtons = new LinkedHashMap<>();
 
     private BorderPane root;
@@ -535,6 +542,10 @@ public class BenjagestUiApplication extends Application {
     private void showModule(String module) {
         currentModule = module;
         select(module);
+        if ("billing".equals(module)) {
+            showBilling();
+            return;
+        }
         if ("settings".equals(module)) {
             // Configuracion tampoco pasa por /api/modules: tiene 3 pestanas
             // (Empresa / Email / Modulos) sobre /api/settings/*.
@@ -1801,6 +1812,345 @@ public class BenjagestUiApplication extends Application {
             return id == null ? "" : id;
         }
         return id.substring(0, 8);
+    }
+
+    // ===================================================================
+    //  Pantalla Facturacion (Slice F2/F3/F5): sub-tabs Dashboard / Facturas
+    //  / Configuracion. Mismo patron CSS que la pantalla de Configuracion
+    //  (settings-tabs + settings-tab-body), siguiendo la regla guardada:
+    //  no se inventan paletas; se reutilizan las clases de Pablo.
+    // ===================================================================
+
+    private void showBilling() {
+        Task<BillingBundle> task = new Task<>() {
+            @Override
+            protected BillingBundle call() throws Exception {
+                List<SalesInvoiceSummary> invoices = billingApiClient.listInvoices(null, null, null, 200);
+                List<SeriesEntry> series = billingApiClient.listSeries();
+                VerifactuConfig vfConfig = billingApiClient.getVerifactuConfig();
+                List<CertificateOption> certificates;
+                try {
+                    certificates = billingApiClient.listCertificateOptions();
+                } catch (Exception ignored) {
+                    // El modulo "documents" puede no estar activo; en ese caso
+                    // la lista queda vacia y el ComboBox aparece deshabilitado.
+                    certificates = List.of();
+                }
+                return new BillingBundle(invoices, series, vfConfig, certificates);
+            }
+        };
+        task.setOnSucceeded(event -> setCenterAnimated(billingView(task.getValue())));
+        task.setOnFailed(event -> setCenterAnimated(scroll(errorPanel(
+                "No se pudo cargar Facturacion (modulo billing activo? rol OWNER/ADMIN/ACCOUNTANT?)"))));
+        start(task, "billing-load");
+    }
+
+    private record BillingBundle(List<SalesInvoiceSummary> invoices,
+                                 List<SeriesEntry> series,
+                                 VerifactuConfig verifactuConfig,
+                                 List<CertificateOption> certificates) {
+    }
+
+    private VBox billingView(BillingBundle bundle) {
+        VBox content = content();
+
+        Label title = new Label("Facturacion");
+        title.getStyleClass().add("module-detail-title");
+        Label subtitle = new Label("Gestion integral y VeriFactu");
+        subtitle.getStyleClass().add("module-detail-description");
+        VBox titleBox = new VBox(4, title, subtitle);
+
+        StackPane moduleIcon = iconBubble("fas-file-invoice-dollar", "module-title-icon");
+
+        Region spacer = new Region();
+        HBox.setHgrow(spacer, Priority.ALWAYS);
+
+        Button newInvoice = new Button("Nueva factura");
+        newInvoice.setGraphic(icon("fas-plus"));
+        newInvoice.setOnAction(event -> {
+            Alert info = new Alert(Alert.AlertType.INFORMATION,
+                    "La pantalla de crear/editar factura llega en el siguiente slice (F4). "
+                    + "Por ahora puedes probar el ciclo desde la API POST /api/billing/invoices.",
+                    ButtonType.OK);
+            info.setHeaderText("Proximamente");
+            info.showAndWait();
+        });
+
+        HBox header = new HBox(16, titleBox, moduleIcon, spacer, newInvoice);
+        header.setAlignment(Pos.CENTER_LEFT);
+        header.getStyleClass().add("module-detail-header");
+
+        TabPane tabs = new TabPane();
+        tabs.getStyleClass().add("settings-tabs");
+        tabs.setTabClosingPolicy(TabPane.TabClosingPolicy.UNAVAILABLE);
+
+        Tab dashboardTab = new Tab("Dashboard", billingDashboardTab(bundle));
+        dashboardTab.setGraphic(icon("fas-chart-bar"));
+
+        Tab invoicesTab = new Tab("Facturas", billingInvoicesTab(bundle.invoices()));
+        invoicesTab.setGraphic(icon("fas-file-invoice"));
+
+        Tab configTab = new Tab("Configuracion", billingConfigTab(bundle.verifactuConfig(), bundle.series(), bundle.certificates()));
+        configTab.setGraphic(icon("fas-cog"));
+
+        tabs.getTabs().addAll(dashboardTab, invoicesTab, configTab);
+        VBox.setVgrow(tabs, Priority.ALWAYS);
+        tabs.getSelectionModel().select(invoicesTab);
+
+        content.getChildren().addAll(header, tabs);
+        return content;
+    }
+
+    // ----- Sub-tab Dashboard (placeholder F6) -----
+
+    private Node billingDashboardTab(BillingBundle bundle) {
+        Label section = label("Resumen rapido", "settings-section-title");
+        Label hint = new Label("El dashboard completo con KPIs (facturado mes, pendiente cobro, "
+                + "proximo vencimiento, grafica IVA, etc.) llega en el slice F6. "
+                + "Hasta entonces este resumen se queda con cifras minimas.");
+        hint.setWrapText(true);
+        hint.getStyleClass().add("settings-hint");
+
+        long total = bundle.invoices().size();
+        long drafts = bundle.invoices().stream().filter(i -> "DRAFT".equals(i.status())).count();
+        long validated = bundle.invoices().stream().filter(i -> "VALIDATED".equals(i.status())).count();
+        long pending = bundle.invoices().stream().filter(i -> "PENDING".equals(i.paymentStatus())).count();
+
+        TilePane metrics = new TilePane();
+        metrics.setHgap(12);
+        metrics.setVgap(12);
+        metrics.setPrefTileWidth(218);
+        metrics.setPrefTileHeight(132);
+        metrics.getChildren().addAll(
+                metric("Total facturas", String.valueOf(total), "Todos los estados", "fas-file-invoice", "module-blue"),
+                metric("Borradores", String.valueOf(drafts), "Sin validar todavia", "fas-edit", "metric-amber"),
+                metric("Validadas", String.valueOf(validated), "Numeradas y selladas", "fas-check", "metric-green"),
+                metric("Pendientes cobro", String.valueOf(pending), "Sin pagar", "fas-hourglass-half", "metric-rose")
+        );
+
+        VBox body = new VBox(16, section, hint, metrics);
+        return tabLayout(label("Vista general", "settings-section-title"), body, new HBox());
+    }
+
+    // ----- Sub-tab Facturas (listado con filtros) -----
+
+    private ComboBox<String> billingStatusFilter;
+    private ComboBox<String> billingPaymentFilter;
+    private TableView<SalesInvoiceSummary> billingTable;
+
+    private Node billingInvoicesTab(List<SalesInvoiceSummary> initialList) {
+        billingStatusFilter = new ComboBox<>();
+        billingStatusFilter.getItems().addAll("(todos)", "DRAFT", "VALIDATED", "CANCELLED", "VOIDED");
+        billingStatusFilter.getSelectionModel().selectFirst();
+        billingStatusFilter.getStyleClass().add("form-input");
+
+        billingPaymentFilter = new ComboBox<>();
+        billingPaymentFilter.getItems().addAll("(todos)", "PENDING", "PARTIAL", "PAID", "OVERDUE");
+        billingPaymentFilter.getSelectionModel().selectFirst();
+        billingPaymentFilter.getStyleClass().add("form-input");
+
+        Button apply = new Button("Aplicar filtros");
+        apply.setGraphic(icon("fas-filter"));
+        apply.setOnAction(event -> reloadInvoices());
+
+        Button reset = new Button("Limpiar");
+        reset.setGraphic(icon("fas-sync-alt"));
+        reset.setOnAction(event -> {
+            billingStatusFilter.getSelectionModel().selectFirst();
+            billingPaymentFilter.getSelectionModel().selectFirst();
+            reloadInvoices();
+        });
+
+        HBox filters = new HBox(10,
+                label("Estado:", "form-label"), billingStatusFilter,
+                label("Cobro:", "form-label"), billingPaymentFilter,
+                apply, reset);
+        filters.setAlignment(Pos.CENTER_LEFT);
+
+        billingTable = new TableView<>();
+        billingTable.getStyleClass().add("data-table");
+        billingTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+        billingTable.setPlaceholder(new Label("Sin facturas para los filtros actuales."));
+
+        TableColumn<SalesInvoiceSummary, String> colNumber = new TableColumn<>("Numero");
+        colNumber.setCellValueFactory(c -> new SimpleStringProperty(
+                c.getValue().invoiceNumber() == null || c.getValue().invoiceNumber().isBlank()
+                        ? "(borrador " + shortId(c.getValue().id()) + ")"
+                        : c.getValue().invoiceNumber()
+        ));
+        colNumber.setPrefWidth(160);
+
+        TableColumn<SalesInvoiceSummary, String> colCustomer = new TableColumn<>("Cliente");
+        colCustomer.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().customerLegalName()));
+        colCustomer.setPrefWidth(220);
+
+        TableColumn<SalesInvoiceSummary, String> colDate = new TableColumn<>("Fecha");
+        colDate.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().invoiceDate()));
+        colDate.setPrefWidth(110);
+
+        TableColumn<SalesInvoiceSummary, String> colDue = new TableColumn<>("Vencimiento");
+        colDue.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().dueDate()));
+        colDue.setPrefWidth(120);
+
+        TableColumn<SalesInvoiceSummary, String> colStatus = new TableColumn<>("Estado");
+        colStatus.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().status()));
+        colStatus.setPrefWidth(110);
+
+        TableColumn<SalesInvoiceSummary, String> colPayment = new TableColumn<>("Cobro");
+        colPayment.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().paymentStatus()));
+        colPayment.setPrefWidth(100);
+
+        TableColumn<SalesInvoiceSummary, String> colTotal = new TableColumn<>("Total");
+        colTotal.setCellValueFactory(c -> new SimpleStringProperty(
+                c.getValue().total() == null ? "" : money(c.getValue().total().toPlainString())));
+        colTotal.setPrefWidth(110);
+
+        billingTable.getColumns().addAll(List.of(colNumber, colCustomer, colDate, colDue, colStatus, colPayment, colTotal));
+        billingTable.setItems(FXCollections.observableArrayList(initialList));
+
+        Label header = label("Listado de facturas", "settings-section-title");
+        Label hint = new Label("La columna 'Cobro' refleja el estado de pago, independiente del estado legal "
+                + "de la factura. Doble click sobre una fila abrira el detalle en el slice F4.");
+        hint.setWrapText(true);
+        hint.getStyleClass().add("settings-hint");
+
+        VBox topBlock = new VBox(8, header, hint, filters);
+
+        return tabLayout(topBlock, billingTable, new HBox());
+    }
+
+    private void reloadInvoices() {
+        String status = mapAllOrValue(billingStatusFilter.getValue());
+        String payment = mapAllOrValue(billingPaymentFilter.getValue());
+        Task<List<SalesInvoiceSummary>> task = new Task<>() {
+            @Override
+            protected List<SalesInvoiceSummary> call() throws Exception {
+                return billingApiClient.listInvoices(status, payment, null, 200);
+            }
+        };
+        task.setOnSucceeded(event -> billingTable.setItems(FXCollections.observableArrayList(task.getValue())));
+        task.setOnFailed(event -> showError("Error al filtrar", "No se pudo refrescar el listado."));
+        start(task, "billing-invoices-reload");
+    }
+
+    private String mapAllOrValue(String selection) {
+        return selection == null || "(todos)".equals(selection) ? null : selection;
+    }
+
+    // ----- Sub-tab Configuracion (modo VeriFactu + cert + pie + series) -----
+
+    private ComboBox<String> verifactuModeCombo;
+    private ComboBox<CertificateOption> verifactuCertCombo;
+    private TextField verifactuFooterField;
+
+    private Node billingConfigTab(VerifactuConfig config, List<SeriesEntry> series, List<CertificateOption> certificates) {
+        Label section = label("VeriFactu", "settings-section-title");
+        Label hint = new Label("Activa el envio de facturas a AEAT. Por defecto OFF. "
+                + "Para usar PROD necesitas un certificado .p12 subido en Documentos > Certificados; "
+                + "TEST permite hacer pruebas contra el entorno preproductivo de la AEAT.");
+        hint.setWrapText(true);
+        hint.getStyleClass().add("settings-hint");
+
+        verifactuModeCombo = new ComboBox<>();
+        verifactuModeCombo.getItems().addAll("OFF", "TEST", "PROD");
+        verifactuModeCombo.getSelectionModel().select(config.mode() == null ? "OFF" : config.mode());
+        verifactuModeCombo.getStyleClass().add("form-input");
+
+        verifactuCertCombo = new ComboBox<>();
+        verifactuCertCombo.getItems().add(new CertificateOption(null, "(ninguno)", ""));
+        verifactuCertCombo.getItems().addAll(certificates);
+        verifactuCertCombo.getSelectionModel().selectFirst();
+        if (config.certificateId() != null && !config.certificateId().isBlank()) {
+            for (CertificateOption opt : verifactuCertCombo.getItems()) {
+                if (config.certificateId().equals(opt.id())) {
+                    verifactuCertCombo.getSelectionModel().select(opt);
+                    break;
+                }
+            }
+        }
+        verifactuCertCombo.getStyleClass().add("form-input");
+        verifactuCertCombo.setDisable(certificates.isEmpty());
+
+        verifactuFooterField = textInput(config.invoiceFooterTemplate(), "Texto que aparece al pie de cada factura");
+        verifactuFooterField.setPrefColumnCount(60);
+
+        GridPane grid = formGrid();
+        addFormRow(grid, 0, "Modo *", verifactuModeCombo);
+        addFormRow(grid, 1, "Certificado", verifactuCertCombo);
+        addFormRow(grid, 2, "Pie de factura", verifactuFooterField);
+
+        Label certHint = new Label(certificates.isEmpty()
+                ? "No hay certificados subidos. Activa el modulo Documentos y sube uno en /api/certificates."
+                : certificates.size() + " certificado(s) disponible(s).");
+        certHint.getStyleClass().add("settings-hint");
+
+        Label seriesHeader = label("Series de numeracion", "settings-section-title");
+        Label seriesHint = new Label("Las series se gestionan via API (/api/billing/series). "
+                + "Aqui solo se listan las activas para que veas el estado actual; "
+                + "la pantalla CRUD completa llega en F4.");
+        seriesHint.setWrapText(true);
+        seriesHint.getStyleClass().add("settings-hint");
+
+        TableView<SeriesEntry> seriesTable = new TableView<>();
+        seriesTable.getStyleClass().add("data-table");
+        seriesTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+        seriesTable.setPlaceholder(new Label("Sin series activas."));
+        TableColumn<SeriesEntry, String> sCode = new TableColumn<>("Codigo");
+        sCode.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().code()));
+        sCode.setPrefWidth(120);
+        TableColumn<SeriesEntry, String> sKind = new TableColumn<>("Tipo");
+        sKind.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().invoiceKind()));
+        sKind.setPrefWidth(120);
+        TableColumn<SeriesEntry, String> sFormat = new TableColumn<>("Formato");
+        sFormat.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().formatTemplate()));
+        sFormat.setPrefWidth(180);
+        TableColumn<SeriesEntry, String> sNext = new TableColumn<>("Proximo numero");
+        sNext.setCellValueFactory(c -> new SimpleStringProperty(String.valueOf(c.getValue().nextNumber())));
+        sNext.setPrefWidth(140);
+        TableColumn<SeriesEntry, String> sYear = new TableColumn<>("Anio");
+        sYear.setCellValueFactory(c -> new SimpleStringProperty(
+                c.getValue().currentYear() == null ? "—" : String.valueOf(c.getValue().currentYear())));
+        sYear.setPrefWidth(70);
+        seriesTable.getColumns().addAll(List.of(sCode, sKind, sFormat, sNext, sYear));
+        seriesTable.setItems(FXCollections.observableArrayList(series));
+        seriesTable.setPrefHeight(180);
+
+        Button save = new Button("Guardar configuracion");
+        save.setGraphic(icon("fas-save"));
+        save.setOnAction(event -> saveVerifactuConfig());
+
+        HBox actions = new HBox(save);
+        actions.getStyleClass().add("settings-actions");
+
+        VBox body = new VBox(16,
+                section, hint, grid, certHint,
+                new Separator(),
+                seriesHeader, seriesHint, seriesTable
+        );
+        return tabLayout(label("Configuracion de facturacion", "settings-section-title"), body, actions);
+    }
+
+    private void saveVerifactuConfig() {
+        String mode = verifactuModeCombo.getValue();
+        CertificateOption cert = verifactuCertCombo.getValue();
+        String certId = cert == null ? null : cert.id();
+        String footer = verifactuFooterField.getText();
+
+        Task<VerifactuConfig> task = new Task<>() {
+            @Override
+            protected VerifactuConfig call() throws Exception {
+                return billingApiClient.updateVerifactuConfig(mode, certId, footer);
+            }
+        };
+        task.setOnSucceeded(event -> {
+            Alert ok = new Alert(Alert.AlertType.INFORMATION,
+                    "Configuracion VeriFactu guardada (modo " + mode + ").", ButtonType.OK);
+            ok.setHeaderText(null);
+            ok.showAndWait();
+        });
+        task.setOnFailed(event -> showError("No se pudo guardar",
+                "Si seleccionaste PROD recuerda elegir un certificado .p12."));
+        start(task, "billing-config-save");
     }
 
     /**
