@@ -57,7 +57,16 @@ public class SettingsApiClient {
                 + field("taxIdentifier", data.taxIdentifier()) + ","
                 + field("email", data.email()) + ","
                 + field("phone", data.phone()) + ","
-                + field("website", data.website())
+                + field("website", data.website()) + ","
+                + field("addressLine", data.addressLine()) + ","
+                + field("city", data.city()) + ","
+                + field("province", data.province()) + ","
+                + field("postalCode", data.postalCode()) + ","
+                + field("country", data.country()) + ","
+                + field("iban", data.iban()) + ","
+                + field("registryInformation", data.registryInformation()) + ","
+                + field("legalTerms", data.legalTerms()) + ","
+                + field("invoiceFooter", data.invoiceFooter())
                 + "}";
         HttpResponse<String> response = sendAuthorized(HttpRequest.newBuilder(URI.create(baseUrl + "/settings/company"))
                 .timeout(Duration.ofSeconds(8))
@@ -176,7 +185,16 @@ public class SettingsApiClient {
                 textField(json, "companyType"),
                 textField(json, "email"),
                 textField(json, "phone"),
-                textField(json, "website")
+                textField(json, "website"),
+                textField(json, "addressLine"),
+                textField(json, "city"),
+                textField(json, "province"),
+                textField(json, "postalCode"),
+                textField(json, "country"),
+                textField(json, "iban"),
+                textField(json, "registryInformation"),
+                textField(json, "legalTerms"),
+                textField(json, "invoiceFooter")
         );
     }
 

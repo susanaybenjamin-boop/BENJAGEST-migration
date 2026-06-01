@@ -93,6 +93,18 @@ public final class AuthSession {
         this.memberships = memberships == null ? List.of() : List.copyOf(memberships);
     }
 
+    /**
+     * Actualiza la razon social de la empresa activa sin tocar tokens
+     * ni memberships. Lo usa el refresh silencioso tras editar la
+     * pestana Empresa en Configuracion.
+     */
+    public void updateActiveCompanyLegalName(String newLegalName) {
+        if (newLegalName == null || newLegalName.isBlank()) {
+            return;
+        }
+        this.activeCompanyLegalName = newLegalName;
+    }
+
     public void clear() {
         accessToken = null;
         refreshToken = null;

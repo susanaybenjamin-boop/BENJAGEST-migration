@@ -21,15 +21,12 @@ import com.benjagest.ui.model.CompanyModuleEntry;
 import com.benjagest.ui.model.DashboardData;
 import com.benjagest.ui.model.DashboardItem;
 import com.benjagest.ui.model.EmailConfig;
-import com.benjagest.ui.model.IssuerCreateRequest;
-import com.benjagest.ui.model.IssuerSummary;
 import com.benjagest.ui.model.Membership;
 import com.benjagest.ui.model.ModuleData;
 import com.benjagest.ui.model.ModuleRow;
 import com.benjagest.ui.model.SessionInfo;
 import com.benjagest.ui.service.AuthApiClient;
 import com.benjagest.ui.service.AuthSession;
-import com.benjagest.ui.service.IssuerApiClient;
 import com.benjagest.ui.service.SettingsApiClient;
 import com.benjagest.ui.service.WorkspaceApiClient;
 
@@ -84,7 +81,6 @@ public class BenjagestUiApplication extends Application {
             new ModuleLink("tax", "Fiscal", "fas-percentage"),
             new ModuleLink("labor", "Laboral", "fas-hard-hat"),
             new ModuleLink("billing", "Facturacion", "fas-file-invoice-dollar"),
-            new ModuleLink("issuers", "Emisores", "fas-file-signature"),
             new ModuleLink("purchases", "Compras", "fas-receipt"),
             new ModuleLink("reports", "Informes", "fas-chart-line"),
             new ModuleLink("calendar", "Agenda", "fas-calendar-alt"),
@@ -94,7 +90,6 @@ public class BenjagestUiApplication extends Application {
     private static final List<ModuleLink> BUSINESS_MODULES = List.of(
             new ModuleLink("customers", "Clientes", "fas-users"),
             new ModuleLink("billing", "Facturacion", "fas-file-invoice-dollar"),
-            new ModuleLink("issuers", "Emisores", "fas-file-signature"),
             new ModuleLink("purchases", "Compras", "fas-receipt"),
             new ModuleLink("labor", "Laboral", "fas-hard-hat"),
             new ModuleLink("tax", "Fiscal", "fas-percentage"),
@@ -107,14 +102,12 @@ public class BenjagestUiApplication extends Application {
     private static final NumberFormat CURRENCY_FORMAT = NumberFormat.getCurrencyInstance(Locale.forLanguageTag("es-ES"));
 
     private final WorkspaceApiClient apiClient = new WorkspaceApiClient();
-    private final IssuerApiClient issuerApiClient = new IssuerApiClient();
     private final AuthApiClient authApiClient = new AuthApiClient();
     private final SettingsApiClient settingsApiClient = new SettingsApiClient();
     private final Map<String, Button> navigationButtons = new LinkedHashMap<>();
 
     private BorderPane root;
     private SessionInfo session;
-    private IssuerSummary activeIssuer;
     private Language language = Language.ES;
     private AppMode appMode = AppMode.ADVISORY;
     private String currentModule = "dashboard";
@@ -137,7 +130,7 @@ public class BenjagestUiApplication extends Application {
     // Slugs del catalogo que la UI sabe pintar. Si llega un slug activo
     // que no esta aqui, se ignora en el sidebar (no hay vista para el).
     private static final java.util.Set<String> KNOWN_VIEWS = java.util.Set.of(
-            "customers", "billing", "issuers", "purchases", "labor",
+            "customers", "billing", "purchases", "labor",
             "tax", "reports", "calendar", "settings"
     );
 
@@ -221,11 +214,6 @@ public class BenjagestUiApplication extends Application {
             @Override
             protected Void call() throws Exception {
                 authApiClient.login(email.trim(), password);
-                try {
-                    activeIssuer = issuerApiClient.getDefault();
-                } catch (Exception ignored) {
-                    activeIssuer = null;
-                }
                 return null;
             }
         };
@@ -339,11 +327,6 @@ public class BenjagestUiApplication extends Application {
             @Override
             protected Void call() throws Exception {
                 authApiClient.switchCompany(companyId);
-                try {
-                    activeIssuer = issuerApiClient.getDefault();
-                } catch (Exception ignored) {
-                    activeIssuer = null;
-                }
                 return null;
             }
         };
@@ -366,16 +349,11 @@ public class BenjagestUiApplication extends Application {
         title.getStyleClass().add("app-title");
         Label subtitle = new Label(session.companyName());
         subtitle.getStyleClass().add("app-subtitle");
+        // Tras la unificacion (decision 2026-06-01), la empresa es su propio
+        // emisor: no hace falta una linea "Facturando como:" porque siempre
+        // facturas como tu empresa. Si cambia el legal_name desde la
+        // pantalla de Configuracion, el subtitle se refresca solo.
         VBox titleBlock = new VBox(2, title, subtitle);
-        // Linea persistente con el emisor activo. Asi, trabajes donde
-        // trabajes (factura, gasto, etc.) siempre ves con que empresa
-        // estas operando.
-        if (activeIssuer != null) {
-            Label activeIssuerLine = new Label("Facturando como: " + activeIssuer.legalName());
-            activeIssuerLine.setGraphic(icon("fas-file-signature"));
-            activeIssuerLine.getStyleClass().add("status-detail");
-            titleBlock.getChildren().add(activeIssuerLine);
-        }
 
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
@@ -546,12 +524,6 @@ public class BenjagestUiApplication extends Application {
     private void showModule(String module) {
         currentModule = module;
         select(module);
-        if ("issuers".equals(module)) {
-            // Issuers no pasa por el endpoint genrico /api/modules.
-            // Tiene su propia API REST en /api/issuers, llamada via IssuerApiClient.
-            showIssuers();
-            return;
-        }
         if ("settings".equals(module)) {
             // Configuracion tampoco pasa por /api/modules: tiene 3 pestanas
             // (Empresa / Email / Modulos) sobre /api/settings/*.
@@ -569,299 +541,6 @@ public class BenjagestUiApplication extends Application {
         start(task, "module-load-" + module);
     }
 
-    private void showIssuers() {
-        Task<List<IssuerSummary>> task = new Task<>() {
-            @Override
-            protected List<IssuerSummary> call() throws Exception {
-                return issuerApiClient.list();
-            }
-        };
-        task.setOnSucceeded(event -> setCenterAnimated(scroll(issuersView(task.getValue()))));
-        task.setOnFailed(event -> setCenterAnimated(scroll(errorPanel(t("moduleLoadFailed") + " " + moduleTitle("issuers")))));
-        start(task, "issuers-load");
-    }
-
-    private VBox issuersView(List<IssuerSummary> issuers) {
-        VBox content = content();
-
-        Label title = new Label(moduleTitle("issuers"));
-        title.getStyleClass().add("module-detail-title");
-        Label count = new Label(issuers.size() + " " + t("records"));
-        count.getStyleClass().add("module-detail-description");
-        VBox titleBox = new VBox(4, title, count);
-
-        Region spacer = new Region();
-        HBox.setHgrow(spacer, Priority.ALWAYS);
-
-        StackPane moduleIcon = iconBubble("fas-file-signature", "module-title-icon");
-
-        TableView<IssuerSummary> table = new TableView<>();
-        table.getStyleClass().add("data-table");
-        table.setItems(FXCollections.observableArrayList(issuers));
-        table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
-        if (issuers.isEmpty()) {
-            table.setPlaceholder(new Label(t("noRecords")));
-        }
-
-        TableColumn<IssuerSummary, String> colDefault = new TableColumn<>("");
-        colDefault.setCellValueFactory(cell -> new SimpleStringProperty(cell.getValue().isDefault() ? "★" : ""));
-        colDefault.setPrefWidth(40);
-        TableColumn<IssuerSummary, String> colName = new TableColumn<>("Razon social");
-        colName.setCellValueFactory(cell -> new SimpleStringProperty(cell.getValue().legalName()));
-        TableColumn<IssuerSummary, String> colTax = new TableColumn<>("NIF/CIF");
-        colTax.setCellValueFactory(cell -> new SimpleStringProperty(cell.getValue().taxIdentifier()));
-        TableColumn<IssuerSummary, String> colCity = new TableColumn<>("Ciudad");
-        colCity.setCellValueFactory(cell -> new SimpleStringProperty(cell.getValue().city()));
-        TableColumn<IssuerSummary, String> colEmail = new TableColumn<>(t("field.email"));
-        colEmail.setCellValueFactory(cell -> new SimpleStringProperty(cell.getValue().email()));
-        TableColumn<IssuerSummary, String> colPhone = new TableColumn<>(t("field.phone"));
-        colPhone.setCellValueFactory(cell -> new SimpleStringProperty(cell.getValue().phone()));
-        table.getColumns().addAll(java.util.List.of(colDefault, colName, colTax, colCity, colEmail, colPhone));
-
-        // Doble click se engancha a cada FILA, no a la tabla.
-        // Asi, click en zona vacia o en cabecera no dispara nada.
-        table.setRowFactory(tv -> {
-            javafx.scene.control.TableRow<IssuerSummary> row = new javafx.scene.control.TableRow<>();
-            row.setOnMouseClicked(event -> {
-                if (event.getClickCount() == 2 && !row.isEmpty()) {
-                    showIssuerFormDialog(row.getItem());
-                }
-            });
-            return row;
-        });
-
-        VBox.setVgrow(table, Priority.ALWAYS);
-
-        Button create = new Button(t("new"));
-        create.setGraphic(icon("fas-plus"));
-        create.setOnAction(event -> showIssuerFormDialog(null));
-
-        Button edit = new Button(t("edit"));
-        edit.setGraphic(icon("fas-user-edit"));
-        edit.setOnAction(event -> {
-            IssuerSummary selected = table.getSelectionModel().getSelectedItem();
-            if (selected == null) {
-                showError(t("selectRecord"), t("selectRecordDetail"));
-                return;
-            }
-            showIssuerFormDialog(selected);
-        });
-
-        Button delete = new Button("Eliminar");
-        delete.setGraphic(icon("fas-trash-alt"));
-        delete.setOnAction(event -> {
-            IssuerSummary selected = table.getSelectionModel().getSelectedItem();
-            if (selected == null) {
-                showError(t("selectRecord"), t("selectRecordDetail"));
-                return;
-            }
-            confirmAndDeleteIssuer(selected);
-        });
-
-        Button markActive = new Button("Marcar como activo");
-        markActive.setGraphic(icon("fas-star"));
-        markActive.setOnAction(event -> {
-            IssuerSummary selected = table.getSelectionModel().getSelectedItem();
-            if (selected == null) {
-                showError(t("selectRecord"), t("selectRecordDetail"));
-                return;
-            }
-            if (selected.isDefault()) {
-                Alert info = new Alert(Alert.AlertType.INFORMATION,
-                        "Este emisor ya es el activo.", ButtonType.OK);
-                info.setHeaderText(null);
-                info.showAndWait();
-                return;
-            }
-            markIssuerAsDefault(selected);
-        });
-
-        HBox header = new HBox(16, titleBox, moduleIcon, spacer, delete, markActive, edit, create);
-        header.setAlignment(Pos.CENTER_LEFT);
-        header.getStyleClass().add("module-detail-header");
-
-        content.getChildren().addAll(header, table);
-        return content;
-    }
-
-    private void showIssuerFormDialog(IssuerSummary existing) {
-        boolean editing = existing != null;
-        Dialog<IssuerCreateRequest> dialog = new Dialog<>();
-        dialog.setTitle("BENJAGEST");
-        dialog.setHeaderText(null);
-
-        Map<String, TextField> fields = new LinkedHashMap<>();
-        addIssuerField(fields, "legalName", "Razon social");
-        addIssuerField(fields, "taxIdentifier", "NIF/CIF");
-        addIssuerField(fields, "addressLine", "Direccion");
-        addIssuerField(fields, "city", "Ciudad");
-        addIssuerField(fields, "province", "Provincia");
-        addIssuerField(fields, "postalCode", "CP");
-        addIssuerField(fields, "country", "Pais");
-        addIssuerField(fields, "email", "Email");
-        addIssuerField(fields, "phone", "Telefono");
-        addIssuerField(fields, "iban", "IBAN");
-        addIssuerField(fields, "registryInformation", "Datos registrales");
-        addIssuerField(fields, "legalTerms", "Condiciones legales");
-        addIssuerField(fields, "invoiceFooter", "Pie de factura");
-
-        if (editing) {
-            set(fields, "legalName", existing.legalName());
-            set(fields, "taxIdentifier", existing.taxIdentifier());
-            set(fields, "addressLine", existing.addressLine());
-            set(fields, "city", existing.city());
-            set(fields, "province", existing.province());
-            set(fields, "postalCode", existing.postalCode());
-            set(fields, "country", existing.country());
-            set(fields, "email", existing.email());
-            set(fields, "phone", existing.phone());
-            set(fields, "iban", existing.iban());
-            set(fields, "registryInformation", existing.registryInformation());
-            set(fields, "legalTerms", existing.legalTerms());
-            set(fields, "invoiceFooter", existing.invoiceFooter());
-        }
-
-        GridPane grid = new GridPane();
-        grid.getStyleClass().add("form-grid");
-        grid.setHgap(12);
-        grid.setVgap(12);
-        int row = 0;
-        for (Map.Entry<String, TextField> entry : fields.entrySet()) {
-            Label fieldLabel = new Label(issuerFieldLabel(entry.getKey()));
-            fieldLabel.getStyleClass().add("form-label");
-            entry.getValue().getStyleClass().add("form-input");
-            grid.addRow(row++, fieldLabel, entry.getValue());
-        }
-
-        Label formTitle = label(editing ? t("editRecord") : t("newRecord"), "form-title");
-        Label subtitle = label(moduleTitle("issuers") + (editing ? " - " + existing.id().substring(0, 8) : ""), "form-subtitle");
-        HBox formHeader = new HBox(12, iconBubble("fas-file-signature", "module-title-icon"), new VBox(3, formTitle, subtitle));
-        formHeader.setAlignment(Pos.CENTER_LEFT);
-        VBox shell = new VBox(18, formHeader, grid);
-        shell.getStyleClass().add("form-shell");
-        dialog.getDialogPane().setContent(shell);
-        dialog.getDialogPane().getButtonTypes().addAll(
-                new ButtonType(editing ? t("update") : t("save"), ButtonBar.ButtonData.OK_DONE),
-                ButtonType.CANCEL
-        );
-        dialog.setResultConverter(button -> button.getButtonData() == ButtonBar.ButtonData.OK_DONE
-                ? new IssuerCreateRequest(
-                        fields.get("legalName").getText(),
-                        fields.get("taxIdentifier").getText(),
-                        fields.get("addressLine").getText(),
-                        fields.get("city").getText(),
-                        fields.get("province").getText(),
-                        fields.get("postalCode").getText(),
-                        fields.get("country").getText(),
-                        fields.get("email").getText(),
-                        fields.get("phone").getText(),
-                        fields.get("iban").getText(),
-                        fields.get("registryInformation").getText(),
-                        fields.get("legalTerms").getText(),
-                        fields.get("invoiceFooter").getText()
-                )
-                : null);
-
-        Optional<IssuerCreateRequest> result = dialog.showAndWait();
-        result.ifPresent(request -> {
-            if (editing) {
-                updateIssuer(existing.id(), request);
-            } else {
-                createIssuer(request);
-            }
-        });
-    }
-
-    private void addIssuerField(Map<String, TextField> fields, String key, String prompt) {
-        TextField field = new TextField();
-        field.setPromptText(prompt);
-        fields.put(key, field);
-    }
-
-    private String issuerFieldLabel(String key) {
-        return switch (key) {
-            case "legalName" -> t("field.name");
-            case "taxIdentifier" -> t("field.taxId");
-            case "addressLine" -> "Direccion";
-            case "city" -> "Ciudad";
-            case "province" -> "Provincia";
-            case "postalCode" -> "CP";
-            case "country" -> "Pais";
-            case "email" -> t("field.email");
-            case "phone" -> t("field.phone");
-            case "iban" -> "IBAN";
-            case "registryInformation" -> "Datos registrales";
-            case "legalTerms" -> "Condiciones legales";
-            case "invoiceFooter" -> "Pie de factura";
-            default -> key;
-        };
-    }
-
-    private void createIssuer(IssuerCreateRequest request) {
-        Task<IssuerSummary> task = new Task<>() {
-            @Override
-            protected IssuerSummary call() throws Exception {
-                return issuerApiClient.create(request);
-            }
-        };
-        task.setOnSucceeded(event -> showIssuers());
-        task.setOnFailed(event -> showError(t("saveFailed"), t("backendCheck")));
-        start(task, "issuer-create");
-    }
-
-    private void updateIssuer(String id, IssuerCreateRequest request) {
-        Task<IssuerSummary> task = new Task<>() {
-            @Override
-            protected IssuerSummary call() throws Exception {
-                return issuerApiClient.update(id, request);
-            }
-        };
-        task.setOnSucceeded(event -> showIssuers());
-        task.setOnFailed(event -> showError(t("updateFailed"), t("backendCheck")));
-        start(task, "issuer-update-" + id);
-    }
-
-    private void markIssuerAsDefault(IssuerSummary issuer) {
-        Task<IssuerSummary> task = new Task<>() {
-            @Override
-            protected IssuerSummary call() throws Exception {
-                IssuerSummary updated = issuerApiClient.markAsDefault(issuer.id());
-                activeIssuer = issuerApiClient.getDefault();
-                return updated;
-            }
-        };
-        task.setOnSucceeded(event -> {
-            // showShell repinta header (con la nueva linea "Facturando como...")
-            // y sidebar. showIssuers refresca la tabla con la estrella en
-            // su nueva posicion.
-            showShell();
-            showIssuers();
-        });
-        task.setOnFailed(event -> showError(t("updateFailed"), t("backendCheck")));
-        start(task, "issuer-mark-default-" + issuer.id());
-    }
-
-    private void confirmAndDeleteIssuer(IssuerSummary issuer) {
-        Alert confirm = new Alert(Alert.AlertType.CONFIRMATION,
-                "Vas a eliminar el emisor \"" + issuer.legalName() + "\". Quedara desactivado, no se borra fisicamente.",
-                ButtonType.OK, ButtonType.CANCEL);
-        confirm.setTitle("Eliminar emisor");
-        confirm.setHeaderText(null);
-        confirm.showAndWait().ifPresent(response -> {
-            if (response == ButtonType.OK) {
-                Task<Void> task = new Task<>() {
-                    @Override
-                    protected Void call() throws Exception {
-                        issuerApiClient.delete(issuer.id());
-                        return null;
-                    }
-                };
-                task.setOnSucceeded(event -> showIssuers());
-                task.setOnFailed(event -> showError(t("deleteFailed"), t("backendCheck")));
-                start(task, "issuer-delete-" + issuer.id());
-            }
-        });
-    }
 
     private VBox moduleView(ModuleData data) {
         if ("calendar".equals(data.module())) {
@@ -1733,17 +1412,41 @@ public class BenjagestUiApplication extends Application {
         TextField phone = textInput(company.phone(), "Telefono");
         TextField website = textInput(company.website(), "Web");
 
-        GridPane grid = formGrid();
-        addFormRow(grid, 0, "Razon social *", legalName);
-        addFormRow(grid, 1, "Nombre comercial", tradeName);
-        addFormRow(grid, 2, "NIF/CIF", taxId);
-        addFormRow(grid, 3, "Email", email);
-        addFormRow(grid, 4, "Telefono", phone);
-        addFormRow(grid, 5, "Web", website);
+        TextField addressLine = textInput(company.addressLine(), "Calle, numero, escalera");
+        TextField city = textInput(company.city(), "Localidad");
+        TextField province = textInput(company.province(), "Provincia");
+        TextField postalCode = textInput(company.postalCode(), "CP");
+        TextField country = textInput(company.country() == null || company.country().isBlank() ? "Espana" : company.country(), "Pais");
+
+        TextField iban = textInput(company.iban(), "ES00 0000 0000 0000 0000 0000");
+        TextField registry = textInput(company.registryInformation(), "Registro mercantil, tomo, hoja...");
+        TextField terms = textInput(company.legalTerms(), "Condiciones legales que aparecen en la factura");
+        TextField footer = textInput(company.invoiceFooter(), "Pie de factura");
+
+        GridPane generalGrid = formGrid();
+        addFormRow(generalGrid, 0, "Razon social *", legalName);
+        addFormRow(generalGrid, 1, "Nombre comercial", tradeName);
+        addFormRow(generalGrid, 2, "NIF/CIF", taxId);
+        addFormRow(generalGrid, 3, "Email", email);
+        addFormRow(generalGrid, 4, "Telefono", phone);
+        addFormRow(generalGrid, 5, "Web", website);
+
+        GridPane addressGrid = formGrid();
+        addFormRow(addressGrid, 0, "Direccion", addressLine);
+        addFormRow(addressGrid, 1, "Localidad", city);
+        addFormRow(addressGrid, 2, "Provincia", province);
+        addFormRow(addressGrid, 3, "CP", postalCode);
+        addFormRow(addressGrid, 4, "Pais", country);
+
+        GridPane billingGrid = formGrid();
+        addFormRow(billingGrid, 0, "IBAN", iban);
+        addFormRow(billingGrid, 1, "Datos registrales", registry);
+        addFormRow(billingGrid, 2, "Condiciones legales", terms);
+        addFormRow(billingGrid, 3, "Pie de factura", footer);
 
         Label typeNote = new Label("Tipo de empresa: " + company.companyType()
                 + " (no editable desde aqui)");
-        typeNote.getStyleClass().add("status-detail");
+        typeNote.getStyleClass().add("settings-hint");
 
         Button save = new Button("Guardar cambios");
         save.setGraphic(icon("fas-save"));
@@ -1755,16 +1458,36 @@ public class BenjagestUiApplication extends Application {
                 company.companyType(),
                 email.getText(),
                 phone.getText(),
-                website.getText()
+                website.getText(),
+                addressLine.getText(),
+                city.getText(),
+                province.getText(),
+                postalCode.getText(),
+                country.getText(),
+                iban.getText(),
+                registry.getText(),
+                terms.getText(),
+                footer.getText()
         )));
 
         HBox actions = new HBox(save);
         actions.getStyleClass().add("settings-actions");
 
-        Label sectionTitle = label("Datos generales", "settings-section-title");
-        typeNote.getStyleClass().add("settings-hint");
+        VBox body = new VBox(16,
+                label("Datos generales", "settings-section-title"),
+                generalGrid,
+                typeNote,
+                new Separator(),
+                label("Direccion postal", "settings-section-title"),
+                addressGrid,
+                new Separator(),
+                label("Datos de facturacion", "settings-section-title"),
+                label("Estos datos aparecen en cada factura que emites como empresa.", "settings-hint"),
+                billingGrid
+        );
 
-        return tabLayout(sectionTitle, new VBox(16, grid, typeNote), actions);
+        Label sectionTitle = label("Empresa", "settings-section-title");
+        return tabLayout(sectionTitle, body, actions);
     }
 
     private void saveCompany(CompanyData data) {
@@ -1779,11 +1502,15 @@ public class BenjagestUiApplication extends Application {
             }
         };
         task.setOnSucceeded(event -> {
-            Alert ok = new Alert(Alert.AlertType.INFORMATION,
-                    "Datos de la empresa actualizados.", ButtonType.OK);
-            ok.setHeaderText(null);
-            ok.showAndWait();
-            showSettings();
+            // Refresh silencioso: actualizamos AuthSession con la nueva
+            // razon social y repintamos el shell (header + sidebar).
+            // No reconstruimos la pantalla de Configuracion, asi te
+            // quedas en el tab Empresa con los datos guardados visibles.
+            CompanyData saved = task.getValue();
+            AuthSession.get().updateActiveCompanyLegalName(saved.legalName());
+            session = session.withCompanyName(saved.legalName());
+            showShell();
+            select("settings");
         });
         task.setOnFailed(event -> showError("No se pudo guardar", "Comprueba los datos y vuelve a intentarlo."));
         start(task, "settings-company-save");
