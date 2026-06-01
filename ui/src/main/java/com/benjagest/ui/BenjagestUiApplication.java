@@ -62,7 +62,6 @@ import javafx.scene.control.PasswordField;
 import javafx.scene.control.ScrollPane;
 import javafx.scene.control.Tab;
 import javafx.scene.control.TabPane;
-import javafx.scene.control.TitledPane;
 import javafx.scene.control.Separator;
 import javafx.scene.control.TableColumn;
 import javafx.scene.control.TableView;
@@ -119,6 +118,23 @@ public class BenjagestUiApplication extends Application {
     private Language language = Language.ES;
     private AppMode appMode = AppMode.ADVISORY;
     private String currentModule = "dashboard";
+    // Cache de los modulos activos en el catalogo (lo rellena
+    // loadActiveModulesCache desde /api/modules-catalog/active). Cuando
+    // esta vacio, activeModules() cae al fallback hardcodeado.
+    private List<ModuleLink> activeModulesCache = List.of();
+    // Cambios pendientes en la pestana Modulos: slug -> nuevo estado.
+    // Vacio = no hay cambios sin guardar. Se vacia al guardar o al
+    // entrar otra vez en Configuracion.
+    private final java.util.Map<String, Boolean> pendingModuleChanges = new java.util.LinkedHashMap<>();
+    private Button saveModulesButton;
+    private Label modulesDirtyHint;
+
+    // Slugs del catalogo que la UI sabe pintar. Si llega un slug activo
+    // que no esta aqui, se ignora en el sidebar (no hay vista para el).
+    private static final java.util.Set<String> KNOWN_VIEWS = java.util.Set.of(
+            "customers", "billing", "issuers", "purchases", "labor",
+            "tax", "reports", "calendar", "settings"
+    );
 
     @Override
     public void start(Stage stage) {
@@ -236,8 +252,48 @@ public class BenjagestUiApplication extends Application {
                 deriveDefaultMode(auth.activeCompanyType())
         );
         appMode = AppMode.from(session.defaultMode());
-        showShell();
-        showDashboard();
+        // Antes de pintar el shell, intentamos cargar los modulos activos
+        // de esta empresa. Si falla (sin red, sin permiso, etc.), el
+        // sidebar usa la lista hardcodeada como fallback.
+        refreshActiveModulesAndRender();
+    }
+
+    private void refreshActiveModulesAndRender() {
+        Task<List<CompanyModuleEntry>> task = new Task<>() {
+            @Override
+            protected List<CompanyModuleEntry> call() throws Exception {
+                return settingsApiClient.listActiveCatalog();
+            }
+        };
+        task.setOnSucceeded(event -> {
+            activeModulesCache = mapToModuleLinks(task.getValue());
+            showShell();
+            showDashboard();
+        });
+        task.setOnFailed(event -> {
+            // Fallback silencioso: cache vacio + sidebar hardcodeado.
+            activeModulesCache = List.of();
+            showShell();
+            showDashboard();
+        });
+        start(task, "modules-active-load");
+    }
+
+    /**
+     * Filtra los modulos activos por la whitelist KNOWN_VIEWS, los
+     * ordena por displayOrder y los convierte a ModuleLink (slug + label
+     * + icon) que es lo que consume el sidebar.
+     */
+    private List<ModuleLink> mapToModuleLinks(List<CompanyModuleEntry> active) {
+        return active.stream()
+                .filter(m -> KNOWN_VIEWS.contains(m.slug()))
+                .sorted(Comparator.comparingInt(CompanyModuleEntry::displayOrder))
+                .map(m -> new ModuleLink(
+                        m.slug(),
+                        m.label(),
+                        m.icon() == null || m.icon().isBlank() ? "fas-cube" : m.icon()
+                ))
+                .toList();
     }
 
     private String deriveDefaultMode(String companyType) {
@@ -331,6 +387,7 @@ public class BenjagestUiApplication extends Application {
         logout.setGraphic(icon("fas-sign-out-alt"));
         logout.setOnAction(event -> {
             session = null;
+            activeModulesCache = List.of();
             AuthSession.get().clear();
             showLogin();
         });
@@ -374,6 +431,12 @@ public class BenjagestUiApplication extends Application {
     }
 
     private List<ModuleLink> activeModules() {
+        // Si el backend nos dio una lista valida la usamos. Si no, caemos
+        // al fallback hardcodeado por modo (mantiene la app utilizable
+        // sin conexion al endpoint /modules-catalog/active).
+        if (activeModulesCache != null && !activeModulesCache.isEmpty()) {
+            return activeModulesCache;
+        }
         return appMode == AppMode.ADVISORY ? ADVISORY_MODULES : BUSINESS_MODULES;
     }
 
@@ -1634,6 +1697,7 @@ public class BenjagestUiApplication extends Application {
         header.getStyleClass().add("module-detail-header");
 
         TabPane tabs = new TabPane();
+        tabs.getStyleClass().add("settings-tabs");
         tabs.setTabClosingPolicy(TabPane.TabClosingPolicy.UNAVAILABLE);
         Tab companyTab = new Tab("Empresa", settingsCompanyTab(bundle.company()));
         companyTab.setGraphic(icon("fas-building"));
@@ -1685,11 +1749,14 @@ public class BenjagestUiApplication extends Application {
                 website.getText()
         )));
 
-        HBox actions = new HBox(10, save);
-        actions.setAlignment(Pos.CENTER_RIGHT);
+        HBox actions = new HBox(save);
+        actions.getStyleClass().add("settings-actions");
 
-        VBox box = new VBox(16, grid, typeNote, new Separator(), actions);
-        box.setPadding(new Insets(16));
+        Label sectionTitle = label("Datos generales", "settings-section-title");
+        typeNote.getStyleClass().add("settings-hint");
+
+        VBox box = new VBox(sectionTitle, grid, typeNote, new Separator(), actions);
+        box.getStyleClass().add("settings-tab-body");
         return box;
     }
 
@@ -1765,11 +1832,22 @@ public class BenjagestUiApplication extends Application {
         test.setGraphic(icon("fas-paper-plane"));
         test.setOnAction(event -> sendTestEmail(testRecipient.getText()));
 
-        HBox actions = new HBox(10, test, save);
-        actions.setAlignment(Pos.CENTER_RIGHT);
+        testRecipient.getStyleClass().add("form-input");
 
-        VBox box = new VBox(16, grid, flags, new Separator(), label("Probar configuracion", "card-title"), testRecipient, actions);
-        box.setPadding(new Insets(16));
+        HBox actions = new HBox(test, save);
+        actions.getStyleClass().add("settings-actions");
+
+        VBox box = new VBox(
+                label("Servidor SMTP", "settings-section-title"),
+                grid,
+                flags,
+                new Separator(),
+                label("Probar configuracion", "settings-section-title"),
+                label("Envia un correo de prueba con la configuracion guardada para verificar que las credenciales funcionan.", "settings-hint"),
+                testRecipient,
+                actions
+        );
+        box.getStyleClass().add("settings-tab-body");
         return box;
     }
 
@@ -1831,66 +1909,104 @@ public class BenjagestUiApplication extends Application {
     // ----- Pestana Modulos -----
 
     private VBox settingsModulesTab(List<CompanyModuleEntry> modules) {
-        VBox container = new VBox(12);
-        container.setPadding(new Insets(16));
+        pendingModuleChanges.clear();
 
-        Label hint = new Label("Activa o desactiva los modulos visibles para esta empresa. "
-                + "Algunos modulos dependen de otros: activar un dependiente activa tambien su requisito.");
+        VBox container = new VBox();
+        container.getStyleClass().add("settings-tab-body");
+
+        Label sectionTitle = label("Modulos activos por empresa", "settings-section-title");
+        Label hint = new Label("Marca o desmarca cada modulo y pulsa Guardar cambios. "
+                + "Cada modulo es todo-o-nada: si activas Facturacion entra el bloque completo "
+                + "(series, facturas, cobros, recurrentes); si lo desactivas, sale entero.");
         hint.setWrapText(true);
-        hint.getStyleClass().add("status-detail");
-        container.getChildren().add(hint);
+        hint.getStyleClass().add("settings-hint");
+        container.getChildren().addAll(sectionTitle, hint);
 
-        // Agrupamos por categoria (parentSlug == null) y dentro de cada
-        // categoria mostramos los sub-modulos como filas con un CheckBox.
+        VBox list = new VBox(8);
+        list.getStyleClass().add("module-list");
+        // Solo categorias raiz. Los sub-modulos no son configurables a
+        // mano: se mueven en bloque con su categoria padre.
         for (CompanyModuleEntry category : modules.stream().filter(m -> m.parentSlug() == null || m.parentSlug().isBlank()).toList()) {
-            VBox categoryBox = new VBox(6);
-            CheckBox categoryToggle = new CheckBox(category.label());
-            categoryToggle.setSelected(category.active());
-            categoryToggle.setDisable("settings".equals(category.slug()));
-            categoryToggle.setOnAction(event -> toggleModule(category.slug(), categoryToggle.isSelected()));
-            HBox categoryHeader = new HBox(8, iconBubble(category.icon() == null ? "fas-cube" : category.icon(), "panel-icon"), categoryToggle);
-            categoryHeader.setAlignment(Pos.CENTER_LEFT);
-            categoryBox.getChildren().add(categoryHeader);
-
-            List<CompanyModuleEntry> children = modules.stream()
-                    .filter(m -> category.slug().equals(m.parentSlug()))
-                    .toList();
-            for (CompanyModuleEntry child : children) {
-                CheckBox childToggle = new CheckBox(child.label());
-                childToggle.setSelected(child.active());
-                childToggle.setDisable("settings".equals(child.slug()));
-                childToggle.setOnAction(event -> toggleModule(child.slug(), childToggle.isSelected()));
-                Label childHint = new Label(child.requiresSlug() == null || child.requiresSlug().isBlank()
-                        ? "" : "Requiere: " + child.requiresSlug());
-                childHint.getStyleClass().add("status-detail");
-                HBox row = new HBox(10, childToggle, childHint);
-                row.setAlignment(Pos.CENTER_LEFT);
-                row.setPadding(new Insets(2, 0, 2, 28));
-                categoryBox.getChildren().add(row);
-            }
-
-            TitledPane pane = new TitledPane(category.label(), categoryBox);
-            pane.setExpanded(category.active());
-            container.getChildren().add(pane);
+            CheckBox toggle = new CheckBox(category.label());
+            toggle.setSelected(category.active());
+            toggle.setDisable("settings".equals(category.slug()));
+            final boolean originalActive = category.active();
+            toggle.selectedProperty().addListener((obs, was, now) -> {
+                if (now == null || now.booleanValue() == originalActive) {
+                    pendingModuleChanges.remove(category.slug());
+                } else {
+                    pendingModuleChanges.put(category.slug(), now);
+                }
+                refreshSaveModulesButton();
+            });
+            HBox row = new HBox(toggle);
+            row.setAlignment(Pos.CENTER_LEFT);
+            row.getStyleClass().add("module-row");
+            list.getChildren().add(row);
         }
 
+        modulesDirtyHint = label("", "settings-hint");
+        saveModulesButton = new Button("Guardar cambios");
+        saveModulesButton.setGraphic(icon("fas-save"));
+        saveModulesButton.setOnAction(event -> saveModuleChanges());
+
+        HBox actions = new HBox(modulesDirtyHint, new Region(), saveModulesButton);
+        HBox.setHgrow(actions.getChildren().get(1), Priority.ALWAYS);
+        actions.getStyleClass().add("settings-actions");
+        actions.setAlignment(Pos.CENTER_RIGHT);
+
+        container.getChildren().addAll(list, new Separator(), actions);
+        refreshSaveModulesButton();
         return container;
     }
 
-    private void toggleModule(String slug, boolean active) {
+    private void refreshSaveModulesButton() {
+        if (saveModulesButton == null) {
+            return;
+        }
+        int count = pendingModuleChanges.size();
+        saveModulesButton.setDisable(count == 0);
+        if (modulesDirtyHint != null) {
+            modulesDirtyHint.setText(count == 0
+                    ? "Sin cambios sin guardar."
+                    : count == 1 ? "1 cambio sin guardar." : count + " cambios sin guardar.");
+        }
+    }
+
+    private void saveModuleChanges() {
+        if (pendingModuleChanges.isEmpty()) {
+            return;
+        }
+        java.util.Map<String, Boolean> batch = new java.util.LinkedHashMap<>(pendingModuleChanges);
+        saveModulesButton.setDisable(true);
+        modulesDirtyHint.setText("Guardando " + batch.size() + " cambio" + (batch.size() == 1 ? "" : "s") + "...");
+
         Task<List<CompanyModuleEntry>> task = new Task<>() {
             @Override
             protected List<CompanyModuleEntry> call() throws Exception {
-                return settingsApiClient.setModuleActive(slug, active);
+                for (java.util.Map.Entry<String, Boolean> change : batch.entrySet()) {
+                    settingsApiClient.setModuleActive(change.getKey(), change.getValue());
+                }
+                return settingsApiClient.listActiveCatalog();
             }
         };
-        task.setOnSucceeded(event -> showSettings());
-        task.setOnFailed(event -> {
-            showError("No se pudo cambiar el modulo",
-                    "Revisa que tengas rol OWNER o ADMIN.");
-            showSettings();
+        task.setOnSucceeded(event -> {
+            pendingModuleChanges.clear();
+            activeModulesCache = mapToModuleLinks(task.getValue());
+            // Repintamos el sidebar (asi entra/sale Facturacion en el menu)
+            // pero NO reconstruimos la pantalla de Configuracion: el
+            // usuario sigue en la pestana Modulos sin parpadeos.
+            showShell();
+            select("settings");
+            refreshSaveModulesButton();
+            modulesDirtyHint.setText("Cambios guardados.");
         });
-        start(task, "settings-modules-toggle-" + slug);
+        task.setOnFailed(event -> {
+            showError("No se pudieron guardar todos los cambios",
+                    "Algunos modulos no se actualizaron. Recarga la pantalla y vuelve a intentarlo.");
+            refreshSaveModulesButton();
+        });
+        start(task, "settings-modules-save-batch");
     }
 
     // ----- helpers de formularios -----

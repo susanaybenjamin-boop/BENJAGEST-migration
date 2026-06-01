@@ -138,6 +138,22 @@ public class SettingsApiClient {
         return parseModules(response.body());
     }
 
+    /**
+     * Lista los modulos activos para la empresa actual segun el catalogo.
+     * Lo usa el sidebar dinamico: cada entrada de la lista que cumple la
+     * whitelist KNOWN_VIEWS se renderiza como un boton del nav.
+     *
+     * El endpoint devuelve solo activos, por eso parseamos con active=true
+     * implicito (CompanyModuleEntry tiene el campo, pero todos seran true).
+     */
+    public List<CompanyModuleEntry> listActiveCatalog() throws IOException, InterruptedException {
+        HttpResponse<String> response = sendAuthorized(HttpRequest.newBuilder(URI.create(baseUrl + "/modules-catalog/active"))
+                .timeout(Duration.ofSeconds(8))
+                .GET());
+        ensureOk(response);
+        return parseModules(response.body());
+    }
+
     // -------- infra --------
 
     private HttpResponse<String> sendAuthorized(HttpRequest.Builder builder) throws IOException, InterruptedException {

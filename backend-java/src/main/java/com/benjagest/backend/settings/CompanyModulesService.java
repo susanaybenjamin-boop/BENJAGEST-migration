@@ -81,11 +81,29 @@ public class CompanyModulesService {
 
         AuthenticatedUser actor = currentUserService.require();
         String companyId = tenantContext.getCurrentCompanyId();
+        boolean isCategory = moduleRepository.isRootCategory(slug);
 
         if (active) {
             activateWithDependencies(slug, companyId, actor.userId(), new HashSet<>());
+            if (isCategory) {
+                // Cascada al activar una categoria: activar todos los sub-modulos
+                // (UX CONTENDO: la categoria es todo-o-nada).
+                for (String childSlug : moduleRepository.findChildSlugsOfCategory(slug)) {
+                    activateWithDependencies(childSlug, companyId, actor.userId(), new HashSet<>());
+                }
+            }
         } else {
             moduleRepository.setActive(companyId, moduleId, false, actor.userId());
+            if (isCategory) {
+                // Cascada al desactivar una categoria: tambien apaga sus hijos
+                // para no dejar datos huerfanos visibles.
+                for (String childSlug : moduleRepository.findChildSlugsOfCategory(slug)) {
+                    String childId = moduleRepository.findIdBySlug(childSlug);
+                    if (childId != null) {
+                        moduleRepository.setActive(companyId, childId, false, actor.userId());
+                    }
+                }
+            }
         }
 
         return list();

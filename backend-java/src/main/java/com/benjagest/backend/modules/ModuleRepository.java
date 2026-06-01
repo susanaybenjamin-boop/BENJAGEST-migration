@@ -96,6 +96,36 @@ public class ModuleRepository {
     }
 
     /**
+     * Devuelve los slugs de los sub-modulos de una categoria. Si el slug
+     * pasado no es categoria (tiene padre o no existe), devuelve lista
+     * vacia. Lo usa CompanyModulesService para hacer la cascada cuando
+     * el usuario marca/desmarca una categoria entera.
+     */
+    public List<String> findChildSlugsOfCategory(String categorySlug) {
+        return jdbcTemplate.query("""
+                SELECT child.slug
+                  FROM module_catalog child
+                  JOIN module_catalog parent ON parent.id = child.parent_id
+                 WHERE parent.slug = ?
+                """,
+                (rs, rowNum) -> rs.getString("slug"),
+                categorySlug
+        );
+    }
+
+    /**
+     * Indica si un slug del catalogo es una categoria raiz (parent_id NULL).
+     */
+    public boolean isRootCategory(String slug) {
+        Integer count = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM module_catalog WHERE slug = ? AND parent_id IS NULL",
+                Integer.class,
+                slug
+        );
+        return count != null && count > 0;
+    }
+
+    /**
      * Activa/desactiva un modulo para una empresa. Upsert: si no existe
      * la fila company_modules, la crea con active=valor; si existe, solo
      * actualiza active y la fecha correspondiente.

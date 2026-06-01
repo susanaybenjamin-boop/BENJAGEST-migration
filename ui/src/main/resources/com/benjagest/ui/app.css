@@ -1168,3 +1168,124 @@
 .module-slate {
     -fx-background-color: linear-gradient(to bottom right, #334155, #64748b);
 }
+
+/* ------- Configuracion (Slice C3): TabPane + TitledPane + CheckBox ------- */
+
+.settings-tabs {
+    -fx-background-color: transparent;
+    -fx-tab-min-width: 130;
+}
+
+.settings-tabs .tab-header-area {
+    -fx-padding: 0 0 4 0;
+}
+
+.settings-tabs .tab-header-background {
+    -fx-background-color: transparent;
+}
+
+.settings-tabs .tab {
+    -fx-background-color: #ffffff;
+    -fx-background-radius: 12 12 0 0;
+    -fx-border-color: #dbe3ef;
+    -fx-border-radius: 12 12 0 0;
+    -fx-padding: 8 18;
+}
+
+.settings-tabs .tab:selected {
+    -fx-background-color: linear-gradient(to bottom right, #ffffff, #eef9f6);
+    -fx-border-color: #0aa6a6;
+    -fx-border-width: 1 1 0 1;
+}
+
+.settings-tabs .tab .tab-label {
+    -fx-text-fill: #475569;
+    -fx-font-size: 13px;
+    -fx-font-weight: 800;
+}
+
+.settings-tabs .tab:selected .tab-label {
+    -fx-text-fill: #0f172a;
+}
+
+.settings-tabs .tab .font-icon {
+    -fx-icon-color: #475569;
+}
+
+.settings-tabs .tab:selected .font-icon {
+    -fx-icon-color: #0aa6a6;
+}
+
+.settings-tab-body {
+    -fx-background-color: linear-gradient(to bottom right, #ffffff, #f8fbff);
+    -fx-background-radius: 0 12 12 12;
+    -fx-border-color: #dbe3ef;
+    -fx-border-radius: 0 12 12 12;
+    -fx-padding: 22;
+    -fx-spacing: 18;
+}
+
+.settings-section-title {
+    -fx-text-fill: #0f172a;
+    -fx-font-size: 16px;
+    -fx-font-weight: 900;
+}
+
+.settings-hint {
+    -fx-text-fill: #475569;
+    -fx-font-size: 12px;
+}
+
+.settings-actions {
+    -fx-spacing: 10;
+    -fx-alignment: center-right;
+}
+
+.module-list {
+    -fx-background-color: #ffffff;
+    -fx-background-radius: 12;
+    -fx-border-color: #dbe7f4;
+    -fx-border-radius: 12;
+    -fx-padding: 12 16;
+}
+
+.module-row {
+    -fx-padding: 8 0;
+    -fx-border-color: transparent transparent #eef2f7 transparent;
+    -fx-border-width: 0 0 1 0;
+}
+
+.module-row:last-child {
+    -fx-border-color: transparent;
+}
+
+.module-row .label {
+    -fx-text-fill: #475569;
+    -fx-font-size: 12px;
+}
+
+.check-box {
+    -fx-text-fill: #0f172a;
+    -fx-font-size: 13px;
+}
+
+.check-box > .box {
+    -fx-background-color: #f8fbff;
+    -fx-border-color: #dbe7f4;
+    -fx-border-radius: 4;
+    -fx-background-radius: 4;
+    -fx-padding: 3;
+}
+
+.check-box:selected > .box {
+    -fx-background-color: #0aa6a6;
+    -fx-border-color: #0aa6a6;
+}
+
+.check-box:selected > .box > .mark {
+    -fx-background-color: #ffffff;
+}
+
+.check-box:disabled {
+    -fx-opacity: 0.6;
+}
