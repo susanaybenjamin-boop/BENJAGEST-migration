@@ -1,5 +1,6 @@
 package com.benjagest.ui.service;
 
+import com.benjagest.ui.model.AuditEvent;
 import com.benjagest.ui.model.CompanyData;
 import com.benjagest.ui.model.CompanyModuleEntry;
 import com.benjagest.ui.model.EmailConfig;
@@ -145,6 +146,50 @@ public class SettingsApiClient {
                 .PUT(HttpRequest.BodyPublishers.ofString(body)));
         ensureOk(response);
         return parseModules(response.body());
+    }
+
+    // -------- audit --------
+
+    /**
+     * Lista los ultimos eventos de auditoria de la empresa activa.
+     * Filtros opcionales: eventType (null para todos), sinceIso (null
+     * = ultimos), limit (1-500).
+     */
+    public List<AuditEvent> listAuditEvents(String eventType, String sinceIso, int limit) throws IOException, InterruptedException {
+        StringBuilder url = new StringBuilder(baseUrl + "/settings/audit-events?limit=" + limit);
+        if (eventType != null && !eventType.isBlank()) {
+            url.append("&eventType=").append(java.net.URLEncoder.encode(eventType, java.nio.charset.StandardCharsets.UTF_8));
+        }
+        if (sinceIso != null && !sinceIso.isBlank()) {
+            url.append("&sinceIso=").append(java.net.URLEncoder.encode(sinceIso, java.nio.charset.StandardCharsets.UTF_8));
+        }
+        HttpResponse<String> response = sendAuthorized(HttpRequest.newBuilder(URI.create(url.toString()))
+                .timeout(Duration.ofSeconds(8))
+                .GET());
+        ensureOk(response);
+        return parseAuditEvents(response.body());
+    }
+
+    private List<AuditEvent> parseAuditEvents(String json) {
+        List<AuditEvent> list = new ArrayList<>();
+        Matcher matcher = Pattern.compile("\\{[^{}]*\"eventType\"\\s*:\\s*\"[^\"]+\"[^{}]*\\}").matcher(json);
+        while (matcher.find()) {
+            String obj = matcher.group();
+            list.add(new AuditEvent(
+                    textField(obj, "id"),
+                    textField(obj, "companyId"),
+                    textField(obj, "userId"),
+                    textField(obj, "eventType"),
+                    textField(obj, "entityType"),
+                    textField(obj, "entityId"),
+                    textField(obj, "result"),
+                    textField(obj, "ipAddress"),
+                    textField(obj, "userAgent"),
+                    textField(obj, "details"),
+                    textField(obj, "createdAt")
+            ));
+        }
+        return list;
     }
 
     /**

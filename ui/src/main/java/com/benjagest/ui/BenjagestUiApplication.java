@@ -16,6 +16,7 @@ import java.util.TreeMap;
 
 import org.kordamp.ikonli.javafx.FontIcon;
 
+import com.benjagest.ui.model.AuditEvent;
 import com.benjagest.ui.model.CompanyData;
 import com.benjagest.ui.model.CompanyModuleEntry;
 import com.benjagest.ui.model.DashboardData;
@@ -1395,7 +1396,9 @@ public class BenjagestUiApplication extends Application {
         emailTab.setGraphic(icon("fas-envelope"));
         Tab modulesTab = new Tab("Modulos", settingsModulesTab(bundle.modules()));
         modulesTab.setGraphic(icon("fas-cubes"));
-        tabs.getTabs().addAll(companyTab, emailTab, modulesTab);
+        Tab auditTab = new Tab("Auditoria", settingsAuditTab());
+        auditTab.setGraphic(icon("fas-shield-alt"));
+        tabs.getTabs().addAll(companyTab, emailTab, modulesTab, auditTab);
         // El TabPane crece hasta el final del area central; sin esto, los
         // botones del pie de cada tab podrian quedar fuera de pantalla en
         // portatil.
@@ -1698,8 +1701,106 @@ public class BenjagestUiApplication extends Application {
         return body;
     }
 
+    // ----- Pestana Auditoria -----
+
+    private static final List<String> AUDIT_EVENT_TYPES = List.of(
+            "(todos)",
+            "LOGIN_OK",
+            "LOGIN_FAIL",
+            "COMPANY_SWITCHED",
+            "MODULE_ENABLED",
+            "MODULE_DISABLED",
+            "COMPANY_DATA_UPDATED"
+    );
+
+    private Node settingsAuditTab() {
+        Label sectionTitle = label("Eventos recientes", "settings-section-title");
+        Label hint = new Label("Quien hizo que y cuando. Util para investigar accesos sospechosos o "
+                + "cambios de configuracion. Se muestran hasta 200 entradas, ordenadas por mas recientes.");
+        hint.setWrapText(true);
+        hint.getStyleClass().add("settings-hint");
+
+        javafx.scene.control.ComboBox<String> typeFilter = new javafx.scene.control.ComboBox<>();
+        typeFilter.getItems().addAll(AUDIT_EVENT_TYPES);
+        typeFilter.getSelectionModel().selectFirst();
+        typeFilter.getStyleClass().add("form-input");
+
+        TableView<AuditEvent> table = new TableView<>();
+        table.getStyleClass().add("data-table");
+        table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+        table.setPlaceholder(new Label("Sin eventos registrados todavia."));
+
+        TableColumn<AuditEvent, String> colWhen = new TableColumn<>("Cuando");
+        colWhen.setCellValueFactory(c -> new SimpleStringProperty(shortIso(c.getValue().createdAt())));
+        colWhen.setPrefWidth(160);
+        TableColumn<AuditEvent, String> colType = new TableColumn<>("Tipo");
+        colType.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().eventType()));
+        colType.setPrefWidth(150);
+        TableColumn<AuditEvent, String> colResult = new TableColumn<>("Resultado");
+        colResult.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().result()));
+        colResult.setPrefWidth(80);
+        TableColumn<AuditEvent, String> colUser = new TableColumn<>("Usuario");
+        colUser.setCellValueFactory(c -> new SimpleStringProperty(shortId(c.getValue().userId())));
+        colUser.setPrefWidth(120);
+        TableColumn<AuditEvent, String> colEntity = new TableColumn<>("Entidad");
+        colEntity.setCellValueFactory(c -> new SimpleStringProperty(
+                c.getValue().entityType() == null ? "" : c.getValue().entityType() + ":" + shortId(c.getValue().entityId())
+        ));
+        colEntity.setPrefWidth(160);
+        TableColumn<AuditEvent, String> colIp = new TableColumn<>("IP");
+        colIp.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().ipAddress()));
+        colIp.setPrefWidth(120);
+        TableColumn<AuditEvent, String> colDetails = new TableColumn<>("Detalle");
+        colDetails.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().details()));
+        table.getColumns().addAll(List.of(colWhen, colType, colResult, colUser, colEntity, colIp, colDetails));
+
+        Button refresh = new Button("Refrescar");
+        refresh.setGraphic(icon("fas-sync-alt"));
+        refresh.setOnAction(event -> loadAuditEvents(table, typeFilter.getValue()));
+        typeFilter.setOnAction(event -> loadAuditEvents(table, typeFilter.getValue()));
+
+        loadAuditEvents(table, typeFilter.getValue());
+
+        HBox filterRow = new HBox(10, label("Filtrar por tipo:", "form-label"), typeFilter);
+        filterRow.setAlignment(Pos.CENTER_LEFT);
+
+        HBox actions = new HBox(refresh);
+        actions.getStyleClass().add("settings-actions");
+
+        VBox header = new VBox(8, sectionTitle, hint, filterRow);
+        return tabLayout(header, table, actions);
+    }
+
+    private void loadAuditEvents(TableView<AuditEvent> table, String selectedType) {
+        String filter = selectedType == null || "(todos)".equals(selectedType) ? null : selectedType;
+        Task<List<AuditEvent>> task = new Task<>() {
+            @Override
+            protected List<AuditEvent> call() throws Exception {
+                return settingsApiClient.listAuditEvents(filter, null, 200);
+            }
+        };
+        task.setOnSucceeded(event -> table.setItems(FXCollections.observableArrayList(task.getValue())));
+        task.setOnFailed(event -> table.setPlaceholder(new Label("No se pudieron cargar los eventos.")));
+        start(task, "settings-audit-load");
+    }
+
+    private String shortIso(String iso) {
+        if (iso == null || iso.length() < 19) {
+            return iso == null ? "" : iso;
+        }
+        // "2026-06-01T19:30:00..." -> "2026-06-01 19:30:00"
+        return iso.substring(0, 10) + " " + iso.substring(11, 19);
+    }
+
+    private String shortId(String id) {
+        if (id == null || id.length() < 8) {
+            return id == null ? "" : id;
+        }
+        return id.substring(0, 8);
+    }
+
     /**
-     * Patron compartido por los 3 tabs de Configuracion: cabecera arriba,
+     * Patron compartido por los 4 tabs de Configuracion: cabecera arriba,
      * cuerpo desplazable en el centro (scroll vertical si no entra), y
      * acciones ancladas al pie siempre visibles aunque el portatil tenga
      * pantalla pequena.

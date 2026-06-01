@@ -1,5 +1,6 @@
 package com.benjagest.backend.settings;
 
+import com.benjagest.backend.audit.AuditService;
 import com.benjagest.backend.auth.AuthenticatedUser;
 import com.benjagest.backend.auth.CurrentUserService;
 import com.benjagest.backend.modules.Module;
@@ -33,15 +34,18 @@ public class CompanyModulesService {
     private final ModuleAccessService moduleAccessService;
     private final TenantContext tenantContext;
     private final CurrentUserService currentUserService;
+    private final AuditService auditService;
 
     public CompanyModulesService(ModuleRepository moduleRepository,
                                  ModuleAccessService moduleAccessService,
                                  TenantContext tenantContext,
-                                 CurrentUserService currentUserService) {
+                                 CurrentUserService currentUserService,
+                                 AuditService auditService) {
         this.moduleRepository = moduleRepository;
         this.moduleAccessService = moduleAccessService;
         this.tenantContext = tenantContext;
         this.currentUserService = currentUserService;
+        this.auditService = auditService;
     }
 
     public List<CompanyModuleView> list() {
@@ -105,6 +109,11 @@ public class CompanyModulesService {
                 }
             }
         }
+
+        // Auditoria del slug raiz: una linea por accion del usuario, no
+        // una por cada hijo cascadeado (esos quedan implicitos en el
+        // detalle si hace falta investigar).
+        auditService.recordModuleToggled(actor.userId(), companyId, slug, active);
 
         return list();
     }
