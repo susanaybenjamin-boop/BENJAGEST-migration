@@ -1225,6 +1225,15 @@
     -fx-spacing: 18;
 }
 
+.settings-inner-scroll {
+    -fx-background: transparent;
+    -fx-background-color: transparent;
+}
+
+.settings-inner-scroll > .viewport {
+    -fx-background-color: transparent;
+}
+
 .settings-section-title {
     -fx-text-fill: #0f172a;
     -fx-font-size: 16px;

@@ -1676,7 +1676,7 @@ public class BenjagestUiApplication extends Application {
                 return new SettingsBundle(company, email, modules);
             }
         };
-        task.setOnSucceeded(event -> setCenterAnimated(scroll(settingsView(task.getValue()))));
+        task.setOnSucceeded(event -> setCenterAnimated(settingsView(task.getValue())));
         task.setOnFailed(event -> setCenterAnimated(scroll(errorPanel("No se pudo cargar Configuracion (necesitas rol OWNER o ADMIN)"))));
         start(task, "settings-load");
     }
@@ -1706,6 +1706,10 @@ public class BenjagestUiApplication extends Application {
         Tab modulesTab = new Tab("Modulos", settingsModulesTab(bundle.modules()));
         modulesTab.setGraphic(icon("fas-cubes"));
         tabs.getTabs().addAll(companyTab, emailTab, modulesTab);
+        // El TabPane crece hasta el final del area central; sin esto, los
+        // botones del pie de cada tab podrian quedar fuera de pantalla en
+        // portatil.
+        VBox.setVgrow(tabs, Priority.ALWAYS);
 
         content.getChildren().addAll(header, tabs);
         return content;
@@ -1716,7 +1720,7 @@ public class BenjagestUiApplication extends Application {
 
     // ----- Pestana Empresa -----
 
-    private VBox settingsCompanyTab(CompanyData company) {
+    private Node settingsCompanyTab(CompanyData company) {
         TextField legalName = textInput(company.legalName(), "Razon social");
         TextField tradeName = textInput(company.tradeName(), "Nombre comercial");
         TextField taxId = textInput(company.taxIdentifier(), "NIF/CIF");
@@ -1755,9 +1759,7 @@ public class BenjagestUiApplication extends Application {
         Label sectionTitle = label("Datos generales", "settings-section-title");
         typeNote.getStyleClass().add("settings-hint");
 
-        VBox box = new VBox(sectionTitle, grid, typeNote, new Separator(), actions);
-        box.getStyleClass().add("settings-tab-body");
-        return box;
+        return tabLayout(sectionTitle, new VBox(16, grid, typeNote), actions);
     }
 
     private void saveCompany(CompanyData data) {
@@ -1784,7 +1786,7 @@ public class BenjagestUiApplication extends Application {
 
     // ----- Pestana Email SMTP -----
 
-    private VBox settingsEmailTab(EmailConfig config) {
+    private Node settingsEmailTab(EmailConfig config) {
         TextField smtpHost = textInput(config.smtpHost(), "smtp.tu-servidor.com");
         TextField smtpPort = textInput(config.smtpPort() == null ? "" : config.smtpPort().toString(), "587");
         TextField smtpUser = textInput(config.smtpUser(), "usuario@dominio");
@@ -1837,18 +1839,15 @@ public class BenjagestUiApplication extends Application {
         HBox actions = new HBox(test, save);
         actions.getStyleClass().add("settings-actions");
 
-        VBox box = new VBox(
-                label("Servidor SMTP", "settings-section-title"),
+        VBox center = new VBox(16,
                 grid,
                 flags,
                 new Separator(),
                 label("Probar configuracion", "settings-section-title"),
                 label("Envia un correo de prueba con la configuracion guardada para verificar que las credenciales funcionan.", "settings-hint"),
-                testRecipient,
-                actions
+                testRecipient
         );
-        box.getStyleClass().add("settings-tab-body");
-        return box;
+        return tabLayout(label("Servidor SMTP", "settings-section-title"), center, actions);
     }
 
     private Integer parseIntOrNull(String text) {
@@ -1908,11 +1907,8 @@ public class BenjagestUiApplication extends Application {
 
     // ----- Pestana Modulos -----
 
-    private VBox settingsModulesTab(List<CompanyModuleEntry> modules) {
+    private Node settingsModulesTab(List<CompanyModuleEntry> modules) {
         pendingModuleChanges.clear();
-
-        VBox container = new VBox();
-        container.getStyleClass().add("settings-tab-body");
 
         Label sectionTitle = label("Modulos activos por empresa", "settings-section-title");
         Label hint = new Label("Marca o desmarca cada modulo y pulsa Guardar cambios. "
@@ -1920,7 +1916,6 @@ public class BenjagestUiApplication extends Application {
                 + "(series, facturas, cobros, recurrentes); si lo desactivas, sale entero.");
         hint.setWrapText(true);
         hint.getStyleClass().add("settings-hint");
-        container.getChildren().addAll(sectionTitle, hint);
 
         VBox list = new VBox(8);
         list.getStyleClass().add("module-list");
@@ -1955,9 +1950,32 @@ public class BenjagestUiApplication extends Application {
         actions.getStyleClass().add("settings-actions");
         actions.setAlignment(Pos.CENTER_RIGHT);
 
-        container.getChildren().addAll(list, new Separator(), actions);
+        VBox header = new VBox(8, sectionTitle, hint);
+        Node body = tabLayout(header, list, actions);
         refreshSaveModulesButton();
-        return container;
+        return body;
+    }
+
+    /**
+     * Patron compartido por los 3 tabs de Configuracion: cabecera arriba,
+     * cuerpo desplazable en el centro (scroll vertical si no entra), y
+     * acciones ancladas al pie siempre visibles aunque el portatil tenga
+     * pantalla pequena.
+     */
+    private Node tabLayout(Node header, Node body, Node footerActions) {
+        ScrollPane scroll = new ScrollPane(body);
+        scroll.setFitToWidth(true);
+        scroll.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
+        scroll.getStyleClass().add("settings-inner-scroll");
+
+        VBox bottom = new VBox(12, new Separator(), footerActions);
+        BorderPane layout = new BorderPane();
+        layout.setTop(header);
+        layout.setCenter(scroll);
+        layout.setBottom(bottom);
+        layout.getStyleClass().add("settings-tab-body");
+        BorderPane.setMargin(scroll, new Insets(12, 0, 12, 0));
+        return layout;
     }
 
     private void refreshSaveModulesButton() {
