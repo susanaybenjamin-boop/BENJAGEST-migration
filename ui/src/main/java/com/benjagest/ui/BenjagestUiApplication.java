@@ -376,6 +376,10 @@ public class BenjagestUiApplication extends Application {
         Button logout = new Button(t("logout"));
         logout.setGraphic(icon("fas-sign-out-alt"));
         logout.setOnAction(event -> {
+            // Revocamos el refresh token en backend antes de limpiar el
+            // estado local. Asi, si alguien recupera ese refresh ya no
+            // sirve para generar mas accesses.
+            authApiClient.logout();
             session = null;
             activeModulesCache = List.of();
             AuthSession.get().clear();

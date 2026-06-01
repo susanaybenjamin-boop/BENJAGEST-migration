@@ -7,6 +7,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Date;
+import java.util.UUID;
 import javax.crypto.SecretKey;
 import org.springframework.stereotype.Service;
 
@@ -70,7 +71,11 @@ public class JwtService {
     public String createRefreshToken(String userId) {
         Instant now = Instant.now();
         Instant exp = now.plus(properties.refreshTtlMinutes(), ChronoUnit.MINUTES);
+        // jti unico para que el refresh pueda revocarse (denylist en
+        // revoked_refresh_tokens). Sin jti, dos refreshes emitidos en
+        // el mismo segundo serian indistinguibles para la revocacion.
         return Jwts.builder()
+                .id(UUID.randomUUID().toString())
                 .subject(userId)
                 .issuedAt(Date.from(now))
                 .expiration(Date.from(exp))

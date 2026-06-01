@@ -2,14 +2,17 @@ package com.benjagest.backend.auth;
 
 import com.benjagest.backend.auth.dto.LoginRequest;
 import com.benjagest.backend.auth.dto.LoginResponse;
+import com.benjagest.backend.auth.dto.LogoutRequest;
 import com.benjagest.backend.auth.dto.MeResponse;
 import com.benjagest.backend.auth.dto.RefreshRequest;
 import jakarta.validation.Valid;
+import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
@@ -54,5 +57,11 @@ public class AuthController {
     @PostMapping("/switch-company/{companyId}")
     public LoginResponse switchCompany(@PathVariable("companyId") String companyId) {
         return authService.switchCompany(currentUserService.require(), companyId);
+    }
+
+    @PostMapping("/logout")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void logout(@RequestBody(required = false) LogoutRequest request) {
+        authService.logout(request == null ? null : request.refreshToken());
     }
 }
