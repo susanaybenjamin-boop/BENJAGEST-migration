@@ -1,10 +1,12 @@
 # Backlog operativo BENJAGEST
 
 > Lista única ordenada de mayor a menor importancia con TODO lo que hay que hacer en BENJAGEST.
-> Se va tachando conforme cada item se crea, prueba, commitea y mergea a develop.
+> Se va tachando conforme cada item se crea, prueba, commitea y mergea a `develop`.
 >
-> **Última revisión:** 2026-05-31.
+> **Última revisión:** 2026-06-01.
 > **Fuentes:** [`gap-analysis-contendo.md`](gap-analysis-contendo.md), [`gap-analysis-config-ui.md`](gap-analysis-config-ui.md), [`next-sessions-plan.md`](next-sessions-plan.md), [`migration-roadmap.md`](migration-roadmap.md).
+>
+> **Forma de trabajo (junio 2026):** Pablo ya no participa de forma activa (solo entra de uvas a peras). Benjamin lidera y decide. Todo el trabajo se hace en la rama `feat/Benjamin` → se prueba localmente → se commitea → se mergea a `develop` con `--no-ff`. Cada item cerrado se marca `✅` aquí con el hash del commit.
 
 ## Cómo se usa
 
@@ -39,7 +41,7 @@ Lo que toca **antes** de seguir con features funcionales. Cubre: legalidad, segu
 
 ### Seguridad y trazabilidad
 
-- ⬜ **Refactor WorkspaceRepository** — 25 usos de `DemoCompany.ID` pendientes de migrar a `tenantContext.getCurrentCompanyId()`. Es código de Pablo, requiere cuidado.
+- ⬜ **Refactor WorkspaceRepository** — 25 usos de `DemoCompany.ID` pendientes de migrar a `tenantContext.getCurrentCompanyId()`. Código heredado de Pablo: hacerlo con tests manuales antes/después y commit pequeño y aislado.
 - ⬜ **@RequiresRole + RoleInterceptor** — anotación + handler que devuelve 403 si el rol del JWT no está en la whitelist. Aplicar a `settings`, `users`, `modulos`.
 - ⬜ **Audit log activo** — `audit_events` empieza a recibir entradas en LOGIN_OK, LOGIN_FAIL, COMPANY_SWITCHED, MODULE_ENABLED/DISABLED. Vista de visualización filtrable.
 - ⬜ **Cifrado columnas sensibles con Jasypt** — aplicar a `digital_certificates` (cuando exista) y a futuras `credenciales_externas`. Decisión 7 architecture.
@@ -97,7 +99,7 @@ Cuando lo crítico esté cerrado.
 
 ### Asesoría / multi-cliente
 
-- ⬜ Confirmar con Pablo si `parent_company_id` + `MANAGED_CLIENT` es el link asesoría↔cliente. Si no, crear `advisory_client_links`.
+- ⬜ Decidir si `parent_company_id` + `MANAGED_CLIENT` es el link asesoría↔cliente, o si hace falta crear `advisory_client_links` (tabla N:M). Decisión de Benjamin al empezar el slice de asesoría.
 - ⬜ Mensajes asesoría↔cliente (`asesoria_mensajes_180`).
 - ⬜ Documentos compartidos (`documentos_asesoria_180`).
 - ⬜ Notificaciones específicas de asesor (`notificaciones_asesor_180`).
@@ -175,12 +177,14 @@ Cuando lo crítico esté cerrado.
 
 ---
 
-## ❓ Decisión de alcance — hablar con Pablo cuando vuelva
+## ❓ Decisión de alcance — Benjamin decide al llegar el momento
+
+> No hay nadie a quien consultar. Cuando un slice toque uno de estos puntos, Claude propone 2-3 opciones con pros/contras y Benjamin elige. Sólo se le manda un WhatsApp a Pablo si la decisión es irreversible y muy estructural (ej. modelo SaaS vs on-premise).
 
 - ❓ Módulo construcción (`cons_*`, 50 tablas). [§11.H](gap-analysis-contendo.md). Es prácticamente otra aplicación dentro de la misma BD.
 - ❓ FERRAPP (`ferrapp_proyectos`, `ferrapp_etiquetas_custom`).
 - ❓ MCP / IA con quotas (`mcp_ai_*`, `contendo_memory_180`, `conocimiento_180`).
-- ❓ Planes y SaaS (`plans_180`). ¿BENJAGEST es SaaS multi-tenant u on-premise?
+- ❓ Planes y SaaS (`plans_180`). ¿BENJAGEST es SaaS multi-tenant u on-premise? **(Decisión estructural — confirmar con Pablo antes de tocar.)**
 - ❓ Páginas legales públicas (privacidad / términos / aviso legal / cumplimiento legal).
 - ❓ Onboarding y flujo de alta público (`registro`, `activar`, `verificar`).
 - ❓ Migración de datos históricos desde Supabase → MariaDB.
@@ -191,8 +195,10 @@ Cuando lo crítico esté cerrado.
 
 ## Reglas de manejo del backlog
 
-1. **Un commit cierra como mucho un item del backlog** (a veces uno cierra varios; está bien si están relacionados — anotar todos los items cerrados en el mensaje del commit).
-2. Cuando un item se cierre, **mover a `✅` con el hash del commit** entre paréntesis (ej. `✅ Issuer CRUD end-to-end (commits 17b251d, adf1766)`).
-3. Si aparece algo nuevo durante el trabajo: **añadirlo aquí en su cubo de prioridad**, no en el código solo.
-4. Antes de empezar una sesión: leer este fichero. Antes de cerrar una sesión: actualizar este fichero con lo cerrado y mover items si la prioridad cambió.
-5. La sección **"Estado base ya cerrado"** del principio es resumen — no detallar item por item, solo bloques cerrados.
+1. **Trabajo siempre desde `feat/Benjamin`**. Se prueba localmente (backend + UI levantados, flujo manual) antes de commitear.
+2. **Un commit cierra como mucho un item del backlog** (a veces uno cierra varios; está bien si están relacionados — anotar todos los items cerrados en el mensaje del commit).
+3. Cuando un item se cierre, **marcar `✅` con el hash del commit** entre paréntesis (ej. `✅ Issuer CRUD end-to-end (commits 17b251d, adf1766)`) y moverlo al final de su sección.
+4. Tras commitear y mergear a `develop` (con `git merge --no-ff`), `git push` a ambas ramas.
+5. Si aparece algo nuevo durante el trabajo: **añadirlo aquí en su cubo de prioridad**, no en el código solo.
+6. Antes de empezar una sesión: leer este fichero. Antes de cerrar una sesión: actualizar este fichero con lo cerrado y mover items si la prioridad cambió.
+7. La sección **"Estado base ya cerrado"** del principio es resumen — no detallar item por item, solo bloques cerrados.

@@ -81,6 +81,45 @@ public class ModuleRepository {
         return count != null && count > 0;
     }
 
+    /**
+     * Resuelve el UUID de un slug del catalogo. Devuelve null si el slug
+     * no existe (no se distingue "no existe" de "esta inactivo" — quien
+     * llama valida segun su caso).
+     */
+    public String findIdBySlug(String slug) {
+        List<String> matches = jdbcTemplate.query(
+                "SELECT id FROM module_catalog WHERE slug = ? LIMIT 1",
+                (rs, rowNum) -> rs.getString("id"),
+                slug
+        );
+        return matches.isEmpty() ? null : matches.get(0);
+    }
+
+    /**
+     * Activa/desactiva un modulo para una empresa. Upsert: si no existe
+     * la fila company_modules, la crea con active=valor; si existe, solo
+     * actualiza active y la fecha correspondiente.
+     */
+    public void setActive(String companyId, String moduleId, boolean active, String actorUserId) {
+        jdbcTemplate.update("""
+                INSERT INTO company_modules (id, company_id, module_id, active, activated_by, deactivated_by, deactivated_at)
+                VALUES (UUID(), ?, ?, ?, ?, ?, ?)
+                ON DUPLICATE KEY UPDATE
+                    active = VALUES(active),
+                    activated_at = IF(VALUES(active) = TRUE, CURRENT_TIMESTAMP, activated_at),
+                    activated_by = IF(VALUES(active) = TRUE, VALUES(activated_by), activated_by),
+                    deactivated_at = IF(VALUES(active) = FALSE, CURRENT_TIMESTAMP, NULL),
+                    deactivated_by = IF(VALUES(active) = FALSE, VALUES(deactivated_by), NULL)
+                """,
+                companyId,
+                moduleId,
+                active,
+                active ? actorUserId : null,
+                active ? null : actorUserId,
+                active ? null : new java.sql.Timestamp(System.currentTimeMillis())
+        );
+    }
+
     private Module mapModule(ResultSet rs, int rowNum) throws SQLException {
         return new Module(
                 rs.getString("slug"),

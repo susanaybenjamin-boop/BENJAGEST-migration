@@ -1,8 +1,10 @@
 # Plan de las próximas sesiones — Slices C1, C2, C3
 
 > Documento compartido entre Benjamin y Claude.
-> Plan acordado al final de la sesión del **2026-05-30**.
+> Plan acordado al final de la sesión del **2026-05-30**, vigente desde **2026-06-01** sin esperar a Pablo.
 > Decisiones cerradas — no se re-debaten en cada sesión.
+>
+> **Forma de trabajo:** rama `feat/Benjamin`. Cada slice: implementar → probar local → commit → merge a `develop` (`--no-ff`) → push. El backlog vivo está en [`backlog.md`](backlog.md): se va tachando ahí lo que se cierra.
 >
 > **Versión gemela en memoria de Claude** (auto-recall):
 > `memory/project_benjagest_next_session.md` — se borra cuando los 3 slices estén cerrados.

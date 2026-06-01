@@ -16,8 +16,11 @@ import java.util.TreeMap;
 
 import org.kordamp.ikonli.javafx.FontIcon;
 
+import com.benjagest.ui.model.CompanyData;
+import com.benjagest.ui.model.CompanyModuleEntry;
 import com.benjagest.ui.model.DashboardData;
 import com.benjagest.ui.model.DashboardItem;
+import com.benjagest.ui.model.EmailConfig;
 import com.benjagest.ui.model.IssuerCreateRequest;
 import com.benjagest.ui.model.IssuerSummary;
 import com.benjagest.ui.model.Membership;
@@ -27,6 +30,7 @@ import com.benjagest.ui.model.SessionInfo;
 import com.benjagest.ui.service.AuthApiClient;
 import com.benjagest.ui.service.AuthSession;
 import com.benjagest.ui.service.IssuerApiClient;
+import com.benjagest.ui.service.SettingsApiClient;
 import com.benjagest.ui.service.WorkspaceApiClient;
 
 import javafx.animation.FadeTransition;
@@ -53,8 +57,12 @@ import javafx.scene.control.ButtonBar;
 import javafx.scene.control.ButtonType;
 import javafx.scene.control.Dialog;
 import javafx.scene.control.Label;
+import javafx.scene.control.CheckBox;
 import javafx.scene.control.PasswordField;
 import javafx.scene.control.ScrollPane;
+import javafx.scene.control.Tab;
+import javafx.scene.control.TabPane;
+import javafx.scene.control.TitledPane;
 import javafx.scene.control.Separator;
 import javafx.scene.control.TableColumn;
 import javafx.scene.control.TableView;
@@ -81,7 +89,7 @@ public class BenjagestUiApplication extends Application {
             new ModuleLink("purchases", "Compras", "fas-receipt"),
             new ModuleLink("reports", "Informes", "fas-chart-line"),
             new ModuleLink("calendar", "Agenda", "fas-calendar-alt"),
-            new ModuleLink("settings", "Usuarios", "fas-users-cog")
+            new ModuleLink("settings", "Configuracion", "fas-cog")
     );
 
     private static final List<ModuleLink> BUSINESS_MODULES = List.of(
@@ -93,7 +101,7 @@ public class BenjagestUiApplication extends Application {
             new ModuleLink("tax", "Fiscal", "fas-percentage"),
             new ModuleLink("reports", "Informes", "fas-chart-line"),
             new ModuleLink("calendar", "Agenda", "fas-calendar-alt"),
-            new ModuleLink("settings", "Usuarios", "fas-users-cog")
+            new ModuleLink("settings", "Configuracion", "fas-cog")
     );
 
     private static final DateTimeFormatter DISPLAY_DATE = DateTimeFormatter.ofPattern("dd/MM/yyyy");
@@ -102,6 +110,7 @@ public class BenjagestUiApplication extends Application {
     private final WorkspaceApiClient apiClient = new WorkspaceApiClient();
     private final IssuerApiClient issuerApiClient = new IssuerApiClient();
     private final AuthApiClient authApiClient = new AuthApiClient();
+    private final SettingsApiClient settingsApiClient = new SettingsApiClient();
     private final Map<String, Button> navigationButtons = new LinkedHashMap<>();
 
     private BorderPane root;
@@ -473,6 +482,12 @@ public class BenjagestUiApplication extends Application {
             // Issuers no pasa por el endpoint genrico /api/modules.
             // Tiene su propia API REST en /api/issuers, llamada via IssuerApiClient.
             showIssuers();
+            return;
+        }
+        if ("settings".equals(module)) {
+            // Configuracion tampoco pasa por /api/modules: tiene 3 pestanas
+            // (Empresa / Email / Modulos) sobre /api/settings/*.
+            showSettings();
             return;
         }
         Task<ModuleData> task = new Task<>() {
@@ -1579,6 +1594,328 @@ public class BenjagestUiApplication extends Application {
         task.setOnSucceeded(event -> showModule("calendar"));
         task.setOnFailed(event -> showError(t("deleteFailed"), t("backendCheck")));
         start(task, "calendar-delete-" + id);
+    }
+
+    // ===================================================================
+    //  Pantalla Configuracion (Slice C3): TabPane con 3 pestanas
+    // ===================================================================
+
+    private void showSettings() {
+        // Cargamos los tres recursos en paralelo (3 llamadas REST) y
+        // construimos el TabPane cuando todas hayan respondido. Si una
+        // falla, mostramos error.
+        Task<SettingsBundle> task = new Task<>() {
+            @Override
+            protected SettingsBundle call() throws Exception {
+                CompanyData company = settingsApiClient.getCompany();
+                EmailConfig email = settingsApiClient.getEmailConfig();
+                List<CompanyModuleEntry> modules = settingsApiClient.listModules();
+                return new SettingsBundle(company, email, modules);
+            }
+        };
+        task.setOnSucceeded(event -> setCenterAnimated(scroll(settingsView(task.getValue()))));
+        task.setOnFailed(event -> setCenterAnimated(scroll(errorPanel("No se pudo cargar Configuracion (necesitas rol OWNER o ADMIN)"))));
+        start(task, "settings-load");
+    }
+
+    private VBox settingsView(SettingsBundle bundle) {
+        VBox content = content();
+
+        Label title = new Label("Configuracion");
+        title.getStyleClass().add("module-detail-title");
+        Label subtitle = new Label(session.companyName());
+        subtitle.getStyleClass().add("module-detail-description");
+        VBox titleBox = new VBox(4, title, subtitle);
+        StackPane moduleIcon = iconBubble("fas-cog", "module-title-icon");
+        Region spacer = new Region();
+        HBox.setHgrow(spacer, Priority.ALWAYS);
+        HBox header = new HBox(16, titleBox, moduleIcon, spacer);
+        header.setAlignment(Pos.CENTER_LEFT);
+        header.getStyleClass().add("module-detail-header");
+
+        TabPane tabs = new TabPane();
+        tabs.setTabClosingPolicy(TabPane.TabClosingPolicy.UNAVAILABLE);
+        Tab companyTab = new Tab("Empresa", settingsCompanyTab(bundle.company()));
+        companyTab.setGraphic(icon("fas-building"));
+        Tab emailTab = new Tab("Email SMTP", settingsEmailTab(bundle.email()));
+        emailTab.setGraphic(icon("fas-envelope"));
+        Tab modulesTab = new Tab("Modulos", settingsModulesTab(bundle.modules()));
+        modulesTab.setGraphic(icon("fas-cubes"));
+        tabs.getTabs().addAll(companyTab, emailTab, modulesTab);
+
+        content.getChildren().addAll(header, tabs);
+        return content;
+    }
+
+    private record SettingsBundle(CompanyData company, EmailConfig email, List<CompanyModuleEntry> modules) {
+    }
+
+    // ----- Pestana Empresa -----
+
+    private VBox settingsCompanyTab(CompanyData company) {
+        TextField legalName = textInput(company.legalName(), "Razon social");
+        TextField tradeName = textInput(company.tradeName(), "Nombre comercial");
+        TextField taxId = textInput(company.taxIdentifier(), "NIF/CIF");
+        TextField email = textInput(company.email(), "Email de contacto");
+        TextField phone = textInput(company.phone(), "Telefono");
+        TextField website = textInput(company.website(), "Web");
+
+        GridPane grid = formGrid();
+        addFormRow(grid, 0, "Razon social *", legalName);
+        addFormRow(grid, 1, "Nombre comercial", tradeName);
+        addFormRow(grid, 2, "NIF/CIF", taxId);
+        addFormRow(grid, 3, "Email", email);
+        addFormRow(grid, 4, "Telefono", phone);
+        addFormRow(grid, 5, "Web", website);
+
+        Label typeNote = new Label("Tipo de empresa: " + company.companyType()
+                + " (no editable desde aqui)");
+        typeNote.getStyleClass().add("status-detail");
+
+        Button save = new Button("Guardar cambios");
+        save.setGraphic(icon("fas-save"));
+        save.setOnAction(event -> saveCompany(new CompanyData(
+                company.id(),
+                legalName.getText(),
+                tradeName.getText(),
+                taxId.getText(),
+                company.companyType(),
+                email.getText(),
+                phone.getText(),
+                website.getText()
+        )));
+
+        HBox actions = new HBox(10, save);
+        actions.setAlignment(Pos.CENTER_RIGHT);
+
+        VBox box = new VBox(16, grid, typeNote, new Separator(), actions);
+        box.setPadding(new Insets(16));
+        return box;
+    }
+
+    private void saveCompany(CompanyData data) {
+        if (data.legalName() == null || data.legalName().isBlank()) {
+            showError("Falta dato", "La razon social es obligatoria");
+            return;
+        }
+        Task<CompanyData> task = new Task<>() {
+            @Override
+            protected CompanyData call() throws Exception {
+                return settingsApiClient.updateCompany(data);
+            }
+        };
+        task.setOnSucceeded(event -> {
+            Alert ok = new Alert(Alert.AlertType.INFORMATION,
+                    "Datos de la empresa actualizados.", ButtonType.OK);
+            ok.setHeaderText(null);
+            ok.showAndWait();
+            showSettings();
+        });
+        task.setOnFailed(event -> showError("No se pudo guardar", "Comprueba los datos y vuelve a intentarlo."));
+        start(task, "settings-company-save");
+    }
+
+    // ----- Pestana Email SMTP -----
+
+    private VBox settingsEmailTab(EmailConfig config) {
+        TextField smtpHost = textInput(config.smtpHost(), "smtp.tu-servidor.com");
+        TextField smtpPort = textInput(config.smtpPort() == null ? "" : config.smtpPort().toString(), "587");
+        TextField smtpUser = textInput(config.smtpUser(), "usuario@dominio");
+        PasswordField smtpPassword = new PasswordField();
+        smtpPassword.setPromptText(config.passwordConfigured()
+                ? "(password guardada - deja vacio para no cambiar)"
+                : "password");
+        TextField fromAddress = textInput(config.fromAddress(), "facturas@tu-dominio");
+        TextField fromName = textInput(config.fromName(), "Nombre que aparece como remitente");
+        TextField replyTo = textInput(config.replyTo(), "respuestas@tu-dominio");
+        CheckBox tlsEnabled = new CheckBox("TLS / STARTTLS habilitado");
+        tlsEnabled.setSelected(config.tlsEnabled());
+        CheckBox authRequired = new CheckBox("El servidor SMTP requiere autenticacion");
+        authRequired.setSelected(config.authRequired());
+
+        GridPane grid = formGrid();
+        addFormRow(grid, 0, "Servidor SMTP", smtpHost);
+        addFormRow(grid, 1, "Puerto", smtpPort);
+        addFormRow(grid, 2, "Usuario", smtpUser);
+        addFormRow(grid, 3, "Password", smtpPassword);
+        addFormRow(grid, 4, "From (remitente)", fromAddress);
+        addFormRow(grid, 5, "Nombre del remitente", fromName);
+        addFormRow(grid, 6, "Reply-To", replyTo);
+
+        VBox flags = new VBox(8, tlsEnabled, authRequired);
+
+        TextField testRecipient = new TextField();
+        testRecipient.setPromptText("destinatario@dominio (para email de prueba)");
+
+        Button save = new Button("Guardar");
+        save.setGraphic(icon("fas-save"));
+        save.setOnAction(event -> saveEmailConfig(
+                smtpHost.getText(),
+                parseIntOrNull(smtpPort.getText()),
+                smtpUser.getText(),
+                smtpPassword.getText(),
+                fromAddress.getText(),
+                fromName.getText(),
+                replyTo.getText(),
+                tlsEnabled.isSelected(),
+                authRequired.isSelected()
+        ));
+
+        Button test = new Button("Enviar email de prueba");
+        test.setGraphic(icon("fas-paper-plane"));
+        test.setOnAction(event -> sendTestEmail(testRecipient.getText()));
+
+        HBox actions = new HBox(10, test, save);
+        actions.setAlignment(Pos.CENTER_RIGHT);
+
+        VBox box = new VBox(16, grid, flags, new Separator(), label("Probar configuracion", "card-title"), testRecipient, actions);
+        box.setPadding(new Insets(16));
+        return box;
+    }
+
+    private Integer parseIntOrNull(String text) {
+        if (text == null || text.isBlank()) {
+            return null;
+        }
+        try {
+            return Integer.parseInt(text.trim());
+        } catch (NumberFormatException ex) {
+            return null;
+        }
+    }
+
+    private void saveEmailConfig(String host, Integer port, String user, String password,
+                                 String fromAddress, String fromName, String replyTo,
+                                 boolean tls, boolean auth) {
+        Task<EmailConfig> task = new Task<>() {
+            @Override
+            protected EmailConfig call() throws Exception {
+                return settingsApiClient.updateEmailConfig(host, port, user, password,
+                        fromAddress, fromName, replyTo, tls, auth);
+            }
+        };
+        task.setOnSucceeded(event -> {
+            Alert ok = new Alert(Alert.AlertType.INFORMATION,
+                    "Configuracion SMTP guardada.", ButtonType.OK);
+            ok.setHeaderText(null);
+            ok.showAndWait();
+            showSettings();
+        });
+        task.setOnFailed(event -> showError("No se pudo guardar", "Revisa los datos del servidor SMTP."));
+        start(task, "settings-email-save");
+    }
+
+    private void sendTestEmail(String recipient) {
+        if (recipient == null || recipient.isBlank()) {
+            showError("Falta dato", "Indica un email destinatario para la prueba.");
+            return;
+        }
+        Task<Void> task = new Task<>() {
+            @Override
+            protected Void call() throws Exception {
+                settingsApiClient.sendTestEmail(recipient.trim());
+                return null;
+            }
+        };
+        task.setOnSucceeded(event -> {
+            Alert ok = new Alert(Alert.AlertType.INFORMATION,
+                    "Email de prueba enviado a " + recipient + ".", ButtonType.OK);
+            ok.setHeaderText(null);
+            ok.showAndWait();
+        });
+        task.setOnFailed(event -> showError("Envio fallido",
+                "Comprueba host/puerto/usuario/password y vuelve a intentarlo."));
+        start(task, "settings-email-test");
+    }
+
+    // ----- Pestana Modulos -----
+
+    private VBox settingsModulesTab(List<CompanyModuleEntry> modules) {
+        VBox container = new VBox(12);
+        container.setPadding(new Insets(16));
+
+        Label hint = new Label("Activa o desactiva los modulos visibles para esta empresa. "
+                + "Algunos modulos dependen de otros: activar un dependiente activa tambien su requisito.");
+        hint.setWrapText(true);
+        hint.getStyleClass().add("status-detail");
+        container.getChildren().add(hint);
+
+        // Agrupamos por categoria (parentSlug == null) y dentro de cada
+        // categoria mostramos los sub-modulos como filas con un CheckBox.
+        for (CompanyModuleEntry category : modules.stream().filter(m -> m.parentSlug() == null || m.parentSlug().isBlank()).toList()) {
+            VBox categoryBox = new VBox(6);
+            CheckBox categoryToggle = new CheckBox(category.label());
+            categoryToggle.setSelected(category.active());
+            categoryToggle.setDisable("settings".equals(category.slug()));
+            categoryToggle.setOnAction(event -> toggleModule(category.slug(), categoryToggle.isSelected()));
+            HBox categoryHeader = new HBox(8, iconBubble(category.icon() == null ? "fas-cube" : category.icon(), "panel-icon"), categoryToggle);
+            categoryHeader.setAlignment(Pos.CENTER_LEFT);
+            categoryBox.getChildren().add(categoryHeader);
+
+            List<CompanyModuleEntry> children = modules.stream()
+                    .filter(m -> category.slug().equals(m.parentSlug()))
+                    .toList();
+            for (CompanyModuleEntry child : children) {
+                CheckBox childToggle = new CheckBox(child.label());
+                childToggle.setSelected(child.active());
+                childToggle.setDisable("settings".equals(child.slug()));
+                childToggle.setOnAction(event -> toggleModule(child.slug(), childToggle.isSelected()));
+                Label childHint = new Label(child.requiresSlug() == null || child.requiresSlug().isBlank()
+                        ? "" : "Requiere: " + child.requiresSlug());
+                childHint.getStyleClass().add("status-detail");
+                HBox row = new HBox(10, childToggle, childHint);
+                row.setAlignment(Pos.CENTER_LEFT);
+                row.setPadding(new Insets(2, 0, 2, 28));
+                categoryBox.getChildren().add(row);
+            }
+
+            TitledPane pane = new TitledPane(category.label(), categoryBox);
+            pane.setExpanded(category.active());
+            container.getChildren().add(pane);
+        }
+
+        return container;
+    }
+
+    private void toggleModule(String slug, boolean active) {
+        Task<List<CompanyModuleEntry>> task = new Task<>() {
+            @Override
+            protected List<CompanyModuleEntry> call() throws Exception {
+                return settingsApiClient.setModuleActive(slug, active);
+            }
+        };
+        task.setOnSucceeded(event -> showSettings());
+        task.setOnFailed(event -> {
+            showError("No se pudo cambiar el modulo",
+                    "Revisa que tengas rol OWNER o ADMIN.");
+            showSettings();
+        });
+        start(task, "settings-modules-toggle-" + slug);
+    }
+
+    // ----- helpers de formularios -----
+
+    private TextField textInput(String value, String prompt) {
+        TextField field = new TextField(value == null ? "" : value);
+        field.setPromptText(prompt);
+        return field;
+    }
+
+    private GridPane formGrid() {
+        GridPane grid = new GridPane();
+        grid.setHgap(12);
+        grid.setVgap(10);
+        grid.getStyleClass().add("form-grid");
+        return grid;
+    }
+
+    private void addFormRow(GridPane grid, int row, String labelText, javafx.scene.control.Control input) {
+        Label fieldLabel = new Label(labelText);
+        fieldLabel.getStyleClass().add("form-label");
+        input.getStyleClass().add("form-input");
+        grid.add(fieldLabel, 0, row);
+        grid.add(input, 1, row);
+        GridPane.setHgrow(input, Priority.ALWAYS);
     }
 
     private VBox errorPanel(String message) {
