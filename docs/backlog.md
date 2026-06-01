@@ -55,7 +55,11 @@ Lo que toca **antes** de seguir con features funcionales. Cubre: legalidad, segu
 > Los próximos items (hash, firma, anulación, almacenamiento, email) se enchufan sobre `SalesInvoiceService.validate` y futuros endpoints. F4 (crear/editar + PDF multipágina), F6 (dashboard real con KPIs y gráficos) pendientes.
 
 - ✅ Series de numeración: paquete `billing/series/` (Series record + Repository con `SELECT … FOR UPDATE` para emisión atómica + Service con reset BY_YEAR + Controller `/api/billing/series`). Tipos soportados: STANDARD, PROFORMA, RECTIFYING, TEST. Anulaciones quedan como evento sobre la factura existente (no es serie nueva — modelo VeriFactu). Smoke tests verdes: 3 claims secuenciales `PROF-2026-0001/2/3`, duplicate code → 409, locked → 409.
-- ⬜ Hash encadenado + firma XML + reintentos.
+- 🔵 Hash encadenado + firma XML + reintentos (parcial):
+  - ✅ **VF1** Hash encadenado + registro local — V14 tabla `verifactu_registry` (UNIQUE invoice_id+mode, status PENDING/SENT/ACKNOWLEDGED/ERROR), `VerifactuHashService` reproduce fórmula AEAT (IDEmisor&NumSerie&Fecha&TipoFactura=F1&Cuota&Importe&Huella&FechaHoraHuso, SHA-256 hex MAYÚSCULAS, hora Europe/Madrid), Repository + Service idempotente, hook en `SalesInvoiceService.validate` que registra cuando mode≠OFF. Endpoint GET `/api/billing/verifactu-registry` con filtros mode/status. Smoke verde: 3 facturas en TEST encadenan correctamente.
+  - ⬜ **VF2** Firma XAdES-EPES con certificado real (Apache Santuario + BouncyCastle).
+  - ⬜ **VF3** Cliente SOAP a AEAT (Apache CXF, modos TEST y PROD).
+  - ⬜ **VF4** Job @Scheduled de reintentos con backoff + middleware compliance (tipos F1/F2/R1-R5, regímenes IVA, deadlines).
 - ⬜ Anulación con vínculo (`verifactu_anulacion_columns`).
 - ⬜ Almacenamiento documental de facturas (ruta `facturacion/almacenamiento`).
 - ⬜ Envío facturas por email (`envios_email_180` + `empresa_email_config_180`).

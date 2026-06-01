@@ -1,6 +1,7 @@
 package com.benjagest.backend.billing.invoices;
 
 import com.benjagest.backend.billing.series.SeriesService;
+import com.benjagest.backend.billing.verifactu.VerifactuRegistryService;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
@@ -32,10 +33,14 @@ public class SalesInvoiceService {
 
     private final SalesInvoiceRepository repository;
     private final SeriesService seriesService;
+    private final VerifactuRegistryService verifactuRegistryService;
 
-    public SalesInvoiceService(SalesInvoiceRepository repository, SeriesService seriesService) {
+    public SalesInvoiceService(SalesInvoiceRepository repository,
+                               SeriesService seriesService,
+                               VerifactuRegistryService verifactuRegistryService) {
         this.repository = repository;
         this.seriesService = seriesService;
+        this.verifactuRegistryService = verifactuRegistryService;
     }
 
     public List<SalesInvoice> list(String statusFilter,
@@ -160,6 +165,12 @@ public class SalesInvoiceService {
         if (affected == 0) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "La factura ya no esta en DRAFT");
         }
+
+        // Hook VeriFactu: si la empresa tiene mode != OFF, registramos
+        // la huella encadenada. Si el modo es OFF, no se crea registro
+        // (la cadena solo existe a partir del momento en que se activa).
+        SalesInvoice validated = get(id);
+        verifactuRegistryService.registerIfActive(validated);
         return get(id);
     }
 

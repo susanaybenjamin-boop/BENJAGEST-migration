@@ -1,0 +1,116 @@
+package com.benjagest.backend.billing.verifactu;
+
+import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.time.LocalDate;
+import java.time.OffsetDateTime;
+import java.time.format.DateTimeFormatter;
+import org.springframework.stereotype.Service;
+
+/**
+ * Reproduce la formula de hash SHA-256 segun la especificacion VeriFactu
+ * de la AEAT. Replicada fielmente de la implementacion CONTENDO en
+ * `verifactuService.js` (validada en produccion contra AEAT).
+ *
+ * Formato de la cadena (orden y separador "&" obligatorios):
+ *
+ *   IDEmisorFactura={NIF EN MAYUSCULAS}
+ *   &NumSerieFactura={NUMERO TAL CUAL}
+ *   &FechaExpedicionFactura={DD-MM-YYYY}
+ *   &TipoFactura=F1
+ *   &CuotaTotal={IVA TOTAL CON 2 DECIMALES}
+ *   &ImporteTotal={IMPORTE TOTAL CON 2 DECIMALES}
+ *   &Huella={HASH ANTERIOR EN MAYUSCULAS}
+ *   &FechaHoraHusoGenRegistro={YYYY-MM-DDTHH:MM:SS+01:00}
+ *
+ * Notas criticas (de CONTENDO):
+ *   - AEAT compara hashes en MAYUSCULAS.
+ *   - El primer registro de la cadena lleva Huella vacia (la cadena
+ *     vacia se incluye en el hash; quitarla cambia el resultado).
+ *   - Los importes se formatean con `toFixed(2)` JS (HALF_UP a 2
+ *     decimales).
+ *   - TipoFactura "F1" = factura completa. Otros valores (F2 simplifi-
+ *     cada, R1-R5 rectificativas) requieren ramas extra que NO estan
+ *     implementadas todavia (slice VF4).
+ *   - Los offsets horarios deben seguir hora oficial de Espana
+ *     (+01:00 invierno, +02:00 verano). Aqui usamos la zona del
+ *     servidor; en produccion conviene forzar Europe/Madrid.
+ */
+@Service
+public class VerifactuHashService {
+
+    private static final DateTimeFormatter FECHA_EXPEDICION = DateTimeFormatter.ofPattern("dd-MM-yyyy");
+    private static final DateTimeFormatter FECHA_HORA_HUSO = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ssxxx");
+
+    /**
+     * Calcula la huella (hash) VeriFactu de una factura encadenando con
+     * el hash anterior de la misma cadena (company + modo).
+     *
+     * @param nifEmisor        NIF/CIF de la empresa emisora (se pone en mayusculas).
+     * @param invoiceNumber    Numero legal de la factura (tal cual, sin espacios).
+     * @param invoiceDate      Fecha de expedicion (DD-MM-YYYY).
+     * @param vatTotal         CuotaTotal (suma de IVA de las lineas).
+     * @param total            ImporteTotal (total de la factura).
+     * @param previousHash     Hash del registro anterior de la cadena (vacio si es el primero).
+     * @param generationTime   Fecha/hora de generacion del registro (instante del validate).
+     * @return                 Huella SHA-256 hex en MAYUSCULAS (64 chars).
+     */
+    public String computeHash(String nifEmisor,
+                              String invoiceNumber,
+                              LocalDate invoiceDate,
+                              BigDecimal vatTotal,
+                              BigDecimal total,
+                              String previousHash,
+                              OffsetDateTime generationTime) {
+        if (nifEmisor == null || nifEmisor.isBlank()) {
+            throw new IllegalArgumentException("nifEmisor requerido");
+        }
+        if (invoiceNumber == null || invoiceNumber.isBlank()) {
+            throw new IllegalArgumentException("invoiceNumber requerido");
+        }
+        if (invoiceDate == null) {
+            throw new IllegalArgumentException("invoiceDate requerido");
+        }
+        if (generationTime == null) {
+            throw new IllegalArgumentException("generationTime requerido");
+        }
+
+        String cuotaTotal = (vatTotal == null ? BigDecimal.ZERO : vatTotal)
+                .setScale(2, RoundingMode.HALF_UP)
+                .toPlainString();
+        String importeTotal = (total == null ? BigDecimal.ZERO : total)
+                .setScale(2, RoundingMode.HALF_UP)
+                .toPlainString();
+        String previous = previousHash == null ? "" : previousHash.toUpperCase();
+
+        String chain = String.join("&",
+                "IDEmisorFactura=" + nifEmisor.trim().toUpperCase(),
+                "NumSerieFactura=" + invoiceNumber.trim(),
+                "FechaExpedicionFactura=" + invoiceDate.format(FECHA_EXPEDICION),
+                "TipoFactura=F1",
+                "CuotaTotal=" + cuotaTotal,
+                "ImporteTotal=" + importeTotal,
+                "Huella=" + previous,
+                "FechaHoraHusoGenRegistro=" + generationTime.format(FECHA_HORA_HUSO)
+        );
+
+        return sha256Hex(chain).toUpperCase();
+    }
+
+    private String sha256Hex(String input) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] bytes = digest.digest(input.getBytes(StandardCharsets.UTF_8));
+            StringBuilder hex = new StringBuilder(bytes.length * 2);
+            for (byte b : bytes) {
+                hex.append(String.format("%02x", b));
+            }
+            return hex.toString();
+        } catch (NoSuchAlgorithmException ex) {
+            throw new IllegalStateException("SHA-256 no disponible", ex);
+        }
+    }
+}
