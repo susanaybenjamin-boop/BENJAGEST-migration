@@ -1,5 +1,6 @@
 package com.benjagest.backend.config;
 
+import com.benjagest.backend.auth.RoleInterceptor;
 import com.benjagest.backend.modules.ModuleAccessInterceptor;
 import com.benjagest.backend.tenant.TenantInterceptor;
 import org.springframework.context.annotation.Configuration;
@@ -12,18 +13,26 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
  *   1) TenantInterceptor - lee X-Company-Id y lo pone en TenantContext.
  *   2) ModuleAccessInterceptor - lee @RequiresModule del handler y
  *      devuelve 403 si la empresa no tiene el modulo activo.
+ *   3) RoleInterceptor - lee @RequiresRole del handler y devuelve 403
+ *      si el rol del usuario en la empresa no esta en la whitelist.
  *
- * El orden importa: el segundo necesita que el primero haya corrido.
+ * El orden importa: el de modulo va antes que el de rol para que, si
+ * la empresa no tiene el modulo, no exponga ni siquiera el chequeo de
+ * rol como senal indirecta.
  */
 @Configuration
 public class WebMvcConfig implements WebMvcConfigurer {
 
     private final TenantInterceptor tenantInterceptor;
     private final ModuleAccessInterceptor moduleAccessInterceptor;
+    private final RoleInterceptor roleInterceptor;
 
-    public WebMvcConfig(TenantInterceptor tenantInterceptor, ModuleAccessInterceptor moduleAccessInterceptor) {
+    public WebMvcConfig(TenantInterceptor tenantInterceptor,
+                        ModuleAccessInterceptor moduleAccessInterceptor,
+                        RoleInterceptor roleInterceptor) {
         this.tenantInterceptor = tenantInterceptor;
         this.moduleAccessInterceptor = moduleAccessInterceptor;
+        this.roleInterceptor = roleInterceptor;
     }
 
     @Override
@@ -31,6 +40,8 @@ public class WebMvcConfig implements WebMvcConfigurer {
         registry.addInterceptor(tenantInterceptor)
                 .addPathPatterns("/api/**");
         registry.addInterceptor(moduleAccessInterceptor)
+                .addPathPatterns("/api/**");
+        registry.addInterceptor(roleInterceptor)
                 .addPathPatterns("/api/**");
     }
 }

@@ -33,3 +33,7 @@ benjagest:
     secret: ${BENJAGEST_JWT_SECRET:devSecretBenjagestNotForProduction_PleaseSetEnvVarBeforeDeployingForReal_2026}
     access-ttl-minutes: ${BENJAGEST_JWT_ACCESS_TTL:480}
     refresh-ttl-minutes: ${BENJAGEST_JWT_REFRESH_TTL:43200}
+  encryption:
+    # Master key para Jasypt. PRODUCCION: poner BENJAGEST_ENCRYPTION_PASSWORD
+    # en env. Si cambia esta clave, los datos cifrados pasan a ser ilegibles.
+    password: ${BENJAGEST_ENCRYPTION_PASSWORD:devEncryptionKeyBenjagestNotForProduction_2026}
