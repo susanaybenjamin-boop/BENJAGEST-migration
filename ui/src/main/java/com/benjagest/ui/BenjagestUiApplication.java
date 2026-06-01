@@ -20,9 +20,11 @@ import com.benjagest.ui.model.AuditEvent;
 import com.benjagest.ui.model.CertificateOption;
 import com.benjagest.ui.model.CompanyData;
 import com.benjagest.ui.model.CompanyModuleEntry;
+import com.benjagest.ui.model.CustomerSummary;
 import com.benjagest.ui.model.DashboardData;
 import com.benjagest.ui.model.DashboardItem;
 import com.benjagest.ui.model.EmailConfig;
+import com.benjagest.ui.model.InvoiceLineDraft;
 import com.benjagest.ui.model.InvoiceTexts;
 import com.benjagest.ui.model.Membership;
 import com.benjagest.ui.model.ModuleData;
@@ -34,6 +36,7 @@ import com.benjagest.ui.model.VerifactuConfig;
 import com.benjagest.ui.service.AuthApiClient;
 import com.benjagest.ui.service.AuthSession;
 import com.benjagest.ui.service.BillingApiClient;
+import com.benjagest.ui.service.CustomerApiClient;
 import com.benjagest.ui.service.SettingsApiClient;
 import com.benjagest.ui.service.WorkspaceApiClient;
 
@@ -113,6 +116,7 @@ public class BenjagestUiApplication extends Application {
     private final AuthApiClient authApiClient = new AuthApiClient();
     private final SettingsApiClient settingsApiClient = new SettingsApiClient();
     private final BillingApiClient billingApiClient = new BillingApiClient();
+    private final CustomerApiClient customerApiClient = new CustomerApiClient();
     private final Map<String, Button> navigationButtons = new LinkedHashMap<>();
 
     private BorderPane root;
@@ -1870,14 +1874,7 @@ public class BenjagestUiApplication extends Application {
 
         Button newInvoice = new Button("Nueva factura");
         newInvoice.setGraphic(icon("fas-plus"));
-        newInvoice.setOnAction(event -> {
-            Alert info = new Alert(Alert.AlertType.INFORMATION,
-                    "La pantalla de crear/editar factura llega en el siguiente slice (F4). "
-                    + "Por ahora puedes probar el ciclo desde la API POST /api/billing/invoices.",
-                    ButtonType.OK);
-            info.setHeaderText("Proximamente");
-            info.showAndWait();
-        });
+        newInvoice.setOnAction(event -> showInvoiceEditor(null));
 
         HBox header = new HBox(16, titleBox, moduleIcon, spacer, newInvoice);
         header.setAlignment(Pos.CENTER_LEFT);
@@ -2010,6 +2007,27 @@ public class BenjagestUiApplication extends Application {
 
         billingTable.getColumns().addAll(List.of(colNumber, colCustomer, colDate, colDue, colStatus, colPayment, colTotal));
         billingTable.setItems(FXCollections.observableArrayList(initialList));
+        // Doble click sobre fila DRAFT -> abrir editor. Sobre VALIDATED
+        // tambien podriamos abrir un view-only; por ahora solo DRAFT.
+        billingTable.setRowFactory(tv -> {
+            javafx.scene.control.TableRow<SalesInvoiceSummary> row = new javafx.scene.control.TableRow<>();
+            row.setOnMouseClicked(ev -> {
+                if (ev.getClickCount() == 2 && !row.isEmpty()) {
+                    SalesInvoiceSummary inv = row.getItem();
+                    if ("DRAFT".equals(inv.status())) {
+                        showInvoiceEditor(inv.id());
+                    } else {
+                        Alert info = new Alert(Alert.AlertType.INFORMATION,
+                                "Solo se pueden editar facturas en borrador (DRAFT). "
+                                + "Para corregir una factura validada hay que emitir rectificativa.",
+                                ButtonType.OK);
+                        info.setHeaderText(null);
+                        info.showAndWait();
+                    }
+                }
+            });
+            return row;
+        });
 
         Label header = label("Listado de facturas", "settings-section-title");
         Label hint = new Label("La columna 'Cobro' refleja el estado de pago, independiente del estado legal "
@@ -2308,6 +2326,380 @@ public class BenjagestUiApplication extends Application {
         task.setOnFailed(event -> showError("No se pudieron guardar los textos",
                 "Vuelve a intentarlo en unos segundos."));
         start(task, "billing-texts-save");
+    }
+
+    // ===================================================================
+    //  Pantalla crear/editar factura (Slice F4)
+    //  - showInvoiceEditor(null)  => crear desde cero (DRAFT vacio).
+    //  - showInvoiceEditor(id)    => cargar DRAFT existente y editar.
+    //  El editor reusa form-grid, form-input, data-table del CSS de Pablo
+    //  (regla: no inventar paletas).
+    // ===================================================================
+
+    private ComboBox<CustomerSummary> editorCustomerCombo;
+    private ComboBox<SeriesEntry> editorSeriesCombo;
+    private javafx.scene.control.DatePicker editorInvoiceDate;
+    private javafx.scene.control.DatePicker editorDueDate;
+    private javafx.scene.control.TextArea editorNotesArea;
+    private TableView<InvoiceLineDraft> editorLinesTable;
+    private Label editorSubtotalLabel;
+    private Label editorVatLabel;
+    private Label editorRetentionLabel;
+    private Label editorTotalLabel;
+
+    private void showInvoiceEditor(String existingInvoiceId) {
+        Task<EditorBundle> task = new Task<>() {
+            @Override
+            protected EditorBundle call() throws Exception {
+                List<CustomerSummary> customers = customerApiClient.list();
+                List<SeriesEntry> series = billingApiClient.listSeries();
+                SalesInvoiceSummary existing = null;
+                List<InvoiceLineDraft> lines = new java.util.ArrayList<>();
+                if (existingInvoiceId != null) {
+                    existing = billingApiClient.getInvoiceById(existingInvoiceId);
+                    lines = billingApiClient.getInvoiceLines(existingInvoiceId);
+                }
+                return new EditorBundle(customers, series, existing, lines);
+            }
+        };
+        task.setOnSucceeded(event -> setCenterAnimated(invoiceEditorView(task.getValue(), existingInvoiceId)));
+        task.setOnFailed(event -> setCenterAnimated(scroll(errorPanel(
+                existingInvoiceId == null
+                        ? "No se pudo abrir el editor: faltan clientes o series activos."
+                        : "No se pudo cargar la factura."))));
+        start(task, "billing-editor-load");
+    }
+
+    private record EditorBundle(List<CustomerSummary> customers,
+                                List<SeriesEntry> series,
+                                SalesInvoiceSummary existing,
+                                List<InvoiceLineDraft> existingLines) {
+    }
+
+    private VBox invoiceEditorView(EditorBundle bundle, String existingId) {
+        VBox content = content();
+
+        Button back = new Button("Volver al listado");
+        back.setGraphic(icon("fas-arrow-left"));
+        back.setOnAction(event -> showBilling());
+
+        Label title = new Label(existingId == null ? "Nueva factura (borrador)" : "Editar borrador");
+        title.getStyleClass().add("module-detail-title");
+        Label subtitle = new Label(existingId == null
+                ? "Rellena los campos y elige Guardar borrador o Validar."
+                : "Estas editando un borrador. Validar lo numera y bloquea.");
+        subtitle.getStyleClass().add("module-detail-description");
+        VBox titleBox = new VBox(4, title, subtitle);
+        StackPane moduleIcon = iconBubble("fas-file-invoice", "module-title-icon");
+        Region spacer = new Region();
+        HBox.setHgrow(spacer, Priority.ALWAYS);
+        HBox header = new HBox(16, back, titleBox, moduleIcon, spacer);
+        header.setAlignment(Pos.CENTER_LEFT);
+        header.getStyleClass().add("module-detail-header");
+
+        // --- Cabecera form ---
+        editorCustomerCombo = new ComboBox<>();
+        editorCustomerCombo.getItems().addAll(bundle.customers());
+        editorCustomerCombo.getStyleClass().add("form-input");
+        configureCustomerCombo(editorCustomerCombo);
+        if (existingId != null && bundle.existing() != null) {
+            for (CustomerSummary c : bundle.customers()) {
+                if (c.legalName() != null && c.legalName().equals(bundle.existing().customerLegalName())) {
+                    editorCustomerCombo.getSelectionModel().select(c);
+                    break;
+                }
+            }
+        } else if (!bundle.customers().isEmpty()) {
+            editorCustomerCombo.getSelectionModel().selectFirst();
+        }
+
+        editorSeriesCombo = new ComboBox<>();
+        editorSeriesCombo.getItems().addAll(bundle.series());
+        editorSeriesCombo.getStyleClass().add("form-input");
+        configureSeriesCombo(editorSeriesCombo);
+        if (!bundle.series().isEmpty()) {
+            editorSeriesCombo.getSelectionModel().selectFirst();
+        }
+
+        editorInvoiceDate = new javafx.scene.control.DatePicker(
+                bundle.existing() == null || bundle.existing().invoiceDate() == null || bundle.existing().invoiceDate().isBlank()
+                        ? LocalDate.now()
+                        : LocalDate.parse(bundle.existing().invoiceDate()));
+        editorInvoiceDate.getStyleClass().add("form-input");
+
+        editorDueDate = new javafx.scene.control.DatePicker(
+                bundle.existing() == null || bundle.existing().dueDate() == null || bundle.existing().dueDate().isBlank()
+                        ? LocalDate.now().plusDays(30)
+                        : LocalDate.parse(bundle.existing().dueDate()));
+        editorDueDate.getStyleClass().add("form-input");
+
+        editorNotesArea = new javafx.scene.control.TextArea();
+        editorNotesArea.setPromptText("Notas internas o que apareceran en la factura.");
+        editorNotesArea.setPrefRowCount(3);
+        editorNotesArea.setWrapText(true);
+        editorNotesArea.getStyleClass().add("form-input");
+
+        GridPane headGrid = formGrid();
+        addFormRow(headGrid, 0, "Cliente *", editorCustomerCombo);
+        addFormRow(headGrid, 1, "Serie *", editorSeriesCombo);
+        addFormRow(headGrid, 2, "Fecha factura", editorInvoiceDate);
+        addFormRow(headGrid, 3, "Fecha vencimiento", editorDueDate);
+        addFormRow(headGrid, 4, "Notas", editorNotesArea);
+
+        // --- Tabla de lineas editable ---
+        editorLinesTable = buildEditorLinesTable(bundle.existingLines());
+
+        Button addLine = new Button("Anadir linea");
+        addLine.setGraphic(icon("fas-plus"));
+        addLine.setOnAction(event -> {
+            editorLinesTable.getItems().add(new InvoiceLineDraft());
+            recomputeEditorTotals();
+        });
+
+        Button removeLine = new Button("Quitar linea seleccionada");
+        removeLine.setGraphic(icon("fas-trash-alt"));
+        removeLine.setOnAction(event -> {
+            InvoiceLineDraft sel = editorLinesTable.getSelectionModel().getSelectedItem();
+            if (sel != null) {
+                editorLinesTable.getItems().remove(sel);
+                recomputeEditorTotals();
+            }
+        });
+
+        HBox lineActions = new HBox(8, addLine, removeLine);
+
+        // --- Totales en vivo ---
+        editorSubtotalLabel = new Label("0,00 EUR");
+        editorVatLabel = new Label("0,00 EUR");
+        editorRetentionLabel = new Label("0,00 EUR");
+        editorTotalLabel = new Label("0,00 EUR");
+        editorTotalLabel.getStyleClass().add("module-big-number");
+
+        GridPane totalsGrid = new GridPane();
+        totalsGrid.setHgap(18);
+        totalsGrid.setVgap(4);
+        totalsGrid.add(label("Subtotal", "form-label"), 0, 0);
+        totalsGrid.add(editorSubtotalLabel, 1, 0);
+        totalsGrid.add(label("IVA", "form-label"), 0, 1);
+        totalsGrid.add(editorVatLabel, 1, 1);
+        totalsGrid.add(label("Retencion", "form-label"), 0, 2);
+        totalsGrid.add(editorRetentionLabel, 1, 2);
+        totalsGrid.add(label("Total", "settings-section-title"), 0, 3);
+        totalsGrid.add(editorTotalLabel, 1, 3);
+
+        HBox totalsRow = new HBox(totalsGrid);
+        totalsRow.setAlignment(Pos.CENTER_RIGHT);
+
+        recomputeEditorTotals();
+
+        // --- Acciones del pie ---
+        Button cancel = new Button("Cancelar");
+        cancel.setOnAction(event -> showBilling());
+
+        Button saveDraft = new Button(existingId == null ? "Crear borrador" : "Guardar cambios");
+        saveDraft.setGraphic(icon("fas-save"));
+        saveDraft.setOnAction(event -> persistDraft(existingId, false));
+
+        Button validate = new Button("Validar y emitir");
+        validate.setGraphic(icon("fas-check"));
+        validate.setOnAction(event -> persistDraft(existingId, true));
+
+        HBox bottomActions = new HBox(10, cancel, new Region(), saveDraft, validate);
+        bottomActions.getStyleClass().add("settings-actions");
+        HBox.setHgrow(bottomActions.getChildren().get(1), Priority.ALWAYS);
+
+        content.getChildren().addAll(
+                header,
+                label("Cabecera", "settings-section-title"),
+                headGrid,
+                new Separator(),
+                label("Lineas", "settings-section-title"),
+                editorLinesTable,
+                lineActions,
+                new Separator(),
+                totalsRow,
+                bottomActions
+        );
+        return content;
+    }
+
+    private void configureCustomerCombo(ComboBox<CustomerSummary> combo) {
+        combo.setCellFactory(lv -> new javafx.scene.control.ListCell<>() {
+            @Override protected void updateItem(CustomerSummary item, boolean empty) {
+                super.updateItem(item, empty);
+                setText(empty || item == null ? "" : item.legalName() + " — " + item.taxIdentifier());
+            }
+        });
+        combo.setButtonCell(new javafx.scene.control.ListCell<>() {
+            @Override protected void updateItem(CustomerSummary item, boolean empty) {
+                super.updateItem(item, empty);
+                setText(empty || item == null ? "" : item.legalName());
+            }
+        });
+    }
+
+    private void configureSeriesCombo(ComboBox<SeriesEntry> combo) {
+        combo.setCellFactory(lv -> new javafx.scene.control.ListCell<>() {
+            @Override protected void updateItem(SeriesEntry item, boolean empty) {
+                super.updateItem(item, empty);
+                setText(empty || item == null ? "" : item.code() + " (" + item.invoiceKind() + ", proximo " + item.nextNumber() + ")");
+            }
+        });
+        combo.setButtonCell(new javafx.scene.control.ListCell<>() {
+            @Override protected void updateItem(SeriesEntry item, boolean empty) {
+                super.updateItem(item, empty);
+                setText(empty || item == null ? "" : item.code());
+            }
+        });
+    }
+
+    private TableView<InvoiceLineDraft> buildEditorLinesTable(List<InvoiceLineDraft> initial) {
+        TableView<InvoiceLineDraft> table = new TableView<>();
+        table.getStyleClass().add("data-table");
+        table.setEditable(true);
+        table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+        table.setPlaceholder(new Label("Sin lineas. Pulsa 'Anadir linea' para empezar."));
+
+        TableColumn<InvoiceLineDraft, String> colDesc = new TableColumn<>("Descripcion");
+        colDesc.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().getDescription()));
+        colDesc.setCellFactory(javafx.scene.control.cell.TextFieldTableCell.forTableColumn());
+        colDesc.setOnEditCommit(ev -> { ev.getRowValue().setDescription(ev.getNewValue()); });
+        colDesc.setPrefWidth(280);
+
+        TableColumn<InvoiceLineDraft, String> colQty = decimalColumn("Cant.", InvoiceLineDraft::getQuantity, InvoiceLineDraft::setQuantity);
+        TableColumn<InvoiceLineDraft, String> colPrice = decimalColumn("Precio", InvoiceLineDraft::getUnitPrice, InvoiceLineDraft::setUnitPrice);
+        TableColumn<InvoiceLineDraft, String> colVat = decimalColumn("IVA %", InvoiceLineDraft::getVatPercent, InvoiceLineDraft::setVatPercent);
+        TableColumn<InvoiceLineDraft, String> colRet = decimalColumn("Ret. %", InvoiceLineDraft::getRetentionPercent, InvoiceLineDraft::setRetentionPercent);
+
+        TableColumn<InvoiceLineDraft, String> colSubtotal = new TableColumn<>("Subtotal");
+        colSubtotal.setCellValueFactory(c -> new SimpleStringProperty(money(lineSubtotal(c.getValue()).toPlainString())));
+        colSubtotal.setEditable(false);
+        TableColumn<InvoiceLineDraft, String> colLineTotal = new TableColumn<>("Total");
+        colLineTotal.setCellValueFactory(c -> new SimpleStringProperty(money(lineTotal(c.getValue()).toPlainString())));
+        colLineTotal.setEditable(false);
+
+        table.getColumns().addAll(java.util.List.of(colDesc, colQty, colPrice, colVat, colRet, colSubtotal, colLineTotal));
+        table.setItems(FXCollections.observableArrayList(initial));
+        table.setPrefHeight(280);
+        return table;
+    }
+
+    private TableColumn<InvoiceLineDraft, String> decimalColumn(String header,
+                                                                java.util.function.Function<InvoiceLineDraft, java.math.BigDecimal> getter,
+                                                                java.util.function.BiConsumer<InvoiceLineDraft, java.math.BigDecimal> setter) {
+        TableColumn<InvoiceLineDraft, String> col = new TableColumn<>(header);
+        col.setCellValueFactory(c -> new SimpleStringProperty(getter.apply(c.getValue()).toPlainString()));
+        col.setCellFactory(javafx.scene.control.cell.TextFieldTableCell.forTableColumn());
+        col.setOnEditCommit(ev -> {
+            try {
+                setter.accept(ev.getRowValue(), new java.math.BigDecimal(ev.getNewValue().replace(',', '.')));
+            } catch (NumberFormatException ignored) {
+                // valor invalido -> mantener el anterior. El refresh
+                // siguiente repinta el numero antiguo.
+            }
+            editorLinesTable.refresh();
+            recomputeEditorTotals();
+        });
+        col.setPrefWidth(80);
+        return col;
+    }
+
+    private java.math.BigDecimal lineSubtotal(InvoiceLineDraft line) {
+        return line.getQuantity().multiply(line.getUnitPrice())
+                .setScale(2, java.math.RoundingMode.HALF_UP);
+    }
+
+    private java.math.BigDecimal lineVat(InvoiceLineDraft line) {
+        return lineSubtotal(line).multiply(line.getVatPercent())
+                .divide(java.math.BigDecimal.valueOf(100), 2, java.math.RoundingMode.HALF_UP);
+    }
+
+    private java.math.BigDecimal lineRetention(InvoiceLineDraft line) {
+        return lineSubtotal(line).multiply(line.getRetentionPercent())
+                .divide(java.math.BigDecimal.valueOf(100), 2, java.math.RoundingMode.HALF_UP);
+    }
+
+    private java.math.BigDecimal lineTotal(InvoiceLineDraft line) {
+        return lineSubtotal(line).add(lineVat(line)).subtract(lineRetention(line));
+    }
+
+    private void recomputeEditorTotals() {
+        java.math.BigDecimal subtotal = java.math.BigDecimal.ZERO;
+        java.math.BigDecimal vat = java.math.BigDecimal.ZERO;
+        java.math.BigDecimal retention = java.math.BigDecimal.ZERO;
+        java.math.BigDecimal total = java.math.BigDecimal.ZERO;
+        if (editorLinesTable != null) {
+            for (InvoiceLineDraft line : editorLinesTable.getItems()) {
+                subtotal = subtotal.add(lineSubtotal(line));
+                vat = vat.add(lineVat(line));
+                retention = retention.add(lineRetention(line));
+                total = total.add(lineTotal(line));
+            }
+        }
+        if (editorSubtotalLabel != null) editorSubtotalLabel.setText(money(subtotal.toPlainString()));
+        if (editorVatLabel != null) editorVatLabel.setText(money(vat.toPlainString()));
+        if (editorRetentionLabel != null) editorRetentionLabel.setText(money(retention.toPlainString()));
+        if (editorTotalLabel != null) editorTotalLabel.setText(money(total.toPlainString()));
+    }
+
+    private void persistDraft(String existingId, boolean validateAfter) {
+        CustomerSummary customer = editorCustomerCombo.getValue();
+        SeriesEntry series = editorSeriesCombo.getValue();
+        if (customer == null) {
+            showError("Falta cliente", "Selecciona un cliente.");
+            return;
+        }
+        if (series == null) {
+            showError("Falta serie", "Selecciona la serie de numeracion.");
+            return;
+        }
+        if (editorLinesTable.getItems().isEmpty()) {
+            showError("Sin lineas", "Una factura sin lineas no se puede guardar.");
+            return;
+        }
+        for (InvoiceLineDraft line : editorLinesTable.getItems()) {
+            if (line.getDescription() == null || line.getDescription().isBlank()) {
+                showError("Linea incompleta", "Hay una linea sin descripcion. Rellenala o quitala.");
+                return;
+            }
+        }
+
+        String invoiceDateIso = editorInvoiceDate.getValue() == null ? null : editorInvoiceDate.getValue().toString();
+        String dueDateIso = editorDueDate.getValue() == null ? null : editorDueDate.getValue().toString();
+        String notes = editorNotesArea.getText();
+        List<InvoiceLineDraft> lines = new java.util.ArrayList<>(editorLinesTable.getItems());
+
+        Task<SalesInvoiceSummary> task = new Task<>() {
+            @Override
+            protected SalesInvoiceSummary call() throws Exception {
+                SalesInvoiceSummary saved;
+                if (existingId == null) {
+                    saved = billingApiClient.createInvoice(customer.id(), series.id(), "NORMAL",
+                            invoiceDateIso, dueDateIso, notes, lines);
+                } else {
+                    saved = billingApiClient.updateInvoice(existingId, customer.id(), series.id(), "NORMAL",
+                            invoiceDateIso, dueDateIso, notes, lines);
+                }
+                if (validateAfter) {
+                    saved = billingApiClient.validateInvoice(saved.id());
+                }
+                return saved;
+            }
+        };
+        task.setOnSucceeded(event -> {
+            SalesInvoiceSummary result = task.getValue();
+            String msg = validateAfter
+                    ? "Factura validada: " + result.invoiceNumber()
+                    : "Borrador guardado.";
+            Alert ok = new Alert(Alert.AlertType.INFORMATION, msg, ButtonType.OK);
+            ok.setHeaderText(null);
+            ok.showAndWait();
+            showBilling();
+        });
+        task.setOnFailed(event -> showError(
+                validateAfter ? "No se pudo validar" : "No se pudo guardar",
+                "Revisa los datos. Si validas, la serie debe estar disponible y los totales correctos."));
+        start(task, "billing-invoice-save" + (validateAfter ? "-validate" : ""));
     }
 
     private void saveVerifactuConfig() {
