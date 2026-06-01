@@ -1,6 +1,7 @@
 package com.benjagest.ui.service;
 
 import com.benjagest.ui.model.CertificateOption;
+import com.benjagest.ui.model.InvoiceLineDraft;
 import com.benjagest.ui.model.InvoiceTexts;
 import com.benjagest.ui.model.SalesInvoiceSummary;
 import com.benjagest.ui.model.SeriesEntry;
@@ -67,6 +68,145 @@ public class BillingApiClient {
                 .GET());
         ensureOk(response);
         return parseInvoices(response.body());
+    }
+
+    public SalesInvoiceSummary getInvoiceById(String id) throws IOException, InterruptedException {
+        HttpResponse<String> response = sendAuthorized(HttpRequest.newBuilder(URI.create(baseUrl + "/billing/invoices/" + id))
+                .timeout(Duration.ofSeconds(8))
+                .GET());
+        ensureOk(response);
+        // Para la pantalla de edicion devolvemos la cabecera; las lineas
+        // se piden y parsean aparte en getInvoiceLines() para no
+        // contaminar SalesInvoiceSummary.
+        return parseInvoiceHeader(response.body());
+    }
+
+    public List<InvoiceLineDraft> getInvoiceLines(String id) throws IOException, InterruptedException {
+        HttpResponse<String> response = sendAuthorized(HttpRequest.newBuilder(URI.create(baseUrl + "/billing/invoices/" + id))
+                .timeout(Duration.ofSeconds(8))
+                .GET());
+        ensureOk(response);
+        return parseInvoiceLines(response.body());
+    }
+
+    public SalesInvoiceSummary createInvoice(String customerId, String seriesId, String invoiceType,
+                                             String invoiceDateIso, String dueDateIso, String notes,
+                                             List<InvoiceLineDraft> lines) throws IOException, InterruptedException {
+        return upsertInvoice(null, customerId, seriesId, invoiceType, invoiceDateIso, dueDateIso, notes, lines);
+    }
+
+    public SalesInvoiceSummary updateInvoice(String id, String customerId, String seriesId, String invoiceType,
+                                             String invoiceDateIso, String dueDateIso, String notes,
+                                             List<InvoiceLineDraft> lines) throws IOException, InterruptedException {
+        return upsertInvoice(id, customerId, seriesId, invoiceType, invoiceDateIso, dueDateIso, notes, lines);
+    }
+
+    private SalesInvoiceSummary upsertInvoice(String idOrNull, String customerId, String seriesId, String invoiceType,
+                                              String invoiceDateIso, String dueDateIso, String notes,
+                                              List<InvoiceLineDraft> lines) throws IOException, InterruptedException {
+        StringBuilder body = new StringBuilder("{");
+        body.append(field("customerId", customerId)).append(",");
+        body.append(field("seriesId", seriesId)).append(",");
+        body.append(field("invoiceType", invoiceType == null ? "NORMAL" : invoiceType)).append(",");
+        if (invoiceDateIso != null && !invoiceDateIso.isBlank()) {
+            body.append(field("invoiceDate", invoiceDateIso)).append(",");
+        }
+        if (dueDateIso != null && !dueDateIso.isBlank()) {
+            body.append(field("dueDate", dueDateIso)).append(",");
+        }
+        if (notes != null && !notes.isBlank()) {
+            body.append(field("notes", notes)).append(",");
+        }
+        body.append("\"lines\":[");
+        for (int i = 0; i < lines.size(); i++) {
+            if (i > 0) body.append(",");
+            InvoiceLineDraft line = lines.get(i);
+            body.append("{")
+                    .append(field("description", line.getDescription())).append(",")
+                    .append("\"quantity\":").append(line.getQuantity().toPlainString()).append(",")
+                    .append("\"unitPrice\":").append(line.getUnitPrice().toPlainString()).append(",")
+                    .append("\"vatPercent\":").append(line.getVatPercent().toPlainString()).append(",")
+                    .append("\"retentionPercent\":").append(line.getRetentionPercent().toPlainString())
+                    .append("}");
+        }
+        body.append("]}");
+
+        URI uri = idOrNull == null
+                ? URI.create(baseUrl + "/billing/invoices")
+                : URI.create(baseUrl + "/billing/invoices/" + idOrNull);
+        HttpRequest.Builder builder = HttpRequest.newBuilder(uri)
+                .timeout(Duration.ofSeconds(10))
+                .header("Content-Type", "application/json");
+        if (idOrNull == null) {
+            builder.POST(HttpRequest.BodyPublishers.ofString(body.toString()));
+        } else {
+            builder.PUT(HttpRequest.BodyPublishers.ofString(body.toString()));
+        }
+        HttpResponse<String> response = sendAuthorized(builder);
+        ensureOk(response);
+        return parseInvoiceHeader(response.body());
+    }
+
+    public SalesInvoiceSummary validateInvoice(String id) throws IOException, InterruptedException {
+        HttpRequest.Builder builder = HttpRequest.newBuilder(URI.create(baseUrl + "/billing/invoices/" + id + "/validate"))
+                .timeout(Duration.ofSeconds(10))
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.noBody());
+        HttpResponse<String> response = sendAuthorized(builder);
+        ensureOk(response);
+        return parseInvoiceHeader(response.body());
+    }
+
+    public void deleteInvoice(String id) throws IOException, InterruptedException {
+        HttpRequest.Builder builder = HttpRequest.newBuilder(URI.create(baseUrl + "/billing/invoices/" + id))
+                .timeout(Duration.ofSeconds(8))
+                .DELETE();
+        HttpResponse<String> response = sendAuthorized(builder);
+        ensureOk(response);
+    }
+
+    private SalesInvoiceSummary parseInvoiceHeader(String json) {
+        // Toma SOLO los campos del header (los de antes de "lines"), por
+        // si vienen lineas embebidas con campos que colisionan en regex.
+        int linesIdx = json.indexOf("\"lines\"");
+        String header = linesIdx > 0 ? json.substring(0, linesIdx) : json;
+        return new SalesInvoiceSummary(
+                textField(header, "id"),
+                textField(header, "invoiceNumber"),
+                textField(header, "customerLegalName"),
+                textField(header, "invoiceDate"),
+                textField(header, "dueDate"),
+                textField(header, "status"),
+                textField(header, "paymentStatus"),
+                decimalField(header, "total"),
+                decimalField(header, "paidAmount")
+        );
+    }
+
+    private List<InvoiceLineDraft> parseInvoiceLines(String json) {
+        List<InvoiceLineDraft> result = new java.util.ArrayList<>();
+        int linesIdx = json.indexOf("\"lines\"");
+        if (linesIdx < 0) {
+            return result;
+        }
+        int start = json.indexOf('[', linesIdx);
+        int end = json.indexOf(']', start);
+        if (start < 0 || end < 0) {
+            return result;
+        }
+        String slice = json.substring(start, end + 1);
+        Matcher matcher = Pattern.compile("\\{[^{}]*\"description\"[^{}]*\\}").matcher(slice);
+        while (matcher.find()) {
+            String obj = matcher.group();
+            result.add(new InvoiceLineDraft(
+                    textField(obj, "description"),
+                    decimalField(obj, "quantity"),
+                    decimalField(obj, "unitPrice"),
+                    decimalField(obj, "vatPercent"),
+                    decimalField(obj, "retentionPercent")
+            ));
+        }
+        return result;
     }
 
     // -------- series --------
