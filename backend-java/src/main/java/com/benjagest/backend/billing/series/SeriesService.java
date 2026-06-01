@@ -66,6 +66,24 @@ public class SeriesService {
 
     @Transactional
     public Series update(String id, SeriesUpsertRequest request) {
+        // Defensa de continuidad legal: si esta serie ya tiene >=1 factura
+        // VALIDATED en el ano actual, queda bloqueada hasta que cambie el
+        // ano. Cambiar codigo/formato/tipo a media numeracion rompe la
+        // cadena legal (saltos, duplicados, lios fiscales).
+        Series existing = get(id);
+        int currentYear = LocalDate.now().getYear();
+        boolean lockedByEmission = repository.countValidatedInYear(id, currentYear) > 0;
+        if (lockedByEmission) {
+            if (!existing.code().equals(request.code().trim())
+                    || !nullSafe(existing.invoiceKind()).equals(nullSafe(request.invoiceKind()))
+                    || !nullSafe(existing.numberingType()).equals(nullSafe(request.numberingType()))
+                    || !nullSafe(existing.formatTemplate()).equals(nullSafe(request.formatTemplate()))) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT,
+                        "Esta serie ya emitio facturas validadas en " + currentYear
+                        + ". No puedes cambiar codigo, formato ni tipo hasta el cierre del ano. "
+                        + "Si necesitas migrar desde otro programa, usa POST /migrate.");
+            }
+        }
         try {
             int affected = repository.update(
                     id,
@@ -83,6 +101,49 @@ public class SeriesService {
                     "Ya existe otra serie con ese codigo en esta empresa");
         }
         return get(id);
+    }
+
+    /**
+     * Indica si una serie esta bloqueada por la regla de continuidad
+     * legal (>=1 factura VALIDATED en el ano actual). Lo usa la UI
+     * para deshabilitar campos antes de probar a guardar.
+     */
+    public boolean isLockedByEmission(String seriesId) {
+        return repository.countValidatedInYear(seriesId, LocalDate.now().getYear()) > 0;
+    }
+
+    /**
+     * Importacion desde otro programa de facturacion: el OWNER/ADMIN
+     * declara que su ultima factura emitida fue NUM y que se hace
+     * responsable de la continuidad (no es una conversion automatica,
+     * es una afirmacion legal del usuario).
+     *
+     * Permitido cuando:
+     *   - No hay facturas VALIDATED de esta serie en BENJAGEST todavia
+     *     (es el caso natural: el primer arranque), O
+     *   - El cliente envia acknowledged=true asumiendo el corte.
+     *
+     * En ambos casos se requiere acknowledged=true: este endpoint nunca
+     * cambia un correlativo en silencio.
+     */
+    @Transactional
+    public Series migrate(String seriesId, int nextNumber, boolean acknowledged) {
+        if (!acknowledged) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Para importar el correlativo desde otro programa debes aceptar la responsabilidad");
+        }
+        if (nextNumber < 1) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "El proximo numero debe ser >= 1");
+        }
+        Series series = get(seriesId);
+        int year = LocalDate.now().getYear();
+        repository.updateCounter(seriesId, nextNumber, year);
+        return get(seriesId);
+    }
+
+    private String nullSafe(String value) {
+        return value == null ? "" : value;
     }
 
     @Transactional

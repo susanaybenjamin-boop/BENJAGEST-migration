@@ -23,6 +23,7 @@ import com.benjagest.ui.model.CompanyModuleEntry;
 import com.benjagest.ui.model.DashboardData;
 import com.benjagest.ui.model.DashboardItem;
 import com.benjagest.ui.model.EmailConfig;
+import com.benjagest.ui.model.InvoiceTexts;
 import com.benjagest.ui.model.Membership;
 import com.benjagest.ui.model.ModuleData;
 import com.benjagest.ui.model.ModuleRow;
@@ -1828,6 +1829,7 @@ public class BenjagestUiApplication extends Application {
                 List<SalesInvoiceSummary> invoices = billingApiClient.listInvoices(null, null, null, 200);
                 List<SeriesEntry> series = billingApiClient.listSeries();
                 VerifactuConfig vfConfig = billingApiClient.getVerifactuConfig();
+                InvoiceTexts texts = billingApiClient.getInvoiceTexts();
                 List<CertificateOption> certificates;
                 try {
                     certificates = billingApiClient.listCertificateOptions();
@@ -1836,7 +1838,7 @@ public class BenjagestUiApplication extends Application {
                     // la lista queda vacia y el ComboBox aparece deshabilitado.
                     certificates = List.of();
                 }
-                return new BillingBundle(invoices, series, vfConfig, certificates);
+                return new BillingBundle(invoices, series, vfConfig, texts, certificates);
             }
         };
         task.setOnSucceeded(event -> setCenterAnimated(billingView(task.getValue())));
@@ -1848,6 +1850,7 @@ public class BenjagestUiApplication extends Application {
     private record BillingBundle(List<SalesInvoiceSummary> invoices,
                                  List<SeriesEntry> series,
                                  VerifactuConfig verifactuConfig,
+                                 InvoiceTexts invoiceTexts,
                                  List<CertificateOption> certificates) {
     }
 
@@ -1890,7 +1893,7 @@ public class BenjagestUiApplication extends Application {
         Tab invoicesTab = new Tab("Facturas", billingInvoicesTab(bundle.invoices()));
         invoicesTab.setGraphic(icon("fas-file-invoice"));
 
-        Tab configTab = new Tab("Configuracion", billingConfigTab(bundle.verifactuConfig(), bundle.series(), bundle.certificates()));
+        Tab configTab = new Tab("Configuracion", billingConfigTab(bundle.verifactuConfig(), bundle.series(), bundle.certificates(), bundle.invoiceTexts()));
         configTab.setGraphic(icon("fas-cog"));
 
         tabs.getTabs().addAll(dashboardTab, invoicesTab, configTab);
@@ -2042,8 +2045,18 @@ public class BenjagestUiApplication extends Application {
     private ComboBox<String> verifactuModeCombo;
     private ComboBox<CertificateOption> verifactuCertCombo;
     private TextField verifactuFooterField;
+    private ComboBox<SeriesEntry> migrationSeriesCombo;
+    private TextField migrationNextNumberField;
+    private CheckBox migrationAcknowledgeCheck;
+    private javafx.scene.control.TextArea textPieArea;
+    private javafx.scene.control.TextArea textExemptArea;
+    private javafx.scene.control.TextArea textReverseChargeArea;
+    private javafx.scene.control.TextArea textReducedVatArea;
+    private javafx.scene.control.TextArea textRectifyingArea;
+    private javafx.scene.control.TextArea textLegalTermsArea;
+    private CheckBox showIbanCheck;
 
-    private Node billingConfigTab(VerifactuConfig config, List<SeriesEntry> series, List<CertificateOption> certificates) {
+    private Node billingConfigTab(VerifactuConfig config, List<SeriesEntry> series, List<CertificateOption> certificates, InvoiceTexts texts) {
         Label section = label("VeriFactu", "settings-section-title");
         Label hint = new Label("Activa el envio de facturas a AEAT. Por defecto OFF. "
                 + "Para usar PROD necesitas un certificado .p12 subido en Documentos > Certificados; "
@@ -2115,7 +2128,93 @@ public class BenjagestUiApplication extends Application {
         seriesTable.setItems(FXCollections.observableArrayList(series));
         seriesTable.setPrefHeight(180);
 
-        Button save = new Button("Guardar configuracion");
+        // ---- Migracion desde otro programa ----
+        Label migrationHeader = label("Migracion desde otro programa", "settings-section-title");
+        Label migrationHint = new Label("Si tu empresa ya emitia facturas con otro software, "
+                + "indica aqui el numero por el que continuar. Una vez emitida la primera factura validada "
+                + "en BENJAGEST, el codigo y formato de la serie quedan bloqueados hasta cerrar el ano.");
+        migrationHint.setWrapText(true);
+        migrationHint.getStyleClass().add("settings-hint");
+
+        migrationSeriesCombo = new ComboBox<>();
+        migrationSeriesCombo.getItems().addAll(series);
+        if (!series.isEmpty()) {
+            migrationSeriesCombo.getSelectionModel().selectFirst();
+        }
+        migrationSeriesCombo.getStyleClass().add("form-input");
+        migrationSeriesCombo.setCellFactory(lv -> new javafx.scene.control.ListCell<>() {
+            @Override protected void updateItem(SeriesEntry item, boolean empty) {
+                super.updateItem(item, empty);
+                setText(empty || item == null ? "" : item.code() + " — proximo " + item.nextNumber());
+            }
+        });
+        migrationSeriesCombo.setButtonCell(new javafx.scene.control.ListCell<>() {
+            @Override protected void updateItem(SeriesEntry item, boolean empty) {
+                super.updateItem(item, empty);
+                setText(empty || item == null ? "" : item.code() + " — proximo " + item.nextNumber());
+            }
+        });
+
+        migrationNextNumberField = new TextField();
+        migrationNextNumberField.setPromptText("Ej. 43 (si tu ultima factura fue F-...-0042)");
+        migrationNextNumberField.getStyleClass().add("form-input");
+
+        migrationAcknowledgeCheck = new CheckBox("Confirmo que el numero indicado coincide con mi contabilidad previa "
+                + "y eximo a BENJAGEST de cualquier responsabilidad por saltos en la serie.");
+        migrationAcknowledgeCheck.setWrapText(true);
+
+        Button applyMigration = new Button("Aplicar migracion");
+        applyMigration.setGraphic(icon("fas-file-import"));
+        applyMigration.setOnAction(event -> applyMigration());
+
+        GridPane migrationGrid = formGrid();
+        addFormRow(migrationGrid, 0, "Serie", migrationSeriesCombo);
+        addFormRow(migrationGrid, 1, "Proximo numero", migrationNextNumberField);
+
+        VBox migrationBlock = new VBox(8,
+                migrationHeader,
+                migrationHint,
+                migrationGrid,
+                migrationAcknowledgeCheck,
+                new HBox(applyMigration)
+        );
+
+        // ---- Textos legales de factura ----
+        Label textsHeader = label("Textos legales en la factura", "settings-section-title");
+        Label textsHint = new Label("Aparecen al pie de cada factura emitida segun el caso. "
+                + "Vacios = no se imprime esa seccion.");
+        textsHint.setWrapText(true);
+        textsHint.getStyleClass().add("settings-hint");
+
+        textPieArea = textArea(texts == null ? null : texts.pie(), "Pie general (datos de contacto, agradecimiento, etc.)");
+        textExemptArea = textArea(texts == null ? null : texts.exempt(), "Texto para facturas con IVA exento (art.20 Ley IVA)");
+        textReverseChargeArea = textArea(texts == null ? null : texts.reverseCharge(), "Sujeto pasivo (servicios intracomunitarios, art.84 LIVA)");
+        textReducedVatArea = textArea(texts == null ? null : texts.reducedVat(), "Mensaje cuando se aplica IVA reducido (4%/10%)");
+        textRectifyingArea = textArea(texts == null ? null : texts.rectifying(), "Texto para facturas rectificativas");
+        textLegalTermsArea = textArea(texts == null ? null : texts.legalTerms(), "Terminos legales (vencimiento, mora, jurisdiccion)");
+
+        showIbanCheck = new CheckBox("Mostrar IBAN de la empresa en la factura");
+        showIbanCheck.setSelected(texts == null || texts.showIban());
+
+        GridPane textsGrid = formGrid();
+        addFormRow(textsGrid, 0, "Pie general", textPieArea);
+        addFormRow(textsGrid, 1, "Exencion IVA", textExemptArea);
+        addFormRow(textsGrid, 2, "Sujeto pasivo", textReverseChargeArea);
+        addFormRow(textsGrid, 3, "IVA reducido", textReducedVatArea);
+        addFormRow(textsGrid, 4, "Rectificativas", textRectifyingArea);
+        addFormRow(textsGrid, 5, "Terminos legales", textLegalTermsArea);
+
+        Button saveTexts = new Button("Guardar textos");
+        saveTexts.setGraphic(icon("fas-save"));
+        saveTexts.setOnAction(event -> saveInvoiceTexts());
+
+        VBox textsBlock = new VBox(8,
+                textsHeader, textsHint,
+                textsGrid, showIbanCheck,
+                new HBox(saveTexts)
+        );
+
+        Button save = new Button("Guardar VeriFactu");
         save.setGraphic(icon("fas-save"));
         save.setOnAction(event -> saveVerifactuConfig());
 
@@ -2125,9 +2224,90 @@ public class BenjagestUiApplication extends Application {
         VBox body = new VBox(16,
                 section, hint, grid, certHint,
                 new Separator(),
-                seriesHeader, seriesHint, seriesTable
+                seriesHeader, seriesHint, seriesTable,
+                new Separator(),
+                migrationBlock,
+                new Separator(),
+                textsBlock
         );
         return tabLayout(label("Configuracion de facturacion", "settings-section-title"), body, actions);
+    }
+
+    private javafx.scene.control.TextArea textArea(String value, String prompt) {
+        javafx.scene.control.TextArea area = new javafx.scene.control.TextArea(value == null ? "" : value);
+        area.setPromptText(prompt);
+        area.setPrefRowCount(2);
+        area.setWrapText(true);
+        area.getStyleClass().add("form-input");
+        return area;
+    }
+
+    private void applyMigration() {
+        SeriesEntry serie = migrationSeriesCombo.getValue();
+        if (serie == null) {
+            showError("Falta serie", "Selecciona la serie cuyo correlativo quieres migrar.");
+            return;
+        }
+        if (!migrationAcknowledgeCheck.isSelected()) {
+            showError("Falta confirmacion",
+                    "Debes confirmar que asumes la responsabilidad antes de aplicar la migracion.");
+            return;
+        }
+        Integer next;
+        try {
+            next = Integer.parseInt(migrationNextNumberField.getText().trim());
+        } catch (NumberFormatException ex) {
+            showError("Numero invalido", "Indica un numero entero >= 1.");
+            return;
+        }
+        if (next < 1) {
+            showError("Numero invalido", "El proximo numero debe ser >= 1.");
+            return;
+        }
+        int nextNumber = next;
+        Task<SeriesEntry> task = new Task<>() {
+            @Override
+            protected SeriesEntry call() throws Exception {
+                return billingApiClient.migrateSeries(serie.id(), nextNumber, true);
+            }
+        };
+        task.setOnSucceeded(event -> {
+            Alert ok = new Alert(Alert.AlertType.INFORMATION,
+                    "Serie " + serie.code() + " migrada. Proximo numero: " + nextNumber + ".", ButtonType.OK);
+            ok.setHeaderText(null);
+            ok.showAndWait();
+            showBilling();
+        });
+        task.setOnFailed(event -> showError("No se pudo migrar",
+                "Comprueba el numero y que la serie sigue activa."));
+        start(task, "billing-series-migrate");
+    }
+
+    private void saveInvoiceTexts() {
+        InvoiceTexts payload = new InvoiceTexts(
+                textPieArea.getText(),
+                textExemptArea.getText(),
+                textReverseChargeArea.getText(),
+                textReducedVatArea.getText(),
+                textRectifyingArea.getText(),
+                textLegalTermsArea.getText(),
+                showIbanCheck.isSelected()
+        );
+        Task<InvoiceTexts> task = new Task<>() {
+            @Override
+            protected InvoiceTexts call() throws Exception {
+                return billingApiClient.updateInvoiceTexts(payload);
+            }
+        };
+        task.setOnSucceeded(event -> {
+            Alert ok = new Alert(Alert.AlertType.INFORMATION,
+                    "Textos legales guardados.", ButtonType.OK);
+            ok.setHeaderText(null);
+            ok.showAndWait();
+        });
+        task.setOnFailed(event -> showError("No se pudieron guardar los textos",
+                "Vuelve a intentarlo en unos segundos."));
+        start(task, "billing-texts-save");
     }
 
     private void saveVerifactuConfig() {

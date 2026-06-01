@@ -1,6 +1,7 @@
 package com.benjagest.ui.service;
 
 import com.benjagest.ui.model.CertificateOption;
+import com.benjagest.ui.model.InvoiceTexts;
 import com.benjagest.ui.model.SalesInvoiceSummary;
 import com.benjagest.ui.model.SeriesEntry;
 import com.benjagest.ui.model.VerifactuConfig;
@@ -105,6 +106,69 @@ public class BillingApiClient {
                 .PUT(HttpRequest.BodyPublishers.ofString(body.toString())));
         ensureOk(response);
         return parseVerifactuConfig(response.body());
+    }
+
+    // -------- invoice texts --------
+
+    public InvoiceTexts getInvoiceTexts() throws IOException, InterruptedException {
+        HttpResponse<String> response = sendAuthorized(HttpRequest.newBuilder(URI.create(baseUrl + "/billing/invoice-texts"))
+                .timeout(Duration.ofSeconds(8))
+                .GET());
+        ensureOk(response);
+        return parseInvoiceTexts(response.body());
+    }
+
+    public InvoiceTexts updateInvoiceTexts(InvoiceTexts texts) throws IOException, InterruptedException {
+        String body = "{"
+                + field("pie", texts.pie()) + ","
+                + field("exempt", texts.exempt()) + ","
+                + field("reverseCharge", texts.reverseCharge()) + ","
+                + field("reducedVat", texts.reducedVat()) + ","
+                + field("rectifying", texts.rectifying()) + ","
+                + field("legalTerms", texts.legalTerms()) + ","
+                + "\"showIban\":" + texts.showIban()
+                + "}";
+        HttpResponse<String> response = sendAuthorized(HttpRequest.newBuilder(URI.create(baseUrl + "/billing/invoice-texts"))
+                .timeout(Duration.ofSeconds(8))
+                .header("Content-Type", "application/json")
+                .PUT(HttpRequest.BodyPublishers.ofString(body)));
+        ensureOk(response);
+        return parseInvoiceTexts(response.body());
+    }
+
+    private InvoiceTexts parseInvoiceTexts(String json) {
+        return new InvoiceTexts(
+                textField(json, "pie"),
+                textField(json, "exempt"),
+                textField(json, "reverseCharge"),
+                textField(json, "reducedVat"),
+                textField(json, "rectifying"),
+                textField(json, "legalTerms"),
+                boolField(json, "showIban")
+        );
+    }
+
+    // -------- series migrate --------
+
+    public SeriesEntry migrateSeries(String seriesId, int nextNumber, boolean acknowledged) throws IOException, InterruptedException {
+        String body = "{\"nextNumber\":" + nextNumber + ",\"acknowledged\":" + acknowledged + "}";
+        HttpResponse<String> response = sendAuthorized(HttpRequest.newBuilder(URI.create(baseUrl + "/billing/series/" + seriesId + "/migrate"))
+                .timeout(Duration.ofSeconds(8))
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(body)));
+        ensureOk(response);
+        String r = response.body();
+        return new SeriesEntry(
+                textField(r, "id"),
+                textField(r, "code"),
+                textField(r, "invoiceKind"),
+                textField(r, "numberingType"),
+                textField(r, "formatTemplate"),
+                intFieldOrZero(r, "nextNumber"),
+                intField(r, "currentYear"),
+                boolField(r, "locked"),
+                boolField(r, "active")
+        );
     }
 
     // -------- certificados (para selector) --------

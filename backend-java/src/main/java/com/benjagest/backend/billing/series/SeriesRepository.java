@@ -140,6 +140,29 @@ public class SeriesRepository {
         return matches.stream().findFirst();
     }
 
+    /**
+     * Cuenta cuantas facturas VALIDATED tiene esta serie en el ano
+     * indicado. Lo usa SeriesService para decidir si la serie esta
+     * bloqueada (>=1 validada en el ano actual = no se puede cambiar
+     * formato ni codigo hasta cierre).
+     */
+    public long countValidatedInYear(String seriesId, int year) {
+        Long n = jdbcTemplate.queryForObject("""
+                SELECT COUNT(*)
+                  FROM sales_invoices
+                 WHERE series_id = ?
+                   AND company_id = ?
+                   AND status = 'VALIDATED'
+                   AND YEAR(invoice_date) = ?
+                """,
+                Long.class,
+                seriesId,
+                tenantContext.getCurrentCompanyId(),
+                year
+        );
+        return n == null ? 0 : n;
+    }
+
     public int updateCounter(String id, int newNextNumber, Integer newCurrentYear) {
         return jdbcTemplate.update("""
                 UPDATE invoice_series
