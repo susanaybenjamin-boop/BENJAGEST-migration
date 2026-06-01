@@ -1,5 +1,6 @@
 package com.benjagest.backend.auth;
 
+import com.benjagest.backend.audit.AuditService;
 import com.benjagest.backend.auth.dto.LoginRequest;
 import com.benjagest.backend.auth.dto.LoginResponse;
 import com.benjagest.backend.auth.dto.MeResponse;
@@ -28,23 +29,31 @@ public class AuthService {
     private final AuthRepository repository;
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
+    private final AuditService auditService;
 
-    public AuthService(AuthRepository repository, PasswordEncoder passwordEncoder, JwtService jwtService) {
+    public AuthService(AuthRepository repository, PasswordEncoder passwordEncoder,
+                       JwtService jwtService, AuditService auditService) {
         this.repository = repository;
         this.passwordEncoder = passwordEncoder;
         this.jwtService = jwtService;
+        this.auditService = auditService;
     }
 
     public LoginResponse login(LoginRequest request) {
-        AuthRepository.UserRecord user = repository.findUserByEmail(request.email())
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Credenciales no validas"));
+        AuthRepository.UserRecord user = repository.findUserByEmail(request.email()).orElse(null);
+        if (user == null) {
+            auditService.recordLoginFail(request.email(), "USER_NOT_FOUND");
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Credenciales no validas");
+        }
 
         if (user.passwordHash() == null || !passwordEncoder.matches(request.password(), user.passwordHash())) {
+            auditService.recordLoginFail(request.email(), "BAD_PASSWORD");
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Credenciales no validas");
         }
 
         List<AuthRepository.MembershipRecord> memberships = repository.findMembershipsForUser(user.id());
         if (memberships.isEmpty()) {
+            auditService.recordLoginFail(request.email(), "NO_MEMBERSHIPS");
             throw new ResponseStatusException(
                     HttpStatus.FORBIDDEN,
                     "El usuario no esta vinculado a ninguna empresa"
@@ -61,6 +70,7 @@ public class AuthService {
                 primary.roleName()
         );
 
+        auditService.recordLoginOk(user.id(), primary.companyId());
         return new LoginResponse(
                 jwtService.createAccessToken(authenticated),
                 jwtService.createRefreshToken(user.id()),
@@ -148,6 +158,7 @@ public class AuthService {
         );
 
         List<AuthRepository.MembershipRecord> memberships = repository.findMembershipsForUser(current.userId());
+        auditService.recordCompanySwitched(current.userId(), current.activeCompanyId(), membership.companyId());
         return new LoginResponse(
                 jwtService.createAccessToken(updated),
                 jwtService.createRefreshToken(current.userId()),

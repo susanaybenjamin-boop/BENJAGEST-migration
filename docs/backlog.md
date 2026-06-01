@@ -36,15 +36,15 @@ Lo que toca **antes** de seguir con features funcionales. Cubre: legalidad, segu
 ### Inmediato (siguiente bloque a atacar)
 
 - ✅ **D1** — Unificación de tablas fiscales (decisión 2026-06-01). V10 amplía `companies` con address/iban/registry/legal_terms/invoice_footer + UPDATE JOIN desde `issuers` por defecto + quita FK `sales_invoices.issuer_id` + DROP TABLE issuers + borra slug `issuers` del catálogo. V11 hace lo mismo con `customer_billing_profiles` → `customers`. Backend: paquete `issuer/` borrado, `CompanyDataController/Service/Repository` ampliados con los 9 campos nuevos. UI: módulo "Emisores" eliminado del sidebar + línea "Facturando como:" del header eliminada + pestaña Empresa ampliada (Datos generales / Dirección postal / Datos de facturación) + refresh silencioso de `AuthSession.activeCompanyLegalName` + `SessionInfo.withCompanyName` tras guardar.
-- ⬜ **C2** — Google Sign-In con OAuth2. Bloqueado hasta que Benjamin cree credenciales en Google Cloud Console. [`next-sessions-plan.md §Slice C2`](next-sessions-plan.md).
 
 ### Seguridad y trazabilidad
 
 - ⬜ **Refactor WorkspaceRepository** — 25 usos de `DemoCompany.ID` pendientes de migrar a `tenantContext.getCurrentCompanyId()`. Código heredado de Pablo: hacerlo con tests manuales antes/después y commit pequeño y aislado.
-- ⬜ **@RequiresRole + RoleInterceptor** — anotación + handler que devuelve 403 si el rol del JWT no está en la whitelist. Aplicar a `settings`, `users`, `modulos`.
-- ⬜ **Audit log activo** — `audit_events` empieza a recibir entradas en LOGIN_OK, LOGIN_FAIL, COMPANY_SWITCHED, MODULE_ENABLED/DISABLED. Vista de visualización filtrable.
-- ⬜ **Cifrado columnas sensibles con Jasypt** — aplicar a `digital_certificates` (cuando exista) y a futuras `credenciales_externas`. Decisión 7 architecture.
+- ✅ **@RequiresRole + RoleInterceptor** — cerrado en C3 (`auth/RequiresRole.java` + `auth/RoleInterceptor.java`, registrado en `WebMvcConfig`). Aplicado a los 3 controllers de `settings/`.
+- ✅ **Audit log activo** — paquete `audit/` (Event + Repository + Service + Controller) escribe en `audit_events` desde `AuthService` (LOGIN_OK / LOGIN_FAIL / COMPANY_SWITCHED), `CompanyModulesService` (MODULE_ENABLED / MODULE_DISABLED) y `CompanyDataService` (COMPANY_DATA_UPDATED). UI: 4ª pestaña "Auditoría" en Configuración con tabla filtrable por tipo. Pendiente futuro: vista global para LOGIN_FAIL pre-auth (companyId NULL).
+- ⬜ **Cifrado columnas sensibles con Jasypt** — el bean `StringEncryptor` ya está (C3). Aplicar a `digital_certificates` (existe vacía, V2) y a futuras `credenciales_externas` (DEHú/SS/SILTRA). Decisión 7 architecture.
 - ⬜ **Refresh token revocation** — denylist o rotación al logout (hoy el refresh sigue válido aunque el usuario cierre sesión).
+- ⬜ **C2** — Google Sign-In con OAuth2 (aplazado conscientemente hasta que Benjamin genere credenciales en Google Cloud Console). No olvidar.
 
 ### VeriFactu / Facturación (legal obligatoria)
 
