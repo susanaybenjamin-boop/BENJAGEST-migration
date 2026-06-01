@@ -73,4 +73,20 @@ public class SeriesController {
     public SeriesService.ClaimedNumber claim(@PathVariable("id") String id) {
         return service.claimNextNumber(id);
     }
+
+    /**
+     * Importacion del proximo correlativo desde otro programa.
+     * Body: { "nextNumber": 43, "acknowledged": true }.
+     * Si acknowledged != true, 400.
+     */
+    @PostMapping("/{id}/migrate")
+    public Series migrate(@PathVariable("id") String id,
+                          @RequestBody MigrateRequest request) {
+        return service.migrate(id,
+                request.nextNumber() == null ? 1 : request.nextNumber(),
+                request.acknowledged() != null && request.acknowledged());
+    }
+
+    public record MigrateRequest(Integer nextNumber, Boolean acknowledged) {
+    }
 }
