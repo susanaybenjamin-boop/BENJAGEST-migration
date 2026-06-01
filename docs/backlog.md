@@ -39,7 +39,7 @@ Lo que toca **antes** de seguir con features funcionales. Cubre: legalidad, segu
 
 ### Seguridad y trazabilidad
 
-- ⬜ **Refactor WorkspaceRepository** — 25 usos de `DemoCompany.ID` pendientes de migrar a `tenantContext.getCurrentCompanyId()`. Código heredado de Pablo: hacerlo con tests manuales antes/después y commit pequeño y aislado.
+- ✅ **Refactor WorkspaceRepository** — los 27 usos de `DemoCompany.ID` migrados a `tenantContext.getCurrentCompanyId()` vía un helper `currentCompanyId()`. Verificado: admin BENJAGEST ve 3 clientes / 3 facturas / 3037€ facturado, empresario Marcos ve todo a 0 (su empresa está vacía). `DemoCompany.ID` solo queda como fallback en `RequestScopedTenantContext` para defensa en profundidad.
 - ✅ **@RequiresRole + RoleInterceptor** — cerrado en C3 (`auth/RequiresRole.java` + `auth/RoleInterceptor.java`, registrado en `WebMvcConfig`). Aplicado a los 3 controllers de `settings/`.
 - ✅ **Audit log activo** — paquete `audit/` (Event + Repository + Service + Controller) escribe en `audit_events` desde `AuthService` (LOGIN_OK / LOGIN_FAIL / COMPANY_SWITCHED), `CompanyModulesService` (MODULE_ENABLED / MODULE_DISABLED) y `CompanyDataService` (COMPANY_DATA_UPDATED). UI: 4ª pestaña "Auditoría" en Configuración con tabla filtrable por tipo. Pendiente futuro: vista global para LOGIN_FAIL pre-auth (companyId NULL).
 - ⬜ **Cifrado columnas sensibles con Jasypt** — el bean `StringEncryptor` ya está (C3). Aplicar a `digital_certificates` (existe vacía, V2) y a futuras `credenciales_externas` (DEHú/SS/SILTRA). Decisión 7 architecture.
