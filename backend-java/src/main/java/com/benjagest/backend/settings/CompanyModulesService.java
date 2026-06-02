@@ -1,5 +1,15 @@
 package com.benjagest.backend.settings;
 
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
+
+import org.springframework.http.HttpStatus;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
+
 import com.benjagest.backend.audit.AuditService;
 import com.benjagest.backend.auth.AuthenticatedUser;
 import com.benjagest.backend.auth.CurrentUserService;
@@ -7,21 +17,13 @@ import com.benjagest.backend.modules.Module;
 import com.benjagest.backend.modules.ModuleAccessService;
 import com.benjagest.backend.modules.ModuleRepository;
 import com.benjagest.backend.tenant.TenantContext;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
-import java.util.stream.Collectors;
-import org.springframework.http.HttpStatus;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.server.ResponseStatusException;
 
 /**
  * Pestana "Modulos" de Configuracion.
  *
  * Logica clave:
  *   - listar: cruza el catalogo con los activos de la empresa para
- *     devolver TODO el catalogo con el flag active correcto.
+ *     devolver todo el catalogo con el flag active correcto.
  *   - setActive: cuando se activa un modulo con dependencia (requires_module_id),
  *     se auto-activa la dependencia para no dejar la empresa en un
  *     estado incoherente. Decision del seed: las dependencias se
