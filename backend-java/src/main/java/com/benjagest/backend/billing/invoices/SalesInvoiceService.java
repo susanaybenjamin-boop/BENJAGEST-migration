@@ -64,12 +64,20 @@ public class SalesInvoiceService {
         List<InvoiceLine> lines = computeLines(id, request.lines());
         Totals totals = aggregateTotals(lines);
 
+        // Resolvemos la serie en el servidor por el invoice_type
+        // (NORMAL → STANDARD, RECTIFYING → RECT, etc). Ignoramos lo que
+        // mande el cliente: si el editor de la UI dejara de mandar
+        // seriesId, sigue funcionando; si lo manda mal, no podemos darle
+        // una serie incongruente con el kind. Decision 2026-06-02 — el
+        // server elige, el usuario no.
+        String resolvedSeriesId = seriesService.findActiveByKind(request.invoiceType()).id();
+
         SalesInvoice header = new SalesInvoice(
                 id,
                 null,
                 request.customerId(),
                 null,
-                blankToNull(request.seriesId()),
+                resolvedSeriesId,
                 null,
                 invoiceDate,
                 dueDate,
@@ -110,9 +118,14 @@ public class SalesInvoiceService {
         List<InvoiceLine> lines = computeLines(id, request.lines());
         Totals totals = aggregateTotals(lines);
 
+        // Re-resolvemos la serie tambien al editar: si el usuario cambia
+        // el invoiceType del borrador (NORMAL → PROFORMA, etc), la serie
+        // sigue siendo la correcta. Misma decision 2026-06-02 que createDraft.
+        String resolvedSeriesId = seriesService.findActiveByKind(request.invoiceType()).id();
+
         SalesInvoice header = new SalesInvoice(
                 id, null, request.customerId(), null,
-                blankToNull(request.seriesId()), existing.invoiceNumber(),
+                resolvedSeriesId, existing.invoiceNumber(),
                 invoiceDate, dueDate,
                 request.invoiceType(),
                 existing.status(), existing.paymentStatus(),

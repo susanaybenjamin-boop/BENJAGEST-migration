@@ -209,7 +209,11 @@
 }
 
 .content {
-    -fx-padding: 26;
+    /* Margenes uniformes para todas las pantallas:
+       - menos espacio arriba para que la cabecera quede mas cerca del top
+       - mas espacio abajo para que la ultima tarjeta respire encima del footer
+       - laterales generosos pero no excesivos. */
+    -fx-padding: 18 28 32 28;
 }
 
 .content-scroll {
@@ -1059,12 +1063,14 @@
 }
 
 .module-detail-header {
-    -fx-padding: 28;
+    /* Padding asimetrico: vertical mas compacto para no dominar la pantalla,
+       horizontal generoso para que el icono respire a la derecha. */
+    -fx-padding: 20 26;
     -fx-spacing: 18;
     -fx-background-color: linear-gradient(to bottom right, #ffffff, #eef9f6);
-    -fx-background-radius: 24;
+    -fx-background-radius: 20;
     -fx-border-color: #dbe3ef;
-    -fx-border-radius: 24;
+    -fx-border-radius: 20;
     -fx-effect: dropshadow(gaussian, rgba(15, 27, 45, 0.07), 16, 0.16, 0, 7);
 }
 
@@ -1297,4 +1303,208 @@
 
 .check-box:disabled {
     -fx-opacity: 0.6;
+}
+
+/* ------- Editor de facturas (Slice F4) ------- */
+/* Replica el lenguaje visual de CONTENDO: tarjetas blancas con cabecera
+   coloreada, totales destacados con un card azul-teal, y barra de acciones
+   ancla al pie. Reutiliza la paleta del resto del app (sin colores nuevos). */
+
+.invoice-card {
+    -fx-background-color: #ffffff;
+    -fx-background-radius: 14;
+    -fx-border-color: #dbe3ef;
+    -fx-border-radius: 14;
+    -fx-effect: dropshadow(gaussian, rgba(15, 27, 45, 0.05), 12, 0.14, 0, 4);
+}
+
+.invoice-card-header {
+    -fx-background-color: linear-gradient(to bottom right, #f8fbff, #eef9f6);
+    -fx-background-radius: 14 14 0 0;
+    -fx-padding: 14 18;
+    -fx-border-color: transparent transparent #e3edf7 transparent;
+    -fx-border-width: 0 0 1 0;
+}
+
+.invoice-card-title {
+    -fx-text-fill: #0f172a;
+    -fx-font-size: 14px;
+    -fx-font-weight: 800;
+}
+
+.invoice-card-body {
+    -fx-padding: 18;
+}
+
+.invoice-card-icon {
+    -fx-min-width: 28;
+    -fx-min-height: 28;
+    -fx-max-width: 28;
+    -fx-max-height: 28;
+    -fx-background-color: linear-gradient(to bottom right, #0aa6a6, #2563eb);
+    -fx-background-radius: 999;
+}
+
+.invoice-card-icon .font-icon {
+    -fx-icon-color: #ffffff;
+    -fx-icon-size: 13px;
+}
+
+.invoice-field-label {
+    -fx-text-fill: #334155;
+    -fx-font-size: 12px;
+    -fx-font-weight: 900;
+}
+
+/* Variante de form-input sin min-width fijo para que las 3 columnas
+   del card "Cabecera" puedan compartir el ancho disponible sin
+   atascarse en 320px cada una. */
+.invoice-input {
+    -fx-background-color: #f8fbff;
+    -fx-background-radius: 8;
+    -fx-border-color: #dbe7f4;
+    -fx-border-radius: 8;
+    -fx-padding: 9 11;
+}
+
+.invoice-input:focused {
+    -fx-border-color: #0aa6a6;
+    -fx-background-color: #ffffff;
+}
+
+.invoice-client-detail {
+    -fx-background-color: #f8fbff;
+    -fx-background-radius: 8;
+    -fx-border-color: #e3edf7;
+    -fx-border-radius: 8;
+    -fx-padding: 10 12;
+}
+
+.invoice-detail-title {
+    -fx-text-fill: #0f172a;
+    -fx-font-size: 11px;
+    -fx-font-weight: 900;
+}
+
+.invoice-detail-line {
+    -fx-text-fill: #475569;
+    -fx-font-size: 11px;
+}
+
+.invoice-pill {
+    -fx-background-color: #eef9f6;
+    -fx-text-fill: #0f8ca8;
+    -fx-font-size: 11px;
+    -fx-font-weight: 800;
+    -fx-padding: 4 10;
+    -fx-background-radius: 999;
+}
+
+.invoice-totals-row {
+    -fx-padding: 6 4;
+    -fx-border-color: transparent transparent #eef2f7 transparent;
+    -fx-border-width: 0 0 1 0;
+}
+
+.invoice-totals-row-label {
+    -fx-text-fill: #475569;
+    -fx-font-size: 12px;
+    -fx-font-weight: 700;
+}
+
+.invoice-totals-value {
+    -fx-text-fill: #0f172a;
+    -fx-font-size: 14px;
+    -fx-font-weight: 800;
+}
+
+.invoice-totals-retention {
+    -fx-text-fill: #dc2626;
+    -fx-font-size: 14px;
+    -fx-font-weight: 800;
+}
+
+.invoice-total-card {
+    -fx-background-color: linear-gradient(to bottom right, #1d4ed8, #0aa6a6);
+    -fx-background-radius: 14;
+    -fx-padding: 18 22;
+    -fx-effect: dropshadow(gaussian, rgba(29, 78, 216, 0.30), 14, 0.18, 0, 6);
+}
+
+.invoice-total-label {
+    -fx-text-fill: #ffffff;
+    -fx-font-size: 13px;
+    -fx-font-weight: 900;
+}
+
+.invoice-total-big {
+    -fx-text-fill: #ffffff;
+    -fx-font-size: 26px;
+    -fx-font-weight: 900;
+}
+
+.invoice-primary-action {
+    -fx-background-color: #1d4ed8;
+    -fx-text-fill: #ffffff;
+}
+
+.invoice-primary-action:hover {
+    -fx-background-color: #1e40af;
+}
+
+.invoice-validate-action {
+    -fx-background-color: linear-gradient(to bottom right, #16a34a, #0aa6a6);
+    -fx-text-fill: #ffffff;
+}
+
+.invoice-validate-action:hover {
+    -fx-background-color: linear-gradient(to bottom right, #15803d, #0d8e8e);
+}
+
+.invoice-footer-bar {
+    -fx-background-color: #ffffff;
+    -fx-background-radius: 14;
+    -fx-border-color: #dbe3ef;
+    -fx-border-radius: 14;
+    -fx-padding: 14 18;
+    -fx-effect: dropshadow(gaussian, rgba(15, 27, 45, 0.05), 12, 0.14, 0, 4);
+}
+
+/* Badge del proximo numero que aparece en la cabecera del editor de
+   facturas. Muy visible: el usuario tiene que ver de un vistazo el
+   numero que se asignara al validar. */
+.invoice-next-number-badge {
+    -fx-background-color: linear-gradient(to bottom right, #0f1b2d, #24436b);
+    -fx-background-radius: 12;
+    -fx-padding: 10 16;
+    -fx-effect: dropshadow(gaussian, rgba(15, 27, 45, 0.18), 10, 0.16, 0, 4);
+}
+
+.invoice-next-number-caption {
+    -fx-text-fill: #9cc9d8;
+    -fx-font-size: 10px;
+    -fx-font-weight: 900;
+}
+
+.invoice-next-number-value {
+    -fx-text-fill: #ffffff;
+    -fx-font-size: 20px;
+    -fx-font-weight: 900;
+    -fx-font-family: "Consolas", "Courier New", monospace;
+}
+
+/* TextField inline en la tabla de lineas (cant/precio/iva/ret).
+   Sin doble borde, fondo transparente para mezclar con la fila. */
+.invoice-line-input {
+    -fx-background-color: transparent;
+    -fx-border-color: transparent transparent #dbe7f4 transparent;
+    -fx-border-width: 0 0 1 0;
+    -fx-padding: 4 6;
+    -fx-font-size: 13px;
+}
+
+.invoice-line-input:focused {
+    -fx-background-color: #f8fbff;
+    -fx-border-color: #0aa6a6;
+    -fx-border-width: 0 0 2 0;
 }

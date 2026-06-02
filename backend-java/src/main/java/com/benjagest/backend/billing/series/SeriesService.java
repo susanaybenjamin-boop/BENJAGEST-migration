@@ -2,6 +2,7 @@ package com.benjagest.backend.billing.series;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -42,15 +43,77 @@ public class SeriesService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Serie no encontrada"));
     }
 
+    /**
+     * Devuelve la serie activa que toca para un invoiceKind concreto en
+     * la empresa actual. Lo usa SalesInvoiceService al crear/validar
+     * facturas: el cliente solo manda el tipo (NORMAL/PROFORMA/...) y
+     * el server elige la serie correcta. Asi la UI no tiene que ofrecer
+     * combo de series — cumplimiento legal RD 1619/2012 Art.13 (las
+     * rectificativas deben ir en serie separada) queda garantizado por
+     * construccion, no por convencion del usuario.
+     */
+    public Series findActiveByKind(String invoiceKind) {
+        String kind = mapInvoiceTypeToSeriesKind(invoiceKind);
+        return repository.findActiveByKind(kind)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.PRECONDITION_REQUIRED,
+                        "No hay serie activa de tipo " + kind + " para esta empresa. "
+                                + (kind.equals("STANDARD")
+                                        ? "Configura tu serie de facturacion en Facturacion > Configuracion."
+                                        : "La migracion V16 deberia haberla creado automaticamente; "
+                                                + "revisa que se ejecuto.")));
+    }
+
+    /**
+     * Mapea el invoice_type que viaja en la factura (NORMAL/PROFORMA/...) al
+     * invoice_kind de la serie correspondiente. Permite que el cliente y
+     * el modelo legal usen vocabularios ligeramente distintos.
+     */
+    private String mapInvoiceTypeToSeriesKind(String invoiceType) {
+        if (invoiceType == null || invoiceType.isBlank() || "NORMAL".equals(invoiceType)) {
+            return "STANDARD";
+        }
+        // PROFORMA, RECTIFYING, TEST coinciden 1:1.
+        return invoiceType;
+    }
+
     @Transactional
     public Series create(SeriesUpsertRequest request) {
-        String id = UUID.randomUUID().toString();
+        // El usuario solo puede crear/editar series STANDARD. Las series
+        // PROFORMA/RECTIFYING las gestiona el sistema (semilla V16) para
+        // garantizar el cumplimiento de RD 1619/2012 Art.13 sin que la
+        // configuracion del usuario pueda saltarselo. Si llega un POST
+        // con esos kinds, 422.
+        requireUserManagedKind(request.invoiceKind());
+
+        String code = request.code().trim();
         int initial = request.initialNextNumber() == null ? 1 : request.initialNextNumber();
         Integer currentYear = "BY_YEAR".equals(request.numberingType()) ? LocalDate.now().getYear() : null;
+
+        // Si existe una serie soft-deleted con el mismo codigo, la
+        // reactivamos en lugar de insertar. El UNIQUE company_id+code no
+        // distingue inactivas: sin esto, el ciclo "borrar + crear con
+        // mismo codigo" devolveria 1062 / 409 al usuario aunque
+        // logicamente "no haya" ninguna serie con ese codigo.
+        Optional<Series> dormant = repository.findInactiveByCode(code);
+        if (dormant.isPresent()) {
+            Series existing = dormant.get();
+            repository.reactivateAndUpdate(
+                    existing.id(),
+                    code,
+                    request.invoiceKind(),
+                    request.numberingType(),
+                    request.formatTemplate(),
+                    initial,
+                    currentYear
+            );
+            return get(existing.id());
+        }
+
+        String id = UUID.randomUUID().toString();
         try {
             repository.insert(
                     id,
-                    request.code().trim(),
+                    code,
                     request.invoiceKind(),
                     request.numberingType(),
                     request.formatTemplate(),
@@ -71,6 +134,11 @@ public class SeriesService {
         // ano. Cambiar codigo/formato/tipo a media numeracion rompe la
         // cadena legal (saltos, duplicados, lios fiscales).
         Series existing = get(id);
+        // Las series reservadas (PROFORMA/RECTIFYING) NO se editan por
+        // usuario; son del sistema. Bloqueamos antes incluso de mirar
+        // emisiones.
+        requireUserManagedKind(existing.invoiceKind());
+        requireUserManagedKind(request.invoiceKind());
         int currentYear = LocalDate.now().getYear();
         boolean lockedByEmission = repository.countValidatedInYear(id, currentYear) > 0;
         if (lockedByEmission) {
@@ -148,9 +216,26 @@ public class SeriesService {
 
     @Transactional
     public void delete(String id) {
+        // Tampoco se permite borrar series reservadas — son del sistema y
+        // su presencia garantiza el cumplimiento de Art.13 RD 1619/2012.
+        Series existing = get(id);
+        requireUserManagedKind(existing.invoiceKind());
         int affected = repository.softDelete(id);
         if (affected == 0) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Serie no encontrada");
+        }
+    }
+
+    /**
+     * Lanza 422 si el invoice_kind no es STANDARD. Las series PROFORMA y
+     * RECTIFYING (y futura SIMPLIFIED) son reservadas por el sistema —
+     * el usuario solo configura la suya de facturas normales.
+     */
+    private void requireUserManagedKind(String invoiceKind) {
+        if (!"STANDARD".equals(invoiceKind)) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                    "Las series de tipo " + invoiceKind + " las gestiona el sistema. "
+                            + "Solo puedes definir la serie de tus facturas normales (STANDARD).");
         }
     }
 
@@ -191,20 +276,27 @@ public class SeriesService {
         int newNext = numberToEmit + 1;
         repository.updateCounter(series.id(), newNext, newCurrentYear);
 
-        String formatted = formatNumber(series.formatTemplate(), numberToEmit, year);
+        String formatted = formatNumber(series.formatTemplate(), series.code(), numberToEmit, year);
         return new ClaimedNumber(series.id(), series.code(), numberToEmit, year, formatted, yearReset);
     }
 
     /**
-     * Reemplaza {YYYY} y {0000} en el template por los valores reales.
-     * Si el template es null o vacio, devuelve "<code>-<num>" como
+     * Reemplaza {CODE}, {YYYY} y {0000+} en el template por los valores
+     * reales. Si el template es null o vacio, devuelve "<code>-<num>" como
      * fallback.
+     *
+     * El placeholder {CODE} se introdujo despues de detectar que el
+     * editor de la UI ya lo asume (preview de proximo numero) pero el
+     * backend no lo sustituia → la factura quedaba con literal
+     * "{CODE}-2026-0001" en invoice_number.
      */
-    String formatNumber(String template, int number, int year) {
+    String formatNumber(String template, String code, int number, int year) {
         if (template == null || template.isBlank()) {
-            return String.valueOf(number);
+            return (code == null ? "" : code + "-") + number;
         }
-        String result = template.replace("{YYYY}", String.valueOf(year));
+        String result = template
+                .replace("{CODE}", code == null ? "" : code)
+                .replace("{YYYY}", String.valueOf(year));
         Matcher matcher = PADDING_PATTERN.matcher(result);
         StringBuilder out = new StringBuilder();
         while (matcher.find()) {

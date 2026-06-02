@@ -189,15 +189,16 @@ public class BillingApiClient {
         if (linesIdx < 0) {
             return result;
         }
-        int start = json.indexOf('[', linesIdx);
-        int end = json.indexOf(']', start);
-        if (start < 0 || end < 0) {
+        int arrStart = json.indexOf('[', linesIdx);
+        if (arrStart < 0) {
             return result;
         }
-        String slice = json.substring(start, end + 1);
-        Matcher matcher = Pattern.compile("\\{[^{}]*\"description\"[^{}]*\\}").matcher(slice);
-        while (matcher.find()) {
-            String obj = matcher.group();
+        // Tomamos el slice de '[' hasta el ']' que cierra el array,
+        // respetando llaves y comillas (no usamos indexOf(']') porque
+        // podria caer dentro de un string como "talla 4 x 4]").
+        String slice = extractJsonArraySlice(json, arrStart);
+        for (String obj : splitJsonObjects(slice)) {
+            if (!obj.contains("\"description\"")) continue;
             result.add(new InvoiceLineDraft(
                     textField(obj, "description"),
                     decimalField(obj, "quantity"),
@@ -209,6 +210,44 @@ public class BillingApiClient {
         return result;
     }
 
+    /**
+     * Devuelve el substring de un array JSON desde su '[' hasta el ']' que
+     * lo cierra, contando corchetes y respetando los strings. Sirve para
+     * aislar el contenido de "lines":[...] aunque el resto del JSON tenga
+     * mas arrays/strings con corchetes despues.
+     */
+    private String extractJsonArraySlice(String json, int arrayStart) {
+        int depth = 0;
+        boolean inString = false;
+        boolean escape = false;
+        for (int i = arrayStart; i < json.length(); i++) {
+            char c = json.charAt(i);
+            if (escape) {
+                escape = false;
+                continue;
+            }
+            if (inString) {
+                if (c == '\\') {
+                    escape = true;
+                } else if (c == '"') {
+                    inString = false;
+                }
+                continue;
+            }
+            if (c == '"') {
+                inString = true;
+            } else if (c == '[') {
+                depth++;
+            } else if (c == ']') {
+                depth--;
+                if (depth == 0) {
+                    return json.substring(arrayStart, i + 1);
+                }
+            }
+        }
+        return json.substring(arrayStart);
+    }
+
     // -------- series --------
 
     public List<SeriesEntry> listSeries() throws IOException, InterruptedException {
@@ -217,6 +256,69 @@ public class BillingApiClient {
                 .GET());
         ensureOk(response);
         return parseSeries(response.body());
+    }
+
+    public SeriesEntry createSeries(String code, String invoiceKind, String numberingType,
+                                    String formatTemplate, Integer initialNextNumber,
+                                    boolean locked) throws IOException, InterruptedException {
+        StringBuilder body = new StringBuilder("{");
+        body.append(field("code", code)).append(",");
+        body.append(field("invoiceKind", invoiceKind)).append(",");
+        body.append(field("numberingType", numberingType));
+        if (formatTemplate != null && !formatTemplate.isBlank()) {
+            body.append(",").append(field("formatTemplate", formatTemplate));
+        }
+        if (initialNextNumber != null) {
+            body.append(",\"initialNextNumber\":").append(initialNextNumber);
+        }
+        body.append(",\"locked\":").append(locked);
+        body.append("}");
+        HttpResponse<String> response = sendAuthorized(HttpRequest.newBuilder(URI.create(baseUrl + "/billing/series"))
+                .timeout(Duration.ofSeconds(8))
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(body.toString())));
+        ensureOk(response);
+        return parseOneSeries(response.body());
+    }
+
+    public SeriesEntry updateSeries(String id, String code, String invoiceKind, String numberingType,
+                                    String formatTemplate, boolean locked) throws IOException, InterruptedException {
+        StringBuilder body = new StringBuilder("{");
+        body.append(field("code", code)).append(",");
+        body.append(field("invoiceKind", invoiceKind)).append(",");
+        body.append(field("numberingType", numberingType));
+        if (formatTemplate != null && !formatTemplate.isBlank()) {
+            body.append(",").append(field("formatTemplate", formatTemplate));
+        }
+        body.append(",\"locked\":").append(locked);
+        body.append("}");
+        HttpResponse<String> response = sendAuthorized(HttpRequest.newBuilder(URI.create(baseUrl + "/billing/series/" + id))
+                .timeout(Duration.ofSeconds(8))
+                .header("Content-Type", "application/json")
+                .PUT(HttpRequest.BodyPublishers.ofString(body.toString())));
+        ensureOk(response);
+        return parseOneSeries(response.body());
+    }
+
+    public void deleteSeries(String id) throws IOException, InterruptedException {
+        HttpResponse<String> response = sendAuthorized(HttpRequest.newBuilder(URI.create(baseUrl + "/billing/series/" + id))
+                .timeout(Duration.ofSeconds(8))
+                .DELETE());
+        ensureOk(response);
+    }
+
+    private SeriesEntry parseOneSeries(String body) {
+        return new SeriesEntry(
+                textField(body, "id"),
+                textField(body, "code"),
+                textField(body, "invoiceKind"),
+                textField(body, "numberingType"),
+                textField(body, "formatTemplate"),
+                intFieldOrZero(body, "nextNumber"),
+                intField(body, "currentYear"),
+                boolField(body, "locked"),
+                boolField(body, "active")
+        );
     }
 
     // -------- verifactu config --------
@@ -336,9 +438,8 @@ public class BillingApiClient {
 
     private List<SalesInvoiceSummary> parseInvoices(String json) {
         List<SalesInvoiceSummary> list = new ArrayList<>();
-        Matcher matcher = Pattern.compile("\\{[^{}]*\"invoiceType\"[^{}]*\\}").matcher(json);
-        while (matcher.find()) {
-            String obj = matcher.group();
+        for (String obj : splitJsonObjects(json)) {
+            if (!obj.contains("\"invoiceType\"")) continue;
             list.add(new SalesInvoiceSummary(
                     textField(obj, "id"),
                     textField(obj, "invoiceNumber"),
@@ -356,9 +457,8 @@ public class BillingApiClient {
 
     private List<SeriesEntry> parseSeries(String json) {
         List<SeriesEntry> list = new ArrayList<>();
-        Matcher matcher = Pattern.compile("\\{[^{}]*\"invoiceKind\"[^{}]*\\}").matcher(json);
-        while (matcher.find()) {
-            String obj = matcher.group();
+        for (String obj : splitJsonObjects(json)) {
+            if (!obj.contains("\"invoiceKind\"")) continue;
             list.add(new SeriesEntry(
                     textField(obj, "id"),
                     textField(obj, "code"),
@@ -374,6 +474,55 @@ public class BillingApiClient {
         return list;
     }
 
+    /**
+     * Trocea un JSON (array u objeto) en sus objetos top-level,
+     * contando llaves pero respetando lo que hay dentro de los strings.
+     * Imprescindible cuando un campo string contiene '{' o '}' (caso
+     * tipico: formatTemplate de una serie con placeholders {CODE},
+     * {YYYY}, {0000} rompia el regex previo [^{}] porque la clase de
+     * caracteres no distingue entre llaves dentro y fuera de strings).
+     *
+     * No es un parser JSON completo; basta para los endpoints actuales
+     * que devuelven array de objetos planos sin objetos anidados.
+     */
+    private List<String> splitJsonObjects(String json) {
+        List<String> objects = new ArrayList<>();
+        int depth = 0;
+        int start = -1;
+        boolean inString = false;
+        boolean escape = false;
+        for (int i = 0; i < json.length(); i++) {
+            char c = json.charAt(i);
+            if (escape) {
+                escape = false;
+                continue;
+            }
+            if (inString) {
+                if (c == '\\') {
+                    escape = true;
+                } else if (c == '"') {
+                    inString = false;
+                }
+                continue;
+            }
+            if (c == '"') {
+                inString = true;
+            } else if (c == '{') {
+                if (depth == 0) {
+                    start = i;
+                }
+                depth++;
+            } else if (c == '}') {
+                depth--;
+                if (depth == 0 && start >= 0) {
+                    objects.add(json.substring(start, i + 1));
+                    start = -1;
+                }
+            }
+        }
+        return objects;
+    }
+
     private VerifactuConfig parseVerifactuConfig(String json) {
         return new VerifactuConfig(
                 textField(json, "mode"),
@@ -385,9 +534,8 @@ public class BillingApiClient {
 
     private List<CertificateOption> parseCertificateOptions(String json) {
         List<CertificateOption> list = new ArrayList<>();
-        Matcher matcher = Pattern.compile("\\{[^{}]*\"alias\"[^{}]*\\}").matcher(json);
-        while (matcher.find()) {
-            String obj = matcher.group();
+        for (String obj : splitJsonObjects(json)) {
+            if (!obj.contains("\"alias\"")) continue;
             list.add(new CertificateOption(
                     textField(obj, "id"),
                     textField(obj, "alias"),

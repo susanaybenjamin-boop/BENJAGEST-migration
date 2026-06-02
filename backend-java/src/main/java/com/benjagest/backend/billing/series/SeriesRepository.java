@@ -83,6 +83,62 @@ public class SeriesRepository {
         );
     }
 
+    /**
+     * Busca una serie con el codigo dado en la empresa actual que este
+     * soft-deleted. Permite "reactivarla" en lugar de fallar con 1062
+     * cuando el usuario hace un ciclo borrar+crear con el mismo codigo
+     * (el UNIQUE company_id+code no distingue active=FALSE).
+     */
+    public Optional<Series> findInactiveByCode(String code) {
+        List<Series> matches = jdbcTemplate.query("""
+                SELECT id, company_id, code, invoice_kind, numbering_type,
+                       format_template, next_number, current_year,
+                       locked, active, created_at, updated_at
+                  FROM invoice_series
+                 WHERE code = ?
+                   AND company_id = ?
+                   AND active = FALSE
+                """,
+                this::mapSeries,
+                code,
+                tenantContext.getCurrentCompanyId()
+        );
+        return matches.stream().findFirst();
+    }
+
+    /**
+     * Marca como active=TRUE una serie dormida y rescribe sus campos
+     * con los del nuevo POST. Conserva el id original (asi la FK desde
+     * cualquier sales_invoices.series_id que apuntase a esta serie
+     * vieja sigue siendo valida — la "antigua" vida de la serie queda
+     * resucitada bajo los nuevos parametros).
+     */
+    public int reactivateAndUpdate(String id, String code, String invoiceKind, String numberingType,
+                                    String formatTemplate, int nextNumber, Integer currentYear) {
+        return jdbcTemplate.update("""
+                UPDATE invoice_series
+                   SET code = ?,
+                       invoice_kind = ?,
+                       numbering_type = ?,
+                       format_template = ?,
+                       next_number = ?,
+                       current_year = ?,
+                       locked = FALSE,
+                       active = TRUE
+                 WHERE id = ?
+                   AND company_id = ?
+                """,
+                code,
+                invoiceKind,
+                numberingType,
+                formatTemplate,
+                nextNumber,
+                currentYear,
+                id,
+                tenantContext.getCurrentCompanyId()
+        );
+    }
+
     public List<Series> findAllActive() {
         return jdbcTemplate.query("""
                 SELECT id, company_id, code, invoice_kind, numbering_type,
@@ -96,6 +152,36 @@ public class SeriesRepository {
                 this::mapSeries,
                 tenantContext.getCurrentCompanyId()
         );
+    }
+
+    /**
+     * Devuelve la serie activa cuyo invoice_kind coincide con el
+     * solicitado para la empresa actual. Usado por el server para
+     * resolver "que serie toca" segun el tipo de la factura
+     * (NORMAL → STANDARD, PROFORMA → PROFORMA, RECTIFYING → RECTIFYING)
+     * sin que el cliente tenga que mandar series_id explicito.
+     *
+     * Si la empresa tiene varias series del mismo kind (improbable, pero
+     * posible en SQL), devuelve la primera por code alfabetico. La UI
+     * de seed (V16) garantiza unicidad logica para PROF/RECT.
+     */
+    public Optional<Series> findActiveByKind(String invoiceKind) {
+        List<Series> matches = jdbcTemplate.query("""
+                SELECT id, company_id, code, invoice_kind, numbering_type,
+                       format_template, next_number, current_year,
+                       locked, active, created_at, updated_at
+                  FROM invoice_series
+                 WHERE invoice_kind = ?
+                   AND company_id = ?
+                   AND active = TRUE
+                 ORDER BY code
+                 LIMIT 1
+                """,
+                this::mapSeries,
+                invoiceKind,
+                tenantContext.getCurrentCompanyId()
+        );
+        return matches.stream().findFirst();
     }
 
     public Optional<Series> findById(String id) {
