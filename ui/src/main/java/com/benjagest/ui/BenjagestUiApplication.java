@@ -809,7 +809,7 @@ public class BenjagestUiApplication extends Application {
 
         Label title = new Label(moduleTitle(data.module()));
         title.getStyleClass().add("module-detail-title");
-        Label count = new Label(data.records().size() + " " + t("records"));
+        Label count = new Label(data.records().size() + t("module.records_count_suffix"));
         count.getStyleClass().add("module-detail-description");
         VBox titleBox = new VBox(4, title, count);
 
@@ -868,18 +868,18 @@ public class BenjagestUiApplication extends Application {
 
     private VBox moduleSummaryPanel(ModuleData data) {
         String mainLabel = switch (data.module()) {
-            case "customers" -> "clientes activos";
-            case "billing" -> "facturas";
-            case "purchases" -> "gastos";
-            case "labor" -> "partes de trabajo";
-            case "tax" -> "modelos fiscales";
-            case "reports" -> "avisos";
-            case "settings" -> "usuarios/empleados";
-            default -> "registros";
+            case "customers" -> t("module.unit.active_customers");
+            case "billing" -> t("module.unit.invoices");
+            case "purchases" -> t("module.unit.expenses");
+            case "labor" -> t("module.unit.work_logs");
+            case "tax" -> t("module.unit.tax_models");
+            case "reports" -> t("module.unit.alerts");
+            case "settings" -> t("module.unit.users_employees");
+            default -> t("module.unit.records");
         };
 
         VBox panel = new VBox(12,
-                new HBox(10, iconBubble(moduleIcon(data.module()), "panel-icon"), label("Resumen", "card-title")),
+                new HBox(10, iconBubble(moduleIcon(data.module()), "panel-icon"), label(t("module.section.summary"), "card-title")),
                 label(String.valueOf(data.records().size()), "module-big-number"),
                 label(mainLabel, "metric-detail"),
                 new Separator(),
@@ -940,12 +940,12 @@ public class BenjagestUiApplication extends Application {
         for (ModuleRow row : data.records()) {
             String value = row.fields().getOrDefault(field, "").trim();
             if (value.isBlank()) {
-                value = "Sin dato";
+                value = t("module.summary.no_field");
             }
             counts.merge(value, 1, Integer::sum);
         }
         if (counts.isEmpty()) {
-            counts.put("Sin datos", 0);
+            counts.put(t("module.empty.no_data"), 0);
         }
         return counts;
     }
@@ -971,33 +971,33 @@ public class BenjagestUiApplication extends Application {
 
     private String barTitle(String module) {
         return switch (module) {
-            case "billing", "purchases", "labor", "reports" -> "Actividad por fecha";
-            case "tax" -> "Modelos por periodo";
-            case "settings" -> "Equipo por tipo";
-            default -> "Distribucion principal";
+            case "billing", "purchases", "labor", "reports" -> t("module.section.activity_by_date");
+            case "tax" -> t("module.section.models_by_period");
+            case "settings" -> t("module.section.team_by_type");
+            default -> t("module.section.main_distribution");
         };
     }
 
     private String pieTitle(String module) {
         return switch (module) {
-            case "billing" -> "Estado de cobro";
-            case "purchases" -> "Estado de pago";
-            case "labor", "tax", "reports" -> "Estado";
-            case "settings" -> "Acceso PIN";
-            default -> "Contactos";
+            case "billing" -> t("module.section.collection_status");
+            case "purchases" -> t("module.section.payment_status");
+            case "labor", "tax", "reports" -> t("module.section.status");
+            case "settings" -> t("module.section.pin_access");
+            default -> t("module.section.contacts");
         };
     }
 
     private String summaryLine(ModuleData data) {
         if (data.records().isEmpty()) {
-            return "Sin datos cargados para este modulo.";
+            return t("module.empty.no_data_loaded");
         }
         ModuleRow first = data.records().getFirst();
         return first.fields().entrySet().stream()
                 .limit(2)
                 .map(entry -> entry.getKey() + ": " + entry.getValue())
                 .reduce((left, right) -> left + " · " + right)
-                .orElse("Datos listos para revisar.");
+                .orElse(t("module.summary.ready_to_review"));
     }
 
     private VBox calendarView(ModuleData data) {
@@ -1006,14 +1006,14 @@ public class BenjagestUiApplication extends Application {
 
         Label title = new Label(data.title());
         title.getStyleClass().add("module-detail-title");
-        Label count = new Label(data.records().size() + " eventos");
+        Label count = new Label(pluralEvents(data.records().size()));
         count.getStyleClass().add("module-detail-description");
         VBox titleBox = new VBox(4, title, count);
 
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
 
-        Button create = new Button("Nuevo evento");
+        Button create = new Button(t("calendar.btn.new_event"));
         create.setGraphic(icon("fas-calendar-plus"));
         create.setOnAction(event -> showFormDialog(data.module(), null));
 
@@ -1024,50 +1024,76 @@ public class BenjagestUiApplication extends Application {
         StackPane viewHost = new StackPane();
         viewHost.getStyleClass().add("calendar-view-host");
 
+        // Las claves "day"/"week"/"month"/"year" son estables; el texto
+        // visible se traduce y se guarda en userData para identificar
+        // botones sin depender del idioma activo.
         List<Button> modeButtons = new ArrayList<>();
-        Button dayButton = viewMode("Día", false);
-        Button weekButton = viewMode("Semana", false);
-        Button monthButton = viewMode("Mes", true);
-        Button yearButton = viewMode("Año", false);
+        Button dayButton = viewMode("day", false);
+        Button weekButton = viewMode("week", false);
+        Button monthButton = viewMode("month", true);
+        Button yearButton = viewMode("year", false);
         modeButtons.addAll(List.of(dayButton, weekButton, monthButton, yearButton));
 
-        dayButton.setOnAction(event -> showCalendarMode("Día", data, today, modeButtons, viewHost));
-        weekButton.setOnAction(event -> showCalendarMode("Semana", data, today, modeButtons, viewHost));
-        monthButton.setOnAction(event -> showCalendarMode("Mes", data, today, modeButtons, viewHost));
-        yearButton.setOnAction(event -> showCalendarMode("Año", data, today, modeButtons, viewHost));
+        dayButton.setOnAction(event -> showCalendarMode("day", data, today, modeButtons, viewHost));
+        weekButton.setOnAction(event -> showCalendarMode("week", data, today, modeButtons, viewHost));
+        monthButton.setOnAction(event -> showCalendarMode("month", data, today, modeButtons, viewHost));
+        yearButton.setOnAction(event -> showCalendarMode("year", data, today, modeButtons, viewHost));
 
         HBox modes = new HBox(8, dayButton, weekButton, monthButton, yearButton);
         modes.getStyleClass().add("calendar-modes");
 
-        showCalendarMode("Mes", data, today, modeButtons, viewHost);
+        showCalendarMode("month", data, today, modeButtons, viewHost);
 
         content.getChildren().addAll(header, modes, viewHost);
         return content;
     }
 
-    private void showCalendarMode(String mode, ModuleData data, LocalDate today, List<Button> buttons, StackPane viewHost) {
+    private void showCalendarMode(String modeKey, ModuleData data, LocalDate today, List<Button> buttons, StackPane viewHost) {
         buttons.forEach(button -> button.getStyleClass().remove("calendar-mode-selected"));
         buttons.stream()
-                .filter(button -> button.getText().equals(mode))
+                .filter(button -> modeKey.equals(button.getUserData()))
                 .findFirst()
                 .ifPresent(button -> button.getStyleClass().add("calendar-mode-selected"));
 
-        Node view = switch (mode) {
-            case "Día" -> dayCalendarView(data, today);
-            case "Semana" -> weekCalendarView(data, today);
-            case "Año" -> yearCalendarView(data, today);
+        Node view = switch (modeKey) {
+            case "day" -> dayCalendarView(data, today);
+            case "week" -> weekCalendarView(data, today);
+            case "year" -> yearCalendarView(data, today);
             default -> monthCalendarView(data, today);
         };
         viewHost.getChildren().setAll(view);
     }
 
-    private Button viewMode(String text, boolean selected) {
-        Button button = new Button(text);
+    private Button viewMode(String modeKey, boolean selected) {
+        Button button = new Button(t("calendar.mode." + modeKey));
+        button.setUserData(modeKey);
         button.getStyleClass().add("calendar-mode");
         if (selected) {
             button.getStyleClass().add("calendar-mode-selected");
         }
         return button;
+    }
+
+    /** Pluraliza "X eventos" según el idioma activo (sin gramática
+     *  compleja: cero/uno/muchos). */
+    private String pluralEvents(int count) {
+        if (count == 0) return t("calendar.events_count_zero");
+        if (count == 1) return t("calendar.events_count_one");
+        return count + t("calendar.events_count_many");
+    }
+
+    /** Letras de los 7 días de la semana en el idioma activo (L→D / M→S). */
+    private String[] localizedWeekdayLetters() {
+        return new String[] {
+                t("calendar.weekday.mon"), t("calendar.weekday.tue"), t("calendar.weekday.wed"),
+                t("calendar.weekday.thu"), t("calendar.weekday.fri"), t("calendar.weekday.sat"),
+                t("calendar.weekday.sun")
+        };
+    }
+
+    /** Locale activo para los nombres largos/cortos de mes/día. */
+    private Locale activeLocale() {
+        return language == Language.EN ? Locale.ENGLISH : Locale.forLanguageTag("es-ES");
     }
 
     private HBox monthCalendarView(ModuleData data, LocalDate today) {
@@ -1088,13 +1114,15 @@ public class BenjagestUiApplication extends Application {
         panel.getStyleClass().add("calendar-panel");
         HBox.setHgrow(panel, Priority.ALWAYS);
 
-        Label eyebrow = label(date.getDayOfWeek().getDisplayName(TextStyle.FULL, Locale.forLanguageTag("es-ES")), "eyebrow");
+        Label eyebrow = label(date.getDayOfWeek().getDisplayName(TextStyle.FULL, activeLocale()), "eyebrow");
         Label title = label(date.format(DISPLAY_DATE), "calendar-month");
-        Label count = label(events.size() + " evento" + (events.size() == 1 ? "" : "s") + " programado" + (events.size() == 1 ? "" : "s"), "section-subtitle");
+        Label count = label(events.size() == 1
+                ? t("calendar.day.scheduled_one")
+                : events.size() + t("calendar.day.scheduled_many_suffix"), "section-subtitle");
         panel.getChildren().addAll(eyebrow, title, count);
 
         if (events.isEmpty()) {
-            panel.getChildren().add(label("No hay eventos para este dia. Puedes crear uno desde Nuevo evento.", "status-detail"));
+            panel.getChildren().add(label(t("calendar.day.empty"), "status-detail"));
             return panel;
         }
 
@@ -1109,7 +1137,8 @@ public class BenjagestUiApplication extends Application {
         VBox panel = new VBox(14);
         panel.getStyleClass().add("calendar-panel");
 
-        Label title = label("Semana del " + monday.format(DISPLAY_DATE) + " al " + monday.plusDays(6).format(DISPLAY_DATE), "calendar-month");
+        Label title = label(t("calendar.week.range_prefix") + monday.format(DISPLAY_DATE)
+                + t("calendar.week.range_middle") + monday.plusDays(6).format(DISPLAY_DATE), "calendar-month");
         TilePane week = new TilePane();
         week.getStyleClass().add("week-grid");
         week.setHgap(10);
@@ -1134,16 +1163,16 @@ public class BenjagestUiApplication extends Application {
             day.getStyleClass().add("week-day-today");
         }
         day.getChildren().addAll(
-                label(date.getDayOfWeek().getDisplayName(TextStyle.SHORT, Locale.forLanguageTag("es-ES")), "calendar-weekday"),
+                label(date.getDayOfWeek().getDisplayName(TextStyle.SHORT, activeLocale()), "calendar-weekday"),
                 label(date.getDayOfMonth() + "/" + date.getMonthValue(), "calendar-day-number")
         );
         if (events.isEmpty()) {
-            day.getChildren().add(label("Sin eventos", "status-detail"));
+            day.getChildren().add(label(t("calendar.week.no_events"), "status-detail"));
             return day;
         }
         events.stream().limit(3).forEach(event -> day.getChildren().add(calendarEventChip(event)));
         if (events.size() > 3) {
-            day.getChildren().add(label("+" + (events.size() - 3) + " mas", "calendar-event-badge"));
+            day.getChildren().add(label(t("calendar.week.more_prefix") + (events.size() - 3) + t("calendar.week.more_suffix"), "calendar-event-badge"));
         }
         return day;
     }
@@ -1152,7 +1181,7 @@ public class BenjagestUiApplication extends Application {
         VBox panel = new VBox(14);
         panel.getStyleClass().add("calendar-panel");
 
-        Label title = label("Vista anual " + today.getYear(), "calendar-month");
+        Label title = label(t("calendar.year.title_prefix") + today.getYear(), "calendar-month");
         TilePane months = new TilePane();
         months.getStyleClass().add("year-grid");
         months.setHgap(12);
@@ -1172,8 +1201,8 @@ public class BenjagestUiApplication extends Application {
         VBox card = new VBox(8);
         card.getStyleClass().add("year-month-card");
         card.getChildren().addAll(
-                label(monthDate.getMonth().getDisplayName(TextStyle.FULL, Locale.forLanguageTag("es-ES")), "activity-title"),
-                label(events.size() + " evento" + (events.size() == 1 ? "" : "s"), "module-big-number-small")
+                label(monthDate.getMonth().getDisplayName(TextStyle.FULL, activeLocale()), "activity-title"),
+                label(pluralEvents(events.size()), "module-big-number-small")
         );
         events.stream().limit(2).forEach(event -> card.getChildren().add(calendarEventChip(event)));
         card.setOnMouseClicked(event -> showMonthDialog(monthDate, events));
@@ -1181,7 +1210,7 @@ public class BenjagestUiApplication extends Application {
     }
 
     private HBox calendarEventChip(ModuleRow event) {
-        HBox chip = new HBox(6, iconBubble("fas-calendar-check", "tiny-icon"), label(event.fields().getOrDefault("evento", "Evento"), "calendar-chip-text"));
+        HBox chip = new HBox(6, iconBubble("fas-calendar-check", "tiny-icon"), label(event.fields().getOrDefault("evento", t("calendar.event.default_title")), "calendar-chip-text"));
         chip.getStyleClass().add("calendar-chip");
         chip.setAlignment(Pos.CENTER_LEFT);
         return chip;
@@ -1194,7 +1223,7 @@ public class BenjagestUiApplication extends Application {
         HBox.setHgrow(panel, Priority.ALWAYS);
 
         Label month = label(
-                baseDate.getMonth().getDisplayName(TextStyle.FULL, Locale.forLanguageTag("es-ES")) + " " + baseDate.getYear(),
+                baseDate.getMonth().getDisplayName(TextStyle.FULL, activeLocale()) + " " + baseDate.getYear(),
                 "calendar-month"
         );
 
@@ -1203,7 +1232,7 @@ public class BenjagestUiApplication extends Application {
         grid.setHgap(8);
         grid.setVgap(8);
 
-        String[] weekdays = {"L", "M", "X", "J", "V", "S", "D"};
+        String[] weekdays = localizedWeekdayLetters();
         for (int column = 0; column < weekdays.length; column++) {
             Label dayLabel = label(weekdays[column], "calendar-weekday");
             grid.add(dayLabel, column, 0);
@@ -1236,7 +1265,7 @@ public class BenjagestUiApplication extends Application {
             box.getStyleClass().add("calendar-day-today");
         }
         if (!events.isEmpty()) {
-            Label badge = label(events.size() + " evento" + (events.size() == 1 ? "" : "s"), "calendar-event-badge");
+            Label badge = label(pluralEvents(events.size()), "calendar-event-badge");
             box.getChildren().add(badge);
         }
         box.setOnMouseClicked(event -> showDayDialog(date, events));
@@ -1248,13 +1277,13 @@ public class BenjagestUiApplication extends Application {
         panel.getStyleClass().add("day-agenda");
         panel.setPrefWidth(330);
 
-        Label title = label("Agenda del dia", "card-title");
+        Label title = label(t("calendar.day_agenda.title"), "card-title");
         Label date = label(today.format(DISPLAY_DATE), "section-subtitle");
         panel.getChildren().addAll(new HBox(10, iconBubble("fas-calendar-check", "panel-icon"), new VBox(2, title, date)));
 
         List<ModuleRow> events = calendarEventsByDay(data, today).getOrDefault(today.getDayOfMonth(), List.of());
         if (events.isEmpty()) {
-            panel.getChildren().add(label("No hay eventos para hoy.", "status-detail"));
+            panel.getChildren().add(label(t("calendar.day_agenda.no_events"), "status-detail"));
             return panel;
         }
 
@@ -1265,9 +1294,9 @@ public class BenjagestUiApplication extends Application {
     }
 
     private VBox calendarEventLine(ModuleRow event) {
-        Label title = label(event.fields().getOrDefault("evento", "Evento"), "activity-title");
+        Label title = label(event.fields().getOrDefault("evento", t("calendar.event.default_title")), "activity-title");
         Label detail = label(event.fields().getOrDefault("detalle", ""), "activity-subtitle");
-        Label type = label(event.fields().getOrDefault("tipo", "GENERAL"), "activity-value");
+        Label type = label(event.fields().getOrDefault("tipo", t("calendar.event.default_type")), "activity-value");
         VBox line = new VBox(4, title, detail, type);
         line.getStyleClass().add("calendar-event-line");
         return line;
@@ -1275,7 +1304,7 @@ public class BenjagestUiApplication extends Application {
 
     private void showDayDialog(LocalDate date, List<ModuleRow> events) {
         Dialog<Void> dialog = new Dialog<>();
-        dialog.setTitle("Agenda");
+        dialog.setTitle(t("calendar.dialog.title"));
         dialog.setHeaderText(null);
 
         VBox eventList = new VBox(10);
@@ -1293,7 +1322,7 @@ public class BenjagestUiApplication extends Application {
         eventScroll.setFitToWidth(true);
         eventScroll.setPrefViewportHeight(280);
 
-        Button create = new Button("Nuevo evento");
+        Button create = new Button(t("calendar.btn.new_event"));
         create.setGraphic(icon("fas-calendar-plus"));
         create.getStyleClass().add("calendar-dialog-primary");
         create.setOnAction(action -> {
@@ -1302,9 +1331,11 @@ public class BenjagestUiApplication extends Application {
         });
 
         VBox copy = new VBox(4,
-                label(date.getDayOfWeek().getDisplayName(TextStyle.FULL, Locale.forLanguageTag("es-ES")), "eyebrow"),
+                label(date.getDayOfWeek().getDisplayName(TextStyle.FULL, activeLocale()), "eyebrow"),
                 label(date.format(DISPLAY_DATE), "calendar-dialog-title"),
-                label(events.size() + " evento" + (events.size() == 1 ? "" : "s") + " planificado" + (events.size() == 1 ? "" : "s"), "section-subtitle")
+                label(events.size() == 1
+                        ? t("calendar.dialog.planned_one")
+                        : events.size() + t("calendar.dialog.planned_many_suffix"), "section-subtitle")
         );
         HBox header = new HBox(14, iconBubble("fas-calendar-day", "calendar-dialog-icon"), copy);
         header.setAlignment(Pos.CENTER_LEFT);
@@ -1323,9 +1354,9 @@ public class BenjagestUiApplication extends Application {
     }
 
     private VBox emptyDayPanel(LocalDate date, Dialog<?> dialog) {
-        Label title = label("Dia libre", "activity-title");
-        Label detail = label("No hay nada programado. Puedes crear una cita, vencimiento o recordatorio para este dia.", "activity-subtitle");
-        Button create = new Button("Crear evento");
+        Label title = label(t("calendar.dialog.empty.title"), "activity-title");
+        Label detail = label(t("calendar.dialog.empty.body"), "activity-subtitle");
+        Button create = new Button(t("calendar.dialog.empty.btn"));
         create.setGraphic(icon("fas-plus"));
         create.getStyleClass().add("calendar-dialog-secondary");
         create.setOnAction(action -> {
@@ -1340,13 +1371,13 @@ public class BenjagestUiApplication extends Application {
     }
 
     private HBox dayEventCard(ModuleRow event, Dialog<?> dialog) {
-        Label title = label(event.fields().getOrDefault("evento", "Evento"), "calendar-event-card-title");
-        Label detail = label(event.fields().getOrDefault("detalle", "Sin detalle"), "calendar-event-card-detail");
-        Label type = label(event.fields().getOrDefault("tipo", "GENERAL"), "calendar-event-card-type");
+        Label title = label(event.fields().getOrDefault("evento", t("calendar.event.default_title")), "calendar-event-card-title");
+        Label detail = label(event.fields().getOrDefault("detalle", t("calendar.event.no_detail")), "calendar-event-card-detail");
+        Label type = label(event.fields().getOrDefault("tipo", t("calendar.event.default_type")), "calendar-event-card-type");
         VBox copy = new VBox(5, title, detail, type);
         HBox.setHgrow(copy, Priority.ALWAYS);
 
-        Button edit = new Button("Editar");
+        Button edit = new Button(t("common.btn.edit"));
         edit.setGraphic(icon("fas-pen"));
         edit.getStyleClass().add("calendar-dialog-secondary");
         edit.setOnAction(action -> {
@@ -1354,7 +1385,7 @@ public class BenjagestUiApplication extends Application {
             showFormDialog("calendar", event);
         });
 
-        Button delete = new Button("Eliminar");
+        Button delete = new Button(t("common.btn.delete"));
         delete.setGraphic(icon("fas-trash-alt"));
         delete.getStyleClass().add("calendar-dialog-danger");
         delete.setOnAction(action -> {
@@ -1373,19 +1404,19 @@ public class BenjagestUiApplication extends Application {
     private void showMonthDialog(LocalDate monthDate, List<ModuleRow> events) {
         StringBuilder message = new StringBuilder();
         if (events.isEmpty()) {
-            message.append("No hay eventos en este mes.");
+            message.append(t("calendar.dialog.month.no_events"));
         } else {
             for (ModuleRow event : events) {
                 message.append("- ")
                         .append(event.fields().getOrDefault("fecha", ""))
                         .append(" · ")
-                        .append(event.fields().getOrDefault("evento", "Evento"))
+                        .append(event.fields().getOrDefault("evento", t("calendar.event.default_title")))
                         .append("\n");
             }
         }
         Alert alert = new Alert(Alert.AlertType.INFORMATION, message.toString(), ButtonType.OK);
-        alert.setTitle("Agenda");
-        alert.setHeaderText(monthDate.getMonth().getDisplayName(TextStyle.FULL, Locale.forLanguageTag("es-ES")) + " " + monthDate.getYear());
+        alert.setTitle(t("calendar.dialog.title"));
+        alert.setHeaderText(monthDate.getMonth().getDisplayName(TextStyle.FULL, activeLocale()) + " " + monthDate.getYear());
         alert.showAndWait();
     }
 
@@ -3270,24 +3301,24 @@ public class BenjagestUiApplication extends Application {
         table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
         table.setPlaceholder(new Label("Sin lineas. Pulsa 'Anadir linea' para empezar."));
 
-        TableColumn<InvoiceLineDraft, String> colDesc = liveTextColumn("Descripcion",
+        TableColumn<InvoiceLineDraft, String> colDesc = liveTextColumn(t("editor.lines.col.description"),
                 InvoiceLineDraft::getDescription, InvoiceLineDraft::setDescription);
         colDesc.setPrefWidth(280);
 
-        TableColumn<InvoiceLineDraft, String> colQty = decimalColumn("Cant.", InvoiceLineDraft::getQuantity, InvoiceLineDraft::setQuantity);
-        TableColumn<InvoiceLineDraft, String> colPrice = decimalColumn("Precio", InvoiceLineDraft::getUnitPrice, InvoiceLineDraft::setUnitPrice);
-        TableColumn<InvoiceLineDraft, String> colVat = decimalColumn("IVA %", InvoiceLineDraft::getVatPercent, InvoiceLineDraft::setVatPercent);
-        TableColumn<InvoiceLineDraft, String> colRet = decimalColumn("Ret. %", InvoiceLineDraft::getRetentionPercent, InvoiceLineDraft::setRetentionPercent);
+        TableColumn<InvoiceLineDraft, String> colQty = decimalColumn(t("editor.lines.col.qty"), InvoiceLineDraft::getQuantity, InvoiceLineDraft::setQuantity);
+        TableColumn<InvoiceLineDraft, String> colPrice = decimalColumn(t("editor.lines.col.price"), InvoiceLineDraft::getUnitPrice, InvoiceLineDraft::setUnitPrice);
+        TableColumn<InvoiceLineDraft, String> colVat = decimalColumn(t("editor.lines.col.vat"), InvoiceLineDraft::getVatPercent, InvoiceLineDraft::setVatPercent);
+        TableColumn<InvoiceLineDraft, String> colRet = decimalColumn(t("editor.lines.col.retention"), InvoiceLineDraft::getRetentionPercent, InvoiceLineDraft::setRetentionPercent);
 
         // Limpiamos los mapas al construir la tabla — la instancia anterior
         // ya no existe y sus labels son basura.
         rowSubtotalLabels.clear();
         rowLineTotalLabels.clear();
 
-        TableColumn<InvoiceLineDraft, String> colSubtotal = computedColumn("Subtotal",
+        TableColumn<InvoiceLineDraft, String> colSubtotal = computedColumn(t("editor.lines.col.subtotal"),
                 line -> money(lineSubtotal(line).toPlainString()),
                 rowSubtotalLabels);
-        TableColumn<InvoiceLineDraft, String> colLineTotal = computedColumn("Total",
+        TableColumn<InvoiceLineDraft, String> colLineTotal = computedColumn(t("editor.lines.col.total"),
                 line -> money(lineTotal(line).toPlainString()),
                 rowLineTotalLabels);
 
@@ -4350,6 +4381,80 @@ public class BenjagestUiApplication extends Application {
                 // ---- Common dialog/panel actions ----
                 case "common.btn.retry" -> "Retry";
                 case "common.btn.back_to_billing" -> "Back to Billing";
+                // ---- Editor lines table columns ----
+                case "editor.lines.col.description" -> "Description";
+                case "editor.lines.col.qty" -> "Qty.";
+                case "editor.lines.col.price" -> "Price";
+                case "editor.lines.col.vat" -> "VAT %";
+                case "editor.lines.col.retention" -> "Withh. %";
+                case "editor.lines.col.subtotal" -> "Subtotal";
+                case "editor.lines.col.total" -> "Total";
+                // ---- Calendar / Agenda ----
+                case "calendar.events_count_zero" -> "0 events";
+                case "calendar.events_count_one" -> "1 event";
+                case "calendar.events_count_many" -> " events";
+                case "calendar.mode.day" -> "Day";
+                case "calendar.mode.week" -> "Week";
+                case "calendar.mode.month" -> "Month";
+                case "calendar.mode.year" -> "Year";
+                case "calendar.btn.new_event" -> "New event";
+                case "calendar.day.empty" -> "No events for this day. You can create one from New event.";
+                case "calendar.day.scheduled_one" -> "1 event scheduled";
+                case "calendar.day.scheduled_many_suffix" -> " events scheduled";
+                case "calendar.week.range_prefix" -> "Week of ";
+                case "calendar.week.range_middle" -> " to ";
+                case "calendar.week.no_events" -> "No events";
+                case "calendar.week.more_prefix" -> "+";
+                case "calendar.week.more_suffix" -> " more";
+                case "calendar.year.title_prefix" -> "Yearly view ";
+                case "calendar.event.default_title" -> "Event";
+                case "calendar.event.no_detail" -> "No detail";
+                case "calendar.event.default_type" -> "GENERAL";
+                case "calendar.day_agenda.title" -> "Day agenda";
+                case "calendar.day_agenda.no_events" -> "No events for today.";
+                case "calendar.dialog.title" -> "Agenda";
+                case "calendar.dialog.empty.title" -> "Free day";
+                case "calendar.dialog.empty.body" -> "Nothing scheduled. You can create an appointment, deadline or reminder for this day.";
+                case "calendar.dialog.empty.btn" -> "Create event";
+                case "calendar.dialog.planned_one" -> "1 planned event";
+                case "calendar.dialog.planned_many_suffix" -> " planned events";
+                case "calendar.dialog.month.no_events" -> "No events this month.";
+                case "calendar.weekday.mon" -> "M";
+                case "calendar.weekday.tue" -> "T";
+                case "calendar.weekday.wed" -> "W";
+                case "calendar.weekday.thu" -> "T";
+                case "calendar.weekday.fri" -> "F";
+                case "calendar.weekday.sat" -> "S";
+                case "calendar.weekday.sun" -> "S";
+                case "common.btn.edit" -> "Edit";
+                case "common.btn.delete" -> "Delete";
+                // ---- Generic module views ----
+                case "module.records_count_suffix" -> " records";
+                case "module.section.summary" -> "Summary";
+                case "module.section.summary_total" -> "Total records";
+                case "module.section.activity_by_date" -> "Activity by date";
+                case "module.section.payment_status" -> "Payment status";
+                case "module.section.status" -> "Status";
+                case "module.section.models_by_period" -> "Models by period";
+                case "module.empty.no_data_loaded" -> "No data loaded for this module.";
+                case "module.empty.no_data" -> "No data";
+                case "module.unit.expenses" -> "expenses";
+                case "module.unit.tax_models" -> "tax models";
+                case "module.unit.invoices" -> "invoices";
+                case "module.unit.customers" -> "customers";
+                case "module.unit.events" -> "events";
+                case "module.unit.records" -> "records";
+                case "module.unit.active_customers" -> "active customers";
+                case "module.unit.work_logs" -> "work logs";
+                case "module.unit.alerts" -> "alerts";
+                case "module.unit.users_employees" -> "users/employees";
+                case "module.section.team_by_type" -> "Team by type";
+                case "module.section.main_distribution" -> "Main distribution";
+                case "module.section.collection_status" -> "Collection status";
+                case "module.section.pin_access" -> "PIN access";
+                case "module.section.contacts" -> "Contacts";
+                case "module.summary.no_field" -> "No data";
+                case "module.summary.ready_to_review" -> "Data ready to review.";
                 default -> key.startsWith("column.") ? key.substring(7) : key;
             };
         }
@@ -4742,6 +4847,80 @@ public class BenjagestUiApplication extends Application {
             // ---- Common dialog/panel actions ----
             case "common.btn.retry" -> "Reintentar";
             case "common.btn.back_to_billing" -> "Volver a Facturacion";
+            // ---- Editor lines table columns ----
+            case "editor.lines.col.description" -> "Descripcion";
+            case "editor.lines.col.qty" -> "Cant.";
+            case "editor.lines.col.price" -> "Precio";
+            case "editor.lines.col.vat" -> "IVA %";
+            case "editor.lines.col.retention" -> "Ret. %";
+            case "editor.lines.col.subtotal" -> "Subtotal";
+            case "editor.lines.col.total" -> "Total";
+            // ---- Calendar / Agenda ----
+            case "calendar.events_count_zero" -> "0 eventos";
+            case "calendar.events_count_one" -> "1 evento";
+            case "calendar.events_count_many" -> " eventos";
+            case "calendar.mode.day" -> "Día";
+            case "calendar.mode.week" -> "Semana";
+            case "calendar.mode.month" -> "Mes";
+            case "calendar.mode.year" -> "Año";
+            case "calendar.btn.new_event" -> "Nuevo evento";
+            case "calendar.day.empty" -> "No hay eventos para este dia. Puedes crear uno desde Nuevo evento.";
+            case "calendar.day.scheduled_one" -> "1 evento programado";
+            case "calendar.day.scheduled_many_suffix" -> " eventos programados";
+            case "calendar.week.range_prefix" -> "Semana del ";
+            case "calendar.week.range_middle" -> " al ";
+            case "calendar.week.no_events" -> "Sin eventos";
+            case "calendar.week.more_prefix" -> "+";
+            case "calendar.week.more_suffix" -> " mas";
+            case "calendar.year.title_prefix" -> "Vista anual ";
+            case "calendar.event.default_title" -> "Evento";
+            case "calendar.event.no_detail" -> "Sin detalle";
+            case "calendar.event.default_type" -> "GENERAL";
+            case "calendar.day_agenda.title" -> "Agenda del dia";
+            case "calendar.day_agenda.no_events" -> "No hay eventos para hoy.";
+            case "calendar.dialog.title" -> "Agenda";
+            case "calendar.dialog.empty.title" -> "Dia libre";
+            case "calendar.dialog.empty.body" -> "No hay nada programado. Puedes crear una cita, vencimiento o recordatorio para este dia.";
+            case "calendar.dialog.empty.btn" -> "Crear evento";
+            case "calendar.dialog.planned_one" -> "1 evento planificado";
+            case "calendar.dialog.planned_many_suffix" -> " eventos planificados";
+            case "calendar.dialog.month.no_events" -> "No hay eventos en este mes.";
+            case "calendar.weekday.mon" -> "L";
+            case "calendar.weekday.tue" -> "M";
+            case "calendar.weekday.wed" -> "X";
+            case "calendar.weekday.thu" -> "J";
+            case "calendar.weekday.fri" -> "V";
+            case "calendar.weekday.sat" -> "S";
+            case "calendar.weekday.sun" -> "D";
+            case "common.btn.edit" -> "Editar";
+            case "common.btn.delete" -> "Eliminar";
+            // ---- Generic module views ----
+            case "module.records_count_suffix" -> " registros";
+            case "module.section.summary" -> "Resumen";
+            case "module.section.summary_total" -> "Total registros";
+            case "module.section.activity_by_date" -> "Actividad por fecha";
+            case "module.section.payment_status" -> "Estado de pago";
+            case "module.section.status" -> "Estado";
+            case "module.section.models_by_period" -> "Modelos por periodo";
+            case "module.empty.no_data_loaded" -> "Sin datos cargados para este modulo.";
+            case "module.empty.no_data" -> "Sin datos";
+            case "module.unit.expenses" -> "gastos";
+            case "module.unit.tax_models" -> "modelos fiscales";
+            case "module.unit.invoices" -> "facturas";
+            case "module.unit.customers" -> "clientes";
+            case "module.unit.events" -> "eventos";
+            case "module.unit.records" -> "registros";
+            case "module.unit.active_customers" -> "clientes activos";
+            case "module.unit.work_logs" -> "partes de trabajo";
+            case "module.unit.alerts" -> "avisos";
+            case "module.unit.users_employees" -> "usuarios/empleados";
+            case "module.section.team_by_type" -> "Equipo por tipo";
+            case "module.section.main_distribution" -> "Distribucion principal";
+            case "module.section.collection_status" -> "Estado de cobro";
+            case "module.section.pin_access" -> "Acceso PIN";
+            case "module.section.contacts" -> "Contactos";
+            case "module.summary.no_field" -> "Sin dato";
+            case "module.summary.ready_to_review" -> "Datos listos para revisar.";
             default -> key.startsWith("column.") ? key.substring(7) : switch (key) {
                 case "field.name" -> "Nombre";
                 case "field.taxId" -> "NIF/CIF";
