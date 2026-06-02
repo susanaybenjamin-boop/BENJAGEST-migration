@@ -2896,6 +2896,15 @@ public class BenjagestUiApplication extends Application {
     private Label editorRetentionLabel;
     private Label editorTotalLabel;
 
+    // Mapas de Label por fila para las columnas calculadas (Subtotal/Total
+    // de cada linea). Los rellena la cellFactory cuando bindea, los lee el
+    // listener del decimalColumn al teclear. Asi actualizamos los importes
+    // visibles de la linea SIN llamar a editorLinesTable.refresh() (que
+    // pierde el foco del TextField que estaba editando). IdentityHashMap
+    // porque la clave es el objeto fila por identidad, no por equals.
+    private final java.util.Map<InvoiceLineDraft, Label> rowSubtotalLabels = new java.util.IdentityHashMap<>();
+    private final java.util.Map<InvoiceLineDraft, Label> rowLineTotalLabels = new java.util.IdentityHashMap<>();
+
     private void showInvoiceEditor(String existingInvoiceId) {
         recordNav(() -> showInvoiceEditor(existingInvoiceId));
         Task<EditorBundle> task = new Task<>() {
@@ -3321,17 +3330,70 @@ public class BenjagestUiApplication extends Application {
         TableColumn<InvoiceLineDraft, String> colVat = decimalColumn("IVA %", InvoiceLineDraft::getVatPercent, InvoiceLineDraft::setVatPercent);
         TableColumn<InvoiceLineDraft, String> colRet = decimalColumn("Ret. %", InvoiceLineDraft::getRetentionPercent, InvoiceLineDraft::setRetentionPercent);
 
-        TableColumn<InvoiceLineDraft, String> colSubtotal = new TableColumn<>("Subtotal");
-        colSubtotal.setCellValueFactory(c -> new SimpleStringProperty(money(lineSubtotal(c.getValue()).toPlainString())));
-        colSubtotal.setEditable(false);
-        TableColumn<InvoiceLineDraft, String> colLineTotal = new TableColumn<>("Total");
-        colLineTotal.setCellValueFactory(c -> new SimpleStringProperty(money(lineTotal(c.getValue()).toPlainString())));
-        colLineTotal.setEditable(false);
+        // Limpiamos los mapas al construir la tabla — la instancia anterior
+        // ya no existe y sus labels son basura.
+        rowSubtotalLabels.clear();
+        rowLineTotalLabels.clear();
+
+        TableColumn<InvoiceLineDraft, String> colSubtotal = computedColumn("Subtotal",
+                line -> money(lineSubtotal(line).toPlainString()),
+                rowSubtotalLabels);
+        TableColumn<InvoiceLineDraft, String> colLineTotal = computedColumn("Total",
+                line -> money(lineTotal(line).toPlainString()),
+                rowLineTotalLabels);
 
         table.getColumns().addAll(java.util.List.of(colDesc, colQty, colPrice, colVat, colRet, colSubtotal, colLineTotal));
         table.setItems(FXCollections.observableArrayList(initial));
         table.setPrefHeight(280);
         return table;
+    }
+
+    /**
+     * Columna calculada (no editable) cuya celda lleva un Label cuyo
+     * texto se actualiza desde fuera: cada vez que la celda se bindea a
+     * una fila, registramos el Label en el mapa con la fila como clave.
+     * El listener de las celdas editables (decimalColumn) lee el mapa y
+     * llama directamente a label.setText sin pasar por refresh() — asi
+     * no perdemos el foco del TextField que esta editando.
+     */
+    private TableColumn<InvoiceLineDraft, String> computedColumn(String header,
+                                                                  java.util.function.Function<InvoiceLineDraft, String> compute,
+                                                                  java.util.Map<InvoiceLineDraft, Label> registry) {
+        TableColumn<InvoiceLineDraft, String> col = new TableColumn<>(header);
+        col.setCellValueFactory(c -> new SimpleStringProperty(compute.apply(c.getValue())));
+        col.setEditable(false);
+        col.setCellFactory(cv -> new javafx.scene.control.TableCell<InvoiceLineDraft, String>() {
+            private final Label label = new Label();
+            private InvoiceLineDraft boundRow;
+            {
+                label.getStyleClass().add("invoice-line-computed");
+            }
+            @Override
+            protected void updateItem(String item, boolean empty) {
+                super.updateItem(item, empty);
+                if (empty || getTableRow() == null || getTableRow().getItem() == null) {
+                    setGraphic(null);
+                    setText(null);
+                    if (boundRow != null) {
+                        registry.remove(boundRow, label);
+                        boundRow = null;
+                    }
+                    return;
+                }
+                InvoiceLineDraft row = getTableRow().getItem();
+                if (row != boundRow) {
+                    if (boundRow != null) registry.remove(boundRow, label);
+                    boundRow = row;
+                    registry.put(row, label);
+                }
+                // Siempre recalculamos al pintar (cuando el rebind ocurre o
+                // cuando la fila aparece por primera vez). Las actualizaciones
+                // posteriores las hace el listener via el mapa.
+                label.setText(compute.apply(row));
+                setGraphic(label);
+            }
+        });
+        return col;
     }
 
     private TableColumn<InvoiceLineDraft, String> decimalColumn(String header,
@@ -3383,15 +3445,21 @@ public class BenjagestUiApplication extends Application {
                     }
                     setter.accept(row, value);
                     recomputeEditorTotals();
-                    // NO llamamos a editorLinesTable.refresh() aqui: el refresh
-                    // de TableView reconstruye los TableRow y JavaFX hace
-                    // perder el foco del TextField que estaba editando — el
-                    // sintoma era "tecleas 1, el campo se sale, no puedes
-                    // escribir 150". Los totales globales (subtotal, IVA,
-                    // total) se actualizan en vivo porque sus labels viven
-                    // FUERA de la tabla. Las columnas calculadas (Subtotal,
-                    // Total de la fila) se repintan cuando el foco sale de
-                    // la celda — vale la pena: prima poder escribir libre.
+                    // Actualizamos los Subtotal/Total de ESTA fila via las
+                    // referencias guardadas por computedColumn. Asi se ven
+                    // en vivo sin tocar editorLinesTable.refresh() (que
+                    // pierde el foco del TextField — sintoma "tecleas 1,
+                    // el campo se sale"). Si la fila no tiene labels
+                    // registrados todavia (cell aun no pintada), la celda
+                    // pintara con el valor correcto cuando aparezca.
+                    Label subLabel = rowSubtotalLabels.get(row);
+                    if (subLabel != null) {
+                        subLabel.setText(money(lineSubtotal(row).toPlainString()));
+                    }
+                    Label totLabel = rowLineTotalLabels.get(row);
+                    if (totLabel != null) {
+                        totLabel.setText(money(lineTotal(row).toPlainString()));
+                    }
                 });
             }
 
