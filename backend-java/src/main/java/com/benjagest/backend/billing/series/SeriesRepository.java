@@ -154,6 +154,36 @@ public class SeriesRepository {
         );
     }
 
+    /**
+     * Devuelve la serie activa cuyo invoice_kind coincide con el
+     * solicitado para la empresa actual. Usado por el server para
+     * resolver "que serie toca" segun el tipo de la factura
+     * (NORMAL → STANDARD, PROFORMA → PROFORMA, RECTIFYING → RECTIFYING)
+     * sin que el cliente tenga que mandar series_id explicito.
+     *
+     * Si la empresa tiene varias series del mismo kind (improbable, pero
+     * posible en SQL), devuelve la primera por code alfabetico. La UI
+     * de seed (V16) garantiza unicidad logica para PROF/RECT.
+     */
+    public Optional<Series> findActiveByKind(String invoiceKind) {
+        List<Series> matches = jdbcTemplate.query("""
+                SELECT id, company_id, code, invoice_kind, numbering_type,
+                       format_template, next_number, current_year,
+                       locked, active, created_at, updated_at
+                  FROM invoice_series
+                 WHERE invoice_kind = ?
+                   AND company_id = ?
+                   AND active = TRUE
+                 ORDER BY code
+                 LIMIT 1
+                """,
+                this::mapSeries,
+                invoiceKind,
+                tenantContext.getCurrentCompanyId()
+        );
+        return matches.stream().findFirst();
+    }
+
     public Optional<Series> findById(String id) {
         List<Series> matches = jdbcTemplate.query("""
                 SELECT id, company_id, code, invoice_kind, numbering_type,

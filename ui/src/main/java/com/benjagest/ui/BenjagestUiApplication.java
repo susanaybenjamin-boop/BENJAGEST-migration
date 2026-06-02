@@ -2464,23 +2464,26 @@ public class BenjagestUiApplication extends Application {
         certHint.getStyleClass().add("settings-hint");
 
         Label seriesHeader = label("Series de numeracion", "settings-section-title");
-        Label seriesHint = new Label("Las series controlan el numerado de tus facturas. "
-                + "Doble click en una fila para editarla. El codigo, formato y tipo quedan "
-                + "bloqueados en cuanto emites la primera factura validada del ano en esa serie "
-                + "(continuidad legal — solo se desbloquean al cerrar el ano).");
+        Label seriesHint = new Label("Solo defines la serie de tus facturas normales (STANDARD). "
+                + "Las series para PROFORMA y RECTIFICATIVAS son del sistema (RD 1619/2012 Art.13). "
+                + "Tu serie STANDARD se autobloquea automaticamente en cuanto emites la primera "
+                + "factura validada del ano (continuidad legal — solo se desbloquea al cerrar el ano).");
         seriesHint.setWrapText(true);
         seriesHint.getStyleClass().add("settings-hint");
 
         TableView<SeriesEntry> seriesTable = new TableView<>();
         seriesTable.getStyleClass().add("data-table");
         seriesTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
-        seriesTable.setPlaceholder(new Label("Sin series activas. Pulsa 'Nueva serie' para crear la primera."));
+        seriesTable.setPlaceholder(new Label("Sin series. Pulsa 'Definir mi serie de facturas' para crear la STANDARD."));
         TableColumn<SeriesEntry, String> sCode = new TableColumn<>("Codigo");
         sCode.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().code()));
         sCode.setPrefWidth(120);
         TableColumn<SeriesEntry, String> sKind = new TableColumn<>("Tipo");
-        sKind.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().invoiceKind()));
-        sKind.setPrefWidth(120);
+        sKind.setCellValueFactory(c -> new SimpleStringProperty(
+                "STANDARD".equals(c.getValue().invoiceKind())
+                        ? "Factura normal"
+                        : c.getValue().invoiceKind() + " · sistema"));
+        sKind.setPrefWidth(160);
         TableColumn<SeriesEntry, String> sFormat = new TableColumn<>("Formato");
         sFormat.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().formatTemplate()));
         sFormat.setPrefWidth(180);
@@ -2491,51 +2494,48 @@ public class BenjagestUiApplication extends Application {
         sYear.setCellValueFactory(c -> new SimpleStringProperty(
                 c.getValue().currentYear() == null ? "—" : String.valueOf(c.getValue().currentYear())));
         sYear.setPrefWidth(70);
-        TableColumn<SeriesEntry, String> sLocked = new TableColumn<>("Bloqueada");
-        sLocked.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().locked() ? "SI" : ""));
-        sLocked.setPrefWidth(80);
-        seriesTable.getColumns().addAll(List.of(sCode, sKind, sFormat, sNext, sYear, sLocked));
+        seriesTable.getColumns().addAll(List.of(sCode, sKind, sFormat, sNext, sYear));
         seriesTable.setItems(FXCollections.observableArrayList(series));
         seriesTable.setPrefHeight(200);
 
-        // Doble click sobre una fila -> editor de esa serie.
+        boolean hasStandard = series.stream().anyMatch(s -> "STANDARD".equals(s.invoiceKind()));
+
+        // Doble click solo abre editor para STANDARD; sobre reservadas
+        // informamos de que son del sistema.
         seriesTable.setRowFactory(tv -> {
             javafx.scene.control.TableRow<SeriesEntry> row = new javafx.scene.control.TableRow<>();
             row.setOnMouseClicked(ev -> {
                 if (ev.getClickCount() == 2 && !row.isEmpty()) {
-                    showSeriesEditor(row.getItem());
+                    SeriesEntry sel = row.getItem();
+                    if ("STANDARD".equals(sel.invoiceKind())) {
+                        showSeriesEditor(sel);
+                    } else {
+                        Alert info = new Alert(Alert.AlertType.INFORMATION,
+                                "Esta serie es del sistema (Art.13 RD 1619/2012) y se mantiene "
+                                        + "automaticamente. No se puede editar ni borrar.",
+                                ButtonType.OK);
+                        info.setHeaderText("Serie reservada · " + sel.invoiceKind());
+                        info.showAndWait();
+                    }
                 }
             });
             return row;
         });
 
-        Button newSeriesBtn = new Button("Nueva serie");
-        newSeriesBtn.setGraphic(icon("fas-plus"));
-        newSeriesBtn.setOnAction(event -> showSeriesEditor(null));
-
-        Button editSeriesBtn = new Button("Editar seleccionada");
-        editSeriesBtn.setGraphic(icon("fas-edit"));
-        editSeriesBtn.setOnAction(event -> {
-            SeriesEntry sel = seriesTable.getSelectionModel().getSelectedItem();
-            if (sel == null) {
-                showError("Sin seleccion", "Selecciona primero una serie en la tabla.");
-                return;
+        Button newSeriesBtn = new Button(hasStandard ? "Editar mi serie" : "Definir mi serie de facturas");
+        newSeriesBtn.setGraphic(icon(hasStandard ? "fas-edit" : "fas-plus"));
+        newSeriesBtn.setOnAction(event -> {
+            if (hasStandard) {
+                series.stream()
+                        .filter(s -> "STANDARD".equals(s.invoiceKind()))
+                        .findFirst()
+                        .ifPresent(this::showSeriesEditor);
+            } else {
+                showSeriesEditor(null);
             }
-            showSeriesEditor(sel);
         });
 
-        Button deleteSeriesBtn = new Button("Eliminar");
-        deleteSeriesBtn.setGraphic(icon("fas-trash-alt"));
-        deleteSeriesBtn.setOnAction(event -> {
-            SeriesEntry sel = seriesTable.getSelectionModel().getSelectedItem();
-            if (sel == null) {
-                showError("Sin seleccion", "Selecciona primero la serie que quieres eliminar.");
-                return;
-            }
-            deleteSeries(sel);
-        });
-
-        HBox seriesActions = new HBox(8, newSeriesBtn, editSeriesBtn, deleteSeriesBtn);
+        HBox seriesActions = new HBox(8, newSeriesBtn);
 
         // ---- Migracion desde otro programa ----
         Label migrationHeader = label("Migracion desde otro programa", "settings-section-title");
@@ -2705,17 +2705,17 @@ public class BenjagestUiApplication extends Application {
      */
     private void showSeriesEditor(SeriesEntry existing) {
         Dialog<Boolean> dialog = new Dialog<>();
-        dialog.setTitle(existing == null ? "Nueva serie" : "Editar serie " + existing.code());
+        dialog.setTitle(existing == null ? "Definir serie de facturas" : "Editar mi serie de facturas");
         dialog.setHeaderText(null);
 
         TextField codeField = new TextField(existing == null ? "" : existing.code());
-        codeField.setPromptText("Ej. F2026, PROF, RECT");
+        codeField.setPromptText("Ej. F2026, FRA, F");
         codeField.getStyleClass().add("form-input");
 
-        ComboBox<String> kindCombo = new ComboBox<>();
-        kindCombo.getItems().addAll("STANDARD", "PROFORMA", "RECTIFYING", "TEST");
-        kindCombo.getSelectionModel().select(existing == null ? "STANDARD" : existing.invoiceKind());
-        kindCombo.getStyleClass().add("form-input");
+        // Tipo factura: fijo a STANDARD (el usuario solo define su serie
+        // de facturas normales). Las PROF/RECT las gestiona el sistema.
+        Label kindFixedLabel = new Label("Factura normal (STANDARD)");
+        kindFixedLabel.getStyleClass().add("invoice-pill");
 
         ComboBox<String> numberingCombo = new ComboBox<>();
         numberingCombo.getItems().addAll("STANDARD", "BY_YEAR", "PREFIXED");
@@ -2733,23 +2733,24 @@ public class BenjagestUiApplication extends Application {
         nextNumberField.setDisable(existing != null);
 
         Label nextNumberHint = new Label(existing == null
-                ? "Numero por el que arrancara la serie (normalmente 1)."
+                ? "Numero por el que arrancara la serie (normalmente 1; si vienes de otro programa, usa Migracion)."
                 : "El correlativo no se cambia desde aqui. Usa 'Migracion desde otro programa' si vienes de otro software.");
         nextNumberHint.setWrapText(true);
         nextNumberHint.getStyleClass().add("settings-hint");
 
-        CheckBox lockedCheck = new CheckBox("Serie bloqueada (no permitir emitir facturas nuevas con ella)");
-        lockedCheck.setWrapText(true);
-        lockedCheck.setSelected(existing != null && existing.locked());
+        Label autoLockHint = new Label("La serie se autobloquea para edicion en cuanto emites la primera "
+                + "factura validada del ano (continuidad legal). No hay checkbox: es automatico.");
+        autoLockHint.setWrapText(true);
+        autoLockHint.getStyleClass().add("settings-hint");
 
         GridPane grid = formGrid();
         addFormRow(grid, 0, "Codigo *", codeField);
-        addFormRow(grid, 1, "Tipo factura *", kindCombo);
+        addFormRow(grid, 1, "Tipo", kindFixedLabel);
         addFormRow(grid, 2, "Numeracion *", numberingCombo);
         addFormRow(grid, 3, "Formato", formatField);
         addFormRow(grid, 4, "Proximo nº", nextNumberField);
 
-        VBox dialogBody = new VBox(12, grid, nextNumberHint, lockedCheck);
+        VBox dialogBody = new VBox(12, grid, nextNumberHint, autoLockHint);
         dialogBody.setPadding(new Insets(8));
         dialog.getDialogPane().setContent(dialogBody);
 
@@ -2783,16 +2784,16 @@ public class BenjagestUiApplication extends Application {
         }
 
         String code = codeField.getText().trim();
-        String kind = kindCombo.getValue();
+        String kind = "STANDARD"; // El usuario solo define su STANDARD.
         String numbering = numberingCombo.getValue();
         String format = formatField.getText();
-        boolean locked = lockedCheck.isSelected();
+        // El locked desaparece del editor: se infiere de las emisiones
+        // (countValidatedInYear > 0 → no editable). Asi por convencion.
         Integer initialNext = null;
         if (existing == null) {
             try {
                 initialNext = Integer.parseInt(nextNumberField.getText().trim());
             } catch (NumberFormatException ignored) {
-                // Ya validado arriba; no deberia llegar aqui.
                 return;
             }
         }
@@ -2802,9 +2803,9 @@ public class BenjagestUiApplication extends Application {
             @Override
             protected SeriesEntry call() throws Exception {
                 if (existing == null) {
-                    return billingApiClient.createSeries(code, kind, numbering, format, finalInitialNext, locked);
+                    return billingApiClient.createSeries(code, kind, numbering, format, finalInitialNext, false);
                 }
-                return billingApiClient.updateSeries(existing.id(), code, kind, numbering, format, locked);
+                return billingApiClient.updateSeries(existing.id(), code, kind, numbering, format, false);
             }
         };
         task.setOnSucceeded(ev -> {
@@ -2886,7 +2887,6 @@ public class BenjagestUiApplication extends Application {
     // ===================================================================
 
     private ComboBox<CustomerSummary> editorCustomerCombo;
-    private ComboBox<SeriesEntry> editorSeriesCombo;
     private javafx.scene.control.DatePicker editorInvoiceDate;
     private javafx.scene.control.DatePicker editorDueDate;
     private javafx.scene.control.TextArea editorNotesArea;
@@ -2997,14 +2997,16 @@ public class BenjagestUiApplication extends Application {
             editorCustomerCombo.getSelectionModel().selectFirst();
         }
 
-        editorSeriesCombo = new ComboBox<>();
-        editorSeriesCombo.getItems().addAll(bundle.series());
-        editorSeriesCombo.getStyleClass().add("invoice-input");
-        editorSeriesCombo.setMaxWidth(Double.MAX_VALUE);
-        configureSeriesCombo(editorSeriesCombo);
-        if (!bundle.series().isEmpty()) {
-            editorSeriesCombo.getSelectionModel().selectFirst();
-        }
+        // Ya no exponemos un combo "Serie" al usuario. La serie se elige
+        // en el servidor segun el invoice_type (NORMAL → STANDARD). El
+        // editor solo crea facturas normales — proformas/rectificativas
+        // tienen flujo aparte (proximamente). De este modo cumplimos
+        // RD 1619/2012 Art.13 por construccion: el usuario no puede
+        // mezclar series por error.
+        SeriesEntry standardSeries = bundle.series().stream()
+                .filter(s -> "STANDARD".equals(s.invoiceKind()))
+                .findFirst()
+                .orElse(null);
 
         editorInvoiceDate = new javafx.scene.control.DatePicker(
                 bundle.existing() == null || bundle.existing().invoiceDate() == null || bundle.existing().invoiceDate().isBlank()
@@ -3058,26 +3060,19 @@ public class BenjagestUiApplication extends Application {
         editorCustomerCombo.valueProperty().addListener((obs, oldV, newV) -> refreshClientDetail.run());
         refreshClientDetail.run();
 
-        // Pill con el tipo de la serie seleccionada (STANDARD/PROFORMA/etc).
-        // Y, en paralelo, el badge grande del header se mantiene en sync con
-        // el numero proyectado para esta serie.
-        Label seriesKindPill = new Label("");
-        seriesKindPill.getStyleClass().add("invoice-pill");
-        Runnable refreshSeriesPill = () -> {
-            SeriesEntry s = editorSeriesCombo.getValue();
-            if (s == null) {
-                seriesKindPill.setVisible(false);
-                seriesKindPill.setManaged(false);
-                nextNumberBadgeValue.setText("—");
-                return;
-            }
-            seriesKindPill.setVisible(true);
-            seriesKindPill.setManaged(true);
-            seriesKindPill.setText("Tipo: " + s.invoiceKind());
-            nextNumberBadgeValue.setText(previewNextNumber(s));
-        };
-        editorSeriesCombo.valueProperty().addListener((obs, oldV, newV) -> refreshSeriesPill.run());
-        refreshSeriesPill.run();
+        // Pill grande con el tipo de factura. La serie ya no se elige; la
+        // resuelve el server segun el kind. Por ahora siempre "Factura
+        // normal" (STANDARD). Cuando llegue el flujo de proformas
+        // anadiremos un selector aqui.
+        Label kindPill = label("Factura normal · serie automatica",
+                "invoice-pill");
+
+        // El badge del header refleja el proximo numero de la STANDARD.
+        if (standardSeries != null) {
+            nextNumberBadgeValue.setText(previewNextNumber(standardSeries));
+        } else {
+            nextNumberBadgeValue.setText("—");
+        }
 
         VBox colCliente = new VBox(8,
                 label("Cliente *", "invoice-field-label"),
@@ -3090,18 +3085,17 @@ public class BenjagestUiApplication extends Application {
                 label("Fecha de vencimiento", "invoice-field-label"),
                 editorDueDate
         );
-        VBox colSerie = new VBox(8,
-                label("Serie *", "invoice-field-label"),
-                editorSeriesCombo,
-                seriesKindPill
+        VBox colTipo = new VBox(8,
+                label("Tipo", "invoice-field-label"),
+                kindPill
         );
         HBox.setHgrow(colCliente, Priority.ALWAYS);
         HBox.setHgrow(colFechas, Priority.ALWAYS);
-        HBox.setHgrow(colSerie, Priority.ALWAYS);
+        HBox.setHgrow(colTipo, Priority.ALWAYS);
         colCliente.setMinWidth(0);
         colFechas.setMinWidth(0);
-        colSerie.setMinWidth(0);
-        HBox cabeceraGrid = new HBox(20, colCliente, colFechas, colSerie);
+        colTipo.setMinWidth(0);
+        HBox cabeceraGrid = new HBox(20, colCliente, colFechas, colTipo);
         Node cabeceraCard = invoiceCard("Cabecera de la factura", "fas-info-circle", cabeceraGrid);
 
         // ----- Card 2: Lineas -----
@@ -3541,13 +3535,8 @@ public class BenjagestUiApplication extends Application {
 
     private void persistDraft(String existingId, boolean validateAfter) {
         CustomerSummary customer = editorCustomerCombo.getValue();
-        SeriesEntry series = editorSeriesCombo.getValue();
         if (customer == null) {
             showError("Falta cliente", "Selecciona un cliente.");
-            return;
-        }
-        if (series == null) {
-            showError("Falta serie", "Selecciona la serie de numeracion.");
             return;
         }
         if (editorLinesTable.getItems().isEmpty()) {
@@ -3566,15 +3555,18 @@ public class BenjagestUiApplication extends Application {
         String notes = editorNotesArea.getText();
         List<InvoiceLineDraft> lines = new java.util.ArrayList<>(editorLinesTable.getItems());
 
+        // No mandamos seriesId: el server lo resuelve por invoice_type.
+        // Mantenemos la firma del cliente API (seriesId nullable) por
+        // si en algun flujo futuro queremos forzarlo explicitamente.
         Task<SalesInvoiceSummary> task = new Task<>() {
             @Override
             protected SalesInvoiceSummary call() throws Exception {
                 SalesInvoiceSummary saved;
                 if (existingId == null) {
-                    saved = billingApiClient.createInvoice(customer.id(), series.id(), "NORMAL",
+                    saved = billingApiClient.createInvoice(customer.id(), null, "NORMAL",
                             invoiceDateIso, dueDateIso, notes, lines);
                 } else {
-                    saved = billingApiClient.updateInvoice(existingId, customer.id(), series.id(), "NORMAL",
+                    saved = billingApiClient.updateInvoice(existingId, customer.id(), null, "NORMAL",
                             invoiceDateIso, dueDateIso, notes, lines);
                 }
                 if (validateAfter) {
