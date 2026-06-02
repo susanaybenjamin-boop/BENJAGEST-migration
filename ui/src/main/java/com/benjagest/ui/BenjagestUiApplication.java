@@ -288,27 +288,27 @@ public class BenjagestUiApplication extends Application {
 
     private List<PaletteAction> commandPaletteActions() {
         List<PaletteAction> all = new java.util.ArrayList<>();
-        all.add(new PaletteAction("Inicio · dashboard", "fas-home", this::showDashboard));
-        all.add(new PaletteAction("Clientes", "fas-users", () -> showModule("customers")));
-        all.add(new PaletteAction("Facturacion", "fas-file-invoice-dollar", () -> showModule("billing")));
-        all.add(new PaletteAction("Nueva factura", "fas-plus", () -> showInvoiceEditor(null)));
-        all.add(new PaletteAction("Configuracion", "fas-cog", () -> showModule("settings")));
-        all.add(new PaletteAction("Agenda", "fas-calendar-alt", () -> showModule("calendar")));
-        all.add(new PaletteAction("Compras", "fas-receipt", () -> showModule("purchases")));
-        all.add(new PaletteAction("Fiscal", "fas-percentage", () -> showModule("tax")));
-        all.add(new PaletteAction("Laboral", "fas-hard-hat", () -> showModule("labor")));
-        all.add(new PaletteAction("Informes", "fas-chart-line", () -> showModule("reports")));
+        all.add(new PaletteAction(t("palette.action.home"), "fas-home", this::showDashboard));
+        all.add(new PaletteAction(t("palette.action.customers"), "fas-users", () -> showModule("customers")));
+        all.add(new PaletteAction(t("palette.action.billing"), "fas-file-invoice-dollar", () -> showModule("billing")));
+        all.add(new PaletteAction(t("palette.action.new_invoice"), "fas-plus", () -> showInvoiceEditor(null)));
+        all.add(new PaletteAction(t("palette.action.settings"), "fas-cog", () -> showModule("settings")));
+        all.add(new PaletteAction(t("palette.action.calendar"), "fas-calendar-alt", () -> showModule("calendar")));
+        all.add(new PaletteAction(t("palette.action.purchases"), "fas-receipt", () -> showModule("purchases")));
+        all.add(new PaletteAction(t("palette.action.tax"), "fas-percentage", () -> showModule("tax")));
+        all.add(new PaletteAction(t("palette.action.labor"), "fas-hard-hat", () -> showModule("labor")));
+        all.add(new PaletteAction(t("palette.action.reports"), "fas-chart-line", () -> showModule("reports")));
         return all;
     }
 
     private void showCommandPalette() {
         Dialog<PaletteAction> dialog = new Dialog<>();
-        dialog.setTitle("BENJAGEST · Comandos");
+        dialog.setTitle(t("palette.title"));
         dialog.setHeaderText(null);
         dialog.initStyle(javafx.stage.StageStyle.UTILITY);
 
         TextField search = new TextField();
-        search.setPromptText("Buscar accion... (Esc para cerrar)");
+        search.setPromptText(t("palette.search.prompt"));
         search.getStyleClass().add("form-input");
         search.setMaxWidth(Double.MAX_VALUE);
 
@@ -1619,14 +1619,14 @@ public class BenjagestUiApplication extends Application {
             }
         };
         task.setOnSucceeded(event -> setCenterAnimated(settingsView(task.getValue())));
-        task.setOnFailed(event -> setCenterAnimated(scroll(errorPanel("No se pudo cargar Configuracion (necesitas rol OWNER o ADMIN)"))));
+        task.setOnFailed(event -> setCenterAnimated(scroll(errorPanel(t("settings.load_failed")))));
         start(task, "settings-load");
     }
 
     private VBox settingsView(SettingsBundle bundle) {
         VBox content = content();
 
-        Label title = new Label("Configuracion");
+        Label title = new Label(t("settings.shell.title"));
         title.getStyleClass().add("module-detail-title");
         Label subtitle = new Label(session.companyName());
         subtitle.getStyleClass().add("module-detail-description");
@@ -1641,13 +1641,13 @@ public class BenjagestUiApplication extends Application {
         TabPane tabs = new TabPane();
         tabs.getStyleClass().add("settings-tabs");
         tabs.setTabClosingPolicy(TabPane.TabClosingPolicy.UNAVAILABLE);
-        Tab companyTab = new Tab("Empresa", settingsCompanyTab(bundle.company()));
+        Tab companyTab = new Tab(t("settings.tab.company"), settingsCompanyTab(bundle.company()));
         companyTab.setGraphic(icon("fas-building"));
-        Tab emailTab = new Tab("Email SMTP", settingsEmailTab(bundle.email()));
+        Tab emailTab = new Tab(t("settings.tab.email"), settingsEmailTab(bundle.email()));
         emailTab.setGraphic(icon("fas-envelope"));
-        Tab modulesTab = new Tab("Modulos", settingsModulesTab(bundle.modules()));
+        Tab modulesTab = new Tab(t("settings.tab.modules"), settingsModulesTab(bundle.modules()));
         modulesTab.setGraphic(icon("fas-cubes"));
-        Tab auditTab = new Tab("Auditoria", settingsAuditTab());
+        Tab auditTab = new Tab(t("settings.tab.audit"), settingsAuditTab());
         auditTab.setGraphic(icon("fas-shield-alt"));
         tabs.getTabs().addAll(companyTab, emailTab, modulesTab, auditTab);
         // El TabPane crece hasta el final del area central; sin esto, los
@@ -1665,50 +1665,50 @@ public class BenjagestUiApplication extends Application {
     // ----- Pestana Empresa -----
 
     private Node settingsCompanyTab(CompanyData company) {
-        TextField legalName = textInput(company.legalName(), "Razon social");
-        TextField tradeName = textInput(company.tradeName(), "Nombre comercial");
-        TextField taxId = textInput(company.taxIdentifier(), "NIF/CIF");
-        TextField email = textInput(company.email(), "Email de contacto");
-        TextField phone = textInput(company.phone(), "Telefono");
-        TextField website = textInput(company.website(), "Web");
+        TextField legalName = textInput(company.legalName(), t("settings.company.prompt.legal_name"));
+        TextField tradeName = textInput(company.tradeName(), t("settings.company.prompt.trade_name"));
+        TextField taxId = textInput(company.taxIdentifier(), t("settings.company.prompt.tax_id"));
+        TextField email = textInput(company.email(), t("settings.company.prompt.email"));
+        TextField phone = textInput(company.phone(), t("settings.company.prompt.phone"));
+        TextField website = textInput(company.website(), t("settings.company.prompt.website"));
 
-        TextField addressLine = textInput(company.addressLine(), "Calle, numero, escalera");
-        TextField city = textInput(company.city(), "Localidad");
-        TextField province = textInput(company.province(), "Provincia");
-        TextField postalCode = textInput(company.postalCode(), "CP");
-        TextField country = textInput(company.country() == null || company.country().isBlank() ? "Espana" : company.country(), "Pais");
+        TextField addressLine = textInput(company.addressLine(), t("settings.company.prompt.address_line"));
+        TextField city = textInput(company.city(), t("settings.company.prompt.city"));
+        TextField province = textInput(company.province(), t("settings.company.prompt.province"));
+        TextField postalCode = textInput(company.postalCode(), t("settings.company.prompt.postal_code"));
+        TextField country = textInput(company.country() == null || company.country().isBlank() ? t("settings.company.country.default") : company.country(), t("settings.company.prompt.country"));
 
-        TextField iban = textInput(company.iban(), "ES00 0000 0000 0000 0000 0000");
-        TextField registry = textInput(company.registryInformation(), "Registro mercantil, tomo, hoja...");
-        TextField terms = textInput(company.legalTerms(), "Condiciones legales que aparecen en la factura");
-        TextField footer = textInput(company.invoiceFooter(), "Pie de factura");
+        TextField iban = textInput(company.iban(), t("settings.company.prompt.iban"));
+        TextField registry = textInput(company.registryInformation(), t("settings.company.prompt.registry"));
+        TextField terms = textInput(company.legalTerms(), t("settings.company.prompt.terms"));
+        TextField footer = textInput(company.invoiceFooter(), t("settings.company.prompt.footer"));
 
         GridPane generalGrid = formGrid();
-        addFormRow(generalGrid, 0, "Razon social *", legalName);
-        addFormRow(generalGrid, 1, "Nombre comercial", tradeName);
-        addFormRow(generalGrid, 2, "NIF/CIF", taxId);
-        addFormRow(generalGrid, 3, "Email", email);
-        addFormRow(generalGrid, 4, "Telefono", phone);
-        addFormRow(generalGrid, 5, "Web", website);
+        addFormRow(generalGrid, 0, t("settings.company.field.legal_name"), legalName);
+        addFormRow(generalGrid, 1, t("settings.company.field.trade_name"), tradeName);
+        addFormRow(generalGrid, 2, t("settings.company.field.tax_id"), taxId);
+        addFormRow(generalGrid, 3, t("settings.company.field.email"), email);
+        addFormRow(generalGrid, 4, t("settings.company.field.phone"), phone);
+        addFormRow(generalGrid, 5, t("settings.company.field.website"), website);
 
         GridPane addressGrid = formGrid();
-        addFormRow(addressGrid, 0, "Direccion", addressLine);
-        addFormRow(addressGrid, 1, "Localidad", city);
-        addFormRow(addressGrid, 2, "Provincia", province);
-        addFormRow(addressGrid, 3, "CP", postalCode);
-        addFormRow(addressGrid, 4, "Pais", country);
+        addFormRow(addressGrid, 0, t("settings.company.field.address"), addressLine);
+        addFormRow(addressGrid, 1, t("settings.company.field.city"), city);
+        addFormRow(addressGrid, 2, t("settings.company.field.province"), province);
+        addFormRow(addressGrid, 3, t("settings.company.field.postal_code"), postalCode);
+        addFormRow(addressGrid, 4, t("settings.company.field.country"), country);
 
         GridPane billingGrid = formGrid();
-        addFormRow(billingGrid, 0, "IBAN", iban);
-        addFormRow(billingGrid, 1, "Datos registrales", registry);
-        addFormRow(billingGrid, 2, "Condiciones legales", terms);
-        addFormRow(billingGrid, 3, "Pie de factura", footer);
+        addFormRow(billingGrid, 0, t("settings.company.field.iban"), iban);
+        addFormRow(billingGrid, 1, t("settings.company.field.registry"), registry);
+        addFormRow(billingGrid, 2, t("settings.company.field.terms"), terms);
+        addFormRow(billingGrid, 3, t("settings.company.field.footer"), footer);
 
-        Label typeNote = new Label("Tipo de empresa: " + company.companyType()
-                + " (no editable desde aqui)");
+        Label typeNote = new Label(t("settings.company.type_note_prefix") + company.companyType()
+                + t("settings.company.type_note_suffix"));
         typeNote.getStyleClass().add("settings-hint");
 
-        Button save = new Button("Guardar cambios");
+        Button save = new Button(t("settings.company.save"));
         save.setGraphic(icon("fas-save"));
         save.setOnAction(event -> saveCompany(new CompanyData(
                 company.id(),
@@ -1734,25 +1734,25 @@ public class BenjagestUiApplication extends Application {
         actions.getStyleClass().add("settings-actions");
 
         VBox body = new VBox(16,
-                label("Datos generales", "settings-section-title"),
+                label(t("settings.company.section.general"), "settings-section-title"),
                 generalGrid,
                 typeNote,
                 new Separator(),
-                label("Direccion postal", "settings-section-title"),
+                label(t("settings.company.section.address"), "settings-section-title"),
                 addressGrid,
                 new Separator(),
-                label("Datos de facturacion", "settings-section-title"),
-                label("Estos datos aparecen en cada factura que emites como empresa.", "settings-hint"),
+                label(t("settings.company.section.billing"), "settings-section-title"),
+                label(t("settings.company.section.billing.hint"), "settings-hint"),
                 billingGrid
         );
 
-        Label sectionTitle = label("Empresa", "settings-section-title");
+        Label sectionTitle = label(t("settings.company.section_label"), "settings-section-title");
         return tabLayout(sectionTitle, body, actions);
     }
 
     private void saveCompany(CompanyData data) {
         if (data.legalName() == null || data.legalName().isBlank()) {
-            showError("Falta dato", "La razon social es obligatoria");
+            showError(t("settings.company.error.missing_legal_name.title"), t("settings.company.error.missing_legal_name.body"));
             return;
         }
         Task<CompanyData> task = new Task<>() {
@@ -1772,43 +1772,43 @@ public class BenjagestUiApplication extends Application {
             showShell();
             select("settings");
         });
-        task.setOnFailed(event -> showError("No se pudo guardar", "Comprueba los datos y vuelve a intentarlo."));
+        task.setOnFailed(event -> showError(t("settings.company.save.fail.title"), t("settings.company.save.fail.body")));
         start(task, "settings-company-save");
     }
 
     // ----- Pestana Email SMTP -----
 
     private Node settingsEmailTab(EmailConfig config) {
-        TextField smtpHost = textInput(config.smtpHost(), "smtp.tu-servidor.com");
-        TextField smtpPort = textInput(config.smtpPort() == null ? "" : config.smtpPort().toString(), "587");
-        TextField smtpUser = textInput(config.smtpUser(), "usuario@dominio");
+        TextField smtpHost = textInput(config.smtpHost(), t("settings.email.prompt.host"));
+        TextField smtpPort = textInput(config.smtpPort() == null ? "" : config.smtpPort().toString(), t("settings.email.prompt.port"));
+        TextField smtpUser = textInput(config.smtpUser(), t("settings.email.prompt.user"));
         PasswordField smtpPassword = new PasswordField();
         smtpPassword.setPromptText(config.passwordConfigured()
-                ? "(password guardada - deja vacio para no cambiar)"
-                : "password");
-        TextField fromAddress = textInput(config.fromAddress(), "facturas@tu-dominio");
-        TextField fromName = textInput(config.fromName(), "Nombre que aparece como remitente");
-        TextField replyTo = textInput(config.replyTo(), "respuestas@tu-dominio");
-        CheckBox tlsEnabled = new CheckBox("TLS / STARTTLS habilitado");
+                ? t("settings.email.prompt.password.saved")
+                : t("settings.email.prompt.password"));
+        TextField fromAddress = textInput(config.fromAddress(), t("settings.email.prompt.from_address"));
+        TextField fromName = textInput(config.fromName(), t("settings.email.prompt.from_name"));
+        TextField replyTo = textInput(config.replyTo(), t("settings.email.prompt.reply_to"));
+        CheckBox tlsEnabled = new CheckBox(t("settings.email.flag.tls"));
         tlsEnabled.setSelected(config.tlsEnabled());
-        CheckBox authRequired = new CheckBox("El servidor SMTP requiere autenticacion");
+        CheckBox authRequired = new CheckBox(t("settings.email.flag.auth"));
         authRequired.setSelected(config.authRequired());
 
         GridPane grid = formGrid();
-        addFormRow(grid, 0, "Servidor SMTP", smtpHost);
-        addFormRow(grid, 1, "Puerto", smtpPort);
-        addFormRow(grid, 2, "Usuario", smtpUser);
-        addFormRow(grid, 3, "Password", smtpPassword);
-        addFormRow(grid, 4, "From (remitente)", fromAddress);
-        addFormRow(grid, 5, "Nombre del remitente", fromName);
-        addFormRow(grid, 6, "Reply-To", replyTo);
+        addFormRow(grid, 0, t("settings.email.field.host"), smtpHost);
+        addFormRow(grid, 1, t("settings.email.field.port"), smtpPort);
+        addFormRow(grid, 2, t("settings.email.field.user"), smtpUser);
+        addFormRow(grid, 3, t("settings.email.field.password"), smtpPassword);
+        addFormRow(grid, 4, t("settings.email.field.from_address"), fromAddress);
+        addFormRow(grid, 5, t("settings.email.field.from_name"), fromName);
+        addFormRow(grid, 6, t("settings.email.field.reply_to"), replyTo);
 
         VBox flags = new VBox(8, tlsEnabled, authRequired);
 
         TextField testRecipient = new TextField();
-        testRecipient.setPromptText("destinatario@dominio (para email de prueba)");
+        testRecipient.setPromptText(t("settings.email.test.prompt"));
 
-        Button save = new Button("Guardar");
+        Button save = new Button(t("settings.email.btn.save"));
         save.setGraphic(icon("fas-save"));
         save.setOnAction(event -> saveEmailConfig(
                 smtpHost.getText(),
@@ -1822,7 +1822,7 @@ public class BenjagestUiApplication extends Application {
                 authRequired.isSelected()
         ));
 
-        Button test = new Button("Enviar email de prueba");
+        Button test = new Button(t("settings.email.btn.test"));
         test.setGraphic(icon("fas-paper-plane"));
         test.setOnAction(event -> sendTestEmail(testRecipient.getText()));
 
@@ -1835,11 +1835,11 @@ public class BenjagestUiApplication extends Application {
                 grid,
                 flags,
                 new Separator(),
-                label("Probar configuracion", "settings-section-title"),
-                label("Envia un correo de prueba con la configuracion guardada para verificar que las credenciales funcionan.", "settings-hint"),
+                label(t("settings.email.section.test"), "settings-section-title"),
+                label(t("settings.email.section.test.hint"), "settings-hint"),
                 testRecipient
         );
-        return tabLayout(label("Servidor SMTP", "settings-section-title"), center, actions);
+        return tabLayout(label(t("settings.email.section"), "settings-section-title"), center, actions);
     }
 
     private Integer parseIntOrNull(String text) {
@@ -1865,18 +1865,18 @@ public class BenjagestUiApplication extends Application {
         };
         task.setOnSucceeded(event -> {
             Alert ok = new Alert(Alert.AlertType.INFORMATION,
-                    "Configuracion SMTP guardada.", ButtonType.OK);
+                    t("settings.email.save.success"), ButtonType.OK);
             ok.setHeaderText(null);
             ok.showAndWait();
             showSettings();
         });
-        task.setOnFailed(event -> showError("No se pudo guardar", "Revisa los datos del servidor SMTP."));
+        task.setOnFailed(event -> showError(t("settings.email.save.fail.title"), t("settings.email.save.fail.body")));
         start(task, "settings-email-save");
     }
 
     private void sendTestEmail(String recipient) {
         if (recipient == null || recipient.isBlank()) {
-            showError("Falta dato", "Indica un email destinatario para la prueba.");
+            showError(t("settings.email.test.missing.title"), t("settings.email.test.missing.body"));
             return;
         }
         Task<Void> task = new Task<>() {
@@ -1888,12 +1888,13 @@ public class BenjagestUiApplication extends Application {
         };
         task.setOnSucceeded(event -> {
             Alert ok = new Alert(Alert.AlertType.INFORMATION,
-                    "Email de prueba enviado a " + recipient + ".", ButtonType.OK);
+                    t("settings.email.test.success_prefix") + recipient + t("settings.email.test.success_suffix"),
+                    ButtonType.OK);
             ok.setHeaderText(null);
             ok.showAndWait();
         });
-        task.setOnFailed(event -> showError("Envio fallido",
-                "Comprueba host/puerto/usuario/password y vuelve a intentarlo."));
+        task.setOnFailed(event -> showError(t("settings.email.test.fail.title"),
+                t("settings.email.test.fail.body")));
         start(task, "settings-email-test");
     }
 
@@ -1903,10 +1904,8 @@ public class BenjagestUiApplication extends Application {
         pendingModuleChanges.clear();
         moduleBaselineState.clear();
 
-        Label sectionTitle = label("Modulos activos por empresa", "settings-section-title");
-        Label hint = new Label("Marca o desmarca cada modulo y pulsa Guardar cambios. "
-                + "Cada modulo es todo-o-nada: si activas Facturacion entra el bloque completo "
-                + "(series, facturas, cobros, recurrentes); si lo desactivas, sale entero.");
+        Label sectionTitle = label(t("settings.modules.section"), "settings-section-title");
+        Label hint = new Label(t("settings.modules.hint"));
         hint.setWrapText(true);
         hint.getStyleClass().add("settings-hint");
 
@@ -1937,7 +1936,7 @@ public class BenjagestUiApplication extends Application {
         }
 
         modulesDirtyHint = label("", "settings-hint");
-        saveModulesButton = new Button("Guardar cambios");
+        saveModulesButton = new Button(t("settings.company.save"));
         saveModulesButton.setGraphic(icon("fas-save"));
         saveModulesButton.setOnAction(event -> saveModuleChanges());
 
@@ -1965,54 +1964,56 @@ public class BenjagestUiApplication extends Application {
     );
 
     private Node settingsAuditTab() {
-        Label sectionTitle = label("Eventos recientes", "settings-section-title");
-        Label hint = new Label("Quien hizo que y cuando. Util para investigar accesos sospechosos o "
-                + "cambios de configuracion. Se muestran hasta 200 entradas, ordenadas por mas recientes.");
+        Label sectionTitle = label(t("settings.audit.section"), "settings-section-title");
+        Label hint = new Label(t("settings.audit.hint"));
         hint.setWrapText(true);
         hint.getStyleClass().add("settings-hint");
 
         javafx.scene.control.ComboBox<String> typeFilter = new javafx.scene.control.ComboBox<>();
-        typeFilter.getItems().addAll(AUDIT_EVENT_TYPES);
+        // El primer item es el "(todos)/(all)" — lo traducimos via t(); el
+        // resto son codigos tecnicos que no se traducen.
+        typeFilter.getItems().add(t("list.filter.all"));
+        typeFilter.getItems().addAll(AUDIT_EVENT_TYPES.subList(1, AUDIT_EVENT_TYPES.size()));
         typeFilter.getSelectionModel().selectFirst();
         typeFilter.getStyleClass().add("form-input");
 
         TableView<AuditEvent> table = new TableView<>();
         table.getStyleClass().add("data-table");
         table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
-        table.setPlaceholder(new Label("Sin eventos registrados todavia."));
+        table.setPlaceholder(new Label(t("settings.audit.placeholder.empty")));
 
-        TableColumn<AuditEvent, String> colWhen = new TableColumn<>("Cuando");
+        TableColumn<AuditEvent, String> colWhen = new TableColumn<>(t("settings.audit.col.when"));
         colWhen.setCellValueFactory(c -> new SimpleStringProperty(shortIso(c.getValue().createdAt())));
         colWhen.setPrefWidth(160);
-        TableColumn<AuditEvent, String> colType = new TableColumn<>("Tipo");
+        TableColumn<AuditEvent, String> colType = new TableColumn<>(t("settings.audit.col.type"));
         colType.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().eventType()));
         colType.setPrefWidth(150);
-        TableColumn<AuditEvent, String> colResult = new TableColumn<>("Resultado");
+        TableColumn<AuditEvent, String> colResult = new TableColumn<>(t("settings.audit.col.result"));
         colResult.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().result()));
         colResult.setPrefWidth(80);
-        TableColumn<AuditEvent, String> colUser = new TableColumn<>("Usuario");
+        TableColumn<AuditEvent, String> colUser = new TableColumn<>(t("settings.audit.col.user"));
         colUser.setCellValueFactory(c -> new SimpleStringProperty(shortId(c.getValue().userId())));
         colUser.setPrefWidth(120);
-        TableColumn<AuditEvent, String> colEntity = new TableColumn<>("Entidad");
+        TableColumn<AuditEvent, String> colEntity = new TableColumn<>(t("settings.audit.col.entity"));
         colEntity.setCellValueFactory(c -> new SimpleStringProperty(
                 c.getValue().entityType() == null ? "" : c.getValue().entityType() + ":" + shortId(c.getValue().entityId())
         ));
         colEntity.setPrefWidth(160);
-        TableColumn<AuditEvent, String> colIp = new TableColumn<>("IP");
+        TableColumn<AuditEvent, String> colIp = new TableColumn<>(t("settings.audit.col.ip"));
         colIp.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().ipAddress()));
         colIp.setPrefWidth(120);
-        TableColumn<AuditEvent, String> colDetails = new TableColumn<>("Detalle");
+        TableColumn<AuditEvent, String> colDetails = new TableColumn<>(t("settings.audit.col.details"));
         colDetails.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().details()));
         table.getColumns().addAll(List.of(colWhen, colType, colResult, colUser, colEntity, colIp, colDetails));
 
-        Button refresh = new Button("Refrescar");
+        Button refresh = new Button(t("settings.audit.btn.refresh"));
         refresh.setGraphic(icon("fas-sync-alt"));
         refresh.setOnAction(event -> loadAuditEvents(table, typeFilter.getValue()));
         typeFilter.setOnAction(event -> loadAuditEvents(table, typeFilter.getValue()));
 
         loadAuditEvents(table, typeFilter.getValue());
 
-        HBox filterRow = new HBox(10, label("Filtrar por tipo:", "form-label"), typeFilter);
+        HBox filterRow = new HBox(10, label(t("settings.audit.filter.label"), "form-label"), typeFilter);
         filterRow.setAlignment(Pos.CENTER_LEFT);
 
         HBox actions = new HBox(refresh);
@@ -2023,7 +2024,13 @@ public class BenjagestUiApplication extends Application {
     }
 
     private void loadAuditEvents(TableView<AuditEvent> table, String selectedType) {
-        String filter = selectedType == null || "(todos)".equals(selectedType) ? null : selectedType;
+        // Comparamos contra ambos idiomas — el "(todos)/(all)" del filtro
+        // depende del idioma activo en el momento de pintar el ComboBox.
+        String filter = selectedType == null
+                || "(todos)".equals(selectedType)
+                || "(all)".equals(selectedType)
+                || t("list.filter.all").equals(selectedType)
+                ? null : selectedType;
         Task<List<AuditEvent>> task = new Task<>() {
             @Override
             protected List<AuditEvent> call() throws Exception {
@@ -2031,7 +2038,7 @@ public class BenjagestUiApplication extends Application {
             }
         };
         task.setOnSucceeded(event -> table.setItems(FXCollections.observableArrayList(task.getValue())));
-        task.setOnFailed(event -> table.setPlaceholder(new Label("No se pudieron cargar los eventos.")));
+        task.setOnFailed(event -> table.setPlaceholder(new Label(t("settings.audit.load.fail"))));
         start(task, "settings-audit-load");
     }
 
@@ -2078,7 +2085,7 @@ public class BenjagestUiApplication extends Application {
         };
         task.setOnSucceeded(event -> setCenterAnimated(billingView(task.getValue())));
         task.setOnFailed(event -> setCenterAnimated(scroll(errorPanel(
-                "No se pudo cargar Facturacion (modulo billing activo? rol OWNER/ADMIN/ACCOUNTANT?)"))));
+                t("billing.shell.load_failed")))));
         start(task, "billing-load");
     }
 
@@ -2092,9 +2099,9 @@ public class BenjagestUiApplication extends Application {
     private VBox billingView(BillingBundle bundle) {
         VBox content = content();
 
-        Label title = new Label("Facturacion");
+        Label title = new Label(t("billing.shell.title"));
         title.getStyleClass().add("module-detail-title");
-        Label subtitle = new Label("Gestion integral y VeriFactu");
+        Label subtitle = new Label(t("billing.shell.subtitle"));
         subtitle.getStyleClass().add("module-detail-description");
         VBox titleBox = new VBox(4, title, subtitle);
 
@@ -2103,7 +2110,7 @@ public class BenjagestUiApplication extends Application {
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
 
-        Button newInvoice = new Button("Nueva factura");
+        Button newInvoice = new Button(t("billing.shell.new_invoice"));
         newInvoice.setGraphic(icon("fas-plus"));
         newInvoice.setOnAction(event -> showInvoiceEditor(null));
 
@@ -2115,13 +2122,13 @@ public class BenjagestUiApplication extends Application {
         tabs.getStyleClass().add("settings-tabs");
         tabs.setTabClosingPolicy(TabPane.TabClosingPolicy.UNAVAILABLE);
 
-        Tab dashboardTab = new Tab("Dashboard", billingDashboardTab(bundle));
+        Tab dashboardTab = new Tab(t("billing.tab.dashboard"), billingDashboardTab(bundle));
         dashboardTab.setGraphic(icon("fas-chart-bar"));
 
-        Tab invoicesTab = new Tab("Facturas", billingInvoicesTab(bundle.invoices()));
+        Tab invoicesTab = new Tab(t("billing.tab.invoices"), billingInvoicesTab(bundle.invoices()));
         invoicesTab.setGraphic(icon("fas-file-invoice"));
 
-        Tab configTab = new Tab("Configuracion", billingConfigTab(bundle.verifactuConfig(), bundle.series(), bundle.certificates(), bundle.invoiceTexts()));
+        Tab configTab = new Tab(t("billing.tab.config"), billingConfigTab(bundle.verifactuConfig(), bundle.series(), bundle.certificates(), bundle.invoiceTexts()));
         configTab.setGraphic(icon("fas-cog"));
 
         tabs.getTabs().addAll(dashboardTab, invoicesTab, configTab);
@@ -2144,10 +2151,8 @@ public class BenjagestUiApplication extends Application {
     // ----- Sub-tab Dashboard (placeholder F6) -----
 
     private Node billingDashboardTab(BillingBundle bundle) {
-        Label section = label("Resumen rapido", "settings-section-title");
-        Label hint = new Label("El dashboard completo con KPIs (facturado mes, pendiente cobro, "
-                + "proximo vencimiento, grafica IVA, etc.) llega en el slice F6. "
-                + "Hasta entonces este resumen se queda con cifras minimas.");
+        Label section = label(t("billing.dash.section"), "settings-section-title");
+        Label hint = new Label(t("billing.dash.hint"));
         hint.setWrapText(true);
         hint.getStyleClass().add("settings-hint");
 
@@ -2162,14 +2167,14 @@ public class BenjagestUiApplication extends Application {
         metrics.setPrefTileWidth(218);
         metrics.setPrefTileHeight(132);
         metrics.getChildren().addAll(
-                metric("Total facturas", String.valueOf(total), "Todos los estados", "fas-file-invoice", "module-blue"),
-                metric("Borradores", String.valueOf(drafts), "Sin validar todavia", "fas-edit", "metric-amber"),
-                metric("Validadas", String.valueOf(validated), "Numeradas y selladas", "fas-check", "metric-green"),
-                metric("Pendientes cobro", String.valueOf(pending), "Sin pagar", "fas-hourglass-half", "metric-rose")
+                metric(t("billing.dash.metric.total"), String.valueOf(total), t("billing.dash.metric.total.detail"), "fas-file-invoice", "module-blue"),
+                metric(t("billing.dash.metric.drafts"), String.valueOf(drafts), t("billing.dash.metric.drafts.detail"), "fas-edit", "metric-amber"),
+                metric(t("billing.dash.metric.validated"), String.valueOf(validated), t("billing.dash.metric.validated.detail"), "fas-check", "metric-green"),
+                metric(t("billing.dash.metric.pending"), String.valueOf(pending), t("billing.dash.metric.pending.detail"), "fas-hourglass-half", "metric-rose")
         );
 
         VBox body = new VBox(16, section, hint, metrics);
-        return tabLayout(label("Vista general", "settings-section-title"), body, new HBox());
+        return tabLayout(label(t("billing.dash.tab_title"), "settings-section-title"), body, new HBox());
     }
 
     // ----- Sub-tab Facturas (listado con filtros) -----
@@ -2188,20 +2193,20 @@ public class BenjagestUiApplication extends Application {
 
     private Node billingInvoicesTab(List<SalesInvoiceSummary> initialList) {
         billingStatusFilter = new ComboBox<>();
-        billingStatusFilter.getItems().addAll("(todos)", "DRAFT", "VALIDATED", "CANCELLED", "VOIDED");
+        billingStatusFilter.getItems().addAll(t("list.filter.all"), "DRAFT", "VALIDATED", "CANCELLED", "VOIDED");
         billingStatusFilter.getSelectionModel().selectFirst();
         billingStatusFilter.getStyleClass().add("form-input");
 
         billingPaymentFilter = new ComboBox<>();
-        billingPaymentFilter.getItems().addAll("(todos)", "PENDING", "PARTIAL", "PAID", "OVERDUE");
+        billingPaymentFilter.getItems().addAll(t("list.filter.all"), "PENDING", "PARTIAL", "PAID", "OVERDUE");
         billingPaymentFilter.getSelectionModel().selectFirst();
         billingPaymentFilter.getStyleClass().add("form-input");
 
-        Button apply = new Button("Aplicar filtros");
+        Button apply = new Button(t("list.filter.apply"));
         apply.setGraphic(icon("fas-filter"));
         apply.setOnAction(event -> reloadInvoices());
 
-        Button reset = new Button("Limpiar");
+        Button reset = new Button(t("list.filter.reset"));
         reset.setGraphic(icon("fas-sync-alt"));
         reset.setOnAction(event -> {
             billingStatusFilter.getSelectionModel().selectFirst();
@@ -2210,45 +2215,45 @@ public class BenjagestUiApplication extends Application {
         });
 
         HBox filters = new HBox(10,
-                label("Estado:", "form-label"), billingStatusFilter,
-                label("Cobro:", "form-label"), billingPaymentFilter,
+                label(t("list.filter.label.status"), "form-label"), billingStatusFilter,
+                label(t("list.filter.label.collection"), "form-label"), billingPaymentFilter,
                 apply, reset);
         filters.setAlignment(Pos.CENTER_LEFT);
 
         billingTable = new TableView<>();
         billingTable.getStyleClass().add("data-table");
         billingTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
-        billingTable.setPlaceholder(new Label("Sin facturas para los filtros actuales."));
+        billingTable.setPlaceholder(new Label(t("list.placeholder.empty")));
 
-        TableColumn<SalesInvoiceSummary, String> colNumber = new TableColumn<>("Numero");
+        TableColumn<SalesInvoiceSummary, String> colNumber = new TableColumn<>(t("list.column.number"));
         colNumber.setCellValueFactory(c -> new SimpleStringProperty(
                 c.getValue().invoiceNumber() == null || c.getValue().invoiceNumber().isBlank()
-                        ? "(borrador)"
+                        ? t("list.draft_label")
                         : c.getValue().invoiceNumber()
         ));
         colNumber.setPrefWidth(160);
 
-        TableColumn<SalesInvoiceSummary, String> colCustomer = new TableColumn<>("Cliente");
+        TableColumn<SalesInvoiceSummary, String> colCustomer = new TableColumn<>(t("list.column.customer"));
         colCustomer.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().customerLegalName()));
         colCustomer.setPrefWidth(220);
 
-        TableColumn<SalesInvoiceSummary, String> colDate = new TableColumn<>("Fecha");
+        TableColumn<SalesInvoiceSummary, String> colDate = new TableColumn<>(t("list.column.date"));
         colDate.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().invoiceDate()));
         colDate.setPrefWidth(110);
 
-        TableColumn<SalesInvoiceSummary, String> colDue = new TableColumn<>("Vencimiento");
+        TableColumn<SalesInvoiceSummary, String> colDue = new TableColumn<>(t("list.column.due_date"));
         colDue.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().dueDate()));
         colDue.setPrefWidth(120);
 
-        TableColumn<SalesInvoiceSummary, String> colStatus = new TableColumn<>("Estado");
+        TableColumn<SalesInvoiceSummary, String> colStatus = new TableColumn<>(t("list.column.status"));
         colStatus.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().status()));
         colStatus.setPrefWidth(110);
 
-        TableColumn<SalesInvoiceSummary, String> colPayment = new TableColumn<>("Cobro");
+        TableColumn<SalesInvoiceSummary, String> colPayment = new TableColumn<>(t("list.column.collection"));
         colPayment.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().paymentStatus()));
         colPayment.setPrefWidth(100);
 
-        TableColumn<SalesInvoiceSummary, String> colTotal = new TableColumn<>("Total");
+        TableColumn<SalesInvoiceSummary, String> colTotal = new TableColumn<>(t("list.column.total"));
         colTotal.setCellValueFactory(c -> new SimpleStringProperty(
                 c.getValue().total() == null ? "" : money(c.getValue().total().toPlainString())));
         colTotal.setPrefWidth(110);
@@ -2266,10 +2271,9 @@ public class BenjagestUiApplication extends Application {
                         showInvoiceEditor(inv.id());
                     } else {
                         Alert info = new Alert(Alert.AlertType.INFORMATION,
-                                "Solo se pueden editar facturas en borrador (DRAFT). "
-                                + "Para corregir una factura validada hay que emitir rectificativa.",
+                                t("list.dialog.validated_no_edit"),
                                 ButtonType.OK);
-                        info.setHeaderText(null);
+                        info.setHeaderText(t("list.dialog.validated_no_edit.header"));
                         info.showAndWait();
                     }
                 }
@@ -2277,9 +2281,8 @@ public class BenjagestUiApplication extends Application {
             return row;
         });
 
-        Label header = label("Listado de facturas", "settings-section-title");
-        Label hint = new Label("Doble click sobre un borrador abre el editor. Seleccionando una fila "
-                + "se habilitan las acciones de la barra inferior.");
+        Label header = label(t("list.header"), "settings-section-title");
+        Label hint = new Label(t("list.hint"));
         hint.setWrapText(true);
         hint.getStyleClass().add("settings-hint");
 
@@ -2290,7 +2293,7 @@ public class BenjagestUiApplication extends Application {
         // estado de la fila seleccionada (no tiene sentido validar una
         // VALIDATED ni borrar fisicamente algo que ya tiene numero
         // legal).
-        Button validateRowBtn = new Button("Validar y emitir");
+        Button validateRowBtn = new Button(t("editor.action.validate"));
         validateRowBtn.setGraphic(icon("fas-check"));
         validateRowBtn.getStyleClass().add("invoice-validate-action");
         validateRowBtn.setDisable(true);
@@ -2299,7 +2302,7 @@ public class BenjagestUiApplication extends Application {
             if (sel != null) validateInvoiceFromList(sel);
         });
 
-        Button deleteDraftBtn = new Button("Eliminar borrador");
+        Button deleteDraftBtn = new Button(t("list.action.delete_draft"));
         deleteDraftBtn.setGraphic(icon("fas-trash-alt"));
         deleteDraftBtn.setDisable(true);
         deleteDraftBtn.setOnAction(ev -> {
@@ -2307,16 +2310,14 @@ public class BenjagestUiApplication extends Application {
             if (sel != null) deleteDraftFromList(sel);
         });
 
-        Button pdfBtn = new Button("Generar PDF");
+        Button pdfBtn = new Button(t("list.action.generate_pdf"));
         pdfBtn.setGraphic(icon("fas-file-pdf"));
         pdfBtn.setDisable(true);
         pdfBtn.setOnAction(ev -> {
             Alert info = new Alert(Alert.AlertType.INFORMATION,
-                    "La generacion de PDF llega en el slice F4b (PDF multipagina con datos de la empresa, "
-                            + "logo, totales agrupados por IVA, textos legales y pie). "
-                            + "Por ahora la factura queda registrada y numerada; el PDF se vera entonces.",
+                    t("list.dialog.pdf.body"),
                     ButtonType.OK);
-            info.setHeaderText("Pendiente · slice F4b");
+            info.setHeaderText(t("list.dialog.pdf.title"));
             info.showAndWait();
         });
 
@@ -2341,10 +2342,9 @@ public class BenjagestUiApplication extends Application {
 
     private void validateInvoiceFromList(SalesInvoiceSummary sel) {
         Alert confirm = new Alert(Alert.AlertType.CONFIRMATION,
-                "Vas a emitir el numero de factura para este borrador. "
-                        + "Una vez validada no podras editarla (solo emitir rectificativa).",
+                t("list.dialog.validate.body"),
                 ButtonType.OK, ButtonType.CANCEL);
-        confirm.setHeaderText("Validar y emitir factura");
+        confirm.setHeaderText(t("list.dialog.validate.title"));
         Optional<ButtonType> ans = confirm.showAndWait();
         if (ans.isEmpty() || ans.get() != ButtonType.OK) return;
 
@@ -2357,21 +2357,21 @@ public class BenjagestUiApplication extends Application {
         task.setOnSucceeded(ev -> {
             SalesInvoiceSummary v = task.getValue();
             Alert ok = new Alert(Alert.AlertType.INFORMATION,
-                    "Factura validada con n.º " + v.invoiceNumber(), ButtonType.OK);
+                    t("list.dialog.validate.success_prefix") + v.invoiceNumber(), ButtonType.OK);
             ok.setHeaderText(null);
             ok.showAndWait();
             showBilling();
         });
-        task.setOnFailed(ev -> showError("No se pudo validar",
-                "Revisa que la factura tenga serie y al menos una linea con descripcion."));
+        task.setOnFailed(ev -> showError(t("editor.error.validate_failed.title"),
+                t("list.dialog.validate.failure_body")));
         start(task, "billing-invoice-validate-from-list");
     }
 
     private void deleteDraftFromList(SalesInvoiceSummary sel) {
         Alert confirm = new Alert(Alert.AlertType.CONFIRMATION,
-                "Vas a eliminar este borrador. No se puede deshacer.",
+                t("list.dialog.delete.body"),
                 ButtonType.OK, ButtonType.CANCEL);
-        confirm.setHeaderText("Eliminar borrador");
+        confirm.setHeaderText(t("list.dialog.delete.title"));
         Optional<ButtonType> ans = confirm.showAndWait();
         if (ans.isEmpty() || ans.get() != ButtonType.OK) return;
 
@@ -2383,8 +2383,8 @@ public class BenjagestUiApplication extends Application {
             }
         };
         task.setOnSucceeded(ev -> showBilling());
-        task.setOnFailed(ev -> showError("No se pudo eliminar",
-                "Solo se pueden eliminar borradores (DRAFT)."));
+        task.setOnFailed(ev -> showError(t("list.dialog.delete.failure_title"),
+                t("list.dialog.delete.failure_body")));
         start(task, "billing-invoice-delete-from-list");
     }
 
@@ -2398,12 +2398,19 @@ public class BenjagestUiApplication extends Application {
             }
         };
         task.setOnSucceeded(event -> billingTable.setItems(FXCollections.observableArrayList(task.getValue())));
-        task.setOnFailed(event -> showError("Error al filtrar", "No se pudo refrescar el listado."));
+        task.setOnFailed(event -> showError(t("list.dialog.reload_failed.title"), t("list.dialog.reload_failed.body")));
         start(task, "billing-invoices-reload");
     }
 
     private String mapAllOrValue(String selection) {
-        return selection == null || "(todos)".equals(selection) ? null : selection;
+        // Comparamos contra ambas variantes (ES y EN) del "todos" porque el
+        // ComboBox se rellena con t() y el usuario puede haber cambiado de
+        // idioma entre selecciones.
+        return selection == null
+                || t("list.filter.all").equals(selection)
+                || "(todos)".equals(selection)
+                || "(all)".equals(selection)
+                ? null : selection;
     }
 
     // ----- Sub-tab Configuracion (modo VeriFactu + cert + pie + series) -----
@@ -2423,10 +2430,8 @@ public class BenjagestUiApplication extends Application {
     private CheckBox showIbanCheck;
 
     private Node billingConfigTab(VerifactuConfig config, List<SeriesEntry> series, List<CertificateOption> certificates, InvoiceTexts texts) {
-        Label section = label("VeriFactu", "settings-section-title");
-        Label hint = new Label("Activa el envio de facturas a AEAT. Por defecto OFF. "
-                + "Para usar PROD necesitas un certificado .p12 subido en Documentos > Certificados; "
-                + "TEST permite hacer pruebas contra el entorno preproductivo de la AEAT.");
+        Label section = label(t("billing.config.verifactu.section"), "settings-section-title");
+        Label hint = new Label(t("billing.config.verifactu.hint"));
         hint.setWrapText(true);
         hint.getStyleClass().add("settings-hint");
 
@@ -2436,7 +2441,7 @@ public class BenjagestUiApplication extends Application {
         verifactuModeCombo.getStyleClass().add("form-input");
 
         verifactuCertCombo = new ComboBox<>();
-        verifactuCertCombo.getItems().add(new CertificateOption(null, "(ninguno)", ""));
+        verifactuCertCombo.getItems().add(new CertificateOption(null, t("billing.config.verifactu.cert.none"), ""));
         verifactuCertCombo.getItems().addAll(certificates);
         verifactuCertCombo.getSelectionModel().selectFirst();
         if (config.certificateId() != null && !config.certificateId().isBlank()) {
@@ -2450,47 +2455,44 @@ public class BenjagestUiApplication extends Application {
         verifactuCertCombo.getStyleClass().add("form-input");
         verifactuCertCombo.setDisable(certificates.isEmpty());
 
-        verifactuFooterField = textInput(config.invoiceFooterTemplate(), "Texto que aparece al pie de cada factura");
+        verifactuFooterField = textInput(config.invoiceFooterTemplate(), t("billing.config.verifactu.footer.prompt"));
         verifactuFooterField.setPrefColumnCount(60);
 
         GridPane grid = formGrid();
-        addFormRow(grid, 0, "Modo *", verifactuModeCombo);
-        addFormRow(grid, 1, "Certificado", verifactuCertCombo);
-        addFormRow(grid, 2, "Pie de factura", verifactuFooterField);
+        addFormRow(grid, 0, t("billing.config.field.mode"), verifactuModeCombo);
+        addFormRow(grid, 1, t("billing.config.field.cert"), verifactuCertCombo);
+        addFormRow(grid, 2, t("billing.config.field.footer"), verifactuFooterField);
 
         Label certHint = new Label(certificates.isEmpty()
-                ? "No hay certificados subidos. Activa el modulo Documentos y sube uno en /api/certificates."
-                : certificates.size() + " certificado(s) disponible(s).");
+                ? t("billing.config.cert.hint.empty")
+                : certificates.size() + t("billing.config.cert.hint.count_prefix"));
         certHint.getStyleClass().add("settings-hint");
 
-        Label seriesHeader = label("Series de numeracion", "settings-section-title");
-        Label seriesHint = new Label("Solo defines la serie de tus facturas normales (STANDARD). "
-                + "Las series para PROFORMA y RECTIFICATIVAS son del sistema (RD 1619/2012 Art.13). "
-                + "Tu serie STANDARD se autobloquea automaticamente en cuanto emites la primera "
-                + "factura validada del ano (continuidad legal — solo se desbloquea al cerrar el ano).");
+        Label seriesHeader = label(t("billing.config.series.section"), "settings-section-title");
+        Label seriesHint = new Label(t("billing.config.series.hint"));
         seriesHint.setWrapText(true);
         seriesHint.getStyleClass().add("settings-hint");
 
         TableView<SeriesEntry> seriesTable = new TableView<>();
         seriesTable.getStyleClass().add("data-table");
         seriesTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
-        seriesTable.setPlaceholder(new Label("Sin series. Pulsa 'Definir mi serie de facturas' para crear la STANDARD."));
-        TableColumn<SeriesEntry, String> sCode = new TableColumn<>("Codigo");
+        seriesTable.setPlaceholder(new Label(t("billing.config.series.placeholder.empty")));
+        TableColumn<SeriesEntry, String> sCode = new TableColumn<>(t("billing.config.series.col.code"));
         sCode.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().code()));
         sCode.setPrefWidth(120);
-        TableColumn<SeriesEntry, String> sKind = new TableColumn<>("Tipo");
+        TableColumn<SeriesEntry, String> sKind = new TableColumn<>(t("billing.config.series.col.kind"));
         sKind.setCellValueFactory(c -> new SimpleStringProperty(
                 "STANDARD".equals(c.getValue().invoiceKind())
-                        ? "Factura normal"
-                        : c.getValue().invoiceKind() + " · sistema"));
+                        ? t("billing.config.series.kind.standard.label")
+                        : c.getValue().invoiceKind() + t("billing.config.series.kind.system_suffix")));
         sKind.setPrefWidth(160);
-        TableColumn<SeriesEntry, String> sFormat = new TableColumn<>("Formato");
+        TableColumn<SeriesEntry, String> sFormat = new TableColumn<>(t("billing.config.series.col.format"));
         sFormat.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().formatTemplate()));
         sFormat.setPrefWidth(180);
-        TableColumn<SeriesEntry, String> sNext = new TableColumn<>("Proximo numero");
+        TableColumn<SeriesEntry, String> sNext = new TableColumn<>(t("billing.config.series.col.next"));
         sNext.setCellValueFactory(c -> new SimpleStringProperty(String.valueOf(c.getValue().nextNumber())));
         sNext.setPrefWidth(140);
-        TableColumn<SeriesEntry, String> sYear = new TableColumn<>("Anio");
+        TableColumn<SeriesEntry, String> sYear = new TableColumn<>(t("billing.config.series.col.year"));
         sYear.setCellValueFactory(c -> new SimpleStringProperty(
                 c.getValue().currentYear() == null ? "—" : String.valueOf(c.getValue().currentYear())));
         sYear.setPrefWidth(70);
@@ -2511,10 +2513,9 @@ public class BenjagestUiApplication extends Application {
                         showSeriesEditor(sel);
                     } else {
                         Alert info = new Alert(Alert.AlertType.INFORMATION,
-                                "Esta serie es del sistema (Art.13 RD 1619/2012) y se mantiene "
-                                        + "automaticamente. No se puede editar ni borrar.",
+                                t("billing.config.series.reserved.body"),
                                 ButtonType.OK);
-                        info.setHeaderText("Serie reservada · " + sel.invoiceKind());
+                        info.setHeaderText(t("billing.config.series.reserved.header_prefix") + sel.invoiceKind());
                         info.showAndWait();
                     }
                 }
@@ -2522,7 +2523,7 @@ public class BenjagestUiApplication extends Application {
             return row;
         });
 
-        Button newSeriesBtn = new Button(hasStandard ? "Editar mi serie" : "Definir mi serie de facturas");
+        Button newSeriesBtn = new Button(hasStandard ? t("billing.config.series.btn.edit") : t("billing.config.series.btn.define"));
         newSeriesBtn.setGraphic(icon(hasStandard ? "fas-edit" : "fas-plus"));
         newSeriesBtn.setOnAction(event -> {
             if (hasStandard) {
@@ -2538,10 +2539,8 @@ public class BenjagestUiApplication extends Application {
         HBox seriesActions = new HBox(8, newSeriesBtn);
 
         // ---- Migracion desde otro programa ----
-        Label migrationHeader = label("Migracion desde otro programa", "settings-section-title");
-        Label migrationHint = new Label("Si tu empresa ya emitia facturas con otro software, "
-                + "indica aqui el numero por el que continuar. Una vez emitida la primera factura validada "
-                + "en BENJAGEST, el codigo y formato de la serie quedan bloqueados hasta cerrar el ano.");
+        Label migrationHeader = label(t("billing.config.migration.section"), "settings-section-title");
+        Label migrationHint = new Label(t("billing.config.migration.hint"));
         migrationHint.setWrapText(true);
         migrationHint.getStyleClass().add("settings-hint");
 
@@ -2554,31 +2553,30 @@ public class BenjagestUiApplication extends Application {
         migrationSeriesCombo.setCellFactory(lv -> new javafx.scene.control.ListCell<>() {
             @Override protected void updateItem(SeriesEntry item, boolean empty) {
                 super.updateItem(item, empty);
-                setText(empty || item == null ? "" : item.code() + " — proximo " + item.nextNumber());
+                setText(empty || item == null ? "" : item.code() + t("billing.config.migration.combo.suffix_prefix") + item.nextNumber());
             }
         });
         migrationSeriesCombo.setButtonCell(new javafx.scene.control.ListCell<>() {
             @Override protected void updateItem(SeriesEntry item, boolean empty) {
                 super.updateItem(item, empty);
-                setText(empty || item == null ? "" : item.code() + " — proximo " + item.nextNumber());
+                setText(empty || item == null ? "" : item.code() + t("billing.config.migration.combo.suffix_prefix") + item.nextNumber());
             }
         });
 
         migrationNextNumberField = new TextField();
-        migrationNextNumberField.setPromptText("Ej. 43 (si tu ultima factura fue F-...-0042)");
+        migrationNextNumberField.setPromptText(t("billing.config.migration.next.prompt"));
         migrationNextNumberField.getStyleClass().add("form-input");
 
-        migrationAcknowledgeCheck = new CheckBox("Confirmo que el numero indicado coincide con mi contabilidad previa "
-                + "y eximo a BENJAGEST de cualquier responsabilidad por saltos en la serie.");
+        migrationAcknowledgeCheck = new CheckBox(t("billing.config.migration.ack"));
         migrationAcknowledgeCheck.setWrapText(true);
 
-        Button applyMigration = new Button("Aplicar migracion");
+        Button applyMigration = new Button(t("billing.config.migration.apply"));
         applyMigration.setGraphic(icon("fas-file-import"));
         applyMigration.setOnAction(event -> applyMigration());
 
         GridPane migrationGrid = formGrid();
-        addFormRow(migrationGrid, 0, "Serie", migrationSeriesCombo);
-        addFormRow(migrationGrid, 1, "Proximo numero", migrationNextNumberField);
+        addFormRow(migrationGrid, 0, t("billing.config.migration.field.series"), migrationSeriesCombo);
+        addFormRow(migrationGrid, 1, t("billing.config.migration.field.next"), migrationNextNumberField);
 
         VBox migrationBlock = new VBox(8,
                 migrationHeader,
@@ -2589,31 +2587,30 @@ public class BenjagestUiApplication extends Application {
         );
 
         // ---- Textos legales de factura ----
-        Label textsHeader = label("Textos legales en la factura", "settings-section-title");
-        Label textsHint = new Label("Aparecen al pie de cada factura emitida segun el caso. "
-                + "Vacios = no se imprime esa seccion.");
+        Label textsHeader = label(t("billing.config.texts.section"), "settings-section-title");
+        Label textsHint = new Label(t("billing.config.texts.hint"));
         textsHint.setWrapText(true);
         textsHint.getStyleClass().add("settings-hint");
 
-        textPieArea = textArea(texts == null ? null : texts.pie(), "Pie general (datos de contacto, agradecimiento, etc.)");
-        textExemptArea = textArea(texts == null ? null : texts.exempt(), "Texto para facturas con IVA exento (art.20 Ley IVA)");
-        textReverseChargeArea = textArea(texts == null ? null : texts.reverseCharge(), "Sujeto pasivo (servicios intracomunitarios, art.84 LIVA)");
-        textReducedVatArea = textArea(texts == null ? null : texts.reducedVat(), "Mensaje cuando se aplica IVA reducido (4%/10%)");
-        textRectifyingArea = textArea(texts == null ? null : texts.rectifying(), "Texto para facturas rectificativas");
-        textLegalTermsArea = textArea(texts == null ? null : texts.legalTerms(), "Terminos legales (vencimiento, mora, jurisdiccion)");
+        textPieArea = textArea(texts == null ? null : texts.pie(), t("billing.config.texts.prompt.pie"));
+        textExemptArea = textArea(texts == null ? null : texts.exempt(), t("billing.config.texts.prompt.exempt"));
+        textReverseChargeArea = textArea(texts == null ? null : texts.reverseCharge(), t("billing.config.texts.prompt.reverse"));
+        textReducedVatArea = textArea(texts == null ? null : texts.reducedVat(), t("billing.config.texts.prompt.reduced"));
+        textRectifyingArea = textArea(texts == null ? null : texts.rectifying(), t("billing.config.texts.prompt.rectifying"));
+        textLegalTermsArea = textArea(texts == null ? null : texts.legalTerms(), t("billing.config.texts.prompt.legal_terms"));
 
-        showIbanCheck = new CheckBox("Mostrar IBAN de la empresa en la factura");
+        showIbanCheck = new CheckBox(t("billing.config.texts.show_iban"));
         showIbanCheck.setSelected(texts == null || texts.showIban());
 
         GridPane textsGrid = formGrid();
-        addFormRow(textsGrid, 0, "Pie general", textPieArea);
-        addFormRow(textsGrid, 1, "Exencion IVA", textExemptArea);
-        addFormRow(textsGrid, 2, "Sujeto pasivo", textReverseChargeArea);
-        addFormRow(textsGrid, 3, "IVA reducido", textReducedVatArea);
-        addFormRow(textsGrid, 4, "Rectificativas", textRectifyingArea);
-        addFormRow(textsGrid, 5, "Terminos legales", textLegalTermsArea);
+        addFormRow(textsGrid, 0, t("billing.config.texts.field.pie"), textPieArea);
+        addFormRow(textsGrid, 1, t("billing.config.texts.field.exempt"), textExemptArea);
+        addFormRow(textsGrid, 2, t("billing.config.texts.field.reverse"), textReverseChargeArea);
+        addFormRow(textsGrid, 3, t("billing.config.texts.field.reduced"), textReducedVatArea);
+        addFormRow(textsGrid, 4, t("billing.config.texts.field.rectifying"), textRectifyingArea);
+        addFormRow(textsGrid, 5, t("billing.config.texts.field.legal_terms"), textLegalTermsArea);
 
-        Button saveTexts = new Button("Guardar textos");
+        Button saveTexts = new Button(t("billing.config.texts.save"));
         saveTexts.setGraphic(icon("fas-save"));
         saveTexts.setOnAction(event -> saveInvoiceTexts());
 
@@ -2623,7 +2620,7 @@ public class BenjagestUiApplication extends Application {
                 new HBox(saveTexts)
         );
 
-        Button save = new Button("Guardar VeriFactu");
+        Button save = new Button(t("billing.config.verifactu.save"));
         save.setGraphic(icon("fas-save"));
         save.setOnAction(event -> saveVerifactuConfig());
 
@@ -2639,7 +2636,7 @@ public class BenjagestUiApplication extends Application {
                 new Separator(),
                 textsBlock
         );
-        return tabLayout(label("Configuracion de facturacion", "settings-section-title"), body, actions);
+        return tabLayout(label(t("billing.config.tab_title"), "settings-section-title"), body, actions);
     }
 
     private javafx.scene.control.TextArea textArea(String value, String prompt) {
@@ -2654,23 +2651,26 @@ public class BenjagestUiApplication extends Application {
     private void applyMigration() {
         SeriesEntry serie = migrationSeriesCombo.getValue();
         if (serie == null) {
-            showError("Falta serie", "Selecciona la serie cuyo correlativo quieres migrar.");
+            showError(t("billing.config.migration.error.no_series.title"),
+                    t("billing.config.migration.error.no_series.body"));
             return;
         }
         if (!migrationAcknowledgeCheck.isSelected()) {
-            showError("Falta confirmacion",
-                    "Debes confirmar que asumes la responsabilidad antes de aplicar la migracion.");
+            showError(t("billing.config.migration.error.no_ack.title"),
+                    t("billing.config.migration.error.no_ack.body"));
             return;
         }
         Integer next;
         try {
             next = Integer.parseInt(migrationNextNumberField.getText().trim());
         } catch (NumberFormatException ex) {
-            showError("Numero invalido", "Indica un numero entero >= 1.");
+            showError(t("billing.config.migration.error.bad_number.title"),
+                    t("billing.config.migration.error.bad_number.body"));
             return;
         }
         if (next < 1) {
-            showError("Numero invalido", "El proximo numero debe ser >= 1.");
+            showError(t("billing.config.migration.error.bad_number.title"),
+                    t("billing.config.migration.error.bad_number.body_low"));
             return;
         }
         int nextNumber = next;
@@ -2682,14 +2682,16 @@ public class BenjagestUiApplication extends Application {
         };
         task.setOnSucceeded(event -> {
             Alert ok = new Alert(Alert.AlertType.INFORMATION,
-                    "Serie " + serie.code() + " migrada. Proximo numero: " + nextNumber + ".", ButtonType.OK);
+                    t("billing.config.migration.success_prefix") + serie.code()
+                            + t("billing.config.migration.success.middle") + nextNumber + ".",
+                    ButtonType.OK);
             ok.setHeaderText(null);
             ok.showAndWait();
             pendingBillingTab = "config";
             showBilling();
         });
-        task.setOnFailed(event -> showError("No se pudo migrar",
-                "Comprueba el numero y que la serie sigue activa."));
+        task.setOnFailed(event -> showError(t("billing.config.migration.fail.title"),
+                t("billing.config.migration.fail.body")));
         start(task, "billing-series-migrate");
     }
 
@@ -2705,16 +2707,16 @@ public class BenjagestUiApplication extends Application {
      */
     private void showSeriesEditor(SeriesEntry existing) {
         Dialog<Boolean> dialog = new Dialog<>();
-        dialog.setTitle(existing == null ? "Definir serie de facturas" : "Editar mi serie de facturas");
+        dialog.setTitle(existing == null ? t("billing.series.editor.title.create") : t("billing.series.editor.title.edit"));
         dialog.setHeaderText(null);
 
         TextField codeField = new TextField(existing == null ? "" : existing.code());
-        codeField.setPromptText("Ej. F2026, FRA, F");
+        codeField.setPromptText(t("billing.series.editor.code.prompt"));
         codeField.getStyleClass().add("form-input");
 
         // Tipo factura: fijo a STANDARD (el usuario solo define su serie
         // de facturas normales). Las PROF/RECT las gestiona el sistema.
-        Label kindFixedLabel = new Label("Factura normal (STANDARD)");
+        Label kindFixedLabel = new Label(t("billing.series.editor.kind.fixed"));
         kindFixedLabel.getStyleClass().add("invoice-pill");
 
         ComboBox<String> numberingCombo = new ComboBox<>();
@@ -2725,7 +2727,7 @@ public class BenjagestUiApplication extends Application {
         TextField formatField = new TextField(existing == null
                 ? "{CODE}-{YYYY}-{0000}"
                 : (existing.formatTemplate() == null ? "" : existing.formatTemplate()));
-        formatField.setPromptText("Placeholders: {CODE}, {YYYY}, {0000}");
+        formatField.setPromptText(t("billing.series.editor.format.prompt"));
         formatField.getStyleClass().add("form-input");
 
         TextField nextNumberField = new TextField(existing == null ? "1" : String.valueOf(existing.nextNumber()));
@@ -2733,28 +2735,27 @@ public class BenjagestUiApplication extends Application {
         nextNumberField.setDisable(existing != null);
 
         Label nextNumberHint = new Label(existing == null
-                ? "Numero por el que arrancara la serie (normalmente 1; si vienes de otro programa, usa Migracion)."
-                : "El correlativo no se cambia desde aqui. Usa 'Migracion desde otro programa' si vienes de otro software.");
+                ? t("billing.series.editor.next.hint.create")
+                : t("billing.series.editor.next.hint.edit"));
         nextNumberHint.setWrapText(true);
         nextNumberHint.getStyleClass().add("settings-hint");
 
-        Label autoLockHint = new Label("La serie se autobloquea para edicion en cuanto emites la primera "
-                + "factura validada del ano (continuidad legal). No hay checkbox: es automatico.");
+        Label autoLockHint = new Label(t("billing.series.editor.autolock.hint"));
         autoLockHint.setWrapText(true);
         autoLockHint.getStyleClass().add("settings-hint");
 
         GridPane grid = formGrid();
-        addFormRow(grid, 0, "Codigo *", codeField);
-        addFormRow(grid, 1, "Tipo", kindFixedLabel);
-        addFormRow(grid, 2, "Numeracion *", numberingCombo);
-        addFormRow(grid, 3, "Formato", formatField);
-        addFormRow(grid, 4, "Proximo nº", nextNumberField);
+        addFormRow(grid, 0, t("billing.series.editor.field.code"), codeField);
+        addFormRow(grid, 1, t("billing.series.editor.field.kind"), kindFixedLabel);
+        addFormRow(grid, 2, t("billing.series.editor.field.numbering"), numberingCombo);
+        addFormRow(grid, 3, t("billing.series.editor.field.format"), formatField);
+        addFormRow(grid, 4, t("billing.series.editor.field.next"), nextNumberField);
 
         VBox dialogBody = new VBox(12, grid, nextNumberHint, autoLockHint);
         dialogBody.setPadding(new Insets(8));
         dialog.getDialogPane().setContent(dialogBody);
 
-        ButtonType saveBtn = new ButtonType(existing == null ? "Crear" : "Guardar", ButtonBar.ButtonData.OK_DONE);
+        ButtonType saveBtn = new ButtonType(existing == null ? t("billing.series.editor.btn.create") : t("billing.series.editor.btn.save"), ButtonBar.ButtonData.OK_DONE);
         dialog.getDialogPane().getButtonTypes().addAll(saveBtn, ButtonType.CANCEL);
 
         // Validacion local antes de cerrar el dialogo: codigo no vacio
@@ -2763,7 +2764,7 @@ public class BenjagestUiApplication extends Application {
         saveButton.addEventFilter(javafx.event.ActionEvent.ACTION, ev -> {
             if (codeField.getText().trim().isBlank()) {
                 ev.consume();
-                showError("Falta codigo", "Pon un codigo unico para la serie (ej. F2026).");
+                showError(t("billing.series.editor.error.no_code.title"), t("billing.series.editor.error.no_code.body"));
                 return;
             }
             if (existing == null) {
@@ -2772,7 +2773,7 @@ public class BenjagestUiApplication extends Application {
                     if (n < 1) throw new NumberFormatException();
                 } catch (NumberFormatException ex) {
                     ev.consume();
-                    showError("Numero invalido", "El proximo numero debe ser un entero >= 1.");
+                    showError(t("billing.series.editor.error.bad_number.title"), t("billing.series.editor.error.bad_number.body"));
                 }
             }
         });
@@ -2818,17 +2819,15 @@ public class BenjagestUiApplication extends Application {
             showBilling();
         });
         task.setOnFailed(ev -> showError(
-                existing == null ? "No se pudo crear la serie" : "No se pudo guardar",
-                "Comprueba que el codigo no este duplicado. Si la serie tiene facturas validadas este ano "
-                        + "no se puede cambiar codigo/formato/tipo (continuidad legal — usa migracion)."));
+                existing == null ? t("billing.series.editor.fail.create.title") : t("billing.series.editor.fail.save.title"),
+                t("billing.series.editor.fail.body")));
         start(task, "billing-series-save");
     }
 
     private void deleteSeries(SeriesEntry serie) {
         Alert confirm = new Alert(Alert.AlertType.CONFIRMATION,
-                "Vas a eliminar la serie " + serie.code() + ". "
-                        + "Si ya tiene facturas asociadas, el backend rechazara la operacion. "
-                        + "¿Continuar?",
+                t("billing.series.delete.confirm_prefix") + serie.code()
+                        + t("billing.series.delete.confirm_suffix"),
                 ButtonType.OK, ButtonType.CANCEL);
         confirm.setHeaderText(null);
         Optional<ButtonType> answer = confirm.showAndWait();
@@ -2846,8 +2845,8 @@ public class BenjagestUiApplication extends Application {
             pendingBillingTab = "config";
             showBilling();
         });
-        task.setOnFailed(ev -> showError("No se pudo eliminar",
-                "La serie puede tener facturas emitidas. En ese caso solo se puede bloquear (editar -> 'Serie bloqueada')."));
+        task.setOnFailed(ev -> showError(t("billing.series.delete.fail.title"),
+                t("billing.series.delete.fail.body")));
         start(task, "billing-series-delete");
     }
 
@@ -2869,12 +2868,12 @@ public class BenjagestUiApplication extends Application {
         };
         task.setOnSucceeded(event -> {
             Alert ok = new Alert(Alert.AlertType.INFORMATION,
-                    "Textos legales guardados.", ButtonType.OK);
+                    t("billing.texts.save.success"), ButtonType.OK);
             ok.setHeaderText(null);
             ok.showAndWait();
         });
-        task.setOnFailed(event -> showError("No se pudieron guardar los textos",
-                "Vuelve a intentarlo en unos segundos."));
+        task.setOnFailed(event -> showError(t("billing.texts.save.fail.title"),
+                t("billing.texts.save.fail.body")));
         start(task, "billing-texts-save");
     }
 
@@ -2928,24 +2927,22 @@ public class BenjagestUiApplication extends Application {
             // formulario en blanco que despues falla al guardar.
             if (existingInvoiceId == null && bundle.customers().isEmpty()) {
                 setCenterAnimated(scroll(prerequisitePanel(
-                        "Necesitas crear un cliente antes de facturar",
-                        "Ve a Clientes y da de alta al menos uno. Despues vuelve aqui y pulsa 'Nueva factura'.")));
+                        t("prereq.no_customers.title"),
+                        t("prereq.no_customers.body"))));
                 return;
             }
             if (existingInvoiceId == null && bundle.series().isEmpty()) {
                 setCenterAnimated(scroll(prerequisitePanel(
-                        "Necesitas configurar una serie de numeracion",
-                        "Ve a Facturacion > Configuracion > Series y pulsa 'Nueva serie'. "
-                                + "Sugerencia: codigo F" + LocalDate.now().getYear()
-                                + ", tipo STANDARD, numeracion BY_YEAR, proximo nº 1.")));
+                        t("prereq.no_series.title"),
+                        t("prereq.no_series.body"))));
                 return;
             }
             setCenterAnimated(scroll(invoiceEditorView(bundle, existingInvoiceId)));
         });
         task.setOnFailed(event -> setCenterAnimated(scroll(errorPanel(
                 existingInvoiceId == null
-                        ? "No se pudo abrir el editor: faltan clientes o series activos."
-                        : "No se pudo cargar la factura."))));
+                        ? t("prereq.editor_failed")
+                        : t("prereq.invoice_load_failed")))));
         start(task, "billing-editor-load");
     }
 
@@ -2959,22 +2956,22 @@ public class BenjagestUiApplication extends Application {
         VBox content = content();
 
         // ----- Header -----
-        Button back = new Button("Volver al listado");
+        Button back = new Button(t("editor.back"));
         back.setGraphic(icon("fas-arrow-left"));
         back.setOnAction(event -> showBilling());
 
-        Label title = new Label(existingId == null ? "Nueva factura" : "Editar borrador");
+        Label title = new Label(existingId == null ? t("editor.title.new") : t("editor.title.edit"));
         title.getStyleClass().add("module-detail-title");
         Label subtitle = new Label(existingId == null
-                ? "El nº se asigna automaticamente al validar. Guardar borrador NO lo consume."
-                : "Estas editando un borrador. Validar lo numera y lo bloquea.");
+                ? t("editor.subtitle.new")
+                : t("editor.subtitle.edit"));
         subtitle.getStyleClass().add("module-detail-description");
 
         // Pill grande con el numero que se asignara al validar. Se mantiene
         // igual aunque guardes varios borradores: solo "Validar y emitir"
         // consume el correlativo. Cuando cambias de serie en el combo se
         // recalcula en vivo.
-        Label nextNumberBadgeLabel = label("PROXIMO Nº AL VALIDAR", "invoice-next-number-caption");
+        Label nextNumberBadgeLabel = label(t("editor.next_number.caption"), "invoice-next-number-caption");
         Label nextNumberBadgeValue = new Label("—");
         nextNumberBadgeValue.getStyleClass().add("invoice-next-number-value");
         VBox nextNumberBadge = new VBox(2, nextNumberBadgeLabel, nextNumberBadgeValue);
@@ -3032,7 +3029,7 @@ public class BenjagestUiApplication extends Application {
         editorDueDate.setMaxWidth(Double.MAX_VALUE);
 
         editorNotesArea = new javafx.scene.control.TextArea();
-        editorNotesArea.setPromptText("Notas internas u observaciones que apareceran en la factura.");
+        editorNotesArea.setPromptText(t("editor.notes.prompt"));
         editorNotesArea.setPrefRowCount(5);
         editorNotesArea.setWrapText(true);
         editorNotesArea.getStyleClass().add("invoice-input");
@@ -3051,17 +3048,18 @@ public class BenjagestUiApplication extends Application {
             }
             clientDetail.setVisible(true);
             clientDetail.setManaged(true);
-            Label datos = label("Datos de facturacion", "invoice-detail-title");
-            Label nif = new Label("NIF: " + (c.taxIdentifier() == null || c.taxIdentifier().isBlank() ? "—" : c.taxIdentifier()));
+            Label datos = label(t("editor.client.detail_title"), "invoice-detail-title");
+            Label nif = new Label(t("editor.client.tax_id_prefix")
+                    + (c.taxIdentifier() == null || c.taxIdentifier().isBlank() ? "—" : c.taxIdentifier()));
             nif.getStyleClass().add("invoice-detail-line");
             clientDetail.getChildren().addAll(datos, nif);
             if (c.email() != null && !c.email().isBlank()) {
-                Label em = new Label("Email: " + c.email());
+                Label em = new Label(t("editor.client.email_prefix") + c.email());
                 em.getStyleClass().add("invoice-detail-line");
                 clientDetail.getChildren().add(em);
             }
             if (c.phone() != null && !c.phone().isBlank()) {
-                Label tel = new Label("Tel.: " + c.phone());
+                Label tel = new Label(t("editor.client.phone_prefix") + c.phone());
                 tel.getStyleClass().add("invoice-detail-line");
                 clientDetail.getChildren().add(tel);
             }
@@ -3073,8 +3071,7 @@ public class BenjagestUiApplication extends Application {
         // resuelve el server segun el kind. Por ahora siempre "Factura
         // normal" (STANDARD). Cuando llegue el flujo de proformas
         // anadiremos un selector aqui.
-        Label kindPill = label("Factura normal · serie automatica",
-                "invoice-pill");
+        Label kindPill = label(t("editor.kind.pill"), "invoice-pill");
 
         // El badge del header refleja el proximo numero de la STANDARD.
         if (standardSeries != null) {
@@ -3084,18 +3081,18 @@ public class BenjagestUiApplication extends Application {
         }
 
         VBox colCliente = new VBox(8,
-                label("Cliente *", "invoice-field-label"),
+                label(t("editor.field.customer"), "invoice-field-label"),
                 editorCustomerCombo,
                 clientDetail
         );
         VBox colFechas = new VBox(8,
-                label("Fecha de emision *", "invoice-field-label"),
+                label(t("editor.field.invoice_date"), "invoice-field-label"),
                 editorInvoiceDate,
-                label("Fecha de vencimiento", "invoice-field-label"),
+                label(t("editor.field.due_date"), "invoice-field-label"),
                 editorDueDate
         );
         VBox colTipo = new VBox(8,
-                label("Tipo", "invoice-field-label"),
+                label(t("editor.field.kind"), "invoice-field-label"),
                 kindPill
         );
         HBox.setHgrow(colCliente, Priority.ALWAYS);
@@ -3105,7 +3102,7 @@ public class BenjagestUiApplication extends Application {
         colFechas.setMinWidth(0);
         colTipo.setMinWidth(0);
         HBox cabeceraGrid = new HBox(20, colCliente, colFechas, colTipo);
-        Node cabeceraCard = invoiceCard("Cabecera de la factura", "fas-info-circle", cabeceraGrid);
+        Node cabeceraCard = invoiceCard(t("editor.card.header"), "fas-info-circle", cabeceraGrid);
 
         // ----- Card 2: Lineas -----
         editorLinesTable = buildEditorLinesTable(bundle.existingLines());
@@ -3116,7 +3113,7 @@ public class BenjagestUiApplication extends Application {
             editorLinesTable.getItems().add(new InvoiceLineDraft());
         }
 
-        Button addLine = new Button("Anadir linea");
+        Button addLine = new Button(t("editor.line.add"));
         addLine.setGraphic(icon("fas-plus"));
         addLine.getStyleClass().add("invoice-primary-action");
         addLine.setOnAction(event -> {
@@ -3124,7 +3121,7 @@ public class BenjagestUiApplication extends Application {
             recomputeEditorTotals();
         });
 
-        Button removeLine = new Button("Quitar linea");
+        Button removeLine = new Button(t("editor.line.remove"));
         removeLine.setGraphic(icon("fas-trash-alt"));
         removeLine.setOnAction(event -> {
             InvoiceLineDraft sel = editorLinesTable.getSelectionModel().getSelectedItem();
@@ -3136,7 +3133,7 @@ public class BenjagestUiApplication extends Application {
 
         HBox lineasActions = new HBox(8, addLine, removeLine);
         lineasActions.setAlignment(Pos.CENTER_RIGHT);
-        Node lineasCard = invoiceCardWithActions("Conceptos / Lineas", "fas-calculator",
+        Node lineasCard = invoiceCardWithActions(t("editor.card.lines"), "fas-calculator",
                 lineasActions, editorLinesTable);
 
         // ----- Card 3: Totales y observaciones -----
@@ -3150,12 +3147,12 @@ public class BenjagestUiApplication extends Application {
         editorTotalLabel.getStyleClass().add("invoice-total-big");
 
         VBox totalsRows = new VBox(2,
-                invoiceTotalsRow("Base imponible", editorSubtotalLabel),
-                invoiceTotalsRow("Cuota IVA total", editorVatLabel),
-                invoiceTotalsRow("Retencion IRPF", editorRetentionLabel)
+                invoiceTotalsRow(t("editor.total.subtotal"), editorSubtotalLabel),
+                invoiceTotalsRow(t("editor.total.vat"), editorVatLabel),
+                invoiceTotalsRow(t("editor.total.retention"), editorRetentionLabel)
         );
 
-        Label totalLabel = label("TOTAL FACTURA", "invoice-total-label");
+        Label totalLabel = label(t("editor.total.total"), "invoice-total-label");
         Region totalSpacer = new Region();
         HBox.setHgrow(totalSpacer, Priority.ALWAYS);
         HBox totalBigBox = new HBox(12, totalLabel, totalSpacer, editorTotalLabel);
@@ -3167,7 +3164,7 @@ public class BenjagestUiApplication extends Application {
         rightTotals.setMaxWidth(420);
 
         VBox notesCol = new VBox(8,
-                label("Notas / Observaciones", "invoice-field-label"),
+                label(t("editor.notes.label"), "invoice-field-label"),
                 editorNotesArea
         );
         HBox.setHgrow(notesCol, Priority.ALWAYS);
@@ -3175,20 +3172,20 @@ public class BenjagestUiApplication extends Application {
         VBox.setVgrow(editorNotesArea, Priority.ALWAYS);
 
         HBox totalesGrid = new HBox(24, notesCol, rightTotals);
-        Node totalesCard = invoiceCard("Totales y observaciones", "fas-euro-sign", totalesGrid);
+        Node totalesCard = invoiceCard(t("editor.card.totals"), "fas-euro-sign", totalesGrid);
 
         recomputeEditorTotals();
 
         // ----- Footer bar -----
-        Button cancel = new Button("Cancelar");
+        Button cancel = new Button(t("editor.action.cancel"));
         cancel.setOnAction(event -> showBilling());
 
-        Button saveDraft = new Button(existingId == null ? "Guardar borrador" : "Guardar cambios");
+        Button saveDraft = new Button(existingId == null ? t("editor.action.save_draft") : t("editor.action.save_changes"));
         saveDraft.setGraphic(icon("fas-save"));
         saveDraft.getStyleClass().add("invoice-primary-action");
         saveDraft.setOnAction(event -> persistDraft(existingId, false));
 
-        Button validate = new Button("Validar y emitir");
+        Button validate = new Button(t("editor.action.validate"));
         validate.setGraphic(icon("fas-check"));
         validate.getStyleClass().add("invoice-validate-action");
         validate.setOnAction(event -> persistDraft(existingId, true));
@@ -3604,16 +3601,16 @@ public class BenjagestUiApplication extends Application {
     private void persistDraft(String existingId, boolean validateAfter) {
         CustomerSummary customer = editorCustomerCombo.getValue();
         if (customer == null) {
-            showError("Falta cliente", "Selecciona un cliente.");
+            showError(t("editor.error.no_customer.title"), t("editor.error.no_customer.body"));
             return;
         }
         if (editorLinesTable.getItems().isEmpty()) {
-            showError("Sin lineas", "Una factura sin lineas no se puede guardar.");
+            showError(t("editor.error.no_lines.title"), t("editor.error.no_lines.body"));
             return;
         }
         for (InvoiceLineDraft line : editorLinesTable.getItems()) {
             if (line.getDescription() == null || line.getDescription().isBlank()) {
-                showError("Linea incompleta", "Hay una linea sin descripcion. Rellenala o quitala.");
+                showError(t("editor.error.line_incomplete.title"), t("editor.error.line_incomplete.body"));
                 return;
             }
         }
@@ -3646,16 +3643,16 @@ public class BenjagestUiApplication extends Application {
         task.setOnSucceeded(event -> {
             SalesInvoiceSummary result = task.getValue();
             String msg = validateAfter
-                    ? "Factura validada: " + result.invoiceNumber()
-                    : "Borrador guardado.";
+                    ? t("editor.saved.validated_prefix") + result.invoiceNumber()
+                    : t("editor.saved.draft");
             Alert ok = new Alert(Alert.AlertType.INFORMATION, msg, ButtonType.OK);
             ok.setHeaderText(null);
             ok.showAndWait();
             showBilling();
         });
         task.setOnFailed(event -> showError(
-                validateAfter ? "No se pudo validar" : "No se pudo guardar",
-                "Revisa los datos. Si validas, la serie debe estar disponible y los totales correctos."));
+                validateAfter ? t("editor.error.validate_failed.title") : t("editor.error.save_failed.title"),
+                t("editor.error.save_failed.body")));
         start(task, "billing-invoice-save" + (validateAfter ? "-validate" : ""));
     }
 
@@ -3673,12 +3670,13 @@ public class BenjagestUiApplication extends Application {
         };
         task.setOnSucceeded(event -> {
             Alert ok = new Alert(Alert.AlertType.INFORMATION,
-                    "Configuracion VeriFactu guardada (modo " + mode + ").", ButtonType.OK);
+                    t("billing.verifactu.save.success_prefix") + mode + t("billing.verifactu.save.success_suffix"),
+                    ButtonType.OK);
             ok.setHeaderText(null);
             ok.showAndWait();
         });
-        task.setOnFailed(event -> showError("No se pudo guardar",
-                "Si seleccionaste PROD recuerda elegir un certificado .p12."));
+        task.setOnFailed(event -> showError(t("billing.verifactu.save.fail.title"),
+                t("billing.verifactu.save.fail.body")));
         start(task, "billing-config-save");
     }
 
@@ -3789,7 +3787,7 @@ public class BenjagestUiApplication extends Application {
         VBox panel = content();
         Label title = new Label(message);
         title.getStyleClass().add("section-title");
-        Button retry = new Button("Reintentar");
+        Button retry = new Button(t("common.btn.retry"));
         retry.setGraphic(icon("fas-sync-alt"));
         retry.setOnAction(event -> showDashboard());
         panel.getChildren().addAll(title, retry);
@@ -3808,7 +3806,7 @@ public class BenjagestUiApplication extends Application {
         Label detailsLabel = new Label(details);
         detailsLabel.setWrapText(true);
         detailsLabel.getStyleClass().add("module-detail-description");
-        Button back = new Button("Volver a Facturacion");
+        Button back = new Button(t("common.btn.back_to_billing"));
         back.setGraphic(icon("fas-arrow-left"));
         back.setOnAction(event -> showBilling());
         VBox card = new VBox(12, titleLabel, detailsLabel, back);
@@ -4092,6 +4090,314 @@ public class BenjagestUiApplication extends Application {
                 case "column.tipo" -> "Type";
                 case "column.acceso" -> "Access";
                 case "column.evento" -> "Event";
+                // ---- Editor de facturas (Slice F4) ----
+                case "editor.back" -> "Back to list";
+                case "editor.title.new" -> "New invoice";
+                case "editor.title.edit" -> "Edit draft";
+                case "editor.subtitle.new" -> "The number is assigned automatically when validating. Saving the draft does NOT consume it.";
+                case "editor.subtitle.edit" -> "You are editing a draft. Validating it numbers and locks it.";
+                case "editor.next_number.caption" -> "NEXT Nº WHEN VALIDATED";
+                case "editor.notes.prompt" -> "Internal notes or observations to appear on the invoice.";
+                case "editor.client.detail_title" -> "Billing details";
+                case "editor.client.tax_id_prefix" -> "Tax ID: ";
+                case "editor.client.email_prefix" -> "Email: ";
+                case "editor.client.phone_prefix" -> "Phone: ";
+                case "editor.kind.pill" -> "Standard invoice · automatic series";
+                case "editor.field.customer" -> "Customer *";
+                case "editor.field.invoice_date" -> "Issue date *";
+                case "editor.field.due_date" -> "Due date";
+                case "editor.field.kind" -> "Type";
+                case "editor.card.header" -> "Invoice header";
+                case "editor.line.add" -> "Add line";
+                case "editor.line.remove" -> "Remove line";
+                case "editor.card.lines" -> "Items / Lines";
+                case "editor.total.subtotal" -> "Net amount";
+                case "editor.total.vat" -> "Total VAT";
+                case "editor.total.retention" -> "IRPF withholding";
+                case "editor.total.total" -> "INVOICE TOTAL";
+                case "editor.notes.label" -> "Notes / Observations";
+                case "editor.card.totals" -> "Totals and observations";
+                case "editor.action.cancel" -> "Cancel";
+                case "editor.action.save_draft" -> "Save draft";
+                case "editor.action.save_changes" -> "Save changes";
+                case "editor.action.validate" -> "Validate and issue";
+                case "editor.error.no_customer.title" -> "Missing customer";
+                case "editor.error.no_customer.body" -> "Select a customer.";
+                case "editor.error.no_lines.title" -> "No lines";
+                case "editor.error.no_lines.body" -> "An invoice without lines cannot be saved.";
+                case "editor.error.line_incomplete.title" -> "Incomplete line";
+                case "editor.error.line_incomplete.body" -> "There is a line without description. Fill it in or remove it.";
+                case "editor.error.save_failed.title" -> "Could not save";
+                case "editor.error.validate_failed.title" -> "Could not validate";
+                case "editor.error.save_failed.body" -> "Check the data. To validate, the series must be available and totals correct.";
+                case "editor.saved.validated_prefix" -> "Invoice validated: ";
+                case "editor.saved.draft" -> "Draft saved.";
+                case "prereq.no_customers.title" -> "You need to create a customer before billing";
+                case "prereq.no_customers.body" -> "Go to Customers and create at least one. Then come back and press 'New invoice'.";
+                case "prereq.no_series.title" -> "You need to configure a numbering series";
+                case "prereq.no_series.body" -> "Go to Billing > Configuration > Series and press 'Define my invoice series'. Suggestion: STANDARD type, BY_YEAR numbering, next nº 1.";
+                case "prereq.editor_failed" -> "Could not open the editor: active customers or series missing.";
+                case "prereq.invoice_load_failed" -> "Could not load the invoice.";
+                // ---- Listado de facturas (F4) ----
+                case "list.header" -> "Invoice list";
+                case "list.hint" -> "Double click on a draft opens the editor. Selecting a row enables the actions in the bottom bar.";
+                case "list.filter.label.status" -> "Status:";
+                case "list.filter.label.collection" -> "Collection:";
+                case "list.filter.all" -> "(all)";
+                case "list.filter.apply" -> "Apply filters";
+                case "list.filter.reset" -> "Clear";
+                case "list.column.number" -> "Number";
+                case "list.column.customer" -> "Customer";
+                case "list.column.date" -> "Date";
+                case "list.column.due_date" -> "Due date";
+                case "list.column.status" -> "Status";
+                case "list.column.collection" -> "Collection";
+                case "list.column.total" -> "Total";
+                case "list.placeholder.empty" -> "No invoices match the current filters.";
+                case "list.draft_label" -> "(draft)";
+                case "list.action.delete_draft" -> "Delete draft";
+                case "list.action.generate_pdf" -> "Generate PDF";
+                case "list.dialog.pdf.title" -> "Pending · slice F4b";
+                case "list.dialog.pdf.body" -> "PDF generation lands in slice F4b (multi-page PDF with company data, logo, VAT-grouped totals, legal texts and footer). For now the invoice is registered and numbered; the PDF will appear then.";
+                case "list.dialog.validate.title" -> "Validate and issue invoice";
+                case "list.dialog.validate.body" -> "You are about to issue the invoice number for this draft. Once validated you cannot edit it (only issue a corrective).";
+                case "list.dialog.validate.success_prefix" -> "Invoice validated with nº ";
+                case "list.dialog.validate.failure_body" -> "Check that the invoice has a series and at least one line with description.";
+                case "list.dialog.delete.title" -> "Delete draft";
+                case "list.dialog.delete.body" -> "You are about to delete this draft. This cannot be undone.";
+                case "list.dialog.delete.failure_title" -> "Could not delete";
+                case "list.dialog.delete.failure_body" -> "Only drafts (DRAFT) can be deleted.";
+                case "list.dialog.validated_no_edit" -> "Only drafts (DRAFT) can be edited. To correct a validated invoice, issue a corrective.";
+                case "list.dialog.validated_no_edit.header" -> "Validated invoice";
+                case "list.dialog.reload_failed.title" -> "Filter error";
+                case "list.dialog.reload_failed.body" -> "Could not refresh the list.";
+                // ---- Facturacion shell (F2/F3/F5) ----
+                case "billing.shell.title" -> "Billing";
+                case "billing.shell.subtitle" -> "Integral management and VeriFactu";
+                case "billing.shell.new_invoice" -> "New invoice";
+                case "billing.shell.load_failed" -> "Could not load Billing (is module billing active? role OWNER/ADMIN/ACCOUNTANT?)";
+                case "billing.tab.dashboard" -> "Dashboard";
+                case "billing.tab.invoices" -> "Invoices";
+                case "billing.tab.config" -> "Configuration";
+                case "billing.dash.section" -> "Quick summary";
+                case "billing.dash.hint" -> "The full dashboard with KPIs (monthly billed, pending collection, next due date, VAT chart, etc.) lands in slice F6. Until then this summary shows minimal numbers.";
+                case "billing.dash.tab_title" -> "Overview";
+                case "billing.dash.metric.total" -> "Total invoices";
+                case "billing.dash.metric.total.detail" -> "All statuses";
+                case "billing.dash.metric.drafts" -> "Drafts";
+                case "billing.dash.metric.drafts.detail" -> "Not validated yet";
+                case "billing.dash.metric.validated" -> "Validated";
+                case "billing.dash.metric.validated.detail" -> "Numbered and sealed";
+                case "billing.dash.metric.pending" -> "Pending collection";
+                case "billing.dash.metric.pending.detail" -> "Unpaid";
+                // ---- Command Palette ----
+                case "palette.title" -> "BENJAGEST · Commands";
+                case "palette.search.prompt" -> "Search action... (Esc to close)";
+                case "palette.action.home" -> "Home · dashboard";
+                case "palette.action.customers" -> "Customers";
+                case "palette.action.billing" -> "Billing";
+                case "palette.action.new_invoice" -> "New invoice";
+                case "palette.action.settings" -> "Settings";
+                case "palette.action.calendar" -> "Calendar";
+                case "palette.action.purchases" -> "Purchases";
+                case "palette.action.tax" -> "Tax";
+                case "palette.action.labor" -> "Labor";
+                case "palette.action.reports" -> "Reports";
+                // ---- Billing configuration (F5+) ----
+                case "billing.config.tab_title" -> "Billing configuration";
+                case "billing.config.verifactu.section" -> "VeriFactu";
+                case "billing.config.verifactu.hint" -> "Enables sending invoices to AEAT. OFF by default. To use PROD you need a .p12 certificate uploaded in Documents > Certificates; TEST allows testing against AEAT pre-production environment.";
+                case "billing.config.verifactu.cert.none" -> "(none)";
+                case "billing.config.verifactu.footer.prompt" -> "Text that appears at the bottom of each invoice";
+                case "billing.config.field.mode" -> "Mode *";
+                case "billing.config.field.cert" -> "Certificate";
+                case "billing.config.field.footer" -> "Invoice footer";
+                case "billing.config.cert.hint.empty" -> "No certificates uploaded. Activate the Documents module and upload one via /api/certificates.";
+                case "billing.config.cert.hint.count_prefix" -> " certificate(s) available.";
+                case "billing.config.verifactu.save" -> "Save VeriFactu";
+                case "billing.verifactu.save.success_prefix" -> "VeriFactu configuration saved (mode ";
+                case "billing.verifactu.save.success_suffix" -> ").";
+                case "billing.verifactu.save.fail.title" -> "Could not save";
+                case "billing.verifactu.save.fail.body" -> "If you selected PROD remember to choose a .p12 certificate.";
+                case "billing.config.series.section" -> "Numbering series";
+                case "billing.config.series.hint" -> "You only define the series for your standard invoices. PROFORMA and RECTIFYING series are system-managed (RD 1619/2012 Art.13). Your STANDARD series auto-locks as soon as you issue the first validated invoice of the year (legal continuity — only unlocked at year-end).";
+                case "billing.config.series.placeholder.empty" -> "No series. Press 'Define my invoice series' to create the STANDARD one.";
+                case "billing.config.series.col.code" -> "Code";
+                case "billing.config.series.col.kind" -> "Type";
+                case "billing.config.series.col.format" -> "Format";
+                case "billing.config.series.col.next" -> "Next number";
+                case "billing.config.series.col.year" -> "Year";
+                case "billing.config.series.kind.standard.label" -> "Standard invoice";
+                case "billing.config.series.kind.system_suffix" -> " · system";
+                case "billing.config.series.reserved.body" -> "This series is system-managed (Art.13 RD 1619/2012) and maintained automatically. It cannot be edited or deleted.";
+                case "billing.config.series.reserved.header_prefix" -> "Reserved series · ";
+                case "billing.config.series.btn.define" -> "Define my invoice series";
+                case "billing.config.series.btn.edit" -> "Edit my series";
+                case "billing.config.migration.section" -> "Migrate from another program";
+                case "billing.config.migration.hint" -> "If your company already issued invoices with other software, indicate here the number to continue from. Once the first invoice is validated in BENJAGEST, the series code and format remain locked until year-end.";
+                case "billing.config.migration.next.prompt" -> "E.g. 43 (if your last invoice was F-...-0042)";
+                case "billing.config.migration.ack" -> "I confirm the number matches my previous bookkeeping and release BENJAGEST from any liability for series gaps.";
+                case "billing.config.migration.apply" -> "Apply migration";
+                case "billing.config.migration.field.series" -> "Series";
+                case "billing.config.migration.field.next" -> "Next number";
+                case "billing.config.migration.combo.suffix_prefix" -> " — next ";
+                case "billing.config.migration.error.no_series.title" -> "Missing series";
+                case "billing.config.migration.error.no_series.body" -> "Select the series whose counter you want to migrate.";
+                case "billing.config.migration.error.no_ack.title" -> "Missing confirmation";
+                case "billing.config.migration.error.no_ack.body" -> "You must confirm you take responsibility before applying the migration.";
+                case "billing.config.migration.error.bad_number.title" -> "Invalid number";
+                case "billing.config.migration.error.bad_number.body" -> "Enter an integer >= 1.";
+                case "billing.config.migration.error.bad_number.body_low" -> "The next number must be >= 1.";
+                case "billing.config.migration.success_prefix" -> "Series ";
+                case "billing.config.migration.success.middle" -> " migrated. Next number: ";
+                case "billing.config.migration.fail.title" -> "Could not migrate";
+                case "billing.config.migration.fail.body" -> "Check the number and that the series remains active.";
+                case "billing.config.texts.section" -> "Legal texts on invoice";
+                case "billing.config.texts.hint" -> "They appear at the bottom of each issued invoice depending on the case. Empty = that section is not printed.";
+                case "billing.config.texts.prompt.pie" -> "General footer (contact details, thanks, etc.)";
+                case "billing.config.texts.prompt.exempt" -> "Text for VAT-exempt invoices (Art.20 VAT Law)";
+                case "billing.config.texts.prompt.reverse" -> "Reverse charge (intracommunity services, Art.84 LIVA)";
+                case "billing.config.texts.prompt.reduced" -> "Message when reduced VAT is applied (4%/10%)";
+                case "billing.config.texts.prompt.rectifying" -> "Text for corrective invoices";
+                case "billing.config.texts.prompt.legal_terms" -> "Legal terms (due date, default, jurisdiction)";
+                case "billing.config.texts.show_iban" -> "Show company IBAN on the invoice";
+                case "billing.config.texts.field.pie" -> "General footer";
+                case "billing.config.texts.field.exempt" -> "VAT exemption";
+                case "billing.config.texts.field.reverse" -> "Reverse charge";
+                case "billing.config.texts.field.reduced" -> "Reduced VAT";
+                case "billing.config.texts.field.rectifying" -> "Correctives";
+                case "billing.config.texts.field.legal_terms" -> "Legal terms";
+                case "billing.config.texts.save" -> "Save texts";
+                case "billing.texts.save.success" -> "Legal texts saved.";
+                case "billing.texts.save.fail.title" -> "Could not save the texts";
+                case "billing.texts.save.fail.body" -> "Try again in a few seconds.";
+                // ---- Series editor dialog ----
+                case "billing.series.editor.title.create" -> "Define invoice series";
+                case "billing.series.editor.title.edit" -> "Edit my invoice series";
+                case "billing.series.editor.field.code" -> "Code *";
+                case "billing.series.editor.code.prompt" -> "E.g. F2026, FRA, F";
+                case "billing.series.editor.kind.fixed" -> "Standard invoice (STANDARD)";
+                case "billing.series.editor.field.kind" -> "Type";
+                case "billing.series.editor.field.numbering" -> "Numbering *";
+                case "billing.series.editor.field.format" -> "Format";
+                case "billing.series.editor.format.prompt" -> "Placeholders: {CODE}, {YYYY}, {0000}";
+                case "billing.series.editor.field.next" -> "Next nº";
+                case "billing.series.editor.next.hint.create" -> "Number the series will start with (usually 1; if you come from another program, use Migration).";
+                case "billing.series.editor.next.hint.edit" -> "The counter cannot be changed from here. Use 'Migrate from another program' if you come from other software.";
+                case "billing.series.editor.autolock.hint" -> "The series auto-locks for editing as soon as you issue the first validated invoice of the year (legal continuity). No checkbox: it is automatic.";
+                case "billing.series.editor.btn.create" -> "Create";
+                case "billing.series.editor.btn.save" -> "Save";
+                case "billing.series.editor.error.no_code.title" -> "Missing code";
+                case "billing.series.editor.error.no_code.body" -> "Set a unique code for the series (e.g. F2026).";
+                case "billing.series.editor.error.bad_number.title" -> "Invalid number";
+                case "billing.series.editor.error.bad_number.body" -> "The next number must be an integer >= 1.";
+                case "billing.series.editor.fail.create.title" -> "Could not create series";
+                case "billing.series.editor.fail.save.title" -> "Could not save";
+                case "billing.series.editor.fail.body" -> "Check the code is not duplicated. If the series has validated invoices this year, code/format/type cannot change (legal continuity — use migration).";
+                case "billing.series.delete.confirm_prefix" -> "You are about to delete series ";
+                case "billing.series.delete.confirm_suffix" -> ". If it already has associated invoices, the backend will reject the operation. Continue?";
+                case "billing.series.delete.fail.title" -> "Could not delete";
+                case "billing.series.delete.fail.body" -> "The series may have issued invoices. In that case it can only be blocked (edit -> 'Series blocked').";
+                // ---- Settings (C3) ----
+                case "settings.shell.title" -> "Settings";
+                case "settings.load_failed" -> "Could not load Settings (you need OWNER or ADMIN role)";
+                case "settings.tab.company" -> "Company";
+                case "settings.tab.email" -> "SMTP Email";
+                case "settings.tab.modules" -> "Modules";
+                case "settings.tab.audit" -> "Audit";
+                case "settings.company.section_label" -> "Company";
+                case "settings.company.section.general" -> "General data";
+                case "settings.company.section.address" -> "Postal address";
+                case "settings.company.section.billing" -> "Billing data";
+                case "settings.company.section.billing.hint" -> "These details appear on every invoice you issue as a company.";
+                case "settings.company.prompt.legal_name" -> "Legal name";
+                case "settings.company.prompt.trade_name" -> "Trade name";
+                case "settings.company.prompt.tax_id" -> "Tax ID";
+                case "settings.company.prompt.email" -> "Contact email";
+                case "settings.company.prompt.phone" -> "Phone";
+                case "settings.company.prompt.website" -> "Website";
+                case "settings.company.prompt.address_line" -> "Street, number, floor";
+                case "settings.company.prompt.city" -> "City";
+                case "settings.company.prompt.province" -> "Province";
+                case "settings.company.prompt.postal_code" -> "Postal code";
+                case "settings.company.prompt.country" -> "Country";
+                case "settings.company.country.default" -> "Spain";
+                case "settings.company.prompt.iban" -> "ES00 0000 0000 0000 0000 0000";
+                case "settings.company.prompt.registry" -> "Commercial registry, volume, sheet...";
+                case "settings.company.prompt.terms" -> "Legal terms that appear on the invoice";
+                case "settings.company.prompt.footer" -> "Invoice footer";
+                case "settings.company.field.legal_name" -> "Legal name *";
+                case "settings.company.field.trade_name" -> "Trade name";
+                case "settings.company.field.tax_id" -> "Tax ID";
+                case "settings.company.field.email" -> "Email";
+                case "settings.company.field.phone" -> "Phone";
+                case "settings.company.field.website" -> "Website";
+                case "settings.company.field.address" -> "Address";
+                case "settings.company.field.city" -> "City";
+                case "settings.company.field.province" -> "Province";
+                case "settings.company.field.postal_code" -> "Postal code";
+                case "settings.company.field.country" -> "Country";
+                case "settings.company.field.iban" -> "IBAN";
+                case "settings.company.field.registry" -> "Registry data";
+                case "settings.company.field.terms" -> "Legal terms";
+                case "settings.company.field.footer" -> "Invoice footer";
+                case "settings.company.type_note_prefix" -> "Company type: ";
+                case "settings.company.type_note_suffix" -> " (not editable from here)";
+                case "settings.company.save" -> "Save changes";
+                case "settings.company.error.missing_legal_name.title" -> "Missing data";
+                case "settings.company.error.missing_legal_name.body" -> "Legal name is mandatory";
+                case "settings.company.save.fail.title" -> "Could not save";
+                case "settings.company.save.fail.body" -> "Check the data and try again.";
+                case "settings.email.section" -> "SMTP server";
+                case "settings.email.prompt.host" -> "smtp.your-server.com";
+                case "settings.email.prompt.port" -> "587";
+                case "settings.email.prompt.user" -> "user@domain";
+                case "settings.email.prompt.password.saved" -> "(password saved - leave blank to keep)";
+                case "settings.email.prompt.password" -> "password";
+                case "settings.email.prompt.from_address" -> "invoices@your-domain";
+                case "settings.email.prompt.from_name" -> "Name shown as sender";
+                case "settings.email.prompt.reply_to" -> "replies@your-domain";
+                case "settings.email.field.host" -> "SMTP server";
+                case "settings.email.field.port" -> "Port";
+                case "settings.email.field.user" -> "User";
+                case "settings.email.field.password" -> "Password";
+                case "settings.email.field.from_address" -> "From (sender)";
+                case "settings.email.field.from_name" -> "Sender name";
+                case "settings.email.field.reply_to" -> "Reply-To";
+                case "settings.email.flag.tls" -> "TLS / STARTTLS enabled";
+                case "settings.email.flag.auth" -> "The SMTP server requires authentication";
+                case "settings.email.test.prompt" -> "recipient@domain (for test email)";
+                case "settings.email.btn.save" -> "Save";
+                case "settings.email.btn.test" -> "Send test email";
+                case "settings.email.section.test" -> "Test configuration";
+                case "settings.email.section.test.hint" -> "Send a test mail with the saved configuration to verify the credentials work.";
+                case "settings.email.save.success" -> "SMTP configuration saved.";
+                case "settings.email.save.fail.title" -> "Could not save";
+                case "settings.email.save.fail.body" -> "Check the SMTP server data.";
+                case "settings.email.test.missing.title" -> "Missing data";
+                case "settings.email.test.missing.body" -> "Indicate a recipient email for the test.";
+                case "settings.email.test.success_prefix" -> "Test email sent to ";
+                case "settings.email.test.success_suffix" -> ".";
+                case "settings.email.test.fail.title" -> "Send failed";
+                case "settings.email.test.fail.body" -> "Check host/port/user/password and try again.";
+                case "settings.modules.section" -> "Active modules per company";
+                case "settings.modules.hint" -> "Check or uncheck each module and press Save changes. Each module is all-or-nothing: if you enable Billing the whole block (series, invoices, collections, recurring) comes in; if you disable it, it all goes out.";
+                case "settings.audit.section" -> "Recent events";
+                case "settings.audit.hint" -> "Who did what and when. Useful to investigate suspicious accesses or configuration changes. Up to 200 entries are shown, ordered by most recent.";
+                case "settings.audit.placeholder.empty" -> "No events recorded yet.";
+                case "settings.audit.col.when" -> "When";
+                case "settings.audit.col.type" -> "Type";
+                case "settings.audit.col.result" -> "Result";
+                case "settings.audit.col.user" -> "User";
+                case "settings.audit.col.entity" -> "Entity";
+                case "settings.audit.col.ip" -> "IP";
+                case "settings.audit.col.details" -> "Detail";
+                case "settings.audit.btn.refresh" -> "Refresh";
+                case "settings.audit.filter.label" -> "Filter by type:";
+                case "settings.audit.load.fail" -> "Could not load events.";
+                // ---- Common dialog/panel actions ----
+                case "common.btn.retry" -> "Retry";
+                case "common.btn.back_to_billing" -> "Back to Billing";
                 default -> key.startsWith("column.") ? key.substring(7) : key;
             };
         }
@@ -4176,6 +4482,314 @@ public class BenjagestUiApplication extends Application {
             case "module.advisory.reports" -> "Informes asesoria";
             case "module.advisory.calendar" -> "Agenda asesoria";
             case "module.advisory.settings" -> "Configuracion";
+            // ---- Editor de facturas (Slice F4) ----
+            case "editor.back" -> "Volver al listado";
+            case "editor.title.new" -> "Nueva factura";
+            case "editor.title.edit" -> "Editar borrador";
+            case "editor.subtitle.new" -> "El nº se asigna automaticamente al validar. Guardar borrador NO lo consume.";
+            case "editor.subtitle.edit" -> "Estas editando un borrador. Validar lo numera y lo bloquea.";
+            case "editor.next_number.caption" -> "PROXIMO Nº AL VALIDAR";
+            case "editor.notes.prompt" -> "Notas internas u observaciones que apareceran en la factura.";
+            case "editor.client.detail_title" -> "Datos de facturacion";
+            case "editor.client.tax_id_prefix" -> "NIF: ";
+            case "editor.client.email_prefix" -> "Email: ";
+            case "editor.client.phone_prefix" -> "Tel.: ";
+            case "editor.kind.pill" -> "Factura normal · serie automatica";
+            case "editor.field.customer" -> "Cliente *";
+            case "editor.field.invoice_date" -> "Fecha de emision *";
+            case "editor.field.due_date" -> "Fecha de vencimiento";
+            case "editor.field.kind" -> "Tipo";
+            case "editor.card.header" -> "Cabecera de la factura";
+            case "editor.line.add" -> "Anadir linea";
+            case "editor.line.remove" -> "Quitar linea";
+            case "editor.card.lines" -> "Conceptos / Lineas";
+            case "editor.total.subtotal" -> "Base imponible";
+            case "editor.total.vat" -> "Cuota IVA total";
+            case "editor.total.retention" -> "Retencion IRPF";
+            case "editor.total.total" -> "TOTAL FACTURA";
+            case "editor.notes.label" -> "Notas / Observaciones";
+            case "editor.card.totals" -> "Totales y observaciones";
+            case "editor.action.cancel" -> "Cancelar";
+            case "editor.action.save_draft" -> "Guardar borrador";
+            case "editor.action.save_changes" -> "Guardar cambios";
+            case "editor.action.validate" -> "Validar y emitir";
+            case "editor.error.no_customer.title" -> "Falta cliente";
+            case "editor.error.no_customer.body" -> "Selecciona un cliente.";
+            case "editor.error.no_lines.title" -> "Sin lineas";
+            case "editor.error.no_lines.body" -> "Una factura sin lineas no se puede guardar.";
+            case "editor.error.line_incomplete.title" -> "Linea incompleta";
+            case "editor.error.line_incomplete.body" -> "Hay una linea sin descripcion. Rellenala o quitala.";
+            case "editor.error.save_failed.title" -> "No se pudo guardar";
+            case "editor.error.validate_failed.title" -> "No se pudo validar";
+            case "editor.error.save_failed.body" -> "Revisa los datos. Si validas, la serie debe estar disponible y los totales correctos.";
+            case "editor.saved.validated_prefix" -> "Factura validada: ";
+            case "editor.saved.draft" -> "Borrador guardado.";
+            case "prereq.no_customers.title" -> "Necesitas crear un cliente antes de facturar";
+            case "prereq.no_customers.body" -> "Ve a Clientes y da de alta al menos uno. Despues vuelve aqui y pulsa 'Nueva factura'.";
+            case "prereq.no_series.title" -> "Necesitas configurar una serie de numeracion";
+            case "prereq.no_series.body" -> "Ve a Facturacion > Configuracion > Series y pulsa 'Definir mi serie de facturas'. Sugerencia: tipo STANDARD, numeracion BY_YEAR, proximo nº 1.";
+            case "prereq.editor_failed" -> "No se pudo abrir el editor: faltan clientes o series activos.";
+            case "prereq.invoice_load_failed" -> "No se pudo cargar la factura.";
+            // ---- Listado de facturas (F4) ----
+            case "list.header" -> "Listado de facturas";
+            case "list.hint" -> "Doble click sobre un borrador abre el editor. Seleccionando una fila se habilitan las acciones de la barra inferior.";
+            case "list.filter.label.status" -> "Estado:";
+            case "list.filter.label.collection" -> "Cobro:";
+            case "list.filter.all" -> "(todos)";
+            case "list.filter.apply" -> "Aplicar filtros";
+            case "list.filter.reset" -> "Limpiar";
+            case "list.column.number" -> "Numero";
+            case "list.column.customer" -> "Cliente";
+            case "list.column.date" -> "Fecha";
+            case "list.column.due_date" -> "Vencimiento";
+            case "list.column.status" -> "Estado";
+            case "list.column.collection" -> "Cobro";
+            case "list.column.total" -> "Total";
+            case "list.placeholder.empty" -> "Sin facturas para los filtros actuales.";
+            case "list.draft_label" -> "(borrador)";
+            case "list.action.delete_draft" -> "Eliminar borrador";
+            case "list.action.generate_pdf" -> "Generar PDF";
+            case "list.dialog.pdf.title" -> "Pendiente · slice F4b";
+            case "list.dialog.pdf.body" -> "La generacion de PDF llega en el slice F4b (PDF multipagina con datos de la empresa, logo, totales agrupados por IVA, textos legales y pie). Por ahora la factura queda registrada y numerada; el PDF se vera entonces.";
+            case "list.dialog.validate.title" -> "Validar y emitir factura";
+            case "list.dialog.validate.body" -> "Vas a emitir el numero de factura para este borrador. Una vez validada no podras editarla (solo emitir rectificativa).";
+            case "list.dialog.validate.success_prefix" -> "Factura validada con n.º ";
+            case "list.dialog.validate.failure_body" -> "Revisa que la factura tenga serie y al menos una linea con descripcion.";
+            case "list.dialog.delete.title" -> "Eliminar borrador";
+            case "list.dialog.delete.body" -> "Vas a eliminar este borrador. No se puede deshacer.";
+            case "list.dialog.delete.failure_title" -> "No se pudo eliminar";
+            case "list.dialog.delete.failure_body" -> "Solo se pueden eliminar borradores (DRAFT).";
+            case "list.dialog.validated_no_edit" -> "Solo se pueden editar facturas en borrador (DRAFT). Para corregir una factura validada hay que emitir rectificativa.";
+            case "list.dialog.validated_no_edit.header" -> "Factura validada";
+            case "list.dialog.reload_failed.title" -> "Error al filtrar";
+            case "list.dialog.reload_failed.body" -> "No se pudo refrescar el listado.";
+            // ---- Facturacion shell (F2/F3/F5) ----
+            case "billing.shell.title" -> "Facturacion";
+            case "billing.shell.subtitle" -> "Gestion integral y VeriFactu";
+            case "billing.shell.new_invoice" -> "Nueva factura";
+            case "billing.shell.load_failed" -> "No se pudo cargar Facturacion (modulo billing activo? rol OWNER/ADMIN/ACCOUNTANT?)";
+            case "billing.tab.dashboard" -> "Dashboard";
+            case "billing.tab.invoices" -> "Facturas";
+            case "billing.tab.config" -> "Configuracion";
+            case "billing.dash.section" -> "Resumen rapido";
+            case "billing.dash.hint" -> "El dashboard completo con KPIs (facturado mes, pendiente cobro, proximo vencimiento, grafica IVA, etc.) llega en el slice F6. Hasta entonces este resumen se queda con cifras minimas.";
+            case "billing.dash.tab_title" -> "Vista general";
+            case "billing.dash.metric.total" -> "Total facturas";
+            case "billing.dash.metric.total.detail" -> "Todos los estados";
+            case "billing.dash.metric.drafts" -> "Borradores";
+            case "billing.dash.metric.drafts.detail" -> "Sin validar todavia";
+            case "billing.dash.metric.validated" -> "Validadas";
+            case "billing.dash.metric.validated.detail" -> "Numeradas y selladas";
+            case "billing.dash.metric.pending" -> "Pendientes cobro";
+            case "billing.dash.metric.pending.detail" -> "Sin pagar";
+            // ---- Command Palette ----
+            case "palette.title" -> "BENJAGEST · Comandos";
+            case "palette.search.prompt" -> "Buscar accion... (Esc para cerrar)";
+            case "palette.action.home" -> "Inicio · dashboard";
+            case "palette.action.customers" -> "Clientes";
+            case "palette.action.billing" -> "Facturacion";
+            case "palette.action.new_invoice" -> "Nueva factura";
+            case "palette.action.settings" -> "Configuracion";
+            case "palette.action.calendar" -> "Agenda";
+            case "palette.action.purchases" -> "Compras";
+            case "palette.action.tax" -> "Fiscal";
+            case "palette.action.labor" -> "Laboral";
+            case "palette.action.reports" -> "Informes";
+            // ---- Billing configuration (F5+) ----
+            case "billing.config.tab_title" -> "Configuracion de facturacion";
+            case "billing.config.verifactu.section" -> "VeriFactu";
+            case "billing.config.verifactu.hint" -> "Activa el envio de facturas a AEAT. Por defecto OFF. Para usar PROD necesitas un certificado .p12 subido en Documentos > Certificados; TEST permite hacer pruebas contra el entorno preproductivo de la AEAT.";
+            case "billing.config.verifactu.cert.none" -> "(ninguno)";
+            case "billing.config.verifactu.footer.prompt" -> "Texto que aparece al pie de cada factura";
+            case "billing.config.field.mode" -> "Modo *";
+            case "billing.config.field.cert" -> "Certificado";
+            case "billing.config.field.footer" -> "Pie de factura";
+            case "billing.config.cert.hint.empty" -> "No hay certificados subidos. Activa el modulo Documentos y sube uno en /api/certificates.";
+            case "billing.config.cert.hint.count_prefix" -> " certificado(s) disponible(s).";
+            case "billing.config.verifactu.save" -> "Guardar VeriFactu";
+            case "billing.verifactu.save.success_prefix" -> "Configuracion VeriFactu guardada (modo ";
+            case "billing.verifactu.save.success_suffix" -> ").";
+            case "billing.verifactu.save.fail.title" -> "No se pudo guardar";
+            case "billing.verifactu.save.fail.body" -> "Si seleccionaste PROD recuerda elegir un certificado .p12.";
+            case "billing.config.series.section" -> "Series de numeracion";
+            case "billing.config.series.hint" -> "Solo defines la serie de tus facturas normales. Las series para PROFORMA y RECTIFICATIVAS son del sistema (RD 1619/2012 Art.13). Tu serie STANDARD se autobloquea automaticamente en cuanto emites la primera factura validada del ano (continuidad legal — solo se desbloquea al cerrar el ano).";
+            case "billing.config.series.placeholder.empty" -> "Sin series. Pulsa 'Definir mi serie de facturas' para crear la STANDARD.";
+            case "billing.config.series.col.code" -> "Codigo";
+            case "billing.config.series.col.kind" -> "Tipo";
+            case "billing.config.series.col.format" -> "Formato";
+            case "billing.config.series.col.next" -> "Proximo numero";
+            case "billing.config.series.col.year" -> "Anio";
+            case "billing.config.series.kind.standard.label" -> "Factura normal";
+            case "billing.config.series.kind.system_suffix" -> " · sistema";
+            case "billing.config.series.reserved.body" -> "Esta serie es del sistema (Art.13 RD 1619/2012) y se mantiene automaticamente. No se puede editar ni borrar.";
+            case "billing.config.series.reserved.header_prefix" -> "Serie reservada · ";
+            case "billing.config.series.btn.define" -> "Definir mi serie de facturas";
+            case "billing.config.series.btn.edit" -> "Editar mi serie";
+            case "billing.config.migration.section" -> "Migracion desde otro programa";
+            case "billing.config.migration.hint" -> "Si tu empresa ya emitia facturas con otro software, indica aqui el numero por el que continuar. Una vez emitida la primera factura validada en BENJAGEST, el codigo y formato de la serie quedan bloqueados hasta cerrar el ano.";
+            case "billing.config.migration.next.prompt" -> "Ej. 43 (si tu ultima factura fue F-...-0042)";
+            case "billing.config.migration.ack" -> "Confirmo que el numero indicado coincide con mi contabilidad previa y eximo a BENJAGEST de cualquier responsabilidad por saltos en la serie.";
+            case "billing.config.migration.apply" -> "Aplicar migracion";
+            case "billing.config.migration.field.series" -> "Serie";
+            case "billing.config.migration.field.next" -> "Proximo numero";
+            case "billing.config.migration.combo.suffix_prefix" -> " — proximo ";
+            case "billing.config.migration.error.no_series.title" -> "Falta serie";
+            case "billing.config.migration.error.no_series.body" -> "Selecciona la serie cuyo correlativo quieres migrar.";
+            case "billing.config.migration.error.no_ack.title" -> "Falta confirmacion";
+            case "billing.config.migration.error.no_ack.body" -> "Debes confirmar que asumes la responsabilidad antes de aplicar la migracion.";
+            case "billing.config.migration.error.bad_number.title" -> "Numero invalido";
+            case "billing.config.migration.error.bad_number.body" -> "Indica un numero entero >= 1.";
+            case "billing.config.migration.error.bad_number.body_low" -> "El proximo numero debe ser >= 1.";
+            case "billing.config.migration.success_prefix" -> "Serie ";
+            case "billing.config.migration.success.middle" -> " migrada. Proximo numero: ";
+            case "billing.config.migration.fail.title" -> "No se pudo migrar";
+            case "billing.config.migration.fail.body" -> "Comprueba el numero y que la serie sigue activa.";
+            case "billing.config.texts.section" -> "Textos legales en la factura";
+            case "billing.config.texts.hint" -> "Aparecen al pie de cada factura emitida segun el caso. Vacios = no se imprime esa seccion.";
+            case "billing.config.texts.prompt.pie" -> "Pie general (datos de contacto, agradecimiento, etc.)";
+            case "billing.config.texts.prompt.exempt" -> "Texto para facturas con IVA exento (art.20 Ley IVA)";
+            case "billing.config.texts.prompt.reverse" -> "Sujeto pasivo (servicios intracomunitarios, art.84 LIVA)";
+            case "billing.config.texts.prompt.reduced" -> "Mensaje cuando se aplica IVA reducido (4%/10%)";
+            case "billing.config.texts.prompt.rectifying" -> "Texto para facturas rectificativas";
+            case "billing.config.texts.prompt.legal_terms" -> "Terminos legales (vencimiento, mora, jurisdiccion)";
+            case "billing.config.texts.show_iban" -> "Mostrar IBAN de la empresa en la factura";
+            case "billing.config.texts.field.pie" -> "Pie general";
+            case "billing.config.texts.field.exempt" -> "Exencion IVA";
+            case "billing.config.texts.field.reverse" -> "Sujeto pasivo";
+            case "billing.config.texts.field.reduced" -> "IVA reducido";
+            case "billing.config.texts.field.rectifying" -> "Rectificativas";
+            case "billing.config.texts.field.legal_terms" -> "Terminos legales";
+            case "billing.config.texts.save" -> "Guardar textos";
+            case "billing.texts.save.success" -> "Textos legales guardados.";
+            case "billing.texts.save.fail.title" -> "No se pudieron guardar los textos";
+            case "billing.texts.save.fail.body" -> "Vuelve a intentarlo en unos segundos.";
+            // ---- Series editor dialog ----
+            case "billing.series.editor.title.create" -> "Definir serie de facturas";
+            case "billing.series.editor.title.edit" -> "Editar mi serie de facturas";
+            case "billing.series.editor.field.code" -> "Codigo *";
+            case "billing.series.editor.code.prompt" -> "Ej. F2026, FRA, F";
+            case "billing.series.editor.kind.fixed" -> "Factura normal (STANDARD)";
+            case "billing.series.editor.field.kind" -> "Tipo";
+            case "billing.series.editor.field.numbering" -> "Numeracion *";
+            case "billing.series.editor.field.format" -> "Formato";
+            case "billing.series.editor.format.prompt" -> "Placeholders: {CODE}, {YYYY}, {0000}";
+            case "billing.series.editor.field.next" -> "Proximo nº";
+            case "billing.series.editor.next.hint.create" -> "Numero por el que arrancara la serie (normalmente 1; si vienes de otro programa, usa Migracion).";
+            case "billing.series.editor.next.hint.edit" -> "El correlativo no se cambia desde aqui. Usa 'Migracion desde otro programa' si vienes de otro software.";
+            case "billing.series.editor.autolock.hint" -> "La serie se autobloquea para edicion en cuanto emites la primera factura validada del ano (continuidad legal). No hay checkbox: es automatico.";
+            case "billing.series.editor.btn.create" -> "Crear";
+            case "billing.series.editor.btn.save" -> "Guardar";
+            case "billing.series.editor.error.no_code.title" -> "Falta codigo";
+            case "billing.series.editor.error.no_code.body" -> "Pon un codigo unico para la serie (ej. F2026).";
+            case "billing.series.editor.error.bad_number.title" -> "Numero invalido";
+            case "billing.series.editor.error.bad_number.body" -> "El proximo numero debe ser un entero >= 1.";
+            case "billing.series.editor.fail.create.title" -> "No se pudo crear la serie";
+            case "billing.series.editor.fail.save.title" -> "No se pudo guardar";
+            case "billing.series.editor.fail.body" -> "Comprueba que el codigo no este duplicado. Si la serie tiene facturas validadas este ano no se puede cambiar codigo/formato/tipo (continuidad legal — usa migracion).";
+            case "billing.series.delete.confirm_prefix" -> "Vas a eliminar la serie ";
+            case "billing.series.delete.confirm_suffix" -> ". Si ya tiene facturas asociadas, el backend rechazara la operacion. ¿Continuar?";
+            case "billing.series.delete.fail.title" -> "No se pudo eliminar";
+            case "billing.series.delete.fail.body" -> "La serie puede tener facturas emitidas. En ese caso solo se puede bloquear (editar -> 'Serie bloqueada').";
+            // ---- Settings (C3) ----
+            case "settings.shell.title" -> "Configuracion";
+            case "settings.load_failed" -> "No se pudo cargar Configuracion (necesitas rol OWNER o ADMIN)";
+            case "settings.tab.company" -> "Empresa";
+            case "settings.tab.email" -> "Email SMTP";
+            case "settings.tab.modules" -> "Modulos";
+            case "settings.tab.audit" -> "Auditoria";
+            case "settings.company.section_label" -> "Empresa";
+            case "settings.company.section.general" -> "Datos generales";
+            case "settings.company.section.address" -> "Direccion postal";
+            case "settings.company.section.billing" -> "Datos de facturacion";
+            case "settings.company.section.billing.hint" -> "Estos datos aparecen en cada factura que emites como empresa.";
+            case "settings.company.prompt.legal_name" -> "Razon social";
+            case "settings.company.prompt.trade_name" -> "Nombre comercial";
+            case "settings.company.prompt.tax_id" -> "NIF/CIF";
+            case "settings.company.prompt.email" -> "Email de contacto";
+            case "settings.company.prompt.phone" -> "Telefono";
+            case "settings.company.prompt.website" -> "Web";
+            case "settings.company.prompt.address_line" -> "Calle, numero, escalera";
+            case "settings.company.prompt.city" -> "Localidad";
+            case "settings.company.prompt.province" -> "Provincia";
+            case "settings.company.prompt.postal_code" -> "CP";
+            case "settings.company.prompt.country" -> "Pais";
+            case "settings.company.country.default" -> "Espana";
+            case "settings.company.prompt.iban" -> "ES00 0000 0000 0000 0000 0000";
+            case "settings.company.prompt.registry" -> "Registro mercantil, tomo, hoja...";
+            case "settings.company.prompt.terms" -> "Condiciones legales que aparecen en la factura";
+            case "settings.company.prompt.footer" -> "Pie de factura";
+            case "settings.company.field.legal_name" -> "Razon social *";
+            case "settings.company.field.trade_name" -> "Nombre comercial";
+            case "settings.company.field.tax_id" -> "NIF/CIF";
+            case "settings.company.field.email" -> "Email";
+            case "settings.company.field.phone" -> "Telefono";
+            case "settings.company.field.website" -> "Web";
+            case "settings.company.field.address" -> "Direccion";
+            case "settings.company.field.city" -> "Localidad";
+            case "settings.company.field.province" -> "Provincia";
+            case "settings.company.field.postal_code" -> "CP";
+            case "settings.company.field.country" -> "Pais";
+            case "settings.company.field.iban" -> "IBAN";
+            case "settings.company.field.registry" -> "Datos registrales";
+            case "settings.company.field.terms" -> "Condiciones legales";
+            case "settings.company.field.footer" -> "Pie de factura";
+            case "settings.company.type_note_prefix" -> "Tipo de empresa: ";
+            case "settings.company.type_note_suffix" -> " (no editable desde aqui)";
+            case "settings.company.save" -> "Guardar cambios";
+            case "settings.company.error.missing_legal_name.title" -> "Falta dato";
+            case "settings.company.error.missing_legal_name.body" -> "La razon social es obligatoria";
+            case "settings.company.save.fail.title" -> "No se pudo guardar";
+            case "settings.company.save.fail.body" -> "Comprueba los datos y vuelve a intentarlo.";
+            case "settings.email.section" -> "Servidor SMTP";
+            case "settings.email.prompt.host" -> "smtp.tu-servidor.com";
+            case "settings.email.prompt.port" -> "587";
+            case "settings.email.prompt.user" -> "usuario@dominio";
+            case "settings.email.prompt.password.saved" -> "(password guardada - deja vacio para no cambiar)";
+            case "settings.email.prompt.password" -> "password";
+            case "settings.email.prompt.from_address" -> "facturas@tu-dominio";
+            case "settings.email.prompt.from_name" -> "Nombre que aparece como remitente";
+            case "settings.email.prompt.reply_to" -> "respuestas@tu-dominio";
+            case "settings.email.field.host" -> "Servidor SMTP";
+            case "settings.email.field.port" -> "Puerto";
+            case "settings.email.field.user" -> "Usuario";
+            case "settings.email.field.password" -> "Password";
+            case "settings.email.field.from_address" -> "From (remitente)";
+            case "settings.email.field.from_name" -> "Nombre del remitente";
+            case "settings.email.field.reply_to" -> "Reply-To";
+            case "settings.email.flag.tls" -> "TLS / STARTTLS habilitado";
+            case "settings.email.flag.auth" -> "El servidor SMTP requiere autenticacion";
+            case "settings.email.test.prompt" -> "destinatario@dominio (para email de prueba)";
+            case "settings.email.btn.save" -> "Guardar";
+            case "settings.email.btn.test" -> "Enviar email de prueba";
+            case "settings.email.section.test" -> "Probar configuracion";
+            case "settings.email.section.test.hint" -> "Envia un correo de prueba con la configuracion guardada para verificar que las credenciales funcionan.";
+            case "settings.email.save.success" -> "Configuracion SMTP guardada.";
+            case "settings.email.save.fail.title" -> "No se pudo guardar";
+            case "settings.email.save.fail.body" -> "Revisa los datos del servidor SMTP.";
+            case "settings.email.test.missing.title" -> "Falta dato";
+            case "settings.email.test.missing.body" -> "Indica un email destinatario para la prueba.";
+            case "settings.email.test.success_prefix" -> "Email de prueba enviado a ";
+            case "settings.email.test.success_suffix" -> ".";
+            case "settings.email.test.fail.title" -> "Envio fallido";
+            case "settings.email.test.fail.body" -> "Comprueba host/puerto/usuario/password y vuelve a intentarlo.";
+            case "settings.modules.section" -> "Modulos activos por empresa";
+            case "settings.modules.hint" -> "Marca o desmarca cada modulo y pulsa Guardar cambios. Cada modulo es todo-o-nada: si activas Facturacion entra el bloque completo (series, facturas, cobros, recurrentes); si lo desactivas, sale entero.";
+            case "settings.audit.section" -> "Eventos recientes";
+            case "settings.audit.hint" -> "Quien hizo que y cuando. Util para investigar accesos sospechosos o cambios de configuracion. Se muestran hasta 200 entradas, ordenadas por mas recientes.";
+            case "settings.audit.placeholder.empty" -> "Sin eventos registrados todavia.";
+            case "settings.audit.col.when" -> "Cuando";
+            case "settings.audit.col.type" -> "Tipo";
+            case "settings.audit.col.result" -> "Resultado";
+            case "settings.audit.col.user" -> "Usuario";
+            case "settings.audit.col.entity" -> "Entidad";
+            case "settings.audit.col.ip" -> "IP";
+            case "settings.audit.col.details" -> "Detalle";
+            case "settings.audit.btn.refresh" -> "Refrescar";
+            case "settings.audit.filter.label" -> "Filtrar por tipo:";
+            case "settings.audit.load.fail" -> "No se pudieron cargar los eventos.";
+            // ---- Common dialog/panel actions ----
+            case "common.btn.retry" -> "Reintentar";
+            case "common.btn.back_to_billing" -> "Volver a Facturacion";
             default -> key.startsWith("column.") ? key.substring(7) : switch (key) {
                 case "field.name" -> "Nombre";
                 case "field.taxId" -> "NIF/CIF";

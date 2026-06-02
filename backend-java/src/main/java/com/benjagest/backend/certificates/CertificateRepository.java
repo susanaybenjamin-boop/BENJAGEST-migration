@@ -1,15 +1,16 @@
 package com.benjagest.backend.certificates;
 
-import com.benjagest.backend.tenant.TenantContext;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
-import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
+
 import org.jasypt.encryption.StringEncryptor;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
+
+import com.benjagest.backend.tenant.TenantContext;
 
 /**
  * Acceso unico a `digital_certificates`. Cifra `encrypted_password` y
