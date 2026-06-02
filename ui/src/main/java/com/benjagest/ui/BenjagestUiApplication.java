@@ -2824,32 +2824,6 @@ public class BenjagestUiApplication extends Application {
         start(task, "billing-series-save");
     }
 
-    private void deleteSeries(SeriesEntry serie) {
-        Alert confirm = new Alert(Alert.AlertType.CONFIRMATION,
-                t("billing.series.delete.confirm_prefix") + serie.code()
-                        + t("billing.series.delete.confirm_suffix"),
-                ButtonType.OK, ButtonType.CANCEL);
-        confirm.setHeaderText(null);
-        Optional<ButtonType> answer = confirm.showAndWait();
-        if (answer.isEmpty() || answer.get() != ButtonType.OK) {
-            return;
-        }
-        Task<Void> task = new Task<>() {
-            @Override
-            protected Void call() throws Exception {
-                billingApiClient.deleteSeries(serie.id());
-                return null;
-            }
-        };
-        task.setOnSucceeded(ev -> {
-            pendingBillingTab = "config";
-            showBilling();
-        });
-        task.setOnFailed(ev -> showError(t("billing.series.delete.fail.title"),
-                t("billing.series.delete.fail.body")));
-        start(task, "billing-series-delete");
-    }
-
     private void saveInvoiceTexts() {
         InvoiceTexts payload = new InvoiceTexts(
                 textPieArea.getText(),
@@ -3255,28 +3229,6 @@ public class BenjagestUiApplication extends Application {
             @Override protected void updateItem(CustomerSummary item, boolean empty) {
                 super.updateItem(item, empty);
                 setText(empty || item == null ? "" : item.legalName());
-            }
-        });
-    }
-
-    private void configureSeriesCombo(ComboBox<SeriesEntry> combo) {
-        // En ambos cells mostramos el preview ya formateado (previewNextNumber
-        // ya inyecta {CODE}). Antes hacíamos `code + " · " + preview` y el
-        // usuario veia "FRA · FRA-2026-0001" (CODE duplicado). Ahora:
-        // dropdown muestra "FRA-2026-0001 — STANDARD" y el boton solo
-        // "FRA-2026-0001".
-        combo.setCellFactory(lv -> new javafx.scene.control.ListCell<>() {
-            @Override protected void updateItem(SeriesEntry item, boolean empty) {
-                super.updateItem(item, empty);
-                setText(empty || item == null
-                        ? ""
-                        : previewNextNumber(item) + "  ·  " + item.invoiceKind());
-            }
-        });
-        combo.setButtonCell(new javafx.scene.control.ListCell<>() {
-            @Override protected void updateItem(SeriesEntry item, boolean empty) {
-                super.updateItem(item, empty);
-                setText(empty || item == null ? "" : previewNextNumber(item));
             }
         });
     }
@@ -4957,10 +4909,6 @@ public class BenjagestUiApplication extends Application {
 
         private String descriptionKey() {
             return descriptionKey;
-        }
-
-        private String icon() {
-            return icon;
         }
 
         private static AppMode from(String value) {
