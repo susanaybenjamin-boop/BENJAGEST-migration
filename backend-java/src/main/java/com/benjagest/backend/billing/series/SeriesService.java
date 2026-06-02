@@ -204,7 +204,8 @@ public class SeriesService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "El proximo numero debe ser >= 1");
         }
-        Series series = get(seriesId);
+        // Validamos que la serie existe (404 si no) sin guardar el objeto.
+        get(seriesId);
         int year = LocalDate.now().getYear();
         repository.updateCounter(seriesId, nextNumber, year);
         return get(seriesId);
