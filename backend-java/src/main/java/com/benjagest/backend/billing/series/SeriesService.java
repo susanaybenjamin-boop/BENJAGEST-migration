@@ -2,6 +2,7 @@ package com.benjagest.backend.billing.series;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -44,13 +45,35 @@ public class SeriesService {
 
     @Transactional
     public Series create(SeriesUpsertRequest request) {
-        String id = UUID.randomUUID().toString();
+        String code = request.code().trim();
         int initial = request.initialNextNumber() == null ? 1 : request.initialNextNumber();
         Integer currentYear = "BY_YEAR".equals(request.numberingType()) ? LocalDate.now().getYear() : null;
+
+        // Si existe una serie soft-deleted con el mismo codigo, la
+        // reactivamos en lugar de insertar. El UNIQUE company_id+code no
+        // distingue inactivas: sin esto, el ciclo "borrar + crear con
+        // mismo codigo" devolveria 1062 / 409 al usuario aunque
+        // logicamente "no haya" ninguna serie con ese codigo.
+        Optional<Series> dormant = repository.findInactiveByCode(code);
+        if (dormant.isPresent()) {
+            Series existing = dormant.get();
+            repository.reactivateAndUpdate(
+                    existing.id(),
+                    code,
+                    request.invoiceKind(),
+                    request.numberingType(),
+                    request.formatTemplate(),
+                    initial,
+                    currentYear
+            );
+            return get(existing.id());
+        }
+
+        String id = UUID.randomUUID().toString();
         try {
             repository.insert(
                     id,
-                    request.code().trim(),
+                    code,
                     request.invoiceKind(),
                     request.numberingType(),
                     request.formatTemplate(),
@@ -191,20 +214,27 @@ public class SeriesService {
         int newNext = numberToEmit + 1;
         repository.updateCounter(series.id(), newNext, newCurrentYear);
 
-        String formatted = formatNumber(series.formatTemplate(), numberToEmit, year);
+        String formatted = formatNumber(series.formatTemplate(), series.code(), numberToEmit, year);
         return new ClaimedNumber(series.id(), series.code(), numberToEmit, year, formatted, yearReset);
     }
 
     /**
-     * Reemplaza {YYYY} y {0000} en el template por los valores reales.
-     * Si el template es null o vacio, devuelve "<code>-<num>" como
+     * Reemplaza {CODE}, {YYYY} y {0000+} en el template por los valores
+     * reales. Si el template es null o vacio, devuelve "<code>-<num>" como
      * fallback.
+     *
+     * El placeholder {CODE} se introdujo despues de detectar que el
+     * editor de la UI ya lo asume (preview de proximo numero) pero el
+     * backend no lo sustituia → la factura quedaba con literal
+     * "{CODE}-2026-0001" en invoice_number.
      */
-    String formatNumber(String template, int number, int year) {
+    String formatNumber(String template, String code, int number, int year) {
         if (template == null || template.isBlank()) {
-            return String.valueOf(number);
+            return (code == null ? "" : code + "-") + number;
         }
-        String result = template.replace("{YYYY}", String.valueOf(year));
+        String result = template
+                .replace("{CODE}", code == null ? "" : code)
+                .replace("{YYYY}", String.valueOf(year));
         Matcher matcher = PADDING_PATTERN.matcher(result);
         StringBuilder out = new StringBuilder();
         while (matcher.find()) {

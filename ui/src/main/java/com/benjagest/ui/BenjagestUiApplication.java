@@ -140,6 +140,17 @@ public class BenjagestUiApplication extends Application {
     private Button saveModulesButton;
     private Label modulesDirtyHint;
 
+    // ----- Historial de navegacion (mouse BACK/FORWARD) -----
+    // Cada pantalla "principal" registra el Runnable que la repinta. Asi
+    // BACK/FORWARD pueden repetirlo sin tocar el resto del flujo. Limite
+    // de 20 entradas por mano (si lo dejamos crecer, se acumulan
+    // Runnables-clausura con referencias indirectas a Bundle/Tabs que
+    // chuparian RAM).
+    private final java.util.Deque<Runnable> navBack = new java.util.ArrayDeque<>();
+    private final java.util.Deque<Runnable> navForward = new java.util.ArrayDeque<>();
+    private Runnable navCurrent;
+    private boolean navReplaying = false;
+
     // Slugs del catalogo que la UI sabe pintar. Si llega un slug activo
     // que no esta aqui, se ignora en el sidebar (no hay vista para el).
     private static final java.util.Set<String> KNOWN_VIEWS = java.util.Set.of(
@@ -154,6 +165,7 @@ public class BenjagestUiApplication extends Application {
 
         Scene scene = new Scene(root, 1180, 760);
         scene.getStylesheets().add(getClass().getResource("/com/benjagest/ui/app.css").toExternalForm());
+        setupGlobalShortcuts(scene);
 
         stage.setTitle("BENJAGEST");
         stage.getIcons().add(AppBrand.loadWindowIcon());
@@ -162,6 +174,223 @@ public class BenjagestUiApplication extends Application {
         stage.setScene(scene);
         showLogin();
         stage.show();
+    }
+
+    // ===================================================================
+    //  Atajos globales (Scene-level event filter)
+    //  ----------------------------------------------------------------
+    //  Tab/Shift+Tab → navegacion entre campos (default JavaFX, sin
+    //                   tocar nada — las TextField estan en orden de
+    //                   declaracion).
+    //  Ctrl+K        → command palette (buscador rapido de acciones).
+    //  Ctrl+N        → nueva factura (si hay sesion).
+    //  Ctrl+F        → ir a Facturacion.
+    //  Ctrl+H        → ir a Inicio / dashboard.
+    //  F5            → recargar dashboard.
+    //
+    //  Se ignoran si el foco esta dentro de un TextField/TextArea para
+    //  no pisar el texto que el usuario esta escribiendo (Ctrl+N en un
+    //  textarea seria una sorpresa horrible). Ctrl+K es la unica
+    //  excepcion: siempre captura.
+    // ===================================================================
+
+    /**
+     * Registra la pantalla actual en el historial. Si se llama desde un
+     * replay (navigateBack/navigateForward) no apila — esto evita que
+     * BACK quede atascado en bucle entre dos pantallas.
+     */
+    private void recordNav(Runnable showAgain) {
+        if (navReplaying) return;
+        if (navCurrent != null) {
+            navBack.push(navCurrent);
+            while (navBack.size() > 20) navBack.pollLast();
+        }
+        navForward.clear();
+        navCurrent = showAgain;
+    }
+
+    private void navigateBack() {
+        if (navBack.isEmpty()) return;
+        Runnable previous = navBack.pop();
+        if (navCurrent != null) navForward.push(navCurrent);
+        navCurrent = previous;
+        navReplaying = true;
+        try { previous.run(); } finally { navReplaying = false; }
+    }
+
+    private void navigateForward() {
+        if (navForward.isEmpty()) return;
+        Runnable next = navForward.pop();
+        if (navCurrent != null) navBack.push(navCurrent);
+        navCurrent = next;
+        navReplaying = true;
+        try { next.run(); } finally { navReplaying = false; }
+    }
+
+    private void setupGlobalShortcuts(Scene scene) {
+        // Botones laterales del raton: 4 = BACK, 5 = FORWARD.
+        scene.addEventFilter(javafx.scene.input.MouseEvent.MOUSE_PRESSED, ev -> {
+            if (ev.getButton() == javafx.scene.input.MouseButton.BACK) {
+                navigateBack();
+                ev.consume();
+            } else if (ev.getButton() == javafx.scene.input.MouseButton.FORWARD) {
+                navigateForward();
+                ev.consume();
+            }
+        });
+
+        scene.addEventFilter(javafx.scene.input.KeyEvent.KEY_PRESSED, ev -> {
+            // Ctrl+K abre el command palette siempre (incluso desde un
+            // TextField — es el "alfred" del app).
+            if (ev.isControlDown() && ev.getCode() == javafx.scene.input.KeyCode.K) {
+                if (session != null) {
+                    showCommandPalette();
+                }
+                ev.consume();
+                return;
+            }
+
+            // El resto de atajos se ignoran si el foco esta en un campo
+            // de texto, para no comerse pulsaciones del usuario.
+            javafx.scene.Node focused = scene.getFocusOwner();
+            boolean inTextInput = focused instanceof javafx.scene.control.TextInputControl;
+            if (inTextInput) {
+                return;
+            }
+
+            if (session == null) {
+                return;
+            }
+
+            if (ev.isControlDown() && ev.getCode() == javafx.scene.input.KeyCode.N) {
+                showInvoiceEditor(null);
+                ev.consume();
+            } else if (ev.isControlDown() && ev.getCode() == javafx.scene.input.KeyCode.F) {
+                showModule("billing");
+                ev.consume();
+            } else if (ev.isControlDown() && ev.getCode() == javafx.scene.input.KeyCode.H) {
+                showDashboard();
+                ev.consume();
+            } else if (ev.getCode() == javafx.scene.input.KeyCode.F5) {
+                showDashboard();
+                ev.consume();
+            }
+        });
+    }
+
+    /**
+     * Lista de acciones del command palette. Slug + label + runnable.
+     * Tab fija un orden estable y lo mantiene a la hora de filtrar por
+     * texto (substring case-insensitive).
+     */
+    private record PaletteAction(String label, String icon, Runnable action) {
+    }
+
+    private List<PaletteAction> commandPaletteActions() {
+        List<PaletteAction> all = new java.util.ArrayList<>();
+        all.add(new PaletteAction("Inicio · dashboard", "fas-home", this::showDashboard));
+        all.add(new PaletteAction("Clientes", "fas-users", () -> showModule("customers")));
+        all.add(new PaletteAction("Facturacion", "fas-file-invoice-dollar", () -> showModule("billing")));
+        all.add(new PaletteAction("Nueva factura", "fas-plus", () -> showInvoiceEditor(null)));
+        all.add(new PaletteAction("Configuracion", "fas-cog", () -> showModule("settings")));
+        all.add(new PaletteAction("Agenda", "fas-calendar-alt", () -> showModule("calendar")));
+        all.add(new PaletteAction("Compras", "fas-receipt", () -> showModule("purchases")));
+        all.add(new PaletteAction("Fiscal", "fas-percentage", () -> showModule("tax")));
+        all.add(new PaletteAction("Laboral", "fas-hard-hat", () -> showModule("labor")));
+        all.add(new PaletteAction("Informes", "fas-chart-line", () -> showModule("reports")));
+        return all;
+    }
+
+    private void showCommandPalette() {
+        Dialog<PaletteAction> dialog = new Dialog<>();
+        dialog.setTitle("BENJAGEST · Comandos");
+        dialog.setHeaderText(null);
+        dialog.initStyle(javafx.stage.StageStyle.UTILITY);
+
+        TextField search = new TextField();
+        search.setPromptText("Buscar accion... (Esc para cerrar)");
+        search.getStyleClass().add("form-input");
+        search.setMaxWidth(Double.MAX_VALUE);
+
+        javafx.scene.control.ListView<PaletteAction> listView = new javafx.scene.control.ListView<>();
+        listView.setPrefHeight(280);
+        listView.setCellFactory(lv -> new javafx.scene.control.ListCell<>() {
+            @Override
+            protected void updateItem(PaletteAction item, boolean empty) {
+                super.updateItem(item, empty);
+                if (empty || item == null) {
+                    setText(null);
+                    setGraphic(null);
+                } else {
+                    setText(item.label());
+                    setGraphic(icon(item.icon()));
+                }
+            }
+        });
+
+        List<PaletteAction> all = commandPaletteActions();
+        javafx.collections.ObservableList<PaletteAction> items = FXCollections.observableArrayList(all);
+        listView.setItems(items);
+        if (!items.isEmpty()) {
+            listView.getSelectionModel().selectFirst();
+        }
+
+        search.textProperty().addListener((obs, oldV, newV) -> {
+            String q = newV == null ? "" : newV.trim().toLowerCase(Locale.ROOT);
+            if (q.isBlank()) {
+                items.setAll(all);
+            } else {
+                items.setAll(all.stream()
+                        .filter(a -> a.label().toLowerCase(Locale.ROOT).contains(q))
+                        .toList());
+            }
+            if (!items.isEmpty()) {
+                listView.getSelectionModel().selectFirst();
+            }
+        });
+
+        // Flechas mueven la seleccion en la lista aunque el foco este en
+        // el TextField; Enter elige; Esc cierra.
+        search.addEventFilter(javafx.scene.input.KeyEvent.KEY_PRESSED, ev -> {
+            if (ev.getCode() == javafx.scene.input.KeyCode.DOWN) {
+                listView.getSelectionModel().selectNext();
+                ev.consume();
+            } else if (ev.getCode() == javafx.scene.input.KeyCode.UP) {
+                listView.getSelectionModel().selectPrevious();
+                ev.consume();
+            } else if (ev.getCode() == javafx.scene.input.KeyCode.ENTER) {
+                PaletteAction sel = listView.getSelectionModel().getSelectedItem();
+                if (sel != null) {
+                    dialog.setResult(sel);
+                    dialog.close();
+                }
+                ev.consume();
+            } else if (ev.getCode() == javafx.scene.input.KeyCode.ESCAPE) {
+                dialog.setResult(null);
+                dialog.close();
+                ev.consume();
+            }
+        });
+        listView.setOnMouseClicked(ev -> {
+            if (ev.getClickCount() == 2) {
+                PaletteAction sel = listView.getSelectionModel().getSelectedItem();
+                if (sel != null) {
+                    dialog.setResult(sel);
+                    dialog.close();
+                }
+            }
+        });
+
+        VBox box = new VBox(10, search, listView);
+        box.setPadding(new Insets(12));
+        box.setPrefWidth(420);
+        dialog.getDialogPane().setContent(box);
+        dialog.getDialogPane().getButtonTypes().add(ButtonType.CANCEL);
+        // Esto fuerza el foco al search cuando se abre.
+        Platform.runLater(search::requestFocus);
+
+        Optional<PaletteAction> result = dialog.showAndWait();
+        result.ifPresent(action -> action.action().run());
     }
 
     private void showLogin() {
@@ -464,6 +693,7 @@ public class BenjagestUiApplication extends Application {
     }
 
     private void showDashboard() {
+        recordNav(this::showDashboard);
         currentModule = "dashboard";
         select("dashboard");
         Task<DashboardData> task = new Task<>() {
@@ -545,6 +775,7 @@ public class BenjagestUiApplication extends Application {
     }
 
     private void showModule(String module) {
+        recordNav(() -> showModule(module));
         currentModule = module;
         select(module);
         if ("billing".equals(module)) {
@@ -1895,7 +2126,16 @@ public class BenjagestUiApplication extends Application {
 
         tabs.getTabs().addAll(dashboardTab, invoicesTab, configTab);
         VBox.setVgrow(tabs, Priority.ALWAYS);
-        tabs.getSelectionModel().select(invoicesTab);
+        // Aterrizamos en la pestaña que indique el intent (lo fija quien
+        // navega aqui — p.ej. tras CRUD de series queremos volver a
+        // Configuracion, no a Facturas). Por defecto: Facturas.
+        Tab landingTab = switch (pendingBillingTab == null ? "" : pendingBillingTab) {
+            case "config" -> configTab;
+            case "dashboard" -> dashboardTab;
+            default -> invoicesTab;
+        };
+        tabs.getSelectionModel().select(landingTab);
+        pendingBillingTab = null;
 
         content.getChildren().addAll(header, tabs);
         return content;
@@ -1933,6 +2173,14 @@ public class BenjagestUiApplication extends Application {
     }
 
     // ----- Sub-tab Facturas (listado con filtros) -----
+
+    /**
+     * Tab a seleccionar la proxima vez que se pinte billingView. Lo fijan
+     * los flujos que vuelven a Facturacion despues de tocar algo de una
+     * pestaña concreta (p.ej. crear una serie debe dejarte en
+     * Configuracion). Se consume una sola vez.
+     */
+    private String pendingBillingTab;
 
     private ComboBox<String> billingStatusFilter;
     private ComboBox<String> billingPaymentFilter;
@@ -1975,7 +2223,7 @@ public class BenjagestUiApplication extends Application {
         TableColumn<SalesInvoiceSummary, String> colNumber = new TableColumn<>("Numero");
         colNumber.setCellValueFactory(c -> new SimpleStringProperty(
                 c.getValue().invoiceNumber() == null || c.getValue().invoiceNumber().isBlank()
-                        ? "(borrador " + shortId(c.getValue().id()) + ")"
+                        ? "(borrador)"
                         : c.getValue().invoiceNumber()
         ));
         colNumber.setPrefWidth(160);
@@ -2030,14 +2278,114 @@ public class BenjagestUiApplication extends Application {
         });
 
         Label header = label("Listado de facturas", "settings-section-title");
-        Label hint = new Label("La columna 'Cobro' refleja el estado de pago, independiente del estado legal "
-                + "de la factura. Doble click sobre una fila abrira el detalle en el slice F4.");
+        Label hint = new Label("Doble click sobre un borrador abre el editor. Seleccionando una fila "
+                + "se habilitan las acciones de la barra inferior.");
         hint.setWrapText(true);
         hint.getStyleClass().add("settings-hint");
 
         VBox topBlock = new VBox(8, header, hint, filters);
 
-        return tabLayout(topBlock, billingTable, new HBox());
+        // Barra de acciones contextual: validar borrador, eliminar
+        // borrador, generar PDF. Cada boton se autohabilita segun el
+        // estado de la fila seleccionada (no tiene sentido validar una
+        // VALIDATED ni borrar fisicamente algo que ya tiene numero
+        // legal).
+        Button validateRowBtn = new Button("Validar y emitir");
+        validateRowBtn.setGraphic(icon("fas-check"));
+        validateRowBtn.getStyleClass().add("invoice-validate-action");
+        validateRowBtn.setDisable(true);
+        validateRowBtn.setOnAction(ev -> {
+            SalesInvoiceSummary sel = billingTable.getSelectionModel().getSelectedItem();
+            if (sel != null) validateInvoiceFromList(sel);
+        });
+
+        Button deleteDraftBtn = new Button("Eliminar borrador");
+        deleteDraftBtn.setGraphic(icon("fas-trash-alt"));
+        deleteDraftBtn.setDisable(true);
+        deleteDraftBtn.setOnAction(ev -> {
+            SalesInvoiceSummary sel = billingTable.getSelectionModel().getSelectedItem();
+            if (sel != null) deleteDraftFromList(sel);
+        });
+
+        Button pdfBtn = new Button("Generar PDF");
+        pdfBtn.setGraphic(icon("fas-file-pdf"));
+        pdfBtn.setDisable(true);
+        pdfBtn.setOnAction(ev -> {
+            Alert info = new Alert(Alert.AlertType.INFORMATION,
+                    "La generacion de PDF llega en el slice F4b (PDF multipagina con datos de la empresa, "
+                            + "logo, totales agrupados por IVA, textos legales y pie). "
+                            + "Por ahora la factura queda registrada y numerada; el PDF se vera entonces.",
+                    ButtonType.OK);
+            info.setHeaderText("Pendiente · slice F4b");
+            info.showAndWait();
+        });
+
+        // Wire up de habilitacion segun la fila seleccionada.
+        billingTable.getSelectionModel().selectedItemProperty().addListener((obs, oldV, newV) -> {
+            boolean isDraft = newV != null && "DRAFT".equals(newV.status());
+            boolean isValidated = newV != null && "VALIDATED".equals(newV.status());
+            validateRowBtn.setDisable(!isDraft);
+            deleteDraftBtn.setDisable(!isDraft);
+            pdfBtn.setDisable(!isValidated);
+        });
+
+        Region rowActionsSpacer = new Region();
+        HBox.setHgrow(rowActionsSpacer, Priority.ALWAYS);
+        HBox rowActions = new HBox(10, validateRowBtn, deleteDraftBtn, rowActionsSpacer, pdfBtn);
+        rowActions.getStyleClass().add("settings-actions");
+
+        VBox bottomBlock = new VBox(12, billingTable, rowActions);
+
+        return tabLayout(topBlock, bottomBlock, new HBox());
+    }
+
+    private void validateInvoiceFromList(SalesInvoiceSummary sel) {
+        Alert confirm = new Alert(Alert.AlertType.CONFIRMATION,
+                "Vas a emitir el numero de factura para este borrador. "
+                        + "Una vez validada no podras editarla (solo emitir rectificativa).",
+                ButtonType.OK, ButtonType.CANCEL);
+        confirm.setHeaderText("Validar y emitir factura");
+        Optional<ButtonType> ans = confirm.showAndWait();
+        if (ans.isEmpty() || ans.get() != ButtonType.OK) return;
+
+        Task<SalesInvoiceSummary> task = new Task<>() {
+            @Override
+            protected SalesInvoiceSummary call() throws Exception {
+                return billingApiClient.validateInvoice(sel.id());
+            }
+        };
+        task.setOnSucceeded(ev -> {
+            SalesInvoiceSummary v = task.getValue();
+            Alert ok = new Alert(Alert.AlertType.INFORMATION,
+                    "Factura validada con n.º " + v.invoiceNumber(), ButtonType.OK);
+            ok.setHeaderText(null);
+            ok.showAndWait();
+            showBilling();
+        });
+        task.setOnFailed(ev -> showError("No se pudo validar",
+                "Revisa que la factura tenga serie y al menos una linea con descripcion."));
+        start(task, "billing-invoice-validate-from-list");
+    }
+
+    private void deleteDraftFromList(SalesInvoiceSummary sel) {
+        Alert confirm = new Alert(Alert.AlertType.CONFIRMATION,
+                "Vas a eliminar este borrador. No se puede deshacer.",
+                ButtonType.OK, ButtonType.CANCEL);
+        confirm.setHeaderText("Eliminar borrador");
+        Optional<ButtonType> ans = confirm.showAndWait();
+        if (ans.isEmpty() || ans.get() != ButtonType.OK) return;
+
+        Task<Void> task = new Task<>() {
+            @Override
+            protected Void call() throws Exception {
+                billingApiClient.deleteInvoice(sel.id());
+                return null;
+            }
+        };
+        task.setOnSucceeded(ev -> showBilling());
+        task.setOnFailed(ev -> showError("No se pudo eliminar",
+                "Solo se pueden eliminar borradores (DRAFT)."));
+        start(task, "billing-invoice-delete-from-list");
     }
 
     private void reloadInvoices() {
@@ -2116,16 +2464,17 @@ public class BenjagestUiApplication extends Application {
         certHint.getStyleClass().add("settings-hint");
 
         Label seriesHeader = label("Series de numeracion", "settings-section-title");
-        Label seriesHint = new Label("Las series se gestionan via API (/api/billing/series). "
-                + "Aqui solo se listan las activas para que veas el estado actual; "
-                + "la pantalla CRUD completa llega en F4.");
+        Label seriesHint = new Label("Las series controlan el numerado de tus facturas. "
+                + "Doble click en una fila para editarla. El codigo, formato y tipo quedan "
+                + "bloqueados en cuanto emites la primera factura validada del ano en esa serie "
+                + "(continuidad legal — solo se desbloquean al cerrar el ano).");
         seriesHint.setWrapText(true);
         seriesHint.getStyleClass().add("settings-hint");
 
         TableView<SeriesEntry> seriesTable = new TableView<>();
         seriesTable.getStyleClass().add("data-table");
         seriesTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
-        seriesTable.setPlaceholder(new Label("Sin series activas."));
+        seriesTable.setPlaceholder(new Label("Sin series activas. Pulsa 'Nueva serie' para crear la primera."));
         TableColumn<SeriesEntry, String> sCode = new TableColumn<>("Codigo");
         sCode.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().code()));
         sCode.setPrefWidth(120);
@@ -2142,9 +2491,51 @@ public class BenjagestUiApplication extends Application {
         sYear.setCellValueFactory(c -> new SimpleStringProperty(
                 c.getValue().currentYear() == null ? "—" : String.valueOf(c.getValue().currentYear())));
         sYear.setPrefWidth(70);
-        seriesTable.getColumns().addAll(List.of(sCode, sKind, sFormat, sNext, sYear));
+        TableColumn<SeriesEntry, String> sLocked = new TableColumn<>("Bloqueada");
+        sLocked.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().locked() ? "SI" : ""));
+        sLocked.setPrefWidth(80);
+        seriesTable.getColumns().addAll(List.of(sCode, sKind, sFormat, sNext, sYear, sLocked));
         seriesTable.setItems(FXCollections.observableArrayList(series));
-        seriesTable.setPrefHeight(180);
+        seriesTable.setPrefHeight(200);
+
+        // Doble click sobre una fila -> editor de esa serie.
+        seriesTable.setRowFactory(tv -> {
+            javafx.scene.control.TableRow<SeriesEntry> row = new javafx.scene.control.TableRow<>();
+            row.setOnMouseClicked(ev -> {
+                if (ev.getClickCount() == 2 && !row.isEmpty()) {
+                    showSeriesEditor(row.getItem());
+                }
+            });
+            return row;
+        });
+
+        Button newSeriesBtn = new Button("Nueva serie");
+        newSeriesBtn.setGraphic(icon("fas-plus"));
+        newSeriesBtn.setOnAction(event -> showSeriesEditor(null));
+
+        Button editSeriesBtn = new Button("Editar seleccionada");
+        editSeriesBtn.setGraphic(icon("fas-edit"));
+        editSeriesBtn.setOnAction(event -> {
+            SeriesEntry sel = seriesTable.getSelectionModel().getSelectedItem();
+            if (sel == null) {
+                showError("Sin seleccion", "Selecciona primero una serie en la tabla.");
+                return;
+            }
+            showSeriesEditor(sel);
+        });
+
+        Button deleteSeriesBtn = new Button("Eliminar");
+        deleteSeriesBtn.setGraphic(icon("fas-trash-alt"));
+        deleteSeriesBtn.setOnAction(event -> {
+            SeriesEntry sel = seriesTable.getSelectionModel().getSelectedItem();
+            if (sel == null) {
+                showError("Sin seleccion", "Selecciona primero la serie que quieres eliminar.");
+                return;
+            }
+            deleteSeries(sel);
+        });
+
+        HBox seriesActions = new HBox(8, newSeriesBtn, editSeriesBtn, deleteSeriesBtn);
 
         // ---- Migracion desde otro programa ----
         Label migrationHeader = label("Migracion desde otro programa", "settings-section-title");
@@ -2242,7 +2633,7 @@ public class BenjagestUiApplication extends Application {
         VBox body = new VBox(16,
                 section, hint, grid, certHint,
                 new Separator(),
-                seriesHeader, seriesHint, seriesTable,
+                seriesHeader, seriesHint, seriesTable, seriesActions,
                 new Separator(),
                 migrationBlock,
                 new Separator(),
@@ -2294,11 +2685,169 @@ public class BenjagestUiApplication extends Application {
                     "Serie " + serie.code() + " migrada. Proximo numero: " + nextNumber + ".", ButtonType.OK);
             ok.setHeaderText(null);
             ok.showAndWait();
+            pendingBillingTab = "config";
             showBilling();
         });
         task.setOnFailed(event -> showError("No se pudo migrar",
                 "Comprueba el numero y que la serie sigue activa."));
         start(task, "billing-series-migrate");
+    }
+
+    // ----- Editor de series (crear/editar) -----
+
+    /**
+     * Dialogo modal de creacion/edicion de una serie. El proximo numero
+     * solo es editable en CREATE (en UPDATE el backend lo rechaza para
+     * no abrir agujero legal — si necesitas mover el correlativo usa
+     * Migracion desde otro programa). El backend tambien bloquea cambios
+     * de code/format/kind cuando la serie ya emitio facturas validadas
+     * este ano.
+     */
+    private void showSeriesEditor(SeriesEntry existing) {
+        Dialog<Boolean> dialog = new Dialog<>();
+        dialog.setTitle(existing == null ? "Nueva serie" : "Editar serie " + existing.code());
+        dialog.setHeaderText(null);
+
+        TextField codeField = new TextField(existing == null ? "" : existing.code());
+        codeField.setPromptText("Ej. F2026, PROF, RECT");
+        codeField.getStyleClass().add("form-input");
+
+        ComboBox<String> kindCombo = new ComboBox<>();
+        kindCombo.getItems().addAll("STANDARD", "PROFORMA", "RECTIFYING", "TEST");
+        kindCombo.getSelectionModel().select(existing == null ? "STANDARD" : existing.invoiceKind());
+        kindCombo.getStyleClass().add("form-input");
+
+        ComboBox<String> numberingCombo = new ComboBox<>();
+        numberingCombo.getItems().addAll("STANDARD", "BY_YEAR", "PREFIXED");
+        numberingCombo.getSelectionModel().select(existing == null ? "BY_YEAR" : existing.numberingType());
+        numberingCombo.getStyleClass().add("form-input");
+
+        TextField formatField = new TextField(existing == null
+                ? "{CODE}-{YYYY}-{0000}"
+                : (existing.formatTemplate() == null ? "" : existing.formatTemplate()));
+        formatField.setPromptText("Placeholders: {CODE}, {YYYY}, {0000}");
+        formatField.getStyleClass().add("form-input");
+
+        TextField nextNumberField = new TextField(existing == null ? "1" : String.valueOf(existing.nextNumber()));
+        nextNumberField.getStyleClass().add("form-input");
+        nextNumberField.setDisable(existing != null);
+
+        Label nextNumberHint = new Label(existing == null
+                ? "Numero por el que arrancara la serie (normalmente 1)."
+                : "El correlativo no se cambia desde aqui. Usa 'Migracion desde otro programa' si vienes de otro software.");
+        nextNumberHint.setWrapText(true);
+        nextNumberHint.getStyleClass().add("settings-hint");
+
+        CheckBox lockedCheck = new CheckBox("Serie bloqueada (no permitir emitir facturas nuevas con ella)");
+        lockedCheck.setWrapText(true);
+        lockedCheck.setSelected(existing != null && existing.locked());
+
+        GridPane grid = formGrid();
+        addFormRow(grid, 0, "Codigo *", codeField);
+        addFormRow(grid, 1, "Tipo factura *", kindCombo);
+        addFormRow(grid, 2, "Numeracion *", numberingCombo);
+        addFormRow(grid, 3, "Formato", formatField);
+        addFormRow(grid, 4, "Proximo nº", nextNumberField);
+
+        VBox dialogBody = new VBox(12, grid, nextNumberHint, lockedCheck);
+        dialogBody.setPadding(new Insets(8));
+        dialog.getDialogPane().setContent(dialogBody);
+
+        ButtonType saveBtn = new ButtonType(existing == null ? "Crear" : "Guardar", ButtonBar.ButtonData.OK_DONE);
+        dialog.getDialogPane().getButtonTypes().addAll(saveBtn, ButtonType.CANCEL);
+
+        // Validacion local antes de cerrar el dialogo: codigo no vacio
+        // y, si es CREATE, proximo numero entero >= 1.
+        Node saveButton = dialog.getDialogPane().lookupButton(saveBtn);
+        saveButton.addEventFilter(javafx.event.ActionEvent.ACTION, ev -> {
+            if (codeField.getText().trim().isBlank()) {
+                ev.consume();
+                showError("Falta codigo", "Pon un codigo unico para la serie (ej. F2026).");
+                return;
+            }
+            if (existing == null) {
+                try {
+                    int n = Integer.parseInt(nextNumberField.getText().trim());
+                    if (n < 1) throw new NumberFormatException();
+                } catch (NumberFormatException ex) {
+                    ev.consume();
+                    showError("Numero invalido", "El proximo numero debe ser un entero >= 1.");
+                }
+            }
+        });
+
+        dialog.setResultConverter(bt -> bt == saveBtn);
+        Optional<Boolean> result = dialog.showAndWait();
+        if (result.isEmpty() || !result.get()) {
+            return;
+        }
+
+        String code = codeField.getText().trim();
+        String kind = kindCombo.getValue();
+        String numbering = numberingCombo.getValue();
+        String format = formatField.getText();
+        boolean locked = lockedCheck.isSelected();
+        Integer initialNext = null;
+        if (existing == null) {
+            try {
+                initialNext = Integer.parseInt(nextNumberField.getText().trim());
+            } catch (NumberFormatException ignored) {
+                // Ya validado arriba; no deberia llegar aqui.
+                return;
+            }
+        }
+        final Integer finalInitialNext = initialNext;
+
+        Task<SeriesEntry> task = new Task<>() {
+            @Override
+            protected SeriesEntry call() throws Exception {
+                if (existing == null) {
+                    return billingApiClient.createSeries(code, kind, numbering, format, finalInitialNext, locked);
+                }
+                return billingApiClient.updateSeries(existing.id(), code, kind, numbering, format, locked);
+            }
+        };
+        task.setOnSucceeded(ev -> {
+            // Refrescamos toda la pantalla de Facturacion para que tanto el
+            // listado de series como el combo del editor de facturas vean
+            // la serie nueva/actualizada inmediatamente. Aterrizamos en la
+            // pestaña Configuracion para que el usuario vea su cambio
+            // reflejado sin tener que cambiar de tab.
+            pendingBillingTab = "config";
+            showBilling();
+        });
+        task.setOnFailed(ev -> showError(
+                existing == null ? "No se pudo crear la serie" : "No se pudo guardar",
+                "Comprueba que el codigo no este duplicado. Si la serie tiene facturas validadas este ano "
+                        + "no se puede cambiar codigo/formato/tipo (continuidad legal — usa migracion)."));
+        start(task, "billing-series-save");
+    }
+
+    private void deleteSeries(SeriesEntry serie) {
+        Alert confirm = new Alert(Alert.AlertType.CONFIRMATION,
+                "Vas a eliminar la serie " + serie.code() + ". "
+                        + "Si ya tiene facturas asociadas, el backend rechazara la operacion. "
+                        + "¿Continuar?",
+                ButtonType.OK, ButtonType.CANCEL);
+        confirm.setHeaderText(null);
+        Optional<ButtonType> answer = confirm.showAndWait();
+        if (answer.isEmpty() || answer.get() != ButtonType.OK) {
+            return;
+        }
+        Task<Void> task = new Task<>() {
+            @Override
+            protected Void call() throws Exception {
+                billingApiClient.deleteSeries(serie.id());
+                return null;
+            }
+        };
+        task.setOnSucceeded(ev -> {
+            pendingBillingTab = "config";
+            showBilling();
+        });
+        task.setOnFailed(ev -> showError("No se pudo eliminar",
+                "La serie puede tener facturas emitidas. En ese caso solo se puede bloquear (editar -> 'Serie bloqueada')."));
+        start(task, "billing-series-delete");
     }
 
     private void saveInvoiceTexts() {
@@ -2348,6 +2897,7 @@ public class BenjagestUiApplication extends Application {
     private Label editorTotalLabel;
 
     private void showInvoiceEditor(String existingInvoiceId) {
+        recordNav(() -> showInvoiceEditor(existingInvoiceId));
         Task<EditorBundle> task = new Task<>() {
             @Override
             protected EditorBundle call() throws Exception {
@@ -2362,7 +2912,27 @@ public class BenjagestUiApplication extends Application {
                 return new EditorBundle(customers, series, existing, lines);
             }
         };
-        task.setOnSucceeded(event -> setCenterAnimated(invoiceEditorView(task.getValue(), existingInvoiceId)));
+        task.setOnSucceeded(event -> {
+            EditorBundle bundle = task.getValue();
+            // Guardas de precondicion: sin clientes o sin series no tiene
+            // sentido abrir el editor. Mensaje accionable en vez de un
+            // formulario en blanco que despues falla al guardar.
+            if (existingInvoiceId == null && bundle.customers().isEmpty()) {
+                setCenterAnimated(scroll(prerequisitePanel(
+                        "Necesitas crear un cliente antes de facturar",
+                        "Ve a Clientes y da de alta al menos uno. Despues vuelve aqui y pulsa 'Nueva factura'.")));
+                return;
+            }
+            if (existingInvoiceId == null && bundle.series().isEmpty()) {
+                setCenterAnimated(scroll(prerequisitePanel(
+                        "Necesitas configurar una serie de numeracion",
+                        "Ve a Facturacion > Configuracion > Series y pulsa 'Nueva serie'. "
+                                + "Sugerencia: codigo F" + LocalDate.now().getYear()
+                                + ", tipo STANDARD, numeracion BY_YEAR, proximo nº 1.")));
+                return;
+            }
+            setCenterAnimated(scroll(invoiceEditorView(bundle, existingInvoiceId)));
+        });
         task.setOnFailed(event -> setCenterAnimated(scroll(errorPanel(
                 existingInvoiceId == null
                         ? "No se pudo abrir el editor: faltan clientes o series activos."
@@ -2379,28 +2949,42 @@ public class BenjagestUiApplication extends Application {
     private VBox invoiceEditorView(EditorBundle bundle, String existingId) {
         VBox content = content();
 
+        // ----- Header -----
         Button back = new Button("Volver al listado");
         back.setGraphic(icon("fas-arrow-left"));
         back.setOnAction(event -> showBilling());
 
-        Label title = new Label(existingId == null ? "Nueva factura (borrador)" : "Editar borrador");
+        Label title = new Label(existingId == null ? "Nueva factura" : "Editar borrador");
         title.getStyleClass().add("module-detail-title");
         Label subtitle = new Label(existingId == null
-                ? "Rellena los campos y elige Guardar borrador o Validar."
-                : "Estas editando un borrador. Validar lo numera y bloquea.");
+                ? "El nº se asigna automaticamente al validar. Guardar borrador NO lo consume."
+                : "Estas editando un borrador. Validar lo numera y lo bloquea.");
         subtitle.getStyleClass().add("module-detail-description");
+
+        // Pill grande con el numero que se asignara al validar. Se mantiene
+        // igual aunque guardes varios borradores: solo "Validar y emitir"
+        // consume el correlativo. Cuando cambias de serie en el combo se
+        // recalcula en vivo.
+        Label nextNumberBadgeLabel = label("PROXIMO Nº AL VALIDAR", "invoice-next-number-caption");
+        Label nextNumberBadgeValue = new Label("—");
+        nextNumberBadgeValue.getStyleClass().add("invoice-next-number-value");
+        VBox nextNumberBadge = new VBox(2, nextNumberBadgeLabel, nextNumberBadgeValue);
+        nextNumberBadge.getStyleClass().add("invoice-next-number-badge");
+
         VBox titleBox = new VBox(4, title, subtitle);
+        Region headerSpacer = new Region();
+        HBox.setHgrow(headerSpacer, Priority.ALWAYS);
         StackPane moduleIcon = iconBubble("fas-file-invoice", "module-title-icon");
-        Region spacer = new Region();
-        HBox.setHgrow(spacer, Priority.ALWAYS);
-        HBox header = new HBox(16, back, titleBox, moduleIcon, spacer);
+        HBox header = new HBox(16, back, titleBox, headerSpacer, nextNumberBadge, moduleIcon);
         header.setAlignment(Pos.CENTER_LEFT);
         header.getStyleClass().add("module-detail-header");
 
-        // --- Cabecera form ---
+        // ----- Setup widgets (mismos nombres de campo: persistDraft sigue
+        //  funcionando sin tocarlo) -----
         editorCustomerCombo = new ComboBox<>();
         editorCustomerCombo.getItems().addAll(bundle.customers());
-        editorCustomerCombo.getStyleClass().add("form-input");
+        editorCustomerCombo.getStyleClass().add("invoice-input");
+        editorCustomerCombo.setMaxWidth(Double.MAX_VALUE);
         configureCustomerCombo(editorCustomerCombo);
         if (existingId != null && bundle.existing() != null) {
             for (CustomerSummary c : bundle.customers()) {
@@ -2415,7 +2999,8 @@ public class BenjagestUiApplication extends Application {
 
         editorSeriesCombo = new ComboBox<>();
         editorSeriesCombo.getItems().addAll(bundle.series());
-        editorSeriesCombo.getStyleClass().add("form-input");
+        editorSeriesCombo.getStyleClass().add("invoice-input");
+        editorSeriesCombo.setMaxWidth(Double.MAX_VALUE);
         configureSeriesCombo(editorSeriesCombo);
         if (!bundle.series().isEmpty()) {
             editorSeriesCombo.getSelectionModel().selectFirst();
@@ -2425,38 +3010,118 @@ public class BenjagestUiApplication extends Application {
                 bundle.existing() == null || bundle.existing().invoiceDate() == null || bundle.existing().invoiceDate().isBlank()
                         ? LocalDate.now()
                         : LocalDate.parse(bundle.existing().invoiceDate()));
-        editorInvoiceDate.getStyleClass().add("form-input");
+        editorInvoiceDate.getStyleClass().add("invoice-input");
+        editorInvoiceDate.setMaxWidth(Double.MAX_VALUE);
 
         editorDueDate = new javafx.scene.control.DatePicker(
                 bundle.existing() == null || bundle.existing().dueDate() == null || bundle.existing().dueDate().isBlank()
                         ? LocalDate.now().plusDays(30)
                         : LocalDate.parse(bundle.existing().dueDate()));
-        editorDueDate.getStyleClass().add("form-input");
+        editorDueDate.getStyleClass().add("invoice-input");
+        editorDueDate.setMaxWidth(Double.MAX_VALUE);
 
         editorNotesArea = new javafx.scene.control.TextArea();
-        editorNotesArea.setPromptText("Notas internas o que apareceran en la factura.");
-        editorNotesArea.setPrefRowCount(3);
+        editorNotesArea.setPromptText("Notas internas u observaciones que apareceran en la factura.");
+        editorNotesArea.setPrefRowCount(5);
         editorNotesArea.setWrapText(true);
-        editorNotesArea.getStyleClass().add("form-input");
+        editorNotesArea.getStyleClass().add("invoice-input");
 
-        GridPane headGrid = formGrid();
-        addFormRow(headGrid, 0, "Cliente *", editorCustomerCombo);
-        addFormRow(headGrid, 1, "Serie *", editorSeriesCombo);
-        addFormRow(headGrid, 2, "Fecha factura", editorInvoiceDate);
-        addFormRow(headGrid, 3, "Fecha vencimiento", editorDueDate);
-        addFormRow(headGrid, 4, "Notas", editorNotesArea);
+        // ----- Card 1: Cabecera -----
+        // Detalle del cliente seleccionado (NIF + email + telefono).
+        VBox clientDetail = new VBox(3);
+        clientDetail.getStyleClass().add("invoice-client-detail");
+        Runnable refreshClientDetail = () -> {
+            clientDetail.getChildren().clear();
+            CustomerSummary c = editorCustomerCombo.getValue();
+            if (c == null) {
+                clientDetail.setVisible(false);
+                clientDetail.setManaged(false);
+                return;
+            }
+            clientDetail.setVisible(true);
+            clientDetail.setManaged(true);
+            Label datos = label("Datos de facturacion", "invoice-detail-title");
+            Label nif = new Label("NIF: " + (c.taxIdentifier() == null || c.taxIdentifier().isBlank() ? "—" : c.taxIdentifier()));
+            nif.getStyleClass().add("invoice-detail-line");
+            clientDetail.getChildren().addAll(datos, nif);
+            if (c.email() != null && !c.email().isBlank()) {
+                Label em = new Label("Email: " + c.email());
+                em.getStyleClass().add("invoice-detail-line");
+                clientDetail.getChildren().add(em);
+            }
+            if (c.phone() != null && !c.phone().isBlank()) {
+                Label tel = new Label("Tel.: " + c.phone());
+                tel.getStyleClass().add("invoice-detail-line");
+                clientDetail.getChildren().add(tel);
+            }
+        };
+        editorCustomerCombo.valueProperty().addListener((obs, oldV, newV) -> refreshClientDetail.run());
+        refreshClientDetail.run();
 
-        // --- Tabla de lineas editable ---
+        // Pill con el tipo de la serie seleccionada (STANDARD/PROFORMA/etc).
+        // Y, en paralelo, el badge grande del header se mantiene en sync con
+        // el numero proyectado para esta serie.
+        Label seriesKindPill = new Label("");
+        seriesKindPill.getStyleClass().add("invoice-pill");
+        Runnable refreshSeriesPill = () -> {
+            SeriesEntry s = editorSeriesCombo.getValue();
+            if (s == null) {
+                seriesKindPill.setVisible(false);
+                seriesKindPill.setManaged(false);
+                nextNumberBadgeValue.setText("—");
+                return;
+            }
+            seriesKindPill.setVisible(true);
+            seriesKindPill.setManaged(true);
+            seriesKindPill.setText("Tipo: " + s.invoiceKind());
+            nextNumberBadgeValue.setText(previewNextNumber(s));
+        };
+        editorSeriesCombo.valueProperty().addListener((obs, oldV, newV) -> refreshSeriesPill.run());
+        refreshSeriesPill.run();
+
+        VBox colCliente = new VBox(8,
+                label("Cliente *", "invoice-field-label"),
+                editorCustomerCombo,
+                clientDetail
+        );
+        VBox colFechas = new VBox(8,
+                label("Fecha de emision *", "invoice-field-label"),
+                editorInvoiceDate,
+                label("Fecha de vencimiento", "invoice-field-label"),
+                editorDueDate
+        );
+        VBox colSerie = new VBox(8,
+                label("Serie *", "invoice-field-label"),
+                editorSeriesCombo,
+                seriesKindPill
+        );
+        HBox.setHgrow(colCliente, Priority.ALWAYS);
+        HBox.setHgrow(colFechas, Priority.ALWAYS);
+        HBox.setHgrow(colSerie, Priority.ALWAYS);
+        colCliente.setMinWidth(0);
+        colFechas.setMinWidth(0);
+        colSerie.setMinWidth(0);
+        HBox cabeceraGrid = new HBox(20, colCliente, colFechas, colSerie);
+        Node cabeceraCard = invoiceCard("Cabecera de la factura", "fas-info-circle", cabeceraGrid);
+
+        // ----- Card 2: Lineas -----
         editorLinesTable = buildEditorLinesTable(bundle.existingLines());
+        // Para una factura nueva, arrancamos con una linea vacia: evita la
+        // sensacion de "pantalla rota" sin filas y replica el patron de
+        // CONTENDO al abrir Nueva Factura.
+        if (existingId == null && editorLinesTable.getItems().isEmpty()) {
+            editorLinesTable.getItems().add(new InvoiceLineDraft());
+        }
 
         Button addLine = new Button("Anadir linea");
         addLine.setGraphic(icon("fas-plus"));
+        addLine.getStyleClass().add("invoice-primary-action");
         addLine.setOnAction(event -> {
             editorLinesTable.getItems().add(new InvoiceLineDraft());
             recomputeEditorTotals();
         });
 
-        Button removeLine = new Button("Quitar linea seleccionada");
+        Button removeLine = new Button("Quitar linea");
         removeLine.setGraphic(icon("fas-trash-alt"));
         removeLine.setOnAction(event -> {
             InvoiceLineDraft sel = editorLinesTable.getSelectionModel().getSelectedItem();
@@ -2466,61 +3131,117 @@ public class BenjagestUiApplication extends Application {
             }
         });
 
-        HBox lineActions = new HBox(8, addLine, removeLine);
+        HBox lineasActions = new HBox(8, addLine, removeLine);
+        lineasActions.setAlignment(Pos.CENTER_RIGHT);
+        Node lineasCard = invoiceCardWithActions("Conceptos / Lineas", "fas-calculator",
+                lineasActions, editorLinesTable);
 
-        // --- Totales en vivo ---
-        editorSubtotalLabel = new Label("0,00 EUR");
-        editorVatLabel = new Label("0,00 EUR");
-        editorRetentionLabel = new Label("0,00 EUR");
-        editorTotalLabel = new Label("0,00 EUR");
-        editorTotalLabel.getStyleClass().add("module-big-number");
+        // ----- Card 3: Totales y observaciones -----
+        editorSubtotalLabel = new Label("0,00 €");
+        editorVatLabel = new Label("0,00 €");
+        editorRetentionLabel = new Label("0,00 €");
+        editorTotalLabel = new Label("0,00 €");
+        editorSubtotalLabel.getStyleClass().add("invoice-totals-value");
+        editorVatLabel.getStyleClass().add("invoice-totals-value");
+        editorRetentionLabel.getStyleClass().add("invoice-totals-retention");
+        editorTotalLabel.getStyleClass().add("invoice-total-big");
 
-        GridPane totalsGrid = new GridPane();
-        totalsGrid.setHgap(18);
-        totalsGrid.setVgap(4);
-        totalsGrid.add(label("Subtotal", "form-label"), 0, 0);
-        totalsGrid.add(editorSubtotalLabel, 1, 0);
-        totalsGrid.add(label("IVA", "form-label"), 0, 1);
-        totalsGrid.add(editorVatLabel, 1, 1);
-        totalsGrid.add(label("Retencion", "form-label"), 0, 2);
-        totalsGrid.add(editorRetentionLabel, 1, 2);
-        totalsGrid.add(label("Total", "settings-section-title"), 0, 3);
-        totalsGrid.add(editorTotalLabel, 1, 3);
+        VBox totalsRows = new VBox(2,
+                invoiceTotalsRow("Base imponible", editorSubtotalLabel),
+                invoiceTotalsRow("Cuota IVA total", editorVatLabel),
+                invoiceTotalsRow("Retencion IRPF", editorRetentionLabel)
+        );
 
-        HBox totalsRow = new HBox(totalsGrid);
-        totalsRow.setAlignment(Pos.CENTER_RIGHT);
+        Label totalLabel = label("TOTAL FACTURA", "invoice-total-label");
+        Region totalSpacer = new Region();
+        HBox.setHgrow(totalSpacer, Priority.ALWAYS);
+        HBox totalBigBox = new HBox(12, totalLabel, totalSpacer, editorTotalLabel);
+        totalBigBox.setAlignment(Pos.CENTER_LEFT);
+        totalBigBox.getStyleClass().add("invoice-total-card");
+
+        VBox rightTotals = new VBox(14, totalsRows, totalBigBox);
+        rightTotals.setMinWidth(320);
+        rightTotals.setMaxWidth(420);
+
+        VBox notesCol = new VBox(8,
+                label("Notas / Observaciones", "invoice-field-label"),
+                editorNotesArea
+        );
+        HBox.setHgrow(notesCol, Priority.ALWAYS);
+        notesCol.setMinWidth(0);
+        VBox.setVgrow(editorNotesArea, Priority.ALWAYS);
+
+        HBox totalesGrid = new HBox(24, notesCol, rightTotals);
+        Node totalesCard = invoiceCard("Totales y observaciones", "fas-euro-sign", totalesGrid);
 
         recomputeEditorTotals();
 
-        // --- Acciones del pie ---
+        // ----- Footer bar -----
         Button cancel = new Button("Cancelar");
         cancel.setOnAction(event -> showBilling());
 
-        Button saveDraft = new Button(existingId == null ? "Crear borrador" : "Guardar cambios");
+        Button saveDraft = new Button(existingId == null ? "Guardar borrador" : "Guardar cambios");
         saveDraft.setGraphic(icon("fas-save"));
+        saveDraft.getStyleClass().add("invoice-primary-action");
         saveDraft.setOnAction(event -> persistDraft(existingId, false));
 
         Button validate = new Button("Validar y emitir");
         validate.setGraphic(icon("fas-check"));
+        validate.getStyleClass().add("invoice-validate-action");
         validate.setOnAction(event -> persistDraft(existingId, true));
 
-        HBox bottomActions = new HBox(10, cancel, new Region(), saveDraft, validate);
-        bottomActions.getStyleClass().add("settings-actions");
-        HBox.setHgrow(bottomActions.getChildren().get(1), Priority.ALWAYS);
+        Region footerSpacer = new Region();
+        HBox.setHgrow(footerSpacer, Priority.ALWAYS);
+        HBox footerBar = new HBox(10, cancel, footerSpacer, saveDraft, validate);
+        footerBar.setAlignment(Pos.CENTER_LEFT);
+        footerBar.getStyleClass().add("invoice-footer-bar");
 
-        content.getChildren().addAll(
-                header,
-                label("Cabecera", "settings-section-title"),
-                headGrid,
-                new Separator(),
-                label("Lineas", "settings-section-title"),
-                editorLinesTable,
-                lineActions,
-                new Separator(),
-                totalsRow,
-                bottomActions
-        );
+        content.getChildren().addAll(header, cabeceraCard, lineasCard, totalesCard, footerBar);
         return content;
+    }
+
+    // ----- helpers del editor de facturas -----
+
+    /**
+     * Card blanco con cabecera (icono + titulo) y cuerpo. Se usa para las
+     * tres secciones del editor de facturas (Cabecera / Lineas / Totales).
+     */
+    private VBox invoiceCard(String titleText, String iconLiteral, Node body) {
+        return invoiceCardWithActions(titleText, iconLiteral, null, body);
+    }
+
+    /**
+     * Variante del card con una zona de acciones a la derecha del titulo
+     * (p.ej. boton "Anadir linea" en la card de Lineas).
+     */
+    private VBox invoiceCardWithActions(String titleText, String iconLiteral, Node actions, Node body) {
+        StackPane iconBox = iconBubble(iconLiteral, "invoice-card-icon");
+        Label titleLabel = label(titleText, "invoice-card-title");
+        Region spacer = new Region();
+        HBox.setHgrow(spacer, Priority.ALWAYS);
+        HBox titleBar = new HBox(10, iconBox, titleLabel, spacer);
+        if (actions != null) {
+            titleBar.getChildren().add(actions);
+        }
+        titleBar.setAlignment(Pos.CENTER_LEFT);
+        titleBar.getStyleClass().add("invoice-card-header");
+
+        VBox bodyBox = new VBox(body);
+        bodyBox.getStyleClass().add("invoice-card-body");
+
+        VBox card = new VBox(titleBar, bodyBox);
+        card.getStyleClass().add("invoice-card");
+        return card;
+    }
+
+    private HBox invoiceTotalsRow(String labelText, Label valueLabel) {
+        Label l = label(labelText, "invoice-totals-row-label");
+        Region spacer = new Region();
+        HBox.setHgrow(spacer, Priority.ALWAYS);
+        HBox row = new HBox(8, l, spacer, valueLabel);
+        row.setAlignment(Pos.CENTER_LEFT);
+        row.getStyleClass().add("invoice-totals-row");
+        return row;
     }
 
     private void configureCustomerCombo(ComboBox<CustomerSummary> combo) {
@@ -2539,18 +3260,55 @@ public class BenjagestUiApplication extends Application {
     }
 
     private void configureSeriesCombo(ComboBox<SeriesEntry> combo) {
+        // En ambos cells mostramos el preview ya formateado (previewNextNumber
+        // ya inyecta {CODE}). Antes hacíamos `code + " · " + preview` y el
+        // usuario veia "FRA · FRA-2026-0001" (CODE duplicado). Ahora:
+        // dropdown muestra "FRA-2026-0001 — STANDARD" y el boton solo
+        // "FRA-2026-0001".
         combo.setCellFactory(lv -> new javafx.scene.control.ListCell<>() {
             @Override protected void updateItem(SeriesEntry item, boolean empty) {
                 super.updateItem(item, empty);
-                setText(empty || item == null ? "" : item.code() + " (" + item.invoiceKind() + ", proximo " + item.nextNumber() + ")");
+                setText(empty || item == null
+                        ? ""
+                        : previewNextNumber(item) + "  ·  " + item.invoiceKind());
             }
         });
         combo.setButtonCell(new javafx.scene.control.ListCell<>() {
             @Override protected void updateItem(SeriesEntry item, boolean empty) {
                 super.updateItem(item, empty);
-                setText(empty || item == null ? "" : item.code());
+                setText(empty || item == null ? "" : previewNextNumber(item));
             }
         });
+    }
+
+    /**
+     * Reproduce el formato de numeracion de SeriesService (backend) sin
+     * tener que llamar al endpoint: sustituye {CODE} por el codigo de la
+     * serie, {YYYY} por el ano actual y {0000+} por el proximo numero
+     * con padding. Asi podemos pintar en la UI el "F-2026-0043" que se
+     * asignara cuando el usuario pulse "Validar y emitir", sin gastarlo.
+     */
+    private String previewNextNumber(SeriesEntry s) {
+        if (s == null) {
+            return "—";
+        }
+        String tpl = s.formatTemplate();
+        if (tpl == null || tpl.isBlank()) {
+            tpl = "{CODE}-{YYYY}-{0000}";
+        }
+        String result = tpl
+                .replace("{CODE}", s.code() == null ? "" : s.code())
+                .replace("{YYYY}", String.valueOf(LocalDate.now().getYear()));
+        java.util.regex.Matcher matcher =
+                java.util.regex.Pattern.compile("\\{(0+)\\}").matcher(result);
+        StringBuilder sb = new StringBuilder();
+        while (matcher.find()) {
+            int width = matcher.group(1).length();
+            String padded = String.format("%0" + width + "d", s.nextNumber());
+            matcher.appendReplacement(sb, java.util.regex.Matcher.quoteReplacement(padded));
+        }
+        matcher.appendTail(sb);
+        return sb.toString();
     }
 
     private TableView<InvoiceLineDraft> buildEditorLinesTable(List<InvoiceLineDraft> initial) {
@@ -2560,10 +3318,8 @@ public class BenjagestUiApplication extends Application {
         table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
         table.setPlaceholder(new Label("Sin lineas. Pulsa 'Anadir linea' para empezar."));
 
-        TableColumn<InvoiceLineDraft, String> colDesc = new TableColumn<>("Descripcion");
-        colDesc.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().getDescription()));
-        colDesc.setCellFactory(javafx.scene.control.cell.TextFieldTableCell.forTableColumn());
-        colDesc.setOnEditCommit(ev -> { ev.getRowValue().setDescription(ev.getNewValue()); });
+        TableColumn<InvoiceLineDraft, String> colDesc = liveTextColumn("Descripcion",
+                InvoiceLineDraft::getDescription, InvoiceLineDraft::setDescription);
         colDesc.setPrefWidth(280);
 
         TableColumn<InvoiceLineDraft, String> colQty = decimalColumn("Cant.", InvoiceLineDraft::getQuantity, InvoiceLineDraft::setQuantity);
@@ -2588,19 +3344,160 @@ public class BenjagestUiApplication extends Application {
                                                                 java.util.function.Function<InvoiceLineDraft, java.math.BigDecimal> getter,
                                                                 java.util.function.BiConsumer<InvoiceLineDraft, java.math.BigDecimal> setter) {
         TableColumn<InvoiceLineDraft, String> col = new TableColumn<>(header);
-        col.setCellValueFactory(c -> new SimpleStringProperty(getter.apply(c.getValue()).toPlainString()));
-        col.setCellFactory(javafx.scene.control.cell.TextFieldTableCell.forTableColumn());
-        col.setOnEditCommit(ev -> {
-            try {
-                setter.accept(ev.getRowValue(), new java.math.BigDecimal(ev.getNewValue().replace(',', '.')));
-            } catch (NumberFormatException ignored) {
-                // valor invalido -> mantener el anterior. El refresh
-                // siguiente repinta el numero antiguo.
+        // Mostramos sin ceros sobrantes: BigDecimal("1.0000") → "1",
+        // BigDecimal("1.50") → "1.5". El modelo sigue siendo BigDecimal
+        // (precision intacta), pero la celda se ve limpia. Solo afecta al
+        // rebind inicial: mientras el usuario teclea, boundRow protege su
+        // texto literal (si escribe "1.50" se queda "1.50" durante la
+        // edicion, solo se "limpia" si abandona la fila y vuelve).
+        col.setCellValueFactory(c -> new SimpleStringProperty(formatDecimalForCell(getter.apply(c.getValue()))));
+        // Celda siempre en modo edicion (TextField visible) con escucha en
+        // textProperty: a cada pulsacion parseamos, actualizamos el modelo
+        // y recomputeEditorTotals(). Asi los totales y las columnas
+        // calculadas (Subtotal, Total) reaccionan en vivo, igual que en
+        // CONTENDO. boundRow protege el texto que esta escribiendo el
+        // usuario frente a los refresh() de filas hermanas.
+        col.setCellFactory(cv -> new javafx.scene.control.TableCell<InvoiceLineDraft, String>() {
+            private final TextField field = new TextField();
+            private boolean syncing = false;
+            private InvoiceLineDraft boundRow;
+            {
+                field.setMaxWidth(Double.MAX_VALUE);
+                field.getStyleClass().add("invoice-line-input");
+                field.focusedProperty().addListener((obs, was, isNow) -> {
+                    if (isNow) {
+                        // Seleccionamos todo al ganar foco para que la
+                        // primera tecla reemplace el "0" inicial sin que
+                        // el usuario tenga que borrarlo.
+                        Platform.runLater(field::selectAll);
+                    }
+                });
+                field.textProperty().addListener((obs, oldV, newV) -> {
+                    if (syncing) return;
+                    if (getTableRow() == null) return;
+                    InvoiceLineDraft row = getTableRow().getItem();
+                    if (row == null) return;
+                    java.math.BigDecimal value;
+                    try {
+                        value = newV == null || newV.isBlank()
+                                ? java.math.BigDecimal.ZERO
+                                : new java.math.BigDecimal(newV.replace(',', '.'));
+                    } catch (NumberFormatException ignored) {
+                        // Numero invalido mientras teclea (p.ej. "1.")
+                        // → no tocamos el modelo, dejamos el texto tal cual.
+                        return;
+                    }
+                    setter.accept(row, value);
+                    recomputeEditorTotals();
+                    // NO llamamos a editorLinesTable.refresh() aqui: el refresh
+                    // de TableView reconstruye los TableRow y JavaFX hace
+                    // perder el foco del TextField que estaba editando — el
+                    // sintoma era "tecleas 1, el campo se sale, no puedes
+                    // escribir 150". Los totales globales (subtotal, IVA,
+                    // total) se actualizan en vivo porque sus labels viven
+                    // FUERA de la tabla. Las columnas calculadas (Subtotal,
+                    // Total de la fila) se repintan cuando el foco sale de
+                    // la celda — vale la pena: prima poder escribir libre.
+                });
             }
-            editorLinesTable.refresh();
-            recomputeEditorTotals();
+
+            @Override
+            protected void updateItem(String item, boolean empty) {
+                super.updateItem(item, empty);
+                if (empty || getTableRow() == null || getTableRow().getItem() == null) {
+                    setGraphic(null);
+                    boundRow = null;
+                } else {
+                    InvoiceLineDraft row = getTableRow().getItem();
+                    // Solo sincronizamos el texto cuando la celda se
+                    // engancha a una fila distinta (carga inicial o
+                    // anadir/quitar lineas). Mientras el usuario tipea
+                    // en esta misma fila, NO sobreescribimos su texto
+                    // — eso es lo que rompia la calc en tiempo real.
+                    if (row != boundRow) {
+                        syncing = true;
+                        field.setText(item == null ? "" : item);
+                        syncing = false;
+                        boundRow = row;
+                    }
+                    setGraphic(field);
+                }
+            }
         });
         col.setPrefWidth(80);
+        col.setEditable(false);
+        return col;
+    }
+
+    /**
+     * Devuelve el BigDecimal sin ceros sobrantes a la derecha y nunca en
+     * notacion cientifica. stripTrailingZeros de "100" deja "1E+2" — el
+     * setScale(0, UNNECESSARY) o toPlainString lo arregla.
+     */
+    private String formatDecimalForCell(java.math.BigDecimal val) {
+        if (val == null) return "";
+        java.math.BigDecimal stripped = val.stripTrailingZeros();
+        // Si el resultado tiene exponente positivo (p.ej. 100 → 1E+2),
+        // toPlainString sigue dando "100" — lo que queremos.
+        // Si scale<0 (p.ej. 100 con scale=-2), toPlainString tambien
+        // devuelve "100". Asi que toPlainString es seguro aqui.
+        return stripped.scale() < 0
+                ? stripped.setScale(0, java.math.RoundingMode.UNNECESSARY).toPlainString()
+                : stripped.toPlainString();
+    }
+
+    /**
+     * Hermano de decimalColumn pero para texto (Descripcion). El cell
+     * tambien lleva un TextField siempre visible y commitea en cada
+     * pulsacion via textProperty. Antes la descripcion usaba el
+     * TextFieldTableCell por defecto, que solo commitea con Enter/Tab —
+     * si el usuario pulsaba "Validar y emitir" directamente despues de
+     * teclear, la descripcion no llegaba al modelo y el guardado abortaba
+     * con "Hay una linea sin descripcion" (que parecia un "faltan campos"
+     * espurio).
+     */
+    private TableColumn<InvoiceLineDraft, String> liveTextColumn(String header,
+                                                                  java.util.function.Function<InvoiceLineDraft, String> getter,
+                                                                  java.util.function.BiConsumer<InvoiceLineDraft, String> setter) {
+        TableColumn<InvoiceLineDraft, String> col = new TableColumn<>(header);
+        col.setCellValueFactory(c -> {
+            String value = getter.apply(c.getValue());
+            return new SimpleStringProperty(value == null ? "" : value);
+        });
+        col.setCellFactory(cv -> new javafx.scene.control.TableCell<InvoiceLineDraft, String>() {
+            private final TextField field = new TextField();
+            private boolean syncing = false;
+            private InvoiceLineDraft boundRow;
+            {
+                field.setMaxWidth(Double.MAX_VALUE);
+                field.getStyleClass().add("invoice-line-input");
+                field.textProperty().addListener((obs, oldV, newV) -> {
+                    if (syncing) return;
+                    if (getTableRow() == null) return;
+                    InvoiceLineDraft row = getTableRow().getItem();
+                    if (row == null) return;
+                    setter.accept(row, newV);
+                });
+            }
+            @Override
+            protected void updateItem(String item, boolean empty) {
+                super.updateItem(item, empty);
+                if (empty || getTableRow() == null || getTableRow().getItem() == null) {
+                    setGraphic(null);
+                    boundRow = null;
+                } else {
+                    InvoiceLineDraft row = getTableRow().getItem();
+                    if (row != boundRow) {
+                        syncing = true;
+                        field.setText(item == null ? "" : item);
+                        syncing = false;
+                        boundRow = row;
+                    }
+                    setGraphic(field);
+                }
+            }
+        });
+        col.setEditable(false);
         return col;
     }
 
@@ -2836,6 +3733,27 @@ public class BenjagestUiApplication extends Application {
         retry.setGraphic(icon("fas-sync-alt"));
         retry.setOnAction(event -> showDashboard());
         panel.getChildren().addAll(title, retry);
+        return panel;
+    }
+
+    /**
+     * Panel "blocker" que se muestra cuando falta una precondicion (ej.
+     * no hay clientes, no hay series). Mensaje accionable + boton para
+     * volver a Facturacion.
+     */
+    private VBox prerequisitePanel(String title, String details) {
+        VBox panel = content();
+        Label titleLabel = new Label(title);
+        titleLabel.getStyleClass().add("module-detail-title");
+        Label detailsLabel = new Label(details);
+        detailsLabel.setWrapText(true);
+        detailsLabel.getStyleClass().add("module-detail-description");
+        Button back = new Button("Volver a Facturacion");
+        back.setGraphic(icon("fas-arrow-left"));
+        back.setOnAction(event -> showBilling());
+        VBox card = new VBox(12, titleLabel, detailsLabel, back);
+        card.getStyleClass().add("module-detail-header");
+        panel.getChildren().add(card);
         return panel;
     }
 
