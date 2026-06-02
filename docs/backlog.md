@@ -126,7 +126,7 @@ Cuando lo crítico esté cerrado.
 
 ### Asesoría / multi-cliente
 
-- ⬜ Decidir si `parent_company_id` + `MANAGED_CLIENT` es el link asesoría↔cliente, o si hace falta crear `advisory_client_links` (tabla N:M). Decisión de Benjamin al empezar el slice de asesoría.
+- ⬜ Decidir si `parent_company_id` + `MANAGED_CLIENT` es el link asesoría↔cliente, o si hace falta crear `advisory_client_links` (tabla N:M). Decisión de Benjamin al empezar el slice de asesoría. **Pre-análisis 2026-06-02**: hoy la asesoría sólo cambia el sidebar (`ADVISORY_MODULES`) — el backend no diferencia, TenantContext filtra por la empresa activa, no hay tabla de asientos contables. Cuando abramos este slice, dos decisiones pendientes con recomendación: (A) `parent_company_id` simple 1:N **[recomendado]** vs (B) tabla N:M; y (1) lectura cruzada en tiempo real **[recomendado para arrancar]** vs (2) asientos materializados en `accounting_entries`. ASE0 propuesto: seed de empresa ADVISORY + reasignar 1111 a MANAGED_CLIENT + `AdvisoryService.listManagedClients` + endpoint `/api/advisory/clients/{id}/...` + UI "Mis clientes" con switch temporal de TenantContext. Aplazar hasta tener delante el slice de contabilidad (libros 303/347) — entonces la decisión sobre asientos materializados estará informada por necesidad real.
 - ⬜ Mensajes asesoría↔cliente (`asesoria_mensajes_180`).
 - ⬜ Documentos compartidos (`documentos_asesoria_180`).
 - ⬜ Notificaciones específicas de asesor (`notificaciones_asesor_180`).
