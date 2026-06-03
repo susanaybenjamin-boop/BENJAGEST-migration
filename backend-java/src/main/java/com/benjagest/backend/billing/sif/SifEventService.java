@@ -97,6 +97,50 @@ public class SifEventService {
         return eventRepository.findCompaniesInNoVerifactu();
     }
 
+    /**
+     * Verifica la integridad de la cadena de eventos SIF para una
+     * empresa sin TenantContext — usado desde VF-ANOMALY. Devuelve un
+     * registro simple {ok, brokenEventId?, reason?} pensado para ser
+     * persistido como payload del evento ANOMALY_DETECTION_EVENTS_HIT.
+     */
+    public ChainVerifyResult verifyChainForCompany(String companyId) {
+        String nif = eventRepository.findTaxIdentifier(companyId);
+        if (nif == null || nif.isBlank()) {
+            return new ChainVerifyResult(false, 0, null, null,
+                    "Sin NIF en companies");
+        }
+        List<SifEventRepository.ChainRow> chain =
+                eventRepository.findChainOrderedAscForCompany(companyId);
+        String expectedPrev = "";
+        int checked = 0;
+        for (SifEventRepository.ChainRow row : chain) {
+            checked++;
+            java.time.OffsetDateTime gen = row.generatedAt()
+                    .atZoneSameInstant(java.time.ZoneId.of("Europe/Madrid"))
+                    .toOffsetDateTime();
+            String recomputed = hashService.computeHash(
+                    nif, row.eventType(), row.payload(), expectedPrev, gen);
+            if (!recomputed.equalsIgnoreCase(row.hashCurrent())) {
+                return new ChainVerifyResult(false, checked, row.id(), row.eventType(),
+                        "Hash recalculado no coincide");
+            }
+            if (!row.hashPrevious().equalsIgnoreCase(expectedPrev)) {
+                return new ChainVerifyResult(false, checked, row.id(), row.eventType(),
+                        "hash_previous roto");
+            }
+            expectedPrev = row.hashCurrent();
+        }
+        return new ChainVerifyResult(true, checked, null, null, null);
+    }
+
+    public record ChainVerifyResult(
+            boolean ok,
+            int totalChecked,
+            String brokenEventId,
+            String brokenEventType,
+            String reason
+    ) {}
+
     private boolean isCompanyInNoVerifactu(String companyId) {
         return eventRepository.findCompaniesInNoVerifactu().contains(companyId);
     }
