@@ -1,5 +1,6 @@
 package com.benjagest.backend.billing.sif;
 
+import com.benjagest.backend.billing.sign.XmlSignerService;
 import com.benjagest.backend.billing.verifactu.VerifactuConfig;
 import com.benjagest.backend.billing.verifactu.VerifactuConfigRepository;
 import com.benjagest.backend.settings.CompanyDataRepository;
@@ -42,17 +43,20 @@ public class SifEventService {
     private final SifEventRepository eventRepository;
     private final SifEventHashService hashService;
     private final TenantContext tenantContext;
+    private final XmlSignerService signerService;
 
     public SifEventService(VerifactuConfigRepository configRepository,
                            CompanyDataRepository companyRepository,
                            SifEventRepository eventRepository,
                            SifEventHashService hashService,
-                           TenantContext tenantContext) {
+                           TenantContext tenantContext,
+                           XmlSignerService signerService) {
         this.configRepository = configRepository;
         this.companyRepository = companyRepository;
         this.eventRepository = eventRepository;
         this.hashService = hashService;
         this.tenantContext = tenantContext;
+        this.signerService = signerService;
     }
 
     /**
@@ -112,8 +116,9 @@ public class SifEventService {
                 nif, eventType, payload, previousHash, generationTime
         );
 
+        String eventId = UUID.randomUUID().toString();
         eventRepository.insert(
-                UUID.randomUUID().toString(),
+                eventId,
                 companyId,
                 eventType,
                 payload,
@@ -121,5 +126,38 @@ public class SifEventService {
                 previousHash,
                 generationTime
         );
+
+        // VF-SIGN: firmar el evento si hay certificado configurado.
+        // Si falla o no hay cert, el evento queda con status PENDING
+        // — el job VF4 podra reintentar firma mas adelante.
+        String eventXml = buildEventXml(nif, eventType, payload,
+                hashCurrent, previousHash, generationTime);
+        signerService.sign(eventXml).ifPresent(signed ->
+                eventRepository.setSignature(eventId, signed));
+    }
+
+    /**
+     * XML minimo del evento para firma local (igual que el de facturas:
+     * formato estable de los campos canonicos, no formato AEAT — AEAT
+     * solo recibe registros de facturas, no eventos).
+     */
+    private String buildEventXml(String nif, String eventType, String payload,
+                                  String huellaActual, String huellaAnterior,
+                                  java.time.OffsetDateTime generacion) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("<RegistroEvento xmlns=\"urn:benjagest:sif-event\">");
+        sb.append("<IDEmisor>").append(xml(nif)).append("</IDEmisor>");
+        sb.append("<TipoEvento>").append(xml(eventType)).append("</TipoEvento>");
+        sb.append("<Payload>").append(xml(payload == null ? "" : payload)).append("</Payload>");
+        sb.append("<HuellaActual>").append(xml(huellaActual)).append("</HuellaActual>");
+        sb.append("<HuellaAnterior>").append(xml(huellaAnterior == null ? "" : huellaAnterior)).append("</HuellaAnterior>");
+        sb.append("<FechaHoraGenRegistro>").append(generacion).append("</FechaHoraGenRegistro>");
+        sb.append("</RegistroEvento>");
+        return sb.toString();
+    }
+
+    private String xml(String s) {
+        if (s == null) return "";
+        return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
     }
 }

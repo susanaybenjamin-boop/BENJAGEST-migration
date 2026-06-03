@@ -114,6 +114,26 @@ public class VerifactuRegistryRepository {
     }
 
     /**
+     * Persiste la firma electronica del registro (slice VF-SIGN). Lo
+     * separamos del INSERT porque la firma puede llegar tarde (cuando
+     * VF-SIGN no este configurado o falle, el registro queda sin firma
+     * y otro slice puede reintentar mas adelante — VF4).
+     */
+    public int setSignature(String invoiceId, String mode, String signatureXml) {
+        return jdbcTemplate.update("""
+                UPDATE verifactu_registry
+                   SET signature_data = ?,
+                       signed_at = CURRENT_TIMESTAMP,
+                       status = 'SIGNED'
+                 WHERE invoice_id = ?
+                   AND mode = ?
+                   AND company_id = ?
+                """,
+                signatureXml, invoiceId, mode, tenantContext.getCurrentCompanyId()
+        );
+    }
+
+    /**
      * Variante de {@link #insert} que persiste {@code generated_at} con el
      * MISMO instante usado para calcular el hash (truncado a segundo).
      * Necesario para que la verificación posterior pueda recalcular el
