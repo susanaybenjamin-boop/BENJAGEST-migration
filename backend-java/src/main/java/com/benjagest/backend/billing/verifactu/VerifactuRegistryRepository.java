@@ -1,9 +1,14 @@
 package com.benjagest.backend.billing.verifactu;
 
 import com.benjagest.backend.tenant.TenantContext;
+import java.math.BigDecimal;
+import java.sql.Date;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
+import java.time.LocalDate;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -106,6 +111,89 @@ public class VerifactuRegistryRepository {
                 entry.status() == null ? "PENDING" : entry.status(),
                 entry.retryCount()
         );
+    }
+
+    /**
+     * Variante de {@link #insert} que persiste {@code generated_at} con el
+     * MISMO instante usado para calcular el hash (truncado a segundo).
+     * Necesario para que la verificación posterior pueda recalcular el
+     * hash con el mismo input — si dejásemos DEFAULT CURRENT_TIMESTAMP,
+     * habría una desincronización de milisegundos invisible que
+     * romperíamos la cadena al verificar.
+     */
+    public void insertWithGenerationTime(String id, String invoiceId, String mode,
+                                          String hashCurrent, String hashPrevious,
+                                          OffsetDateTime generationTime) {
+        jdbcTemplate.update("""
+                INSERT INTO verifactu_registry (
+                    id, company_id, invoice_id, mode,
+                    hash_current, hash_previous,
+                    generated_at, status, retry_count
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, 'PENDING', 0)
+                """,
+                id,
+                tenantContext.getCurrentCompanyId(),
+                invoiceId,
+                mode,
+                hashCurrent,
+                hashPrevious,
+                // Convertimos a UTC porque MariaDB TIMESTAMP almacena en
+                // UTC y aplica session zone al leer. Usamos Timestamp para
+                // mantener consistencia con cualquier zona del servidor.
+                Timestamp.from(generationTime.toInstant())
+        );
+    }
+
+    /**
+     * Cadena cronológica ASC (la más antigua primero) para
+     * {@code (company_id, mode)}. Cada fila incluye los datos de la
+     * factura necesarios para recalcular su hash. Se usa para verify.
+     */
+    public List<ChainRow> findChainOrderedAsc(String mode) {
+        return jdbcTemplate.query("""
+                SELECT r.invoice_id, i.invoice_number, i.invoice_date,
+                       i.vat_total, i.total,
+                       r.hash_current, r.hash_previous, r.generated_at
+                  FROM verifactu_registry r
+                  JOIN sales_invoices i ON i.id = r.invoice_id
+                 WHERE r.company_id = ?
+                   AND r.mode = ?
+                 ORDER BY r.generated_at ASC, r.id ASC
+                """,
+                this::mapChainRow,
+                tenantContext.getCurrentCompanyId(),
+                mode
+        );
+    }
+
+    private ChainRow mapChainRow(ResultSet rs, int rowNum) throws SQLException {
+        Date invDate = rs.getDate("invoice_date");
+        Timestamp gen = rs.getTimestamp("generated_at");
+        return new ChainRow(
+                rs.getString("invoice_id"),
+                rs.getString("invoice_number"),
+                invDate == null ? null : invDate.toLocalDate(),
+                rs.getBigDecimal("vat_total"),
+                rs.getBigDecimal("total"),
+                rs.getString("hash_current"),
+                rs.getString("hash_previous"),
+                // El TIMESTAMP vuelve como Instant; lo expresamos como
+                // OffsetDateTime para que el servicio lo proyecte a
+                // Europe/Madrid y el formato del hash coincida.
+                gen == null ? null : OffsetDateTime.ofInstant(gen.toInstant(), ZoneOffset.UTC)
+        );
+    }
+
+    public record ChainRow(
+            String invoiceId,
+            String invoiceNumber,
+            LocalDate invoiceDate,
+            BigDecimal vatTotal,
+            BigDecimal total,
+            String hashCurrent,
+            String hashPrevious,
+            OffsetDateTime generatedAt
+    ) {
     }
 
     private VerifactuRegistryEntry mapEntry(ResultSet rs, int rowNum) throws SQLException {

@@ -6,6 +6,7 @@ import com.benjagest.ui.model.InvoiceTexts;
 import com.benjagest.ui.model.SalesInvoiceSummary;
 import com.benjagest.ui.model.SeriesEntry;
 import com.benjagest.ui.model.VerifactuConfig;
+import com.benjagest.ui.model.VerifactuIntegrityResult;
 import java.io.IOException;
 import java.math.BigDecimal;
 import java.net.URI;
@@ -363,6 +364,35 @@ public class BillingApiClient {
                 .GET());
         ensureOk(response);
         return parseVerifactuConfig(response.body());
+    }
+
+    /**
+     * Lanza la verificación de integridad de la cadena hash VeriFactu para
+     * la empresa actual en el modo indicado. El backend recorre todas las
+     * facturas validadas en orden cronológico y recalcula su huella; si
+     * algo no cuadra devuelve la primera factura sospechosa.
+     *
+     * Respuesta JSON minimal — la parseamos a mano para no traer Jackson
+     * en este punto: {"ok":bool,"totalChecked":N,"brokenInvoiceId":"…",
+     * "brokenInvoiceNumber":"…","reason":"…"}.
+     */
+    public VerifactuIntegrityResult verifyVerifactuChain(String mode) throws IOException, InterruptedException {
+        String url = baseUrl + "/billing/verifactu-registry/verify?mode=" + (mode == null ? "TEST" : mode);
+        HttpResponse<String> response = sendAuthorized(HttpRequest.newBuilder(URI.create(url))
+                .timeout(Duration.ofSeconds(20))
+                .GET());
+        ensureOk(response);
+        String body = response.body();
+        boolean ok = boolField(body, "ok");
+        int total = intFieldOrZero(body, "totalChecked");
+        String brokenId = textField(body, "brokenInvoiceId");
+        String brokenNumber = textField(body, "brokenInvoiceNumber");
+        String reason = textField(body, "reason");
+        return new VerifactuIntegrityResult(
+                ok, total,
+                brokenId.isEmpty() ? null : brokenId,
+                brokenNumber.isEmpty() ? null : brokenNumber,
+                reason.isEmpty() ? null : reason);
     }
 
     public VerifactuConfig updateVerifactuConfig(String mode, String certificateIdOrNull,

@@ -5,6 +5,7 @@ import com.benjagest.backend.settings.CompanyDataRepository;
 import com.benjagest.backend.settings.CompanyDataResponse;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -70,7 +71,16 @@ public class VerifactuRegistryService {
         }
 
         String previousHash = registryRepository.findLastHash(mode);
-        OffsetDateTime generationTime = OffsetDateTime.now(ZoneId.of("Europe/Madrid"));
+        // CRÍTICO para verificabilidad: el hash incluye la marca temporal
+        // como string con offset; la columna generated_at es TIMESTAMP
+        // (precisión segundo). Si el hash se calcula con OffsetDateTime.now()
+        // (precisión nano) y la columna guarda otra cosa (DEFAULT
+        // CURRENT_TIMESTAMP del INSERT), al verificar la cadena
+        // reconstruiríamos el hash con un timestamp distinto y daría falso
+        // positivo de "cadena rota". Truncamos a segundo y pasamos el
+        // mismo valor tanto al hash como al INSERT explícito.
+        OffsetDateTime generationTime = OffsetDateTime.now(ZoneId.of("Europe/Madrid"))
+                .truncatedTo(ChronoUnit.SECONDS);
 
         String hashCurrent = hashService.computeHash(
                 company.taxIdentifier(),
@@ -82,25 +92,86 @@ public class VerifactuRegistryService {
                 generationTime
         );
 
-        VerifactuRegistryEntry entry = new VerifactuRegistryEntry(
+        registryRepository.insertWithGenerationTime(
                 UUID.randomUUID().toString(),
-                null,
                 invoice.id(),
-                invoice.invoiceNumber(),
                 mode,
                 hashCurrent,
                 previousHash,
-                null,
-                null,
-                null,
-                "PENDING",
-                0,
-                null,
-                null,
-                null
+                generationTime
         );
-        registryRepository.insert(entry);
         return registryRepository.findByInvoiceAndMode(invoice.id(), mode);
+    }
+
+    /**
+     * Verifica la integridad de la cadena hash para la empresa actual
+     * en el modo indicado. Recorre cada registro en orden cronológico
+     * y recalcula su hash con el mismo input que se usó al validar.
+     * Si algún hash no coincide, devuelve el id del primero que falla
+     * — todo lo que venga después es sospechoso por construcción.
+     *
+     * Coste: O(N) facturas validadas. Para empresas con miles, pasar a
+     * un job nocturno; para BENJAGEST típico (cientos / año) es trivial.
+     */
+    public IntegrityReport verifyChain(String mode) {
+        CompanyDataResponse company = companyRepository.findCurrent()
+                .orElseThrow(() -> new IllegalStateException("Empresa actual no encontrada"));
+        if (!StringUtils.hasText(company.taxIdentifier())) {
+            return new IntegrityReport(false, 0, null, null,
+                    "La empresa no tiene NIF/CIF (companies.tax_identifier).");
+        }
+        List<VerifactuRegistryRepository.ChainRow> chain =
+                registryRepository.findChainOrderedAsc(mode);
+        String expectedPrev = "";
+        int checked = 0;
+        for (VerifactuRegistryRepository.ChainRow row : chain) {
+            checked++;
+            OffsetDateTime gen = row.generatedAt().atZoneSameInstant(ZoneId.of("Europe/Madrid"))
+                    .toOffsetDateTime();
+            String recomputed = hashService.computeHash(
+                    company.taxIdentifier(),
+                    row.invoiceNumber(),
+                    row.invoiceDate(),
+                    row.vatTotal(),
+                    row.total(),
+                    expectedPrev,
+                    gen
+            );
+            if (!recomputed.equalsIgnoreCase(row.hashCurrent())) {
+                return new IntegrityReport(false, checked, row.invoiceId(), row.invoiceNumber(),
+                        "Hash recalculado no coincide. Posible manipulación o desincronización de generation_time.");
+            }
+            if (!row.hashPrevious().equalsIgnoreCase(expectedPrev)) {
+                return new IntegrityReport(false, checked, row.invoiceId(), row.invoiceNumber(),
+                        "hash_previous almacenado no coincide con la cadena.");
+            }
+            expectedPrev = row.hashCurrent();
+        }
+        return new IntegrityReport(true, checked, null, null, null);
+    }
+
+    /**
+     * Hash actual de una factura validada bajo VeriFactu (mode != OFF).
+     * Devuelve Optional.empty si la empresa tiene VeriFactu OFF o la
+     * factura no tiene aún registro. Lo usa el generador de PDF para
+     * imprimir los primeros 16 chars bajo el QR.
+     */
+    public Optional<String> findCurrentHashForPdf(String invoiceId) {
+        VerifactuConfig config = configRepository.findCurrent().orElse(null);
+        if (config == null || config.mode() == null || "OFF".equals(config.mode())) {
+            return Optional.empty();
+        }
+        return registryRepository.findByInvoiceAndMode(invoiceId, config.mode())
+                .map(VerifactuRegistryEntry::hashCurrent);
+    }
+
+    public record IntegrityReport(
+            boolean ok,
+            int totalChecked,
+            String brokenInvoiceId,
+            String brokenInvoiceNumber,
+            String reason
+    ) {
     }
 
     public List<VerifactuRegistryEntry> list(String modeFilter, String statusFilter, int limit) {

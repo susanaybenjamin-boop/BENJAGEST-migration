@@ -37,4 +37,20 @@ public class VerifactuRegistryController {
                                              @RequestParam(value = "limit", defaultValue = "100") int limit) {
         return service.list(mode, status, limit);
     }
+
+    /**
+     * Verifica la integridad de la cadena hash para el modo indicado
+     * (TEST por defecto). Recorre todos los registros en orden cronológico
+     * y recalcula el hash con el mismo input. Si en algún punto no
+     * coincide, devuelve la primera factura sospechosa y para; cualquier
+     * cosa posterior ya no es de fiar.
+     *
+     * Si la empresa nunca ha emitido nada en ese modo, devuelve ok=true,
+     * totalChecked=0 (cadena vacía es válida).
+     */
+    @GetMapping("/verify")
+    public VerifactuRegistryService.IntegrityReport verify(
+            @RequestParam(value = "mode", defaultValue = "TEST") String mode) {
+        return service.verifyChain(mode);
+    }
 }
