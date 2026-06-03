@@ -2609,6 +2609,7 @@ public class BenjagestUiApplication extends Application {
 
     // ----- Sub-tab Configuracion (modo VeriFactu + cert + pie + series) -----
 
+    private ComboBox<String> verifactuModalityCombo;
     private ComboBox<String> verifactuModeCombo;
     private ComboBox<CertificateOption> verifactuCertCombo;
     private TextField verifactuFooterField;
@@ -2629,10 +2630,40 @@ public class BenjagestUiApplication extends Application {
         hint.setWrapText(true);
         hint.getStyleClass().add("settings-hint");
 
+        // Modalidad legal (RD 1007/2023): VERIFACTU o NO_VERIFACTU. Es
+        // el concepto principal — define si se envía a AEAT y si hay
+        // registro de eventos del SIF obligatorio.
+        verifactuModalityCombo = new ComboBox<>();
+        verifactuModalityCombo.getItems().addAll("VERIFACTU", "NO_VERIFACTU");
+        verifactuModalityCombo.getSelectionModel().select(
+                config.modality() == null ? "NO_VERIFACTU" : config.modality());
+        verifactuModalityCombo.getStyleClass().add("form-input");
+        // Mostramos texto traducido pero conservamos el código interno.
+        verifactuModalityCombo.setCellFactory(lv -> new javafx.scene.control.ListCell<>() {
+            @Override protected void updateItem(String item, boolean empty) {
+                super.updateItem(item, empty);
+                setText(empty || item == null ? "" : localizedModality(item));
+            }
+        });
+        verifactuModalityCombo.setButtonCell(new javafx.scene.control.ListCell<>() {
+            @Override protected void updateItem(String item, boolean empty) {
+                super.updateItem(item, empty);
+                setText(empty || item == null ? "" : localizedModality(item));
+            }
+        });
+
+        // Entorno técnico del cliente AEAT (TEST/PROD). Solo aplica si
+        // la modalidad es VERIFACTU; si no, se conserva pero se
+        // deshabilita visualmente.
         verifactuModeCombo = new ComboBox<>();
-        verifactuModeCombo.getItems().addAll("OFF", "TEST", "PROD");
-        verifactuModeCombo.getSelectionModel().select(config.mode() == null ? "OFF" : config.mode());
+        verifactuModeCombo.getItems().addAll("TEST", "PROD");
+        verifactuModeCombo.getSelectionModel().select(config.mode() == null ? "TEST" : config.mode());
         verifactuModeCombo.getStyleClass().add("form-input");
+        verifactuModeCombo.setDisable(!"VERIFACTU".equals(verifactuModalityCombo.getValue()));
+        // Reactivar/desactivar al cambiar la modalidad — el environment
+        // solo tiene sentido cuando se envía a AEAT.
+        verifactuModalityCombo.valueProperty().addListener((obs, oldV, newV) ->
+                verifactuModeCombo.setDisable(!"VERIFACTU".equals(newV)));
 
         verifactuCertCombo = new ComboBox<>();
         verifactuCertCombo.getItems().add(new CertificateOption(null, t("billing.config.verifactu.cert.none"), ""));
@@ -2653,9 +2684,10 @@ public class BenjagestUiApplication extends Application {
         verifactuFooterField.setPrefColumnCount(60);
 
         GridPane grid = formGrid();
-        addFormRow(grid, 0, t("billing.config.field.mode"), verifactuModeCombo);
-        addFormRow(grid, 1, t("billing.config.field.cert"), verifactuCertCombo);
-        addFormRow(grid, 2, t("billing.config.field.footer"), verifactuFooterField);
+        addFormRow(grid, 0, t("billing.config.field.modality"), verifactuModalityCombo);
+        addFormRow(grid, 1, t("billing.config.field.mode"), verifactuModeCombo);
+        addFormRow(grid, 2, t("billing.config.field.cert"), verifactuCertCombo);
+        addFormRow(grid, 3, t("billing.config.field.footer"), verifactuFooterField);
 
         Label certHint = new Label(certificates.isEmpty()
                 ? t("billing.config.cert.hint.empty")
@@ -3828,6 +3860,7 @@ public class BenjagestUiApplication extends Application {
     }
 
     private void saveVerifactuConfig() {
+        String modality = verifactuModalityCombo.getValue();
         String mode = verifactuModeCombo.getValue();
         CertificateOption cert = verifactuCertCombo.getValue();
         String certId = cert == null ? null : cert.id();
@@ -3836,12 +3869,17 @@ public class BenjagestUiApplication extends Application {
         Task<VerifactuConfig> task = new Task<>() {
             @Override
             protected VerifactuConfig call() throws Exception {
-                return billingApiClient.updateVerifactuConfig(mode, certId, footer);
+                return billingApiClient.updateVerifactuConfig(modality, mode, certId, footer);
             }
         };
         task.setOnSucceeded(event -> {
+            // El mensaje de éxito menciona la modalidad (lo legal) y, si
+            // es VeriFactu, también el environment del cliente AEAT.
+            String detail = "VERIFACTU".equals(modality)
+                    ? localizedModality(modality) + " (" + mode + ")"
+                    : localizedModality(modality);
             Alert ok = new Alert(Alert.AlertType.INFORMATION,
-                    t("billing.verifactu.save.success_prefix") + mode + t("billing.verifactu.save.success_suffix"),
+                    t("billing.verifactu.save.success_prefix") + detail + t("billing.verifactu.save.success_suffix"),
                     ButtonType.OK);
             ok.setHeaderText(null);
             ok.showAndWait();
@@ -3849,6 +3887,20 @@ public class BenjagestUiApplication extends Application {
         task.setOnFailed(event -> showError(t("billing.verifactu.save.fail.title"),
                 t("billing.verifactu.save.fail.body")));
         start(task, "billing-config-save");
+    }
+
+    /**
+     * Etiqueta traducida para la modalidad VeriFactu. Internamente el
+     * combo guarda el código técnico (VERIFACTU / NO_VERIFACTU) que el
+     * backend espera; aquí solo se traduce para mostrarlo al usuario.
+     */
+    private String localizedModality(String code) {
+        if (code == null) return "";
+        return switch (code) {
+            case "VERIFACTU" -> t("billing.config.modality.verifactu");
+            case "NO_VERIFACTU" -> t("billing.config.modality.no_verifactu");
+            default -> code;
+        };
     }
 
     /**
@@ -3862,18 +3914,19 @@ public class BenjagestUiApplication extends Application {
      * no hay cadena que verificar. Mostramos un mensaje claro.
      */
     private void verifyVerifactuChain() {
+        // Tras VF-OFF-DEPRECATE el hash existe en ambas modalidades, así
+        // que el verify siempre se puede lanzar. Solo necesitamos el
+        // environment (TEST/PROD) para saber qué cadena del registro
+        // recorre el backend.
         String mode = verifactuModeCombo.getValue();
-        if (mode == null || "OFF".equals(mode)) {
-            Alert info = new Alert(Alert.AlertType.INFORMATION,
-                    t("billing.config.verifactu.verify.off"), ButtonType.OK);
-            info.setHeaderText(null);
-            info.showAndWait();
-            return;
+        if (mode == null) {
+            mode = "TEST";
         }
+        final String chainMode = mode;
         Task<com.benjagest.ui.model.VerifactuIntegrityResult> task = new Task<>() {
             @Override
             protected com.benjagest.ui.model.VerifactuIntegrityResult call() throws Exception {
-                return billingApiClient.verifyVerifactuChain(mode);
+                return billingApiClient.verifyVerifactuChain(chainMode);
             }
         };
         task.setOnSucceeded(event -> {
@@ -4429,9 +4482,12 @@ public class BenjagestUiApplication extends Application {
                 case "billing.config.verifactu.hint" -> "Enables sending invoices to AEAT. OFF by default. To use PROD you need a .p12 certificate uploaded in Documents > Certificates; TEST allows testing against AEAT pre-production environment.";
                 case "billing.config.verifactu.cert.none" -> "(none)";
                 case "billing.config.verifactu.footer.prompt" -> "Text that appears at the bottom of each invoice";
-                case "billing.config.field.mode" -> "Mode *";
+                case "billing.config.field.modality" -> "VeriFactu modality *";
+                case "billing.config.field.mode" -> "AEAT environment *";
                 case "billing.config.field.cert" -> "Certificate";
                 case "billing.config.field.footer" -> "Invoice footer";
+                case "billing.config.modality.verifactu" -> "VeriFactu (real-time submission to AEAT)";
+                case "billing.config.modality.no_verifactu" -> "No VeriFactu (local hash + SIF event log)";
                 case "billing.config.cert.hint.empty" -> "No certificates uploaded. Activate the Documents module and upload one via /api/certificates.";
                 case "billing.config.cert.hint.count_prefix" -> " certificate(s) available.";
                 case "billing.config.verifactu.save" -> "Save VeriFactu";
@@ -4933,9 +4989,12 @@ public class BenjagestUiApplication extends Application {
             case "billing.config.verifactu.hint" -> "Activa el envio de facturas a AEAT. Por defecto OFF. Para usar PROD necesitas un certificado .p12 subido en Documentos > Certificados; TEST permite hacer pruebas contra el entorno preproductivo de la AEAT.";
             case "billing.config.verifactu.cert.none" -> "(ninguno)";
             case "billing.config.verifactu.footer.prompt" -> "Texto que aparece al pie de cada factura";
-            case "billing.config.field.mode" -> "Modo *";
+            case "billing.config.field.modality" -> "Modalidad VeriFactu *";
+            case "billing.config.field.mode" -> "Entorno AEAT *";
             case "billing.config.field.cert" -> "Certificado";
             case "billing.config.field.footer" -> "Pie de factura";
+            case "billing.config.modality.verifactu" -> "VeriFactu (envio en tiempo real a AEAT)";
+            case "billing.config.modality.no_verifactu" -> "No VeriFactu (hash local + registro de eventos del SIF)";
             case "billing.config.cert.hint.empty" -> "No hay certificados subidos. Activa el modulo Documentos y sube uno en /api/certificates.";
             case "billing.config.cert.hint.count_prefix" -> " certificado(s) disponible(s).";
             case "billing.config.verifactu.save" -> "Guardar VeriFactu";

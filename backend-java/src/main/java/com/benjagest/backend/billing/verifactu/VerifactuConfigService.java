@@ -22,14 +22,23 @@ public class VerifactuConfigService {
 
     @Transactional
     public VerifactuConfig update(VerifactuConfigUpdateRequest request) {
-        // Regla de negocio: PROD sin certificado es invalido (AEAT
-        // rechazaria todos los envios). TEST permite no tener
-        // certificado todavia, pero a la hora de firmar fallara.
-        if ("PROD".equals(request.mode()) && !StringUtils.hasText(request.certificateId())) {
+        // Reglas de negocio (slice VF-OFF-DEPRECATE, RD 1007/2023):
+        //   1. Ambas modalidades son legales — no rechazamos ninguna.
+        //   2. Solo se exige certificado cuando modality=VERIFACTU Y
+        //      mode=PROD. En NO_VERIFACTU no hay envio que firmar.
+        //      En VERIFACTU+TEST se permite sin cert (entorno pruebas
+        //      AEAT acepta firmas dummy).
+        boolean isVerifactuProd = "VERIFACTU".equals(request.modality())
+                && "PROD".equals(request.mode());
+        if (isVerifactuProd && !StringUtils.hasText(request.certificateId())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "Para activar VeriFactu en PROD necesitas seleccionar un certificado .p12");
         }
-        repository.update(request.mode(), request.certificateId(), request.invoiceFooterTemplate());
+        repository.update(
+                request.modality(),
+                request.mode(),
+                request.certificateId(),
+                request.invoiceFooterTemplate());
         return get();
     }
 }
