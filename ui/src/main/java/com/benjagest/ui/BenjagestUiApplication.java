@@ -2224,14 +2224,43 @@ public class BenjagestUiApplication extends Application {
 
     private Node billingInvoicesTab(List<SalesInvoiceSummary> initialList) {
         billingStatusFilter = new ComboBox<>();
+        // Los items siguen siendo los códigos técnicos (DRAFT/VALIDATED/...)
+        // para que mapAllOrValue() los mande al backend tal cual. La
+        // visualización pasa por localizedInvoiceStatus en cellFactory+
+        // buttonCell, así el filtro se ve traducido pero internamente
+        // sigue hablando el idioma del API.
         billingStatusFilter.getItems().addAll(t("list.filter.all"), "DRAFT", "VALIDATED", "CANCELLED", "VOIDED");
         billingStatusFilter.getSelectionModel().selectFirst();
         billingStatusFilter.getStyleClass().add("form-input");
+        billingStatusFilter.setCellFactory(lv -> new javafx.scene.control.ListCell<>() {
+            @Override protected void updateItem(String item, boolean empty) {
+                super.updateItem(item, empty);
+                setText(empty || item == null ? "" : localizedInvoiceStatus(item));
+            }
+        });
+        billingStatusFilter.setButtonCell(new javafx.scene.control.ListCell<>() {
+            @Override protected void updateItem(String item, boolean empty) {
+                super.updateItem(item, empty);
+                setText(empty || item == null ? "" : localizedInvoiceStatus(item));
+            }
+        });
 
         billingPaymentFilter = new ComboBox<>();
         billingPaymentFilter.getItems().addAll(t("list.filter.all"), "PENDING", "PARTIAL", "PAID", "OVERDUE");
         billingPaymentFilter.getSelectionModel().selectFirst();
         billingPaymentFilter.getStyleClass().add("form-input");
+        billingPaymentFilter.setCellFactory(lv -> new javafx.scene.control.ListCell<>() {
+            @Override protected void updateItem(String item, boolean empty) {
+                super.updateItem(item, empty);
+                setText(empty || item == null ? "" : localizedPaymentStatus(item));
+            }
+        });
+        billingPaymentFilter.setButtonCell(new javafx.scene.control.ListCell<>() {
+            @Override protected void updateItem(String item, boolean empty) {
+                super.updateItem(item, empty);
+                setText(empty || item == null ? "" : localizedPaymentStatus(item));
+            }
+        });
 
         Button apply = new Button(t("list.filter.apply"));
         apply.setGraphic(icon("fas-filter"));
@@ -2277,11 +2306,11 @@ public class BenjagestUiApplication extends Application {
         colDue.setPrefWidth(120);
 
         TableColumn<SalesInvoiceSummary, String> colStatus = new TableColumn<>(t("list.column.status"));
-        colStatus.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().status()));
+        colStatus.setCellValueFactory(c -> new SimpleStringProperty(localizedInvoiceStatus(c.getValue().status())));
         colStatus.setPrefWidth(110);
 
         TableColumn<SalesInvoiceSummary, String> colPayment = new TableColumn<>(t("list.column.collection"));
-        colPayment.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().paymentStatus()));
+        colPayment.setCellValueFactory(c -> new SimpleStringProperty(localizedPaymentStatus(c.getValue().paymentStatus())));
         colPayment.setPrefWidth(100);
 
         TableColumn<SalesInvoiceSummary, String> colTotal = new TableColumn<>(t("list.column.total"));
@@ -2358,13 +2387,22 @@ public class BenjagestUiApplication extends Application {
         });
 
         // Wire up de habilitacion segun la fila seleccionada.
+        // - Validar / Eliminar borrador: solo en DRAFT.
+        // - Anular: solo en STANDARD VALIDATED. Una rectificativa YA es el
+        //   acto legal de anular; anularla a su vez no tiene sentido (y
+        //   el backend lo rechazaría con 409).
+        // - PDF: cualquier estado EXCEPTO DRAFT. Un borrador no es
+        //   documento legal (no tiene número emitido), pero VALIDATED /
+        //   VOIDED / CANCELLED sí — debe poder regenerarse el PDF por
+        //   archivo o si el usuario lo perdió.
         billingTable.getSelectionModel().selectedItemProperty().addListener((obs, oldV, newV) -> {
             boolean isDraft = newV != null && "DRAFT".equals(newV.status());
             boolean isValidated = newV != null && "VALIDATED".equals(newV.status());
+            boolean isRectifying = newV != null && "RECTIFYING".equals(newV.invoiceType());
             validateRowBtn.setDisable(!isDraft);
             deleteDraftBtn.setDisable(!isDraft);
-            voidBtn.setDisable(!isValidated);
-            pdfBtn.setDisable(!isValidated);
+            voidBtn.setDisable(!isValidated || isRectifying);
+            pdfBtn.setDisable(newV == null || isDraft);
         });
 
         Region rowActionsSpacer = new Region();
@@ -2524,6 +2562,38 @@ public class BenjagestUiApplication extends Application {
         task.setOnSucceeded(event -> billingTable.setItems(FXCollections.observableArrayList(task.getValue())));
         task.setOnFailed(event -> showError(t("list.dialog.reload_failed.title"), t("list.dialog.reload_failed.body")));
         start(task, "billing-invoices-reload");
+    }
+
+    /**
+     * Traduce el código técnico del estado de una factura
+     * (DRAFT/VALIDATED/CANCELLED/VOIDED) a la versión visible del idioma
+     * activo. Si el código no se reconoce, lo devuelve tal cual — útil
+     * para el "(todos)" del filtro u otros placeholders.
+     */
+    private String localizedInvoiceStatus(String code) {
+        if (code == null) return "";
+        return switch (code) {
+            case "DRAFT" -> t("status.invoice.draft");
+            case "VALIDATED" -> t("status.invoice.validated");
+            case "CANCELLED" -> t("status.invoice.cancelled");
+            case "VOIDED" -> t("status.invoice.voided");
+            default -> code;
+        };
+    }
+
+    /**
+     * Traduce el código de payment_status
+     * (PENDING/PARTIAL/PAID/OVERDUE) al idioma activo.
+     */
+    private String localizedPaymentStatus(String code) {
+        if (code == null) return "";
+        return switch (code) {
+            case "PENDING" -> t("status.payment.pending");
+            case "PARTIAL" -> t("status.payment.partial");
+            case "PAID" -> t("status.payment.paid");
+            case "OVERDUE" -> t("status.payment.overdue");
+            default -> code;
+        };
     }
 
     private String mapAllOrValue(String selection) {
@@ -4584,6 +4654,15 @@ public class BenjagestUiApplication extends Application {
                 case "list.dialog.pdf.save_failed.body" -> "Check folder permissions and try again.";
                 case "list.dialog.pdf.download_failed.title" -> "Could not generate the PDF";
                 case "list.dialog.pdf.download_failed.body" -> "Check that the backend is running and the invoice exists.";
+                // ---- Invoice statuses ----
+                case "status.invoice.draft" -> "Draft";
+                case "status.invoice.validated" -> "Validated";
+                case "status.invoice.cancelled" -> "Cancelled";
+                case "status.invoice.voided" -> "Voided";
+                case "status.payment.pending" -> "Pending";
+                case "status.payment.partial" -> "Partial";
+                case "status.payment.paid" -> "Paid";
+                case "status.payment.overdue" -> "Overdue";
                 default -> key.startsWith("column.") ? key.substring(7) : key;
             };
         }
@@ -5071,6 +5150,15 @@ public class BenjagestUiApplication extends Application {
             case "list.dialog.pdf.save_failed.body" -> "Comprueba los permisos de la carpeta y vuelve a intentarlo.";
             case "list.dialog.pdf.download_failed.title" -> "No se pudo generar el PDF";
             case "list.dialog.pdf.download_failed.body" -> "Comprueba que el backend este corriendo y que la factura exista.";
+            // ---- Invoice statuses ----
+            case "status.invoice.draft" -> "Borrador";
+            case "status.invoice.validated" -> "Validada";
+            case "status.invoice.cancelled" -> "Cancelada";
+            case "status.invoice.voided" -> "Anulada";
+            case "status.payment.pending" -> "Pendiente";
+            case "status.payment.partial" -> "Parcial";
+            case "status.payment.paid" -> "Pagada";
+            case "status.payment.overdue" -> "Vencida";
             default -> key.startsWith("column.") ? key.substring(7) : switch (key) {
                 case "field.name" -> "Nombre";
                 case "field.taxId" -> "NIF/CIF";

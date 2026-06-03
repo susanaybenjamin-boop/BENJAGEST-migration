@@ -474,6 +474,9 @@ public class BillingApiClient {
         List<SalesInvoiceSummary> list = new ArrayList<>();
         for (String obj : splitJsonObjects(json)) {
             if (!obj.contains("\"invoiceType\"")) continue;
+            // Incluimos invoiceType y originalInvoiceId para que la UI pueda
+            // distinguir, p.ej., rectificativas (botón Anular no debe
+            // activarse sobre ellas — una rectificativa ES la anulación).
             list.add(new SalesInvoiceSummary(
                     textField(obj, "id"),
                     textField(obj, "invoiceNumber"),
@@ -483,7 +486,9 @@ public class BillingApiClient {
                     textField(obj, "status"),
                     textField(obj, "paymentStatus"),
                     decimalField(obj, "total"),
-                    decimalField(obj, "paidAmount")
+                    decimalField(obj, "paidAmount"),
+                    textField(obj, "invoiceType"),
+                    textField(obj, "originalInvoiceId")
             ));
         }
         return list;
