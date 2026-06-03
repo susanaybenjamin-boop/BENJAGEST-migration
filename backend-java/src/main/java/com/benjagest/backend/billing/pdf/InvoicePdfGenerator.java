@@ -9,6 +9,7 @@ import com.lowagie.text.DocumentException;
 import com.lowagie.text.Element;
 import com.lowagie.text.Font;
 import com.lowagie.text.FontFactory;
+import com.lowagie.text.Image;
 import com.lowagie.text.PageSize;
 import com.lowagie.text.Paragraph;
 import com.lowagie.text.Phrase;
@@ -109,17 +110,28 @@ public class InvoicePdfGenerator {
     private static final float LEGAL_BOTTOM_Y = IBAN_TOP_Y + 8f;
 
     public byte[] generate(SalesInvoice invoice, CompanyDataResponse company, InvoiceTexts texts) {
-        return generate(invoice, company, texts, null);
+        return generate(invoice, company, texts, null, null, null);
+    }
+
+    public byte[] generate(SalesInvoice invoice, CompanyDataResponse company, InvoiceTexts texts,
+                           String verifactuHash) {
+        return generate(invoice, company, texts, verifactuHash, null, null);
     }
 
     /**
-     * Variante con huella VeriFactu opcional. Si {@code verifactuHash} es
-     * no nulo, se imprimen los primeros 16 caracteres bajo el QR como
-     * "Huella" — sirve de control visual rápido para verificar que dos
-     * facturas correlativas encadenan (ver verifactu_registry).
+     * Variante completa con QR oficial AEAT (VF3-QR) + huella VeriFactu
+     * + etiqueta de cumplimiento.
+     *
+     * @param verifactuHash    SHA-256 hex; null = no se pinta huella.
+     * @param qrPng            bytes del PNG del QR oficial AEAT (lo genera
+     *                         {@link InvoiceQrService}); null = placeholder
+     *                         visual como antes.
+     * @param complianceLabel  texto bajo el QR ("VERI*FACTU" o
+     *                         "Factura verificable en la sede electronica
+     *                         de la AEAT"). null = no se pinta.
      */
     public byte[] generate(SalesInvoice invoice, CompanyDataResponse company, InvoiceTexts texts,
-                           String verifactuHash) {
+                           String verifactuHash, byte[] qrPng, String complianceLabel) {
         try {
             ByteArrayOutputStream bos = new ByteArrayOutputStream();
             // Top margin reducido (30) para subir el título cerca del
@@ -131,7 +143,7 @@ public class InvoicePdfGenerator {
             document.open();
 
             addTitle(document, invoice);
-            addTopBlock(document, invoice, company, verifactuHash);
+            addTopBlock(document, invoice, company, verifactuHash, qrPng, complianceLabel);
             addLinesTable(document, invoice);
 
             document.close();
@@ -159,7 +171,7 @@ public class InvoicePdfGenerator {
     }
 
     private void addTopBlock(Document document, SalesInvoice invoice, CompanyDataResponse company,
-                              String verifactuHash) throws DocumentException {
+                              String verifactuHash, byte[] qrPng, String complianceLabel) throws DocumentException {
         Font fEmpName = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 12, INK);
         Font fMeta = FontFactory.getFont(FontFactory.HELVETICA, 9, INK_LIGHT);
         Font fNumber = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 14, INK);
@@ -240,13 +252,46 @@ public class InvoicePdfGenerator {
         empCell.addElement(emp);
         top.addCell(empCell);
 
-        // Col 2: QR centrado + huella VeriFactu abreviada (si la hay).
+        // Col 2: QR oficial AEAT (si esta disponible) + etiqueta de
+        // cumplimiento + huella VeriFactu abreviada. Si no llega QR
+        // real (factura aun en borrador, o problema generando), cae al
+        // placeholder visual como antes.
         PdfPCell qrCell = new PdfPCell();
         qrCell.setBorder(Rectangle.NO_BORDER);
         qrCell.setPadding(2f);
         qrCell.setHorizontalAlignment(Element.ALIGN_CENTER);
         qrCell.setVerticalAlignment(Element.ALIGN_TOP);
-        qrCell.addElement(qrPlaceholder());
+        boolean qrRendered = false;
+        if (qrPng != null && qrPng.length > 0) {
+            try {
+                Image qr = Image.getInstance(qrPng);
+                // 70x70 pt en PDF ~= 24.7 mm impreso. Cae dentro del
+                // rango 30-40mm que pide la Orden HAC/1177/2024 art. 20
+                // cuando el documento se imprime a tamanyo real (los
+                // navegadores y lectores no escalan PDFs por defecto).
+                qr.scaleAbsolute(70f, 70f);
+                qr.setAlignment(Element.ALIGN_CENTER);
+                qrCell.addElement(qr);
+                qrRendered = true;
+            } catch (Exception ex) {
+                org.slf4j.LoggerFactory.getLogger(InvoicePdfGenerator.class)
+                        .warn("No se pudo embeber el QR en el PDF; uso placeholder", ex);
+            }
+        }
+        if (!qrRendered) {
+            qrCell.addElement(qrPlaceholder());
+        }
+        if (complianceLabel != null && !complianceLabel.isBlank()) {
+            // Texto obligatorio inmediatamente debajo del QR (Orden
+            // HAC/1177/2024 art. 20). En VERIFACTU = "VERI*FACTU"; en
+            // NO VERIFACTU = "Factura verificable en la sede
+            // electronica de la AEAT".
+            Font fLabel = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 6, INK);
+            Paragraph p = new Paragraph(complianceLabel, fLabel);
+            p.setAlignment(Element.ALIGN_CENTER);
+            p.setSpacingBefore(2f);
+            qrCell.addElement(p);
+        }
         if (verifactuHash != null && !verifactuHash.isBlank()) {
             // Los 16 primeros caracteres del hash SHA-256 son suficientes
             // para que un humano compare visualmente dos facturas
@@ -257,7 +302,7 @@ public class InvoicePdfGenerator {
                     ? verifactuHash.substring(0, 16) : verifactuHash;
             Paragraph hashP = new Paragraph("Huella: " + shortHash, fHash);
             hashP.setAlignment(Element.ALIGN_CENTER);
-            hashP.setSpacingBefore(2f);
+            hashP.setSpacingBefore(1f);
             qrCell.addElement(hashP);
         }
         top.addCell(qrCell);

@@ -1,6 +1,7 @@
 package com.benjagest.backend.billing.invoices;
 
 import com.benjagest.backend.billing.pdf.InvoicePdfGenerator;
+import com.benjagest.backend.billing.pdf.InvoiceQrService;
 import com.benjagest.backend.billing.pdf.InvoiceStorageService;
 import com.benjagest.backend.billing.series.SeriesService;
 import com.benjagest.backend.billing.sif.SifEventService;
@@ -43,6 +44,7 @@ public class SalesInvoiceService {
     private final VerifactuRegistryService verifactuRegistryService;
     private final SifEventService sifEventService;
     private final InvoicePdfGenerator pdfGenerator;
+    private final InvoiceQrService qrService;
     private final InvoiceStorageService storageService;
     private final CompanyDataService companyDataService;
     private final InvoiceTextsService invoiceTextsService;
@@ -53,6 +55,7 @@ public class SalesInvoiceService {
                                VerifactuRegistryService verifactuRegistryService,
                                SifEventService sifEventService,
                                InvoicePdfGenerator pdfGenerator,
+                               InvoiceQrService qrService,
                                InvoiceStorageService storageService,
                                CompanyDataService companyDataService,
                                InvoiceTextsService invoiceTextsService,
@@ -62,6 +65,7 @@ public class SalesInvoiceService {
         this.verifactuRegistryService = verifactuRegistryService;
         this.sifEventService = sifEventService;
         this.pdfGenerator = pdfGenerator;
+        this.qrService = qrService;
         this.storageService = storageService;
         this.companyDataService = companyDataService;
         this.invoiceTextsService = invoiceTextsService;
@@ -263,10 +267,14 @@ public class SalesInvoiceService {
         try {
             CompanyDataResponse company = companyDataService.getCurrent();
             String currentHash = verifactuRegistryService.findCurrentHashForPdf(id).orElse(null);
+            com.benjagest.backend.billing.verifactu.VerifactuConfig vfConfig =
+                    verifactuConfigRepository.findCurrent().orElse(null);
+            byte[] qrPng = qrService.generatePng(validated, company, vfConfig);
+            String complianceLabel = qrService.complianceLabel(vfConfig);
             byte[] pdfBytes = pdfGenerator.generate(
-                    validated, company, invoiceTextsService.get(), currentHash);
-            String storageRoot = verifactuConfigRepository.findCurrent()
-                    .map(c -> c.invoiceStorageRoot()).orElse(null);
+                    validated, company, invoiceTextsService.get(),
+                    currentHash, qrPng, complianceLabel);
+            String storageRoot = vfConfig == null ? null : vfConfig.invoiceStorageRoot();
             String absPath = storageService.writePdf(
                     storageRoot, company.id(),
                     validated.invoiceDate(), validated.invoiceNumber(),
