@@ -207,4 +207,58 @@ public class SifEventRepository {
             OffsetDateTime generatedAt
     ) {
     }
+
+    /**
+     * Eventos PENDING para reintento de firma (VF4). Trae los campos
+     * canonicos para reconstruir el XML de firma identico al original.
+     */
+    public List<PendingEvent> findPendingForSigning(int limit) {
+        return jdbcTemplate.query("""
+                SELECT e.id, e.company_id, c.tax_identifier,
+                       e.event_type, e.payload,
+                       e.hash_current, e.hash_previous, e.generated_at
+                  FROM sif_event_registry e
+                  JOIN companies c ON c.id = e.company_id
+                 WHERE e.status = 'PENDING'
+                 ORDER BY e.generated_at ASC
+                 LIMIT ?
+                """,
+                (rs, rowNum) -> new PendingEvent(
+                        rs.getString("id"),
+                        rs.getString("company_id"),
+                        rs.getString("tax_identifier"),
+                        rs.getString("event_type"),
+                        rs.getString("payload"),
+                        rs.getString("hash_current"),
+                        rs.getString("hash_previous"),
+                        rs.getTimestamp("generated_at") == null ? null
+                                : OffsetDateTime.ofInstant(rs.getTimestamp("generated_at").toInstant(), ZoneOffset.UTC)),
+                Math.min(Math.max(limit, 1), 200));
+    }
+
+    /**
+     * Setter de firma con companyId explicito (sin TenantContext).
+     */
+    public int setSignatureForCompany(String eventId, String companyId, String signatureXml) {
+        return jdbcTemplate.update("""
+                UPDATE sif_event_registry
+                   SET signature_data = ?,
+                       signed_at = CURRENT_TIMESTAMP,
+                       status = 'SIGNED'
+                 WHERE id = ?
+                   AND company_id = ?
+                """,
+                signatureXml, eventId, companyId);
+    }
+
+    public record PendingEvent(
+            String id,
+            String companyId,
+            String taxIdentifier,
+            String eventType,
+            String payload,
+            String hashCurrent,
+            String hashPrevious,
+            OffsetDateTime generatedAt
+    ) {}
 }
