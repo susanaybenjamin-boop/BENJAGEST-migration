@@ -53,10 +53,18 @@ public class VerifactuRegistryService {
     @Transactional
     public Optional<VerifactuRegistryEntry> registerIfActive(SalesInvoice invoice) {
         VerifactuConfig config = configRepository.findCurrent().orElse(null);
-        if (config == null || config.mode() == null || "OFF".equals(config.mode())) {
+        // Tras VF-OFF-DEPRECATE (RD 1007/2023): la cadena hash se genera
+        // SIEMPRE, en ambas modalidades. Solo se omite si:
+        //   - todavía no hay fila en companies (situación de bootstrap),
+        //   - o si quedan empresas con mode/modality null por migración
+        //     defectuosa (defensa en profundidad).
+        if (config == null || config.mode() == null || config.modality() == null) {
             return Optional.empty();
         }
 
+        // mode aquí es el ENVIRONMENT (TEST/PROD), no la modalidad. La
+        // cadena se mantiene segmentada por environment para que la
+        // cadena de TEST no contamine la de PROD si una empresa cambia.
         String mode = config.mode();
         Optional<VerifactuRegistryEntry> existing = registryRepository.findByInvoiceAndMode(invoice.id(), mode);
         if (existing.isPresent()) {
@@ -151,14 +159,14 @@ public class VerifactuRegistryService {
     }
 
     /**
-     * Hash actual de una factura validada bajo VeriFactu (mode != OFF).
-     * Devuelve Optional.empty si la empresa tiene VeriFactu OFF o la
-     * factura no tiene aún registro. Lo usa el generador de PDF para
-     * imprimir los primeros 16 chars bajo el QR.
+     * Hash actual de una factura validada. Devuelve Optional.empty si
+     * la factura no tiene aún registro (no debería pasar tras VF-OFF-
+     * DEPRECATE: el hash se genera siempre al validar). Lo usa el
+     * generador de PDF para imprimir los primeros 16 chars bajo el QR.
      */
     public Optional<String> findCurrentHashForPdf(String invoiceId) {
         VerifactuConfig config = configRepository.findCurrent().orElse(null);
-        if (config == null || config.mode() == null || "OFF".equals(config.mode())) {
+        if (config == null || config.mode() == null) {
             return Optional.empty();
         }
         return registryRepository.findByInvoiceAndMode(invoiceId, config.mode())

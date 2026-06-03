@@ -10,9 +10,10 @@ import org.springframework.stereotype.Repository;
 import org.springframework.util.StringUtils;
 
 /**
- * Lee y escribe los tres campos VeriFactu que viven en `companies`
- * (introducidos en V13). LEFT JOIN a digital_certificates para
- * devolver el alias del certificado de forma directa.
+ * Lee y escribe los cuatro campos VeriFactu que viven en `companies`
+ * (V13 introdujo `verifactu_mode`/`certificate_id`/`invoice_footer_template`,
+ * V17 anyade `verifactu_modality`). LEFT JOIN a digital_certificates
+ * para devolver el alias del certificado de forma directa.
  */
 @Repository
 public class VerifactuConfigRepository {
@@ -27,7 +28,8 @@ public class VerifactuConfigRepository {
 
     public Optional<VerifactuConfig> findCurrent() {
         List<VerifactuConfig> matches = jdbcTemplate.query("""
-                SELECT c.verifactu_mode AS mode,
+                SELECT c.verifactu_modality AS modality,
+                       c.verifactu_mode AS mode,
                        c.verifactu_certificate_id AS certificate_id,
                        cert.alias AS certificate_alias,
                        c.invoice_footer_template AS invoice_footer_template
@@ -38,14 +40,16 @@ public class VerifactuConfigRepository {
         return matches.stream().findFirst();
     }
 
-    public int update(String mode, String certificateId, String invoiceFooterTemplate) {
+    public int update(String modality, String mode, String certificateId, String invoiceFooterTemplate) {
         return jdbcTemplate.update("""
                 UPDATE companies
-                   SET verifactu_mode = ?,
+                   SET verifactu_modality = ?,
+                       verifactu_mode = ?,
                        verifactu_certificate_id = ?,
                        invoice_footer_template = ?
                  WHERE id = ?
                 """,
+                modality,
                 mode,
                 blankToNull(certificateId),
                 blankToNull(invoiceFooterTemplate),
@@ -55,6 +59,7 @@ public class VerifactuConfigRepository {
 
     private VerifactuConfig mapConfig(ResultSet rs, int rowNum) throws SQLException {
         return new VerifactuConfig(
+                rs.getString("modality"),
                 rs.getString("mode"),
                 rs.getString("certificate_id"),
                 rs.getString("certificate_alias"),

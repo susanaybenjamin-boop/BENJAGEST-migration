@@ -6,14 +6,19 @@ import jakarta.validation.constraints.Pattern;
 /**
  * Payload de PUT /api/billing/verifactu-config.
  *
- * mode obligatorio. certificateId opcional (puede llegar vacio o null
- * si se quiere desvincular el certificado del modo OFF).
+ *   - modality (legal): VERIFACTU | NO_VERIFACTU (obligatorio).
+ *   - mode (technical): TEST | PROD (obligatorio incluso en NO_VERIFACTU
+ *     — se guarda por si la empresa cambia de modalidad, pero no se usa
+ *     mientras este en NO_VERIFACTU).
+ *   - certificateId: opcional. Solo se exige cuando modality=VERIFACTU
+ *     y mode=PROD (sin certificado real AEAT rechaza los envios).
  *
- * Validacion adicional en Service: si mode=PROD, certificateId
- * obligatorio (sin certificado no se firma, sin firma AEAT rechaza).
+ * Validacion adicional en Service: modality=VERIFACTU + mode=PROD sin
+ * certificateId -> 400.
  */
 public record VerifactuConfigUpdateRequest(
-        @NotBlank @Pattern(regexp = "OFF|TEST|PROD") String mode,
+        @NotBlank @Pattern(regexp = "VERIFACTU|NO_VERIFACTU") String modality,
+        @NotBlank @Pattern(regexp = "TEST|PROD") String mode,
         String certificateId,
         String invoiceFooterTemplate
 ) {

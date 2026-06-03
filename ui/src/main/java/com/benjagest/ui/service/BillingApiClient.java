@@ -395,10 +395,12 @@ public class BillingApiClient {
                 reason.isEmpty() ? null : reason);
     }
 
-    public VerifactuConfig updateVerifactuConfig(String mode, String certificateIdOrNull,
+    public VerifactuConfig updateVerifactuConfig(String modality, String mode,
+                                                 String certificateIdOrNull,
                                                  String footerTemplate) throws IOException, InterruptedException {
         StringBuilder body = new StringBuilder("{");
-        body.append(field("mode", mode));
+        body.append(field("modality", modality));
+        body.append(",").append(field("mode", mode));
         if (certificateIdOrNull != null && !certificateIdOrNull.isBlank()) {
             body.append(",").append(field("certificateId", certificateIdOrNull));
         }
@@ -594,6 +596,7 @@ public class BillingApiClient {
 
     private VerifactuConfig parseVerifactuConfig(String json) {
         return new VerifactuConfig(
+                textField(json, "modality"),
                 textField(json, "mode"),
                 textField(json, "certificateId"),
                 textField(json, "certificateAlias"),
