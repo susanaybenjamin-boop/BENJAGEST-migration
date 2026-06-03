@@ -76,17 +76,17 @@ La app se diseñó bilingüe desde C1 (botón EN/ES en el header → `language` 
 >
 > **Dos modalidades legales** (no hay un "OFF" libre):
 >
-> | Modalidad | Hash facturas | QR factura | Envío AEAT tiempo real | Registro de Eventos |
-> |---|---|---|---|---|
-> | **VeriFactu** | Sí | Sí | Sí | **NO** (AEAT ya tiene todo) |
-> | **No VeriFactu** | Sí | Sí | No (a petición) | **Sí, obligatorio + firmado** |
+> | Modalidad        | Hash facturas | QR factura | Envío AEAT tiempo real | Registro de Eventos           |
+> | ---------------- | ------------- | ---------- | ---------------------- | ----------------------------- |
+> | **VeriFactu**    | Sí            | Sí         | Sí                     | **NO** (AEAT ya tiene todo)   |
+> | **No VeriFactu** | Sí            | Sí         | No (a petición)        | **Sí, obligatorio + firmado** |
 >
 > El antiguo modo `OFF` que tenemos en `verifactu_config.mode` es **ilegal** salvo empresa exenta. Hay que retirarlo y dejar dos modalidades.
 >
 > **9 eventos obligatorios** en NO VeriFactu (Orden HAC/1177/2024, FAQ AEAT):
 >
-> 1. Inicio del sistema como "NO VERI*FACTU".
-> 2. Apagado del sistema como "NO VERI*FACTU".
+> 1. Inicio del sistema como "NO VERI\*FACTU".
+> 2. Apagado del sistema como "NO VERI\*FACTU".
 > 3. Lanzamiento del proceso de detección de anomalías en **registros de facturación**.
 > 4. Detección de anomalías de integridad/inalterabilidad/trazabilidad en **registros de facturación**.
 > 5. Lanzamiento del proceso de detección de anomalías en **registros de eventos**.
@@ -133,13 +133,13 @@ La app se diseñó bilingüe desde C1 (botón EN/ES en el header → `language` 
 - ⬜ Envío facturas por email (`envios_email_180` + `empresa_email_config_180`).
 - ⬜ Obligaciones de fabricante VeriFactu (auditoría propia del software, ver `VERIFACTU_OBLIGACIONES_FABRICANTE.md` de CONTENDO).
 - ⬜ Configuración fina VeriFactu (modo TEST/PROD, correlativo inicial, certificados firma). [§3 `gap-analysis-config-ui`](gap-analysis-config-ui.md).
-- ⬜ Todavia no tenemos la importacion del pdf en los modulos donde se van a usar esa funcion, ya que CONTENDO usa IA, nosotros lo vamos a hacer con dependencias OCR y Regex, sin usar IA.
+- ⬜ Todavia no tenemos la importacion del pdf en los modulos donde se van a usar esa funcion, ya que CONTENDO usa IA, nosotros lo vamos a hacer con dependencias OCR y Regex, sin usar IA, o como Claude me sugiera.
 
 ### RD 8/2019 (fichajes — obligación legal)
 
 - ⬜ Tabla `fichaje_correcciones` — corrección **solo por apunte vinculado**, no modificación de fichaje original.
 - ⬜ Tabla `fichaje_verificaciones` — código CSV para verificación pública (art. 35.8 RD 8/2019).
-- ⬜ **Geolocalización en clients/obras** — clients con `lat`/`lng`/`radio_m`/`geo_policy` + verificación al fichar. [§11.A](gap-analysis-contendo.md).
+- ⬜ **Geolocalización en clients** — clients con `lat`/`lng`/`radio_m`/`geo_policy` + verificación al fichar. [§11.A](gap-analysis-contendo.md).
 - ⬜ Sincronización offline batches (kioskos sin red).
 
 ---
