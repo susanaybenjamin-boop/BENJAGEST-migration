@@ -1,6 +1,7 @@
 package com.benjagest.backend.billing.invoices;
 
 import com.benjagest.backend.billing.series.SeriesService;
+import com.benjagest.backend.billing.sif.SifEventService;
 import com.benjagest.backend.billing.verifactu.VerifactuRegistryService;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -34,13 +35,16 @@ public class SalesInvoiceService {
     private final SalesInvoiceRepository repository;
     private final SeriesService seriesService;
     private final VerifactuRegistryService verifactuRegistryService;
+    private final SifEventService sifEventService;
 
     public SalesInvoiceService(SalesInvoiceRepository repository,
                                SeriesService seriesService,
-                               VerifactuRegistryService verifactuRegistryService) {
+                               VerifactuRegistryService verifactuRegistryService,
+                               SifEventService sifEventService) {
         this.repository = repository;
         this.seriesService = seriesService;
         this.verifactuRegistryService = verifactuRegistryService;
+        this.sifEventService = sifEventService;
     }
 
     public List<SalesInvoice> list(String statusFilter,
@@ -210,11 +214,30 @@ public class SalesInvoiceService {
         // Este es el momento legal en que la factura original queda
         // "anulada con vinculo" — ni antes ni despues, ni con cancelar
         // sueltos.
+        boolean cascadedVoid = false;
         if ("RECTIFYING".equals(validated.invoiceType())
                 && validated.originalInvoiceId() != null
                 && !validated.originalInvoiceId().isBlank()) {
             repository.markVoided(validated.originalInvoiceId());
             repository.setRectifyingInvoiceId(validated.originalInvoiceId(), id);
+            cascadedVoid = true;
+        }
+
+        // Registro de Eventos del SIF (RD 1007/2023 + Orden HAC/1177/2024):
+        // emitimos INVOICE_VALIDATED al cerrar una validacion. El servicio
+        // de eventos filtra internamente por modalidad — en VeriFactu no
+        // hace nada porque AEAT ya tiene los datos en tiempo real; en
+        // NO VeriFactu encadena este evento al hash de la cadena de
+        // eventos del SIF. Si la validacion ademas anulo una original
+        // (RECTIFYING), emitimos tambien INVOICE_VOIDED apuntando a esa
+        // original para tener traza explicita.
+        String payload = "{\"invoiceId\":\"" + id + "\",\"invoiceNumber\":\""
+                + (validated.invoiceNumber() == null ? "" : validated.invoiceNumber()) + "\"}";
+        sifEventService.record("INVOICE_VALIDATED", payload);
+        if (cascadedVoid) {
+            String voidPayload = "{\"originalInvoiceId\":\"" + validated.originalInvoiceId()
+                    + "\",\"byRectifyingInvoiceId\":\"" + id + "\"}";
+            sifEventService.record("INVOICE_VOIDED", voidPayload);
         }
 
         return get(id);
