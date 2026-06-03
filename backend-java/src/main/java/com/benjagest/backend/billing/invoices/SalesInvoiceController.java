@@ -1,10 +1,16 @@
 package com.benjagest.backend.billing.invoices;
 
 import com.benjagest.backend.auth.RequiresRole;
+import com.benjagest.backend.billing.pdf.InvoicePdfGenerator;
+import com.benjagest.backend.billing.texts.InvoiceTextsController.InvoiceTextsService;
 import com.benjagest.backend.modules.RequiresModule;
+import com.benjagest.backend.settings.CompanyDataService;
 import jakarta.validation.Valid;
 import java.util.List;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -45,9 +51,18 @@ import org.springframework.web.bind.annotation.RestController;
 public class SalesInvoiceController {
 
     private final SalesInvoiceService service;
+    private final InvoicePdfGenerator pdfGenerator;
+    private final CompanyDataService companyDataService;
+    private final InvoiceTextsService invoiceTextsService;
 
-    public SalesInvoiceController(SalesInvoiceService service) {
+    public SalesInvoiceController(SalesInvoiceService service,
+                                  InvoicePdfGenerator pdfGenerator,
+                                  CompanyDataService companyDataService,
+                                  InvoiceTextsService invoiceTextsService) {
         this.service = service;
+        this.pdfGenerator = pdfGenerator;
+        this.companyDataService = companyDataService;
+        this.invoiceTextsService = invoiceTextsService;
     }
 
     @GetMapping
@@ -89,5 +104,34 @@ public class SalesInvoiceController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void delete(@PathVariable("id") String id) {
         service.deleteDraft(id);
+    }
+
+    /**
+     * Genera y devuelve el PDF de la factura. F4b.
+     *
+     *   - application/pdf inline (los navegadores lo abren incrustado).
+     *   - Filename = invoiceNumber.pdf, o draft-<shortId>.pdf si todavia
+     *     no está validada.
+     *   - Solo facturas accesibles por el TenantContext actual: la
+     *     defensa es la misma de get(id) (filtra por company_id), asi
+     *     que un OWNER no puede sacar PDFs de otras empresas aunque
+     *     sepa el id.
+     */
+    @GetMapping(value = "/{id}/pdf", produces = MediaType.APPLICATION_PDF_VALUE)
+    public ResponseEntity<byte[]> pdf(@PathVariable("id") String id) {
+        SalesInvoice invoice = service.get(id);
+        byte[] bytes = pdfGenerator.generate(invoice,
+                companyDataService.getCurrent(),
+                invoiceTextsService.get());
+
+        String filename = (invoice.invoiceNumber() == null || invoice.invoiceNumber().isBlank())
+                ? "borrador-" + invoice.id().substring(0, 8) + ".pdf"
+                : invoice.invoiceNumber().replaceAll("[^A-Za-z0-9._-]", "_") + ".pdf";
+
+        return ResponseEntity.ok()
+                .contentType(MediaType.APPLICATION_PDF)
+                .header(HttpHeaders.CONTENT_DISPOSITION,
+                        "inline; filename=\"" + filename + "\"")
+                .body(bytes);
     }
 }

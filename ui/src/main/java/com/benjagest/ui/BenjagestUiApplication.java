@@ -2353,11 +2353,8 @@ public class BenjagestUiApplication extends Application {
         pdfBtn.setGraphic(icon("fas-file-pdf"));
         pdfBtn.setDisable(true);
         pdfBtn.setOnAction(ev -> {
-            Alert info = new Alert(Alert.AlertType.INFORMATION,
-                    t("list.dialog.pdf.body"),
-                    ButtonType.OK);
-            info.setHeaderText(t("list.dialog.pdf.title"));
-            info.showAndWait();
+            SalesInvoiceSummary sel = billingTable.getSelectionModel().getSelectedItem();
+            if (sel != null) downloadInvoicePdf(sel);
         });
 
         // Wire up de habilitacion segun la fila seleccionada.
@@ -2405,6 +2402,59 @@ public class BenjagestUiApplication extends Application {
         task.setOnFailed(ev -> showError(t("editor.error.validate_failed.title"),
                 t("list.dialog.validate.failure_body")));
         start(task, "billing-invoice-validate-from-list");
+    }
+
+    /**
+     * Descarga el PDF de la factura seleccionada. Abre FileChooser para
+     * que el usuario elija dónde guardar, y opcionalmente abre el visor
+     * del sistema con Desktop.open() (la opción se ofrece en el alert de
+     * éxito).
+     */
+    private void downloadInvoicePdf(SalesInvoiceSummary sel) {
+        String suggested = (sel.invoiceNumber() == null || sel.invoiceNumber().isBlank())
+                ? "borrador-" + shortId(sel.id()) + ".pdf"
+                : sel.invoiceNumber().replaceAll("[^A-Za-z0-9._-]", "_") + ".pdf";
+
+        javafx.stage.FileChooser chooser = new javafx.stage.FileChooser();
+        chooser.setTitle(t("list.dialog.pdf.save_title"));
+        chooser.setInitialFileName(suggested);
+        chooser.getExtensionFilters().add(
+                new javafx.stage.FileChooser.ExtensionFilter(t("list.dialog.pdf.filter"), "*.pdf"));
+        java.io.File destination = chooser.showSaveDialog(root.getScene().getWindow());
+        if (destination == null) return;
+
+        Task<byte[]> task = new Task<>() {
+            @Override
+            protected byte[] call() throws Exception {
+                return billingApiClient.downloadInvoicePdf(sel.id());
+            }
+        };
+        task.setOnSucceeded(ev -> {
+            try {
+                java.nio.file.Files.write(destination.toPath(), task.getValue());
+                // Tras guardar, ofrecemos abrir con el visor del sistema.
+                Alert ok = new Alert(Alert.AlertType.INFORMATION,
+                        t("list.dialog.pdf.success_prefix") + destination.getName()
+                                + t("list.dialog.pdf.success_suffix"),
+                        ButtonType.YES, ButtonType.NO);
+                ok.setHeaderText(t("list.dialog.pdf.success_title"));
+                Optional<ButtonType> ans = ok.showAndWait();
+                if (ans.isPresent() && ans.get() == ButtonType.YES) {
+                    try {
+                        java.awt.Desktop.getDesktop().open(destination);
+                    } catch (Exception openEx) {
+                        showError(t("list.dialog.pdf.open_failed.title"),
+                                t("list.dialog.pdf.open_failed.body"));
+                    }
+                }
+            } catch (Exception writeEx) {
+                showError(t("list.dialog.pdf.save_failed.title"),
+                        t("list.dialog.pdf.save_failed.body"));
+            }
+        });
+        task.setOnFailed(ev -> showError(t("list.dialog.pdf.download_failed.title"),
+                t("list.dialog.pdf.download_failed.body")));
+        start(task, "billing-invoice-pdf");
     }
 
     private void voidInvoiceFromList(SalesInvoiceSummary sel) {
@@ -4517,6 +4567,18 @@ public class BenjagestUiApplication extends Application {
                 case "list.dialog.void.failure.title" -> "Could not void";
                 case "list.dialog.void.failure.body" -> "Check that the invoice is VALIDATED and does not already have a linked corrective.";
                 case "editor.rectifying.pill_prefix" -> "Corrective for ";
+                // ---- F4b PDF download ----
+                case "list.dialog.pdf.save_title" -> "Save invoice PDF";
+                case "list.dialog.pdf.filter" -> "PDF documents";
+                case "list.dialog.pdf.success_title" -> "PDF saved";
+                case "list.dialog.pdf.success_prefix" -> "Saved as ";
+                case "list.dialog.pdf.success_suffix" -> ". Open it now?";
+                case "list.dialog.pdf.open_failed.title" -> "Could not open the PDF";
+                case "list.dialog.pdf.open_failed.body" -> "Open it manually from the chosen folder.";
+                case "list.dialog.pdf.save_failed.title" -> "Could not save the PDF";
+                case "list.dialog.pdf.save_failed.body" -> "Check folder permissions and try again.";
+                case "list.dialog.pdf.download_failed.title" -> "Could not generate the PDF";
+                case "list.dialog.pdf.download_failed.body" -> "Check that the backend is running and the invoice exists.";
                 default -> key.startsWith("column.") ? key.substring(7) : key;
             };
         }
@@ -4992,6 +5054,18 @@ public class BenjagestUiApplication extends Application {
             case "list.dialog.void.failure.title" -> "No se pudo anular";
             case "list.dialog.void.failure.body" -> "Comprueba que la factura este VALIDATED y que aun no tenga rectificativa enlazada.";
             case "editor.rectifying.pill_prefix" -> "Rectificativa de ";
+            // ---- F4b PDF download ----
+            case "list.dialog.pdf.save_title" -> "Guardar PDF de la factura";
+            case "list.dialog.pdf.filter" -> "Documentos PDF";
+            case "list.dialog.pdf.success_title" -> "PDF guardado";
+            case "list.dialog.pdf.success_prefix" -> "Guardado como ";
+            case "list.dialog.pdf.success_suffix" -> ". ¿Abrirlo ahora?";
+            case "list.dialog.pdf.open_failed.title" -> "No se pudo abrir el PDF";
+            case "list.dialog.pdf.open_failed.body" -> "Abrelo manualmente desde la carpeta elegida.";
+            case "list.dialog.pdf.save_failed.title" -> "No se pudo guardar el PDF";
+            case "list.dialog.pdf.save_failed.body" -> "Comprueba los permisos de la carpeta y vuelve a intentarlo.";
+            case "list.dialog.pdf.download_failed.title" -> "No se pudo generar el PDF";
+            case "list.dialog.pdf.download_failed.body" -> "Comprueba que el backend este corriendo y que la factura exista.";
             default -> key.startsWith("column.") ? key.substring(7) : switch (key) {
                 case "field.name" -> "Nombre";
                 case "field.taxId" -> "NIF/CIF";

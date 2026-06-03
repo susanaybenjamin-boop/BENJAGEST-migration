@@ -158,6 +158,23 @@ public class BillingApiClient {
     }
 
     /**
+     * Descarga el PDF de una factura (F4b). Devuelve los bytes para que
+     * la UI los guarde donde quiera (FileChooser) o los abra en visor
+     * del sistema.
+     */
+    public byte[] downloadInvoicePdf(String id) throws IOException, InterruptedException {
+        HttpRequest.Builder builder = HttpRequest.newBuilder(URI.create(baseUrl + "/billing/invoices/" + id + "/pdf"))
+                .timeout(Duration.ofSeconds(20))
+                .GET();
+        AuthSession.get().authorize(builder);
+        HttpResponse<byte[]> response = httpClient.send(builder.build(), HttpResponse.BodyHandlers.ofByteArray());
+        if (response.statusCode() < 200 || response.statusCode() >= 300) {
+            throw new IOException("HTTP " + response.statusCode() + " al descargar el PDF");
+        }
+        return response.body();
+    }
+
+    /**
      * Anulacion con vinculo: el server crea un borrador RECTIFYING enlazado
      * a la factura original (que sigue VALIDATED). Devolvemos el header del
      * borrador para que la UI lo pueda abrir o mostrar su id.
