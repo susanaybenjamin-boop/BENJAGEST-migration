@@ -200,6 +200,27 @@ public class BillingApiClient {
         ensureOk(response);
     }
 
+    /**
+     * Envia la factura al email del cliente (o al override que se
+     * pase). Devuelve "recipient" leido del JSON de respuesta para
+     * que la UI pueda mostrar "Enviada a foo@bar".
+     */
+    public String sendInvoiceByEmail(String id, String recipientOverrideOrNull) throws IOException, InterruptedException {
+        StringBuilder body = new StringBuilder("{");
+        if (recipientOverrideOrNull != null && !recipientOverrideOrNull.isBlank()) {
+            body.append(field("recipient", recipientOverrideOrNull.trim()));
+        }
+        body.append("}");
+        HttpResponse<String> response = sendAuthorized(HttpRequest.newBuilder(
+                URI.create(baseUrl + "/billing/invoices/" + id + "/email"))
+                .timeout(Duration.ofSeconds(30))
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(body.toString())));
+        ensureOk(response);
+        String recipient = textField(response.body(), "recipient");
+        return recipient.isEmpty() ? null : recipient;
+    }
+
     private SalesInvoiceSummary parseInvoiceHeader(String json) {
         // Toma SOLO los campos del header (los de antes de "lines"), por
         // si vienen lineas embebidas con campos que colisionan en regex.

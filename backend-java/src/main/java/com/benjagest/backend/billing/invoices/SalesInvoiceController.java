@@ -64,6 +64,7 @@ public class SalesInvoiceController {
     private final VerifactuRegistryService verifactuRegistryService;
     private final VerifactuConfigRepository verifactuConfigRepository;
     private final InvoiceStorageService storageService;
+    private final com.benjagest.backend.billing.email.InvoiceEmailService emailService;
 
     public SalesInvoiceController(SalesInvoiceService service,
                                   InvoicePdfGenerator pdfGenerator,
@@ -72,7 +73,8 @@ public class SalesInvoiceController {
                                   InvoiceTextsService invoiceTextsService,
                                   VerifactuRegistryService verifactuRegistryService,
                                   VerifactuConfigRepository verifactuConfigRepository,
-                                  InvoiceStorageService storageService) {
+                                  InvoiceStorageService storageService,
+                                  com.benjagest.backend.billing.email.InvoiceEmailService emailService) {
         this.service = service;
         this.pdfGenerator = pdfGenerator;
         this.qrService = qrService;
@@ -81,6 +83,7 @@ public class SalesInvoiceController {
         this.verifactuRegistryService = verifactuRegistryService;
         this.verifactuConfigRepository = verifactuConfigRepository;
         this.storageService = storageService;
+        this.emailService = emailService;
     }
 
     @GetMapping
@@ -122,6 +125,33 @@ public class SalesInvoiceController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void delete(@PathVariable("id") String id) {
         service.deleteDraft(id);
+    }
+
+    /**
+     * Envia la factura por email al cliente — slice F-EMAIL.
+     *
+     * Body:
+     *   { "recipient": "opcional@override", "subject": "opcional",
+     *     "body": "opcional" }
+     *
+     * Si no se manda recipient, se busca el email del primary_contact
+     * del cliente. Si no hay y no se manda override, 400.
+     *
+     * Devuelve un acuse mini: a quien se envio, asunto, nombre del
+     * adjunto. Util para la UI mostrar "Factura enviada a X" sin
+     * tener que volver a consultar.
+     */
+    @PostMapping("/{id}/email")
+    public com.benjagest.backend.billing.email.InvoiceEmailService.SentReceipt sendByEmail(
+            @PathVariable("id") String id,
+            @RequestBody(required = false) SendInvoiceEmailRequest request) {
+        String recipient = request == null ? null : request.recipient();
+        String subject = request == null ? null : request.subject();
+        String body = request == null ? null : request.body();
+        return emailService.send(id, recipient, subject, body);
+    }
+
+    public record SendInvoiceEmailRequest(String recipient, String subject, String body) {
     }
 
     /**
