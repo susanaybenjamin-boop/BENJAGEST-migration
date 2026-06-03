@@ -280,6 +280,76 @@ public class VerifactuRegistryRepository {
                 signatureXml, invoiceId, mode, companyId);
     }
 
+    /**
+     * Filas SIGNED candidatas a envio AEAT (VF3-SOAP). Solo aplican
+     * empresas con modalidad VERIFACTU; el JOIN con companies lo
+     * filtra. Solo devuelve PROD (la modalidad VeriFactu real solo
+     * existe en PROD; TEST queda como sandbox local).
+     */
+    public List<PendingForSending> findPendingForSending(int limit) {
+        return jdbcTemplate.query("""
+                SELECT r.invoice_id, r.mode, r.company_id,
+                       c.tax_identifier, c.legal_name,
+                       r.hash_current, r.signature_data, r.retry_count
+                  FROM verifactu_registry r
+                  JOIN companies c ON c.id = r.company_id
+                 WHERE r.status = 'SIGNED'
+                   AND c.verifactu_modality = 'VERIFACTU'
+                   AND r.retry_count < 5
+                 ORDER BY r.generated_at ASC
+                 LIMIT ?
+                """,
+                (rs, rowNum) -> new PendingForSending(
+                        rs.getString("invoice_id"),
+                        rs.getString("mode"),
+                        rs.getString("company_id"),
+                        rs.getString("tax_identifier"),
+                        rs.getString("legal_name"),
+                        rs.getString("hash_current"),
+                        rs.getString("signature_data"),
+                        rs.getInt("retry_count")),
+                Math.min(Math.max(limit, 1), 50));
+    }
+
+    public int markSent(String invoiceId, String mode, String companyId) {
+        return jdbcTemplate.update("""
+                UPDATE verifactu_registry
+                   SET status = 'SENT',
+                       sent_at = CURRENT_TIMESTAMP
+                 WHERE invoice_id = ? AND mode = ? AND company_id = ?
+                """, invoiceId, mode, companyId);
+    }
+
+    public int markAcknowledged(String invoiceId, String mode, String companyId) {
+        return jdbcTemplate.update("""
+                UPDATE verifactu_registry
+                   SET status = 'ACKNOWLEDGED',
+                       ack_at = CURRENT_TIMESTAMP
+                 WHERE invoice_id = ? AND mode = ? AND company_id = ?
+                """, invoiceId, mode, companyId);
+    }
+
+    public int markError(String invoiceId, String mode, String companyId, String errorMessage) {
+        return jdbcTemplate.update("""
+                UPDATE verifactu_registry
+                   SET status = 'ERROR',
+                       retry_count = retry_count + 1,
+                       last_error = ?
+                 WHERE invoice_id = ? AND mode = ? AND company_id = ?
+                """, errorMessage, invoiceId, mode, companyId);
+    }
+
+    public record PendingForSending(
+            String invoiceId,
+            String mode,
+            String companyId,
+            String taxIdentifier,
+            String companyLegalName,
+            String hashCurrent,
+            String signatureData,
+            int retryCount
+    ) {}
+
     public record PendingForSigning(
             String invoiceId,
             String mode,
