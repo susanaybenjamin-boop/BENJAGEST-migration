@@ -226,6 +226,74 @@ public class VerifactuRegistryRepository {
 
     public record CompanyChainRef(String companyId, String mode) {}
 
+    /**
+     * Filas PENDING (sin firma) candidatas a reintento por VF4. Trae los
+     * mismos campos canonicos que necesita el firmador para reconstruir
+     * el XML del registro identicamente al que se intento firmar
+     * originalmente.
+     */
+    public List<PendingForSigning> findPendingForSigning(int limit) {
+        return jdbcTemplate.query("""
+                SELECT r.invoice_id, r.mode, r.company_id,
+                       c.tax_identifier,
+                       i.invoice_number, i.invoice_date,
+                       i.vat_total, i.total,
+                       r.hash_current, r.hash_previous, r.generated_at
+                  FROM verifactu_registry r
+                  JOIN companies c ON c.id = r.company_id
+                  JOIN sales_invoices i ON i.id = r.invoice_id
+                 WHERE r.status = 'PENDING'
+                 ORDER BY r.generated_at ASC
+                 LIMIT ?
+                """,
+                (rs, rowNum) -> new PendingForSigning(
+                        rs.getString("invoice_id"),
+                        rs.getString("mode"),
+                        rs.getString("company_id"),
+                        rs.getString("tax_identifier"),
+                        rs.getString("invoice_number"),
+                        rs.getDate("invoice_date") == null ? null : rs.getDate("invoice_date").toLocalDate(),
+                        rs.getBigDecimal("vat_total"),
+                        rs.getBigDecimal("total"),
+                        rs.getString("hash_current"),
+                        rs.getString("hash_previous"),
+                        rs.getTimestamp("generated_at") == null ? null
+                                : OffsetDateTime.ofInstant(rs.getTimestamp("generated_at").toInstant(), ZoneOffset.UTC)),
+                Math.min(Math.max(limit, 1), 200));
+    }
+
+    /**
+     * Setter de firma con companyId explicito (para VF4: el job no
+     * tiene TenantContext).
+     */
+    public int setSignatureForCompany(String invoiceId, String mode,
+                                       String companyId, String signatureXml) {
+        return jdbcTemplate.update("""
+                UPDATE verifactu_registry
+                   SET signature_data = ?,
+                       signed_at = CURRENT_TIMESTAMP,
+                       status = 'SIGNED'
+                 WHERE invoice_id = ?
+                   AND mode = ?
+                   AND company_id = ?
+                """,
+                signatureXml, invoiceId, mode, companyId);
+    }
+
+    public record PendingForSigning(
+            String invoiceId,
+            String mode,
+            String companyId,
+            String taxIdentifier,
+            String invoiceNumber,
+            LocalDate invoiceDate,
+            BigDecimal vatTotal,
+            BigDecimal total,
+            String hashCurrent,
+            String hashPrevious,
+            OffsetDateTime generatedAt
+    ) {}
+
     private ChainRow mapChainRow(ResultSet rs, int rowNum) throws SQLException {
         Date invDate = rs.getDate("invoice_date");
         Timestamp gen = rs.getTimestamp("generated_at");

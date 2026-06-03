@@ -4,6 +4,7 @@ import com.benjagest.backend.billing.verifactu.VerifactuConfig;
 import com.benjagest.backend.billing.verifactu.VerifactuConfigRepository;
 import com.benjagest.backend.certificates.Certificate;
 import com.benjagest.backend.certificates.CertificateRepository;
+import org.springframework.jdbc.core.JdbcTemplate;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.StringReader;
@@ -84,11 +85,14 @@ public class XmlSignerService {
 
     private final VerifactuConfigRepository configRepository;
     private final CertificateRepository certificateRepository;
+    private final JdbcTemplate jdbcTemplate;
 
     public XmlSignerService(VerifactuConfigRepository configRepository,
-                            CertificateRepository certificateRepository) {
+                            CertificateRepository certificateRepository,
+                            JdbcTemplate jdbcTemplate) {
         this.configRepository = configRepository;
         this.certificateRepository = certificateRepository;
+        this.jdbcTemplate = jdbcTemplate;
     }
 
     /**
@@ -109,7 +113,32 @@ public class XmlSignerService {
         if (config == null || !StringUtils.hasText(config.certificateId())) {
             return Optional.empty();
         }
-        Certificate cert = certificateRepository.findById(config.certificateId()).orElse(null);
+        return signWithCertId(xmlContent, config.certificateId());
+    }
+
+    /**
+     * Variante para jobs sin TenantContext (VF4). Lee el certificateId
+     * directamente del companyId mediante consulta directa.
+     */
+    public Optional<String> signForCompany(String xmlContent, String companyId) {
+        if (!StringUtils.hasText(xmlContent) || !StringUtils.hasText(companyId)) {
+            return Optional.empty();
+        }
+        String certId = lookupCertificateIdForCompany(companyId);
+        if (!StringUtils.hasText(certId)) return Optional.empty();
+        return signWithCertId(xmlContent, certId);
+    }
+
+    private String lookupCertificateIdForCompany(String companyId) {
+        java.util.List<String> ids = jdbcTemplate.query(
+                "SELECT verifactu_certificate_id FROM companies WHERE id = ?",
+                (rs, rowNum) -> rs.getString(1),
+                companyId);
+        return ids.isEmpty() ? null : ids.get(0);
+    }
+
+    private Optional<String> signWithCertId(String xmlContent, String certificateId) {
+        Certificate cert = certificateRepository.findById(certificateId).orElse(null);
         if (cert == null || !StringUtils.hasText(cert.certificateDataBase64())) {
             return Optional.empty();
         }
@@ -133,7 +162,7 @@ public class XmlSignerService {
         } catch (Exception ex) {
             org.slf4j.LoggerFactory.getLogger(XmlSignerService.class)
                     .warn("No se pudo firmar el XML (cert={}): {}",
-                            config.certificateId(), ex.getMessage());
+                            certificateId, ex.getMessage());
             return Optional.empty();
         }
     }
