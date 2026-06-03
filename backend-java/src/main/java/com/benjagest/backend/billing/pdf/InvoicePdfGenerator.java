@@ -91,8 +91,10 @@ public class InvoicePdfGenerator {
     public byte[] generate(SalesInvoice invoice, CompanyDataResponse company, InvoiceTexts texts) {
         try {
             ByteArrayOutputStream bos = new ByteArrayOutputStream();
-            // bottomMargin grande para reservar la zona del footer fijo.
-            Document document = new Document(PageSize.A4, 36, 36, 50, FOOTER_HEIGHT + 30);
+            // Top margin reducido (30) para subir el título cerca del
+            // borde superior. bottomMargin sigue grande (FOOTER_HEIGHT)
+            // para reservar la zona del footer fijo con totales+legales.
+            Document document = new Document(PageSize.A4, 36, 36, 30, FOOTER_HEIGHT + 30);
             PdfWriter writer = PdfWriter.getInstance(document, bos);
             writer.setPageEvent(new FooterEvent(invoice, company, texts));
             document.open();
@@ -126,34 +128,65 @@ public class InvoicePdfGenerator {
     }
 
     private void addTopBlock(Document document, SalesInvoice invoice, CompanyDataResponse company) throws DocumentException {
-        Font fLabel = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 9, INK_LIGHT);
         Font fEmpName = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 12, INK);
         Font fMeta = FontFactory.getFont(FontFactory.HELVETICA, 9, INK_LIGHT);
-        Font fMetaRight = FontFactory.getFont(FontFactory.HELVETICA, 9, INK_LIGHT);
         Font fNumber = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 14, INK);
-        Font fCustomerName = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 11, INK);
+        Font fCustomerName = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 12, INK);
 
-        // Tabla cabecera con 3 columnas: emisor (izq, con logo encima) |
-        // QR centrado | cliente (der, con nº/fecha encima). Anchos 40/20/40
-        // para dar más sitio a los dos bloques de texto y compactar el QR
-        // en el centro como pidió el usuario.
+        // Tabla cabecera con 3 columnas y DOS filas, para que el nombre
+        // del emisor (col izq, fila 2) y el nombre del cliente (col der,
+        // fila 2) caigan a la misma altura visual. El "logo placeholder"
+        // y el "Nº + Fecha" ocupan la fila 1, equilibrando alturas.
+        //
+        //   ┌──────────────┬───────┬──────────────────────┐
+        //   │ [Logo]       │       │   Nº F-2026-0001     │  ← fila 1
+        //   │              │       │   Fecha: 02/06/2026  │
+        //   ├──────────────┼───────┼──────────────────────┤
+        //   │ NombreEmisor │ [QR]  │   NombreCliente      │  ← fila 2
+        //   │ NIF/dir/...  │       │                      │
+        //   └──────────────┴───────┴──────────────────────┘
         PdfPTable top = new PdfPTable(3);
         top.setWidthPercentage(100);
         top.setWidths(new float[]{40f, 20f, 40f});
-        top.setSpacingAfter(14f);
+        top.setSpacingAfter(12f);
 
-        // --- Izquierda: emisor ---
-        PdfPCell leftCell = new PdfPCell();
-        leftCell.setBorder(Rectangle.NO_BORDER);
-        leftCell.setPadding(2f);
-        leftCell.setVerticalAlignment(Element.ALIGN_TOP);
+        // === FILA 1 ===
 
-        // Placeholder logo (caja vacía). Cuando companies.logo_path
-        // exista, aquí va Image.getInstance(...).
-        Paragraph logoSlot = new Paragraph(" ", fMeta);
-        logoSlot.setSpacingAfter(6f);
-        leftCell.addElement(logoSlot);
+        // Col 1: hueco para el logo (cuando companies.logo_path exista,
+        // aquí va un Image.getInstance(...)). Altura mínima fija para que
+        // se equilibre con el numAndDate del lado derecho.
+        PdfPCell logoCell = new PdfPCell(new Phrase(" ", fMeta));
+        logoCell.setBorder(Rectangle.NO_BORDER);
+        logoCell.setMinimumHeight(50f);
+        top.addCell(logoCell);
 
+        // Col 2: vacío en fila 1.
+        PdfPCell emptyCenter = new PdfPCell(new Phrase(" ", fMeta));
+        emptyCenter.setBorder(Rectangle.NO_BORDER);
+        top.addCell(emptyCenter);
+
+        // Col 3: Nº + Fecha + notes (si rectificativa), alineado derecha.
+        PdfPCell numCell = new PdfPCell();
+        numCell.setBorder(Rectangle.NO_BORDER);
+        numCell.setPadding(2f);
+        Paragraph numAndDate = new Paragraph();
+        numAndDate.setAlignment(Element.ALIGN_RIGHT);
+        numAndDate.add(new Phrase("Nº " + nz(invoice.invoiceNumber() == null ? "(borrador)" : invoice.invoiceNumber()) + "\n", fNumber));
+        numAndDate.add(new Phrase("Fecha: " + safe(invoice.invoiceDate(), DATE_DM_Y) + "\n", fMeta));
+        if ("RECTIFYING".equals(invoice.invoiceType()) && nonBlank(invoice.notes())) {
+            numAndDate.add(new Phrase(invoice.notes() + "\n", fMeta));
+        }
+        numCell.addElement(numAndDate);
+        top.addCell(numCell);
+
+        // === FILA 2 ===
+
+        // Col 1: emisor (nombre en primera línea para alinear con el del
+        // cliente del lado derecho).
+        PdfPCell empCell = new PdfPCell();
+        empCell.setBorder(Rectangle.NO_BORDER);
+        empCell.setPadding(2f);
+        empCell.setVerticalAlignment(Element.ALIGN_TOP);
         Paragraph emp = new Paragraph();
         emp.setAlignment(Element.ALIGN_LEFT);
         emp.add(new Phrase(nz(company.legalName()) + "\n", fEmpName));
@@ -172,47 +205,27 @@ public class InvoicePdfGenerator {
         if (nonBlank(company.registryInformation())) {
             emp.add(new Phrase(company.registryInformation() + "\n", fMeta));
         }
-        leftCell.addElement(emp);
-        top.addCell(leftCell);
+        empCell.addElement(emp);
+        top.addCell(empCell);
 
-        // --- Centro: QR placeholder ---
-        PdfPCell centerCell = new PdfPCell();
-        centerCell.setBorder(Rectangle.NO_BORDER);
-        centerCell.setPadding(2f);
-        centerCell.setHorizontalAlignment(Element.ALIGN_CENTER);
-        centerCell.setVerticalAlignment(Element.ALIGN_TOP);
-        // Pequeño spacer arriba para que el QR no quede pegado al título.
-        Paragraph spacerCenter = new Paragraph(" ", fMeta);
-        spacerCenter.setSpacingAfter(4f);
-        centerCell.addElement(spacerCenter);
-        centerCell.addElement(qrPlaceholder());
-        top.addCell(centerCell);
+        // Col 2: QR centrado.
+        PdfPCell qrCell = new PdfPCell();
+        qrCell.setBorder(Rectangle.NO_BORDER);
+        qrCell.setPadding(2f);
+        qrCell.setHorizontalAlignment(Element.ALIGN_CENTER);
+        qrCell.setVerticalAlignment(Element.ALIGN_TOP);
+        qrCell.addElement(qrPlaceholder());
+        top.addCell(qrCell);
 
-        // --- Derecha: nº+fecha y cliente, TODO alineado a la derecha ---
-        PdfPCell rightCell = new PdfPCell();
-        rightCell.setBorder(Rectangle.NO_BORDER);
-        rightCell.setPadding(2f);
-        rightCell.setVerticalAlignment(Element.ALIGN_TOP);
-
-        Paragraph numAndDate = new Paragraph();
-        numAndDate.setAlignment(Element.ALIGN_RIGHT);
-        numAndDate.add(new Phrase("Nº " + nz(invoice.invoiceNumber() == null ? "(borrador)" : invoice.invoiceNumber()) + "\n", fNumber));
-        numAndDate.add(new Phrase("Fecha: " + safe(invoice.invoiceDate(), DATE_DM_Y) + "\n", fMetaRight));
-        if ("RECTIFYING".equals(invoice.invoiceType()) && nonBlank(invoice.notes())) {
-            numAndDate.add(new Phrase(invoice.notes() + "\n", fMetaRight));
-        }
-        numAndDate.setSpacingAfter(14f);
-        rightCell.addElement(numAndDate);
-
-        Paragraph custLabel = new Paragraph("CLIENTE", fLabel);
-        custLabel.setAlignment(Element.ALIGN_RIGHT);
-        rightCell.addElement(custLabel);
-
+        // Col 3: cliente (nombre en primera línea, alineado derecha).
+        PdfPCell custCell = new PdfPCell();
+        custCell.setBorder(Rectangle.NO_BORDER);
+        custCell.setPadding(2f);
+        custCell.setVerticalAlignment(Element.ALIGN_TOP);
         Paragraph custName = new Paragraph(nz(invoice.customerLegalName()), fCustomerName);
         custName.setAlignment(Element.ALIGN_RIGHT);
-        rightCell.addElement(custName);
-
-        top.addCell(rightCell);
+        custCell.addElement(custName);
+        top.addCell(custCell);
 
         document.add(top);
         document.add(divider());
