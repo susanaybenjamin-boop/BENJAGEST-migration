@@ -64,6 +64,47 @@ La app se diseñó bilingüe desde C1 (botón EN/ES en el header → `language` 
 
 ### VeriFactu / Facturación (legal obligatoria)
 
+#### 📜 Base legal SIF/VeriFactu (confirmada 2026-06-03)
+
+> **Marco normativo vigente** — todas las decisiones de este bloque se toman conforme a:
+>
+> - **[Real Decreto 1007/2023, de 5 de diciembre](https://www.boe.es/buscar/act.php?id=BOE-A-2023-24840)** — Reglamento de los Sistemas Informáticos de Facturación (SIF). Origen: Ley 11/2021 antifraude.
+> - **[Orden HAC/1177/2024, de 17 de octubre](https://www.boe.es/diario_boe/txt.php?id=BOE-A-2024-22138)** — Especificaciones técnicas, funcionales y de contenido. En vigor 29/10/2024.
+> - **FAQs AEAT**: [Registro de eventos](https://sede.agenciatributaria.gob.es/Sede/iva/sistemas-informaticos-facturacion-verifactu/preguntas-frecuentes/caracteristicas-requisitos-sif-registro-eventos_.html) · [Integridad e inalterabilidad](https://sede.agenciatributaria.gob.es/Sede/iva/sistemas-informaticos-facturacion-verifactu/preguntas-frecuentes/caracteristicas-requisitos-sif-integridad-inalterabilidad.html) · [Huella/hash](https://sede.agenciatributaria.gob.es/Sede/iva/sistemas-informaticos-facturacion-verifactu/preguntas-frecuentes/huella-hash.html).
+>
+> **Plazos** — contribuyentes obligados desde **01/07/2025**; fabricantes (nosotros) **9 meses desde 29/10/2024** (~29/07/2025). A junio 2026 BENJAGEST ya debería cumplir.
+>
+> **Dos modalidades legales** (no hay un "OFF" libre):
+>
+> | Modalidad | Hash facturas | QR factura | Envío AEAT tiempo real | Registro de Eventos |
+> |---|---|---|---|---|
+> | **VeriFactu** | Sí | Sí | Sí | **NO** (AEAT ya tiene todo) |
+> | **No VeriFactu** | Sí | Sí | No (a petición) | **Sí, obligatorio + firmado** |
+>
+> El antiguo modo `OFF` que tenemos en `verifactu_config.mode` es **ilegal** salvo empresa exenta. Hay que retirarlo y dejar dos modalidades.
+>
+> **9 eventos obligatorios** en NO VeriFactu (Orden HAC/1177/2024, FAQ AEAT):
+>
+> 1. Inicio del sistema como "NO VERI*FACTU".
+> 2. Apagado del sistema como "NO VERI*FACTU".
+> 3. Lanzamiento del proceso de detección de anomalías en **registros de facturación**.
+> 4. Detección de anomalías de integridad/inalterabilidad/trazabilidad en **registros de facturación**.
+> 5. Lanzamiento del proceso de detección de anomalías en **registros de eventos**.
+> 6. Detección de anomalías de integridad/inalterabilidad/trazabilidad en **registros de eventos**.
+> 7. Restauración de copia de seguridad gestionada por el SIF.
+> 8. Exportación de registros de facturación de un período.
+> 9. Exportación de registros de eventos de un período.
+>
+> **Extra**: resumen cada 6 horas de operación + uno justo antes de apagar el sistema. Cada evento **firmado electrónicamente con hash encadenado idéntico al de facturas** (no se mezclan cadenas — una cadena para facturas, otra para eventos). Los eventos **no se envían a AEAT** salvo que los pida; se conservan en el SIF durante el período de prescripción tributaria.
+>
+> **Estado actual BENJAGEST vs ley** (junio 2026):
+>
+> - ✅ Hash facturas VF1/VF2 (implementado, cadena reproducible, /verify funcional).
+> - ❌ `verifactu_config.mode='OFF'` como opción libre — **incumple**. Sustituir por `VeriFactu`/`NoVeriFactu` (slice VF-OFF-DEPRECATE).
+> - ❌ Registro de Eventos del SIF — **no existe**. Es el slice VF-EVENTS. En CONTENDO estaba como pestaña Auditoría con hash encadenado, probado en TEST con AEAT (~25 facturas hasta que aceptaron el hash+QR). Migrar la lógica JS→Java para tener paridad probada.
+> - ❌ QR oficial AEAT — hoy es placeholder. Pintar el QR real definido por la Orden (URL al servicio de validación AEAT con CIF emisor + nº factura + fecha + importe). Necesario en ambas modalidades (slice VF3-QR).
+> - ❌ Detección de anomalías (eventos 3 y 5) — job que recorre las cadenas y emite alerta+evento si rompe (slice VF-ANOMALY).
+
 > **F1 cerrado (2026-06-01):** dominio de facturas dedicado en `billing/invoices/` (SalesInvoice + InvoiceLine + Repository + Service + Controller). Antes vivía mezclado dentro de WorkspaceRepository genérico; ahora tiene su propio paquete con endpoints `/api/billing/invoices`, lógica de transición DRAFT→VALIDATED, cálculo de totales (subtotal, IVA, retención, total) con BigDecimal HALF_UP y enganche a SeriesService para emitir el número al validar.
 >
 > **F2/F3/F5 cerrado (2026-06-01, i18n 2026-06-02):** Pantalla "Facturación" en la UI con sub-tabs estilo CONTENDO (Dashboard/Facturas/Configuración), reutilizando `settings-tabs` y `settings-tab-body` sin tocar paletas. V13 + backend `billing/verifactu/` (VerifactuConfig + Service + Controller con GET/PUT `/api/billing/verifactu-config`, defensa PROD-sin-cert → 400). UI: header con icono + botón "Nueva factura" (placeholder hasta F4), tab Facturas con filtros (status/cobro) + tabla, tab Configuración con modo VeriFactu + selector certificado + pie + listado de series read-only. BillingApiClient en `service/`.
