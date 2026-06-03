@@ -2358,12 +2358,16 @@ public class BenjagestUiApplication extends Application {
         });
 
         // Wire up de habilitacion segun la fila seleccionada.
+        // Anular solo se activa para STANDARD VALIDATED — una rectificativa
+        // YA es el acto legal de anular, anularla a su vez no tiene sentido
+        // (y el backend lo rechazaría igual con 409).
         billingTable.getSelectionModel().selectedItemProperty().addListener((obs, oldV, newV) -> {
             boolean isDraft = newV != null && "DRAFT".equals(newV.status());
             boolean isValidated = newV != null && "VALIDATED".equals(newV.status());
+            boolean isRectifying = newV != null && "RECTIFYING".equals(newV.invoiceType());
             validateRowBtn.setDisable(!isDraft);
             deleteDraftBtn.setDisable(!isDraft);
-            voidBtn.setDisable(!isValidated);
+            voidBtn.setDisable(!isValidated || isRectifying);
             pdfBtn.setDisable(!isValidated);
         });
 

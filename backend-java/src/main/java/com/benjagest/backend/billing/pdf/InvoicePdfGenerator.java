@@ -125,21 +125,24 @@ public class InvoicePdfGenerator {
         Font fLabel = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 9, INK_LIGHT);
         Font fEmpName = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 12, INK);
         Font fMeta = FontFactory.getFont(FontFactory.HELVETICA, 9, INK_LIGHT);
+        Font fMetaRight = FontFactory.getFont(FontFactory.HELVETICA, 9, INK_LIGHT);
         Font fNumber = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 14, INK);
         Font fCustomerName = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 11, INK);
 
-        // Una tabla con 2 columnas iguales. Cada celda es un sub-bloque
-        // (emisor con logo placeholder + datos + QR; cliente con nº+fecha
-        // encima + datos).
-        PdfPTable top = new PdfPTable(2);
+        // Tabla cabecera con 3 columnas: emisor (izq, con logo encima) |
+        // QR centrado | cliente (der, con nº/fecha encima). Anchos 40/20/40
+        // para dar más sitio a los dos bloques de texto y compactar el QR
+        // en el centro como pidió el usuario.
+        PdfPTable top = new PdfPTable(3);
         top.setWidthPercentage(100);
-        top.setWidths(new float[]{50f, 50f});
+        top.setWidths(new float[]{40f, 20f, 40f});
         top.setSpacingAfter(14f);
 
         // --- Izquierda: emisor ---
         PdfPCell leftCell = new PdfPCell();
         leftCell.setBorder(Rectangle.NO_BORDER);
         leftCell.setPadding(2f);
+        leftCell.setVerticalAlignment(Element.ALIGN_TOP);
 
         // Placeholder logo (caja vacía). Cuando companies.logo_path
         // exista, aquí va Image.getInstance(...).
@@ -148,6 +151,7 @@ public class InvoicePdfGenerator {
         leftCell.addElement(logoSlot);
 
         Paragraph emp = new Paragraph();
+        emp.setAlignment(Element.ALIGN_LEFT);
         emp.add(new Phrase(nz(company.legalName()) + "\n", fEmpName));
         if (nonBlank(company.taxIdentifier())) {
             emp.add(new Phrase("NIF: " + company.taxIdentifier() + "\n", fMeta));
@@ -165,32 +169,44 @@ public class InvoicePdfGenerator {
             emp.add(new Phrase(company.registryInformation() + "\n", fMeta));
         }
         leftCell.addElement(emp);
-
-        // QR placeholder centrado debajo del emisor. Caja gris con texto
-        // "QR · VeriFactu (VF3)" hasta que generemos el QR real.
-        leftCell.addElement(qrPlaceholder());
-
         top.addCell(leftCell);
 
-        // --- Derecha: nº+fecha y cliente ---
+        // --- Centro: QR placeholder ---
+        PdfPCell centerCell = new PdfPCell();
+        centerCell.setBorder(Rectangle.NO_BORDER);
+        centerCell.setPadding(2f);
+        centerCell.setHorizontalAlignment(Element.ALIGN_CENTER);
+        centerCell.setVerticalAlignment(Element.ALIGN_TOP);
+        // Pequeño spacer arriba para que el QR no quede pegado al título.
+        Paragraph spacerCenter = new Paragraph(" ", fMeta);
+        spacerCenter.setSpacingAfter(4f);
+        centerCell.addElement(spacerCenter);
+        centerCell.addElement(qrPlaceholder());
+        top.addCell(centerCell);
+
+        // --- Derecha: nº+fecha y cliente, TODO alineado a la derecha ---
         PdfPCell rightCell = new PdfPCell();
         rightCell.setBorder(Rectangle.NO_BORDER);
         rightCell.setPadding(2f);
+        rightCell.setVerticalAlignment(Element.ALIGN_TOP);
 
         Paragraph numAndDate = new Paragraph();
         numAndDate.setAlignment(Element.ALIGN_RIGHT);
         numAndDate.add(new Phrase("Nº " + nz(invoice.invoiceNumber() == null ? "(borrador)" : invoice.invoiceNumber()) + "\n", fNumber));
-        numAndDate.add(new Phrase("Fecha: " + safe(invoice.invoiceDate(), DATE_DM_Y) + "\n", fMeta));
+        numAndDate.add(new Phrase("Fecha: " + safe(invoice.invoiceDate(), DATE_DM_Y) + "\n", fMetaRight));
         if ("RECTIFYING".equals(invoice.invoiceType()) && nonBlank(invoice.notes())) {
-            numAndDate.add(new Phrase(invoice.notes() + "\n", fMeta));
+            numAndDate.add(new Phrase(invoice.notes() + "\n", fMetaRight));
         }
         numAndDate.setSpacingAfter(14f);
         rightCell.addElement(numAndDate);
 
-        Paragraph cust = new Paragraph();
-        cust.add(new Phrase("CLIENTE\n", fLabel));
-        cust.add(new Phrase(nz(invoice.customerLegalName()) + "\n", fCustomerName));
-        rightCell.addElement(cust);
+        Paragraph custLabel = new Paragraph("CLIENTE", fLabel);
+        custLabel.setAlignment(Element.ALIGN_RIGHT);
+        rightCell.addElement(custLabel);
+
+        Paragraph custName = new Paragraph(nz(invoice.customerLegalName()), fCustomerName);
+        custName.setAlignment(Element.ALIGN_RIGHT);
+        rightCell.addElement(custName);
 
         top.addCell(rightCell);
 
@@ -200,17 +216,21 @@ public class InvoicePdfGenerator {
 
     private PdfPTable qrPlaceholder() {
         PdfPTable t = new PdfPTable(1);
-        t.setWidthPercentage(45f);
-        t.setHorizontalAlignment(Element.ALIGN_LEFT);
+        // Ancho moderado (90% del contenedor) para dejar respiración en
+        // los laterales de la columna central.
+        t.setWidthPercentage(90f);
+        t.setHorizontalAlignment(Element.ALIGN_CENTER);
         PdfPCell c = new PdfPCell();
-        c.setFixedHeight(80f);
+        c.setFixedHeight(75f);
         c.setBorder(Rectangle.BOX);
         c.setBorderColor(DIVIDER);
         c.setBackgroundColor(new Color(245, 248, 252));
         c.setHorizontalAlignment(Element.ALIGN_CENTER);
         c.setVerticalAlignment(Element.ALIGN_MIDDLE);
-        Font fSmall = FontFactory.getFont(FontFactory.HELVETICA, 8, INK_LIGHT);
-        c.addElement(new Phrase("QR · VeriFactu (VF3)", fSmall));
+        Font fSmall = FontFactory.getFont(FontFactory.HELVETICA, 7, INK_LIGHT);
+        Paragraph p = new Paragraph("QR\nVeriFactu\n(VF3)", fSmall);
+        p.setAlignment(Element.ALIGN_CENTER);
+        c.addElement(p);
         t.addCell(c);
         return t;
     }
