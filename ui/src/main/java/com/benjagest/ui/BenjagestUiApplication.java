@@ -4110,6 +4110,17 @@ public class BenjagestUiApplication extends Application {
     }
 
     private void saveVerifactuConfig() {
+        saveVerifactuConfig(true);
+    }
+
+    /**
+     * @param showSuccessAlert true desde el botón "Guardar VeriFactu"
+     *        (feedback explícito); false desde acciones que ya tienen
+     *        su propio feedback (p.ej. tras elegir carpeta en el
+     *        DirectoryChooser — molestaría un alert genérico encima
+     *        del propio acto de elegir).
+     */
+    private void saveVerifactuConfig(boolean showSuccessAlert) {
         String modality = verifactuModalityCombo.getValue();
         String mode = verifactuModeCombo.getValue();
         CertificateOption cert = verifactuCertCombo.getValue();
@@ -4124,8 +4135,7 @@ public class BenjagestUiApplication extends Application {
             }
         };
         task.setOnSucceeded(event -> {
-            // El mensaje de éxito menciona la modalidad (lo legal) y, si
-            // es VeriFactu, también el environment del cliente AEAT.
+            if (!showSuccessAlert) return;
             String detail = "VERIFACTU".equals(modality)
                     ? localizedModality(modality) + " (" + mode + ")"
                     : localizedModality(modality);
@@ -4171,6 +4181,12 @@ public class BenjagestUiApplication extends Application {
         java.io.File selected = chooser.showDialog(root.getScene().getWindow());
         if (selected != null) {
             verifactuStorageRootField.setText(selected.getAbsolutePath());
+            // Persistencia automática: el usuario eligió una carpeta,
+            // espera que quede grabada. Si solo dejásemos el texto en
+            // el campo, al salir de la pantalla y volver se perdería.
+            // Sin alert porque el propio acto de elegir ya es feedback
+            // visual suficiente.
+            saveVerifactuConfig(false);
         }
     }
 
