@@ -120,6 +120,13 @@ public class SifEventRepository {
      * necesarios para recalcular el hash.
      */
     public List<ChainRow> findChainOrderedAsc() {
+        return findChainOrderedAscForCompany(tenantContext.getCurrentCompanyId());
+    }
+
+    /**
+     * Variante sin TenantContext — para jobs @Scheduled (VF-ANOMALY).
+     */
+    public List<ChainRow> findChainOrderedAscForCompany(String companyId) {
         return jdbcTemplate.query("""
                 SELECT id, event_type, payload, hash_current, hash_previous, generated_at
                   FROM sif_event_registry
@@ -127,7 +134,7 @@ public class SifEventRepository {
                  ORDER BY generated_at ASC, id ASC
                 """,
                 this::mapChainRow,
-                tenantContext.getCurrentCompanyId()
+                companyId
         );
     }
 

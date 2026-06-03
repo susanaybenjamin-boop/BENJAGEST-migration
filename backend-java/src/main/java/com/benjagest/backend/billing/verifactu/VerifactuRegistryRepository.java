@@ -170,6 +170,14 @@ public class VerifactuRegistryRepository {
      * factura necesarios para recalcular su hash. Se usa para verify.
      */
     public List<ChainRow> findChainOrderedAsc(String mode) {
+        return findChainOrderedAscForCompany(tenantContext.getCurrentCompanyId(), mode);
+    }
+
+    /**
+     * Variante sin TenantContext — usada por jobs @Scheduled (VF-ANOMALY,
+     * VF4) que iteran sobre todas las empresas fuera del request scope.
+     */
+    public List<ChainRow> findChainOrderedAscForCompany(String companyId, String mode) {
         return jdbcTemplate.query("""
                 SELECT r.invoice_id, i.invoice_number, i.invoice_date,
                        i.vat_total, i.total,
@@ -181,10 +189,42 @@ public class VerifactuRegistryRepository {
                  ORDER BY r.generated_at ASC, r.id ASC
                 """,
                 this::mapChainRow,
-                tenantContext.getCurrentCompanyId(),
+                companyId,
                 mode
         );
     }
+
+    /**
+     * NIF/CIF de una empresa concreta sin TenantContext. Lo necesitan los
+     * jobs que verifican cadenas de empresas distintas a la actual.
+     */
+    public String findTaxIdentifierForCompany(String companyId) {
+        List<String> matches = jdbcTemplate.query(
+                "SELECT tax_identifier FROM companies WHERE id = ?",
+                (rs, rowNum) -> rs.getString("tax_identifier"),
+                companyId);
+        return matches.isEmpty() ? null : matches.get(0);
+    }
+
+    /**
+     * Lista de empresas con modalidad y mode configurados (usado por
+     * VF-ANOMALY para iterar). Devuelve pares (companyId, mode) — la
+     * cadena de hash se segmenta por mode (TEST/PROD), asi que cada
+     * empresa puede tener dos cadenas a verificar.
+     */
+    public List<CompanyChainRef> findAllChainRefs() {
+        return jdbcTemplate.query("""
+                SELECT DISTINCT c.id AS company_id, r.mode
+                  FROM companies c
+                  JOIN verifactu_registry r ON r.company_id = c.id
+                """,
+                (rs, rowNum) -> new CompanyChainRef(
+                        rs.getString("company_id"),
+                        rs.getString("mode"))
+        );
+    }
+
+    public record CompanyChainRef(String companyId, String mode) {}
 
     private ChainRow mapChainRow(ResultSet rs, int rowNum) throws SQLException {
         Date invDate = rs.getDate("invoice_date");

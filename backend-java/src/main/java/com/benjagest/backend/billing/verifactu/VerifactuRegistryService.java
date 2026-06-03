@@ -174,12 +174,25 @@ public class VerifactuRegistryService {
     public IntegrityReport verifyChain(String mode) {
         CompanyDataResponse company = companyRepository.findCurrent()
                 .orElseThrow(() -> new IllegalStateException("Empresa actual no encontrada"));
-        if (!StringUtils.hasText(company.taxIdentifier())) {
+        return verifyChainInternal(company.id(), company.taxIdentifier(), mode);
+    }
+
+    /**
+     * Variante sin TenantContext para uso desde jobs @Scheduled
+     * (VF-ANOMALY). Resuelve el NIF directamente del companyId.
+     */
+    public IntegrityReport verifyChainForCompany(String companyId, String mode) {
+        String nif = registryRepository.findTaxIdentifierForCompany(companyId);
+        return verifyChainInternal(companyId, nif, mode);
+    }
+
+    private IntegrityReport verifyChainInternal(String companyId, String nif, String mode) {
+        if (!StringUtils.hasText(nif)) {
             return new IntegrityReport(false, 0, null, null,
                     "La empresa no tiene NIF/CIF (companies.tax_identifier).");
         }
         List<VerifactuRegistryRepository.ChainRow> chain =
-                registryRepository.findChainOrderedAsc(mode);
+                registryRepository.findChainOrderedAscForCompany(companyId, mode);
         String expectedPrev = "";
         int checked = 0;
         for (VerifactuRegistryRepository.ChainRow row : chain) {
@@ -187,7 +200,7 @@ public class VerifactuRegistryService {
             OffsetDateTime gen = row.generatedAt().atZoneSameInstant(ZoneId.of("Europe/Madrid"))
                     .toOffsetDateTime();
             String recomputed = hashService.computeHash(
-                    company.taxIdentifier(),
+                    nif,
                     row.invoiceNumber(),
                     row.invoiceDate(),
                     row.vatTotal(),
