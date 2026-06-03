@@ -2378,13 +2378,16 @@ public class BenjagestUiApplication extends Application {
             if (sel != null) voidInvoiceFromList(sel);
         });
 
-        Button pdfBtn = new Button(t("list.action.generate_pdf"));
+        // Botón "mutante" según si el PDF ya está guardado en la ruta
+        // configurada (F-STORAGE) o no:
+        //   - pdfStored=true  → "Abrir PDF" (lo lanza con el visor del SO).
+        //   - pdfStored=false → "Guardar PDF" (genera y escribe en la ruta,
+        //                       creando companyId/YYYY/T{q}/ si no existen).
+        // El listener de selección actualiza texto + handler.
+        Button pdfBtn = new Button(t("list.action.save_pdf"));
         pdfBtn.setGraphic(icon("fas-file-pdf"));
         pdfBtn.setDisable(true);
-        pdfBtn.setOnAction(ev -> {
-            SalesInvoiceSummary sel = billingTable.getSelectionModel().getSelectedItem();
-            if (sel != null) downloadInvoicePdf(sel);
-        });
+        pdfBtn.setUserData(Boolean.FALSE);  // estado pdfStored asociado al botón
 
         // F-EMAIL: enviar factura por email al cliente. Solo VALIDATED
         // — borradores no son documentos legales, anuladas tampoco se
@@ -2418,7 +2421,26 @@ public class BenjagestUiApplication extends Application {
             deleteDraftBtn.setDisable(!isDraft);
             voidBtn.setDisable(!isValidated || isRectifying);
             pdfBtn.setDisable(newV == null || isDraft);
+            // Mutación del botón PDF: si la factura ya tiene PDF
+            // almacenado en la ruta configurada, ofrecemos "Abrir";
+            // si no, "Guardar". El estado se guarda en userData del
+            // botón para que el handler pueda discriminar sin volver
+            // a leer la fila seleccionada.
+            boolean stored = newV != null && Boolean.TRUE.equals(newV.pdfStored());
+            pdfBtn.setUserData(stored);
+            pdfBtn.setText(stored ? t("list.action.open_pdf") : t("list.action.save_pdf"));
+            pdfBtn.setGraphic(icon(stored ? "fas-file-pdf" : "fas-save"));
             emailBtn.setDisable(!isValidated);
+        });
+
+        pdfBtn.setOnAction(ev -> {
+            SalesInvoiceSummary sel = billingTable.getSelectionModel().getSelectedItem();
+            if (sel == null) return;
+            if (Boolean.TRUE.equals(pdfBtn.getUserData())) {
+                openInvoicePdf(sel);
+            } else {
+                storeInvoicePdf(sel);
+            }
         });
 
         Region rowActionsSpacer = new Region();
@@ -2459,24 +2481,16 @@ public class BenjagestUiApplication extends Application {
     }
 
     /**
-     * Abre el PDF de la factura seleccionada en el visor del sistema.
+     * Abre el PDF de la factura ya almacenada (pdfStored=true). Descarga
+     * la copia que vive en la ruta configurada por el backend a un
+     * archivo temporal y lanza el visor con {@code Desktop.open()}.
      *
-     * F-STORAGE garantiza que al validar se genera y guarda el PDF en
-     * disco en {@code {root}/{companyId}/{YYYY}/T{q}/{nº}.pdf}. Ese
-     * archivo es la copia legalmente vinculante. Por tanto el botón
-     * NO debe preguntar "dónde guardar" — ya está guardado donde la
-     * empresa configuró. Lo único que hace falta es abrirlo.
-     *
-     * Implementación: descarga del backend a un archivo temporal del
-     * SO (carpeta TEMP del usuario) y lanza {@code Desktop.open()}.
-     * Decisión deliberada de bajar a temp en vez de leer la ruta de
-     * disco que el backend tiene en BD: la UI y el backend pueden
-     * correr en máquinas distintas en el futuro; bajar por HTTP funciona
-     * en ambos casos (local y cliente-servidor). El temporal se
-     * sobreescribe en cada apertura — el visor PDF lo deja abierto
-     * pero no necesitamos conservarlo entre sesiones.
+     * Por qué temp y no abrir directamente el path del backend: la UI
+     * podría correr en una máquina distinta de la del backend en el
+     * futuro; bajar por HTTP funciona siempre. El TMP se sobrescribe
+     * en cada apertura, sin acumular ficheros.
      */
-    private void downloadInvoicePdf(SalesInvoiceSummary sel) {
+    private void openInvoicePdf(SalesInvoiceSummary sel) {
         String filename = (sel.invoiceNumber() == null || sel.invoiceNumber().isBlank())
                 ? "borrador-" + shortId(sel.id()) + ".pdf"
                 : sel.invoiceNumber().replaceAll("[^A-Za-z0-9._-]", "_") + ".pdf";
@@ -2489,10 +2503,6 @@ public class BenjagestUiApplication extends Application {
         };
         task.setOnSucceeded(ev -> {
             try {
-                // Guardamos en TEMP con un nombre estable (el del número
-                // de factura) para que si el usuario reabre el mismo
-                // PDF, no se acumulen ficheros distintos. El visor PDF
-                // del SO sobrescribe sin problema si está abierto.
                 java.io.File tempFile = new java.io.File(
                         System.getProperty("java.io.tmpdir"), filename);
                 java.nio.file.Files.write(tempFile.toPath(), task.getValue());
@@ -2510,6 +2520,38 @@ public class BenjagestUiApplication extends Application {
         task.setOnFailed(ev -> showError(t("list.dialog.pdf.download_failed.title"),
                 t("list.dialog.pdf.download_failed.body")));
         start(task, "billing-invoice-pdf");
+    }
+
+    /**
+     * Genera y guarda el PDF en la ruta configurada
+     * ({@code {root}/{companyId}/{YYYY}/T{q}/{nº}.pdf}). El backend
+     * crea las subcarpetas año y trimestre si no existen. Tras éxito,
+     * recarga la lista para que el botón mute a "Abrir PDF".
+     *
+     * Útil para facturas legacy (validadas antes de F-STORAGE) o
+     * cuando el archivo se borró manualmente del disco.
+     */
+    private void storeInvoicePdf(SalesInvoiceSummary sel) {
+        Task<String> task = new Task<>() {
+            @Override
+            protected String call() throws Exception {
+                return billingApiClient.storeInvoicePdf(sel.id());
+            }
+        };
+        task.setOnSucceeded(ev -> {
+            Alert ok = new Alert(Alert.AlertType.INFORMATION,
+                    t("list.dialog.pdf.stored_prefix") + task.getValue()
+                            + t("list.dialog.pdf.stored_suffix"),
+                    ButtonType.OK);
+            ok.setHeaderText(null);
+            ok.showAndWait();
+            // Refresca el listado para que el SUMMARY traiga
+            // pdfStored=true y el botón mute a "Abrir PDF".
+            reloadInvoices();
+        });
+        task.setOnFailed(ev -> showError(t("list.dialog.pdf.store_failed.title"),
+                t("list.dialog.pdf.store_failed.body")));
+        start(task, "billing-invoice-store-pdf");
     }
 
     /**
@@ -4685,7 +4727,13 @@ public class BenjagestUiApplication extends Application {
                 case "list.placeholder.empty" -> "No invoices match the current filters.";
                 case "list.draft_label" -> "(draft)";
                 case "list.action.delete_draft" -> "Delete draft";
-                case "list.action.generate_pdf" -> "Open PDF";
+                case "list.action.generate_pdf" -> "PDF";
+                case "list.action.open_pdf" -> "Open PDF";
+                case "list.action.save_pdf" -> "Save PDF";
+                case "list.dialog.pdf.stored_prefix" -> "PDF saved to: ";
+                case "list.dialog.pdf.stored_suffix" -> ".";
+                case "list.dialog.pdf.store_failed.title" -> "Could not save PDF";
+                case "list.dialog.pdf.store_failed.body" -> "Check storage path in Settings → Billing and disk permissions.";
                 case "list.action.send_email" -> "Send by email";
                 case "list.dialog.email.window_title" -> "Send invoice by email";
                 case "list.dialog.email.title" -> "Send invoice by email:";
@@ -5219,7 +5267,13 @@ public class BenjagestUiApplication extends Application {
             case "list.placeholder.empty" -> "Sin facturas para los filtros actuales.";
             case "list.draft_label" -> "(borrador)";
             case "list.action.delete_draft" -> "Eliminar borrador";
-            case "list.action.generate_pdf" -> "Abrir PDF";
+            case "list.action.generate_pdf" -> "PDF";
+            case "list.action.open_pdf" -> "Abrir PDF";
+            case "list.action.save_pdf" -> "Guardar PDF";
+            case "list.dialog.pdf.stored_prefix" -> "PDF guardado en: ";
+            case "list.dialog.pdf.stored_suffix" -> ".";
+            case "list.dialog.pdf.store_failed.title" -> "No se pudo guardar el PDF";
+            case "list.dialog.pdf.store_failed.body" -> "Comprueba la ruta de almacenamiento en Configuracion -> Facturacion y los permisos de disco.";
             case "list.action.send_email" -> "Enviar por email";
             case "list.dialog.email.window_title" -> "Enviar factura por email";
             case "list.dialog.email.title" -> "Enviar factura por email:";
