@@ -259,6 +259,17 @@ Cuando lo crítico esté cerrado.
 
 > No hay nadie a quien consultar. Cuando un slice toque uno de estos puntos, Claude propone 2-3 opciones con pros/contras y Benjamin elige. Sólo se le manda un WhatsApp a Pablo si la decisión es irreversible y muy estructural (ej. modelo SaaS vs on-premise).
 
+### Asesoría — decisión tomada 2026-06-03
+
+> **(A) confirmado**: BENJAGEST puede correr como asesoría (`company_type=INTERNAL`) o como cliente (`CLIENT`). El módulo `advisory` (categoría + sub-módulos) **solo** debe aparecer y activarse en empresas INTERNAL — equivalente funcional a CONTENDO. Cliente NO ve gestión de cartera de clientes.
+>
+> **Evolución abierta (C)**: cuando se ataque el slice de comunicación con la asesoría externa, el módulo `advisory` en una empresa CLIENT podría reusarse como "Mi asesoría" (compartir docs, recibir requerimientos, ver el calendario fiscal que mi gestoría me prepara). Es un cambio de semántica del slug — no necesariamente código nuevo, depende de qué endpoints exponga "Mi asesoría". Lo decidiremos cuando llegue.
+>
+> **Deuda menor abierta** (no urgente — observada 2026-06-03):
+>
+> - El backend `CompanyModulesService.list()` filtra el subárbol `core` pero NO filtra `advisory_only=TRUE` por `company_type`. Resultado: en la pestaña "Módulos" de Configuración, una empresa CLIENT (Marcos) SÍ ve "Asesoría" como activable, aunque el sidebar luego no lo muestra (otro mecanismo lo filtra). La incoherencia es visible y confunde al usuario. Cuando se cierre la decisión (A vs C), arreglar en un mismo slice junto con V21 que limpie cualquier CLIENT con advisory activo.
+> - Sub-módulos de billing (verifactu, sales-invoices, sales-payments…) hoy no se respetan individualmente: los controllers solo comprueban `@RequiresModule("billing")`. Si el usuario apaga `verifactu` como sub-módulo, los endpoints siguen funcionando. Aceptable por ahora — los sub-módulos son útiles principalmente como elementos de organización visual del sidebar; si en el futuro se quiere granularidad real, tocar `@RequiresModule` y `ModuleAccessService` para cascadear (sub-módulo OFF → billing global cuenta como OFF para ese endpoint).
+
 - ❓ Módulo construcción (`cons_*`, 50 tablas). [§11.H](gap-analysis-contendo.md). Es prácticamente otra aplicación dentro de la misma BD.
 - ❓ FERRAPP (`ferrapp_proyectos`, `ferrapp_etiquetas_custom`).
 - ❓ MCP / IA con quotas (`mcp_ai_*`, `contendo_memory_180`, `conocimiento_180`).
