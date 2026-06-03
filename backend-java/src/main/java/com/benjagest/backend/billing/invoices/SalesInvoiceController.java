@@ -2,8 +2,11 @@ package com.benjagest.backend.billing.invoices;
 
 import com.benjagest.backend.auth.RequiresRole;
 import com.benjagest.backend.billing.pdf.InvoicePdfGenerator;
+import com.benjagest.backend.billing.pdf.InvoiceQrService;
 import com.benjagest.backend.billing.pdf.InvoiceStorageService;
 import com.benjagest.backend.billing.texts.InvoiceTextsController.InvoiceTextsService;
+import com.benjagest.backend.billing.verifactu.VerifactuConfig;
+import com.benjagest.backend.billing.verifactu.VerifactuConfigRepository;
 import com.benjagest.backend.billing.verifactu.VerifactuRegistryService;
 import com.benjagest.backend.modules.RequiresModule;
 import com.benjagest.backend.settings.CompanyDataService;
@@ -55,22 +58,28 @@ public class SalesInvoiceController {
 
     private final SalesInvoiceService service;
     private final InvoicePdfGenerator pdfGenerator;
+    private final InvoiceQrService qrService;
     private final CompanyDataService companyDataService;
     private final InvoiceTextsService invoiceTextsService;
     private final VerifactuRegistryService verifactuRegistryService;
+    private final VerifactuConfigRepository verifactuConfigRepository;
     private final InvoiceStorageService storageService;
 
     public SalesInvoiceController(SalesInvoiceService service,
                                   InvoicePdfGenerator pdfGenerator,
+                                  InvoiceQrService qrService,
                                   CompanyDataService companyDataService,
                                   InvoiceTextsService invoiceTextsService,
                                   VerifactuRegistryService verifactuRegistryService,
+                                  VerifactuConfigRepository verifactuConfigRepository,
                                   InvoiceStorageService storageService) {
         this.service = service;
         this.pdfGenerator = pdfGenerator;
+        this.qrService = qrService;
         this.companyDataService = companyDataService;
         this.invoiceTextsService = invoiceTextsService;
         this.verifactuRegistryService = verifactuRegistryService;
+        this.verifactuConfigRepository = verifactuConfigRepository;
         this.storageService = storageService;
     }
 
@@ -167,9 +176,15 @@ public class SalesInvoiceController {
         String verifactuHash = verifactuRegistryService
                 .findCurrentHashForPdf(id)
                 .orElse(null);
+        var company = companyDataService.getCurrent();
+        VerifactuConfig vfConfig = verifactuConfigRepository.findCurrent().orElse(null);
+        byte[] qrPng = qrService.generatePng(invoice, company, vfConfig);
+        String complianceLabel = qrService.complianceLabel(vfConfig);
         return pdfGenerator.generate(invoice,
-                companyDataService.getCurrent(),
+                company,
                 invoiceTextsService.get(),
-                verifactuHash);
+                verifactuHash,
+                qrPng,
+                complianceLabel);
     }
 }
