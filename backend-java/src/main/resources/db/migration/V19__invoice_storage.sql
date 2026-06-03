@@ -31,8 +31,12 @@
 -- da margen para roots largos sin riesgo de truncado.
 -- ===========================================================================
 
+-- Idempotente (IF NOT EXISTS) — soportado nativamente por MariaDB. Cubre
+-- el caso de un intento parcial previo que dejara una columna creada
+-- sin que la version V19 quedara registrada en flyway_schema_history
+-- (p.ej. fallo del segundo ALTER tras aplicar el primero).
 ALTER TABLE companies
-    ADD COLUMN invoice_storage_root VARCHAR(500) NULL AFTER invoice_footer_template;
+    ADD COLUMN IF NOT EXISTS invoice_storage_root VARCHAR(500) NULL AFTER invoice_footer_template;
 
 ALTER TABLE sales_invoices
-    ADD COLUMN pdf_path VARCHAR(500) NULL AFTER notes;
+    ADD COLUMN IF NOT EXISTS pdf_path VARCHAR(500) NULL AFTER notes;
