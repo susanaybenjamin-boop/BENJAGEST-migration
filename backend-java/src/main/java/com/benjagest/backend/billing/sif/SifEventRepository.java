@@ -57,6 +57,25 @@ public class SifEventRepository {
      * sea verificable). Se usa tanto en eventos con TenantContext (el
      * service lo pasa) como en hooks de sistema sin tenant.
      */
+    /**
+     * Persiste la firma electronica de un evento (slice VF-SIGN). Lo
+     * separamos del INSERT porque la firma puede llegar despues (cuando
+     * VF-SIGN este desactivado o falle, el evento queda sin firma y un
+     * job posterior puede reintentar).
+     */
+    public int setSignature(String eventId, String signatureXml) {
+        return jdbcTemplate.update("""
+                UPDATE sif_event_registry
+                   SET signature_data = ?,
+                       signed_at = CURRENT_TIMESTAMP,
+                       status = 'SIGNED'
+                 WHERE id = ?
+                   AND company_id = ?
+                """,
+                signatureXml, eventId, tenantContext.getCurrentCompanyId()
+        );
+    }
+
     public void insert(String id, String companyId, String eventType, String payload,
                        String hashCurrent, String hashPrevious,
                        OffsetDateTime generationTime) {

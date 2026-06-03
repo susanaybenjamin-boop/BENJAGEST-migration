@@ -96,6 +96,28 @@
             <artifactId>javase</artifactId>
             <version>3.5.3</version>
         </dependency>
+        <!-- Firma XML (VF-SIGN). Apache Santuario implementa XML-DSig
+             estandar; BouncyCastle aporta provider criptografico para
+             cargar PKCS#12 y trabajar con algoritmos modernos. La
+             ampliacion a XAdES-EPES estricto (estructuras
+             SignedProperties + SignaturePolicyIdentifier) queda como
+             TODO documentado dentro de XadesSignerService — se hara
+             cuando VF3-SOAP exija el formato real para enviar. -->
+        <dependency>
+            <groupId>org.apache.santuario</groupId>
+            <artifactId>xmlsec</artifactId>
+            <version>4.0.2</version>
+        </dependency>
+        <dependency>
+            <groupId>org.bouncycastle</groupId>
+            <artifactId>bcprov-jdk18on</artifactId>
+            <version>1.78.1</version>
+        </dependency>
+        <dependency>
+            <groupId>org.bouncycastle</groupId>
+            <artifactId>bcpkix-jdk18on</artifactId>
+            <version>1.78.1</version>
+        </dependency>
 
         <dependency>
             <groupId>org.springframework.boot</groupId>

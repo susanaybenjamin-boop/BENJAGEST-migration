@@ -1,6 +1,7 @@
 package com.benjagest.backend.billing.verifactu;
 
 import com.benjagest.backend.billing.invoices.SalesInvoice;
+import com.benjagest.backend.billing.sign.XmlSignerService;
 import com.benjagest.backend.settings.CompanyDataRepository;
 import com.benjagest.backend.settings.CompanyDataResponse;
 import java.time.OffsetDateTime;
@@ -39,15 +40,18 @@ public class VerifactuRegistryService {
     private final CompanyDataRepository companyRepository;
     private final VerifactuRegistryRepository registryRepository;
     private final VerifactuHashService hashService;
+    private final XmlSignerService signerService;
 
     public VerifactuRegistryService(VerifactuConfigRepository configRepository,
                                     CompanyDataRepository companyRepository,
                                     VerifactuRegistryRepository registryRepository,
-                                    VerifactuHashService hashService) {
+                                    VerifactuHashService hashService,
+                                    XmlSignerService signerService) {
         this.configRepository = configRepository;
         this.companyRepository = companyRepository;
         this.registryRepository = registryRepository;
         this.hashService = hashService;
+        this.signerService = signerService;
     }
 
     @Transactional
@@ -108,7 +112,53 @@ public class VerifactuRegistryService {
                 previousHash,
                 generationTime
         );
+
+        // VF-SIGN: firma XML-DSig del registro con el certificado de la
+        // empresa. Es MVP (no XAdES-EPES estricto todavia — ver
+        // XmlSignerService). Si no hay certificado configurado o falla
+        // la firma, sign() devuelve empty y dejamos el registro con
+        // status PENDING para reintento futuro (VF4).
+        String registryAsXml = buildRegistryXml(company.taxIdentifier(),
+                invoice.invoiceNumber(), invoice.invoiceDate(),
+                invoice.vatTotal(), invoice.total(),
+                hashCurrent, previousHash, generationTime);
+        signerService.sign(registryAsXml).ifPresent(signed ->
+                registryRepository.setSignature(invoice.id(), mode, signed));
+
         return registryRepository.findByInvoiceAndMode(invoice.id(), mode);
+    }
+
+    /**
+     * Estructura XML minima del registro que se firma. NO es el formato
+     * AEAT (sera distinto cuando VF3-SOAP envie); aqui solo necesitamos
+     * un XML estable que represente los datos canonicos del registro
+     * para que la firma XML-DSig sea verificable contra los mismos
+     * campos en cualquier momento futuro.
+     */
+    private String buildRegistryXml(String nif, String numSerie,
+                                     java.time.LocalDate fecha,
+                                     java.math.BigDecimal cuota,
+                                     java.math.BigDecimal importe,
+                                     String huellaActual,
+                                     String huellaAnterior,
+                                     OffsetDateTime generacion) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("<RegistroFacturacion xmlns=\"urn:benjagest:verifactu-registry\">");
+        sb.append("<IDEmisor>").append(escape(nif)).append("</IDEmisor>");
+        sb.append("<NumSerieFactura>").append(escape(numSerie)).append("</NumSerieFactura>");
+        sb.append("<FechaExpedicion>").append(fecha).append("</FechaExpedicion>");
+        sb.append("<CuotaTotal>").append(cuota == null ? "0.00" : cuota).append("</CuotaTotal>");
+        sb.append("<ImporteTotal>").append(importe == null ? "0.00" : importe).append("</ImporteTotal>");
+        sb.append("<HuellaActual>").append(escape(huellaActual)).append("</HuellaActual>");
+        sb.append("<HuellaAnterior>").append(escape(huellaAnterior == null ? "" : huellaAnterior)).append("</HuellaAnterior>");
+        sb.append("<FechaHoraGenRegistro>").append(generacion).append("</FechaHoraGenRegistro>");
+        sb.append("</RegistroFacturacion>");
+        return sb.toString();
+    }
+
+    private String escape(String s) {
+        if (s == null) return "";
+        return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
     }
 
     /**
