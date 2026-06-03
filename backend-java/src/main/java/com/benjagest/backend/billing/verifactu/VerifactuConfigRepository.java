@@ -32,7 +32,8 @@ public class VerifactuConfigRepository {
                        c.verifactu_mode AS mode,
                        c.verifactu_certificate_id AS certificate_id,
                        cert.alias AS certificate_alias,
-                       c.invoice_footer_template AS invoice_footer_template
+                       c.invoice_footer_template AS invoice_footer_template,
+                       c.invoice_storage_root AS invoice_storage_root
                   FROM companies c
                   LEFT JOIN digital_certificates cert ON cert.id = c.verifactu_certificate_id
                  WHERE c.id = ?
@@ -40,19 +41,22 @@ public class VerifactuConfigRepository {
         return matches.stream().findFirst();
     }
 
-    public int update(String modality, String mode, String certificateId, String invoiceFooterTemplate) {
+    public int update(String modality, String mode, String certificateId,
+                       String invoiceFooterTemplate, String invoiceStorageRoot) {
         return jdbcTemplate.update("""
                 UPDATE companies
                    SET verifactu_modality = ?,
                        verifactu_mode = ?,
                        verifactu_certificate_id = ?,
-                       invoice_footer_template = ?
+                       invoice_footer_template = ?,
+                       invoice_storage_root = ?
                  WHERE id = ?
                 """,
                 modality,
                 mode,
                 blankToNull(certificateId),
                 blankToNull(invoiceFooterTemplate),
+                blankToNull(invoiceStorageRoot),
                 tenantContext.getCurrentCompanyId()
         );
     }
@@ -63,7 +67,8 @@ public class VerifactuConfigRepository {
                 rs.getString("mode"),
                 rs.getString("certificate_id"),
                 rs.getString("certificate_alias"),
-                rs.getString("invoice_footer_template")
+                rs.getString("invoice_footer_template"),
+                rs.getString("invoice_storage_root")
         );
     }
 

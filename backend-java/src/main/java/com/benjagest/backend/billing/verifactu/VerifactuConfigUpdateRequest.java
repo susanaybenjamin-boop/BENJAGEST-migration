@@ -20,6 +20,7 @@ public record VerifactuConfigUpdateRequest(
         @NotBlank @Pattern(regexp = "VERIFACTU|NO_VERIFACTU") String modality,
         @NotBlank @Pattern(regexp = "TEST|PROD") String mode,
         String certificateId,
-        String invoiceFooterTemplate
+        String invoiceFooterTemplate,
+        String invoiceStorageRoot
 ) {
 }

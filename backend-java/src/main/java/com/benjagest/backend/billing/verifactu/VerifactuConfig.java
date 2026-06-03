@@ -25,12 +25,17 @@ package com.benjagest.backend.billing.verifactu;
  *   - certificateAlias: alias humano del certificado (LEFT JOIN para
  *                    pintar en la UI sin tener que pedir el detalle).
  *   - invoiceFooterTemplate: texto que aparece en el pie de cada factura.
+ *   - invoiceStorageRoot: ruta local donde se guardan los PDFs al
+ *                    validar (slice F-STORAGE). NULL = usar el default
+ *                    del backend (`benjagest.invoices.storage-root`).
+ *                    Estructura: {root}/{companyId}/{YYYY}/T{q}/{nº}.pdf.
  */
 public record VerifactuConfig(
         String modality,
         String mode,
         String certificateId,
         String certificateAlias,
-        String invoiceFooterTemplate
+        String invoiceFooterTemplate,
+        String invoiceStorageRoot
 ) {
 }

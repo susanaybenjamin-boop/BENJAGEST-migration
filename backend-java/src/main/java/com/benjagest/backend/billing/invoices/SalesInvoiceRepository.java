@@ -149,6 +149,25 @@ public class SalesInvoiceRepository {
     }
 
     /**
+     * Guarda la ruta absoluta del PDF al disco — se rellena dentro del
+     * mismo flujo de validate, justo despues de generar el PDF. Si la
+     * factura ya tiene pdf_path (re-validation defensiva, no soportada
+     * por la API pero protegida igualmente) lo sobreescribimos.
+     */
+    public int setPdfPath(String id, String pdfPath) {
+        return jdbcTemplate.update("""
+                UPDATE sales_invoices
+                   SET pdf_path = ?
+                 WHERE id = ?
+                   AND company_id = ?
+                """,
+                pdfPath,
+                id,
+                tenantContext.getCurrentCompanyId()
+        );
+    }
+
+    /**
      * Establece el vinculo factura_original → factura_rectificativa.
      * Se llama cuando validamos una RECTIFYING para que la original sepa
      * cual la rectifica (y la UI pueda saltar de una a otra).
@@ -228,7 +247,7 @@ public class SalesInvoiceRepository {
                        i.invoice_type, i.status, i.payment_status,
                        i.subtotal, i.vat_total, i.retention_total, i.total, i.paid_amount,
                        i.currency, i.original_invoice_id, i.rectifying_invoice_id,
-                       i.notes, i.validated_at, i.created_at, i.updated_at
+                       i.notes, i.pdf_path, i.validated_at, i.created_at, i.updated_at
                   FROM sales_invoices i
                   LEFT JOIN customers c ON c.id = i.customer_id
                  WHERE i.id = ?
@@ -260,7 +279,7 @@ public class SalesInvoiceRepository {
                        i.invoice_type, i.status, i.payment_status,
                        i.subtotal, i.vat_total, i.retention_total, i.total, i.paid_amount,
                        i.currency, i.original_invoice_id, i.rectifying_invoice_id,
-                       i.notes, i.validated_at, i.created_at, i.updated_at
+                       i.notes, i.pdf_path, i.validated_at, i.created_at, i.updated_at
                   FROM sales_invoices i
                   LEFT JOIN customers c ON c.id = i.customer_id
                  WHERE i.company_id = ?
@@ -305,7 +324,8 @@ public class SalesInvoiceRepository {
                 header.subtotal(), header.vatTotal(), header.retentionTotal(),
                 header.total(), header.paidAmount(), header.currency(),
                 header.originalInvoiceId(), header.rectifyingInvoiceId(),
-                header.notes(), header.validatedAt(),
+                header.notes(), header.pdfPath(),
+                header.validatedAt(),
                 header.createdAt(), header.updatedAt(),
                 lines
         );
@@ -338,6 +358,7 @@ public class SalesInvoiceRepository {
                 rs.getString("original_invoice_id"),
                 rs.getString("rectifying_invoice_id"),
                 rs.getString("notes"),
+                rs.getString("pdf_path"),
                 validatedAt == null ? null : validatedAt.toInstant(),
                 createdAt == null ? null : createdAt.toInstant(),
                 updatedAt == null ? null : updatedAt.toInstant(),
