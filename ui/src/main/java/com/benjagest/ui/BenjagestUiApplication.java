@@ -2472,9 +2472,14 @@ public class BenjagestUiApplication extends Application {
             }
         };
         task.setOnSucceeded(ev -> {
-            SalesInvoiceSummary draft = task.getValue();
+            SalesInvoiceSummary rect = task.getValue();
+            // El server ya devuelve la rectificativa VALIDATED, así que
+            // invoiceNumber viene relleno (ej. RECT-2026-0001).
+            String rectLabel = rect.invoiceNumber() == null || rect.invoiceNumber().isBlank()
+                    ? shortId(rect.id())
+                    : rect.invoiceNumber();
             Alert ok = new Alert(Alert.AlertType.INFORMATION,
-                    t("list.dialog.void.success_prefix") + shortId(draft.id())
+                    t("list.dialog.void.success_prefix") + rectLabel
                             + t("list.dialog.void.success_suffix"),
                     ButtonType.OK);
             ok.setHeaderText(null);
@@ -4561,9 +4566,9 @@ public class BenjagestUiApplication extends Application {
                 // ---- Void (anulación con vínculo) ----
                 case "list.action.void" -> "Void";
                 case "list.dialog.void.title" -> "Void validated invoice";
-                case "list.dialog.void.body" -> "A linked corrective DRAFT will be created (lines negated). The original invoice will remain VALIDATED until you validate the corrective. Continue?";
-                case "list.dialog.void.success_prefix" -> "Corrective draft created with id ";
-                case "list.dialog.void.success_suffix" -> ". Open it to review and validate.";
+                case "list.dialog.void.body" -> "A LINKED corrective invoice will be issued (lines negated) and the original will be marked VOIDED in the same transaction. This is a final legal act and cannot be undone or edited. Continue?";
+                case "list.dialog.void.success_prefix" -> "Corrective invoice issued with nº ";
+                case "list.dialog.void.success_suffix" -> ". The original invoice has been voided.";
                 case "list.dialog.void.failure.title" -> "Could not void";
                 case "list.dialog.void.failure.body" -> "Check that the invoice is VALIDATED and does not already have a linked corrective.";
                 case "editor.rectifying.pill_prefix" -> "Corrective for ";
@@ -5048,9 +5053,9 @@ public class BenjagestUiApplication extends Application {
             // ---- Void (anulación con vínculo) ----
             case "list.action.void" -> "Anular";
             case "list.dialog.void.title" -> "Anular factura validada";
-            case "list.dialog.void.body" -> "Se creara un borrador RECTIFICATIVA enlazado (lineas con cantidad invertida). La original sigue VALIDATED hasta que valides la rectificativa. ¿Continuar?";
-            case "list.dialog.void.success_prefix" -> "Borrador rectificativa creado con id ";
-            case "list.dialog.void.success_suffix" -> ". Abrelo para revisar y validar.";
+            case "list.dialog.void.body" -> "Se EMITIRÁ una factura RECTIFICATIVA enlazada (líneas con cantidad invertida) y la original quedará ANULADA en la misma transacción. Es un acto legal y NO se puede deshacer ni editar. ¿Continuar?";
+            case "list.dialog.void.success_prefix" -> "Rectificativa emitida con nº ";
+            case "list.dialog.void.success_suffix" -> ". La factura original ha quedado anulada.";
             case "list.dialog.void.failure.title" -> "No se pudo anular";
             case "list.dialog.void.failure.body" -> "Comprueba que la factura este VALIDATED y que aun no tenga rectificativa enlazada.";
             case "editor.rectifying.pill_prefix" -> "Rectificativa de ";

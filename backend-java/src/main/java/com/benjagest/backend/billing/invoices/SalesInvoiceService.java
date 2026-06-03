@@ -158,6 +158,18 @@ public class SalesInvoiceService {
 
     @Transactional
     public SalesInvoice validate(String id) {
+        return validateInternal(id);
+    }
+
+    /**
+     * Cuerpo de la validación. Está separado del método público para
+     * poder ser reutilizado desde {@link #voidValidated(String)} sin
+     * que self-invocation rompa el proxy AOP de @Transactional (Spring
+     * NO aplica el aspecto cuando un método de la misma clase llama
+     * directamente a otro). Al llamarse desde voidValidated, que ya
+     * lleva su propio @Transactional, todo viaja en la misma tx.
+     */
+    private SalesInvoice validateInternal(String id) {
         SalesInvoice existing = get(id);
         if (!"DRAFT".equals(existing.status())) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
@@ -209,16 +221,23 @@ public class SalesInvoiceService {
     }
 
     /**
-     * Anulacion con vinculo: dado el id de una factura VALIDATED, crea
-     * un borrador RECTIFYING enlazado mediante original_invoice_id. La
-     * original NO cambia de estado aqui — sigue VALIDATED. Solo cuando
-     * el usuario valide el borrador rectificativa la original pasara a
-     * VOIDED (ver validate()).
+     * Anulación con vínculo (decisión 2026-06-03): dada una factura
+     * VALIDATED, emitimos en UNA SOLA TRANSACCIÓN una factura rectificativa
+     * ya VALIDATED enlazada a la original. La original pasa a VOIDED.
      *
-     * Las lineas del borrador se inicializan como copia de las
-     * originales pero con quantity invertida (negativa) → el subtotal
-     * negativo refleja la devolucion/anulacion completa. El usuario
-     * puede ajustar antes de validar (p.ej. rectificativa parcial).
+     * Por qué ya validada y no como borrador editable:
+     *   - Una vez validada la original, su rectificativa es un acto
+     *     legal: emitirla como borrador abriría una ventana en la que
+     *     el usuario podría manipular cifras antes de "confirmar". Eso
+     *     rompe el sentido de la rectificativa por anulación.
+     *   - La rectificativa parcial (cambiar líneas concretas) será un
+     *     flujo aparte cuando lleguemos al slice "Rectificativa parcial
+     *     R1-R5" — ahí sí tiene sentido revisar antes de validar.
+     *
+     * Las líneas se generan como copia de las originales con quantity
+     * invertida → totales negativos. El número y el hash VeriFactu se
+     * emiten ya. La original queda VOIDED con rectifying_invoice_id
+     * apuntando a la nueva.
      */
     @Transactional
     public SalesInvoice voidValidated(String validatedId) {
@@ -257,6 +276,10 @@ public class SalesInvoiceService {
         List<InvoiceLine> lines = computeLines(newId, negatedInputs);
         Totals totals = aggregateTotals(lines);
 
+        // Insertamos primero como DRAFT (mismo formato que createDraft)
+        // para reusar el flujo de validate. La factura nunca queda en
+        // DRAFT visible para el usuario: la validamos en la misma
+        // transacción inmediatamente despues — todo o nada.
         SalesInvoice draft = new SalesInvoice(
                 newId,
                 null,
@@ -274,7 +297,8 @@ public class SalesInvoiceService {
                 "EUR",
                 original.id(),
                 null,
-                "Rectificativa de " + (original.invoiceNumber() == null ? original.id() : original.invoiceNumber()),
+                "Rectificativa por anulacion de "
+                        + (original.invoiceNumber() == null ? original.id() : original.invoiceNumber()),
                 null,
                 null,
                 null,
@@ -284,7 +308,13 @@ public class SalesInvoiceService {
         for (InvoiceLine line : lines) {
             repository.insertLine(line);
         }
-        return get(newId);
+
+        // Validamos YA mismo, en la misma transacción → la rectificativa
+        // sale numerada (claimNextNumber), VeriFactu registra el hash, la
+        // original pasa a VOIDED, y devolvemos el documento legal final.
+        // Llamamos a validateInternal (sin proxy) para evitar el problema
+        // de self-invocation con @Transactional.
+        return validateInternal(newId);
     }
 
     @Transactional
