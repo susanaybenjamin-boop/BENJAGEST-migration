@@ -32,6 +32,23 @@ import com.benjagest.backend.tenant.TenantContext;
 @Service
 public class CompanyModulesService {
 
+    /**
+     * Subarbol "Nucleo" del catalogo (categoria 'core' + sus 3 hijos).
+     * Siempre activo, no editable. Hasta el slice de bugfix de modulos
+     * era posible desactivarlo de tres formas: directamente con
+     * slug=core (404 por categoria), via cascada al desmarcar la
+     * categoria, o por slug=settings/customers/users (este ultimo
+     * "settings" tenia defensa especifica, los otros dos no). Cualquier
+     * camino que desactivase 'settings' rompia el acceso a esta misma
+     * pantalla (@RequiresModule("settings") -> 403 -> no hay vuelta).
+     *
+     * A partir de este slice: estos 4 slugs no se exponen en el catalogo
+     * y cualquier intento de tocarlos via PUT devuelve 400.
+     */
+    private static final Set<String> CORE_LOCKED_SLUGS = Set.of(
+            "core", "customers", "settings", "users"
+    );
+
     private final ModuleRepository moduleRepository;
     private final ModuleAccessService moduleAccessService;
     private final TenantContext tenantContext;
@@ -56,6 +73,10 @@ public class CompanyModulesService {
                 .map(Module::slug)
                 .collect(Collectors.toSet());
         return catalog.stream()
+                // El subarbol 'core' (categoria + customers + settings +
+                // users) no se expone: siempre activo, no editable. Lo
+                // filtramos aqui para que la UI no llegue a renderizarlo.
+                .filter(m -> !CORE_LOCKED_SLUGS.contains(m.slug()))
                 .map(m -> new CompanyModuleView(
                         m.slug(),
                         m.label(),
@@ -72,11 +93,15 @@ public class CompanyModulesService {
 
     @Transactional
     public List<CompanyModuleView> setActive(String slug, boolean active) {
-        if ("settings".equalsIgnoreCase(slug) && !active) {
-            // Defensa: si la empresa se queda sin settings, nadie podra
-            // volver a entrar en esta pantalla a re-activarlo.
+        if (slug != null && CORE_LOCKED_SLUGS.contains(slug.toLowerCase())) {
+            // Bloqueo total del subarbol core. Aplica a active=true y a
+            // active=false — el catalogo no lo expone, asi que cualquier
+            // llamada aqui con estos slugs es un cliente malformado o
+            // un intento manual. Devolvemos 400 explicito en lugar de
+            // 404 para que el operador entienda que es decision de
+            // diseno, no un slug inexistente.
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "No se puede desactivar el modulo de Configuracion para la empresa");
+                    "El modulo '" + slug + "' es del nucleo y no se puede modificar");
         }
 
         String moduleId = moduleRepository.findIdBySlug(slug);
