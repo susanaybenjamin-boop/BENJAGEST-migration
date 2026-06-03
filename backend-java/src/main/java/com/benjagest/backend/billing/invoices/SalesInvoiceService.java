@@ -241,9 +241,13 @@ public class SalesInvoiceService {
         LocalDate today = LocalDate.now();
         List<InvoiceLineInput> negatedInputs = new ArrayList<>();
         for (InvoiceLine line : original.lines()) {
+            // Ojo: el record InvoiceLineInput espera description ANTES de
+            // catalogItemId. El bug previo intercambiaba los dos primeros
+            // → description llegaba null y computeLines reventaba con NPE
+            // en .trim().
             negatedInputs.add(new InvoiceLineInput(
-                    line.catalogItemId(),
                     line.description(),
+                    line.catalogItemId(),
                     line.quantity() == null ? null : line.quantity().negate(),
                     line.unitPrice(),
                     line.vatPercent(),
