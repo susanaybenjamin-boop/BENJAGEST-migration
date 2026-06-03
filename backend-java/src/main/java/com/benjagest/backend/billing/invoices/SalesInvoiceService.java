@@ -254,36 +254,15 @@ public class SalesInvoiceService {
         // Slice F-STORAGE: generar el PDF y guardarlo en disco aqui, no
         // bajo demanda. La copia almacenada ES la legalmente vinculante
         // (RD 1007/2023 + LGT art.70: minimo 4 anyos). Descargas
-        // posteriores releen este archivo en vez de regenerar — eso
-        // garantiza que el PDF que viste al validar es el mismo
-        // bit-a-bit en cualquier consulta futura.
+        // posteriores releen este archivo en vez de regenerar.
         //
         // Si la escritura a disco falla, NO rompemos la transaccion: la
-        // factura ya esta validada y numerada legalmente; lo que
-        // queremos es que validate sea atomico en BD. La perdida del
-        // PDF en disco se puede regenerar manualmente (no es ideal pero
-        // tampoco supone perdida legal porque los datos canonicos
-        // estan en BD). Loggeamos con WARN para que el operador lo vea.
+        // factura ya esta validada y numerada legalmente. El operador
+        // puede reconstruir manualmente con el boton "Guardar PDF" del
+        // listado (endpoint /store-pdf).
         try {
-            CompanyDataResponse company = companyDataService.getCurrent();
-            String currentHash = verifactuRegistryService.findCurrentHashForPdf(id).orElse(null);
-            com.benjagest.backend.billing.verifactu.VerifactuConfig vfConfig =
-                    verifactuConfigRepository.findCurrent().orElse(null);
-            byte[] qrPng = qrService.generatePng(validated, company, vfConfig);
-            String complianceLabel = qrService.complianceLabel(vfConfig);
-            byte[] pdfBytes = pdfGenerator.generate(
-                    validated, company, invoiceTextsService.get(),
-                    currentHash, qrPng, complianceLabel);
-            String storageRoot = vfConfig == null ? null : vfConfig.invoiceStorageRoot();
-            String absPath = storageService.writePdf(
-                    storageRoot, company.id(),
-                    validated.invoiceDate(), validated.invoiceNumber(),
-                    pdfBytes);
-            repository.setPdfPath(id, absPath);
+            generateAndStorePdf(validated);
         } catch (IOException ioe) {
-            // No bloqueamos la validacion. Solo registramos para que el
-            // operador pueda regenerar (con un boton "Reconstruir
-            // archivo" pendiente — slice futuro).
             org.slf4j.LoggerFactory.getLogger(SalesInvoiceService.class)
                     .warn("No se pudo guardar el PDF de la factura {} en disco", id, ioe);
         } catch (RuntimeException ex) {
@@ -407,6 +386,60 @@ public class SalesInvoiceService {
         // Llamamos a validateInternal (sin proxy) para evitar el problema
         // de self-invocation con @Transactional.
         return validateInternal(newId);
+    }
+
+    /**
+     * Endpoint público para "Guardar PDF" — fuerza la generación y
+     * escritura en disco de una factura ya VALIDATED que aún no tiene
+     * archivo (porque se validó antes del slice F-STORAGE o porque
+     * fallo la escritura en su día). Devuelve la ruta absoluta para
+     * que la UI la muestre al usuario.
+     *
+     * - Rechaza con 400 si la factura no está VALIDATED.
+     * - Si ya tiene pdf_path y el archivo existe, reescribe (el
+     *   resultado es idéntico bit a bit si los datos canónicos no han
+     *   cambiado — caso normal).
+     */
+    @Transactional
+    public String storePdfNow(String invoiceId) {
+        SalesInvoice invoice = get(invoiceId);
+        if (!"VALIDATED".equals(invoice.status())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Solo se guardan PDFs de facturas VALIDATED. Estado actual: " + invoice.status());
+        }
+        try {
+            return generateAndStorePdf(invoice);
+        } catch (IOException ioe) {
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
+                    "No se pudo escribir el PDF en disco: " + ioe.getMessage());
+        }
+    }
+
+    /**
+     * Lógica común a {@link #validateInternal} y {@link #storePdfNow}:
+     * genera el PDF (con QR oficial AEAT + huella VeriFactu si aplica),
+     * lo escribe en la ruta de almacenamiento configurada (creando
+     * subcarpetas año/trimestre si no existen) y actualiza
+     * sales_invoices.pdf_path. Devuelve la ruta absoluta.
+     */
+    private String generateAndStorePdf(SalesInvoice validated) throws IOException {
+        CompanyDataResponse company = companyDataService.getCurrent();
+        String currentHash = verifactuRegistryService
+                .findCurrentHashForPdf(validated.id()).orElse(null);
+        com.benjagest.backend.billing.verifactu.VerifactuConfig vfConfig =
+                verifactuConfigRepository.findCurrent().orElse(null);
+        byte[] qrPng = qrService.generatePng(validated, company, vfConfig);
+        String complianceLabel = qrService.complianceLabel(vfConfig);
+        byte[] pdfBytes = pdfGenerator.generate(
+                validated, company, invoiceTextsService.get(),
+                currentHash, qrPng, complianceLabel);
+        String storageRoot = vfConfig == null ? null : vfConfig.invoiceStorageRoot();
+        String absPath = storageService.writePdf(
+                storageRoot, company.id(),
+                validated.invoiceDate(), validated.invoiceNumber(),
+                pdfBytes);
+        repository.setPdfPath(validated.id(), absPath);
+        return absPath;
     }
 
     @Transactional

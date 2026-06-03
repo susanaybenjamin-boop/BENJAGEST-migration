@@ -128,6 +128,25 @@ public class SalesInvoiceController {
     }
 
     /**
+     * Genera el PDF y lo guarda en la ruta configurada por la empresa
+     * (slice F-STORAGE). Usado por el botón "Guardar PDF" del listado
+     * para facturas que aún no tienen archivo en disco (legacy,
+     * borrado manual, fallo de escritura en validate).
+     *
+     * Crea las subcarpetas {YYYY}/T{q}/ si no existen
+     * (Files.createDirectories del InvoiceStorageService).
+     *
+     * Devuelve {@code {"pdfPath": "..."} } con la ruta absoluta para
+     * que la UI lo muestre en el alert de éxito y refresque el
+     * listado (al volver, pdfStored=true y el botón se renombra).
+     */
+    @PostMapping(value = "/{id}/store-pdf", produces = MediaType.APPLICATION_JSON_VALUE)
+    public java.util.Map<String, String> storePdf(@PathVariable("id") String id) {
+        String absPath = service.storePdfNow(id);
+        return java.util.Map.of("pdfPath", absPath);
+    }
+
+    /**
      * Envia la factura por email al cliente — slice F-EMAIL.
      *
      * Body:

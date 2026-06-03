@@ -7,6 +7,10 @@ import java.math.BigDecimal;
  * No incluye lineas: solo el header. Para el detalle (lineas) se pide
  * la factura completa con otro endpoint, asi el listado se mantiene
  * ligero aunque haya cientos.
+ *
+ * pdfStored = TRUE cuando el backend ya ha guardado el PDF en la
+ * ruta configurada (slice F-STORAGE). La UI usa esto para mutar el
+ * boton entre "Abrir PDF" (true) y "Guardar PDF" (false).
  */
 public record SalesInvoiceSummary(
         String id,
@@ -21,13 +25,14 @@ public record SalesInvoiceSummary(
         // Solo viene rellenado cuando el backend devuelve el header
         // detallado (getInvoiceById). En el listado normal puede ser null.
         String invoiceType,
-        String originalInvoiceId
+        String originalInvoiceId,
+        Boolean pdfStored
 ) {
     /** Convenience cuando la API no devuelve los campos extra (listado). */
     public SalesInvoiceSummary(String id, String invoiceNumber, String customerLegalName,
                                 String invoiceDate, String dueDate, String status,
                                 String paymentStatus, BigDecimal total, BigDecimal paidAmount) {
         this(id, invoiceNumber, customerLegalName, invoiceDate, dueDate, status,
-                paymentStatus, total, paidAmount, null, null);
+                paymentStatus, total, paidAmount, null, null, Boolean.FALSE);
     }
 }

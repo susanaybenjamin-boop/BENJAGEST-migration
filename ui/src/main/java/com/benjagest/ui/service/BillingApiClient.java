@@ -192,6 +192,24 @@ public class BillingApiClient {
         return parseInvoiceHeader(response.body());
     }
 
+    /**
+     * Fuerza la generación y guardado del PDF en la ruta configurada
+     * por la empresa ({@code {root}/{companyId}/{YYYY}/T{q}/{nº}.pdf}).
+     * El backend crea las subcarpetas de año y trimestre si no existen.
+     * Devuelve la ruta absoluta para que la UI la muestre en el mensaje
+     * de éxito.
+     */
+    public String storeInvoicePdf(String id) throws IOException, InterruptedException {
+        HttpResponse<String> response = sendAuthorized(HttpRequest.newBuilder(
+                URI.create(baseUrl + "/billing/invoices/" + id + "/store-pdf"))
+                .timeout(Duration.ofSeconds(30))
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.noBody()));
+        ensureOk(response);
+        String path = textField(response.body(), "pdfPath");
+        return path.isEmpty() ? "" : path;
+    }
+
     public void deleteInvoice(String id) throws IOException, InterruptedException {
         HttpRequest.Builder builder = HttpRequest.newBuilder(URI.create(baseUrl + "/billing/invoices/" + id))
                 .timeout(Duration.ofSeconds(8))
@@ -226,6 +244,12 @@ public class BillingApiClient {
         // si vienen lineas embebidas con campos que colisionan en regex.
         int linesIdx = json.indexOf("\"lines\"");
         String header = linesIdx > 0 ? json.substring(0, linesIdx) : json;
+        // pdfPath del header (no es directamente pdfStored — el backend
+        // expone pdf_path como string en el JSON; lo traducimos a un
+        // boolean "tiene PDF guardado" para que la UI no tenga que
+        // hilar fino entre rutas).
+        String pdfPath = textField(header, "pdfPath");
+        boolean pdfStored = pdfPath != null && !pdfPath.isBlank();
         return new SalesInvoiceSummary(
                 textField(header, "id"),
                 textField(header, "invoiceNumber"),
@@ -237,7 +261,8 @@ public class BillingApiClient {
                 decimalField(header, "total"),
                 decimalField(header, "paidAmount"),
                 textField(header, "invoiceType"),
-                textField(header, "originalInvoiceId")
+                textField(header, "originalInvoiceId"),
+                pdfStored
         );
     }
 
@@ -601,7 +626,8 @@ public class BillingApiClient {
                     decimalField(obj, "total"),
                     decimalField(obj, "paidAmount"),
                     textField(obj, "invoiceType"),
-                    textField(obj, "originalInvoiceId")
+                    textField(obj, "originalInvoiceId"),
+                    !textField(obj, "pdfPath").isEmpty()
             ));
         }
         return list;
