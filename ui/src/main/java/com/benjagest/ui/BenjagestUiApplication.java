@@ -2860,6 +2860,13 @@ public class BenjagestUiApplication extends Application {
         verifyChain.setGraphic(icon("fas-shield-alt"));
         verifyChain.setOnAction(event -> verifyVerifactuChain());
 
+        // VF-EVENTS-B: bloque de Registro de Eventos del SIF — solo es
+        // legalmente obligatorio en NO VeriFactu, pero lo mostramos en
+        // ambas modalidades porque (a) las facturas anteriores al
+        // cambio de modalidad pueden tener eventos, (b) la pestaña es
+        // de solo lectura y sirve de evidencia auditable.
+        Node sifEventsBlock = sifEventsAuditBlock();
+
         HBox actions = new HBox(8, save, verifyChain);
         actions.getStyleClass().add("settings-actions");
 
@@ -2870,9 +2877,131 @@ public class BenjagestUiApplication extends Application {
                 new Separator(),
                 migrationBlock,
                 new Separator(),
-                textsBlock
+                textsBlock,
+                new Separator(),
+                sifEventsBlock
         );
         return tabLayout(label(t("billing.config.tab_title"), "settings-section-title"), body, actions);
+    }
+
+    /**
+     * Bloque "Auditoría SIF" — listado del Registro de Eventos del SIF
+     * con filtro por tipo, botón Refrescar y botón Verificar integridad.
+     * Es la cara visible del slice VF-EVENTS para el OWNER/ADMIN.
+     */
+    private TableView<com.benjagest.ui.model.SifEventEntry> sifEventsTable;
+    private ComboBox<String> sifEventTypeFilter;
+
+    private Node sifEventsAuditBlock() {
+        Label header = label(t("billing.config.sif.section"), "settings-section-title");
+        Label hint = new Label(t("billing.config.sif.hint"));
+        hint.setWrapText(true);
+        hint.getStyleClass().add("settings-hint");
+
+        sifEventTypeFilter = new ComboBox<>();
+        sifEventTypeFilter.getItems().addAll(
+                t("list.filter.all"),
+                "SYSTEM_START", "SYSTEM_STOP",
+                "INVOICE_VALIDATED", "INVOICE_VOIDED",
+                "ANOMALY_DETECTION_INVOICES_RUN", "ANOMALY_DETECTION_INVOICES_HIT",
+                "ANOMALY_DETECTION_EVENTS_RUN", "ANOMALY_DETECTION_EVENTS_HIT",
+                "BACKUP_RESTORED",
+                "EXPORT_INVOICES", "EXPORT_EVENTS",
+                "SUMMARY_6H", "SUMMARY_SHUTDOWN");
+        sifEventTypeFilter.getSelectionModel().selectFirst();
+        sifEventTypeFilter.getStyleClass().add("form-input");
+
+        sifEventsTable = new TableView<>();
+        sifEventsTable.getStyleClass().add("data-table");
+        sifEventsTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+        sifEventsTable.setPlaceholder(new Label(t("billing.config.sif.placeholder.empty")));
+        sifEventsTable.setPrefHeight(220);
+
+        TableColumn<com.benjagest.ui.model.SifEventEntry, String> colWhen =
+                new TableColumn<>(t("billing.config.sif.col.when"));
+        colWhen.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().generatedAtIso()));
+        colWhen.setPrefWidth(160);
+        TableColumn<com.benjagest.ui.model.SifEventEntry, String> colType =
+                new TableColumn<>(t("billing.config.sif.col.type"));
+        colType.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().eventType()));
+        colType.setPrefWidth(220);
+        TableColumn<com.benjagest.ui.model.SifEventEntry, String> colHash =
+                new TableColumn<>(t("billing.config.sif.col.hash"));
+        colHash.setCellValueFactory(c -> new SimpleStringProperty(
+                c.getValue().hashCurrent() == null || c.getValue().hashCurrent().length() < 16
+                        ? "" : c.getValue().hashCurrent().substring(0, 16) + "…"));
+        colHash.setPrefWidth(150);
+        TableColumn<com.benjagest.ui.model.SifEventEntry, String> colPayload =
+                new TableColumn<>(t("billing.config.sif.col.payload"));
+        colPayload.setCellValueFactory(c -> new SimpleStringProperty(
+                c.getValue().payload() == null ? "" : c.getValue().payload()));
+        sifEventsTable.getColumns().addAll(List.of(colWhen, colType, colHash, colPayload));
+
+        Button refresh = new Button(t("billing.config.sif.refresh"));
+        refresh.setGraphic(icon("fas-sync"));
+        refresh.setOnAction(event -> refreshSifEvents());
+
+        Button verifySif = new Button(t("billing.config.sif.verify"));
+        verifySif.setGraphic(icon("fas-shield-alt"));
+        verifySif.setOnAction(event -> verifySifEventChain());
+
+        HBox filterRow = new HBox(8, sifEventTypeFilter, refresh, verifySif);
+        filterRow.setAlignment(javafx.geometry.Pos.CENTER_LEFT);
+
+        // Carga inicial diferida: si la pestaña aun no esta visible,
+        // un Task no bloqueante asegura que la UI responde antes de
+        // que el endpoint responda.
+        refreshSifEvents();
+
+        return new VBox(8, header, hint, filterRow, sifEventsTable);
+    }
+
+    private void refreshSifEvents() {
+        if (sifEventsTable == null) return;
+        String selected = sifEventTypeFilter == null ? null : sifEventTypeFilter.getValue();
+        String filter = (selected == null
+                || t("list.filter.all").equals(selected)
+                || "(todos)".equals(selected)
+                || "(all)".equals(selected))
+                ? null : selected;
+        Task<java.util.List<com.benjagest.ui.model.SifEventEntry>> task = new Task<>() {
+            @Override
+            protected java.util.List<com.benjagest.ui.model.SifEventEntry> call() throws Exception {
+                return billingApiClient.listSifEvents(filter);
+            }
+        };
+        task.setOnSucceeded(event -> sifEventsTable.getItems().setAll(task.getValue()));
+        task.setOnFailed(event -> sifEventsTable.getItems().clear());
+        start(task, "billing-sif-events-list");
+    }
+
+    private void verifySifEventChain() {
+        Task<com.benjagest.ui.model.SifEventIntegrityResult> task = new Task<>() {
+            @Override
+            protected com.benjagest.ui.model.SifEventIntegrityResult call() throws Exception {
+                return billingApiClient.verifySifEventChain();
+            }
+        };
+        task.setOnSucceeded(event -> {
+            com.benjagest.ui.model.SifEventIntegrityResult result = task.getValue();
+            if (result.ok()) {
+                Alert ok = new Alert(Alert.AlertType.INFORMATION,
+                        t("billing.config.sif.verify.ok.prefix") + result.totalChecked()
+                                + t("billing.config.sif.verify.ok.suffix"),
+                        ButtonType.OK);
+                ok.setHeaderText(null);
+                ok.showAndWait();
+            } else {
+                String broken = result.brokenEventType() == null ? "—" : result.brokenEventType();
+                String body = t("billing.config.sif.verify.broken.prefix") + broken + "\n"
+                        + (result.reason() == null ? "" : result.reason());
+                showError(t("billing.config.sif.verify.broken.title"), body);
+            }
+        });
+        task.setOnFailed(event -> showError(
+                t("billing.config.sif.verify.fail.title"),
+                t("billing.config.sif.verify.fail.body")));
+        start(task, "billing-sif-events-verify");
     }
 
     private javafx.scene.control.TextArea textArea(String value, String prompt) {
@@ -4503,6 +4632,21 @@ public class BenjagestUiApplication extends Application {
                 case "billing.config.verifactu.verify.broken.prefix" -> "First suspect invoice: ";
                 case "billing.config.verifactu.verify.fail.title" -> "Could not verify";
                 case "billing.config.verifactu.verify.fail.body" -> "The server did not respond. Check the connection and try again.";
+                case "billing.config.sif.section" -> "SIF event registry (No VeriFactu)";
+                case "billing.config.sif.hint" -> "Mandatory chained event log for systems running as No VeriFactu (RD 1007/2023, art. 16). Each event is SHA-256 hashed and linked to the previous one. Lifecycle and invoicing operations are recorded automatically.";
+                case "billing.config.sif.placeholder.empty" -> "No SIF events yet. They appear as soon as the system starts and invoices are validated.";
+                case "billing.config.sif.col.when" -> "When";
+                case "billing.config.sif.col.type" -> "Event type";
+                case "billing.config.sif.col.hash" -> "Hash";
+                case "billing.config.sif.col.payload" -> "Payload";
+                case "billing.config.sif.refresh" -> "Refresh";
+                case "billing.config.sif.verify" -> "Verify SIF chain";
+                case "billing.config.sif.verify.ok.prefix" -> "SIF chain OK. Events checked: ";
+                case "billing.config.sif.verify.ok.suffix" -> ".";
+                case "billing.config.sif.verify.broken.title" -> "SIF chain BROKEN";
+                case "billing.config.sif.verify.broken.prefix" -> "First suspect event: ";
+                case "billing.config.sif.verify.fail.title" -> "Could not verify SIF chain";
+                case "billing.config.sif.verify.fail.body" -> "The server did not respond. Check the connection and try again.";
                 case "billing.config.series.section" -> "Numbering series";
                 case "billing.config.series.hint" -> "You only define the series for your standard invoices. PROFORMA and RECTIFYING series are system-managed (RD 1619/2012 Art.13). Your STANDARD series auto-locks as soon as you issue the first validated invoice of the year (legal continuity — only unlocked at year-end).";
                 case "billing.config.series.placeholder.empty" -> "No series. Press 'Define my invoice series' to create the STANDARD one.";
@@ -5010,6 +5154,21 @@ public class BenjagestUiApplication extends Application {
             case "billing.config.verifactu.verify.broken.prefix" -> "Primera factura sospechosa: ";
             case "billing.config.verifactu.verify.fail.title" -> "No se pudo verificar";
             case "billing.config.verifactu.verify.fail.body" -> "El servidor no respondio. Comprueba la conexion y vuelve a intentarlo.";
+            case "billing.config.sif.section" -> "Registro de eventos del SIF (No VeriFactu)";
+            case "billing.config.sif.hint" -> "Registro encadenado de eventos obligatorio para sistemas en No VeriFactu (RD 1007/2023, art. 16). Cada evento lleva un SHA-256 encadenado al anterior. Las operaciones de ciclo de vida y de facturacion se registran automaticamente.";
+            case "billing.config.sif.placeholder.empty" -> "Aun no hay eventos SIF. Apareceran en cuanto arranque el sistema y se validen facturas.";
+            case "billing.config.sif.col.when" -> "Cuando";
+            case "billing.config.sif.col.type" -> "Tipo de evento";
+            case "billing.config.sif.col.hash" -> "Huella";
+            case "billing.config.sif.col.payload" -> "Datos";
+            case "billing.config.sif.refresh" -> "Refrescar";
+            case "billing.config.sif.verify" -> "Verificar cadena SIF";
+            case "billing.config.sif.verify.ok.prefix" -> "Cadena SIF correcta. Eventos comprobados: ";
+            case "billing.config.sif.verify.ok.suffix" -> ".";
+            case "billing.config.sif.verify.broken.title" -> "Cadena SIF ROTA";
+            case "billing.config.sif.verify.broken.prefix" -> "Primer evento sospechoso: ";
+            case "billing.config.sif.verify.fail.title" -> "No se pudo verificar la cadena SIF";
+            case "billing.config.sif.verify.fail.body" -> "El servidor no respondio. Comprueba la conexion y vuelve a intentarlo.";
             case "billing.config.series.section" -> "Series de numeracion";
             case "billing.config.series.hint" -> "Solo defines la serie de tus facturas normales. Las series para PROFORMA y RECTIFICATIVAS son del sistema (RD 1619/2012 Art.13). Tu serie STANDARD se autobloquea automaticamente en cuanto emites la primera factura validada del ano (continuidad legal — solo se desbloquea al cerrar el ano).";
             case "billing.config.series.placeholder.empty" -> "Sin series. Pulsa 'Definir mi serie de facturas' para crear la STANDARD.";

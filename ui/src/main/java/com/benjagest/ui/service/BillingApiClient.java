@@ -5,6 +5,8 @@ import com.benjagest.ui.model.InvoiceLineDraft;
 import com.benjagest.ui.model.InvoiceTexts;
 import com.benjagest.ui.model.SalesInvoiceSummary;
 import com.benjagest.ui.model.SeriesEntry;
+import com.benjagest.ui.model.SifEventEntry;
+import com.benjagest.ui.model.SifEventIntegrityResult;
 import com.benjagest.ui.model.VerifactuConfig;
 import com.benjagest.ui.model.VerifactuIntegrityResult;
 import java.io.IOException;
@@ -392,6 +394,60 @@ public class BillingApiClient {
                 ok, total,
                 brokenId.isEmpty() ? null : brokenId,
                 brokenNumber.isEmpty() ? null : brokenNumber,
+                reason.isEmpty() ? null : reason);
+    }
+
+    // -------- SIF event registry (VF-EVENTS) --------
+
+    /**
+     * Lista de eventos del Registro de Eventos del SIF (cadena de
+     * trazabilidad obligatoria en NO VeriFactu). Filtros opcionales:
+     * eventType, limit (1..500). Solo devuelve los de la empresa actual.
+     */
+    public List<SifEventEntry> listSifEvents(String eventTypeFilter) throws IOException, InterruptedException {
+        String url = baseUrl + "/billing/sif-events?limit=200"
+                + (eventTypeFilter == null || eventTypeFilter.isBlank() ? ""
+                        : "&eventType=" + eventTypeFilter.trim());
+        HttpResponse<String> response = sendAuthorized(HttpRequest.newBuilder(URI.create(url))
+                .timeout(Duration.ofSeconds(10))
+                .GET());
+        ensureOk(response);
+        List<SifEventEntry> list = new ArrayList<>();
+        for (String obj : splitJsonObjects(response.body())) {
+            if (!obj.contains("\"eventType\"")) continue;
+            list.add(new SifEventEntry(
+                    textField(obj, "id"),
+                    textField(obj, "eventType"),
+                    textField(obj, "payload"),
+                    textField(obj, "generatedAt"),
+                    textField(obj, "hashCurrent"),
+                    textField(obj, "hashPrevious"),
+                    textField(obj, "status")
+            ));
+        }
+        return list;
+    }
+
+    /**
+     * Verifica la integridad de la cadena hash de eventos del SIF.
+     * Mismo patron que verifyVerifactuChain pero sobre la otra cadena.
+     */
+    public SifEventIntegrityResult verifySifEventChain() throws IOException, InterruptedException {
+        HttpResponse<String> response = sendAuthorized(HttpRequest.newBuilder(
+                URI.create(baseUrl + "/billing/sif-events/verify"))
+                .timeout(Duration.ofSeconds(20))
+                .GET());
+        ensureOk(response);
+        String body = response.body();
+        boolean ok = boolField(body, "ok");
+        int total = intFieldOrZero(body, "totalChecked");
+        String brokenId = textField(body, "brokenEventId");
+        String brokenType = textField(body, "brokenEventType");
+        String reason = textField(body, "reason");
+        return new SifEventIntegrityResult(
+                ok, total,
+                brokenId.isEmpty() ? null : brokenId,
+                brokenType.isEmpty() ? null : brokenType,
                 reason.isEmpty() ? null : reason);
     }
 
