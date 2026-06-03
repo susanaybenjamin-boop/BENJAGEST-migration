@@ -157,6 +157,21 @@ public class BillingApiClient {
         return parseInvoiceHeader(response.body());
     }
 
+    /**
+     * Anulacion con vinculo: el server crea un borrador RECTIFYING enlazado
+     * a la factura original (que sigue VALIDATED). Devolvemos el header del
+     * borrador para que la UI lo pueda abrir o mostrar su id.
+     */
+    public SalesInvoiceSummary voidInvoice(String id) throws IOException, InterruptedException {
+        HttpRequest.Builder builder = HttpRequest.newBuilder(URI.create(baseUrl + "/billing/invoices/" + id + "/void"))
+                .timeout(Duration.ofSeconds(10))
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.noBody());
+        HttpResponse<String> response = sendAuthorized(builder);
+        ensureOk(response);
+        return parseInvoiceHeader(response.body());
+    }
+
     public void deleteInvoice(String id) throws IOException, InterruptedException {
         HttpRequest.Builder builder = HttpRequest.newBuilder(URI.create(baseUrl + "/billing/invoices/" + id))
                 .timeout(Duration.ofSeconds(8))
@@ -179,7 +194,9 @@ public class BillingApiClient {
                 textField(header, "status"),
                 textField(header, "paymentStatus"),
                 decimalField(header, "total"),
-                decimalField(header, "paidAmount")
+                decimalField(header, "paidAmount"),
+                textField(header, "invoiceType"),
+                textField(header, "originalInvoiceId")
         );
     }
 
