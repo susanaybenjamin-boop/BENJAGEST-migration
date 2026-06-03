@@ -12,6 +12,7 @@ public record VerifactuConfig(
         String mode,
         String certificateId,
         String certificateAlias,
-        String invoiceFooterTemplate
+        String invoiceFooterTemplate,
+        String invoiceStorageRoot
 ) {
 }

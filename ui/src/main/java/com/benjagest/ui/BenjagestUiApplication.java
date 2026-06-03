@@ -2613,6 +2613,7 @@ public class BenjagestUiApplication extends Application {
     private ComboBox<String> verifactuModeCombo;
     private ComboBox<CertificateOption> verifactuCertCombo;
     private TextField verifactuFooterField;
+    private TextField verifactuStorageRootField;
     private ComboBox<SeriesEntry> migrationSeriesCombo;
     private TextField migrationNextNumberField;
     private CheckBox migrationAcknowledgeCheck;
@@ -2683,11 +2684,21 @@ public class BenjagestUiApplication extends Application {
         verifactuFooterField = textInput(config.invoiceFooterTemplate(), t("billing.config.verifactu.footer.prompt"));
         verifactuFooterField.setPrefColumnCount(60);
 
+        // Slice F-STORAGE: ruta local donde se almacenan los PDFs al
+        // validar. Vacio = usar el default del backend
+        // ($HOME/benjagest-facturas o lo que diga
+        // benjagest.invoices.storage-root). El backend monta la
+        // estructura {root}/{companyId}/{YYYY}/T{q}/{nº}.pdf.
+        verifactuStorageRootField = textInput(config.invoiceStorageRoot(),
+                t("billing.config.field.storage_root.prompt"));
+        verifactuStorageRootField.setPrefColumnCount(60);
+
         GridPane grid = formGrid();
         addFormRow(grid, 0, t("billing.config.field.modality"), verifactuModalityCombo);
         addFormRow(grid, 1, t("billing.config.field.mode"), verifactuModeCombo);
         addFormRow(grid, 2, t("billing.config.field.cert"), verifactuCertCombo);
         addFormRow(grid, 3, t("billing.config.field.footer"), verifactuFooterField);
+        addFormRow(grid, 4, t("billing.config.field.storage_root"), verifactuStorageRootField);
 
         Label certHint = new Label(certificates.isEmpty()
                 ? t("billing.config.cert.hint.empty")
@@ -3994,11 +4005,12 @@ public class BenjagestUiApplication extends Application {
         CertificateOption cert = verifactuCertCombo.getValue();
         String certId = cert == null ? null : cert.id();
         String footer = verifactuFooterField.getText();
+        String storageRoot = verifactuStorageRootField == null ? null : verifactuStorageRootField.getText();
 
         Task<VerifactuConfig> task = new Task<>() {
             @Override
             protected VerifactuConfig call() throws Exception {
-                return billingApiClient.updateVerifactuConfig(modality, mode, certId, footer);
+                return billingApiClient.updateVerifactuConfig(modality, mode, certId, footer, storageRoot);
             }
         };
         task.setOnSucceeded(event -> {
@@ -4615,6 +4627,8 @@ public class BenjagestUiApplication extends Application {
                 case "billing.config.field.mode" -> "AEAT environment *";
                 case "billing.config.field.cert" -> "Certificate";
                 case "billing.config.field.footer" -> "Invoice footer";
+                case "billing.config.field.storage_root" -> "Invoice storage path";
+                case "billing.config.field.storage_root.prompt" -> "e.g. C:\\benjagest\\invoices or /var/benjagest/invoices (empty = backend default)";
                 case "billing.config.modality.verifactu" -> "VeriFactu (real-time submission to AEAT)";
                 case "billing.config.modality.no_verifactu" -> "No VeriFactu (local hash + SIF event log)";
                 case "billing.config.cert.hint.empty" -> "No certificates uploaded. Activate the Documents module and upload one via /api/certificates.";
@@ -5137,6 +5151,8 @@ public class BenjagestUiApplication extends Application {
             case "billing.config.field.mode" -> "Entorno AEAT *";
             case "billing.config.field.cert" -> "Certificado";
             case "billing.config.field.footer" -> "Pie de factura";
+            case "billing.config.field.storage_root" -> "Ruta de almacenamiento de facturas";
+            case "billing.config.field.storage_root.prompt" -> "ej. C:\\benjagest\\facturas o /var/benjagest/facturas (vacio = ruta por defecto del servidor)";
             case "billing.config.modality.verifactu" -> "VeriFactu (envio en tiempo real a AEAT)";
             case "billing.config.modality.no_verifactu" -> "No VeriFactu (hash local + registro de eventos del SIF)";
             case "billing.config.cert.hint.empty" -> "No hay certificados subidos. Activa el modulo Documentos y sube uno en /api/certificates.";

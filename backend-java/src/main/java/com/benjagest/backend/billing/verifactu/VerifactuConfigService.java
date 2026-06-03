@@ -38,7 +38,8 @@ public class VerifactuConfigService {
                 request.modality(),
                 request.mode(),
                 request.certificateId(),
-                request.invoiceFooterTemplate());
+                request.invoiceFooterTemplate(),
+                request.invoiceStorageRoot());
         return get();
     }
 }

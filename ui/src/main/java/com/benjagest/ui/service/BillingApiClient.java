@@ -453,7 +453,8 @@ public class BillingApiClient {
 
     public VerifactuConfig updateVerifactuConfig(String modality, String mode,
                                                  String certificateIdOrNull,
-                                                 String footerTemplate) throws IOException, InterruptedException {
+                                                 String footerTemplate,
+                                                 String invoiceStorageRoot) throws IOException, InterruptedException {
         StringBuilder body = new StringBuilder("{");
         body.append(field("modality", modality));
         body.append(",").append(field("mode", mode));
@@ -462,6 +463,9 @@ public class BillingApiClient {
         }
         if (footerTemplate != null) {
             body.append(",").append(field("invoiceFooterTemplate", footerTemplate));
+        }
+        if (invoiceStorageRoot != null) {
+            body.append(",").append(field("invoiceStorageRoot", invoiceStorageRoot));
         }
         body.append("}");
         HttpResponse<String> response = sendAuthorized(HttpRequest.newBuilder(URI.create(baseUrl + "/billing/verifactu-config"))
@@ -656,7 +660,8 @@ public class BillingApiClient {
                 textField(json, "mode"),
                 textField(json, "certificateId"),
                 textField(json, "certificateAlias"),
-                textField(json, "invoiceFooterTemplate")
+                textField(json, "invoiceFooterTemplate"),
+                textField(json, "invoiceStorageRoot")
         );
     }
 

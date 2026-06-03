@@ -1,8 +1,14 @@
 package com.benjagest.backend.billing.invoices;
 
+import com.benjagest.backend.billing.pdf.InvoicePdfGenerator;
+import com.benjagest.backend.billing.pdf.InvoiceStorageService;
 import com.benjagest.backend.billing.series.SeriesService;
 import com.benjagest.backend.billing.sif.SifEventService;
+import com.benjagest.backend.billing.texts.InvoiceTextsController.InvoiceTextsService;
 import com.benjagest.backend.billing.verifactu.VerifactuRegistryService;
+import com.benjagest.backend.settings.CompanyDataResponse;
+import com.benjagest.backend.settings.CompanyDataService;
+import java.io.IOException;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
@@ -36,15 +42,30 @@ public class SalesInvoiceService {
     private final SeriesService seriesService;
     private final VerifactuRegistryService verifactuRegistryService;
     private final SifEventService sifEventService;
+    private final InvoicePdfGenerator pdfGenerator;
+    private final InvoiceStorageService storageService;
+    private final CompanyDataService companyDataService;
+    private final InvoiceTextsService invoiceTextsService;
+    private final com.benjagest.backend.billing.verifactu.VerifactuConfigRepository verifactuConfigRepository;
 
     public SalesInvoiceService(SalesInvoiceRepository repository,
                                SeriesService seriesService,
                                VerifactuRegistryService verifactuRegistryService,
-                               SifEventService sifEventService) {
+                               SifEventService sifEventService,
+                               InvoicePdfGenerator pdfGenerator,
+                               InvoiceStorageService storageService,
+                               CompanyDataService companyDataService,
+                               InvoiceTextsService invoiceTextsService,
+                               com.benjagest.backend.billing.verifactu.VerifactuConfigRepository verifactuConfigRepository) {
         this.repository = repository;
         this.seriesService = seriesService;
         this.verifactuRegistryService = verifactuRegistryService;
         this.sifEventService = sifEventService;
+        this.pdfGenerator = pdfGenerator;
+        this.storageService = storageService;
+        this.companyDataService = companyDataService;
+        this.invoiceTextsService = invoiceTextsService;
+        this.verifactuConfigRepository = verifactuConfigRepository;
     }
 
     public List<SalesInvoice> list(String statusFilter,
@@ -97,6 +118,7 @@ public class SalesInvoiceService {
                 blankToNull(request.originalInvoiceId()),
                 null,
                 blankToNull(request.notes()),
+                null,            // pdfPath — solo se rellena al validar.
                 null,
                 null,
                 null,
@@ -143,7 +165,9 @@ public class SalesInvoiceService {
                 // edita desde aqui — solo lo fija voidValidated() al crear
                 // el borrador rectificativa.
                 existing.originalInvoiceId(), existing.rectifyingInvoiceId(),
-                blankToNull(request.notes()), existing.validatedAt(),
+                blankToNull(request.notes()),
+                existing.pdfPath(),       // pdfPath se preserva (borrador siempre null).
+                existing.validatedAt(),
                 existing.createdAt(), existing.updatedAt(),
                 lines
         );
@@ -221,6 +245,42 @@ public class SalesInvoiceService {
             repository.markVoided(validated.originalInvoiceId());
             repository.setRectifyingInvoiceId(validated.originalInvoiceId(), id);
             cascadedVoid = true;
+        }
+
+        // Slice F-STORAGE: generar el PDF y guardarlo en disco aqui, no
+        // bajo demanda. La copia almacenada ES la legalmente vinculante
+        // (RD 1007/2023 + LGT art.70: minimo 4 anyos). Descargas
+        // posteriores releen este archivo en vez de regenerar — eso
+        // garantiza que el PDF que viste al validar es el mismo
+        // bit-a-bit en cualquier consulta futura.
+        //
+        // Si la escritura a disco falla, NO rompemos la transaccion: la
+        // factura ya esta validada y numerada legalmente; lo que
+        // queremos es que validate sea atomico en BD. La perdida del
+        // PDF en disco se puede regenerar manualmente (no es ideal pero
+        // tampoco supone perdida legal porque los datos canonicos
+        // estan en BD). Loggeamos con WARN para que el operador lo vea.
+        try {
+            CompanyDataResponse company = companyDataService.getCurrent();
+            String currentHash = verifactuRegistryService.findCurrentHashForPdf(id).orElse(null);
+            byte[] pdfBytes = pdfGenerator.generate(
+                    validated, company, invoiceTextsService.get(), currentHash);
+            String storageRoot = verifactuConfigRepository.findCurrent()
+                    .map(c -> c.invoiceStorageRoot()).orElse(null);
+            String absPath = storageService.writePdf(
+                    storageRoot, company.id(),
+                    validated.invoiceDate(), validated.invoiceNumber(),
+                    pdfBytes);
+            repository.setPdfPath(id, absPath);
+        } catch (IOException ioe) {
+            // No bloqueamos la validacion. Solo registramos para que el
+            // operador pueda regenerar (con un boton "Reconstruir
+            // archivo" pendiente — slice futuro).
+            org.slf4j.LoggerFactory.getLogger(SalesInvoiceService.class)
+                    .warn("No se pudo guardar el PDF de la factura {} en disco", id, ioe);
+        } catch (RuntimeException ex) {
+            org.slf4j.LoggerFactory.getLogger(SalesInvoiceService.class)
+                    .warn("Error inesperado guardando PDF de la factura {}", id, ex);
         }
 
         // Registro de Eventos del SIF (RD 1007/2023 + Orden HAC/1177/2024):
@@ -322,6 +382,7 @@ public class SalesInvoiceService {
                 null,
                 "Rectificativa por anulacion de "
                         + (original.invoiceNumber() == null ? original.id() : original.invoiceNumber()),
+                null,            // pdfPath — se rellena al validar.
                 null,
                 null,
                 null,
