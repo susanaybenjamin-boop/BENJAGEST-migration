@@ -2386,6 +2386,18 @@ public class BenjagestUiApplication extends Application {
             if (sel != null) downloadInvoicePdf(sel);
         });
 
+        // F-EMAIL: enviar factura por email al cliente. Solo VALIDATED
+        // — borradores no son documentos legales, anuladas tampoco se
+        // envian por defecto (si llega caso de uso real, se abre slice
+        // aparte).
+        Button emailBtn = new Button(t("list.action.send_email"));
+        emailBtn.setGraphic(icon("fas-paper-plane"));
+        emailBtn.setDisable(true);
+        emailBtn.setOnAction(ev -> {
+            SalesInvoiceSummary sel = billingTable.getSelectionModel().getSelectedItem();
+            if (sel != null) sendInvoiceByEmail(sel);
+        });
+
         // Wire up de habilitacion segun la fila seleccionada.
         // - Validar / Eliminar borrador: solo en DRAFT.
         // - Anular: solo en STANDARD VALIDATED. Una rectificativa YA es el
@@ -2395,6 +2407,9 @@ public class BenjagestUiApplication extends Application {
         //   documento legal (no tiene número emitido), pero VALIDATED /
         //   VOIDED / CANCELLED sí — debe poder regenerarse el PDF por
         //   archivo o si el usuario lo perdió.
+        // - Email: solo VALIDATED. Borrador no procede; anulada se
+        //   comunica por otros medios (telefono, presencial) por
+        //   defecto.
         billingTable.getSelectionModel().selectedItemProperty().addListener((obs, oldV, newV) -> {
             boolean isDraft = newV != null && "DRAFT".equals(newV.status());
             boolean isValidated = newV != null && "VALIDATED".equals(newV.status());
@@ -2403,11 +2418,12 @@ public class BenjagestUiApplication extends Application {
             deleteDraftBtn.setDisable(!isDraft);
             voidBtn.setDisable(!isValidated || isRectifying);
             pdfBtn.setDisable(newV == null || isDraft);
+            emailBtn.setDisable(!isValidated);
         });
 
         Region rowActionsSpacer = new Region();
         HBox.setHgrow(rowActionsSpacer, Priority.ALWAYS);
-        HBox rowActions = new HBox(10, validateRowBtn, deleteDraftBtn, voidBtn, rowActionsSpacer, pdfBtn);
+        HBox rowActions = new HBox(10, validateRowBtn, deleteDraftBtn, voidBtn, rowActionsSpacer, emailBtn, pdfBtn);
         rowActions.getStyleClass().add("settings-actions");
 
         VBox bottomBlock = new VBox(12, billingTable, rowActions);
@@ -2493,6 +2509,45 @@ public class BenjagestUiApplication extends Application {
         task.setOnFailed(ev -> showError(t("list.dialog.pdf.download_failed.title"),
                 t("list.dialog.pdf.download_failed.body")));
         start(task, "billing-invoice-pdf");
+    }
+
+    /**
+     * Envía la factura validada al email del cliente. F-EMAIL.
+     *
+     * Diálogo de confirmación con TextField pre-rellenado (vacío si el
+     * cliente no tiene contacto principal) — así el usuario puede
+     * sobreescribir el destinatario o introducir uno si falta. Si lo
+     * deja vacío se manda al primary_contact por defecto.
+     */
+    private void sendInvoiceByEmail(SalesInvoiceSummary sel) {
+        javafx.scene.control.TextInputDialog dialog = new javafx.scene.control.TextInputDialog();
+        dialog.setHeaderText(t("list.dialog.email.title") + "\n" + sel.invoiceNumber());
+        dialog.setContentText(t("list.dialog.email.recipient_label"));
+        dialog.setTitle(t("list.dialog.email.window_title"));
+        Optional<String> ans = dialog.showAndWait();
+        if (ans.isEmpty()) return;
+        String override = ans.get().trim();
+        // Nota: vacio = usar el email registrado del cliente. El
+        // backend rechaza con 400 si no hay ni override ni primary.
+
+        Task<String> task = new Task<>() {
+            @Override
+            protected String call() throws Exception {
+                return billingApiClient.sendInvoiceByEmail(sel.id(), override.isEmpty() ? null : override);
+            }
+        };
+        task.setOnSucceeded(ev -> {
+            String recipient = task.getValue();
+            String body = t("list.dialog.email.success_prefix")
+                    + (recipient == null ? "" : recipient)
+                    + t("list.dialog.email.success_suffix");
+            Alert ok = new Alert(Alert.AlertType.INFORMATION, body, ButtonType.OK);
+            ok.setHeaderText(null);
+            ok.showAndWait();
+        });
+        task.setOnFailed(ev -> showError(t("list.dialog.email.fail.title"),
+                t("list.dialog.email.fail.body")));
+        start(task, "billing-invoice-email");
     }
 
     private void voidInvoiceFromList(SalesInvoiceSummary sel) {
@@ -4571,6 +4626,14 @@ public class BenjagestUiApplication extends Application {
                 case "list.draft_label" -> "(draft)";
                 case "list.action.delete_draft" -> "Delete draft";
                 case "list.action.generate_pdf" -> "Generate PDF";
+                case "list.action.send_email" -> "Send by email";
+                case "list.dialog.email.window_title" -> "Send invoice by email";
+                case "list.dialog.email.title" -> "Send invoice by email:";
+                case "list.dialog.email.recipient_label" -> "Recipient (empty = use customer's registered email):";
+                case "list.dialog.email.success_prefix" -> "Invoice sent to: ";
+                case "list.dialog.email.success_suffix" -> ".";
+                case "list.dialog.email.fail.title" -> "Could not send email";
+                case "list.dialog.email.fail.body" -> "Check SMTP configuration in Settings → Email and that the customer has a valid email registered.";
                 case "list.dialog.pdf.title" -> "Pending · slice F4b";
                 case "list.dialog.pdf.body" -> "PDF generation lands in slice F4b (multi-page PDF with company data, logo, VAT-grouped totals, legal texts and footer). For now the invoice is registered and numbered; the PDF will appear then.";
                 case "list.dialog.validate.title" -> "Validate and issue invoice";
@@ -5095,6 +5158,14 @@ public class BenjagestUiApplication extends Application {
             case "list.draft_label" -> "(borrador)";
             case "list.action.delete_draft" -> "Eliminar borrador";
             case "list.action.generate_pdf" -> "Generar PDF";
+            case "list.action.send_email" -> "Enviar por email";
+            case "list.dialog.email.window_title" -> "Enviar factura por email";
+            case "list.dialog.email.title" -> "Enviar factura por email:";
+            case "list.dialog.email.recipient_label" -> "Destinatario (vacio = email del cliente registrado):";
+            case "list.dialog.email.success_prefix" -> "Factura enviada a: ";
+            case "list.dialog.email.success_suffix" -> ".";
+            case "list.dialog.email.fail.title" -> "No se pudo enviar el email";
+            case "list.dialog.email.fail.body" -> "Comprueba la configuracion SMTP en Configuracion -> Email y que el cliente tenga un email valido registrado.";
             case "list.dialog.pdf.title" -> "Pendiente · slice F4b";
             case "list.dialog.pdf.body" -> "La generacion de PDF llega en el slice F4b (PDF multipagina con datos de la empresa, logo, totales agrupados por IVA, textos legales y pie). Por ahora la factura queda registrada y numerada; el PDF se vera entonces.";
             case "list.dialog.validate.title" -> "Validar y emitir factura";
