@@ -17,6 +17,17 @@ public record SalesInvoiceSummary(
         String status,
         String paymentStatus,
         BigDecimal total,
-        BigDecimal paidAmount
+        BigDecimal paidAmount,
+        // Solo viene rellenado cuando el backend devuelve el header
+        // detallado (getInvoiceById). En el listado normal puede ser null.
+        String invoiceType,
+        String originalInvoiceId
 ) {
+    /** Convenience cuando la API no devuelve los campos extra (listado). */
+    public SalesInvoiceSummary(String id, String invoiceNumber, String customerLegalName,
+                                String invoiceDate, String dueDate, String status,
+                                String paymentStatus, BigDecimal total, BigDecimal paidAmount) {
+        this(id, invoiceNumber, customerLegalName, invoiceDate, dueDate, status,
+                paymentStatus, total, paidAmount, null, null);
+    }
 }

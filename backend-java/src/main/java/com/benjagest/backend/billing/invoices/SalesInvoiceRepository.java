@@ -129,6 +129,44 @@ public class SalesInvoiceRepository {
     }
 
     /**
+     * Marca una factura VALIDATED como VOIDED. Solo se invoca dentro de
+     * la transaccion que valida la rectificativa vinculada (es decir,
+     * la "anulacion" no es accion directa del usuario sino consecuencia
+     * de validar una RECTIFYING con original_invoice_id apuntando aqui).
+     * Defensa: solo afecta si la fila sigue VALIDATED (idempotente).
+     */
+    public int markVoided(String id) {
+        return jdbcTemplate.update("""
+                UPDATE sales_invoices
+                   SET status = 'VOIDED'
+                 WHERE id = ?
+                   AND company_id = ?
+                   AND status = 'VALIDATED'
+                """,
+                id,
+                tenantContext.getCurrentCompanyId()
+        );
+    }
+
+    /**
+     * Establece el vinculo factura_original → factura_rectificativa.
+     * Se llama cuando validamos una RECTIFYING para que la original sepa
+     * cual la rectifica (y la UI pueda saltar de una a otra).
+     */
+    public int setRectifyingInvoiceId(String originalId, String rectifyingId) {
+        return jdbcTemplate.update("""
+                UPDATE sales_invoices
+                   SET rectifying_invoice_id = ?
+                 WHERE id = ?
+                   AND company_id = ?
+                """,
+                rectifyingId,
+                originalId,
+                tenantContext.getCurrentCompanyId()
+        );
+    }
+
+    /**
      * Cancela una factura en DRAFT (status = CANCELLED). Una factura
      * VALIDATED no se borra ni cancela aqui — para esa hay que
      * emitir un evento ANULACION (otro slice).

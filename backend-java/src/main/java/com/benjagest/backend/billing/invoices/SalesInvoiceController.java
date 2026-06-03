@@ -25,6 +25,11 @@ import org.springframework.web.bind.annotation.RestController;
  *   PUT    /api/billing/invoices/{id}           editar DRAFT
  *   POST   /api/billing/invoices/{id}/validate  pasa de DRAFT a VALIDATED
  *                                               (emite numero de serie)
+ *   POST   /api/billing/invoices/{id}/void      crea borrador RECTIFYING
+ *                                               enlazado (anulacion con
+ *                                               vinculo). La original NO
+ *                                               cambia de estado hasta que
+ *                                               el borrador rect se valide.
  *   DELETE /api/billing/invoices/{id}           soft cancel DRAFT
  *
  * Filtros del listado (query params):
@@ -73,6 +78,11 @@ public class SalesInvoiceController {
     @PostMapping("/{id}/validate")
     public SalesInvoice validate(@PathVariable("id") String id) {
         return service.validate(id);
+    }
+
+    @PostMapping("/{id}/void")
+    public SalesInvoice voidValidated(@PathVariable("id") String id) {
+        return service.voidValidated(id);
     }
 
     @DeleteMapping("/{id}")

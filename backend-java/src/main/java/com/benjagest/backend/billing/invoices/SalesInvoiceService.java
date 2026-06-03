@@ -118,20 +118,27 @@ public class SalesInvoiceService {
         List<InvoiceLine> lines = computeLines(id, request.lines());
         Totals totals = aggregateTotals(lines);
 
-        // Re-resolvemos la serie tambien al editar: si el usuario cambia
-        // el invoiceType del borrador (NORMAL → PROFORMA, etc), la serie
-        // sigue siendo la correcta. Misma decision 2026-06-02 que createDraft.
-        String resolvedSeriesId = seriesService.findActiveByKind(request.invoiceType()).id();
+        // El invoice_type se PRESERVA del borrador existente. Si el cliente
+        // intenta cambiar el tipo (p.ej. "NORMAL" en una rectificativa
+        // creada via /void), lo ignoramos. Solo createDraft fija el tipo;
+        // una vez creado, no se cambia. Asi la cascada de anulacion
+        // (RECTIFYING → original VOIDED al validar) no se puede esquivar
+        // editando el tipo del borrador.
+        String preservedType = existing.invoiceType();
+        String resolvedSeriesId = seriesService.findActiveByKind(preservedType).id();
 
         SalesInvoice header = new SalesInvoice(
                 id, null, request.customerId(), null,
                 resolvedSeriesId, existing.invoiceNumber(),
                 invoiceDate, dueDate,
-                request.invoiceType(),
+                preservedType,
                 existing.status(), existing.paymentStatus(),
                 totals.subtotal(), totals.vatTotal(), totals.retentionTotal(), totals.total(),
                 existing.paidAmount(), existing.currency(),
-                blankToNull(request.originalInvoiceId()), existing.rectifyingInvoiceId(),
+                // El vinculo con la factura original (si lo hay) tampoco se
+                // edita desde aqui — solo lo fija voidValidated() al crear
+                // el borrador rectificativa.
+                existing.originalInvoiceId(), existing.rectifyingInvoiceId(),
                 blankToNull(request.notes()), existing.validatedAt(),
                 existing.createdAt(), existing.updatedAt(),
                 lines
@@ -184,7 +191,96 @@ public class SalesInvoiceService {
         // (la cadena solo existe a partir del momento en que se activa).
         SalesInvoice validated = get(id);
         verifactuRegistryService.registerIfActive(validated);
+
+        // Cascada de anulacion: si esta factura es una RECTIFYING que
+        // apunta a una original, al validarla la original pasa a VOIDED
+        // y se rellena su rectifying_invoice_id apuntando a esta.
+        // Este es el momento legal en que la factura original queda
+        // "anulada con vinculo" — ni antes ni despues, ni con cancelar
+        // sueltos.
+        if ("RECTIFYING".equals(validated.invoiceType())
+                && validated.originalInvoiceId() != null
+                && !validated.originalInvoiceId().isBlank()) {
+            repository.markVoided(validated.originalInvoiceId());
+            repository.setRectifyingInvoiceId(validated.originalInvoiceId(), id);
+        }
+
         return get(id);
+    }
+
+    /**
+     * Anulacion con vinculo: dado el id de una factura VALIDATED, crea
+     * un borrador RECTIFYING enlazado mediante original_invoice_id. La
+     * original NO cambia de estado aqui — sigue VALIDATED. Solo cuando
+     * el usuario valide el borrador rectificativa la original pasara a
+     * VOIDED (ver validate()).
+     *
+     * Las lineas del borrador se inicializan como copia de las
+     * originales pero con quantity invertida (negativa) → el subtotal
+     * negativo refleja la devolucion/anulacion completa. El usuario
+     * puede ajustar antes de validar (p.ej. rectificativa parcial).
+     */
+    @Transactional
+    public SalesInvoice voidValidated(String validatedId) {
+        SalesInvoice original = get(validatedId);
+        if (!"VALIDATED".equals(original.status())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Solo se puede anular una factura VALIDATED. Para borrar borradores usa DELETE.");
+        }
+        if (original.rectifyingInvoiceId() != null && !original.rectifyingInvoiceId().isBlank()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Esta factura ya tiene una rectificativa creada: " + original.rectifyingInvoiceId());
+        }
+
+        // Resolvemos la serie RECTIFYING del cliente activo. La V16
+        // garantiza que existe; si no, el server responde 428 (claro)
+        // en vez de NPE confuso.
+        String rectSeriesId = seriesService.findActiveByKind("RECTIFYING").id();
+
+        String newId = UUID.randomUUID().toString();
+        LocalDate today = LocalDate.now();
+        List<InvoiceLineInput> negatedInputs = new ArrayList<>();
+        for (InvoiceLine line : original.lines()) {
+            negatedInputs.add(new InvoiceLineInput(
+                    line.catalogItemId(),
+                    line.description(),
+                    line.quantity() == null ? null : line.quantity().negate(),
+                    line.unitPrice(),
+                    line.vatPercent(),
+                    line.retentionPercent()
+            ));
+        }
+        List<InvoiceLine> lines = computeLines(newId, negatedInputs);
+        Totals totals = aggregateTotals(lines);
+
+        SalesInvoice draft = new SalesInvoice(
+                newId,
+                null,
+                original.customerId(),
+                null,
+                rectSeriesId,
+                null,
+                today,
+                today.plusDays(30),
+                "RECTIFYING",
+                "DRAFT",
+                "PENDING",
+                totals.subtotal(), totals.vatTotal(), totals.retentionTotal(), totals.total(),
+                BigDecimal.ZERO,
+                "EUR",
+                original.id(),
+                null,
+                "Rectificativa de " + (original.invoiceNumber() == null ? original.id() : original.invoiceNumber()),
+                null,
+                null,
+                null,
+                lines
+        );
+        repository.insertHeader(draft);
+        for (InvoiceLine line : lines) {
+            repository.insertLine(line);
+        }
+        return get(newId);
     }
 
     @Transactional

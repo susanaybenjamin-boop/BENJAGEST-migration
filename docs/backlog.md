@@ -80,7 +80,7 @@ La app se diseñó bilingüe desde C1 (botón EN/ES en el header → `language` 
   - ⬜ **VF2** Firma XAdES-EPES con certificado real (Apache Santuario + BouncyCastle).
   - ⬜ **VF3** Cliente SOAP a AEAT (Apache CXF, modos TEST y PROD).
   - ⬜ **VF4** Job @Scheduled de reintentos con backoff + middleware compliance (tipos F1/F2/R1-R5, regímenes IVA, deadlines).
-- ⬜ Anulación con vínculo (`verifactu_anulacion_columns`).
+- ✅ **Anulación con vínculo** (2026-06-02) — `SalesInvoiceService.voidValidated()` crea borrador RECTIFYING con `original_invoice_id` + líneas con cantidad negativa. Endpoint `POST /api/billing/invoices/{id}/void`. Al validar el borrador, cascada en `validate()`: la original pasa a VOIDED y se rellena `rectifying_invoice_id`. `updateDraft` preserva `invoice_type` y `original_invoice_id` para que no se pueda esquivar la cascada editando el tipo. UI: botón "Anular" en el listado activo solo con VALIDATED, alerta de confirmación + alerta con id del borrador creado. Editor reconoce RECTIFYING y pinta pill "Rectificativa de [shortId original]". Badge "PROXIMO Nº" del editor lee la serie RECT (kind=RECTIFYING) en vez de la STANDARD cuando se edita un borrador rectificativo. Pendiente futuro: vista "factura rectificada por X" en el detalle de la original (link bidireccional).
 - ⬜ Almacenamiento documental de facturas (ruta `facturacion/almacenamiento`).
 - ⬜ Envío facturas por email (`envios_email_180` + `empresa_email_config_180`).
 - ⬜ Obligaciones de fabricante VeriFactu (auditoría propia del software, ver `VERIFACTU_OBLIGACIONES_FABRICANTE.md` de CONTENDO).

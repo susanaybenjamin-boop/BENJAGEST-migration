@@ -2341,6 +2341,14 @@ public class BenjagestUiApplication extends Application {
             if (sel != null) deleteDraftFromList(sel);
         });
 
+        Button voidBtn = new Button(t("list.action.void"));
+        voidBtn.setGraphic(icon("fas-ban"));
+        voidBtn.setDisable(true);
+        voidBtn.setOnAction(ev -> {
+            SalesInvoiceSummary sel = billingTable.getSelectionModel().getSelectedItem();
+            if (sel != null) voidInvoiceFromList(sel);
+        });
+
         Button pdfBtn = new Button(t("list.action.generate_pdf"));
         pdfBtn.setGraphic(icon("fas-file-pdf"));
         pdfBtn.setDisable(true);
@@ -2358,12 +2366,13 @@ public class BenjagestUiApplication extends Application {
             boolean isValidated = newV != null && "VALIDATED".equals(newV.status());
             validateRowBtn.setDisable(!isDraft);
             deleteDraftBtn.setDisable(!isDraft);
+            voidBtn.setDisable(!isValidated);
             pdfBtn.setDisable(!isValidated);
         });
 
         Region rowActionsSpacer = new Region();
         HBox.setHgrow(rowActionsSpacer, Priority.ALWAYS);
-        HBox rowActions = new HBox(10, validateRowBtn, deleteDraftBtn, rowActionsSpacer, pdfBtn);
+        HBox rowActions = new HBox(10, validateRowBtn, deleteDraftBtn, voidBtn, rowActionsSpacer, pdfBtn);
         rowActions.getStyleClass().add("settings-actions");
 
         VBox bottomBlock = new VBox(12, billingTable, rowActions);
@@ -2396,6 +2405,35 @@ public class BenjagestUiApplication extends Application {
         task.setOnFailed(ev -> showError(t("editor.error.validate_failed.title"),
                 t("list.dialog.validate.failure_body")));
         start(task, "billing-invoice-validate-from-list");
+    }
+
+    private void voidInvoiceFromList(SalesInvoiceSummary sel) {
+        Alert confirm = new Alert(Alert.AlertType.CONFIRMATION,
+                t("list.dialog.void.body"),
+                ButtonType.OK, ButtonType.CANCEL);
+        confirm.setHeaderText(t("list.dialog.void.title"));
+        Optional<ButtonType> ans = confirm.showAndWait();
+        if (ans.isEmpty() || ans.get() != ButtonType.OK) return;
+
+        Task<SalesInvoiceSummary> task = new Task<>() {
+            @Override
+            protected SalesInvoiceSummary call() throws Exception {
+                return billingApiClient.voidInvoice(sel.id());
+            }
+        };
+        task.setOnSucceeded(ev -> {
+            SalesInvoiceSummary draft = task.getValue();
+            Alert ok = new Alert(Alert.AlertType.INFORMATION,
+                    t("list.dialog.void.success_prefix") + shortId(draft.id())
+                            + t("list.dialog.void.success_suffix"),
+                    ButtonType.OK);
+            ok.setHeaderText(null);
+            ok.showAndWait();
+            showBilling();
+        });
+        task.setOnFailed(ev -> showError(t("list.dialog.void.failure.title"),
+                t("list.dialog.void.failure.body")));
+        start(task, "billing-invoice-void");
     }
 
     private void deleteDraftFromList(SalesInvoiceSummary sel) {
@@ -3072,15 +3110,30 @@ public class BenjagestUiApplication extends Application {
         editorCustomerCombo.valueProperty().addListener((obs, oldV, newV) -> refreshClientDetail.run());
         refreshClientDetail.run();
 
-        // Pill grande con el tipo de factura. La serie ya no se elige; la
-        // resuelve el server segun el kind. Por ahora siempre "Factura
-        // normal" (STANDARD). Cuando llegue el flujo de proformas
-        // anadiremos un selector aqui.
-        Label kindPill = label(t("editor.kind.pill"), "invoice-pill");
+        // Pill grande con el tipo de factura. Si es una RECTIFYING (borrador
+        // creado vía "Anular" desde el listado), mostramos un texto que
+        // referencia la original; si no, "Factura normal · serie automatica".
+        // La serie la resuelve el server segun el kind; el usuario no la
+        // elige aqui.
+        boolean isRectifying = bundle.existing() != null
+                && "RECTIFYING".equals(bundle.existing().invoiceType());
+        Label kindPill = label(
+                isRectifying
+                        ? t("editor.rectifying.pill_prefix") + shortId(bundle.existing().originalInvoiceId())
+                        : t("editor.kind.pill"),
+                "invoice-pill");
 
-        // El badge del header refleja el proximo numero de la STANDARD.
-        if (standardSeries != null) {
-            nextNumberBadgeValue.setText(previewNextNumber(standardSeries));
+        // El badge del header refleja el proximo numero de la serie que
+        // tocara al validar: STANDARD para facturas normales, RECT para
+        // rectificativas.
+        SeriesEntry badgeSeries = isRectifying
+                ? bundle.series().stream()
+                        .filter(s -> "RECTIFYING".equals(s.invoiceKind()))
+                        .findFirst()
+                        .orElse(standardSeries)
+                : standardSeries;
+        if (badgeSeries != null) {
+            nextNumberBadgeValue.setText(previewNextNumber(badgeSeries));
         } else {
             nextNumberBadgeValue.setText("—");
         }
@@ -4455,6 +4508,15 @@ public class BenjagestUiApplication extends Application {
                 case "module.section.contacts" -> "Contacts";
                 case "module.summary.no_field" -> "No data";
                 case "module.summary.ready_to_review" -> "Data ready to review.";
+                // ---- Void (anulación con vínculo) ----
+                case "list.action.void" -> "Void";
+                case "list.dialog.void.title" -> "Void validated invoice";
+                case "list.dialog.void.body" -> "A linked corrective DRAFT will be created (lines negated). The original invoice will remain VALIDATED until you validate the corrective. Continue?";
+                case "list.dialog.void.success_prefix" -> "Corrective draft created with id ";
+                case "list.dialog.void.success_suffix" -> ". Open it to review and validate.";
+                case "list.dialog.void.failure.title" -> "Could not void";
+                case "list.dialog.void.failure.body" -> "Check that the invoice is VALIDATED and does not already have a linked corrective.";
+                case "editor.rectifying.pill_prefix" -> "Corrective for ";
                 default -> key.startsWith("column.") ? key.substring(7) : key;
             };
         }
@@ -4921,6 +4983,15 @@ public class BenjagestUiApplication extends Application {
             case "module.section.contacts" -> "Contactos";
             case "module.summary.no_field" -> "Sin dato";
             case "module.summary.ready_to_review" -> "Datos listos para revisar.";
+            // ---- Void (anulación con vínculo) ----
+            case "list.action.void" -> "Anular";
+            case "list.dialog.void.title" -> "Anular factura validada";
+            case "list.dialog.void.body" -> "Se creara un borrador RECTIFICATIVA enlazado (lineas con cantidad invertida). La original sigue VALIDATED hasta que valides la rectificativa. ¿Continuar?";
+            case "list.dialog.void.success_prefix" -> "Borrador rectificativa creado con id ";
+            case "list.dialog.void.success_suffix" -> ". Abrelo para revisar y validar.";
+            case "list.dialog.void.failure.title" -> "No se pudo anular";
+            case "list.dialog.void.failure.body" -> "Comprueba que la factura este VALIDATED y que aun no tenga rectificativa enlazada.";
+            case "editor.rectifying.pill_prefix" -> "Rectificativa de ";
             default -> key.startsWith("column.") ? key.substring(7) : switch (key) {
                 case "field.name" -> "Nombre";
                 case "field.taxId" -> "NIF/CIF";
