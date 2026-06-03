@@ -272,6 +272,7 @@ public class SalesInvoiceRepository {
     public List<SalesInvoice> findAll(String statusFilter,
                                       String paymentStatusFilter,
                                       String customerIdFilter,
+                                      String invoiceTypeFilter,
                                       int limit) {
         StringBuilder sql = new StringBuilder("""
                 SELECT i.id, i.company_id, i.customer_id, c.legal_name AS customer_legal_name,
@@ -298,6 +299,10 @@ public class SalesInvoiceRepository {
         if (customerIdFilter != null && !customerIdFilter.isBlank()) {
             sql.append("   AND i.customer_id = ?\n");
             args.add(customerIdFilter.trim());
+        }
+        if (invoiceTypeFilter != null && !invoiceTypeFilter.isBlank()) {
+            sql.append("   AND i.invoice_type = ?\n");
+            args.add(invoiceTypeFilter.trim());
         }
         sql.append(" ORDER BY i.invoice_date DESC, i.created_at DESC LIMIT ?");
         args.add(Math.min(Math.max(limit, 1), 500));

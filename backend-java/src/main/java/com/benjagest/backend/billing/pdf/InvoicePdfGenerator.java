@@ -142,8 +142,19 @@ public class InvoicePdfGenerator {
             writer.setPageEvent(new FooterEvent(invoice, company, texts));
             document.open();
 
+            // PROFORMA: documento comercial sin valor fiscal. No lleva QR
+            // oficial AEAT, ni huella VeriFactu, ni etiqueta de
+            // cumplimiento. Si la convertimos a NORMAL y validamos, el
+            // PDF que se almacena entonces sí los lleva. Esto se aplica
+            // tanto a borradores como a "validaciones" de proforma (si
+            // tuviera serie PROFORMA emitida).
+            boolean isProforma = "PROFORMA".equals(invoice.invoiceType());
+            String effHash = isProforma ? null : verifactuHash;
+            byte[] effQr = isProforma ? null : qrPng;
+            String effLabel = isProforma ? null : complianceLabel;
+
             addTitle(document, invoice);
-            addTopBlock(document, invoice, company, verifactuHash, qrPng, complianceLabel);
+            addTopBlock(document, invoice, company, effHash, effQr, effLabel);
             addLinesTable(document, invoice);
 
             document.close();
@@ -157,7 +168,10 @@ public class InvoicePdfGenerator {
 
     private void addTitle(Document document, SalesInvoice invoice) throws DocumentException {
         boolean isRectifying = "RECTIFYING".equals(invoice.invoiceType());
-        String title = isRectifying ? "FACTURA RECTIFICATIVA" : "FACTURA";
+        boolean isProforma = "PROFORMA".equals(invoice.invoiceType());
+        String title = isRectifying ? "FACTURA RECTIFICATIVA"
+                : isProforma ? "PROFORMA"
+                : "FACTURA";
 
         // Tamaño moderado (15pt) y más spacingAfter para que el bloque
         // del logo encima del emisor no quede visualmente invadido por el
@@ -256,6 +270,8 @@ public class InvoicePdfGenerator {
         // cumplimiento + huella VeriFactu abreviada. Si no llega QR
         // real (factura aun en borrador, o problema generando), cae al
         // placeholder visual como antes.
+        // PROFORMA: ni QR ni placeholder ni huella — solo celda vacia.
+        boolean isProforma = "PROFORMA".equals(invoice.invoiceType());
         PdfPCell qrCell = new PdfPCell();
         qrCell.setBorder(Rectangle.NO_BORDER);
         qrCell.setPadding(2f);
@@ -278,7 +294,7 @@ public class InvoicePdfGenerator {
                         .warn("No se pudo embeber el QR en el PDF; uso placeholder", ex);
             }
         }
-        if (!qrRendered) {
+        if (!qrRendered && !isProforma) {
             qrCell.addElement(qrPlaceholder());
         }
         if (complianceLabel != null && !complianceLabel.isBlank()) {

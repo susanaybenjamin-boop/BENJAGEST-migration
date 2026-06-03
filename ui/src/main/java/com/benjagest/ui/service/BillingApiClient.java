@@ -54,7 +54,7 @@ public class BillingApiClient {
 
     public List<SalesInvoiceSummary> listInvoices(String statusFilter,
                                                   String paymentStatusFilter,
-                                                  String customerIdFilter,
+                                                  String invoiceTypeFilter,
                                                   int limit) throws IOException, InterruptedException {
         StringBuilder url = new StringBuilder(baseUrl + "/billing/invoices?limit=" + limit);
         if (statusFilter != null && !statusFilter.isBlank()) {
@@ -63,8 +63,8 @@ public class BillingApiClient {
         if (paymentStatusFilter != null && !paymentStatusFilter.isBlank()) {
             url.append("&paymentStatus=").append(URLEncoder.encode(paymentStatusFilter, StandardCharsets.UTF_8));
         }
-        if (customerIdFilter != null && !customerIdFilter.isBlank()) {
-            url.append("&customerId=").append(URLEncoder.encode(customerIdFilter, StandardCharsets.UTF_8));
+        if (invoiceTypeFilter != null && !invoiceTypeFilter.isBlank()) {
+            url.append("&invoiceType=").append(URLEncoder.encode(invoiceTypeFilter, StandardCharsets.UTF_8));
         }
         HttpResponse<String> response = sendAuthorized(HttpRequest.newBuilder(URI.create(url.toString()))
                 .timeout(Duration.ofSeconds(8))
@@ -188,6 +188,22 @@ public class BillingApiClient {
                 .header("Content-Type", "application/json")
                 .POST(HttpRequest.BodyPublishers.noBody());
         HttpResponse<String> response = sendAuthorized(builder);
+        ensureOk(response);
+        return parseInvoiceHeader(response.body());
+    }
+
+    /**
+     * Convierte una proforma DRAFT en factura NORMAL DRAFT (validate=false)
+     * o en NORMAL VALIDATED (validate=true). El backend cambia el
+     * invoice_type, asigna la serie STANDARD y, si validate=true, emite
+     * el número correspondiente.
+     */
+    public SalesInvoiceSummary convertProformaToStandard(String id, boolean validate) throws IOException, InterruptedException {
+        HttpResponse<String> response = sendAuthorized(HttpRequest.newBuilder(URI.create(
+                baseUrl + "/billing/invoices/" + id + "/convert-to-standard?validate=" + validate))
+                .timeout(Duration.ofSeconds(15))
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.noBody()));
         ensureOk(response);
         return parseInvoiceHeader(response.body());
     }
