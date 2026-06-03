@@ -2746,14 +2746,26 @@ public class BenjagestUiApplication extends Application {
         // estructura {root}/{companyId}/{YYYY}/T{q}/{nº}.pdf.
         verifactuStorageRootField = textInput(config.invoiceStorageRoot(),
                 t("billing.config.field.storage_root.prompt"));
-        verifactuStorageRootField.setPrefColumnCount(60);
+        verifactuStorageRootField.setPrefColumnCount(50);
+
+        // Botón "Examinar…" que abre el DirectoryChooser del sistema
+        // operativo (en Windows = Explorador; macOS = Finder; Linux =
+        // GTK/QT según escritorio). El DirectoryChooser permite navegar
+        // Y crear carpetas nuevas con el botón estándar del SO
+        // ("Nueva carpeta" / "New folder") — no hace falta UI extra.
+        Button browseStorageBtn = new Button(t("billing.config.field.storage_root.browse"));
+        browseStorageBtn.setGraphic(icon("fas-folder-open"));
+        browseStorageBtn.setOnAction(ev -> chooseInvoiceStorageDir());
+        HBox storageRow = new HBox(8, verifactuStorageRootField, browseStorageBtn);
+        storageRow.setAlignment(javafx.geometry.Pos.CENTER_LEFT);
+        HBox.setHgrow(verifactuStorageRootField, Priority.ALWAYS);
 
         GridPane grid = formGrid();
         addFormRow(grid, 0, t("billing.config.field.modality"), verifactuModalityCombo);
         addFormRow(grid, 1, t("billing.config.field.mode"), verifactuModeCombo);
         addFormRow(grid, 2, t("billing.config.field.cert"), verifactuCertCombo);
         addFormRow(grid, 3, t("billing.config.field.footer"), verifactuFooterField);
-        addFormRow(grid, 4, t("billing.config.field.storage_root"), verifactuStorageRootField);
+        addFormRow(grid, 4, t("billing.config.field.storage_root"), storageRow);
 
         Label certHint = new Label(certificates.isEmpty()
                 ? t("billing.config.cert.hint.empty")
@@ -4086,6 +4098,40 @@ public class BenjagestUiApplication extends Application {
     }
 
     /**
+     * Abre un DirectoryChooser del sistema (Explorador en Windows /
+     * Finder en macOS / dialog GTK en Linux) para que el usuario
+     * elija una carpeta donde almacenar las facturas. El dialog del
+     * SO permite navegar Y crear carpetas nuevas con el botón estándar,
+     * así no necesitamos UI propia para eso.
+     *
+     * - Si el TextField ya tiene una ruta válida, abre directamente en
+     *   esa carpeta (UX: la navegación arranca donde el usuario estaba).
+     * - Si está vacío o la ruta no existe, abre en el home del usuario.
+     * - Cancelar el dialog deja el TextField como estaba.
+     * - Al confirmar, el path absoluto se vuelca al TextField. El
+     *   backend usará esa raíz para `{root}/{companyId}/{YYYY}/T{q}/{nº}.pdf`.
+     */
+    private void chooseInvoiceStorageDir() {
+        javafx.stage.DirectoryChooser chooser = new javafx.stage.DirectoryChooser();
+        chooser.setTitle(t("billing.config.field.storage_root.dialog_title"));
+        String current = verifactuStorageRootField == null ? null : verifactuStorageRootField.getText();
+        if (current != null && !current.isBlank()) {
+            java.io.File initial = new java.io.File(current.trim());
+            if (initial.exists() && initial.isDirectory()) {
+                chooser.setInitialDirectory(initial);
+            }
+        }
+        if (chooser.getInitialDirectory() == null) {
+            java.io.File home = new java.io.File(System.getProperty("user.home"));
+            if (home.isDirectory()) chooser.setInitialDirectory(home);
+        }
+        java.io.File selected = chooser.showDialog(root.getScene().getWindow());
+        if (selected != null) {
+            verifactuStorageRootField.setText(selected.getAbsolutePath());
+        }
+    }
+
+    /**
      * Etiqueta traducida para la modalidad VeriFactu. Internamente el
      * combo guarda el código técnico (VERIFACTU / NO_VERIFACTU) que el
      * backend espera; aquí solo se traduce para mostrarlo al usuario.
@@ -4247,6 +4293,19 @@ public class BenjagestUiApplication extends Application {
         Label fieldLabel = new Label(labelText);
         fieldLabel.getStyleClass().add("form-label");
         input.getStyleClass().add("form-input");
+        grid.add(fieldLabel, 0, row);
+        grid.add(input, 1, row);
+        GridPane.setHgrow(input, Priority.ALWAYS);
+    }
+
+    /**
+     * Overload para celdas compuestas (TextField + botón en HBox, p.ej.
+     * el selector de ruta de almacenamiento). No fuerza el style class
+     * "form-input" sobre el Node — cada hijo se estiló desde fuera.
+     */
+    private void addFormRow(GridPane grid, int row, String labelText, javafx.scene.Node input) {
+        Label fieldLabel = new Label(labelText);
+        fieldLabel.getStyleClass().add("form-label");
         grid.add(fieldLabel, 0, row);
         grid.add(input, 1, row);
         GridPane.setHgrow(input, Priority.ALWAYS);
@@ -4692,6 +4751,8 @@ public class BenjagestUiApplication extends Application {
                 case "billing.config.field.footer" -> "Invoice footer";
                 case "billing.config.field.storage_root" -> "Invoice storage path";
                 case "billing.config.field.storage_root.prompt" -> "e.g. C:\\benjagest\\invoices or /var/benjagest/invoices (empty = backend default)";
+                case "billing.config.field.storage_root.browse" -> "Browse…";
+                case "billing.config.field.storage_root.dialog_title" -> "Select folder for invoice storage";
                 case "billing.config.modality.verifactu" -> "VeriFactu (real-time submission to AEAT)";
                 case "billing.config.modality.no_verifactu" -> "No VeriFactu (local hash + SIF event log)";
                 case "billing.config.cert.hint.empty" -> "No certificates uploaded. Activate the Documents module and upload one via /api/certificates.";
@@ -5224,6 +5285,8 @@ public class BenjagestUiApplication extends Application {
             case "billing.config.field.footer" -> "Pie de factura";
             case "billing.config.field.storage_root" -> "Ruta de almacenamiento de facturas";
             case "billing.config.field.storage_root.prompt" -> "ej. C:\\benjagest\\facturas o /var/benjagest/facturas (vacio = ruta por defecto del servidor)";
+            case "billing.config.field.storage_root.browse" -> "Examinar…";
+            case "billing.config.field.storage_root.dialog_title" -> "Selecciona carpeta para almacenar facturas";
             case "billing.config.modality.verifactu" -> "VeriFactu (envio en tiempo real a AEAT)";
             case "billing.config.modality.no_verifactu" -> "No VeriFactu (hash local + registro de eventos del SIF)";
             case "billing.config.cert.hint.empty" -> "No hay certificados subidos. Activa el modulo Documentos y sube uno en /api/certificates.";
