@@ -75,6 +75,14 @@
             <artifactId>jasypt</artifactId>
             <version>1.9.3</version>
         </dependency>
+        <!-- PDF de facturas (F4b). Fork comunitario de iText 4 con
+             licencia LGPL/MPL — compatible con software propietario.
+             API declarativa Document / Paragraph / PdfPTable. -->
+        <dependency>
+            <groupId>com.github.librepdf</groupId>
+            <artifactId>openpdf</artifactId>
+            <version>2.0.3</version>
+        </dependency>
 
         <dependency>
             <groupId>org.springframework.boot</groupId>
