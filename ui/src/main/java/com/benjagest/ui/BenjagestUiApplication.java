@@ -2459,23 +2459,27 @@ public class BenjagestUiApplication extends Application {
     }
 
     /**
-     * Descarga el PDF de la factura seleccionada. Abre FileChooser para
-     * que el usuario elija dónde guardar, y opcionalmente abre el visor
-     * del sistema con Desktop.open() (la opción se ofrece en el alert de
-     * éxito).
+     * Abre el PDF de la factura seleccionada en el visor del sistema.
+     *
+     * F-STORAGE garantiza que al validar se genera y guarda el PDF en
+     * disco en {@code {root}/{companyId}/{YYYY}/T{q}/{nº}.pdf}. Ese
+     * archivo es la copia legalmente vinculante. Por tanto el botón
+     * NO debe preguntar "dónde guardar" — ya está guardado donde la
+     * empresa configuró. Lo único que hace falta es abrirlo.
+     *
+     * Implementación: descarga del backend a un archivo temporal del
+     * SO (carpeta TEMP del usuario) y lanza {@code Desktop.open()}.
+     * Decisión deliberada de bajar a temp en vez de leer la ruta de
+     * disco que el backend tiene en BD: la UI y el backend pueden
+     * correr en máquinas distintas en el futuro; bajar por HTTP funciona
+     * en ambos casos (local y cliente-servidor). El temporal se
+     * sobreescribe en cada apertura — el visor PDF lo deja abierto
+     * pero no necesitamos conservarlo entre sesiones.
      */
     private void downloadInvoicePdf(SalesInvoiceSummary sel) {
-        String suggested = (sel.invoiceNumber() == null || sel.invoiceNumber().isBlank())
+        String filename = (sel.invoiceNumber() == null || sel.invoiceNumber().isBlank())
                 ? "borrador-" + shortId(sel.id()) + ".pdf"
                 : sel.invoiceNumber().replaceAll("[^A-Za-z0-9._-]", "_") + ".pdf";
-
-        javafx.stage.FileChooser chooser = new javafx.stage.FileChooser();
-        chooser.setTitle(t("list.dialog.pdf.save_title"));
-        chooser.setInitialFileName(suggested);
-        chooser.getExtensionFilters().add(
-                new javafx.stage.FileChooser.ExtensionFilter(t("list.dialog.pdf.filter"), "*.pdf"));
-        java.io.File destination = chooser.showSaveDialog(root.getScene().getWindow());
-        if (destination == null) return;
 
         Task<byte[]> task = new Task<>() {
             @Override
@@ -2485,21 +2489,18 @@ public class BenjagestUiApplication extends Application {
         };
         task.setOnSucceeded(ev -> {
             try {
-                java.nio.file.Files.write(destination.toPath(), task.getValue());
-                // Tras guardar, ofrecemos abrir con el visor del sistema.
-                Alert ok = new Alert(Alert.AlertType.INFORMATION,
-                        t("list.dialog.pdf.success_prefix") + destination.getName()
-                                + t("list.dialog.pdf.success_suffix"),
-                        ButtonType.YES, ButtonType.NO);
-                ok.setHeaderText(t("list.dialog.pdf.success_title"));
-                Optional<ButtonType> ans = ok.showAndWait();
-                if (ans.isPresent() && ans.get() == ButtonType.YES) {
-                    try {
-                        java.awt.Desktop.getDesktop().open(destination);
-                    } catch (Exception openEx) {
-                        showError(t("list.dialog.pdf.open_failed.title"),
-                                t("list.dialog.pdf.open_failed.body"));
-                    }
+                // Guardamos en TEMP con un nombre estable (el del número
+                // de factura) para que si el usuario reabre el mismo
+                // PDF, no se acumulen ficheros distintos. El visor PDF
+                // del SO sobrescribe sin problema si está abierto.
+                java.io.File tempFile = new java.io.File(
+                        System.getProperty("java.io.tmpdir"), filename);
+                java.nio.file.Files.write(tempFile.toPath(), task.getValue());
+                try {
+                    java.awt.Desktop.getDesktop().open(tempFile);
+                } catch (Exception openEx) {
+                    showError(t("list.dialog.pdf.open_failed.title"),
+                            t("list.dialog.pdf.open_failed.body"));
                 }
             } catch (Exception writeEx) {
                 showError(t("list.dialog.pdf.save_failed.title"),
@@ -4684,7 +4685,7 @@ public class BenjagestUiApplication extends Application {
                 case "list.placeholder.empty" -> "No invoices match the current filters.";
                 case "list.draft_label" -> "(draft)";
                 case "list.action.delete_draft" -> "Delete draft";
-                case "list.action.generate_pdf" -> "Generate PDF";
+                case "list.action.generate_pdf" -> "Open PDF";
                 case "list.action.send_email" -> "Send by email";
                 case "list.dialog.email.window_title" -> "Send invoice by email";
                 case "list.dialog.email.title" -> "Send invoice by email:";
@@ -5218,7 +5219,7 @@ public class BenjagestUiApplication extends Application {
             case "list.placeholder.empty" -> "Sin facturas para los filtros actuales.";
             case "list.draft_label" -> "(borrador)";
             case "list.action.delete_draft" -> "Eliminar borrador";
-            case "list.action.generate_pdf" -> "Generar PDF";
+            case "list.action.generate_pdf" -> "Abrir PDF";
             case "list.action.send_email" -> "Enviar por email";
             case "list.dialog.email.window_title" -> "Enviar factura por email";
             case "list.dialog.email.title" -> "Enviar factura por email:";
