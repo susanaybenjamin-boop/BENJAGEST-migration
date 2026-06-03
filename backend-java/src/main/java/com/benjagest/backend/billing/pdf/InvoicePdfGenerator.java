@@ -109,6 +109,17 @@ public class InvoicePdfGenerator {
     private static final float LEGAL_BOTTOM_Y = IBAN_TOP_Y + 8f;
 
     public byte[] generate(SalesInvoice invoice, CompanyDataResponse company, InvoiceTexts texts) {
+        return generate(invoice, company, texts, null);
+    }
+
+    /**
+     * Variante con huella VeriFactu opcional. Si {@code verifactuHash} es
+     * no nulo, se imprimen los primeros 16 caracteres bajo el QR como
+     * "Huella" — sirve de control visual rápido para verificar que dos
+     * facturas correlativas encadenan (ver verifactu_registry).
+     */
+    public byte[] generate(SalesInvoice invoice, CompanyDataResponse company, InvoiceTexts texts,
+                           String verifactuHash) {
         try {
             ByteArrayOutputStream bos = new ByteArrayOutputStream();
             // Top margin reducido (30) para subir el título cerca del
@@ -120,7 +131,7 @@ public class InvoicePdfGenerator {
             document.open();
 
             addTitle(document, invoice);
-            addTopBlock(document, invoice, company);
+            addTopBlock(document, invoice, company, verifactuHash);
             addLinesTable(document, invoice);
 
             document.close();
@@ -147,7 +158,8 @@ public class InvoicePdfGenerator {
         document.add(p);
     }
 
-    private void addTopBlock(Document document, SalesInvoice invoice, CompanyDataResponse company) throws DocumentException {
+    private void addTopBlock(Document document, SalesInvoice invoice, CompanyDataResponse company,
+                              String verifactuHash) throws DocumentException {
         Font fEmpName = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 12, INK);
         Font fMeta = FontFactory.getFont(FontFactory.HELVETICA, 9, INK_LIGHT);
         Font fNumber = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 14, INK);
@@ -228,13 +240,26 @@ public class InvoicePdfGenerator {
         empCell.addElement(emp);
         top.addCell(empCell);
 
-        // Col 2: QR centrado.
+        // Col 2: QR centrado + huella VeriFactu abreviada (si la hay).
         PdfPCell qrCell = new PdfPCell();
         qrCell.setBorder(Rectangle.NO_BORDER);
         qrCell.setPadding(2f);
         qrCell.setHorizontalAlignment(Element.ALIGN_CENTER);
         qrCell.setVerticalAlignment(Element.ALIGN_TOP);
         qrCell.addElement(qrPlaceholder());
+        if (verifactuHash != null && !verifactuHash.isBlank()) {
+            // Los 16 primeros caracteres del hash SHA-256 son suficientes
+            // para que un humano compare visualmente dos facturas
+            // correlativas y vea que la cadena no se ha roto. El hash
+            // completo (64 chars) está en BD y se devuelve por /verify.
+            Font fHash = FontFactory.getFont(FontFactory.HELVETICA, 6, INK_LIGHT);
+            String shortHash = verifactuHash.length() > 16
+                    ? verifactuHash.substring(0, 16) : verifactuHash;
+            Paragraph hashP = new Paragraph("Huella: " + shortHash, fHash);
+            hashP.setAlignment(Element.ALIGN_CENTER);
+            hashP.setSpacingBefore(2f);
+            qrCell.addElement(hashP);
+        }
         top.addCell(qrCell);
 
         // Col 3: cliente (nombre en primera línea, alineado derecha).

@@ -2818,7 +2818,17 @@ public class BenjagestUiApplication extends Application {
         save.setGraphic(icon("fas-save"));
         save.setOnAction(event -> saveVerifactuConfig());
 
-        HBox actions = new HBox(save);
+        // VF2: comprobación de integridad de la cadena hash. El backend
+        // recorre todas las facturas validadas y verifica que la huella
+        // SHA-256 cuadra con el input canónico de cada una. Es lo único
+        // que da validez fiscal real al sistema; el botón pega tirando
+        // del modo TEST (que es donde normalmente operará BENJAGEST hasta
+        // que VF3 active el envío real a AEAT).
+        Button verifyChain = new Button(t("billing.config.verifactu.verify"));
+        verifyChain.setGraphic(icon("fas-shield-alt"));
+        verifyChain.setOnAction(event -> verifyVerifactuChain());
+
+        HBox actions = new HBox(8, save, verifyChain);
         actions.getStyleClass().add("settings-actions");
 
         VBox body = new VBox(16,
@@ -3842,6 +3852,55 @@ public class BenjagestUiApplication extends Application {
     }
 
     /**
+     * Dispara verificación del hash encadenado VeriFactu contra el
+     * modo seleccionado en el combo. Si la cadena es íntegra → mensaje
+     * de éxito con el total de facturas comprobadas. Si está rota →
+     * mensaje de error con el número de la primera factura sospechosa
+     * y la razón devuelta por el backend.
+     *
+     * Si el modo es OFF, ni siquiera se intenta — sin VeriFactu activo
+     * no hay cadena que verificar. Mostramos un mensaje claro.
+     */
+    private void verifyVerifactuChain() {
+        String mode = verifactuModeCombo.getValue();
+        if (mode == null || "OFF".equals(mode)) {
+            Alert info = new Alert(Alert.AlertType.INFORMATION,
+                    t("billing.config.verifactu.verify.off"), ButtonType.OK);
+            info.setHeaderText(null);
+            info.showAndWait();
+            return;
+        }
+        Task<com.benjagest.ui.model.VerifactuIntegrityResult> task = new Task<>() {
+            @Override
+            protected com.benjagest.ui.model.VerifactuIntegrityResult call() throws Exception {
+                return billingApiClient.verifyVerifactuChain(mode);
+            }
+        };
+        task.setOnSucceeded(event -> {
+            com.benjagest.ui.model.VerifactuIntegrityResult result = task.getValue();
+            if (result.ok()) {
+                String body = t("billing.config.verifactu.verify.ok.prefix")
+                        + result.totalChecked()
+                        + t("billing.config.verifactu.verify.ok.suffix");
+                Alert ok = new Alert(Alert.AlertType.INFORMATION, body, ButtonType.OK);
+                ok.setHeaderText(null);
+                ok.showAndWait();
+            } else {
+                String broken = result.brokenInvoiceNumber() == null
+                        ? "—" : result.brokenInvoiceNumber();
+                String body = t("billing.config.verifactu.verify.broken.prefix")
+                        + broken + "\n"
+                        + (result.reason() == null ? "" : result.reason());
+                showError(t("billing.config.verifactu.verify.broken.title"), body);
+            }
+        });
+        task.setOnFailed(event -> showError(
+                t("billing.config.verifactu.verify.fail.title"),
+                t("billing.config.verifactu.verify.fail.body")));
+        start(task, "billing-config-verify");
+    }
+
+    /**
      * Patron compartido por los 4 tabs de Configuracion: cabecera arriba,
      * cuerpo desplazable en el centro (scroll vertical si no entra), y
      * acciones ancladas al pie siempre visibles aunque el portatil tenga
@@ -4380,6 +4439,14 @@ public class BenjagestUiApplication extends Application {
                 case "billing.verifactu.save.success_suffix" -> ").";
                 case "billing.verifactu.save.fail.title" -> "Could not save";
                 case "billing.verifactu.save.fail.body" -> "If you selected PROD remember to choose a .p12 certificate.";
+                case "billing.config.verifactu.verify" -> "Verify integrity";
+                case "billing.config.verifactu.verify.off" -> "VeriFactu is OFF. Activate TEST or PROD mode first to start the chain.";
+                case "billing.config.verifactu.verify.ok.prefix" -> "Chain integrity OK. Invoices checked: ";
+                case "billing.config.verifactu.verify.ok.suffix" -> ".";
+                case "billing.config.verifactu.verify.broken.title" -> "Chain integrity BROKEN";
+                case "billing.config.verifactu.verify.broken.prefix" -> "First suspect invoice: ";
+                case "billing.config.verifactu.verify.fail.title" -> "Could not verify";
+                case "billing.config.verifactu.verify.fail.body" -> "The server did not respond. Check the connection and try again.";
                 case "billing.config.series.section" -> "Numbering series";
                 case "billing.config.series.hint" -> "You only define the series for your standard invoices. PROFORMA and RECTIFYING series are system-managed (RD 1619/2012 Art.13). Your STANDARD series auto-locks as soon as you issue the first validated invoice of the year (legal continuity — only unlocked at year-end).";
                 case "billing.config.series.placeholder.empty" -> "No series. Press 'Define my invoice series' to create the STANDARD one.";
@@ -4876,6 +4943,14 @@ public class BenjagestUiApplication extends Application {
             case "billing.verifactu.save.success_suffix" -> ").";
             case "billing.verifactu.save.fail.title" -> "No se pudo guardar";
             case "billing.verifactu.save.fail.body" -> "Si seleccionaste PROD recuerda elegir un certificado .p12.";
+            case "billing.config.verifactu.verify" -> "Verificar integridad";
+            case "billing.config.verifactu.verify.off" -> "VeriFactu esta en OFF. Activa el modo TEST o PROD para empezar la cadena.";
+            case "billing.config.verifactu.verify.ok.prefix" -> "Integridad de la cadena correcta. Facturas comprobadas: ";
+            case "billing.config.verifactu.verify.ok.suffix" -> ".";
+            case "billing.config.verifactu.verify.broken.title" -> "Cadena de integridad ROTA";
+            case "billing.config.verifactu.verify.broken.prefix" -> "Primera factura sospechosa: ";
+            case "billing.config.verifactu.verify.fail.title" -> "No se pudo verificar";
+            case "billing.config.verifactu.verify.fail.body" -> "El servidor no respondio. Comprueba la conexion y vuelve a intentarlo.";
             case "billing.config.series.section" -> "Series de numeracion";
             case "billing.config.series.hint" -> "Solo defines la serie de tus facturas normales. Las series para PROFORMA y RECTIFICATIVAS son del sistema (RD 1619/2012 Art.13). Tu serie STANDARD se autobloquea automaticamente en cuanto emites la primera factura validada del ano (continuidad legal — solo se desbloquea al cerrar el ano).";
             case "billing.config.series.placeholder.empty" -> "Sin series. Pulsa 'Definir mi serie de facturas' para crear la STANDARD.";

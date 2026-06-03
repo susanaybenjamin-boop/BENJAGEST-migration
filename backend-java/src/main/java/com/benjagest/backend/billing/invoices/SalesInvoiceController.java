@@ -3,6 +3,7 @@ package com.benjagest.backend.billing.invoices;
 import com.benjagest.backend.auth.RequiresRole;
 import com.benjagest.backend.billing.pdf.InvoicePdfGenerator;
 import com.benjagest.backend.billing.texts.InvoiceTextsController.InvoiceTextsService;
+import com.benjagest.backend.billing.verifactu.VerifactuRegistryService;
 import com.benjagest.backend.modules.RequiresModule;
 import com.benjagest.backend.settings.CompanyDataService;
 import jakarta.validation.Valid;
@@ -54,15 +55,18 @@ public class SalesInvoiceController {
     private final InvoicePdfGenerator pdfGenerator;
     private final CompanyDataService companyDataService;
     private final InvoiceTextsService invoiceTextsService;
+    private final VerifactuRegistryService verifactuRegistryService;
 
     public SalesInvoiceController(SalesInvoiceService service,
                                   InvoicePdfGenerator pdfGenerator,
                                   CompanyDataService companyDataService,
-                                  InvoiceTextsService invoiceTextsService) {
+                                  InvoiceTextsService invoiceTextsService,
+                                  VerifactuRegistryService verifactuRegistryService) {
         this.service = service;
         this.pdfGenerator = pdfGenerator;
         this.companyDataService = companyDataService;
         this.invoiceTextsService = invoiceTextsService;
+        this.verifactuRegistryService = verifactuRegistryService;
     }
 
     @GetMapping
@@ -120,9 +124,17 @@ public class SalesInvoiceController {
     @GetMapping(value = "/{id}/pdf", produces = MediaType.APPLICATION_PDF_VALUE)
     public ResponseEntity<byte[]> pdf(@PathVariable("id") String id) {
         SalesInvoice invoice = service.get(id);
+        // Si VeriFactu está activo y la factura ya tiene huella, la
+        // mandamos al generator para que la pinte bajo el QR.
+        // Optional.orElse(null) en vez de unwrap explícito: el generator
+        // ya ignora null.
+        String verifactuHash = verifactuRegistryService
+                .findCurrentHashForPdf(id)
+                .orElse(null);
         byte[] bytes = pdfGenerator.generate(invoice,
                 companyDataService.getCurrent(),
-                invoiceTextsService.get());
+                invoiceTextsService.get(),
+                verifactuHash);
 
         String filename = (invoice.invoiceNumber() == null || invoice.invoiceNumber().isBlank())
                 ? "borrador-" + invoice.id().substring(0, 8) + ".pdf"
