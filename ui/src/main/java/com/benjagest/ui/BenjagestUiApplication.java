@@ -2362,11 +2362,10 @@ public class BenjagestUiApplication extends Application {
         // - Anular: solo en STANDARD VALIDATED. Una rectificativa YA es el
         //   acto legal de anular; anularla a su vez no tiene sentido (y
         //   el backend lo rechazaría con 409).
-        // - PDF: SIEMPRE que haya fila seleccionada. Aunque la factura
-        //   esté anulada (VOIDED) o sea borrador (DRAFT) o lo que sea,
-        //   debe poder regenerarse el documento por si el usuario lo
-        //   perdió. Para borradores sale como "borrador-<shortId>.pdf";
-        //   para validadas/anuladas con su nº legal.
+        // - PDF: cualquier estado EXCEPTO DRAFT. Un borrador no es
+        //   documento legal (no tiene número emitido), pero VALIDATED /
+        //   VOIDED / CANCELLED sí — debe poder regenerarse el PDF por
+        //   archivo o si el usuario lo perdió.
         billingTable.getSelectionModel().selectedItemProperty().addListener((obs, oldV, newV) -> {
             boolean isDraft = newV != null && "DRAFT".equals(newV.status());
             boolean isValidated = newV != null && "VALIDATED".equals(newV.status());
@@ -2374,7 +2373,7 @@ public class BenjagestUiApplication extends Application {
             validateRowBtn.setDisable(!isDraft);
             deleteDraftBtn.setDisable(!isDraft);
             voidBtn.setDisable(!isValidated || isRectifying);
-            pdfBtn.setDisable(newV == null);
+            pdfBtn.setDisable(newV == null || isDraft);
         });
 
         Region rowActionsSpacer = new Region();
