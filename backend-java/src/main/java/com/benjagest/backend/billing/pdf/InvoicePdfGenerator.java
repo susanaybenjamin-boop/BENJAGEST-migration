@@ -18,6 +18,7 @@ import com.lowagie.text.pdf.PdfContentByte;
 import com.lowagie.text.pdf.PdfPCell;
 import com.lowagie.text.pdf.PdfPTable;
 import com.lowagie.text.pdf.PdfPageEventHelper;
+import com.lowagie.text.pdf.PdfTemplate;
 import com.lowagie.text.pdf.PdfWriter;
 import java.awt.Color;
 import java.io.ByteArrayOutputStream;
@@ -51,18 +52,24 @@ import org.springframework.stereotype.Service;
  *   │                                                            │
  *   │                                                            │
  *   ├──── zona inferior fija (en CADA página) ─────────────────────┤
- *   │ [Textos legales abajo izq]            ┌───────────────────┐ │
- *   │ IBAN: ESxx xxxx xxxx xxxx xxxx        │ Base    100,00 €│ │
- *   │ Pie / agradecimientos                 │ IVA 21%  21,00 €│ │
- *   │                                       │ Ret.      0,00 €│ │
- *   │                                       │ TOTAL   121,00 €│ │
- *   │                                       └───────────────────┘ │
- *   └────────────────────────────────────────────────────────────┘
+ *   │ Textos legales (rectificativa/IVA       ┌───────────────────┐ │
+ *   │ exento/reducido/condiciones)            │ Base    100,00 €│ │
+ *   │                                         │ IVA 21%  21,00 €│ │
+ *   │                                         │ Ret.      0,00 €│ │
+ *   │                                         │ TOTAL   121,00 €│ │
+ *   │                                         └───────────────────┘ │
+ *   │ IBAN: ESxx xxxx xxxx xxxx xxxx                                │
+ *   │ Pie / agradecimientos                                         │
+ *   │                                                                │
+ *   │                    Página 1 / N                                │
+ *   └────────────────────────────────────────────────────────────────┘
  *
- * El bloque inferior (totales abajo derecha + textos legales / IBAN /
- * pie a la izquierda) se dibuja en cada página vía PdfPageEvent.onEndPage
+ * El bloque inferior se dibuja en cada página vía PdfPageEvent.onEndPage
  * para que esté SIEMPRE pegado abajo, independientemente de dónde
- * termina la última línea de la tabla.
+ * termina la última línea de la tabla. Tres bandas:
+ *   - banda alta (legales) — crece según el contenido
+ *   - banda media-baja (IBAN + pie) — pegada al borde, papel timbrado
+ *   - banda inferior (paginación) — siempre, incluso si solo hay 1 hoja
  *
  * El logo y el QR son por ahora placeholders: el QR llega con VF3
  * (cliente AEAT), el logo cuando se añada columna companies.logo_path.
@@ -85,8 +92,21 @@ public class InvoicePdfGenerator {
     private static final Color BG_TOTAL = new Color(29, 78, 216);
     private static final Color DIVIDER = new Color(219, 227, 239);
 
-    // Altura reservada para el footer fijo (totales + legal + pie).
-    private static final float FOOTER_HEIGHT = 230f;
+    // Altura reservada para el footer fijo (totales + legal + IBAN/pie + paginado).
+    private static final float FOOTER_HEIGHT = 250f;
+
+    // Coordenadas verticales del footer en puntos PDF (y=0 es el borde
+    // INFERIOR del papel). De abajo a arriba:
+    //   y=18  → "Página X / N" centrado pegado al borde
+    //   y=42–95 → IBAN + texto de pie (papel timbrado, siempre abajo)
+    //   y=110 → arriba de aquí: textos legales (IVA reducido/exento,
+    //          rectificativa, condiciones), pueden crecer hasta el
+    //          divider superior del footer (≈ FOOTER_HEIGHT + 10).
+    //   bloque totales en zona derecha (no cambia).
+    private static final float PAGE_NUM_Y = 18f;
+    private static final float IBAN_BOTTOM_Y = 42f;
+    private static final float IBAN_TOP_Y = 100f;
+    private static final float LEGAL_BOTTOM_Y = IBAN_TOP_Y + 8f;
 
     public byte[] generate(SalesInvoice invoice, CompanyDataResponse company, InvoiceTexts texts) {
         try {
@@ -288,11 +308,19 @@ public class InvoicePdfGenerator {
         private final SalesInvoice invoice;
         private final CompanyDataResponse company;
         private final InvoiceTexts texts;
+        // Template para escribir el total de páginas en la numeración.
+        // Se rellena en onCloseDocument cuando ya sabemos cuántas hubo.
+        private PdfTemplate totalPagesTpl;
 
         FooterEvent(SalesInvoice invoice, CompanyDataResponse company, InvoiceTexts texts) {
             this.invoice = invoice;
             this.company = company;
             this.texts = texts;
+        }
+
+        @Override
+        public void onOpenDocument(PdfWriter writer, Document document) {
+            totalPagesTpl = writer.getDirectContent().createTemplate(40f, 12f);
         }
 
         @Override
@@ -320,13 +348,46 @@ public class InvoicePdfGenerator {
                 float totalsTopY = footerTopY - 14f;
                 drawTotals(cb, invoice, totalsX, totalsTopY, totalsWidth);
 
-                // ---- Bloque IZQUIERDA: textos legales + IBAN + pie ----
+                // ---- Bloque IZQUIERDA: textos legales (zona alta) ----
+                // Los textos legales (rectificativa, IVA reducido/exento,
+                // condiciones) viven aquí y pueden crecer libremente.
                 float leftWidth = pageWidth - pageMarginLeft - pageMarginRight - totalsWidth - 18f;
-                float leftTopY = footerTopY - 14f;
-                drawLegalAndFooter(cb, invoice, company, texts, pageMarginLeft, leftTopY, leftWidth);
+                float legalTopY = footerTopY - 14f;
+                drawLegalTexts(cb, invoice, texts, pageMarginLeft, legalTopY, leftWidth, LEGAL_BOTTOM_Y);
+
+                // ---- Bloque IZQUIERDA: IBAN + pie (zona baja, fija) ----
+                // Pegados al borde inferior, como en un papel timbrado.
+                drawIbanAndPie(cb, company, texts, pageMarginLeft, IBAN_TOP_Y, leftWidth, IBAN_BOTTOM_Y);
             } catch (DocumentException ignored) {
                 // No reventamos por una página con footer incompleto.
             }
+
+            // ---- Paginación centrada pegada al borde inferior ----
+            drawPageNumber(cb, writer, pageWidth);
+        }
+
+        @Override
+        public void onCloseDocument(PdfWriter writer, Document document) {
+            // Rellenamos el template con el total real. writer.getPageNumber()
+            // tras cerrar el documento devuelve el siguiente número (= total+1
+            // en algunas versiones), por eso restamos 1.
+            int total = writer.getPageNumber() - 1;
+            Font fNum = FontFactory.getFont(FontFactory.HELVETICA, 8, INK_LIGHT);
+            ColumnText.showTextAligned(totalPagesTpl, Element.ALIGN_LEFT,
+                    new Phrase(String.valueOf(total), fNum), 0f, 2f, 0f);
+        }
+
+        private void drawPageNumber(PdfContentByte cb, PdfWriter writer, float pageWidth) {
+            Font fNum = FontFactory.getFont(FontFactory.HELVETICA, 8, INK_LIGHT);
+            String prefix = "Página " + writer.getPageNumber() + " / ";
+            float prefixWidth = fNum.getBaseFont().getWidthPoint(prefix, 8f);
+            // Reservamos 24pt para el template del total y centramos el
+            // conjunto (prefix + template) respecto al ancho de página.
+            float blockWidth = prefixWidth + 24f;
+            float startX = (pageWidth - blockWidth) / 2f;
+            ColumnText.showTextAligned(cb, Element.ALIGN_LEFT,
+                    new Phrase(prefix, fNum), startX, PAGE_NUM_Y, 0f);
+            cb.addTemplate(totalPagesTpl, startX + prefixWidth, PAGE_NUM_Y - 2f);
         }
 
         private void drawTotals(PdfContentByte cb, SalesInvoice invoice, float x, float topY, float width) throws DocumentException {
@@ -357,57 +418,76 @@ public class InvoicePdfGenerator {
             totals.writeSelectedRows(0, -1, x, topY, cb);
         }
 
-        private void drawLegalAndFooter(PdfContentByte cb, SalesInvoice invoice, CompanyDataResponse company,
-                                         InvoiceTexts texts, float x, float topY, float width) throws DocumentException {
+        /**
+         * Banda alta del footer (debajo del divider, encima del bloque IBAN/pie).
+         * Contiene los textos legales aplicables: rectificativa, IVA exento,
+         * IVA reducido y condiciones generales. Si no hay nada que decir,
+         * queda en blanco (lo legal es opcional).
+         */
+        private void drawLegalTexts(PdfContentByte cb, SalesInvoice invoice, InvoiceTexts texts,
+                                     float x, float topY, float width, float bottomY) throws DocumentException {
+            if (texts == null) return;
             Font fText = FontFactory.getFont(FontFactory.HELVETICA, 8, INK_LIGHT);
+
+            ColumnText ct = new ColumnText(cb);
+            ct.setSimpleColumn(x, bottomY, x + width, topY);
+
+            if ("RECTIFYING".equals(invoice.invoiceType()) && nonBlank(texts.rectifying())) {
+                ct.addElement(legalParagraph(texts.rectifying(), fText));
+            }
+            boolean hasExempt = invoice.lines().stream()
+                    .anyMatch(l -> l.vatPercent() != null && l.vatPercent().compareTo(BigDecimal.ZERO) == 0);
+            if (hasExempt && nonBlank(texts.exempt())) {
+                ct.addElement(legalParagraph(texts.exempt(), fText));
+            }
+            boolean hasReduced = invoice.lines().stream()
+                    .anyMatch(l -> l.vatPercent() != null
+                            && (l.vatPercent().compareTo(new BigDecimal("4")) == 0
+                                    || l.vatPercent().compareTo(new BigDecimal("10")) == 0));
+            if (hasReduced && nonBlank(texts.reducedVat())) {
+                ct.addElement(legalParagraph(texts.reducedVat(), fText));
+            }
+            if (nonBlank(texts.legalTerms())) {
+                ct.addElement(legalParagraph(texts.legalTerms(), fText));
+            }
+            ct.go();
+        }
+
+        /**
+         * Banda baja del footer (papel timbrado): IBAN encima del pie, ambos
+         * pegados al borde inferior. Se dibuja en cada página, igual que los
+         * totales — así si una factura se imprime y solo llega la última
+         * hoja, el cobrador sigue viendo el IBAN.
+         *
+         * Si no hay {@code InvoiceTexts} pero la empresa tiene
+         * {@code invoiceFooter} configurado, lo pintamos como fallback para
+         * no perder ese dato heredado.
+         */
+        private void drawIbanAndPie(PdfContentByte cb, CompanyDataResponse company, InvoiceTexts texts,
+                                     float x, float topY, float width, float bottomY) throws DocumentException {
             Font fIban = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 9, INK);
             Font fFooter = FontFactory.getFont(FontFactory.HELVETICA_OBLIQUE, 8, INK_LIGHT);
 
             ColumnText ct = new ColumnText(cb);
-            ct.setSimpleColumn(x, 40f, x + width, topY);
+            ct.setSimpleColumn(x, bottomY, x + width, topY);
 
             boolean addedSomething = false;
             if (texts != null) {
-                if ("RECTIFYING".equals(invoice.invoiceType()) && nonBlank(texts.rectifying())) {
-                    ct.addElement(legalParagraph(texts.rectifying(), fText));
-                    addedSomething = true;
-                }
-                boolean hasExempt = invoice.lines().stream()
-                        .anyMatch(l -> l.vatPercent() != null && l.vatPercent().compareTo(BigDecimal.ZERO) == 0);
-                if (hasExempt && nonBlank(texts.exempt())) {
-                    ct.addElement(legalParagraph(texts.exempt(), fText));
-                    addedSomething = true;
-                }
-                boolean hasReduced = invoice.lines().stream()
-                        .anyMatch(l -> l.vatPercent() != null
-                                && (l.vatPercent().compareTo(new BigDecimal("4")) == 0
-                                        || l.vatPercent().compareTo(new BigDecimal("10")) == 0));
-                if (hasReduced && nonBlank(texts.reducedVat())) {
-                    ct.addElement(legalParagraph(texts.reducedVat(), fText));
-                    addedSomething = true;
-                }
-                if (nonBlank(texts.legalTerms())) {
-                    ct.addElement(legalParagraph(texts.legalTerms(), fText));
-                    addedSomething = true;
-                }
                 if (texts.showIban() && nonBlank(company.iban())) {
                     Paragraph ibanP = new Paragraph("IBAN: " + company.iban(), fIban);
-                    ibanP.setSpacingBefore(4f);
                     ct.addElement(ibanP);
                     addedSomething = true;
                 }
                 if (nonBlank(texts.pie())) {
                     Paragraph p = new Paragraph(texts.pie(), fFooter);
-                    p.setSpacingBefore(6f);
+                    p.setSpacingBefore(4f);
                     ct.addElement(p);
                     addedSomething = true;
                 }
             }
             if (!addedSomething && nonBlank(company.invoiceFooter())) {
-                Paragraph p = new Paragraph(company.invoiceFooter(), fFooter);
-                ct.addElement(p);
+                ct.addElement(new Paragraph(company.invoiceFooter(), fFooter));
             }
-
             ct.go();
         }
     }
