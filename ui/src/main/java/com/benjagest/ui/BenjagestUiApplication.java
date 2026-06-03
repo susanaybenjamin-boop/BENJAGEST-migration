@@ -2343,14 +2343,18 @@ public class BenjagestUiApplication extends Application {
 
         billingTable.getColumns().addAll(List.of(colNumber, colCustomer, colDate, colDue, colStatus, colPayment, colTotal));
         billingTable.setItems(FXCollections.observableArrayList(initialList));
-        // Doble click sobre fila DRAFT -> abrir editor. Sobre VALIDATED
-        // tambien podriamos abrir un view-only; por ahora solo DRAFT.
+        // Doble click sobre fila editable -> abrir editor. Editable =
+        // cualquier DRAFT, o una PROFORMA aunque ya esté VALIDATED
+        // (las proformas no son documentos fiscales y siguen siendo
+        // borradores comerciales hasta que se convierten a factura).
         billingTable.setRowFactory(tv -> {
             javafx.scene.control.TableRow<SalesInvoiceSummary> row = new javafx.scene.control.TableRow<>();
             row.setOnMouseClicked(ev -> {
                 if (ev.getClickCount() == 2 && !row.isEmpty()) {
                     SalesInvoiceSummary inv = row.getItem();
-                    if ("DRAFT".equals(inv.status())) {
+                    boolean editable = "DRAFT".equals(inv.status())
+                            || "PROFORMA".equals(inv.invoiceType());
+                    if (editable) {
                         showInvoiceEditor(inv.id());
                     } else {
                         Alert info = new Alert(Alert.AlertType.INFORMATION,
@@ -2424,21 +2428,17 @@ public class BenjagestUiApplication extends Application {
             if (sel != null) sendInvoiceByEmail(sel);
         });
 
-        // Acciones de conversión proforma → factura. Solo aparecen
-        // activas cuando la fila seleccionada es PROFORMA DRAFT.
-        //   - "A borrador" → cambia el tipo a NORMAL pero deja DRAFT;
-        //     el usuario puede revisar y validar después.
-        //   - "Convertir y validar" → cambia tipo a NORMAL y valida en
-        //     la misma transacción (emite número STANDARD, hash
-        //     VeriFactu, QR, etc).
-        Button toDraftBtn = new Button(t("list.action.proforma_to_draft"));
-        toDraftBtn.setGraphic(icon("fas-edit"));
-        toDraftBtn.setDisable(true);
-        toDraftBtn.setOnAction(ev -> {
-            SalesInvoiceSummary sel = billingTable.getSelectionModel().getSelectedItem();
-            if (sel != null) convertProforma(sel, false);
-        });
-
+        // Acción de conversión proforma → factura standard. Aparece
+        // activa para cualquier PROFORMA (DRAFT o VALIDATED — porque
+        // una proforma "validada" sigue siendo borrador comercial
+        // mientras no se convierte). Al pulsar, el server reemite el
+        // siguiente número de la serie STANDARD (FRA-XXXX), cambia el
+        // invoice_type y registra en VeriFactu.
+        //
+        // No hay botón "A borrador" para proformas: como las proformas
+        // no son fiscales, no necesitan paso por borrador NORMAL. El
+        // usuario edita la proforma, y cuando el cliente la acepta,
+        // pulsa "Convertir y validar".
         Button toValidatedBtn = new Button(t("list.action.proforma_to_validated"));
         toValidatedBtn.setGraphic(icon("fas-check-double"));
         toValidatedBtn.setDisable(true);
@@ -2464,13 +2464,22 @@ public class BenjagestUiApplication extends Application {
             boolean isValidated = newV != null && "VALIDATED".equals(newV.status());
             boolean isRectifying = newV != null && "RECTIFYING".equals(newV.invoiceType());
             boolean isProforma = newV != null && "PROFORMA".equals(newV.invoiceType());
-            validateRowBtn.setDisable(!isDraft);
-            deleteDraftBtn.setDisable(!isDraft);
-            voidBtn.setDisable(!isValidated || isRectifying);
+            // Validar y eliminar borrador: solo DRAFT que NO sea proforma
+            // (la proforma se valida en su flujo propio: "Convertir y
+            // validar", y se elimina con su propio botón aunque esté
+            // VALIDATED porque no tiene valor fiscal).
+            validateRowBtn.setDisable(!isDraft || isProforma);
+            // Eliminar: DRAFT normales O cualquier proforma (no fiscal).
+            deleteDraftBtn.setDisable(!(isDraft && !isProforma) && !isProforma);
+            // Anular: solo facturas legales (NORMAL VALIDATED, no
+            // rectificativas ni proformas). Una proforma no tiene valor
+            // fiscal: no hay nada legal que anular.
+            voidBtn.setDisable(!isValidated || isRectifying || isProforma);
             pdfBtn.setDisable(newV == null || isDraft);
-            // Acciones de conversión: solo PROFORMA en DRAFT.
-            toDraftBtn.setDisable(!(isProforma && isDraft));
-            toValidatedBtn.setDisable(!(isProforma && isDraft));
+            // "Convertir y validar": cualquier proforma en DRAFT o
+            // VALIDATED. Editarla sigue siendo posible hasta que se
+            // convierte (entra al editor con doble click).
+            toValidatedBtn.setDisable(!isProforma || (!isDraft && !isValidated));
             // Mutación del botón PDF: si la factura ya tiene PDF
             // almacenado en la ruta configurada, ofrecemos "Abrir";
             // si no, "Guardar". El estado se guarda en userData del
@@ -2496,7 +2505,7 @@ public class BenjagestUiApplication extends Application {
         Region rowActionsSpacer = new Region();
         HBox.setHgrow(rowActionsSpacer, Priority.ALWAYS);
         HBox rowActions = new HBox(10, validateRowBtn, deleteDraftBtn, voidBtn,
-                toDraftBtn, toValidatedBtn, rowActionsSpacer, emailBtn, pdfBtn);
+                toValidatedBtn, rowActionsSpacer, emailBtn, pdfBtn);
         rowActions.getStyleClass().add("settings-actions");
 
         VBox bottomBlock = new VBox(12, billingTable, rowActions);
@@ -2645,24 +2654,24 @@ public class BenjagestUiApplication extends Application {
     }
 
     /**
-     * Convierte una proforma DRAFT en factura NORMAL. Si
-     * {@code validate=true} adicionalmente la valida en la misma
-     * transacción (emite número STANDARD + hash VeriFactu + QR).
+     * Convierte una proforma (DRAFT o VALIDATED) en factura NORMAL
+     * validada en la misma transacción: cambia el invoice_type, emite
+     * el siguiente número STANDARD (FRA-XXXX), calcula hash VeriFactu,
+     * genera PDF con QR oficial AEAT y lo almacena.
      *
-     * Confirmación obligatoria — convertir y validar es irreversible
-     * desde el punto de vista de numeración: el número emitido
-     * quema esa posición de la serie aunque luego se anule.
+     * Confirmación obligatoria — emitir un número STANDARD es
+     * irreversible aunque luego se anule (la posición queda quemada).
+     *
+     * @param validate siempre TRUE en el flujo actual (parámetro
+     *                 conservado por compat con la API del backend
+     *                 que sigue aceptando validate=false para futuros
+     *                 casos de uso).
      */
     private void convertProforma(SalesInvoiceSummary sel, boolean validate) {
-        String headerKey = validate
-                ? t("list.dialog.proforma.convert_validate.title")
-                : t("list.dialog.proforma.convert_draft.title");
-        String bodyKey = validate
-                ? t("list.dialog.proforma.convert_validate.body")
-                : t("list.dialog.proforma.convert_draft.body");
         Alert confirm = new Alert(Alert.AlertType.CONFIRMATION,
-                bodyKey, ButtonType.OK, ButtonType.CANCEL);
-        confirm.setHeaderText(headerKey);
+                t("list.dialog.proforma.convert_validate.body"),
+                ButtonType.OK, ButtonType.CANCEL);
+        confirm.setHeaderText(t("list.dialog.proforma.convert_validate.title"));
         Optional<ButtonType> ans = confirm.showAndWait();
         if (ans.isEmpty() || ans.get() != ButtonType.OK) return;
 

@@ -140,9 +140,14 @@ public class SalesInvoiceService {
     @Transactional
     public SalesInvoice updateDraft(String id, InvoiceUpsertRequest request) {
         SalesInvoice existing = get(id);
-        if (!"DRAFT".equals(existing.status())) {
+        // Editable: DRAFT (cualquier tipo) o PROFORMA VALIDATED (la
+        // proforma no es documento fiscal y sigue siendo borrador
+        // comercial hasta que se convierte a factura normal).
+        boolean isProformaValidated = "PROFORMA".equals(existing.invoiceType())
+                && "VALIDATED".equals(existing.status());
+        if (!"DRAFT".equals(existing.status()) && !isProformaValidated) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
-                    "Solo se editan facturas en borrador (status DRAFT)");
+                    "Solo se editan facturas en borrador o proformas (status DRAFT o PROFORMA VALIDATED)");
         }
 
         LocalDate invoiceDate = request.invoiceDate() == null ? existing.invoiceDate() : request.invoiceDate();
@@ -235,8 +240,16 @@ public class SalesInvoiceService {
         // Hook VeriFactu: si la empresa tiene mode != OFF, registramos
         // la huella encadenada. Si el modo es OFF, no se crea registro
         // (la cadena solo existe a partir del momento en que se activa).
+        //
+        // EXCEPCIÓN PROFORMA: no entra en la cadena VeriFactu (no es
+        // documento fiscal — RD 1007/2023 solo aplica a facturas, no a
+        // documentos comerciales). La proforma se valida para tener
+        // número de control interno (PROF-XXXX) pero no genera hash ni
+        // se envia a AEAT.
         SalesInvoice validated = get(id);
-        verifactuRegistryService.registerIfActive(validated);
+        if (!"PROFORMA".equals(validated.invoiceType())) {
+            verifactuRegistryService.registerIfActive(validated);
+        }
 
         // Cascada de anulacion: si esta factura es una RECTIFYING que
         // apunta a una original, al validarla la original pasa a VOIDED
@@ -445,14 +458,21 @@ public class SalesInvoiceService {
     }
 
     /**
-     * Convierte una PROFORMA DRAFT en NORMAL DRAFT (o NORMAL VALIDATED
-     * si {@code validate=true}). Cambio quirúrgico: solo el invoice_type
-     * y la serie (la nueva STANDARD); todo lo demás (líneas, totales,
-     * cliente, fechas, notas) se mantiene.
+     * Convierte una PROFORMA en factura NORMAL. Acepta dos estados de
+     * partida:
      *
-     * Es la única forma legal de cambiar el invoice_type de un borrador
-     * — updateDraft preserva el tipo precisamente para evitar mutaciones
-     * accidentales; este endpoint es el flujo deliberado proforma→factura.
+     *   1. PROFORMA DRAFT — cambia el invoice_type y la serie; si
+     *      validate=true, valida (emite siguiente FRA-XXXX).
+     *   2. PROFORMA VALIDATED — cambia el invoice_type, asigna la serie
+     *      STANDARD, emite el siguiente número STANDARD reemplazando el
+     *      PROF-XXXX que tuviera, y registra en VeriFactu. Es como un
+     *      "re-validate" pero pasando por el cambio de tipo en el mismo
+     *      paso.
+     *
+     * El usuario llega aquí desde el botón "Convertir y validar" del
+     * listado. validate=false en proforma VALIDATED no aplicaría (no se
+     * puede "des-validar"); el controller lo permite pero internamente
+     * lo tratamos como true en ese caso.
      */
     @Transactional
     public SalesInvoice convertProformaToStandard(String invoiceId, boolean validate) {
@@ -461,35 +481,50 @@ public class SalesInvoiceService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "Solo se convierten proformas. Tipo actual: " + existing.invoiceType());
         }
-        if (!"DRAFT".equals(existing.status())) {
+        if (!"DRAFT".equals(existing.status()) && !"VALIDATED".equals(existing.status())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "Solo se convierten proformas en DRAFT. Estado actual: " + existing.status());
+                    "Solo se convierten proformas en DRAFT o VALIDATED. Estado actual: "
+                            + existing.status());
         }
+        boolean fromValidated = "VALIDATED".equals(existing.status());
 
-        // Cambiamos el tipo + la serie. Reusamos updateHeader (que solo
-        // afecta filas DRAFT). El cambio queda atómico.
+        // Cambiamos el tipo + la serie. Si parte de VALIDATED, también
+        // limpiamos invoice_number para que claimNextNumber emita el
+        // siguiente STANDARD (FRA-XXXX) en lugar de mantener el PROF-XXXX.
         String newSeriesId = seriesService.findActiveByKind("NORMAL").id();
         SalesInvoice mutated = new SalesInvoice(
                 existing.id(), null, existing.customerId(), null,
-                newSeriesId, existing.invoiceNumber(),
+                newSeriesId,
+                fromValidated ? null : existing.invoiceNumber(),
                 existing.invoiceDate(), existing.dueDate(),
                 "NORMAL",
-                existing.status(), existing.paymentStatus(),
+                fromValidated ? "DRAFT" : existing.status(),
+                existing.paymentStatus(),
                 existing.subtotal(), existing.vatTotal(), existing.retentionTotal(), existing.total(),
                 existing.paidAmount(), existing.currency(),
                 existing.originalInvoiceId(), existing.rectifyingInvoiceId(),
                 existing.notes(), existing.pdfPath(),
-                existing.validatedAt(),
+                fromValidated ? null : existing.validatedAt(),
                 existing.createdAt(), existing.updatedAt(),
                 existing.lines()
         );
+        // Si venimos de VALIDATED, hay que regresar a DRAFT primero para
+        // que updateHeader y luego validateInternal funcionen. El paso
+        // intermedio es invisible al cliente (todo dentro de la misma tx).
+        if (fromValidated) {
+            int reverted = repository.revertProformaToDraft(invoiceId);
+            if (reverted == 0) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT,
+                        "La proforma ya no esta en VALIDATED");
+            }
+        }
         int affected = repository.updateHeader(invoiceId, mutated);
         if (affected == 0) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
-                    "La proforma ya no esta en DRAFT");
+                    "La proforma no se pudo actualizar (estado inconsistente)");
         }
 
-        if (validate) {
+        if (validate || fromValidated) {
             return validateInternal(invoiceId);
         }
         return get(invoiceId);
@@ -498,9 +533,11 @@ public class SalesInvoiceService {
     @Transactional
     public void deleteDraft(String id) {
         SalesInvoice existing = get(id);
-        if (!"DRAFT".equals(existing.status())) {
+        boolean isDraft = "DRAFT".equals(existing.status());
+        boolean isProforma = "PROFORMA".equals(existing.invoiceType());
+        if (!isDraft && !isProforma) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
-                    "Solo se pueden borrar facturas en DRAFT. Para una validada hay que anular (otro slice).");
+                    "Solo se pueden borrar facturas en DRAFT o proformas. Para una factura validada hay que anular (RECTIFYING).");
         }
         repository.softCancelDraft(id);
     }

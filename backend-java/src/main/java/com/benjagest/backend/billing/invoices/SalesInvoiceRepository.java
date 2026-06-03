@@ -64,6 +64,9 @@ public class SalesInvoiceRepository {
     }
 
     public int updateHeader(String id, SalesInvoice invoice) {
+        // Permitimos editar DRAFT (cualquier tipo) y PROFORMA VALIDATED
+        // (la proforma no es documento fiscal — sigue siendo borrador
+        // comercial mientras no se convierte a NORMAL).
         return jdbcTemplate.update("""
                 UPDATE sales_invoices
                    SET customer_id = ?,
@@ -79,7 +82,7 @@ public class SalesInvoiceRepository {
                        notes = ?
                  WHERE id = ?
                    AND company_id = ?
-                   AND status = 'DRAFT'
+                   AND (status = 'DRAFT' OR (status = 'VALIDATED' AND invoice_type = 'PROFORMA'))
                 """,
                 invoice.customerId(),
                 invoice.seriesId(),
@@ -186,9 +189,33 @@ public class SalesInvoiceRepository {
     }
 
     /**
-     * Cancela una factura en DRAFT (status = CANCELLED). Una factura
-     * VALIDATED no se borra ni cancela aqui — para esa hay que
-     * emitir un evento ANULACION (otro slice).
+     * Reabre una proforma VALIDATED como DRAFT (limpia número y
+     * validated_at) para permitir la conversión a NORMAL en el mismo
+     * flujo "Convertir y validar". Solo aplica a PROFORMA — una factura
+     * NORMAL VALIDATED nunca puede revertirse.
+     */
+    public int revertProformaToDraft(String id) {
+        return jdbcTemplate.update("""
+                UPDATE sales_invoices
+                   SET status = 'DRAFT',
+                       invoice_number = NULL,
+                       validated_at = NULL
+                 WHERE id = ?
+                   AND company_id = ?
+                   AND status = 'VALIDATED'
+                   AND invoice_type = 'PROFORMA'
+                """,
+                id,
+                tenantContext.getCurrentCompanyId()
+        );
+    }
+
+    /**
+     * Cancela una factura en DRAFT, o cualquier proforma (DRAFT o
+     * VALIDATED). Las proformas no son documentos fiscales — cancelar
+     * una proforma VALIDATED no rompe nada legal. Una factura NORMAL
+     * VALIDATED no se cancela aquí: para eso hay que emitir un evento
+     * ANULACION (RECTIFYING).
      */
     public int softCancelDraft(String id) {
         return jdbcTemplate.update("""
@@ -196,7 +223,7 @@ public class SalesInvoiceRepository {
                    SET status = 'CANCELLED'
                  WHERE id = ?
                    AND company_id = ?
-                   AND status = 'DRAFT'
+                   AND (status = 'DRAFT' OR invoice_type = 'PROFORMA')
                 """,
                 id,
                 tenantContext.getCurrentCompanyId()
