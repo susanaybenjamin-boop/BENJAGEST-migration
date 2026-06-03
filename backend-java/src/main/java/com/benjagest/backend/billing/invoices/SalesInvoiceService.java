@@ -75,8 +75,10 @@ public class SalesInvoiceService {
     public List<SalesInvoice> list(String statusFilter,
                                    String paymentStatusFilter,
                                    String customerIdFilter,
+                                   String invoiceTypeFilter,
                                    int limit) {
-        return repository.findAll(statusFilter, paymentStatusFilter, customerIdFilter, limit);
+        return repository.findAll(statusFilter, paymentStatusFilter, customerIdFilter,
+                invoiceTypeFilter, limit);
     }
 
     public SalesInvoice get(String id) {
@@ -440,6 +442,57 @@ public class SalesInvoiceService {
                 pdfBytes);
         repository.setPdfPath(validated.id(), absPath);
         return absPath;
+    }
+
+    /**
+     * Convierte una PROFORMA DRAFT en NORMAL DRAFT (o NORMAL VALIDATED
+     * si {@code validate=true}). Cambio quirúrgico: solo el invoice_type
+     * y la serie (la nueva STANDARD); todo lo demás (líneas, totales,
+     * cliente, fechas, notas) se mantiene.
+     *
+     * Es la única forma legal de cambiar el invoice_type de un borrador
+     * — updateDraft preserva el tipo precisamente para evitar mutaciones
+     * accidentales; este endpoint es el flujo deliberado proforma→factura.
+     */
+    @Transactional
+    public SalesInvoice convertProformaToStandard(String invoiceId, boolean validate) {
+        SalesInvoice existing = get(invoiceId);
+        if (!"PROFORMA".equals(existing.invoiceType())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Solo se convierten proformas. Tipo actual: " + existing.invoiceType());
+        }
+        if (!"DRAFT".equals(existing.status())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Solo se convierten proformas en DRAFT. Estado actual: " + existing.status());
+        }
+
+        // Cambiamos el tipo + la serie. Reusamos updateHeader (que solo
+        // afecta filas DRAFT). El cambio queda atómico.
+        String newSeriesId = seriesService.findActiveByKind("NORMAL").id();
+        SalesInvoice mutated = new SalesInvoice(
+                existing.id(), null, existing.customerId(), null,
+                newSeriesId, existing.invoiceNumber(),
+                existing.invoiceDate(), existing.dueDate(),
+                "NORMAL",
+                existing.status(), existing.paymentStatus(),
+                existing.subtotal(), existing.vatTotal(), existing.retentionTotal(), existing.total(),
+                existing.paidAmount(), existing.currency(),
+                existing.originalInvoiceId(), existing.rectifyingInvoiceId(),
+                existing.notes(), existing.pdfPath(),
+                existing.validatedAt(),
+                existing.createdAt(), existing.updatedAt(),
+                existing.lines()
+        );
+        int affected = repository.updateHeader(invoiceId, mutated);
+        if (affected == 0) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "La proforma ya no esta en DRAFT");
+        }
+
+        if (validate) {
+            return validateInternal(invoiceId);
+        }
+        return get(invoiceId);
     }
 
     @Transactional

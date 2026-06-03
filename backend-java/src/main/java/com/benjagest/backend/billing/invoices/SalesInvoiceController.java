@@ -90,8 +90,9 @@ public class SalesInvoiceController {
     public List<SalesInvoice> list(@RequestParam(value = "status", required = false) String status,
                                    @RequestParam(value = "paymentStatus", required = false) String paymentStatus,
                                    @RequestParam(value = "customerId", required = false) String customerId,
+                                   @RequestParam(value = "invoiceType", required = false) String invoiceType,
                                    @RequestParam(value = "limit", defaultValue = "100") int limit) {
-        return service.list(status, paymentStatus, customerId, limit);
+        return service.list(status, paymentStatus, customerId, invoiceType, limit);
     }
 
     @GetMapping("/{id}")
@@ -125,6 +126,23 @@ public class SalesInvoiceController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void delete(@PathVariable("id") String id) {
         service.deleteDraft(id);
+    }
+
+    /**
+     * Convierte una proforma DRAFT en factura NORMAL DRAFT (o validada
+     * si {@code validate=true}). El invoice_type cambia a NORMAL, se
+     * resuelve la serie STANDARD y, si validate=true, se valida en la
+     * misma transacción.
+     *
+     * Reglas:
+     *   - Solo aplica a PROFORMA en DRAFT (400 en otro caso).
+     *   - Una proforma sin líneas no se puede convertir + validar
+     *     (defensa común con validate normal).
+     */
+    @PostMapping("/{id}/convert-to-standard")
+    public SalesInvoice convertProformaToStandard(@PathVariable("id") String id,
+                                                  @RequestParam(value = "validate", defaultValue = "false") boolean validate) {
+        return service.convertProformaToStandard(id, validate);
     }
 
     /**

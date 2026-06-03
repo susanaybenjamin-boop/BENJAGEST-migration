@@ -2220,6 +2220,7 @@ public class BenjagestUiApplication extends Application {
 
     private ComboBox<String> billingStatusFilter;
     private ComboBox<String> billingPaymentFilter;
+    private ComboBox<String> billingTypeFilter;
     private TableView<SalesInvoiceSummary> billingTable;
 
     private Node billingInvoicesTab(List<SalesInvoiceSummary> initialList) {
@@ -2262,6 +2263,26 @@ public class BenjagestUiApplication extends Application {
             }
         });
 
+        // Filtro por tipo de factura: NORMAL / PROFORMA / RECTIFYING.
+        // Misma técnica que los demás filtros: items=códigos técnicos,
+        // visualización vía localizedInvoiceTypeLabel en cell/buttonCell.
+        billingTypeFilter = new ComboBox<>();
+        billingTypeFilter.getItems().addAll(t("list.filter.all"), "NORMAL", "PROFORMA", "RECTIFYING");
+        billingTypeFilter.getSelectionModel().selectFirst();
+        billingTypeFilter.getStyleClass().add("form-input");
+        billingTypeFilter.setCellFactory(lv -> new javafx.scene.control.ListCell<>() {
+            @Override protected void updateItem(String item, boolean empty) {
+                super.updateItem(item, empty);
+                setText(empty || item == null ? "" : localizedInvoiceTypeLabel(item));
+            }
+        });
+        billingTypeFilter.setButtonCell(new javafx.scene.control.ListCell<>() {
+            @Override protected void updateItem(String item, boolean empty) {
+                super.updateItem(item, empty);
+                setText(empty || item == null ? "" : localizedInvoiceTypeLabel(item));
+            }
+        });
+
         Button apply = new Button(t("list.filter.apply"));
         apply.setGraphic(icon("fas-filter"));
         apply.setOnAction(event -> reloadInvoices());
@@ -2271,12 +2292,14 @@ public class BenjagestUiApplication extends Application {
         reset.setOnAction(event -> {
             billingStatusFilter.getSelectionModel().selectFirst();
             billingPaymentFilter.getSelectionModel().selectFirst();
+            billingTypeFilter.getSelectionModel().selectFirst();
             reloadInvoices();
         });
 
         HBox filters = new HBox(10,
                 label(t("list.filter.label.status"), "form-label"), billingStatusFilter,
                 label(t("list.filter.label.collection"), "form-label"), billingPaymentFilter,
+                label(t("list.filter.label.type"), "form-label"), billingTypeFilter,
                 apply, reset);
         filters.setAlignment(Pos.CENTER_LEFT);
 
@@ -2401,6 +2424,29 @@ public class BenjagestUiApplication extends Application {
             if (sel != null) sendInvoiceByEmail(sel);
         });
 
+        // Acciones de conversión proforma → factura. Solo aparecen
+        // activas cuando la fila seleccionada es PROFORMA DRAFT.
+        //   - "A borrador" → cambia el tipo a NORMAL pero deja DRAFT;
+        //     el usuario puede revisar y validar después.
+        //   - "Convertir y validar" → cambia tipo a NORMAL y valida en
+        //     la misma transacción (emite número STANDARD, hash
+        //     VeriFactu, QR, etc).
+        Button toDraftBtn = new Button(t("list.action.proforma_to_draft"));
+        toDraftBtn.setGraphic(icon("fas-edit"));
+        toDraftBtn.setDisable(true);
+        toDraftBtn.setOnAction(ev -> {
+            SalesInvoiceSummary sel = billingTable.getSelectionModel().getSelectedItem();
+            if (sel != null) convertProforma(sel, false);
+        });
+
+        Button toValidatedBtn = new Button(t("list.action.proforma_to_validated"));
+        toValidatedBtn.setGraphic(icon("fas-check-double"));
+        toValidatedBtn.setDisable(true);
+        toValidatedBtn.setOnAction(ev -> {
+            SalesInvoiceSummary sel = billingTable.getSelectionModel().getSelectedItem();
+            if (sel != null) convertProforma(sel, true);
+        });
+
         // Wire up de habilitacion segun la fila seleccionada.
         // - Validar / Eliminar borrador: solo en DRAFT.
         // - Anular: solo en STANDARD VALIDATED. Una rectificativa YA es el
@@ -2417,10 +2463,14 @@ public class BenjagestUiApplication extends Application {
             boolean isDraft = newV != null && "DRAFT".equals(newV.status());
             boolean isValidated = newV != null && "VALIDATED".equals(newV.status());
             boolean isRectifying = newV != null && "RECTIFYING".equals(newV.invoiceType());
+            boolean isProforma = newV != null && "PROFORMA".equals(newV.invoiceType());
             validateRowBtn.setDisable(!isDraft);
             deleteDraftBtn.setDisable(!isDraft);
             voidBtn.setDisable(!isValidated || isRectifying);
             pdfBtn.setDisable(newV == null || isDraft);
+            // Acciones de conversión: solo PROFORMA en DRAFT.
+            toDraftBtn.setDisable(!(isProforma && isDraft));
+            toValidatedBtn.setDisable(!(isProforma && isDraft));
             // Mutación del botón PDF: si la factura ya tiene PDF
             // almacenado en la ruta configurada, ofrecemos "Abrir";
             // si no, "Guardar". El estado se guarda en userData del
@@ -2445,7 +2495,8 @@ public class BenjagestUiApplication extends Application {
 
         Region rowActionsSpacer = new Region();
         HBox.setHgrow(rowActionsSpacer, Priority.ALWAYS);
-        HBox rowActions = new HBox(10, validateRowBtn, deleteDraftBtn, voidBtn, rowActionsSpacer, emailBtn, pdfBtn);
+        HBox rowActions = new HBox(10, validateRowBtn, deleteDraftBtn, voidBtn,
+                toDraftBtn, toValidatedBtn, rowActionsSpacer, emailBtn, pdfBtn);
         rowActions.getStyleClass().add("settings-actions");
 
         VBox bottomBlock = new VBox(12, billingTable, rowActions);
@@ -2593,6 +2644,50 @@ public class BenjagestUiApplication extends Application {
         start(task, "billing-invoice-email");
     }
 
+    /**
+     * Convierte una proforma DRAFT en factura NORMAL. Si
+     * {@code validate=true} adicionalmente la valida en la misma
+     * transacción (emite número STANDARD + hash VeriFactu + QR).
+     *
+     * Confirmación obligatoria — convertir y validar es irreversible
+     * desde el punto de vista de numeración: el número emitido
+     * quema esa posición de la serie aunque luego se anule.
+     */
+    private void convertProforma(SalesInvoiceSummary sel, boolean validate) {
+        String headerKey = validate
+                ? t("list.dialog.proforma.convert_validate.title")
+                : t("list.dialog.proforma.convert_draft.title");
+        String bodyKey = validate
+                ? t("list.dialog.proforma.convert_validate.body")
+                : t("list.dialog.proforma.convert_draft.body");
+        Alert confirm = new Alert(Alert.AlertType.CONFIRMATION,
+                bodyKey, ButtonType.OK, ButtonType.CANCEL);
+        confirm.setHeaderText(headerKey);
+        Optional<ButtonType> ans = confirm.showAndWait();
+        if (ans.isEmpty() || ans.get() != ButtonType.OK) return;
+
+        Task<SalesInvoiceSummary> task = new Task<>() {
+            @Override
+            protected SalesInvoiceSummary call() throws Exception {
+                return billingApiClient.convertProformaToStandard(sel.id(), validate);
+            }
+        };
+        task.setOnSucceeded(ev -> {
+            SalesInvoiceSummary result = task.getValue();
+            Alert ok = new Alert(Alert.AlertType.INFORMATION,
+                    t("list.dialog.proforma.success_prefix")
+                            + (result.invoiceNumber() == null ? "—" : result.invoiceNumber())
+                            + t("list.dialog.proforma.success_suffix"),
+                    ButtonType.OK);
+            ok.setHeaderText(null);
+            ok.showAndWait();
+            reloadInvoices();
+        });
+        task.setOnFailed(ev -> showError(t("list.dialog.proforma.fail.title"),
+                t("list.dialog.proforma.fail.body")));
+        start(task, "billing-invoice-convert-proforma");
+    }
+
     private void voidInvoiceFromList(SalesInvoiceSummary sel) {
         Alert confirm = new Alert(Alert.AlertType.CONFIRMATION,
                 t("list.dialog.void.body"),
@@ -2651,10 +2746,11 @@ public class BenjagestUiApplication extends Application {
     private void reloadInvoices() {
         String status = mapAllOrValue(billingStatusFilter.getValue());
         String payment = mapAllOrValue(billingPaymentFilter.getValue());
+        String type = billingTypeFilter == null ? null : mapAllOrValue(billingTypeFilter.getValue());
         Task<List<SalesInvoiceSummary>> task = new Task<>() {
             @Override
             protected List<SalesInvoiceSummary> call() throws Exception {
-                return billingApiClient.listInvoices(status, payment, null, 200);
+                return billingApiClient.listInvoices(status, payment, type, 200);
             }
         };
         task.setOnSucceeded(event -> billingTable.setItems(FXCollections.observableArrayList(task.getValue())));
@@ -4813,6 +4909,17 @@ public class BenjagestUiApplication extends Application {
                 case "list.hint" -> "Double click on a draft opens the editor. Selecting a row enables the actions in the bottom bar.";
                 case "list.filter.label.status" -> "Status:";
                 case "list.filter.label.collection" -> "Collection:";
+                case "list.filter.label.type" -> "Type:";
+                case "list.action.proforma_to_draft" -> "To draft";
+                case "list.action.proforma_to_validated" -> "Convert and validate";
+                case "list.dialog.proforma.convert_draft.title" -> "Convert proforma to draft invoice";
+                case "list.dialog.proforma.convert_draft.body" -> "The proforma will become a NORMAL draft (without VeriFactu number yet). You can review it and validate later. Continue?";
+                case "list.dialog.proforma.convert_validate.title" -> "Convert and validate";
+                case "list.dialog.proforma.convert_validate.body" -> "The proforma will be converted to a standard invoice AND validated in the same step (number, chained hash and QR are issued — irreversible). Continue?";
+                case "list.dialog.proforma.success_prefix" -> "Conversion done. Resulting invoice: ";
+                case "list.dialog.proforma.success_suffix" -> ".";
+                case "list.dialog.proforma.fail.title" -> "Could not convert proforma";
+                case "list.dialog.proforma.fail.body" -> "Make sure the proforma is in DRAFT and has at least one line. The server logs detail the cause.";
                 case "list.filter.all" -> "(all)";
                 case "list.filter.apply" -> "Apply filters";
                 case "list.filter.reset" -> "Clear";
@@ -5356,6 +5463,17 @@ public class BenjagestUiApplication extends Application {
             case "list.hint" -> "Doble click sobre un borrador abre el editor. Seleccionando una fila se habilitan las acciones de la barra inferior.";
             case "list.filter.label.status" -> "Estado:";
             case "list.filter.label.collection" -> "Cobro:";
+            case "list.filter.label.type" -> "Tipo:";
+            case "list.action.proforma_to_draft" -> "A borrador";
+            case "list.action.proforma_to_validated" -> "Convertir y validar";
+            case "list.dialog.proforma.convert_draft.title" -> "Convertir proforma en borrador";
+            case "list.dialog.proforma.convert_draft.body" -> "La proforma se convertira en un borrador NORMAL (sin numero VeriFactu todavia). Podras revisarla y validarla despues. Continuar?";
+            case "list.dialog.proforma.convert_validate.title" -> "Convertir y validar";
+            case "list.dialog.proforma.convert_validate.body" -> "La proforma se convertira en factura standard Y se validara en el mismo paso (numero, hash encadenado y QR son emitidos — irreversible). Continuar?";
+            case "list.dialog.proforma.success_prefix" -> "Conversion realizada. Factura resultante: ";
+            case "list.dialog.proforma.success_suffix" -> ".";
+            case "list.dialog.proforma.fail.title" -> "No se pudo convertir la proforma";
+            case "list.dialog.proforma.fail.body" -> "Comprueba que la proforma esta en DRAFT y tiene al menos una linea. Los logs del servidor detallan la causa.";
             case "list.filter.all" -> "(todos)";
             case "list.filter.apply" -> "Aplicar filtros";
             case "list.filter.reset" -> "Limpiar";
