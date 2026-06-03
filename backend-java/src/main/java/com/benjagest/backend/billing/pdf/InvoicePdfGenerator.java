@@ -114,10 +114,14 @@ public class InvoicePdfGenerator {
         boolean isRectifying = "RECTIFYING".equals(invoice.invoiceType());
         String title = isRectifying ? "FACTURA RECTIFICATIVA" : "FACTURA";
 
-        Font fTitle = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 22, INK);
+        // Tamaño moderado (15pt) y más spacingAfter para que el bloque
+        // del logo encima del emisor no quede visualmente invadido por el
+        // título — sobre todo en rectificativas, donde el texto es más
+        // largo. Antes 22pt centrado pisaba la zona del logo.
+        Font fTitle = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 15, INK);
         Paragraph p = new Paragraph(title, fTitle);
         p.setAlignment(Element.ALIGN_CENTER);
-        p.setSpacingAfter(14f);
+        p.setSpacingAfter(20f);
         document.add(p);
     }
 
