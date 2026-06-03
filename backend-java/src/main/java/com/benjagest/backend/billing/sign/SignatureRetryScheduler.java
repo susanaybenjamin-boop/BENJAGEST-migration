@@ -1,6 +1,7 @@
 package com.benjagest.backend.billing.sign;
 
 import com.benjagest.backend.billing.sif.SifEventRepository;
+import com.benjagest.backend.billing.verifactu.AeatVerifactuClient;
 import com.benjagest.backend.billing.verifactu.VerifactuRegistryRepository;
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -43,23 +44,70 @@ public class SignatureRetryScheduler {
     private final VerifactuRegistryRepository registryRepository;
     private final SifEventRepository eventRepository;
     private final XmlSignerService signerService;
+    private final AeatVerifactuClient aeatClient;
 
     public SignatureRetryScheduler(VerifactuRegistryRepository registryRepository,
                                     SifEventRepository eventRepository,
-                                    XmlSignerService signerService) {
+                                    XmlSignerService signerService,
+                                    AeatVerifactuClient aeatClient) {
         this.registryRepository = registryRepository;
         this.eventRepository = eventRepository;
         this.signerService = signerService;
+        this.aeatClient = aeatClient;
     }
 
     @Scheduled(fixedDelay = TEN_MIN_MS, initialDelay = INITIAL_DELAY_MS)
     public void retry() {
         int signedRegistry = retryInvoices();
         int signedEvents = retryEvents();
-        if (signedRegistry > 0 || signedEvents > 0) {
-            log.info("VF4: firmados en este ciclo — facturas={}, eventos={}",
-                    signedRegistry, signedEvents);
+        int sentRegistry = sendSignedInvoicesToAeat();
+        if (signedRegistry > 0 || signedEvents > 0 || sentRegistry > 0) {
+            log.info("VF4: ciclo terminado — facturas firmadas={}, eventos firmados={}, facturas enviadas AEAT={}",
+                    signedRegistry, signedEvents, sentRegistry);
         }
+    }
+
+    /**
+     * VF3-SOAP: recorre los registros SIGNED y los envia a AEAT
+     * (modalidad VERIFACTU solo). Actualiza status SENT al recibir 2xx,
+     * ACKNOWLEDGED al detectar "Aceptado" en respuesta, ERROR si falla.
+     * El cliente AEAT esta sin probar contra real (ver AeatVerifactuClient),
+     * asi que ahora todos los intentos terminan en ERROR hasta que se
+     * tenga FNMT + ajuste XSD.
+     */
+    private int sendSignedInvoicesToAeat() {
+        List<VerifactuRegistryRepository.PendingForSending> pending;
+        try {
+            pending = registryRepository.findPendingForSending(BATCH_SIZE);
+        } catch (RuntimeException ex) {
+            log.warn("VF3-SOAP: no se pudo listar pending de envio", ex);
+            return 0;
+        }
+        int count = 0;
+        for (var row : pending) {
+            try {
+                AeatVerifactuClient.SendResult result = aeatClient.sendInvoice(
+                        row.companyId(), row.mode(),
+                        row.taxIdentifier(), row.companyLegalName(),
+                        row.signatureData());
+                if (result.ok()) {
+                    registryRepository.markSent(row.invoiceId(), row.mode(), row.companyId());
+                    if ("Aceptado".equals(result.message())
+                            || "AceptadoConErrores".equals(result.message())) {
+                        registryRepository.markAcknowledged(
+                                row.invoiceId(), row.mode(), row.companyId());
+                    }
+                    count++;
+                } else {
+                    registryRepository.markError(row.invoiceId(), row.mode(),
+                            row.companyId(), result.message());
+                }
+            } catch (RuntimeException ex) {
+                log.warn("VF3-SOAP: error enviando factura {} (mode={})",
+                        row.invoiceId(), row.mode(), ex);
+            }
+        }
+        return count;
     }
 
     private int retryInvoices() {
