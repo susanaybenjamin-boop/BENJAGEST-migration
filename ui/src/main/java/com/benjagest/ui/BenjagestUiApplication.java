@@ -3346,6 +3346,7 @@ public class BenjagestUiApplication extends Application {
     // ===================================================================
 
     private ComboBox<CustomerSummary> editorCustomerCombo;
+    private ComboBox<String> editorInvoiceTypeCombo;
     private javafx.scene.control.DatePicker editorInvoiceDate;
     private javafx.scene.control.DatePicker editorDueDate;
     private javafx.scene.control.TextArea editorNotesArea;
@@ -3527,28 +3528,67 @@ public class BenjagestUiApplication extends Application {
         editorCustomerCombo.valueProperty().addListener((obs, oldV, newV) -> refreshClientDetail.run());
         refreshClientDetail.run();
 
-        // Pill grande con el tipo de factura. Si es una RECTIFYING (borrador
-        // creado vía "Anular" desde el listado), mostramos un texto que
-        // referencia la original; si no, "Factura normal · serie automatica".
-        // La serie la resuelve el server segun el kind; el usuario no la
-        // elige aqui.
+        // Tipo de factura. Si es RECTIFYING (borrador creado via "Anular"),
+        // mostramos pill informativa (no editable — el tipo es consecuencia
+        // del acto legal y no se puede cambiar). Si es NORMAL/PROFORMA,
+        // mostramos un ComboBox para que el usuario elija. La serie la
+        // resuelve el server por invoice_type; el usuario no elige serie.
         boolean isRectifying = bundle.existing() != null
                 && "RECTIFYING".equals(bundle.existing().invoiceType());
-        Label kindPill = label(
-                isRectifying
-                        ? t("editor.rectifying.pill_prefix") + shortId(bundle.existing().originalInvoiceId())
-                        : t("editor.kind.pill"),
-                "invoice-pill");
 
-        // El badge del header refleja el proximo numero de la serie que
-        // tocara al validar: STANDARD para facturas normales, RECT para
-        // rectificativas.
+        Node kindControl;
+        if (isRectifying) {
+            kindControl = label(
+                    t("editor.rectifying.pill_prefix") + shortId(bundle.existing().originalInvoiceId()),
+                    "invoice-pill");
+            editorInvoiceTypeCombo = null;
+        } else {
+            editorInvoiceTypeCombo = new ComboBox<>();
+            editorInvoiceTypeCombo.getItems().addAll("NORMAL", "PROFORMA");
+            // Texto traducido en items y selected; valor interno = código.
+            editorInvoiceTypeCombo.setCellFactory(lv -> new javafx.scene.control.ListCell<>() {
+                @Override protected void updateItem(String item, boolean empty) {
+                    super.updateItem(item, empty);
+                    setText(empty || item == null ? "" : localizedInvoiceTypeLabel(item));
+                }
+            });
+            editorInvoiceTypeCombo.setButtonCell(new javafx.scene.control.ListCell<>() {
+                @Override protected void updateItem(String item, boolean empty) {
+                    super.updateItem(item, empty);
+                    setText(empty || item == null ? "" : localizedInvoiceTypeLabel(item));
+                }
+            });
+            String currentType = bundle.existing() == null
+                    ? "NORMAL" : (bundle.existing().invoiceType() == null
+                            ? "NORMAL" : bundle.existing().invoiceType());
+            if (!editorInvoiceTypeCombo.getItems().contains(currentType)) {
+                currentType = "NORMAL";
+            }
+            editorInvoiceTypeCombo.getSelectionModel().select(currentType);
+            editorInvoiceTypeCombo.getStyleClass().add("invoice-input");
+            // Al cambiar el tipo, actualizamos el badge del header con
+            // el próximo número de la serie correspondiente — feedback
+            // inmediato de qué pasaría al validar.
+            final var finalSeries = bundle.series();
+            editorInvoiceTypeCombo.valueProperty().addListener((obs, oldV, newV) -> {
+                if (newV == null) return;
+                SeriesEntry seriesForType = pickSeriesForInvoiceType(newV, finalSeries, standardSeries);
+                nextNumberBadgeValue.setText(seriesForType == null ? "—" : previewNextNumber(seriesForType));
+            });
+            kindControl = editorInvoiceTypeCombo;
+        }
+
+        // Badge del header con el próximo número de la serie que tocará
+        // al validar: STANDARD para NORMAL, PROFORMA para Proforma, RECT
+        // para rectificativas.
         SeriesEntry badgeSeries = isRectifying
                 ? bundle.series().stream()
                         .filter(s -> "RECTIFYING".equals(s.invoiceKind()))
                         .findFirst()
                         .orElse(standardSeries)
-                : standardSeries;
+                : pickSeriesForInvoiceType(
+                        editorInvoiceTypeCombo == null ? "NORMAL" : editorInvoiceTypeCombo.getValue(),
+                        bundle.series(), standardSeries);
         if (badgeSeries != null) {
             nextNumberBadgeValue.setText(previewNextNumber(badgeSeries));
         } else {
@@ -3568,7 +3608,7 @@ public class BenjagestUiApplication extends Application {
         );
         VBox colTipo = new VBox(8,
                 label(t("editor.field.kind"), "invoice-field-label"),
-                kindPill
+                kindControl
         );
         HBox.setHgrow(colCliente, Priority.ALWAYS);
         HBox.setHgrow(colFechas, Priority.ALWAYS);
@@ -3741,6 +3781,39 @@ public class BenjagestUiApplication extends Application {
      * con padding. Asi podemos pintar en la UI el "F-2026-0043" que se
      * asignara cuando el usuario pulse "Validar y emitir", sin gastarlo.
      */
+    /** Etiqueta humana de un invoice_type (NORMAL/PROFORMA) traducida. */
+    private String localizedInvoiceTypeLabel(String code) {
+        if (code == null) return "";
+        return switch (code) {
+            case "NORMAL" -> t("editor.kind.normal");
+            case "PROFORMA" -> t("editor.kind.proforma");
+            case "RECTIFYING" -> t("editor.kind.rectifying");
+            default -> code;
+        };
+    }
+
+    /**
+     * Resuelve qué serie del catálogo aplica para un invoiceType dado.
+     * NORMAL → STANDARD, PROFORMA → PROFORMA (sub-módulo del catálogo
+     * sembrado en V16), RECTIFYING → RECTIFYING. Si no encuentra la
+     * específica, cae a la STANDARD para que el badge nunca se quede
+     * mudo (el server al validar fallaría limpiamente igualmente).
+     */
+    private SeriesEntry pickSeriesForInvoiceType(String invoiceType,
+                                                  List<SeriesEntry> all,
+                                                  SeriesEntry fallback) {
+        if (invoiceType == null || all == null) return fallback;
+        String targetKind = switch (invoiceType) {
+            case "PROFORMA" -> "PROFORMA";
+            case "RECTIFYING" -> "RECTIFYING";
+            default -> "STANDARD";
+        };
+        return all.stream()
+                .filter(s -> targetKind.equals(s.invoiceKind()))
+                .findFirst()
+                .orElse(fallback);
+    }
+
     private String previewNextNumber(SeriesEntry s) {
         if (s == null) {
             return "—";
@@ -4076,15 +4149,22 @@ public class BenjagestUiApplication extends Application {
         // No mandamos seriesId: el server lo resuelve por invoice_type.
         // Mantenemos la firma del cliente API (seriesId nullable) por
         // si en algun flujo futuro queremos forzarlo explicitamente.
+        // Tipo elegido por el usuario en el ComboBox. Si está editando
+        // una RECTIFYING (combo null por diseño), se preserva el tipo
+        // existente — el backend updateDraft también lo preserva como
+        // defensa adicional.
+        String selectedInvoiceType = editorInvoiceTypeCombo == null
+                ? (existingId == null ? "NORMAL" : "RECTIFYING")
+                : (editorInvoiceTypeCombo.getValue() == null ? "NORMAL" : editorInvoiceTypeCombo.getValue());
         Task<SalesInvoiceSummary> task = new Task<>() {
             @Override
             protected SalesInvoiceSummary call() throws Exception {
                 SalesInvoiceSummary saved;
                 if (existingId == null) {
-                    saved = billingApiClient.createInvoice(customer.id(), null, "NORMAL",
+                    saved = billingApiClient.createInvoice(customer.id(), null, selectedInvoiceType,
                             invoiceDateIso, dueDateIso, notes, lines);
                 } else {
-                    saved = billingApiClient.updateInvoice(existingId, customer.id(), null, "NORMAL",
+                    saved = billingApiClient.updateInvoice(existingId, customer.id(), null, selectedInvoiceType,
                             invoiceDateIso, dueDateIso, notes, lines);
                 }
                 if (validateAfter) {
@@ -4690,6 +4770,9 @@ public class BenjagestUiApplication extends Application {
                 case "editor.client.email_prefix" -> "Email: ";
                 case "editor.client.phone_prefix" -> "Phone: ";
                 case "editor.kind.pill" -> "Standard invoice · automatic series";
+                case "editor.kind.normal" -> "Standard invoice";
+                case "editor.kind.proforma" -> "Proforma";
+                case "editor.kind.rectifying" -> "Corrective";
                 case "editor.field.customer" -> "Customer *";
                 case "editor.field.invoice_date" -> "Issue date *";
                 case "editor.field.due_date" -> "Due date";
@@ -5230,6 +5313,9 @@ public class BenjagestUiApplication extends Application {
             case "editor.client.email_prefix" -> "Email: ";
             case "editor.client.phone_prefix" -> "Tel.: ";
             case "editor.kind.pill" -> "Factura normal · serie automatica";
+            case "editor.kind.normal" -> "Factura normal";
+            case "editor.kind.proforma" -> "Proforma";
+            case "editor.kind.rectifying" -> "Rectificativa";
             case "editor.field.customer" -> "Cliente *";
             case "editor.field.invoice_date" -> "Fecha de emision *";
             case "editor.field.due_date" -> "Fecha de vencimiento";
