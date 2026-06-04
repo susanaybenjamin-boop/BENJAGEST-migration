@@ -388,6 +388,35 @@ public class LaborApiClient {
         send(req(baseUrl + "/labor/payslips/" + id).DELETE());
     }
 
+    /**
+     * Descarga el PDF de la nomina. Devuelve los bytes para que el caller
+     * los guarde en un fichero elegido por el usuario.
+     */
+    public byte[] downloadPayslipPdf(String id) throws IOException, InterruptedException {
+        HttpRequest.Builder b = HttpRequest.newBuilder(URI.create(baseUrl + "/labor/payslips/" + id + "/pdf"))
+                .timeout(Duration.ofSeconds(30))
+                .GET();
+        AuthSession.get().authorize(b);
+        HttpResponse<byte[]> r = httpClient.send(b.build(), HttpResponse.BodyHandlers.ofByteArray());
+        if (r.statusCode() < 200 || r.statusCode() >= 300) {
+            throw new IOException("HTTP " + r.statusCode());
+        }
+        return r.body();
+    }
+
+    public void emailPayslipToEmployee(String id) throws IOException, InterruptedException {
+        send(req(baseUrl + "/labor/payslips/" + id + "/email")
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString("{}")));
+    }
+
+    public String resolveEmployeeIdForCurrentUser(String userId) throws IOException, InterruptedException {
+        HttpResponse<String> r = send(req(baseUrl + "/labor/payslips/resolve-self?userId=" + userId).GET());
+        String body = r.body();
+        if (body == null || body.isBlank() || body.equals("{}")) return null;
+        return textField(body, "employeeId");
+    }
+
     // ====================================================================
     //  Inmovilizado (C1)
     // ====================================================================
