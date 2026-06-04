@@ -1759,9 +1759,9 @@ public class BenjagestUiApplication extends Application {
 
     private void showExtractionResult(String json, String filename) {
         // Parseo minimal de los campos detectados — los pinta en un
-        // GridPane que el usuario va a ver pero no editar (por ahora).
-        // Cuando exista el módulo de compras con guardado, esto será un
-        // formulario rellenable.
+        // GridPane editable (TextField readonly que se pueden seleccionar
+        // para copiar). v2: ahora incluye supplier name + confianza.
+        String supplier = extractField(json, "supplierName");
         String emitter = extractField(json, "emitterNif");
         String number = extractField(json, "invoiceNumber");
         String date = extractField(json, "invoiceDate");
@@ -1769,29 +1769,69 @@ public class BenjagestUiApplication extends Application {
         String vatPct = extractNumber(json, "vatPercent");
         String vatAmt = extractNumber(json, "vatAmount");
         String total = extractNumber(json, "totalAmount");
+        String confidence = extractField(json, "confidence");
+        String hash = extractField(json, "documentSha256");
 
         GridPane g = new GridPane();
         g.setHgap(12); g.setVgap(8);
-        g.add(new Label(t("purchases.import.field.emitter_nif")), 0, 0);
-        g.add(new Label(emitter), 1, 0);
-        g.add(new Label(t("purchases.import.field.number")), 0, 1);
-        g.add(new Label(number), 1, 1);
-        g.add(new Label(t("purchases.import.field.date")), 0, 2);
-        g.add(new Label(date), 1, 2);
-        g.add(new Label(t("purchases.import.field.base")), 0, 3);
-        g.add(new Label(base), 1, 3);
-        g.add(new Label(t("purchases.import.field.vat_pct")), 0, 4);
-        g.add(new Label(vatPct + " %"), 1, 4);
-        g.add(new Label(t("purchases.import.field.vat_amount")), 0, 5);
-        g.add(new Label(vatAmt), 1, 5);
-        g.add(new Label(t("purchases.import.field.total")), 0, 6);
-        g.add(new Label(total), 1, 6);
+        int r = 0;
+        g.add(new Label(t("purchases.import.field.supplier")), 0, r);
+        g.add(copyableValue(supplier), 1, r++);
+        g.add(new Label(t("purchases.import.field.emitter_nif")), 0, r);
+        g.add(copyableValue(emitter), 1, r++);
+        g.add(new Label(t("purchases.import.field.number")), 0, r);
+        g.add(copyableValue(number), 1, r++);
+        g.add(new Label(t("purchases.import.field.date")), 0, r);
+        g.add(copyableValue(date), 1, r++);
+        g.add(new Label(t("purchases.import.field.base")), 0, r);
+        g.add(copyableValue(base + " €"), 1, r++);
+        g.add(new Label(t("purchases.import.field.vat_pct")), 0, r);
+        g.add(copyableValue(vatPct + " %"), 1, r++);
+        g.add(new Label(t("purchases.import.field.vat_amount")), 0, r);
+        g.add(copyableValue(vatAmt + " €"), 1, r++);
+        g.add(new Label(t("purchases.import.field.total")), 0, r);
+        Label totalLbl = new Label(total + " €");
+        totalLbl.getStyleClass().add("settings-section-title");
+        g.add(totalLbl, 1, r++);
+        g.add(new Separator(), 0, r++, 2, 1);
+        Label confLabel = new Label(confidenceLabel(confidence));
+        confLabel.getStyleClass().add("settings-section-title");
+        g.add(new Label(t("purchases.import.field.confidence")), 0, r);
+        g.add(confLabel, 1, r++);
+        if (hash != null && hash.length() > 16) {
+            g.add(new Label(t("purchases.import.field.hash")), 0, r);
+            Label hashShort = new Label(hash.substring(0, 16) + "…");
+            hashShort.getStyleClass().add("settings-hint");
+            g.add(hashShort, 1, r);
+        }
 
         Alert info = new Alert(Alert.AlertType.INFORMATION);
         info.setHeaderText(t("purchases.import.result_prefix") + filename);
         info.getDialogPane().setContent(g);
-        info.getDialogPane().setPrefWidth(520);
+        info.getDialogPane().setPrefWidth(560);
         info.showAndWait();
+    }
+
+    /**
+     * Crea un TextField readonly que se ve como label pero permite
+     * seleccionar y copiar al portapapeles con Ctrl+C.
+     */
+    private TextField copyableValue(String value) {
+        TextField tf = new TextField(value == null || value.isBlank() ? "—" : value);
+        tf.setEditable(false);
+        tf.setFocusTraversable(false);
+        tf.setPrefColumnCount(32);
+        return tf;
+    }
+
+    private String confidenceLabel(String code) {
+        if (code == null || code.isBlank()) return "—";
+        return switch (code) {
+            case "HIGH" -> "✓ " + t("purchases.import.confidence.high");
+            case "MEDIUM" -> "⚠ " + t("purchases.import.confidence.medium");
+            case "LOW" -> "✗ " + t("purchases.import.confidence.low");
+            default -> code;
+        };
     }
 
     private String extractField(String json, String field) {
@@ -6196,6 +6236,12 @@ public class BenjagestUiApplication extends Application {
                 case "purchases.import.fail.title" -> "Could not extract from PDF";
                 case "purchases.import.fail.body" -> "Maybe the PDF is scanned (no embedded text) or encrypted. Make sure the backend is running.";
                 case "purchases.import.result_prefix" -> "Detected fields — ";
+                case "purchases.import.field.supplier" -> "Supplier:";
+                case "purchases.import.field.confidence" -> "Confidence:";
+                case "purchases.import.field.hash" -> "Document SHA-256:";
+                case "purchases.import.confidence.high" -> "High (base + VAT ≈ total)";
+                case "purchases.import.confidence.medium" -> "Medium (review missing fields)";
+                case "purchases.import.confidence.low" -> "Low (cross-check failed)";
                 case "purchases.import.field.emitter_nif" -> "Issuer NIF:";
                 case "purchases.import.field.number" -> "Invoice number:";
                 case "purchases.import.field.date" -> "Invoice date:";
@@ -6997,6 +7043,12 @@ public class BenjagestUiApplication extends Application {
             case "purchases.import.fail.title" -> "No se pudo extraer del PDF";
             case "purchases.import.fail.body" -> "Quiza el PDF este escaneado (sin texto embebido) o cifrado. Comprueba que el backend este en marcha.";
             case "purchases.import.result_prefix" -> "Campos detectados — ";
+            case "purchases.import.field.supplier" -> "Proveedor:";
+            case "purchases.import.field.confidence" -> "Confianza:";
+            case "purchases.import.field.hash" -> "SHA-256 documento:";
+            case "purchases.import.confidence.high" -> "Alta (base + IVA ≈ total)";
+            case "purchases.import.confidence.medium" -> "Media (revisar campos vacios)";
+            case "purchases.import.confidence.low" -> "Baja (validacion cruzada fallida)";
             case "purchases.import.field.emitter_nif" -> "NIF emisor:";
             case "purchases.import.field.number" -> "Número factura:";
             case "purchases.import.field.date" -> "Fecha factura:";
