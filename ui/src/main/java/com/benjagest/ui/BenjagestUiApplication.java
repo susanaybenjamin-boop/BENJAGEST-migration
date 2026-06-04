@@ -429,17 +429,53 @@ public class BenjagestUiApplication extends Application {
         googleButton.setDisable(true);
         googleButton.setTooltip(new javafx.scene.control.Tooltip("Pendiente de configurar (Slice C2)"));
 
-        Label hint = new Label("Demos: admin@benjagest.local | empresario@benjagest.local");
-        hint.getStyleClass().add("status-detail");
-        Label hint2 = new Label("Contrasena: Benjamin123456$");
-        hint2.getStyleClass().add("status-detail");
+        // Credenciales demo seleccionables para copiar/pegar (CTRL+C).
+        // Usamos TextField readonly en lugar de Label porque Label no
+        // permite selección de texto en JavaFX.
+        Label demoTitle = new Label("Datos demo (selecciona y copia con Ctrl+C):");
+        demoTitle.getStyleClass().add("status-detail");
+
+        TextField demoAdmin = new TextField("admin@benjagest.local");
+        demoAdmin.setEditable(false);
+        demoAdmin.setFocusTraversable(false);
+        demoAdmin.getStyleClass().add("status-detail");
+
+        TextField demoEmpresario = new TextField("empresario@benjagest.local");
+        demoEmpresario.setEditable(false);
+        demoEmpresario.setFocusTraversable(false);
+        demoEmpresario.getStyleClass().add("status-detail");
+
+        TextField demoPassword = new TextField("Benjamin123456$");
+        demoPassword.setEditable(false);
+        demoPassword.setFocusTraversable(false);
+        demoPassword.getStyleClass().add("status-detail");
+
+        // Doble-click sobre cualquiera de los tres → pre-rellena los
+        // campos de login. Atajo para no tener que copiar dos veces.
+        demoAdmin.setOnMouseClicked(ev -> {
+            if (ev.getClickCount() == 2) {
+                emailField.setText(demoAdmin.getText());
+                passwordField.setText(demoPassword.getText());
+                passwordField.requestFocus();
+            }
+        });
+        demoEmpresario.setOnMouseClicked(ev -> {
+            if (ev.getClickCount() == 2) {
+                emailField.setText(demoEmpresario.getText());
+                passwordField.setText(demoPassword.getText());
+                passwordField.requestFocus();
+            }
+        });
+
+        VBox demoBox = new VBox(4, demoTitle, demoAdmin, demoEmpresario, demoPassword);
+        demoBox.setAlignment(Pos.CENTER_LEFT);
 
         panel.getChildren().addAll(
                 AppBrand.createLogoMark(), title, subtitle,
                 emailField, passwordField, loginButton,
                 new Separator(),
                 googleButton,
-                hint, hint2
+                demoBox
         );
 
         BorderPane wrapper = new BorderPane(panel);
