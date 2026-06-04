@@ -34,6 +34,7 @@ import com.benjagest.ui.model.SeriesEntry;
 import com.benjagest.ui.model.SessionInfo;
 import com.benjagest.ui.model.VerifactuConfig;
 import com.benjagest.ui.service.AltaApiClient;
+import com.benjagest.ui.service.LaborApiClient;
 import com.benjagest.ui.service.AuthApiClient;
 import com.benjagest.ui.service.AuthSession;
 import com.benjagest.ui.service.BillingApiClient;
@@ -158,7 +159,7 @@ public class BenjagestUiApplication extends Application {
     private static final java.util.Set<String> KNOWN_VIEWS = java.util.Set.of(
             "customers", "billing", "purchases", "labor",
             "tax", "reports", "calendar", "settings",
-            "advisory"
+            "advisory", "self-employed", "notifications", "time-clock"
     );
 
     @Override
@@ -816,6 +817,18 @@ public class BenjagestUiApplication extends Application {
             // ALTA-3: módulo asesoría — listado de clientes gestionados
             // con switch de tenant al hacer doble-click.
             showAdvisoryClients();
+            return;
+        }
+        if ("labor".equals(module)) {
+            showLaborModule();
+            return;
+        }
+        if ("self-employed".equals(module)) {
+            showRetaModule();
+            return;
+        }
+        if ("notifications".equals(module)) {
+            showDehuModule();
             return;
         }
         Task<ModuleData> task = new Task<>() {
@@ -6607,7 +6620,10 @@ public class BenjagestUiApplication extends Application {
                 case "status.payment.partial" -> "Partial";
                 case "status.payment.paid" -> "Paid";
                 case "status.payment.overdue" -> "Overdue";
-                default -> key.startsWith("column.") ? key.substring(7) : key;
+                default -> {
+                    String v = tNewModulesEn(key);
+                    yield v != null ? v : (key.startsWith("column.") ? key.substring(7) : key);
+                }
             };
         }
 
@@ -7397,7 +7413,10 @@ public class BenjagestUiApplication extends Application {
             case "status.payment.partial" -> "Parcial";
             case "status.payment.paid" -> "Pagada";
             case "status.payment.overdue" -> "Vencida";
-            default -> key.startsWith("column.") ? key.substring(7) : switch (key) {
+            default -> {
+                String v = tNewModulesEs(key);
+                if (v != null) yield v;
+                yield key.startsWith("column.") ? key.substring(7) : switch (key) {
                 case "field.name" -> "Nombre";
                 case "field.taxId" -> "NIF/CIF";
                 case "field.contact" -> "Contacto";
@@ -7441,7 +7460,8 @@ public class BenjagestUiApplication extends Application {
             case "column.acceso" -> "Acceso";
             case "column.evento" -> "Evento";
             default -> key;
-        };
+            };
+            }
         };
     }
 
@@ -7574,9 +7594,1430 @@ public class BenjagestUiApplication extends Application {
         }
     }
 
+
+    /**
+     * Bloque i18n extraído del método t() principal para no rebasar el
+     * límite JVM de 64KB por método. Devuelve null si la key no
+     * pertenece a estos módulos — entonces el caller cae al default.
+     */
+    private String tNewModulesEn(String key) {
+        return switch (key) {
+            // ---- Labor module (L1) ----
+            case "labor.title" -> "Employees";
+            case "labor.subtitle" -> "Workforce, contracts and (soon) payslips.";
+            case "labor.load_failed" -> "Could not load the employee list.";
+            case "labor.action.new_employee" -> "New employee";
+            case "labor.employees.placeholder.empty" -> "No employees yet.";
+            case "labor.employees.col.name" -> "Full name";
+            case "labor.employees.col.nif" -> "Tax ID";
+            case "labor.employees.col.nuss" -> "Social Security #";
+            case "labor.employees.col.hire_date" -> "Hire date";
+            case "labor.employees.col.ss" -> "SS regime";
+            case "labor.employees.col.flags" -> "";
+            case "labor.employees.inactive" -> "(inactive)";
+            case "labor.employees.action.edit" -> "Edit";
+            case "labor.employees.action.contracts" -> "Contracts…";
+            case "labor.employees.action.delete" -> "Deactivate";
+            case "labor.employee.editor.title_new" -> "New employee";
+            case "labor.employee.editor.title_edit" -> "Edit employee";
+            case "labor.employee.editor.save" -> "Save";
+            case "labor.employee.editor.active" -> "Active";
+            case "labor.employee.section.identity" -> "Identity";
+            case "labor.employee.section.contact" -> "Contact and address";
+            case "labor.employee.section.work" -> "Employment data";
+            case "labor.employee.editor.name" -> "Full name";
+            case "labor.employee.editor.nif" -> "Tax ID";
+            case "labor.employee.editor.nuss" -> "SS number";
+            case "labor.employee.editor.birth" -> "Birth date";
+            case "labor.employee.editor.gender" -> "Gender";
+            case "labor.employee.editor.marital" -> "Marital status";
+            case "labor.employee.editor.children" -> "Dependent children";
+            case "labor.employee.editor.disabled" -> "Dependent disabled";
+            case "labor.employee.editor.email" -> "Email";
+            case "labor.employee.editor.phone" -> "Phone";
+            case "labor.employee.editor.address" -> "Address";
+            case "labor.employee.editor.city" -> "City";
+            case "labor.employee.editor.province" -> "Province";
+            case "labor.employee.editor.postal" -> "Postal code";
+            case "labor.employee.editor.country" -> "Country";
+            case "labor.employee.editor.iban" -> "IBAN (payroll)";
+            case "labor.employee.editor.work_type" -> "Work type";
+            case "labor.employee.editor.ss_regime" -> "SS regime";
+            case "labor.employee.editor.hire" -> "Hire date";
+            case "labor.employee.editor.termination" -> "Termination date";
+            case "labor.employee.editor.term_reason" -> "Termination reason";
+            case "labor.employee.editor.fail.title" -> "Could not save";
+            case "labor.employee.editor.fail.body" -> "Check the data and try again.";
+            case "labor.employee.delete.title" -> "Deactivate employee?";
+            case "labor.employee.delete.body" -> "You are about to deactivate";
+            case "labor.contracts.dialog.title" -> "Contracts";
+            case "labor.contracts.load.fail" -> "Could not load contracts";
+            case "labor.contracts.load.fail.body" -> "Try again later.";
+            case "labor.contracts.placeholder.empty" -> "This employee has no contracts yet.";
+            case "labor.contracts.col.type" -> "Type";
+            case "labor.contracts.col.sepe" -> "SEPE";
+            case "labor.contracts.col.start" -> "Start";
+            case "labor.contracts.col.end" -> "End";
+            case "labor.contracts.col.salary" -> "Annual salary";
+            case "labor.contracts.col.status" -> "Status";
+            case "labor.contracts.action.new" -> "New contract";
+            case "labor.contracts.action.edit" -> "Edit";
+            case "labor.contract.editor.title_new" -> "New contract";
+            case "labor.contract.editor.title_edit" -> "Edit contract";
+            case "labor.contract.editor.save" -> "Save";
+            case "labor.contract.editor.type" -> "Type";
+            case "labor.contract.editor.sepe" -> "SEPE code";
+            case "labor.contract.editor.agreement" -> "Collective agreement";
+            case "labor.contract.editor.category" -> "Category";
+            case "labor.contract.editor.group" -> "Group";
+            case "labor.contract.editor.start" -> "Start date";
+            case "labor.contract.editor.end" -> "End date";
+            case "labor.contract.editor.weekly_hours" -> "Weekly hours";
+            case "labor.contract.editor.salary" -> "Annual gross salary";
+            case "labor.contract.editor.bonuses" -> "Annual bonuses";
+            case "labor.contract.editor.vacation" -> "Vacation days";
+            case "labor.contract.editor.irpf" -> "IRPF %";
+            case "labor.contract.editor.workplace" -> "Workplace address";
+            case "labor.contract.editor.status" -> "Status";
+            case "labor.contract.editor.fail.title" -> "Could not save";
+            case "labor.contract.editor.fail.body" -> "Check the data and try again.";
+            // ---- RETA (L2) ----
+            case "reta.title" -> "Self-employed (RETA)";
+            case "reta.subtitle" -> "Profiles, contribution bases and base changes.";
+            case "reta.load_failed" -> "Could not load RETA profiles.";
+            case "reta.action.new" -> "New profile";
+            case "reta.action.suggest_tramo" -> "Bracket calculator";
+            case "reta.placeholder.empty" -> "No RETA profiles yet.";
+            case "reta.col.name" -> "Full name";
+            case "reta.col.nif" -> "Tax ID";
+            case "reta.col.base" -> "Current base";
+            case "reta.col.quota" -> "Current quota";
+            case "reta.col.flags" -> "Flags";
+            case "reta.inactive" -> "(inactive)";
+            case "reta.action.edit" -> "Edit";
+            case "reta.action.changes" -> "Base changes…";
+            case "reta.action.delete" -> "Deactivate";
+            case "reta.editor.title_new" -> "New RETA profile";
+            case "reta.editor.title_edit" -> "Edit RETA profile";
+            case "reta.editor.save" -> "Save";
+            case "reta.editor.name" -> "Full name";
+            case "reta.editor.nif" -> "Tax ID";
+            case "reta.editor.nuss" -> "SS number";
+            case "reta.editor.start" -> "RETA start";
+            case "reta.editor.end" -> "RETA end";
+            case "reta.editor.pluriactividad" -> "Pluriactividad";
+            case "reta.editor.tarifa_plana" -> "Flat rate";
+            case "reta.editor.tarifa_until" -> "Flat rate until";
+            case "reta.editor.activity_code" -> "Activity code";
+            case "reta.editor.activity_desc" -> "Activity description";
+            case "reta.editor.iae" -> "IAE epigraph";
+            case "reta.editor.net_income" -> "Expected annual net income";
+            case "reta.editor.base" -> "Current base";
+            case "reta.editor.quota" -> "Current quota";
+            case "reta.editor.notes" -> "Notes";
+            case "reta.editor.active" -> "Active";
+            case "reta.editor.fail.title" -> "Could not save";
+            case "reta.editor.fail.body" -> "Check the data and try again.";
+            case "reta.delete.title" -> "Deactivate RETA profile?";
+            case "reta.delete.body" -> "You are about to deactivate";
+            case "reta.changes.title" -> "Base changes";
+            case "reta.changes.new" -> "New change";
+            case "reta.changes.hint" -> "RETA allows up to 6 base changes per year.";
+            case "reta.changes.placeholder.empty" -> "No base changes registered for this year.";
+            case "reta.changes.col.date" -> "Effective date";
+            case "reta.changes.col.base" -> "New base";
+            case "reta.changes.col.quota" -> "New quota";
+            case "reta.changes.col.reason" -> "Reason";
+            case "reta.changes.col.sent" -> "Sent SS";
+            case "reta.changes.load.fail" -> "Could not load changes";
+            case "reta.changes.load.fail.body" -> "Try again later.";
+            case "reta.change.editor.title" -> "New base change";
+            case "reta.change.editor.save" -> "Save";
+            case "reta.change.editor.effective" -> "Effective date";
+            case "reta.change.editor.reason" -> "Reason";
+            case "reta.change.editor.reason.prompt" -> "e.g. Income forecast adjustment";
+            case "reta.change.editor.new_base" -> "New base";
+            case "reta.change.editor.new_quota" -> "New quota";
+            case "reta.change.editor.net_income" -> "Expected net income";
+            case "reta.change.editor.submitted" -> "Submitted to SS";
+            case "reta.change.editor.notes" -> "Notes";
+            case "reta.change.editor.fail.title" -> "Could not save";
+            case "reta.change.editor.fail.body" -> "Maybe annual change limit reached (6).";
+            case "reta.tramo.title" -> "RETA bracket calculator";
+            case "reta.tramo.hint" -> "Enter your expected annual net income (revenue minus deductible expenses). We suggest the bracket and minimum quota.";
+            case "reta.tramo.net.label" -> "Annual net income";
+            case "reta.tramo.net.prompt" -> "e.g. 24000";
+            case "reta.tramo.calc" -> "Calculate";
+            case "reta.tramo.invalid" -> "Please enter a valid amount.";
+            case "reta.tramo.fail" -> "Could not calculate.";
+            case "reta.tramo.result.base_range" -> "Base range";
+            case "reta.tramo.result.quota" -> "Minimum quota";
+            case "reta.tramo.result.monthly_income" -> "Monthly income";
+            // ---- DEHu (N1) ----
+            case "dehu.title" -> "DEHú inbox";
+            case "dehu.subtitle" -> "Electronic notifications from AEAT, Social Security, councils and other bodies.";
+            case "dehu.load_failed" -> "Could not load notifications.";
+            case "dehu.action.new" -> "Add notification";
+            case "dehu.summary.pending" -> "Pending";
+            case "dehu.summary.soon" -> "Expiring in 3 days";
+            case "dehu.summary.expired" -> "Expired";
+            case "dehu.placeholder.empty" -> "No notifications yet.";
+            case "dehu.col.issued" -> "Issued";
+            case "dehu.col.expires" -> "Expires";
+            case "dehu.col.organism" -> "Organism";
+            case "dehu.col.subject" -> "Subject";
+            case "dehu.col.status" -> "Status";
+            case "dehu.status.PENDING" -> "Pending";
+            case "dehu.status.READ" -> "Read";
+            case "dehu.status.AUTO_READ" -> "Auto-read";
+            case "dehu.status.DISMISSED" -> "Dismissed";
+            case "dehu.status.EXPIRED" -> "Expired";
+            case "dehu.action.read" -> "Mark as read";
+            case "dehu.action.dismiss" -> "Dismiss";
+            case "dehu.editor.title" -> "Add DEHú notification";
+            case "dehu.editor.save" -> "Save";
+            case "dehu.editor.dehu_id" -> "DEHú ID";
+            case "dehu.editor.nif" -> "Recipient tax ID";
+            case "dehu.editor.organism" -> "Organism name";
+            case "dehu.editor.organism_code" -> "Organism code";
+            case "dehu.editor.procedure" -> "Procedure";
+            case "dehu.editor.procedure_code" -> "Procedure code";
+            case "dehu.editor.subject" -> "Subject";
+            case "dehu.editor.issued" -> "Issued at (ISO)";
+            case "dehu.editor.expires" -> "Expires at (ISO)";
+            case "dehu.editor.csv" -> "CSV";
+            case "dehu.editor.url" -> "DEHú URL";
+            case "dehu.editor.notes" -> "Notes";
+            case "dehu.editor.fail.title" -> "Could not save";
+            case "dehu.editor.fail.body" -> "Check the data and try again.";
+            default -> null;
+        };
+    }
+
+    private String tNewModulesEs(String key) {
+        return switch (key) {
+            // ---- Laboral (L1) ----
+            case "labor.title" -> "Empleados";
+            case "labor.subtitle" -> "Plantilla, contratos y (proximamente) nominas.";
+            case "labor.load_failed" -> "No se pudo cargar la plantilla.";
+            case "labor.action.new_employee" -> "Nuevo empleado";
+            case "labor.employees.placeholder.empty" -> "Aun no hay empleados.";
+            case "labor.employees.col.name" -> "Nombre completo";
+            case "labor.employees.col.nif" -> "NIF";
+            case "labor.employees.col.nuss" -> "NUSS";
+            case "labor.employees.col.hire_date" -> "Alta";
+            case "labor.employees.col.ss" -> "Reg. SS";
+            case "labor.employees.col.flags" -> "";
+            case "labor.employees.inactive" -> "(inactivo)";
+            case "labor.employees.action.edit" -> "Editar";
+            case "labor.employees.action.contracts" -> "Contratos…";
+            case "labor.employees.action.delete" -> "Dar de baja";
+            case "labor.employee.editor.title_new" -> "Nuevo empleado";
+            case "labor.employee.editor.title_edit" -> "Editar empleado";
+            case "labor.employee.editor.save" -> "Guardar";
+            case "labor.employee.editor.active" -> "Activo";
+            case "labor.employee.section.identity" -> "Identidad";
+            case "labor.employee.section.contact" -> "Contacto y direccion";
+            case "labor.employee.section.work" -> "Datos laborales";
+            case "labor.employee.editor.name" -> "Nombre completo";
+            case "labor.employee.editor.nif" -> "NIF";
+            case "labor.employee.editor.nuss" -> "Numero SS";
+            case "labor.employee.editor.birth" -> "Fecha nacimiento";
+            case "labor.employee.editor.gender" -> "Sexo";
+            case "labor.employee.editor.marital" -> "Estado civil";
+            case "labor.employee.editor.children" -> "Hijos a cargo";
+            case "labor.employee.editor.disabled" -> "Discapacitados a cargo";
+            case "labor.employee.editor.email" -> "Email";
+            case "labor.employee.editor.phone" -> "Telefono";
+            case "labor.employee.editor.address" -> "Direccion";
+            case "labor.employee.editor.city" -> "Localidad";
+            case "labor.employee.editor.province" -> "Provincia";
+            case "labor.employee.editor.postal" -> "Codigo postal";
+            case "labor.employee.editor.country" -> "Pais";
+            case "labor.employee.editor.iban" -> "IBAN (nomina)";
+            case "labor.employee.editor.work_type" -> "Tipo de trabajo";
+            case "labor.employee.editor.ss_regime" -> "Regimen SS";
+            case "labor.employee.editor.hire" -> "Fecha de alta";
+            case "labor.employee.editor.termination" -> "Fecha de baja";
+            case "labor.employee.editor.term_reason" -> "Motivo de baja";
+            case "labor.employee.editor.fail.title" -> "No se pudo guardar";
+            case "labor.employee.editor.fail.body" -> "Revisa los datos e intentalo de nuevo.";
+            case "labor.employee.delete.title" -> "Dar de baja al empleado?";
+            case "labor.employee.delete.body" -> "Vas a dar de baja a";
+            case "labor.contracts.dialog.title" -> "Contratos";
+            case "labor.contracts.load.fail" -> "No se pudieron cargar los contratos";
+            case "labor.contracts.load.fail.body" -> "Intentalo de nuevo mas tarde.";
+            case "labor.contracts.placeholder.empty" -> "Este empleado no tiene contratos.";
+            case "labor.contracts.col.type" -> "Tipo";
+            case "labor.contracts.col.sepe" -> "SEPE";
+            case "labor.contracts.col.start" -> "Inicio";
+            case "labor.contracts.col.end" -> "Fin";
+            case "labor.contracts.col.salary" -> "Salario anual";
+            case "labor.contracts.col.status" -> "Estado";
+            case "labor.contracts.action.new" -> "Nuevo contrato";
+            case "labor.contracts.action.edit" -> "Editar";
+            case "labor.contract.editor.title_new" -> "Nuevo contrato";
+            case "labor.contract.editor.title_edit" -> "Editar contrato";
+            case "labor.contract.editor.save" -> "Guardar";
+            case "labor.contract.editor.type" -> "Tipo";
+            case "labor.contract.editor.sepe" -> "Codigo SEPE";
+            case "labor.contract.editor.agreement" -> "Convenio colectivo";
+            case "labor.contract.editor.category" -> "Categoria";
+            case "labor.contract.editor.group" -> "Grupo";
+            case "labor.contract.editor.start" -> "Fecha inicio";
+            case "labor.contract.editor.end" -> "Fecha fin";
+            case "labor.contract.editor.weekly_hours" -> "Horas semanales";
+            case "labor.contract.editor.salary" -> "Salario bruto anual";
+            case "labor.contract.editor.bonuses" -> "Pagas extras";
+            case "labor.contract.editor.vacation" -> "Vacaciones";
+            case "labor.contract.editor.irpf" -> "IRPF %";
+            case "labor.contract.editor.workplace" -> "Centro de trabajo";
+            case "labor.contract.editor.status" -> "Estado";
+            case "labor.contract.editor.fail.title" -> "No se pudo guardar";
+            case "labor.contract.editor.fail.body" -> "Revisa los datos e intentalo de nuevo.";
+            // ---- RETA (L2) ----
+            case "reta.title" -> "Autonomos (RETA)";
+            case "reta.subtitle" -> "Perfiles, bases de cotizacion y cambios.";
+            case "reta.load_failed" -> "No se pudo cargar los perfiles RETA.";
+            case "reta.action.new" -> "Nuevo perfil";
+            case "reta.action.suggest_tramo" -> "Calculadora de tramos";
+            case "reta.placeholder.empty" -> "Aun no hay perfiles RETA.";
+            case "reta.col.name" -> "Nombre";
+            case "reta.col.nif" -> "NIF";
+            case "reta.col.base" -> "Base actual";
+            case "reta.col.quota" -> "Cuota actual";
+            case "reta.col.flags" -> "Flags";
+            case "reta.inactive" -> "(inactivo)";
+            case "reta.action.edit" -> "Editar";
+            case "reta.action.changes" -> "Cambios de base…";
+            case "reta.action.delete" -> "Dar de baja";
+            case "reta.editor.title_new" -> "Nuevo perfil RETA";
+            case "reta.editor.title_edit" -> "Editar perfil RETA";
+            case "reta.editor.save" -> "Guardar";
+            case "reta.editor.name" -> "Nombre completo";
+            case "reta.editor.nif" -> "NIF";
+            case "reta.editor.nuss" -> "Numero SS";
+            case "reta.editor.start" -> "Alta RETA";
+            case "reta.editor.end" -> "Baja RETA";
+            case "reta.editor.pluriactividad" -> "Pluriactividad";
+            case "reta.editor.tarifa_plana" -> "Tarifa plana";
+            case "reta.editor.tarifa_until" -> "Tarifa plana hasta";
+            case "reta.editor.activity_code" -> "Codigo actividad";
+            case "reta.editor.activity_desc" -> "Descripcion actividad";
+            case "reta.editor.iae" -> "Epigrafe IAE";
+            case "reta.editor.net_income" -> "Rendimiento neto anual previsto";
+            case "reta.editor.base" -> "Base actual";
+            case "reta.editor.quota" -> "Cuota actual";
+            case "reta.editor.notes" -> "Notas";
+            case "reta.editor.active" -> "Activo";
+            case "reta.editor.fail.title" -> "No se pudo guardar";
+            case "reta.editor.fail.body" -> "Revisa los datos e intentalo de nuevo.";
+            case "reta.delete.title" -> "Dar de baja perfil RETA?";
+            case "reta.delete.body" -> "Vas a dar de baja a";
+            case "reta.changes.title" -> "Cambios de base";
+            case "reta.changes.new" -> "Nuevo cambio";
+            case "reta.changes.hint" -> "RETA permite hasta 6 cambios de base por año.";
+            case "reta.changes.placeholder.empty" -> "No hay cambios de base este año.";
+            case "reta.changes.col.date" -> "Fecha efecto";
+            case "reta.changes.col.base" -> "Nueva base";
+            case "reta.changes.col.quota" -> "Nueva cuota";
+            case "reta.changes.col.reason" -> "Motivo";
+            case "reta.changes.col.sent" -> "Enviado SS";
+            case "reta.changes.load.fail" -> "No se pudo cargar el historial";
+            case "reta.changes.load.fail.body" -> "Intentalo de nuevo mas tarde.";
+            case "reta.change.editor.title" -> "Nuevo cambio de base";
+            case "reta.change.editor.save" -> "Guardar";
+            case "reta.change.editor.effective" -> "Fecha efecto";
+            case "reta.change.editor.reason" -> "Motivo";
+            case "reta.change.editor.reason.prompt" -> "p. ej. Ajuste previsión rendimientos";
+            case "reta.change.editor.new_base" -> "Nueva base";
+            case "reta.change.editor.new_quota" -> "Nueva cuota";
+            case "reta.change.editor.net_income" -> "Rendimiento neto previsto";
+            case "reta.change.editor.submitted" -> "Enviado a la SS";
+            case "reta.change.editor.notes" -> "Notas";
+            case "reta.change.editor.fail.title" -> "No se pudo guardar";
+            case "reta.change.editor.fail.body" -> "Quizás se alcanzó el límite de 6 cambios anuales.";
+            case "reta.tramo.title" -> "Calculadora de tramos RETA";
+            case "reta.tramo.hint" -> "Introduce el rendimiento neto anual previsto (ingresos menos gastos deducibles). Te sugerimos el tramo y la cuota minima.";
+            case "reta.tramo.net.label" -> "Rendimiento neto anual";
+            case "reta.tramo.net.prompt" -> "p. ej. 24000";
+            case "reta.tramo.calc" -> "Calcular";
+            case "reta.tramo.invalid" -> "Introduce una cantidad valida.";
+            case "reta.tramo.fail" -> "No se pudo calcular.";
+            case "reta.tramo.result.base_range" -> "Intervalo de base";
+            case "reta.tramo.result.quota" -> "Cuota minima";
+            case "reta.tramo.result.monthly_income" -> "Rendimiento mensual";
+            // ---- DEHu (N1) ----
+            case "dehu.title" -> "Bandeja DEHu";
+            case "dehu.subtitle" -> "Notificaciones electronicas de AEAT, Seguridad Social, ayuntamientos y otros organismos.";
+            case "dehu.load_failed" -> "No se pudieron cargar las notificaciones.";
+            case "dehu.action.new" -> "Anadir notificacion";
+            case "dehu.summary.pending" -> "Pendientes";
+            case "dehu.summary.soon" -> "Caducan en 3 dias";
+            case "dehu.summary.expired" -> "Caducadas";
+            case "dehu.placeholder.empty" -> "No hay notificaciones.";
+            case "dehu.col.issued" -> "Emitida";
+            case "dehu.col.expires" -> "Caduca";
+            case "dehu.col.organism" -> "Organismo";
+            case "dehu.col.subject" -> "Asunto";
+            case "dehu.col.status" -> "Estado";
+            case "dehu.status.PENDING" -> "Pendiente";
+            case "dehu.status.READ" -> "Leida";
+            case "dehu.status.AUTO_READ" -> "Auto-leida";
+            case "dehu.status.DISMISSED" -> "Descartada";
+            case "dehu.status.EXPIRED" -> "Caducada";
+            case "dehu.action.read" -> "Marcar como leida";
+            case "dehu.action.dismiss" -> "Descartar";
+            case "dehu.editor.title" -> "Anadir notificacion DEHu";
+            case "dehu.editor.save" -> "Guardar";
+            case "dehu.editor.dehu_id" -> "ID DEHu";
+            case "dehu.editor.nif" -> "NIF del destinatario";
+            case "dehu.editor.organism" -> "Nombre del organismo";
+            case "dehu.editor.organism_code" -> "Codigo organismo";
+            case "dehu.editor.procedure" -> "Procedimiento";
+            case "dehu.editor.procedure_code" -> "Codigo procedimiento";
+            case "dehu.editor.subject" -> "Asunto";
+            case "dehu.editor.issued" -> "Fecha emision (ISO)";
+            case "dehu.editor.expires" -> "Fecha caducidad (ISO)";
+            case "dehu.editor.csv" -> "CSV";
+            case "dehu.editor.url" -> "URL DEHu";
+            case "dehu.editor.notes" -> "Notas";
+            case "dehu.editor.fail.title" -> "No se pudo guardar";
+            case "dehu.editor.fail.body" -> "Revisa los datos e intentalo de nuevo.";
+            default -> null;
+        };
+    }
+
     private enum Language {
         ES,
         EN
+    }
+
+    // ===================================================================
+    //  L1 — Modulo Laboral: empleados + contratos
+    // ===================================================================
+
+    private final LaborApiClient laborApiClient = new LaborApiClient();
+    private TableView<com.benjagest.ui.model.EmployeeEntry> employeesTable;
+    private TableView<com.benjagest.ui.model.ContractEntry> contractsTable;
+
+    private void showLaborModule() {
+        Task<java.util.List<com.benjagest.ui.model.EmployeeEntry>> task = new Task<>() {
+            @Override
+            protected java.util.List<com.benjagest.ui.model.EmployeeEntry> call() throws Exception {
+                return laborApiClient.listEmployees(true);
+            }
+        };
+        task.setOnSucceeded(ev -> setCenterAnimated(scroll(laborView(task.getValue()))));
+        task.setOnFailed(ev -> setCenterAnimated(scroll(errorPanel(t("labor.load_failed")))));
+        start(task, "labor-load");
+    }
+
+    private VBox laborView(java.util.List<com.benjagest.ui.model.EmployeeEntry> employees) {
+        VBox content = content();
+        Label title = new Label(t("labor.title"));
+        title.getStyleClass().add("module-detail-title");
+        Label subtitle = new Label(t("labor.subtitle"));
+        subtitle.getStyleClass().add("module-detail-description");
+        VBox titleBox = new VBox(4, title, subtitle);
+        StackPane moduleIcon = iconBubble("fas-hard-hat", "module-title-icon");
+        Region spacer = new Region();
+        HBox.setHgrow(spacer, Priority.ALWAYS);
+
+        Button newEmployee = new Button(t("labor.action.new_employee"));
+        newEmployee.setGraphic(icon("fas-plus"));
+        newEmployee.setOnAction(ev -> showEmployeeEditor(null));
+
+        HBox header = new HBox(16, titleBox, moduleIcon, spacer, newEmployee);
+        header.setAlignment(Pos.CENTER_LEFT);
+        header.getStyleClass().add("module-detail-header");
+
+        employeesTable = new TableView<>();
+        employeesTable.getStyleClass().add("data-table");
+        employeesTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+        employeesTable.setPlaceholder(new Label(t("labor.employees.placeholder.empty")));
+
+        TableColumn<com.benjagest.ui.model.EmployeeEntry, String> colName =
+                new TableColumn<>(t("labor.employees.col.name"));
+        colName.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().fullName()));
+        TableColumn<com.benjagest.ui.model.EmployeeEntry, String> colNif =
+                new TableColumn<>(t("labor.employees.col.nif"));
+        colNif.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().taxIdentifier()));
+        colNif.setPrefWidth(120);
+        TableColumn<com.benjagest.ui.model.EmployeeEntry, String> colNuss =
+                new TableColumn<>(t("labor.employees.col.nuss"));
+        colNuss.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().socialSecurityNumber()));
+        colNuss.setPrefWidth(140);
+        TableColumn<com.benjagest.ui.model.EmployeeEntry, String> colHire =
+                new TableColumn<>(t("labor.employees.col.hire_date"));
+        colHire.setCellValueFactory(c -> new SimpleStringProperty(
+                c.getValue().hireDate() == null ? "" : c.getValue().hireDate().toString()));
+        colHire.setPrefWidth(110);
+        colHire.setComparator(ISO_DATE_COMPARATOR);
+        TableColumn<com.benjagest.ui.model.EmployeeEntry, String> colSs =
+                new TableColumn<>(t("labor.employees.col.ss"));
+        colSs.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().ssRegime()));
+        colSs.setPrefWidth(110);
+        TableColumn<com.benjagest.ui.model.EmployeeEntry, String> colFlags =
+                new TableColumn<>(t("labor.employees.col.flags"));
+        colFlags.setCellValueFactory(c -> new SimpleStringProperty(
+                c.getValue().active() ? "" : t("labor.employees.inactive")));
+        colFlags.setPrefWidth(90);
+        employeesTable.getColumns().addAll(java.util.List.of(colName, colNif, colNuss, colHire, colSs, colFlags));
+        employeesTable.setItems(FXCollections.observableArrayList(employees));
+        employeesTable.setOnMouseClicked(ev -> {
+            if (ev.getClickCount() == 2) {
+                var sel = employeesTable.getSelectionModel().getSelectedItem();
+                if (sel != null) showEmployeeEditor(sel);
+            }
+        });
+
+        Button editBtn = new Button(t("labor.employees.action.edit"));
+        editBtn.setGraphic(icon("fas-edit"));
+        editBtn.setDisable(true);
+        editBtn.setOnAction(ev -> {
+            var sel = employeesTable.getSelectionModel().getSelectedItem();
+            if (sel != null) showEmployeeEditor(sel);
+        });
+        Button contractsBtn = new Button(t("labor.employees.action.contracts"));
+        contractsBtn.setGraphic(icon("fas-file-contract"));
+        contractsBtn.setDisable(true);
+        contractsBtn.setOnAction(ev -> {
+            var sel = employeesTable.getSelectionModel().getSelectedItem();
+            if (sel != null) showEmployeeContracts(sel);
+        });
+        Button deleteBtn = new Button(t("labor.employees.action.delete"));
+        deleteBtn.setGraphic(icon("fas-user-slash"));
+        deleteBtn.setDisable(true);
+        deleteBtn.setOnAction(ev -> {
+            var sel = employeesTable.getSelectionModel().getSelectedItem();
+            if (sel != null) deleteEmployee(sel);
+        });
+
+        employeesTable.getSelectionModel().selectedItemProperty().addListener((o, ov, nv) -> {
+            editBtn.setDisable(nv == null);
+            contractsBtn.setDisable(nv == null);
+            deleteBtn.setDisable(nv == null || !nv.active());
+        });
+
+        HBox actions = new HBox(8, editBtn, contractsBtn, deleteBtn);
+        actions.getStyleClass().add("settings-actions");
+
+        VBox body = new VBox(12, employeesTable);
+        VBox.setVgrow(employeesTable, Priority.ALWAYS);
+        content.getChildren().addAll(header, body, actions);
+        return content;
+    }
+
+    private void showEmployeeEditor(com.benjagest.ui.model.EmployeeEntry existing) {
+        Dialog<ButtonType> dialog = new Dialog<>();
+        dialog.setTitle(existing == null ? t("labor.employee.editor.title_new") : t("labor.employee.editor.title_edit"));
+        ButtonType saveBt = new ButtonType(t("labor.employee.editor.save"), ButtonBar.ButtonData.OK_DONE);
+        dialog.getDialogPane().getButtonTypes().addAll(saveBt, ButtonType.CANCEL);
+
+        TextField nameField = new TextField(existing == null ? "" : existing.fullName());
+        TextField nifField = new TextField(existing == null ? "" : existing.taxIdentifier());
+        TextField nussField = new TextField(existing == null ? "" : existing.socialSecurityNumber());
+        TextField emailField = new TextField(existing == null ? "" : existing.email());
+        TextField phoneField = new TextField(existing == null ? "" : existing.phone());
+        TextField birthField = new TextField(existing == null || existing.birthDate() == null
+                ? "" : existing.birthDate().toString());
+        birthField.setPromptText("AAAA-MM-DD");
+        ComboBox<String> genderCombo = new ComboBox<>();
+        genderCombo.getItems().addAll("", "MALE", "FEMALE", "OTHER");
+        genderCombo.getSelectionModel().select(existing == null || existing.gender() == null ? "" : existing.gender());
+        ComboBox<String> maritalCombo = new ComboBox<>();
+        maritalCombo.getItems().addAll("", "SINGLE", "MARRIED", "DIVORCED", "WIDOWED", "DOMESTIC_PARTNER");
+        maritalCombo.getSelectionModel().select(existing == null || existing.maritalStatus() == null ? "" : existing.maritalStatus());
+        TextField childrenField = new TextField(existing == null || existing.dependentChildren() == null
+                ? "" : existing.dependentChildren().toString());
+        TextField disabledField = new TextField(existing == null || existing.dependentDisabled() == null
+                ? "" : existing.dependentDisabled().toString());
+
+        TextField addressField = new TextField(existing == null ? "" : existing.addressLine());
+        TextField cityField = new TextField(existing == null ? "" : existing.city());
+        TextField provinceField = new TextField(existing == null ? "" : existing.province());
+        TextField postalField = new TextField(existing == null ? "" : existing.postalCode());
+        TextField countryField = new TextField(existing == null || existing.country() == null || existing.country().isBlank()
+                ? "Espana" : existing.country());
+        TextField ibanField = new TextField(existing == null ? "" : existing.iban());
+        TextField workTypeField = new TextField(existing == null ? "" : existing.workType());
+        ComboBox<String> ssCombo = new ComboBox<>();
+        ssCombo.getItems().addAll("", "GENERAL", "RETA", "AUTONOMO_SOCIETARIO", "ARTISTAS", "MAR", "AGRARIO", "OTHER");
+        ssCombo.getSelectionModel().select(existing == null || existing.ssRegime() == null ? "" : existing.ssRegime());
+        TextField hireField = new TextField(existing == null || existing.hireDate() == null
+                ? "" : existing.hireDate().toString());
+        hireField.setPromptText("AAAA-MM-DD");
+        TextField termField = new TextField(existing == null || existing.terminationDate() == null
+                ? "" : existing.terminationDate().toString());
+        termField.setPromptText("AAAA-MM-DD");
+        TextField termReasonField = new TextField(existing == null ? "" : existing.terminationReason());
+        CheckBox activeCb = new CheckBox(t("labor.employee.editor.active"));
+        activeCb.setSelected(existing == null || existing.active());
+
+        GridPane g = new GridPane();
+        g.setHgap(10); g.setVgap(6); g.setPadding(new Insets(10));
+        int row = 0;
+        g.add(label(t("labor.employee.section.identity"), "settings-section-title"), 0, row++, 4, 1);
+        g.add(new Label(t("labor.employee.editor.name")), 0, row); g.add(nameField, 1, row);
+        g.add(new Label(t("labor.employee.editor.nif")), 2, row); g.add(nifField, 3, row); row++;
+        g.add(new Label(t("labor.employee.editor.nuss")), 0, row); g.add(nussField, 1, row);
+        g.add(new Label(t("labor.employee.editor.birth")), 2, row); g.add(birthField, 3, row); row++;
+        g.add(new Label(t("labor.employee.editor.gender")), 0, row); g.add(genderCombo, 1, row);
+        g.add(new Label(t("labor.employee.editor.marital")), 2, row); g.add(maritalCombo, 3, row); row++;
+        g.add(new Label(t("labor.employee.editor.children")), 0, row); g.add(childrenField, 1, row);
+        g.add(new Label(t("labor.employee.editor.disabled")), 2, row); g.add(disabledField, 3, row); row++;
+
+        g.add(new Separator(), 0, row++, 4, 1);
+        g.add(label(t("labor.employee.section.contact"), "settings-section-title"), 0, row++, 4, 1);
+        g.add(new Label(t("labor.employee.editor.email")), 0, row); g.add(emailField, 1, row);
+        g.add(new Label(t("labor.employee.editor.phone")), 2, row); g.add(phoneField, 3, row); row++;
+        g.add(new Label(t("labor.employee.editor.address")), 0, row); g.add(addressField, 1, row, 3, 1); row++;
+        g.add(new Label(t("labor.employee.editor.city")), 0, row); g.add(cityField, 1, row);
+        g.add(new Label(t("labor.employee.editor.province")), 2, row); g.add(provinceField, 3, row); row++;
+        g.add(new Label(t("labor.employee.editor.postal")), 0, row); g.add(postalField, 1, row);
+        g.add(new Label(t("labor.employee.editor.country")), 2, row); g.add(countryField, 3, row); row++;
+
+        g.add(new Separator(), 0, row++, 4, 1);
+        g.add(label(t("labor.employee.section.work"), "settings-section-title"), 0, row++, 4, 1);
+        g.add(new Label(t("labor.employee.editor.iban")), 0, row); g.add(ibanField, 1, row, 3, 1); row++;
+        g.add(new Label(t("labor.employee.editor.work_type")), 0, row); g.add(workTypeField, 1, row);
+        g.add(new Label(t("labor.employee.editor.ss_regime")), 2, row); g.add(ssCombo, 3, row); row++;
+        g.add(new Label(t("labor.employee.editor.hire")), 0, row); g.add(hireField, 1, row);
+        g.add(new Label(t("labor.employee.editor.termination")), 2, row); g.add(termField, 3, row); row++;
+        g.add(new Label(t("labor.employee.editor.term_reason")), 0, row); g.add(termReasonField, 1, row, 3, 1); row++;
+        g.add(activeCb, 1, row);
+
+        ScrollPane sp = new ScrollPane(g);
+        sp.setFitToWidth(true);
+        sp.setPrefViewportHeight(520);
+        dialog.getDialogPane().setContent(sp);
+
+        dialog.showAndWait().ifPresent(bt -> {
+            if (bt != saveBt) return;
+            com.benjagest.ui.model.EmployeeEntry payload = new com.benjagest.ui.model.EmployeeEntry(
+                    existing == null ? null : existing.id(),
+                    nameField.getText().trim(),
+                    blankToNullOrSelf(nifField.getText()),
+                    blankToNullOrSelf(nussField.getText()),
+                    blankToNullOrSelf(emailField.getText()),
+                    blankToNullOrSelf(phoneField.getText()),
+                    parseDateSafe(birthField.getText()),
+                    blankToNullOrSelf(genderCombo.getValue()),
+                    blankToNullOrSelf(maritalCombo.getValue()),
+                    parseIntSafe(childrenField.getText()),
+                    parseIntSafe(disabledField.getText()),
+                    blankToNullOrSelf(addressField.getText()),
+                    blankToNullOrSelf(cityField.getText()),
+                    blankToNullOrSelf(provinceField.getText()),
+                    blankToNullOrSelf(postalField.getText()),
+                    blankToNullOrSelf(countryField.getText()),
+                    blankToNullOrSelf(ibanField.getText()),
+                    blankToNullOrSelf(workTypeField.getText()),
+                    blankToNullOrSelf(ssCombo.getValue()),
+                    parseDateSafe(hireField.getText()),
+                    parseDateSafe(termField.getText()),
+                    blankToNullOrSelf(termReasonField.getText()),
+                    activeCb.isSelected());
+            Task<com.benjagest.ui.model.EmployeeEntry> task = new Task<>() {
+                @Override
+                protected com.benjagest.ui.model.EmployeeEntry call() throws Exception {
+                    return existing == null
+                            ? laborApiClient.createEmployee(payload)
+                            : laborApiClient.updateEmployee(existing.id(), payload);
+                }
+            };
+            task.setOnSucceeded(ev -> showLaborModule());
+            task.setOnFailed(ev -> showError(t("labor.employee.editor.fail.title"),
+                    t("labor.employee.editor.fail.body")));
+            start(task, "labor-employee-save");
+        });
+    }
+
+    private void deleteEmployee(com.benjagest.ui.model.EmployeeEntry e) {
+        Alert confirm = new Alert(Alert.AlertType.CONFIRMATION,
+                t("labor.employee.delete.body") + " " + e.fullName(),
+                ButtonType.OK, ButtonType.CANCEL);
+        confirm.setHeaderText(t("labor.employee.delete.title"));
+        confirm.showAndWait().ifPresent(bt -> {
+            if (bt != ButtonType.OK) return;
+            Task<Void> task = new Task<>() {
+                @Override protected Void call() throws Exception {
+                    laborApiClient.deleteEmployee(e.id());
+                    return null;
+                }
+            };
+            task.setOnSucceeded(ev -> showLaborModule());
+            task.setOnFailed(ev -> showError(t("labor.employee.editor.fail.title"),
+                    t("labor.employee.editor.fail.body")));
+            start(task, "labor-employee-delete");
+        });
+    }
+
+    private void showEmployeeContracts(com.benjagest.ui.model.EmployeeEntry e) {
+        Task<java.util.List<com.benjagest.ui.model.ContractEntry>> task = new Task<>() {
+            @Override
+            protected java.util.List<com.benjagest.ui.model.ContractEntry> call() throws Exception {
+                return laborApiClient.listContracts(e.id());
+            }
+        };
+        task.setOnSucceeded(ev -> showContractsDialog(e, task.getValue()));
+        task.setOnFailed(ev -> showError(t("labor.contracts.load.fail"), t("labor.contracts.load.fail.body")));
+        start(task, "labor-contracts-load");
+    }
+
+    private void showContractsDialog(com.benjagest.ui.model.EmployeeEntry employee,
+                                      java.util.List<com.benjagest.ui.model.ContractEntry> contracts) {
+        Dialog<ButtonType> dialog = new Dialog<>();
+        dialog.setTitle(t("labor.contracts.dialog.title") + " — " + employee.fullName());
+        dialog.getDialogPane().getButtonTypes().add(ButtonType.CLOSE);
+
+        contractsTable = new TableView<>();
+        contractsTable.getStyleClass().add("data-table");
+        contractsTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+        contractsTable.setPrefHeight(280);
+        contractsTable.setPlaceholder(new Label(t("labor.contracts.placeholder.empty")));
+        TableColumn<com.benjagest.ui.model.ContractEntry, String> colType =
+                new TableColumn<>(t("labor.contracts.col.type"));
+        colType.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().contractType()));
+        colType.setPrefWidth(140);
+        TableColumn<com.benjagest.ui.model.ContractEntry, String> colSepe =
+                new TableColumn<>(t("labor.contracts.col.sepe"));
+        colSepe.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().sepeContractCode()));
+        colSepe.setPrefWidth(70);
+        TableColumn<com.benjagest.ui.model.ContractEntry, String> colStart =
+                new TableColumn<>(t("labor.contracts.col.start"));
+        colStart.setCellValueFactory(c -> new SimpleStringProperty(
+                c.getValue().startDate() == null ? "" : c.getValue().startDate().toString()));
+        colStart.setPrefWidth(110);
+        TableColumn<com.benjagest.ui.model.ContractEntry, String> colEnd =
+                new TableColumn<>(t("labor.contracts.col.end"));
+        colEnd.setCellValueFactory(c -> new SimpleStringProperty(
+                c.getValue().endDate() == null ? "" : c.getValue().endDate().toString()));
+        colEnd.setPrefWidth(110);
+        TableColumn<com.benjagest.ui.model.ContractEntry, String> colSalary =
+                new TableColumn<>(t("labor.contracts.col.salary"));
+        colSalary.setCellValueFactory(c -> new SimpleStringProperty(
+                c.getValue().grossSalary() == null ? "" : c.getValue().grossSalary().toPlainString() + " €"));
+        colSalary.setPrefWidth(110);
+        TableColumn<com.benjagest.ui.model.ContractEntry, String> colStatus =
+                new TableColumn<>(t("labor.contracts.col.status"));
+        colStatus.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().status()));
+        colStatus.setPrefWidth(100);
+        contractsTable.getColumns().addAll(java.util.List.of(colType, colSepe, colStart, colEnd, colSalary, colStatus));
+        contractsTable.setItems(FXCollections.observableArrayList(contracts));
+
+        Button newC = new Button(t("labor.contracts.action.new"));
+        newC.setGraphic(icon("fas-plus"));
+        newC.setOnAction(ev -> {
+            showContractEditor(employee, null);
+            dialog.close();
+        });
+        Button editC = new Button(t("labor.contracts.action.edit"));
+        editC.setGraphic(icon("fas-edit"));
+        editC.setDisable(true);
+        editC.setOnAction(ev -> {
+            var sel = contractsTable.getSelectionModel().getSelectedItem();
+            if (sel != null) {
+                showContractEditor(employee, sel);
+                dialog.close();
+            }
+        });
+        contractsTable.getSelectionModel().selectedItemProperty().addListener((o, ov, nv) -> editC.setDisable(nv == null));
+        HBox actions = new HBox(8, newC, editC);
+        VBox body = new VBox(12, contractsTable, actions);
+        body.setPadding(new Insets(10));
+        dialog.getDialogPane().setContent(body);
+        dialog.setResizable(true);
+        dialog.showAndWait();
+    }
+
+    private void showContractEditor(com.benjagest.ui.model.EmployeeEntry employee,
+                                     com.benjagest.ui.model.ContractEntry existing) {
+        Dialog<ButtonType> dialog = new Dialog<>();
+        dialog.setTitle((existing == null ? t("labor.contract.editor.title_new")
+                : t("labor.contract.editor.title_edit")) + " — " + employee.fullName());
+        ButtonType saveBt = new ButtonType(t("labor.contract.editor.save"), ButtonBar.ButtonData.OK_DONE);
+        dialog.getDialogPane().getButtonTypes().addAll(saveBt, ButtonType.CANCEL);
+
+        TextField typeField = new TextField(existing == null ? "Indefinido" : existing.contractType());
+        TextField sepeField = new TextField(existing == null ? "100" : existing.sepeContractCode());
+        TextField agreementField = new TextField(existing == null ? "" : existing.collectiveAgreement());
+        TextField catField = new TextField(existing == null ? "" : existing.professionalCategory());
+        TextField groupField = new TextField(existing == null ? "" : existing.professionalGroup());
+        TextField startField = new TextField(existing == null || existing.startDate() == null
+                ? LocalDate.now().toString() : existing.startDate().toString());
+        TextField endField = new TextField(existing == null || existing.endDate() == null
+                ? "" : existing.endDate().toString());
+        TextField hoursField = new TextField(existing == null || existing.weeklyHours() == null
+                ? "40" : existing.weeklyHours().toPlainString());
+        TextField salaryField = new TextField(existing == null || existing.grossSalary() == null
+                ? "" : existing.grossSalary().toPlainString());
+        TextField bonusesField = new TextField(existing == null || existing.annualBonuses() == null
+                ? "2" : existing.annualBonuses().toString());
+        TextField vacationField = new TextField(existing == null || existing.vacationDays() == null
+                ? "30" : existing.vacationDays().toString());
+        TextField irpfField = new TextField(existing == null || existing.irpfPercent() == null
+                ? "" : existing.irpfPercent().toPlainString());
+        TextField workplaceField = new TextField(existing == null ? "" : existing.workplaceAddress());
+        ComboBox<String> statusCombo = new ComboBox<>();
+        statusCombo.getItems().addAll("DRAFT", "ACTIVE", "SUSPENDED", "TERMINATED");
+        statusCombo.getSelectionModel().select(existing == null ? "ACTIVE" : existing.status());
+
+        GridPane g = new GridPane();
+        g.setHgap(10); g.setVgap(8); g.setPadding(new Insets(10));
+        int row = 0;
+        g.add(new Label(t("labor.contract.editor.type")), 0, row); g.add(typeField, 1, row);
+        g.add(new Label(t("labor.contract.editor.sepe")), 2, row); g.add(sepeField, 3, row); row++;
+        g.add(new Label(t("labor.contract.editor.agreement")), 0, row); g.add(agreementField, 1, row, 3, 1); row++;
+        g.add(new Label(t("labor.contract.editor.category")), 0, row); g.add(catField, 1, row);
+        g.add(new Label(t("labor.contract.editor.group")), 2, row); g.add(groupField, 3, row); row++;
+        g.add(new Label(t("labor.contract.editor.start")), 0, row); g.add(startField, 1, row);
+        g.add(new Label(t("labor.contract.editor.end")), 2, row); g.add(endField, 3, row); row++;
+        g.add(new Label(t("labor.contract.editor.weekly_hours")), 0, row); g.add(hoursField, 1, row);
+        g.add(new Label(t("labor.contract.editor.salary")), 2, row); g.add(salaryField, 3, row); row++;
+        g.add(new Label(t("labor.contract.editor.bonuses")), 0, row); g.add(bonusesField, 1, row);
+        g.add(new Label(t("labor.contract.editor.vacation")), 2, row); g.add(vacationField, 3, row); row++;
+        g.add(new Label(t("labor.contract.editor.irpf")), 0, row); g.add(irpfField, 1, row);
+        g.add(new Label(t("labor.contract.editor.status")), 2, row); g.add(statusCombo, 3, row); row++;
+        g.add(new Label(t("labor.contract.editor.workplace")), 0, row); g.add(workplaceField, 1, row, 3, 1);
+
+        dialog.getDialogPane().setContent(g);
+        dialog.showAndWait().ifPresent(bt -> {
+            if (bt != saveBt) return;
+            com.benjagest.ui.model.ContractEntry payload = new com.benjagest.ui.model.ContractEntry(
+                    existing == null ? null : existing.id(),
+                    employee.id(),
+                    typeField.getText().trim(),
+                    blankToNullOrSelf(sepeField.getText()),
+                    blankToNullOrSelf(agreementField.getText()),
+                    blankToNullOrSelf(catField.getText()),
+                    blankToNullOrSelf(groupField.getText()),
+                    parseDateSafe(startField.getText()),
+                    parseDateSafe(endField.getText()),
+                    parseDecSafe(hoursField.getText()),
+                    parseDecSafe(salaryField.getText()),
+                    parseIntSafe(bonusesField.getText()),
+                    parseIntSafe(vacationField.getText()),
+                    parseDecSafe(irpfField.getText()),
+                    blankToNullOrSelf(workplaceField.getText()),
+                    statusCombo.getValue(),
+                    null);
+            Task<com.benjagest.ui.model.ContractEntry> task = new Task<>() {
+                @Override protected com.benjagest.ui.model.ContractEntry call() throws Exception {
+                    return existing == null
+                            ? laborApiClient.createContract(payload)
+                            : laborApiClient.updateContract(existing.id(), payload);
+                }
+            };
+            task.setOnSucceeded(ev -> showEmployeeContracts(employee));
+            task.setOnFailed(ev -> showError(t("labor.contract.editor.fail.title"),
+                    t("labor.contract.editor.fail.body")));
+            start(task, "labor-contract-save");
+        });
+    }
+
+    // ===================================================================
+    //  L2 — Modulo RETA: perfiles + cambios de base
+    // ===================================================================
+
+    private TableView<com.benjagest.ui.model.RetaProfileEntry> retaTable;
+
+    private void showRetaModule() {
+        Task<java.util.List<com.benjagest.ui.model.RetaProfileEntry>> task = new Task<>() {
+            @Override protected java.util.List<com.benjagest.ui.model.RetaProfileEntry> call() throws Exception {
+                return laborApiClient.listRetaProfiles(true);
+            }
+        };
+        task.setOnSucceeded(ev -> setCenterAnimated(scroll(retaView(task.getValue()))));
+        task.setOnFailed(ev -> setCenterAnimated(scroll(errorPanel(t("reta.load_failed")))));
+        start(task, "reta-load");
+    }
+
+    private VBox retaView(java.util.List<com.benjagest.ui.model.RetaProfileEntry> profiles) {
+        VBox content = content();
+        Label title = new Label(t("reta.title"));
+        title.getStyleClass().add("module-detail-title");
+        Label subtitle = new Label(t("reta.subtitle"));
+        subtitle.getStyleClass().add("module-detail-description");
+        VBox titleBox = new VBox(4, title, subtitle);
+        StackPane moduleIcon = iconBubble("fas-user-tie", "module-title-icon");
+        Region spacer = new Region();
+        HBox.setHgrow(spacer, Priority.ALWAYS);
+        Button newBtn = new Button(t("reta.action.new"));
+        newBtn.setGraphic(icon("fas-plus"));
+        newBtn.setOnAction(ev -> showRetaEditor(null));
+        Button tramoBtn = new Button(t("reta.action.suggest_tramo"));
+        tramoBtn.setGraphic(icon("fas-calculator"));
+        tramoBtn.setOnAction(ev -> showRetaTramoSuggester());
+        HBox header = new HBox(16, titleBox, moduleIcon, spacer, tramoBtn, newBtn);
+        header.setAlignment(Pos.CENTER_LEFT);
+        header.getStyleClass().add("module-detail-header");
+
+        retaTable = new TableView<>();
+        retaTable.getStyleClass().add("data-table");
+        retaTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+        retaTable.setPlaceholder(new Label(t("reta.placeholder.empty")));
+        TableColumn<com.benjagest.ui.model.RetaProfileEntry, String> colName =
+                new TableColumn<>(t("reta.col.name"));
+        colName.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().fullName()));
+        TableColumn<com.benjagest.ui.model.RetaProfileEntry, String> colNif =
+                new TableColumn<>(t("reta.col.nif"));
+        colNif.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().taxIdentifier()));
+        colNif.setPrefWidth(110);
+        TableColumn<com.benjagest.ui.model.RetaProfileEntry, String> colBase =
+                new TableColumn<>(t("reta.col.base"));
+        colBase.setCellValueFactory(c -> new SimpleStringProperty(
+                c.getValue().currentBase() == null ? "" : c.getValue().currentBase().toPlainString() + " €"));
+        colBase.setPrefWidth(110);
+        colBase.setComparator(NUMERIC_STRING_COMPARATOR);
+        TableColumn<com.benjagest.ui.model.RetaProfileEntry, String> colQuota =
+                new TableColumn<>(t("reta.col.quota"));
+        colQuota.setCellValueFactory(c -> new SimpleStringProperty(
+                c.getValue().currentQuota() == null ? "" : c.getValue().currentQuota().toPlainString() + " €"));
+        colQuota.setPrefWidth(110);
+        colQuota.setComparator(NUMERIC_STRING_COMPARATOR);
+        TableColumn<com.benjagest.ui.model.RetaProfileEntry, String> colFlags =
+                new TableColumn<>(t("reta.col.flags"));
+        colFlags.setCellValueFactory(c -> new SimpleStringProperty(
+                (c.getValue().tarifaPlana() ? "★ " : "")
+                + (c.getValue().pluriactividad() ? "‡ " : "")
+                + (c.getValue().active() ? "" : t("reta.inactive"))));
+        colFlags.setPrefWidth(80);
+        retaTable.getColumns().addAll(java.util.List.of(colName, colNif, colBase, colQuota, colFlags));
+        retaTable.setItems(FXCollections.observableArrayList(profiles));
+        retaTable.setOnMouseClicked(ev -> {
+            if (ev.getClickCount() == 2) {
+                var sel = retaTable.getSelectionModel().getSelectedItem();
+                if (sel != null) showRetaEditor(sel);
+            }
+        });
+
+        Button editBtn = new Button(t("reta.action.edit"));
+        editBtn.setGraphic(icon("fas-edit"));
+        editBtn.setDisable(true);
+        editBtn.setOnAction(ev -> {
+            var sel = retaTable.getSelectionModel().getSelectedItem();
+            if (sel != null) showRetaEditor(sel);
+        });
+        Button changesBtn = new Button(t("reta.action.changes"));
+        changesBtn.setGraphic(icon("fas-history"));
+        changesBtn.setDisable(true);
+        changesBtn.setOnAction(ev -> {
+            var sel = retaTable.getSelectionModel().getSelectedItem();
+            if (sel != null) showRetaChanges(sel);
+        });
+        Button delBtn = new Button(t("reta.action.delete"));
+        delBtn.setGraphic(icon("fas-user-slash"));
+        delBtn.setDisable(true);
+        delBtn.setOnAction(ev -> {
+            var sel = retaTable.getSelectionModel().getSelectedItem();
+            if (sel != null) deleteRetaProfile(sel);
+        });
+        retaTable.getSelectionModel().selectedItemProperty().addListener((o, ov, nv) -> {
+            editBtn.setDisable(nv == null);
+            changesBtn.setDisable(nv == null);
+            delBtn.setDisable(nv == null || !nv.active());
+        });
+        HBox actions = new HBox(8, editBtn, changesBtn, delBtn);
+        actions.getStyleClass().add("settings-actions");
+
+        VBox body = new VBox(12, retaTable);
+        VBox.setVgrow(retaTable, Priority.ALWAYS);
+        content.getChildren().addAll(header, body, actions);
+        return content;
+    }
+
+    private void showRetaEditor(com.benjagest.ui.model.RetaProfileEntry existing) {
+        Dialog<ButtonType> dialog = new Dialog<>();
+        dialog.setTitle(existing == null ? t("reta.editor.title_new") : t("reta.editor.title_edit"));
+        ButtonType saveBt = new ButtonType(t("reta.editor.save"), ButtonBar.ButtonData.OK_DONE);
+        dialog.getDialogPane().getButtonTypes().addAll(saveBt, ButtonType.CANCEL);
+
+        TextField nameField = new TextField(existing == null ? "" : existing.fullName());
+        TextField nifField = new TextField(existing == null ? "" : existing.taxIdentifier());
+        TextField nussField = new TextField(existing == null ? "" : existing.socialSecurityNumber());
+        TextField startField = new TextField(existing == null || existing.retaStartDate() == null ? "" : existing.retaStartDate().toString());
+        startField.setPromptText("AAAA-MM-DD");
+        TextField endField = new TextField(existing == null || existing.retaEndDate() == null ? "" : existing.retaEndDate().toString());
+        endField.setPromptText("AAAA-MM-DD");
+        CheckBox pluri = new CheckBox(t("reta.editor.pluriactividad"));
+        pluri.setSelected(existing != null && existing.pluriactividad());
+        CheckBox tarifa = new CheckBox(t("reta.editor.tarifa_plana"));
+        tarifa.setSelected(existing != null && existing.tarifaPlana());
+        TextField tarifaUntil = new TextField(existing == null || existing.tarifaPlanaUntil() == null ? "" : existing.tarifaPlanaUntil().toString());
+        tarifaUntil.setPromptText("AAAA-MM-DD");
+        TextField actCode = new TextField(existing == null ? "" : existing.activityCode());
+        TextField actDesc = new TextField(existing == null ? "" : existing.activityDescription());
+        TextField iae = new TextField(existing == null ? "" : existing.iaeEpigraph());
+        TextField netIncome = new TextField(existing == null || existing.expectedNetIncome() == null
+                ? "" : existing.expectedNetIncome().toPlainString());
+        TextField base = new TextField(existing == null || existing.currentBase() == null
+                ? "" : existing.currentBase().toPlainString());
+        TextField quota = new TextField(existing == null || existing.currentQuota() == null
+                ? "" : existing.currentQuota().toPlainString());
+        TextArea notes = new TextArea(existing == null ? "" : existing.notes());
+        notes.setPrefRowCount(2);
+        CheckBox active = new CheckBox(t("reta.editor.active"));
+        active.setSelected(existing == null || existing.active());
+
+        GridPane g = new GridPane();
+        g.setHgap(10); g.setVgap(6); g.setPadding(new Insets(10));
+        int row = 0;
+        g.add(new Label(t("reta.editor.name")), 0, row); g.add(nameField, 1, row, 3, 1); row++;
+        g.add(new Label(t("reta.editor.nif")), 0, row); g.add(nifField, 1, row);
+        g.add(new Label(t("reta.editor.nuss")), 2, row); g.add(nussField, 3, row); row++;
+        g.add(new Label(t("reta.editor.start")), 0, row); g.add(startField, 1, row);
+        g.add(new Label(t("reta.editor.end")), 2, row); g.add(endField, 3, row); row++;
+        g.add(pluri, 1, row); g.add(tarifa, 3, row); row++;
+        g.add(new Label(t("reta.editor.tarifa_until")), 0, row); g.add(tarifaUntil, 1, row, 3, 1); row++;
+        g.add(new Separator(), 0, row++, 4, 1);
+        g.add(new Label(t("reta.editor.activity_code")), 0, row); g.add(actCode, 1, row);
+        g.add(new Label(t("reta.editor.iae")), 2, row); g.add(iae, 3, row); row++;
+        g.add(new Label(t("reta.editor.activity_desc")), 0, row); g.add(actDesc, 1, row, 3, 1); row++;
+        g.add(new Separator(), 0, row++, 4, 1);
+        g.add(new Label(t("reta.editor.net_income")), 0, row); g.add(netIncome, 1, row);
+        g.add(new Label(t("reta.editor.base")), 2, row); g.add(base, 3, row); row++;
+        g.add(new Label(t("reta.editor.quota")), 0, row); g.add(quota, 1, row);
+        g.add(active, 3, row); row++;
+        g.add(new Label(t("reta.editor.notes")), 0, row); g.add(notes, 1, row, 3, 1);
+
+        ScrollPane sp = new ScrollPane(g);
+        sp.setFitToWidth(true);
+        sp.setPrefViewportHeight(520);
+        dialog.getDialogPane().setContent(sp);
+        dialog.showAndWait().ifPresent(bt -> {
+            if (bt != saveBt) return;
+            com.benjagest.ui.model.RetaProfileEntry payload = new com.benjagest.ui.model.RetaProfileEntry(
+                    existing == null ? null : existing.id(),
+                    null, null,
+                    nameField.getText().trim(),
+                    blankToNullOrSelf(nifField.getText()),
+                    blankToNullOrSelf(nussField.getText()),
+                    parseDateSafe(startField.getText()),
+                    parseDateSafe(endField.getText()),
+                    pluri.isSelected(), tarifa.isSelected(),
+                    parseDateSafe(tarifaUntil.getText()),
+                    blankToNullOrSelf(actCode.getText()),
+                    blankToNullOrSelf(actDesc.getText()),
+                    blankToNullOrSelf(iae.getText()),
+                    parseDecSafe(netIncome.getText()),
+                    parseDecSafe(base.getText()),
+                    parseDecSafe(quota.getText()),
+                    blankToNullOrSelf(notes.getText()),
+                    active.isSelected()
+            );
+            Task<com.benjagest.ui.model.RetaProfileEntry> task = new Task<>() {
+                @Override protected com.benjagest.ui.model.RetaProfileEntry call() throws Exception {
+                    return existing == null
+                            ? laborApiClient.createRetaProfile(payload)
+                            : laborApiClient.updateRetaProfile(existing.id(), payload);
+                }
+            };
+            task.setOnSucceeded(ev -> showRetaModule());
+            task.setOnFailed(ev -> showError(t("reta.editor.fail.title"), t("reta.editor.fail.body")));
+            start(task, "reta-save");
+        });
+    }
+
+    private void deleteRetaProfile(com.benjagest.ui.model.RetaProfileEntry p) {
+        Alert confirm = new Alert(Alert.AlertType.CONFIRMATION,
+                t("reta.delete.body") + " " + p.fullName(),
+                ButtonType.OK, ButtonType.CANCEL);
+        confirm.setHeaderText(t("reta.delete.title"));
+        confirm.showAndWait().ifPresent(bt -> {
+            if (bt != ButtonType.OK) return;
+            Task<Void> task = new Task<>() {
+                @Override protected Void call() throws Exception {
+                    laborApiClient.deleteRetaProfile(p.id());
+                    return null;
+                }
+            };
+            task.setOnSucceeded(ev -> showRetaModule());
+            task.setOnFailed(ev -> showError(t("reta.editor.fail.title"), t("reta.editor.fail.body")));
+            start(task, "reta-delete");
+        });
+    }
+
+    private void showRetaChanges(com.benjagest.ui.model.RetaProfileEntry profile) {
+        int year = LocalDate.now().getYear();
+        Task<java.util.List<com.benjagest.ui.model.RetaBaseChangeEntry>> task = new Task<>() {
+            @Override protected java.util.List<com.benjagest.ui.model.RetaBaseChangeEntry> call() throws Exception {
+                return laborApiClient.listRetaChanges(profile.id(), year);
+            }
+        };
+        task.setOnSucceeded(ev -> {
+            Dialog<ButtonType> dialog = new Dialog<>();
+            dialog.setTitle(t("reta.changes.title") + " — " + profile.fullName() + " (" + year + ")");
+            ButtonType newBt = new ButtonType(t("reta.changes.new"), ButtonBar.ButtonData.LEFT);
+            dialog.getDialogPane().getButtonTypes().addAll(newBt, ButtonType.CLOSE);
+
+            TableView<com.benjagest.ui.model.RetaBaseChangeEntry> tbl = new TableView<>();
+            tbl.getStyleClass().add("data-table");
+            tbl.setPrefHeight(260);
+            tbl.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+            tbl.setPlaceholder(new Label(t("reta.changes.placeholder.empty")));
+            TableColumn<com.benjagest.ui.model.RetaBaseChangeEntry, String> cDate =
+                    new TableColumn<>(t("reta.changes.col.date"));
+            cDate.setCellValueFactory(c -> new SimpleStringProperty(
+                    c.getValue().effectiveDate() == null ? "" : c.getValue().effectiveDate().toString()));
+            cDate.setPrefWidth(110);
+            TableColumn<com.benjagest.ui.model.RetaBaseChangeEntry, String> cBase =
+                    new TableColumn<>(t("reta.changes.col.base"));
+            cBase.setCellValueFactory(c -> new SimpleStringProperty(
+                    c.getValue().newBase() == null ? "" : c.getValue().newBase().toPlainString() + " €"));
+            cBase.setPrefWidth(110);
+            TableColumn<com.benjagest.ui.model.RetaBaseChangeEntry, String> cQuota =
+                    new TableColumn<>(t("reta.changes.col.quota"));
+            cQuota.setCellValueFactory(c -> new SimpleStringProperty(
+                    c.getValue().newQuota() == null ? "" : c.getValue().newQuota().toPlainString() + " €"));
+            cQuota.setPrefWidth(110);
+            TableColumn<com.benjagest.ui.model.RetaBaseChangeEntry, String> cReason =
+                    new TableColumn<>(t("reta.changes.col.reason"));
+            cReason.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().changeReason()));
+            TableColumn<com.benjagest.ui.model.RetaBaseChangeEntry, String> cSent =
+                    new TableColumn<>(t("reta.changes.col.sent"));
+            cSent.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().submittedToSs() ? "✓" : ""));
+            cSent.setPrefWidth(60);
+            tbl.getColumns().addAll(java.util.List.of(cDate, cBase, cQuota, cReason, cSent));
+            tbl.setItems(FXCollections.observableArrayList(task.getValue()));
+
+            VBox body = new VBox(8, new Label(t("reta.changes.hint")), tbl);
+            body.setPadding(new Insets(10));
+            dialog.getDialogPane().setContent(body);
+
+            // Interceptamos el boton de la izquierda para abrir el sub-editor
+            Button newButton = (Button) dialog.getDialogPane().lookupButton(newBt);
+            newButton.addEventFilter(javafx.event.ActionEvent.ACTION, btnEv -> {
+                btnEv.consume();
+                showRetaChangeEditor(profile);
+                dialog.close();
+            });
+            dialog.setResizable(true);
+            dialog.showAndWait();
+        });
+        task.setOnFailed(ev -> showError(t("reta.changes.load.fail"), t("reta.changes.load.fail.body")));
+        start(task, "reta-changes-load");
+    }
+
+    private void showRetaChangeEditor(com.benjagest.ui.model.RetaProfileEntry profile) {
+        Dialog<ButtonType> dialog = new Dialog<>();
+        dialog.setTitle(t("reta.change.editor.title") + " — " + profile.fullName());
+        ButtonType saveBt = new ButtonType(t("reta.change.editor.save"), ButtonBar.ButtonData.OK_DONE);
+        dialog.getDialogPane().getButtonTypes().addAll(saveBt, ButtonType.CANCEL);
+
+        TextField effective = new TextField(LocalDate.now().toString());
+        effective.setPromptText("AAAA-MM-DD");
+        TextField reason = new TextField();
+        reason.setPromptText(t("reta.change.editor.reason.prompt"));
+        TextField base = new TextField(profile.currentBase() == null ? "" : profile.currentBase().toPlainString());
+        TextField quota = new TextField(profile.currentQuota() == null ? "" : profile.currentQuota().toPlainString());
+        TextField netIncome = new TextField(profile.expectedNetIncome() == null
+                ? "" : profile.expectedNetIncome().toPlainString());
+        CheckBox sent = new CheckBox(t("reta.change.editor.submitted"));
+        TextArea notes = new TextArea(); notes.setPrefRowCount(2);
+
+        GridPane g = new GridPane();
+        g.setHgap(10); g.setVgap(8); g.setPadding(new Insets(10));
+        g.add(new Label(t("reta.change.editor.effective")), 0, 0); g.add(effective, 1, 0);
+        g.add(new Label(t("reta.change.editor.reason")), 0, 1); g.add(reason, 1, 1);
+        g.add(new Label(t("reta.change.editor.new_base")), 0, 2); g.add(base, 1, 2);
+        g.add(new Label(t("reta.change.editor.new_quota")), 0, 3); g.add(quota, 1, 3);
+        g.add(new Label(t("reta.change.editor.net_income")), 0, 4); g.add(netIncome, 1, 4);
+        g.add(sent, 1, 5);
+        g.add(new Label(t("reta.change.editor.notes")), 0, 6); g.add(notes, 1, 6);
+        dialog.getDialogPane().setContent(g);
+
+        dialog.showAndWait().ifPresent(bt -> {
+            if (bt != saveBt) return;
+            com.benjagest.ui.model.RetaBaseChangeEntry payload = new com.benjagest.ui.model.RetaBaseChangeEntry(
+                    null, profile.id(),
+                    parseDateSafe(effective.getText()),
+                    blankToNullOrSelf(reason.getText()),
+                    parseDecSafe(base.getText()),
+                    parseDecSafe(quota.getText()),
+                    parseDecSafe(netIncome.getText()),
+                    sent.isSelected(),
+                    blankToNullOrSelf(notes.getText())
+            );
+            Task<com.benjagest.ui.model.RetaBaseChangeEntry> task = new Task<>() {
+                @Override protected com.benjagest.ui.model.RetaBaseChangeEntry call() throws Exception {
+                    return laborApiClient.createRetaChange(profile.id(), payload);
+                }
+            };
+            task.setOnSucceeded(ev -> showRetaModule());
+            task.setOnFailed(ev -> showError(t("reta.change.editor.fail.title"),
+                    t("reta.change.editor.fail.body")));
+            start(task, "reta-change-save");
+        });
+    }
+
+    private void showRetaTramoSuggester() {
+        Dialog<ButtonType> dialog = new Dialog<>();
+        dialog.setTitle(t("reta.tramo.title"));
+        dialog.getDialogPane().getButtonTypes().add(ButtonType.CLOSE);
+
+        TextField netField = new TextField();
+        netField.setPromptText(t("reta.tramo.net.prompt"));
+        Button calc = new Button(t("reta.tramo.calc"));
+        Label result = new Label();
+        result.setWrapText(true);
+        result.getStyleClass().add("settings-section-title");
+
+        calc.setOnAction(ev -> {
+            java.math.BigDecimal annual;
+            try {
+                annual = new java.math.BigDecimal(netField.getText().trim().replace(",", "."));
+            } catch (NumberFormatException ex) {
+                result.setText(t("reta.tramo.invalid"));
+                return;
+            }
+            Task<com.benjagest.ui.model.RetaTramoSuggestion> task = new Task<>() {
+                @Override protected com.benjagest.ui.model.RetaTramoSuggestion call() throws Exception {
+                    return laborApiClient.suggestRetaTramo(annual);
+                }
+            };
+            task.setOnSucceeded(e -> {
+                var s = task.getValue();
+                result.setText(String.format(
+                        "%s%n%s: %s – %s €%n%s: %s €%n%s: %s €/mes",
+                        s.tramoLabel(),
+                        t("reta.tramo.result.base_range"), s.baseMinima(), s.baseMaxima(),
+                        t("reta.tramo.result.quota"), s.cuotaMinima(),
+                        t("reta.tramo.result.monthly_income"), s.monthlyIncome()));
+            });
+            task.setOnFailed(e -> result.setText(t("reta.tramo.fail")));
+            start(task, "reta-tramo-suggest");
+        });
+
+        VBox body = new VBox(10,
+                new Label(t("reta.tramo.hint")),
+                new HBox(8, new Label(t("reta.tramo.net.label")), netField, calc),
+                new Separator(),
+                result);
+        body.setPadding(new Insets(10));
+        body.setPrefWidth(500);
+        dialog.getDialogPane().setContent(body);
+        dialog.showAndWait();
+    }
+
+    // ===================================================================
+    //  N1 — Modulo DEHu: bandeja de notificaciones
+    // ===================================================================
+
+    private TableView<com.benjagest.ui.model.DehuNotificationEntry> dehuTable;
+
+    private void showDehuModule() {
+        Task<DehuBundle> task = new Task<>() {
+            @Override protected DehuBundle call() throws Exception {
+                return new DehuBundle(
+                        laborApiClient.listDehu(null, 200),
+                        laborApiClient.dehuSummary());
+            }
+        };
+        task.setOnSucceeded(ev -> setCenterAnimated(scroll(dehuView(task.getValue()))));
+        task.setOnFailed(ev -> setCenterAnimated(scroll(errorPanel(t("dehu.load_failed")))));
+        start(task, "dehu-load");
+    }
+
+    private record DehuBundle(
+            java.util.List<com.benjagest.ui.model.DehuNotificationEntry> notifications,
+            com.benjagest.ui.model.DehuSummary summary
+    ) {}
+
+    private VBox dehuView(DehuBundle bundle) {
+        VBox content = content();
+        Label title = new Label(t("dehu.title"));
+        title.getStyleClass().add("module-detail-title");
+        Label subtitle = new Label(t("dehu.subtitle"));
+        subtitle.getStyleClass().add("module-detail-description");
+        VBox titleBox = new VBox(4, title, subtitle);
+        StackPane moduleIcon = iconBubble("fas-bell", "module-title-icon");
+        Region spacer = new Region();
+        HBox.setHgrow(spacer, Priority.ALWAYS);
+
+        Button newBtn = new Button(t("dehu.action.new"));
+        newBtn.setGraphic(icon("fas-plus"));
+        newBtn.setOnAction(ev -> showDehuEditor());
+
+        HBox header = new HBox(16, titleBox, moduleIcon, spacer, newBtn);
+        header.setAlignment(Pos.CENTER_LEFT);
+        header.getStyleClass().add("module-detail-header");
+
+        // Resumen: 3 chips coloreados según pendientes / a caducar / caducadas
+        var s = bundle.summary();
+        Label chipPending = new Label(t("dehu.summary.pending") + ": " + s.pending());
+        chipPending.getStyleClass().add(s.pending() > 0 ? "settings-section-title" : "settings-hint");
+        Label chipSoon = new Label(t("dehu.summary.soon") + ": " + s.expiringSoon());
+        chipSoon.getStyleClass().add(s.expiringSoon() > 0 ? "settings-section-title" : "settings-hint");
+        Label chipExpired = new Label(t("dehu.summary.expired") + ": " + s.expired());
+        chipExpired.getStyleClass().add("settings-hint");
+        HBox summaryRow = new HBox(20, chipPending, chipSoon, chipExpired);
+        summaryRow.setPadding(new Insets(8));
+
+        dehuTable = new TableView<>();
+        dehuTable.getStyleClass().add("data-table");
+        dehuTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+        dehuTable.setPlaceholder(new Label(t("dehu.placeholder.empty")));
+        TableColumn<com.benjagest.ui.model.DehuNotificationEntry, String> cIssued =
+                new TableColumn<>(t("dehu.col.issued"));
+        cIssued.setCellValueFactory(c -> new SimpleStringProperty(shortIso(c.getValue().issuedAt())));
+        cIssued.setPrefWidth(150);
+        cIssued.setComparator(ISO_DATE_COMPARATOR);
+        TableColumn<com.benjagest.ui.model.DehuNotificationEntry, String> cExpires =
+                new TableColumn<>(t("dehu.col.expires"));
+        cExpires.setCellValueFactory(c -> new SimpleStringProperty(shortIso(c.getValue().expiresAt())));
+        cExpires.setPrefWidth(150);
+        cExpires.setComparator(ISO_DATE_COMPARATOR);
+        TableColumn<com.benjagest.ui.model.DehuNotificationEntry, String> cOrgan =
+                new TableColumn<>(t("dehu.col.organism"));
+        cOrgan.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().organismName()));
+        cOrgan.setPrefWidth(200);
+        TableColumn<com.benjagest.ui.model.DehuNotificationEntry, String> cSubject =
+                new TableColumn<>(t("dehu.col.subject"));
+        cSubject.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().subject()));
+        TableColumn<com.benjagest.ui.model.DehuNotificationEntry, String> cStatus =
+                new TableColumn<>(t("dehu.col.status"));
+        cStatus.setCellValueFactory(c -> new SimpleStringProperty(t("dehu.status." + c.getValue().status())));
+        cStatus.setPrefWidth(110);
+        dehuTable.getColumns().addAll(java.util.List.of(cIssued, cExpires, cOrgan, cSubject, cStatus));
+        dehuTable.setItems(FXCollections.observableArrayList(bundle.notifications()));
+
+        Button readBtn = new Button(t("dehu.action.read"));
+        readBtn.setGraphic(icon("fas-envelope-open"));
+        readBtn.setDisable(true);
+        readBtn.setOnAction(ev -> {
+            var sel = dehuTable.getSelectionModel().getSelectedItem();
+            if (sel != null) markDehuRead(sel);
+        });
+        Button dismissBtn = new Button(t("dehu.action.dismiss"));
+        dismissBtn.setGraphic(icon("fas-archive"));
+        dismissBtn.setDisable(true);
+        dismissBtn.setOnAction(ev -> {
+            var sel = dehuTable.getSelectionModel().getSelectedItem();
+            if (sel != null) dismissDehu(sel);
+        });
+        dehuTable.getSelectionModel().selectedItemProperty().addListener((o, ov, nv) -> {
+            readBtn.setDisable(nv == null || "READ".equals(nv == null ? "" : nv.status()));
+            dismissBtn.setDisable(nv == null || "DISMISSED".equals(nv == null ? "" : nv.status()));
+        });
+        HBox actions = new HBox(8, readBtn, dismissBtn);
+        actions.getStyleClass().add("settings-actions");
+
+        VBox body = new VBox(12, summaryRow, dehuTable);
+        VBox.setVgrow(dehuTable, Priority.ALWAYS);
+        content.getChildren().addAll(header, body, actions);
+        return content;
+    }
+
+    private void showDehuEditor() {
+        Dialog<ButtonType> dialog = new Dialog<>();
+        dialog.setTitle(t("dehu.editor.title"));
+        ButtonType saveBt = new ButtonType(t("dehu.editor.save"), ButtonBar.ButtonData.OK_DONE);
+        dialog.getDialogPane().getButtonTypes().addAll(saveBt, ButtonType.CANCEL);
+
+        TextField dehuIdField = new TextField();
+        TextField nifField = new TextField();
+        TextField organField = new TextField();
+        TextField organCodeField = new TextField();
+        TextField procField = new TextField();
+        TextField procCodeField = new TextField();
+        TextField subjectField = new TextField();
+        TextField issuedField = new TextField(LocalDate.now().toString() + "T00:00:00Z");
+        TextField expiresField = new TextField(LocalDate.now().plusDays(10).toString() + "T00:00:00Z");
+        TextField csvField = new TextField();
+        TextField urlField = new TextField();
+        TextArea notes = new TextArea(); notes.setPrefRowCount(2);
+
+        GridPane g = new GridPane();
+        g.setHgap(10); g.setVgap(6); g.setPadding(new Insets(10));
+        int row = 0;
+        g.add(new Label(t("dehu.editor.dehu_id")), 0, row); g.add(dehuIdField, 1, row, 3, 1); row++;
+        g.add(new Label(t("dehu.editor.nif")), 0, row); g.add(nifField, 1, row);
+        g.add(new Label(t("dehu.editor.subject")), 2, row); g.add(subjectField, 3, row); row++;
+        g.add(new Label(t("dehu.editor.organism")), 0, row); g.add(organField, 1, row);
+        g.add(new Label(t("dehu.editor.organism_code")), 2, row); g.add(organCodeField, 3, row); row++;
+        g.add(new Label(t("dehu.editor.procedure")), 0, row); g.add(procField, 1, row);
+        g.add(new Label(t("dehu.editor.procedure_code")), 2, row); g.add(procCodeField, 3, row); row++;
+        g.add(new Label(t("dehu.editor.issued")), 0, row); g.add(issuedField, 1, row);
+        g.add(new Label(t("dehu.editor.expires")), 2, row); g.add(expiresField, 3, row); row++;
+        g.add(new Label(t("dehu.editor.csv")), 0, row); g.add(csvField, 1, row);
+        g.add(new Label(t("dehu.editor.url")), 2, row); g.add(urlField, 3, row); row++;
+        g.add(new Label(t("dehu.editor.notes")), 0, row); g.add(notes, 1, row, 3, 1);
+
+        dialog.getDialogPane().setContent(g);
+        dialog.showAndWait().ifPresent(bt -> {
+            if (bt != saveBt) return;
+            com.benjagest.ui.model.DehuNotificationEntry payload = new com.benjagest.ui.model.DehuNotificationEntry(
+                    null,
+                    blankToNullOrSelf(dehuIdField.getText()),
+                    blankToNullOrSelf(nifField.getText()),
+                    organField.getText().trim(),
+                    blankToNullOrSelf(organCodeField.getText()),
+                    blankToNullOrSelf(procField.getText()),
+                    blankToNullOrSelf(procCodeField.getText()),
+                    subjectField.getText().trim(),
+                    blankToNullOrSelf(issuedField.getText()),
+                    blankToNullOrSelf(expiresField.getText()),
+                    null, null, "PENDING",
+                    blankToNullOrSelf(csvField.getText()),
+                    blankToNullOrSelf(urlField.getText()),
+                    null,
+                    blankToNullOrSelf(notes.getText())
+            );
+            Task<com.benjagest.ui.model.DehuNotificationEntry> task = new Task<>() {
+                @Override protected com.benjagest.ui.model.DehuNotificationEntry call() throws Exception {
+                    return laborApiClient.createDehu(payload);
+                }
+            };
+            task.setOnSucceeded(ev -> showDehuModule());
+            task.setOnFailed(ev -> showError(t("dehu.editor.fail.title"), t("dehu.editor.fail.body")));
+            start(task, "dehu-create");
+        });
+    }
+
+    private void markDehuRead(com.benjagest.ui.model.DehuNotificationEntry n) {
+        Task<com.benjagest.ui.model.DehuNotificationEntry> task = new Task<>() {
+            @Override protected com.benjagest.ui.model.DehuNotificationEntry call() throws Exception {
+                return laborApiClient.markDehuRead(n.id());
+            }
+        };
+        task.setOnSucceeded(ev -> showDehuModule());
+        task.setOnFailed(ev -> showError(t("dehu.editor.fail.title"), t("dehu.editor.fail.body")));
+        start(task, "dehu-read");
+    }
+
+    private void dismissDehu(com.benjagest.ui.model.DehuNotificationEntry n) {
+        Task<com.benjagest.ui.model.DehuNotificationEntry> task = new Task<>() {
+            @Override protected com.benjagest.ui.model.DehuNotificationEntry call() throws Exception {
+                return laborApiClient.dismissDehu(n.id());
+            }
+        };
+        task.setOnSucceeded(ev -> showDehuModule());
+        task.setOnFailed(ev -> showError(t("dehu.editor.fail.title"), t("dehu.editor.fail.body")));
+        start(task, "dehu-dismiss");
+    }
+
+    // ===================================================================
+    //  Helpers comunes para L1/L2/N1
+    // ===================================================================
+
+    private LocalDate parseDateSafe(String s) {
+        if (s == null || s.isBlank()) return null;
+        try { return LocalDate.parse(s.trim()); }
+        catch (Exception ex) { return null; }
+    }
+
+    private java.math.BigDecimal parseDecSafe(String s) {
+        if (s == null || s.isBlank()) return null;
+        try { return new java.math.BigDecimal(s.trim().replace(",", ".")); }
+        catch (NumberFormatException ex) { return null; }
+    }
+
+    private Integer parseIntSafe(String s) {
+        if (s == null || s.isBlank()) return null;
+        try { return Integer.parseInt(s.trim()); }
+        catch (NumberFormatException ex) { return null; }
     }
 
     // ===================================================================
