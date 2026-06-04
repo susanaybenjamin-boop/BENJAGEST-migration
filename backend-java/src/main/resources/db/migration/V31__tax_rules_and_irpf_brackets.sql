@@ -20,7 +20,7 @@
 --     los 20 mas comunes — completo es ~1.500).
 -- ===========================================================================
 
-CREATE TABLE tax_irpf_brackets (
+CREATE TABLE IF NOT EXISTS tax_irpf_brackets (
     year INT NOT NULL,
     bracket_order INT NOT NULL,
     min_income DECIMAL(14,2) NOT NULL,
@@ -34,7 +34,7 @@ CREATE TABLE tax_irpf_brackets (
 
 -- Tabla 2025 (vigente al cierre 2025, presentación 2026):
 -- Fuente: Ley 35/2006 art. 63 + 65 y leyes anuales PGE.
-INSERT INTO tax_irpf_brackets (year, bracket_order, min_income, max_income, rate_state, rate_regional, notes) VALUES
+INSERT IGNORE INTO tax_irpf_brackets (year, bracket_order, min_income, max_income, rate_state, rate_regional, notes) VALUES
 (2025, 1, 0.00,     12450.00, 9.50,  9.50,  'Tramo 1 - 19% conjunto'),
 (2025, 2, 12450.01, 20200.00, 12.00, 12.00, 'Tramo 2 - 24% conjunto'),
 (2025, 3, 20200.01, 35200.00, 15.00, 15.00, 'Tramo 3 - 30% conjunto'),
@@ -42,7 +42,7 @@ INSERT INTO tax_irpf_brackets (year, bracket_order, min_income, max_income, rate
 (2025, 5, 60000.01, 300000.00, 22.50, 22.50, 'Tramo 5 - 45% conjunto'),
 (2025, 6, 300000.01, NULL,    24.50, 22.50, 'Tramo 6 - 47% conjunto');
 
-INSERT INTO tax_irpf_brackets (year, bracket_order, min_income, max_income, rate_state, rate_regional, notes) VALUES
+INSERT IGNORE INTO tax_irpf_brackets (year, bracket_order, min_income, max_income, rate_state, rate_regional, notes) VALUES
 (2026, 1, 0.00,     12450.00, 9.50,  9.50,  'Tramo 1 - 19% conjunto'),
 (2026, 2, 12450.01, 20200.00, 12.00, 12.00, 'Tramo 2 - 24% conjunto'),
 (2026, 3, 20200.01, 35200.00, 15.00, 15.00, 'Tramo 3 - 30% conjunto'),
@@ -54,7 +54,7 @@ INSERT INTO tax_irpf_brackets (year, bracket_order, min_income, max_income, rate
 -- IVA por año: histórico de tipos vigentes. NO sustituye a vat_rates
 -- (personalizables por empresa) — es la referencia normativa.
 -- ---------------------------------------------------------------------------
-CREATE TABLE tax_vat_history (
+CREATE TABLE IF NOT EXISTS tax_vat_history (
     year INT NOT NULL,
     vat_type VARCHAR(20) NOT NULL,
     percent DECIMAL(5,2) NOT NULL,
@@ -64,7 +64,7 @@ CREATE TABLE tax_vat_history (
     CONSTRAINT ck_tax_vat_history_type CHECK (vat_type IN ('GENERAL', 'REDUCED', 'SUPER_REDUCED', 'ZERO', 'RECARGO_EQ_GENERAL', 'RECARGO_EQ_REDUCED', 'RECARGO_EQ_SUPER'))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-INSERT INTO tax_vat_history (year, vat_type, percent, description, legal_reference) VALUES
+INSERT IGNORE INTO tax_vat_history (year, vat_type, percent, description, legal_reference) VALUES
 (2025, 'GENERAL', 21.00, 'IVA general', 'Ley 37/1992 art. 90'),
 (2025, 'REDUCED', 10.00, 'IVA reducido', 'Ley 37/1992 art. 91.1'),
 (2025, 'SUPER_REDUCED', 4.00, 'IVA superreducido', 'Ley 37/1992 art. 91.2'),
@@ -80,7 +80,7 @@ INSERT INTO tax_vat_history (year, vat_type, percent, description, legal_referen
 -- ---------------------------------------------------------------------------
 -- Retenciones IRPF aplicables (autónomos, alquileres, intereses).
 -- ---------------------------------------------------------------------------
-CREATE TABLE tax_withholding_history (
+CREATE TABLE IF NOT EXISTS tax_withholding_history (
     year INT NOT NULL,
     withholding_type VARCHAR(40) NOT NULL,
     percent DECIMAL(5,2) NOT NULL,
@@ -89,7 +89,7 @@ CREATE TABLE tax_withholding_history (
     CONSTRAINT pk_tax_withholding_history PRIMARY KEY (year, withholding_type)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-INSERT INTO tax_withholding_history (year, withholding_type, percent, description, legal_reference) VALUES
+INSERT IGNORE INTO tax_withholding_history (year, withholding_type, percent, description, legal_reference) VALUES
 (2025, 'PROFESSIONAL_STANDARD', 15.00, 'Profesionales (regla general)', 'Ley 35/2006 art. 101.5'),
 (2025, 'PROFESSIONAL_FIRST_YEAR', 7.00, 'Profesionales (primer ano + 2 siguientes)', 'Ley 35/2006 art. 101.5'),
 (2025, 'PROFESSIONAL_REDUCED', 7.00, 'Profesionales con ingresos < 15000', 'Ley 35/2006 art. 101.5'),
@@ -107,14 +107,14 @@ INSERT INTO tax_withholding_history (year, withholding_type, percent, descriptio
 -- Catalogo IAE — los 20 epígrafes mas comunes para auto-completar.
 -- Lista completa: ~1.500 epígrafes. Se completa en sub-slice futuro.
 -- ---------------------------------------------------------------------------
-CREATE TABLE tax_iae_epigraphs (
+CREATE TABLE IF NOT EXISTS tax_iae_epigraphs (
     code VARCHAR(20) NOT NULL,
     section VARCHAR(20) NOT NULL,
     description VARCHAR(300) NOT NULL,
     CONSTRAINT pk_tax_iae_epigraphs PRIMARY KEY (code)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-INSERT INTO tax_iae_epigraphs (code, section, description) VALUES
+INSERT IGNORE INTO tax_iae_epigraphs (code, section, description) VALUES
 ('501.1', 'Empresarial', 'Construccion completa, reparacion y conservacion de edificaciones'),
 ('647.1', 'Empresarial', 'Comercio al por menor de productos alimenticios'),
 ('653.4', 'Empresarial', 'Comercio al por menor de materiales de construccion'),

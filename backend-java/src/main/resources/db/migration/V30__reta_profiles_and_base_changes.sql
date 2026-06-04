@@ -23,7 +23,7 @@
 --     employees (empleado autonomo societario). Solo uno de los dos.
 -- ===========================================================================
 
-CREATE TABLE reta_profiles (
+CREATE TABLE IF NOT EXISTS reta_profiles (
     id CHAR(36) NOT NULL,
     company_id CHAR(36) NOT NULL,
     owner_id CHAR(36) NULL,
@@ -60,7 +60,7 @@ CREATE TABLE reta_profiles (
     INDEX ix_reta_profiles_company (company_id, active)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-CREATE TABLE reta_base_changes (
+CREATE TABLE IF NOT EXISTS reta_base_changes (
     id CHAR(36) NOT NULL,
     company_id CHAR(36) NOT NULL,
     profile_id CHAR(36) NOT NULL,
