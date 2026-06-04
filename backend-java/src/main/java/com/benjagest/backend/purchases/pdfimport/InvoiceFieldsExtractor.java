@@ -625,8 +625,13 @@ public class InvoiceFieldsExtractor {
                 "(-?\\d+(?:[.,]\\d{3})*[,.]\\d{2})\\s*\\u20ac?\\s+" +
                 "(-?\\d+(?:[.,]\\d{3})*[,.]\\d{2})\\s*\\u20ac?\\s*$"
         );
+        // CLAVE: regex ESTRICTA — "Total" + UN solo importe + fin de
+        // línea. Descarta filas tipo "Total 35,09 € 7,37 €" (subtotal
+        // de la tabla de IVA, que tiene 2 importes) y se queda con la
+        // fila "Total 42,46 €" / "Total 26,29 €" del total general.
         Pattern totalLinePattern = Pattern.compile(
-                "(?i)^total\\b[^\\n]*?(-?\\d+(?:[.,]\\d{3})*[,.]\\d{2})\\s*\\u20ac?\\s*$"
+                "(?i)^total(?:\\s+pendiente|\\s+factura(?:\\s+en\\s+euros)?|\\s+a\\s+pagar|\\s+general)?\\s+" +
+                "(-?\\d+(?:[.,]\\d{3})*[,.]\\d{2})\\s*\\u20ac?\\s*$"
         );
         for (int i = 0; i < lines.length; i++) {
             String line = lines[i].trim();
@@ -641,33 +646,38 @@ public class InvoiceFieldsExtractor {
             // (descarta capturas del cuerpo tipo "1 12,99 21%" malalineadas).
             if (vat.compareTo(base) > 0) continue;
 
-            // Buscar el total final en las siguientes 10 líneas.
-            BigDecimal bestTotal = null;
-            for (int j = i + 1; j < Math.min(lines.length, i + 11); j++) {
+            BigDecimal expected = base.add(vat);
+            // Buscar "Total <importe único>" en ±10 líneas (Amazon ES
+            // a veces pone el total ARRIBA del bloque IVA, otras veces
+            // ABAJO — depende del template). Buscamos en ambas
+            // direcciones y nos quedamos con el candidato más cercano
+            // a base+vat (±0,10 €).
+            BigDecimal verifiedTotal = null;
+            int from = Math.max(0, i - 10);
+            int to = Math.min(lines.length, i + 11);
+            for (int j = from; j < to; j++) {
+                if (j == i) continue;
                 String tline = lines[j].trim();
                 Matcher tm = totalLinePattern.matcher(tline);
-                if (tm.find()) {
-                    BigDecimal cand = parseAmount(tm.group(1));
-                    if (cand == null) continue;
-                    if (bestTotal == null || cand.compareTo(bestTotal) > 0) {
-                        bestTotal = cand;
-                    }
+                if (!tm.find()) continue;
+                BigDecimal cand = parseAmount(tm.group(1));
+                if (cand == null) continue;
+                if (cand.subtract(expected).abs()
+                        .compareTo(new BigDecimal("0.10")) <= 0) {
+                    verifiedTotal = cand;
+                    break;
                 }
             }
-            BigDecimal expected = base.add(vat);
-            if (bestTotal == null) {
-                // Sin "Total" explícito → asumimos base+iva como total.
-                bestTotal = expected;
-            }
-            // Validación cruzada estricta para descartar falsos positivos.
-            if (bestTotal.subtract(expected).abs()
-                    .compareTo(new BigDecimal("0.10")) > 0) continue;
 
             TotalsRow row = new TotalsRow();
             row.vatPercent = vatPct;
             row.base = base;
             row.vatAmount = vat;
-            row.total = bestTotal;
+            // Si encontramos "Total" verificado, lo usamos (más
+            // fidedigno al documento). Si no, base+vat es tautológico
+            // pero correcto — la firma <pct>% <base> <vat> ya es muy
+            // específica de por sí.
+            row.total = verifiedTotal != null ? verifiedTotal : expected;
             return row;
         }
         return null;
@@ -718,26 +728,36 @@ public class InvoiceFieldsExtractor {
         Matcher recv = RECEIVER_LABEL.matcher(text);
         int receiverPos = recv.find() ? recv.start() : Integer.MAX_VALUE;
 
-        // PRIORIDAD 1: NIF español ETIQUETADO ("NIF W0184081H") antes del
-        //   receptor. Cubre Amazon ES, donde conviven LU20260743 (matriz)
-        //   y W0184081H (sucursal española) — el fiscal es el W.
-        Matcher snif = SPANISH_NIF_LABELED_PATTERN.matcher(text);
-        while (snif.find()) {
-            if (snif.start() < receiverPos) {
-                return snif.group(1).toUpperCase();
+        // PRIORIDAD 1 (sucursal extranjera): si el documento contiene un
+        //   EU VAT (LU, IE, FR…) Y ADEMÁS un NIF español etiquetado o un
+        //   VAT con prefijo ES, preferimos el NIF español. Caso Amazon ES.
+        //   Solo se aplica con EU VAT presente porque la regex de NIF
+        //   español etiquetado es amplia y matchearía erróneamente "NIF:
+        //   74668351R" del cliente en facturas nacionales sin VAT.
+        if (!allEuVat.isEmpty()) {
+            Matcher snif = SPANISH_NIF_LABELED_PATTERN.matcher(text);
+            while (snif.find()) {
+                if (snif.start() < receiverPos) {
+                    return snif.group(1).toUpperCase();
+                }
+            }
+            Matcher svat = SPANISH_VAT_PREFIX_PATTERN.matcher(text);
+            while (svat.find()) {
+                if (svat.start() < receiverPos) {
+                    return svat.group(1).toUpperCase();
+                }
             }
         }
-        // PRIORIDAD 2: VAT español "ESW0184081H" — extraer el NIF.
-        Matcher svat = SPANISH_VAT_PREFIX_PATTERN.matcher(text);
-        while (svat.find()) {
-            if (svat.start() < receiverPos) {
-                return svat.group(1).toUpperCase();
-            }
-        }
-        // PRIORIDAD 3: "CIF B12345678" explícito (pie español).
+        // PRIORIDAD 2: "CIF B12345678" explícito (pie español).
         Matcher cif = CIF_EXPLICIT_PATTERN.matcher(text);
         if (cif.find()) {
             return cif.group(1).toUpperCase();
+        }
+        // PRIORIDAD 3: "IVA LU20260743" etiquetado — para proveedores
+        //   100% extranjeros (sin sucursal española).
+        Matcher eu = EU_VAT_LABELED_PATTERN.matcher(text);
+        if (eu.find()) {
+            return eu.group(1).toUpperCase();
         }
         // PRIORIDAD 4: el primer NIF nacional antes del receptor.
         Matcher nifMatcher = NIF_PATTERN.matcher(text);
@@ -746,16 +766,9 @@ public class InvoiceFieldsExtractor {
                 return nifMatcher.group(1).toUpperCase();
             }
         }
-        // PRIORIDAD 5: "IVA LU20260743" etiquetado — solo si NO hay NIF
-        //   español ya. Útil para proveedores 100% extranjeros que solo
-        //   facturan con VAT (no tienen sucursal en España).
-        Matcher eu = EU_VAT_LABELED_PATTERN.matcher(text);
-        if (eu.find()) {
-            return eu.group(1).toUpperCase();
-        }
-        // PRIORIDAD 6: el primer VAT EU sin etiqueta.
+        // PRIORIDAD 5: el primer VAT EU sin etiqueta.
         if (!allEuVat.isEmpty()) return allEuVat.get(0);
-        // PRIORIDAD 7: el primer CIF (letra+8) en el texto. Empieza por
+        // PRIORIDAD 6: el primer CIF (letra+8) en el texto. Empieza por
         // letra → más probable que sea sociedad emisora que persona física.
         for (String n : allNifs) {
             if (n.matches("^[A-HJ-NP-SUVW].*")) return n;
