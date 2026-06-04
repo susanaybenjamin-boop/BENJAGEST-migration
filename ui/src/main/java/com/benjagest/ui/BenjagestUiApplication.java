@@ -7655,8 +7655,72 @@ public class BenjagestUiApplication extends Application {
     private String tNewModulesEn(String key) {
         return switch (key) {
             // ---- Labor module (L1) ----
-            case "labor.title" -> "Employees";
-            case "labor.subtitle" -> "Workforce, contracts and (soon) payslips.";
+            case "labor.title" -> "HR / Personnel";
+            case "labor.subtitle" -> "Workforce, contracts, time tracking and payslips — all in one place.";
+            case "labor.tab.employees" -> "Employees";
+            case "labor.tab.contracts" -> "Contracts";
+            case "labor.tab.timeclock" -> "Time clock";
+            case "labor.tab.payslips" -> "Payslips";
+            // ---- contracts global ----
+            case "labor.contracts.placeholder.empty.global" -> "No contracts registered yet.";
+            case "labor.contracts.col.employee" -> "Employee";
+            case "labor.contracts.global.hint" -> "All contracts for the company. Sort by any column. To edit a contract or add a new one, go to the employee detail.";
+            // ---- timeclock ----
+            case "timeclock.employee.label" -> "Punching as";
+            case "timeclock.error.no_employee.title" -> "No employee selected";
+            case "timeclock.error.no_employee.body" -> "Choose an employee from the list before punching.";
+            // ---- payslips ----
+            case "labor.payslips.placeholder.empty" -> "No payslips yet for this year.";
+            case "labor.payslips.hint" -> "Calculate, store and send payslips. SS employee = 6.35% of gross; IRPF % from contract or estimated from yearly brackets.";
+            case "labor.payslips.col.period" -> "Period";
+            case "labor.payslips.col.employee" -> "Employee";
+            case "labor.payslips.col.type" -> "Type";
+            case "labor.payslips.col.gross" -> "Gross";
+            case "labor.payslips.col.ss" -> "SS 6.35%";
+            case "labor.payslips.col.irpf" -> "IRPF";
+            case "labor.payslips.col.net" -> "Net";
+            case "labor.payslips.col.status" -> "Status";
+            case "labor.payslips.type.MONTHLY" -> "Monthly";
+            case "labor.payslips.type.EXTRA_SUMMER" -> "Summer bonus";
+            case "labor.payslips.type.EXTRA_CHRISTMAS" -> "Christmas bonus";
+            case "labor.payslips.type.BONUS" -> "Bonus";
+            case "labor.payslips.type.SETTLEMENT" -> "Settlement";
+            case "labor.payslips.status.DRAFT" -> "Draft";
+            case "labor.payslips.status.CALCULATED" -> "Calculated";
+            case "labor.payslips.status.PAID" -> "Paid";
+            case "labor.payslips.status.CANCELLED" -> "Cancelled";
+            case "labor.payslips.action.calculate" -> "Calculate payslip";
+            case "labor.payslips.action.pay" -> "Mark as paid";
+            case "labor.payslips.action.pdf" -> "Download PDF";
+            case "labor.payslips.action.email" -> "Send by email";
+            case "labor.payslips.action.delete" -> "Delete";
+            case "labor.payslips.calc.title" -> "Calculate payslip";
+            case "labor.payslips.calc.save" -> "Calculate";
+            case "labor.payslips.calc.employee" -> "Employee";
+            case "labor.payslips.calc.year" -> "Year";
+            case "labor.payslips.calc.month" -> "Month";
+            case "labor.payslips.calc.type" -> "Type";
+            case "labor.payslips.calc.extra_prorated" -> "Prorate extra bonuses";
+            case "labor.payslips.calc.other_deductions" -> "Other deductions (€)";
+            case "labor.payslips.calc.other_deductions.prompt" -> "Optional";
+            case "labor.payslips.calc.notes" -> "Notes";
+            case "labor.payslips.calc.fail.title" -> "Could not calculate";
+            case "labor.payslips.calc.fail.body" -> "Check the contract data and try again.";
+            case "labor.payslips.calc.fail.no_employee" -> "Select an employee.";
+            case "labor.payslips.pay.title" -> "Mark as paid?";
+            case "labor.payslips.pay.body" -> "You are about to mark the payslip as paid for";
+            case "labor.payslips.pdf.save_as" -> "Save payslip as…";
+            case "labor.payslips.pdf.fail.title" -> "Could not generate PDF";
+            case "labor.payslips.pdf.fail.body" -> "Try again later.";
+            case "labor.payslips.email.title" -> "Send payslip by email?";
+            case "labor.payslips.email.body" -> "The payslip will be sent to the employee email of";
+            case "labor.payslips.email.ok.title" -> "Email sent";
+            case "labor.payslips.email.ok.body" -> "The employee has received the payslip.";
+            case "labor.payslips.email.fail.title" -> "Could not send";
+            case "labor.payslips.email.fail.body" -> "Check SMTP configuration and that the employee has an email.";
+            case "labor.payslips.delete.title" -> "Delete payslip?";
+            case "labor.payslips.delete.body" -> "You are about to delete the payslip of";
+            case "labor.title.old" -> "Employees";
             case "labor.load_failed" -> "Could not load the employee list.";
             case "labor.action.new_employee" -> "New employee";
             case "labor.employees.placeholder.empty" -> "No employees yet.";
@@ -7849,8 +7913,69 @@ public class BenjagestUiApplication extends Application {
     private String tNewModulesEs(String key) {
         return switch (key) {
             // ---- Laboral (L1) ----
-            case "labor.title" -> "Empleados";
-            case "labor.subtitle" -> "Plantilla, contratos y (proximamente) nominas.";
+            case "labor.title" -> "Personal";
+            case "labor.subtitle" -> "Plantilla, contratos, fichajes y nominas — todo en una sola pantalla.";
+            case "labor.tab.employees" -> "Empleados";
+            case "labor.tab.contracts" -> "Contratos";
+            case "labor.tab.timeclock" -> "Fichajes";
+            case "labor.tab.payslips" -> "Nominas";
+            case "labor.contracts.placeholder.empty.global" -> "Aun no hay contratos registrados.";
+            case "labor.contracts.col.employee" -> "Empleado";
+            case "labor.contracts.global.hint" -> "Todos los contratos de la empresa. Ordena por cualquier columna. Para editar un contrato o anadir uno nuevo, ve al detalle del empleado.";
+            case "timeclock.employee.label" -> "Fichando como";
+            case "timeclock.error.no_employee.title" -> "Sin empleado seleccionado";
+            case "timeclock.error.no_employee.body" -> "Elige un empleado de la lista antes de fichar.";
+            case "labor.payslips.placeholder.empty" -> "No hay nominas para este ano.";
+            case "labor.payslips.hint" -> "Calcula, guarda y envia nominas. SS empleado = 6,35% del bruto; % IRPF del contrato o estimado por tramos anuales.";
+            case "labor.payslips.col.period" -> "Periodo";
+            case "labor.payslips.col.employee" -> "Empleado";
+            case "labor.payslips.col.type" -> "Tipo";
+            case "labor.payslips.col.gross" -> "Bruto";
+            case "labor.payslips.col.ss" -> "SS 6,35%";
+            case "labor.payslips.col.irpf" -> "IRPF";
+            case "labor.payslips.col.net" -> "Liquido";
+            case "labor.payslips.col.status" -> "Estado";
+            case "labor.payslips.type.MONTHLY" -> "Mensual";
+            case "labor.payslips.type.EXTRA_SUMMER" -> "Paga verano";
+            case "labor.payslips.type.EXTRA_CHRISTMAS" -> "Paga navidad";
+            case "labor.payslips.type.BONUS" -> "Bonus";
+            case "labor.payslips.type.SETTLEMENT" -> "Liquidacion";
+            case "labor.payslips.status.DRAFT" -> "Borrador";
+            case "labor.payslips.status.CALCULATED" -> "Calculada";
+            case "labor.payslips.status.PAID" -> "Pagada";
+            case "labor.payslips.status.CANCELLED" -> "Cancelada";
+            case "labor.payslips.action.calculate" -> "Calcular nomina";
+            case "labor.payslips.action.pay" -> "Marcar pagada";
+            case "labor.payslips.action.pdf" -> "Descargar PDF";
+            case "labor.payslips.action.email" -> "Enviar por email";
+            case "labor.payslips.action.delete" -> "Borrar";
+            case "labor.payslips.calc.title" -> "Calcular nomina";
+            case "labor.payslips.calc.save" -> "Calcular";
+            case "labor.payslips.calc.employee" -> "Empleado";
+            case "labor.payslips.calc.year" -> "Ano";
+            case "labor.payslips.calc.month" -> "Mes";
+            case "labor.payslips.calc.type" -> "Tipo";
+            case "labor.payslips.calc.extra_prorated" -> "Prorratear pagas extras";
+            case "labor.payslips.calc.other_deductions" -> "Otras deducciones (€)";
+            case "labor.payslips.calc.other_deductions.prompt" -> "Opcional";
+            case "labor.payslips.calc.notes" -> "Notas";
+            case "labor.payslips.calc.fail.title" -> "No se pudo calcular";
+            case "labor.payslips.calc.fail.body" -> "Revisa los datos del contrato e intentalo de nuevo.";
+            case "labor.payslips.calc.fail.no_employee" -> "Selecciona un empleado.";
+            case "labor.payslips.pay.title" -> "Marcar como pagada?";
+            case "labor.payslips.pay.body" -> "Vas a marcar como pagada la nomina de";
+            case "labor.payslips.pdf.save_as" -> "Guardar nomina como…";
+            case "labor.payslips.pdf.fail.title" -> "No se pudo generar PDF";
+            case "labor.payslips.pdf.fail.body" -> "Intentalo de nuevo mas tarde.";
+            case "labor.payslips.email.title" -> "Enviar nomina por email?";
+            case "labor.payslips.email.body" -> "La nomina se enviara al email del empleado";
+            case "labor.payslips.email.ok.title" -> "Email enviado";
+            case "labor.payslips.email.ok.body" -> "El empleado ha recibido la nomina.";
+            case "labor.payslips.email.fail.title" -> "No se pudo enviar";
+            case "labor.payslips.email.fail.body" -> "Comprueba la configuracion SMTP y que el empleado tenga email.";
+            case "labor.payslips.delete.title" -> "Borrar nomina?";
+            case "labor.payslips.delete.body" -> "Vas a borrar la nomina de";
+            case "labor.title.old" -> "Empleados";
             case "labor.load_failed" -> "No se pudo cargar la plantilla.";
             case "labor.action.new_employee" -> "Nuevo empleado";
             case "labor.employees.placeholder.empty" -> "Aun no hay empleados.";
@@ -8053,11 +8178,20 @@ public class BenjagestUiApplication extends Application {
     private TableView<com.benjagest.ui.model.EmployeeEntry> employeesTable;
     private TableView<com.benjagest.ui.model.ContractEntry> contractsTable;
 
+    /**
+     * Modulo Personal unificado con 4 sub-tabs: Empleados, Contratos,
+     * Fichajes, Nominas. Carga los datos comunes en paralelo y pinta
+     * el TabPane.
+     */
     private void showLaborModule() {
-        Task<java.util.List<com.benjagest.ui.model.EmployeeEntry>> task = new Task<>() {
+        Task<LaborBundle> task = new Task<>() {
             @Override
-            protected java.util.List<com.benjagest.ui.model.EmployeeEntry> call() throws Exception {
-                return laborApiClient.listEmployees(true);
+            protected LaborBundle call() throws Exception {
+                var employees = laborApiClient.listEmployees(true);
+                var contracts = laborApiClient.listContracts(null);
+                int year = java.time.LocalDate.now().getYear();
+                var payslips = laborApiClient.listPayslips(year, null, null);
+                return new LaborBundle(employees, contracts, payslips, year);
             }
         };
         task.setOnSucceeded(ev -> setCenterAnimated(scroll(laborView(task.getValue()))));
@@ -8065,24 +8199,53 @@ public class BenjagestUiApplication extends Application {
         start(task, "labor-load");
     }
 
-    private VBox laborView(java.util.List<com.benjagest.ui.model.EmployeeEntry> employees) {
+    private record LaborBundle(
+            java.util.List<com.benjagest.ui.model.EmployeeEntry> employees,
+            java.util.List<com.benjagest.ui.model.ContractEntry> contracts,
+            java.util.List<com.benjagest.ui.model.PayslipEntry> payslips,
+            int currentYear) {}
+
+    private VBox laborView(LaborBundle bundle) {
         VBox content = content();
         Label title = new Label(t("labor.title"));
         title.getStyleClass().add("module-detail-title");
         Label subtitle = new Label(t("labor.subtitle"));
         subtitle.getStyleClass().add("module-detail-description");
         VBox titleBox = new VBox(4, title, subtitle);
-        StackPane moduleIcon = iconBubble("fas-hard-hat", "module-title-icon");
+        StackPane moduleIcon = iconBubble("fas-users", "module-title-icon");
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
 
+        HBox header = new HBox(16, titleBox, moduleIcon, spacer);
+        header.setAlignment(Pos.CENTER_LEFT);
+        header.getStyleClass().add("module-detail-header");
+
+        TabPane tabs = new TabPane();
+        tabs.getStyleClass().add("settings-tabs");
+        tabs.setTabClosingPolicy(TabPane.TabClosingPolicy.UNAVAILABLE);
+
+        Tab empTab = new Tab(t("labor.tab.employees"), buildEmployeesTab(bundle.employees()));
+        empTab.setGraphic(icon("fas-user"));
+        Tab contractsTab = new Tab(t("labor.tab.contracts"), buildContractsGlobalTab(bundle));
+        contractsTab.setGraphic(icon("fas-file-contract"));
+        Tab clockTab = new Tab(t("labor.tab.timeclock"), buildTimeClockTab(bundle.employees()));
+        clockTab.setGraphic(icon("fas-clock"));
+        Tab payslipsTab = new Tab(t("labor.tab.payslips"), buildPayslipsTab(bundle));
+        payslipsTab.setGraphic(icon("fas-file-invoice-dollar"));
+
+        tabs.getTabs().addAll(empTab, contractsTab, clockTab, payslipsTab);
+        VBox.setVgrow(tabs, Priority.ALWAYS);
+
+        content.getChildren().addAll(header, tabs);
+        return content;
+    }
+
+    // ----- Sub-tab Empleados -----
+
+    private Node buildEmployeesTab(java.util.List<com.benjagest.ui.model.EmployeeEntry> employees) {
         Button newEmployee = new Button(t("labor.action.new_employee"));
         newEmployee.setGraphic(icon("fas-plus"));
         newEmployee.setOnAction(ev -> showEmployeeEditor(null));
-
-        HBox header = new HBox(16, titleBox, moduleIcon, spacer, newEmployee);
-        header.setAlignment(Pos.CENTER_LEFT);
-        header.getStyleClass().add("module-detail-header");
 
         employeesTable = new TableView<>();
         employeesTable.getStyleClass().add("data-table");
@@ -8152,13 +8315,483 @@ public class BenjagestUiApplication extends Application {
             deleteBtn.setDisable(nv == null || !nv.active());
         });
 
-        HBox actions = new HBox(8, editBtn, contractsBtn, deleteBtn);
-        actions.getStyleClass().add("settings-actions");
+        HBox actions = new HBox(8, newEmployee, editBtn, contractsBtn, deleteBtn);
+        actions.setAlignment(Pos.CENTER_LEFT);
+        actions.setPadding(new Insets(0, 0, 8, 0));
 
-        VBox body = new VBox(12, employeesTable);
+        VBox body = new VBox(12, actions, employeesTable);
         VBox.setVgrow(employeesTable, Priority.ALWAYS);
-        content.getChildren().addAll(header, body, actions);
-        return content;
+        body.setPadding(new Insets(12));
+        return body;
+    }
+
+    // ----- Sub-tab Contratos globales -----
+
+    private Node buildContractsGlobalTab(LaborBundle bundle) {
+        java.util.Map<String, String> empById = new java.util.HashMap<>();
+        for (var e : bundle.employees()) empById.put(e.id(), e.fullName());
+
+        TableView<com.benjagest.ui.model.ContractEntry> table = new TableView<>();
+        table.getStyleClass().add("data-table");
+        table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+        table.setPlaceholder(new Label(t("labor.contracts.placeholder.empty.global")));
+
+        TableColumn<com.benjagest.ui.model.ContractEntry, String> colEmp =
+                new TableColumn<>(t("labor.contracts.col.employee"));
+        colEmp.setCellValueFactory(c -> new SimpleStringProperty(
+                empById.getOrDefault(c.getValue().employeeId(), shortId(c.getValue().employeeId()))));
+        colEmp.setPrefWidth(180);
+        TableColumn<com.benjagest.ui.model.ContractEntry, String> colType =
+                new TableColumn<>(t("labor.contracts.col.type"));
+        colType.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().contractType()));
+        colType.setPrefWidth(140);
+        TableColumn<com.benjagest.ui.model.ContractEntry, String> colSepe =
+                new TableColumn<>(t("labor.contracts.col.sepe"));
+        colSepe.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().sepeContractCode()));
+        colSepe.setPrefWidth(70);
+        TableColumn<com.benjagest.ui.model.ContractEntry, String> colStart =
+                new TableColumn<>(t("labor.contracts.col.start"));
+        colStart.setCellValueFactory(c -> new SimpleStringProperty(
+                c.getValue().startDate() == null ? "" : c.getValue().startDate().toString()));
+        colStart.setPrefWidth(110);
+        colStart.setComparator(ISO_DATE_COMPARATOR);
+        TableColumn<com.benjagest.ui.model.ContractEntry, String> colEnd =
+                new TableColumn<>(t("labor.contracts.col.end"));
+        colEnd.setCellValueFactory(c -> new SimpleStringProperty(
+                c.getValue().endDate() == null ? "" : c.getValue().endDate().toString()));
+        colEnd.setPrefWidth(110);
+        colEnd.setComparator(ISO_DATE_COMPARATOR);
+        TableColumn<com.benjagest.ui.model.ContractEntry, String> colSalary =
+                new TableColumn<>(t("labor.contracts.col.salary"));
+        colSalary.setCellValueFactory(c -> new SimpleStringProperty(
+                c.getValue().grossSalary() == null ? "" : c.getValue().grossSalary().toPlainString() + " €"));
+        colSalary.setPrefWidth(110);
+        colSalary.setComparator(NUMERIC_STRING_COMPARATOR);
+        TableColumn<com.benjagest.ui.model.ContractEntry, String> colStatus =
+                new TableColumn<>(t("labor.contracts.col.status"));
+        colStatus.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().status()));
+        colStatus.setPrefWidth(110);
+        table.getColumns().addAll(java.util.List.of(colEmp, colType, colSepe, colStart, colEnd, colSalary, colStatus));
+        table.setItems(FXCollections.observableArrayList(bundle.contracts()));
+
+        Label hint = new Label(t("labor.contracts.global.hint"));
+        hint.setWrapText(true);
+        hint.getStyleClass().add("settings-hint");
+
+        VBox body = new VBox(8, hint, table);
+        VBox.setVgrow(table, Priority.ALWAYS);
+        body.setPadding(new Insets(12));
+        return body;
+    }
+
+    // ----- Sub-tab Fichajes (embebido, con lookup employee↔user) -----
+
+    private Node buildTimeClockTab(java.util.List<com.benjagest.ui.model.EmployeeEntry> allEmployees) {
+        // ComboBox de empleados (para admin: poder fichar otros). Por
+        // defecto preselecciona el resuelto del usuario actual.
+        ComboBox<com.benjagest.ui.model.EmployeeEntry> empCombo = new ComboBox<>();
+        empCombo.setConverter(new javafx.util.StringConverter<>() {
+            @Override public String toString(com.benjagest.ui.model.EmployeeEntry e) {
+                return e == null ? "" : e.fullName()
+                        + (e.taxIdentifier() == null || e.taxIdentifier().isBlank() ? ""
+                            : " · " + e.taxIdentifier());
+            }
+            @Override public com.benjagest.ui.model.EmployeeEntry fromString(String s) { return null; }
+        });
+        empCombo.getItems().addAll(allEmployees.stream().filter(com.benjagest.ui.model.EmployeeEntry::active).toList());
+
+        Label hint = new Label(t("timeclock.hint"));
+        hint.setWrapText(true);
+        hint.getStyleClass().add("settings-hint");
+
+        Button inBtn = new Button(t("timeclock.action.in"));
+        inBtn.setGraphic(icon("fas-sign-in-alt"));
+        inBtn.getStyleClass().add("invoice-validate-action");
+        inBtn.setMinHeight(48); inBtn.setMinWidth(140);
+        Button outBtn = new Button(t("timeclock.action.out"));
+        outBtn.setGraphic(icon("fas-sign-out-alt"));
+        outBtn.getStyleClass().add("invoice-validate-action");
+        outBtn.setMinHeight(48); outBtn.setMinWidth(140);
+        Button breakStartBtn = new Button(t("timeclock.action.break_start"));
+        breakStartBtn.setGraphic(icon("fas-coffee"));
+        breakStartBtn.setMinHeight(48); breakStartBtn.setMinWidth(140);
+        Button breakEndBtn = new Button(t("timeclock.action.break_end"));
+        breakEndBtn.setGraphic(icon("fas-utensils"));
+        breakEndBtn.setMinHeight(48); breakEndBtn.setMinWidth(140);
+
+        TableView<com.benjagest.ui.model.TimeClockEntry> table = new TableView<>();
+        table.getStyleClass().add("data-table");
+        table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+        table.setPlaceholder(new Label(t("timeclock.placeholder.empty")));
+        TableColumn<com.benjagest.ui.model.TimeClockEntry, String> colWhen =
+                new TableColumn<>(t("timeclock.col.when"));
+        colWhen.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().eventTimeIso()));
+        colWhen.setPrefWidth(180);
+        colWhen.setComparator(ISO_DATE_COMPARATOR);
+        TableColumn<com.benjagest.ui.model.TimeClockEntry, String> colType =
+                new TableColumn<>(t("timeclock.col.type"));
+        colType.setCellValueFactory(c -> new SimpleStringProperty(localizedPunchType(c.getValue().eventType())));
+        colType.setPrefWidth(140);
+        TableColumn<com.benjagest.ui.model.TimeClockEntry, String> colOrigin =
+                new TableColumn<>(t("timeclock.col.origin"));
+        colOrigin.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().origin()));
+        colOrigin.setPrefWidth(100);
+        TableColumn<com.benjagest.ui.model.TimeClockEntry, String> colStatus =
+                new TableColumn<>(t("timeclock.col.status"));
+        colStatus.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().status()));
+        colStatus.setPrefWidth(110);
+        table.getColumns().addAll(java.util.List.of(colWhen, colType, colOrigin, colStatus));
+        timeClockTable = table;
+
+        Runnable reload = () -> {
+            var sel = empCombo.getValue();
+            if (sel == null) {
+                table.getItems().clear();
+                return;
+            }
+            reloadTimeClock(sel.id());
+        };
+
+        java.util.function.Consumer<String> doPunch = (eventType) -> {
+            var sel = empCombo.getValue();
+            if (sel == null) {
+                showError(t("timeclock.error.no_employee.title"),
+                        t("timeclock.error.no_employee.body"));
+                return;
+            }
+            punch(sel.id(), eventType);
+            // refresh tras un pequeño delay para que aparezca el nuevo
+            Task<Void> delayed = new Task<>() {
+                @Override protected Void call() throws Exception { Thread.sleep(500); return null; }
+            };
+            delayed.setOnSucceeded(ev -> reload.run());
+            start(delayed, "tc-reload-after-punch");
+        };
+
+        inBtn.setOnAction(ev -> doPunch.accept("IN"));
+        outBtn.setOnAction(ev -> doPunch.accept("OUT"));
+        breakStartBtn.setOnAction(ev -> doPunch.accept("BREAK_START"));
+        breakEndBtn.setOnAction(ev -> doPunch.accept("BREAK_END"));
+
+        Button refresh = new Button(t("timeclock.action.refresh"));
+        refresh.setGraphic(icon("fas-sync"));
+        refresh.setOnAction(ev -> reload.run());
+
+        empCombo.setOnAction(ev -> reload.run());
+
+        // Resolver el empleado del usuario actual (lookup automático)
+        Task<String> resolveTask = new Task<>() {
+            @Override
+            protected String call() throws Exception {
+                return laborApiClient.resolveEmployeeIdForCurrentUser(AuthSession.get().userId());
+            }
+        };
+        resolveTask.setOnSucceeded(ev -> {
+            String resolved = resolveTask.getValue();
+            if (resolved != null) {
+                for (var e : empCombo.getItems()) {
+                    if (resolved.equals(e.id())) { empCombo.setValue(e); break; }
+                }
+            }
+            if (empCombo.getValue() == null && !empCombo.getItems().isEmpty()) {
+                empCombo.setValue(empCombo.getItems().get(0));
+            }
+        });
+        start(resolveTask, "tc-resolve-employee");
+
+        HBox punchRow = new HBox(12, inBtn, outBtn, breakStartBtn, breakEndBtn);
+        punchRow.setAlignment(Pos.CENTER_LEFT);
+        HBox empRow = new HBox(8, new Label(t("timeclock.employee.label")), empCombo, refresh);
+        empRow.setAlignment(Pos.CENTER_LEFT);
+
+        VBox body = new VBox(12, hint, empRow, punchRow, table);
+        VBox.setVgrow(table, Priority.ALWAYS);
+        body.setPadding(new Insets(12));
+        return body;
+    }
+
+    // ----- Sub-tab Nominas -----
+
+    private TableView<com.benjagest.ui.model.PayslipEntry> payslipsTable;
+
+    private Node buildPayslipsTab(LaborBundle bundle) {
+        java.util.Map<String, String> empById = new java.util.HashMap<>();
+        for (var e : bundle.employees()) empById.put(e.id(), e.fullName());
+
+        payslipsTable = new TableView<>();
+        payslipsTable.getStyleClass().add("data-table");
+        payslipsTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+        payslipsTable.setPlaceholder(new Label(t("labor.payslips.placeholder.empty")));
+
+        TableColumn<com.benjagest.ui.model.PayslipEntry, String> cPeriod =
+                new TableColumn<>(t("labor.payslips.col.period"));
+        cPeriod.setCellValueFactory(c -> new SimpleStringProperty(
+                c.getValue().periodYear() + " · " + String.format("%02d", c.getValue().periodMonth())));
+        cPeriod.setPrefWidth(110);
+        TableColumn<com.benjagest.ui.model.PayslipEntry, String> cEmp =
+                new TableColumn<>(t("labor.payslips.col.employee"));
+        cEmp.setCellValueFactory(c -> new SimpleStringProperty(
+                c.getValue().employeeName() == null || c.getValue().employeeName().isBlank()
+                        ? empById.getOrDefault(c.getValue().employeeId(), shortId(c.getValue().employeeId()))
+                        : c.getValue().employeeName()));
+        TableColumn<com.benjagest.ui.model.PayslipEntry, String> cType =
+                new TableColumn<>(t("labor.payslips.col.type"));
+        cType.setCellValueFactory(c -> new SimpleStringProperty(t("labor.payslips.type." + c.getValue().payslipType())));
+        cType.setPrefWidth(120);
+        TableColumn<com.benjagest.ui.model.PayslipEntry, String> cGross =
+                new TableColumn<>(t("labor.payslips.col.gross"));
+        cGross.setCellValueFactory(c -> new SimpleStringProperty(
+                c.getValue().grossAmount() == null ? "" : c.getValue().grossAmount().toPlainString() + " €"));
+        cGross.setPrefWidth(110);
+        cGross.setComparator(NUMERIC_STRING_COMPARATOR);
+        TableColumn<com.benjagest.ui.model.PayslipEntry, String> cSs =
+                new TableColumn<>(t("labor.payslips.col.ss"));
+        cSs.setCellValueFactory(c -> new SimpleStringProperty(
+                c.getValue().ssEmployeeAmount() == null ? "" : c.getValue().ssEmployeeAmount().toPlainString() + " €"));
+        cSs.setPrefWidth(100);
+        cSs.setComparator(NUMERIC_STRING_COMPARATOR);
+        TableColumn<com.benjagest.ui.model.PayslipEntry, String> cIrpf =
+                new TableColumn<>(t("labor.payslips.col.irpf"));
+        cIrpf.setCellValueFactory(c -> new SimpleStringProperty(
+                c.getValue().irpfAmount() == null ? "" : c.getValue().irpfAmount().toPlainString() + " €"));
+        cIrpf.setPrefWidth(100);
+        cIrpf.setComparator(NUMERIC_STRING_COMPARATOR);
+        TableColumn<com.benjagest.ui.model.PayslipEntry, String> cNet =
+                new TableColumn<>(t("labor.payslips.col.net"));
+        cNet.setCellValueFactory(c -> new SimpleStringProperty(
+                c.getValue().netAmount() == null ? "" : c.getValue().netAmount().toPlainString() + " €"));
+        cNet.setPrefWidth(110);
+        cNet.setComparator(NUMERIC_STRING_COMPARATOR);
+        TableColumn<com.benjagest.ui.model.PayslipEntry, String> cStatus =
+                new TableColumn<>(t("labor.payslips.col.status"));
+        cStatus.setCellValueFactory(c -> new SimpleStringProperty(t("labor.payslips.status." + c.getValue().status())));
+        cStatus.setPrefWidth(110);
+        payslipsTable.getColumns().addAll(java.util.List.of(cPeriod, cEmp, cType, cGross, cSs, cIrpf, cNet, cStatus));
+        payslipsTable.setItems(FXCollections.observableArrayList(bundle.payslips()));
+
+        Button calcBtn = new Button(t("labor.payslips.action.calculate"));
+        calcBtn.setGraphic(icon("fas-calculator"));
+        calcBtn.setOnAction(ev -> showCalculatePayslipDialog(bundle.employees()));
+
+        Button payBtn = new Button(t("labor.payslips.action.pay"));
+        payBtn.setGraphic(icon("fas-money-check-alt"));
+        payBtn.setDisable(true);
+        payBtn.setOnAction(ev -> {
+            var sel = payslipsTable.getSelectionModel().getSelectedItem();
+            if (sel != null) markPayslipPaid(sel);
+        });
+
+        Button pdfBtn = new Button(t("labor.payslips.action.pdf"));
+        pdfBtn.setGraphic(icon("fas-file-pdf"));
+        pdfBtn.setDisable(true);
+        pdfBtn.setOnAction(ev -> {
+            var sel = payslipsTable.getSelectionModel().getSelectedItem();
+            if (sel != null) downloadPayslipPdf(sel);
+        });
+
+        Button emailBtn = new Button(t("labor.payslips.action.email"));
+        emailBtn.setGraphic(icon("fas-envelope"));
+        emailBtn.setDisable(true);
+        emailBtn.setOnAction(ev -> {
+            var sel = payslipsTable.getSelectionModel().getSelectedItem();
+            if (sel != null) emailPayslip(sel);
+        });
+
+        Button delBtn = new Button(t("labor.payslips.action.delete"));
+        delBtn.setGraphic(icon("fas-trash"));
+        delBtn.setDisable(true);
+        delBtn.setOnAction(ev -> {
+            var sel = payslipsTable.getSelectionModel().getSelectedItem();
+            if (sel != null) deletePayslip(sel);
+        });
+
+        payslipsTable.getSelectionModel().selectedItemProperty().addListener((o, ov, nv) -> {
+            boolean none = nv == null;
+            payBtn.setDisable(none || "PAID".equals(nv == null ? "" : nv.status()));
+            pdfBtn.setDisable(none);
+            emailBtn.setDisable(none);
+            delBtn.setDisable(none || "PAID".equals(nv == null ? "" : nv.status()));
+        });
+
+        HBox actions = new HBox(8, calcBtn, payBtn, pdfBtn, emailBtn, delBtn);
+        actions.setAlignment(Pos.CENTER_LEFT);
+
+        Label hint = new Label(t("labor.payslips.hint"));
+        hint.setWrapText(true);
+        hint.getStyleClass().add("settings-hint");
+
+        VBox body = new VBox(10, hint, actions, payslipsTable);
+        VBox.setVgrow(payslipsTable, Priority.ALWAYS);
+        body.setPadding(new Insets(12));
+        return body;
+    }
+
+    private void showCalculatePayslipDialog(java.util.List<com.benjagest.ui.model.EmployeeEntry> employees) {
+        Dialog<ButtonType> dialog = new Dialog<>();
+        dialog.setTitle(t("labor.payslips.calc.title"));
+        ButtonType saveBt = new ButtonType(t("labor.payslips.calc.save"), ButtonBar.ButtonData.OK_DONE);
+        dialog.getDialogPane().getButtonTypes().addAll(saveBt, ButtonType.CANCEL);
+
+        ComboBox<com.benjagest.ui.model.EmployeeEntry> empCombo = new ComboBox<>();
+        empCombo.setConverter(new javafx.util.StringConverter<>() {
+            @Override public String toString(com.benjagest.ui.model.EmployeeEntry e) {
+                return e == null ? "" : e.fullName();
+            }
+            @Override public com.benjagest.ui.model.EmployeeEntry fromString(String s) { return null; }
+        });
+        empCombo.getItems().addAll(employees.stream().filter(com.benjagest.ui.model.EmployeeEntry::active).toList());
+        if (!empCombo.getItems().isEmpty()) empCombo.getSelectionModel().selectFirst();
+
+        ComboBox<Integer> yearCombo = new ComboBox<>();
+        int year = java.time.LocalDate.now().getYear();
+        for (int y = year + 1; y >= year - 5; y--) yearCombo.getItems().add(y);
+        yearCombo.getSelectionModel().select(Integer.valueOf(year));
+
+        ComboBox<Integer> monthCombo = new ComboBox<>();
+        for (int m = 1; m <= 12; m++) monthCombo.getItems().add(m);
+        monthCombo.getSelectionModel().select(Integer.valueOf(java.time.LocalDate.now().getMonthValue()));
+
+        ComboBox<String> typeCombo = new ComboBox<>();
+        typeCombo.getItems().addAll("MONTHLY", "EXTRA_SUMMER", "EXTRA_CHRISTMAS", "BONUS", "SETTLEMENT");
+        typeCombo.getSelectionModel().select("MONTHLY");
+
+        CheckBox extraProrated = new CheckBox(t("labor.payslips.calc.extra_prorated"));
+        extraProrated.setSelected(true);
+
+        TextField otherField = new TextField();
+        otherField.setPromptText(t("labor.payslips.calc.other_deductions.prompt"));
+
+        TextArea notesArea = new TextArea(); notesArea.setPrefRowCount(2);
+
+        GridPane g = new GridPane();
+        g.setHgap(10); g.setVgap(8); g.setPadding(new Insets(10));
+        g.add(new Label(t("labor.payslips.calc.employee")), 0, 0); g.add(empCombo, 1, 0);
+        g.add(new Label(t("labor.payslips.calc.year")), 0, 1); g.add(yearCombo, 1, 1);
+        g.add(new Label(t("labor.payslips.calc.month")), 0, 2); g.add(monthCombo, 1, 2);
+        g.add(new Label(t("labor.payslips.calc.type")), 0, 3); g.add(typeCombo, 1, 3);
+        g.add(extraProrated, 1, 4);
+        g.add(new Label(t("labor.payslips.calc.other_deductions")), 0, 5); g.add(otherField, 1, 5);
+        g.add(new Label(t("labor.payslips.calc.notes")), 0, 6); g.add(notesArea, 1, 6);
+        dialog.getDialogPane().setContent(g);
+
+        dialog.showAndWait().ifPresent(bt -> {
+            if (bt != saveBt) return;
+            var emp = empCombo.getValue();
+            if (emp == null) {
+                showError(t("labor.payslips.calc.fail.title"), t("labor.payslips.calc.fail.no_employee"));
+                return;
+            }
+            java.math.BigDecimal other = parseDecSafe(otherField.getText());
+            Task<com.benjagest.ui.model.PayslipEntry> task = new Task<>() {
+                @Override
+                protected com.benjagest.ui.model.PayslipEntry call() throws Exception {
+                    return laborApiClient.calculatePayslip(emp.id(),
+                            yearCombo.getValue(), monthCombo.getValue(),
+                            typeCombo.getValue(), extraProrated.isSelected(),
+                            other, blankToNullOrSelf(notesArea.getText()));
+                }
+            };
+            task.setOnSucceeded(ev -> showLaborModule());
+            task.setOnFailed(ev -> showError(t("labor.payslips.calc.fail.title"),
+                    t("labor.payslips.calc.fail.body")));
+            start(task, "payslip-calculate");
+        });
+    }
+
+    private void markPayslipPaid(com.benjagest.ui.model.PayslipEntry p) {
+        Alert confirm = new Alert(Alert.AlertType.CONFIRMATION,
+                t("labor.payslips.pay.body") + " " + p.employeeName() + " (" + p.periodMonth() + "/" + p.periodYear() + ")",
+                ButtonType.OK, ButtonType.CANCEL);
+        confirm.setHeaderText(t("labor.payslips.pay.title"));
+        confirm.showAndWait().ifPresent(bt -> {
+            if (bt != ButtonType.OK) return;
+            Task<Void> task = new Task<>() {
+                @Override protected Void call() throws Exception {
+                    laborApiClient.markPayslipPaid(p.id());
+                    return null;
+                }
+            };
+            task.setOnSucceeded(ev -> showLaborModule());
+            task.setOnFailed(ev -> showError(t("labor.payslips.calc.fail.title"), t("labor.payslips.calc.fail.body")));
+            start(task, "payslip-pay");
+        });
+    }
+
+    private void downloadPayslipPdf(com.benjagest.ui.model.PayslipEntry p) {
+        Task<byte[]> task = new Task<>() {
+            @Override protected byte[] call() throws Exception {
+                return laborApiClient.downloadPayslipPdf(p.id());
+            }
+        };
+        task.setOnSucceeded(ev -> {
+            byte[] bytes = task.getValue();
+            javafx.stage.FileChooser fc = new javafx.stage.FileChooser();
+            fc.setTitle(t("labor.payslips.pdf.save_as"));
+            fc.setInitialFileName("nomina-" + p.periodYear() + "-"
+                    + String.format("%02d", p.periodMonth()) + "-"
+                    + (p.employeeName() == null ? p.employeeId() : p.employeeName().replace(" ", "_")) + ".pdf");
+            fc.getExtensionFilters().add(new javafx.stage.FileChooser.ExtensionFilter("PDF", "*.pdf"));
+            java.io.File f = fc.showSaveDialog(root.getScene().getWindow());
+            if (f == null) return;
+            try {
+                java.nio.file.Files.write(f.toPath(), bytes);
+                if (java.awt.Desktop.isDesktopSupported()) {
+                    try { java.awt.Desktop.getDesktop().open(f); } catch (Exception ignored) {}
+                }
+            } catch (java.io.IOException ex) {
+                showError(t("labor.payslips.pdf.fail.title"), ex.getMessage());
+            }
+        });
+        task.setOnFailed(ev -> showError(t("labor.payslips.pdf.fail.title"),
+                t("labor.payslips.pdf.fail.body")));
+        start(task, "payslip-pdf");
+    }
+
+    private void emailPayslip(com.benjagest.ui.model.PayslipEntry p) {
+        Alert confirm = new Alert(Alert.AlertType.CONFIRMATION,
+                t("labor.payslips.email.body") + " " + p.employeeName(),
+                ButtonType.OK, ButtonType.CANCEL);
+        confirm.setHeaderText(t("labor.payslips.email.title"));
+        confirm.showAndWait().ifPresent(bt -> {
+            if (bt != ButtonType.OK) return;
+            Task<Void> task = new Task<>() {
+                @Override protected Void call() throws Exception {
+                    laborApiClient.emailPayslipToEmployee(p.id());
+                    return null;
+                }
+            };
+            task.setOnSucceeded(ev -> showInfo(t("labor.payslips.email.ok.title"),
+                    t("labor.payslips.email.ok.body")));
+            task.setOnFailed(ev -> showError(t("labor.payslips.email.fail.title"),
+                    t("labor.payslips.email.fail.body")));
+            start(task, "payslip-email");
+        });
+    }
+
+    private void deletePayslip(com.benjagest.ui.model.PayslipEntry p) {
+        Alert confirm = new Alert(Alert.AlertType.CONFIRMATION,
+                t("labor.payslips.delete.body") + " " + p.periodMonth() + "/" + p.periodYear(),
+                ButtonType.OK, ButtonType.CANCEL);
+        confirm.setHeaderText(t("labor.payslips.delete.title"));
+        confirm.showAndWait().ifPresent(bt -> {
+            if (bt != ButtonType.OK) return;
+            Task<Void> task = new Task<>() {
+                @Override protected Void call() throws Exception {
+                    laborApiClient.deletePayslip(p.id());
+                    return null;
+                }
+            };
+            task.setOnSucceeded(ev -> showLaborModule());
+            task.setOnFailed(ev -> showError(t("labor.payslips.calc.fail.title"),
+                    t("labor.payslips.calc.fail.body")));
+            start(task, "payslip-delete");
+        });
+    }
+
+    private void showInfo(String title, String body) {
+        Alert a = new Alert(Alert.AlertType.INFORMATION, body);
+        a.setHeaderText(title);
+        a.showAndWait();
     }
 
     private void showEmployeeEditor(com.benjagest.ui.model.EmployeeEntry existing) {
