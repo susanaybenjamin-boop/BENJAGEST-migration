@@ -67,13 +67,80 @@ public class PayslipService {
     private final JdbcTemplate jdbcTemplate;
     private final TenantContext tenantContext;
     private final TaxRulesService taxRulesService;
+    private final PayslipPdfGenerator pdfGenerator;
+    private final com.benjagest.backend.settings.EmailSenderService emailSender;
+    private final com.benjagest.backend.settings.CompanyDataService companyDataService;
 
     public PayslipService(JdbcTemplate jdbcTemplate,
                            TenantContext tenantContext,
-                           TaxRulesService taxRulesService) {
+                           TaxRulesService taxRulesService,
+                           PayslipPdfGenerator pdfGenerator,
+                           com.benjagest.backend.settings.EmailSenderService emailSender,
+                           com.benjagest.backend.settings.CompanyDataService companyDataService) {
         this.jdbcTemplate = jdbcTemplate;
         this.tenantContext = tenantContext;
         this.taxRulesService = taxRulesService;
+        this.pdfGenerator = pdfGenerator;
+        this.emailSender = emailSender;
+        this.companyDataService = companyDataService;
+    }
+
+    public byte[] generatePdf(String id) {
+        findById(id); // valida que existe y pertenece al tenant
+        return pdfGenerator.generate(id);
+    }
+
+    /**
+     * Envía el PDF de la nómina al email del empleado.
+     */
+    @Transactional
+    public void emailToEmployee(String id) {
+        PayslipView view = findById(id);
+        // Email del empleado
+        String email = jdbcTemplate.query("""
+                SELECT email FROM employees WHERE id = ? AND company_id = ?
+                """,
+                (rs, n) -> rs.getString("email"),
+                view.employeeId(), tenantContext.getCurrentCompanyId())
+                .stream().findFirst().orElse(null);
+        if (email == null || email.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "El empleado no tiene email configurado");
+        }
+        byte[] pdf = pdfGenerator.generate(id);
+        String filename = "nomina-" + view.periodYear() + "-"
+                + String.format("%02d", view.periodMonth()) + "-"
+                + view.employeeName().replace(" ", "_") + ".pdf";
+        var company = companyDataService.getCurrent();
+        String subject = "Nomina " + view.periodMonth() + "/" + view.periodYear()
+                + " - " + (company.legalName() == null ? "" : company.legalName());
+        String body = "Hola " + view.employeeName() + ",\n\n"
+                + "Adjuntamos la nomina correspondiente al periodo "
+                + view.periodMonth() + "/" + view.periodYear() + ".\n\n"
+                + "Liquido a percibir: " + view.netAmount() + " EUR.\n\n"
+                + "Saludos,\n"
+                + (company.legalName() == null ? "Tu empresa" : company.legalName());
+
+        try {
+            emailSender.send(email, subject, body, pdf, filename);
+        } catch (Exception ex) {
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
+                    "Error enviando email: " + ex.getMessage());
+        }
+    }
+
+    /**
+     * Resuelve el employeeId asociado al usuario actual. Si el usuario
+     * tiene una fila en `employees` cuyo user_id coincide, la devuelve.
+     * Útil para el módulo de fichajes (auto-detect del empleado).
+     */
+    public String resolveEmployeeIdForUser(String userId) {
+        if (userId == null || userId.isBlank()) return null;
+        return jdbcTemplate.query("""
+                SELECT id FROM employees
+                 WHERE company_id = ? AND user_id = ? AND active = TRUE
+                """, (rs, n) -> rs.getString("id"),
+                tenantContext.getCurrentCompanyId(), userId)
+                .stream().findFirst().orElse(null);
     }
 
     public List<PayslipView> list(Integer year, String status, String employeeId)
@@ -361,5 +428,27 @@ public class PayslipService {
         @DeleteMapping("/{id}")
         @ResponseStatus(HttpStatus.NO_CONTENT)
         public void delete(@PathVariable("id") String id) { service.delete(id); }
+
+        @GetMapping("/{id}/pdf")
+        public org.springframework.http.ResponseEntity<byte[]> pdf(@PathVariable("id") String id) {
+            byte[] pdf = service.generatePdf(id);
+            return org.springframework.http.ResponseEntity.ok()
+                    .contentType(org.springframework.http.MediaType.APPLICATION_PDF)
+                    .header("Content-Disposition", "inline; filename=\"nomina-" + id + ".pdf\"")
+                    .body(pdf);
+        }
+
+        @PostMapping("/{id}/email")
+        @ResponseStatus(HttpStatus.NO_CONTENT)
+        public void email(@PathVariable("id") String id) { service.emailToEmployee(id); }
+
+        @GetMapping("/resolve-self")
+        public java.util.Map<String, String> resolveSelf(
+                @RequestParam(value = "userId") String userId) {
+            String employeeId = service.resolveEmployeeIdForUser(userId);
+            return employeeId == null
+                    ? java.util.Map.of()
+                    : java.util.Map.of("employeeId", employeeId);
+        }
     }
 }
