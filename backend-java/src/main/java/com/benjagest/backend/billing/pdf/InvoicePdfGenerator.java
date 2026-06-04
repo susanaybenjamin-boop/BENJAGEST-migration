@@ -571,9 +571,10 @@ public class InvoicePdfGenerator {
                     addedSomething = true;
                 }
             }
-            if (!addedSomething && nonBlank(company.invoiceFooter())) {
-                ct.addElement(new Paragraph(company.invoiceFooter(), fFooter));
-            }
+            // Tras V22 consolidacion, el pie de factura vive solo en
+            // invoice_texts.pie. El fallback al campo legacy
+            // company.invoice_footer queda fuera porque esa columna ya
+            // no existe.
             ct.go();
         }
     }

@@ -35,7 +35,7 @@ public class CompanyDataRepository {
                 SELECT id, legal_name, trade_name, tax_identifier, company_type,
                        email, phone, website,
                        address_line, city, province, postal_code, country,
-                       iban, registry_information, legal_terms, invoice_footer
+                       iban, registry_information
                   FROM companies
                  WHERE id = ?
                 """, this::mapCompany, tenantContext.getCurrentCompanyId());
@@ -57,9 +57,7 @@ public class CompanyDataRepository {
                        postal_code = ?,
                        country = COALESCE(?, country),
                        iban = ?,
-                       registry_information = ?,
-                       legal_terms = ?,
-                       invoice_footer = ?
+                       registry_information = ?
                  WHERE id = ?
                 """,
                 request.legalName().trim(),
@@ -75,8 +73,6 @@ public class CompanyDataRepository {
                 blankToNull(request.country()),
                 blankToNull(request.iban()),
                 blankToNull(request.registryInformation()),
-                blankToNull(request.legalTerms()),
-                blankToNull(request.invoiceFooter()),
                 tenantContext.getCurrentCompanyId()
         );
     }
@@ -97,9 +93,7 @@ public class CompanyDataRepository {
                 rs.getString("postal_code"),
                 rs.getString("country"),
                 rs.getString("iban"),
-                rs.getString("registry_information"),
-                rs.getString("legal_terms"),
-                rs.getString("invoice_footer")
+                rs.getString("registry_information")
         );
     }
 
