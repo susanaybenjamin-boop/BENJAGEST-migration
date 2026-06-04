@@ -216,6 +216,96 @@ public class BillingApiClient {
      * de éxito.
      */
     /**
+     * Catálogo de tipos impositivos (IVA + IRPF) para la empresa
+     * activa. Si {@code all=true} incluye los inactivos (la pantalla
+     * de configuración los necesita); si {@code all=false} solo los
+     * activos (el editor de facturas solo quiere los vigentes).
+     */
+    public List<com.benjagest.ui.model.VatRateEntry> listVatRates(boolean all) throws IOException, InterruptedException {
+        String url = baseUrl + "/billing/vat-rates" + (all ? "?all=true" : "");
+        HttpResponse<String> response = sendAuthorized(HttpRequest.newBuilder(URI.create(url))
+                .timeout(Duration.ofSeconds(10))
+                .GET());
+        ensureOk(response);
+        java.util.List<com.benjagest.ui.model.VatRateEntry> list = new ArrayList<>();
+        for (String obj : splitJsonObjects(response.body())) {
+            if (!obj.contains("\"kind\"")) continue;
+            list.add(new com.benjagest.ui.model.VatRateEntry(
+                    textField(obj, "id"),
+                    textField(obj, "kind"),
+                    textField(obj, "code"),
+                    textField(obj, "label"),
+                    decimalField(obj, "percent"),
+                    boolField(obj, "isDefault"),
+                    boolField(obj, "active"),
+                    textField(obj, "notes")
+            ));
+        }
+        return list;
+    }
+
+    public com.benjagest.ui.model.VatRateEntry createVatRate(String kind, String code, String label,
+                                                              java.math.BigDecimal percent,
+                                                              boolean isDefault) throws IOException, InterruptedException {
+        String body = "{"
+                + field("kind", kind) + ","
+                + field("code", code) + ","
+                + field("label", label) + ","
+                + "\"percent\":" + percent.toPlainString() + ","
+                + "\"isDefault\":" + isDefault + ","
+                + "\"active\":true"
+                + "}";
+        HttpResponse<String> response = sendAuthorized(HttpRequest.newBuilder(
+                URI.create(baseUrl + "/billing/vat-rates"))
+                .timeout(Duration.ofSeconds(8))
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(body)));
+        ensureOk(response);
+        return parseSingleVatRate(response.body());
+    }
+
+    public com.benjagest.ui.model.VatRateEntry updateVatRate(String id, String kind, String code,
+                                                              String label, java.math.BigDecimal percent,
+                                                              boolean isDefault, boolean active) throws IOException, InterruptedException {
+        String body = "{"
+                + field("kind", kind) + ","
+                + field("code", code) + ","
+                + field("label", label) + ","
+                + "\"percent\":" + percent.toPlainString() + ","
+                + "\"isDefault\":" + isDefault + ","
+                + "\"active\":" + active
+                + "}";
+        HttpResponse<String> response = sendAuthorized(HttpRequest.newBuilder(
+                URI.create(baseUrl + "/billing/vat-rates/" + id))
+                .timeout(Duration.ofSeconds(8))
+                .header("Content-Type", "application/json")
+                .PUT(HttpRequest.BodyPublishers.ofString(body)));
+        ensureOk(response);
+        return parseSingleVatRate(response.body());
+    }
+
+    public void deleteVatRate(String id) throws IOException, InterruptedException {
+        HttpResponse<String> response = sendAuthorized(HttpRequest.newBuilder(
+                URI.create(baseUrl + "/billing/vat-rates/" + id))
+                .timeout(Duration.ofSeconds(8))
+                .DELETE());
+        ensureOk(response);
+    }
+
+    private com.benjagest.ui.model.VatRateEntry parseSingleVatRate(String json) {
+        return new com.benjagest.ui.model.VatRateEntry(
+                textField(json, "id"),
+                textField(json, "kind"),
+                textField(json, "code"),
+                textField(json, "label"),
+                decimalField(json, "percent"),
+                boolField(json, "isDefault"),
+                boolField(json, "active"),
+                textField(json, "notes")
+        );
+    }
+
+    /**
      * Declaración responsable del fabricante del SIF (RD 1007/2023).
      * Endpoint informativo — devuelve el JSON con los datos del
      * productor + producto + fecha + compromiso.

@@ -3354,6 +3354,8 @@ public class BenjagestUiApplication extends Application {
         HBox actions = new HBox(8, save, verifyChain, manufacturerBtn);
         actions.getStyleClass().add("settings-actions");
 
+        Node vatRatesBlock = vatRatesAuditBlock();
+
         VBox body = new VBox(16,
                 section, hint, grid, certHint,
                 new Separator(),
@@ -3363,9 +3365,190 @@ public class BenjagestUiApplication extends Application {
                 new Separator(),
                 textsBlock,
                 new Separator(),
+                vatRatesBlock,
+                new Separator(),
                 sifEventsBlock
         );
         return tabLayout(label(t("billing.config.tab_title"), "settings-section-title"), body, actions);
+    }
+
+    /**
+     * Bloque "Tipos impositivos" en config facturación. Lista los
+     * tipos VAT/IRPF de la empresa y permite añadir/editar/borrar.
+     * Disponible en los dos modos (asesoría y cliente) — el catalogo
+     * es por empresa.
+     */
+    private TableView<com.benjagest.ui.model.VatRateEntry> vatRatesTable;
+
+    private Node vatRatesAuditBlock() {
+        Label header = label(t("billing.config.vat.section"), "settings-section-title");
+        Label hint = new Label(t("billing.config.vat.hint"));
+        hint.setWrapText(true);
+        hint.getStyleClass().add("settings-hint");
+
+        vatRatesTable = new TableView<>();
+        vatRatesTable.getStyleClass().add("data-table");
+        vatRatesTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+        vatRatesTable.setPlaceholder(new Label(t("billing.config.vat.placeholder.empty")));
+        vatRatesTable.setPrefHeight(240);
+
+        TableColumn<com.benjagest.ui.model.VatRateEntry, String> colKind =
+                new TableColumn<>(t("billing.config.vat.col.kind"));
+        colKind.setCellValueFactory(c -> new SimpleStringProperty(
+                "VAT".equals(c.getValue().kind()) ? t("billing.config.vat.kind.vat")
+                        : t("billing.config.vat.kind.withholding")));
+        colKind.setPrefWidth(100);
+        TableColumn<com.benjagest.ui.model.VatRateEntry, String> colCode =
+                new TableColumn<>(t("billing.config.vat.col.code"));
+        colCode.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().code()));
+        colCode.setPrefWidth(80);
+        TableColumn<com.benjagest.ui.model.VatRateEntry, String> colLabel =
+                new TableColumn<>(t("billing.config.vat.col.label"));
+        colLabel.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().label()));
+        TableColumn<com.benjagest.ui.model.VatRateEntry, String> colPct =
+                new TableColumn<>(t("billing.config.vat.col.percent"));
+        colPct.setCellValueFactory(c -> new SimpleStringProperty(
+                c.getValue().percent() == null ? "" : c.getValue().percent().toPlainString() + " %"));
+        colPct.setPrefWidth(80);
+        colPct.setComparator(NUMERIC_STRING_COMPARATOR);
+        TableColumn<com.benjagest.ui.model.VatRateEntry, String> colFlags =
+                new TableColumn<>(t("billing.config.vat.col.flags"));
+        colFlags.setCellValueFactory(c -> new SimpleStringProperty(
+                (c.getValue().isDefault() ? "★ " : "")
+                + (c.getValue().active() ? "" : t("billing.config.vat.inactive"))));
+        colFlags.setPrefWidth(100);
+        vatRatesTable.getColumns().addAll(java.util.List.of(colKind, colCode, colLabel, colPct, colFlags));
+
+        Button addBtn = new Button(t("billing.config.vat.action.add"));
+        addBtn.setGraphic(icon("fas-plus"));
+        addBtn.setOnAction(ev -> showVatRateEditor(null));
+
+        Button editBtn = new Button(t("billing.config.vat.action.edit"));
+        editBtn.setGraphic(icon("fas-edit"));
+        editBtn.setDisable(true);
+        editBtn.setOnAction(ev -> {
+            var sel = vatRatesTable.getSelectionModel().getSelectedItem();
+            if (sel != null) showVatRateEditor(sel);
+        });
+
+        Button deleteBtn = new Button(t("billing.config.vat.action.delete"));
+        deleteBtn.setGraphic(icon("fas-trash"));
+        deleteBtn.setDisable(true);
+        deleteBtn.setOnAction(ev -> {
+            var sel = vatRatesTable.getSelectionModel().getSelectedItem();
+            if (sel != null) deleteVatRate(sel);
+        });
+
+        vatRatesTable.getSelectionModel().selectedItemProperty().addListener((obs, oldV, newV) -> {
+            editBtn.setDisable(newV == null);
+            deleteBtn.setDisable(newV == null || newV.isDefault());
+        });
+
+        HBox btnRow = new HBox(8, addBtn, editBtn, deleteBtn);
+        btnRow.setAlignment(javafx.geometry.Pos.CENTER_LEFT);
+        reloadVatRates();
+        return new VBox(8, header, hint, vatRatesTable, btnRow);
+    }
+
+    private void reloadVatRates() {
+        if (vatRatesTable == null) return;
+        Task<java.util.List<com.benjagest.ui.model.VatRateEntry>> task = new Task<>() {
+            @Override
+            protected java.util.List<com.benjagest.ui.model.VatRateEntry> call() throws Exception {
+                return billingApiClient.listVatRates(true);
+            }
+        };
+        task.setOnSucceeded(ev -> vatRatesTable.setItems(FXCollections.observableArrayList(task.getValue())));
+        task.setOnFailed(ev -> vatRatesTable.getItems().clear());
+        start(task, "billing-vat-rates-reload");
+    }
+
+    private void showVatRateEditor(com.benjagest.ui.model.VatRateEntry existing) {
+        Dialog<ButtonType> dialog = new Dialog<>();
+        dialog.setTitle(existing == null ? t("billing.config.vat.editor.title_new")
+                : t("billing.config.vat.editor.title_edit"));
+        ButtonType saveBt = new ButtonType(t("billing.config.vat.editor.save"), ButtonBar.ButtonData.OK_DONE);
+        dialog.getDialogPane().getButtonTypes().addAll(saveBt, ButtonType.CANCEL);
+
+        ComboBox<String> kindCombo = new ComboBox<>();
+        kindCombo.getItems().addAll("VAT", "WITHHOLDING");
+        kindCombo.getSelectionModel().select(existing == null ? "VAT" : existing.kind());
+        kindCombo.setDisable(existing != null);  // no editable tras crear
+
+        TextField codeField = new TextField(existing == null ? "" : existing.code());
+        codeField.setDisable(existing != null);  // no editable tras crear
+        TextField labelField = new TextField(existing == null ? "" : existing.label());
+        TextField pctField = new TextField(existing == null ? "21" : existing.percent().toPlainString());
+        CheckBox defaultCb = new CheckBox(t("billing.config.vat.editor.is_default"));
+        defaultCb.setSelected(existing != null && existing.isDefault());
+        CheckBox activeCb = new CheckBox(t("billing.config.vat.editor.active"));
+        activeCb.setSelected(existing == null || existing.active());
+
+        GridPane grid = new GridPane();
+        grid.setHgap(10); grid.setVgap(8); grid.setPadding(new Insets(10));
+        grid.add(new Label(t("billing.config.vat.editor.kind")), 0, 0); grid.add(kindCombo, 1, 0);
+        grid.add(new Label(t("billing.config.vat.editor.code")), 0, 1); grid.add(codeField, 1, 1);
+        grid.add(new Label(t("billing.config.vat.editor.label")), 0, 2); grid.add(labelField, 1, 2);
+        grid.add(new Label(t("billing.config.vat.editor.percent")), 0, 3); grid.add(pctField, 1, 3);
+        grid.add(defaultCb, 1, 4);
+        grid.add(activeCb, 1, 5);
+        dialog.getDialogPane().setContent(grid);
+
+        dialog.showAndWait().ifPresent(bt -> {
+            if (bt != saveBt) return;
+            try {
+                java.math.BigDecimal pct = new java.math.BigDecimal(pctField.getText().trim().replace(",", "."));
+                Task<com.benjagest.ui.model.VatRateEntry> task = new Task<>() {
+                    @Override
+                    protected com.benjagest.ui.model.VatRateEntry call() throws Exception {
+                        if (existing == null) {
+                            return billingApiClient.createVatRate(
+                                    kindCombo.getValue(),
+                                    codeField.getText().trim().toUpperCase(),
+                                    labelField.getText().trim(),
+                                    pct,
+                                    defaultCb.isSelected());
+                        }
+                        return billingApiClient.updateVatRate(
+                                existing.id(),
+                                existing.kind(),
+                                existing.code(),
+                                labelField.getText().trim(),
+                                pct,
+                                defaultCb.isSelected(),
+                                activeCb.isSelected());
+                    }
+                };
+                task.setOnSucceeded(ev -> reloadVatRates());
+                task.setOnFailed(ev -> showError(t("billing.config.vat.editor.fail.title"),
+                        t("billing.config.vat.editor.fail.body")));
+                start(task, "billing-vat-rates-save");
+            } catch (NumberFormatException ex) {
+                showError(t("billing.config.vat.editor.fail.title"),
+                        t("billing.config.vat.editor.invalid_percent"));
+            }
+        });
+    }
+
+    private void deleteVatRate(com.benjagest.ui.model.VatRateEntry entry) {
+        Alert confirm = new Alert(Alert.AlertType.CONFIRMATION,
+                t("billing.config.vat.delete.body") + " " + entry.label(),
+                ButtonType.OK, ButtonType.CANCEL);
+        confirm.setHeaderText(t("billing.config.vat.delete.title"));
+        confirm.showAndWait().ifPresent(bt -> {
+            if (bt != ButtonType.OK) return;
+            Task<Void> task = new Task<>() {
+                @Override
+                protected Void call() throws Exception {
+                    billingApiClient.deleteVatRate(entry.id());
+                    return null;
+                }
+            };
+            task.setOnSucceeded(ev -> reloadVatRates());
+            task.setOnFailed(ev -> showError(t("billing.config.vat.delete.fail.title"),
+                    t("billing.config.vat.delete.fail.body")));
+            start(task, "billing-vat-rates-delete");
+        });
     }
 
     /**
@@ -5422,6 +5605,36 @@ public class BenjagestUiApplication extends Application {
                 case "billing.config.manufacturer.section.commitment" -> "Compliance commitment:";
                 case "billing.config.manufacturer.fail.title" -> "Could not load manufacturer declaration";
                 case "billing.config.manufacturer.fail.body" -> "Make sure the backend is running and try again.";
+                case "billing.config.vat.section" -> "Tax rates (VAT + withholdings)";
+                case "billing.config.vat.hint" -> "Configurable VAT and withholding rates used by the invoice editor. Same catalogue for both modes (advisor / client). Default ★ is the one preselected on a new line. Inactive rates stay for historical invoices but don't appear in the combo.";
+                case "billing.config.vat.placeholder.empty" -> "No rates yet.";
+                case "billing.config.vat.col.kind" -> "Kind";
+                case "billing.config.vat.col.code" -> "Code";
+                case "billing.config.vat.col.label" -> "Label";
+                case "billing.config.vat.col.percent" -> "%";
+                case "billing.config.vat.col.flags" -> "Flags";
+                case "billing.config.vat.kind.vat" -> "VAT";
+                case "billing.config.vat.kind.withholding" -> "Withholding";
+                case "billing.config.vat.inactive" -> "inactive";
+                case "billing.config.vat.action.add" -> "Add rate";
+                case "billing.config.vat.action.edit" -> "Edit";
+                case "billing.config.vat.action.delete" -> "Delete";
+                case "billing.config.vat.editor.title_new" -> "New tax rate";
+                case "billing.config.vat.editor.title_edit" -> "Edit tax rate";
+                case "billing.config.vat.editor.save" -> "Save";
+                case "billing.config.vat.editor.kind" -> "Kind:";
+                case "billing.config.vat.editor.code" -> "Code:";
+                case "billing.config.vat.editor.label" -> "Label:";
+                case "billing.config.vat.editor.percent" -> "Percent:";
+                case "billing.config.vat.editor.is_default" -> "Default for its kind";
+                case "billing.config.vat.editor.active" -> "Active (visible in invoice combo)";
+                case "billing.config.vat.editor.fail.title" -> "Could not save";
+                case "billing.config.vat.editor.fail.body" -> "Check the percent is a number 0-100 and the code is unique.";
+                case "billing.config.vat.editor.invalid_percent" -> "The percent must be a number between 0 and 100.";
+                case "billing.config.vat.delete.title" -> "Delete tax rate";
+                case "billing.config.vat.delete.body" -> "Delete this rate?";
+                case "billing.config.vat.delete.fail.title" -> "Could not delete";
+                case "billing.config.vat.delete.fail.body" -> "The default rate cannot be deleted — mark another as default first.";
                 case "timeclock.header" -> "Time clock (RD 8/2019)";
                 case "timeclock.hint" -> "Each punch is immutable (art. 34.9). The CSV issued lets you publicly verify the punch with the Labour Inspectorate or any third party (art. 35.8) without credentials.";
                 case "timeclock.action.in" -> "Clock in";
@@ -6020,6 +6233,36 @@ public class BenjagestUiApplication extends Application {
             case "billing.config.manufacturer.section.commitment" -> "Compromiso de cumplimiento:";
             case "billing.config.manufacturer.fail.title" -> "No se pudo cargar la declaracion del fabricante";
             case "billing.config.manufacturer.fail.body" -> "Asegurate de que el backend esta en marcha y vuelve a intentarlo.";
+            case "billing.config.vat.section" -> "Tipos impositivos (IVA + retenciones)";
+            case "billing.config.vat.hint" -> "Tipos de IVA y retencion configurables que el editor de facturas usa. El mismo catalogo para los dos modos (asesoria / cliente). El marcado con ★ es el que sale preseleccionado en una linea nueva. Los inactivos se conservan para facturas antiguas pero no aparecen en el combo.";
+            case "billing.config.vat.placeholder.empty" -> "Sin tipos configurados.";
+            case "billing.config.vat.col.kind" -> "Tipo";
+            case "billing.config.vat.col.code" -> "Codigo";
+            case "billing.config.vat.col.label" -> "Etiqueta";
+            case "billing.config.vat.col.percent" -> "%";
+            case "billing.config.vat.col.flags" -> "Estado";
+            case "billing.config.vat.kind.vat" -> "IVA";
+            case "billing.config.vat.kind.withholding" -> "Retencion";
+            case "billing.config.vat.inactive" -> "inactivo";
+            case "billing.config.vat.action.add" -> "Añadir tipo";
+            case "billing.config.vat.action.edit" -> "Editar";
+            case "billing.config.vat.action.delete" -> "Borrar";
+            case "billing.config.vat.editor.title_new" -> "Nuevo tipo impositivo";
+            case "billing.config.vat.editor.title_edit" -> "Editar tipo impositivo";
+            case "billing.config.vat.editor.save" -> "Guardar";
+            case "billing.config.vat.editor.kind" -> "Tipo:";
+            case "billing.config.vat.editor.code" -> "Codigo:";
+            case "billing.config.vat.editor.label" -> "Etiqueta:";
+            case "billing.config.vat.editor.percent" -> "Porcentaje:";
+            case "billing.config.vat.editor.is_default" -> "Por defecto en su categoria";
+            case "billing.config.vat.editor.active" -> "Activo (visible en el combo del editor)";
+            case "billing.config.vat.editor.fail.title" -> "No se pudo guardar";
+            case "billing.config.vat.editor.fail.body" -> "Comprueba que el porcentaje es un numero 0-100 y que el codigo es unico.";
+            case "billing.config.vat.editor.invalid_percent" -> "El porcentaje debe ser un numero entre 0 y 100.";
+            case "billing.config.vat.delete.title" -> "Borrar tipo impositivo";
+            case "billing.config.vat.delete.body" -> "Borrar este tipo?";
+            case "billing.config.vat.delete.fail.title" -> "No se pudo borrar";
+            case "billing.config.vat.delete.fail.body" -> "El tipo por defecto no se puede borrar — marca otro como predeterminado primero.";
             case "timeclock.header" -> "Fichajes (RD 8/2019)";
             case "timeclock.hint" -> "Cada fichaje es inalterable (art. 34.9). El CSV emitido te permite verificar publicamente el fichaje ante la Inspeccion de Trabajo o cualquier tercero (art. 35.8) sin credenciales.";
             case "timeclock.action.in" -> "Fichar entrada";
