@@ -33,6 +33,7 @@ import com.benjagest.ui.model.SalesInvoiceSummary;
 import com.benjagest.ui.model.SeriesEntry;
 import com.benjagest.ui.model.SessionInfo;
 import com.benjagest.ui.model.VerifactuConfig;
+import com.benjagest.ui.service.AltaApiClient;
 import com.benjagest.ui.service.AuthApiClient;
 import com.benjagest.ui.service.AuthSession;
 import com.benjagest.ui.service.BillingApiClient;
@@ -73,6 +74,7 @@ import javafx.scene.control.TabPane;
 import javafx.scene.control.Separator;
 import javafx.scene.control.TableColumn;
 import javafx.scene.control.TableView;
+import javafx.scene.control.TextArea;
 import javafx.scene.control.TextField;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.GridPane;
@@ -155,7 +157,8 @@ public class BenjagestUiApplication extends Application {
     // que no esta aqui, se ignora en el sidebar (no hay vista para el).
     private static final java.util.Set<String> KNOWN_VIEWS = java.util.Set.of(
             "customers", "billing", "purchases", "labor",
-            "tax", "reports", "calendar", "settings"
+            "tax", "reports", "calendar", "settings",
+            "advisory"
     );
 
     @Override
@@ -800,6 +803,19 @@ public class BenjagestUiApplication extends Application {
             // genérica de módulo se enriquece con un botón "Importar PDF"
             // que abre un FileChooser y muestra los campos detectados.
             showPurchasesWithImport();
+            return;
+        }
+        if ("tax".equals(module)) {
+            // ALTA-6: módulo Modelos AEAT con tabla de declaraciones,
+            // editores específicos por modelo (303 IVA, 130 IRPF) y
+            // calendario fiscal del año seleccionado.
+            showTaxModels();
+            return;
+        }
+        if ("advisory".equals(module)) {
+            // ALTA-3: módulo asesoría — listado de clientes gestionados
+            // con switch de tenant al hacer doble-click.
+            showAdvisoryClients();
             return;
         }
         Task<ModuleData> task = new Task<>() {
@@ -1913,13 +1929,17 @@ public class BenjagestUiApplication extends Application {
         tabs.setTabClosingPolicy(TabPane.TabClosingPolicy.UNAVAILABLE);
         Tab companyTab = new Tab(t("settings.tab.company"), settingsCompanyTab(bundle.company()));
         companyTab.setGraphic(icon("fas-building"));
+        Tab ownersTab = new Tab(t("settings.tab.owners"), settingsOwnersTab());
+        ownersTab.setGraphic(icon("fas-users"));
         Tab emailTab = new Tab(t("settings.tab.email"), settingsEmailTab(bundle.email()));
         emailTab.setGraphic(icon("fas-envelope"));
         Tab modulesTab = new Tab(t("settings.tab.modules"), settingsModulesTab(bundle.modules()));
         modulesTab.setGraphic(icon("fas-cubes"));
+        Tab credentialsTab = new Tab(t("settings.tab.credentials"), settingsCredentialsTab());
+        credentialsTab.setGraphic(icon("fas-key"));
         Tab auditTab = new Tab(t("settings.tab.audit"), settingsAuditTab());
         auditTab.setGraphic(icon("fas-shield-alt"));
-        tabs.getTabs().addAll(companyTab, emailTab, modulesTab, auditTab);
+        tabs.getTabs().addAll(companyTab, ownersTab, emailTab, modulesTab, credentialsTab, auditTab);
         // El TabPane crece hasta el final del area central; sin esto, los
         // botones del pie de cada tab podrian quedar fuera de pantalla en
         // portatil.
@@ -2330,6 +2350,462 @@ public class BenjagestUiApplication extends Application {
             return id == null ? "" : id;
         }
         return id.substring(0, 8);
+    }
+
+    // ===================================================================
+    //  ALTA — Pestana Titulares (Configuracion -> Titulares)
+    //
+    //  Modelo 200 (Impuesto Sociedades) y SS exigen identificar a los
+    //  administradores y socios con su rol y % participacion. Esta pestana
+    //  es CRUD sobre /api/settings/owners y resuelve esa pata de los
+    //  modelos AEAT que dependen de quien es quien en la empresa.
+    // ===================================================================
+
+    private final AltaApiClient altaApiClient = new AltaApiClient();
+    private TableView<com.benjagest.ui.model.CompanyOwnerEntry> ownersTable;
+    private TableView<com.benjagest.ui.model.ExternalCredentialEntry> credentialsTable;
+    private TableView<com.benjagest.ui.model.CertificateUsageEntry> certUsageTable;
+
+    private Node settingsOwnersTab() {
+        Label section = label(t("settings.owners.section"), "settings-section-title");
+        Label hint = new Label(t("settings.owners.hint"));
+        hint.setWrapText(true);
+        hint.getStyleClass().add("settings-hint");
+
+        ownersTable = new TableView<>();
+        ownersTable.getStyleClass().add("data-table");
+        ownersTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+        ownersTable.setPlaceholder(new Label(t("settings.owners.placeholder.empty")));
+
+        TableColumn<com.benjagest.ui.model.CompanyOwnerEntry, String> colName =
+                new TableColumn<>(t("settings.owners.col.name"));
+        colName.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().fullName()));
+        colName.setPrefWidth(200);
+        TableColumn<com.benjagest.ui.model.CompanyOwnerEntry, String> colNif =
+                new TableColumn<>(t("settings.owners.col.nif"));
+        colNif.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().taxIdentifier()));
+        colNif.setPrefWidth(110);
+        TableColumn<com.benjagest.ui.model.CompanyOwnerEntry, String> colRole =
+                new TableColumn<>(t("settings.owners.col.role"));
+        colRole.setCellValueFactory(c -> new SimpleStringProperty(t("settings.owners.role." + c.getValue().role())));
+        colRole.setPrefWidth(140);
+        TableColumn<com.benjagest.ui.model.CompanyOwnerEntry, String> colSs =
+                new TableColumn<>(t("settings.owners.col.ss_regime"));
+        colSs.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().ssRegime() == null
+                ? "" : t("settings.owners.ss_regime." + c.getValue().ssRegime())));
+        colSs.setPrefWidth(160);
+        TableColumn<com.benjagest.ui.model.CompanyOwnerEntry, String> colPct =
+                new TableColumn<>(t("settings.owners.col.pct"));
+        colPct.setCellValueFactory(c -> new SimpleStringProperty(
+                c.getValue().ownershipPercent() == null ? "" : c.getValue().ownershipPercent().toPlainString() + " %"));
+        colPct.setPrefWidth(80);
+        colPct.setComparator(NUMERIC_STRING_COMPARATOR);
+        TableColumn<com.benjagest.ui.model.CompanyOwnerEntry, String> colFlags =
+                new TableColumn<>(t("settings.owners.col.flags"));
+        colFlags.setCellValueFactory(c -> new SimpleStringProperty(
+                c.getValue().active() ? "" : t("settings.owners.inactive")));
+        colFlags.setPrefWidth(100);
+        ownersTable.getColumns().addAll(java.util.List.of(colName, colNif, colRole, colSs, colPct, colFlags));
+
+        Button addBtn = new Button(t("settings.owners.action.add"));
+        addBtn.setGraphic(icon("fas-plus"));
+        addBtn.setOnAction(ev -> showOwnerEditor(null));
+
+        Button editBtn = new Button(t("settings.owners.action.edit"));
+        editBtn.setGraphic(icon("fas-edit"));
+        editBtn.setDisable(true);
+        editBtn.setOnAction(ev -> {
+            var sel = ownersTable.getSelectionModel().getSelectedItem();
+            if (sel != null) showOwnerEditor(sel);
+        });
+
+        Button deleteBtn = new Button(t("settings.owners.action.delete"));
+        deleteBtn.setGraphic(icon("fas-trash"));
+        deleteBtn.setDisable(true);
+        deleteBtn.setOnAction(ev -> {
+            var sel = ownersTable.getSelectionModel().getSelectedItem();
+            if (sel != null) deleteOwner(sel);
+        });
+
+        ownersTable.getSelectionModel().selectedItemProperty().addListener((obs, oldV, newV) -> {
+            editBtn.setDisable(newV == null);
+            deleteBtn.setDisable(newV == null);
+        });
+
+        HBox actions = new HBox(8, addBtn, editBtn, deleteBtn);
+        actions.getStyleClass().add("settings-actions");
+
+        reloadOwners();
+
+        VBox body = new VBox(12, section, hint, ownersTable);
+        return tabLayout(label(t("settings.owners.section_label"), "settings-section-title"), body, actions);
+    }
+
+    private void reloadOwners() {
+        if (ownersTable == null) return;
+        Task<java.util.List<com.benjagest.ui.model.CompanyOwnerEntry>> task = new Task<>() {
+            @Override
+            protected java.util.List<com.benjagest.ui.model.CompanyOwnerEntry> call() throws Exception {
+                return altaApiClient.listOwners();
+            }
+        };
+        task.setOnSucceeded(ev -> ownersTable.setItems(FXCollections.observableArrayList(task.getValue())));
+        task.setOnFailed(ev -> ownersTable.getItems().clear());
+        start(task, "settings-owners-reload");
+    }
+
+    private void showOwnerEditor(com.benjagest.ui.model.CompanyOwnerEntry existing) {
+        Dialog<ButtonType> dialog = new Dialog<>();
+        dialog.setTitle(existing == null ? t("settings.owners.editor.title_new") : t("settings.owners.editor.title_edit"));
+        ButtonType saveBt = new ButtonType(t("settings.owners.editor.save"), ButtonBar.ButtonData.OK_DONE);
+        dialog.getDialogPane().getButtonTypes().addAll(saveBt, ButtonType.CANCEL);
+
+        TextField nameField = new TextField(existing == null ? "" : existing.fullName());
+        TextField nifField = new TextField(existing == null ? "" : existing.taxIdentifier());
+        ComboBox<String> roleCombo = new ComboBox<>();
+        roleCombo.getItems().addAll("ADMINISTRATOR", "JOINT", "SOLE", "BOARD_MEMBER", "PARTNER", "AUTONOMOUS");
+        roleCombo.getSelectionModel().select(existing == null ? "ADMINISTRATOR" : existing.role());
+        ComboBox<String> ssCombo = new ComboBox<>();
+        ssCombo.getItems().addAll("RETA", "GENERAL", "AUTONOMO_SOCIETARIO", "NO_COTIZA", "OTHER");
+        ssCombo.getSelectionModel().select(existing == null || existing.ssRegime() == null || existing.ssRegime().isBlank()
+                ? "RETA" : existing.ssRegime());
+        TextField pctField = new TextField(existing == null || existing.ownershipPercent() == null
+                ? "" : existing.ownershipPercent().toPlainString());
+        TextField apptField = new TextField(existing == null ? "" : existing.appointmentDate());
+        apptField.setPromptText("AAAA-MM-DD");
+        TextField termField = new TextField(existing == null ? "" : existing.terminationDate());
+        termField.setPromptText("AAAA-MM-DD");
+        TextField emailField = new TextField(existing == null ? "" : existing.email());
+        TextField phoneField = new TextField(existing == null ? "" : existing.phone());
+        TextArea notesField = new TextArea(existing == null ? "" : existing.notes());
+        notesField.setPrefRowCount(2);
+        CheckBox activeCb = new CheckBox(t("settings.owners.editor.active"));
+        activeCb.setSelected(existing == null || existing.active());
+
+        GridPane grid = new GridPane();
+        grid.setHgap(10); grid.setVgap(8); grid.setPadding(new Insets(10));
+        grid.add(new Label(t("settings.owners.editor.name")), 0, 0); grid.add(nameField, 1, 0);
+        grid.add(new Label(t("settings.owners.editor.nif")), 0, 1); grid.add(nifField, 1, 1);
+        grid.add(new Label(t("settings.owners.editor.role")), 0, 2); grid.add(roleCombo, 1, 2);
+        grid.add(new Label(t("settings.owners.editor.ss_regime")), 0, 3); grid.add(ssCombo, 1, 3);
+        grid.add(new Label(t("settings.owners.editor.pct")), 0, 4); grid.add(pctField, 1, 4);
+        grid.add(new Label(t("settings.owners.editor.appointment")), 0, 5); grid.add(apptField, 1, 5);
+        grid.add(new Label(t("settings.owners.editor.termination")), 0, 6); grid.add(termField, 1, 6);
+        grid.add(new Label(t("settings.owners.editor.email")), 0, 7); grid.add(emailField, 1, 7);
+        grid.add(new Label(t("settings.owners.editor.phone")), 0, 8); grid.add(phoneField, 1, 8);
+        grid.add(new Label(t("settings.owners.editor.notes")), 0, 9); grid.add(notesField, 1, 9);
+        grid.add(activeCb, 1, 10);
+        dialog.getDialogPane().setContent(grid);
+
+        dialog.showAndWait().ifPresent(bt -> {
+            if (bt != saveBt) return;
+            java.math.BigDecimal pct;
+            try {
+                pct = pctField.getText().isBlank() ? null
+                        : new java.math.BigDecimal(pctField.getText().trim().replace(",", "."));
+            } catch (NumberFormatException ex) {
+                showError(t("settings.owners.editor.fail.title"), t("settings.owners.editor.invalid_pct"));
+                return;
+            }
+            com.benjagest.ui.model.CompanyOwnerEntry payload = new com.benjagest.ui.model.CompanyOwnerEntry(
+                    existing == null ? null : existing.id(),
+                    nameField.getText().trim(),
+                    nifField.getText().trim(),
+                    roleCombo.getValue(),
+                    ssCombo.getValue(),
+                    pct,
+                    blankToNullOrSelf(apptField.getText()),
+                    blankToNullOrSelf(termField.getText()),
+                    blankToNullOrSelf(emailField.getText()),
+                    blankToNullOrSelf(phoneField.getText()),
+                    blankToNullOrSelf(notesField.getText()),
+                    activeCb.isSelected());
+            Task<com.benjagest.ui.model.CompanyOwnerEntry> task = new Task<>() {
+                @Override
+                protected com.benjagest.ui.model.CompanyOwnerEntry call() throws Exception {
+                    return existing == null
+                            ? altaApiClient.createOwner(payload)
+                            : altaApiClient.updateOwner(existing.id(), payload);
+                }
+            };
+            task.setOnSucceeded(ev -> reloadOwners());
+            task.setOnFailed(ev -> showError(t("settings.owners.editor.fail.title"),
+                    t("settings.owners.editor.fail.body")));
+            start(task, "settings-owners-save");
+        });
+    }
+
+    private void deleteOwner(com.benjagest.ui.model.CompanyOwnerEntry entry) {
+        Alert confirm = new Alert(Alert.AlertType.CONFIRMATION,
+                t("settings.owners.delete.body") + " " + entry.fullName(),
+                ButtonType.OK, ButtonType.CANCEL);
+        confirm.setHeaderText(t("settings.owners.delete.title"));
+        confirm.showAndWait().ifPresent(bt -> {
+            if (bt != ButtonType.OK) return;
+            Task<Void> task = new Task<>() {
+                @Override
+                protected Void call() throws Exception {
+                    altaApiClient.deleteOwner(entry.id());
+                    return null;
+                }
+            };
+            task.setOnSucceeded(ev -> reloadOwners());
+            task.setOnFailed(ev -> showError(t("settings.owners.editor.fail.title"),
+                    t("settings.owners.editor.fail.body")));
+            start(task, "settings-owners-delete");
+        });
+    }
+
+    private String blankToNullOrSelf(String v) {
+        return v == null || v.isBlank() ? null : v.trim();
+    }
+
+    // ===================================================================
+    //  ALTA — Pestana Credenciales externas + Log uso certificados
+    // ===================================================================
+
+    private Node settingsCredentialsTab() {
+        Label section = label(t("settings.credentials.section"), "settings-section-title");
+        Label hint = new Label(t("settings.credentials.hint"));
+        hint.setWrapText(true);
+        hint.getStyleClass().add("settings-hint");
+
+        credentialsTable = new TableView<>();
+        credentialsTable.getStyleClass().add("data-table");
+        credentialsTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+        credentialsTable.setPlaceholder(new Label(t("settings.credentials.placeholder.empty")));
+        credentialsTable.setPrefHeight(240);
+
+        TableColumn<com.benjagest.ui.model.ExternalCredentialEntry, String> colSys =
+                new TableColumn<>(t("settings.credentials.col.system"));
+        colSys.setCellValueFactory(c -> new SimpleStringProperty(
+                t("settings.credentials.system." + c.getValue().systemCode())));
+        colSys.setPrefWidth(140);
+        TableColumn<com.benjagest.ui.model.ExternalCredentialEntry, String> colLabel =
+                new TableColumn<>(t("settings.credentials.col.label"));
+        colLabel.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().label()));
+        TableColumn<com.benjagest.ui.model.ExternalCredentialEntry, String> colUser =
+                new TableColumn<>(t("settings.credentials.col.user"));
+        colUser.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().username()));
+        colUser.setPrefWidth(140);
+        TableColumn<com.benjagest.ui.model.ExternalCredentialEntry, String> colPwd =
+                new TableColumn<>(t("settings.credentials.col.password"));
+        colPwd.setCellValueFactory(c -> new SimpleStringProperty(
+                c.getValue().passwordConfigured() ? "***" : t("settings.credentials.empty")));
+        colPwd.setPrefWidth(80);
+        TableColumn<com.benjagest.ui.model.ExternalCredentialEntry, String> colFlags =
+                new TableColumn<>(t("settings.credentials.col.flags"));
+        colFlags.setCellValueFactory(c -> new SimpleStringProperty(
+                c.getValue().active() ? "" : t("settings.credentials.inactive")));
+        colFlags.setPrefWidth(80);
+        credentialsTable.getColumns().addAll(java.util.List.of(colSys, colLabel, colUser, colPwd, colFlags));
+
+        Button addBtn = new Button(t("settings.credentials.action.add"));
+        addBtn.setGraphic(icon("fas-plus"));
+        addBtn.setOnAction(ev -> showCredentialEditor(null));
+
+        Button editBtn = new Button(t("settings.credentials.action.edit"));
+        editBtn.setGraphic(icon("fas-edit"));
+        editBtn.setDisable(true);
+        editBtn.setOnAction(ev -> {
+            var sel = credentialsTable.getSelectionModel().getSelectedItem();
+            if (sel != null) showCredentialEditor(sel);
+        });
+
+        Button deleteBtn = new Button(t("settings.credentials.action.delete"));
+        deleteBtn.setGraphic(icon("fas-trash"));
+        deleteBtn.setDisable(true);
+        deleteBtn.setOnAction(ev -> {
+            var sel = credentialsTable.getSelectionModel().getSelectedItem();
+            if (sel != null) deleteCredential(sel);
+        });
+
+        credentialsTable.getSelectionModel().selectedItemProperty().addListener((obs, oldV, newV) -> {
+            editBtn.setDisable(newV == null);
+            deleteBtn.setDisable(newV == null);
+        });
+
+        HBox credActions = new HBox(8, addBtn, editBtn, deleteBtn);
+        credActions.setAlignment(Pos.CENTER_LEFT);
+
+        reloadCredentials();
+
+        // ---- Log de uso de certificados ----
+        Label logSection = label(t("settings.credentials.log.section"), "settings-section-title");
+        Label logHint = new Label(t("settings.credentials.log.hint"));
+        logHint.setWrapText(true);
+        logHint.getStyleClass().add("settings-hint");
+
+        certUsageTable = new TableView<>();
+        certUsageTable.getStyleClass().add("data-table");
+        certUsageTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+        certUsageTable.setPlaceholder(new Label(t("settings.credentials.log.placeholder.empty")));
+        certUsageTable.setPrefHeight(220);
+
+        TableColumn<com.benjagest.ui.model.CertificateUsageEntry, String> colWhen =
+                new TableColumn<>(t("settings.credentials.log.col.when"));
+        colWhen.setCellValueFactory(c -> new SimpleStringProperty(shortIso(c.getValue().usedAt())));
+        colWhen.setPrefWidth(160);
+        colWhen.setComparator(ISO_DATE_COMPARATOR);
+        TableColumn<com.benjagest.ui.model.CertificateUsageEntry, String> colCert =
+                new TableColumn<>(t("settings.credentials.log.col.cert"));
+        colCert.setCellValueFactory(c -> new SimpleStringProperty(shortId(c.getValue().certificateId())));
+        colCert.setPrefWidth(110);
+        TableColumn<com.benjagest.ui.model.CertificateUsageEntry, String> colPurpose =
+                new TableColumn<>(t("settings.credentials.log.col.purpose"));
+        colPurpose.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().purpose()));
+        colPurpose.setPrefWidth(140);
+        TableColumn<com.benjagest.ui.model.CertificateUsageEntry, String> colOk =
+                new TableColumn<>(t("settings.credentials.log.col.result"));
+        colOk.setCellValueFactory(c -> new SimpleStringProperty(
+                c.getValue().success() ? "OK" : "ERR"));
+        colOk.setPrefWidth(60);
+        TableColumn<com.benjagest.ui.model.CertificateUsageEntry, String> colUserCert =
+                new TableColumn<>(t("settings.credentials.log.col.user"));
+        colUserCert.setCellValueFactory(c -> new SimpleStringProperty(shortId(c.getValue().userId())));
+        colUserCert.setPrefWidth(110);
+        TableColumn<com.benjagest.ui.model.CertificateUsageEntry, String> colIp =
+                new TableColumn<>(t("settings.credentials.log.col.ip"));
+        colIp.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().ipAddress()));
+        colIp.setPrefWidth(120);
+        TableColumn<com.benjagest.ui.model.CertificateUsageEntry, String> colMsg =
+                new TableColumn<>(t("settings.credentials.log.col.message"));
+        colMsg.setCellValueFactory(c -> new SimpleStringProperty(
+                c.getValue().errorMessage() == null ? c.getValue().targetUrl() : c.getValue().errorMessage()));
+        certUsageTable.getColumns().addAll(java.util.List.of(colWhen, colCert, colPurpose, colOk, colUserCert, colIp, colMsg));
+
+        Button refreshLog = new Button(t("settings.credentials.log.refresh"));
+        refreshLog.setGraphic(icon("fas-sync-alt"));
+        refreshLog.setOnAction(ev -> reloadCertUsage());
+
+        HBox logActions = new HBox(8, refreshLog);
+        logActions.setAlignment(Pos.CENTER_LEFT);
+
+        reloadCertUsage();
+
+        VBox body = new VBox(16,
+                section, hint, credentialsTable, credActions,
+                new Separator(),
+                logSection, logHint, certUsageTable, logActions);
+        return tabLayout(label(t("settings.credentials.section_label"), "settings-section-title"), body,
+                new HBox());
+    }
+
+    private void reloadCredentials() {
+        if (credentialsTable == null) return;
+        Task<java.util.List<com.benjagest.ui.model.ExternalCredentialEntry>> task = new Task<>() {
+            @Override
+            protected java.util.List<com.benjagest.ui.model.ExternalCredentialEntry> call() throws Exception {
+                return altaApiClient.listCredentials();
+            }
+        };
+        task.setOnSucceeded(ev -> credentialsTable.setItems(FXCollections.observableArrayList(task.getValue())));
+        task.setOnFailed(ev -> credentialsTable.getItems().clear());
+        start(task, "settings-credentials-reload");
+    }
+
+    private void reloadCertUsage() {
+        if (certUsageTable == null) return;
+        Task<java.util.List<com.benjagest.ui.model.CertificateUsageEntry>> task = new Task<>() {
+            @Override
+            protected java.util.List<com.benjagest.ui.model.CertificateUsageEntry> call() throws Exception {
+                return altaApiClient.listCertUsage(null, 200);
+            }
+        };
+        task.setOnSucceeded(ev -> certUsageTable.setItems(FXCollections.observableArrayList(task.getValue())));
+        task.setOnFailed(ev -> certUsageTable.getItems().clear());
+        start(task, "settings-cert-usage-reload");
+    }
+
+    private void showCredentialEditor(com.benjagest.ui.model.ExternalCredentialEntry existing) {
+        Dialog<ButtonType> dialog = new Dialog<>();
+        dialog.setTitle(existing == null ? t("settings.credentials.editor.title_new")
+                : t("settings.credentials.editor.title_edit"));
+        ButtonType saveBt = new ButtonType(t("settings.credentials.editor.save"), ButtonBar.ButtonData.OK_DONE);
+        dialog.getDialogPane().getButtonTypes().addAll(saveBt, ButtonType.CANCEL);
+
+        ComboBox<String> sysCombo = new ComboBox<>();
+        sysCombo.getItems().addAll("DEHU", "SS_RED", "SILTRA", "AEAT_CLAVE",
+                "NOTIFICA_GOB", "SEDE_AEAT", "BANCO_ESPANA", "OTHER");
+        sysCombo.getSelectionModel().select(existing == null ? "DEHU" : existing.systemCode());
+        sysCombo.setDisable(existing != null);
+
+        TextField labelField = new TextField(existing == null ? "" : existing.label());
+        TextField userField = new TextField(existing == null ? "" : existing.username());
+        PasswordField pwdField = new PasswordField();
+        pwdField.setPromptText(existing != null && existing.passwordConfigured()
+                ? t("settings.credentials.editor.password.keep")
+                : t("settings.credentials.editor.password.new"));
+        TextField authUrlField = new TextField(existing == null ? "" : existing.authUrl());
+        TextArea notesField = new TextArea(existing == null ? "" : existing.notes());
+        notesField.setPrefRowCount(2);
+        CheckBox activeCb = new CheckBox(t("settings.credentials.editor.active"));
+        activeCb.setSelected(existing == null || existing.active());
+
+        GridPane grid = new GridPane();
+        grid.setHgap(10); grid.setVgap(8); grid.setPadding(new Insets(10));
+        grid.add(new Label(t("settings.credentials.editor.system")), 0, 0); grid.add(sysCombo, 1, 0);
+        grid.add(new Label(t("settings.credentials.editor.label")), 0, 1); grid.add(labelField, 1, 1);
+        grid.add(new Label(t("settings.credentials.editor.username")), 0, 2); grid.add(userField, 1, 2);
+        grid.add(new Label(t("settings.credentials.editor.password")), 0, 3); grid.add(pwdField, 1, 3);
+        grid.add(new Label(t("settings.credentials.editor.auth_url")), 0, 4); grid.add(authUrlField, 1, 4);
+        grid.add(new Label(t("settings.credentials.editor.notes")), 0, 5); grid.add(notesField, 1, 5);
+        grid.add(activeCb, 1, 6);
+        dialog.getDialogPane().setContent(grid);
+
+        dialog.showAndWait().ifPresent(bt -> {
+            if (bt != saveBt) return;
+            String pwd = pwdField.getText();
+            Task<com.benjagest.ui.model.ExternalCredentialEntry> task = new Task<>() {
+                @Override
+                protected com.benjagest.ui.model.ExternalCredentialEntry call() throws Exception {
+                    if (existing == null) {
+                        return altaApiClient.createCredential(
+                                sysCombo.getValue(),
+                                labelField.getText().trim(),
+                                userField.getText().trim(),
+                                pwd,
+                                authUrlField.getText().trim(),
+                                notesField.getText().trim(),
+                                activeCb.isSelected());
+                    }
+                    return altaApiClient.updateCredential(
+                            existing.id(),
+                            existing.systemCode(),
+                            labelField.getText().trim(),
+                            userField.getText().trim(),
+                            pwd,  // si vacio, el cliente no envia el campo
+                            authUrlField.getText().trim(),
+                            notesField.getText().trim(),
+                            activeCb.isSelected());
+                }
+            };
+            task.setOnSucceeded(ev -> reloadCredentials());
+            task.setOnFailed(ev -> showError(t("settings.credentials.editor.fail.title"),
+                    t("settings.credentials.editor.fail.body")));
+            start(task, "settings-credentials-save");
+        });
+    }
+
+    private void deleteCredential(com.benjagest.ui.model.ExternalCredentialEntry entry) {
+        Alert confirm = new Alert(Alert.AlertType.CONFIRMATION,
+                t("settings.credentials.delete.body") + " " + entry.label(),
+                ButtonType.OK, ButtonType.CANCEL);
+        confirm.setHeaderText(t("settings.credentials.delete.title"));
+        confirm.showAndWait().ifPresent(bt -> {
+            if (bt != ButtonType.OK) return;
+            Task<Void> task = new Task<>() {
+                @Override
+                protected Void call() throws Exception {
+                    altaApiClient.deleteCredential(entry.id());
+                    return null;
+                }
+            };
+            task.setOnSucceeded(ev -> reloadCredentials());
+            task.setOnFailed(ev -> showError(t("settings.credentials.editor.fail.title"),
+                    t("settings.credentials.editor.fail.body")));
+            start(task, "settings-credentials-delete");
+        });
     }
 
     // ===================================================================
@@ -5768,9 +6244,171 @@ public class BenjagestUiApplication extends Application {
                 case "settings.shell.title" -> "Settings";
                 case "settings.load_failed" -> "Could not load Settings (you need OWNER or ADMIN role)";
                 case "settings.tab.company" -> "Company";
+                case "settings.tab.owners" -> "Owners";
                 case "settings.tab.email" -> "SMTP Email";
                 case "settings.tab.modules" -> "Modules";
+                case "settings.tab.credentials" -> "Credentials";
                 case "settings.tab.audit" -> "Audit";
+                // ---- Owners (ALTA) ----
+                case "settings.owners.section" -> "Owners and administrators";
+                case "settings.owners.section_label" -> "Owners";
+                case "settings.owners.hint" -> "People with administrative or ownership rights over the company. Required for Form 200 (Corporate Tax) and Social Security filings.";
+                case "settings.owners.placeholder.empty" -> "No owners registered yet.";
+                case "settings.owners.col.name" -> "Full name";
+                case "settings.owners.col.nif" -> "Tax ID";
+                case "settings.owners.col.role" -> "Role";
+                case "settings.owners.col.ss_regime" -> "SS regime";
+                case "settings.owners.col.pct" -> "% Share";
+                case "settings.owners.col.flags" -> "";
+                case "settings.owners.inactive" -> "(inactive)";
+                case "settings.owners.role.ADMINISTRATOR" -> "Administrator";
+                case "settings.owners.role.JOINT" -> "Joint administrator";
+                case "settings.owners.role.SOLE" -> "Sole administrator";
+                case "settings.owners.role.BOARD_MEMBER" -> "Board member";
+                case "settings.owners.role.PARTNER" -> "Partner";
+                case "settings.owners.role.AUTONOMOUS" -> "Self-employed (autónomo)";
+                case "settings.owners.ss_regime.RETA" -> "RETA";
+                case "settings.owners.ss_regime.GENERAL" -> "General SS";
+                case "settings.owners.ss_regime.AUTONOMO_SOCIETARIO" -> "RETA (corporate)";
+                case "settings.owners.ss_regime.NO_COTIZA" -> "Not contributing";
+                case "settings.owners.ss_regime.OTHER" -> "Other";
+                case "settings.owners.action.add" -> "Add owner";
+                case "settings.owners.action.edit" -> "Edit";
+                case "settings.owners.action.delete" -> "Delete";
+                case "settings.owners.editor.title_new" -> "New owner";
+                case "settings.owners.editor.title_edit" -> "Edit owner";
+                case "settings.owners.editor.save" -> "Save";
+                case "settings.owners.editor.name" -> "Full name";
+                case "settings.owners.editor.nif" -> "Tax ID";
+                case "settings.owners.editor.role" -> "Role";
+                case "settings.owners.editor.ss_regime" -> "SS regime";
+                case "settings.owners.editor.pct" -> "% Share (0-100)";
+                case "settings.owners.editor.appointment" -> "Appointment date";
+                case "settings.owners.editor.termination" -> "Termination date";
+                case "settings.owners.editor.email" -> "Email";
+                case "settings.owners.editor.phone" -> "Phone";
+                case "settings.owners.editor.notes" -> "Notes";
+                case "settings.owners.editor.active" -> "Active";
+                case "settings.owners.editor.invalid_pct" -> "Invalid percentage.";
+                case "settings.owners.editor.fail.title" -> "Could not save";
+                case "settings.owners.editor.fail.body" -> "Check the data and try again.";
+                case "settings.owners.delete.title" -> "Delete owner?";
+                case "settings.owners.delete.body" -> "You are about to delete";
+                // ---- Credentials (ALTA) ----
+                case "settings.credentials.section" -> "External credentials";
+                case "settings.credentials.section_label" -> "Credentials";
+                case "settings.credentials.hint" -> "Encrypted passwords for external systems (DEHú, SS RED, SILTRA, AEAT Cl@ve…). Passwords are stored encrypted and never shown again.";
+                case "settings.credentials.placeholder.empty" -> "No credentials registered.";
+                case "settings.credentials.col.system" -> "System";
+                case "settings.credentials.col.label" -> "Label";
+                case "settings.credentials.col.user" -> "Username";
+                case "settings.credentials.col.password" -> "Password";
+                case "settings.credentials.col.flags" -> "";
+                case "settings.credentials.empty" -> "—";
+                case "settings.credentials.inactive" -> "(inactive)";
+                case "settings.credentials.system.DEHU" -> "DEHú";
+                case "settings.credentials.system.SS_RED" -> "SS RED";
+                case "settings.credentials.system.SILTRA" -> "SILTRA";
+                case "settings.credentials.system.AEAT_CLAVE" -> "AEAT Cl@ve";
+                case "settings.credentials.system.NOTIFICA_GOB" -> "Notifica.gob";
+                case "settings.credentials.system.SEDE_AEAT" -> "AEAT Sede";
+                case "settings.credentials.system.BANCO_ESPANA" -> "Bank of Spain";
+                case "settings.credentials.system.OTHER" -> "Other";
+                case "settings.credentials.action.add" -> "Add credential";
+                case "settings.credentials.action.edit" -> "Edit";
+                case "settings.credentials.action.delete" -> "Delete";
+                case "settings.credentials.editor.title_new" -> "New credential";
+                case "settings.credentials.editor.title_edit" -> "Edit credential";
+                case "settings.credentials.editor.save" -> "Save";
+                case "settings.credentials.editor.system" -> "System";
+                case "settings.credentials.editor.label" -> "Label";
+                case "settings.credentials.editor.username" -> "Username";
+                case "settings.credentials.editor.password" -> "Password";
+                case "settings.credentials.editor.password.keep" -> "(leave blank to keep current)";
+                case "settings.credentials.editor.password.new" -> "Enter password";
+                case "settings.credentials.editor.auth_url" -> "Login URL";
+                case "settings.credentials.editor.notes" -> "Notes";
+                case "settings.credentials.editor.active" -> "Active";
+                case "settings.credentials.editor.fail.title" -> "Could not save";
+                case "settings.credentials.editor.fail.body" -> "Check the data and try again.";
+                case "settings.credentials.delete.title" -> "Delete credential?";
+                case "settings.credentials.delete.body" -> "You are about to delete";
+                case "settings.credentials.log.section" -> "Certificate usage log";
+                case "settings.credentials.log.hint" -> "Every time a digital certificate is used to sign or send something, the action is logged here for traceability.";
+                case "settings.credentials.log.placeholder.empty" -> "No certificate usage events yet.";
+                case "settings.credentials.log.col.when" -> "When";
+                case "settings.credentials.log.col.cert" -> "Certificate";
+                case "settings.credentials.log.col.purpose" -> "Purpose";
+                case "settings.credentials.log.col.result" -> "Result";
+                case "settings.credentials.log.col.user" -> "User";
+                case "settings.credentials.log.col.ip" -> "IP";
+                case "settings.credentials.log.col.message" -> "Detail";
+                case "settings.credentials.log.refresh" -> "Refresh";
+                // ---- Advisory module (ALTA) ----
+                case "advisory.title" -> "Managed clients";
+                case "advisory.subtitle" -> "Switch tenant to operate as one of your clients.";
+                case "advisory.hint" -> "Double-click a row or use 'Switch' to operate in that client's context. Your session stays the same; only the active tenant changes.";
+                case "advisory.placeholder.empty" -> "No managed clients linked to this advisory.";
+                case "advisory.col.legal_name" -> "Legal name";
+                case "advisory.col.nif" -> "Tax ID";
+                case "advisory.col.type" -> "Type";
+                case "advisory.col.city" -> "City";
+                case "advisory.col.email" -> "Email";
+                case "advisory.action.switch" -> "Switch to client";
+                case "advisory.switch.title" -> "Switch tenant?";
+                case "advisory.switch.body" -> "Future requests will operate as";
+                case "advisory.load_failed" -> "Could not load the client list.";
+                // ---- Tax module (ALTA) ----
+                case "tax.title" -> "Tax filings (AEAT)";
+                case "tax.subtitle" -> "Quarterly and yearly filings: 303, 130, 200, 347, 390 and others.";
+                case "tax.load_failed" -> "Could not load tax filings.";
+                case "tax.year" -> "Year";
+                case "tax.action.new" -> "New filing";
+                case "tax.tab.filings" -> "Filings";
+                case "tax.tab.calendar" -> "Calendar";
+                case "tax.filings.placeholder.empty" -> "No filings for this year yet.";
+                case "tax.filings.col.model" -> "Form";
+                case "tax.filings.col.period" -> "Period";
+                case "tax.filings.col.status" -> "Status";
+                case "tax.filings.col.amount" -> "Amount";
+                case "tax.filings.col.deadline" -> "Deadline";
+                case "tax.filings.col.csv" -> "AEAT CSV";
+                case "tax.filings.action.edit" -> "Edit";
+                case "tax.filings.action.delete" -> "Delete";
+                case "tax.filings.delete.title" -> "Delete filing?";
+                case "tax.filings.delete.body" -> "You are about to delete";
+                case "tax.filings.delete.fail.title" -> "Could not delete";
+                case "tax.filings.delete.fail.body" -> "Only draft or cancelled filings can be deleted.";
+                case "tax.calendar.hint" -> "Standard AEAT deadlines for the selected year. Holidays not factored in — confirm in the official calendar.";
+                case "tax.calendar.placeholder.empty" -> "No deadlines for this year.";
+                case "tax.calendar.col.deadline" -> "Deadline";
+                case "tax.calendar.col.model" -> "Form";
+                case "tax.calendar.col.name" -> "Name";
+                case "tax.calendar.col.period" -> "Period";
+                case "tax.calendar.col.state" -> "State";
+                case "tax.calendar.state.pending" -> "Pending";
+                case "tax.status.DRAFT" -> "Draft";
+                case "tax.status.READY" -> "Ready";
+                case "tax.status.PRESENTED" -> "Submitted";
+                case "tax.status.PAID" -> "Paid";
+                case "tax.status.REJECTED" -> "Rejected";
+                case "tax.status.CANCELLED" -> "Cancelled";
+                case "tax.new.title" -> "New tax filing";
+                case "tax.new.next" -> "Continue";
+                case "tax.new.model" -> "Form";
+                case "tax.new.year" -> "Year";
+                case "tax.new.period" -> "Period";
+                case "tax.new.fail.title" -> "Could not create";
+                case "tax.new.fail.body" -> "Check the form, period and year.";
+                case "tax.editor.generic.title" -> "Edit filing";
+                case "tax.editor.save" -> "Save";
+                case "tax.editor.status" -> "Status";
+                case "tax.editor.total" -> "Total amount";
+                case "tax.editor.csv" -> "AEAT CSV";
+                case "tax.editor.data" -> "Form data (JSON)";
+                case "tax.editor.notes" -> "Notes";
+                case "tax.editor.fail.title" -> "Could not save";
+                case "tax.editor.fail.body" -> "Check the data and try again.";
                 case "settings.company.section_label" -> "Company";
                 case "settings.company.section.general" -> "General data";
                 case "settings.company.section.address" -> "Postal address";
@@ -6396,9 +7034,171 @@ public class BenjagestUiApplication extends Application {
             case "settings.shell.title" -> "Configuracion";
             case "settings.load_failed" -> "No se pudo cargar Configuracion (necesitas rol OWNER o ADMIN)";
             case "settings.tab.company" -> "Empresa";
+            case "settings.tab.owners" -> "Titulares";
             case "settings.tab.email" -> "Email SMTP";
             case "settings.tab.modules" -> "Modulos";
+            case "settings.tab.credentials" -> "Credenciales";
             case "settings.tab.audit" -> "Auditoria";
+            // ---- Titulares (ALTA) ----
+            case "settings.owners.section" -> "Titulares y administradores";
+            case "settings.owners.section_label" -> "Titulares";
+            case "settings.owners.hint" -> "Personas con poder de administracion o participacion en la empresa. Necesario para modelo 200 (Impuesto Sociedades) y comunicaciones de Seguridad Social.";
+            case "settings.owners.placeholder.empty" -> "Aun no hay titulares registrados.";
+            case "settings.owners.col.name" -> "Nombre completo";
+            case "settings.owners.col.nif" -> "NIF";
+            case "settings.owners.col.role" -> "Rol";
+            case "settings.owners.col.ss_regime" -> "Reg. SS";
+            case "settings.owners.col.pct" -> "% Participacion";
+            case "settings.owners.col.flags" -> "";
+            case "settings.owners.inactive" -> "(inactivo)";
+            case "settings.owners.role.ADMINISTRATOR" -> "Administrador";
+            case "settings.owners.role.JOINT" -> "Adm. mancomunado";
+            case "settings.owners.role.SOLE" -> "Adm. unico";
+            case "settings.owners.role.BOARD_MEMBER" -> "Consejero";
+            case "settings.owners.role.PARTNER" -> "Socio";
+            case "settings.owners.role.AUTONOMOUS" -> "Autonomo";
+            case "settings.owners.ss_regime.RETA" -> "RETA";
+            case "settings.owners.ss_regime.GENERAL" -> "Reg. General";
+            case "settings.owners.ss_regime.AUTONOMO_SOCIETARIO" -> "RETA Societario";
+            case "settings.owners.ss_regime.NO_COTIZA" -> "No cotiza";
+            case "settings.owners.ss_regime.OTHER" -> "Otro";
+            case "settings.owners.action.add" -> "Anadir titular";
+            case "settings.owners.action.edit" -> "Editar";
+            case "settings.owners.action.delete" -> "Borrar";
+            case "settings.owners.editor.title_new" -> "Nuevo titular";
+            case "settings.owners.editor.title_edit" -> "Editar titular";
+            case "settings.owners.editor.save" -> "Guardar";
+            case "settings.owners.editor.name" -> "Nombre completo";
+            case "settings.owners.editor.nif" -> "NIF";
+            case "settings.owners.editor.role" -> "Rol";
+            case "settings.owners.editor.ss_regime" -> "Regimen SS";
+            case "settings.owners.editor.pct" -> "% Participacion (0-100)";
+            case "settings.owners.editor.appointment" -> "Fecha de nombramiento";
+            case "settings.owners.editor.termination" -> "Fecha de cese";
+            case "settings.owners.editor.email" -> "Email";
+            case "settings.owners.editor.phone" -> "Telefono";
+            case "settings.owners.editor.notes" -> "Notas";
+            case "settings.owners.editor.active" -> "Activo";
+            case "settings.owners.editor.invalid_pct" -> "Porcentaje invalido.";
+            case "settings.owners.editor.fail.title" -> "No se pudo guardar";
+            case "settings.owners.editor.fail.body" -> "Revisa los datos e intentalo de nuevo.";
+            case "settings.owners.delete.title" -> "Borrar titular?";
+            case "settings.owners.delete.body" -> "Vas a borrar a";
+            // ---- Credenciales (ALTA) ----
+            case "settings.credentials.section" -> "Credenciales externas";
+            case "settings.credentials.section_label" -> "Credenciales";
+            case "settings.credentials.hint" -> "Contrasenas cifradas para sistemas externos (DEHu, SS RED, SILTRA, AEAT Cl@ve...). Se guardan cifradas y no se muestran nunca de nuevo.";
+            case "settings.credentials.placeholder.empty" -> "No hay credenciales registradas.";
+            case "settings.credentials.col.system" -> "Sistema";
+            case "settings.credentials.col.label" -> "Etiqueta";
+            case "settings.credentials.col.user" -> "Usuario";
+            case "settings.credentials.col.password" -> "Contrasena";
+            case "settings.credentials.col.flags" -> "";
+            case "settings.credentials.empty" -> "—";
+            case "settings.credentials.inactive" -> "(inactivo)";
+            case "settings.credentials.system.DEHU" -> "DEHu";
+            case "settings.credentials.system.SS_RED" -> "SS RED";
+            case "settings.credentials.system.SILTRA" -> "SILTRA";
+            case "settings.credentials.system.AEAT_CLAVE" -> "AEAT Cl@ve";
+            case "settings.credentials.system.NOTIFICA_GOB" -> "Notifica.gob";
+            case "settings.credentials.system.SEDE_AEAT" -> "Sede AEAT";
+            case "settings.credentials.system.BANCO_ESPANA" -> "Banco de Espana";
+            case "settings.credentials.system.OTHER" -> "Otro";
+            case "settings.credentials.action.add" -> "Anadir credencial";
+            case "settings.credentials.action.edit" -> "Editar";
+            case "settings.credentials.action.delete" -> "Borrar";
+            case "settings.credentials.editor.title_new" -> "Nueva credencial";
+            case "settings.credentials.editor.title_edit" -> "Editar credencial";
+            case "settings.credentials.editor.save" -> "Guardar";
+            case "settings.credentials.editor.system" -> "Sistema";
+            case "settings.credentials.editor.label" -> "Etiqueta";
+            case "settings.credentials.editor.username" -> "Usuario";
+            case "settings.credentials.editor.password" -> "Contrasena";
+            case "settings.credentials.editor.password.keep" -> "(en blanco para mantener la actual)";
+            case "settings.credentials.editor.password.new" -> "Introduce la contrasena";
+            case "settings.credentials.editor.auth_url" -> "URL de acceso";
+            case "settings.credentials.editor.notes" -> "Notas";
+            case "settings.credentials.editor.active" -> "Activa";
+            case "settings.credentials.editor.fail.title" -> "No se pudo guardar";
+            case "settings.credentials.editor.fail.body" -> "Revisa los datos e intentalo de nuevo.";
+            case "settings.credentials.delete.title" -> "Borrar credencial?";
+            case "settings.credentials.delete.body" -> "Vas a borrar la credencial de";
+            case "settings.credentials.log.section" -> "Log de uso de certificados";
+            case "settings.credentials.log.hint" -> "Cada vez que se usa un certificado digital para firmar o enviar algo, queda registrado aqui para trazabilidad.";
+            case "settings.credentials.log.placeholder.empty" -> "Aun no hay eventos de uso.";
+            case "settings.credentials.log.col.when" -> "Cuando";
+            case "settings.credentials.log.col.cert" -> "Certificado";
+            case "settings.credentials.log.col.purpose" -> "Proposito";
+            case "settings.credentials.log.col.result" -> "Resultado";
+            case "settings.credentials.log.col.user" -> "Usuario";
+            case "settings.credentials.log.col.ip" -> "IP";
+            case "settings.credentials.log.col.message" -> "Detalle";
+            case "settings.credentials.log.refresh" -> "Refrescar";
+            // ---- Asesoria (ALTA) ----
+            case "advisory.title" -> "Mis clientes";
+            case "advisory.subtitle" -> "Cambia de tenant para operar como uno de tus clientes.";
+            case "advisory.hint" -> "Haz doble click sobre una fila o usa 'Cambiar' para operar en el contexto de ese cliente. Tu sesion no se invalida; solo cambia el tenant activo.";
+            case "advisory.placeholder.empty" -> "No hay clientes vinculados a esta asesoria.";
+            case "advisory.col.legal_name" -> "Razon social";
+            case "advisory.col.nif" -> "NIF";
+            case "advisory.col.type" -> "Tipo";
+            case "advisory.col.city" -> "Localidad";
+            case "advisory.col.email" -> "Email";
+            case "advisory.action.switch" -> "Cambiar a este cliente";
+            case "advisory.switch.title" -> "Cambiar de tenant?";
+            case "advisory.switch.body" -> "Las siguientes peticiones operaran como";
+            case "advisory.load_failed" -> "No se pudo cargar la lista de clientes.";
+            // ---- Modelos AEAT (ALTA) ----
+            case "tax.title" -> "Modelos AEAT";
+            case "tax.subtitle" -> "Declaraciones trimestrales y anuales: 303, 130, 200, 347, 390 y otros.";
+            case "tax.load_failed" -> "No se pudieron cargar los modelos.";
+            case "tax.year" -> "Ano";
+            case "tax.action.new" -> "Nueva declaracion";
+            case "tax.tab.filings" -> "Declaraciones";
+            case "tax.tab.calendar" -> "Calendario";
+            case "tax.filings.placeholder.empty" -> "No hay declaraciones para este ano.";
+            case "tax.filings.col.model" -> "Modelo";
+            case "tax.filings.col.period" -> "Periodo";
+            case "tax.filings.col.status" -> "Estado";
+            case "tax.filings.col.amount" -> "Importe";
+            case "tax.filings.col.deadline" -> "Limite";
+            case "tax.filings.col.csv" -> "CSV AEAT";
+            case "tax.filings.action.edit" -> "Editar";
+            case "tax.filings.action.delete" -> "Borrar";
+            case "tax.filings.delete.title" -> "Borrar declaracion?";
+            case "tax.filings.delete.body" -> "Vas a borrar";
+            case "tax.filings.delete.fail.title" -> "No se pudo borrar";
+            case "tax.filings.delete.fail.body" -> "Solo se pueden borrar borradores o canceladas.";
+            case "tax.calendar.hint" -> "Plazos estandar AEAT del ano seleccionado. No se consideran festivos — comprueba el calendario oficial.";
+            case "tax.calendar.placeholder.empty" -> "No hay vencimientos para este ano.";
+            case "tax.calendar.col.deadline" -> "Limite";
+            case "tax.calendar.col.model" -> "Modelo";
+            case "tax.calendar.col.name" -> "Nombre";
+            case "tax.calendar.col.period" -> "Periodo";
+            case "tax.calendar.col.state" -> "Estado";
+            case "tax.calendar.state.pending" -> "Pendiente";
+            case "tax.status.DRAFT" -> "Borrador";
+            case "tax.status.READY" -> "Listo";
+            case "tax.status.PRESENTED" -> "Presentado";
+            case "tax.status.PAID" -> "Pagado";
+            case "tax.status.REJECTED" -> "Rechazado";
+            case "tax.status.CANCELLED" -> "Cancelado";
+            case "tax.new.title" -> "Nueva declaracion";
+            case "tax.new.next" -> "Continuar";
+            case "tax.new.model" -> "Modelo";
+            case "tax.new.year" -> "Ano";
+            case "tax.new.period" -> "Periodo";
+            case "tax.new.fail.title" -> "No se pudo crear";
+            case "tax.new.fail.body" -> "Revisa modelo, periodo y ano.";
+            case "tax.editor.generic.title" -> "Editar declaracion";
+            case "tax.editor.save" -> "Guardar";
+            case "tax.editor.status" -> "Estado";
+            case "tax.editor.total" -> "Importe total";
+            case "tax.editor.csv" -> "CSV AEAT";
+            case "tax.editor.data" -> "Datos del modelo (JSON)";
+            case "tax.editor.notes" -> "Notas";
+            case "tax.editor.fail.title" -> "No se pudo guardar";
+            case "tax.editor.fail.body" -> "Revisa los datos e intentalo de nuevo.";
             case "settings.company.section_label" -> "Empresa";
             case "settings.company.section.general" -> "Datos generales";
             case "settings.company.section.address" -> "Direccion postal";
@@ -6777,5 +7577,675 @@ public class BenjagestUiApplication extends Application {
     private enum Language {
         ES,
         EN
+    }
+
+    // ===================================================================
+    //  ALTA-3 — Asesoria: clientes gestionados (X-Company-Id switcher)
+    // ===================================================================
+
+    private void showAdvisoryClients() {
+        Task<java.util.List<com.benjagest.ui.model.ManagedClientEntry>> task = new Task<>() {
+            @Override
+            protected java.util.List<com.benjagest.ui.model.ManagedClientEntry> call() throws Exception {
+                return altaApiClient.listManagedClients();
+            }
+        };
+        task.setOnSucceeded(ev -> setCenterAnimated(scroll(advisoryView(task.getValue()))));
+        task.setOnFailed(ev -> setCenterAnimated(scroll(errorPanel(t("advisory.load_failed")))));
+        start(task, "advisory-clients-load");
+    }
+
+    private VBox advisoryView(java.util.List<com.benjagest.ui.model.ManagedClientEntry> clients) {
+        VBox content = content();
+        Label title = new Label(t("advisory.title"));
+        title.getStyleClass().add("module-detail-title");
+        Label subtitle = new Label(t("advisory.subtitle"));
+        subtitle.getStyleClass().add("module-detail-description");
+        VBox titleBox = new VBox(4, title, subtitle);
+        StackPane moduleIcon = iconBubble("fas-briefcase", "module-title-icon");
+        Region spacer = new Region();
+        HBox.setHgrow(spacer, Priority.ALWAYS);
+        HBox header = new HBox(16, titleBox, moduleIcon, spacer);
+        header.setAlignment(Pos.CENTER_LEFT);
+        header.getStyleClass().add("module-detail-header");
+
+        TableView<com.benjagest.ui.model.ManagedClientEntry> table = new TableView<>();
+        table.getStyleClass().add("data-table");
+        table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+        table.setPlaceholder(new Label(t("advisory.placeholder.empty")));
+        TableColumn<com.benjagest.ui.model.ManagedClientEntry, String> colName =
+                new TableColumn<>(t("advisory.col.legal_name"));
+        colName.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().legalName()));
+        TableColumn<com.benjagest.ui.model.ManagedClientEntry, String> colNif =
+                new TableColumn<>(t("advisory.col.nif"));
+        colNif.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().taxIdentifier()));
+        colNif.setPrefWidth(120);
+        TableColumn<com.benjagest.ui.model.ManagedClientEntry, String> colType =
+                new TableColumn<>(t("advisory.col.type"));
+        colType.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().companyType()));
+        colType.setPrefWidth(100);
+        TableColumn<com.benjagest.ui.model.ManagedClientEntry, String> colCity =
+                new TableColumn<>(t("advisory.col.city"));
+        colCity.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().city()));
+        colCity.setPrefWidth(140);
+        TableColumn<com.benjagest.ui.model.ManagedClientEntry, String> colEmail =
+                new TableColumn<>(t("advisory.col.email"));
+        colEmail.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().email()));
+        table.getColumns().addAll(java.util.List.of(colName, colNif, colType, colCity, colEmail));
+        table.setItems(FXCollections.observableArrayList(clients));
+
+        Label hint = new Label(t("advisory.hint"));
+        hint.setWrapText(true);
+        hint.getStyleClass().add("settings-hint");
+
+        // Doble click sobre cliente → cambiar X-Company-Id en la sesion
+        // y volver al dashboard como ese cliente.
+        table.setOnMouseClicked(ev -> {
+            if (ev.getClickCount() == 2) {
+                var sel = table.getSelectionModel().getSelectedItem();
+                if (sel != null) switchToClient(sel);
+            }
+        });
+
+        Button switchBtn = new Button(t("advisory.action.switch"));
+        switchBtn.setGraphic(icon("fas-exchange-alt"));
+        switchBtn.setDisable(true);
+        table.getSelectionModel().selectedItemProperty().addListener((o, ov, nv) -> switchBtn.setDisable(nv == null));
+        switchBtn.setOnAction(ev -> {
+            var sel = table.getSelectionModel().getSelectedItem();
+            if (sel != null) switchToClient(sel);
+        });
+
+        HBox actions = new HBox(8, switchBtn);
+        actions.getStyleClass().add("settings-actions");
+
+        VBox body = new VBox(12, hint, table);
+        VBox.setVgrow(table, Priority.ALWAYS);
+
+        content.getChildren().addAll(header, body, actions);
+        return content;
+    }
+
+    private void switchToClient(com.benjagest.ui.model.ManagedClientEntry client) {
+        Alert confirm = new Alert(Alert.AlertType.CONFIRMATION,
+                t("advisory.switch.body") + " " + client.legalName() + "?",
+                ButtonType.OK, ButtonType.CANCEL);
+        confirm.setHeaderText(t("advisory.switch.title"));
+        confirm.showAndWait().ifPresent(bt -> {
+            if (bt != ButtonType.OK) return;
+            AuthSession.get().setActiveCompanyId(client.id());
+            showModule("dashboard");
+        });
+    }
+
+    // ===================================================================
+    //  ALTA-6 — Modelos AEAT: listado, calendario, editores 303/130 y
+    //  editor genérico para los demás modelos.
+    // ===================================================================
+
+    private TableView<com.benjagest.ui.model.TaxFilingEntry> taxFilingsTable;
+    private TableView<com.benjagest.ui.model.TaxDueDateEntry> taxCalendarTable;
+    private int taxCurrentYear = LocalDate.now().getYear();
+
+    private void showTaxModels() {
+        Task<TaxBundle> task = new Task<>() {
+            @Override
+            protected TaxBundle call() throws Exception {
+                return new TaxBundle(
+                        altaApiClient.listTaxModels(),
+                        altaApiClient.listFilings(taxCurrentYear, null, null),
+                        altaApiClient.calendar(taxCurrentYear));
+            }
+        };
+        task.setOnSucceeded(ev -> setCenterAnimated(scroll(taxView(task.getValue()))));
+        task.setOnFailed(ev -> setCenterAnimated(scroll(errorPanel(t("tax.load_failed")))));
+        start(task, "tax-models-load");
+    }
+
+    private record TaxBundle(
+            java.util.List<com.benjagest.ui.model.TaxModelEntry> catalog,
+            java.util.List<com.benjagest.ui.model.TaxFilingEntry> filings,
+            java.util.List<com.benjagest.ui.model.TaxDueDateEntry> calendar
+    ) {}
+
+    private VBox taxView(TaxBundle bundle) {
+        VBox content = content();
+        Label title = new Label(t("tax.title"));
+        title.getStyleClass().add("module-detail-title");
+        Label subtitle = new Label(t("tax.subtitle"));
+        subtitle.getStyleClass().add("module-detail-description");
+        VBox titleBox = new VBox(4, title, subtitle);
+        StackPane moduleIcon = iconBubble("fas-percentage", "module-title-icon");
+        Region spacer = new Region();
+        HBox.setHgrow(spacer, Priority.ALWAYS);
+
+        // Selector de año
+        ComboBox<Integer> yearCombo = new ComboBox<>();
+        int currentY = LocalDate.now().getYear();
+        for (int y = currentY + 1; y >= currentY - 5; y--) yearCombo.getItems().add(y);
+        yearCombo.getSelectionModel().select(Integer.valueOf(taxCurrentYear));
+        yearCombo.setOnAction(ev -> {
+            taxCurrentYear = yearCombo.getValue();
+            showTaxModels();
+        });
+
+        Button newBtn = new Button(t("tax.action.new"));
+        newBtn.setGraphic(icon("fas-plus"));
+        newBtn.setOnAction(ev -> showFilingEditor(null, bundle.catalog()));
+
+        HBox header = new HBox(16, titleBox, moduleIcon, spacer,
+                new Label(t("tax.year") + ":"), yearCombo, newBtn);
+        header.setAlignment(Pos.CENTER_LEFT);
+        header.getStyleClass().add("module-detail-header");
+
+        TabPane tabs = new TabPane();
+        tabs.getStyleClass().add("settings-tabs");
+        tabs.setTabClosingPolicy(TabPane.TabClosingPolicy.UNAVAILABLE);
+        Tab filingsTab = new Tab(t("tax.tab.filings"), buildFilingsTab(bundle));
+        filingsTab.setGraphic(icon("fas-file-alt"));
+        Tab calendarTab = new Tab(t("tax.tab.calendar"), buildCalendarTab(bundle));
+        calendarTab.setGraphic(icon("fas-calendar-alt"));
+        tabs.getTabs().addAll(filingsTab, calendarTab);
+        VBox.setVgrow(tabs, Priority.ALWAYS);
+
+        content.getChildren().addAll(header, tabs);
+        return content;
+    }
+
+    private Node buildFilingsTab(TaxBundle bundle) {
+        taxFilingsTable = new TableView<>();
+        taxFilingsTable.getStyleClass().add("data-table");
+        taxFilingsTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+        taxFilingsTable.setPlaceholder(new Label(t("tax.filings.placeholder.empty")));
+
+        TableColumn<com.benjagest.ui.model.TaxFilingEntry, String> colModel =
+                new TableColumn<>(t("tax.filings.col.model"));
+        colModel.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().taxModelCode()));
+        colModel.setPrefWidth(70);
+        TableColumn<com.benjagest.ui.model.TaxFilingEntry, String> colPeriod =
+                new TableColumn<>(t("tax.filings.col.period"));
+        colPeriod.setCellValueFactory(c -> new SimpleStringProperty(formatPeriod(c.getValue())));
+        colPeriod.setPrefWidth(110);
+        TableColumn<com.benjagest.ui.model.TaxFilingEntry, String> colStatus =
+                new TableColumn<>(t("tax.filings.col.status"));
+        colStatus.setCellValueFactory(c -> new SimpleStringProperty(t("tax.status." + c.getValue().status())));
+        colStatus.setPrefWidth(110);
+        TableColumn<com.benjagest.ui.model.TaxFilingEntry, String> colAmount =
+                new TableColumn<>(t("tax.filings.col.amount"));
+        colAmount.setCellValueFactory(c -> new SimpleStringProperty(
+                c.getValue().totalAmount() == null ? "" : c.getValue().totalAmount().toPlainString() + " €"));
+        colAmount.setPrefWidth(110);
+        colAmount.setComparator(NUMERIC_STRING_COMPARATOR);
+        TableColumn<com.benjagest.ui.model.TaxFilingEntry, String> colDeadline =
+                new TableColumn<>(t("tax.filings.col.deadline"));
+        colDeadline.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().deadlineAt()));
+        colDeadline.setPrefWidth(110);
+        colDeadline.setComparator(ISO_DATE_COMPARATOR);
+        TableColumn<com.benjagest.ui.model.TaxFilingEntry, String> colCsv =
+                new TableColumn<>(t("tax.filings.col.csv"));
+        colCsv.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().csvAeat()));
+        taxFilingsTable.getColumns().addAll(java.util.List.of(colModel, colPeriod, colStatus, colAmount, colDeadline, colCsv));
+        taxFilingsTable.setItems(FXCollections.observableArrayList(bundle.filings()));
+        taxFilingsTable.setOnMouseClicked(ev -> {
+            if (ev.getClickCount() == 2) {
+                var sel = taxFilingsTable.getSelectionModel().getSelectedItem();
+                if (sel != null) showFilingEditor(sel, bundle.catalog());
+            }
+        });
+
+        Button editBtn = new Button(t("tax.filings.action.edit"));
+        editBtn.setGraphic(icon("fas-edit"));
+        editBtn.setDisable(true);
+        editBtn.setOnAction(ev -> {
+            var sel = taxFilingsTable.getSelectionModel().getSelectedItem();
+            if (sel != null) showFilingEditor(sel, bundle.catalog());
+        });
+
+        Button deleteBtn = new Button(t("tax.filings.action.delete"));
+        deleteBtn.setGraphic(icon("fas-trash"));
+        deleteBtn.setDisable(true);
+        deleteBtn.setOnAction(ev -> {
+            var sel = taxFilingsTable.getSelectionModel().getSelectedItem();
+            if (sel != null) deleteFiling(sel);
+        });
+
+        taxFilingsTable.getSelectionModel().selectedItemProperty().addListener((o, ov, nv) -> {
+            editBtn.setDisable(nv == null);
+            deleteBtn.setDisable(nv == null
+                    || !("DRAFT".equals(nv.status()) || "CANCELLED".equals(nv.status())));
+        });
+
+        HBox actions = new HBox(8, editBtn, deleteBtn);
+        actions.getStyleClass().add("settings-actions");
+
+        VBox body = new VBox(12, taxFilingsTable);
+        VBox.setVgrow(taxFilingsTable, Priority.ALWAYS);
+        return new VBox(8, body, actions);
+    }
+
+    private Node buildCalendarTab(TaxBundle bundle) {
+        Label hint = new Label(t("tax.calendar.hint"));
+        hint.setWrapText(true);
+        hint.getStyleClass().add("settings-hint");
+
+        taxCalendarTable = new TableView<>();
+        taxCalendarTable.getStyleClass().add("data-table");
+        taxCalendarTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+        taxCalendarTable.setPlaceholder(new Label(t("tax.calendar.placeholder.empty")));
+
+        TableColumn<com.benjagest.ui.model.TaxDueDateEntry, String> colDeadline =
+                new TableColumn<>(t("tax.calendar.col.deadline"));
+        colDeadline.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().deadlineAt()));
+        colDeadline.setPrefWidth(110);
+        colDeadline.setComparator(ISO_DATE_COMPARATOR);
+        TableColumn<com.benjagest.ui.model.TaxDueDateEntry, String> colModel =
+                new TableColumn<>(t("tax.calendar.col.model"));
+        colModel.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().taxModelCode()));
+        colModel.setPrefWidth(70);
+        TableColumn<com.benjagest.ui.model.TaxDueDateEntry, String> colName =
+                new TableColumn<>(t("tax.calendar.col.name"));
+        colName.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().taxModelName()));
+        TableColumn<com.benjagest.ui.model.TaxDueDateEntry, String> colPeriod =
+                new TableColumn<>(t("tax.calendar.col.period"));
+        colPeriod.setCellValueFactory(c -> new SimpleStringProperty(formatPeriod(
+                c.getValue().periodYear(), c.getValue().periodQuarter(), c.getValue().periodMonth())));
+        colPeriod.setPrefWidth(120);
+        TableColumn<com.benjagest.ui.model.TaxDueDateEntry, String> colState =
+                new TableColumn<>(t("tax.calendar.col.state"));
+        colState.setCellValueFactory(c -> new SimpleStringProperty(calendarFilingState(c.getValue(), bundle.filings())));
+        colState.setPrefWidth(120);
+        taxCalendarTable.getColumns().addAll(java.util.List.of(colDeadline, colModel, colName, colPeriod, colState));
+
+        // Ordenar por fecha ascendente para que arriba salgan los más próximos
+        var sorted = new java.util.ArrayList<>(bundle.calendar());
+        sorted.sort(java.util.Comparator.comparing(com.benjagest.ui.model.TaxDueDateEntry::deadlineAt));
+        taxCalendarTable.setItems(FXCollections.observableArrayList(sorted));
+
+        VBox.setVgrow(taxCalendarTable, Priority.ALWAYS);
+        return new VBox(8, hint, taxCalendarTable);
+    }
+
+    private String calendarFilingState(com.benjagest.ui.model.TaxDueDateEntry due,
+                                        java.util.List<com.benjagest.ui.model.TaxFilingEntry> filings) {
+        for (var f : filings) {
+            if (!due.taxModelCode().equals(f.taxModelCode())) continue;
+            if (f.periodYear() != due.periodYear()) continue;
+            if (!java.util.Objects.equals(f.periodQuarter(), due.periodQuarter())) continue;
+            if (!java.util.Objects.equals(f.periodMonth(), due.periodMonth())) continue;
+            return t("tax.status." + f.status());
+        }
+        return t("tax.calendar.state.pending");
+    }
+
+    private String formatPeriod(com.benjagest.ui.model.TaxFilingEntry f) {
+        return formatPeriod(f.periodYear(), f.periodQuarter(), f.periodMonth());
+    }
+
+    private String formatPeriod(int year, Integer quarter, Integer month) {
+        if (quarter != null) return year + " T" + quarter;
+        if (month != null) return year + " M" + String.format("%02d", month);
+        return String.valueOf(year);
+    }
+
+    private void deleteFiling(com.benjagest.ui.model.TaxFilingEntry entry) {
+        Alert confirm = new Alert(Alert.AlertType.CONFIRMATION,
+                t("tax.filings.delete.body") + " " + entry.taxModelCode() + " " + formatPeriod(entry),
+                ButtonType.OK, ButtonType.CANCEL);
+        confirm.setHeaderText(t("tax.filings.delete.title"));
+        confirm.showAndWait().ifPresent(bt -> {
+            if (bt != ButtonType.OK) return;
+            Task<Void> task = new Task<>() {
+                @Override
+                protected Void call() throws Exception {
+                    altaApiClient.deleteFiling(entry.id());
+                    return null;
+                }
+            };
+            task.setOnSucceeded(ev -> showTaxModels());
+            task.setOnFailed(ev -> showError(t("tax.filings.delete.fail.title"),
+                    t("tax.filings.delete.fail.body")));
+            start(task, "tax-filing-delete");
+        });
+    }
+
+    /**
+     * Editor de declaracion. Si el modelo es 303 o 130 se abren los
+     * editores especificos (con sus casillas). Para el resto, un editor
+     * generico con JSON crudo en TextArea.
+     */
+    private void showFilingEditor(com.benjagest.ui.model.TaxFilingEntry existing,
+                                   java.util.List<com.benjagest.ui.model.TaxModelEntry> catalog) {
+        String modelCode = existing == null ? null : existing.taxModelCode();
+        if (existing == null) {
+            // Para nueva declaracion, primero el usuario elige modelo y periodo.
+            showNewFilingDialog(catalog);
+            return;
+        }
+        if ("303".equals(modelCode)) {
+            show303Editor(existing);
+        } else if ("130".equals(modelCode)) {
+            show130Editor(existing);
+        } else {
+            showGenericFilingEditor(existing, catalog);
+        }
+    }
+
+    private void showNewFilingDialog(java.util.List<com.benjagest.ui.model.TaxModelEntry> catalog) {
+        Dialog<ButtonType> dialog = new Dialog<>();
+        dialog.setTitle(t("tax.new.title"));
+        ButtonType nextBt = new ButtonType(t("tax.new.next"), ButtonBar.ButtonData.OK_DONE);
+        dialog.getDialogPane().getButtonTypes().addAll(nextBt, ButtonType.CANCEL);
+
+        ComboBox<com.benjagest.ui.model.TaxModelEntry> modelCombo = new ComboBox<>();
+        modelCombo.getItems().addAll(catalog);
+        modelCombo.setConverter(new javafx.util.StringConverter<>() {
+            @Override public String toString(com.benjagest.ui.model.TaxModelEntry m) {
+                return m == null ? "" : (m.code() + " · " + m.name());
+            }
+            @Override public com.benjagest.ui.model.TaxModelEntry fromString(String s) { return null; }
+        });
+        if (!catalog.isEmpty()) modelCombo.getSelectionModel().selectFirst();
+
+        ComboBox<Integer> yearCombo = new ComboBox<>();
+        int currentY = LocalDate.now().getYear();
+        for (int y = currentY + 1; y >= currentY - 5; y--) yearCombo.getItems().add(y);
+        yearCombo.getSelectionModel().select(Integer.valueOf(taxCurrentYear));
+
+        ComboBox<String> periodCombo = new ComboBox<>();
+        periodCombo.getItems().addAll("T1", "T2", "T3", "T4", "M01", "M02", "M03", "M04", "M05", "M06",
+                "M07", "M08", "M09", "M10", "M11", "M12", "ANUAL");
+        periodCombo.getSelectionModel().select("T1");
+
+        GridPane grid = new GridPane();
+        grid.setHgap(10); grid.setVgap(8); grid.setPadding(new Insets(10));
+        grid.add(new Label(t("tax.new.model")), 0, 0); grid.add(modelCombo, 1, 0);
+        grid.add(new Label(t("tax.new.year")), 0, 1); grid.add(yearCombo, 1, 1);
+        grid.add(new Label(t("tax.new.period")), 0, 2); grid.add(periodCombo, 1, 2);
+        dialog.getDialogPane().setContent(grid);
+
+        dialog.showAndWait().ifPresent(bt -> {
+            if (bt != nextBt) return;
+            var model = modelCombo.getValue();
+            if (model == null) return;
+            Integer quarter = null, month = null;
+            String pv = periodCombo.getValue();
+            if (pv != null && pv.startsWith("T")) quarter = Integer.parseInt(pv.substring(1));
+            else if (pv != null && pv.startsWith("M")) month = Integer.parseInt(pv.substring(1));
+            // Crear stub vacio y abrir editor especifico
+            com.benjagest.ui.model.TaxFilingEntry stub = new com.benjagest.ui.model.TaxFilingEntry(
+                    null, model.code(), yearCombo.getValue(), quarter, month,
+                    "DRAFT", null, null, null, null, null, "{}");
+            Task<com.benjagest.ui.model.TaxFilingEntry> task = new Task<>() {
+                @Override
+                protected com.benjagest.ui.model.TaxFilingEntry call() throws Exception {
+                    return altaApiClient.createFiling(model.code(), yearCombo.getValue(), stub.periodQuarter(),
+                            stub.periodMonth(), "DRAFT", "{}", null, null, null);
+                }
+            };
+            task.setOnSucceeded(ev -> {
+                var created = task.getValue();
+                showFilingEditor(created, catalog);
+            });
+            task.setOnFailed(ev -> showError(t("tax.new.fail.title"), t("tax.new.fail.body")));
+            start(task, "tax-filing-create");
+        });
+    }
+
+    /** Editor genérico: JSON crudo en TextArea + estado + total + CSV + notas. */
+    private void showGenericFilingEditor(com.benjagest.ui.model.TaxFilingEntry existing,
+                                          java.util.List<com.benjagest.ui.model.TaxModelEntry> catalog) {
+        Dialog<ButtonType> dialog = new Dialog<>();
+        dialog.setTitle(t("tax.editor.generic.title") + " — " + existing.taxModelCode() + " " + formatPeriod(existing));
+        ButtonType saveBt = new ButtonType(t("tax.editor.save"), ButtonBar.ButtonData.OK_DONE);
+        dialog.getDialogPane().getButtonTypes().addAll(saveBt, ButtonType.CANCEL);
+
+        ComboBox<String> statusCombo = new ComboBox<>();
+        statusCombo.getItems().addAll("DRAFT", "READY", "PRESENTED", "PAID", "REJECTED", "CANCELLED");
+        statusCombo.getSelectionModel().select(existing.status());
+        TextField amountField = new TextField(existing.totalAmount() == null
+                ? "" : existing.totalAmount().toPlainString());
+        TextField csvField = new TextField(existing.csvAeat());
+        TextArea dataArea = new TextArea(existing.dataJson() == null || existing.dataJson().isBlank()
+                ? "{}" : existing.dataJson());
+        dataArea.setPrefRowCount(6);
+        TextArea notesArea = new TextArea(existing.notes());
+        notesArea.setPrefRowCount(2);
+
+        GridPane grid = new GridPane();
+        grid.setHgap(10); grid.setVgap(8); grid.setPadding(new Insets(10));
+        grid.add(new Label(t("tax.editor.status")), 0, 0); grid.add(statusCombo, 1, 0);
+        grid.add(new Label(t("tax.editor.total")), 0, 1); grid.add(amountField, 1, 1);
+        grid.add(new Label(t("tax.editor.csv")), 0, 2); grid.add(csvField, 1, 2);
+        grid.add(new Label(t("tax.editor.data")), 0, 3); grid.add(dataArea, 1, 3);
+        grid.add(new Label(t("tax.editor.notes")), 0, 4); grid.add(notesArea, 1, 4);
+        dialog.getDialogPane().setContent(grid);
+
+        dialog.showAndWait().ifPresent(bt -> {
+            if (bt != saveBt) return;
+            saveFiling(existing, statusCombo.getValue(), dataArea.getText(),
+                    parseDec(amountField.getText()), csvField.getText(), notesArea.getText(), catalog);
+        });
+    }
+
+    /** Editor 303 — IVA autoliquidación trimestral. Casillas básicas. */
+    private void show303Editor(com.benjagest.ui.model.TaxFilingEntry existing) {
+        Dialog<ButtonType> dialog = new Dialog<>();
+        dialog.setTitle("Modelo 303 — " + formatPeriod(existing));
+        ButtonType saveBt = new ButtonType(t("tax.editor.save"), ButtonBar.ButtonData.OK_DONE);
+        dialog.getDialogPane().getButtonTypes().addAll(saveBt, ButtonType.CANCEL);
+
+        java.util.Map<String, String> parsed = parseDataMap(existing.dataJson());
+
+        // IVA repercutido (devengado)
+        TextField b21 = new TextField(parsed.getOrDefault("base_21", ""));
+        TextField c21 = new TextField(parsed.getOrDefault("cuota_21", ""));
+        TextField b10 = new TextField(parsed.getOrDefault("base_10", ""));
+        TextField c10 = new TextField(parsed.getOrDefault("cuota_10", ""));
+        TextField b4 = new TextField(parsed.getOrDefault("base_4", ""));
+        TextField c4 = new TextField(parsed.getOrDefault("cuota_4", ""));
+        // IVA soportado (deducible)
+        TextField bs = new TextField(parsed.getOrDefault("base_soportado", ""));
+        TextField cs = new TextField(parsed.getOrDefault("cuota_soportada", ""));
+
+        ComboBox<String> statusCombo = new ComboBox<>();
+        statusCombo.getItems().addAll("DRAFT", "READY", "PRESENTED", "PAID", "REJECTED");
+        statusCombo.getSelectionModel().select(existing.status());
+        TextField csvField = new TextField(existing.csvAeat());
+
+        GridPane grid = new GridPane();
+        grid.setHgap(10); grid.setVgap(6); grid.setPadding(new Insets(12));
+        grid.add(label("IVA repercutido (devengado)", "settings-section-title"), 0, 0, 4, 1);
+        grid.add(new Label("Base 21 %"), 0, 1); grid.add(b21, 1, 1);
+        grid.add(new Label("Cuota 21 %"), 2, 1); grid.add(c21, 3, 1);
+        grid.add(new Label("Base 10 %"), 0, 2); grid.add(b10, 1, 2);
+        grid.add(new Label("Cuota 10 %"), 2, 2); grid.add(c10, 3, 2);
+        grid.add(new Label("Base 4 %"), 0, 3); grid.add(b4, 1, 3);
+        grid.add(new Label("Cuota 4 %"), 2, 3); grid.add(c4, 3, 3);
+
+        grid.add(new Separator(), 0, 4, 4, 1);
+        grid.add(label("IVA soportado (deducible)", "settings-section-title"), 0, 5, 4, 1);
+        grid.add(new Label("Base soportada"), 0, 6); grid.add(bs, 1, 6);
+        grid.add(new Label("Cuota soportada"), 2, 6); grid.add(cs, 3, 6);
+
+        grid.add(new Separator(), 0, 7, 4, 1);
+        Label resultLabel = new Label();
+        resultLabel.getStyleClass().add("settings-section-title");
+        grid.add(resultLabel, 0, 8, 4, 1);
+
+        Runnable recompute = () -> {
+            java.math.BigDecimal repercutido = sum(c21.getText(), c10.getText(), c4.getText());
+            java.math.BigDecimal soportado = parseDec(cs.getText());
+            if (soportado == null) soportado = java.math.BigDecimal.ZERO;
+            java.math.BigDecimal result = repercutido.subtract(soportado);
+            resultLabel.setText("Resultado (casilla 71): " + result.toPlainString() + " €");
+        };
+        for (TextField f : new TextField[]{c21, c10, c4, cs}) {
+            f.textProperty().addListener((o, ov, nv) -> recompute.run());
+        }
+        recompute.run();
+
+        grid.add(new Label(t("tax.editor.status")), 0, 9); grid.add(statusCombo, 1, 9);
+        grid.add(new Label(t("tax.editor.csv")), 2, 9); grid.add(csvField, 3, 9);
+
+        dialog.getDialogPane().setContent(grid);
+
+        dialog.showAndWait().ifPresent(bt -> {
+            if (bt != saveBt) return;
+            java.util.Map<String, String> data = new java.util.LinkedHashMap<>();
+            data.put("base_21", b21.getText().trim());
+            data.put("cuota_21", c21.getText().trim());
+            data.put("base_10", b10.getText().trim());
+            data.put("cuota_10", c10.getText().trim());
+            data.put("base_4", b4.getText().trim());
+            data.put("cuota_4", c4.getText().trim());
+            data.put("base_soportado", bs.getText().trim());
+            data.put("cuota_soportada", cs.getText().trim());
+            java.math.BigDecimal total = sum(c21.getText(), c10.getText(), c4.getText())
+                    .subtract(parseDec(cs.getText()) == null ? java.math.BigDecimal.ZERO : parseDec(cs.getText()));
+            saveFiling(existing, statusCombo.getValue(), encodeDataMap(data), total,
+                    csvField.getText(), existing.notes(), java.util.List.of());
+        });
+    }
+
+    /** Editor 130 — IRPF pago fraccionado estimación directa. */
+    private void show130Editor(com.benjagest.ui.model.TaxFilingEntry existing) {
+        Dialog<ButtonType> dialog = new Dialog<>();
+        dialog.setTitle("Modelo 130 — " + formatPeriod(existing));
+        ButtonType saveBt = new ButtonType(t("tax.editor.save"), ButtonBar.ButtonData.OK_DONE);
+        dialog.getDialogPane().getButtonTypes().addAll(saveBt, ButtonType.CANCEL);
+
+        java.util.Map<String, String> parsed = parseDataMap(existing.dataJson());
+
+        TextField ingresos = new TextField(parsed.getOrDefault("ingresos", ""));
+        TextField gastos = new TextField(parsed.getOrDefault("gastos", ""));
+        TextField retencionesPrev = new TextField(parsed.getOrDefault("retenciones", ""));
+        TextField pagosPrev = new TextField(parsed.getOrDefault("pagos_previos", ""));
+
+        ComboBox<String> statusCombo = new ComboBox<>();
+        statusCombo.getItems().addAll("DRAFT", "READY", "PRESENTED", "PAID", "REJECTED");
+        statusCombo.getSelectionModel().select(existing.status());
+        TextField csvField = new TextField(existing.csvAeat());
+
+        Label resultLabel = new Label();
+        resultLabel.getStyleClass().add("settings-section-title");
+
+        Runnable recompute = () -> {
+            java.math.BigDecimal ing = parseDec(ingresos.getText());
+            java.math.BigDecimal gas = parseDec(gastos.getText());
+            java.math.BigDecimal ret = parseDec(retencionesPrev.getText());
+            java.math.BigDecimal pag = parseDec(pagosPrev.getText());
+            if (ing == null) ing = java.math.BigDecimal.ZERO;
+            if (gas == null) gas = java.math.BigDecimal.ZERO;
+            if (ret == null) ret = java.math.BigDecimal.ZERO;
+            if (pag == null) pag = java.math.BigDecimal.ZERO;
+            java.math.BigDecimal beneficio = ing.subtract(gas);
+            // 20% del beneficio acumulado, menos retenciones y pagos anteriores
+            java.math.BigDecimal pago = beneficio.multiply(new java.math.BigDecimal("0.20"))
+                    .subtract(ret).subtract(pag).setScale(2, java.math.RoundingMode.HALF_UP);
+            resultLabel.setText("Pago fraccionado a ingresar: " + pago.toPlainString() + " €");
+        };
+        for (TextField f : new TextField[]{ingresos, gastos, retencionesPrev, pagosPrev}) {
+            f.textProperty().addListener((o, ov, nv) -> recompute.run());
+        }
+        recompute.run();
+
+        GridPane grid = new GridPane();
+        grid.setHgap(10); grid.setVgap(8); grid.setPadding(new Insets(12));
+        grid.add(new Label("Ingresos acumulados"), 0, 0); grid.add(ingresos, 1, 0);
+        grid.add(new Label("Gastos acumulados"), 0, 1); grid.add(gastos, 1, 1);
+        grid.add(new Label("Retenciones soportadas"), 0, 2); grid.add(retencionesPrev, 1, 2);
+        grid.add(new Label("Pagos fraccionados previos"), 0, 3); grid.add(pagosPrev, 1, 3);
+        grid.add(new Separator(), 0, 4, 2, 1);
+        grid.add(resultLabel, 0, 5, 2, 1);
+        grid.add(new Separator(), 0, 6, 2, 1);
+        grid.add(new Label(t("tax.editor.status")), 0, 7); grid.add(statusCombo, 1, 7);
+        grid.add(new Label(t("tax.editor.csv")), 0, 8); grid.add(csvField, 1, 8);
+        dialog.getDialogPane().setContent(grid);
+
+        dialog.showAndWait().ifPresent(bt -> {
+            if (bt != saveBt) return;
+            java.util.Map<String, String> data = new java.util.LinkedHashMap<>();
+            data.put("ingresos", ingresos.getText().trim());
+            data.put("gastos", gastos.getText().trim());
+            data.put("retenciones", retencionesPrev.getText().trim());
+            data.put("pagos_previos", pagosPrev.getText().trim());
+            java.math.BigDecimal ing = parseDec(ingresos.getText());
+            java.math.BigDecimal gas = parseDec(gastos.getText());
+            java.math.BigDecimal ret = parseDec(retencionesPrev.getText());
+            java.math.BigDecimal pag = parseDec(pagosPrev.getText());
+            if (ing == null) ing = java.math.BigDecimal.ZERO;
+            if (gas == null) gas = java.math.BigDecimal.ZERO;
+            if (ret == null) ret = java.math.BigDecimal.ZERO;
+            if (pag == null) pag = java.math.BigDecimal.ZERO;
+            java.math.BigDecimal total = ing.subtract(gas).multiply(new java.math.BigDecimal("0.20"))
+                    .subtract(ret).subtract(pag).setScale(2, java.math.RoundingMode.HALF_UP);
+            saveFiling(existing, statusCombo.getValue(), encodeDataMap(data), total,
+                    csvField.getText(), existing.notes(), java.util.List.of());
+        });
+    }
+
+    private void saveFiling(com.benjagest.ui.model.TaxFilingEntry existing, String status,
+                             String dataJson, java.math.BigDecimal total, String csv, String notes,
+                             java.util.List<com.benjagest.ui.model.TaxModelEntry> catalog) {
+        Task<com.benjagest.ui.model.TaxFilingEntry> task = new Task<>() {
+            @Override
+            protected com.benjagest.ui.model.TaxFilingEntry call() throws Exception {
+                return altaApiClient.updateFiling(existing.id(), existing.taxModelCode(),
+                        existing.periodYear(), existing.periodQuarter(), existing.periodMonth(),
+                        status, dataJson, total,
+                        blankToNullOrSelf(csv),
+                        blankToNullOrSelf(notes));
+            }
+        };
+        task.setOnSucceeded(ev -> showTaxModels());
+        task.setOnFailed(ev -> showError(t("tax.editor.fail.title"), t("tax.editor.fail.body")));
+        start(task, "tax-filing-save");
+    }
+
+    private java.math.BigDecimal parseDec(String s) {
+        if (s == null || s.isBlank()) return null;
+        try { return new java.math.BigDecimal(s.trim().replace(",", ".")); }
+        catch (NumberFormatException ex) { return null; }
+    }
+
+    private java.math.BigDecimal sum(String... values) {
+        java.math.BigDecimal acc = java.math.BigDecimal.ZERO;
+        for (String v : values) {
+            java.math.BigDecimal d = parseDec(v);
+            if (d != null) acc = acc.add(d);
+        }
+        return acc;
+    }
+
+    /**
+     * Mini-parser: convierte el JSON crudo de `data` en un Map<String,String>
+     * para poblar las casillas del editor. No es un parser real — asume
+     * un objeto plano con claves y valores string-o-number.
+     */
+    private java.util.Map<String, String> parseDataMap(String json) {
+        java.util.Map<String, String> out = new java.util.LinkedHashMap<>();
+        if (json == null || json.isBlank()) return out;
+        var p = java.util.regex.Pattern.compile("\"([^\"]+)\"\\s*:\\s*(?:\"([^\"]*)\"|(-?\\d+(?:\\.\\d+)?))");
+        var m = p.matcher(json);
+        while (m.find()) {
+            String key = m.group(1);
+            String val = m.group(2) != null ? m.group(2) : m.group(3);
+            out.put(key, val);
+        }
+        return out;
+    }
+
+    private String encodeDataMap(java.util.Map<String, String> data) {
+        StringBuilder sb = new StringBuilder("{");
+        boolean first = true;
+        for (var e : data.entrySet()) {
+            if (!first) sb.append(",");
+            sb.append("\"").append(e.getKey()).append("\":\"")
+                    .append(e.getValue() == null ? "" : e.getValue().replace("\"", "\\\""))
+                    .append("\"");
+            first = false;
+        }
+        sb.append("}");
+        return sb.toString();
     }
 }

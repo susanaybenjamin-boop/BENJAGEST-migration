@@ -63,8 +63,25 @@ public final class AuthSession {
     public HttpRequest.Builder authorize(HttpRequest.Builder builder) {
         if (isAuthenticated()) {
             builder.header("Authorization", "Bearer " + accessToken);
+            // Tenant switching (asesoría multi-cliente): si la sesión
+            // tiene una empresa activa, la enviamos como header. El
+            // RequestScopedTenantContext del backend lo aplica para esa
+            // peticion. Asi una gestoría puede cambiar de cliente sin
+            // re-loguearse.
+            if (activeCompanyId != null && !activeCompanyId.isBlank()) {
+                builder.header("X-Company-Id", activeCompanyId);
+            }
         }
         return builder;
+    }
+
+    /**
+     * Cambia la empresa activa de la sesion en caliente. Lo usa el
+     * switcher de cliente en el modulo Asesoria. No invalida el JWT
+     * — solo redirige las peticiones siguientes al tenant indicado.
+     */
+    public void setActiveCompanyId(String companyId) {
+        this.activeCompanyId = companyId;
     }
 
     public void update(
