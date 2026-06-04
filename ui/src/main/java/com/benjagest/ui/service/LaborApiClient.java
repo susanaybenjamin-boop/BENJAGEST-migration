@@ -468,6 +468,54 @@ public class LaborApiClient {
         return b.toString();
     }
 
+    // ====================================================================
+    //  Auditoría fichajes (TC-AUDIT)
+    // ====================================================================
+
+    public java.util.List<com.benjagest.ui.model.TimeClockAuditEntry> queryAudit(
+            String fromIsoDate, String toIsoDate, String employeeId, String eventType)
+            throws IOException, InterruptedException {
+        StringBuilder url = new StringBuilder(baseUrl + "/timeclock/audit?");
+        if (fromIsoDate != null && !fromIsoDate.isBlank()) url.append("from=").append(fromIsoDate).append("&");
+        if (toIsoDate != null && !toIsoDate.isBlank()) url.append("to=").append(toIsoDate).append("&");
+        if (employeeId != null && !employeeId.isBlank()) url.append("employeeId=").append(employeeId).append("&");
+        if (eventType != null && !eventType.isBlank()) url.append("eventType=").append(eventType);
+        HttpResponse<String> r = send(req(url.toString()).GET());
+        return parseObjects(r.body(), "eventType", obj -> new com.benjagest.ui.model.TimeClockAuditEntry(
+                textField(obj, "id"),
+                textField(obj, "employeeId"),
+                textField(obj, "employeeName"),
+                textField(obj, "eventType"),
+                textField(obj, "eventTime"),
+                textField(obj, "origin"),
+                textField(obj, "status"),
+                textField(obj, "createdAt"),
+                textField(obj, "csv"),
+                intFieldOrZero(obj, "correctionCount"),
+                textField(obj, "lastCorrectionAt")
+        ));
+    }
+
+    public java.util.List<com.benjagest.ui.model.TimeClockAuditSummary> auditSummary(
+            String fromIsoDate, String toIsoDate) throws IOException, InterruptedException {
+        StringBuilder url = new StringBuilder(baseUrl + "/timeclock/audit/summary?");
+        if (fromIsoDate != null && !fromIsoDate.isBlank()) url.append("from=").append(fromIsoDate).append("&");
+        if (toIsoDate != null && !toIsoDate.isBlank()) url.append("to=").append(toIsoDate);
+        HttpResponse<String> r = send(req(url.toString()).GET());
+        return parseObjects(r.body(), "employeeName", obj -> new com.benjagest.ui.model.TimeClockAuditSummary(
+                textField(obj, "employeeId"),
+                textField(obj, "employeeName"),
+                intFieldOrZero(obj, "totalEvents"),
+                textField(obj, "firstEvent"),
+                textField(obj, "lastEvent"),
+                intFieldOrZero(obj, "pauses"),
+                intFieldOrZero(obj, "ins"),
+                intFieldOrZero(obj, "outs"),
+                intFieldOrZero(obj, "corrections"),
+                boolField(obj, "hasIncidence")
+        ));
+    }
+
     private com.benjagest.ui.model.TimeClockEventTypeEntry mapEventType(String obj) {
         return new com.benjagest.ui.model.TimeClockEventTypeEntry(
                 textField(obj, "id"),

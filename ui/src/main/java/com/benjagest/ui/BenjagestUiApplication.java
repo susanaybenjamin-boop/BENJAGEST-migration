@@ -7662,6 +7662,35 @@ public class BenjagestUiApplication extends Application {
             case "labor.tab.timeclock" -> "Time clock";
             case "labor.tab.payslips" -> "Payslips";
             case "labor.tab.cfg_timeclock" -> "Time clock settings";
+            case "labor.tab.audit" -> "Audit";
+            // ---- TC-AUDIT ----
+            case "labor.audit.hint" -> "Time clock audit for RD 8/2019 art. 34.9 (immutability) and 35.8 (public verification). Filter by range, employee or event type. Records are 4-year retained.";
+            case "labor.audit.filter.from" -> "From";
+            case "labor.audit.filter.to" -> "To";
+            case "labor.audit.filter.employee" -> "Employee";
+            case "labor.audit.filter.type" -> "Type";
+            case "labor.audit.action.reload" -> "Reload";
+            case "labor.audit.action.export" -> "Export…";
+            case "labor.audit.export.tooltip" -> "PDF/CSV export with public verification CSV (TC-EXPORT, next slice).";
+            case "labor.audit.section.summary" -> "Summary by employee";
+            case "labor.audit.section.detail" -> "Event detail";
+            case "labor.audit.summary.placeholder.empty" -> "No events in the selected range.";
+            case "labor.audit.detail.placeholder.empty" -> "No events match the filters.";
+            case "labor.audit.col.employee" -> "Employee";
+            case "labor.audit.col.total" -> "Total";
+            case "labor.audit.col.ins" -> "IN";
+            case "labor.audit.col.outs" -> "OUT";
+            case "labor.audit.col.pauses" -> "Pauses";
+            case "labor.audit.col.corrections" -> "Corrections";
+            case "labor.audit.col.incidence" -> "Incidence";
+            case "labor.audit.incidence.yes" -> "Review";
+            case "labor.audit.incidence.no" -> "OK";
+            case "labor.audit.col.when" -> "Date/time";
+            case "labor.audit.col.type" -> "Type";
+            case "labor.audit.col.origin" -> "Origin";
+            case "labor.audit.col.status" -> "Status";
+            case "labor.audit.col.has_corrections" -> "Corr.";
+            case "labor.audit.col.csv" -> "CSV";
             // ---- TC-CFG ----
             case "labor.cfg_timeclock.hint" -> "Configure the punch buttons your employees see. Codes are sent to the server (e.g. IN, LUNCH, MEETING). Labels are what the user reads. Order matters for the row.";
             case "labor.cfg_timeclock.placeholder.empty" -> "No event types configured.";
@@ -7950,6 +7979,34 @@ public class BenjagestUiApplication extends Application {
             case "labor.tab.timeclock" -> "Fichajes";
             case "labor.tab.payslips" -> "Nominas";
             case "labor.tab.cfg_timeclock" -> "Config fichajes";
+            case "labor.tab.audit" -> "Auditoria";
+            case "labor.audit.hint" -> "Auditoria de fichajes para el RD 8/2019 art. 34.9 (inalterabilidad) y 35.8 (verificacion publica). Filtra por rango, empleado o tipo. Conservacion 4 anos.";
+            case "labor.audit.filter.from" -> "Desde";
+            case "labor.audit.filter.to" -> "Hasta";
+            case "labor.audit.filter.employee" -> "Empleado";
+            case "labor.audit.filter.type" -> "Tipo";
+            case "labor.audit.action.reload" -> "Recargar";
+            case "labor.audit.action.export" -> "Exportar…";
+            case "labor.audit.export.tooltip" -> "Exportar PDF/CSV con CSV de verificacion publica (TC-EXPORT, siguiente slice).";
+            case "labor.audit.section.summary" -> "Resumen por empleado";
+            case "labor.audit.section.detail" -> "Detalle de eventos";
+            case "labor.audit.summary.placeholder.empty" -> "No hay eventos en el rango seleccionado.";
+            case "labor.audit.detail.placeholder.empty" -> "Ningun evento coincide con los filtros.";
+            case "labor.audit.col.employee" -> "Empleado";
+            case "labor.audit.col.total" -> "Total";
+            case "labor.audit.col.ins" -> "IN";
+            case "labor.audit.col.outs" -> "OUT";
+            case "labor.audit.col.pauses" -> "Pausas";
+            case "labor.audit.col.corrections" -> "Correcciones";
+            case "labor.audit.col.incidence" -> "Incidencia";
+            case "labor.audit.incidence.yes" -> "Revisar";
+            case "labor.audit.incidence.no" -> "OK";
+            case "labor.audit.col.when" -> "Fecha/hora";
+            case "labor.audit.col.type" -> "Tipo";
+            case "labor.audit.col.origin" -> "Origen";
+            case "labor.audit.col.status" -> "Estado";
+            case "labor.audit.col.has_corrections" -> "Corr.";
+            case "labor.audit.col.csv" -> "CSV";
             case "labor.cfg_timeclock.hint" -> "Configura los botones de fichaje que veran tus empleados. Los codigos se envian al servidor (p.ej. IN, COMIDA, REUNION). Las etiquetas son lo que lee el usuario. El orden determina la posicion en la fila.";
             case "labor.cfg_timeclock.placeholder.empty" -> "No hay tipos de evento configurados.";
             case "labor.cfg_timeclock.col.order" -> "Orden";
@@ -8298,12 +8355,14 @@ public class BenjagestUiApplication extends Application {
         contractsTab.setGraphic(icon("fas-file-contract"));
         Tab clockTab = new Tab(t("labor.tab.timeclock"), buildTimeClockTab(bundle.employees(), bundle.eventTypes()));
         clockTab.setGraphic(icon("fas-clock"));
+        Tab auditTab = new Tab(t("labor.tab.audit"), buildTimeClockAuditTab(bundle.employees()));
+        auditTab.setGraphic(icon("fas-shield-alt"));
         Tab payslipsTab = new Tab(t("labor.tab.payslips"), buildPayslipsTab(bundle));
         payslipsTab.setGraphic(icon("fas-file-invoice-dollar"));
         Tab cfgTab = new Tab(t("labor.tab.cfg_timeclock"), buildEventTypeConfigTab(bundle.eventTypes()));
         cfgTab.setGraphic(icon("fas-cog"));
 
-        tabs.getTabs().addAll(empTab, contractsTab, clockTab, payslipsTab, cfgTab);
+        tabs.getTabs().addAll(empTab, contractsTab, clockTab, auditTab, payslipsTab, cfgTab);
         VBox.setVgrow(tabs, Priority.ALWAYS);
 
         content.getChildren().addAll(header, tabs);
@@ -8877,6 +8936,192 @@ public class BenjagestUiApplication extends Application {
         Alert a = new Alert(Alert.AlertType.INFORMATION, body);
         a.setHeaderText(title);
         a.showAndWait();
+    }
+
+    // ----- Sub-tab Auditoría fichajes (TC-AUDIT) -----
+
+    private Node buildTimeClockAuditTab(java.util.List<com.benjagest.ui.model.EmployeeEntry> allEmployees) {
+        Label hint = new Label(t("labor.audit.hint"));
+        hint.setWrapText(true);
+        hint.getStyleClass().add("settings-hint");
+
+        // Filtros
+        LocalDate defaultFrom = LocalDate.now().withDayOfMonth(1);
+        LocalDate defaultTo = LocalDate.now();
+        TextField fromField = new TextField(defaultFrom.toString());
+        TextField toField = new TextField(defaultTo.toString());
+        fromField.setPrefColumnCount(12);
+        toField.setPrefColumnCount(12);
+
+        ComboBox<com.benjagest.ui.model.EmployeeEntry> empCombo = new ComboBox<>();
+        empCombo.setConverter(new javafx.util.StringConverter<>() {
+            @Override public String toString(com.benjagest.ui.model.EmployeeEntry e) {
+                return e == null ? "(todos)" : e.fullName();
+            }
+            @Override public com.benjagest.ui.model.EmployeeEntry fromString(String s) { return null; }
+        });
+        empCombo.getItems().add(null);
+        empCombo.getItems().addAll(allEmployees);
+        empCombo.setValue(null);
+
+        TextField eventTypeField = new TextField();
+        eventTypeField.setPromptText("IN, OUT, COMIDA…");
+        eventTypeField.setPrefColumnCount(8);
+
+        // Tabla resumen por empleado
+        TableView<com.benjagest.ui.model.TimeClockAuditSummary> summaryTable = new TableView<>();
+        summaryTable.getStyleClass().add("data-table");
+        summaryTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+        summaryTable.setPlaceholder(new Label(t("labor.audit.summary.placeholder.empty")));
+        summaryTable.setPrefHeight(180);
+
+        TableColumn<com.benjagest.ui.model.TimeClockAuditSummary, String> sName =
+                new TableColumn<>(t("labor.audit.col.employee"));
+        sName.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().employeeName()));
+        sName.setPrefWidth(200);
+        TableColumn<com.benjagest.ui.model.TimeClockAuditSummary, String> sTotal =
+                new TableColumn<>(t("labor.audit.col.total"));
+        sTotal.setCellValueFactory(c -> new SimpleStringProperty(String.valueOf(c.getValue().totalEvents())));
+        sTotal.setPrefWidth(80);
+        sTotal.setComparator(NUMERIC_STRING_COMPARATOR);
+        TableColumn<com.benjagest.ui.model.TimeClockAuditSummary, String> sIns =
+                new TableColumn<>(t("labor.audit.col.ins"));
+        sIns.setCellValueFactory(c -> new SimpleStringProperty(String.valueOf(c.getValue().ins())));
+        sIns.setPrefWidth(70);
+        sIns.setComparator(NUMERIC_STRING_COMPARATOR);
+        TableColumn<com.benjagest.ui.model.TimeClockAuditSummary, String> sOuts =
+                new TableColumn<>(t("labor.audit.col.outs"));
+        sOuts.setCellValueFactory(c -> new SimpleStringProperty(String.valueOf(c.getValue().outs())));
+        sOuts.setPrefWidth(70);
+        sOuts.setComparator(NUMERIC_STRING_COMPARATOR);
+        TableColumn<com.benjagest.ui.model.TimeClockAuditSummary, String> sPauses =
+                new TableColumn<>(t("labor.audit.col.pauses"));
+        sPauses.setCellValueFactory(c -> new SimpleStringProperty(String.valueOf(c.getValue().pauses())));
+        sPauses.setPrefWidth(80);
+        sPauses.setComparator(NUMERIC_STRING_COMPARATOR);
+        TableColumn<com.benjagest.ui.model.TimeClockAuditSummary, String> sCorr =
+                new TableColumn<>(t("labor.audit.col.corrections"));
+        sCorr.setCellValueFactory(c -> new SimpleStringProperty(String.valueOf(c.getValue().corrections())));
+        sCorr.setPrefWidth(110);
+        sCorr.setComparator(NUMERIC_STRING_COMPARATOR);
+        TableColumn<com.benjagest.ui.model.TimeClockAuditSummary, String> sInc =
+                new TableColumn<>(t("labor.audit.col.incidence"));
+        sInc.setCellValueFactory(c -> new SimpleStringProperty(
+                c.getValue().hasIncidence() ? "⚠ " + t("labor.audit.incidence.yes") : t("labor.audit.incidence.no")));
+        sInc.setPrefWidth(130);
+        summaryTable.getColumns().addAll(java.util.List.of(sName, sTotal, sIns, sOuts, sPauses, sCorr, sInc));
+
+        // Tabla detalle (eventos)
+        TableView<com.benjagest.ui.model.TimeClockAuditEntry> detailTable = new TableView<>();
+        detailTable.getStyleClass().add("data-table");
+        detailTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+        detailTable.setPlaceholder(new Label(t("labor.audit.detail.placeholder.empty")));
+
+        TableColumn<com.benjagest.ui.model.TimeClockAuditEntry, String> dWhen =
+                new TableColumn<>(t("labor.audit.col.when"));
+        dWhen.setCellValueFactory(c -> new SimpleStringProperty(shortIso(c.getValue().eventTime())));
+        dWhen.setPrefWidth(160);
+        dWhen.setComparator(ISO_DATE_COMPARATOR);
+        TableColumn<com.benjagest.ui.model.TimeClockAuditEntry, String> dEmp =
+                new TableColumn<>(t("labor.audit.col.employee"));
+        dEmp.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().employeeName()));
+        dEmp.setPrefWidth(180);
+        TableColumn<com.benjagest.ui.model.TimeClockAuditEntry, String> dType =
+                new TableColumn<>(t("labor.audit.col.type"));
+        dType.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().eventType()));
+        dType.setPrefWidth(120);
+        TableColumn<com.benjagest.ui.model.TimeClockAuditEntry, String> dOrigin =
+                new TableColumn<>(t("labor.audit.col.origin"));
+        dOrigin.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().origin()));
+        dOrigin.setPrefWidth(90);
+        TableColumn<com.benjagest.ui.model.TimeClockAuditEntry, String> dStatus =
+                new TableColumn<>(t("labor.audit.col.status"));
+        dStatus.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().status()));
+        dStatus.setPrefWidth(100);
+        TableColumn<com.benjagest.ui.model.TimeClockAuditEntry, String> dCorr =
+                new TableColumn<>(t("labor.audit.col.has_corrections"));
+        dCorr.setCellValueFactory(c -> new SimpleStringProperty(
+                c.getValue().correctionCount() > 0
+                        ? "✎ " + c.getValue().correctionCount() : ""));
+        dCorr.setPrefWidth(90);
+        TableColumn<com.benjagest.ui.model.TimeClockAuditEntry, String> dCsv =
+                new TableColumn<>(t("labor.audit.col.csv"));
+        dCsv.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().csv()));
+        detailTable.getColumns().addAll(java.util.List.of(dWhen, dEmp, dType, dOrigin, dStatus, dCorr, dCsv));
+
+        Runnable reload = () -> {
+            String from = fromField.getText().trim();
+            String to = toField.getText().trim();
+            var emp = empCombo.getValue();
+            String empId = emp == null ? null : emp.id();
+            String ev = eventTypeField.getText().trim();
+            // resumen
+            Task<java.util.List<com.benjagest.ui.model.TimeClockAuditSummary>> sumTask = new Task<>() {
+                @Override protected java.util.List<com.benjagest.ui.model.TimeClockAuditSummary> call() throws Exception {
+                    return laborApiClient.auditSummary(from, to);
+                }
+            };
+            sumTask.setOnSucceeded(ev2 -> summaryTable.setItems(FXCollections.observableArrayList(sumTask.getValue())));
+            sumTask.setOnFailed(ev2 -> summaryTable.getItems().clear());
+            start(sumTask, "tc-audit-summary");
+            // detalle
+            Task<java.util.List<com.benjagest.ui.model.TimeClockAuditEntry>> detTask = new Task<>() {
+                @Override protected java.util.List<com.benjagest.ui.model.TimeClockAuditEntry> call() throws Exception {
+                    return laborApiClient.queryAudit(from, to, empId, ev);
+                }
+            };
+            detTask.setOnSucceeded(ev2 -> detailTable.setItems(FXCollections.observableArrayList(detTask.getValue())));
+            detTask.setOnFailed(ev2 -> detailTable.getItems().clear());
+            start(detTask, "tc-audit-detail");
+        };
+
+        Button reloadBtn = new Button(t("labor.audit.action.reload"));
+        reloadBtn.setGraphic(icon("fas-sync-alt"));
+        reloadBtn.setOnAction(ev -> reload.run());
+
+        Button exportBtn = new Button(t("labor.audit.action.export"));
+        exportBtn.setGraphic(icon("fas-file-export"));
+        exportBtn.setDisable(true); // habilitado tras TC-EXPORT (próximo slice)
+        exportBtn.setTooltip(new javafx.scene.control.Tooltip(t("labor.audit.export.tooltip")));
+
+        HBox filters = new HBox(8,
+                new Label(t("labor.audit.filter.from")), fromField,
+                new Label(t("labor.audit.filter.to")), toField,
+                new Label(t("labor.audit.filter.employee")), empCombo,
+                new Label(t("labor.audit.filter.type")), eventTypeField,
+                reloadBtn, exportBtn);
+        filters.setAlignment(Pos.CENTER_LEFT);
+
+        // Click sobre fila del resumen → filtra el detalle por ese empleado
+        summaryTable.getSelectionModel().selectedItemProperty().addListener((o, ov, nv) -> {
+            if (nv == null) return;
+            for (var e : empCombo.getItems()) {
+                if (e != null && nv.employeeId().equals(e.id())) {
+                    empCombo.setValue(e);
+                    reload.run();
+                    return;
+                }
+            }
+        });
+
+        Label summaryTitle = label(t("labor.audit.section.summary"), "settings-section-title");
+        Label detailTitle = label(t("labor.audit.section.detail"), "settings-section-title");
+
+        VBox body = new VBox(10,
+                hint, filters,
+                summaryTitle, summaryTable,
+                detailTitle, detailTable);
+        VBox.setVgrow(detailTable, Priority.ALWAYS);
+        body.setPadding(new Insets(12));
+
+        // Carga inicial
+        Task<Void> initial = new Task<>() {
+            @Override protected Void call() throws Exception { Thread.sleep(50); return null; }
+        };
+        initial.setOnSucceeded(ev -> reload.run());
+        start(initial, "tc-audit-initial");
+
+        return body;
     }
 
     // ----- Sub-tab Config Fichajes (TC-CFG) -----
