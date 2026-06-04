@@ -64,6 +64,63 @@ public class InvoiceFieldsExtractor {
     );
 
     /**
+     * Número de IVA intracomunitario:
+     *   LU20260743, IE6388047V, FR12345678901, DE123456789, NL123456789B01…
+     * Útil para emisores extranjeros tipo Amazon EU S.à r.l. (LU).
+     */
+    private static final Pattern EU_VAT_PATTERN = Pattern.compile(
+            "\\b((?:AT|BE|BG|CY|CZ|DE|DK|EE|EL|ES|FI|FR|GB|HR|HU|IE|IT|LT|LU|LV|MT|NL|PL|PT|RO|SE|SI|SK)\\d{8,12}[A-Z]?)\\b"
+    );
+
+    /**
+     * Etiqueta "IVA LU20260743" o "VAT LU20260743" típica de Amazon u
+     * otros proveedores intracomunitarios.
+     */
+    private static final Pattern EU_VAT_LABELED_PATTERN = Pattern.compile(
+            "(?i)(?:IVA|VAT|n\\.?\\s*registro\\s+de\\s+IVA|nº\\s*reg(?:istro)?\\s+iva)\\s*#?\\s*:?\\s*" +
+            "((?:AT|BE|BG|CY|CZ|DE|DK|EE|EL|ES|FI|FR|GB|HR|HU|IE|IT|LT|LU|LV|MT|NL|PL|PT|RO|SE|SI|SK)\\d{8,12}[A-Z]?)\\b"
+    );
+
+    /**
+     * Bloque "Vendido por" típico de Amazon. La línea siguiente es la
+     * razón social del proveedor.
+     */
+    private static final Pattern SOLD_BY_PATTERN = Pattern.compile(
+            // "Vendido por <razón>" o "Vendido por\n<razón>" — ambos formatos.
+            // El captured group recoge hasta fin de línea.
+            "(?i)(?:vendido\\s+por|sold\\s+by|seller)\\s*:?\\s*\\n?\\s*([^\\n]{3,120})"
+    );
+
+    /**
+     * Meses en español para detectar fechas tipo "11 abril 2026" o
+     * "11 de abril de 2026".
+     */
+    private static final String MONTH_NAMES_REGEX =
+            "(enero|febrero|marzo|abril|mayo|junio|julio|agosto|" +
+            "septiembre|setiembre|octubre|noviembre|diciembre)";
+
+    private static final Pattern DATE_SPANISH_NAMED_PATTERN = Pattern.compile(
+            "(?i)\\b(\\d{1,2})\\s+(?:de\\s+)?" + MONTH_NAMES_REGEX +
+            "\\s+(?:de\\s+)?(\\d{4})\\b"
+    );
+
+    private static final java.util.Map<String, Integer> SPANISH_MONTHS = java.util.Map.ofEntries(
+            java.util.Map.entry("enero", 1),
+            java.util.Map.entry("febrero", 2),
+            java.util.Map.entry("marzo", 3),
+            java.util.Map.entry("abril", 4),
+            java.util.Map.entry("mayo", 5),
+            java.util.Map.entry("junio", 6),
+            java.util.Map.entry("julio", 7),
+            java.util.Map.entry("agosto", 8),
+            java.util.Map.entry("septiembre", 9),
+            java.util.Map.entry("setiembre", 9),
+            java.util.Map.entry("octubre", 10),
+            java.util.Map.entry("noviembre", 11),
+            java.util.Map.entry("diciembre", 12)
+    );
+
+    /**
      * Importes. Soporta:
      *   1.234,56   1234,56   1234.56   1,234.56   1234   -1.234,56
      *   con o sin símbolo €/EUR/EURO/Euros.
@@ -88,12 +145,12 @@ public class InvoiceFieldsExtractor {
             "(\\d{1,2}(?:[,.]\\d{1,2})?)\\s*%"
     );
 
-    /** Número de factura — versión amplia. */
+    /** Número de factura — versión amplia (incluye "Número de la factura"). */
     private static final Pattern INVOICE_NUMBER_PATTERN = Pattern.compile(
-            "(?i)(?:n[\\u00ba\\u00b0\\.\\s]*(?:de\\s+)?factura|" +
+            "(?i)(?:n[\\u00ba\\u00b0\\.\\s\\u00famero]*(?:de\\s+(?:la\\s+)?)?factura|" +
             "factura\\s*n[\\u00ba\\u00b0\\.\\s]*|" +
             "invoice\\s*(?:no|#|number)?|" +
-            "ref(?:erencia)?\\.?\\s*factura)\\s*:?\\s*([A-Z0-9][A-Z0-9\\-/_.]{2,29})"
+            "ref(?:erencia)?\\.?\\s*factura)\\s*:?\\s*\\n?\\s*([A-Z0-9][A-Z0-9\\-/_.]{2,29})"
     );
 
     /**
@@ -207,19 +264,25 @@ public class InvoiceFieldsExtractor {
         // Cabecera (primeras 25 líneas) para detectar el emisor.
         String head = trimToLines(text, 25);
 
-        // 1. Recolectar todos los NIFs (orden de aparición)
+        // 1. Recolectar todos los NIFs nacionales (orden de aparición).
+        //    También recolectamos VAT intracomunitarios — Amazon EU
+        //    S.à r.l. y similares no tienen NIF AEAT pero sí "IVA LU…".
         List<String> allNifs = findAll(NIF_PATTERN, text);
+        List<String> allEuVat = findAll(EU_VAT_PATTERN, text);
 
-        // 2. Emisor: PRIORIDAD ALTA → si encontramos "CIF B12345678"
-        //    explícito (en pie o cualquier sitio), ese es el emisor.
-        //    Sin etiqueta explícita, caemos a la heurística de receptor.
-        String emitterNif = guessEmitterNif(text, allNifs);
+        // 2. Emisor: cascada de prioridades.
+        //    1ª) "IVA LU20260743" etiquetado (Amazon).
+        //    2ª) "CIF B12345678" en pie.
+        //    3ª) primer NIF antes de "Cliente:".
+        //    4ª) primer VAT EU encontrado.
+        //    5ª) primer NIF.
+        String emitterNif = guessEmitterNif(text, allNifs, allEuVat);
 
-        // 3. Razón social del emisor
-        String supplierName = guessSupplierName(head, emitterNif);
+        // 3. Razón social del emisor — prioridad al bloque "Vendido por".
+        String supplierName = guessSupplierName(text, head, emitterNif);
 
-        // 4. Número de factura. Doble estrategia:
-        //    a) Regex clásico "Factura nº XYZ".
+        // 4. Número de factura. Triple estrategia:
+        //    a) Regex clásico "Factura nº XYZ" / "Número de la factura".
         //    b) Tabla "Número Serie Fecha" + siguiente línea numérica.
         String invoiceNumber = findFirstGroup(INVOICE_NUMBER_PATTERN, text, 1);
         if (invoiceNumber != null) invoiceNumber = invoiceNumber.trim();
@@ -227,14 +290,25 @@ public class InvoiceFieldsExtractor {
             invoiceNumber = findInvoiceNumberInTable(text);
         }
 
-        // 5. Fecha
-        LocalDate invoiceDate = findFirstDate(text);
+        // 5. Fecha — cascada:
+        //    a) Cerca de "Fecha de la factura" / "Invoice date" → prioritaria.
+        //    b) Primer formato numérico DD/MM/YYYY o YYYY-MM-DD.
+        //    c) Primer formato nombre "11 abril 2026".
+        LocalDate invoiceDate = findInvoiceDateLabeled(text);
+        if (invoiceDate == null) invoiceDate = findFirstDate(text);
+        if (invoiceDate == null) invoiceDate = findFirstNamedDate(text);
 
-        // 6. Importes — primero intentamos la TABLA DE TOTALES tipo
-        //    "BASE IMPONIBLE | %IVA | CUOTA | TOTAL" con fila de datos.
-        //    Es el caso más fiable cuando existe (facturas de software
-        //    estándar). Si no, caemos a las heurísticas por etiqueta.
+        // 6. Importes — cascada:
+        //    a) Tabla "BASE IMPONIBLE | %IVA | CUOTA | TOTAL" (facturas
+        //       de software estándar tipo Bloques Los Llanos).
+        //    b) Tabla Amazon "IVA % | Precio total (IVA excluido) | IVA"
+        //       con filas "21%  21,73  4,56" + "Total  21,73  4,56" +
+        //       "Total  26,29".
+        //    c) Etiquetas + ventana (fallback).
         TotalsRow totals = findTotalsTable(text);
+        if (totals == null) {
+            totals = findAmazonTotalsTable(text);
+        }
         BigDecimal base, vatPct, vatAmount, total;
         if (totals != null && totals.total != null) {
             base = totals.base;
@@ -368,6 +442,75 @@ public class InvoiceFieldsExtractor {
         BigDecimal total;
     }
 
+    /**
+     * Detector alternativo de totales para facturas tipo Amazon:
+     *
+     *   IVA % Precio total
+     *   (IVA excluido)
+     *   IVA
+     *   21% 21,73 € 4,56 €
+     *   Total 21,73 € 4,56 €
+     *   Total 26,29 €
+     *
+     * Estrategia:
+     *   - Detectar cabecera "IVA % … Precio total … IVA" (con saltos).
+     *   - Línea con "%" + 2 importes → %IVA, base, cuota.
+     *   - Línea siguiente que empiece por "Total" y traiga UN solo
+     *     importe → total final.
+     */
+    private TotalsRow findAmazonTotalsTable(String text) {
+        Pattern header = Pattern.compile(
+                "(?i)iva\\s*%[\\s\\S]{0,30}?precio\\s+total[\\s\\S]{0,30}?\\(?iva\\s+excluido"
+        );
+        Matcher h = header.matcher(text);
+        if (!h.find()) return null;
+        int from = h.end();
+        String tail = text.substring(from, Math.min(text.length(), from + 400));
+        String[] lines = tail.split("\\n");
+
+        // Buscar línea con "21% 21,73 € 4,56 €" → 3 tokens: %, base, cuota.
+        TotalsRow row = new TotalsRow();
+        for (int i = 0; i < lines.length; i++) {
+            String line = lines[i].trim();
+            if (line.isEmpty()) continue;
+            // Detectar "<n>% <importe1> <importe2>"
+            Matcher pctLine = Pattern.compile(
+                    "^(\\d{1,2}(?:[,.]\\d{1,2})?)\\s*%\\s+" +
+                    "(-?\\d+(?:[.,]\\d{2,3})?(?:[.,]\\d{2})?)\\s*\\u20ac?\\s+" +
+                    "(-?\\d+(?:[.,]\\d{2,3})?(?:[.,]\\d{2})?)"
+            ).matcher(line);
+            if (pctLine.find()) {
+                row.vatPercent = parseAmount(pctLine.group(1));
+                row.base = parseAmount(pctLine.group(2));
+                row.vatAmount = parseAmount(pctLine.group(3));
+                // El total final viene en línea "Total <importe>"
+                for (int j = i + 1; j < lines.length; j++) {
+                    String tline = lines[j].trim();
+                    Matcher totalLine = Pattern.compile(
+                            "^(?i)total\\s+.*?(-?\\d+(?:\\.\\d{3})*[,.]\\d{2})\\s*\\u20ac?\\s*$"
+                    ).matcher(tline);
+                    if (totalLine.find()) {
+                        BigDecimal candidate = parseAmount(totalLine.group(1));
+                        if (candidate != null && row.total == null) {
+                            row.total = candidate;
+                        } else if (candidate != null && candidate.compareTo(row.total) > 0) {
+                            // El último "Total" suele ser el total real
+                            row.total = candidate;
+                        }
+                    }
+                }
+                if (row.total != null) return row;
+                // Fallback: si no encontramos "Total", calculamos
+                // base + cuota como total estimado.
+                if (row.base != null && row.vatAmount != null) {
+                    row.total = row.base.add(row.vatAmount);
+                    return row;
+                }
+            }
+        }
+        return null;
+    }
+
     // ====================================================================
     //  Heurísticas
     // ====================================================================
@@ -407,17 +550,19 @@ public class InvoiceFieldsExtractor {
         return m.find() ? m.group(group) : null;
     }
 
-    private String guessEmitterNif(String text, List<String> allNifs) {
-        if (allNifs.isEmpty()) return null;
-        // PRIORIDAD 1: "CIF B12345678" explícito (pie de factura).
-        //   En facturas españolas, el CIF de la sociedad emisora suele
-        //   aparecer en el pie ("Inscrita en el Registro Mercantil…
-        //   CIF B12345678") porque arriba la empresa pone solo el nombre.
+    private String guessEmitterNif(String text, List<String> allNifs, List<String> allEuVat) {
+        // PRIORIDAD 1: "IVA LU20260743" o "VAT IE…" etiquetado.
+        //   Amazon EU y otros proveedores intracomunitarios.
+        Matcher eu = EU_VAT_LABELED_PATTERN.matcher(text);
+        if (eu.find()) {
+            return eu.group(1).toUpperCase();
+        }
+        // PRIORIDAD 2: "CIF B12345678" explícito (pie español).
         Matcher cif = CIF_EXPLICIT_PATTERN.matcher(text);
         if (cif.find()) {
             return cif.group(1).toUpperCase();
         }
-        // PRIORIDAD 2: el primer NIF que aparezca antes de cualquier
+        // PRIORIDAD 3: el primer NIF que aparezca antes de cualquier
         // etiqueta receptor explícita ("Cliente:", "Bill to", etc).
         Matcher recv = RECEIVER_LABEL.matcher(text);
         int receiverPos = recv.find() ? recv.start() : Integer.MAX_VALUE;
@@ -427,13 +572,16 @@ public class InvoiceFieldsExtractor {
                 return nifMatcher.group(1).toUpperCase();
             }
         }
-        // PRIORIDAD 3: el primer CIF (letra+8) en el texto. Empieza por
+        // PRIORIDAD 4: el primer VAT EU sin etiqueta (Amazon a veces lo
+        // pone suelto entre paréntesis).
+        if (!allEuVat.isEmpty()) return allEuVat.get(0);
+        // PRIORIDAD 5: el primer CIF (letra+8) en el texto. Empieza por
         // letra → más probable que sea sociedad emisora que persona física.
         for (String n : allNifs) {
             if (n.matches("^[A-HJ-NP-SUVW].*")) return n;
         }
-        // Fallback: primer NIF detectado.
-        return allNifs.get(0);
+        // Fallback: primer NIF detectado o null.
+        return allNifs.isEmpty() ? null : allNifs.get(0);
     }
 
     /**
@@ -442,7 +590,19 @@ public class InvoiceFieldsExtractor {
      * Inspirada en cómo Claude lo razona en CONTENDO — aquí la
      * aproximamos con reglas duras.
      */
-    private String guessSupplierName(String head, String emitterNif) {
+    private String guessSupplierName(String fullText, String head, String emitterNif) {
+        // PRIORIDAD 1: bloque "Vendido por\n<razón social>" (Amazon).
+        Matcher soldBy = SOLD_BY_PATTERN.matcher(fullText);
+        if (soldBy.find()) {
+            String candidate = soldBy.group(1).trim();
+            // Descartar si es solo "Amazon" suelto sin S.à r.l. → preferimos
+            // el match completo más abajo. Si el match es ≥ 8 chars, OK.
+            if (candidate.length() >= 8) return candidate;
+        }
+        return guessSupplierNameFromHead(head, emitterNif);
+    }
+
+    private String guessSupplierNameFromHead(String head, String emitterNif) {
         if (head == null || head.isBlank()) return null;
         String[] lines = head.split("\n");
         for (String raw : lines) {
@@ -458,6 +618,90 @@ public class InvoiceFieldsExtractor {
                     || s.matches("[A-Z\\u00c0-\\u017f0-9\\s,.&'\\-]{3,80}")) {
                 return s;
             }
+        }
+        return null;
+    }
+
+    /**
+     * Busca la fecha en una ventana de 80 chars tras "Fecha de la
+     * factura", "Fecha factura", "Invoice date", "Fecha de emisión".
+     * Prioritaria sobre cualquier otra fecha del documento porque a
+     * menudo aparecen también "Fecha del pedido", "Fecha del albarán",
+     * etc, que NO son la fecha que queremos.
+     */
+    private LocalDate findInvoiceDateLabeled(String text) {
+        // Etiqueta acaba en la palabra "factura" — no consumimos lo que
+        // venga después (puede ser "/Fecha de la entrega <fecha>" o solo
+        // <fecha>). La ventana de 80 chars que sigue se queda con la
+        // fecha objetivo.
+        Pattern labels = Pattern.compile(
+                "(?i)(?:fecha\\s+(?:de\\s+)?(?:la\\s+)?factura\\b|" +
+                "fecha\\s+de\\s+emisi[\\u00f3o]n|" +
+                "invoice\\s+date|date\\s+of\\s+invoice)\\s*:?"
+        );
+        Matcher l = labels.matcher(text);
+        while (l.find()) {
+            String tail = text.substring(l.end(),
+                    Math.min(text.length(), l.end() + 80));
+            // Probar nombre primero (formato europeo "11 abril 2026")
+            LocalDate d = parseFirstNamedDate(tail);
+            if (d != null) return d;
+            d = parseFirstNumericDate(tail);
+            if (d != null) return d;
+        }
+        return null;
+    }
+
+    private LocalDate parseFirstNamedDate(String text) {
+        Matcher m = DATE_SPANISH_NAMED_PATTERN.matcher(text);
+        if (m.find()) {
+            try {
+                int d = Integer.parseInt(m.group(1));
+                Integer mo = SPANISH_MONTHS.get(m.group(2).toLowerCase());
+                int y = Integer.parseInt(m.group(3));
+                if (mo != null && d >= 1 && d <= 31) {
+                    return LocalDate.of(y, mo, d);
+                }
+            } catch (Exception ignored) {}
+        }
+        return null;
+    }
+
+    private LocalDate parseFirstNumericDate(String text) {
+        Matcher m = DATE_PATTERN.matcher(text);
+        while (m.find()) {
+            try {
+                if (m.group(1) != null) {
+                    int d = Integer.parseInt(m.group(1));
+                    int mo = Integer.parseInt(m.group(2));
+                    int y = Integer.parseInt(m.group(3));
+                    if (y < 100) y += 2000;
+                    if (mo >= 1 && mo <= 12 && d >= 1 && d <= 31) {
+                        return LocalDate.of(y, mo, d);
+                    }
+                } else if (m.group(4) != null) {
+                    int y = Integer.parseInt(m.group(4));
+                    int mo = Integer.parseInt(m.group(5));
+                    int d = Integer.parseInt(m.group(6));
+                    if (mo >= 1 && mo <= 12 && d >= 1 && d <= 31) {
+                        return LocalDate.of(y, mo, d);
+                    }
+                }
+            } catch (Exception ignored) {}
+        }
+        return null;
+    }
+
+    private LocalDate findFirstNamedDate(String text) {
+        Matcher m = DATE_SPANISH_NAMED_PATTERN.matcher(text);
+        while (m.find()) {
+            try {
+                int d = Integer.parseInt(m.group(1));
+                Integer mo = SPANISH_MONTHS.get(m.group(2).toLowerCase());
+                int y = Integer.parseInt(m.group(3));
+                if (mo == null || d < 1 || d > 31) continue;
+                return LocalDate.of(y, mo, d);
+            } catch (Exception ignored) { /* siguiente */ }
         }
         return null;
     }
