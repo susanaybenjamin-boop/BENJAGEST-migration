@@ -56,6 +56,33 @@ public class PdfImportApiClient {
         return response.body();
     }
 
+    /**
+     * Guarda/actualiza la plantilla por NIF de proveedor con las
+     * correcciones del usuario. El JSON se compone en la UI con los
+     * valores corregidos (supplierName y/o vatPercent fijos).
+     */
+    public void saveTemplate(String supplierNif, String supplierName, String rulesJson)
+            throws IOException, InterruptedException {
+        String body = "{"
+                + "\"supplierNif\":\"" + escape(supplierNif) + "\","
+                + "\"supplierName\":" + (supplierName == null ? "null" : "\"" + escape(supplierName) + "\"") + ","
+                + "\"rulesJson\":" + (rulesJson == null ? "null" : "\"" + escape(rulesJson) + "\"")
+                + "}";
+        HttpRequest.Builder builder = HttpRequest.newBuilder(URI.create(baseUrl + "/purchases/extraction-templates"))
+                .timeout(Duration.ofSeconds(10))
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(body));
+        AuthSession.get().authorize(builder);
+        HttpResponse<String> r = httpClient.send(builder.build(), HttpResponse.BodyHandlers.ofString());
+        if (r.statusCode() < 200 || r.statusCode() >= 300) {
+            throw new IOException("HTTP " + r.statusCode() + ": " + r.body());
+        }
+    }
+
+    private static String escape(String v) {
+        return v == null ? "" : v.replace("\\", "\\\\").replace("\"", "\\\"");
+    }
+
     private byte[] buildMultipartBody(File file, String boundary) throws IOException {
         String prefix = "--" + boundary + "\r\n"
                 + "Content-Disposition: form-data; name=\"file\"; filename=\"" + file.getName() + "\"\r\n"
