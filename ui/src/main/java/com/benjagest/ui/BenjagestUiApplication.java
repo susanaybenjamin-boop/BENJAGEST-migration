@@ -7661,6 +7661,36 @@ public class BenjagestUiApplication extends Application {
             case "labor.tab.contracts" -> "Contracts";
             case "labor.tab.timeclock" -> "Time clock";
             case "labor.tab.payslips" -> "Payslips";
+            case "labor.tab.cfg_timeclock" -> "Time clock settings";
+            // ---- TC-CFG ----
+            case "labor.cfg_timeclock.hint" -> "Configure the punch buttons your employees see. Codes are sent to the server (e.g. IN, LUNCH, MEETING). Labels are what the user reads. Order matters for the row.";
+            case "labor.cfg_timeclock.placeholder.empty" -> "No event types configured.";
+            case "labor.cfg_timeclock.col.order" -> "Order";
+            case "labor.cfg_timeclock.col.code" -> "Code";
+            case "labor.cfg_timeclock.col.label_es" -> "Label ES";
+            case "labor.cfg_timeclock.col.label_en" -> "Label EN";
+            case "labor.cfg_timeclock.col.flags" -> "Flags";
+            case "labor.cfg_timeclock.inactive" -> "(inactive)";
+            case "labor.cfg_timeclock.legend" -> "▶ = opens work time (counts as working) · ⏸ = pause (doesn't count as working) · (inactive) = button hidden from kiosks and apps";
+            case "labor.cfg_timeclock.action.add" -> "Add event type";
+            case "labor.cfg_timeclock.action.edit" -> "Edit";
+            case "labor.cfg_timeclock.action.delete" -> "Delete";
+            case "labor.cfg_timeclock.editor.title_new" -> "New event type";
+            case "labor.cfg_timeclock.editor.title_edit" -> "Edit event type";
+            case "labor.cfg_timeclock.editor.save" -> "Save";
+            case "labor.cfg_timeclock.editor.code" -> "Code (UPPERCASE)";
+            case "labor.cfg_timeclock.editor.label_es" -> "Label (Spanish)";
+            case "labor.cfg_timeclock.editor.label_en" -> "Label (English)";
+            case "labor.cfg_timeclock.editor.icon" -> "Icon (FontAwesome)";
+            case "labor.cfg_timeclock.editor.order" -> "Display order";
+            case "labor.cfg_timeclock.editor.is_work_time" -> "Opens work time (▶)";
+            case "labor.cfg_timeclock.editor.is_pause" -> "Is a pause (⏸)";
+            case "labor.cfg_timeclock.editor.active" -> "Active";
+            case "labor.cfg_timeclock.editor.flags_hint" -> "If unsure: IN/end-of-break are work time; OUT/start-of-break are not. A pause means the worker stays in the shift but stops counting hours (lunch, coffee).";
+            case "labor.cfg_timeclock.editor.fail.title" -> "Could not save";
+            case "labor.cfg_timeclock.editor.fail.body" -> "Check the data and try again.";
+            case "labor.cfg_timeclock.delete.title" -> "Delete event type?";
+            case "labor.cfg_timeclock.delete.body" -> "If there are historical punches with this code, it will be deactivated instead of deleted. Code:";
             // ---- contracts global ----
             case "labor.contracts.placeholder.empty.global" -> "No contracts registered yet.";
             case "labor.contracts.col.employee" -> "Employee";
@@ -7919,6 +7949,35 @@ public class BenjagestUiApplication extends Application {
             case "labor.tab.contracts" -> "Contratos";
             case "labor.tab.timeclock" -> "Fichajes";
             case "labor.tab.payslips" -> "Nominas";
+            case "labor.tab.cfg_timeclock" -> "Config fichajes";
+            case "labor.cfg_timeclock.hint" -> "Configura los botones de fichaje que veran tus empleados. Los codigos se envian al servidor (p.ej. IN, COMIDA, REUNION). Las etiquetas son lo que lee el usuario. El orden determina la posicion en la fila.";
+            case "labor.cfg_timeclock.placeholder.empty" -> "No hay tipos de evento configurados.";
+            case "labor.cfg_timeclock.col.order" -> "Orden";
+            case "labor.cfg_timeclock.col.code" -> "Codigo";
+            case "labor.cfg_timeclock.col.label_es" -> "Etiqueta ES";
+            case "labor.cfg_timeclock.col.label_en" -> "Etiqueta EN";
+            case "labor.cfg_timeclock.col.flags" -> "Flags";
+            case "labor.cfg_timeclock.inactive" -> "(inactivo)";
+            case "labor.cfg_timeclock.legend" -> "▶ = abre tiempo de trabajo (cuenta como trabajando) · ⏸ = pausa (no cuenta) · (inactivo) = boton oculto en apps y kioscos";
+            case "labor.cfg_timeclock.action.add" -> "Anadir tipo";
+            case "labor.cfg_timeclock.action.edit" -> "Editar";
+            case "labor.cfg_timeclock.action.delete" -> "Borrar";
+            case "labor.cfg_timeclock.editor.title_new" -> "Nuevo tipo de evento";
+            case "labor.cfg_timeclock.editor.title_edit" -> "Editar tipo de evento";
+            case "labor.cfg_timeclock.editor.save" -> "Guardar";
+            case "labor.cfg_timeclock.editor.code" -> "Codigo (MAYUSCULAS)";
+            case "labor.cfg_timeclock.editor.label_es" -> "Etiqueta (espanol)";
+            case "labor.cfg_timeclock.editor.label_en" -> "Etiqueta (ingles)";
+            case "labor.cfg_timeclock.editor.icon" -> "Icono (FontAwesome)";
+            case "labor.cfg_timeclock.editor.order" -> "Orden de visualizacion";
+            case "labor.cfg_timeclock.editor.is_work_time" -> "Abre tiempo de trabajo (▶)";
+            case "labor.cfg_timeclock.editor.is_pause" -> "Es una pausa (⏸)";
+            case "labor.cfg_timeclock.editor.active" -> "Activo";
+            case "labor.cfg_timeclock.editor.flags_hint" -> "Si dudas: IN/fin-de-pausa abren tiempo de trabajo; OUT/inicio-de-pausa no. Una pausa significa que el trabajador sigue en jornada pero deja de contar horas (comida, cafe).";
+            case "labor.cfg_timeclock.editor.fail.title" -> "No se pudo guardar";
+            case "labor.cfg_timeclock.editor.fail.body" -> "Revisa los datos e intentalo de nuevo.";
+            case "labor.cfg_timeclock.delete.title" -> "Borrar tipo de evento?";
+            case "labor.cfg_timeclock.delete.body" -> "Si hay fichajes historicos con este codigo, se desactivara en lugar de borrarse. Codigo:";
             case "labor.contracts.placeholder.empty.global" -> "Aun no hay contratos registrados.";
             case "labor.contracts.col.employee" -> "Empleado";
             case "labor.contracts.global.hint" -> "Todos los contratos de la empresa. Ordena por cualquier columna. Para editar un contrato o anadir uno nuevo, ve al detalle del empleado.";
@@ -8191,7 +8250,15 @@ public class BenjagestUiApplication extends Application {
                 var contracts = laborApiClient.listContracts(null);
                 int year = java.time.LocalDate.now().getYear();
                 var payslips = laborApiClient.listPayslips(year, null, null);
-                return new LaborBundle(employees, contracts, payslips, year);
+                java.util.List<com.benjagest.ui.model.TimeClockEventTypeEntry> evTypes;
+                try {
+                    evTypes = laborApiClient.listTimeClockEventTypes(true);
+                } catch (Exception ex) {
+                    // Si el modulo timeclock no esta activo o el endpoint
+                    // falla, dejamos lista vacia y la UI cae al hardcode.
+                    evTypes = java.util.List.of();
+                }
+                return new LaborBundle(employees, contracts, payslips, evTypes, year);
             }
         };
         task.setOnSucceeded(ev -> setCenterAnimated(scroll(laborView(task.getValue()))));
@@ -8203,6 +8270,7 @@ public class BenjagestUiApplication extends Application {
             java.util.List<com.benjagest.ui.model.EmployeeEntry> employees,
             java.util.List<com.benjagest.ui.model.ContractEntry> contracts,
             java.util.List<com.benjagest.ui.model.PayslipEntry> payslips,
+            java.util.List<com.benjagest.ui.model.TimeClockEventTypeEntry> eventTypes,
             int currentYear) {}
 
     private VBox laborView(LaborBundle bundle) {
@@ -8228,12 +8296,14 @@ public class BenjagestUiApplication extends Application {
         empTab.setGraphic(icon("fas-user"));
         Tab contractsTab = new Tab(t("labor.tab.contracts"), buildContractsGlobalTab(bundle));
         contractsTab.setGraphic(icon("fas-file-contract"));
-        Tab clockTab = new Tab(t("labor.tab.timeclock"), buildTimeClockTab(bundle.employees()));
+        Tab clockTab = new Tab(t("labor.tab.timeclock"), buildTimeClockTab(bundle.employees(), bundle.eventTypes()));
         clockTab.setGraphic(icon("fas-clock"));
         Tab payslipsTab = new Tab(t("labor.tab.payslips"), buildPayslipsTab(bundle));
         payslipsTab.setGraphic(icon("fas-file-invoice-dollar"));
+        Tab cfgTab = new Tab(t("labor.tab.cfg_timeclock"), buildEventTypeConfigTab(bundle.eventTypes()));
+        cfgTab.setGraphic(icon("fas-cog"));
 
-        tabs.getTabs().addAll(empTab, contractsTab, clockTab, payslipsTab);
+        tabs.getTabs().addAll(empTab, contractsTab, clockTab, payslipsTab, cfgTab);
         VBox.setVgrow(tabs, Priority.ALWAYS);
 
         content.getChildren().addAll(header, tabs);
@@ -8386,7 +8456,8 @@ public class BenjagestUiApplication extends Application {
 
     // ----- Sub-tab Fichajes (embebido, con lookup employee↔user) -----
 
-    private Node buildTimeClockTab(java.util.List<com.benjagest.ui.model.EmployeeEntry> allEmployees) {
+    private Node buildTimeClockTab(java.util.List<com.benjagest.ui.model.EmployeeEntry> allEmployees,
+                                    java.util.List<com.benjagest.ui.model.TimeClockEventTypeEntry> eventTypes) {
         // ComboBox de empleados (para admin: poder fichar otros). Por
         // defecto preselecciona el resuelto del usuario actual.
         ComboBox<com.benjagest.ui.model.EmployeeEntry> empCombo = new ComboBox<>();
@@ -8404,20 +8475,22 @@ public class BenjagestUiApplication extends Application {
         hint.setWrapText(true);
         hint.getStyleClass().add("settings-hint");
 
-        Button inBtn = new Button(t("timeclock.action.in"));
-        inBtn.setGraphic(icon("fas-sign-in-alt"));
-        inBtn.getStyleClass().add("invoice-validate-action");
-        inBtn.setMinHeight(48); inBtn.setMinWidth(140);
-        Button outBtn = new Button(t("timeclock.action.out"));
-        outBtn.setGraphic(icon("fas-sign-out-alt"));
-        outBtn.getStyleClass().add("invoice-validate-action");
-        outBtn.setMinHeight(48); outBtn.setMinWidth(140);
-        Button breakStartBtn = new Button(t("timeclock.action.break_start"));
-        breakStartBtn.setGraphic(icon("fas-coffee"));
-        breakStartBtn.setMinHeight(48); breakStartBtn.setMinWidth(140);
-        Button breakEndBtn = new Button(t("timeclock.action.break_end"));
-        breakEndBtn.setGraphic(icon("fas-utensils"));
-        breakEndBtn.setMinHeight(48); breakEndBtn.setMinWidth(140);
+        // Botones DINAMICOS segun los tipos activos configurados por la
+        // empresa (TC-CFG). Si la lista esta vacia, fallback a IN/OUT/
+        // BREAK_START/BREAK_END.
+        java.util.List<com.benjagest.ui.model.TimeClockEventTypeEntry> activeTypes = eventTypes.stream()
+                .filter(com.benjagest.ui.model.TimeClockEventTypeEntry::active)
+                .sorted(java.util.Comparator.comparingInt(com.benjagest.ui.model.TimeClockEventTypeEntry::displayOrder))
+                .toList();
+        if (activeTypes.isEmpty()) {
+            // Fallback: tipos hardcoded para no dejar al usuario sin botones
+            activeTypes = java.util.List.of(
+                    new com.benjagest.ui.model.TimeClockEventTypeEntry(null, "IN", "Entrada", "Clock in", "fas-sign-in-alt", 1, true, false, true),
+                    new com.benjagest.ui.model.TimeClockEventTypeEntry(null, "OUT", "Salida", "Clock out", "fas-sign-out-alt", 2, false, false, true),
+                    new com.benjagest.ui.model.TimeClockEventTypeEntry(null, "BREAK_START", "Inicio pausa", "Break start", "fas-coffee", 3, false, true, true),
+                    new com.benjagest.ui.model.TimeClockEventTypeEntry(null, "BREAK_END", "Fin pausa", "Break end", "fas-utensils", 4, true, true, true)
+            );
+        }
 
         TableView<com.benjagest.ui.model.TimeClockEntry> table = new TableView<>();
         table.getStyleClass().add("data-table");
@@ -8468,10 +8541,7 @@ public class BenjagestUiApplication extends Application {
             start(delayed, "tc-reload-after-punch");
         };
 
-        inBtn.setOnAction(ev -> doPunch.accept("IN"));
-        outBtn.setOnAction(ev -> doPunch.accept("OUT"));
-        breakStartBtn.setOnAction(ev -> doPunch.accept("BREAK_START"));
-        breakEndBtn.setOnAction(ev -> doPunch.accept("BREAK_END"));
+        // (los onAction de los botones dinamicos se enganchan abajo)
 
         Button refresh = new Button(t("timeclock.action.refresh"));
         refresh.setGraphic(icon("fas-sync"));
@@ -8499,8 +8569,23 @@ public class BenjagestUiApplication extends Application {
         });
         start(resolveTask, "tc-resolve-employee");
 
-        HBox punchRow = new HBox(12, inBtn, outBtn, breakStartBtn, breakEndBtn);
+        HBox punchRow = new HBox(12);
         punchRow.setAlignment(Pos.CENTER_LEFT);
+        for (var type : activeTypes) {
+            Button b = new Button(language == Language.ES ? type.labelEs() : type.labelEn());
+            if (type.icon() != null && !type.icon().isBlank()) {
+                b.setGraphic(icon(type.icon()));
+            }
+            // Resaltado para los tipos que abren tiempo de trabajo (IN, fin
+            // pausa) — visualmente diferencia los "verdes" de los demas.
+            if (type.isWorkTime()) {
+                b.getStyleClass().add("invoice-validate-action");
+            }
+            b.setMinHeight(48); b.setMinWidth(140);
+            final String code = type.code();
+            b.setOnAction(ev -> doPunch.accept(code));
+            punchRow.getChildren().add(b);
+        }
         HBox empRow = new HBox(8, new Label(t("timeclock.employee.label")), empCombo, refresh);
         empRow.setAlignment(Pos.CENTER_LEFT);
 
@@ -8792,6 +8877,172 @@ public class BenjagestUiApplication extends Application {
         Alert a = new Alert(Alert.AlertType.INFORMATION, body);
         a.setHeaderText(title);
         a.showAndWait();
+    }
+
+    // ----- Sub-tab Config Fichajes (TC-CFG) -----
+
+    private Node buildEventTypeConfigTab(java.util.List<com.benjagest.ui.model.TimeClockEventTypeEntry> types) {
+        Label hint = new Label(t("labor.cfg_timeclock.hint"));
+        hint.setWrapText(true);
+        hint.getStyleClass().add("settings-hint");
+
+        TableView<com.benjagest.ui.model.TimeClockEventTypeEntry> table = new TableView<>();
+        table.getStyleClass().add("data-table");
+        table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+        table.setPlaceholder(new Label(t("labor.cfg_timeclock.placeholder.empty")));
+
+        TableColumn<com.benjagest.ui.model.TimeClockEventTypeEntry, String> cOrder =
+                new TableColumn<>(t("labor.cfg_timeclock.col.order"));
+        cOrder.setCellValueFactory(c -> new SimpleStringProperty(String.valueOf(c.getValue().displayOrder())));
+        cOrder.setPrefWidth(70);
+        cOrder.setComparator(NUMERIC_STRING_COMPARATOR);
+        TableColumn<com.benjagest.ui.model.TimeClockEventTypeEntry, String> cCode =
+                new TableColumn<>(t("labor.cfg_timeclock.col.code"));
+        cCode.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().code()));
+        cCode.setPrefWidth(140);
+        TableColumn<com.benjagest.ui.model.TimeClockEventTypeEntry, String> cEs =
+                new TableColumn<>(t("labor.cfg_timeclock.col.label_es"));
+        cEs.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().labelEs()));
+        TableColumn<com.benjagest.ui.model.TimeClockEventTypeEntry, String> cEn =
+                new TableColumn<>(t("labor.cfg_timeclock.col.label_en"));
+        cEn.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().labelEn()));
+        TableColumn<com.benjagest.ui.model.TimeClockEventTypeEntry, String> cFlags =
+                new TableColumn<>(t("labor.cfg_timeclock.col.flags"));
+        cFlags.setCellValueFactory(c -> {
+            var e = c.getValue();
+            StringBuilder sb = new StringBuilder();
+            if (e.isWorkTime()) sb.append("▶ ");
+            if (e.isPause()) sb.append("⏸ ");
+            if (!e.active()) sb.append(t("labor.cfg_timeclock.inactive"));
+            return new SimpleStringProperty(sb.toString());
+        });
+        cFlags.setPrefWidth(120);
+        table.getColumns().addAll(java.util.List.of(cOrder, cCode, cEs, cEn, cFlags));
+        table.setItems(FXCollections.observableArrayList(types));
+
+        Button addBtn = new Button(t("labor.cfg_timeclock.action.add"));
+        addBtn.setGraphic(icon("fas-plus"));
+        addBtn.setOnAction(ev -> showEventTypeEditor(null));
+
+        Button editBtn = new Button(t("labor.cfg_timeclock.action.edit"));
+        editBtn.setGraphic(icon("fas-edit"));
+        editBtn.setDisable(true);
+        editBtn.setOnAction(ev -> {
+            var sel = table.getSelectionModel().getSelectedItem();
+            if (sel != null) showEventTypeEditor(sel);
+        });
+
+        Button delBtn = new Button(t("labor.cfg_timeclock.action.delete"));
+        delBtn.setGraphic(icon("fas-trash"));
+        delBtn.setDisable(true);
+        delBtn.setOnAction(ev -> {
+            var sel = table.getSelectionModel().getSelectedItem();
+            if (sel != null) deleteEventType(sel);
+        });
+
+        table.getSelectionModel().selectedItemProperty().addListener((o, ov, nv) -> {
+            editBtn.setDisable(nv == null);
+            delBtn.setDisable(nv == null);
+        });
+
+        Label legend = new Label(t("labor.cfg_timeclock.legend"));
+        legend.setWrapText(true);
+        legend.getStyleClass().add("settings-hint");
+
+        HBox actions = new HBox(8, addBtn, editBtn, delBtn);
+        actions.setAlignment(Pos.CENTER_LEFT);
+
+        VBox body = new VBox(10, hint, actions, table, legend);
+        VBox.setVgrow(table, Priority.ALWAYS);
+        body.setPadding(new Insets(12));
+        return body;
+    }
+
+    private void showEventTypeEditor(com.benjagest.ui.model.TimeClockEventTypeEntry existing) {
+        Dialog<ButtonType> dialog = new Dialog<>();
+        dialog.setTitle(existing == null ? t("labor.cfg_timeclock.editor.title_new")
+                : t("labor.cfg_timeclock.editor.title_edit"));
+        ButtonType saveBt = new ButtonType(t("labor.cfg_timeclock.editor.save"), ButtonBar.ButtonData.OK_DONE);
+        dialog.getDialogPane().getButtonTypes().addAll(saveBt, ButtonType.CANCEL);
+
+        TextField codeField = new TextField(existing == null ? "" : existing.code());
+        codeField.setDisable(existing != null);
+        codeField.setPromptText("EJ. COMIDA, REUNION_CLIENTE…");
+        TextField esField = new TextField(existing == null ? "" : existing.labelEs());
+        TextField enField = new TextField(existing == null ? "" : existing.labelEn());
+        TextField iconField = new TextField(existing == null ? "fas-clock" : existing.icon());
+        iconField.setPromptText("fas-clock, fas-coffee, fas-users…");
+        TextField orderField = new TextField(existing == null ? "" : String.valueOf(existing.displayOrder()));
+        CheckBox isWork = new CheckBox(t("labor.cfg_timeclock.editor.is_work_time"));
+        isWork.setSelected(existing == null || existing.isWorkTime());
+        CheckBox isPause = new CheckBox(t("labor.cfg_timeclock.editor.is_pause"));
+        isPause.setSelected(existing != null && existing.isPause());
+        CheckBox active = new CheckBox(t("labor.cfg_timeclock.editor.active"));
+        active.setSelected(existing == null || existing.active());
+
+        GridPane g = new GridPane();
+        g.setHgap(10); g.setVgap(8); g.setPadding(new Insets(10));
+        g.add(new Label(t("labor.cfg_timeclock.editor.code")), 0, 0); g.add(codeField, 1, 0);
+        g.add(new Label(t("labor.cfg_timeclock.editor.label_es")), 0, 1); g.add(esField, 1, 1);
+        g.add(new Label(t("labor.cfg_timeclock.editor.label_en")), 0, 2); g.add(enField, 1, 2);
+        g.add(new Label(t("labor.cfg_timeclock.editor.icon")), 0, 3); g.add(iconField, 1, 3);
+        g.add(new Label(t("labor.cfg_timeclock.editor.order")), 0, 4); g.add(orderField, 1, 4);
+        g.add(isWork, 1, 5);
+        g.add(isPause, 1, 6);
+        g.add(active, 1, 7);
+        Label flagsHint = new Label(t("labor.cfg_timeclock.editor.flags_hint"));
+        flagsHint.setWrapText(true);
+        flagsHint.getStyleClass().add("settings-hint");
+        g.add(flagsHint, 0, 8, 2, 1);
+        dialog.getDialogPane().setContent(g);
+
+        dialog.showAndWait().ifPresent(bt -> {
+            if (bt != saveBt) return;
+            Integer order = parseIntSafe(orderField.getText());
+            Task<com.benjagest.ui.model.TimeClockEventTypeEntry> task = new Task<>() {
+                @Override protected com.benjagest.ui.model.TimeClockEventTypeEntry call() throws Exception {
+                    if (existing == null) {
+                        return laborApiClient.createEventType(
+                                codeField.getText().trim().toUpperCase(),
+                                esField.getText().trim(),
+                                enField.getText().trim(),
+                                blankToNullOrSelf(iconField.getText()),
+                                order, isWork.isSelected(), isPause.isSelected(), active.isSelected());
+                    }
+                    return laborApiClient.updateEventType(
+                            existing.id(),
+                            existing.code(),
+                            esField.getText().trim(),
+                            enField.getText().trim(),
+                            blankToNullOrSelf(iconField.getText()),
+                            order, isWork.isSelected(), isPause.isSelected(), active.isSelected());
+                }
+            };
+            task.setOnSucceeded(ev -> showLaborModule());
+            task.setOnFailed(ev -> showError(t("labor.cfg_timeclock.editor.fail.title"),
+                    t("labor.cfg_timeclock.editor.fail.body")));
+            start(task, "tc-cfg-save");
+        });
+    }
+
+    private void deleteEventType(com.benjagest.ui.model.TimeClockEventTypeEntry type) {
+        Alert confirm = new Alert(Alert.AlertType.CONFIRMATION,
+                t("labor.cfg_timeclock.delete.body") + " " + type.code(),
+                ButtonType.OK, ButtonType.CANCEL);
+        confirm.setHeaderText(t("labor.cfg_timeclock.delete.title"));
+        confirm.showAndWait().ifPresent(bt -> {
+            if (bt != ButtonType.OK) return;
+            Task<Void> task = new Task<>() {
+                @Override protected Void call() throws Exception {
+                    laborApiClient.deleteEventType(type.id());
+                    return null;
+                }
+            };
+            task.setOnSucceeded(ev -> showLaborModule());
+            task.setOnFailed(ev -> showError(t("labor.cfg_timeclock.editor.fail.title"),
+                    t("labor.cfg_timeclock.editor.fail.body")));
+            start(task, "tc-cfg-delete");
+        });
     }
 
     private void showEmployeeEditor(com.benjagest.ui.model.EmployeeEntry existing) {

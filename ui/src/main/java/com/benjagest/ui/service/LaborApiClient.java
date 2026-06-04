@@ -418,6 +418,71 @@ public class LaborApiClient {
     }
 
     // ====================================================================
+    //  Tipos de evento de fichaje (TC-CFG)
+    // ====================================================================
+
+    public java.util.List<com.benjagest.ui.model.TimeClockEventTypeEntry> listTimeClockEventTypes(boolean includeInactive)
+            throws IOException, InterruptedException {
+        HttpResponse<String> r = send(req(baseUrl + "/timeclock/event-types?includeInactive=" + includeInactive).GET());
+        return parseObjects(r.body(), "code", this::mapEventType);
+    }
+
+    public com.benjagest.ui.model.TimeClockEventTypeEntry createEventType(
+            String code, String labelEs, String labelEn, String icon,
+            Integer displayOrder, boolean isWorkTime, boolean isPause, boolean active)
+            throws IOException, InterruptedException {
+        HttpResponse<String> r = send(req(baseUrl + "/timeclock/event-types")
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(eventTypeBody(
+                        code, labelEs, labelEn, icon, displayOrder, isWorkTime, isPause, active))));
+        return mapEventType(r.body());
+    }
+
+    public com.benjagest.ui.model.TimeClockEventTypeEntry updateEventType(
+            String id, String code, String labelEs, String labelEn, String icon,
+            Integer displayOrder, boolean isWorkTime, boolean isPause, boolean active)
+            throws IOException, InterruptedException {
+        HttpResponse<String> r = send(req(baseUrl + "/timeclock/event-types/" + id)
+                .header("Content-Type", "application/json")
+                .PUT(HttpRequest.BodyPublishers.ofString(eventTypeBody(
+                        code, labelEs, labelEn, icon, displayOrder, isWorkTime, isPause, active))));
+        return mapEventType(r.body());
+    }
+
+    public void deleteEventType(String id) throws IOException, InterruptedException {
+        send(req(baseUrl + "/timeclock/event-types/" + id).DELETE());
+    }
+
+    private String eventTypeBody(String code, String labelEs, String labelEn, String icon,
+                                  Integer displayOrder, boolean isWorkTime, boolean isPause, boolean active) {
+        StringBuilder b = new StringBuilder("{");
+        b.append(field("code", code)).append(",");
+        b.append(field("labelEs", labelEs)).append(",");
+        b.append(field("labelEn", labelEn)).append(",");
+        b.append(field("icon", icon)).append(",");
+        b.append(intField("displayOrder", displayOrder)).append(",");
+        b.append("\"isWorkTime\":").append(isWorkTime).append(",");
+        b.append("\"isPause\":").append(isPause).append(",");
+        b.append("\"active\":").append(active);
+        b.append("}");
+        return b.toString();
+    }
+
+    private com.benjagest.ui.model.TimeClockEventTypeEntry mapEventType(String obj) {
+        return new com.benjagest.ui.model.TimeClockEventTypeEntry(
+                textField(obj, "id"),
+                textField(obj, "code"),
+                textField(obj, "labelEs"),
+                textField(obj, "labelEn"),
+                textField(obj, "icon"),
+                intFieldOrZero(obj, "displayOrder"),
+                boolField(obj, "isWorkTime"),
+                boolField(obj, "isPause"),
+                boolField(obj, "active")
+        );
+    }
+
+    // ====================================================================
     //  Inmovilizado (C1)
     // ====================================================================
 
