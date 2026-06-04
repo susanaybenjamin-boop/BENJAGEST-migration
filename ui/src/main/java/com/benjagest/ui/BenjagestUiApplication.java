@@ -788,6 +788,13 @@ public class BenjagestUiApplication extends Application {
             showSettings();
             return;
         }
+        if ("time-clock".equals(module)) {
+            // C4 (RD 8/2019): modulo de fichaje tiene su propia pantalla
+            // — no usa el moduleView genérico porque tiene flujo distinto
+            // (botón grande "Fichar entrada/salida" + listado últimos).
+            showTimeClock();
+            return;
+        }
         Task<ModuleData> task = new Task<>() {
             @Override
             protected ModuleData call() throws Exception {
@@ -1630,6 +1637,134 @@ public class BenjagestUiApplication extends Application {
         task.setOnSucceeded(event -> showModule("calendar"));
         task.setOnFailed(event -> showError(t("deleteFailed"), t("backendCheck")));
         start(task, "calendar-delete-" + id);
+    }
+
+    // ===================================================================
+    //  Pantalla Fichajes (Slice C4 — RD 8/2019)
+    // ===================================================================
+
+    private final com.benjagest.ui.service.TimeClockApiClient timeClockApi =
+            new com.benjagest.ui.service.TimeClockApiClient();
+    private TableView<com.benjagest.ui.model.TimeClockEntry> timeClockTable;
+
+    private void showTimeClock() {
+        String employeeId = AuthSession.get().userId();
+        // Header explicativo: contexto legal RD 8/2019 y aclaración de
+        // que el CSV emitido al fichar sirve para verificación pública.
+        Label header = label(t("timeclock.header"), "settings-section-title");
+        Label hint = new Label(t("timeclock.hint"));
+        hint.setWrapText(true);
+        hint.getStyleClass().add("settings-hint");
+
+        // Bloque grande con botones de fichaje. Tamaño visible para
+        // que sirva también en kiosko (los empleados fichan rápido).
+        Button inBtn = bigPunchButton(t("timeclock.action.in"), "fas-sign-in-alt", "IN", employeeId);
+        Button outBtn = bigPunchButton(t("timeclock.action.out"), "fas-sign-out-alt", "OUT", employeeId);
+        Button breakStartBtn = bigPunchButton(t("timeclock.action.break_start"), "fas-coffee", "BREAK_START", employeeId);
+        Button breakEndBtn = bigPunchButton(t("timeclock.action.break_end"), "fas-utensils", "BREAK_END", employeeId);
+        HBox punchRow = new HBox(12, inBtn, outBtn, breakStartBtn, breakEndBtn);
+
+        // Listado últimos N fichajes del empleado.
+        timeClockTable = new TableView<>();
+        timeClockTable.getStyleClass().add("data-table");
+        timeClockTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+        timeClockTable.setPlaceholder(new Label(t("timeclock.placeholder.empty")));
+
+        TableColumn<com.benjagest.ui.model.TimeClockEntry, String> colWhen =
+                new TableColumn<>(t("timeclock.col.when"));
+        colWhen.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().eventTimeIso()));
+        colWhen.setPrefWidth(200);
+        colWhen.setComparator(ISO_DATE_COMPARATOR);
+        TableColumn<com.benjagest.ui.model.TimeClockEntry, String> colType =
+                new TableColumn<>(t("timeclock.col.type"));
+        colType.setCellValueFactory(c -> new SimpleStringProperty(localizedPunchType(c.getValue().eventType())));
+        colType.setPrefWidth(150);
+        TableColumn<com.benjagest.ui.model.TimeClockEntry, String> colOrigin =
+                new TableColumn<>(t("timeclock.col.origin"));
+        colOrigin.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().origin()));
+        colOrigin.setPrefWidth(100);
+        TableColumn<com.benjagest.ui.model.TimeClockEntry, String> colStatus =
+                new TableColumn<>(t("timeclock.col.status"));
+        colStatus.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().status()));
+        colStatus.setPrefWidth(110);
+        timeClockTable.getColumns().addAll(java.util.List.of(colWhen, colType, colOrigin, colStatus));
+
+        Button refresh = new Button(t("timeclock.action.refresh"));
+        refresh.setGraphic(icon("fas-sync"));
+        refresh.setOnAction(ev -> reloadTimeClock(employeeId));
+
+        VBox body = new VBox(16, header, hint, punchRow, refresh, timeClockTable);
+        body.setPadding(new Insets(20));
+
+        setCenterAnimated(scroll(body));
+        reloadTimeClock(employeeId);
+    }
+
+    private Button bigPunchButton(String text, String iconName, String eventType, String employeeId) {
+        Button btn = new Button(text);
+        btn.setGraphic(icon(iconName));
+        btn.getStyleClass().add("invoice-validate-action");
+        btn.setMinHeight(50);
+        btn.setMinWidth(160);
+        btn.setOnAction(ev -> punch(employeeId, eventType));
+        return btn;
+    }
+
+    private void punch(String employeeId, String eventType) {
+        Task<String> task = new Task<>() {
+            @Override
+            protected String call() throws Exception {
+                return timeClockApi.punch(employeeId, eventType);
+            }
+        };
+        task.setOnSucceeded(ev -> {
+            String csv = task.getValue();
+            // Mostramos el CSV en un dialog con TextField copiable para
+            // que el trabajador lo guarde si lo necesita (justificante).
+            javafx.scene.control.TextField field = new javafx.scene.control.TextField(csv);
+            field.setEditable(false);
+            field.setPrefColumnCount(20);
+            Alert ok = new Alert(Alert.AlertType.INFORMATION);
+            ok.setHeaderText(t("timeclock.success.title"));
+            VBox content = new VBox(8,
+                    new Label(t("timeclock.success.csv_label")),
+                    field);
+            content.setPadding(new Insets(8));
+            ok.getDialogPane().setContent(content);
+            ok.showAndWait();
+            reloadTimeClock(employeeId);
+        });
+        task.setOnFailed(ev -> showError(t("timeclock.fail.title"), t("timeclock.fail.body")));
+        start(task, "timeclock-punch");
+    }
+
+    private void reloadTimeClock(String employeeId) {
+        Task<java.util.List<com.benjagest.ui.model.TimeClockEntry>> task = new Task<>() {
+            @Override
+            protected java.util.List<com.benjagest.ui.model.TimeClockEntry> call() throws Exception {
+                return timeClockApi.recent(employeeId, 50);
+            }
+        };
+        task.setOnSucceeded(ev -> {
+            if (timeClockTable != null) {
+                timeClockTable.setItems(FXCollections.observableArrayList(task.getValue()));
+            }
+        });
+        task.setOnFailed(ev -> {
+            if (timeClockTable != null) timeClockTable.getItems().clear();
+        });
+        start(task, "timeclock-reload");
+    }
+
+    private String localizedPunchType(String code) {
+        if (code == null) return "";
+        return switch (code) {
+            case "IN" -> t("timeclock.type.in");
+            case "OUT" -> t("timeclock.type.out");
+            case "BREAK_START" -> t("timeclock.type.break_start");
+            case "BREAK_END" -> t("timeclock.type.break_end");
+            default -> code;
+        };
     }
 
     // ===================================================================
@@ -5179,6 +5314,26 @@ public class BenjagestUiApplication extends Application {
                 case "billing.config.manufacturer.section.commitment" -> "Compliance commitment:";
                 case "billing.config.manufacturer.fail.title" -> "Could not load manufacturer declaration";
                 case "billing.config.manufacturer.fail.body" -> "Make sure the backend is running and try again.";
+                case "timeclock.header" -> "Time clock (RD 8/2019)";
+                case "timeclock.hint" -> "Each punch is immutable (art. 34.9). The CSV issued lets you publicly verify the punch with the Labour Inspectorate or any third party (art. 35.8) without credentials.";
+                case "timeclock.action.in" -> "Clock in";
+                case "timeclock.action.out" -> "Clock out";
+                case "timeclock.action.break_start" -> "Break start";
+                case "timeclock.action.break_end" -> "Break end";
+                case "timeclock.action.refresh" -> "Refresh";
+                case "timeclock.placeholder.empty" -> "No punches yet.";
+                case "timeclock.col.when" -> "When";
+                case "timeclock.col.type" -> "Type";
+                case "timeclock.col.origin" -> "Origin";
+                case "timeclock.col.status" -> "Status";
+                case "timeclock.type.in" -> "In";
+                case "timeclock.type.out" -> "Out";
+                case "timeclock.type.break_start" -> "Break start";
+                case "timeclock.type.break_end" -> "Break end";
+                case "timeclock.success.title" -> "Punch recorded";
+                case "timeclock.success.csv_label" -> "Public verification code (CSV) — keep it for your records:";
+                case "timeclock.fail.title" -> "Could not record punch";
+                case "timeclock.fail.body" -> "Make sure your employee profile exists and the backend is running.";
                 case "billing.config.sif.section" -> "SIF event registry (No VeriFactu)";
                 case "billing.config.sif.hint" -> "Mandatory chained event log for systems running as No VeriFactu (RD 1007/2023, art. 16). Each event is SHA-256 hashed and linked to the previous one. Lifecycle and invoicing operations are recorded automatically.";
                 case "billing.config.sif.placeholder.empty" -> "No SIF events yet. They appear as soon as the system starts and invoices are validated.";
@@ -5741,6 +5896,26 @@ public class BenjagestUiApplication extends Application {
             case "billing.config.manufacturer.section.commitment" -> "Compromiso de cumplimiento:";
             case "billing.config.manufacturer.fail.title" -> "No se pudo cargar la declaracion del fabricante";
             case "billing.config.manufacturer.fail.body" -> "Asegurate de que el backend esta en marcha y vuelve a intentarlo.";
+            case "timeclock.header" -> "Fichajes (RD 8/2019)";
+            case "timeclock.hint" -> "Cada fichaje es inalterable (art. 34.9). El CSV emitido te permite verificar publicamente el fichaje ante la Inspeccion de Trabajo o cualquier tercero (art. 35.8) sin credenciales.";
+            case "timeclock.action.in" -> "Fichar entrada";
+            case "timeclock.action.out" -> "Fichar salida";
+            case "timeclock.action.break_start" -> "Iniciar pausa";
+            case "timeclock.action.break_end" -> "Fin pausa";
+            case "timeclock.action.refresh" -> "Refrescar";
+            case "timeclock.placeholder.empty" -> "Sin fichajes todavia.";
+            case "timeclock.col.when" -> "Cuando";
+            case "timeclock.col.type" -> "Tipo";
+            case "timeclock.col.origin" -> "Origen";
+            case "timeclock.col.status" -> "Estado";
+            case "timeclock.type.in" -> "Entrada";
+            case "timeclock.type.out" -> "Salida";
+            case "timeclock.type.break_start" -> "Inicio pausa";
+            case "timeclock.type.break_end" -> "Fin pausa";
+            case "timeclock.success.title" -> "Fichaje registrado";
+            case "timeclock.success.csv_label" -> "Codigo de verificacion publico (CSV) — guardalo como justificante:";
+            case "timeclock.fail.title" -> "No se pudo registrar el fichaje";
+            case "timeclock.fail.body" -> "Comprueba que tu perfil de empleado existe y que el backend esta en marcha.";
             case "billing.config.sif.section" -> "Registro de eventos del SIF (No VeriFactu)";
             case "billing.config.sif.hint" -> "Registro encadenado de eventos obligatorio para sistemas en No VeriFactu (RD 1007/2023, art. 16). Cada evento lleva un SHA-256 encadenado al anterior. Las operaciones de ciclo de vida y de facturacion se registran automaticamente.";
             case "billing.config.sif.placeholder.empty" -> "Aun no hay eventos SIF. Apareceran en cuanto arranque el sistema y se validen facturas.";
