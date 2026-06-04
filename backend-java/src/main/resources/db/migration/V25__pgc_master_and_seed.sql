@@ -48,12 +48,17 @@
 -- Para no escribir 9 grupos × 120 cuentas × N empresas a mano,
 -- definimos una tabla temporal con la plantilla y la cruzamos.
 
+-- COLLATE explicito (fix 2026-06-04): MariaDB 11.4 cambio el default
+-- de las nuevas tablas a `utf8mb4_uca1400_ai_ci`. Si la temporal toma
+-- esa collation, el JOIN con accounting_accounts (que viene de V2 con
+-- `utf8mb4_unicode_ci`) lanza error 1267 "Illegal mix of collations".
+-- Forzamos la misma collation que las tablas reales del esquema.
 CREATE TEMPORARY TABLE pgc_template (
     code VARCHAR(20) NOT NULL,
     name VARCHAR(180) NOT NULL,
     account_type VARCHAR(40) NOT NULL,
     PRIMARY KEY (code)
-);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 INSERT INTO pgc_template (code, name, account_type) VALUES
 -- Grupo 1: FINANCIACIÓN BÁSICA
