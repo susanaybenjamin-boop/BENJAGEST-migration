@@ -54,7 +54,7 @@ public class EmployeeService {
                        dependent_children, dependent_disabled,
                        address_line, city, province, postal_code, country,
                        iban, work_type, ss_regime, hire_date, termination_date,
-                       termination_reason, active, created_at, updated_at
+                       termination_reason, geolocation_enabled, active, created_at, updated_at
                   FROM employees
                  WHERE company_id = ?
                    AND (? = TRUE OR active = TRUE)
@@ -78,8 +78,8 @@ public class EmployeeService {
                     dependent_children, dependent_disabled,
                     address_line, city, province, postal_code, country,
                     iban, work_type, ss_regime, hire_date, termination_date,
-                    termination_reason, active
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    termination_reason, geolocation_enabled, active
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 id, tenantContext.getCurrentCompanyId(),
                 req.fullName(), blank(req.taxIdentifier()), blank(req.socialSecurityNumber()),
@@ -90,6 +90,7 @@ public class EmployeeService {
                 blank(req.postalCode()), blank(req.country()),
                 blank(req.iban()), blank(req.workType()), blank(req.ssRegime()),
                 req.hireDate(), req.terminationDate(), blank(req.terminationReason()),
+                req.geolocationEnabled() != null && req.geolocationEnabled(),
                 req.active() == null || req.active()
         );
         return findById(id);
@@ -105,7 +106,8 @@ public class EmployeeService {
                        dependent_children = ?, dependent_disabled = ?,
                        address_line = ?, city = ?, province = ?, postal_code = ?, country = ?,
                        iban = ?, work_type = ?, ss_regime = ?, hire_date = ?,
-                       termination_date = ?, termination_reason = ?, active = ?
+                       termination_date = ?, termination_reason = ?,
+                       geolocation_enabled = ?, active = ?
                  WHERE id = ? AND company_id = ?
                 """,
                 req.fullName(), blank(req.taxIdentifier()), blank(req.socialSecurityNumber()),
@@ -116,6 +118,7 @@ public class EmployeeService {
                 blank(req.postalCode()), blank(req.country()),
                 blank(req.iban()), blank(req.workType()), blank(req.ssRegime()),
                 req.hireDate(), req.terminationDate(), blank(req.terminationReason()),
+                req.geolocationEnabled() != null && req.geolocationEnabled(),
                 req.active() == null || req.active(),
                 id, tenantContext.getCurrentCompanyId());
         if (n == 0) {
@@ -148,7 +151,7 @@ public class EmployeeService {
                        dependent_children, dependent_disabled,
                        address_line, city, province, postal_code, country,
                        iban, work_type, ss_regime, hire_date, termination_date,
-                       termination_reason, active, created_at, updated_at
+                       termination_reason, geolocation_enabled, active, created_at, updated_at
                   FROM employees
                  WHERE id = ? AND company_id = ?
                 """, this::mapView, id, tenantContext.getCurrentCompanyId())
@@ -200,6 +203,7 @@ public class EmployeeService {
                 hd == null ? null : hd.toLocalDate(),
                 td == null ? null : td.toLocalDate(),
                 rs.getString("termination_reason"),
+                rs.getBoolean("geolocation_enabled"),
                 rs.getBoolean("active"),
                 ca == null ? null : ca.toInstant(),
                 ua == null ? null : ua.toInstant()
@@ -213,6 +217,7 @@ public class EmployeeService {
             String addressLine, String city, String province, String postalCode, String country,
             String iban, String workType, String ssRegime,
             LocalDate hireDate, LocalDate terminationDate, String terminationReason,
+            boolean geolocationEnabled,
             boolean active, Instant createdAt, Instant updatedAt
     ) {}
 
@@ -223,6 +228,7 @@ public class EmployeeService {
             String addressLine, String city, String province, String postalCode, String country,
             String iban, String workType, String ssRegime,
             LocalDate hireDate, LocalDate terminationDate, String terminationReason,
+            Boolean geolocationEnabled,
             Boolean active
     ) {}
 

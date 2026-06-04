@@ -7873,6 +7873,9 @@ public class BenjagestUiApplication extends Application {
             case "labor.employee.editor.hire" -> "Hire date";
             case "labor.employee.editor.termination" -> "Termination date";
             case "labor.employee.editor.term_reason" -> "Termination reason";
+            case "labor.employee.editor.geolocation" -> "Allow geolocation when punching";
+            case "labor.employee.editor.geolocation.hint" -> "If active, mobile/web punch will request the GPS position and store it with the event. RGPD: only with explicit consent. Default off.";
+            case "labor.employees.col.geo" -> "Geo";
             case "labor.employee.editor.fail.title" -> "Could not save";
             case "labor.employee.editor.fail.body" -> "Check the data and try again.";
             case "labor.employee.delete.title" -> "Deactivate employee?";
@@ -8185,6 +8188,9 @@ public class BenjagestUiApplication extends Application {
             case "labor.employee.editor.hire" -> "Fecha de alta";
             case "labor.employee.editor.termination" -> "Fecha de baja";
             case "labor.employee.editor.term_reason" -> "Motivo de baja";
+            case "labor.employee.editor.geolocation" -> "Permitir geolocalizacion al fichar";
+            case "labor.employee.editor.geolocation.hint" -> "Si esta activo, el fichaje movil/web pedira la posicion GPS y la guardara junto al evento. RGPD: solo con consentimiento expreso del empleado. Desactivado por defecto.";
+            case "labor.employees.col.geo" -> "Geo";
             case "labor.employee.editor.fail.title" -> "No se pudo guardar";
             case "labor.employee.editor.fail.body" -> "Revisa los datos e intentalo de nuevo.";
             case "labor.employee.delete.title" -> "Dar de baja al empleado?";
@@ -8454,12 +8460,17 @@ public class BenjagestUiApplication extends Application {
                 new TableColumn<>(t("labor.employees.col.ss"));
         colSs.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().ssRegime()));
         colSs.setPrefWidth(110);
+        TableColumn<com.benjagest.ui.model.EmployeeEntry, String> colGeo =
+                new TableColumn<>(t("labor.employees.col.geo"));
+        colGeo.setCellValueFactory(c -> new SimpleStringProperty(
+                c.getValue().geolocationEnabled() ? "📍" : ""));
+        colGeo.setPrefWidth(60);
         TableColumn<com.benjagest.ui.model.EmployeeEntry, String> colFlags =
                 new TableColumn<>(t("labor.employees.col.flags"));
         colFlags.setCellValueFactory(c -> new SimpleStringProperty(
                 c.getValue().active() ? "" : t("labor.employees.inactive")));
         colFlags.setPrefWidth(90);
-        employeesTable.getColumns().addAll(java.util.List.of(colName, colNif, colNuss, colHire, colSs, colFlags));
+        employeesTable.getColumns().addAll(java.util.List.of(colName, colNif, colNuss, colHire, colSs, colGeo, colFlags));
         employeesTable.setItems(FXCollections.observableArrayList(employees));
         employeesTable.setOnMouseClicked(ev -> {
             if (ev.getClickCount() == 2) {
@@ -9385,6 +9396,8 @@ public class BenjagestUiApplication extends Application {
                 ? "" : existing.terminationDate().toString());
         termField.setPromptText("AAAA-MM-DD");
         TextField termReasonField = new TextField(existing == null ? "" : existing.terminationReason());
+        CheckBox geoCb = new CheckBox(t("labor.employee.editor.geolocation"));
+        geoCb.setSelected(existing != null && existing.geolocationEnabled());
         CheckBox activeCb = new CheckBox(t("labor.employee.editor.active"));
         activeCb.setSelected(existing == null || existing.active());
 
@@ -9419,6 +9432,11 @@ public class BenjagestUiApplication extends Application {
         g.add(new Label(t("labor.employee.editor.hire")), 0, row); g.add(hireField, 1, row);
         g.add(new Label(t("labor.employee.editor.termination")), 2, row); g.add(termField, 3, row); row++;
         g.add(new Label(t("labor.employee.editor.term_reason")), 0, row); g.add(termReasonField, 1, row, 3, 1); row++;
+        g.add(geoCb, 1, row, 3, 1); row++;
+        Label geoHint = new Label(t("labor.employee.editor.geolocation.hint"));
+        geoHint.setWrapText(true);
+        geoHint.getStyleClass().add("settings-hint");
+        g.add(geoHint, 1, row, 3, 1); row++;
         g.add(activeCb, 1, row);
 
         ScrollPane sp = new ScrollPane(g);
@@ -9451,6 +9469,7 @@ public class BenjagestUiApplication extends Application {
                     parseDateSafe(hireField.getText()),
                     parseDateSafe(termField.getText()),
                     blankToNullOrSelf(termReasonField.getText()),
+                    geoCb.isSelected(),
                     activeCb.isSelected());
             Task<com.benjagest.ui.model.EmployeeEntry> task = new Task<>() {
                 @Override
