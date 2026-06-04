@@ -25,7 +25,7 @@
 -- las credenciales del certificado de representante.
 -- ===========================================================================
 
-CREATE TABLE dehu_notifications (
+CREATE TABLE IF NOT EXISTS dehu_notifications (
     id CHAR(36) NOT NULL,
     company_id CHAR(36) NOT NULL,
     dehu_id VARCHAR(80) NOT NULL,

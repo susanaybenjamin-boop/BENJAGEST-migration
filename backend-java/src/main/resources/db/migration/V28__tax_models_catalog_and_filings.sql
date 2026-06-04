@@ -22,7 +22,7 @@
 -- de cada uno se cierra en sub-slices futuros (ver backlog).
 -- ===========================================================================
 
-CREATE TABLE tax_model_catalog (
+CREATE TABLE IF NOT EXISTS tax_model_catalog (
     code VARCHAR(10) NOT NULL,
     name VARCHAR(160) NOT NULL,
     description TEXT NULL,
@@ -34,7 +34,7 @@ CREATE TABLE tax_model_catalog (
     CONSTRAINT ck_tax_model_periodicity CHECK (periodicity IN ('MONTHLY', 'QUARTERLY', 'ANNUAL', 'BIANNUAL', 'AD_HOC'))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-INSERT INTO tax_model_catalog (code, name, description, periodicity, info_url) VALUES
+INSERT IGNORE INTO tax_model_catalog (code, name, description, periodicity, info_url) VALUES
 ('100', 'IRPF Declaracion anual de la Renta', 'Personas fisicas (autonomos, asalariados, mixtos).', 'ANNUAL', 'https://sede.agenciatributaria.gob.es/Sede/renta'),
 ('130', 'IRPF Pago fraccionado estimacion directa', 'Trimestral. Autonomos en estimacion directa.', 'QUARTERLY', NULL),
 ('131', 'IRPF Pago fraccionado estimacion objetiva', 'Trimestral. Autonomos en modulos.', 'QUARTERLY', NULL),
@@ -53,7 +53,7 @@ INSERT INTO tax_model_catalog (code, name, description, periodicity, info_url) V
 ('123', 'Retenciones rendimientos capital mobiliario', 'Trimestral.', 'QUARTERLY', NULL),
 ('720', 'Declaracion bienes en el extranjero', 'Anual. Bienes en el extranjero > 50.000 EUR.', 'ANNUAL', NULL);
 
-CREATE TABLE tax_filings (
+CREATE TABLE IF NOT EXISTS tax_filings (
     id CHAR(36) NOT NULL,
     company_id CHAR(36) NOT NULL,
     tax_model_code VARCHAR(10) NOT NULL,

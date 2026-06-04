@@ -14,7 +14,7 @@
 --    algo no autorizado, hay registro).
 -- ===========================================================================
 
-CREATE TABLE external_credentials (
+CREATE TABLE IF NOT EXISTS external_credentials (
     id CHAR(36) NOT NULL,
     company_id CHAR(36) NOT NULL,
     system_code VARCHAR(40) NOT NULL,
@@ -37,7 +37,7 @@ CREATE TABLE external_credentials (
     INDEX ix_external_credentials_company_active (company_id, active)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-CREATE TABLE certificate_usage_log (
+CREATE TABLE IF NOT EXISTS certificate_usage_log (
     id CHAR(36) NOT NULL,
     company_id CHAR(36) NOT NULL,
     certificate_id CHAR(36) NOT NULL,
