@@ -144,7 +144,7 @@ La app se diseñó bilingüe desde C1 (botón EN/ES en el header → `language` 
 - ✅ Almacenamiento documental de facturas (cerrado por F-STORAGE, ver bloque VeriFactu arriba).
 - ✅ Envío facturas por email (cerrado por F-EMAIL, ver bloque VeriFactu arriba).
 - ⬜ Obligaciones de fabricante VeriFactu (auditoría propia del software, ver `VERIFACTU_OBLIGACIONES_FABRICANTE.md` de CONTENDO).
-- ⬜ Todavia no tenemos la importacion del pdf en los modulos donde se van a usar esa funcion, ya que CONTENDO usa IA, nosotros lo vamos a hacer con dependencias OCR y Regex, sin usar IA, o como Claude me sugiera honestamente.
+- ✅ Importación PDF compras (C3, 2026-06-04) — dependencia Apache PDFBox 3.0.3. `PdfTextExtractor.extract(bytes)` saca texto plano (PDFs con texto nativo, ~80% de facturas de software). `InvoiceFieldsExtractor` con regex calibrados ES: NIF/CIF AEAT, fechas DD/MM/YYYY|YYYY-MM-DD, importes "1.234,56 €", IVA "21%". Devuelve `ExtractionResult{emitterNif, invoiceNumber, invoiceDate, baseAmount, vatPercent, vatAmount, totalAmount, allDetectedNifs, rawTextHead}`. Endpoint `POST /api/purchases/pdf-import` (multipart). UI: módulo Compras con botón "Importar PDF" → FileChooser → dialog con campos detectados. **Deuda pendiente**: OCR para PDFs escaneados (Tess4J + Tesseract — requiere binario nativo, decisión a tomar); persistencia en `purchase_invoices` (módulo Compras completo pendiente — el slice arranca el importador, no el módulo completo); revisión/edición de campos detectados antes de guardar.
 
 ### RD 8/2019 (fichajes — obligación legal) comentario de benjamin(vamos a ver como Sesame lo hace para incorporar nuevas ideas, o cualquier otra app de fichaje)
 

@@ -795,6 +795,13 @@ public class BenjagestUiApplication extends Application {
             showTimeClock();
             return;
         }
+        if ("purchases".equals(module)) {
+            // C3: módulo Compras con extractor PDF de facturas. La vista
+            // genérica de módulo se enriquece con un botón "Importar PDF"
+            // que abre un FileChooser y muestra los campos detectados.
+            showPurchasesWithImport();
+            return;
+        }
         Task<ModuleData> task = new Task<>() {
             @Override
             protected ModuleData call() throws Exception {
@@ -1637,6 +1644,103 @@ public class BenjagestUiApplication extends Application {
         task.setOnSucceeded(event -> showModule("calendar"));
         task.setOnFailed(event -> showError(t("deleteFailed"), t("backendCheck")));
         start(task, "calendar-delete-" + id);
+    }
+
+    // ===================================================================
+    //  Pantalla Compras con importador PDF (Slice C3)
+    // ===================================================================
+
+    private final com.benjagest.ui.service.PdfImportApiClient pdfImportApi =
+            new com.benjagest.ui.service.PdfImportApiClient();
+
+    private void showPurchasesWithImport() {
+        Label header = label(t("purchases.header"), "settings-section-title");
+        Label hint = new Label(t("purchases.hint"));
+        hint.setWrapText(true);
+        hint.getStyleClass().add("settings-hint");
+
+        Button importBtn = new Button(t("purchases.action.import_pdf"));
+        importBtn.setGraphic(icon("fas-file-import"));
+        importBtn.setOnAction(ev -> importPurchasePdf());
+
+        Label placeholder = new Label(t("purchases.placeholder.coming_soon"));
+        placeholder.setWrapText(true);
+        placeholder.getStyleClass().add("settings-hint");
+
+        VBox body = new VBox(16, header, hint, importBtn, placeholder);
+        body.setPadding(new Insets(20));
+        setCenterAnimated(scroll(body));
+    }
+
+    private void importPurchasePdf() {
+        javafx.stage.FileChooser chooser = new javafx.stage.FileChooser();
+        chooser.setTitle(t("purchases.import.select_pdf"));
+        chooser.getExtensionFilters().add(
+                new javafx.stage.FileChooser.ExtensionFilter("PDF", "*.pdf"));
+        java.io.File file = chooser.showOpenDialog(root.getScene().getWindow());
+        if (file == null) return;
+
+        Task<String> task = new Task<>() {
+            @Override
+            protected String call() throws Exception {
+                return pdfImportApi.uploadAndExtract(file);
+            }
+        };
+        task.setOnSucceeded(ev -> showExtractionResult(task.getValue(), file.getName()));
+        task.setOnFailed(ev -> showError(t("purchases.import.fail.title"),
+                t("purchases.import.fail.body")));
+        start(task, "purchases-pdf-import");
+    }
+
+    private void showExtractionResult(String json, String filename) {
+        // Parseo minimal de los campos detectados — los pinta en un
+        // GridPane que el usuario va a ver pero no editar (por ahora).
+        // Cuando exista el módulo de compras con guardado, esto será un
+        // formulario rellenable.
+        String emitter = extractField(json, "emitterNif");
+        String number = extractField(json, "invoiceNumber");
+        String date = extractField(json, "invoiceDate");
+        String base = extractNumber(json, "baseAmount");
+        String vatPct = extractNumber(json, "vatPercent");
+        String vatAmt = extractNumber(json, "vatAmount");
+        String total = extractNumber(json, "totalAmount");
+
+        GridPane g = new GridPane();
+        g.setHgap(12); g.setVgap(8);
+        g.add(new Label(t("purchases.import.field.emitter_nif")), 0, 0);
+        g.add(new Label(emitter), 1, 0);
+        g.add(new Label(t("purchases.import.field.number")), 0, 1);
+        g.add(new Label(number), 1, 1);
+        g.add(new Label(t("purchases.import.field.date")), 0, 2);
+        g.add(new Label(date), 1, 2);
+        g.add(new Label(t("purchases.import.field.base")), 0, 3);
+        g.add(new Label(base), 1, 3);
+        g.add(new Label(t("purchases.import.field.vat_pct")), 0, 4);
+        g.add(new Label(vatPct + " %"), 1, 4);
+        g.add(new Label(t("purchases.import.field.vat_amount")), 0, 5);
+        g.add(new Label(vatAmt), 1, 5);
+        g.add(new Label(t("purchases.import.field.total")), 0, 6);
+        g.add(new Label(total), 1, 6);
+
+        Alert info = new Alert(Alert.AlertType.INFORMATION);
+        info.setHeaderText(t("purchases.import.result_prefix") + filename);
+        info.getDialogPane().setContent(g);
+        info.getDialogPane().setPrefWidth(520);
+        info.showAndWait();
+    }
+
+    private String extractField(String json, String field) {
+        java.util.regex.Matcher m = java.util.regex.Pattern
+                .compile("\"" + field + "\"\\s*:\\s*\"([^\"]*)\"")
+                .matcher(json);
+        return m.find() ? m.group(1) : "—";
+    }
+
+    private String extractNumber(String json, String field) {
+        java.util.regex.Matcher m = java.util.regex.Pattern
+                .compile("\"" + field + "\"\\s*:\\s*([0-9.\\-]+)")
+                .matcher(json);
+        return m.find() ? m.group(1) : "—";
     }
 
     // ===================================================================
@@ -5334,6 +5438,21 @@ public class BenjagestUiApplication extends Application {
                 case "timeclock.success.csv_label" -> "Public verification code (CSV) — keep it for your records:";
                 case "timeclock.fail.title" -> "Could not record punch";
                 case "timeclock.fail.body" -> "Make sure your employee profile exists and the backend is running.";
+                case "purchases.header" -> "Purchases";
+                case "purchases.hint" -> "Upload a received invoice as PDF — BENJAGEST extracts the issuer NIF, date, base, VAT and total automatically (no AI, just regex on the embedded text). Scanned PDFs require OCR — coming in a follow-up slice.";
+                case "purchases.action.import_pdf" -> "Import PDF invoice";
+                case "purchases.placeholder.coming_soon" -> "The full Purchases module (supplier list, recurring expenses, payment status) is on the roadmap. Today only the PDF importer is available — the detected fields are shown for review but not persisted yet.";
+                case "purchases.import.select_pdf" -> "Select PDF invoice";
+                case "purchases.import.fail.title" -> "Could not extract from PDF";
+                case "purchases.import.fail.body" -> "Maybe the PDF is scanned (no embedded text) or encrypted. Make sure the backend is running.";
+                case "purchases.import.result_prefix" -> "Detected fields — ";
+                case "purchases.import.field.emitter_nif" -> "Issuer NIF:";
+                case "purchases.import.field.number" -> "Invoice number:";
+                case "purchases.import.field.date" -> "Invoice date:";
+                case "purchases.import.field.base" -> "Tax base:";
+                case "purchases.import.field.vat_pct" -> "VAT rate:";
+                case "purchases.import.field.vat_amount" -> "VAT amount:";
+                case "purchases.import.field.total" -> "Total:";
                 case "billing.config.sif.section" -> "SIF event registry (No VeriFactu)";
                 case "billing.config.sif.hint" -> "Mandatory chained event log for systems running as No VeriFactu (RD 1007/2023, art. 16). Each event is SHA-256 hashed and linked to the previous one. Lifecycle and invoicing operations are recorded automatically.";
                 case "billing.config.sif.placeholder.empty" -> "No SIF events yet. They appear as soon as the system starts and invoices are validated.";
@@ -5916,6 +6035,21 @@ public class BenjagestUiApplication extends Application {
             case "timeclock.success.csv_label" -> "Codigo de verificacion publico (CSV) — guardalo como justificante:";
             case "timeclock.fail.title" -> "No se pudo registrar el fichaje";
             case "timeclock.fail.body" -> "Comprueba que tu perfil de empleado existe y que el backend esta en marcha.";
+            case "purchases.header" -> "Compras";
+            case "purchases.hint" -> "Sube una factura recibida en PDF — BENJAGEST extrae el NIF emisor, fecha, base, IVA y total automaticamente (sin IA, solo regex sobre el texto embebido). PDFs escaneados necesitan OCR — llega en un slice posterior.";
+            case "purchases.action.import_pdf" -> "Importar factura PDF";
+            case "purchases.placeholder.coming_soon" -> "El modulo Compras completo (proveedores, gastos recurrentes, estado cobro) esta en hoja de ruta. Hoy solo esta disponible el importador PDF — los campos detectados se muestran para revision pero todavia no se persisten.";
+            case "purchases.import.select_pdf" -> "Seleccionar factura PDF";
+            case "purchases.import.fail.title" -> "No se pudo extraer del PDF";
+            case "purchases.import.fail.body" -> "Quiza el PDF este escaneado (sin texto embebido) o cifrado. Comprueba que el backend este en marcha.";
+            case "purchases.import.result_prefix" -> "Campos detectados — ";
+            case "purchases.import.field.emitter_nif" -> "NIF emisor:";
+            case "purchases.import.field.number" -> "Número factura:";
+            case "purchases.import.field.date" -> "Fecha factura:";
+            case "purchases.import.field.base" -> "Base imponible:";
+            case "purchases.import.field.vat_pct" -> "% IVA:";
+            case "purchases.import.field.vat_amount" -> "Cuota IVA:";
+            case "purchases.import.field.total" -> "Total:";
             case "billing.config.sif.section" -> "Registro de eventos del SIF (No VeriFactu)";
             case "billing.config.sif.hint" -> "Registro encadenado de eventos obligatorio para sistemas en No VeriFactu (RD 1007/2023, art. 16). Cada evento lleva un SHA-256 encadenado al anterior. Las operaciones de ciclo de vida y de facturacion se registran automaticamente.";
             case "billing.config.sif.placeholder.empty" -> "Aun no hay eventos SIF. Apareceran en cuanto arranque el sistema y se validen facturas.";
