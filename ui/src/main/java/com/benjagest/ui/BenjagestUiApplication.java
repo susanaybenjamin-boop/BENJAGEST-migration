@@ -1758,9 +1758,9 @@ public class BenjagestUiApplication extends Application {
     }
 
     private void showExtractionResult(String json, String filename) {
-        // Parseo minimal de los campos detectados — los pinta en un
-        // GridPane editable (TextField readonly que se pueden seleccionar
-        // para copiar). v2: ahora incluye supplier name + confianza.
+        // Diálogo EDITABLE: el usuario corrige los campos que el
+        // extractor no acertó y puede guardar la corrección como
+        // plantilla para futuras facturas del mismo NIF de proveedor.
         String supplier = extractField(json, "supplierName");
         String emitter = extractField(json, "emitterNif");
         String number = extractField(json, "invoiceNumber");
@@ -1772,56 +1772,102 @@ public class BenjagestUiApplication extends Application {
         String confidence = extractField(json, "confidence");
         String hash = extractField(json, "documentSha256");
 
-        GridPane g = new GridPane();
-        g.setHgap(12); g.setVgap(8);
-        int r = 0;
-        g.add(new Label(t("purchases.import.field.supplier")), 0, r);
-        g.add(copyableValue(supplier), 1, r++);
-        g.add(new Label(t("purchases.import.field.emitter_nif")), 0, r);
-        g.add(copyableValue(emitter), 1, r++);
-        g.add(new Label(t("purchases.import.field.number")), 0, r);
-        g.add(copyableValue(number), 1, r++);
-        g.add(new Label(t("purchases.import.field.date")), 0, r);
-        g.add(copyableValue(date), 1, r++);
-        g.add(new Label(t("purchases.import.field.base")), 0, r);
-        g.add(copyableValue(base + " €"), 1, r++);
-        g.add(new Label(t("purchases.import.field.vat_pct")), 0, r);
-        g.add(copyableValue(vatPct + " %"), 1, r++);
-        g.add(new Label(t("purchases.import.field.vat_amount")), 0, r);
-        g.add(copyableValue(vatAmt + " €"), 1, r++);
-        g.add(new Label(t("purchases.import.field.total")), 0, r);
-        Label totalLbl = new Label(total + " €");
-        totalLbl.getStyleClass().add("settings-section-title");
-        g.add(totalLbl, 1, r++);
-        g.add(new Separator(), 0, r++, 2, 1);
-        Label confLabel = new Label(confidenceLabel(confidence));
-        confLabel.getStyleClass().add("settings-section-title");
-        g.add(new Label(t("purchases.import.field.confidence")), 0, r);
-        g.add(confLabel, 1, r++);
-        if (hash != null && hash.length() > 16) {
-            g.add(new Label(t("purchases.import.field.hash")), 0, r);
-            Label hashShort = new Label(hash.substring(0, 16) + "…");
-            hashShort.getStyleClass().add("settings-hint");
-            g.add(hashShort, 1, r);
+        // Valores originales (para detectar si el usuario modificó)
+        String origSupplier = supplier;
+        String origVatPct = vatPct;
+
+        Dialog<ButtonType> dialog = new Dialog<>();
+        dialog.setTitle(t("purchases.import.result_prefix") + filename);
+        ButtonType acceptBt = new ButtonType(t("purchases.import.action.accept"),
+                ButtonBar.ButtonData.OK_DONE);
+        ButtonType saveTemplateBt = new ButtonType(t("purchases.import.action.save_template"),
+                ButtonBar.ButtonData.LEFT);
+        dialog.getDialogPane().getButtonTypes().addAll(saveTemplateBt, acceptBt, ButtonType.CANCEL);
+
+        TextField supplierField = new TextField(supplier);
+        TextField emitterField = new TextField(emitter);
+        TextField numberField = new TextField(number);
+        TextField dateField = new TextField(date);
+        TextField baseField = new TextField(base);
+        TextField vatPctField = new TextField(vatPct);
+        TextField vatAmtField = new TextField(vatAmt);
+        TextField totalField = new TextField(total);
+        for (TextField tf : new TextField[]{
+                supplierField, emitterField, numberField, dateField,
+                baseField, vatPctField, vatAmtField, totalField}) {
+            tf.setPrefColumnCount(32);
         }
 
-        Alert info = new Alert(Alert.AlertType.INFORMATION);
-        info.setHeaderText(t("purchases.import.result_prefix") + filename);
-        info.getDialogPane().setContent(g);
-        info.getDialogPane().setPrefWidth(560);
-        info.showAndWait();
-    }
+        GridPane g = new GridPane();
+        g.setHgap(12); g.setVgap(8);
+        int row = 0;
+        g.add(new Label(t("purchases.import.field.supplier")), 0, row); g.add(supplierField, 1, row++);
+        g.add(new Label(t("purchases.import.field.emitter_nif")), 0, row); g.add(emitterField, 1, row++);
+        g.add(new Label(t("purchases.import.field.number")), 0, row); g.add(numberField, 1, row++);
+        g.add(new Label(t("purchases.import.field.date")), 0, row); g.add(dateField, 1, row++);
+        g.add(new Label(t("purchases.import.field.base")), 0, row); g.add(baseField, 1, row++);
+        g.add(new Label(t("purchases.import.field.vat_pct")), 0, row); g.add(vatPctField, 1, row++);
+        g.add(new Label(t("purchases.import.field.vat_amount")), 0, row); g.add(vatAmtField, 1, row++);
+        g.add(new Label(t("purchases.import.field.total")), 0, row); g.add(totalField, 1, row++);
+        g.add(new Separator(), 0, row++, 2, 1);
+        Label confLabel = new Label(confidenceLabel(confidence));
+        confLabel.getStyleClass().add("settings-section-title");
+        g.add(new Label(t("purchases.import.field.confidence")), 0, row); g.add(confLabel, 1, row++);
 
-    /**
-     * Crea un TextField readonly que se ve como label pero permite
-     * seleccionar y copiar al portapapeles con Ctrl+C.
-     */
-    private TextField copyableValue(String value) {
-        TextField tf = new TextField(value == null || value.isBlank() ? "—" : value);
-        tf.setEditable(false);
-        tf.setFocusTraversable(false);
-        tf.setPrefColumnCount(32);
-        return tf;
+        Label tip = new Label(t("purchases.import.tip.edit"));
+        tip.setWrapText(true);
+        tip.getStyleClass().add("settings-hint");
+        g.add(tip, 0, row++, 2, 1);
+
+        if (hash != null && hash.length() > 16) {
+            Label hashShort = new Label(t("purchases.import.field.hash") + " " + hash.substring(0, 16) + "…");
+            hashShort.getStyleClass().add("settings-hint");
+            g.add(hashShort, 0, row++, 2, 1);
+        }
+
+        dialog.getDialogPane().setContent(g);
+        dialog.getDialogPane().setPrefWidth(620);
+
+        // Botón "Guardar plantilla" deshabilitado si no hay NIF emisor
+        // (sin NIF no podemos asociar la plantilla a nadie).
+        Button saveBtn = (Button) dialog.getDialogPane().lookupButton(saveTemplateBt);
+        Runnable refreshSaveEnabled = () -> saveBtn.setDisable(
+                emitterField.getText() == null || emitterField.getText().isBlank());
+        refreshSaveEnabled.run();
+        emitterField.textProperty().addListener((o, ov, nv) -> refreshSaveEnabled.run());
+
+        saveBtn.addEventFilter(javafx.event.ActionEvent.ACTION, ev -> {
+            ev.consume(); // no cerrar
+            // Componer rules JSON con los valores fijos (supplierName y
+            // vatPercent si tienen valor).
+            StringBuilder rules = new StringBuilder("{");
+            boolean first = true;
+            String sName = supplierField.getText();
+            if (sName != null && !sName.isBlank()) {
+                rules.append("\"supplierName\":\"").append(sName.replace("\"", "\\\"")).append("\"");
+                first = false;
+            }
+            String pct = vatPctField.getText();
+            if (pct != null && !pct.isBlank() && !pct.equals("—")) {
+                if (!first) rules.append(",");
+                rules.append("\"vatPercent\":\"").append(pct.trim()).append("\"");
+            }
+            rules.append("}");
+            String supplierNif = emitterField.getText().trim();
+            Task<Void> task = new Task<>() {
+                @Override protected Void call() throws Exception {
+                    pdfImportApi.saveTemplate(supplierNif, sName, rules.toString());
+                    return null;
+                }
+            };
+            task.setOnSucceeded(e -> showInfo(t("purchases.import.template_saved.title"),
+                    t("purchases.import.template_saved.body") + " " + supplierNif));
+            task.setOnFailed(e -> showError(t("purchases.import.template_failed.title"),
+                    t("purchases.import.template_failed.body")));
+            start(task, "pdf-template-save");
+        });
+
+        dialog.showAndWait();
     }
 
     private String confidenceLabel(String code) {
@@ -6242,6 +6288,13 @@ public class BenjagestUiApplication extends Application {
                 case "purchases.import.confidence.high" -> "High (base + VAT ≈ total)";
                 case "purchases.import.confidence.medium" -> "Medium (review missing fields)";
                 case "purchases.import.confidence.low" -> "Low (cross-check failed)";
+                case "purchases.import.action.accept" -> "Accept";
+                case "purchases.import.action.save_template" -> "💾 Save template for this supplier";
+                case "purchases.import.tip.edit" -> "Tip: correct any wrong field. If supplier and VAT% are constant for this provider, click 'Save template' so next imports from the same NIF apply your fix automatically.";
+                case "purchases.import.template_saved.title" -> "Template saved";
+                case "purchases.import.template_saved.body" -> "Future imports for NIF/VAT will apply your corrections:";
+                case "purchases.import.template_failed.title" -> "Could not save template";
+                case "purchases.import.template_failed.body" -> "Check that the supplier NIF is set and try again.";
                 case "purchases.import.field.emitter_nif" -> "Issuer NIF:";
                 case "purchases.import.field.number" -> "Invoice number:";
                 case "purchases.import.field.date" -> "Invoice date:";
@@ -7049,6 +7102,13 @@ public class BenjagestUiApplication extends Application {
             case "purchases.import.confidence.high" -> "Alta (base + IVA ≈ total)";
             case "purchases.import.confidence.medium" -> "Media (revisar campos vacios)";
             case "purchases.import.confidence.low" -> "Baja (validacion cruzada fallida)";
+            case "purchases.import.action.accept" -> "Aceptar";
+            case "purchases.import.action.save_template" -> "💾 Guardar plantilla para este proveedor";
+            case "purchases.import.tip.edit" -> "Consejo: corrige los campos mal detectados. Si el nombre del proveedor y el %IVA son siempre los mismos para esta empresa, pulsa 'Guardar plantilla' para que las proximas importaciones del mismo NIF apliquen tu correccion automaticamente.";
+            case "purchases.import.template_saved.title" -> "Plantilla guardada";
+            case "purchases.import.template_saved.body" -> "Las proximas importaciones para el NIF aplicaran tus correcciones:";
+            case "purchases.import.template_failed.title" -> "No se pudo guardar la plantilla";
+            case "purchases.import.template_failed.body" -> "Comprueba que el NIF del proveedor este informado e intentalo de nuevo.";
             case "purchases.import.field.emitter_nif" -> "NIF emisor:";
             case "purchases.import.field.number" -> "Número factura:";
             case "purchases.import.field.date" -> "Fecha factura:";

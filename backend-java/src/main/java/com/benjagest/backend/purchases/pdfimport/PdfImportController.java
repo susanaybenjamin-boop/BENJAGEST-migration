@@ -31,11 +31,14 @@ public class PdfImportController {
 
     private final PdfTextExtractor textExtractor;
     private final InvoiceFieldsExtractor fieldsExtractor;
+    private final SupplierTemplateService templateService;
 
     public PdfImportController(PdfTextExtractor textExtractor,
-                                InvoiceFieldsExtractor fieldsExtractor) {
+                                InvoiceFieldsExtractor fieldsExtractor,
+                                SupplierTemplateService templateService) {
         this.textExtractor = textExtractor;
         this.fieldsExtractor = fieldsExtractor;
+        this.templateService = templateService;
     }
 
     /**
@@ -69,7 +72,11 @@ public class PdfImportController {
                         "El PDF no contiene texto extraible (puede ser una imagen escaneada). "
                                 + "El soporte OCR para PDFs escaneados se anyadira en un slice futuro.");
             }
-            return fieldsExtractor.extractFromLayout(layout, bytes);
+            var baseResult = fieldsExtractor.extractFromLayout(layout, bytes);
+            // Aplicar plantilla por proveedor si existe (sobrescribe
+            // supplierName, vatPercent, … con los valores aprendidos).
+            var template = templateService.findByNif(baseResult.emitterNif());
+            return templateService.apply(baseResult, template);
         } catch (IOException e) {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
                     "No se pudo leer el PDF: " + e.getMessage());
