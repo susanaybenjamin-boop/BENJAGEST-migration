@@ -418,6 +418,119 @@ public class LaborApiClient {
     }
 
     // ====================================================================
+    //  Tipos de evento de fichaje (TC-CFG)
+    // ====================================================================
+
+    public java.util.List<com.benjagest.ui.model.TimeClockEventTypeEntry> listTimeClockEventTypes(boolean includeInactive)
+            throws IOException, InterruptedException {
+        HttpResponse<String> r = send(req(baseUrl + "/timeclock/event-types?includeInactive=" + includeInactive).GET());
+        return parseObjects(r.body(), "code", this::mapEventType);
+    }
+
+    public com.benjagest.ui.model.TimeClockEventTypeEntry createEventType(
+            String code, String labelEs, String labelEn, String icon,
+            Integer displayOrder, boolean isWorkTime, boolean isPause, boolean active)
+            throws IOException, InterruptedException {
+        HttpResponse<String> r = send(req(baseUrl + "/timeclock/event-types")
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(eventTypeBody(
+                        code, labelEs, labelEn, icon, displayOrder, isWorkTime, isPause, active))));
+        return mapEventType(r.body());
+    }
+
+    public com.benjagest.ui.model.TimeClockEventTypeEntry updateEventType(
+            String id, String code, String labelEs, String labelEn, String icon,
+            Integer displayOrder, boolean isWorkTime, boolean isPause, boolean active)
+            throws IOException, InterruptedException {
+        HttpResponse<String> r = send(req(baseUrl + "/timeclock/event-types/" + id)
+                .header("Content-Type", "application/json")
+                .PUT(HttpRequest.BodyPublishers.ofString(eventTypeBody(
+                        code, labelEs, labelEn, icon, displayOrder, isWorkTime, isPause, active))));
+        return mapEventType(r.body());
+    }
+
+    public void deleteEventType(String id) throws IOException, InterruptedException {
+        send(req(baseUrl + "/timeclock/event-types/" + id).DELETE());
+    }
+
+    private String eventTypeBody(String code, String labelEs, String labelEn, String icon,
+                                  Integer displayOrder, boolean isWorkTime, boolean isPause, boolean active) {
+        StringBuilder b = new StringBuilder("{");
+        b.append(field("code", code)).append(",");
+        b.append(field("labelEs", labelEs)).append(",");
+        b.append(field("labelEn", labelEn)).append(",");
+        b.append(field("icon", icon)).append(",");
+        b.append(intField("displayOrder", displayOrder)).append(",");
+        b.append("\"isWorkTime\":").append(isWorkTime).append(",");
+        b.append("\"isPause\":").append(isPause).append(",");
+        b.append("\"active\":").append(active);
+        b.append("}");
+        return b.toString();
+    }
+
+    // ====================================================================
+    //  Auditoría fichajes (TC-AUDIT)
+    // ====================================================================
+
+    public java.util.List<com.benjagest.ui.model.TimeClockAuditEntry> queryAudit(
+            String fromIsoDate, String toIsoDate, String employeeId, String eventType)
+            throws IOException, InterruptedException {
+        StringBuilder url = new StringBuilder(baseUrl + "/timeclock/audit?");
+        if (fromIsoDate != null && !fromIsoDate.isBlank()) url.append("from=").append(fromIsoDate).append("&");
+        if (toIsoDate != null && !toIsoDate.isBlank()) url.append("to=").append(toIsoDate).append("&");
+        if (employeeId != null && !employeeId.isBlank()) url.append("employeeId=").append(employeeId).append("&");
+        if (eventType != null && !eventType.isBlank()) url.append("eventType=").append(eventType);
+        HttpResponse<String> r = send(req(url.toString()).GET());
+        return parseObjects(r.body(), "eventType", obj -> new com.benjagest.ui.model.TimeClockAuditEntry(
+                textField(obj, "id"),
+                textField(obj, "employeeId"),
+                textField(obj, "employeeName"),
+                textField(obj, "eventType"),
+                textField(obj, "eventTime"),
+                textField(obj, "origin"),
+                textField(obj, "status"),
+                textField(obj, "createdAt"),
+                textField(obj, "csv"),
+                intFieldOrZero(obj, "correctionCount"),
+                textField(obj, "lastCorrectionAt")
+        ));
+    }
+
+    public java.util.List<com.benjagest.ui.model.TimeClockAuditSummary> auditSummary(
+            String fromIsoDate, String toIsoDate) throws IOException, InterruptedException {
+        StringBuilder url = new StringBuilder(baseUrl + "/timeclock/audit/summary?");
+        if (fromIsoDate != null && !fromIsoDate.isBlank()) url.append("from=").append(fromIsoDate).append("&");
+        if (toIsoDate != null && !toIsoDate.isBlank()) url.append("to=").append(toIsoDate);
+        HttpResponse<String> r = send(req(url.toString()).GET());
+        return parseObjects(r.body(), "employeeName", obj -> new com.benjagest.ui.model.TimeClockAuditSummary(
+                textField(obj, "employeeId"),
+                textField(obj, "employeeName"),
+                intFieldOrZero(obj, "totalEvents"),
+                textField(obj, "firstEvent"),
+                textField(obj, "lastEvent"),
+                intFieldOrZero(obj, "pauses"),
+                intFieldOrZero(obj, "ins"),
+                intFieldOrZero(obj, "outs"),
+                intFieldOrZero(obj, "corrections"),
+                boolField(obj, "hasIncidence")
+        ));
+    }
+
+    private com.benjagest.ui.model.TimeClockEventTypeEntry mapEventType(String obj) {
+        return new com.benjagest.ui.model.TimeClockEventTypeEntry(
+                textField(obj, "id"),
+                textField(obj, "code"),
+                textField(obj, "labelEs"),
+                textField(obj, "labelEn"),
+                textField(obj, "icon"),
+                intFieldOrZero(obj, "displayOrder"),
+                boolField(obj, "isWorkTime"),
+                boolField(obj, "isPause"),
+                boolField(obj, "active")
+        );
+    }
+
+    // ====================================================================
     //  Inmovilizado (C1)
     // ====================================================================
 

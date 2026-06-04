@@ -31,11 +31,14 @@ public class TimeClockService {
 
     private final TimeClockRepository repository;
     private final CurrentUserService currentUserService;
+    private final TimeClockEventTypeService eventTypeService;
 
     public TimeClockService(TimeClockRepository repository,
-                            CurrentUserService currentUserService) {
+                            CurrentUserService currentUserService,
+                            TimeClockEventTypeService eventTypeService) {
         this.repository = repository;
         this.currentUserService = currentUserService;
+        this.eventTypeService = eventTypeService;
     }
 
     /**
@@ -48,10 +51,12 @@ public class TimeClockService {
         if (employeeId == null || employeeId.isBlank()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "employeeId requerido");
         }
-        if (eventType == null
-                || !List.of("IN", "OUT", "BREAK_START", "BREAK_END").contains(eventType)) {
+        // Validacion contra el catalogo configurable por empresa
+        // (TC-CFG, V35). Acepta tanto los 4 originales como cualquier
+        // tipo personalizado que el admin haya creado.
+        if (eventType == null || !eventTypeService.isValidCode(eventType)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "eventType debe ser IN, OUT, BREAK_START o BREAK_END");
+                    "eventType no valido. Configura los tipos en Personal -> Config fichajes.");
         }
         AuthenticatedUser actor = currentUserService.require();
         String eventId = UUID.randomUUID().toString();
