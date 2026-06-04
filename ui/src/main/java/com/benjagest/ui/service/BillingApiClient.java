@@ -215,6 +215,20 @@ public class BillingApiClient {
      * Devuelve la ruta absoluta para que la UI la muestre en el mensaje
      * de éxito.
      */
+    /**
+     * Declaración responsable del fabricante del SIF (RD 1007/2023).
+     * Endpoint informativo — devuelve el JSON con los datos del
+     * productor + producto + fecha + compromiso.
+     */
+    public String fetchManufacturerDeclaration() throws IOException, InterruptedException {
+        HttpResponse<String> response = sendAuthorized(HttpRequest.newBuilder(
+                URI.create(baseUrl + "/billing/manufacturer-declaration"))
+                .timeout(Duration.ofSeconds(10))
+                .GET());
+        ensureOk(response);
+        return response.body();
+    }
+
     public String storeInvoicePdf(String id) throws IOException, InterruptedException {
         HttpResponse<String> response = sendAuthorized(HttpRequest.newBuilder(
                 URI.create(baseUrl + "/billing/invoices/" + id + "/store-pdf"))
