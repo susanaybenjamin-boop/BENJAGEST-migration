@@ -48,6 +48,10 @@ public class SecurityConfig {
                                 "/api/auth/pin",
                                 "/api/health",
                                 "/actuator/health",
+                                // RD 8/2019 art. 35.8: verificación pública por CSV
+                                // — un tercero (Inspección de Trabajo, juzgado…)
+                                // debe poder validar un fichaje sin credenciales.
+                                "/api/public/timeclock/verify",
                                 "/error"
                         ).permitAll()
                         .anyRequest().authenticated()

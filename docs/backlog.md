@@ -148,10 +148,10 @@ La app se diseñó bilingüe desde C1 (botón EN/ES en el header → `language` 
 
 ### RD 8/2019 (fichajes — obligación legal) comentario de benjamin(vamos a ver como Sesame lo hace para incorporar nuevas ideas, o cualquier otra app de fichaje)
 
-- ⬜ Tabla `fichaje_correcciones` — corrección **solo por apunte vinculado**, no modificación de fichaje original.
-- ⬜ Tabla `fichaje_verificaciones` — código CSV para verificación pública (art. 35.8 RD 8/2019).
-- ⬜ **Geolocalización en clients** — clients con `lat`/`lng`/`radio_m`/`geo_policy` + verificación al fichar. [§11.A](gap-analysis-contendo.md).
-- ⬜ Sincronización offline batches (kioskos sin red).
+- ✅ Arranque C4 (2026-06-04, `fc627ee` y siguientes) — V21 `time_clock_corrections` (art. 34.9 inalterabilidad: correcciones como apuntes vinculados, no modificación del original) + `time_clock_verifications` (art. 35.8 CSV verificación pública). Backend `timeclock/` con TimeClockService.punch (emite CSV automáticamente al fichar) + requestCorrection + verifyByCsv. Endpoints REST: POST `/api/timeclock/punch`, GET `/api/timeclock/employee/{id}/recent`, POST `/api/timeclock/correction`, GET público `/api/public/timeclock/verify?csv=...` (sin auth — RD 8/2019 exige verificación accesible a Inspección de Trabajo). SecurityConfig actualizado para permitir la ruta pública. CSV de 16 chars en alfabeto 32 (~80 bits entropía, evita confusiones humanas: sin I/L/O/0/1). UI: módulo "Fichajes" con botones grandes IN/OUT/BREAK_START/BREAK_END + tabla de últimos 50 + dialog con CSV copiable tras fichar. i18n ES+EN.
+- ⬜ **Geolocalización en clients** — clients con `lat`/`lng`/`radio_m`/`geo_policy` + verificación al fichar. [§11.A](gap-analysis-contendo.md). (Fuera del arranque — sesión específica.)
+- ⬜ Sincronización offline batches (kioskos sin red). (Fuera del arranque — sesión específica.)
+- ⬜ Mapeo employee↔user: hoy la UI usa `AuthSession.userId()` como employeeId al fichar. Si el operador no tiene fila en `employees`, falla. Solución: lookup automático del employeeId por user_id, o selector si el usuario es responsable de varios.
 
 ---
 
