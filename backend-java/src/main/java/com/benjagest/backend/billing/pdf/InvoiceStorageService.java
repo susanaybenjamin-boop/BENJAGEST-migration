@@ -65,9 +65,13 @@ public class InvoiceStorageService {
                              String companyId,
                              LocalDate invoiceDate,
                              String invoiceNumber) {
-        if (!StringUtils.hasText(companyId)) {
-            throw new IllegalArgumentException("companyId requerido");
-        }
+        // Mantenemos companyId en la firma por compat con los callers
+        // existentes; ya no se usa en la ruta (decision Benjamin 2026-06-04:
+        // las empresas con root propio no necesitan subcarpeta de empresa
+        // dentro, y un UUID en la ruta es ilegible para el operador). Si
+        // varias empresas comparten el mismo root y hay colision de
+        // numero, queda como deuda futura — hoy cada empresa tiene
+        // numeracion correlativa por serie, asi que es muy improbable.
         if (invoiceDate == null) {
             throw new IllegalArgumentException("invoiceDate requerido");
         }
@@ -78,7 +82,6 @@ public class InvoiceStorageService {
         int quarter = ((invoiceDate.getMonthValue() - 1) / 3) + 1;
         String safeNumber = invoiceNumber.replaceAll(UNSAFE_FILENAME_CHARS, "_");
         return Paths.get(root,
-                companyId,
                 String.valueOf(invoiceDate.getYear()),
                 "T" + quarter,
                 safeNumber + ".pdf");
