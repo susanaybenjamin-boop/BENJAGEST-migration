@@ -157,7 +157,8 @@ public class BenjagestUiApplication extends Application {
     // que no esta aqui, se ignora en el sidebar (no hay vista para el).
     private static final java.util.Set<String> KNOWN_VIEWS = java.util.Set.of(
             "customers", "billing", "purchases", "labor",
-            "tax", "reports", "calendar", "settings"
+            "tax", "reports", "calendar", "settings",
+            "advisory"
     );
 
     @Override
@@ -802,6 +803,19 @@ public class BenjagestUiApplication extends Application {
             // genérica de módulo se enriquece con un botón "Importar PDF"
             // que abre un FileChooser y muestra los campos detectados.
             showPurchasesWithImport();
+            return;
+        }
+        if ("tax".equals(module)) {
+            // ALTA-6: módulo Modelos AEAT con tabla de declaraciones,
+            // editores específicos por modelo (303 IVA, 130 IRPF) y
+            // calendario fiscal del año seleccionado.
+            showTaxModels();
+            return;
+        }
+        if ("advisory".equals(module)) {
+            // ALTA-3: módulo asesoría — listado de clientes gestionados
+            // con switch de tenant al hacer doble-click.
+            showAdvisoryClients();
             return;
         }
         Task<ModuleData> task = new Task<>() {
@@ -6330,6 +6344,71 @@ public class BenjagestUiApplication extends Application {
                 case "settings.credentials.log.col.ip" -> "IP";
                 case "settings.credentials.log.col.message" -> "Detail";
                 case "settings.credentials.log.refresh" -> "Refresh";
+                // ---- Advisory module (ALTA) ----
+                case "advisory.title" -> "Managed clients";
+                case "advisory.subtitle" -> "Switch tenant to operate as one of your clients.";
+                case "advisory.hint" -> "Double-click a row or use 'Switch' to operate in that client's context. Your session stays the same; only the active tenant changes.";
+                case "advisory.placeholder.empty" -> "No managed clients linked to this advisory.";
+                case "advisory.col.legal_name" -> "Legal name";
+                case "advisory.col.nif" -> "Tax ID";
+                case "advisory.col.type" -> "Type";
+                case "advisory.col.city" -> "City";
+                case "advisory.col.email" -> "Email";
+                case "advisory.action.switch" -> "Switch to client";
+                case "advisory.switch.title" -> "Switch tenant?";
+                case "advisory.switch.body" -> "Future requests will operate as";
+                case "advisory.load_failed" -> "Could not load the client list.";
+                // ---- Tax module (ALTA) ----
+                case "tax.title" -> "Tax filings (AEAT)";
+                case "tax.subtitle" -> "Quarterly and yearly filings: 303, 130, 200, 347, 390 and others.";
+                case "tax.load_failed" -> "Could not load tax filings.";
+                case "tax.year" -> "Year";
+                case "tax.action.new" -> "New filing";
+                case "tax.tab.filings" -> "Filings";
+                case "tax.tab.calendar" -> "Calendar";
+                case "tax.filings.placeholder.empty" -> "No filings for this year yet.";
+                case "tax.filings.col.model" -> "Form";
+                case "tax.filings.col.period" -> "Period";
+                case "tax.filings.col.status" -> "Status";
+                case "tax.filings.col.amount" -> "Amount";
+                case "tax.filings.col.deadline" -> "Deadline";
+                case "tax.filings.col.csv" -> "AEAT CSV";
+                case "tax.filings.action.edit" -> "Edit";
+                case "tax.filings.action.delete" -> "Delete";
+                case "tax.filings.delete.title" -> "Delete filing?";
+                case "tax.filings.delete.body" -> "You are about to delete";
+                case "tax.filings.delete.fail.title" -> "Could not delete";
+                case "tax.filings.delete.fail.body" -> "Only draft or cancelled filings can be deleted.";
+                case "tax.calendar.hint" -> "Standard AEAT deadlines for the selected year. Holidays not factored in — confirm in the official calendar.";
+                case "tax.calendar.placeholder.empty" -> "No deadlines for this year.";
+                case "tax.calendar.col.deadline" -> "Deadline";
+                case "tax.calendar.col.model" -> "Form";
+                case "tax.calendar.col.name" -> "Name";
+                case "tax.calendar.col.period" -> "Period";
+                case "tax.calendar.col.state" -> "State";
+                case "tax.calendar.state.pending" -> "Pending";
+                case "tax.status.DRAFT" -> "Draft";
+                case "tax.status.READY" -> "Ready";
+                case "tax.status.PRESENTED" -> "Submitted";
+                case "tax.status.PAID" -> "Paid";
+                case "tax.status.REJECTED" -> "Rejected";
+                case "tax.status.CANCELLED" -> "Cancelled";
+                case "tax.new.title" -> "New tax filing";
+                case "tax.new.next" -> "Continue";
+                case "tax.new.model" -> "Form";
+                case "tax.new.year" -> "Year";
+                case "tax.new.period" -> "Period";
+                case "tax.new.fail.title" -> "Could not create";
+                case "tax.new.fail.body" -> "Check the form, period and year.";
+                case "tax.editor.generic.title" -> "Edit filing";
+                case "tax.editor.save" -> "Save";
+                case "tax.editor.status" -> "Status";
+                case "tax.editor.total" -> "Total amount";
+                case "tax.editor.csv" -> "AEAT CSV";
+                case "tax.editor.data" -> "Form data (JSON)";
+                case "tax.editor.notes" -> "Notes";
+                case "tax.editor.fail.title" -> "Could not save";
+                case "tax.editor.fail.body" -> "Check the data and try again.";
                 case "settings.company.section_label" -> "Company";
                 case "settings.company.section.general" -> "General data";
                 case "settings.company.section.address" -> "Postal address";
@@ -7055,6 +7134,71 @@ public class BenjagestUiApplication extends Application {
             case "settings.credentials.log.col.ip" -> "IP";
             case "settings.credentials.log.col.message" -> "Detalle";
             case "settings.credentials.log.refresh" -> "Refrescar";
+            // ---- Asesoria (ALTA) ----
+            case "advisory.title" -> "Mis clientes";
+            case "advisory.subtitle" -> "Cambia de tenant para operar como uno de tus clientes.";
+            case "advisory.hint" -> "Haz doble click sobre una fila o usa 'Cambiar' para operar en el contexto de ese cliente. Tu sesion no se invalida; solo cambia el tenant activo.";
+            case "advisory.placeholder.empty" -> "No hay clientes vinculados a esta asesoria.";
+            case "advisory.col.legal_name" -> "Razon social";
+            case "advisory.col.nif" -> "NIF";
+            case "advisory.col.type" -> "Tipo";
+            case "advisory.col.city" -> "Localidad";
+            case "advisory.col.email" -> "Email";
+            case "advisory.action.switch" -> "Cambiar a este cliente";
+            case "advisory.switch.title" -> "Cambiar de tenant?";
+            case "advisory.switch.body" -> "Las siguientes peticiones operaran como";
+            case "advisory.load_failed" -> "No se pudo cargar la lista de clientes.";
+            // ---- Modelos AEAT (ALTA) ----
+            case "tax.title" -> "Modelos AEAT";
+            case "tax.subtitle" -> "Declaraciones trimestrales y anuales: 303, 130, 200, 347, 390 y otros.";
+            case "tax.load_failed" -> "No se pudieron cargar los modelos.";
+            case "tax.year" -> "Ano";
+            case "tax.action.new" -> "Nueva declaracion";
+            case "tax.tab.filings" -> "Declaraciones";
+            case "tax.tab.calendar" -> "Calendario";
+            case "tax.filings.placeholder.empty" -> "No hay declaraciones para este ano.";
+            case "tax.filings.col.model" -> "Modelo";
+            case "tax.filings.col.period" -> "Periodo";
+            case "tax.filings.col.status" -> "Estado";
+            case "tax.filings.col.amount" -> "Importe";
+            case "tax.filings.col.deadline" -> "Limite";
+            case "tax.filings.col.csv" -> "CSV AEAT";
+            case "tax.filings.action.edit" -> "Editar";
+            case "tax.filings.action.delete" -> "Borrar";
+            case "tax.filings.delete.title" -> "Borrar declaracion?";
+            case "tax.filings.delete.body" -> "Vas a borrar";
+            case "tax.filings.delete.fail.title" -> "No se pudo borrar";
+            case "tax.filings.delete.fail.body" -> "Solo se pueden borrar borradores o canceladas.";
+            case "tax.calendar.hint" -> "Plazos estandar AEAT del ano seleccionado. No se consideran festivos — comprueba el calendario oficial.";
+            case "tax.calendar.placeholder.empty" -> "No hay vencimientos para este ano.";
+            case "tax.calendar.col.deadline" -> "Limite";
+            case "tax.calendar.col.model" -> "Modelo";
+            case "tax.calendar.col.name" -> "Nombre";
+            case "tax.calendar.col.period" -> "Periodo";
+            case "tax.calendar.col.state" -> "Estado";
+            case "tax.calendar.state.pending" -> "Pendiente";
+            case "tax.status.DRAFT" -> "Borrador";
+            case "tax.status.READY" -> "Listo";
+            case "tax.status.PRESENTED" -> "Presentado";
+            case "tax.status.PAID" -> "Pagado";
+            case "tax.status.REJECTED" -> "Rechazado";
+            case "tax.status.CANCELLED" -> "Cancelado";
+            case "tax.new.title" -> "Nueva declaracion";
+            case "tax.new.next" -> "Continuar";
+            case "tax.new.model" -> "Modelo";
+            case "tax.new.year" -> "Ano";
+            case "tax.new.period" -> "Periodo";
+            case "tax.new.fail.title" -> "No se pudo crear";
+            case "tax.new.fail.body" -> "Revisa modelo, periodo y ano.";
+            case "tax.editor.generic.title" -> "Editar declaracion";
+            case "tax.editor.save" -> "Guardar";
+            case "tax.editor.status" -> "Estado";
+            case "tax.editor.total" -> "Importe total";
+            case "tax.editor.csv" -> "CSV AEAT";
+            case "tax.editor.data" -> "Datos del modelo (JSON)";
+            case "tax.editor.notes" -> "Notas";
+            case "tax.editor.fail.title" -> "No se pudo guardar";
+            case "tax.editor.fail.body" -> "Revisa los datos e intentalo de nuevo.";
             case "settings.company.section_label" -> "Empresa";
             case "settings.company.section.general" -> "Datos generales";
             case "settings.company.section.address" -> "Direccion postal";
@@ -7433,5 +7577,675 @@ public class BenjagestUiApplication extends Application {
     private enum Language {
         ES,
         EN
+    }
+
+    // ===================================================================
+    //  ALTA-3 — Asesoria: clientes gestionados (X-Company-Id switcher)
+    // ===================================================================
+
+    private void showAdvisoryClients() {
+        Task<java.util.List<com.benjagest.ui.model.ManagedClientEntry>> task = new Task<>() {
+            @Override
+            protected java.util.List<com.benjagest.ui.model.ManagedClientEntry> call() throws Exception {
+                return altaApiClient.listManagedClients();
+            }
+        };
+        task.setOnSucceeded(ev -> setCenterAnimated(scroll(advisoryView(task.getValue()))));
+        task.setOnFailed(ev -> setCenterAnimated(scroll(errorPanel(t("advisory.load_failed")))));
+        start(task, "advisory-clients-load");
+    }
+
+    private VBox advisoryView(java.util.List<com.benjagest.ui.model.ManagedClientEntry> clients) {
+        VBox content = content();
+        Label title = new Label(t("advisory.title"));
+        title.getStyleClass().add("module-detail-title");
+        Label subtitle = new Label(t("advisory.subtitle"));
+        subtitle.getStyleClass().add("module-detail-description");
+        VBox titleBox = new VBox(4, title, subtitle);
+        StackPane moduleIcon = iconBubble("fas-briefcase", "module-title-icon");
+        Region spacer = new Region();
+        HBox.setHgrow(spacer, Priority.ALWAYS);
+        HBox header = new HBox(16, titleBox, moduleIcon, spacer);
+        header.setAlignment(Pos.CENTER_LEFT);
+        header.getStyleClass().add("module-detail-header");
+
+        TableView<com.benjagest.ui.model.ManagedClientEntry> table = new TableView<>();
+        table.getStyleClass().add("data-table");
+        table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+        table.setPlaceholder(new Label(t("advisory.placeholder.empty")));
+        TableColumn<com.benjagest.ui.model.ManagedClientEntry, String> colName =
+                new TableColumn<>(t("advisory.col.legal_name"));
+        colName.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().legalName()));
+        TableColumn<com.benjagest.ui.model.ManagedClientEntry, String> colNif =
+                new TableColumn<>(t("advisory.col.nif"));
+        colNif.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().taxIdentifier()));
+        colNif.setPrefWidth(120);
+        TableColumn<com.benjagest.ui.model.ManagedClientEntry, String> colType =
+                new TableColumn<>(t("advisory.col.type"));
+        colType.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().companyType()));
+        colType.setPrefWidth(100);
+        TableColumn<com.benjagest.ui.model.ManagedClientEntry, String> colCity =
+                new TableColumn<>(t("advisory.col.city"));
+        colCity.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().city()));
+        colCity.setPrefWidth(140);
+        TableColumn<com.benjagest.ui.model.ManagedClientEntry, String> colEmail =
+                new TableColumn<>(t("advisory.col.email"));
+        colEmail.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().email()));
+        table.getColumns().addAll(java.util.List.of(colName, colNif, colType, colCity, colEmail));
+        table.setItems(FXCollections.observableArrayList(clients));
+
+        Label hint = new Label(t("advisory.hint"));
+        hint.setWrapText(true);
+        hint.getStyleClass().add("settings-hint");
+
+        // Doble click sobre cliente → cambiar X-Company-Id en la sesion
+        // y volver al dashboard como ese cliente.
+        table.setOnMouseClicked(ev -> {
+            if (ev.getClickCount() == 2) {
+                var sel = table.getSelectionModel().getSelectedItem();
+                if (sel != null) switchToClient(sel);
+            }
+        });
+
+        Button switchBtn = new Button(t("advisory.action.switch"));
+        switchBtn.setGraphic(icon("fas-exchange-alt"));
+        switchBtn.setDisable(true);
+        table.getSelectionModel().selectedItemProperty().addListener((o, ov, nv) -> switchBtn.setDisable(nv == null));
+        switchBtn.setOnAction(ev -> {
+            var sel = table.getSelectionModel().getSelectedItem();
+            if (sel != null) switchToClient(sel);
+        });
+
+        HBox actions = new HBox(8, switchBtn);
+        actions.getStyleClass().add("settings-actions");
+
+        VBox body = new VBox(12, hint, table);
+        VBox.setVgrow(table, Priority.ALWAYS);
+
+        content.getChildren().addAll(header, body, actions);
+        return content;
+    }
+
+    private void switchToClient(com.benjagest.ui.model.ManagedClientEntry client) {
+        Alert confirm = new Alert(Alert.AlertType.CONFIRMATION,
+                t("advisory.switch.body") + " " + client.legalName() + "?",
+                ButtonType.OK, ButtonType.CANCEL);
+        confirm.setHeaderText(t("advisory.switch.title"));
+        confirm.showAndWait().ifPresent(bt -> {
+            if (bt != ButtonType.OK) return;
+            AuthSession.get().setActiveCompanyId(client.id());
+            showModule("dashboard");
+        });
+    }
+
+    // ===================================================================
+    //  ALTA-6 — Modelos AEAT: listado, calendario, editores 303/130 y
+    //  editor genérico para los demás modelos.
+    // ===================================================================
+
+    private TableView<com.benjagest.ui.model.TaxFilingEntry> taxFilingsTable;
+    private TableView<com.benjagest.ui.model.TaxDueDateEntry> taxCalendarTable;
+    private int taxCurrentYear = LocalDate.now().getYear();
+
+    private void showTaxModels() {
+        Task<TaxBundle> task = new Task<>() {
+            @Override
+            protected TaxBundle call() throws Exception {
+                return new TaxBundle(
+                        altaApiClient.listTaxModels(),
+                        altaApiClient.listFilings(taxCurrentYear, null, null),
+                        altaApiClient.calendar(taxCurrentYear));
+            }
+        };
+        task.setOnSucceeded(ev -> setCenterAnimated(scroll(taxView(task.getValue()))));
+        task.setOnFailed(ev -> setCenterAnimated(scroll(errorPanel(t("tax.load_failed")))));
+        start(task, "tax-models-load");
+    }
+
+    private record TaxBundle(
+            java.util.List<com.benjagest.ui.model.TaxModelEntry> catalog,
+            java.util.List<com.benjagest.ui.model.TaxFilingEntry> filings,
+            java.util.List<com.benjagest.ui.model.TaxDueDateEntry> calendar
+    ) {}
+
+    private VBox taxView(TaxBundle bundle) {
+        VBox content = content();
+        Label title = new Label(t("tax.title"));
+        title.getStyleClass().add("module-detail-title");
+        Label subtitle = new Label(t("tax.subtitle"));
+        subtitle.getStyleClass().add("module-detail-description");
+        VBox titleBox = new VBox(4, title, subtitle);
+        StackPane moduleIcon = iconBubble("fas-percentage", "module-title-icon");
+        Region spacer = new Region();
+        HBox.setHgrow(spacer, Priority.ALWAYS);
+
+        // Selector de año
+        ComboBox<Integer> yearCombo = new ComboBox<>();
+        int currentY = LocalDate.now().getYear();
+        for (int y = currentY + 1; y >= currentY - 5; y--) yearCombo.getItems().add(y);
+        yearCombo.getSelectionModel().select(Integer.valueOf(taxCurrentYear));
+        yearCombo.setOnAction(ev -> {
+            taxCurrentYear = yearCombo.getValue();
+            showTaxModels();
+        });
+
+        Button newBtn = new Button(t("tax.action.new"));
+        newBtn.setGraphic(icon("fas-plus"));
+        newBtn.setOnAction(ev -> showFilingEditor(null, bundle.catalog()));
+
+        HBox header = new HBox(16, titleBox, moduleIcon, spacer,
+                new Label(t("tax.year") + ":"), yearCombo, newBtn);
+        header.setAlignment(Pos.CENTER_LEFT);
+        header.getStyleClass().add("module-detail-header");
+
+        TabPane tabs = new TabPane();
+        tabs.getStyleClass().add("settings-tabs");
+        tabs.setTabClosingPolicy(TabPane.TabClosingPolicy.UNAVAILABLE);
+        Tab filingsTab = new Tab(t("tax.tab.filings"), buildFilingsTab(bundle));
+        filingsTab.setGraphic(icon("fas-file-alt"));
+        Tab calendarTab = new Tab(t("tax.tab.calendar"), buildCalendarTab(bundle));
+        calendarTab.setGraphic(icon("fas-calendar-alt"));
+        tabs.getTabs().addAll(filingsTab, calendarTab);
+        VBox.setVgrow(tabs, Priority.ALWAYS);
+
+        content.getChildren().addAll(header, tabs);
+        return content;
+    }
+
+    private Node buildFilingsTab(TaxBundle bundle) {
+        taxFilingsTable = new TableView<>();
+        taxFilingsTable.getStyleClass().add("data-table");
+        taxFilingsTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+        taxFilingsTable.setPlaceholder(new Label(t("tax.filings.placeholder.empty")));
+
+        TableColumn<com.benjagest.ui.model.TaxFilingEntry, String> colModel =
+                new TableColumn<>(t("tax.filings.col.model"));
+        colModel.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().taxModelCode()));
+        colModel.setPrefWidth(70);
+        TableColumn<com.benjagest.ui.model.TaxFilingEntry, String> colPeriod =
+                new TableColumn<>(t("tax.filings.col.period"));
+        colPeriod.setCellValueFactory(c -> new SimpleStringProperty(formatPeriod(c.getValue())));
+        colPeriod.setPrefWidth(110);
+        TableColumn<com.benjagest.ui.model.TaxFilingEntry, String> colStatus =
+                new TableColumn<>(t("tax.filings.col.status"));
+        colStatus.setCellValueFactory(c -> new SimpleStringProperty(t("tax.status." + c.getValue().status())));
+        colStatus.setPrefWidth(110);
+        TableColumn<com.benjagest.ui.model.TaxFilingEntry, String> colAmount =
+                new TableColumn<>(t("tax.filings.col.amount"));
+        colAmount.setCellValueFactory(c -> new SimpleStringProperty(
+                c.getValue().totalAmount() == null ? "" : c.getValue().totalAmount().toPlainString() + " €"));
+        colAmount.setPrefWidth(110);
+        colAmount.setComparator(NUMERIC_STRING_COMPARATOR);
+        TableColumn<com.benjagest.ui.model.TaxFilingEntry, String> colDeadline =
+                new TableColumn<>(t("tax.filings.col.deadline"));
+        colDeadline.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().deadlineAt()));
+        colDeadline.setPrefWidth(110);
+        colDeadline.setComparator(ISO_DATE_COMPARATOR);
+        TableColumn<com.benjagest.ui.model.TaxFilingEntry, String> colCsv =
+                new TableColumn<>(t("tax.filings.col.csv"));
+        colCsv.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().csvAeat()));
+        taxFilingsTable.getColumns().addAll(java.util.List.of(colModel, colPeriod, colStatus, colAmount, colDeadline, colCsv));
+        taxFilingsTable.setItems(FXCollections.observableArrayList(bundle.filings()));
+        taxFilingsTable.setOnMouseClicked(ev -> {
+            if (ev.getClickCount() == 2) {
+                var sel = taxFilingsTable.getSelectionModel().getSelectedItem();
+                if (sel != null) showFilingEditor(sel, bundle.catalog());
+            }
+        });
+
+        Button editBtn = new Button(t("tax.filings.action.edit"));
+        editBtn.setGraphic(icon("fas-edit"));
+        editBtn.setDisable(true);
+        editBtn.setOnAction(ev -> {
+            var sel = taxFilingsTable.getSelectionModel().getSelectedItem();
+            if (sel != null) showFilingEditor(sel, bundle.catalog());
+        });
+
+        Button deleteBtn = new Button(t("tax.filings.action.delete"));
+        deleteBtn.setGraphic(icon("fas-trash"));
+        deleteBtn.setDisable(true);
+        deleteBtn.setOnAction(ev -> {
+            var sel = taxFilingsTable.getSelectionModel().getSelectedItem();
+            if (sel != null) deleteFiling(sel);
+        });
+
+        taxFilingsTable.getSelectionModel().selectedItemProperty().addListener((o, ov, nv) -> {
+            editBtn.setDisable(nv == null);
+            deleteBtn.setDisable(nv == null
+                    || !("DRAFT".equals(nv.status()) || "CANCELLED".equals(nv.status())));
+        });
+
+        HBox actions = new HBox(8, editBtn, deleteBtn);
+        actions.getStyleClass().add("settings-actions");
+
+        VBox body = new VBox(12, taxFilingsTable);
+        VBox.setVgrow(taxFilingsTable, Priority.ALWAYS);
+        return new VBox(8, body, actions);
+    }
+
+    private Node buildCalendarTab(TaxBundle bundle) {
+        Label hint = new Label(t("tax.calendar.hint"));
+        hint.setWrapText(true);
+        hint.getStyleClass().add("settings-hint");
+
+        taxCalendarTable = new TableView<>();
+        taxCalendarTable.getStyleClass().add("data-table");
+        taxCalendarTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+        taxCalendarTable.setPlaceholder(new Label(t("tax.calendar.placeholder.empty")));
+
+        TableColumn<com.benjagest.ui.model.TaxDueDateEntry, String> colDeadline =
+                new TableColumn<>(t("tax.calendar.col.deadline"));
+        colDeadline.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().deadlineAt()));
+        colDeadline.setPrefWidth(110);
+        colDeadline.setComparator(ISO_DATE_COMPARATOR);
+        TableColumn<com.benjagest.ui.model.TaxDueDateEntry, String> colModel =
+                new TableColumn<>(t("tax.calendar.col.model"));
+        colModel.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().taxModelCode()));
+        colModel.setPrefWidth(70);
+        TableColumn<com.benjagest.ui.model.TaxDueDateEntry, String> colName =
+                new TableColumn<>(t("tax.calendar.col.name"));
+        colName.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().taxModelName()));
+        TableColumn<com.benjagest.ui.model.TaxDueDateEntry, String> colPeriod =
+                new TableColumn<>(t("tax.calendar.col.period"));
+        colPeriod.setCellValueFactory(c -> new SimpleStringProperty(formatPeriod(
+                c.getValue().periodYear(), c.getValue().periodQuarter(), c.getValue().periodMonth())));
+        colPeriod.setPrefWidth(120);
+        TableColumn<com.benjagest.ui.model.TaxDueDateEntry, String> colState =
+                new TableColumn<>(t("tax.calendar.col.state"));
+        colState.setCellValueFactory(c -> new SimpleStringProperty(calendarFilingState(c.getValue(), bundle.filings())));
+        colState.setPrefWidth(120);
+        taxCalendarTable.getColumns().addAll(java.util.List.of(colDeadline, colModel, colName, colPeriod, colState));
+
+        // Ordenar por fecha ascendente para que arriba salgan los más próximos
+        var sorted = new java.util.ArrayList<>(bundle.calendar());
+        sorted.sort(java.util.Comparator.comparing(com.benjagest.ui.model.TaxDueDateEntry::deadlineAt));
+        taxCalendarTable.setItems(FXCollections.observableArrayList(sorted));
+
+        VBox.setVgrow(taxCalendarTable, Priority.ALWAYS);
+        return new VBox(8, hint, taxCalendarTable);
+    }
+
+    private String calendarFilingState(com.benjagest.ui.model.TaxDueDateEntry due,
+                                        java.util.List<com.benjagest.ui.model.TaxFilingEntry> filings) {
+        for (var f : filings) {
+            if (!due.taxModelCode().equals(f.taxModelCode())) continue;
+            if (f.periodYear() != due.periodYear()) continue;
+            if (!java.util.Objects.equals(f.periodQuarter(), due.periodQuarter())) continue;
+            if (!java.util.Objects.equals(f.periodMonth(), due.periodMonth())) continue;
+            return t("tax.status." + f.status());
+        }
+        return t("tax.calendar.state.pending");
+    }
+
+    private String formatPeriod(com.benjagest.ui.model.TaxFilingEntry f) {
+        return formatPeriod(f.periodYear(), f.periodQuarter(), f.periodMonth());
+    }
+
+    private String formatPeriod(int year, Integer quarter, Integer month) {
+        if (quarter != null) return year + " T" + quarter;
+        if (month != null) return year + " M" + String.format("%02d", month);
+        return String.valueOf(year);
+    }
+
+    private void deleteFiling(com.benjagest.ui.model.TaxFilingEntry entry) {
+        Alert confirm = new Alert(Alert.AlertType.CONFIRMATION,
+                t("tax.filings.delete.body") + " " + entry.taxModelCode() + " " + formatPeriod(entry),
+                ButtonType.OK, ButtonType.CANCEL);
+        confirm.setHeaderText(t("tax.filings.delete.title"));
+        confirm.showAndWait().ifPresent(bt -> {
+            if (bt != ButtonType.OK) return;
+            Task<Void> task = new Task<>() {
+                @Override
+                protected Void call() throws Exception {
+                    altaApiClient.deleteFiling(entry.id());
+                    return null;
+                }
+            };
+            task.setOnSucceeded(ev -> showTaxModels());
+            task.setOnFailed(ev -> showError(t("tax.filings.delete.fail.title"),
+                    t("tax.filings.delete.fail.body")));
+            start(task, "tax-filing-delete");
+        });
+    }
+
+    /**
+     * Editor de declaracion. Si el modelo es 303 o 130 se abren los
+     * editores especificos (con sus casillas). Para el resto, un editor
+     * generico con JSON crudo en TextArea.
+     */
+    private void showFilingEditor(com.benjagest.ui.model.TaxFilingEntry existing,
+                                   java.util.List<com.benjagest.ui.model.TaxModelEntry> catalog) {
+        String modelCode = existing == null ? null : existing.taxModelCode();
+        if (existing == null) {
+            // Para nueva declaracion, primero el usuario elige modelo y periodo.
+            showNewFilingDialog(catalog);
+            return;
+        }
+        if ("303".equals(modelCode)) {
+            show303Editor(existing);
+        } else if ("130".equals(modelCode)) {
+            show130Editor(existing);
+        } else {
+            showGenericFilingEditor(existing, catalog);
+        }
+    }
+
+    private void showNewFilingDialog(java.util.List<com.benjagest.ui.model.TaxModelEntry> catalog) {
+        Dialog<ButtonType> dialog = new Dialog<>();
+        dialog.setTitle(t("tax.new.title"));
+        ButtonType nextBt = new ButtonType(t("tax.new.next"), ButtonBar.ButtonData.OK_DONE);
+        dialog.getDialogPane().getButtonTypes().addAll(nextBt, ButtonType.CANCEL);
+
+        ComboBox<com.benjagest.ui.model.TaxModelEntry> modelCombo = new ComboBox<>();
+        modelCombo.getItems().addAll(catalog);
+        modelCombo.setConverter(new javafx.util.StringConverter<>() {
+            @Override public String toString(com.benjagest.ui.model.TaxModelEntry m) {
+                return m == null ? "" : (m.code() + " · " + m.name());
+            }
+            @Override public com.benjagest.ui.model.TaxModelEntry fromString(String s) { return null; }
+        });
+        if (!catalog.isEmpty()) modelCombo.getSelectionModel().selectFirst();
+
+        ComboBox<Integer> yearCombo = new ComboBox<>();
+        int currentY = LocalDate.now().getYear();
+        for (int y = currentY + 1; y >= currentY - 5; y--) yearCombo.getItems().add(y);
+        yearCombo.getSelectionModel().select(Integer.valueOf(taxCurrentYear));
+
+        ComboBox<String> periodCombo = new ComboBox<>();
+        periodCombo.getItems().addAll("T1", "T2", "T3", "T4", "M01", "M02", "M03", "M04", "M05", "M06",
+                "M07", "M08", "M09", "M10", "M11", "M12", "ANUAL");
+        periodCombo.getSelectionModel().select("T1");
+
+        GridPane grid = new GridPane();
+        grid.setHgap(10); grid.setVgap(8); grid.setPadding(new Insets(10));
+        grid.add(new Label(t("tax.new.model")), 0, 0); grid.add(modelCombo, 1, 0);
+        grid.add(new Label(t("tax.new.year")), 0, 1); grid.add(yearCombo, 1, 1);
+        grid.add(new Label(t("tax.new.period")), 0, 2); grid.add(periodCombo, 1, 2);
+        dialog.getDialogPane().setContent(grid);
+
+        dialog.showAndWait().ifPresent(bt -> {
+            if (bt != nextBt) return;
+            var model = modelCombo.getValue();
+            if (model == null) return;
+            Integer quarter = null, month = null;
+            String pv = periodCombo.getValue();
+            if (pv != null && pv.startsWith("T")) quarter = Integer.parseInt(pv.substring(1));
+            else if (pv != null && pv.startsWith("M")) month = Integer.parseInt(pv.substring(1));
+            // Crear stub vacio y abrir editor especifico
+            com.benjagest.ui.model.TaxFilingEntry stub = new com.benjagest.ui.model.TaxFilingEntry(
+                    null, model.code(), yearCombo.getValue(), quarter, month,
+                    "DRAFT", null, null, null, null, null, "{}");
+            Task<com.benjagest.ui.model.TaxFilingEntry> task = new Task<>() {
+                @Override
+                protected com.benjagest.ui.model.TaxFilingEntry call() throws Exception {
+                    return altaApiClient.createFiling(model.code(), yearCombo.getValue(), stub.periodQuarter(),
+                            stub.periodMonth(), "DRAFT", "{}", null, null, null);
+                }
+            };
+            task.setOnSucceeded(ev -> {
+                var created = task.getValue();
+                showFilingEditor(created, catalog);
+            });
+            task.setOnFailed(ev -> showError(t("tax.new.fail.title"), t("tax.new.fail.body")));
+            start(task, "tax-filing-create");
+        });
+    }
+
+    /** Editor genérico: JSON crudo en TextArea + estado + total + CSV + notas. */
+    private void showGenericFilingEditor(com.benjagest.ui.model.TaxFilingEntry existing,
+                                          java.util.List<com.benjagest.ui.model.TaxModelEntry> catalog) {
+        Dialog<ButtonType> dialog = new Dialog<>();
+        dialog.setTitle(t("tax.editor.generic.title") + " — " + existing.taxModelCode() + " " + formatPeriod(existing));
+        ButtonType saveBt = new ButtonType(t("tax.editor.save"), ButtonBar.ButtonData.OK_DONE);
+        dialog.getDialogPane().getButtonTypes().addAll(saveBt, ButtonType.CANCEL);
+
+        ComboBox<String> statusCombo = new ComboBox<>();
+        statusCombo.getItems().addAll("DRAFT", "READY", "PRESENTED", "PAID", "REJECTED", "CANCELLED");
+        statusCombo.getSelectionModel().select(existing.status());
+        TextField amountField = new TextField(existing.totalAmount() == null
+                ? "" : existing.totalAmount().toPlainString());
+        TextField csvField = new TextField(existing.csvAeat());
+        TextArea dataArea = new TextArea(existing.dataJson() == null || existing.dataJson().isBlank()
+                ? "{}" : existing.dataJson());
+        dataArea.setPrefRowCount(6);
+        TextArea notesArea = new TextArea(existing.notes());
+        notesArea.setPrefRowCount(2);
+
+        GridPane grid = new GridPane();
+        grid.setHgap(10); grid.setVgap(8); grid.setPadding(new Insets(10));
+        grid.add(new Label(t("tax.editor.status")), 0, 0); grid.add(statusCombo, 1, 0);
+        grid.add(new Label(t("tax.editor.total")), 0, 1); grid.add(amountField, 1, 1);
+        grid.add(new Label(t("tax.editor.csv")), 0, 2); grid.add(csvField, 1, 2);
+        grid.add(new Label(t("tax.editor.data")), 0, 3); grid.add(dataArea, 1, 3);
+        grid.add(new Label(t("tax.editor.notes")), 0, 4); grid.add(notesArea, 1, 4);
+        dialog.getDialogPane().setContent(grid);
+
+        dialog.showAndWait().ifPresent(bt -> {
+            if (bt != saveBt) return;
+            saveFiling(existing, statusCombo.getValue(), dataArea.getText(),
+                    parseDec(amountField.getText()), csvField.getText(), notesArea.getText(), catalog);
+        });
+    }
+
+    /** Editor 303 — IVA autoliquidación trimestral. Casillas básicas. */
+    private void show303Editor(com.benjagest.ui.model.TaxFilingEntry existing) {
+        Dialog<ButtonType> dialog = new Dialog<>();
+        dialog.setTitle("Modelo 303 — " + formatPeriod(existing));
+        ButtonType saveBt = new ButtonType(t("tax.editor.save"), ButtonBar.ButtonData.OK_DONE);
+        dialog.getDialogPane().getButtonTypes().addAll(saveBt, ButtonType.CANCEL);
+
+        java.util.Map<String, String> parsed = parseDataMap(existing.dataJson());
+
+        // IVA repercutido (devengado)
+        TextField b21 = new TextField(parsed.getOrDefault("base_21", ""));
+        TextField c21 = new TextField(parsed.getOrDefault("cuota_21", ""));
+        TextField b10 = new TextField(parsed.getOrDefault("base_10", ""));
+        TextField c10 = new TextField(parsed.getOrDefault("cuota_10", ""));
+        TextField b4 = new TextField(parsed.getOrDefault("base_4", ""));
+        TextField c4 = new TextField(parsed.getOrDefault("cuota_4", ""));
+        // IVA soportado (deducible)
+        TextField bs = new TextField(parsed.getOrDefault("base_soportado", ""));
+        TextField cs = new TextField(parsed.getOrDefault("cuota_soportada", ""));
+
+        ComboBox<String> statusCombo = new ComboBox<>();
+        statusCombo.getItems().addAll("DRAFT", "READY", "PRESENTED", "PAID", "REJECTED");
+        statusCombo.getSelectionModel().select(existing.status());
+        TextField csvField = new TextField(existing.csvAeat());
+
+        GridPane grid = new GridPane();
+        grid.setHgap(10); grid.setVgap(6); grid.setPadding(new Insets(12));
+        grid.add(label("IVA repercutido (devengado)", "settings-section-title"), 0, 0, 4, 1);
+        grid.add(new Label("Base 21 %"), 0, 1); grid.add(b21, 1, 1);
+        grid.add(new Label("Cuota 21 %"), 2, 1); grid.add(c21, 3, 1);
+        grid.add(new Label("Base 10 %"), 0, 2); grid.add(b10, 1, 2);
+        grid.add(new Label("Cuota 10 %"), 2, 2); grid.add(c10, 3, 2);
+        grid.add(new Label("Base 4 %"), 0, 3); grid.add(b4, 1, 3);
+        grid.add(new Label("Cuota 4 %"), 2, 3); grid.add(c4, 3, 3);
+
+        grid.add(new Separator(), 0, 4, 4, 1);
+        grid.add(label("IVA soportado (deducible)", "settings-section-title"), 0, 5, 4, 1);
+        grid.add(new Label("Base soportada"), 0, 6); grid.add(bs, 1, 6);
+        grid.add(new Label("Cuota soportada"), 2, 6); grid.add(cs, 3, 6);
+
+        grid.add(new Separator(), 0, 7, 4, 1);
+        Label resultLabel = new Label();
+        resultLabel.getStyleClass().add("settings-section-title");
+        grid.add(resultLabel, 0, 8, 4, 1);
+
+        Runnable recompute = () -> {
+            java.math.BigDecimal repercutido = sum(c21.getText(), c10.getText(), c4.getText());
+            java.math.BigDecimal soportado = parseDec(cs.getText());
+            if (soportado == null) soportado = java.math.BigDecimal.ZERO;
+            java.math.BigDecimal result = repercutido.subtract(soportado);
+            resultLabel.setText("Resultado (casilla 71): " + result.toPlainString() + " €");
+        };
+        for (TextField f : new TextField[]{c21, c10, c4, cs}) {
+            f.textProperty().addListener((o, ov, nv) -> recompute.run());
+        }
+        recompute.run();
+
+        grid.add(new Label(t("tax.editor.status")), 0, 9); grid.add(statusCombo, 1, 9);
+        grid.add(new Label(t("tax.editor.csv")), 2, 9); grid.add(csvField, 3, 9);
+
+        dialog.getDialogPane().setContent(grid);
+
+        dialog.showAndWait().ifPresent(bt -> {
+            if (bt != saveBt) return;
+            java.util.Map<String, String> data = new java.util.LinkedHashMap<>();
+            data.put("base_21", b21.getText().trim());
+            data.put("cuota_21", c21.getText().trim());
+            data.put("base_10", b10.getText().trim());
+            data.put("cuota_10", c10.getText().trim());
+            data.put("base_4", b4.getText().trim());
+            data.put("cuota_4", c4.getText().trim());
+            data.put("base_soportado", bs.getText().trim());
+            data.put("cuota_soportada", cs.getText().trim());
+            java.math.BigDecimal total = sum(c21.getText(), c10.getText(), c4.getText())
+                    .subtract(parseDec(cs.getText()) == null ? java.math.BigDecimal.ZERO : parseDec(cs.getText()));
+            saveFiling(existing, statusCombo.getValue(), encodeDataMap(data), total,
+                    csvField.getText(), existing.notes(), java.util.List.of());
+        });
+    }
+
+    /** Editor 130 — IRPF pago fraccionado estimación directa. */
+    private void show130Editor(com.benjagest.ui.model.TaxFilingEntry existing) {
+        Dialog<ButtonType> dialog = new Dialog<>();
+        dialog.setTitle("Modelo 130 — " + formatPeriod(existing));
+        ButtonType saveBt = new ButtonType(t("tax.editor.save"), ButtonBar.ButtonData.OK_DONE);
+        dialog.getDialogPane().getButtonTypes().addAll(saveBt, ButtonType.CANCEL);
+
+        java.util.Map<String, String> parsed = parseDataMap(existing.dataJson());
+
+        TextField ingresos = new TextField(parsed.getOrDefault("ingresos", ""));
+        TextField gastos = new TextField(parsed.getOrDefault("gastos", ""));
+        TextField retencionesPrev = new TextField(parsed.getOrDefault("retenciones", ""));
+        TextField pagosPrev = new TextField(parsed.getOrDefault("pagos_previos", ""));
+
+        ComboBox<String> statusCombo = new ComboBox<>();
+        statusCombo.getItems().addAll("DRAFT", "READY", "PRESENTED", "PAID", "REJECTED");
+        statusCombo.getSelectionModel().select(existing.status());
+        TextField csvField = new TextField(existing.csvAeat());
+
+        Label resultLabel = new Label();
+        resultLabel.getStyleClass().add("settings-section-title");
+
+        Runnable recompute = () -> {
+            java.math.BigDecimal ing = parseDec(ingresos.getText());
+            java.math.BigDecimal gas = parseDec(gastos.getText());
+            java.math.BigDecimal ret = parseDec(retencionesPrev.getText());
+            java.math.BigDecimal pag = parseDec(pagosPrev.getText());
+            if (ing == null) ing = java.math.BigDecimal.ZERO;
+            if (gas == null) gas = java.math.BigDecimal.ZERO;
+            if (ret == null) ret = java.math.BigDecimal.ZERO;
+            if (pag == null) pag = java.math.BigDecimal.ZERO;
+            java.math.BigDecimal beneficio = ing.subtract(gas);
+            // 20% del beneficio acumulado, menos retenciones y pagos anteriores
+            java.math.BigDecimal pago = beneficio.multiply(new java.math.BigDecimal("0.20"))
+                    .subtract(ret).subtract(pag).setScale(2, java.math.RoundingMode.HALF_UP);
+            resultLabel.setText("Pago fraccionado a ingresar: " + pago.toPlainString() + " €");
+        };
+        for (TextField f : new TextField[]{ingresos, gastos, retencionesPrev, pagosPrev}) {
+            f.textProperty().addListener((o, ov, nv) -> recompute.run());
+        }
+        recompute.run();
+
+        GridPane grid = new GridPane();
+        grid.setHgap(10); grid.setVgap(8); grid.setPadding(new Insets(12));
+        grid.add(new Label("Ingresos acumulados"), 0, 0); grid.add(ingresos, 1, 0);
+        grid.add(new Label("Gastos acumulados"), 0, 1); grid.add(gastos, 1, 1);
+        grid.add(new Label("Retenciones soportadas"), 0, 2); grid.add(retencionesPrev, 1, 2);
+        grid.add(new Label("Pagos fraccionados previos"), 0, 3); grid.add(pagosPrev, 1, 3);
+        grid.add(new Separator(), 0, 4, 2, 1);
+        grid.add(resultLabel, 0, 5, 2, 1);
+        grid.add(new Separator(), 0, 6, 2, 1);
+        grid.add(new Label(t("tax.editor.status")), 0, 7); grid.add(statusCombo, 1, 7);
+        grid.add(new Label(t("tax.editor.csv")), 0, 8); grid.add(csvField, 1, 8);
+        dialog.getDialogPane().setContent(grid);
+
+        dialog.showAndWait().ifPresent(bt -> {
+            if (bt != saveBt) return;
+            java.util.Map<String, String> data = new java.util.LinkedHashMap<>();
+            data.put("ingresos", ingresos.getText().trim());
+            data.put("gastos", gastos.getText().trim());
+            data.put("retenciones", retencionesPrev.getText().trim());
+            data.put("pagos_previos", pagosPrev.getText().trim());
+            java.math.BigDecimal ing = parseDec(ingresos.getText());
+            java.math.BigDecimal gas = parseDec(gastos.getText());
+            java.math.BigDecimal ret = parseDec(retencionesPrev.getText());
+            java.math.BigDecimal pag = parseDec(pagosPrev.getText());
+            if (ing == null) ing = java.math.BigDecimal.ZERO;
+            if (gas == null) gas = java.math.BigDecimal.ZERO;
+            if (ret == null) ret = java.math.BigDecimal.ZERO;
+            if (pag == null) pag = java.math.BigDecimal.ZERO;
+            java.math.BigDecimal total = ing.subtract(gas).multiply(new java.math.BigDecimal("0.20"))
+                    .subtract(ret).subtract(pag).setScale(2, java.math.RoundingMode.HALF_UP);
+            saveFiling(existing, statusCombo.getValue(), encodeDataMap(data), total,
+                    csvField.getText(), existing.notes(), java.util.List.of());
+        });
+    }
+
+    private void saveFiling(com.benjagest.ui.model.TaxFilingEntry existing, String status,
+                             String dataJson, java.math.BigDecimal total, String csv, String notes,
+                             java.util.List<com.benjagest.ui.model.TaxModelEntry> catalog) {
+        Task<com.benjagest.ui.model.TaxFilingEntry> task = new Task<>() {
+            @Override
+            protected com.benjagest.ui.model.TaxFilingEntry call() throws Exception {
+                return altaApiClient.updateFiling(existing.id(), existing.taxModelCode(),
+                        existing.periodYear(), existing.periodQuarter(), existing.periodMonth(),
+                        status, dataJson, total,
+                        blankToNullOrSelf(csv),
+                        blankToNullOrSelf(notes));
+            }
+        };
+        task.setOnSucceeded(ev -> showTaxModels());
+        task.setOnFailed(ev -> showError(t("tax.editor.fail.title"), t("tax.editor.fail.body")));
+        start(task, "tax-filing-save");
+    }
+
+    private java.math.BigDecimal parseDec(String s) {
+        if (s == null || s.isBlank()) return null;
+        try { return new java.math.BigDecimal(s.trim().replace(",", ".")); }
+        catch (NumberFormatException ex) { return null; }
+    }
+
+    private java.math.BigDecimal sum(String... values) {
+        java.math.BigDecimal acc = java.math.BigDecimal.ZERO;
+        for (String v : values) {
+            java.math.BigDecimal d = parseDec(v);
+            if (d != null) acc = acc.add(d);
+        }
+        return acc;
+    }
+
+    /**
+     * Mini-parser: convierte el JSON crudo de `data` en un Map<String,String>
+     * para poblar las casillas del editor. No es un parser real — asume
+     * un objeto plano con claves y valores string-o-number.
+     */
+    private java.util.Map<String, String> parseDataMap(String json) {
+        java.util.Map<String, String> out = new java.util.LinkedHashMap<>();
+        if (json == null || json.isBlank()) return out;
+        var p = java.util.regex.Pattern.compile("\"([^\"]+)\"\\s*:\\s*(?:\"([^\"]*)\"|(-?\\d+(?:\\.\\d+)?))");
+        var m = p.matcher(json);
+        while (m.find()) {
+            String key = m.group(1);
+            String val = m.group(2) != null ? m.group(2) : m.group(3);
+            out.put(key, val);
+        }
+        return out;
+    }
+
+    private String encodeDataMap(java.util.Map<String, String> data) {
+        StringBuilder sb = new StringBuilder("{");
+        boolean first = true;
+        for (var e : data.entrySet()) {
+            if (!first) sb.append(",");
+            sb.append("\"").append(e.getKey()).append("\":\"")
+                    .append(e.getValue() == null ? "" : e.getValue().replace("\"", "\\\""))
+                    .append("\"");
+            first = false;
+        }
+        sb.append("}");
+        return sb.toString();
     }
 }

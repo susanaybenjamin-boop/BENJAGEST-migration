@@ -39,7 +39,7 @@ Cada colaborador debe abrir la carpeta clonada desde VS Code o IntelliJ IDEA. No
 
 ## Ramas y Pull Requests
 
-La rama estable sera `main`. Para trabajar:
+La rama estable sera `develop`. Para trabajar:
 
 ```powershell
 git checkout main
