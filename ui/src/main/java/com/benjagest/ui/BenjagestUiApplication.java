@@ -2016,6 +2016,7 @@ public class BenjagestUiApplication extends Application {
         TableColumn<AuditEvent, String> colWhen = new TableColumn<>(t("settings.audit.col.when"));
         colWhen.setCellValueFactory(c -> new SimpleStringProperty(shortIso(c.getValue().createdAt())));
         colWhen.setPrefWidth(160);
+        colWhen.setComparator(ISO_DATE_COMPARATOR);
         TableColumn<AuditEvent, String> colType = new TableColumn<>(t("settings.audit.col.type"));
         colType.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().eventType()));
         colType.setPrefWidth(150);
@@ -2323,10 +2324,12 @@ public class BenjagestUiApplication extends Application {
         TableColumn<SalesInvoiceSummary, String> colDate = new TableColumn<>(t("list.column.date"));
         colDate.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().invoiceDate()));
         colDate.setPrefWidth(110);
+        colDate.setComparator(ISO_DATE_COMPARATOR);
 
         TableColumn<SalesInvoiceSummary, String> colDue = new TableColumn<>(t("list.column.due_date"));
         colDue.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().dueDate()));
         colDue.setPrefWidth(120);
+        colDue.setComparator(ISO_DATE_COMPARATOR);
 
         TableColumn<SalesInvoiceSummary, String> colStatus = new TableColumn<>(t("list.column.status"));
         colStatus.setCellValueFactory(c -> new SimpleStringProperty(localizedInvoiceStatus(c.getValue().status())));
@@ -2340,6 +2343,10 @@ public class BenjagestUiApplication extends Application {
         colTotal.setCellValueFactory(c -> new SimpleStringProperty(
                 c.getValue().total() == null ? "" : money(c.getValue().total().toPlainString())));
         colTotal.setPrefWidth(110);
+        // Sin esto "1.234,56 €" ordenaría alfabéticamente — "9" caería
+        // después de "10" porque "9" > "1". El comparator extrae el
+        // número y compara como BigDecimal.
+        colTotal.setComparator(NUMERIC_STRING_COMPARATOR);
 
         billingTable.getColumns().addAll(List.of(colNumber, colCustomer, colDate, colDue, colStatus, colPayment, colTotal));
         billingTable.setItems(FXCollections.observableArrayList(initialList));
@@ -3086,6 +3093,14 @@ public class BenjagestUiApplication extends Application {
         verifyChain.setGraphic(icon("fas-shield-alt"));
         verifyChain.setOnAction(event -> verifyVerifactuChain());
 
+        // C2: declaración responsable del fabricante (RD 1007/2023 art.
+        // 15). Información pública del producto exigida por ley en el
+        // SIF mismo — no es una compra ni un upgrade, es un dato que
+        // el operador debe poder ver bajo demanda.
+        Button manufacturerBtn = new Button(t("billing.config.manufacturer.btn"));
+        manufacturerBtn.setGraphic(icon("fas-info-circle"));
+        manufacturerBtn.setOnAction(event -> showManufacturerDeclaration());
+
         // VF-EVENTS-B: bloque de Registro de Eventos del SIF — solo es
         // legalmente obligatorio en NO VeriFactu, pero lo mostramos en
         // ambas modalidades porque (a) las facturas anteriores al
@@ -3093,7 +3108,7 @@ public class BenjagestUiApplication extends Application {
         // de solo lectura y sirve de evidencia auditable.
         Node sifEventsBlock = sifEventsAuditBlock();
 
-        HBox actions = new HBox(8, save, verifyChain);
+        HBox actions = new HBox(8, save, verifyChain, manufacturerBtn);
         actions.getStyleClass().add("settings-actions");
 
         VBox body = new VBox(16,
@@ -3147,6 +3162,7 @@ public class BenjagestUiApplication extends Application {
                 new TableColumn<>(t("billing.config.sif.col.when"));
         colWhen.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().generatedAtIso()));
         colWhen.setPrefWidth(160);
+        colWhen.setComparator(ISO_DATE_COMPARATOR);
         TableColumn<com.benjagest.ui.model.SifEventEntry, String> colType =
                 new TableColumn<>(t("billing.config.sif.col.type"));
         colType.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().eventType()));
@@ -3886,6 +3902,63 @@ public class BenjagestUiApplication extends Application {
      * con padding. Asi podemos pintar en la UI el "F-2026-0043" que se
      * asignara cuando el usuario pulse "Validar y emitir", sin gastarlo.
      */
+    /**
+     * Comparator para columnas que muestran un decimal formateado
+     * ("1.234,56 €", "10,50 %"…). Sin él, JavaFX ordena por string
+     * (alfabéticamente), lo cual coloca "10" antes de "9". Limpia
+     * separadores de miles, sustituye coma decimal por punto y
+     * extrae el primer número de la cadena. Filas vacías o no
+     * numéricas se mandan al final.
+     */
+    private static final java.util.Comparator<String> NUMERIC_STRING_COMPARATOR = (a, b) -> {
+        java.math.BigDecimal va = parseDecimal(a);
+        java.math.BigDecimal vb = parseDecimal(b);
+        if (va == null && vb == null) return 0;
+        if (va == null) return 1;
+        if (vb == null) return -1;
+        return va.compareTo(vb);
+    };
+
+    /**
+     * Comparator para fechas en formato ISO ("yyyy-MM-dd"). Para
+     * fechas ISO, el orden alfabético YA es cronológico, así que en
+     * realidad el comparator por defecto bastaría — pero
+     * explicitarlo lo blinda contra cambios de formato futuros y
+     * coloca null/vacíos al final.
+     */
+    private static final java.util.Comparator<String> ISO_DATE_COMPARATOR = (a, b) -> {
+        boolean ea = a == null || a.isBlank();
+        boolean eb = b == null || b.isBlank();
+        if (ea && eb) return 0;
+        if (ea) return 1;
+        if (eb) return -1;
+        return a.compareTo(b);
+    };
+
+    private static java.math.BigDecimal parseDecimal(String raw) {
+        if (raw == null || raw.isBlank()) return null;
+        // Extraer el primer "número" (con coma o punto). Ignora € %
+        // espacios, etc.
+        java.util.regex.Matcher m = java.util.regex.Pattern
+                .compile("-?\\d{1,3}(?:[.,]\\d{3})*(?:[.,]\\d+)?|-?\\d+(?:[.,]\\d+)?")
+                .matcher(raw);
+        if (!m.find()) return null;
+        String token = m.group();
+        // Si hay coma Y punto, asumimos formato europeo "1.234,56" → quitar puntos, coma→punto.
+        // Si solo hay coma, asumimos decimal europeo "10,50" → coma→punto.
+        // Si solo hay punto, asumimos decimal anglo "10.50" → tal cual.
+        if (token.contains(",") && token.contains(".")) {
+            token = token.replace(".", "").replace(",", ".");
+        } else if (token.contains(",")) {
+            token = token.replace(",", ".");
+        }
+        try {
+            return new java.math.BigDecimal(token);
+        } catch (NumberFormatException ex) {
+            return null;
+        }
+    }
+
     /** Etiqueta humana de un invoice_type (NORMAL/PROFORMA) traducida. */
     private String localizedInvoiceTypeLabel(String code) {
         if (code == null) return "";
@@ -4399,6 +4472,70 @@ public class BenjagestUiApplication extends Application {
      * Si el modo es OFF, ni siquiera se intenta — sin VeriFactu activo
      * no hay cadena que verificar. Mostramos un mensaje claro.
      */
+    /**
+     * Diálogo informativo con la declaración responsable del fabricante
+     * del SIF (RD 1007/2023 + Orden HAC/1177/2024 art. 15). Carga el
+     * JSON del endpoint y lo formatea como texto plano dentro de un
+     * Alert con TextArea — el contenido es largo (varias líneas) y un
+     * label tipo "header" no lo renderizaría bien.
+     */
+    private void showManufacturerDeclaration() {
+        Task<String> task = new Task<>() {
+            @Override
+            protected String call() throws Exception {
+                return billingApiClient.fetchManufacturerDeclaration();
+            }
+        };
+        task.setOnSucceeded(ev -> {
+            String json = task.getValue();
+            String formatted = formatManufacturerDeclaration(json);
+            javafx.scene.control.TextArea area = new javafx.scene.control.TextArea(formatted);
+            area.setEditable(false);
+            area.setWrapText(true);
+            area.setPrefRowCount(20);
+            area.setPrefColumnCount(70);
+            Alert info = new Alert(Alert.AlertType.INFORMATION);
+            info.setHeaderText(t("billing.config.manufacturer.dialog.title"));
+            info.getDialogPane().setContent(area);
+            info.getDialogPane().setPrefWidth(720);
+            info.showAndWait();
+        });
+        task.setOnFailed(ev -> showError(t("billing.config.manufacturer.fail.title"),
+                t("billing.config.manufacturer.fail.body")));
+        start(task, "billing-config-manufacturer");
+    }
+
+    private String formatManufacturerDeclaration(String json) {
+        // Parser minimal — saca cada campo en orden y lo presenta con
+        // etiqueta humana. El endpoint devuelve un objeto plano sin
+        // anidamientos, así que extraer por nombre vía regex basta.
+        StringBuilder sb = new StringBuilder();
+        sb.append(t("billing.config.manufacturer.section.manufacturer")).append("\n");
+        sb.append("  ").append(extract(json, "manufacturerName")).append("\n");
+        sb.append("  NIF: ").append(extract(json, "manufacturerTaxIdentifier")).append("\n");
+        sb.append("  Email: ").append(extract(json, "manufacturerEmail")).append("\n");
+        sb.append("  ").append(extract(json, "manufacturerAddress")).append("\n\n");
+        sb.append(t("billing.config.manufacturer.section.product")).append("\n");
+        sb.append("  ").append(extract(json, "productName"))
+                .append(" v").append(extract(json, "productVersion")).append("\n");
+        sb.append("  ").append(extract(json, "productType")).append("\n\n");
+        sb.append("  ").append(extract(json, "productFunctionalities")).append("\n\n");
+        sb.append(t("billing.config.manufacturer.section.date")).append("\n");
+        sb.append("  ").append(extract(json, "declarationDate")).append(" — ")
+                .append(extract(json, "declarationPlace")).append("\n\n");
+        sb.append(t("billing.config.manufacturer.section.commitment")).append("\n");
+        sb.append("  ").append(extract(json, "complianceCommitment")).append("\n");
+        return sb.toString();
+    }
+
+    private String extract(String json, String field) {
+        java.util.regex.Matcher m = java.util.regex.Pattern
+                .compile("\"" + field + "\"\\s*:\\s*\"((?:\\\\.|[^\"])*)\"")
+                .matcher(json);
+        if (!m.find()) return "";
+        return m.group(1).replace("\\\"", "\"").replace("\\n", "\n").replace("\\\\", "\\");
+    }
+
     private void verifyVerifactuChain() {
         // Tras VF-OFF-DEPRECATE el hash existe en ambas modalidades, así
         // que el verify siempre se puede lanzar. Solo necesitamos el
@@ -5034,6 +5171,14 @@ public class BenjagestUiApplication extends Application {
                 case "billing.config.verifactu.verify.broken.prefix" -> "First suspect invoice: ";
                 case "billing.config.verifactu.verify.fail.title" -> "Could not verify";
                 case "billing.config.verifactu.verify.fail.body" -> "The server did not respond. Check the connection and try again.";
+                case "billing.config.manufacturer.btn" -> "About this SIF";
+                case "billing.config.manufacturer.dialog.title" -> "SIF manufacturer responsible declaration (RD 1007/2023 art. 15)";
+                case "billing.config.manufacturer.section.manufacturer" -> "Manufacturer / Developer:";
+                case "billing.config.manufacturer.section.product" -> "Product:";
+                case "billing.config.manufacturer.section.date" -> "Declaration date and place:";
+                case "billing.config.manufacturer.section.commitment" -> "Compliance commitment:";
+                case "billing.config.manufacturer.fail.title" -> "Could not load manufacturer declaration";
+                case "billing.config.manufacturer.fail.body" -> "Make sure the backend is running and try again.";
                 case "billing.config.sif.section" -> "SIF event registry (No VeriFactu)";
                 case "billing.config.sif.hint" -> "Mandatory chained event log for systems running as No VeriFactu (RD 1007/2023, art. 16). Each event is SHA-256 hashed and linked to the previous one. Lifecycle and invoicing operations are recorded automatically.";
                 case "billing.config.sif.placeholder.empty" -> "No SIF events yet. They appear as soon as the system starts and invoices are validated.";
@@ -5588,6 +5733,14 @@ public class BenjagestUiApplication extends Application {
             case "billing.config.verifactu.verify.broken.prefix" -> "Primera factura sospechosa: ";
             case "billing.config.verifactu.verify.fail.title" -> "No se pudo verificar";
             case "billing.config.verifactu.verify.fail.body" -> "El servidor no respondio. Comprueba la conexion y vuelve a intentarlo.";
+            case "billing.config.manufacturer.btn" -> "Acerca del SIF";
+            case "billing.config.manufacturer.dialog.title" -> "Declaracion responsable del fabricante del SIF (RD 1007/2023 art. 15)";
+            case "billing.config.manufacturer.section.manufacturer" -> "Fabricante / Desarrollador:";
+            case "billing.config.manufacturer.section.product" -> "Producto:";
+            case "billing.config.manufacturer.section.date" -> "Fecha y lugar de la declaracion:";
+            case "billing.config.manufacturer.section.commitment" -> "Compromiso de cumplimiento:";
+            case "billing.config.manufacturer.fail.title" -> "No se pudo cargar la declaracion del fabricante";
+            case "billing.config.manufacturer.fail.body" -> "Asegurate de que el backend esta en marcha y vuelve a intentarlo.";
             case "billing.config.sif.section" -> "Registro de eventos del SIF (No VeriFactu)";
             case "billing.config.sif.hint" -> "Registro encadenado de eventos obligatorio para sistemas en No VeriFactu (RD 1007/2023, art. 16). Cada evento lleva un SHA-256 encadenado al anterior. Las operaciones de ciclo de vida y de facturacion se registran automaticamente.";
             case "billing.config.sif.placeholder.empty" -> "Aun no hay eventos SIF. Apareceran en cuanto arranque el sistema y se validen facturas.";
