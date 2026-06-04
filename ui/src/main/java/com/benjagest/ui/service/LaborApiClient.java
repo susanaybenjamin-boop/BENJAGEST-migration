@@ -321,6 +321,194 @@ public class LaborApiClient {
     }
 
     // ====================================================================
+    //  Nominas (L4)
+    // ====================================================================
+
+    public java.util.List<com.benjagest.ui.model.PayslipEntry> listPayslips(Integer year, String status, String employeeId)
+            throws IOException, InterruptedException {
+        StringBuilder url = new StringBuilder(baseUrl + "/labor/payslips?");
+        if (year != null) url.append("year=").append(year).append("&");
+        if (status != null && !status.isBlank()) url.append("status=").append(status).append("&");
+        if (employeeId != null && !employeeId.isBlank()) url.append("employeeId=").append(employeeId);
+        HttpResponse<String> r = send(req(url.toString()).GET());
+        return parseObjects(r.body(), "employeeId", obj -> new com.benjagest.ui.model.PayslipEntry(
+                textField(obj, "id"),
+                textField(obj, "employeeId"),
+                textField(obj, "employeeName"),
+                textField(obj, "contractId"),
+                intFieldOrZero(obj, "periodYear"),
+                intFieldOrZero(obj, "periodMonth"),
+                textField(obj, "payslipType"),
+                bigDec(obj, "grossAmount"),
+                bigDec(obj, "ssEmployeeAmount"),
+                bigDec(obj, "irpfAmount"),
+                bigDec(obj, "otherDeductions"),
+                bigDec(obj, "netAmount"),
+                textField(obj, "status"),
+                textField(obj, "paidAt"),
+                textField(obj, "pdfPath"),
+                textField(obj, "notes")
+        ));
+    }
+
+    public com.benjagest.ui.model.PayslipEntry calculatePayslip(String employeeId, int year, int month,
+                                                                  String type, boolean extraProrated,
+                                                                  java.math.BigDecimal otherDeductions, String notes)
+            throws IOException, InterruptedException {
+        StringBuilder b = new StringBuilder("{");
+        b.append(field("employeeId", employeeId)).append(",");
+        b.append("\"year\":").append(year).append(",\"month\":").append(month).append(",");
+        b.append(field("payslipType", type)).append(",");
+        b.append("\"includeExtraProrated\":").append(extraProrated).append(",");
+        b.append(decField("otherDeductions", otherDeductions)).append(",");
+        b.append(field("notes", notes));
+        b.append("}");
+        HttpResponse<String> r = send(req(baseUrl + "/labor/payslips/calculate")
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(b.toString())));
+        String obj = r.body();
+        return new com.benjagest.ui.model.PayslipEntry(
+                textField(obj, "id"), textField(obj, "employeeId"), textField(obj, "employeeName"),
+                textField(obj, "contractId"),
+                intFieldOrZero(obj, "periodYear"), intFieldOrZero(obj, "periodMonth"),
+                textField(obj, "payslipType"),
+                bigDec(obj, "grossAmount"), bigDec(obj, "ssEmployeeAmount"),
+                bigDec(obj, "irpfAmount"), bigDec(obj, "otherDeductions"),
+                bigDec(obj, "netAmount"), textField(obj, "status"),
+                textField(obj, "paidAt"), textField(obj, "pdfPath"), textField(obj, "notes"));
+    }
+
+    public void markPayslipPaid(String id) throws IOException, InterruptedException {
+        send(req(baseUrl + "/labor/payslips/" + id + "/pay")
+                .header("Content-Type", "application/json")
+                .PUT(HttpRequest.BodyPublishers.ofString("{}")));
+    }
+
+    public void deletePayslip(String id) throws IOException, InterruptedException {
+        send(req(baseUrl + "/labor/payslips/" + id).DELETE());
+    }
+
+    // ====================================================================
+    //  Inmovilizado (C1)
+    // ====================================================================
+
+    public java.util.List<com.benjagest.ui.model.FixedAssetEntry> listAssets(boolean includeInactive)
+            throws IOException, InterruptedException {
+        HttpResponse<String> r = send(req(baseUrl + "/accounting/fixed-assets?includeInactive=" + includeInactive).GET());
+        return parseObjects(r.body(), "code", this::mapAsset);
+    }
+
+    public com.benjagest.ui.model.FixedAssetEntry createAsset(com.benjagest.ui.model.FixedAssetEntry a)
+            throws IOException, InterruptedException {
+        HttpResponse<String> r = send(req(baseUrl + "/accounting/fixed-assets")
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(assetBody(a))));
+        return mapAsset(r.body());
+    }
+
+    public com.benjagest.ui.model.FixedAssetEntry updateAsset(String id, com.benjagest.ui.model.FixedAssetEntry a)
+            throws IOException, InterruptedException {
+        HttpResponse<String> r = send(req(baseUrl + "/accounting/fixed-assets/" + id)
+                .header("Content-Type", "application/json")
+                .PUT(HttpRequest.BodyPublishers.ofString(assetBody(a))));
+        return mapAsset(r.body());
+    }
+
+    public void deleteAsset(String id) throws IOException, InterruptedException {
+        send(req(baseUrl + "/accounting/fixed-assets/" + id).DELETE());
+    }
+
+    public int calculateMonthDepreciations(int year, int month) throws IOException, InterruptedException {
+        HttpResponse<String> r = send(req(baseUrl + "/accounting/fixed-assets/calculate-month?year=" + year + "&month=" + month)
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString("{}")));
+        try { return Integer.parseInt(r.body().trim()); }
+        catch (NumberFormatException e) { return 0; }
+    }
+
+    private String assetBody(com.benjagest.ui.model.FixedAssetEntry a) {
+        StringBuilder b = new StringBuilder("{");
+        b.append(field("code", a.code())).append(",");
+        b.append(field("name", a.name())).append(",");
+        b.append(field("description", a.description())).append(",");
+        b.append(field("category", a.category())).append(",");
+        b.append(field("accountingAccountId", a.accountingAccountId())).append(",");
+        b.append(field("acquisitionDate", a.acquisitionDate() == null ? null : a.acquisitionDate().toString())).append(",");
+        b.append(decField("acquisitionCost", a.acquisitionCost())).append(",");
+        b.append(decField("residualValue", a.residualValue())).append(",");
+        b.append(decField("usefulLifeYears", a.usefulLifeYears())).append(",");
+        b.append(field("depreciationMethod", a.depreciationMethod())).append(",");
+        b.append(field("inServiceDate", a.inServiceDate() == null ? null : a.inServiceDate().toString())).append(",");
+        b.append(field("supplierName", a.supplierName())).append(",");
+        b.append(field("invoiceReference", a.invoiceReference())).append(",");
+        b.append(field("notes", a.notes())).append(",");
+        b.append("\"active\":").append(a.active());
+        b.append("}");
+        return b.toString();
+    }
+
+    private com.benjagest.ui.model.FixedAssetEntry mapAsset(String obj) {
+        return new com.benjagest.ui.model.FixedAssetEntry(
+                textField(obj, "id"), textField(obj, "code"), textField(obj, "name"),
+                textField(obj, "description"), textField(obj, "category"),
+                textField(obj, "accountingAccountId"),
+                parseDate(textField(obj, "acquisitionDate")),
+                bigDec(obj, "acquisitionCost"), bigDec(obj, "residualValue"),
+                bigDec(obj, "usefulLifeYears"), textField(obj, "depreciationMethod"),
+                parseDate(textField(obj, "inServiceDate")),
+                parseDate(textField(obj, "disposedAt")),
+                textField(obj, "disposalReason"), bigDec(obj, "disposalValue"),
+                textField(obj, "supplierName"), textField(obj, "invoiceReference"),
+                textField(obj, "notes"), boolField(obj, "active")
+        );
+    }
+
+    // ====================================================================
+    //  Cierre ejercicio (C2)
+    // ====================================================================
+
+    public java.util.List<com.benjagest.ui.model.FiscalYearCloseEntry> listYearCloses()
+            throws IOException, InterruptedException {
+        HttpResponse<String> r = send(req(baseUrl + "/accounting/year-close").GET());
+        return parseObjects(r.body(), "periodYear", this::mapClose);
+    }
+
+    public com.benjagest.ui.model.FiscalYearCloseEntry precalculateYear(int year)
+            throws IOException, InterruptedException {
+        HttpResponse<String> r = send(req(baseUrl + "/accounting/year-close/" + year + "/precalculate")
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString("{}")));
+        return mapClose(r.body());
+    }
+
+    public com.benjagest.ui.model.FiscalYearCloseEntry closeYear(int year,
+            java.math.BigDecimal reserves, java.math.BigDecimal dividends,
+            java.math.BigDecimal losses, String notes) throws IOException, InterruptedException {
+        StringBuilder b = new StringBuilder("{");
+        b.append(decField("reservesAllocation", reserves)).append(",");
+        b.append(decField("dividendsAllocation", dividends)).append(",");
+        b.append(decField("accumulatedLossesAllocation", losses)).append(",");
+        b.append(field("notes", notes));
+        b.append("}");
+        HttpResponse<String> r = send(req(baseUrl + "/accounting/year-close/" + year + "/close")
+                .header("Content-Type", "application/json")
+                .PUT(HttpRequest.BodyPublishers.ofString(b.toString())));
+        return mapClose(r.body());
+    }
+
+    private com.benjagest.ui.model.FiscalYearCloseEntry mapClose(String obj) {
+        return new com.benjagest.ui.model.FiscalYearCloseEntry(
+                textField(obj, "id"), intFieldOrZero(obj, "periodYear"), textField(obj, "status"),
+                bigDec(obj, "incomeTotal"), bigDec(obj, "expenseTotal"),
+                bigDec(obj, "resultAmount"), bigDec(obj, "taxAmount"),
+                bigDec(obj, "resultAfterTax"),
+                bigDec(obj, "reservesAllocation"), bigDec(obj, "dividendsAllocation"),
+                bigDec(obj, "accumulatedLossesAllocation"),
+                textField(obj, "closedAt"), textField(obj, "reopenedAt"),
+                textField(obj, "notes"));
+    }
+
+    // ====================================================================
     //  DEHu
     // ====================================================================
 
