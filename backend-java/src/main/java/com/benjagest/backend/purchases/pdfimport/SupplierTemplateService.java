@@ -144,6 +144,12 @@ public class SupplierTemplateService {
                 ? rules.get("supplierName") : base.supplierName();
         BigDecimal vatPct = rules.containsKey("vatPercent")
                 ? toBigDecimal(rules.get("vatPercent")) : base.vatPercent();
+        // El extractor puede haber detectado un NIF "equivocado pero
+        // consistente" (p. ej. el LU de Amazon en vez del W español). La
+        // plantilla se buscó por ese NIF detectado; si rules trae
+        // emitterNif, lo sobrescribimos para mostrar el correcto.
+        String emitterNif = StringUtils.hasText(rules.get("emitterNif"))
+                ? rules.get("emitterNif") : base.emitterNif();
 
         // Incrementar uso de forma asíncrona — fire and forget
         try {
@@ -156,7 +162,7 @@ public class SupplierTemplateService {
 
         return new InvoiceFieldsExtractor.ExtractionResult(
                 base.allDetectedNifs(),
-                base.emitterNif(),
+                emitterNif,
                 supplierName,
                 base.invoiceNumber(),
                 base.invoiceDate(),
