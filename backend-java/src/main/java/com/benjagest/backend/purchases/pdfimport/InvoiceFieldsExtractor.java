@@ -96,6 +96,50 @@ public class InvoiceFieldsExtractor {
             "ref(?:erencia)?\\.?\\s*factura)\\s*:?\\s*([A-Z0-9][A-Z0-9\\-/_.]{2,29})"
     );
 
+    /**
+     * Tabla de cabecera tipo:
+     *   Número   Serie   Fecha       Cliente
+     *   263274   1       31-05-2026  11755
+     *
+     * Detectamos la cabecera y leemos la siguiente línea con dígitos. El
+     * primer entero de esa línea es el número de factura.
+     */
+    private static final Pattern INVOICE_NUMBER_TABLE_HEADER = Pattern.compile(
+            "(?i)\\bn[\\u00fa\\u00fa\\u00famero]*\\b[\\s\\S]{0,40}?\\bserie\\b[\\s\\S]{0,40}?\\bfecha\\b"
+    );
+
+    /**
+     * CIF explícito en pie de factura / mercantil:
+     *   "CIF B12345678", "C.I.F.: B12345678", "NIF B12345678".
+     * Mayor prioridad que NIFs sueltos en el texto.
+     */
+    private static final Pattern CIF_EXPLICIT_PATTERN = Pattern.compile(
+            "(?i)\\b(?:cif|c\\.i\\.f\\.|nif\\s+empresa)\\s*:?\\s*" +
+            "([A-HJ-NP-SUVWa-hj-np-suvw]\\d{7}[0-9A-Ja-j])\\b"
+    );
+
+    /**
+     * Línea de cabecera de tabla de TOTALES tipo:
+     *   SUMA IMPORTES % DTO DTO BASE IMPONIBLE % IVA CUOTA TOTAL A PAGAR
+     * Detectamos varias etiquetas juntas y luego leemos la siguiente
+     * línea numérica para asignar BASE / %IVA / CUOTA / TOTAL por orden.
+     */
+    private static final Pattern TOTALS_TABLE_HEADER = Pattern.compile(
+            // Importante: NO usar \b antes de % o números (no es boundary
+            // válido). Usamos lookarounds simples y espacios.
+            "(?i)base\\s+imp(?:onible)?[\\s\\S]{0,60}?%\\s*iva[\\s\\S]{0,60}?" +
+            "cuota[\\s\\S]{0,60}?total"
+    );
+
+    /** Importes/números genéricos en una línea (también enteros sueltos). */
+    private static final Pattern NUMBER_TOKEN = Pattern.compile(
+            "-?\\d{1,3}(?:\\.\\d{3})+,\\d{2}" +   // 1.234,56
+            "|-?\\d+,\\d{2}" +                     // 1234,56
+            "|-?\\d+\\.\\d{2}" +                   // 1234.56
+            "|-?\\d{1,3}(?:\\.\\d{3})+" +          // 1.234 (sin decimales)
+            "|-?\\d+"                              // entero suelto (21)
+    );
+
     /** Etiquetas para etiquetas de "TOTAL" (ES + EN). */
     private static final Pattern TOTAL_LABEL = Pattern.compile(
             "(?i)\\b(total\\s+factura|total\\s+a\\s+pagar|importe\\s+total|" +
@@ -166,29 +210,43 @@ public class InvoiceFieldsExtractor {
         // 1. Recolectar todos los NIFs (orden de aparición)
         List<String> allNifs = findAll(NIF_PATTERN, text);
 
-        // 2. Emisor: primer NIF que aparezca ANTES de cualquier etiqueta
-        //    "Cliente:/Destinatario:/...". Si no hay etiqueta, el primero.
+        // 2. Emisor: PRIORIDAD ALTA → si encontramos "CIF B12345678"
+        //    explícito (en pie o cualquier sitio), ese es el emisor.
+        //    Sin etiqueta explícita, caemos a la heurística de receptor.
         String emitterNif = guessEmitterNif(text, allNifs);
 
-        // 3. Razón social del emisor: el bloque cabecera contiene
-        //    razón social arriba seguida de NIF; tomamos la primera línea
-        //    de la cabecera que no sea una etiqueta común ni un NIF.
+        // 3. Razón social del emisor
         String supplierName = guessSupplierName(head, emitterNif);
 
-        // 4. Número de factura
+        // 4. Número de factura. Doble estrategia:
+        //    a) Regex clásico "Factura nº XYZ".
+        //    b) Tabla "Número Serie Fecha" + siguiente línea numérica.
         String invoiceNumber = findFirstGroup(INVOICE_NUMBER_PATTERN, text, 1);
         if (invoiceNumber != null) invoiceNumber = invoiceNumber.trim();
+        if (invoiceNumber == null || invoiceNumber.isBlank()) {
+            invoiceNumber = findInvoiceNumberInTable(text);
+        }
 
         // 5. Fecha
         LocalDate invoiceDate = findFirstDate(text);
 
-        // 6. Importes — primero con layout (mucho más fiable cuando
-        //    etiqueta y valor están en columnas distintas), si no fallback
-        //    al texto plano.
-        BigDecimal total = findAmountForLabel(layout, text, TOTAL_LABEL, true);
-        BigDecimal base = findAmountForLabel(layout, text, BASE_LABEL, true);
-        BigDecimal vatAmount = findAmountForLabel(layout, text, VAT_AMOUNT_LABEL, false);
-        BigDecimal vatPct = findVatPercent(text);
+        // 6. Importes — primero intentamos la TABLA DE TOTALES tipo
+        //    "BASE IMPONIBLE | %IVA | CUOTA | TOTAL" con fila de datos.
+        //    Es el caso más fiable cuando existe (facturas de software
+        //    estándar). Si no, caemos a las heurísticas por etiqueta.
+        TotalsRow totals = findTotalsTable(text);
+        BigDecimal base, vatPct, vatAmount, total;
+        if (totals != null && totals.total != null) {
+            base = totals.base;
+            vatPct = totals.vatPercent;
+            vatAmount = totals.vatAmount;
+            total = totals.total;
+        } else {
+            total = findAmountForLabel(layout, text, TOTAL_LABEL, true);
+            base = findAmountForLabel(layout, text, BASE_LABEL, true);
+            vatAmount = findAmountForLabel(layout, text, VAT_AMOUNT_LABEL, false);
+            vatPct = findVatPercent(text);
+        }
         BigDecimal retentionAmount = findAmountForLabel(layout, text, RETENTION_LABEL, false);
 
         // 7. Validación cruzada base + iva ≈ total (±0,02 €)
@@ -199,6 +257,115 @@ public class InvoiceFieldsExtractor {
                 base, vatPct, vatAmount, total,
                 hashOf(originalBytes), confidence, head
         );
+    }
+
+    /**
+     * Busca el número de factura en estructura tabla:
+     *   Número  Serie  Fecha  Cliente
+     *   263274  1      31-05-2026  11755
+     *
+     * Devuelve el primer entero de la línea siguiente a la cabecera.
+     */
+    private String findInvoiceNumberInTable(String text) {
+        Matcher h = INVOICE_NUMBER_TABLE_HEADER.matcher(text);
+        if (!h.find()) return null;
+        // Ventana de 200 chars tras la cabecera (puede haber un par de
+        // saltos hasta la fila de datos).
+        int from = h.end();
+        String tail = text.substring(from, Math.min(text.length(), from + 200));
+        // Saltar la primera línea (probablemente continuación de cabecera)
+        // y buscar la primera línea que empiece por dígitos.
+        String[] lines = tail.split("\\n");
+        for (String raw : lines) {
+            String line = raw.trim();
+            Matcher digits = Pattern.compile("^(\\d{2,12})\\b").matcher(line);
+            if (digits.find()) {
+                return digits.group(1);
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Detecta la fila de TOTALES bajo una cabecera tipo
+     * "SUMA IMPORTES % DTO DTO BASE IMPONIBLE % IVA CUOTA TOTAL A PAGAR".
+     *
+     * Tras la cabecera (en las siguientes ~3 líneas), busca una línea
+     * con varios números separados por espacios y los asigna a base /
+     * %iva / cuota / total. La estrategia es robusta porque estos
+     * datos siempre están en la última sección del documento y siguen
+     * un orden estándar en facturas españolas.
+     *
+     * @return {@code null} si no hay match; un {@link TotalsRow} con
+     *         los campos detectados si encaja.
+     */
+    private TotalsRow findTotalsTable(String text) {
+        Matcher h = TOTALS_TABLE_HEADER.matcher(text);
+        if (!h.find()) return null;
+        int from = h.end();
+        String tail = text.substring(from, Math.min(text.length(), from + 300));
+        // La fila de datos suele estar en la primera línea no vacía tras
+        // la cabecera. Iteramos por líneas.
+        String[] lines = tail.split("\\n");
+        for (String raw : lines) {
+            String line = raw.trim();
+            if (line.isEmpty()) continue;
+            // Tokenizar todos los números de la línea
+            List<String> tokens = new ArrayList<>();
+            Matcher m = NUMBER_TOKEN.matcher(line);
+            while (m.find()) tokens.add(m.group());
+            if (tokens.size() < 3) continue;
+
+            // Heurística: en facturas españolas con cabecera completa
+            // (SUMA IMPORTES, % DTO, DTO, BASE IMPONIBLE, % IVA, CUOTA,
+            // TOTAL A PAGAR), los campos clave son SIEMPRE los últimos:
+            //   ... [N-4]=BASE  [N-3]=%IVA  [N-2]=CUOTA  [N-1]=TOTAL
+            //
+            // Si la línea tiene menos tokens (sin descuentos), el orden
+            // es: BASE %IVA CUOTA TOTAL.
+            TotalsRow row = new TotalsRow();
+            int n = tokens.size();
+            row.total = parseAmount(tokens.get(n - 1));
+            row.vatAmount = parseAmount(tokens.get(n - 2));
+            row.vatPercent = parseAmount(tokens.get(n - 3));
+            row.base = parseAmount(tokens.get(n - 4));
+            // Validar coherencia: total > 0 y total = base + vatAmount (±0,05)
+            if (row.total == null || row.base == null) continue;
+            if (row.total.signum() <= 0) continue;
+            if (row.vatAmount != null) {
+                BigDecimal sum = row.base.add(row.vatAmount);
+                if (sum.subtract(row.total).abs()
+                        .compareTo(new BigDecimal("0.05")) > 0) {
+                    // Los 4 últimos números no son base/%iva/cuota/total.
+                    // Probemos otra alineación (3 tokens BASE + CUOTA + TOTAL
+                    // sin %).
+                    if (n >= 3) {
+                        BigDecimal t = parseAmount(tokens.get(n - 1));
+                        BigDecimal q = parseAmount(tokens.get(n - 2));
+                        BigDecimal b = parseAmount(tokens.get(n - 3));
+                        if (t != null && q != null && b != null
+                                && b.add(q).subtract(t).abs()
+                                        .compareTo(new BigDecimal("0.05")) <= 0) {
+                            row.base = b;
+                            row.vatAmount = q;
+                            row.total = t;
+                            row.vatPercent = null;
+                            return row;
+                        }
+                    }
+                    continue;
+                }
+            }
+            return row;
+        }
+        return null;
+    }
+
+    private static final class TotalsRow {
+        BigDecimal base;
+        BigDecimal vatPercent;
+        BigDecimal vatAmount;
+        BigDecimal total;
     }
 
     // ====================================================================
@@ -242,8 +409,16 @@ public class InvoiceFieldsExtractor {
 
     private String guessEmitterNif(String text, List<String> allNifs) {
         if (allNifs.isEmpty()) return null;
-        // Buscar la primera ocurrencia de etiqueta receptor. Todo NIF que
-        // aparezca antes (en posición textual) es candidato a emisor.
+        // PRIORIDAD 1: "CIF B12345678" explícito (pie de factura).
+        //   En facturas españolas, el CIF de la sociedad emisora suele
+        //   aparecer en el pie ("Inscrita en el Registro Mercantil…
+        //   CIF B12345678") porque arriba la empresa pone solo el nombre.
+        Matcher cif = CIF_EXPLICIT_PATTERN.matcher(text);
+        if (cif.find()) {
+            return cif.group(1).toUpperCase();
+        }
+        // PRIORIDAD 2: el primer NIF que aparezca antes de cualquier
+        // etiqueta receptor explícita ("Cliente:", "Bill to", etc).
         Matcher recv = RECEIVER_LABEL.matcher(text);
         int receiverPos = recv.find() ? recv.start() : Integer.MAX_VALUE;
         Matcher nifMatcher = NIF_PATTERN.matcher(text);
@@ -251,6 +426,11 @@ public class InvoiceFieldsExtractor {
             if (nifMatcher.start() < receiverPos) {
                 return nifMatcher.group(1).toUpperCase();
             }
+        }
+        // PRIORIDAD 3: el primer CIF (letra+8) en el texto. Empieza por
+        // letra → más probable que sea sociedad emisora que persona física.
+        for (String n : allNifs) {
+            if (n.matches("^[A-HJ-NP-SUVW].*")) return n;
         }
         // Fallback: primer NIF detectado.
         return allNifs.get(0);
