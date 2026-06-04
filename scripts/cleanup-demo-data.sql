@@ -67,6 +67,33 @@ DELETE FROM customer_contacts;
 DELETE FROM customers;
 
 -- ============================================================
+-- Notificaciones genéricas (módulo "Informes" alimenta de aquí)
+-- y consultas AEAT placeholder (modulo tax legacy de V2)
+-- ============================================================
+
+DELETE FROM notifications;
+DELETE FROM aeat_discrepancies;
+DELETE FROM aeat_consultations;
+
+-- ============================================================
+-- Compras / proveedores demo
+-- ============================================================
+
+DELETE FROM purchase_invoice_lines;
+DELETE FROM purchase_invoices;
+DELETE FROM recurring_expenses;
+DELETE FROM suppliers;
+
+-- ============================================================
+-- Empleados demo (V3 mete 3 con PIN — los borramos pero
+-- mantenemos los user_accounts: admin@ y empresario@ son usables)
+-- ============================================================
+
+-- Antes hay que limpiar dependencias de employees
+DELETE FROM employment_contracts;
+DELETE FROM employees;
+
+-- ============================================================
 -- Limpieza de eventos del SIF que referencian facturas borradas
 -- ============================================================
 -- Los eventos del SIF (registry) NO se borran porque son la cadena
