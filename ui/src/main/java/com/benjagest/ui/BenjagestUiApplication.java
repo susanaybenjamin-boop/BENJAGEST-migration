@@ -1828,18 +1828,28 @@ public class BenjagestUiApplication extends Application {
         dialog.getDialogPane().setContent(g);
         dialog.getDialogPane().setPrefWidth(620);
 
-        // Botón "Guardar plantilla" deshabilitado si no hay NIF emisor
-        // (sin NIF no podemos asociar la plantilla a nadie).
+        // Botón "Guardar plantilla" deshabilitado si NI el extractor ni el
+        // usuario han informado un NIF — sin ningún NIF no hay clave de
+        // búsqueda posible.
+        final String detectedNif = (emitter == null) ? "" : emitter.trim();
         Button saveBtn = (Button) dialog.getDialogPane().lookupButton(saveTemplateBt);
-        Runnable refreshSaveEnabled = () -> saveBtn.setDisable(
-                emitterField.getText() == null || emitterField.getText().isBlank());
+        Runnable refreshSaveEnabled = () -> {
+            String corr = emitterField.getText() == null ? "" : emitterField.getText().trim();
+            saveBtn.setDisable(detectedNif.isEmpty() && corr.isEmpty());
+        };
         refreshSaveEnabled.run();
         emitterField.textProperty().addListener((o, ov, nv) -> refreshSaveEnabled.run());
 
         saveBtn.addEventFilter(javafx.event.ActionEvent.ACTION, ev -> {
             ev.consume(); // no cerrar
-            // Componer rules JSON con los valores fijos (supplierName y
-            // vatPercent si tienen valor).
+            // Componer rules JSON con los valores fijos. CLAVE de diseño:
+            // la plantilla se busca por el NIF que DETECTA el extractor
+            // (aunque sea el equivocado, p. ej. el LU de Amazon en vez del
+            // W español). Si el usuario corrige el NIF en el modal, ese
+            // NIF corregido se guarda como regla `emitterNif` para que
+            // futuras importaciones (que detectarán otra vez lo mismo)
+            // muestren el NIF correcto. Así la corrección sobrevive al
+            // hecho de que el extractor falle de forma consistente.
             StringBuilder rules = new StringBuilder("{");
             boolean first = true;
             String sName = supplierField.getText();
@@ -1851,17 +1861,25 @@ public class BenjagestUiApplication extends Application {
             if (pct != null && !pct.isBlank() && !pct.equals("—")) {
                 if (!first) rules.append(",");
                 rules.append("\"vatPercent\":\"").append(pct.trim()).append("\"");
+                first = false;
+            }
+            String correctedNif = emitterField.getText() == null ? "" : emitterField.getText().trim();
+            if (!correctedNif.isEmpty() && !correctedNif.equalsIgnoreCase(detectedNif)) {
+                if (!first) rules.append(",");
+                rules.append("\"emitterNif\":\"").append(correctedNif.replace("\"", "\\\"")).append("\"");
             }
             rules.append("}");
-            String supplierNif = emitterField.getText().trim();
+            // Llave de búsqueda: el detectado si existe; si el extractor no
+            // detectó nada, caemos al corregido como llave (caso raro).
+            String lookupNif = detectedNif.isEmpty() ? correctedNif : detectedNif;
             Task<Void> task = new Task<>() {
                 @Override protected Void call() throws Exception {
-                    pdfImportApi.saveTemplate(supplierNif, sName, rules.toString());
+                    pdfImportApi.saveTemplate(lookupNif, sName, rules.toString());
                     return null;
                 }
             };
             task.setOnSucceeded(e -> showInfo(t("purchases.import.template_saved.title"),
-                    t("purchases.import.template_saved.body") + " " + supplierNif));
+                    t("purchases.import.template_saved.body") + " " + lookupNif));
             task.setOnFailed(e -> showError(t("purchases.import.template_failed.title"),
                     t("purchases.import.template_failed.body")));
             start(task, "pdf-template-save");
