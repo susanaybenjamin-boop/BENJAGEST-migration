@@ -145,9 +145,17 @@ public class InvoiceFieldsExtractor {
             "(\\d{1,2}(?:[,.]\\d{1,2})?)\\s*%"
     );
 
-    /** Número de factura — versión amplia (incluye "Número de la factura"). */
+    /**
+     * Número de factura — versión amplia. Acepta variantes:
+     *   - "Factura nº X" / "Número factura X" / "Nº de factura X"
+     *   - "Número de la factura X" (Amazon)
+     *   - "Número del documento X" (Amazon Bellota)
+     *   - "Núm. Factura X" (Solred / Repsol)
+     *   - "Invoice no/#/number X"
+     */
     private static final Pattern INVOICE_NUMBER_PATTERN = Pattern.compile(
-            "(?i)(?:n[\\u00ba\\u00b0\\.\\s\\u00famero]*(?:de\\s+(?:la\\s+)?)?factura|" +
+            "(?i)(?:n[\\u00ba\\u00b0\\.\\s\\u00famero]*(?:de\\s+(?:la\\s+|el\\s+)?)?(?:factura|documento)|" +
+            "n[\\u00famero]+\\.?\\s*factura|" +
             "factura\\s*n[\\u00ba\\u00b0\\.\\s]*|" +
             "invoice\\s*(?:no|#|number)?|" +
             "ref(?:erencia)?\\.?\\s*factura)\\s*:?\\s*\\n?\\s*([A-Z0-9][A-Z0-9\\-/_.]{2,29})"
@@ -309,6 +317,9 @@ public class InvoiceFieldsExtractor {
         if (totals == null) {
             totals = findAmazonTotalsTable(text);
         }
+        if (totals == null) {
+            totals = findSolredTotalsRow(text);
+        }
         BigDecimal base, vatPct, vatAmount, total;
         if (totals != null && totals.total != null) {
             base = totals.base;
@@ -440,6 +451,31 @@ public class InvoiceFieldsExtractor {
         BigDecimal vatPercent;
         BigDecimal vatAmount;
         BigDecimal total;
+    }
+
+    /**
+     * Detector para facturas tipo Solred/Repsol (combustibles):
+     *
+     *   Total Factura en Euros   169,14   16,91   186,05
+     *
+     * Estos PDFs no traen cabecera "BASE IMPONIBLE" / "TOTAL". El
+     * marcador único es la fila "Total Factura en Euros" con 3
+     * importes: base, cuota IVA, total.
+     */
+    private TotalsRow findSolredTotalsRow(String text) {
+        Pattern line = Pattern.compile(
+                "(?i)total\\s+factura\\s+en\\s+euros\\s+" +
+                "(-?\\d+(?:\\.\\d{3})*[,.]\\d{2})\\s+" +
+                "(-?\\d+(?:\\.\\d{3})*[,.]\\d{2})\\s+" +
+                "(-?\\d+(?:\\.\\d{3})*[,.]\\d{2})"
+        );
+        Matcher m = line.matcher(text);
+        if (!m.find()) return null;
+        TotalsRow row = new TotalsRow();
+        row.base = parseAmount(m.group(1));
+        row.vatAmount = parseAmount(m.group(2));
+        row.total = parseAmount(m.group(3));
+        return row;
     }
 
     /**
@@ -602,17 +638,40 @@ public class InvoiceFieldsExtractor {
         return guessSupplierNameFromHead(head, emitterNif);
     }
 
+    /**
+     * Palabras que aparecen como cabeceras de bloque en facturas y NO
+     * son nombre de proveedor. Lista mantenible — añadir variantes
+     * conforme aparecen casos reales.
+     */
+    private static final java.util.Set<String> HEADER_BLACKLIST = java.util.Set.of(
+            "DIRECCIÓN DE CORRESPONDENCIA", "DIRECCION DE CORRESPONDENCIA",
+            "DOMICILIO FISCAL", "DIRECCIÓN DE FACTURACIÓN", "DIRECCION DE FACTURACION",
+            "DIRECCIÓN DE ENVÍO", "DIRECCION DE ENVIO",
+            "BILLING ADDRESS", "SHIPPING ADDRESS", "INVOICE ADDRESS",
+            "PAGADO", "PAID", "PENDIENTE", "TOTAL", "SUBTOTAL",
+            "FACTURA", "INVOICE", "RECIBO", "ALBARAN", "ALBARÁN",
+            "DESCARGA TUS FACTURAS DE FORMA",
+            "FACTURACIÓN POR OPERACIONES REALIZADAS CON TARJETA SOLRED MÁS"
+    );
+
     private String guessSupplierNameFromHead(String head, String emitterNif) {
         if (head == null || head.isBlank()) return null;
         String[] lines = head.split("\n");
         for (String raw : lines) {
             String s = raw.trim();
             if (s.length() < 3 || s.length() > 120) continue;
+            // Bloqueo por blacklist de cabeceras conocidas
+            String upper = s.toUpperCase();
+            boolean blacklisted = false;
+            for (String b : HEADER_BLACKLIST) {
+                if (upper.equals(b) || upper.startsWith(b)) { blacklisted = true; break; }
+            }
+            if (blacklisted) continue;
             if (s.matches("(?i).*\\b(factura|invoice|recibo|albaran)\\b.*")) continue;
             if (s.matches("(?i).*\\b(fecha|date|n\\u00ba|num|number)\\b.*")) continue;
             if (emitterNif != null && s.toUpperCase().contains(emitterNif)) continue;
             // Descartar líneas que sean obviamente direcciones (números + calle)
-            if (s.matches("(?i).*\\b(c/|calle|avda|avenida|c\\.p\\.|cp\\s+\\d{5})\\b.*")) continue;
+            if (s.matches("(?i).*\\b(c/|calle|cl|avda|avenida|c\\.p\\.|cp\\s+\\d{5})\\b.*")) continue;
             // Aceptar si tiene mayúscula inicial y letras (no solo dígitos)
             if (s.matches(".*[A-Z\\u00c0-\\u017f].*[a-z\\u00e0-\\u017f].*")
                     || s.matches("[A-Z\\u00c0-\\u017f0-9\\s,.&'\\-]{3,80}")) {
