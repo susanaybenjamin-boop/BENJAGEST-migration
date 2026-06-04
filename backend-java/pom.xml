@@ -118,6 +118,17 @@
             <artifactId>bcpkix-jdk18on</artifactId>
             <version>1.78.1</version>
         </dependency>
+        <!-- C3: extraccion de texto de PDF para import de facturas
+             recibidas. PDFBox es Apache 2.0 y maneja PDFs con texto
+             nativo (mayoria de facturas de software). Para PDFs
+             escaneados/imagen, sera necesario Tess4J (OCR Tesseract)
+             en un slice posterior — eso requiere instalar el binario
+             Tesseract en el sistema, decision a tomar entonces. -->
+        <dependency>
+            <groupId>org.apache.pdfbox</groupId>
+            <artifactId>pdfbox</artifactId>
+            <version>3.0.3</version>
+        </dependency>
 
         <dependency>
             <groupId>org.springframework.boot</groupId>
