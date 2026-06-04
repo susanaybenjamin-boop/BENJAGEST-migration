@@ -82,6 +82,28 @@ public class InvoiceFieldsExtractor {
     );
 
     /**
+     * NIF español ETIQUETADO ("NIF W0184081H", "C.I.F. B12345678", "NIF
+     * de la sucursal W0184081H"…). Mayor prioridad que el EU VAT cuando
+     * conviven (caso típico: Amazon ES tiene LU20260743 + W0184081H — el
+     * fiscal en España es el W, NO el LU).
+     */
+    private static final Pattern SPANISH_NIF_LABELED_PATTERN = Pattern.compile(
+            "(?i)\\b(?:nif|c\\.?i\\.?f\\.?)\\s*(?:de\\s+la\\s+\\w+\\s+)?(?:emisor|empresa|sucursal|fiscal)?\\s*:?\\s*" +
+            "([XYZxyz]?\\d{7,8}[A-HJ-NP-TV-Za-hj-np-tv-z]|" +
+            "[A-HJ-NP-SUVWa-hj-np-suvw]\\d{7}[0-9A-Ja-j])\\b"
+    );
+
+    /**
+     * VAT español "ESW0184081H" o "ES W0184081H" — extraemos la parte
+     * sin el prefijo ES porque es un NIF español válido.
+     */
+    private static final Pattern SPANISH_VAT_PREFIX_PATTERN = Pattern.compile(
+            "(?i)\\bES\\s?" +
+            "([XYZ]?\\d{7,8}[A-HJ-NP-TV-Z]|" +
+            "[A-HJ-NP-SUVW]\\d{7}[0-9A-J])\\b"
+    );
+
+    /**
      * Bloque "Vendido por" típico de Amazon. La línea siguiente es la
      * razón social del proveedor.
      */
@@ -154,7 +176,7 @@ public class InvoiceFieldsExtractor {
      *   - "Invoice no/#/number X"
      */
     private static final Pattern INVOICE_NUMBER_PATTERN = Pattern.compile(
-            "(?i)(?:n[\\u00ba\\u00b0\\.\\s\\u00famero]*(?:de\\s+(?:la\\s+|el\\s+)?)?(?:factura|documento)|" +
+            "(?i)(?:n[\\u00ba\\u00b0\\.\\s\\u00famero]*(?:del\\s+|de\\s+(?:la\\s+|el\\s+)?)?(?:factura|documento)|" +
             "n[\\u00famero]+\\.?\\s*factura|" +
             "factura\\s*n[\\u00ba\\u00b0\\.\\s]*|" +
             "invoice\\s*(?:no|#|number)?|" +
@@ -259,6 +281,73 @@ public class InvoiceFieldsExtractor {
     public ExtractionResult extractFromLayout(LayoutDocument document, byte[] originalBytes) {
         if (document == null) return extract("", null, originalBytes);
         return extract(document.toPlainText(), document, originalBytes);
+    }
+
+    /**
+     * Extrae UNA O VARIAS facturas del mismo PDF. Caso típico: Amazon
+     * agrupa varias facturas pequeñas en un solo PDF (una página por
+     * factura) — CONTENDO ya lo soportaba; aquí se replica.
+     *
+     * Estrategia de partición:
+     *   - Se busca en CADA página el marcador "Página X de Y".
+     *   - Cuando aparece "Página 1 de Y", ese grupo de páginas
+     *     contiguas (Y páginas) constituye UNA factura.
+     *   - Si NINGUNA página tiene marcador, se devuelve UNA sola
+     *     factura con todo el documento (comportamiento legacy).
+     *
+     * Cada factura comparte el {@code documentSha256} del PDF completo
+     * — eso identifica el contenedor, no la factura individual. La
+     * deduplicación fina (por nº de factura + emisor) se hace al
+     * persistir.
+     */
+    public List<ExtractionResult> extractAll(LayoutDocument document, byte[] originalBytes) {
+        if (document == null || document.pages().isEmpty()) {
+            return List.of(extract("", null, originalBytes));
+        }
+        // 1) Calcular marcador "Página X de Y" por página.
+        Pattern marker = Pattern.compile(
+                "(?i)(?:p[áa]gina|page)\\s+(\\d+)\\s+(?:de|of)\\s+(\\d+)");
+        List<int[]> pageMarkers = new ArrayList<>(); // [pageIndex, x, y]
+        for (int i = 0; i < document.pages().size(); i++) {
+            LayoutDocument.LayoutPage page = document.pages().get(i);
+            StringBuilder pageText = new StringBuilder();
+            for (LayoutDocument.LayoutLine l : page.lines()) {
+                pageText.append(l.text()).append('\n');
+            }
+            Matcher m = marker.matcher(pageText);
+            if (m.find()) {
+                pageMarkers.add(new int[]{
+                        i, Integer.parseInt(m.group(1)),
+                        Integer.parseInt(m.group(2))});
+            } else {
+                pageMarkers.add(new int[]{i, 0, 0});
+            }
+        }
+        boolean anyMarker = false;
+        for (int[] mk : pageMarkers) if (mk[1] > 0 && mk[2] > 0) { anyMarker = true; break; }
+        if (!anyMarker) {
+            return List.of(extract(document.toPlainText(), document, originalBytes));
+        }
+        // 2) Agrupar páginas por marcador "Página 1 de N".
+        List<List<Integer>> groups = new ArrayList<>();
+        List<Integer> current = new ArrayList<>();
+        for (int[] mk : pageMarkers) {
+            if (mk[1] == 1 && !current.isEmpty()) {
+                groups.add(current);
+                current = new ArrayList<>();
+            }
+            current.add(mk[0]);
+        }
+        if (!current.isEmpty()) groups.add(current);
+        // 3) Para cada grupo, construir un LayoutDocument parcial y
+        //    correr la extracción individual.
+        List<ExtractionResult> results = new ArrayList<>();
+        for (List<Integer> g : groups) {
+            LayoutDocument sub = new LayoutDocument();
+            for (int idx : g) sub.addPage(document.pages().get(idx));
+            results.add(extract(sub.toPlainText(), sub, originalBytes));
+        }
+        return results;
     }
 
     private ExtractionResult extract(String rawText, LayoutDocument layout, byte[] originalBytes) {
@@ -495,54 +584,91 @@ public class InvoiceFieldsExtractor {
      *     importe → total final.
      */
     private TotalsRow findAmazonTotalsTable(String text) {
+        // Estrategia A (anterior, frágil): localizar cabecera "IVA % Precio
+        // total (IVA excluido)" y leer las líneas siguientes.
         Pattern header = Pattern.compile(
                 "(?i)iva\\s*%[\\s\\S]{0,30}?precio\\s+total[\\s\\S]{0,30}?\\(?iva\\s+excluido"
         );
         Matcher h = header.matcher(text);
-        if (!h.find()) return null;
-        int from = h.end();
-        String tail = text.substring(from, Math.min(text.length(), from + 400));
-        String[] lines = tail.split("\\n");
+        if (h.find()) {
+            int from = h.end();
+            TotalsRow row = scanAmazonPctLine(text, from, 400);
+            if (row != null) return row;
+        }
+        // Estrategia B (nueva): SIGNATURE — escanear TODAS las líneas en
+        //   busca de "<pct>% <importe1> <importe2>" estricto + un
+        //   "Total <importe>" cercano que cumpla base+iva ≈ total. Sirve
+        //   incluso cuando el layout no preserva la cabecera (PDFs cuyas
+        //   columnas se desordenan al extraer).
+        return scanAmazonPctLine(text, 0, text.length());
+    }
 
-        // Buscar línea con "21% 21,73 € 4,56 €" → 3 tokens: %, base, cuota.
-        TotalsRow row = new TotalsRow();
+    /**
+     * Escanea una ventana de texto buscando la firma de la fila de
+     * totales tipo Amazon:
+     *
+     *   - Una línea cuyo contenido completo sea "<pct>% <base> [€] <iva> [€]"
+     *     (3 tokens, estrictos, sin más).
+     *   - En las 10 líneas siguientes, una línea "Total <importe> [€]"
+     *     con UN solo importe. Si hay varias, nos quedamos con la mayor
+     *     (el total final).
+     *   - Validación: base + iva ≈ total (±0,10 €). Si no encaja, se
+     *     descarta y se intenta la siguiente coincidencia — protege
+     *     contra falsos positivos en líneas del cuerpo (descuentos, etc.).
+     */
+    private TotalsRow scanAmazonPctLine(String text, int fromOffset, int maxChars) {
+        String slice = text.substring(fromOffset,
+                Math.min(text.length(), fromOffset + maxChars));
+        String[] lines = slice.split("\\n");
+        Pattern pctLinePattern = Pattern.compile(
+                "^(\\d{1,2}(?:[,.]\\d{1,2})?)\\s*%\\s+" +
+                "(-?\\d+(?:[.,]\\d{3})*[,.]\\d{2})\\s*\\u20ac?\\s+" +
+                "(-?\\d+(?:[.,]\\d{3})*[,.]\\d{2})\\s*\\u20ac?\\s*$"
+        );
+        Pattern totalLinePattern = Pattern.compile(
+                "(?i)^total\\b[^\\n]*?(-?\\d+(?:[.,]\\d{3})*[,.]\\d{2})\\s*\\u20ac?\\s*$"
+        );
         for (int i = 0; i < lines.length; i++) {
             String line = lines[i].trim();
             if (line.isEmpty()) continue;
-            // Detectar "<n>% <importe1> <importe2>"
-            Matcher pctLine = Pattern.compile(
-                    "^(\\d{1,2}(?:[,.]\\d{1,2})?)\\s*%\\s+" +
-                    "(-?\\d+(?:[.,]\\d{2,3})?(?:[.,]\\d{2})?)\\s*\\u20ac?\\s+" +
-                    "(-?\\d+(?:[.,]\\d{2,3})?(?:[.,]\\d{2})?)"
-            ).matcher(line);
-            if (pctLine.find()) {
-                row.vatPercent = parseAmount(pctLine.group(1));
-                row.base = parseAmount(pctLine.group(2));
-                row.vatAmount = parseAmount(pctLine.group(3));
-                // El total final viene en línea "Total <importe>"
-                for (int j = i + 1; j < lines.length; j++) {
-                    String tline = lines[j].trim();
-                    Matcher totalLine = Pattern.compile(
-                            "^(?i)total\\s+.*?(-?\\d+(?:\\.\\d{3})*[,.]\\d{2})\\s*\\u20ac?\\s*$"
-                    ).matcher(tline);
-                    if (totalLine.find()) {
-                        BigDecimal candidate = parseAmount(totalLine.group(1));
-                        if (candidate != null && row.total == null) {
-                            row.total = candidate;
-                        } else if (candidate != null && candidate.compareTo(row.total) > 0) {
-                            // El último "Total" suele ser el total real
-                            row.total = candidate;
-                        }
+            Matcher pct = pctLinePattern.matcher(line);
+            if (!pct.find()) continue;
+            BigDecimal vatPct = parseAmount(pct.group(1));
+            BigDecimal base = parseAmount(pct.group(2));
+            BigDecimal vat = parseAmount(pct.group(3));
+            if (base == null || vat == null) continue;
+            // Coherencia interna: la cuota no puede ser mayor que la base
+            // (descarta capturas del cuerpo tipo "1 12,99 21%" malalineadas).
+            if (vat.compareTo(base) > 0) continue;
+
+            // Buscar el total final en las siguientes 10 líneas.
+            BigDecimal bestTotal = null;
+            for (int j = i + 1; j < Math.min(lines.length, i + 11); j++) {
+                String tline = lines[j].trim();
+                Matcher tm = totalLinePattern.matcher(tline);
+                if (tm.find()) {
+                    BigDecimal cand = parseAmount(tm.group(1));
+                    if (cand == null) continue;
+                    if (bestTotal == null || cand.compareTo(bestTotal) > 0) {
+                        bestTotal = cand;
                     }
                 }
-                if (row.total != null) return row;
-                // Fallback: si no encontramos "Total", calculamos
-                // base + cuota como total estimado.
-                if (row.base != null && row.vatAmount != null) {
-                    row.total = row.base.add(row.vatAmount);
-                    return row;
-                }
             }
+            BigDecimal expected = base.add(vat);
+            if (bestTotal == null) {
+                // Sin "Total" explícito → asumimos base+iva como total.
+                bestTotal = expected;
+            }
+            // Validación cruzada estricta para descartar falsos positivos.
+            if (bestTotal.subtract(expected).abs()
+                    .compareTo(new BigDecimal("0.10")) > 0) continue;
+
+            TotalsRow row = new TotalsRow();
+            row.vatPercent = vatPct;
+            row.base = base;
+            row.vatAmount = vat;
+            row.total = bestTotal;
+            return row;
         }
         return null;
     }
@@ -587,31 +713,49 @@ public class InvoiceFieldsExtractor {
     }
 
     private String guessEmitterNif(String text, List<String> allNifs, List<String> allEuVat) {
-        // PRIORIDAD 1: "IVA LU20260743" o "VAT IE…" etiquetado.
-        //   Amazon EU y otros proveedores intracomunitarios.
-        Matcher eu = EU_VAT_LABELED_PATTERN.matcher(text);
-        if (eu.find()) {
-            return eu.group(1).toUpperCase();
+        // Determinar dónde aparece la etiqueta de receptor para descartar
+        // NIFs que estén por debajo (esos son del cliente, no del emisor).
+        Matcher recv = RECEIVER_LABEL.matcher(text);
+        int receiverPos = recv.find() ? recv.start() : Integer.MAX_VALUE;
+
+        // PRIORIDAD 1: NIF español ETIQUETADO ("NIF W0184081H") antes del
+        //   receptor. Cubre Amazon ES, donde conviven LU20260743 (matriz)
+        //   y W0184081H (sucursal española) — el fiscal es el W.
+        Matcher snif = SPANISH_NIF_LABELED_PATTERN.matcher(text);
+        while (snif.find()) {
+            if (snif.start() < receiverPos) {
+                return snif.group(1).toUpperCase();
+            }
         }
-        // PRIORIDAD 2: "CIF B12345678" explícito (pie español).
+        // PRIORIDAD 2: VAT español "ESW0184081H" — extraer el NIF.
+        Matcher svat = SPANISH_VAT_PREFIX_PATTERN.matcher(text);
+        while (svat.find()) {
+            if (svat.start() < receiverPos) {
+                return svat.group(1).toUpperCase();
+            }
+        }
+        // PRIORIDAD 3: "CIF B12345678" explícito (pie español).
         Matcher cif = CIF_EXPLICIT_PATTERN.matcher(text);
         if (cif.find()) {
             return cif.group(1).toUpperCase();
         }
-        // PRIORIDAD 3: el primer NIF que aparezca antes de cualquier
-        // etiqueta receptor explícita ("Cliente:", "Bill to", etc).
-        Matcher recv = RECEIVER_LABEL.matcher(text);
-        int receiverPos = recv.find() ? recv.start() : Integer.MAX_VALUE;
+        // PRIORIDAD 4: el primer NIF nacional antes del receptor.
         Matcher nifMatcher = NIF_PATTERN.matcher(text);
         while (nifMatcher.find()) {
             if (nifMatcher.start() < receiverPos) {
                 return nifMatcher.group(1).toUpperCase();
             }
         }
-        // PRIORIDAD 4: el primer VAT EU sin etiqueta (Amazon a veces lo
-        // pone suelto entre paréntesis).
+        // PRIORIDAD 5: "IVA LU20260743" etiquetado — solo si NO hay NIF
+        //   español ya. Útil para proveedores 100% extranjeros que solo
+        //   facturan con VAT (no tienen sucursal en España).
+        Matcher eu = EU_VAT_LABELED_PATTERN.matcher(text);
+        if (eu.find()) {
+            return eu.group(1).toUpperCase();
+        }
+        // PRIORIDAD 6: el primer VAT EU sin etiqueta.
         if (!allEuVat.isEmpty()) return allEuVat.get(0);
-        // PRIORIDAD 5: el primer CIF (letra+8) en el texto. Empieza por
+        // PRIORIDAD 7: el primer CIF (letra+8) en el texto. Empieza por
         // letra → más probable que sea sociedad emisora que persona física.
         for (String n : allNifs) {
             if (n.matches("^[A-HJ-NP-SUVW].*")) return n;

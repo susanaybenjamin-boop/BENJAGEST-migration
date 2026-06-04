@@ -3,6 +3,8 @@ package com.benjagest.backend.purchases.pdfimport;
 import com.benjagest.backend.auth.RequiresRole;
 import com.benjagest.backend.modules.RequiresModule;
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -50,7 +52,7 @@ public class PdfImportController {
      * (default 1MB, se puede subir a 10MB si hay PDFs grandes).
      */
     @PostMapping
-    public InvoiceFieldsExtractor.ExtractionResult extract(@RequestParam("file") MultipartFile file) {
+    public List<InvoiceFieldsExtractor.ExtractionResult> extract(@RequestParam("file") MultipartFile file) {
         if (file == null || file.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Archivo PDF requerido");
         }
@@ -72,11 +74,16 @@ public class PdfImportController {
                         "El PDF no contiene texto extraible (puede ser una imagen escaneada). "
                                 + "El soporte OCR para PDFs escaneados se anyadira en un slice futuro.");
             }
-            var baseResult = fieldsExtractor.extractFromLayout(layout, bytes);
-            // Aplicar plantilla por proveedor si existe (sobrescribe
-            // supplierName, vatPercent, … con los valores aprendidos).
-            var template = templateService.findByNif(baseResult.emitterNif());
-            return templateService.apply(baseResult, template);
+            // Multi-factura: Amazon puede empaquetar varias facturas en
+            // un único PDF (cada una con su "Página 1 de N"). El
+            // extractor devuelve una lista; la UI procesa una por una.
+            var rawResults = fieldsExtractor.extractAll(layout, bytes);
+            List<InvoiceFieldsExtractor.ExtractionResult> out = new ArrayList<>();
+            for (var r : rawResults) {
+                var template = templateService.findByNif(r.emitterNif());
+                out.add(templateService.apply(r, template));
+            }
+            return out;
         } catch (IOException e) {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
                     "No se pudo leer el PDF: " + e.getMessage());

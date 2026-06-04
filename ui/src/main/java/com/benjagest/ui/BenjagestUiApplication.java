@@ -1751,10 +1751,66 @@ public class BenjagestUiApplication extends Application {
                 return pdfImportApi.uploadAndExtract(file);
             }
         };
-        task.setOnSucceeded(ev -> showExtractionResult(task.getValue(), file.getName()));
+        task.setOnSucceeded(ev -> {
+            // El backend ahora devuelve SIEMPRE un array JSON, incluso
+            // con una sola factura. Multi-factura (Amazon) → un diálogo
+            // por cada elemento, en secuencia (showAndWait bloquea).
+            List<String> invoices = splitJsonArrayObjects(task.getValue());
+            if (invoices.isEmpty()) {
+                showError(t("purchases.import.fail.title"),
+                        t("purchases.import.fail.body"));
+                return;
+            }
+            int n = invoices.size();
+            for (int i = 0; i < n; i++) {
+                String suffix = n > 1 ? "  (" + (i + 1) + "/" + n + ")" : "";
+                showExtractionResult(invoices.get(i), file.getName() + suffix);
+            }
+        });
         task.setOnFailed(ev -> showError(t("purchases.import.fail.title"),
                 t("purchases.import.fail.body")));
         start(task, "purchases-pdf-import");
+    }
+
+    /**
+     * Parte un array JSON top-level "[{...},{...}]" en una lista de
+     * objetos top-level. Tolera strings con llaves escapadas dentro.
+     * No es un parser JSON completo — solo necesitamos separar objetos
+     * en el primer nivel del array.
+     */
+    private List<String> splitJsonArrayObjects(String arrayJson) {
+        List<String> out = new ArrayList<>();
+        if (arrayJson == null) return out;
+        String s = arrayJson.trim();
+        if (s.isEmpty()) return out;
+        // Si nos pasan un objeto suelto (no array), tratarlo como
+        // lista de 1.
+        if (s.startsWith("{")) {
+            out.add(s);
+            return out;
+        }
+        int depth = 0;
+        int start = -1;
+        boolean inString = false;
+        boolean escape = false;
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            if (escape) { escape = false; continue; }
+            if (c == '\\') { escape = true; continue; }
+            if (c == '"') { inString = !inString; continue; }
+            if (inString) continue;
+            if (c == '{') {
+                if (depth == 0) start = i;
+                depth++;
+            } else if (c == '}') {
+                depth--;
+                if (depth == 0 && start >= 0) {
+                    out.add(s.substring(start, i + 1));
+                    start = -1;
+                }
+            }
+        }
+        return out;
     }
 
     private void showExtractionResult(String json, String filename) {
