@@ -90,6 +90,7 @@ public class LaborApiClient {
         b.append(field("hireDate", e.hireDate() == null ? null : e.hireDate().toString())).append(",");
         b.append(field("terminationDate", e.terminationDate() == null ? null : e.terminationDate().toString())).append(",");
         b.append(field("terminationReason", e.terminationReason())).append(",");
+        b.append("\"geolocationEnabled\":").append(e.geolocationEnabled()).append(",");
         b.append("\"active\":").append(e.active());
         b.append("}");
         return b.toString();
@@ -119,6 +120,7 @@ public class LaborApiClient {
                 parseDate(textField(obj, "hireDate")),
                 parseDate(textField(obj, "terminationDate")),
                 textField(obj, "terminationReason"),
+                boolField(obj, "geolocationEnabled"),
                 boolField(obj, "active")
         );
     }

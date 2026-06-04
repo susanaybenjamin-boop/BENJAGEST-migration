@@ -26,5 +26,6 @@ public record EmployeeEntry(
         LocalDate hireDate,
         LocalDate terminationDate,
         String terminationReason,
+        boolean geolocationEnabled,
         boolean active
 ) {}

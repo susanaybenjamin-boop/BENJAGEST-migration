@@ -59,17 +59,17 @@ public class PdfImportController {
         }
         try {
             byte[] bytes = file.getBytes();
-            String text = textExtractor.extract(bytes);
-            if (text == null || text.isBlank()) {
-                // PDF probablemente escaneado / imagen — caso no cubierto
-                // en este slice (requiere OCR Tess4J). Devolvemos un
-                // resultado vacio con cabecera explicativa para que la
-                // UI muestre un aviso util al usuario.
+            // v2: extraemos preservando layout (X/Y por span). Las
+            // facturas son tablas — sin posiciones se mezclan etiqueta
+            // y valor de columnas distintas.
+            LayoutDocument layout = textExtractor.extractLayout(bytes);
+            if (layout.pages().isEmpty()
+                    || layout.allLines().isEmpty()) {
                 throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
                         "El PDF no contiene texto extraible (puede ser una imagen escaneada). "
                                 + "El soporte OCR para PDFs escaneados se anyadira en un slice futuro.");
             }
-            return fieldsExtractor.extract(text);
+            return fieldsExtractor.extractFromLayout(layout, bytes);
         } catch (IOException e) {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
                     "No se pudo leer el PDF: " + e.getMessage());
