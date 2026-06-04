@@ -33,6 +33,7 @@ import com.benjagest.ui.model.SalesInvoiceSummary;
 import com.benjagest.ui.model.SeriesEntry;
 import com.benjagest.ui.model.SessionInfo;
 import com.benjagest.ui.model.VerifactuConfig;
+import com.benjagest.ui.service.AltaApiClient;
 import com.benjagest.ui.service.AuthApiClient;
 import com.benjagest.ui.service.AuthSession;
 import com.benjagest.ui.service.BillingApiClient;
@@ -73,6 +74,7 @@ import javafx.scene.control.TabPane;
 import javafx.scene.control.Separator;
 import javafx.scene.control.TableColumn;
 import javafx.scene.control.TableView;
+import javafx.scene.control.TextArea;
 import javafx.scene.control.TextField;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.GridPane;
@@ -1913,13 +1915,17 @@ public class BenjagestUiApplication extends Application {
         tabs.setTabClosingPolicy(TabPane.TabClosingPolicy.UNAVAILABLE);
         Tab companyTab = new Tab(t("settings.tab.company"), settingsCompanyTab(bundle.company()));
         companyTab.setGraphic(icon("fas-building"));
+        Tab ownersTab = new Tab(t("settings.tab.owners"), settingsOwnersTab());
+        ownersTab.setGraphic(icon("fas-users"));
         Tab emailTab = new Tab(t("settings.tab.email"), settingsEmailTab(bundle.email()));
         emailTab.setGraphic(icon("fas-envelope"));
         Tab modulesTab = new Tab(t("settings.tab.modules"), settingsModulesTab(bundle.modules()));
         modulesTab.setGraphic(icon("fas-cubes"));
+        Tab credentialsTab = new Tab(t("settings.tab.credentials"), settingsCredentialsTab());
+        credentialsTab.setGraphic(icon("fas-key"));
         Tab auditTab = new Tab(t("settings.tab.audit"), settingsAuditTab());
         auditTab.setGraphic(icon("fas-shield-alt"));
-        tabs.getTabs().addAll(companyTab, emailTab, modulesTab, auditTab);
+        tabs.getTabs().addAll(companyTab, ownersTab, emailTab, modulesTab, credentialsTab, auditTab);
         // El TabPane crece hasta el final del area central; sin esto, los
         // botones del pie de cada tab podrian quedar fuera de pantalla en
         // portatil.
@@ -2330,6 +2336,462 @@ public class BenjagestUiApplication extends Application {
             return id == null ? "" : id;
         }
         return id.substring(0, 8);
+    }
+
+    // ===================================================================
+    //  ALTA — Pestana Titulares (Configuracion -> Titulares)
+    //
+    //  Modelo 200 (Impuesto Sociedades) y SS exigen identificar a los
+    //  administradores y socios con su rol y % participacion. Esta pestana
+    //  es CRUD sobre /api/settings/owners y resuelve esa pata de los
+    //  modelos AEAT que dependen de quien es quien en la empresa.
+    // ===================================================================
+
+    private final AltaApiClient altaApiClient = new AltaApiClient();
+    private TableView<com.benjagest.ui.model.CompanyOwnerEntry> ownersTable;
+    private TableView<com.benjagest.ui.model.ExternalCredentialEntry> credentialsTable;
+    private TableView<com.benjagest.ui.model.CertificateUsageEntry> certUsageTable;
+
+    private Node settingsOwnersTab() {
+        Label section = label(t("settings.owners.section"), "settings-section-title");
+        Label hint = new Label(t("settings.owners.hint"));
+        hint.setWrapText(true);
+        hint.getStyleClass().add("settings-hint");
+
+        ownersTable = new TableView<>();
+        ownersTable.getStyleClass().add("data-table");
+        ownersTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+        ownersTable.setPlaceholder(new Label(t("settings.owners.placeholder.empty")));
+
+        TableColumn<com.benjagest.ui.model.CompanyOwnerEntry, String> colName =
+                new TableColumn<>(t("settings.owners.col.name"));
+        colName.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().fullName()));
+        colName.setPrefWidth(200);
+        TableColumn<com.benjagest.ui.model.CompanyOwnerEntry, String> colNif =
+                new TableColumn<>(t("settings.owners.col.nif"));
+        colNif.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().taxIdentifier()));
+        colNif.setPrefWidth(110);
+        TableColumn<com.benjagest.ui.model.CompanyOwnerEntry, String> colRole =
+                new TableColumn<>(t("settings.owners.col.role"));
+        colRole.setCellValueFactory(c -> new SimpleStringProperty(t("settings.owners.role." + c.getValue().role())));
+        colRole.setPrefWidth(140);
+        TableColumn<com.benjagest.ui.model.CompanyOwnerEntry, String> colSs =
+                new TableColumn<>(t("settings.owners.col.ss_regime"));
+        colSs.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().ssRegime() == null
+                ? "" : t("settings.owners.ss_regime." + c.getValue().ssRegime())));
+        colSs.setPrefWidth(160);
+        TableColumn<com.benjagest.ui.model.CompanyOwnerEntry, String> colPct =
+                new TableColumn<>(t("settings.owners.col.pct"));
+        colPct.setCellValueFactory(c -> new SimpleStringProperty(
+                c.getValue().ownershipPercent() == null ? "" : c.getValue().ownershipPercent().toPlainString() + " %"));
+        colPct.setPrefWidth(80);
+        colPct.setComparator(NUMERIC_STRING_COMPARATOR);
+        TableColumn<com.benjagest.ui.model.CompanyOwnerEntry, String> colFlags =
+                new TableColumn<>(t("settings.owners.col.flags"));
+        colFlags.setCellValueFactory(c -> new SimpleStringProperty(
+                c.getValue().active() ? "" : t("settings.owners.inactive")));
+        colFlags.setPrefWidth(100);
+        ownersTable.getColumns().addAll(java.util.List.of(colName, colNif, colRole, colSs, colPct, colFlags));
+
+        Button addBtn = new Button(t("settings.owners.action.add"));
+        addBtn.setGraphic(icon("fas-plus"));
+        addBtn.setOnAction(ev -> showOwnerEditor(null));
+
+        Button editBtn = new Button(t("settings.owners.action.edit"));
+        editBtn.setGraphic(icon("fas-edit"));
+        editBtn.setDisable(true);
+        editBtn.setOnAction(ev -> {
+            var sel = ownersTable.getSelectionModel().getSelectedItem();
+            if (sel != null) showOwnerEditor(sel);
+        });
+
+        Button deleteBtn = new Button(t("settings.owners.action.delete"));
+        deleteBtn.setGraphic(icon("fas-trash"));
+        deleteBtn.setDisable(true);
+        deleteBtn.setOnAction(ev -> {
+            var sel = ownersTable.getSelectionModel().getSelectedItem();
+            if (sel != null) deleteOwner(sel);
+        });
+
+        ownersTable.getSelectionModel().selectedItemProperty().addListener((obs, oldV, newV) -> {
+            editBtn.setDisable(newV == null);
+            deleteBtn.setDisable(newV == null);
+        });
+
+        HBox actions = new HBox(8, addBtn, editBtn, deleteBtn);
+        actions.getStyleClass().add("settings-actions");
+
+        reloadOwners();
+
+        VBox body = new VBox(12, section, hint, ownersTable);
+        return tabLayout(label(t("settings.owners.section_label"), "settings-section-title"), body, actions);
+    }
+
+    private void reloadOwners() {
+        if (ownersTable == null) return;
+        Task<java.util.List<com.benjagest.ui.model.CompanyOwnerEntry>> task = new Task<>() {
+            @Override
+            protected java.util.List<com.benjagest.ui.model.CompanyOwnerEntry> call() throws Exception {
+                return altaApiClient.listOwners();
+            }
+        };
+        task.setOnSucceeded(ev -> ownersTable.setItems(FXCollections.observableArrayList(task.getValue())));
+        task.setOnFailed(ev -> ownersTable.getItems().clear());
+        start(task, "settings-owners-reload");
+    }
+
+    private void showOwnerEditor(com.benjagest.ui.model.CompanyOwnerEntry existing) {
+        Dialog<ButtonType> dialog = new Dialog<>();
+        dialog.setTitle(existing == null ? t("settings.owners.editor.title_new") : t("settings.owners.editor.title_edit"));
+        ButtonType saveBt = new ButtonType(t("settings.owners.editor.save"), ButtonBar.ButtonData.OK_DONE);
+        dialog.getDialogPane().getButtonTypes().addAll(saveBt, ButtonType.CANCEL);
+
+        TextField nameField = new TextField(existing == null ? "" : existing.fullName());
+        TextField nifField = new TextField(existing == null ? "" : existing.taxIdentifier());
+        ComboBox<String> roleCombo = new ComboBox<>();
+        roleCombo.getItems().addAll("ADMINISTRATOR", "JOINT", "SOLE", "BOARD_MEMBER", "PARTNER", "AUTONOMOUS");
+        roleCombo.getSelectionModel().select(existing == null ? "ADMINISTRATOR" : existing.role());
+        ComboBox<String> ssCombo = new ComboBox<>();
+        ssCombo.getItems().addAll("RETA", "GENERAL", "AUTONOMO_SOCIETARIO", "NO_COTIZA", "OTHER");
+        ssCombo.getSelectionModel().select(existing == null || existing.ssRegime() == null || existing.ssRegime().isBlank()
+                ? "RETA" : existing.ssRegime());
+        TextField pctField = new TextField(existing == null || existing.ownershipPercent() == null
+                ? "" : existing.ownershipPercent().toPlainString());
+        TextField apptField = new TextField(existing == null ? "" : existing.appointmentDate());
+        apptField.setPromptText("AAAA-MM-DD");
+        TextField termField = new TextField(existing == null ? "" : existing.terminationDate());
+        termField.setPromptText("AAAA-MM-DD");
+        TextField emailField = new TextField(existing == null ? "" : existing.email());
+        TextField phoneField = new TextField(existing == null ? "" : existing.phone());
+        TextArea notesField = new TextArea(existing == null ? "" : existing.notes());
+        notesField.setPrefRowCount(2);
+        CheckBox activeCb = new CheckBox(t("settings.owners.editor.active"));
+        activeCb.setSelected(existing == null || existing.active());
+
+        GridPane grid = new GridPane();
+        grid.setHgap(10); grid.setVgap(8); grid.setPadding(new Insets(10));
+        grid.add(new Label(t("settings.owners.editor.name")), 0, 0); grid.add(nameField, 1, 0);
+        grid.add(new Label(t("settings.owners.editor.nif")), 0, 1); grid.add(nifField, 1, 1);
+        grid.add(new Label(t("settings.owners.editor.role")), 0, 2); grid.add(roleCombo, 1, 2);
+        grid.add(new Label(t("settings.owners.editor.ss_regime")), 0, 3); grid.add(ssCombo, 1, 3);
+        grid.add(new Label(t("settings.owners.editor.pct")), 0, 4); grid.add(pctField, 1, 4);
+        grid.add(new Label(t("settings.owners.editor.appointment")), 0, 5); grid.add(apptField, 1, 5);
+        grid.add(new Label(t("settings.owners.editor.termination")), 0, 6); grid.add(termField, 1, 6);
+        grid.add(new Label(t("settings.owners.editor.email")), 0, 7); grid.add(emailField, 1, 7);
+        grid.add(new Label(t("settings.owners.editor.phone")), 0, 8); grid.add(phoneField, 1, 8);
+        grid.add(new Label(t("settings.owners.editor.notes")), 0, 9); grid.add(notesField, 1, 9);
+        grid.add(activeCb, 1, 10);
+        dialog.getDialogPane().setContent(grid);
+
+        dialog.showAndWait().ifPresent(bt -> {
+            if (bt != saveBt) return;
+            java.math.BigDecimal pct;
+            try {
+                pct = pctField.getText().isBlank() ? null
+                        : new java.math.BigDecimal(pctField.getText().trim().replace(",", "."));
+            } catch (NumberFormatException ex) {
+                showError(t("settings.owners.editor.fail.title"), t("settings.owners.editor.invalid_pct"));
+                return;
+            }
+            com.benjagest.ui.model.CompanyOwnerEntry payload = new com.benjagest.ui.model.CompanyOwnerEntry(
+                    existing == null ? null : existing.id(),
+                    nameField.getText().trim(),
+                    nifField.getText().trim(),
+                    roleCombo.getValue(),
+                    ssCombo.getValue(),
+                    pct,
+                    blankToNullOrSelf(apptField.getText()),
+                    blankToNullOrSelf(termField.getText()),
+                    blankToNullOrSelf(emailField.getText()),
+                    blankToNullOrSelf(phoneField.getText()),
+                    blankToNullOrSelf(notesField.getText()),
+                    activeCb.isSelected());
+            Task<com.benjagest.ui.model.CompanyOwnerEntry> task = new Task<>() {
+                @Override
+                protected com.benjagest.ui.model.CompanyOwnerEntry call() throws Exception {
+                    return existing == null
+                            ? altaApiClient.createOwner(payload)
+                            : altaApiClient.updateOwner(existing.id(), payload);
+                }
+            };
+            task.setOnSucceeded(ev -> reloadOwners());
+            task.setOnFailed(ev -> showError(t("settings.owners.editor.fail.title"),
+                    t("settings.owners.editor.fail.body")));
+            start(task, "settings-owners-save");
+        });
+    }
+
+    private void deleteOwner(com.benjagest.ui.model.CompanyOwnerEntry entry) {
+        Alert confirm = new Alert(Alert.AlertType.CONFIRMATION,
+                t("settings.owners.delete.body") + " " + entry.fullName(),
+                ButtonType.OK, ButtonType.CANCEL);
+        confirm.setHeaderText(t("settings.owners.delete.title"));
+        confirm.showAndWait().ifPresent(bt -> {
+            if (bt != ButtonType.OK) return;
+            Task<Void> task = new Task<>() {
+                @Override
+                protected Void call() throws Exception {
+                    altaApiClient.deleteOwner(entry.id());
+                    return null;
+                }
+            };
+            task.setOnSucceeded(ev -> reloadOwners());
+            task.setOnFailed(ev -> showError(t("settings.owners.editor.fail.title"),
+                    t("settings.owners.editor.fail.body")));
+            start(task, "settings-owners-delete");
+        });
+    }
+
+    private String blankToNullOrSelf(String v) {
+        return v == null || v.isBlank() ? null : v.trim();
+    }
+
+    // ===================================================================
+    //  ALTA — Pestana Credenciales externas + Log uso certificados
+    // ===================================================================
+
+    private Node settingsCredentialsTab() {
+        Label section = label(t("settings.credentials.section"), "settings-section-title");
+        Label hint = new Label(t("settings.credentials.hint"));
+        hint.setWrapText(true);
+        hint.getStyleClass().add("settings-hint");
+
+        credentialsTable = new TableView<>();
+        credentialsTable.getStyleClass().add("data-table");
+        credentialsTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+        credentialsTable.setPlaceholder(new Label(t("settings.credentials.placeholder.empty")));
+        credentialsTable.setPrefHeight(240);
+
+        TableColumn<com.benjagest.ui.model.ExternalCredentialEntry, String> colSys =
+                new TableColumn<>(t("settings.credentials.col.system"));
+        colSys.setCellValueFactory(c -> new SimpleStringProperty(
+                t("settings.credentials.system." + c.getValue().systemCode())));
+        colSys.setPrefWidth(140);
+        TableColumn<com.benjagest.ui.model.ExternalCredentialEntry, String> colLabel =
+                new TableColumn<>(t("settings.credentials.col.label"));
+        colLabel.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().label()));
+        TableColumn<com.benjagest.ui.model.ExternalCredentialEntry, String> colUser =
+                new TableColumn<>(t("settings.credentials.col.user"));
+        colUser.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().username()));
+        colUser.setPrefWidth(140);
+        TableColumn<com.benjagest.ui.model.ExternalCredentialEntry, String> colPwd =
+                new TableColumn<>(t("settings.credentials.col.password"));
+        colPwd.setCellValueFactory(c -> new SimpleStringProperty(
+                c.getValue().passwordConfigured() ? "***" : t("settings.credentials.empty")));
+        colPwd.setPrefWidth(80);
+        TableColumn<com.benjagest.ui.model.ExternalCredentialEntry, String> colFlags =
+                new TableColumn<>(t("settings.credentials.col.flags"));
+        colFlags.setCellValueFactory(c -> new SimpleStringProperty(
+                c.getValue().active() ? "" : t("settings.credentials.inactive")));
+        colFlags.setPrefWidth(80);
+        credentialsTable.getColumns().addAll(java.util.List.of(colSys, colLabel, colUser, colPwd, colFlags));
+
+        Button addBtn = new Button(t("settings.credentials.action.add"));
+        addBtn.setGraphic(icon("fas-plus"));
+        addBtn.setOnAction(ev -> showCredentialEditor(null));
+
+        Button editBtn = new Button(t("settings.credentials.action.edit"));
+        editBtn.setGraphic(icon("fas-edit"));
+        editBtn.setDisable(true);
+        editBtn.setOnAction(ev -> {
+            var sel = credentialsTable.getSelectionModel().getSelectedItem();
+            if (sel != null) showCredentialEditor(sel);
+        });
+
+        Button deleteBtn = new Button(t("settings.credentials.action.delete"));
+        deleteBtn.setGraphic(icon("fas-trash"));
+        deleteBtn.setDisable(true);
+        deleteBtn.setOnAction(ev -> {
+            var sel = credentialsTable.getSelectionModel().getSelectedItem();
+            if (sel != null) deleteCredential(sel);
+        });
+
+        credentialsTable.getSelectionModel().selectedItemProperty().addListener((obs, oldV, newV) -> {
+            editBtn.setDisable(newV == null);
+            deleteBtn.setDisable(newV == null);
+        });
+
+        HBox credActions = new HBox(8, addBtn, editBtn, deleteBtn);
+        credActions.setAlignment(Pos.CENTER_LEFT);
+
+        reloadCredentials();
+
+        // ---- Log de uso de certificados ----
+        Label logSection = label(t("settings.credentials.log.section"), "settings-section-title");
+        Label logHint = new Label(t("settings.credentials.log.hint"));
+        logHint.setWrapText(true);
+        logHint.getStyleClass().add("settings-hint");
+
+        certUsageTable = new TableView<>();
+        certUsageTable.getStyleClass().add("data-table");
+        certUsageTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+        certUsageTable.setPlaceholder(new Label(t("settings.credentials.log.placeholder.empty")));
+        certUsageTable.setPrefHeight(220);
+
+        TableColumn<com.benjagest.ui.model.CertificateUsageEntry, String> colWhen =
+                new TableColumn<>(t("settings.credentials.log.col.when"));
+        colWhen.setCellValueFactory(c -> new SimpleStringProperty(shortIso(c.getValue().usedAt())));
+        colWhen.setPrefWidth(160);
+        colWhen.setComparator(ISO_DATE_COMPARATOR);
+        TableColumn<com.benjagest.ui.model.CertificateUsageEntry, String> colCert =
+                new TableColumn<>(t("settings.credentials.log.col.cert"));
+        colCert.setCellValueFactory(c -> new SimpleStringProperty(shortId(c.getValue().certificateId())));
+        colCert.setPrefWidth(110);
+        TableColumn<com.benjagest.ui.model.CertificateUsageEntry, String> colPurpose =
+                new TableColumn<>(t("settings.credentials.log.col.purpose"));
+        colPurpose.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().purpose()));
+        colPurpose.setPrefWidth(140);
+        TableColumn<com.benjagest.ui.model.CertificateUsageEntry, String> colOk =
+                new TableColumn<>(t("settings.credentials.log.col.result"));
+        colOk.setCellValueFactory(c -> new SimpleStringProperty(
+                c.getValue().success() ? "OK" : "ERR"));
+        colOk.setPrefWidth(60);
+        TableColumn<com.benjagest.ui.model.CertificateUsageEntry, String> colUserCert =
+                new TableColumn<>(t("settings.credentials.log.col.user"));
+        colUserCert.setCellValueFactory(c -> new SimpleStringProperty(shortId(c.getValue().userId())));
+        colUserCert.setPrefWidth(110);
+        TableColumn<com.benjagest.ui.model.CertificateUsageEntry, String> colIp =
+                new TableColumn<>(t("settings.credentials.log.col.ip"));
+        colIp.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().ipAddress()));
+        colIp.setPrefWidth(120);
+        TableColumn<com.benjagest.ui.model.CertificateUsageEntry, String> colMsg =
+                new TableColumn<>(t("settings.credentials.log.col.message"));
+        colMsg.setCellValueFactory(c -> new SimpleStringProperty(
+                c.getValue().errorMessage() == null ? c.getValue().targetUrl() : c.getValue().errorMessage()));
+        certUsageTable.getColumns().addAll(java.util.List.of(colWhen, colCert, colPurpose, colOk, colUserCert, colIp, colMsg));
+
+        Button refreshLog = new Button(t("settings.credentials.log.refresh"));
+        refreshLog.setGraphic(icon("fas-sync-alt"));
+        refreshLog.setOnAction(ev -> reloadCertUsage());
+
+        HBox logActions = new HBox(8, refreshLog);
+        logActions.setAlignment(Pos.CENTER_LEFT);
+
+        reloadCertUsage();
+
+        VBox body = new VBox(16,
+                section, hint, credentialsTable, credActions,
+                new Separator(),
+                logSection, logHint, certUsageTable, logActions);
+        return tabLayout(label(t("settings.credentials.section_label"), "settings-section-title"), body,
+                new HBox());
+    }
+
+    private void reloadCredentials() {
+        if (credentialsTable == null) return;
+        Task<java.util.List<com.benjagest.ui.model.ExternalCredentialEntry>> task = new Task<>() {
+            @Override
+            protected java.util.List<com.benjagest.ui.model.ExternalCredentialEntry> call() throws Exception {
+                return altaApiClient.listCredentials();
+            }
+        };
+        task.setOnSucceeded(ev -> credentialsTable.setItems(FXCollections.observableArrayList(task.getValue())));
+        task.setOnFailed(ev -> credentialsTable.getItems().clear());
+        start(task, "settings-credentials-reload");
+    }
+
+    private void reloadCertUsage() {
+        if (certUsageTable == null) return;
+        Task<java.util.List<com.benjagest.ui.model.CertificateUsageEntry>> task = new Task<>() {
+            @Override
+            protected java.util.List<com.benjagest.ui.model.CertificateUsageEntry> call() throws Exception {
+                return altaApiClient.listCertUsage(null, 200);
+            }
+        };
+        task.setOnSucceeded(ev -> certUsageTable.setItems(FXCollections.observableArrayList(task.getValue())));
+        task.setOnFailed(ev -> certUsageTable.getItems().clear());
+        start(task, "settings-cert-usage-reload");
+    }
+
+    private void showCredentialEditor(com.benjagest.ui.model.ExternalCredentialEntry existing) {
+        Dialog<ButtonType> dialog = new Dialog<>();
+        dialog.setTitle(existing == null ? t("settings.credentials.editor.title_new")
+                : t("settings.credentials.editor.title_edit"));
+        ButtonType saveBt = new ButtonType(t("settings.credentials.editor.save"), ButtonBar.ButtonData.OK_DONE);
+        dialog.getDialogPane().getButtonTypes().addAll(saveBt, ButtonType.CANCEL);
+
+        ComboBox<String> sysCombo = new ComboBox<>();
+        sysCombo.getItems().addAll("DEHU", "SS_RED", "SILTRA", "AEAT_CLAVE",
+                "NOTIFICA_GOB", "SEDE_AEAT", "BANCO_ESPANA", "OTHER");
+        sysCombo.getSelectionModel().select(existing == null ? "DEHU" : existing.systemCode());
+        sysCombo.setDisable(existing != null);
+
+        TextField labelField = new TextField(existing == null ? "" : existing.label());
+        TextField userField = new TextField(existing == null ? "" : existing.username());
+        PasswordField pwdField = new PasswordField();
+        pwdField.setPromptText(existing != null && existing.passwordConfigured()
+                ? t("settings.credentials.editor.password.keep")
+                : t("settings.credentials.editor.password.new"));
+        TextField authUrlField = new TextField(existing == null ? "" : existing.authUrl());
+        TextArea notesField = new TextArea(existing == null ? "" : existing.notes());
+        notesField.setPrefRowCount(2);
+        CheckBox activeCb = new CheckBox(t("settings.credentials.editor.active"));
+        activeCb.setSelected(existing == null || existing.active());
+
+        GridPane grid = new GridPane();
+        grid.setHgap(10); grid.setVgap(8); grid.setPadding(new Insets(10));
+        grid.add(new Label(t("settings.credentials.editor.system")), 0, 0); grid.add(sysCombo, 1, 0);
+        grid.add(new Label(t("settings.credentials.editor.label")), 0, 1); grid.add(labelField, 1, 1);
+        grid.add(new Label(t("settings.credentials.editor.username")), 0, 2); grid.add(userField, 1, 2);
+        grid.add(new Label(t("settings.credentials.editor.password")), 0, 3); grid.add(pwdField, 1, 3);
+        grid.add(new Label(t("settings.credentials.editor.auth_url")), 0, 4); grid.add(authUrlField, 1, 4);
+        grid.add(new Label(t("settings.credentials.editor.notes")), 0, 5); grid.add(notesField, 1, 5);
+        grid.add(activeCb, 1, 6);
+        dialog.getDialogPane().setContent(grid);
+
+        dialog.showAndWait().ifPresent(bt -> {
+            if (bt != saveBt) return;
+            String pwd = pwdField.getText();
+            Task<com.benjagest.ui.model.ExternalCredentialEntry> task = new Task<>() {
+                @Override
+                protected com.benjagest.ui.model.ExternalCredentialEntry call() throws Exception {
+                    if (existing == null) {
+                        return altaApiClient.createCredential(
+                                sysCombo.getValue(),
+                                labelField.getText().trim(),
+                                userField.getText().trim(),
+                                pwd,
+                                authUrlField.getText().trim(),
+                                notesField.getText().trim(),
+                                activeCb.isSelected());
+                    }
+                    return altaApiClient.updateCredential(
+                            existing.id(),
+                            existing.systemCode(),
+                            labelField.getText().trim(),
+                            userField.getText().trim(),
+                            pwd,  // si vacio, el cliente no envia el campo
+                            authUrlField.getText().trim(),
+                            notesField.getText().trim(),
+                            activeCb.isSelected());
+                }
+            };
+            task.setOnSucceeded(ev -> reloadCredentials());
+            task.setOnFailed(ev -> showError(t("settings.credentials.editor.fail.title"),
+                    t("settings.credentials.editor.fail.body")));
+            start(task, "settings-credentials-save");
+        });
+    }
+
+    private void deleteCredential(com.benjagest.ui.model.ExternalCredentialEntry entry) {
+        Alert confirm = new Alert(Alert.AlertType.CONFIRMATION,
+                t("settings.credentials.delete.body") + " " + entry.label(),
+                ButtonType.OK, ButtonType.CANCEL);
+        confirm.setHeaderText(t("settings.credentials.delete.title"));
+        confirm.showAndWait().ifPresent(bt -> {
+            if (bt != ButtonType.OK) return;
+            Task<Void> task = new Task<>() {
+                @Override
+                protected Void call() throws Exception {
+                    altaApiClient.deleteCredential(entry.id());
+                    return null;
+                }
+            };
+            task.setOnSucceeded(ev -> reloadCredentials());
+            task.setOnFailed(ev -> showError(t("settings.credentials.editor.fail.title"),
+                    t("settings.credentials.editor.fail.body")));
+            start(task, "settings-credentials-delete");
+        });
     }
 
     // ===================================================================
@@ -5768,9 +6230,106 @@ public class BenjagestUiApplication extends Application {
                 case "settings.shell.title" -> "Settings";
                 case "settings.load_failed" -> "Could not load Settings (you need OWNER or ADMIN role)";
                 case "settings.tab.company" -> "Company";
+                case "settings.tab.owners" -> "Owners";
                 case "settings.tab.email" -> "SMTP Email";
                 case "settings.tab.modules" -> "Modules";
+                case "settings.tab.credentials" -> "Credentials";
                 case "settings.tab.audit" -> "Audit";
+                // ---- Owners (ALTA) ----
+                case "settings.owners.section" -> "Owners and administrators";
+                case "settings.owners.section_label" -> "Owners";
+                case "settings.owners.hint" -> "People with administrative or ownership rights over the company. Required for Form 200 (Corporate Tax) and Social Security filings.";
+                case "settings.owners.placeholder.empty" -> "No owners registered yet.";
+                case "settings.owners.col.name" -> "Full name";
+                case "settings.owners.col.nif" -> "Tax ID";
+                case "settings.owners.col.role" -> "Role";
+                case "settings.owners.col.ss_regime" -> "SS regime";
+                case "settings.owners.col.pct" -> "% Share";
+                case "settings.owners.col.flags" -> "";
+                case "settings.owners.inactive" -> "(inactive)";
+                case "settings.owners.role.ADMINISTRATOR" -> "Administrator";
+                case "settings.owners.role.JOINT" -> "Joint administrator";
+                case "settings.owners.role.SOLE" -> "Sole administrator";
+                case "settings.owners.role.BOARD_MEMBER" -> "Board member";
+                case "settings.owners.role.PARTNER" -> "Partner";
+                case "settings.owners.role.AUTONOMOUS" -> "Self-employed (autónomo)";
+                case "settings.owners.ss_regime.RETA" -> "RETA";
+                case "settings.owners.ss_regime.GENERAL" -> "General SS";
+                case "settings.owners.ss_regime.AUTONOMO_SOCIETARIO" -> "RETA (corporate)";
+                case "settings.owners.ss_regime.NO_COTIZA" -> "Not contributing";
+                case "settings.owners.ss_regime.OTHER" -> "Other";
+                case "settings.owners.action.add" -> "Add owner";
+                case "settings.owners.action.edit" -> "Edit";
+                case "settings.owners.action.delete" -> "Delete";
+                case "settings.owners.editor.title_new" -> "New owner";
+                case "settings.owners.editor.title_edit" -> "Edit owner";
+                case "settings.owners.editor.save" -> "Save";
+                case "settings.owners.editor.name" -> "Full name";
+                case "settings.owners.editor.nif" -> "Tax ID";
+                case "settings.owners.editor.role" -> "Role";
+                case "settings.owners.editor.ss_regime" -> "SS regime";
+                case "settings.owners.editor.pct" -> "% Share (0-100)";
+                case "settings.owners.editor.appointment" -> "Appointment date";
+                case "settings.owners.editor.termination" -> "Termination date";
+                case "settings.owners.editor.email" -> "Email";
+                case "settings.owners.editor.phone" -> "Phone";
+                case "settings.owners.editor.notes" -> "Notes";
+                case "settings.owners.editor.active" -> "Active";
+                case "settings.owners.editor.invalid_pct" -> "Invalid percentage.";
+                case "settings.owners.editor.fail.title" -> "Could not save";
+                case "settings.owners.editor.fail.body" -> "Check the data and try again.";
+                case "settings.owners.delete.title" -> "Delete owner?";
+                case "settings.owners.delete.body" -> "You are about to delete";
+                // ---- Credentials (ALTA) ----
+                case "settings.credentials.section" -> "External credentials";
+                case "settings.credentials.section_label" -> "Credentials";
+                case "settings.credentials.hint" -> "Encrypted passwords for external systems (DEHú, SS RED, SILTRA, AEAT Cl@ve…). Passwords are stored encrypted and never shown again.";
+                case "settings.credentials.placeholder.empty" -> "No credentials registered.";
+                case "settings.credentials.col.system" -> "System";
+                case "settings.credentials.col.label" -> "Label";
+                case "settings.credentials.col.user" -> "Username";
+                case "settings.credentials.col.password" -> "Password";
+                case "settings.credentials.col.flags" -> "";
+                case "settings.credentials.empty" -> "—";
+                case "settings.credentials.inactive" -> "(inactive)";
+                case "settings.credentials.system.DEHU" -> "DEHú";
+                case "settings.credentials.system.SS_RED" -> "SS RED";
+                case "settings.credentials.system.SILTRA" -> "SILTRA";
+                case "settings.credentials.system.AEAT_CLAVE" -> "AEAT Cl@ve";
+                case "settings.credentials.system.NOTIFICA_GOB" -> "Notifica.gob";
+                case "settings.credentials.system.SEDE_AEAT" -> "AEAT Sede";
+                case "settings.credentials.system.BANCO_ESPANA" -> "Bank of Spain";
+                case "settings.credentials.system.OTHER" -> "Other";
+                case "settings.credentials.action.add" -> "Add credential";
+                case "settings.credentials.action.edit" -> "Edit";
+                case "settings.credentials.action.delete" -> "Delete";
+                case "settings.credentials.editor.title_new" -> "New credential";
+                case "settings.credentials.editor.title_edit" -> "Edit credential";
+                case "settings.credentials.editor.save" -> "Save";
+                case "settings.credentials.editor.system" -> "System";
+                case "settings.credentials.editor.label" -> "Label";
+                case "settings.credentials.editor.username" -> "Username";
+                case "settings.credentials.editor.password" -> "Password";
+                case "settings.credentials.editor.password.keep" -> "(leave blank to keep current)";
+                case "settings.credentials.editor.password.new" -> "Enter password";
+                case "settings.credentials.editor.auth_url" -> "Login URL";
+                case "settings.credentials.editor.notes" -> "Notes";
+                case "settings.credentials.editor.active" -> "Active";
+                case "settings.credentials.editor.fail.title" -> "Could not save";
+                case "settings.credentials.editor.fail.body" -> "Check the data and try again.";
+                case "settings.credentials.delete.title" -> "Delete credential?";
+                case "settings.credentials.delete.body" -> "You are about to delete";
+                case "settings.credentials.log.section" -> "Certificate usage log";
+                case "settings.credentials.log.hint" -> "Every time a digital certificate is used to sign or send something, the action is logged here for traceability.";
+                case "settings.credentials.log.placeholder.empty" -> "No certificate usage events yet.";
+                case "settings.credentials.log.col.when" -> "When";
+                case "settings.credentials.log.col.cert" -> "Certificate";
+                case "settings.credentials.log.col.purpose" -> "Purpose";
+                case "settings.credentials.log.col.result" -> "Result";
+                case "settings.credentials.log.col.user" -> "User";
+                case "settings.credentials.log.col.ip" -> "IP";
+                case "settings.credentials.log.col.message" -> "Detail";
+                case "settings.credentials.log.refresh" -> "Refresh";
                 case "settings.company.section_label" -> "Company";
                 case "settings.company.section.general" -> "General data";
                 case "settings.company.section.address" -> "Postal address";
@@ -6396,9 +6955,106 @@ public class BenjagestUiApplication extends Application {
             case "settings.shell.title" -> "Configuracion";
             case "settings.load_failed" -> "No se pudo cargar Configuracion (necesitas rol OWNER o ADMIN)";
             case "settings.tab.company" -> "Empresa";
+            case "settings.tab.owners" -> "Titulares";
             case "settings.tab.email" -> "Email SMTP";
             case "settings.tab.modules" -> "Modulos";
+            case "settings.tab.credentials" -> "Credenciales";
             case "settings.tab.audit" -> "Auditoria";
+            // ---- Titulares (ALTA) ----
+            case "settings.owners.section" -> "Titulares y administradores";
+            case "settings.owners.section_label" -> "Titulares";
+            case "settings.owners.hint" -> "Personas con poder de administracion o participacion en la empresa. Necesario para modelo 200 (Impuesto Sociedades) y comunicaciones de Seguridad Social.";
+            case "settings.owners.placeholder.empty" -> "Aun no hay titulares registrados.";
+            case "settings.owners.col.name" -> "Nombre completo";
+            case "settings.owners.col.nif" -> "NIF";
+            case "settings.owners.col.role" -> "Rol";
+            case "settings.owners.col.ss_regime" -> "Reg. SS";
+            case "settings.owners.col.pct" -> "% Participacion";
+            case "settings.owners.col.flags" -> "";
+            case "settings.owners.inactive" -> "(inactivo)";
+            case "settings.owners.role.ADMINISTRATOR" -> "Administrador";
+            case "settings.owners.role.JOINT" -> "Adm. mancomunado";
+            case "settings.owners.role.SOLE" -> "Adm. unico";
+            case "settings.owners.role.BOARD_MEMBER" -> "Consejero";
+            case "settings.owners.role.PARTNER" -> "Socio";
+            case "settings.owners.role.AUTONOMOUS" -> "Autonomo";
+            case "settings.owners.ss_regime.RETA" -> "RETA";
+            case "settings.owners.ss_regime.GENERAL" -> "Reg. General";
+            case "settings.owners.ss_regime.AUTONOMO_SOCIETARIO" -> "RETA Societario";
+            case "settings.owners.ss_regime.NO_COTIZA" -> "No cotiza";
+            case "settings.owners.ss_regime.OTHER" -> "Otro";
+            case "settings.owners.action.add" -> "Anadir titular";
+            case "settings.owners.action.edit" -> "Editar";
+            case "settings.owners.action.delete" -> "Borrar";
+            case "settings.owners.editor.title_new" -> "Nuevo titular";
+            case "settings.owners.editor.title_edit" -> "Editar titular";
+            case "settings.owners.editor.save" -> "Guardar";
+            case "settings.owners.editor.name" -> "Nombre completo";
+            case "settings.owners.editor.nif" -> "NIF";
+            case "settings.owners.editor.role" -> "Rol";
+            case "settings.owners.editor.ss_regime" -> "Regimen SS";
+            case "settings.owners.editor.pct" -> "% Participacion (0-100)";
+            case "settings.owners.editor.appointment" -> "Fecha de nombramiento";
+            case "settings.owners.editor.termination" -> "Fecha de cese";
+            case "settings.owners.editor.email" -> "Email";
+            case "settings.owners.editor.phone" -> "Telefono";
+            case "settings.owners.editor.notes" -> "Notas";
+            case "settings.owners.editor.active" -> "Activo";
+            case "settings.owners.editor.invalid_pct" -> "Porcentaje invalido.";
+            case "settings.owners.editor.fail.title" -> "No se pudo guardar";
+            case "settings.owners.editor.fail.body" -> "Revisa los datos e intentalo de nuevo.";
+            case "settings.owners.delete.title" -> "Borrar titular?";
+            case "settings.owners.delete.body" -> "Vas a borrar a";
+            // ---- Credenciales (ALTA) ----
+            case "settings.credentials.section" -> "Credenciales externas";
+            case "settings.credentials.section_label" -> "Credenciales";
+            case "settings.credentials.hint" -> "Contrasenas cifradas para sistemas externos (DEHu, SS RED, SILTRA, AEAT Cl@ve...). Se guardan cifradas y no se muestran nunca de nuevo.";
+            case "settings.credentials.placeholder.empty" -> "No hay credenciales registradas.";
+            case "settings.credentials.col.system" -> "Sistema";
+            case "settings.credentials.col.label" -> "Etiqueta";
+            case "settings.credentials.col.user" -> "Usuario";
+            case "settings.credentials.col.password" -> "Contrasena";
+            case "settings.credentials.col.flags" -> "";
+            case "settings.credentials.empty" -> "—";
+            case "settings.credentials.inactive" -> "(inactivo)";
+            case "settings.credentials.system.DEHU" -> "DEHu";
+            case "settings.credentials.system.SS_RED" -> "SS RED";
+            case "settings.credentials.system.SILTRA" -> "SILTRA";
+            case "settings.credentials.system.AEAT_CLAVE" -> "AEAT Cl@ve";
+            case "settings.credentials.system.NOTIFICA_GOB" -> "Notifica.gob";
+            case "settings.credentials.system.SEDE_AEAT" -> "Sede AEAT";
+            case "settings.credentials.system.BANCO_ESPANA" -> "Banco de Espana";
+            case "settings.credentials.system.OTHER" -> "Otro";
+            case "settings.credentials.action.add" -> "Anadir credencial";
+            case "settings.credentials.action.edit" -> "Editar";
+            case "settings.credentials.action.delete" -> "Borrar";
+            case "settings.credentials.editor.title_new" -> "Nueva credencial";
+            case "settings.credentials.editor.title_edit" -> "Editar credencial";
+            case "settings.credentials.editor.save" -> "Guardar";
+            case "settings.credentials.editor.system" -> "Sistema";
+            case "settings.credentials.editor.label" -> "Etiqueta";
+            case "settings.credentials.editor.username" -> "Usuario";
+            case "settings.credentials.editor.password" -> "Contrasena";
+            case "settings.credentials.editor.password.keep" -> "(en blanco para mantener la actual)";
+            case "settings.credentials.editor.password.new" -> "Introduce la contrasena";
+            case "settings.credentials.editor.auth_url" -> "URL de acceso";
+            case "settings.credentials.editor.notes" -> "Notas";
+            case "settings.credentials.editor.active" -> "Activa";
+            case "settings.credentials.editor.fail.title" -> "No se pudo guardar";
+            case "settings.credentials.editor.fail.body" -> "Revisa los datos e intentalo de nuevo.";
+            case "settings.credentials.delete.title" -> "Borrar credencial?";
+            case "settings.credentials.delete.body" -> "Vas a borrar la credencial de";
+            case "settings.credentials.log.section" -> "Log de uso de certificados";
+            case "settings.credentials.log.hint" -> "Cada vez que se usa un certificado digital para firmar o enviar algo, queda registrado aqui para trazabilidad.";
+            case "settings.credentials.log.placeholder.empty" -> "Aun no hay eventos de uso.";
+            case "settings.credentials.log.col.when" -> "Cuando";
+            case "settings.credentials.log.col.cert" -> "Certificado";
+            case "settings.credentials.log.col.purpose" -> "Proposito";
+            case "settings.credentials.log.col.result" -> "Resultado";
+            case "settings.credentials.log.col.user" -> "Usuario";
+            case "settings.credentials.log.col.ip" -> "IP";
+            case "settings.credentials.log.col.message" -> "Detalle";
+            case "settings.credentials.log.refresh" -> "Refrescar";
             case "settings.company.section_label" -> "Empresa";
             case "settings.company.section.general" -> "Datos generales";
             case "settings.company.section.address" -> "Direccion postal";
