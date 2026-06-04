@@ -5,14 +5,17 @@ package com.benjagest.backend.settings;
  * Empresa" muestra y permite cambiar.
  *
  * Tras la unificacion V10 (decision 2026-06-01), la empresa es su propio
- * emisor: los datos fiscales (direccion, IBAN, registro, textos de factura)
- * viven aqui y NO en una tabla `issuers` aparte. Asi, al editar la razon
- * social desde esta pantalla, el resto de la app (dashboard, header,
- * facturas) ve el cambio sin necesidad de sincronizacion manual.
+ * emisor: los datos fiscales (direccion, IBAN, registro mercantil)
+ * viven aqui y NO en una tabla `issuers` aparte.
+ *
+ * Tras la consolidacion V22 (decision 2026-06-04), los CAMPOS PROPIOS
+ * DE LA FACTURA — pie, condiciones legales, textos exencion/inversion
+ * sujeto pasivo/IVA reducido/rectificativa, mostrar IBAN — viven SOLO
+ * en `invoice_texts` y se editan en Facturacion -> Configuracion. No
+ * se duplican aqui.
  *
  * NO incluye id ni created_at (no editables) ni company_type ni
- * parent_company_id (decisiones estructurales que se cambian desde
- * admin, no desde la pantalla de configuracion de la empresa).
+ * parent_company_id (decisiones estructurales).
  */
 public record CompanyDataResponse(
         String id,
@@ -29,8 +32,6 @@ public record CompanyDataResponse(
         String postalCode,
         String country,
         String iban,
-        String registryInformation,
-        String legalTerms,
-        String invoiceFooter
+        String registryInformation
 ) {
 }

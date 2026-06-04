@@ -65,9 +65,7 @@ public class SettingsApiClient {
                 + field("postalCode", data.postalCode()) + ","
                 + field("country", data.country()) + ","
                 + field("iban", data.iban()) + ","
-                + field("registryInformation", data.registryInformation()) + ","
-                + field("legalTerms", data.legalTerms()) + ","
-                + field("invoiceFooter", data.invoiceFooter())
+                + field("registryInformation", data.registryInformation())
                 + "}";
         HttpResponse<String> response = sendAuthorized(HttpRequest.newBuilder(URI.create(baseUrl + "/settings/company"))
                 .timeout(Duration.ofSeconds(8))
@@ -237,9 +235,7 @@ public class SettingsApiClient {
                 textField(json, "postalCode"),
                 textField(json, "country"),
                 textField(json, "iban"),
-                textField(json, "registryInformation"),
-                textField(json, "legalTerms"),
-                textField(json, "invoiceFooter")
+                textField(json, "registryInformation")
         );
     }
 

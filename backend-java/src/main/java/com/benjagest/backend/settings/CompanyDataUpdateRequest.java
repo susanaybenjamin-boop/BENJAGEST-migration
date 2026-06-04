@@ -8,9 +8,11 @@ import jakarta.validation.constraints.Size;
  * legalName es obligatorio (la empresa siempre tiene razon social);
  * el resto son opcionales y se guardan como NULL si vienen vacios.
  *
- * Tras la unificacion V10, incluye tambien los campos de emisor de
- * facturas (direccion, IBAN, registro mercantil, textos de pie y
- * condiciones legales) que antes vivian en `issuers`.
+ * Tras V10 incluyo los campos administrativos de emisor (direccion,
+ * IBAN, registro mercantil). Tras V22 (consolidacion 2026-06-04), los
+ * campos "de factura" (legal_terms, invoice_footer) han salido de esta
+ * tabla y viven solo en `invoice_texts`; se editan en
+ * Facturacion -> Configuracion -> Textos legales.
  */
 public record CompanyDataUpdateRequest(
         @NotBlank @Size(max = 180) String legalName,
@@ -25,8 +27,6 @@ public record CompanyDataUpdateRequest(
         @Size(max = 20) String postalCode,
         @Size(max = 80) String country,
         @Size(max = 34) String iban,
-        String registryInformation,
-        String legalTerms,
-        String invoiceFooter
+        String registryInformation
 ) {
 }

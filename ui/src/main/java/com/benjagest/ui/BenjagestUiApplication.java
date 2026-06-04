@@ -1950,8 +1950,6 @@ public class BenjagestUiApplication extends Application {
 
         TextField iban = textInput(company.iban(), t("settings.company.prompt.iban"));
         TextField registry = textInput(company.registryInformation(), t("settings.company.prompt.registry"));
-        TextField terms = textInput(company.legalTerms(), t("settings.company.prompt.terms"));
-        TextField footer = textInput(company.invoiceFooter(), t("settings.company.prompt.footer"));
 
         GridPane generalGrid = formGrid();
         addFormRow(generalGrid, 0, t("settings.company.field.legal_name"), legalName);
@@ -1968,11 +1966,18 @@ public class BenjagestUiApplication extends Application {
         addFormRow(addressGrid, 3, t("settings.company.field.postal_code"), postalCode);
         addFormRow(addressGrid, 4, t("settings.company.field.country"), country);
 
+        // Tras V22 (consolidacion 2026-06-04), los textos "de factura"
+        // (pie, condiciones legales, exencion IVA, IVA reducido,
+        // rectificativa) se editan SOLO en Facturacion -> Configuracion
+        // -> Textos legales. Aqui solo quedan los datos administrativos
+        // (IBAN para domiciliacion, registro mercantil para
+        // identificacion juridica).
         GridPane billingGrid = formGrid();
         addFormRow(billingGrid, 0, t("settings.company.field.iban"), iban);
         addFormRow(billingGrid, 1, t("settings.company.field.registry"), registry);
-        addFormRow(billingGrid, 2, t("settings.company.field.terms"), terms);
-        addFormRow(billingGrid, 3, t("settings.company.field.footer"), footer);
+        Label billingNote = new Label(t("settings.company.billing_note"));
+        billingNote.setWrapText(true);
+        billingNote.getStyleClass().add("settings-hint");
 
         Label typeNote = new Label(t("settings.company.type_note_prefix") + company.companyType()
                 + t("settings.company.type_note_suffix"));
@@ -1995,9 +2000,7 @@ public class BenjagestUiApplication extends Application {
                 postalCode.getText(),
                 country.getText(),
                 iban.getText(),
-                registry.getText(),
-                terms.getText(),
-                footer.getText()
+                registry.getText()
         )));
 
         HBox actions = new HBox(save);
@@ -2013,7 +2016,8 @@ public class BenjagestUiApplication extends Application {
                 new Separator(),
                 label(t("settings.company.section.billing"), "settings-section-title"),
                 label(t("settings.company.section.billing.hint"), "settings-hint"),
-                billingGrid
+                billingGrid,
+                billingNote
         );
 
         Label sectionTitle = label(t("settings.company.section_label"), "settings-section-title");
@@ -5558,7 +5562,8 @@ public class BenjagestUiApplication extends Application {
                 case "settings.company.section.general" -> "General data";
                 case "settings.company.section.address" -> "Postal address";
                 case "settings.company.section.billing" -> "Billing data";
-                case "settings.company.section.billing.hint" -> "These details appear on every invoice you issue as a company.";
+                case "settings.company.section.billing.hint" -> "Administrative billing data only. Per-invoice texts (footer, legal notes, exempt VAT, reduced VAT, corrective notice) live in Billing → Settings → Legal texts.";
+                case "settings.company.billing_note" -> "ℹ The per-invoice footer, legal terms and other texts are configured in Billing → Settings → Legal texts. This avoids duplicated places to edit the same thing.";
                 case "settings.company.prompt.legal_name" -> "Legal name";
                 case "settings.company.prompt.trade_name" -> "Trade name";
                 case "settings.company.prompt.tax_id" -> "Tax ID";
@@ -6155,7 +6160,8 @@ public class BenjagestUiApplication extends Application {
             case "settings.company.section.general" -> "Datos generales";
             case "settings.company.section.address" -> "Direccion postal";
             case "settings.company.section.billing" -> "Datos de facturacion";
-            case "settings.company.section.billing.hint" -> "Estos datos aparecen en cada factura que emites como empresa.";
+            case "settings.company.section.billing.hint" -> "Solo datos administrativos de facturacion. Los textos por factura (pie, condiciones legales, exencion IVA, IVA reducido, aviso rectificativa) viven en Facturacion → Configuracion → Textos legales.";
+            case "settings.company.billing_note" -> "ℹ El pie de factura, condiciones legales y demas textos por factura se configuran en Facturacion → Configuracion → Textos legales. Asi no hay dos sitios para editar lo mismo.";
             case "settings.company.prompt.legal_name" -> "Razon social";
             case "settings.company.prompt.trade_name" -> "Nombre comercial";
             case "settings.company.prompt.tax_id" -> "NIF/CIF";
