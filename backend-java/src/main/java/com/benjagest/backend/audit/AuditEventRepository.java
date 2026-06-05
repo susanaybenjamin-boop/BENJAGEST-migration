@@ -83,6 +83,36 @@ public class AuditEventRepository {
         return jdbcTemplate.query(sql.toString(), this::mapEvent, args.toArray());
     }
 
+    /**
+     * Listado completo (sin limit típico) de eventos en un rango.
+     * Pensado para el export de auditoría a PDF/CSV: el documento es
+     * un retrato del periodo, no hay paginación. Tope defensivo de
+     * 50000 filas para que un rango absurdo no agote memoria — quien
+     * necesite más lo hace en bloques.
+     */
+    public List<AuditEvent> findInRangeForCompany(String companyId,
+                                                    Instant from, Instant to,
+                                                    String eventTypePrefix) {
+        StringBuilder sql = new StringBuilder("""
+                SELECT id, company_id, user_id, event_type, entity_type, entity_id,
+                       result, ip_address, user_agent, details, created_at
+                  FROM audit_events
+                 WHERE company_id = ?
+                   AND created_at >= ?
+                   AND created_at <= ?
+                """);
+        List<Object> args = new ArrayList<>();
+        args.add(companyId);
+        args.add(Timestamp.from(from));
+        args.add(Timestamp.from(to));
+        if (eventTypePrefix != null && !eventTypePrefix.isBlank()) {
+            sql.append("   AND event_type LIKE ?\n");
+            args.add(eventTypePrefix.trim() + "%");
+        }
+        sql.append(" ORDER BY created_at ASC LIMIT 50000");
+        return jdbcTemplate.query(sql.toString(), this::mapEvent, args.toArray());
+    }
+
     private AuditEvent mapEvent(ResultSet rs, int rowNum) throws SQLException {
         Timestamp createdAt = rs.getTimestamp("created_at");
         return new AuditEvent(

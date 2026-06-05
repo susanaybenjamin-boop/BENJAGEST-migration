@@ -153,6 +153,31 @@ public class SettingsApiClient {
      * Filtros opcionales: eventType (null para todos), sinceIso (null
      * = ultimos), limit (1-500).
      */
+    /**
+     * Descarga el export verificable de auditoría general (PDF o CSV).
+     * Endpoint /api/settings/audit-events/export.{pdf|csv}.
+     */
+    public byte[] exportAuditEvents(String format, String fromIso, String toIso,
+                                      String eventTypePrefix) throws IOException, InterruptedException {
+        StringBuilder url = new StringBuilder(baseUrl)
+                .append("/settings/audit-events/export.").append(format)
+                .append("?from=").append(fromIso)
+                .append("&to=").append(toIso);
+        if (eventTypePrefix != null && !eventTypePrefix.isBlank()) {
+            url.append("&eventTypePrefix=").append(java.net.URLEncoder.encode(
+                    eventTypePrefix, java.nio.charset.StandardCharsets.UTF_8));
+        }
+        HttpRequest.Builder builder = HttpRequest.newBuilder(URI.create(url.toString()))
+                .timeout(Duration.ofSeconds(60)).GET();
+        AuthSession.get().authorize(builder);
+        HttpResponse<byte[]> r = HttpClient.newHttpClient().send(builder.build(),
+                HttpResponse.BodyHandlers.ofByteArray());
+        if (r.statusCode() < 200 || r.statusCode() >= 300) {
+            throw new IOException("HTTP " + r.statusCode());
+        }
+        return r.body();
+    }
+
     public List<AuditEvent> listAuditEvents(String eventType, String sinceIso, int limit) throws IOException, InterruptedException {
         StringBuilder url = new StringBuilder(baseUrl + "/settings/audit-events?limit=" + limit);
         if (eventType != null && !eventType.isBlank()) {

@@ -30,10 +30,50 @@ public class AuditEventController {
 
     private final AuditEventRepository repository;
     private final TenantContext tenantContext;
+    private final AuditExportService exportService;
 
-    public AuditEventController(AuditEventRepository repository, TenantContext tenantContext) {
+    public AuditEventController(AuditEventRepository repository,
+                                  TenantContext tenantContext,
+                                  AuditExportService exportService) {
         this.repository = repository;
         this.tenantContext = tenantContext;
+        this.exportService = exportService;
+    }
+
+    /**
+     * Export del registro de auditoría a PDF verificable para
+     * Inspección/Hacienda. Filtros: from, to (obligatorios) y
+     * eventTypePrefix opcional (ej. "ADVISORY_INVITATION_" para sólo
+     * eventos de invitaciones).
+     */
+    @GetMapping(value = "/export.pdf", produces = "application/pdf")
+    public org.springframework.http.ResponseEntity<byte[]> exportPdf(
+            @RequestParam("from") String fromIso,
+            @RequestParam("to") String toIso,
+            @RequestParam(value = "eventTypePrefix", required = false) String eventTypePrefix) {
+        byte[] body = exportService.exportPdf(
+                java.time.LocalDate.parse(fromIso),
+                java.time.LocalDate.parse(toIso),
+                eventTypePrefix);
+        return org.springframework.http.ResponseEntity.ok()
+                .header("Content-Disposition", "attachment; filename=\"auditoria-"
+                        + fromIso + "_" + toIso + ".pdf\"")
+                .body(body);
+    }
+
+    @GetMapping(value = "/export.csv", produces = "text/csv")
+    public org.springframework.http.ResponseEntity<byte[]> exportCsv(
+            @RequestParam("from") String fromIso,
+            @RequestParam("to") String toIso,
+            @RequestParam(value = "eventTypePrefix", required = false) String eventTypePrefix) {
+        byte[] body = exportService.exportCsv(
+                java.time.LocalDate.parse(fromIso),
+                java.time.LocalDate.parse(toIso),
+                eventTypePrefix);
+        return org.springframework.http.ResponseEntity.ok()
+                .header("Content-Disposition", "attachment; filename=\"auditoria-"
+                        + fromIso + "_" + toIso + ".csv\"")
+                .body(body);
     }
 
     @GetMapping
