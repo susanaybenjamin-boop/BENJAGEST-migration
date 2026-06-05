@@ -1734,7 +1734,6 @@ public class BenjagestUiApplication extends Application {
 
     private TableView<com.benjagest.ui.model.PurchaseInvoiceEntry> purchaseInvoicesTable;
     private ComboBox<String> purchaseYearFilter;
-    private ComboBox<String> purchaseStatusFilter;
 
     private void showPurchasesWithImport() {
         Label header = label(t("purchases.header"), "settings-section-title");
@@ -1747,19 +1746,14 @@ public class BenjagestUiApplication extends Application {
         importBtn.getStyleClass().add("button-primary");
         importBtn.setOnAction(ev -> importPurchasePdf());
 
-        // Filtros: año + estado.
+        // Filtros: solo año. Sin filtro de estado porque ya no hay
+        // VOID — los gastos eliminados desaparecen físicamente
+        // (ver docs/legal-compras-gastos.md).
         purchaseYearFilter = new ComboBox<>();
         purchaseYearFilter.getItems().add(t("list.filter.all"));
         int currentYear = java.time.LocalDate.now().getYear();
         for (int y = currentYear; y >= currentYear - 5; y--) purchaseYearFilter.getItems().add(String.valueOf(y));
         purchaseYearFilter.getSelectionModel().selectFirst();
-
-        purchaseStatusFilter = new ComboBox<>();
-        purchaseStatusFilter.getItems().addAll(
-                t("list.filter.all"),
-                t("purchases.status.posted"),
-                t("purchases.status.void"));
-        purchaseStatusFilter.getSelectionModel().selectFirst();
 
         Button reloadBtn = new Button(t("purchases.action.refresh"));
         reloadBtn.setGraphic(icon("fas-sync"));
@@ -1767,7 +1761,6 @@ public class BenjagestUiApplication extends Application {
 
         HBox filters = new HBox(8,
                 new Label(t("purchases.filter.year")), purchaseYearFilter,
-                new Label(t("purchases.filter.status")), purchaseStatusFilter,
                 reloadBtn);
         filters.setAlignment(Pos.CENTER_LEFT);
 
@@ -1825,28 +1818,30 @@ public class BenjagestUiApplication extends Application {
         colTotal.setPrefWidth(110);
         colTotal.setComparator(NUMERIC_STRING_COMPARATOR);
 
-        TableColumn<com.benjagest.ui.model.PurchaseInvoiceEntry, String> colStatus =
-                new TableColumn<>(t("purchases.col.status"));
-        colStatus.setCellValueFactory(c -> new SimpleStringProperty(
-                c.getValue().isVoid() ? "✗ " + t("purchases.status.void")
-                        : (c.getValue().hasJournal() ? "✓ " + t("purchases.status.posted_journal")
-                                : "✓ " + t("purchases.status.posted"))));
-        colStatus.setPrefWidth(140);
+        // Columna "Asiento": indica si se generó apunte contable
+        // automático (depende de si la empresa tiene plan contable
+        // sembrado con cuentas 600/472/400 + fiscal_year OPEN).
+        TableColumn<com.benjagest.ui.model.PurchaseInvoiceEntry, String> colJournal =
+                new TableColumn<>(t("purchases.col.journal"));
+        colJournal.setCellValueFactory(c -> new SimpleStringProperty(
+                c.getValue().hasJournal() ? "✓" : ""));
+        colJournal.setPrefWidth(80);
 
         purchaseInvoicesTable.getColumns().setAll(
-                colDate, colSupplier, colNif, colNumber, colBase, colVat, colTotal, colStatus);
+                colDate, colSupplier, colNif, colNumber, colBase, colVat, colTotal, colJournal);
 
-        Button voidBtn = new Button(t("purchases.action.void"));
-        voidBtn.setGraphic(icon("fas-ban"));
-        voidBtn.setDisable(true);
-        voidBtn.setOnAction(ev -> {
+        Button deleteBtn = new Button(t("purchases.action.delete"));
+        deleteBtn.setGraphic(icon("fas-trash"));
+        deleteBtn.getStyleClass().add("button-danger-outline");
+        deleteBtn.setDisable(true);
+        deleteBtn.setOnAction(ev -> {
             var sel = purchaseInvoicesTable.getSelectionModel().getSelectedItem();
-            if (sel != null) voidPurchaseInvoice(sel);
+            if (sel != null) deletePurchaseInvoice(sel);
         });
         purchaseInvoicesTable.getSelectionModel().selectedItemProperty()
-                .addListener((o, ov, nv) -> voidBtn.setDisable(nv == null || nv.isVoid()));
+                .addListener((o, ov, nv) -> deleteBtn.setDisable(nv == null));
 
-        HBox actions = new HBox(10, importBtn, voidBtn);
+        HBox actions = new HBox(10, importBtn, deleteBtn);
 
         VBox body = new VBox(12, header, hint, filters, purchaseInvoicesTable, actions);
         VBox.setVgrow(purchaseInvoicesTable, Priority.ALWAYS);
@@ -1859,11 +1854,10 @@ public class BenjagestUiApplication extends Application {
     private void reloadPurchaseInvoices() {
         if (purchaseInvoicesTable == null) return;
         Integer year = parseYearFilter(purchaseYearFilter.getValue());
-        String status = parseStatusFilter(purchaseStatusFilter.getValue());
         Task<java.util.List<com.benjagest.ui.model.PurchaseInvoiceEntry>> task = new Task<>() {
             @Override
             protected java.util.List<com.benjagest.ui.model.PurchaseInvoiceEntry> call() throws Exception {
-                return purchasesApi.list(year, status, null);
+                return purchasesApi.list(year, null, null);
             }
         };
         task.setOnSucceeded(e -> purchaseInvoicesTable.getItems().setAll(task.getValue()));
@@ -1877,32 +1871,25 @@ public class BenjagestUiApplication extends Application {
         try { return Integer.parseInt(text); } catch (Exception ex) { return null; }
     }
 
-    private String parseStatusFilter(String text) {
-        if (text == null || text.equals(t("list.filter.all"))) return null;
-        if (text.equals(t("purchases.status.posted"))) return "POSTED";
-        if (text.equals(t("purchases.status.void"))) return "VOID";
-        return null;
-    }
-
-    private void voidPurchaseInvoice(com.benjagest.ui.model.PurchaseInvoiceEntry row) {
+    private void deletePurchaseInvoice(com.benjagest.ui.model.PurchaseInvoiceEntry row) {
         Alert confirm = new Alert(Alert.AlertType.CONFIRMATION,
-                t("purchases.confirm.void.body") + "\n\n"
+                t("purchases.confirm.delete.body") + "\n\n"
                         + (row.supplierName() == null ? "" : row.supplierName() + "  ")
                         + (row.invoiceNumber() == null ? "" : "#" + row.invoiceNumber()),
                 ButtonType.OK, ButtonType.CANCEL);
-        confirm.setHeaderText(t("purchases.confirm.void.title"));
+        confirm.setHeaderText(t("purchases.confirm.delete.title"));
         confirm.showAndWait().filter(b -> b == ButtonType.OK).ifPresent(b -> {
             Task<Void> task = new Task<>() {
                 @Override
                 protected Void call() throws Exception {
-                    purchasesApi.voidInvoice(row.id());
+                    purchasesApi.deleteInvoice(row.id());
                     return null;
                 }
             };
             task.setOnSucceeded(e -> reloadPurchaseInvoices());
-            task.setOnFailed(e -> showError(t("purchases.void.fail.title"),
-                    t("purchases.void.fail.body")));
-            start(task, "purchase-invoice-void");
+            task.setOnFailed(e -> showError(t("purchases.delete.fail.title"),
+                    t("purchases.delete.fail.body")));
+            start(task, "purchase-invoice-delete");
         });
     }
 
@@ -6620,7 +6607,7 @@ public class BenjagestUiApplication extends Application {
                 case "module.customers" -> "Customers";
                 case "module.billing" -> "Billing";
                 case "module.issuers" -> "Issuers";
-                case "module.purchases" -> "Purchases";
+                case "module.purchases" -> "Purchases & Expenses";
                 case "module.labor" -> "HR";
                 case "module.tax" -> "Tax (AEAT)";
                 case "module.reports" -> "Reports";
@@ -6920,9 +6907,8 @@ public class BenjagestUiApplication extends Application {
                 case "purchases.placeholder.coming_soon" -> "The full Purchases module (supplier list, recurring expenses, payment status) is on the roadmap. Today only the PDF importer is available — the detected fields are shown for review but not persisted yet.";
                 case "purchases.placeholder.empty" -> "No expenses recorded yet. Use 'Import PDF' to add the first one.";
                 case "purchases.filter.year" -> "Year:";
-                case "purchases.filter.status" -> "Status:";
                 case "purchases.action.refresh" -> "Refresh";
-                case "purchases.action.void" -> "Void";
+                case "purchases.action.delete" -> "Delete";
                 case "purchases.col.date" -> "Date";
                 case "purchases.col.supplier" -> "Supplier";
                 case "purchases.col.nif" -> "Tax ID";
@@ -6930,10 +6916,7 @@ public class BenjagestUiApplication extends Application {
                 case "purchases.col.base" -> "Base";
                 case "purchases.col.vat" -> "VAT";
                 case "purchases.col.total" -> "Total";
-                case "purchases.col.status" -> "Status";
-                case "purchases.status.posted" -> "Recorded";
-                case "purchases.status.posted_journal" -> "Recorded + journal";
-                case "purchases.status.void" -> "Voided";
+                case "purchases.col.journal" -> "Journal";
                 case "purchases.import.action.save_expense" -> "💾 Save expense";
                 case "purchases.save.ok.title" -> "Expense saved";
                 case "purchases.save.ok.body" -> "The expense was recorded. If the company has chart of accounts active, a journal entry was also created.";
@@ -6945,10 +6928,10 @@ public class BenjagestUiApplication extends Application {
                 case "purchases.save.fail.missing.body" -> "At least Total (or Base + VAT) is required to save the expense.";
                 case "purchases.list.fail.title" -> "Could not load expenses";
                 case "purchases.list.fail.body" -> "Check the backend connection and your active company.";
-                case "purchases.confirm.void.title" -> "Void this expense?";
-                case "purchases.confirm.void.body" -> "The expense will be marked as Voided. If it had a journal entry, it will be reversed.";
-                case "purchases.void.fail.title" -> "Could not void";
-                case "purchases.void.fail.body" -> "Try again or check the connection.";
+                case "purchases.confirm.delete.title" -> "Delete this expense?";
+                case "purchases.confirm.delete.body" -> "The expense will be permanently removed from the database. If a journal entry was generated, it will be reversed. The deletion is recorded in the audit log.";
+                case "purchases.delete.fail.title" -> "Could not delete";
+                case "purchases.delete.fail.body" -> "Try again or check the connection.";
                 case "purchases.import.select_pdf" -> "Select PDF invoice";
                 case "purchases.import.fail.title" -> "Could not extract from PDF";
                 case "purchases.import.fail.body" -> "Maybe the PDF is scanned (no embedded text) or encrypted. Make sure the backend is running.";
@@ -7552,7 +7535,7 @@ public class BenjagestUiApplication extends Application {
             case "module.customers" -> "Clientes";
             case "module.billing" -> "Facturacion";
             case "module.issuers" -> "Emisores";
-            case "module.purchases" -> "Compras";
+            case "module.purchases" -> "Compras y Gastos";
             case "module.labor" -> "Personal";
             case "module.tax" -> "Modelos AEAT";
             case "module.reports" -> "Informes";
@@ -7811,9 +7794,8 @@ public class BenjagestUiApplication extends Application {
             case "purchases.placeholder.coming_soon" -> "El modulo Compras completo (proveedores, gastos recurrentes, estado cobro) esta en hoja de ruta. Hoy solo esta disponible el importador PDF — los campos detectados se muestran para revision pero todavia no se persisten.";
             case "purchases.placeholder.empty" -> "Sin gastos registrados todavia. Usa 'Importar PDF' para anyadir el primero.";
             case "purchases.filter.year" -> "Anio:";
-            case "purchases.filter.status" -> "Estado:";
             case "purchases.action.refresh" -> "Refrescar";
-            case "purchases.action.void" -> "Anular";
+            case "purchases.action.delete" -> "Eliminar";
             case "purchases.col.date" -> "Fecha";
             case "purchases.col.supplier" -> "Proveedor";
             case "purchases.col.nif" -> "NIF";
@@ -7821,10 +7803,7 @@ public class BenjagestUiApplication extends Application {
             case "purchases.col.base" -> "Base";
             case "purchases.col.vat" -> "IVA";
             case "purchases.col.total" -> "Total";
-            case "purchases.col.status" -> "Estado";
-            case "purchases.status.posted" -> "Registrado";
-            case "purchases.status.posted_journal" -> "Registrado + asiento";
-            case "purchases.status.void" -> "Anulado";
+            case "purchases.col.journal" -> "Asiento";
             case "purchases.import.action.save_expense" -> "💾 Guardar gasto";
             case "purchases.save.ok.title" -> "Gasto guardado";
             case "purchases.save.ok.body" -> "El gasto se ha registrado. Si la empresa tiene plan contable activo, se creo tambien el asiento contable.";
@@ -7836,10 +7815,10 @@ public class BenjagestUiApplication extends Application {
             case "purchases.save.fail.missing.body" -> "Para guardar el gasto se requiere al menos el Total (o Base + IVA).";
             case "purchases.list.fail.title" -> "No se pudieron cargar los gastos";
             case "purchases.list.fail.body" -> "Comprueba la conexion con el backend y la empresa activa.";
-            case "purchases.confirm.void.title" -> "¿Anular este gasto?";
-            case "purchases.confirm.void.body" -> "El gasto pasara a estado Anulado. Si tenia asiento contable, se revertira.";
-            case "purchases.void.fail.title" -> "No se pudo anular";
-            case "purchases.void.fail.body" -> "Intentalo de nuevo o revisa la conexion.";
+            case "purchases.confirm.delete.title" -> "¿Eliminar este gasto?";
+            case "purchases.confirm.delete.body" -> "El gasto se borrara fisicamente de la base de datos. Si tenia asiento contable, se revertira. La eliminacion queda registrada en el log de auditoria.";
+            case "purchases.delete.fail.title" -> "No se pudo eliminar";
+            case "purchases.delete.fail.body" -> "Intentalo de nuevo o revisa la conexion.";
             case "purchases.import.select_pdf" -> "Seleccionar factura PDF";
             case "purchases.import.fail.title" -> "No se pudo extraer del PDF";
             case "purchases.import.fail.body" -> "Quiza el PDF este escaneado (sin texto embebido) o cifrado. Comprueba que el backend este en marcha.";

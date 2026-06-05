@@ -90,7 +90,7 @@ public class PurchaseInvoiceApiClient {
         return parseList(r.body());
     }
 
-    public void voidInvoice(String id) throws IOException, InterruptedException {
+    public void deleteInvoice(String id) throws IOException, InterruptedException {
         HttpRequest.Builder b = HttpRequest.newBuilder(URI.create(baseUrl + "/purchases/invoices/" + id))
                 .timeout(Duration.ofSeconds(10)).DELETE();
         AuthSession.get().authorize(b);

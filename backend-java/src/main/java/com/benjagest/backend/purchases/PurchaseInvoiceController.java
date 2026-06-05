@@ -66,7 +66,7 @@ public class PurchaseInvoiceController {
 
     @DeleteMapping("/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void voidInvoice(@PathVariable("id") String id) {
-        service.voidInvoice(id);
+    public void deleteInvoice(@PathVariable("id") String id) {
+        service.deleteInvoice(id);
     }
 }

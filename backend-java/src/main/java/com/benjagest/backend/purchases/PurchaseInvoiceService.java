@@ -118,23 +118,40 @@ public class PurchaseInvoiceService {
         return repository.list(year, status, supplierNif);
     }
 
+    /**
+     * Borrado físico de la factura recibida.
+     *
+     * Decisión de diseño (ver {@code docs/legal-compras-gastos.md}):
+     * las facturas RECIBIDAS no entran en VeriFactu/SIF, así que no
+     * tienen obligación de inalterabilidad como las emitidas. La
+     * práctica habitual en A3 / Sage / Contasol es permitir DELETE
+     * mientras el período no esté cerrado.
+     *
+     * El audit_event se registra ANTES del DELETE para que la traza
+     * quede aunque la fila desaparezca de la BD. Cuando se cierre el
+     * slice de cierre fiscal, este método bloqueará el DELETE si la
+     * factura cae en un fiscal_year LOCKED/CLOSED o en un período
+     * presentado.
+     */
     @Transactional
-    public void voidInvoice(String id) {
+    public void deleteInvoice(String id) {
         PurchaseInvoice existing = get(id);
-        if (PurchaseInvoice.STATUS_VOID.equals(existing.status())) {
-            return; // ya anulada
-        }
-        repository.updateStatus(id, PurchaseInvoice.STATUS_VOID);
+        AuthenticatedUser user = currentUserService.require();
+        String tenant = tenantContext.getCurrentCompanyId();
+        // Auditoría primero: necesitamos la traza aunque luego el
+        // DELETE no se materializara por algún motivo.
+        auditService.recordPurchaseInvoiceDeleted(user.userId(), tenant,
+                id, existing.totalAmount(), existing.supplierName(),
+                existing.invoiceNumber());
         if (existing.journalEntryId() != null) {
             try {
                 journalService.reverseForPurchase(existing);
             } catch (Exception ex) {
-                System.err.println("[purchases] no se pudo revertir asiento " + ex.getMessage());
+                System.err.println("[purchases] no se pudo revertir asiento "
+                        + ex.getMessage());
             }
         }
-        AuthenticatedUser user = currentUserService.require();
-        auditService.recordPurchaseInvoiceVoided(
-                user.userId(), tenantContext.getCurrentCompanyId(), id);
+        repository.deletePhysical(id);
     }
 
     private String blankToNull(String v) {
