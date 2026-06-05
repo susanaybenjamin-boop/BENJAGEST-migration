@@ -624,7 +624,11 @@ public class BenjagestUiApplication extends Application {
     }
 
     private void showShell() {
-        root.setTop(header());
+        // El top se compone de un VBox para poder insertar/quitar el
+        // banner de modo cliente sin reconstruir el header.
+        topContainer = new VBox(header());
+        root.setTop(topContainer);
+        refreshClientModeBanner();
         // Sidebar envuelto en ScrollPane: en portatil con muchos modulos
         // activos no caben todos verticalmente. Aparece scrollbar solo
         // cuando hace falta (vbarPolicy AS_NEEDED).
@@ -637,6 +641,65 @@ public class BenjagestUiApplication extends Application {
         root.setBottom(footer());
         startInvitationsPolling();
         startAdvisoryClientsPolling();
+    }
+
+    /**
+     * Limpia el modo "operando como cliente": elimina el override
+     * actingForCompanyId en AuthSession (las próximas llamadas vuelven
+     * al activeCompanyId real de la asesoría), borra el nombre cacheado
+     * y refresca el banner. Llamado por todos los handlers del sidebar
+     * para evitar que la asesoría se quede atrapada.
+     */
+    private void exitClientMode() {
+        if (!AuthSession.get().isActingForClient()) return;
+        AuthSession.get().setActingForCompanyId(null);
+        actingClientName = null;
+        refreshClientModeBanner();
+    }
+
+    /**
+     * Reconstruye (o quita) el banner amber permanente que indica que
+     * el asesor está operando dentro del tenant de un cliente concreto.
+     * El banner siempre lleva un botón "✕ Salir" para volver al modo
+     * asesoría con un solo click.
+     */
+    private void refreshClientModeBanner() {
+        if (topContainer == null) return;
+        topContainer.getChildren().removeIf(n -> "client-mode-banner".equals(n.getId()));
+        if (!AuthSession.get().isActingForClient()) return;
+        topContainer.getChildren().add(buildClientModeBanner());
+    }
+
+    private Node buildClientModeBanner() {
+        Label icon = new Label("👤");
+        icon.setStyle("-fx-font-size: 16;");
+        String name = actingClientName == null
+                ? t("client_mode.banner.title_generic")
+                : t("client_mode.banner.title") + " " + actingClientName;
+        Label text = new Label(name);
+        text.setStyle("-fx-font-weight: bold; -fx-text-fill: #92400e;");
+        Region spacer = new Region();
+        HBox.setHgrow(spacer, Priority.ALWAYS);
+        Button exit = new Button("✕ " + t("client_mode.banner.exit"));
+        exit.setStyle(
+                "-fx-background-color: transparent;"
+              + " -fx-text-fill: #92400e;"
+              + " -fx-border-color: #92400e;"
+              + " -fx-border-radius: 4;"
+              + " -fx-padding: 2 10 2 10;");
+        exit.setOnAction(ev -> {
+            exitClientMode();
+            showAdvisoryClients();
+        });
+        HBox banner = new HBox(10, icon, text, spacer, exit);
+        banner.setPadding(new Insets(8, 16, 8, 16));
+        banner.setStyle(
+                "-fx-background-color: #fef3c7;"
+              + " -fx-border-color: #f59e0b;"
+              + " -fx-border-width: 0 0 1 0;");
+        banner.setAlignment(Pos.CENTER_LEFT);
+        banner.setId("client-mode-banner");
+        return banner;
     }
 
     /**
@@ -836,12 +899,16 @@ public class BenjagestUiApplication extends Application {
         sidebar.getChildren().add(section);
 
         Button home = navButton("dashboard", t("home"), "fas-home");
-        home.setOnAction(event -> showDashboard());
+        // Sidebar SIEMPRE limpia el modo cliente. Si la asesoría estaba
+        // viendo un cliente y pulsa cualquier botón del sidebar, debe
+        // volver a operar como asesoría — no quedarse atrapada en el
+        // tenant del cliente.
+        home.setOnAction(event -> { exitClientMode(); showDashboard(); });
         sidebar.getChildren().add(home);
 
         for (ModuleLink link : activeModules()) {
             Button button = navButton(link.id(), moduleTitle(link.id()), link.icon());
-            button.setOnAction(event -> showModule(link.id()));
+            button.setOnAction(event -> { exitClientMode(); showModule(link.id()); });
             sidebar.getChildren().add(button);
         }
 
@@ -1996,6 +2063,13 @@ public class BenjagestUiApplication extends Application {
             new com.benjagest.ui.service.AdvisoryInvitationApiClient();
 
     private TableView<com.benjagest.ui.model.AdvisoryInvitationEntry> advisoryInvitationsTable;
+
+    // Modo cliente (asesoría operando sobre un cliente vinculado).
+    // Cuando está activo, se muestra un banner amber permanente bajo el
+    // header con botón de salida, y el sidebar limpia este estado al
+    // navegar para evitar que el asesor se quede atrapado.
+    private String actingClientName;
+    private VBox topContainer;
 
     // Live polling de invitaciones — evita tener que refrescar la pantalla.
     // El Timeline persiste durante toda la sesión, se arranca tras login
@@ -9649,6 +9723,9 @@ public class BenjagestUiApplication extends Application {
             case "advisory.client.purchases.hint" -> "Manage your client's expenses: import PDFs, register them and generate journal entries.";
             case "advisory.client.purchases.use_module" -> "Use the full Purchases & Expenses module to operate on this client's data.";
             case "advisory.client.purchases.open" -> "Open Purchases & Expenses";
+            case "client_mode.banner.title" -> "Working on client:";
+            case "client_mode.banner.title_generic" -> "Working on a client";
+            case "client_mode.banner.exit" -> "Exit client mode";
             default -> null;
         };
     }
@@ -9745,6 +9822,9 @@ public class BenjagestUiApplication extends Application {
             case "advisory.client.purchases.hint" -> "Gestiona los gastos de tu cliente: importa PDFs, registralos y genera asientos contables.";
             case "advisory.client.purchases.use_module" -> "Usa el modulo Compras y Gastos completo para operar sobre los datos de este cliente.";
             case "advisory.client.purchases.open" -> "Abrir Compras y Gastos";
+            case "client_mode.banner.title" -> "Trabajando sobre el cliente:";
+            case "client_mode.banner.title_generic" -> "Trabajando sobre un cliente";
+            case "client_mode.banner.exit" -> "Salir del modo cliente";
             default -> null;
         };
     }
@@ -11978,6 +12058,8 @@ public class BenjagestUiApplication extends Application {
      */
     private void switchToClient(com.benjagest.ui.model.ManagedClientEntry client) {
         AuthSession.get().setActingForCompanyId(client.id());
+        actingClientName = client.legalName();
+        refreshClientModeBanner();
         setCenterAnimated(buildClientDetailView(client));
     }
 
@@ -11985,7 +12067,7 @@ public class BenjagestUiApplication extends Application {
         Button backBtn = new Button(t("advisory.client.back"));
         backBtn.setGraphic(icon("fas-arrow-left"));
         backBtn.setOnAction(ev -> {
-            AuthSession.get().setActingForCompanyId(null);
+            exitClientMode();
             showAdvisoryClients();
         });
 
