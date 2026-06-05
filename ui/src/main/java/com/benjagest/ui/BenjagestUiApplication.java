@@ -625,7 +625,15 @@ public class BenjagestUiApplication extends Application {
 
     private void showShell() {
         root.setTop(header());
-        root.setLeft(sidebar());
+        // Sidebar envuelto en ScrollPane: en portatil con muchos modulos
+        // activos no caben todos verticalmente. Aparece scrollbar solo
+        // cuando hace falta (vbarPolicy AS_NEEDED).
+        ScrollPane sidebarScroll = new ScrollPane(sidebar());
+        sidebarScroll.setFitToWidth(true);
+        sidebarScroll.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
+        sidebarScroll.setVbarPolicy(ScrollPane.ScrollBarPolicy.AS_NEEDED);
+        sidebarScroll.getStyleClass().add("sidebar-scroll");
+        root.setLeft(sidebarScroll);
         root.setBottom(footer());
     }
 
@@ -1579,7 +1587,7 @@ public class BenjagestUiApplication extends Application {
         header.setAlignment(Pos.CENTER_LEFT);
         VBox content = new VBox(18, header, grid);
         content.getStyleClass().add("form-shell");
-        dialog.getDialogPane().setContent(dialogScroll(content));
+        installDialog(dialog, content);
         dialog.getDialogPane().getButtonTypes().addAll(
                 new ButtonType(editing ? t("update") : t("save"), ButtonBar.ButtonData.OK_DONE),
                 ButtonType.CANCEL
@@ -1884,7 +1892,7 @@ public class BenjagestUiApplication extends Application {
             g.add(hashShort, 0, row++, 2, 1);
         }
 
-        dialog.getDialogPane().setContent(dialogScroll(g));
+        installDialog(dialog, g);
         dialog.getDialogPane().setPrefWidth(620);
 
         // Botón "Guardar plantilla" deshabilitado si NI el extractor ni el
@@ -2711,7 +2719,7 @@ public class BenjagestUiApplication extends Application {
         tip.getStyleClass().add("settings-hint");
         g.add(tip, 0, r++, 2, 1);
 
-        dialog.getDialogPane().setContent(dialogScroll(g));
+        installDialog(dialog, g);
         dialog.getDialogPane().setPrefWidth(580);
 
         Button save = (Button) dialog.getDialogPane().lookupButton(saveBt);
@@ -3006,7 +3014,7 @@ public class BenjagestUiApplication extends Application {
         grid.add(new Label(t("settings.owners.editor.phone")), 0, 8); grid.add(phoneField, 1, 8);
         grid.add(new Label(t("settings.owners.editor.notes")), 0, 9); grid.add(notesField, 1, 9);
         grid.add(activeCb, 1, 10);
-        dialog.getDialogPane().setContent(dialogScroll(grid));
+        installDialog(dialog, grid);
 
         dialog.showAndWait().ifPresent(bt -> {
             if (bt != saveBt) return;
@@ -3262,7 +3270,7 @@ public class BenjagestUiApplication extends Application {
         grid.add(new Label(t("settings.credentials.editor.auth_url")), 0, 4); grid.add(authUrlField, 1, 4);
         grid.add(new Label(t("settings.credentials.editor.notes")), 0, 5); grid.add(notesField, 1, 5);
         grid.add(activeCb, 1, 6);
-        dialog.getDialogPane().setContent(dialogScroll(grid));
+        installDialog(dialog, grid);
 
         dialog.showAndWait().ifPresent(bt -> {
             if (bt != saveBt) return;
@@ -4479,7 +4487,7 @@ public class BenjagestUiApplication extends Application {
         grid.add(new Label(t("billing.config.vat.editor.percent")), 0, 3); grid.add(pctField, 1, 3);
         grid.add(defaultCb, 1, 4);
         grid.add(activeCb, 1, 5);
-        dialog.getDialogPane().setContent(dialogScroll(grid));
+        installDialog(dialog, grid);
 
         dialog.showAndWait().ifPresent(bt -> {
             if (bt != saveBt) return;
@@ -4773,7 +4781,7 @@ public class BenjagestUiApplication extends Application {
 
         VBox dialogBody = new VBox(12, grid, nextNumberHint, autoLockHint);
         dialogBody.setPadding(new Insets(8));
-        dialog.getDialogPane().setContent(dialogScroll(dialogBody));
+        installDialog(dialog, dialogBody);
 
         ButtonType saveBtn = new ButtonType(existing == null ? t("billing.series.editor.btn.create") : t("billing.series.editor.btn.save"), ButtonBar.ButtonData.OK_DONE);
         dialog.getDialogPane().getButtonTypes().addAll(saveBtn, ButtonType.CANCEL);
@@ -6151,14 +6159,23 @@ public class BenjagestUiApplication extends Application {
     }
 
     /**
-     * Wrapper retro-compatible que delega en el módulo central
-     * {@link com.benjagest.ui.layout.ResponsiveLayout}. Lo dejamos para
-     * no romper las llamadas existentes, pero el cap de altura ya no
-     * es fijo (560px) sino dinámico según la pantalla real del
-     * dispositivo (visualBounds menos chrome).
+     * Wrapper retro-compatible (v1). Solo envuelve en ScrollPane el
+     * contenido, sin tocar el Stage del Dialog — útil para sitios que
+     * no son diálogos. Para diálogos prefiero {@link #installDialog}.
      */
     private Node dialogScroll(Node content) {
         return com.benjagest.ui.layout.ResponsiveLayout.dialog(content);
+    }
+
+    /**
+     * Configura un Dialog responsivo: ScrollPane interno + cap en
+     * DialogPane + cap en Stage al mostrar. Garantiza que los botones
+     * (Aceptar / Cancelar / Guardar) son SIEMPRE visibles, incluso en
+     * portátil 13" maximizado. Reemplaza
+     * {@code dialog.getDialogPane().setContent(X)}.
+     */
+    private void installDialog(javafx.scene.control.Dialog<?> dialog, Node content) {
+        com.benjagest.ui.layout.ResponsiveLayout.installDialog(dialog, content);
     }
 
     /**
@@ -6173,7 +6190,13 @@ public class BenjagestUiApplication extends Application {
     private void setCenterAnimated(Node node) {
         node.setOpacity(0);
         node.setTranslateY(12);
-        root.setCenter(node);
+        // Garantia ultima de scroll: si el contenido no es ya un
+        // ScrollPane, lo envolvemos. Las pantallas que ya envuelven con
+        // tabLayout/screenScroll vuelven por el corto-circuito
+        // idempotente de ResponsiveLayout.screen.
+        Node centerNode = (node instanceof ScrollPane) ? node
+                : com.benjagest.ui.layout.ResponsiveLayout.screen(node);
+        root.setCenter(centerNode);
 
         FadeTransition fade = new FadeTransition(Duration.millis(180), node);
         fade.setFromValue(0);
@@ -9427,7 +9450,7 @@ public class BenjagestUiApplication extends Application {
         g.add(extraProrated, 1, 4);
         g.add(new Label(t("labor.payslips.calc.other_deductions")), 0, 5); g.add(otherField, 1, 5);
         g.add(new Label(t("labor.payslips.calc.notes")), 0, 6); g.add(notesArea, 1, 6);
-        dialog.getDialogPane().setContent(dialogScroll(g));
+        installDialog(dialog, g);
 
         dialog.showAndWait().ifPresent(bt -> {
             if (bt != saveBt) return;
@@ -9850,7 +9873,7 @@ public class BenjagestUiApplication extends Application {
         flagsHint.setWrapText(true);
         flagsHint.getStyleClass().add("settings-hint");
         g.add(flagsHint, 0, 8, 2, 1);
-        dialog.getDialogPane().setContent(dialogScroll(g));
+        installDialog(dialog, g);
 
         dialog.showAndWait().ifPresent(bt -> {
             if (bt != saveBt) return;
@@ -10127,7 +10150,7 @@ public class BenjagestUiApplication extends Application {
         HBox actions = new HBox(8, newC, editC);
         VBox body = new VBox(12, contractsTable, actions);
         body.setPadding(new Insets(10));
-        dialog.getDialogPane().setContent(dialogScroll(body));
+        installDialog(dialog, body);
         dialog.setResizable(true);
         dialog.showAndWait();
     }
@@ -10182,7 +10205,7 @@ public class BenjagestUiApplication extends Application {
         g.add(new Label(t("labor.contract.editor.status")), 2, row); g.add(statusCombo, 3, row); row++;
         g.add(new Label(t("labor.contract.editor.workplace")), 0, row); g.add(workplaceField, 1, row, 3, 1);
 
-        dialog.getDialogPane().setContent(dialogScroll(g));
+        installDialog(dialog, g);
         dialog.showAndWait().ifPresent(bt -> {
             if (bt != saveBt) return;
             com.benjagest.ui.model.ContractEntry payload = new com.benjagest.ui.model.ContractEntry(
@@ -10484,7 +10507,7 @@ public class BenjagestUiApplication extends Application {
 
             VBox body = new VBox(8, new Label(t("reta.changes.hint")), tbl);
             body.setPadding(new Insets(10));
-            dialog.getDialogPane().setContent(dialogScroll(body));
+            installDialog(dialog, body);
 
             // Interceptamos el boton de la izquierda para abrir el sub-editor
             Button newButton = (Button) dialog.getDialogPane().lookupButton(newBt);
@@ -10526,7 +10549,7 @@ public class BenjagestUiApplication extends Application {
         g.add(new Label(t("reta.change.editor.net_income")), 0, 4); g.add(netIncome, 1, 4);
         g.add(sent, 1, 5);
         g.add(new Label(t("reta.change.editor.notes")), 0, 6); g.add(notes, 1, 6);
-        dialog.getDialogPane().setContent(dialogScroll(g));
+        installDialog(dialog, g);
 
         dialog.showAndWait().ifPresent(bt -> {
             if (bt != saveBt) return;
@@ -10597,7 +10620,7 @@ public class BenjagestUiApplication extends Application {
                 result);
         body.setPadding(new Insets(10));
         body.setPrefWidth(500);
-        dialog.getDialogPane().setContent(dialogScroll(body));
+        installDialog(dialog, body);
         dialog.showAndWait();
     }
 
@@ -10745,7 +10768,7 @@ public class BenjagestUiApplication extends Application {
         g.add(new Label(t("dehu.editor.url")), 2, row); g.add(urlField, 3, row); row++;
         g.add(new Label(t("dehu.editor.notes")), 0, row); g.add(notes, 1, row, 3, 1);
 
-        dialog.getDialogPane().setContent(dialogScroll(g));
+        installDialog(dialog, g);
         dialog.showAndWait().ifPresent(bt -> {
             if (bt != saveBt) return;
             com.benjagest.ui.model.DehuNotificationEntry payload = new com.benjagest.ui.model.DehuNotificationEntry(
@@ -11202,7 +11225,7 @@ public class BenjagestUiApplication extends Application {
         grid.add(new Label(t("tax.new.model")), 0, 0); grid.add(modelCombo, 1, 0);
         grid.add(new Label(t("tax.new.year")), 0, 1); grid.add(yearCombo, 1, 1);
         grid.add(new Label(t("tax.new.period")), 0, 2); grid.add(periodCombo, 1, 2);
-        dialog.getDialogPane().setContent(dialogScroll(grid));
+        installDialog(dialog, grid);
 
         dialog.showAndWait().ifPresent(bt -> {
             if (bt != nextBt) return;
@@ -11259,7 +11282,7 @@ public class BenjagestUiApplication extends Application {
         grid.add(new Label(t("tax.editor.csv")), 0, 2); grid.add(csvField, 1, 2);
         grid.add(new Label(t("tax.editor.data")), 0, 3); grid.add(dataArea, 1, 3);
         grid.add(new Label(t("tax.editor.notes")), 0, 4); grid.add(notesArea, 1, 4);
-        dialog.getDialogPane().setContent(dialogScroll(grid));
+        installDialog(dialog, grid);
 
         dialog.showAndWait().ifPresent(bt -> {
             if (bt != saveBt) return;
@@ -11328,7 +11351,7 @@ public class BenjagestUiApplication extends Application {
         grid.add(new Label(t("tax.editor.status")), 0, 9); grid.add(statusCombo, 1, 9);
         grid.add(new Label(t("tax.editor.csv")), 2, 9); grid.add(csvField, 3, 9);
 
-        dialog.getDialogPane().setContent(dialogScroll(grid));
+        installDialog(dialog, grid);
 
         dialog.showAndWait().ifPresent(bt -> {
             if (bt != saveBt) return;
@@ -11401,7 +11424,7 @@ public class BenjagestUiApplication extends Application {
         grid.add(new Separator(), 0, 6, 2, 1);
         grid.add(new Label(t("tax.editor.status")), 0, 7); grid.add(statusCombo, 1, 7);
         grid.add(new Label(t("tax.editor.csv")), 0, 8); grid.add(csvField, 1, 8);
-        dialog.getDialogPane().setContent(dialogScroll(grid));
+        installDialog(dialog, grid);
 
         dialog.showAndWait().ifPresent(bt -> {
             if (bt != saveBt) return;
