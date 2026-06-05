@@ -749,45 +749,72 @@ public class BenjagestUiApplication extends Application {
             advisoryClientsPoller.stop();
             advisoryClientsPoller = null;
         }
-        seenManagedClientIds.clear();
+        seenLinkedCompanyIds.clear();
         advisoryClientsBootstrapped = false;
-        advisoryClientsLiveTable = null;
+        advisoryPortfolioTable = null;
     }
 
     private void pollAdvisoryClients() {
         if (!com.benjagest.ui.service.AuthSession.get().isAuthenticated()) return;
         if (appMode != AppMode.ADVISORY) return;
-        Task<java.util.List<com.benjagest.ui.model.ManagedClientEntry>> task = new Task<>() {
+        Task<java.util.List<com.benjagest.ui.model.CustomerPortfolioEntry>> task = new Task<>() {
             @Override
-            protected java.util.List<com.benjagest.ui.model.ManagedClientEntry> call() throws Exception {
-                return altaApiClient.listManagedClients();
+            protected java.util.List<com.benjagest.ui.model.CustomerPortfolioEntry> call() throws Exception {
+                return altaApiClient.listAdvisoryPortfolio();
             }
         };
         task.setOnSucceeded(e -> {
             var list = task.getValue();
             if (list == null) list = java.util.List.of();
-            boolean hadNewOnes = false;
+
+            // Construir set de linkedCompanyIds VIGENTES tras la query.
+            java.util.Set<String> currentlyLinked = new java.util.HashSet<>();
+            for (var c : list) {
+                if (c.isLinked() && c.linkedCompanyId() != null) {
+                    currentlyLinked.add(c.linkedCompanyId());
+                }
+            }
+
+            boolean hadNewLinks = false;
+            boolean hadUnlinks = false;
             if (advisoryClientsBootstrapped) {
-                for (var c : list) {
-                    if (c.id() != null && seenManagedClientIds.add(c.id())) {
-                        hadNewOnes = true;
+                // Nuevos vínculos: están en currentlyLinked pero no en seen.
+                for (String id : currentlyLinked) {
+                    if (seenLinkedCompanyIds.add(id)) hadNewLinks = true;
+                }
+                // Desvinculaciones: están en seen pero no en currentlyLinked.
+                var toRemove = new java.util.ArrayList<String>();
+                for (String id : seenLinkedCompanyIds) {
+                    if (!currentlyLinked.contains(id)) {
+                        toRemove.add(id);
+                        hadUnlinks = true;
                     }
                 }
+                seenLinkedCompanyIds.removeAll(toRemove);
             } else {
-                for (var c : list) if (c.id() != null) seenManagedClientIds.add(c.id());
+                seenLinkedCompanyIds.addAll(currentlyLinked);
                 advisoryClientsBootstrapped = true;
             }
-            // Refrescar tabla si está visible.
-            if (advisoryClientsLiveTable != null
-                    && advisoryClientsLiveTable.getScene() != null) {
-                advisoryClientsLiveTable.getItems().setAll(list);
+
+            // Refrescar la tabla del portfolio si está visible. setAll
+            // reemplaza todas las filas con el estado nuevo del backend,
+            // así que badges (linked / pending / not_linked) y filas
+            // desaparecidas se reflejan automáticamente.
+            boolean tableVisible = advisoryPortfolioTable != null
+                    && advisoryPortfolioTable.getScene() != null;
+            if (tableVisible) {
+                advisoryPortfolioTable.getItems().setAll(list);
             }
-            // Notificar si hay clientes nuevos y NO estamos en la
-            // pantalla de Mis clientes.
-            if (hadNewOnes && (advisoryClientsLiveTable == null
-                    || advisoryClientsLiveTable.getScene() == null)) {
-                showInfo(t("advisory.toast.new_client.title"),
-                        t("advisory.toast.new_client.body"));
+
+            // Notificaciones nativas cuando NO estamos viendo la pantalla.
+            if (!tableVisible) {
+                if (hadNewLinks) {
+                    showInfo(t("advisory.toast.new_client.title"),
+                            t("advisory.toast.new_client.body"));
+                } else if (hadUnlinks) {
+                    showInfo(t("advisory.toast.unlinked.title"),
+                            t("advisory.toast.unlinked.body"));
+                }
             }
         });
         task.setOnFailed(e -> { /* silencio */ });
@@ -2080,13 +2107,15 @@ public class BenjagestUiApplication extends Application {
     private boolean invitationsBootstrapped = false;
     private VBox dashboardInvitationsSlot;
 
-    // Live polling de clientes vinculados (modo asesoría). Cuando un
-    // empresario acepta la invitación, la asesoría debe verlo sin
-    // refrescar la pantalla manualmente.
+    // Live polling de la cartera de clientes de la asesoría. Refresca
+    // tanto vinculaciones nuevas (cliente acepta invitación) como
+    // desvinculaciones (cliente desvincula desde su Configuración).
     private javafx.animation.Timeline advisoryClientsPoller;
-    private final java.util.Set<String> seenManagedClientIds = new java.util.HashSet<>();
+    // Conjunto de "links activos": guarda los linkedCompanyId que
+    // hemos visto vinculados. Cuando uno desaparece detectamos una
+    // desvinculación; cuando aparece uno nuevo, detectamos vinculación.
+    private final java.util.Set<String> seenLinkedCompanyIds = new java.util.HashSet<>();
     private boolean advisoryClientsBootstrapped = false;
-    private TableView<com.benjagest.ui.model.ManagedClientEntry> advisoryClientsLiveTable;
 
     private TableView<com.benjagest.ui.model.PurchaseInvoiceEntry> purchaseInvoicesTable;
     private ComboBox<String> purchaseYearFilter;
@@ -3421,7 +3450,10 @@ public class BenjagestUiApplication extends Application {
     /**
      * Pestaña "Mi asesoría" del empresario: muestra la asesoría a la
      * que está vinculado (si la hay) + botón Desvincular. Si no hay
-     * vínculo, muestra hint explicando cómo aceptar una invitación.
+     * vínculo, muestra hint explicando cómo aceptar una invitación
+     * y ofrece un campo para pegar el token directamente (útil
+     * cuando la invitación llegó pero el banner del Home no la
+     * recogió, o cuando el empresario quiere re-vincularse).
      */
     private Node settingsMyAdvisoryTab() {
         Label sectionTitle = label(t("settings.my_advisory.section"), "settings-section-title");
@@ -3431,6 +3463,25 @@ public class BenjagestUiApplication extends Application {
 
         VBox infoSlot = new VBox(8);
         infoSlot.setPadding(new Insets(8, 0, 0, 0));
+
+        // Bloque "Pegar token" — siempre visible para que el empresario
+        // pueda vincularse manualmente con cualquier token que le
+        // pasen, independientemente de si tiene una asesoría vinculada
+        // (en ese caso, debe desvincularse primero, claro).
+        Label tokenTitle = label(t("settings.my_advisory.paste_token.title"), "settings-section-title");
+        Label tokenHint = new Label(t("settings.my_advisory.paste_token.hint"));
+        tokenHint.setWrapText(true);
+        tokenHint.getStyleClass().add("settings-hint");
+        TextField tokenField = new TextField();
+        tokenField.setPromptText(t("settings.my_advisory.paste_token.prompt"));
+        tokenField.setPrefColumnCount(40);
+        Button acceptTokenBtn = new Button(t("settings.my_advisory.paste_token.accept"));
+        acceptTokenBtn.setGraphic(icon("fas-link"));
+        acceptTokenBtn.getStyleClass().add("button-primary");
+        HBox tokenRow = new HBox(8, tokenField, acceptTokenBtn);
+        tokenRow.setAlignment(Pos.CENTER_LEFT);
+        VBox tokenBlock = new VBox(8, tokenTitle, tokenHint, tokenRow);
+        tokenBlock.setPadding(new Insets(12, 0, 0, 0));
 
         Button unlinkBtn = new Button(t("settings.my_advisory.action.unlink"));
         unlinkBtn.setGraphic(icon("fas-unlink"));
@@ -3498,9 +3549,33 @@ public class BenjagestUiApplication extends Application {
             });
         });
 
+        acceptTokenBtn.setOnAction(ev -> {
+            String token = tokenField.getText();
+            if (token == null || token.isBlank()) {
+                showError(t("settings.my_advisory.paste_token.fail.empty.title"),
+                        t("settings.my_advisory.paste_token.fail.empty.body"));
+                return;
+            }
+            Task<com.benjagest.ui.model.AdvisoryInvitationEntry> task = new Task<>() {
+                @Override
+                protected com.benjagest.ui.model.AdvisoryInvitationEntry call() throws Exception {
+                    return invitationsApi.accept(token.trim());
+                }
+            };
+            task.setOnSucceeded(e -> {
+                showInfo(t("advisory.invitation.accept.ok.title"),
+                        t("advisory.invitation.accept.ok.body"));
+                tokenField.clear();
+                reload.run();
+            });
+            task.setOnFailed(e -> showError(t("advisory.invitation.accept.fail.title"),
+                    t("advisory.invitation.accept.fail.body")));
+            start(task, "advisory-invitation-accept-by-token");
+        });
+
         HBox actions = new HBox(8, unlinkBtn);
         VBox header = new VBox(8, sectionTitle, hint);
-        VBox body = new VBox(12, infoSlot);
+        VBox body = new VBox(12, infoSlot, new Separator(), tokenBlock);
 
         reload.run();
         return tabLayout(header, body, actions);
@@ -9790,6 +9865,14 @@ public class BenjagestUiApplication extends Application {
             case "advisory.link.linked" -> "Linked";
             case "advisory.link.pending" -> "Invitation pending";
             case "advisory.link.not_linked" -> "Not linked";
+            case "advisory.toast.unlinked.title" -> "Client unlinked";
+            case "advisory.toast.unlinked.body" -> "A client has just unlinked from your advisory firm. The portfolio has been updated.";
+            case "settings.my_advisory.paste_token.title" -> "Have an invitation token?";
+            case "settings.my_advisory.paste_token.hint" -> "If your advisor sent you a vinculation token (a 32-character string), paste it here and press Accept to link manually.";
+            case "settings.my_advisory.paste_token.prompt" -> "Paste your invitation token here";
+            case "settings.my_advisory.paste_token.accept" -> "Accept invitation";
+            case "settings.my_advisory.paste_token.fail.empty.title" -> "Empty token";
+            case "settings.my_advisory.paste_token.fail.empty.body" -> "Paste a token before accepting.";
             case "advisory.client.back" -> "← Back to My clients";
             case "advisory.client.hint" -> "You are now viewing this client. Anything you do from here is recorded under their company, not yours. Your sidebar still belongs to your advisory firm — you can switch between tabs freely.";
             case "advisory.client.tab.summary" -> "Summary";
@@ -9898,6 +9981,14 @@ public class BenjagestUiApplication extends Application {
             case "advisory.link.linked" -> "Vinculado";
             case "advisory.link.pending" -> "Invitacion pendiente";
             case "advisory.link.not_linked" -> "Sin vincular";
+            case "advisory.toast.unlinked.title" -> "Cliente desvinculado";
+            case "advisory.toast.unlinked.body" -> "Un cliente acaba de desvincularse de tu asesoria. La cartera se ha actualizado.";
+            case "settings.my_advisory.paste_token.title" -> "¿Tienes un token de invitacion?";
+            case "settings.my_advisory.paste_token.hint" -> "Si tu asesor te ha enviado un token de vinculacion (cadena de 32 caracteres), pegalo aqui y pulsa Aceptar para vincularte manualmente.";
+            case "settings.my_advisory.paste_token.prompt" -> "Pega aqui tu token de invitacion";
+            case "settings.my_advisory.paste_token.accept" -> "Aceptar invitacion";
+            case "settings.my_advisory.paste_token.fail.empty.title" -> "Token vacio";
+            case "settings.my_advisory.paste_token.fail.empty.body" -> "Pega un token antes de aceptar.";
             case "advisory.client.back" -> "← Volver a Mis clientes";
             case "advisory.client.hint" -> "Estas viendo este cliente. Cualquier accion que hagas desde aqui queda registrada en SU empresa, no en la tuya. Tu barra lateral sigue siendo la de tu asesoria — puedes moverte entre las pestañas libremente.";
             case "advisory.client.tab.summary" -> "Resumen";
@@ -12129,12 +12220,9 @@ public class BenjagestUiApplication extends Application {
         colEmail.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().email()));
         table.getColumns().addAll(java.util.List.of(colName, colNif, colType, colCity, colEmail));
         table.setItems(FXCollections.observableArrayList(clients));
-        // Conectar con el polling de la asesoría — ahora cualquier
-        // aceptación de invitación se reflejará automáticamente.
-        advisoryClientsLiveTable = table;
-        seenManagedClientIds.clear();
-        for (var c : clients) if (c.id() != null) seenManagedClientIds.add(c.id());
-        advisoryClientsBootstrapped = true;
+        // Legacy advisoryView — ya no se usa como pantalla principal;
+        // se mantiene solo por compatibilidad. El polling apunta a
+        // advisoryPortfolioTable (el nuevo portfolio unificado).
 
         Label hint = new Label(t("advisory.hint"));
         hint.setWrapText(true);
