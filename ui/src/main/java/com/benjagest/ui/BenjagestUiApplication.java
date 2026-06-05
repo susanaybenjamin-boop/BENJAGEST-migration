@@ -932,6 +932,7 @@ public class BenjagestUiApplication extends Application {
             // sirve para generar mas accesses.
             stopInvitationsPolling();
             stopAdvisoryClientsPolling();
+            stopDehuPolling();
             authApiClient.logout();
             session = null;
             activeModulesCache = List.of();
@@ -2152,6 +2153,13 @@ public class BenjagestUiApplication extends Application {
     // desvinculación; cuando aparece uno nuevo, detectamos vinculación.
     private final java.util.Set<String> seenLinkedCompanyIds = new java.util.HashSet<>();
     private boolean advisoryClientsBootstrapped = false;
+
+    // Live polling de la bandeja DEHú. Persistente desde el primer
+    // acceso al módulo; el tick comprueba `currentModule` y solo
+    // refresca la vista si está activa. Las notificaciones DEHú
+    // llegan desde el exterior (AEAT/SS) sin aviso, así que esta es
+    // la pantalla "live" más obvia del módulo labor.
+    private javafx.animation.Timeline dehuPoller;
 
     private TableView<com.benjagest.ui.model.PurchaseInvoiceEntry> purchaseInvoicesTable;
     private ComboBox<String> purchaseYearFilter;
@@ -7057,6 +7065,18 @@ public class BenjagestUiApplication extends Application {
         transition.play();
     }
 
+    /**
+     * Reemplazo silencioso del contenido central, sin animación de
+     * entrada. Pensado para tickers de polling que refrescan la misma
+     * pantalla cada N segundos — usar la versión animada haría
+     * parpadear toda la vista en cada tick.
+     */
+    private void setCenterSilent(Node node) {
+        Node centerNode = (node instanceof ScrollPane) ? node
+                : com.benjagest.ui.layout.ResponsiveLayout.screen(node);
+        root.setCenter(centerNode);
+    }
+
     private HBox sectionHeader(String title, String subtitle) {
         Label titleLabel = label(title, "section-title");
         Label subtitleLabel = label(subtitle, "section-subtitle");
@@ -11795,6 +11815,7 @@ public class BenjagestUiApplication extends Application {
     private TableView<com.benjagest.ui.model.DehuNotificationEntry> dehuTable;
 
     private void showDehuModule() {
+        currentModule = "dehu";
         Task<DehuBundle> task = new Task<>() {
             @Override protected DehuBundle call() throws Exception {
                 return new DehuBundle(
@@ -11805,6 +11826,60 @@ public class BenjagestUiApplication extends Application {
         task.setOnSucceeded(ev -> setCenterAnimated(scroll(dehuView(task.getValue()))));
         task.setOnFailed(ev -> setCenterAnimated(scroll(errorPanel(t("dehu.load_failed")))));
         start(task, "dehu-load");
+        startDehuPolling();
+    }
+
+    /**
+     * Arranca el polling de la bandeja DEHú la primera vez que el
+     * usuario entra al módulo. El Timeline persiste durante la
+     * sesión; cada tick comprueba {@code currentModule} y solo
+     * recarga si seguimos viendo DEHú (evita peticiones inútiles
+     * cuando el usuario navega a otra pantalla).
+     */
+    private void startDehuPolling() {
+        if (dehuPoller != null) return;
+        // 15s — las notificaciones DEHú no son tan urgentes como una
+        // invitación de asesoría, pero sí deben aparecer sin tener
+        // que refrescar a mano.
+        dehuPoller = new javafx.animation.Timeline(
+                new javafx.animation.KeyFrame(
+                        javafx.util.Duration.seconds(15),
+                        ev -> pollDehu()));
+        dehuPoller.setCycleCount(javafx.animation.Animation.INDEFINITE);
+        dehuPoller.play();
+    }
+
+    private void stopDehuPolling() {
+        if (dehuPoller != null) {
+            dehuPoller.stop();
+            dehuPoller = null;
+        }
+    }
+
+    /**
+     * Tick del poller DEHú. Solo refresca si la pantalla activa es
+     * DEHú; en caso contrario, no hace petición. Silencioso (sin
+     * animación) para no marear con parpadeo cada 15s.
+     */
+    private void pollDehu() {
+        if (!"dehu".equals(currentModule)) return;
+        if (!com.benjagest.ui.service.AuthSession.get().isAuthenticated()) return;
+        Task<DehuBundle> task = new Task<>() {
+            @Override protected DehuBundle call() throws Exception {
+                return new DehuBundle(
+                        laborApiClient.listDehu(null, 200),
+                        laborApiClient.dehuSummary());
+            }
+        };
+        task.setOnSucceeded(ev -> {
+            // Reemplazo silencioso del contenido — no usamos
+            // setCenterAnimated para evitar la animación cada 15s.
+            if ("dehu".equals(currentModule)) {
+                setCenterSilent(scroll(dehuView(task.getValue())));
+            }
+        });
+        task.setOnFailed(ev -> { /* silencio: el siguiente tick lo intenta otra vez */ });
+        start(task, "dehu-poll");
     }
 
     private record DehuBundle(
