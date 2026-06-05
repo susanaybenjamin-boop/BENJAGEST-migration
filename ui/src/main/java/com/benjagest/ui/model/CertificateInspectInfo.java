@@ -14,6 +14,9 @@ public record CertificateInspectInfo(
         String certificateTypeGuess,
         Instant validFrom,
         Instant validTo,
-        List<String> aliasesInKeystore
+        List<String> aliasesInKeystore,
+        String subjectDnRaw,
+        String issuerDnRaw,
+        String serialNumberHex
 ) {
 }
