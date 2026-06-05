@@ -76,6 +76,64 @@ public class TimeClockRepository {
         );
     }
 
+    /**
+     * Eventos de la empresa activa entre dos fechas (inclusive). Si
+     * employeeId no es null, filtra por trabajador. Pensado para
+     * exportar el registro a PDF/CSV de cara a Hacienda / Inspección
+     * de Trabajo (RD 8/2019 art. 35.8 — verificación pública).
+     */
+    public List<TimeClockEvent> findInRange(Instant from, Instant to, String employeeId) {
+        StringBuilder sql = new StringBuilder("""
+                SELECT id, company_id, employee_id, customer_id,
+                       event_type, event_time, origin, status, created_at
+                  FROM time_clock_events
+                 WHERE company_id = ?
+                   AND event_time >= ?
+                   AND event_time <= ?
+                """);
+        if (employeeId != null && !employeeId.isBlank()) {
+            sql.append(" AND employee_id = ? ");
+        }
+        sql.append(" ORDER BY event_time ASC");
+        if (employeeId != null && !employeeId.isBlank()) {
+            return jdbcTemplate.query(sql.toString(), this::mapEvent,
+                    tenantContext.getCurrentCompanyId(),
+                    Timestamp.from(from), Timestamp.from(to), employeeId);
+        }
+        return jdbcTemplate.query(sql.toString(), this::mapEvent,
+                tenantContext.getCurrentCompanyId(),
+                Timestamp.from(from), Timestamp.from(to));
+    }
+
+    /**
+     * Devuelve el CSV (Codigo Seguro de Verificacion) asignado a un
+     * evento. Lo usa el export para incluir el CSV al lado de cada
+     * fila — asi un inspector con el fichero impreso puede entrar
+     * al endpoint publico y verificar fila a fila.
+     */
+    public String findCsvForEvent(String eventId) {
+        if (eventId == null) return null;
+        return jdbcTemplate.query("""
+                SELECT csv_code FROM time_clock_verifications
+                 WHERE event_id = ? ORDER BY emitted_at ASC LIMIT 1
+                """,
+                rs -> rs.next() ? rs.getString("csv_code") : null,
+                eventId);
+    }
+
+    /**
+     * Datos del trabajador para la cabecera del export (nombre + NIF).
+     * Si no existe, devuelve "—". Solo lectura, sin filtro de tenant
+     * porque ya se garantiza arriba al cruzar con events.
+     */
+    public String findEmployeeFullName(String employeeId) {
+        if (employeeId == null) return null;
+        return jdbcTemplate.query(
+                "SELECT full_name FROM employees WHERE id = ?",
+                rs -> rs.next() ? rs.getString("full_name") : null,
+                employeeId);
+    }
+
     public List<TimeClockEvent> findRecentByEmployee(String employeeId, int limit) {
         return jdbcTemplate.query("""
                 SELECT id, company_id, employee_id, customer_id,
