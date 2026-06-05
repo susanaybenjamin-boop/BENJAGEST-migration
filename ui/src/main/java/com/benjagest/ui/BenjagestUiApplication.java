@@ -5741,12 +5741,87 @@ public class BenjagestUiApplication extends Application {
         HBox filterRow = new HBox(8, sifEventTypeFilter, refresh, verifySif);
         filterRow.setAlignment(javafx.geometry.Pos.CENTER_LEFT);
 
+        // VF-EVENTS-EXPORT: bloque de exportación PDF/CSV verificable.
+        // Defaults: trimestre actual. Emite evento legal EXPORT_EVENTS
+        // en la cadena SIF + auditoría con SHA-256 del documento.
+        java.time.LocalDate today = java.time.LocalDate.now();
+        int quarter = (today.getMonthValue() - 1) / 3;
+        java.time.LocalDate quarterStart = java.time.LocalDate.of(today.getYear(), quarter * 3 + 1, 1);
+        java.time.LocalDate quarterEnd = quarterStart.plusMonths(3).minusDays(1);
+        DatePicker fromPicker = new DatePicker(quarterStart);
+        DatePicker toPicker = new DatePicker(quarterEnd);
+        Button exportPdfBtn = new Button(t("billing.config.sif.export.pdf"));
+        exportPdfBtn.setGraphic(icon("fas-file-pdf"));
+        exportPdfBtn.getStyleClass().add("button-primary");
+        exportPdfBtn.setOnAction(ev -> downloadSifExport("pdf",
+                fromPicker.getValue(), toPicker.getValue(),
+                sifEventTypeFilter == null ? null : sifEventTypeFilter.getValue()));
+        Button exportCsvBtn = new Button(t("billing.config.sif.export.csv"));
+        exportCsvBtn.setGraphic(icon("fas-file-csv"));
+        exportCsvBtn.setOnAction(ev -> downloadSifExport("csv",
+                fromPicker.getValue(), toPicker.getValue(),
+                sifEventTypeFilter == null ? null : sifEventTypeFilter.getValue()));
+        Label exportTitle = label(t("billing.config.sif.export.title"), "settings-section-title");
+        Label exportHint = new Label(t("billing.config.sif.export.hint"));
+        exportHint.setWrapText(true);
+        exportHint.getStyleClass().add("settings-hint");
+        HBox exportRow = new HBox(8,
+                label(t("billing.config.sif.export.from"), "form-label"), fromPicker,
+                label(t("billing.config.sif.export.to"), "form-label"), toPicker,
+                exportPdfBtn, exportCsvBtn);
+        exportRow.setAlignment(javafx.geometry.Pos.CENTER_LEFT);
+        VBox exportBlock = new VBox(8, new Separator(), exportTitle, exportHint, exportRow);
+
         // Carga inicial diferida: si la pestaña aun no esta visible,
         // un Task no bloqueante asegura que la UI responde antes de
         // que el endpoint responda.
         refreshSifEvents();
 
-        return new VBox(8, header, hint, filterRow, sifEventsTable);
+        return new VBox(8, header, hint, filterRow, sifEventsTable, exportBlock);
+    }
+
+    /** Descarga el export del Registro de Eventos del SIF. */
+    private void downloadSifExport(String format,
+                                    java.time.LocalDate from, java.time.LocalDate to,
+                                    String selectedTypeFilter) {
+        if (from == null || to == null || from.isAfter(to)) {
+            showError(t("settings.audit.export.fail.range.title"),
+                    t("settings.audit.export.fail.range.body"));
+            return;
+        }
+        String filter = selectedTypeFilter;
+        if (filter != null && ("(todos)".equals(filter) || "(all)".equals(filter)
+                || t("list.filter.all").equals(filter))) {
+            filter = null;
+        }
+        String eventType = filter;
+        Task<byte[]> task = new Task<>() {
+            @Override protected byte[] call() throws Exception {
+                return billingApiClient.exportSifEvents(format,
+                        from.toString(), to.toString(), eventType);
+            }
+        };
+        task.setOnSucceeded(ev -> {
+            byte[] body = task.getValue();
+            javafx.stage.FileChooser fc = new javafx.stage.FileChooser();
+            fc.setInitialFileName("sif-events-" + from + "_" + to + "." + format);
+            fc.getExtensionFilters().add(new javafx.stage.FileChooser.ExtensionFilter(
+                    format.toUpperCase(), "*." + format));
+            java.io.File target = fc.showSaveDialog(root.getScene().getWindow());
+            if (target == null) return;
+            try {
+                java.nio.file.Files.write(target.toPath(), body);
+                showInfo(t("settings.audit.export.ok.title"),
+                        t("settings.audit.export.ok.body") + "\n" + target.getAbsolutePath());
+                // Refresca el listado para que se vea el EXPORT_EVENTS recién emitido.
+                refreshSifEvents();
+            } catch (java.io.IOException ex) {
+                showError(t("settings.audit.export.fail.write.title"), ex.getMessage());
+            }
+        });
+        task.setOnFailed(ev -> showError(t("settings.audit.export.fail.title"),
+                t("settings.audit.export.fail.body")));
+        start(task, "sif-export-" + format);
     }
 
     private void refreshSifEvents() {
@@ -9534,6 +9609,12 @@ public class BenjagestUiApplication extends Application {
             case "settings.audit.verify.fail.title" -> "Chain broken";
             case "settings.audit.verify.fail.body" -> "The audit chain has a corrupted event. Manipulation is likely.";
             case "settings.audit.verify.events" -> "events verified";
+            case "billing.config.sif.export.title" -> "Export SIF events for inspection";
+            case "billing.config.sif.export.hint" -> "Download a verifiable PDF/CSV of the SIF event registry (RD 1007/2023 + Order HAC/1177/2024, event 9: \"Export of event records for a period\"). The export itself appends an EXPORT_EVENTS event to the SIF chain AND records the document SHA-256 in audit_events.";
+            case "billing.config.sif.export.from" -> "From";
+            case "billing.config.sif.export.to" -> "To";
+            case "billing.config.sif.export.pdf" -> "Download PDF";
+            case "billing.config.sif.export.csv" -> "Download CSV";
             default -> null;
         };
     }
@@ -9572,6 +9653,12 @@ public class BenjagestUiApplication extends Application {
             case "settings.audit.verify.fail.title" -> "Cadena rota";
             case "settings.audit.verify.fail.body" -> "La cadena de auditoria tiene un evento corrupto. Es probable que se haya manipulado.";
             case "settings.audit.verify.events" -> "eventos verificados";
+            case "billing.config.sif.export.title" -> "Exportar eventos SIF para Inspeccion";
+            case "billing.config.sif.export.hint" -> "Descarga un PDF/CSV verificable del Registro de Eventos del SIF (RD 1007/2023 + Orden HAC/1177/2024, evento 9: \"Exportacion de registros de eventos de un periodo\"). La propia exportacion añade un evento EXPORT_EVENTS a la cadena SIF Y registra el SHA-256 del documento en audit_events.";
+            case "billing.config.sif.export.from" -> "Desde";
+            case "billing.config.sif.export.to" -> "Hasta";
+            case "billing.config.sif.export.pdf" -> "Descargar PDF";
+            case "billing.config.sif.export.csv" -> "Descargar CSV";
             default -> null;
         };
     }

@@ -39,15 +39,54 @@ public class SifEventController {
     private final SifEventRepository eventRepository;
     private final SifEventHashService hashService;
     private final CompanyDataRepository companyRepository;
+    private final SifEventExportService exportService;
 
     public SifEventController(SifEventService eventService,
                               SifEventRepository eventRepository,
                               SifEventHashService hashService,
-                              CompanyDataRepository companyRepository) {
+                              CompanyDataRepository companyRepository,
+                              SifEventExportService exportService) {
         this.eventService = eventService;
         this.eventRepository = eventRepository;
         this.hashService = hashService;
         this.companyRepository = companyRepository;
+        this.exportService = exportService;
+    }
+
+    /**
+     * Exporta el Registro de Eventos del SIF a PDF verificable. Cumple
+     * el evento legal 9 (Orden HAC/1177/2024): "Exportación de
+     * registros de eventos de un período". Emite EXPORT_EVENTS en la
+     * cadena SIF + auditoría adicional con SHA-256 del documento.
+     */
+    @GetMapping(value = "/export.pdf", produces = "application/pdf")
+    public org.springframework.http.ResponseEntity<byte[]> exportPdf(
+            @RequestParam("from") String fromIso,
+            @RequestParam("to") String toIso,
+            @RequestParam(value = "eventType", required = false) String eventType) {
+        byte[] body = exportService.exportPdf(
+                java.time.LocalDate.parse(fromIso),
+                java.time.LocalDate.parse(toIso),
+                eventType);
+        return org.springframework.http.ResponseEntity.ok()
+                .header("Content-Disposition", "attachment; filename=\"sif-events-"
+                        + fromIso + "_" + toIso + ".pdf\"")
+                .body(body);
+    }
+
+    @GetMapping(value = "/export.csv", produces = "text/csv")
+    public org.springframework.http.ResponseEntity<byte[]> exportCsv(
+            @RequestParam("from") String fromIso,
+            @RequestParam("to") String toIso,
+            @RequestParam(value = "eventType", required = false) String eventType) {
+        byte[] body = exportService.exportCsv(
+                java.time.LocalDate.parse(fromIso),
+                java.time.LocalDate.parse(toIso),
+                eventType);
+        return org.springframework.http.ResponseEntity.ok()
+                .header("Content-Disposition", "attachment; filename=\"sif-events-"
+                        + fromIso + "_" + toIso + ".csv\"")
+                .body(body);
     }
 
     @GetMapping
