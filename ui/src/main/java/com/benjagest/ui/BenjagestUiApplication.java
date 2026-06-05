@@ -3837,11 +3837,86 @@ public class BenjagestUiApplication extends Application {
         HBox filterRow = new HBox(10, label(t("settings.audit.filter.label"), "form-label"), typeFilter);
         filterRow.setAlignment(Pos.CENTER_LEFT);
 
+        // Bloque "Exportar para Inspección/Hacienda": PDF + CSV
+        // verificable del registro completo en un rango. Defaults al
+        // trimestre fiscal actual (lo más común para requerimientos).
+        java.time.LocalDate today = java.time.LocalDate.now();
+        int quarter = (today.getMonthValue() - 1) / 3;
+        java.time.LocalDate quarterStart = java.time.LocalDate.of(today.getYear(), quarter * 3 + 1, 1);
+        java.time.LocalDate quarterEnd = quarterStart.plusMonths(3).minusDays(1);
+        DatePicker fromPicker = new DatePicker(quarterStart);
+        DatePicker toPicker = new DatePicker(quarterEnd);
+        Button exportPdfBtn = new Button(t("settings.audit.export.pdf"));
+        exportPdfBtn.setGraphic(icon("fas-file-pdf"));
+        exportPdfBtn.getStyleClass().add("button-primary");
+        exportPdfBtn.setOnAction(ev -> downloadAuditExport("pdf",
+                fromPicker.getValue(), toPicker.getValue(), typeFilter.getValue()));
+        Button exportCsvBtn = new Button(t("settings.audit.export.csv"));
+        exportCsvBtn.setGraphic(icon("fas-file-csv"));
+        exportCsvBtn.setOnAction(ev -> downloadAuditExport("csv",
+                fromPicker.getValue(), toPicker.getValue(), typeFilter.getValue()));
+        Label exportTitle = label(t("settings.audit.export.title"), "settings-section-title");
+        Label exportHint = new Label(t("settings.audit.export.hint"));
+        exportHint.setWrapText(true);
+        exportHint.getStyleClass().add("settings-hint");
+        HBox exportRow = new HBox(8,
+                label(t("settings.audit.export.from"), "form-label"), fromPicker,
+                label(t("settings.audit.export.to"), "form-label"), toPicker,
+                exportPdfBtn, exportCsvBtn);
+        exportRow.setAlignment(Pos.CENTER_LEFT);
+        VBox exportBlock = new VBox(8, new Separator(), exportTitle, exportHint, exportRow);
+
         HBox actions = new HBox(refresh);
         actions.getStyleClass().add("settings-actions");
 
         VBox header = new VBox(8, sectionTitle, hint, filterRow);
-        return tabLayout(header, table, actions);
+        VBox content = new VBox(16, table, exportBlock);
+        VBox.setVgrow(table, Priority.ALWAYS);
+        return tabLayout(header, content, actions);
+    }
+
+    /** Descarga el export de auditoría y guarda con FileChooser. */
+    private void downloadAuditExport(String format,
+                                      java.time.LocalDate from, java.time.LocalDate to,
+                                      String selectedTypeFilter) {
+        if (from == null || to == null || from.isAfter(to)) {
+            showError(t("settings.audit.export.fail.range.title"),
+                    t("settings.audit.export.fail.range.body"));
+            return;
+        }
+        // El backend acepta eventTypePrefix (no exact match). Solo lo
+        // mandamos si el usuario eligió un tipo concreto del combo.
+        String filter = selectedTypeFilter;
+        if (filter != null && ("(todos)".equals(filter) || "(all)".equals(filter)
+                || t("list.filter.all").equals(filter))) {
+            filter = null;
+        }
+        String prefix = filter;
+        Task<byte[]> task = new Task<>() {
+            @Override protected byte[] call() throws Exception {
+                return settingsApiClient.exportAuditEvents(format,
+                        from.toString(), to.toString(), prefix);
+            }
+        };
+        task.setOnSucceeded(ev -> {
+            byte[] body = task.getValue();
+            javafx.stage.FileChooser fc = new javafx.stage.FileChooser();
+            fc.setInitialFileName("auditoria-" + from + "_" + to + "." + format);
+            fc.getExtensionFilters().add(new javafx.stage.FileChooser.ExtensionFilter(
+                    format.toUpperCase(), "*." + format));
+            java.io.File target = fc.showSaveDialog(root.getScene().getWindow());
+            if (target == null) return;
+            try {
+                java.nio.file.Files.write(target.toPath(), body);
+                showInfo(t("settings.audit.export.ok.title"),
+                        t("settings.audit.export.ok.body") + "\n" + target.getAbsolutePath());
+            } catch (java.io.IOException ex) {
+                showError(t("settings.audit.export.fail.write.title"), ex.getMessage());
+            }
+        });
+        task.setOnFailed(ev -> showError(t("settings.audit.export.fail.title"),
+                t("settings.audit.export.fail.body")));
+        start(task, "audit-export-" + format);
     }
 
     private void loadAuditEvents(TableView<AuditEvent> table, String selectedType) {
@@ -8187,6 +8262,19 @@ public class BenjagestUiApplication extends Application {
                 case "settings.audit.btn.refresh" -> "Refresh";
                 case "settings.audit.filter.label" -> "Filter by type:";
                 case "settings.audit.load.fail" -> "Could not load events.";
+                case "settings.audit.export.title" -> "Export for inspection / tax office";
+                case "settings.audit.export.hint" -> "Download a verifiable PDF or CSV of the full audit log for a date range. Each export is itself recorded with the document SHA-256 so the file shown to an inspector can be checked against the registry.";
+                case "settings.audit.export.from" -> "From";
+                case "settings.audit.export.to" -> "To";
+                case "settings.audit.export.pdf" -> "Download PDF";
+                case "settings.audit.export.csv" -> "Download CSV";
+                case "settings.audit.export.ok.title" -> "Export saved";
+                case "settings.audit.export.ok.body" -> "File saved to:";
+                case "settings.audit.export.fail.title" -> "Export failed";
+                case "settings.audit.export.fail.body" -> "Could not generate the export. Check the date range and try again.";
+                case "settings.audit.export.fail.range.title" -> "Invalid range";
+                case "settings.audit.export.fail.range.body" -> "Choose a start date earlier than or equal to the end date.";
+                case "settings.audit.export.fail.write.title" -> "Could not save file";
                 // ---- Common dialog/panel actions ----
                 case "common.btn.retry" -> "Retry";
                 case "common.btn.back_to_billing" -> "Back to Billing";
@@ -9094,6 +9182,19 @@ public class BenjagestUiApplication extends Application {
             case "settings.audit.col.details" -> "Detalle";
             case "settings.audit.btn.refresh" -> "Refrescar";
             case "settings.audit.filter.label" -> "Filtrar por tipo:";
+            case "settings.audit.export.title" -> "Exportar para Inspeccion / Hacienda";
+            case "settings.audit.export.hint" -> "Descarga un PDF o CSV verificable del registro completo de auditoria en un rango de fechas. Cada exportacion queda a su vez registrada con el SHA-256 del documento para que el fichero que enseñes al inspector se pueda contrastar con el registro.";
+            case "settings.audit.export.from" -> "Desde";
+            case "settings.audit.export.to" -> "Hasta";
+            case "settings.audit.export.pdf" -> "Descargar PDF";
+            case "settings.audit.export.csv" -> "Descargar CSV";
+            case "settings.audit.export.ok.title" -> "Exportacion guardada";
+            case "settings.audit.export.ok.body" -> "Archivo guardado en:";
+            case "settings.audit.export.fail.title" -> "Error al exportar";
+            case "settings.audit.export.fail.body" -> "No se pudo generar la exportacion. Revisa el rango de fechas y vuelve a intentarlo.";
+            case "settings.audit.export.fail.range.title" -> "Rango no valido";
+            case "settings.audit.export.fail.range.body" -> "Elige una fecha de inicio anterior o igual a la fecha de fin.";
+            case "settings.audit.export.fail.write.title" -> "No se pudo guardar el archivo";
             case "settings.audit.load.fail" -> "No se pudieron cargar los eventos.";
             // ---- Common dialog/panel actions ----
             case "common.btn.retry" -> "Reintentar";
