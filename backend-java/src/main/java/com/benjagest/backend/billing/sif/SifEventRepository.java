@@ -116,6 +116,37 @@ public class SifEventRepository {
     }
 
     /**
+     * Eventos en un rango de fechas para la exportacion verificable
+     * (VF-EVENTS-EXPORT). Devuelve todos los campos visibles + status.
+     * Tope defensivo 50000 filas para que un rango absurdo no agote
+     * memoria — quien necesite mas exporta por meses.
+     */
+    public List<SifEvent> findInRangeForCompany(String companyId,
+                                                  java.time.Instant from,
+                                                  java.time.Instant to,
+                                                  String eventTypeFilter) {
+        StringBuilder sql = new StringBuilder("""
+                SELECT id, company_id, event_type, payload,
+                       hash_current, hash_previous, generated_at,
+                       signed_at, signature_data, status
+                  FROM sif_event_registry
+                 WHERE company_id = ?
+                   AND generated_at >= ?
+                   AND generated_at <= ?
+                """);
+        List<Object> args = new java.util.ArrayList<>();
+        args.add(companyId);
+        args.add(java.sql.Timestamp.from(from));
+        args.add(java.sql.Timestamp.from(to));
+        if (eventTypeFilter != null && !eventTypeFilter.isBlank()) {
+            sql.append("   AND event_type = ?\n");
+            args.add(eventTypeFilter.trim());
+        }
+        sql.append(" ORDER BY generated_at ASC, id ASC LIMIT 50000");
+        return jdbcTemplate.query(sql.toString(), this::mapEvent, args.toArray());
+    }
+
+    /**
      * Cadena cronologica ASC para la verificacion. Lleva los campos
      * necesarios para recalcular el hash.
      */

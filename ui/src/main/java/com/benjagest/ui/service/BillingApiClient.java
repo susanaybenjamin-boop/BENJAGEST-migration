@@ -570,6 +570,31 @@ public class BillingApiClient {
      * trazabilidad obligatoria en NO VeriFactu). Filtros opcionales:
      * eventType, limit (1..500). Solo devuelve los de la empresa actual.
      */
+    /**
+     * Descarga el PDF/CSV verificable del Registro de Eventos del SIF.
+     * RD 1007/2023 + Orden HAC/1177/2024 (evento 9: exportación).
+     */
+    public byte[] exportSifEvents(String format, String fromIso, String toIso,
+                                    String eventTypeFilter) throws IOException, InterruptedException {
+        StringBuilder url = new StringBuilder(baseUrl)
+                .append("/billing/sif-events/export.").append(format)
+                .append("?from=").append(fromIso)
+                .append("&to=").append(toIso);
+        if (eventTypeFilter != null && !eventTypeFilter.isBlank()) {
+            url.append("&eventType=").append(java.net.URLEncoder.encode(
+                    eventTypeFilter, java.nio.charset.StandardCharsets.UTF_8));
+        }
+        HttpRequest.Builder builder = HttpRequest.newBuilder(URI.create(url.toString()))
+                .timeout(Duration.ofSeconds(60)).GET();
+        AuthSession.get().authorize(builder);
+        HttpResponse<byte[]> r = HttpClient.newHttpClient().send(builder.build(),
+                HttpResponse.BodyHandlers.ofByteArray());
+        if (r.statusCode() < 200 || r.statusCode() >= 300) {
+            throw new IOException("HTTP " + r.statusCode());
+        }
+        return r.body();
+    }
+
     public List<SifEventEntry> listSifEvents(String eventTypeFilter) throws IOException, InterruptedException {
         String url = baseUrl + "/billing/sif-events?limit=200"
                 + (eventTypeFilter == null || eventTypeFilter.isBlank() ? ""
