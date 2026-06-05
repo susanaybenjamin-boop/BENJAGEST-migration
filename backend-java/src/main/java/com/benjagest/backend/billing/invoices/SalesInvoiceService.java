@@ -49,6 +49,8 @@ public class SalesInvoiceService {
     private final CompanyDataService companyDataService;
     private final InvoiceTextsService invoiceTextsService;
     private final com.benjagest.backend.billing.verifactu.VerifactuConfigRepository verifactuConfigRepository;
+    private final SalesJournalEntryService salesJournalService;
+    private final com.benjagest.backend.auth.CurrentUserService currentUserService;
 
     public SalesInvoiceService(SalesInvoiceRepository repository,
                                SeriesService seriesService,
@@ -59,7 +61,9 @@ public class SalesInvoiceService {
                                InvoiceStorageService storageService,
                                CompanyDataService companyDataService,
                                InvoiceTextsService invoiceTextsService,
-                               com.benjagest.backend.billing.verifactu.VerifactuConfigRepository verifactuConfigRepository) {
+                               com.benjagest.backend.billing.verifactu.VerifactuConfigRepository verifactuConfigRepository,
+                               SalesJournalEntryService salesJournalService,
+                               com.benjagest.backend.auth.CurrentUserService currentUserService) {
         this.repository = repository;
         this.seriesService = seriesService;
         this.verifactuRegistryService = verifactuRegistryService;
@@ -70,6 +74,8 @@ public class SalesInvoiceService {
         this.companyDataService = companyDataService;
         this.invoiceTextsService = invoiceTextsService;
         this.verifactuConfigRepository = verifactuConfigRepository;
+        this.salesJournalService = salesJournalService;
+        this.currentUserService = currentUserService;
     }
 
     public List<SalesInvoice> list(String statusFilter,
@@ -285,6 +291,25 @@ public class SalesInvoiceService {
                     .warn("Error inesperado guardando PDF de la factura {}", id, ex);
         }
 
+        // SALES-JOURNAL (2026-06-05): generar asiento contable
+        // automatico. Espejo del flujo de purchases pero con cuentas
+        // de venta (430 Clientes / 700 Ventas / 477 IVA repercutido /
+        // 473 retenciones IRPF si aplica). Si la empresa no tiene el
+        // PGC sembrado o no hay fiscal_year OPEN, devuelve null y
+        // continuamos — la validacion legal de la factura es
+        // independiente del asiento contable.
+        try {
+            String currentUserId = currentUserService.require().userId();
+            String journalEntryId = salesJournalService.createForSales(validated, currentUserId);
+            if (journalEntryId != null) {
+                org.slf4j.LoggerFactory.getLogger(SalesInvoiceService.class)
+                        .info("Asiento {} creado para factura {}", journalEntryId, id);
+            }
+        } catch (Exception ex) {
+            org.slf4j.LoggerFactory.getLogger(SalesInvoiceService.class)
+                    .warn("No se pudo crear el asiento contable de la factura {}", id, ex);
+        }
+
         // Registro de Eventos del SIF (RD 1007/2023 + Orden HAC/1177/2024):
         // emitimos INVOICE_VALIDATED al cerrar una validacion. El servicio
         // de eventos filtra internamente por modalidad — en VeriFactu no
@@ -334,6 +359,18 @@ public class SalesInvoiceService {
         if (original.rectifyingInvoiceId() != null && !original.rectifyingInvoiceId().isBlank()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "Esta factura ya tiene una rectificativa creada: " + original.rectifyingInvoiceId());
+        }
+
+        // SALES-JOURNAL: marca el asiento de la factura original como
+        // VOIDED. La rectificativa que creamos a continuación generará
+        // su propio asiento espejo (con cantidades negativas → totales
+        // negativos → asiento de signo invertido) cuando pase por
+        // validateInternal.
+        try {
+            salesJournalService.reverseForSales(validatedId);
+        } catch (Exception ex) {
+            org.slf4j.LoggerFactory.getLogger(SalesInvoiceService.class)
+                    .warn("No se pudo marcar VOIDED el asiento de la factura {}", validatedId, ex);
         }
 
         // Resolvemos la serie RECTIFYING del cliente activo. La V16
