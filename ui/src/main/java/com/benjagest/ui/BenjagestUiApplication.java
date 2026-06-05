@@ -710,9 +710,12 @@ public class BenjagestUiApplication extends Application {
      */
     private void startInvitationsPolling() {
         if (invitationsPoller != null) return; // ya activo
+        // 5s: el empresario tiene que ver las invitaciones de su
+        // asesoría casi al instante para sentir que la comunicación
+        // está viva.
         invitationsPoller = new javafx.animation.Timeline(
                 new javafx.animation.KeyFrame(
-                        javafx.util.Duration.seconds(30),
+                        javafx.util.Duration.seconds(5),
                         ev -> pollPendingInvitations()));
         invitationsPoller.setCycleCount(javafx.animation.Animation.INDEFINITE);
         invitationsPoller.play();
@@ -736,9 +739,13 @@ public class BenjagestUiApplication extends Application {
      */
     private void startAdvisoryClientsPolling() {
         if (advisoryClientsPoller != null || appMode != AppMode.ADVISORY) return;
+        // 5s: queremos que la asesoría detecte vinculaciones y
+        // desvinculaciones de forma "casi en vivo" durante el flujo de
+        // comunicación con clientes. El endpoint es ligero (una query
+        // sobre customers con dos subqueries por fila); 5s no es agresivo.
         advisoryClientsPoller = new javafx.animation.Timeline(
                 new javafx.animation.KeyFrame(
-                        javafx.util.Duration.seconds(30),
+                        javafx.util.Duration.seconds(5),
                         ev -> pollAdvisoryClients()));
         advisoryClientsPoller.setCycleCount(javafx.animation.Animation.INDEFINITE);
         advisoryClientsPoller.play();
@@ -9822,8 +9829,8 @@ public class BenjagestUiApplication extends Application {
             case "settings.my_advisory.fail.unlink.title" -> "Could not unlink";
             case "settings.my_advisory.fail.unlink.body" -> "Try again or check the connection.";
             case "advisory.action.invite" -> "Invite client";
-            case "advisory.invitations.section" -> "Pending invitations";
-            case "advisory.invitations.hint" -> "Invitations you have issued. Copy the token and send it to the client through your usual channel — the client must paste it from their 'My advisory' tab or accept the banner that appears on their Home.";
+            case "advisory.invitations.section" -> "Invitations";
+            case "advisory.invitations.hint" -> "Invitations you have issued (active and history). Copy the token of a PENDING one and send it to the client through your usual channel — the client must paste it from their 'My advisory' tab or accept the banner that appears on their Home.";
             case "advisory.invitations.placeholder.empty" -> "No invitations issued yet.";
             case "advisory.invitations.col.date" -> "Date";
             case "advisory.invitations.col.email" -> "Email";
@@ -9947,8 +9954,8 @@ public class BenjagestUiApplication extends Application {
             case "settings.my_advisory.fail.unlink.title" -> "No se pudo desvincular";
             case "settings.my_advisory.fail.unlink.body" -> "Intentalo de nuevo o revisa la conexion.";
             case "advisory.action.invite" -> "Invitar cliente";
-            case "advisory.invitations.section" -> "Invitaciones pendientes";
-            case "advisory.invitations.hint" -> "Invitaciones que has emitido. Copia el token y enviaselo al cliente por tu canal habitual — el cliente debe pegarlo desde su pestaña 'Mi asesoria' o aceptar el banner que aparece en su Home.";
+            case "advisory.invitations.section" -> "Invitaciones";
+            case "advisory.invitations.hint" -> "Invitaciones que has emitido (activas e historico). Copia el token de una PENDIENTE y enviaselo al cliente por tu canal habitual — el cliente debe pegarlo desde su pestaña 'Mi asesoria' o aceptar el banner que aparece en su Home.";
             case "advisory.invitations.placeholder.empty" -> "Aun no has emitido invitaciones.";
             case "advisory.invitations.col.date" -> "Fecha";
             case "advisory.invitations.col.email" -> "Email";
