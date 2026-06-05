@@ -1,15 +1,14 @@
-package com.benjagest.backend.certificates;
+package com.benjagest.ui.model;
 
 import java.time.Instant;
 
 /**
- * Vista cliente de un certificado SIN los campos sensibles. Lo que ve
- * un OWNER/ADMIN en la pantalla de gestion de certificados.
+ * Vista UI de un certificado digital.
  *
- * passwordConfigured permite a la UI saber si hay password guardada
- * sin tener que exponerla; certificateDataPresent idem para el binario.
+ * uploadedByAdvisory: true si la asesoría lo subió en nombre del
+ * cliente. La UI muestra un badge "Gestionado por tu asesoría".
  */
-public record CertificateSummary(
+public record CertificateSummaryEntry(
         String id,
         String alias,
         String certificateType,

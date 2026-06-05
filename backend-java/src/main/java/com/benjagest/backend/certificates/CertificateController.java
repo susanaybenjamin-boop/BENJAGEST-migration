@@ -1,7 +1,6 @@
 package com.benjagest.backend.certificates;
 
 import com.benjagest.backend.auth.RequiresRole;
-import com.benjagest.backend.modules.RequiresModule;
 import jakarta.validation.Valid;
 import java.util.List;
 import org.springframework.http.HttpStatus;
@@ -25,13 +24,14 @@ import org.springframework.web.bind.annotation.RestController;
  *   trazabilidad (un certificado caducado o revocado sigue siendo
  *   referencia historica de las facturas que firmo).
  *
- * Restringido a OWNER/ADMIN. El modulo activo requerido es "documents"
- * (es donde viven los certificados en el catalogo, V7 seed).
+ * Restringido a OWNER/ADMIN/ACCOUNTANT (la asesoría usa ACCOUNTANT
+ * para gestionar el cert por su cliente). Sin @RequiresModule porque
+ * la pantalla vive en Configuración y no debe depender de la
+ * activación del módulo "documents".
  */
 @RestController
 @RequestMapping("/api/certificates")
-@RequiresModule("documents")
-@RequiresRole({"OWNER", "ADMIN"})
+@RequiresRole({"OWNER", "ADMIN", "ACCOUNTANT"})
 public class CertificateController {
 
     private final CertificateService service;
@@ -48,6 +48,12 @@ public class CertificateController {
     @GetMapping("/{id}")
     public CertificateSummary get(@PathVariable("id") String id) {
         return service.getSummary(id);
+    }
+
+    @PostMapping("/inspect")
+    public CertificateInspectResponse inspect(
+            @Valid @RequestBody CertificateInspectRequest request) {
+        return service.inspect(request);
     }
 
     @PostMapping

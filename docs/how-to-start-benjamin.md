@@ -79,7 +79,7 @@ Datos locales:
 ```text
 Contenedor: benjagest-mariadb
 Host desde Windows: localhost
-Puerto: 3306
+Puerto: 3307
 Base de datos: benjagest
 Usuario: benjagest
 Contrasena: benjagest

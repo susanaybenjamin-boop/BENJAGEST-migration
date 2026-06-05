@@ -16,6 +16,11 @@ import java.time.Instant;
  * Decision 7 de architecture: el cifrado vive en aplicacion (Jasypt),
  * no en MariaDB. Si alguien hace un dump de la BD no se lleva el
  * keystore en claro.
+ *
+ * Campos uploadedBy* (V38): permiten distinguir si el certificado lo
+ * subió el propio cliente (uploaded_by_company_id == companyId o NULL)
+ * o su asesoría (uploaded_by_company_id == asesoría.id, distinto del
+ * tenant donde vive el cert).
  */
 public record Certificate(
         String id,
@@ -30,6 +35,8 @@ public record Certificate(
         Instant validFrom,
         Instant validTo,
         boolean active,
+        String uploadedByUserId,
+        String uploadedByCompanyId,
         Instant createdAt,
         Instant updatedAt
 ) {

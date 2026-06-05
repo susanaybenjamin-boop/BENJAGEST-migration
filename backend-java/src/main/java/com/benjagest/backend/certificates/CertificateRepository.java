@@ -42,8 +42,9 @@ public class CertificateRepository {
                     id, company_id, alias, certificate_type,
                     subject_name, subject_tax_identifier,
                     encrypted_password, storage_path, certificate_data,
-                    valid_from, valid_to, active
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    valid_from, valid_to, active,
+                    uploaded_by_user_id, uploaded_by_company_id
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 cert.id(),
                 tenantContext.getCurrentCompanyId(),
@@ -56,7 +57,9 @@ public class CertificateRepository {
                 encryptIfPresent(cert.certificateDataBase64()),
                 cert.validFrom() == null ? null : Timestamp.from(cert.validFrom()),
                 cert.validTo() == null ? null : Timestamp.from(cert.validTo()),
-                cert.active()
+                cert.active(),
+                cert.uploadedByUserId(),
+                cert.uploadedByCompanyId()
         );
     }
 
@@ -77,7 +80,9 @@ public class CertificateRepository {
                 SELECT id, company_id, alias, certificate_type,
                        subject_name, subject_tax_identifier,
                        encrypted_password, storage_path, certificate_data,
-                       valid_from, valid_to, active, created_at, updated_at
+                       valid_from, valid_to, active,
+                       uploaded_by_user_id, uploaded_by_company_id,
+                       created_at, updated_at
                   FROM digital_certificates
                  WHERE id = ?
                    AND company_id = ?
@@ -98,7 +103,9 @@ public class CertificateRepository {
                 SELECT id, company_id, alias, certificate_type,
                        subject_name, subject_tax_identifier,
                        encrypted_password, storage_path, certificate_data,
-                       valid_from, valid_to, active, created_at, updated_at
+                       valid_from, valid_to, active,
+                       uploaded_by_user_id, uploaded_by_company_id,
+                       created_at, updated_at
                   FROM digital_certificates
                  WHERE company_id = ?
                    AND active = TRUE
@@ -127,6 +134,8 @@ public class CertificateRepository {
                 validFrom == null ? null : validFrom.toInstant(),
                 validTo == null ? null : validTo.toInstant(),
                 rs.getBoolean("active"),
+                rs.getString("uploaded_by_user_id"),
+                rs.getString("uploaded_by_company_id"),
                 createdAt == null ? null : createdAt.toInstant(),
                 updatedAt == null ? null : updatedAt.toInstant()
         );

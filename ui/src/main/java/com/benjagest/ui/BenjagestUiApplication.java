@@ -1718,6 +1718,9 @@ public class BenjagestUiApplication extends Application {
     private final com.benjagest.ui.service.PdfImportApiClient pdfImportApi =
             new com.benjagest.ui.service.PdfImportApiClient();
 
+    private final com.benjagest.ui.service.CertificateApiClient certificateApi =
+            new com.benjagest.ui.service.CertificateApiClient();
+
     private void showPurchasesWithImport() {
         Label header = label(t("purchases.header"), "settings-section-title");
         Label hint = new Label(t("purchases.hint"));
@@ -2146,9 +2149,12 @@ public class BenjagestUiApplication extends Application {
         modulesTab.setGraphic(icon("fas-cubes"));
         Tab credentialsTab = new Tab(t("settings.tab.credentials"), settingsCredentialsTab());
         credentialsTab.setGraphic(icon("fas-key"));
+        Tab certificateTab = new Tab(t("settings.tab.certificate"), settingsCertificateTab());
+        certificateTab.setGraphic(icon("fas-certificate"));
         Tab auditTab = new Tab(t("settings.tab.audit"), settingsAuditTab());
         auditTab.setGraphic(icon("fas-shield-alt"));
-        tabs.getTabs().addAll(companyTab, ownersTab, emailTab, modulesTab, credentialsTab, auditTab);
+        tabs.getTabs().addAll(companyTab, ownersTab, emailTab, modulesTab,
+                credentialsTab, certificateTab, auditTab);
         // El TabPane crece hasta el final del area central; sin esto, los
         // botones del pie de cada tab podrian quedar fuera de pantalla en
         // portatil.
@@ -2465,6 +2471,299 @@ public class BenjagestUiApplication extends Application {
             "MODULE_DISABLED",
             "COMPANY_DATA_UPDATED"
     );
+
+    // ===================================================================
+    //  CERT-IMPORT (2026-06-05) — pestaña Certificado en Configuración
+    // ===================================================================
+
+    private TableView<com.benjagest.ui.model.CertificateSummaryEntry> certsTable;
+
+    private Node settingsCertificateTab() {
+        Label sectionTitle = label(t("settings.cert.section"), "settings-section-title");
+        Label hint = new Label(t("settings.cert.hint"));
+        hint.setWrapText(true);
+        hint.getStyleClass().add("settings-hint");
+
+        certsTable = new TableView<>();
+        certsTable.getStyleClass().add("data-table");
+        certsTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+        certsTable.setPlaceholder(new Label(t("settings.cert.placeholder.empty")));
+
+        TableColumn<com.benjagest.ui.model.CertificateSummaryEntry, String> colAlias =
+                new TableColumn<>(t("settings.cert.col.alias"));
+        colAlias.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().alias()));
+        colAlias.setPrefWidth(180);
+
+        TableColumn<com.benjagest.ui.model.CertificateSummaryEntry, String> colType =
+                new TableColumn<>(t("settings.cert.col.type"));
+        colType.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().certificateType()));
+        colType.setPrefWidth(160);
+
+        TableColumn<com.benjagest.ui.model.CertificateSummaryEntry, String> colNif =
+                new TableColumn<>(t("settings.cert.col.nif"));
+        colNif.setCellValueFactory(c -> new SimpleStringProperty(
+                c.getValue().subjectTaxIdentifier() == null ? "—" : c.getValue().subjectTaxIdentifier()));
+        colNif.setPrefWidth(110);
+
+        TableColumn<com.benjagest.ui.model.CertificateSummaryEntry, String> colSubject =
+                new TableColumn<>(t("settings.cert.col.subject"));
+        colSubject.setCellValueFactory(c -> new SimpleStringProperty(
+                c.getValue().subjectName() == null ? "—" : c.getValue().subjectName()));
+
+        TableColumn<com.benjagest.ui.model.CertificateSummaryEntry, String> colValidUntil =
+                new TableColumn<>(t("settings.cert.col.valid_until"));
+        colValidUntil.setCellValueFactory(c -> new SimpleStringProperty(
+                c.getValue().validTo() == null ? "—"
+                        : c.getValue().validTo().atZone(java.time.ZoneId.systemDefault())
+                              .toLocalDate().toString()));
+        colValidUntil.setPrefWidth(120);
+
+        TableColumn<com.benjagest.ui.model.CertificateSummaryEntry, String> colUploadedBy =
+                new TableColumn<>(t("settings.cert.col.uploaded_by"));
+        colUploadedBy.setCellValueFactory(c -> new SimpleStringProperty(
+                c.getValue().uploadedByAdvisory()
+                        ? t("settings.cert.uploaded_by.advisory")
+                        : t("settings.cert.uploaded_by.self")));
+        colUploadedBy.setPrefWidth(180);
+
+        TableColumn<com.benjagest.ui.model.CertificateSummaryEntry, Void> colActions =
+                new TableColumn<>(t("settings.cert.col.actions"));
+        colActions.setPrefWidth(110);
+        colActions.setCellFactory(col -> new javafx.scene.control.TableCell<>() {
+            private final Button del = new Button(t("settings.cert.action.delete"));
+            {
+                del.getStyleClass().add("button-danger-outline");
+                del.setOnAction(ev -> {
+                    com.benjagest.ui.model.CertificateSummaryEntry row = getTableRow().getItem();
+                    if (row != null) deleteCertificate(row);
+                });
+            }
+            @Override
+            protected void updateItem(Void item, boolean empty) {
+                super.updateItem(item, empty);
+                setGraphic(empty ? null : del);
+            }
+        });
+
+        certsTable.getColumns().setAll(colAlias, colType, colNif, colSubject,
+                colValidUntil, colUploadedBy, colActions);
+
+        Button uploadBtn = new Button(t("settings.cert.action.upload"));
+        uploadBtn.getStyleClass().add("button-primary");
+        uploadBtn.setOnAction(ev -> showCertificateUploadDialog());
+
+        Button refreshBtn = new Button(t("settings.cert.action.refresh"));
+        refreshBtn.setOnAction(ev -> reloadCertificates());
+
+        HBox actions = new HBox(10, uploadBtn, refreshBtn);
+        actions.setPadding(new Insets(10, 0, 0, 0));
+
+        VBox body = new VBox(12, sectionTitle, hint, certsTable, actions);
+        body.setPadding(new Insets(20));
+        VBox.setVgrow(certsTable, Priority.ALWAYS);
+
+        reloadCertificates();
+        return body;
+    }
+
+    private void reloadCertificates() {
+        if (certsTable == null) return;
+        Task<java.util.List<com.benjagest.ui.model.CertificateSummaryEntry>> task = new Task<>() {
+            @Override
+            protected java.util.List<com.benjagest.ui.model.CertificateSummaryEntry> call() throws Exception {
+                return certificateApi.list();
+            }
+        };
+        task.setOnSucceeded(e -> certsTable.getItems().setAll(task.getValue()));
+        task.setOnFailed(e -> showError(t("settings.cert.fail.list.title"),
+                t("settings.cert.fail.list.body")));
+        start(task, "certificates-list");
+    }
+
+    private void deleteCertificate(com.benjagest.ui.model.CertificateSummaryEntry row) {
+        Alert confirm = new Alert(Alert.AlertType.CONFIRMATION,
+                t("settings.cert.confirm.delete.body") + "\n\n" + row.alias(),
+                ButtonType.OK, ButtonType.CANCEL);
+        confirm.setHeaderText(t("settings.cert.confirm.delete.title"));
+        confirm.showAndWait().filter(b -> b == ButtonType.OK).ifPresent(b -> {
+            Task<Void> task = new Task<>() {
+                @Override
+                protected Void call() throws Exception {
+                    certificateApi.delete(row.id());
+                    return null;
+                }
+            };
+            task.setOnSucceeded(e -> reloadCertificates());
+            task.setOnFailed(e -> showError(t("settings.cert.fail.delete.title"),
+                    t("settings.cert.fail.delete.body")));
+            start(task, "certificate-delete");
+        });
+    }
+
+    private void showCertificateUploadDialog() {
+        Dialog<ButtonType> dialog = new Dialog<>();
+        dialog.setTitle(t("settings.cert.upload.title"));
+        ButtonType saveBt = new ButtonType(t("settings.cert.upload.save"),
+                ButtonBar.ButtonData.OK_DONE);
+        dialog.getDialogPane().getButtonTypes().addAll(saveBt, ButtonType.CANCEL);
+
+        Label fileLabel = new Label(t("settings.cert.upload.no_file"));
+        fileLabel.getStyleClass().add("settings-hint");
+        Button chooseBtn = new Button(t("settings.cert.upload.choose"));
+        // Buffer del .p12 cargado (en base64 cuando se selecciona)
+        final String[] base64Holder = new String[1];
+
+        PasswordField passwordField = new PasswordField();
+        passwordField.setPrefColumnCount(28);
+
+        TextField aliasField = new TextField();
+        aliasField.setPrefColumnCount(28);
+        ComboBox<String> typeCombo = new ComboBox<>();
+        typeCombo.getItems().addAll(
+                "FNMT_PERSONA_FISICA", "FNMT_REPRESENTANTE",
+                "CAMERFIRMA", "IZENPE", "ANCERT", "SELLO_EMPRESA", "OTRO");
+        typeCombo.getSelectionModel().select("OTRO");
+        TextField subjectField = new TextField();
+        subjectField.setPrefColumnCount(28);
+        TextField nifField = new TextField();
+        nifField.setPrefColumnCount(16);
+        TextField validFromField = new TextField();
+        validFromField.setPromptText("AAAA-MM-DD");
+        TextField validToField = new TextField();
+        validToField.setPromptText("AAAA-MM-DD");
+
+        Button inspectBtn = new Button(t("settings.cert.upload.inspect"));
+        inspectBtn.setDisable(true); // habilita cuando hay archivo
+
+        chooseBtn.setOnAction(ev -> {
+            javafx.stage.FileChooser chooser = new javafx.stage.FileChooser();
+            chooser.setTitle(t("settings.cert.upload.choose"));
+            chooser.getExtensionFilters().add(
+                    new javafx.stage.FileChooser.ExtensionFilter("PKCS#12 (.p12, .pfx)", "*.p12", "*.pfx"));
+            java.io.File file = chooser.showOpenDialog(root.getScene().getWindow());
+            if (file == null) return;
+            try {
+                byte[] bytes = java.nio.file.Files.readAllBytes(file.toPath());
+                base64Holder[0] = java.util.Base64.getEncoder().encodeToString(bytes);
+                fileLabel.setText(file.getName() + " (" + (bytes.length / 1024) + " KB)");
+                inspectBtn.setDisable(false);
+                if (aliasField.getText().isBlank()) {
+                    String name = file.getName().replaceAll("(?i)\\.(p12|pfx)$", "");
+                    aliasField.setText(name);
+                }
+            } catch (Exception ex) {
+                showError(t("settings.cert.fail.read_file.title"),
+                        t("settings.cert.fail.read_file.body"));
+            }
+        });
+
+        inspectBtn.setOnAction(ev -> {
+            if (base64Holder[0] == null) return;
+            String pwd = passwordField.getText();
+            Task<com.benjagest.ui.model.CertificateInspectInfo> task = new Task<>() {
+                @Override
+                protected com.benjagest.ui.model.CertificateInspectInfo call() throws Exception {
+                    return certificateApi.inspect(base64Holder[0], pwd);
+                }
+            };
+            task.setOnSucceeded(e -> {
+                var info = task.getValue();
+                if (info.subjectName() != null) subjectField.setText(info.subjectName());
+                if (info.subjectTaxIdentifier() != null) nifField.setText(info.subjectTaxIdentifier());
+                if (info.certificateTypeGuess() != null) typeCombo.getSelectionModel().select(info.certificateTypeGuess());
+                if (info.validFrom() != null) {
+                    validFromField.setText(info.validFrom().atZone(java.time.ZoneId.systemDefault())
+                            .toLocalDate().toString());
+                }
+                if (info.validTo() != null) {
+                    validToField.setText(info.validTo().atZone(java.time.ZoneId.systemDefault())
+                            .toLocalDate().toString());
+                }
+                if (aliasField.getText().isBlank() && info.subjectName() != null) {
+                    aliasField.setText(info.subjectName());
+                }
+            });
+            task.setOnFailed(e -> showError(t("settings.cert.fail.inspect.title"),
+                    t("settings.cert.fail.inspect.body")));
+            start(task, "certificate-inspect");
+        });
+
+        GridPane g = new GridPane();
+        g.setHgap(12); g.setVgap(10);
+        int r = 0;
+        g.add(new Label(t("settings.cert.upload.file")), 0, r);
+        HBox fileBox = new HBox(8, chooseBtn, fileLabel);
+        g.add(fileBox, 1, r++);
+        g.add(new Label(t("settings.cert.upload.password")), 0, r); g.add(passwordField, 1, r++);
+        g.add(new Label(""), 0, r); g.add(inspectBtn, 1, r++);
+        g.add(new Separator(), 0, r++, 2, 1);
+        g.add(new Label(t("settings.cert.upload.alias")), 0, r); g.add(aliasField, 1, r++);
+        g.add(new Label(t("settings.cert.upload.type")), 0, r); g.add(typeCombo, 1, r++);
+        g.add(new Label(t("settings.cert.upload.subject")), 0, r); g.add(subjectField, 1, r++);
+        g.add(new Label(t("settings.cert.upload.nif")), 0, r); g.add(nifField, 1, r++);
+        g.add(new Label(t("settings.cert.upload.valid_from")), 0, r); g.add(validFromField, 1, r++);
+        g.add(new Label(t("settings.cert.upload.valid_to")), 0, r); g.add(validToField, 1, r++);
+        Label tip = new Label(t("settings.cert.upload.tip"));
+        tip.setWrapText(true);
+        tip.getStyleClass().add("settings-hint");
+        g.add(tip, 0, r++, 2, 1);
+
+        dialog.getDialogPane().setContent(g);
+        dialog.getDialogPane().setPrefWidth(560);
+
+        Button save = (Button) dialog.getDialogPane().lookupButton(saveBt);
+        save.addEventFilter(javafx.event.ActionEvent.ACTION, ev -> {
+            ev.consume();
+            if (base64Holder[0] == null) {
+                showError(t("settings.cert.fail.no_file.title"),
+                        t("settings.cert.fail.no_file.body"));
+                return;
+            }
+            if (aliasField.getText().isBlank()) {
+                showError(t("settings.cert.fail.no_alias.title"),
+                        t("settings.cert.fail.no_alias.body"));
+                return;
+            }
+            java.time.Instant vFrom = parseDateInstant(validFromField.getText());
+            java.time.Instant vTo = parseDateInstant(validToField.getText());
+            String pwd = passwordField.getText();
+            String b64 = base64Holder[0];
+            String alias = aliasField.getText().trim();
+            String type = typeCombo.getValue() == null ? "OTRO" : typeCombo.getValue();
+            String subject = subjectField.getText().trim();
+            String nif = nifField.getText().trim();
+            Task<com.benjagest.ui.model.CertificateSummaryEntry> task = new Task<>() {
+                @Override
+                protected com.benjagest.ui.model.CertificateSummaryEntry call() throws Exception {
+                    return certificateApi.upload(alias, type,
+                            subject.isBlank() ? null : subject,
+                            nif.isBlank() ? null : nif,
+                            pwd.isBlank() ? null : pwd,
+                            b64, vFrom, vTo);
+                }
+            };
+            task.setOnSucceeded(e -> {
+                dialog.setResult(saveBt);
+                dialog.close();
+                reloadCertificates();
+            });
+            task.setOnFailed(e -> showError(t("settings.cert.fail.upload.title"),
+                    t("settings.cert.fail.upload.body")));
+            start(task, "certificate-upload");
+        });
+
+        dialog.showAndWait();
+    }
+
+    private java.time.Instant parseDateInstant(String text) {
+        if (text == null || text.isBlank()) return null;
+        try {
+            return java.time.LocalDate.parse(text.trim())
+                    .atStartOfDay(java.time.ZoneId.systemDefault()).toInstant();
+        } catch (Exception ex) {
+            return null;
+        }
+    }
 
     private Node settingsAuditTab() {
         Label sectionTitle = label(t("settings.audit.section"), "settings-section-title");
@@ -6478,7 +6777,53 @@ public class BenjagestUiApplication extends Application {
                 case "settings.tab.email" -> "SMTP Email";
                 case "settings.tab.modules" -> "Modules";
                 case "settings.tab.credentials" -> "Credentials";
+                case "settings.tab.certificate" -> "Certificate";
                 case "settings.tab.audit" -> "Audit";
+                case "settings.cert.section" -> "Digital certificate (.p12 / .pfx)";
+                case "settings.cert.hint" -> "Upload your electronic certificate (FNMT, Camerfirma, etc.) to sign invoices for VeriFactu, submit AEAT forms, and receive DEHú notifications. If you are an advisory firm and have a linked client, switch to that client from 'My clients' to upload their certificate on their behalf — both parties will see it.";
+                case "settings.cert.placeholder.empty" -> "No certificates uploaded yet";
+                case "settings.cert.col.alias" -> "Alias";
+                case "settings.cert.col.type" -> "Type";
+                case "settings.cert.col.nif" -> "Tax ID";
+                case "settings.cert.col.subject" -> "Subject";
+                case "settings.cert.col.valid_until" -> "Valid until";
+                case "settings.cert.col.uploaded_by" -> "Uploaded by";
+                case "settings.cert.col.actions" -> "Actions";
+                case "settings.cert.uploaded_by.self" -> "Self";
+                case "settings.cert.uploaded_by.advisory" -> "Advisory firm";
+                case "settings.cert.action.upload" -> "Upload .p12 / .pfx";
+                case "settings.cert.action.refresh" -> "Refresh";
+                case "settings.cert.action.delete" -> "Delete";
+                case "settings.cert.confirm.delete.title" -> "Delete certificate?";
+                case "settings.cert.confirm.delete.body" -> "The certificate will be deactivated. Records signed with it remain valid.";
+                case "settings.cert.upload.title" -> "Upload digital certificate";
+                case "settings.cert.upload.choose" -> "Choose file";
+                case "settings.cert.upload.no_file" -> "(no file selected)";
+                case "settings.cert.upload.file" -> "File:";
+                case "settings.cert.upload.password" -> "Password:";
+                case "settings.cert.upload.inspect" -> "Inspect → auto-fill";
+                case "settings.cert.upload.alias" -> "Alias:";
+                case "settings.cert.upload.type" -> "Type:";
+                case "settings.cert.upload.subject" -> "Subject (CN):";
+                case "settings.cert.upload.nif" -> "Tax ID:";
+                case "settings.cert.upload.valid_from" -> "Valid from:";
+                case "settings.cert.upload.valid_to" -> "Valid until:";
+                case "settings.cert.upload.save" -> "Save";
+                case "settings.cert.upload.tip" -> "Tip: choose the .p12 and enter its password, then click 'Inspect' to auto-fill subject, NIF and validity dates from the certificate itself.";
+                case "settings.cert.fail.list.title" -> "Could not load certificates";
+                case "settings.cert.fail.list.body" -> "Check the backend connection and your active company.";
+                case "settings.cert.fail.delete.title" -> "Could not delete";
+                case "settings.cert.fail.delete.body" -> "The certificate may have been removed already.";
+                case "settings.cert.fail.read_file.title" -> "Could not read the file";
+                case "settings.cert.fail.read_file.body" -> "The file may be locked or unreadable.";
+                case "settings.cert.fail.inspect.title" -> "Could not read the certificate";
+                case "settings.cert.fail.inspect.body" -> "The password may be wrong or the file is not a valid PKCS#12 keystore.";
+                case "settings.cert.fail.no_file.title" -> "No file selected";
+                case "settings.cert.fail.no_file.body" -> "Choose a .p12 or .pfx file before saving.";
+                case "settings.cert.fail.no_alias.title" -> "Alias required";
+                case "settings.cert.fail.no_alias.body" -> "Enter a short name for this certificate.";
+                case "settings.cert.fail.upload.title" -> "Could not save the certificate";
+                case "settings.cert.fail.upload.body" -> "If your role is ACCOUNTANT operating on a client, confirm the client is linked to your advisory firm.";
                 // ---- Owners (ALTA) ----
                 case "settings.owners.section" -> "Owners and administrators";
                 case "settings.owners.section_label" -> "Owners";
@@ -7292,7 +7637,53 @@ public class BenjagestUiApplication extends Application {
             case "settings.tab.email" -> "Email SMTP";
             case "settings.tab.modules" -> "Modulos";
             case "settings.tab.credentials" -> "Credenciales";
+            case "settings.tab.certificate" -> "Certificado";
             case "settings.tab.audit" -> "Auditoria";
+            case "settings.cert.section" -> "Certificado digital (.p12 / .pfx)";
+            case "settings.cert.hint" -> "Sube tu certificado electronico (FNMT, Camerfirma, etc.) para firmar facturas VeriFactu, presentar modelos AEAT y recibir notificaciones DEHu. Si eres asesoria y tienes un cliente vinculado, ve a 'Mis clientes' y cambia al cliente para subir su certificado en su nombre — ambos lo vereis.";
+            case "settings.cert.placeholder.empty" -> "Aun no hay certificados subidos";
+            case "settings.cert.col.alias" -> "Alias";
+            case "settings.cert.col.type" -> "Tipo";
+            case "settings.cert.col.nif" -> "NIF";
+            case "settings.cert.col.subject" -> "Sujeto";
+            case "settings.cert.col.valid_until" -> "Valido hasta";
+            case "settings.cert.col.uploaded_by" -> "Subido por";
+            case "settings.cert.col.actions" -> "Acciones";
+            case "settings.cert.uploaded_by.self" -> "Yo";
+            case "settings.cert.uploaded_by.advisory" -> "Mi asesoria";
+            case "settings.cert.action.upload" -> "Subir .p12 / .pfx";
+            case "settings.cert.action.refresh" -> "Refrescar";
+            case "settings.cert.action.delete" -> "Eliminar";
+            case "settings.cert.confirm.delete.title" -> "¿Eliminar certificado?";
+            case "settings.cert.confirm.delete.body" -> "El certificado se desactivara. Los registros firmados con el siguen siendo validos.";
+            case "settings.cert.upload.title" -> "Subir certificado digital";
+            case "settings.cert.upload.choose" -> "Elegir archivo";
+            case "settings.cert.upload.no_file" -> "(sin archivo seleccionado)";
+            case "settings.cert.upload.file" -> "Archivo:";
+            case "settings.cert.upload.password" -> "Contrasena:";
+            case "settings.cert.upload.inspect" -> "Inspeccionar → autorrellenar";
+            case "settings.cert.upload.alias" -> "Alias:";
+            case "settings.cert.upload.type" -> "Tipo:";
+            case "settings.cert.upload.subject" -> "Sujeto (CN):";
+            case "settings.cert.upload.nif" -> "NIF:";
+            case "settings.cert.upload.valid_from" -> "Valido desde:";
+            case "settings.cert.upload.valid_to" -> "Valido hasta:";
+            case "settings.cert.upload.save" -> "Guardar";
+            case "settings.cert.upload.tip" -> "Consejo: elige el .p12 e introduce la contrasena; pulsa 'Inspeccionar' para autorrellenar sujeto, NIF y fechas de validez directamente desde el certificado.";
+            case "settings.cert.fail.list.title" -> "No se pudieron cargar los certificados";
+            case "settings.cert.fail.list.body" -> "Comprueba la conexion con el backend y la empresa activa.";
+            case "settings.cert.fail.delete.title" -> "No se pudo eliminar";
+            case "settings.cert.fail.delete.body" -> "Es posible que el certificado ya se haya eliminado.";
+            case "settings.cert.fail.read_file.title" -> "No se pudo leer el archivo";
+            case "settings.cert.fail.read_file.body" -> "El archivo puede estar bloqueado o ser ilegible.";
+            case "settings.cert.fail.inspect.title" -> "No se pudo leer el certificado";
+            case "settings.cert.fail.inspect.body" -> "La contrasena puede estar equivocada o el archivo no es un PKCS#12 valido.";
+            case "settings.cert.fail.no_file.title" -> "Sin archivo";
+            case "settings.cert.fail.no_file.body" -> "Elige un .p12 o .pfx antes de guardar.";
+            case "settings.cert.fail.no_alias.title" -> "Alias obligatorio";
+            case "settings.cert.fail.no_alias.body" -> "Introduce un nombre corto para identificar el certificado.";
+            case "settings.cert.fail.upload.title" -> "No se pudo guardar el certificado";
+            case "settings.cert.fail.upload.body" -> "Si tu rol es ACCOUNTANT operando sobre un cliente, confirma que el cliente este vinculado a tu asesoria.";
             // ---- Titulares (ALTA) ----
             case "settings.owners.section" -> "Titulares y administradores";
             case "settings.owners.section_label" -> "Titulares";
