@@ -755,6 +755,101 @@ public class BenjagestUiApplication extends Application {
         start(task, "dashboard-load");
     }
 
+    /**
+     * Carga las invitaciones PENDING dirigidas al empresario actual y
+     * las pinta como banner destacado en el Home. Si no hay
+     * invitaciones (caso habitual), el slot queda vacío.
+     */
+    private void loadPendingInvitationsBanner(VBox slot) {
+        Task<java.util.List<com.benjagest.ui.model.AdvisoryInvitationEntry>> task = new Task<>() {
+            @Override
+            protected java.util.List<com.benjagest.ui.model.AdvisoryInvitationEntry> call() throws Exception {
+                return invitationsApi.listPending();
+            }
+        };
+        task.setOnSucceeded(ev -> {
+            slot.getChildren().clear();
+            var list = task.getValue();
+            if (list == null || list.isEmpty()) return;
+            for (var inv : list) slot.getChildren().add(buildInvitationCard(inv, slot));
+        });
+        task.setOnFailed(ev -> { /* silencioso: backend caído no debe romper el dashboard */ });
+        start(task, "advisory-pending-invitations");
+    }
+
+    private Node buildInvitationCard(com.benjagest.ui.model.AdvisoryInvitationEntry inv,
+                                       VBox parentSlot) {
+        Label icon = new Label("📩"); // 📩
+        icon.setStyle("-fx-font-size: 28;");
+        String fromHint = inv.invitedCompanyName() == null
+                ? t("advisory.invitation.banner.from_generic")
+                : t("advisory.invitation.banner.from") + " " + inv.invitedCompanyName();
+        Label title = new Label(t("advisory.invitation.banner.title"));
+        title.getStyleClass().add("section-title");
+        Label hint = new Label(fromHint + "\n" + t("advisory.invitation.banner.body"));
+        hint.setWrapText(true);
+        hint.getStyleClass().add("settings-hint");
+
+        Button accept = new Button(t("advisory.invitation.banner.accept"));
+        accept.getStyleClass().add("button-primary");
+        accept.setOnAction(ev -> acceptInvitationFromBanner(inv, parentSlot));
+        Button reject = new Button(t("advisory.invitation.banner.reject"));
+        reject.getStyleClass().add("button-danger-outline");
+        reject.setOnAction(ev -> rejectInvitationFromBanner(inv, parentSlot));
+
+        HBox actions = new HBox(8, accept, reject);
+        VBox copy = new VBox(6, title, hint, actions);
+        HBox card = new HBox(16, icon, copy);
+        card.setAlignment(Pos.CENTER_LEFT);
+        card.setPadding(new Insets(16));
+        card.setStyle(
+                "-fx-background-color: #fff8e1;"
+              + " -fx-background-radius: 10;"
+              + " -fx-border-color: #f4b400;"
+              + " -fx-border-width: 1.5;"
+              + " -fx-border-radius: 10;"
+        );
+        HBox.setHgrow(copy, Priority.ALWAYS);
+        return card;
+    }
+
+    private void acceptInvitationFromBanner(com.benjagest.ui.model.AdvisoryInvitationEntry inv,
+                                              VBox parentSlot) {
+        Task<com.benjagest.ui.model.AdvisoryInvitationEntry> task = new Task<>() {
+            @Override
+            protected com.benjagest.ui.model.AdvisoryInvitationEntry call() throws Exception {
+                return invitationsApi.accept(inv.token());
+            }
+        };
+        task.setOnSucceeded(e -> {
+            showInfo(t("advisory.invitation.accept.ok.title"),
+                    t("advisory.invitation.accept.ok.body"));
+            loadPendingInvitationsBanner(parentSlot);
+        });
+        task.setOnFailed(e -> showError(t("advisory.invitation.accept.fail.title"),
+                t("advisory.invitation.accept.fail.body")));
+        start(task, "advisory-invitation-accept");
+    }
+
+    private void rejectInvitationFromBanner(com.benjagest.ui.model.AdvisoryInvitationEntry inv,
+                                              VBox parentSlot) {
+        Task<Void> task = new Task<>() {
+            @Override
+            protected Void call() throws Exception {
+                invitationsApi.reject(inv.token());
+                return null;
+            }
+        };
+        task.setOnSucceeded(e -> {
+            showInfo(t("advisory.invitation.reject.ok.title"),
+                    t("advisory.invitation.reject.ok.body"));
+            loadPendingInvitationsBanner(parentSlot);
+        });
+        task.setOnFailed(e -> showError(t("advisory.invitation.reject.fail.title"),
+                t("advisory.invitation.reject.fail.body")));
+        start(task, "advisory-invitation-reject");
+    }
+
     private VBox dashboard(DashboardData data) {
         VBox content = content();
 
@@ -810,8 +905,16 @@ public class BenjagestUiApplication extends Application {
                 activityPanel(t("agenda"), "fas-calendar-alt", data.calendar())
         );
 
+        content.getChildren().add(hero);
+
+        // Banner de invitaciones pendientes — solo cuando el empresario
+        // (CLIENT) tiene alguna invitación PENDING. Se inserta justo
+        // tras el hero para que sea lo primero que ve al loguearse.
+        VBox invBannerSlot = new VBox();
+        content.getChildren().add(invBannerSlot);
+        loadPendingInvitationsBanner(invBannerSlot);
+
         content.getChildren().addAll(
-                hero,
                 label(t("mainIndicators"), "section-title"),
                 metrics,
                 sectionHeader(t("quickAccess"), t("quickAccessDetail")),
@@ -1732,6 +1835,11 @@ public class BenjagestUiApplication extends Application {
     private final com.benjagest.ui.service.PurchaseInvoiceApiClient purchasesApi =
             new com.benjagest.ui.service.PurchaseInvoiceApiClient();
 
+    private final com.benjagest.ui.service.AdvisoryInvitationApiClient invitationsApi =
+            new com.benjagest.ui.service.AdvisoryInvitationApiClient();
+
+    private TableView<com.benjagest.ui.model.AdvisoryInvitationEntry> advisoryInvitationsTable;
+
     private TableView<com.benjagest.ui.model.PurchaseInvoiceEntry> purchaseInvoicesTable;
     private ComboBox<String> purchaseYearFilter;
 
@@ -2367,10 +2475,12 @@ public class BenjagestUiApplication extends Application {
         credentialsTab.setGraphic(icon("fas-key"));
         Tab certificateTab = new Tab(t("settings.tab.certificate"), settingsCertificateTab());
         certificateTab.setGraphic(icon("fas-certificate"));
+        Tab advisoryTab = new Tab(t("settings.tab.my_advisory"), settingsMyAdvisoryTab());
+        advisoryTab.setGraphic(icon("fas-handshake"));
         Tab auditTab = new Tab(t("settings.tab.audit"), settingsAuditTab());
         auditTab.setGraphic(icon("fas-shield-alt"));
         tabs.getTabs().addAll(companyTab, ownersTab, emailTab, modulesTab,
-                credentialsTab, certificateTab, auditTab);
+                credentialsTab, certificateTab, advisoryTab, auditTab);
         // El TabPane crece hasta el final del area central; sin esto, los
         // botones del pie de cada tab podrian quedar fuera de pantalla en
         // portatil.
@@ -2982,6 +3092,94 @@ public class BenjagestUiApplication extends Application {
         } catch (Exception ex) {
             return null;
         }
+    }
+
+    /**
+     * Pestaña "Mi asesoría" del empresario: muestra la asesoría a la
+     * que está vinculado (si la hay) + botón Desvincular. Si no hay
+     * vínculo, muestra hint explicando cómo aceptar una invitación.
+     */
+    private Node settingsMyAdvisoryTab() {
+        Label sectionTitle = label(t("settings.my_advisory.section"), "settings-section-title");
+        Label hint = new Label(t("settings.my_advisory.hint"));
+        hint.setWrapText(true);
+        hint.getStyleClass().add("settings-hint");
+
+        VBox infoSlot = new VBox(8);
+        infoSlot.setPadding(new Insets(8, 0, 0, 0));
+
+        Button unlinkBtn = new Button(t("settings.my_advisory.action.unlink"));
+        unlinkBtn.setGraphic(icon("fas-unlink"));
+        unlinkBtn.getStyleClass().add("button-danger-outline");
+        unlinkBtn.setDisable(true);
+
+        Runnable reload = () -> {
+            infoSlot.getChildren().clear();
+            unlinkBtn.setDisable(true);
+            Task<com.benjagest.ui.service.AdvisoryInvitationApiClient.LinkedAdvisory> task = new Task<>() {
+                @Override
+                protected com.benjagest.ui.service.AdvisoryInvitationApiClient.LinkedAdvisory
+                        call() throws Exception {
+                    return invitationsApi.getLinkedAdvisory();
+                }
+            };
+            task.setOnSucceeded(e -> {
+                var link = task.getValue();
+                if (link == null) {
+                    Label empty = new Label(t("settings.my_advisory.empty"));
+                    empty.setWrapText(true);
+                    empty.getStyleClass().add("settings-hint");
+                    infoSlot.getChildren().add(empty);
+                    unlinkBtn.setDisable(true);
+                    return;
+                }
+                GridPane g = new GridPane();
+                g.setHgap(12); g.setVgap(6);
+                int r = 0;
+                g.add(new Label(t("settings.my_advisory.field.legal_name")), 0, r);
+                g.add(new Label(link.legalName() == null ? "—" : link.legalName()), 1, r++);
+                if (link.tradeName() != null && !link.tradeName().isBlank()) {
+                    g.add(new Label(t("settings.my_advisory.field.trade_name")), 0, r);
+                    g.add(new Label(link.tradeName()), 1, r++);
+                }
+                g.add(new Label(t("settings.my_advisory.field.nif")), 0, r);
+                g.add(new Label(link.taxIdentifier() == null ? "—" : link.taxIdentifier()), 1, r++);
+                g.add(new Label(t("settings.my_advisory.field.email")), 0, r);
+                g.add(new Label(link.email() == null ? "—" : link.email()), 1, r++);
+                infoSlot.getChildren().add(g);
+                unlinkBtn.setDisable(false);
+            });
+            task.setOnFailed(e -> showError(t("settings.my_advisory.fail.load.title"),
+                    t("settings.my_advisory.fail.load.body")));
+            start(task, "my-advisory-load");
+        };
+
+        unlinkBtn.setOnAction(ev -> {
+            Alert confirm = new Alert(Alert.AlertType.CONFIRMATION,
+                    t("settings.my_advisory.confirm.unlink.body"),
+                    ButtonType.OK, ButtonType.CANCEL);
+            confirm.setHeaderText(t("settings.my_advisory.confirm.unlink.title"));
+            confirm.showAndWait().filter(b -> b == ButtonType.OK).ifPresent(b -> {
+                Task<Void> task = new Task<>() {
+                    @Override
+                    protected Void call() throws Exception {
+                        invitationsApi.unlink();
+                        return null;
+                    }
+                };
+                task.setOnSucceeded(e -> reload.run());
+                task.setOnFailed(e -> showError(t("settings.my_advisory.fail.unlink.title"),
+                        t("settings.my_advisory.fail.unlink.body")));
+                start(task, "my-advisory-unlink");
+            });
+        });
+
+        HBox actions = new HBox(8, unlinkBtn);
+        VBox header = new VBox(8, sectionTitle, hint);
+        VBox body = new VBox(12, infoSlot);
+
+        reload.run();
+        return tabLayout(header, body, actions);
     }
 
     private Node settingsAuditTab() {
@@ -7465,6 +7663,7 @@ public class BenjagestUiApplication extends Application {
                 case "status.payment.overdue" -> "Overdue";
                 default -> {
                     String v = tNewModulesEn(key);
+                    if (v == null) v = tAdvisoryInvitationsEn(key);
                     yield v != null ? v : (key.startsWith("column.") ? key.substring(7) : key);
                 }
             };
@@ -8352,6 +8551,7 @@ public class BenjagestUiApplication extends Application {
             case "status.payment.overdue" -> "Vencida";
             default -> {
                 String v = tNewModulesEs(key);
+                if (v == null) v = tAdvisoryInvitationsEs(key);
                 if (v != null) yield v;
                 yield key.startsWith("column.") ? key.substring(7) : switch (key) {
                 case "field.name" -> "Nombre";
@@ -9168,6 +9368,158 @@ public class BenjagestUiApplication extends Application {
             case "dehu.editor.notes" -> "Notas";
             case "dehu.editor.fail.title" -> "No se pudo guardar";
             case "dehu.editor.fail.body" -> "Revisa los datos e intentalo de nuevo.";
+            default -> null;
+        };
+    }
+
+    /**
+     * Bloque i18n EN del slice ADVISORY-INVITATION. Extraído del switch
+     * principal para no rebasar el límite JVM de 64KB por método.
+     */
+    private String tAdvisoryInvitationsEn(String key) {
+        return switch (key) {
+            case "settings.tab.my_advisory" -> "My advisory";
+            case "settings.my_advisory.section" -> "My advisory firm";
+            case "settings.my_advisory.hint" -> "If a tax advisor invited you to manage your company, accept their invitation from the Home banner. Once linked, your advisor can switch into your company from their 'My clients' screen and operate on your behalf (upload your certificate, register expenses, etc.). You can break the link at any time.";
+            case "settings.my_advisory.empty" -> "Your company is not linked to any advisory firm. When an advisor sends you an invitation, you will see a banner on the Home screen to accept it.";
+            case "settings.my_advisory.field.legal_name" -> "Legal name:";
+            case "settings.my_advisory.field.trade_name" -> "Trade name:";
+            case "settings.my_advisory.field.nif" -> "Tax ID:";
+            case "settings.my_advisory.field.email" -> "Email:";
+            case "settings.my_advisory.action.unlink" -> "Unlink";
+            case "settings.my_advisory.confirm.unlink.title" -> "Unlink from advisory?";
+            case "settings.my_advisory.confirm.unlink.body" -> "Your advisor will lose access to your company. You can re-link later by accepting a new invitation.";
+            case "settings.my_advisory.fail.load.title" -> "Could not load advisory";
+            case "settings.my_advisory.fail.load.body" -> "Check the backend connection.";
+            case "settings.my_advisory.fail.unlink.title" -> "Could not unlink";
+            case "settings.my_advisory.fail.unlink.body" -> "Try again or check the connection.";
+            case "advisory.action.invite" -> "Invite client";
+            case "advisory.invitations.section" -> "Pending invitations";
+            case "advisory.invitations.hint" -> "Invitations you have issued. Copy the token and send it to the client through your usual channel — the client must paste it from their 'My advisory' tab or accept the banner that appears on their Home.";
+            case "advisory.invitations.placeholder.empty" -> "No invitations issued yet.";
+            case "advisory.invitations.col.date" -> "Date";
+            case "advisory.invitations.col.email" -> "Email";
+            case "advisory.invitations.col.nif" -> "Tax ID";
+            case "advisory.invitations.col.company" -> "Company";
+            case "advisory.invitations.col.status" -> "Status";
+            case "advisory.invitations.status.PENDING" -> "Pending";
+            case "advisory.invitations.status.ACCEPTED" -> "Accepted";
+            case "advisory.invitations.status.REJECTED" -> "Rejected";
+            case "advisory.invitations.status.REVOKED" -> "Revoked";
+            case "advisory.invitations.status.EXPIRED" -> "Expired";
+            case "advisory.invitations.action.refresh" -> "Refresh";
+            case "advisory.invitations.action.copy_link" -> "Copy token";
+            case "advisory.invitations.action.revoke" -> "Revoke";
+            case "advisory.invitations.create.title" -> "Invite client";
+            case "advisory.invitations.create.save" -> "Send invitation";
+            case "advisory.invitations.create.hint" -> "Provide email and/or tax ID of the company you want to invite. The system generates a token that the client must accept from their session.";
+            case "advisory.invitations.create.email" -> "Client email:";
+            case "advisory.invitations.create.nif" -> "Client tax ID:";
+            case "advisory.invitations.create.company_name" -> "Company name:";
+            case "advisory.invitations.create.notes" -> "Notes:";
+            case "advisory.invitations.token_label" -> "Token:";
+            case "advisory.invitations.create.ok.title" -> "Invitation sent";
+            case "advisory.invitations.create.ok.body" -> "The token has been copied to the clipboard. Share it with the client.";
+            case "advisory.invitations.create.fail.title" -> "Could not send";
+            case "advisory.invitations.create.fail.body" -> "Check the backend connection.";
+            case "advisory.invitations.create.fail.missing.title" -> "Missing data";
+            case "advisory.invitations.create.fail.missing.body" -> "At least email or tax ID is required.";
+            case "advisory.invitations.copied.title" -> "Token copied";
+            case "advisory.invitations.copied.body" -> "Paste the token in the client's session to link them.";
+            case "advisory.invitations.revoke.confirm.title" -> "Revoke invitation?";
+            case "advisory.invitations.revoke.confirm.body" -> "The invitation will no longer be valid.";
+            case "advisory.invitations.revoke.fail.title" -> "Could not revoke";
+            case "advisory.invitations.revoke.fail.body" -> "Try again or check the connection.";
+            case "advisory.invitations.fail.list.title" -> "Could not load invitations";
+            case "advisory.invitations.fail.list.body" -> "Check the backend connection.";
+            case "advisory.invitation.banner.title" -> "You have a pending advisory invitation";
+            case "advisory.invitation.banner.from" -> "Sent by:";
+            case "advisory.invitation.banner.from_generic" -> "Sent by an advisory firm.";
+            case "advisory.invitation.banner.body" -> "If you accept, the advisor will be able to switch into your company and manage it on your behalf. You can unlink at any time from Settings → My advisory.";
+            case "advisory.invitation.banner.accept" -> "Accept";
+            case "advisory.invitation.banner.reject" -> "Reject";
+            case "advisory.invitation.accept.ok.title" -> "Linked";
+            case "advisory.invitation.accept.ok.body" -> "You are now linked to your advisory firm.";
+            case "advisory.invitation.accept.fail.title" -> "Could not accept";
+            case "advisory.invitation.accept.fail.body" -> "If you already had an advisor linked, unlink first from Settings → My advisory.";
+            case "advisory.invitation.reject.ok.title" -> "Rejected";
+            case "advisory.invitation.reject.ok.body" -> "The invitation has been rejected.";
+            case "advisory.invitation.reject.fail.title" -> "Could not reject";
+            case "advisory.invitation.reject.fail.body" -> "Try again or check the connection.";
+            default -> null;
+        };
+    }
+
+    private String tAdvisoryInvitationsEs(String key) {
+        return switch (key) {
+            case "settings.tab.my_advisory" -> "Mi asesoria";
+            case "settings.my_advisory.section" -> "Mi asesoria fiscal";
+            case "settings.my_advisory.hint" -> "Si una asesoria te ha invitado a gestionar tu empresa, acepta su invitacion desde el banner del Home. Una vez vinculado, tu asesor podra cambiarse a tu empresa desde su pantalla 'Mis clientes' y operar en tu nombre (subir tu certificado, registrar gastos, etc.). Puedes deshacer el vinculo en cualquier momento.";
+            case "settings.my_advisory.empty" -> "Tu empresa no esta vinculada a ninguna asesoria. Cuando un asesor te envie una invitacion, veras un banner en el Home para aceptarla.";
+            case "settings.my_advisory.field.legal_name" -> "Razon social:";
+            case "settings.my_advisory.field.trade_name" -> "Nombre comercial:";
+            case "settings.my_advisory.field.nif" -> "NIF:";
+            case "settings.my_advisory.field.email" -> "Email:";
+            case "settings.my_advisory.action.unlink" -> "Desvincular";
+            case "settings.my_advisory.confirm.unlink.title" -> "¿Desvincular de la asesoria?";
+            case "settings.my_advisory.confirm.unlink.body" -> "Tu asesor perdera el acceso a tu empresa. Puedes re-vincularte mas tarde aceptando una nueva invitacion.";
+            case "settings.my_advisory.fail.load.title" -> "No se pudo cargar la asesoria";
+            case "settings.my_advisory.fail.load.body" -> "Comprueba la conexion con el backend.";
+            case "settings.my_advisory.fail.unlink.title" -> "No se pudo desvincular";
+            case "settings.my_advisory.fail.unlink.body" -> "Intentalo de nuevo o revisa la conexion.";
+            case "advisory.action.invite" -> "Invitar cliente";
+            case "advisory.invitations.section" -> "Invitaciones pendientes";
+            case "advisory.invitations.hint" -> "Invitaciones que has emitido. Copia el token y enviaselo al cliente por tu canal habitual — el cliente debe pegarlo desde su pestaña 'Mi asesoria' o aceptar el banner que aparece en su Home.";
+            case "advisory.invitations.placeholder.empty" -> "Aun no has emitido invitaciones.";
+            case "advisory.invitations.col.date" -> "Fecha";
+            case "advisory.invitations.col.email" -> "Email";
+            case "advisory.invitations.col.nif" -> "NIF";
+            case "advisory.invitations.col.company" -> "Empresa";
+            case "advisory.invitations.col.status" -> "Estado";
+            case "advisory.invitations.status.PENDING" -> "Pendiente";
+            case "advisory.invitations.status.ACCEPTED" -> "Aceptada";
+            case "advisory.invitations.status.REJECTED" -> "Rechazada";
+            case "advisory.invitations.status.REVOKED" -> "Revocada";
+            case "advisory.invitations.status.EXPIRED" -> "Caducada";
+            case "advisory.invitations.action.refresh" -> "Refrescar";
+            case "advisory.invitations.action.copy_link" -> "Copiar token";
+            case "advisory.invitations.action.revoke" -> "Revocar";
+            case "advisory.invitations.create.title" -> "Invitar cliente";
+            case "advisory.invitations.create.save" -> "Enviar invitacion";
+            case "advisory.invitations.create.hint" -> "Informa email y/o NIF de la empresa que quieres invitar. El sistema genera un token que el cliente debe aceptar desde su sesion.";
+            case "advisory.invitations.create.email" -> "Email del cliente:";
+            case "advisory.invitations.create.nif" -> "NIF del cliente:";
+            case "advisory.invitations.create.company_name" -> "Nombre empresa:";
+            case "advisory.invitations.create.notes" -> "Notas:";
+            case "advisory.invitations.token_label" -> "Token:";
+            case "advisory.invitations.create.ok.title" -> "Invitacion enviada";
+            case "advisory.invitations.create.ok.body" -> "El token se ha copiado al portapapeles. Compartelo con el cliente.";
+            case "advisory.invitations.create.fail.title" -> "No se pudo enviar";
+            case "advisory.invitations.create.fail.body" -> "Comprueba la conexion con el backend.";
+            case "advisory.invitations.create.fail.missing.title" -> "Faltan datos";
+            case "advisory.invitations.create.fail.missing.body" -> "Se requiere al menos email o NIF.";
+            case "advisory.invitations.copied.title" -> "Token copiado";
+            case "advisory.invitations.copied.body" -> "Pegalo en la sesion del cliente para vincularle.";
+            case "advisory.invitations.revoke.confirm.title" -> "¿Revocar invitacion?";
+            case "advisory.invitations.revoke.confirm.body" -> "La invitacion dejara de ser valida.";
+            case "advisory.invitations.revoke.fail.title" -> "No se pudo revocar";
+            case "advisory.invitations.revoke.fail.body" -> "Intentalo de nuevo o revisa la conexion.";
+            case "advisory.invitations.fail.list.title" -> "No se pudieron cargar las invitaciones";
+            case "advisory.invitations.fail.list.body" -> "Comprueba la conexion con el backend.";
+            case "advisory.invitation.banner.title" -> "Tienes una invitacion de asesoria pendiente";
+            case "advisory.invitation.banner.from" -> "Enviada por:";
+            case "advisory.invitation.banner.from_generic" -> "Enviada por una asesoria.";
+            case "advisory.invitation.banner.body" -> "Si aceptas, el asesor podra cambiarse a tu empresa y gestionarla en tu nombre. Puedes desvincularte en cualquier momento desde Configuracion → Mi asesoria.";
+            case "advisory.invitation.banner.accept" -> "Aceptar";
+            case "advisory.invitation.banner.reject" -> "Rechazar";
+            case "advisory.invitation.accept.ok.title" -> "Vinculado";
+            case "advisory.invitation.accept.ok.body" -> "Ya estas vinculado a tu asesoria.";
+            case "advisory.invitation.accept.fail.title" -> "No se pudo aceptar";
+            case "advisory.invitation.accept.fail.body" -> "Si ya tenias una asesoria vinculada, desvincula primero desde Configuracion → Mi asesoria.";
+            case "advisory.invitation.reject.ok.title" -> "Rechazada";
+            case "advisory.invitation.reject.ok.body" -> "La invitacion ha sido rechazada.";
+            case "advisory.invitation.reject.fail.title" -> "No se pudo rechazar";
+            case "advisory.invitation.reject.fail.body" -> "Intentalo de nuevo o revisa la conexion.";
             default -> null;
         };
     }
@@ -11182,14 +11534,201 @@ public class BenjagestUiApplication extends Application {
             if (sel != null) switchToClient(sel);
         });
 
-        HBox actions = new HBox(8, switchBtn);
+        Button inviteBtn = new Button(t("advisory.action.invite"));
+        inviteBtn.setGraphic(icon("fas-paper-plane"));
+        inviteBtn.getStyleClass().add("button-primary");
+        inviteBtn.setOnAction(ev -> showCreateInvitationDialog());
+
+        HBox actions = new HBox(8, switchBtn, inviteBtn);
         actions.getStyleClass().add("settings-actions");
 
-        VBox body = new VBox(12, hint, table);
+        // Bloque de invitaciones — listado bajo la tabla de clientes
+        Label invTitle = new Label(t("advisory.invitations.section"));
+        invTitle.getStyleClass().add("settings-section-title");
+        Label invHint = new Label(t("advisory.invitations.hint"));
+        invHint.setWrapText(true);
+        invHint.getStyleClass().add("settings-hint");
+
+        advisoryInvitationsTable = buildAdvisoryInvitationsTable();
+        Button reloadInvBtn = new Button(t("advisory.invitations.action.refresh"));
+        reloadInvBtn.setOnAction(ev -> reloadAdvisoryInvitations());
+        Button revokeBtn = new Button(t("advisory.invitations.action.revoke"));
+        revokeBtn.setGraphic(icon("fas-ban"));
+        revokeBtn.getStyleClass().add("button-danger-outline");
+        revokeBtn.setDisable(true);
+        revokeBtn.setOnAction(ev -> {
+            var sel = advisoryInvitationsTable.getSelectionModel().getSelectedItem();
+            if (sel != null) revokeInvitation(sel);
+        });
+        advisoryInvitationsTable.getSelectionModel().selectedItemProperty()
+                .addListener((o, ov, nv) -> revokeBtn.setDisable(nv == null || !nv.isPending()));
+
+        Button copyTokenBtn = new Button(t("advisory.invitations.action.copy_link"));
+        copyTokenBtn.setGraphic(icon("fas-copy"));
+        copyTokenBtn.setDisable(true);
+        copyTokenBtn.setOnAction(ev -> {
+            var sel = advisoryInvitationsTable.getSelectionModel().getSelectedItem();
+            if (sel != null && sel.token() != null) {
+                javafx.scene.input.Clipboard.getSystemClipboard().setContent(
+                        java.util.Map.of(javafx.scene.input.DataFormat.PLAIN_TEXT, sel.token()));
+                showInfo(t("advisory.invitations.copied.title"),
+                        t("advisory.invitations.copied.body"));
+            }
+        });
+        advisoryInvitationsTable.getSelectionModel().selectedItemProperty()
+                .addListener((o, ov, nv) -> copyTokenBtn.setDisable(nv == null || nv.token() == null));
+
+        HBox invActions = new HBox(8, reloadInvBtn, copyTokenBtn, revokeBtn);
+
+        VBox invitationsBlock = new VBox(8, invTitle, invHint,
+                advisoryInvitationsTable, invActions);
+        VBox.setVgrow(advisoryInvitationsTable, Priority.ALWAYS);
+
+        VBox body = new VBox(16, hint, table, new Separator(), invitationsBlock);
         VBox.setVgrow(table, Priority.ALWAYS);
 
+        reloadAdvisoryInvitations();
         content.getChildren().addAll(header, body, actions);
         return content;
+    }
+
+    private TableView<com.benjagest.ui.model.AdvisoryInvitationEntry> buildAdvisoryInvitationsTable() {
+        TableView<com.benjagest.ui.model.AdvisoryInvitationEntry> tbl = new TableView<>();
+        tbl.getStyleClass().add("data-table");
+        tbl.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+        tbl.setPlaceholder(new Label(t("advisory.invitations.placeholder.empty")));
+        tbl.setPrefHeight(200);
+
+        TableColumn<com.benjagest.ui.model.AdvisoryInvitationEntry, String> colDate =
+                new TableColumn<>(t("advisory.invitations.col.date"));
+        colDate.setCellValueFactory(c -> new SimpleStringProperty(
+                c.getValue().createdAt() == null ? "—"
+                        : c.getValue().createdAt().atZone(java.time.ZoneId.systemDefault())
+                                .toLocalDate().toString()));
+        colDate.setPrefWidth(110);
+        TableColumn<com.benjagest.ui.model.AdvisoryInvitationEntry, String> colEmail =
+                new TableColumn<>(t("advisory.invitations.col.email"));
+        colEmail.setCellValueFactory(c -> new SimpleStringProperty(
+                c.getValue().invitedEmail() == null ? "—" : c.getValue().invitedEmail()));
+        TableColumn<com.benjagest.ui.model.AdvisoryInvitationEntry, String> colNif =
+                new TableColumn<>(t("advisory.invitations.col.nif"));
+        colNif.setCellValueFactory(c -> new SimpleStringProperty(
+                c.getValue().invitedNif() == null ? "—" : c.getValue().invitedNif()));
+        colNif.setPrefWidth(110);
+        TableColumn<com.benjagest.ui.model.AdvisoryInvitationEntry, String> colCompany =
+                new TableColumn<>(t("advisory.invitations.col.company"));
+        colCompany.setCellValueFactory(c -> new SimpleStringProperty(
+                c.getValue().invitedCompanyName() == null ? "—" : c.getValue().invitedCompanyName()));
+        TableColumn<com.benjagest.ui.model.AdvisoryInvitationEntry, String> colStatus =
+                new TableColumn<>(t("advisory.invitations.col.status"));
+        colStatus.setCellValueFactory(c -> new SimpleStringProperty(
+                t("advisory.invitations.status." + c.getValue().status())));
+        colStatus.setPrefWidth(110);
+        tbl.getColumns().setAll(colDate, colEmail, colNif, colCompany, colStatus);
+        return tbl;
+    }
+
+    private void reloadAdvisoryInvitations() {
+        if (advisoryInvitationsTable == null) return;
+        Task<java.util.List<com.benjagest.ui.model.AdvisoryInvitationEntry>> task = new Task<>() {
+            @Override
+            protected java.util.List<com.benjagest.ui.model.AdvisoryInvitationEntry> call() throws Exception {
+                return invitationsApi.listMine();
+            }
+        };
+        task.setOnSucceeded(e -> advisoryInvitationsTable.getItems().setAll(task.getValue()));
+        task.setOnFailed(e -> showError(t("advisory.invitations.fail.list.title"),
+                t("advisory.invitations.fail.list.body")));
+        start(task, "advisory-invitations-list");
+    }
+
+    private void showCreateInvitationDialog() {
+        Dialog<ButtonType> dialog = new Dialog<>();
+        dialog.setTitle(t("advisory.invitations.create.title"));
+        ButtonType saveBt = new ButtonType(t("advisory.invitations.create.save"),
+                ButtonBar.ButtonData.OK_DONE);
+        dialog.getDialogPane().getButtonTypes().addAll(saveBt, ButtonType.CANCEL);
+
+        TextField emailField = new TextField();
+        TextField nifField = new TextField();
+        TextField nameField = new TextField();
+        TextArea notesArea = new TextArea();
+        notesArea.setPrefRowCount(3);
+        for (TextField tf : new TextField[]{emailField, nifField, nameField}) {
+            tf.setPrefColumnCount(28);
+        }
+        Label hint = new Label(t("advisory.invitations.create.hint"));
+        hint.setWrapText(true);
+        hint.getStyleClass().add("settings-hint");
+
+        GridPane g = new GridPane();
+        g.setHgap(12); g.setVgap(8);
+        int r = 0;
+        g.add(new Label(t("advisory.invitations.create.email")), 0, r); g.add(emailField, 1, r++);
+        g.add(new Label(t("advisory.invitations.create.nif")), 0, r); g.add(nifField, 1, r++);
+        g.add(new Label(t("advisory.invitations.create.company_name")), 0, r); g.add(nameField, 1, r++);
+        g.add(new Label(t("advisory.invitations.create.notes")), 0, r); g.add(notesArea, 1, r++);
+        g.add(hint, 0, r++, 2, 1);
+        installDialog(dialog, g);
+
+        Button save = (Button) dialog.getDialogPane().lookupButton(saveBt);
+        save.addEventFilter(javafx.event.ActionEvent.ACTION, ev -> {
+            ev.consume();
+            String email = nullIfBlank(emailField.getText());
+            String nif = nullIfBlank(nifField.getText());
+            if (email == null && nif == null) {
+                showError(t("advisory.invitations.create.fail.missing.title"),
+                        t("advisory.invitations.create.fail.missing.body"));
+                return;
+            }
+            Task<com.benjagest.ui.model.AdvisoryInvitationEntry> task = new Task<>() {
+                @Override
+                protected com.benjagest.ui.model.AdvisoryInvitationEntry call() throws Exception {
+                    return invitationsApi.create(email, nif,
+                            nullIfBlank(nameField.getText()),
+                            nullIfBlank(notesArea.getText()));
+                }
+            };
+            task.setOnSucceeded(e -> {
+                var inv = task.getValue();
+                // Copiar el token al portapapeles automáticamente
+                if (inv.token() != null) {
+                    javafx.scene.input.Clipboard.getSystemClipboard().setContent(
+                            java.util.Map.of(javafx.scene.input.DataFormat.PLAIN_TEXT, inv.token()));
+                }
+                showInfo(t("advisory.invitations.create.ok.title"),
+                        t("advisory.invitations.create.ok.body") + "\n\n"
+                                + t("advisory.invitations.token_label") + " " + inv.token());
+                dialog.setResult(saveBt);
+                dialog.close();
+                reloadAdvisoryInvitations();
+            });
+            task.setOnFailed(e -> showError(t("advisory.invitations.create.fail.title"),
+                    t("advisory.invitations.create.fail.body")));
+            start(task, "advisory-invitations-create");
+        });
+
+        dialog.showAndWait();
+    }
+
+    private void revokeInvitation(com.benjagest.ui.model.AdvisoryInvitationEntry row) {
+        Alert confirm = new Alert(Alert.AlertType.CONFIRMATION,
+                t("advisory.invitations.revoke.confirm.body"),
+                ButtonType.OK, ButtonType.CANCEL);
+        confirm.setHeaderText(t("advisory.invitations.revoke.confirm.title"));
+        confirm.showAndWait().filter(b -> b == ButtonType.OK).ifPresent(b -> {
+            Task<Void> task = new Task<>() {
+                @Override
+                protected Void call() throws Exception {
+                    invitationsApi.revoke(row.id());
+                    return null;
+                }
+            };
+            task.setOnSucceeded(e -> reloadAdvisoryInvitations());
+            task.setOnFailed(e -> showError(t("advisory.invitations.revoke.fail.title"),
+                    t("advisory.invitations.revoke.fail.body")));
+            start(task, "advisory-invitations-revoke");
+        });
     }
 
     private void switchToClient(com.benjagest.ui.model.ManagedClientEntry client) {

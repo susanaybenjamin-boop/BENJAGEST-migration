@@ -92,6 +92,45 @@ public class AuditService {
      * datos clave (proveedor, nº, total) para que la traza sirva como
      * libro de bajas aunque la fila ya no exista en purchase_invoices.
      */
+    public void recordAdvisoryInvitationCreated(String userId, String advisoryCompanyId,
+                                                  String invitationId, String invitedNif,
+                                                  String invitedEmail) {
+        String details = "{"
+                + "\"invitedNif\":\"" + escape(invitedNif) + "\","
+                + "\"invitedEmail\":\"" + escape(invitedEmail) + "\""
+                + "}";
+        write(advisoryCompanyId, userId, "ADVISORY_INVITATION_CREATED",
+                "advisory_invitation", invitationId, "OK", details);
+    }
+
+    public void recordAdvisoryInvitationAccepted(String userId, String clientCompanyId,
+                                                   String invitationId,
+                                                   String advisoryCompanyId) {
+        String details = "{\"advisoryCompanyId\":\"" + escape(advisoryCompanyId) + "\"}";
+        write(clientCompanyId, userId, "ADVISORY_INVITATION_ACCEPTED",
+                "advisory_invitation", invitationId, "OK", details);
+    }
+
+    public void recordAdvisoryInvitationRejected(String userId, String clientCompanyId,
+                                                   String invitationId) {
+        write(clientCompanyId, userId, "ADVISORY_INVITATION_REJECTED",
+                "advisory_invitation", invitationId, "OK", null);
+    }
+
+    public void recordAdvisoryInvitationRevoked(String userId, String advisoryCompanyId,
+                                                  String invitationId) {
+        write(advisoryCompanyId, userId, "ADVISORY_INVITATION_REVOKED",
+                "advisory_invitation", invitationId, "OK", null);
+    }
+
+    public void recordAdvisoryUnlinked(String userId, String clientCompanyId,
+                                          String formerAdvisoryCompanyId) {
+        String details = "{\"formerAdvisoryCompanyId\":\""
+                + escape(formerAdvisoryCompanyId) + "\"}";
+        write(clientCompanyId, userId, "ADVISORY_UNLINKED",
+                "company", clientCompanyId, "OK", details);
+    }
+
     public void recordPurchaseInvoiceDeleted(String userId, String companyId,
                                                String purchaseInvoiceId,
                                                java.math.BigDecimal totalAmount,
