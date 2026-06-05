@@ -31,13 +31,27 @@ public class AuditEventController {
     private final AuditEventRepository repository;
     private final TenantContext tenantContext;
     private final AuditExportService exportService;
+    private final AuditChainService chainService;
 
     public AuditEventController(AuditEventRepository repository,
                                   TenantContext tenantContext,
-                                  AuditExportService exportService) {
+                                  AuditExportService exportService,
+                                  AuditChainService chainService) {
         this.repository = repository;
         this.tenantContext = tenantContext;
         this.exportService = exportService;
+        this.chainService = chainService;
+    }
+
+    /**
+     * Verifica la integridad de la cadena de hash de la empresa
+     * activa. Recorre los audit_events por sequence_number y recalcula
+     * el SHA-256 de cada uno. Devuelve OK o el id del primer evento
+     * en el que la cadena se rompe (manipulación detectada).
+     */
+    @GetMapping("/verify")
+    public AuditChainService.VerificationResult verifyChain() {
+        return chainService.verifyForCompany(tenantContext.getCurrentCompanyId());
     }
 
     /**

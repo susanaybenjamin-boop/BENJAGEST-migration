@@ -178,6 +178,39 @@ public class SettingsApiClient {
         return r.body();
     }
 
+    /**
+     * Llama al endpoint que recorre la cadena de hashes de la empresa
+     * activa y devuelve OK o el id del primer evento corrupto. Lo usa
+     * el botón "Verificar cadena" de la pestaña Auditoría.
+     */
+    public ChainVerification verifyAuditChain() throws IOException, InterruptedException {
+        HttpResponse<String> r = sendAuthorized(HttpRequest.newBuilder(
+                        URI.create(baseUrl + "/settings/audit-events/verify"))
+                .timeout(Duration.ofSeconds(20))
+                .GET());
+        ensureOk(r);
+        String body = r.body();
+        boolean valid = body.contains("\"valid\":true");
+        String brokenAt = extractStr(body, "brokenAtId");
+        long count = extractLong(body, "count");
+        String message = extractStr(body, "message");
+        return new ChainVerification(valid, brokenAt, count, message);
+    }
+
+    private static String extractStr(String json, String key) {
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile(
+                "\"" + key + "\"\\s*:\\s*\"((?:\\\\.|[^\"])*)\"").matcher(json);
+        return m.find() ? m.group(1).replace("\\\"", "\"") : null;
+    }
+
+    private static long extractLong(String json, String key) {
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile(
+                "\"" + key + "\"\\s*:\\s*(-?\\d+)").matcher(json);
+        return m.find() ? Long.parseLong(m.group(1)) : 0L;
+    }
+
+    public record ChainVerification(boolean valid, String brokenAtId, long count, String message) {}
+
     public List<AuditEvent> listAuditEvents(String eventType, String sinceIso, int limit) throws IOException, InterruptedException {
         StringBuilder url = new StringBuilder(baseUrl + "/settings/audit-events?limit=" + limit);
         if (eventType != null && !eventType.isBlank()) {

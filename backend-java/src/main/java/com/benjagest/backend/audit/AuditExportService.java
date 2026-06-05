@@ -20,8 +20,10 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
+import java.util.HashMap;
 import java.util.HexFormat;
 import java.util.List;
+import java.util.Map;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
@@ -59,17 +61,24 @@ public class AuditExportService {
 
     public byte[] exportCsv(LocalDate from, LocalDate to, String eventTypePrefix) {
         List<AuditEvent> events = fetch(from, to, eventTypePrefix);
+        Map<String, String> userNames = resolveUserNames(events);
         StringBuilder sb = new StringBuilder();
-        sb.append("CREATED_AT;EVENT_TYPE;RESULT;USER_ID;ENTITY_TYPE;ENTITY_ID;IP;DETAILS\n");
+        // AUDIT-CHAIN: incluimos SEQ, EVENT_HASH y PREV_HASH para que un
+        // inspector pueda verificar la cadena externamente recalculando
+        // el SHA-256 sobre los campos canónicos.
+        sb.append("SEQ;CREATED_AT;EVENT_TYPE;RESULT;USER;ENTITY_TYPE;ENTITY_ID;IP;DETAILS;EVENT_HASH;PREV_HASH\n");
         for (AuditEvent ev : events) {
-            sb.append(ev.createdAt() == null ? "" : DATETIME.format(ev.createdAt().atZone(ZoneId.systemDefault())))
+            sb.append(ev.sequenceNumber() == null ? "" : ev.sequenceNumber())
+                    .append(';').append(ev.createdAt() == null ? "" : DATETIME.format(ev.createdAt().atZone(ZoneId.systemDefault())))
                     .append(';').append(nullSafe(ev.eventType()))
                     .append(';').append(nullSafe(ev.result()))
-                    .append(';').append(nullSafe(ev.userId()))
+                    .append(';').append(escape(userNames.getOrDefault(ev.userId(), nullSafe(ev.userId()))))
                     .append(';').append(nullSafe(ev.entityType()))
                     .append(';').append(nullSafe(ev.entityId()))
                     .append(';').append(nullSafe(ev.ipAddress()))
                     .append(';').append(escape(nullSafe(ev.details())))
+                    .append(';').append(nullSafe(ev.eventHash()))
+                    .append(';').append(nullSafe(ev.prevEventHash()))
                     .append('\n');
         }
         byte[] body = sb.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8);
@@ -79,6 +88,7 @@ public class AuditExportService {
 
     public byte[] exportPdf(LocalDate from, LocalDate to, String eventTypePrefix) {
         List<AuditEvent> events = fetch(from, to, eventTypePrefix);
+        Map<String, String> userNames = resolveUserNames(events);
         String companyName = findCompanyLegalName();
         String companyNif = findCompanyTaxId();
 
@@ -102,8 +112,14 @@ public class AuditExportService {
                 + " · " + events.size() + " eventos", smallFont));
         doc.add(new Paragraph(" "));
 
-        PdfPTable table = new PdfPTable(new float[] { 2.2f, 2.5f, 1f, 2.5f, 2.5f, 1.5f, 3f });
+        // Columnas pensadas para que un inspector lea el documento sin
+        // necesidad de descodificar UUIDs: secuencia, fecha, evento,
+        // resultado, USUARIO con nombre humano (no UUID), entidad, IP,
+        // detalles y los 12 primeros chars del hash (suficiente para
+        // verificar manualmente y para detectar manipulación grosera).
+        PdfPTable table = new PdfPTable(new float[] { 0.7f, 2.0f, 2.3f, 0.9f, 2.2f, 2.0f, 1.3f, 2.5f, 1.3f });
         table.setWidthPercentage(100);
+        addHeader(table, "Seq", headerFont);
         addHeader(table, "Fecha y hora", headerFont);
         addHeader(table, "Evento", headerFont);
         addHeader(table, "Result.", headerFont);
@@ -111,23 +127,29 @@ public class AuditExportService {
         addHeader(table, "Entidad", headerFont);
         addHeader(table, "IP", headerFont);
         addHeader(table, "Detalle", headerFont);
+        addHeader(table, "Hash (12)", headerFont);
 
         for (AuditEvent ev : events) {
+            addCell(table, ev.sequenceNumber() == null ? "" : ev.sequenceNumber().toString(), cellFont);
             addCell(table, ev.createdAt() == null ? "" : DATETIME.format(ev.createdAt().atZone(ZoneId.systemDefault())), cellFont);
             addCell(table, nullSafe(ev.eventType()), cellFont);
             addCell(table, nullSafe(ev.result()), cellFont);
-            addCell(table, nullSafe(ev.userId()), cellFont);
+            addCell(table, userNames.getOrDefault(ev.userId(), nullSafe(ev.userId())), cellFont);
             addCell(table, nullSafe(ev.entityType()) + (ev.entityId() != null ? " " + ev.entityId() : ""), cellFont);
             addCell(table, nullSafe(ev.ipAddress()), cellFont);
-            addCell(table, truncate(nullSafe(ev.details()), 120), cellFont);
+            addCell(table, truncate(nullSafe(ev.details()), 100), cellFont);
+            addCell(table, ev.eventHash() == null ? "—" : ev.eventHash().substring(0, Math.min(12, ev.eventHash().length())), cellFont);
         }
         doc.add(table);
 
         doc.add(new Paragraph(" "));
         doc.add(new Paragraph(
-                "Este documento es un retrato del registro de auditoría en el periodo indicado. "
-                        + "Se registra cada export en la propia auditoría (evento AUDIT_EXPORTED) "
-                        + "incluyendo el SHA-256 del documento generado, para detectar manipulación.",
+                "Cada evento lleva un hash encadenado (SHA-256 del payload + hash del evento "
+                        + "anterior). Si alguien modifica una fila, todos los hash posteriores "
+                        + "dejan de coincidir. Verificación disponible en "
+                        + "GET /api/settings/audit-events/verify, que recorre y recalcula la cadena. "
+                        + "Adicionalmente, este export queda registrado como AUDIT_EXPORTED con el "
+                        + "SHA-256 del propio documento.",
                 smallFont));
         doc.close();
 
@@ -142,6 +164,29 @@ public class AuditExportService {
         Instant end = to.atTime(23, 59, 59).atZone(zone).toInstant();
         return repository.findInRangeForCompany(
                 tenantContext.getCurrentCompanyId(), start, end, eventTypePrefix);
+    }
+
+    /**
+     * Carga los nombres humanos de los usuarios que aparecen en los
+     * eventos. Una sola query con IN(...) para no hacer N+1. Si el
+     * UUID no resuelve a una fila (usuario borrado), devuelve el UUID
+     * como fallback para que el documento no quede vacío.
+     */
+    private Map<String, String> resolveUserNames(List<AuditEvent> events) {
+        Map<String, String> map = new HashMap<>();
+        java.util.Set<String> ids = new java.util.LinkedHashSet<>();
+        for (AuditEvent ev : events) {
+            if (ev.userId() != null && !ev.userId().isBlank()) ids.add(ev.userId());
+        }
+        if (ids.isEmpty()) return map;
+        String placeholders = String.join(",", java.util.Collections.nCopies(ids.size(), "?"));
+        Object[] args = ids.toArray();
+        jdbcTemplate.query(
+                "SELECT id, COALESCE(NULLIF(full_name, ''), email) AS label "
+                        + "FROM user_accounts WHERE id IN (" + placeholders + ")",
+                rs -> { map.put(rs.getString("id"), rs.getString("label")); },
+                args);
+        return map;
     }
 
     private String findCompanyLegalName() {

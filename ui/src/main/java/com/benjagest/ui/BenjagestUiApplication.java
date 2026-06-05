@@ -3832,6 +3832,10 @@ public class BenjagestUiApplication extends Application {
         refresh.setOnAction(event -> loadAuditEvents(table, typeFilter.getValue()));
         typeFilter.setOnAction(event -> loadAuditEvents(table, typeFilter.getValue()));
 
+        Button verifyBtn = new Button(t("settings.audit.btn.verify"));
+        verifyBtn.setGraphic(icon("fas-shield-alt"));
+        verifyBtn.setOnAction(ev -> verifyAuditChain());
+
         loadAuditEvents(table, typeFilter.getValue());
 
         HBox filterRow = new HBox(10, label(t("settings.audit.filter.label"), "form-label"), typeFilter);
@@ -3866,13 +3870,39 @@ public class BenjagestUiApplication extends Application {
         exportRow.setAlignment(Pos.CENTER_LEFT);
         VBox exportBlock = new VBox(8, new Separator(), exportTitle, exportHint, exportRow);
 
-        HBox actions = new HBox(refresh);
+        HBox actions = new HBox(8, refresh, verifyBtn);
         actions.getStyleClass().add("settings-actions");
 
         VBox header = new VBox(8, sectionTitle, hint, filterRow);
         VBox content = new VBox(16, table, exportBlock);
         VBox.setVgrow(table, Priority.ALWAYS);
         return tabLayout(header, content, actions);
+    }
+
+    /** Llama al endpoint /verify y muestra el resultado en un dialog. */
+    private void verifyAuditChain() {
+        Task<com.benjagest.ui.service.SettingsApiClient.ChainVerification> task = new Task<>() {
+            @Override
+            protected com.benjagest.ui.service.SettingsApiClient.ChainVerification call() throws Exception {
+                return settingsApiClient.verifyAuditChain();
+            }
+        };
+        task.setOnSucceeded(ev -> {
+            var v = task.getValue();
+            if (v.valid()) {
+                showInfo(t("settings.audit.verify.ok.title"),
+                        t("settings.audit.verify.ok.body") + "\n"
+                                + v.count() + " " + t("settings.audit.verify.events"));
+            } else {
+                showError(t("settings.audit.verify.fail.title"),
+                        t("settings.audit.verify.fail.body") + "\n"
+                                + (v.brokenAtId() == null ? "" : "ID: " + v.brokenAtId() + "\n")
+                                + (v.message() == null ? "" : v.message()));
+            }
+        });
+        task.setOnFailed(ev -> showError(t("settings.audit.verify.fail.title"),
+                t("settings.audit.verify.fail.body")));
+        start(task, "audit-verify-chain");
     }
 
     /** Descarga el export de auditoría y guarda con FileChooser. */
@@ -7791,19 +7821,6 @@ public class BenjagestUiApplication extends Application {
                 case "timeclock.fail.body" -> "Make sure your employee profile exists and the backend is running.";
                 case "timeclock.not_enrolled.title" -> "You have no employee profile in this company";
                 case "timeclock.not_enrolled.body" -> "Ask the administrator to add you in Personal > Employees, linking your user. Once they do, refresh this screen and you will be able to punch in.";
-                case "timeclock.export.title" -> "Export for inspection";
-                case "timeclock.export.hint" -> "Download a verifiable PDF or CSV of the time-clock log. Each row keeps its CSV verification code (RD 8/2019 art. 35.8). The audit log records each export with the document SHA-256 to detect later tampering.";
-                case "timeclock.export.from" -> "From";
-                case "timeclock.export.to" -> "To";
-                case "timeclock.export.pdf" -> "Download PDF";
-                case "timeclock.export.csv" -> "Download CSV";
-                case "timeclock.export.ok.title" -> "Export saved";
-                case "timeclock.export.ok.body" -> "File saved to:";
-                case "timeclock.export.fail.title" -> "Export failed";
-                case "timeclock.export.fail.body" -> "Could not generate the export. Check the date range and try again.";
-                case "timeclock.export.fail.range.title" -> "Invalid range";
-                case "timeclock.export.fail.range.body" -> "Choose a start date earlier than or equal to the end date.";
-                case "timeclock.export.fail.write.title" -> "Could not save file";
                 case "purchases.header" -> "Purchases";
                 case "purchases.hint" -> "Upload a received invoice as PDF — BENJAGEST extracts the issuer NIF, date, base, VAT and total automatically (no AI, just regex on the embedded text). Scanned PDFs require OCR — coming in a follow-up slice.";
                 case "purchases.action.import_pdf" -> "Import PDF invoice";
@@ -8262,19 +8279,6 @@ public class BenjagestUiApplication extends Application {
                 case "settings.audit.btn.refresh" -> "Refresh";
                 case "settings.audit.filter.label" -> "Filter by type:";
                 case "settings.audit.load.fail" -> "Could not load events.";
-                case "settings.audit.export.title" -> "Export for inspection / tax office";
-                case "settings.audit.export.hint" -> "Download a verifiable PDF or CSV of the full audit log for a date range. Each export is itself recorded with the document SHA-256 so the file shown to an inspector can be checked against the registry.";
-                case "settings.audit.export.from" -> "From";
-                case "settings.audit.export.to" -> "To";
-                case "settings.audit.export.pdf" -> "Download PDF";
-                case "settings.audit.export.csv" -> "Download CSV";
-                case "settings.audit.export.ok.title" -> "Export saved";
-                case "settings.audit.export.ok.body" -> "File saved to:";
-                case "settings.audit.export.fail.title" -> "Export failed";
-                case "settings.audit.export.fail.body" -> "Could not generate the export. Check the date range and try again.";
-                case "settings.audit.export.fail.range.title" -> "Invalid range";
-                case "settings.audit.export.fail.range.body" -> "Choose a start date earlier than or equal to the end date.";
-                case "settings.audit.export.fail.write.title" -> "Could not save file";
                 // ---- Common dialog/panel actions ----
                 case "common.btn.retry" -> "Retry";
                 case "common.btn.back_to_billing" -> "Back to Billing";
@@ -8385,6 +8389,7 @@ public class BenjagestUiApplication extends Application {
                 default -> {
                     String v = tNewModulesEn(key);
                     if (v == null) v = tAdvisoryInvitationsEn(key);
+                    if (v == null) v = tExportsAndChainEn(key);
                     yield v != null ? v : (key.startsWith("column.") ? key.substring(7) : key);
                 }
             };
@@ -8712,19 +8717,6 @@ public class BenjagestUiApplication extends Application {
             case "timeclock.fail.body" -> "Comprueba que tu perfil de empleado existe y que el backend esta en marcha.";
             case "timeclock.not_enrolled.title" -> "No tienes ficha de empleado en esta empresa";
             case "timeclock.not_enrolled.body" -> "Pide al administrador que te de de alta en Personal > Empleados vinculando tu usuario. Cuando lo haga, refresca esta pantalla y podras fichar.";
-            case "timeclock.export.title" -> "Exportar para Inspeccion";
-            case "timeclock.export.hint" -> "Descarga un PDF o CSV verificable del registro de fichajes. Cada fila conserva su CSV de verificacion (RD 8/2019 art. 35.8). La auditoria registra cada exportacion con el SHA-256 del documento para detectar manipulaciones posteriores.";
-            case "timeclock.export.from" -> "Desde";
-            case "timeclock.export.to" -> "Hasta";
-            case "timeclock.export.pdf" -> "Descargar PDF";
-            case "timeclock.export.csv" -> "Descargar CSV";
-            case "timeclock.export.ok.title" -> "Exportacion guardada";
-            case "timeclock.export.ok.body" -> "Archivo guardado en:";
-            case "timeclock.export.fail.title" -> "Error al exportar";
-            case "timeclock.export.fail.body" -> "No se pudo generar la exportacion. Revisa el rango de fechas y vuelve a intentarlo.";
-            case "timeclock.export.fail.range.title" -> "Rango no valido";
-            case "timeclock.export.fail.range.body" -> "Elige una fecha de inicio anterior o igual a la fecha de fin.";
-            case "timeclock.export.fail.write.title" -> "No se pudo guardar el archivo";
             case "purchases.header" -> "Compras";
             case "purchases.hint" -> "Sube una factura recibida en PDF — BENJAGEST extrae el NIF emisor, fecha, base, IVA y total automaticamente (sin IA, solo regex sobre el texto embebido). PDFs escaneados necesitan OCR — llega en un slice posterior.";
             case "purchases.action.import_pdf" -> "Importar factura PDF";
@@ -9182,19 +9174,6 @@ public class BenjagestUiApplication extends Application {
             case "settings.audit.col.details" -> "Detalle";
             case "settings.audit.btn.refresh" -> "Refrescar";
             case "settings.audit.filter.label" -> "Filtrar por tipo:";
-            case "settings.audit.export.title" -> "Exportar para Inspeccion / Hacienda";
-            case "settings.audit.export.hint" -> "Descarga un PDF o CSV verificable del registro completo de auditoria en un rango de fechas. Cada exportacion queda a su vez registrada con el SHA-256 del documento para que el fichero que enseñes al inspector se pueda contrastar con el registro.";
-            case "settings.audit.export.from" -> "Desde";
-            case "settings.audit.export.to" -> "Hasta";
-            case "settings.audit.export.pdf" -> "Descargar PDF";
-            case "settings.audit.export.csv" -> "Descargar CSV";
-            case "settings.audit.export.ok.title" -> "Exportacion guardada";
-            case "settings.audit.export.ok.body" -> "Archivo guardado en:";
-            case "settings.audit.export.fail.title" -> "Error al exportar";
-            case "settings.audit.export.fail.body" -> "No se pudo generar la exportacion. Revisa el rango de fechas y vuelve a intentarlo.";
-            case "settings.audit.export.fail.range.title" -> "Rango no valido";
-            case "settings.audit.export.fail.range.body" -> "Elige una fecha de inicio anterior o igual a la fecha de fin.";
-            case "settings.audit.export.fail.write.title" -> "No se pudo guardar el archivo";
             case "settings.audit.load.fail" -> "No se pudieron cargar los eventos.";
             // ---- Common dialog/panel actions ----
             case "common.btn.retry" -> "Reintentar";
@@ -9306,6 +9285,7 @@ public class BenjagestUiApplication extends Application {
             default -> {
                 String v = tNewModulesEs(key);
                 if (v == null) v = tAdvisoryInvitationsEs(key);
+                if (v == null) v = tExportsAndChainEs(key);
                 if (v != null) yield v;
                 yield key.startsWith("column.") ? key.substring(7) : switch (key) {
                 case "field.name" -> "Nombre";
@@ -9492,6 +9472,88 @@ public class BenjagestUiApplication extends Application {
      * límite JVM de 64KB por método. Devuelve null si la key no
      * pertenece a estos módulos — entonces el caller cae al default.
      */
+    /**
+     * Helper i18n EN para las keys de export e integridad de auditoría.
+     * Se extrae como helper aparte porque el método {@code t} principal
+     * estaba rozando el límite de 64KB por método de la JVM. Mismo
+     * patrón que tNewModulesEn / tAdvisoryInvitationsEn.
+     */
+    private String tExportsAndChainEn(String key) {
+        return switch (key) {
+            case "timeclock.export.title" -> "Export for inspection";
+            case "timeclock.export.hint" -> "Download a verifiable PDF or CSV of the time-clock log. Each row keeps its CSV verification code (RD 8/2019 art. 35.8). The audit log records each export with the document SHA-256 to detect later tampering.";
+            case "timeclock.export.from" -> "From";
+            case "timeclock.export.to" -> "To";
+            case "timeclock.export.pdf" -> "Download PDF";
+            case "timeclock.export.csv" -> "Download CSV";
+            case "timeclock.export.ok.title" -> "Export saved";
+            case "timeclock.export.ok.body" -> "File saved to:";
+            case "timeclock.export.fail.title" -> "Export failed";
+            case "timeclock.export.fail.body" -> "Could not generate the export. Check the date range and try again.";
+            case "timeclock.export.fail.range.title" -> "Invalid range";
+            case "timeclock.export.fail.range.body" -> "Choose a start date earlier than or equal to the end date.";
+            case "timeclock.export.fail.write.title" -> "Could not save file";
+            case "settings.audit.export.title" -> "Export for inspection / tax office";
+            case "settings.audit.export.hint" -> "Download a verifiable PDF or CSV of the full audit log for a date range. Each export is itself recorded with the document SHA-256 so the file shown to an inspector can be checked against the registry.";
+            case "settings.audit.export.from" -> "From";
+            case "settings.audit.export.to" -> "To";
+            case "settings.audit.export.pdf" -> "Download PDF";
+            case "settings.audit.export.csv" -> "Download CSV";
+            case "settings.audit.export.ok.title" -> "Export saved";
+            case "settings.audit.export.ok.body" -> "File saved to:";
+            case "settings.audit.export.fail.title" -> "Export failed";
+            case "settings.audit.export.fail.body" -> "Could not generate the export. Check the date range and try again.";
+            case "settings.audit.export.fail.range.title" -> "Invalid range";
+            case "settings.audit.export.fail.range.body" -> "Choose a start date earlier than or equal to the end date.";
+            case "settings.audit.export.fail.write.title" -> "Could not save file";
+            case "settings.audit.btn.verify" -> "Verify chain";
+            case "settings.audit.verify.ok.title" -> "Chain intact";
+            case "settings.audit.verify.ok.body" -> "All events recompute correctly. No tampering detected.";
+            case "settings.audit.verify.fail.title" -> "Chain broken";
+            case "settings.audit.verify.fail.body" -> "The audit chain has a corrupted event. Manipulation is likely.";
+            case "settings.audit.verify.events" -> "events verified";
+            default -> null;
+        };
+    }
+
+    private String tExportsAndChainEs(String key) {
+        return switch (key) {
+            case "timeclock.export.title" -> "Exportar para Inspeccion";
+            case "timeclock.export.hint" -> "Descarga un PDF o CSV verificable del registro de fichajes. Cada fila conserva su CSV de verificacion (RD 8/2019 art. 35.8). La auditoria registra cada exportacion con el SHA-256 del documento para detectar manipulaciones posteriores.";
+            case "timeclock.export.from" -> "Desde";
+            case "timeclock.export.to" -> "Hasta";
+            case "timeclock.export.pdf" -> "Descargar PDF";
+            case "timeclock.export.csv" -> "Descargar CSV";
+            case "timeclock.export.ok.title" -> "Exportacion guardada";
+            case "timeclock.export.ok.body" -> "Archivo guardado en:";
+            case "timeclock.export.fail.title" -> "Error al exportar";
+            case "timeclock.export.fail.body" -> "No se pudo generar la exportacion. Revisa el rango de fechas y vuelve a intentarlo.";
+            case "timeclock.export.fail.range.title" -> "Rango no valido";
+            case "timeclock.export.fail.range.body" -> "Elige una fecha de inicio anterior o igual a la fecha de fin.";
+            case "timeclock.export.fail.write.title" -> "No se pudo guardar el archivo";
+            case "settings.audit.export.title" -> "Exportar para Inspeccion / Hacienda";
+            case "settings.audit.export.hint" -> "Descarga un PDF o CSV verificable del registro completo de auditoria en un rango de fechas. Cada exportacion queda a su vez registrada con el SHA-256 del documento para que el fichero que enseñes al inspector se pueda contrastar con el registro.";
+            case "settings.audit.export.from" -> "Desde";
+            case "settings.audit.export.to" -> "Hasta";
+            case "settings.audit.export.pdf" -> "Descargar PDF";
+            case "settings.audit.export.csv" -> "Descargar CSV";
+            case "settings.audit.export.ok.title" -> "Exportacion guardada";
+            case "settings.audit.export.ok.body" -> "Archivo guardado en:";
+            case "settings.audit.export.fail.title" -> "Error al exportar";
+            case "settings.audit.export.fail.body" -> "No se pudo generar la exportacion. Revisa el rango de fechas y vuelve a intentarlo.";
+            case "settings.audit.export.fail.range.title" -> "Rango no valido";
+            case "settings.audit.export.fail.range.body" -> "Elige una fecha de inicio anterior o igual a la fecha de fin.";
+            case "settings.audit.export.fail.write.title" -> "No se pudo guardar el archivo";
+            case "settings.audit.btn.verify" -> "Verificar cadena";
+            case "settings.audit.verify.ok.title" -> "Cadena integra";
+            case "settings.audit.verify.ok.body" -> "Todos los eventos recalculan correctamente. No se detecta manipulacion.";
+            case "settings.audit.verify.fail.title" -> "Cadena rota";
+            case "settings.audit.verify.fail.body" -> "La cadena de auditoria tiene un evento corrupto. Es probable que se haya manipulado.";
+            case "settings.audit.verify.events" -> "eventos verificados";
+            default -> null;
+        };
+    }
+
     private String tNewModulesEn(String key) {
         return switch (key) {
             // ---- Labor module (L1) ----

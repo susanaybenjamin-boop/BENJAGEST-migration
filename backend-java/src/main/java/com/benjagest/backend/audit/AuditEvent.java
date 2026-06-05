@@ -25,6 +25,16 @@ public record AuditEvent(
         String ipAddress,
         String userAgent,
         String details,
-        Instant createdAt
+        Instant createdAt,
+        Long sequenceNumber,
+        String prevEventHash,
+        String eventHash
 ) {
+    /** Constructor compat para callers antiguos que aún no manejan la cadena. */
+    public AuditEvent(String id, String companyId, String userId, String eventType,
+                       String entityType, String entityId, String result,
+                       String ipAddress, String userAgent, String details, Instant createdAt) {
+        this(id, companyId, userId, eventType, entityType, entityId, result,
+                ipAddress, userAgent, details, createdAt, null, null, null);
+    }
 }
