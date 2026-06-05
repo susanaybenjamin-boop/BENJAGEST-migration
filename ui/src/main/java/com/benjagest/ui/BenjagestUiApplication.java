@@ -3812,9 +3812,18 @@ public class BenjagestUiApplication extends Application {
         TableColumn<AuditEvent, String> colResult = new TableColumn<>(t("settings.audit.col.result"));
         colResult.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().result()));
         colResult.setPrefWidth(80);
+        TableColumn<AuditEvent, String> colSeq = new TableColumn<>(t("settings.audit.col.seq"));
+        colSeq.setCellValueFactory(c -> new SimpleStringProperty(
+                c.getValue().sequenceNumber() == null ? "—" : c.getValue().sequenceNumber().toString()));
+        colSeq.setPrefWidth(60);
         TableColumn<AuditEvent, String> colUser = new TableColumn<>(t("settings.audit.col.user"));
-        colUser.setCellValueFactory(c -> new SimpleStringProperty(shortId(c.getValue().userId())));
-        colUser.setPrefWidth(120);
+        // Muestra el display_name humano resuelto en backend. Si el
+        // user fue borrado, cae a userId.
+        colUser.setCellValueFactory(c -> new SimpleStringProperty(
+                c.getValue().userName() == null || c.getValue().userName().isBlank()
+                        ? shortId(c.getValue().userId())
+                        : c.getValue().userName()));
+        colUser.setPrefWidth(160);
         TableColumn<AuditEvent, String> colEntity = new TableColumn<>(t("settings.audit.col.entity"));
         colEntity.setCellValueFactory(c -> new SimpleStringProperty(
                 c.getValue().entityType() == null ? "" : c.getValue().entityType() + ":" + shortId(c.getValue().entityId())
@@ -3825,7 +3834,13 @@ public class BenjagestUiApplication extends Application {
         colIp.setPrefWidth(120);
         TableColumn<AuditEvent, String> colDetails = new TableColumn<>(t("settings.audit.col.details"));
         colDetails.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().details()));
-        table.getColumns().addAll(List.of(colWhen, colType, colResult, colUser, colEntity, colIp, colDetails));
+        TableColumn<AuditEvent, String> colHash = new TableColumn<>(t("settings.audit.col.hash"));
+        colHash.setCellValueFactory(c -> new SimpleStringProperty(
+                c.getValue().eventHash() == null ? "—"
+                        : c.getValue().eventHash().substring(0,
+                                Math.min(12, c.getValue().eventHash().length()))));
+        colHash.setPrefWidth(110);
+        table.getColumns().addAll(List.of(colSeq, colWhen, colType, colResult, colUser, colEntity, colIp, colDetails, colHash));
 
         Button refresh = new Button(t("settings.audit.btn.refresh"));
         refresh.setGraphic(icon("fas-sync-alt"));
@@ -8276,6 +8291,8 @@ public class BenjagestUiApplication extends Application {
                 case "settings.audit.col.entity" -> "Entity";
                 case "settings.audit.col.ip" -> "IP";
                 case "settings.audit.col.details" -> "Detail";
+                case "settings.audit.col.seq" -> "Seq";
+                case "settings.audit.col.hash" -> "Hash (12)";
                 case "settings.audit.btn.refresh" -> "Refresh";
                 case "settings.audit.filter.label" -> "Filter by type:";
                 case "settings.audit.load.fail" -> "Could not load events.";
@@ -9172,6 +9189,8 @@ public class BenjagestUiApplication extends Application {
             case "settings.audit.col.entity" -> "Entidad";
             case "settings.audit.col.ip" -> "IP";
             case "settings.audit.col.details" -> "Detalle";
+            case "settings.audit.col.seq" -> "Seq";
+            case "settings.audit.col.hash" -> "Hash (12)";
             case "settings.audit.btn.refresh" -> "Refrescar";
             case "settings.audit.filter.label" -> "Filtrar por tipo:";
             case "settings.audit.load.fail" -> "No se pudieron cargar los eventos.";

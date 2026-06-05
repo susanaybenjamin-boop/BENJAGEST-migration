@@ -231,10 +231,17 @@ public class SettingsApiClient {
         Matcher matcher = Pattern.compile("\\{[^{}]*\"eventType\"\\s*:\\s*\"[^\"]+\"[^{}]*\\}").matcher(json);
         while (matcher.find()) {
             String obj = matcher.group();
+            // sequenceNumber y eventHash son nullable (eventos pre-V44
+            // o LOGIN_FAIL sin companyId no forman cadena).
+            Long seq = null;
+            java.util.regex.Matcher seqM = java.util.regex.Pattern.compile(
+                    "\"sequenceNumber\"\\s*:\\s*(\\d+)").matcher(obj);
+            if (seqM.find()) seq = Long.parseLong(seqM.group(1));
             list.add(new AuditEvent(
                     textField(obj, "id"),
                     textField(obj, "companyId"),
                     textField(obj, "userId"),
+                    textField(obj, "userName"),
                     textField(obj, "eventType"),
                     textField(obj, "entityType"),
                     textField(obj, "entityId"),
@@ -242,7 +249,9 @@ public class SettingsApiClient {
                     textField(obj, "ipAddress"),
                     textField(obj, "userAgent"),
                     textField(obj, "details"),
-                    textField(obj, "createdAt")
+                    textField(obj, "createdAt"),
+                    seq,
+                    textField(obj, "eventHash")
             ));
         }
         return list;

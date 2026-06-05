@@ -32,15 +32,18 @@ public class AuditEventController {
     private final TenantContext tenantContext;
     private final AuditExportService exportService;
     private final AuditChainService chainService;
+    private final org.springframework.jdbc.core.JdbcTemplate jdbcTemplate;
 
     public AuditEventController(AuditEventRepository repository,
                                   TenantContext tenantContext,
                                   AuditExportService exportService,
-                                  AuditChainService chainService) {
+                                  AuditChainService chainService,
+                                  org.springframework.jdbc.core.JdbcTemplate jdbcTemplate) {
         this.repository = repository;
         this.tenantContext = tenantContext;
         this.exportService = exportService;
         this.chainService = chainService;
+        this.jdbcTemplate = jdbcTemplate;
     }
 
     /**
@@ -103,17 +106,34 @@ public class AuditEventController {
                 // para que el cliente pueda usar valores parciales.
             }
         }
-        return repository.findForCompany(tenantContext.getCurrentCompanyId(), eventType, since, limit)
-                .stream()
-                .map(this::toResponse)
+        List<AuditEvent> events = repository.findForCompany(
+                tenantContext.getCurrentCompanyId(), eventType, since, limit);
+        // Lookup de display_name en una sola query para no hacer N+1.
+        java.util.Set<String> userIds = new java.util.LinkedHashSet<>();
+        for (AuditEvent ev : events) {
+            if (ev.userId() != null && !ev.userId().isBlank()) userIds.add(ev.userId());
+        }
+        java.util.Map<String, String> names = new java.util.HashMap<>();
+        if (!userIds.isEmpty()) {
+            String placeholders = String.join(",",
+                    java.util.Collections.nCopies(userIds.size(), "?"));
+            jdbcTemplate.query(
+                    "SELECT id, COALESCE(NULLIF(display_name, ''), email) AS label "
+                            + "FROM user_accounts WHERE id IN (" + placeholders + ")",
+                    rs -> { names.put(rs.getString("id"), rs.getString("label")); },
+                    userIds.toArray());
+        }
+        return events.stream()
+                .map(ev -> toResponse(ev, names.getOrDefault(ev.userId(), ev.userId())))
                 .toList();
     }
 
-    private AuditEventResponse toResponse(AuditEvent event) {
+    private AuditEventResponse toResponse(AuditEvent event, String userName) {
         return new AuditEventResponse(
                 event.id(),
                 event.companyId(),
                 event.userId(),
+                userName,
                 event.eventType(),
                 event.entityType(),
                 event.entityId(),
@@ -121,7 +141,9 @@ public class AuditEventController {
                 event.ipAddress(),
                 event.userAgent(),
                 event.details(),
-                event.createdAt() == null ? null : event.createdAt().toString()
+                event.createdAt() == null ? null : event.createdAt().toString(),
+                event.sequenceNumber(),
+                event.eventHash()
         );
     }
 }

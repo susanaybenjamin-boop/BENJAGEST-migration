@@ -9,6 +9,7 @@ public record AuditEventResponse(
         String id,
         String companyId,
         String userId,
+        String userName,
         String eventType,
         String entityType,
         String entityId,
@@ -16,6 +17,8 @@ public record AuditEventResponse(
         String ipAddress,
         String userAgent,
         String details,
-        String createdAt
+        String createdAt,
+        Long sequenceNumber,
+        String eventHash
 ) {
 }
