@@ -1579,7 +1579,7 @@ public class BenjagestUiApplication extends Application {
         header.setAlignment(Pos.CENTER_LEFT);
         VBox content = new VBox(18, header, grid);
         content.getStyleClass().add("form-shell");
-        dialog.getDialogPane().setContent(content);
+        dialog.getDialogPane().setContent(dialogScroll(content));
         dialog.getDialogPane().getButtonTypes().addAll(
                 new ButtonType(editing ? t("update") : t("save"), ButtonBar.ButtonData.OK_DONE),
                 ButtonType.CANCEL
@@ -4479,7 +4479,7 @@ public class BenjagestUiApplication extends Application {
         grid.add(new Label(t("billing.config.vat.editor.percent")), 0, 3); grid.add(pctField, 1, 3);
         grid.add(defaultCb, 1, 4);
         grid.add(activeCb, 1, 5);
-        dialog.getDialogPane().setContent(grid);
+        dialog.getDialogPane().setContent(dialogScroll(grid));
 
         dialog.showAndWait().ifPresent(bt -> {
             if (bt != saveBt) return;
@@ -4773,7 +4773,7 @@ public class BenjagestUiApplication extends Application {
 
         VBox dialogBody = new VBox(12, grid, nextNumberHint, autoLockHint);
         dialogBody.setPadding(new Insets(8));
-        dialog.getDialogPane().setContent(dialogBody);
+        dialog.getDialogPane().setContent(dialogScroll(dialogBody));
 
         ButtonType saveBtn = new ButtonType(existing == null ? t("billing.series.editor.btn.create") : t("billing.series.editor.btn.save"), ButtonBar.ButtonData.OK_DONE);
         dialog.getDialogPane().getButtonTypes().addAll(saveBtn, ButtonType.CANCEL);
@@ -6151,25 +6151,23 @@ public class BenjagestUiApplication extends Application {
     }
 
     /**
-     * Envuelve el contenido de un dialogo (GridPane / VBox con muchos
-     * campos) en un ScrollPane para que en portatiles con pantalla
-     * pequena no queden los botones del pie fuera de la ventana. Los
-     * botones (saveBt / cancelBt / ...) los pone Dialog en su button
-     * bar y NO entran en este contenido — quedan siempre visibles.
-     *
-     * Se llama desde diálogos largos: subida de certificado, editor de
-     * empleados, editor de owner, editor de RETA, calculo de nominas,
-     * importacion PDF, etc.
+     * Wrapper retro-compatible que delega en el módulo central
+     * {@link com.benjagest.ui.layout.ResponsiveLayout}. Lo dejamos para
+     * no romper las llamadas existentes, pero el cap de altura ya no
+     * es fijo (560px) sino dinámico según la pantalla real del
+     * dispositivo (visualBounds menos chrome).
      */
-    private ScrollPane dialogScroll(Node content) {
-        ScrollPane sp = new ScrollPane(content);
-        sp.setFitToWidth(true);
-        sp.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
-        // Cap razonable para portatil 13" (768px reales menos chrome).
-        sp.setMaxHeight(560);
-        sp.setPrefViewportHeight(560);
-        sp.getStyleClass().add("dialog-scroll");
-        return sp;
+    private Node dialogScroll(Node content) {
+        return com.benjagest.ui.layout.ResponsiveLayout.dialog(content);
+    }
+
+    /**
+     * Wrap reactivo para pantallas (tabs) que no usan tabLayout y
+     * pueden crecer más alto que la ventana en portátil. Delega en
+     * ResponsiveLayout.
+     */
+    private Node screenScroll(Node content) {
+        return com.benjagest.ui.layout.ResponsiveLayout.screen(content);
     }
 
     private void setCenterAnimated(Node node) {
@@ -9064,7 +9062,7 @@ public class BenjagestUiApplication extends Application {
         VBox body = new VBox(12, actions, employeesTable);
         VBox.setVgrow(employeesTable, Priority.ALWAYS);
         body.setPadding(new Insets(12));
-        return body;
+        return screenScroll(body);
     }
 
     // ----- Sub-tab Contratos globales -----
@@ -9264,7 +9262,7 @@ public class BenjagestUiApplication extends Application {
         VBox body = new VBox(12, hint, empRow, punchRow, table);
         VBox.setVgrow(table, Priority.ALWAYS);
         body.setPadding(new Insets(12));
-        return body;
+        return screenScroll(body);
     }
 
     // ----- Sub-tab Nominas -----
@@ -9380,7 +9378,7 @@ public class BenjagestUiApplication extends Application {
         VBox body = new VBox(10, hint, actions, payslipsTable);
         VBox.setVgrow(payslipsTable, Priority.ALWAYS);
         body.setPadding(new Insets(12));
-        return body;
+        return screenScroll(body);
     }
 
     private void showCalculatePayslipDialog(java.util.List<com.benjagest.ui.model.EmployeeEntry> employees) {
@@ -9734,7 +9732,7 @@ public class BenjagestUiApplication extends Application {
         initial.setOnSucceeded(ev -> reload.run());
         start(initial, "tc-audit-initial");
 
-        return body;
+        return screenScroll(body);
     }
 
     // ----- Sub-tab Config Fichajes (TC-CFG) -----
@@ -9813,7 +9811,7 @@ public class BenjagestUiApplication extends Application {
         VBox body = new VBox(10, hint, actions, table, legend);
         VBox.setVgrow(table, Priority.ALWAYS);
         body.setPadding(new Insets(12));
-        return body;
+        return screenScroll(body);
     }
 
     private void showEventTypeEditor(com.benjagest.ui.model.TimeClockEventTypeEntry existing) {
@@ -10129,7 +10127,7 @@ public class BenjagestUiApplication extends Application {
         HBox actions = new HBox(8, newC, editC);
         VBox body = new VBox(12, contractsTable, actions);
         body.setPadding(new Insets(10));
-        dialog.getDialogPane().setContent(body);
+        dialog.getDialogPane().setContent(dialogScroll(body));
         dialog.setResizable(true);
         dialog.showAndWait();
     }
@@ -10486,7 +10484,7 @@ public class BenjagestUiApplication extends Application {
 
             VBox body = new VBox(8, new Label(t("reta.changes.hint")), tbl);
             body.setPadding(new Insets(10));
-            dialog.getDialogPane().setContent(body);
+            dialog.getDialogPane().setContent(dialogScroll(body));
 
             // Interceptamos el boton de la izquierda para abrir el sub-editor
             Button newButton = (Button) dialog.getDialogPane().lookupButton(newBt);
@@ -10528,7 +10526,7 @@ public class BenjagestUiApplication extends Application {
         g.add(new Label(t("reta.change.editor.net_income")), 0, 4); g.add(netIncome, 1, 4);
         g.add(sent, 1, 5);
         g.add(new Label(t("reta.change.editor.notes")), 0, 6); g.add(notes, 1, 6);
-        dialog.getDialogPane().setContent(g);
+        dialog.getDialogPane().setContent(dialogScroll(g));
 
         dialog.showAndWait().ifPresent(bt -> {
             if (bt != saveBt) return;
@@ -10599,7 +10597,7 @@ public class BenjagestUiApplication extends Application {
                 result);
         body.setPadding(new Insets(10));
         body.setPrefWidth(500);
-        dialog.getDialogPane().setContent(body);
+        dialog.getDialogPane().setContent(dialogScroll(body));
         dialog.showAndWait();
     }
 
@@ -11063,7 +11061,7 @@ public class BenjagestUiApplication extends Application {
 
         VBox body = new VBox(12, taxFilingsTable);
         VBox.setVgrow(taxFilingsTable, Priority.ALWAYS);
-        return new VBox(8, body, actions);
+        return screenScroll(new VBox(8, body, actions));
     }
 
     private Node buildCalendarTab(TaxBundle bundle) {
@@ -11105,7 +11103,7 @@ public class BenjagestUiApplication extends Application {
         taxCalendarTable.setItems(FXCollections.observableArrayList(sorted));
 
         VBox.setVgrow(taxCalendarTable, Priority.ALWAYS);
-        return new VBox(8, hint, taxCalendarTable);
+        return screenScroll(new VBox(8, hint, taxCalendarTable));
     }
 
     private String calendarFilingState(com.benjagest.ui.model.TaxDueDateEntry due,
@@ -11204,7 +11202,7 @@ public class BenjagestUiApplication extends Application {
         grid.add(new Label(t("tax.new.model")), 0, 0); grid.add(modelCombo, 1, 0);
         grid.add(new Label(t("tax.new.year")), 0, 1); grid.add(yearCombo, 1, 1);
         grid.add(new Label(t("tax.new.period")), 0, 2); grid.add(periodCombo, 1, 2);
-        dialog.getDialogPane().setContent(grid);
+        dialog.getDialogPane().setContent(dialogScroll(grid));
 
         dialog.showAndWait().ifPresent(bt -> {
             if (bt != nextBt) return;
@@ -11261,7 +11259,7 @@ public class BenjagestUiApplication extends Application {
         grid.add(new Label(t("tax.editor.csv")), 0, 2); grid.add(csvField, 1, 2);
         grid.add(new Label(t("tax.editor.data")), 0, 3); grid.add(dataArea, 1, 3);
         grid.add(new Label(t("tax.editor.notes")), 0, 4); grid.add(notesArea, 1, 4);
-        dialog.getDialogPane().setContent(grid);
+        dialog.getDialogPane().setContent(dialogScroll(grid));
 
         dialog.showAndWait().ifPresent(bt -> {
             if (bt != saveBt) return;
@@ -11330,7 +11328,7 @@ public class BenjagestUiApplication extends Application {
         grid.add(new Label(t("tax.editor.status")), 0, 9); grid.add(statusCombo, 1, 9);
         grid.add(new Label(t("tax.editor.csv")), 2, 9); grid.add(csvField, 3, 9);
 
-        dialog.getDialogPane().setContent(grid);
+        dialog.getDialogPane().setContent(dialogScroll(grid));
 
         dialog.showAndWait().ifPresent(bt -> {
             if (bt != saveBt) return;
@@ -11403,7 +11401,7 @@ public class BenjagestUiApplication extends Application {
         grid.add(new Separator(), 0, 6, 2, 1);
         grid.add(new Label(t("tax.editor.status")), 0, 7); grid.add(statusCombo, 1, 7);
         grid.add(new Label(t("tax.editor.csv")), 0, 8); grid.add(csvField, 1, 8);
-        dialog.getDialogPane().setContent(grid);
+        dialog.getDialogPane().setContent(dialogScroll(grid));
 
         dialog.showAndWait().ifPresent(bt -> {
             if (bt != saveBt) return;
