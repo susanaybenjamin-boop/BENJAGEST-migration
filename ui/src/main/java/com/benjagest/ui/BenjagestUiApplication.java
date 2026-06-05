@@ -9781,6 +9781,15 @@ public class BenjagestUiApplication extends Application {
             case "advisory.toast.new_client.title" -> "New client linked";
             case "advisory.toast.new_client.body" -> "A client has accepted your invitation. Open 'My clients' to start working with them.";
             case "advisory.action.open_client" -> "Open client";
+            case "advisory.action.invite_selected" -> "📩 Invite selected client";
+            case "advisory.portfolio.subtitle" -> "Customer portfolio — billing + linked accounts in one place";
+            case "advisory.portfolio.hint" -> "All your customers in one place: those you only invoice and those whose company you also manage. Use 'Invite selected client' to send a vinculation token to a customer already in your portfolio.";
+            case "advisory.portfolio.not_linked.title" -> "Customer not linked yet";
+            case "advisory.portfolio.not_linked.body" -> "This customer is in your billing portfolio but has not accepted a vinculation invitation. Send them one to manage their company data here.";
+            case "advisory.col.link_status" -> "Vinculation";
+            case "advisory.link.linked" -> "Linked";
+            case "advisory.link.pending" -> "Invitation pending";
+            case "advisory.link.not_linked" -> "Not linked";
             case "advisory.client.back" -> "← Back to My clients";
             case "advisory.client.hint" -> "You are now viewing this client. Anything you do from here is recorded under their company, not yours. Your sidebar still belongs to your advisory firm — you can switch between tabs freely.";
             case "advisory.client.tab.summary" -> "Summary";
@@ -9880,6 +9889,15 @@ public class BenjagestUiApplication extends Application {
             case "advisory.toast.new_client.title" -> "Nuevo cliente vinculado";
             case "advisory.toast.new_client.body" -> "Un cliente ha aceptado tu invitacion. Abre 'Mis clientes' para empezar a trabajar con el.";
             case "advisory.action.open_client" -> "Abrir cliente";
+            case "advisory.action.invite_selected" -> "📩 Invitar cliente seleccionado";
+            case "advisory.portfolio.subtitle" -> "Cartera unificada — facturación y vinculados en un solo sitio";
+            case "advisory.portfolio.hint" -> "Todos tus clientes en un solo lugar: los que solo facturas y los que ademas gestionas. Usa 'Invitar cliente seleccionado' para enviar el token de vinculacion a un cliente que ya tienes en cartera.";
+            case "advisory.portfolio.not_linked.title" -> "Cliente todavia no vinculado";
+            case "advisory.portfolio.not_linked.body" -> "Este cliente esta en tu cartera de facturacion pero no ha aceptado una invitacion de vinculacion. Envia una para poder gestionar los datos de su empresa desde aqui.";
+            case "advisory.col.link_status" -> "Vinculacion";
+            case "advisory.link.linked" -> "Vinculado";
+            case "advisory.link.pending" -> "Invitacion pendiente";
+            case "advisory.link.not_linked" -> "Sin vincular";
             case "advisory.client.back" -> "← Volver a Mis clientes";
             case "advisory.client.hint" -> "Estas viendo este cliente. Cualquier accion que hagas desde aqui queda registrada en SU empresa, no en la tuya. Tu barra lateral sigue siendo la de tu asesoria — puedes moverte entre las pestañas libremente.";
             case "advisory.client.tab.summary" -> "Resumen";
@@ -11842,15 +11860,235 @@ public class BenjagestUiApplication extends Application {
     // ===================================================================
 
     private void showAdvisoryClients() {
-        Task<java.util.List<com.benjagest.ui.model.ManagedClientEntry>> task = new Task<>() {
+        Task<java.util.List<com.benjagest.ui.model.CustomerPortfolioEntry>> task = new Task<>() {
             @Override
-            protected java.util.List<com.benjagest.ui.model.ManagedClientEntry> call() throws Exception {
-                return altaApiClient.listManagedClients();
+            protected java.util.List<com.benjagest.ui.model.CustomerPortfolioEntry> call() throws Exception {
+                return altaApiClient.listAdvisoryPortfolio();
             }
         };
-        task.setOnSucceeded(ev -> setCenterAnimated(scroll(advisoryView(task.getValue()))));
+        task.setOnSucceeded(ev -> setCenterAnimated(scroll(advisoryPortfolioView(task.getValue()))));
         task.setOnFailed(ev -> setCenterAnimated(scroll(errorPanel(t("advisory.load_failed")))));
         start(task, "advisory-clients-load");
+    }
+
+    private TableView<com.benjagest.ui.model.CustomerPortfolioEntry> advisoryPortfolioTable;
+
+    private VBox advisoryPortfolioView(java.util.List<com.benjagest.ui.model.CustomerPortfolioEntry> portfolio) {
+        VBox content = content();
+        Label title = new Label(t("advisory.title"));
+        title.getStyleClass().add("module-detail-title");
+        Label subtitle = new Label(t("advisory.portfolio.subtitle"));
+        subtitle.getStyleClass().add("module-detail-description");
+        VBox titleBox = new VBox(4, title, subtitle);
+        StackPane moduleIcon = iconBubble("fas-briefcase", "module-title-icon");
+        Region spacer = new Region();
+        HBox.setHgrow(spacer, Priority.ALWAYS);
+        HBox header = new HBox(16, titleBox, moduleIcon, spacer);
+        header.setAlignment(Pos.CENTER_LEFT);
+        header.getStyleClass().add("module-detail-header");
+
+        advisoryPortfolioTable = new TableView<>();
+        advisoryPortfolioTable.getStyleClass().add("data-table");
+        advisoryPortfolioTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+        advisoryPortfolioTable.setPlaceholder(new Label(t("advisory.placeholder.empty")));
+
+        TableColumn<com.benjagest.ui.model.CustomerPortfolioEntry, String> colName =
+                new TableColumn<>(t("advisory.col.legal_name"));
+        colName.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().legalName()));
+        TableColumn<com.benjagest.ui.model.CustomerPortfolioEntry, String> colNif =
+                new TableColumn<>(t("advisory.col.nif"));
+        colNif.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().taxIdentifier()));
+        colNif.setPrefWidth(120);
+        TableColumn<com.benjagest.ui.model.CustomerPortfolioEntry, String> colCity =
+                new TableColumn<>(t("advisory.col.city"));
+        colCity.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().city() == null ? "" : c.getValue().city()));
+        colCity.setPrefWidth(130);
+        TableColumn<com.benjagest.ui.model.CustomerPortfolioEntry, String> colEmail =
+                new TableColumn<>(t("advisory.col.email"));
+        colEmail.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().email() == null ? "" : c.getValue().email()));
+        TableColumn<com.benjagest.ui.model.CustomerPortfolioEntry, String> colLinked =
+                new TableColumn<>(t("advisory.col.link_status"));
+        colLinked.setCellValueFactory(c -> {
+            var entry = c.getValue();
+            String label;
+            if (entry.isLinked())            label = "✓ " + t("advisory.link.linked");
+            else if (entry.hasPendingInvitation()) label = "📩 " + t("advisory.link.pending");
+            else                                  label = "✗ " + t("advisory.link.not_linked");
+            return new SimpleStringProperty(label);
+        });
+        colLinked.setPrefWidth(160);
+        advisoryPortfolioTable.getColumns().addAll(java.util.List.of(
+                colName, colNif, colCity, colEmail, colLinked));
+        advisoryPortfolioTable.setItems(FXCollections.observableArrayList(portfolio));
+
+        // Doble click → abre cliente solo si está vinculado; si no,
+        // muestra info para invitar.
+        advisoryPortfolioTable.setOnMouseClicked(ev -> {
+            if (ev.getClickCount() == 2) {
+                var sel = advisoryPortfolioTable.getSelectionModel().getSelectedItem();
+                if (sel == null) return;
+                if (sel.isLinked()) {
+                    switchToClient(sel.asManagedClient());
+                } else {
+                    showInfo(t("advisory.portfolio.not_linked.title"),
+                            t("advisory.portfolio.not_linked.body"));
+                }
+            }
+        });
+
+        Label hint = new Label(t("advisory.portfolio.hint"));
+        hint.setWrapText(true);
+        hint.getStyleClass().add("settings-hint");
+
+        Button openClientBtn = new Button(t("advisory.action.open_client"));
+        openClientBtn.setGraphic(icon("fas-folder-open"));
+        openClientBtn.getStyleClass().add("button-primary");
+        openClientBtn.setDisable(true);
+        Button inviteSelectedBtn = new Button(t("advisory.action.invite_selected"));
+        inviteSelectedBtn.setGraphic(icon("fas-paper-plane"));
+        inviteSelectedBtn.setDisable(true);
+        advisoryPortfolioTable.getSelectionModel().selectedItemProperty()
+                .addListener((o, ov, nv) -> {
+                    openClientBtn.setDisable(nv == null || !nv.isLinked());
+                    inviteSelectedBtn.setDisable(nv == null || nv.isLinked() || nv.hasPendingInvitation());
+                });
+        openClientBtn.setOnAction(ev -> {
+            var sel = advisoryPortfolioTable.getSelectionModel().getSelectedItem();
+            if (sel != null && sel.isLinked()) switchToClient(sel.asManagedClient());
+        });
+        inviteSelectedBtn.setOnAction(ev -> {
+            var sel = advisoryPortfolioTable.getSelectionModel().getSelectedItem();
+            if (sel != null) showCreateInvitationDialogPrefilled(sel);
+        });
+
+        Button inviteBtn = new Button(t("advisory.action.invite"));
+        inviteBtn.setGraphic(icon("fas-paper-plane"));
+        inviteBtn.getStyleClass().add("button-primary");
+        inviteBtn.setOnAction(ev -> showCreateInvitationDialog());
+
+        HBox actions = new HBox(8, openClientBtn, inviteSelectedBtn, inviteBtn);
+        actions.getStyleClass().add("settings-actions");
+
+        // Bloque de invitaciones — listado bajo la tabla de clientes
+        Label invTitle = new Label(t("advisory.invitations.section"));
+        invTitle.getStyleClass().add("settings-section-title");
+        Label invHint = new Label(t("advisory.invitations.hint"));
+        invHint.setWrapText(true);
+        invHint.getStyleClass().add("settings-hint");
+
+        advisoryInvitationsTable = buildAdvisoryInvitationsTable();
+        Button reloadInvBtn = new Button(t("advisory.invitations.action.refresh"));
+        reloadInvBtn.setOnAction(ev -> reloadAdvisoryInvitations());
+        Button revokeBtn = new Button(t("advisory.invitations.action.revoke"));
+        revokeBtn.setGraphic(icon("fas-ban"));
+        revokeBtn.getStyleClass().add("button-danger-outline");
+        revokeBtn.setDisable(true);
+        revokeBtn.setOnAction(ev -> {
+            var sel = advisoryInvitationsTable.getSelectionModel().getSelectedItem();
+            if (sel != null) revokeInvitation(sel);
+        });
+        advisoryInvitationsTable.getSelectionModel().selectedItemProperty()
+                .addListener((o, ov, nv) -> revokeBtn.setDisable(nv == null || !nv.isPending()));
+
+        Button copyTokenBtn = new Button(t("advisory.invitations.action.copy_link"));
+        copyTokenBtn.setGraphic(icon("fas-copy"));
+        copyTokenBtn.setDisable(true);
+        copyTokenBtn.setOnAction(ev -> {
+            var sel = advisoryInvitationsTable.getSelectionModel().getSelectedItem();
+            if (sel != null && sel.token() != null) {
+                javafx.scene.input.Clipboard.getSystemClipboard().setContent(
+                        java.util.Map.of(javafx.scene.input.DataFormat.PLAIN_TEXT, sel.token()));
+                showInfo(t("advisory.invitations.copied.title"),
+                        t("advisory.invitations.copied.body"));
+            }
+        });
+        advisoryInvitationsTable.getSelectionModel().selectedItemProperty()
+                .addListener((o, ov, nv) -> copyTokenBtn.setDisable(nv == null || nv.token() == null));
+
+        HBox invActions = new HBox(8, reloadInvBtn, copyTokenBtn, revokeBtn);
+
+        VBox invitationsBlock = new VBox(8, invTitle, invHint,
+                advisoryInvitationsTable, invActions);
+        VBox.setVgrow(advisoryInvitationsTable, Priority.ALWAYS);
+
+        VBox body = new VBox(16, hint, advisoryPortfolioTable, new Separator(), invitationsBlock);
+        VBox.setVgrow(advisoryPortfolioTable, Priority.ALWAYS);
+
+        reloadAdvisoryInvitations();
+        content.getChildren().addAll(header, body, actions);
+        return content;
+    }
+
+    /**
+     * Abre el modal de invitación con datos pre-rellenados desde una
+     * entrada existente del portfolio. Útil cuando el asesor ya tiene
+     * al cliente en cartera pero aún no lo ha vinculado.
+     */
+    private void showCreateInvitationDialogPrefilled(com.benjagest.ui.model.CustomerPortfolioEntry prefill) {
+        // Reutilizamos el diálogo estándar; los campos se llenan
+        // automáticamente con email/NIF/nombre del cliente.
+        Dialog<ButtonType> dialog = new Dialog<>();
+        dialog.setTitle(t("advisory.invitations.create.title"));
+        ButtonType saveBt = new ButtonType(t("advisory.invitations.create.save"),
+                ButtonBar.ButtonData.OK_DONE);
+        dialog.getDialogPane().getButtonTypes().addAll(saveBt, ButtonType.CANCEL);
+
+        TextField emailField = new TextField(prefill.email() == null ? "" : prefill.email());
+        TextField nifField = new TextField(prefill.taxIdentifier() == null ? "" : prefill.taxIdentifier());
+        TextField nameField = new TextField(prefill.legalName() == null ? "" : prefill.legalName());
+        TextArea notesArea = new TextArea();
+        notesArea.setPrefRowCount(3);
+        for (TextField tf : new TextField[]{emailField, nifField, nameField}) tf.setPrefColumnCount(28);
+        Label hint = new Label(t("advisory.invitations.create.hint"));
+        hint.setWrapText(true);
+        hint.getStyleClass().add("settings-hint");
+
+        GridPane g = new GridPane();
+        g.setHgap(12); g.setVgap(8);
+        int r = 0;
+        g.add(new Label(t("advisory.invitations.create.email")), 0, r); g.add(emailField, 1, r++);
+        g.add(new Label(t("advisory.invitations.create.nif")), 0, r); g.add(nifField, 1, r++);
+        g.add(new Label(t("advisory.invitations.create.company_name")), 0, r); g.add(nameField, 1, r++);
+        g.add(new Label(t("advisory.invitations.create.notes")), 0, r); g.add(notesArea, 1, r++);
+        g.add(hint, 0, r++, 2, 1);
+        installDialog(dialog, g);
+
+        Button save = (Button) dialog.getDialogPane().lookupButton(saveBt);
+        save.addEventFilter(javafx.event.ActionEvent.ACTION, ev -> {
+            ev.consume();
+            String email = nullIfBlank(emailField.getText());
+            String nif = nullIfBlank(nifField.getText());
+            if (email == null && nif == null) {
+                showError(t("advisory.invitations.create.fail.missing.title"),
+                        t("advisory.invitations.create.fail.missing.body"));
+                return;
+            }
+            Task<com.benjagest.ui.model.AdvisoryInvitationEntry> task = new Task<>() {
+                @Override
+                protected com.benjagest.ui.model.AdvisoryInvitationEntry call() throws Exception {
+                    return invitationsApi.create(email, nif, nullIfBlank(nameField.getText()),
+                            nullIfBlank(notesArea.getText()));
+                }
+            };
+            task.setOnSucceeded(e -> {
+                var inv = task.getValue();
+                if (inv.token() != null) {
+                    javafx.scene.input.Clipboard.getSystemClipboard().setContent(
+                            java.util.Map.of(javafx.scene.input.DataFormat.PLAIN_TEXT, inv.token()));
+                }
+                showInfo(t("advisory.invitations.create.ok.title"),
+                        t("advisory.invitations.create.ok.body") + "\n\n"
+                                + t("advisory.invitations.token_label") + " " + inv.token());
+                dialog.setResult(saveBt);
+                dialog.close();
+                showAdvisoryClients(); // refresca el portfolio para mostrar el badge "📩 Pendiente"
+            });
+            task.setOnFailed(e -> showError(t("advisory.invitations.create.fail.title"),
+                    t("advisory.invitations.create.fail.body")));
+            start(task, "advisory-invitations-create");
+        });
+
+        dialog.showAndWait();
     }
 
     private VBox advisoryView(java.util.List<com.benjagest.ui.model.ManagedClientEntry> clients) {

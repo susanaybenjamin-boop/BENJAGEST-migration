@@ -212,6 +212,29 @@ public class AltaApiClient {
         ));
     }
 
+    /**
+     * Portfolio unificado: customers de la asesoría con flag de
+     * vinculación (linkedCompanyId NULL si no está vinculado) y de
+     * invitación pendiente. Sustituye a listManagedClients en la
+     * pantalla "Mis clientes" para fusionar cartera + vínculos.
+     */
+    public List<com.benjagest.ui.model.CustomerPortfolioEntry> listAdvisoryPortfolio()
+            throws IOException, InterruptedException {
+        HttpResponse<String> r = send(req(baseUrl + "/advisory/clients/portfolio").GET());
+        return parseObjects(r.body(), "legalName", obj -> new com.benjagest.ui.model.CustomerPortfolioEntry(
+                textField(obj, "customerId"),
+                textField(obj, "legalName"),
+                textField(obj, "tradeName"),
+                textField(obj, "taxIdentifier"),
+                textField(obj, "customerType"),
+                textField(obj, "email"),
+                textField(obj, "phone"),
+                textField(obj, "city"),
+                textField(obj, "linkedCompanyId"),
+                boolField(obj, "hasPendingInvitation")
+        ));
+    }
+
     // ============================================================
     // MODELOS AEAT (/api/tax)
     // ============================================================

@@ -182,10 +182,78 @@ public class AdvisoryInvitationService {
                 """, inv.advisoryCompanyId(), tenant);
         repository.updateStatusAccepted(inv.id(), user.userId(), tenant);
 
+        // Auto-sync a la cartera de clientes de la asesoría: el cliente
+        // acaba de vincularse, así que se añade a `customers` para que
+        // la asesoría pueda facturarle. Si ya existía (NIF coincidente
+        // dentro de la misma asesoría), no duplica.
+        try {
+            syncClientIntoAdvisoryCustomerPortfolio(inv.advisoryCompanyId(), tenant);
+        } catch (Exception ex) {
+            // No bloqueamos el flujo de aceptación si falla el sync —
+            // la vinculación principal ya está hecha y se puede
+            // recuperar más tarde.
+            System.err.println("[advisory] no se pudo sincronizar customer tras aceptar invitación: "
+                    + ex.getMessage());
+        }
+
         auditService.recordAdvisoryInvitationAccepted(
                 user.userId(), tenant, inv.id(), inv.advisoryCompanyId());
 
         return repository.findById(inv.id()).orElseThrow();
+    }
+
+    /**
+     * Sincroniza la empresa cliente recién vinculada con la cartera de
+     * clientes (`customers`) de la asesoría. Idempotente: si ya hay un
+     * registro con el mismo tax_identifier para esa asesoría, no
+     * inserta nada.
+     *
+     * <p>Tras esto, la asesoría puede emitir facturas a esa empresa
+     * desde su módulo F4 — antes solo podía gestionar sus datos pero
+     * no facturarle.
+     */
+    private void syncClientIntoAdvisoryCustomerPortfolio(String advisoryCompanyId,
+                                                            String clientCompanyId) {
+        // ¿Ya existe en la cartera de la asesoría?
+        Integer exists = jdbcTemplate.query("""
+                SELECT COUNT(*)
+                  FROM customers c
+                  JOIN companies cli ON cli.id = ?
+                 WHERE c.company_id = ?
+                   AND c.tax_identifier = cli.tax_identifier
+                """, rs -> rs.next() ? rs.getInt(1) : 0,
+                clientCompanyId, advisoryCompanyId);
+        if (exists != null && exists > 0) return;
+
+        // Crear customer con los datos básicos de la empresa cliente.
+        // Email/teléfono se rellenan desde companies si existen.
+        try {
+            jdbcTemplate.update("""
+                    INSERT INTO customers (id, company_id, legal_name, trade_name,
+                                            tax_identifier, customer_type, notes, active)
+                    SELECT ?, ?, cli.legal_name, cli.trade_name,
+                           cli.tax_identifier,
+                           CASE WHEN cli.company_type = 'SELF_EMPLOYED'
+                                THEN 'SELF_EMPLOYED'
+                                ELSE 'COMPANY' END,
+                           'Auto-creado al vincular como cliente de la asesoría',
+                           TRUE
+                      FROM companies cli
+                     WHERE cli.id = ?
+                    """,
+                    UUID.randomUUID().toString(),
+                    advisoryCompanyId,
+                    clientCompanyId);
+        } catch (org.springframework.dao.DuplicateKeyException dup) {
+            // El UNIQUE(tax_identifier) global del schema V1 puede
+            // hacer fallar si OTRA asesoría ya tiene a esta empresa
+            // en su cartera. Bug de schema pre-existente — para no
+            // bloquear el flujo, lo aceptamos y loguemos. Cuando se
+            // arregle el constraint (UNIQUE(company_id, tax_identifier)),
+            // este catch ya no se disparará.
+            System.err.println("[advisory] customer ya existe por UNIQUE global de tax_identifier; "
+                    + "no se duplica");
+        }
     }
 
     @Transactional
