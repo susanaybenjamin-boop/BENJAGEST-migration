@@ -114,6 +114,23 @@ public class ModuleRepository {
     }
 
     /**
+     * Devuelve el company_type de una empresa. Lo usa CompanyModulesService
+     * para filtrar los modulos advisory_only: solo INTERNAL/ADVISORY los
+     * ven en su lista de modulos activables. Una empresa CLIENT no debe
+     * poder activar "Asesoria" — ese era el agujero documentado en el
+     * backlog como deuda menor.
+     *
+     * <p>Devuelve null si la empresa no existe.
+     */
+    public String findCompanyType(String companyId) {
+        if (companyId == null || companyId.isBlank()) return null;
+        return jdbcTemplate.query(
+                "SELECT company_type FROM companies WHERE id = ?",
+                rs -> rs.next() ? rs.getString("company_type") : null,
+                companyId);
+    }
+
+    /**
      * Indica si un slug del catalogo es una categoria raiz (parent_id NULL).
      */
     public boolean isRootCategory(String slug) {

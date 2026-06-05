@@ -573,7 +573,8 @@ public class BenjagestUiApplication extends Application {
                 .map(m -> new ModuleLink(
                         m.slug(),
                         moduleTitle(m.slug()),
-                        m.icon() == null || m.icon().isBlank() ? "fas-cube" : m.icon()
+                        m.icon() == null || m.icon().isBlank() ? "fas-cube" : m.icon(),
+                        m.advisoryOnly()
                 ))
                 .toList();
     }
@@ -952,22 +953,59 @@ public class BenjagestUiApplication extends Application {
         sidebar.setPrefWidth(230);
         navigationButtons.clear();
 
-        Label section = new Label(t("modules"));
-        section.getStyleClass().add("sidebar-section");
-        sidebar.getChildren().add(section);
-
         Button home = navButton("dashboard", t("home"), "fas-home");
         // Sidebar SIEMPRE limpia el modo cliente. Si la asesoría estaba
         // viendo un cliente y pulsa cualquier botón del sidebar, debe
         // volver a operar como asesoría — no quedarse atrapada en el
         // tenant del cliente.
         home.setOnAction(event -> { exitClientMode(); showDashboard(); });
-        sidebar.getChildren().add(home);
 
-        for (ModuleLink link : activeModules()) {
-            Button button = navButton(link.id(), moduleTitle(link.id()), link.icon());
-            button.setOnAction(event -> { exitClientMode(); showModule(link.id()); });
-            sidebar.getChildren().add(button);
+        List<ModuleLink> modules = activeModules();
+
+        // Sidebar dual SOLO para la asesoría operando sobre sí misma.
+        // Cuando entra en un cliente (actingForCompanyId != null), no se
+        // muestran los módulos advisory_only — está actuando como ese
+        // cliente y debe ver SU sidebar empresarial; el banner ámbar
+        // permite volver.
+        boolean dualMode = appMode == AppMode.ADVISORY
+                && !AuthSession.get().isActingForClient()
+                && modules.stream().anyMatch(ModuleLink::advisoryOnly);
+
+        if (dualMode) {
+            Label myCompanySection = new Label(t("sidebar.section.my_company"));
+            myCompanySection.getStyleClass().add("sidebar-section");
+            sidebar.getChildren().addAll(myCompanySection, home);
+            // Módulos empresariales: gestión propia (Personal, Mi
+            // facturación, Mis compras, Configuración, etc.).
+            for (ModuleLink link : modules) {
+                if (link.advisoryOnly()) continue;
+                Button button = navButton(link.id(), moduleTitle(link.id()), link.icon());
+                button.setOnAction(event -> { exitClientMode(); showModule(link.id()); });
+                sidebar.getChildren().add(button);
+            }
+            // Sección "Mis clientes" con los módulos advisory_only.
+            Label clientsSection = new Label(t("sidebar.section.my_clients"));
+            clientsSection.getStyleClass().add("sidebar-section");
+            // Separador visual con un margin top mayor.
+            VBox.setMargin(clientsSection, new Insets(16, 0, 0, 0));
+            sidebar.getChildren().add(clientsSection);
+            for (ModuleLink link : modules) {
+                if (!link.advisoryOnly()) continue;
+                Button button = navButton(link.id(), moduleTitle(link.id()), link.icon());
+                button.setOnAction(event -> { exitClientMode(); showModule(link.id()); });
+                sidebar.getChildren().add(button);
+            }
+        } else {
+            // Empresario, o asesoría operando dentro de un cliente:
+            // sidebar plano con una sola sección "Módulos".
+            Label section = new Label(t("modules"));
+            section.getStyleClass().add("sidebar-section");
+            sidebar.getChildren().addAll(section, home);
+            for (ModuleLink link : modules) {
+                Button button = navButton(link.id(), moduleTitle(link.id()), link.icon());
+                button.setOnAction(event -> { exitClientMode(); showModule(link.id()); });
+                sidebar.getChildren().add(button);
+            }
         }
 
         Region spacer = new Region();
@@ -7265,6 +7303,8 @@ public class BenjagestUiApplication extends Application {
                 case "mode.advisory.description" -> "Portfolio, tax and labor management for client companies.";
                 case "mode.business.description" -> "Own-company operations, billing, purchases and team control.";
                 case "modules" -> "Modules";
+                case "sidebar.section.my_company" -> "My company";
+                case "sidebar.section.my_clients" -> "My clients";
                 case "home" -> "Home";
                 case "session" -> "Session";
                 case "activeCompany" -> "Active company";
@@ -8199,6 +8239,8 @@ public class BenjagestUiApplication extends Application {
             case "mode.advisory.description" -> "Cartera, fiscalidad y laboral de empresas cliente.";
             case "mode.business.description" -> "Operacion de empresa propia, facturacion, compras y equipo.";
             case "modules" -> "Modulos";
+            case "sidebar.section.my_company" -> "Mi empresa";
+            case "sidebar.section.my_clients" -> "Mis clientes";
             case "home" -> "Inicio";
             case "session" -> "Sesion";
             case "activeCompany" -> "Empresa activa";
@@ -9204,7 +9246,8 @@ public class BenjagestUiApplication extends Application {
         launch(args);
     }
 
-    private record ModuleLink(String id, String title, String icon) {
+    private record ModuleLink(String id, String title, String icon, boolean advisoryOnly) {
+        public ModuleLink(String id, String title, String icon) { this(id, title, icon, false); }
     }
 
     private enum AppMode {

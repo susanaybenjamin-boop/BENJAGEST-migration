@@ -29,10 +29,29 @@ public class ModuleAccessService {
     }
 
     public List<Module> listActiveForCurrentCompany() {
-        return repository.findActiveForCompany(tenantContext.getCurrentCompanyId());
+        return filterByCompanyType(repository.findActiveForCompany(tenantContext.getCurrentCompanyId()));
     }
 
     public List<Module> listCatalog() {
-        return repository.findAll();
+        return filterByCompanyType(repository.findAll());
+    }
+
+    /**
+     * Filtra los modulos {@code advisory_only=TRUE} cuando la empresa
+     * activa NO es una asesoria (company_type != INTERNAL/ADVISORY).
+     * Cierra el agujero documentado en el backlog: una empresa CLIENT
+     * llegaba a ver "Asesoria" como modulo activable y el sidebar
+     * podia colarse el slug "Mis clientes" para un empresario.
+     */
+    private List<Module> filterByCompanyType(List<Module> modules) {
+        String companyId = tenantContext.getCurrentCompanyId();
+        if (companyId == null || companyId.isBlank()) return modules;
+        String companyType = repository.findCompanyType(companyId);
+        boolean isAdvisory = "INTERNAL".equalsIgnoreCase(companyType)
+                || "ADVISORY".equalsIgnoreCase(companyType);
+        if (isAdvisory) return modules; // ve todo
+        return modules.stream()
+                .filter(m -> !m.advisoryOnly())
+                .toList();
     }
 }
