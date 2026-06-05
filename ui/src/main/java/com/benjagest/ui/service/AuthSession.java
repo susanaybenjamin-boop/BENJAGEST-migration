@@ -88,6 +88,30 @@ public final class AuthSession {
     }
 
     /**
+     * Variante de {@link #authorize} que IGNORA el override
+     * {@code actingForCompanyId} y manda siempre el {@code activeCompanyId}
+     * real de la sesión.
+     *
+     * <p>Pensado para llamadas que tienen que ejecutarse "como la
+     * asesoría" incluso cuando la pantalla activa está operando en
+     * nombre de un cliente vinculado. Caso típico: polling que detecta
+     * cambios en la cartera (incluida la desvinculación del propio
+     * cliente que se está viendo). Si esas llamadas usaran el
+     * X-Company-Id del cliente, el endpoint {@code /api/advisory/...}
+     * devolvería 403 (el cliente no tiene módulo advisory) y el polling
+     * dejaría de detectar nada en silencio.
+     */
+    public HttpRequest.Builder authorizeAsOwner(HttpRequest.Builder builder) {
+        if (isAuthenticated()) {
+            builder.header("Authorization", "Bearer " + accessToken);
+            if (activeCompanyId != null && !activeCompanyId.isBlank()) {
+                builder.header("X-Company-Id", activeCompanyId);
+            }
+        }
+        return builder;
+    }
+
+    /**
      * Cambia la empresa activa de la sesion en caliente. Lo usa el
      * switcher de cliente en el modulo Asesoria. No invalida el JWT
      * — solo redirige las peticiones siguientes al tenant indicado.

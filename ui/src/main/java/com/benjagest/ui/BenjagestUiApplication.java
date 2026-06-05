@@ -77,6 +77,7 @@ import javafx.scene.control.TableColumn;
 import javafx.scene.control.TableView;
 import javafx.scene.control.TextArea;
 import javafx.scene.control.TextField;
+import javafx.scene.control.Tooltip;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.GridPane;
 import javafx.scene.layout.HBox;
@@ -777,6 +778,8 @@ public class BenjagestUiApplication extends Application {
 
             boolean hadNewLinks = false;
             boolean hadUnlinks = false;
+            boolean activeClientUnlinked = false;
+            String actingFor = AuthSession.get().getActingForCompanyId();
             if (advisoryClientsBootstrapped) {
                 // Nuevos vínculos: están en currentlyLinked pero no en seen.
                 for (String id : currentlyLinked) {
@@ -788,6 +791,14 @@ public class BenjagestUiApplication extends Application {
                     if (!currentlyLinked.contains(id)) {
                         toRemove.add(id);
                         hadUnlinks = true;
+                        // Si el cliente que la asesoría está viendo en este
+                        // momento es uno de los desvinculados, hay que
+                        // sacarla del modo cliente o se queda haciendo
+                        // peticiones en nombre de un cliente al que ya no
+                        // tiene acceso (todas devolverían 403).
+                        if (actingFor != null && actingFor.equals(id)) {
+                            activeClientUnlinked = true;
+                        }
                     }
                 }
                 seenLinkedCompanyIds.removeAll(toRemove);
@@ -806,8 +817,20 @@ public class BenjagestUiApplication extends Application {
                 advisoryPortfolioTable.getItems().setAll(list);
             }
 
+            // Caso crítico: si el cliente que la asesoría estaba
+            // mirando se ha desvinculado, sacarla del modo cliente AHORA
+            // y notificarla. Hacerlo antes de cualquier otra
+            // notificación porque marca el cambio de contexto más
+            // importante para esta UI.
+            if (activeClientUnlinked) {
+                exitClientMode();
+                showInfo(t("advisory.toast.active_client_unlinked.title"),
+                        t("advisory.toast.active_client_unlinked.body"));
+                showDashboard();
+            }
+
             // Notificaciones nativas cuando NO estamos viendo la pantalla.
-            if (!tableVisible) {
+            if (!tableVisible && !activeClientUnlinked) {
                 if (hadNewLinks) {
                     showInfo(t("advisory.toast.new_client.title"),
                             t("advisory.toast.new_client.body"));
@@ -9858,6 +9881,11 @@ public class BenjagestUiApplication extends Application {
             case "advisory.toast.new_client.body" -> "A client has accepted your invitation. Open 'My clients' to start working with them.";
             case "advisory.action.open_client" -> "Open client";
             case "advisory.action.invite_selected" -> "📩 Invite selected client";
+            case "advisory.action.invite_selected.tip" -> "Send a vinculation invitation to this customer so you can manage their company data here.";
+            case "advisory.action.reinvite" -> "🔁 Re-invite";
+            case "advisory.action.reinvite.tip" -> "This customer was previously linked and then unlinked. Send a new invitation to vinculate them again.";
+            case "advisory.action.resend_invitation" -> "✉ Resend invitation";
+            case "advisory.action.resend_invitation.tip" -> "The customer is already linked. Use this only if they lost access (lost data, replaced device) and need a fresh token. Accepting an idempotent invitation does not change the existing link.";
             case "advisory.portfolio.subtitle" -> "Customer portfolio — billing + linked accounts in one place";
             case "advisory.portfolio.hint" -> "All your customers in one place: those you only invoice and those whose company you also manage. Use 'Invite selected client' to send a vinculation token to a customer already in your portfolio.";
             case "advisory.portfolio.not_linked.title" -> "Customer not linked yet";
@@ -9869,6 +9897,8 @@ public class BenjagestUiApplication extends Application {
             case "advisory.link.unlinked" -> "Unlinked by client";
             case "advisory.toast.unlinked.title" -> "Client unlinked";
             case "advisory.toast.unlinked.body" -> "A client has just unlinked from your advisory firm. The portfolio has been updated.";
+            case "advisory.toast.active_client_unlinked.title" -> "Client unlinked while you were working on them";
+            case "advisory.toast.active_client_unlinked.body" -> "The client whose data you were viewing has just unlinked from your advisory firm. You have been returned to your own dashboard.";
             case "settings.my_advisory.paste_token.title" -> "Have an invitation token?";
             case "settings.my_advisory.paste_token.hint" -> "If your advisor sent you a vinculation token (a 32-character string), paste it here and press Accept to link manually.";
             case "settings.my_advisory.paste_token.prompt" -> "Paste your invitation token here";
@@ -9976,6 +10006,11 @@ public class BenjagestUiApplication extends Application {
             case "advisory.toast.new_client.body" -> "Un cliente ha aceptado tu invitacion. Abre 'Mis clientes' para empezar a trabajar con el.";
             case "advisory.action.open_client" -> "Abrir cliente";
             case "advisory.action.invite_selected" -> "📩 Invitar cliente seleccionado";
+            case "advisory.action.invite_selected.tip" -> "Envia una invitacion de vinculacion para poder gestionar los datos de su empresa desde aqui.";
+            case "advisory.action.reinvite" -> "🔁 Reinvitar";
+            case "advisory.action.reinvite.tip" -> "Este cliente estuvo vinculado y luego se desvinculo. Envia una nueva invitacion para volver a vincularlo.";
+            case "advisory.action.resend_invitation" -> "✉ Reenviar invitacion";
+            case "advisory.action.resend_invitation.tip" -> "El cliente ya esta vinculado. Usa esto solo si ha perdido el acceso (perdida de datos, cambio de dispositivo) y necesita un token nuevo. Aceptar una invitacion idempotente no cambia el vinculo existente.";
             case "advisory.portfolio.subtitle" -> "Cartera unificada — facturación y vinculados en un solo sitio";
             case "advisory.portfolio.hint" -> "Todos tus clientes en un solo lugar: los que solo facturas y los que ademas gestionas. Usa 'Invitar cliente seleccionado' para enviar el token de vinculacion a un cliente que ya tienes en cartera.";
             case "advisory.portfolio.not_linked.title" -> "Cliente todavia no vinculado";
@@ -9987,6 +10022,8 @@ public class BenjagestUiApplication extends Application {
             case "advisory.link.unlinked" -> "Desvinculado por el cliente";
             case "advisory.toast.unlinked.title" -> "Cliente desvinculado";
             case "advisory.toast.unlinked.body" -> "Un cliente acaba de desvincularse de tu asesoria. La cartera se ha actualizado.";
+            case "advisory.toast.active_client_unlinked.title" -> "El cliente se ha desvinculado mientras trabajabas";
+            case "advisory.toast.active_client_unlinked.body" -> "El cliente cuyos datos estabas viendo acaba de desvincularse de tu asesoria. Has vuelto a tu propio panel.";
             case "settings.my_advisory.paste_token.title" -> "¿Tienes un token de invitacion?";
             case "settings.my_advisory.paste_token.hint" -> "Si tu asesor te ha enviado un token de vinculacion (cadena de 32 caracteres), pegalo aqui y pulsa Aceptar para vincularte manualmente.";
             case "settings.my_advisory.paste_token.prompt" -> "Pega aqui tu token de invitacion";
@@ -12043,10 +12080,36 @@ public class BenjagestUiApplication extends Application {
         Button inviteSelectedBtn = new Button(t("advisory.action.invite_selected"));
         inviteSelectedBtn.setGraphic(icon("fas-paper-plane"));
         inviteSelectedBtn.setDisable(true);
+        // Tooltip contextual: explica el caso "vinculado" (pérdida de datos
+        // del empresario) para que la asesoría sepa por qué se le permite
+        // emitir un token nuevo a un cliente ya vinculado.
+        Tooltip inviteSelectedTip = new Tooltip();
+        Tooltip.install(inviteSelectedBtn, inviteSelectedTip);
         advisoryPortfolioTable.getSelectionModel().selectedItemProperty()
                 .addListener((o, ov, nv) -> {
                     openClientBtn.setDisable(nv == null || !nv.isLinked());
-                    inviteSelectedBtn.setDisable(nv == null || nv.isLinked() || nv.hasPendingInvitation());
+                    // Solo se bloquea si ya hay una invitación PENDING para
+                    // ese cliente — en ese caso el botón a usar es "Copiar
+                    // token" del listado de invitaciones.
+                    inviteSelectedBtn.setDisable(nv == null || nv.hasPendingInvitation());
+                    // Texto + tooltip dependen del estado del cliente:
+                    //   vinculado    → "Reenviar invitación" (pérdida de datos)
+                    //   desvinculado → "Reinvitar"
+                    //   ninguno      → "Invitar cliente seleccionado"
+                    if (nv != null) {
+                        if (nv.isLinked()) {
+                            inviteSelectedBtn.setText(t("advisory.action.resend_invitation"));
+                            inviteSelectedTip.setText(t("advisory.action.resend_invitation.tip"));
+                        } else if (nv.wasUnlinked()) {
+                            inviteSelectedBtn.setText(t("advisory.action.reinvite"));
+                            inviteSelectedTip.setText(t("advisory.action.reinvite.tip"));
+                        } else {
+                            inviteSelectedBtn.setText(t("advisory.action.invite_selected"));
+                            inviteSelectedTip.setText(t("advisory.action.invite_selected.tip"));
+                        }
+                    } else {
+                        inviteSelectedBtn.setText(t("advisory.action.invite_selected"));
+                    }
                 });
         openClientBtn.setOnAction(ev -> {
             var sel = advisoryPortfolioTable.getSelectionModel().getSelectedItem();
