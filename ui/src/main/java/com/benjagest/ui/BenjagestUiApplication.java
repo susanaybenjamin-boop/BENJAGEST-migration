@@ -635,6 +635,78 @@ public class BenjagestUiApplication extends Application {
         sidebarScroll.getStyleClass().add("sidebar-scroll");
         root.setLeft(sidebarScroll);
         root.setBottom(footer());
+        startInvitationsPolling();
+    }
+
+    /**
+     * Arranca el polling de invitaciones (live). Cada 30s consulta al
+     * backend y actualiza el banner si está visible o muestra un aviso
+     * si hay invitaciones nuevas y el usuario está en otra pantalla.
+     */
+    private void startInvitationsPolling() {
+        if (invitationsPoller != null) return; // ya activo
+        invitationsPoller = new javafx.animation.Timeline(
+                new javafx.animation.KeyFrame(
+                        javafx.util.Duration.seconds(30),
+                        ev -> pollPendingInvitations()));
+        invitationsPoller.setCycleCount(javafx.animation.Animation.INDEFINITE);
+        invitationsPoller.play();
+        pollPendingInvitations();
+    }
+
+    private void stopInvitationsPolling() {
+        if (invitationsPoller != null) {
+            invitationsPoller.stop();
+            invitationsPoller = null;
+        }
+        seenInvitationIds.clear();
+        invitationsBootstrapped = false;
+        dashboardInvitationsSlot = null;
+    }
+
+    private void pollPendingInvitations() {
+        if (!com.benjagest.ui.service.AuthSession.get().isAuthenticated()) return;
+        Task<java.util.List<com.benjagest.ui.model.AdvisoryInvitationEntry>> task = new Task<>() {
+            @Override
+            protected java.util.List<com.benjagest.ui.model.AdvisoryInvitationEntry> call() throws Exception {
+                return invitationsApi.listPending();
+            }
+        };
+        task.setOnSucceeded(e -> {
+            var list = task.getValue();
+            if (list == null) list = java.util.List.of();
+            // Detección de invitaciones NUEVAS desde el último ciclo.
+            boolean hadNewOnes = false;
+            if (invitationsBootstrapped) {
+                for (var inv : list) {
+                    if (inv.id() != null && seenInvitationIds.add(inv.id())) {
+                        hadNewOnes = true;
+                    }
+                }
+            } else {
+                // Primera carga tras login: marca todo como visto sin notificar.
+                for (var inv : list) if (inv.id() != null) seenInvitationIds.add(inv.id());
+                invitationsBootstrapped = true;
+            }
+            // Refrescar el banner si el dashboard sigue montado.
+            if (dashboardInvitationsSlot != null
+                    && dashboardInvitationsSlot.getScene() != null) {
+                dashboardInvitationsSlot.getChildren().clear();
+                for (var inv : list) {
+                    dashboardInvitationsSlot.getChildren().add(
+                            buildInvitationCard(inv, dashboardInvitationsSlot));
+                }
+            }
+            // Si hay nuevas y NO estamos en el Home (slot no visible),
+            // notificar con un alert nativo discreto.
+            if (hadNewOnes && (dashboardInvitationsSlot == null
+                    || dashboardInvitationsSlot.getScene() == null)) {
+                showInfo(t("advisory.invitation.toast.title"),
+                        t("advisory.invitation.toast.body"));
+            }
+        });
+        task.setOnFailed(e -> { /* backend caído → silencio para no spamear */ });
+        start(task, "advisory-invitations-poll");
     }
 
     private HBox header() {
@@ -668,6 +740,7 @@ public class BenjagestUiApplication extends Application {
             // Revocamos el refresh token en backend antes de limpiar el
             // estado local. Asi, si alguien recupera ese refresh ya no
             // sirve para generar mas accesses.
+            stopInvitationsPolling();
             authApiClient.logout();
             session = null;
             activeModulesCache = List.of();
@@ -759,8 +832,13 @@ public class BenjagestUiApplication extends Application {
      * Carga las invitaciones PENDING dirigidas al empresario actual y
      * las pinta como banner destacado en el Home. Si no hay
      * invitaciones (caso habitual), el slot queda vacío.
+     *
+     * Guarda referencia al slot en {@link #dashboardInvitationsSlot} para
+     * que el polling periódico ({@link #pollPendingInvitations()}) pueda
+     * refrescarlo sin necesidad de reentrar al Home.
      */
     private void loadPendingInvitationsBanner(VBox slot) {
+        dashboardInvitationsSlot = slot;
         Task<java.util.List<com.benjagest.ui.model.AdvisoryInvitationEntry>> task = new Task<>() {
             @Override
             protected java.util.List<com.benjagest.ui.model.AdvisoryInvitationEntry> call() throws Exception {
@@ -771,7 +849,13 @@ public class BenjagestUiApplication extends Application {
             slot.getChildren().clear();
             var list = task.getValue();
             if (list == null || list.isEmpty()) return;
-            for (var inv : list) slot.getChildren().add(buildInvitationCard(inv, slot));
+            for (var inv : list) {
+                slot.getChildren().add(buildInvitationCard(inv, slot));
+                // Mantener el set sincronizado para no notificar invitaciones
+                // que el usuario YA está viendo en pantalla.
+                if (inv.id() != null) seenInvitationIds.add(inv.id());
+            }
+            invitationsBootstrapped = true;
         });
         task.setOnFailed(ev -> { /* silencioso: backend caído no debe romper el dashboard */ });
         start(task, "advisory-pending-invitations");
@@ -1839,6 +1923,15 @@ public class BenjagestUiApplication extends Application {
             new com.benjagest.ui.service.AdvisoryInvitationApiClient();
 
     private TableView<com.benjagest.ui.model.AdvisoryInvitationEntry> advisoryInvitationsTable;
+
+    // Live polling de invitaciones — evita tener que refrescar la pantalla.
+    // El Timeline persiste durante toda la sesión, se arranca tras login
+    // y se detiene en logout. Cada ciclo (cada 30s) compara con los IDs
+    // ya vistos y notifica si hay nuevas.
+    private javafx.animation.Timeline invitationsPoller;
+    private final java.util.Set<String> seenInvitationIds = new java.util.HashSet<>();
+    private boolean invitationsBootstrapped = false;
+    private VBox dashboardInvitationsSlot;
 
     private TableView<com.benjagest.ui.model.PurchaseInvoiceEntry> purchaseInvoicesTable;
     private ComboBox<String> purchaseYearFilter;
@@ -9446,6 +9539,8 @@ public class BenjagestUiApplication extends Application {
             case "advisory.invitation.reject.ok.body" -> "The invitation has been rejected.";
             case "advisory.invitation.reject.fail.title" -> "Could not reject";
             case "advisory.invitation.reject.fail.body" -> "Try again or check the connection.";
+            case "advisory.invitation.toast.title" -> "New invitation";
+            case "advisory.invitation.toast.body" -> "You have received a new advisory invitation. Go to the Home screen to accept or reject it.";
             default -> null;
         };
     }
@@ -9520,6 +9615,8 @@ public class BenjagestUiApplication extends Application {
             case "advisory.invitation.reject.ok.body" -> "La invitacion ha sido rechazada.";
             case "advisory.invitation.reject.fail.title" -> "No se pudo rechazar";
             case "advisory.invitation.reject.fail.body" -> "Intentalo de nuevo o revisa la conexion.";
+            case "advisory.invitation.toast.title" -> "Nueva invitacion";
+            case "advisory.invitation.toast.body" -> "Has recibido una nueva invitacion de asesoria. Ve al Home para aceptarla o rechazarla.";
             default -> null;
         };
     }

@@ -258,19 +258,24 @@ public class AdvisoryInvitationService {
 
     private String findCompanyNif(String companyId) {
         if (!StringUtils.hasText(companyId)) return null;
+        // ResultSetExtractor (no RowMapper) para tolerar NULLs sin NPE:
+        // el RowMapper anterior, al devolver null para una columna NULL,
+        // hacía que la lista contuviera [null] y findFirst() lanzaba NPE
+        // en Optional.of(null). Con extractor controlamos el cursor.
         return jdbcTemplate.query("""
                 SELECT tax_identifier FROM companies WHERE id = ?
                 """,
-                (rs, n) -> rs.getString("tax_identifier"),
-                companyId).stream().findFirst().orElse(null);
+                rs -> rs.next() ? rs.getString("tax_identifier") : null,
+                companyId);
     }
 
     private String findCurrentParent(String companyId) {
+        if (!StringUtils.hasText(companyId)) return null;
         return jdbcTemplate.query("""
                 SELECT parent_company_id FROM companies WHERE id = ?
                 """,
-                (rs, n) -> rs.getString("parent_company_id"),
-                companyId).stream().findFirst().orElse(null);
+                rs -> rs.next() ? rs.getString("parent_company_id") : null,
+                companyId);
     }
 
     private static String generateToken() {
