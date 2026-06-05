@@ -377,15 +377,17 @@ INSERT INTO pgc_pymes_template (code, name, account_type) VALUES
 ('799', 'Reversión del deterioro de créditos a CP', 'INCOME');
 
 -- ---------------------------------------------------------------------------
--- Inserta para CADA empresa existente. Idempotente: si la cuenta ya existe
--- (sembrada por V25), actualiza name/account_type para mantenerla al día.
+-- Inserta para CADA empresa existente. Idempotente vía INSERT IGNORE:
+-- si la cuenta ya existe (sembrada por V25), simplemente la omite. No
+-- usamos ON DUPLICATE KEY UPDATE con SELECT + VALUES() porque MariaDB
+-- 11.4 lanza error 1064 con esa combinación (la función VALUES() no es
+-- reconocida sin la sintaxis nueva ... AS alias ON DUPLICATE ...). Las
+-- cuentas que vienen aquí son código nuevo o, en el peor caso, el mismo
+-- label que tenía V25 — no hace falta "actualizar" nada al re-sembrar.
 -- ---------------------------------------------------------------------------
-INSERT INTO accounting_accounts (id, company_id, code, name, account_type, active)
+INSERT IGNORE INTO accounting_accounts (id, company_id, code, name, account_type, active)
 SELECT UUID(), c.id, t.code, t.name, t.account_type, TRUE
   FROM companies c
- CROSS JOIN pgc_pymes_template t
-ON DUPLICATE KEY UPDATE
-    name = VALUES(name),
-    account_type = VALUES(account_type);
+ CROSS JOIN pgc_pymes_template t;
 
 DROP TEMPORARY TABLE pgc_pymes_template;
