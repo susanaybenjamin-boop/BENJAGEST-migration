@@ -22,6 +22,13 @@
 -- Backfill: itera por empresa y recalcula los hashes en orden cronológico
 -- (created_at, id) usando un cursor de PL/SQL. Idempotente: si event_hash
 -- ya está rellenado en TODAS las filas de la empresa, no rehace.
+--
+-- COLLATION FIX (2026-06-05): MariaDB 11.4 cambia el collation por
+-- defecto del servidor a utf8mb4_uca1400_ai_ci. Las VARCHAR que se
+-- DECLAREN dentro del procedure heredan ese default y no se pueden
+-- comparar con audit_events.company_id (utf8mb4_unicode_ci de V2) sin
+-- COLLATE explícito. Por eso TODAS las DECLARE de tipo CHAR/VARCHAR
+-- llevan COLLATE utf8mb4_unicode_ci aquí.
 -- ===========================================================================
 
 -- ---------------------------------------------------------------------------
@@ -59,10 +66,8 @@ PREPARE stmt FROM @s; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 
 -- ---------------------------------------------------------------------------
 -- 3) Backfill cronológico por empresa.
---    El procedure recorre cada empresa con eventos huérfanos
---    (sequence_number IS NULL) y les rellena la cadena hasta el último.
---    Algoritmo de hash: SHA2(prev_hash + sequence + payload, 256).
---    El payload concatena los campos canónicos separados por '|'.
+--    Procedure con cursores y COLLATE explícito en cada VARCHAR para que
+--    MariaDB 11.4 no se queje del mix con utf8mb4_uca1400_ai_ci.
 -- ---------------------------------------------------------------------------
 DROP PROCEDURE IF EXISTS p_audit_chain_backfill;
 
@@ -70,7 +75,7 @@ DELIMITER //
 CREATE PROCEDURE p_audit_chain_backfill()
 BEGIN
     DECLARE done_companies INT DEFAULT FALSE;
-    DECLARE v_company VARCHAR(36);
+    DECLARE v_company VARCHAR(36) COLLATE utf8mb4_unicode_ci;
     DECLARE cur_companies CURSOR FOR
         SELECT DISTINCT company_id FROM audit_events
          WHERE sequence_number IS NULL AND company_id IS NOT NULL;
@@ -95,7 +100,13 @@ BEGIN
         -- Itera por los eventos pendientes en orden cronológico.
         block: BEGIN
             DECLARE done_events INT DEFAULT FALSE;
-            DECLARE v_id, v_user, v_etype, v_ettype, v_eid, v_res, v_det VARCHAR(500);
+            DECLARE v_id     CHAR(36)     COLLATE utf8mb4_unicode_ci;
+            DECLARE v_user   CHAR(36)     COLLATE utf8mb4_unicode_ci;
+            DECLARE v_etype  VARCHAR(80)  COLLATE utf8mb4_unicode_ci;
+            DECLARE v_ettype VARCHAR(40)  COLLATE utf8mb4_unicode_ci;
+            DECLARE v_eid    VARCHAR(255) COLLATE utf8mb4_unicode_ci;
+            DECLARE v_res    VARCHAR(10)  COLLATE utf8mb4_unicode_ci;
+            DECLARE v_det    TEXT         COLLATE utf8mb4_unicode_ci;
             DECLARE v_created TIMESTAMP;
             DECLARE cur_events CURSOR FOR
                 SELECT id, IFNULL(user_id, ''), IFNULL(event_type, ''),
