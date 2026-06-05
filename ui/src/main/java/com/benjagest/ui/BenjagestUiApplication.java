@@ -2694,7 +2694,53 @@ public class BenjagestUiApplication extends Application {
     private TableView<com.benjagest.ui.model.TimeClockEntry> timeClockTable;
 
     private void showTimeClock() {
-        String employeeId = AuthSession.get().userId();
+        // EMP-USER-MAP: el employeeId NO es el userId. Buscamos primero
+        // la ficha en `employees` por (user_id, company_id). Si el
+        // usuario no tiene ficha (típico de OWNERs de empresa que nunca
+        // se dieron de alta como empleado), pintamos pantalla amigable
+        // con instrucciones en lugar de explotar al primer fichaje.
+        Task<com.benjagest.ui.service.TimeClockApiClient.MyEmployee> resolve = new Task<>() {
+            @Override
+            protected com.benjagest.ui.service.TimeClockApiClient.MyEmployee call() throws Exception {
+                return timeClockApi.me();
+            }
+        };
+        resolve.setOnSucceeded(ev -> renderTimeClock(resolve.getValue()));
+        resolve.setOnFailed(ev -> {
+            Throwable err = resolve.getException();
+            if (err instanceof com.benjagest.ui.service.TimeClockApiClient.NotEnrolledException nee) {
+                renderTimeClockNotEnrolled(nee.getMessage());
+            } else {
+                setCenterAnimated(scroll(errorPanel(t("timeclock.fail.title"))));
+            }
+        });
+        start(resolve, "timeclock-resolve-employee");
+    }
+
+    /** Pinta una pantalla amigable cuando el usuario no tiene ficha de
+     *  empleado en la empresa activa — no puede fichar hasta que el
+     *  admin lo dé de alta en Personal > Empleados. */
+    private void renderTimeClockNotEnrolled(String backendMsg) {
+        Label header = label(t("timeclock.header"), "settings-section-title");
+        Label icon = new Label("⚠");
+        icon.setStyle("-fx-font-size: 48px;");
+        Label title = new Label(t("timeclock.not_enrolled.title"));
+        title.getStyleClass().add("settings-section-title");
+        Label body = new Label(backendMsg != null && !backendMsg.isBlank()
+                ? backendMsg
+                : t("timeclock.not_enrolled.body"));
+        body.setWrapText(true);
+        body.getStyleClass().add("settings-hint");
+        VBox notice = new VBox(12, icon, title, body);
+        notice.setPadding(new Insets(40));
+        notice.setAlignment(Pos.CENTER);
+        VBox content = new VBox(16, header, notice);
+        content.setPadding(new Insets(20));
+        setCenterAnimated(scroll(content));
+    }
+
+    private void renderTimeClock(com.benjagest.ui.service.TimeClockApiClient.MyEmployee me) {
+        String employeeId = me.employeeId();
         // Header explicativo: contexto legal RD 8/2019 y aclaración de
         // que el CSV emitido al fichar sirve para verificación pública.
         Label header = label(t("timeclock.header"), "settings-section-title");
@@ -7561,6 +7607,8 @@ public class BenjagestUiApplication extends Application {
                 case "timeclock.success.csv_label" -> "Public verification code (CSV) — keep it for your records:";
                 case "timeclock.fail.title" -> "Could not record punch";
                 case "timeclock.fail.body" -> "Make sure your employee profile exists and the backend is running.";
+                case "timeclock.not_enrolled.title" -> "You have no employee profile in this company";
+                case "timeclock.not_enrolled.body" -> "Ask the administrator to add you in Personal > Employees, linking your user. Once they do, refresh this screen and you will be able to punch in.";
                 case "purchases.header" -> "Purchases";
                 case "purchases.hint" -> "Upload a received invoice as PDF — BENJAGEST extracts the issuer NIF, date, base, VAT and total automatically (no AI, just regex on the embedded text). Scanned PDFs require OCR — coming in a follow-up slice.";
                 case "purchases.action.import_pdf" -> "Import PDF invoice";
@@ -8452,6 +8500,8 @@ public class BenjagestUiApplication extends Application {
             case "timeclock.success.csv_label" -> "Codigo de verificacion publico (CSV) — guardalo como justificante:";
             case "timeclock.fail.title" -> "No se pudo registrar el fichaje";
             case "timeclock.fail.body" -> "Comprueba que tu perfil de empleado existe y que el backend esta en marcha.";
+            case "timeclock.not_enrolled.title" -> "No tienes ficha de empleado en esta empresa";
+            case "timeclock.not_enrolled.body" -> "Pide al administrador que te de de alta en Personal > Empleados vinculando tu usuario. Cuando lo haga, refresca esta pantalla y podras fichar.";
             case "purchases.header" -> "Compras";
             case "purchases.hint" -> "Sube una factura recibida en PDF — BENJAGEST extrae el NIF emisor, fecha, base, IVA y total automaticamente (sin IA, solo regex sobre el texto embebido). PDFs escaneados necesitan OCR — llega en un slice posterior.";
             case "purchases.action.import_pdf" -> "Importar factura PDF";
@@ -12481,6 +12531,7 @@ public class BenjagestUiApplication extends Application {
                 c.getValue().createdAt() == null ? "—"
                         : c.getValue().createdAt().atZone(java.time.ZoneId.systemDefault())
                                 .toLocalDate().toString()));
+        colDate.setComparator(ISO_DATE_COMPARATOR);
         colDate.setPrefWidth(110);
         TableColumn<com.benjagest.ui.model.AdvisoryInvitationEntry, String> colEmail =
                 new TableColumn<>(t("advisory.invitations.col.email"));

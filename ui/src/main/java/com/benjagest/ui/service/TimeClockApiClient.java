@@ -35,6 +35,44 @@ public class TimeClockApiClient {
     }
 
     /**
+     * Resuelve el {@code employees.id} del usuario logueado en la
+     * empresa activa (tenant) antes de fichar. Lanza
+     * {@link NotEnrolledException} si el backend devuelve 404 (el
+     * usuario no tiene ficha de empleado en esta empresa).
+     */
+    public MyEmployee me() throws IOException, InterruptedException {
+        HttpRequest.Builder builder = HttpRequest.newBuilder(
+                        URI.create(baseUrl + "/timeclock/me/employee"))
+                .timeout(Duration.ofSeconds(10)).GET();
+        AuthSession.get().authorize(builder);
+        HttpResponse<String> response = httpClient.send(builder.build(), HttpResponse.BodyHandlers.ofString());
+        if (response.statusCode() == 404) {
+            // Mensaje legible viene del backend ("Tu usuario no tiene
+            // ficha de empleado en esta empresa…"). Lo expone tal cual.
+            throw new NotEnrolledException(extractMessage(response.body()));
+        }
+        if (response.statusCode() < 200 || response.statusCode() >= 300) {
+            throw new IOException("HTTP " + response.statusCode() + ": " + response.body());
+        }
+        return new MyEmployee(
+                extract(response.body(), "employeeId"),
+                extract(response.body(), "fullName"));
+    }
+
+    public record MyEmployee(String employeeId, String fullName) {}
+
+    /** El usuario no tiene fila en {@code employees} para el tenant activo. */
+    public static class NotEnrolledException extends IOException {
+        public NotEnrolledException(String msg) { super(msg); }
+    }
+
+    /** Extrae el campo "message" de un body JSON de error de Spring. */
+    private String extractMessage(String body) {
+        Matcher m = Pattern.compile("\"message\"\\s*:\\s*\"((?:\\\\.|[^\"])*)\"").matcher(body == null ? "" : body);
+        return m.find() ? m.group(1).replace("\\\"", "\"") : "Sin ficha de empleado";
+    }
+
+    /**
      * Registra un fichaje y devuelve el CSV emitido por el backend.
      * Si todo va bien, el dialog de la UI lo muestra al trabajador
      * para que lo guarde (mail, capturilla, etc).

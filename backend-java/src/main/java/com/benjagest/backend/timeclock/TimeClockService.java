@@ -2,6 +2,7 @@ package com.benjagest.backend.timeclock;
 
 import com.benjagest.backend.auth.AuthenticatedUser;
 import com.benjagest.backend.auth.CurrentUserService;
+import com.benjagest.backend.tenant.TenantContext;
 import java.security.SecureRandom;
 import java.time.Instant;
 import java.util.List;
@@ -32,13 +33,32 @@ public class TimeClockService {
     private final TimeClockRepository repository;
     private final CurrentUserService currentUserService;
     private final TimeClockEventTypeService eventTypeService;
+    private final TenantContext tenantContext;
 
     public TimeClockService(TimeClockRepository repository,
                             CurrentUserService currentUserService,
-                            TimeClockEventTypeService eventTypeService) {
+                            TimeClockEventTypeService eventTypeService,
+                            TenantContext tenantContext) {
         this.repository = repository;
         this.currentUserService = currentUserService;
         this.eventTypeService = eventTypeService;
+        this.tenantContext = tenantContext;
+    }
+
+    /**
+     * Devuelve el {@code employees.id} del usuario logueado en la
+     * empresa activa. Si no hay ficha, lanza 404 con un mensaje
+     * legible que la UI muestra directamente al usuario para que sepa
+     * que tiene que pedir el alta como empleado al administrador.
+     */
+    public TimeClockController.MyEmployeeInfo resolveCurrentEmployee() {
+        AuthenticatedUser user = currentUserService.require();
+        String companyId = tenantContext.getCurrentCompanyId();
+        return repository.findEmployeeByUserAndCompany(user.userId(), companyId)
+                .map(row -> new TimeClockController.MyEmployeeInfo(row.employeeId(), row.fullName()))
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "Tu usuario no tiene ficha de empleado en esta empresa. "
+                                + "Pide al administrador que te dé de alta en Personal > Empleados."));
     }
 
     /**
