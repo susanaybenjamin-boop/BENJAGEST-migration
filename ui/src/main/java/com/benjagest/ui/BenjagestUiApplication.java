@@ -1884,7 +1884,7 @@ public class BenjagestUiApplication extends Application {
             g.add(hashShort, 0, row++, 2, 1);
         }
 
-        dialog.getDialogPane().setContent(g);
+        dialog.getDialogPane().setContent(dialogScroll(g));
         dialog.getDialogPane().setPrefWidth(620);
 
         // Botón "Guardar plantilla" deshabilitado si NI el extractor ni el
@@ -2556,14 +2556,17 @@ public class BenjagestUiApplication extends Application {
         refreshBtn.setOnAction(ev -> reloadCertificates());
 
         HBox actions = new HBox(10, uploadBtn, refreshBtn);
-        actions.setPadding(new Insets(10, 0, 0, 0));
 
-        VBox body = new VBox(12, sectionTitle, hint, certsTable, actions);
-        body.setPadding(new Insets(20));
+        // tabLayout: header + body scroll + footer fijo. La tabla con el
+        // listado puede crecer mucho en clientes con varios .p12; sin
+        // este patron los botones del pie quedan fuera de pantalla en
+        // portatil. Mismo enfoque que las otras pestanas de Configuracion.
+        VBox header = new VBox(8, sectionTitle, hint);
+        VBox body = new VBox(12, certsTable);
         VBox.setVgrow(certsTable, Priority.ALWAYS);
 
         reloadCertificates();
-        return body;
+        return tabLayout(header, body, actions);
     }
 
     private void reloadCertificates() {
@@ -2708,8 +2711,8 @@ public class BenjagestUiApplication extends Application {
         tip.getStyleClass().add("settings-hint");
         g.add(tip, 0, r++, 2, 1);
 
-        dialog.getDialogPane().setContent(g);
-        dialog.getDialogPane().setPrefWidth(560);
+        dialog.getDialogPane().setContent(dialogScroll(g));
+        dialog.getDialogPane().setPrefWidth(580);
 
         Button save = (Button) dialog.getDialogPane().lookupButton(saveBt);
         save.addEventFilter(javafx.event.ActionEvent.ACTION, ev -> {
@@ -3003,7 +3006,7 @@ public class BenjagestUiApplication extends Application {
         grid.add(new Label(t("settings.owners.editor.phone")), 0, 8); grid.add(phoneField, 1, 8);
         grid.add(new Label(t("settings.owners.editor.notes")), 0, 9); grid.add(notesField, 1, 9);
         grid.add(activeCb, 1, 10);
-        dialog.getDialogPane().setContent(grid);
+        dialog.getDialogPane().setContent(dialogScroll(grid));
 
         dialog.showAndWait().ifPresent(bt -> {
             if (bt != saveBt) return;
@@ -3259,7 +3262,7 @@ public class BenjagestUiApplication extends Application {
         grid.add(new Label(t("settings.credentials.editor.auth_url")), 0, 4); grid.add(authUrlField, 1, 4);
         grid.add(new Label(t("settings.credentials.editor.notes")), 0, 5); grid.add(notesField, 1, 5);
         grid.add(activeCb, 1, 6);
-        dialog.getDialogPane().setContent(grid);
+        dialog.getDialogPane().setContent(dialogScroll(grid));
 
         dialog.showAndWait().ifPresent(bt -> {
             if (bt != saveBt) return;
@@ -6145,6 +6148,28 @@ public class BenjagestUiApplication extends Application {
         scroll.getStyleClass().add("content-scroll");
         scroll.setFitToWidth(true);
         return scroll;
+    }
+
+    /**
+     * Envuelve el contenido de un dialogo (GridPane / VBox con muchos
+     * campos) en un ScrollPane para que en portatiles con pantalla
+     * pequena no queden los botones del pie fuera de la ventana. Los
+     * botones (saveBt / cancelBt / ...) los pone Dialog en su button
+     * bar y NO entran en este contenido — quedan siempre visibles.
+     *
+     * Se llama desde diálogos largos: subida de certificado, editor de
+     * empleados, editor de owner, editor de RETA, calculo de nominas,
+     * importacion PDF, etc.
+     */
+    private ScrollPane dialogScroll(Node content) {
+        ScrollPane sp = new ScrollPane(content);
+        sp.setFitToWidth(true);
+        sp.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
+        // Cap razonable para portatil 13" (768px reales menos chrome).
+        sp.setMaxHeight(560);
+        sp.setPrefViewportHeight(560);
+        sp.getStyleClass().add("dialog-scroll");
+        return sp;
     }
 
     private void setCenterAnimated(Node node) {
@@ -9404,7 +9429,7 @@ public class BenjagestUiApplication extends Application {
         g.add(extraProrated, 1, 4);
         g.add(new Label(t("labor.payslips.calc.other_deductions")), 0, 5); g.add(otherField, 1, 5);
         g.add(new Label(t("labor.payslips.calc.notes")), 0, 6); g.add(notesArea, 1, 6);
-        dialog.getDialogPane().setContent(g);
+        dialog.getDialogPane().setContent(dialogScroll(g));
 
         dialog.showAndWait().ifPresent(bt -> {
             if (bt != saveBt) return;
@@ -9827,7 +9852,7 @@ public class BenjagestUiApplication extends Application {
         flagsHint.setWrapText(true);
         flagsHint.getStyleClass().add("settings-hint");
         g.add(flagsHint, 0, 8, 2, 1);
-        dialog.getDialogPane().setContent(g);
+        dialog.getDialogPane().setContent(dialogScroll(g));
 
         dialog.showAndWait().ifPresent(bt -> {
             if (bt != saveBt) return;
@@ -10159,7 +10184,7 @@ public class BenjagestUiApplication extends Application {
         g.add(new Label(t("labor.contract.editor.status")), 2, row); g.add(statusCombo, 3, row); row++;
         g.add(new Label(t("labor.contract.editor.workplace")), 0, row); g.add(workplaceField, 1, row, 3, 1);
 
-        dialog.getDialogPane().setContent(g);
+        dialog.getDialogPane().setContent(dialogScroll(g));
         dialog.showAndWait().ifPresent(bt -> {
             if (bt != saveBt) return;
             com.benjagest.ui.model.ContractEntry payload = new com.benjagest.ui.model.ContractEntry(
@@ -10722,7 +10747,7 @@ public class BenjagestUiApplication extends Application {
         g.add(new Label(t("dehu.editor.url")), 2, row); g.add(urlField, 3, row); row++;
         g.add(new Label(t("dehu.editor.notes")), 0, row); g.add(notes, 1, row, 3, 1);
 
-        dialog.getDialogPane().setContent(g);
+        dialog.getDialogPane().setContent(dialogScroll(g));
         dialog.showAndWait().ifPresent(bt -> {
             if (bt != saveBt) return;
             com.benjagest.ui.model.DehuNotificationEntry payload = new com.benjagest.ui.model.DehuNotificationEntry(
