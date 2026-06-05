@@ -44,18 +44,20 @@ public class AdvisoryInvitationApiClient {
         appendStr(json, "invitedCompanyName", invitedCompanyName, false);
         appendStr(json, "notes", notes, false);
         json.append("}");
-        return postOne("/advisory/invitations", json.toString(), 201);
+        // Como asesoría: estos endpoints solo aceptan el tenant de la
+        // asesoría real, no del cliente que pudiera estar activo en la UI.
+        return postOneAsOwner("/advisory/invitations", json.toString(), 201);
     }
 
     public List<AdvisoryInvitationEntry> listMine() throws IOException, InterruptedException {
-        return parseList(get("/advisory/invitations"));
+        return parseList(getAsOwner("/advisory/invitations"));
     }
 
     public void revoke(String id) throws IOException, InterruptedException {
         HttpRequest.Builder b = HttpRequest.newBuilder(
                         URI.create(baseUrl + "/advisory/invitations/" + id))
                 .timeout(Duration.ofSeconds(10)).DELETE();
-        AuthSession.get().authorize(b);
+        AuthSession.get().authorizeAsOwner(b);
         HttpResponse<String> r = httpClient.send(b.build(), HttpResponse.BodyHandlers.ofString());
         if (r.statusCode() < 200 || r.statusCode() >= 300) {
             throw new IOException("HTTP " + r.statusCode() + ": " + r.body());
@@ -121,6 +123,19 @@ public class AdvisoryInvitationApiClient {
         return r.body();
     }
 
+    /** Versión "como asesoría": ignora actingFor para llamadas
+     *  de la propia asesoría que no deben heredar el cliente activo. */
+    private String getAsOwner(String path) throws IOException, InterruptedException {
+        HttpRequest.Builder b = HttpRequest.newBuilder(URI.create(baseUrl + path))
+                .timeout(Duration.ofSeconds(10)).GET();
+        AuthSession.get().authorizeAsOwner(b);
+        HttpResponse<String> r = httpClient.send(b.build(), HttpResponse.BodyHandlers.ofString());
+        if (r.statusCode() < 200 || r.statusCode() >= 300) {
+            throw new IOException("HTTP " + r.statusCode() + ": " + r.body());
+        }
+        return r.body();
+    }
+
     private AdvisoryInvitationEntry postOne(String path, String body, int expectStatus)
             throws IOException, InterruptedException {
         HttpRequest.Builder b = HttpRequest.newBuilder(URI.create(baseUrl + path))
@@ -132,6 +147,26 @@ public class AdvisoryInvitationApiClient {
             b.POST(HttpRequest.BodyPublishers.ofString(body));
         }
         AuthSession.get().authorize(b);
+        HttpResponse<String> r = httpClient.send(b.build(), HttpResponse.BodyHandlers.ofString());
+        if (r.statusCode() != expectStatus
+                && (r.statusCode() < 200 || r.statusCode() >= 300)) {
+            throw new IOException("HTTP " + r.statusCode() + ": " + r.body());
+        }
+        return parseOne(r.body());
+    }
+
+    /** Versión "como asesoría" del POST. */
+    private AdvisoryInvitationEntry postOneAsOwner(String path, String body, int expectStatus)
+            throws IOException, InterruptedException {
+        HttpRequest.Builder b = HttpRequest.newBuilder(URI.create(baseUrl + path))
+                .timeout(Duration.ofSeconds(15))
+                .header("Content-Type", "application/json");
+        if (body == null || body.isEmpty()) {
+            b.POST(HttpRequest.BodyPublishers.noBody());
+        } else {
+            b.POST(HttpRequest.BodyPublishers.ofString(body));
+        }
+        AuthSession.get().authorizeAsOwner(b);
         HttpResponse<String> r = httpClient.send(b.build(), HttpResponse.BodyHandlers.ofString());
         if (r.statusCode() != expectStatus
                 && (r.statusCode() < 200 || r.statusCode() >= 300)) {

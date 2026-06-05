@@ -220,7 +220,12 @@ public class AltaApiClient {
      */
     public List<com.benjagest.ui.model.CustomerPortfolioEntry> listAdvisoryPortfolio()
             throws IOException, InterruptedException {
-        HttpResponse<String> r = send(req(baseUrl + "/advisory/clients/portfolio").GET());
+        // sendAsOwner: el polling necesita ejecutarse como la asesoría
+        // incluso cuando la UI está actuando en nombre de un cliente.
+        // De lo contrario el cliente recibe el X-Company-Id, el endpoint
+        // /api/advisory devuelve 403 (sin módulo advisory) y el polling
+        // deja de detectar desvinculaciones del propio cliente activo.
+        HttpResponse<String> r = sendAsOwner(req(baseUrl + "/advisory/clients/portfolio").GET());
         return parseObjects(r.body(), "legalName", obj -> new com.benjagest.ui.model.CustomerPortfolioEntry(
                 textField(obj, "customerId"),
                 textField(obj, "legalName"),
@@ -356,6 +361,21 @@ public class AltaApiClient {
 
     private HttpResponse<String> send(HttpRequest.Builder builder) throws IOException, InterruptedException {
         AuthSession.get().authorize(builder);
+        HttpResponse<String> r = httpClient.send(builder.build(), HttpResponse.BodyHandlers.ofString());
+        if (r.statusCode() < 200 || r.statusCode() >= 300) {
+            throw new IOException("HTTP " + r.statusCode() + ": " + r.body());
+        }
+        return r;
+    }
+
+    /**
+     * Variante de {@link #send} que ignora el override actingFor y manda
+     * el X-Company-Id real de la asesoría. Usar para llamadas que deben
+     * ejecutarse "como la asesoría" incluso si la UI está actuando en
+     * nombre de un cliente (polling de cartera, invitaciones).
+     */
+    private HttpResponse<String> sendAsOwner(HttpRequest.Builder builder) throws IOException, InterruptedException {
+        AuthSession.get().authorizeAsOwner(builder);
         HttpResponse<String> r = httpClient.send(builder.build(), HttpResponse.BodyHandlers.ofString());
         if (r.statusCode() < 200 || r.statusCode() >= 300) {
             throw new IOException("HTTP " + r.statusCode() + ": " + r.body());
