@@ -3815,6 +3815,7 @@ public class BenjagestUiApplication extends Application {
         TableColumn<AuditEvent, String> colSeq = new TableColumn<>(t("settings.audit.col.seq"));
         colSeq.setCellValueFactory(c -> new SimpleStringProperty(
                 c.getValue().sequenceNumber() == null ? "—" : c.getValue().sequenceNumber().toString()));
+        colSeq.setComparator(NUMERIC_STRING_COMPARATOR);
         colSeq.setPrefWidth(60);
         TableColumn<AuditEvent, String> colUser = new TableColumn<>(t("settings.audit.col.user"));
         // Muestra el display_name humano resuelto en backend. Si el
@@ -5315,10 +5316,12 @@ public class BenjagestUiApplication extends Application {
         sFormat.setPrefWidth(180);
         TableColumn<SeriesEntry, String> sNext = new TableColumn<>(t("billing.config.series.col.next"));
         sNext.setCellValueFactory(c -> new SimpleStringProperty(String.valueOf(c.getValue().nextNumber())));
+        sNext.setComparator(NUMERIC_STRING_COMPARATOR);
         sNext.setPrefWidth(140);
         TableColumn<SeriesEntry, String> sYear = new TableColumn<>(t("billing.config.series.col.year"));
         sYear.setCellValueFactory(c -> new SimpleStringProperty(
                 c.getValue().currentYear() == null ? "—" : String.valueOf(c.getValue().currentYear())));
+        sYear.setComparator(NUMERIC_STRING_COMPARATOR);
         sYear.setPrefWidth(70);
         seriesTable.getColumns().addAll(List.of(sCode, sKind, sFormat, sNext, sYear));
         seriesTable.setItems(FXCollections.observableArrayList(series));
