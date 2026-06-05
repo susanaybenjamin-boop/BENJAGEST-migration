@@ -1729,6 +1729,13 @@ public class BenjagestUiApplication extends Application {
     private final com.benjagest.ui.service.CertificateApiClient certificateApi =
             new com.benjagest.ui.service.CertificateApiClient();
 
+    private final com.benjagest.ui.service.PurchaseInvoiceApiClient purchasesApi =
+            new com.benjagest.ui.service.PurchaseInvoiceApiClient();
+
+    private TableView<com.benjagest.ui.model.PurchaseInvoiceEntry> purchaseInvoicesTable;
+    private ComboBox<String> purchaseYearFilter;
+    private ComboBox<String> purchaseStatusFilter;
+
     private void showPurchasesWithImport() {
         Label header = label(t("purchases.header"), "settings-section-title");
         Label hint = new Label(t("purchases.hint"));
@@ -1737,15 +1744,166 @@ public class BenjagestUiApplication extends Application {
 
         Button importBtn = new Button(t("purchases.action.import_pdf"));
         importBtn.setGraphic(icon("fas-file-import"));
+        importBtn.getStyleClass().add("button-primary");
         importBtn.setOnAction(ev -> importPurchasePdf());
 
-        Label placeholder = new Label(t("purchases.placeholder.coming_soon"));
-        placeholder.setWrapText(true);
-        placeholder.getStyleClass().add("settings-hint");
+        // Filtros: año + estado.
+        purchaseYearFilter = new ComboBox<>();
+        purchaseYearFilter.getItems().add(t("list.filter.all"));
+        int currentYear = java.time.LocalDate.now().getYear();
+        for (int y = currentYear; y >= currentYear - 5; y--) purchaseYearFilter.getItems().add(String.valueOf(y));
+        purchaseYearFilter.getSelectionModel().selectFirst();
 
-        VBox body = new VBox(16, header, hint, importBtn, placeholder);
+        purchaseStatusFilter = new ComboBox<>();
+        purchaseStatusFilter.getItems().addAll(
+                t("list.filter.all"),
+                t("purchases.status.posted"),
+                t("purchases.status.void"));
+        purchaseStatusFilter.getSelectionModel().selectFirst();
+
+        Button reloadBtn = new Button(t("purchases.action.refresh"));
+        reloadBtn.setGraphic(icon("fas-sync"));
+        reloadBtn.setOnAction(ev -> reloadPurchaseInvoices());
+
+        HBox filters = new HBox(8,
+                new Label(t("purchases.filter.year")), purchaseYearFilter,
+                new Label(t("purchases.filter.status")), purchaseStatusFilter,
+                reloadBtn);
+        filters.setAlignment(Pos.CENTER_LEFT);
+
+        purchaseInvoicesTable = new TableView<>();
+        purchaseInvoicesTable.getStyleClass().add("data-table");
+        purchaseInvoicesTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+        purchaseInvoicesTable.setPlaceholder(new Label(t("purchases.placeholder.empty")));
+
+        TableColumn<com.benjagest.ui.model.PurchaseInvoiceEntry, String> colDate =
+                new TableColumn<>(t("purchases.col.date"));
+        colDate.setCellValueFactory(c -> new SimpleStringProperty(
+                c.getValue().invoiceDate() == null ? "—" : c.getValue().invoiceDate().toString()));
+        colDate.setPrefWidth(105);
+        colDate.setComparator(ISO_DATE_COMPARATOR);
+
+        TableColumn<com.benjagest.ui.model.PurchaseInvoiceEntry, String> colSupplier =
+                new TableColumn<>(t("purchases.col.supplier"));
+        colSupplier.setCellValueFactory(c -> new SimpleStringProperty(
+                c.getValue().supplierName() == null ? "—" : c.getValue().supplierName()));
+        colSupplier.setPrefWidth(220);
+
+        TableColumn<com.benjagest.ui.model.PurchaseInvoiceEntry, String> colNif =
+                new TableColumn<>(t("purchases.col.nif"));
+        colNif.setCellValueFactory(c -> new SimpleStringProperty(
+                c.getValue().supplierNif() == null ? "—" : c.getValue().supplierNif()));
+        colNif.setPrefWidth(110);
+
+        TableColumn<com.benjagest.ui.model.PurchaseInvoiceEntry, String> colNumber =
+                new TableColumn<>(t("purchases.col.number"));
+        colNumber.setCellValueFactory(c -> new SimpleStringProperty(
+                c.getValue().invoiceNumber() == null ? "—" : c.getValue().invoiceNumber()));
+        colNumber.setPrefWidth(150);
+
+        TableColumn<com.benjagest.ui.model.PurchaseInvoiceEntry, String> colBase =
+                new TableColumn<>(t("purchases.col.base"));
+        colBase.setCellValueFactory(c -> new SimpleStringProperty(
+                c.getValue().baseAmount() == null ? "—"
+                        : c.getValue().baseAmount().toPlainString() + " €"));
+        colBase.setPrefWidth(100);
+        colBase.setComparator(NUMERIC_STRING_COMPARATOR);
+
+        TableColumn<com.benjagest.ui.model.PurchaseInvoiceEntry, String> colVat =
+                new TableColumn<>(t("purchases.col.vat"));
+        colVat.setCellValueFactory(c -> new SimpleStringProperty(
+                c.getValue().vatAmount() == null ? "—"
+                        : c.getValue().vatAmount().toPlainString() + " €"));
+        colVat.setPrefWidth(100);
+        colVat.setComparator(NUMERIC_STRING_COMPARATOR);
+
+        TableColumn<com.benjagest.ui.model.PurchaseInvoiceEntry, String> colTotal =
+                new TableColumn<>(t("purchases.col.total"));
+        colTotal.setCellValueFactory(c -> new SimpleStringProperty(
+                c.getValue().totalAmount() == null ? "—"
+                        : c.getValue().totalAmount().toPlainString() + " €"));
+        colTotal.setPrefWidth(110);
+        colTotal.setComparator(NUMERIC_STRING_COMPARATOR);
+
+        TableColumn<com.benjagest.ui.model.PurchaseInvoiceEntry, String> colStatus =
+                new TableColumn<>(t("purchases.col.status"));
+        colStatus.setCellValueFactory(c -> new SimpleStringProperty(
+                c.getValue().isVoid() ? "✗ " + t("purchases.status.void")
+                        : (c.getValue().hasJournal() ? "✓ " + t("purchases.status.posted_journal")
+                                : "✓ " + t("purchases.status.posted"))));
+        colStatus.setPrefWidth(140);
+
+        purchaseInvoicesTable.getColumns().setAll(
+                colDate, colSupplier, colNif, colNumber, colBase, colVat, colTotal, colStatus);
+
+        Button voidBtn = new Button(t("purchases.action.void"));
+        voidBtn.setGraphic(icon("fas-ban"));
+        voidBtn.setDisable(true);
+        voidBtn.setOnAction(ev -> {
+            var sel = purchaseInvoicesTable.getSelectionModel().getSelectedItem();
+            if (sel != null) voidPurchaseInvoice(sel);
+        });
+        purchaseInvoicesTable.getSelectionModel().selectedItemProperty()
+                .addListener((o, ov, nv) -> voidBtn.setDisable(nv == null || nv.isVoid()));
+
+        HBox actions = new HBox(10, importBtn, voidBtn);
+
+        VBox body = new VBox(12, header, hint, filters, purchaseInvoicesTable, actions);
+        VBox.setVgrow(purchaseInvoicesTable, Priority.ALWAYS);
         body.setPadding(new Insets(20));
-        setCenterAnimated(scroll(body));
+
+        reloadPurchaseInvoices();
+        setCenterAnimated(body);
+    }
+
+    private void reloadPurchaseInvoices() {
+        if (purchaseInvoicesTable == null) return;
+        Integer year = parseYearFilter(purchaseYearFilter.getValue());
+        String status = parseStatusFilter(purchaseStatusFilter.getValue());
+        Task<java.util.List<com.benjagest.ui.model.PurchaseInvoiceEntry>> task = new Task<>() {
+            @Override
+            protected java.util.List<com.benjagest.ui.model.PurchaseInvoiceEntry> call() throws Exception {
+                return purchasesApi.list(year, status, null);
+            }
+        };
+        task.setOnSucceeded(e -> purchaseInvoicesTable.getItems().setAll(task.getValue()));
+        task.setOnFailed(e -> showError(t("purchases.list.fail.title"),
+                t("purchases.list.fail.body")));
+        start(task, "purchases-list");
+    }
+
+    private Integer parseYearFilter(String text) {
+        if (text == null || text.equals(t("list.filter.all"))) return null;
+        try { return Integer.parseInt(text); } catch (Exception ex) { return null; }
+    }
+
+    private String parseStatusFilter(String text) {
+        if (text == null || text.equals(t("list.filter.all"))) return null;
+        if (text.equals(t("purchases.status.posted"))) return "POSTED";
+        if (text.equals(t("purchases.status.void"))) return "VOID";
+        return null;
+    }
+
+    private void voidPurchaseInvoice(com.benjagest.ui.model.PurchaseInvoiceEntry row) {
+        Alert confirm = new Alert(Alert.AlertType.CONFIRMATION,
+                t("purchases.confirm.void.body") + "\n\n"
+                        + (row.supplierName() == null ? "" : row.supplierName() + "  ")
+                        + (row.invoiceNumber() == null ? "" : "#" + row.invoiceNumber()),
+                ButtonType.OK, ButtonType.CANCEL);
+        confirm.setHeaderText(t("purchases.confirm.void.title"));
+        confirm.showAndWait().filter(b -> b == ButtonType.OK).ifPresent(b -> {
+            Task<Void> task = new Task<>() {
+                @Override
+                protected Void call() throws Exception {
+                    purchasesApi.voidInvoice(row.id());
+                    return null;
+                }
+            };
+            task.setOnSucceeded(e -> reloadPurchaseInvoices());
+            task.setOnFailed(e -> showError(t("purchases.void.fail.title"),
+                    t("purchases.void.fail.body")));
+            start(task, "purchase-invoice-void");
+        });
     }
 
     private void importPurchasePdf() {
@@ -1775,7 +1933,7 @@ public class BenjagestUiApplication extends Application {
             int n = invoices.size();
             for (int i = 0; i < n; i++) {
                 String suffix = n > 1 ? "  (" + (i + 1) + "/" + n + ")" : "";
-                showExtractionResult(invoices.get(i), file.getName() + suffix);
+                showExtractionResult(invoices.get(i), file.getName() + suffix, i);
             }
         });
         task.setOnFailed(ev -> showError(t("purchases.import.fail.title"),
@@ -1824,7 +1982,7 @@ public class BenjagestUiApplication extends Application {
         return out;
     }
 
-    private void showExtractionResult(String json, String filename) {
+    private void showExtractionResult(String json, String filename, int invoiceIndex) {
         // Diálogo EDITABLE: el usuario corrige los campos que el
         // extractor no acertó y puede guardar la corrección como
         // plantilla para futuras facturas del mismo NIF de proveedor.
@@ -1846,10 +2004,13 @@ public class BenjagestUiApplication extends Application {
         Dialog<ButtonType> dialog = new Dialog<>();
         dialog.setTitle(t("purchases.import.result_prefix") + filename);
         ButtonType acceptBt = new ButtonType(t("purchases.import.action.accept"),
+                ButtonBar.ButtonData.CANCEL_CLOSE);
+        ButtonType saveExpenseBt = new ButtonType(t("purchases.import.action.save_expense"),
                 ButtonBar.ButtonData.OK_DONE);
         ButtonType saveTemplateBt = new ButtonType(t("purchases.import.action.save_template"),
                 ButtonBar.ButtonData.LEFT);
-        dialog.getDialogPane().getButtonTypes().addAll(saveTemplateBt, acceptBt, ButtonType.CANCEL);
+        dialog.getDialogPane().getButtonTypes().addAll(
+                saveTemplateBt, saveExpenseBt, acceptBt);
 
         TextField supplierField = new TextField(supplier);
         TextField emitterField = new TextField(emitter);
@@ -1952,7 +2113,67 @@ public class BenjagestUiApplication extends Application {
             start(task, "pdf-template-save");
         });
 
+        // Botón "Guardar gasto" — persiste la factura como purchase_invoice,
+        // intenta crear asiento contable (si la empresa tiene PGC + fiscal
+        // year), maneja dedup 409. Cierra el diálogo en éxito.
+        Button saveExpense = (Button) dialog.getDialogPane().lookupButton(saveExpenseBt);
+        saveExpense.getStyleClass().add("button-primary");
+        saveExpense.addEventFilter(javafx.event.ActionEvent.ACTION, ev -> {
+            ev.consume();
+            var payload = new com.benjagest.ui.service.PurchaseInvoiceApiClient.SavePayload();
+            payload.supplierNif = nullIfBlank(emitterField.getText());
+            payload.supplierName = nullIfBlank(supplierField.getText());
+            payload.invoiceNumber = nullIfBlank(numberField.getText());
+            payload.invoiceDate = parseDateSafe(dateField.getText());
+            payload.baseAmount = parseDecimalSafe(baseField.getText());
+            payload.vatPercent = parseDecimalSafe(vatPctField.getText());
+            payload.vatAmount = parseDecimalSafe(vatAmtField.getText());
+            payload.totalAmount = parseDecimalSafe(totalField.getText());
+            payload.documentSha256 = nullIfBlank(hash);
+            payload.invoiceIndexInPdf = invoiceIndex;
+            // Validación mínima: necesitamos al menos total o base+iva.
+            if (payload.totalAmount == null
+                    && (payload.baseAmount == null || payload.vatAmount == null)) {
+                showError(t("purchases.save.fail.missing.title"),
+                        t("purchases.save.fail.missing.body"));
+                return;
+            }
+            Task<com.benjagest.ui.service.PurchaseInvoiceApiClient.SaveOutcome> task = new Task<>() {
+                @Override
+                protected com.benjagest.ui.service.PurchaseInvoiceApiClient.SaveOutcome call()
+                        throws Exception {
+                    return purchasesApi.save(payload);
+                }
+            };
+            task.setOnSucceeded(e -> {
+                var outcome = task.getValue();
+                if (outcome.duplicate()) {
+                    showInfo(t("purchases.save.duplicate.title"),
+                            t("purchases.save.duplicate.body"));
+                } else {
+                    showInfo(t("purchases.save.ok.title"),
+                            t("purchases.save.ok.body"));
+                }
+                dialog.setResult(saveExpenseBt);
+                dialog.close();
+            });
+            task.setOnFailed(e -> showError(t("purchases.save.fail.title"),
+                    t("purchases.save.fail.body")));
+            start(task, "purchase-invoice-save");
+        });
+
         dialog.showAndWait();
+    }
+
+    /** Parser seguro para BigDecimal; admite coma o punto decimal y "—". */
+    private java.math.BigDecimal parseDecimalSafe(String text) {
+        if (text == null || text.isBlank() || "—".equals(text.trim())) return null;
+        try { return new java.math.BigDecimal(text.trim().replace(",", ".")); }
+        catch (Exception ex) { return null; }
+    }
+
+    private String nullIfBlank(String s) {
+        return (s == null || s.isBlank()) ? null : s.trim();
     }
 
     private String confidenceLabel(String code) {
@@ -6697,6 +6918,37 @@ public class BenjagestUiApplication extends Application {
                 case "purchases.hint" -> "Upload a received invoice as PDF — BENJAGEST extracts the issuer NIF, date, base, VAT and total automatically (no AI, just regex on the embedded text). Scanned PDFs require OCR — coming in a follow-up slice.";
                 case "purchases.action.import_pdf" -> "Import PDF invoice";
                 case "purchases.placeholder.coming_soon" -> "The full Purchases module (supplier list, recurring expenses, payment status) is on the roadmap. Today only the PDF importer is available — the detected fields are shown for review but not persisted yet.";
+                case "purchases.placeholder.empty" -> "No expenses recorded yet. Use 'Import PDF' to add the first one.";
+                case "purchases.filter.year" -> "Year:";
+                case "purchases.filter.status" -> "Status:";
+                case "purchases.action.refresh" -> "Refresh";
+                case "purchases.action.void" -> "Void";
+                case "purchases.col.date" -> "Date";
+                case "purchases.col.supplier" -> "Supplier";
+                case "purchases.col.nif" -> "Tax ID";
+                case "purchases.col.number" -> "Invoice #";
+                case "purchases.col.base" -> "Base";
+                case "purchases.col.vat" -> "VAT";
+                case "purchases.col.total" -> "Total";
+                case "purchases.col.status" -> "Status";
+                case "purchases.status.posted" -> "Recorded";
+                case "purchases.status.posted_journal" -> "Recorded + journal";
+                case "purchases.status.void" -> "Voided";
+                case "purchases.import.action.save_expense" -> "💾 Save expense";
+                case "purchases.save.ok.title" -> "Expense saved";
+                case "purchases.save.ok.body" -> "The expense was recorded. If the company has chart of accounts active, a journal entry was also created.";
+                case "purchases.save.duplicate.title" -> "Already registered";
+                case "purchases.save.duplicate.body" -> "This invoice was already recorded (same SHA-256). The existing one is shown in the list.";
+                case "purchases.save.fail.title" -> "Could not save expense";
+                case "purchases.save.fail.body" -> "Check the connection and try again.";
+                case "purchases.save.fail.missing.title" -> "Missing data";
+                case "purchases.save.fail.missing.body" -> "At least Total (or Base + VAT) is required to save the expense.";
+                case "purchases.list.fail.title" -> "Could not load expenses";
+                case "purchases.list.fail.body" -> "Check the backend connection and your active company.";
+                case "purchases.confirm.void.title" -> "Void this expense?";
+                case "purchases.confirm.void.body" -> "The expense will be marked as Voided. If it had a journal entry, it will be reversed.";
+                case "purchases.void.fail.title" -> "Could not void";
+                case "purchases.void.fail.body" -> "Try again or check the connection.";
                 case "purchases.import.select_pdf" -> "Select PDF invoice";
                 case "purchases.import.fail.title" -> "Could not extract from PDF";
                 case "purchases.import.fail.body" -> "Maybe the PDF is scanned (no embedded text) or encrypted. Make sure the backend is running.";
@@ -7557,6 +7809,37 @@ public class BenjagestUiApplication extends Application {
             case "purchases.hint" -> "Sube una factura recibida en PDF — BENJAGEST extrae el NIF emisor, fecha, base, IVA y total automaticamente (sin IA, solo regex sobre el texto embebido). PDFs escaneados necesitan OCR — llega en un slice posterior.";
             case "purchases.action.import_pdf" -> "Importar factura PDF";
             case "purchases.placeholder.coming_soon" -> "El modulo Compras completo (proveedores, gastos recurrentes, estado cobro) esta en hoja de ruta. Hoy solo esta disponible el importador PDF — los campos detectados se muestran para revision pero todavia no se persisten.";
+            case "purchases.placeholder.empty" -> "Sin gastos registrados todavia. Usa 'Importar PDF' para anyadir el primero.";
+            case "purchases.filter.year" -> "Anio:";
+            case "purchases.filter.status" -> "Estado:";
+            case "purchases.action.refresh" -> "Refrescar";
+            case "purchases.action.void" -> "Anular";
+            case "purchases.col.date" -> "Fecha";
+            case "purchases.col.supplier" -> "Proveedor";
+            case "purchases.col.nif" -> "NIF";
+            case "purchases.col.number" -> "Nº factura";
+            case "purchases.col.base" -> "Base";
+            case "purchases.col.vat" -> "IVA";
+            case "purchases.col.total" -> "Total";
+            case "purchases.col.status" -> "Estado";
+            case "purchases.status.posted" -> "Registrado";
+            case "purchases.status.posted_journal" -> "Registrado + asiento";
+            case "purchases.status.void" -> "Anulado";
+            case "purchases.import.action.save_expense" -> "💾 Guardar gasto";
+            case "purchases.save.ok.title" -> "Gasto guardado";
+            case "purchases.save.ok.body" -> "El gasto se ha registrado. Si la empresa tiene plan contable activo, se creo tambien el asiento contable.";
+            case "purchases.save.duplicate.title" -> "Ya registrada";
+            case "purchases.save.duplicate.body" -> "Esta factura ya estaba registrada (mismo SHA-256). La existente aparece en el listado.";
+            case "purchases.save.fail.title" -> "No se pudo guardar el gasto";
+            case "purchases.save.fail.body" -> "Comprueba la conexion e intentalo de nuevo.";
+            case "purchases.save.fail.missing.title" -> "Faltan datos";
+            case "purchases.save.fail.missing.body" -> "Para guardar el gasto se requiere al menos el Total (o Base + IVA).";
+            case "purchases.list.fail.title" -> "No se pudieron cargar los gastos";
+            case "purchases.list.fail.body" -> "Comprueba la conexion con el backend y la empresa activa.";
+            case "purchases.confirm.void.title" -> "¿Anular este gasto?";
+            case "purchases.confirm.void.body" -> "El gasto pasara a estado Anulado. Si tenia asiento contable, se revertira.";
+            case "purchases.void.fail.title" -> "No se pudo anular";
+            case "purchases.void.fail.body" -> "Intentalo de nuevo o revisa la conexion.";
             case "purchases.import.select_pdf" -> "Seleccionar factura PDF";
             case "purchases.import.fail.title" -> "No se pudo extraer del PDF";
             case "purchases.import.fail.body" -> "Quiza el PDF este escaneado (sin texto embebido) o cifrado. Comprueba que el backend este en marcha.";
