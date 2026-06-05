@@ -1103,7 +1103,12 @@ public class BenjagestUiApplication extends Application {
         task.setOnSucceeded(e -> {
             showInfo(t("advisory.invitation.accept.ok.title"),
                     t("advisory.invitation.accept.ok.body"));
+            // Refresco local inmediato: banner del Home (que mostrará
+            // que ya no hay PENDING) + tick de polling (que recargará
+            // pestaña "Mi asesoría" si está visible). El polling de la
+            // asesoría se enterará en ≤5s por su propio ciclo.
             loadPendingInvitationsBanner(parentSlot);
+            pollPendingInvitations();
         });
         task.setOnFailed(e -> showError(t("advisory.invitation.accept.fail.title"),
                 t("advisory.invitation.accept.fail.body")));
@@ -1123,6 +1128,7 @@ public class BenjagestUiApplication extends Application {
             showInfo(t("advisory.invitation.reject.ok.title"),
                     t("advisory.invitation.reject.ok.body"));
             loadPendingInvitationsBanner(parentSlot);
+            pollPendingInvitations();
         });
         task.setOnFailed(e -> showError(t("advisory.invitation.reject.fail.title"),
                 t("advisory.invitation.reject.fail.body")));
@@ -3572,7 +3578,13 @@ public class BenjagestUiApplication extends Application {
                         return null;
                     }
                 };
-                task.setOnSucceeded(e -> reload.run());
+                task.setOnSucceeded(e -> {
+                    // Refresco local inmediato: la pestaña "Mi asesoría"
+                    // tiene que mostrar YA que el vínculo desapareció,
+                    // sin esperar al tick de 5s.
+                    reload.run();
+                    pollPendingInvitations();
+                });
                 task.setOnFailed(e -> showError(t("settings.my_advisory.fail.unlink.title"),
                         t("settings.my_advisory.fail.unlink.body")));
                 start(task, "my-advisory-unlink");
@@ -3597,6 +3609,7 @@ public class BenjagestUiApplication extends Application {
                         t("advisory.invitation.accept.ok.body"));
                 tokenField.clear();
                 reload.run();
+                pollPendingInvitations();
             });
             task.setOnFailed(e -> showError(t("advisory.invitation.accept.fail.title"),
                     t("advisory.invitation.accept.fail.body")));
@@ -12489,7 +12502,12 @@ public class BenjagestUiApplication extends Application {
                                 + t("advisory.invitations.token_label") + " " + inv.token());
                 dialog.setResult(saveBt);
                 dialog.close();
+                // Refresco local inmediato: la nueva invitación PENDING
+                // aparece YA en el listado + el badge de la fila del
+                // cliente en el portfolio pasa a "📩 Invitación
+                // pendiente" sin esperar al tick de 5s.
                 reloadAdvisoryInvitations();
+                pollAdvisoryClients();
             });
             task.setOnFailed(e -> showError(t("advisory.invitations.create.fail.title"),
                     t("advisory.invitations.create.fail.body")));
@@ -12512,7 +12530,14 @@ public class BenjagestUiApplication extends Application {
                     return null;
                 }
             };
-            task.setOnSucceeded(e -> reloadAdvisoryInvitations());
+            task.setOnSucceeded(e -> {
+                // Refresco local inmediato: el listado de invitaciones
+                // muestra YA la fila como REVOKED + el portfolio se
+                // actualiza para que el botón "Invitar cliente
+                // seleccionado" vuelva a habilitarse sin esperar a 5s.
+                reloadAdvisoryInvitations();
+                pollAdvisoryClients();
+            });
             task.setOnFailed(e -> showError(t("advisory.invitations.revoke.fail.title"),
                     t("advisory.invitations.revoke.fail.body")));
             start(task, "advisory-invitations-revoke");
