@@ -138,15 +138,6 @@ public class PurchaseInvoiceRepository {
         return jdbcTemplate.query(sql.toString(), this::map, args.toArray());
     }
 
-    public int updateStatus(String id, String newStatus) {
-        return jdbcTemplate.update("""
-                UPDATE purchase_invoices
-                   SET status = ?
-                 WHERE id = ?
-                   AND company_id = ?
-                """, newStatus, id, tenantContext.getCurrentCompanyId());
-    }
-
     public int updateJournalEntryFk(String id, String journalEntryId) {
         return jdbcTemplate.update("""
                 UPDATE purchase_invoices
@@ -154,6 +145,19 @@ public class PurchaseInvoiceRepository {
                  WHERE id = ?
                    AND company_id = ?
                 """, journalEntryId, id, tenantContext.getCurrentCompanyId());
+    }
+
+    /**
+     * Borrado físico. Antes de invocar, el Service revierte el asiento
+     * contable y registra el audit_event correspondiente para que la
+     * traza quede aunque la fila desaparezca.
+     */
+    public int deletePhysical(String id) {
+        return jdbcTemplate.update("""
+                DELETE FROM purchase_invoices
+                 WHERE id = ?
+                   AND company_id = ?
+                """, id, tenantContext.getCurrentCompanyId());
     }
 
     private PurchaseInvoice map(ResultSet rs, int rowNum) throws SQLException {

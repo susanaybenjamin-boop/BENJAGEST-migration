@@ -88,6 +88,26 @@ public class AuditService {
     }
 
     /**
+     * Borrado físico de factura recibida. Capturamos en el detail los
+     * datos clave (proveedor, nº, total) para que la traza sirva como
+     * libro de bajas aunque la fila ya no exista en purchase_invoices.
+     */
+    public void recordPurchaseInvoiceDeleted(String userId, String companyId,
+                                               String purchaseInvoiceId,
+                                               java.math.BigDecimal totalAmount,
+                                               String supplierName,
+                                               String invoiceNumber) {
+        String details = "{"
+                + "\"totalAmount\":\""
+                + (totalAmount == null ? "" : totalAmount.toPlainString()) + "\","
+                + "\"supplierName\":\"" + escape(supplierName) + "\","
+                + "\"invoiceNumber\":\"" + escape(invoiceNumber) + "\""
+                + "}";
+        write(companyId, userId, "PURCHASE_INVOICE_DELETED",
+                "purchase_invoice", purchaseInvoiceId, "OK", details);
+    }
+
+    /**
      * Punto unico de escritura. Si la insercion falla, NO lanza:
      * loguear es deseable pero nunca debe tumbar la operacion principal.
      */

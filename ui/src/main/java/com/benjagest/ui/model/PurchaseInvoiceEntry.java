@@ -26,6 +26,5 @@ public record PurchaseInvoiceEntry(
         String notes,
         Instant createdAt
 ) {
-    public boolean isVoid() { return "VOID".equalsIgnoreCase(status); }
     public boolean hasJournal() { return journalEntryId != null && !journalEntryId.isBlank(); }
 }
