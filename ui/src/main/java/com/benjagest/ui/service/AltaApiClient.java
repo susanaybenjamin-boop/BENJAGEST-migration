@@ -231,7 +231,8 @@ public class AltaApiClient {
                 textField(obj, "phone"),
                 textField(obj, "city"),
                 textField(obj, "linkedCompanyId"),
-                boolField(obj, "hasPendingInvitation")
+                boolField(obj, "hasPendingInvitation"),
+                boolField(obj, "wasUnlinked")
         ));
     }
 

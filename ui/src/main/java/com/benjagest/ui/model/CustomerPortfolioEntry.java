@@ -18,7 +18,8 @@ public record CustomerPortfolioEntry(
         String phone,
         String city,
         String linkedCompanyId,
-        boolean hasPendingInvitation
+        boolean hasPendingInvitation,
+        boolean wasUnlinked
 ) {
     public boolean isLinked() {
         return linkedCompanyId != null && !linkedCompanyId.isBlank();

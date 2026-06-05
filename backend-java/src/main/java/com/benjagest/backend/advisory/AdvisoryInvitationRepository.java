@@ -118,6 +118,37 @@ public class AdvisoryInvitationRepository {
                 """, newStatus, id);
     }
 
+    /**
+     * Marca una invitación como UNLINKED y sella el {@code unlinked_at}.
+     * Se llama cuando el empresario rompe el vínculo con su asesoría.
+     */
+    public int updateStatusUnlinked(String id) {
+        return jdbcTemplate.update("""
+                UPDATE advisory_invitations
+                   SET status = 'UNLINKED',
+                       unlinked_at = CURRENT_TIMESTAMP
+                 WHERE id = ?
+                """, id);
+    }
+
+    /**
+     * Devuelve la última invitación ACCEPTED para el par
+     * (asesoría, empresa cliente). Pensado para localizar qué
+     * invitación tiene que pasar a UNLINKED cuando se desvincula.
+     */
+    public Optional<AdvisoryInvitation> findLatestAcceptedByPair(
+            String advisoryCompanyId, String invitedCompanyId) {
+        return jdbcTemplate.query(
+                selectBase()
+                        + " WHERE advisory_company_id = ?"
+                        + "   AND invited_company_id = ?"
+                        + "   AND status = 'ACCEPTED'"
+                        + " ORDER BY accepted_at DESC"
+                        + " LIMIT 1",
+                this::map, advisoryCompanyId, invitedCompanyId)
+                .stream().findFirst();
+    }
+
     private String selectBase() {
         return """
                 SELECT id, advisory_company_id, invited_email, invited_nif,

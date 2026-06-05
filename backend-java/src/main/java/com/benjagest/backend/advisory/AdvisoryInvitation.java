@@ -33,4 +33,11 @@ public record AdvisoryInvitation(
     public static final String STATUS_REJECTED = "REJECTED";
     public static final String STATUS_EXPIRED = "EXPIRED";
     public static final String STATUS_REVOKED = "REVOKED";
+    /**
+     * Estado terminal cuando una invitación ACCEPTED se rompe porque
+     * el empresario desvincula a su asesoría. Se conserva la fila para
+     * histórico (auditabilidad + posibilidad de reinvitar con un
+     * click), pero deja de reflejarse como vínculo activo.
+     */
+    public static final String STATUS_UNLINKED = "UNLINKED";
 }

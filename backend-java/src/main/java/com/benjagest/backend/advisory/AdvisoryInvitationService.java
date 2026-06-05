@@ -270,6 +270,12 @@ public class AdvisoryInvitationService {
     /**
      * El empresario rompe el vínculo con su asesoría actual.
      * Después de esto puede aceptar una invitación nueva.
+     *
+     * <p>Además de borrar {@code companies.parent_company_id}, busca la
+     * invitación ACCEPTED que originó el vínculo y la marca como
+     * UNLINKED. Así la pantalla de la asesoría refleja el estado real
+     * (cliente desvinculado) en lugar de seguir mostrando "Aceptada"
+     * para siempre.
      */
     @Transactional
     public void unlinkCurrentAdvisory() {
@@ -285,6 +291,14 @@ public class AdvisoryInvitationService {
                    SET parent_company_id = NULL
                  WHERE id = ?
                 """, tenant);
+
+        // Sincronizar la invitación que originó el vínculo. Si no se
+        // encuentra (caso raro: vínculo manual previo a las
+        // invitaciones), se omite sin error — la auditoría
+        // recordAdvisoryUnlinked deja constancia del unlink igualmente.
+        repository.findLatestAcceptedByPair(currentParent, tenant)
+                .ifPresent(inv -> repository.updateStatusUnlinked(inv.id()));
+
         auditService.recordAdvisoryUnlinked(user.userId(), tenant, currentParent);
     }
 

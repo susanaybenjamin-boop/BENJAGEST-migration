@@ -81,7 +81,13 @@ public class AdvisoryService {
                            AND ai.expires_at > CURRENT_TIMESTAMP
                            AND ((ai.invited_nif IS NOT NULL AND ai.invited_nif = c.tax_identifier)
                              OR (ai.invited_email IS NOT NULL AND ai.invited_email = pc.email))
-                       )                AS pending_invitations
+                       )                AS pending_invitations,
+                       (SELECT COUNT(*) FROM advisory_invitations ai2
+                         WHERE ai2.advisory_company_id = c.company_id
+                           AND ai2.status = 'UNLINKED'
+                           AND ((ai2.invited_nif IS NOT NULL AND ai2.invited_nif = c.tax_identifier)
+                             OR (ai2.invited_email IS NOT NULL AND ai2.invited_email = pc.email))
+                       )                AS unlinked_invitations
                   FROM customers c
                   LEFT JOIN customer_contacts pc
                          ON pc.customer_id = c.id
@@ -104,7 +110,8 @@ public class AdvisoryService {
                         rs.getString("phone"),
                         rs.getString("city"),
                         rs.getString("linked_company_id"),
-                        rs.getInt("pending_invitations") > 0
+                        rs.getInt("pending_invitations") > 0,
+                        rs.getInt("unlinked_invitations") > 0
                 ),
                 tenantContext.getCurrentCompanyId());
     }
@@ -112,6 +119,11 @@ public class AdvisoryService {
     /**
      * Vista UI del portfolio: customer + flag de vínculo + invitación
      * pendiente. Reemplaza ManagedClient en la pantalla "Mis clientes".
+     *
+     * <p>{@code wasUnlinked} indica que existe una invitación previa
+     * en estado UNLINKED — es decir, el cliente estuvo vinculado pero
+     * desvinculó. Permite a la UI distinguir entre "nunca vinculado"
+     * (badge gris) y "estuvo vinculado y rompió" (badge rojo).
      */
     public record CustomerPortfolioEntry(
             String customerId,
@@ -123,7 +135,8 @@ public class AdvisoryService {
             String phone,
             String city,
             String linkedCompanyId,
-            boolean hasPendingInvitation
+            boolean hasPendingInvitation,
+            boolean wasUnlinked
     ) {
         public boolean isLinked() { return linkedCompanyId != null && !linkedCompanyId.isBlank(); }
     }

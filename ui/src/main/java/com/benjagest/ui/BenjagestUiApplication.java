@@ -9812,6 +9812,7 @@ public class BenjagestUiApplication extends Application {
             case "advisory.invitations.status.REJECTED" -> "Rejected";
             case "advisory.invitations.status.REVOKED" -> "Revoked";
             case "advisory.invitations.status.EXPIRED" -> "Expired";
+            case "advisory.invitations.status.UNLINKED" -> "Unlinked";
             case "advisory.invitations.action.refresh" -> "Refresh";
             case "advisory.invitations.action.copy_link" -> "Copy token";
             case "advisory.invitations.action.revoke" -> "Revoke";
@@ -9865,6 +9866,7 @@ public class BenjagestUiApplication extends Application {
             case "advisory.link.linked" -> "Linked";
             case "advisory.link.pending" -> "Invitation pending";
             case "advisory.link.not_linked" -> "Not linked";
+            case "advisory.link.unlinked" -> "Unlinked by client";
             case "advisory.toast.unlinked.title" -> "Client unlinked";
             case "advisory.toast.unlinked.body" -> "A client has just unlinked from your advisory firm. The portfolio has been updated.";
             case "settings.my_advisory.paste_token.title" -> "Have an invitation token?";
@@ -9928,6 +9930,7 @@ public class BenjagestUiApplication extends Application {
             case "advisory.invitations.status.REJECTED" -> "Rechazada";
             case "advisory.invitations.status.REVOKED" -> "Revocada";
             case "advisory.invitations.status.EXPIRED" -> "Caducada";
+            case "advisory.invitations.status.UNLINKED" -> "Desvinculada";
             case "advisory.invitations.action.refresh" -> "Refrescar";
             case "advisory.invitations.action.copy_link" -> "Copiar token";
             case "advisory.invitations.action.revoke" -> "Revocar";
@@ -9981,6 +9984,7 @@ public class BenjagestUiApplication extends Application {
             case "advisory.link.linked" -> "Vinculado";
             case "advisory.link.pending" -> "Invitacion pendiente";
             case "advisory.link.not_linked" -> "Sin vincular";
+            case "advisory.link.unlinked" -> "Desvinculado por el cliente";
             case "advisory.toast.unlinked.title" -> "Cliente desvinculado";
             case "advisory.toast.unlinked.body" -> "Un cliente acaba de desvincularse de tu asesoria. La cartera se ha actualizado.";
             case "settings.my_advisory.paste_token.title" -> "¿Tienes un token de invitacion?";
@@ -12002,9 +12006,10 @@ public class BenjagestUiApplication extends Application {
         colLinked.setCellValueFactory(c -> {
             var entry = c.getValue();
             String label;
-            if (entry.isLinked())            label = "✓ " + t("advisory.link.linked");
+            if (entry.isLinked())                  label = "✓ " + t("advisory.link.linked");
             else if (entry.hasPendingInvitation()) label = "📩 " + t("advisory.link.pending");
-            else                                  label = "✗ " + t("advisory.link.not_linked");
+            else if (entry.wasUnlinked())          label = "⚠ " + t("advisory.link.unlinked");
+            else                                   label = "✗ " + t("advisory.link.not_linked");
             return new SimpleStringProperty(label);
         });
         colLinked.setPrefWidth(160);
