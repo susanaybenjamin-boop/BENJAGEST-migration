@@ -35,6 +35,17 @@ public final class AuthSession {
     private String roleInActiveCompany;
     private List<Membership> memberships = List.of();
 
+    /**
+     * Override transitorio del X-Company-Id que se envía en el header.
+     * Lo usa el modo asesoría: cuando un asesor abre la pantalla de
+     * gestión de un cliente, las llamadas van con X-Company-Id=cliente
+     * pero el activeCompanyId real (la asesoría) NO cambia. Así el
+     * asesor nunca pierde su contexto y el sidebar sigue siendo el suyo.
+     *
+     * Cuando es null, se usa activeCompanyId (comportamiento normal).
+     */
+    private String actingForCompanyId;
+
     private AuthSession() {
     }
 
@@ -63,13 +74,14 @@ public final class AuthSession {
     public HttpRequest.Builder authorize(HttpRequest.Builder builder) {
         if (isAuthenticated()) {
             builder.header("Authorization", "Bearer " + accessToken);
-            // Tenant switching (asesoría multi-cliente): si la sesión
-            // tiene una empresa activa, la enviamos como header. El
-            // RequestScopedTenantContext del backend lo aplica para esa
-            // peticion. Asi una gestoría puede cambiar de cliente sin
-            // re-loguearse.
-            if (activeCompanyId != null && !activeCompanyId.isBlank()) {
-                builder.header("X-Company-Id", activeCompanyId);
+            // X-Company-Id: si hay un override de "acting for" (asesor
+            // gestionando un cliente) lo usamos. Si no, el activeCompanyId
+            // normal de la sesión.
+            String header = (actingForCompanyId != null && !actingForCompanyId.isBlank())
+                    ? actingForCompanyId
+                    : activeCompanyId;
+            if (header != null && !header.isBlank()) {
+                builder.header("X-Company-Id", header);
             }
         }
         return builder;
@@ -82,6 +94,23 @@ public final class AuthSession {
      */
     public void setActiveCompanyId(String companyId) {
         this.activeCompanyId = companyId;
+    }
+
+    /**
+     * Setea el override "acting for" para que las próximas llamadas
+     * envíen X-Company-Id={clientId} sin cambiar el activeCompanyId
+     * real. Sirve a la asesoría para abrir la pantalla de un cliente.
+     */
+    public void setActingForCompanyId(String clientId) {
+        this.actingForCompanyId = clientId;
+    }
+
+    public String getActingForCompanyId() {
+        return actingForCompanyId;
+    }
+
+    public boolean isActingForClient() {
+        return actingForCompanyId != null && !actingForCompanyId.isBlank();
     }
 
     public void update(
@@ -133,6 +162,7 @@ public final class AuthSession {
         activeCompanyLegalName = null;
         activeCompanyType = null;
         roleInActiveCompany = null;
+        actingForCompanyId = null;
         memberships = List.of();
     }
 

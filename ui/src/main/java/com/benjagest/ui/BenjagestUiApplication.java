@@ -636,6 +636,7 @@ public class BenjagestUiApplication extends Application {
         root.setLeft(sidebarScroll);
         root.setBottom(footer());
         startInvitationsPolling();
+        startAdvisoryClientsPolling();
     }
 
     /**
@@ -664,8 +665,77 @@ public class BenjagestUiApplication extends Application {
         dashboardInvitationsSlot = null;
     }
 
+    /**
+     * Polling para la asesoría: cada 30s comprueba si han aparecido
+     * clientes nuevos (típicamente porque alguien acaba de aceptar
+     * una invitación). Solo arranca si appMode == ADVISORY.
+     */
+    private void startAdvisoryClientsPolling() {
+        if (advisoryClientsPoller != null || appMode != AppMode.ADVISORY) return;
+        advisoryClientsPoller = new javafx.animation.Timeline(
+                new javafx.animation.KeyFrame(
+                        javafx.util.Duration.seconds(30),
+                        ev -> pollAdvisoryClients()));
+        advisoryClientsPoller.setCycleCount(javafx.animation.Animation.INDEFINITE);
+        advisoryClientsPoller.play();
+        pollAdvisoryClients();
+    }
+
+    private void stopAdvisoryClientsPolling() {
+        if (advisoryClientsPoller != null) {
+            advisoryClientsPoller.stop();
+            advisoryClientsPoller = null;
+        }
+        seenManagedClientIds.clear();
+        advisoryClientsBootstrapped = false;
+        advisoryClientsLiveTable = null;
+    }
+
+    private void pollAdvisoryClients() {
+        if (!com.benjagest.ui.service.AuthSession.get().isAuthenticated()) return;
+        if (appMode != AppMode.ADVISORY) return;
+        Task<java.util.List<com.benjagest.ui.model.ManagedClientEntry>> task = new Task<>() {
+            @Override
+            protected java.util.List<com.benjagest.ui.model.ManagedClientEntry> call() throws Exception {
+                return altaApiClient.listManagedClients();
+            }
+        };
+        task.setOnSucceeded(e -> {
+            var list = task.getValue();
+            if (list == null) list = java.util.List.of();
+            boolean hadNewOnes = false;
+            if (advisoryClientsBootstrapped) {
+                for (var c : list) {
+                    if (c.id() != null && seenManagedClientIds.add(c.id())) {
+                        hadNewOnes = true;
+                    }
+                }
+            } else {
+                for (var c : list) if (c.id() != null) seenManagedClientIds.add(c.id());
+                advisoryClientsBootstrapped = true;
+            }
+            // Refrescar tabla si está visible.
+            if (advisoryClientsLiveTable != null
+                    && advisoryClientsLiveTable.getScene() != null) {
+                advisoryClientsLiveTable.getItems().setAll(list);
+            }
+            // Notificar si hay clientes nuevos y NO estamos en la
+            // pantalla de Mis clientes.
+            if (hadNewOnes && (advisoryClientsLiveTable == null
+                    || advisoryClientsLiveTable.getScene() == null)) {
+                showInfo(t("advisory.toast.new_client.title"),
+                        t("advisory.toast.new_client.body"));
+            }
+        });
+        task.setOnFailed(e -> { /* silencio */ });
+        start(task, "advisory-clients-poll");
+    }
+
     private void pollPendingInvitations() {
         if (!com.benjagest.ui.service.AuthSession.get().isAuthenticated()) return;
+        // Las invitaciones solo tienen sentido para CLIENTs — una
+        // asesoría no recibe invitaciones de otra asesoría. Saltamos.
+        if (appMode == AppMode.ADVISORY) return;
         Task<java.util.List<com.benjagest.ui.model.AdvisoryInvitationEntry>> task = new Task<>() {
             @Override
             protected java.util.List<com.benjagest.ui.model.AdvisoryInvitationEntry> call() throws Exception {
@@ -741,6 +811,7 @@ public class BenjagestUiApplication extends Application {
             // estado local. Asi, si alguien recupera ese refresh ya no
             // sirve para generar mas accesses.
             stopInvitationsPolling();
+            stopAdvisoryClientsPolling();
             authApiClient.logout();
             session = null;
             activeModulesCache = List.of();
@@ -991,12 +1062,14 @@ public class BenjagestUiApplication extends Application {
 
         content.getChildren().add(hero);
 
-        // Banner de invitaciones pendientes — solo cuando el empresario
-        // (CLIENT) tiene alguna invitación PENDING. Se inserta justo
-        // tras el hero para que sea lo primero que ve al loguearse.
-        VBox invBannerSlot = new VBox();
-        content.getChildren().add(invBannerSlot);
-        loadPendingInvitationsBanner(invBannerSlot);
+        // Banner de invitaciones pendientes — solo se carga si el
+        // usuario es CLIENT (las asesorías no reciben invitaciones de
+        // otras asesorías).
+        if (appMode != AppMode.ADVISORY) {
+            VBox invBannerSlot = new VBox();
+            content.getChildren().add(invBannerSlot);
+            loadPendingInvitationsBanner(invBannerSlot);
+        }
 
         content.getChildren().addAll(
                 label(t("mainIndicators"), "section-title"),
@@ -1933,6 +2006,14 @@ public class BenjagestUiApplication extends Application {
     private boolean invitationsBootstrapped = false;
     private VBox dashboardInvitationsSlot;
 
+    // Live polling de clientes vinculados (modo asesoría). Cuando un
+    // empresario acepta la invitación, la asesoría debe verlo sin
+    // refrescar la pantalla manualmente.
+    private javafx.animation.Timeline advisoryClientsPoller;
+    private final java.util.Set<String> seenManagedClientIds = new java.util.HashSet<>();
+    private boolean advisoryClientsBootstrapped = false;
+    private TableView<com.benjagest.ui.model.ManagedClientEntry> advisoryClientsLiveTable;
+
     private TableView<com.benjagest.ui.model.PurchaseInvoiceEntry> purchaseInvoicesTable;
     private ComboBox<String> purchaseYearFilter;
 
@@ -2568,12 +2649,19 @@ public class BenjagestUiApplication extends Application {
         credentialsTab.setGraphic(icon("fas-key"));
         Tab certificateTab = new Tab(t("settings.tab.certificate"), settingsCertificateTab());
         certificateTab.setGraphic(icon("fas-certificate"));
-        Tab advisoryTab = new Tab(t("settings.tab.my_advisory"), settingsMyAdvisoryTab());
-        advisoryTab.setGraphic(icon("fas-handshake"));
         Tab auditTab = new Tab(t("settings.tab.audit"), settingsAuditTab());
         auditTab.setGraphic(icon("fas-shield-alt"));
+
+        // "Mi asesoría" solo tiene sentido para empresas CLIENT — una
+        // asesoría no necesita otra asesoría que la asesore.
         tabs.getTabs().addAll(companyTab, ownersTab, emailTab, modulesTab,
-                credentialsTab, certificateTab, advisoryTab, auditTab);
+                credentialsTab, certificateTab);
+        if (appMode != AppMode.ADVISORY) {
+            Tab advisoryTab = new Tab(t("settings.tab.my_advisory"), settingsMyAdvisoryTab());
+            advisoryTab.setGraphic(icon("fas-handshake"));
+            tabs.getTabs().add(advisoryTab);
+        }
+        tabs.getTabs().add(auditTab);
         // El TabPane crece hasta el final del area central; sin esto, los
         // botones del pie de cada tab podrian quedar fuera de pantalla en
         // portatil.
@@ -9541,6 +9629,26 @@ public class BenjagestUiApplication extends Application {
             case "advisory.invitation.reject.fail.body" -> "Try again or check the connection.";
             case "advisory.invitation.toast.title" -> "New invitation";
             case "advisory.invitation.toast.body" -> "You have received a new advisory invitation. Go to the Home screen to accept or reject it.";
+            case "advisory.toast.new_client.title" -> "New client linked";
+            case "advisory.toast.new_client.body" -> "A client has accepted your invitation. Open 'My clients' to start working with them.";
+            case "advisory.action.open_client" -> "Open client";
+            case "advisory.client.back" -> "← Back to My clients";
+            case "advisory.client.hint" -> "You are now viewing this client. Anything you do from here is recorded under their company, not yours. Your sidebar still belongs to your advisory firm — you can switch between tabs freely.";
+            case "advisory.client.tab.summary" -> "Summary";
+            case "advisory.client.tab.purchases" -> "Purchases & Expenses";
+            case "advisory.client.tab.certificate" -> "Certificate";
+            case "advisory.client.summary.title" -> "Client information";
+            case "advisory.client.summary.hint" -> "Basic data captured from the client's company profile.";
+            case "advisory.client.field.legal_name" -> "Legal name:";
+            case "advisory.client.field.nif" -> "Tax ID:";
+            case "advisory.client.field.type" -> "Type:";
+            case "advisory.client.field.email" -> "Email:";
+            case "advisory.client.field.city" -> "City:";
+            case "advisory.client.kpis.title" -> "Activity overview";
+            case "advisory.client.kpis.coming_soon" -> "Real-time KPIs (issued invoices, recorded expenses, active employees, latest tax filing) will be shown here in a future slice.";
+            case "advisory.client.purchases.hint" -> "Manage your client's expenses: import PDFs, register them and generate journal entries.";
+            case "advisory.client.purchases.use_module" -> "Use the full Purchases & Expenses module to operate on this client's data.";
+            case "advisory.client.purchases.open" -> "Open Purchases & Expenses";
             default -> null;
         };
     }
@@ -9617,6 +9725,26 @@ public class BenjagestUiApplication extends Application {
             case "advisory.invitation.reject.fail.body" -> "Intentalo de nuevo o revisa la conexion.";
             case "advisory.invitation.toast.title" -> "Nueva invitacion";
             case "advisory.invitation.toast.body" -> "Has recibido una nueva invitacion de asesoria. Ve al Home para aceptarla o rechazarla.";
+            case "advisory.toast.new_client.title" -> "Nuevo cliente vinculado";
+            case "advisory.toast.new_client.body" -> "Un cliente ha aceptado tu invitacion. Abre 'Mis clientes' para empezar a trabajar con el.";
+            case "advisory.action.open_client" -> "Abrir cliente";
+            case "advisory.client.back" -> "← Volver a Mis clientes";
+            case "advisory.client.hint" -> "Estas viendo este cliente. Cualquier accion que hagas desde aqui queda registrada en SU empresa, no en la tuya. Tu barra lateral sigue siendo la de tu asesoria — puedes moverte entre las pestañas libremente.";
+            case "advisory.client.tab.summary" -> "Resumen";
+            case "advisory.client.tab.purchases" -> "Compras y Gastos";
+            case "advisory.client.tab.certificate" -> "Certificado";
+            case "advisory.client.summary.title" -> "Datos del cliente";
+            case "advisory.client.summary.hint" -> "Datos basicos extraidos del perfil de empresa del cliente.";
+            case "advisory.client.field.legal_name" -> "Razon social:";
+            case "advisory.client.field.nif" -> "NIF:";
+            case "advisory.client.field.type" -> "Tipo:";
+            case "advisory.client.field.email" -> "Email:";
+            case "advisory.client.field.city" -> "Ciudad:";
+            case "advisory.client.kpis.title" -> "Resumen de actividad";
+            case "advisory.client.kpis.coming_soon" -> "Aqui se mostraran KPIs en tiempo real (facturas emitidas, gastos registrados, empleados activos, ultimo modelo fiscal) en un slice futuro.";
+            case "advisory.client.purchases.hint" -> "Gestiona los gastos de tu cliente: importa PDFs, registralos y genera asientos contables.";
+            case "advisory.client.purchases.use_module" -> "Usa el modulo Compras y Gastos completo para operar sobre los datos de este cliente.";
+            case "advisory.client.purchases.open" -> "Abrir Compras y Gastos";
             default -> null;
         };
     }
@@ -11608,13 +11736,19 @@ public class BenjagestUiApplication extends Application {
         colEmail.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().email()));
         table.getColumns().addAll(java.util.List.of(colName, colNif, colType, colCity, colEmail));
         table.setItems(FXCollections.observableArrayList(clients));
+        // Conectar con el polling de la asesoría — ahora cualquier
+        // aceptación de invitación se reflejará automáticamente.
+        advisoryClientsLiveTable = table;
+        seenManagedClientIds.clear();
+        for (var c : clients) if (c.id() != null) seenManagedClientIds.add(c.id());
+        advisoryClientsBootstrapped = true;
 
         Label hint = new Label(t("advisory.hint"));
         hint.setWrapText(true);
         hint.getStyleClass().add("settings-hint");
 
-        // Doble click sobre cliente → cambiar X-Company-Id en la sesion
-        // y volver al dashboard como ese cliente.
+        // Doble click sobre cliente → abre la pantalla de gestión del
+        // cliente sin tocar el activeCompanyId real de la asesoría.
         table.setOnMouseClicked(ev -> {
             if (ev.getClickCount() == 2) {
                 var sel = table.getSelectionModel().getSelectedItem();
@@ -11622,11 +11756,12 @@ public class BenjagestUiApplication extends Application {
             }
         });
 
-        Button switchBtn = new Button(t("advisory.action.switch"));
-        switchBtn.setGraphic(icon("fas-exchange-alt"));
-        switchBtn.setDisable(true);
-        table.getSelectionModel().selectedItemProperty().addListener((o, ov, nv) -> switchBtn.setDisable(nv == null));
-        switchBtn.setOnAction(ev -> {
+        Button openClientBtn = new Button(t("advisory.action.open_client"));
+        openClientBtn.setGraphic(icon("fas-folder-open"));
+        openClientBtn.getStyleClass().add("button-primary");
+        openClientBtn.setDisable(true);
+        table.getSelectionModel().selectedItemProperty().addListener((o, ov, nv) -> openClientBtn.setDisable(nv == null));
+        openClientBtn.setOnAction(ev -> {
             var sel = table.getSelectionModel().getSelectedItem();
             if (sel != null) switchToClient(sel);
         });
@@ -11636,7 +11771,7 @@ public class BenjagestUiApplication extends Application {
         inviteBtn.getStyleClass().add("button-primary");
         inviteBtn.setOnAction(ev -> showCreateInvitationDialog());
 
-        HBox actions = new HBox(8, switchBtn, inviteBtn);
+        HBox actions = new HBox(8, openClientBtn, inviteBtn);
         actions.getStyleClass().add("settings-actions");
 
         // Bloque de invitaciones — listado bajo la tabla de clientes
@@ -11828,16 +11963,138 @@ public class BenjagestUiApplication extends Application {
         });
     }
 
+    /**
+     * Abre la pantalla de gestión del cliente desde la asesoría.
+     *
+     * <p>NO cambia el activeCompanyId (la asesoría sigue siendo la
+     * empresa activa de la sesión, el sidebar es el suyo, el header
+     * conserva la marca de la asesoría). Solo activa el override
+     * "acting for" en AuthSession para que las llamadas de esta
+     * pantalla viajen con {@code X-Company-Id = cliente.id}.
+     *
+     * <p>Cuando el usuario pulsa "Volver" se limpia el override y se
+     * regresa al listado de clientes — recuperando el contexto puro
+     * de asesoría.
+     */
     private void switchToClient(com.benjagest.ui.model.ManagedClientEntry client) {
-        Alert confirm = new Alert(Alert.AlertType.CONFIRMATION,
-                t("advisory.switch.body") + " " + client.legalName() + "?",
-                ButtonType.OK, ButtonType.CANCEL);
-        confirm.setHeaderText(t("advisory.switch.title"));
-        confirm.showAndWait().ifPresent(bt -> {
-            if (bt != ButtonType.OK) return;
-            AuthSession.get().setActiveCompanyId(client.id());
-            showModule("dashboard");
+        AuthSession.get().setActingForCompanyId(client.id());
+        setCenterAnimated(buildClientDetailView(client));
+    }
+
+    private Node buildClientDetailView(com.benjagest.ui.model.ManagedClientEntry client) {
+        Button backBtn = new Button(t("advisory.client.back"));
+        backBtn.setGraphic(icon("fas-arrow-left"));
+        backBtn.setOnAction(ev -> {
+            AuthSession.get().setActingForCompanyId(null);
+            showAdvisoryClients();
         });
+
+        Label clientNameLabel = new Label(client.legalName());
+        clientNameLabel.getStyleClass().add("module-detail-title");
+        Label clientMeta = new Label(
+                (client.taxIdentifier() == null ? "" : client.taxIdentifier())
+                        + (client.city() == null || client.city().isBlank()
+                                ? "" : "  ·  " + client.city()));
+        clientMeta.getStyleClass().add("module-detail-description");
+        VBox clientTitle = new VBox(2, clientNameLabel, clientMeta);
+
+        StackPane clientIcon = iconBubble("fas-building", "module-title-icon");
+        Region spacer = new Region();
+        HBox.setHgrow(spacer, Priority.ALWAYS);
+        HBox header = new HBox(16, backBtn, clientIcon, clientTitle, spacer);
+        header.setAlignment(Pos.CENTER_LEFT);
+        header.getStyleClass().add("module-detail-header");
+
+        Label hint = new Label(t("advisory.client.hint"));
+        hint.setWrapText(true);
+        hint.getStyleClass().add("settings-hint");
+
+        // TabPane: cada sección hace queries con X-Company-Id=cliente
+        // gracias al actingForCompanyId activo en AuthSession.
+        TabPane tabs = new TabPane();
+        tabs.getStyleClass().add("settings-tabs");
+        tabs.setTabClosingPolicy(TabPane.TabClosingPolicy.UNAVAILABLE);
+
+        Tab summaryTab = new Tab(t("advisory.client.tab.summary"),
+                buildClientSummaryTab(client));
+        summaryTab.setGraphic(icon("fas-chart-line"));
+
+        Tab purchasesTab = new Tab(t("advisory.client.tab.purchases"),
+                buildClientPurchasesTab());
+        purchasesTab.setGraphic(icon("fas-receipt"));
+
+        Tab certificateTab = new Tab(t("advisory.client.tab.certificate"),
+                settingsCertificateTab());
+        certificateTab.setGraphic(icon("fas-certificate"));
+
+        tabs.getTabs().addAll(summaryTab, purchasesTab, certificateTab);
+        VBox.setVgrow(tabs, Priority.ALWAYS);
+
+        VBox body = new VBox(12, header, hint, tabs);
+        body.setPadding(new Insets(20));
+        return body;
+    }
+
+    private Node buildClientSummaryTab(com.benjagest.ui.model.ManagedClientEntry client) {
+        Label title = label(t("advisory.client.summary.title"), "settings-section-title");
+        Label hint = new Label(t("advisory.client.summary.hint"));
+        hint.setWrapText(true);
+        hint.getStyleClass().add("settings-hint");
+
+        GridPane g = new GridPane();
+        g.setHgap(20); g.setVgap(8);
+        int r = 0;
+        g.add(new Label(t("advisory.client.field.legal_name")), 0, r);
+        g.add(new Label(client.legalName() == null ? "—" : client.legalName()), 1, r++);
+        g.add(new Label(t("advisory.client.field.nif")), 0, r);
+        g.add(new Label(client.taxIdentifier() == null ? "—" : client.taxIdentifier()), 1, r++);
+        if (client.companyType() != null) {
+            g.add(new Label(t("advisory.client.field.type")), 0, r);
+            g.add(new Label(client.companyType()), 1, r++);
+        }
+        if (client.email() != null) {
+            g.add(new Label(t("advisory.client.field.email")), 0, r);
+            g.add(new Label(client.email()), 1, r++);
+        }
+        if (client.city() != null && !client.city().isBlank()) {
+            g.add(new Label(t("advisory.client.field.city")), 0, r);
+            g.add(new Label(client.city()), 1, r++);
+        }
+
+        Label kpisTitle = label(t("advisory.client.kpis.title"), "settings-section-title");
+        Label kpisHint = new Label(t("advisory.client.kpis.coming_soon"));
+        kpisHint.setWrapText(true);
+        kpisHint.getStyleClass().add("settings-hint");
+
+        VBox body = new VBox(14, title, hint, g, new Separator(), kpisTitle, kpisHint);
+        body.setPadding(new Insets(20));
+        return body;
+    }
+
+    /**
+     * Pestaña Compras y Gastos dentro de la pantalla del cliente.
+     * Reutilizamos el listado de purchases que ya funciona — gracias
+     * al actingForCompanyId del AuthSession, las queries van al
+     * tenant del cliente automáticamente.
+     */
+    private Node buildClientPurchasesTab() {
+        // Construir la misma vista del módulo Compras y Gastos pero
+        // sin el shell (header del módulo) para que encaje dentro del
+        // TabPane del cliente.
+        VBox body = new VBox(12);
+        body.setPadding(new Insets(20));
+        Label hint = new Label(t("advisory.client.purchases.hint"));
+        hint.setWrapText(true);
+        hint.getStyleClass().add("settings-hint");
+        Label placeholder = new Label(t("advisory.client.purchases.use_module"));
+        placeholder.setWrapText(true);
+        placeholder.getStyleClass().add("settings-hint");
+        Button openBtn = new Button(t("advisory.client.purchases.open"));
+        openBtn.setGraphic(icon("fas-external-link-alt"));
+        openBtn.getStyleClass().add("button-primary");
+        openBtn.setOnAction(ev -> showPurchasesWithImport());
+        body.getChildren().addAll(hint, placeholder, openBtn);
+        return body;
     }
 
     // ===================================================================
