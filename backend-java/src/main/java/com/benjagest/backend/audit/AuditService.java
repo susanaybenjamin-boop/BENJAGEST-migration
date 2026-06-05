@@ -70,6 +70,23 @@ public class AuditService {
                 "digital_certificate", certificateId, "OK", null);
     }
 
+    public void recordPurchaseInvoicePosted(String userId, String companyId,
+                                              String purchaseInvoiceId,
+                                              java.math.BigDecimal totalAmount,
+                                              boolean withJournal) {
+        String details = "{\"totalAmount\":\""
+                + (totalAmount == null ? "" : totalAmount.toPlainString())
+                + "\",\"journalEntryCreated\":" + withJournal + "}";
+        write(companyId, userId, "PURCHASE_INVOICE_POSTED",
+                "purchase_invoice", purchaseInvoiceId, "OK", details);
+    }
+
+    public void recordPurchaseInvoiceVoided(String userId, String companyId,
+                                              String purchaseInvoiceId) {
+        write(companyId, userId, "PURCHASE_INVOICE_VOIDED",
+                "purchase_invoice", purchaseInvoiceId, "OK", null);
+    }
+
     /**
      * Punto unico de escritura. Si la insercion falla, NO lanza:
      * loguear es deseable pero nunca debe tumbar la operacion principal.
