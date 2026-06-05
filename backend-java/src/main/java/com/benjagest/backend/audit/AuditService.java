@@ -51,6 +51,26 @@ public class AuditService {
     }
 
     /**
+     * Subida de certificado digital. byAdvisory=true cuando lo sube
+     * una asesoría operando en nombre del cliente (V38).
+     */
+    public void recordCertificateUploaded(String userId, String companyId,
+                                            String certificateId, boolean byAdvisory,
+                                            String uploaderCompanyId) {
+        String details = byAdvisory
+                ? "{\"byAdvisory\":true,\"uploaderCompanyId\":\""
+                        + escape(uploaderCompanyId) + "\"}"
+                : null;
+        write(companyId, userId, "CERTIFICATE_UPLOADED",
+                "digital_certificate", certificateId, "OK", details);
+    }
+
+    public void recordCertificateDeleted(String userId, String companyId, String certificateId) {
+        write(companyId, userId, "CERTIFICATE_DELETED",
+                "digital_certificate", certificateId, "OK", null);
+    }
+
+    /**
      * Punto unico de escritura. Si la insercion falla, NO lanza:
      * loguear es deseable pero nunca debe tumbar la operacion principal.
      */
