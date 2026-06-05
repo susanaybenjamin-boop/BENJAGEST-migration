@@ -94,6 +94,39 @@ public class TimeClockApiClient {
         return m.find() ? m.group(1) : "";
     }
 
+    /**
+     * Descarga el PDF verificable de fichajes en un rango. Devuelve
+     * los bytes para que la UI los guarde con FileChooser.
+     */
+    public byte[] exportPdf(String fromIso, String toIso, String employeeId)
+            throws IOException, InterruptedException {
+        return doExport("pdf", fromIso, toIso, employeeId);
+    }
+
+    public byte[] exportCsv(String fromIso, String toIso, String employeeId)
+            throws IOException, InterruptedException {
+        return doExport("csv", fromIso, toIso, employeeId);
+    }
+
+    private byte[] doExport(String format, String fromIso, String toIso, String employeeId)
+            throws IOException, InterruptedException {
+        StringBuilder url = new StringBuilder(baseUrl)
+                .append("/timeclock/export.").append(format)
+                .append("?from=").append(fromIso).append("&to=").append(toIso);
+        if (employeeId != null && !employeeId.isBlank()) {
+            url.append("&employeeId=").append(employeeId);
+        }
+        HttpRequest.Builder builder = HttpRequest.newBuilder(URI.create(url.toString()))
+                .timeout(Duration.ofSeconds(30)).GET();
+        AuthSession.get().authorize(builder);
+        HttpResponse<byte[]> response = httpClient.send(builder.build(),
+                HttpResponse.BodyHandlers.ofByteArray());
+        if (response.statusCode() < 200 || response.statusCode() >= 300) {
+            throw new IOException("HTTP " + response.statusCode());
+        }
+        return response.body();
+    }
+
     public List<TimeClockEntry> recent(String employeeId, int limit) throws IOException, InterruptedException {
         HttpRequest.Builder builder = HttpRequest.newBuilder(URI.create(
                 baseUrl + "/timeclock/employee/" + employeeId + "/recent?limit=" + limit))

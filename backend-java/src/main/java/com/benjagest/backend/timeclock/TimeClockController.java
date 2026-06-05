@@ -33,9 +33,49 @@ import org.springframework.web.bind.annotation.RestController;
 public class TimeClockController {
 
     private final TimeClockService service;
+    private final TimeClockExportService exportService;
 
-    public TimeClockController(TimeClockService service) {
+    public TimeClockController(TimeClockService service,
+                                TimeClockExportService exportService) {
         this.service = service;
+        this.exportService = exportService;
+    }
+
+    /**
+     * Exporta el registro de fichajes a PDF verificable (RD 8/2019).
+     * Incluye cabecera de empresa, una fila por fichaje con su CSV de
+     * verificación y el hash SHA-256 del documento al final. Cada
+     * export queda registrado en {@code audit_events} con el SHA-256
+     * para detectar manipulación posterior.
+     */
+    @GetMapping(value = "/export.pdf", produces = "application/pdf")
+    public org.springframework.http.ResponseEntity<byte[]> exportPdf(
+            @RequestParam("from") String fromIso,
+            @RequestParam("to") String toIso,
+            @RequestParam(value = "employeeId", required = false) String employeeId) {
+        byte[] body = exportService.exportPdf(
+                java.time.LocalDate.parse(fromIso),
+                java.time.LocalDate.parse(toIso),
+                employeeId);
+        return org.springframework.http.ResponseEntity.ok()
+                .header("Content-Disposition", "attachment; filename=\"fichajes-"
+                        + fromIso + "_" + toIso + ".pdf\"")
+                .body(body);
+    }
+
+    @GetMapping(value = "/export.csv", produces = "text/csv")
+    public org.springframework.http.ResponseEntity<byte[]> exportCsv(
+            @RequestParam("from") String fromIso,
+            @RequestParam("to") String toIso,
+            @RequestParam(value = "employeeId", required = false) String employeeId) {
+        byte[] body = exportService.exportCsv(
+                java.time.LocalDate.parse(fromIso),
+                java.time.LocalDate.parse(toIso),
+                employeeId);
+        return org.springframework.http.ResponseEntity.ok()
+                .header("Content-Disposition", "attachment; filename=\"fichajes-"
+                        + fromIso + "_" + toIso + ".csv\"")
+                .body(body);
     }
 
     @PostMapping("/punch")

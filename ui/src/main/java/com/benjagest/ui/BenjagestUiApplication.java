@@ -64,6 +64,7 @@ import javafx.scene.control.Alert;
 import javafx.scene.control.Button;
 import javafx.scene.control.ButtonBar;
 import javafx.scene.control.ButtonType;
+import javafx.scene.control.DatePicker;
 import javafx.scene.control.Dialog;
 import javafx.scene.control.Label;
 import javafx.scene.control.CheckBox;
@@ -2823,11 +2824,77 @@ public class BenjagestUiApplication extends Application {
         refresh.setGraphic(icon("fas-sync"));
         refresh.setOnAction(ev -> reloadTimeClock(employeeId));
 
-        VBox body = new VBox(16, header, hint, punchRow, refresh, timeClockTable);
+        // Bloque de exportación para Inspección de Trabajo / Hacienda.
+        // Defaults: trimestre actual completo (lo más habitual).
+        Label exportTitle = label(t("timeclock.export.title"), "settings-section-title");
+        Label exportHint = new Label(t("timeclock.export.hint"));
+        exportHint.setWrapText(true);
+        exportHint.getStyleClass().add("settings-hint");
+        java.time.LocalDate today = java.time.LocalDate.now();
+        int quarter = (today.getMonthValue() - 1) / 3;
+        java.time.LocalDate quarterStart = java.time.LocalDate.of(today.getYear(), quarter * 3 + 1, 1);
+        java.time.LocalDate quarterEnd = quarterStart.plusMonths(3).minusDays(1);
+        DatePicker fromPicker = new DatePicker(quarterStart);
+        DatePicker toPicker = new DatePicker(quarterEnd);
+        Label fromLbl = new Label(t("timeclock.export.from"));
+        Label toLbl = new Label(t("timeclock.export.to"));
+        Button exportPdfBtn = new Button(t("timeclock.export.pdf"));
+        exportPdfBtn.setGraphic(icon("fas-file-pdf"));
+        exportPdfBtn.getStyleClass().add("button-primary");
+        exportPdfBtn.setOnAction(ev -> downloadTimeClockExport("pdf",
+                fromPicker.getValue(), toPicker.getValue(), employeeId));
+        Button exportCsvBtn = new Button(t("timeclock.export.csv"));
+        exportCsvBtn.setGraphic(icon("fas-file-csv"));
+        exportCsvBtn.setOnAction(ev -> downloadTimeClockExport("csv",
+                fromPicker.getValue(), toPicker.getValue(), employeeId));
+        HBox exportRow = new HBox(8, fromLbl, fromPicker, toLbl, toPicker,
+                exportPdfBtn, exportCsvBtn);
+        exportRow.setAlignment(Pos.CENTER_LEFT);
+        VBox exportBlock = new VBox(8, exportTitle, exportHint, exportRow);
+
+        VBox body = new VBox(16, header, hint, punchRow, refresh, timeClockTable,
+                new Separator(), exportBlock);
         body.setPadding(new Insets(20));
 
         setCenterAnimated(scroll(body));
         reloadTimeClock(employeeId);
+    }
+
+    /** Descarga el export de fichajes y ofrece guardarlo. */
+    private void downloadTimeClockExport(String format,
+                                          java.time.LocalDate from, java.time.LocalDate to,
+                                          String employeeId) {
+        if (from == null || to == null || from.isAfter(to)) {
+            showError(t("timeclock.export.fail.range.title"),
+                    t("timeclock.export.fail.range.body"));
+            return;
+        }
+        Task<byte[]> task = new Task<>() {
+            @Override protected byte[] call() throws Exception {
+                return "pdf".equals(format)
+                        ? timeClockApi.exportPdf(from.toString(), to.toString(), employeeId)
+                        : timeClockApi.exportCsv(from.toString(), to.toString(), employeeId);
+            }
+        };
+        task.setOnSucceeded(ev -> {
+            byte[] body = task.getValue();
+            javafx.stage.FileChooser fc = new javafx.stage.FileChooser();
+            fc.setInitialFileName("fichajes-" + from + "_" + to + "." + format);
+            fc.getExtensionFilters().add(new javafx.stage.FileChooser.ExtensionFilter(
+                    format.toUpperCase(), "*." + format));
+            java.io.File target = fc.showSaveDialog(root.getScene().getWindow());
+            if (target == null) return;
+            try {
+                java.nio.file.Files.write(target.toPath(), body);
+                showInfo(t("timeclock.export.ok.title"),
+                        t("timeclock.export.ok.body") + "\n" + target.getAbsolutePath());
+            } catch (java.io.IOException ex) {
+                showError(t("timeclock.export.fail.write.title"), ex.getMessage());
+            }
+        });
+        task.setOnFailed(ev -> showError(t("timeclock.export.fail.title"),
+                t("timeclock.export.fail.body")));
+        start(task, "timeclock-export-" + format);
     }
 
     private Button bigPunchButton(String text, String iconName, String eventType, String employeeId) {
@@ -7649,6 +7716,19 @@ public class BenjagestUiApplication extends Application {
                 case "timeclock.fail.body" -> "Make sure your employee profile exists and the backend is running.";
                 case "timeclock.not_enrolled.title" -> "You have no employee profile in this company";
                 case "timeclock.not_enrolled.body" -> "Ask the administrator to add you in Personal > Employees, linking your user. Once they do, refresh this screen and you will be able to punch in.";
+                case "timeclock.export.title" -> "Export for inspection";
+                case "timeclock.export.hint" -> "Download a verifiable PDF or CSV of the time-clock log. Each row keeps its CSV verification code (RD 8/2019 art. 35.8). The audit log records each export with the document SHA-256 to detect later tampering.";
+                case "timeclock.export.from" -> "From";
+                case "timeclock.export.to" -> "To";
+                case "timeclock.export.pdf" -> "Download PDF";
+                case "timeclock.export.csv" -> "Download CSV";
+                case "timeclock.export.ok.title" -> "Export saved";
+                case "timeclock.export.ok.body" -> "File saved to:";
+                case "timeclock.export.fail.title" -> "Export failed";
+                case "timeclock.export.fail.body" -> "Could not generate the export. Check the date range and try again.";
+                case "timeclock.export.fail.range.title" -> "Invalid range";
+                case "timeclock.export.fail.range.body" -> "Choose a start date earlier than or equal to the end date.";
+                case "timeclock.export.fail.write.title" -> "Could not save file";
                 case "purchases.header" -> "Purchases";
                 case "purchases.hint" -> "Upload a received invoice as PDF — BENJAGEST extracts the issuer NIF, date, base, VAT and total automatically (no AI, just regex on the embedded text). Scanned PDFs require OCR — coming in a follow-up slice.";
                 case "purchases.action.import_pdf" -> "Import PDF invoice";
@@ -8544,6 +8624,19 @@ public class BenjagestUiApplication extends Application {
             case "timeclock.fail.body" -> "Comprueba que tu perfil de empleado existe y que el backend esta en marcha.";
             case "timeclock.not_enrolled.title" -> "No tienes ficha de empleado en esta empresa";
             case "timeclock.not_enrolled.body" -> "Pide al administrador que te de de alta en Personal > Empleados vinculando tu usuario. Cuando lo haga, refresca esta pantalla y podras fichar.";
+            case "timeclock.export.title" -> "Exportar para Inspeccion";
+            case "timeclock.export.hint" -> "Descarga un PDF o CSV verificable del registro de fichajes. Cada fila conserva su CSV de verificacion (RD 8/2019 art. 35.8). La auditoria registra cada exportacion con el SHA-256 del documento para detectar manipulaciones posteriores.";
+            case "timeclock.export.from" -> "Desde";
+            case "timeclock.export.to" -> "Hasta";
+            case "timeclock.export.pdf" -> "Descargar PDF";
+            case "timeclock.export.csv" -> "Descargar CSV";
+            case "timeclock.export.ok.title" -> "Exportacion guardada";
+            case "timeclock.export.ok.body" -> "Archivo guardado en:";
+            case "timeclock.export.fail.title" -> "Error al exportar";
+            case "timeclock.export.fail.body" -> "No se pudo generar la exportacion. Revisa el rango de fechas y vuelve a intentarlo.";
+            case "timeclock.export.fail.range.title" -> "Rango no valido";
+            case "timeclock.export.fail.range.body" -> "Elige una fecha de inicio anterior o igual a la fecha de fin.";
+            case "timeclock.export.fail.write.title" -> "No se pudo guardar el archivo";
             case "purchases.header" -> "Compras";
             case "purchases.hint" -> "Sube una factura recibida en PDF — BENJAGEST extrae el NIF emisor, fecha, base, IVA y total automaticamente (sin IA, solo regex sobre el texto embebido). PDFs escaneados necesitan OCR — llega en un slice posterior.";
             case "purchases.action.import_pdf" -> "Importar factura PDF";

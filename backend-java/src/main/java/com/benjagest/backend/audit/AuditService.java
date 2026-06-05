@@ -131,6 +131,29 @@ public class AuditService {
                 "company", clientCompanyId, "OK", details);
     }
 
+    /**
+     * Export verificable de auditoría de fichajes (RD 8/2019) o de
+     * auditoría general para Inspección/Hacienda. Guarda en el detalle
+     * el rango, el SHA-256 del documento generado y el formato — así
+     * un futuro reproche puede verificar que el fichero que enseña la
+     * empresa es el que se generó (no se ha tocado).
+     */
+    public void recordExport(String userId, String companyId, String eventType,
+                              String format, String fromIso, String toIso,
+                              int count, String sha256Hex, String entityFilter) {
+        StringBuilder json = new StringBuilder("{");
+        json.append("\"format\":\"").append(escape(format)).append("\",");
+        json.append("\"from\":\"").append(escape(fromIso)).append("\",");
+        json.append("\"to\":\"").append(escape(toIso)).append("\",");
+        json.append("\"count\":").append(count).append(',');
+        json.append("\"sha256\":\"").append(escape(sha256Hex)).append("\"");
+        if (entityFilter != null && !entityFilter.isBlank()) {
+            json.append(",\"filter\":\"").append(escape(entityFilter)).append("\"");
+        }
+        json.append('}');
+        write(companyId, userId, eventType, "export", null, "OK", json.toString());
+    }
+
     public void recordPurchaseInvoiceDeleted(String userId, String companyId,
                                                String purchaseInvoiceId,
                                                java.math.BigDecimal totalAmount,
