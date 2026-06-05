@@ -182,7 +182,7 @@ public class AuditExportService {
         String placeholders = String.join(",", java.util.Collections.nCopies(ids.size(), "?"));
         Object[] args = ids.toArray();
         jdbcTemplate.query(
-                "SELECT id, COALESCE(NULLIF(full_name, ''), email) AS label "
+                "SELECT id, COALESCE(NULLIF(display_name, ''), email) AS label "
                         + "FROM user_accounts WHERE id IN (" + placeholders + ")",
                 rs -> { map.put(rs.getString("id"), rs.getString("label")); },
                 args);
