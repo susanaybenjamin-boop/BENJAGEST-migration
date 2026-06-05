@@ -1,6 +1,7 @@
 package com.benjagest.backend.certificates;
 
 import java.io.ByteArrayInputStream;
+import java.nio.charset.StandardCharsets;
 import java.security.KeyStore;
 import java.security.cert.Certificate;
 import java.security.cert.X509Certificate;
@@ -10,6 +11,10 @@ import java.util.Enumeration;
 import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import javax.naming.InvalidNameException;
+import javax.naming.ldap.LdapName;
+import javax.naming.ldap.Rdn;
+import javax.security.auth.x500.X500Principal;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
@@ -43,6 +48,21 @@ public class KeystoreInspector {
             "([XYZxyz]?\\d{7,8}[A-HJ-NP-TV-Za-hj-np-tv-z]|" +
             "[A-HJ-NP-SUVWa-hj-np-suvw]\\d{7}[0-9A-Ja-j])");
 
+    /** Prefijos que cuelgan delante del NIF en el serialNumber del subject:
+     *   - FNMT persona fisica: "IDCES-12345678Z"
+     *   - FNMT representante:  "VATES-B12345678"  (o "CIFES-")
+     *   - Camerfirma a veces:  "NIFES-12345678Z"
+     */
+    private static final Pattern NIF_PREFIX = Pattern.compile(
+            "(?i)^(IDCE?S?|VATE?S?|NIFE?S?|CIFE?S?)[-:]?\\s*");
+
+    /** OID del atributo serialNumber del subject (X.520). */
+    private static final String OID_SERIAL_NUMBER = "2.5.4.5";
+    /** OID de CN. */
+    private static final String OID_CN = "2.5.4.3";
+    /** OID de O (Organization). */
+    private static final String OID_ORGANIZATION = "2.5.4.10";
+
     /**
      * Inspecciona el .p12. La password puede ser null o vacia para
      * keystores sin proteccion (raro pero existen).
@@ -75,13 +95,17 @@ public class KeystoreInspector {
                 throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
                         "El keystore no contiene ningun certificado X.509");
             }
-            String subjectDn = firstX509.getSubjectX500Principal().getName();
-            String issuerDn = firstX509.getIssuerX500Principal().getName();
-            String cn = extractRdn(subjectDn, "CN");
-            String serial = extractRdn(subjectDn, "SERIALNUMBER");
-            if (serial == null) serial = extractRdn(subjectDn, "2.5.4.5");
-            String issuerCn = extractRdn(issuerDn, "CN");
-            if (issuerCn == null) issuerCn = extractRdn(issuerDn, "O");
+            // RFC2253 da formato estandar con escapes correctos para LdapName.
+            String subjectDn = firstX509.getSubjectX500Principal().getName(X500Principal.RFC2253);
+            String issuerDn = firstX509.getIssuerX500Principal().getName(X500Principal.RFC2253);
+
+            String cn = findRdn(subjectDn, OID_CN, "CN");
+            String serial = findRdn(subjectDn, OID_SERIAL_NUMBER, "SERIALNUMBER");
+            String issuerO = findRdn(issuerDn, OID_ORGANIZATION, "O");
+            String issuerCn = findRdn(issuerDn, OID_CN, "CN");
+            // Para mostrar emisor: O suele ser mas legible que CN (FNMT
+            // pone "FNMT-RCM" en O y un CN tecnico larguisimo).
+            String issuerLabel = issuerO != null ? issuerO : issuerCn;
 
             String nif = guessNif(serial, cn, subjectDn);
             String type = guessType(issuerDn, subjectDn);
@@ -89,11 +113,14 @@ public class KeystoreInspector {
             return new CertificateInspectResponse(
                     cn,
                     nif,
-                    issuerCn,
+                    issuerLabel,
                     type,
                     firstX509.getNotBefore().toInstant(),
                     firstX509.getNotAfter().toInstant(),
-                    aliases
+                    aliases,
+                    subjectDn,
+                    issuerDn,
+                    firstX509.getSerialNumber().toString(16)
             );
         } catch (ResponseStatusException ex) {
             throw ex;
@@ -116,44 +143,84 @@ public class KeystoreInspector {
     }
 
     /**
-     * Saca el valor de un RDN (Relative Distinguished Name) del DN.
-     * El DN de Java viene como "CN=foo, SERIALNUMBER=bar, O=baz".
-     * No usamos LdapName porque su comportamiento ante comas y
-     * codificaciones varia entre JDKs.
+     * Busca el valor de un RDN en el DN. Usa {@link LdapName} que
+     * parsea RFC2253 correctamente: maneja comas escapadas, espacios,
+     * codificacion hex y valores multi-byte.
+     *
+     * Por seguridad acepta dos identificadores: el OID y el nombre
+     * canonico. Algunos JDK rinden "OID.2.5.4.5=#1308..." y otros
+     * "SERIALNUMBER=IDCES-12345678Z" para el mismo atributo.
      */
-    private String extractRdn(String dn, String key) {
+    private String findRdn(String dn, String oid, String canonicalName) {
         if (dn == null) return null;
-        String upper = dn.toUpperCase();
-        String needle = key.toUpperCase() + "=";
-        int i = upper.indexOf(needle);
-        if (i < 0) return null;
-        int start = i + needle.length();
-        // El valor termina en coma no escapada. Para simplificar,
-        // cortamos en la primera coma no precedida por backslash.
-        StringBuilder sb = new StringBuilder();
-        boolean escape = false;
-        for (int j = start; j < dn.length(); j++) {
-            char c = dn.charAt(j);
-            if (escape) { sb.append(c); escape = false; continue; }
-            if (c == '\\') { escape = true; continue; }
-            if (c == ',') break;
-            sb.append(c);
+        try {
+            LdapName ldap = new LdapName(dn);
+            for (Rdn r : ldap.getRdns()) {
+                String type = r.getType();
+                if (type == null) continue;
+                if (type.equalsIgnoreCase(canonicalName)
+                        || type.equalsIgnoreCase(oid)
+                        || type.equalsIgnoreCase("OID." + oid)) {
+                    return rdnValueToString(r.getValue());
+                }
+            }
+        } catch (InvalidNameException ignored) {
+            // DN malformado — devolvemos null y caller decide.
         }
-        return sb.toString().trim();
+        return null;
+    }
+
+    /**
+     * Los valores hex-encoded de RFC2253 ("#1308504552534f4e41") los
+     * LdapName devuelve como byte[]. Hay que decodificar a String.
+     */
+    private String rdnValueToString(Object value) {
+        if (value == null) return null;
+        if (value instanceof String s) return s;
+        if (value instanceof byte[] bytes) {
+            // El primer byte es el ASN.1 tag (0x0C=UTF8String,
+            // 0x13=PrintableString, 0x14=T61String). Los siguientes
+            // 1-2 bytes son la longitud. Para nuestro caso (NIF/CN
+            // cortos) tomamos heuristico: si los primeros bytes son
+            // tipo+length, los saltamos.
+            if (bytes.length >= 2 && (bytes[0] == 0x0C || bytes[0] == 0x13
+                    || bytes[0] == 0x14 || bytes[0] == 0x16)) {
+                int len = bytes[1] & 0xFF;
+                if (bytes.length >= 2 + len) {
+                    return new String(bytes, 2, len, StandardCharsets.UTF_8);
+                }
+            }
+            return new String(bytes, StandardCharsets.UTF_8);
+        }
+        return value.toString();
     }
 
     private String guessNif(String serial, String cn, String subjectDn) {
-        // FNMT y similares ponen serialNumber con prefijo: "IDCES-W0184081H".
-        if (serial != null) {
-            Matcher m = NIF_PATTERN.matcher(serial.toUpperCase());
+        // 1) serialNumber del subject (OID 2.5.4.5) — la fuente
+        //    autoritativa en certificados FNMT, Camerfirma, etc.
+        //    Eliminamos prefijos conocidos (IDCES-, VATES-, NIFES-,
+        //    CIFES-) antes de intentar matchear el NIF.
+        if (serial != null && !serial.isBlank()) {
+            String cleaned = NIF_PREFIX.matcher(serial).replaceFirst("").trim();
+            Matcher m = NIF_PATTERN.matcher(cleaned.toUpperCase());
+            if (m.find()) return m.group(1).toUpperCase();
+            // Si tras quitar prefijo queda algo "razonable" (16 chars o
+            // menos) lo devolvemos tal cual — algunos certificados
+            // extranjeros usan formatos no-NIF en este campo.
+            if (cleaned.length() > 0 && cleaned.length() <= 16) {
+                return cleaned.toUpperCase();
+            }
+        }
+        // 2) CN — FNMT pone "APELLIDO1 APELLIDO2, NOMBRE - 12345678Z".
+        //    Buscamos el NIF al final, separado por guion.
+        if (cn != null && !cn.isBlank()) {
+            Matcher m = NIF_PATTERN.matcher(cn.toUpperCase());
             if (m.find()) return m.group(1).toUpperCase();
         }
+        // 3) Subject DN completo — ultimo recurso, puede haber falsos
+        //    positivos si hay otros numeros que parecen NIF.
         if (subjectDn != null) {
             Matcher m = NIF_PATTERN.matcher(subjectDn.toUpperCase());
-            if (m.find()) return m.group(1).toUpperCase();
-        }
-        if (cn != null) {
-            Matcher m = NIF_PATTERN.matcher(cn.toUpperCase());
             if (m.find()) return m.group(1).toUpperCase();
         }
         return null;

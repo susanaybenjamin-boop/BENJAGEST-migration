@@ -164,7 +164,10 @@ public class CertificateApiClient {
                 strField(json, "certificateTypeGuess"),
                 instantField(json, "validFrom"),
                 instantField(json, "validTo"),
-                aliases
+                aliases,
+                strField(json, "subjectDnRaw"),
+                strField(json, "issuerDnRaw"),
+                strField(json, "serialNumberHex")
         );
     }
 
