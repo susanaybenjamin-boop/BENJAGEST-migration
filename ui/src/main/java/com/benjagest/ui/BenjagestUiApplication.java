@@ -2090,26 +2090,51 @@ public class BenjagestUiApplication extends Application {
 
     private TableView<com.benjagest.ui.model.PurchaseInvoiceEntry> purchaseInvoicesTable;
     private ComboBox<String> purchaseYearFilter;
+    private ComboBox<String> purchaseQuarterFilter;
+    private TextField purchaseSupplierFilter;
+    // Caché para filtrar localmente sin re-pegar al backend en cada
+    // cambio de combo (el endpoint solo soporta year+supplierNif).
+    private java.util.List<com.benjagest.ui.model.PurchaseInvoiceEntry> purchaseInvoicesCache = java.util.List.of();
 
     private void showPurchasesWithImport() {
-        Label header = label(t("purchases.header"), "settings-section-title");
-        Label hint = new Label(t("purchases.hint"));
-        hint.setWrapText(true);
-        hint.getStyleClass().add("settings-hint");
+        setCenterAnimated(buildPurchasesListing(true));
+    }
 
+    /**
+     * Construye el listado de Compras y Gastos con filtros y acciones.
+     * Reutilizable desde:
+     *   - El módulo "Compras y Gastos" del sidebar (showWithHeader=true,
+     *     que añade título + descripción del módulo).
+     *   - La pestaña "Compras y Gastos" de la pantalla del cliente
+     *     dentro de la asesoría (showWithHeader=false — el header del
+     *     cliente y los tabs ya son contexto suficiente).
+     */
+    private Node buildPurchasesListing(boolean showWithHeader) {
         Button importBtn = new Button(t("purchases.action.import_pdf"));
         importBtn.setGraphic(icon("fas-file-import"));
         importBtn.getStyleClass().add("button-primary");
         importBtn.setOnAction(ev -> importPurchasePdf());
 
-        // Filtros: solo año. Sin filtro de estado porque ya no hay
-        // VOID — los gastos eliminados desaparecen físicamente
-        // (ver docs/legal-compras-gastos.md).
+        // Filtros: año (combo) + trimestre (combo) + proveedor (text).
         purchaseYearFilter = new ComboBox<>();
         purchaseYearFilter.getItems().add(t("list.filter.all"));
         int currentYear = java.time.LocalDate.now().getYear();
         for (int y = currentYear; y >= currentYear - 5; y--) purchaseYearFilter.getItems().add(String.valueOf(y));
         purchaseYearFilter.getSelectionModel().selectFirst();
+        purchaseYearFilter.setOnAction(ev -> reloadPurchaseInvoices());
+
+        purchaseQuarterFilter = new ComboBox<>();
+        purchaseQuarterFilter.getItems().addAll(
+                t("list.filter.all"), "T1", "T2", "T3", "T4");
+        purchaseQuarterFilter.getSelectionModel().selectFirst();
+        // El trimestre se aplica EN CLIENTE sobre el caché (no toca el
+        // backend) — el endpoint REST solo soporta year+supplierNif.
+        purchaseQuarterFilter.setOnAction(ev -> applyClientSideFilters());
+
+        purchaseSupplierFilter = new TextField();
+        purchaseSupplierFilter.setPromptText(t("purchases.filter.supplier.prompt"));
+        purchaseSupplierFilter.setPrefColumnCount(14);
+        purchaseSupplierFilter.textProperty().addListener((o, ov, nv) -> applyClientSideFilters());
 
         Button reloadBtn = new Button(t("purchases.action.refresh"));
         reloadBtn.setGraphic(icon("fas-sync"));
@@ -2117,6 +2142,8 @@ public class BenjagestUiApplication extends Application {
 
         HBox filters = new HBox(8,
                 new Label(t("purchases.filter.year")), purchaseYearFilter,
+                new Label(t("purchases.filter.quarter")), purchaseQuarterFilter,
+                new Label(t("purchases.filter.supplier")), purchaseSupplierFilter,
                 reloadBtn);
         filters.setAlignment(Pos.CENTER_LEFT);
 
@@ -2199,12 +2226,20 @@ public class BenjagestUiApplication extends Application {
 
         HBox actions = new HBox(10, importBtn, deleteBtn);
 
-        VBox body = new VBox(12, header, hint, filters, purchaseInvoicesTable, actions);
+        VBox body = new VBox(12);
+        if (showWithHeader) {
+            Label header = label(t("purchases.header"), "settings-section-title");
+            Label hint = new Label(t("purchases.hint"));
+            hint.setWrapText(true);
+            hint.getStyleClass().add("settings-hint");
+            body.getChildren().addAll(header, hint);
+        }
+        body.getChildren().addAll(filters, purchaseInvoicesTable, actions);
         VBox.setVgrow(purchaseInvoicesTable, Priority.ALWAYS);
         body.setPadding(new Insets(20));
 
         reloadPurchaseInvoices();
-        setCenterAnimated(body);
+        return body;
     }
 
     private void reloadPurchaseInvoices() {
@@ -2216,10 +2251,44 @@ public class BenjagestUiApplication extends Application {
                 return purchasesApi.list(year, null, null);
             }
         };
-        task.setOnSucceeded(e -> purchaseInvoicesTable.getItems().setAll(task.getValue()));
+        task.setOnSucceeded(e -> {
+            purchaseInvoicesCache = task.getValue() == null
+                    ? java.util.List.of() : task.getValue();
+            applyClientSideFilters();
+        });
         task.setOnFailed(e -> showError(t("purchases.list.fail.title"),
                 t("purchases.list.fail.body")));
         start(task, "purchases-list");
+    }
+
+    /**
+     * Aplica los filtros que se calculan en cliente sobre el caché:
+     * trimestre (T1-T4) y proveedor (NIF o nombre, sub-string).
+     * Llamado en cada cambio de combo/text sin tocar el backend.
+     */
+    private void applyClientSideFilters() {
+        if (purchaseInvoicesTable == null) return;
+        String q = purchaseQuarterFilter == null ? null : purchaseQuarterFilter.getValue();
+        String supplier = purchaseSupplierFilter == null ? null
+                : purchaseSupplierFilter.getText();
+        String supplierLower = (supplier == null || supplier.isBlank())
+                ? null : supplier.trim().toLowerCase();
+        var filtered = new java.util.ArrayList<com.benjagest.ui.model.PurchaseInvoiceEntry>();
+        for (var inv : purchaseInvoicesCache) {
+            if (q != null && !q.equals(t("list.filter.all"))
+                    && inv.invoiceDate() != null) {
+                int month = inv.invoiceDate().getMonthValue();
+                int quarter = (month - 1) / 3 + 1;
+                if (!("T" + quarter).equals(q)) continue;
+            }
+            if (supplierLower != null) {
+                String nif = inv.supplierNif() == null ? "" : inv.supplierNif().toLowerCase();
+                String name = inv.supplierName() == null ? "" : inv.supplierName().toLowerCase();
+                if (!nif.contains(supplierLower) && !name.contains(supplierLower)) continue;
+            }
+            filtered.add(inv);
+        }
+        purchaseInvoicesTable.getItems().setAll(filtered);
     }
 
     private Integer parseYearFilter(String text) {
@@ -7360,6 +7429,9 @@ public class BenjagestUiApplication extends Application {
                 case "purchases.placeholder.coming_soon" -> "The full Purchases module (supplier list, recurring expenses, payment status) is on the roadmap. Today only the PDF importer is available — the detected fields are shown for review but not persisted yet.";
                 case "purchases.placeholder.empty" -> "No expenses recorded yet. Use 'Import PDF' to add the first one.";
                 case "purchases.filter.year" -> "Year:";
+                case "purchases.filter.quarter" -> "Quarter:";
+                case "purchases.filter.supplier" -> "Supplier:";
+                case "purchases.filter.supplier.prompt" -> "Tax ID or name";
                 case "purchases.action.refresh" -> "Refresh";
                 case "purchases.action.delete" -> "Delete";
                 case "purchases.col.date" -> "Date";
@@ -8247,7 +8319,10 @@ public class BenjagestUiApplication extends Application {
             case "purchases.action.import_pdf" -> "Importar factura PDF";
             case "purchases.placeholder.coming_soon" -> "El modulo Compras completo (proveedores, gastos recurrentes, estado cobro) esta en hoja de ruta. Hoy solo esta disponible el importador PDF — los campos detectados se muestran para revision pero todavia no se persisten.";
             case "purchases.placeholder.empty" -> "Sin gastos registrados todavia. Usa 'Importar PDF' para anyadir el primero.";
-            case "purchases.filter.year" -> "Anio:";
+            case "purchases.filter.year" -> "Año:";
+            case "purchases.filter.quarter" -> "Trimestre:";
+            case "purchases.filter.supplier" -> "Proveedor:";
+            case "purchases.filter.supplier.prompt" -> "NIF o nombre";
             case "purchases.action.refresh" -> "Refrescar";
             case "purchases.action.delete" -> "Eliminar";
             case "purchases.col.date" -> "Fecha";
@@ -12155,28 +12230,16 @@ public class BenjagestUiApplication extends Application {
 
     /**
      * Pestaña Compras y Gastos dentro de la pantalla del cliente.
-     * Reutilizamos el listado de purchases que ya funciona — gracias
-     * al actingForCompanyId del AuthSession, las queries van al
-     * tenant del cliente automáticamente.
+     * Renderiza el listado COMPLETO de gastos directamente dentro del
+     * tab (no navega fuera). Gracias al actingForCompanyId activo en
+     * AuthSession, las queries van al tenant del cliente — los gastos
+     * que se ven son los de SU empresa, no los de la asesoría.
+     *
+     * El asesor puede importar PDF, filtrar por año / trimestre /
+     * proveedor y eliminar gastos sin salir del contexto del cliente.
      */
     private Node buildClientPurchasesTab() {
-        // Construir la misma vista del módulo Compras y Gastos pero
-        // sin el shell (header del módulo) para que encaje dentro del
-        // TabPane del cliente.
-        VBox body = new VBox(12);
-        body.setPadding(new Insets(20));
-        Label hint = new Label(t("advisory.client.purchases.hint"));
-        hint.setWrapText(true);
-        hint.getStyleClass().add("settings-hint");
-        Label placeholder = new Label(t("advisory.client.purchases.use_module"));
-        placeholder.setWrapText(true);
-        placeholder.getStyleClass().add("settings-hint");
-        Button openBtn = new Button(t("advisory.client.purchases.open"));
-        openBtn.setGraphic(icon("fas-external-link-alt"));
-        openBtn.getStyleClass().add("button-primary");
-        openBtn.setOnAction(ev -> showPurchasesWithImport());
-        body.getChildren().addAll(hint, placeholder, openBtn);
-        return body;
+        return buildPurchasesListing(false);
     }
 
     // ===================================================================
