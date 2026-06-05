@@ -90,7 +90,7 @@ public class WorkspaceRepository {
                 count("notifications", "company_id = ? AND status <> 'READ'"),
                 amount("SELECT COALESCE(SUM(total), 0) FROM sales_invoices WHERE company_id = ?", currentCompanyId()),
                 amount("SELECT COALESCE(SUM(total - paid_amount), 0) FROM sales_invoices WHERE company_id = ? AND payment_status <> 'PAID'", currentCompanyId()),
-                amount("SELECT COALESCE(SUM(total), 0) FROM purchase_invoices WHERE company_id = ?", currentCompanyId()),
+                amount("SELECT COALESCE(SUM(total_amount), 0) FROM purchase_invoices WHERE company_id = ?", currentCompanyId()),
                 amount("SELECT COALESCE(SUM(net_amount), 0) FROM payrolls WHERE company_id = ?", currentCompanyId()),
                 dashboardItems("""
                         SELECT invoice_number AS title,
@@ -161,7 +161,9 @@ public class WorkspaceRepository {
         return switch (module) {
             case "customers" -> createCustomer(request);
             case "billing" -> createInvoice(request);
-            case "purchases" -> createPurchase(request);
+            // "purchases" eliminado en PURCHASES-CLEANUP-V2: la creación
+            // pasa por PurchaseInvoiceService (flujo PDF + validación
+            // contable). El dashboard solo lee, no escribe.
             case "labor" -> createLaborRecord(request);
             case "tax" -> createTaxFiling(request);
             case "settings" -> createEmployee(request);
@@ -176,7 +178,7 @@ public class WorkspaceRepository {
         return switch (module) {
             case "customers" -> updateCustomer(recordId, request);
             case "billing" -> updateInvoice(recordId, request);
-            case "purchases" -> updatePurchase(recordId, request);
+            // "purchases" eliminado en PURCHASES-CLEANUP-V2 (ver create).
             case "labor" -> updateLaborRecord(recordId, request);
             case "tax" -> updateTaxFiling(recordId, request);
             case "settings" -> updateEmployee(recordId, request);
@@ -237,16 +239,19 @@ public class WorkspaceRepository {
     }
 
     private List<ModuleRecord> purchases() {
+        // PURCHASES-CLEANUP-V2: ya no leemos `total`/`category`/`payment_status`
+        // (columnas legacy de V2 retiradas en V45). Tampoco hacemos JOIN a
+        // `suppliers` porque purchase_invoices ahora solo guarda supplier_name
+        // + supplier_nif (el catálogo de suppliers no se usa todavía).
         return rows("""
                 SELECT p.id,
                        COALESCE(p.invoice_number, '') AS factura,
-                       COALESCE(s.legal_name, p.supplier_name, '') AS proveedor,
+                       COALESCE(p.supplier_name, '') AS proveedor,
                        CAST(p.invoice_date AS CHAR) AS fecha,
-                       COALESCE(p.category, '') AS categoria,
-                       p.payment_status AS pago,
-                       p.total AS total
+                       COALESCE(p.supplier_nif, '') AS nif,
+                       COALESCE(p.status, '') AS estado,
+                       p.total_amount AS total
                 FROM purchase_invoices p
-                LEFT JOIN suppliers s ON s.id = p.supplier_id
                 WHERE p.company_id = ?
                 ORDER BY p.invoice_date DESC
                 LIMIT 50
@@ -400,44 +405,13 @@ public class WorkspaceRepository {
         return findRecord("billing", invoiceId);
     }
 
-    private ModuleRecord createPurchase(ModuleCreateRequest request) {
-        String purchaseId = id();
-        BigDecimal base = amountOrDefault(request.amount(), BigDecimal.valueOf(50));
-        BigDecimal vatPercent = amountOrDefault(request.vatPercent(), BigDecimal.valueOf(21));
-        BigDecimal vat = base.multiply(vatPercent).divide(BigDecimal.valueOf(100));
-        BigDecimal total = base.add(vat);
-        String supplierId = valueOrDefault(request.supplierId(), firstId("suppliers", "company_id = ? AND active = TRUE"));
-        jdbcTemplate.update("""
-                INSERT INTO purchase_invoices (id, company_id, supplier_id, supplier_name, invoice_number, invoice_date,
-                    category, subtotal, vat_total, total, payment_status)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'PENDING')
-                """,
-                purchaseId,
-                currentCompanyId(),
-                supplierId,
-                supplierName(supplierId),
-                "G-" + purchaseId.substring(0, 8).toUpperCase(),
-                dateOrToday(request.date()),
-                text(request.category(), "General"),
-                base,
-                vat,
-                total
-        );
-        jdbcTemplate.update("""
-                INSERT INTO purchase_invoice_lines (id, purchase_invoice_id, description, quantity, unit_price, vat_percent, line_subtotal, line_vat, line_total)
-                VALUES (?, ?, ?, 1, ?, ?, ?, ?, ?)
-                """,
-                id(),
-                purchaseId,
-                text(request.description(), "Gasto registrado"),
-                base,
-                vatPercent,
-                base,
-                vat,
-                total
-        );
-        return findRecord("purchases", purchaseId);
-    }
+    // PURCHASES-CLEANUP-V2 (2026-06-05): los métodos createPurchase y
+    // updatePurchase del dashboard genérico se han eliminado. La
+    // creación/edición de facturas recibidas pasa exclusivamente por
+    // PurchaseInvoiceService (subida de PDF + extracción + asiento
+    // contable). Las columnas que estos métodos rellenaban
+    // (supplier_id, category, subtotal, vat_total, total,
+    // payment_status) se han retirado en V45.
 
     private ModuleRecord createLaborRecord(ModuleCreateRequest request) {
         String employeeId = valueOrDefault(request.employeeId(), firstId("employees", "company_id = ? AND active = TRUE"));
@@ -607,37 +581,7 @@ public class WorkspaceRepository {
         return findRecord("billing", recordId);
     }
 
-    private ModuleRecord updatePurchase(String recordId, ModuleCreateRequest request) {
-        BigDecimal total = amountOrDefault(request.amount(), BigDecimal.ZERO);
-        jdbcTemplate.update("""
-                UPDATE purchase_invoices
-                SET invoice_date = ?,
-                    category = ?,
-                    payment_status = ?,
-                    total = CASE WHEN ? > 0 THEN ? ELSE total END
-                WHERE id = ? AND company_id = ?
-                """,
-                dateOrToday(request.date()),
-                text(request.category(), "General"),
-                allowed(request.status(), List.of("PENDING", "PARTIAL", "PAID", "OVERDUE"), "PENDING"),
-                total,
-                total,
-                recordId,
-                currentCompanyId()
-        );
-        if (StringUtils.hasText(request.description())) {
-            jdbcTemplate.update("""
-                    UPDATE purchase_invoice_lines
-                    SET description = ?
-                    WHERE purchase_invoice_id = ?
-                    LIMIT 1
-                    """,
-                    request.description().trim(),
-                    recordId
-            );
-        }
-        return findRecord("purchases", recordId);
-    }
+    // updatePurchase eliminado en PURCHASES-CLEANUP-V2. Ver create.
 
     private ModuleRecord updateLaborRecord(String recordId, ModuleCreateRequest request) {
         jdbcTemplate.update("""
