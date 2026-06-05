@@ -43,6 +43,20 @@ public class TimeClockController {
         return service.punch(req.employeeId(), req.eventType(), req.customerId(), req.origin());
     }
 
+    /**
+     * Resuelve {@code employees.id} del usuario logueado en la
+     * empresa activa (tenant). La UI lo llama antes de fichar para
+     * obtener un employeeId válido; si el user no tiene ficha de
+     * empleado en esta empresa, devuelve 404 con mensaje claro
+     * ("Pide al administrador que te dé de alta en Personal").
+     */
+    @GetMapping("/me/employee")
+    public MyEmployeeInfo myEmployee() {
+        return service.resolveCurrentEmployee();
+    }
+
+    public record MyEmployeeInfo(String employeeId, String fullName) {}
+
     @GetMapping("/employee/{id}/recent")
     public List<TimeClockEvent> recent(@PathVariable("id") String employeeId,
                                        @RequestParam(value = "limit", defaultValue = "50") int limit) {

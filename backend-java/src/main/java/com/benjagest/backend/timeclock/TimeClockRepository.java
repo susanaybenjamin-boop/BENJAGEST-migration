@@ -34,6 +34,30 @@ public class TimeClockRepository {
         this.tenantContext = tenantContext;
     }
 
+    /**
+     * Busca la ficha de empleado activa de un usuario en una empresa.
+     * Devuelve {@code Optional.empty()} si el usuario no tiene fila en
+     * {@code employees} para esa empresa (típico: el OWNER de la
+     * empresa nunca se dio de alta como empleado). La UI usa este
+     * resultado para decidir si puede fichar o si tiene que pedir alta.
+     */
+    public Optional<MyEmployeeRow> findEmployeeByUserAndCompany(String userId, String companyId) {
+        return jdbcTemplate.query("""
+                SELECT id, full_name
+                  FROM employees
+                 WHERE user_id = ?
+                   AND company_id = ?
+                   AND active = TRUE
+                 LIMIT 1
+                """,
+                rs -> rs.next()
+                        ? Optional.of(new MyEmployeeRow(rs.getString("id"), rs.getString("full_name")))
+                        : Optional.empty(),
+                userId, companyId);
+    }
+
+    public record MyEmployeeRow(String employeeId, String fullName) {}
+
     public void insertEvent(TimeClockEvent event) {
         jdbcTemplate.update("""
                 INSERT INTO time_clock_events (
