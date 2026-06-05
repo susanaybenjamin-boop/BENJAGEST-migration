@@ -34,17 +34,20 @@ public class PurchaseInvoiceService {
     private final CurrentUserService currentUserService;
     private final TenantContext tenantContext;
     private final AuditService auditService;
+    private final com.benjagest.backend.accounting.FiscalYearGuardService fiscalGuard;
 
     public PurchaseInvoiceService(PurchaseInvoiceRepository repository,
                                     PurchaseJournalEntryService journalService,
                                     CurrentUserService currentUserService,
                                     TenantContext tenantContext,
-                                    AuditService auditService) {
+                                    AuditService auditService,
+                                    com.benjagest.backend.accounting.FiscalYearGuardService fiscalGuard) {
         this.repository = repository;
         this.journalService = journalService;
         this.currentUserService = currentUserService;
         this.tenantContext = tenantContext;
         this.auditService = auditService;
+        this.fiscalGuard = fiscalGuard;
     }
 
     @Transactional
@@ -136,6 +139,12 @@ public class PurchaseInvoiceService {
     @Transactional
     public void deleteInvoice(String id) {
         PurchaseInvoice existing = get(id);
+        // PURCHASES-CIERRE-FISCAL: si la factura cae en un ejercicio
+        // LOCKED/CLOSED, no se puede borrar. La AEAT considera
+        // alteración de un periodo presentado. Hay que rectificar
+        // (factura con signo negativo en el ejercicio actual). El
+        // guard lanza 409 con mensaje legible que la UI muestra.
+        fiscalGuard.requireOpenForDate(existing.invoiceDate(), "eliminar esta factura");
         AuthenticatedUser user = currentUserService.require();
         String tenant = tenantContext.getCurrentCompanyId();
         // Auditoría primero: necesitamos la traza aunque luego el
