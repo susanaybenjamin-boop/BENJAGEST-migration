@@ -114,6 +114,25 @@ public class CompanyModulesService {
         String companyId = tenantContext.getCurrentCompanyId();
         boolean isCategory = moduleRepository.isRootCategory(slug);
 
+        // Defensa: un CLIENT no puede activar un modulo advisory_only
+        // (Mis clientes, Asesoria, etc.). El catalogo filtrado por
+        // ModuleAccessService ya no se lo ofrece, pero un POST a mano
+        // sigue funcionando si no bloqueamos aqui.
+        if (active) {
+            Module target = moduleAccessService.listCatalog().stream()
+                    .filter(m -> m.slug().equals(slug)).findFirst().orElse(null);
+            if (target != null && target.advisoryOnly()) {
+                String companyType = moduleRepository.findCompanyType(companyId);
+                boolean isAdvisory = "INTERNAL".equalsIgnoreCase(companyType)
+                        || "ADVISORY".equalsIgnoreCase(companyType);
+                if (!isAdvisory) {
+                    throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                            "El modulo '" + slug + "' solo esta disponible para "
+                                    + "empresas de tipo asesoria.");
+                }
+            }
+        }
+
         if (active) {
             activateWithDependencies(slug, companyId, actor.userId(), new HashSet<>());
             if (isCategory) {
