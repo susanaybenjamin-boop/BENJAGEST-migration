@@ -92,7 +92,7 @@ public class JournalEntryPdfImportController {
      * application/pdf). Usado por la UI para mostrar el visor.
      */
     @GetMapping("/journal-entries/{id}/source-pdf")
-    public ResponseEntity<byte[]> downloadSourcePdf(@PathVariable String id)
+    public ResponseEntity<byte[]> downloadSourcePdf(@PathVariable("id") String id)
             throws IOException {
         String companyId = tenantContext.getCurrentCompanyId();
         List<String> paths = jdbcTemplate.query("""

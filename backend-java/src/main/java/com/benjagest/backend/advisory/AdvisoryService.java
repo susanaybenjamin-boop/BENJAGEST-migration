@@ -263,7 +263,8 @@ public class AdvisoryService {
          * esa company para que la UI haga acting-for y entre al cliente.
          */
         @PostMapping("/{customerId}/start-management")
-        public StartManagementResponse startManagement(@PathVariable String customerId) {
+        public StartManagementResponse startManagement(
+                @PathVariable("customerId") String customerId) {
             String companyId = service.ensureManagedCompany(customerId);
             return new StartManagementResponse(companyId);
         }
