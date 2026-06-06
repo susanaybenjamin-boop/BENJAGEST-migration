@@ -615,6 +615,17 @@ public class AccountingScreen {
             }
             AccountSummary a = byCode.get(code);
             if (a == null) {
+                // Si el código no está en el catálogo cargado pero PARECE
+                // sub-cuenta de tercero (4000xxx proveedor / 4300xxx
+                // cliente), no bloqueamos: el backend la auto-creará
+                // tomando el nombre del tercero del concepto del asiento.
+                // Esto replica el flujo "crea el tercero" que hace CONTENDO.
+                if (looksLikeTerceroCode(code)) {
+                    lines.add(new JournalLine(null, null, code, null,
+                            el.descriptionProp.get(),
+                            parse(el.debitProp.get()), parse(el.creditProp.get())));
+                    continue;
+                }
                 errors.add("Línea " + idx + ": cuenta " + code + " no existe");
                 continue;
             }
@@ -732,6 +743,19 @@ public class AccountingScreen {
     }
 
     private boolean empty(String s) { return s == null || s.isBlank(); }
+
+    /**
+     * ¿El código tiene pinta de sub-cuenta de tercero (proveedor 4000xxx
+     * o cliente 4300xxx)? Si sí, la UI no debe bloquear: el backend la
+     * crea con el nombre del tercero extraído del concepto del asiento.
+     */
+    private boolean looksLikeTerceroCode(String code) {
+        if (code == null) return false;
+        String c = code.trim();
+        if (c.length() < 4) return false;
+        return (c.startsWith("4000") || c.startsWith("4300"))
+                && c.chars().allMatch(Character::isDigit);
+    }
 
     private String safeKeyword(String concept) {
         if (concept == null) return null;
