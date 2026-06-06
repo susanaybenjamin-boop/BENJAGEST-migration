@@ -10565,6 +10565,9 @@ public class BenjagestUiApplication extends Application {
             case "accounting.filter.to" -> "To";
             case "accounting.filter.status" -> "Status";
             case "accounting.filter.source" -> "Source";
+            case "accounting.filter.search" -> "Search";
+            case "accounting.filter.search_prompt" -> "concept, number, source…";
+            case "accounting.filter.any" -> "(any)";
             case "accounting.col.num" -> "#";
             case "accounting.col.date" -> "Date";
             case "accounting.col.concept" -> "Concept";
@@ -10917,6 +10920,9 @@ public class BenjagestUiApplication extends Application {
             case "accounting.filter.to" -> "Hasta";
             case "accounting.filter.status" -> "Estado";
             case "accounting.filter.source" -> "Origen";
+            case "accounting.filter.search" -> "Buscar";
+            case "accounting.filter.search_prompt" -> "concepto, nº, origen…";
+            case "accounting.filter.any" -> "(cualquiera)";
             case "accounting.col.num" -> "Nº";
             case "accounting.col.date" -> "Fecha";
             case "accounting.col.concept" -> "Concepto";

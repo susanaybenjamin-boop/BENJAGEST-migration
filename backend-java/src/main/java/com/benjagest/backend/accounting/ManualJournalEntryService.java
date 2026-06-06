@@ -88,7 +88,13 @@ public class ManualJournalEntryService {
 
         String fiscalYearId = resolveFiscalYearId(companyId, req.entryDate());
 
-        int entryNumber = nextEntryNumber(companyId, fiscalYearId);
+        // entry_number: si entra en POSTED directamente, asignar; si entra
+        // en DRAFT, dejar NULL hasta que se valide. Así el Diario solo
+        // numera los POSTED y van en orden de validación, sin huecos.
+        boolean postingNow = req.postNow();
+        Integer entryNumber = postingNow
+                ? nextPostedEntryNumber(companyId, fiscalYearId)
+                : null;
         String entryId = UUID.randomUUID().toString();
         String userId = safeUserId();
 
@@ -102,7 +108,7 @@ public class ManualJournalEntryService {
                 entryId, companyId, fiscalYearId, entryNumber,
                 Date.valueOf(req.entryDate()),
                 truncate(req.concept(), 240),
-                req.postNow() ? "POSTED" : "DRAFT",
+                postingNow ? "POSTED" : "DRAFT",
                 userId);
         insertLines(entryId, req.lines(), companyId);
         return get(entryId);
@@ -206,12 +212,17 @@ public class ManualJournalEntryService {
                     "El asiento está anulado, no se puede postear.");
         }
         fiscalGuard.requireOpenForDate(current.entryDate(), "validar asiento contable");
+        String companyId = tenantContext.getCurrentCompanyId();
 
+        // Asignar entry_number AHORA — el siguiente correlativo entre los
+        // POSTED del fiscal year. Así el Diario queda en orden de
+        // validación, sin huecos vacíos por DRAFTs intermedios.
+        int newNumber = nextPostedEntryNumber(companyId, current.fiscalYearId());
         jdbcTemplate.update("""
                 UPDATE journal_entries
-                   SET status = 'POSTED', reviewed = TRUE
+                   SET status = 'POSTED', reviewed = TRUE, entry_number = ?
                  WHERE id = ? AND company_id = ?
-                """, entryId, tenantContext.getCurrentCompanyId());
+                """, newNumber, entryId, companyId);
         return get(entryId);
     }
 
@@ -489,6 +500,22 @@ public class ManualJournalEntryService {
                 SELECT COALESCE(MAX(entry_number), 0)
                   FROM journal_entries
                  WHERE company_id = ? AND fiscal_year_id = ?
+                """, Integer.class, companyId, fiscalYearId);
+        return (max == null ? 0 : max) + 1;
+    }
+
+    /**
+     * Siguiente entry_number considerando SOLO los asientos POSTED. Usado
+     * al validar un DRAFT — así el Diario sale en orden de validación y
+     * los DRAFTs intermedios no "consumen" números.
+     */
+    private int nextPostedEntryNumber(String companyId, String fiscalYearId) {
+        Integer max = jdbcTemplate.queryForObject("""
+                SELECT COALESCE(MAX(entry_number), 0)
+                  FROM journal_entries
+                 WHERE company_id = ? AND fiscal_year_id = ?
+                   AND status = 'POSTED'
+                   AND entry_number IS NOT NULL
                 """, Integer.class, companyId, fiscalYearId);
         return (max == null ? 0 : max) + 1;
     }

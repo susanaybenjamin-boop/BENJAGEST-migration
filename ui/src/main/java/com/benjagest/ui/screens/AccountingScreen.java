@@ -282,6 +282,11 @@ public class AccountingScreen {
     private ComboBox<String> statusFilter;
     private ComboBox<String> sourceFilter;
 
+    /** Caché del listado completo del Diario para filtrar client-side por texto. */
+    private final javafx.collections.ObservableList<DiaryEntry> diaryAll =
+            FXCollections.observableArrayList();
+    private TextField diarySearch;
+
     private Node buildDiaryTab() {
         diaryTable = createDiaryTable(false);
 
@@ -290,10 +295,19 @@ public class AccountingScreen {
         statusFilter = new ComboBox<>(FXCollections.observableArrayList(
                 "", "DRAFT", "POSTED", "VOIDED"));
         statusFilter.setValue("POSTED");
+        installStatusCellFactory(statusFilter);
         sourceFilter = new ComboBox<>(FXCollections.observableArrayList(
                 "", "MANUAL", "SALES_INVOICE", "PURCHASE_INVOICE",
                 "BANK_MOVEMENT", "YEAR_CLOSE_REGULARIZATION",
                 "YEAR_CLOSE_CLOSING", "LOAN_INSTALLMENT", "ASSET_DEPRECIATION"));
+        installSourceCellFactory(sourceFilter);
+
+        // Búsqueda libre — filtra por texto que aparezca en concepto, nº
+        // de asiento o (cuando se cargue el detalle) cuenta/tercero.
+        diarySearch = new TextField();
+        diarySearch.setPromptText(tt.apply("accounting.filter.search_prompt"));
+        diarySearch.setPrefColumnCount(20);
+        diarySearch.textProperty().addListener((o, a, b) -> applyDiarySearch());
 
         Button reload = new Button(tt.apply("accounting.action.refresh"));
         reload.setOnAction(e -> loadDiary());
@@ -303,6 +317,7 @@ public class AccountingScreen {
                 new Label(tt.apply("accounting.filter.to")), toPicker,
                 new Label(tt.apply("accounting.filter.status")), statusFilter,
                 new Label(tt.apply("accounting.filter.source")), sourceFilter,
+                new Label(tt.apply("accounting.filter.search")), diarySearch,
                 reload);
         filters.setAlignment(Pos.CENTER_LEFT);
 
@@ -329,8 +344,84 @@ public class AccountingScreen {
         String status = empty(statusFilter.getValue()) ? null : statusFilter.getValue();
         String source = empty(sourceFilter.getValue()) ? null : sourceFilter.getValue();
         async(() -> api.diary(from, to, status, source, 500),
-                rows -> diaryTable.setItems(FXCollections.observableArrayList(rows)),
+                rows -> {
+                    diaryAll.setAll(rows);
+                    applyDiarySearch();
+                },
                 err -> logSilent("load", err));
+    }
+
+    /** Filtro client-side por texto en concepto/nº/source. */
+    private void applyDiarySearch() {
+        String q = diarySearch == null || diarySearch.getText() == null
+                ? "" : diarySearch.getText().trim().toLowerCase();
+        if (q.isEmpty()) {
+            diaryTable.setItems(FXCollections.observableArrayList(diaryAll));
+            return;
+        }
+        javafx.collections.ObservableList<DiaryEntry> filtered =
+                FXCollections.observableArrayList();
+        for (DiaryEntry e : diaryAll) {
+            String concept = e.concept() == null ? "" : e.concept().toLowerCase();
+            String num = String.valueOf(e.entryNumber());
+            String src = e.sourceType() == null ? "" : e.sourceType().toLowerCase();
+            String srcLabel = translateSourceType(e.sourceType()).toLowerCase();
+            if (concept.contains(q) || num.contains(q)
+                    || src.contains(q) || srcLabel.contains(q)) {
+                filtered.add(e);
+            }
+        }
+        diaryTable.setItems(filtered);
+    }
+
+    /** Traduce un source_type al idioma activo (ej. PURCHASE_INVOICE → "Compra"). */
+    private String translateSourceType(String code) {
+        if (code == null || code.isBlank()) return "";
+        return tt.apply("accounting.source_type." + code);
+    }
+
+    /** Aplica un cellFactory al combo de estado para mostrar texto traducido. */
+    private void installStatusCellFactory(ComboBox<String> combo) {
+        combo.setCellFactory(lv -> new javafx.scene.control.ListCell<>() {
+            @Override protected void updateItem(String item, boolean empty) {
+                super.updateItem(item, empty);
+                if (empty || item == null) { setText(null); return; }
+                setText(item.isEmpty()
+                        ? tt.apply("accounting.filter.any")
+                        : tt.apply("accounting.status." + item));
+            }
+        });
+        combo.setButtonCell(new javafx.scene.control.ListCell<>() {
+            @Override protected void updateItem(String item, boolean empty) {
+                super.updateItem(item, empty);
+                if (empty || item == null) { setText(null); return; }
+                setText(item.isEmpty()
+                        ? tt.apply("accounting.filter.any")
+                        : tt.apply("accounting.status." + item));
+            }
+        });
+    }
+
+    /** Aplica un cellFactory al combo de origen para mostrar texto traducido. */
+    private void installSourceCellFactory(ComboBox<String> combo) {
+        combo.setCellFactory(lv -> new javafx.scene.control.ListCell<>() {
+            @Override protected void updateItem(String item, boolean empty) {
+                super.updateItem(item, empty);
+                if (empty || item == null) { setText(null); return; }
+                setText(item.isEmpty()
+                        ? tt.apply("accounting.filter.any")
+                        : translateSourceType(item));
+            }
+        });
+        combo.setButtonCell(new javafx.scene.control.ListCell<>() {
+            @Override protected void updateItem(String item, boolean empty) {
+                super.updateItem(item, empty);
+                if (empty || item == null) { setText(null); return; }
+                setText(item.isEmpty()
+                        ? tt.apply("accounting.filter.any")
+                        : translateSourceType(item));
+            }
+        });
     }
 
     // ====================================================================
@@ -788,7 +879,10 @@ public class AccountingScreen {
     private TableView<DiaryEntry> createDiaryTable(boolean showConfidence) {
         TableView<DiaryEntry> table = new TableView<>();
         List<TableColumn<DiaryEntry, String>> cols = new ArrayList<>();
-        cols.add(col(tt.apply("accounting.col.num"), e -> String.valueOf(e.entryNumber()), 60));
+        // entry_number = 0 / NULL → DRAFT sin número aún (se asigna al
+        // validar). Mostramos "—" en lugar de "0".
+        cols.add(col(tt.apply("accounting.col.num"),
+                e -> e.entryNumber() <= 0 ? "—" : String.valueOf(e.entryNumber()), 60));
         cols.add(col(tt.apply("accounting.col.date"), e -> e.entryDate() == null ? "" : e.entryDate().toString(), 100));
         cols.add(col(tt.apply("accounting.col.concept"), DiaryEntry::concept, 280));
         cols.add(col(tt.apply("accounting.col.source"),
