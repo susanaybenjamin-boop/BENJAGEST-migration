@@ -105,14 +105,19 @@ public final class PdfViewer extends BorderPane {
         spinner.setMaxSize(48, 48);
         spinner.setVisible(false);
 
+        // El ImageView vive dentro de un StackPane (para overlay del
+        // spinner). El StackPane queda en su tamaño natural (= tamaño de
+        // la imagen renderizada por PDFBox a DPI*zoom). El ScrollPane
+        // scrollea tanto horizontal como verticalmente sin estirar el
+        // contenido — fitToWidth/fitToHeight = FALSE para que zoom alto
+        // permita ver toda la factura, no solo lo que cabe en pantalla.
         StackPane center = new StackPane(imageView, spinner);
         center.setStyle("-fx-background-color: #5a5a5a;");
+        center.setAlignment(Pos.TOP_CENTER);
         ScrollPane scroll = new ScrollPane(center);
-        scroll.setFitToWidth(true);
-        // fitToHeight = FALSE: cuando el zoom hace la imagen más alta
-        // que el viewport, el ScrollPane interno scrollea verticalmente
-        // y consume el evento — el formulario del SplitPane no se mueve.
+        scroll.setFitToWidth(false);
         scroll.setFitToHeight(false);
+        scroll.setPannable(true);   // arrastrar con el ratón para mover.
         scroll.setStyle("-fx-background-color: #5a5a5a;");
         scroll.setPadding(new Insets(8));
         scroll.setVbarPolicy(ScrollPane.ScrollBarPolicy.AS_NEEDED);
