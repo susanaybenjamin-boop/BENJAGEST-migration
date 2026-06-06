@@ -11220,6 +11220,31 @@ public class BenjagestUiApplication extends Application {
             case "recurring.history.col.status" -> "Status";
             case "recurring.history.col.message" -> "Message";
             case "recurring.history.error" -> "Could not load history";
+            case "recurring.new.sales" -> "New recurring sale";
+            case "recurring.new.expense" -> "New recurring expense";
+            case "recurring.edit" -> "Edit recurring";
+            case "recurring.field.name" -> "Name";
+            case "recurring.field.description" -> "Description";
+            case "recurring.field.description.hint" -> "Internal notes (optional)";
+            case "recurring.field.frequency" -> "Frequency";
+            case "recurring.field.first_run" -> "First run";
+            case "recurring.field.concept" -> "Concept";
+            case "recurring.field.concept.hint" -> "Retainer {YYYY}{MM} — use placeholders for month/year";
+            case "recurring.field.customer_nif" -> "Customer Tax ID";
+            case "recurring.field.customer_name" -> "Customer legal name";
+            case "recurring.field.supplier_nif" -> "Supplier Tax ID";
+            case "recurring.field.supplier_name" -> "Supplier legal name";
+            case "recurring.field.line_desc" -> "Line description";
+            case "recurring.field.quantity" -> "Quantity";
+            case "recurring.field.unit_price" -> "Unit price";
+            case "recurring.field.vat_percent" -> "VAT %";
+            case "recurring.field.retention_percent" -> "Withholding %";
+            case "recurring.field.invoice_number" -> "Invoice number template";
+            case "recurring.field.base_amount" -> "Base amount";
+            case "recurring.section.sale_data" -> "Sale data";
+            case "recurring.section.expense_data" -> "Expense data";
+            case "recurring.placeholders.hint" -> "You can use {YYYY}, {MM}, {DD} in concept, description and invoice number to insert the year/month/day of each run.";
+            case "recurring.save.error" -> "Could not save the task";
             case "date.day.monday" -> "Monday";
             case "date.day.tuesday" -> "Tuesday";
             case "date.day.wednesday" -> "Wednesday";
@@ -11684,6 +11709,31 @@ public class BenjagestUiApplication extends Application {
             case "recurring.history.col.status" -> "Estado";
             case "recurring.history.col.message" -> "Mensaje";
             case "recurring.history.error" -> "No se pudo cargar el historial";
+            case "recurring.new.sales" -> "Nueva venta recurrente";
+            case "recurring.new.expense" -> "Nuevo gasto recurrente";
+            case "recurring.edit" -> "Editar recurrente";
+            case "recurring.field.name" -> "Nombre";
+            case "recurring.field.description" -> "Descripción";
+            case "recurring.field.description.hint" -> "Notas internas (opcional)";
+            case "recurring.field.frequency" -> "Frecuencia";
+            case "recurring.field.first_run" -> "Primera ejecución";
+            case "recurring.field.concept" -> "Concepto";
+            case "recurring.field.concept.hint" -> "Iguala {YYYY}{MM} — usar placeholders si quieres mes/año";
+            case "recurring.field.customer_nif" -> "NIF cliente";
+            case "recurring.field.customer_name" -> "Razón social cliente";
+            case "recurring.field.supplier_nif" -> "NIF proveedor";
+            case "recurring.field.supplier_name" -> "Razón social proveedor";
+            case "recurring.field.line_desc" -> "Descripción línea";
+            case "recurring.field.quantity" -> "Cantidad";
+            case "recurring.field.unit_price" -> "Precio unitario";
+            case "recurring.field.vat_percent" -> "IVA %";
+            case "recurring.field.retention_percent" -> "Retención %";
+            case "recurring.field.invoice_number" -> "Nº factura plantilla";
+            case "recurring.field.base_amount" -> "Importe base";
+            case "recurring.section.sale_data" -> "Datos de la venta";
+            case "recurring.section.expense_data" -> "Datos del gasto";
+            case "recurring.placeholders.hint" -> "Puedes usar {YYYY}, {MM}, {DD} en concepto, descripción y nº de factura para insertar el año/mes/día de cada ejecución.";
+            case "recurring.save.error" -> "No se pudo guardar la tarea";
             case "date.day.monday" -> "lunes";
             case "date.day.tuesday" -> "martes";
             case "date.day.wednesday" -> "miércoles";
@@ -15189,7 +15239,27 @@ public class BenjagestUiApplication extends Application {
         refreshBtn.setGraphic(icon("fas-rotate"));
         refreshBtn.setOnAction(e -> loadClientRecurring(table, kind));
 
-        HBox toolbar = new HBox(8, refreshBtn);
+        Button newBtn = new Button("SALES_INVOICE".equals(kind)
+                ? t("recurring.new.sales") : t("recurring.new.expense"));
+        newBtn.setGraphic(icon("fas-plus"));
+        newBtn.getStyleClass().add("button-primary");
+        newBtn.setOnAction(e -> showRecurringEditor(kind, null,
+                () -> loadClientRecurring(table, kind)));
+
+        // Doble click en una fila → editar la tarea
+        table.setRowFactory(tv -> {
+            javafx.scene.control.TableRow<com.benjagest.ui.model.AccountingModels.RecurringTask> row =
+                    new javafx.scene.control.TableRow<>();
+            row.setOnMouseClicked(ev -> {
+                if (ev.getClickCount() == 2 && !row.isEmpty() && row.getItem() != null) {
+                    showRecurringEditor(kind, row.getItem(),
+                            () -> loadClientRecurring(table, kind));
+                }
+            });
+            return row;
+        });
+
+        HBox toolbar = new HBox(8, newBtn, refreshBtn);
         toolbar.setAlignment(javafx.geometry.Pos.CENTER_LEFT);
 
         VBox box = new VBox(8, cronInfo, toolbar, table);
@@ -15354,6 +15424,320 @@ public class BenjagestUiApplication extends Application {
 
         dlg.getDialogPane().setContent(runsTable);
         dlg.showAndWait();
+    }
+
+    /**
+     * Editor crear/editar tarea recurrente. El mismo diálogo sirve para
+     * SALES_INVOICE y PURCHASE; cambia el bloque de "datos del documento"
+     * según {@code kind}. Si {@code existing} es null, modo crear; si
+     * no, modo editar (con campos prellenados). Al guardar llama a la
+     * API y dispara {@code onSaved} para que el listado se refresque.
+     *
+     * <p>Para SALES_INVOICE el payload generado es:
+     * <pre>
+     * {
+     *   customerNif, customerLegalName, concept,
+     *   lines: [{description, quantity, unitPrice, vatPercent, retentionPercent}]
+     * }
+     * </pre>
+     *
+     * <p>Para PURCHASE el payload es:
+     * <pre>
+     * {
+     *   supplierNif, supplierName, invoiceNumber, concept,
+     *   baseAmount, vatPercent, vatAmount, totalAmount
+     * }
+     * </pre>
+     */
+    private void showRecurringEditor(
+            String kind,
+            com.benjagest.ui.model.AccountingModels.RecurringTask existing,
+            Runnable onSaved) {
+        boolean isSales = "SALES_INVOICE".equals(kind);
+        javafx.scene.control.Dialog<javafx.scene.control.ButtonType> dlg = new javafx.scene.control.Dialog<>();
+        dlg.setTitle(existing == null
+                ? (isSales ? t("recurring.new.sales") : t("recurring.new.expense"))
+                : t("recurring.edit") + " — " + existing.name());
+
+        javafx.scene.control.ButtonType saveType = new javafx.scene.control.ButtonType(
+                t("button.save"), javafx.scene.control.ButtonBar.ButtonData.OK_DONE);
+        dlg.getDialogPane().getButtonTypes().addAll(saveType,
+                javafx.scene.control.ButtonType.CANCEL);
+
+        // ------------ Campos comunes (cualquier kind) ------------
+        TextField nameField = new TextField(existing == null ? "" : existing.name());
+        nameField.setPromptText(isSales
+                ? "Iguala mensual Acme SL" : "Alquiler oficina mensual");
+
+        TextField descField = new TextField(existing == null ? "" : nullSafe(existing.description()));
+        descField.setPromptText(t("recurring.field.description.hint"));
+
+        javafx.scene.control.ComboBox<String> freqCombo =
+                new javafx.scene.control.ComboBox<>();
+        freqCombo.getItems().addAll("MONTHLY", "QUARTERLY", "YEARLY", "WEEKLY", "CUSTOM");
+        freqCombo.setValue(existing == null ? "MONTHLY" : existing.frequency());
+
+        javafx.scene.control.Spinner<Integer> domSpinner = new javafx.scene.control.Spinner<>(1, 31,
+                existing == null || existing.dayOfMonth() == null ? 1 : existing.dayOfMonth());
+        domSpinner.setEditable(true);
+
+        javafx.scene.control.Spinner<Integer> dowSpinner = new javafx.scene.control.Spinner<>(1, 7,
+                existing == null || existing.dayOfWeek() == null ? 1 : existing.dayOfWeek());
+        dowSpinner.setEditable(true);
+
+        javafx.scene.control.Spinner<Integer> monthsSpinner = new javafx.scene.control.Spinner<>(1, 24,
+                existing == null ? 1 : Math.max(1, existing.monthsBetween()));
+        monthsSpinner.setEditable(true);
+
+        DatePicker firstRunDate = new DatePicker(
+                existing == null ? LocalDate.now().plusDays(1) : existing.nextRunDate());
+
+        // ------------ Campos específicos según kind ------------
+        TextField partyNifField = new TextField();
+        TextField partyNameField = new TextField();
+        TextField conceptField = new TextField();
+        conceptField.setPromptText(t("recurring.field.concept.hint"));
+
+        // SALES_INVOICE: una línea simple (descripción, cantidad, precio, IVA, retención)
+        TextField lineDescField = new TextField();
+        javafx.scene.control.Spinner<Double> qtySpinner = new javafx.scene.control.Spinner<>(0.01, 9999.0, 1.0, 1.0);
+        qtySpinner.setEditable(true);
+        javafx.scene.control.Spinner<Double> priceSpinner = new javafx.scene.control.Spinner<>(0.0, 999999.0, 0.0, 10.0);
+        priceSpinner.setEditable(true);
+        javafx.scene.control.Spinner<Double> vatSpinner = new javafx.scene.control.Spinner<>(0.0, 21.0, 21.0, 0.5);
+        vatSpinner.setEditable(true);
+        javafx.scene.control.Spinner<Double> retSpinner = new javafx.scene.control.Spinner<>(0.0, 30.0, 0.0, 1.0);
+        retSpinner.setEditable(true);
+
+        // PURCHASE: importe base / IVA / total
+        TextField invoiceNumberField = new TextField();
+        invoiceNumberField.setPromptText("ALQ-{YYYY}{MM}");
+        javafx.scene.control.Spinner<Double> baseSpinner = new javafx.scene.control.Spinner<>(0.0, 999999.0, 0.0, 10.0);
+        baseSpinner.setEditable(true);
+        javafx.scene.control.Spinner<Double> vatPctSpinner = new javafx.scene.control.Spinner<>(0.0, 21.0, 21.0, 0.5);
+        vatPctSpinner.setEditable(true);
+
+        // Si estamos editando, prellenar desde payloadJson
+        if (existing != null && existing.payloadJson() != null) {
+            try {
+                String pj = existing.payloadJson();
+                if (isSales) {
+                    partyNifField.setText(extractStringField(pj, "customerNif"));
+                    partyNameField.setText(extractStringField(pj, "customerLegalName"));
+                    conceptField.setText(extractStringField(pj, "concept"));
+                    // primera línea: extracción superficial
+                    int li = pj.indexOf("\"lines\"");
+                    if (li > 0) {
+                        String tail = pj.substring(li);
+                        lineDescField.setText(extractStringField(tail, "description"));
+                        Double q = extractDoubleField(tail, "quantity");
+                        if (q != null) qtySpinner.getValueFactory().setValue(q);
+                        Double up = extractDoubleField(tail, "unitPrice");
+                        if (up != null) priceSpinner.getValueFactory().setValue(up);
+                        Double vp = extractDoubleField(tail, "vatPercent");
+                        if (vp != null) vatSpinner.getValueFactory().setValue(vp);
+                        Double rp = extractDoubleField(tail, "retentionPercent");
+                        if (rp != null) retSpinner.getValueFactory().setValue(rp);
+                    }
+                } else {
+                    partyNifField.setText(extractStringField(pj, "supplierNif"));
+                    partyNameField.setText(extractStringField(pj, "supplierName"));
+                    conceptField.setText(extractStringField(pj, "concept"));
+                    invoiceNumberField.setText(extractStringField(pj, "invoiceNumber"));
+                    Double b = extractDoubleField(pj, "baseAmount");
+                    if (b != null) baseSpinner.getValueFactory().setValue(b);
+                    Double vp = extractDoubleField(pj, "vatPercent");
+                    if (vp != null) vatPctSpinner.getValueFactory().setValue(vp);
+                }
+            } catch (Exception ignored) {
+                // si el JSON viene raro, dejamos campos vacíos — el asesor
+                // los rellena de cero
+            }
+        }
+
+        // ------------ Layout ------------
+        GridPane grid = new GridPane();
+        grid.setHgap(10);
+        grid.setVgap(8);
+        grid.setPadding(new Insets(16));
+
+        int r = 0;
+        grid.add(new Label(t("recurring.field.name")), 0, r);
+        grid.add(nameField, 1, r++, 3, 1);
+        grid.add(new Label(t("recurring.field.description")), 0, r);
+        grid.add(descField, 1, r++, 3, 1);
+
+        grid.add(new Label(t("recurring.field.frequency")), 0, r);
+        grid.add(freqCombo, 1, r);
+        grid.add(new Label(t("recurring.freq.day")), 2, r);
+        grid.add(domSpinner, 3, r++);
+
+        grid.add(new Label(t("recurring.field.first_run")), 0, r);
+        grid.add(firstRunDate, 1, r);
+        grid.add(new Label("DoW / N meses"), 2, r);
+        HBox dowAndMonths = new HBox(6, dowSpinner, monthsSpinner);
+        grid.add(dowAndMonths, 3, r++);
+
+        Label sep = new Label(isSales
+                ? t("recurring.section.sale_data") : t("recurring.section.expense_data"));
+        sep.getStyleClass().add("text-bold");
+        grid.add(sep, 0, r++, 4, 1);
+
+        grid.add(new Label(isSales
+                ? t("recurring.field.customer_nif")
+                : t("recurring.field.supplier_nif")), 0, r);
+        grid.add(partyNifField, 1, r++, 3, 1);
+
+        grid.add(new Label(isSales
+                ? t("recurring.field.customer_name")
+                : t("recurring.field.supplier_name")), 0, r);
+        grid.add(partyNameField, 1, r++, 3, 1);
+
+        grid.add(new Label(t("recurring.field.concept")), 0, r);
+        grid.add(conceptField, 1, r++, 3, 1);
+
+        if (isSales) {
+            grid.add(new Label(t("recurring.field.line_desc")), 0, r);
+            grid.add(lineDescField, 1, r++, 3, 1);
+            grid.add(new Label(t("recurring.field.quantity")), 0, r);
+            grid.add(qtySpinner, 1, r);
+            grid.add(new Label(t("recurring.field.unit_price")), 2, r);
+            grid.add(priceSpinner, 3, r++);
+            grid.add(new Label(t("recurring.field.vat_percent")), 0, r);
+            grid.add(vatSpinner, 1, r);
+            grid.add(new Label(t("recurring.field.retention_percent")), 2, r);
+            grid.add(retSpinner, 3, r++);
+        } else {
+            grid.add(new Label(t("recurring.field.invoice_number")), 0, r);
+            grid.add(invoiceNumberField, 1, r++, 3, 1);
+            grid.add(new Label(t("recurring.field.base_amount")), 0, r);
+            grid.add(baseSpinner, 1, r);
+            grid.add(new Label(t("recurring.field.vat_percent")), 2, r);
+            grid.add(vatPctSpinner, 3, r++);
+        }
+
+        Label placeholderHint = new Label(t("recurring.placeholders.hint"));
+        placeholderHint.getStyleClass().addAll("muted", "small");
+        placeholderHint.setWrapText(true);
+        grid.add(placeholderHint, 0, r++, 4, 1);
+
+        ScrollPane scroll = new ScrollPane(grid);
+        scroll.setFitToWidth(true);
+        scroll.setPrefSize(640, 560);
+        dlg.getDialogPane().setContent(scroll);
+
+        // ------------ Guardar ------------
+        dlg.setResultConverter(bt -> bt);
+        var result = dlg.showAndWait();
+        if (result.isEmpty() || result.get() != saveType) return;
+
+        // Construir JSON request
+        StringBuilder body = new StringBuilder();
+        body.append('{');
+        appendJsonField(body, "kind", kind, true);
+        appendJsonField(body, "name", nameField.getText(), false);
+        if (!descField.getText().isBlank()) appendJsonField(body, "description", descField.getText(), false);
+        appendJsonField(body, "frequency", freqCombo.getValue(), false);
+        if ("MONTHLY".equals(freqCombo.getValue()) || "CUSTOM".equals(freqCombo.getValue())) {
+            body.append(",\"dayOfMonth\":").append(domSpinner.getValue());
+        }
+        if ("WEEKLY".equals(freqCombo.getValue())) {
+            body.append(",\"dayOfWeek\":").append(dowSpinner.getValue());
+        }
+        if ("CUSTOM".equals(freqCombo.getValue())) {
+            body.append(",\"monthsBetween\":").append(monthsSpinner.getValue());
+        }
+        body.append(",\"firstRunDate\":\"").append(firstRunDate.getValue()).append('"');
+
+        // Payload anidado según kind
+        body.append(",\"payload\":{");
+        if (isSales) {
+            appendJsonField(body, "customerNif", partyNifField.getText(), true);
+            appendJsonField(body, "customerLegalName", partyNameField.getText(), false);
+            if (!conceptField.getText().isBlank())
+                appendJsonField(body, "concept", conceptField.getText(), false);
+            body.append(",\"lines\":[{");
+            body.append("\"description\":").append(jsonString(lineDescField.getText()));
+            body.append(",\"quantity\":").append(qtySpinner.getValue());
+            body.append(",\"unitPrice\":").append(priceSpinner.getValue());
+            body.append(",\"vatPercent\":").append(vatSpinner.getValue());
+            body.append(",\"retentionPercent\":").append(retSpinner.getValue());
+            body.append("}]");
+        } else {
+            appendJsonField(body, "supplierNif", partyNifField.getText(), true);
+            appendJsonField(body, "supplierName", partyNameField.getText(), false);
+            appendJsonField(body, "invoiceNumber", invoiceNumberField.getText(), false);
+            if (!conceptField.getText().isBlank())
+                appendJsonField(body, "concept", conceptField.getText(), false);
+            double base = baseSpinner.getValue();
+            double vatPct = vatPctSpinner.getValue();
+            double vatAmt = Math.round(base * vatPct) / 100.0;
+            double total = Math.round((base + vatAmt) * 100.0) / 100.0;
+            body.append(",\"baseAmount\":").append(base);
+            body.append(",\"vatPercent\":").append(vatPct);
+            body.append(",\"vatAmount\":").append(vatAmt);
+            body.append(",\"totalAmount\":").append(total);
+        }
+        body.append("}}");
+
+        String jsonBody = body.toString();
+        new Thread(() -> {
+            try {
+                if (existing == null) {
+                    accountingApiClient.createRecurring(jsonBody);
+                } else {
+                    accountingApiClient.updateRecurring(existing.id(), jsonBody);
+                }
+                javafx.application.Platform.runLater(() -> {
+                    if (onSaved != null) onSaved.run();
+                });
+            } catch (Exception ex) {
+                javafx.application.Platform.runLater(() -> new javafx.scene.control.Alert(
+                        javafx.scene.control.Alert.AlertType.ERROR,
+                        t("recurring.save.error") + ": " + ex.getMessage()).show());
+            }
+        }, "recurring-save").start();
+    }
+
+    private String nullSafe(String s) { return s == null ? "" : s; }
+
+    private String jsonString(String raw) {
+        if (raw == null) return "\"\"";
+        StringBuilder sb = new StringBuilder("\"");
+        for (char c : raw.toCharArray()) {
+            switch (c) {
+                case '"' -> sb.append("\\\"");
+                case '\\' -> sb.append("\\\\");
+                case '\n' -> sb.append("\\n");
+                case '\r' -> sb.append("\\r");
+                case '\t' -> sb.append("\\t");
+                default -> sb.append(c);
+            }
+        }
+        sb.append('"');
+        return sb.toString();
+    }
+
+    private void appendJsonField(StringBuilder b, String key, String value, boolean first) {
+        if (!first) b.append(',');
+        b.append('"').append(key).append("\":").append(jsonString(value));
+    }
+
+    private String extractStringField(String json, String key) {
+        if (json == null) return "";
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile(
+                "\"" + java.util.regex.Pattern.quote(key) + "\"\\s*:\\s*\"((?:[^\"\\\\]|\\\\.)*)\""
+        ).matcher(json);
+        return m.find() ? m.group(1).replace("\\\"", "\"") : "";
+    }
+
+    private Double extractDoubleField(String json, String key) {
+        if (json == null) return null;
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile(
+                "\"" + java.util.regex.Pattern.quote(key) + "\"\\s*:\\s*([-\\d.]+)"
+        ).matcher(json);
+        try { return m.find() ? Double.valueOf(m.group(1)) : null; }
+        catch (NumberFormatException ex) { return null; }
     }
 
     /** Devuelve nombre del día de la semana 1=lunes..7=domingo. */
