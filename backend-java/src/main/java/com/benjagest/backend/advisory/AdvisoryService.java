@@ -6,11 +6,17 @@ import com.benjagest.backend.tenant.TenantContext;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.List;
+import java.util.UUID;
+import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.server.ResponseStatusException;
 
 /**
  * Listado de clientes gestionados por la asesoria actual.
@@ -141,6 +147,80 @@ public class AdvisoryService {
         public boolean isLinked() { return linkedCompanyId != null && !linkedCompanyId.isBlank(); }
     }
 
+    /**
+     * Asegura que existe una shadow company gestionada por la asesoría
+     * para este customer. Si ya hay una con
+     * {@code parent_company_id = asesoría AND tax_identifier = customer.NIF},
+     * devuelve su id; si no, la crea.
+     *
+     * <p>Casos cubiertos:
+     * <ul>
+     *   <li>Cliente NO vinculado en cartera → la asesoría puede iniciar
+     *       gestión: facturas/gastos/asientos/AEAT se guardan bajo la
+     *       shadow company. Cuando luego el cliente acepte una invitación,
+     *       el merge con su propia company queda para un slice futuro.</li>
+     *   <li>Cliente YA vinculado → ya existe una company hija con su NIF;
+     *       este método la encuentra y la devuelve (idempotente).</li>
+     * </ul>
+     *
+     * <p>La shadow company se crea con {@code company_type = 'MANAGED_CLIENT'},
+     * heredando legal_name/trade_name/tax_identifier del customer. NO se
+     * crea membership de usuario — la "propiedad" la mantiene la asesoría
+     * a través de {@code parent_company_id}.
+     */
+    @Transactional
+    public String ensureManagedCompany(String customerId) {
+        String advisoryId = tenantContext.getCurrentCompanyId();
+        // 1) Recoger datos del customer y validar que pertenece a esta asesoría.
+        List<CustomerRow> rows = jdbcTemplate.query("""
+                SELECT id, legal_name, trade_name, tax_identifier
+                  FROM customers
+                 WHERE id = ? AND company_id = ? AND active = TRUE
+                 LIMIT 1
+                """,
+                (rs, n) -> new CustomerRow(
+                        rs.getString("id"), rs.getString("legal_name"),
+                        rs.getString("trade_name"), rs.getString("tax_identifier")),
+                customerId, advisoryId);
+        if (rows.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND,
+                    "El cliente no está en tu cartera.");
+        }
+        CustomerRow c = rows.get(0);
+
+        // 2) ¿Ya hay company hija con ese NIF? Idempotente.
+        List<String> existing = jdbcTemplate.query("""
+                SELECT id FROM companies
+                 WHERE parent_company_id = ?
+                   AND tax_identifier = ?
+                   AND active = TRUE
+                 LIMIT 1
+                """,
+                (rs, n) -> rs.getString("id"),
+                advisoryId, c.taxIdentifier());
+        if (!existing.isEmpty()) {
+            return existing.get(0);
+        }
+
+        // 3) Crear shadow company.
+        String newId = UUID.randomUUID().toString();
+        jdbcTemplate.update("""
+                INSERT INTO companies (
+                    id, legal_name, trade_name, tax_identifier,
+                    company_type, parent_company_id, active
+                ) VALUES (?, ?, ?, ?, 'MANAGED_CLIENT', ?, TRUE)
+                """,
+                newId,
+                c.legalName(),
+                c.tradeName(),
+                c.taxIdentifier(),
+                advisoryId);
+        return newId;
+    }
+
+    private record CustomerRow(String id, String legalName,
+                                 String tradeName, String taxIdentifier) {}
+
     private ManagedClient mapClient(ResultSet rs, int rowNum) throws SQLException {
         return new ManagedClient(
                 rs.getString("id"),
@@ -175,5 +255,19 @@ public class AdvisoryService {
         public List<CustomerPortfolioEntry> listPortfolio() {
             return service.listPortfolio();
         }
+
+        /**
+         * Inicia la gestión contable de un cliente que aún no está
+         * vinculado: crea (o devuelve) una shadow company con su NIF
+         * bajo {@code parent_company_id = asesoría}. Devuelve el id de
+         * esa company para que la UI haga acting-for y entre al cliente.
+         */
+        @PostMapping("/{customerId}/start-management")
+        public StartManagementResponse startManagement(@PathVariable String customerId) {
+            String companyId = service.ensureManagedCompany(customerId);
+            return new StartManagementResponse(companyId);
+        }
     }
+
+    public record StartManagementResponse(String companyId) {}
 }
