@@ -86,6 +86,25 @@ public class AccountingJournalController {
         return reclassifyService.reclassifyDrafts();
     }
 
+    /**
+     * Borra físicamente una lista de asientos importados (con
+     * source_pdf_sha256). Pensado para resolver duplicados desde la
+     * UI: el asesor elige qué copias eliminar y el resto sobrevive.
+     *
+     * <p>Restricciones: solo borra asientos del periodo NO cerrado y
+     * que tengan source_type IN ('SALES_PDF_IMPORT', 'PURCHASE_INVOICE')
+     * — los asientos manuales o de venta validada no se tocan aunque
+     * el caller pase su id. Idempotente.
+     */
+    @PostMapping("/duplicates/delete")
+    public Map<String, Object> deleteDuplicates(@RequestBody DeleteIdsBody body) {
+        int n = manualService.deleteImportedByIds(
+                body == null ? java.util.List.of() : body.ids());
+        return Map.of("deleted", n);
+    }
+
+    public record DeleteIdsBody(List<String> ids) {}
+
     // ====================================================================
     //  Asientos manuales
     // ====================================================================
