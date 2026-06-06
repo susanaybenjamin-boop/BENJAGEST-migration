@@ -56,6 +56,7 @@ public class JournalQueryService {
                        je.concept, je.source_type, je.source_id,
                        je.status, je.reviewed, je.auto_proposed,
                        je.proposed_confidence,
+                       je.source_pdf_sha256,
                        (SELECT COALESCE(SUM(debit),0)
                           FROM journal_entry_lines
                          WHERE journal_entry_id = je.id) AS total_debit,
@@ -218,7 +219,8 @@ public class JournalQueryService {
                 rs.getBigDecimal("proposed_confidence"),
                 rs.getBigDecimal("total_debit"),
                 rs.getBigDecimal("total_credit"),
-                rs.getInt("num_lines"));
+                rs.getInt("num_lines"),
+                rs.getString("source_pdf_sha256"));
     }
 
     // ====================================================================
@@ -231,7 +233,10 @@ public class JournalQueryService {
             String status, boolean reviewed, boolean autoProposed,
             BigDecimal proposedConfidence,
             BigDecimal totalDebit, BigDecimal totalCredit,
-            int numLines
+            int numLines,
+            /** SHA-256 del PDF importado. Sirve para detectar duplicados
+             * en el cliente (si dos asientos comparten SHA, mismo PDF). */
+            String sourcePdfSha256
     ) {}
 
     public record LedgerLine(

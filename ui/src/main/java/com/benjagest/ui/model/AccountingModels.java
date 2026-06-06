@@ -26,8 +26,23 @@ public final class AccountingModels {
             BigDecimal proposedConfidence,
             BigDecimal totalDebit,
             BigDecimal totalCredit,
-            int numLines
-    ) {}
+            int numLines,
+            /** SHA-256 del PDF importado. Usado para detectar duplicados
+             *  en la UI (2+ asientos con mismo SHA = mismo PDF metido
+             *  varias veces). null si el asiento no viene de PDF. */
+            String sourcePdfSha256
+    ) {
+        /** Constructor de compatibilidad con callsites antiguos. */
+        public DiaryEntry(String id, int entryNumber, LocalDate entryDate,
+                          String concept, String sourceType, String status,
+                          boolean autoProposed, BigDecimal proposedConfidence,
+                          BigDecimal totalDebit, BigDecimal totalCredit,
+                          int numLines) {
+            this(id, entryNumber, entryDate, concept, sourceType, status,
+                    autoProposed, proposedConfidence, totalDebit, totalCredit,
+                    numLines, null);
+        }
+    }
 
     /** Detalle de un asiento con líneas. */
     public record JournalEntryDetail(

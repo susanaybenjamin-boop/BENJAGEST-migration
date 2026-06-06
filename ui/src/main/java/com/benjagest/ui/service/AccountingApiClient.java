@@ -749,7 +749,8 @@ public class AccountingApiClient {
                 bdField(json, "proposedConfidence"),
                 bdField(json, "totalDebit"),
                 bdField(json, "totalCredit"),
-                intField(json, "numLines"));
+                intField(json, "numLines"),
+                strField(json, "sourcePdfSha256"));
     }
 
     private JournalEntryDetail parseEntryDetail(String json) {
