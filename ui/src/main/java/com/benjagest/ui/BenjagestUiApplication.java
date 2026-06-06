@@ -11185,6 +11185,7 @@ public class BenjagestUiApplication extends Application {
             case "accounting.filter.search_prompt" -> "concept, number, source…";
             case "accounting.filter.any" -> "(any)";
             case "accounting.col.num" -> "#";
+            case "accounting.col.dup" -> "Dup.";
             case "accounting.col.date" -> "Date";
             case "accounting.col.concept" -> "Concept";
             case "accounting.col.source" -> "Source";
@@ -11607,6 +11608,7 @@ public class BenjagestUiApplication extends Application {
             case "accounting.filter.search_prompt" -> "concepto, nº, origen…";
             case "accounting.filter.any" -> "(cualquiera)";
             case "accounting.col.num" -> "Nº";
+            case "accounting.col.dup" -> "Dup.";
             case "accounting.col.date" -> "Fecha";
             case "accounting.col.concept" -> "Concepto";
             case "accounting.col.source" -> "Origen";
@@ -15011,19 +15013,26 @@ public class BenjagestUiApplication extends Application {
         missLink.setOnAction(e -> showMissingNumberDialog(cache));
         unbLink.setOnAction(e -> showUnbalancedDialog(cache));
 
-        // Columna Nº con ordenación NUMÉRICA (no alfabética).
-        javafx.scene.control.TableColumn<com.benjagest.ui.model.AccountingModels.DiaryEntry, Integer> colNum =
+        // Columna Nº: muestra ÍNDICE DE FILA visual (1, 2, 3, …) según
+        // el orden actual del listado, NO el entry_number real del
+        // asiento. Esto evita que el asesor vea huecos (1, 3, 4, 9…)
+        // cuando se borran asientos por duplicado. El entry_number
+        // real se mantiene intacto en BD por trazabilidad contable.
+        // Como no representa el asiento real, no es ordenable.
+        javafx.scene.control.TableColumn<com.benjagest.ui.model.AccountingModels.DiaryEntry, Void> colNum =
                 new javafx.scene.control.TableColumn<>(t("accounting.col.num"));
-        colNum.setCellValueFactory(c -> new javafx.beans.property.SimpleObjectProperty<>(
-                c.getValue().entryNumber()));
         colNum.setCellFactory(c -> new javafx.scene.control.TableCell<>() {
-            @Override protected void updateItem(Integer v, boolean empty) {
+            @Override protected void updateItem(Void v, boolean empty) {
                 super.updateItem(v, empty);
-                setText(empty || v == null || v <= 0 ? "—" : String.valueOf(v));
+                if (empty || getIndex() < 0 || getIndex() >= getTableView().getItems().size()) {
+                    setText("");
+                } else {
+                    setText(String.valueOf(getIndex() + 1));
+                }
             }
         });
-        colNum.setComparator(Integer::compare);
-        colNum.setPrefWidth(70);
+        colNum.setSortable(false);
+        colNum.setPrefWidth(60);
 
         addCol(table, t("accounting.col.date"),
                 v -> v.entryDate() == null ? "" : v.entryDate().toString(), 110);
@@ -15196,19 +15205,27 @@ public class BenjagestUiApplication extends Application {
         toProp.addListener((o, a, b) -> loadClientSalesArchived(
                 table, cache, fromProp.get(), toProp.get(), applyFilters));
 
-        // Slice 3A — columna "⚠" con badge rojo cuando el SHA-256 del
-        // PDF aparece en duplicateShas (= 2+ asientos importados del
-        // mismo PDF). Se inserta como segunda columna (tras Nº).
+        // Slice 3A — columna "Dup" que marca con punto rojo las filas
+        // cuyo SHA-256 aparece 2+ veces en el cache (= mismo PDF
+        // importado varias veces). Se inserta como segunda columna
+        // (tras Nº).
+        //
+        // Antes la cabecera era "⚠" (Unicode WARNING SIGN U+26A0), pero
+        // en muchas fuentes de Windows se renderiza como un triángulo
+        // SIN color de relleno → aparece como un "triángulo blanco"
+        // pegado a la columna Nº y confunde al asesor. Por eso
+        // pasamos a una cabecera textual i18n.
         javafx.scene.control.TableColumn<com.benjagest.ui.model.AccountingModels.DiaryEntry, String> colWarn =
-                new javafx.scene.control.TableColumn<>("⚠");
+                new javafx.scene.control.TableColumn<>(t("accounting.col.dup"));
         colWarn.setCellValueFactory(c -> {
             var e = c.getValue();
             return new javafx.beans.property.SimpleStringProperty(
                     e != null && e.sourcePdfSha256() != null
                             && duplicateShas.contains(e.sourcePdfSha256())
-                            ? "🔴" : "");
+                            ? "●" : "");
         });
-        colWarn.setPrefWidth(36);
+        colWarn.setStyle("-fx-alignment: CENTER; -fx-text-fill: -color-danger-fg;");
+        colWarn.setPrefWidth(44);
         colWarn.setSortable(false);
         table.getColumns().add(1, colWarn);
 
