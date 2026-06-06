@@ -165,29 +165,43 @@ public class SalesJournalEntryService {
                 concept, SRC_TYPE, invoice.id(),
                 proposedConfidence, userId);
 
-        // Descripción base — todas las líneas del asiento usan el mismo
-        // texto (Fra. N - Cliente) para que el Libro Mayor se lea bien
-        // sin abrir el asiento. El asesor puede editar línea por línea
-        // en el editor; al cambiar de cuenta, su descripción se respeta.
-        String baseDesc = buildLineDescription(invoice);
+        // Descripciones específicas por cuenta — el Libro Mayor de cada
+        // cuenta debe leerse sin tener que abrir el asiento.
+        //   • 4300xxx (cliente)  → nombre del cliente
+        //   • 473    (retención) → "Retención IRPF — cliente"
+        //   • 7xx    (ingreso)   → concept de la factura (si existe)
+        //                           o nombre de la cuenta de ingreso
+        //   • 477    (IVA rep.)  → "IVA repercutido XX% — cliente"
+        String clientDesc = invoice.customerLegalName() != null
+                && !invoice.customerLegalName().isBlank()
+                ? invoice.customerLegalName() : "Cliente";
+        String incomeDesc = buildIncomeLineDescription(invoice, acc7xx, companyId);
+        BigDecimal vatRate = invoice.vatTotal() != null && invoice.subtotal() != null
+                && invoice.subtotal().signum() > 0
+                ? invoice.vatTotal()
+                        .multiply(java.math.BigDecimal.valueOf(100))
+                        .divide(invoice.subtotal(), 0, java.math.RoundingMode.HALF_UP)
+                : null;
+        String vatDesc = "IVA repercutido"
+                + (vatRate != null ? " " + vatRate + "%" : "")
+                + " — " + clientDesc;
+        String retentionDesc = "Retención IRPF — " + clientDesc;
 
         // Debe 430: cliente cobra total menos retención
         BigDecimal clientDebit = invoice.total().subtract(retention);
-        insertLine(entryId, acc430, baseDesc, clientDebit, BigDecimal.ZERO);
+        insertLine(entryId, acc430, clientDesc, clientDebit, BigDecimal.ZERO);
 
         // Debe 473: si hay retención IRPF
         if (acc473 != null) {
-            insertLine(entryId, acc473, baseDesc + " (retención IRPF)",
-                    retention, BigDecimal.ZERO);
+            insertLine(entryId, acc473, retentionDesc, retention, BigDecimal.ZERO);
         }
 
         // Haber 7xx: ventas (base imponible) — cuenta propuesta por el
         // aprendizaje o fallback 700.
-        insertLine(entryId, acc7xx, baseDesc, BigDecimal.ZERO, invoice.subtotal());
+        insertLine(entryId, acc7xx, incomeDesc, BigDecimal.ZERO, invoice.subtotal());
 
         // Haber 477: IVA repercutido
-        insertLine(entryId, acc477, baseDesc + " (IVA repercutido)",
-                BigDecimal.ZERO, invoice.vatTotal());
+        insertLine(entryId, acc477, vatDesc, BigDecimal.ZERO, invoice.vatTotal());
 
         // Si la cuenta 7xx vino de regla aprendida, registramos la
         // propuesta para que el flujo de aceptación pueda reforzarla.
@@ -283,20 +297,35 @@ public class SalesJournalEntryService {
     }
 
     /**
-     * Descripción de línea: nº factura + cliente. Si el asesor edita una
-     * línea concreta, su texto se conserva — al cambiar de cuenta solo
-     * el accountId cambia, no la description (ver AccountingScreen).
+     * Descripción de la línea de ingreso (cuenta 7xx):
+     * <ul>
+     *   <li>Si la factura tiene {@code concept} → ese texto.</li>
+     *   <li>Si no → nombre de la cuenta 7xx resuelta + cliente
+     *       (p. ej. "Ventas de mercaderías — Marcos SL").</li>
+     *   <li>Como último fallback → "Venta".</li>
+     * </ul>
      */
-    private String buildLineDescription(SalesInvoice invoice) {
+    private String buildIncomeLineDescription(SalesInvoice invoice, String acc7xxId, String companyId) {
+        if (invoice.concept() != null && !invoice.concept().isBlank()) {
+            String c = invoice.concept().trim();
+            return c.length() > 240 ? c.substring(0, 240) : c;
+        }
+        String accountName = jdbcTemplate.query("""
+                SELECT name FROM accounting_accounts WHERE id = ? LIMIT 1
+                """, (rs, n) -> rs.getString("name"), acc7xxId)
+                .stream().findFirst().orElse(null);
         StringBuilder sb = new StringBuilder();
-        if (invoice.invoiceNumber() != null && !invoice.invoiceNumber().isBlank()) {
-            sb.append("Fra. ").append(invoice.invoiceNumber()).append(' ');
+        if (accountName != null && !accountName.isBlank()) {
+            sb.append(accountName);
+            if (invoice.customerLegalName() != null && !invoice.customerLegalName().isBlank()) {
+                sb.append(" — ").append(invoice.customerLegalName());
+            }
+        } else if (invoice.customerLegalName() != null && !invoice.customerLegalName().isBlank()) {
+            sb.append("Venta ").append(invoice.customerLegalName());
+        } else {
+            sb.append("Venta");
         }
-        if (invoice.customerLegalName() != null && !invoice.customerLegalName().isBlank()) {
-            sb.append("- ").append(invoice.customerLegalName());
-        }
-        String s = sb.toString().trim();
-        if (s.isEmpty()) s = "Venta";
+        String s = sb.toString();
         return s.length() > 240 ? s.substring(0, 240) : s;
     }
 

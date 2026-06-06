@@ -2653,9 +2653,15 @@ public class BenjagestUiApplication extends Application {
         TextField vatPctField = new TextField(vatPct);
         TextField vatAmtField = new TextField(vatAmt);
         TextField totalField = new TextField(total);
+        // Concepto del gasto — el asesor escribe qué fue ese gasto
+        // (p. ej. "Material de oficina") y eso aparece en la línea 6xx
+        // del asiento contable. Si lo deja vacío, se genera un fallback.
+        TextField conceptField = new TextField();
+        conceptField.setPromptText(t("purchases.import.field.concept_prompt"));
         for (TextField tf : new TextField[]{
                 supplierField, emitterField, numberField, dateField,
-                baseField, vatPctField, vatAmtField, totalField}) {
+                baseField, vatPctField, vatAmtField, totalField,
+                conceptField}) {
             tf.setPrefColumnCount(32);
         }
 
@@ -2670,6 +2676,7 @@ public class BenjagestUiApplication extends Application {
         g.add(new Label(t("purchases.import.field.vat_pct")), 0, row); g.add(vatPctField, 1, row++);
         g.add(new Label(t("purchases.import.field.vat_amount")), 0, row); g.add(vatAmtField, 1, row++);
         g.add(new Label(t("purchases.import.field.total")), 0, row); g.add(totalField, 1, row++);
+        g.add(new Label(t("purchases.import.field.concept")), 0, row); g.add(conceptField, 1, row++);
         g.add(new Separator(), 0, row++, 2, 1);
         Label confLabel = new Label(confidenceLabel(confidence));
         confLabel.getStyleClass().add("settings-section-title");
@@ -2764,6 +2771,7 @@ public class BenjagestUiApplication extends Application {
             payload.totalAmount = parseDecimalSafe(totalField.getText());
             payload.documentSha256 = nullIfBlank(hash);
             payload.invoiceIndexInPdf = invoiceIndex;
+            payload.concept = nullIfBlank(conceptField.getText());
             // Validación mínima: necesitamos al menos total o base+iva.
             if (payload.totalAmount == null
                     && (payload.baseAmount == null || payload.vatAmount == null)) {
@@ -8086,6 +8094,8 @@ public class BenjagestUiApplication extends Application {
                 case "purchases.import.field.vat_pct" -> "VAT rate:";
                 case "purchases.import.field.vat_amount" -> "VAT amount:";
                 case "purchases.import.field.total" -> "Total:";
+                case "purchases.import.field.concept" -> "Concept:";
+                case "purchases.import.field.concept_prompt" -> "e.g. Office supplies, electricity, …";
                 case "billing.config.sif.section" -> "SIF event registry (No VeriFactu)";
                 case "billing.config.sif.hint" -> "Mandatory chained event log for systems running as No VeriFactu (RD 1007/2023, art. 16). Each event is SHA-256 hashed and linked to the previous one. Lifecycle and invoicing operations are recorded automatically.";
                 case "billing.config.sif.placeholder.empty" -> "No SIF events yet. They appear as soon as the system starts and invoices are validated.";
@@ -8989,6 +8999,8 @@ public class BenjagestUiApplication extends Application {
             case "purchases.import.field.vat_pct" -> "% IVA:";
             case "purchases.import.field.vat_amount" -> "Cuota IVA:";
             case "purchases.import.field.total" -> "Total:";
+            case "purchases.import.field.concept" -> "Concepto:";
+            case "purchases.import.field.concept_prompt" -> "ej. Material de oficina, electricidad, …";
             case "billing.config.sif.section" -> "Registro de eventos del SIF (No VeriFactu)";
             case "billing.config.sif.hint" -> "Registro encadenado de eventos obligatorio para sistemas en No VeriFactu (RD 1007/2023, art. 16). Cada evento lleva un SHA-256 encadenado al anterior. Las operaciones de ciclo de vida y de facturacion se registran automaticamente.";
             case "billing.config.sif.placeholder.empty" -> "Aun no hay eventos SIF. Apareceran en cuanto arranque el sistema y se validen facturas.";

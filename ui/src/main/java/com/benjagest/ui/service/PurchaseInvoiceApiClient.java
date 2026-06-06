@@ -51,6 +51,7 @@ public class PurchaseInvoiceApiClient {
         appendNum(json, "totalAmount", p.totalAmount);
         appendStr(json, "documentSha256", p.documentSha256, false);
         json.append(",\"invoiceIndexInPdf\":").append(p.invoiceIndexInPdf);
+        appendStr(json, "concept", p.concept, false);
         appendStr(json, "notes", p.notes, false);
         json.append("}");
 
@@ -237,6 +238,7 @@ public class PurchaseInvoiceApiClient {
         public BigDecimal totalAmount;
         public String documentSha256;
         public int invoiceIndexInPdf;
+        public String concept;
         public String notes;
     }
 

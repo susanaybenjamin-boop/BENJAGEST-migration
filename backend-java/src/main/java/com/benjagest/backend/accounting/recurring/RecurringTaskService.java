@@ -316,6 +316,12 @@ public class RecurringTaskService {
     private String runPurchase(RecurringTaskView task, LocalDate scheduledDate) {
         Map<String, Object> p = readPayload(task);
         String invoiceNumber = expandPlaceholders((String) p.get("invoiceNumber"), scheduledDate);
+        // Concept: payload lleva "concept" opcional; si no, usa el nombre
+        // de la recurrente como descripción genérica del gasto.
+        String payloadConcept = (String) p.get("concept");
+        String concept = payloadConcept != null && !payloadConcept.isBlank()
+                ? payloadConcept
+                : task.name();
         PurchaseInvoiceService.SaveRequest req = new PurchaseInvoiceService.SaveRequest(
                 (String) p.get("supplierNif"),
                 (String) p.get("supplierName"),
@@ -326,6 +332,7 @@ public class RecurringTaskService {
                 bd(p.get("vatAmount")),
                 bd(p.get("totalAmount")),
                 null, 0,
+                concept,
                 "Generado por recurrencia '" + task.name() + "' — revisar y validar");
         // PurchaseInvoiceService.save crea POSTED por defecto. Para
         // recurrentes queremos DRAFT (el usuario revisa precio, añade
@@ -399,13 +406,18 @@ public class RecurringTaskService {
                     bd(l.get("retentionPercent"))));
         }
         String notes = "Generado por recurrencia '" + task.name() + "' — revisar y validar";
+        // concept opcional en payload — si no, usar task.name como concepto
+        // del ingreso (luego el asesor lo edita).
+        String payloadConcept = (String) p.get("concept");
+        String concept = payloadConcept != null && !payloadConcept.isBlank()
+                ? payloadConcept : task.name();
         InvoiceUpsertRequest req = new InvoiceUpsertRequest(
                 customerId,
                 null, // seriesId se resuelve por invoiceType
                 "NORMAL",
                 scheduledDate,
                 scheduledDate.plusDays(30),
-                null, notes,
+                null, concept, notes,
                 lines);
         SalesInvoice created = salesService.createDraft(req);
         return created.id();
