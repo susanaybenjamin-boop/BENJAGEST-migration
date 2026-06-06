@@ -40,13 +40,40 @@ public class AccountingJournalController {
     private final ManualJournalEntryService manualService;
     private final JournalQueryService queryService;
     private final ReclassifyJournalService reclassifyService;
+    private final SalesAndExpensesKpiService kpiService;
 
     public AccountingJournalController(ManualJournalEntryService manualService,
                                          JournalQueryService queryService,
-                                         ReclassifyJournalService reclassifyService) {
+                                         ReclassifyJournalService reclassifyService,
+                                         SalesAndExpensesKpiService kpiService) {
         this.manualService = manualService;
         this.queryService = queryService;
         this.reclassifyService = reclassifyService;
+        this.kpiService = kpiService;
+    }
+
+    /**
+     * KPIs rápidos para la pestaña "Ventas y Gastos" del cliente NO
+     * vinculado: ventas, gastos, IVA repercutido, IVA soportado y
+     * Modelo 303 estimado en el rango indicado.
+     *
+     * <p>El parámetro de fechas es opcional; si falta, se asume el
+     * trimestre actual.
+     */
+    @GetMapping("/kpis/sales-and-expenses")
+    public SalesAndExpensesKpiService.Kpis salesAndExpensesKpis(
+            @RequestParam(value = "from", required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam(value = "to", required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
+        if (from == null || to == null) {
+            // Trimestre actual por defecto.
+            LocalDate today = LocalDate.now();
+            int q = (today.getMonthValue() - 1) / 3;
+            from = LocalDate.of(today.getYear(), q * 3 + 1, 1);
+            to = from.plusMonths(3).minusDays(1);
+        }
+        return kpiService.compute(from, to);
     }
 
     /**

@@ -46,6 +46,47 @@ public class AccountingApiClient {
     //  Libro Diario
     // ====================================================================
 
+    /**
+     * KPIs rápidos del trimestre/rango para "Ventas y Gastos":
+     * ventas, gastos, IVA repercutido, IVA soportado, Modelo 303
+     * estimado, asientos DRAFT pendientes.
+     */
+    public SalesAndExpensesKpis kpisSalesAndExpenses(LocalDate from, LocalDate to)
+            throws IOException, InterruptedException {
+        StringBuilder q = new StringBuilder();
+        if (from != null) append(q, "from", from.toString());
+        if (to != null)   append(q, "to", to.toString());
+        String json = get("/accounting/kpis/sales-and-expenses" + q);
+        return new SalesAndExpensesKpis(
+                decField(json, "salesTotal"),
+                intField(json, "salesCount"),
+                decField(json, "expensesTotal"),
+                intField(json, "expensesCount"),
+                decField(json, "vatCharged"),
+                decField(json, "vatBorne"),
+                decField(json, "model303Estimated"),
+                intField(json, "draftCount"));
+    }
+
+    public record SalesAndExpensesKpis(
+            java.math.BigDecimal salesTotal,
+            int salesCount,
+            java.math.BigDecimal expensesTotal,
+            int expensesCount,
+            java.math.BigDecimal vatCharged,
+            java.math.BigDecimal vatBorne,
+            java.math.BigDecimal model303Estimated,
+            int draftCount) {}
+
+    private java.math.BigDecimal decField(String json, String field) {
+        java.util.regex.Matcher m = java.util.regex.Pattern
+                .compile("\"" + field + "\"\\s*:\\s*(-?[0-9]+(?:\\.[0-9]+)?)")
+                .matcher(json);
+        if (!m.find()) return java.math.BigDecimal.ZERO;
+        try { return new java.math.BigDecimal(m.group(1)); }
+        catch (NumberFormatException e) { return java.math.BigDecimal.ZERO; }
+    }
+
     public List<DiaryEntry> diary(LocalDate from, LocalDate to,
                                     String status, String sourceType,
                                     Integer limit) throws IOException, InterruptedException {
