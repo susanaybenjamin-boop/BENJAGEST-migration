@@ -180,7 +180,35 @@ public class InvoiceFieldsExtractor {
             "n[\\u00famero]+\\.?\\s*factura|" +
             "factura\\s*n[\\u00ba\\u00b0\\.\\s]*|" +
             "invoice\\s*(?:no|#|number)?|" +
-            "ref(?:erencia)?\\.?\\s*factura)\\s*:?\\s*\\n?\\s*([A-Z0-9][A-Z0-9\\-/_.]{2,29})"
+            "ref(?:erencia)?\\.?\\s*factura|" +
+            // Patrones extra: FRA-NNNN, FACT N. NNNN, Fra: NNNN…
+            "fra[\\.\\s\\-]*(?:n[\\u00ba\\u00b0]?)?|" +
+            "fact[\\.\\s\\-]*(?:n[\\u00ba\\u00b0]?)?|" +
+            "n[\\u00ba\\u00b0]\\.?)\\s*:?\\s*\\n?\\s*([A-Z0-9][A-Z0-9\\-/_.]{2,29})"
+    );
+
+    /**
+     * Patrón "RECTIFICATIVA" en el head/body del documento. Detecta
+     * variaciones: "FACTURA RECTIFICATIVA", "RECTIFICATIVA Nº", "Crédito
+     * rectificativo", "Nota de abono nº", "Credit note". También captura
+     * de qué factura es rectificación si aparece junto.
+     */
+    private static final Pattern RECTIFYING_PATTERN = Pattern.compile(
+            "(?i)\\b(?:factura\\s+rectificativa|rectificativa|nota\\s+de\\s+abono|" +
+            "credit\\s+note|abono\\s+sobre|rectifica\\s+(?:la\\s+)?factura)\\b"
+    );
+
+    /**
+     * Captura el nº de la factura ORIGINAL anulada. Patrones típicos:
+     *   "rectifica la factura 2024-001"
+     *   "anula factura nº FRA-001"
+     *   "abono sobre factura 2024-001"
+     */
+    private static final Pattern RECTIFIED_ORIGINAL_PATTERN = Pattern.compile(
+            "(?i)(?:rectifica|anula|abono\\s+sobre|sustituye\\s+a|cancels?)\\s*" +
+            "(?:la\\s+|el\\s+|the\\s+)?(?:factura|invoice|fra\\.?)\\s*" +
+            "(?:n[\\u00ba\\u00b0]?\\.?\\s*)?" +
+            "([A-Z0-9][A-Z0-9\\-/_.]{2,29})"
     );
 
     /**
@@ -383,8 +411,28 @@ public class InvoiceFieldsExtractor {
         //    b) Tabla "Número Serie Fecha" + siguiente línea numérica.
         String invoiceNumber = findFirstGroup(INVOICE_NUMBER_PATTERN, text, 1);
         if (invoiceNumber != null) invoiceNumber = invoiceNumber.trim();
+        // Filtro de falsos positivos: la regex puede capturar palabras tras
+        // "Nº" cuando el documento dice "Nº FACTURA: 2026/001". Rechazamos
+        // valores que son solo la palabra "FACTURA", "RECIBO", "INVOICE"…
+        // y volvemos a intentar con la búsqueda en tabla.
+        if (invoiceNumber != null && isInvoiceNumberNoise(invoiceNumber)) {
+            invoiceNumber = null;
+        }
         if (invoiceNumber == null || invoiceNumber.isBlank()) {
             invoiceNumber = findInvoiceNumberInTable(text);
+        }
+        // Si seguimos sin nada, intentamos un segundo pase de la regex
+        // saltándonos cualquier match que sea noise (la palabra FACTURA
+        // captura, pero el verdadero nº puede estar 2 líneas después).
+        if (invoiceNumber == null || invoiceNumber.isBlank()) {
+            Matcher mNum = INVOICE_NUMBER_PATTERN.matcher(text);
+            while (mNum.find()) {
+                String candidate = mNum.group(1).trim();
+                if (!isInvoiceNumberNoise(candidate)) {
+                    invoiceNumber = candidate;
+                    break;
+                }
+            }
         }
 
         // 5. Fecha — cascada:
@@ -426,11 +474,92 @@ public class InvoiceFieldsExtractor {
         // 7. Validación cruzada base + iva ≈ total (±0,02 €)
         Confidence confidence = crossCheck(base, vatAmount, total, retentionAmount);
 
+        // 8. Receptor (destinatario) — clave en facturas DE VENTA donde
+        //    el emisor es el propio empresario y el receptor es a quien
+        //    se le vendió. Buscamos después del label "Cliente:" / "Factura
+        //    a:" un NIF y un nombre.
+        String[] receiver = guessReceiver(text, allNifs, allEuVat, emitterNif);
+        String receiverNif = receiver[0];
+        String receiverName = receiver[1];
+
+        // 9. Rectificativa — busca patrones "FACTURA RECTIFICATIVA",
+        //    "Nota de abono" etc en cabecera (primeros 600 chars). Si lo
+        //    encuentra y además hay "rectifica la factura X", lo extrae.
+        String headForRect = text.length() > 600 ? text.substring(0, 600) : text;
+        boolean rectifying = RECTIFYING_PATTERN.matcher(headForRect).find();
+        String rectifiedNumber = null;
+        if (rectifying) {
+            Matcher rm = RECTIFIED_ORIGINAL_PATTERN.matcher(text);
+            if (rm.find()) rectifiedNumber = rm.group(1).trim();
+        }
+
         return new ExtractionResult(
                 allNifs, emitterNif, supplierName, invoiceNumber, invoiceDate,
                 base, vatPct, vatAmount, total,
-                hashOf(originalBytes), confidence, head
+                hashOf(originalBytes), confidence, head,
+                receiverNif, receiverName, rectifying, rectifiedNumber
         );
+    }
+
+    /**
+     * Busca el NIF + nombre del DESTINATARIO de la factura.
+     * Estrategia: localiza un label de receptor ("Cliente:", "Factura a:",
+     * "Destinatario:"…) y a partir de su posición busca un NIF distinto
+     * del emisor en una ventana corta. El nombre suele estar en la línea
+     * inmediatamente posterior al label o pegado al NIF.
+     *
+     * @return {@code String[]{nif, name}} — cualquiera puede ser null.
+     */
+    private String[] guessReceiver(String text, List<String> allNifs,
+                                     List<String> allEuVat, String emitterNif) {
+        if (text == null || text.isBlank()) return new String[]{null, null};
+        Matcher recv = RECEIVER_LABEL.matcher(text);
+        if (!recv.find()) return new String[]{null, null};
+        int start = recv.end();
+        // Ventana de 400 chars tras el label: ahí debe estar el NIF y el
+        // nombre del receptor.
+        int end = Math.min(text.length(), start + 400);
+        String window = text.substring(start, end);
+
+        // 1) Buscar primer NIF en la ventana que NO sea el del emisor.
+        String nif = null;
+        Pattern nifPat = Pattern.compile(
+                "\\b([XYZ0-9][0-9]{7}[A-Z]|[A-HJ-NP-SUVW][0-9]{7}[0-9A-J])\\b");
+        Matcher m = nifPat.matcher(window);
+        while (m.find()) {
+            String candidate = m.group(1).toUpperCase();
+            if (emitterNif == null || !candidate.equalsIgnoreCase(emitterNif)) {
+                nif = candidate;
+                break;
+            }
+        }
+
+        // 2) Buscar nombre — primera línea no vacía tras el label, o tras
+        //    el NIF si lo encontramos.
+        String name = null;
+        String afterLabel = window.replaceFirst("^\\s*:?\\s*", "");
+        for (String line : afterLabel.split("\\r?\\n")) {
+            String s = line.trim();
+            if (s.isEmpty()) continue;
+            // Saltar líneas que sean solo un NIF o números.
+            if (nifPat.matcher(s).matches()) continue;
+            if (s.matches("^[\\d\\s\\-/]+$")) continue;
+            // Saltar líneas que contengan el emisor (evita falsos positivos).
+            if (emitterNif != null && s.toUpperCase().contains(emitterNif)) continue;
+            // Saltar etiquetas frecuentes.
+            if (s.matches("(?i).*\\b(direccion|address|c\\.p\\.|cp|telef|tel|email|@|nif|cif).*")) continue;
+            // Recortar al primer NIF inline si está presente.
+            Matcher inline = nifPat.matcher(s);
+            if (inline.find()) {
+                s = s.substring(0, inline.start()).trim();
+                if (s.isEmpty()) continue;
+            }
+            // Limitar a una longitud razonable.
+            if (s.length() > 120) s = s.substring(0, 120);
+            name = s;
+            break;
+        }
+        return new String[]{nif, name};
     }
 
     /**
@@ -720,6 +849,29 @@ public class InvoiceFieldsExtractor {
     private String findFirstGroup(Pattern p, String text, int group) {
         Matcher m = p.matcher(text);
         return m.find() ? m.group(group) : null;
+    }
+
+    /**
+     * Determina si un candidato a "número de factura" es en realidad
+     * ruido (la palabra "FACTURA", "INVOICE", "Nº", "DE", "DEL"…). Un
+     * número de factura real lleva siempre al menos un dígito.
+     */
+    private boolean isInvoiceNumberNoise(String s) {
+        if (s == null) return true;
+        String up = s.toUpperCase().trim();
+        if (up.isBlank()) return true;
+        // Sin dígitos = palabra, no número.
+        if (!up.matches(".*\\d.*")) return true;
+        // Listas de palabras puramente alfabéticas que la regex puede
+        // capturar por estar pegadas a "Nº" o a "Factura nº".
+        switch (up) {
+            case "FACTURA": case "INVOICE": case "RECIBO": case "TICKET":
+            case "NUMERO": case "NÚMERO": case "NUM": case "FACT": case "FRA":
+            case "DEL": case "DE": case "LA": case "EL":
+                return true;
+            default:
+        }
+        return false;
     }
 
     private String guessEmitterNif(String text, List<String> allNifs, List<String> allEuVat) {
@@ -1116,10 +1268,30 @@ public class InvoiceFieldsExtractor {
             BigDecimal totalAmount,
             String documentSha256,
             Confidence confidence,
-            String rawTextHead
+            String rawTextHead,
+            /** NIF del destinatario (en facturas de venta es el cliente). */
+            String receiverNif,
+            /** Nombre del destinatario. */
+            String receiverName,
+            /** TRUE si el PDF contiene marcadores de "RECTIFICATIVA". */
+            boolean rectifying,
+            /** Si es rectificativa, nº de la factura que rectifica (si se detecta). */
+            String rectifiedInvoiceNumber
     ) {
         public String invoiceDateIso() {
             return invoiceDate == null ? null : invoiceDate.format(DateTimeFormatter.ISO_LOCAL_DATE);
+        }
+        /** Backwards-compat para callers viejos. */
+        public ExtractionResult(List<String> allDetectedNifs, String emitterNif,
+                                  String supplierName, String invoiceNumber,
+                                  LocalDate invoiceDate, BigDecimal baseAmount,
+                                  BigDecimal vatPercent, BigDecimal vatAmount,
+                                  BigDecimal totalAmount, String documentSha256,
+                                  Confidence confidence, String rawTextHead) {
+            this(allDetectedNifs, emitterNif, supplierName, invoiceNumber,
+                    invoiceDate, baseAmount, vatPercent, vatAmount, totalAmount,
+                    documentSha256, confidence, rawTextHead,
+                    null, null, false, null);
         }
     }
 }

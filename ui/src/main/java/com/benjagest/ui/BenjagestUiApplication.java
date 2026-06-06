@@ -2736,10 +2736,20 @@ public class BenjagestUiApplication extends Application {
      * varios PDFs.
      */
     private void showSalesExtractionDialog(String json, String filename, byte[] pdfBytes) {
-        // Mapeo extractor → ventas: emitterNif = NIF cliente,
-        // supplierName = razón social del cliente.
-        String customerNif = extractField(json, "emitterNif");
-        String customerName = extractField(json, "supplierName");
+        // Mapeo extractor → ventas:
+        //   - receiverNif/receiverName = DESTINATARIO de la factura =
+        //     CLIENTE en facturas emitidas (el caso normal en ventas).
+        //   - emitterNif/supplierName = EMISOR = el propio usuario.
+        // Si el extractor no detecta receptor (formato raro), caemos al
+        // emisor como último recurso para no dejar campos vacíos.
+        String customerNif = extractField(json, "receiverNif");
+        String customerName = extractField(json, "receiverName");
+        if (customerNif == null || customerNif.isBlank()) {
+            customerNif = extractField(json, "emitterNif");
+        }
+        if (customerName == null || customerName.isBlank()) {
+            customerName = extractField(json, "supplierName");
+        }
         String number = extractField(json, "invoiceNumber");
         String date = extractField(json, "invoiceDate");
         String base = extractNumber(json, "baseAmount");
@@ -10967,6 +10977,7 @@ public class BenjagestUiApplication extends Application {
             case "accounting.status.CANCELLED" -> "Cancelled";
             case "accounting.status.PROFORMA" -> "Proforma";
             case "accounting.source_type.SALES_INVOICE" -> "Sales invoice";
+            case "accounting.source_type.SALES_PDF_IMPORT" -> "Sales PDF import";
             case "accounting.source_type.PURCHASE_INVOICE" -> "Purchase invoice";
             case "accounting.source_type.MANUAL" -> "Manual";
             case "accounting.source_type.BANK_MOVEMENT" -> "Bank movement";
@@ -11324,6 +11335,7 @@ public class BenjagestUiApplication extends Application {
             case "accounting.status.CANCELLED" -> "Cancelado";
             case "accounting.status.PROFORMA" -> "Proforma";
             case "accounting.source_type.SALES_INVOICE" -> "Factura emitida";
+            case "accounting.source_type.SALES_PDF_IMPORT" -> "Venta importada por PDF";
             case "accounting.source_type.PURCHASE_INVOICE" -> "Factura recibida";
             case "accounting.source_type.MANUAL" -> "Manual";
             case "accounting.source_type.BANK_MOVEMENT" -> "Movimiento bancario";

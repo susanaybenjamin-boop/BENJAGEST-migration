@@ -172,7 +172,11 @@ public class SupplierTemplateService {
                 base.totalAmount(),
                 base.documentSha256(),
                 base.confidence(),
-                base.rawTextHead()
+                base.rawTextHead(),
+                base.receiverNif(),
+                base.receiverName(),
+                base.rectifying(),
+                base.rectifiedInvoiceNumber()
         );
     }
 
