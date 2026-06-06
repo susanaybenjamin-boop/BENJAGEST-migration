@@ -35,19 +35,22 @@ public class PurchaseInvoiceService {
     private final TenantContext tenantContext;
     private final AuditService auditService;
     private final com.benjagest.backend.accounting.FiscalYearGuardService fiscalGuard;
+    private final org.springframework.jdbc.core.JdbcTemplate jdbcTemplate;
 
     public PurchaseInvoiceService(PurchaseInvoiceRepository repository,
                                     PurchaseJournalEntryService journalService,
                                     CurrentUserService currentUserService,
                                     TenantContext tenantContext,
                                     AuditService auditService,
-                                    com.benjagest.backend.accounting.FiscalYearGuardService fiscalGuard) {
+                                    com.benjagest.backend.accounting.FiscalYearGuardService fiscalGuard,
+                                    org.springframework.jdbc.core.JdbcTemplate jdbcTemplate) {
         this.repository = repository;
         this.journalService = journalService;
         this.currentUserService = currentUserService;
         this.tenantContext = tenantContext;
         this.auditService = auditService;
         this.fiscalGuard = fiscalGuard;
+        this.jdbcTemplate = jdbcTemplate;
     }
 
     @Transactional
@@ -60,6 +63,13 @@ public class PurchaseInvoiceService {
                 return new SaveResult(existing.get(), true, "Factura ya registrada");
             }
         }
+
+        // 2) Auto-crear proveedor si tiene NIF y no existe ya: el sistema
+        //    aprende a quién paga. La factura sigue guardando supplier_nif
+        //    y supplier_name como texto libre (para mantener el dato
+        //    original de la factura escaneada), pero también se asegura
+        //    de tener el supplier persistido en la tabla suppliers.
+        ensureSupplierExists(req.supplierNif(), req.supplierName());
 
         AuthenticatedUser user = currentUserService.require();
         String tenant = tenantContext.getCurrentCompanyId();
@@ -244,6 +254,44 @@ public class PurchaseInvoiceService {
     }
     private String normalize(String nif) {
         return nif == null || nif.isBlank() ? null : nif.trim().toUpperCase();
+    }
+
+    /**
+     * Auto-crea un Supplier si tiene NIF y aún no existe en esta empresa.
+     * Idempotente: si ya está, no toca nada.
+     * <p>
+     * El INSERT IGNORE deja que el UK (company_id, tax_identifier) se
+     * encargue de la deduplicación — si dos requests concurrentes
+     * intentan crear el mismo, solo el primero gana y el segundo es
+     * silencioso (no error).
+     */
+    private void ensureSupplierExists(String supplierNif, String supplierName) {
+        String nif = normalize(supplierNif);
+        if (nif == null) return;
+        String name = blankToNull(supplierName);
+        if (name == null) name = nif; // si no hay nombre, usamos el NIF como placeholder
+        try {
+            Integer existing = jdbcTemplate.queryForObject("""
+                    SELECT COUNT(*) FROM suppliers
+                     WHERE company_id = ? AND tax_identifier = ?
+                    """, Integer.class,
+                    tenantContext.getCurrentCompanyId(), nif);
+            if (existing != null && existing > 0) return;
+            jdbcTemplate.update("""
+                    INSERT INTO suppliers (
+                        id, company_id, legal_name, tax_identifier, country, active
+                    ) VALUES (?, ?, ?, ?, 'Espana', TRUE)
+                    """,
+                    UUID.randomUUID().toString(),
+                    tenantContext.getCurrentCompanyId(),
+                    name, nif);
+        } catch (Exception ex) {
+            // No interrumpimos el guardado de la factura si la creación
+            // del supplier falla (p.ej. concurrencia, race con otro
+            // INSERT). El supplier se podrá crear luego manualmente.
+            System.err.println("[purchases] supplier no creado para "
+                    + nif + ": " + ex.getMessage());
+        }
     }
 
     // ====================================================================
