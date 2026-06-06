@@ -75,8 +75,26 @@ public class SalesPdfImportService {
             BigDecimal totalAmount,
             String invoiceNumber,
             String concept,
-            byte[] pdfBytes
-    ) {}
+            byte[] pdfBytes,
+            /** TRUE si el PDF es una factura rectificativa. */
+            boolean rectifying,
+            /** Nº de la factura ORIGINAL que se anula (opcional). */
+            String rectifiedInvoiceNumber
+    ) {
+        // Constructor de compatibilidad con el callsite antiguo.
+        public Request(String customerNif, String customerName,
+                       LocalDate invoiceDate,
+                       BigDecimal baseAmount, BigDecimal vatPercent,
+                       BigDecimal vatAmount, BigDecimal retentionAmount,
+                       BigDecimal totalAmount,
+                       String invoiceNumber, String concept,
+                       byte[] pdfBytes) {
+            this(customerNif, customerName, invoiceDate,
+                    baseAmount, vatPercent, vatAmount, retentionAmount,
+                    totalAmount, invoiceNumber, concept, pdfBytes,
+                    false, null);
+        }
+    }
 
     public record Result(String journalEntryId, int entryNumber, String pdfSha256) {}
 
@@ -222,15 +240,67 @@ public class SalesPdfImportService {
     }
 
     private String buildConcept(Request req) {
+        // Concepto que devuelve el cliente (si lo editó el usuario)
+        // tiene prioridad. Sino, generamos uno sensato.
+        if (req.concept() != null && !req.concept().isBlank()) {
+            String s = req.concept().trim();
+            return s.length() > 240 ? s.substring(0, 240) : s;
+        }
         StringBuilder sb = new StringBuilder();
+        // Prefijo "Fra. rectificativa" si es rectificativa.
+        if (req.rectifying()) {
+            sb.append("Fra. rectificativa ");
+        } else {
+            sb.append("Fra. ");
+        }
         if (req.invoiceNumber() != null && !req.invoiceNumber().isBlank()) {
-            sb.append("Fra. ").append(req.invoiceNumber()).append(' ');
+            sb.append(req.invoiceNumber().trim()).append(' ');
         }
         if (req.customerName() != null && !req.customerName().isBlank()) {
-            sb.append("a ").append(req.customerName());
+            sb.append("a ").append(req.customerName().trim());
+        }
+        // Si es rectificativa, indicamos qué factura anula.
+        if (req.rectifying() && req.rectifiedInvoiceNumber() != null
+                && !req.rectifiedInvoiceNumber().isBlank()) {
+            sb.append(" (anula ").append(req.rectifiedInvoiceNumber().trim()).append(')');
         }
         if (sb.length() == 0) sb.append("Venta importada");
         String s = sb.toString();
         return s.length() > 240 ? s.substring(0, 240) : s;
+    }
+
+    /**
+     * Busca la factura ORIGINAL que está siendo anulada por una
+     * rectificativa, dentro del catálogo de sales_invoices del mismo
+     * cliente (matching por NIF).
+     *
+     * <p>Si la encuentra, devuelve el id; el caller la marca como
+     * VOIDED y enlaza la rectificativa. Si NO la encuentra (la
+     * original está en el sistema anterior del cliente o nunca se
+     * importó), devuelve null — el asesor verá el nº de la original
+     * en el concepto del asiento y decide manualmente.
+     *
+     * <p>NO se usa todavía porque sales_invoices NO contiene las
+     * facturas importadas (solo las emitidas desde BENJAGEST).
+     * Reservado para cuando completemos el slice de "listado de
+     * facturación con facturas importadas".
+     */
+    @SuppressWarnings("unused")
+    private String findOriginalInvoiceId(String companyId, String customerNif,
+                                           String originalNumber) {
+        if (originalNumber == null || originalNumber.isBlank()) return null;
+        if (customerNif == null || customerNif.isBlank()) return null;
+        List<String> ids = jdbcTemplate.query("""
+                SELECT si.id
+                  FROM sales_invoices si
+                  JOIN customers c ON c.id = si.customer_id
+                 WHERE si.company_id = ?
+                   AND si.invoice_number = ?
+                   AND c.tax_identifier = ?
+                 LIMIT 1
+                """,
+                (rs, n) -> rs.getString("id"),
+                companyId, originalNumber.trim(), customerNif.trim());
+        return ids.isEmpty() ? null : ids.get(0);
     }
 }
