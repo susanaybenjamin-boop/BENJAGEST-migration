@@ -231,6 +231,17 @@ public class AdvisoryService {
         //    que V54 aplica para empresas existentes — la repetimos aquí
         //    para nuevas shadow companies.
         activateEssentialModules(newId);
+
+        // 5) Seeds contables mínimos para que el flujo factura → asiento
+        //    funcione automáticamente:
+        //    a) fiscal_year OPEN del año en curso (sin esto, el service
+        //       findOpenFiscalYearId devuelve null y la factura se guarda
+        //       SIN journal_entry_id — invisible en "Por validar").
+        //    b) plan contable PGC PYMES copiado de la asesoría madre
+        //       (V46 lo sembró para la asesoría; la shadow hereda solo
+        //       las cuentas estándar, no las sub-cuentas de terceros).
+        seedFiscalYearOpen(newId);
+        seedAccountsFromAdvisory(newId, advisoryId);
         return newId;
     }
 
@@ -264,6 +275,45 @@ public class AdvisoryService {
                                   'reports', 'settings')
                    AND cm.active = FALSE
                 """, companyId);
+    }
+
+    /**
+     * Siembra un fiscal_year OPEN del año en curso para la company nueva.
+     * Idempotente vía NOT EXISTS — si ya existe uno para ese año, no
+     * crea otro.
+     */
+    private void seedFiscalYearOpen(String companyId) {
+        int year = java.time.LocalDate.now().getYear();
+        jdbcTemplate.update("""
+                INSERT INTO fiscal_years (id, company_id, year_number,
+                                            start_date, end_date, status)
+                SELECT UUID(), ?, ?, CONCAT(?, '-01-01'), CONCAT(?, '-12-31'), 'OPEN'
+                  FROM dual
+                 WHERE NOT EXISTS (
+                       SELECT 1 FROM fiscal_years
+                        WHERE company_id = ? AND year_number = ?)
+                """, companyId, year, year, year, companyId, year);
+    }
+
+    /**
+     * Copia las cuentas estándar del plan contable de la asesoría madre
+     * a la shadow company. Solo cuentas con {@code is_standard=TRUE} —
+     * las sub-cuentas de tercero (4000xxx/4300xxx) NO se copian porque
+     * son específicas de cada cliente.
+     *
+     * <p>Idempotente: usa INSERT IGNORE contra la UK
+     * (company_id, code). Si ya existe la cuenta no la duplica.
+     */
+    private void seedAccountsFromAdvisory(String shadowCompanyId, String advisoryId) {
+        jdbcTemplate.update("""
+                INSERT IGNORE INTO accounting_accounts
+                    (id, company_id, code, name, account_type, active, is_standard)
+                SELECT UUID(), ?, code, name, account_type, TRUE, TRUE
+                  FROM accounting_accounts
+                 WHERE company_id = ?
+                   AND is_standard = TRUE
+                   AND active = TRUE
+                """, shadowCompanyId, advisoryId);
     }
 
     private record CustomerRow(String id, String legalName,
