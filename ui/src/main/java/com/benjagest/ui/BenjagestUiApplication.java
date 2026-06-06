@@ -14561,6 +14561,34 @@ public class BenjagestUiApplication extends Application {
 
         sub.getTabs().addAll(salesTab, expensesTab);
 
+        // Sincronizar el periodo Año/Trimestre de los KPIs con el
+        // sub-tab Gastos. buildClientPurchasesTab usa sus propios
+        // comboboxes (purchaseYearFilter / purchaseQuarterFilter); aquí
+        // cuando cambia el periodo compartido, los actualizamos.
+        Runnable syncPurchasesFilters = () -> {
+            if (purchaseYearFilter == null || purchaseQuarterFilter == null) return;
+            LocalDate f = fromProp.get();
+            if (f == null) return;
+            int y = f.getYear();
+            int q = (f.getMonthValue() - 1) / 3 + 1;
+            String yStr = String.valueOf(y);
+            if (purchaseYearFilter.getItems().contains(yStr)
+                    && !yStr.equals(purchaseYearFilter.getValue())) {
+                purchaseYearFilter.setValue(yStr);
+            }
+            String qStr = "T" + q;
+            if (purchaseQuarterFilter.getItems().contains(qStr)
+                    && !qStr.equals(purchaseQuarterFilter.getValue())) {
+                purchaseQuarterFilter.setValue(qStr);
+            }
+        };
+        fromProp.addListener((o, a, b) -> syncPurchasesFilters.run());
+        // Sincronización inicial diferida — el tab Gastos se construye
+        // perezosamente; los comboboxes pueden no existir todavía
+        // cuando entramos en la pestaña. Reintentamos al seleccionar.
+        sub.getSelectionModel().selectedItemProperty().addListener(
+                (o, a, b) -> syncPurchasesFilters.run());
+
         // KPIs en cards arriba: ventas, gastos, IVA repercutido,
         // IVA soportado, Modelo 303 estimado, asientos pendientes.
         // Selector de trimestre/año arriba de las cards. Auto-refresh
@@ -14949,13 +14977,74 @@ public class BenjagestUiApplication extends Application {
         addCol(table, t("billing.col.payment_status"),
                 v -> v.paymentStatus() == null ? "" : t("billing.payment_status." + v.paymentStatus()), 100);
 
-        Button refresh = new Button(t("accounting.action.refresh"));
-        refresh.setOnAction(e -> loadClientBilling(table));
+        // Cache cliente-side para filtrar sin ir al backend.
+        final java.util.List<com.benjagest.ui.model.SalesInvoiceSummary> cache =
+                new java.util.ArrayList<>();
 
-        // Multi-import de PDFs de ventas → asientos contables directos.
-        // Imprescindible en la vista cliente no-vinculado: el asesor solo
-        // recibe los PDFs y necesita generar asientos sin tener que crear
-        // facturas legales completas (esas las emitió el cliente fuera).
+        // Filtros internos (Slice 2B aplicado al cliente VINCULADO):
+        //   - Buscar: nº, cliente, concepto.
+        //   - Estado: TODOS | DRAFT | POSTED | VOIDED.
+        //   - Tipo: TODOS | NORMAL | RECTIFICATIVA (invoiceType=RECT
+        //     o total < 0).
+        TextField search = new TextField();
+        search.setPromptText(t("client.filter.search_prompt"));
+        search.setPrefColumnCount(20);
+
+        ComboBox<String> statusFilter = new ComboBox<>(javafx.collections.FXCollections.observableArrayList(
+                "", "DRAFT", "POSTED", "VOIDED"));
+        statusFilter.setValue("");
+        statusFilter.setConverter(new javafx.util.StringConverter<>() {
+            @Override public String toString(String s) {
+                return s == null || s.isBlank()
+                        ? t("client.filter.status.all")
+                        : t("accounting.status." + s);
+            }
+            @Override public String fromString(String s) { return s; }
+        });
+
+        ComboBox<String> typeFilter = new ComboBox<>(javafx.collections.FXCollections.observableArrayList(
+                "", "NORMAL", "RECT"));
+        typeFilter.setValue("");
+        typeFilter.setConverter(new javafx.util.StringConverter<>() {
+            @Override public String toString(String s) {
+                return s == null || s.isBlank() ? t("client.filter.type.all")
+                        : "RECT".equals(s) ? t("client.filter.type.rectifying")
+                        : t("client.filter.type.normal");
+            }
+            @Override public String fromString(String s) { return s; }
+        });
+
+        Runnable applyFilters = () -> {
+            String q = search.getText() == null ? ""
+                    : search.getText().trim().toLowerCase();
+            String st = statusFilter.getValue();
+            String tp = typeFilter.getValue();
+            javafx.collections.ObservableList<com.benjagest.ui.model.SalesInvoiceSummary> filtered =
+                    javafx.collections.FXCollections.observableArrayList();
+            for (var inv : cache) {
+                if (!q.isEmpty()) {
+                    String hay = (inv.invoiceNumber() == null ? "" : inv.invoiceNumber().toLowerCase())
+                            + " " + (inv.customerLegalName() == null ? "" : inv.customerLegalName().toLowerCase());
+                    if (!hay.contains(q)) continue;
+                }
+                if (st != null && !st.isBlank()
+                        && !st.equalsIgnoreCase(inv.status())) continue;
+                if (tp != null && !tp.isBlank()) {
+                    boolean isRect = isSalesInvoiceRectifying(inv);
+                    if ("RECT".equals(tp) && !isRect) continue;
+                    if ("NORMAL".equals(tp) && isRect) continue;
+                }
+                filtered.add(inv);
+            }
+            table.setItems(filtered);
+        };
+        search.textProperty().addListener((o, a, b) -> applyFilters.run());
+        statusFilter.valueProperty().addListener((o, a, b) -> applyFilters.run());
+        typeFilter.valueProperty().addListener((o, a, b) -> applyFilters.run());
+
+        Button refresh = new Button(t("accounting.action.refresh"));
+        refresh.setOnAction(e -> loadClientBilling(table, cache, applyFilters));
+
         Button importSalesPdfsBtn = new Button(t("sales.action.import_pdfs"));
         importSalesPdfsBtn.setGraphic(icon("fas-file-import"));
         importSalesPdfsBtn.getStyleClass().add("button-primary");
@@ -14963,34 +15052,54 @@ public class BenjagestUiApplication extends Application {
 
         Region clientBillingSpacer = new Region();
         HBox.setHgrow(clientBillingSpacer, Priority.ALWAYS);
-        HBox actions = new HBox(8, refresh, clientBillingSpacer, importSalesPdfsBtn);
+        HBox actions = new HBox(8,
+                new Label(t("client.filter.search")), search,
+                new Label(t("client.filter.status")), statusFilter,
+                new Label(t("client.filter.type")), typeFilter,
+                clientBillingSpacer, refresh, importSalesPdfsBtn);
         actions.setAlignment(Pos.CENTER_LEFT);
 
-        // Auto-refresh cuando alguien emite SALES o JOURNAL (p.ej. tras
-        // importar PDFs el RefreshBus dispara la recarga sin tener que
-        // pulsar el botón "Actualizar" manualmente).
         com.benjagest.ui.support.RefreshBus.subscribe(
                 com.benjagest.ui.support.RefreshBus.TOPIC_SALES,
-                () -> loadClientBilling(table), table);
+                () -> loadClientBilling(table, cache, applyFilters), table);
         com.benjagest.ui.support.RefreshBus.subscribe(
                 com.benjagest.ui.support.RefreshBus.TOPIC_JOURNAL,
-                () -> loadClientBilling(table), table);
+                () -> loadClientBilling(table, cache, applyFilters), table);
 
         VBox box = new VBox(8, actions, table);
         VBox.setVgrow(table, Priority.ALWAYS);
         box.setPadding(new Insets(12));
-        loadClientBilling(table);
+        loadClientBilling(table, cache, applyFilters);
         return box;
     }
 
-    private void loadClientBilling(javafx.scene.control.TableView<com.benjagest.ui.model.SalesInvoiceSummary> table) {
+    /**
+     * Decide si una factura emitida es rectificativa:
+     *   - invoiceType contiene "RECT"
+     *   - total negativo
+     */
+    private boolean isSalesInvoiceRectifying(com.benjagest.ui.model.SalesInvoiceSummary inv) {
+        if (inv == null) return false;
+        String type = inv.invoiceType() == null ? "" : inv.invoiceType().toUpperCase();
+        if (type.contains("RECT")) return true;
+        if (inv.total() != null && inv.total().signum() < 0) return true;
+        return false;
+    }
+
+    private void loadClientBilling(
+            javafx.scene.control.TableView<com.benjagest.ui.model.SalesInvoiceSummary> table,
+            java.util.List<com.benjagest.ui.model.SalesInvoiceSummary> cache,
+            Runnable applyFilters) {
         Task<java.util.List<com.benjagest.ui.model.SalesInvoiceSummary>> task = new Task<>() {
             @Override protected java.util.List<com.benjagest.ui.model.SalesInvoiceSummary> call() throws Exception {
                 return billingApiClient.listInvoices(null, null, null, 500);
             }
         };
-        task.setOnSucceeded(ev -> table.setItems(
-                javafx.collections.FXCollections.observableArrayList(task.getValue())));
+        task.setOnSucceeded(ev -> {
+            cache.clear();
+            cache.addAll(task.getValue());
+            applyFilters.run();
+        });
         task.setOnFailed(ev -> System.err.println("[client-billing] "
                 + (task.getException() == null ? "?" : task.getException().getMessage())));
         start(task, "client-billing");
