@@ -169,7 +169,33 @@ public final class ResponsiveLayout {
      * exceso.
      */
     public static void installDialog(Dialog<?> dialog, Node content) {
+        installDialog(dialog, content, true);
+    }
+
+    /**
+     * Variante con control sobre el wrap en ScrollPane. Cuando el
+     * contenido ya gestiona su propio scroll (por ejemplo un SplitPane
+     * con visor PDF + formulario), {@code wrapInScroll=false} evita el
+     * "doble scroll" en que el usuario tiene que mover dos barras
+     * para llegar al final.
+     */
+    public static void installDialog(Dialog<?> dialog, Node content,
+                                       boolean wrapInScroll) {
         DialogPane pane = dialog.getDialogPane();
+        Rectangle2D vb = Screen.getPrimary().getVisualBounds();
+
+        if (!wrapInScroll) {
+            // Sin envoltorio externo: confiamos en que el contenido
+            // tiene sus propias zonas scrollables. Solo aplicamos el
+            // cap de altura al DialogPane + Stage.
+            pane.setContent(content);
+            double paneMaxHRaw = Math.max(MIN_USABLE_HEIGHT + 60,
+                    vb.getHeight() - 80);
+            pane.setMaxHeight(paneMaxHRaw);
+            dialog.setResizable(true);
+            installStageCap(dialog, vb);
+            return;
+        }
 
         // 1) ScrollPane interno con maxHeight dinámico.
         ScrollPane sp;
@@ -183,7 +209,6 @@ public final class ResponsiveLayout {
             sp.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
             sp.getStyleClass().add("dialog-scroll");
         }
-        Rectangle2D vb = Screen.getPrimary().getVisualBounds();
         // El ScrollPane tiene como cap el alto util menos el chrome
         // del button bar y un margen extra para el padding interno
         // del DialogPane.
@@ -197,24 +222,25 @@ public final class ResponsiveLayout {
         pane.setMaxHeight(paneMaxH);
 
         dialog.setResizable(true);
+        installStageCap(dialog, vb);
+    }
 
-        // 3) Cap del Stage cuando aparezca. Esto es el cierre definitivo
-        //    porque algunos diálogos heredan prefHeight calculado del
-        //    contenido total y el Stage los respeta saltando el cap del
-        //    DialogPane si JavaFX recalcula tras un layout pass.
+    /**
+     * Cap del Stage cuando aparezca + centrado vertical. Cierra el caso
+     * en que el Stage hereda prefHeight calculado del contenido y se
+     * salta el cap del DialogPane tras un layout pass.
+     */
+    private static void installStageCap(Dialog<?> dialog, Rectangle2D vb) {
+        DialogPane pane = dialog.getDialogPane();
         dialog.setOnShown(ev -> {
             Scene scene = pane.getScene();
             if (scene == null) return;
             Window w = scene.getWindow();
             if (!(w instanceof Stage stage)) return;
             stage.setMaxHeight(vb.getHeight());
-            // Si tras mostrar quedó más alto que la pantalla, lo
-            // recortamos y reposicionamos.
             if (stage.getHeight() > vb.getHeight()) {
                 stage.setHeight(vb.getHeight() - 10);
             }
-            // Centrar verticalmente dentro del visualBounds para que el
-            // diálogo no quede colgando del borde superior.
             double freeSpace = vb.getHeight() - stage.getHeight();
             if (freeSpace > 0) {
                 stage.setY(vb.getMinY() + freeSpace / 2);
