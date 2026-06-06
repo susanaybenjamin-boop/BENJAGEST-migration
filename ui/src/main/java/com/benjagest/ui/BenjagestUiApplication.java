@@ -11206,6 +11206,20 @@ public class BenjagestUiApplication extends Application {
             case "recurring.freq.every" -> "Every";
             case "recurring.freq.months" -> "months";
             case "recurring.freq.day" -> "day";
+            case "recurring.col.actions" -> "Actions";
+            case "recurring.action.run_now" -> "Run now";
+            case "recurring.action.pause" -> "Disable";
+            case "recurring.action.activate" -> "Enable";
+            case "recurring.action.history" -> "History";
+            case "recurring.confirm.run_now" -> "Run this task now? It will generate the document (invoice or expense) using today's date.";
+            case "recurring.run_now.success" -> "Task executed successfully.";
+            case "recurring.run_now.error" -> "Could not run the task";
+            case "recurring.toggle.error" -> "Could not toggle status";
+            case "recurring.history.empty" -> "No runs recorded yet";
+            case "recurring.history.col.date" -> "Date";
+            case "recurring.history.col.status" -> "Status";
+            case "recurring.history.col.message" -> "Message";
+            case "recurring.history.error" -> "Could not load history";
             case "date.day.monday" -> "Monday";
             case "date.day.tuesday" -> "Tuesday";
             case "date.day.wednesday" -> "Wednesday";
@@ -11656,6 +11670,20 @@ public class BenjagestUiApplication extends Application {
             case "recurring.freq.every" -> "Cada";
             case "recurring.freq.months" -> "meses";
             case "recurring.freq.day" -> "día";
+            case "recurring.col.actions" -> "Acciones";
+            case "recurring.action.run_now" -> "Ejecutar ahora";
+            case "recurring.action.pause" -> "Desactivar";
+            case "recurring.action.activate" -> "Activar";
+            case "recurring.action.history" -> "Historial";
+            case "recurring.confirm.run_now" -> "¿Lanzar esta tarea ahora? Se generará el documento (factura o gasto) con la fecha de hoy.";
+            case "recurring.run_now.success" -> "Tarea ejecutada correctamente.";
+            case "recurring.run_now.error" -> "No se pudo ejecutar la tarea";
+            case "recurring.toggle.error" -> "No se pudo cambiar el estado";
+            case "recurring.history.empty" -> "Sin ejecuciones registradas todavía";
+            case "recurring.history.col.date" -> "Fecha";
+            case "recurring.history.col.status" -> "Estado";
+            case "recurring.history.col.message" -> "Mensaje";
+            case "recurring.history.error" -> "No se pudo cargar el historial";
             case "date.day.monday" -> "lunes";
             case "date.day.tuesday" -> "martes";
             case "date.day.wednesday" -> "miércoles";
@@ -15099,12 +15127,57 @@ public class BenjagestUiApplication extends Application {
                         : t("recurring.status.inactive"))));
         colStatus.setPrefWidth(90);
 
+        // Slice 3C-2 — Columna Acciones por fila:
+        //   ▶ Ejecutar ahora (POST /run-now con date=hoy)
+        //   ⏸/▶ Toggle activo/inactivo (PUT /active)
+        //   🕐 Ver historial (GET /runs) → diálogo con las últimas 50
+        javafx.scene.control.TableColumn<com.benjagest.ui.model.AccountingModels.RecurringTask, Void> colActions =
+                new javafx.scene.control.TableColumn<>(t("recurring.col.actions"));
+        colActions.setSortable(false);
+        colActions.setPrefWidth(200);
+        colActions.setCellFactory(c -> new javafx.scene.control.TableCell<>() {
+            private final Button run = new Button();
+            private final Button toggle = new Button();
+            private final Button history = new Button();
+            private final HBox actionsBox = new HBox(4, run, toggle, history);
+            {
+                run.setGraphic(icon("fas-play"));
+                run.setTooltip(new javafx.scene.control.Tooltip(t("recurring.action.run_now")));
+                run.getStyleClass().add("button-icon");
+                toggle.getStyleClass().add("button-icon");
+                history.setGraphic(icon("fas-clock-rotate-left"));
+                history.setTooltip(new javafx.scene.control.Tooltip(t("recurring.action.history")));
+                history.getStyleClass().add("button-icon");
+                actionsBox.setAlignment(javafx.geometry.Pos.CENTER_LEFT);
+            }
+            @Override protected void updateItem(Void v, boolean empty) {
+                super.updateItem(v, empty);
+                if (empty || getIndex() < 0 || getIndex() >= getTableView().getItems().size()) {
+                    setGraphic(null);
+                    return;
+                }
+                var task = getTableView().getItems().get(getIndex());
+                if (task == null) { setGraphic(null); return; }
+                // Refrescar ícono y tooltip del toggle según estado actual.
+                toggle.setGraphic(icon(task.active() ? "fas-pause" : "fas-play"));
+                toggle.setTooltip(new javafx.scene.control.Tooltip(task.active()
+                        ? t("recurring.action.pause") : t("recurring.action.activate")));
+                run.setOnAction(e -> runRecurringTaskNow(task,
+                        () -> loadClientRecurring(table, kind)));
+                toggle.setOnAction(e -> toggleRecurringTaskActive(task,
+                        () -> loadClientRecurring(table, kind)));
+                history.setOnAction(e -> showRecurringHistory(task));
+                setGraphic(actionsBox);
+            }
+        });
+
         table.getColumns().add(colName);
         table.getColumns().add(colDesc);
         table.getColumns().add(colFreq);
         table.getColumns().add(colNext);
         table.getColumns().add(colLast);
         table.getColumns().add(colStatus);
+        table.getColumns().add(colActions);
 
         // Banner informativo: avisa de que el cron corre cada día a las
         // 06:10 y que las acciones son solo gestión manual.
@@ -15174,6 +15247,113 @@ public class BenjagestUiApplication extends Application {
                     + " " + t("recurring.freq.months");
             default -> freq;
         };
+    }
+
+    /**
+     * Lanza una tarea recurrente ahora (botón ▶). Pide confirmación
+     * (un click accidental genera un asiento real) y al terminar
+     * refresca el listado. Si falla, muestra el error.
+     */
+    private void runRecurringTaskNow(
+            com.benjagest.ui.model.AccountingModels.RecurringTask task,
+            Runnable onDone) {
+        javafx.scene.control.Alert confirm = new javafx.scene.control.Alert(
+                javafx.scene.control.Alert.AlertType.CONFIRMATION,
+                t("recurring.confirm.run_now") + "\n\n" + task.name(),
+                javafx.scene.control.ButtonType.OK,
+                javafx.scene.control.ButtonType.CANCEL);
+        confirm.setHeaderText(t("recurring.action.run_now"));
+        var res = confirm.showAndWait();
+        if (res.isEmpty() || res.get() != javafx.scene.control.ButtonType.OK) return;
+        new Thread(() -> {
+            try {
+                accountingApiClient.runRecurringNow(task.id(), LocalDate.now());
+                javafx.application.Platform.runLater(() -> {
+                    if (onDone != null) onDone.run();
+                    new javafx.scene.control.Alert(
+                            javafx.scene.control.Alert.AlertType.INFORMATION,
+                            t("recurring.run_now.success"))
+                            .show();
+                });
+            } catch (Exception ex) {
+                javafx.application.Platform.runLater(() -> new javafx.scene.control.Alert(
+                        javafx.scene.control.Alert.AlertType.ERROR,
+                        t("recurring.run_now.error") + ": " + ex.getMessage()).show());
+            }
+        }, "recurring-run-now").start();
+    }
+
+    /**
+     * Conmuta el estado activo/inactivo de la tarea (botón ⏸/▶ junto al
+     * ejecutar). Refresca el listado al terminar.
+     */
+    private void toggleRecurringTaskActive(
+            com.benjagest.ui.model.AccountingModels.RecurringTask task,
+            Runnable onDone) {
+        new Thread(() -> {
+            try {
+                accountingApiClient.setRecurringActive(task.id(), !task.active());
+                javafx.application.Platform.runLater(() -> {
+                    if (onDone != null) onDone.run();
+                });
+            } catch (Exception ex) {
+                javafx.application.Platform.runLater(() -> new javafx.scene.control.Alert(
+                        javafx.scene.control.Alert.AlertType.ERROR,
+                        t("recurring.toggle.error") + ": " + ex.getMessage()).show());
+            }
+        }, "recurring-toggle-active").start();
+    }
+
+    /**
+     * Diálogo modal con el historial de ejecuciones de la tarea
+     * (las últimas 50). Tabla con fecha programada, estado, mensaje.
+     */
+    private void showRecurringHistory(
+            com.benjagest.ui.model.AccountingModels.RecurringTask task) {
+        javafx.scene.control.Dialog<Void> dlg = new javafx.scene.control.Dialog<>();
+        dlg.setTitle(t("recurring.action.history") + " — " + task.name());
+        dlg.getDialogPane().getButtonTypes().add(javafx.scene.control.ButtonType.CLOSE);
+
+        javafx.scene.control.TableView<com.benjagest.ui.model.AccountingModels.RecurringTaskRun> runsTable =
+                new javafx.scene.control.TableView<>();
+        runsTable.setPlaceholder(new Label(t("recurring.history.empty")));
+        runsTable.setPrefSize(640, 360);
+
+        javafx.scene.control.TableColumn<com.benjagest.ui.model.AccountingModels.RecurringTaskRun, LocalDate> cDate =
+                new javafx.scene.control.TableColumn<>(t("recurring.history.col.date"));
+        cDate.setCellValueFactory(c -> new javafx.beans.property.SimpleObjectProperty<>(
+                c.getValue() == null ? null : c.getValue().scheduledDate()));
+        cDate.setPrefWidth(110);
+
+        javafx.scene.control.TableColumn<com.benjagest.ui.model.AccountingModels.RecurringTaskRun, String> cStatus =
+                new javafx.scene.control.TableColumn<>(t("recurring.history.col.status"));
+        cStatus.setCellValueFactory(c -> new javafx.beans.property.SimpleStringProperty(
+                c.getValue() == null ? "" : c.getValue().status()));
+        cStatus.setPrefWidth(100);
+
+        javafx.scene.control.TableColumn<com.benjagest.ui.model.AccountingModels.RecurringTaskRun, String> cMsg =
+                new javafx.scene.control.TableColumn<>(t("recurring.history.col.message"));
+        cMsg.setCellValueFactory(c -> new javafx.beans.property.SimpleStringProperty(
+                c.getValue() == null ? "" : c.getValue().message()));
+        cMsg.setPrefWidth(380);
+
+        runsTable.getColumns().add(cDate);
+        runsTable.getColumns().add(cStatus);
+        runsTable.getColumns().add(cMsg);
+
+        new Thread(() -> {
+            try {
+                java.util.List<com.benjagest.ui.model.AccountingModels.RecurringTaskRun> runs =
+                        accountingApiClient.listRecurringRuns(task.id(), 50);
+                javafx.application.Platform.runLater(() -> runsTable.getItems().setAll(runs));
+            } catch (Exception ex) {
+                javafx.application.Platform.runLater(() -> runsTable.setPlaceholder(
+                        new Label(t("recurring.history.error") + ": " + ex.getMessage())));
+            }
+        }, "recurring-history").start();
+
+        dlg.getDialogPane().setContent(runsTable);
+        dlg.showAndWait();
     }
 
     /** Devuelve nombre del día de la semana 1=lunes..7=domingo. */
