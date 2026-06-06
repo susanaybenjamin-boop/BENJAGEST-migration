@@ -69,6 +69,37 @@ public class AccountingApiClient {
     }
 
     /**
+     * Actualiza el concepto de un asiento existente.
+     * @return true si el backend confirmó la edición.
+     */
+    public boolean updateEntryConcept(String entryId, String concept)
+            throws IOException, InterruptedException {
+        String body = "{\"concept\":\"" + (concept == null ? "" :
+                concept.replace("\\", "\\\\").replace("\"", "\\\"")) + "\"}";
+        String json = postRaw("/accounting/journal-entries/" + entryId + "/update-concept",
+                body);
+        return json.contains("\"updated\":true");
+    }
+
+    /**
+     * Re-extrae los campos desde el PDF asociado al asiento usando la
+     * regex/heurística actual. Devuelve los campos como sugerencia —
+     * NO actualiza nada en el backend.
+     */
+    public java.util.Map<String, String> reExtractEntryFromPdf(String entryId)
+            throws IOException, InterruptedException {
+        String json = postRaw("/accounting/journal-entries/" + entryId + "/re-extract", "");
+        java.util.Map<String, String> out = new java.util.LinkedHashMap<>();
+        for (String field : new String[]{"invoiceNumber", "invoiceDate",
+                "supplierName", "emitterNif", "receiverName", "receiverNif",
+                "baseAmount", "vatAmount", "totalAmount"}) {
+            String v = strField(json, field);
+            if (v != null) out.put(field, v);
+        }
+        return out;
+    }
+
+    /**
      * Borra una lista de asientos importados (duplicados). Solo borra
      * los que tienen source_type='SALES_PDF_IMPORT' o 'PURCHASE_INVOICE'.
      * Devuelve cuántos se borraron efectivamente.
