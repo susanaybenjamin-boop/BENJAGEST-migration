@@ -15114,8 +15114,14 @@ public class BenjagestUiApplication extends Application {
         search.setPromptText(t("client.filter.search_prompt"));
         search.setPrefColumnCount(20);
 
+        // Estados de FACTURA (sales_invoices) — distintos a asientos.
+        // Confirma V2: CHECK status IN ('DRAFT', 'VALIDATED',
+        // 'CANCELLED', 'VOIDED'). Antes mi combo tenía POSTED por
+        // copy-paste del listado de asientos, y filtrar por POSTED
+        // dejaba la tabla vacía porque las facturas validadas tienen
+        // estado VALIDATED.
         ComboBox<String> statusFilter = new ComboBox<>(javafx.collections.FXCollections.observableArrayList(
-                "", "DRAFT", "POSTED", "VOIDED"));
+                "", "DRAFT", "VALIDATED", "CANCELLED", "VOIDED"));
         statusFilter.setValue("");
         statusFilter.setConverter(new javafx.util.StringConverter<>() {
             @Override public String toString(String s) {
