@@ -83,6 +83,16 @@ public final class AuthSession {
             if (header != null && !header.isBlank()) {
                 builder.header("X-Company-Id", header);
             }
+        } else {
+            // Diagnóstico: si una petición sale SIN token, es indicio de
+            // que la sesión se reseteó (clear()) o que el ApiClient se
+            // instanció antes de login. Imprimimos para detectarlo en
+            // los logs del usuario cuando reporten un 403.
+            System.err.println("[AuthSession] WARN: peticion saliendo SIN token "
+                    + "(accessToken=null). activeCompanyId="
+                    + (activeCompanyId == null ? "null" : activeCompanyId)
+                    + " actingFor="
+                    + (actingForCompanyId == null ? "null" : actingForCompanyId));
         }
         return builder;
     }

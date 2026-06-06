@@ -90,6 +90,30 @@ public class PurchaseInvoiceApiClient {
         return parseList(r.body());
     }
 
+    /**
+     * Valida un lote de gastos DRAFT (multiselección). El servidor pasa
+     * cada uno a POSTED y genera el asiento contable correspondiente.
+     * Devuelve el JSON crudo del resumen — la UI lo parsea para mostrar.
+     */
+    public String validateBatch(List<String> ids) throws IOException, InterruptedException {
+        StringBuilder body = new StringBuilder("{\"ids\":[");
+        for (int i = 0; i < ids.size(); i++) {
+            if (i > 0) body.append(',');
+            body.append('"').append(ids.get(i)).append('"');
+        }
+        body.append("]}");
+        HttpRequest.Builder b = HttpRequest.newBuilder(URI.create(baseUrl + "/purchases/invoices/validate-batch"))
+                .timeout(Duration.ofSeconds(60))
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(body.toString()));
+        AuthSession.get().authorize(b);
+        HttpResponse<String> r = httpClient.send(b.build(), HttpResponse.BodyHandlers.ofString());
+        if (r.statusCode() < 200 || r.statusCode() >= 300) {
+            throw new IOException("HTTP " + r.statusCode() + ": " + r.body());
+        }
+        return r.body();
+    }
+
     public void deleteInvoice(String id) throws IOException, InterruptedException {
         HttpRequest.Builder b = HttpRequest.newBuilder(URI.create(baseUrl + "/purchases/invoices/" + id))
                 .timeout(Duration.ofSeconds(10)).DELETE();

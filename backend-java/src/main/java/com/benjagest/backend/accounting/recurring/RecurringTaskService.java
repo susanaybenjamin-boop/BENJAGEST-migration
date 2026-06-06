@@ -4,6 +4,12 @@ import com.benjagest.backend.accounting.AccountingTemplateService;
 import com.benjagest.backend.accounting.LoanService;
 import com.benjagest.backend.accounting.ManualJournalEntryService;
 import com.benjagest.backend.auth.CurrentUserService;
+import com.benjagest.backend.billing.invoices.InvoiceLineInput;
+import com.benjagest.backend.billing.invoices.InvoiceUpsertRequest;
+import com.benjagest.backend.billing.invoices.SalesInvoice;
+import com.benjagest.backend.billing.invoices.SalesInvoiceService;
+import com.benjagest.backend.purchases.PurchaseInvoice;
+import com.benjagest.backend.purchases.PurchaseInvoiceRepository;
 import com.benjagest.backend.purchases.PurchaseInvoiceService;
 import com.benjagest.backend.tenant.TenantContext;
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -51,25 +57,31 @@ public class RecurringTaskService {
     private final CurrentUserService currentUserService;
     private final ObjectMapper objectMapper;
     private final PurchaseInvoiceService purchaseService;
+    private final PurchaseInvoiceRepository purchaseRepository;
     private final ManualJournalEntryService manualEntries;
     private final AccountingTemplateService templates;
     private final LoanService loans;
+    private final SalesInvoiceService salesService;
 
     public RecurringTaskService(JdbcTemplate jdbcTemplate, TenantContext tenantContext,
                                  CurrentUserService currentUserService,
                                  ObjectMapper objectMapper,
                                  PurchaseInvoiceService purchaseService,
+                                 PurchaseInvoiceRepository purchaseRepository,
                                  ManualJournalEntryService manualEntries,
                                  AccountingTemplateService templates,
-                                 LoanService loans) {
+                                 LoanService loans,
+                                 SalesInvoiceService salesService) {
         this.jdbcTemplate = jdbcTemplate;
         this.tenantContext = tenantContext;
         this.currentUserService = currentUserService;
         this.objectMapper = objectMapper;
         this.purchaseService = purchaseService;
+        this.purchaseRepository = purchaseRepository;
         this.manualEntries = manualEntries;
         this.templates = templates;
         this.loans = loans;
+        this.salesService = salesService;
     }
 
     // ====================================================================
@@ -239,13 +251,8 @@ public class RecurringTaskService {
                     generatedKind = "LOAN_INSTALLMENT";
                 }
                 case "SALES_INVOICE" -> {
-                    // Sub-slice: la generación de factura emitida requiere
-                    // el editor de facturas. Por ahora marca SKIPPED con
-                    // explicación y deja el payload listo para el slice
-                    // SALES-RECURRING dedicado.
-                    status = "SKIPPED";
-                    message = "SALES_INVOICE recurrente no automatizable todavía — pendiente SALES-RECURRING.";
-                    return finalize(task, scheduledDate, status, null, null, message, t0);
+                    generatedId = runSalesInvoice(task, scheduledDate);
+                    generatedKind = "SALES_INVOICE";
                 }
                 default -> {
                     status = "SKIPPED";
@@ -319,9 +326,79 @@ public class RecurringTaskService {
                 bd(p.get("vatAmount")),
                 bd(p.get("totalAmount")),
                 null, 0,
-                "Generado por recurrencia '" + task.name() + "'");
+                "Generado por recurrencia '" + task.name() + "' — revisar y validar");
+        // PurchaseInvoiceService.save crea POSTED por defecto. Para
+        // recurrentes queremos DRAFT (el usuario revisa precio, añade
+        // líneas y luego valida en multiselección).
         var result = purchaseService.save(req);
-        return result.invoice().id();
+        String invoiceId = result.invoice().id();
+        // Forzar status DRAFT y borrar asiento auto si lo creó.
+        jdbcTemplate.update(
+                "UPDATE purchase_invoices SET status = 'DRAFT' WHERE id = ?", invoiceId);
+        // Si el save generó asiento automático, anularlo: el asiento se
+        // creará cuando el usuario valide.
+        String prevEntryId = jdbcTemplate.query(
+                "SELECT journal_entry_id FROM purchase_invoices WHERE id = ?",
+                (rs, n) -> rs.getString(1), invoiceId).stream().findFirst().orElse(null);
+        if (prevEntryId != null) {
+            jdbcTemplate.update(
+                    "UPDATE journal_entries SET status = 'VOIDED' WHERE id = ?", prevEntryId);
+            jdbcTemplate.update(
+                    "UPDATE purchase_invoices SET journal_entry_id = NULL WHERE id = ?", invoiceId);
+        }
+        return invoiceId;
+    }
+
+    /**
+     * Genera factura emitida (sales_invoices) como DRAFT a partir del
+     * payload. El usuario revisa, puede añadir líneas o ajustar precios,
+     * y la valida en multiselección desde el listado.
+     *
+     * <p>Payload esperado:
+     * <pre>
+     * {
+     *   "customerId": "uuid-del-cliente",
+     *   "concept": "Servicio mensual {YYYY}{MM}",
+     *   "lines": [
+     *     {"description":"Iguala mensual","quantity":1,"unitPrice":150.00,"vatPercent":21,"retentionPercent":0}
+     *   ]
+     * }
+     * </pre>
+     */
+    private String runSalesInvoice(RecurringTaskView task, LocalDate scheduledDate) {
+        Map<String, Object> p = readPayload(task);
+        String customerId = (String) p.get("customerId");
+        if (customerId == null || customerId.isBlank()) {
+            throw new IllegalStateException("Falta customerId en payload");
+        }
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> rawLines = (List<Map<String, Object>>) p.get("lines");
+        if (rawLines == null || rawLines.isEmpty()) {
+            throw new IllegalStateException("El recurrente SALES_INVOICE necesita al menos una línea");
+        }
+        List<InvoiceLineInput> lines = new ArrayList<>();
+        for (Map<String, Object> l : rawLines) {
+            String desc = (String) l.get("description");
+            if (desc != null) desc = expandPlaceholders(desc, scheduledDate);
+            lines.add(new InvoiceLineInput(
+                    desc,
+                    (String) l.get("catalogItemId"),
+                    bd(l.get("quantity")),
+                    bd(l.get("unitPrice")),
+                    bd(l.get("vatPercent")),
+                    bd(l.get("retentionPercent"))));
+        }
+        String notes = "Generado por recurrencia '" + task.name() + "' — revisar y validar";
+        InvoiceUpsertRequest req = new InvoiceUpsertRequest(
+                customerId,
+                null, // seriesId se resuelve por invoiceType
+                "NORMAL",
+                scheduledDate,
+                scheduledDate.plusDays(30),
+                null, notes,
+                lines);
+        SalesInvoice created = salesService.createDraft(req);
+        return created.id();
     }
 
     private String runJournalEntry(RecurringTaskView task, LocalDate scheduledDate) {

@@ -69,4 +69,15 @@ public class PurchaseInvoiceController {
     public void deleteInvoice(@PathVariable("id") String id) {
         service.deleteInvoice(id);
     }
+
+    /**
+     * Valida un lote de facturas DRAFT (multiselección).
+     * Devuelve resumen por id: POSTED/SKIPPED/ERROR + journalEntryId si
+     * se generó asiento contable. La UI presenta el resultado.
+     */
+    @PostMapping("/validate-batch")
+    public PurchaseInvoiceService.BatchValidateResult validateBatch(
+            @RequestBody PurchaseInvoiceService.BatchValidateRequest body) {
+        return service.validateBatch(body == null ? List.of() : body.ids());
+    }
 }
