@@ -98,6 +98,20 @@ public class AccountingScreen {
         VBox root = new VBox(tabs);
         root.setPadding(new Insets(8));
         VBox.setVgrow(tabs, Priority.ALWAYS);
+
+        // Auto-refresh de Por validar y Diario cuando alguien emita
+        // JOURNAL (validar asiento, aceptar, batch, reclasificar,
+        // borrar gasto/venta…). Auto-baja al desmontar.
+        com.benjagest.ui.support.RefreshBus.subscribe(
+                com.benjagest.ui.support.RefreshBus.TOPIC_JOURNAL,
+                () -> { loadPending(); loadDiary(); }, root);
+        // También refrescar reglas y recurrentes con sus topics.
+        com.benjagest.ui.support.RefreshBus.subscribe(
+                com.benjagest.ui.support.RefreshBus.TOPIC_RULES,
+                this::loadRules, root);
+        com.benjagest.ui.support.RefreshBus.subscribe(
+                com.benjagest.ui.support.RefreshBus.TOPIC_RECURRING,
+                this::loadRecurring, root);
         return root;
     }
 
@@ -136,7 +150,8 @@ public class AccountingScreen {
                 api.acceptEntry(sel.id(), List.of());
                 api.postEntry(sel.id());
                 return null;
-            }, ok -> loadPending(),
+            }, ok -> com.benjagest.ui.support.RefreshBus.emit(
+                    com.benjagest.ui.support.RefreshBus.TOPIC_JOURNAL),
                err -> showError(tt.apply("accounting.error.accept"), err));
         });
 
@@ -163,7 +178,10 @@ public class AccountingScreen {
                                             .replace("{t}", String.valueOf(result.totalPosted())));
                             info.setHeaderText(tt.apply("accounting.backfill.done"));
                             info.showAndWait();
-                            loadPending();
+                            com.benjagest.ui.support.RefreshBus.emit(
+                                    com.benjagest.ui.support.RefreshBus.TOPIC_JOURNAL,
+                                    com.benjagest.ui.support.RefreshBus.TOPIC_PURCHASES,
+                                    com.benjagest.ui.support.RefreshBus.TOPIC_SALES);
                         },
                         err -> {
                             backfill.setDisable(false);
@@ -189,7 +207,8 @@ public class AccountingScreen {
                                         .replace("{t}", String.valueOf(result.entriesScanned())));
                         info.setHeaderText(tt.apply("accounting.reclassify.done"));
                         info.showAndWait();
-                        loadPending();
+                        com.benjagest.ui.support.RefreshBus.emit(
+                                com.benjagest.ui.support.RefreshBus.TOPIC_JOURNAL);
                     },
                     err -> {
                         reclassify.setDisable(false);
@@ -256,8 +275,8 @@ public class AccountingScreen {
                                 .replace("{e}", String.valueOf(result.errors())));
                 info.setHeaderText(tt.apply("accounting.action.validate_batch"));
                 info.showAndWait();
-                loadPending();
-                loadDiary();
+                com.benjagest.ui.support.RefreshBus.emit(
+                        com.benjagest.ui.support.RefreshBus.TOPIC_JOURNAL);
             }, err -> showError(tt.apply("accounting.error.validate_batch"), err));
         });
     }
@@ -867,8 +886,8 @@ public class AccountingScreen {
             return saved;
         }, saved -> {
             dialog.close();
-            loadPending();
-            loadDiary();
+            com.benjagest.ui.support.RefreshBus.emit(
+                    com.benjagest.ui.support.RefreshBus.TOPIC_JOURNAL);
         }, err -> showError(tt.apply("accounting.error.save"), err));
     }
 
