@@ -1,10 +1,12 @@
 package com.benjagest.backend.billing.invoices;
 
+import com.benjagest.backend.accounting.AccountingLearningService;
 import com.benjagest.backend.tenant.TenantContext;
 import java.math.BigDecimal;
 import java.sql.Date;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -46,11 +48,14 @@ public class SalesJournalEntryService {
 
     private final JdbcTemplate jdbcTemplate;
     private final TenantContext tenantContext;
+    private final AccountingLearningService learning;
 
     public SalesJournalEntryService(JdbcTemplate jdbcTemplate,
-                                      TenantContext tenantContext) {
+                                      TenantContext tenantContext,
+                                      AccountingLearningService learning) {
         this.jdbcTemplate = jdbcTemplate;
         this.tenantContext = tenantContext;
+        this.learning = learning;
     }
 
     /**
@@ -75,9 +80,24 @@ public class SalesJournalEntryService {
         if (fiscalYearId == null) return null;
 
         String acc430 = findAccountByPrefix(companyId, "430"); // Clientes
-        String acc700 = findAccountByPrefix(companyId, "700"); // Ventas
+        // 7xx propuesto por aprendizaje (regla por cliente/keyword) o
+        // fallback al 700 genérico.
+        // SalesInvoice no lleva customerNif directo (resuelto vía customerId
+        // hace JOIN), así que pasamos null — la regla por palabra clave
+        // sobre customerLegalName ya cubre el caso 80%.
+        Optional<AccountingLearningService.AccountProposal> proposal =
+                learning.proposeIncomeAccount(
+                        null, invoice.customerLegalName(),
+                        invoice.invoiceNumber(), invoice.total());
+        String acc7xx = proposal.map(AccountingLearningService.AccountProposal::accountId)
+                .orElseGet(() -> findAccountByPrefix(companyId, "700"));
+        String proposedRuleId = proposal.map(AccountingLearningService.AccountProposal::ruleId)
+                .orElse(null);
+        java.math.BigDecimal proposedConfidence =
+                proposal.map(AccountingLearningService.AccountProposal::confidence).orElse(null);
+
         String acc477 = findAccountByPrefix(companyId, "477"); // HP IVA repercutido
-        if (acc430 == null || acc700 == null || acc477 == null) {
+        if (acc430 == null || acc7xx == null || acc477 == null) {
             return null;
         }
         // 473 solo si hay retención.
@@ -103,12 +123,14 @@ public class SalesJournalEntryService {
                 INSERT INTO journal_entries (
                     id, company_id, fiscal_year_id, entry_number,
                     entry_date, concept, source_type, source_id,
-                    status, reviewed, created_by
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'DRAFT', FALSE, ?)
+                    status, reviewed, auto_proposed, proposed_confidence,
+                    created_by
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'DRAFT', FALSE, TRUE, ?, ?)
                 """,
                 entryId, companyId, fiscalYearId, entryNumber,
                 Date.valueOf(invoice.invoiceDate()),
-                concept, SRC_TYPE, invoice.id(), userId);
+                concept, SRC_TYPE, invoice.id(),
+                proposedConfidence, userId);
 
         // Debe 430: cliente cobra total menos retención
         BigDecimal clientDebit = invoice.total().subtract(retention);
@@ -121,13 +143,27 @@ public class SalesJournalEntryService {
                     retention, BigDecimal.ZERO);
         }
 
-        // Haber 700: ventas (base imponible)
-        insertLine(entryId, acc700, "Venta factura " + safe(invoice.invoiceNumber()),
+        // Haber 7xx: ventas (base imponible) — cuenta propuesta por el
+        // aprendizaje o fallback 700.
+        insertLine(entryId, acc7xx, "Venta factura " + safe(invoice.invoiceNumber()),
                 BigDecimal.ZERO, invoice.subtotal());
 
         // Haber 477: IVA repercutido
         insertLine(entryId, acc477, "IVA repercutido factura " + safe(invoice.invoiceNumber()),
                 BigDecimal.ZERO, invoice.vatTotal());
+
+        // Si la cuenta 7xx vino de regla aprendida, registramos la
+        // propuesta para que el flujo de aceptación pueda reforzarla.
+        if (proposedRuleId != null) {
+            jdbcTemplate.update("""
+                    INSERT INTO accounting_learning_events (
+                        id, company_id, journal_entry_id, line_id, event_kind,
+                        to_account_id, related_rule_id, actor_user_id
+                    ) VALUES (?, ?, ?, NULL, 'AUTO_PROPOSED', ?, ?, ?)
+                    """,
+                    UUID.randomUUID().toString(), companyId, entryId,
+                    acc7xx, proposedRuleId, userId);
+        }
 
         return entryId;
     }

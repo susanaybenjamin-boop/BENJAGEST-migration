@@ -122,6 +122,8 @@ public class BenjagestUiApplication extends Application {
     private final SettingsApiClient settingsApiClient = new SettingsApiClient();
     private final BillingApiClient billingApiClient = new BillingApiClient();
     private final CustomerApiClient customerApiClient = new CustomerApiClient();
+    private final com.benjagest.ui.service.AccountingApiClient accountingApiClient =
+            new com.benjagest.ui.service.AccountingApiClient();
     private final Map<String, Button> navigationButtons = new LinkedHashMap<>();
 
     private BorderPane root;
@@ -1295,6 +1297,14 @@ public class BenjagestUiApplication extends Application {
         }
         if ("labor".equals(module)) {
             showLaborModule();
+            return;
+        }
+        if ("accounting".equals(module)) {
+            // Módulo Contabilidad (ACC-LEARN-UI + ACC-UI-DIARIO):
+            // tabs Por validar / Diario / Asientos manuales / Reglas
+            // aprendidas / Recurrentes. Delegado a AccountingScreen
+            // para no engrosar más este archivo.
+            showAccountingModule();
             return;
         }
         if ("self-employed".equals(module)) {
@@ -10406,8 +10416,62 @@ public class BenjagestUiApplication extends Application {
             case "advisory.client.back" -> "← Back to My clients";
             case "advisory.client.hint" -> "You are now viewing this client. Anything you do from here is recorded under their company, not yours. Your sidebar still belongs to your advisory firm — you can switch between tabs freely.";
             case "advisory.client.tab.summary" -> "Summary";
+            case "advisory.client.tab.billing" -> "Billing";
             case "advisory.client.tab.purchases" -> "Purchases & Expenses";
+            case "advisory.client.tab.accounting" -> "Accounting";
+            case "advisory.client.tab.banks" -> "Banks";
+            case "advisory.client.tab.loans" -> "Loans";
+            case "advisory.client.tab.assets" -> "Fixed assets";
+            case "advisory.client.tab.labor" -> "Employees";
+            case "advisory.client.tab.tax_models" -> "AEAT models";
             case "advisory.client.tab.certificate" -> "Certificate";
+            // ============ Accounting module (AccountingScreen) ============
+            case "accounting.tab.pending" -> "To validate";
+            case "accounting.tab.diary" -> "Journal";
+            case "accounting.tab.manual" -> "Manual entries";
+            case "accounting.tab.rules" -> "Learned rules";
+            case "accounting.tab.recurring" -> "Recurring";
+            case "accounting.action.refresh" -> "Refresh";
+            case "accounting.action.validate" -> "Validate";
+            case "accounting.action.accept" -> "Accept as-is";
+            case "accounting.action.new_entry" -> "New entry";
+            case "accounting.action.save_draft" -> "Save draft";
+            case "accounting.action.close" -> "Close";
+            case "accounting.action.toggle" -> "Enable/Disable";
+            case "accounting.action.delete" -> "Delete";
+            case "accounting.action.run_now" -> "Run now";
+            case "accounting.filter.from" -> "From";
+            case "accounting.filter.to" -> "To";
+            case "accounting.filter.status" -> "Status";
+            case "accounting.filter.source" -> "Source";
+            case "accounting.col.num" -> "#";
+            case "accounting.col.date" -> "Date";
+            case "accounting.col.concept" -> "Concept";
+            case "accounting.col.source" -> "Source";
+            case "accounting.col.status" -> "Status";
+            case "accounting.col.debit_total" -> "Debit";
+            case "accounting.col.credit_total" -> "Credit";
+            case "accounting.col.confidence" -> "Confidence";
+            case "accounting.col.account" -> "Account";
+            case "accounting.col.description" -> "Description";
+            case "accounting.col.debit" -> "Debit";
+            case "accounting.col.credit" -> "Credit";
+            case "accounting.field.date" -> "Date:";
+            case "accounting.field.concept" -> "Concept:";
+            case "accounting.badge.auto_proposed" -> "AUTO-PROPOSED";
+            case "accounting.dialog.new_entry" -> "New entry";
+            case "accounting.dialog.review_entry" -> "Review entry";
+            case "accounting.pending.hint" -> "Entries auto-generated when saving expenses or validating sales. Review and validate — the system learns from your corrections.";
+            case "accounting.manual.hint" -> "Create manual accounting entries (adjustments, accruals, estimated tax, etc.). Debit=Credit balance is auto-validated.";
+            case "accounting.rules.hint" -> "Rules the system learned from your corrections. The higher the confidence, the more automatic the proposal.";
+            case "accounting.recurring.hint" -> "Scheduled tasks: recurring expenses (utilities, rent), loan installments, entry templates. Run daily at 06:10.";
+            case "accounting.error.load" -> "Could not load data";
+            case "accounting.error.save" -> "Could not save entry";
+            case "accounting.error.accept" -> "Could not accept entry";
+            case "accounting.error.toggle" -> "Could not change state";
+            case "accounting.error.delete" -> "Could not delete";
+            case "accounting.error.run_now" -> "Could not run";
+            case "accounting.confirm.delete_rule" -> "Delete this learned rule? Past corrections remain in history.";
             case "advisory.client.summary.title" -> "Client information";
             case "advisory.client.summary.hint" -> "Basic data captured from the client's company profile.";
             case "advisory.client.field.legal_name" -> "Legal name:";
@@ -10531,8 +10595,62 @@ public class BenjagestUiApplication extends Application {
             case "advisory.client.back" -> "← Volver a Mis clientes";
             case "advisory.client.hint" -> "Estas viendo este cliente. Cualquier accion que hagas desde aqui queda registrada en SU empresa, no en la tuya. Tu barra lateral sigue siendo la de tu asesoria — puedes moverte entre las pestañas libremente.";
             case "advisory.client.tab.summary" -> "Resumen";
+            case "advisory.client.tab.billing" -> "Facturación";
             case "advisory.client.tab.purchases" -> "Compras y Gastos";
+            case "advisory.client.tab.accounting" -> "Contabilidad";
+            case "advisory.client.tab.banks" -> "Bancos";
+            case "advisory.client.tab.loans" -> "Préstamos";
+            case "advisory.client.tab.assets" -> "Inmovilizado";
+            case "advisory.client.tab.labor" -> "Empleados";
+            case "advisory.client.tab.tax_models" -> "Modelos AEAT";
             case "advisory.client.tab.certificate" -> "Certificado";
+            // ============ Módulo Contabilidad (AccountingScreen) ============
+            case "accounting.tab.pending" -> "Por validar";
+            case "accounting.tab.diary" -> "Diario";
+            case "accounting.tab.manual" -> "Asientos manuales";
+            case "accounting.tab.rules" -> "Reglas aprendidas";
+            case "accounting.tab.recurring" -> "Recurrentes";
+            case "accounting.action.refresh" -> "Refrescar";
+            case "accounting.action.validate" -> "Validar";
+            case "accounting.action.accept" -> "Aceptar tal cual";
+            case "accounting.action.new_entry" -> "Nuevo asiento";
+            case "accounting.action.save_draft" -> "Guardar borrador";
+            case "accounting.action.close" -> "Cerrar";
+            case "accounting.action.toggle" -> "Activar/Desactivar";
+            case "accounting.action.delete" -> "Borrar";
+            case "accounting.action.run_now" -> "Ejecutar ahora";
+            case "accounting.filter.from" -> "Desde";
+            case "accounting.filter.to" -> "Hasta";
+            case "accounting.filter.status" -> "Estado";
+            case "accounting.filter.source" -> "Origen";
+            case "accounting.col.num" -> "Nº";
+            case "accounting.col.date" -> "Fecha";
+            case "accounting.col.concept" -> "Concepto";
+            case "accounting.col.source" -> "Origen";
+            case "accounting.col.status" -> "Estado";
+            case "accounting.col.debit_total" -> "Debe";
+            case "accounting.col.credit_total" -> "Haber";
+            case "accounting.col.confidence" -> "Confianza";
+            case "accounting.col.account" -> "Cuenta";
+            case "accounting.col.description" -> "Descripción";
+            case "accounting.col.debit" -> "Debe";
+            case "accounting.col.credit" -> "Haber";
+            case "accounting.field.date" -> "Fecha:";
+            case "accounting.field.concept" -> "Concepto:";
+            case "accounting.badge.auto_proposed" -> "PROPUESTA AUTOMÁTICA";
+            case "accounting.dialog.new_entry" -> "Nuevo asiento";
+            case "accounting.dialog.review_entry" -> "Revisar asiento";
+            case "accounting.pending.hint" -> "Asientos generados automáticamente al guardar gastos o validar ventas. Revisa y valida — el sistema aprenderá de tus correcciones.";
+            case "accounting.manual.hint" -> "Crea asientos contables manuales (ajustes, periodificaciones, IS estimado, etc.). El balance Debe=Haber se valida automáticamente.";
+            case "accounting.rules.hint" -> "Reglas que el sistema ha aprendido de tus correcciones. Cuanto mayor sea la confianza, más automática es la propuesta.";
+            case "accounting.recurring.hint" -> "Tareas programadas: gastos recurrentes (luz, alquiler), cuotas de préstamo, plantillas de asiento. Se ejecutan cada día a las 06:10.";
+            case "accounting.error.load" -> "No se pudieron cargar los datos";
+            case "accounting.error.save" -> "No se pudo guardar el asiento";
+            case "accounting.error.accept" -> "No se pudo aceptar el asiento";
+            case "accounting.error.toggle" -> "No se pudo cambiar el estado";
+            case "accounting.error.delete" -> "No se pudo borrar";
+            case "accounting.error.run_now" -> "No se pudo ejecutar";
+            case "accounting.confirm.delete_rule" -> "¿Borrar esta regla aprendida? Las correcciones anteriores quedan en el histórico.";
             case "advisory.client.summary.title" -> "Datos del cliente";
             case "advisory.client.summary.hint" -> "Datos basicos extraidos del perfil de empresa del cliente.";
             case "advisory.client.field.legal_name" -> "Razon social:";
@@ -10570,6 +10688,26 @@ public class BenjagestUiApplication extends Application {
      * Fichajes, Nominas. Carga los datos comunes en paralelo y pinta
      * el TabPane.
      */
+    /**
+     * Muestra el módulo Contabilidad — delegado a {@link AccountingScreen}
+     * para mantener este archivo gestionable. La pantalla incluye:
+     * <ul>
+     *   <li>Por validar — asientos auto-propuestos con badge confianza</li>
+     *   <li>Diario — Libro Diario filtrable</li>
+     *   <li>Asientos manuales — botón crear + editor con líneas editables</li>
+     *   <li>Reglas aprendidas — listado del feedback contable</li>
+     *   <li>Recurrentes — tareas cron contables</li>
+     * </ul>
+     */
+    private void showAccountingModule() {
+        com.benjagest.ui.screens.AccountingScreen screen =
+                new com.benjagest.ui.screens.AccountingScreen(accountingApiClient, this::t);
+        // El módulo es responsivo internamente con TabPane; no necesita
+        // scroll externo (es preferible que cada tab maneje su propio
+        // scroll en el contenido si lo necesita).
+        setCenterAnimated((javafx.scene.Node) screen.buildView());
+    }
+
     private void showLaborModule() {
         Task<LaborBundle> task = new Task<>() {
             @Override
@@ -13136,15 +13274,51 @@ public class BenjagestUiApplication extends Application {
                 buildClientSummaryTab(client));
         summaryTab.setGraphic(icon("fas-chart-line"));
 
+        // Facturación del cliente — ventas emitidas con estado y total.
+        Tab billingTab = new Tab(t("advisory.client.tab.billing"),
+                buildClientBillingTab());
+        billingTab.setGraphic(icon("fas-file-invoice-dollar"));
+
         Tab purchasesTab = new Tab(t("advisory.client.tab.purchases"),
                 buildClientPurchasesTab());
         purchasesTab.setGraphic(icon("fas-receipt"));
+
+        // Contabilidad del cliente — reutiliza AccountingScreen. Las
+        // llamadas API llevan el X-Company-Id del cliente porque
+        // AuthSession.actingForCompanyId ya está activo. El asesor revisa
+        // asientos auto-propuestos, valida, edita reglas aprendidas y
+        // ejecuta recurrentes desde aquí, sin salir del contexto del
+        // cliente.
+        com.benjagest.ui.screens.AccountingScreen accountingScreen =
+                new com.benjagest.ui.screens.AccountingScreen(accountingApiClient, this::t);
+        Tab accountingTab = new Tab(t("advisory.client.tab.accounting"),
+                accountingScreen.buildView());
+        accountingTab.setGraphic(icon("fas-book"));
+
+        // Bancos / Préstamos / Inmovilizado — reutiliza ClientFinancialsScreen.
+        com.benjagest.ui.screens.ClientFinancialsScreen financials =
+                new com.benjagest.ui.screens.ClientFinancialsScreen(accountingApiClient, this::t);
+        Tab banksTab = new Tab(t("advisory.client.tab.banks"), financials.buildBanksTab());
+        banksTab.setGraphic(icon("fas-university"));
+        Tab loansTab = new Tab(t("advisory.client.tab.loans"), financials.buildLoansTab());
+        loansTab.setGraphic(icon("fas-hand-holding-usd"));
+        Tab assetsTab = new Tab(t("advisory.client.tab.assets"), financials.buildAssetsTab());
+        assetsTab.setGraphic(icon("fas-cubes"));
+
+        Tab laborTab = new Tab(t("advisory.client.tab.labor"),
+                buildClientLaborTab());
+        laborTab.setGraphic(icon("fas-users"));
+
+        Tab taxTab = new Tab(t("advisory.client.tab.tax_models"),
+                buildClientTaxFilingsTab());
+        taxTab.setGraphic(icon("fas-landmark"));
 
         Tab certificateTab = new Tab(t("advisory.client.tab.certificate"),
                 settingsCertificateTab());
         certificateTab.setGraphic(icon("fas-certificate"));
 
-        tabs.getTabs().addAll(summaryTab, purchasesTab, certificateTab);
+        tabs.getTabs().addAll(summaryTab, billingTab, purchasesTab, accountingTab,
+                banksTab, loansTab, assetsTab, laborTab, taxTab, certificateTab);
         VBox.setVgrow(tabs, Priority.ALWAYS);
 
         VBox body = new VBox(12, header, hint, tabs);
@@ -13198,6 +13372,133 @@ public class BenjagestUiApplication extends Application {
      * El asesor puede importar PDF, filtrar por año / trimestre /
      * proveedor y eliminar gastos sin salir del contexto del cliente.
      */
+    /**
+     * Pestaña Facturación dentro de la pantalla del cliente. Listado
+     * compacto de facturas emitidas (sales_invoices) con estado y total.
+     * Usa el {@link BillingApiClient} existente — las llamadas heredan
+     * el actingForCompanyId del cliente.
+     */
+    private Node buildClientBillingTab() {
+        javafx.scene.control.TableView<com.benjagest.ui.model.SalesInvoiceSummary> table =
+                new javafx.scene.control.TableView<>();
+        addCol(table, "Número", v -> v.invoiceNumber() == null ? "" : v.invoiceNumber(), 130);
+        addCol(table, "Fecha", v -> v.invoiceDate() == null ? "" : v.invoiceDate(), 100);
+        addCol(table, "Cliente", v -> v.customerLegalName() == null ? "" : v.customerLegalName(), 240);
+        addCol(table, "Tipo", v -> v.invoiceType() == null ? "" : v.invoiceType(), 90);
+        addCol(table, "Total", v -> v.total() == null ? "" : v.total().toString(), 110);
+        addCol(table, "Cobrado", v -> v.paidAmount() == null ? "" : v.paidAmount().toString(), 100);
+        addCol(table, "Estado", v -> v.status() == null ? "" : v.status(), 110);
+        addCol(table, "Cobro", v -> v.paymentStatus() == null ? "" : v.paymentStatus(), 90);
+
+        Button refresh = new Button(t("accounting.action.refresh"));
+        refresh.setOnAction(e -> loadClientBilling(table));
+        HBox actions = new HBox(8, refresh);
+        actions.setAlignment(Pos.CENTER_LEFT);
+        VBox box = new VBox(8, actions, table);
+        VBox.setVgrow(table, Priority.ALWAYS);
+        box.setPadding(new Insets(12));
+        loadClientBilling(table);
+        return box;
+    }
+
+    private void loadClientBilling(javafx.scene.control.TableView<com.benjagest.ui.model.SalesInvoiceSummary> table) {
+        Task<java.util.List<com.benjagest.ui.model.SalesInvoiceSummary>> task = new Task<>() {
+            @Override protected java.util.List<com.benjagest.ui.model.SalesInvoiceSummary> call() throws Exception {
+                return billingApiClient.listInvoices(null, null, null, 500);
+            }
+        };
+        task.setOnSucceeded(ev -> table.setItems(
+                javafx.collections.FXCollections.observableArrayList(task.getValue())));
+        task.setOnFailed(ev -> System.err.println("[client-billing] "
+                + (task.getException() == null ? "?" : task.getException().getMessage())));
+        start(task, "client-billing");
+    }
+
+    /**
+     * Pestaña Empleados del cliente — lista empleados activos del
+     * tenant del cliente. Para nóminas/contratos/fichajes, el asesor
+     * accede al módulo Labor completo desde el sidebar de asesoría.
+     */
+    private Node buildClientLaborTab() {
+        javafx.scene.control.TableView<com.benjagest.ui.model.EmployeeEntry> table =
+                new javafx.scene.control.TableView<>();
+        addCol(table, "Nombre", v -> v.fullName() == null ? "" : v.fullName(), 220);
+        addCol(table, "NIF", v -> v.taxIdentifier() == null ? "" : v.taxIdentifier(), 110);
+        addCol(table, "Régimen", v -> v.ssRegime() == null ? "" : v.ssRegime(), 110);
+        addCol(table, "Alta", v -> v.hireDate() == null ? "" : v.hireDate().toString(), 100);
+        addCol(table, "Activa", v -> v.active() ? "✓" : "✗", 70);
+
+        Button refresh = new Button(t("accounting.action.refresh"));
+        refresh.setOnAction(e -> loadClientLabor(table));
+        HBox actions = new HBox(8, refresh);
+        VBox box = new VBox(8, actions, table);
+        VBox.setVgrow(table, Priority.ALWAYS);
+        box.setPadding(new Insets(12));
+        loadClientLabor(table);
+        return box;
+    }
+
+    private void loadClientLabor(javafx.scene.control.TableView<com.benjagest.ui.model.EmployeeEntry> table) {
+        Task<java.util.List<com.benjagest.ui.model.EmployeeEntry>> task = new Task<>() {
+            @Override protected java.util.List<com.benjagest.ui.model.EmployeeEntry> call() throws Exception {
+                return laborApiClient.listEmployees(true);
+            }
+        };
+        task.setOnSucceeded(ev -> table.setItems(
+                javafx.collections.FXCollections.observableArrayList(task.getValue())));
+        task.setOnFailed(ev -> System.err.println("[client-labor] "
+                + (task.getException() == null ? "?" : task.getException().getMessage())));
+        start(task, "client-labor");
+    }
+
+    /**
+     * Pestaña Modelos AEAT del cliente — listado de declaraciones
+     * (tax_filings) con su estado, modelo, periodo e importe. Para
+     * generar 347/390/190 el asesor entra en el módulo Modelos AEAT.
+     */
+    private Node buildClientTaxFilingsTab() {
+        javafx.scene.control.TableView<com.benjagest.ui.model.TaxFilingEntry> table =
+                new javafx.scene.control.TableView<>();
+        addCol(table, "Modelo", v -> v.taxModelCode() == null ? "" : v.taxModelCode(), 90);
+        addCol(table, "Año", v -> String.valueOf(v.periodYear()), 70);
+        addCol(table, "Trimestre", v -> v.periodQuarter() == null ? "" : "Q" + v.periodQuarter(), 90);
+        addCol(table, "Mes", v -> v.periodMonth() == null ? "" : String.valueOf(v.periodMonth()), 60);
+        addCol(table, "Estado", v -> v.status() == null ? "" : v.status(), 110);
+        addCol(table, "Importe", v -> v.totalAmount() == null ? "" : v.totalAmount().toString(), 120);
+        addCol(table, "Vencimiento", v -> v.deadlineAt() == null ? "" : v.deadlineAt().toString(), 110);
+
+        Button refresh = new Button(t("accounting.action.refresh"));
+        refresh.setOnAction(e -> loadClientFilings(table));
+        HBox actions = new HBox(8, refresh);
+        VBox box = new VBox(8, actions, table);
+        VBox.setVgrow(table, Priority.ALWAYS);
+        box.setPadding(new Insets(12));
+        loadClientFilings(table);
+        return box;
+    }
+
+    private void loadClientFilings(javafx.scene.control.TableView<com.benjagest.ui.model.TaxFilingEntry> table) {
+        Task<java.util.List<com.benjagest.ui.model.TaxFilingEntry>> task = new Task<>() {
+            @Override protected java.util.List<com.benjagest.ui.model.TaxFilingEntry> call() throws Exception {
+                return altaApiClient.listFilings(null, null, null);
+            }
+        };
+        task.setOnSucceeded(ev -> table.setItems(
+                javafx.collections.FXCollections.observableArrayList(task.getValue())));
+        task.setOnFailed(ev -> System.err.println("[client-filings] "
+                + (task.getException() == null ? "?" : task.getException().getMessage())));
+        start(task, "client-filings");
+    }
+
+    /** Helper genérico para añadir columnas con un getter String. */
+    private <T> void addCol(javafx.scene.control.TableView<T> table, String header,
+                              java.util.function.Function<T, String> getter, double width) {
+        javafx.scene.control.TableColumn<T, String> c = new javafx.scene.control.TableColumn<>(header);
+        c.setPrefWidth(width);
+        c.setCellValueFactory(cd -> new javafx.beans.property.SimpleStringProperty(getter.apply(cd.getValue())));
+        table.getColumns().add(c);
+    }
+
     private Node buildClientPurchasesTab() {
         return buildPurchasesListing(false);
     }

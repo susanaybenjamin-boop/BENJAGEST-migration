@@ -1,37 +1,44 @@
 package com.benjagest.backend.tenant;
 
 import com.benjagest.backend.workspace.DemoCompany;
-import org.springframework.context.annotation.Scope;
-import org.springframework.context.annotation.ScopedProxyMode;
 import org.springframework.stereotype.Component;
 
 /**
- * Implementacion request-scoped del TenantContext.
+ * Implementacion del TenantContext basada en {@link ThreadLocal}.
  *
- * ScopedProxyMode.TARGET_CLASS hace que cuando este bean se inyecta en
- * un singleton (Repository o Service), Spring inyecte un PROXY. Cada
- * vez que el singleton llama a un metodo del proxy, este resuelve la
- * instancia real de la peticion actual. Asi, sin esfuerzo, cada
- * peticion HTTP ve su propio company_id.
+ * <p>Originalmente era {@code @RequestScope} con proxy, lo que funcionaba
+ * bien para peticiones HTTP pero hacía imposible usarlo desde jobs
+ * {@link org.springframework.scheduling.annotation.Scheduled @Scheduled}
+ * y desde tareas asíncronas — al no haber request, fallaba el proxy.
  *
- * Si nadie ha llamado setCurrentCompanyId() durante la peticion (porque
- * el header X-Company-Id no llego), getCurrentCompanyId() devuelve la
- * empresa demo. Esto mantiene compatibilidad con la UI actual mientras
- * el sistema de login real no esta listo.
+ * <p>El cambio a ThreadLocal mantiene exactamente el mismo comportamiento
+ * para HTTP (Tomcat asigna un thread por petición, el
+ * {@link TenantInterceptor} setea el companyId al inicio y la
+ * {@code afterCompletion} lo limpia). Y permite que el
+ * {@link com.benjagest.backend.accounting.recurring.RecurringTaskScheduler}
+ * lo configure por cada tarea recurrente.
+ *
+ * <p>Si nadie ha llamado {@link #setCurrentCompanyId(String)} en el thread
+ * actual, devuelve la empresa demo — compatibilidad con la UI antes del
+ * login real.
  */
 @Component
-@Scope(value = "request", proxyMode = ScopedProxyMode.TARGET_CLASS)
 public class RequestScopedTenantContext implements TenantContext {
 
-    private String companyId;
+    private static final ThreadLocal<String> CURRENT = new ThreadLocal<>();
 
     @Override
     public String getCurrentCompanyId() {
-        return companyId != null ? companyId : DemoCompany.ID;
+        String v = CURRENT.get();
+        return v != null ? v : DemoCompany.ID;
     }
 
     @Override
     public void setCurrentCompanyId(String companyId) {
-        this.companyId = companyId;
+        if (companyId == null || companyId.isBlank()) {
+            CURRENT.remove();
+        } else {
+            CURRENT.set(companyId);
+        }
     }
 }

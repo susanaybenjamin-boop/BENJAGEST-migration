@@ -1,10 +1,12 @@
 package com.benjagest.backend.purchases;
 
+import com.benjagest.backend.accounting.AccountingLearningService;
 import com.benjagest.backend.tenant.TenantContext;
 import java.sql.Date;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -38,11 +40,14 @@ public class PurchaseJournalEntryService {
 
     private final JdbcTemplate jdbcTemplate;
     private final TenantContext tenantContext;
+    private final AccountingLearningService learning;
 
     public PurchaseJournalEntryService(JdbcTemplate jdbcTemplate,
-                                         TenantContext tenantContext) {
+                                         TenantContext tenantContext,
+                                         AccountingLearningService learning) {
         this.jdbcTemplate = jdbcTemplate;
         this.tenantContext = tenantContext;
+        this.learning = learning;
     }
 
     /**
@@ -66,11 +71,27 @@ public class PurchaseJournalEntryService {
         String fiscalYearId = findOpenFiscalYearId(companyId, purchase.invoiceDate());
         if (fiscalYearId == null) return null;
 
-        // 2) Cuentas 600/472/400 (prefijo).
-        String acc600 = findAccountByPrefix(companyId, "600");
+        // 2) Cuentas 472/400 (prefijo) + 6xx propuesta por aprendizaje.
+        //    Si hay una regla aprendida para este proveedor (NIF) o para
+        //    una palabra clave del nombre/concepto, la usamos como cuenta
+        //    de gasto en lugar del 600 genérico. La regla se "marca" en
+        //    el asiento via proposedRuleId para que, cuando el asesor lo
+        //    valide, se refuerce automáticamente. El asiento queda en
+        //    DRAFT — el asesor decide.
+        Optional<AccountingLearningService.AccountProposal> proposal =
+                learning.proposeExpenseAccount(
+                        purchase.supplierNif(), purchase.supplierName(),
+                        purchase.invoiceNumber(), purchase.totalAmount());
+        String acc6xx = proposal.map(AccountingLearningService.AccountProposal::accountId)
+                .orElseGet(() -> findAccountByPrefix(companyId, "600"));
+        String proposedRuleId = proposal.map(AccountingLearningService.AccountProposal::ruleId)
+                .orElse(null);
+        java.math.BigDecimal proposedConfidence =
+                proposal.map(AccountingLearningService.AccountProposal::confidence).orElse(null);
+
         String acc472 = findAccountByPrefix(companyId, "472");
         String acc400 = findAccountByPrefix(companyId, "400");
-        if (acc600 == null || acc472 == null || acc400 == null) {
+        if (acc6xx == null || acc472 == null || acc400 == null) {
             return null;
         }
 
@@ -85,27 +106,48 @@ public class PurchaseJournalEntryService {
                 """, Integer.class, companyId, fiscalYearId);
         int entryNumber = (maxEntryNumber == null ? 0 : maxEntryNumber) + 1;
 
-        // 4) Crear el asiento.
+        // 4) Crear el asiento. auto_proposed=TRUE indica que la cuenta
+        //    de gasto vino de una regla aprendida (o del fallback 600).
+        //    proposed_confidence guarda la fuerza de la regla para que la
+        //    UI muestre un chip de confianza al asesor.
         String entryId = UUID.randomUUID().toString();
         String concept = buildConcept(purchase);
         jdbcTemplate.update("""
                 INSERT INTO journal_entries (
                     id, company_id, fiscal_year_id, entry_number,
                     entry_date, concept, source_type, source_id,
-                    status, reviewed, created_by
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'DRAFT', FALSE, ?)
+                    status, reviewed, auto_proposed, proposed_confidence,
+                    created_by
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'DRAFT', FALSE, TRUE, ?, ?)
                 """,
                 entryId, companyId, fiscalYearId, entryNumber,
                 Date.valueOf(purchase.invoiceDate()),
-                concept, SRC_TYPE, purchase.id(), userId);
+                concept, SRC_TYPE, purchase.id(),
+                proposedConfidence, userId);
 
-        // 5) Líneas: 2 debes (600 base, 472 iva) + 1 haber (400 total).
-        insertLine(entryId, acc600, "Compra " + safe(purchase.supplierName()),
+        // 5) Líneas: 2 debes (6xx base, 472 iva) + 1 haber (400 total).
+        insertLine(entryId, acc6xx, "Compra " + safe(purchase.supplierName()),
                 purchase.baseAmount(), java.math.BigDecimal.ZERO);
         insertLine(entryId, acc472, "IVA soportado " + safe(purchase.vatPercent()) + "%",
                 purchase.vatAmount(), java.math.BigDecimal.ZERO);
         insertLine(entryId, acc400, "Pdte. pago " + safe(purchase.supplierNif()),
                 java.math.BigDecimal.ZERO, purchase.totalAmount());
+
+        // 6) Si vino de regla aprendida, no la reforzamos todavía — eso
+        //    ocurre cuando el asesor valida (POSTED). Lo único que dejamos
+        //    es el rastro para que el flujo de aceptación sepa qué regla
+        //    aplicar. Lo persistimos como evento AUTO_PROPOSED en
+        //    accounting_learning_events.
+        if (proposedRuleId != null) {
+            jdbcTemplate.update("""
+                    INSERT INTO accounting_learning_events (
+                        id, company_id, journal_entry_id, line_id, event_kind,
+                        to_account_id, related_rule_id, actor_user_id
+                    ) VALUES (?, ?, ?, NULL, 'AUTO_PROPOSED', ?, ?, ?)
+                    """,
+                    UUID.randomUUID().toString(), companyId, entryId,
+                    acc6xx, proposedRuleId, userId);
+        }
 
         return entryId;
     }
