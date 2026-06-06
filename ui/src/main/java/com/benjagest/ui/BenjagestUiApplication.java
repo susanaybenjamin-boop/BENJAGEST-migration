@@ -14678,11 +14678,21 @@ public class BenjagestUiApplication extends Application {
         Tab purchasesTab = null;
         Tab salesAndExpensesTab = null;
         if (isLinked) {
+            // Slice 3C-5 — para el cliente vinculado, envolvemos las
+            // pantallas existentes (Facturación, Compras) en un
+            // TabPane interno con un segundo sub-tab "Recurrentes".
+            // Estructura final en cada pestaña:
+            //   [Facturas] [Recurrentes]
+            //   [Compras]  [Recurrentes]
+            // No tocamos buildClientBillingTab/buildClientPurchasesTab
+            // — son código vivo en otras partes de la UI.
             billingTab = new Tab(t("advisory.client.tab.billing"),
-                    buildClientBillingTab());
+                    wrapWithRecurringSubTab(buildClientBillingTab(),
+                            "SALES_INVOICE", t("advisory.client.tab.billing")));
             billingTab.setGraphic(icon("fas-file-invoice-dollar"));
             purchasesTab = new Tab(t("advisory.client.tab.purchases"),
-                    buildClientPurchasesTab());
+                    wrapWithRecurringSubTab(buildClientPurchasesTab(),
+                            "PURCHASE", t("advisory.client.tab.purchases")));
             purchasesTab.setGraphic(icon("fas-receipt"));
         } else {
             salesAndExpensesTab = new Tab(
@@ -15267,6 +15277,41 @@ public class BenjagestUiApplication extends Application {
         box.setPadding(new Insets(12));
         loadClientRecurring(table, kind);
         return box;
+    }
+
+    /**
+     * Envuelve un Node existente en un TabPane con un segundo sub-tab
+     * "Recurrentes". Pensado para el cliente VINCULADO (Slice 3C-5),
+     * donde no queremos tocar las pantallas Facturación y Compras
+     * existentes (son código compartido) sino simplemente añadir el
+     * sub-tab de plantillas recurrentes al lado.
+     *
+     * @param originalContent   Node existente (Facturas o Compras).
+     * @param recurringKind     "SALES_INVOICE" o "PURCHASE" — pasa al
+     *                          buildClientRecurringTab para filtrar.
+     * @param originalTabLabel  Etiqueta del primer tab (Facturas /
+     *                          Compras), ya traducida.
+     */
+    private Node wrapWithRecurringSubTab(Node originalContent,
+                                         String recurringKind,
+                                         String originalTabLabel) {
+        TabPane wrapper = new TabPane();
+        wrapper.getStyleClass().add("inner-tabs");
+        wrapper.setTabClosingPolicy(TabPane.TabClosingPolicy.UNAVAILABLE);
+
+        Tab mainTab = new Tab(originalTabLabel, originalContent);
+        Tab recurringTab = new Tab(
+                "SALES_INVOICE".equals(recurringKind)
+                        ? t("client.tab.sales_recurring")
+                        : t("client.tab.expenses_recurring"),
+                buildClientRecurringTab(recurringKind,
+                        "SALES_INVOICE".equals(recurringKind)
+                                ? "client.tab.sales_recurring"
+                                : "client.tab.expenses_recurring"));
+        recurringTab.setGraphic(icon("fas-arrows-rotate"));
+
+        wrapper.getTabs().addAll(mainTab, recurringTab);
+        return wrapper;
     }
 
     /**
