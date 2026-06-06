@@ -182,15 +182,21 @@ public class InvoiceFieldsExtractor {
      *   - "Invoice no/#/number X"
      */
     private static final Pattern INVOICE_NUMBER_PATTERN = Pattern.compile(
-            "(?i)(?:n[\\u00ba\\u00b0\\.\\s\\u00famero]*(?:del\\s+|de\\s+(?:la\\s+|el\\s+)?)?(?:factura|documento)|" +
-            "n[\\u00famero]+\\.?\\s*factura|" +
-            "factura\\s*n[\\u00ba\\u00b0\\.\\s]*|" +
-            "invoice\\s*(?:no|#|number)?|" +
-            "ref(?:erencia)?\\.?\\s*factura|" +
-            // Patrones extra: FRA-NNNN, FACT N. NNNN, Fra: NNNN…
-            "fra[\\.\\s\\-]*(?:n[\\u00ba\\u00b0]?)?|" +
-            "fact[\\.\\s\\-]*(?:n[\\u00ba\\u00b0]?)?|" +
-            "n[\\u00ba\\u00b0]\\.?)\\s*:?\\s*\\n?\\s*" +
+            // Tolerancia extra al char "º/°": variantes Unicode
+            // (U+00BA, U+00B0, U+2070) + abreviaturas "Nro", "Núm".
+            "(?i)(?:" +
+            // 1) Label con "factura" / "documento" / "invoice".
+            "n[\\u00ba\\u00b0\\u2070\\.\\s\\u00famero]*(?:del\\s+|de\\s+(?:la\\s+|el\\s+)?)?(?:factura|documento)" +
+            "|n[\\u00famero]+\\.?\\s*factura" +
+            "|factura\\s*n[\\u00ba\\u00b0\\u2070\\.\\s]*" +
+            "|invoice\\s*(?:no|#|number)?" +
+            "|ref(?:erencia)?\\.?\\s*factura" +
+            // 2) "Nº/N°/Nro/Núm" sueltos. Al final para no canibalizar
+            //    los más específicos.
+            "|n[\\u00ba\\u00b0\\u2070]\\.?" +
+            "|\\bnro\\.?" +
+            "|\\bnum\\.?" +
+            ")\\s*:?\\s*\\n?\\s*" +
             // Captura PERMISIVA: cualquier secuencia razonable de
             // letras/dígitos/separadores. Cubre cualquier prefijo
             // sin limitar el número de letras:
@@ -202,11 +208,13 @@ public class InvoiceFieldsExtractor {
             //   "FACT2026.0001"      — sin separador entre prefijo/nº
             //   "F-001/2026"         — letra suelta inicial
             //   "23-A-0042"          — números + letras + números
-            //   "ABONO-001/26"       — palabra-completa-prefijo
-            // Restricción mínima: empieza con letra/dígito, termina con
-            // letra/dígito, máximo 40 chars. El filtro de ruido
-            // {@link #isInvoiceNumberNoise} descarta capturas que sean
-            // solo palabras como "FACTURA".
+            //
+            // IMPORTANTE: hemos quitado "fra[-]/fact[-]" como label
+            // suelto porque canibalizaba el prefijo del propio nº
+            // ("FRA-2026-0006" matchearía "FRA-" como label y
+            // capturaría solo "2026-0006"). El número con prefijo
+            // ya queda capturado correctamente por la captura de
+            // la derecha cuando el label es "Nº FACTURA:".
             "([A-Z0-9][A-Z0-9\\-/_.]{1,38}[A-Z0-9])"
     );
 
@@ -586,10 +594,9 @@ public class InvoiceFieldsExtractor {
         if (page == null || page.lines().isEmpty()) return null;
         float pageWidth = page.width();
         if (pageWidth <= 0) return null;
-        // Mitad de la página: el bloque del emisor no siempre llega
-        // exactamente hasta la mitad — usar 45% es más conservador y
-        // pilla columnas de "Cliente" un poco corridas a la izquierda.
-        float midX = pageWidth * 0.45f;
+        // 40% del ancho: pilla bloques de cliente algo corridos a la
+        // izquierda. Bastante permisivo.
+        float midX = pageWidth * 0.40f;
 
         // NIF tolerante a espacio entre dígitos y letra de control
         // ("24259998 N", "B1234567 8"…).
@@ -598,68 +605,63 @@ public class InvoiceFieldsExtractor {
                 "[A-HJ-NP-SUVW]\\d{7}\\s?[0-9A-J])\\b");
 
         int totalLines = page.lines().size();
-        int headLines = Math.min(30, totalLines);
+        int headLines = Math.min(35, totalLines);
+        String emitterNifClean = emitterNif == null ? null : cleanNif(emitterNif);
 
-        // 1) Buscar NIF en la mitad derecha de la cabecera. Guardamos
-        //    también qué línea fue para luego mirar las anteriores
-        //    como candidatas a nombre.
-        String nif = null;
-        int nifLineIdx = -1;
+        // 1) Buscar NOMBRE primero — más fácil porque la primera línea
+        //    no vacía de la mitad derecha que parece nombre suele ser
+        //    el cliente. Recorremos la cabecera desde arriba.
+        String name = null;
+        int nameLineIdx = -1;
         for (int i = 0; i < headLines; i++) {
-            LayoutDocument.LayoutLine line = page.lines().get(i);
-            for (LayoutDocument.LayoutSpan span : line.spans()) {
-                if (span.x() < midX) continue; // mitad izquierda → emisor
-                Matcher m = nifPat.matcher(span.text());
+            String s = collectRightHalf(page.lines().get(i), midX);
+            if (isReceiverNameCandidate(s)) {
+                name = trimName(s);
+                nameLineIdx = i;
+                break;
+            }
+        }
+
+        // 2) Buscar NIF — el nombre del cliente es el ancla más fiable.
+        //    Una vez localizado el nombre, el NIF SIEMPRE está en las
+        //    siguientes 1-6 líneas (caso típico: nombre arriba, NIF
+        //    debajo, dirección debajo del NIF).
+        //
+        //    Buscamos en la línea COMPLETA (no solo mitad derecha)
+        //    porque algunos PDFs imprimen "NIF:" y el número en spans
+        //    con x un poco a la izquierda del nombre. Filtramos por
+        //    "no ser el emisor".
+        String nif = null;
+        if (nameLineIdx >= 0) {
+            int end = Math.min(headLines, nameLineIdx + 8);
+            for (int i = nameLineIdx; i < end; i++) {
+                String line = page.lines().get(i).text();
+                Matcher m = nifPat.matcher(line);
                 while (m.find()) {
                     String cand = cleanNif(m.group(1));
-                    if (emitterNif != null
-                            && cand.equalsIgnoreCase(cleanNif(emitterNif))) continue;
+                    if (emitterNifClean != null
+                            && cand.equalsIgnoreCase(emitterNifClean)) continue;
                     nif = cand;
-                    nifLineIdx = i;
                     break;
                 }
                 if (nif != null) break;
             }
-            // También revisar la línea completa concatenada (cuando el
-            // NIF está partido entre 2 spans con espacio).
-            if (nif == null) {
+        }
+        // 3) Fallback: si no encontramos nombre o NIF por proximidad,
+        //    rastreamos toda la cabecera en mitad derecha por NIF.
+        if (nif == null) {
+            for (int i = 0; i < headLines; i++) {
+                LayoutDocument.LayoutLine line = page.lines().get(i);
                 String rightLine = collectRightHalf(line, midX);
                 Matcher m = nifPat.matcher(rightLine);
                 while (m.find()) {
                     String cand = cleanNif(m.group(1));
-                    if (emitterNif != null
-                            && cand.equalsIgnoreCase(cleanNif(emitterNif))) continue;
+                    if (emitterNifClean != null
+                            && cand.equalsIgnoreCase(emitterNifClean)) continue;
                     nif = cand;
-                    nifLineIdx = i;
                     break;
                 }
-            }
-            if (nif != null) break;
-        }
-
-        // 2) Buscar nombre. Si tenemos NIF, miramos primero las líneas
-        //    INMEDIATAMENTE ANTERIORES al NIF en la mitad derecha
-        //    (caso típico: nombre arriba, NIF debajo, dirección debajo
-        //    del NIF). Si no, recorremos la mitad derecha desde arriba.
-        String name = null;
-        if (nifLineIdx > 0) {
-            for (int i = nifLineIdx - 1; i >= Math.max(0, nifLineIdx - 5); i--) {
-                String s = collectRightHalf(page.lines().get(i), midX);
-                if (isReceiverNameCandidate(s)) {
-                    name = trimName(s);
-                    break;
-                }
-            }
-        }
-        if (name == null) {
-            // Sin NIF identificado o sin nombre antes del NIF: rastrear
-            // toda la cabecera desde arriba, primer candidato válido.
-            for (int i = 0; i < headLines; i++) {
-                String s = collectRightHalf(page.lines().get(i), midX);
-                if (isReceiverNameCandidate(s)) {
-                    name = trimName(s);
-                    break;
-                }
+                if (nif != null) break;
             }
         }
 
