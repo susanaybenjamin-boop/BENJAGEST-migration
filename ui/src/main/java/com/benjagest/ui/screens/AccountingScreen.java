@@ -945,11 +945,25 @@ public class AccountingScreen {
 
     private TableView<DiaryEntry> createDiaryTable(boolean showConfidence) {
         TableView<DiaryEntry> table = new TableView<>();
-        List<TableColumn<DiaryEntry, String>> cols = new ArrayList<>();
+        // Columna Nº con ordenación NUMÉRICA (no alfabética). Antes
+        // "10" salía antes que "2" porque comparaba como String.
         // entry_number = 0 / NULL → DRAFT sin número aún (se asigna al
         // validar). Mostramos "—" en lugar de "0".
-        cols.add(col(tt.apply("accounting.col.num"),
-                e -> e.entryNumber() <= 0 ? "—" : String.valueOf(e.entryNumber()), 60));
+        TableColumn<DiaryEntry, Integer> colNum =
+                new TableColumn<>(tt.apply("accounting.col.num"));
+        colNum.setCellValueFactory(cd -> new javafx.beans.property.SimpleObjectProperty<>(
+                cd.getValue().entryNumber()));
+        colNum.setCellFactory(c -> new javafx.scene.control.TableCell<>() {
+            @Override protected void updateItem(Integer v, boolean empty) {
+                super.updateItem(v, empty);
+                setText(empty || v == null || v <= 0 ? "—" : String.valueOf(v));
+            }
+        });
+        colNum.setComparator(Integer::compare);
+        colNum.setPrefWidth(60);
+        table.getColumns().add(colNum);
+
+        List<TableColumn<DiaryEntry, String>> cols = new ArrayList<>();
         cols.add(col(tt.apply("accounting.col.date"), e -> e.entryDate() == null ? "" : e.entryDate().toString(), 100));
         cols.add(col(tt.apply("accounting.col.concept"), DiaryEntry::concept, 280));
         cols.add(col(tt.apply("accounting.col.source"),
