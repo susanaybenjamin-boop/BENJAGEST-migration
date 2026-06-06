@@ -106,6 +106,10 @@ public class AccountingScreen {
 
     private Node buildPendingTab() {
         pendingTable = createDiaryTable(true);
+        // Multiselección: el asesor marca varios DRAFT y los valida en lote.
+        pendingTable.getSelectionModel().setSelectionMode(
+                javafx.scene.control.SelectionMode.MULTIPLE);
+
         Button refresh = new Button(tt.apply("accounting.action.refresh"));
         refresh.setOnAction(e -> loadPending());
 
@@ -115,6 +119,11 @@ public class AccountingScreen {
             if (sel == null) return;
             openEntryEditor(sel.id());
         });
+
+        // Multivalidación: cuando hay más de un seleccionado, valida
+        // todos los DRAFT seleccionados en una sola llamada al backend.
+        Button validateBatch = new Button(tt.apply("accounting.action.validate_batch"));
+        validateBatch.setOnAction(e -> validateSelectedBatch());
 
         Button accept = new Button(tt.apply("accounting.action.accept"));
         accept.setOnAction(e -> {
@@ -163,15 +172,66 @@ public class AccountingScreen {
         Label hint = new Label(tt.apply("accounting.pending.hint"));
         hint.setStyle("-fx-text-fill: #6e6e6e;");
 
-        HBox actions = new HBox(8, refresh, validate, accept, new javafx.scene.layout.Region(), backfill);
+        HBox actions = new HBox(8, refresh, validate, accept, validateBatch,
+                new javafx.scene.layout.Region(), backfill);
         actions.setAlignment(Pos.CENTER_LEFT);
-        HBox.setHgrow(actions.getChildren().get(3), Priority.ALWAYS);
+        HBox.setHgrow(actions.getChildren().get(4), Priority.ALWAYS);
+
+        // validate y accept solo cuando hay 1; validateBatch cuando hay >=1
+        // DRAFT seleccionado.
+        pendingTable.getSelectionModel().getSelectedItems().addListener(
+                (javafx.collections.ListChangeListener<DiaryEntry>) ch -> {
+            var sel = pendingTable.getSelectionModel().getSelectedItems();
+            boolean exactlyOne = sel.size() == 1;
+            validate.setDisable(!exactlyOne);
+            accept.setDisable(!exactlyOne);
+            boolean anyDraft = sel.stream().anyMatch(
+                    en -> en != null && "DRAFT".equalsIgnoreCase(en.status()));
+            validateBatch.setDisable(!anyDraft);
+        });
+        validate.setDisable(true);
+        accept.setDisable(true);
+        validateBatch.setDisable(true);
 
         VBox box = new VBox(8, hint, actions, pendingTable);
         VBox.setVgrow(pendingTable, Priority.ALWAYS);
         box.setPadding(new Insets(8));
         loadPending();
         return box;
+    }
+
+    /**
+     * Valida en lote los asientos DRAFT seleccionados en la tabla.
+     * Diálogo de confirmación con count → endpoint batch del backend →
+     * resumen y refresh. Pieza clave del flujo asesor "auto-propuesta
+     * → revisar lote → validar todos los buenos a la vez".
+     */
+    private void validateSelectedBatch() {
+        var sel = pendingTable.getSelectionModel().getSelectedItems();
+        java.util.List<String> ids = new java.util.ArrayList<>();
+        for (var e : sel) {
+            if (e != null && "DRAFT".equalsIgnoreCase(e.status())) ids.add(e.id());
+        }
+        if (ids.isEmpty()) return;
+        Alert confirm = new Alert(AlertType.CONFIRMATION,
+                tt.apply("accounting.confirm.validate_batch")
+                        .replace("{n}", String.valueOf(ids.size())),
+                ButtonType.YES, ButtonType.NO);
+        confirm.setHeaderText(tt.apply("accounting.action.validate_batch"));
+        confirm.showAndWait().ifPresent(bt -> {
+            if (bt != ButtonType.YES) return;
+            async(() -> api.postBatchEntries(ids), result -> {
+                Alert info = new Alert(AlertType.INFORMATION,
+                        tt.apply("accounting.validate_batch.result")
+                                .replace("{p}", String.valueOf(result.posted()))
+                                .replace("{s}", String.valueOf(result.skipped()))
+                                .replace("{e}", String.valueOf(result.errors())));
+                info.setHeaderText(tt.apply("accounting.action.validate_batch"));
+                info.showAndWait();
+                loadPending();
+                loadDiary();
+            }, err -> showError(tt.apply("accounting.error.validate_batch"), err));
+        });
     }
 
     private void loadPending() {
