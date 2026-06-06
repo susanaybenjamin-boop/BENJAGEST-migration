@@ -105,6 +105,37 @@ public class AccountingJournalController {
 
     public record DeleteIdsBody(List<String> ids) {}
 
+    /**
+     * Actualiza el concepto de un asiento existente. Pensado para que
+     * el asesor pueda corregir desde el "Avisos → sin nº de factura"
+     * sin tener que ir al editor completo del Diario.
+     */
+    @PostMapping("/journal-entries/{id}/update-concept")
+    public Map<String, Object> updateConcept(
+            @PathVariable("id") String id,
+            @RequestBody UpdateConceptBody body) {
+        String newConcept = body == null ? null : body.concept();
+        int n = manualService.updateConcept(id, newConcept);
+        return Map.of("id", id, "updated", n > 0);
+    }
+
+    public record UpdateConceptBody(String concept) {}
+
+    /**
+     * Re-extrae los datos del PDF asociado a un asiento usando la
+     * regex/heurística ACTUAL. Útil cuando importamos un PDF antes
+     * de mejorar el extractor y queremos retroceder y aplicar el
+     * extractor nuevo sin volver a importar.
+     *
+     * <p>Devuelve los campos extraídos (nº factura, fechas, totales)
+     * para que la UI los muestre como propuesta de edición — NO
+     * persiste cambios automáticamente.
+     */
+    @PostMapping("/journal-entries/{id}/re-extract")
+    public Map<String, Object> reExtractFromPdf(@PathVariable("id") String id) {
+        return manualService.reExtractFromPdf(id);
+    }
+
     // ====================================================================
     //  Asientos manuales
     // ====================================================================

@@ -63,17 +63,84 @@ public class ManualJournalEntryService {
     private final CurrentUserService currentUserService;
     private final FiscalYearGuardService fiscalGuard;
     private final TerceroAccountResolverService terceroResolver;
+    private final com.benjagest.backend.accounting.importpdf.ImportedPdfStorageService pdfStorage;
+    private final com.benjagest.backend.purchases.pdfimport.PdfTextExtractor pdfTextExtractor;
+    private final com.benjagest.backend.purchases.pdfimport.InvoiceFieldsExtractor invoiceExtractor;
 
     public ManualJournalEntryService(JdbcTemplate jdbcTemplate,
                                        TenantContext tenantContext,
                                        CurrentUserService currentUserService,
                                        FiscalYearGuardService fiscalGuard,
-                                       TerceroAccountResolverService terceroResolver) {
+                                       TerceroAccountResolverService terceroResolver,
+                                       com.benjagest.backend.accounting.importpdf.ImportedPdfStorageService pdfStorage,
+                                       com.benjagest.backend.purchases.pdfimport.PdfTextExtractor pdfTextExtractor,
+                                       com.benjagest.backend.purchases.pdfimport.InvoiceFieldsExtractor invoiceExtractor) {
         this.jdbcTemplate = jdbcTemplate;
         this.tenantContext = tenantContext;
         this.currentUserService = currentUserService;
         this.fiscalGuard = fiscalGuard;
         this.terceroResolver = terceroResolver;
+        this.pdfStorage = pdfStorage;
+        this.pdfTextExtractor = pdfTextExtractor;
+        this.invoiceExtractor = invoiceExtractor;
+    }
+
+    /**
+     * Actualiza solo el concepto de un asiento. Pensado para que el
+     * panel de avisos pueda corregir un nº de factura olvidado.
+     */
+    public int updateConcept(String entryId, String concept) {
+        if (concept == null) return 0;
+        String c = concept.length() > 240 ? concept.substring(0, 240) : concept;
+        String companyId = tenantContext.getCurrentCompanyId();
+        return jdbcTemplate.update("""
+                UPDATE journal_entries
+                   SET concept = ?
+                 WHERE id = ? AND company_id = ?
+                """, c, entryId, companyId);
+    }
+
+    /**
+     * Re-ejecuta el extractor sobre el PDF asociado a un asiento.
+     * Devuelve los campos extraídos como Map para que la UI los
+     * proponga como edición — NO actualiza el asiento aquí.
+     */
+    public java.util.Map<String, Object> reExtractFromPdf(String entryId) {
+        String companyId = tenantContext.getCurrentCompanyId();
+        List<String> paths = jdbcTemplate.query("""
+                SELECT source_pdf_path FROM journal_entries
+                 WHERE id = ? AND company_id = ? LIMIT 1
+                """, (rs, n) -> rs.getString("source_pdf_path"), entryId, companyId);
+        if (paths.isEmpty() || paths.get(0) == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND,
+                    "Este asiento no tiene PDF asociado");
+        }
+        byte[] pdf;
+        try {
+            pdf = pdfStorage.read(paths.get(0));
+        } catch (java.io.IOException e) {
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
+                    "No se pudo leer el PDF: " + e.getMessage());
+        }
+        try {
+            var layout = pdfTextExtractor.extractLayout(pdf);
+            var result = invoiceExtractor.extractFromLayout(layout, pdf);
+            java.util.Map<String, Object> out = new java.util.LinkedHashMap<>();
+            out.put("invoiceNumber", result.invoiceNumber());
+            out.put("invoiceDate", result.invoiceDate() == null ? null
+                    : result.invoiceDate().toString());
+            out.put("supplierName", result.supplierName());
+            out.put("emitterNif", result.emitterNif());
+            out.put("receiverName", result.receiverName());
+            out.put("receiverNif", result.receiverNif());
+            out.put("baseAmount", result.baseAmount());
+            out.put("vatAmount", result.vatAmount());
+            out.put("totalAmount", result.totalAmount());
+            return out;
+        } catch (Exception e) {
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
+                    "Error al re-extraer: " + e.getMessage());
+        }
     }
 
     // ====================================================================

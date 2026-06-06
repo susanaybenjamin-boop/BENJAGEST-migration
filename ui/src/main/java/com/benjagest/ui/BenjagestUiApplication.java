@@ -11129,6 +11129,9 @@ public class BenjagestUiApplication extends Application {
             case "client.duplicates.delete" -> "DELETE";
             case "client.duplicates.none" -> "No duplicates detected.";
             case "client.duplicates.resolve_all" -> "Resolve all ({n} entries to delete)";
+            case "client.duplicates.apply" -> "Apply ({n} to delete)";
+            case "client.duplicates.keep_oldest" -> "Keep oldest of each group";
+            case "client.duplicates.keep_newest" -> "Keep newest of each group";
             case "client.duplicates.done.title" -> "Duplicates resolved";
             case "client.duplicates.done.body" -> "{n} entries deleted. The list will refresh.";
             case "client.duplicates.fail.title" -> "Could not delete duplicates";
@@ -11138,6 +11141,17 @@ public class BenjagestUiApplication extends Application {
             case "client.missing.action.edit" -> "Edit";
             case "client.missing.action.edit_info.title" -> "Open in Accounting";
             case "client.missing.action.edit_info.body" -> "Entry Nº {n} — open it from the Journal in the Accounting tab to edit the concept. (Inline edit coming in a future slice.)";
+            case "client.edit_concept.title" -> "Edit concept";
+            case "client.edit_concept.hint" -> "Edit the concept manually, or click 'Re-extract from PDF' to run the current extractor on the stored PDF and propose a value. Click the suggestion to use it.";
+            case "client.edit_concept.concept_label" -> "Concept:";
+            case "client.edit_concept.save" -> "Save";
+            case "client.edit_concept.cancel" -> "Cancel";
+            case "client.edit_concept.re_extract" -> "Re-extract from PDF";
+            case "client.edit_concept.no_suggestion" -> "The extractor couldn't detect invoice number or customer name. Edit the concept manually.";
+            case "client.edit_concept.suggestion" -> "Suggestion (click to use):";
+            case "client.edit_concept.save_fail.title" -> "Could not save concept";
+            case "client.edit_concept.save_fail.body" -> "Try again. If the problem persists, check the backend logs.";
+            case "client.edit_concept.re_extract_fail.title" -> "Re-extraction failed";
             case "client.unbalanced.title" -> "Unbalanced entries";
             case "client.unbalanced.hint" -> "Debit ≠ Credit by more than 1 cent. Usually points to a bug in the importer. Reach out to support if you can't fix it from the journal editor.";
             case "client.unbalanced.none" -> "No unbalanced entries.";
@@ -11537,6 +11551,9 @@ public class BenjagestUiApplication extends Application {
             case "client.duplicates.delete" -> "ELIMINAR";
             case "client.duplicates.none" -> "No hay duplicados detectados.";
             case "client.duplicates.resolve_all" -> "Resolver todos ({n} asientos a eliminar)";
+            case "client.duplicates.apply" -> "Aplicar ({n} a eliminar)";
+            case "client.duplicates.keep_oldest" -> "Conservar el más antiguo de cada grupo";
+            case "client.duplicates.keep_newest" -> "Conservar el más reciente de cada grupo";
             case "client.duplicates.done.title" -> "Duplicados resueltos";
             case "client.duplicates.done.body" -> "{n} asientos eliminados. El listado se actualizará.";
             case "client.duplicates.fail.title" -> "No se pudieron eliminar los duplicados";
@@ -11546,6 +11563,17 @@ public class BenjagestUiApplication extends Application {
             case "client.missing.action.edit" -> "Editar";
             case "client.missing.action.edit_info.title" -> "Abrir en Contabilidad";
             case "client.missing.action.edit_info.body" -> "Asiento Nº {n} — ábrelo desde el Diario en la pestaña Contabilidad para editar el concepto. (Edición en línea en un slice futuro.)";
+            case "client.edit_concept.title" -> "Editar concepto";
+            case "client.edit_concept.hint" -> "Edita el concepto manualmente, o pulsa 'Re-extraer del PDF' para que el extractor actual procese el PDF guardado y proponga un valor. Pulsa la sugerencia para usarla.";
+            case "client.edit_concept.concept_label" -> "Concepto:";
+            case "client.edit_concept.save" -> "Guardar";
+            case "client.edit_concept.cancel" -> "Cancelar";
+            case "client.edit_concept.re_extract" -> "Re-extraer del PDF";
+            case "client.edit_concept.no_suggestion" -> "El extractor no detectó nº de factura ni nombre de cliente. Edita el concepto manualmente.";
+            case "client.edit_concept.suggestion" -> "Sugerencia (pulsa para usar):";
+            case "client.edit_concept.save_fail.title" -> "No se pudo guardar el concepto";
+            case "client.edit_concept.save_fail.body" -> "Inténtalo de nuevo. Si el problema persiste, revisa los logs del backend.";
+            case "client.edit_concept.re_extract_fail.title" -> "Falló la re-extracción";
             case "client.unbalanced.title" -> "Asientos descuadrados";
             case "client.unbalanced.hint" -> "Debe ≠ Haber por más de 1 céntimo. Normalmente apunta a un bug del importador. Si no puedes arreglarlo desde el editor del Diario, contacta soporte.";
             case "client.unbalanced.none" -> "No hay asientos descuadrados.";
@@ -15232,8 +15260,18 @@ public class BenjagestUiApplication extends Application {
         hint.getStyleClass().add("settings-hint");
         container.getChildren().add(hint);
 
-        // Por cada grupo, un pequeño bloque con las copias y acciones.
-        java.util.List<String> idsToDelete = new java.util.ArrayList<>();
+        // Mapa entryId → RadioButton para construir la lista de
+        // "qué conservar" cuando el usuario pulsa Aplicar.
+        java.util.Map<String, javafx.scene.control.RadioButton> keepRadios =
+                new java.util.LinkedHashMap<>();
+        // Mapa grupo → todos los entryIds del grupo, para sacar el
+        // complemento al "kept".
+        java.util.List<java.util.List<String>> groupIdLists = new java.util.ArrayList<>();
+
+        Button applyBtn = new Button();
+        applyBtn.getStyleClass().add("button-primary");
+
+        // Por cada grupo, un bloque con radios "Conservar" + datos.
         for (var entry : groups.entrySet()) {
             var list = entry.getValue();
             VBox groupBox = new VBox(4);
@@ -15246,36 +15284,86 @@ public class BenjagestUiApplication extends Application {
                             Math.min(12, entry.getKey().length())) + "…"));
             groupTitle.setStyle("-fx-font-weight: bold;");
             groupBox.getChildren().add(groupTitle);
+
+            javafx.scene.control.ToggleGroup tg = new javafx.scene.control.ToggleGroup();
+            java.util.List<String> idsThisGroup = new java.util.ArrayList<>();
             for (int i = 0; i < list.size(); i++) {
                 var dEntry = list.get(i);
-                String prefix = (i == 0)
-                        ? "✓ " + t("client.duplicates.keep") + "  "
-                        : "✗ " + t("client.duplicates.delete") + "  ";
-                Label row = new Label(prefix
-                        + "Nº " + (dEntry.entryNumber() <= 0 ? "—" : dEntry.entryNumber())
+                javafx.scene.control.RadioButton radio =
+                        new javafx.scene.control.RadioButton();
+                radio.setToggleGroup(tg);
+                // Por defecto seleccionamos el PRIMERO de cada grupo
+                // (el más antiguo por entryNumber, que suele ser el
+                // canónico). El usuario puede cambiarlo a otro.
+                if (i == 0) radio.setSelected(true);
+
+                Label info = new Label(
+                        "Nº " + (dEntry.entryNumber() <= 0 ? "—" : dEntry.entryNumber())
                         + "  ·  " + (dEntry.entryDate() == null ? "" : dEntry.entryDate())
                         + "  ·  " + (dEntry.concept() == null ? "" :
                                 (dEntry.concept().length() > 60
                                         ? dEntry.concept().substring(0, 60) + "…"
                                         : dEntry.concept()))
                         + "  ·  " + formatMoney(dEntry.totalDebit()));
-                row.setStyle(i == 0 ? "-fx-text-fill: #2e7d32;" : "-fx-text-fill: #c62828;");
+                HBox row = new HBox(8, radio, info);
+                row.setAlignment(Pos.CENTER_LEFT);
                 groupBox.getChildren().add(row);
-                if (i > 0) idsToDelete.add(dEntry.id());
+
+                keepRadios.put(dEntry.id(), radio);
+                idsThisGroup.add(dEntry.id());
             }
+            groupIdLists.add(idsThisGroup);
             container.getChildren().add(groupBox);
         }
 
-        if (idsToDelete.isEmpty()) {
+        // Recalcular el contador del botón cada vez que el usuario
+        // cambia un radio. Total a borrar = (totalCopias) - (1 kept
+        // por grupo). Como cada ToggleGroup garantiza exactamente 1
+        // seleccionado, es simple: sum(group.size()-1) por grupo.
+        Runnable updateApplyButton = () -> {
+            int toDelete = 0;
+            for (var grp : groupIdLists) toDelete += grp.size() - 1;
+            applyBtn.setText(t("client.duplicates.apply")
+                    .replace("{n}", String.valueOf(toDelete)));
+            applyBtn.setDisable(toDelete <= 0);
+        };
+        for (var r : keepRadios.values()) {
+            r.selectedProperty().addListener((o, a, b) -> updateApplyButton.run());
+        }
+        updateApplyButton.run();
+
+        if (groupIdLists.isEmpty()) {
             Label empty = new Label(t("client.duplicates.none"));
             empty.getStyleClass().add("settings-hint");
             container.getChildren().add(empty);
         } else {
-            Button bulkBtn = new Button(t("client.duplicates.resolve_all")
-                    .replace("{n}", String.valueOf(idsToDelete.size())));
-            bulkBtn.getStyleClass().add("button-primary");
-            bulkBtn.setOnAction(e -> {
-                bulkBtn.setDisable(true);
+            // Atajos: conservar el más antiguo / más reciente de cada
+            // grupo de un click. Útiles si el asesor tiene 10 grupos
+            // y todos tienen el mismo criterio.
+            Button keepOldestBtn = new Button(t("client.duplicates.keep_oldest"));
+            keepOldestBtn.setOnAction(e -> {
+                for (var grp : groupIdLists) {
+                    keepRadios.get(grp.get(0)).setSelected(true);
+                }
+            });
+            Button keepNewestBtn = new Button(t("client.duplicates.keep_newest"));
+            keepNewestBtn.setOnAction(e -> {
+                for (var grp : groupIdLists) {
+                    keepRadios.get(grp.get(grp.size() - 1)).setSelected(true);
+                }
+            });
+
+            applyBtn.setOnAction(e -> {
+                // Calcular ids a eliminar = TODOS los del grupo menos
+                // el "kept" (radio seleccionado).
+                java.util.List<String> idsToDelete = new java.util.ArrayList<>();
+                for (var grp : groupIdLists) {
+                    for (String id : grp) {
+                        if (!keepRadios.get(id).isSelected()) idsToDelete.add(id);
+                    }
+                }
+                if (idsToDelete.isEmpty()) return;
+                applyBtn.setDisable(true);
                 Task<Integer> task = new Task<>() {
                     @Override protected Integer call() throws Exception {
                         return accountingApiClient.deleteImportedEntries(idsToDelete);
@@ -15292,14 +15380,20 @@ public class BenjagestUiApplication extends Application {
                     dialog.close();
                 });
                 task.setOnFailed(ev -> {
-                    bulkBtn.setDisable(false);
+                    applyBtn.setDisable(false);
                     Throwable ex = task.getException();
                     showError(t("client.duplicates.fail.title"),
                             ex == null ? "" : ex.getMessage());
                 });
                 start(task, "delete-duplicates");
             });
-            container.getChildren().add(bulkBtn);
+
+            Region actionsSpacer = new Region();
+            HBox.setHgrow(actionsSpacer, Priority.ALWAYS);
+            HBox actions = new HBox(8, keepOldestBtn, keepNewestBtn,
+                    actionsSpacer, applyBtn);
+            actions.setAlignment(Pos.CENTER_LEFT);
+            container.getChildren().add(actions);
         }
 
         ScrollPane scroll = new ScrollPane(container);
@@ -15355,17 +15449,7 @@ public class BenjagestUiApplication extends Application {
                     + "  ·  " + formatMoney(e.totalDebit()));
             HBox.setHgrow(desc, Priority.ALWAYS);
             Button openBtn = new Button(t("client.missing.action.edit"));
-            openBtn.setOnAction(ev -> {
-                dialog.setResult(ButtonType.CLOSE);
-                dialog.close();
-                // Navega a Contabilidad y abre el asiento. Por hoy
-                // notificamos al asesor; abrir el editor inline es
-                // siguiente slice (requiere ID propagation).
-                showInfo(t("client.missing.action.edit_info.title"),
-                        t("client.missing.action.edit_info.body")
-                                .replace("{n}", e.entryNumber() <= 0
-                                        ? "—" : String.valueOf(e.entryNumber())));
-            });
+            openBtn.setOnAction(ev -> showEditConceptDialog(e));
             row.getChildren().addAll(desc, openBtn);
             box.getChildren().add(row);
         }
@@ -15416,6 +15500,131 @@ public class BenjagestUiApplication extends Application {
         scroll.setFitToWidth(true);
         installDialog(dialog, scroll);
         dialog.getDialogPane().setPrefSize(900, 500);
+        dialog.showAndWait();
+    }
+
+    /**
+     * Diálogo para editar el concepto de un asiento. Incluye botón
+     * "Re-extraer del PDF" que usa la regex/heurística actual sobre
+     * el PDF asociado y propone el nº de factura nuevo. El asesor
+     * decide aceptar la propuesta o escribir manualmente.
+     */
+    private void showEditConceptDialog(
+            com.benjagest.ui.model.AccountingModels.DiaryEntry entry) {
+        Dialog<ButtonType> dialog = new Dialog<>();
+        dialog.setTitle(t("client.edit_concept.title"));
+        ButtonType saveBt = new ButtonType(t("client.edit_concept.save"),
+                ButtonBar.ButtonData.OK_DONE);
+        ButtonType cancelBt = new ButtonType(t("client.edit_concept.cancel"),
+                ButtonBar.ButtonData.CANCEL_CLOSE);
+        dialog.getDialogPane().getButtonTypes().addAll(saveBt, cancelBt);
+
+        VBox body = new VBox(10);
+        body.setPadding(new Insets(12));
+
+        Label header = new Label(
+                "Nº " + (entry.entryNumber() <= 0 ? "—" : entry.entryNumber())
+                + "  ·  " + (entry.entryDate() == null ? "" : entry.entryDate()));
+        header.setStyle("-fx-font-weight: bold;");
+
+        Label hint = new Label(t("client.edit_concept.hint"));
+        hint.setWrapText(true);
+        hint.getStyleClass().add("settings-hint");
+
+        TextField conceptField = new TextField(entry.concept() == null ? "" : entry.concept());
+        conceptField.setPrefColumnCount(60);
+
+        Label suggestionLabel = new Label("");
+        suggestionLabel.setWrapText(true);
+        suggestionLabel.setStyle("-fx-text-fill: #2e7d32;");
+        suggestionLabel.setVisible(false);
+        suggestionLabel.setManaged(false);
+
+        Button reExtractBtn = new Button(t("client.edit_concept.re_extract"));
+        reExtractBtn.setGraphic(icon("fas-magic"));
+        reExtractBtn.setOnAction(e -> {
+            reExtractBtn.setDisable(true);
+            suggestionLabel.setVisible(false);
+            suggestionLabel.setManaged(false);
+            Task<java.util.Map<String, String>> task = new Task<>() {
+                @Override protected java.util.Map<String, String> call() throws Exception {
+                    return accountingApiClient.reExtractEntryFromPdf(entry.id());
+                }
+            };
+            task.setOnSucceeded(ev -> {
+                reExtractBtn.setDisable(false);
+                var data = task.getValue();
+                String num = data.getOrDefault("invoiceNumber", "");
+                String name = data.getOrDefault("receiverName", "");
+                if (num.isBlank() && name.isBlank()) {
+                    suggestionLabel.setText(t("client.edit_concept.no_suggestion"));
+                    suggestionLabel.setStyle("-fx-text-fill: #c62828;");
+                } else {
+                    // Construir la propuesta con el formato del backend.
+                    StringBuilder proposed = new StringBuilder("Fra. ");
+                    if (!num.isBlank()) proposed.append(num).append(' ');
+                    if (!name.isBlank()) proposed.append("a ").append(name);
+                    suggestionLabel.setText(
+                            t("client.edit_concept.suggestion") + "  " + proposed);
+                    suggestionLabel.setStyle("-fx-text-fill: #2e7d32;");
+                    // Botón "Usar esta sugerencia" inline en el label
+                    // via click handler — simple click rellena el campo.
+                    suggestionLabel.setOnMouseClicked(mc -> conceptField.setText(
+                            proposed.toString().trim()));
+                    suggestionLabel.setStyle(suggestionLabel.getStyle()
+                            + " -fx-cursor: hand; -fx-underline: true;");
+                }
+                suggestionLabel.setVisible(true);
+                suggestionLabel.setManaged(true);
+            });
+            task.setOnFailed(ev -> {
+                reExtractBtn.setDisable(false);
+                Throwable ex = task.getException();
+                showError(t("client.edit_concept.re_extract_fail.title"),
+                        ex == null ? "" : ex.getMessage());
+            });
+            start(task, "re-extract");
+        });
+
+        body.getChildren().addAll(header, hint,
+                new Label(t("client.edit_concept.concept_label")), conceptField,
+                reExtractBtn, suggestionLabel);
+
+        installDialog(dialog, body);
+        dialog.getDialogPane().setPrefWidth(600);
+
+        Button saveBtn = (Button) dialog.getDialogPane().lookupButton(saveBt);
+        saveBtn.getStyleClass().add("button-primary");
+        saveBtn.addEventFilter(javafx.event.ActionEvent.ACTION, ev -> {
+            ev.consume();
+            String newConcept = conceptField.getText() == null ? "" : conceptField.getText().trim();
+            saveBtn.setDisable(true);
+            Task<Boolean> task = new Task<>() {
+                @Override protected Boolean call() throws Exception {
+                    return accountingApiClient.updateEntryConcept(entry.id(), newConcept);
+                }
+            };
+            task.setOnSucceeded(e -> {
+                if (task.getValue()) {
+                    com.benjagest.ui.support.RefreshBus.emit(
+                            com.benjagest.ui.support.RefreshBus.TOPIC_JOURNAL);
+                    dialog.setResult(saveBt);
+                    dialog.close();
+                } else {
+                    saveBtn.setDisable(false);
+                    showError(t("client.edit_concept.save_fail.title"),
+                            t("client.edit_concept.save_fail.body"));
+                }
+            });
+            task.setOnFailed(e -> {
+                saveBtn.setDisable(false);
+                Throwable ex = task.getException();
+                showError(t("client.edit_concept.save_fail.title"),
+                        ex == null ? "" : ex.getMessage());
+            });
+            start(task, "update-concept");
+        });
+
         dialog.showAndWait();
     }
 
