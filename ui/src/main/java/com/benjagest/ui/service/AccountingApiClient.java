@@ -175,7 +175,9 @@ public class AccountingApiClient {
             java.math.BigDecimal retentionAmount,
             java.math.BigDecimal totalAmount,
             String invoiceNumber, String concept,
-            byte[] pdfBytes) throws IOException, InterruptedException {
+            byte[] pdfBytes,
+            boolean rectifying,
+            String rectifiedInvoiceNumber) throws IOException, InterruptedException {
         StringBuilder body = new StringBuilder("{");
         appendKV(body, "customerNif", customerNif, true);
         appendKV(body, "customerName", customerName, false);
@@ -187,6 +189,8 @@ public class AccountingApiClient {
         appendNumKV(body, "totalAmount", totalAmount);
         appendKV(body, "invoiceNumber", invoiceNumber, false);
         appendKV(body, "concept", concept, false);
+        body.append(",\"rectifying\":").append(rectifying);
+        appendKV(body, "rectifiedInvoiceNumber", rectifiedInvoiceNumber, false);
         if (pdfBytes != null && pdfBytes.length > 0) {
             String b64 = java.util.Base64.getEncoder().encodeToString(pdfBytes);
             body.append(",\"pdfBase64\":\"").append(b64).append("\"");
@@ -196,6 +200,26 @@ public class AccountingApiClient {
         return new SalesImportResult(
                 strField(json, "journalEntryId"),
                 strField(json, "pdfSha256"));
+    }
+
+    /**
+     * Wrapper de retrocompatibilidad para llamadas que no propagan
+     * rectificativa (no es factura de anulación).
+     */
+    public SalesImportResult importSalesFromPdf(
+            String customerNif, String customerName,
+            java.time.LocalDate invoiceDate,
+            java.math.BigDecimal baseAmount,
+            java.math.BigDecimal vatPercent,
+            java.math.BigDecimal vatAmount,
+            java.math.BigDecimal retentionAmount,
+            java.math.BigDecimal totalAmount,
+            String invoiceNumber, String concept,
+            byte[] pdfBytes) throws IOException, InterruptedException {
+        return importSalesFromPdf(customerNif, customerName, invoiceDate,
+                baseAmount, vatPercent, vatAmount, retentionAmount,
+                totalAmount, invoiceNumber, concept, pdfBytes,
+                false, null);
     }
 
     public record SalesImportResult(String journalEntryId, String pdfSha256) {}

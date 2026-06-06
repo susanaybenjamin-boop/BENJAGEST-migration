@@ -69,7 +69,11 @@ public class JournalEntryPdfImportController {
             String invoiceNumber,
             String concept,
             /** PDF original codificado en base64. Opcional pero recomendado. */
-            String pdfBase64
+            String pdfBase64,
+            /** TRUE si el PDF es una factura rectificativa. */
+            Boolean rectifying,
+            /** Nº de la factura original que se anula (opcional). */
+            String rectifiedInvoiceNumber
     ) {}
 
     @PostMapping("/import-pdf/sales")
@@ -84,7 +88,9 @@ public class JournalEntryPdfImportController {
                 p.baseAmount(), p.vatPercent(), p.vatAmount(),
                 p.retentionAmount(), p.totalAmount(),
                 p.invoiceNumber(), p.concept(),
-                pdfBytes));
+                pdfBytes,
+                Boolean.TRUE.equals(p.rectifying()),
+                p.rectifiedInvoiceNumber()));
     }
 
     /**

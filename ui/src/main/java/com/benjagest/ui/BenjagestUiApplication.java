@@ -2755,6 +2755,12 @@ public class BenjagestUiApplication extends Application {
         String vatPct = extractNumber(json, "vatPercent");
         String vatAmt = extractNumber(json, "vatAmount");
         String total = extractNumber(json, "totalAmount");
+        // Flags rectificativa (los devuelve InvoiceFieldsExtractor):
+        //   rectifying = true → el PDF dice "FACTURA RECTIFICATIVA"
+        //   rectifiedInvoiceNumber = nº de la factura original que se anula
+        boolean rectifying = "true".equalsIgnoreCase(extractBool(json, "rectifying"));
+        String rectifiedNumber = extractField(json, "rectifiedInvoiceNumber");
+        if (isBlankOrDash(rectifiedNumber)) rectifiedNumber = "";
 
         Dialog<ButtonType> dialog = new Dialog<>();
         dialog.setTitle(t("sales.import.title_prefix") + filename);
@@ -2783,19 +2789,38 @@ public class BenjagestUiApplication extends Application {
         TextField totalField = new TextField(total);
         TextField conceptField = new TextField();
         conceptField.setPromptText(t("purchases.import.field.concept_prompt"));
-        // Pre-rellenar concepto con un texto razonable: "Fra. {nº} a {cliente}".
-        // El usuario lo edita si quiere; pero al menos no llega vacío al
-        // asiento (donde el backend caería en "Venta importada").
+
+        // Controles de rectificativa:
+        //   - CheckBox: detectado vs no detectado (editable)
+        //   - TextField "anula factura nº": editable, prerelleno con
+        //     lo que detectó el extractor.
+        CheckBox rectifyingChk = new CheckBox(t("sales.import.field.rectifying"));
+        rectifyingChk.setSelected(rectifying);
+        TextField rectifiedField = new TextField(rectifiedNumber);
+        rectifiedField.setPromptText(t("sales.import.field.rectified_prompt"));
+        rectifiedField.setDisable(!rectifying);
+        rectifyingChk.selectedProperty().addListener(
+                (obs, old, val) -> rectifiedField.setDisable(!val));
+
+        // Pre-rellenar concepto con un texto razonable.
+        //   Normal:        "Fra. {nº} a {cliente}"
+        //   Rectificativa: "Fra. rectificativa {nº} a {cliente} (anula {original})"
         StringBuilder pre = new StringBuilder();
-        if (!number.isBlank()) pre.append("Fra. ").append(number);
+        if (rectifying) pre.append("Fra. rectificativa ");
+        else pre.append("Fra. ");
+        if (!number.isBlank()) pre.append(number);
         if (!customerName.isBlank()) {
-            if (pre.length() > 0) pre.append(" ");
+            if (pre.length() > "Fra. ".length()) pre.append(" ");
             pre.append("a ").append(customerName);
         }
-        if (pre.length() > 0) conceptField.setText(pre.toString());
+        if (rectifying && !rectifiedNumber.isBlank()) {
+            pre.append(" (anula ").append(rectifiedNumber).append(")");
+        }
+        if (pre.length() > "Fra. ".length()) conceptField.setText(pre.toString());
+
         for (TextField tf : new TextField[]{
                 nifField, nameField, numberField, dateField, baseField,
-                vatPctField, vatAmtField, totalField, conceptField}) {
+                vatPctField, vatAmtField, totalField, conceptField, rectifiedField}) {
             tf.setPrefColumnCount(32);
         }
         GridPane g = new GridPane();
@@ -2810,6 +2835,9 @@ public class BenjagestUiApplication extends Application {
         g.add(new Label(t("purchases.import.field.vat_amount")), 0, row); g.add(vatAmtField, 1, row++);
         g.add(new Label(t("purchases.import.field.total")), 0, row); g.add(totalField, 1, row++);
         g.add(new Label(t("purchases.import.field.concept")), 0, row); g.add(conceptField, 1, row++);
+        // Bloque rectificativa al final.
+        g.add(rectifyingChk, 0, row, 2, 1); row++;
+        g.add(new Label(t("sales.import.field.rectified_label")), 0, row); g.add(rectifiedField, 1, row++);
 
         // Montaje con visor.
         com.benjagest.ui.support.PdfViewer viewer = new com.benjagest.ui.support.PdfViewer();
@@ -2853,6 +2881,8 @@ public class BenjagestUiApplication extends Application {
             final String name = nullIfBlank(nameField.getText());
             final String invoiceNum = nullIfBlank(numberField.getText());
             final String concept = nullIfBlank(conceptField.getText());
+            final boolean isRect = rectifyingChk.isSelected();
+            final String rectifiedNum = nullIfBlank(rectifiedField.getText());
             Task<com.benjagest.ui.service.AccountingApiClient.SalesImportResult> task = new Task<>() {
                 @Override
                 protected com.benjagest.ui.service.AccountingApiClient.SalesImportResult call()
@@ -2861,7 +2891,8 @@ public class BenjagestUiApplication extends Application {
                             nif, name, invDate,
                             baseAmt, vatPctV, vatAmtV,
                             java.math.BigDecimal.ZERO, totalAmt,
-                            invoiceNum, concept, pdfBytes);
+                            invoiceNum, concept, pdfBytes,
+                            isRect, rectifiedNum);
                 }
             };
             task.setOnSucceeded(e -> {
@@ -3167,6 +3198,17 @@ public class BenjagestUiApplication extends Application {
     /** "—" o cadena vacía → true. Usado por fallbacks de extractField. */
     private boolean isBlankOrDash(String s) {
         return s == null || s.isBlank() || "—".equals(s.trim());
+    }
+
+    /**
+     * Extrae un booleano del JSON ({@code "campo": true|false}). Para
+     * flags como {@code rectifying} en el resultado del extractor.
+     */
+    private String extractBool(String json, String field) {
+        java.util.regex.Matcher m = java.util.regex.Pattern
+                .compile("\"" + field + "\"\\s*:\\s*(true|false)")
+                .matcher(json);
+        return m.find() ? m.group(1) : "false";
     }
 
     private String extractNumber(String json, String field) {
@@ -8421,6 +8463,9 @@ public class BenjagestUiApplication extends Application {
                 case "sales.import.action.create_entry" -> "Create entry";
                 case "sales.import.field.customer_nif" -> "Customer tax ID:";
                 case "sales.import.field.customer_name" -> "Customer name:";
+                case "sales.import.field.rectifying" -> "Rectifying invoice (cancels another)";
+                case "sales.import.field.rectified_label" -> "Cancels invoice #:";
+                case "sales.import.field.rectified_prompt" -> "Original invoice number (e.g. FRA-2026-0003)";
                 case "sales.import.fail.title" -> "Could not create entry";
                 case "sales.import.fail.body" -> "Check the data and try again. The PDF was not saved.";
                 case "sales.import.fail.missing.body" -> "Required: date, base, VAT amount and total.";
@@ -9337,6 +9382,9 @@ public class BenjagestUiApplication extends Application {
             case "sales.import.action.create_entry" -> "Crear asiento";
             case "sales.import.field.customer_nif" -> "NIF cliente:";
             case "sales.import.field.customer_name" -> "Nombre cliente:";
+            case "sales.import.field.rectifying" -> "Factura rectificativa (anula otra)";
+            case "sales.import.field.rectified_label" -> "Anula factura nº:";
+            case "sales.import.field.rectified_prompt" -> "Nº de la factura original (p. ej. FRA-2026-0003)";
             case "sales.import.fail.title" -> "No se pudo crear el asiento";
             case "sales.import.fail.body" -> "Revisa los datos e inténtalo de nuevo. El PDF no se ha archivado.";
             case "sales.import.fail.missing.body" -> "Faltan campos: fecha, base, IVA y total.";

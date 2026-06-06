@@ -191,10 +191,23 @@ public class InvoiceFieldsExtractor {
             "fra[\\.\\s\\-]*(?:n[\\u00ba\\u00b0]?)?|" +
             "fact[\\.\\s\\-]*(?:n[\\u00ba\\u00b0]?)?|" +
             "n[\\u00ba\\u00b0]\\.?)\\s*:?\\s*\\n?\\s*" +
-            // Captura: opcional prefijo alfabético (FRA-, A/, RECT-…)
-            // + número con guiones/barras/puntos. Hasta 35 chars
-            // para cubrir "FRA-2026-0004", "A/2026/0004", "RECT-001/26".
-            "((?:[A-Z]{1,5}[\\-/]?)?[0-9][A-Z0-9\\-/_.]{2,34})"
+            // Captura PERMISIVA: cualquier secuencia razonable de
+            // letras/dígitos/separadores. Cubre cualquier prefijo
+            // sin limitar el número de letras:
+            //   "FRA-2026-0004"      — prefijo letras + guiones
+            //   "A/2026/0004"        — letra suelta + barras
+            //   "RECT-2026/001"      — rectificativa con barra
+            //   "RECTIFICATIVA-001"  — prefijo largo
+            //   "2026-0004"          — sin prefijo
+            //   "FACT2026.0001"      — sin separador entre prefijo/nº
+            //   "F-001/2026"         — letra suelta inicial
+            //   "23-A-0042"          — números + letras + números
+            //   "ABONO-001/26"       — palabra-completa-prefijo
+            // Restricción mínima: empieza con letra/dígito, termina con
+            // letra/dígito, máximo 40 chars. El filtro de ruido
+            // {@link #isInvoiceNumberNoise} descarta capturas que sean
+            // solo palabras como "FACTURA".
+            "([A-Z0-9][A-Z0-9\\-/_.]{1,38}[A-Z0-9])"
     );
 
     /**
