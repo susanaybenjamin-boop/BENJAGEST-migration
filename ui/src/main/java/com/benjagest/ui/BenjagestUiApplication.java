@@ -10999,6 +10999,18 @@ public class BenjagestUiApplication extends Application {
             case "client.tab.sales" -> "Sales";
             case "client.tab.expenses" -> "Expenses";
             case "client.sales_expenses.hint" -> "This client is NOT linked. Here you only archive invoices the client emitted/received in their own system. No legal invoicing from BENJAGEST — for that, the client must accept the invitation and activate VeriFactu.";
+            case "client.kpi.year" -> "Year:";
+            case "client.kpi.quarter" -> "Quarter:";
+            case "client.kpi.sales" -> "SALES";
+            case "client.kpi.expenses" -> "EXPENSES";
+            case "client.kpi.vat_charged" -> "VAT CHARGED (477)";
+            case "client.kpi.vat_borne" -> "VAT BORNE (472)";
+            case "client.kpi.model_303" -> "MODEL 303 (est.)";
+            case "client.kpi.model_303.to_pay" -> "to pay";
+            case "client.kpi.model_303.to_refund" -> "to refund";
+            case "client.kpi.model_303.neutral" -> "neutral";
+            case "client.kpi.drafts" -> "PENDING";
+            case "client.kpi.invoices" -> "invoices";
             case "advisory.client.tab.accounting" -> "Accounting";
             case "advisory.client.tab.banks" -> "Banks";
             case "advisory.client.tab.loans" -> "Loans";
@@ -11362,6 +11374,18 @@ public class BenjagestUiApplication extends Application {
             case "client.tab.sales" -> "Ventas";
             case "client.tab.expenses" -> "Gastos";
             case "client.sales_expenses.hint" -> "Este cliente NO está vinculado. Aquí solo archivas las facturas que el cliente emitió/recibió en su propio sistema. Para emitir facturas legales desde BENJAGEST (con VeriFactu), el cliente debe aceptar la invitación y activar el módulo.";
+            case "client.kpi.year" -> "Año:";
+            case "client.kpi.quarter" -> "Trimestre:";
+            case "client.kpi.sales" -> "VENTAS";
+            case "client.kpi.expenses" -> "GASTOS";
+            case "client.kpi.vat_charged" -> "IVA REPERCUTIDO (477)";
+            case "client.kpi.vat_borne" -> "IVA SOPORTADO (472)";
+            case "client.kpi.model_303" -> "MODELO 303 (est.)";
+            case "client.kpi.model_303.to_pay" -> "a pagar";
+            case "client.kpi.model_303.to_refund" -> "a devolver";
+            case "client.kpi.model_303.neutral" -> "neutro";
+            case "client.kpi.drafts" -> "POR VALIDAR";
+            case "client.kpi.invoices" -> "facturas";
             case "advisory.client.tab.accounting" -> "Contabilidad";
             case "advisory.client.tab.banks" -> "Bancos";
             case "advisory.client.tab.loans" -> "Préstamos";
@@ -14480,16 +14504,174 @@ public class BenjagestUiApplication extends Application {
 
         sub.getTabs().addAll(salesTab, expensesTab);
 
+        // KPIs en cards arriba: ventas, gastos, IVA repercutido,
+        // IVA soportado, Modelo 303 estimado, asientos pendientes.
+        // Selector de trimestre/año arriba de las cards. Auto-refresh
+        // suscrito al RefreshBus.
+        Node kpisBlock = buildClientKpisBlock();
+
         // Banner informativo: explica al asesor por qué la pantalla es
         // distinta de un cliente vinculado.
         Label hint = new Label(t("client.sales_expenses.hint"));
         hint.setWrapText(true);
         hint.getStyleClass().add("settings-hint");
 
-        VBox box = new VBox(8, hint, sub);
+        VBox box = new VBox(10, hint, kpisBlock, sub);
         VBox.setVgrow(sub, Priority.ALWAYS);
         box.setPadding(new Insets(8));
         return box;
+    }
+
+    /**
+     * Cabecera de KPIs del cliente NO vinculado: selector de
+     * trimestre/año + cards con totales. Refresco automático cuando
+     * cambian asientos o se importan PDFs.
+     */
+    private Node buildClientKpisBlock() {
+        // Selector de período: año + trimestre. Por defecto el actual.
+        LocalDate today = LocalDate.now();
+        int currentQuarter = (today.getMonthValue() - 1) / 3 + 1;
+
+        ComboBox<Integer> yearCombo = new ComboBox<>();
+        for (int y = today.getYear() - 5; y <= today.getYear() + 1; y++) yearCombo.getItems().add(y);
+        yearCombo.setValue(today.getYear());
+
+        ComboBox<Integer> quarterCombo = new ComboBox<>();
+        quarterCombo.getItems().addAll(1, 2, 3, 4);
+        quarterCombo.setValue(currentQuarter);
+        quarterCombo.setConverter(new javafx.util.StringConverter<>() {
+            @Override public String toString(Integer q) {
+                return q == null ? "" : "T" + q;
+            }
+            @Override public Integer fromString(String s) {
+                return s == null || s.isBlank() ? null
+                        : Integer.parseInt(s.replace("T", ""));
+            }
+        });
+
+        // 6 cards (HBox). Cada una un VBox con título + valor en grande.
+        Label salesValue = kpiCardValue();
+        Label salesCount = kpiCardCaption();
+        VBox salesCard = kpiCard(t("client.kpi.sales"), salesValue, salesCount);
+
+        Label expensesValue = kpiCardValue();
+        Label expensesCount = kpiCardCaption();
+        VBox expensesCard = kpiCard(t("client.kpi.expenses"), expensesValue, expensesCount);
+
+        Label vatChargedValue = kpiCardValue();
+        VBox vatChargedCard = kpiCard(t("client.kpi.vat_charged"), vatChargedValue, null);
+
+        Label vatBorneValue = kpiCardValue();
+        VBox vatBorneCard = kpiCard(t("client.kpi.vat_borne"), vatBorneValue, null);
+
+        Label model303Value = kpiCardValue();
+        Label model303Caption = kpiCardCaption();
+        VBox model303Card = kpiCard(t("client.kpi.model_303"), model303Value, model303Caption);
+
+        Label draftsValue = kpiCardValue();
+        VBox draftsCard = kpiCard(t("client.kpi.drafts"), draftsValue, null);
+
+        HBox cards = new HBox(10, salesCard, expensesCard,
+                vatChargedCard, vatBorneCard, model303Card, draftsCard);
+        cards.setFillHeight(true);
+        for (Node c : cards.getChildren()) HBox.setHgrow(c, Priority.ALWAYS);
+
+        Runnable reload = () -> {
+            Integer y = yearCombo.getValue();
+            Integer q = quarterCombo.getValue();
+            if (y == null || q == null) return;
+            LocalDate from = LocalDate.of(y, (q - 1) * 3 + 1, 1);
+            LocalDate to = from.plusMonths(3).minusDays(1);
+            Task<com.benjagest.ui.service.AccountingApiClient.SalesAndExpensesKpis> task = new Task<>() {
+                @Override
+                protected com.benjagest.ui.service.AccountingApiClient.SalesAndExpensesKpis call()
+                        throws Exception {
+                    return accountingApiClient.kpisSalesAndExpenses(from, to);
+                }
+            };
+            task.setOnSucceeded(ev -> {
+                var k = task.getValue();
+                salesValue.setText(formatMoney(k.salesTotal()));
+                salesCount.setText(k.salesCount() + " " + t("client.kpi.invoices"));
+                expensesValue.setText(formatMoney(k.expensesTotal()));
+                expensesCount.setText(k.expensesCount() + " " + t("client.kpi.invoices"));
+                vatChargedValue.setText(formatMoney(k.vatCharged()));
+                vatBorneValue.setText(formatMoney(k.vatBorne()));
+                model303Value.setText(formatMoney(k.model303Estimated()));
+                model303Caption.setText(k.model303Estimated().signum() > 0
+                        ? t("client.kpi.model_303.to_pay")
+                        : k.model303Estimated().signum() < 0
+                                ? t("client.kpi.model_303.to_refund")
+                                : t("client.kpi.model_303.neutral"));
+                draftsValue.setText(String.valueOf(k.draftCount()));
+            });
+            task.setOnFailed(ev -> {
+                salesValue.setText("—"); expensesValue.setText("—");
+                vatChargedValue.setText("—"); vatBorneValue.setText("—");
+                model303Value.setText("—"); draftsValue.setText("—");
+            });
+            start(task, "client-kpis");
+        };
+
+        yearCombo.valueProperty().addListener((o, a, b) -> reload.run());
+        quarterCombo.valueProperty().addListener((o, a, b) -> reload.run());
+
+        HBox selectorRow = new HBox(8,
+                new Label(t("client.kpi.year")), yearCombo,
+                new Label(t("client.kpi.quarter")), quarterCombo);
+        selectorRow.setAlignment(Pos.CENTER_LEFT);
+
+        VBox block = new VBox(8, selectorRow, cards);
+        block.setPadding(new Insets(4, 0, 4, 0));
+
+        // Auto-refresh cuando se modifican asientos.
+        com.benjagest.ui.support.RefreshBus.subscribe(
+                com.benjagest.ui.support.RefreshBus.TOPIC_JOURNAL,
+                reload, block);
+        com.benjagest.ui.support.RefreshBus.subscribe(
+                com.benjagest.ui.support.RefreshBus.TOPIC_PURCHASES,
+                reload, block);
+        com.benjagest.ui.support.RefreshBus.subscribe(
+                com.benjagest.ui.support.RefreshBus.TOPIC_SALES,
+                reload, block);
+
+        reload.run();
+        return block;
+    }
+
+    private VBox kpiCard(String title, Label valueLabel, Label captionLabel) {
+        Label titleLabel = new Label(title);
+        titleLabel.setStyle("-fx-text-fill: #666; -fx-font-size: 11px;");
+        VBox card = new VBox(2);
+        card.getChildren().add(titleLabel);
+        card.getChildren().add(valueLabel);
+        if (captionLabel != null) card.getChildren().add(captionLabel);
+        card.setStyle("-fx-background-color: white;"
+                + "-fx-background-radius: 6;"
+                + "-fx-border-color: #e0e0e0;"
+                + "-fx-border-radius: 6;"
+                + "-fx-border-width: 1;"
+                + "-fx-padding: 10 14 10 14;");
+        return card;
+    }
+
+    private Label kpiCardValue() {
+        Label l = new Label("—");
+        l.setStyle("-fx-font-size: 18px; -fx-font-weight: bold;");
+        return l;
+    }
+
+    private Label kpiCardCaption() {
+        Label l = new Label("");
+        l.setStyle("-fx-text-fill: #888; -fx-font-size: 11px;");
+        return l;
+    }
+
+    private String formatMoney(java.math.BigDecimal v) {
+        if (v == null) return "—";
+        // Formato es-ES: 1.234,56 €
+        return String.format(java.util.Locale.forLanguageTag("es-ES"),
+                "%,.2f €", v);
     }
 
     /**
