@@ -142,14 +142,7 @@ public class SalesJournalEntryService {
             if (acc473 == null) return null;
         }
 
-        Integer maxEntryNumber = jdbcTemplate.queryForObject("""
-                SELECT COALESCE(MAX(entry_number), 0)
-                  FROM journal_entries
-                 WHERE company_id = ?
-                   AND fiscal_year_id = ?
-                """, Integer.class, companyId, fiscalYearId);
-        int entryNumber = (maxEntryNumber == null ? 0 : maxEntryNumber) + 1;
-
+        // entry_number = NULL en DRAFT. Se asigna al validar (POSTED).
         String entryId = UUID.randomUUID().toString();
         String concept = buildConcept(invoice);
         jdbcTemplate.update("""
@@ -158,9 +151,9 @@ public class SalesJournalEntryService {
                     entry_date, concept, source_type, source_id,
                     status, reviewed, auto_proposed, proposed_confidence,
                     created_by
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'DRAFT', FALSE, TRUE, ?, ?)
+                ) VALUES (?, ?, ?, NULL, ?, ?, ?, ?, 'DRAFT', FALSE, TRUE, ?, ?)
                 """,
-                entryId, companyId, fiscalYearId, entryNumber,
+                entryId, companyId, fiscalYearId,
                 Date.valueOf(invoice.invoiceDate()),
                 concept, SRC_TYPE, invoice.id(),
                 proposedConfidence, userId);
@@ -219,17 +212,34 @@ public class SalesJournalEntryService {
         return entryId;
     }
 
-    /** Marca el asiento de una factura como VOIDED al anularla. */
+    /**
+     * Borra físicamente el asiento de una factura de venta cuando esta se
+     * elimina. Mismo trato que purchases: hueco en la numeración del
+     * Diario en lugar de VOIDED. Borra cascada (eventos → líneas → asiento).
+     */
     @Transactional
     public void reverseForSales(String invoiceId) {
-        jdbcTemplate.update("""
-                UPDATE journal_entries
-                   SET status = 'VOIDED'
-                 WHERE source_type = ?
-                   AND source_id = ?
-                   AND company_id = ?
-                   AND status = 'DRAFT'
-                """, SRC_TYPE, invoiceId, tenantContext.getCurrentCompanyId());
+        String companyId = tenantContext.getCurrentCompanyId();
+        // 1) recoger los ids de los asientos vinculados a esta factura.
+        List<String> entryIds = jdbcTemplate.query("""
+                SELECT id FROM journal_entries
+                 WHERE source_type = ? AND source_id = ? AND company_id = ?
+                """, (rs, n) -> rs.getString("id"),
+                SRC_TYPE, invoiceId, companyId);
+        for (String entryId : entryIds) {
+            jdbcTemplate.update("""
+                    DELETE FROM accounting_learning_events
+                     WHERE journal_entry_id = ? AND company_id = ?
+                    """, entryId, companyId);
+            jdbcTemplate.update("""
+                    DELETE FROM journal_entry_lines
+                     WHERE journal_entry_id = ?
+                    """, entryId);
+            jdbcTemplate.update("""
+                    DELETE FROM journal_entries
+                     WHERE id = ? AND company_id = ?
+                    """, entryId, companyId);
+        }
     }
 
     private String findOpenFiscalYearId(String companyId, LocalDate date) {

@@ -142,21 +142,17 @@ public class PurchaseJournalEntryService {
             return null;
         }
 
-        // 3) entry_number = siguiente para este fiscal_year. Posibilidad
-        //    de race en concurrencia alta — aceptable hasta que llegue
-        //    el slice contable serio (con secuencia oficial).
-        Integer maxEntryNumber = jdbcTemplate.queryForObject("""
-                SELECT COALESCE(MAX(entry_number), 0)
-                  FROM journal_entries
-                 WHERE company_id = ?
-                   AND fiscal_year_id = ?
-                """, Integer.class, companyId, fiscalYearId);
-        int entryNumber = (maxEntryNumber == null ? 0 : maxEntryNumber) + 1;
-
-        // 4) Crear el asiento. auto_proposed=TRUE indica que la cuenta
-        //    de gasto vino de una regla aprendida (o del fallback 600).
-        //    proposed_confidence guarda la fuerza de la regla para que la
-        //    UI muestre un chip de confianza al asesor.
+        // 3) Crear el asiento en DRAFT — entry_number = NULL.
+        //    El número definitivo del Diario se asigna al VALIDAR (POSTED),
+        //    no al crear el borrador. Así el orden del Diario refleja el
+        //    orden de validación (que es lo que el asesor controla), no el
+        //    orden de creación de las facturas. Si validas la #3 antes
+        //    que la #1, en el Diario será la #1.
+        //
+        //    auto_proposed=TRUE indica que la cuenta de gasto vino de una
+        //    regla aprendida (o del fallback 600). proposed_confidence
+        //    guarda la fuerza de la regla para que la UI muestre un chip
+        //    de confianza al asesor.
         String entryId = UUID.randomUUID().toString();
         String concept = buildConcept(purchase);
         jdbcTemplate.update("""
@@ -165,9 +161,9 @@ public class PurchaseJournalEntryService {
                     entry_date, concept, source_type, source_id,
                     status, reviewed, auto_proposed, proposed_confidence,
                     created_by
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'DRAFT', FALSE, TRUE, ?, ?)
+                ) VALUES (?, ?, ?, NULL, ?, ?, ?, ?, 'DRAFT', FALSE, TRUE, ?, ?)
                 """,
-                entryId, companyId, fiscalYearId, entryNumber,
+                entryId, companyId, fiscalYearId,
                 Date.valueOf(purchase.invoiceDate()),
                 concept, SRC_TYPE, purchase.id(),
                 proposedConfidence, userId);
@@ -218,19 +214,39 @@ public class PurchaseJournalEntryService {
         return entryId;
     }
 
-    /** Revierte el asiento (anula el asiento original y crea uno opuesto). */
+    /**
+     * Borra físicamente el asiento de una factura de compra que se
+     * elimina. Acordado con el asesor: si el gasto desaparece, su asiento
+     * desaparece también — queda un "hueco" en la numeración del Diario
+     * (entre #4 y #6 falta el #5, p. ej.) que es la marca legítima de la
+     * eliminación. Esto rompe la inalterabilidad estricta pero refleja la
+     * realidad práctica de la asesoría: si la factura no existió, el
+     * asiento tampoco.
+     *
+     * <p>Orden de borrado:
+     * <ol>
+     *   <li>accounting_learning_events que referencian el asiento.</li>
+     *   <li>journal_entry_lines.</li>
+     *   <li>journal_entries.</li>
+     * </ol>
+     */
     @Transactional
     public void reverseForPurchase(PurchaseInvoice purchase) {
         if (purchase.journalEntryId() == null) return;
-        // MVP: marcar el asiento como VOIDED. La inversión real (asiento
-        // espejo con debe/haber cambiados) llega cuando el módulo
-        // contable madure.
+        String companyId = tenantContext.getCurrentCompanyId();
+        String entryId = purchase.journalEntryId();
         jdbcTemplate.update("""
-                UPDATE journal_entries
-                   SET status = 'VOIDED'
-                 WHERE id = ?
-                   AND company_id = ?
-                """, purchase.journalEntryId(), tenantContext.getCurrentCompanyId());
+                DELETE FROM accounting_learning_events
+                 WHERE journal_entry_id = ? AND company_id = ?
+                """, entryId, companyId);
+        jdbcTemplate.update("""
+                DELETE FROM journal_entry_lines
+                 WHERE journal_entry_id = ?
+                """, entryId);
+        jdbcTemplate.update("""
+                DELETE FROM journal_entries
+                 WHERE id = ? AND company_id = ?
+                """, entryId, companyId);
     }
 
     private String findOpenFiscalYearId(String companyId, LocalDate date) {
