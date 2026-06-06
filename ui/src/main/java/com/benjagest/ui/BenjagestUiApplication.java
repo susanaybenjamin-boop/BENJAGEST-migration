@@ -14349,8 +14349,10 @@ public class BenjagestUiApplication extends Application {
         tabs.getStyleClass().add("settings-tabs");
         tabs.setTabClosingPolicy(TabPane.TabClosingPolicy.UNAVAILABLE);
 
+        // KPIs en el Resumen solo para vinculados — en el no vinculado
+        // viven dentro de "Ventas y Gastos" para no duplicarse.
         Tab summaryTab = new Tab(t("advisory.client.tab.summary"),
-                buildClientSummaryTab(client));
+                buildClientSummaryTab(client, isLinked));
         summaryTab.setGraphic(icon("fas-chart-line"));
 
         // Tabs de facturas según vinculación del cliente:
@@ -14430,6 +14432,17 @@ public class BenjagestUiApplication extends Application {
     }
 
     private Node buildClientSummaryTab(com.benjagest.ui.model.ManagedClientEntry client) {
+        return buildClientSummaryTab(client, true);
+    }
+
+    /**
+     * Resumen del cliente. Si {@code showKpis=true}, incluye el bloque
+     * de KPIs (Ventas, Gastos, IVA, Modelo 303). En el cliente NO
+     * vinculado los KPIs viven en la pestaña "Ventas y Gastos" para
+     * estar junto a los listados, así que no se duplican aquí.
+     */
+    private Node buildClientSummaryTab(com.benjagest.ui.model.ManagedClientEntry client,
+                                         boolean showKpis) {
         Label title = label(t("advisory.client.summary.title"), "settings-section-title");
         Label hint = new Label(t("advisory.client.summary.hint"));
         hint.setWrapText(true);
@@ -14455,12 +14468,26 @@ public class BenjagestUiApplication extends Application {
             g.add(new Label(client.city()), 1, r++);
         }
 
-        Label kpisTitle = label(t("advisory.client.kpis.title"), "settings-section-title");
-        Label kpisHint = new Label(t("advisory.client.kpis.coming_soon"));
-        kpisHint.setWrapText(true);
-        kpisHint.getStyleClass().add("settings-hint");
-
-        VBox body = new VBox(14, title, hint, g, new Separator(), kpisTitle, kpisHint);
+        VBox body = new VBox(14, title, hint, g);
+        // KPIs reales (Slice 2A). Solo los pintamos aquí si el cliente
+        // está vinculado — en el NO vinculado los KPIs ya viven en la
+        // pestaña "Ventas y Gastos" para estar junto a los listados,
+        // y duplicarlos en el Resumen confundiría.
+        if (showKpis) {
+            Label kpisTitle = label(t("advisory.client.kpis.title"),
+                    "settings-section-title");
+            LocalDate todaySum = LocalDate.now();
+            int currentQuarterSum = (todaySum.getMonthValue() - 1) / 3 + 1;
+            LocalDate initFromSum = LocalDate.of(todaySum.getYear(),
+                    (currentQuarterSum - 1) * 3 + 1, 1);
+            LocalDate initToSum = initFromSum.plusMonths(3).minusDays(1);
+            javafx.beans.property.ObjectProperty<LocalDate> fromPropSum =
+                    new javafx.beans.property.SimpleObjectProperty<>(initFromSum);
+            javafx.beans.property.ObjectProperty<LocalDate> toPropSum =
+                    new javafx.beans.property.SimpleObjectProperty<>(initToSum);
+            Node kpisBlock = buildClientKpisBlock(fromPropSum, toPropSum);
+            body.getChildren().addAll(new Separator(), kpisTitle, kpisBlock);
+        }
         body.setPadding(new Insets(20));
         return body;
     }
