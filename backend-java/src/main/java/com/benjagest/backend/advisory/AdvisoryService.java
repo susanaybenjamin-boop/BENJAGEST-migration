@@ -224,7 +224,46 @@ public class AdvisoryService {
                 c.tradeName(),
                 c.taxIdentifier(),
                 advisoryId);
+
+        // 4) Activar los módulos esenciales para la company recién creada.
+        //    Sin esto, la asesoría entra al modo cliente pero recibe 403
+        //    en /api/accounting, /api/purchases, etc. Es la misma lista
+        //    que V54 aplica para empresas existentes — la repetimos aquí
+        //    para nuevas shadow companies.
+        activateEssentialModules(newId);
         return newId;
+    }
+
+    /**
+     * Activa los módulos esenciales (accounting, billing, purchases…)
+     * para una company recién creada. Idempotente:
+     * <ul>
+     *   <li>INSERT IGNORE: si el módulo ya está asignado, no duplica.</li>
+     *   <li>UPDATE: si existe pero está active=FALSE, lo activa.</li>
+     * </ul>
+     */
+    private void activateEssentialModules(String companyId) {
+        jdbcTemplate.update("""
+                INSERT IGNORE INTO company_modules (id, company_id, module_id, active)
+                SELECT UUID(), ?, m.id, TRUE
+                  FROM module_catalog m
+                 WHERE m.slug IN ('core', 'billing', 'purchases', 'accounting',
+                                  'tax', 'calendar', 'notifications', 'labor',
+                                  'reports', 'settings')
+                   AND m.active_in_catalog = TRUE
+                """, companyId);
+        jdbcTemplate.update("""
+                UPDATE company_modules cm
+                  JOIN module_catalog m ON m.id = cm.module_id
+                   SET cm.active = TRUE,
+                       cm.activated_at = CURRENT_TIMESTAMP,
+                       cm.deactivated_at = NULL
+                 WHERE cm.company_id = ?
+                   AND m.slug IN ('core', 'billing', 'purchases', 'accounting',
+                                  'tax', 'calendar', 'notifications', 'labor',
+                                  'reports', 'settings')
+                   AND cm.active = FALSE
+                """, companyId);
     }
 
     private record CustomerRow(String id, String legalName,
