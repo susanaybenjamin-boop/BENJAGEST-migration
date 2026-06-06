@@ -11119,6 +11119,9 @@ public class BenjagestUiApplication extends Application {
             case "client.action.import_pdfs_auto" -> "Import PDFs (auto)";
             case "client.import_auto.done.title" -> "Import finished";
             case "client.import_auto.done.body" -> "Auto-classified PDFs:\n  · Sales: {s}\n  · Expenses: {e}\n\nThe extractor compared the emitter NIF with the client's NIF to decide.";
+            case "client.warnings.duplicates" -> "{n} possible duplicates (same PDF imported multiple times)";
+            case "client.warnings.missing_number" -> "{n} entries missing invoice number";
+            case "client.warnings.unbalanced" -> "{n} entries with debit/credit mismatch";
             case "advisory.client.tab.accounting" -> "Accounting";
             case "advisory.client.tab.banks" -> "Banks";
             case "advisory.client.tab.loans" -> "Loans";
@@ -11505,6 +11508,9 @@ public class BenjagestUiApplication extends Application {
             case "client.action.import_pdfs_auto" -> "Importar PDFs (auto)";
             case "client.import_auto.done.title" -> "Importación terminada";
             case "client.import_auto.done.body" -> "PDFs auto-clasificados:\n  · Ventas: {s}\n  · Gastos: {e}\n\nEl extractor comparó el NIF emisor con el NIF del cliente para decidir.";
+            case "client.warnings.duplicates" -> "{n} posibles duplicados (mismo PDF importado varias veces)";
+            case "client.warnings.missing_number" -> "{n} asientos sin nº de factura";
+            case "client.warnings.unbalanced" -> "{n} asientos con debe ≠ haber";
             case "advisory.client.tab.accounting" -> "Contabilidad";
             case "advisory.client.tab.banks" -> "Bancos";
             case "advisory.client.tab.loans" -> "Préstamos";
@@ -14902,6 +14908,25 @@ public class BenjagestUiApplication extends Application {
         // sin recargar del backend.
         final java.util.List<com.benjagest.ui.model.AccountingModels.DiaryEntry> cache =
                 new java.util.ArrayList<>();
+        // Set de SHA-256 vistos más de una vez en el cache. Usado por
+        // la columna de duplicados y el banner de avisos. Se recalcula
+        // cada vez que el cache cambia (recomputeIssues, más abajo).
+        final java.util.Set<String> duplicateShas = new java.util.HashSet<>();
+
+        // Slice 3B — banner de avisos contextuales (declarado aquí para
+        // que applyFilters pueda actualizarlo sin orden de declaración
+        // forzado).
+        Label warningsBanner = new Label("");
+        warningsBanner.setWrapText(true);
+        warningsBanner.setStyle("-fx-background-color: #fff8e1;"
+                + "-fx-text-fill: #6d4c00;"
+                + "-fx-background-radius: 4;"
+                + "-fx-padding: 8 12 8 12;"
+                + "-fx-border-color: #f0d56d;"
+                + "-fx-border-radius: 4;"
+                + "-fx-border-width: 1;");
+        warningsBanner.setVisible(false);
+        warningsBanner.setManaged(false);
 
         // Columna Nº con ordenación NUMÉRICA (no alfabética).
         javafx.scene.control.TableColumn<com.benjagest.ui.model.AccountingModels.DiaryEntry, Integer> colNum =
@@ -14962,6 +14987,59 @@ public class BenjagestUiApplication extends Application {
         });
 
         Runnable applyFilters = () -> {
+            // Recalcular duplicados + métricas para el banner de avisos
+            // antes de filtrar. Es barato (O(n) sobre cache de 50-200).
+            duplicateShas.clear();
+            java.util.Map<String, Integer> shaCount = new java.util.HashMap<>();
+            int missingNumber = 0;
+            int unbalanced = 0;
+            for (var e : cache) {
+                if (e.sourcePdfSha256() != null && !e.sourcePdfSha256().isBlank()) {
+                    shaCount.merge(e.sourcePdfSha256(), 1, Integer::sum);
+                }
+                String concept = e.concept() == null ? "" : e.concept();
+                boolean noNum = concept.toLowerCase().startsWith("venta importada")
+                        || (concept.contains("Fra.")
+                                && !concept.matches(".*Fra\\.\\s*[A-Z0-9].*\\d.*"));
+                if (noNum) missingNumber++;
+                if (e.totalDebit() != null && e.totalCredit() != null) {
+                    var diff = e.totalDebit().subtract(e.totalCredit()).abs();
+                    if (diff.compareTo(new java.math.BigDecimal("0.01")) > 0) {
+                        unbalanced++;
+                    }
+                }
+            }
+            int dupCount = 0;
+            for (var en : shaCount.entrySet()) {
+                if (en.getValue() > 1) {
+                    duplicateShas.add(en.getKey());
+                    dupCount += en.getValue();
+                }
+            }
+            // Actualizar banner.
+            StringBuilder sb = new StringBuilder();
+            if (dupCount > 0) sb.append(t("client.warnings.duplicates")
+                    .replace("{n}", String.valueOf(dupCount)));
+            if (missingNumber > 0) {
+                if (sb.length() > 0) sb.append("  ·  ");
+                sb.append(t("client.warnings.missing_number")
+                        .replace("{n}", String.valueOf(missingNumber)));
+            }
+            if (unbalanced > 0) {
+                if (sb.length() > 0) sb.append("  ·  ");
+                sb.append(t("client.warnings.unbalanced")
+                        .replace("{n}", String.valueOf(unbalanced)));
+            }
+            if (sb.length() > 0) {
+                warningsBanner.setText("⚠ " + sb.toString());
+                warningsBanner.setVisible(true);
+                warningsBanner.setManaged(true);
+            } else {
+                warningsBanner.setVisible(false);
+                warningsBanner.setManaged(false);
+            }
+
+            // Filtrado de la tabla con los criterios del usuario.
             String q = search.getText() == null ? ""
                     : search.getText().trim().toLowerCase();
             String st = statusFilter.getValue();
@@ -15033,10 +15111,27 @@ public class BenjagestUiApplication extends Application {
         toProp.addListener((o, a, b) -> loadClientSalesArchived(
                 table, cache, fromProp.get(), toProp.get(), applyFilters));
 
-        VBox box = new VBox(8, filtersRow, table);
+        // Slice 3A — columna "⚠" con badge rojo cuando el SHA-256 del
+        // PDF aparece en duplicateShas (= 2+ asientos importados del
+        // mismo PDF). Se inserta como segunda columna (tras Nº).
+        javafx.scene.control.TableColumn<com.benjagest.ui.model.AccountingModels.DiaryEntry, String> colWarn =
+                new javafx.scene.control.TableColumn<>("⚠");
+        colWarn.setCellValueFactory(c -> {
+            var e = c.getValue();
+            return new javafx.beans.property.SimpleStringProperty(
+                    e != null && e.sourcePdfSha256() != null
+                            && duplicateShas.contains(e.sourcePdfSha256())
+                            ? "🔴" : "");
+        });
+        colWarn.setPrefWidth(36);
+        colWarn.setSortable(false);
+        table.getColumns().add(1, colWarn);
+
+        VBox box = new VBox(8, warningsBanner, filtersRow, table);
         VBox.setVgrow(table, Priority.ALWAYS);
         box.setPadding(new Insets(12));
-        loadClientSalesArchived(table, cache, fromProp.get(), toProp.get(), applyFilters);
+        loadClientSalesArchived(table, cache, fromProp.get(), toProp.get(),
+                applyFilters);
         return box;
     }
 
