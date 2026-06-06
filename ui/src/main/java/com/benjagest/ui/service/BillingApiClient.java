@@ -161,6 +161,26 @@ public class BillingApiClient {
     }
 
     /**
+     * Valida un lote de facturas DRAFT (multiselección). Devuelve el JSON
+     * crudo del resumen — la UI lo parsea para mostrar cuántas pasaron.
+     */
+    public String validateBatch(java.util.List<String> ids) throws IOException, InterruptedException {
+        StringBuilder body = new StringBuilder("{\"ids\":[");
+        for (int i = 0; i < ids.size(); i++) {
+            if (i > 0) body.append(',');
+            body.append('"').append(ids.get(i)).append('"');
+        }
+        body.append("]}");
+        HttpRequest.Builder builder = HttpRequest.newBuilder(URI.create(baseUrl + "/billing/invoices/validate-batch"))
+                .timeout(Duration.ofSeconds(120))
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(body.toString()));
+        HttpResponse<String> response = sendAuthorized(builder);
+        ensureOk(response);
+        return response.body();
+    }
+
+    /**
      * Descarga el PDF de una factura (F4b). Devuelve los bytes para que
      * la UI los guarde donde quiera (FileChooser) o los abra en visor
      * del sistema.

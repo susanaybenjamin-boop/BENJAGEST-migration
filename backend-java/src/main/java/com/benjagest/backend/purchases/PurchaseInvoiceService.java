@@ -136,6 +136,82 @@ public class PurchaseInvoiceService {
      * factura cae en un fiscal_year LOCKED/CLOSED o en un período
      * presentado.
      */
+    /**
+     * Valida un lote de facturas DRAFT pasándolas a POSTED y generando
+     * (si no lo tienen ya) el asiento contable automático correspondiente.
+     *
+     * <p>Para cada factura del lote:
+     * <ul>
+     *   <li>Si status != DRAFT, se salta (idempotente).</li>
+     *   <li>Si está en un fiscal_year LOCKED/CLOSED, se reporta error.</li>
+     *   <li>Si OK: status=POSTED, genera asiento via PurchaseJournalEntryService
+     *       (mismo flujo que cuando se guarda una factura individual).</li>
+     * </ul>
+     *
+     * @return resumen del proceso por id.
+     */
+    @Transactional
+    public BatchValidateResult validateBatch(List<String> ids) {
+        if (ids == null || ids.isEmpty()) {
+            return new BatchValidateResult(0, 0, 0, java.util.List.of());
+        }
+        AuthenticatedUser user = currentUserService.require();
+        String tenant = tenantContext.getCurrentCompanyId();
+
+        int posted = 0;
+        int skipped = 0;
+        int errors = 0;
+        java.util.List<BatchValidateItem> items = new java.util.ArrayList<>();
+
+        for (String id : ids) {
+            try {
+                PurchaseInvoice existing = repository.findById(id).orElse(null);
+                if (existing == null) {
+                    skipped++;
+                    items.add(new BatchValidateItem(id, "SKIPPED", "no existe", null));
+                    continue;
+                }
+                if (!"DRAFT".equals(existing.status())) {
+                    skipped++;
+                    items.add(new BatchValidateItem(id, "SKIPPED",
+                            "status=" + existing.status(), existing.journalEntryId()));
+                    continue;
+                }
+                // Verificar fiscal_year OPEN para la fecha (idempotente).
+                try {
+                    fiscalGuard.requireOpenForDate(existing.invoiceDate(), "validar gasto");
+                } catch (Exception ex) {
+                    errors++;
+                    items.add(new BatchValidateItem(id, "ERROR", ex.getMessage(), null));
+                    continue;
+                }
+                String entryId = existing.journalEntryId();
+                if (entryId == null) {
+                    try {
+                        entryId = journalService.createForPurchase(existing, user.userId());
+                    } catch (Exception ex) {
+                        errors++;
+                        items.add(new BatchValidateItem(id, "ERROR",
+                                "asiento: " + ex.getMessage(), null));
+                        continue;
+                    }
+                }
+                repository.updateStatus(id, "POSTED");
+                if (entryId != null) {
+                    repository.updateJournalEntryFk(id, entryId);
+                }
+                auditService.recordPurchaseInvoicePosted(user.userId(), tenant, id,
+                        existing.totalAmount(), entryId != null);
+                posted++;
+                items.add(new BatchValidateItem(id, "POSTED", null, entryId));
+            } catch (Exception ex) {
+                errors++;
+                items.add(new BatchValidateItem(id, "ERROR", ex.getMessage(), null));
+            }
+        }
+        return new BatchValidateResult(ids.size(), posted, skipped + errors, items);
+    }
+
     @Transactional
     public void deleteInvoice(String id) {
         PurchaseInvoice existing = get(id);
@@ -192,6 +268,17 @@ public class PurchaseInvoiceService {
             PurchaseInvoice invoice,
             boolean duplicate,
             String message
+    ) {}
+
+    public record BatchValidateRequest(java.util.List<String> ids) {}
+
+    public record BatchValidateItem(
+            String id, String status, String message, String journalEntryId
+    ) {}
+
+    public record BatchValidateResult(
+            int total, int posted, int failed,
+            java.util.List<BatchValidateItem> items
     ) {}
 
     /** Sin uso — sentinel para futuros campos calculados. */

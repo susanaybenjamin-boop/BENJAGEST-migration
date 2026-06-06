@@ -138,6 +138,14 @@ public class PurchaseInvoiceRepository {
         return jdbcTemplate.query(sql.toString(), this::map, args.toArray());
     }
 
+    /** Cambia el status (DRAFT/POSTED/VOID) sin tocar el resto. */
+    public int updateStatus(String id, String status) {
+        return jdbcTemplate.update("""
+                UPDATE purchase_invoices SET status = ?
+                 WHERE id = ? AND company_id = ?
+                """, status, id, tenantContext.getCurrentCompanyId());
+    }
+
     public int updateJournalEntryFk(String id, String journalEntryId) {
         return jdbcTemplate.update("""
                 UPDATE purchase_invoices

@@ -117,6 +117,42 @@ public class SalesInvoiceController {
         return service.validate(id);
     }
 
+    /**
+     * Valida un lote de facturas DRAFT (multiselección). Recorre cada id
+     * y dispara {@link SalesInvoiceService#validate}: PDF, hash chain,
+     * SIF event y asiento contable. Devuelve resumen por id.
+     */
+    @PostMapping("/validate-batch")
+    public java.util.Map<String, Object> validateBatch(
+            @RequestBody java.util.Map<String, java.util.List<String>> body) {
+        java.util.List<String> ids = body == null ? java.util.List.of() : body.get("ids");
+        if (ids == null) ids = java.util.List.of();
+        int validated = 0, skipped = 0, errors = 0;
+        java.util.List<java.util.Map<String, Object>> items = new java.util.ArrayList<>();
+        for (String id : ids) {
+            try {
+                SalesInvoice cur = service.get(id);
+                if (!"DRAFT".equals(cur.status())) {
+                    skipped++;
+                    items.add(java.util.Map.of("id", id, "status", "SKIPPED",
+                            "reason", "status=" + cur.status()));
+                    continue;
+                }
+                SalesInvoice v = service.validate(id);
+                validated++;
+                items.add(java.util.Map.of("id", id, "status", v.status(),
+                        "number", v.invoiceNumber() == null ? "" : v.invoiceNumber()));
+            } catch (Exception ex) {
+                errors++;
+                items.add(java.util.Map.of("id", id, "status", "ERROR",
+                        "reason", ex.getMessage() == null ? ex.toString() : ex.getMessage()));
+            }
+        }
+        return java.util.Map.of("total", ids.size(),
+                "validated", validated, "skipped", skipped, "errors", errors,
+                "items", items);
+    }
+
     @PostMapping("/{id}/void")
     public SalesInvoice voidValidated(@PathVariable("id") String id) {
         return service.voidValidated(id);
