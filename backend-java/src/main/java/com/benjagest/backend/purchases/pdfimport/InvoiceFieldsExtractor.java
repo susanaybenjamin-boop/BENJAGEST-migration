@@ -526,14 +526,20 @@ public class InvoiceFieldsExtractor {
         if (text == null || text.isBlank()) return new String[]{null, null};
         Matcher recv = RECEIVER_LABEL.matcher(text);
         if (!recv.find()) {
-            // Sin etiqueta de receptor: fallback robusto. Si hay 2+ NIFs
-            // distintos, el primero que NO sea el emisor es el receptor.
-            // Esto cubre facturas españolas estándar donde el emisor sale
-            // arriba y el cliente sale a la derecha sin etiqueta.
-            String nifFallback = pickReceiverNifFromList(allNifs, emitterNif);
-            String nameFallback = nifFallback != null
-                    ? guessNameNearNif(text, nifFallback) : null;
-            return new String[]{nifFallback, nameFallback};
+            // Sin etiqueta clara de receptor → NO inferimos.
+            //
+            // El fallback "segundo NIF distinto del emisor" parecía
+            // razonable pero es peligroso: en facturas donde los datos
+            // del cliente aparecen ARRIBA (formato común español),
+            // guessEmitterNif se confunde y devuelve el NIF del
+            // cliente como emisor. Entonces el fallback aquí
+            // devolvería el NIF del emisor real como receptor, y la
+            // UI acaba pintando al emisor (Benjamin) como cliente.
+            //
+            // Mejor dejar nulls: la UI muestra los campos vacíos y el
+            // usuario los rellena en 5 segundos. Es preferible vacío
+            // y correcto que auto-rellenado con el dato equivocado.
+            return new String[]{null, null};
         }
         int start = recv.end();
         // Ventana de 400 chars tras el label: ahí debe estar el NIF y el
@@ -579,17 +585,30 @@ public class InvoiceFieldsExtractor {
             name = s;
             break;
         }
-        // Fallbacks finales si la ventana no dio resultado.
-        if (nif == null) nif = pickReceiverNifFromList(allNifs, emitterNif);
+        // Fallback de nombre: si tenemos el NIF del receptor por la
+        // ventana pero no pudimos extraer el nombre de la misma
+        // ventana, lo buscamos en las líneas adyacentes al NIF en
+        // TODO el documento. Esto es seguro porque el NIF lo
+        // confirmamos dentro de la ventana de etiqueta — solo
+        // extendemos la búsqueda del nombre.
+        //
+        // NO hacemos fallback del NIF a "primer NIF distinto del
+        // emisor" porque si guessEmitterNif se equivocó, devolvemos
+        // al emisor real como cliente.
         if (name == null && nif != null) name = guessNameNearNif(text, nif);
         return new String[]{nif, name};
     }
 
     /**
      * De la lista completa de NIFs detectados en el documento, devuelve
-     * el primero que NO sea el emisor. Fallback robusto cuando ninguna
-     * etiqueta "Cliente:" / "Factura a:" matcheó.
+     * el primero que NO sea el emisor.
+     *
+     * <p>Reservado para uso futuro — actualmente NO se usa como fallback
+     * porque si guessEmitterNif se equivocó (caso común cuando los
+     * datos del cliente salen arriba), este "fallback" devuelve al
+     * emisor real como cliente, lo que rompe el concepto generado.
      */
+    @SuppressWarnings("unused")
     private String pickReceiverNifFromList(List<String> allNifs, String emitterNif) {
         if (allNifs == null) return null;
         for (String n : allNifs) {

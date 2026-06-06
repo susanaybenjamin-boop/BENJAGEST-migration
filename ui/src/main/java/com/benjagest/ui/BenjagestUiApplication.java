@@ -2739,21 +2739,14 @@ public class BenjagestUiApplication extends Application {
         // Mapeo extractor → ventas:
         //   - receiverNif/receiverName = DESTINATARIO de la factura =
         //     CLIENTE en facturas emitidas (el caso normal en ventas).
-        //   - emitterNif/supplierName = EMISOR = el propio usuario.
-        // Si el extractor no detecta receptor (formato raro), caemos al
-        // emisor como último recurso para no dejar campos vacíos.
+        // NO caemos al emitterNif/supplierName si el receptor está vacío
+        // — el emisor es el propio Benjamin, ponerlo como cliente
+        // genera "Fra. X a Benjamin" que no tiene sentido. Mejor dejar
+        // el campo vacío y que el usuario rellene a mano.
         // extractField devuelve "—" cuando el campo no existe en el JSON;
         // por eso isBlankOrDash() y no isBlank().
         String customerNif = extractField(json, "receiverNif");
         String customerName = extractField(json, "receiverName");
-        if (isBlankOrDash(customerNif)) {
-            customerNif = extractField(json, "emitterNif");
-        }
-        if (isBlankOrDash(customerName)) {
-            customerName = extractField(json, "supplierName");
-        }
-        // Si tras el fallback siguen vacíos, limpiamos el "—" para que
-        // el TextField salga vacío en vez de con un guión inútil.
         if (isBlankOrDash(customerNif)) customerNif = "";
         if (isBlankOrDash(customerName)) customerName = "";
         String number = extractField(json, "invoiceNumber");
