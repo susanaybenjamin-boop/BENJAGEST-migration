@@ -73,6 +73,18 @@ public class AccountingJournalController {
         return manualService.post(id);
     }
 
+    /**
+     * Valida un lote de asientos DRAFT (multiselección desde tab
+     * "Por validar" del módulo Contabilidad). Cada uno pasa a POSTED,
+     * los que ya estaban POSTED se cuentan como SKIPPED. Devuelve
+     * resumen con detalle por id.
+     */
+    @PostMapping("/journal-entries/post-batch")
+    public ManualJournalEntryService.BatchPostResult postBatch(
+            @RequestBody ManualJournalEntryService.BatchPostRequest body) {
+        return manualService.postBatch(body == null ? java.util.List.of() : body.ids());
+    }
+
     @DeleteMapping("/journal-entries/{id}")
     public Map<String, Object> voidEntry(
             @PathVariable("id") String id,

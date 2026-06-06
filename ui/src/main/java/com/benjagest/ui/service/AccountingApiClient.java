@@ -89,6 +89,30 @@ public class AccountingApiClient {
         return parseEntryDetail(resp);
     }
 
+    /**
+     * Valida un lote de asientos DRAFT. El usuario hace Ctrl+click /
+     * Shift+click para seleccionar varios en el tab "Por validar" y
+     * pulsa "Validar seleccionados". Devuelve {@link BatchPostResult}
+     * con desglose total/posted/skipped/errors para mostrarlo al usuario.
+     */
+    public BatchPostResult postBatchEntries(java.util.List<String> ids)
+            throws IOException, InterruptedException {
+        StringBuilder body = new StringBuilder("{\"ids\":[");
+        for (int i = 0; i < ids.size(); i++) {
+            if (i > 0) body.append(',');
+            body.append('"').append(ids.get(i)).append('"');
+        }
+        body.append("]}");
+        String json = postRaw("/accounting/journal-entries/post-batch", body.toString());
+        return new BatchPostResult(
+                intField(json, "total"),
+                intField(json, "posted"),
+                intField(json, "skipped"),
+                intField(json, "errors"));
+    }
+
+    public record BatchPostResult(int total, int posted, int skipped, int errors) {}
+
     public void voidEntry(String id, String reason) throws IOException, InterruptedException {
         String path = "/accounting/journal-entries/" + id;
         if (reason != null && !reason.isBlank()) {

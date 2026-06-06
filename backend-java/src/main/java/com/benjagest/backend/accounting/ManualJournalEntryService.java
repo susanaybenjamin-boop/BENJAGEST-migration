@@ -142,6 +142,57 @@ public class ManualJournalEntryService {
         return get(entryId);
     }
 
+    /**
+     * Valida un lote de asientos DRAFT pasándolos a POSTED. Ideal para
+     * el flujo "el sistema auto-propuso 20 asientos esta semana, voy a
+     * validar los 10 que ya estaban bien": el asesor marca varios y
+     * dispara el endpoint batch.
+     *
+     * <p>Recorre cada id y reusa {@link #post(String)}. Si uno falla
+     * (fecha en periodo CLOSED, validaciones de cuenta, etc.) lo cuenta
+     * como error y sigue con los demás — la respuesta lleva el detalle
+     * por id.
+     */
+    @Transactional
+    public BatchPostResult postBatch(List<String> ids) {
+        if (ids == null || ids.isEmpty()) {
+            return new BatchPostResult(0, 0, 0, 0, List.of());
+        }
+        int total = ids.size();
+        int posted = 0, skipped = 0, errors = 0;
+        java.util.List<BatchPostItem> items = new java.util.ArrayList<>();
+        for (String id : ids) {
+            try {
+                ManualEntryView cur = get(id);
+                if (!"DRAFT".equals(cur.status())) {
+                    skipped++;
+                    items.add(new BatchPostItem(id, "SKIPPED",
+                            "status=" + cur.status(), cur.entryNumber()));
+                    continue;
+                }
+                ManualEntryView posted_ = post(id);
+                posted++;
+                items.add(new BatchPostItem(id, posted_.status(), null,
+                        posted_.entryNumber()));
+            } catch (Exception ex) {
+                errors++;
+                items.add(new BatchPostItem(id, "ERROR",
+                        ex.getMessage() == null ? ex.toString() : ex.getMessage(),
+                        0));
+            }
+        }
+        return new BatchPostResult(total, posted, skipped, errors, items);
+    }
+
+    public record BatchPostRequest(List<String> ids) {}
+    public record BatchPostItem(
+            String id, String status, String message, int entryNumber
+    ) {}
+    public record BatchPostResult(
+            int total, int posted, int skipped, int errors,
+            List<BatchPostItem> items
+    ) {}
+
     /** Pasa el asiento de DRAFT a POSTED. */
     @Transactional
     public ManualEntryView post(String entryId) {

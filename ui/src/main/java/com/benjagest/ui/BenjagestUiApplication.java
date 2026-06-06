@@ -10581,6 +10581,10 @@ public class BenjagestUiApplication extends Application {
             case "accounting.backfill.done" -> "Regeneration completed";
             case "accounting.backfill.result" -> "Entries created:\n  · Purchases: {p}\n  · Sales: {s}\n  · Total: {t}\n\nCheck the 'To validate' tab to review the auto-proposed entries.";
             case "accounting.error.backfill" -> "Could not regenerate entries";
+            case "accounting.action.validate_batch" -> "Validate selected";
+            case "accounting.confirm.validate_batch" -> "Validate {n} selected entries (draft)? Already POSTED ones will be skipped, errors (closed period, etc.) will stay as they are.";
+            case "accounting.validate_batch.result" -> "Validated: {p}\nSkipped: {s}\nErrors: {e}\n\nThe pending tab and the journal have been refreshed.";
+            case "accounting.error.validate_batch" -> "Could not validate batch";
             case "accounting.error.session_expired_title" -> "Session expired";
             case "accounting.error.session_expired_body" -> "Your session has expired (tokens last 8 hours for security).\n\nClose the app and log in again to continue.\n\nNothing you saved has been lost.";
             // ============ Enum values translated (EN) ============
@@ -10917,6 +10921,10 @@ public class BenjagestUiApplication extends Application {
             case "accounting.backfill.done" -> "Regeneración completada";
             case "accounting.backfill.result" -> "Asientos generados:\n  · Compras: {p}\n  · Ventas: {s}\n  · Total: {t}\n\nRevisa la pestaña 'Por validar' para validar los asientos auto-propuestos.";
             case "accounting.error.backfill" -> "No se pudieron regenerar asientos";
+            case "accounting.action.validate_batch" -> "Validar seleccionados";
+            case "accounting.confirm.validate_batch" -> "¿Validar {n} asientos seleccionados (en borrador)? Los que ya estén POSTED se saltarán y los que tengan errores (fecha en periodo cerrado, etc.) quedarán como están.";
+            case "accounting.validate_batch.result" -> "Validados: {p}\nSaltados: {s}\nErrores: {e}\n\nLa pestaña por validar y el diario se han actualizado.";
+            case "accounting.error.validate_batch" -> "No se pudo validar el lote";
             case "accounting.error.session_expired_title" -> "Sesión expirada";
             case "accounting.error.session_expired_body" -> "Tu sesión ha caducado (los tokens duran 8 horas por seguridad).\n\nCierra la aplicación y vuelve a iniciar sesión para continuar trabajando.\n\nNo se ha perdido nada de lo que tenías guardado.";
             // ============ Valores enum traducidos (ES) ============
