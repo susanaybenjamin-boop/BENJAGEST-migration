@@ -14198,8 +14198,15 @@ public class BenjagestUiApplication extends Application {
      * después queda para un slice futuro.
      */
     private void openPortfolioClient(com.benjagest.ui.model.CustomerPortfolioEntry sel) {
+        // IMPORTANTE: el SQL del portfolio (AdvisoryService.listPortfolio)
+        // hace JOIN con companies por parent_company_id, así que TODO lo
+        // que devuelve son SHADOW companies (MANAGED_CLIENT), no clientes
+        // realmente vinculados (que tendrían su propia company sin
+        // parent). Por eso pasamos isLinked=false en ambos caminos:
+        // shadow ya existente y shadow recién creada. Modo "Ventas y
+        // Gastos" unificado (A3/Contasol).
         if (sel.isLinked()) {
-            switchToClient(sel.asManagedClient(), true);
+            switchToClient(sel.asManagedClient(), false);
             return;
         }
         Task<String> task = new Task<>() {
