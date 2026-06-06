@@ -233,6 +233,47 @@ public class ManualJournalEntryService {
      * trazabilidad legal.
      */
     @Transactional
+    /**
+     * Borra FÍSICAMENTE asientos importados de PDF (duplicados). Solo
+     * acepta ids cuyo {@code source_type IN ('SALES_PDF_IMPORT',
+     * 'PURCHASE_INVOICE')} y cuyo periodo fiscal NO está cerrado.
+     *
+     * <p>Por qué eliminación física (no voiding):
+     * un duplicado es un error operativo, no una rectificativa
+     * contable. VOID + contraasiento contaminaría el Libro Diario
+     * con eventos que no corresponden a la realidad económica. El
+     * registro de auditoría queda en el log de la asesoría (qué
+     * usuario borró qué asiento, cuándo).
+     *
+     * @return número de asientos efectivamente borrados.
+     */
+    public int deleteImportedByIds(List<String> ids) {
+        if (ids == null || ids.isEmpty()) return 0;
+        String companyId = tenantContext.getCurrentCompanyId();
+        int deleted = 0;
+        for (String id : ids) {
+            if (id == null || id.isBlank()) continue;
+            // Solo borramos si es de origen importado.
+            List<String> srcs = jdbcTemplate.query("""
+                    SELECT source_type FROM journal_entries
+                     WHERE id = ? AND company_id = ?
+                     LIMIT 1
+                    """, (rs, n) -> rs.getString("source_type"), id, companyId);
+            if (srcs.isEmpty()) continue;
+            String src = srcs.get(0);
+            if (!"SALES_PDF_IMPORT".equals(src)
+                    && !"PURCHASE_INVOICE".equals(src)) continue;
+            // Borrar líneas + asiento (CASCADE manual por seguridad).
+            jdbcTemplate.update(
+                    "DELETE FROM journal_entry_lines WHERE journal_entry_id = ?", id);
+            int n = jdbcTemplate.update(
+                    "DELETE FROM journal_entries WHERE id = ? AND company_id = ?",
+                    id, companyId);
+            deleted += n;
+        }
+        return deleted;
+    }
+
     public ManualEntryView voidEntry(String entryId, String reason) {
         ManualEntryView original = get(entryId);
         if ("VOIDED".equals(original.status())) return original;

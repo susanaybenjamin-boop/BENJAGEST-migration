@@ -68,6 +68,25 @@ public class AccountingApiClient {
                 intField(json, "draftCount"));
     }
 
+    /**
+     * Borra una lista de asientos importados (duplicados). Solo borra
+     * los que tienen source_type='SALES_PDF_IMPORT' o 'PURCHASE_INVOICE'.
+     * Devuelve cuántos se borraron efectivamente.
+     */
+    public int deleteImportedEntries(List<String> ids) throws IOException, InterruptedException {
+        StringBuilder body = new StringBuilder("{\"ids\":[");
+        for (int i = 0; i < ids.size(); i++) {
+            if (i > 0) body.append(',');
+            body.append('"').append(ids.get(i)).append('"');
+        }
+        body.append("]}");
+        String json = postRaw("/accounting/duplicates/delete", body.toString());
+        java.util.regex.Matcher m = java.util.regex.Pattern
+                .compile("\"deleted\"\\s*:\\s*(\\d+)")
+                .matcher(json);
+        return m.find() ? Integer.parseInt(m.group(1)) : 0;
+    }
+
     public record SalesAndExpensesKpis(
             java.math.BigDecimal salesTotal,
             int salesCount,

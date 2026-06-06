@@ -11122,6 +11122,25 @@ public class BenjagestUiApplication extends Application {
             case "client.warnings.duplicates" -> "{n} possible duplicates (same PDF imported multiple times)";
             case "client.warnings.missing_number" -> "{n} entries missing invoice number";
             case "client.warnings.unbalanced" -> "{n} entries with debit/credit mismatch";
+            case "client.duplicates.title" -> "Resolve duplicates";
+            case "client.duplicates.hint" -> "Same PDF imported multiple times. Keep the oldest copy of each group; delete the rest. The deletion is physical (no rectification entry) because duplicates are an operational error, not an accounting event.";
+            case "client.duplicates.group" -> "Group: {n} copies of PDF {sha}";
+            case "client.duplicates.keep" -> "KEEP";
+            case "client.duplicates.delete" -> "DELETE";
+            case "client.duplicates.none" -> "No duplicates detected.";
+            case "client.duplicates.resolve_all" -> "Resolve all ({n} entries to delete)";
+            case "client.duplicates.done.title" -> "Duplicates resolved";
+            case "client.duplicates.done.body" -> "{n} entries deleted. The list will refresh.";
+            case "client.duplicates.fail.title" -> "Could not delete duplicates";
+            case "client.missing.title" -> "Entries missing invoice number";
+            case "client.missing.hint" -> "These entries don't have a clear invoice number in their concept. Click 'Edit' to open the journal entry and fill in the number manually.";
+            case "client.missing.none" -> "No entries without invoice number.";
+            case "client.missing.action.edit" -> "Edit";
+            case "client.missing.action.edit_info.title" -> "Open in Accounting";
+            case "client.missing.action.edit_info.body" -> "Entry Nº {n} — open it from the Journal in the Accounting tab to edit the concept. (Inline edit coming in a future slice.)";
+            case "client.unbalanced.title" -> "Unbalanced entries";
+            case "client.unbalanced.hint" -> "Debit ≠ Credit by more than 1 cent. Usually points to a bug in the importer. Reach out to support if you can't fix it from the journal editor.";
+            case "client.unbalanced.none" -> "No unbalanced entries.";
             case "advisory.client.tab.accounting" -> "Accounting";
             case "advisory.client.tab.banks" -> "Banks";
             case "advisory.client.tab.loans" -> "Loans";
@@ -11511,6 +11530,25 @@ public class BenjagestUiApplication extends Application {
             case "client.warnings.duplicates" -> "{n} posibles duplicados (mismo PDF importado varias veces)";
             case "client.warnings.missing_number" -> "{n} asientos sin nº de factura";
             case "client.warnings.unbalanced" -> "{n} asientos con debe ≠ haber";
+            case "client.duplicates.title" -> "Resolver duplicados";
+            case "client.duplicates.hint" -> "Mismo PDF importado varias veces. Conserva la copia más antigua de cada grupo y elimina el resto. La eliminación es física (sin contraasiento) porque un duplicado es un error operativo, no un evento contable.";
+            case "client.duplicates.group" -> "Grupo: {n} copias del PDF {sha}";
+            case "client.duplicates.keep" -> "CONSERVAR";
+            case "client.duplicates.delete" -> "ELIMINAR";
+            case "client.duplicates.none" -> "No hay duplicados detectados.";
+            case "client.duplicates.resolve_all" -> "Resolver todos ({n} asientos a eliminar)";
+            case "client.duplicates.done.title" -> "Duplicados resueltos";
+            case "client.duplicates.done.body" -> "{n} asientos eliminados. El listado se actualizará.";
+            case "client.duplicates.fail.title" -> "No se pudieron eliminar los duplicados";
+            case "client.missing.title" -> "Asientos sin nº de factura";
+            case "client.missing.hint" -> "Estos asientos no tienen un nº de factura claro en su concepto. Pulsa 'Editar' para abrir el asiento y rellenar el número manualmente.";
+            case "client.missing.none" -> "No hay asientos sin nº de factura.";
+            case "client.missing.action.edit" -> "Editar";
+            case "client.missing.action.edit_info.title" -> "Abrir en Contabilidad";
+            case "client.missing.action.edit_info.body" -> "Asiento Nº {n} — ábrelo desde el Diario en la pestaña Contabilidad para editar el concepto. (Edición en línea en un slice futuro.)";
+            case "client.unbalanced.title" -> "Asientos descuadrados";
+            case "client.unbalanced.hint" -> "Debe ≠ Haber por más de 1 céntimo. Normalmente apunta a un bug del importador. Si no puedes arreglarlo desde el editor del Diario, contacta soporte.";
+            case "client.unbalanced.none" -> "No hay asientos descuadrados.";
             case "advisory.client.tab.accounting" -> "Contabilidad";
             case "advisory.client.tab.banks" -> "Bancos";
             case "advisory.client.tab.loans" -> "Préstamos";
@@ -14913,20 +14951,37 @@ public class BenjagestUiApplication extends Application {
         // cada vez que el cache cambia (recomputeIssues, más abajo).
         final java.util.Set<String> duplicateShas = new java.util.HashSet<>();
 
-        // Slice 3B — banner de avisos contextuales (declarado aquí para
-        // que applyFilters pueda actualizarlo sin orden de declaración
-        // forzado).
-        Label warningsBanner = new Label("");
-        warningsBanner.setWrapText(true);
+        // Slice 3B + acciones — banner de avisos con LINKS clickables.
+        // Cada incidencia abre un diálogo con la lista afectada y
+        // acciones contextuales (eliminar duplicados, editar nº, etc.).
+        javafx.scene.control.Hyperlink dupLink = new javafx.scene.control.Hyperlink();
+        javafx.scene.control.Hyperlink missLink = new javafx.scene.control.Hyperlink();
+        javafx.scene.control.Hyperlink unbLink = new javafx.scene.control.Hyperlink();
+        for (javafx.scene.control.Hyperlink h : new javafx.scene.control.Hyperlink[]{dupLink, missLink, unbLink}) {
+            h.setStyle("-fx-text-fill: #6d4c00; -fx-underline: true;");
+        }
+        Label warningsIcon = new Label("⚠");
+        Label sep1 = new Label("  ·  ");
+        Label sep2 = new Label("  ·  ");
+        sep1.setStyle("-fx-text-fill: #6d4c00;");
+        sep2.setStyle("-fx-text-fill: #6d4c00;");
+
+        HBox warningsBanner = new HBox(4, warningsIcon, dupLink, sep1, missLink, sep2, unbLink);
         warningsBanner.setStyle("-fx-background-color: #fff8e1;"
-                + "-fx-text-fill: #6d4c00;"
                 + "-fx-background-radius: 4;"
                 + "-fx-padding: 8 12 8 12;"
                 + "-fx-border-color: #f0d56d;"
                 + "-fx-border-radius: 4;"
                 + "-fx-border-width: 1;");
+        warningsBanner.setAlignment(Pos.CENTER_LEFT);
         warningsBanner.setVisible(false);
         warningsBanner.setManaged(false);
+
+        // Click handlers — pasan el cache directamente, el filtro está
+        // hecho cliente-side dentro del diálogo.
+        dupLink.setOnAction(e -> showDuplicatesDialog(cache, duplicateShas));
+        missLink.setOnAction(e -> showMissingNumberDialog(cache));
+        unbLink.setOnAction(e -> showUnbalancedDialog(cache));
 
         // Columna Nº con ordenación NUMÉRICA (no alfabética).
         javafx.scene.control.TableColumn<com.benjagest.ui.model.AccountingModels.DiaryEntry, Integer> colNum =
@@ -15016,28 +15071,30 @@ public class BenjagestUiApplication extends Application {
                     dupCount += en.getValue();
                 }
             }
-            // Actualizar banner.
-            StringBuilder sb = new StringBuilder();
-            if (dupCount > 0) sb.append(t("client.warnings.duplicates")
-                    .replace("{n}", String.valueOf(dupCount)));
-            if (missingNumber > 0) {
-                if (sb.length() > 0) sb.append("  ·  ");
-                sb.append(t("client.warnings.missing_number")
-                        .replace("{n}", String.valueOf(missingNumber)));
-            }
-            if (unbalanced > 0) {
-                if (sb.length() > 0) sb.append("  ·  ");
-                sb.append(t("client.warnings.unbalanced")
-                        .replace("{n}", String.valueOf(unbalanced)));
-            }
-            if (sb.length() > 0) {
-                warningsBanner.setText("⚠ " + sb.toString());
-                warningsBanner.setVisible(true);
-                warningsBanner.setManaged(true);
-            } else {
-                warningsBanner.setVisible(false);
-                warningsBanner.setManaged(false);
-            }
+            // Actualizar banner — cada link visible solo si tiene cuenta > 0.
+            final int dupCountF = dupCount;
+            final int missF = missingNumber;
+            final int unbF = unbalanced;
+            dupLink.setText(t("client.warnings.duplicates")
+                    .replace("{n}", String.valueOf(dupCountF)));
+            dupLink.setVisible(dupCountF > 0);
+            dupLink.setManaged(dupCountF > 0);
+            missLink.setText(t("client.warnings.missing_number")
+                    .replace("{n}", String.valueOf(missF)));
+            missLink.setVisible(missF > 0);
+            missLink.setManaged(missF > 0);
+            unbLink.setText(t("client.warnings.unbalanced")
+                    .replace("{n}", String.valueOf(unbF)));
+            unbLink.setVisible(unbF > 0);
+            unbLink.setManaged(unbF > 0);
+            // Separadores: solo visibles si flanquean dos links activos.
+            sep1.setVisible(dupCountF > 0 && missF > 0);
+            sep1.setManaged(sep1.isVisible());
+            sep2.setVisible((dupCountF > 0 || missF > 0) && unbF > 0);
+            sep2.setManaged(sep2.isVisible());
+            boolean anyIssue = dupCountF > 0 || missF > 0 || unbF > 0;
+            warningsBanner.setVisible(anyIssue);
+            warningsBanner.setManaged(anyIssue);
 
             // Filtrado de la tabla con los criterios del usuario.
             String q = search.getText() == null ? ""
@@ -15133,6 +15190,233 @@ public class BenjagestUiApplication extends Application {
         loadClientSalesArchived(table, cache, fromProp.get(), toProp.get(),
                 applyFilters);
         return box;
+    }
+
+    /**
+     * Diálogo accionable para resolver duplicados. Agrupa los asientos
+     * del cache por SHA, muestra cada grupo + acciones:
+     *  - Por grupo: "Conservar el primero, eliminar el resto" (1 click).
+     *  - "Resolver TODOS (conservar el más antiguo de cada grupo)" para
+     *    barrer la lista de un golpe.
+     *
+     * Backend: POST /api/accounting/duplicates/delete con ids a borrar.
+     */
+    private void showDuplicatesDialog(
+            java.util.List<com.benjagest.ui.model.AccountingModels.DiaryEntry> cache,
+            java.util.Set<String> duplicateShas) {
+        // Agrupar por SHA solo los duplicados.
+        java.util.LinkedHashMap<String, java.util.List<com.benjagest.ui.model.AccountingModels.DiaryEntry>> groups =
+                new java.util.LinkedHashMap<>();
+        for (var e : cache) {
+            String sha = e.sourcePdfSha256();
+            if (sha != null && duplicateShas.contains(sha)) {
+                groups.computeIfAbsent(sha, k -> new java.util.ArrayList<>()).add(e);
+            }
+        }
+        // Ordenar cada grupo por entryNumber asc — el primero es el "más
+        // antiguo/canónico"; los siguientes son las copias a eliminar.
+        for (var list : groups.values()) {
+            list.sort(java.util.Comparator.comparingInt(
+                    com.benjagest.ui.model.AccountingModels.DiaryEntry::entryNumber));
+        }
+
+        Dialog<ButtonType> dialog = new Dialog<>();
+        dialog.setTitle(t("client.duplicates.title"));
+        dialog.getDialogPane().getButtonTypes().add(ButtonType.CLOSE);
+
+        VBox container = new VBox(10);
+        container.setPadding(new Insets(12));
+
+        Label hint = new Label(t("client.duplicates.hint"));
+        hint.setWrapText(true);
+        hint.getStyleClass().add("settings-hint");
+        container.getChildren().add(hint);
+
+        // Por cada grupo, un pequeño bloque con las copias y acciones.
+        java.util.List<String> idsToDelete = new java.util.ArrayList<>();
+        for (var entry : groups.entrySet()) {
+            var list = entry.getValue();
+            VBox groupBox = new VBox(4);
+            groupBox.setStyle("-fx-background-color: #f7f7f7;"
+                    + "-fx-padding: 8 10 8 10;"
+                    + "-fx-background-radius: 4;");
+            Label groupTitle = new Label(t("client.duplicates.group")
+                    .replace("{n}", String.valueOf(list.size()))
+                    .replace("{sha}", entry.getKey().substring(0,
+                            Math.min(12, entry.getKey().length())) + "…"));
+            groupTitle.setStyle("-fx-font-weight: bold;");
+            groupBox.getChildren().add(groupTitle);
+            for (int i = 0; i < list.size(); i++) {
+                var dEntry = list.get(i);
+                String prefix = (i == 0)
+                        ? "✓ " + t("client.duplicates.keep") + "  "
+                        : "✗ " + t("client.duplicates.delete") + "  ";
+                Label row = new Label(prefix
+                        + "Nº " + (dEntry.entryNumber() <= 0 ? "—" : dEntry.entryNumber())
+                        + "  ·  " + (dEntry.entryDate() == null ? "" : dEntry.entryDate())
+                        + "  ·  " + (dEntry.concept() == null ? "" :
+                                (dEntry.concept().length() > 60
+                                        ? dEntry.concept().substring(0, 60) + "…"
+                                        : dEntry.concept()))
+                        + "  ·  " + formatMoney(dEntry.totalDebit()));
+                row.setStyle(i == 0 ? "-fx-text-fill: #2e7d32;" : "-fx-text-fill: #c62828;");
+                groupBox.getChildren().add(row);
+                if (i > 0) idsToDelete.add(dEntry.id());
+            }
+            container.getChildren().add(groupBox);
+        }
+
+        if (idsToDelete.isEmpty()) {
+            Label empty = new Label(t("client.duplicates.none"));
+            empty.getStyleClass().add("settings-hint");
+            container.getChildren().add(empty);
+        } else {
+            Button bulkBtn = new Button(t("client.duplicates.resolve_all")
+                    .replace("{n}", String.valueOf(idsToDelete.size())));
+            bulkBtn.getStyleClass().add("button-primary");
+            bulkBtn.setOnAction(e -> {
+                bulkBtn.setDisable(true);
+                Task<Integer> task = new Task<>() {
+                    @Override protected Integer call() throws Exception {
+                        return accountingApiClient.deleteImportedEntries(idsToDelete);
+                    }
+                };
+                task.setOnSucceeded(ev -> {
+                    showInfo(t("client.duplicates.done.title"),
+                            t("client.duplicates.done.body")
+                                    .replace("{n}", String.valueOf(task.getValue())));
+                    com.benjagest.ui.support.RefreshBus.emit(
+                            com.benjagest.ui.support.RefreshBus.TOPIC_JOURNAL,
+                            com.benjagest.ui.support.RefreshBus.TOPIC_SALES);
+                    dialog.setResult(ButtonType.CLOSE);
+                    dialog.close();
+                });
+                task.setOnFailed(ev -> {
+                    bulkBtn.setDisable(false);
+                    Throwable ex = task.getException();
+                    showError(t("client.duplicates.fail.title"),
+                            ex == null ? "" : ex.getMessage());
+                });
+                start(task, "delete-duplicates");
+            });
+            container.getChildren().add(bulkBtn);
+        }
+
+        ScrollPane scroll = new ScrollPane(container);
+        scroll.setFitToWidth(true);
+        installDialog(dialog, scroll);
+        dialog.getDialogPane().setPrefSize(900, 600);
+        dialog.showAndWait();
+    }
+
+    /**
+     * Diálogo de "asientos sin nº de factura". Por ahora solo lista —
+     * el botón "Editar" llama a {@link #openEntryEditorInDiary} para
+     * que el asesor edite el concepto del asiento. La re-extracción
+     * con PDF viene en un slice futuro.
+     */
+    private void showMissingNumberDialog(
+            java.util.List<com.benjagest.ui.model.AccountingModels.DiaryEntry> cache) {
+        java.util.List<com.benjagest.ui.model.AccountingModels.DiaryEntry> affected = new java.util.ArrayList<>();
+        for (var e : cache) {
+            String c = e.concept() == null ? "" : e.concept();
+            boolean noNum = c.toLowerCase().startsWith("venta importada")
+                    || (c.contains("Fra.")
+                            && !c.matches(".*Fra\\.\\s*[A-Z0-9].*\\d.*"));
+            if (noNum) affected.add(e);
+        }
+        Dialog<ButtonType> dialog = new Dialog<>();
+        dialog.setTitle(t("client.missing.title"));
+        dialog.getDialogPane().getButtonTypes().add(ButtonType.CLOSE);
+
+        VBox box = new VBox(8);
+        box.setPadding(new Insets(12));
+        Label hint = new Label(t("client.missing.hint"));
+        hint.setWrapText(true);
+        hint.getStyleClass().add("settings-hint");
+        box.getChildren().add(hint);
+        if (affected.isEmpty()) {
+            Label empty = new Label(t("client.missing.none"));
+            empty.getStyleClass().add("settings-hint");
+            box.getChildren().add(empty);
+        }
+        for (var e : affected) {
+            HBox row = new HBox(8);
+            row.setAlignment(Pos.CENTER_LEFT);
+            row.setStyle("-fx-background-color: #fafafa; -fx-padding: 6 10 6 10;"
+                    + "-fx-background-radius: 4;");
+            Label desc = new Label(
+                    "Nº " + (e.entryNumber() <= 0 ? "—" : e.entryNumber())
+                    + "  ·  " + (e.entryDate() == null ? "" : e.entryDate())
+                    + "  ·  " + (e.concept() == null ? "" :
+                            (e.concept().length() > 80
+                                    ? e.concept().substring(0, 80) + "…"
+                                    : e.concept()))
+                    + "  ·  " + formatMoney(e.totalDebit()));
+            HBox.setHgrow(desc, Priority.ALWAYS);
+            Button openBtn = new Button(t("client.missing.action.edit"));
+            openBtn.setOnAction(ev -> {
+                dialog.setResult(ButtonType.CLOSE);
+                dialog.close();
+                // Navega a Contabilidad y abre el asiento. Por hoy
+                // notificamos al asesor; abrir el editor inline es
+                // siguiente slice (requiere ID propagation).
+                showInfo(t("client.missing.action.edit_info.title"),
+                        t("client.missing.action.edit_info.body")
+                                .replace("{n}", e.entryNumber() <= 0
+                                        ? "—" : String.valueOf(e.entryNumber())));
+            });
+            row.getChildren().addAll(desc, openBtn);
+            box.getChildren().add(row);
+        }
+        ScrollPane scroll = new ScrollPane(box);
+        scroll.setFitToWidth(true);
+        installDialog(dialog, scroll);
+        dialog.getDialogPane().setPrefSize(900, 600);
+        dialog.showAndWait();
+    }
+
+    /** Diálogo de descuadres — solo lista por ahora. */
+    private void showUnbalancedDialog(
+            java.util.List<com.benjagest.ui.model.AccountingModels.DiaryEntry> cache) {
+        java.util.List<com.benjagest.ui.model.AccountingModels.DiaryEntry> affected = new java.util.ArrayList<>();
+        for (var e : cache) {
+            if (e.totalDebit() == null || e.totalCredit() == null) continue;
+            var diff = e.totalDebit().subtract(e.totalCredit()).abs();
+            if (diff.compareTo(new java.math.BigDecimal("0.01")) > 0) affected.add(e);
+        }
+        Dialog<ButtonType> dialog = new Dialog<>();
+        dialog.setTitle(t("client.unbalanced.title"));
+        dialog.getDialogPane().getButtonTypes().add(ButtonType.CLOSE);
+
+        VBox box = new VBox(6);
+        box.setPadding(new Insets(12));
+        Label hint = new Label(t("client.unbalanced.hint"));
+        hint.setWrapText(true);
+        hint.getStyleClass().add("settings-hint");
+        box.getChildren().add(hint);
+        for (var e : affected) {
+            Label row = new Label(
+                    "Nº " + (e.entryNumber() <= 0 ? "—" : e.entryNumber())
+                    + "  ·  " + (e.entryDate() == null ? "" : e.entryDate())
+                    + "  ·  D=" + formatMoney(e.totalDebit())
+                    + "  ·  H=" + formatMoney(e.totalCredit())
+                    + "  ·  Δ=" + formatMoney(
+                            e.totalDebit().subtract(e.totalCredit())));
+            row.setStyle("-fx-background-color: #fafafa; -fx-padding: 6 10 6 10;"
+                    + "-fx-background-radius: 4;");
+            box.getChildren().add(row);
+        }
+        if (affected.isEmpty()) {
+            Label empty = new Label(t("client.unbalanced.none"));
+            empty.getStyleClass().add("settings-hint");
+            box.getChildren().add(empty);
+        }
+        ScrollPane scroll = new ScrollPane(box);
+        scroll.setFitToWidth(true);
+        installDialog(dialog, scroll);
+        dialog.getDialogPane().setPrefSize(900, 500);
+        dialog.showAndWait();
     }
 
     /**
