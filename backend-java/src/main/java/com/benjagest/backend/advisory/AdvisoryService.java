@@ -203,12 +203,21 @@ public class AdvisoryService {
         }
 
         // 3) Crear shadow company.
+        //
+        //    verifactu_mode='TEST' + verifactu_modality='NO_VERIFACTU':
+        //    la shadow no emite facturas — la modalidad sin envío y el
+        //    entorno de pruebas son la combinación segura por defecto.
+        //    Necesario explícito porque V13 dejó DEFAULT 'OFF' pero V17
+        //    restringió el CHECK a ('TEST','PROD'), así que omitir el
+        //    campo dispara ConstraintViolation.
         String newId = UUID.randomUUID().toString();
         jdbcTemplate.update("""
                 INSERT INTO companies (
                     id, legal_name, trade_name, tax_identifier,
-                    company_type, parent_company_id, active
-                ) VALUES (?, ?, ?, ?, 'MANAGED_CLIENT', ?, TRUE)
+                    company_type, parent_company_id, active,
+                    verifactu_mode, verifactu_modality
+                ) VALUES (?, ?, ?, ?, 'MANAGED_CLIENT', ?, TRUE,
+                          'TEST', 'NO_VERIFACTU')
                 """,
                 newId,
                 c.legalName(),
