@@ -93,7 +93,18 @@ public class AdvisoryService {
                            AND ai2.status = 'UNLINKED'
                            AND ((ai2.invited_nif IS NOT NULL AND ai2.invited_nif = c.tax_identifier)
                              OR (ai2.invited_email IS NOT NULL AND ai2.invited_email = pc.email))
-                       )                AS unlinked_invitations
+                       )                AS unlinked_invitations,
+                       -- Vinculación REAL = invitación aceptada vigente.
+                       -- Sin esto, "tener shadow company" se confundía
+                       -- con "vinculado", lo que hacía que entrar en un
+                       -- cliente shadow lo marcase como vinculado en la
+                       -- UI tras crear su shadow.
+                       (SELECT COUNT(*) FROM advisory_invitations ai3
+                         WHERE ai3.advisory_company_id = c.company_id
+                           AND ai3.status = 'ACCEPTED'
+                           AND ((ai3.invited_nif IS NOT NULL AND ai3.invited_nif = c.tax_identifier)
+                             OR (ai3.invited_email IS NOT NULL AND ai3.invited_email = pc.email))
+                       )                AS accepted_invitations
                   FROM customers c
                   LEFT JOIN customer_contacts pc
                          ON pc.customer_id = c.id
@@ -117,7 +128,8 @@ public class AdvisoryService {
                         rs.getString("city"),
                         rs.getString("linked_company_id"),
                         rs.getInt("pending_invitations") > 0,
-                        rs.getInt("unlinked_invitations") > 0
+                        rs.getInt("unlinked_invitations") > 0,
+                        rs.getInt("accepted_invitations") > 0
                 ),
                 tenantContext.getCurrentCompanyId());
     }
@@ -142,7 +154,17 @@ public class AdvisoryService {
             String city,
             String linkedCompanyId,
             boolean hasPendingInvitation,
-            boolean wasUnlinked
+            boolean wasUnlinked,
+            /**
+             * TRUE = el cliente aceptó la invitación y tiene SU PROPIA
+             * company independiente (vinculación real, comparte BD con
+             * la asesoría).
+             * FALSE = solo existe una shadow company que gestiona la
+             * asesoría (MANAGED_CLIENT) — el cliente NO está vinculado
+             * realmente; la asesoría lleva su contabilidad por archivo
+             * de PDFs sin que el cliente lo sepa.
+             */
+            boolean fullyLinked
     ) {
         public boolean isLinked() { return linkedCompanyId != null && !linkedCompanyId.isBlank(); }
     }
