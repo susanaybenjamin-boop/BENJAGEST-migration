@@ -35,23 +35,28 @@ public class ReclassifyJournalService {
 
     private static final List<String> GENERIC_EXPENSE_CODES = List.of("600", "629");
     private static final List<String> GENERIC_INCOME_CODES = List.of("700", "759");
+    /** Cuentas padre de tercero que deben sustituirse por sub-cuenta. */
+    private static final List<String> GENERIC_TERCERO_CODES = List.of("400", "430");
 
     private final JdbcTemplate jdbcTemplate;
     private final TenantContext tenantContext;
     private final AccountingLearningService learning;
     private final ExpenseAccountClassifierService expenseClassifier;
     private final IncomeAccountClassifierService incomeClassifier;
+    private final TerceroAccountResolverService terceroResolver;
 
     public ReclassifyJournalService(JdbcTemplate jdbcTemplate,
                                       TenantContext tenantContext,
                                       AccountingLearningService learning,
                                       ExpenseAccountClassifierService expenseClassifier,
-                                      IncomeAccountClassifierService incomeClassifier) {
+                                      IncomeAccountClassifierService incomeClassifier,
+                                      TerceroAccountResolverService terceroResolver) {
         this.jdbcTemplate = jdbcTemplate;
         this.tenantContext = tenantContext;
         this.learning = learning;
         this.expenseClassifier = expenseClassifier;
         this.incomeClassifier = incomeClassifier;
+        this.terceroResolver = terceroResolver;
     }
 
     public record ReclassifyResult(int entriesScanned, int linesUpdated, List<String> notes) {}
@@ -97,7 +102,15 @@ public class ReclassifyJournalService {
             return 0;
         }
 
-        // Buscar líneas 6xx que sean cuenta genérica.
+        int updated = 0;
+
+        // (1) Cuenta del proveedor: 400 genérica → 4000xxx sub-cuenta tercero
+        updated += reclassifyTerceroLine(entryId,
+                TerceroAccountResolverService.TerceroType.PROVEEDOR,
+                (String) p.get("supplier_nif"), (String) p.get("supplier_name"),
+                "credit", notes);
+
+        // (2) Cuenta de gasto: 6xx genérica → 6xx específica
         List<Map<String, Object>> lines = jdbcTemplate.queryForList("""
                 SELECT l.id AS line_id, l.account_id, a.code
                   FROM journal_entry_lines l
@@ -107,7 +120,6 @@ public class ReclassifyJournalService {
                    AND l.debit > 0
                 """, entryId);
 
-        int updated = 0;
         for (Map<String, Object> ln : lines) {
             String currentCode = (String) ln.get("code");
             if (!isGenericExpense(currentCode)) continue;
@@ -131,6 +143,56 @@ public class ReclassifyJournalService {
         return updated;
     }
 
+    /**
+     * Re-resuelve la cuenta de un tercero en un asiento. Busca líneas que
+     * actualmente usen la cuenta padre 400/430 con movimiento en el lado
+     * indicado ("debit" para cliente, "credit" para proveedor) y las
+     * sustituye por la sub-cuenta 4000xxx/4300xxx auto-creada con el
+     * resolver.
+     */
+    private int reclassifyTerceroLine(String entryId,
+                                        TerceroAccountResolverService.TerceroType type,
+                                        String nif, String name,
+                                        String movementSide,
+                                        List<String> notes) {
+        if ((nif == null || nif.isBlank()) && (name == null || name.isBlank())) {
+            return 0;
+        }
+        String sideCondition = "credit".equals(movementSide)
+                ? "l.credit > 0" : "l.debit > 0";
+        List<Map<String, Object>> rows = jdbcTemplate.queryForList("""
+                SELECT l.id AS line_id, l.account_id, a.code
+                  FROM journal_entry_lines l
+                  JOIN accounting_accounts a ON a.id = l.account_id
+                 WHERE l.journal_entry_id = ?
+                   AND a.code IN ('400','430')
+                   AND %s
+                """.formatted(sideCondition), entryId);
+        if (rows.isEmpty()) return 0;
+
+        TerceroAccountResolverService.ResolvedAccount r =
+                terceroResolver.getOrCreate(type, nif, name);
+        if (r == null || r.accountId() == null) return 0;
+
+        int updated = 0;
+        for (Map<String, Object> ln : rows) {
+            String lineId = (String) ln.get("line_id");
+            String oldId = (String) ln.get("account_id");
+            String currentCode = (String) ln.get("code");
+            if (r.accountId().equals(oldId)) continue;
+            // Solo tocamos cuando la actual es realmente la cuenta padre
+            // (no una sub-cuenta diferente — esa la respetamos).
+            if (!GENERIC_TERCERO_CODES.contains(currentCode)) continue;
+            jdbcTemplate.update(
+                    "UPDATE journal_entry_lines SET account_id = ? WHERE id = ?",
+                    r.accountId(), lineId);
+            updated++;
+            notes.add("entry=" + entryId + " line=" + lineId
+                    + " " + currentCode + " → " + r.code() + " (tercero)");
+        }
+        return updated;
+    }
+
     private int reclassifySalesEntry(String companyId, String entryId, String invoiceId, List<String> notes) {
         Map<String, Object> s;
         try {
@@ -145,6 +207,14 @@ public class ReclassifyJournalService {
         String customerNif = resolveCustomerNif(companyId, (String) s.get("customer_id"));
         String customerName = resolveCustomerName(companyId, (String) s.get("customer_id"));
 
+        int updated = 0;
+
+        // (1) Cuenta del cliente: 430 genérica → 4300xxx
+        updated += reclassifyTerceroLine(entryId,
+                TerceroAccountResolverService.TerceroType.CLIENTE,
+                customerNif, customerName, "debit", notes);
+
+        // (2) Cuenta de ingreso: 7xx genérica → 7xx específica
         List<Map<String, Object>> lines = jdbcTemplate.queryForList("""
                 SELECT l.id AS line_id, l.account_id, a.code
                   FROM journal_entry_lines l
@@ -154,7 +224,6 @@ public class ReclassifyJournalService {
                    AND l.credit > 0
                 """, entryId);
 
-        int updated = 0;
         for (Map<String, Object> ln : lines) {
             String currentCode = (String) ln.get("code");
             if (!isGenericIncome(currentCode)) continue;

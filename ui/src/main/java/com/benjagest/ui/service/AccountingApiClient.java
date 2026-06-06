@@ -787,6 +787,10 @@ public class AccountingApiClient {
                 if (i > 0) b.append(',');
                 b.append("{");
                 appendKV(b, "accountId", l.accountId(), true);
+                // accountCode permite al backend resolver por código y, si
+                // empieza por 4000/4300 y no existe, auto-crear la
+                // sub-cuenta de tercero a partir del concepto del asiento.
+                appendKV(b, "accountCode", l.accountCode(), false);
                 appendKV(b, "description", l.description(), false);
                 b.append(",\"debit\":").append(l.debit() == null ? "0" : l.debit().toPlainString());
                 b.append(",\"credit\":").append(l.credit() == null ? "0" : l.credit().toPlainString());

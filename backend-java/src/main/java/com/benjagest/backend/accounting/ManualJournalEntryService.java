@@ -62,15 +62,18 @@ public class ManualJournalEntryService {
     private final TenantContext tenantContext;
     private final CurrentUserService currentUserService;
     private final FiscalYearGuardService fiscalGuard;
+    private final TerceroAccountResolverService terceroResolver;
 
     public ManualJournalEntryService(JdbcTemplate jdbcTemplate,
                                        TenantContext tenantContext,
                                        CurrentUserService currentUserService,
-                                       FiscalYearGuardService fiscalGuard) {
+                                       FiscalYearGuardService fiscalGuard,
+                                       TerceroAccountResolverService terceroResolver) {
         this.jdbcTemplate = jdbcTemplate;
         this.tenantContext = tenantContext;
         this.currentUserService = currentUserService;
         this.fiscalGuard = fiscalGuard;
+        this.terceroResolver = terceroResolver;
     }
 
     // ====================================================================
@@ -348,15 +351,15 @@ public class ManualJournalEntryService {
     }
 
     private void insertLines(String entryId, List<LineRequest> lines, String companyId) {
+        // Concepto del asiento — lo usamos como nombre del tercero si la
+        // UI mandó un código 4000/4300 desconocido y hay que auto-crear.
+        String concept = jdbcTemplate.query("""
+                SELECT concept FROM journal_entries WHERE id = ?
+                """, (rs, n) -> rs.getString("concept"), entryId)
+                .stream().findFirst().orElse(null);
+
         for (LineRequest ln : lines) {
-            // Validación tardía: la cuenta debe existir y ser de la empresa.
-            Integer ok = jdbcTemplate.queryForObject("""
-                    SELECT COUNT(*) FROM accounting_accounts
-                     WHERE id = ? AND company_id = ? AND active = TRUE
-                    """, Integer.class, ln.accountId(), companyId);
-            if (ok == null || ok == 0) {
-                throw bad("Cuenta " + ln.accountId() + " no existe en esta empresa o no está activa.");
-            }
+            String accountId = resolveAccountId(ln, companyId, concept);
             BigDecimal d = ln.debit() == null ? BigDecimal.ZERO : ln.debit();
             BigDecimal c = ln.credit() == null ? BigDecimal.ZERO : ln.credit();
             jdbcTemplate.update("""
@@ -364,9 +367,100 @@ public class ManualJournalEntryService {
                         id, journal_entry_id, account_id, description, debit, credit
                     ) VALUES (?, ?, ?, ?, ?, ?)
                     """,
-                    UUID.randomUUID().toString(), entryId, ln.accountId(),
+                    UUID.randomUUID().toString(), entryId, accountId,
                     truncate(ln.description(), 240), d, c);
         }
+    }
+
+    /**
+     * Resuelve el id de cuenta de una línea con tolerancia y autocreación:
+     * <ol>
+     *   <li>Si {@code accountId} es UUID válido y existe activa → úsalo.</li>
+     *   <li>Si no, intenta resolver por {@code accountCode} (el código que
+     *       el asesor tecleó en el combo).</li>
+     *   <li>Si tampoco existe por código y el código pinta a tercero
+     *       (4000xxx proveedor / 4300xxx cliente) → llama al
+     *       {@link TerceroAccountResolverService} con el concepto del
+     *       asiento como nombre del tercero. Esto autocrea
+     *       4000NNN / 4300NNN sin pedir nada al asesor.</li>
+     *   <li>Si no es tercero y no existe → 400 BAD_REQUEST con mensaje
+     *       claro.</li>
+     * </ol>
+     */
+    private String resolveAccountId(LineRequest ln, String companyId, String concept) {
+        // 1. Por UUID (caso normal cuando la UI ya resolvió la cuenta).
+        if (ln.accountId() != null && !ln.accountId().isBlank()) {
+            Integer ok = jdbcTemplate.queryForObject("""
+                    SELECT COUNT(*) FROM accounting_accounts
+                     WHERE id = ? AND company_id = ? AND active = TRUE
+                    """, Integer.class, ln.accountId(), companyId);
+            if (ok != null && ok > 0) return ln.accountId();
+        }
+
+        // 2. Por código (el asesor tecleó "628" o "4000007").
+        String rawCode = ln.accountCode() != null && !ln.accountCode().isBlank()
+                ? ln.accountCode().trim()
+                : (ln.accountId() != null ? ln.accountId().trim() : null);
+        if (rawCode != null && !rawCode.isBlank()) {
+            List<String> ids = jdbcTemplate.query("""
+                    SELECT id FROM accounting_accounts
+                     WHERE company_id = ? AND code = ? AND active = TRUE
+                     LIMIT 1
+                    """,
+                    (rs, n) -> rs.getString("id"),
+                    companyId, rawCode);
+            if (!ids.isEmpty()) return ids.get(0);
+
+            // 3. Si pinta a tercero, autocrear via resolver.
+            if (looksLikeTerceroCode(rawCode)) {
+                TerceroAccountResolverService.TerceroType type =
+                        rawCode.startsWith("4000")
+                                ? TerceroAccountResolverService.TerceroType.PROVEEDOR
+                                : TerceroAccountResolverService.TerceroType.CLIENTE;
+                // Nombre del tercero: el concepto del asiento (sin
+                // "Fra. 123 - " si aparece). El resolver normaliza para
+                // futuras búsquedas.
+                String terceroName = guessTerceroName(concept);
+                TerceroAccountResolverService.ResolvedAccount r =
+                        terceroResolver.getOrCreate(type, null, terceroName);
+                if (r != null && r.accountId() != null) return r.accountId();
+            }
+        }
+
+        throw bad("Cuenta " + (rawCode != null ? rawCode : ln.accountId())
+                + " no existe en esta empresa o no está activa.");
+    }
+
+    private static boolean looksLikeTerceroCode(String code) {
+        if (code == null) return false;
+        String c = code.trim();
+        if (c.length() < 4) return false;
+        if (!c.startsWith("4000") && !c.startsWith("4300")) return false;
+        return c.chars().allMatch(Character::isDigit);
+    }
+
+    /**
+     * Extrae un nombre razonable de tercero a partir del concepto del
+     * asiento. Ejemplos:
+     *   "Fra. 2024-001 - Mapfre" → "Mapfre"
+     *   "Venta 2024-007 a Marcos SL" → "Marcos SL"
+     *   "Compra Amazon EU" → "Amazon EU"
+     * Si no detecta separador, devuelve el concepto completo (mejor algo
+     * que nada — el asesor lo podrá renombrar después).
+     */
+    private static String guessTerceroName(String concept) {
+        if (concept == null || concept.isBlank()) return "Tercero";
+        // " - " separador habitual en Fra./Compra.
+        int dash = concept.indexOf(" - ");
+        if (dash > 0 && dash < concept.length() - 3) {
+            return concept.substring(dash + 3).trim();
+        }
+        // " a " separador habitual en Venta a X.
+        int aSep = concept.toLowerCase().indexOf(" a ");
+        if (aSep > 0 && aSep < concept.length() - 3) {
+            return concept.substring(aSep + 3).trim();
+        }
+        return concept.trim();
     }
 
     // ====================================================================
@@ -445,10 +539,17 @@ public class ManualJournalEntryService {
 
     public record LineRequest(
             String accountId,
+            String accountCode,
             String description,
             BigDecimal debit,
             BigDecimal credit
-    ) {}
+    ) {
+        // Constructor compacto retro-compatible: si solo viene accountId.
+        public LineRequest(String accountId, String description,
+                            BigDecimal debit, BigDecimal credit) {
+            this(accountId, null, description, debit, credit);
+        }
+    }
 
     public record ManualEntryLine(
             String id,
