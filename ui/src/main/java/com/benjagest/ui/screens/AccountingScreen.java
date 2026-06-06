@@ -268,14 +268,14 @@ public class AccountingScreen {
     private Node buildRulesTab() {
         rulesTable = new TableView<>();
         rulesTable.getColumns().addAll(List.of(
-                col("kind", LearningRule::ruleKind, 180),
-                col("nif", r -> first(r.matchSupplierNif(), r.matchCustomerNif()), 120),
-                col("keyword", LearningRule::matchKeyword, 160),
-                col("→ cuenta", LearningRule::targetAccountCode, 110),
-                col("confianza", r -> r.confidence() == null ? "" : r.confidence() + "%", 90),
-                col("aplicada", r -> String.valueOf(r.timesApplied()), 70),
-                col("corregida", r -> String.valueOf(r.timesOverridden()), 70),
-                col("activa", r -> r.active() ? "✓" : "✗", 60)
+                col(tt.apply("accounting.col.rule_kind"), r -> tt.apply("accounting.rule_kind." + r.ruleKind()), 180),
+                col(tt.apply("accounting.col.nif"), r -> first(r.matchSupplierNif(), r.matchCustomerNif()), 120),
+                col(tt.apply("accounting.col.keyword"), LearningRule::matchKeyword, 160),
+                col(tt.apply("accounting.col.target_account"), LearningRule::targetAccountCode, 110),
+                col(tt.apply("accounting.col.confidence"), r -> r.confidence() == null ? "" : r.confidence() + "%", 90),
+                col(tt.apply("accounting.col.applied"), r -> String.valueOf(r.timesApplied()), 70),
+                col(tt.apply("accounting.col.overridden"), r -> String.valueOf(r.timesOverridden()), 70),
+                col(tt.apply("accounting.col.active"), r -> r.active() ? "✓" : "✗", 60)
         ));
 
         Button refresh = new Button(tt.apply("accounting.action.refresh"));
@@ -329,16 +329,16 @@ public class AccountingScreen {
     private Node buildRecurringTab() {
         recurringTable = new TableView<>();
         recurringTable.getColumns().addAll(List.of(
-                col("kind", RecurringTask::kind, 150),
-                col("nombre", RecurringTask::name, 200),
-                col("frecuencia", RecurringTask::frequency, 110),
-                col("día", r -> r.dayOfMonth() == null ? "" : String.valueOf(r.dayOfMonth()), 50),
-                col("próxima", r -> r.nextRunDate() == null ? "" : r.nextRunDate().toString(), 110),
-                col("última", r -> r.lastRunDate() == null ? "" : r.lastRunDate().toString(), 110),
-                col("estado", RecurringTask::lastRunStatus, 80),
-                col("ejecutada", r -> String.valueOf(r.timesRun()), 80),
-                col("fallida", r -> String.valueOf(r.timesFailed()), 70),
-                col("activa", r -> r.active() ? "✓" : "✗", 60)
+                col(tt.apply("accounting.col.rec_kind"), r -> tt.apply("accounting.rec_kind." + r.kind()), 150),
+                col(tt.apply("accounting.col.name"), RecurringTask::name, 200),
+                col(tt.apply("accounting.col.frequency"), r -> tt.apply("accounting.frequency." + r.frequency()), 110),
+                col(tt.apply("accounting.col.day"), r -> r.dayOfMonth() == null ? "" : String.valueOf(r.dayOfMonth()), 50),
+                col(tt.apply("accounting.col.next_run"), r -> r.nextRunDate() == null ? "" : r.nextRunDate().toString(), 110),
+                col(tt.apply("accounting.col.last_run"), r -> r.lastRunDate() == null ? "" : r.lastRunDate().toString(), 110),
+                col(tt.apply("accounting.col.status"), r -> r.lastRunStatus() == null ? "" : tt.apply("accounting.run_status." + r.lastRunStatus()), 80),
+                col(tt.apply("accounting.col.times_run"), r -> String.valueOf(r.timesRun()), 80),
+                col(tt.apply("accounting.col.times_failed"), r -> String.valueOf(r.timesFailed()), 70),
+                col(tt.apply("accounting.col.active"), r -> r.active() ? "✓" : "✗", 60)
         ));
 
         Button refresh = new Button(tt.apply("accounting.action.refresh"));
@@ -597,8 +597,11 @@ public class AccountingScreen {
         cols.add(col(tt.apply("accounting.col.num"), e -> String.valueOf(e.entryNumber()), 60));
         cols.add(col(tt.apply("accounting.col.date"), e -> e.entryDate() == null ? "" : e.entryDate().toString(), 100));
         cols.add(col(tt.apply("accounting.col.concept"), DiaryEntry::concept, 280));
-        cols.add(col(tt.apply("accounting.col.source"), DiaryEntry::sourceType, 140));
-        cols.add(col(tt.apply("accounting.col.status"), DiaryEntry::status, 90));
+        cols.add(col(tt.apply("accounting.col.source"),
+                e -> e.sourceType() == null ? tt.apply("accounting.source_type.MANUAL")
+                        : tt.apply("accounting.source_type." + e.sourceType()), 160));
+        cols.add(col(tt.apply("accounting.col.status"),
+                e -> e.status() == null ? "" : tt.apply("accounting.status." + e.status()), 100));
         cols.add(col(tt.apply("accounting.col.debit_total"), e -> e.totalDebit() == null ? "" : e.totalDebit().toString(), 100));
         cols.add(col(tt.apply("accounting.col.credit_total"), e -> e.totalCredit() == null ? "" : e.totalCredit().toString(), 100));
         if (showConfidence) {

@@ -58,27 +58,28 @@ public class ClientFinancialsScreen {
     public Node buildBanksTab() {
         TableView<BankAccountView> accountsTable = new TableView<>();
         accountsTable.getColumns().addAll(List.of(
-                col("Alias", BankAccountView::alias, 160),
-                col("IBAN", BankAccountView::iban, 200),
-                col("Banco", BankAccountView::bankName, 160),
-                col("Apertura", v -> v.openingBalance() == null ? "" : v.openingBalance().toString(), 110),
-                col("Activa", v -> v.active() ? "✓" : "✗", 60)
+                col(tt.apply("bank.col.alias"), BankAccountView::alias, 160),
+                col(tt.apply("bank.col.iban"), BankAccountView::iban, 200),
+                col(tt.apply("bank.col.bank"), BankAccountView::bankName, 160),
+                col(tt.apply("bank.col.opening"), v -> v.openingBalance() == null ? "" : v.openingBalance().toString(), 110),
+                col(tt.apply("bank.col.active"), v -> v.active() ? "✓" : "✗", 60)
         ));
 
         TableView<BankMovementRow> movementsTable = new TableView<>();
         movementsTable.getColumns().addAll(List.of(
-                col("Fecha", v -> v.operationDate() == null ? "" : v.operationDate().toString(), 100),
-                col("Descripción", BankMovementRow::description, 280),
-                col("Contraparte", BankMovementRow::counterpartyName, 180),
-                col("NIF", BankMovementRow::counterpartyNif, 100),
-                col("Importe", v -> v.amount() == null ? "" : v.amount().toString(), 100),
-                col("Saldo", v -> v.balanceAfter() == null ? "" : v.balanceAfter().toString(), 100),
-                col("Estado", BankMovementRow::status, 110),
-                col("Factura", v -> v.linkedInvoiceKind() == null
+                col(tt.apply("bank.col.date"), v -> v.operationDate() == null ? "" : v.operationDate().toString(), 100),
+                col(tt.apply("bank.col.description"), BankMovementRow::description, 280),
+                col(tt.apply("bank.col.counterparty"), BankMovementRow::counterpartyName, 180),
+                col(tt.apply("bank.col.nif"), BankMovementRow::counterpartyNif, 100),
+                col(tt.apply("bank.col.amount"), v -> v.amount() == null ? "" : v.amount().toString(), 100),
+                col(tt.apply("bank.col.balance"), v -> v.balanceAfter() == null ? "" : v.balanceAfter().toString(), 100),
+                col(tt.apply("bank.col.status"),
+                        v -> v.status() == null ? "" : tt.apply("bank.movement_status." + v.status()), 110),
+                col(tt.apply("bank.col.invoice"), v -> v.linkedInvoiceKind() == null
                         ? "" : v.linkedInvoiceKind() + ":" + (v.linkedInvoiceId() == null ? "" : v.linkedInvoiceId().substring(0, 8)), 130)
         ));
 
-        Button refreshAccounts = new Button("Refrescar");
+        Button refreshAccounts = new Button(tt.apply("accounting.action.refresh"));
         refreshAccounts.setOnAction(e -> loadBankAccounts(accountsTable));
 
         Button loadMovs = new Button("Ver movimientos");
@@ -133,26 +134,26 @@ public class ClientFinancialsScreen {
     public Node buildLoansTab() {
         TableView<LoanView> loansTable = new TableView<>();
         loansTable.getColumns().addAll(List.of(
-                col("Código", LoanView::code, 100),
-                col("Descripción", LoanView::description, 240),
-                col("Acreedor", LoanView::lenderName, 180),
-                col("Capital", v -> v.principalAmount() == null ? "" : v.principalAmount().toString(), 110),
-                col("Interés %", v -> v.interestRate() == null ? "" : v.interestRate().toString(), 80),
-                col("Plazo (m)", v -> String.valueOf(v.termMonths()), 70),
-                col("Cuota", v -> v.installmentAmount() == null ? "" : v.installmentAmount().toString(), 100),
-                col("Método", LoanView::method, 100),
-                col("Estado", LoanView::status, 100)
+                col(tt.apply("loans.col.code"), LoanView::code, 100),
+                col(tt.apply("loans.col.description"), LoanView::description, 240),
+                col(tt.apply("loans.col.lender"), LoanView::lenderName, 180),
+                col(tt.apply("loans.col.principal"), v -> v.principalAmount() == null ? "" : v.principalAmount().toString(), 110),
+                col(tt.apply("loans.col.interest"), v -> v.interestRate() == null ? "" : v.interestRate().toString(), 80),
+                col(tt.apply("loans.col.term"), v -> String.valueOf(v.termMonths()), 70),
+                col(tt.apply("loans.col.installment"), v -> v.installmentAmount() == null ? "" : v.installmentAmount().toString(), 100),
+                col(tt.apply("loans.col.method"), v -> v.method() == null ? "" : tt.apply("loans.method." + v.method()), 100),
+                col(tt.apply("loans.col.status"), v -> v.status() == null ? "" : tt.apply("loans.status." + v.status()), 100)
         ));
 
         TableView<InstallmentView> installmentsTable = new TableView<>();
         installmentsTable.getColumns().addAll(List.of(
                 col("#", v -> String.valueOf(v.installmentNumber()), 50),
-                col("Vencimiento", v -> v.dueDate() == null ? "" : v.dueDate().toString(), 110),
-                col("Principal", v -> v.principalAmount() == null ? "" : v.principalAmount().toString(), 110),
-                col("Interés", v -> v.interestAmount() == null ? "" : v.interestAmount().toString(), 100),
-                col("Cuota", v -> v.totalAmount() == null ? "" : v.totalAmount().toString(), 100),
-                col("Pendiente", v -> v.remainingPrincipal() == null ? "" : v.remainingPrincipal().toString(), 110),
-                col("Estado", InstallmentView::status, 100)
+                col(tt.apply("loans.col.due_date"), v -> v.dueDate() == null ? "" : v.dueDate().toString(), 110),
+                col(tt.apply("loans.col.principal"), v -> v.principalAmount() == null ? "" : v.principalAmount().toString(), 110),
+                col(tt.apply("loans.col.interest_amount"), v -> v.interestAmount() == null ? "" : v.interestAmount().toString(), 100),
+                col(tt.apply("loans.col.installment"), v -> v.totalAmount() == null ? "" : v.totalAmount().toString(), 100),
+                col(tt.apply("loans.col.remaining"), v -> v.remainingPrincipal() == null ? "" : v.remainingPrincipal().toString(), 110),
+                col(tt.apply("loans.col.status"), v -> v.status() == null ? "" : tt.apply("loans.installment_status." + v.status()), 100)
         ));
 
         Button refresh = new Button("Refrescar");
@@ -221,14 +222,16 @@ public class ClientFinancialsScreen {
     public Node buildAssetsTab() {
         TableView<FixedAssetRow> table = new TableView<>();
         table.getColumns().addAll(List.of(
-                col("Código", FixedAssetRow::code, 100),
-                col("Nombre", FixedAssetRow::name, 240),
-                col("Categoría", FixedAssetRow::category, 150),
-                col("Adquisición", v -> v.acquisitionDate() == null ? "" : v.acquisitionDate().toString(), 110),
-                col("Coste", v -> v.acquisitionCost() == null ? "" : v.acquisitionCost().toString(), 110),
-                col("Vida (años)", v -> v.usefulLifeYears() == null ? "" : v.usefulLifeYears().toString(), 90),
-                col("Método", FixedAssetRow::depreciationMethod, 100),
-                col("Activa", v -> v.active() ? "✓" : "✗", 60)
+                col(tt.apply("assets.col.code"), FixedAssetRow::code, 100),
+                col(tt.apply("assets.col.name"), FixedAssetRow::name, 240),
+                col(tt.apply("assets.col.category"),
+                        v -> v.category() == null ? "" : tt.apply("assets.category." + v.category()), 150),
+                col(tt.apply("assets.col.acquisition_date"), v -> v.acquisitionDate() == null ? "" : v.acquisitionDate().toString(), 110),
+                col(tt.apply("assets.col.cost"), v -> v.acquisitionCost() == null ? "" : v.acquisitionCost().toString(), 110),
+                col(tt.apply("assets.col.useful_life"), v -> v.usefulLifeYears() == null ? "" : v.usefulLifeYears().toString(), 90),
+                col(tt.apply("assets.col.method"),
+                        v -> v.depreciationMethod() == null ? "" : tt.apply("assets.method." + v.depreciationMethod()), 100),
+                col(tt.apply("assets.col.active"), v -> v.active() ? "✓" : "✗", 60)
         ));
 
         Button refresh = new Button("Refrescar");
