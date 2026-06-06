@@ -14467,7 +14467,12 @@ public class BenjagestUiApplication extends Application {
         sub.getStyleClass().add("inner-tabs");
         sub.setTabClosingPolicy(TabPane.TabClosingPolicy.UNAVAILABLE);
 
-        Tab salesTab = new Tab(t("client.tab.sales"), buildClientBillingTab());
+        // En cliente NO vinculado las "ventas" NO viven en sales_invoices
+        // (esa tabla solo guarda las que el cliente emite con VeriFactu).
+        // Las ventas importadas por PDF son ASIENTOS contables con
+        // source_type=SALES_PDF_IMPORT. Por eso el sub-tab Ventas aquí
+        // muestra el diario filtrado, no sales_invoices.
+        Tab salesTab = new Tab(t("client.tab.sales"), buildClientSalesArchivedTab());
         salesTab.setGraphic(icon("fas-file-invoice"));
 
         Tab expensesTab = new Tab(t("client.tab.expenses"), buildClientPurchasesTab());
@@ -14485,6 +14490,100 @@ public class BenjagestUiApplication extends Application {
         VBox.setVgrow(sub, Priority.ALWAYS);
         box.setPadding(new Insets(8));
         return box;
+    }
+
+    /**
+     * Sub-tab "Ventas" del cliente NO vinculado. Modelo A3/Contasol:
+     * las ventas archivadas son ASIENTOS contables con
+     * {@code source_type='SALES_PDF_IMPORT'}, no facturas en
+     * {@code sales_invoices} (esa tabla es para facturas emitidas con
+     * VeriFactu desde BENJAGEST).
+     *
+     * <p>Muestra: nº asiento, fecha, concepto, total. Con botón
+     * "Importar PDFs" + auto-refresh por RefreshBus.
+     */
+    private Node buildClientSalesArchivedTab() {
+        javafx.scene.control.TableView<com.benjagest.ui.model.AccountingModels.DiaryEntry> table =
+                new javafx.scene.control.TableView<>();
+        table.getStyleClass().add("data-table");
+        table.setPlaceholder(new Label(t("list.placeholder.empty")));
+
+        // Columna Nº con ordenación NUMÉRICA (no alfabética). Antes la
+        // tabla ordenaba "10" < "2" porque comparaba como String.
+        javafx.scene.control.TableColumn<com.benjagest.ui.model.AccountingModels.DiaryEntry, Integer> colNum =
+                new javafx.scene.control.TableColumn<>(t("accounting.col.num"));
+        colNum.setCellValueFactory(c -> new javafx.beans.property.SimpleObjectProperty<>(
+                c.getValue().entryNumber()));
+        colNum.setCellFactory(c -> new javafx.scene.control.TableCell<>() {
+            @Override protected void updateItem(Integer v, boolean empty) {
+                super.updateItem(v, empty);
+                setText(empty || v == null || v <= 0 ? "—" : String.valueOf(v));
+            }
+        });
+        colNum.setComparator(Integer::compare);
+        colNum.setPrefWidth(70);
+
+        addCol(table, t("accounting.col.date"),
+                v -> v.entryDate() == null ? "" : v.entryDate().toString(), 110);
+        addCol(table, t("accounting.col.concept"),
+                v -> v.concept() == null ? "" : v.concept(), 320);
+        addCol(table, t("accounting.col.debit_total"),
+                v -> v.totalDebit() == null ? "" : v.totalDebit().toString(), 110);
+        addCol(table, t("accounting.col.status"),
+                v -> v.status() == null ? "" : t("accounting.status." + v.status()), 110);
+
+        table.getColumns().add(0, colNum);
+
+        Button refresh = new Button(t("accounting.action.refresh"));
+        refresh.setOnAction(e -> loadClientSalesArchived(table));
+
+        Button importBtn = new Button(t("sales.action.import_pdfs"));
+        importBtn.setGraphic(icon("fas-file-import"));
+        importBtn.getStyleClass().add("button-primary");
+        importBtn.setOnAction(e -> importSalesPdfsMulti());
+
+        Region spacer = new Region();
+        HBox.setHgrow(spacer, Priority.ALWAYS);
+        HBox actions = new HBox(8, refresh, spacer, importBtn);
+        actions.setAlignment(Pos.CENTER_LEFT);
+
+        com.benjagest.ui.support.RefreshBus.subscribe(
+                com.benjagest.ui.support.RefreshBus.TOPIC_JOURNAL,
+                () -> loadClientSalesArchived(table), table);
+        com.benjagest.ui.support.RefreshBus.subscribe(
+                com.benjagest.ui.support.RefreshBus.TOPIC_SALES,
+                () -> loadClientSalesArchived(table), table);
+
+        VBox box = new VBox(8, actions, table);
+        VBox.setVgrow(table, Priority.ALWAYS);
+        box.setPadding(new Insets(12));
+        loadClientSalesArchived(table);
+        return box;
+    }
+
+    /**
+     * Carga las ventas archivadas (asientos con
+     * {@code source_type='SALES_PDF_IMPORT'}) del cliente activo via
+     * actingForCompanyId.
+     */
+    private void loadClientSalesArchived(
+            javafx.scene.control.TableView<com.benjagest.ui.model.AccountingModels.DiaryEntry> table) {
+        Task<java.util.List<com.benjagest.ui.model.AccountingModels.DiaryEntry>> task = new Task<>() {
+            @Override
+            protected java.util.List<com.benjagest.ui.model.AccountingModels.DiaryEntry> call()
+                    throws Exception {
+                // Sin filtro de status: queremos ver DRAFT (por validar)
+                // y POSTED juntos. Sin filtro de fechas: el asesor ya
+                // puede filtrar el listado en pantalla si lo necesita.
+                return accountingApiClient.diary(null, null, null,
+                        "SALES_PDF_IMPORT", 500);
+            }
+        };
+        task.setOnSucceeded(ev -> table.setItems(
+                javafx.collections.FXCollections.observableArrayList(task.getValue())));
+        task.setOnFailed(ev -> System.err.println("[client-sales-archived] "
+                + (task.getException() == null ? "?" : task.getException().getMessage())));
+        start(task, "client-sales-archived");
     }
 
     private Node buildClientBillingTab() {
