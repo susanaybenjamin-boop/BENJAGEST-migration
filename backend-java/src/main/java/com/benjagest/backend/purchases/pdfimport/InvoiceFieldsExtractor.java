@@ -57,10 +57,16 @@ public class InvoiceFieldsExtractor {
     //  Patrones reutilizables
     // ====================================================================
 
-    /** NIF/CIF/NIE según AEAT. */
+    /**
+     * NIF/CIF/NIE según AEAT.
+     * <p>Acepta también la variante "24259998 N" (espacio antes de la
+     * letra de control) que algunos editores PDF generan cuando el
+     * número y la letra están en glyphs separados. La regex normaliza
+     * en {@link #cleanNif} eliminando el espacio.
+     */
     private static final Pattern NIF_PATTERN = Pattern.compile(
-            "\\b([XYZxyz]?\\d{7,8}[A-HJ-NP-TV-Za-hj-np-tv-z]|" +
-            "[A-HJ-NP-SUVWa-hj-np-suvw]\\d{7}[0-9A-Ja-j])\\b"
+            "\\b([XYZxyz]?\\d{7,8}\\s?[A-HJ-NP-TV-Za-hj-np-tv-z]|" +
+            "[A-HJ-NP-SUVWa-hj-np-suvw]\\d{7}\\s?[0-9A-Ja-j])\\b"
     );
 
     /**
@@ -89,8 +95,8 @@ public class InvoiceFieldsExtractor {
      */
     private static final Pattern SPANISH_NIF_LABELED_PATTERN = Pattern.compile(
             "(?i)\\b(?:nif|c\\.?i\\.?f\\.?)\\s*(?:de\\s+la\\s+\\w+\\s+)?(?:emisor|empresa|sucursal|fiscal)?\\s*:?\\s*" +
-            "([XYZxyz]?\\d{7,8}[A-HJ-NP-TV-Za-hj-np-tv-z]|" +
-            "[A-HJ-NP-SUVWa-hj-np-suvw]\\d{7}[0-9A-Ja-j])\\b"
+            "([XYZxyz]?\\d{7,8}\\s?[A-HJ-NP-TV-Za-hj-np-tv-z]|" +
+            "[A-HJ-NP-SUVWa-hj-np-suvw]\\d{7}\\s?[0-9A-Ja-j])\\b"
     );
 
     /**
@@ -184,7 +190,11 @@ public class InvoiceFieldsExtractor {
             // Patrones extra: FRA-NNNN, FACT N. NNNN, Fra: NNNN…
             "fra[\\.\\s\\-]*(?:n[\\u00ba\\u00b0]?)?|" +
             "fact[\\.\\s\\-]*(?:n[\\u00ba\\u00b0]?)?|" +
-            "n[\\u00ba\\u00b0]\\.?)\\s*:?\\s*\\n?\\s*([A-Z0-9][A-Z0-9\\-/_.]{2,29})"
+            "n[\\u00ba\\u00b0]\\.?)\\s*:?\\s*\\n?\\s*" +
+            // Captura: opcional prefijo alfabético (FRA-, A/, RECT-…)
+            // + número con guiones/barras/puntos. Hasta 35 chars
+            // para cubrir "FRA-2026-0004", "A/2026/0004", "RECT-001/26".
+            "((?:[A-Z]{1,5}[\\-/]?)?[0-9][A-Z0-9\\-/_.]{2,34})"
     );
 
     /**
@@ -413,6 +423,9 @@ public class InvoiceFieldsExtractor {
         //    4ª) primer VAT EU encontrado.
         //    5ª) primer NIF.
         String emitterNif = guessEmitterNif(text, allNifs, allEuVat);
+        // Normalizar: quitar espacios internos para que las
+        // comparaciones funcionen consistentemente con el receptor.
+        if (emitterNif != null) emitterNif = cleanNif(emitterNif);
 
         // 3. Razón social del emisor — prioridad al bloque "Vendido por".
         String supplierName = guessSupplierName(text, head, emitterNif);
@@ -546,59 +559,155 @@ public class InvoiceFieldsExtractor {
         if (page == null || page.lines().isEmpty()) return null;
         float pageWidth = page.width();
         if (pageWidth <= 0) return null;
-        float midX = pageWidth / 2f;
+        // Mitad de la página: el bloque del emisor no siempre llega
+        // exactamente hasta la mitad — usar 45% es más conservador y
+        // pilla columnas de "Cliente" un poco corridas a la izquierda.
+        float midX = pageWidth * 0.45f;
 
+        // NIF tolerante a espacio entre dígitos y letra de control
+        // ("24259998 N", "B1234567 8"…).
         Pattern nifPat = Pattern.compile(
-                "\\b([XYZ0-9][0-9]{7}[A-Z]|[A-HJ-NP-SUVW][0-9]{7}[0-9A-J])\\b");
+                "\\b([XYZ]?\\d{7,8}\\s?[A-HJ-NP-TV-Z]|" +
+                "[A-HJ-NP-SUVW]\\d{7}\\s?[0-9A-J])\\b");
 
-        // Cabecera = primeras 25 líneas o 40% del alto, lo que sea menor.
-        int headLines = Math.min(25, page.lines().size());
+        int totalLines = page.lines().size();
+        int headLines = Math.min(30, totalLines);
 
-        // 1) Buscar NIF en la mitad derecha de la cabecera.
+        // 1) Buscar NIF en la mitad derecha de la cabecera. Guardamos
+        //    también qué línea fue para luego mirar las anteriores
+        //    como candidatas a nombre.
         String nif = null;
+        int nifLineIdx = -1;
         for (int i = 0; i < headLines; i++) {
             LayoutDocument.LayoutLine line = page.lines().get(i);
             for (LayoutDocument.LayoutSpan span : line.spans()) {
                 if (span.x() < midX) continue; // mitad izquierda → emisor
                 Matcher m = nifPat.matcher(span.text());
                 while (m.find()) {
-                    String cand = m.group(1).toUpperCase();
-                    if (emitterNif != null && cand.equalsIgnoreCase(emitterNif)) continue;
+                    String cand = cleanNif(m.group(1));
+                    if (emitterNif != null
+                            && cand.equalsIgnoreCase(cleanNif(emitterNif))) continue;
                     nif = cand;
+                    nifLineIdx = i;
                     break;
                 }
                 if (nif != null) break;
             }
+            // También revisar la línea completa concatenada (cuando el
+            // NIF está partido entre 2 spans con espacio).
+            if (nif == null) {
+                String rightLine = collectRightHalf(line, midX);
+                Matcher m = nifPat.matcher(rightLine);
+                while (m.find()) {
+                    String cand = cleanNif(m.group(1));
+                    if (emitterNif != null
+                            && cand.equalsIgnoreCase(cleanNif(emitterNif))) continue;
+                    nif = cand;
+                    nifLineIdx = i;
+                    break;
+                }
+            }
             if (nif != null) break;
         }
 
-        // 2) Buscar nombre = primera línea de la mitad derecha de la
-        //    cabecera con texto razonable (descartamos direcciones,
-        //    códigos postales, teléfonos, NIFs sueltos).
+        // 2) Buscar nombre. Si tenemos NIF, miramos primero las líneas
+        //    INMEDIATAMENTE ANTERIORES al NIF en la mitad derecha
+        //    (caso típico: nombre arriba, NIF debajo, dirección debajo
+        //    del NIF). Si no, recorremos la mitad derecha desde arriba.
         String name = null;
-        for (int i = 0; i < headLines; i++) {
-            LayoutDocument.LayoutLine line = page.lines().get(i);
-            // Recolectamos solo los spans de la mitad derecha y los
-            // concatenamos.
-            StringBuilder right = new StringBuilder();
-            for (LayoutDocument.LayoutSpan span : line.spans()) {
-                if (span.x() < midX) continue;
-                if (right.length() > 0) right.append(' ');
-                right.append(span.text());
+        if (nifLineIdx > 0) {
+            for (int i = nifLineIdx - 1; i >= Math.max(0, nifLineIdx - 5); i--) {
+                String s = collectRightHalf(page.lines().get(i), midX);
+                if (isReceiverNameCandidate(s)) {
+                    name = trimName(s);
+                    break;
+                }
             }
-            String s = right.toString().trim();
-            if (s.length() < 3) continue;
-            if (nifPat.matcher(s).matches()) continue;
-            if (!looksLikeName(s)) continue;
-            // El nombre debe ser razonable: una línea sola, no toda la
-            // página. Tomamos la PRIMERA línea válida — el nombre suele
-            // ir arriba en el bloque cliente.
-            name = s.length() > 120 ? s.substring(0, 120) : s;
-            break;
+        }
+        if (name == null) {
+            // Sin NIF identificado o sin nombre antes del NIF: rastrear
+            // toda la cabecera desde arriba, primer candidato válido.
+            for (int i = 0; i < headLines; i++) {
+                String s = collectRightHalf(page.lines().get(i), midX);
+                if (isReceiverNameCandidate(s)) {
+                    name = trimName(s);
+                    break;
+                }
+            }
         }
 
         if (nif == null && name == null) return null;
         return new String[]{nif, name};
+    }
+
+    /** Concatena los spans de una línea cuya x >= midX. */
+    private String collectRightHalf(LayoutDocument.LayoutLine line, float midX) {
+        StringBuilder right = new StringBuilder();
+        for (LayoutDocument.LayoutSpan span : line.spans()) {
+            if (span.x() < midX) continue;
+            if (right.length() > 0) right.append(' ');
+            right.append(span.text());
+        }
+        return right.toString().trim();
+    }
+
+    /**
+     * Decide si una línea de la mitad derecha puede ser el NOMBRE
+     * del receptor. Descartamos:
+     * <ul>
+     *   <li>Etiquetas de cabecera ("Nº FACTURA", "Fecha", "Date",
+     *       "Invoice no", "Página")</li>
+     *   <li>Líneas con muchos dígitos (= número de factura, fecha, CP)</li>
+     *   <li>Direcciones (C/, Avda., Calle, número de portal)</li>
+     *   <li>Email, teléfono, web</li>
+     *   <li>Etiquetas tipo "NIF:" / "CIF:" — vienen antes del valor</li>
+     * </ul>
+     */
+    private boolean isReceiverNameCandidate(String s) {
+        if (s == null || s.length() < 4) return false;
+        String up = s.toUpperCase();
+        // Cabeceras típicas en la mitad derecha de la página.
+        if (up.matches(".*\\b(N[\\u00ba\\u00b0]?\\s*(FACTURA|FRA|FACT|DOCUMENTO|INVOICE|" +
+                "OPERACI[OÓ]N))\\b.*")) return false;
+        if (up.matches(".*\\b(FECHA|FECHA\\s+FACTURA|FECHA\\s+EMISI[OÓ]N|" +
+                "DATE|INVOICE\\s+DATE|EMISI[OÓ]N)\\b.*")) return false;
+        if (up.matches(".*\\b(PAGINA|P[ÁA]GINA|PAGE)\\b.*")) return false;
+        if (up.matches(".*\\b(VENCIMIENTO|DUE\\s+DATE|FORMA\\s+DE\\s+PAGO|" +
+                "MEDIO\\s+DE\\s+PAGO|PAYMENT)\\b.*")) return false;
+        // Etiquetas de NIF/CIF (vienen antes del valor).
+        if (up.matches("(?:NIF|CIF|NIE|TAX\\s+ID|VAT)\\s*:?\\s*$")) return false;
+        // Direcciones obvias.
+        if (up.matches("^(C/|C\\.|CALLE|AVDA\\.?|AVENIDA|PLAZA|PLZA\\.?|" +
+                "PASEO|PASAJE|RONDA|TRAVES[ÍI]A|CTRA\\.?|CARRETERA)\\s.*")) return false;
+        // Códigos postales (5 dígitos + ciudad).
+        if (up.matches("^\\d{5}\\s+.*")) return false;
+        // Email/web/tel.
+        if (up.contains("@") || up.contains("HTTP") || up.contains("WWW.")) return false;
+        if (up.matches(".*\\b(TEL[E]?F\\.?|TLF\\.?|TEL\\.?|M[OÓ]VIL|MOBILE|FAX)\\b.*")) return false;
+        // Demasiados dígitos → no es un nombre.
+        long digits = up.chars().filter(Character::isDigit).count();
+        if (digits > 3) return false;
+        // Al menos 2 palabras alfabéticas razonables (nombre + apellido)
+        // — descarta "FACTURA", "España", líneas de una sola palabra.
+        String[] words = s.trim().split("\\s+");
+        int alphaWords = 0;
+        for (String w : words) if (w.matches("[A-Za-z\\u00c0-\\u017f.'-]{2,}")) alphaWords++;
+        if (alphaWords < 2) return false;
+        return true;
+    }
+
+    private String trimName(String s) {
+        String t = s.trim();
+        // Quitar etiquetas tipo "Cliente:", "Razón social:" al principio.
+        t = t.replaceFirst("(?i)^\\s*(?:cliente|destinatario|raz[\\u00f3o]n\\s+social|" +
+                "facturar?\\s+a|para)\\s*:?\\s*", "");
+        return t.length() > 120 ? t.substring(0, 120) : t;
+    }
+
+    /** Quita espacios internos del NIF ("24259998 N" → "24259998N"). */
+    private String cleanNif(String s) {
+        if (s == null) return null;
+        return s.replaceAll("\\s+", "").toUpperCase();
     }
 
     /**
@@ -1038,7 +1147,9 @@ public class InvoiceFieldsExtractor {
         Matcher m = p.matcher(text);
         while (m.find()) {
             String v = m.group(1) != null ? m.group(1) : m.group();
-            seen.add(v.toUpperCase());
+            // Normalizamos quitando espacios internos para que "24259998 N"
+            // y "24259998N" se traten como el mismo NIF en comparaciones.
+            seen.add(v.replaceAll("\\s+", "").toUpperCase());
         }
         return new ArrayList<>(seen);
     }
