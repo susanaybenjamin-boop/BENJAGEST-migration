@@ -39,11 +39,24 @@ public class AccountingJournalController {
 
     private final ManualJournalEntryService manualService;
     private final JournalQueryService queryService;
+    private final ReclassifyJournalService reclassifyService;
 
     public AccountingJournalController(ManualJournalEntryService manualService,
-                                         JournalQueryService queryService) {
+                                         JournalQueryService queryService,
+                                         ReclassifyJournalService reclassifyService) {
         this.manualService = manualService;
         this.queryService = queryService;
+        this.reclassifyService = reclassifyService;
+    }
+
+    /**
+     * Reclasifica asientos DRAFT: vuelve a calcular su cuenta 6xx/7xx con el
+     * chain completo (histórico → classifier). Solo toca líneas con cuenta
+     * genérica (600/629 en gastos, 700/759 en ventas). Idempotente.
+     */
+    @PostMapping("/reclassify")
+    public ReclassifyJournalService.ReclassifyResult reclassifyDrafts() {
+        return reclassifyService.reclassifyDrafts();
     }
 
     // ====================================================================

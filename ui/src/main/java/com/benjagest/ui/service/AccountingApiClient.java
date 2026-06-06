@@ -113,6 +113,21 @@ public class AccountingApiClient {
 
     public record BatchPostResult(int total, int posted, int skipped, int errors) {}
 
+    /**
+     * Reclasifica todos los asientos DRAFT del cliente activo aplicando el
+     * chain histórico → classifier para la cuenta 6xx/7xx. Solo toca líneas
+     * con cuenta genérica (600/629/700/759). Idempotente. Devuelve
+     * {@link ReclassifyResult} con conteos.
+     */
+    public ReclassifyResult reclassifyDrafts() throws IOException, InterruptedException {
+        String json = postRaw("/accounting/reclassify", "{}");
+        return new ReclassifyResult(
+                intField(json, "entriesScanned"),
+                intField(json, "linesUpdated"));
+    }
+
+    public record ReclassifyResult(int entriesScanned, int linesUpdated) {}
+
     public void voidEntry(String id, String reason) throws IOException, InterruptedException {
         String path = "/accounting/journal-entries/" + id;
         if (reason != null && !reason.isBlank()) {

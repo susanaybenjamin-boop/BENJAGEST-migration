@@ -93,6 +93,111 @@ public class AccountingLearningService {
         return findByKeyword(companyId, KIND_EXPENSE_BY_KEYWORD, searchText, amount);
     }
 
+    /**
+     * Busca en asientos previos del mismo proveedor cuál es la cuenta 6xx
+     * más usada. Port de {@code buscarCuentaHistoricoProveedor} (línea 1361
+     * de {@code contabilidadService.js} de CONTENDO).
+     *
+     * <p>Estrategia: une journal_entries con purchase_invoices por source_id;
+     * agrupa por código de cuenta y devuelve la cuenta 6xx más frecuente
+     * (excluyendo asientos VOIDED). Match por NIF si está disponible —
+     * más estable que por nombre. Devuelve {@link Optional#empty} si el
+     * proveedor no tiene historial.
+     *
+     * <p>Resultado: id + código de cuenta listos para usar en
+     * {@code journal_entry_lines.account_id}. No incluye confianza porque no
+     * es una regla aprendida formal — es solo "última cuenta usada".
+     */
+    public Optional<HistoricMatch> findHistoricExpenseAccountForSupplier(
+            String supplierNif, String supplierName) {
+        String companyId = tenantContext.getCurrentCompanyId();
+        if ((supplierNif == null || supplierNif.isBlank())
+                && (supplierName == null || supplierName.isBlank())) {
+            return Optional.empty();
+        }
+        // Por NIF (más estable)
+        if (supplierNif != null && !supplierNif.isBlank()) {
+            List<HistoricMatch> rows = jdbcTemplate.query("""
+                    SELECT l.account_id, a.code, COUNT(*) AS veces
+                      FROM journal_entries e
+                      JOIN journal_entry_lines l ON l.journal_entry_id = e.id
+                      JOIN accounting_accounts a ON a.id = l.account_id
+                      JOIN purchase_invoices p ON p.id = e.source_id
+                     WHERE e.company_id = ?
+                       AND e.source_type = 'PURCHASE_INVOICE'
+                       AND e.status <> 'VOIDED'
+                       AND a.code LIKE '6%'
+                       AND l.debit > 0
+                       AND UPPER(REPLACE(REPLACE(p.supplier_nif, ' ', ''), '-', '')) = ?
+                     GROUP BY l.account_id, a.code
+                     ORDER BY veces DESC
+                     LIMIT 1
+                    """,
+                    (rs, n) -> new HistoricMatch(rs.getString("account_id"), rs.getString("code")),
+                    companyId, supplierNif.toUpperCase(Locale.ROOT).replaceAll("[\\s\\-\\.]", ""));
+            if (!rows.isEmpty()) return Optional.of(rows.get(0));
+        }
+        // Fallback por nombre normalizado
+        if (supplierName != null && !supplierName.isBlank()) {
+            List<HistoricMatch> rows = jdbcTemplate.query("""
+                    SELECT l.account_id, a.code, COUNT(*) AS veces
+                      FROM journal_entries e
+                      JOIN journal_entry_lines l ON l.journal_entry_id = e.id
+                      JOIN accounting_accounts a ON a.id = l.account_id
+                      JOIN purchase_invoices p ON p.id = e.source_id
+                     WHERE e.company_id = ?
+                       AND e.source_type = 'PURCHASE_INVOICE'
+                       AND e.status <> 'VOIDED'
+                       AND a.code LIKE '6%'
+                       AND l.debit > 0
+                       AND UPPER(TRIM(p.supplier_name)) = ?
+                     GROUP BY l.account_id, a.code
+                     ORDER BY veces DESC
+                     LIMIT 1
+                    """,
+                    (rs, n) -> new HistoricMatch(rs.getString("account_id"), rs.getString("code")),
+                    companyId, supplierName.trim().toUpperCase(Locale.ROOT));
+            if (!rows.isEmpty()) return Optional.of(rows.get(0));
+        }
+        return Optional.empty();
+    }
+
+    /** Espejo del histórico para ventas (cuenta 7xx más usada por cliente). */
+    public Optional<HistoricMatch> findHistoricIncomeAccountForCustomer(
+            String customerNif, String customerName) {
+        String companyId = tenantContext.getCurrentCompanyId();
+        if ((customerNif == null || customerNif.isBlank())
+                && (customerName == null || customerName.isBlank())) {
+            return Optional.empty();
+        }
+        if (customerName != null && !customerName.isBlank()) {
+            List<HistoricMatch> rows = jdbcTemplate.query("""
+                    SELECT l.account_id, a.code, COUNT(*) AS veces
+                      FROM journal_entries e
+                      JOIN journal_entry_lines l ON l.journal_entry_id = e.id
+                      JOIN accounting_accounts a ON a.id = l.account_id
+                      JOIN sales_invoices s ON s.id = e.source_id
+                      LEFT JOIN customers c ON c.id = s.customer_id
+                     WHERE e.company_id = ?
+                       AND e.source_type = 'SALES_INVOICE'
+                       AND e.status <> 'VOIDED'
+                       AND a.code LIKE '7%'
+                       AND l.credit > 0
+                       AND UPPER(TRIM(c.legal_name)) = ?
+                     GROUP BY l.account_id, a.code
+                     ORDER BY veces DESC
+                     LIMIT 1
+                    """,
+                    (rs, n) -> new HistoricMatch(rs.getString("account_id"), rs.getString("code")),
+                    companyId, customerName.trim().toUpperCase(Locale.ROOT));
+            if (!rows.isEmpty()) return Optional.of(rows.get(0));
+        }
+        return Optional.empty();
+    }
+
+    /** Resultado de búsqueda histórica: id de cuenta + código. */
+    public record HistoricMatch(String accountId, String accountCode) {}
+
     /** Propone una cuenta de ingreso (grupo 7) para una factura emitida. */
     public Optional<AccountProposal> proposeIncomeAccount(
             String customerNif, String customerName, String concept, BigDecimal amount) {

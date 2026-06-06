@@ -1,6 +1,8 @@
 package com.benjagest.backend.billing.invoices;
 
 import com.benjagest.backend.accounting.AccountingLearningService;
+import com.benjagest.backend.accounting.IncomeAccountClassifierService;
+import com.benjagest.backend.accounting.TerceroAccountResolverService;
 import com.benjagest.backend.tenant.TenantContext;
 import java.math.BigDecimal;
 import java.sql.Date;
@@ -49,13 +51,19 @@ public class SalesJournalEntryService {
     private final JdbcTemplate jdbcTemplate;
     private final TenantContext tenantContext;
     private final AccountingLearningService learning;
+    private final TerceroAccountResolverService terceroResolver;
+    private final IncomeAccountClassifierService classifier;
 
     public SalesJournalEntryService(JdbcTemplate jdbcTemplate,
                                       TenantContext tenantContext,
-                                      AccountingLearningService learning) {
+                                      AccountingLearningService learning,
+                                      TerceroAccountResolverService terceroResolver,
+                                      IncomeAccountClassifierService classifier) {
         this.jdbcTemplate = jdbcTemplate;
         this.tenantContext = tenantContext;
         this.learning = learning;
+        this.terceroResolver = terceroResolver;
+        this.classifier = classifier;
     }
 
     /**
@@ -79,22 +87,47 @@ public class SalesJournalEntryService {
         String fiscalYearId = findOpenFiscalYearId(companyId, invoice.invoiceDate());
         if (fiscalYearId == null) return null;
 
-        String acc430 = findAccountByPrefix(companyId, "430"); // Clientes
-        // 7xx propuesto por aprendizaje (regla por cliente/keyword) o
-        // fallback al 700 genérico.
-        // SalesInvoice no lleva customerNif directo (resuelto vía customerId
-        // hace JOIN), así que pasamos null — la regla por palabra clave
-        // sobre customerLegalName ya cubre el caso 80%.
+        // Cliente 430 → sub-cuenta de tercero (port CONTENDO getOrCreateCuentaTercero)
+        // Resolvemos NIF si está disponible vía customers.
+        String customerNif = resolveCustomerNif(invoice.customerId());
+        TerceroAccountResolverService.ResolvedAccount customerAcc =
+                terceroResolver.getOrCreateForCustomer(customerNif, invoice.customerLegalName());
+        String acc430 = customerAcc.accountId();
+
+        // 7xx — cuenta de ingreso en cascada:
+        //   1. regla aprendida (cliente/keyword)
+        //   2. histórico del cliente (cuenta 7xx más usada)
+        //   3. classifier por descripción
+        //   4. fallback 700 genérico
         Optional<AccountingLearningService.AccountProposal> proposal =
                 learning.proposeIncomeAccount(
-                        null, invoice.customerLegalName(),
+                        customerNif, invoice.customerLegalName(),
                         invoice.invoiceNumber(), invoice.total());
         String acc7xx = proposal.map(AccountingLearningService.AccountProposal::accountId)
-                .orElseGet(() -> findAccountByPrefix(companyId, "700"));
+                .orElse(null);
         String proposedRuleId = proposal.map(AccountingLearningService.AccountProposal::ruleId)
                 .orElse(null);
         java.math.BigDecimal proposedConfidence =
                 proposal.map(AccountingLearningService.AccountProposal::confidence).orElse(null);
+
+        if (acc7xx == null) {
+            Optional<AccountingLearningService.HistoricMatch> historic =
+                    learning.findHistoricIncomeAccountForCustomer(
+                            customerNif, invoice.customerLegalName());
+            if (historic.isPresent()) acc7xx = historic.get().accountId();
+        }
+        if (acc7xx == null) {
+            String descForClassifier = safe(invoice.notes())
+                    + " " + safe(invoice.invoiceNumber());
+            Optional<String> code = classifier.classify(descForClassifier, invoice.customerLegalName());
+            if (code.isPresent()) {
+                String id = findAccountByCode(companyId, code.get());
+                if (id != null) acc7xx = id;
+            }
+        }
+        if (acc7xx == null) {
+            acc7xx = findAccountByPrefix(companyId, "700");
+        }
 
         String acc477 = findAccountByPrefix(companyId, "477"); // HP IVA repercutido
         if (acc430 == null || acc7xx == null || acc477 == null) {
@@ -197,6 +230,29 @@ public class SalesJournalEntryService {
         return ids.isEmpty() ? null : ids.get(0);
     }
 
+    private String findAccountByCode(String companyId, String code) {
+        List<String> ids = jdbcTemplate.query("""
+                SELECT id FROM accounting_accounts
+                 WHERE company_id = ? AND active = TRUE AND code = ?
+                 LIMIT 1
+                """, (rs, n) -> rs.getString("id"), companyId, code);
+        return ids.isEmpty() ? null : ids.get(0);
+    }
+
+    /** Busca el NIF del cliente en la tabla customers — null si no existe. */
+    private String resolveCustomerNif(String customerId) {
+        if (customerId == null) return null;
+        List<String> nifs = jdbcTemplate.query("""
+                SELECT nif FROM customers
+                 WHERE id = ? AND company_id = ?
+                 LIMIT 1
+                """, (rs, n) -> rs.getString("nif"),
+                customerId, tenantContext.getCurrentCompanyId());
+        return nifs.isEmpty() ? null : nifs.get(0);
+    }
+
+    private static String safe(String s) { return s == null ? "" : s; }
+
     private String findAccountByPrefix(String companyId, String prefix) {
         List<String> ids = jdbcTemplate.query("""
                 SELECT id
@@ -247,5 +303,4 @@ public class SalesJournalEntryService {
         return sb.toString().trim();
     }
 
-    private static String safe(Object v) { return v == null ? "" : v.toString(); }
 }

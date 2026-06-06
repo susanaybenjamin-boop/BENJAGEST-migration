@@ -169,11 +169,36 @@ public class AccountingScreen {
             });
         });
 
+        // Botón "Reclasificar asientos" — recorre asientos DRAFT y vuelve a
+        // calcular su cuenta 6xx/7xx aplicando histórico+classifier (port
+        // de revisarCuentasAsientos de CONTENDO). Solo toca cuentas
+        // genéricas (600/700) — si el asesor ya editó la cuenta a algo
+        // específico se respeta.
+        Button reclassify = new Button(tt.apply("accounting.action.reclassify"));
+        reclassify.setOnAction(e -> {
+            reclassify.setDisable(true);
+            async(() -> api.reclassifyDrafts(),
+                    result -> {
+                        reclassify.setDisable(false);
+                        Alert info = new Alert(AlertType.INFORMATION,
+                                tt.apply("accounting.reclassify.result")
+                                        .replace("{n}", String.valueOf(result.linesUpdated()))
+                                        .replace("{t}", String.valueOf(result.entriesScanned())));
+                        info.setHeaderText(tt.apply("accounting.reclassify.done"));
+                        info.showAndWait();
+                        loadPending();
+                    },
+                    err -> {
+                        reclassify.setDisable(false);
+                        showError(tt.apply("accounting.error.reclassify"), err);
+                    });
+        });
+
         Label hint = new Label(tt.apply("accounting.pending.hint"));
         hint.setStyle("-fx-text-fill: #6e6e6e;");
 
         HBox actions = new HBox(8, refresh, validate, accept, validateBatch,
-                new javafx.scene.layout.Region(), backfill);
+                new javafx.scene.layout.Region(), reclassify, backfill);
         actions.setAlignment(Pos.CENTER_LEFT);
         HBox.setHgrow(actions.getChildren().get(4), Priority.ALWAYS);
 
