@@ -203,10 +203,17 @@ public class TerceroAccountResolverService {
     // ---- Creación --------------------------------------------------------
 
     /**
-     * Crea sub-cuenta nueva con código secuencial. Si la cuenta padre
-     * (400/430) no existe la crea también. La sub-cuenta queda activa,
-     * marcada como NO estándar, con tercero_ref/tercero_nif para futuras
-     * búsquedas O(1).
+     * Crea sub-cuenta nueva. El código se genera según la config de la
+     * empresa ({@code tercero_account_length} y {@code tercero_account_mode}):
+     * <ul>
+     *   <li><b>SEQUENTIAL</b>: siguiente número padded con ceros hasta
+     *       cubrir la longitud configurada (ej. longitud=7 → 4000001).</li>
+     *   <li><b>BY_NIF</b>: dígitos del NIF (sin letras), padded con ceros
+     *       a la izquierda. Si el NIF excede la longitud configurada, esa
+     *       cuenta amplía su tamaño para preservar unicidad — la siguiente
+     *       vuelve a respetar la config. Si no hay NIF, fallback SEQUENTIAL.</li>
+     * </ul>
+     * Si la cuenta padre (400/430) no existe la crea también.
      */
     private ResolvedAccount createSubaccount(String companyId, TerceroType type,
                                               String nifNorm, String nameNorm,
@@ -214,18 +221,10 @@ public class TerceroAccountResolverService {
         // 1. Asegurar cuenta padre.
         String parentId = ensureParentAccount(companyId, type);
 
-        // 2. Siguiente número.
-        Integer maxNum = jdbcTemplate.queryForObject("""
-                SELECT COALESCE(MAX(CAST(SUBSTRING(code, ?) AS UNSIGNED)), 0)
-                  FROM accounting_accounts
-                 WHERE company_id = ?
-                   AND code LIKE ?
-                   AND LENGTH(code) > ?
-                """, Integer.class,
-                type.prefix.length() + 1, companyId,
-                type.prefix + "%", type.prefix.length());
-        int next = (maxNum == null ? 0 : maxNum) + 1;
-        String newCode = type.prefix + String.format(Locale.ROOT, "%03d", next);
+        // 2. Leer config de la empresa.
+        TerceroConfig cfg = loadConfig(companyId);
+        int suffixDigits = Math.max(1, cfg.totalLength() - type.prefix.length());
+        String newCode = buildSubaccountCode(companyId, type, nifNorm, suffixDigits, cfg.mode());
 
         // 3. Nombre humano.
         String displayName = originalName == null || originalName.isBlank()
@@ -278,6 +277,89 @@ public class TerceroAccountResolverService {
                 """,
                 parentId, companyId, type.parentCode, type.parentName, type.accountType);
         return parentId;
+    }
+
+    // ---- Configuración por empresa --------------------------------------
+
+    /** Modo de generación del sufijo de sub-cuenta. */
+    public enum SubaccountMode { SEQUENTIAL, BY_NIF }
+
+    /** Config leída de companies — usada para generar el código. */
+    private record TerceroConfig(int totalLength, SubaccountMode mode) {}
+
+    /** Carga la config y aplica defaults si las columnas no existen aún. */
+    private TerceroConfig loadConfig(String companyId) {
+        try {
+            return jdbcTemplate.query("""
+                    SELECT tercero_account_length, tercero_account_mode
+                      FROM companies WHERE id = ? LIMIT 1
+                    """, (rs, n) -> {
+                int len = rs.getInt("tercero_account_length");
+                if (len < 6 || len > 12) len = 7;
+                String modeStr = rs.getString("tercero_account_mode");
+                SubaccountMode mode = SubaccountMode.SEQUENTIAL;
+                if (modeStr != null) {
+                    try {
+                        mode = SubaccountMode.valueOf(modeStr.trim().toUpperCase(Locale.ROOT));
+                    } catch (IllegalArgumentException ignored) {}
+                }
+                return new TerceroConfig(len, mode);
+            }, companyId).stream().findFirst()
+                    .orElse(new TerceroConfig(7, SubaccountMode.SEQUENTIAL));
+        } catch (org.springframework.jdbc.BadSqlGrammarException ex) {
+            // V56 aún no aplicada (entorno legacy) — usar defaults.
+            return new TerceroConfig(7, SubaccountMode.SEQUENTIAL);
+        }
+    }
+
+    /**
+     * Construye el código según el modo. Hace el chequeo de unicidad
+     * (si el código generado ya existe, en BY_NIF mantiene NIF pero añade
+     * sufijo numérico de desambiguación; en SEQUENTIAL pasa al siguiente).
+     */
+    private String buildSubaccountCode(String companyId, TerceroType type,
+                                         String nifNorm, int suffixDigits,
+                                         SubaccountMode mode) {
+        if (mode == SubaccountMode.BY_NIF && nifNorm != null && !nifNorm.isEmpty()) {
+            String digits = nifNorm.replaceAll("\\D", "");
+            if (!digits.isEmpty()) {
+                // Padding/no-truncar: si NIF excede longitud configurada,
+                // se usa el NIF completo (preserva unicidad).
+                String suffix = digits.length() >= suffixDigits
+                        ? digits
+                        : String.format(Locale.ROOT, "%" + suffixDigits + "s", digits)
+                                .replace(' ', '0');
+                String candidate = type.prefix + suffix;
+                if (!codeExists(companyId, candidate)) return candidate;
+                // Colisión rara (mismo NIF, dos clientes/proveedores
+                // distintos): desambiguar con sufijo numérico -01, -02…
+                for (int i = 1; i < 99; i++) {
+                    String alt = candidate + String.format(Locale.ROOT, "%02d", i);
+                    if (!codeExists(companyId, alt)) return alt;
+                }
+            }
+        }
+
+        // SEQUENTIAL (o BY_NIF sin NIF → fallback).
+        Integer maxNum = jdbcTemplate.queryForObject("""
+                SELECT COALESCE(MAX(CAST(SUBSTRING(code, ?) AS UNSIGNED)), 0)
+                  FROM accounting_accounts
+                 WHERE company_id = ?
+                   AND code LIKE ?
+                   AND LENGTH(code) > ?
+                """, Integer.class,
+                type.prefix.length() + 1, companyId,
+                type.prefix + "%", type.prefix.length());
+        int next = (maxNum == null ? 0 : maxNum) + 1;
+        return type.prefix + String.format(Locale.ROOT, "%0" + suffixDigits + "d", next);
+    }
+
+    private boolean codeExists(String companyId, String code) {
+        Integer n = jdbcTemplate.queryForObject("""
+                SELECT COUNT(*) FROM accounting_accounts
+                 WHERE company_id = ? AND code = ?
+                """, Integer.class, companyId, code);
+        return n != null && n > 0;
     }
 
     // ---- Normalización ---------------------------------------------------

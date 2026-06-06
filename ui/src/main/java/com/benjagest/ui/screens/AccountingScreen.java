@@ -31,7 +31,10 @@ import javafx.scene.control.ComboBox;
 import javafx.scene.control.ContentDisplay;
 import javafx.scene.control.DatePicker;
 import javafx.scene.control.Label;
+import javafx.scene.control.RadioButton;
+import javafx.scene.control.Separator;
 import javafx.scene.control.Tab;
+import javafx.scene.control.ToggleGroup;
 import javafx.scene.control.TabPane;
 import javafx.scene.control.TableColumn;
 import javafx.scene.control.TableView;
@@ -392,10 +395,105 @@ public class AccountingScreen {
         HBox actions = new HBox(8, refresh, toggle, delete);
         Label hint = new Label(tt.apply("accounting.rules.hint"));
         hint.setStyle("-fx-text-fill: #6e6e6e;");
-        VBox box = new VBox(8, hint, actions, rulesTable);
+
+        // Panel "Plan de tercero": longitud + modo. Aplica al PRÓXIMO
+        // tercero creado — los existentes NO se renumeran.
+        Node terceroPanel = buildTerceroConfigPanel();
+
+        VBox box = new VBox(10, terceroPanel, new Separator(),
+                hint, actions, rulesTable);
         VBox.setVgrow(rulesTable, Priority.ALWAYS);
         box.setPadding(new Insets(8));
         loadRules();
+        return box;
+    }
+
+    /**
+     * Panel de configuración para la sub-cuenta de tercero:
+     * <ul>
+     *   <li>Longitud total del código (6–12, default 7).</li>
+     *   <li>Modo de generación del sufijo:
+     *       SEQUENTIAL (1, 2, 3…) o BY_NIF (dígitos del NIF/CIF).</li>
+     * </ul>
+     * Guarda inmediatamente al cambiar (no necesita botón "Guardar").
+     */
+    private Node buildTerceroConfigPanel() {
+        Label title = new Label(tt.apply("accounting.tercero.title"));
+        title.setStyle("-fx-font-weight: bold; -fx-font-size: 13px;");
+
+        // Combo longitud 6..12.
+        ComboBox<Integer> lengthCombo = new ComboBox<>();
+        for (int i = 6; i <= 12; i++) lengthCombo.getItems().add(i);
+        lengthCombo.setPrefWidth(80);
+
+        // Radio modo.
+        ToggleGroup modeGroup = new ToggleGroup();
+        RadioButton seqRadio = new RadioButton(tt.apply("accounting.tercero.mode.sequential"));
+        RadioButton nifRadio = new RadioButton(tt.apply("accounting.tercero.mode.by_nif"));
+        seqRadio.setToggleGroup(modeGroup);
+        nifRadio.setToggleGroup(modeGroup);
+        seqRadio.setUserData("SEQUENTIAL");
+        nifRadio.setUserData("BY_NIF");
+        seqRadio.setSelected(true);
+
+        Label preview = new Label("");
+        preview.setStyle("-fx-text-fill: #6e6e6e; -fx-font-family: 'Consolas','monospace';");
+
+        Runnable updatePreview = () -> {
+            Integer len = lengthCombo.getValue();
+            String mode = ((RadioButton) modeGroup.getSelectedToggle()).getUserData().toString();
+            if (len == null) return;
+            int suffix = Math.max(1, len - 4);
+            String example = "BY_NIF".equals(mode)
+                    ? "4000" + ("12345678".length() >= suffix
+                            ? "12345678".substring(0, Math.min(8, suffix))
+                            : String.format("%" + suffix + "s", "12345678").replace(' ', '0'))
+                    : "4000" + String.format("%0" + suffix + "d", 1);
+            preview.setText(tt.apply("accounting.tercero.preview").replace("{x}", example));
+        };
+
+        // Cargar config actual.
+        async(() -> api.getTerceroConfig(),
+                cfg -> {
+                    lengthCombo.setValue(cfg.length() >= 6 && cfg.length() <= 12 ? cfg.length() : 7);
+                    if ("BY_NIF".equalsIgnoreCase(cfg.mode())) {
+                        nifRadio.setSelected(true);
+                    } else {
+                        seqRadio.setSelected(true);
+                    }
+                    updatePreview.run();
+                },
+                err -> {
+                    lengthCombo.setValue(7);
+                    updatePreview.run();
+                });
+
+        // Guardar al cambiar (debounced via simple flag para no spamear).
+        Runnable save = () -> {
+            Integer len = lengthCombo.getValue();
+            if (len == null) return;
+            String mode = ((RadioButton) modeGroup.getSelectedToggle()).getUserData().toString();
+            updatePreview.run();
+            async(() -> api.updateTerceroConfig(len, mode),
+                    ok -> {/* silencioso — el cambio ya quedó visible */},
+                    err -> showError(tt.apply("accounting.tercero.error_save"), err));
+        };
+        lengthCombo.valueProperty().addListener((o, a, b) -> save.run());
+        modeGroup.selectedToggleProperty().addListener((o, a, b) -> save.run());
+
+        HBox lengthRow = new HBox(8,
+                new Label(tt.apply("accounting.tercero.length")), lengthCombo);
+        lengthRow.setAlignment(Pos.CENTER_LEFT);
+        HBox modeRow = new HBox(8,
+                new Label(tt.apply("accounting.tercero.mode")), seqRadio, nifRadio);
+        modeRow.setAlignment(Pos.CENTER_LEFT);
+
+        Label warn = new Label(tt.apply("accounting.tercero.warn"));
+        warn.setStyle("-fx-text-fill: #6e6e6e; -fx-font-style: italic;");
+        warn.setWrapText(true);
+
+        VBox box = new VBox(6, title, lengthRow, modeRow, preview, warn);
+        box.setPadding(new Insets(4, 0, 4, 0));
         return box;
     }
 

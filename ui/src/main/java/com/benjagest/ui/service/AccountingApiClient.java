@@ -128,6 +128,31 @@ public class AccountingApiClient {
 
     public record ReclassifyResult(int entriesScanned, int linesUpdated) {}
 
+    // ------------------------------------------------------------------
+    //  Config sub-cuenta de tercero (longitud + modo)
+    // ------------------------------------------------------------------
+
+    /** Lee la config actual (length 6-12, mode SEQUENTIAL|BY_NIF). */
+    public TerceroConfig getTerceroConfig() throws IOException, InterruptedException {
+        String json = get("/accounting/tercero-config");
+        return new TerceroConfig(
+                intField(json, "length"),
+                strField(json, "mode"));
+    }
+
+    /** Actualiza la config. Devuelve la config tras el PUT. */
+    public TerceroConfig updateTerceroConfig(int length, String mode)
+            throws IOException, InterruptedException {
+        String body = "{\"length\":" + length
+                + ",\"mode\":\"" + (mode == null ? "SEQUENTIAL" : mode) + "\"}";
+        String json = put("/accounting/tercero-config", body);
+        return new TerceroConfig(
+                intField(json, "length"),
+                strField(json, "mode"));
+    }
+
+    public record TerceroConfig(int length, String mode) {}
+
     public void voidEntry(String id, String reason) throws IOException, InterruptedException {
         String path = "/accounting/journal-entries/" + id;
         if (reason != null && !reason.isBlank()) {
