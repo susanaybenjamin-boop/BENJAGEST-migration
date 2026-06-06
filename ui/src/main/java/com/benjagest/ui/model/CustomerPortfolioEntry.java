@@ -19,10 +19,31 @@ public record CustomerPortfolioEntry(
         String city,
         String linkedCompanyId,
         boolean hasPendingInvitation,
-        boolean wasUnlinked
+        boolean wasUnlinked,
+        /**
+         * TRUE = el cliente aceptó la invitación → tiene su PROPIA company
+         * independiente (vinculación real). La UI muestra Facturación
+         * con VeriFactu + Compras y Gastos por separado.
+         *
+         * FALSE = solo existe una shadow company gestionada por la
+         * asesoría (MANAGED_CLIENT). La UI unifica en "Ventas y Gastos"
+         * porque el asesor solo archiva, no emite.
+         */
+        boolean fullyLinked
 ) {
-    public boolean isLinked() {
+    /** TRUE si hay company asociada (sea shadow o vinculada real). */
+    public boolean hasCompany() {
         return linkedCompanyId != null && !linkedCompanyId.isBlank();
+    }
+
+    /**
+     * @deprecated semántica histórica engañosa — devuelve true incluso
+     * para shadow companies. Usa {@link #fullyLinked()} para vínculo
+     * real o {@link #hasCompany()} para "tiene company asociada".
+     */
+    @Deprecated
+    public boolean isLinked() {
+        return hasCompany();
     }
 
     /** Convierte a ManagedClientEntry para reutilizar la pantalla del cliente. */

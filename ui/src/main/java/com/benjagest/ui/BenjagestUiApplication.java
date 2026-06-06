@@ -795,9 +795,13 @@ public class BenjagestUiApplication extends Application {
             if (list == null) list = java.util.List.of();
 
             // Construir set de linkedCompanyIds VIGENTES tras la query.
+            // SOLO incluimos los REALMENTE vinculados (invitación
+            // aceptada). Crear una shadow company NO debe disparar el
+            // toast "Nuevo cliente vinculado" porque el cliente no ha
+            // aceptado nada — solo el asesor empezó a gestionar.
             java.util.Set<String> currentlyLinked = new java.util.HashSet<>();
             for (var c : list) {
-                if (c.isLinked() && c.linkedCompanyId() != null) {
+                if (c.fullyLinked() && c.linkedCompanyId() != null) {
                     currentlyLinked.add(c.linkedCompanyId());
                 }
             }
@@ -10972,6 +10976,7 @@ public class BenjagestUiApplication extends Application {
             case "advisory.portfolio.start_management.fail.body" -> "The management workspace for this customer could not be created. Please try again.";
             case "advisory.col.link_status" -> "Vinculation";
             case "advisory.link.linked" -> "Linked";
+            case "advisory.link.shadow_managed" -> "Managed (no link)";
             case "advisory.link.pending" -> "Invitation pending";
             case "advisory.link.not_linked" -> "Not linked";
             case "advisory.link.unlinked" -> "Unlinked by client";
@@ -11334,6 +11339,7 @@ public class BenjagestUiApplication extends Application {
             case "advisory.portfolio.start_management.fail.body" -> "No se ha podido crear el espacio de gestion para este cliente. Vuelve a intentarlo.";
             case "advisory.col.link_status" -> "Vinculacion";
             case "advisory.link.linked" -> "Vinculado";
+            case "advisory.link.shadow_managed" -> "Gestionado (sin vínculo)";
             case "advisory.link.pending" -> "Invitacion pendiente";
             case "advisory.link.not_linked" -> "Sin vincular";
             case "advisory.link.unlinked" -> "Desvinculado por el cliente";
@@ -13670,9 +13676,14 @@ public class BenjagestUiApplication extends Application {
         colLinked.setCellValueFactory(c -> {
             var entry = c.getValue();
             String label;
-            if (entry.isLinked())                  label = "✓ " + t("advisory.link.linked");
+            // Badge basado en VINCULACIÓN REAL (invitación aceptada),
+            // no en "tiene shadow company". Antes, entrar a un cliente
+            // NO vinculado le creaba shadow → el badge cambiaba a
+            // "vinculado" sin que el cliente hubiera aceptado nada.
+            if (entry.fullyLinked())               label = "✓ " + t("advisory.link.linked");
             else if (entry.hasPendingInvitation()) label = "📩 " + t("advisory.link.pending");
             else if (entry.wasUnlinked())          label = "⚠ " + t("advisory.link.unlinked");
+            else if (entry.hasCompany())           label = "📁 " + t("advisory.link.shadow_managed");
             else                                   label = "✗ " + t("advisory.link.not_linked");
             return new SimpleStringProperty(label);
         });
@@ -13724,7 +13735,9 @@ public class BenjagestUiApplication extends Application {
                     //   desvinculado → "Reinvitar"
                     //   ninguno      → "Invitar cliente seleccionado"
                     if (nv != null) {
-                        if (nv.isLinked()) {
+                        // "Reenviar invitación" solo aplica si el cliente
+                        // está realmente vinculado (no si solo tiene shadow).
+                        if (nv.fullyLinked()) {
                             inviteSelectedBtn.setText(t("advisory.action.resend_invitation"));
                             inviteSelectedTip.setText(t("advisory.action.resend_invitation.tip"));
                         } else if (nv.wasUnlinked()) {
@@ -14198,15 +14211,17 @@ public class BenjagestUiApplication extends Application {
      * después queda para un slice futuro.
      */
     private void openPortfolioClient(com.benjagest.ui.model.CustomerPortfolioEntry sel) {
-        // IMPORTANTE: el SQL del portfolio (AdvisoryService.listPortfolio)
-        // hace JOIN con companies por parent_company_id, así que TODO lo
-        // que devuelve son SHADOW companies (MANAGED_CLIENT), no clientes
-        // realmente vinculados (que tendrían su propia company sin
-        // parent). Por eso pasamos isLinked=false en ambos caminos:
-        // shadow ya existente y shadow recién creada. Modo "Ventas y
-        // Gastos" unificado (A3/Contasol).
-        if (sel.isLinked()) {
-            switchToClient(sel.asManagedClient(), false);
+        // Distinción REAL de vinculación:
+        //   - fullyLinked = el cliente aceptó la invitación
+        //     (advisory_invitations.status='ACCEPTED'). Tiene su propia
+        //     company, emite facturas con VeriFactu desde BENJAGEST.
+        //     → UI con tabs Facturación + Compras y Gastos.
+        //   - hasCompany() && !fullyLinked = solo hay shadow company
+        //     (MANAGED_CLIENT). El asesor archiva facturas que el
+        //     cliente emitió en otro sistema.
+        //     → UI con tab unificado Ventas y Gastos.
+        if (sel.hasCompany()) {
+            switchToClient(sel.asManagedClient(), sel.fullyLinked());
             return;
         }
         Task<String> task = new Task<>() {
