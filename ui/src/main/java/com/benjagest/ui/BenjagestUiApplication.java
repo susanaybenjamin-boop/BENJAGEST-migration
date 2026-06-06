@@ -2334,12 +2334,14 @@ public class BenjagestUiApplication extends Application {
         colTotal.setComparator(NUMERIC_STRING_COMPARATOR);
 
         // Columna "Estado": DRAFT/POSTED/VOID. Para multivalidación
-        // resulta útil ver qué pendiente queda.
+        // resulta útil ver qué pendiente queda. Se muestra traducido
+        // (Borrador/Validado/Anulado en ES, Draft/Posted/Void en EN).
         TableColumn<com.benjagest.ui.model.PurchaseInvoiceEntry, String> colStatus =
                 new TableColumn<>(t("purchases.col.status"));
         colStatus.setCellValueFactory(c -> new SimpleStringProperty(
-                c.getValue().status() == null ? "—" : c.getValue().status()));
-        colStatus.setPrefWidth(80);
+                c.getValue().status() == null ? "—"
+                        : t("accounting.status." + c.getValue().status())));
+        colStatus.setPrefWidth(95);
 
         // Columna "Asiento": indica si se generó apunte contable
         // automático (depende de si la empresa tiene plan contable
@@ -10581,6 +10583,156 @@ public class BenjagestUiApplication extends Application {
             case "accounting.error.backfill" -> "Could not regenerate entries";
             case "accounting.error.session_expired_title" -> "Session expired";
             case "accounting.error.session_expired_body" -> "Your session has expired (tokens last 8 hours for security).\n\nClose the app and log in again to continue.\n\nNothing you saved has been lost.";
+            // ============ Enum values translated (EN) ============
+            case "accounting.status.DRAFT" -> "Draft";
+            case "accounting.status.POSTED" -> "Posted";
+            case "accounting.status.VOID" -> "Void";
+            case "accounting.status.VOIDED" -> "Voided";
+            case "accounting.status.VALIDATED" -> "Validated";
+            case "accounting.status.PAID" -> "Paid";
+            case "accounting.status.PARTIAL" -> "Partial";
+            case "accounting.status.OVERDUE" -> "Overdue";
+            case "accounting.status.PENDING" -> "Pending";
+            case "accounting.status.CANCELLED" -> "Cancelled";
+            case "accounting.status.PROFORMA" -> "Proforma";
+            case "accounting.source_type.SALES_INVOICE" -> "Sales invoice";
+            case "accounting.source_type.PURCHASE_INVOICE" -> "Purchase invoice";
+            case "accounting.source_type.MANUAL" -> "Manual";
+            case "accounting.source_type.BANK_MOVEMENT" -> "Bank movement";
+            case "accounting.source_type.YEAR_CLOSE_REGULARIZATION" -> "Year-close regularization";
+            case "accounting.source_type.YEAR_CLOSE_CLOSING" -> "Year-close entry";
+            case "accounting.source_type.LOAN_INSTALLMENT" -> "Loan installment";
+            case "accounting.source_type.ASSET_DEPRECIATION" -> "Depreciation";
+            case "accounting.source_type.ASSET_ACQUISITION" -> "Asset acquisition";
+            case "accounting.source_type.ASSET_DISPOSAL" -> "Asset disposal";
+            case "accounting.source_type.MANUAL_REVERSAL" -> "Reversal";
+            case "accounting.col.name" -> "Name";
+            case "accounting.col.rule_kind" -> "Rule kind";
+            case "accounting.col.nif" -> "Tax ID";
+            case "accounting.col.keyword" -> "Keyword";
+            case "accounting.col.target_account" -> "→ Account";
+            case "accounting.col.applied" -> "Applied";
+            case "accounting.col.overridden" -> "Overridden";
+            case "accounting.col.active" -> "Active";
+            case "accounting.col.rec_kind" -> "Kind";
+            case "accounting.col.frequency" -> "Frequency";
+            case "accounting.col.day" -> "Day";
+            case "accounting.col.next_run" -> "Next run";
+            case "accounting.col.last_run" -> "Last run";
+            case "accounting.col.times_run" -> "Times run";
+            case "accounting.col.times_failed" -> "Times failed";
+            case "accounting.rule_kind.EXPENSE_ACCOUNT_BY_SUPPLIER_NIF" -> "Expense account by supplier Tax ID";
+            case "accounting.rule_kind.EXPENSE_ACCOUNT_BY_KEYWORD" -> "Expense account by keyword";
+            case "accounting.rule_kind.INCOME_ACCOUNT_BY_CUSTOMER_NIF" -> "Income account by customer Tax ID";
+            case "accounting.rule_kind.INCOME_ACCOUNT_BY_KEYWORD" -> "Income account by keyword";
+            case "accounting.rule_kind.VAT_RATE_BY_SUPPLIER_NIF" -> "VAT rate by supplier Tax ID";
+            case "accounting.rec_kind.PURCHASE" -> "Recurring expense";
+            case "accounting.rec_kind.SALES_INVOICE" -> "Recurring sales invoice";
+            case "accounting.rec_kind.JOURNAL_ENTRY" -> "Recurring entry";
+            case "accounting.rec_kind.TEMPLATE_APPLY" -> "Recurring template";
+            case "accounting.rec_kind.LOAN_AUTO_PAY" -> "Loan payment";
+            case "accounting.frequency.DAILY" -> "Daily";
+            case "accounting.frequency.WEEKLY" -> "Weekly";
+            case "accounting.frequency.MONTHLY" -> "Monthly";
+            case "accounting.frequency.QUARTERLY" -> "Quarterly";
+            case "accounting.frequency.YEARLY" -> "Yearly";
+            case "accounting.frequency.CUSTOM_MONTHS" -> "Custom (months)";
+            case "accounting.run_status.OK" -> "OK";
+            case "accounting.run_status.ERROR" -> "Error";
+            case "accounting.run_status.SKIPPED" -> "Skipped";
+            // ============ Billing inline columns (EN) ============
+            case "billing.col.number" -> "Number";
+            case "billing.col.date" -> "Date";
+            case "billing.col.customer" -> "Customer";
+            case "billing.col.type" -> "Type";
+            case "billing.col.total" -> "Total";
+            case "billing.col.paid" -> "Paid";
+            case "billing.col.status" -> "Status";
+            case "billing.col.payment_status" -> "Payment";
+            case "billing.payment_status.PENDING" -> "Pending";
+            case "billing.payment_status.PAID" -> "Paid";
+            case "billing.payment_status.PARTIAL" -> "Partial";
+            case "billing.payment_status.OVERDUE" -> "Overdue";
+            // ============ Labor inline columns (EN) ============
+            case "labor.col.name" -> "Name";
+            case "labor.col.nif" -> "Tax ID";
+            case "labor.col.regime" -> "SS regime";
+            case "labor.col.hire_date" -> "Hire date";
+            case "labor.col.active" -> "Active";
+            // ============ Tax filings inline columns (EN) ============
+            case "tax.col.model" -> "Model";
+            case "tax.col.year" -> "Year";
+            case "tax.col.quarter" -> "Quarter";
+            case "tax.col.month" -> "Month";
+            case "tax.col.status" -> "Status";
+            case "tax.col.amount" -> "Amount";
+            case "tax.col.deadline" -> "Deadline";
+            case "tax.filing_status.DRAFT" -> "Draft";
+            case "tax.filing_status.READY" -> "Ready";
+            case "tax.filing_status.PRESENTED" -> "Presented";
+            case "tax.filing_status.PAID" -> "Paid";
+            case "tax.filing_status.REJECTED" -> "Rejected";
+            case "tax.filing_status.CANCELLED" -> "Cancelled";
+            // ============ Bank/Loans/Assets columns (EN) ============
+            case "bank.col.alias" -> "Alias";
+            case "bank.col.iban" -> "IBAN";
+            case "bank.col.bank" -> "Bank";
+            case "bank.col.opening" -> "Opening";
+            case "bank.col.active" -> "Active";
+            case "bank.col.date" -> "Date";
+            case "bank.col.description" -> "Description";
+            case "bank.col.counterparty" -> "Counterparty";
+            case "bank.col.nif" -> "Tax ID";
+            case "bank.col.amount" -> "Amount";
+            case "bank.col.balance" -> "Balance";
+            case "bank.col.status" -> "Status";
+            case "bank.col.invoice" -> "Invoice";
+            case "bank.movement_status.UNRECONCILED" -> "Unreconciled";
+            case "bank.movement_status.MATCHED" -> "Matched";
+            case "bank.movement_status.POSTED" -> "Posted";
+            case "bank.movement_status.IGNORED" -> "Ignored";
+            case "loans.col.code" -> "Code";
+            case "loans.col.description" -> "Description";
+            case "loans.col.lender" -> "Lender";
+            case "loans.col.principal" -> "Principal";
+            case "loans.col.interest" -> "Interest %";
+            case "loans.col.term" -> "Term (m)";
+            case "loans.col.installment" -> "Installment";
+            case "loans.col.method" -> "Method";
+            case "loans.col.status" -> "Status";
+            case "loans.col.due_date" -> "Due date";
+            case "loans.col.interest_amount" -> "Interest";
+            case "loans.col.remaining" -> "Remaining";
+            case "loans.method.FRENCH" -> "French";
+            case "loans.method.CONSTANT_PRINCIPAL" -> "Constant principal";
+            case "loans.method.BULLET" -> "Bullet";
+            case "loans.status.ACTIVE" -> "Active";
+            case "loans.status.PAID_OFF" -> "Paid off";
+            case "loans.status.CANCELLED" -> "Cancelled";
+            case "loans.installment_status.PENDING" -> "Pending";
+            case "loans.installment_status.PAID" -> "Paid";
+            case "loans.installment_status.OVERDUE" -> "Overdue";
+            case "loans.installment_status.CANCELLED" -> "Cancelled";
+            case "assets.col.code" -> "Code";
+            case "assets.col.name" -> "Name";
+            case "assets.col.category" -> "Category";
+            case "assets.col.acquisition_date" -> "Acquisition";
+            case "assets.col.cost" -> "Cost";
+            case "assets.col.useful_life" -> "Useful life (yrs)";
+            case "assets.col.method" -> "Method";
+            case "assets.col.active" -> "Active";
+            case "assets.category.BUILDING" -> "Building";
+            case "assets.category.LAND" -> "Land";
+            case "assets.category.MACHINERY" -> "Machinery";
+            case "assets.category.VEHICLE" -> "Vehicle";
+            case "assets.category.IT_EQUIPMENT" -> "IT equipment";
+            case "assets.category.OFFICE_FURNITURE" -> "Office furniture";
+            case "assets.category.SOFTWARE" -> "Software";
+            case "assets.category.INTANGIBLE" -> "Intangible";
+            case "assets.category.OTHER" -> "Other";
+            case "assets.method.LINEAR" -> "Linear";
+            case "assets.method.DEGRESSIVE" -> "Degressive";
+            case "assets.method.NONE" -> "None";
             case "advisory.client.summary.title" -> "Client information";
             case "advisory.client.summary.hint" -> "Basic data captured from the client's company profile.";
             case "advisory.client.field.legal_name" -> "Legal name:";
@@ -10767,6 +10919,156 @@ public class BenjagestUiApplication extends Application {
             case "accounting.error.backfill" -> "No se pudieron regenerar asientos";
             case "accounting.error.session_expired_title" -> "Sesión expirada";
             case "accounting.error.session_expired_body" -> "Tu sesión ha caducado (los tokens duran 8 horas por seguridad).\n\nCierra la aplicación y vuelve a iniciar sesión para continuar trabajando.\n\nNo se ha perdido nada de lo que tenías guardado.";
+            // ============ Valores enum traducidos (ES) ============
+            case "accounting.status.DRAFT" -> "Borrador";
+            case "accounting.status.POSTED" -> "Validado";
+            case "accounting.status.VOID" -> "Anulado";
+            case "accounting.status.VOIDED" -> "Anulado";
+            case "accounting.status.VALIDATED" -> "Validado";
+            case "accounting.status.PAID" -> "Pagado";
+            case "accounting.status.PARTIAL" -> "Parcial";
+            case "accounting.status.OVERDUE" -> "Vencido";
+            case "accounting.status.PENDING" -> "Pendiente";
+            case "accounting.status.CANCELLED" -> "Cancelado";
+            case "accounting.status.PROFORMA" -> "Proforma";
+            case "accounting.source_type.SALES_INVOICE" -> "Factura emitida";
+            case "accounting.source_type.PURCHASE_INVOICE" -> "Factura recibida";
+            case "accounting.source_type.MANUAL" -> "Manual";
+            case "accounting.source_type.BANK_MOVEMENT" -> "Movimiento bancario";
+            case "accounting.source_type.YEAR_CLOSE_REGULARIZATION" -> "Regularización cierre";
+            case "accounting.source_type.YEAR_CLOSE_CLOSING" -> "Cierre ejercicio";
+            case "accounting.source_type.LOAN_INSTALLMENT" -> "Cuota préstamo";
+            case "accounting.source_type.ASSET_DEPRECIATION" -> "Amortización";
+            case "accounting.source_type.ASSET_ACQUISITION" -> "Alta inmovilizado";
+            case "accounting.source_type.ASSET_DISPOSAL" -> "Baja inmovilizado";
+            case "accounting.source_type.MANUAL_REVERSAL" -> "Contraasiento";
+            case "accounting.col.name" -> "Nombre";
+            case "accounting.col.rule_kind" -> "Tipo de regla";
+            case "accounting.col.nif" -> "NIF";
+            case "accounting.col.keyword" -> "Palabra clave";
+            case "accounting.col.target_account" -> "→ Cuenta";
+            case "accounting.col.applied" -> "Aplicadas";
+            case "accounting.col.overridden" -> "Corregidas";
+            case "accounting.col.active" -> "Activa";
+            case "accounting.col.rec_kind" -> "Tipo";
+            case "accounting.col.frequency" -> "Frecuencia";
+            case "accounting.col.day" -> "Día";
+            case "accounting.col.next_run" -> "Próxima";
+            case "accounting.col.last_run" -> "Última";
+            case "accounting.col.times_run" -> "Ejecutadas";
+            case "accounting.col.times_failed" -> "Fallidas";
+            case "accounting.rule_kind.EXPENSE_ACCOUNT_BY_SUPPLIER_NIF" -> "Cuenta gasto por NIF proveedor";
+            case "accounting.rule_kind.EXPENSE_ACCOUNT_BY_KEYWORD" -> "Cuenta gasto por palabra clave";
+            case "accounting.rule_kind.INCOME_ACCOUNT_BY_CUSTOMER_NIF" -> "Cuenta ingreso por NIF cliente";
+            case "accounting.rule_kind.INCOME_ACCOUNT_BY_KEYWORD" -> "Cuenta ingreso por palabra clave";
+            case "accounting.rule_kind.VAT_RATE_BY_SUPPLIER_NIF" -> "Tipo IVA por NIF proveedor";
+            case "accounting.rec_kind.PURCHASE" -> "Gasto recurrente";
+            case "accounting.rec_kind.SALES_INVOICE" -> "Venta recurrente";
+            case "accounting.rec_kind.JOURNAL_ENTRY" -> "Asiento recurrente";
+            case "accounting.rec_kind.TEMPLATE_APPLY" -> "Plantilla recurrente";
+            case "accounting.rec_kind.LOAN_AUTO_PAY" -> "Pago cuota préstamo";
+            case "accounting.frequency.DAILY" -> "Diaria";
+            case "accounting.frequency.WEEKLY" -> "Semanal";
+            case "accounting.frequency.MONTHLY" -> "Mensual";
+            case "accounting.frequency.QUARTERLY" -> "Trimestral";
+            case "accounting.frequency.YEARLY" -> "Anual";
+            case "accounting.frequency.CUSTOM_MONTHS" -> "Custom (meses)";
+            case "accounting.run_status.OK" -> "OK";
+            case "accounting.run_status.ERROR" -> "Error";
+            case "accounting.run_status.SKIPPED" -> "Saltada";
+            // ============ Columnas Billing inline (ES) ============
+            case "billing.col.number" -> "Número";
+            case "billing.col.date" -> "Fecha";
+            case "billing.col.customer" -> "Cliente";
+            case "billing.col.type" -> "Tipo";
+            case "billing.col.total" -> "Total";
+            case "billing.col.paid" -> "Cobrado";
+            case "billing.col.status" -> "Estado";
+            case "billing.col.payment_status" -> "Cobro";
+            case "billing.payment_status.PENDING" -> "Pendiente";
+            case "billing.payment_status.PAID" -> "Pagado";
+            case "billing.payment_status.PARTIAL" -> "Parcial";
+            case "billing.payment_status.OVERDUE" -> "Vencido";
+            // ============ Columnas Labor inline (ES) ============
+            case "labor.col.name" -> "Nombre";
+            case "labor.col.nif" -> "NIF";
+            case "labor.col.regime" -> "Régimen SS";
+            case "labor.col.hire_date" -> "Alta";
+            case "labor.col.active" -> "Activo";
+            // ============ Columnas Tax filings inline (ES) ============
+            case "tax.col.model" -> "Modelo";
+            case "tax.col.year" -> "Año";
+            case "tax.col.quarter" -> "Trimestre";
+            case "tax.col.month" -> "Mes";
+            case "tax.col.status" -> "Estado";
+            case "tax.col.amount" -> "Importe";
+            case "tax.col.deadline" -> "Vencimiento";
+            case "tax.filing_status.DRAFT" -> "Borrador";
+            case "tax.filing_status.READY" -> "Listo";
+            case "tax.filing_status.PRESENTED" -> "Presentado";
+            case "tax.filing_status.PAID" -> "Pagado";
+            case "tax.filing_status.REJECTED" -> "Rechazado";
+            case "tax.filing_status.CANCELLED" -> "Cancelado";
+            // ============ Columnas Bank/Loans/Assets (ES) ============
+            case "bank.col.alias" -> "Alias";
+            case "bank.col.iban" -> "IBAN";
+            case "bank.col.bank" -> "Banco";
+            case "bank.col.opening" -> "Apertura";
+            case "bank.col.active" -> "Activa";
+            case "bank.col.date" -> "Fecha";
+            case "bank.col.description" -> "Descripción";
+            case "bank.col.counterparty" -> "Contraparte";
+            case "bank.col.nif" -> "NIF";
+            case "bank.col.amount" -> "Importe";
+            case "bank.col.balance" -> "Saldo";
+            case "bank.col.status" -> "Estado";
+            case "bank.col.invoice" -> "Factura";
+            case "bank.movement_status.UNRECONCILED" -> "Sin conciliar";
+            case "bank.movement_status.MATCHED" -> "Casado";
+            case "bank.movement_status.POSTED" -> "Contabilizado";
+            case "bank.movement_status.IGNORED" -> "Ignorado";
+            case "loans.col.code" -> "Código";
+            case "loans.col.description" -> "Descripción";
+            case "loans.col.lender" -> "Acreedor";
+            case "loans.col.principal" -> "Capital";
+            case "loans.col.interest" -> "Interés %";
+            case "loans.col.term" -> "Plazo (m)";
+            case "loans.col.installment" -> "Cuota";
+            case "loans.col.method" -> "Método";
+            case "loans.col.status" -> "Estado";
+            case "loans.col.due_date" -> "Vencimiento";
+            case "loans.col.interest_amount" -> "Interés";
+            case "loans.col.remaining" -> "Pendiente";
+            case "loans.method.FRENCH" -> "Francés";
+            case "loans.method.CONSTANT_PRINCIPAL" -> "Capital constante";
+            case "loans.method.BULLET" -> "Bullet";
+            case "loans.status.ACTIVE" -> "Activo";
+            case "loans.status.PAID_OFF" -> "Liquidado";
+            case "loans.status.CANCELLED" -> "Cancelado";
+            case "loans.installment_status.PENDING" -> "Pendiente";
+            case "loans.installment_status.PAID" -> "Pagada";
+            case "loans.installment_status.OVERDUE" -> "Vencida";
+            case "loans.installment_status.CANCELLED" -> "Cancelada";
+            case "assets.col.code" -> "Código";
+            case "assets.col.name" -> "Nombre";
+            case "assets.col.category" -> "Categoría";
+            case "assets.col.acquisition_date" -> "Adquisición";
+            case "assets.col.cost" -> "Coste";
+            case "assets.col.useful_life" -> "Vida útil (años)";
+            case "assets.col.method" -> "Método";
+            case "assets.col.active" -> "Activa";
+            case "assets.category.BUILDING" -> "Edificio";
+            case "assets.category.LAND" -> "Terreno";
+            case "assets.category.MACHINERY" -> "Maquinaria";
+            case "assets.category.VEHICLE" -> "Vehículo";
+            case "assets.category.IT_EQUIPMENT" -> "Equipo informático";
+            case "assets.category.OFFICE_FURNITURE" -> "Mobiliario";
+            case "assets.category.SOFTWARE" -> "Software";
+            case "assets.category.INTANGIBLE" -> "Inmaterial";
+            case "assets.category.OTHER" -> "Otro";
+            case "assets.method.LINEAR" -> "Lineal";
+            case "assets.method.DEGRESSIVE" -> "Decreciente";
+            case "assets.method.NONE" -> "Sin amortización";
             case "advisory.client.summary.title" -> "Datos del cliente";
             case "advisory.client.summary.hint" -> "Datos basicos extraidos del perfil de empresa del cliente.";
             case "advisory.client.field.legal_name" -> "Razon social:";
@@ -13497,14 +13799,16 @@ public class BenjagestUiApplication extends Application {
     private Node buildClientBillingTab() {
         javafx.scene.control.TableView<com.benjagest.ui.model.SalesInvoiceSummary> table =
                 new javafx.scene.control.TableView<>();
-        addCol(table, "Número", v -> v.invoiceNumber() == null ? "" : v.invoiceNumber(), 130);
-        addCol(table, "Fecha", v -> v.invoiceDate() == null ? "" : v.invoiceDate(), 100);
-        addCol(table, "Cliente", v -> v.customerLegalName() == null ? "" : v.customerLegalName(), 240);
-        addCol(table, "Tipo", v -> v.invoiceType() == null ? "" : v.invoiceType(), 90);
-        addCol(table, "Total", v -> v.total() == null ? "" : v.total().toString(), 110);
-        addCol(table, "Cobrado", v -> v.paidAmount() == null ? "" : v.paidAmount().toString(), 100);
-        addCol(table, "Estado", v -> v.status() == null ? "" : v.status(), 110);
-        addCol(table, "Cobro", v -> v.paymentStatus() == null ? "" : v.paymentStatus(), 90);
+        addCol(table, t("billing.col.number"), v -> v.invoiceNumber() == null ? "" : v.invoiceNumber(), 130);
+        addCol(table, t("billing.col.date"), v -> v.invoiceDate() == null ? "" : v.invoiceDate(), 100);
+        addCol(table, t("billing.col.customer"), v -> v.customerLegalName() == null ? "" : v.customerLegalName(), 240);
+        addCol(table, t("billing.col.type"), v -> v.invoiceType() == null ? "" : v.invoiceType(), 90);
+        addCol(table, t("billing.col.total"), v -> v.total() == null ? "" : v.total().toString(), 110);
+        addCol(table, t("billing.col.paid"), v -> v.paidAmount() == null ? "" : v.paidAmount().toString(), 100);
+        addCol(table, t("billing.col.status"),
+                v -> v.status() == null ? "" : t("accounting.status." + v.status()), 110);
+        addCol(table, t("billing.col.payment_status"),
+                v -> v.paymentStatus() == null ? "" : t("billing.payment_status." + v.paymentStatus()), 100);
 
         Button refresh = new Button(t("accounting.action.refresh"));
         refresh.setOnAction(e -> loadClientBilling(table));
@@ -13538,11 +13842,11 @@ public class BenjagestUiApplication extends Application {
     private Node buildClientLaborTab() {
         javafx.scene.control.TableView<com.benjagest.ui.model.EmployeeEntry> table =
                 new javafx.scene.control.TableView<>();
-        addCol(table, "Nombre", v -> v.fullName() == null ? "" : v.fullName(), 220);
-        addCol(table, "NIF", v -> v.taxIdentifier() == null ? "" : v.taxIdentifier(), 110);
-        addCol(table, "Régimen", v -> v.ssRegime() == null ? "" : v.ssRegime(), 110);
-        addCol(table, "Alta", v -> v.hireDate() == null ? "" : v.hireDate().toString(), 100);
-        addCol(table, "Activa", v -> v.active() ? "✓" : "✗", 70);
+        addCol(table, t("labor.col.name"), v -> v.fullName() == null ? "" : v.fullName(), 220);
+        addCol(table, t("labor.col.nif"), v -> v.taxIdentifier() == null ? "" : v.taxIdentifier(), 110);
+        addCol(table, t("labor.col.regime"), v -> v.ssRegime() == null ? "" : v.ssRegime(), 110);
+        addCol(table, t("labor.col.hire_date"), v -> v.hireDate() == null ? "" : v.hireDate().toString(), 100);
+        addCol(table, t("labor.col.active"), v -> v.active() ? "✓" : "✗", 70);
 
         Button refresh = new Button(t("accounting.action.refresh"));
         refresh.setOnAction(e -> loadClientLabor(table));
@@ -13575,13 +13879,14 @@ public class BenjagestUiApplication extends Application {
     private Node buildClientTaxFilingsTab() {
         javafx.scene.control.TableView<com.benjagest.ui.model.TaxFilingEntry> table =
                 new javafx.scene.control.TableView<>();
-        addCol(table, "Modelo", v -> v.taxModelCode() == null ? "" : v.taxModelCode(), 90);
-        addCol(table, "Año", v -> String.valueOf(v.periodYear()), 70);
-        addCol(table, "Trimestre", v -> v.periodQuarter() == null ? "" : "Q" + v.periodQuarter(), 90);
-        addCol(table, "Mes", v -> v.periodMonth() == null ? "" : String.valueOf(v.periodMonth()), 60);
-        addCol(table, "Estado", v -> v.status() == null ? "" : v.status(), 110);
-        addCol(table, "Importe", v -> v.totalAmount() == null ? "" : v.totalAmount().toString(), 120);
-        addCol(table, "Vencimiento", v -> v.deadlineAt() == null ? "" : v.deadlineAt().toString(), 110);
+        addCol(table, t("tax.col.model"), v -> v.taxModelCode() == null ? "" : v.taxModelCode(), 90);
+        addCol(table, t("tax.col.year"), v -> String.valueOf(v.periodYear()), 70);
+        addCol(table, t("tax.col.quarter"), v -> v.periodQuarter() == null ? "" : "T" + v.periodQuarter(), 90);
+        addCol(table, t("tax.col.month"), v -> v.periodMonth() == null ? "" : String.valueOf(v.periodMonth()), 60);
+        addCol(table, t("tax.col.status"),
+                v -> v.status() == null ? "" : t("tax.filing_status." + v.status()), 110);
+        addCol(table, t("tax.col.amount"), v -> v.totalAmount() == null ? "" : v.totalAmount().toString(), 120);
+        addCol(table, t("tax.col.deadline"), v -> v.deadlineAt() == null ? "" : v.deadlineAt().toString(), 110);
 
         Button refresh = new Button(t("accounting.action.refresh"));
         refresh.setOnAction(e -> loadClientFilings(table));
