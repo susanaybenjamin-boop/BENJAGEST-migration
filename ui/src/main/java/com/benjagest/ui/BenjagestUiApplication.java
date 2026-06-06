@@ -2407,6 +2407,12 @@ public class BenjagestUiApplication extends Application {
         body.setPadding(new Insets(20));
 
         reloadPurchaseInvoices();
+        // Auto-refresh cuando alguien emite PURCHASES (guardar gasto,
+        // validar lote, eliminar, etc.). La suscripción se quita sola
+        // cuando esta pantalla se desmonte (Node.sceneProperty=null).
+        com.benjagest.ui.support.RefreshBus.subscribe(
+                com.benjagest.ui.support.RefreshBus.TOPIC_PURCHASES,
+                this::reloadPurchaseInvoices, body);
         return body;
     }
 
@@ -2501,7 +2507,9 @@ public class BenjagestUiApplication extends Application {
                                 .replace("{f}", String.valueOf(failed)));
                 info.setHeaderText(t("purchases.action.validate_batch"));
                 info.showAndWait();
-                reloadPurchaseInvoices();
+                com.benjagest.ui.support.RefreshBus.emit(
+                        com.benjagest.ui.support.RefreshBus.TOPIC_PURCHASES,
+                        com.benjagest.ui.support.RefreshBus.TOPIC_JOURNAL);
             });
             task.setOnFailed(e -> showError(t("purchases.validate_batch.fail.title"),
                     task.getException() == null ? "?" : task.getException().getMessage()));
@@ -2532,7 +2540,9 @@ public class BenjagestUiApplication extends Application {
                     return null;
                 }
             };
-            task.setOnSucceeded(e -> reloadPurchaseInvoices());
+            task.setOnSucceeded(e -> com.benjagest.ui.support.RefreshBus.emit(
+                    com.benjagest.ui.support.RefreshBus.TOPIC_PURCHASES,
+                    com.benjagest.ui.support.RefreshBus.TOPIC_JOURNAL));
             task.setOnFailed(e -> showError(t("purchases.delete.fail.title"),
                     t("purchases.delete.fail.body")));
             start(task, "purchase-invoice-delete");
@@ -2794,6 +2804,11 @@ public class BenjagestUiApplication extends Application {
                 } else {
                     showInfo(t("purchases.save.ok.title"),
                             t("purchases.save.ok.body"));
+                    // El gasto generó factura + asiento contable. Avisamos
+                    // a las pantallas de Compras y Diario.
+                    com.benjagest.ui.support.RefreshBus.emit(
+                            com.benjagest.ui.support.RefreshBus.TOPIC_PURCHASES,
+                            com.benjagest.ui.support.RefreshBus.TOPIC_JOURNAL);
                 }
                 dialog.setResult(saveExpenseBt);
                 dialog.close();
@@ -5000,6 +5015,12 @@ public class BenjagestUiApplication extends Application {
 
         VBox bottomBlock = new VBox(12, billingTable, rowActions);
 
+        // Auto-refresh cuando alguien emite SALES (crear/validar/anular/
+        // borrar/cobrar factura). Auto-baja al desmontar la pantalla.
+        com.benjagest.ui.support.RefreshBus.subscribe(
+                com.benjagest.ui.support.RefreshBus.TOPIC_SALES,
+                this::reloadInvoices, billingTable);
+
         return tabLayout(topBlock, bottomBlock, new HBox());
     }
 
@@ -5023,7 +5044,10 @@ public class BenjagestUiApplication extends Application {
                     t("list.dialog.validate.success_prefix") + v.invoiceNumber(), ButtonType.OK);
             ok.setHeaderText(null);
             ok.showAndWait();
-            showBilling();
+            // Validar venta crea asiento contable + cambia status.
+            com.benjagest.ui.support.RefreshBus.emit(
+                    com.benjagest.ui.support.RefreshBus.TOPIC_SALES,
+                    com.benjagest.ui.support.RefreshBus.TOPIC_JOURNAL);
         });
         task.setOnFailed(ev -> showError(t("editor.error.validate_failed.title"),
                 t("list.dialog.validate.failure_body")));
@@ -5214,7 +5238,11 @@ public class BenjagestUiApplication extends Application {
                     ButtonType.OK);
             ok.setHeaderText(null);
             ok.showAndWait();
-            showBilling();
+            // Anular emite la rectificativa: cambian ambas facturas + el
+            // asiento de cada una.
+            com.benjagest.ui.support.RefreshBus.emit(
+                    com.benjagest.ui.support.RefreshBus.TOPIC_SALES,
+                    com.benjagest.ui.support.RefreshBus.TOPIC_JOURNAL);
         });
         task.setOnFailed(ev -> showError(t("list.dialog.void.failure.title"),
                 t("list.dialog.void.failure.body")));
@@ -5236,7 +5264,9 @@ public class BenjagestUiApplication extends Application {
                 return null;
             }
         };
-        task.setOnSucceeded(ev -> showBilling());
+        task.setOnSucceeded(ev -> com.benjagest.ui.support.RefreshBus.emit(
+                com.benjagest.ui.support.RefreshBus.TOPIC_SALES,
+                com.benjagest.ui.support.RefreshBus.TOPIC_JOURNAL));
         task.setOnFailed(ev -> showError(t("list.dialog.delete.failure_title"),
                 t("list.dialog.delete.failure_body")));
         start(task, "billing-invoice-delete-from-list");
@@ -7103,6 +7133,12 @@ public class BenjagestUiApplication extends Application {
             ok.setHeaderText(null);
             ok.showAndWait();
             showBilling();
+            // Crear/editar borrador o validar: emite SALES + JOURNAL si
+            // se validó (con asiento). El listado de facturación se
+            // refresca aunque no estuviera abierto antes.
+            com.benjagest.ui.support.RefreshBus.emit(
+                    com.benjagest.ui.support.RefreshBus.TOPIC_SALES,
+                    com.benjagest.ui.support.RefreshBus.TOPIC_JOURNAL);
         });
         task.setOnFailed(event -> showError(
                 validateAfter ? t("editor.error.validate_failed.title") : t("editor.error.save_failed.title"),
