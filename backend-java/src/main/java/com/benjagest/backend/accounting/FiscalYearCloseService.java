@@ -45,13 +45,16 @@ public class FiscalYearCloseService {
     private final JdbcTemplate jdbcTemplate;
     private final TenantContext tenantContext;
     private final CurrentUserService currentUserService;
+    private final ClosingEntriesService closingEntries;
 
     public FiscalYearCloseService(JdbcTemplate jdbcTemplate,
                                    TenantContext tenantContext,
-                                   CurrentUserService currentUserService) {
+                                   CurrentUserService currentUserService,
+                                   ClosingEntriesService closingEntries) {
         this.jdbcTemplate = jdbcTemplate;
         this.tenantContext = tenantContext;
         this.currentUserService = currentUserService;
+        this.closingEntries = closingEntries;
     }
 
     public List<CloseView> list() {
@@ -150,17 +153,47 @@ public class FiscalYearCloseService {
         try { userId = currentUserService.require().userId(); }
         catch (Exception ex) { userId = null; }
 
+        // Asientos contables del cierre — best effort. Si falla por falta
+        // de movimientos o de cuentas PGC, el cierre legal sigue adelante
+        // sin asiento (es lo razonable para empresas que llevan caja).
+        String regEntryId = null;
+        String closeEntryId = null;
+        try {
+            regEntryId = closingEntries.generateRegularizationEntry(year, userId);
+        } catch (Exception ex) {
+            System.err.println("[year-close] regularización no generada para "
+                    + year + ": " + ex.getMessage());
+        }
+        if (regEntryId != null) {
+            try {
+                closeEntryId = closingEntries.generateClosingEntry(year, userId);
+            } catch (Exception ex) {
+                System.err.println("[year-close] asiento cierre no generado para "
+                        + year + ": " + ex.getMessage());
+            }
+        }
+
         jdbcTemplate.update("""
                 UPDATE fiscal_year_closes
                    SET status = 'CLOSED',
                        reserves_allocation = ?, dividends_allocation = ?,
                        accumulated_losses_allocation = ?,
                        notes = ?,
+                       regularization_entry_id = ?, closing_entry_id = ?,
                        closed_at = CURRENT_TIMESTAMP, closed_by = ?
                  WHERE company_id = ? AND period_year = ?
                 """,
-                reserves, divs, losses, blank(req.notes()), userId,
+                reserves, divs, losses, blank(req.notes()),
+                regEntryId, closeEntryId, userId,
                 tenantContext.getCurrentCompanyId(), year);
+
+        // Sincronizar fiscal_years.status = CLOSED si existe la fila.
+        jdbcTemplate.update("""
+                UPDATE fiscal_years
+                   SET status = 'CLOSED'
+                 WHERE company_id = ? AND year_number = ?
+                """, tenantContext.getCurrentCompanyId(), year);
+
         return get(year);
     }
 
@@ -264,7 +297,12 @@ public class FiscalYearCloseService {
     @RequiresRole({"OWNER", "ADMIN", "ACCOUNTANT"})
     public static class FiscalYearCloseController {
         private final FiscalYearCloseService service;
-        public FiscalYearCloseController(FiscalYearCloseService service) { this.service = service; }
+        private final ClosingEntriesService closingEntries;
+        public FiscalYearCloseController(FiscalYearCloseService service,
+                                          ClosingEntriesService closingEntries) {
+            this.service = service;
+            this.closingEntries = closingEntries;
+        }
 
         @GetMapping
         public List<CloseView> list() { return service.list(); }
@@ -285,6 +323,18 @@ public class FiscalYearCloseService {
         @PutMapping("/{year}/reopen")
         public CloseView reopen(@PathVariable("year") int year, @RequestBody ReopenRequest req) {
             return service.reopen(year, req == null ? null : req.reason());
+        }
+
+        /**
+         * Vista previa de la regularización contable (6x/7x → 129).
+         * Devuelve totales de gastos, ingresos y diferencia (resultado)
+         * sin crear ningún asiento. Útil para mostrar en UI antes de
+         * confirmar el cierre.
+         */
+        @GetMapping("/{year}/preview-regularization")
+        public ClosingEntriesService.RegularizationPreview previewRegularization(
+                @PathVariable("year") int year) {
+            return closingEntries.previewRegularization(year);
         }
     }
 }

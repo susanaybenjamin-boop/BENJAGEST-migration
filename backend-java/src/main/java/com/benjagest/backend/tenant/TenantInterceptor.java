@@ -49,4 +49,12 @@ public class TenantInterceptor implements HandlerInterceptor {
         }
         return true;
     }
+
+    @Override
+    public void afterCompletion(HttpServletRequest request, HttpServletResponse response,
+                                  Object handler, Exception ex) {
+        // Limpia el ThreadLocal para evitar fugas entre peticiones que
+        // comparten thread en el pool de Tomcat.
+        tenantContext.setCurrentCompanyId(null);
+    }
 }
