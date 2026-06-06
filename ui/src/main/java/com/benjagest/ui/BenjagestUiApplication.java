@@ -236,6 +236,11 @@ public class BenjagestUiApplication extends Application {
     }
 
     private void setupGlobalShortcuts(Scene scene) {
+        // Listados: Escape y click en zona vacía deseleccionan en CUALQUIER
+        // TableView de la aplicación (presentes y futuros). Un único punto
+        // de instalación cubre los 38+ listados.
+        com.benjagest.ui.support.TableSelectionHelper.attachToScene(scene);
+
         // Botones laterales del raton: 4 = BACK, 5 = FORWARD.
         scene.addEventFilter(javafx.scene.input.MouseEvent.MOUSE_PRESSED, ev -> {
             // Si hay algún diálogo/alert/popup modal abierto, NO navegamos

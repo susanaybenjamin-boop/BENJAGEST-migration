@@ -239,14 +239,18 @@ public class SalesJournalEntryService {
         return ids.isEmpty() ? null : ids.get(0);
     }
 
-    /** Busca el NIF del cliente en la tabla customers — null si no existe. */
+    /**
+     * Busca el NIF del cliente en la tabla customers — null si no existe.
+     * En BENJAGEST la columna se llama {@code tax_identifier} (no {@code nif}
+     * como en CONTENDO).
+     */
     private String resolveCustomerNif(String customerId) {
         if (customerId == null) return null;
         List<String> nifs = jdbcTemplate.query("""
-                SELECT nif FROM customers
+                SELECT tax_identifier FROM customers
                  WHERE id = ? AND company_id = ?
                  LIMIT 1
-                """, (rs, n) -> rs.getString("nif"),
+                """, (rs, n) -> rs.getString("tax_identifier"),
                 customerId, tenantContext.getCurrentCompanyId());
         return nifs.isEmpty() ? null : nifs.get(0);
     }

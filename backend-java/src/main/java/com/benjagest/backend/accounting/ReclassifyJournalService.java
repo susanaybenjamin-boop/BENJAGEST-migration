@@ -229,8 +229,8 @@ public class ReclassifyJournalService {
     private String resolveCustomerNif(String companyId, String customerId) {
         if (customerId == null) return null;
         List<String> nifs = jdbcTemplate.query("""
-                SELECT nif FROM customers WHERE id = ? AND company_id = ? LIMIT 1
-                """, (rs, n) -> rs.getString("nif"), customerId, companyId);
+                SELECT tax_identifier FROM customers WHERE id = ? AND company_id = ? LIMIT 1
+                """, (rs, n) -> rs.getString("tax_identifier"), customerId, companyId);
         return nifs.isEmpty() ? null : nifs.get(0);
     }
 
