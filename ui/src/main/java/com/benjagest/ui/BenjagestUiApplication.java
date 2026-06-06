@@ -11186,6 +11186,33 @@ public class BenjagestUiApplication extends Application {
             case "accounting.filter.any" -> "(any)";
             case "accounting.col.num" -> "#";
             case "accounting.col.dup" -> "Dup.";
+            case "client.tab.sales_recurring" -> "Recurring sales";
+            case "client.tab.expenses_recurring" -> "Recurring expenses";
+            case "recurring.placeholder.empty" -> "No recurring tasks configured yet";
+            case "recurring.col.name" -> "Name";
+            case "recurring.col.description" -> "Description";
+            case "recurring.col.frequency" -> "Frequency";
+            case "recurring.col.next_run" -> "Next";
+            case "recurring.col.last_run" -> "Last";
+            case "recurring.col.status" -> "Status";
+            case "recurring.status.active" -> "Active";
+            case "recurring.status.inactive" -> "Inactive";
+            case "recurring.cron_info" -> "Recurring tasks run automatically every day at 06:10. From here you can review them, run them manually or disable them.";
+            case "recurring.error.load" -> "Could not load the list";
+            case "recurring.freq.monthly" -> "Monthly";
+            case "recurring.freq.quarterly" -> "Quarterly";
+            case "recurring.freq.yearly" -> "Yearly";
+            case "recurring.freq.weekly" -> "Weekly";
+            case "recurring.freq.every" -> "Every";
+            case "recurring.freq.months" -> "months";
+            case "recurring.freq.day" -> "day";
+            case "date.day.monday" -> "Monday";
+            case "date.day.tuesday" -> "Tuesday";
+            case "date.day.wednesday" -> "Wednesday";
+            case "date.day.thursday" -> "Thursday";
+            case "date.day.friday" -> "Friday";
+            case "date.day.saturday" -> "Saturday";
+            case "date.day.sunday" -> "Sunday";
             case "accounting.col.date" -> "Date";
             case "accounting.col.concept" -> "Concept";
             case "accounting.col.source" -> "Source";
@@ -11609,6 +11636,33 @@ public class BenjagestUiApplication extends Application {
             case "accounting.filter.any" -> "(cualquiera)";
             case "accounting.col.num" -> "Nº";
             case "accounting.col.dup" -> "Dup.";
+            case "client.tab.sales_recurring" -> "Ventas recurrentes";
+            case "client.tab.expenses_recurring" -> "Gastos recurrentes";
+            case "recurring.placeholder.empty" -> "Sin tareas recurrentes configuradas todavía";
+            case "recurring.col.name" -> "Nombre";
+            case "recurring.col.description" -> "Descripción";
+            case "recurring.col.frequency" -> "Frecuencia";
+            case "recurring.col.next_run" -> "Próxima";
+            case "recurring.col.last_run" -> "Última";
+            case "recurring.col.status" -> "Estado";
+            case "recurring.status.active" -> "Activa";
+            case "recurring.status.inactive" -> "Inactiva";
+            case "recurring.cron_info" -> "Las tareas recurrentes se ejecutan automáticamente cada día a las 06:10. Aquí puedes consultarlas, lanzarlas manualmente o desactivarlas.";
+            case "recurring.error.load" -> "No se pudo cargar el listado";
+            case "recurring.freq.monthly" -> "Mensual";
+            case "recurring.freq.quarterly" -> "Trimestral";
+            case "recurring.freq.yearly" -> "Anual";
+            case "recurring.freq.weekly" -> "Semanal";
+            case "recurring.freq.every" -> "Cada";
+            case "recurring.freq.months" -> "meses";
+            case "recurring.freq.day" -> "día";
+            case "date.day.monday" -> "lunes";
+            case "date.day.tuesday" -> "martes";
+            case "date.day.wednesday" -> "miércoles";
+            case "date.day.thursday" -> "jueves";
+            case "date.day.friday" -> "viernes";
+            case "date.day.saturday" -> "sábado";
+            case "date.day.sunday" -> "domingo";
             case "accounting.col.date" -> "Fecha";
             case "accounting.col.concept" -> "Concepto";
             case "accounting.col.source" -> "Origen";
@@ -14743,10 +14797,21 @@ public class BenjagestUiApplication extends Application {
                 buildClientSalesArchivedTab(fromProp, toProp, selfTaxId));
         salesTab.setGraphic(icon("fas-file-invoice"));
 
+        Tab salesRecurringTab = new Tab(t("client.tab.sales_recurring"),
+                buildClientRecurringTab("SALES_INVOICE",
+                        "client.tab.sales_recurring"));
+        salesRecurringTab.setGraphic(icon("fas-arrows-rotate"));
+
         Tab expensesTab = new Tab(t("client.tab.expenses"), buildClientPurchasesTab());
         expensesTab.setGraphic(icon("fas-receipt"));
 
-        sub.getTabs().addAll(salesTab, expensesTab);
+        Tab expensesRecurringTab = new Tab(t("client.tab.expenses_recurring"),
+                buildClientRecurringTab("PURCHASE",
+                        "client.tab.expenses_recurring"));
+        expensesRecurringTab.setGraphic(icon("fas-arrows-rotate"));
+
+        sub.getTabs().addAll(salesTab, salesRecurringTab,
+                expensesTab, expensesRecurringTab);
 
         // Sincronizar el periodo Año/Trimestre de los KPIs con el
         // sub-tab Gastos. buildClientPurchasesTab usa sus propios
@@ -14962,6 +15027,169 @@ public class BenjagestUiApplication extends Application {
      * <p>Muestra: nº asiento, fecha, concepto, total. Con botón
      * "Importar PDFs" + auto-refresh por RefreshBus.
      */
+    /**
+     * Sub-tab "Recurrentes" del cliente — listado de tareas recurrentes
+     * filtradas por {@code kind} (SALES_INVOICE o PURCHASE). Pensado
+     * para que el asesor vea de un vistazo qué plantillas tiene el
+     * cliente, ejecutarlas manualmente, activarlas/desactivarlas y
+     * editarlas. El cron del backend ({@code 0 10 6 * * *}) las
+     * ejecuta cada día a las 06:10 automáticamente — esta pantalla
+     * es solo gestión y vista.
+     *
+     * <p>Slice 3C-1: scaffolding + listado real (sin acciones todavía).
+     * Slices 3C-2..5 añaden ejecutar/activar/historial + editor.
+     *
+     * @param kind            "SALES_INVOICE" o "PURCHASE".
+     * @param emptyMessageKey i18n key para el placeholder cuando la
+     *                        lista viene vacía.
+     */
+    private Node buildClientRecurringTab(String kind, String emptyMessageKey) {
+        javafx.scene.control.TableView<com.benjagest.ui.model.AccountingModels.RecurringTask> table =
+                new javafx.scene.control.TableView<>();
+        table.getStyleClass().add("data-table");
+        table.setPlaceholder(new Label(t("recurring.placeholder.empty")));
+
+        javafx.scene.control.TableColumn<com.benjagest.ui.model.AccountingModels.RecurringTask, String> colName =
+                new javafx.scene.control.TableColumn<>(t("recurring.col.name"));
+        colName.setCellValueFactory(c -> new javafx.beans.property.SimpleStringProperty(
+                c.getValue() == null ? "" : c.getValue().name()));
+        colName.setPrefWidth(220);
+
+        javafx.scene.control.TableColumn<com.benjagest.ui.model.AccountingModels.RecurringTask, String> colDesc =
+                new javafx.scene.control.TableColumn<>(t("recurring.col.description"));
+        colDesc.setCellValueFactory(c -> new javafx.beans.property.SimpleStringProperty(
+                c.getValue() == null ? "" : c.getValue().description()));
+        colDesc.setPrefWidth(260);
+
+        javafx.scene.control.TableColumn<com.benjagest.ui.model.AccountingModels.RecurringTask, String> colFreq =
+                new javafx.scene.control.TableColumn<>(t("recurring.col.frequency"));
+        colFreq.setCellValueFactory(c -> new javafx.beans.property.SimpleStringProperty(
+                c.getValue() == null ? "" : humanizeFrequency(c.getValue())));
+        colFreq.setPrefWidth(140);
+
+        javafx.scene.control.TableColumn<com.benjagest.ui.model.AccountingModels.RecurringTask, LocalDate> colNext =
+                new javafx.scene.control.TableColumn<>(t("recurring.col.next_run"));
+        colNext.setCellValueFactory(c -> new javafx.beans.property.SimpleObjectProperty<>(
+                c.getValue() == null ? null : c.getValue().nextRunDate()));
+        colNext.setCellFactory(c -> new javafx.scene.control.TableCell<>() {
+            @Override protected void updateItem(LocalDate v, boolean empty) {
+                super.updateItem(v, empty);
+                setText(empty || v == null ? "" : v.toString());
+            }
+        });
+        colNext.setPrefWidth(110);
+
+        javafx.scene.control.TableColumn<com.benjagest.ui.model.AccountingModels.RecurringTask, LocalDate> colLast =
+                new javafx.scene.control.TableColumn<>(t("recurring.col.last_run"));
+        colLast.setCellValueFactory(c -> new javafx.beans.property.SimpleObjectProperty<>(
+                c.getValue() == null ? null : c.getValue().lastRunDate()));
+        colLast.setCellFactory(c -> new javafx.scene.control.TableCell<>() {
+            @Override protected void updateItem(LocalDate v, boolean empty) {
+                super.updateItem(v, empty);
+                setText(empty || v == null ? "—" : v.toString());
+            }
+        });
+        colLast.setPrefWidth(110);
+
+        javafx.scene.control.TableColumn<com.benjagest.ui.model.AccountingModels.RecurringTask, String> colStatus =
+                new javafx.scene.control.TableColumn<>(t("recurring.col.status"));
+        colStatus.setCellValueFactory(c -> new javafx.beans.property.SimpleStringProperty(
+                c.getValue() == null ? "" : (c.getValue().active()
+                        ? t("recurring.status.active")
+                        : t("recurring.status.inactive"))));
+        colStatus.setPrefWidth(90);
+
+        table.getColumns().add(colName);
+        table.getColumns().add(colDesc);
+        table.getColumns().add(colFreq);
+        table.getColumns().add(colNext);
+        table.getColumns().add(colLast);
+        table.getColumns().add(colStatus);
+
+        // Banner informativo: avisa de que el cron corre cada día a las
+        // 06:10 y que las acciones son solo gestión manual.
+        Label cronInfo = new Label(t("recurring.cron_info"));
+        cronInfo.getStyleClass().addAll("muted", "small");
+        cronInfo.setWrapText(true);
+
+        Button refreshBtn = new Button(t("button.refresh"));
+        refreshBtn.setGraphic(icon("fas-rotate"));
+        refreshBtn.setOnAction(e -> loadClientRecurring(table, kind));
+
+        HBox toolbar = new HBox(8, refreshBtn);
+        toolbar.setAlignment(javafx.geometry.Pos.CENTER_LEFT);
+
+        VBox box = new VBox(8, cronInfo, toolbar, table);
+        VBox.setVgrow(table, Priority.ALWAYS);
+        box.setPadding(new Insets(12));
+        loadClientRecurring(table, kind);
+        return box;
+    }
+
+    /**
+     * Carga el listado de tareas recurrentes del cliente actual desde
+     * el backend filtrado por {@code kind}. Pintado en el hilo JavaFX,
+     * llamada HTTP en hilo aparte.
+     */
+    private void loadClientRecurring(
+            javafx.scene.control.TableView<com.benjagest.ui.model.AccountingModels.RecurringTask> table,
+            String kind) {
+        new Thread(() -> {
+            try {
+                java.util.List<com.benjagest.ui.model.AccountingModels.RecurringTask> rows =
+                        accountingApiClient.listRecurring(kind, null);
+                javafx.application.Platform.runLater(() -> {
+                    table.getItems().setAll(rows);
+                });
+            } catch (Exception ex) {
+                javafx.application.Platform.runLater(() -> {
+                    table.getItems().clear();
+                    table.setPlaceholder(new Label(
+                            t("recurring.error.load") + ": " + ex.getMessage()));
+                });
+            }
+        }, "load-client-recurring").start();
+    }
+
+    /**
+     * Devuelve una representación legible de la frecuencia de la tarea
+     * recurrente: "Mensual (día 5)", "Trimestral", "Anual", "Semanal
+     * (lunes)", "Cada N meses". Pensada para la columna Frecuencia.
+     */
+    private String humanizeFrequency(com.benjagest.ui.model.AccountingModels.RecurringTask task) {
+        if (task == null) return "";
+        String freq = task.frequency() == null ? "" : task.frequency().toUpperCase();
+        Integer dom = task.dayOfMonth();
+        Integer dow = task.dayOfWeek();
+        return switch (freq) {
+            case "MONTHLY" -> dom == null
+                    ? t("recurring.freq.monthly")
+                    : t("recurring.freq.monthly") + " (" + t("recurring.freq.day") + " " + dom + ")";
+            case "QUARTERLY" -> t("recurring.freq.quarterly");
+            case "YEARLY" -> t("recurring.freq.yearly");
+            case "WEEKLY" -> dow == null
+                    ? t("recurring.freq.weekly")
+                    : t("recurring.freq.weekly") + " (" + dayName(dow) + ")";
+            case "CUSTOM" -> t("recurring.freq.every") + " " + Math.max(1, task.monthsBetween())
+                    + " " + t("recurring.freq.months");
+            default -> freq;
+        };
+    }
+
+    /** Devuelve nombre del día de la semana 1=lunes..7=domingo. */
+    private String dayName(int dow) {
+        return switch (dow) {
+            case 1 -> t("date.day.monday");
+            case 2 -> t("date.day.tuesday");
+            case 3 -> t("date.day.wednesday");
+            case 4 -> t("date.day.thursday");
+            case 5 -> t("date.day.friday");
+            case 6 -> t("date.day.saturday");
+            case 7 -> t("date.day.sunday");
+            default -> "?";
+        };
+    }
+
     private Node buildClientSalesArchivedTab(
             javafx.beans.property.ObjectProperty<LocalDate> fromProp,
             javafx.beans.property.ObjectProperty<LocalDate> toProp,
