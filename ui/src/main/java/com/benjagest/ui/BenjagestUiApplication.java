@@ -2252,6 +2252,13 @@ public class BenjagestUiApplication extends Application {
         importBtn.getStyleClass().add("button-primary");
         importBtn.setOnAction(ev -> importPurchasePdf());
 
+        // Multi-import: el asesor selecciona varios PDFs a la vez para
+        // cerrar trimestre. Cada uno se procesa en secuencia con el
+        // diálogo de revisión (con visor PDF embebido).
+        Button importMultiBtn = new Button(t("purchases.action.import_multi"));
+        importMultiBtn.setGraphic(icon("fas-files"));
+        importMultiBtn.setOnAction(ev -> importPurchasePdfsMulti());
+
         // Filtros: año (combo) + trimestre (combo) + proveedor (text).
         purchaseYearFilter = new ComboBox<>();
         purchaseYearFilter.getItems().add(t("list.filter.all"));
@@ -2392,7 +2399,7 @@ public class BenjagestUiApplication extends Application {
                     validateBatchBtn.setDisable(!anyDraft);
                 });
 
-        HBox actions = new HBox(10, importBtn, validateBatchBtn, deleteBtn);
+        HBox actions = new HBox(10, importBtn, importMultiBtn, validateBatchBtn, deleteBtn);
 
         VBox body = new VBox(12);
         if (showWithHeader) {
@@ -2556,32 +2563,72 @@ public class BenjagestUiApplication extends Application {
                 new javafx.stage.FileChooser.ExtensionFilter("PDF", "*.pdf"));
         java.io.File file = chooser.showOpenDialog(root.getScene().getWindow());
         if (file == null) return;
+        processSinglePurchasePdf(file, null);
+    }
 
-        Task<String> task = new Task<>() {
-            @Override
-            protected String call() throws Exception {
-                return pdfImportApi.uploadAndExtract(file);
-            }
-        };
-        task.setOnSucceeded(ev -> {
-            // El backend ahora devuelve SIEMPRE un array JSON, incluso
-            // con una sola factura. Multi-factura (Amazon) → un diálogo
-            // por cada elemento, en secuencia (showAndWait bloquea).
-            List<String> invoices = splitJsonArrayObjects(task.getValue());
-            if (invoices.isEmpty()) {
-                showError(t("purchases.import.fail.title"),
-                        t("purchases.import.fail.body"));
-                return;
-            }
-            int n = invoices.size();
-            for (int i = 0; i < n; i++) {
-                String suffix = n > 1 ? "  (" + (i + 1) + "/" + n + ")" : "";
-                showExtractionResult(invoices.get(i), file.getName() + suffix, i);
-            }
-        });
-        task.setOnFailed(ev -> showError(t("purchases.import.fail.title"),
-                t("purchases.import.fail.body")));
-        start(task, "purchases-pdf-import");
+    /**
+     * Multi-importación: FileChooser multi-select → cada PDF se procesa
+     * en secuencia mostrando el diálogo de revisión con visor PDF
+     * embebido. El asesor revisa/edita y guarda uno tras otro. Esto
+     * mismo, hecho a mano con 30 PDFs de un trimestre, son ~15 minutos
+     * de clicks; aquí queda en 2-3 minutos.
+     */
+    private void importPurchasePdfsMulti() {
+        javafx.stage.FileChooser chooser = new javafx.stage.FileChooser();
+        chooser.setTitle(t("purchases.action.import_multi"));
+        chooser.getExtensionFilters().add(
+                new javafx.stage.FileChooser.ExtensionFilter("PDF", "*.pdf"));
+        java.util.List<java.io.File> files = chooser.showOpenMultipleDialog(
+                root.getScene().getWindow());
+        if (files == null || files.isEmpty()) return;
+        // Procesado secuencial: extract async → showAndWait del diálogo
+        // de revisión por cada archivo. El asesor controla el ritmo.
+        int total = files.size();
+        for (int i = 0; i < total; i++) {
+            java.io.File f = files.get(i);
+            String progress = "  (" + (i + 1) + "/" + total + ")";
+            processSinglePurchasePdf(f, progress);
+        }
+    }
+
+    /**
+     * Procesa un único PDF: lo sube al backend para extraer, lee los
+     * bytes del archivo (para el visor) y muestra el diálogo de revisión.
+     * Bloquea (showAndWait) hasta que el usuario cierra el diálogo, lo
+     * cual permite encadenar varios PDFs secuencialmente.
+     */
+    private void processSinglePurchasePdf(java.io.File file, String progressSuffix) {
+        byte[] pdfBytes;
+        try {
+            pdfBytes = java.nio.file.Files.readAllBytes(file.toPath());
+        } catch (Exception ex) {
+            showError(t("purchases.import.fail.title"),
+                    t("purchases.import.fail.body"));
+            return;
+        }
+        // Extract síncrono — bloquea el flujo del multi-import para
+        // que el siguiente PDF espere a que el asesor cierre este.
+        String json;
+        try {
+            json = pdfImportApi.uploadAndExtract(file);
+        } catch (Exception ex) {
+            showError(t("purchases.import.fail.title"),
+                    t("purchases.import.fail.body"));
+            return;
+        }
+        List<String> invoices = splitJsonArrayObjects(json);
+        if (invoices.isEmpty()) {
+            showError(t("purchases.import.fail.title"),
+                    t("purchases.import.fail.body"));
+            return;
+        }
+        int n = invoices.size();
+        for (int i = 0; i < n; i++) {
+            String label = file.getName()
+                    + (progressSuffix == null ? "" : progressSuffix)
+                    + (n > 1 ? "  [" + (i + 1) + "/" + n + "]" : "");
+            showExtractionResultWithViewer(invoices.get(i), label, i, pdfBytes);
+        }
     }
 
     /**
@@ -2624,6 +2671,196 @@ public class BenjagestUiApplication extends Application {
         }
         return out;
     }
+
+    /**
+     * Multi-import de PDFs de ventas: el asesor selecciona varios PDFs
+     * que el cliente le entregó por trimestre, y para cada uno se crea
+     * un asiento contable de venta directo (sin factura legal — el
+     * cliente la emitió en otro sistema). El diálogo de revisión por
+     * PDF incluye el visor con la imagen del PDF a la izquierda.
+     */
+    private void importSalesPdfsMulti() {
+        javafx.stage.FileChooser chooser = new javafx.stage.FileChooser();
+        chooser.setTitle(t("sales.action.import_multi"));
+        chooser.getExtensionFilters().add(
+                new javafx.stage.FileChooser.ExtensionFilter("PDF", "*.pdf"));
+        java.util.List<java.io.File> files = chooser.showOpenMultipleDialog(
+                root.getScene().getWindow());
+        if (files == null || files.isEmpty()) return;
+        int total = files.size();
+        for (int i = 0; i < total; i++) {
+            java.io.File f = files.get(i);
+            byte[] bytes;
+            try {
+                bytes = java.nio.file.Files.readAllBytes(f.toPath());
+            } catch (Exception ex) {
+                showError(t("purchases.import.fail.title"),
+                        t("purchases.import.fail.body"));
+                continue;
+            }
+            String json;
+            try {
+                json = pdfImportApi.uploadAndExtract(f);
+            } catch (Exception ex) {
+                showError(t("purchases.import.fail.title"),
+                        t("purchases.import.fail.body"));
+                continue;
+            }
+            // El extractor está enfocado en compras (NIF emisor =
+            // proveedor). En ventas reinterpretamos:
+            //   emitterNif/supplierName → NIF/nombre del CLIENTE.
+            // Los demás campos (fecha, base, IVA, total, nº) valen igual.
+            String progress = "  (" + (i + 1) + "/" + total + ")";
+            List<String> invoices = splitJsonArrayObjects(json);
+            if (invoices.isEmpty()) continue;
+            for (int j = 0; j < invoices.size(); j++) {
+                String label = f.getName() + progress
+                        + (invoices.size() > 1
+                                ? "  [" + (j + 1) + "/" + invoices.size() + "]"
+                                : "");
+                showSalesExtractionDialog(invoices.get(j), label, bytes);
+            }
+        }
+    }
+
+    /**
+     * Diálogo de revisión para importar 1 PDF de venta → asiento DRAFT.
+     * Layout: PdfViewer a la izquierda + formulario a la derecha con
+     * NIF cliente, fecha, base, IVA%, IVA, total, concepto. Botón
+     * "Crear asiento" llama al backend que persiste el PDF y crea el
+     * asiento contable. {@code showAndWait} bloquea para encadenar
+     * varios PDFs.
+     */
+    private void showSalesExtractionDialog(String json, String filename, byte[] pdfBytes) {
+        // Mapeo extractor → ventas: emitterNif = NIF cliente,
+        // supplierName = razón social del cliente.
+        String customerNif = extractField(json, "emitterNif");
+        String customerName = extractField(json, "supplierName");
+        String number = extractField(json, "invoiceNumber");
+        String date = extractField(json, "invoiceDate");
+        String base = extractNumber(json, "baseAmount");
+        String vatPct = extractNumber(json, "vatPercent");
+        String vatAmt = extractNumber(json, "vatAmount");
+        String total = extractNumber(json, "totalAmount");
+
+        Dialog<ButtonType> dialog = new Dialog<>();
+        dialog.setTitle(t("sales.import.title_prefix") + filename);
+        ButtonType cancelBt = new ButtonType(t("purchases.import.action.accept"),
+                ButtonBar.ButtonData.CANCEL_CLOSE);
+        ButtonType saveBt = new ButtonType(t("sales.import.action.create_entry"),
+                ButtonBar.ButtonData.OK_DONE);
+        dialog.getDialogPane().getButtonTypes().addAll(saveBt, cancelBt);
+
+        TextField nifField = new TextField(customerNif);
+        TextField nameField = new TextField(customerName);
+        TextField numberField = new TextField(number);
+        TextField dateField = new TextField(date);
+        TextField baseField = new TextField(base);
+        TextField vatPctField = new TextField(vatPct);
+        TextField vatAmtField = new TextField(vatAmt);
+        TextField totalField = new TextField(total);
+        TextField conceptField = new TextField();
+        conceptField.setPromptText(t("purchases.import.field.concept_prompt"));
+        for (TextField tf : new TextField[]{
+                nifField, nameField, numberField, dateField, baseField,
+                vatPctField, vatAmtField, totalField, conceptField}) {
+            tf.setPrefColumnCount(32);
+        }
+        GridPane g = new GridPane();
+        g.setHgap(12); g.setVgap(8);
+        int row = 0;
+        g.add(new Label(t("sales.import.field.customer_nif")), 0, row); g.add(nifField, 1, row++);
+        g.add(new Label(t("sales.import.field.customer_name")), 0, row); g.add(nameField, 1, row++);
+        g.add(new Label(t("purchases.import.field.number")), 0, row); g.add(numberField, 1, row++);
+        g.add(new Label(t("purchases.import.field.date")), 0, row); g.add(dateField, 1, row++);
+        g.add(new Label(t("purchases.import.field.base")), 0, row); g.add(baseField, 1, row++);
+        g.add(new Label(t("purchases.import.field.vat_pct")), 0, row); g.add(vatPctField, 1, row++);
+        g.add(new Label(t("purchases.import.field.vat_amount")), 0, row); g.add(vatAmtField, 1, row++);
+        g.add(new Label(t("purchases.import.field.total")), 0, row); g.add(totalField, 1, row++);
+        g.add(new Label(t("purchases.import.field.concept")), 0, row); g.add(conceptField, 1, row++);
+
+        // Montaje con visor.
+        com.benjagest.ui.support.PdfViewer viewer = new com.benjagest.ui.support.PdfViewer();
+        viewer.loadFromBytes(pdfBytes);
+        viewer.attachAutoDispose();
+        viewer.setPrefWidth(550);
+        javafx.scene.control.ScrollPane formScroll =
+                new javafx.scene.control.ScrollPane(g);
+        formScroll.setFitToWidth(true);
+        formScroll.setStyle("-fx-background-color: transparent;");
+        javafx.scene.control.SplitPane split =
+                new javafx.scene.control.SplitPane(viewer, formScroll);
+        split.setDividerPositions(0.55);
+        installDialog(dialog, split);
+        dialog.getDialogPane().setPrefSize(1200, 720);
+
+        Button saveBtn = (Button) dialog.getDialogPane().lookupButton(saveBt);
+        saveBtn.getStyleClass().add("button-primary");
+        saveBtn.addEventFilter(javafx.event.ActionEvent.ACTION, ev -> {
+            ev.consume();
+            java.time.LocalDate invDate = parseDateSafe(dateField.getText());
+            if (invDate == null) {
+                showError(t("sales.import.fail.title"),
+                        t("sales.import.fail.missing.body"));
+                return;
+            }
+            java.math.BigDecimal baseAmt = parseDecimalSafe(baseField.getText());
+            java.math.BigDecimal vatPctV = parseDecimalSafe(vatPctField.getText());
+            java.math.BigDecimal vatAmtV = parseDecimalSafe(vatAmtField.getText());
+            java.math.BigDecimal totalAmt = parseDecimalSafe(totalField.getText());
+            if (baseAmt == null || vatAmtV == null || totalAmt == null) {
+                showError(t("sales.import.fail.title"),
+                        t("sales.import.fail.missing.body"));
+                return;
+            }
+            final String nif = nullIfBlank(nifField.getText());
+            final String name = nullIfBlank(nameField.getText());
+            final String invoiceNum = nullIfBlank(numberField.getText());
+            final String concept = nullIfBlank(conceptField.getText());
+            Task<com.benjagest.ui.service.AccountingApiClient.SalesImportResult> task = new Task<>() {
+                @Override
+                protected com.benjagest.ui.service.AccountingApiClient.SalesImportResult call()
+                        throws Exception {
+                    return accountingApiClient.importSalesFromPdf(
+                            nif, name, invDate,
+                            baseAmt, vatPctV, vatAmtV,
+                            java.math.BigDecimal.ZERO, totalAmt,
+                            invoiceNum, concept, pdfBytes);
+                }
+            };
+            task.setOnSucceeded(e -> {
+                // Asiento creado → refrescamos Diario y Por validar.
+                com.benjagest.ui.support.RefreshBus.emit(
+                        com.benjagest.ui.support.RefreshBus.TOPIC_JOURNAL,
+                        com.benjagest.ui.support.RefreshBus.TOPIC_SALES);
+                dialog.setResult(saveBt);
+                dialog.close();
+            });
+            task.setOnFailed(e -> showError(t("sales.import.fail.title"),
+                    t("sales.import.fail.body")));
+            start(task, "sales-pdf-import");
+        });
+
+        dialog.showAndWait();
+    }
+
+    /**
+     * Wrapper para que la multi-importación pase los bytes del PDF al
+     * diálogo. Cuando hay bytes, el diálogo monta un visor PDF a la
+     * izquierda del formulario.
+     */
+    private void showExtractionResultWithViewer(String json, String filename,
+                                                  int invoiceIndex, byte[] pdfBytes) {
+        currentExtractionPdfBytes = pdfBytes;
+        try {
+            showExtractionResult(json, filename, invoiceIndex);
+        } finally {
+            currentExtractionPdfBytes = null;
+        }
+    }
+
+    /** Bytes del PDF de la factura en curso de revisión (para el visor). */
+    private byte[] currentExtractionPdfBytes;
 
     private void showExtractionResult(String json, String filename, int invoiceIndex) {
         // Diálogo EDITABLE: el usuario corrige los campos que el
@@ -2703,8 +2940,28 @@ public class BenjagestUiApplication extends Application {
             g.add(hashShort, 0, row++, 2, 1);
         }
 
-        installDialog(dialog, g);
-        dialog.getDialogPane().setPrefWidth(620);
+        // Si la multi-importación cargó bytes del PDF, montamos un visor a
+        // la izquierda del formulario (SplitPane). Sin bytes, el diálogo
+        // sale como hasta ahora — sin cambios.
+        if (currentExtractionPdfBytes != null && currentExtractionPdfBytes.length > 0) {
+            com.benjagest.ui.support.PdfViewer viewer =
+                    new com.benjagest.ui.support.PdfViewer();
+            viewer.loadFromBytes(currentExtractionPdfBytes);
+            viewer.attachAutoDispose();
+            viewer.setPrefWidth(550);
+            javafx.scene.control.ScrollPane formScroll =
+                    new javafx.scene.control.ScrollPane(g);
+            formScroll.setFitToWidth(true);
+            formScroll.setStyle("-fx-background-color: transparent;");
+            javafx.scene.control.SplitPane split =
+                    new javafx.scene.control.SplitPane(viewer, formScroll);
+            split.setDividerPositions(0.55);
+            installDialog(dialog, split);
+            dialog.getDialogPane().setPrefSize(1200, 720);
+        } else {
+            installDialog(dialog, g);
+            dialog.getDialogPane().setPrefWidth(620);
+        }
 
         // Botón "Guardar plantilla" deshabilitado si NI el extractor ni el
         // usuario han informado un NIF — sin ningún NIF no hay clave de
@@ -5013,7 +5270,16 @@ public class BenjagestUiApplication extends Application {
                 toValidatedBtn, rowActionsSpacer, emailBtn, pdfBtn);
         rowActions.getStyleClass().add("settings-actions");
 
-        VBox bottomBlock = new VBox(12, billingTable, rowActions);
+        // Botón multi-import de PDFs de ventas → asientos directos.
+        // Útil cuando el cliente entrega los PDFs y el asesor solo
+        // necesita los asientos contables (no factura legal completa).
+        Button importSalesPdfsBtn = new Button(t("sales.action.import_multi"));
+        importSalesPdfsBtn.setGraphic(icon("fas-files"));
+        importSalesPdfsBtn.setOnAction(ev -> importSalesPdfsMulti());
+        HBox importRow = new HBox(10, importSalesPdfsBtn);
+        importRow.getStyleClass().add("settings-actions");
+
+        VBox bottomBlock = new VBox(12, billingTable, rowActions, importRow);
 
         // Auto-refresh cuando alguien emite SALES (crear/validar/anular/
         // borrar/cobrar factura). Auto-baja al desmontar la pantalla.
@@ -8070,6 +8336,15 @@ public class BenjagestUiApplication extends Application {
                 case "purchases.header" -> "Purchases";
                 case "purchases.hint" -> "Upload a received invoice as PDF — BENJAGEST extracts the issuer NIF, date, base, VAT and total automatically (no AI, just regex on the embedded text). Scanned PDFs require OCR — coming in a follow-up slice.";
                 case "purchases.action.import_pdf" -> "Import PDF invoice";
+                case "purchases.action.import_multi" -> "Import multiple PDFs";
+                case "sales.action.import_multi" -> "Import sales PDFs → entries";
+                case "sales.import.title_prefix" -> "Review sale: ";
+                case "sales.import.action.create_entry" -> "Create entry";
+                case "sales.import.field.customer_nif" -> "Customer tax ID:";
+                case "sales.import.field.customer_name" -> "Customer name:";
+                case "sales.import.fail.title" -> "Could not create entry";
+                case "sales.import.fail.body" -> "Check the data and try again. The PDF was not saved.";
+                case "sales.import.fail.missing.body" -> "Required: date, base, VAT amount and total.";
                 case "purchases.placeholder.coming_soon" -> "The full Purchases module (supplier list, recurring expenses, payment status) is on the roadmap. Today only the PDF importer is available — the detected fields are shown for review but not persisted yet.";
                 case "purchases.placeholder.empty" -> "No expenses recorded yet. Use 'Import PDF' to add the first one.";
                 case "purchases.filter.year" -> "Year:";
@@ -8975,6 +9250,15 @@ public class BenjagestUiApplication extends Application {
             case "purchases.header" -> "Compras";
             case "purchases.hint" -> "Sube una factura recibida en PDF — BENJAGEST extrae el NIF emisor, fecha, base, IVA y total automaticamente (sin IA, solo regex sobre el texto embebido). PDFs escaneados necesitan OCR — llega en un slice posterior.";
             case "purchases.action.import_pdf" -> "Importar factura PDF";
+            case "purchases.action.import_multi" -> "Importar varios PDFs";
+            case "sales.action.import_multi" -> "Importar ventas PDF → asientos";
+            case "sales.import.title_prefix" -> "Revisar venta: ";
+            case "sales.import.action.create_entry" -> "Crear asiento";
+            case "sales.import.field.customer_nif" -> "NIF cliente:";
+            case "sales.import.field.customer_name" -> "Nombre cliente:";
+            case "sales.import.fail.title" -> "No se pudo crear el asiento";
+            case "sales.import.fail.body" -> "Revisa los datos e inténtalo de nuevo. El PDF no se ha archivado.";
+            case "sales.import.fail.missing.body" -> "Faltan campos: fecha, base, IVA y total.";
             case "purchases.placeholder.coming_soon" -> "El modulo Compras completo (proveedores, gastos recurrentes, estado cobro) esta en hoja de ruta. Hoy solo esta disponible el importador PDF — los campos detectados se muestran para revision pero todavia no se persisten.";
             case "purchases.placeholder.empty" -> "Sin gastos registrados todavia. Usa 'Importar PDF' para anyadir el primero.";
             case "purchases.filter.year" -> "Año:";
