@@ -45,9 +45,12 @@ public class ModuleAccessInterceptor implements HandlerInterceptor {
 
         String slug = annotation.value();
         if (!accessService.isEnabledForCurrentCompany(slug)) {
+            String header = request.getHeader("X-Company-Id");
             throw new ResponseStatusException(
                     HttpStatus.FORBIDDEN,
-                    "El modulo '" + slug + "' no esta activo para esta empresa"
+                    "El modulo '" + slug + "' no esta activo para la empresa "
+                            + (header == null ? "<sin X-Company-Id>" : header)
+                            + ". Actívalo en Configuración → Módulos."
             );
         }
         return true;

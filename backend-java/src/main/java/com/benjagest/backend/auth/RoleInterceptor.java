@@ -46,9 +46,16 @@ public class RoleInterceptor implements HandlerInterceptor {
         AuthenticatedUser user = currentUserService.require();
         String role = user.roleInActiveCompany();
         if (role == null || Arrays.stream(annotation.value()).noneMatch(role::equalsIgnoreCase)) {
+            // Mensaje detallado: ayuda al asesor a entender por qué fue
+            // denegado (caso típico: empresario con rol EMPLOYEE intenta
+            // acción que solo OWNER/ACCOUNTANT pueden).
             throw new ResponseStatusException(
                     HttpStatus.FORBIDDEN,
-                    "Tu rol no tiene permiso para esta accion"
+                    "Tu rol '" + (role == null ? "<sin rol>" : role)
+                            + "' no tiene permiso para esta accion. "
+                            + "Roles permitidos: " + String.join(",", annotation.value())
+                            + ". Usuario: " + user.email()
+                            + " (globalRole=" + user.globalRole() + ")."
             );
         }
         return true;

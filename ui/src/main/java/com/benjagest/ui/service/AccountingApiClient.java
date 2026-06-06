@@ -387,84 +387,150 @@ public class AccountingApiClient {
     // ====================================================================
 
     private String get(String path) throws IOException, InterruptedException {
-        HttpRequest.Builder b = HttpRequest.newBuilder(URI.create(baseUrl + path))
-                .timeout(Duration.ofSeconds(15)).GET();
-        AuthSession.get().authorize(b);
-        HttpResponse<String> r = httpClient.send(b.build(), HttpResponse.BodyHandlers.ofString());
-        checkAuth(r);
-        if (r.statusCode() < 200 || r.statusCode() >= 300) {
-            throw new IOException("HTTP " + r.statusCode() + ": " + r.body());
-        }
-        return r.body();
+        return executeWithRetry(() -> {
+            HttpRequest.Builder b = HttpRequest.newBuilder(URI.create(baseUrl + path))
+                    .timeout(Duration.ofSeconds(15)).GET();
+            AuthSession.get().authorize(b);
+            return b;
+        });
     }
 
     private String postRaw(String path, String body) throws IOException, InterruptedException {
-        HttpRequest.Builder b = HttpRequest.newBuilder(URI.create(baseUrl + path))
-                .timeout(Duration.ofSeconds(15))
-                .header("Content-Type", "application/json")
-                .POST(HttpRequest.BodyPublishers.ofString(body));
-        AuthSession.get().authorize(b);
-        HttpResponse<String> r = httpClient.send(b.build(), HttpResponse.BodyHandlers.ofString());
-        checkAuth(r);
-        if (r.statusCode() < 200 || r.statusCode() >= 300) {
-            throw new IOException("HTTP " + r.statusCode() + ": " + r.body());
-        }
-        return r.body();
+        return executeWithRetry(() -> {
+            HttpRequest.Builder b = HttpRequest.newBuilder(URI.create(baseUrl + path))
+                    .timeout(Duration.ofSeconds(15))
+                    .header("Content-Type", "application/json")
+                    .POST(HttpRequest.BodyPublishers.ofString(body));
+            AuthSession.get().authorize(b);
+            return b;
+        });
     }
 
     private String put(String path, String body) throws IOException, InterruptedException {
-        HttpRequest.Builder b = HttpRequest.newBuilder(URI.create(baseUrl + path))
-                .timeout(Duration.ofSeconds(15))
-                .header("Content-Type", "application/json")
-                .PUT(HttpRequest.BodyPublishers.ofString(body));
-        AuthSession.get().authorize(b);
-        HttpResponse<String> r = httpClient.send(b.build(), HttpResponse.BodyHandlers.ofString());
-        checkAuth(r);
-        if (r.statusCode() < 200 || r.statusCode() >= 300) {
-            throw new IOException("HTTP " + r.statusCode() + ": " + r.body());
-        }
-        return r.body();
+        return executeWithRetry(() -> {
+            HttpRequest.Builder b = HttpRequest.newBuilder(URI.create(baseUrl + path))
+                    .timeout(Duration.ofSeconds(15))
+                    .header("Content-Type", "application/json")
+                    .PUT(HttpRequest.BodyPublishers.ofString(body));
+            AuthSession.get().authorize(b);
+            return b;
+        });
     }
 
     private void delete(String path) throws IOException, InterruptedException {
-        HttpRequest.Builder b = HttpRequest.newBuilder(URI.create(baseUrl + path))
-                .timeout(Duration.ofSeconds(15)).DELETE();
-        AuthSession.get().authorize(b);
-        HttpResponse<String> r = httpClient.send(b.build(), HttpResponse.BodyHandlers.ofString());
-        checkAuth(r);
-        if (r.statusCode() < 200 || r.statusCode() >= 300) {
-            throw new IOException("HTTP " + r.statusCode() + ": " + r.body());
-        }
+        executeWithRetry(() -> {
+            HttpRequest.Builder b = HttpRequest.newBuilder(URI.create(baseUrl + path))
+                    .timeout(Duration.ofSeconds(15)).DELETE();
+            AuthSession.get().authorize(b);
+            return b;
+        });
     }
 
     /**
-     * Detecta 401 (token inválido) y 403 con cuerpo de Spring Security
-     * por defecto ({@code "error":"Forbidden"} sin mensaje de permisos)
-     * — son síntomas típicos de JWT expirado. Lanza {@link
-     * SessionExpiredException} para que la UI muestre "Sesión expirada"
-     * en vez del JSON crudo.
-     *
-     * <p>Si el 403 trae mensaje de permisos específico ("Tu rol no tiene
-     * permiso", "El modulo X no esta activo") lo dejamos pasar para que
-     * la UI muestre el mensaje real.
+     * Ejecuta la petición y, si recibe 401/403 indicativo de sesión
+     * expirada, intenta UN refresh transparente y reintenta una vez.
+     * Si la segunda intentona también falla, propaga.
+     */
+    @FunctionalInterface
+    private interface RequestSupplier { HttpRequest.Builder build(); }
+
+    private String executeWithRetry(RequestSupplier supplier) throws IOException, InterruptedException {
+        for (int attempt = 1; attempt <= 2; attempt++) {
+            HttpRequest.Builder b = supplier.build();
+            HttpResponse<String> r = httpClient.send(b.build(), HttpResponse.BodyHandlers.ofString());
+            try {
+                checkAuth(r);
+            } catch (RetryAfterRefreshException retry) {
+                if (attempt == 1) continue; // reconstruye con nuevo token
+                throw new SessionExpiredException("HTTP " + r.statusCode());
+            }
+            if (r.statusCode() < 200 || r.statusCode() >= 300) {
+                throw new IOException("HTTP " + r.statusCode() + ": " + r.body());
+            }
+            return r.body();
+        }
+        throw new SessionExpiredException("retry exhausted");
+    }
+
+    /**
+     * Detecta 401/403 sin mensaje específico (JWT expirado vs sin permisos).
+     * En caso de sesión, intenta UN refresh silencioso del access token
+     * usando el refreshToken. Si el refresh va OK, lanza
+     * {@link RetryAfterRefreshException} para que el caller reintente.
+     * Si no, lanza {@link SessionExpiredException}.
      */
     private void checkAuth(HttpResponse<String> r) {
-        if (r.statusCode() == 401) {
-            throw new SessionExpiredException("HTTP 401");
-        }
-        if (r.statusCode() == 403) {
-            String body = r.body() == null ? "" : r.body();
-            // Spring Security default = JSON {"error":"Forbidden",...} sin más.
-            // Si NO contiene mensaje de permisos específico, asumimos sesión.
-            if (!body.contains("rol")
-                    && !body.contains("modulo")
-                    && !body.contains("módulo")
-                    && !body.contains("role")
-                    && !body.contains("module")) {
-                throw new SessionExpiredException("HTTP 403");
+        if (r.statusCode() == 401 || isSessionExpired403(r)) {
+            // Intento refresh transparente: si el refreshToken sigue vivo,
+            // el caller puede repetir la petición sin que el usuario se
+            // entere de nada.
+            if (tryRefreshAccessToken()) {
+                throw new RetryAfterRefreshException();
             }
+            throw new SessionExpiredException("HTTP " + r.statusCode());
         }
     }
+
+    private boolean isSessionExpired403(HttpResponse<String> r) {
+        if (r.statusCode() != 403) return false;
+        String body = r.body() == null ? "" : r.body();
+        // Si el cuerpo trae un mensaje específico de permisos/módulo lo
+        // dejamos pasar (es un 403 real, no expiración).
+        if (body.contains("rol")
+                || body.contains("modulo")
+                || body.contains("módulo")
+                || body.contains("role")
+                || body.contains("module")
+                || body.contains("permiso")) {
+            return false;
+        }
+        return true;
+    }
+
+    /**
+     * Llama a {@code POST /api/auth/refresh} con el refreshToken actual.
+     * Si va OK, actualiza AuthSession con el nuevo access token y devuelve
+     * true. Si falla, devuelve false (la sesión está realmente caducada).
+     */
+    private boolean tryRefreshAccessToken() {
+        String refresh = AuthSession.get().refreshToken();
+        if (refresh == null || refresh.isBlank()) return false;
+        try {
+            String body = "{\"refreshToken\":\"" + refresh + "\"}";
+            HttpRequest req = HttpRequest.newBuilder(URI.create(baseUrl + "/auth/refresh"))
+                    .timeout(Duration.ofSeconds(10))
+                    .header("Content-Type", "application/json")
+                    .POST(HttpRequest.BodyPublishers.ofString(body))
+                    .build();
+            HttpResponse<String> r = httpClient.send(req, HttpResponse.BodyHandlers.ofString());
+            if (r.statusCode() < 200 || r.statusCode() >= 300) return false;
+            // Extraer nuevo accessToken del JSON (parser simple).
+            String json = r.body();
+            int i = json.indexOf("\"accessToken\"");
+            if (i < 0) return false;
+            int s = json.indexOf('"', i + 14);
+            int e = json.indexOf('"', s + 1);
+            if (s < 0 || e < 0) return false;
+            String newToken = json.substring(s + 1, e);
+            // Actualiza solo el accessToken — el resto del estado sigue igual.
+            // (AuthSession no expone setAccessToken; usamos el método clear+update
+            // sólo si no hay alternativa. Aquí leemos campos actuales y los
+            // reescribimos con el accessToken nuevo.)
+            AuthSession s2 = AuthSession.get();
+            s2.update(newToken, refresh,
+                    s2.userId(), s2.userDisplayName(), s2.userEmail(),
+                    s2.globalRole(),
+                    s2.activeCompanyId(), s2.activeCompanyLegalName(),
+                    s2.activeCompanyType(), s2.roleInActiveCompany(),
+                    s2.memberships());
+            return true;
+        } catch (Exception ex) {
+            return false;
+        }
+    }
+
+    /** Excepción interna para indicar al wrapper que reintente. */
+    private static class RetryAfterRefreshException extends RuntimeException {}
 
     // ====================================================================
     //  Parsers
