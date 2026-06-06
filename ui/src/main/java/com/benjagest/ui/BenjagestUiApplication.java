@@ -15224,7 +15224,11 @@ public class BenjagestUiApplication extends Application {
                             && duplicateShas.contains(e.sourcePdfSha256())
                             ? "●" : "");
         });
-        colWarn.setStyle("-fx-alignment: CENTER; -fx-text-fill: -color-danger-fg;");
+        // Color rojo de la paleta del app.css (#dc2626 = status-dot-error)
+        // en hex literal — no usamos lookup CSS porque la columna se
+        // crea programáticamente y JavaFX no resuelve variables
+        // declaradas en .root cuando el estilo es inline.
+        colWarn.setStyle("-fx-alignment: CENTER; -fx-text-fill: #dc2626; -fx-font-weight: bold;");
         colWarn.setPrefWidth(44);
         colWarn.setSortable(false);
         table.getColumns().add(1, colWarn);
