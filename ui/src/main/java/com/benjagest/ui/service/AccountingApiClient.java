@@ -391,6 +391,7 @@ public class AccountingApiClient {
                 .timeout(Duration.ofSeconds(15)).GET();
         AuthSession.get().authorize(b);
         HttpResponse<String> r = httpClient.send(b.build(), HttpResponse.BodyHandlers.ofString());
+        checkAuth(r);
         if (r.statusCode() < 200 || r.statusCode() >= 300) {
             throw new IOException("HTTP " + r.statusCode() + ": " + r.body());
         }
@@ -404,6 +405,7 @@ public class AccountingApiClient {
                 .POST(HttpRequest.BodyPublishers.ofString(body));
         AuthSession.get().authorize(b);
         HttpResponse<String> r = httpClient.send(b.build(), HttpResponse.BodyHandlers.ofString());
+        checkAuth(r);
         if (r.statusCode() < 200 || r.statusCode() >= 300) {
             throw new IOException("HTTP " + r.statusCode() + ": " + r.body());
         }
@@ -417,6 +419,7 @@ public class AccountingApiClient {
                 .PUT(HttpRequest.BodyPublishers.ofString(body));
         AuthSession.get().authorize(b);
         HttpResponse<String> r = httpClient.send(b.build(), HttpResponse.BodyHandlers.ofString());
+        checkAuth(r);
         if (r.statusCode() < 200 || r.statusCode() >= 300) {
             throw new IOException("HTTP " + r.statusCode() + ": " + r.body());
         }
@@ -428,8 +431,38 @@ public class AccountingApiClient {
                 .timeout(Duration.ofSeconds(15)).DELETE();
         AuthSession.get().authorize(b);
         HttpResponse<String> r = httpClient.send(b.build(), HttpResponse.BodyHandlers.ofString());
+        checkAuth(r);
         if (r.statusCode() < 200 || r.statusCode() >= 300) {
             throw new IOException("HTTP " + r.statusCode() + ": " + r.body());
+        }
+    }
+
+    /**
+     * Detecta 401 (token inválido) y 403 con cuerpo de Spring Security
+     * por defecto ({@code "error":"Forbidden"} sin mensaje de permisos)
+     * — son síntomas típicos de JWT expirado. Lanza {@link
+     * SessionExpiredException} para que la UI muestre "Sesión expirada"
+     * en vez del JSON crudo.
+     *
+     * <p>Si el 403 trae mensaje de permisos específico ("Tu rol no tiene
+     * permiso", "El modulo X no esta activo") lo dejamos pasar para que
+     * la UI muestre el mensaje real.
+     */
+    private void checkAuth(HttpResponse<String> r) {
+        if (r.statusCode() == 401) {
+            throw new SessionExpiredException("HTTP 401");
+        }
+        if (r.statusCode() == 403) {
+            String body = r.body() == null ? "" : r.body();
+            // Spring Security default = JSON {"error":"Forbidden",...} sin más.
+            // Si NO contiene mensaje de permisos específico, asumimos sesión.
+            if (!body.contains("rol")
+                    && !body.contains("modulo")
+                    && !body.contains("módulo")
+                    && !body.contains("role")
+                    && !body.contains("module")) {
+                throw new SessionExpiredException("HTTP 403");
+            }
         }
     }
 
