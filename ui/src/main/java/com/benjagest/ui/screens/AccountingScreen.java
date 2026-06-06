@@ -796,7 +796,55 @@ public class AccountingScreen {
         body.setCenter(linesTable);
         body.setBottom(new VBox(6, totals, actions));
 
-        javafx.scene.Scene scene = new javafx.scene.Scene(body, 900, 560);
+        // Visor PDF embebido si el asiento es DRAFT y tiene PDF asociado
+        // (típico en asientos creados por multi-import de gastos/ventas).
+        // Hacemos un GET asíncrono al endpoint del PDF; si llega bytes
+        // (200), envolvemos el body en SplitPane con visor a la izquierda.
+        // Si responde 404 o el asiento no es DRAFT, no pasa nada — el
+        // diálogo sale como antes. Una vez validado, el PDF queda
+        // archivado pero la UI no lo muestra.
+        javafx.scene.Parent rootForScene = body;
+        javafx.scene.control.SplitPane split = null;
+        com.benjagest.ui.support.PdfViewer viewer = null;
+        if (detail != null && "DRAFT".equalsIgnoreCase(detail.status())) {
+            viewer = new com.benjagest.ui.support.PdfViewer();
+            viewer.setPrefWidth(550);
+            viewer.attachAutoDispose();
+            split = new javafx.scene.control.SplitPane(viewer, body);
+            split.setDividerPositions(0.50);
+            rootForScene = split;
+        }
+        final com.benjagest.ui.support.PdfViewer finalViewer = viewer;
+        final javafx.scene.control.SplitPane finalSplit = split;
+        if (finalViewer != null) {
+            // Background fetch: si llegan bytes, los carga; si no, ocultamos
+            // el panel izquierdo del SplitPane para no dejar espacio vacío.
+            final String entryIdFetch = detail.id();
+            Thread fetch = new Thread(() -> {
+                try {
+                    byte[] bytes = api.downloadEntrySourcePdf(entryIdFetch);
+                    javafx.application.Platform.runLater(() -> {
+                        if (bytes != null && bytes.length > 0) {
+                            finalViewer.loadFromBytes(bytes);
+                        } else if (finalSplit != null) {
+                            finalSplit.getItems().remove(finalViewer);
+                        }
+                    });
+                } catch (Exception ex) {
+                    // 404 normal cuando el asiento no tiene PDF: ocultar.
+                    javafx.application.Platform.runLater(() -> {
+                        if (finalSplit != null) {
+                            finalSplit.getItems().remove(finalViewer);
+                        }
+                    });
+                }
+            }, "entry-source-pdf-fetch");
+            fetch.setDaemon(true);
+            fetch.start();
+        }
+
+        int w = rootForScene == body ? 900 : 1400;
+        javafx.scene.Scene scene = new javafx.scene.Scene(rootForScene, w, 600);
         dialog.setScene(scene);
         return dialog;
     }

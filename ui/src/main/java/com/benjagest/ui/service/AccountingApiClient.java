@@ -153,6 +153,65 @@ public class AccountingApiClient {
 
     public record TerceroConfig(int length, String mode) {}
 
+    // ------------------------------------------------------------------
+    //  Multi-import de PDFs → asientos directos
+    // ------------------------------------------------------------------
+
+    /**
+     * Crea un asiento de venta DRAFT directo desde un PDF importado. El
+     * backend resuelve la sub-cuenta del cliente, propone la cuenta 7xx
+     * con el classifier y guarda el PDF para revisión posterior en la
+     * pestaña "Por validar".
+     *
+     * @param pdfBytes contenido binario del PDF (puede ser null si no
+     *                 quieres archivar el PDF — el asiento se crea igual).
+     */
+    public SalesImportResult importSalesFromPdf(
+            String customerNif, String customerName,
+            java.time.LocalDate invoiceDate,
+            java.math.BigDecimal baseAmount,
+            java.math.BigDecimal vatPercent,
+            java.math.BigDecimal vatAmount,
+            java.math.BigDecimal retentionAmount,
+            java.math.BigDecimal totalAmount,
+            String invoiceNumber, String concept,
+            byte[] pdfBytes) throws IOException, InterruptedException {
+        StringBuilder body = new StringBuilder("{");
+        appendKV(body, "customerNif", customerNif, true);
+        appendKV(body, "customerName", customerName, false);
+        appendKV(body, "invoiceDate", invoiceDate == null ? null : invoiceDate.toString(), false);
+        appendNumKV(body, "baseAmount", baseAmount);
+        appendNumKV(body, "vatPercent", vatPercent);
+        appendNumKV(body, "vatAmount", vatAmount);
+        appendNumKV(body, "retentionAmount", retentionAmount);
+        appendNumKV(body, "totalAmount", totalAmount);
+        appendKV(body, "invoiceNumber", invoiceNumber, false);
+        appendKV(body, "concept", concept, false);
+        if (pdfBytes != null && pdfBytes.length > 0) {
+            String b64 = java.util.Base64.getEncoder().encodeToString(pdfBytes);
+            body.append(",\"pdfBase64\":\"").append(b64).append("\"");
+        }
+        body.append("}");
+        String json = postRaw("/accounting/import-pdf/sales", body.toString());
+        return new SalesImportResult(
+                strField(json, "journalEntryId"),
+                strField(json, "pdfSha256"));
+    }
+
+    public record SalesImportResult(String journalEntryId, String pdfSha256) {}
+
+    /** Descarga el PDF asociado al asiento (para el visor en pestaña pending). */
+    public byte[] downloadEntrySourcePdf(String entryId)
+            throws IOException, InterruptedException {
+        return getBytes("/accounting/journal-entries/" + entryId + "/source-pdf");
+    }
+
+    private void appendNumKV(StringBuilder b, String key, java.math.BigDecimal v) {
+        b.append(",\"").append(key).append("\":");
+        if (v == null) b.append("null");
+        else b.append(v.toPlainString());
+    }
+
     public void voidEntry(String id, String reason) throws IOException, InterruptedException {
         String path = "/accounting/journal-entries/" + id;
         if (reason != null && !reason.isBlank()) {
@@ -457,6 +516,19 @@ public class AccountingApiClient {
             AuthSession.get().authorize(b);
             return b;
         });
+    }
+
+    /** GET que devuelve bytes raw (PDFs / imágenes). Sin refresh retry porque
+     *  el handler de body de bytes no es compatible con el wrapper String. */
+    private byte[] getBytes(String path) throws IOException, InterruptedException {
+        HttpRequest.Builder b = HttpRequest.newBuilder(URI.create(baseUrl + path))
+                .timeout(Duration.ofSeconds(30)).GET();
+        AuthSession.get().authorize(b);
+        HttpResponse<byte[]> r = httpClient.send(b.build(), HttpResponse.BodyHandlers.ofByteArray());
+        if (r.statusCode() < 200 || r.statusCode() >= 300) {
+            throw new IOException("HTTP " + r.statusCode());
+        }
+        return r.body();
     }
 
     private String postRaw(String path, String body) throws IOException, InterruptedException {
