@@ -531,11 +531,25 @@ public class InvoiceFieldsExtractor {
         String receiverNif = receiver[0];
         String receiverName = receiver[1];
 
-        // 9. Rectificativa — busca patrones "FACTURA RECTIFICATIVA",
-        //    "Nota de abono" etc en cabecera (primeros 600 chars). Si lo
-        //    encuentra y además hay "rectifica la factura X", lo extrae.
+        // 9. Rectificativa — dos señales independientes:
+        //    a) TEXTO: cabecera dice "FACTURA RECTIFICATIVA", "Nota de
+        //       abono", "Credit note", "Abono sobre"… Patrón RECTIFYING_PATTERN.
+        //    b) TOTAL NEGATIVO: por contabilidad, una factura
+        //       rectificativa SIEMPRE lleva el total < 0 (es un abono
+        //       al cliente). OJO: una factura normal puede llevar UNA
+        //       línea en negativo (descuento puntual) pero el TOTAL
+        //       sigue siendo positivo. Por eso miramos el TOTAL, no
+        //       línea por línea.
+        //
+        //    Marcamos rectificativa si CUALQUIERA de las dos señales
+        //    matchea. La señal de total negativo cubre el caso
+        //    frecuente de PDFs sin la palabra "rectificativa" en la
+        //    cabecera (algunos editores la imprimen como "FACTURA"
+        //    a secas con totales en rojo/negativo).
         String headForRect = text.length() > 600 ? text.substring(0, 600) : text;
-        boolean rectifying = RECTIFYING_PATTERN.matcher(headForRect).find();
+        boolean rectifyingByText = RECTIFYING_PATTERN.matcher(headForRect).find();
+        boolean rectifyingByTotal = total != null && total.signum() < 0;
+        boolean rectifying = rectifyingByText || rectifyingByTotal;
         String rectifiedNumber = null;
         if (rectifying) {
             Matcher rm = RECTIFIED_ORIGINAL_PATTERN.matcher(text);
