@@ -11011,6 +11011,14 @@ public class BenjagestUiApplication extends Application {
             case "client.kpi.model_303.neutral" -> "neutral";
             case "client.kpi.drafts" -> "PENDING";
             case "client.kpi.invoices" -> "invoices";
+            case "client.filter.search" -> "Search:";
+            case "client.filter.search_prompt" -> "invoice nº, concept…";
+            case "client.filter.status" -> "Status:";
+            case "client.filter.status.all" -> "All";
+            case "client.filter.type" -> "Type:";
+            case "client.filter.type.all" -> "All types";
+            case "client.filter.type.normal" -> "Normal";
+            case "client.filter.type.rectifying" -> "Rectifying";
             case "advisory.client.tab.accounting" -> "Accounting";
             case "advisory.client.tab.banks" -> "Banks";
             case "advisory.client.tab.loans" -> "Loans";
@@ -11386,6 +11394,14 @@ public class BenjagestUiApplication extends Application {
             case "client.kpi.model_303.neutral" -> "neutro";
             case "client.kpi.drafts" -> "POR VALIDAR";
             case "client.kpi.invoices" -> "facturas";
+            case "client.filter.search" -> "Buscar:";
+            case "client.filter.search_prompt" -> "nº factura, concepto…";
+            case "client.filter.status" -> "Estado:";
+            case "client.filter.status.all" -> "Todos";
+            case "client.filter.type" -> "Tipo:";
+            case "client.filter.type.all" -> "Todos los tipos";
+            case "client.filter.type.normal" -> "Normal";
+            case "client.filter.type.rectifying" -> "Rectificativa";
             case "advisory.client.tab.accounting" -> "Contabilidad";
             case "advisory.client.tab.banks" -> "Bancos";
             case "advisory.client.tab.loans" -> "Préstamos";
@@ -14487,6 +14503,19 @@ public class BenjagestUiApplication extends Application {
      * sentido es archivar lo que el cliente emitió por su cuenta.
      */
     private Node buildClientSalesAndExpensesTab() {
+        // Periodo (trimestre + año) COMPARTIDO entre el bloque KPIs y
+        // la tabla Ventas. El selector vive arriba con los KPIs; al
+        // cambiar, los KPIs y la tabla se recargan juntos.
+        LocalDate today = LocalDate.now();
+        int currentQuarter = (today.getMonthValue() - 1) / 3 + 1;
+        LocalDate initFrom = LocalDate.of(today.getYear(),
+                (currentQuarter - 1) * 3 + 1, 1);
+        LocalDate initTo = initFrom.plusMonths(3).minusDays(1);
+        javafx.beans.property.ObjectProperty<LocalDate> fromProp =
+                new javafx.beans.property.SimpleObjectProperty<>(initFrom);
+        javafx.beans.property.ObjectProperty<LocalDate> toProp =
+                new javafx.beans.property.SimpleObjectProperty<>(initTo);
+
         TabPane sub = new TabPane();
         sub.getStyleClass().add("inner-tabs");
         sub.setTabClosingPolicy(TabPane.TabClosingPolicy.UNAVAILABLE);
@@ -14496,7 +14525,8 @@ public class BenjagestUiApplication extends Application {
         // Las ventas importadas por PDF son ASIENTOS contables con
         // source_type=SALES_PDF_IMPORT. Por eso el sub-tab Ventas aquí
         // muestra el diario filtrado, no sales_invoices.
-        Tab salesTab = new Tab(t("client.tab.sales"), buildClientSalesArchivedTab());
+        Tab salesTab = new Tab(t("client.tab.sales"),
+                buildClientSalesArchivedTab(fromProp, toProp));
         salesTab.setGraphic(icon("fas-file-invoice"));
 
         Tab expensesTab = new Tab(t("client.tab.expenses"), buildClientPurchasesTab());
@@ -14508,7 +14538,7 @@ public class BenjagestUiApplication extends Application {
         // IVA soportado, Modelo 303 estimado, asientos pendientes.
         // Selector de trimestre/año arriba de las cards. Auto-refresh
         // suscrito al RefreshBus.
-        Node kpisBlock = buildClientKpisBlock();
+        Node kpisBlock = buildClientKpisBlock(fromProp, toProp);
 
         // Banner informativo: explica al asesor por qué la pantalla es
         // distinta de un cliente vinculado.
@@ -14527,7 +14557,9 @@ public class BenjagestUiApplication extends Application {
      * trimestre/año + cards con totales. Refresco automático cuando
      * cambian asientos o se importan PDFs.
      */
-    private Node buildClientKpisBlock() {
+    private Node buildClientKpisBlock(
+            javafx.beans.property.ObjectProperty<LocalDate> fromProp,
+            javafx.beans.property.ObjectProperty<LocalDate> toProp) {
         // Selector de período: año + trimestre. Por defecto el actual.
         LocalDate today = LocalDate.now();
         int currentQuarter = (today.getMonthValue() - 1) / 3 + 1;
@@ -14582,6 +14614,10 @@ public class BenjagestUiApplication extends Application {
             if (y == null || q == null) return;
             LocalDate from = LocalDate.of(y, (q - 1) * 3 + 1, 1);
             LocalDate to = from.plusMonths(3).minusDays(1);
+            // Publicamos el periodo en las props compartidas — la tabla
+            // Ventas escucha cambios y recarga automáticamente.
+            fromProp.set(from);
+            toProp.set(to);
             Task<com.benjagest.ui.service.AccountingApiClient.SalesAndExpensesKpis> task = new Task<>() {
                 @Override
                 protected com.benjagest.ui.service.AccountingApiClient.SalesAndExpensesKpis call()
@@ -14684,14 +14720,21 @@ public class BenjagestUiApplication extends Application {
      * <p>Muestra: nº asiento, fecha, concepto, total. Con botón
      * "Importar PDFs" + auto-refresh por RefreshBus.
      */
-    private Node buildClientSalesArchivedTab() {
+    private Node buildClientSalesArchivedTab(
+            javafx.beans.property.ObjectProperty<LocalDate> fromProp,
+            javafx.beans.property.ObjectProperty<LocalDate> toProp) {
         javafx.scene.control.TableView<com.benjagest.ui.model.AccountingModels.DiaryEntry> table =
                 new javafx.scene.control.TableView<>();
         table.getStyleClass().add("data-table");
         table.setPlaceholder(new Label(t("list.placeholder.empty")));
 
-        // Columna Nº con ordenación NUMÉRICA (no alfabética). Antes la
-        // tabla ordenaba "10" < "2" porque comparaba como String.
+        // Cache cliente-side del listado COMPLETO del periodo. Los
+        // filtros (texto, estado, tipo) se aplican sobre este cache
+        // sin recargar del backend.
+        final java.util.List<com.benjagest.ui.model.AccountingModels.DiaryEntry> cache =
+                new java.util.ArrayList<>();
+
+        // Columna Nº con ordenación NUMÉRICA (no alfabética).
         javafx.scene.control.TableColumn<com.benjagest.ui.model.AccountingModels.DiaryEntry, Integer> colNum =
                 new javafx.scene.control.TableColumn<>(t("accounting.col.num"));
         colNum.setCellValueFactory(c -> new javafx.beans.property.SimpleObjectProperty<>(
@@ -14716,8 +14759,71 @@ public class BenjagestUiApplication extends Application {
 
         table.getColumns().add(0, colNum);
 
+        // Filtros internos (Slice 2B):
+        //   - Buscar: matchea sobre concepto + nº.
+        //   - Estado: TODOS | DRAFT (por validar) | POSTED (validado) | VOIDED.
+        //   - Tipo:   TODOS | NORMAL | RECTIFICATIVA (total negativo
+        //             o concepto con "rectific"/"abono").
+        TextField search = new TextField();
+        search.setPromptText(t("client.filter.search_prompt"));
+        search.setPrefColumnCount(20);
+
+        ComboBox<String> statusFilter = new ComboBox<>(javafx.collections.FXCollections.observableArrayList(
+                "", "DRAFT", "POSTED", "VOIDED"));
+        statusFilter.setValue("");
+        statusFilter.setConverter(new javafx.util.StringConverter<>() {
+            @Override public String toString(String s) {
+                return s == null || s.isBlank()
+                        ? t("client.filter.status.all")
+                        : t("accounting.status." + s);
+            }
+            @Override public String fromString(String s) { return s; }
+        });
+
+        ComboBox<String> typeFilter = new ComboBox<>(javafx.collections.FXCollections.observableArrayList(
+                "", "NORMAL", "RECT"));
+        typeFilter.setValue("");
+        typeFilter.setConverter(new javafx.util.StringConverter<>() {
+            @Override public String toString(String s) {
+                return s == null || s.isBlank() ? t("client.filter.type.all")
+                        : "RECT".equals(s) ? t("client.filter.type.rectifying")
+                        : t("client.filter.type.normal");
+            }
+            @Override public String fromString(String s) { return s; }
+        });
+
+        Runnable applyFilters = () -> {
+            String q = search.getText() == null ? ""
+                    : search.getText().trim().toLowerCase();
+            String st = statusFilter.getValue();
+            String tp = typeFilter.getValue();
+            javafx.collections.ObservableList<com.benjagest.ui.model.AccountingModels.DiaryEntry> filtered =
+                    javafx.collections.FXCollections.observableArrayList();
+            for (var e : cache) {
+                if (!q.isEmpty()) {
+                    String haystack =
+                            (e.concept() == null ? "" : e.concept().toLowerCase())
+                            + " " + e.entryNumber();
+                    if (!haystack.contains(q)) continue;
+                }
+                if (st != null && !st.isBlank()
+                        && !st.equalsIgnoreCase(e.status())) continue;
+                if (tp != null && !tp.isBlank()) {
+                    boolean isRect = isLikelyRectifying(e);
+                    if ("RECT".equals(tp) && !isRect) continue;
+                    if ("NORMAL".equals(tp) && isRect) continue;
+                }
+                filtered.add(e);
+            }
+            table.setItems(filtered);
+        };
+        search.textProperty().addListener((o, a, b) -> applyFilters.run());
+        statusFilter.valueProperty().addListener((o, a, b) -> applyFilters.run());
+        typeFilter.valueProperty().addListener((o, a, b) -> applyFilters.run());
+
         Button refresh = new Button(t("accounting.action.refresh"));
-        refresh.setOnAction(e -> loadClientSalesArchived(table));
+        refresh.setOnAction(e -> loadClientSalesArchived(table, cache,
+                fromProp.get(), toProp.get(), applyFilters));
 
         Button importBtn = new Button(t("sales.action.import_pdfs"));
         importBtn.setGraphic(icon("fas-file-import"));
@@ -14726,43 +14832,77 @@ public class BenjagestUiApplication extends Application {
 
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
-        HBox actions = new HBox(8, refresh, spacer, importBtn);
-        actions.setAlignment(Pos.CENTER_LEFT);
+        HBox filtersRow = new HBox(8,
+                new Label(t("client.filter.search")), search,
+                new Label(t("client.filter.status")), statusFilter,
+                new Label(t("client.filter.type")), typeFilter,
+                spacer, refresh, importBtn);
+        filtersRow.setAlignment(Pos.CENTER_LEFT);
 
         com.benjagest.ui.support.RefreshBus.subscribe(
                 com.benjagest.ui.support.RefreshBus.TOPIC_JOURNAL,
-                () -> loadClientSalesArchived(table), table);
+                () -> loadClientSalesArchived(table, cache,
+                        fromProp.get(), toProp.get(), applyFilters), table);
         com.benjagest.ui.support.RefreshBus.subscribe(
                 com.benjagest.ui.support.RefreshBus.TOPIC_SALES,
-                () -> loadClientSalesArchived(table), table);
+                () -> loadClientSalesArchived(table, cache,
+                        fromProp.get(), toProp.get(), applyFilters), table);
 
-        VBox box = new VBox(8, actions, table);
+        // Cuando cambia el periodo de los KPIs, recargamos.
+        fromProp.addListener((o, a, b) -> loadClientSalesArchived(
+                table, cache, fromProp.get(), toProp.get(), applyFilters));
+        toProp.addListener((o, a, b) -> loadClientSalesArchived(
+                table, cache, fromProp.get(), toProp.get(), applyFilters));
+
+        VBox box = new VBox(8, filtersRow, table);
         VBox.setVgrow(table, Priority.ALWAYS);
         box.setPadding(new Insets(12));
-        loadClientSalesArchived(table);
+        loadClientSalesArchived(table, cache, fromProp.get(), toProp.get(), applyFilters);
         return box;
+    }
+
+    /**
+     * Heurística rápida cliente-side para distinguir rectificativa de
+     * factura normal sin tocar el backend:
+     *   - Total negativo (debe o haber) → rectificativa
+     *   - Concepto contiene "rectific" / "abono" / "anula" → rectificativa
+     */
+    private boolean isLikelyRectifying(com.benjagest.ui.model.AccountingModels.DiaryEntry e) {
+        if (e == null) return false;
+        if (e.totalDebit() != null && e.totalDebit().signum() < 0) return true;
+        if (e.totalCredit() != null && e.totalCredit().signum() < 0) return true;
+        String concept = e.concept() == null ? "" : e.concept().toLowerCase();
+        if (concept.contains("rectific") || concept.contains("abono")
+                || concept.contains("anula")) return true;
+        return false;
     }
 
     /**
      * Carga las ventas archivadas (asientos con
      * {@code source_type='SALES_PDF_IMPORT'}) del cliente activo via
-     * actingForCompanyId.
+     * actingForCompanyId. Filtra por rango de fechas (periodo activo
+     * desde el selector trimestre/año de los KPIs).
      */
     private void loadClientSalesArchived(
-            javafx.scene.control.TableView<com.benjagest.ui.model.AccountingModels.DiaryEntry> table) {
+            javafx.scene.control.TableView<com.benjagest.ui.model.AccountingModels.DiaryEntry> table,
+            java.util.List<com.benjagest.ui.model.AccountingModels.DiaryEntry> cache,
+            LocalDate from, LocalDate to,
+            Runnable applyFilters) {
         Task<java.util.List<com.benjagest.ui.model.AccountingModels.DiaryEntry>> task = new Task<>() {
             @Override
             protected java.util.List<com.benjagest.ui.model.AccountingModels.DiaryEntry> call()
                     throws Exception {
-                // Sin filtro de status: queremos ver DRAFT (por validar)
-                // y POSTED juntos. Sin filtro de fechas: el asesor ya
-                // puede filtrar el listado en pantalla si lo necesita.
-                return accountingApiClient.diary(null, null, null,
+                // Sin filtro de status: DRAFT + POSTED juntos. El periodo
+                // viene del selector de arriba (compartido con KPIs).
+                return accountingApiClient.diary(from, to, null,
                         "SALES_PDF_IMPORT", 500);
             }
         };
-        task.setOnSucceeded(ev -> table.setItems(
-                javafx.collections.FXCollections.observableArrayList(task.getValue())));
+        task.setOnSucceeded(ev -> {
+            cache.clear();
+            cache.addAll(task.getValue());
+            applyFilters.run();
+        });
         task.setOnFailed(ev -> System.err.println("[client-sales-archived] "
                 + (task.getException() == null ? "?" : task.getException().getMessage())));
         start(task, "client-sales-archived");
