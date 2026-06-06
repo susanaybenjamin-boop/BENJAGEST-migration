@@ -238,6 +238,16 @@ public class BenjagestUiApplication extends Application {
     private void setupGlobalShortcuts(Scene scene) {
         // Botones laterales del raton: 4 = BACK, 5 = FORWARD.
         scene.addEventFilter(javafx.scene.input.MouseEvent.MOUSE_PRESSED, ev -> {
+            // Si hay algún diálogo/alert/popup modal abierto, NO navegamos
+            // — el back debe afectar al dialog o ser ignorado, nunca
+            // sacar al usuario del cliente cuando está leyendo un mensaje.
+            // Iteramos las ventanas: si alguna está visible y NO es el
+            // stage principal, asumimos que es un modal.
+            for (javafx.stage.Window w : javafx.stage.Stage.getWindows()) {
+                if (w.isShowing() && w != scene.getWindow()) {
+                    return; // hay modal → no consumimos, dejamos que el dialog actúe
+                }
+            }
             if (ev.getButton() == javafx.scene.input.MouseButton.BACK) {
                 navigateBack();
                 ev.consume();
@@ -10477,6 +10487,8 @@ public class BenjagestUiApplication extends Application {
             case "accounting.backfill.done" -> "Regeneration completed";
             case "accounting.backfill.result" -> "Entries created:\n  · Purchases: {p}\n  · Sales: {s}\n  · Total: {t}\n\nCheck the 'To validate' tab to review the auto-proposed entries.";
             case "accounting.error.backfill" -> "Could not regenerate entries";
+            case "accounting.error.session_expired_title" -> "Session expired";
+            case "accounting.error.session_expired_body" -> "Your session has expired (tokens last 8 hours for security).\n\nClose the app and log in again to continue.\n\nNothing you saved has been lost.";
             case "advisory.client.summary.title" -> "Client information";
             case "advisory.client.summary.hint" -> "Basic data captured from the client's company profile.";
             case "advisory.client.field.legal_name" -> "Legal name:";
@@ -10661,6 +10673,8 @@ public class BenjagestUiApplication extends Application {
             case "accounting.backfill.done" -> "Regeneración completada";
             case "accounting.backfill.result" -> "Asientos generados:\n  · Compras: {p}\n  · Ventas: {s}\n  · Total: {t}\n\nRevisa la pestaña 'Por validar' para validar los asientos auto-propuestos.";
             case "accounting.error.backfill" -> "No se pudieron regenerar asientos";
+            case "accounting.error.session_expired_title" -> "Sesión expirada";
+            case "accounting.error.session_expired_body" -> "Tu sesión ha caducado (los tokens duran 8 horas por seguridad).\n\nCierra la aplicación y vuelve a iniciar sesión para continuar trabajando.\n\nNo se ha perdido nada de lo que tenías guardado.";
             case "advisory.client.summary.title" -> "Datos del cliente";
             case "advisory.client.summary.hint" -> "Datos basicos extraidos del perfil de empresa del cliente.";
             case "advisory.client.field.legal_name" -> "Razon social:";

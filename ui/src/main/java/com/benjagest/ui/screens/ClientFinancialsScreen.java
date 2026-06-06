@@ -290,6 +290,14 @@ public class ClientFinancialsScreen {
     }
 
     private void showError(String title, Throwable err) {
+        if (err instanceof com.benjagest.ui.service.SessionExpiredException
+                || err.getCause() instanceof com.benjagest.ui.service.SessionExpiredException) {
+            Alert a = new Alert(AlertType.WARNING,
+                    tt.apply("accounting.error.session_expired_body"));
+            a.setHeaderText(tt.apply("accounting.error.session_expired_title"));
+            a.showAndWait();
+            return;
+        }
         Alert a = new Alert(AlertType.ERROR, title + "\n\n"
                 + (err.getMessage() == null ? err.toString() : err.getMessage()));
         a.showAndWait();
