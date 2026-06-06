@@ -126,11 +126,17 @@ public class PurchaseJournalEntryService {
                 proposedConfidence, userId);
 
         // 5) Líneas: 2 debes (6xx base, 472 iva) + 1 haber (400 total).
-        insertLine(entryId, acc6xx, "Compra " + safe(purchase.supplierName()),
+        //    Descripción: usamos el concepto de la factura como base
+        //    (proveedor + nº factura). El usuario puede editar línea a
+        //    línea en el editor del asiento; al cambiar de cuenta esa
+        //    descripción se preserva.
+        String baseDescription = buildLineDescription(purchase);
+        insertLine(entryId, acc6xx, baseDescription,
                 purchase.baseAmount(), java.math.BigDecimal.ZERO);
-        insertLine(entryId, acc472, "IVA soportado " + safe(purchase.vatPercent()) + "%",
+        insertLine(entryId, acc472, baseDescription
+                + " (IVA " + safe(purchase.vatPercent()) + "%)",
                 purchase.vatAmount(), java.math.BigDecimal.ZERO);
-        insertLine(entryId, acc400, "Pdte. pago " + safe(purchase.supplierNif()),
+        insertLine(entryId, acc400, baseDescription,
                 java.math.BigDecimal.ZERO, purchase.totalAmount());
 
         // 6) Si vino de regla aprendida, no la reforzamos todavía — eso
@@ -209,6 +215,27 @@ public class PurchaseJournalEntryService {
                 description == null ? null
                         : (description.length() > 240 ? description.substring(0, 240) : description),
                 debit, credit);
+    }
+
+    /**
+     * Descripción de línea: incluye nº factura + proveedor para que el
+     * Libro Mayor y el Diario se lean bien sin tener que abrir el asiento.
+     * Si el asesor edita la descripción en el editor, la suya se respeta
+     * y NO se sobrescribe al cambiar de cuenta.
+     */
+    private String buildLineDescription(PurchaseInvoice p) {
+        StringBuilder sb = new StringBuilder();
+        if (p.invoiceNumber() != null && !p.invoiceNumber().isBlank()) {
+            sb.append("Fra. ").append(p.invoiceNumber()).append(' ');
+        }
+        if (p.supplierName() != null && !p.supplierName().isBlank()) {
+            sb.append("- ").append(p.supplierName());
+        } else if (p.supplierNif() != null) {
+            sb.append("- ").append(p.supplierNif());
+        }
+        String s = sb.toString().trim();
+        if (s.isEmpty()) s = "Compra";
+        return s.length() > 240 ? s.substring(0, 240) : s;
     }
 
     private String buildConcept(PurchaseInvoice p) {

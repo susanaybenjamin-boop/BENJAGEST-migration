@@ -809,30 +809,127 @@ public class AccountingScreen {
         }
     }
 
+    /**
+     * Celda con ComboBox editable que filtra el listado en vivo al
+     * teclear el código de cuenta. Comportamiento:
+     *
+     * <ul>
+     *   <li>Al teclear "70" → muestra dropdown con todas las cuentas
+     *       cuyo code empieza por "70" (700, 7000, 7001, 705, ...).</li>
+     *   <li>Al teclear "705" → muestra "705 Ventas de prestaciones..."
+     *       y filtra al pasar.</li>
+     *   <li>Al perder el foco (Tab, click fuera) persiste el valor en
+     *       el modelo, no solo al pulsar Enter.</li>
+     *   <li>Si el texto NO matchea ninguna cuenta, el modelo guarda lo
+     *       tecleado tal cual — la validación al guardar el asiento
+     *       reportará "cuenta X no existe en esta empresa" claro.</li>
+     * </ul>
+     */
     private static class AccountComboCell extends javafx.scene.control.TableCell<EditableLine, String> {
         private final ComboBox<String> combo;
+        private final ObservableList<String> allOptions;
+        private final List<AccountSummary> accounts;
+        private boolean updatingFromFilter = false;
+
         AccountComboCell(List<AccountSummary> accounts) {
+            this.accounts = accounts;
             this.combo = new ComboBox<>();
-            ObservableList<String> opts = FXCollections.observableArrayList();
-            for (AccountSummary a : accounts) opts.add(a.code() + "  " + a.name());
-            combo.setItems(opts);
+            this.allOptions = FXCollections.observableArrayList();
+            for (AccountSummary a : accounts) allOptions.add(a.code() + "  " + a.name());
+            combo.setItems(FXCollections.observableArrayList(allOptions));
             combo.setEditable(true);
+            combo.setVisibleRowCount(12);
             combo.setMaxWidth(Double.MAX_VALUE);
-            combo.setOnAction(ev -> {
-                String v = combo.getEditor().getText();
-                if (v != null && v.contains("  ")) v = v.substring(0, v.indexOf("  ")).trim();
-                if (getTableRow() != null && getTableRow().getItem() != null) {
-                    getTableRow().getItem().accountCodeProp.set(v);
+
+            // Filtrado en vivo al teclear: cada cambio del texto del
+            // editor recalcula la lista de items mostrando solo los que
+            // empiezan por el código tecleado (case-insensitive).
+            combo.getEditor().textProperty().addListener((obs, oldV, newV) -> {
+                if (updatingFromFilter) return;
+                String typed = newV == null ? "" : newV.trim();
+                // Si el usuario seleccionó una opción "705 Ventas...", al
+                // pasar de la línea el editor.text contiene "705  Ventas..."
+                // — NO filtrar en ese caso (el dropdown ya cerró).
+                if (typed.contains("  ")) return;
+                String prefix = typed.toLowerCase();
+                ObservableList<String> filtered = FXCollections.observableArrayList();
+                for (String opt : allOptions) {
+                    if (prefix.isEmpty() || opt.toLowerCase().startsWith(prefix)) {
+                        filtered.add(opt);
+                    }
                 }
-                setText(v);
+                updatingFromFilter = true;
+                try {
+                    combo.setItems(filtered);
+                    if (!prefix.isEmpty() && !filtered.isEmpty() && !combo.isShowing()) {
+                        combo.show();
+                    }
+                } finally {
+                    updatingFromFilter = false;
+                }
             });
+
+            // Persistir al pulsar Enter / seleccionar de la lista.
+            combo.setOnAction(ev -> persistCurrentValue());
+            // Persistir también al perder foco (Tab / click fuera).
+            combo.focusedProperty().addListener((obs, hadFocus, hasFocus) -> {
+                if (hadFocus && !hasFocus) persistCurrentValue();
+            });
+            combo.getEditor().focusedProperty().addListener((obs, hadFocus, hasFocus) -> {
+                if (hadFocus && !hasFocus) persistCurrentValue();
+            });
+
             setContentDisplay(ContentDisplay.GRAPHIC_ONLY);
         }
+
+        private void persistCurrentValue() {
+            String v = combo.getEditor().getText();
+            if (v == null) return;
+            // El editor puede mostrar "705  Ventas de..." cuando el
+            // usuario seleccionó del dropdown. Nos quedamos solo con el
+            // code (antes del doble espacio) o con el texto literal.
+            String code = v.contains("  ") ? v.substring(0, v.indexOf("  ")).trim() : v.trim();
+            if (getTableRow() != null && getTableRow().getItem() != null) {
+                EditableLine row = getTableRow().getItem();
+                row.accountCodeProp.set(code);
+                // Si la descripción está vacía, rellenarla con el nombre
+                // de la cuenta para que el Diario y el Mayor se lean bien.
+                // Si el asesor ya tiene una descripción suya, NO la tocamos
+                // — su trabajo de redacción se respeta al cambiar la cuenta.
+                String currentDesc = row.descriptionProp.get();
+                if (currentDesc == null || currentDesc.isBlank()) {
+                    for (AccountSummary a : accounts) {
+                        if (code.equals(a.code())) {
+                            row.descriptionProp.set(a.name());
+                            break;
+                        }
+                    }
+                }
+            }
+            setText(code);
+        }
+
         @Override
         protected void updateItem(String item, boolean empty) {
             super.updateItem(item, empty);
             if (empty) { setGraphic(null); return; }
-            combo.getEditor().setText(item == null ? "" : item);
+            // Mostrar code + name si encontramos match — más informativo.
+            String shown = item == null ? "" : item;
+            if (item != null && !item.isBlank()) {
+                for (AccountSummary a : accounts) {
+                    if (item.equals(a.code())) {
+                        shown = a.code() + "  " + a.name();
+                        break;
+                    }
+                }
+            }
+            updatingFromFilter = true;
+            try {
+                combo.getEditor().setText(shown);
+                combo.setItems(FXCollections.observableArrayList(allOptions));
+            } finally {
+                updatingFromFilter = false;
+            }
             setGraphic(combo);
         }
     }

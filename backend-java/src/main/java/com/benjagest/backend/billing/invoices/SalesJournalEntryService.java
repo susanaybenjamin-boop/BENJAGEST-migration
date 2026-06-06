@@ -132,24 +132,28 @@ public class SalesJournalEntryService {
                 concept, SRC_TYPE, invoice.id(),
                 proposedConfidence, userId);
 
+        // Descripción base — todas las líneas del asiento usan el mismo
+        // texto (Fra. N - Cliente) para que el Libro Mayor se lea bien
+        // sin abrir el asiento. El asesor puede editar línea por línea
+        // en el editor; al cambiar de cuenta, su descripción se respeta.
+        String baseDesc = buildLineDescription(invoice);
+
         // Debe 430: cliente cobra total menos retención
         BigDecimal clientDebit = invoice.total().subtract(retention);
-        insertLine(entryId, acc430, "Cliente " + safe(invoice.customerLegalName()),
-                clientDebit, BigDecimal.ZERO);
+        insertLine(entryId, acc430, baseDesc, clientDebit, BigDecimal.ZERO);
 
         // Debe 473: si hay retención IRPF
         if (acc473 != null) {
-            insertLine(entryId, acc473, "Retención IRPF a cuenta",
+            insertLine(entryId, acc473, baseDesc + " (retención IRPF)",
                     retention, BigDecimal.ZERO);
         }
 
         // Haber 7xx: ventas (base imponible) — cuenta propuesta por el
         // aprendizaje o fallback 700.
-        insertLine(entryId, acc7xx, "Venta factura " + safe(invoice.invoiceNumber()),
-                BigDecimal.ZERO, invoice.subtotal());
+        insertLine(entryId, acc7xx, baseDesc, BigDecimal.ZERO, invoice.subtotal());
 
         // Haber 477: IVA repercutido
-        insertLine(entryId, acc477, "IVA repercutido factura " + safe(invoice.invoiceNumber()),
+        insertLine(entryId, acc477, baseDesc + " (IVA repercutido)",
                 BigDecimal.ZERO, invoice.vatTotal());
 
         // Si la cuenta 7xx vino de regla aprendida, registramos la
@@ -216,6 +220,24 @@ public class SalesJournalEntryService {
                 """,
                 UUID.randomUUID().toString(), entryId, accountId,
                 description, debit, credit);
+    }
+
+    /**
+     * Descripción de línea: nº factura + cliente. Si el asesor edita una
+     * línea concreta, su texto se conserva — al cambiar de cuenta solo
+     * el accountId cambia, no la description (ver AccountingScreen).
+     */
+    private String buildLineDescription(SalesInvoice invoice) {
+        StringBuilder sb = new StringBuilder();
+        if (invoice.invoiceNumber() != null && !invoice.invoiceNumber().isBlank()) {
+            sb.append("Fra. ").append(invoice.invoiceNumber()).append(' ');
+        }
+        if (invoice.customerLegalName() != null && !invoice.customerLegalName().isBlank()) {
+            sb.append("- ").append(invoice.customerLegalName());
+        }
+        String s = sb.toString().trim();
+        if (s.isEmpty()) s = "Venta";
+        return s.length() > 240 ? s.substring(0, 240) : s;
     }
 
     private String buildConcept(SalesInvoice invoice) {
