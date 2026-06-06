@@ -10990,6 +10990,10 @@ public class BenjagestUiApplication extends Application {
             case "advisory.client.tab.summary" -> "Summary";
             case "advisory.client.tab.billing" -> "Billing";
             case "advisory.client.tab.purchases" -> "Purchases & Expenses";
+            case "advisory.client.tab.sales_and_expenses" -> "Sales & Expenses";
+            case "client.tab.sales" -> "Sales";
+            case "client.tab.expenses" -> "Expenses";
+            case "client.sales_expenses.hint" -> "This client is NOT linked. Here you only archive invoices the client emitted/received in their own system. No legal invoicing from BENJAGEST — for that, the client must accept the invitation and activate VeriFactu.";
             case "advisory.client.tab.accounting" -> "Accounting";
             case "advisory.client.tab.banks" -> "Banks";
             case "advisory.client.tab.loans" -> "Loans";
@@ -11348,6 +11352,10 @@ public class BenjagestUiApplication extends Application {
             case "advisory.client.tab.summary" -> "Resumen";
             case "advisory.client.tab.billing" -> "Facturación";
             case "advisory.client.tab.purchases" -> "Compras y Gastos";
+            case "advisory.client.tab.sales_and_expenses" -> "Ventas y Gastos";
+            case "client.tab.sales" -> "Ventas";
+            case "client.tab.expenses" -> "Gastos";
+            case "client.sales_expenses.hint" -> "Este cliente NO está vinculado. Aquí solo archivas las facturas que el cliente emitió/recibió en su propio sistema. Para emitir facturas legales desde BENJAGEST (con VeriFactu), el cliente debe aceptar la invitación y activar el módulo.";
             case "advisory.client.tab.accounting" -> "Contabilidad";
             case "advisory.client.tab.banks" -> "Bancos";
             case "advisory.client.tab.loans" -> "Préstamos";
@@ -14158,10 +14166,21 @@ public class BenjagestUiApplication extends Application {
      * de asesoría.
      */
     private void switchToClient(com.benjagest.ui.model.ManagedClientEntry client) {
+        switchToClient(client, true);
+    }
+
+    /**
+     * Variante con flag de vinculación: si {@code isLinked=false} la
+     * pantalla del cliente unifica Ventas y Gastos en un solo tab
+     * (modelo A3/Contasol: el asesor SOLO archiva las facturas que el
+     * cliente emitió en otro sistema, no las emite él).
+     */
+    private void switchToClient(com.benjagest.ui.model.ManagedClientEntry client,
+                                  boolean isLinked) {
         AuthSession.get().setActingForCompanyId(client.id());
         actingClientName = client.legalName();
         refreshClientModeBanner();
-        setCenterAnimated(buildClientDetailView(client));
+        setCenterAnimated(buildClientDetailView(client, isLinked));
     }
 
     /**
@@ -14180,7 +14199,7 @@ public class BenjagestUiApplication extends Application {
      */
     private void openPortfolioClient(com.benjagest.ui.model.CustomerPortfolioEntry sel) {
         if (sel.isLinked()) {
-            switchToClient(sel.asManagedClient());
+            switchToClient(sel.asManagedClient(), true);
             return;
         }
         Task<String> task = new Task<>() {
@@ -14203,7 +14222,9 @@ public class BenjagestUiApplication extends Application {
                     sel.phone(),
                     sel.city(),
                     null);
-            switchToClient(synthetic);
+            // Cliente NO vinculado: la pantalla unifica Ventas y Gastos
+            // (no hay Facturación porque el asesor no emite, solo archiva).
+            switchToClient(synthetic, false);
             // El portfolio cambia (ahora el cliente aparece como vinculado
             // virtualmente). Refrescamos para que el badge se actualice.
             com.benjagest.ui.support.RefreshBus.emit(
@@ -14216,6 +14237,23 @@ public class BenjagestUiApplication extends Application {
     }
 
     private Node buildClientDetailView(com.benjagest.ui.model.ManagedClientEntry client) {
+        return buildClientDetailView(client, true);
+    }
+
+    /**
+     * Construye la vista de detalle de un cliente desde la asesoría.
+     *
+     * <p>Estructura de pestañas según {@code isLinked}:
+     * <ul>
+     *   <li><b>Cliente vinculado</b>: Facturación (emisión propia con
+     *       VeriFactu) + Compras y Gastos + Contabilidad + …</li>
+     *   <li><b>Cliente NO vinculado</b>: Ventas y Gastos unificado
+     *       (modelo A3/Contasol — el asesor solo archiva, no emite)
+     *       + Contabilidad + …</li>
+     * </ul>
+     */
+    private Node buildClientDetailView(com.benjagest.ui.model.ManagedClientEntry client,
+                                         boolean isLinked) {
         Button backBtn = new Button(t("advisory.client.back"));
         backBtn.setGraphic(icon("fas-arrow-left"));
         backBtn.setOnAction(ev -> {
@@ -14253,14 +14291,32 @@ public class BenjagestUiApplication extends Application {
                 buildClientSummaryTab(client));
         summaryTab.setGraphic(icon("fas-chart-line"));
 
-        // Facturación del cliente — ventas emitidas con estado y total.
-        Tab billingTab = new Tab(t("advisory.client.tab.billing"),
-                buildClientBillingTab());
-        billingTab.setGraphic(icon("fas-file-invoice-dollar"));
-
-        Tab purchasesTab = new Tab(t("advisory.client.tab.purchases"),
-                buildClientPurchasesTab());
-        purchasesTab.setGraphic(icon("fas-receipt"));
+        // Tabs de facturas según vinculación del cliente:
+        //
+        //   - Vinculado: dos tabs (Facturación + Compras y Gastos)
+        //     porque el cliente sí emite facturas desde BENJAGEST
+        //     (con VeriFactu, series, PDF generado por nosotros).
+        //
+        //   - No vinculado: un solo tab unificado "Ventas y Gastos"
+        //     que muestra TODAS las facturas archivadas por el asesor
+        //     (sub-tabs Ventas | Gastos | Todo, filtrados por
+        //     source_type). Estilo A3/Contasol — no hay emisión.
+        Tab billingTab = null;
+        Tab purchasesTab = null;
+        Tab salesAndExpensesTab = null;
+        if (isLinked) {
+            billingTab = new Tab(t("advisory.client.tab.billing"),
+                    buildClientBillingTab());
+            billingTab.setGraphic(icon("fas-file-invoice-dollar"));
+            purchasesTab = new Tab(t("advisory.client.tab.purchases"),
+                    buildClientPurchasesTab());
+            purchasesTab.setGraphic(icon("fas-receipt"));
+        } else {
+            salesAndExpensesTab = new Tab(
+                    t("advisory.client.tab.sales_and_expenses"),
+                    buildClientSalesAndExpensesTab());
+            salesAndExpensesTab.setGraphic(icon("fas-receipt"));
+        }
 
         // Contabilidad del cliente — reutiliza AccountingScreen. Las
         // llamadas API llevan el X-Company-Id del cliente porque
@@ -14296,7 +14352,13 @@ public class BenjagestUiApplication extends Application {
                 settingsCertificateTab());
         certificateTab.setGraphic(icon("fas-certificate"));
 
-        tabs.getTabs().addAll(summaryTab, billingTab, purchasesTab, accountingTab,
+        tabs.getTabs().add(summaryTab);
+        if (isLinked) {
+            tabs.getTabs().addAll(billingTab, purchasesTab);
+        } else {
+            tabs.getTabs().add(salesAndExpensesTab);
+        }
+        tabs.getTabs().addAll(accountingTab,
                 banksTab, loansTab, assetsTab, laborTab, taxTab, certificateTab);
         VBox.setVgrow(tabs, Priority.ALWAYS);
 
@@ -14357,6 +14419,52 @@ public class BenjagestUiApplication extends Application {
      * Usa el {@link BillingApiClient} existente — las llamadas heredan
      * el actingForCompanyId del cliente.
      */
+    /**
+     * Pestaña UNIFICADA "Ventas y Gastos" para clientes NO vinculados.
+     * El asesor solo archiva facturas que el cliente emitió/recibió en
+     * otro sistema — no las emite BENJAGEST. Modelo A3/Contasol.
+     *
+     * <p>Estructura: 3 sub-tabs reutilizando los listados existentes
+     * (ya están suscritos al RefreshBus y traen el visor PDF):
+     * <ul>
+     *   <li><b>Ventas</b>: ingresos importados por PDF
+     *       ({@code source_type=SALES_PDF_IMPORT}).</li>
+     *   <li><b>Gastos</b>: facturas recibidas y archivadas como
+     *       {@code purchase_invoices}.</li>
+     *   <li><b>Todo</b>: futuro slice — vista mezclada por fecha con
+     *       filtros. Hoy redirige al Diario contable que ya hace eso.</li>
+     * </ul>
+     *
+     * <p>NO tiene tab Facturación porque emitir facturas legales
+     * (con VeriFactu) requiere que el cliente esté vinculado y
+     * configurado como emisor SIF. Sin vínculo, lo único que tiene
+     * sentido es archivar lo que el cliente emitió por su cuenta.
+     */
+    private Node buildClientSalesAndExpensesTab() {
+        TabPane sub = new TabPane();
+        sub.getStyleClass().add("inner-tabs");
+        sub.setTabClosingPolicy(TabPane.TabClosingPolicy.UNAVAILABLE);
+
+        Tab salesTab = new Tab(t("client.tab.sales"), buildClientBillingTab());
+        salesTab.setGraphic(icon("fas-file-invoice"));
+
+        Tab expensesTab = new Tab(t("client.tab.expenses"), buildClientPurchasesTab());
+        expensesTab.setGraphic(icon("fas-receipt"));
+
+        sub.getTabs().addAll(salesTab, expensesTab);
+
+        // Banner informativo: explica al asesor por qué la pantalla es
+        // distinta de un cliente vinculado.
+        Label hint = new Label(t("client.sales_expenses.hint"));
+        hint.setWrapText(true);
+        hint.getStyleClass().add("settings-hint");
+
+        VBox box = new VBox(8, hint, sub);
+        VBox.setVgrow(sub, Priority.ALWAYS);
+        box.setPadding(new Insets(8));
+        return box;
+    }
+
     private Node buildClientBillingTab() {
         javafx.scene.control.TableView<com.benjagest.ui.model.SalesInvoiceSummary> table =
                 new javafx.scene.control.TableView<>();
