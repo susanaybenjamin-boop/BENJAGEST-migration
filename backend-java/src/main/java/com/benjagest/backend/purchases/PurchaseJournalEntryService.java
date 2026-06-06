@@ -1,6 +1,8 @@
 package com.benjagest.backend.purchases;
 
 import com.benjagest.backend.accounting.AccountingLearningService;
+import com.benjagest.backend.accounting.ExpenseAccountClassifierService;
+import com.benjagest.backend.accounting.TerceroAccountResolverService;
 import com.benjagest.backend.tenant.TenantContext;
 import java.sql.Date;
 import java.time.LocalDate;
@@ -41,13 +43,19 @@ public class PurchaseJournalEntryService {
     private final JdbcTemplate jdbcTemplate;
     private final TenantContext tenantContext;
     private final AccountingLearningService learning;
+    private final TerceroAccountResolverService terceroResolver;
+    private final ExpenseAccountClassifierService classifier;
 
     public PurchaseJournalEntryService(JdbcTemplate jdbcTemplate,
                                          TenantContext tenantContext,
-                                         AccountingLearningService learning) {
+                                         AccountingLearningService learning,
+                                         TerceroAccountResolverService terceroResolver,
+                                         ExpenseAccountClassifierService classifier) {
         this.jdbcTemplate = jdbcTemplate;
         this.tenantContext = tenantContext;
         this.learning = learning;
+        this.terceroResolver = terceroResolver;
+        this.classifier = classifier;
     }
 
     /**
@@ -71,26 +79,65 @@ public class PurchaseJournalEntryService {
         String fiscalYearId = findOpenFiscalYearId(companyId, purchase.invoiceDate());
         if (fiscalYearId == null) return null;
 
-        // 2) Cuentas 472/400 (prefijo) + 6xx propuesta por aprendizaje.
-        //    Si hay una regla aprendida para este proveedor (NIF) o para
-        //    una palabra clave del nombre/concepto, la usamos como cuenta
-        //    de gasto en lugar del 600 genérico. La regla se "marca" en
-        //    el asiento via proposedRuleId para que, cuando el asesor lo
-        //    valide, se refuerce automáticamente. El asiento queda en
-        //    DRAFT — el asesor decide.
+        // 2) Resolución de cuentas en cascada (port de CONTENDO):
+        //    a) cuenta 6xx — gasto:
+        //       1. regla aprendida (NIF proveedor o keyword) → más fuerte
+        //       2. histórico del proveedor (cuenta 6xx más usada en asientos
+        //          previos del mismo NIF/nombre)
+        //       3. classifier por descripción (regex de keywords PGC)
+        //       4. fallback 600 genérico
+        //    b) cuenta 400 — proveedor: sub-cuenta 4000xx por tercero
+        //       (TerceroAccountResolver crea automáticamente si no existe).
+        //    c) cuenta 472 — IVA soportado: prefijo genérico (no se
+        //       analítica por tercero todavía).
+
+        // (a) Gasto 6xx
         Optional<AccountingLearningService.AccountProposal> proposal =
                 learning.proposeExpenseAccount(
                         purchase.supplierNif(), purchase.supplierName(),
                         purchase.invoiceNumber(), purchase.totalAmount());
         String acc6xx = proposal.map(AccountingLearningService.AccountProposal::accountId)
-                .orElseGet(() -> findAccountByPrefix(companyId, "600"));
+                .orElse(null);
         String proposedRuleId = proposal.map(AccountingLearningService.AccountProposal::ruleId)
                 .orElse(null);
         java.math.BigDecimal proposedConfidence =
                 proposal.map(AccountingLearningService.AccountProposal::confidence).orElse(null);
 
+        // 2. histórico del proveedor (si no hay regla)
+        if (acc6xx == null) {
+            Optional<AccountingLearningService.HistoricMatch> historic =
+                    learning.findHistoricExpenseAccountForSupplier(
+                            purchase.supplierNif(), purchase.supplierName());
+            if (historic.isPresent()) {
+                acc6xx = historic.get().accountId();
+            }
+        }
+
+        // 3. classifier por regex (keywords PGC español)
+        if (acc6xx == null) {
+            String descForClassifier = safe(purchase.notes())
+                    + " " + safe(purchase.invoiceNumber());
+            Optional<String> code = classifier.classify(descForClassifier, purchase.supplierName());
+            if (code.isPresent()) {
+                String id = findAccountByCode(companyId, code.get());
+                if (id != null) acc6xx = id;
+            }
+        }
+
+        // 4. fallback 600 genérico
+        if (acc6xx == null) {
+            acc6xx = findAccountByPrefix(companyId, "600");
+        }
+
+        // (b) Proveedor 400 → sub-cuenta de tercero
+        TerceroAccountResolverService.ResolvedAccount supplierAcc =
+                terceroResolver.getOrCreateForSupplier(
+                        purchase.supplierNif(), purchase.supplierName());
+        String acc400 = supplierAcc.accountId();
+
+        // (c) IVA soportado 472 genérico
         String acc472 = findAccountByPrefix(companyId, "472");
-        String acc400 = findAccountByPrefix(companyId, "400");
+
         if (acc6xx == null || acc472 == null || acc400 == null) {
             return null;
         }
@@ -182,6 +229,19 @@ public class PurchaseJournalEntryService {
                    AND ? BETWEEN start_date AND end_date
                  LIMIT 1
                 """, (rs, n) -> rs.getString("id"), companyId, Date.valueOf(date));
+        return ids.isEmpty() ? null : ids.get(0);
+    }
+
+    /** Busca cuenta por código exacto. */
+    private String findAccountByCode(String companyId, String code) {
+        List<String> ids = jdbcTemplate.query("""
+                SELECT id
+                  FROM accounting_accounts
+                 WHERE company_id = ?
+                   AND active = TRUE
+                   AND code = ?
+                 LIMIT 1
+                """, (rs, n) -> rs.getString("id"), companyId, code);
         return ids.isEmpty() ? null : ids.get(0);
     }
 
