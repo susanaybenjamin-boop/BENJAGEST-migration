@@ -31,6 +31,13 @@
             <artifactId>ikonli-fontawesome6-pack</artifactId>
             <version>12.4.0</version>
         </dependency>
+        <!-- Visor PDF interno con renderizado PDFBox: facturas/asientos
+             se revisan sin tener que abrir Acrobat (latencia 100ms vs 2s). -->
+        <dependency>
+            <groupId>org.apache.pdfbox</groupId>
+            <artifactId>pdfbox</artifactId>
+            <version>3.0.3</version>
+        </dependency>
     </dependencies>
 
     <build>
