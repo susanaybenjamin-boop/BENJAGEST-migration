@@ -39,8 +39,8 @@ public class SalesInvoiceRepository {
                     id, company_id, customer_id, series_id, invoice_number,
                     invoice_date, due_date, invoice_type, status, payment_status,
                     subtotal, vat_total, retention_total, total, paid_amount,
-                    currency, original_invoice_id, notes
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    currency, original_invoice_id, concept, notes
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 invoice.id(),
                 tenantContext.getCurrentCompanyId(),
@@ -59,6 +59,7 @@ public class SalesInvoiceRepository {
                 invoice.paidAmount() == null ? BigDecimal.ZERO : invoice.paidAmount(),
                 invoice.currency() == null ? "EUR" : invoice.currency(),
                 invoice.originalInvoiceId(),
+                invoice.concept(),
                 invoice.notes()
         );
     }
@@ -79,6 +80,7 @@ public class SalesInvoiceRepository {
                        retention_total = ?,
                        total = ?,
                        original_invoice_id = ?,
+                       concept = ?,
                        notes = ?
                  WHERE id = ?
                    AND company_id = ?
@@ -94,6 +96,7 @@ public class SalesInvoiceRepository {
                 invoice.retentionTotal(),
                 invoice.total(),
                 invoice.originalInvoiceId(),
+                invoice.concept(),
                 invoice.notes(),
                 id,
                 tenantContext.getCurrentCompanyId()
@@ -274,7 +277,7 @@ public class SalesInvoiceRepository {
                        i.invoice_type, i.status, i.payment_status,
                        i.subtotal, i.vat_total, i.retention_total, i.total, i.paid_amount,
                        i.currency, i.original_invoice_id, i.rectifying_invoice_id,
-                       i.notes, i.pdf_path, i.validated_at, i.created_at, i.updated_at
+                       i.concept, i.notes, i.pdf_path, i.validated_at, i.created_at, i.updated_at
                   FROM sales_invoices i
                   LEFT JOIN customers c ON c.id = i.customer_id
                  WHERE i.id = ?
@@ -307,7 +310,7 @@ public class SalesInvoiceRepository {
                        i.invoice_type, i.status, i.payment_status,
                        i.subtotal, i.vat_total, i.retention_total, i.total, i.paid_amount,
                        i.currency, i.original_invoice_id, i.rectifying_invoice_id,
-                       i.notes, i.pdf_path, i.validated_at, i.created_at, i.updated_at
+                       i.concept, i.notes, i.pdf_path, i.validated_at, i.created_at, i.updated_at
                   FROM sales_invoices i
                   LEFT JOIN customers c ON c.id = i.customer_id
                  WHERE i.company_id = ?
@@ -356,7 +359,7 @@ public class SalesInvoiceRepository {
                 header.subtotal(), header.vatTotal(), header.retentionTotal(),
                 header.total(), header.paidAmount(), header.currency(),
                 header.originalInvoiceId(), header.rectifyingInvoiceId(),
-                header.notes(), header.pdfPath(),
+                header.concept(), header.notes(), header.pdfPath(),
                 header.validatedAt(),
                 header.createdAt(), header.updatedAt(),
                 lines
@@ -389,6 +392,7 @@ public class SalesInvoiceRepository {
                 rs.getString("currency"),
                 rs.getString("original_invoice_id"),
                 rs.getString("rectifying_invoice_id"),
+                rs.getString("concept"),
                 rs.getString("notes"),
                 rs.getString("pdf_path"),
                 validatedAt == null ? null : validatedAt.toInstant(),

@@ -172,18 +172,31 @@ public class PurchaseJournalEntryService {
                 concept, SRC_TYPE, purchase.id(),
                 proposedConfidence, userId);
 
-        // 5) Líneas: 2 debes (6xx base, 472 iva) + 1 haber (400 total).
-        //    Descripción: usamos el concepto de la factura como base
-        //    (proveedor + nº factura). El usuario puede editar línea a
-        //    línea en el editor del asiento; al cambiar de cuenta esa
-        //    descripción se preserva.
-        String baseDescription = buildLineDescription(purchase);
-        insertLine(entryId, acc6xx, baseDescription,
+        // 5) Líneas con descripción específica por tipo de cuenta — el
+        //    asesor lee el Libro Mayor de cada cuenta sin tener que abrir
+        //    el asiento, así que cada línea debe decir lo suyo:
+        //    • 6xx (gasto)     → concepto de la factura (lo que el asesor
+        //                        tecleó como "qué fue ese gasto"), o si no
+        //                        tiene concepto, el nombre de la cuenta
+        //                        resuelta como fallback.
+        //    • 472 (IVA sopor.) → "IVA soportado XX% — proveedor"
+        //    • 4000xxx (prov.)  → nombre del proveedor (limpio, sin "Fra. N")
+        //
+        //    Si el asesor edita una línea concreta, su texto se conserva al
+        //    cambiar de cuenta — el editor del asiento lo respeta.
+        String expenseDesc = buildExpenseLineDescription(purchase, acc6xx, companyId);
+        String vatDesc = "IVA soportado " + safe(purchase.vatPercent()) + "%"
+                + (purchase.supplierName() != null && !purchase.supplierName().isBlank()
+                        ? " — " + purchase.supplierName() : "");
+        String supplierDesc = purchase.supplierName() != null && !purchase.supplierName().isBlank()
+                ? purchase.supplierName()
+                : (purchase.supplierNif() != null ? purchase.supplierNif() : "Proveedor");
+
+        insertLine(entryId, acc6xx, expenseDesc,
                 purchase.baseAmount(), java.math.BigDecimal.ZERO);
-        insertLine(entryId, acc472, baseDescription
-                + " (IVA " + safe(purchase.vatPercent()) + "%)",
+        insertLine(entryId, acc472, vatDesc,
                 purchase.vatAmount(), java.math.BigDecimal.ZERO);
-        insertLine(entryId, acc400, baseDescription,
+        insertLine(entryId, acc400, supplierDesc,
                 java.math.BigDecimal.ZERO, purchase.totalAmount());
 
         // 6) Si vino de regla aprendida, no la reforzamos todavía — eso
@@ -278,23 +291,38 @@ public class PurchaseJournalEntryService {
     }
 
     /**
-     * Descripción de línea: incluye nº factura + proveedor para que el
-     * Libro Mayor y el Diario se lean bien sin tener que abrir el asiento.
-     * Si el asesor edita la descripción en el editor, la suya se respeta
-     * y NO se sobrescribe al cambiar de cuenta.
+     * Descripción de la línea de gasto (cuenta 6xx):
+     * <ul>
+     *   <li>Si la factura tiene {@code concept} (el asesor lo capturó al
+     *       importar/editar) → ese texto.</li>
+     *   <li>Si no → el nombre de la cuenta de gasto resuelta
+     *       (p. ej. "Compras de otros aprovisionamientos") más, si hay,
+     *       el proveedor breve para no perder el contexto.</li>
+     *   <li>Como último fallback si nada está disponible → "Gasto".</li>
+     * </ul>
      */
-    private String buildLineDescription(PurchaseInvoice p) {
+    private String buildExpenseLineDescription(PurchaseInvoice p, String acc6xxId, String companyId) {
+        if (p.concept() != null && !p.concept().isBlank()) {
+            String c = p.concept().trim();
+            return c.length() > 240 ? c.substring(0, 240) : c;
+        }
+        // Fallback: nombre de la cuenta de gasto + breve referencia al proveedor.
+        String accountName = jdbcTemplate.query("""
+                SELECT name FROM accounting_accounts WHERE id = ? LIMIT 1
+                """, (rs, n) -> rs.getString("name"), acc6xxId)
+                .stream().findFirst().orElse(null);
         StringBuilder sb = new StringBuilder();
-        if (p.invoiceNumber() != null && !p.invoiceNumber().isBlank()) {
-            sb.append("Fra. ").append(p.invoiceNumber()).append(' ');
+        if (accountName != null && !accountName.isBlank()) {
+            sb.append(accountName);
+            if (p.supplierName() != null && !p.supplierName().isBlank()) {
+                sb.append(" — ").append(p.supplierName());
+            }
+        } else if (p.supplierName() != null && !p.supplierName().isBlank()) {
+            sb.append("Gasto ").append(p.supplierName());
+        } else {
+            sb.append("Gasto");
         }
-        if (p.supplierName() != null && !p.supplierName().isBlank()) {
-            sb.append("- ").append(p.supplierName());
-        } else if (p.supplierNif() != null) {
-            sb.append("- ").append(p.supplierNif());
-        }
-        String s = sb.toString().trim();
-        if (s.isEmpty()) s = "Compra";
+        String s = sb.toString();
         return s.length() > 240 ? s.substring(0, 240) : s;
     }
 

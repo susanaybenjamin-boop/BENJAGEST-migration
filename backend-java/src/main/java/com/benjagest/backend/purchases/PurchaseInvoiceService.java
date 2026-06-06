@@ -91,6 +91,7 @@ public class PurchaseInvoiceService {
                 req.invoiceIndexInPdf(),
                 PurchaseInvoice.STATUS_POSTED,
                 null,
+                blankToNull(req.concept()),
                 blankToNull(req.notes()),
                 user.userId(),
                 uploaderCompany,
@@ -309,8 +310,21 @@ public class PurchaseInvoiceService {
             BigDecimal totalAmount,
             String documentSha256,
             int invoiceIndexInPdf,
+            String concept,
             String notes
-    ) {}
+    ) {
+        // Constructor compacto retro-compatible: callers viejos sin concept.
+        public SaveRequest(String supplierNif, String supplierName,
+                            String invoiceNumber, LocalDate invoiceDate,
+                            BigDecimal baseAmount, BigDecimal vatPercent,
+                            BigDecimal vatAmount, BigDecimal totalAmount,
+                            String documentSha256, int invoiceIndexInPdf,
+                            String notes) {
+            this(supplierNif, supplierName, invoiceNumber, invoiceDate,
+                    baseAmount, vatPercent, vatAmount, totalAmount,
+                    documentSha256, invoiceIndexInPdf, null, notes);
+        }
+    }
 
     public record SaveResult(
             PurchaseInvoice invoice,

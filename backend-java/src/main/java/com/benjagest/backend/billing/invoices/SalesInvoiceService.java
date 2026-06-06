@@ -129,6 +129,7 @@ public class SalesInvoiceService {
                 "EUR",
                 blankToNull(request.originalInvoiceId()),
                 null,
+                blankToNull(request.concept()),
                 blankToNull(request.notes()),
                 null,            // pdfPath — solo se rellena al validar.
                 null,
@@ -182,6 +183,7 @@ public class SalesInvoiceService {
                 // edita desde aqui — solo lo fija voidValidated() al crear
                 // el borrador rectificativa.
                 existing.originalInvoiceId(), existing.rectifyingInvoiceId(),
+                blankToNull(request.concept()),
                 blankToNull(request.notes()),
                 existing.pdfPath(),       // pdfPath se preserva (borrador siempre null).
                 existing.validatedAt(),
@@ -419,6 +421,7 @@ public class SalesInvoiceService {
                 "EUR",
                 original.id(),
                 null,
+                original.concept(),
                 "Rectificativa por anulacion de "
                         + (original.invoiceNumber() == null ? original.id() : original.invoiceNumber()),
                 null,            // pdfPath — se rellena al validar.
@@ -540,7 +543,7 @@ public class SalesInvoiceService {
                 existing.subtotal(), existing.vatTotal(), existing.retentionTotal(), existing.total(),
                 existing.paidAmount(), existing.currency(),
                 existing.originalInvoiceId(), existing.rectifyingInvoiceId(),
-                existing.notes(), existing.pdfPath(),
+                existing.concept(), existing.notes(), existing.pdfPath(),
                 fromValidated ? null : existing.validatedAt(),
                 existing.createdAt(), existing.updatedAt(),
                 existing.lines()

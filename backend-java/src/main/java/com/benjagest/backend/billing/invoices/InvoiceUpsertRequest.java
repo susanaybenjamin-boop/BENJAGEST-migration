@@ -25,6 +25,7 @@ public record InvoiceUpsertRequest(
         LocalDate invoiceDate,
         LocalDate dueDate,
         String originalInvoiceId,
+        String concept,
         String notes,
         @NotEmpty @Valid List<InvoiceLineInput> lines
 ) {

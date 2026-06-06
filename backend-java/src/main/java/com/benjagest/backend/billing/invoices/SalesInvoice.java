@@ -44,6 +44,7 @@ public record SalesInvoice(
         String currency,
         String originalInvoiceId,
         String rectifyingInvoiceId,
+        String concept,
         String notes,
         String pdfPath,
         Instant validatedAt,
