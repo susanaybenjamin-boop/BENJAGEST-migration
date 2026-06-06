@@ -287,10 +287,21 @@ public class InvoiceFieldsExtractor {
             "withholding)\\b\\s*:?\\s*"
     );
 
-    /** Etiquetas que indican que el NIF que sigue es el RECEPTOR, no el emisor. */
+    /**
+     * Etiquetas que indican que el NIF que sigue es el RECEPTOR, no el
+     * emisor. Lista ampliada estilo CONTENDO con todos los formatos que
+     * usan los softwares de facturación españoles y americanos.
+     */
     private static final Pattern RECEIVER_LABEL = Pattern.compile(
-            "(?i)\\b(cliente|destinatario|factura\\s+a|bill\\s+to|customer|" +
-            "comprador|n\\.?\\s*if\\.?\\s+cliente)\\b"
+            "(?i)\\b(cliente|destinatario|factura\\s+a|facturar\\s+a|" +
+            "bill\\s+to|sold\\s+to|invoice\\s+to|ship\\s+to|" +
+            "customer|buyer|comprador|" +
+            "datos\\s+del\\s+cliente|datos\\s+del\\s+comprador|" +
+            "raz[\\u00f3o]n\\s+social\\s+del?\\s+cliente|" +
+            "raz[\\u00f3o]n\\s+social\\s+del?\\s+comprador|" +
+            "para\\s*:|recibe\\s*:|destinatario\\s*:|" +
+            "n\\.?\\s*if\\.?\\s+(?:cliente|destinatario|comprador)|" +
+            "nif\\s+del\\s+cliente|cif\\s+del\\s+cliente)\\b"
     );
 
     // ====================================================================
@@ -514,7 +525,16 @@ public class InvoiceFieldsExtractor {
                                      List<String> allEuVat, String emitterNif) {
         if (text == null || text.isBlank()) return new String[]{null, null};
         Matcher recv = RECEIVER_LABEL.matcher(text);
-        if (!recv.find()) return new String[]{null, null};
+        if (!recv.find()) {
+            // Sin etiqueta de receptor: fallback robusto. Si hay 2+ NIFs
+            // distintos, el primero que NO sea el emisor es el receptor.
+            // Esto cubre facturas españolas estándar donde el emisor sale
+            // arriba y el cliente sale a la derecha sin etiqueta.
+            String nifFallback = pickReceiverNifFromList(allNifs, emitterNif);
+            String nameFallback = nifFallback != null
+                    ? guessNameNearNif(text, nifFallback) : null;
+            return new String[]{nifFallback, nameFallback};
+        }
         int start = recv.end();
         // Ventana de 400 chars tras el label: ahí debe estar el NIF y el
         // nombre del receptor.
@@ -559,7 +579,76 @@ public class InvoiceFieldsExtractor {
             name = s;
             break;
         }
+        // Fallbacks finales si la ventana no dio resultado.
+        if (nif == null) nif = pickReceiverNifFromList(allNifs, emitterNif);
+        if (name == null && nif != null) name = guessNameNearNif(text, nif);
         return new String[]{nif, name};
+    }
+
+    /**
+     * De la lista completa de NIFs detectados en el documento, devuelve
+     * el primero que NO sea el emisor. Fallback robusto cuando ninguna
+     * etiqueta "Cliente:" / "Factura a:" matcheó.
+     */
+    private String pickReceiverNifFromList(List<String> allNifs, String emitterNif) {
+        if (allNifs == null) return null;
+        for (String n : allNifs) {
+            if (n == null) continue;
+            if (emitterNif != null && n.equalsIgnoreCase(emitterNif)) continue;
+            return n.toUpperCase();
+        }
+        return null;
+    }
+
+    /**
+     * Busca un nombre razonable en las líneas que rodean a un NIF dado.
+     * Útil cuando tenemos el NIF del receptor por fallback pero no
+     * sabemos qué etiqueta lo precede.
+     *
+     * <p>Estrategia: el nombre suele estar 0-3 líneas ANTES del NIF
+     * (cabecera del bloque cliente) o en la MISMA línea pegado al NIF.
+     */
+    private String guessNameNearNif(String text, String nif) {
+        if (text == null || nif == null) return null;
+        int idx = text.toUpperCase().indexOf(nif.toUpperCase());
+        if (idx < 0) return null;
+
+        // 1) Línea con el NIF inline: el nombre puede ir antes del NIF.
+        int lineStart = Math.max(0, text.lastIndexOf('\n', idx - 1) + 1);
+        int lineEnd = text.indexOf('\n', idx);
+        if (lineEnd < 0) lineEnd = text.length();
+        String sameLine = text.substring(lineStart, idx).trim();
+        if (sameLine.length() >= 3 && looksLikeName(sameLine)) {
+            return sameLine.length() > 120 ? sameLine.substring(0, 120) : sameLine;
+        }
+
+        // 2) 0-3 líneas anteriores: bloque de razón social arriba del NIF.
+        String head = text.substring(0, lineStart);
+        String[] prevLines = head.split("\\r?\\n");
+        for (int i = prevLines.length - 1; i >= 0 && i >= prevLines.length - 4; i--) {
+            String s = prevLines[i].trim();
+            if (s.isEmpty()) continue;
+            if (!looksLikeName(s)) continue;
+            return s.length() > 120 ? s.substring(0, 120) : s;
+        }
+        return null;
+    }
+
+    /**
+     * Heurística mínima para decidir si una línea parece un nombre /
+     * razón social (no una dirección, código postal, teléfono…).
+     */
+    private boolean looksLikeName(String s) {
+        if (s == null || s.length() < 3) return false;
+        // Demasiados dígitos = código postal o ID.
+        long digits = s.chars().filter(Character::isDigit).count();
+        if (digits > s.length() / 3) return false;
+        // Etiquetas frecuentes a descartar.
+        if (s.matches("(?i).*\\b(direccion|address|c\\.?\\s*p\\.?|telef|tel\\.?|" +
+                "email|@|nif|cif|iban|cuenta|web|http|www\\.)\\b.*")) return false;
+        // Al menos una letra.
+        if (!s.matches(".*[A-Za-z\\u00c0-\\u017f].*")) return false;
+        return true;
     }
 
     /**

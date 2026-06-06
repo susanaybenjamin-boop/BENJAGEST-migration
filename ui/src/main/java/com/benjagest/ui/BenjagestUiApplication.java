@@ -2742,14 +2742,20 @@ public class BenjagestUiApplication extends Application {
         //   - emitterNif/supplierName = EMISOR = el propio usuario.
         // Si el extractor no detecta receptor (formato raro), caemos al
         // emisor como último recurso para no dejar campos vacíos.
+        // extractField devuelve "—" cuando el campo no existe en el JSON;
+        // por eso isBlankOrDash() y no isBlank().
         String customerNif = extractField(json, "receiverNif");
         String customerName = extractField(json, "receiverName");
-        if (customerNif == null || customerNif.isBlank()) {
+        if (isBlankOrDash(customerNif)) {
             customerNif = extractField(json, "emitterNif");
         }
-        if (customerName == null || customerName.isBlank()) {
+        if (isBlankOrDash(customerName)) {
             customerName = extractField(json, "supplierName");
         }
+        // Si tras el fallback siguen vacíos, limpiamos el "—" para que
+        // el TextField salga vacío en vez de con un guión inútil.
+        if (isBlankOrDash(customerNif)) customerNif = "";
+        if (isBlankOrDash(customerName)) customerName = "";
         String number = extractField(json, "invoiceNumber");
         String date = extractField(json, "invoiceDate");
         String base = extractNumber(json, "baseAmount");
@@ -2765,6 +2771,15 @@ public class BenjagestUiApplication extends Application {
                 ButtonBar.ButtonData.OK_DONE);
         dialog.getDialogPane().getButtonTypes().addAll(saveBt, cancelBt);
 
+        // Limpiar "—" en los demás campos también para que no entren al
+        // TextField como literal de guión.
+        if (isBlankOrDash(number)) number = "";
+        if (isBlankOrDash(date)) date = "";
+        if (isBlankOrDash(base)) base = "";
+        if (isBlankOrDash(vatPct)) vatPct = "";
+        if (isBlankOrDash(vatAmt)) vatAmt = "";
+        if (isBlankOrDash(total)) total = "";
+
         TextField nifField = new TextField(customerNif);
         TextField nameField = new TextField(customerName);
         TextField numberField = new TextField(number);
@@ -2775,6 +2790,16 @@ public class BenjagestUiApplication extends Application {
         TextField totalField = new TextField(total);
         TextField conceptField = new TextField();
         conceptField.setPromptText(t("purchases.import.field.concept_prompt"));
+        // Pre-rellenar concepto con un texto razonable: "Fra. {nº} a {cliente}".
+        // El usuario lo edita si quiere; pero al menos no llega vacío al
+        // asiento (donde el backend caería en "Venta importada").
+        StringBuilder pre = new StringBuilder();
+        if (!number.isBlank()) pre.append("Fra. ").append(number);
+        if (!customerName.isBlank()) {
+            if (pre.length() > 0) pre.append(" ");
+            pre.append("a ").append(customerName);
+        }
+        if (pre.length() > 0) conceptField.setText(pre.toString());
         for (TextField tf : new TextField[]{
                 nifField, nameField, numberField, dateField, baseField,
                 vatPctField, vatAmtField, totalField, conceptField}) {
@@ -2805,7 +2830,11 @@ public class BenjagestUiApplication extends Application {
         javafx.scene.control.SplitPane split =
                 new javafx.scene.control.SplitPane(viewer, formScroll);
         split.setDividerPositions(0.55);
-        installDialog(dialog, split);
+        // Sin wrap externo: el visor PDF ya tiene su propio ScrollPane y
+        // el formulario tiene formScroll. installDialog estándar añadía
+        // un tercer ScrollPane que obligaba a scrollear "dos ventanas"
+        // para llegar al final de un PDF con zoom alto.
+        installDialogNoWrap(dialog, split);
         dialog.getDialogPane().setPrefSize(1200, 720);
 
         Button saveBtn = (Button) dialog.getDialogPane().lookupButton(saveBt);
@@ -2850,8 +2879,18 @@ public class BenjagestUiApplication extends Application {
                 dialog.setResult(saveBt);
                 dialog.close();
             });
-            task.setOnFailed(e -> showError(t("sales.import.fail.title"),
-                    t("sales.import.fail.body")));
+            task.setOnFailed(e -> {
+                // Mostramos el mensaje real del backend cuando lo hay
+                // (p. ej. "No hay ejercicio fiscal OPEN para esa fecha"),
+                // no solo un toast genérico. Hace mucho más fácil
+                // diagnosticar problemas de configuración del cliente.
+                Throwable ex = task.getException();
+                String detail = ex == null ? null : ex.getMessage();
+                showError(t("sales.import.fail.title"),
+                        detail == null || detail.isBlank()
+                                ? t("sales.import.fail.body")
+                                : detail);
+            });
             start(task, "sales-pdf-import");
         });
 
@@ -2970,7 +3009,10 @@ public class BenjagestUiApplication extends Application {
             javafx.scene.control.SplitPane split =
                     new javafx.scene.control.SplitPane(viewer, formScroll);
             split.setDividerPositions(0.55);
-            installDialog(dialog, split);
+            // Sin wrap externo (mismo motivo que en ventas): evita el
+            // doble scroll del visor PDF + formulario dentro de otro
+            // ScrollPane mayor.
+            installDialogNoWrap(dialog, split);
             dialog.getDialogPane().setPrefSize(1200, 720);
         } else {
             installDialog(dialog, g);
@@ -3084,8 +3126,17 @@ public class BenjagestUiApplication extends Application {
                 dialog.setResult(saveExpenseBt);
                 dialog.close();
             });
-            task.setOnFailed(e -> showError(t("purchases.save.fail.title"),
-                    t("purchases.save.fail.body")));
+            task.setOnFailed(e -> {
+                // Mensaje real del backend cuando lo hay (p. ej.
+                // "No hay ejercicio fiscal OPEN" o
+                // "No se pudo crear la sub-cuenta del proveedor").
+                Throwable ex = task.getException();
+                String detail = ex == null ? null : ex.getMessage();
+                showError(t("purchases.save.fail.title"),
+                        detail == null || detail.isBlank()
+                                ? t("purchases.save.fail.body")
+                                : detail);
+            });
             start(task, "purchase-invoice-save");
         });
 
@@ -3118,6 +3169,11 @@ public class BenjagestUiApplication extends Application {
                 .compile("\"" + field + "\"\\s*:\\s*\"([^\"]*)\"")
                 .matcher(json);
         return m.find() ? m.group(1) : "—";
+    }
+
+    /** "—" o cadena vacía → true. Usado por fallbacks de extractField. */
+    private boolean isBlankOrDash(String s) {
+        return s == null || s.isBlank() || "—".equals(s.trim());
     }
 
     private String extractNumber(String json, String field) {
@@ -7819,6 +7875,15 @@ public class BenjagestUiApplication extends Application {
      */
     private void installDialog(javafx.scene.control.Dialog<?> dialog, Node content) {
         com.benjagest.ui.layout.ResponsiveLayout.installDialog(dialog, content);
+    }
+
+    /**
+     * Variante para diálogos cuyo contenido ya gestiona su propio scroll
+     * (visor PDF + formulario en SplitPane). Evita el doble scroll en
+     * que el usuario tiene que mover dos barras para llegar al final.
+     */
+    private void installDialogNoWrap(javafx.scene.control.Dialog<?> dialog, Node content) {
+        com.benjagest.ui.layout.ResponsiveLayout.installDialog(dialog, content, false);
     }
 
     /**
