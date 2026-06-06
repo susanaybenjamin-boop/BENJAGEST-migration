@@ -128,11 +128,44 @@ public class AccountingScreen {
                err -> showError(tt.apply("accounting.error.accept"), err));
         });
 
+        // Botón "Regenerar asientos faltantes" — recorre facturas guardadas
+        // sin asiento y las pasa por el service auto-generador. Útil cuando
+        // el cliente tenía facturas anteriores al PGC o sin fiscal_year.
+        Button backfill = new Button(tt.apply("accounting.action.backfill"));
+        backfill.setOnAction(e -> {
+            // Confirmación previa para que el asesor entienda qué hace.
+            Alert confirm = new Alert(AlertType.CONFIRMATION,
+                    tt.apply("accounting.confirm.backfill"),
+                    ButtonType.YES, ButtonType.NO);
+            confirm.setHeaderText(tt.apply("accounting.action.backfill"));
+            confirm.showAndWait().ifPresent(bt -> {
+                if (bt != ButtonType.YES) return;
+                backfill.setDisable(true);
+                async(() -> api.runBackfill(),
+                        result -> {
+                            backfill.setDisable(false);
+                            Alert info = new Alert(AlertType.INFORMATION,
+                                    tt.apply("accounting.backfill.result")
+                                            .replace("{p}", String.valueOf(result.purchasesPosted()))
+                                            .replace("{s}", String.valueOf(result.salesPosted()))
+                                            .replace("{t}", String.valueOf(result.totalPosted())));
+                            info.setHeaderText(tt.apply("accounting.backfill.done"));
+                            info.showAndWait();
+                            loadPending();
+                        },
+                        err -> {
+                            backfill.setDisable(false);
+                            showError(tt.apply("accounting.error.backfill"), err);
+                        });
+            });
+        });
+
         Label hint = new Label(tt.apply("accounting.pending.hint"));
         hint.setStyle("-fx-text-fill: #6e6e6e;");
 
-        HBox actions = new HBox(8, refresh, validate, accept);
+        HBox actions = new HBox(8, refresh, validate, accept, new javafx.scene.layout.Region(), backfill);
         actions.setAlignment(Pos.CENTER_LEFT);
+        HBox.setHgrow(actions.getChildren().get(3), Priority.ALWAYS);
 
         VBox box = new VBox(8, hint, actions, pendingTable);
         VBox.setVgrow(pendingTable, Priority.ALWAYS);
