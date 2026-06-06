@@ -2581,6 +2581,103 @@ public class BenjagestUiApplication extends Application {
      * mismo, hecho a mano con 30 PDFs de un trimestre, son ~15 minutos
      * de clicks; aquí queda en 2-3 minutos.
      */
+    /**
+     * Slice 2C — Importación con auto-detección venta/gasto.
+     *
+     * <p>Para cada PDF seleccionado:
+     * <ol>
+     *   <li>Lo extrae vía {@code pdfImportApi.uploadAndExtract}.</li>
+     *   <li>Lee el campo {@code emitterNif} del primer objeto del array
+     *       de extracciones.</li>
+     *   <li>Si el emisor coincide con {@code selfTaxId} (NIF de la
+     *       empresa del cliente actual) → es una VENTA que el cliente
+     *       emitió → flujo de venta ({@link #showSalesExtractionDialog}).</li>
+     *   <li>Si no coincide → es un GASTO recibido → flujo de gasto
+     *       ({@link #processSinglePurchasePdf}).</li>
+     * </ol>
+     *
+     * <p>Si {@code selfTaxId} viene vacío, todos los PDFs se asumen
+     * gastos como antes. La normalización descarta espacios y
+     * convierte a mayúsculas para que "24259998 N" vs "24259998N"
+     * comparen igual.
+     */
+    private void importPdfsAuto(String selfTaxId) {
+        javafx.stage.FileChooser chooser = new javafx.stage.FileChooser();
+        chooser.setTitle(t("client.action.import_pdfs_auto"));
+        chooser.getExtensionFilters().add(
+                new javafx.stage.FileChooser.ExtensionFilter("PDF", "*.pdf"));
+        java.util.List<java.io.File> files = chooser.showOpenMultipleDialog(
+                root.getScene().getWindow());
+        if (files == null || files.isEmpty()) return;
+
+        String selfNorm = normalizeNifLite(selfTaxId);
+        int total = files.size();
+        int salesCount = 0, expensesCount = 0;
+
+        for (int i = 0; i < total; i++) {
+            java.io.File f = files.get(i);
+            String progress = "  (" + (i + 1) + "/" + total + ")";
+
+            byte[] pdfBytes;
+            try {
+                pdfBytes = java.nio.file.Files.readAllBytes(f.toPath());
+            } catch (Exception ex) {
+                showError(t("purchases.import.fail.title"),
+                        t("purchases.import.fail.body"));
+                continue;
+            }
+            String json;
+            try {
+                json = pdfImportApi.uploadAndExtract(f);
+            } catch (Exception ex) {
+                showError(t("purchases.import.fail.title"),
+                        t("purchases.import.fail.body"));
+                continue;
+            }
+            java.util.List<String> invoices = splitJsonArrayObjects(json);
+            if (invoices.isEmpty()) continue;
+
+            // Decisión por PDF (no por factura). Si el PDF tiene varias
+            // facturas dentro, asumimos que comparten emisor.
+            String first = invoices.get(0);
+            String emitterNif = extractField(first, "emitterNif");
+            String emitterNorm = normalizeNifLite(emitterNif);
+            boolean isSale = !emitterNorm.isEmpty()
+                    && emitterNorm.equalsIgnoreCase(selfNorm);
+
+            for (int j = 0; j < invoices.size(); j++) {
+                String label = f.getName() + progress
+                        + (invoices.size() > 1
+                                ? "  [" + (j + 1) + "/" + invoices.size() + "]"
+                                : "");
+                if (isSale) {
+                    showSalesExtractionDialog(invoices.get(j), label, pdfBytes);
+                    salesCount++;
+                } else {
+                    // Reusa el flujo de gasto con visor.
+                    showExtractionResultWithViewer(invoices.get(j), label, j, pdfBytes);
+                    expensesCount++;
+                }
+            }
+        }
+
+        // Aviso final con balance: cuántas ventas / cuántos gastos
+        // se importaron. Útil porque el asesor a veces selecciona en
+        // bloque y no recuerda lo que entró cada cubeta.
+        if (salesCount + expensesCount > 0) {
+            showInfo(t("client.import_auto.done.title"),
+                    t("client.import_auto.done.body")
+                            .replace("{s}", String.valueOf(salesCount))
+                            .replace("{e}", String.valueOf(expensesCount)));
+        }
+    }
+
+    /** Quita espacios y pasa a mayúsculas — útil para comparar NIFs. */
+    private String normalizeNifLite(String s) {
+        if (s == null) return "";
+        return s.replaceAll("\\s+", "").toUpperCase();
+    }
+
     private void importPurchasePdfsMulti() {
         javafx.stage.FileChooser chooser = new javafx.stage.FileChooser();
         chooser.setTitle(t("purchases.action.import_multi"));
@@ -11019,6 +11116,9 @@ public class BenjagestUiApplication extends Application {
             case "client.filter.type.all" -> "All types";
             case "client.filter.type.normal" -> "Normal";
             case "client.filter.type.rectifying" -> "Rectifying";
+            case "client.action.import_pdfs_auto" -> "Import PDFs (auto)";
+            case "client.import_auto.done.title" -> "Import finished";
+            case "client.import_auto.done.body" -> "Auto-classified PDFs:\n  · Sales: {s}\n  · Expenses: {e}\n\nThe extractor compared the emitter NIF with the client's NIF to decide.";
             case "advisory.client.tab.accounting" -> "Accounting";
             case "advisory.client.tab.banks" -> "Banks";
             case "advisory.client.tab.loans" -> "Loans";
@@ -11402,6 +11502,9 @@ public class BenjagestUiApplication extends Application {
             case "client.filter.type.all" -> "Todos los tipos";
             case "client.filter.type.normal" -> "Normal";
             case "client.filter.type.rectifying" -> "Rectificativa";
+            case "client.action.import_pdfs_auto" -> "Importar PDFs (auto)";
+            case "client.import_auto.done.title" -> "Importación terminada";
+            case "client.import_auto.done.body" -> "PDFs auto-clasificados:\n  · Ventas: {s}\n  · Gastos: {e}\n\nEl extractor comparó el NIF emisor con el NIF del cliente para decidir.";
             case "advisory.client.tab.accounting" -> "Contabilidad";
             case "advisory.client.tab.banks" -> "Bancos";
             case "advisory.client.tab.loans" -> "Préstamos";
@@ -14378,7 +14481,7 @@ public class BenjagestUiApplication extends Application {
         } else {
             salesAndExpensesTab = new Tab(
                     t("advisory.client.tab.sales_and_expenses"),
-                    buildClientSalesAndExpensesTab());
+                    buildClientSalesAndExpensesTab(client.taxIdentifier()));
             salesAndExpensesTab.setGraphic(icon("fas-receipt"));
         }
 
@@ -14530,6 +14633,16 @@ public class BenjagestUiApplication extends Application {
      * sentido es archivar lo que el cliente emitió por su cuenta.
      */
     private Node buildClientSalesAndExpensesTab() {
+        return buildClientSalesAndExpensesTab(null);
+    }
+
+    /**
+     * Overload con NIF del cliente actual. Habilita el botón
+     * "Importar PDFs" con auto-detección venta/gasto (Slice 2C):
+     * comparando el NIF emisor del PDF con el del cliente se decide
+     * si el PDF entra como venta (emisor=yo) o como gasto.
+     */
+    private Node buildClientSalesAndExpensesTab(String selfTaxId) {
         // Periodo (trimestre + año) COMPARTIDO entre el bloque KPIs y
         // la tabla Ventas. El selector vive arriba con los KPIs; al
         // cambiar, los KPIs y la tabla se recargan juntos.
@@ -14553,7 +14666,7 @@ public class BenjagestUiApplication extends Application {
         // source_type=SALES_PDF_IMPORT. Por eso el sub-tab Ventas aquí
         // muestra el diario filtrado, no sales_invoices.
         Tab salesTab = new Tab(t("client.tab.sales"),
-                buildClientSalesArchivedTab(fromProp, toProp));
+                buildClientSalesArchivedTab(fromProp, toProp, selfTaxId));
         salesTab.setGraphic(icon("fas-file-invoice"));
 
         Tab expensesTab = new Tab(t("client.tab.expenses"), buildClientPurchasesTab());
@@ -14777,7 +14890,8 @@ public class BenjagestUiApplication extends Application {
      */
     private Node buildClientSalesArchivedTab(
             javafx.beans.property.ObjectProperty<LocalDate> fromProp,
-            javafx.beans.property.ObjectProperty<LocalDate> toProp) {
+            javafx.beans.property.ObjectProperty<LocalDate> toProp,
+            String selfTaxId) {
         javafx.scene.control.TableView<com.benjagest.ui.model.AccountingModels.DiaryEntry> table =
                 new javafx.scene.control.TableView<>();
         table.getStyleClass().add("data-table");
@@ -14880,10 +14994,20 @@ public class BenjagestUiApplication extends Application {
         refresh.setOnAction(e -> loadClientSalesArchived(table, cache,
                 fromProp.get(), toProp.get(), applyFilters));
 
-        Button importBtn = new Button(t("sales.action.import_pdfs"));
+        // Slice 2C: si tenemos el NIF del cliente activo, el botón hace
+        // auto-detección por PDF (venta vs gasto comparando NIF emisor).
+        // Sin NIF (callsite legacy), se mantiene el comportamiento solo
+        // venta.
+        Button importBtn = new Button(selfTaxId == null || selfTaxId.isBlank()
+                ? t("sales.action.import_pdfs")
+                : t("client.action.import_pdfs_auto"));
         importBtn.setGraphic(icon("fas-file-import"));
         importBtn.getStyleClass().add("button-primary");
-        importBtn.setOnAction(e -> importSalesPdfsMulti());
+        if (selfTaxId == null || selfTaxId.isBlank()) {
+            importBtn.setOnAction(e -> importSalesPdfsMulti());
+        } else {
+            importBtn.setOnAction(e -> importPdfsAuto(selfTaxId));
+        }
 
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
