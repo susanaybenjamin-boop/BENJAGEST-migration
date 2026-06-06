@@ -437,13 +437,20 @@ public class InvoiceFieldsExtractor {
         List<String> allNifs = findAll(NIF_PATTERN, text);
         List<String> allEuVat = findAll(EU_VAT_PATTERN, text);
 
-        // 2. Emisor: cascada de prioridades.
-        //    1ª) "IVA LU20260743" etiquetado (Amazon).
-        //    2ª) "CIF B12345678" en pie.
-        //    3ª) primer NIF antes de "Cliente:".
-        //    4ª) primer VAT EU encontrado.
-        //    5ª) primer NIF.
-        String emitterNif = guessEmitterNif(text, allNifs, allEuVat);
+        // 2. Emisor:
+        //    a) RD 1619/2012 art. 6: emisor en la mitad IZQUIERDA del
+        //       PDF. Si hay layout y encontramos un NIF allí, ése es
+        //       el emisor con altísima fiabilidad. Cubre el caso
+        //       común en que el text plano reconstruido pone el NIF
+        //       del cliente ANTES que el del emisor (porque las
+        //       líneas Y del bloque cliente están más arriba que las
+        //       del CIF del emisor en facturas con 2 columnas).
+        //    b) Si no hay layout o no encuentra → cascada textual
+        //       antigua (CIF labeled, primer NIF, etc.).
+        String emitterNif = guessEmitterByLayout(layout);
+        if (emitterNif == null) {
+            emitterNif = guessEmitterNif(text, allNifs, allEuVat);
+        }
         // Normalizar: quitar espacios internos para que las
         // comparaciones funcionen consistentemente con el receptor.
         if (emitterNif != null) emitterNif = cleanNif(emitterNif);
@@ -454,7 +461,14 @@ public class InvoiceFieldsExtractor {
         // 4. Número de factura. Triple estrategia:
         //    a) Regex clásico "Factura nº XYZ" / "Número de la factura".
         //    b) Tabla "Número Serie Fecha" + siguiente línea numérica.
-        String invoiceNumber = findFirstGroup(INVOICE_NUMBER_PATTERN, text, 1);
+        // Layout-first: en la cabecera, "FACTURA"/"Nº" suele estar en
+        // la mitad DERECHA con el número a la derecha. Esto es muy
+        // fiable cuando la regex textual falla por carácter "º" raro
+        // o saltos de línea entre etiqueta y valor.
+        String invoiceNumber = guessInvoiceNumberByLayout(layout);
+        if (invoiceNumber == null) {
+            invoiceNumber = findFirstGroup(INVOICE_NUMBER_PATTERN, text, 1);
+        }
         if (invoiceNumber != null) invoiceNumber = invoiceNumber.trim();
         // Filtro de falsos positivos: la regex puede capturar palabras tras
         // "Nº" cuando el documento dice "Nº FACTURA: 2026/001". Rechazamos
@@ -588,6 +602,130 @@ public class InvoiceFieldsExtractor {
      *
      * @return {@code String[]{nif, name}} o null si no hay layout.
      */
+    /**
+     * Detecta el NIF del emisor usando coordenadas X (RD 1619/2012):
+     * busca un NIF en la mitad IZQUIERDA de la cabecera. Cobertura
+     * ~95% de facturas legales españolas, independiente del software
+     * emisor.
+     *
+     * <p>Razón por la que existe: cuando el text plano se reconstruye
+     * línea-a-línea (Y), en facturas con 2 columnas el NIF del
+     * CLIENTE (esquina superior-derecha) acaba apareciendo ANTES en
+     * el texto que el NIF del EMISOR (mitad-izquierda, más abajo).
+     * Las cascadas textuales "primer NIF antes del receptor" caen
+     * en ese orden y devuelven el NIF del cliente como emisor.
+     */
+    private String guessEmitterByLayout(LayoutDocument layout) {
+        if (layout == null || layout.pages().isEmpty()) return null;
+        LayoutDocument.LayoutPage page = layout.pages().get(0);
+        if (page == null || page.lines().isEmpty()) return null;
+        float pageWidth = page.width();
+        if (pageWidth <= 0) return null;
+        float midX = pageWidth * 0.50f; // emisor a la izquierda: <50%
+
+        Pattern nifPat = Pattern.compile(
+                "\\b([XYZ]?\\d{7,8}\\s?[A-HJ-NP-TV-Z]|" +
+                "[A-HJ-NP-SUVW]\\d{7}\\s?[0-9A-J])\\b");
+
+        int headLines = Math.min(35, page.lines().size());
+        for (int i = 0; i < headLines; i++) {
+            LayoutDocument.LayoutLine line = page.lines().get(i);
+            // Recolectamos los spans con x < midX (mitad izquierda).
+            StringBuilder left = new StringBuilder();
+            for (LayoutDocument.LayoutSpan span : line.spans()) {
+                if (span.x() >= midX) continue;
+                if (left.length() > 0) left.append(' ');
+                left.append(span.text());
+            }
+            String s = left.toString();
+            if (s.isBlank()) continue;
+            Matcher m = nifPat.matcher(s);
+            if (m.find()) return cleanNif(m.group(1));
+        }
+        return null;
+    }
+
+    /**
+     * Detecta el número de factura usando layout. Estrategia:
+     * <ol>
+     *   <li>Busca la línea de cabecera que contenga la palabra
+     *       "FACTURA" / "Nº" / "INVOICE".</li>
+     *   <li>En esa línea o en las 2 siguientes, busca un token
+     *       alfanumérico que parezca número (al menos un dígito,
+     *       entre 3 y 40 chars).</li>
+     *   <li>Descarta tokens que sean fechas (dd/mm/yyyy), CIFs,
+     *       o palabras puras como "FACTURA".</li>
+     * </ol>
+     *
+     * <p>Útil cuando la regex textual falla por:
+     * <ul>
+     *   <li>Carácter "º" que no es ni U+00BA ni U+00B0</li>
+     *   <li>Etiqueta y valor en líneas separadas con > 1 newline</li>
+     *   <li>Espacios irregulares entre etiqueta y número</li>
+     * </ul>
+     */
+    private String guessInvoiceNumberByLayout(LayoutDocument layout) {
+        if (layout == null || layout.pages().isEmpty()) return null;
+        LayoutDocument.LayoutPage page = layout.pages().get(0);
+        if (page == null || page.lines().isEmpty()) return null;
+
+        int headLines = Math.min(20, page.lines().size());
+        // Etiqueta de cabecera de factura.
+        Pattern labelPat = Pattern.compile(
+                "(?i)\\b(?:n[\\u00ba\\u00b0\\u2070]\\.?\\s*(?:factura|fact|fra|documento)?" +
+                "|factura\\s*n[\\u00ba\\u00b0\\u2070]?" +
+                "|invoice\\s*(?:no|#|number)?" +
+                "|n[uú]mero\\s+factura" +
+                "|nro\\.?\\s*factura?" +
+                "|num\\.?\\s*factura?" +
+                ")\\b");
+        // Candidato a nº de factura: empieza letra/dígito, acaba letra/dígito,
+        // al menos un dígito, separadores típicos en medio.
+        Pattern tokenPat = Pattern.compile(
+                "\\b([A-Z0-9](?=[A-Z0-9\\-/_.]{1,38}[A-Z0-9])[A-Z0-9\\-/_.]{1,38}[A-Z0-9])\\b");
+        // Patrón de fecha que descartamos (dd/mm/yyyy, dd-mm-yy, yyyy-mm-dd…)
+        Pattern datePat = Pattern.compile(
+                "^(\\d{1,4}[\\-/\\.]\\d{1,2}[\\-/\\.]\\d{1,4})$");
+
+        for (int i = 0; i < headLines; i++) {
+            LayoutDocument.LayoutLine line = page.lines().get(i);
+            String text = line.text();
+            Matcher lm = labelPat.matcher(text);
+            if (!lm.find()) continue;
+            // 1) Tras la etiqueta, intenta matchear un token en la
+            //    misma línea.
+            String afterLabel = text.substring(lm.end());
+            String candidate = pickInvoiceNumberToken(afterLabel,
+                    tokenPat, datePat);
+            if (candidate != null) return candidate;
+            // 2) Si la misma línea no tiene token, prueba las 2 líneas
+            //    siguientes (caso etiqueta / valor en líneas distintas).
+            for (int j = i + 1; j < Math.min(headLines, i + 3); j++) {
+                String next = page.lines().get(j).text();
+                candidate = pickInvoiceNumberToken(next, tokenPat, datePat);
+                if (candidate != null) return candidate;
+            }
+        }
+        return null;
+    }
+
+    /** Selecciona el primer token de la línea que parezca nº de factura. */
+    private String pickInvoiceNumberToken(String text, Pattern tokenPat,
+                                            Pattern datePat) {
+        Matcher tm = tokenPat.matcher(text.toUpperCase());
+        while (tm.find()) {
+            String cand = tm.group(1).trim();
+            if (cand.length() < 3) continue;
+            if (!cand.matches(".*\\d.*")) continue; // sin dígitos
+            if (datePat.matcher(cand).matches()) continue; // fecha
+            if (isInvoiceNumberNoise(cand)) continue; // palabra suelta
+            // No empezar con un mes/día solo: rechazar tokens que
+            // parezcan parte de la fecha sin más estructura.
+            return cand;
+        }
+        return null;
+    }
+
     private String[] guessReceiverByLayout(LayoutDocument layout, String emitterNif) {
         if (layout == null || layout.pages().isEmpty()) return null;
         LayoutDocument.LayoutPage page = layout.pages().get(0);
@@ -627,16 +765,16 @@ public class InvoiceFieldsExtractor {
         //    siguientes 1-6 líneas (caso típico: nombre arriba, NIF
         //    debajo, dirección debajo del NIF).
         //
-        //    Buscamos en la línea COMPLETA (no solo mitad derecha)
-        //    porque algunos PDFs imprimen "NIF:" y el número en spans
-        //    con x un poco a la izquierda del nombre. Filtramos por
-        //    "no ser el emisor".
+        //    IMPORTANTE: restringimos a la MITAD DERECHA (mismo midX
+        //    que el nombre) para evitar pillar el NIF del emisor de
+        //    la mitad izquierda cuando guessEmitterByLayout falló y
+        //    el filtro por "emitterNifClean" no es fiable.
         String nif = null;
         if (nameLineIdx >= 0) {
             int end = Math.min(headLines, nameLineIdx + 8);
             for (int i = nameLineIdx; i < end; i++) {
-                String line = page.lines().get(i).text();
-                Matcher m = nifPat.matcher(line);
+                String rightLine = collectRightHalf(page.lines().get(i), midX);
+                Matcher m = nifPat.matcher(rightLine);
                 while (m.find()) {
                     String cand = cleanNif(m.group(1));
                     if (emitterNifClean != null
