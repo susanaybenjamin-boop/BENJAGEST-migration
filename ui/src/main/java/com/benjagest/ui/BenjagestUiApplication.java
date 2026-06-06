@@ -2247,16 +2247,13 @@ public class BenjagestUiApplication extends Application {
      *     cliente y los tabs ya son contexto suficiente).
      */
     private Node buildPurchasesListing(boolean showWithHeader) {
-        Button importBtn = new Button(t("purchases.action.import_pdf"));
-        importBtn.setGraphic(icon("fas-file-import"));
-        importBtn.getStyleClass().add("button-primary");
-        importBtn.setOnAction(ev -> importPurchasePdf());
-
-        // Multi-import: el asesor selecciona varios PDFs a la vez para
-        // cerrar trimestre. Cada uno se procesa en secuencia con el
-        // diálogo de revisión (con visor PDF embebido).
-        Button importMultiBtn = new Button(t("purchases.action.import_multi"));
-        importMultiBtn.setGraphic(icon("fas-files"));
+        // Botón único de importación de PDFs: el FileChooser acepta uno
+        // o varios. Reemplaza al antiguo "Importar factura PDF" (single)
+        // — ese flujo está cubierto por el de múltiple seleccionando un
+        // solo archivo.
+        Button importMultiBtn = new Button(t("purchases.action.import_pdfs"));
+        importMultiBtn.setGraphic(icon("fas-file-import"));
+        importMultiBtn.getStyleClass().add("button-primary");
         importMultiBtn.setOnAction(ev -> importPurchasePdfsMulti());
 
         // Filtros: año (combo) + trimestre (combo) + proveedor (text).
@@ -2284,11 +2281,16 @@ public class BenjagestUiApplication extends Application {
         reloadBtn.setGraphic(icon("fas-sync"));
         reloadBtn.setOnAction(ev -> reloadPurchaseInvoices());
 
+        // Spacer que empuja el botón "Importar PDFs" al extremo derecho
+        // de la fila de filtros (donde el asesor lo encuentra junto a
+        // las acciones de filtro/recarga, sin bajar la vista).
+        Region filtersSpacer = new Region();
+        HBox.setHgrow(filtersSpacer, Priority.ALWAYS);
         HBox filters = new HBox(8,
                 new Label(t("purchases.filter.year")), purchaseYearFilter,
                 new Label(t("purchases.filter.quarter")), purchaseQuarterFilter,
                 new Label(t("purchases.filter.supplier")), purchaseSupplierFilter,
-                reloadBtn);
+                reloadBtn, filtersSpacer, importMultiBtn);
         filters.setAlignment(Pos.CENTER_LEFT);
 
         purchaseInvoicesTable = new TableView<>();
@@ -2399,7 +2401,9 @@ public class BenjagestUiApplication extends Application {
                     validateBatchBtn.setDisable(!anyDraft);
                 });
 
-        HBox actions = new HBox(10, importBtn, importMultiBtn, validateBatchBtn, deleteBtn);
+        // Acciones inferiores: solo lo que actúa sobre la selección.
+        // El import vive arriba en la fila de filtros.
+        HBox actions = new HBox(10, validateBatchBtn, deleteBtn);
 
         VBox body = new VBox(12);
         if (showWithHeader) {
@@ -5052,11 +5056,22 @@ public class BenjagestUiApplication extends Application {
             reloadInvoices();
         });
 
+        // Botón "Importar PDFs" en la fila de filtros (derecha) — un solo
+        // botón que acepta uno o varios PDFs y crea asientos directos.
+        // Para clientes no vinculados es el flujo natural para cerrar
+        // trimestre con los PDFs que el cliente entrega.
+        Button importSalesPdfsBtn = new Button(t("sales.action.import_pdfs"));
+        importSalesPdfsBtn.setGraphic(icon("fas-file-import"));
+        importSalesPdfsBtn.getStyleClass().add("button-primary");
+        importSalesPdfsBtn.setOnAction(ev -> importSalesPdfsMulti());
+
+        Region billingFiltersSpacer = new Region();
+        HBox.setHgrow(billingFiltersSpacer, Priority.ALWAYS);
         HBox filters = new HBox(10,
                 label(t("list.filter.label.status"), "form-label"), billingStatusFilter,
                 label(t("list.filter.label.collection"), "form-label"), billingPaymentFilter,
                 label(t("list.filter.label.type"), "form-label"), billingTypeFilter,
-                apply, reset);
+                apply, reset, billingFiltersSpacer, importSalesPdfsBtn);
         filters.setAlignment(Pos.CENTER_LEFT);
 
         billingTable = new TableView<>();
@@ -5270,16 +5285,10 @@ public class BenjagestUiApplication extends Application {
                 toValidatedBtn, rowActionsSpacer, emailBtn, pdfBtn);
         rowActions.getStyleClass().add("settings-actions");
 
-        // Botón multi-import de PDFs de ventas → asientos directos.
-        // Útil cuando el cliente entrega los PDFs y el asesor solo
-        // necesita los asientos contables (no factura legal completa).
-        Button importSalesPdfsBtn = new Button(t("sales.action.import_multi"));
-        importSalesPdfsBtn.setGraphic(icon("fas-files"));
-        importSalesPdfsBtn.setOnAction(ev -> importSalesPdfsMulti());
-        HBox importRow = new HBox(10, importSalesPdfsBtn);
-        importRow.getStyleClass().add("settings-actions");
-
-        VBox bottomBlock = new VBox(12, billingTable, rowActions, importRow);
+        // El botón "Importar PDFs" vive en la fila de filtros (arriba a
+        // la derecha) para evitar duplicidades y dejar la fila inferior
+        // exclusivamente para acciones sobre la selección.
+        VBox bottomBlock = new VBox(12, billingTable, rowActions);
 
         // Auto-refresh cuando alguien emite SALES (crear/validar/anular/
         // borrar/cobrar factura). Auto-baja al desmontar la pantalla.
@@ -8337,7 +8346,9 @@ public class BenjagestUiApplication extends Application {
                 case "purchases.hint" -> "Upload a received invoice as PDF — BENJAGEST extracts the issuer NIF, date, base, VAT and total automatically (no AI, just regex on the embedded text). Scanned PDFs require OCR — coming in a follow-up slice.";
                 case "purchases.action.import_pdf" -> "Import PDF invoice";
                 case "purchases.action.import_multi" -> "Import multiple PDFs";
+                case "purchases.action.import_pdfs" -> "Import PDFs";
                 case "sales.action.import_multi" -> "Import sales PDFs → entries";
+                case "sales.action.import_pdfs" -> "Import PDFs";
                 case "sales.import.title_prefix" -> "Review sale: ";
                 case "sales.import.action.create_entry" -> "Create entry";
                 case "sales.import.field.customer_nif" -> "Customer tax ID:";
@@ -9251,7 +9262,9 @@ public class BenjagestUiApplication extends Application {
             case "purchases.hint" -> "Sube una factura recibida en PDF — BENJAGEST extrae el NIF emisor, fecha, base, IVA y total automaticamente (sin IA, solo regex sobre el texto embebido). PDFs escaneados necesitan OCR — llega en un slice posterior.";
             case "purchases.action.import_pdf" -> "Importar factura PDF";
             case "purchases.action.import_multi" -> "Importar varios PDFs";
+            case "purchases.action.import_pdfs" -> "Importar PDFs";
             case "sales.action.import_multi" -> "Importar ventas PDF → asientos";
+            case "sales.action.import_pdfs" -> "Importar PDFs";
             case "sales.import.title_prefix" -> "Revisar venta: ";
             case "sales.import.action.create_entry" -> "Crear asiento";
             case "sales.import.field.customer_nif" -> "NIF cliente:";
