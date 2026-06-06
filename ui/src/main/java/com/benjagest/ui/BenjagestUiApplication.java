@@ -2333,6 +2333,14 @@ public class BenjagestUiApplication extends Application {
         colTotal.setPrefWidth(110);
         colTotal.setComparator(NUMERIC_STRING_COMPARATOR);
 
+        // Columna "Estado": DRAFT/POSTED/VOID. Para multivalidación
+        // resulta útil ver qué pendiente queda.
+        TableColumn<com.benjagest.ui.model.PurchaseInvoiceEntry, String> colStatus =
+                new TableColumn<>(t("purchases.col.status"));
+        colStatus.setCellValueFactory(c -> new SimpleStringProperty(
+                c.getValue().status() == null ? "—" : c.getValue().status()));
+        colStatus.setPrefWidth(80);
+
         // Columna "Asiento": indica si se generó apunte contable
         // automático (depende de si la empresa tiene plan contable
         // sembrado con cuentas 600/472/400 + fiscal_year OPEN).
@@ -2343,7 +2351,12 @@ public class BenjagestUiApplication extends Application {
         colJournal.setPrefWidth(80);
 
         purchaseInvoicesTable.getColumns().setAll(
-                colDate, colSupplier, colNif, colNumber, colBase, colVat, colTotal, colJournal);
+                colDate, colSupplier, colNif, colNumber, colBase, colVat, colTotal,
+                colStatus, colJournal);
+
+        // Multiselección para validar lotes de DRAFT.
+        purchaseInvoicesTable.getSelectionModel().setSelectionMode(
+                javafx.scene.control.SelectionMode.MULTIPLE);
 
         Button deleteBtn = new Button(t("purchases.action.delete"));
         deleteBtn.setGraphic(icon("fas-trash"));
@@ -2353,10 +2366,26 @@ public class BenjagestUiApplication extends Application {
             var sel = purchaseInvoicesTable.getSelectionModel().getSelectedItem();
             if (sel != null) deletePurchaseInvoice(sel);
         });
-        purchaseInvoicesTable.getSelectionModel().selectedItemProperty()
-                .addListener((o, ov, nv) -> deleteBtn.setDisable(nv == null));
 
-        HBox actions = new HBox(10, importBtn, deleteBtn);
+        // Botón "Validar seleccionados": habilitado solo cuando hay al
+        // menos un DRAFT en la selección. Llama al endpoint batch.
+        Button validateBatchBtn = new Button(t("purchases.action.validate_batch"));
+        validateBatchBtn.setGraphic(icon("fas-check-double"));
+        validateBatchBtn.getStyleClass().add("button-primary");
+        validateBatchBtn.setDisable(true);
+        validateBatchBtn.setOnAction(ev -> validatePurchaseBatch());
+
+        purchaseInvoicesTable.getSelectionModel().getSelectedItems()
+                .addListener((javafx.collections.ListChangeListener<com.benjagest.ui.model.PurchaseInvoiceEntry>)
+                        ch -> {
+                    var sel = purchaseInvoicesTable.getSelectionModel().getSelectedItems();
+                    deleteBtn.setDisable(sel.isEmpty());
+                    boolean anyDraft = sel.stream().anyMatch(
+                            e -> e != null && "DRAFT".equalsIgnoreCase(e.status()));
+                    validateBatchBtn.setDisable(!anyDraft);
+                });
+
+        HBox actions = new HBox(10, importBtn, validateBatchBtn, deleteBtn);
 
         VBox body = new VBox(12);
         if (showWithHeader) {
@@ -2426,6 +2455,59 @@ public class BenjagestUiApplication extends Application {
     private Integer parseYearFilter(String text) {
         if (text == null || text.equals(t("list.filter.all"))) return null;
         try { return Integer.parseInt(text); } catch (Exception ex) { return null; }
+    }
+
+    /**
+     * Valida en lote los gastos DRAFT seleccionados llamando al endpoint
+     * {@code POST /api/purchases/invoices/validate-batch}. Tras la
+     * respuesta refresca el listado y muestra un resumen al usuario.
+     */
+    private void validatePurchaseBatch() {
+        if (purchaseInvoicesTable == null) return;
+        var selected = purchaseInvoicesTable.getSelectionModel().getSelectedItems();
+        java.util.List<String> ids = new java.util.ArrayList<>();
+        for (var e : selected) {
+            if (e == null) continue;
+            if ("DRAFT".equalsIgnoreCase(e.status())) ids.add(e.id());
+        }
+        if (ids.isEmpty()) return;
+
+        Alert confirm = new Alert(Alert.AlertType.CONFIRMATION,
+                t("purchases.confirm.validate_batch")
+                        .replace("{n}", String.valueOf(ids.size())),
+                ButtonType.YES, ButtonType.NO);
+        confirm.setHeaderText(t("purchases.action.validate_batch"));
+        confirm.showAndWait().ifPresent(bt -> {
+            if (bt != ButtonType.YES) return;
+            Task<String> task = new Task<>() {
+                @Override protected String call() throws Exception {
+                    return purchasesApi.validateBatch(ids);
+                }
+            };
+            task.setOnSucceeded(e -> {
+                String body = task.getValue();
+                int posted = parseIntField(body, "posted");
+                int failed = parseIntField(body, "failed");
+                Alert info = new Alert(Alert.AlertType.INFORMATION,
+                        t("purchases.validate_batch.result")
+                                .replace("{p}", String.valueOf(posted))
+                                .replace("{f}", String.valueOf(failed)));
+                info.setHeaderText(t("purchases.action.validate_batch"));
+                info.showAndWait();
+                reloadPurchaseInvoices();
+            });
+            task.setOnFailed(e -> showError(t("purchases.validate_batch.fail.title"),
+                    task.getException() == null ? "?" : task.getException().getMessage()));
+            start(task, "purchases-validate-batch");
+        });
+    }
+
+    /** Extrae un valor int del JSON {"posted":N,...} con regex simple. */
+    private int parseIntField(String json, String key) {
+        if (json == null) return 0;
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile(
+                "\"" + key + "\"\\s*:\\s*(\\d+)").matcher(json);
+        return m.find() ? Integer.parseInt(m.group(1)) : 0;
     }
 
     private void deletePurchaseInvoice(com.benjagest.ui.model.PurchaseInvoiceEntry row) {
@@ -7953,6 +8035,11 @@ public class BenjagestUiApplication extends Application {
                 case "purchases.col.vat" -> "VAT";
                 case "purchases.col.total" -> "Total";
                 case "purchases.col.journal" -> "Journal";
+                case "purchases.col.status" -> "Status";
+                case "purchases.action.validate_batch" -> "Validate selected";
+                case "purchases.confirm.validate_batch" -> "Validate {n} selected DRAFT expenses? Each will be POSTED and the accounting entry generated automatically.";
+                case "purchases.validate_batch.result" -> "Validated: {p}\nFailed: {f}\n\nThe list has been refreshed.";
+                case "purchases.validate_batch.fail.title" -> "Could not validate batch";
                 case "purchases.import.action.save_expense" -> "💾 Save expense";
                 case "purchases.save.ok.title" -> "Expense saved";
                 case "purchases.save.ok.body" -> "The expense was recorded. If the company has chart of accounts active, a journal entry was also created.";
@@ -8851,6 +8938,11 @@ public class BenjagestUiApplication extends Application {
             case "purchases.col.vat" -> "IVA";
             case "purchases.col.total" -> "Total";
             case "purchases.col.journal" -> "Asiento";
+            case "purchases.col.status" -> "Estado";
+            case "purchases.action.validate_batch" -> "Validar seleccionados";
+            case "purchases.confirm.validate_batch" -> "¿Validar {n} gastos seleccionados (en borrador)? Cada uno pasa a POSTED y se genera su asiento contable automático. Esta acción solo afecta a los marcados como DRAFT — los ya validados se ignoran.";
+            case "purchases.validate_batch.result" -> "Validados: {p}\nFallidos: {f}\n\nEl listado se ha actualizado.";
+            case "purchases.validate_batch.fail.title" -> "No se pudo validar el lote";
             case "purchases.import.action.save_expense" -> "💾 Guardar gasto";
             case "purchases.save.ok.title" -> "Gasto guardado";
             case "purchases.save.ok.body" -> "El gasto se ha registrado. Si la empresa tiene plan contable activo, se creo tambien el asiento contable.";

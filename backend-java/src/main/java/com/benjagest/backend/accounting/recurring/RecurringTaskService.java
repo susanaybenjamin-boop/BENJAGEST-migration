@@ -368,8 +368,18 @@ public class RecurringTaskService {
     private String runSalesInvoice(RecurringTaskView task, LocalDate scheduledDate) {
         Map<String, Object> p = readPayload(task);
         String customerId = (String) p.get("customerId");
+        // Si no viene customerId pero viene NIF+nombre, buscar o crear
+        // el cliente. Es el caso típico del recurrente "Iguala mensual a
+        // Acme SL" donde el usuario solo proporciona el NIF y el nombre,
+        // sin haber creado el customer antes.
         if (customerId == null || customerId.isBlank()) {
-            throw new IllegalStateException("Falta customerId en payload");
+            String customerNif = (String) p.get("customerNif");
+            String customerName = (String) p.get("customerLegalName");
+            if (customerNif == null || customerNif.isBlank()) {
+                throw new IllegalStateException(
+                        "El recurrente SALES_INVOICE necesita customerId o customerNif+customerLegalName");
+            }
+            customerId = ensureCustomerExists(customerNif, customerName);
         }
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> rawLines = (List<Map<String, Object>>) p.get("lines");
@@ -499,6 +509,33 @@ public class RecurringTaskService {
     // ====================================================================
     //  Helpers
     // ====================================================================
+
+    /**
+     * Devuelve el id del customer asociado al NIF dado en la empresa
+     * actual; si no existe, lo crea con el nombre legal proporcionado.
+     * El UK (tax_identifier) ya estaba en la tabla por V11 (merge billing
+     * profile), así que el INSERT IGNORE es seguro.
+     */
+    private String ensureCustomerExists(String customerNif, String customerLegalName) {
+        String nif = customerNif.trim().toUpperCase();
+        String name = (customerLegalName == null || customerLegalName.isBlank())
+                ? nif : customerLegalName.trim();
+        List<String> existing = jdbcTemplate.query("""
+                SELECT id FROM customers
+                 WHERE company_id = ? AND tax_identifier = ?
+                 LIMIT 1
+                """, (rs, n) -> rs.getString("id"),
+                tenantContext.getCurrentCompanyId(), nif);
+        if (!existing.isEmpty()) return existing.get(0);
+        String id = UUID.randomUUID().toString();
+        jdbcTemplate.update("""
+                INSERT INTO customers (
+                    id, company_id, legal_name, tax_identifier,
+                    customer_type, active
+                ) VALUES (?, ?, ?, ?, 'COMPANY', TRUE)
+                """, id, tenantContext.getCurrentCompanyId(), name, nif);
+        return id;
+    }
 
     private String expandPlaceholders(String s, LocalDate date) {
         if (s == null) return null;
