@@ -317,17 +317,24 @@ public class ManualJournalEntryService {
     public int deleteImportedByIds(List<String> ids) {
         if (ids == null || ids.isEmpty()) return 0;
         String companyId = tenantContext.getCurrentCompanyId();
+        java.util.Set<String> affectedFiscalYears = new java.util.HashSet<>();
         int deleted = 0;
         for (String id : ids) {
             if (id == null || id.isBlank()) continue;
             // Solo borramos si es de origen importado.
-            List<String> srcs = jdbcTemplate.query("""
-                    SELECT source_type FROM journal_entries
+            List<java.util.Map<String, String>> rows = jdbcTemplate.query("""
+                    SELECT source_type, fiscal_year_id FROM journal_entries
                      WHERE id = ? AND company_id = ?
                      LIMIT 1
-                    """, (rs, n) -> rs.getString("source_type"), id, companyId);
-            if (srcs.isEmpty()) continue;
-            String src = srcs.get(0);
+                    """, (rs, n) -> {
+                        java.util.Map<String, String> m = new java.util.HashMap<>();
+                        m.put("source_type", rs.getString("source_type"));
+                        m.put("fiscal_year_id", rs.getString("fiscal_year_id"));
+                        return m;
+                    }, id, companyId);
+            if (rows.isEmpty()) continue;
+            String src = rows.get(0).get("source_type");
+            String fyId = rows.get(0).get("fiscal_year_id");
             if (!"SALES_PDF_IMPORT".equals(src)
                     && !"PURCHASE_INVOICE".equals(src)) continue;
             // Borrar líneas + asiento (CASCADE manual por seguridad).
@@ -336,9 +343,42 @@ public class ManualJournalEntryService {
             int n = jdbcTemplate.update(
                     "DELETE FROM journal_entries WHERE id = ? AND company_id = ?",
                     id, companyId);
+            if (n > 0 && fyId != null) affectedFiscalYears.add(fyId);
             deleted += n;
         }
+        // Renumerar de forma consecutiva los asientos POSTED de cada
+        // fiscal year afectado. Mantiene los nº de los DRAFT intactos
+        // (siguen siendo 0 hasta que se validen).
+        for (String fyId : affectedFiscalYears) {
+            resequencePostedEntries(companyId, fyId);
+        }
         return deleted;
+    }
+
+    /**
+     * Recompacta los entry_number consecutivos para POSTED del
+     * fiscal year. Tras borrar duplicados, los nº quedan con huecos
+     * (1, 3, 4, 9, 10…). Esto los deja como 1, 2, 3, 4, 5…
+     *
+     * <p>Estrategia: ordenar por (entry_date ASC, created_at ASC),
+     * recorrer y asignar nuevo nº con UPDATE. Se ejecuta en una
+     * transacción de la propia operación de borrado.
+     */
+    private void resequencePostedEntries(String companyId, String fiscalYearId) {
+        List<String> orderedIds = jdbcTemplate.query("""
+                SELECT id FROM journal_entries
+                 WHERE company_id = ? AND fiscal_year_id = ? AND status = 'POSTED'
+                 ORDER BY entry_date ASC, COALESCE(created_at, '1970-01-01') ASC, id ASC
+                """, (rs, n) -> rs.getString("id"), companyId, fiscalYearId);
+        int next = 1;
+        for (String id : orderedIds) {
+            jdbcTemplate.update("""
+                    UPDATE journal_entries
+                       SET entry_number = ?
+                     WHERE id = ? AND company_id = ?
+                    """, next, id, companyId);
+            next++;
+        }
     }
 
     public ManualEntryView voidEntry(String entryId, String reason) {
