@@ -101,8 +101,24 @@ public final class AccountingModels {
             String lastRunStatus,
             int timesRun,
             int timesFailed,
-            boolean active
-    ) {}
+            boolean active,
+            /** JSON serializado del payload (datos cliente/proveedor,
+             *  importes, líneas…). Lo usa el editor en modo edición
+             *  para prellenar los campos. Puede ser null en respuestas
+             *  antiguas. */
+            String payloadJson
+    ) {
+        /** Constructor de compatibilidad con callsites antiguos. */
+        public RecurringTask(String id, String kind, String name, String description,
+                             String frequency, Integer dayOfMonth, Integer dayOfWeek,
+                             int monthsBetween, LocalDate nextRunDate, LocalDate lastRunDate,
+                             String lastRunStatus, int timesRun, int timesFailed,
+                             boolean active) {
+            this(id, kind, name, description, frequency, dayOfMonth, dayOfWeek,
+                    monthsBetween, nextRunDate, lastRunDate, lastRunStatus,
+                    timesRun, timesFailed, active, null);
+        }
+    }
 
     /** Movimiento histórico de una tarea recurrente. */
     public record RecurringTaskRun(
