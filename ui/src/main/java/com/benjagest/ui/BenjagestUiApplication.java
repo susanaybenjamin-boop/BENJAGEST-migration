@@ -14255,8 +14255,31 @@ public class BenjagestUiApplication extends Application {
 
         Button refresh = new Button(t("accounting.action.refresh"));
         refresh.setOnAction(e -> loadClientBilling(table));
-        HBox actions = new HBox(8, refresh);
+
+        // Multi-import de PDFs de ventas → asientos contables directos.
+        // Imprescindible en la vista cliente no-vinculado: el asesor solo
+        // recibe los PDFs y necesita generar asientos sin tener que crear
+        // facturas legales completas (esas las emitió el cliente fuera).
+        Button importSalesPdfsBtn = new Button(t("sales.action.import_pdfs"));
+        importSalesPdfsBtn.setGraphic(icon("fas-file-import"));
+        importSalesPdfsBtn.getStyleClass().add("button-primary");
+        importSalesPdfsBtn.setOnAction(e -> importSalesPdfsMulti());
+
+        Region clientBillingSpacer = new Region();
+        HBox.setHgrow(clientBillingSpacer, Priority.ALWAYS);
+        HBox actions = new HBox(8, refresh, clientBillingSpacer, importSalesPdfsBtn);
         actions.setAlignment(Pos.CENTER_LEFT);
+
+        // Auto-refresh cuando alguien emite SALES o JOURNAL (p.ej. tras
+        // importar PDFs el RefreshBus dispara la recarga sin tener que
+        // pulsar el botón "Actualizar" manualmente).
+        com.benjagest.ui.support.RefreshBus.subscribe(
+                com.benjagest.ui.support.RefreshBus.TOPIC_SALES,
+                () -> loadClientBilling(table), table);
+        com.benjagest.ui.support.RefreshBus.subscribe(
+                com.benjagest.ui.support.RefreshBus.TOPIC_JOURNAL,
+                () -> loadClientBilling(table), table);
+
         VBox box = new VBox(8, actions, table);
         VBox.setVgrow(table, Priority.ALWAYS);
         box.setPadding(new Insets(12));
