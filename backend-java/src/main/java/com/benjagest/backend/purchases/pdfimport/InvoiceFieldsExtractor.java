@@ -530,6 +530,37 @@ public class InvoiceFieldsExtractor {
         }
         BigDecimal retentionAmount = findAmountForLabel(layout, text, RETENTION_LABEL, false);
 
+        // 6.5 Deducción de IVA por aritmética si no salieron buenos:
+        //
+        //   Si tenemos BASE y TOTAL pero IVA falta o es sospechosamente
+        //   pequeño respecto al total (probablemente capturó un
+        //   importe de línea por error), recalculamos:
+        //     vatAmount = total - base
+        //     vatPct    = vatAmount * 100 / base
+        //
+        //   Esto cubre casos como la rectificativa que el usuario nos
+        //   reportó: las líneas individuales mostraban 0% de IVA (bug
+        //   del emisor) y "TOTAL FACTURA: -701,80" al pie. La regex no
+        //   detectaba ni el % ni la cuota correctamente; con
+        //   total=-701.80 y base=-580.00 deducimos cuota=-121.80 y
+        //   %=21 sin necesidad de leer el dato del PDF.
+        if (base != null && total != null) {
+            BigDecimal calcVat = total.subtract(base);
+            boolean vatLooksWrong = vatAmount == null
+                    || (total.signum() != 0
+                            && vatAmount.abs().multiply(BigDecimal.valueOf(10))
+                                    .compareTo(total.abs()) < 0
+                            && calcVat.abs().multiply(BigDecimal.valueOf(10))
+                                    .compareTo(total.abs()) > 0);
+            if (vatLooksWrong) vatAmount = calcVat;
+            if (base.signum() != 0
+                    && (vatPct == null || vatPct.signum() == 0)) {
+                vatPct = vatAmount.multiply(BigDecimal.valueOf(100))
+                        .divide(base, 0, java.math.RoundingMode.HALF_UP);
+                if (vatPct.signum() < 0) vatPct = vatPct.negate();
+            }
+        }
+
         // 7. Validación cruzada base + iva ≈ total (±0,02 €)
         Confidence confidence = crossCheck(base, vatAmount, total, retentionAmount);
 
@@ -1594,6 +1625,13 @@ public class InvoiceFieldsExtractor {
             for (LayoutDocument.LayoutPage page : layout.pages()) {
                 for (LayoutDocument.LayoutLine line : page.lines()) {
                     String lineText = line.text();
+                    // Filtro: si la línea es la CABECERA de la tabla de
+                    // líneas ("CANT. DESCRIPCION P.UNIT. IVA TOTAL"),
+                    // la palabra "TOTAL" no es el total final. La
+                    // descartamos para no quedarnos con el primer
+                    // importe que aparezca debajo (que sería un
+                    // importe de línea, no el total).
+                    if (isLineItemTableHeader(lineText)) continue;
                     Matcher m = labelPattern.matcher(lineText);
                     if (!m.find()) continue;
                     // Búsqueda en la propia línea, después de la etiqueta
@@ -1606,13 +1644,6 @@ public class InvoiceFieldsExtractor {
                     }
                     if (lastInLine != null) {
                         candidates.add(lastInLine);
-                    } else {
-                        // El valor puede estar en la siguiente línea
-                        // (tablas con cabecera Base | IVA | Total y datos
-                        // debajo). Buscamos primer importe en la línea
-                        // siguiente alineado en X similar.
-                        // Por simplicidad: primer importe global tras esta
-                        // posición en el texto plano.
                     }
                 }
             }
@@ -1632,11 +1663,45 @@ public class InvoiceFieldsExtractor {
 
         if (candidates.isEmpty()) return null;
         if (!preferLargestWhenMultiple) return candidates.get(0);
-        BigDecimal max = candidates.get(0);
+        // "Mayor" = mayor MAGNITUD ABSOLUTA, no mayor valor. En
+        // rectificativas todos los candidatos son negativos
+        // (-1.00, -181.50, -701.80) y el "mayor valor" sería el menos
+        // negativo (-1.00). Lo que queremos es el de mayor magnitud
+        // = -701.80 (el total real).
+        BigDecimal best = candidates.get(0);
+        BigDecimal bestAbs = best.abs();
         for (BigDecimal c : candidates) {
-            if (c.compareTo(max) > 0) max = c;
+            if (c.abs().compareTo(bestAbs) > 0) {
+                best = c;
+                bestAbs = c.abs();
+            }
         }
-        return max;
+        return best;
+    }
+
+    /**
+     * Detecta si la línea es la cabecera de la tabla de líneas de
+     * factura (donde "TOTAL" es columna, no total final). Patrones
+     * típicos: "CANT. DESCRIPCION P.UNIT. IVA TOTAL" o variantes en
+     * inglés.
+     */
+    private boolean isLineItemTableHeader(String line) {
+        if (line == null) return false;
+        String up = line.toUpperCase();
+        // Combinaciones típicas en cabecera de tabla de líneas. Al
+        // menos 3 de estas palabras juntas en la misma línea con la
+        // de "TOTAL" → es cabecera, no total final.
+        int matches = 0;
+        if (up.matches(".*\\bCANT(?:IDAD)?\\.?\\b.*")) matches++;
+        if (up.matches(".*\\bDESCRIPCI[OÓ]N\\b.*")) matches++;
+        if (up.matches(".*\\bDESCRIPTION\\b.*")) matches++;
+        if (up.matches(".*\\bP\\.?\\s*UNIT(?:ARIO)?\\.?\\b.*")) matches++;
+        if (up.matches(".*\\bUNIT\\s*PRICE\\b.*")) matches++;
+        if (up.matches(".*\\bPRECIO\\s+UNIDAD\\b.*")) matches++;
+        if (up.matches(".*\\bIMPORTE\\b.*")) matches++;
+        if (up.matches(".*\\bQTY\\b.*")) matches++;
+        if (up.matches(".*\\bQUANTITY\\b.*")) matches++;
+        return matches >= 2;
     }
 
     private BigDecimal findVatPercent(String text) {
