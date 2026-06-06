@@ -17,6 +17,7 @@ import javafx.scene.control.Separator;
 import javafx.scene.image.ImageView;
 import javafx.scene.input.KeyCode;
 import javafx.scene.input.KeyEvent;
+import javafx.scene.input.ScrollEvent;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.StackPane;
@@ -108,9 +109,14 @@ public final class PdfViewer extends BorderPane {
         center.setStyle("-fx-background-color: #5a5a5a;");
         ScrollPane scroll = new ScrollPane(center);
         scroll.setFitToWidth(true);
-        scroll.setFitToHeight(true);
+        // fitToHeight = FALSE: cuando el zoom hace la imagen más alta
+        // que el viewport, el ScrollPane interno scrollea verticalmente
+        // y consume el evento — el formulario del SplitPane no se mueve.
+        scroll.setFitToHeight(false);
         scroll.setStyle("-fx-background-color: #5a5a5a;");
         scroll.setPadding(new Insets(8));
+        scroll.setVbarPolicy(ScrollPane.ScrollBarPolicy.AS_NEEDED);
+        scroll.setHbarPolicy(ScrollPane.ScrollBarPolicy.AS_NEEDED);
         imageView.setPreserveRatio(true);
 
         setTop(toolbar);
@@ -118,6 +124,21 @@ public final class PdfViewer extends BorderPane {
 
         addEventFilter(KeyEvent.KEY_PRESSED, this::onKey);
         setFocusTraversable(true);
+
+        // Ctrl + rueda del ratón → zoom in/out. Sin Ctrl deja que el
+        // ScrollPane interno haga su scroll normal.
+        addEventFilter(ScrollEvent.SCROLL, ev -> {
+            if (ev.isControlDown()) {
+                if (ev.getDeltaY() > 0) adjustZoom(+25);
+                else if (ev.getDeltaY() < 0) adjustZoom(-25);
+                ev.consume();
+            }
+        });
+        // Hander al final (no filter): si el ScrollPane interno ya consumió
+        // el scroll porque scrollea, no llegamos aquí. Si llegamos es que
+        // la imagen cabe entera → consumimos para que el scroll NO se
+        // propague al padre (SplitPane → formulario derecho).
+        addEventHandler(ScrollEvent.SCROLL, ScrollEvent::consume);
     }
 
     private void onKey(KeyEvent ev) {
