@@ -7,6 +7,10 @@ module com.benjagest.ui {
     requires javafx.graphics;
     requires org.kordamp.ikonli.fontawesome6;
     requires org.kordamp.ikonli.javafx;
+    // PDFBox 3.0 — visor PDF interno para revisión de facturas.
+    // Es un Automatic-Module-Name (org.apache.pdfbox), funciona sin
+    // module-info propio.
+    requires org.apache.pdfbox;
 
     exports com.benjagest.ui;
 }
