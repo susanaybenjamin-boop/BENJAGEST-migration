@@ -679,9 +679,30 @@ public class AccountingScreen {
             a.showAndWait();
             return;
         }
-        Alert a = new Alert(AlertType.ERROR, title + "\n\n"
-                + (err.getMessage() == null ? err.toString() : err.getMessage()));
+        // Si el cuerpo del error contiene un mensaje útil del backend
+        // (módulo no activo, rol no permitido), lo mostramos legible
+        // en vez del JSON crudo.
+        String raw = err.getMessage() == null ? err.toString() : err.getMessage();
+        String friendly = extractBackendMessage(raw);
+        Alert a = new Alert(AlertType.ERROR,
+                title + (friendly == null ? "\n\n" + raw : "\n\n" + friendly));
         a.showAndWait();
+    }
+
+    /**
+     * Si el JSON de error del backend incluye una propiedad "message"
+     * (ej: {@code "message":"El modulo 'accounting' no esta activo..."}),
+     * la extrae. Si no, devuelve null y el caller muestra el crudo.
+     */
+    private String extractBackendMessage(String body) {
+        if (body == null) return null;
+        int i = body.indexOf("\"message\":\"");
+        if (i < 0) return null;
+        int start = i + 11;
+        int end = body.indexOf('"', start);
+        if (end < 0) return null;
+        String msg = body.substring(start, end);
+        return msg.isBlank() ? null : msg.replace("\\\"", "\"");
     }
 
     private void showError(String title, String body) {

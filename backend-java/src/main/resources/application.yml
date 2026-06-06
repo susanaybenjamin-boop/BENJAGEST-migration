@@ -1,5 +1,11 @@
 server:
   port: ${BENJAGEST_BACKEND_PORT:8080}
+  error:
+    # Incluir el mensaje de ResponseStatusException en la respuesta HTTP.
+    # Sin esto, Spring devuelve solo {"status":403,"error":"Forbidden"} y
+    # la UI no sabe si es sesión expirada o falta de módulo/rol.
+    include-message: always
+    include-binding-errors: always
 
 spring:
   application:
