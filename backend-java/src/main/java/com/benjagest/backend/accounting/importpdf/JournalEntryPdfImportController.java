@@ -40,17 +40,17 @@ import org.springframework.web.server.ResponseStatusException;
 @RequestMapping("/api/accounting")
 @RequiresModule("accounting")
 @RequiresRole({"OWNER", "ADMIN", "ACCOUNTANT"})
-public class PdfImportController {
+public class JournalEntryPdfImportController {
 
     private final SalesPdfImportService salesImport;
     private final ImportedPdfStorageService storage;
     private final JdbcTemplate jdbcTemplate;
     private final TenantContext tenantContext;
 
-    public PdfImportController(SalesPdfImportService salesImport,
-                                 ImportedPdfStorageService storage,
-                                 JdbcTemplate jdbcTemplate,
-                                 TenantContext tenantContext) {
+    public JournalEntryPdfImportController(SalesPdfImportService salesImport,
+                                             ImportedPdfStorageService storage,
+                                             JdbcTemplate jdbcTemplate,
+                                             TenantContext tenantContext) {
         this.salesImport = salesImport;
         this.storage = storage;
         this.jdbcTemplate = jdbcTemplate;
