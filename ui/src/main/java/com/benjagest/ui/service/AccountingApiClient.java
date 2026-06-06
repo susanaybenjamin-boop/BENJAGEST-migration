@@ -215,6 +215,35 @@ public class AccountingApiClient {
     }
 
     // ====================================================================
+    //  Backfill — regenerar asientos faltantes para facturas existentes
+    // ====================================================================
+
+    /**
+     * Llama al endpoint {@code POST /api/accounting/backfill/run}. Recorre
+     * todas las facturas recibidas con {@code journal_entry_id IS NULL} y
+     * todas las facturas emitidas VALIDATED sin asiento {@code SALES_INVOICE},
+     * e invoca el service auto-generador. Devuelve resumen estructurado.
+     */
+    public BackfillResult runBackfill() throws IOException, InterruptedException {
+        String json = postRaw("/accounting/backfill/run", "{}");
+        return new BackfillResult(
+                intField(json, "purchasesProcessed"),
+                intField(json, "purchasesPosted"),
+                intField(json, "purchasesSkipped"),
+                intField(json, "salesProcessed"),
+                intField(json, "salesPosted"),
+                intField(json, "salesSkipped"));
+    }
+
+    public record BackfillResult(
+            int purchasesProcessed, int purchasesPosted, int purchasesSkipped,
+            int salesProcessed, int salesPosted, int salesSkipped
+    ) {
+        public int totalPosted() { return purchasesPosted + salesPosted; }
+        public int totalProcessed() { return purchasesProcessed + salesProcessed; }
+    }
+
+    // ====================================================================
     //  Bancos
     // ====================================================================
 

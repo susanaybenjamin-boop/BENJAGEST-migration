@@ -10472,6 +10472,11 @@ public class BenjagestUiApplication extends Application {
             case "accounting.error.delete" -> "Could not delete";
             case "accounting.error.run_now" -> "Could not run";
             case "accounting.confirm.delete_rule" -> "Delete this learned rule? Past corrections remain in history.";
+            case "accounting.action.backfill" -> "Regenerate entries";
+            case "accounting.confirm.backfill" -> "This will scan ALL invoices (purchases & sales) without an accounting entry and generate any missing automatic entries. Safe: idempotent (no duplicates) and respects locked fiscal year guards. Continue?";
+            case "accounting.backfill.done" -> "Regeneration completed";
+            case "accounting.backfill.result" -> "Entries created:\n  · Purchases: {p}\n  · Sales: {s}\n  · Total: {t}\n\nCheck the 'To validate' tab to review the auto-proposed entries.";
+            case "accounting.error.backfill" -> "Could not regenerate entries";
             case "advisory.client.summary.title" -> "Client information";
             case "advisory.client.summary.hint" -> "Basic data captured from the client's company profile.";
             case "advisory.client.field.legal_name" -> "Legal name:";
@@ -10651,6 +10656,11 @@ public class BenjagestUiApplication extends Application {
             case "accounting.error.delete" -> "No se pudo borrar";
             case "accounting.error.run_now" -> "No se pudo ejecutar";
             case "accounting.confirm.delete_rule" -> "¿Borrar esta regla aprendida? Las correcciones anteriores quedan en el histórico.";
+            case "accounting.action.backfill" -> "Regenerar asientos";
+            case "accounting.confirm.backfill" -> "Esta acción recorre TODAS las facturas (compras y ventas) sin asiento contable y genera los asientos automáticos que falten. Es seguro: idempotente (no duplica) y respeta el bloqueo de ejercicios cerrados. ¿Continuar?";
+            case "accounting.backfill.done" -> "Regeneración completada";
+            case "accounting.backfill.result" -> "Asientos generados:\n  · Compras: {p}\n  · Ventas: {s}\n  · Total: {t}\n\nRevisa la pestaña 'Por validar' para validar los asientos auto-propuestos.";
+            case "accounting.error.backfill" -> "No se pudieron regenerar asientos";
             case "advisory.client.summary.title" -> "Datos del cliente";
             case "advisory.client.summary.hint" -> "Datos basicos extraidos del perfil de empresa del cliente.";
             case "advisory.client.field.legal_name" -> "Razon social:";
