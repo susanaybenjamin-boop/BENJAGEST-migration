@@ -241,6 +241,22 @@ public class AltaApiClient {
         ));
     }
 
+    /**
+     * Inicia la gestión contable de un cliente NO vinculado. Devuelve el
+     * id de la shadow company creada (o existente) para que la UI haga
+     * acting-for y entre como ese cliente.
+     */
+    public String startClientManagement(String customerId)
+            throws IOException, InterruptedException {
+        HttpResponse<String> r = sendAsOwner(
+                req(baseUrl + "/advisory/clients/" + customerId + "/start-management")
+                        .POST(java.net.http.HttpRequest.BodyPublishers.noBody()));
+        if (r.statusCode() < 200 || r.statusCode() >= 300) {
+            throw new IOException("HTTP " + r.statusCode() + ": " + r.body());
+        }
+        return textField(r.body(), "companyId");
+    }
+
     // ============================================================
     // MODELOS AEAT (/api/tax)
     // ============================================================

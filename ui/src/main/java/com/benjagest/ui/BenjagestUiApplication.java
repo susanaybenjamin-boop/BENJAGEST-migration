@@ -10555,6 +10555,8 @@ public class BenjagestUiApplication extends Application {
             case "advisory.portfolio.hint" -> "All your customers in one place: those you only invoice and those whose company you also manage. Use 'Invite selected client' to send a vinculation token to a customer already in your portfolio.";
             case "advisory.portfolio.not_linked.title" -> "Customer not linked yet";
             case "advisory.portfolio.not_linked.body" -> "This customer is in your billing portfolio but has not accepted a vinculation invitation. Send them one to manage their company data here.";
+            case "advisory.portfolio.start_management.fail.title" -> "Could not start management";
+            case "advisory.portfolio.start_management.fail.body" -> "The management workspace for this customer could not be created. Please try again.";
             case "advisory.col.link_status" -> "Vinculation";
             case "advisory.link.linked" -> "Linked";
             case "advisory.link.pending" -> "Invitation pending";
@@ -10910,6 +10912,8 @@ public class BenjagestUiApplication extends Application {
             case "advisory.portfolio.hint" -> "Todos tus clientes en un solo lugar: los que solo facturas y los que ademas gestionas. Usa 'Invitar cliente seleccionado' para enviar el token de vinculacion a un cliente que ya tienes en cartera.";
             case "advisory.portfolio.not_linked.title" -> "Cliente todavia no vinculado";
             case "advisory.portfolio.not_linked.body" -> "Este cliente esta en tu cartera de facturacion pero no ha aceptado una invitacion de vinculacion. Envia una para poder gestionar los datos de su empresa desde aqui.";
+            case "advisory.portfolio.start_management.fail.title" -> "No se pudo iniciar la gestion";
+            case "advisory.portfolio.start_management.fail.body" -> "No se ha podido crear el espacio de gestion para este cliente. Vuelve a intentarlo.";
             case "advisory.col.link_status" -> "Vinculacion";
             case "advisory.link.linked" -> "Vinculado";
             case "advisory.link.pending" -> "Invitacion pendiente";
@@ -13254,18 +13258,15 @@ public class BenjagestUiApplication extends Application {
                 colName, colNif, colCity, colEmail, colLinked));
         advisoryPortfolioTable.setItems(FXCollections.observableArrayList(portfolio));
 
-        // Doble click → abre cliente solo si está vinculado; si no,
-        // muestra info para invitar.
+        // Doble click → abre el cliente, esté vinculado o no.
+        // Si no está vinculado, el backend crea (o devuelve) la shadow
+        // company gestionada por la asesoría para que pueda llevarle la
+        // contabilidad igual que a un vinculado.
         advisoryPortfolioTable.setOnMouseClicked(ev -> {
             if (ev.getClickCount() == 2) {
                 var sel = advisoryPortfolioTable.getSelectionModel().getSelectedItem();
                 if (sel == null) return;
-                if (sel.isLinked()) {
-                    switchToClient(sel.asManagedClient());
-                } else {
-                    showInfo(t("advisory.portfolio.not_linked.title"),
-                            t("advisory.portfolio.not_linked.body"));
-                }
+                openPortfolioClient(sel);
             }
         });
 
@@ -13287,7 +13288,10 @@ public class BenjagestUiApplication extends Application {
         Tooltip.install(inviteSelectedBtn, inviteSelectedTip);
         advisoryPortfolioTable.getSelectionModel().selectedItemProperty()
                 .addListener((o, ov, nv) -> {
-                    openClientBtn.setDisable(nv == null || !nv.isLinked());
+                    // El botón "Abrir cliente" se habilita SIEMPRE que haya
+                    // selección: si está vinculado entra directo; si no,
+                    // primero se inicia gestión (shadow company).
+                    openClientBtn.setDisable(nv == null);
                     // Solo se bloquea si ya hay una invitación PENDING para
                     // ese cliente — en ese caso el botón a usar es "Copiar
                     // token" del listado de invitaciones.
@@ -13313,7 +13317,7 @@ public class BenjagestUiApplication extends Application {
                 });
         openClientBtn.setOnAction(ev -> {
             var sel = advisoryPortfolioTable.getSelectionModel().getSelectedItem();
-            if (sel != null && sel.isLinked()) switchToClient(sel.asManagedClient());
+            if (sel != null) openPortfolioClient(sel);
         });
         inviteSelectedBtn.setOnAction(ev -> {
             var sel = advisoryPortfolioTable.getSelectionModel().getSelectedItem();
@@ -13743,6 +13747,57 @@ public class BenjagestUiApplication extends Application {
         actingClientName = client.legalName();
         refreshClientModeBanner();
         setCenterAnimated(buildClientDetailView(client));
+    }
+
+    /**
+     * Entrada unificada para abrir un cliente desde la cartera:
+     * <ul>
+     *   <li>Si el cliente está vinculado → {@link #switchToClient} directo
+     *       con la company existente.</li>
+     *   <li>Si NO está vinculado → llama al backend para crear (o recuperar)
+     *       la shadow company gestionada por la asesoría con su NIF,
+     *       después hace el switch a esa company.</li>
+     * </ul>
+     * Así la asesoría puede llevar la contabilidad/facturación/AEAT de
+     * un cliente que aún no ha aceptado invitación, igual que de uno
+     * vinculado. La fusión cuando el cliente acepte la invitación
+     * después queda para un slice futuro.
+     */
+    private void openPortfolioClient(com.benjagest.ui.model.CustomerPortfolioEntry sel) {
+        if (sel.isLinked()) {
+            switchToClient(sel.asManagedClient());
+            return;
+        }
+        Task<String> task = new Task<>() {
+            @Override
+            protected String call() throws Exception {
+                return altaApiClient.startClientManagement(sel.customerId());
+            }
+        };
+        task.setOnSucceeded(ev -> {
+            String companyId = task.getValue();
+            // Construir un ManagedClientEntry "sintético" con la company
+            // shadow recién obtenida y los datos del customer.
+            var synthetic = new com.benjagest.ui.model.ManagedClientEntry(
+                    companyId,
+                    sel.legalName(),
+                    sel.tradeName(),
+                    sel.taxIdentifier(),
+                    sel.customerType(),
+                    sel.email(),
+                    sel.phone(),
+                    sel.city(),
+                    null);
+            switchToClient(synthetic);
+            // El portfolio cambia (ahora el cliente aparece como vinculado
+            // virtualmente). Refrescamos para que el badge se actualice.
+            com.benjagest.ui.support.RefreshBus.emit(
+                    com.benjagest.ui.support.RefreshBus.TOPIC_PORTFOLIO);
+        });
+        task.setOnFailed(ev -> showError(
+                t("advisory.portfolio.start_management.fail.title"),
+                t("advisory.portfolio.start_management.fail.body")));
+        start(task, "advisory-start-client-management");
     }
 
     private Node buildClientDetailView(com.benjagest.ui.model.ManagedClientEntry client) {
