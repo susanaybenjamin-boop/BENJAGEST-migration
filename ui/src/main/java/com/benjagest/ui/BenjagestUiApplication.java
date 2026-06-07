@@ -11386,6 +11386,13 @@ public class BenjagestUiApplication extends Application {
             case "recurring.post_validate.title" -> "Make it recurring?";
             case "recurring.post_validate.body" -> "This invoice was just validated. Do you want to turn it into a recurring template so you don't have to enter it manually every month? The editor will open with the fields prefilled.";
             case "list.action.make_recurring" -> "Make recurring";
+            case "recurring.new.journal_entry" -> "New periodic payment without invoice";
+            case "recurring.new.journal_entry.button" -> "Payment w/o invoice";
+            case "recurring.section.payment_data" -> "Payment data";
+            case "recurring.field.expense_account" -> "Expense account (chart code)";
+            case "recurring.field.bank_account" -> "Bank account (chart code)";
+            case "recurring.field.amount" -> "Amount";
+            case "recurring.journal_entry.hint" -> "For expenses charged directly from the bank without an invoice or receipt: self-employed contributions, bank fees, tax models (130/303), loan installments. Each run generates a simple journal entry (DEBIT expense / CREDIT bank) in draft.";
             case "date.day.monday" -> "Monday";
             case "date.day.tuesday" -> "Tuesday";
             case "date.day.wednesday" -> "Wednesday";
@@ -11894,6 +11901,13 @@ public class BenjagestUiApplication extends Application {
             case "recurring.post_validate.title" -> "¿Hacer recurrente?";
             case "recurring.post_validate.body" -> "Esta factura se acaba de validar. ¿Quieres convertirla en una plantilla recurrente para no tener que volver a meterla manualmente cada mes? Se abrirá el editor con los datos prellenos.";
             case "list.action.make_recurring" -> "Hacer recurrente";
+            case "recurring.new.journal_entry" -> "Nuevo pago periódico sin factura";
+            case "recurring.new.journal_entry.button" -> "Pago sin factura";
+            case "recurring.section.payment_data" -> "Datos del pago";
+            case "recurring.field.expense_account" -> "Cuenta gasto (código PGC)";
+            case "recurring.field.bank_account" -> "Cuenta banco (código PGC)";
+            case "recurring.field.amount" -> "Importe";
+            case "recurring.journal_entry.hint" -> "Pensado para gastos que se cargan directamente del banco sin que llegue factura ni recibo: cuota autónomo TGSS, comisiones bancarias, modelos AEAT (130/303), cuotas préstamo. Cada ejecución genera un asiento contable simple (DEBE cuenta gasto / HABER cuenta banco) en estado borrador.";
             case "date.day.monday" -> "lunes";
             case "date.day.tuesday" -> "martes";
             case "date.day.wednesday" -> "miércoles";
@@ -15395,20 +15409,42 @@ public class BenjagestUiApplication extends Application {
         newBtn.setOnAction(e -> showRecurringEditor(kind, null,
                 () -> loadRecurring(table, kind)));
 
+        // Slice 3F-2 — Botón adicional SOLO en el sub-tab de Gastos
+        // para crear un "Pago periódico sin factura" (kind=JOURNAL_ENTRY).
+        // No tiene sentido en Ventas: una venta siempre genera factura.
+        Button newJournalBtn = null;
+        if ("PURCHASE".equals(kind)) {
+            newJournalBtn = new Button(t("recurring.new.journal_entry.button"));
+            newJournalBtn.setGraphic(icon("fas-piggy-bank"));
+            newJournalBtn.setOnAction(e -> showJournalEntryRecurringEditor(null,
+                    () -> loadRecurring(table, kind)));
+        }
+
         // Doble click en una fila → editar la tarea
         table.setRowFactory(tv -> {
             javafx.scene.control.TableRow<com.benjagest.ui.model.AccountingModels.RecurringTask> row =
                     new javafx.scene.control.TableRow<>();
             row.setOnMouseClicked(ev -> {
                 if (ev.getClickCount() == 2 && !row.isEmpty() && row.getItem() != null) {
-                    showRecurringEditor(kind, row.getItem(),
-                            () -> loadRecurring(table, kind));
+                    var item = row.getItem();
+                    // Derivar al editor correcto según el kind real de
+                    // la tarea (puede ser JOURNAL_ENTRY aunque la
+                    // pestaña sea PURCHASE — sub-tab "Pago sin factura").
+                    if ("JOURNAL_ENTRY".equals(item.kind())) {
+                        showJournalEntryRecurringEditor(item,
+                                () -> loadRecurring(table, kind));
+                    } else {
+                        showRecurringEditor(kind, item,
+                                () -> loadRecurring(table, kind));
+                    }
                 }
             });
             return row;
         });
 
-        HBox toolbar = new HBox(8, newBtn, refreshBtn);
+        HBox toolbar = newJournalBtn == null
+                ? new HBox(8, newBtn, refreshBtn)
+                : new HBox(8, newBtn, newJournalBtn, refreshBtn);
         toolbar.setAlignment(javafx.geometry.Pos.CENTER_LEFT);
 
         VBox box = new VBox(8, cronInfo, toolbar, table);
@@ -15429,7 +15465,18 @@ public class BenjagestUiApplication extends Application {
         new Thread(() -> {
             try {
                 java.util.List<com.benjagest.ui.model.AccountingModels.RecurringTask> rows =
-                        accountingApiClient.listRecurring(kind, null);
+                        new java.util.ArrayList<>(
+                                accountingApiClient.listRecurring(kind, null));
+                // Slice 3F — En el sub-tab de Gastos también mostramos
+                // los pagos sin factura (kind=JOURNAL_ENTRY). Una
+                // factura recibida y un asiento de cuota autónomo son
+                // ambos "gastos recurrentes" para el asesor; queremos
+                // verlos juntos en la misma tabla.
+                if ("PURCHASE".equals(kind)) {
+                    try {
+                        rows.addAll(accountingApiClient.listRecurring("JOURNAL_ENTRY", null));
+                    } catch (Exception ignored) { /* opcional, no bloquea */ }
+                }
                 javafx.application.Platform.runLater(() -> {
                     table.getItems().setAll(rows);
                 });
@@ -15855,6 +15902,180 @@ public class BenjagestUiApplication extends Application {
     }
 
     private String nullSafe(String s) { return s == null ? "" : s; }
+
+    /**
+     * Slice 3F — Editor de "Pago periódico sin factura". Pensado para
+     * gastos que se cargan en el banco sin que llegue factura ni recibo:
+     * cuota autónomo TGSS, comisiones bancarias mensuales, modelos AEAT,
+     * cuotas de préstamo, etc.
+     *
+     * <p>Genera un RecurringTask de kind=JOURNAL_ENTRY cuyo payload
+     * tiene 2 líneas balanceadas:
+     * <pre>
+     *   DEBE  gastoCode      importe
+     *   HABER bancoCode      importe
+     * </pre>
+     * El backend resuelve los códigos a IDs reales del PGC del tenant
+     * en runtime (Slice 3F-1a).
+     *
+     * <p>Campos: nombre + descripción + frecuencia (combo) + día +
+     * primera ejecución + concepto + cuenta gasto (código) + cuenta
+     * banco (código) + importe.
+     */
+    private void showJournalEntryRecurringEditor(
+            com.benjagest.ui.model.AccountingModels.RecurringTask existing,
+            Runnable onSaved) {
+        javafx.scene.control.Dialog<javafx.scene.control.ButtonType> dlg = new javafx.scene.control.Dialog<>();
+        dlg.setTitle(existing == null || existing.id() == null
+                ? t("recurring.new.journal_entry")
+                : t("recurring.edit") + " — " + existing.name());
+
+        javafx.scene.control.ButtonType saveType = new javafx.scene.control.ButtonType(
+                t("button.save"), javafx.scene.control.ButtonBar.ButtonData.OK_DONE);
+        dlg.getDialogPane().getButtonTypes().addAll(saveType,
+                javafx.scene.control.ButtonType.CANCEL);
+
+        // Campos comunes
+        TextField nameField = new TextField(existing == null ? "" : nullSafe(existing.name()));
+        nameField.setPromptText("Cuota autónomo mensual");
+
+        TextField descField = new TextField(existing == null ? "" : nullSafe(existing.description()));
+        descField.setPromptText(t("recurring.field.description.hint"));
+
+        javafx.scene.control.ComboBox<String> freqCombo = new javafx.scene.control.ComboBox<>();
+        freqCombo.getItems().addAll("MONTHLY", "QUARTERLY", "YEARLY", "WEEKLY", "CUSTOM");
+        freqCombo.setValue(existing == null ? "MONTHLY" : existing.frequency());
+
+        javafx.scene.control.Spinner<Integer> domSpinner = new javafx.scene.control.Spinner<>(
+                1, 31, existing == null || existing.dayOfMonth() == null ? 1 : existing.dayOfMonth());
+        domSpinner.setEditable(true);
+
+        DatePicker firstRunDate = new DatePicker(
+                existing == null ? LocalDate.now().plusDays(1) : existing.nextRunDate());
+
+        TextField conceptField = new TextField();
+        conceptField.setPromptText(t("recurring.field.concept.hint"));
+
+        TextField expenseAccountField = new TextField();
+        expenseAccountField.setPromptText("629, 642, 631…");
+        TextField bankAccountField = new TextField();
+        bankAccountField.setPromptText("572, 570…");
+
+        javafx.scene.control.Spinner<Double> amountSpinner =
+                new javafx.scene.control.Spinner<>(0.0, 999999.0, 0.0, 10.0);
+        amountSpinner.setEditable(true);
+
+        // Pre-rellenar desde payloadJson si estamos editando.
+        if (existing != null && existing.payloadJson() != null) {
+            String pj = existing.payloadJson();
+            conceptField.setText(extractStringField(pj, "concept"));
+            // El payload de JOURNAL_ENTRY lleva lines = [debit, credit].
+            // Buscamos accountCode + debit > 0 (gasto) y accountCode + credit > 0 (banco).
+            int firstLine = pj.indexOf("\"lines\"");
+            if (firstLine > 0) {
+                String tail = pj.substring(firstLine);
+                // Heurística superficial: el primer accountCode = gasto, segundo = banco
+                int firstAcc = tail.indexOf("accountCode");
+                if (firstAcc > 0) {
+                    expenseAccountField.setText(extractStringField(
+                            tail.substring(firstAcc), "accountCode"));
+                    int secondAcc = tail.indexOf("accountCode", firstAcc + 12);
+                    if (secondAcc > 0) {
+                        bankAccountField.setText(extractStringField(
+                                tail.substring(secondAcc), "accountCode"));
+                    }
+                }
+                Double d = extractDoubleField(tail, "debit");
+                if (d != null && d > 0) amountSpinner.getValueFactory().setValue(d);
+            }
+        }
+
+        GridPane grid = new GridPane();
+        grid.setHgap(10); grid.setVgap(8); grid.setPadding(new Insets(16));
+        int r = 0;
+        grid.add(new Label(t("recurring.field.name")), 0, r);
+        grid.add(nameField, 1, r++, 3, 1);
+        grid.add(new Label(t("recurring.field.description")), 0, r);
+        grid.add(descField, 1, r++, 3, 1);
+        grid.add(new Label(t("recurring.field.frequency")), 0, r);
+        grid.add(freqCombo, 1, r);
+        grid.add(new Label(t("recurring.freq.day")), 2, r);
+        grid.add(domSpinner, 3, r++);
+        grid.add(new Label(t("recurring.field.first_run")), 0, r);
+        grid.add(firstRunDate, 1, r++, 3, 1);
+
+        Label sep = new Label(t("recurring.section.payment_data"));
+        sep.getStyleClass().add("text-bold");
+        grid.add(sep, 0, r++, 4, 1);
+
+        grid.add(new Label(t("recurring.field.concept")), 0, r);
+        grid.add(conceptField, 1, r++, 3, 1);
+        grid.add(new Label(t("recurring.field.expense_account")), 0, r);
+        grid.add(expenseAccountField, 1, r++, 3, 1);
+        grid.add(new Label(t("recurring.field.bank_account")), 0, r);
+        grid.add(bankAccountField, 1, r++, 3, 1);
+        grid.add(new Label(t("recurring.field.amount")), 0, r);
+        grid.add(amountSpinner, 1, r++);
+
+        Label hint = new Label(t("recurring.journal_entry.hint"));
+        hint.getStyleClass().addAll("muted", "small");
+        hint.setWrapText(true);
+        grid.add(hint, 0, r++, 4, 1);
+
+        ScrollPane scroll = new ScrollPane(grid);
+        scroll.setFitToWidth(true);
+        scroll.setPrefSize(620, 480);
+        dlg.getDialogPane().setContent(scroll);
+        dlg.setResultConverter(bt -> bt);
+        var result = dlg.showAndWait();
+        if (result.isEmpty() || result.get() != saveType) return;
+
+        // Build JSON request
+        double amount = amountSpinner.getValue();
+        String expAcc = expenseAccountField.getText().trim();
+        String bankAcc = bankAccountField.getText().trim();
+        String concept = conceptField.getText();
+        StringBuilder body = new StringBuilder();
+        body.append('{');
+        appendJsonField(body, "kind", "JOURNAL_ENTRY", true);
+        appendJsonField(body, "name", nameField.getText(), false);
+        if (!descField.getText().isBlank())
+            appendJsonField(body, "description", descField.getText(), false);
+        appendJsonField(body, "frequency", freqCombo.getValue(), false);
+        if ("MONTHLY".equals(freqCombo.getValue()) || "CUSTOM".equals(freqCombo.getValue())) {
+            body.append(",\"dayOfMonth\":").append(domSpinner.getValue());
+        }
+        body.append(",\"firstRunDate\":\"").append(firstRunDate.getValue()).append('"');
+        body.append(",\"payload\":{");
+        appendJsonField(body, "concept", concept == null ? "" : concept, true);
+        body.append(",\"lines\":[")
+                .append("{\"accountCode\":").append(jsonString(expAcc))
+                .append(",\"description\":").append(jsonString(concept == null ? "" : concept))
+                .append(",\"debit\":").append(amount).append(",\"credit\":0},")
+                .append("{\"accountCode\":").append(jsonString(bankAcc))
+                .append(",\"description\":").append(jsonString(concept == null ? "" : concept))
+                .append(",\"debit\":0,\"credit\":").append(amount).append('}')
+                .append(']');
+        body.append("}}");
+
+        String jsonBody = body.toString();
+        new Thread(() -> {
+            try {
+                if (existing == null || existing.id() == null) {
+                    accountingApiClient.createRecurring(jsonBody);
+                } else {
+                    accountingApiClient.updateRecurring(existing.id(), jsonBody);
+                }
+                javafx.application.Platform.runLater(() -> {
+                    if (onSaved != null) onSaved.run();
+                });
+            } catch (Exception ex) {
+                javafx.application.Platform.runLater(() -> new javafx.scene.control.Alert(
+                        javafx.scene.control.Alert.AlertType.ERROR,
+                        t("recurring.save.error") + ": " + ex.getMessage()).show());
+            }
+        }, "recurring-save-je").start();
+    }
 
     private String jsonString(String raw) {
         if (raw == null) return "\"\"";
