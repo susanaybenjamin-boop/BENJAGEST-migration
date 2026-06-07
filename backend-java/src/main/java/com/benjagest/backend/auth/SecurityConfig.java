@@ -46,6 +46,12 @@ public class SecurityConfig {
                                 "/api/auth/refresh",
                                 "/api/auth/logout",
                                 "/api/auth/pin",
+                                // L4-2 — Multi-puesto PIN. /pair acepta
+                                // email+password del OWNER y /pin-login
+                                // acepta device_secret+PIN. Las dos son
+                                // PRE-JWT: aún no hay sesión.
+                                "/api/auth/devices/pair",
+                                "/api/auth/pin-login",
                                 "/api/health",
                                 "/actuator/health",
                                 // RD 8/2019 art. 35.8: verificación pública por CSV
