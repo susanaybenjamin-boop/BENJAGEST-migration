@@ -9109,7 +9109,10 @@ public class BenjagestUiApplication extends Application {
                 case "module.advisory.billing" -> "Billing";
                 case "module.advisory.issuers" -> "Client issuers";
                 case "module.advisory.purchases" -> "Purchases & Expenses";
-                case "module.advisory.labor" -> "Client labor";
+                // Renombrado 2026-06-07: la pantalla muestra los empleados
+                // de la PROPIA asesoría (filtra por tenantContext.companyId),
+                // no de los clientes. "Client labor" era engañoso.
+                case "module.advisory.labor" -> "HR";
                 case "module.advisory.tax" -> "Client tax";
                 case "module.advisory.reports" -> "Advisory reports";
                 case "module.advisory.calendar" -> "Advisory calendar";
@@ -10073,7 +10076,10 @@ public class BenjagestUiApplication extends Application {
             case "module.advisory.billing" -> "Facturacion";
             case "module.advisory.issuers" -> "Emisores clientes";
             case "module.advisory.purchases" -> "Compras y Gastos";
-            case "module.advisory.labor" -> "Laboral clientes";
+            // Renombrado 2026-06-07: la pantalla muestra los empleados
+            // de la PROPIA asesoría (filtra por tenantContext.companyId),
+            // no de los clientes. "Laboral clientes" era engañoso.
+            case "module.advisory.labor" -> "Laboral";
             case "module.advisory.tax" -> "Fiscal clientes";
             case "module.advisory.reports" -> "Informes asesoria";
             case "module.advisory.calendar" -> "Agenda asesoria";
