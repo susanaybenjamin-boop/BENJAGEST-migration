@@ -2548,6 +2548,23 @@ public class BenjagestUiApplication extends Application {
                 com.benjagest.ui.support.RefreshBus.emit(
                         com.benjagest.ui.support.RefreshBus.TOPIC_PURCHASES,
                         com.benjagest.ui.support.RefreshBus.TOPIC_JOURNAL);
+                // Slice 3D-3 — Si se validó una única factura (no un
+                // lote) y se posted correctamente, ofrecer convertirla
+                // en gasto recurrente. Para lotes de N>1 facturas no
+                // tiene sentido porque pueden ser distintas.
+                if (posted == 1 && ids.size() == 1) {
+                    var row = selected.stream()
+                            .filter(it -> it != null && ids.get(0).equals(it.id()))
+                            .findFirst().orElse(null);
+                    if (row != null) {
+                        promptMakeRecurringAfterValidation(
+                                "PURCHASE",
+                                row.supplierNif(),
+                                row.supplierName(),
+                                row.baseAmount() != null ? row.baseAmount() : row.totalAmount(),
+                                row.invoiceDate());
+                    }
+                }
             });
             task.setOnFailed(e -> showError(t("purchases.validate_batch.fail.title"),
                     task.getException() == null ? "?" : task.getException().getMessage()));
@@ -5560,6 +5577,23 @@ public class BenjagestUiApplication extends Application {
             com.benjagest.ui.support.RefreshBus.emit(
                     com.benjagest.ui.support.RefreshBus.TOPIC_SALES,
                     com.benjagest.ui.support.RefreshBus.TOPIC_JOURNAL);
+            // Slice 3D-3 — ofrecer convertir la factura recién validada
+            // en plantilla recurrente. Solo para tipo NORMAL (sin sentido
+            // en proformas ni en rectificativas).
+            if ("NORMAL".equalsIgnoreCase(v.invoiceType()) || v.invoiceType() == null) {
+                LocalDate invDate = null;
+                try {
+                    if (v.invoiceDate() != null && !v.invoiceDate().isBlank()) {
+                        invDate = LocalDate.parse(v.invoiceDate());
+                    }
+                } catch (Exception ignored) { /* fecha en formato inesperado */ }
+                promptMakeRecurringAfterValidation(
+                        "SALES_INVOICE",
+                        null,                  // NIF cliente no viene en summary; user lo rellena
+                        v.customerLegalName(),
+                        v.total(),
+                        invDate);
+            }
         });
         task.setOnFailed(ev -> showError(t("editor.error.validate_failed.title"),
                 t("list.dialog.validate.failure_body")));
@@ -11296,6 +11330,8 @@ public class BenjagestUiApplication extends Application {
             case "recurring.candidates.create" -> "Create recurring";
             case "recurring.candidates.default_name_sales" -> "Recurring sale to";
             case "recurring.candidates.default_name_expense" -> "Recurring expense from";
+            case "recurring.post_validate.title" -> "Make it recurring?";
+            case "recurring.post_validate.body" -> "This invoice was just validated. Do you want to turn it into a recurring template so you don't have to enter it manually every month? The editor will open with the fields prefilled.";
             case "date.day.monday" -> "Monday";
             case "date.day.tuesday" -> "Tuesday";
             case "date.day.wednesday" -> "Wednesday";
@@ -11801,6 +11837,8 @@ public class BenjagestUiApplication extends Application {
             case "recurring.candidates.create" -> "Crear recurrente";
             case "recurring.candidates.default_name_sales" -> "Venta recurrente a";
             case "recurring.candidates.default_name_expense" -> "Gasto recurrente de";
+            case "recurring.post_validate.title" -> "¿Hacer recurrente?";
+            case "recurring.post_validate.body" -> "Esta factura se acaba de validar. ¿Quieres convertirla en una plantilla recurrente para no tener que volver a meterla manualmente cada mes? Se abrirá el editor con los datos prellenos.";
             case "date.day.monday" -> "lunes";
             case "date.day.tuesday" -> "martes";
             case "date.day.wednesday" -> "miércoles";
@@ -15970,68 +16008,88 @@ public class BenjagestUiApplication extends Application {
     }
 
     /**
-     * Overload de {@link #showRecurringEditor(String, com.benjagest.ui.model.AccountingModels.RecurringTask, Runnable)}
-     * que pre-rellena el editor a partir de un candidato detectado por
-     * el backend. Construye un objeto RecurringTask "sintético" con los
-     * datos del candidato y se lo pasa al editor en modo "crear" pero
-     * con los campos del payload ya escritos — todos editables.
+     * Construye un RecurringTask "sintético" (id=null) con el payload
+     * JSON pre-rellenado para que {@link #showRecurringEditor} lo trate
+     * como modo CREAR pero con los campos ya escritos. Reutilizado por
+     * los dos flujos del Slice 3D: desde candidato detectado y desde
+     * "Hacer recurrente" tras validar.
+     */
+    private com.benjagest.ui.model.AccountingModels.RecurringTask
+            buildPrefilledRecurringTask(String kind, String partyNif, String partyName,
+                                         java.math.BigDecimal totalAmount,
+                                         Integer dayOfMonth,
+                                         String suggestedFrequency,
+                                         String suggestedName) {
+        boolean isSales = "SALES_INVOICE".equals(kind);
+        String name = suggestedName != null && !suggestedName.isBlank()
+                ? suggestedName
+                : ((isSales
+                        ? t("recurring.candidates.default_name_sales")
+                        : t("recurring.candidates.default_name_expense"))
+                    + " " + nullSafe(partyName));
+        String amount = totalAmount == null ? "0" : totalAmount.toPlainString();
+        String payload;
+        if (isSales) {
+            payload = "{\"customerNif\":" + jsonString(nullSafe(partyNif))
+                    + ",\"customerLegalName\":" + jsonString(nullSafe(partyName))
+                    + ",\"lines\":[{"
+                    + "\"description\":" + jsonString(name)
+                    + ",\"quantity\":1"
+                    + ",\"unitPrice\":" + amount
+                    + ",\"vatPercent\":21"
+                    + ",\"retentionPercent\":0"
+                    + "}]}";
+        } else {
+            payload = "{\"supplierNif\":" + jsonString(nullSafe(partyNif))
+                    + ",\"supplierName\":" + jsonString(nullSafe(partyName))
+                    + ",\"baseAmount\":" + amount
+                    + ",\"vatPercent\":21"
+                    + "}";
+        }
+        String freq = suggestedFrequency == null ? "MONTHLY" : suggestedFrequency;
+        int monthsBetween = "CUSTOM".equals(freq) ? 6 : 1;
+        LocalDate first = LocalDate.now().plusMonths(1);
+        return new com.benjagest.ui.model.AccountingModels.RecurringTask(
+                null, kind, name, "", freq,
+                dayOfMonth, null, monthsBetween, first,
+                null, null, 0, 0, true, payload);
+    }
+
+    /**
+     * Overload del editor pre-rellenado a partir de un candidato
+     * detectado por el banner (Slice 3D-2).
      */
     private void showRecurringEditorFromCandidate(
             com.benjagest.ui.model.AccountingModels.RecurringCandidate cand,
             Runnable onSaved) {
         if (cand == null) return;
-        boolean isSales = "SALES_INVOICE".equals(cand.kind());
-        // Pre-rellenamos un RecurringTask sintético con SOLO los
-        // campos que el editor lee directamente (name, frecuencia,
-        // payloadJson). El editor lo trata como "edit existing" pero
-        // sin id (id=null) — luego al guardar el método save crea
-        // uno nuevo. Pasamos null en su lugar para forzar modo crear.
-        String suggestedName = (isSales
-                ? t("recurring.candidates.default_name_sales")
-                : t("recurring.candidates.default_name_expense"))
-                + " " + nullSafe(cand.partyName());
-
-        // Construyo el payload mínimo en JSON para que el editor lo
-        // parsee y prellene los TextFields.
-        String payload;
-        if (isSales) {
-            payload = "{\"customerNif\":" + jsonString(nullSafe(cand.partyNif()))
-                    + ",\"customerLegalName\":" + jsonString(nullSafe(cand.partyName()))
-                    + ",\"lines\":[{"
-                    + "\"description\":" + jsonString(suggestedName)
-                    + ",\"quantity\":1"
-                    + ",\"unitPrice\":" + cand.totalAmount().toPlainString()
-                    + ",\"vatPercent\":21"
-                    + ",\"retentionPercent\":0"
-                    + "}]}";
-        } else {
-            payload = "{\"supplierNif\":" + jsonString(nullSafe(cand.partyNif()))
-                    + ",\"supplierName\":" + jsonString(nullSafe(cand.partyName()))
-                    + ",\"baseAmount\":" + cand.totalAmount().toPlainString()
-                    + ",\"vatPercent\":21"
-                    + "}";
-        }
-
-        var synthetic = new com.benjagest.ui.model.AccountingModels.RecurringTask(
-                null,                                  // id null → editor está en modo "edit" pero
-                cand.kind(),                            //   al guardar createRecurring() creará nuevo
-                suggestedName,
-                "",                                     // description
-                cand.suggestedFrequency() == null ? "MONTHLY" : cand.suggestedFrequency(),
+        var synthetic = buildPrefilledRecurringTask(
+                cand.kind(), cand.partyNif(), cand.partyName(),
+                cand.totalAmount(),
                 cand.lastDate() == null ? null : cand.lastDate().getDayOfMonth(),
-                null,
-                "CUSTOM".equals(cand.suggestedFrequency()) ? 6 : 1,
-                cand.lastDate() == null ? LocalDate.now().plusDays(1)
-                        : cand.lastDate().plusMonths(1),
-                null, null, 0, 0, true,
-                payload);
-
-        // Forzamos modo CREAR (existing=null) pero con campos prellenados.
-        // El editor lee desde "existing" para prellenar — pasamos
-        // synthetic pero el editor va a interpretarlo como edición de
-        // un id null. Para forzar modo CREAR de verdad, llamo a una
-        // versión que respeta esto: si existing.id()==null → crear.
+                cand.suggestedFrequency(), null);
         showRecurringEditor(cand.kind(), synthetic, onSaved);
+    }
+
+    /**
+     * Slice 3D-3 — Tras validar una venta o un gasto, ofrecer "¿hacer
+     * recurrente?". Muestra un alert con dos botones; si el usuario
+     * elige sí, abre el editor pre-rellenado.
+     */
+    private void promptMakeRecurringAfterValidation(
+            String kind, String partyNif, String partyName,
+            java.math.BigDecimal totalAmount, LocalDate invoiceDate) {
+        Alert ask = new Alert(Alert.AlertType.CONFIRMATION,
+                t("recurring.post_validate.body"),
+                ButtonType.NO, ButtonType.YES);
+        ask.setHeaderText(t("recurring.post_validate.title"));
+        Optional<ButtonType> ans = ask.showAndWait();
+        if (ans.isEmpty() || ans.get() != ButtonType.YES) return;
+        var synthetic = buildPrefilledRecurringTask(
+                kind, partyNif, partyName, totalAmount,
+                invoiceDate == null ? null : invoiceDate.getDayOfMonth(),
+                "MONTHLY", null);
+        showRecurringEditor(kind, synthetic, null);
     }
 
     /** Devuelve nombre del día de la semana 1=lunes..7=domingo. */
