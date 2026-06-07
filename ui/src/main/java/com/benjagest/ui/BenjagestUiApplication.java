@@ -14974,11 +14974,22 @@ public class BenjagestUiApplication extends Application {
         Tab purchasesTab = null;
         Tab salesAndExpensesTab = null;
         if (isLinked) {
+            // Slice 3Q — Pestañas Facturación y Compras del cliente
+            // vinculado envueltas con sub-tab "Recurrentes" para que
+            // la asesoría pueda crear plantillas DENTRO del tenant
+            // del cliente (recurring_tasks.company_id = cliente). El
+            // cliente las ve también en su propia app.
             billingTab = new Tab(t("advisory.client.tab.billing"),
-                    buildClientBillingTab());
+                    wrapWithRecurringSubTab(
+                            buildClientBillingTab(),
+                            "SALES_INVOICE",
+                            t("advisory.client.tab.billing")));
             billingTab.setGraphic(icon("fas-file-invoice-dollar"));
             purchasesTab = new Tab(t("advisory.client.tab.purchases"),
-                    buildClientPurchasesTab());
+                    wrapWithRecurringSubTab(
+                            buildClientPurchasesTab(),
+                            "PURCHASE",
+                            t("advisory.client.tab.purchases")));
             purchasesTab.setGraphic(icon("fas-receipt"));
         } else {
             salesAndExpensesTab = new Tab(
@@ -15171,10 +15182,23 @@ public class BenjagestUiApplication extends Application {
                 buildClientSalesArchivedTab(fromProp, toProp, selfTaxId));
         salesTab.setGraphic(icon("fas-file-invoice"));
 
+        Tab salesRecurringTab = new Tab(t("client.tab.sales_recurring"),
+                buildRecurringTab("SALES_INVOICE", "client.tab.sales_recurring"));
+        salesRecurringTab.setGraphic(icon("fas-arrows-rotate"));
+
         Tab expensesTab = new Tab(t("client.tab.expenses"), buildClientPurchasesTab());
         expensesTab.setGraphic(icon("fas-receipt"));
 
-        sub.getTabs().addAll(salesTab, expensesTab);
+        Tab expensesRecurringTab = new Tab(t("client.tab.expenses_recurring"),
+                buildRecurringTab("PURCHASE", "client.tab.expenses_recurring"));
+        expensesRecurringTab.setGraphic(icon("fas-arrows-rotate"));
+
+        // Slice 3Q — cliente NO vinculado también necesita los
+        // sub-tabs Recurrentes para que la asesoría pueda configurar
+        // las plantillas DEL CLIENTE en su shadow company. El asesor
+        // entra a "Mis clientes" → cliente NO vinculado → aquí.
+        sub.getTabs().addAll(salesTab, salesRecurringTab,
+                expensesTab, expensesRecurringTab);
 
         // Sincronizar el periodo Año/Trimestre de los KPIs con el
         // sub-tab Gastos. buildClientPurchasesTab usa sus propios
@@ -15588,6 +15612,39 @@ public class BenjagestUiApplication extends Application {
      * el backend filtrado por {@code kind}. Pintado en el hilo JavaFX,
      * llamada HTTP en hilo aparte.
      */
+    /**
+     * Slice 3Q — Envuelve un Node existente (Facturas o Compras del
+     * cliente desde asesoría) en un TabPane con un segundo sub-tab
+     * "Recurrentes". Pensado para que cuando la asesoría entre a
+     * gestionar un cliente vinculado, pueda crear plantillas
+     * recurrentes en el tenant del cliente.
+     *
+     * @param originalContent   listado original (Facturas o Compras).
+     * @param recurringKind     "SALES_INVOICE" o "PURCHASE".
+     * @param originalTabLabel  etiqueta del primer tab (ya traducida).
+     */
+    private Node wrapWithRecurringSubTab(Node originalContent,
+                                          String recurringKind,
+                                          String originalTabLabel) {
+        TabPane wrapper = new TabPane();
+        wrapper.getStyleClass().add("inner-tabs");
+        wrapper.setTabClosingPolicy(TabPane.TabClosingPolicy.UNAVAILABLE);
+
+        Tab mainTab = new Tab(originalTabLabel, originalContent);
+        Tab recurringTab = new Tab(
+                "SALES_INVOICE".equals(recurringKind)
+                        ? t("client.tab.sales_recurring")
+                        : t("client.tab.expenses_recurring"),
+                buildRecurringTab(recurringKind,
+                        "SALES_INVOICE".equals(recurringKind)
+                                ? "client.tab.sales_recurring"
+                                : "client.tab.expenses_recurring"));
+        recurringTab.setGraphic(icon("fas-arrows-rotate"));
+
+        wrapper.getTabs().addAll(mainTab, recurringTab);
+        return wrapper;
+    }
+
     private void loadRecurring(
             javafx.scene.control.TableView<com.benjagest.ui.model.AccountingModels.RecurringTask> table,
             String kind) {
