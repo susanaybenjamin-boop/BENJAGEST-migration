@@ -17,6 +17,12 @@
 --   - pin_hash = NULL: el legacy SHA256 quedó anulado por V70; el
 --     OWNER le asignará un PIN bcrypt desde la UI si quiere darle
 --     acceso (L4-4 cierra ese flujo).
+--   - default_customer_id = NULL: V3 lo apuntaba a
+--     '30000000-0000-0000-0000-000000000001', pero ese customer seed
+--     también se perdió en algún cleanup intermedio. La FK
+--     fk_employees_default_customer petaba al re-insertar. Como el
+--     vínculo "empleado por defecto a un customer" no aplica al
+--     caso real (Marcos era seed demo), lo dejamos NULL.
 --   - Idempotente: NOT EXISTS por el par (company_id, user_id) +
 --     UPDATE complementario para asegurar el estado correcto si la
 --     fila ya hubiera sido restaurada manualmente.
@@ -30,7 +36,7 @@ SELECT '60000000-0000-0000-0000-000000000001',
        '11111111-1111-1111-1111-111111111111',
        'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
        FALSE,
-       '30000000-0000-0000-0000-000000000001',
+       NULL,
        'Marcos Encargado',
        '12345678Z', 'marcos@benjagest.local', '640000001',
        NULL, 'FULL_TIME', 600, TRUE
