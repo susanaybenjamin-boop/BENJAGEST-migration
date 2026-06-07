@@ -354,6 +354,36 @@ public class AltaApiClient {
         return r.body();
     }
 
+    /**
+     * Slice 5E — Delegación temporal de una asignación. {@code toUserId}
+     * y {@code from}/{@code until} obligatorios al crear o ampliar la
+     * delegación; para CANCELARLA pasar {@code toUserId=null} (el backend
+     * borra los tres campos).
+     */
+    public void delegateAssignment(String assignmentId,
+                                    String toUserId,
+                                    java.time.LocalDate from,
+                                    java.time.LocalDate until)
+            throws IOException, InterruptedException {
+        StringBuilder b = new StringBuilder("{");
+        // toUserId null/blank = cancelación de delegación
+        if (toUserId == null || toUserId.isBlank()) {
+            b.append("\"toUserId\":null");
+        } else {
+            b.append("\"toUserId\":").append(jsonString(toUserId));
+            b.append(",\"from\":").append(jsonString(from == null ? null : from.toString()));
+            b.append(",\"until\":").append(jsonString(until == null ? null : until.toString()));
+        }
+        b.append('}');
+        HttpResponse<String> r = send(req(baseUrl
+                + "/advisory/team/assignments/" + assignmentId + "/delegate")
+                .POST(java.net.http.HttpRequest.BodyPublishers.ofString(b.toString()))
+                .header("Content-Type", "application/json"));
+        if (r.statusCode() < 200 || r.statusCode() >= 300) {
+            throw new IOException("HTTP " + r.statusCode() + ": " + r.body());
+        }
+    }
+
     public void deleteTeamAssignment(String id)
             throws IOException, InterruptedException {
         HttpResponse<String> r = send(req(baseUrl
