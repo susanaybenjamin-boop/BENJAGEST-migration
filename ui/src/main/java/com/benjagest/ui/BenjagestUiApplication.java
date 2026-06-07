@@ -102,7 +102,7 @@ public class BenjagestUiApplication extends Application {
             // Recurrentes, Modelos AEAT, etc.). NO va dentro de "Mis
             // clientes" para que la asesoría tenga clara la
             // separación entre su gestión y la de sus clientes.
-            new ModuleLink("myCompany", "Mi empresa", "fas-briefcase"),
+            new ModuleLink("myCompany", "Mi gestión", "fas-briefcase"),
             new ModuleLink("customers", "Clientes", "fas-users"),
             new ModuleLink("tax", "Fiscal", "fas-percentage"),
             new ModuleLink("labor", "Laboral", "fas-hard-hat"),
@@ -8395,6 +8395,8 @@ public class BenjagestUiApplication extends Application {
                 case "deleteFailed" -> "Could not delete";
                 case "backendCheck" -> "Check the data and make sure the backend is available.";
                 case "module.customers" -> "Customers";
+                case "module.myCompany" -> "My books";
+                case "module.advisory.myCompany" -> "My books";
                 case "module.billing" -> "Billing";
                 case "module.issuers" -> "Issuers";
                 case "module.purchases" -> "Purchases & Expenses";
@@ -9355,6 +9357,8 @@ public class BenjagestUiApplication extends Application {
             case "deleteFailed" -> "No se pudo eliminar";
             case "backendCheck" -> "Revisa los datos y que el backend este disponible.";
             case "module.customers" -> "Clientes";
+            case "module.myCompany" -> "Mi gestión";
+            case "module.advisory.myCompany" -> "Mi gestión";
             case "module.billing" -> "Facturacion";
             case "module.issuers" -> "Emisores";
             case "module.purchases" -> "Compras y Gastos";

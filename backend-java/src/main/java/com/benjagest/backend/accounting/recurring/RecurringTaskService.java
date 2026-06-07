@@ -62,6 +62,15 @@ public class RecurringTaskService {
     private final AccountingTemplateService templates;
     private final LoanService loans;
     private final SalesInvoiceService salesService;
+    /**
+     * Slice 3K — TransactionTemplate REQUIRES_NEW para aislar cada
+     * sub-runner (runJournalEntry, runPurchase, runSalesInvoice…) en
+     * su propia transacción. Sin esto, una excepción dentro de un
+     * sub-runner marcaba la transacción de runOne como rollback-only
+     * y el {@link #finalize(...)} final lanzaba
+     * UnexpectedRollbackException al intentar commit.
+     */
+    private final org.springframework.transaction.support.TransactionTemplate isolatedTx;
 
     public RecurringTaskService(JdbcTemplate jdbcTemplate, TenantContext tenantContext,
                                  CurrentUserService currentUserService,
@@ -71,7 +80,8 @@ public class RecurringTaskService {
                                  ManualJournalEntryService manualEntries,
                                  AccountingTemplateService templates,
                                  LoanService loans,
-                                 SalesInvoiceService salesService) {
+                                 SalesInvoiceService salesService,
+                                 org.springframework.transaction.PlatformTransactionManager txManager) {
         this.jdbcTemplate = jdbcTemplate;
         this.tenantContext = tenantContext;
         this.currentUserService = currentUserService;
@@ -82,6 +92,9 @@ public class RecurringTaskService {
         this.templates = templates;
         this.loans = loans;
         this.salesService = salesService;
+        this.isolatedTx = new org.springframework.transaction.support.TransactionTemplate(txManager);
+        this.isolatedTx.setPropagationBehavior(
+                org.springframework.transaction.TransactionDefinition.PROPAGATION_REQUIRES_NEW);
     }
 
     // ====================================================================
@@ -224,10 +237,16 @@ public class RecurringTaskService {
      * Ejecuta UNA tarea recurrente en su tenant. El scheduler ya se ha
      * encargado de poner el TenantContext antes de llamar a este método.
      */
-    @Transactional
+    // Slice 3K — SIN @Transactional a propósito. Cada sub-runner se
+    // ejecuta en su propia transacción (isolatedTx, REQUIRES_NEW); si
+    // falla, su transacción se rollbackea sin contaminar a finalize.
+    // Si dejamos esto @Transactional, la excepción del sub-runner
+    // marca la transacción como rollback-only y al final del método
+    // se lanza UnexpectedRollbackException.
     public RunView runOne(String taskId, LocalDate scheduledDate) {
         long t0 = System.currentTimeMillis();
         RecurringTaskView task = get(taskId);
+        final String capturedCompanyId = tenantContext.getCurrentCompanyId();
         String generatedId = null;
         String generatedKind = null;
         String status;
@@ -235,23 +254,38 @@ public class RecurringTaskService {
         try {
             switch (task.kind()) {
                 case "PURCHASE" -> {
-                    generatedId = runPurchase(task, scheduledDate);
+                    generatedId = isolatedTx.execute(s -> {
+                        tenantContext.setCurrentCompanyId(capturedCompanyId);
+                        return runPurchase(task, scheduledDate);
+                    });
                     generatedKind = "PURCHASE_INVOICE";
                 }
                 case "JOURNAL_ENTRY" -> {
-                    generatedId = runJournalEntry(task, scheduledDate);
+                    generatedId = isolatedTx.execute(s -> {
+                        tenantContext.setCurrentCompanyId(capturedCompanyId);
+                        return runJournalEntry(task, scheduledDate);
+                    });
                     generatedKind = "JOURNAL_ENTRY";
                 }
                 case "TEMPLATE_APPLY" -> {
-                    generatedId = runTemplate(task, scheduledDate);
+                    generatedId = isolatedTx.execute(s -> {
+                        tenantContext.setCurrentCompanyId(capturedCompanyId);
+                        return runTemplate(task, scheduledDate);
+                    });
                     generatedKind = "JOURNAL_ENTRY";
                 }
                 case "LOAN_AUTO_PAY" -> {
-                    generatedId = runLoanAutoPay(task, scheduledDate);
+                    generatedId = isolatedTx.execute(s -> {
+                        tenantContext.setCurrentCompanyId(capturedCompanyId);
+                        return runLoanAutoPay(task, scheduledDate);
+                    });
                     generatedKind = "LOAN_INSTALLMENT";
                 }
                 case "SALES_INVOICE" -> {
-                    generatedId = runSalesInvoice(task, scheduledDate);
+                    generatedId = isolatedTx.execute(s -> {
+                        tenantContext.setCurrentCompanyId(capturedCompanyId);
+                        return runSalesInvoice(task, scheduledDate);
+                    });
                     generatedKind = "SALES_INVOICE";
                 }
                 default -> {
@@ -263,7 +297,16 @@ public class RecurringTaskService {
             status = generatedId == null ? "SKIPPED" : "OK";
         } catch (Exception ex) {
             status = "ERROR";
-            message = ex.getMessage();
+            // Desempaquetar TransactionSystemException o similares para
+            // que el mensaje real llegue al frontend (3H-4).
+            Throwable root = ex;
+            while (root.getCause() != null && root != root.getCause()) {
+                root = root.getCause();
+            }
+            message = root.getMessage() == null ? ex.getMessage() : root.getMessage();
+        } finally {
+            // Restaurar el tenant después del REQUIRES_NEW.
+            tenantContext.setCurrentCompanyId(capturedCompanyId);
         }
         return finalize(task, scheduledDate, status, generatedId, generatedKind, message, t0);
     }

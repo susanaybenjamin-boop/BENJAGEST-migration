@@ -128,7 +128,6 @@ public class RecurringCandidateService {
                   FROM purchase_invoices pi
                  WHERE pi.company_id = ?
                    AND pi.invoice_date >= ?
-                   AND pi.active = TRUE
                    AND pi.total_amount > 0
                  GROUP BY COALESCE(pi.supplier_nif, ''),
                           COALESCE(pi.supplier_name, ''),
