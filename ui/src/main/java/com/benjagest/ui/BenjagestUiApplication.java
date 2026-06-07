@@ -11578,7 +11578,7 @@ public class BenjagestUiApplication extends Application {
             case "accounting.status.PROFORMA" -> "Proforma";
             case "accounting.source_type.SALES_INVOICE" -> "Sale";
             case "accounting.source_type.SALES_PDF_IMPORT" -> "Sales PDF import";
-            case "accounting.source_type.PURCHASE_INVOICE" -> "Purchase";
+            case "accounting.source_type.PURCHASE_INVOICE" -> "Expense";
             case "accounting.source_type.MANUAL" -> "Manual";
             case "accounting.source_type.BANK_MOVEMENT" -> "Bank movement";
             case "accounting.source_type.YEAR_CLOSE_REGULARIZATION" -> "Year-close regularization";
@@ -12134,7 +12134,7 @@ public class BenjagestUiApplication extends Application {
             case "accounting.status.PROFORMA" -> "Proforma";
             case "accounting.source_type.SALES_INVOICE" -> "Venta";
             case "accounting.source_type.SALES_PDF_IMPORT" -> "Venta importada por PDF";
-            case "accounting.source_type.PURCHASE_INVOICE" -> "Compra";
+            case "accounting.source_type.PURCHASE_INVOICE" -> "Gasto";
             case "accounting.source_type.MANUAL" -> "Manual";
             case "accounting.source_type.BANK_MOVEMENT" -> "Movimiento bancario";
             case "accounting.source_type.YEAR_CLOSE_REGULARIZATION" -> "Regularización cierre";
@@ -15739,6 +15739,14 @@ public class BenjagestUiApplication extends Application {
         VBox.setVgrow(table, Priority.ALWAYS);
         box.setPadding(new Insets(12));
         loadRecurring(table, kind);
+        // Slice 3X — Auto-refresh cuando alguien crea/edita/elimina/
+        // ejecuta una recurrente desde OTRA pantalla (botón "Hacer
+        // recurrente" en listado de Ventas/Gastos, run-now desde editor,
+        // etc). Antes el sub-tab Recurrentes solo se refrescaba via su
+        // propio botón refresh.
+        com.benjagest.ui.support.RefreshBus.subscribe(
+                com.benjagest.ui.support.RefreshBus.TOPIC_RECURRING,
+                () -> loadRecurring(table, kind), box);
         return box;
     }
 
@@ -16484,6 +16492,12 @@ public class BenjagestUiApplication extends Application {
                 } else {
                     accountingApiClient.updateRecurring(existing.id(), jsonBody);
                 }
+                // Slice 3X — emitir RefreshBus.TOPIC_RECURRING para que
+                // cualquier sub-tab Recurrentes abierto se refresque sin
+                // depender del callback onSaved (que solo conoce el sub
+                // -tab desde el que abrieron el editor).
+                com.benjagest.ui.support.RefreshBus.emit(
+                        com.benjagest.ui.support.RefreshBus.TOPIC_RECURRING);
                 javafx.application.Platform.runLater(() -> {
                     if (onSaved != null) onSaved.run();
                 });
@@ -16891,6 +16905,8 @@ public class BenjagestUiApplication extends Application {
                 } else {
                     accountingApiClient.updateRecurring(existing.id(), jsonBody);
                 }
+                com.benjagest.ui.support.RefreshBus.emit(
+                        com.benjagest.ui.support.RefreshBus.TOPIC_RECURRING);
                 javafx.application.Platform.runLater(() -> {
                     if (onSaved != null) onSaved.run();
                 });
@@ -17120,6 +17136,8 @@ public class BenjagestUiApplication extends Application {
                 } else {
                     accountingApiClient.updateRecurring(existing.id(), jsonBody);
                 }
+                com.benjagest.ui.support.RefreshBus.emit(
+                        com.benjagest.ui.support.RefreshBus.TOPIC_RECURRING);
                 javafx.application.Platform.runLater(() -> {
                     if (onSaved != null) onSaved.run();
                 });
@@ -18275,8 +18293,10 @@ public class BenjagestUiApplication extends Application {
                 // el mismo listado — el asesor no tiene que saltar de
                 // pantalla según el origen.
                 return accountingApiClient.diary(from, to, null,
-                        "SALES_INVOICE,SALES_PDF_IMPORT,RECURRING_ACCOUNTING",
-                        500);
+                        // Slice 3X — Las recurrentes ya guardan con
+                        // source_type SALES_INVOICE; no hace falta
+                        // RECURRING_ACCOUNTING aquí.
+                        "SALES_INVOICE,SALES_PDF_IMPORT", 500);
             }
         };
         task.setOnSucceeded(ev -> {
