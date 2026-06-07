@@ -181,7 +181,9 @@ public class BenjagestUiApplication extends Application {
     private static final java.util.Set<String> KNOWN_VIEWS = java.util.Set.of(
             "customers", "billing", "purchases", "labor",
             "tax", "reports", "calendar", "settings",
-            "advisory", "self-employed", "notifications", "time-clock"
+            "advisory", "self-employed", "notifications", "time-clock",
+            // Slice 5C — Módulo EQUIPO / Reparto de clientes (advisory_only).
+            "team"
     );
 
     @Override
