@@ -941,7 +941,8 @@ public class AccountingApiClient {
                 intField(json, "timesRun"),
                 intField(json, "timesFailed"),
                 boolField(json, "active"),
-                strField(json, "payloadJson"));
+                strField(json, "payloadJson"),
+                boolField(json, "createdByAdvisor"));
     }
 
     private RecurringTaskRun parseRecurringRun(String json) {

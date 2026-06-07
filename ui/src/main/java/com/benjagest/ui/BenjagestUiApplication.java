@@ -8446,9 +8446,9 @@ public class BenjagestUiApplication extends Application {
                 case "module.core" -> "Core";
                 case "module.kiosk" -> "Kiosk";
                 case "module.advisory.customers" -> "Client portfolio";
-                case "module.advisory.billing" -> "Client billing";
+                case "module.advisory.billing" -> "Billing";
                 case "module.advisory.issuers" -> "Client issuers";
-                case "module.advisory.purchases" -> "Reviewed purchases";
+                case "module.advisory.purchases" -> "Purchases & Expenses";
                 case "module.advisory.labor" -> "Client labor";
                 case "module.advisory.tax" -> "Client tax";
                 case "module.advisory.reports" -> "Advisory reports";
@@ -9408,9 +9408,9 @@ public class BenjagestUiApplication extends Application {
             case "module.core" -> "Nucleo";
             case "module.kiosk" -> "Kiosko";
             case "module.advisory.customers" -> "Cartera clientes";
-            case "module.advisory.billing" -> "Facturacion clientes";
+            case "module.advisory.billing" -> "Facturacion";
             case "module.advisory.issuers" -> "Emisores clientes";
-            case "module.advisory.purchases" -> "Compras revisadas";
+            case "module.advisory.purchases" -> "Compras y Gastos";
             case "module.advisory.labor" -> "Laboral clientes";
             case "module.advisory.tax" -> "Fiscal clientes";
             case "module.advisory.reports" -> "Informes asesoria";
@@ -11364,6 +11364,10 @@ public class BenjagestUiApplication extends Application {
             case "accounting.col.dup" -> "Dup.";
             case "client.tab.sales_recurring" -> "Recurring sales";
             case "client.tab.expenses_recurring" -> "Recurring expenses";
+            case "recurring.badge.created_by_advisor" -> "Created by your advisor";
+            case "recurring.badge.created_by_advisor.tip" ->
+                    "Your advisor set up this template for you. "
+                    + "It runs automatically in your books.";
             case "billing.tab.recurring" -> "Recurring sales";
             case "purchases.tab.expenses" -> "Purchases & Expenses";
             case "purchases.tab.recurring" -> "Recurring expenses";
@@ -11895,6 +11899,10 @@ public class BenjagestUiApplication extends Application {
             case "accounting.col.dup" -> "Dup.";
             case "client.tab.sales_recurring" -> "Ventas recurrentes";
             case "client.tab.expenses_recurring" -> "Gastos recurrentes";
+            case "recurring.badge.created_by_advisor" -> "Creada por tu asesoría";
+            case "recurring.badge.created_by_advisor.tip" ->
+                    "Esta plantilla la configuró tu asesoría para ti. "
+                    + "Se ejecuta automáticamente en tu contabilidad.";
             case "billing.tab.recurring" -> "Ventas recurrentes";
             case "purchases.tab.expenses" -> "Compras y Gastos";
             case "purchases.tab.recurring" -> "Gastos recurrentes";
@@ -15436,11 +15444,48 @@ public class BenjagestUiApplication extends Application {
         table.getStyleClass().add("data-table");
         table.setPlaceholder(new Label(t("recurring.placeholder.empty")));
 
-        javafx.scene.control.TableColumn<com.benjagest.ui.model.AccountingModels.RecurringTask, String> colName =
+        javafx.scene.control.TableColumn<com.benjagest.ui.model.AccountingModels.RecurringTask, com.benjagest.ui.model.AccountingModels.RecurringTask> colName =
                 new javafx.scene.control.TableColumn<>(t("recurring.col.name"));
-        colName.setCellValueFactory(c -> new javafx.beans.property.SimpleStringProperty(
-                c.getValue() == null ? "" : c.getValue().name()));
-        colName.setPrefWidth(220);
+        colName.setCellValueFactory(c -> new javafx.beans.property.SimpleObjectProperty<>(c.getValue()));
+        colName.setCellFactory(c -> new javafx.scene.control.TableCell<>() {
+            @Override protected void updateItem(
+                    com.benjagest.ui.model.AccountingModels.RecurringTask v,
+                    boolean empty) {
+                super.updateItem(v, empty);
+                if (empty || v == null) {
+                    setText(null);
+                    setGraphic(null);
+                    return;
+                }
+                Label nameLabel = new Label(v.name() == null ? "" : v.name());
+                nameLabel.getStyleClass().add("table-cell-text");
+                // Slice 3R — Mostrar badge "Creada por tu asesoría"
+                // solo cuando el viewer NO es la asesoría (es decir,
+                // el empresario cliente abriendo SU app). Si el asesor
+                // está viendo la plantilla, no tiene sentido el badge
+                // porque la creó él mismo.
+                if (v.createdByAdvisor() && appMode != AppMode.ADVISORY) {
+                    Label badge = new Label(t("recurring.badge.created_by_advisor"));
+                    badge.getStyleClass().add("status-pill");
+                    badge.setStyle("-fx-background-color: #e0f2fe; "
+                            + "-fx-text-fill: #075985; -fx-padding: 1 6 1 6; "
+                            + "-fx-background-radius: 8; -fx-font-size: 10px;");
+                    javafx.scene.control.Tooltip tip = new javafx.scene.control.Tooltip(
+                            t("recurring.badge.created_by_advisor.tip"));
+                    tip.setStyle("-fx-background-color: #1f2937; -fx-text-fill: white;");
+                    javafx.scene.control.Tooltip.install(badge, tip);
+                    javafx.scene.layout.HBox row =
+                            new javafx.scene.layout.HBox(8, nameLabel, badge);
+                    row.setAlignment(javafx.geometry.Pos.CENTER_LEFT);
+                    setText(null);
+                    setGraphic(row);
+                } else {
+                    setText(v.name() == null ? "" : v.name());
+                    setGraphic(null);
+                }
+            }
+        });
+        colName.setPrefWidth(260);
 
         javafx.scene.control.TableColumn<com.benjagest.ui.model.AccountingModels.RecurringTask, String> colDesc =
                 new javafx.scene.control.TableColumn<>(t("recurring.col.description"));
