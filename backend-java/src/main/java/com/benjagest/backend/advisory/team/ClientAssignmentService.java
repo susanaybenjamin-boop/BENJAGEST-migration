@@ -310,6 +310,35 @@ public class ClientAssignmentService {
                 "client_assignment", id, "OK", null);
     }
 
+    /**
+     * Slice 5C — Lista los miembros activos de la asesoría logueada
+     * (user_accounts ∪ company_memberships). Lo consume la UI del módulo
+     * Equipo para poblar el combo "Asignar a:". Solo OWNER puede ver
+     * el listado completo.
+     */
+    public List<TeamMember> listAdvisoryMembers() {
+        String advisoryId = tenantContext.getCurrentCompanyId();
+        requireOwner(advisoryId);
+        return jdbcTemplate.query("""
+                SELECT u.id, u.email, u.display_name, m.role_name,
+                       u.global_role, u.active
+                  FROM company_memberships m
+                  JOIN user_accounts u ON u.id = m.user_id
+                 WHERE m.company_id = ?
+                   AND m.active = TRUE
+                   AND u.active = TRUE
+                 ORDER BY (m.role_name = 'OWNER') DESC,
+                          u.display_name ASC
+                """, (rs, i) -> new TeamMember(
+                rs.getString("id"),
+                rs.getString("email"),
+                rs.getString("display_name"),
+                rs.getString("role_name"),
+                rs.getString("global_role"),
+                rs.getBoolean("active")
+        ), advisoryId);
+    }
+
     // ================================================================
     //  Helpers
     // ================================================================
@@ -417,6 +446,20 @@ public class ClientAssignmentService {
     public record AssignmentWithModules(
             ClientAssignment assignment,
             List<String> moduleSlugs) {}
+
+    /**
+     * Slice 5C — Miembro de la asesoría visible en la pestaña
+     * "Empleados" del módulo Equipo. {@code roleName} es el rol en
+     * company_memberships (OWNER, ADMIN, ACCOUNTANT…), no el rol que
+     * después se le asigne en cada cliente concreto.
+     */
+    public record TeamMember(
+            String userId,
+            String email,
+            String displayName,
+            String roleName,
+            String globalRole,
+            boolean active) {}
 
     /** Serializa una List<String> a JSON inline para el details del audit. */
     private static String jsonArray(List<String> items) {

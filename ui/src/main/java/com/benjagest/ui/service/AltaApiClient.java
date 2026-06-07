@@ -271,6 +271,178 @@ public class AltaApiClient {
     }
 
     // ============================================================
+    // EQUIPO / Reparto de clientes — Slice 5C
+    //   /api/advisory/team/assignments
+    // ============================================================
+
+    /**
+     * Slice 5C — Lista miembros activos de la asesoría logueada
+     * (employees del equipo). Solo OWNER. Backend: 403 si no es OWNER.
+     */
+    public List<com.benjagest.ui.model.TeamMember> listTeamMembers()
+            throws IOException, InterruptedException {
+        HttpResponse<String> r = send(req(baseUrl
+                + "/advisory/team/assignments/members").GET());
+        if (r.statusCode() < 200 || r.statusCode() >= 300) {
+            throw new IOException("HTTP " + r.statusCode() + ": " + r.body());
+        }
+        return parseObjects(r.body(), "userId", obj -> new com.benjagest.ui.model.TeamMember(
+                textField(obj, "userId"),
+                textField(obj, "email"),
+                textField(obj, "displayName"),
+                textField(obj, "roleName"),
+                textField(obj, "globalRole"),
+                boolField(obj, "active")
+        ));
+    }
+
+    public List<com.benjagest.ui.model.TeamAssignment> listTeamAssignmentsWithModules()
+            throws IOException, InterruptedException {
+        HttpResponse<String> r = send(req(baseUrl
+                + "/advisory/team/assignments/with-modules").GET());
+        if (r.statusCode() < 200 || r.statusCode() >= 300) {
+            throw new IOException("HTTP " + r.statusCode() + ": " + r.body());
+        }
+        // El backend devuelve [{"assignment": {...}, "moduleSlugs": [...]}]
+        return parseObjects(r.body(), "moduleSlugs", obj -> {
+            String aBlock = extractJsonObject(obj, "assignment");
+            if (aBlock == null) return null;
+            List<String> mods = extractJsonStringArray(obj, "moduleSlugs");
+            return new com.benjagest.ui.model.TeamAssignment(
+                    textField(aBlock, "id"),
+                    textField(aBlock, "advisoryCompanyId"),
+                    textField(aBlock, "employeeUserId"),
+                    textField(aBlock, "clientCompanyId"),
+                    textField(aBlock, "roleInClient"),
+                    boolField(aBlock, "active"),
+                    textField(aBlock, "delegatedToUserId"),
+                    parseLocalDate(textField(aBlock, "delegatedFrom")),
+                    parseLocalDate(textField(aBlock, "delegatedUntil")),
+                    textField(aBlock, "notes"),
+                    mods == null ? List.of() : mods);
+        });
+    }
+
+    /**
+     * Slice 5C — Asignar en lote. {@code clientIds} marcados con
+     * checkbox + {@code moduleSlugs} elegidos en el dialog.
+     */
+    public String bulkAssignClients(String employeeUserId,
+                                     List<String> clientIds,
+                                     String roleInClient,
+                                     List<String> moduleSlugs,
+                                     String notes)
+            throws IOException, InterruptedException {
+        StringBuilder b = new StringBuilder("{");
+        b.append("\"employeeUserId\":").append(jsonString(employeeUserId));
+        b.append(",\"clientCompanyIds\":").append(jsonArrayOfStrings(clientIds));
+        if (roleInClient != null && !roleInClient.isBlank()) {
+            b.append(",\"roleInClient\":").append(jsonString(roleInClient));
+        }
+        b.append(",\"moduleSlugs\":").append(jsonArrayOfStrings(moduleSlugs));
+        if (notes != null && !notes.isBlank()) {
+            b.append(",\"notes\":").append(jsonString(notes));
+        }
+        b.append('}');
+        HttpResponse<String> r = send(req(baseUrl
+                + "/advisory/team/assignments/bulk")
+                .POST(java.net.http.HttpRequest.BodyPublishers.ofString(b.toString()))
+                .header("Content-Type", "application/json"));
+        if (r.statusCode() < 200 || r.statusCode() >= 300) {
+            throw new IOException("HTTP " + r.statusCode() + ": " + r.body());
+        }
+        return r.body();
+    }
+
+    public void deleteTeamAssignment(String id)
+            throws IOException, InterruptedException {
+        HttpResponse<String> r = send(req(baseUrl
+                + "/advisory/team/assignments/" + id).DELETE());
+        if (r.statusCode() < 200 || r.statusCode() >= 300) {
+            throw new IOException("HTTP " + r.statusCode() + ": " + r.body());
+        }
+    }
+
+    /**
+     * Slice 5C — Módulos visibles para el user actual en un cliente.
+     * Devuelve ["*"] si la lista es abierta (todos los módulos).
+     */
+    public List<String> myModulesInClient(String clientId)
+            throws IOException, InterruptedException {
+        HttpResponse<String> r = send(req(baseUrl
+                + "/advisory/team/assignments/mine/modules/" + clientId).GET());
+        if (r.statusCode() < 200 || r.statusCode() >= 300) {
+            return List.of("*"); // fallback seguro: ve todo
+        }
+        List<String> mods = extractJsonStringArray(r.body(), "moduleSlugs");
+        return mods == null ? List.of("*") : mods;
+    }
+
+    // ----- helpers JSON minimalistas para Slice 5C -----
+
+    private static String jsonString(String raw) {
+        if (raw == null) return "null";
+        return "\"" + raw.replace("\\", "\\\\").replace("\"", "\\\"") + "\"";
+    }
+
+    private static String jsonArrayOfStrings(List<String> items) {
+        if (items == null || items.isEmpty()) return "[]";
+        StringBuilder sb = new StringBuilder("[");
+        for (int i = 0; i < items.size(); i++) {
+            if (i > 0) sb.append(',');
+            sb.append(jsonString(items.get(i)));
+        }
+        sb.append(']');
+        return sb.toString();
+    }
+
+    /** Extrae el bloque JSON anidado bajo {@code "key": {...}}. */
+    private static String extractJsonObject(String json, String key) {
+        if (json == null) return null;
+        int idx = json.indexOf("\"" + key + "\"");
+        if (idx < 0) return null;
+        int start = json.indexOf('{', idx);
+        if (start < 0) return null;
+        int depth = 0;
+        for (int i = start; i < json.length(); i++) {
+            char c = json.charAt(i);
+            if (c == '{') depth++;
+            else if (c == '}') {
+                depth--;
+                if (depth == 0) return json.substring(start, i + 1);
+            }
+        }
+        return null;
+    }
+
+    /** Extrae array de strings bajo {@code "key": ["a","b"]}. */
+    private static List<String> extractJsonStringArray(String json, String key) {
+        if (json == null) return null;
+        int idx = json.indexOf("\"" + key + "\"");
+        if (idx < 0) return null;
+        int start = json.indexOf('[', idx);
+        if (start < 0) return null;
+        int end = json.indexOf(']', start);
+        if (end < 0) return null;
+        String body = json.substring(start + 1, end);
+        if (body.isBlank()) return List.of();
+        List<String> out = new java.util.ArrayList<>();
+        for (String tok : body.split(",")) {
+            String t = tok.trim();
+            if (t.startsWith("\"") && t.endsWith("\"") && t.length() >= 2) {
+                out.add(t.substring(1, t.length() - 1));
+            }
+        }
+        return out;
+    }
+
+    private static java.time.LocalDate parseLocalDate(String s) {
+        if (s == null || s.isBlank()) return null;
+        try { return java.time.LocalDate.parse(s); }
+        catch (Exception ex) { return null; }
+    }
+
+    // ============================================================
     // MODELOS AEAT (/api/tax)
     // ============================================================
 

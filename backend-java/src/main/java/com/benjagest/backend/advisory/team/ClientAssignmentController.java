@@ -63,6 +63,16 @@ public class ClientAssignmentController {
     }
 
     /**
+     * Slice 5C — Lista miembros activos de la asesoría logueada para
+     * poblar el combo "Asignar a:" en la UI del módulo Equipo. Solo
+     * OWNER.
+     */
+    @GetMapping("/members")
+    public List<ClientAssignmentService.TeamMember> members() {
+        return service.listAdvisoryMembers();
+    }
+
+    /**
      * Slice 5B — Módulos que el user actual ve en {@code clientId}.
      * El sidebar del cliente filtra los items por este resultado.
      * Si la lista contiene "*" → mostrar todo el sidebar normal.
