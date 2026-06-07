@@ -540,6 +540,29 @@ public class RecurringTaskService {
             throw new IllegalStateException("Payload sin líneas suficientes.");
         }
         List<ManualJournalEntryService.LineRequest> lines = new ArrayList<>();
+        // Slice 3Y — Guard: detectar líneas con debe=0 Y haber=0 ANTES
+        // de pasarlas al ManualJournalEntryService, que devolvería el
+        // mensaje genérico "Línea X: la línea está vacía". El asesor
+        // no sabe qué hacer con ese mensaje. Aquí explicamos que el
+        // payload se guardó con importe 0 (típicamente porque el
+        // JavaFX Spinner no committeó el texto antes del save — fix
+        // 3M de la UI; las recurrentes creadas antes de ese fix pueden
+        // tener este problema). La acción correcta: editar la
+        // recurrente y rellenar el campo Importe.
+        BigDecimal totalDebit = BigDecimal.ZERO;
+        BigDecimal totalCredit = BigDecimal.ZERO;
+        for (Map<String, Object> l : rawLines) {
+            BigDecimal d = bd(l.get("debit"));
+            BigDecimal c = bd(l.get("credit"));
+            if (d != null) totalDebit = totalDebit.add(d);
+            if (c != null) totalCredit = totalCredit.add(c);
+        }
+        if (totalDebit.signum() == 0 && totalCredit.signum() == 0) {
+            throw new IllegalStateException(
+                    "La plantilla '" + task.name() + "' se guardó con importe 0. "
+                  + "Edítala (doble click en el listado de recurrentes) y "
+                  + "rellena el campo Importe antes de ejecutarla.");
+        }
         for (Map<String, Object> l : rawLines) {
             // El payload puede traer accountId (UUID directo, formato
             // legacy) o accountCode (código PGC tipo "629", "572" —
