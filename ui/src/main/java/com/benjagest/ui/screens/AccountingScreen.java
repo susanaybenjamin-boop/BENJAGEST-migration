@@ -87,12 +87,18 @@ public class AccountingScreen {
     public Node buildView() {
         TabPane tabs = new TabPane();
         tabs.setTabClosingPolicy(TabPane.TabClosingPolicy.UNAVAILABLE);
+        // Slice 3O — Eliminado el tab "Recurrentes" de Contabilidad.
+        // Las plantillas recurrentes viven en su sitio natural:
+        //   - Ventas recurrentes → sub-tab de Facturación
+        //   - Gastos recurrentes (con factura o sin) → sub-tab de
+        //     Compras y Gastos
+        // El asesor accede ahí, no desde Contabilidad. Mantener ambas
+        // entradas duplicaba la funcionalidad y confundía.
         tabs.getTabs().addAll(
                 new Tab(tt.apply("accounting.tab.pending"), buildPendingTab()),
                 new Tab(tt.apply("accounting.tab.diary"), buildDiaryTab()),
                 new Tab(tt.apply("accounting.tab.manual"), buildManualTab()),
-                new Tab(tt.apply("accounting.tab.rules"), buildRulesTab()),
-                new Tab(tt.apply("accounting.tab.recurring"), buildRecurringTab())
+                new Tab(tt.apply("accounting.tab.rules"), buildRulesTab())
         );
         VBox.setVgrow(tabs, Priority.ALWAYS);
         VBox root = new VBox(tabs);

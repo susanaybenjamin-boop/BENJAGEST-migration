@@ -148,7 +148,31 @@ public class ManualJournalEntryService {
     // ====================================================================
 
     @Transactional
+    /**
+     * Slice 3O — Variante de createDraft pensada para que los
+     * recurrentes JOURNAL_ENTRY marquen el asiento con
+     * {@code auto_proposed=TRUE} y un {@code source_type} reconocible.
+     * Sin esto el sub-tab "Por validar" de Contabilidad (que filtra
+     * por autoProposed=TRUE) no mostraba los DRAFT generados por
+     * el cron y el asesor pensaba que no se había creado nada.
+     *
+     * @param sourceTypeTag  marca de origen (ej. "RECURRING_TASK")
+     * @param sourceId       id de la tarea recurrente que lo generó
+     */
+    public ManualEntryView createDraftAutoProposed(ManualEntryRequest req,
+                                                     String sourceTypeTag,
+                                                     String sourceId) {
+        return createDraftInternal(req, true, sourceTypeTag, sourceId);
+    }
+
     public ManualEntryView createDraft(ManualEntryRequest req) {
+        return createDraftInternal(req, false, null, null);
+    }
+
+    private ManualEntryView createDraftInternal(ManualEntryRequest req,
+                                                  boolean autoProposed,
+                                                  String sourceTypeTag,
+                                                  String sourceId) {
         validateRequest(req);
         String companyId = tenantContext.getCurrentCompanyId();
         fiscalGuard.requireOpenForDate(req.entryDate(), "crear asiento contable");
@@ -170,12 +194,14 @@ public class ManualJournalEntryService {
                     id, company_id, fiscal_year_id, entry_number,
                     entry_date, concept, source_type, source_id,
                     status, reviewed, auto_proposed, created_by
-                ) VALUES (?, ?, ?, ?, ?, ?, NULL, NULL, ?, FALSE, FALSE, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, FALSE, ?, ?)
                 """,
                 entryId, companyId, fiscalYearId, entryNumber,
                 Date.valueOf(req.entryDate()),
                 truncate(req.concept(), 240),
+                sourceTypeTag, sourceId,
                 postingNow ? "POSTED" : "DRAFT",
+                autoProposed,
                 userId);
         insertLines(entryId, req.lines(), companyId);
         return get(entryId);

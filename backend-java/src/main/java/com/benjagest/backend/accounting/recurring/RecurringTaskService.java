@@ -493,10 +493,16 @@ public class RecurringTaskService {
                     bd(l.get("debit")), bd(l.get("credit"))));
         }
         boolean postNow = Boolean.TRUE.equals(p.get("postNow"));
-        ManualJournalEntryService.ManualEntryView v = manualEntries.createDraft(
+        // Slice 3O — marcamos auto_proposed=TRUE y source_type para que
+        // el asiento aparezca en "Por validar" del módulo Contabilidad
+        // y el asesor sepa que viene del cron de recurrentes (no es
+        // un asiento manual que se haya escapado validar).
+        ManualJournalEntryService.ManualEntryView v = manualEntries.createDraftAutoProposed(
                 new ManualJournalEntryService.ManualEntryRequest(scheduledDate,
                         expandPlaceholders((String) p.get("concept"), scheduledDate),
-                        lines, postNow));
+                        lines, postNow),
+                "RECURRING_TASK",
+                task.id());
         return v.id();
     }
 
