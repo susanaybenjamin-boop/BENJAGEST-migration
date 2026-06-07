@@ -80,6 +80,26 @@ public class RecurringTaskController {
                 candidateService.alreadyCovers(kind, partyName, amount));
     }
 
+    /**
+     * Slice 3S-3 — Check determinista (no heurístico) de si una
+     * factura concreta fue generada por el cron de recurrentes. Mira
+     * recurring_task_runs.generated_id directamente, así que es 100%
+     * fiable: si esta factura nació de una plantilla, no hay que
+     * volver a preguntar "¿hacer recurrente?" al empresario al
+     * validarla.
+     *
+     * <p>Sustituye/complementa al matching por NIF+importe que puede
+     * fallar cuando el importe cambia (subida del alquiler) o cuando
+     * el cliente se renombra en la base de datos.
+     */
+    @GetMapping("/{kind}/from-recurring/{generatedId}")
+    public Map<String, Object> isFromRecurring(
+            @PathVariable("kind") String kind,
+            @PathVariable("generatedId") String generatedId) {
+        boolean fromRecurring = service.isGeneratedIdFromRecurring(generatedId);
+        return Map.of("fromRecurring", fromRecurring);
+    }
+
     @GetMapping
     public List<RecurringTaskService.RecurringTaskView> list(
             @RequestParam(value = "kind", required = false) String kind,

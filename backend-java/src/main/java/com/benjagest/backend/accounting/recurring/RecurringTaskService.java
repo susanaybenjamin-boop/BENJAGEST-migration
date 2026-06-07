@@ -3,6 +3,8 @@ package com.benjagest.backend.accounting.recurring;
 import com.benjagest.backend.accounting.AccountingTemplateService;
 import com.benjagest.backend.accounting.LoanService;
 import com.benjagest.backend.accounting.ManualJournalEntryService;
+import com.benjagest.backend.accounting.TerceroAccountResolverService;
+import com.benjagest.backend.accounting.TerceroAccountResolverService.TerceroType;
 import com.benjagest.backend.auth.CurrentUserService;
 import com.benjagest.backend.billing.invoices.InvoiceLineInput;
 import com.benjagest.backend.billing.invoices.InvoiceUpsertRequest;
@@ -63,6 +65,12 @@ public class RecurringTaskService {
     private final LoanService loans;
     private final SalesInvoiceService salesService;
     /**
+     * Slice 3S — Para los kinds ACCOUNTING_INCOME / ACCOUNTING_EXPENSE
+     * (recurrentes contables puros sin pasar por SalesInvoiceService).
+     * Resuelve la sub-cuenta del tercero (430.XXX o 410.XXX) o la crea.
+     */
+    private final TerceroAccountResolverService terceroResolver;
+    /**
      * Slice 3K — TransactionTemplate REQUIRES_NEW para aislar cada
      * sub-runner (runJournalEntry, runPurchase, runSalesInvoice…) en
      * su propia transacción. Sin esto, una excepción dentro de un
@@ -81,6 +89,7 @@ public class RecurringTaskService {
                                  AccountingTemplateService templates,
                                  LoanService loans,
                                  SalesInvoiceService salesService,
+                                 TerceroAccountResolverService terceroResolver,
                                  org.springframework.transaction.PlatformTransactionManager txManager) {
         this.jdbcTemplate = jdbcTemplate;
         this.tenantContext = tenantContext;
@@ -92,6 +101,7 @@ public class RecurringTaskService {
         this.templates = templates;
         this.loans = loans;
         this.salesService = salesService;
+        this.terceroResolver = terceroResolver;
         this.isolatedTx = new org.springframework.transaction.support.TransactionTemplate(txManager);
         this.isolatedTx.setPropagationBehavior(
                 org.springframework.transaction.TransactionDefinition.PROPAGATION_REQUIRES_NEW);
@@ -208,6 +218,21 @@ public class RecurringTaskService {
         return jdbcTemplate.query(sql.toString(), this::mapTask, args.toArray());
     }
 
+    /**
+     * Slice 3S-3 — TRUE si el {@code generatedId} (id de venta, compra
+     * o asiento) aparece como resultado de algún run del cron. Lo usa
+     * la UI para suprimir el prompt "¿hacer recurrente?" tras validar
+     * una factura que el propio cron generó.
+     */
+    public boolean isGeneratedIdFromRecurring(String generatedId) {
+        if (generatedId == null || generatedId.isBlank()) return false;
+        Integer count = jdbcTemplate.queryForObject("""
+                SELECT COUNT(*) FROM recurring_task_runs
+                 WHERE generated_id = ? AND company_id = ?
+                """, Integer.class, generatedId, tenantContext.getCurrentCompanyId());
+        return count != null && count > 0;
+    }
+
     public List<RunView> listRuns(String taskId, int limit) {
         return jdbcTemplate.query("""
                 SELECT id, recurring_task_id, run_at, scheduled_date, status,
@@ -308,6 +333,26 @@ public class RecurringTaskService {
                         return runSalesInvoice(task, scheduledDate);
                     });
                     generatedKind = "SALES_INVOICE";
+                }
+                // Slice 3S — Recurrentes contables puros (sin factura
+                // legal). Pensados para shadow companies donde la
+                // asesoría lleva la contabilidad pero el cliente no
+                // factura desde BENJAGEST. Generan asiento DRAFT con
+                // toda la metadata fiscal (base/IVA/retención/tercero)
+                // para que el 303/347/190 los cuadre correctamente.
+                case "ACCOUNTING_INCOME" -> {
+                    generatedId = isolatedTx.execute(s -> {
+                        tenantContext.setCurrentCompanyId(capturedCompanyId);
+                        return runAccountingIncome(task, scheduledDate);
+                    });
+                    generatedKind = "JOURNAL_ENTRY";
+                }
+                case "ACCOUNTING_EXPENSE" -> {
+                    generatedId = isolatedTx.execute(s -> {
+                        tenantContext.setCurrentCompanyId(capturedCompanyId);
+                        return runAccountingExpense(task, scheduledDate);
+                    });
+                    generatedKind = "JOURNAL_ENTRY";
                 }
                 default -> {
                     status = "SKIPPED";
@@ -525,6 +570,155 @@ public class RecurringTaskService {
                 "RECURRING_TASK",
                 task.id());
         return v.id();
+    }
+
+    /**
+     * Slice 3S — Ingreso recurrente puro (sin factura).
+     * Asiento de venta tipo:
+     * <pre>
+     *   DEBE  430.tercero   (base + iva - retencion)
+     *   HABER counterAccount (base)                — típicamente 705
+     *   HABER 477 IVA repercutido (cuotaIva)       — solo si vat > 0
+     *   DEBE  4751 HP retenedora (cuotaRet)        — solo si ret > 0
+     * </pre>
+     * Resuelve la 430.XXX del tercero por NIF usando el resolver.
+     * Si no hay NIF (cliente anónimo) usa la 430 padre.
+     */
+    private String runAccountingIncome(RecurringTaskView task, LocalDate scheduledDate) {
+        Map<String, Object> p = readPayload(task);
+        String partyNif = (String) p.get("partyNif");
+        String partyName = (String) p.get("partyName");
+        if (partyName == null || partyName.isBlank()) {
+            throw new IllegalStateException("Falta partyName en el payload del ingreso recurrente.");
+        }
+        BigDecimal base = bd(p.get("baseAmount"));
+        BigDecimal vatPct = bd(p.get("vatPercent"));
+        BigDecimal retPct = bd(p.get("retentionPercent"));
+        if (base == null || base.signum() <= 0) {
+            throw new IllegalStateException("baseAmount obligatorio y > 0.");
+        }
+        if (vatPct == null) vatPct = BigDecimal.ZERO;
+        if (retPct == null) retPct = BigDecimal.ZERO;
+        BigDecimal cuotaIva = base.multiply(vatPct).movePointLeft(2)
+                .setScale(2, java.math.RoundingMode.HALF_UP);
+        BigDecimal cuotaRet = base.multiply(retPct).movePointLeft(2)
+                .setScale(2, java.math.RoundingMode.HALF_UP);
+        BigDecimal total = base.add(cuotaIva).subtract(cuotaRet);
+
+        String counterCode = blank((String) p.get("counterAccountCode"));
+        if (counterCode == null) counterCode = "705"; // prestación de servicios
+        String counterId = resolveAccountIdByCode(counterCode);
+        String tercero = resolveTerceroAccountId(TerceroType.CLIENTE, partyNif, partyName, "430");
+        String concept = expandPlaceholders((String) p.get("concept"), scheduledDate);
+        if (concept == null || concept.isBlank()) concept = task.name();
+        List<ManualJournalEntryService.LineRequest> lines = new ArrayList<>();
+        // 1) Cliente al debe por el total a cobrar
+        lines.add(new ManualJournalEntryService.LineRequest(
+                tercero, partyName + " — " + concept, total, BigDecimal.ZERO));
+        // 2) Ingreso al haber
+        lines.add(new ManualJournalEntryService.LineRequest(
+                counterId, concept, BigDecimal.ZERO, base));
+        // 3) IVA repercutido al haber (si hay)
+        if (cuotaIva.signum() > 0) {
+            String ivaId = resolveAccountIdByCode("477");
+            lines.add(new ManualJournalEntryService.LineRequest(
+                    ivaId, "IVA repercutido " + vatPct.toPlainString() + "%",
+                    BigDecimal.ZERO, cuotaIva));
+        }
+        // 4) Retención al debe (si hay) — el cliente nos retiene
+        if (cuotaRet.signum() > 0) {
+            String retId = resolveAccountIdByCode("4751");
+            lines.add(new ManualJournalEntryService.LineRequest(
+                    retId, "Retención IRPF " + retPct.toPlainString() + "%",
+                    cuotaRet, BigDecimal.ZERO));
+        }
+        boolean postNow = Boolean.TRUE.equals(p.get("postNow"));
+        ManualJournalEntryService.ManualEntryView v = manualEntries.createDraftAutoProposed(
+                new ManualJournalEntryService.ManualEntryRequest(scheduledDate, concept, lines, postNow),
+                "RECURRING_ACCOUNTING",
+                task.id());
+        return v.id();
+    }
+
+    /**
+     * Slice 3S — Gasto recurrente puro (sin factura).
+     * Asiento de compra tipo:
+     * <pre>
+     *   DEBE  counterAccount (base)                — típicamente 629/621/623
+     *   DEBE  472 IVA soportado (cuotaIva)         — solo si vat > 0
+     *   HABER 4751 HP retenedora (cuotaRet)        — solo si ret > 0 (al pagar a un autónomo)
+     *   HABER 410.tercero    (base + iva - retencion)
+     * </pre>
+     */
+    private String runAccountingExpense(RecurringTaskView task, LocalDate scheduledDate) {
+        Map<String, Object> p = readPayload(task);
+        String partyNif = (String) p.get("partyNif");
+        String partyName = (String) p.get("partyName");
+        if (partyName == null || partyName.isBlank()) {
+            throw new IllegalStateException("Falta partyName en el payload del gasto recurrente.");
+        }
+        BigDecimal base = bd(p.get("baseAmount"));
+        BigDecimal vatPct = bd(p.get("vatPercent"));
+        BigDecimal retPct = bd(p.get("retentionPercent"));
+        if (base == null || base.signum() <= 0) {
+            throw new IllegalStateException("baseAmount obligatorio y > 0.");
+        }
+        if (vatPct == null) vatPct = BigDecimal.ZERO;
+        if (retPct == null) retPct = BigDecimal.ZERO;
+        BigDecimal cuotaIva = base.multiply(vatPct).movePointLeft(2)
+                .setScale(2, java.math.RoundingMode.HALF_UP);
+        BigDecimal cuotaRet = base.multiply(retPct).movePointLeft(2)
+                .setScale(2, java.math.RoundingMode.HALF_UP);
+        BigDecimal total = base.add(cuotaIva).subtract(cuotaRet);
+
+        String counterCode = blank((String) p.get("counterAccountCode"));
+        if (counterCode == null) counterCode = "629"; // otros gastos
+        String counterId = resolveAccountIdByCode(counterCode);
+        String tercero = resolveTerceroAccountId(TerceroType.PROVEEDOR, partyNif, partyName, "410");
+        String concept = expandPlaceholders((String) p.get("concept"), scheduledDate);
+        if (concept == null || concept.isBlank()) concept = task.name();
+        List<ManualJournalEntryService.LineRequest> lines = new ArrayList<>();
+        // 1) Gasto al debe
+        lines.add(new ManualJournalEntryService.LineRequest(
+                counterId, concept, base, BigDecimal.ZERO));
+        // 2) IVA soportado al debe (si hay)
+        if (cuotaIva.signum() > 0) {
+            String ivaId = resolveAccountIdByCode("472");
+            lines.add(new ManualJournalEntryService.LineRequest(
+                    ivaId, "IVA soportado " + vatPct.toPlainString() + "%",
+                    cuotaIva, BigDecimal.ZERO));
+        }
+        // 3) Retención al haber (si hay) — nosotros retenemos al proveedor (autónomo)
+        if (cuotaRet.signum() > 0) {
+            String retId = resolveAccountIdByCode("4751");
+            lines.add(new ManualJournalEntryService.LineRequest(
+                    retId, "Retención IRPF practicada " + retPct.toPlainString() + "%",
+                    BigDecimal.ZERO, cuotaRet));
+        }
+        // 4) Proveedor al haber por el neto a pagar
+        lines.add(new ManualJournalEntryService.LineRequest(
+                tercero, partyName + " — " + concept, BigDecimal.ZERO, total));
+        boolean postNow = Boolean.TRUE.equals(p.get("postNow"));
+        ManualJournalEntryService.ManualEntryView v = manualEntries.createDraftAutoProposed(
+                new ManualJournalEntryService.ManualEntryRequest(scheduledDate, concept, lines, postNow),
+                "RECURRING_ACCOUNTING",
+                task.id());
+        return v.id();
+    }
+
+    /**
+     * Resuelve la sub-cuenta del tercero (430.XXX o 410.XXX). Si no hay
+     * NIF identificado o el resolver no devuelve cuenta, cae al código
+     * padre (430 o 410) como red de seguridad.
+     */
+    private String resolveTerceroAccountId(TerceroType type, String nif,
+                                            String name, String fallbackCode) {
+        try {
+            TerceroAccountResolverService.ResolvedAccount r =
+                    terceroResolver.getOrCreate(type, nif, name);
+            if (r != null && r.accountId() != null) return r.accountId();
+        } catch (Exception ignored) { /* cae al fallback */ }
+        return resolveAccountIdByCode(fallbackCode);
     }
 
     /**

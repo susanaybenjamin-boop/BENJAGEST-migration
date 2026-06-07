@@ -476,6 +476,19 @@ public class AccountingApiClient {
         return json != null && json.contains("\"covered\":true");
     }
 
+    /**
+     * Slice 3S-3 — Check determinista: ¿esta factura/asiento la generó
+     * el cron de recurrentes? Mira recurring_task_runs.generated_id, 100%
+     * fiable. Si TRUE, no preguntamos "¿hacer recurrente?" al validar.
+     */
+    public boolean isFromRecurring(String kind, String generatedId)
+            throws IOException, InterruptedException {
+        if (generatedId == null || generatedId.isBlank()) return false;
+        String path = "/accounting/recurring/" + kind + "/from-recurring/" + generatedId;
+        String json = get(path);
+        return json != null && json.contains("\"fromRecurring\":true");
+    }
+
     public List<RecurringCandidate> listRecurringCandidates(String kind, Integer windowDays)
             throws IOException, InterruptedException {
         String path = "/accounting/recurring/candidates?kind=" + kind
