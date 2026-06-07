@@ -11573,9 +11573,9 @@ public class BenjagestUiApplication extends Application {
             case "accounting.status.PENDING" -> "Pending";
             case "accounting.status.CANCELLED" -> "Cancelled";
             case "accounting.status.PROFORMA" -> "Proforma";
-            case "accounting.source_type.SALES_INVOICE" -> "Sales invoice";
+            case "accounting.source_type.SALES_INVOICE" -> "Sale";
             case "accounting.source_type.SALES_PDF_IMPORT" -> "Sales PDF import";
-            case "accounting.source_type.PURCHASE_INVOICE" -> "Purchase invoice";
+            case "accounting.source_type.PURCHASE_INVOICE" -> "Purchase";
             case "accounting.source_type.MANUAL" -> "Manual";
             case "accounting.source_type.BANK_MOVEMENT" -> "Bank movement";
             case "accounting.source_type.YEAR_CLOSE_REGULARIZATION" -> "Year-close regularization";
@@ -11586,6 +11586,7 @@ public class BenjagestUiApplication extends Application {
             case "accounting.source_type.ASSET_DISPOSAL" -> "Asset disposal";
             case "accounting.source_type.MANUAL_REVERSAL" -> "Reversal";
             case "accounting.source_type.RECURRING_TASK" -> "Recurring task";
+            case "accounting.source_type.RECURRING_ACCOUNTING" -> "Recurring accounting entry";
             case "accounting.col.name" -> "Name";
             case "accounting.col.rule_kind" -> "Rule kind";
             case "accounting.col.nif" -> "Tax ID";
@@ -12128,9 +12129,9 @@ public class BenjagestUiApplication extends Application {
             case "accounting.status.PENDING" -> "Pendiente";
             case "accounting.status.CANCELLED" -> "Cancelado";
             case "accounting.status.PROFORMA" -> "Proforma";
-            case "accounting.source_type.SALES_INVOICE" -> "Factura emitida";
+            case "accounting.source_type.SALES_INVOICE" -> "Venta";
             case "accounting.source_type.SALES_PDF_IMPORT" -> "Venta importada por PDF";
-            case "accounting.source_type.PURCHASE_INVOICE" -> "Factura recibida";
+            case "accounting.source_type.PURCHASE_INVOICE" -> "Compra";
             case "accounting.source_type.MANUAL" -> "Manual";
             case "accounting.source_type.BANK_MOVEMENT" -> "Movimiento bancario";
             case "accounting.source_type.YEAR_CLOSE_REGULARIZATION" -> "Regularización cierre";
@@ -12141,6 +12142,7 @@ public class BenjagestUiApplication extends Application {
             case "accounting.source_type.ASSET_DISPOSAL" -> "Baja inmovilizado";
             case "accounting.source_type.MANUAL_REVERSAL" -> "Contraasiento";
             case "accounting.source_type.RECURRING_TASK" -> "Recurrente";
+            case "accounting.source_type.RECURRING_ACCOUNTING" -> "Asiento recurrente";
             case "accounting.col.name" -> "Nombre";
             case "accounting.col.rule_kind" -> "Tipo de regla";
             case "accounting.col.nif" -> "NIF";
@@ -17740,11 +17742,34 @@ public class BenjagestUiApplication extends Application {
 
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
+        // Slice 3T — Botón "Hacer recurrente" para asientos de venta
+        // POSTED del cliente NO vinculado. Como aquí ya estamos dentro
+        // de la asesoría actuando como cliente shadow, openRecurring
+        // EditorFromInvoice redirigirá automáticamente al editor
+        // contable nuevo (ACCOUNTING_INCOME).
+        Button makeRecurringBtnSales = new Button(t("list.action.make_recurring"));
+        makeRecurringBtnSales.setGraphic(icon("fas-arrows-rotate"));
+        makeRecurringBtnSales.setDisable(true);
+        table.getSelectionModel().selectedItemProperty().addListener((o, ov, nv) -> {
+            boolean ok = nv != null && "POSTED".equalsIgnoreCase(nv.status());
+            makeRecurringBtnSales.setDisable(!ok);
+        });
+        makeRecurringBtnSales.setOnAction(ev -> {
+            var sel = table.getSelectionModel().getSelectedItem();
+            if (sel == null) return;
+            openRecurringEditorFromInvoice(
+                    "SALES_INVOICE",
+                    null,
+                    sel.concept(), // tampoco hay legalName, usamos concept como hint
+                    sel.totalDebit(),
+                    sel.entryDate());
+        });
+
         HBox filtersRow = new HBox(8,
                 new Label(t("client.filter.search")), search,
                 new Label(t("client.filter.status")), statusFilter,
                 new Label(t("client.filter.type")), typeFilter,
-                spacer, refresh, importBtn);
+                spacer, makeRecurringBtnSales, refresh, importBtn);
         filtersRow.setAlignment(Pos.CENTER_LEFT);
 
         com.benjagest.ui.support.RefreshBus.subscribe(
@@ -18346,13 +18371,44 @@ public class BenjagestUiApplication extends Application {
         importSalesPdfsBtn.getStyleClass().add("button-primary");
         importSalesPdfsBtn.setOnAction(e -> importSalesPdfsMulti());
 
+        // Slice 3T — Botón "Hacer recurrente" para facturas validadas
+        // del cliente. En cliente VINCULADO abre el editor SALES_INVOICE
+        // (con serie + VeriFactu del cliente). En cliente NO VINCULADO
+        // (que reusa este mismo tab en otro sitio) redirige al editor
+        // contable vía openRecurringEditorFromInvoice (Slice 3T).
+        Button makeRecurringBtnBilling = new Button(t("list.action.make_recurring"));
+        makeRecurringBtnBilling.setGraphic(icon("fas-arrows-rotate"));
+        makeRecurringBtnBilling.setDisable(true);
+        table.getSelectionModel().selectedItemProperty().addListener((o, ov, nv) -> {
+            boolean onePosted = nv != null
+                    && ("POSTED".equalsIgnoreCase(nv.status())
+                        || "VALIDATED".equalsIgnoreCase(nv.status()));
+            makeRecurringBtnBilling.setDisable(!onePosted);
+        });
+        makeRecurringBtnBilling.setOnAction(ev -> {
+            var sel = table.getSelectionModel().getSelectedItem();
+            if (sel == null) return;
+            LocalDate invDate = null;
+            try {
+                if (sel.invoiceDate() != null && !sel.invoiceDate().isBlank()) {
+                    invDate = LocalDate.parse(sel.invoiceDate());
+                }
+            } catch (Exception ignored) {}
+            openRecurringEditorFromInvoice(
+                    "SALES_INVOICE",
+                    null, // no tenemos NIF en SalesInvoiceSummary
+                    sel.customerLegalName(),
+                    sel.total(),
+                    invDate);
+        });
+
         Region clientBillingSpacer = new Region();
         HBox.setHgrow(clientBillingSpacer, Priority.ALWAYS);
         HBox actions = new HBox(8,
                 new Label(t("client.filter.search")), search,
                 new Label(t("client.filter.status")), statusFilter,
                 new Label(t("client.filter.type")), typeFilter,
-                clientBillingSpacer, refresh, importSalesPdfsBtn);
+                clientBillingSpacer, makeRecurringBtnBilling, refresh, importSalesPdfsBtn);
         actions.setAlignment(Pos.CENTER_LEFT);
 
         com.benjagest.ui.support.RefreshBus.subscribe(

@@ -323,8 +323,14 @@ public class AccountingScreen {
         installStatusCellFactory(statusFilter);
         sourceFilter = new ComboBox<>(FXCollections.observableArrayList(
                 "", "MANUAL", "SALES_INVOICE", "PURCHASE_INVOICE",
-                "BANK_MOVEMENT", "YEAR_CLOSE_REGULARIZATION",
-                "YEAR_CLOSE_CLOSING", "LOAN_INSTALLMENT", "ASSET_DEPRECIATION"));
+                "SALES_PDF_IMPORT", "BANK_MOVEMENT",
+                "YEAR_CLOSE_REGULARIZATION", "YEAR_CLOSE_CLOSING",
+                "LOAN_INSTALLMENT", "ASSET_DEPRECIATION",
+                "ASSET_ACQUISITION", "ASSET_DISPOSAL",
+                "MANUAL_REVERSAL",
+                // Slice 3T fix — los kinds del cron de recurrentes
+                // ahora son seleccionables en el filtro de Origen.
+                "RECURRING_TASK", "RECURRING_ACCOUNTING"));
         installSourceCellFactory(sourceFilter);
 
         // Búsqueda libre — filtra por texto que aparezca en concepto, nº
