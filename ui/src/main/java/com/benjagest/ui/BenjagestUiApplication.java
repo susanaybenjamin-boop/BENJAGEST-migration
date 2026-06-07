@@ -15567,6 +15567,97 @@ public class BenjagestUiApplication extends Application {
     }
 
     /**
+     * Slice 3H-5 — ComboBox editable con la lista de cuentas habituales
+     * para gastos sin factura. Etiquetas en lenguaje natural seguidas
+     * del código PGC, ej.: "Cuota autónomo TGSS  ·  642". El asesor
+     * que prefiera escribir el código directamente también puede.
+     *
+     * <p>Cubre los gastos típicos del autónomo y de la pyme:
+     * <ul>
+     *   <li>SS autónomo (642) y empleados (640/641/642)</li>
+     *   <li>Asesoría / gestoría (623)</li>
+     *   <li>Alquileres (621)</li>
+     *   <li>Suministros: luz, agua, gas, internet (628)</li>
+     *   <li>Comisiones bancarias (626)</li>
+     *   <li>Material oficina, suscripciones (629)</li>
+     *   <li>Seguros (625)</li>
+     *   <li>Servicios profesionales independientes (623)</li>
+     *   <li>Reparaciones y conservación (622)</li>
+     *   <li>Transportes (624)</li>
+     *   <li>Publicidad (627)</li>
+     *   <li>Tributos AEAT (modelo 130/303/IRPF retenciones)</li>
+     *   <li>Intereses de préstamo (662) — el principal no es gasto,
+     *       cancela la deuda 170</li>
+     * </ul>
+     */
+    private javafx.scene.control.ComboBox<String> buildExpenseAccountCombo() {
+        javafx.scene.control.ComboBox<String> cb = new javafx.scene.control.ComboBox<>();
+        cb.setEditable(true);
+        cb.setPrefWidth(420);
+        cb.getItems().addAll(
+                "Cuota autónomo TGSS  ·  642",
+                "SS empresa (Seg. Social a cargo de la empresa)  ·  642",
+                "Sueldos y salarios  ·  640",
+                "Asesoría / gestoría / abogados  ·  623",
+                "Servicios profesionales independientes  ·  623",
+                "Alquiler oficina / local  ·  621",
+                "Reparaciones y conservación  ·  622",
+                "Transportes  ·  624",
+                "Seguros (responsabilidad civil, multirriesgo, salud…)  ·  625",
+                "Comisiones bancarias  ·  626",
+                "Publicidad y propaganda  ·  627",
+                "Suministros (luz, agua, gas, internet, teléfono)  ·  628",
+                "Material de oficina  ·  629",
+                "Suscripciones a software (SaaS)  ·  629",
+                "Otros servicios externos  ·  629",
+                "Tributos no deducibles  ·  631",
+                "Tributos deducibles  ·  634",
+                "Retención IRPF empleados (Modelo 111)  ·  4751",
+                "Pago fraccionado IRPF (Modelo 130)  ·  473",
+                "IVA a ingresar (Modelo 303)  ·  4750",
+                "Intereses de préstamo  ·  662",
+                "Amortización de inmovilizado material  ·  681",
+                "Amortización de inmovilizado intangible  ·  680",
+                "Devolución cuota préstamo (principal)  ·  170");
+        return cb;
+    }
+
+    /**
+     * Slice 3H-5 — ComboBox para la cuenta de banco/caja contra la que
+     * se carga el pago. Solo 2 opciones habituales; lista mínima para
+     * no abrumar.
+     */
+    private javafx.scene.control.ComboBox<String> buildBankAccountCombo() {
+        javafx.scene.control.ComboBox<String> cb = new javafx.scene.control.ComboBox<>();
+        cb.setEditable(true);
+        cb.setPrefWidth(420);
+        cb.getItems().addAll(
+                "Banco principal (cuenta corriente)  ·  572",
+                "Caja (efectivo)  ·  570",
+                "Banco secundario  ·  572",
+                "Tarjeta de crédito  ·  551");
+        return cb;
+    }
+
+    /**
+     * Extrae el código PGC de la selección del ComboBox de cuenta. El
+     * usuario puede haber:
+     *   (a) elegido una opción del desplegable → "Etiqueta  ·  642"
+     *   (b) escrito el código directamente → "642"
+     * Soporta ambos: si la cadena contiene "·" agarra lo que viene
+     * después; si no, devuelve la cadena trimeada (que debería ser
+     * un código numérico).
+     */
+    private String extractAccountCode(javafx.scene.control.ComboBox<String> cb) {
+        String raw = cb.getValue();
+        if (raw == null) return "";
+        raw = raw.trim();
+        int sep = raw.lastIndexOf('·');
+        if (sep >= 0) return raw.substring(sep + 1).trim();
+        return raw;
+    }
+
+    /**
      * Crea un Tooltip con texto LEGIBLE (color claro sobre fondo
      * oscuro y padding razonable). Los Tooltips por defecto en
      * JavaFX 21 heredan colores de la paleta que en BENJAGEST tira a
@@ -16087,10 +16178,15 @@ public class BenjagestUiApplication extends Application {
         TextField conceptField = new TextField();
         conceptField.setPromptText(t("recurring.field.concept.hint"));
 
-        TextField expenseAccountField = new TextField();
-        expenseAccountField.setPromptText("629, 642, 631…");
-        TextField bankAccountField = new TextField();
-        bankAccountField.setPromptText("572, 570…");
+        // Slice 3H-5 — En lugar de pedir el código PGC en un TextField
+        // (que el empresario no conoce), ofrecemos un ComboBox editable
+        // con TODAS las cuentas habituales para pagos sin factura, ya
+        // etiquetadas en lenguaje natural. El asesor que prefiera
+        // escribir el código directamente también puede.
+        javafx.scene.control.ComboBox<String> expenseAccountField =
+                buildExpenseAccountCombo();
+        javafx.scene.control.ComboBox<String> bankAccountField =
+                buildBankAccountCombo();
 
         javafx.scene.control.Spinner<Double> amountSpinner =
                 new javafx.scene.control.Spinner<>(0.0, 999999.0, 0.0, 10.0);
@@ -16108,11 +16204,11 @@ public class BenjagestUiApplication extends Application {
                 // Heurística superficial: el primer accountCode = gasto, segundo = banco
                 int firstAcc = tail.indexOf("accountCode");
                 if (firstAcc > 0) {
-                    expenseAccountField.setText(extractStringField(
+                    expenseAccountField.setValue(extractStringField(
                             tail.substring(firstAcc), "accountCode"));
                     int secondAcc = tail.indexOf("accountCode", firstAcc + 12);
                     if (secondAcc > 0) {
-                        bankAccountField.setText(extractStringField(
+                        bankAccountField.setValue(extractStringField(
                                 tail.substring(secondAcc), "accountCode"));
                     }
                 }
@@ -16163,8 +16259,8 @@ public class BenjagestUiApplication extends Application {
 
         // Build JSON request
         double amount = amountSpinner.getValue();
-        String expAcc = expenseAccountField.getText().trim();
-        String bankAcc = bankAccountField.getText().trim();
+        String expAcc = extractAccountCode(expenseAccountField);
+        String bankAcc = extractAccountCode(bankAccountField);
         String concept = conceptField.getText();
         StringBuilder body = new StringBuilder();
         body.append('{');
