@@ -114,6 +114,21 @@ public class AuditChainService {
     }
 
     private Block findLast(String companyId) {
+        // Slice 4B — Bajar el timeout del lock a 3 segundos en la
+        // sesión actual. Sin esto, MariaDB usa el default global
+        // (50s) y si otra transacción tiene la fila bloqueada (típico
+        // tras un crash o si dos requests concurrentes pelean por la
+        // misma cadena), el cliente HTTP del frontend timeoutea
+        // antes de recibir respuesta del backend, dando la sensación
+        // de que "no se puede guardar". Con 3s, el audit insert falla
+        // rápido, el catch del AuditService lo traga, el UPDATE
+        // principal commitea y el cliente recibe la respuesta a
+        // tiempo. Si pasa, el audit_event de ESE evento concreto se
+        // pierde — la cadena se reanuda en el siguiente con un gap
+        // que el verify detectará.
+        try {
+            jdbcTemplate.execute("SET SESSION innodb_lock_wait_timeout = 3");
+        } catch (Exception ignored) { /* MariaDB sin permiso de SET */ }
         return jdbcTemplate.query("""
                 SELECT sequence_number, event_hash
                   FROM audit_events
