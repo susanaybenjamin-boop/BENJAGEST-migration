@@ -583,10 +583,25 @@ public class RecurringTaskService {
 
     private String expandPlaceholders(String s, LocalDate date) {
         if (s == null) return null;
+        // Slice 3I — Más placeholders predictivos para el campo
+        // Concepto: nombre del mes en español (minúsculas y
+        // capitalizado), año largo, día del mes sin cero.
+        String[] meses = {"enero", "febrero", "marzo", "abril", "mayo",
+                "junio", "julio", "agosto", "septiembre", "octubre",
+                "noviembre", "diciembre"};
+        String mes = meses[date.getMonthValue() - 1];
+        String mesCap = Character.toUpperCase(mes.charAt(0)) + mes.substring(1);
         return s.replace("{YYYY}", String.format("%04d", date.getYear()))
+                .replace("{YY}", String.format("%02d", date.getYear() % 100))
+                .replace("{AÑO}", String.format("%04d", date.getYear()))
                 .replace("{MM}", String.format("%02d", date.getMonthValue()))
+                .replace("{M}", String.valueOf(date.getMonthValue()))
+                .replace("{MES}", mes)
+                .replace("{MES_MAY}", mesCap)
                 .replace("{DD}", String.format("%02d", date.getDayOfMonth()))
-                .replace("{Q}", "Q" + ((date.getMonthValue() - 1) / 3 + 1));
+                .replace("{D}", String.valueOf(date.getDayOfMonth()))
+                .replace("{Q}", "Q" + ((date.getMonthValue() - 1) / 3 + 1))
+                .replace("{T}", "T" + ((date.getMonthValue() - 1) / 3 + 1));
     }
 
     private Map<String, Object> readPayload(RecurringTaskView task) {
