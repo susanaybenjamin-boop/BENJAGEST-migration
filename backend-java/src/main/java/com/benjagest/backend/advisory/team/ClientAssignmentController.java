@@ -48,14 +48,43 @@ public class ClientAssignmentController {
         return service.listForCurrentAdvisory();
     }
 
+    /**
+     * Slice 5B — Matriz para la UI del módulo Equipo: cada asignación
+     * con su sub-lista de módulos. Solo OWNER.
+     */
+    @GetMapping("/with-modules")
+    public List<ClientAssignmentService.AssignmentWithModules> listWithModules() {
+        return service.listForCurrentAdvisoryWithModules();
+    }
+
     @GetMapping("/mine")
     public Map<String, Object> mine() {
         return Map.of("clientIds", service.listMine());
     }
 
+    /**
+     * Slice 5B — Módulos que el user actual ve en {@code clientId}.
+     * El sidebar del cliente filtra los items por este resultado.
+     * Si la lista contiene "*" → mostrar todo el sidebar normal.
+     */
+    @GetMapping("/mine/modules/{clientId}")
+    public Map<String, Object> myModulesInClient(@PathVariable("clientId") String clientId) {
+        return Map.of("moduleSlugs", service.modulesVisibleInClient(clientId));
+    }
+
     @PostMapping
     public ClientAssignment assign(@RequestBody ClientAssignmentService.AssignRequest req) {
         return service.assign(req);
+    }
+
+    /**
+     * Slice 5B — Asignación en lote desde el listado de clientes con
+     * checkboxes en la UI del módulo Equipo.
+     */
+    @PostMapping("/bulk")
+    public ClientAssignmentService.BulkAssignResult bulkAssign(
+            @RequestBody ClientAssignmentService.BulkAssignRequest req) {
+        return service.bulkAssign(req);
     }
 
     @PutMapping("/{id}")

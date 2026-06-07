@@ -56,6 +56,36 @@ public class ClientAssignmentService {
     }
 
     /**
+     * Slice 5B — Devuelve las asignaciones con sus módulos resueltos
+     * (cada asignación + su sub-lista de slugs). Para la matriz del
+     * módulo "Equipo" en la UI. Solo OWNER.
+     */
+    public List<AssignmentWithModules> listForCurrentAdvisoryWithModules() {
+        List<ClientAssignment> rows = listForCurrentAdvisory();
+        return rows.stream()
+                .map(a -> new AssignmentWithModules(a,
+                        repository.listModulesByAssignment(a.id())))
+                .toList();
+    }
+
+    /**
+     * Slice 5B — Módulos que el usuario actual ve en {@code clientId}.
+     * Combina asignaciones titulares + delegaciones temporales activas.
+     * Si una de ellas es "abierta" (sin módulos en assignment_modules)
+     * devuelve {@link ClientAssignment#MODULE_ALL} → el caller abre el
+     * sidebar entero.
+     */
+    public List<String> modulesVisibleInClient(String clientCompanyId) {
+        String advisoryId = tenantContext.getCurrentCompanyId();
+        String userId = currentUserService.require().userId();
+        // El OWNER ve todos los módulos siempre
+        if (currentUserIsOwnerOfAdvisory(advisoryId)) {
+            return List.of(ClientAssignment.MODULE_ALL);
+        }
+        return repository.modulesVisibleForUserInClient(advisoryId, userId, clientCompanyId);
+    }
+
+    /**
      * Devuelve las asignaciones (titularidad o delegación) que el
      * usuario actual ve hoy en su listado "Mis clientes". Sin
      * restricción de rol — cada empleado puede consultar SUS propios
@@ -115,12 +145,58 @@ public class ClientAssignmentService {
                 blank(req.notes()),
                 null, null);
         repository.insert(a);
+        // Slice 5B — Persistir los módulos de la asignación. Si la
+        // lista viene null o vacía, queda "abierta" (todos los módulos
+        // activos del cliente serán visibles para este empleado).
+        if (req.moduleSlugs() != null && !req.moduleSlugs().isEmpty()) {
+            repository.replaceModules(a.id(), req.moduleSlugs());
+        }
         auditService.recordGeneric(advisoryId, safeUserId(),
                 "CLIENT_ASSIGNMENT_CREATED",
                 "client_assignment", a.id(), "OK",
                 "{\"employee\":\"" + req.employeeUserId()
-                        + "\",\"client\":\"" + req.clientCompanyId() + "\"}");
+                        + "\",\"client\":\"" + req.clientCompanyId()
+                        + "\",\"modules\":" + jsonArray(req.moduleSlugs()) + "}");
         return a;
+    }
+
+    /**
+     * Slice 5B — Asignación "en lote" desde la UI del módulo "Equipo":
+     * el OWNER marca con checkbox varios clientes en el listado y elige
+     * qué módulos asigna a un empleado de un golpe. Se procesa cada
+     * cliente como una llamada a {@link #assign}; si alguno falla con
+     * 409 (ya asignado), se incluye en el resumen y el resto sigue.
+     */
+    @Transactional
+    public BulkAssignResult bulkAssign(BulkAssignRequest req) {
+        String advisoryId = tenantContext.getCurrentCompanyId();
+        requireOwner(advisoryId);
+        if (req.employeeUserId() == null || req.employeeUserId().isBlank()) {
+            throw bad("employeeUserId obligatorio");
+        }
+        if (req.clientCompanyIds() == null || req.clientCompanyIds().isEmpty()) {
+            throw bad("clientCompanyIds no puede estar vacío");
+        }
+        java.util.List<ClientAssignment> created = new java.util.ArrayList<>();
+        java.util.List<String> skipped = new java.util.ArrayList<>();
+        for (String clientId : req.clientCompanyIds()) {
+            try {
+                ClientAssignment a = assign(new AssignRequest(
+                        req.employeeUserId(),
+                        clientId,
+                        req.roleInClient(),
+                        req.moduleSlugs(),
+                        req.notes()));
+                created.add(a);
+            } catch (ResponseStatusException ex) {
+                if (ex.getStatusCode().value() == 409) {
+                    skipped.add(clientId);
+                } else {
+                    throw ex;
+                }
+            }
+        }
+        return new BulkAssignResult(created.size(), created, skipped);
     }
 
     /**
@@ -159,6 +235,12 @@ public class ClientAssignmentService {
                 current.createdAt(),
                 current.updatedAt());
         repository.update(updated);
+        // Slice 5B — Si la request trae moduleSlugs (puede ser lista
+        // vacía para forzar "asignación abierta"), reemplazamos los
+        // módulos. Si moduleSlugs es null, no tocamos los existentes.
+        if (req.moduleSlugs() != null) {
+            repository.replaceModules(id, req.moduleSlugs());
+        }
         auditService.recordGeneric(advisoryId, safeUserId(),
                 "CLIENT_ASSIGNMENT_UPDATED",
                 "client_assignment", id, "OK", null);
@@ -296,16 +378,55 @@ public class ClientAssignmentService {
             String employeeUserId,
             String clientCompanyId,
             String roleInClient,
+            /** Lista de slugs de módulos. {@code null} o vacía = asignación
+             *  abierta (todos los módulos del cliente). */
+            List<String> moduleSlugs,
             String notes) {}
 
     public record UpdateRequest(
             String employeeUserId,
             String roleInClient,
             Boolean active,
+            /** {@code null} = no tocar módulos. Lista vacía = pasar a
+             *  "asignación abierta". Lista no vacía = reemplazar. */
+            List<String> moduleSlugs,
             String notes) {}
 
     public record DelegateRequest(
             String toUserId,
             LocalDate from,
             LocalDate until) {}
+
+    /** Slice 5B — Asignar en lote desde la UI con checkbox de clientes. */
+    public record BulkAssignRequest(
+            String employeeUserId,
+            List<String> clientCompanyIds,
+            String roleInClient,
+            List<String> moduleSlugs,
+            String notes) {}
+
+    public record BulkAssignResult(
+            int createdCount,
+            List<ClientAssignment> created,
+            /** clientCompanyIds que se saltaron porque ya tenían otra
+             *  asignación activa para ese cliente (409). El OWNER decide
+             *  si reasignar manualmente. */
+            List<String> skippedAlreadyAssigned) {}
+
+    /** Asignación + su lista de módulos para la matriz del OWNER. */
+    public record AssignmentWithModules(
+            ClientAssignment assignment,
+            List<String> moduleSlugs) {}
+
+    /** Serializa una List<String> a JSON inline para el details del audit. */
+    private static String jsonArray(List<String> items) {
+        if (items == null || items.isEmpty()) return "[]";
+        StringBuilder sb = new StringBuilder("[");
+        for (int i = 0; i < items.size(); i++) {
+            if (i > 0) sb.append(',');
+            sb.append('"').append(items.get(i).replace("\"", "\\\"")).append('"');
+        }
+        sb.append(']');
+        return sb.toString();
+    }
 }

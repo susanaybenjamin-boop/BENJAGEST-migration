@@ -131,6 +131,92 @@ public class ClientAssignmentRepository {
                 "DELETE FROM client_assignments WHERE id = ?", id);
     }
 
+    // ================================================================
+    //  Slice 5B — Gestión de módulos por asignación (Opción B).
+    // ================================================================
+
+    /**
+     * Devuelve los slugs de módulos vinculados a esta asignación.
+     * Lista vacía = "todos los módulos activos del cliente" (asignación
+     * abierta).
+     */
+    public List<String> listModulesByAssignment(String assignmentId) {
+        return jdbcTemplate.query("""
+                SELECT module_slug FROM assignment_modules
+                 WHERE assignment_id = ?
+                 ORDER BY module_slug
+                """,
+                (rs, n) -> rs.getString("module_slug"),
+                assignmentId);
+    }
+
+    /**
+     * Reemplaza la lista de módulos de una asignación (DELETE + INSERT).
+     * Si {@code slugs} es null o vacía → la asignación queda "abierta"
+     * (sin filas en assignment_modules) y el caller ve todos los
+     * módulos activos del cliente.
+     */
+    public void replaceModules(String assignmentId, List<String> slugs) {
+        jdbcTemplate.update(
+                "DELETE FROM assignment_modules WHERE assignment_id = ?",
+                assignmentId);
+        if (slugs == null || slugs.isEmpty()) return;
+        // Dedup conservando orden de entrada
+        java.util.LinkedHashSet<String> unique = new java.util.LinkedHashSet<>();
+        for (String s : slugs) {
+            if (s != null && !s.isBlank()) unique.add(s.trim());
+        }
+        for (String slug : unique) {
+            jdbcTemplate.update("""
+                    INSERT INTO assignment_modules (assignment_id, module_slug)
+                    VALUES (?, ?)
+                    """, assignmentId, slug);
+        }
+    }
+
+    /**
+     * Devuelve los módulos visibles para un user en un cliente concreto
+     * combinando asignación titular + delegaciones temporales activas
+     * hoy. Si CUALQUIERA de las asignaciones es "abierta" (sin módulos
+     * en assignment_modules), devuelve {@link ClientAssignment#MODULE_ALL}
+     * → "todos los módulos del cliente".
+     */
+    public List<String> modulesVisibleForUserInClient(String advisoryId,
+                                                       String employeeUserId,
+                                                       String clientCompanyId) {
+        LocalDate today = LocalDate.now();
+        // Asignaciones (propias o delegadas) activas para este cliente
+        List<String> assignmentIds = jdbcTemplate.query("""
+                SELECT id FROM client_assignments
+                 WHERE advisory_company_id = ?
+                   AND client_company_id = ?
+                   AND active = TRUE
+                   AND (
+                     employee_user_id = ?
+                     OR (delegated_to_user_id = ?
+                         AND delegated_from <= ?
+                         AND delegated_until >= ?)
+                   )
+                """,
+                (rs, n) -> rs.getString("id"),
+                advisoryId, clientCompanyId,
+                employeeUserId, employeeUserId,
+                Date.valueOf(today), Date.valueOf(today));
+        if (assignmentIds.isEmpty()) return List.of();
+        java.util.LinkedHashSet<String> all = new java.util.LinkedHashSet<>();
+        for (String aid : assignmentIds) {
+            List<String> mods = listModulesByAssignment(aid);
+            if (mods.isEmpty()) {
+                // Asignación abierta → "todos los módulos" (gana el
+                // resto). Devolvemos solo MODULE_ALL para que el caller
+                // sepa abrir el sidebar entero.
+                return List.of(ClientAssignment.MODULE_ALL);
+            }
+            all.addAll(mods);
+        }
+        return new java.util.ArrayList<>(all);
+    }
+
     private ClientAssignment map(ResultSet rs, int n) throws SQLException {
         java.sql.Date df = rs.getDate("delegated_from");
         java.sql.Date du = rs.getDate("delegated_until");
