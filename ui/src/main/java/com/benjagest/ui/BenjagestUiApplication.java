@@ -11356,6 +11356,7 @@ public class BenjagestUiApplication extends Application {
             case "recurring.action.history" -> "History";
             case "recurring.confirm.run_now" -> "Run this task now? It will generate the document (invoice or expense) using today's date.";
             case "recurring.run_now.success" -> "Task executed successfully.";
+            case "recurring.run_now.success_hint" -> "The generated document is in draft state. You'll find it in the matching list (Invoices, Expenses or Journal) ready to review and validate.";
             case "recurring.run_now.error" -> "Could not run the task";
             case "recurring.toggle.error" -> "Could not toggle status";
             case "recurring.history.empty" -> "No runs recorded yet";
@@ -11412,6 +11413,9 @@ public class BenjagestUiApplication extends Application {
             case "recurring.field.amount" -> "Amount";
             case "recurring.journal_entry.hint" -> "For expenses charged directly from the bank without an invoice or receipt: self-employed contributions, bank fees, tax models (130/303), loan installments. Each run generates a simple journal entry (DEBIT expense / CREDIT bank) in draft.";
             case "sidebar.my_company" -> "My company";
+            case "button.refresh" -> "Refresh";
+            case "recurring.field.day_of_week" -> "Day of week";
+            case "recurring.field.months_between" -> "Every N months";
             case "date.day.monday" -> "Monday";
             case "date.day.tuesday" -> "Tuesday";
             case "date.day.wednesday" -> "Wednesday";
@@ -11872,6 +11876,7 @@ public class BenjagestUiApplication extends Application {
             case "recurring.action.history" -> "Historial";
             case "recurring.confirm.run_now" -> "¿Lanzar esta tarea ahora? Se generará el documento (factura o gasto) con la fecha de hoy.";
             case "recurring.run_now.success" -> "Tarea ejecutada correctamente.";
+            case "recurring.run_now.success_hint" -> "El documento generado está en estado borrador. Lo encontrarás en el listado correspondiente (Facturas, Compras o Diario) listo para revisar y validar.";
             case "recurring.run_now.error" -> "No se pudo ejecutar la tarea";
             case "recurring.toggle.error" -> "No se pudo cambiar el estado";
             case "recurring.history.empty" -> "Sin ejecuciones registradas todavía";
@@ -11928,6 +11933,9 @@ public class BenjagestUiApplication extends Application {
             case "recurring.field.amount" -> "Importe";
             case "recurring.journal_entry.hint" -> "Pensado para gastos que se cargan directamente del banco sin que llegue factura ni recibo: cuota autónomo TGSS, comisiones bancarias, modelos AEAT (130/303), cuotas préstamo. Cada ejecución genera un asiento contable simple (DEBE cuenta gasto / HABER cuenta banco) en estado borrador.";
             case "sidebar.my_company" -> "Mi empresa";
+            case "button.refresh" -> "Actualizar";
+            case "recurring.field.day_of_week" -> "Día semana";
+            case "recurring.field.months_between" -> "Cada N meses";
             case "date.day.monday" -> "lunes";
             case "date.day.tuesday" -> "martes";
             case "date.day.wednesday" -> "miércoles";
@@ -14745,7 +14753,20 @@ public class BenjagestUiApplication extends Application {
         var synthetic = new com.benjagest.ui.model.ManagedClientEntry(
                 id, legalName, null, null,
                 "ADVISORY", null, null, null, null);
-        switchToClient(synthetic, true);
+        // Slice 3H-6 — Garantiza la self-link de la asesoría ANTES de
+        // entrar. Si la migración V64 no se aplicó o la asesoría es
+        // anterior a esa migración, el backend creará la fila en
+        // advisory_invitations en este momento. Llamada best-effort:
+        // si falla por cualquier motivo (red, permisos), entramos
+        // igual al modo cliente — la peor consecuencia es que el
+        // banner de cliente vinculado no muestre el sello.
+        new Thread(() -> {
+            try {
+                altaApiClient.ensureAdvisorySelfLink();
+            } catch (Exception ignored) { /* defensivo */ }
+            javafx.application.Platform.runLater(() ->
+                    switchToClient(synthetic, true));
+        }, "ensure-self-link").start();
     }
 
     /**
@@ -15398,11 +15419,11 @@ public class BenjagestUiApplication extends Application {
             private final HBox actionsBox = new HBox(4, run, toggle, history);
             {
                 run.setGraphic(icon("fas-play"));
-                run.setTooltip(new javafx.scene.control.Tooltip(t("recurring.action.run_now")));
+                run.setTooltip(legibleTooltip(t("recurring.action.run_now")));
                 run.getStyleClass().add("button-icon");
                 toggle.getStyleClass().add("button-icon");
                 history.setGraphic(icon("fas-clock-rotate-left"));
-                history.setTooltip(new javafx.scene.control.Tooltip(t("recurring.action.history")));
+                history.setTooltip(legibleTooltip(t("recurring.action.history")));
                 history.getStyleClass().add("button-icon");
                 actionsBox.setAlignment(javafx.geometry.Pos.CENTER_LEFT);
             }
@@ -15416,7 +15437,7 @@ public class BenjagestUiApplication extends Application {
                 if (task == null) { setGraphic(null); return; }
                 // Refrescar ícono y tooltip del toggle según estado actual.
                 toggle.setGraphic(icon(task.active() ? "fas-pause" : "fas-play"));
-                toggle.setTooltip(new javafx.scene.control.Tooltip(task.active()
+                toggle.setTooltip(legibleTooltip(task.active()
                         ? t("recurring.action.pause") : t("recurring.action.activate")));
                 run.setOnAction(e -> runRecurringTaskNow(task,
                         () -> loadRecurring(table, kind)));
@@ -15559,9 +15580,122 @@ public class BenjagestUiApplication extends Application {
     }
 
     /**
+     * Slice 3H-5 — ComboBox editable con la lista de cuentas habituales
+     * para gastos sin factura. Etiquetas en lenguaje natural seguidas
+     * del código PGC, ej.: "Cuota autónomo TGSS  ·  642". El asesor
+     * que prefiera escribir el código directamente también puede.
+     *
+     * <p>Cubre los gastos típicos del autónomo y de la pyme:
+     * <ul>
+     *   <li>SS autónomo (642) y empleados (640/641/642)</li>
+     *   <li>Asesoría / gestoría (623)</li>
+     *   <li>Alquileres (621)</li>
+     *   <li>Suministros: luz, agua, gas, internet (628)</li>
+     *   <li>Comisiones bancarias (626)</li>
+     *   <li>Material oficina, suscripciones (629)</li>
+     *   <li>Seguros (625)</li>
+     *   <li>Servicios profesionales independientes (623)</li>
+     *   <li>Reparaciones y conservación (622)</li>
+     *   <li>Transportes (624)</li>
+     *   <li>Publicidad (627)</li>
+     *   <li>Tributos AEAT (modelo 130/303/IRPF retenciones)</li>
+     *   <li>Intereses de préstamo (662) — el principal no es gasto,
+     *       cancela la deuda 170</li>
+     * </ul>
+     */
+    private javafx.scene.control.ComboBox<String> buildExpenseAccountCombo() {
+        javafx.scene.control.ComboBox<String> cb = new javafx.scene.control.ComboBox<>();
+        cb.setEditable(true);
+        cb.setPrefWidth(420);
+        cb.getItems().addAll(
+                "Cuota autónomo TGSS  ·  642",
+                "SS empresa (Seg. Social a cargo de la empresa)  ·  642",
+                "Sueldos y salarios  ·  640",
+                "Asesoría / gestoría / abogados  ·  623",
+                "Servicios profesionales independientes  ·  623",
+                "Alquiler oficina / local  ·  621",
+                "Reparaciones y conservación  ·  622",
+                "Transportes  ·  624",
+                "Seguros (responsabilidad civil, multirriesgo, salud…)  ·  625",
+                "Comisiones bancarias  ·  626",
+                "Publicidad y propaganda  ·  627",
+                "Suministros (luz, agua, gas, internet, teléfono)  ·  628",
+                "Material de oficina  ·  629",
+                "Suscripciones a software (SaaS)  ·  629",
+                "Otros servicios externos  ·  629",
+                "Tributos no deducibles  ·  631",
+                "Tributos deducibles  ·  634",
+                "Retención IRPF empleados (Modelo 111)  ·  4751",
+                "Pago fraccionado IRPF (Modelo 130)  ·  473",
+                "IVA a ingresar (Modelo 303)  ·  4750",
+                "Intereses de préstamo  ·  662",
+                "Amortización de inmovilizado material  ·  681",
+                "Amortización de inmovilizado intangible  ·  680",
+                "Devolución cuota préstamo (principal)  ·  170");
+        return cb;
+    }
+
+    /**
+     * Slice 3H-5 — ComboBox para la cuenta de banco/caja contra la que
+     * se carga el pago. Solo 2 opciones habituales; lista mínima para
+     * no abrumar.
+     */
+    private javafx.scene.control.ComboBox<String> buildBankAccountCombo() {
+        javafx.scene.control.ComboBox<String> cb = new javafx.scene.control.ComboBox<>();
+        cb.setEditable(true);
+        cb.setPrefWidth(420);
+        cb.getItems().addAll(
+                "Banco principal (cuenta corriente)  ·  572",
+                "Caja (efectivo)  ·  570",
+                "Banco secundario  ·  572",
+                "Tarjeta de crédito  ·  551");
+        return cb;
+    }
+
+    /**
+     * Extrae el código PGC de la selección del ComboBox de cuenta. El
+     * usuario puede haber:
+     *   (a) elegido una opción del desplegable → "Etiqueta  ·  642"
+     *   (b) escrito el código directamente → "642"
+     * Soporta ambos: si la cadena contiene "·" agarra lo que viene
+     * después; si no, devuelve la cadena trimeada (que debería ser
+     * un código numérico).
+     */
+    private String extractAccountCode(javafx.scene.control.ComboBox<String> cb) {
+        String raw = cb.getValue();
+        if (raw == null) return "";
+        raw = raw.trim();
+        int sep = raw.lastIndexOf('·');
+        if (sep >= 0) return raw.substring(sep + 1).trim();
+        return raw;
+    }
+
+    /**
+     * Crea un Tooltip con texto LEGIBLE (color claro sobre fondo
+     * oscuro y padding razonable). Los Tooltips por defecto en
+     * JavaFX 21 heredan colores de la paleta que en BENJAGEST tira a
+     * gris oscuro sobre gris oscuro — ilegible. Este helper se
+     * aplica a todos los tooltips de los botones de la columna de
+     * acciones (Slice 3H-2).
+     */
+    private javafx.scene.control.Tooltip legibleTooltip(String text) {
+        javafx.scene.control.Tooltip tip = new javafx.scene.control.Tooltip(text);
+        tip.setStyle("-fx-background-color: #1f2937; "
+                + "-fx-text-fill: #ffffff; "
+                + "-fx-font-size: 12px; "
+                + "-fx-padding: 6 10; "
+                + "-fx-background-radius: 4;");
+        tip.setShowDelay(javafx.util.Duration.millis(300));
+        return tip;
+    }
+
+    /**
      * Lanza una tarea recurrente ahora (botón ▶). Pide confirmación
      * (un click accidental genera un asiento real) y al terminar
-     * refresca el listado. Si falla, muestra el error.
+     * refresca el listado + EMITE RefreshBus para que los listados de
+     * Ventas/Compras/Diario también se actualicen instantáneamente
+     * (Slice 3H-3). Si falla, muestra el error completo del backend
+     * (Slice 3H-4 — diagnóstico).
      */
     private void runRecurringTaskNow(
             com.benjagest.ui.model.AccountingModels.RecurringTask task,
@@ -15579,15 +15713,42 @@ public class BenjagestUiApplication extends Application {
                 accountingApiClient.runRecurringNow(task.id(), LocalDate.now());
                 javafx.application.Platform.runLater(() -> {
                     if (onDone != null) onDone.run();
+                    // Slice 3H-3 — Notificar a TODOS los listados que
+                    // dependan del documento generado para que se
+                    // refresquen sin necesidad de cambiar de pestaña:
+                    //   - SALES_INVOICE → factura DRAFT en Facturación
+                    //   - PURCHASE → gasto DRAFT en Compras
+                    //   - JOURNAL_ENTRY → asiento DRAFT en Contabilidad
+                    com.benjagest.ui.support.RefreshBus.emit(
+                            com.benjagest.ui.support.RefreshBus.TOPIC_SALES,
+                            com.benjagest.ui.support.RefreshBus.TOPIC_PURCHASES,
+                            com.benjagest.ui.support.RefreshBus.TOPIC_JOURNAL);
                     new javafx.scene.control.Alert(
                             javafx.scene.control.Alert.AlertType.INFORMATION,
-                            t("recurring.run_now.success"))
+                            t("recurring.run_now.success") + "\n\n"
+                                    + t("recurring.run_now.success_hint"))
                             .show();
                 });
             } catch (Exception ex) {
-                javafx.application.Platform.runLater(() -> new javafx.scene.control.Alert(
-                        javafx.scene.control.Alert.AlertType.ERROR,
-                        t("recurring.run_now.error") + ": " + ex.getMessage()).show());
+                // Diagnóstico mejorado: el mensaje del backend (causa
+                // real) más el nombre de la tarea para que el asesor
+                // sepa cuál falló. Incluimos el stack stem para ver
+                // si es 400, 500, NPE, etc.
+                String reason = ex.getMessage();
+                if (reason == null || reason.isBlank()) {
+                    reason = ex.getClass().getSimpleName();
+                }
+                final String finalReason = reason;
+                javafx.application.Platform.runLater(() -> {
+                    javafx.scene.control.Alert err = new javafx.scene.control.Alert(
+                            javafx.scene.control.Alert.AlertType.ERROR,
+                            t("recurring.run_now.error") + ":\n\n"
+                                    + task.name() + "\n\n"
+                                    + finalReason);
+                    err.setResizable(true);
+                    err.getDialogPane().setMinWidth(520);
+                    err.showAndWait();
+                });
             }
         }, "recurring-run-now").start();
     }
@@ -15808,16 +15969,46 @@ public class BenjagestUiApplication extends Application {
         grid.add(new Label(t("recurring.field.description")), 0, r);
         grid.add(descField, 1, r++, 3, 1);
 
+        // Slice 3H-1 — Mostrar las opciones del ComboBox traducidas
+        // (en el ComboBox van los códigos técnicos para no romper el
+        // payload del backend, pero el render se traduce con
+        // localizedFrequency).
+        applyFrequencyComboCells(freqCombo);
+
+        // Las etiquetas "Día del mes" y los Spinners dow/monthsBetween
+        // dependen de la frecuencia elegida. En lugar de mostrar
+        // "DoW / N meses" siempre, mostramos lo apropiado y ocultamos
+        // lo que no aplica.
+        Label dayLabel = new Label(t("recurring.freq.day"));
+        Label dowLabel = new Label(t("recurring.field.day_of_week"));
+        Label monthsLabel = new Label(t("recurring.field.months_between"));
+        Runnable applyFreqVisibility = () -> {
+            String f = freqCombo.getValue();
+            boolean monthly = "MONTHLY".equals(f) || "CUSTOM".equals(f);
+            boolean weekly = "WEEKLY".equals(f);
+            boolean custom = "CUSTOM".equals(f);
+            dayLabel.setManaged(monthly); dayLabel.setVisible(monthly);
+            domSpinner.setManaged(monthly); domSpinner.setVisible(monthly);
+            dowLabel.setManaged(weekly); dowLabel.setVisible(weekly);
+            dowSpinner.setManaged(weekly); dowSpinner.setVisible(weekly);
+            monthsLabel.setManaged(custom); monthsLabel.setVisible(custom);
+            monthsSpinner.setManaged(custom); monthsSpinner.setVisible(custom);
+        };
+        freqCombo.valueProperty().addListener((o, a, b) -> applyFreqVisibility.run());
+        applyFreqVisibility.run();
+
         grid.add(new Label(t("recurring.field.frequency")), 0, r);
         grid.add(freqCombo, 1, r);
-        grid.add(new Label(t("recurring.freq.day")), 2, r);
+        grid.add(dayLabel, 2, r);
         grid.add(domSpinner, 3, r++);
 
+        grid.add(dowLabel, 0, r);
+        grid.add(dowSpinner, 1, r);
+        grid.add(monthsLabel, 2, r);
+        grid.add(monthsSpinner, 3, r++);
+
         grid.add(new Label(t("recurring.field.first_run")), 0, r);
-        grid.add(firstRunDate, 1, r);
-        grid.add(new Label("DoW / N meses"), 2, r);
-        HBox dowAndMonths = new HBox(6, dowSpinner, monthsSpinner);
-        grid.add(dowAndMonths, 3, r++);
+        grid.add(firstRunDate, 1, r++, 3, 1);
 
         Label sep = new Label(isSales
                 ? t("recurring.section.sale_data") : t("recurring.section.expense_data"));
@@ -15988,6 +16179,7 @@ public class BenjagestUiApplication extends Application {
         javafx.scene.control.ComboBox<String> freqCombo = new javafx.scene.control.ComboBox<>();
         freqCombo.getItems().addAll("MONTHLY", "QUARTERLY", "YEARLY", "WEEKLY", "CUSTOM");
         freqCombo.setValue(existing == null ? "MONTHLY" : existing.frequency());
+        applyFrequencyComboCells(freqCombo);
 
         javafx.scene.control.Spinner<Integer> domSpinner = new javafx.scene.control.Spinner<>(
                 1, 31, existing == null || existing.dayOfMonth() == null ? 1 : existing.dayOfMonth());
@@ -15999,10 +16191,15 @@ public class BenjagestUiApplication extends Application {
         TextField conceptField = new TextField();
         conceptField.setPromptText(t("recurring.field.concept.hint"));
 
-        TextField expenseAccountField = new TextField();
-        expenseAccountField.setPromptText("629, 642, 631…");
-        TextField bankAccountField = new TextField();
-        bankAccountField.setPromptText("572, 570…");
+        // Slice 3H-5 — En lugar de pedir el código PGC en un TextField
+        // (que el empresario no conoce), ofrecemos un ComboBox editable
+        // con TODAS las cuentas habituales para pagos sin factura, ya
+        // etiquetadas en lenguaje natural. El asesor que prefiera
+        // escribir el código directamente también puede.
+        javafx.scene.control.ComboBox<String> expenseAccountField =
+                buildExpenseAccountCombo();
+        javafx.scene.control.ComboBox<String> bankAccountField =
+                buildBankAccountCombo();
 
         javafx.scene.control.Spinner<Double> amountSpinner =
                 new javafx.scene.control.Spinner<>(0.0, 999999.0, 0.0, 10.0);
@@ -16020,11 +16217,11 @@ public class BenjagestUiApplication extends Application {
                 // Heurística superficial: el primer accountCode = gasto, segundo = banco
                 int firstAcc = tail.indexOf("accountCode");
                 if (firstAcc > 0) {
-                    expenseAccountField.setText(extractStringField(
+                    expenseAccountField.setValue(extractStringField(
                             tail.substring(firstAcc), "accountCode"));
                     int secondAcc = tail.indexOf("accountCode", firstAcc + 12);
                     if (secondAcc > 0) {
-                        bankAccountField.setText(extractStringField(
+                        bankAccountField.setValue(extractStringField(
                                 tail.substring(secondAcc), "accountCode"));
                     }
                 }
@@ -16075,8 +16272,8 @@ public class BenjagestUiApplication extends Application {
 
         // Build JSON request
         double amount = amountSpinner.getValue();
-        String expAcc = expenseAccountField.getText().trim();
-        String bankAcc = bankAccountField.getText().trim();
+        String expAcc = extractAccountCode(expenseAccountField);
+        String bankAcc = extractAccountCode(bankAccountField);
         String concept = conceptField.getText();
         StringBuilder body = new StringBuilder();
         body.append('{');
@@ -16307,6 +16504,28 @@ public class BenjagestUiApplication extends Application {
         box.setPadding(new Insets(8));
         dlg.getDialogPane().setContent(box);
         dlg.showAndWait();
+    }
+
+    /**
+     * Aplica cellFactory + buttonCell a un ComboBox de frecuencias
+     * para que muestre las etiquetas traducidas (Mensual/Trimestral/…)
+     * en lugar de los códigos técnicos (MONTHLY/QUARTERLY/…). El
+     * valor interno del ComboBox sigue siendo el código técnico para
+     * que el payload del backend no cambie.
+     */
+    private void applyFrequencyComboCells(javafx.scene.control.ComboBox<String> combo) {
+        combo.setCellFactory(lv -> new javafx.scene.control.ListCell<>() {
+            @Override protected void updateItem(String item, boolean empty) {
+                super.updateItem(item, empty);
+                setText(empty || item == null ? "" : localizedFrequency(item));
+            }
+        });
+        combo.setButtonCell(new javafx.scene.control.ListCell<>() {
+            @Override protected void updateItem(String item, boolean empty) {
+                super.updateItem(item, empty);
+                setText(empty || item == null ? "" : localizedFrequency(item));
+            }
+        });
     }
 
     /**

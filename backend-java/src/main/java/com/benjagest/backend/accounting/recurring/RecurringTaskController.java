@@ -116,7 +116,27 @@ public class RecurringTaskController {
             @PathVariable("id") String id,
             @RequestParam(value = "date", required = false)
             @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
-        return service.runOne(id, date == null ? LocalDate.now() : date);
+        RecurringTaskService.RunView view = service.runOne(
+                id, date == null ? LocalDate.now() : date);
+        // Slice 3H-4 — Si la ejecución falló (status=ERROR), el service
+        // captura la excepción internamente para dejar registro en la
+        // historia, pero hasta ahora devolvía 200 OK al frontend → el
+        // asesor pensaba que se había generado el documento. Aquí
+        // promovemos el ERROR a HTTP 422 (Unprocessable Entity) para
+        // que el cliente vea el fallo real y el mensaje del backend.
+        if ("ERROR".equals(view.status())) {
+            throw new org.springframework.web.server.ResponseStatusException(
+                    org.springframework.http.HttpStatus.UNPROCESSABLE_ENTITY,
+                    view.message() == null
+                            ? "La tarea falló sin mensaje del backend."
+                            : view.message());
+        }
+        if ("SKIPPED".equals(view.status())) {
+            throw new org.springframework.web.server.ResponseStatusException(
+                    org.springframework.http.HttpStatus.UNPROCESSABLE_ENTITY,
+                    "Tarea omitida: " + (view.message() == null ? "(sin razón)" : view.message()));
+        }
+        return view;
     }
 
     @PostMapping("/run-all")

@@ -13,6 +13,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import java.util.Map;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -416,6 +417,20 @@ public class AdvisoryService {
         @GetMapping
         public List<ManagedClient> listClients() {
             return service.listMyManagedClients();
+        }
+
+        /**
+         * Slice 3H-6 — Endpoint defensivo que la UI llama justo antes
+         * de abrir "Mi empresa". Asegura que la asesoría tiene su
+         * advisory_invitations status=ACCEPTED apuntando a sí misma
+         * (autovinculación silenciosa, V64 + ensureSelfLink). Útil
+         * para asesorías que existían antes de V64 o cuando la
+         * migración no se haya aplicado por cualquier razón.
+         */
+        @PostMapping("/ensure-self-link")
+        public Map<String, Object> ensureSelfLink() {
+            service.ensureSelfLink();
+            return Map.of("ensured", true);
         }
 
         @GetMapping("/portfolio")
