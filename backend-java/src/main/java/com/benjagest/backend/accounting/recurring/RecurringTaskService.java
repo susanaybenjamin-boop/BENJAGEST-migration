@@ -169,11 +169,27 @@ public class RecurringTaskService {
                 """, id, tenantContext.getCurrentCompanyId());
     }
 
+    /**
+     * Slice 3R — sub-select que detecta si el creador NO pertenece al
+     * tenant de la tarea (creó la plantilla desde otra empresa
+     * — típicamente la asesoría actuando como cliente). La relación
+     * user↔company vive en {@code company_memberships}, no en una
+     * columna {@code company_id} de {@code user_accounts}.
+     */
+    private static final String CREATED_BY_ADVISOR_EXPR = """
+            CASE WHEN t.created_by_user_id IS NOT NULL
+                      AND NOT EXISTS (
+                              SELECT 1 FROM company_memberships m
+                               WHERE m.user_id = t.created_by_user_id
+                                 AND m.company_id = t.company_id)
+                 THEN 1 ELSE 0 END AS created_by_advisor
+            """;
+
     public RecurringTaskView get(String id) {
         List<RecurringTaskView> rows = jdbcTemplate.query("""
-                SELECT t.*, u.company_id AS creator_company_id
+                SELECT t.*,
+                """ + CREATED_BY_ADVISOR_EXPR + """
                   FROM recurring_tasks t
-                  LEFT JOIN users u ON u.id = t.created_by_user_id
                  WHERE t.id = ? AND t.company_id = ?
                 """, this::mapTask, id, tenantContext.getCurrentCompanyId());
         if (rows.isEmpty()) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Tarea recurrente no encontrada");
@@ -181,15 +197,9 @@ public class RecurringTaskService {
     }
 
     public List<RecurringTaskView> list(String kind, Boolean activeOnly) {
-        // Slice 3R — JOIN con users para saber si la plantilla fue creada
-        // por un usuario que NO pertenece a este tenant (típicamente, la
-        // asesoría actuando en el cliente). El UI usa creator_company_id
-        // != company_id como señal "Creada por tu asesoría".
         StringBuilder sql = new StringBuilder(
-                "SELECT t.*, u.company_id AS creator_company_id "
-              + "FROM recurring_tasks t "
-              + "LEFT JOIN users u ON u.id = t.created_by_user_id "
-              + "WHERE t.company_id = ?");
+                "SELECT t.*, " + CREATED_BY_ADVISOR_EXPR
+              + " FROM recurring_tasks t WHERE t.company_id = ?");
         List<Object> args = new ArrayList<>();
         args.add(tenantContext.getCurrentCompanyId());
         if (kind != null && !kind.isBlank()) { sql.append(" AND t.kind = ?"); args.add(kind); }
@@ -708,17 +718,15 @@ public class RecurringTaskService {
         java.sql.Date ed = rs.getDate("end_date");
         java.sql.Timestamp ca = rs.getTimestamp("created_at");
         java.sql.Timestamp ua = rs.getTimestamp("updated_at");
-        // Slice 3R — createdByAdvisor: el creador pertenece a otra
-        // empresa distinta del tenant donde vive la tarea. Eso solo
-        // ocurre cuando una asesoría actuó como cliente (X-Company-Id
-        // del cliente, pero el user logueado sigue siendo el asesor).
+        // Slice 3R — flag pre-calculado por la query con un EXISTS
+        // sobre company_memberships. TRUE cuando el creador NO tiene
+        // membership en este tenant (caso típico: asesoría actuando
+        // como cliente). findDueGlobally no incluye la columna; en
+        // ese path el catch deja el flag a FALSE (no se usa allí).
         String taskCompany = rs.getString("company_id");
-        String creatorCompany = null;
-        try { creatorCompany = rs.getString("creator_company_id"); }
-        catch (SQLException ignored) {} // findDueGlobally no incluye la columna
-        boolean createdByAdvisor = creatorCompany != null
-                && taskCompany != null
-                && !creatorCompany.equals(taskCompany);
+        boolean createdByAdvisor = false;
+        try { createdByAdvisor = rs.getInt("created_by_advisor") == 1; }
+        catch (SQLException ignored) {}
         return new RecurringTaskView(
                 rs.getString("id"), taskCompany,
                 rs.getString("kind"), rs.getString("name"), rs.getString("description"),
