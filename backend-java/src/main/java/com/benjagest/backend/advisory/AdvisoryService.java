@@ -41,14 +41,39 @@ public class AdvisoryService {
 
     private final JdbcTemplate jdbcTemplate;
     private final TenantContext tenantContext;
+    /**
+     * Slice 5A — Filtro de clientes por empleado. {@code null} en tests
+     * donde no se monta el bean Equipo; en producción Spring lo
+     * inyecta. Usar {@code assignmentService != null} para no romper
+     * configuraciones simples.
+     */
+    private final com.benjagest.backend.advisory.team.ClientAssignmentService assignmentService;
 
-    public AdvisoryService(JdbcTemplate jdbcTemplate, TenantContext tenantContext) {
+    public AdvisoryService(JdbcTemplate jdbcTemplate, TenantContext tenantContext,
+                            com.benjagest.backend.advisory.team.ClientAssignmentService assignmentService) {
         this.jdbcTemplate = jdbcTemplate;
         this.tenantContext = tenantContext;
+        this.assignmentService = assignmentService;
     }
 
     public List<ManagedClient> listMyManagedClients() {
         ensureSelfLink();
+        // Slice 5A — Si el usuario actual es OWNER de la asesoría, ve
+        // todos los clientes (comportamiento original). Si NO es OWNER,
+        // filtramos por las asignaciones de client_assignments + las
+        // delegaciones temporales vigentes hoy.
+        String advisoryId = tenantContext.getCurrentCompanyId();
+        if (assignmentService != null
+                && !assignmentService.currentUserIsOwnerOfAdvisory(advisoryId)) {
+            List<String> visibleIds = assignmentService.listMine();
+            if (visibleIds.isEmpty()) {
+                // El empleado no tiene clientes asignados — listado
+                // vacío en lugar del completo. El OWNER puede asignarle
+                // alguno desde el módulo Equipo.
+                return List.of();
+            }
+            return listClientsByIds(advisoryId, visibleIds);
+        }
         return jdbcTemplate.query("""
                 SELECT id, legal_name, trade_name, tax_identifier,
                        company_type, email, phone, city, province
@@ -59,6 +84,34 @@ public class AdvisoryService {
                 this::mapClient,
                 tenantContext.getCurrentCompanyId()
         );
+    }
+
+    /**
+     * Slice 5A — Variante del listado anterior pero filtrado por una
+     * lista de ids. Se usa cuando el usuario NO es OWNER y solo ve
+     * los clientes que le han asignado. Defensivo: filtra también
+     * por parent_company_id para evitar fuga entre asesorías.
+     */
+    private List<ManagedClient> listClientsByIds(String advisoryId, List<String> ids) {
+        if (ids == null || ids.isEmpty()) return List.of();
+        StringBuilder placeholders = new StringBuilder();
+        for (int i = 0; i < ids.size(); i++) {
+            if (i > 0) placeholders.append(',');
+            placeholders.append('?');
+        }
+        List<Object> args = new java.util.ArrayList<>();
+        args.add(advisoryId);
+        args.addAll(ids);
+        return jdbcTemplate.query("""
+                SELECT id, legal_name, trade_name, tax_identifier,
+                       company_type, email, phone, city, province
+                  FROM companies
+                 WHERE parent_company_id = ?
+                   AND id IN (%s)
+                 ORDER BY legal_name
+                """.formatted(placeholders.toString()),
+                this::mapClient,
+                args.toArray());
     }
 
     /**

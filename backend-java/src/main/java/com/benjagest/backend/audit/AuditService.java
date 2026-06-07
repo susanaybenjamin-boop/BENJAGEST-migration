@@ -170,10 +170,27 @@ public class AuditService {
     }
 
     /**
+     * Slice 5A — Alias publico de {@link #write} para slices que
+     * graban audit_events sin necesitar un metodo dedicado por cada
+     * tipo de evento (Equipo / Reparto de clientes). Misma semantica:
+     * no lanza si la insercion falla.
+     */
+    public void recordGeneric(String companyId, String userId, String eventType,
+                               String entityType, String entityId, String result,
+                               String detailsJson) {
+        write(companyId, userId, eventType, entityType, entityId, result, detailsJson);
+    }
+
+    /**
      * Punto unico de escritura. Si la insercion falla, NO lanza:
      * loguear es deseable pero nunca debe tumbar la operacion principal.
+     *
+     * <p>Slice 5A — visibilidad cambiada a package-private + dejada
+     * un alias publico {@link #recordGeneric} para slices que necesitan
+     * grabar audit_events sin tener que añadir un metodo dedicado aqui
+     * por cada accion.
      */
-    private void write(String companyId, String userId, String eventType,
+    void write(String companyId, String userId, String eventType,
                        String entityType, String entityId, String result, String detailsJson) {
         try {
             HttpServletRequest request = currentRequest();
