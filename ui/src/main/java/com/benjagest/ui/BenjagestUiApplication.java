@@ -5528,10 +5528,41 @@ public class BenjagestUiApplication extends Application {
             }
         });
 
+        // Slice 3E-1 — Botón "Hacer recurrente" para convertir
+        // una factura VALIDATED NORMAL en plantilla recurrente
+        // directamente, sin tener que esperar al banner de detección.
+        // Solo se habilita para facturas legales (VALIDATED + NORMAL):
+        // proformas y rectificativas no aplican como plantillas.
+        Button makeRecurringBtn = new Button(t("list.action.make_recurring"));
+        makeRecurringBtn.setGraphic(icon("fas-arrows-rotate"));
+        makeRecurringBtn.setDisable(true);
+        makeRecurringBtn.setOnAction(ev -> {
+            SalesInvoiceSummary sel = billingTable.getSelectionModel().getSelectedItem();
+            if (sel == null) return;
+            LocalDate invDate = null;
+            try {
+                if (sel.invoiceDate() != null && !sel.invoiceDate().isBlank()) {
+                    invDate = LocalDate.parse(sel.invoiceDate());
+                }
+            } catch (Exception ignored) { /* fecha en formato inesperado */ }
+            openRecurringEditorFromInvoice(
+                    "SALES_INVOICE", null, sel.customerLegalName(),
+                    sel.total(), invDate);
+        });
+
+        // Hook al listener existente: activar el botón cuando la
+        // selección sea una NORMAL VALIDATED.
+        billingTable.getSelectionModel().selectedItemProperty().addListener((obs, oldV, newV) -> {
+            boolean isValidated = newV != null && "VALIDATED".equals(newV.status());
+            boolean isNormal = newV != null
+                    && ("NORMAL".equals(newV.invoiceType()) || newV.invoiceType() == null);
+            makeRecurringBtn.setDisable(!(isValidated && isNormal));
+        });
+
         Region rowActionsSpacer = new Region();
         HBox.setHgrow(rowActionsSpacer, Priority.ALWAYS);
         HBox rowActions = new HBox(10, validateRowBtn, deleteDraftBtn, voidBtn,
-                toValidatedBtn, rowActionsSpacer, emailBtn, pdfBtn);
+                toValidatedBtn, makeRecurringBtn, rowActionsSpacer, emailBtn, pdfBtn);
         rowActions.getStyleClass().add("settings-actions");
 
         // El botón "Importar PDFs" vive en la fila de filtros (arriba a
@@ -11332,6 +11363,7 @@ public class BenjagestUiApplication extends Application {
             case "recurring.candidates.default_name_expense" -> "Recurring expense from";
             case "recurring.post_validate.title" -> "Make it recurring?";
             case "recurring.post_validate.body" -> "This invoice was just validated. Do you want to turn it into a recurring template so you don't have to enter it manually every month? The editor will open with the fields prefilled.";
+            case "list.action.make_recurring" -> "Make recurring";
             case "date.day.monday" -> "Monday";
             case "date.day.tuesday" -> "Tuesday";
             case "date.day.wednesday" -> "Wednesday";
@@ -11839,6 +11871,7 @@ public class BenjagestUiApplication extends Application {
             case "recurring.candidates.default_name_expense" -> "Gasto recurrente de";
             case "recurring.post_validate.title" -> "¿Hacer recurrente?";
             case "recurring.post_validate.body" -> "Esta factura se acaba de validar. ¿Quieres convertirla en una plantilla recurrente para no tener que volver a meterla manualmente cada mes? Se abrirá el editor con los datos prellenos.";
+            case "list.action.make_recurring" -> "Hacer recurrente";
             case "date.day.monday" -> "lunes";
             case "date.day.tuesday" -> "martes";
             case "date.day.wednesday" -> "miércoles";
@@ -16085,6 +16118,17 @@ public class BenjagestUiApplication extends Application {
         ask.setHeaderText(t("recurring.post_validate.title"));
         Optional<ButtonType> ans = ask.showAndWait();
         if (ans.isEmpty() || ans.get() != ButtonType.YES) return;
+        openRecurringEditorFromInvoice(kind, partyNif, partyName, totalAmount, invoiceDate);
+    }
+
+    /**
+     * Slice 3E — Abre directamente el editor pre-rellenado con los
+     * datos de una factura ya validada. Sin alert previo: el botón
+     * "Hacer recurrente" del listado YA es una acción explícita.
+     */
+    private void openRecurringEditorFromInvoice(
+            String kind, String partyNif, String partyName,
+            java.math.BigDecimal totalAmount, LocalDate invoiceDate) {
         var synthetic = buildPrefilledRecurringTask(
                 kind, partyNif, partyName, totalAmount,
                 invoiceDate == null ? null : invoiceDate.getDayOfMonth(),
