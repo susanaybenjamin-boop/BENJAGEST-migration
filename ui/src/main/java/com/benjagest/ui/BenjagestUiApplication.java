@@ -15828,7 +15828,23 @@ public class BenjagestUiApplication extends Application {
         // shadow company y abran el editor contable apropiado.
         actingForClientLinked = isLinked;
         refreshClientModeBanner();
-        setCenterAnimated(buildClientDetailView(client, isLinked));
+        // Slice 5D — Consultamos qué módulos puede ver este usuario en
+        // este cliente antes de construir el TabPane. Si la respuesta
+        // incluye "*" (OWNER o asignación abierta), se muestran todos
+        // los tabs. En caso contrario solo los que estén en la lista.
+        // La llamada es defensiva: ante cualquier error caemos a ["*"]
+        // (ver myModulesInClient) — preferimos mostrar de más a romper
+        // el flujo de acceso al cliente.
+        Task<List<String>> task = new Task<>() {
+            @Override protected List<String> call() throws Exception {
+                return altaApiClient.myModulesInClient(client.id());
+            }
+        };
+        task.setOnSucceeded(ev ->
+                setCenterAnimated(buildClientDetailView(client, isLinked, task.getValue())));
+        task.setOnFailed(ev ->
+                setCenterAnimated(buildClientDetailView(client, isLinked, List.of("*"))));
+        start(task, "team-my-modules");
     }
 
     /**
@@ -15894,7 +15910,17 @@ public class BenjagestUiApplication extends Application {
     }
 
     private Node buildClientDetailView(com.benjagest.ui.model.ManagedClientEntry client) {
-        return buildClientDetailView(client, true);
+        return buildClientDetailView(client, true, List.of("*"));
+    }
+
+    /**
+     * Slice 5D — Compatibilidad: cuando el llamador no necesita filtrar
+     * por asignación (p.ej. flujos internos previos al reparto), se
+     * comporta como antes y muestra todos los tabs.
+     */
+    private Node buildClientDetailView(com.benjagest.ui.model.ManagedClientEntry client,
+                                         boolean isLinked) {
+        return buildClientDetailView(client, isLinked, List.of("*"));
     }
 
     /**
@@ -15910,7 +15936,21 @@ public class BenjagestUiApplication extends Application {
      * </ul>
      */
     private Node buildClientDetailView(com.benjagest.ui.model.ManagedClientEntry client,
-                                         boolean isLinked) {
+                                         boolean isLinked,
+                                         List<String> visibleModules) {
+        // Slice 5D — Helper local: true si el slug se ve para el user actual
+        // en este cliente. visibleModules es lo que devuelve
+        // /api/advisory/team/assignments/mine/modules/{clientId}.
+        //   - Si contiene "*" → OWNER o asignación abierta → todo visible.
+        //   - Si no, solo se muestran los slugs presentes.
+        // Los tabs "estructurales" (Resumen, Certificado) son siempre
+        // visibles porque pertenecen a la identidad fiscal del cliente,
+        // no a un módulo concreto del catálogo — un asesor sin "billing"
+        // sigue necesitando ver quién es el cliente y su certificado.
+        final boolean seeAll = visibleModules == null || visibleModules.contains("*");
+        java.util.function.Predicate<String> canSee = slug ->
+                seeAll || visibleModules.contains(slug);
+
         Button backBtn = new Button(t("advisory.client.back"));
         backBtn.setGraphic(icon("fas-arrow-left"));
         backBtn.setOnAction(ev -> {
@@ -16022,14 +16062,29 @@ public class BenjagestUiApplication extends Application {
                 settingsCertificateTab());
         certificateTab.setGraphic(icon("fas-certificate"));
 
+        // Slice 5D — Resumen siempre visible (es identidad del cliente,
+        // no un módulo del catálogo). Equivalente al "perfil" del cliente
+        // que todo empleado autorizado puede consultar.
         tabs.getTabs().add(summaryTab);
         if (isLinked) {
-            tabs.getTabs().addAll(billingTab, purchasesTab);
+            if (canSee.test("billing")) tabs.getTabs().add(billingTab);
+            if (canSee.test("purchases")) tabs.getTabs().add(purchasesTab);
         } else {
-            tabs.getTabs().add(salesAndExpensesTab);
+            // En no vinculado, el tab unificado contiene Ventas y Gastos —
+            // por seguridad lo enseñamos si tiene billing O purchases.
+            if (canSee.test("billing") || canSee.test("purchases")) {
+                tabs.getTabs().add(salesAndExpensesTab);
+            }
         }
-        tabs.getTabs().addAll(accountingTab,
-                banksTab, loansTab, assetsTab, laborTab, taxTab, certificateTab);
+        if (canSee.test("accounting")) {
+            tabs.getTabs().addAll(accountingTab, banksTab, loansTab, assetsTab);
+        }
+        if (canSee.test("labor")) tabs.getTabs().add(laborTab);
+        if (canSee.test("tax")) tabs.getTabs().add(taxTab);
+        // Certificado: identidad fiscal del cliente. Lo mantenemos siempre
+        // visible para que cualquier empleado pueda consultar/subir el
+        // certificado vigente cuando trabaje con cualquiera de sus tabs.
+        tabs.getTabs().add(certificateTab);
         VBox.setVgrow(tabs, Priority.ALWAYS);
 
         VBox body = new VBox(12, header, hint, tabs);
