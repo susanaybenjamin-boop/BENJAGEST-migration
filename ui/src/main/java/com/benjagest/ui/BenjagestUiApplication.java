@@ -18264,8 +18264,16 @@ public class BenjagestUiApplication extends Application {
                     throws Exception {
                 // Sin filtro de status: DRAFT + POSTED juntos. El periodo
                 // viene del selector de arriba (compartido con KPIs).
+                // Slice 3U — Listado centralizado de TODAS las ventas
+                // del cliente: facturas emitidas/validadas en BENJAGEST
+                // (SALES_INVOICE), facturas importadas por PDF
+                // (SALES_PDF_IMPORT) y plantillas contables ejecutadas
+                // por el cron (RECURRING_ACCOUNTING). Todas se ven en
+                // el mismo listado — el asesor no tiene que saltar de
+                // pantalla según el origen.
                 return accountingApiClient.diary(from, to, null,
-                        "SALES_PDF_IMPORT", 500);
+                        "SALES_INVOICE,SALES_PDF_IMPORT,RECURRING_ACCOUNTING",
+                        500);
             }
         };
         task.setOnSucceeded(ev -> {

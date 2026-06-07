@@ -78,10 +78,38 @@ public class JournalQueryService {
             sql.append(" AND je.status = ?"); args.add(statusFilter);
         }
         if (sourceTypeFilter != null && !sourceTypeFilter.isBlank()) {
-            if ("MANUAL".equalsIgnoreCase(sourceTypeFilter)) {
-                sql.append(" AND je.source_type IS NULL");
-            } else {
-                sql.append(" AND je.source_type = ?"); args.add(sourceTypeFilter);
+            // Slice 3U — soportar CSV: "SALES_INVOICE,SALES_PDF_IMPORT,
+            // RECURRING_ACCOUNTING" para unificar el listado de ventas
+            // del cliente (todas las ventas vengan de donde vengan).
+            // Si incluye "MANUAL" en la lista, eso significa "source_type
+            // IS NULL" — se combina con OR.
+            String[] parts = sourceTypeFilter.split(",");
+            List<String> nonManual = new ArrayList<>();
+            boolean includeManual = false;
+            for (String p : parts) {
+                String t = p.trim();
+                if (t.isEmpty()) continue;
+                if ("MANUAL".equalsIgnoreCase(t)) includeManual = true;
+                else nonManual.add(t);
+            }
+            if (!nonManual.isEmpty() || includeManual) {
+                sql.append(" AND (");
+                boolean first = true;
+                if (!nonManual.isEmpty()) {
+                    sql.append("je.source_type IN (");
+                    for (int i = 0; i < nonManual.size(); i++) {
+                        if (i > 0) sql.append(',');
+                        sql.append('?');
+                        args.add(nonManual.get(i));
+                    }
+                    sql.append(')');
+                    first = false;
+                }
+                if (includeManual) {
+                    if (!first) sql.append(" OR ");
+                    sql.append("je.source_type IS NULL");
+                }
+                sql.append(')');
             }
         }
         sql.append(" ORDER BY je.entry_date ASC, je.entry_number ASC");
