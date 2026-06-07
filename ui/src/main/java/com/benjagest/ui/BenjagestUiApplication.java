@@ -50,6 +50,7 @@ import javafx.application.Application;
 import javafx.application.Platform;
 import javafx.beans.property.SimpleStringProperty;
 import javafx.collections.FXCollections;
+import javafx.collections.ObservableList;
 import javafx.concurrent.Task;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
@@ -71,6 +72,7 @@ import javafx.scene.control.CheckBox;
 import javafx.scene.control.ComboBox;
 import javafx.scene.control.PasswordField;
 import javafx.scene.control.ScrollPane;
+import javafx.scene.control.SplitPane;
 import javafx.scene.control.Tab;
 import javafx.scene.control.TabPane;
 import javafx.scene.control.Separator;
@@ -110,6 +112,12 @@ public class BenjagestUiApplication extends Application {
             new ModuleLink("purchases", "Compras", "fas-receipt"),
             new ModuleLink("reports", "Informes", "fas-chart-line"),
             new ModuleLink("calendar", "Agenda", "fas-calendar-alt"),
+            // Slice 5C — Módulo EQUIPO solo visible para asesorías.
+            // El OWNER reparte aquí sus clientes entre sus empleados y
+            // decide qué módulos lleva cada uno. Empleados normales no
+            // necesitan ver este módulo; el chequeo de visibilidad real
+            // (solo OWNER puede gestionar) lo hace el backend.
+            new ModuleLink("team", "Equipo", "fas-users-cog"),
             new ModuleLink("settings", "Configuracion", "fas-cog")
     );
 
@@ -1367,6 +1375,14 @@ public class BenjagestUiApplication extends Application {
         }
         if ("notifications".equals(module)) {
             showDehuModule();
+            return;
+        }
+        if ("team".equals(module)) {
+            // Slice 5C — Módulo EQUIPO / Reparto de clientes:
+            // 3 tabs (Empleados, Asignaciones, Delegaciones).
+            // Solo OWNER de asesoría puede gestionar (control real
+            // en backend ClientAssignmentService).
+            showTeamModule();
             return;
         }
         Task<ModuleData> task = new Task<>() {
@@ -9538,6 +9554,7 @@ public class BenjagestUiApplication extends Application {
                     if (v == null) v = tAdvisoryInvitationsEn(key);
                     if (v == null) v = tExportsAndChainEn(key);
                     if (v == null) v = tEmailHelpEn(key);
+                    if (v == null) v = tTeamEn(key);
                     yield v != null ? v : (key.startsWith("column.") ? key.substring(7) : key);
                 }
             };
@@ -10459,6 +10476,7 @@ public class BenjagestUiApplication extends Application {
                 if (v == null) v = tAdvisoryInvitationsEs(key);
                 if (v == null) v = tExportsAndChainEs(key);
                 if (v == null) v = tEmailHelpEs(key);
+                if (v == null) v = tTeamEs(key);
                 if (v != null) yield v;
                 yield key.startsWith("column.") ? key.substring(7) : switch (key) {
                 case "field.name" -> "Nombre";
@@ -10812,6 +10830,154 @@ public class BenjagestUiApplication extends Application {
             case "settings.email.help.ionos" ->
                     "Usa tu email IONOS completo como usuario y la contraseña del buzón IONOS.";
             case "settings.email.help.copy_url" -> "Abre esta URL en tu navegador:";
+            default -> null;
+        };
+    }
+
+    /**
+     * Slice 5C — Helper i18n EN del módulo EQUIPO / Reparto de
+     * clientes. Aislado en helper propio para no rebasar el límite
+     * JVM de 64KB por método de {@code t()}.
+     */
+    private String tTeamEn(String key) {
+        return switch (key) {
+            // Sidebar + cabecera
+            case "module.team" -> "Team";
+            case "team.title" -> "Team / Client distribution";
+            case "team.subtitle" -> "Split your client portfolio across employees and pick which modules each one handles.";
+            case "team.load_failed" -> "Could not load the team.";
+            case "team.forbidden" -> "Only the OWNER of the advisory firm can manage the client distribution.";
+            // Tabs
+            case "team.tab.members" -> "Employees";
+            case "team.tab.assignments" -> "Assignments";
+            case "team.tab.delegations" -> "Delegations";
+            // Empleados
+            case "team.members.hint" -> "Active members of your advisory firm. The OWNER manages the team; new employees join with an invitation.";
+            case "team.members.col.name" -> "Name";
+            case "team.members.col.email" -> "Email";
+            case "team.members.col.role" -> "Role";
+            case "team.members.empty" -> "No active employees yet.";
+            // Asignaciones
+            case "team.assign.hint" -> "Tick the clients on the left, choose the employee in charge and which modules they handle, and click Assign.";
+            case "team.assign.field.employee" -> "Assign to";
+            case "team.assign.field.role" -> "Role in client";
+            case "team.assign.field.modules" -> "Modules";
+            case "team.assign.field.notes" -> "Internal notes";
+            case "team.assign.modules.all" -> "All modules (open assignment)";
+            case "team.assign.btn.assign" -> "Assign selected clients";
+            case "team.assign.btn.delete" -> "Remove assignment";
+            case "team.assign.col.client" -> "Client";
+            case "team.assign.col.employee" -> "Employee";
+            case "team.assign.col.modules" -> "Modules";
+            case "team.assign.col.role" -> "Role";
+            case "team.assign.empty.clients" -> "No clients in your portfolio yet.";
+            case "team.assign.empty.matrix" -> "No assignments yet — distribute your clients to see them here.";
+            case "team.assign.no_selection.title" -> "Select clients";
+            case "team.assign.no_selection.body" -> "Tick at least one client on the left before assigning.";
+            case "team.assign.no_employee.title" -> "Pick an employee";
+            case "team.assign.no_employee.body" -> "Choose who will manage the selected clients.";
+            case "team.assign.ok.title" -> "Assignments created";
+            case "team.assign.ok.body" -> "Created:";
+            case "team.assign.ok.skipped" -> "Skipped (already assigned):";
+            case "team.assign.fail.title" -> "Could not assign";
+            case "team.assign.fail.body" -> "Check that you are the OWNER and try again.";
+            case "team.assign.delete.confirm.title" -> "Remove assignment?";
+            case "team.assign.delete.confirm.body" -> "The employee will lose access to this client immediately.";
+            case "team.assign.delete.fail.title" -> "Could not remove";
+            // Delegaciones (placeholder)
+            case "team.deleg.hint" -> "Temporary delegations for holidays or absences. Pick an assignment, the substitute employee and the date range; the substitute will see the client during that period.";
+            case "team.deleg.col.client" -> "Client";
+            case "team.deleg.col.holder" -> "Holder";
+            case "team.deleg.col.substitute" -> "Substitute";
+            case "team.deleg.col.from" -> "From";
+            case "team.deleg.col.until" -> "Until";
+            case "team.deleg.empty" -> "No active delegations.";
+            case "team.deleg.coming_soon" -> "Delegation editor coming next slice. Holder/substitute and date range are already stored in client_assignments — only the UI editor is missing.";
+            // Roles dentro del cliente (selector + columna de la matriz)
+            case "team.role.ADVISOR" -> "Tax advisor";
+            case "team.role.ACCOUNTANT" -> "Accountant";
+            case "team.role.EMPLOYEE" -> "Employee";
+            case "team.role.VIEWER" -> "Viewer (read only)";
+            // Rol del miembro en la asesoría (columna "Rol" de Empleados)
+            case "team.member_role.OWNER" -> "Owner";
+            case "team.member_role.ADMIN" -> "Administrator";
+            case "team.member_role.ACCOUNTANT" -> "Accountant";
+            case "team.member_role.ADVISOR" -> "Tax advisor";
+            case "team.member_role.EMPLOYEE" -> "Employee";
+            case "team.member_role.VIEWER" -> "Viewer";
+            default -> null;
+        };
+    }
+
+    /**
+     * Slice 5C — Helper i18n ES espejo de {@link #tTeamEn}.
+     */
+    private String tTeamEs(String key) {
+        return switch (key) {
+            // Sidebar + cabecera
+            case "module.team" -> "Equipo";
+            case "team.title" -> "Equipo / Reparto de clientes";
+            case "team.subtitle" -> "Reparte tu cartera entre los empleados y elige qué módulos lleva cada uno.";
+            case "team.load_failed" -> "No se pudo cargar el equipo.";
+            case "team.forbidden" -> "Solo el OWNER de la asesoría puede gestionar el reparto de clientes.";
+            // Tabs
+            case "team.tab.members" -> "Empleados";
+            case "team.tab.assignments" -> "Asignaciones";
+            case "team.tab.delegations" -> "Delegaciones";
+            // Empleados
+            case "team.members.hint" -> "Miembros activos de tu asesoría. El OWNER gestiona el equipo; los nuevos empleados entran por invitación.";
+            case "team.members.col.name" -> "Nombre";
+            case "team.members.col.email" -> "Email";
+            case "team.members.col.role" -> "Rol";
+            case "team.members.empty" -> "Todavía no hay empleados activos.";
+            // Asignaciones
+            case "team.assign.hint" -> "Marca los clientes a la izquierda, elige el empleado responsable y qué módulos lleva, y pulsa Asignar.";
+            case "team.assign.field.employee" -> "Asignar a";
+            case "team.assign.field.role" -> "Rol en el cliente";
+            case "team.assign.field.modules" -> "Módulos";
+            case "team.assign.field.notes" -> "Notas internas";
+            case "team.assign.modules.all" -> "Todos los módulos (asignación abierta)";
+            case "team.assign.btn.assign" -> "Asignar clientes marcados";
+            case "team.assign.btn.delete" -> "Quitar asignación";
+            case "team.assign.col.client" -> "Cliente";
+            case "team.assign.col.employee" -> "Empleado";
+            case "team.assign.col.modules" -> "Módulos";
+            case "team.assign.col.role" -> "Rol";
+            case "team.assign.empty.clients" -> "Todavía no hay clientes en tu cartera.";
+            case "team.assign.empty.matrix" -> "Aún no hay asignaciones — reparte tus clientes para verlas aquí.";
+            case "team.assign.no_selection.title" -> "Selecciona clientes";
+            case "team.assign.no_selection.body" -> "Marca al menos un cliente a la izquierda antes de asignar.";
+            case "team.assign.no_employee.title" -> "Elige un empleado";
+            case "team.assign.no_employee.body" -> "Selecciona quién va a llevar los clientes marcados.";
+            case "team.assign.ok.title" -> "Asignaciones creadas";
+            case "team.assign.ok.body" -> "Creadas:";
+            case "team.assign.ok.skipped" -> "Omitidas (ya asignadas):";
+            case "team.assign.fail.title" -> "No se pudo asignar";
+            case "team.assign.fail.body" -> "Comprueba que eres el OWNER e inténtalo de nuevo.";
+            case "team.assign.delete.confirm.title" -> "¿Quitar asignación?";
+            case "team.assign.delete.confirm.body" -> "El empleado dejará de ver a este cliente al instante.";
+            case "team.assign.delete.fail.title" -> "No se pudo quitar";
+            // Delegaciones (placeholder)
+            case "team.deleg.hint" -> "Delegaciones temporales por vacaciones o bajas. Elige una asignación, el empleado sustituto y el rango de fechas; el sustituto verá ese cliente durante ese periodo.";
+            case "team.deleg.col.client" -> "Cliente";
+            case "team.deleg.col.holder" -> "Titular";
+            case "team.deleg.col.substitute" -> "Sustituto";
+            case "team.deleg.col.from" -> "Desde";
+            case "team.deleg.col.until" -> "Hasta";
+            case "team.deleg.empty" -> "No hay delegaciones activas.";
+            case "team.deleg.coming_soon" -> "Editor de delegaciones en el siguiente slice. Titular/sustituto y rango ya se guardan en client_assignments — solo falta la UI del editor.";
+            // Roles dentro del cliente (selector + columna de la matriz)
+            case "team.role.ADVISOR" -> "Asesor";
+            case "team.role.ACCOUNTANT" -> "Contable";
+            case "team.role.EMPLOYEE" -> "Empleado";
+            case "team.role.VIEWER" -> "Solo lectura";
+            // Rol del miembro en la asesoría (columna "Rol" de Empleados)
+            case "team.member_role.OWNER" -> "Titular";
+            case "team.member_role.ADMIN" -> "Administrador";
+            case "team.member_role.ACCOUNTANT" -> "Contable";
+            case "team.member_role.ADVISOR" -> "Asesor";
+            case "team.member_role.EMPLOYEE" -> "Empleado";
+            case "team.member_role.VIEWER" -> "Consulta";
             default -> null;
         };
     }
@@ -14548,6 +14714,483 @@ public class BenjagestUiApplication extends Application {
         task.setOnSucceeded(ev -> showDehuModule());
         task.setOnFailed(ev -> showError(t("dehu.editor.fail.title"), t("dehu.editor.fail.body")));
         start(task, "dehu-dismiss");
+    }
+
+    // ===================================================================
+    //  Slice 5C — Módulo EQUIPO / Reparto de clientes
+    //  3 tabs: Empleados / Asignaciones / Delegaciones.
+    //  Solo OWNER (validado en backend; en UI mostramos error si 403).
+    // ===================================================================
+
+    private void showTeamModule() {
+        currentModule = "team";
+        Task<TeamBundle> task = new Task<>() {
+            @Override protected TeamBundle call() throws Exception {
+                // Las tres llamadas se hacen en paralelo desde el thread del Task —
+                // sí, secuencialmente dentro del Task, pero la UI ya está reactiva.
+                // En caso de que el user NO sea OWNER, listTeamMembers lanza 403
+                // y caemos al onFailed con el mensaje team.forbidden.
+                List<com.benjagest.ui.model.TeamMember> members = altaApiClient.listTeamMembers();
+                List<com.benjagest.ui.model.TeamAssignment> assignments =
+                        altaApiClient.listTeamAssignmentsWithModules();
+                List<com.benjagest.ui.model.CustomerPortfolioEntry> clients =
+                        altaApiClient.listAdvisoryPortfolio();
+                List<CompanyModuleEntry> modules = settingsApiClient.listModules();
+                return new TeamBundle(members, assignments, clients, modules);
+            }
+        };
+        task.setOnSucceeded(ev -> setCenterAnimated(scroll(teamView(task.getValue()))));
+        task.setOnFailed(ev -> {
+            Throwable err = task.getException();
+            String msg = err != null && err.getMessage() != null && err.getMessage().contains("403")
+                    ? t("team.forbidden")
+                    : t("team.load_failed");
+            setCenterAnimated(scroll(errorPanel(msg)));
+        });
+        start(task, "team-load");
+    }
+
+    private record TeamBundle(
+            List<com.benjagest.ui.model.TeamMember> members,
+            List<com.benjagest.ui.model.TeamAssignment> assignments,
+            List<com.benjagest.ui.model.CustomerPortfolioEntry> clients,
+            List<CompanyModuleEntry> modules
+    ) {}
+
+    private VBox teamView(TeamBundle bundle) {
+        VBox content = content();
+        Label title = new Label(t("team.title"));
+        title.getStyleClass().add("module-detail-title");
+        Label subtitle = new Label(t("team.subtitle"));
+        subtitle.getStyleClass().add("module-detail-description");
+        VBox titleBox = new VBox(4, title, subtitle);
+        StackPane moduleIcon = iconBubble("fas-users-cog", "module-title-icon");
+        Region spacer = new Region();
+        HBox.setHgrow(spacer, Priority.ALWAYS);
+        HBox header = new HBox(16, titleBox, moduleIcon, spacer);
+        header.setAlignment(Pos.CENTER_LEFT);
+        header.getStyleClass().add("module-detail-header");
+
+        TabPane tabs = new TabPane();
+        tabs.getStyleClass().add("settings-tabs");
+        tabs.setTabClosingPolicy(TabPane.TabClosingPolicy.UNAVAILABLE);
+
+        Tab membersTab = new Tab(t("team.tab.members"), teamMembersTab(bundle));
+        membersTab.setGraphic(icon("fas-users"));
+        Tab assignmentsTab = new Tab(t("team.tab.assignments"), teamAssignmentsTab(bundle));
+        assignmentsTab.setGraphic(icon("fas-tasks"));
+        Tab delegationsTab = new Tab(t("team.tab.delegations"), teamDelegationsTab(bundle));
+        delegationsTab.setGraphic(icon("fas-calendar-times"));
+        tabs.getTabs().addAll(membersTab, assignmentsTab, delegationsTab);
+        VBox.setVgrow(tabs, Priority.ALWAYS);
+
+        content.getChildren().addAll(header, tabs);
+        return content;
+    }
+
+    // ----- Tab 1: Empleados -------------------------------------------------
+
+    private Node teamMembersTab(TeamBundle bundle) {
+        VBox box = new VBox(12);
+        box.setPadding(new Insets(16));
+        Label hint = new Label(t("team.members.hint"));
+        hint.setWrapText(true);
+        hint.getStyleClass().add("settings-hint");
+
+        TableView<com.benjagest.ui.model.TeamMember> table = new TableView<>();
+        table.getStyleClass().add("data-table");
+        table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+        table.setPlaceholder(new Label(t("team.members.empty")));
+
+        TableColumn<com.benjagest.ui.model.TeamMember, String> cName =
+                new TableColumn<>(t("team.members.col.name"));
+        cName.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().displayName()));
+        cName.setPrefWidth(220);
+        TableColumn<com.benjagest.ui.model.TeamMember, String> cEmail =
+                new TableColumn<>(t("team.members.col.email"));
+        cEmail.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().email()));
+        cEmail.setPrefWidth(260);
+        TableColumn<com.benjagest.ui.model.TeamMember, String> cRole =
+                new TableColumn<>(t("team.members.col.role"));
+        cRole.setCellValueFactory(c -> new SimpleStringProperty(
+                humanizeMemberRole(c.getValue().roleName())));
+        cRole.setPrefWidth(140);
+        table.getColumns().addAll(List.of(cName, cEmail, cRole));
+        table.setItems(FXCollections.observableArrayList(bundle.members()));
+
+        box.getChildren().addAll(hint, table);
+        VBox.setVgrow(table, Priority.ALWAYS);
+        return box;
+    }
+
+    // ----- Tab 2: Asignaciones ---------------------------------------------
+
+    private Node teamAssignmentsTab(TeamBundle bundle) {
+        VBox box = new VBox(12);
+        box.setPadding(new Insets(16));
+
+        Label hint = new Label(t("team.assign.hint"));
+        hint.setWrapText(true);
+        hint.getStyleClass().add("settings-hint");
+
+        // ----- Panel izquierdo: clientes con checkbox -----
+        // Mostramos toda la cartera (portfolio) — incluye vinculados y no
+        // vinculados. El backend valida en bulkAssign que parent_company_id
+        // del cliente apunta a la asesoría logueada.
+        ObservableList<ClientRow> clientRows = FXCollections.observableArrayList();
+        for (com.benjagest.ui.model.CustomerPortfolioEntry c : bundle.clients()) {
+            // Solo clientes que tienen shadow company creada (linkedCompanyId
+            // != null) son asignables — las asignaciones se hacen contra
+            // companies.id, no contra customers.id. Si todavía no se ha
+            // iniciado la gestión, no podemos asignar empleados (esa decisión
+            // se toma cuando el OWNER hace doble-click en "Iniciar gestión").
+            if (c.linkedCompanyId() == null || c.linkedCompanyId().isBlank()) continue;
+            clientRows.add(new ClientRow(c));
+        }
+        TableView<ClientRow> clientTable = new TableView<>();
+        clientTable.getStyleClass().add("data-table");
+        clientTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+        clientTable.setPlaceholder(new Label(t("team.assign.empty.clients")));
+        clientTable.setEditable(true);
+
+        TableColumn<ClientRow, Boolean> cPick = new TableColumn<>("");
+        cPick.setCellValueFactory(c -> c.getValue().selected);
+        cPick.setCellFactory(javafx.scene.control.cell.CheckBoxTableCell.forTableColumn(cPick));
+        cPick.setPrefWidth(40);
+        cPick.setEditable(true);
+        TableColumn<ClientRow, String> cClient = new TableColumn<>(t("team.assign.col.client"));
+        cClient.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().displayName()));
+        clientTable.getColumns().addAll(List.of(cPick, cClient));
+        clientTable.setItems(clientRows);
+        VBox.setVgrow(clientTable, Priority.ALWAYS);
+
+        // ----- Panel derecho: formulario de asignación -----
+        ComboBox<com.benjagest.ui.model.TeamMember> employeeCombo = new ComboBox<>();
+        employeeCombo.getItems().addAll(bundle.members());
+        employeeCombo.setConverter(new javafx.util.StringConverter<>() {
+            @Override public String toString(com.benjagest.ui.model.TeamMember m) {
+                return m == null ? "" : m.label();
+            }
+            @Override public com.benjagest.ui.model.TeamMember fromString(String s) { return null; }
+        });
+        employeeCombo.setPromptText(t("team.assign.field.employee"));
+        employeeCombo.setMaxWidth(Double.MAX_VALUE);
+
+        // El combo guarda el código (ADVISOR/ACCOUNTANT/…) pero muestra el
+        // label traducido del idioma actual con un StringConverter. Así
+        // evitamos enviar etiquetas españolas al backend y mantenemos i18n.
+        ComboBox<String> roleCombo = new ComboBox<>(FXCollections.observableArrayList(
+                "ADVISOR", "ACCOUNTANT", "EMPLOYEE", "VIEWER"));
+        roleCombo.setConverter(new javafx.util.StringConverter<>() {
+            @Override public String toString(String code) {
+                return code == null ? "" : humanizeAssignmentRole(code);
+            }
+            @Override public String fromString(String s) { return null; }
+        });
+        roleCombo.setValue("ADVISOR");
+        roleCombo.setMaxWidth(Double.MAX_VALUE);
+
+        // Checkboxes por módulo del catálogo. Vacío = asignación abierta.
+        // Filtramos módulos que tienen sentido por cliente (excluye "settings"
+        // y otros que son globales de empresa; el sidebar igualmente los oculta).
+        VBox modulesBox = new VBox(4);
+        modulesBox.setPadding(new Insets(4, 0, 4, 0));
+        List<CheckBox> moduleChecks = new ArrayList<>();
+        CheckBox allModules = new CheckBox(t("team.assign.modules.all"));
+        allModules.setSelected(true);
+        modulesBox.getChildren().add(allModules);
+        // Submódulos del catálogo activos. Cuando "all" está marcado, los
+        // checkboxes individuales se ignoran (asignación abierta).
+        for (CompanyModuleEntry m : bundle.modules()) {
+            if (m == null || m.slug() == null || m.slug().isBlank()) continue;
+            if ("settings".equals(m.slug())) continue; // settings no se reparte
+            if ("team".equals(m.slug())) continue;     // el propio módulo equipo tampoco
+            CheckBox cb = new CheckBox(m.label());
+            cb.setUserData(m.slug());
+            cb.disableProperty().bind(allModules.selectedProperty());
+            moduleChecks.add(cb);
+            modulesBox.getChildren().add(cb);
+        }
+        ScrollPane modulesScroll = new ScrollPane(modulesBox);
+        modulesScroll.setFitToWidth(true);
+        modulesScroll.setPrefViewportHeight(180);
+        modulesScroll.getStyleClass().add("settings-section");
+
+        TextField notesField = new TextField();
+        notesField.setPromptText(t("team.assign.field.notes"));
+
+        Button assignBtn = new Button(t("team.assign.btn.assign"));
+        assignBtn.setGraphic(icon("fas-share-square"));
+        assignBtn.getStyleClass().add("primary-button");
+        assignBtn.setOnAction(ev -> {
+            List<String> selectedIds = new ArrayList<>();
+            for (ClientRow r : clientRows) {
+                if (r.selected.get() && r.companyId != null) selectedIds.add(r.companyId);
+            }
+            if (selectedIds.isEmpty()) {
+                showError(t("team.assign.no_selection.title"), t("team.assign.no_selection.body"));
+                return;
+            }
+            com.benjagest.ui.model.TeamMember emp = employeeCombo.getValue();
+            if (emp == null) {
+                showError(t("team.assign.no_employee.title"), t("team.assign.no_employee.body"));
+                return;
+            }
+            List<String> moduleSlugs = new ArrayList<>();
+            if (!allModules.isSelected()) {
+                for (CheckBox cb : moduleChecks) {
+                    if (cb.isSelected() && cb.getUserData() instanceof String s) {
+                        moduleSlugs.add(s);
+                    }
+                }
+            }
+            String empId = emp.userId();
+            String role = roleCombo.getValue();
+            String notes = notesField.getText();
+            Task<String> save = new Task<>() {
+                @Override protected String call() throws Exception {
+                    return altaApiClient.bulkAssignClients(empId, selectedIds, role, moduleSlugs, notes);
+                }
+            };
+            save.setOnSucceeded(s -> {
+                showInfo(t("team.assign.ok.title"), t("team.assign.ok.body") + " " + selectedIds.size());
+                showTeamModule();
+            });
+            save.setOnFailed(s -> showError(t("team.assign.fail.title"), t("team.assign.fail.body")));
+            start(save, "team-bulk-assign");
+        });
+
+        GridPane form = new GridPane();
+        form.setHgap(10);
+        form.setVgap(10);
+        form.setPadding(new Insets(8));
+        form.add(new Label(t("team.assign.field.employee")), 0, 0);
+        form.add(employeeCombo, 1, 0);
+        form.add(new Label(t("team.assign.field.role")), 0, 1);
+        form.add(roleCombo, 1, 1);
+        form.add(new Label(t("team.assign.field.modules")), 0, 2);
+        form.add(modulesScroll, 1, 2);
+        form.add(new Label(t("team.assign.field.notes")), 0, 3);
+        form.add(notesField, 1, 3);
+        form.add(assignBtn, 1, 4);
+        javafx.scene.layout.ColumnConstraints col0 = new javafx.scene.layout.ColumnConstraints();
+        col0.setMinWidth(140);
+        javafx.scene.layout.ColumnConstraints col1 = new javafx.scene.layout.ColumnConstraints();
+        col1.setHgrow(Priority.ALWAYS);
+        col1.setFillWidth(true);
+        form.getColumnConstraints().addAll(col0, col1);
+
+        VBox right = new VBox(10, form);
+        right.setPadding(new Insets(0, 0, 0, 16));
+
+        SplitPane split = new SplitPane(clientTable, right);
+        split.setDividerPositions(0.50);
+        VBox.setVgrow(split, Priority.ALWAYS);
+
+        // ----- Matriz actual de asignaciones (abajo) -----
+        TableView<com.benjagest.ui.model.TeamAssignment> matrix = new TableView<>();
+        matrix.getStyleClass().add("data-table");
+        matrix.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+        matrix.setPlaceholder(new Label(t("team.assign.empty.matrix")));
+        java.util.Map<String, String> clientNameById = new java.util.HashMap<>();
+        for (com.benjagest.ui.model.CustomerPortfolioEntry c : bundle.clients()) {
+            if (c.linkedCompanyId() != null) clientNameById.put(c.linkedCompanyId(), labelOf(c));
+        }
+        java.util.Map<String, String> memberLabelById = new java.util.HashMap<>();
+        for (com.benjagest.ui.model.TeamMember m : bundle.members()) memberLabelById.put(m.userId(), m.label());
+
+        TableColumn<com.benjagest.ui.model.TeamAssignment, String> mClient =
+                new TableColumn<>(t("team.assign.col.client"));
+        mClient.setCellValueFactory(c -> new SimpleStringProperty(
+                clientNameById.getOrDefault(c.getValue().clientCompanyId(), c.getValue().clientCompanyId())));
+        mClient.setPrefWidth(240);
+        TableColumn<com.benjagest.ui.model.TeamAssignment, String> mEmployee =
+                new TableColumn<>(t("team.assign.col.employee"));
+        mEmployee.setCellValueFactory(c -> new SimpleStringProperty(
+                memberLabelById.getOrDefault(c.getValue().employeeUserId(), c.getValue().employeeUserId())));
+        mEmployee.setPrefWidth(220);
+        TableColumn<com.benjagest.ui.model.TeamAssignment, String> mRole =
+                new TableColumn<>(t("team.assign.col.role"));
+        mRole.setCellValueFactory(c -> new SimpleStringProperty(
+                humanizeAssignmentRole(c.getValue().roleInClient())));
+        mRole.setPrefWidth(140);
+        // Mapa slug → label localizado del catálogo (mismo que ve el OWNER
+        // en la pestaña Módulos de Configuración). Evita mostrar "billing,
+        // purchases" y enseña "Facturación, Compras".
+        java.util.Map<String, String> moduleLabelBySlug = new java.util.HashMap<>();
+        for (CompanyModuleEntry m : bundle.modules()) {
+            if (m != null && m.slug() != null) moduleLabelBySlug.put(m.slug(), m.label());
+        }
+        TableColumn<com.benjagest.ui.model.TeamAssignment, String> mModules =
+                new TableColumn<>(t("team.assign.col.modules"));
+        mModules.setCellValueFactory(c -> {
+            List<String> ms = c.getValue().moduleSlugs();
+            if (ms == null || ms.isEmpty()) {
+                return new SimpleStringProperty(t("team.assign.modules.all"));
+            }
+            StringBuilder sb = new StringBuilder();
+            for (int i = 0; i < ms.size(); i++) {
+                if (i > 0) sb.append(", ");
+                String slug = ms.get(i);
+                sb.append(moduleLabelBySlug.getOrDefault(slug, slug));
+            }
+            return new SimpleStringProperty(sb.toString());
+        });
+        matrix.getColumns().addAll(List.of(mClient, mEmployee, mRole, mModules));
+        matrix.setItems(FXCollections.observableArrayList(bundle.assignments()));
+
+        Button deleteBtn = new Button(t("team.assign.btn.delete"));
+        deleteBtn.setGraphic(icon("fas-trash"));
+        deleteBtn.setDisable(true);
+        matrix.getSelectionModel().selectedItemProperty().addListener(
+                (o, ov, nv) -> deleteBtn.setDisable(nv == null));
+        deleteBtn.setOnAction(ev -> {
+            var sel = matrix.getSelectionModel().getSelectedItem();
+            if (sel == null) return;
+            Alert confirm = new Alert(Alert.AlertType.CONFIRMATION);
+            confirm.setTitle(t("team.assign.delete.confirm.title"));
+            confirm.setHeaderText(t("team.assign.delete.confirm.title"));
+            confirm.setContentText(t("team.assign.delete.confirm.body"));
+            confirm.showAndWait().ifPresent(rsp -> {
+                if (rsp == javafx.scene.control.ButtonType.OK) {
+                    Task<Void> del = new Task<>() {
+                        @Override protected Void call() throws Exception {
+                            altaApiClient.deleteTeamAssignment(sel.id());
+                            return null;
+                        }
+                    };
+                    del.setOnSucceeded(s -> showTeamModule());
+                    del.setOnFailed(s -> showError(t("team.assign.delete.fail.title"),
+                            t("team.assign.fail.body")));
+                    start(del, "team-delete");
+                }
+            });
+        });
+
+        VBox matrixBox = new VBox(8,
+                new Label(t("team.assign.col.modules") + " · " + t("team.tab.assignments")),
+                matrix, deleteBtn);
+        VBox.setVgrow(matrix, Priority.ALWAYS);
+        matrixBox.setPadding(new Insets(8, 0, 0, 0));
+
+        box.getChildren().addAll(hint, split, matrixBox);
+        return box;
+    }
+
+    /** Fila auxiliar para el TableView de selección de clientes. */
+    private static final class ClientRow {
+        final String companyId;
+        final String legalName;
+        final String taxIdentifier;
+        final javafx.beans.property.BooleanProperty selected =
+                new javafx.beans.property.SimpleBooleanProperty(false);
+        ClientRow(com.benjagest.ui.model.CustomerPortfolioEntry c) {
+            this.companyId = c.linkedCompanyId();
+            this.legalName = c.legalName();
+            this.taxIdentifier = c.taxIdentifier();
+        }
+        String displayName() {
+            if (taxIdentifier == null || taxIdentifier.isBlank()) return safe(legalName);
+            return safe(legalName) + " · " + taxIdentifier;
+        }
+        private static String safe(String s) { return s == null ? "" : s; }
+    }
+
+    private String labelOf(com.benjagest.ui.model.CustomerPortfolioEntry c) {
+        if (c.taxIdentifier() == null || c.taxIdentifier().isBlank()) {
+            return c.legalName() == null ? "" : c.legalName();
+        }
+        return (c.legalName() == null ? "" : c.legalName()) + " · " + c.taxIdentifier();
+    }
+
+    // ----- Tab 3: Delegaciones ---------------------------------------------
+
+    private Node teamDelegationsTab(TeamBundle bundle) {
+        // Slice 5C v1: placeholder informativo. Las asignaciones con
+        // delegatedToUserId no nulo se listan, pero el editor temporal
+        // (formulario para crear/quitar delegación) llega en slice 5D.
+        VBox box = new VBox(12);
+        box.setPadding(new Insets(16));
+        Label hint = new Label(t("team.deleg.hint"));
+        hint.setWrapText(true);
+        hint.getStyleClass().add("settings-hint");
+
+        TableView<com.benjagest.ui.model.TeamAssignment> table = new TableView<>();
+        table.getStyleClass().add("data-table");
+        table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+        table.setPlaceholder(new Label(t("team.deleg.empty")));
+
+        java.util.Map<String, String> nameById = new java.util.HashMap<>();
+        for (com.benjagest.ui.model.CustomerPortfolioEntry c : bundle.clients()) {
+            if (c.linkedCompanyId() != null) nameById.put(c.linkedCompanyId(), labelOf(c));
+        }
+        java.util.Map<String, String> memberById = new java.util.HashMap<>();
+        for (com.benjagest.ui.model.TeamMember m : bundle.members()) memberById.put(m.userId(), m.label());
+
+        TableColumn<com.benjagest.ui.model.TeamAssignment, String> cClient =
+                new TableColumn<>(t("team.deleg.col.client"));
+        cClient.setCellValueFactory(c -> new SimpleStringProperty(
+                nameById.getOrDefault(c.getValue().clientCompanyId(), c.getValue().clientCompanyId())));
+        cClient.setPrefWidth(220);
+        TableColumn<com.benjagest.ui.model.TeamAssignment, String> cHolder =
+                new TableColumn<>(t("team.deleg.col.holder"));
+        cHolder.setCellValueFactory(c -> new SimpleStringProperty(
+                memberById.getOrDefault(c.getValue().employeeUserId(), c.getValue().employeeUserId())));
+        cHolder.setPrefWidth(200);
+        TableColumn<com.benjagest.ui.model.TeamAssignment, String> cSub =
+                new TableColumn<>(t("team.deleg.col.substitute"));
+        cSub.setCellValueFactory(c -> new SimpleStringProperty(
+                memberById.getOrDefault(c.getValue().delegatedToUserId(), "")));
+        cSub.setPrefWidth(200);
+        TableColumn<com.benjagest.ui.model.TeamAssignment, String> cFrom =
+                new TableColumn<>(t("team.deleg.col.from"));
+        cFrom.setCellValueFactory(c -> new SimpleStringProperty(
+                c.getValue().delegatedFrom() == null ? "" : c.getValue().delegatedFrom().toString()));
+        TableColumn<com.benjagest.ui.model.TeamAssignment, String> cUntil =
+                new TableColumn<>(t("team.deleg.col.until"));
+        cUntil.setCellValueFactory(c -> new SimpleStringProperty(
+                c.getValue().delegatedUntil() == null ? "" : c.getValue().delegatedUntil().toString()));
+        table.getColumns().addAll(List.of(cClient, cHolder, cSub, cFrom, cUntil));
+
+        // Solo asignaciones con delegación activa
+        java.util.List<com.benjagest.ui.model.TeamAssignment> withDeleg = new java.util.ArrayList<>();
+        for (com.benjagest.ui.model.TeamAssignment a : bundle.assignments()) {
+            if (a.delegatedToUserId() != null && !a.delegatedToUserId().isBlank()) {
+                withDeleg.add(a);
+            }
+        }
+        table.setItems(FXCollections.observableArrayList(withDeleg));
+
+        Label comingSoon = new Label(t("team.deleg.coming_soon"));
+        comingSoon.setWrapText(true);
+        comingSoon.getStyleClass().add("settings-hint");
+
+        box.getChildren().addAll(hint, table, comingSoon);
+        VBox.setVgrow(table, Priority.ALWAYS);
+        return box;
+    }
+
+    /**
+     * Traduce el rol de un miembro en la asesoría (OWNER, ADMIN…) al
+     * idioma actual. Si el código no está en el helper i18n cae al
+     * propio código en lugar de petar — robusto a roles nuevos.
+     */
+    private String humanizeMemberRole(String code) {
+        if (code == null || code.isBlank()) return "";
+        String key = "team.member_role." + code;
+        String translated = t(key);
+        return key.equals(translated) ? code : translated;
+    }
+
+    /**
+     * Traduce el rol asignado dentro de un cliente (ADVISOR, ACCOUNTANT…)
+     * al idioma actual. Mismo patrón defensivo que humanizeMemberRole.
+     */
+    private String humanizeAssignmentRole(String code) {
+        if (code == null || code.isBlank()) return "";
+        String key = "team.role." + code;
+        String translated = t(key);
+        return key.equals(translated) ? code : translated;
     }
 
     // ===================================================================
