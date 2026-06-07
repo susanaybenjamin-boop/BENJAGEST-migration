@@ -37,4 +37,13 @@ public record ClientAssignment(
     public static final String ROLE_ACCOUNTANT = "ACCOUNTANT";
     public static final String ROLE_EMPLOYEE = "EMPLOYEE";
     public static final String ROLE_VIEWER = "VIEWER";
+
+    /**
+     * Slice 5B — Marcador devuelto por el repository cuando una
+     * asignación está "abierta" (sin filas en assignment_modules) y el
+     * caller debe asumir que el empleado tiene acceso a TODOS los
+     * módulos activos del cliente. No es un slug real del catálogo, no
+     * se persiste en assignment_modules — solo es señal para la UI.
+     */
+    public static final String MODULE_ALL = "*";
 }
