@@ -5682,6 +5682,16 @@ public class BenjagestUiApplication extends Application {
                 // el JavaFX thread; el prompt se muestra siempre en
                 // Platform.runLater.
                 new Thread(() -> {
+                    // Slice 3S-3 — Check determinista PRIMERO: si la
+                    // factura la generó el cron de recurrentes, NUNCA
+                    // preguntar (es 100% fiable, mira generated_id).
+                    boolean fromRecurring;
+                    try {
+                        fromRecurring = accountingApiClient.isFromRecurring(
+                                "SALES_INVOICE", v.id());
+                    } catch (Exception ex) { fromRecurring = false; }
+                    if (fromRecurring) return;
+                    // Heurístico de respaldo (3P): por cliente+importe.
                     boolean covered;
                     try {
                         covered = accountingApiClient.recurringAlreadyCovers(

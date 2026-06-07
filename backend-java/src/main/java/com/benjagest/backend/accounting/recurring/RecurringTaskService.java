@@ -218,6 +218,21 @@ public class RecurringTaskService {
         return jdbcTemplate.query(sql.toString(), this::mapTask, args.toArray());
     }
 
+    /**
+     * Slice 3S-3 — TRUE si el {@code generatedId} (id de venta, compra
+     * o asiento) aparece como resultado de algún run del cron. Lo usa
+     * la UI para suprimir el prompt "¿hacer recurrente?" tras validar
+     * una factura que el propio cron generó.
+     */
+    public boolean isGeneratedIdFromRecurring(String generatedId) {
+        if (generatedId == null || generatedId.isBlank()) return false;
+        Integer count = jdbcTemplate.queryForObject("""
+                SELECT COUNT(*) FROM recurring_task_runs
+                 WHERE generated_id = ? AND company_id = ?
+                """, Integer.class, generatedId, tenantContext.getCurrentCompanyId());
+        return count != null && count > 0;
+    }
+
     public List<RunView> listRuns(String taskId, int limit) {
         return jdbcTemplate.query("""
                 SELECT id, recurring_task_id, run_at, scheduled_date, status,
