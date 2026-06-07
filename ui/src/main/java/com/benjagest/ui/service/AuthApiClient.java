@@ -99,6 +99,116 @@ public class AuthApiClient {
         storeResponse(response.body());
     }
 
+    // ============================================================
+    // L4-3 — Acceso por PIN multi-puesto
+    // ============================================================
+
+    /**
+     * Empareja el PC actual con la asesoría del OWNER. Devuelve el
+     * resultado en bruto para que la UI lo persista vía DeviceConfig.
+     * NO toca AuthSession — el emparejado es independiente del login.
+     */
+    public PairResult pairDevice(String email, String password, String deviceName)
+            throws IOException, InterruptedException {
+        String body = "{"
+                + "\"email\":\"" + escape(email) + "\","
+                + "\"password\":\"" + escape(password) + "\","
+                + "\"deviceName\":\"" + escape(deviceName) + "\""
+                + "}";
+        HttpRequest request = HttpRequest.newBuilder(URI.create(baseUrl + "/auth/devices/pair"))
+                .timeout(Duration.ofSeconds(10))
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(body))
+                .build();
+        HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+        if (response.statusCode() == 401) {
+            throw new IOException("Credenciales no válidas");
+        }
+        if (response.statusCode() == 403) {
+            throw new IOException("Solo el OWNER de una asesoría puede emparejar dispositivos");
+        }
+        if (response.statusCode() == 409) {
+            // Mensaje específico del backend (5 ya activos).
+            throw new IOException(extractMessage(response.body(),
+                    "Has alcanzado el límite de dispositivos. Revoca uno desde 'Mis equipos'."));
+        }
+        if (response.statusCode() < 200 || response.statusCode() >= 300) {
+            throw new IOException("Emparejado falló: HTTP " + response.statusCode());
+        }
+        return new PairResult(
+                textField(response.body(), "deviceId"),
+                textField(response.body(), "deviceSecret"),
+                textField(response.body(), "companyId"),
+                textField(response.body(), "companyName")
+        );
+    }
+
+    /**
+     * Login por PIN. Si el backend acepta el par (deviceSecret, pin),
+     * el LoginResponse se persiste en AuthSession como cualquier login.
+     */
+    public void pinLogin(String deviceSecret, String pin)
+            throws IOException, InterruptedException {
+        String body = "{"
+                + "\"deviceSecret\":\"" + escape(deviceSecret) + "\","
+                + "\"pin\":\"" + escape(pin) + "\""
+                + "}";
+        HttpRequest request = HttpRequest.newBuilder(URI.create(baseUrl + "/auth/pin-login"))
+                .timeout(Duration.ofSeconds(10))
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(body))
+                .build();
+        HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+        if (response.statusCode() == 401) {
+            // Distinguimos "device no reconocido" de "PIN incorrecto" por
+            // el mensaje, para que la UI pueda forzar re-emparejado si
+            // el device.json local quedó obsoleto.
+            String msg = extractMessage(response.body(), "PIN incorrecto");
+            if (msg.toLowerCase().contains("dispositivo")) {
+                throw new IOException("DEVICE_NOT_RECOGNIZED");
+            }
+            throw new IOException("PIN incorrecto");
+        }
+        if (response.statusCode() == 429) {
+            // Bloqueado por intentos fallidos. Mantenemos el mensaje
+            // del backend (lleva los segundos restantes).
+            throw new IOException(extractMessage(response.body(),
+                    "Demasiados intentos. Espera unos segundos."));
+        }
+        if (response.statusCode() < 200 || response.statusCode() >= 300) {
+            throw new IOException("Login PIN falló: HTTP " + response.statusCode());
+        }
+        storeResponse(response.body());
+    }
+
+    /** Revoca el emparejado actual (Olvidar este equipo). */
+    public void revokeDevice(String deviceId) throws IOException, InterruptedException {
+        HttpRequest.Builder builder = HttpRequest.newBuilder(
+                URI.create(baseUrl + "/auth/devices/" + deviceId))
+                .timeout(Duration.ofSeconds(8))
+                .DELETE();
+        AuthSession.get().authorize(builder);
+        HttpResponse<Void> response = httpClient.send(builder.build(),
+                HttpResponse.BodyHandlers.discarding());
+        if (response.statusCode() < 200 || response.statusCode() >= 300) {
+            throw new IOException("No se pudo revocar el dispositivo: HTTP " + response.statusCode());
+        }
+    }
+
+    /**
+     * Extrae el campo {@code message} de un body de error Spring estándar.
+     * Si no hay match, devuelve el fallback proporcionado.
+     */
+    private String extractMessage(String body, String fallback) {
+        if (body == null || body.isBlank()) return fallback;
+        String v = textField(body, "message");
+        return v == null || v.isBlank() ? fallback : v;
+    }
+
+    /** Resultado del emparejado — la UI lo pasa a DeviceConfig.save. */
+    public record PairResult(String deviceId, String deviceSecret,
+                              String companyId, String companyName) {}
+
     private void storeResponse(String json) {
         String accessToken = textField(json, "accessToken");
         String refreshToken = textField(json, "refreshToken");
