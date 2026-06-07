@@ -3,7 +3,11 @@
 > Lista única ordenada de mayor a menor importancia con TODO lo que hay que hacer en BENJAGEST.
 > Se va tachando conforme cada item se crea, prueba, commitea y mergea a `develop`.
 >
-> **Última revisión:** 2026-06-05 (sesión asesoría↔cliente + exports legales). Esta sesión cerró 15 slices encadenados: el ciclo completo de invitación asesoría↔empresario (UNLINK-SYNC + REINVITE + POLLING-FIX `sendAsOwner` + INSTANT-REFRESH + DEHU-POLLING), la separación arquitectural Mi empresa vs Mis clientes en el sidebar de la asesoría con cierre de la deuda `advisory_only` (DUAL-SIDEBAR + V43), el bug crítico de fichajes `EMP-USER-MAP` (lookup `employees.id` por `user_id+tenant` con pantalla de "no enrolled" en lugar de error), y la trilogía de exports verificables para Inspección/Hacienda — TC-EXPORT (fichajes PDF/CSV con CSV verificación), AUDIT-EXPORT (auditoría general PDF/CSV con SHA-256 del documento), AUDIT-CHAIN (hash encadenado por empresa en `audit_events` con backfill cronológico, V44 con FIX collation MariaDB 11.4, endpoint `/verify` y display_name humano resuelto vía JOIN). Cierra la deuda i18n con dos helpers nuevos por slice (`tExportsAndChainEn/Es`) para no rebasar el 64KB por método de la JVM.
+> **Última revisión:** 2026-06-07 (sesión recurrentes asesoría↔cliente + sidebar rename). Cierra el bloque RECURRING-FINAL (motor + UI completos) con 18 slices encadenados (3A-3R): editor SALES/PURCHASE/JOURNAL_ENTRY con commitSpinner fix del JavaFX Spinner editable que no committea texto sin tabular; transacciones REQUIRES_NEW aisladas por sub-runner para que el fallo de uno no marque rollback-only el contenedor; placeholders extendidos {MES}/{MES_MAY}/{AÑO}/{YY}/{M}/{D}/{T}; auto_proposed=TRUE + source_type='RECURRING_TASK' para que el asiento aparezca en "Por validar" con trazabilidad; endpoint `/already-covers` para suprimir el prompt "¿hacer recurrente?" en facturas ya cubiertas por una plantilla; detector de candidatos por NIF+importe en ventana N días con banner UI; botón "Hacer recurrente" en listados Facturas/Compras con editor pre-rellenado; "pago periódico sin factura" como recurrente JOURNAL_ENTRY con resolveAccountIdByCode; autovinculación silenciosa asesoría (V64) + `Mi gestión` en sidebar como primer item (IcoMoon fas-briefcase porque fas-house/fas-building no resuelven); botón eliminar plantillas; sub-tabs Recurrentes en cliente vinculado Y no vinculado desde asesoría (3Q); badge "Creada por tu asesoría" en tabla de plantillas via JOIN users.company_id ≠ task.company_id (3R); rename sidebar asesoría "Facturacion clientes/Compras revisadas" → "Facturacion/Compras y Gastos" para igualar empresario.
+>
+> **Sesión 2026-06-05 (referencia previa):** asesoría↔cliente + exports legales. 15 slices: ciclo invitación (UNLINK-SYNC + REINVITE + POLLING-FIX `sendAsOwner` + INSTANT-REFRESH + DEHU-POLLING), sidebar dual `Mi empresa` vs `Mis clientes` con cierre de la deuda `advisory_only` (DUAL-SIDEBAR + V43), bug crítico fichajes `EMP-USER-MAP`, trilogía exports verificables — TC-EXPORT, AUDIT-EXPORT, AUDIT-CHAIN (V44 hash encadenado en `audit_events` con FIX collation MariaDB 11.4 + endpoint `/verify` + display_name humano).
+>
+> **Sesión 2026-06-06 (referencia previa):** bloque contabilidad completo. 35+ slices encadenados — V46 catálogo PGC PYMES (RD 1515/2007), asiento contable automático al validar (compras + ventas), cierre ejercicio + aplicación resultado, modelos AEAT 347/390/190, aprendizaje contable por feedback, asientos manuales con bloqueo periodo, Libro Diario + Mayor + Sumas y Saldos, cuentas bancarias + movimientos + cobros/pagos, importación Norma 43/CSV bancario + auto-conciliación, préstamos + cuadro amortización, inmovilizado + amortización, plantillas asiento, Balance situación + PyG, exportación contable Contasol/A3/Sage + importación inversa, motor recurrentes (cron) + UI primer corte, RefreshBus publish/subscribe central, V55 tercero_ref/aliases en accounting_accounts + TerceroAccountResolverService (port del CONTENDO `getOrCreateCuentaTercero`), ExpenseAccountClassifierService + IncomeAccountClassifierService espejo, refactor PurchaseJournalEntryService + SalesJournalEntryService con resolver+classifier, endpoint reclassify + botón UI "Reclasificar asientos", V56 companies.tercero_account_length/mode (BY_INDEX/BY_NIF) + endpoint config + UI, V57 sales_invoices.concept/purchase_invoices.concept con descripción por línea correcta, V59 relax UK tax_identifier para shadow companies + endpoint start-management + doble click en cliente no vinculado, V60 journal_entries.source_pdf_path + visor PDF reutilizable con PDFBox + multi-import gastos/ventas + seed fiscal_year + PGC en shadow company.
 >
 > **Sesión 2026-06-04 (referencia previa):** PDF-EXTRACT v2 con layout X/Y por span (PDFBox + LayoutCollector), regex inspirado en CONTENDO calendarParser.v3. PDF-TEMPLATES aprendizaje por NIF. PDF-AMAZON específico (NIF español prioritario sobre EU VAT, Número del documento con `del`, totales por signature). PDF-MULTI (Amazon multi-factura por PDF). TC-CFG tipos de evento configurables + TC-AUDIT sub-tab auditoría + EMP-GEO geolocalización opcional.
 > **Fuentes:** [`gap-analysis-contendo.md`](gap-analysis-contendo.md), [`gap-analysis-config-ui.md`](gap-analysis-config-ui.md), [`next-sessions-plan.md`](next-sessions-plan.md), [`migration-roadmap.md`](migration-roadmap.md).
@@ -62,7 +66,7 @@ La app se diseñó bilingüe desde C1 (botón EN/ES en el header → `language` 
 - ✅ **Audit log activo** — paquete `audit/` (Event + Repository + Service + Controller) escribe en `audit_events` desde `AuthService` (LOGIN_OK / LOGIN_FAIL / COMPANY_SWITCHED), `CompanyModulesService` (MODULE_ENABLED / MODULE_DISABLED) y `CompanyDataService` (COMPANY_DATA_UPDATED). UI: 4ª pestaña "Auditoría" en Configuración con tabla filtrable por tipo. Pendiente futuro: vista global para LOGIN_FAIL pre-auth (companyId NULL).
 - ✅ **Cifrado columnas sensibles con Jasypt** — paquete `certificates/` (Certificate + Repository + Service + Controller) con CRUD `/api/certificates`. `encrypted_password` y `certificate_data` se cifran con `StringEncryptor` antes de tocar BD y se descifran al leer. GET nunca expone los campos sensibles, solo `passwordConfigured` / `certificateDataPresent`. Verificado: subir un cert con password `SECRETO_DEMO_2026` deja en BD `Ps4/JNT0m+T9CG...` (ciphertext base64). Pendiente: misma técnica para futuras `credenciales_externas` (DEHú/SS/SILTRA) cuando lleguen.
 - ✅ **Refresh token revocation** — V12 tabla `revoked_refresh_tokens` (jti + user_id + revoked_at). `JwtService.createRefreshToken` añade `jti` único. `AuthService.refresh` rechaza 401 si el jti está en la denylist. POST `/api/auth/logout` mete el jti en la denylist (idempotente). UI: `AuthApiClient.logout()` se llama desde el botón Logout antes del `clear()` local. Verificado: refresh OK antes de logout, 401 después.
-- ⬜ **C2** — Google Sign-In con OAuth2 (aplazado conscientemente hasta que Benjamin genere credenciales en Google Cloud Console). No olvidar.
+- ⏸ **C2** — Google Sign-In con OAuth2 (aplazado conscientemente hasta que Benjamin genere credenciales en Google Cloud Console). No olvidar.
 
 ### VeriFactu / Facturación (legal obligatoria)
 
@@ -145,7 +149,7 @@ La app se diseñó bilingüe desde C1 (botón EN/ES en el header → `language` 
 - ✅ **Anulación con vínculo** (2026-06-02, reforzado 2026-06-03) — `SalesInvoiceService.voidValidated()` emite **en una sola transacción** una factura RECTIFYING ya VALIDATED enlazada a la original mediante `original_invoice_id` + líneas con cantidad negativa, y la original queda VOIDED con `rectifying_invoice_id` apuntando a la nueva. Endpoint `POST /api/billing/invoices/{id}/void`. **Decisión 2026-06-03**: la rectificativa por anulación NO pasa por borrador editable — emitirla como DRAFT abriría una ventana para manipular cifras antes del acto legal. Refactor: `validate()` ahora delega en `validateInternal()` para reutilizarse desde `voidValidated()` sin romper proxy AOP (`@Transactional`). Cascada VOIDED + hash VeriFactu en la misma tx. `updateDraft` preserva `invoice_type` y `original_invoice_id` para defensa (aunque ya no hay borrador rect que editar). UI: botón "Anular" en el listado activo solo con VALIDATED, alerta con mensaje "acto legal — no se puede deshacer", al confirmar muestra el nº emitido (RECT-2026-0001) y refresca. Pendiente futuro: rectificativa parcial R1-R5 (flujo aparte que sí pasaría por borrador editable porque ahí el usuario debe revisar las líneas).
 - ✅ Almacenamiento documental de facturas (cerrado por F-STORAGE, ver bloque VeriFactu arriba).
 - ✅ Envío facturas por email (cerrado por F-EMAIL, ver bloque VeriFactu arriba).
-- ⬜ Obligaciones de fabricante VeriFactu (auditoría propia del software, ver `VERIFACTU_OBLIGACIONES_FABRICANTE.md` de CONTENDO).
+- ⬜ **Obligaciones de fabricante VeriFactu** (auditoría propia del software, ver `VERIFACTU_OBLIGACIONES_FABRICANTE.md` de CONTENDO). Pendiente real — el slice cubre las **declaraciones responsables del fabricante** (no del usuario): registro como SIF en sede AEAT, documento de obligaciones, página pública de cumplimiento. Atacar antes de cualquier despliegue comercial.
 - ✅ Importación PDF compras v1 (C3, 2026-06-04) — dependencia Apache PDFBox 3.0.3. `PdfTextExtractor.extract(bytes)` saca texto plano (PDFs con texto nativo, ~80% de facturas de software). `InvoiceFieldsExtractor` v1 con regex calibrados ES: NIF/CIF AEAT, fechas DD/MM/YYYY|YYYY-MM-DD, importes "1.234,56 €", IVA "21%". Devuelve `ExtractionResult{emitterNif, invoiceNumber, invoiceDate, baseAmount, vatPercent, vatAmount, totalAmount, allDetectedNifs, rawTextHead}`. Endpoint `POST /api/purchases/pdf-import` (multipart). UI: módulo Compras con botón "Importar PDF" → FileChooser → dialog con campos detectados.
 - ✅ **PDF-EXTRACT v2** (2026-06-04, `aed5619` + `5263a2c`) — motor con preservación de layout X/Y por span (`PdfTextExtractor.extractLayout` extiende `PDFTextStripper`, captura cada `TextPosition` y agrupa por líneas Y con tolerancia). `LayoutDocument` con `LayoutPage > LayoutLine > LayoutSpan`. Heurísticas v2 estilo CONTENDO calendarParser.v3: NIF/CIF AEAT, NIF español labeled, VAT intracomunitario (LU/IE/FR/DE…), VAT con prefijo ES, OCR fixes (NBSP, em/en dash, comillas inteligentes), tabla de totales con cabecera "BASE IMPONIBLE % IVA CUOTA TOTAL", tabla Amazon "IVA % Precio total (IVA excluido) IVA", detector por *signature* `21% 35,09 € 7,37 €` con cross-check `base+iva ≈ total ±0,10 €`, detector Solred "Total Factura en Euros 169,14 16,91 186,05", blacklist de cabeceras ("Dirección de correspondencia", "Domicilio fiscal", "Billing address"…), SHA-256 del PDF para dedup, validación cruzada de confianza (HIGH/MEDIUM/LOW). Tests: `InvoiceFieldsExtractorTotalsTest` (Bloques Los Llanos), `InvoiceFieldsExtractorAmazonTest` (transcripción ideal Amazon EU intracomunitario), `InvoiceFieldsExtractorAmazonEsTest` (transcripción literal del LayoutDocument del PDF real "LAPICES Y TENAZAS.pdf" — bloquea regresiones).
 - ✅ **PDF-TEMPLATES** aprendizaje por proveedor (2026-06-04, `9a866f0` + `63107f7`) — V37 `supplier_extraction_templates` (company_id + supplier_nif UNIQUE + rules JSON + uses_count + last_used_at). `SupplierTemplateService.apply(base, template)` sobrescribe `supplierName`, `vatPercent`, `emitterNif` con los valores aprendidos. UI: diálogo de resultado con TextFields **editables** + botón "💾 Guardar plantilla para este proveedor". **Diseño clave**: la llave de búsqueda es el NIF detectado por el extractor (aunque sea el equivocado, p. ej. el LU de Amazon en vez del W español); el NIF corregido por el usuario se guarda como regla `emitterNif` y se muestra en próximas importaciones. Así la corrección sobrevive a un extractor que falla de forma consistente. Endpoints CRUD `/api/purchases/extraction-templates`.
@@ -167,6 +171,39 @@ La app se diseñó bilingüe desde C1 (botón EN/ES en el header → `language` 
 - ✅ **AUDIT-EXPORT** (2026-06-05) — exportación PDF/CSV verificable del registro de `audit_events` por rango de fechas, con opcional `eventTypePrefix`. PDF en A4 horizontal (cabecera empresa con NIF + periodo + contador + nota legal). CSV con todos los campos canónicos incluido hash y prev_hash para verificación externa. Endpoint `GET /api/settings/audit-events/export.{pdf|csv}` bajo `@RequiresRole(OWNER,ADMIN)`. Cada export queda auditado como `AUDIT_EXPORTED` con el SHA-256 del documento. UI: bloque "Exportar para Inspección / Hacienda" con DatePickers (default trimestre actual) en la pestaña Auditoría de Configuración. i18n nuevo helper `tExportsAndChainEn/Es`.
 - ✅ **AUDIT-CHAIN** (2026-06-05, V44 + collation fix) — hash encadenado por empresa en `audit_events`. Nuevas columnas `sequence_number`, `prev_event_hash`, `event_hash` (SHA-256 de `prev|seq|company|user|type|entityType|entityId|result|details|createdAtIso`). Backfill cronológico vía procedure con `COLLATE utf8mb4_unicode_ci` explícito (V44 inicial reventaba con "Illegal mix of collations" porque las DECLARE heredaban el `utf8mb4_uca1400_ai_ci` default de MariaDB 11.4). `AuditChainService.computeNext` con `FOR UPDATE` serializado por empresa para concurrencia. `AuditEventRepository.insert` ahora `@Transactional(REQUIRES_NEW)` para que el FOR UPDATE bloquee hasta commit sin afectar la transacción del flujo de negocio. Endpoint `GET .../verify` recorre y recalcula la cadena. `AuditExportService` y el listado UI muestran nombre humano (JOIN con `user_accounts.display_name`, fallback a UUID si el user fue borrado), columna `Seq` y columna `Hash` (12 chars). Botón "Verificar cadena" en la pestaña Auditoría con dialog OK/ROTA.
 
+### Contabilidad (cerrada 2026-06-06 / 2026-06-07)
+
+> Bloque completo cerrado en una sola sesión maratón + post-mortem de recurrentes en 2026-06-07. Esto era una deuda crítica histórica del backlog (la asesoría no puede funcionar sin libros). Resumen de lo que **ya está** y se considera estable:
+>
+> - V46 **PGC PYMES** completo (RD 1515/2007) sembrado por empresa al alta + shadow companies.
+> - **Asiento automático al validar**: factura emitida (SalesJournalEntryService) y compra (PurchaseJournalEntryService) generan asiento contable inmediato con cuentas resueltas por classifier+resolver.
+> - **TerceroAccountResolverService** (port del CONTENDO `getOrCreateCuentaTercero`) con dos modos: BY_INDEX (430.001, 430.002…) o BY_NIF (430.B12345678) configurable por empresa (V56).
+> - **ExpenseAccountClassifierService + IncomeAccountClassifierService** que clasifican gastos e ingresos por descripción (port del CONTENDO `detectarCuentaPorDescripcion`).
+> - **AccountingLearningService** con histórico de cuenta por proveedor + endpoint `/reclassify` y botón UI "Reclasificar asientos" que re-resuelve cuentas tercero y categorías.
+> - **V57 sales_invoices.concept + purchase_invoices.concept** + descripción correcta por línea en el asiento.
+> - **Asientos manuales libres + bloqueo periodo** (ACC-MANUAL): editor con N líneas, validación cuadre debe=haber, bloqueo si fiscal_year LOCKED/CLOSED.
+> - **Libro Diario + Mayor + Sumas y Saldos** (ACC-BOOKS) en módulo Contabilidad UI con filtros (búsqueda + origen + año).
+> - **Cuentas bancarias + movimientos + cobros/pagos** (BANK-ACCOUNTS).
+> - **Importación Norma 43 + CSV bancario + auto-conciliación** (BANK-IMPORT) con detector de duplicados.
+> - **Préstamos + cuadro amortización + cuotas** (LOANS) con asiento automático mensual.
+> - **Inmovilizado** (ASSETS-ENTRIES) con asiento de amortización mensual.
+> - **Plantillas de asiento recurrentes** (ACC-TEMPLATES) — distinto del motor de recurrentes (esto son plantillas para asientos manuales).
+> - **Balance situación + PyG** (REPORTS-CONTABLES) con corte por fecha + comparativa.
+> - **Aprendizaje contable UI** (ACC-LEARN-UI) con tabla de feedback y override por cuenta.
+> - **Exportación contable a Contasol/A3/Sage** (EXPORT-CONTABLE) + **EXT-IMPORT** inversa.
+> - **Motor de tareas recurrentes (cron contable)** (RECURRING + RECURRING-COMPLETO + RECURRING-FINAL + slices 3A-3R) — soporta PURCHASE/SALES_INVOICE/JOURNAL_ENTRY/TEMPLATE_APPLY/LOAN_AUTO_PAY con placeholders extendidos, candidatos detectables, badge "Creada por tu asesoría" cuando el creador no es del tenant.
+> - **Numeración entry_number al validar** (DRAFT no lleva número, evita huecos) + eliminación física de gasto borra asiento.
+> - **RefreshBus** publish/subscribe central para auto-refresh entre componentes (compras ↔ ventas ↔ diario ↔ recurrentes).
+> - **Visor PDF reutilizable** con PDFBox + multi-import gastos/ventas con vista previa.
+> - **V59 relax UK tax_identifier para shadow companies** + endpoint start-management + doble click en cliente no vinculado abre la gestión.
+> - **Auto-vinculación silenciosa asesoría↔sí misma** (V64) para que el asesor vea "Mi gestión" en el sidebar como primer item.
+
+**Lo que NO entra en este bloque y queda pendiente real**:
+
+- ⬜ **CONS-CIERRE** — confirmación de cierre por etapas con previsualización del asiento de regularización antes de generarlo. Hoy YEAR-CLOSE lo hace en un solo click.
+- ⬜ **Consolidación de empresas asociadas** (cuando una asesoría gestione un grupo de PYMES con eliminación de operaciones intragrupo). No es urgente.
+- ⬜ **Conciliación bancaria asistida con sugerencias ML** — hoy es por importe+fecha exactos. Sugerir matches "casi-iguales" requiere un poco de heurística adicional.
+
 ### RD 8/2019 (fichajes — obligación legal) comentario de benjamin(vamos a ver como Sesame lo hace para incorporar nuevas ideas, o cualquier otra app de fichaje)
 
 - ✅ Arranque C4 (2026-06-04, `fc627ee` y siguientes) — V21 `time_clock_corrections` (art. 34.9 inalterabilidad: correcciones como apuntes vinculados, no modificación del original) + `time_clock_verifications` (art. 35.8 CSV verificación pública). Backend `timeclock/` con TimeClockService.punch (emite CSV automáticamente al fichar) + requestCorrection + verifyByCsv. Endpoints REST: POST `/api/timeclock/punch`, GET `/api/timeclock/employee/{id}/recent`, POST `/api/timeclock/correction`, GET público `/api/public/timeclock/verify?csv=...` (sin auth — RD 8/2019 exige verificación accesible a Inspección de Trabajo). SecurityConfig actualizado para permitir la ruta pública. CSV de 16 chars en alfabeto 32 (~80 bits entropía, evita confusiones humanas: sin I/L/O/0/1). UI: módulo "Fichajes" con botones grandes IN/OUT/BREAK_START/BREAK_END + tabla de últimos 50 + dialog con CSV copiable tras fichar. i18n ES+EN.
@@ -183,26 +220,28 @@ Cuando lo crítico esté cerrado.
 
 ### Fiscal y contabilidad
 
-- ⬜ Carga del PGC completo (668 cuentas) por empresa al alta (hoy hay 326 sembradas solo para demo).
-- ⬜ Reglas fiscales con histórico anual (`fiscal_reglas_180`, mecanismo de duplicar en enero ajustando valores AEAT).
-- ⬜ Modelos AEAT específicos: 100, 130, 180, 190, 200, 303, 347, 390, 411.
-- ⬜ Patrones casillas regex (`fiscal_casilla_patterns_180`, 69 patrones).
-- ⬜ Mapeo AEAT (`aeat_campo_mapeo_180`, 32 mapeos).
-- ⬜ Calendario fiscal con vencimientos (`calendario_fiscal_180`).
-- ⬜ Inmovilizado: cálculo de amortizaciones + vínculo a asientos.
-- ⬜ Cierre de ejercicio con aplicación de resultado.
-- ⬜ Régimen especial de IVA, prorrata, criterio de caja.
+- ✅ **Carga del PGC completo** (PGC-PYMES V46, sesión 2026-06-06) — catálogo PGC PYMES RD 1515/2007 sembrado por empresa al alta + seed en shadow companies. Decisión: no PGC normal (668) por ahora, el PYMES cubre el 95% de los casos.
+- ✅ **Reglas fiscales con histórico anual** (F1, ya cerrado en slice "F1: Reglas fiscales con histórico anual") — `fiscal_rules` con histórico por año, mecanismo de copia al año siguiente con ajuste manual de valores AEAT.
+- ⬜ **Modelos AEAT específicos pendientes**: 100, 180, 200, 411. ✅ Cerrados: 130 (UI ALTA 2026-06-04), 303 (UI ALTA 2026-06-04), 347 + 390 + 190 (AEAT-EXTRAS 2026-06-06).
+- ⬜ Patrones casillas regex (`fiscal_casilla_patterns_180`, 69 patrones). Atado a los modelos pendientes.
+- ⬜ Mapeo AEAT (`aeat_campo_mapeo_180`, 32 mapeos). Atado a los modelos pendientes.
+- ⬜ Calendario fiscal con vencimientos (`calendario_fiscal_180`). Hoy está integrado en el módulo Modelos AEAT como calendario; pendiente el seed con vencimientos oficiales del año fiscal y las alertas automáticas.
+- ✅ **Inmovilizado: cálculo de amortizaciones + vínculo a asientos** (ASSETS-ENTRIES, sesión 2026-06-06) — entity Asset + tabla amortización + asiento contable mensual generado automáticamente.
+- ✅ **Cierre de ejercicio con aplicación de resultado** (YEAR-CLOSE, sesión 2026-06-06) — flujo completo: asientos de regularización, asiento de cierre, aplicación de resultado (debe/haber a reservas/PyG), bloqueo fiscal_year status=CLOSED.
+- ⬜ Régimen especial de IVA, prorrata, criterio de caja. Pendiente — el catálogo de cuentas lo soporta pero no hay UI para activarlo por empresa ni lógica de prorrata en el cálculo del 303.
 - ✅ **TAX-MGR / Gestor de tipos de IVA** (V23, ya cerrado en slice "ALTA: Consolidar config + Gestor tipos IVA + Titulares + PGC") — tabla `vat_rates` configurable por empresa con `kind` (VAT/WITHHOLDING), `code`, `label`, `percent`, `is_default`, `active`, UNIQUE(company_id, kind, code). Seed por empresa con los tipos estándar AEAT (IVA 21/10/4/0 + IRPF 15/7/19). Backend `billing/taxes/` con `VatRate` + Repository + Service + Controller `/api/billing/vat-rates`. UI: bloque CRUD en Configuración → Facturación → Configuración (`vatRatesAuditBlock`) con tabla + crear/editar/borrar. Backlog histórico tenía la deuda apuntada por error; ya estaba implementado desde V23.
 - ✅ **OWNERS / Titulares de empresa** (V24, ya cerrado en slice "UI ALTA: Titulares en Configuración → Empresa") — tabla `company_owners` con full_name, NIF, % participación, rol (administrador/socio), régimen SS. Backend `settings/owners/` con `CompanyOwner` + Repository + Service. UI: pestaña Empresa de Configuración con tabla + CRUD. Imprescindible para Modelo 200 cuando se ataque su editor. Backlog histórico tenía la deuda apuntada por error.
 
 ### RETA (autónomos)
 
-- ⬜ Backend RETA completo (Repository + Service + Controller) sobre las 7 tablas que tenemos en schema.
-- ⬜ UI RETA: perfiles, estimaciones, tramos, cambios de base, alertas, pre-onboarding.
+- ✅ **Backend RETA completo** (L2, sesión 2026-06-04) — Repository + Service + Controller sobre las 7 tablas: perfiles, estimaciones, tramos, cambios base, alertas.
+- ✅ **UI RETA** (UI RETA + DEHú, sesión 2026-06-04) — pestañas perfil, estimación, tramos, cambios base, alertas, pre-onboarding.
 
 ### Empleados / Nóminas
 
-- ⬜ Backend + UI: employees, contracts, payrolls, medical_leaves, social_security_contributions.
+- ✅ **Backend Employees + Contracts** (L1, sesión 2026-06-04) — employees + contracts.
+- ✅ **UI Empleados** (L1 UI, sesión 2026-06-04) — módulo labor con CRUD empleados + contratos.
+- ⬜ **Payrolls + medical_leaves + social_security_contributions backend**. Tablas existen en schema, faltan service+controller.
 - ⬜ Entrega de nóminas (firma trabajador, fecha, vía).
 - ⬜ Incidencias de nómina.
 - ⬜ Centros de trabajo (`centros_trabajo_180`).
@@ -210,12 +249,12 @@ Cuando lo crítico esté cerrado.
 
 ### Asesoría / multi-cliente
 
-- ⬜ Decidir si `parent_company_id` + `MANAGED_CLIENT` es el link asesoría↔cliente, o si hace falta crear `advisory_client_links` (tabla N:M). Decisión de Benjamin al empezar el slice de asesoría. **Pre-análisis 2026-06-02**: hoy la asesoría sólo cambia el sidebar (`ADVISORY_MODULES`) — el backend no diferencia, TenantContext filtra por la empresa activa, no hay tabla de asientos contables. Cuando abramos este slice, dos decisiones pendientes con recomendación: (A) `parent_company_id` simple 1:N **[recomendado]** vs (B) tabla N:M; y (1) lectura cruzada en tiempo real **[recomendado para arrancar]** vs (2) asientos materializados en `accounting_entries`. ASE0 propuesto: seed de empresa ADVISORY + reasignar 1111 a MANAGED_CLIENT + `AdvisoryService.listManagedClients` + endpoint `/api/advisory/clients/{id}/...` + UI "Mis clientes" con switch temporal de TenantContext. Aplazar hasta tener delante el slice de contabilidad (libros 303/347) — entonces la decisión sobre asientos materializados estará informada por necesidad real.
-- ⬜ Mensajes asesoría↔cliente (`asesoria_mensajes_180`).
-- ⬜ Documentos compartidos (`documentos_asesoria_180`).
-- ⬜ Notificaciones específicas de asesor (`notificaciones_asesor_180`).
-- ⬜ Permisos finos por sub-recurso (ej. `configuracion:write` sobre un cliente concreto).
-- ⬜ Vista panorámica de asesoría (cross-client dashboard, vencimientos agregados, operaciones en lote).
+- ✅ **Modelo asesoría↔cliente decidido (2026-06-03)** — `parent_company_id` simple 1:N + lectura cruzada en tiempo real con switch de TenantContext (opción A1). Decisión informada por la sesión de contabilidad: NO materializamos asientos en la asesoría, son del cliente.
+- ⬜ Mensajes asesoría↔cliente (`asesoria_mensajes_180`). Pendiente — hoy el canal de comunicación es la invitación (token) + acciones sobre el cliente. Falta un chat/timeline con mensajes adjuntables.
+- ⬜ Documentos compartidos (`documentos_asesoria_180`). Pendiente — visor PDF reutilizable ya existe (PDFBox); falta tabla + repositorio + UI bidireccional.
+- ⬜ Notificaciones específicas de asesor (`notificaciones_asesor_180`). Pendiente — la asesoría hoy no recibe ningún ping cuando el cliente sube algo o vence una obligación.
+- ⬜ Permisos finos por sub-recurso (ej. `configuracion:write` sobre un cliente concreto). Pendiente — hoy el asesor entra como dueño del tenant del cliente.
+- ⬜ Vista panorámica de asesoría (cross-client dashboard, vencimientos agregados, operaciones en lote). Pendiente — el listado actual de "Mis clientes" es por cliente, no agrega KPIs ni vencimientos.
 - ✅ **Invitaciones asesoría↔empresario** (2026-06-05, V41+V42, varios slices encadenados) — sistema completo de comunicación por token:
   - V41 tabla `advisory_invitations` con token base62 32 chars (~190 bits entropía), caducidad 7 días, estados PENDING/ACCEPTED/REJECTED/EXPIRED/REVOKED.
   - V42 añade estado `UNLINKED` + columna `unlinked_at`. Cuando el empresario desvincula su asesoría, la invitación ACCEPTED original pasa a UNLINKED automáticamente (no se queda colgada como ACCEPTED para siempre).
@@ -229,10 +268,14 @@ Cuando lo crítico esté cerrado.
 
 ### Documentos / integraciones externas
 
-- ⬜ Credenciales externas cifradas (`credenciales_externas_180`) — DEHú, SS RED, SILTRA. **Valor diferencial**.
-- ⬜ Notificaciones DEHú (`notificaciones_dehu_180`) — recepción automatizada.
-- ⬜ Log de uso de certificados (`certificados_uso_log_180`) — trazabilidad obligatoria.
-- ⬜ **Gestión visual del certificado `.p12`** — keystore Java + carga local + desencriptado con `subject` y fechas. [§3 `gap-analysis-config-ui`](gap-analysis-config-ui.md).
+- ✅ **Credenciales externas cifradas** (ALTA-5, sesión 2026-06-04) — `credenciales_externas` cifrado Jasypt para DEHú, SS RED, SILTRA. **Valor diferencial cubierto**.
+- ✅ **Notificaciones DEHú** (N1 + DEHU-POLLING, sesión 2026-06-05) — backend N1 con `dehu_notifications` + bandeja UI con polling 15s y helper `setCenterSilent` sin animación.
+- ✅ **Log de uso de certificados** (ALTA-5 + CERT-IMPORT 2, sesiones 2026-06-04) — `certificate_usage_log` con trazabilidad obligatoria + auditoría al inspect del .p12.
+- ✅ **Gestión visual del certificado `.p12`** (CERT-IMPORT 3 + CERT-FIX, sesión 2026-06-04) — pestaña Certificado en Configuración con carga local, inspect (NIF/CN extraídos con LdapName), fechas validez. UI-SCROLL aplicado al diálogo largo.
+
+**Pendiente real**:
+- ⬜ **Conector DEHú real** — hoy la bandeja muestra notificaciones, falta el job que descarga del servicio AEAT vía SOAP/REST con el certificado de la asesoría.
+- ⬜ **Conector SS RED / SILTRA real** — credenciales guardadas, falta el envío real para nóminas (AFI/CRA/DELT@/CRETA).
 
 ### SII (Suministro Inmediato AEAT)
 
