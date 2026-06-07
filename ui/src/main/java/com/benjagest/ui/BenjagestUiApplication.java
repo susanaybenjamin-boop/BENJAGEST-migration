@@ -11409,6 +11409,23 @@ public class BenjagestUiApplication extends Application {
             case "recurring.history.error" -> "Could not load history";
             case "recurring.new.sales" -> "New recurring sale";
             case "recurring.new.expense" -> "New recurring expense";
+            case "recurring.new.accounting_income" -> "New recurring income (accounting)";
+            case "recurring.new.accounting_expense" -> "New recurring expense (accounting)";
+            case "recurring.section.customer_data" -> "Customer data";
+            case "recurring.section.supplier_data" -> "Supplier data";
+            case "recurring.section.fiscal_data" -> "Concept + fiscal data";
+            case "recurring.field.party_nif" -> "NIF";
+            case "recurring.field.party_name" -> "Legal name";
+            case "recurring.field.income_account" -> "Income account";
+            case "recurring.field.total_to_collect" -> "Total to collect";
+            case "recurring.accounting_income.hint" ->
+                    "Generates a draft accounting entry every period with full fiscal "
+                    + "metadata (base, VAT, withholding) so that model 303/347/130 picks it up.";
+            case "recurring.accounting_expense.hint" ->
+                    "Generates a draft accounting entry every period with the supplier "
+                    + "sub-account auto-created from the NIF.";
+            case "recurring.validate.party_name_required" ->
+                    "Legal name is required (it appears on AEAT model 347).";
             case "recurring.edit" -> "Edit recurring";
             case "recurring.field.name" -> "Name";
             case "recurring.field.description" -> "Description";
@@ -11944,6 +11961,26 @@ public class BenjagestUiApplication extends Application {
             case "recurring.history.error" -> "No se pudo cargar el historial";
             case "recurring.new.sales" -> "Nueva venta recurrente";
             case "recurring.new.expense" -> "Nuevo gasto recurrente";
+            case "recurring.new.accounting_income" -> "Nuevo ingreso recurrente (contable)";
+            case "recurring.new.accounting_expense" -> "Nuevo gasto recurrente (contable)";
+            case "recurring.section.customer_data" -> "Datos del cliente";
+            case "recurring.section.supplier_data" -> "Datos del proveedor";
+            case "recurring.section.fiscal_data" -> "Concepto + datos fiscales";
+            case "recurring.field.party_nif" -> "NIF";
+            case "recurring.field.party_name" -> "Razón social";
+            case "recurring.field.income_account" -> "Cuenta de ingreso";
+            case "recurring.field.total_to_collect" -> "Total a cobrar";
+            case "recurring.accounting_income.hint" ->
+                    "Genera un asiento contable borrador cada periodo con toda la "
+                    + "metadata fiscal (base, IVA, retención) para que el 303/347/130 "
+                    + "lo recoja correctamente. No emite factura legal — útil cuando "
+                    + "el cliente factura desde fuera y aquí solo llevamos contabilidad.";
+            case "recurring.accounting_expense.hint" ->
+                    "Genera un asiento contable borrador cada periodo con la sub-cuenta "
+                    + "del proveedor auto-creada por NIF. Toda la metadata fiscal se "
+                    + "registra para que los modelos 303/347/190 cuadren.";
+            case "recurring.validate.party_name_required" ->
+                    "La razón social es obligatoria (aparece en el modelo 347 de la AEAT).";
             case "recurring.edit" -> "Editar recurrente";
             case "recurring.field.name" -> "Nombre";
             case "recurring.field.description" -> "Descripción";
@@ -15190,21 +15227,23 @@ public class BenjagestUiApplication extends Application {
                 buildClientSalesArchivedTab(fromProp, toProp, selfTaxId));
         salesTab.setGraphic(icon("fas-file-invoice"));
 
+        // Slice 3S — En cliente NO vinculado (shadow company) los
+        // recurrentes usan los kinds ACCOUNTING_INCOME / ACCOUNTING_EXPENSE
+        // que generan asiento contable directo con base/IVA/retención.
+        // No tiene sentido SALES_INVOICE aquí porque la shadow no tiene
+        // serie de facturación ni VeriFactu — el asesor lleva la
+        // contabilidad, no factura por el cliente.
         Tab salesRecurringTab = new Tab(t("client.tab.sales_recurring"),
-                buildRecurringTab("SALES_INVOICE", "client.tab.sales_recurring"));
+                buildRecurringTab("ACCOUNTING_INCOME", "client.tab.sales_recurring"));
         salesRecurringTab.setGraphic(icon("fas-arrows-rotate"));
 
         Tab expensesTab = new Tab(t("client.tab.expenses"), buildClientPurchasesTab());
         expensesTab.setGraphic(icon("fas-receipt"));
 
         Tab expensesRecurringTab = new Tab(t("client.tab.expenses_recurring"),
-                buildRecurringTab("PURCHASE", "client.tab.expenses_recurring"));
+                buildRecurringTab("ACCOUNTING_EXPENSE", "client.tab.expenses_recurring"));
         expensesRecurringTab.setGraphic(icon("fas-arrows-rotate"));
 
-        // Slice 3Q — cliente NO vinculado también necesita los
-        // sub-tabs Recurrentes para que la asesoría pueda configurar
-        // las plantillas DEL CLIENTE en su shadow company. El asesor
-        // entra a "Mis clientes" → cliente NO vinculado → aquí.
         sub.getTabs().addAll(salesTab, salesRecurringTab,
                 expensesTab, expensesRecurringTab);
 
@@ -15600,12 +15639,28 @@ public class BenjagestUiApplication extends Application {
         refreshBtn.setGraphic(icon("fas-rotate"));
         refreshBtn.setOnAction(e -> loadRecurring(table, kind));
 
-        Button newBtn = new Button("SALES_INVOICE".equals(kind)
-                ? t("recurring.new.sales") : t("recurring.new.expense"));
+        // Slice 3S — En shadow companies (cliente sin vínculo desde
+        // asesoría) los kinds nativos son ACCOUNTING_INCOME/EXPENSE,
+        // que generan asiento contable directo SIN pasar por la
+        // facturación legal. El botón cambia de etiqueta y de editor.
+        boolean accountingKind = "ACCOUNTING_INCOME".equals(kind)
+                || "ACCOUNTING_EXPENSE".equals(kind);
+        Button newBtn = new Button(
+                "ACCOUNTING_INCOME".equals(kind) ? t("recurring.new.accounting_income")
+                : "ACCOUNTING_EXPENSE".equals(kind) ? t("recurring.new.accounting_expense")
+                : "SALES_INVOICE".equals(kind) ? t("recurring.new.sales")
+                : t("recurring.new.expense"));
         newBtn.setGraphic(icon("fas-plus"));
         newBtn.getStyleClass().add("button-primary");
-        newBtn.setOnAction(e -> showRecurringEditor(kind, null,
-                () -> loadRecurring(table, kind)));
+        newBtn.setOnAction(e -> {
+            if (accountingKind) {
+                showAccountingRecurringEditor(kind, null,
+                        () -> loadRecurring(table, kind));
+            } else {
+                showRecurringEditor(kind, null,
+                        () -> loadRecurring(table, kind));
+            }
+        });
 
         // Slice 3F-2 — Botón adicional SOLO en el sub-tab de Gastos
         // para crear un "Pago periódico sin factura" (kind=JOURNAL_ENTRY).
@@ -15627,9 +15682,14 @@ public class BenjagestUiApplication extends Application {
                     var item = row.getItem();
                     // Derivar al editor correcto según el kind real de
                     // la tarea (puede ser JOURNAL_ENTRY aunque la
-                    // pestaña sea PURCHASE — sub-tab "Pago sin factura").
+                    // pestaña sea PURCHASE — sub-tab "Pago sin factura";
+                    // o ACCOUNTING_INCOME/EXPENSE — Slice 3S).
                     if ("JOURNAL_ENTRY".equals(item.kind())) {
                         showJournalEntryRecurringEditor(item,
+                                () -> loadRecurring(table, kind));
+                    } else if ("ACCOUNTING_INCOME".equals(item.kind())
+                            || "ACCOUNTING_EXPENSE".equals(item.kind())) {
+                        showAccountingRecurringEditor(item.kind(), item,
                                 () -> loadRecurring(table, kind));
                     } else {
                         showRecurringEditor(kind, item,
@@ -15816,6 +15876,26 @@ public class BenjagestUiApplication extends Application {
                 "Caja (efectivo)  ·  570",
                 "Banco secundario  ·  572",
                 "Tarjeta de crédito  ·  551");
+        return cb;
+    }
+
+    /**
+     * Slice 3S — ComboBox de cuentas de ingreso para los recurrentes
+     * contables (ACCOUNTING_INCOME). Cubre las principales cuentas del
+     * grupo 70 del PGC PYMES.
+     */
+    private javafx.scene.control.ComboBox<String> buildIncomeAccountCombo() {
+        javafx.scene.control.ComboBox<String> cb = new javafx.scene.control.ComboBox<>();
+        cb.setEditable(true);
+        cb.setPrefWidth(420);
+        cb.getItems().addAll(
+                "Prestación de servicios  ·  705",
+                "Venta de mercaderías  ·  700",
+                "Venta de productos terminados  ·  701",
+                "Trabajos realizados para otras empresas  ·  730",
+                "Ingresos por arrendamientos  ·  752",
+                "Ingresos por comisiones  ·  754",
+                "Otros ingresos de gestión  ·  759");
         return cb;
     }
 
@@ -16790,6 +16870,235 @@ public class BenjagestUiApplication extends Application {
                         t("recurring.save.error") + ": " + ex.getMessage()).show());
             }
         }, "recurring-save-je").start();
+    }
+
+    /**
+     * Slice 3S — Editor de recurrentes contables puros para shadow
+     * companies. Genera kind=ACCOUNTING_INCOME o ACCOUNTING_EXPENSE
+     * con payload completo (partyNif, partyName, base, vat, ret,
+     * counterAccountCode). El backend construye el asiento de N líneas
+     * con la cuenta del tercero auto-resuelta.
+     *
+     * <p>Diferencia clave con {@link #showJournalEntryRecurringEditor}:
+     * éste lleva NIF + Nombre del tercero (cliente o proveedor) → la
+     * cuenta 430.XXX o 410.XXX se crea automáticamente. Y NO lleva
+     * cuenta de banco — el asiento NO se cobra/paga aún, solo se
+     * devenga. El cobro/pago se hace después contra el banco vía
+     * otro asiento o conciliación bancaria.
+     */
+    private void showAccountingRecurringEditor(
+            String kind,
+            com.benjagest.ui.model.AccountingModels.RecurringTask existing,
+            Runnable onSaved) {
+        boolean income = "ACCOUNTING_INCOME".equals(kind);
+        javafx.scene.control.Dialog<javafx.scene.control.ButtonType> dlg = new javafx.scene.control.Dialog<>();
+        dlg.setTitle(existing == null || existing.id() == null
+                ? (income ? t("recurring.new.accounting_income")
+                          : t("recurring.new.accounting_expense"))
+                : t("recurring.edit") + " — " + existing.name());
+
+        javafx.scene.control.ButtonType saveType = new javafx.scene.control.ButtonType(
+                t("button.save"), javafx.scene.control.ButtonBar.ButtonData.OK_DONE);
+        dlg.getDialogPane().getButtonTypes().addAll(saveType,
+                javafx.scene.control.ButtonType.CANCEL);
+
+        TextField nameField = new TextField(existing == null ? "" : nullSafe(existing.name()));
+        nameField.setPromptText(income ? "Iguala mensual cliente X" : "Alquiler oficina");
+
+        TextField descField = new TextField(existing == null ? "" : nullSafe(existing.description()));
+        descField.setPromptText(t("recurring.field.description.hint"));
+
+        javafx.scene.control.ComboBox<String> freqCombo = new javafx.scene.control.ComboBox<>();
+        freqCombo.getItems().addAll("MONTHLY", "QUARTERLY", "YEARLY", "WEEKLY", "CUSTOM");
+        freqCombo.setValue(existing == null ? "MONTHLY" : existing.frequency());
+        applyFrequencyComboCells(freqCombo);
+
+        javafx.scene.control.Spinner<Integer> domSpinner = new javafx.scene.control.Spinner<>(
+                1, 31, existing == null || existing.dayOfMonth() == null ? 1 : existing.dayOfMonth());
+        domSpinner.setEditable(true);
+
+        DatePicker firstRunDate = new DatePicker(
+                existing == null ? LocalDate.now().plusDays(1) : existing.nextRunDate());
+
+        TextField partyNifField = new TextField();
+        partyNifField.setPromptText("B12345678");
+        TextField partyNameField = new TextField();
+        partyNameField.setPromptText(income ? "Razón social del cliente" : "Razón social del proveedor");
+
+        TextField conceptField = new TextField();
+        conceptField.setPromptText(t("recurring.field.concept.hint"));
+
+        javafx.scene.control.ComboBox<String> counterAccountField =
+                income ? buildIncomeAccountCombo() : buildExpenseAccountCombo();
+
+        javafx.scene.control.Spinner<Double> baseSpinner =
+                new javafx.scene.control.Spinner<>(0.0, 999999.0, 0.0, 10.0);
+        baseSpinner.setEditable(true);
+        javafx.scene.control.Spinner<Double> vatPercentSpinner =
+                new javafx.scene.control.Spinner<>(0.0, 21.0, 21.0, 0.5);
+        vatPercentSpinner.setEditable(true);
+        javafx.scene.control.Spinner<Double> retentionPercentSpinner =
+                new javafx.scene.control.Spinner<>(0.0, 30.0, 0.0, 1.0);
+        retentionPercentSpinner.setEditable(true);
+
+        Label totalLabel = new Label("0,00 €");
+        totalLabel.getStyleClass().add("text-bold");
+        Runnable recomputeTotal = () -> {
+            double base = baseSpinner.getValue() == null ? 0 : baseSpinner.getValue();
+            double vat = vatPercentSpinner.getValue() == null ? 0 : vatPercentSpinner.getValue();
+            double ret = retentionPercentSpinner.getValue() == null ? 0 : retentionPercentSpinner.getValue();
+            double total = base + Math.round(base * vat) / 100.0 - Math.round(base * ret) / 100.0;
+            totalLabel.setText(String.format("%.2f €", total));
+        };
+        baseSpinner.valueProperty().addListener((o, a, b) -> recomputeTotal.run());
+        vatPercentSpinner.valueProperty().addListener((o, a, b) -> recomputeTotal.run());
+        retentionPercentSpinner.valueProperty().addListener((o, a, b) -> recomputeTotal.run());
+
+        // Pre-rellenar desde payloadJson si estamos editando.
+        if (existing != null && existing.payloadJson() != null) {
+            String pj = existing.payloadJson();
+            partyNifField.setText(nullSafe(extractStringField(pj, "partyNif")));
+            partyNameField.setText(nullSafe(extractStringField(pj, "partyName")));
+            conceptField.setText(nullSafe(extractStringField(pj, "concept")));
+            String counterCode = extractStringField(pj, "counterAccountCode");
+            if (counterCode != null && !counterCode.isBlank()) counterAccountField.setValue(counterCode);
+            String base = extractStringField(pj, "baseAmount");
+            if (base != null && !base.isBlank()) {
+                try { baseSpinner.getValueFactory().setValue(Double.parseDouble(base)); }
+                catch (NumberFormatException ignored) {}
+            }
+            Double vp = extractDoubleField(pj, "vatPercent");
+            if (vp != null) vatPercentSpinner.getValueFactory().setValue(vp);
+            Double rp = extractDoubleField(pj, "retentionPercent");
+            if (rp != null) retentionPercentSpinner.getValueFactory().setValue(rp);
+            recomputeTotal.run();
+        }
+
+        GridPane grid = new GridPane();
+        grid.setHgap(10); grid.setVgap(8); grid.setPadding(new Insets(16));
+        int r = 0;
+        grid.add(new Label(t("recurring.field.name")), 0, r);
+        grid.add(nameField, 1, r++, 3, 1);
+        grid.add(new Label(t("recurring.field.description")), 0, r);
+        grid.add(descField, 1, r++, 3, 1);
+        grid.add(new Label(t("recurring.field.frequency")), 0, r);
+        grid.add(freqCombo, 1, r);
+        grid.add(new Label(t("recurring.freq.day")), 2, r);
+        grid.add(domSpinner, 3, r++);
+        grid.add(new Label(t("recurring.field.first_run")), 0, r);
+        grid.add(firstRunDate, 1, r++, 3, 1);
+
+        Label sepParty = new Label(income
+                ? t("recurring.section.customer_data")
+                : t("recurring.section.supplier_data"));
+        sepParty.getStyleClass().add("text-bold");
+        grid.add(sepParty, 0, r++, 4, 1);
+        grid.add(new Label(t("recurring.field.party_nif")), 0, r);
+        grid.add(partyNifField, 1, r);
+        grid.add(new Label(t("recurring.field.party_name")), 2, r);
+        grid.add(partyNameField, 3, r++);
+
+        Label sepFiscal = new Label(t("recurring.section.fiscal_data"));
+        sepFiscal.getStyleClass().add("text-bold");
+        grid.add(sepFiscal, 0, r++, 4, 1);
+        grid.add(new Label(t("recurring.field.concept")), 0, r);
+        grid.add(buildConceptWithPlaceholders(conceptField), 1, r++, 3, 1);
+        grid.add(new Label(income
+                ? t("recurring.field.income_account")
+                : t("recurring.field.expense_account")), 0, r);
+        grid.add(counterAccountField, 1, r++, 3, 1);
+        grid.add(new Label(t("recurring.field.base_amount")), 0, r);
+        grid.add(baseSpinner, 1, r);
+        grid.add(new Label(t("recurring.field.vat_percent")), 2, r);
+        grid.add(vatPercentSpinner, 3, r++);
+        grid.add(new Label(t("recurring.field.retention_percent")), 0, r);
+        grid.add(retentionPercentSpinner, 1, r);
+        grid.add(new Label(income
+                ? t("recurring.field.total_to_collect")
+                : t("recurring.field.total_to_pay")), 2, r);
+        grid.add(totalLabel, 3, r++);
+
+        Label hint = new Label(income
+                ? t("recurring.accounting_income.hint")
+                : t("recurring.accounting_expense.hint"));
+        hint.getStyleClass().addAll("muted", "small");
+        hint.setWrapText(true);
+        grid.add(hint, 0, r++, 4, 1);
+
+        ScrollPane scroll = new ScrollPane(grid);
+        scroll.setFitToWidth(true);
+        scroll.setPrefSize(700, 540);
+        dlg.getDialogPane().setContent(scroll);
+        dlg.setResultConverter(bt -> bt);
+        var result = dlg.showAndWait();
+        if (result.isEmpty() || result.get() != saveType) return;
+
+        commitSpinner(baseSpinner);
+        commitSpinner(vatPercentSpinner);
+        commitSpinner(retentionPercentSpinner);
+        commitSpinner(domSpinner);
+
+        // Validaciones mínimas
+        if (partyNameField.getText() == null || partyNameField.getText().isBlank()) {
+            new Alert(Alert.AlertType.WARNING,
+                    t("recurring.validate.party_name_required"),
+                    ButtonType.OK).showAndWait();
+            return;
+        }
+        if (baseSpinner.getValue() == null || baseSpinner.getValue() <= 0.0) {
+            new Alert(Alert.AlertType.WARNING,
+                    t("recurring.validate.amount_required"),
+                    ButtonType.OK).showAndWait();
+            return;
+        }
+
+        double base = baseSpinner.getValue();
+        double vatPct = vatPercentSpinner.getValue();
+        double retPct = retentionPercentSpinner.getValue();
+        String counterCode = extractAccountCode(counterAccountField);
+        if (counterCode == null || counterCode.isBlank()) {
+            counterCode = income ? "705" : "629";
+        }
+        String concept = conceptField.getText() == null ? "" : conceptField.getText();
+
+        StringBuilder body = new StringBuilder();
+        body.append('{');
+        appendJsonField(body, "kind", kind, true);
+        appendJsonField(body, "name", nameField.getText(), false);
+        if (!descField.getText().isBlank())
+            appendJsonField(body, "description", descField.getText(), false);
+        appendJsonField(body, "frequency", freqCombo.getValue(), false);
+        if ("MONTHLY".equals(freqCombo.getValue()) || "CUSTOM".equals(freqCombo.getValue())) {
+            body.append(",\"dayOfMonth\":").append(domSpinner.getValue());
+        }
+        body.append(",\"firstRunDate\":\"").append(firstRunDate.getValue()).append('"');
+        body.append(",\"payload\":{");
+        appendJsonField(body, "partyNif", partyNifField.getText(), true);
+        appendJsonField(body, "partyName", partyNameField.getText(), false);
+        appendJsonField(body, "concept", concept, false);
+        appendJsonField(body, "counterAccountCode", counterCode, false);
+        body.append(",\"baseAmount\":\"").append(base).append('"');
+        body.append(",\"vatPercent\":").append(vatPct);
+        body.append(",\"retentionPercent\":").append(retPct);
+        body.append("}}");
+
+        String jsonBody = body.toString();
+        new Thread(() -> {
+            try {
+                if (existing == null || existing.id() == null) {
+                    accountingApiClient.createRecurring(jsonBody);
+                } else {
+                    accountingApiClient.updateRecurring(existing.id(), jsonBody);
+                }
+                javafx.application.Platform.runLater(() -> {
+                    if (onSaved != null) onSaved.run();
+                });
+            } catch (Exception ex) {
+                javafx.application.Platform.runLater(() -> new javafx.scene.control.Alert(
+                        javafx.scene.control.Alert.AlertType.ERROR,
+                        t("recurring.save.error") + ": " + ex.getMessage()).show());
+            }
+        }, "recurring-save-acc").start();
     }
 
     private String jsonString(String raw) {
