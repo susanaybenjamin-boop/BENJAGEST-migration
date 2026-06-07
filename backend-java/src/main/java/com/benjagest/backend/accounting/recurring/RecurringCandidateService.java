@@ -110,31 +110,29 @@ public class RecurringCandidateService {
     }
 
     /**
-     * Agrupa facturas recibidas por (supplier, total). Los gastos
-     * importados a veces no tienen supplier_id (vienen sin proveedor
-     * vinculado, solo con supplier_name y NIF en el texto), así que
-     * agrupamos por supplier_name como fallback.
+     * Agrupa facturas recibidas por (supplier_nif, total_amount).
+     * Nota: V45 eliminó la columna {@code supplier_id} de
+     * {@code purchase_invoices} — ahora todo el tercero vive en
+     * {@code supplier_nif} + {@code supplier_name}. También usamos
+     * {@code total_amount} en lugar del antiguo {@code total}.
      */
     private List<Candidate> findPurchaseCandidates(String companyId, LocalDate from) {
         String sql = """
-                SELECT pi.supplier_id,
-                       COALESCE(s.tax_identifier, '')  AS party_nif,
-                       COALESCE(s.legal_name, pi.supplier_name, '') AS party_name,
-                       pi.total       AS total,
-                       COUNT(*)       AS occurrences,
-                       MIN(pi.invoice_date) AS first_date,
-                       MAX(pi.invoice_date) AS last_date,
-                       MAX(pi.id)     AS sample_id
+                SELECT COALESCE(pi.supplier_nif, '')  AS party_nif,
+                       COALESCE(pi.supplier_name, '') AS party_name,
+                       pi.total_amount               AS total,
+                       COUNT(*)                       AS occurrences,
+                       MIN(pi.invoice_date)           AS first_date,
+                       MAX(pi.invoice_date)           AS last_date,
+                       MAX(pi.id)                     AS sample_id
                   FROM purchase_invoices pi
-             LEFT JOIN suppliers s ON s.id = pi.supplier_id
                  WHERE pi.company_id = ?
                    AND pi.invoice_date >= ?
                    AND pi.active = TRUE
-                   AND pi.total > 0
-                 GROUP BY pi.supplier_id,
-                          COALESCE(s.tax_identifier, ''),
-                          COALESCE(s.legal_name, pi.supplier_name, ''),
-                          pi.total
+                   AND pi.total_amount > 0
+                 GROUP BY COALESCE(pi.supplier_nif, ''),
+                          COALESCE(pi.supplier_name, ''),
+                          pi.total_amount
                 HAVING COUNT(*) >= 2
                  ORDER BY occurrences DESC, last_date DESC
                 """;
@@ -142,7 +140,7 @@ public class RecurringCandidateService {
         List<Candidate> raw = jdbcTemplate.query(sql, (rs, n) -> {
             Candidate c = new Candidate();
             c.kind = "PURCHASE";
-            c.partyId = rs.getString("supplier_id");
+            c.partyId = null; // ya no hay supplier_id en purchase_invoices
             c.partyNif = rs.getString("party_nif");
             c.partyName = rs.getString("party_name");
             c.totalAmount = rs.getBigDecimal("total");

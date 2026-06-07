@@ -102,7 +102,7 @@ public class BenjagestUiApplication extends Application {
             // Recurrentes, Modelos AEAT, etc.). NO va dentro de "Mis
             // clientes" para que la asesoría tenga clara la
             // separación entre su gestión y la de sus clientes.
-            new ModuleLink("myCompany", "Mi empresa", "fas-building"),
+            new ModuleLink("myCompany", "Mi empresa", "fas-briefcase"),
             new ModuleLink("customers", "Clientes", "fas-users"),
             new ModuleLink("tax", "Fiscal", "fas-percentage"),
             new ModuleLink("labor", "Laboral", "fas-hard-hat"),
@@ -11418,6 +11418,7 @@ public class BenjagestUiApplication extends Application {
             case "recurring.placeholders.insert" -> "Insert";
             case "recurring.validate.nif_required_header" -> "Customer Tax ID missing";
             case "recurring.validate.nif_required" -> "To create a recurring sale we need the customer Tax ID, not only the legal name.\n\nPlease fill the Customer Tax ID field before saving.";
+            case "recurring.field.total_to_pay" -> "Total to pay";
             case "recurring.field.day_of_week" -> "Day of week";
             case "recurring.field.months_between" -> "Every N months";
             case "date.day.monday" -> "Monday";
@@ -11942,6 +11943,7 @@ public class BenjagestUiApplication extends Application {
             case "recurring.placeholders.insert" -> "Insertar";
             case "recurring.validate.nif_required_header" -> "Falta el NIF del cliente";
             case "recurring.validate.nif_required" -> "Para crear una venta recurrente necesitamos el NIF del cliente, no solo su razón social.\n\nPor favor rellena el campo NIF cliente antes de guardar.";
+            case "recurring.field.total_to_pay" -> "Total a pagar";
             case "recurring.field.day_of_week" -> "Día semana";
             case "recurring.field.months_between" -> "Cada N meses";
             case "date.day.monday" -> "lunes";
@@ -16284,29 +16286,71 @@ public class BenjagestUiApplication extends Application {
                 new javafx.scene.control.Spinner<>(0.0, 999999.0, 0.0, 10.0);
         amountSpinner.setEditable(true);
 
+        // Slice 3J — IVA y retención. Muchos pagos sin factura sí los
+        // llevan: una iguala de asesoría tiene IVA 21% + retención IRPF
+        // 15%; un alquiler tiene IVA 21% + retención 19%. La cuota
+        // autónomo no lleva ni uno ni otro (default 0).
+        javafx.scene.control.Spinner<Double> vatPercentSpinner =
+                new javafx.scene.control.Spinner<>(0.0, 21.0, 0.0, 0.5);
+        vatPercentSpinner.setEditable(true);
+        javafx.scene.control.Spinner<Double> retentionPercentSpinner =
+                new javafx.scene.control.Spinner<>(0.0, 30.0, 0.0, 1.0);
+        retentionPercentSpinner.setEditable(true);
+
+        // Label "Total a pagar" que recalcula dinámicamente.
+        Label totalLabel = new Label("0,00 €");
+        totalLabel.getStyleClass().add("text-bold");
+        Runnable recomputeTotal = () -> {
+            double base = amountSpinner.getValue() == null ? 0 : amountSpinner.getValue();
+            double vat = vatPercentSpinner.getValue() == null ? 0 : vatPercentSpinner.getValue();
+            double ret = retentionPercentSpinner.getValue() == null ? 0 : retentionPercentSpinner.getValue();
+            double total = base + Math.round(base * vat) / 100.0 - Math.round(base * ret) / 100.0;
+            totalLabel.setText(String.format("%.2f €", total));
+        };
+        amountSpinner.valueProperty().addListener((o, a, b) -> recomputeTotal.run());
+        vatPercentSpinner.valueProperty().addListener((o, a, b) -> recomputeTotal.run());
+        retentionPercentSpinner.valueProperty().addListener((o, a, b) -> recomputeTotal.run());
+
         // Pre-rellenar desde payloadJson si estamos editando.
         if (existing != null && existing.payloadJson() != null) {
             String pj = existing.payloadJson();
             conceptField.setText(extractStringField(pj, "concept"));
-            // El payload de JOURNAL_ENTRY lleva lines = [debit, credit].
-            // Buscamos accountCode + debit > 0 (gasto) y accountCode + credit > 0 (banco).
-            int firstLine = pj.indexOf("\"lines\"");
-            if (firstLine > 0) {
-                String tail = pj.substring(firstLine);
-                // Heurística superficial: el primer accountCode = gasto, segundo = banco
-                int firstAcc = tail.indexOf("accountCode");
-                if (firstAcc > 0) {
-                    expenseAccountField.setValue(extractStringField(
-                            tail.substring(firstAcc), "accountCode"));
-                    int secondAcc = tail.indexOf("accountCode", firstAcc + 12);
-                    if (secondAcc > 0) {
-                        bankAccountField.setValue(extractStringField(
-                                tail.substring(secondAcc), "accountCode"));
+            // El payload lleva: baseAmount, vatPercent, retentionPercent,
+            // expenseAccountCode, bankAccountCode. Si encuentro estos
+            // campos, los uso (formato nuevo). Si no, caigo al formato
+            // antiguo basado en lines[].
+            String base = extractStringField(pj, "baseAmount");
+            if (base != null && !base.isBlank()) {
+                try { amountSpinner.getValueFactory().setValue(Double.parseDouble(base)); }
+                catch (NumberFormatException ignored) {}
+                Double vp = extractDoubleField(pj, "vatPercent");
+                if (vp != null) vatPercentSpinner.getValueFactory().setValue(vp);
+                Double rp = extractDoubleField(pj, "retentionPercent");
+                if (rp != null) retentionPercentSpinner.getValueFactory().setValue(rp);
+                String exp = extractStringField(pj, "expenseAccountCode");
+                String bnk = extractStringField(pj, "bankAccountCode");
+                if (exp != null && !exp.isBlank()) expenseAccountField.setValue(exp);
+                if (bnk != null && !bnk.isBlank()) bankAccountField.setValue(bnk);
+            } else {
+                // Formato antiguo: extraer desde lines[]
+                int firstLine = pj.indexOf("\"lines\"");
+                if (firstLine > 0) {
+                    String tail = pj.substring(firstLine);
+                    int firstAcc = tail.indexOf("accountCode");
+                    if (firstAcc > 0) {
+                        expenseAccountField.setValue(extractStringField(
+                                tail.substring(firstAcc), "accountCode"));
+                        int lastAcc = tail.lastIndexOf("accountCode");
+                        if (lastAcc > firstAcc) {
+                            bankAccountField.setValue(extractStringField(
+                                    tail.substring(lastAcc), "accountCode"));
+                        }
                     }
+                    Double d = extractDoubleField(tail, "debit");
+                    if (d != null && d > 0) amountSpinner.getValueFactory().setValue(d);
                 }
-                Double d = extractDoubleField(tail, "debit");
-                if (d != null && d > 0) amountSpinner.getValueFactory().setValue(d);
             }
+            recomputeTotal.run();
         }
 
         GridPane grid = new GridPane();
@@ -16333,8 +16377,15 @@ public class BenjagestUiApplication extends Application {
         grid.add(expenseAccountField, 1, r++, 3, 1);
         grid.add(new Label(t("recurring.field.bank_account")), 0, r);
         grid.add(bankAccountField, 1, r++, 3, 1);
-        grid.add(new Label(t("recurring.field.amount")), 0, r);
-        grid.add(amountSpinner, 1, r++);
+        grid.add(new Label(t("recurring.field.amount") + " (base)"), 0, r);
+        grid.add(amountSpinner, 1, r);
+        grid.add(new Label(t("recurring.field.vat_percent")), 2, r);
+        grid.add(vatPercentSpinner, 3, r++);
+
+        grid.add(new Label(t("recurring.field.retention_percent")), 0, r);
+        grid.add(retentionPercentSpinner, 1, r);
+        grid.add(new Label(t("recurring.field.total_to_pay")), 2, r);
+        grid.add(totalLabel, 3, r++);
 
         Label hint = new Label(t("recurring.journal_entry.hint"));
         hint.getStyleClass().addAll("muted", "small");
@@ -16349,11 +16400,28 @@ public class BenjagestUiApplication extends Application {
         var result = dlg.showAndWait();
         if (result.isEmpty() || result.get() != saveType) return;
 
-        // Build JSON request
-        double amount = amountSpinner.getValue();
+        // Slice 3J-2 — Build JSON request con IVA y retención.
+        // Genera 2/3/4 líneas en el asiento según los porcentajes:
+        //
+        //   base                                → DEBE cuenta gasto
+        //   if (iva > 0): vatAmount             → DEBE 472 IVA soportado
+        //   if (ret > 0): retAmount             → HABER 4751 H.P. retenc.
+        //   total a pagar (base + iva - ret)    → HABER cuenta banco
+        //
+        // El backend resuelve los códigos a UUIDs reales con
+        // resolveAccountIdByCode (Slice 3F-1a). 472 y 4751 son
+        // estándar PGC PYMES (sembrados por V46).
+        double base = amountSpinner.getValue();
+        double vatPct = vatPercentSpinner.getValue();
+        double retPct = retentionPercentSpinner.getValue();
+        double vatAmount = Math.round(base * vatPct) / 100.0;
+        double retAmount = Math.round(base * retPct) / 100.0;
+        double totalToPay = base + vatAmount - retAmount;
         String expAcc = extractAccountCode(expenseAccountField);
         String bankAcc = extractAccountCode(bankAccountField);
         String concept = conceptField.getText();
+        String conceptStr = concept == null ? "" : concept;
+
         StringBuilder body = new StringBuilder();
         body.append('{');
         appendJsonField(body, "kind", "JOURNAL_ENTRY", true);
@@ -16366,15 +16434,39 @@ public class BenjagestUiApplication extends Application {
         }
         body.append(",\"firstRunDate\":\"").append(firstRunDate.getValue()).append('"');
         body.append(",\"payload\":{");
-        appendJsonField(body, "concept", concept == null ? "" : concept, true);
-        body.append(",\"lines\":[")
-                .append("{\"accountCode\":").append(jsonString(expAcc))
-                .append(",\"description\":").append(jsonString(concept == null ? "" : concept))
-                .append(",\"debit\":").append(amount).append(",\"credit\":0},")
-                .append("{\"accountCode\":").append(jsonString(bankAcc))
-                .append(",\"description\":").append(jsonString(concept == null ? "" : concept))
-                .append(",\"debit\":0,\"credit\":").append(amount).append('}')
-                .append(']');
+        appendJsonField(body, "concept", conceptStr, true);
+        // Metadatos para que el editor pueda re-prellenar los campos al
+        // editar (Slice 3J-2). El backend los ignora — solo lee "lines".
+        body.append(",\"baseAmount\":\"").append(base).append('"');
+        body.append(",\"vatPercent\":").append(vatPct);
+        body.append(",\"retentionPercent\":").append(retPct);
+        appendJsonField(body, "expenseAccountCode", expAcc, false);
+        appendJsonField(body, "bankAccountCode", bankAcc, false);
+
+        body.append(",\"lines\":[");
+        boolean firstLine = true;
+        // Línea 1: DEBE cuenta gasto, importe = base
+        body.append("{\"accountCode\":").append(jsonString(expAcc))
+                .append(",\"description\":").append(jsonString(conceptStr))
+                .append(",\"debit\":").append(base).append(",\"credit\":0}");
+        firstLine = false;
+        // Línea 2 (opcional): DEBE 472 IVA soportado
+        if (vatAmount > 0) {
+            body.append(",{\"accountCode\":\"472\"")
+                    .append(",\"description\":").append(jsonString(conceptStr + " (IVA " + vatPct + "%)"))
+                    .append(",\"debit\":").append(vatAmount).append(",\"credit\":0}");
+        }
+        // Línea 3 (opcional): HABER 4751 H.P. retenciones
+        if (retAmount > 0) {
+            body.append(",{\"accountCode\":\"4751\"")
+                    .append(",\"description\":").append(jsonString(conceptStr + " (Retención " + retPct + "%)"))
+                    .append(",\"debit\":0,\"credit\":").append(retAmount).append('}');
+        }
+        // Línea final: HABER cuenta banco, importe = total a pagar
+        body.append(",{\"accountCode\":").append(jsonString(bankAcc))
+                .append(",\"description\":").append(jsonString(conceptStr))
+                .append(",\"debit\":0,\"credit\":").append(totalToPay).append('}');
+        body.append(']');
         body.append("}}");
 
         String jsonBody = body.toString();
