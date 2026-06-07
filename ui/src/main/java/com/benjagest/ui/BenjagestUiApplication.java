@@ -16432,6 +16432,20 @@ public class BenjagestUiApplication extends Application {
         javafx.scene.control.MenuButton insertBtn =
                 new javafx.scene.control.MenuButton("➕ " + t("recurring.placeholders.insert"));
         insertBtn.setTooltip(legibleTooltip(t("recurring.placeholders.hint")));
+        // Slice 3R-fix — trackear la última posición conocida del
+        // caret MIENTRAS el TextField tiene foco. Sin esto, si el
+        // usuario nunca enfocó el TextField (abre editor → click
+        // directo en MenuButton), getCaretPosition() devuelve 0 y
+        // el placeholder se inserta al principio.
+        final int[] lastCaret = { -1 };
+        concept.caretPositionProperty().addListener((obs, oldV, newV) -> {
+            if (concept.isFocused() && newV != null) {
+                lastCaret[0] = newV.intValue();
+            }
+        });
+        concept.focusedProperty().addListener((obs, was, isNow) -> {
+            if (isNow) lastCaret[0] = concept.getCaretPosition();
+        });
         String[][] phs = {
                 {"{MES}", "junio (nombre del mes en minúsculas)"},
                 {"{MES_MAY}", "Junio (capitalizado)"},
@@ -16448,10 +16462,17 @@ public class BenjagestUiApplication extends Application {
             javafx.scene.control.MenuItem item =
                     new javafx.scene.control.MenuItem(ph[0] + "  →  " + ph[1]);
             item.setOnAction(e -> {
-                int caret = concept.getCaretPosition();
                 String text = concept.getText() == null ? "" : concept.getText();
+                // Si el usuario nunca tocó el TextField, insertar al
+                // FINAL (no al principio) — es lo que la mayoría
+                // espera al pulsar "Insertar placeholder" sin haber
+                // posicionado el cursor antes.
+                int caret = lastCaret[0] >= 0 ? lastCaret[0] : text.length();
+                if (caret > text.length()) caret = text.length();
                 concept.setText(text.substring(0, caret) + ph[0] + text.substring(caret));
-                concept.positionCaret(caret + ph[0].length());
+                int newCaret = caret + ph[0].length();
+                lastCaret[0] = newCaret;
+                concept.positionCaret(newCaret);
                 concept.requestFocus();
             });
             insertBtn.getItems().add(item);
