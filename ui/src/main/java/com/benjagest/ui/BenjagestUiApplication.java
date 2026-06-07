@@ -102,7 +102,7 @@ public class BenjagestUiApplication extends Application {
             // Recurrentes, Modelos AEAT, etc.). NO va dentro de "Mis
             // clientes" para que la asesoría tenga clara la
             // separación entre su gestión y la de sus clientes.
-            new ModuleLink("myCompany", "Mi empresa", "fas-building"),
+            new ModuleLink("myCompany", "Mi empresa", "fas-briefcase"),
             new ModuleLink("customers", "Clientes", "fas-users"),
             new ModuleLink("tax", "Fiscal", "fas-percentage"),
             new ModuleLink("labor", "Laboral", "fas-hard-hat"),
