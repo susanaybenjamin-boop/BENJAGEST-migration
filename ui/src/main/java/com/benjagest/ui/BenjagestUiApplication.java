@@ -11439,6 +11439,8 @@ public class BenjagestUiApplication extends Application {
             case "recurring.validate.nif_required_header" -> "Customer Tax ID missing";
             case "recurring.validate.nif_required" -> "To create a recurring sale we need the customer Tax ID, not only the legal name.\n\nPlease fill the Customer Tax ID field before saving.";
             case "recurring.field.total_to_pay" -> "Total to pay";
+            case "recurring.validate.amount_required_header" -> "Amount missing";
+            case "recurring.validate.amount_required" -> "Please enter an amount greater than 0 in the Amount (base) field before saving.\n\nTip: if you typed the number manually, press Tab or Enter to commit before pressing Save.";
             case "recurring.field.day_of_week" -> "Day of week";
             case "recurring.field.months_between" -> "Every N months";
             case "date.day.monday" -> "Monday";
@@ -11964,6 +11966,8 @@ public class BenjagestUiApplication extends Application {
             case "recurring.validate.nif_required_header" -> "Falta el NIF del cliente";
             case "recurring.validate.nif_required" -> "Para crear una venta recurrente necesitamos el NIF del cliente, no solo su razón social.\n\nPor favor rellena el campo NIF cliente antes de guardar.";
             case "recurring.field.total_to_pay" -> "Total a pagar";
+            case "recurring.validate.amount_required_header" -> "Falta el importe";
+            case "recurring.validate.amount_required" -> "Introduce un importe mayor que 0 en el campo «Importe (base)» antes de guardar.\n\nTruco: si has escrito el número a mano, pulsa Tab o Enter para que se guarde antes de pulsar Guardar.";
             case "recurring.field.day_of_week" -> "Día semana";
             case "recurring.field.months_between" -> "Cada N meses";
             case "date.day.monday" -> "lunes";
@@ -16178,6 +16182,36 @@ public class BenjagestUiApplication extends Application {
     private String nullSafe(String s) { return s == null ? "" : s; }
 
     /**
+     * Slice 3M — Fuerza el commit del texto pendiente en un Spinner
+     * editable. JavaFX no commitea hasta que el campo pierde el foco,
+     * así que si el usuario escribe "295" y pulsa Guardar sin tabular
+     * antes, getValue() devuelve el valor anterior (típicamente 0).
+     * Esto causaba "Línea 1: la línea está vacía" en el backend.
+     */
+    private void commitSpinner(javafx.scene.control.Spinner<?> spinner) {
+        if (spinner == null) return;
+        var editor = spinner.getEditor();
+        if (editor == null) return;
+        try {
+            String text = editor.getText();
+            if (text == null || text.isBlank()) return;
+            var converter = spinner.getValueFactory() == null
+                    ? null : spinner.getValueFactory().getConverter();
+            if (converter == null) return;
+            Object parsed = converter.fromString(text);
+            if (parsed != null) {
+                @SuppressWarnings({"unchecked", "rawtypes"})
+                javafx.scene.control.SpinnerValueFactory vf = spinner.getValueFactory();
+                vf.setValue(parsed);
+            }
+        } catch (Exception ignored) {
+            // si el texto no es parseable (ej. usuario escribió "abc"),
+            // dejamos el valor anterior y la validación posterior se
+            // encarga de avisar.
+        }
+    }
+
+    /**
      * Slice 3I — Envuelve el TextField de Concepto con un MenuButton
      * de placeholders predictivos. El usuario pulsa "Insertar" y
      * elige el placeholder (mes, año, día, trimestre...) que se
@@ -16419,6 +16453,29 @@ public class BenjagestUiApplication extends Application {
         dlg.setResultConverter(bt -> bt);
         var result = dlg.showAndWait();
         if (result.isEmpty() || result.get() != saveType) return;
+
+        // Slice 3M — Forzar commit del texto pendiente en los Spinners
+        // ANTES de leer getValue(). JavaFX no commitea el texto editado
+        // hasta que el campo pierde el foco; si el usuario escribe
+        // "295" y pulsa "Guardar" sin tabular, getValue() devuelve el
+        // valor anterior (0.0) → líneas vacías y el backend dice
+        // "Línea 1: la línea está vacía".
+        commitSpinner(amountSpinner);
+        commitSpinner(vatPercentSpinner);
+        commitSpinner(retentionPercentSpinner);
+        commitSpinner(domSpinner);
+
+        // Validar que el importe es > 0 — si no, alert claro en lugar
+        // de mandar al backend con 0 y recibir el mensaje genérico.
+        if (amountSpinner.getValue() == null
+                || amountSpinner.getValue() <= 0.0) {
+            Alert a = new Alert(Alert.AlertType.WARNING,
+                    t("recurring.validate.amount_required"),
+                    ButtonType.OK);
+            a.setHeaderText(t("recurring.validate.amount_required_header"));
+            a.showAndWait();
+            return;
+        }
 
         // Slice 3J-2 — Build JSON request con IVA y retención.
         // Genera 2/3/4 líneas en el asiento según los porcentajes:
