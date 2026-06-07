@@ -432,8 +432,20 @@ public class RecurringTaskService {
         }
         List<ManualJournalEntryService.LineRequest> lines = new ArrayList<>();
         for (Map<String, Object> l : rawLines) {
+            // El payload puede traer accountId (UUID directo, formato
+            // legacy) o accountCode (código PGC tipo "629", "572" —
+            // Slice 3F). Si solo viene el código, lo resolvemos.
+            String accountId = (String) l.get("accountId");
+            if (accountId == null || accountId.isBlank()) {
+                String accountCode = (String) l.get("accountCode");
+                if (accountCode == null || accountCode.isBlank()) {
+                    throw new IllegalStateException(
+                            "Línea sin accountId ni accountCode — no se puede generar el asiento.");
+                }
+                accountId = resolveAccountIdByCode(accountCode);
+            }
             lines.add(new ManualJournalEntryService.LineRequest(
-                    (String) l.get("accountId"),
+                    accountId,
                     (String) l.get("description"),
                     bd(l.get("debit")), bd(l.get("credit"))));
         }
@@ -443,6 +455,26 @@ public class RecurringTaskService {
                         expandPlaceholders((String) p.get("concept"), scheduledDate),
                         lines, postNow));
         return v.id();
+    }
+
+    /**
+     * Busca la cuenta del PGC del tenant actual cuyo código coincida
+     * exactamente con {@code code}. Devuelve el UUID. Falla si no se
+     * encuentra (mensaje claro para que el asesor sepa que tiene que
+     * sembrar la cuenta o ajustar el código en la plantilla).
+     */
+    private String resolveAccountIdByCode(String code) {
+        String companyId = tenantContext.getCurrentCompanyId();
+        List<String> ids = jdbcTemplate.query("""
+                SELECT id FROM accounting_accounts
+                 WHERE company_id = ? AND code = ?
+                 LIMIT 1
+                """, (rs, n) -> rs.getString(1), companyId, code.trim());
+        if (ids.isEmpty()) {
+            throw new IllegalStateException(
+                    "No existe cuenta con código '" + code + "' en el PGC de la empresa.");
+        }
+        return ids.get(0);
     }
 
     private String runTemplate(RecurringTaskView task, LocalDate scheduledDate) {
