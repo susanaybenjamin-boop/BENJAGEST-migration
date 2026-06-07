@@ -5664,9 +5664,12 @@ public class BenjagestUiApplication extends Application {
             com.benjagest.ui.support.RefreshBus.emit(
                     com.benjagest.ui.support.RefreshBus.TOPIC_SALES,
                     com.benjagest.ui.support.RefreshBus.TOPIC_JOURNAL);
-            // Slice 3D-3 — ofrecer convertir la factura recién validada
-            // en plantilla recurrente. Solo para tipo NORMAL (sin sentido
-            // en proformas ni en rectificativas).
+            // Slice 3D-3 + 3P — ofrecer convertir la factura recién
+            // validada en plantilla recurrente. Solo para tipo NORMAL
+            // (sin sentido en proformas ni en rectificativas) Y solo
+            // si NO hay ya una recurrente activa que la cubra (de lo
+            // contrario el asesor crearía duplicados al validar las
+            // facturas que el propio cron generó).
             if ("NORMAL".equalsIgnoreCase(v.invoiceType()) || v.invoiceType() == null) {
                 LocalDate invDate = null;
                 try {
@@ -5674,12 +5677,25 @@ public class BenjagestUiApplication extends Application {
                         invDate = LocalDate.parse(v.invoiceDate());
                     }
                 } catch (Exception ignored) { /* fecha en formato inesperado */ }
-                promptMakeRecurringAfterValidation(
-                        "SALES_INVOICE",
-                        null,                  // NIF cliente no viene en summary; user lo rellena
-                        v.customerLegalName(),
-                        v.total(),
-                        invDate);
+                final LocalDate finalInvDate = invDate;
+                // Consultar al backend en hilo aparte para no bloquear
+                // el JavaFX thread; el prompt se muestra siempre en
+                // Platform.runLater.
+                new Thread(() -> {
+                    boolean covered;
+                    try {
+                        covered = accountingApiClient.recurringAlreadyCovers(
+                                "SALES_INVOICE", v.customerLegalName(), v.total());
+                    } catch (Exception ex) { covered = false; }
+                    if (covered) return;
+                    javafx.application.Platform.runLater(() ->
+                            promptMakeRecurringAfterValidation(
+                                    "SALES_INVOICE",
+                                    null,
+                                    v.customerLegalName(),
+                                    v.total(),
+                                    finalInvDate));
+                }, "recurring-already-covers").start();
             }
         });
         task.setOnFailed(ev -> showError(t("editor.error.validate_failed.title"),
@@ -11527,6 +11543,7 @@ public class BenjagestUiApplication extends Application {
             case "accounting.source_type.ASSET_ACQUISITION" -> "Asset acquisition";
             case "accounting.source_type.ASSET_DISPOSAL" -> "Asset disposal";
             case "accounting.source_type.MANUAL_REVERSAL" -> "Reversal";
+            case "accounting.source_type.RECURRING_TASK" -> "Recurring task";
             case "accounting.col.name" -> "Name";
             case "accounting.col.rule_kind" -> "Rule kind";
             case "accounting.col.nif" -> "Tax ID";
@@ -12057,6 +12074,7 @@ public class BenjagestUiApplication extends Application {
             case "accounting.source_type.ASSET_ACQUISITION" -> "Alta inmovilizado";
             case "accounting.source_type.ASSET_DISPOSAL" -> "Baja inmovilizado";
             case "accounting.source_type.MANUAL_REVERSAL" -> "Contraasiento";
+            case "accounting.source_type.RECURRING_TASK" -> "Recurrente";
             case "accounting.col.name" -> "Nombre";
             case "accounting.col.rule_kind" -> "Tipo de regla";
             case "accounting.col.nif" -> "NIF";

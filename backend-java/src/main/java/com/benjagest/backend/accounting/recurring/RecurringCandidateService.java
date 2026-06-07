@@ -45,6 +45,45 @@ public class RecurringCandidateService {
     }
 
     /**
+     * Slice 3P — ¿Hay alguna recurrente activa del kind y tercero
+     * indicados con un importe cercano? El UI lo usa para evitar
+     * preguntar "¿hacer recurrente?" tras validar una factura que YA
+     * está cubierta por una plantilla.
+     *
+     * <p>Compara substring sobre el payload_json (mismo enfoque que
+     * filterOutAlreadyRecurring). NO se compara NIF cuando viene
+     * vacío — en su lugar solo legalName + importe.
+     */
+    public boolean alreadyCovers(String kind, String partyName,
+                                  java.math.BigDecimal amount) {
+        String companyId = tenantContext.getCurrentCompanyId();
+        if (companyId == null || amount == null) return false;
+        if (partyName == null || partyName.isBlank()) return false;
+        List<String> payloads = jdbcTemplate.query("""
+                SELECT payload_json
+                  FROM recurring_tasks
+                 WHERE company_id = ?
+                   AND kind = ?
+                   AND active = TRUE
+                """, (rs, n) -> rs.getString("payload_json"), companyId, kind);
+        String trimmedName = partyName.trim().toLowerCase();
+        String amountKey = "SALES_INVOICE".equals(kind) ? "unitPrice" : "baseAmount";
+        String amountStr = amount.setScale(2, java.math.RoundingMode.HALF_UP).toPlainString();
+        String amountStrPlain = amount.toPlainString();
+        for (String pj : payloads) {
+            if (pj == null) continue;
+            String pjLower = pj.toLowerCase();
+            // Comparar nombre tercero (puede estar en customerLegalName
+            // para SALES o supplierName para PURCHASE).
+            boolean nameMatch = pjLower.contains(trimmedName);
+            boolean amountMatch = pj.contains(amountKey + "\":" + amountStr)
+                    || pj.contains(amountKey + "\":" + amountStrPlain);
+            if (nameMatch && amountMatch) return true;
+        }
+        return false;
+    }
+
+    /**
      * Lista los candidatos de recurrencia en la ventana indicada.
      *
      * @param kind        "SALES_INVOICE" o "PURCHASE".
