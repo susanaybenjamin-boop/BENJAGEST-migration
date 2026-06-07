@@ -321,15 +321,19 @@ public class AccountingScreen {
                 "", "DRAFT", "POSTED", "VOIDED"));
         statusFilter.setValue("POSTED");
         installStatusCellFactory(statusFilter);
+        // Slice 3U — el filtro Origen se simplifica conceptualmente:
+        // "Venta" engloba SALES_INVOICE + SALES_PDF_IMPORT (todas las
+        // ventas centralizadas — vengan de factura validada o de PDF
+        // importado por el asesor). "Compra" engloba PURCHASE_INVOICE
+        // (los recurrentes contables RECURRING_ACCOUNTING se filtran
+        // aparte para distinguirlos del flujo normal).
         sourceFilter = new ComboBox<>(FXCollections.observableArrayList(
                 "", "MANUAL", "SALES_INVOICE", "PURCHASE_INVOICE",
-                "SALES_PDF_IMPORT", "BANK_MOVEMENT",
+                "BANK_MOVEMENT",
                 "YEAR_CLOSE_REGULARIZATION", "YEAR_CLOSE_CLOSING",
                 "LOAN_INSTALLMENT", "ASSET_DEPRECIATION",
                 "ASSET_ACQUISITION", "ASSET_DISPOSAL",
                 "MANUAL_REVERSAL",
-                // Slice 3T fix — los kinds del cron de recurrentes
-                // ahora son seleccionables en el filtro de Origen.
                 "RECURRING_TASK", "RECURRING_ACCOUNTING"));
         installSourceCellFactory(sourceFilter);
 
@@ -373,7 +377,18 @@ public class AccountingScreen {
         LocalDate from = fromPicker.getValue();
         LocalDate to = toPicker.getValue();
         String status = empty(statusFilter.getValue()) ? null : statusFilter.getValue();
-        String source = empty(sourceFilter.getValue()) ? null : sourceFilter.getValue();
+        // Slice 3U — Expandir filtros virtuales:
+        // - "SALES_INVOICE" busca también SALES_PDF_IMPORT.
+        //   (Las facturas importadas por PDF son ventas reales del
+        //   cliente, solo cambia el origen del documento.)
+        String source;
+        if (empty(sourceFilter.getValue())) {
+            source = null;
+        } else if ("SALES_INVOICE".equals(sourceFilter.getValue())) {
+            source = "SALES_INVOICE,SALES_PDF_IMPORT";
+        } else {
+            source = sourceFilter.getValue();
+        }
         async(() -> api.diary(from, to, status, source, 500),
                 rows -> {
                     diaryAll.setAll(rows);
