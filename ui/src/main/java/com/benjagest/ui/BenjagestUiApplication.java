@@ -2238,7 +2238,26 @@ public class BenjagestUiApplication extends Application {
     private java.util.List<com.benjagest.ui.model.PurchaseInvoiceEntry> purchaseInvoicesCache = java.util.List.of();
 
     private void showPurchasesWithImport() {
-        setCenterAnimated(buildPurchasesListing(true));
+        // Slice 3C — Envolvemos la pantalla de Compras del empresario en
+        // un TabPane con un segundo sub-tab "Recurrentes" (kind=PURCHASE)
+        // para los gastos que se repiten cada mes/trimestre/año (cuota
+        // autónomo, asesoría, alquiler oficina, suministros, etc.).
+        // El cron del backend ejecuta las plantillas a las 06:10 cada día.
+        Node listing = buildPurchasesListing(true);
+        TabPane wrapper = new TabPane();
+        wrapper.getStyleClass().add("settings-tabs");
+        wrapper.setTabClosingPolicy(TabPane.TabClosingPolicy.UNAVAILABLE);
+
+        Tab expensesTab = new Tab(t("purchases.tab.expenses"), listing);
+        expensesTab.setGraphic(icon("fas-receipt"));
+
+        Tab recurringTab = new Tab(t("purchases.tab.recurring"),
+                buildRecurringTab("PURCHASE", "purchases.tab.recurring"));
+        recurringTab.setGraphic(icon("fas-arrows-rotate"));
+
+        wrapper.getTabs().addAll(expensesTab, recurringTab);
+        VBox.setVgrow(wrapper, Priority.ALWAYS);
+        setCenterAnimated(wrapper);
     }
 
     /**
@@ -5124,7 +5143,14 @@ public class BenjagestUiApplication extends Application {
         Tab configTab = new Tab(t("billing.tab.config"), billingConfigTab(bundle.verifactuConfig(), bundle.series(), bundle.certificates(), bundle.invoiceTexts()));
         configTab.setGraphic(icon("fas-cog"));
 
-        tabs.getTabs().addAll(dashboardTab, invoicesTab, configTab);
+        // Slice 3C — Ventas recurrentes (kind=SALES_INVOICE). Plantillas
+        // que el cron del backend ejecuta cada día a las 06:10. Pensado
+        // para igualas mensuales, mantenimientos trimestrales, etc.
+        Tab recurringTab = new Tab(t("billing.tab.recurring"),
+                buildRecurringTab("SALES_INVOICE", "billing.tab.recurring"));
+        recurringTab.setGraphic(icon("fas-arrows-rotate"));
+
+        tabs.getTabs().addAll(dashboardTab, invoicesTab, recurringTab, configTab);
         VBox.setVgrow(tabs, Priority.ALWAYS);
         // Aterrizamos en la pestaña que indique el intent (lo fija quien
         // navega aqui — p.ej. tras CRUD de series queremos volver a
@@ -11186,6 +11212,75 @@ public class BenjagestUiApplication extends Application {
             case "accounting.filter.any" -> "(any)";
             case "accounting.col.num" -> "#";
             case "accounting.col.dup" -> "Dup.";
+            case "client.tab.sales_recurring" -> "Recurring sales";
+            case "client.tab.expenses_recurring" -> "Recurring expenses";
+            case "billing.tab.recurring" -> "Recurring sales";
+            case "purchases.tab.expenses" -> "Purchases & Expenses";
+            case "purchases.tab.recurring" -> "Recurring expenses";
+            case "recurring.placeholder.empty" -> "No recurring tasks configured yet";
+            case "recurring.col.name" -> "Name";
+            case "recurring.col.description" -> "Description";
+            case "recurring.col.frequency" -> "Frequency";
+            case "recurring.col.next_run" -> "Next";
+            case "recurring.col.last_run" -> "Last";
+            case "recurring.col.status" -> "Status";
+            case "recurring.status.active" -> "Active";
+            case "recurring.status.inactive" -> "Inactive";
+            case "recurring.cron_info" -> "Recurring tasks run automatically every day at 06:10. From here you can review them, run them manually or disable them.";
+            case "recurring.error.load" -> "Could not load the list";
+            case "recurring.freq.monthly" -> "Monthly";
+            case "recurring.freq.quarterly" -> "Quarterly";
+            case "recurring.freq.yearly" -> "Yearly";
+            case "recurring.freq.weekly" -> "Weekly";
+            case "recurring.freq.every" -> "Every";
+            case "recurring.freq.months" -> "months";
+            case "recurring.freq.day" -> "day";
+            case "recurring.col.actions" -> "Actions";
+            case "recurring.action.run_now" -> "Run now";
+            case "recurring.action.pause" -> "Disable";
+            case "recurring.action.activate" -> "Enable";
+            case "recurring.action.history" -> "History";
+            case "recurring.confirm.run_now" -> "Run this task now? It will generate the document (invoice or expense) using today's date.";
+            case "recurring.run_now.success" -> "Task executed successfully.";
+            case "recurring.run_now.error" -> "Could not run the task";
+            case "recurring.toggle.error" -> "Could not toggle status";
+            case "recurring.history.empty" -> "No runs recorded yet";
+            case "recurring.history.col.date" -> "Date";
+            case "recurring.history.col.status" -> "Status";
+            case "recurring.history.col.message" -> "Message";
+            case "recurring.history.error" -> "Could not load history";
+            case "recurring.new.sales" -> "New recurring sale";
+            case "recurring.new.expense" -> "New recurring expense";
+            case "recurring.edit" -> "Edit recurring";
+            case "recurring.field.name" -> "Name";
+            case "recurring.field.description" -> "Description";
+            case "recurring.field.description.hint" -> "Internal notes (optional)";
+            case "recurring.field.frequency" -> "Frequency";
+            case "recurring.field.first_run" -> "First run";
+            case "recurring.field.concept" -> "Concept";
+            case "recurring.field.concept.hint" -> "Retainer {YYYY}{MM} — use placeholders for month/year";
+            case "recurring.field.customer_nif" -> "Customer Tax ID";
+            case "recurring.field.customer_name" -> "Customer legal name";
+            case "recurring.field.supplier_nif" -> "Supplier Tax ID";
+            case "recurring.field.supplier_name" -> "Supplier legal name";
+            case "recurring.field.line_desc" -> "Line description";
+            case "recurring.field.quantity" -> "Quantity";
+            case "recurring.field.unit_price" -> "Unit price";
+            case "recurring.field.vat_percent" -> "VAT %";
+            case "recurring.field.retention_percent" -> "Withholding %";
+            case "recurring.field.invoice_number" -> "Invoice number template";
+            case "recurring.field.base_amount" -> "Base amount";
+            case "recurring.section.sale_data" -> "Sale data";
+            case "recurring.section.expense_data" -> "Expense data";
+            case "recurring.placeholders.hint" -> "You can use {YYYY}, {MM}, {DD} in concept, description and invoice number to insert the year/month/day of each run.";
+            case "recurring.save.error" -> "Could not save the task";
+            case "date.day.monday" -> "Monday";
+            case "date.day.tuesday" -> "Tuesday";
+            case "date.day.wednesday" -> "Wednesday";
+            case "date.day.thursday" -> "Thursday";
+            case "date.day.friday" -> "Friday";
+            case "date.day.saturday" -> "Saturday";
+            case "date.day.sunday" -> "Sunday";
             case "accounting.col.date" -> "Date";
             case "accounting.col.concept" -> "Concept";
             case "accounting.col.source" -> "Source";
@@ -11609,6 +11704,75 @@ public class BenjagestUiApplication extends Application {
             case "accounting.filter.any" -> "(cualquiera)";
             case "accounting.col.num" -> "Nº";
             case "accounting.col.dup" -> "Dup.";
+            case "client.tab.sales_recurring" -> "Ventas recurrentes";
+            case "client.tab.expenses_recurring" -> "Gastos recurrentes";
+            case "billing.tab.recurring" -> "Ventas recurrentes";
+            case "purchases.tab.expenses" -> "Compras y Gastos";
+            case "purchases.tab.recurring" -> "Gastos recurrentes";
+            case "recurring.placeholder.empty" -> "Sin tareas recurrentes configuradas todavía";
+            case "recurring.col.name" -> "Nombre";
+            case "recurring.col.description" -> "Descripción";
+            case "recurring.col.frequency" -> "Frecuencia";
+            case "recurring.col.next_run" -> "Próxima";
+            case "recurring.col.last_run" -> "Última";
+            case "recurring.col.status" -> "Estado";
+            case "recurring.status.active" -> "Activa";
+            case "recurring.status.inactive" -> "Inactiva";
+            case "recurring.cron_info" -> "Las tareas recurrentes se ejecutan automáticamente cada día a las 06:10. Aquí puedes consultarlas, lanzarlas manualmente o desactivarlas.";
+            case "recurring.error.load" -> "No se pudo cargar el listado";
+            case "recurring.freq.monthly" -> "Mensual";
+            case "recurring.freq.quarterly" -> "Trimestral";
+            case "recurring.freq.yearly" -> "Anual";
+            case "recurring.freq.weekly" -> "Semanal";
+            case "recurring.freq.every" -> "Cada";
+            case "recurring.freq.months" -> "meses";
+            case "recurring.freq.day" -> "día";
+            case "recurring.col.actions" -> "Acciones";
+            case "recurring.action.run_now" -> "Ejecutar ahora";
+            case "recurring.action.pause" -> "Desactivar";
+            case "recurring.action.activate" -> "Activar";
+            case "recurring.action.history" -> "Historial";
+            case "recurring.confirm.run_now" -> "¿Lanzar esta tarea ahora? Se generará el documento (factura o gasto) con la fecha de hoy.";
+            case "recurring.run_now.success" -> "Tarea ejecutada correctamente.";
+            case "recurring.run_now.error" -> "No se pudo ejecutar la tarea";
+            case "recurring.toggle.error" -> "No se pudo cambiar el estado";
+            case "recurring.history.empty" -> "Sin ejecuciones registradas todavía";
+            case "recurring.history.col.date" -> "Fecha";
+            case "recurring.history.col.status" -> "Estado";
+            case "recurring.history.col.message" -> "Mensaje";
+            case "recurring.history.error" -> "No se pudo cargar el historial";
+            case "recurring.new.sales" -> "Nueva venta recurrente";
+            case "recurring.new.expense" -> "Nuevo gasto recurrente";
+            case "recurring.edit" -> "Editar recurrente";
+            case "recurring.field.name" -> "Nombre";
+            case "recurring.field.description" -> "Descripción";
+            case "recurring.field.description.hint" -> "Notas internas (opcional)";
+            case "recurring.field.frequency" -> "Frecuencia";
+            case "recurring.field.first_run" -> "Primera ejecución";
+            case "recurring.field.concept" -> "Concepto";
+            case "recurring.field.concept.hint" -> "Iguala {YYYY}{MM} — usar placeholders si quieres mes/año";
+            case "recurring.field.customer_nif" -> "NIF cliente";
+            case "recurring.field.customer_name" -> "Razón social cliente";
+            case "recurring.field.supplier_nif" -> "NIF proveedor";
+            case "recurring.field.supplier_name" -> "Razón social proveedor";
+            case "recurring.field.line_desc" -> "Descripción línea";
+            case "recurring.field.quantity" -> "Cantidad";
+            case "recurring.field.unit_price" -> "Precio unitario";
+            case "recurring.field.vat_percent" -> "IVA %";
+            case "recurring.field.retention_percent" -> "Retención %";
+            case "recurring.field.invoice_number" -> "Nº factura plantilla";
+            case "recurring.field.base_amount" -> "Importe base";
+            case "recurring.section.sale_data" -> "Datos de la venta";
+            case "recurring.section.expense_data" -> "Datos del gasto";
+            case "recurring.placeholders.hint" -> "Puedes usar {YYYY}, {MM}, {DD} en concepto, descripción y nº de factura para insertar el año/mes/día de cada ejecución.";
+            case "recurring.save.error" -> "No se pudo guardar la tarea";
+            case "date.day.monday" -> "lunes";
+            case "date.day.tuesday" -> "martes";
+            case "date.day.wednesday" -> "miércoles";
+            case "date.day.thursday" -> "jueves";
+            case "date.day.friday" -> "viernes";
+            case "date.day.saturday" -> "sábado";
+            case "date.day.sunday" -> "domingo";
             case "accounting.col.date" -> "Fecha";
             case "accounting.col.concept" -> "Concepto";
             case "accounting.col.source" -> "Origen";
@@ -14962,6 +15126,655 @@ public class BenjagestUiApplication extends Application {
      * <p>Muestra: nº asiento, fecha, concepto, total. Con botón
      * "Importar PDFs" + auto-refresh por RefreshBus.
      */
+    /**
+     * Sub-tab "Recurrentes" del cliente — listado de tareas recurrentes
+     * filtradas por {@code kind} (SALES_INVOICE o PURCHASE). Pensado
+     * para que el asesor vea de un vistazo qué plantillas tiene el
+     * cliente, ejecutarlas manualmente, activarlas/desactivarlas y
+     * editarlas. El cron del backend ({@code 0 10 6 * * *}) las
+     * ejecuta cada día a las 06:10 automáticamente — esta pantalla
+     * es solo gestión y vista.
+     *
+     * <p>Slice 3C-1: scaffolding + listado real (sin acciones todavía).
+     * Slices 3C-2..5 añaden ejecutar/activar/historial + editor.
+     *
+     * @param kind            "SALES_INVOICE" o "PURCHASE".
+     * @param emptyMessageKey i18n key para el placeholder cuando la
+     *                        lista viene vacía.
+     */
+    private Node buildRecurringTab(String kind, String emptyMessageKey) {
+        javafx.scene.control.TableView<com.benjagest.ui.model.AccountingModels.RecurringTask> table =
+                new javafx.scene.control.TableView<>();
+        table.getStyleClass().add("data-table");
+        table.setPlaceholder(new Label(t("recurring.placeholder.empty")));
+
+        javafx.scene.control.TableColumn<com.benjagest.ui.model.AccountingModels.RecurringTask, String> colName =
+                new javafx.scene.control.TableColumn<>(t("recurring.col.name"));
+        colName.setCellValueFactory(c -> new javafx.beans.property.SimpleStringProperty(
+                c.getValue() == null ? "" : c.getValue().name()));
+        colName.setPrefWidth(220);
+
+        javafx.scene.control.TableColumn<com.benjagest.ui.model.AccountingModels.RecurringTask, String> colDesc =
+                new javafx.scene.control.TableColumn<>(t("recurring.col.description"));
+        colDesc.setCellValueFactory(c -> new javafx.beans.property.SimpleStringProperty(
+                c.getValue() == null ? "" : c.getValue().description()));
+        colDesc.setPrefWidth(260);
+
+        javafx.scene.control.TableColumn<com.benjagest.ui.model.AccountingModels.RecurringTask, String> colFreq =
+                new javafx.scene.control.TableColumn<>(t("recurring.col.frequency"));
+        colFreq.setCellValueFactory(c -> new javafx.beans.property.SimpleStringProperty(
+                c.getValue() == null ? "" : humanizeFrequency(c.getValue())));
+        colFreq.setPrefWidth(140);
+
+        javafx.scene.control.TableColumn<com.benjagest.ui.model.AccountingModels.RecurringTask, LocalDate> colNext =
+                new javafx.scene.control.TableColumn<>(t("recurring.col.next_run"));
+        colNext.setCellValueFactory(c -> new javafx.beans.property.SimpleObjectProperty<>(
+                c.getValue() == null ? null : c.getValue().nextRunDate()));
+        colNext.setCellFactory(c -> new javafx.scene.control.TableCell<>() {
+            @Override protected void updateItem(LocalDate v, boolean empty) {
+                super.updateItem(v, empty);
+                setText(empty || v == null ? "" : v.toString());
+            }
+        });
+        colNext.setPrefWidth(110);
+
+        javafx.scene.control.TableColumn<com.benjagest.ui.model.AccountingModels.RecurringTask, LocalDate> colLast =
+                new javafx.scene.control.TableColumn<>(t("recurring.col.last_run"));
+        colLast.setCellValueFactory(c -> new javafx.beans.property.SimpleObjectProperty<>(
+                c.getValue() == null ? null : c.getValue().lastRunDate()));
+        colLast.setCellFactory(c -> new javafx.scene.control.TableCell<>() {
+            @Override protected void updateItem(LocalDate v, boolean empty) {
+                super.updateItem(v, empty);
+                setText(empty || v == null ? "—" : v.toString());
+            }
+        });
+        colLast.setPrefWidth(110);
+
+        javafx.scene.control.TableColumn<com.benjagest.ui.model.AccountingModels.RecurringTask, String> colStatus =
+                new javafx.scene.control.TableColumn<>(t("recurring.col.status"));
+        colStatus.setCellValueFactory(c -> new javafx.beans.property.SimpleStringProperty(
+                c.getValue() == null ? "" : (c.getValue().active()
+                        ? t("recurring.status.active")
+                        : t("recurring.status.inactive"))));
+        colStatus.setPrefWidth(90);
+
+        // Slice 3C-2 — Columna Acciones por fila:
+        //   ▶ Ejecutar ahora (POST /run-now con date=hoy)
+        //   ⏸/▶ Toggle activo/inactivo (PUT /active)
+        //   🕐 Ver historial (GET /runs) → diálogo con las últimas 50
+        javafx.scene.control.TableColumn<com.benjagest.ui.model.AccountingModels.RecurringTask, Void> colActions =
+                new javafx.scene.control.TableColumn<>(t("recurring.col.actions"));
+        colActions.setSortable(false);
+        colActions.setPrefWidth(200);
+        colActions.setCellFactory(c -> new javafx.scene.control.TableCell<>() {
+            private final Button run = new Button();
+            private final Button toggle = new Button();
+            private final Button history = new Button();
+            private final HBox actionsBox = new HBox(4, run, toggle, history);
+            {
+                run.setGraphic(icon("fas-play"));
+                run.setTooltip(new javafx.scene.control.Tooltip(t("recurring.action.run_now")));
+                run.getStyleClass().add("button-icon");
+                toggle.getStyleClass().add("button-icon");
+                history.setGraphic(icon("fas-clock-rotate-left"));
+                history.setTooltip(new javafx.scene.control.Tooltip(t("recurring.action.history")));
+                history.getStyleClass().add("button-icon");
+                actionsBox.setAlignment(javafx.geometry.Pos.CENTER_LEFT);
+            }
+            @Override protected void updateItem(Void v, boolean empty) {
+                super.updateItem(v, empty);
+                if (empty || getIndex() < 0 || getIndex() >= getTableView().getItems().size()) {
+                    setGraphic(null);
+                    return;
+                }
+                var task = getTableView().getItems().get(getIndex());
+                if (task == null) { setGraphic(null); return; }
+                // Refrescar ícono y tooltip del toggle según estado actual.
+                toggle.setGraphic(icon(task.active() ? "fas-pause" : "fas-play"));
+                toggle.setTooltip(new javafx.scene.control.Tooltip(task.active()
+                        ? t("recurring.action.pause") : t("recurring.action.activate")));
+                run.setOnAction(e -> runRecurringTaskNow(task,
+                        () -> loadRecurring(table, kind)));
+                toggle.setOnAction(e -> toggleRecurringTaskActive(task,
+                        () -> loadRecurring(table, kind)));
+                history.setOnAction(e -> showRecurringHistory(task));
+                setGraphic(actionsBox);
+            }
+        });
+
+        table.getColumns().add(colName);
+        table.getColumns().add(colDesc);
+        table.getColumns().add(colFreq);
+        table.getColumns().add(colNext);
+        table.getColumns().add(colLast);
+        table.getColumns().add(colStatus);
+        table.getColumns().add(colActions);
+
+        // Banner informativo: avisa de que el cron corre cada día a las
+        // 06:10 y que las acciones son solo gestión manual.
+        Label cronInfo = new Label(t("recurring.cron_info"));
+        cronInfo.getStyleClass().addAll("muted", "small");
+        cronInfo.setWrapText(true);
+
+        Button refreshBtn = new Button(t("button.refresh"));
+        refreshBtn.setGraphic(icon("fas-rotate"));
+        refreshBtn.setOnAction(e -> loadRecurring(table, kind));
+
+        Button newBtn = new Button("SALES_INVOICE".equals(kind)
+                ? t("recurring.new.sales") : t("recurring.new.expense"));
+        newBtn.setGraphic(icon("fas-plus"));
+        newBtn.getStyleClass().add("button-primary");
+        newBtn.setOnAction(e -> showRecurringEditor(kind, null,
+                () -> loadRecurring(table, kind)));
+
+        // Doble click en una fila → editar la tarea
+        table.setRowFactory(tv -> {
+            javafx.scene.control.TableRow<com.benjagest.ui.model.AccountingModels.RecurringTask> row =
+                    new javafx.scene.control.TableRow<>();
+            row.setOnMouseClicked(ev -> {
+                if (ev.getClickCount() == 2 && !row.isEmpty() && row.getItem() != null) {
+                    showRecurringEditor(kind, row.getItem(),
+                            () -> loadRecurring(table, kind));
+                }
+            });
+            return row;
+        });
+
+        HBox toolbar = new HBox(8, newBtn, refreshBtn);
+        toolbar.setAlignment(javafx.geometry.Pos.CENTER_LEFT);
+
+        VBox box = new VBox(8, cronInfo, toolbar, table);
+        VBox.setVgrow(table, Priority.ALWAYS);
+        box.setPadding(new Insets(12));
+        loadRecurring(table, kind);
+        return box;
+    }
+
+    /**
+     * Carga el listado de tareas recurrentes del cliente actual desde
+     * el backend filtrado por {@code kind}. Pintado en el hilo JavaFX,
+     * llamada HTTP en hilo aparte.
+     */
+    private void loadRecurring(
+            javafx.scene.control.TableView<com.benjagest.ui.model.AccountingModels.RecurringTask> table,
+            String kind) {
+        new Thread(() -> {
+            try {
+                java.util.List<com.benjagest.ui.model.AccountingModels.RecurringTask> rows =
+                        accountingApiClient.listRecurring(kind, null);
+                javafx.application.Platform.runLater(() -> {
+                    table.getItems().setAll(rows);
+                });
+            } catch (Exception ex) {
+                javafx.application.Platform.runLater(() -> {
+                    table.getItems().clear();
+                    table.setPlaceholder(new Label(
+                            t("recurring.error.load") + ": " + ex.getMessage()));
+                });
+            }
+        }, "load-client-recurring").start();
+    }
+
+    /**
+     * Devuelve una representación legible de la frecuencia de la tarea
+     * recurrente: "Mensual (día 5)", "Trimestral", "Anual", "Semanal
+     * (lunes)", "Cada N meses". Pensada para la columna Frecuencia.
+     */
+    private String humanizeFrequency(com.benjagest.ui.model.AccountingModels.RecurringTask task) {
+        if (task == null) return "";
+        String freq = task.frequency() == null ? "" : task.frequency().toUpperCase();
+        Integer dom = task.dayOfMonth();
+        Integer dow = task.dayOfWeek();
+        return switch (freq) {
+            case "MONTHLY" -> dom == null
+                    ? t("recurring.freq.monthly")
+                    : t("recurring.freq.monthly") + " (" + t("recurring.freq.day") + " " + dom + ")";
+            case "QUARTERLY" -> t("recurring.freq.quarterly");
+            case "YEARLY" -> t("recurring.freq.yearly");
+            case "WEEKLY" -> dow == null
+                    ? t("recurring.freq.weekly")
+                    : t("recurring.freq.weekly") + " (" + dayName(dow) + ")";
+            case "CUSTOM" -> t("recurring.freq.every") + " " + Math.max(1, task.monthsBetween())
+                    + " " + t("recurring.freq.months");
+            default -> freq;
+        };
+    }
+
+    /**
+     * Lanza una tarea recurrente ahora (botón ▶). Pide confirmación
+     * (un click accidental genera un asiento real) y al terminar
+     * refresca el listado. Si falla, muestra el error.
+     */
+    private void runRecurringTaskNow(
+            com.benjagest.ui.model.AccountingModels.RecurringTask task,
+            Runnable onDone) {
+        javafx.scene.control.Alert confirm = new javafx.scene.control.Alert(
+                javafx.scene.control.Alert.AlertType.CONFIRMATION,
+                t("recurring.confirm.run_now") + "\n\n" + task.name(),
+                javafx.scene.control.ButtonType.OK,
+                javafx.scene.control.ButtonType.CANCEL);
+        confirm.setHeaderText(t("recurring.action.run_now"));
+        var res = confirm.showAndWait();
+        if (res.isEmpty() || res.get() != javafx.scene.control.ButtonType.OK) return;
+        new Thread(() -> {
+            try {
+                accountingApiClient.runRecurringNow(task.id(), LocalDate.now());
+                javafx.application.Platform.runLater(() -> {
+                    if (onDone != null) onDone.run();
+                    new javafx.scene.control.Alert(
+                            javafx.scene.control.Alert.AlertType.INFORMATION,
+                            t("recurring.run_now.success"))
+                            .show();
+                });
+            } catch (Exception ex) {
+                javafx.application.Platform.runLater(() -> new javafx.scene.control.Alert(
+                        javafx.scene.control.Alert.AlertType.ERROR,
+                        t("recurring.run_now.error") + ": " + ex.getMessage()).show());
+            }
+        }, "recurring-run-now").start();
+    }
+
+    /**
+     * Conmuta el estado activo/inactivo de la tarea (botón ⏸/▶ junto al
+     * ejecutar). Refresca el listado al terminar.
+     */
+    private void toggleRecurringTaskActive(
+            com.benjagest.ui.model.AccountingModels.RecurringTask task,
+            Runnable onDone) {
+        new Thread(() -> {
+            try {
+                accountingApiClient.setRecurringActive(task.id(), !task.active());
+                javafx.application.Platform.runLater(() -> {
+                    if (onDone != null) onDone.run();
+                });
+            } catch (Exception ex) {
+                javafx.application.Platform.runLater(() -> new javafx.scene.control.Alert(
+                        javafx.scene.control.Alert.AlertType.ERROR,
+                        t("recurring.toggle.error") + ": " + ex.getMessage()).show());
+            }
+        }, "recurring-toggle-active").start();
+    }
+
+    /**
+     * Diálogo modal con el historial de ejecuciones de la tarea
+     * (las últimas 50). Tabla con fecha programada, estado, mensaje.
+     */
+    private void showRecurringHistory(
+            com.benjagest.ui.model.AccountingModels.RecurringTask task) {
+        javafx.scene.control.Dialog<Void> dlg = new javafx.scene.control.Dialog<>();
+        dlg.setTitle(t("recurring.action.history") + " — " + task.name());
+        dlg.getDialogPane().getButtonTypes().add(javafx.scene.control.ButtonType.CLOSE);
+
+        javafx.scene.control.TableView<com.benjagest.ui.model.AccountingModels.RecurringTaskRun> runsTable =
+                new javafx.scene.control.TableView<>();
+        runsTable.setPlaceholder(new Label(t("recurring.history.empty")));
+        runsTable.setPrefSize(640, 360);
+
+        javafx.scene.control.TableColumn<com.benjagest.ui.model.AccountingModels.RecurringTaskRun, LocalDate> cDate =
+                new javafx.scene.control.TableColumn<>(t("recurring.history.col.date"));
+        cDate.setCellValueFactory(c -> new javafx.beans.property.SimpleObjectProperty<>(
+                c.getValue() == null ? null : c.getValue().scheduledDate()));
+        cDate.setPrefWidth(110);
+
+        javafx.scene.control.TableColumn<com.benjagest.ui.model.AccountingModels.RecurringTaskRun, String> cStatus =
+                new javafx.scene.control.TableColumn<>(t("recurring.history.col.status"));
+        cStatus.setCellValueFactory(c -> new javafx.beans.property.SimpleStringProperty(
+                c.getValue() == null ? "" : c.getValue().status()));
+        cStatus.setPrefWidth(100);
+
+        javafx.scene.control.TableColumn<com.benjagest.ui.model.AccountingModels.RecurringTaskRun, String> cMsg =
+                new javafx.scene.control.TableColumn<>(t("recurring.history.col.message"));
+        cMsg.setCellValueFactory(c -> new javafx.beans.property.SimpleStringProperty(
+                c.getValue() == null ? "" : c.getValue().message()));
+        cMsg.setPrefWidth(380);
+
+        runsTable.getColumns().add(cDate);
+        runsTable.getColumns().add(cStatus);
+        runsTable.getColumns().add(cMsg);
+
+        new Thread(() -> {
+            try {
+                java.util.List<com.benjagest.ui.model.AccountingModels.RecurringTaskRun> runs =
+                        accountingApiClient.listRecurringRuns(task.id(), 50);
+                javafx.application.Platform.runLater(() -> runsTable.getItems().setAll(runs));
+            } catch (Exception ex) {
+                javafx.application.Platform.runLater(() -> runsTable.setPlaceholder(
+                        new Label(t("recurring.history.error") + ": " + ex.getMessage())));
+            }
+        }, "recurring-history").start();
+
+        dlg.getDialogPane().setContent(runsTable);
+        dlg.showAndWait();
+    }
+
+    /**
+     * Editor crear/editar tarea recurrente. El mismo diálogo sirve para
+     * SALES_INVOICE y PURCHASE; cambia el bloque de "datos del documento"
+     * según {@code kind}. Si {@code existing} es null, modo crear; si
+     * no, modo editar (con campos prellenados). Al guardar llama a la
+     * API y dispara {@code onSaved} para que el listado se refresque.
+     *
+     * <p>Para SALES_INVOICE el payload generado es:
+     * <pre>
+     * {
+     *   customerNif, customerLegalName, concept,
+     *   lines: [{description, quantity, unitPrice, vatPercent, retentionPercent}]
+     * }
+     * </pre>
+     *
+     * <p>Para PURCHASE el payload es:
+     * <pre>
+     * {
+     *   supplierNif, supplierName, invoiceNumber, concept,
+     *   baseAmount, vatPercent, vatAmount, totalAmount
+     * }
+     * </pre>
+     */
+    private void showRecurringEditor(
+            String kind,
+            com.benjagest.ui.model.AccountingModels.RecurringTask existing,
+            Runnable onSaved) {
+        boolean isSales = "SALES_INVOICE".equals(kind);
+        javafx.scene.control.Dialog<javafx.scene.control.ButtonType> dlg = new javafx.scene.control.Dialog<>();
+        dlg.setTitle(existing == null
+                ? (isSales ? t("recurring.new.sales") : t("recurring.new.expense"))
+                : t("recurring.edit") + " — " + existing.name());
+
+        javafx.scene.control.ButtonType saveType = new javafx.scene.control.ButtonType(
+                t("button.save"), javafx.scene.control.ButtonBar.ButtonData.OK_DONE);
+        dlg.getDialogPane().getButtonTypes().addAll(saveType,
+                javafx.scene.control.ButtonType.CANCEL);
+
+        // ------------ Campos comunes (cualquier kind) ------------
+        TextField nameField = new TextField(existing == null ? "" : existing.name());
+        nameField.setPromptText(isSales
+                ? "Iguala mensual Acme SL" : "Alquiler oficina mensual");
+
+        TextField descField = new TextField(existing == null ? "" : nullSafe(existing.description()));
+        descField.setPromptText(t("recurring.field.description.hint"));
+
+        javafx.scene.control.ComboBox<String> freqCombo =
+                new javafx.scene.control.ComboBox<>();
+        freqCombo.getItems().addAll("MONTHLY", "QUARTERLY", "YEARLY", "WEEKLY", "CUSTOM");
+        freqCombo.setValue(existing == null ? "MONTHLY" : existing.frequency());
+
+        javafx.scene.control.Spinner<Integer> domSpinner = new javafx.scene.control.Spinner<>(1, 31,
+                existing == null || existing.dayOfMonth() == null ? 1 : existing.dayOfMonth());
+        domSpinner.setEditable(true);
+
+        javafx.scene.control.Spinner<Integer> dowSpinner = new javafx.scene.control.Spinner<>(1, 7,
+                existing == null || existing.dayOfWeek() == null ? 1 : existing.dayOfWeek());
+        dowSpinner.setEditable(true);
+
+        javafx.scene.control.Spinner<Integer> monthsSpinner = new javafx.scene.control.Spinner<>(1, 24,
+                existing == null ? 1 : Math.max(1, existing.monthsBetween()));
+        monthsSpinner.setEditable(true);
+
+        DatePicker firstRunDate = new DatePicker(
+                existing == null ? LocalDate.now().plusDays(1) : existing.nextRunDate());
+
+        // ------------ Campos específicos según kind ------------
+        TextField partyNifField = new TextField();
+        TextField partyNameField = new TextField();
+        TextField conceptField = new TextField();
+        conceptField.setPromptText(t("recurring.field.concept.hint"));
+
+        // SALES_INVOICE: una línea simple (descripción, cantidad, precio, IVA, retención)
+        TextField lineDescField = new TextField();
+        javafx.scene.control.Spinner<Double> qtySpinner = new javafx.scene.control.Spinner<>(0.01, 9999.0, 1.0, 1.0);
+        qtySpinner.setEditable(true);
+        javafx.scene.control.Spinner<Double> priceSpinner = new javafx.scene.control.Spinner<>(0.0, 999999.0, 0.0, 10.0);
+        priceSpinner.setEditable(true);
+        javafx.scene.control.Spinner<Double> vatSpinner = new javafx.scene.control.Spinner<>(0.0, 21.0, 21.0, 0.5);
+        vatSpinner.setEditable(true);
+        javafx.scene.control.Spinner<Double> retSpinner = new javafx.scene.control.Spinner<>(0.0, 30.0, 0.0, 1.0);
+        retSpinner.setEditable(true);
+
+        // PURCHASE: importe base / IVA / total
+        TextField invoiceNumberField = new TextField();
+        invoiceNumberField.setPromptText("ALQ-{YYYY}{MM}");
+        javafx.scene.control.Spinner<Double> baseSpinner = new javafx.scene.control.Spinner<>(0.0, 999999.0, 0.0, 10.0);
+        baseSpinner.setEditable(true);
+        javafx.scene.control.Spinner<Double> vatPctSpinner = new javafx.scene.control.Spinner<>(0.0, 21.0, 21.0, 0.5);
+        vatPctSpinner.setEditable(true);
+
+        // Si estamos editando, prellenar desde payloadJson
+        if (existing != null && existing.payloadJson() != null) {
+            try {
+                String pj = existing.payloadJson();
+                if (isSales) {
+                    partyNifField.setText(extractStringField(pj, "customerNif"));
+                    partyNameField.setText(extractStringField(pj, "customerLegalName"));
+                    conceptField.setText(extractStringField(pj, "concept"));
+                    // primera línea: extracción superficial
+                    int li = pj.indexOf("\"lines\"");
+                    if (li > 0) {
+                        String tail = pj.substring(li);
+                        lineDescField.setText(extractStringField(tail, "description"));
+                        Double q = extractDoubleField(tail, "quantity");
+                        if (q != null) qtySpinner.getValueFactory().setValue(q);
+                        Double up = extractDoubleField(tail, "unitPrice");
+                        if (up != null) priceSpinner.getValueFactory().setValue(up);
+                        Double vp = extractDoubleField(tail, "vatPercent");
+                        if (vp != null) vatSpinner.getValueFactory().setValue(vp);
+                        Double rp = extractDoubleField(tail, "retentionPercent");
+                        if (rp != null) retSpinner.getValueFactory().setValue(rp);
+                    }
+                } else {
+                    partyNifField.setText(extractStringField(pj, "supplierNif"));
+                    partyNameField.setText(extractStringField(pj, "supplierName"));
+                    conceptField.setText(extractStringField(pj, "concept"));
+                    invoiceNumberField.setText(extractStringField(pj, "invoiceNumber"));
+                    Double b = extractDoubleField(pj, "baseAmount");
+                    if (b != null) baseSpinner.getValueFactory().setValue(b);
+                    Double vp = extractDoubleField(pj, "vatPercent");
+                    if (vp != null) vatPctSpinner.getValueFactory().setValue(vp);
+                }
+            } catch (Exception ignored) {
+                // si el JSON viene raro, dejamos campos vacíos — el asesor
+                // los rellena de cero
+            }
+        }
+
+        // ------------ Layout ------------
+        GridPane grid = new GridPane();
+        grid.setHgap(10);
+        grid.setVgap(8);
+        grid.setPadding(new Insets(16));
+
+        int r = 0;
+        grid.add(new Label(t("recurring.field.name")), 0, r);
+        grid.add(nameField, 1, r++, 3, 1);
+        grid.add(new Label(t("recurring.field.description")), 0, r);
+        grid.add(descField, 1, r++, 3, 1);
+
+        grid.add(new Label(t("recurring.field.frequency")), 0, r);
+        grid.add(freqCombo, 1, r);
+        grid.add(new Label(t("recurring.freq.day")), 2, r);
+        grid.add(domSpinner, 3, r++);
+
+        grid.add(new Label(t("recurring.field.first_run")), 0, r);
+        grid.add(firstRunDate, 1, r);
+        grid.add(new Label("DoW / N meses"), 2, r);
+        HBox dowAndMonths = new HBox(6, dowSpinner, monthsSpinner);
+        grid.add(dowAndMonths, 3, r++);
+
+        Label sep = new Label(isSales
+                ? t("recurring.section.sale_data") : t("recurring.section.expense_data"));
+        sep.getStyleClass().add("text-bold");
+        grid.add(sep, 0, r++, 4, 1);
+
+        grid.add(new Label(isSales
+                ? t("recurring.field.customer_nif")
+                : t("recurring.field.supplier_nif")), 0, r);
+        grid.add(partyNifField, 1, r++, 3, 1);
+
+        grid.add(new Label(isSales
+                ? t("recurring.field.customer_name")
+                : t("recurring.field.supplier_name")), 0, r);
+        grid.add(partyNameField, 1, r++, 3, 1);
+
+        grid.add(new Label(t("recurring.field.concept")), 0, r);
+        grid.add(conceptField, 1, r++, 3, 1);
+
+        if (isSales) {
+            grid.add(new Label(t("recurring.field.line_desc")), 0, r);
+            grid.add(lineDescField, 1, r++, 3, 1);
+            grid.add(new Label(t("recurring.field.quantity")), 0, r);
+            grid.add(qtySpinner, 1, r);
+            grid.add(new Label(t("recurring.field.unit_price")), 2, r);
+            grid.add(priceSpinner, 3, r++);
+            grid.add(new Label(t("recurring.field.vat_percent")), 0, r);
+            grid.add(vatSpinner, 1, r);
+            grid.add(new Label(t("recurring.field.retention_percent")), 2, r);
+            grid.add(retSpinner, 3, r++);
+        } else {
+            grid.add(new Label(t("recurring.field.invoice_number")), 0, r);
+            grid.add(invoiceNumberField, 1, r++, 3, 1);
+            grid.add(new Label(t("recurring.field.base_amount")), 0, r);
+            grid.add(baseSpinner, 1, r);
+            grid.add(new Label(t("recurring.field.vat_percent")), 2, r);
+            grid.add(vatPctSpinner, 3, r++);
+        }
+
+        Label placeholderHint = new Label(t("recurring.placeholders.hint"));
+        placeholderHint.getStyleClass().addAll("muted", "small");
+        placeholderHint.setWrapText(true);
+        grid.add(placeholderHint, 0, r++, 4, 1);
+
+        ScrollPane scroll = new ScrollPane(grid);
+        scroll.setFitToWidth(true);
+        scroll.setPrefSize(640, 560);
+        dlg.getDialogPane().setContent(scroll);
+
+        // ------------ Guardar ------------
+        dlg.setResultConverter(bt -> bt);
+        var result = dlg.showAndWait();
+        if (result.isEmpty() || result.get() != saveType) return;
+
+        // Construir JSON request
+        StringBuilder body = new StringBuilder();
+        body.append('{');
+        appendJsonField(body, "kind", kind, true);
+        appendJsonField(body, "name", nameField.getText(), false);
+        if (!descField.getText().isBlank()) appendJsonField(body, "description", descField.getText(), false);
+        appendJsonField(body, "frequency", freqCombo.getValue(), false);
+        if ("MONTHLY".equals(freqCombo.getValue()) || "CUSTOM".equals(freqCombo.getValue())) {
+            body.append(",\"dayOfMonth\":").append(domSpinner.getValue());
+        }
+        if ("WEEKLY".equals(freqCombo.getValue())) {
+            body.append(",\"dayOfWeek\":").append(dowSpinner.getValue());
+        }
+        if ("CUSTOM".equals(freqCombo.getValue())) {
+            body.append(",\"monthsBetween\":").append(monthsSpinner.getValue());
+        }
+        body.append(",\"firstRunDate\":\"").append(firstRunDate.getValue()).append('"');
+
+        // Payload anidado según kind
+        body.append(",\"payload\":{");
+        if (isSales) {
+            appendJsonField(body, "customerNif", partyNifField.getText(), true);
+            appendJsonField(body, "customerLegalName", partyNameField.getText(), false);
+            if (!conceptField.getText().isBlank())
+                appendJsonField(body, "concept", conceptField.getText(), false);
+            body.append(",\"lines\":[{");
+            body.append("\"description\":").append(jsonString(lineDescField.getText()));
+            body.append(",\"quantity\":").append(qtySpinner.getValue());
+            body.append(",\"unitPrice\":").append(priceSpinner.getValue());
+            body.append(",\"vatPercent\":").append(vatSpinner.getValue());
+            body.append(",\"retentionPercent\":").append(retSpinner.getValue());
+            body.append("}]");
+        } else {
+            appendJsonField(body, "supplierNif", partyNifField.getText(), true);
+            appendJsonField(body, "supplierName", partyNameField.getText(), false);
+            appendJsonField(body, "invoiceNumber", invoiceNumberField.getText(), false);
+            if (!conceptField.getText().isBlank())
+                appendJsonField(body, "concept", conceptField.getText(), false);
+            double base = baseSpinner.getValue();
+            double vatPct = vatPctSpinner.getValue();
+            double vatAmt = Math.round(base * vatPct) / 100.0;
+            double total = Math.round((base + vatAmt) * 100.0) / 100.0;
+            body.append(",\"baseAmount\":").append(base);
+            body.append(",\"vatPercent\":").append(vatPct);
+            body.append(",\"vatAmount\":").append(vatAmt);
+            body.append(",\"totalAmount\":").append(total);
+        }
+        body.append("}}");
+
+        String jsonBody = body.toString();
+        new Thread(() -> {
+            try {
+                if (existing == null) {
+                    accountingApiClient.createRecurring(jsonBody);
+                } else {
+                    accountingApiClient.updateRecurring(existing.id(), jsonBody);
+                }
+                javafx.application.Platform.runLater(() -> {
+                    if (onSaved != null) onSaved.run();
+                });
+            } catch (Exception ex) {
+                javafx.application.Platform.runLater(() -> new javafx.scene.control.Alert(
+                        javafx.scene.control.Alert.AlertType.ERROR,
+                        t("recurring.save.error") + ": " + ex.getMessage()).show());
+            }
+        }, "recurring-save").start();
+    }
+
+    private String nullSafe(String s) { return s == null ? "" : s; }
+
+    private String jsonString(String raw) {
+        if (raw == null) return "\"\"";
+        StringBuilder sb = new StringBuilder("\"");
+        for (char c : raw.toCharArray()) {
+            switch (c) {
+                case '"' -> sb.append("\\\"");
+                case '\\' -> sb.append("\\\\");
+                case '\n' -> sb.append("\\n");
+                case '\r' -> sb.append("\\r");
+                case '\t' -> sb.append("\\t");
+                default -> sb.append(c);
+            }
+        }
+        sb.append('"');
+        return sb.toString();
+    }
+
+    private void appendJsonField(StringBuilder b, String key, String value, boolean first) {
+        if (!first) b.append(',');
+        b.append('"').append(key).append("\":").append(jsonString(value));
+    }
+
+    private String extractStringField(String json, String key) {
+        if (json == null) return "";
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile(
+                "\"" + java.util.regex.Pattern.quote(key) + "\"\\s*:\\s*\"((?:[^\"\\\\]|\\\\.)*)\""
+        ).matcher(json);
+        return m.find() ? m.group(1).replace("\\\"", "\"") : "";
+    }
+
+    private Double extractDoubleField(String json, String key) {
+        if (json == null) return null;
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile(
+                "\"" + java.util.regex.Pattern.quote(key) + "\"\\s*:\\s*([-\\d.]+)"
+        ).matcher(json);
+        try { return m.find() ? Double.valueOf(m.group(1)) : null; }
+        catch (NumberFormatException ex) { return null; }
+    }
+
+    /** Devuelve nombre del día de la semana 1=lunes..7=domingo. */
+    private String dayName(int dow) {
+        return switch (dow) {
+            case 1 -> t("date.day.monday");
+            case 2 -> t("date.day.tuesday");
+            case 3 -> t("date.day.wednesday");
+            case 4 -> t("date.day.thursday");
+            case 5 -> t("date.day.friday");
+            case 6 -> t("date.day.saturday");
+            case 7 -> t("date.day.sunday");
+            default -> "?";
+        };
+    }
+
     private Node buildClientSalesArchivedTab(
             javafx.beans.property.ObjectProperty<LocalDate> fromProp,
             javafx.beans.property.ObjectProperty<LocalDate> toProp,
