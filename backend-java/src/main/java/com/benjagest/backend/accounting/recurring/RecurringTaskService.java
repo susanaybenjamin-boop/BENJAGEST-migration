@@ -703,6 +703,38 @@ public class RecurringTaskService {
                 new ManualJournalEntryService.ManualEntryRequest(scheduledDate, concept, lines, postNow),
                 "RECURRING_ACCOUNTING",
                 task.id());
+
+        // Slice 3W — Crear también un purchase_invoice sintético
+        // vinculado al asiento. Así el gasto recurrente aparece tanto
+        // en el Diario como en el listado de Compras y Gastos, igual
+        // que las facturas importadas. El asesor no necesita saber el
+        // origen para verlas centralizadas. invoice_number generado
+        // con sufijo del task.id para idempotencia y trazabilidad.
+        try {
+            String pinvId = UUID.randomUUID().toString();
+            String invoiceNumber = "REC-" + task.id().substring(0, 8).toUpperCase()
+                    + "-" + scheduledDate.toString();
+            PurchaseInvoice pinv = new PurchaseInvoice(
+                    pinvId, tenantContext.getCurrentCompanyId(),
+                    blank(partyNif), partyName,
+                    invoiceNumber,
+                    scheduledDate,
+                    base, vatPct, cuotaIva, total,
+                    null, // sin SHA — no viene de PDF
+                    0,
+                    PurchaseInvoice.STATUS_POSTED,
+                    v.id(), // vincular al asiento
+                    concept,
+                    "Generado por recurrencia '" + task.name() + "'",
+                    safeUserId(),
+                    tenantContext.getCurrentCompanyId(),
+                    null, null);
+            purchaseRepository.insert(pinv);
+        } catch (Exception ignored) {
+            // Si la inserción del shadow purchase_invoice falla (p.ej.
+            // duplicado), no rompemos el asiento contable. El asiento
+            // ya está creado y es la fuente de verdad fiscal.
+        }
         return v.id();
     }
 
