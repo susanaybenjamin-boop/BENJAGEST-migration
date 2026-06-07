@@ -6,6 +6,7 @@ import com.benjagest.ui.model.AccountingModels.DiaryEntry;
 import com.benjagest.ui.model.AccountingModels.JournalEntryDetail;
 import com.benjagest.ui.model.AccountingModels.JournalLine;
 import com.benjagest.ui.model.AccountingModels.LearningRule;
+import com.benjagest.ui.model.AccountingModels.RecurringCandidate;
 import com.benjagest.ui.model.AccountingModels.RecurringTask;
 import com.benjagest.ui.model.AccountingModels.RecurringTaskRun;
 import java.io.IOException;
@@ -450,6 +451,33 @@ public class AccountingApiClient {
         String path = "/accounting/recurring/" + id + "/run-now"
                 + (date == null ? "" : "?date=" + date);
         postRaw(path, "{}");
+    }
+
+    /**
+     * Lista candidatos a recurrencia para el banner del Slice 3D.
+     * Llama al endpoint backend que detecta facturas repetidas con
+     * mismo NIF + mismo importe en una ventana de tiempo.
+     */
+    public List<RecurringCandidate> listRecurringCandidates(String kind, Integer windowDays)
+            throws IOException, InterruptedException {
+        String path = "/accounting/recurring/candidates?kind=" + kind
+                + (windowDays == null ? "" : "&windowDays=" + windowDays);
+        String json = get(path);
+        List<RecurringCandidate> out = new ArrayList<>();
+        for (String obj : splitJsonArray(json)) {
+            out.add(new RecurringCandidate(
+                    strField(obj, "kind"),
+                    strField(obj, "partyId"),
+                    strField(obj, "partyNif"),
+                    strField(obj, "partyName"),
+                    decField(obj, "totalAmount"),
+                    intField(obj, "occurrences"),
+                    localDateField(obj, "firstDate"),
+                    localDateField(obj, "lastDate"),
+                    strField(obj, "sampleInvoiceId"),
+                    strField(obj, "suggestedFrequency")));
+        }
+        return out;
     }
 
     /**
