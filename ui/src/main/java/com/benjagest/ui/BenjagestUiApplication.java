@@ -102,7 +102,7 @@ public class BenjagestUiApplication extends Application {
             // Recurrentes, Modelos AEAT, etc.). NO va dentro de "Mis
             // clientes" para que la asesoría tenga clara la
             // separación entre su gestión y la de sus clientes.
-            new ModuleLink("myCompany", "Mi empresa", "fas-house"),
+            new ModuleLink("myCompany", "Mi empresa", "fas-building"),
             new ModuleLink("customers", "Clientes", "fas-users"),
             new ModuleLink("tax", "Fiscal", "fas-percentage"),
             new ModuleLink("labor", "Laboral", "fas-hard-hat"),
@@ -11414,6 +11414,10 @@ public class BenjagestUiApplication extends Application {
             case "recurring.journal_entry.hint" -> "For expenses charged directly from the bank without an invoice or receipt: self-employed contributions, bank fees, tax models (130/303), loan installments. Each run generates a simple journal entry (DEBIT expense / CREDIT bank) in draft.";
             case "sidebar.my_company" -> "My company";
             case "button.refresh" -> "Refresh";
+            case "button.save" -> "Save";
+            case "recurring.placeholders.insert" -> "Insert";
+            case "recurring.validate.nif_required_header" -> "Customer Tax ID missing";
+            case "recurring.validate.nif_required" -> "To create a recurring sale we need the customer Tax ID, not only the legal name.\n\nPlease fill the Customer Tax ID field before saving.";
             case "recurring.field.day_of_week" -> "Day of week";
             case "recurring.field.months_between" -> "Every N months";
             case "date.day.monday" -> "Monday";
@@ -11934,6 +11938,10 @@ public class BenjagestUiApplication extends Application {
             case "recurring.journal_entry.hint" -> "Pensado para gastos que se cargan directamente del banco sin que llegue factura ni recibo: cuota autónomo TGSS, comisiones bancarias, modelos AEAT (130/303), cuotas préstamo. Cada ejecución genera un asiento contable simple (DEBE cuenta gasto / HABER cuenta banco) en estado borrador.";
             case "sidebar.my_company" -> "Mi empresa";
             case "button.refresh" -> "Actualizar";
+            case "button.save" -> "Guardar";
+            case "recurring.placeholders.insert" -> "Insertar";
+            case "recurring.validate.nif_required_header" -> "Falta el NIF del cliente";
+            case "recurring.validate.nif_required" -> "Para crear una venta recurrente necesitamos el NIF del cliente, no solo su razón social.\n\nPor favor rellena el campo NIF cliente antes de guardar.";
             case "recurring.field.day_of_week" -> "Día semana";
             case "recurring.field.months_between" -> "Cada N meses";
             case "date.day.monday" -> "lunes";
@@ -16026,7 +16034,7 @@ public class BenjagestUiApplication extends Application {
         grid.add(partyNameField, 1, r++, 3, 1);
 
         grid.add(new Label(t("recurring.field.concept")), 0, r);
-        grid.add(conceptField, 1, r++, 3, 1);
+        grid.add(buildConceptWithPlaceholders(conceptField), 1, r++, 3, 1);
 
         if (isSales) {
             grid.add(new Label(t("recurring.field.line_desc")), 0, r);
@@ -16062,6 +16070,16 @@ public class BenjagestUiApplication extends Application {
         dlg.setResultConverter(bt -> bt);
         var result = dlg.showAndWait();
         if (result.isEmpty() || result.get() != saveType) return;
+
+        // Slice 3I — Validar campos críticos ANTES de mandar al
+        // backend para evitar el round-trip 422 con mensajes
+        // técnicos. El backend del recurrente SALES_INVOICE necesita
+        // sí o sí customerNif + customerLegalName cuando no hay
+        // customerId. Si falta el NIF, paramos aquí con alert claro.
+        if (!validateSalesRecurringNif(kind,
+                partyNifField.getText(), partyNameField.getText())) {
+            return;
+        }
 
         // Construir JSON request
         StringBuilder body = new StringBuilder();
@@ -16136,6 +16154,67 @@ public class BenjagestUiApplication extends Application {
     }
 
     private String nullSafe(String s) { return s == null ? "" : s; }
+
+    /**
+     * Slice 3I — Envuelve el TextField de Concepto con un MenuButton
+     * de placeholders predictivos. El usuario pulsa "Insertar" y
+     * elige el placeholder (mes, año, día, trimestre...) que se
+     * inserta donde tenga el cursor.
+     *
+     * <p>Los placeholders se expanden en runtime en el backend al
+     * ejecutar el cron — ver
+     * {@code RecurringTaskService#expandPlaceholders}. Sincronizado
+     * con la lista del backend.
+     */
+    private HBox buildConceptWithPlaceholders(TextField concept) {
+        javafx.scene.control.MenuButton insertBtn =
+                new javafx.scene.control.MenuButton("➕ " + t("recurring.placeholders.insert"));
+        insertBtn.setTooltip(legibleTooltip(t("recurring.placeholders.hint")));
+        String[][] phs = {
+                {"{MES}", "junio (nombre del mes en minúsculas)"},
+                {"{MES_MAY}", "Junio (capitalizado)"},
+                {"{MM}", "06 (mes con cero)"},
+                {"{M}", "6 (mes sin cero)"},
+                {"{YYYY}", "2026 (año largo)"},
+                {"{YY}", "26 (año corto)"},
+                {"{AÑO}", "2026 (alias de {YYYY})"},
+                {"{DD}", "07 (día con cero)"},
+                {"{D}", "7 (día sin cero)"},
+                {"{T}", "T2 (trimestre, T1-T4)"},
+                {"{Q}", "Q2 (trimestre, Q1-Q4)"}};
+        for (String[] ph : phs) {
+            javafx.scene.control.MenuItem item =
+                    new javafx.scene.control.MenuItem(ph[0] + "  →  " + ph[1]);
+            item.setOnAction(e -> {
+                int caret = concept.getCaretPosition();
+                String text = concept.getText() == null ? "" : concept.getText();
+                concept.setText(text.substring(0, caret) + ph[0] + text.substring(caret));
+                concept.positionCaret(caret + ph[0].length());
+                concept.requestFocus();
+            });
+            insertBtn.getItems().add(item);
+        }
+        HBox row = new HBox(6, concept, insertBtn);
+        HBox.setHgrow(concept, Priority.ALWAYS);
+        return row;
+    }
+
+    /**
+     * Slice 3I — Validador del NIF cliente antes de guardar una venta
+     * recurrente. Evita el round-trip al backend que devolvía 422
+     * cuando el NIF estaba vacío. Llamado desde showRecurringEditor.
+     */
+    private boolean validateSalesRecurringNif(String kind, String partyNif, String partyName) {
+        if (!"SALES_INVOICE".equals(kind)) return true;
+        if (partyNif != null && !partyNif.isBlank()) return true;
+        if (partyName == null || partyName.isBlank()) return true; // ya da otro error
+        Alert a = new Alert(Alert.AlertType.WARNING,
+                t("recurring.validate.nif_required"),
+                ButtonType.OK);
+        a.setHeaderText(t("recurring.validate.nif_required_header"));
+        a.showAndWait();
+        return false;
+    }
 
     /**
      * Slice 3F — Editor de "Pago periódico sin factura". Pensado para
@@ -16249,7 +16328,7 @@ public class BenjagestUiApplication extends Application {
         grid.add(sep, 0, r++, 4, 1);
 
         grid.add(new Label(t("recurring.field.concept")), 0, r);
-        grid.add(conceptField, 1, r++, 3, 1);
+        grid.add(buildConceptWithPlaceholders(conceptField), 1, r++, 3, 1);
         grid.add(new Label(t("recurring.field.expense_account")), 0, r);
         grid.add(expenseAccountField, 1, r++, 3, 1);
         grid.add(new Label(t("recurring.field.bank_account")), 0, r);
