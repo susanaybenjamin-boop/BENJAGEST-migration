@@ -11356,6 +11356,7 @@ public class BenjagestUiApplication extends Application {
             case "recurring.action.history" -> "History";
             case "recurring.confirm.run_now" -> "Run this task now? It will generate the document (invoice or expense) using today's date.";
             case "recurring.run_now.success" -> "Task executed successfully.";
+            case "recurring.run_now.success_hint" -> "The generated document is in draft state. You'll find it in the matching list (Invoices, Expenses or Journal) ready to review and validate.";
             case "recurring.run_now.error" -> "Could not run the task";
             case "recurring.toggle.error" -> "Could not toggle status";
             case "recurring.history.empty" -> "No runs recorded yet";
@@ -11875,6 +11876,7 @@ public class BenjagestUiApplication extends Application {
             case "recurring.action.history" -> "Historial";
             case "recurring.confirm.run_now" -> "¿Lanzar esta tarea ahora? Se generará el documento (factura o gasto) con la fecha de hoy.";
             case "recurring.run_now.success" -> "Tarea ejecutada correctamente.";
+            case "recurring.run_now.success_hint" -> "El documento generado está en estado borrador. Lo encontrarás en el listado correspondiente (Facturas, Compras o Diario) listo para revisar y validar.";
             case "recurring.run_now.error" -> "No se pudo ejecutar la tarea";
             case "recurring.toggle.error" -> "No se pudo cambiar el estado";
             case "recurring.history.empty" -> "Sin ejecuciones registradas todavía";
@@ -15404,11 +15406,11 @@ public class BenjagestUiApplication extends Application {
             private final HBox actionsBox = new HBox(4, run, toggle, history);
             {
                 run.setGraphic(icon("fas-play"));
-                run.setTooltip(new javafx.scene.control.Tooltip(t("recurring.action.run_now")));
+                run.setTooltip(legibleTooltip(t("recurring.action.run_now")));
                 run.getStyleClass().add("button-icon");
                 toggle.getStyleClass().add("button-icon");
                 history.setGraphic(icon("fas-clock-rotate-left"));
-                history.setTooltip(new javafx.scene.control.Tooltip(t("recurring.action.history")));
+                history.setTooltip(legibleTooltip(t("recurring.action.history")));
                 history.getStyleClass().add("button-icon");
                 actionsBox.setAlignment(javafx.geometry.Pos.CENTER_LEFT);
             }
@@ -15422,7 +15424,7 @@ public class BenjagestUiApplication extends Application {
                 if (task == null) { setGraphic(null); return; }
                 // Refrescar ícono y tooltip del toggle según estado actual.
                 toggle.setGraphic(icon(task.active() ? "fas-pause" : "fas-play"));
-                toggle.setTooltip(new javafx.scene.control.Tooltip(task.active()
+                toggle.setTooltip(legibleTooltip(task.active()
                         ? t("recurring.action.pause") : t("recurring.action.activate")));
                 run.setOnAction(e -> runRecurringTaskNow(task,
                         () -> loadRecurring(table, kind)));
@@ -15565,9 +15567,31 @@ public class BenjagestUiApplication extends Application {
     }
 
     /**
+     * Crea un Tooltip con texto LEGIBLE (color claro sobre fondo
+     * oscuro y padding razonable). Los Tooltips por defecto en
+     * JavaFX 21 heredan colores de la paleta que en BENJAGEST tira a
+     * gris oscuro sobre gris oscuro — ilegible. Este helper se
+     * aplica a todos los tooltips de los botones de la columna de
+     * acciones (Slice 3H-2).
+     */
+    private javafx.scene.control.Tooltip legibleTooltip(String text) {
+        javafx.scene.control.Tooltip tip = new javafx.scene.control.Tooltip(text);
+        tip.setStyle("-fx-background-color: #1f2937; "
+                + "-fx-text-fill: #ffffff; "
+                + "-fx-font-size: 12px; "
+                + "-fx-padding: 6 10; "
+                + "-fx-background-radius: 4;");
+        tip.setShowDelay(javafx.util.Duration.millis(300));
+        return tip;
+    }
+
+    /**
      * Lanza una tarea recurrente ahora (botón ▶). Pide confirmación
      * (un click accidental genera un asiento real) y al terminar
-     * refresca el listado. Si falla, muestra el error.
+     * refresca el listado + EMITE RefreshBus para que los listados de
+     * Ventas/Compras/Diario también se actualicen instantáneamente
+     * (Slice 3H-3). Si falla, muestra el error completo del backend
+     * (Slice 3H-4 — diagnóstico).
      */
     private void runRecurringTaskNow(
             com.benjagest.ui.model.AccountingModels.RecurringTask task,
@@ -15585,15 +15609,42 @@ public class BenjagestUiApplication extends Application {
                 accountingApiClient.runRecurringNow(task.id(), LocalDate.now());
                 javafx.application.Platform.runLater(() -> {
                     if (onDone != null) onDone.run();
+                    // Slice 3H-3 — Notificar a TODOS los listados que
+                    // dependan del documento generado para que se
+                    // refresquen sin necesidad de cambiar de pestaña:
+                    //   - SALES_INVOICE → factura DRAFT en Facturación
+                    //   - PURCHASE → gasto DRAFT en Compras
+                    //   - JOURNAL_ENTRY → asiento DRAFT en Contabilidad
+                    com.benjagest.ui.support.RefreshBus.emit(
+                            com.benjagest.ui.support.RefreshBus.TOPIC_SALES,
+                            com.benjagest.ui.support.RefreshBus.TOPIC_PURCHASES,
+                            com.benjagest.ui.support.RefreshBus.TOPIC_JOURNAL);
                     new javafx.scene.control.Alert(
                             javafx.scene.control.Alert.AlertType.INFORMATION,
-                            t("recurring.run_now.success"))
+                            t("recurring.run_now.success") + "\n\n"
+                                    + t("recurring.run_now.success_hint"))
                             .show();
                 });
             } catch (Exception ex) {
-                javafx.application.Platform.runLater(() -> new javafx.scene.control.Alert(
-                        javafx.scene.control.Alert.AlertType.ERROR,
-                        t("recurring.run_now.error") + ": " + ex.getMessage()).show());
+                // Diagnóstico mejorado: el mensaje del backend (causa
+                // real) más el nombre de la tarea para que el asesor
+                // sepa cuál falló. Incluimos el stack stem para ver
+                // si es 400, 500, NPE, etc.
+                String reason = ex.getMessage();
+                if (reason == null || reason.isBlank()) {
+                    reason = ex.getClass().getSimpleName();
+                }
+                final String finalReason = reason;
+                javafx.application.Platform.runLater(() -> {
+                    javafx.scene.control.Alert err = new javafx.scene.control.Alert(
+                            javafx.scene.control.Alert.AlertType.ERROR,
+                            t("recurring.run_now.error") + ":\n\n"
+                                    + task.name() + "\n\n"
+                                    + finalReason);
+                    err.setResizable(true);
+                    err.getDialogPane().setMinWidth(520);
+                    err.showAndWait();
+                });
             }
         }, "recurring-run-now").start();
     }
