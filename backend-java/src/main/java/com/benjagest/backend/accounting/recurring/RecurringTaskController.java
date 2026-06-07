@@ -38,10 +38,31 @@ public class RecurringTaskController {
 
     private final RecurringTaskService service;
     private final RecurringTaskScheduler scheduler;
+    private final RecurringCandidateService candidateService;
 
-    public RecurringTaskController(RecurringTaskService service, RecurringTaskScheduler scheduler) {
+    public RecurringTaskController(RecurringTaskService service,
+                                   RecurringTaskScheduler scheduler,
+                                   RecurringCandidateService candidateService) {
         this.service = service;
         this.scheduler = scheduler;
+        this.candidateService = candidateService;
+    }
+
+    /**
+     * Lista candidatos a recurrencia: facturas (emitidas o recibidas)
+     * que se repiten con el mismo tercero + mismo importe en la
+     * ventana indicada. El frontend usa esto para mostrar un banner
+     * "tienes N posibles plantillas detectadas — ¿activarlas?".
+     *
+     * @param kind        SALES_INVOICE o PURCHASE.
+     * @param windowDays  ventana de análisis hacia atrás (default 180).
+     */
+    @GetMapping("/candidates")
+    public List<RecurringCandidateService.Candidate> candidates(
+            @RequestParam("kind") String kind,
+            @RequestParam(value = "windowDays", required = false,
+                    defaultValue = "180") int windowDays) {
+        return candidateService.findCandidates(kind, windowDays);
     }
 
     @GetMapping

@@ -2436,7 +2436,11 @@ public class BenjagestUiApplication extends Application {
             hint.getStyleClass().add("settings-hint");
             body.getChildren().addAll(header, hint);
         }
-        body.getChildren().addAll(filters, purchaseInvoicesTable, actions);
+        // Slice 3D-2 — banner de candidatos a recurrencia (gastos
+        // repetidos con mismo proveedor + importe). Si no hay
+        // candidatos el banner se oculta solo.
+        Node candidatesBanner = buildRecurringCandidatesBanner("PURCHASE");
+        body.getChildren().addAll(filters, candidatesBanner, purchaseInvoicesTable, actions);
         VBox.setVgrow(purchaseInvoicesTable, Priority.ALWAYS);
         body.setPadding(new Insets(20));
 
@@ -5516,7 +5520,12 @@ public class BenjagestUiApplication extends Application {
         // El botón "Importar PDFs" vive en la fila de filtros (arriba a
         // la derecha) para evitar duplicidades y dejar la fila inferior
         // exclusivamente para acciones sobre la selección.
-        VBox bottomBlock = new VBox(12, billingTable, rowActions);
+        //
+        // Slice 3D-2 — banner de candidatos a recurrencia (facturas
+        // repetidas con mismo cliente + importe). Si no hay
+        // candidatos el banner se oculta solo.
+        Node candidatesBanner = buildRecurringCandidatesBanner("SALES_INVOICE");
+        VBox bottomBlock = new VBox(12, candidatesBanner, billingTable, rowActions);
 
         // Auto-refresh cuando alguien emite SALES (crear/validar/anular/
         // borrar/cobrar factura). Auto-baja al desmontar la pantalla.
@@ -11274,6 +11283,19 @@ public class BenjagestUiApplication extends Application {
             case "recurring.section.expense_data" -> "Expense data";
             case "recurring.placeholders.hint" -> "You can use {YYYY}, {MM}, {DD} in concept, description and invoice number to insert the year/month/day of each run.";
             case "recurring.save.error" -> "Could not save the task";
+            case "recurring.candidates.review" -> "Review";
+            case "recurring.candidates.banner_text" -> "🔁 We detected {n} groups of invoices that repeat with the same customer/supplier and amount. Activate them as recurring?";
+            case "recurring.candidates.title" -> "Recurrence candidates detected";
+            case "recurring.candidates.empty" -> "No candidates detected";
+            case "recurring.candidates.hint" -> "These customer/supplier + amount combinations have repeated several times. Press Create to turn one into a recurring template — the editor will open with the fields prefilled and you can adjust anything before saving.";
+            case "recurring.candidates.col.party" -> "Customer / Supplier";
+            case "recurring.candidates.col.amount" -> "Amount";
+            case "recurring.candidates.col.occurrences" -> "Times";
+            case "recurring.candidates.col.freq" -> "Suggested frequency";
+            case "recurring.candidates.col.action" -> "Action";
+            case "recurring.candidates.create" -> "Create recurring";
+            case "recurring.candidates.default_name_sales" -> "Recurring sale to";
+            case "recurring.candidates.default_name_expense" -> "Recurring expense from";
             case "date.day.monday" -> "Monday";
             case "date.day.tuesday" -> "Tuesday";
             case "date.day.wednesday" -> "Wednesday";
@@ -11766,6 +11788,19 @@ public class BenjagestUiApplication extends Application {
             case "recurring.section.expense_data" -> "Datos del gasto";
             case "recurring.placeholders.hint" -> "Puedes usar {YYYY}, {MM}, {DD} en concepto, descripción y nº de factura para insertar el año/mes/día de cada ejecución.";
             case "recurring.save.error" -> "No se pudo guardar la tarea";
+            case "recurring.candidates.review" -> "Revisar";
+            case "recurring.candidates.banner_text" -> "🔁 Hemos detectado {n} grupos de facturas que se repiten con el mismo cliente/proveedor e importe. ¿Activarlas como recurrentes?";
+            case "recurring.candidates.title" -> "Candidatos a recurrencia detectados";
+            case "recurring.candidates.empty" -> "No hay candidatos detectados";
+            case "recurring.candidates.hint" -> "Estas combinaciones de cliente/proveedor e importe se han repetido varias veces. Pulsa Crear para convertirlas en una plantilla recurrente — el editor abrirá con los datos prellenos y podrás ajustar lo que quieras antes de guardar.";
+            case "recurring.candidates.col.party" -> "Cliente / Proveedor";
+            case "recurring.candidates.col.amount" -> "Importe";
+            case "recurring.candidates.col.occurrences" -> "Veces";
+            case "recurring.candidates.col.freq" -> "Frecuencia sugerida";
+            case "recurring.candidates.col.action" -> "Acción";
+            case "recurring.candidates.create" -> "Crear recurrente";
+            case "recurring.candidates.default_name_sales" -> "Venta recurrente a";
+            case "recurring.candidates.default_name_expense" -> "Gasto recurrente de";
             case "date.day.monday" -> "lunes";
             case "date.day.tuesday" -> "martes";
             case "date.day.wednesday" -> "miércoles";
@@ -15476,7 +15511,9 @@ public class BenjagestUiApplication extends Application {
             Runnable onSaved) {
         boolean isSales = "SALES_INVOICE".equals(kind);
         javafx.scene.control.Dialog<javafx.scene.control.ButtonType> dlg = new javafx.scene.control.Dialog<>();
-        dlg.setTitle(existing == null
+        // existing.id()==null → candidato pre-rellenado (Slice 3D), va
+        // por el flujo CREAR. Solo "Editar" cuando hay id real.
+        dlg.setTitle(existing == null || existing.id() == null
                 ? (isSales ? t("recurring.new.sales") : t("recurring.new.expense"))
                 : t("recurring.edit") + " — " + existing.name());
 
@@ -15704,7 +15741,11 @@ public class BenjagestUiApplication extends Application {
         String jsonBody = body.toString();
         new Thread(() -> {
             try {
-                if (existing == null) {
+                // existing==null → modo crear puro (botón Nuevo).
+                // existing!=null && id==null → modo crear desde candidato
+                // pre-rellenado (Slice 3D); existing!=null && id!=null →
+                // modo editar real (PUT).
+                if (existing == null || existing.id() == null) {
                     accountingApiClient.createRecurring(jsonBody);
                 } else {
                     accountingApiClient.updateRecurring(existing.id(), jsonBody);
@@ -15759,6 +15800,238 @@ public class BenjagestUiApplication extends Application {
         ).matcher(json);
         try { return m.find() ? Double.valueOf(m.group(1)) : null; }
         catch (NumberFormatException ex) { return null; }
+    }
+
+    /**
+     * Banner accionable (Slice 3D-2) que aparece arriba del listado de
+     * Facturas / Compras cuando el backend detecta facturas repetidas
+     * con el mismo NIF + mismo importe. Patrón visual del Slice 3B
+     * (Hyperlinks azules). Si no hay candidatos, el banner se oculta
+     * solo (managed=false → no ocupa hueco).
+     *
+     * @param kind  "SALES_INVOICE" para arriba de Facturas, "PURCHASE"
+     *              para arriba de Compras.
+     */
+    private Node buildRecurringCandidatesBanner(String kind) {
+        Label icon = new Label("🔁");
+        icon.setStyle("-fx-font-size: 18px;");
+        Label msg = new Label();
+        msg.getStyleClass().add("muted");
+        msg.setWrapText(true);
+        javafx.scene.control.Hyperlink reviewLink =
+                new javafx.scene.control.Hyperlink(t("recurring.candidates.review"));
+        HBox content = new HBox(8, icon, msg, reviewLink);
+        content.setAlignment(javafx.geometry.Pos.CENTER_LEFT);
+        content.setPadding(new Insets(8, 12, 8, 12));
+        content.setStyle("-fx-background-color: #eef3f8; -fx-background-radius: 8;");
+        content.setManaged(false);
+        content.setVisible(false);
+
+        // Estado: refresh recarga del backend y actualiza el banner.
+        // Wrapper en array para permitir auto-referencia desde el
+        // lambda (Java no deja referenciar una variable local antes
+        // de su inicialización; el array sí).
+        Runnable[] refreshHolder = new Runnable[1];
+        refreshHolder[0] = () -> new Thread(() -> {
+            try {
+                var list = accountingApiClient.listRecurringCandidates(kind, 180);
+                javafx.application.Platform.runLater(() -> {
+                    if (list.isEmpty()) {
+                        content.setManaged(false);
+                        content.setVisible(false);
+                    } else {
+                        msg.setText(t("recurring.candidates.banner_text")
+                                .replace("{n}", String.valueOf(list.size())));
+                        reviewLink.setOnAction(e ->
+                                showRecurringCandidatesDialog(list, refreshHolder[0]));
+                        content.setManaged(true);
+                        content.setVisible(true);
+                    }
+                });
+            } catch (Exception ex) {
+                // En caso de fallo (backend down, módulo no activo)
+                // simplemente no mostramos el banner. No molestamos al
+                // asesor con popup de error — es feature opcional.
+                javafx.application.Platform.runLater(() -> {
+                    content.setManaged(false);
+                    content.setVisible(false);
+                });
+            }
+        }, "recurring-candidates-refresh").start();
+
+        refreshHolder[0].run();
+        return content;
+    }
+
+    /**
+     * Diálogo que lista los candidatos detectados. Cada fila tiene
+     * un botón "Crear recurrente" que abre el editor pre-rellenado.
+     * Al cerrar el editor con éxito, refresca este diálogo y el
+     * banner.
+     */
+    private void showRecurringCandidatesDialog(
+            java.util.List<com.benjagest.ui.model.AccountingModels.RecurringCandidate> candidates,
+            Runnable bannerRefresh) {
+        javafx.scene.control.Dialog<Void> dlg = new javafx.scene.control.Dialog<>();
+        dlg.setTitle(t("recurring.candidates.title"));
+        dlg.getDialogPane().getButtonTypes().add(javafx.scene.control.ButtonType.CLOSE);
+
+        javafx.scene.control.TableView<com.benjagest.ui.model.AccountingModels.RecurringCandidate> table =
+                new javafx.scene.control.TableView<>();
+        table.setPlaceholder(new Label(t("recurring.candidates.empty")));
+        table.setPrefSize(820, 380);
+
+        javafx.scene.control.TableColumn<com.benjagest.ui.model.AccountingModels.RecurringCandidate, String> cParty =
+                new javafx.scene.control.TableColumn<>(t("recurring.candidates.col.party"));
+        cParty.setCellValueFactory(c -> new javafx.beans.property.SimpleStringProperty(
+                c.getValue() == null ? "" :
+                        (nullSafe(c.getValue().partyName())
+                                + (c.getValue().partyNif() == null || c.getValue().partyNif().isBlank()
+                                        ? "" : " (" + c.getValue().partyNif() + ")"))));
+        cParty.setPrefWidth(280);
+
+        javafx.scene.control.TableColumn<com.benjagest.ui.model.AccountingModels.RecurringCandidate, String> cAmount =
+                new javafx.scene.control.TableColumn<>(t("recurring.candidates.col.amount"));
+        cAmount.setCellValueFactory(c -> new javafx.beans.property.SimpleStringProperty(
+                c.getValue() == null || c.getValue().totalAmount() == null ? ""
+                        : c.getValue().totalAmount().toPlainString() + " €"));
+        cAmount.setPrefWidth(110);
+
+        javafx.scene.control.TableColumn<com.benjagest.ui.model.AccountingModels.RecurringCandidate, Integer> cOcc =
+                new javafx.scene.control.TableColumn<>(t("recurring.candidates.col.occurrences"));
+        cOcc.setCellValueFactory(c -> new javafx.beans.property.SimpleObjectProperty<>(
+                c.getValue() == null ? 0 : c.getValue().occurrences()));
+        cOcc.setPrefWidth(90);
+
+        javafx.scene.control.TableColumn<com.benjagest.ui.model.AccountingModels.RecurringCandidate, String> cFreq =
+                new javafx.scene.control.TableColumn<>(t("recurring.candidates.col.freq"));
+        cFreq.setCellValueFactory(c -> new javafx.beans.property.SimpleStringProperty(
+                c.getValue() == null ? "" : localizedFrequency(c.getValue().suggestedFrequency())));
+        cFreq.setPrefWidth(120);
+
+        javafx.scene.control.TableColumn<com.benjagest.ui.model.AccountingModels.RecurringCandidate, Void> cAction =
+                new javafx.scene.control.TableColumn<>(t("recurring.candidates.col.action"));
+        cAction.setCellFactory(c -> new javafx.scene.control.TableCell<>() {
+            private final Button create = new Button(t("recurring.candidates.create"));
+            {
+                create.setGraphic(icon("fas-plus"));
+                create.getStyleClass().add("button-primary");
+            }
+            @Override protected void updateItem(Void v, boolean empty) {
+                super.updateItem(v, empty);
+                if (empty || getIndex() < 0 || getIndex() >= getTableView().getItems().size()) {
+                    setGraphic(null);
+                    return;
+                }
+                var cand = getTableView().getItems().get(getIndex());
+                create.setOnAction(e -> {
+                    dlg.close();
+                    showRecurringEditorFromCandidate(cand, () -> {
+                        if (bannerRefresh != null) bannerRefresh.run();
+                    });
+                });
+                setGraphic(create);
+            }
+        });
+        cAction.setPrefWidth(160);
+
+        table.getColumns().add(cParty);
+        table.getColumns().add(cAmount);
+        table.getColumns().add(cOcc);
+        table.getColumns().add(cFreq);
+        table.getColumns().add(cAction);
+        table.getItems().setAll(candidates);
+
+        Label hint = new Label(t("recurring.candidates.hint"));
+        hint.setWrapText(true);
+        hint.getStyleClass().addAll("muted", "small");
+
+        VBox box = new VBox(8, hint, table);
+        box.setPadding(new Insets(8));
+        dlg.getDialogPane().setContent(box);
+        dlg.showAndWait();
+    }
+
+    /**
+     * Devuelve la traducción legible del código de frecuencia
+     * (WEEKLY → "Semanal", MONTHLY → "Mensual", …). Reutilizable
+     * desde diálogos y banners.
+     */
+    private String localizedFrequency(String freq) {
+        if (freq == null) return "";
+        return switch (freq.toUpperCase()) {
+            case "WEEKLY" -> t("recurring.freq.weekly");
+            case "MONTHLY" -> t("recurring.freq.monthly");
+            case "QUARTERLY" -> t("recurring.freq.quarterly");
+            case "YEARLY" -> t("recurring.freq.yearly");
+            case "CUSTOM" -> t("recurring.freq.every") + " 6 " + t("recurring.freq.months");
+            default -> freq;
+        };
+    }
+
+    /**
+     * Overload de {@link #showRecurringEditor(String, com.benjagest.ui.model.AccountingModels.RecurringTask, Runnable)}
+     * que pre-rellena el editor a partir de un candidato detectado por
+     * el backend. Construye un objeto RecurringTask "sintético" con los
+     * datos del candidato y se lo pasa al editor en modo "crear" pero
+     * con los campos del payload ya escritos — todos editables.
+     */
+    private void showRecurringEditorFromCandidate(
+            com.benjagest.ui.model.AccountingModels.RecurringCandidate cand,
+            Runnable onSaved) {
+        if (cand == null) return;
+        boolean isSales = "SALES_INVOICE".equals(cand.kind());
+        // Pre-rellenamos un RecurringTask sintético con SOLO los
+        // campos que el editor lee directamente (name, frecuencia,
+        // payloadJson). El editor lo trata como "edit existing" pero
+        // sin id (id=null) — luego al guardar el método save crea
+        // uno nuevo. Pasamos null en su lugar para forzar modo crear.
+        String suggestedName = (isSales
+                ? t("recurring.candidates.default_name_sales")
+                : t("recurring.candidates.default_name_expense"))
+                + " " + nullSafe(cand.partyName());
+
+        // Construyo el payload mínimo en JSON para que el editor lo
+        // parsee y prellene los TextFields.
+        String payload;
+        if (isSales) {
+            payload = "{\"customerNif\":" + jsonString(nullSafe(cand.partyNif()))
+                    + ",\"customerLegalName\":" + jsonString(nullSafe(cand.partyName()))
+                    + ",\"lines\":[{"
+                    + "\"description\":" + jsonString(suggestedName)
+                    + ",\"quantity\":1"
+                    + ",\"unitPrice\":" + cand.totalAmount().toPlainString()
+                    + ",\"vatPercent\":21"
+                    + ",\"retentionPercent\":0"
+                    + "}]}";
+        } else {
+            payload = "{\"supplierNif\":" + jsonString(nullSafe(cand.partyNif()))
+                    + ",\"supplierName\":" + jsonString(nullSafe(cand.partyName()))
+                    + ",\"baseAmount\":" + cand.totalAmount().toPlainString()
+                    + ",\"vatPercent\":21"
+                    + "}";
+        }
+
+        var synthetic = new com.benjagest.ui.model.AccountingModels.RecurringTask(
+                null,                                  // id null → editor está en modo "edit" pero
+                cand.kind(),                            //   al guardar createRecurring() creará nuevo
+                suggestedName,
+                "",                                     // description
+                cand.suggestedFrequency() == null ? "MONTHLY" : cand.suggestedFrequency(),
+                cand.lastDate() == null ? null : cand.lastDate().getDayOfMonth(),
+                null,
+                "CUSTOM".equals(cand.suggestedFrequency()) ? 6 : 1,
+                cand.lastDate() == null ? LocalDate.now().plusDays(1)
+                        : cand.lastDate().plusMonths(1),
+                null, null, 0, 0, true,
+                payload);
+
+        // Forzamos modo CREAR (existing=null) pero con campos prellenados.
+        // El editor lee desde "existing" para prellenar — pasamos
+        // synthetic pero el editor va a interpretarlo como edición de
+        // un id null. Para forzar modo CREAR de verdad, llamo a una
+        // versión que respeta esto: si existing.id()==null → crear.
+        showRecurringEditor(cand.kind(), synthetic, onSaved);
     }
 
     /** Devuelve nombre del día de la semana 1=lunes..7=domingo. */

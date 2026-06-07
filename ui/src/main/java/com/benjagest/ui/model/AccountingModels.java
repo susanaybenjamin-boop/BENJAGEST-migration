@@ -120,6 +120,24 @@ public final class AccountingModels {
         }
     }
 
+    /**
+     * Candidato a recurrencia detectado por el backend (Slice 3D).
+     * Representa un grupo de facturas con mismo NIF + mismo importe
+     * repetidas en la ventana de análisis.
+     */
+    public record RecurringCandidate(
+            String kind,              // "SALES_INVOICE" | "PURCHASE"
+            String partyId,           // customer_id o supplier_id
+            String partyNif,
+            String partyName,
+            BigDecimal totalAmount,
+            int occurrences,
+            LocalDate firstDate,
+            LocalDate lastDate,
+            String sampleInvoiceId,   // una de las facturas del grupo (para sacar concepto/líneas)
+            String suggestedFrequency // WEEKLY / MONTHLY / QUARTERLY / CUSTOM / YEARLY
+    ) {}
+
     /** Movimiento histórico de una tarea recurrente. */
     public record RecurringTaskRun(
             String id,
