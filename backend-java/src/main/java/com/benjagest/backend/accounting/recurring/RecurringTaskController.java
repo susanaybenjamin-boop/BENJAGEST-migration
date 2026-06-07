@@ -65,6 +65,21 @@ public class RecurringTaskController {
         return candidateService.findCandidates(kind, windowDays);
     }
 
+    /**
+     * Slice 3P — ¿Existe ya una recurrente activa que cubra este
+     * tercero + importe? Lo usa el UI tras validar una venta o
+     * gasto para NO preguntar "¿hacer recurrente?" si la factura
+     * recién validada ya es generada por una plantilla existente.
+     */
+    @GetMapping("/already-covers")
+    public Map<String, Object> alreadyCovers(
+            @RequestParam("kind") String kind,
+            @RequestParam("partyName") String partyName,
+            @RequestParam("amount") java.math.BigDecimal amount) {
+        return Map.of("covered",
+                candidateService.alreadyCovers(kind, partyName, amount));
+    }
+
     @GetMapping
     public List<RecurringTaskService.RecurringTaskView> list(
             @RequestParam(value = "kind", required = false) String kind,

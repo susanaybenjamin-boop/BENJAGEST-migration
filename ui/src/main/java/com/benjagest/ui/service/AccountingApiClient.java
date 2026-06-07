@@ -458,6 +458,24 @@ public class AccountingApiClient {
      * Llama al endpoint backend que detecta facturas repetidas con
      * mismo NIF + mismo importe en una ventana de tiempo.
      */
+    /**
+     * Slice 3P — ¿Existe ya una recurrente activa que cubra este
+     * tercero + importe? El UI lo usa tras validar una factura para
+     * no preguntar "¿hacer recurrente?" si ya está cubierta.
+     */
+    public boolean recurringAlreadyCovers(String kind, String partyName,
+                                           java.math.BigDecimal amount)
+            throws IOException, InterruptedException {
+        if (partyName == null || partyName.isBlank() || amount == null) return false;
+        String path = "/accounting/recurring/already-covers"
+                + "?kind=" + kind
+                + "&partyName=" + java.net.URLEncoder.encode(partyName,
+                        java.nio.charset.StandardCharsets.UTF_8)
+                + "&amount=" + amount.toPlainString();
+        String json = get(path);
+        return json != null && json.contains("\"covered\":true");
+    }
+
     public List<RecurringCandidate> listRecurringCandidates(String kind, Integer windowDays)
             throws IOException, InterruptedException {
         String path = "/accounting/recurring/candidates?kind=" + kind
