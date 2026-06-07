@@ -16147,6 +16147,27 @@ public class BenjagestUiApplication extends Application {
         var result = dlg.showAndWait();
         if (result.isEmpty() || result.get() != saveType) return;
 
+        // Slice 3O — Forzar commit de TODOS los Spinners del editor.
+        // Sin esto, si el usuario escribió un importe a mano y no
+        // tabuló antes de Guardar, getValue() devolvía 0 → el
+        // recurrente se guardaba con base=0 y al ejecutar el cron
+        // generaba líneas vacías ("Línea 1: la línea está vacía"
+        // del backend). Aplica a SALES (qty/price/vat/ret) y a
+        // PURCHASE (base/vatPct), además de los comunes (domSpinner,
+        // dowSpinner, monthsSpinner).
+        commitSpinner(domSpinner);
+        commitSpinner(dowSpinner);
+        commitSpinner(monthsSpinner);
+        if (isSales) {
+            commitSpinner(qtySpinner);
+            commitSpinner(priceSpinner);
+            commitSpinner(vatSpinner);
+            commitSpinner(retSpinner);
+        } else {
+            commitSpinner(baseSpinner);
+            commitSpinner(vatPctSpinner);
+        }
+
         // Slice 3I — Validar campos críticos ANTES de mandar al
         // backend para evitar el round-trip 422 con mensajes
         // técnicos. El backend del recurrente SALES_INVOICE necesita
@@ -16154,6 +16175,21 @@ public class BenjagestUiApplication extends Application {
         // customerId. Si falta el NIF, paramos aquí con alert claro.
         if (!validateSalesRecurringNif(kind,
                 partyNifField.getText(), partyNameField.getText())) {
+            return;
+        }
+
+        // Slice 3O — Validar también el importe base > 0 (PURCHASE)
+        // o precio unitario > 0 (SALES). Sin esto, todas las líneas
+        // del payload serían 0 y el backend devolvería "línea vacía".
+        double checkAmount = isSales
+                ? priceSpinner.getValue() * qtySpinner.getValue()
+                : baseSpinner.getValue();
+        if (checkAmount <= 0.0) {
+            Alert a = new Alert(Alert.AlertType.WARNING,
+                    t("recurring.validate.amount_required"),
+                    ButtonType.OK);
+            a.setHeaderText(t("recurring.validate.amount_required_header"));
+            a.showAndWait();
             return;
         }
 
