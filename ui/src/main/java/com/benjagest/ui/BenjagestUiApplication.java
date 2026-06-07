@@ -10893,6 +10893,32 @@ public class BenjagestUiApplication extends Application {
             case "team.deleg.col.until" -> "Until";
             case "team.deleg.empty" -> "No active delegations.";
             case "team.deleg.coming_soon" -> "Delegation editor coming next slice. Holder/substitute and date range are already stored in client_assignments — only the UI editor is missing.";
+            // Slice 5E — editor de delegación
+            case "team.deleg.btn.new" -> "New delegation";
+            case "team.deleg.btn.cancel" -> "Cancel delegation";
+            case "team.deleg.dialog.title" -> "Temporary delegation";
+            case "team.deleg.dialog.header" -> "Delegate this assignment to another team member while the holder is away.";
+            case "team.deleg.dialog.assignment" -> "Assignment";
+            case "team.deleg.dialog.substitute" -> "Substitute";
+            case "team.deleg.dialog.from" -> "From";
+            case "team.deleg.dialog.until" -> "Until";
+            case "team.deleg.dialog.save" -> "Save delegation";
+            case "team.deleg.dialog.assignment_prompt" -> "Choose the client · holder pair";
+            case "team.deleg.dialog.substitute_prompt" -> "Pick the substitute";
+            case "team.deleg.no_assignments.title" -> "No assignments to delegate";
+            case "team.deleg.no_assignments.body" -> "Create assignments first in the Assignments tab.";
+            case "team.deleg.invalid.title" -> "Incomplete data";
+            case "team.deleg.invalid.body" -> "Pick an assignment, a substitute and a valid date range.";
+            case "team.deleg.invalid.range.title" -> "Invalid date range";
+            case "team.deleg.invalid.range.body" -> "'From' must be earlier than or equal to 'Until'.";
+            case "team.deleg.invalid.same.title" -> "Same employee";
+            case "team.deleg.invalid.same.body" -> "The substitute cannot be the same person as the holder.";
+            case "team.deleg.ok.title" -> "Delegation saved";
+            case "team.deleg.ok.body" -> "The substitute will see the client during the chosen period.";
+            case "team.deleg.fail.title" -> "Could not save the delegation";
+            case "team.deleg.cancel.confirm.title" -> "Cancel delegation?";
+            case "team.deleg.cancel.confirm.body" -> "The substitute will stop seeing the client immediately.";
+            case "team.deleg.cancel.fail.title" -> "Could not cancel";
             // Roles dentro del cliente (selector + columna de la matriz)
             case "team.role.ADVISOR" -> "Tax advisor";
             case "team.role.ACCOUNTANT" -> "Accountant";
@@ -10966,6 +10992,32 @@ public class BenjagestUiApplication extends Application {
             case "team.deleg.col.until" -> "Hasta";
             case "team.deleg.empty" -> "No hay delegaciones activas.";
             case "team.deleg.coming_soon" -> "Editor de delegaciones en el siguiente slice. Titular/sustituto y rango ya se guardan en client_assignments — solo falta la UI del editor.";
+            // Slice 5E — editor de delegación
+            case "team.deleg.btn.new" -> "Nueva delegación";
+            case "team.deleg.btn.cancel" -> "Quitar delegación";
+            case "team.deleg.dialog.title" -> "Delegación temporal";
+            case "team.deleg.dialog.header" -> "Delegar esta asignación en otro miembro mientras el titular está ausente.";
+            case "team.deleg.dialog.assignment" -> "Asignación";
+            case "team.deleg.dialog.substitute" -> "Sustituto";
+            case "team.deleg.dialog.from" -> "Desde";
+            case "team.deleg.dialog.until" -> "Hasta";
+            case "team.deleg.dialog.save" -> "Guardar delegación";
+            case "team.deleg.dialog.assignment_prompt" -> "Elige la pareja cliente · titular";
+            case "team.deleg.dialog.substitute_prompt" -> "Elige el sustituto";
+            case "team.deleg.no_assignments.title" -> "No hay asignaciones que delegar";
+            case "team.deleg.no_assignments.body" -> "Crea antes asignaciones en la pestaña Asignaciones.";
+            case "team.deleg.invalid.title" -> "Datos incompletos";
+            case "team.deleg.invalid.body" -> "Elige asignación, sustituto y un rango de fechas válido.";
+            case "team.deleg.invalid.range.title" -> "Rango de fechas no válido";
+            case "team.deleg.invalid.range.body" -> "El 'Desde' debe ser anterior o igual al 'Hasta'.";
+            case "team.deleg.invalid.same.title" -> "Mismo empleado";
+            case "team.deleg.invalid.same.body" -> "El sustituto no puede ser la misma persona que el titular.";
+            case "team.deleg.ok.title" -> "Delegación guardada";
+            case "team.deleg.ok.body" -> "El sustituto verá el cliente durante el periodo elegido.";
+            case "team.deleg.fail.title" -> "No se pudo guardar la delegación";
+            case "team.deleg.cancel.confirm.title" -> "¿Quitar delegación?";
+            case "team.deleg.cancel.confirm.body" -> "El sustituto dejará de ver el cliente al instante.";
+            case "team.deleg.cancel.fail.title" -> "No se pudo quitar";
             // Roles dentro del cliente (selector + columna de la matriz)
             case "team.role.ADVISOR" -> "Asesor";
             case "team.role.ACCOUNTANT" -> "Contable";
@@ -15106,9 +15158,10 @@ public class BenjagestUiApplication extends Application {
     // ----- Tab 3: Delegaciones ---------------------------------------------
 
     private Node teamDelegationsTab(TeamBundle bundle) {
-        // Slice 5C v1: placeholder informativo. Las asignaciones con
-        // delegatedToUserId no nulo se listan, pero el editor temporal
-        // (formulario para crear/quitar delegación) llega en slice 5D.
+        // Slice 5E: editor completo. Botón "Nueva delegación" abre diálogo
+        // con combo de asignación + combo sustituto + DatePickers. Botón
+        // "Quitar delegación" en la fila seleccionada llama al mismo
+        // endpoint con toUserId=null.
         VBox box = new VBox(12);
         box.setPadding(new Insets(16));
         Label hint = new Label(t("team.deleg.hint"));
@@ -15161,13 +15214,203 @@ public class BenjagestUiApplication extends Application {
         }
         table.setItems(FXCollections.observableArrayList(withDeleg));
 
-        Label comingSoon = new Label(t("team.deleg.coming_soon"));
-        comingSoon.setWrapText(true);
-        comingSoon.getStyleClass().add("settings-hint");
+        // Botonera: nueva + quitar (deshabilitado si no hay selección)
+        Button newBtn = new Button(t("team.deleg.btn.new"));
+        newBtn.setGraphic(icon("fas-plus"));
+        newBtn.getStyleClass().add("primary-button");
+        newBtn.setOnAction(ev -> openDelegationDialog(bundle, null));
 
-        box.getChildren().addAll(hint, table, comingSoon);
+        Button cancelBtn = new Button(t("team.deleg.btn.cancel"));
+        cancelBtn.setGraphic(icon("fas-times"));
+        cancelBtn.setDisable(true);
+        table.getSelectionModel().selectedItemProperty().addListener(
+                (o, ov, nv) -> cancelBtn.setDisable(nv == null));
+        cancelBtn.setOnAction(ev -> {
+            var sel = table.getSelectionModel().getSelectedItem();
+            if (sel == null) return;
+            Alert confirm = new Alert(Alert.AlertType.CONFIRMATION);
+            confirm.setTitle(t("team.deleg.cancel.confirm.title"));
+            confirm.setHeaderText(t("team.deleg.cancel.confirm.title"));
+            confirm.setContentText(t("team.deleg.cancel.confirm.body"));
+            confirm.showAndWait().ifPresent(rsp -> {
+                if (rsp == javafx.scene.control.ButtonType.OK) {
+                    Task<Void> cancelTask = new Task<>() {
+                        @Override protected Void call() throws Exception {
+                            altaApiClient.delegateAssignment(sel.id(), null, null, null);
+                            return null;
+                        }
+                    };
+                    cancelTask.setOnSucceeded(s -> showTeamModule());
+                    cancelTask.setOnFailed(s -> showError(t("team.deleg.cancel.fail.title"),
+                            t("team.assign.fail.body")));
+                    start(cancelTask, "team-delegation-cancel");
+                }
+            });
+        });
+        HBox buttonsRow = new HBox(8, newBtn, cancelBtn);
+        buttonsRow.setAlignment(Pos.CENTER_LEFT);
+
+        box.getChildren().addAll(hint, buttonsRow, table);
         VBox.setVgrow(table, Priority.ALWAYS);
         return box;
+    }
+
+    /**
+     * Slice 5E — Diálogo para crear/editar una delegación. Si {@code
+     * preselectedAssignment} no es null, el combo de asignación se
+     * pre-rellena con ella (caso: "editar" desde una fila). Si es
+     * null, el OWNER elige asignación libremente.
+     */
+    private void openDelegationDialog(TeamBundle bundle,
+                                       com.benjagest.ui.model.TeamAssignment preselectedAssignment) {
+        if (bundle.assignments().isEmpty()) {
+            showInfo(t("team.deleg.no_assignments.title"),
+                    t("team.deleg.no_assignments.body"));
+            return;
+        }
+
+        Dialog<Boolean> dialog = new Dialog<>();
+        dialog.setTitle(t("team.deleg.dialog.title"));
+        dialog.setHeaderText(t("team.deleg.dialog.header"));
+
+        // Mapas para presentación legible
+        java.util.Map<String, String> clientNameById = new java.util.HashMap<>();
+        for (com.benjagest.ui.model.CustomerPortfolioEntry c : bundle.clients()) {
+            if (c.linkedCompanyId() != null) clientNameById.put(c.linkedCompanyId(), labelOf(c));
+        }
+        java.util.Map<String, String> memberLabelById = new java.util.HashMap<>();
+        for (com.benjagest.ui.model.TeamMember m : bundle.members()) memberLabelById.put(m.userId(), m.label());
+
+        // Combo de asignación: muestra "cliente · titular"
+        ComboBox<com.benjagest.ui.model.TeamAssignment> assignmentCombo = new ComboBox<>();
+        assignmentCombo.getItems().addAll(bundle.assignments());
+        assignmentCombo.setConverter(new javafx.util.StringConverter<>() {
+            @Override public String toString(com.benjagest.ui.model.TeamAssignment a) {
+                if (a == null) return "";
+                String client = clientNameById.getOrDefault(a.clientCompanyId(), a.clientCompanyId());
+                String holder = memberLabelById.getOrDefault(a.employeeUserId(), a.employeeUserId());
+                return client + " · " + holder;
+            }
+            @Override public com.benjagest.ui.model.TeamAssignment fromString(String s) { return null; }
+        });
+        assignmentCombo.setPromptText(t("team.deleg.dialog.assignment_prompt"));
+        assignmentCombo.setMaxWidth(Double.MAX_VALUE);
+        if (preselectedAssignment != null) {
+            assignmentCombo.setValue(preselectedAssignment);
+        }
+
+        // Combo de sustituto: todos los miembros, se filtra al elegir
+        // asignación para excluir al titular en runtime
+        ComboBox<com.benjagest.ui.model.TeamMember> substituteCombo = new ComboBox<>();
+        substituteCombo.setConverter(new javafx.util.StringConverter<>() {
+            @Override public String toString(com.benjagest.ui.model.TeamMember m) {
+                return m == null ? "" : m.label();
+            }
+            @Override public com.benjagest.ui.model.TeamMember fromString(String s) { return null; }
+        });
+        substituteCombo.setPromptText(t("team.deleg.dialog.substitute_prompt"));
+        substituteCombo.setMaxWidth(Double.MAX_VALUE);
+
+        Runnable refreshSubstitutes = () -> {
+            String holderId = assignmentCombo.getValue() == null
+                    ? null : assignmentCombo.getValue().employeeUserId();
+            substituteCombo.getItems().clear();
+            for (com.benjagest.ui.model.TeamMember m : bundle.members()) {
+                if (holderId == null || !holderId.equals(m.userId())) {
+                    substituteCombo.getItems().add(m);
+                }
+            }
+        };
+        assignmentCombo.valueProperty().addListener((o, ov, nv) -> refreshSubstitutes.run());
+        refreshSubstitutes.run();
+
+        // DatePickers — desde hoy hasta hoy+30 por defecto, edita libre
+        java.time.LocalDate today = java.time.LocalDate.now();
+        DatePicker fromPicker = new DatePicker(today);
+        fromPicker.setMaxWidth(Double.MAX_VALUE);
+        DatePicker untilPicker = new DatePicker(today.plusDays(7));
+        untilPicker.setMaxWidth(Double.MAX_VALUE);
+
+        // Si la asignación seleccionada ya tenía delegación, pre-rellenamos
+        if (preselectedAssignment != null && preselectedAssignment.delegatedToUserId() != null) {
+            for (com.benjagest.ui.model.TeamMember m : bundle.members()) {
+                if (m.userId().equals(preselectedAssignment.delegatedToUserId())) {
+                    substituteCombo.setValue(m);
+                    break;
+                }
+            }
+            if (preselectedAssignment.delegatedFrom() != null) fromPicker.setValue(preselectedAssignment.delegatedFrom());
+            if (preselectedAssignment.delegatedUntil() != null) untilPicker.setValue(preselectedAssignment.delegatedUntil());
+        }
+
+        GridPane grid = new GridPane();
+        grid.setHgap(10);
+        grid.setVgap(10);
+        grid.setPadding(new Insets(8));
+        grid.add(new Label(t("team.deleg.dialog.assignment")), 0, 0);
+        grid.add(assignmentCombo, 1, 0);
+        grid.add(new Label(t("team.deleg.dialog.substitute")), 0, 1);
+        grid.add(substituteCombo, 1, 1);
+        grid.add(new Label(t("team.deleg.dialog.from")), 0, 2);
+        grid.add(fromPicker, 1, 2);
+        grid.add(new Label(t("team.deleg.dialog.until")), 0, 3);
+        grid.add(untilPicker, 1, 3);
+        javafx.scene.layout.ColumnConstraints col0 = new javafx.scene.layout.ColumnConstraints();
+        col0.setMinWidth(120);
+        javafx.scene.layout.ColumnConstraints col1 = new javafx.scene.layout.ColumnConstraints();
+        col1.setHgrow(Priority.ALWAYS);
+        col1.setFillWidth(true);
+        grid.getColumnConstraints().addAll(col0, col1);
+
+        dialog.getDialogPane().setContent(grid);
+        ButtonType saveBtn = new ButtonType(t("team.deleg.dialog.save"), ButtonBar.ButtonData.OK_DONE);
+        dialog.getDialogPane().getButtonTypes().addAll(saveBtn, ButtonType.CANCEL);
+
+        // Interceptamos el OK_DONE para validar antes de cerrar
+        final javafx.scene.Node saveNode = dialog.getDialogPane().lookupButton(saveBtn);
+        saveNode.addEventFilter(javafx.event.ActionEvent.ACTION, ev -> {
+            var a = assignmentCombo.getValue();
+            var sub = substituteCombo.getValue();
+            var from = fromPicker.getValue();
+            var until = untilPicker.getValue();
+            if (a == null || sub == null || from == null || until == null) {
+                showError(t("team.deleg.invalid.title"), t("team.deleg.invalid.body"));
+                ev.consume();
+                return;
+            }
+            if (sub.userId().equals(a.employeeUserId())) {
+                showError(t("team.deleg.invalid.same.title"), t("team.deleg.invalid.same.body"));
+                ev.consume();
+                return;
+            }
+            if (from.isAfter(until)) {
+                showError(t("team.deleg.invalid.range.title"), t("team.deleg.invalid.range.body"));
+                ev.consume();
+                return;
+            }
+            // Validación pasada: enviar al backend de forma async. NO cerramos
+            // todavía — el handle del result hace setOnSucceeded → showTeamModule.
+            ev.consume();
+            String assignmentId = a.id();
+            String subId = sub.userId();
+            Task<Void> save = new Task<>() {
+                @Override protected Void call() throws Exception {
+                    altaApiClient.delegateAssignment(assignmentId, subId, from, until);
+                    return null;
+                }
+            };
+            save.setOnSucceeded(s -> {
+                dialog.setResult(true);
+                dialog.close();
+                showInfo(t("team.deleg.ok.title"), t("team.deleg.ok.body"));
+                showTeamModule();
+            });
+            save.setOnFailed(s -> showError(t("team.deleg.fail.title"),
+                    t("team.assign.fail.body")));
+            start(save, "team-delegation-save");
+        });
+
+        dialog.showAndWait();
     }
 
     /**
