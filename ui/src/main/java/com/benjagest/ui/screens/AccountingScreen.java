@@ -327,6 +327,13 @@ public class AccountingScreen {
         // importado por el asesor). "Compra" engloba PURCHASE_INVOICE
         // (los recurrentes contables RECURRING_ACCOUNTING se filtran
         // aparte para distinguirlos del flujo normal).
+        // Slice 3X — Filtro Origen UNIFICADO: las recurrentes ahora
+        // se guardan con source_type SALES_INVOICE/PURCHASE_INVOICE
+        // (en vez del antiguo RECURRING_ACCOUNTING) y marcan "(recurrente)"
+        // en el concepto. Así el asesor solo tiene 2 estados para
+        // facturas: Venta y Gasto. La opción RECURRING_TASK queda
+        // para distinguir asientos creados explícitamente como
+        // plantillas JOURNAL_ENTRY (sin metadata fiscal).
         sourceFilter = new ComboBox<>(FXCollections.observableArrayList(
                 "", "MANUAL", "SALES_INVOICE", "PURCHASE_INVOICE",
                 "BANK_MOVEMENT",
@@ -334,7 +341,7 @@ public class AccountingScreen {
                 "LOAN_INSTALLMENT", "ASSET_DEPRECIATION",
                 "ASSET_ACQUISITION", "ASSET_DISPOSAL",
                 "MANUAL_REVERSAL",
-                "RECURRING_TASK", "RECURRING_ACCOUNTING"));
+                "RECURRING_TASK"));
         installSourceCellFactory(sourceFilter);
 
         // Búsqueda libre — filtra por texto que aparezca en concepto, nº

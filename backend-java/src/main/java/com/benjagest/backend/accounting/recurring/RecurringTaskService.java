@@ -633,9 +633,16 @@ public class RecurringTaskService {
                     cuotaRet, BigDecimal.ZERO));
         }
         boolean postNow = Boolean.TRUE.equals(p.get("postNow"));
+        // Slice 3X — En vez de un source_type propio "RECURRING_ACCOUNTING"
+        // (que duplicaba estados en el filtro Origen del Diario),
+        // unificamos al source_type "SALES_INVOICE" y marcamos la
+        // recurrencia con sufijo en el concepto: el asesor ve "Venta"
+        // como origen y "(recurrente)" en el concepto sabe la fuente.
+        // La trazabilidad exacta queda en recurring_task_runs.
+        String conceptWithTag = concept + " (recurrente)";
         ManualJournalEntryService.ManualEntryView v = manualEntries.createDraftAutoProposed(
-                new ManualJournalEntryService.ManualEntryRequest(scheduledDate, concept, lines, postNow),
-                "RECURRING_ACCOUNTING",
+                new ManualJournalEntryService.ManualEntryRequest(scheduledDate, conceptWithTag, lines, postNow),
+                "SALES_INVOICE",
                 task.id());
         return v.id();
     }
@@ -699,9 +706,13 @@ public class RecurringTaskService {
         lines.add(new ManualJournalEntryService.LineRequest(
                 tercero, partyName + " — " + concept, BigDecimal.ZERO, total));
         boolean postNow = Boolean.TRUE.equals(p.get("postNow"));
+        // Slice 3X — source_type "PURCHASE_INVOICE" en vez del
+        // antiguo "RECURRING_ACCOUNTING". Concept con sufijo
+        // "(recurrente)" para que el asesor sepa que viene del cron.
+        String conceptWithTag = concept + " (recurrente)";
         ManualJournalEntryService.ManualEntryView v = manualEntries.createDraftAutoProposed(
-                new ManualJournalEntryService.ManualEntryRequest(scheduledDate, concept, lines, postNow),
-                "RECURRING_ACCOUNTING",
+                new ManualJournalEntryService.ManualEntryRequest(scheduledDate, conceptWithTag, lines, postNow),
+                "PURCHASE_INVOICE",
                 task.id());
 
         // Slice 3W — Crear también un purchase_invoice sintético
