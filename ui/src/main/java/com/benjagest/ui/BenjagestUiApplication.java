@@ -2491,9 +2491,12 @@ public class BenjagestUiApplication extends Application {
                     makeRecurringPurchaseBtn.setDisable(!onePosted);
                 });
 
-        // Acciones inferiores: solo lo que actúa sobre la selección.
-        // El import vive arriba en la fila de filtros.
+        // Slice 3V — Acciones SOBRE la tabla, no debajo. Antes vivían
+        // bajo el listado y Benjamin tenía que hacer scroll para verlos
+        // cuando el listado era largo. Ahora van encima, junto a los
+        // filtros, en su propia fila para no recargar la primera.
         HBox actions = new HBox(10, validateBatchBtn, makeRecurringPurchaseBtn, deleteBtn);
+        actions.setAlignment(javafx.geometry.Pos.CENTER_LEFT);
 
         VBox body = new VBox(12);
         if (showWithHeader) {
@@ -2507,7 +2510,7 @@ public class BenjagestUiApplication extends Application {
         // repetidos con mismo proveedor + importe). Si no hay
         // candidatos el banner se oculta solo.
         Node candidatesBanner = buildRecurringCandidatesBanner("PURCHASE");
-        body.getChildren().addAll(filters, candidatesBanner, purchaseInvoicesTable, actions);
+        body.getChildren().addAll(filters, actions, candidatesBanner, purchaseInvoicesTable);
         VBox.setVgrow(purchaseInvoicesTable, Priority.ALWAYS);
         body.setPadding(new Insets(20));
 
@@ -5632,15 +5635,15 @@ public class BenjagestUiApplication extends Application {
                 toValidatedBtn, makeRecurringBtn, rowActionsSpacer, emailBtn, pdfBtn);
         rowActions.getStyleClass().add("settings-actions");
 
-        // El botón "Importar PDFs" vive en la fila de filtros (arriba a
-        // la derecha) para evitar duplicidades y dejar la fila inferior
-        // exclusivamente para acciones sobre la selección.
+        // Slice 3V — Acciones SOBRE la tabla, no debajo. Antes vivían
+        // bajo el listado y el asesor tenía que hacer scroll para
+        // verlos cuando había muchas facturas. Ahora van encima.
         //
         // Slice 3D-2 — banner de candidatos a recurrencia (facturas
         // repetidas con mismo cliente + importe). Si no hay
         // candidatos el banner se oculta solo.
         Node candidatesBanner = buildRecurringCandidatesBanner("SALES_INVOICE");
-        VBox bottomBlock = new VBox(12, candidatesBanner, billingTable, rowActions);
+        VBox bottomBlock = new VBox(12, rowActions, candidatesBanner, billingTable);
 
         // Auto-refresh cuando alguien emite SALES (crear/validar/anular/
         // borrar/cobrar factura). Auto-baja al desmontar la pantalla.
