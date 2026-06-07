@@ -452,29 +452,6 @@ public class AccountingApiClient {
         postRaw(path, "{}");
     }
 
-    /**
-     * Crea una tarea recurrente. El cuerpo se construye en el caller
-     * porque cada {@code kind} (SALES_INVOICE, PURCHASE, JOURNAL_ENTRY)
-     * lleva un payload distinto y no merece la pena reflejar toda esa
-     * jerarquía en records UI. El JSON debe respetar el shape de
-     * {@code RecurringTaskRequest} del backend.
-     */
-    public RecurringTask createRecurring(String jsonBody)
-            throws IOException, InterruptedException {
-        String json = postRaw("/accounting/recurring", jsonBody);
-        return parseRecurring(json);
-    }
-
-    /**
-     * Actualiza una tarea recurrente existente. Mismo shape que
-     * {@link #createRecurring(String)}.
-     */
-    public RecurringTask updateRecurring(String id, String jsonBody)
-            throws IOException, InterruptedException {
-        String json = put("/accounting/recurring/" + id, jsonBody);
-        return parseRecurring(json);
-    }
-
     // ====================================================================
     //  Backfill — regenerar asientos faltantes para facturas existentes
     // ====================================================================
@@ -894,8 +871,7 @@ public class AccountingApiClient {
                 strField(json, "lastRunStatus"),
                 intField(json, "timesRun"),
                 intField(json, "timesFailed"),
-                boolField(json, "active"),
-                strField(json, "payloadJson"));
+                boolField(json, "active"));
     }
 
     private RecurringTaskRun parseRecurringRun(String json) {
