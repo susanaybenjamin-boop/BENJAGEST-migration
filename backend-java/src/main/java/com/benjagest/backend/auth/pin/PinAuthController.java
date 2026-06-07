@@ -43,7 +43,13 @@ import org.springframework.web.bind.annotation.RestController;
  * <p>Las rutas públicas se añaden a la whitelist de SecurityConfig
  * (slice contiguo de este L4-2).
  */
-@RestController
+// Bean name explícito ("pinDeviceAuthController") para no chocar con
+// com.benjagest.backend.workspace.PinAuthController legacy del kiosko
+// de fichaje, que también se llama PinAuthController. Mismo nombre
+// simple de clase, distinto rol y distinto endpoint: el legacy sirve
+// /api/auth/pin (fichaje); el nuestro /api/auth/devices/* +
+// /api/auth/pin-login (login multi-puesto).
+@RestController("pinDeviceAuthController")
 @RequestMapping("/api/auth")
 public class PinAuthController {
 
