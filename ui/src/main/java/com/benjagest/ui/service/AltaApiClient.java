@@ -197,6 +197,18 @@ public class AltaApiClient {
     // ASESORIA — CLIENTES GESTIONADOS (/api/advisory/clients)
     // ============================================================
 
+    /**
+     * Slice 3H-6 — Garantiza que la asesoría logueada tiene su
+     * advisory_invitations status=ACCEPTED apuntando a sí misma.
+     * Endpoint defensivo invocado antes de abrir "Mi empresa" para
+     * cubrir asesorías que existían antes de V64 o cuando la
+     * migración no se haya aplicado por cualquier razón.
+     */
+    public void ensureAdvisorySelfLink() throws IOException, InterruptedException {
+        send(req(baseUrl + "/advisory/clients/ensure-self-link")
+                .POST(java.net.http.HttpRequest.BodyPublishers.ofString("{}")));
+    }
+
     public List<ManagedClientEntry> listManagedClients() throws IOException, InterruptedException {
         HttpResponse<String> r = send(req(baseUrl + "/advisory/clients").GET());
         return parseObjects(r.body(), "legalName", obj -> new ManagedClientEntry(

@@ -14753,7 +14753,20 @@ public class BenjagestUiApplication extends Application {
         var synthetic = new com.benjagest.ui.model.ManagedClientEntry(
                 id, legalName, null, null,
                 "ADVISORY", null, null, null, null);
-        switchToClient(synthetic, true);
+        // Slice 3H-6 — Garantiza la self-link de la asesoría ANTES de
+        // entrar. Si la migración V64 no se aplicó o la asesoría es
+        // anterior a esa migración, el backend creará la fila en
+        // advisory_invitations en este momento. Llamada best-effort:
+        // si falla por cualquier motivo (red, permisos), entramos
+        // igual al modo cliente — la peor consecuencia es que el
+        // banner de cliente vinculado no muestre el sello.
+        new Thread(() -> {
+            try {
+                altaApiClient.ensureAdvisorySelfLink();
+            } catch (Exception ignored) { /* defensivo */ }
+            javafx.application.Platform.runLater(() ->
+                    switchToClient(synthetic, true));
+        }, "ensure-self-link").start();
     }
 
     /**
