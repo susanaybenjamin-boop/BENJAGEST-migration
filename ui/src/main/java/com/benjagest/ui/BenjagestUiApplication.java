@@ -760,6 +760,23 @@ public class BenjagestUiApplication extends Application {
 
         enterBtn.setOnAction(ev -> trySubmit.run());
 
+        // Acciones reutilizables: las usan los botones del teclado virtual
+        // Y el handler del teclado físico del PC más abajo.
+        java.util.function.IntConsumer appendDigit = digit -> {
+            if (pinBuffer.length() >= 8) return; // tope superior 8 dígitos
+            pinBuffer.append(digit);
+            refreshDots.run();
+            errorLabel.setText("");
+            enterBtn.setDisable(pinBuffer.length() < 4);
+        };
+        Runnable backspace = () -> {
+            if (pinBuffer.length() == 0) return;
+            pinBuffer.setLength(pinBuffer.length() - 1);
+            refreshDots.run();
+            errorLabel.setText("");
+            enterBtn.setDisable(pinBuffer.length() < 4);
+        };
+
         // Teclado 3x4 — 1..9 / borrar / 0 / OK pequeño
         GridPane keypad = new GridPane();
         keypad.setHgap(8);
@@ -774,37 +791,59 @@ public class BenjagestUiApplication extends Application {
             for (int c = 0; c < 3; c++) {
                 final int digit = layout[r][c];
                 Button b = pinKey(String.valueOf(digit));
-                b.setOnAction(ev -> {
-                    if (pinBuffer.length() >= 8) return; // tope superior
-                    pinBuffer.append(digit);
-                    refreshDots.run();
-                    errorLabel.setText("");
-                    enterBtn.setDisable(pinBuffer.length() < 4);
-                });
+                b.setFocusTraversable(false); // que no roben Enter al panel
+                b.setOnAction(ev -> appendDigit.accept(digit));
                 keypad.add(b, c, r);
             }
         }
         Button del = pinKey("⌫");
-        del.setOnAction(ev -> {
-            if (pinBuffer.length() == 0) return;
-            pinBuffer.setLength(pinBuffer.length() - 1);
-            refreshDots.run();
-            errorLabel.setText("");
-            enterBtn.setDisable(pinBuffer.length() < 4);
-        });
+        del.setFocusTraversable(false);
+        del.setOnAction(ev -> backspace.run());
         Button zero = pinKey("0");
-        zero.setOnAction(ev -> {
-            if (pinBuffer.length() >= 8) return;
-            pinBuffer.append('0');
-            refreshDots.run();
-            errorLabel.setText("");
-            enterBtn.setDisable(pinBuffer.length() < 4);
-        });
+        zero.setFocusTraversable(false);
+        zero.setOnAction(ev -> appendDigit.accept(0));
         Button okMini = pinKey("OK");
+        okMini.setFocusTraversable(false);
         okMini.setOnAction(ev -> trySubmit.run());
         keypad.add(del, 0, 3);
         keypad.add(zero, 1, 3);
         keypad.add(okMini, 2, 3);
+
+        // Handler del teclado FÍSICO del PC. Acepta:
+        //   - Dígitos 0-9 de la fila numérica y del numpad (getText()
+        //     devuelve el carácter tipeado, independiente del layout).
+        //   - Backspace / Supr → quitar último dígito.
+        //   - Enter → enviar (si hay 4+ dígitos).
+        //   - Escape → limpia el buffer (atajo cómodo si tecleas mal).
+        // Lo registramos en el panel y pedimos focus al mostrarlo.
+        // EventHandler en lugar de setOnKeyPressed para que coexista con
+        // otros handlers globales si los hubiera en el futuro.
+        panel.setFocusTraversable(true);
+        panel.setOnKeyPressed(ev -> {
+            String text = ev.getText();
+            if (text != null && text.length() == 1
+                    && text.charAt(0) >= '0' && text.charAt(0) <= '9') {
+                appendDigit.accept(text.charAt(0) - '0');
+                ev.consume();
+                return;
+            }
+            switch (ev.getCode()) {
+                case BACK_SPACE, DELETE -> { backspace.run(); ev.consume(); }
+                case ENTER -> { trySubmit.run(); ev.consume(); }
+                case ESCAPE -> {
+                    pinBuffer.setLength(0);
+                    refreshDots.run();
+                    errorLabel.setText("");
+                    enterBtn.setDisable(true);
+                    ev.consume();
+                }
+                default -> { /* ignorar otras teclas */ }
+            }
+        });
+        // requestFocus() en el panel cuando se haya añadido a la escena.
+        // Lo programamos para el siguiente tick del JavaFX thread, así
+        // el nodo ya está conectado y puede recibir focus realmente.
+        javafx.application.Platform.runLater(panel::requestFocus);
 
         // Enlaces secundarios
         javafx.scene.control.Hyperlink emailLink =
