@@ -684,6 +684,7 @@ public class BenjagestUiApplication extends Application {
         if (!AuthSession.get().isActingForClient()) return;
         AuthSession.get().setActingForCompanyId(null);
         actingClientName = null;
+        actingForClientLinked = true; // Slice 3T — reset al default
         refreshClientModeBanner();
     }
 
@@ -2235,6 +2236,16 @@ public class BenjagestUiApplication extends Application {
     // header con botón de salida, y el sidebar limpia este estado al
     // navegar para evitar que el asesor se quede atrapado.
     private String actingClientName;
+    /**
+     * Slice 3T — TRUE cuando la asesoría está actuando como un cliente
+     * VINCULADO (factura desde BENJAGEST con VeriFactu). FALSE cuando
+     * está en una shadow company (cliente sin vínculo donde solo se
+     * lleva la contabilidad). Default TRUE para que en modo normal
+     * (empresario propio) los recurrentes sigan el flujo legacy.
+     * Lo setea {@link #switchToClient(ManagedClientEntry, boolean)} y
+     * lo resetea {@link #exitClientMode()}.
+     */
+    private boolean actingForClientLinked = true;
     private VBox topContainer;
 
     // Live polling de invitaciones — evita tener que refrescar la pantalla.
@@ -14892,6 +14903,10 @@ public class BenjagestUiApplication extends Application {
                                   boolean isLinked) {
         AuthSession.get().setActingForCompanyId(client.id());
         actingClientName = client.legalName();
+        // Slice 3T — Persistir el flag para que botones contextuales
+        // (p.ej. "Hacer recurrente" en listados) sepan si están en
+        // shadow company y abran el editor contable apropiado.
+        actingForClientLinked = isLinked;
         refreshClientModeBanner();
         setCenterAnimated(buildClientDetailView(client, isLinked));
     }
@@ -17428,11 +17443,66 @@ public class BenjagestUiApplication extends Application {
     private void openRecurringEditorFromInvoice(
             String kind, String partyNif, String partyName,
             java.math.BigDecimal totalAmount, LocalDate invoiceDate) {
+        // Slice 3T — En shadow company (cliente sin vínculo desde
+        // asesoría), las recurrentes SALES_INVOICE/PURCHASE no tienen
+        // sentido porque no hay serie de facturación. Redirigir al
+        // editor contable nuevo (ACCOUNTING_INCOME/EXPENSE) que genera
+        // asiento directo con metadata fiscal completa.
+        if (appMode == AppMode.ADVISORY
+                && AuthSession.get().isActingForClient()
+                && !actingForClientLinked) {
+            String accountingKind = "SALES_INVOICE".equals(kind)
+                    ? "ACCOUNTING_INCOME" : "ACCOUNTING_EXPENSE";
+            var synthetic = buildPrefilledAccountingTask(
+                    accountingKind, partyNif, partyName, totalAmount,
+                    invoiceDate == null ? null : invoiceDate.getDayOfMonth());
+            showAccountingRecurringEditor(accountingKind, synthetic, null);
+            return;
+        }
         var synthetic = buildPrefilledRecurringTask(
                 kind, partyNif, partyName, totalAmount,
                 invoiceDate == null ? null : invoiceDate.getDayOfMonth(),
                 "MONTHLY", null);
         showRecurringEditor(kind, synthetic, null);
+    }
+
+    /**
+     * Slice 3T — Construye una RecurringTask sintética pre-rellenada
+     * para el editor contable (ACCOUNTING_INCOME / ACCOUNTING_EXPENSE).
+     * Pensado para abrir el editor desde un botón "Hacer recurrente"
+     * en el listado de facturas/gastos del cliente sin vínculo.
+     */
+    private com.benjagest.ui.model.AccountingModels.RecurringTask
+            buildPrefilledAccountingTask(String kind, String partyNif,
+                                          String partyName,
+                                          java.math.BigDecimal totalAmount,
+                                          Integer dayOfMonth) {
+        boolean income = "ACCOUNTING_INCOME".equals(kind);
+        String name = (income
+                ? t("recurring.candidates.default_name_sales")
+                : t("recurring.candidates.default_name_expense"))
+                + " " + nullSafe(partyName);
+        String amount = totalAmount == null ? "0" : totalAmount.toPlainString();
+        // Heurística simple: si el importe es el TOTAL, asumir IVA 21%
+        // → base = total / 1.21. El usuario lo edita en el editor.
+        java.math.BigDecimal base = totalAmount == null
+                ? java.math.BigDecimal.ZERO
+                : totalAmount.divide(new java.math.BigDecimal("1.21"),
+                        2, java.math.RoundingMode.HALF_UP);
+        String counterCode = income ? "705" : "629";
+        String payload = "{\"partyNif\":" + jsonString(nullSafe(partyNif))
+                + ",\"partyName\":" + jsonString(nullSafe(partyName))
+                + ",\"concept\":" + jsonString(name)
+                + ",\"counterAccountCode\":" + jsonString(counterCode)
+                + ",\"baseAmount\":\"" + base.toPlainString() + "\""
+                + ",\"vatPercent\":21"
+                + ",\"retentionPercent\":0"
+                + "}";
+        LocalDate first = LocalDate.now().plusMonths(1);
+        return new com.benjagest.ui.model.AccountingModels.RecurringTask(
+                null, kind, name, "", "MONTHLY",
+                dayOfMonth, null, 1, first,
+                null, null, 0, 0, true, payload);
     }
 
     /** Devuelve nombre del día de la semana 1=lunes..7=domingo. */
