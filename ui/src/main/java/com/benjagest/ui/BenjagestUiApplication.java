@@ -1056,10 +1056,26 @@ public class BenjagestUiApplication extends Application {
         // Si el backend nos dio una lista valida la usamos. Si no, caemos
         // al fallback hardcodeado por modo (mantiene la app utilizable
         // sin conexion al endpoint /modules-catalog/active).
+        List<ModuleLink> base;
         if (activeModulesCache != null && !activeModulesCache.isEmpty()) {
-            return activeModulesCache;
+            base = activeModulesCache;
+        } else {
+            base = appMode == AppMode.ADVISORY ? ADVISORY_MODULES : BUSINESS_MODULES;
         }
-        return appMode == AppMode.ADVISORY ? ADVISORY_MODULES : BUSINESS_MODULES;
+        // Slice 3L — "Mi gestión" es un acceso virtual al modo cliente
+        // de la propia asesoría. NO es un módulo de BD (no está en
+        // company_modules), así que mapToModuleLinks() lo filtra por
+        // KNOWN_VIEWS. Lo añadimos manualmente al principio cuando
+        // estamos en modo ADVISORY y no actuando como cliente.
+        if (appMode == AppMode.ADVISORY
+                && !AuthSession.get().isActingForClient()
+                && base.stream().noneMatch(m -> "myCompany".equals(m.id()))) {
+            List<ModuleLink> withMyCompany = new java.util.ArrayList<>();
+            withMyCompany.add(new ModuleLink("myCompany", "Mi gestión", "fas-briefcase"));
+            withMyCompany.addAll(base);
+            return withMyCompany;
+        }
+        return base;
     }
 
     private Button navButton(String id, String text, String iconLiteral) {
