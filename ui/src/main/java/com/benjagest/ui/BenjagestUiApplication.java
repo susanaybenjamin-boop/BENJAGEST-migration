@@ -93,6 +93,16 @@ import javafx.util.Duration;
 public class BenjagestUiApplication extends Application {
 
     private static final List<ModuleLink> ADVISORY_MODULES = List.of(
+            // Slice 3G-2 — Acceso directo a la propia gestión de la
+            // asesoría como si fuese un cliente vinculado más. La
+            // V64 y AdvisoryService#ensureSelfLink garantizan la
+            // self-link en advisory_invitations. Click en este item
+            // activa actingForCompanyId = ID de la propia asesoría y
+            // abre la pantalla de cliente vinculado (Diario, Mayor,
+            // Recurrentes, Modelos AEAT, etc.). NO va dentro de "Mis
+            // clientes" para que la asesoría tenga clara la
+            // separación entre su gestión y la de sus clientes.
+            new ModuleLink("myCompany", "Mi empresa", "fas-house"),
             new ModuleLink("customers", "Clientes", "fas-users"),
             new ModuleLink("tax", "Fiscal", "fas-percentage"),
             new ModuleLink("labor", "Laboral", "fas-hard-hat"),
@@ -1277,6 +1287,14 @@ public class BenjagestUiApplication extends Application {
         recordNav(() -> showModule(module));
         currentModule = module;
         select(module);
+        if ("myCompany".equals(module)) {
+            // Slice 3G-2 — Entra a la propia gestión de la asesoría
+            // como si fuese un cliente vinculado más. Reusa todo el
+            // flujo de cliente vinculado (Diario, Mayor, Recurrentes,
+            // Modelos AEAT, Empleados, etc.) sin duplicar pantallas.
+            goToMyCompany();
+            return;
+        }
         if ("billing".equals(module)) {
             showBilling();
             return;
@@ -11393,6 +11411,7 @@ public class BenjagestUiApplication extends Application {
             case "recurring.field.bank_account" -> "Bank account (chart code)";
             case "recurring.field.amount" -> "Amount";
             case "recurring.journal_entry.hint" -> "For expenses charged directly from the bank without an invoice or receipt: self-employed contributions, bank fees, tax models (130/303), loan installments. Each run generates a simple journal entry (DEBIT expense / CREDIT bank) in draft.";
+            case "sidebar.my_company" -> "My company";
             case "date.day.monday" -> "Monday";
             case "date.day.tuesday" -> "Tuesday";
             case "date.day.wednesday" -> "Wednesday";
@@ -11908,6 +11927,7 @@ public class BenjagestUiApplication extends Application {
             case "recurring.field.bank_account" -> "Cuenta banco (código PGC)";
             case "recurring.field.amount" -> "Importe";
             case "recurring.journal_entry.hint" -> "Pensado para gastos que se cargan directamente del banco sin que llegue factura ni recibo: cuota autónomo TGSS, comisiones bancarias, modelos AEAT (130/303), cuotas préstamo. Cada ejecución genera un asiento contable simple (DEBE cuenta gasto / HABER cuenta banco) en estado borrador.";
+            case "sidebar.my_company" -> "Mi empresa";
             case "date.day.monday" -> "lunes";
             case "date.day.tuesday" -> "martes";
             case "date.day.wednesday" -> "miércoles";
@@ -14703,6 +14723,29 @@ public class BenjagestUiApplication extends Application {
      */
     private void switchToClient(com.benjagest.ui.model.ManagedClientEntry client) {
         switchToClient(client, true);
+    }
+
+    /**
+     * Slice 3G-2 — La asesoría entra a su propia gestión reutilizando
+     * el flujo de "cliente vinculado". Crea un ManagedClientEntry
+     * sintético con los datos del activeCompany (la asesoría está en
+     * SU propio tenant cuando hace click) y arranca el switch al modo
+     * cliente apuntando a SU MISMO company_id. Como
+     * actingForCompanyId pasa a ser igual al activeCompanyId, todas
+     * las llamadas API siguen golpeando el mismo tenant — solo cambia
+     * la PANTALLA que se le muestra al asesor (entra al detalle del
+     * cliente con todos los tabs: Diario, Mayor, Recurrentes, AEAT, …).
+     */
+    private void goToMyCompany() {
+        var session = com.benjagest.ui.service.AuthSession.get();
+        String id = session.activeCompanyId();
+        if (id == null || id.isBlank()) return;
+        String legalName = session.activeCompanyLegalName() == null
+                ? t("sidebar.my_company") : session.activeCompanyLegalName();
+        var synthetic = new com.benjagest.ui.model.ManagedClientEntry(
+                id, legalName, null, null,
+                "ADVISORY", null, null, null, null);
+        switchToClient(synthetic, true);
     }
 
     /**
