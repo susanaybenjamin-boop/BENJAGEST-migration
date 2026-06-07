@@ -106,7 +106,13 @@ public final class AccountingModels {
              *  importes, líneas…). Lo usa el editor en modo edición
              *  para prellenar los campos. Puede ser null en respuestas
              *  antiguas. */
-            String payloadJson
+            String payloadJson,
+            /** Slice 3R — TRUE cuando la plantilla fue creada por un
+             *  user que no pertenece al tenant donde vive la tarea.
+             *  Caso típico: la asesoría actuando como cliente. El UI
+             *  muestra "Creada por tu asesoría" cuando el viewer NO es
+             *  la asesoría. */
+            boolean createdByAdvisor
     ) {
         /** Constructor de compatibilidad con callsites antiguos. */
         public RecurringTask(String id, String kind, String name, String description,
@@ -116,7 +122,17 @@ public final class AccountingModels {
                              boolean active) {
             this(id, kind, name, description, frequency, dayOfMonth, dayOfWeek,
                     monthsBetween, nextRunDate, lastRunDate, lastRunStatus,
-                    timesRun, timesFailed, active, null);
+                    timesRun, timesFailed, active, null, false);
+        }
+        /** Constructor sin createdByAdvisor (compat 3Q). */
+        public RecurringTask(String id, String kind, String name, String description,
+                             String frequency, Integer dayOfMonth, Integer dayOfWeek,
+                             int monthsBetween, LocalDate nextRunDate, LocalDate lastRunDate,
+                             String lastRunStatus, int timesRun, int timesFailed,
+                             boolean active, String payloadJson) {
+            this(id, kind, name, description, frequency, dayOfMonth, dayOfWeek,
+                    monthsBetween, nextRunDate, lastRunDate, lastRunStatus,
+                    timesRun, timesFailed, active, payloadJson, false);
         }
     }
 

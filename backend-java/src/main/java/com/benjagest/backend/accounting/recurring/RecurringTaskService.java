@@ -171,19 +171,30 @@ public class RecurringTaskService {
 
     public RecurringTaskView get(String id) {
         List<RecurringTaskView> rows = jdbcTemplate.query("""
-                SELECT * FROM recurring_tasks WHERE id = ? AND company_id = ?
+                SELECT t.*, u.company_id AS creator_company_id
+                  FROM recurring_tasks t
+                  LEFT JOIN users u ON u.id = t.created_by_user_id
+                 WHERE t.id = ? AND t.company_id = ?
                 """, this::mapTask, id, tenantContext.getCurrentCompanyId());
         if (rows.isEmpty()) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Tarea recurrente no encontrada");
         return rows.get(0);
     }
 
     public List<RecurringTaskView> list(String kind, Boolean activeOnly) {
-        StringBuilder sql = new StringBuilder("SELECT * FROM recurring_tasks WHERE company_id = ?");
+        // Slice 3R — JOIN con users para saber si la plantilla fue creada
+        // por un usuario que NO pertenece a este tenant (típicamente, la
+        // asesoría actuando en el cliente). El UI usa creator_company_id
+        // != company_id como señal "Creada por tu asesoría".
+        StringBuilder sql = new StringBuilder(
+                "SELECT t.*, u.company_id AS creator_company_id "
+              + "FROM recurring_tasks t "
+              + "LEFT JOIN users u ON u.id = t.created_by_user_id "
+              + "WHERE t.company_id = ?");
         List<Object> args = new ArrayList<>();
         args.add(tenantContext.getCurrentCompanyId());
-        if (kind != null && !kind.isBlank()) { sql.append(" AND kind = ?"); args.add(kind); }
-        if (Boolean.TRUE.equals(activeOnly)) sql.append(" AND active = TRUE");
-        sql.append(" ORDER BY active DESC, next_run_date ASC");
+        if (kind != null && !kind.isBlank()) { sql.append(" AND t.kind = ?"); args.add(kind); }
+        if (Boolean.TRUE.equals(activeOnly)) sql.append(" AND t.active = TRUE");
+        sql.append(" ORDER BY t.active DESC, t.next_run_date ASC");
         return jdbcTemplate.query(sql.toString(), this::mapTask, args.toArray());
     }
 
@@ -697,8 +708,19 @@ public class RecurringTaskService {
         java.sql.Date ed = rs.getDate("end_date");
         java.sql.Timestamp ca = rs.getTimestamp("created_at");
         java.sql.Timestamp ua = rs.getTimestamp("updated_at");
+        // Slice 3R — createdByAdvisor: el creador pertenece a otra
+        // empresa distinta del tenant donde vive la tarea. Eso solo
+        // ocurre cuando una asesoría actuó como cliente (X-Company-Id
+        // del cliente, pero el user logueado sigue siendo el asesor).
+        String taskCompany = rs.getString("company_id");
+        String creatorCompany = null;
+        try { creatorCompany = rs.getString("creator_company_id"); }
+        catch (SQLException ignored) {} // findDueGlobally no incluye la columna
+        boolean createdByAdvisor = creatorCompany != null
+                && taskCompany != null
+                && !creatorCompany.equals(taskCompany);
         return new RecurringTaskView(
-                rs.getString("id"), rs.getString("company_id"),
+                rs.getString("id"), taskCompany,
                 rs.getString("kind"), rs.getString("name"), rs.getString("description"),
                 rs.getString("frequency"),
                 (Integer) rs.getObject("day_of_month"),
@@ -715,6 +737,7 @@ public class RecurringTaskService {
                 rs.getString("template_id"), rs.getString("loan_id"),
                 rs.getBoolean("active"),
                 rs.getString("created_by_user_id"),
+                createdByAdvisor,
                 ca == null ? null : ca.toInstant(),
                 ua == null ? null : ua.toInstant());
     }
@@ -746,6 +769,7 @@ public class RecurringTaskService {
             LocalDate endDate, String payloadJson,
             String templateId, String loanId,
             boolean active, String createdByUserId,
+            boolean createdByAdvisor,
             Instant createdAt, Instant updatedAt
     ) {}
 
