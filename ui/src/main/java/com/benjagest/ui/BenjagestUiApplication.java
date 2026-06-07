@@ -11412,6 +11412,9 @@ public class BenjagestUiApplication extends Application {
             case "recurring.field.amount" -> "Amount";
             case "recurring.journal_entry.hint" -> "For expenses charged directly from the bank without an invoice or receipt: self-employed contributions, bank fees, tax models (130/303), loan installments. Each run generates a simple journal entry (DEBIT expense / CREDIT bank) in draft.";
             case "sidebar.my_company" -> "My company";
+            case "button.refresh" -> "Refresh";
+            case "recurring.field.day_of_week" -> "Day of week";
+            case "recurring.field.months_between" -> "Every N months";
             case "date.day.monday" -> "Monday";
             case "date.day.tuesday" -> "Tuesday";
             case "date.day.wednesday" -> "Wednesday";
@@ -11928,6 +11931,9 @@ public class BenjagestUiApplication extends Application {
             case "recurring.field.amount" -> "Importe";
             case "recurring.journal_entry.hint" -> "Pensado para gastos que se cargan directamente del banco sin que llegue factura ni recibo: cuota autónomo TGSS, comisiones bancarias, modelos AEAT (130/303), cuotas préstamo. Cada ejecución genera un asiento contable simple (DEBE cuenta gasto / HABER cuenta banco) en estado borrador.";
             case "sidebar.my_company" -> "Mi empresa";
+            case "button.refresh" -> "Actualizar";
+            case "recurring.field.day_of_week" -> "Día semana";
+            case "recurring.field.months_between" -> "Cada N meses";
             case "date.day.monday" -> "lunes";
             case "date.day.tuesday" -> "martes";
             case "date.day.wednesday" -> "miércoles";
@@ -15808,16 +15814,46 @@ public class BenjagestUiApplication extends Application {
         grid.add(new Label(t("recurring.field.description")), 0, r);
         grid.add(descField, 1, r++, 3, 1);
 
+        // Slice 3H-1 — Mostrar las opciones del ComboBox traducidas
+        // (en el ComboBox van los códigos técnicos para no romper el
+        // payload del backend, pero el render se traduce con
+        // localizedFrequency).
+        applyFrequencyComboCells(freqCombo);
+
+        // Las etiquetas "Día del mes" y los Spinners dow/monthsBetween
+        // dependen de la frecuencia elegida. En lugar de mostrar
+        // "DoW / N meses" siempre, mostramos lo apropiado y ocultamos
+        // lo que no aplica.
+        Label dayLabel = new Label(t("recurring.freq.day"));
+        Label dowLabel = new Label(t("recurring.field.day_of_week"));
+        Label monthsLabel = new Label(t("recurring.field.months_between"));
+        Runnable applyFreqVisibility = () -> {
+            String f = freqCombo.getValue();
+            boolean monthly = "MONTHLY".equals(f) || "CUSTOM".equals(f);
+            boolean weekly = "WEEKLY".equals(f);
+            boolean custom = "CUSTOM".equals(f);
+            dayLabel.setManaged(monthly); dayLabel.setVisible(monthly);
+            domSpinner.setManaged(monthly); domSpinner.setVisible(monthly);
+            dowLabel.setManaged(weekly); dowLabel.setVisible(weekly);
+            dowSpinner.setManaged(weekly); dowSpinner.setVisible(weekly);
+            monthsLabel.setManaged(custom); monthsLabel.setVisible(custom);
+            monthsSpinner.setManaged(custom); monthsSpinner.setVisible(custom);
+        };
+        freqCombo.valueProperty().addListener((o, a, b) -> applyFreqVisibility.run());
+        applyFreqVisibility.run();
+
         grid.add(new Label(t("recurring.field.frequency")), 0, r);
         grid.add(freqCombo, 1, r);
-        grid.add(new Label(t("recurring.freq.day")), 2, r);
+        grid.add(dayLabel, 2, r);
         grid.add(domSpinner, 3, r++);
 
+        grid.add(dowLabel, 0, r);
+        grid.add(dowSpinner, 1, r);
+        grid.add(monthsLabel, 2, r);
+        grid.add(monthsSpinner, 3, r++);
+
         grid.add(new Label(t("recurring.field.first_run")), 0, r);
-        grid.add(firstRunDate, 1, r);
-        grid.add(new Label("DoW / N meses"), 2, r);
-        HBox dowAndMonths = new HBox(6, dowSpinner, monthsSpinner);
-        grid.add(dowAndMonths, 3, r++);
+        grid.add(firstRunDate, 1, r++, 3, 1);
 
         Label sep = new Label(isSales
                 ? t("recurring.section.sale_data") : t("recurring.section.expense_data"));
@@ -15988,6 +16024,7 @@ public class BenjagestUiApplication extends Application {
         javafx.scene.control.ComboBox<String> freqCombo = new javafx.scene.control.ComboBox<>();
         freqCombo.getItems().addAll("MONTHLY", "QUARTERLY", "YEARLY", "WEEKLY", "CUSTOM");
         freqCombo.setValue(existing == null ? "MONTHLY" : existing.frequency());
+        applyFrequencyComboCells(freqCombo);
 
         javafx.scene.control.Spinner<Integer> domSpinner = new javafx.scene.control.Spinner<>(
                 1, 31, existing == null || existing.dayOfMonth() == null ? 1 : existing.dayOfMonth());
@@ -16307,6 +16344,28 @@ public class BenjagestUiApplication extends Application {
         box.setPadding(new Insets(8));
         dlg.getDialogPane().setContent(box);
         dlg.showAndWait();
+    }
+
+    /**
+     * Aplica cellFactory + buttonCell a un ComboBox de frecuencias
+     * para que muestre las etiquetas traducidas (Mensual/Trimestral/…)
+     * en lugar de los códigos técnicos (MONTHLY/QUARTERLY/…). El
+     * valor interno del ComboBox sigue siendo el código técnico para
+     * que el payload del backend no cambie.
+     */
+    private void applyFrequencyComboCells(javafx.scene.control.ComboBox<String> combo) {
+        combo.setCellFactory(lv -> new javafx.scene.control.ListCell<>() {
+            @Override protected void updateItem(String item, boolean empty) {
+                super.updateItem(item, empty);
+                setText(empty || item == null ? "" : localizedFrequency(item));
+            }
+        });
+        combo.setButtonCell(new javafx.scene.control.ListCell<>() {
+            @Override protected void updateItem(String item, boolean empty) {
+                super.updateItem(item, empty);
+                setText(empty || item == null ? "" : localizedFrequency(item));
+            }
+        });
     }
 
     /**
