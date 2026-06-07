@@ -2414,6 +2414,24 @@ public class BenjagestUiApplication extends Application {
         validateBatchBtn.setDisable(true);
         validateBatchBtn.setOnAction(ev -> validatePurchaseBatch());
 
+        // Slice 3E-2 — Botón "Hacer recurrente" para gastos. Activo
+        // solo cuando hay exactamente 1 fila seleccionada y está
+        // POSTED (validada). Selecciones múltiples no aplican porque
+        // pueden ser de distintos proveedores.
+        Button makeRecurringPurchaseBtn = new Button(t("list.action.make_recurring"));
+        makeRecurringPurchaseBtn.setGraphic(icon("fas-arrows-rotate"));
+        makeRecurringPurchaseBtn.setDisable(true);
+        makeRecurringPurchaseBtn.setOnAction(ev -> {
+            var sel = purchaseInvoicesTable.getSelectionModel().getSelectedItem();
+            if (sel == null) return;
+            openRecurringEditorFromInvoice(
+                    "PURCHASE",
+                    sel.supplierNif(),
+                    sel.supplierName(),
+                    sel.baseAmount() != null ? sel.baseAmount() : sel.totalAmount(),
+                    sel.invoiceDate());
+        });
+
         purchaseInvoicesTable.getSelectionModel().getSelectedItems()
                 .addListener((javafx.collections.ListChangeListener<com.benjagest.ui.model.PurchaseInvoiceEntry>)
                         ch -> {
@@ -2422,11 +2440,15 @@ public class BenjagestUiApplication extends Application {
                     boolean anyDraft = sel.stream().anyMatch(
                             e -> e != null && "DRAFT".equalsIgnoreCase(e.status()));
                     validateBatchBtn.setDisable(!anyDraft);
+                    // Hacer recurrente: solo selección única POSTED.
+                    boolean onePosted = sel.size() == 1 && sel.get(0) != null
+                            && "POSTED".equalsIgnoreCase(sel.get(0).status());
+                    makeRecurringPurchaseBtn.setDisable(!onePosted);
                 });
 
         // Acciones inferiores: solo lo que actúa sobre la selección.
         // El import vive arriba en la fila de filtros.
-        HBox actions = new HBox(10, validateBatchBtn, deleteBtn);
+        HBox actions = new HBox(10, validateBatchBtn, makeRecurringPurchaseBtn, deleteBtn);
 
         VBox body = new VBox(12);
         if (showWithHeader) {
