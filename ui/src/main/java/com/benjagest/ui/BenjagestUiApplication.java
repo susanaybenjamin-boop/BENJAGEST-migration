@@ -3882,16 +3882,96 @@ public class BenjagestUiApplication extends Application {
         CheckBox authRequired = new CheckBox(t("settings.email.flag.auth"));
         authRequired.setSelected(config.authRequired());
 
+        // Slice 4A — Selector de proveedor que autorrellena los campos
+        // técnicos (host/puerto/TLS/auth) según el servicio elegido. El
+        // asesor/empresario solo necesita pegar su email y la contraseña
+        // (o app password). Detecta el proveedor por defecto a partir
+        // del host actual si ya está configurado.
+        ComboBox<String> providerCombo = new ComboBox<>();
+        providerCombo.getItems().addAll(
+                t("settings.email.provider.custom"),
+                "Gmail / Google Workspace",
+                "Outlook / Office 365 / Hotmail",
+                "Yahoo Mail",
+                "iCloud",
+                "Zoho Mail",
+                "Dondominio",
+                "Webempresa",
+                "OVH",
+                "IONOS / 1&1",
+                "Strato",
+                "Arsys");
+        providerCombo.setValue(detectProviderFromHost(smtpHost.getText()));
+        providerCombo.setMaxWidth(360);
+
+        // Hint dinámico con info específica del proveedor y link.
+        javafx.scene.control.Hyperlink helpLink = new javafx.scene.control.Hyperlink();
+        helpLink.setVisible(false);
+        helpLink.setManaged(false);
+        Label helpHint = new Label();
+        helpHint.getStyleClass().add("settings-hint");
+        helpHint.setWrapText(true);
+
+        Runnable refreshHelp = () -> {
+            String prov = providerCombo.getValue();
+            ProviderPreset preset = providerPreset(prov);
+            if (preset == null) {
+                helpHint.setText(t("settings.email.help.custom"));
+                helpLink.setVisible(false);
+                helpLink.setManaged(false);
+            } else {
+                helpHint.setText(preset.hint);
+                if (preset.helpUrl != null) {
+                    helpLink.setText(preset.helpText);
+                    helpLink.setVisible(true);
+                    helpLink.setManaged(true);
+                    helpLink.setOnAction(e -> openExternalUrl(preset.helpUrl));
+                } else {
+                    helpLink.setVisible(false);
+                    helpLink.setManaged(false);
+                }
+            }
+        };
+        providerCombo.valueProperty().addListener((obs, oldV, newV) -> {
+            ProviderPreset preset = providerPreset(newV);
+            if (preset != null) {
+                smtpHost.setText(preset.host);
+                smtpPort.setText(String.valueOf(preset.port));
+                tlsEnabled.setSelected(preset.tls);
+                authRequired.setSelected(preset.auth);
+            }
+            refreshHelp.run();
+        });
+        refreshHelp.run();
+
+        // Si los campos están vacíos, intenta pre-rellenar smtpUser y
+        // fromAddress con el email de la empresa (pestaña Empresa →
+        // contact_email) — minimiza tecleo en el alta inicial.
+        if (smtpUser.getText() == null || smtpUser.getText().isBlank()) {
+            String companyEmail = tryReadCompanyContactEmail();
+            if (companyEmail != null) {
+                smtpUser.setText(companyEmail);
+                if (fromAddress.getText() == null || fromAddress.getText().isBlank()) {
+                    fromAddress.setText(companyEmail);
+                }
+            }
+        }
+
         GridPane grid = formGrid();
-        addFormRow(grid, 0, t("settings.email.field.host"), smtpHost);
-        addFormRow(grid, 1, t("settings.email.field.port"), smtpPort);
-        addFormRow(grid, 2, t("settings.email.field.user"), smtpUser);
-        addFormRow(grid, 3, t("settings.email.field.password"), smtpPassword);
-        addFormRow(grid, 4, t("settings.email.field.from_address"), fromAddress);
-        addFormRow(grid, 5, t("settings.email.field.from_name"), fromName);
-        addFormRow(grid, 6, t("settings.email.field.reply_to"), replyTo);
+        addFormRow(grid, 0, t("settings.email.field.provider"), providerCombo);
+        addFormRow(grid, 1, t("settings.email.field.host"), smtpHost);
+        addFormRow(grid, 2, t("settings.email.field.port"), smtpPort);
+        addFormRow(grid, 3, t("settings.email.field.user"), smtpUser);
+        addFormRow(grid, 4, t("settings.email.field.password"), smtpPassword);
+        addFormRow(grid, 5, t("settings.email.field.from_address"), fromAddress);
+        addFormRow(grid, 6, t("settings.email.field.from_name"), fromName);
+        addFormRow(grid, 7, t("settings.email.field.reply_to"), replyTo);
 
         VBox flags = new VBox(8, tlsEnabled, authRequired);
+
+        // Bloque de ayuda contextual, debajo del formulario.
+        VBox helpBox = new VBox(4, helpHint, helpLink);
+        helpBox.setPadding(new Insets(4, 0, 0, 0));
 
         TextField testRecipient = new TextField();
         testRecipient.setPromptText(t("settings.email.test.prompt"));
@@ -3922,12 +4002,127 @@ public class BenjagestUiApplication extends Application {
         VBox center = new VBox(16,
                 grid,
                 flags,
+                helpBox,
                 new Separator(),
                 label(t("settings.email.section.test"), "settings-section-title"),
                 label(t("settings.email.section.test.hint"), "settings-hint"),
                 testRecipient
         );
         return tabLayout(label(t("settings.email.section"), "settings-section-title"), center, actions);
+    }
+
+    /**
+     * Slice 4A — Presets SMTP por proveedor. El usuario solo elige el
+     * combo y los campos host/port/tls/auth se autorrellenan.
+     */
+    private record ProviderPreset(
+            String host, int port, boolean tls, boolean auth,
+            String hint, String helpText, String helpUrl) {}
+
+    private ProviderPreset providerPreset(String provider) {
+        if (provider == null) return null;
+        if (provider.startsWith("Gmail")) return new ProviderPreset(
+                "smtp.gmail.com", 587, true, true,
+                t("settings.email.help.gmail"),
+                t("settings.email.help.gmail.link"),
+                "https://myaccount.google.com/apppasswords");
+        if (provider.startsWith("Outlook")) return new ProviderPreset(
+                "smtp.office365.com", 587, true, true,
+                t("settings.email.help.outlook"),
+                t("settings.email.help.outlook.link"),
+                "https://account.live.com/proofs/AppPassword");
+        if (provider.startsWith("Yahoo")) return new ProviderPreset(
+                "smtp.mail.yahoo.com", 587, true, true,
+                t("settings.email.help.yahoo"),
+                t("settings.email.help.yahoo.link"),
+                "https://login.yahoo.com/account/security/app-passwords");
+        if (provider.startsWith("iCloud")) return new ProviderPreset(
+                "smtp.mail.me.com", 587, true, true,
+                t("settings.email.help.icloud"),
+                t("settings.email.help.icloud.link"),
+                "https://appleid.apple.com/account/manage");
+        if (provider.startsWith("Zoho")) return new ProviderPreset(
+                "smtp.zoho.eu", 587, true, true,
+                t("settings.email.help.zoho"),
+                t("settings.email.help.zoho.link"),
+                "https://accounts.zoho.eu/u/h#sessions/apppasswords");
+        if (provider.startsWith("Dondominio")) return new ProviderPreset(
+                "mail.tudominio.com", 587, true, true,
+                t("settings.email.help.dondominio"), null, null);
+        if (provider.startsWith("Webempresa")) return new ProviderPreset(
+                "mail.tudominio.com", 587, true, true,
+                t("settings.email.help.generic_hosting"), null, null);
+        if (provider.startsWith("OVH")) return new ProviderPreset(
+                "ssl0.ovh.net", 587, true, true,
+                t("settings.email.help.ovh"), null, null);
+        if (provider.startsWith("IONOS")) return new ProviderPreset(
+                "smtp.ionos.es", 587, true, true,
+                t("settings.email.help.ionos"), null, null);
+        if (provider.startsWith("Strato")) return new ProviderPreset(
+                "smtp.strato.com", 587, true, true,
+                t("settings.email.help.generic_hosting"), null, null);
+        if (provider.startsWith("Arsys")) return new ProviderPreset(
+                "smtp.arsys.es", 587, true, true,
+                t("settings.email.help.generic_hosting"), null, null);
+        return null; // "Personalizado" o desconocido
+    }
+
+    /**
+     * Detecta el proveedor a partir del host SMTP guardado. Permite
+     * que al entrar a la pantalla, el combo refleje lo que ya hay
+     * configurado en lugar de quedarse en blanco.
+     */
+    private String detectProviderFromHost(String host) {
+        if (host == null || host.isBlank()) return t("settings.email.provider.custom");
+        String h = host.toLowerCase();
+        if (h.contains("gmail")) return "Gmail / Google Workspace";
+        if (h.contains("office365") || h.contains("outlook") || h.contains("hotmail"))
+            return "Outlook / Office 365 / Hotmail";
+        if (h.contains("yahoo")) return "Yahoo Mail";
+        if (h.contains("me.com") || h.contains("icloud")) return "iCloud";
+        if (h.contains("zoho")) return "Zoho Mail";
+        if (h.contains("dondominio")) return "Dondominio";
+        if (h.contains("webempresa")) return "Webempresa";
+        if (h.contains("ovh")) return "OVH";
+        if (h.contains("ionos") || h.contains("1and1")) return "IONOS / 1&1";
+        if (h.contains("strato")) return "Strato";
+        if (h.contains("arsys")) return "Arsys";
+        return t("settings.email.provider.custom");
+    }
+
+    /**
+     * Lee perezosamente el email de la empresa actual de la pestaña
+     * "Empresa" para pre-rellenar smtpUser/fromAddress. Si el endpoint
+     * falla por cualquier motivo, devolvemos null sin ruido.
+     */
+    private String tryReadCompanyContactEmail() {
+        try {
+            var company = settingsApiClient.getCompany();
+            if (company != null && company.email() != null
+                    && !company.email().isBlank()) {
+                return company.email();
+            }
+        } catch (Exception ignored) {}
+        return null;
+    }
+
+    /**
+     * Abre una URL en el navegador del sistema. Si Desktop no está
+     * soportado (entornos headless, Linux sin DE), muestra la URL
+     * en un diálogo para que el usuario la copie.
+     */
+    private void openExternalUrl(String url) {
+        try {
+            if (java.awt.Desktop.isDesktopSupported()
+                    && java.awt.Desktop.getDesktop().isSupported(
+                            java.awt.Desktop.Action.BROWSE)) {
+                java.awt.Desktop.getDesktop().browse(new java.net.URI(url));
+                return;
+            }
+        } catch (Exception ignored) {}
+        Alert a = new Alert(Alert.AlertType.INFORMATION, url, ButtonType.OK);
+        a.setHeaderText(t("settings.email.help.copy_url"));
+        a.showAndWait();
     }
 
     private Integer parseIntOrNull(String text) {
@@ -9184,7 +9379,6 @@ public class BenjagestUiApplication extends Application {
                 case "settings.company.save.fail.title" -> "Could not save";
                 case "settings.company.save.fail.body" -> "Check the data and try again.";
                 case "settings.email.section" -> "SMTP server";
-                case "settings.email.prompt.host" -> "smtp.your-server.com";
                 case "settings.email.prompt.port" -> "587";
                 case "settings.email.prompt.user" -> "user@domain";
                 case "settings.email.prompt.password.saved" -> "(password saved - leave blank to keep)";
@@ -9343,6 +9537,7 @@ public class BenjagestUiApplication extends Application {
                     String v = tNewModulesEn(key);
                     if (v == null) v = tAdvisoryInvitationsEn(key);
                     if (v == null) v = tExportsAndChainEn(key);
+                    if (v == null) v = tEmailHelpEn(key);
                     yield v != null ? v : (key.startsWith("column.") ? key.substring(7) : key);
                 }
             };
@@ -10105,7 +10300,6 @@ public class BenjagestUiApplication extends Application {
             case "settings.company.save.fail.title" -> "No se pudo guardar";
             case "settings.company.save.fail.body" -> "Comprueba los datos y vuelve a intentarlo.";
             case "settings.email.section" -> "Servidor SMTP";
-            case "settings.email.prompt.host" -> "smtp.tu-servidor.com";
             case "settings.email.prompt.port" -> "587";
             case "settings.email.prompt.user" -> "usuario@dominio";
             case "settings.email.prompt.password.saved" -> "(password guardada - deja vacio para no cambiar)";
@@ -10264,6 +10458,7 @@ public class BenjagestUiApplication extends Application {
                 String v = tNewModulesEs(key);
                 if (v == null) v = tAdvisoryInvitationsEs(key);
                 if (v == null) v = tExportsAndChainEs(key);
+                if (v == null) v = tEmailHelpEs(key);
                 if (v != null) yield v;
                 yield key.startsWith("column.") ? key.substring(7) : switch (key) {
                 case "field.name" -> "Nombre";
@@ -10500,6 +10695,46 @@ public class BenjagestUiApplication extends Application {
         };
     }
 
+    /**
+     * Slice 4A — Helper i18n EN para las claves de configuración SMTP
+     * (selector de proveedor + ayuda contextual). Aislado en helper
+     * propio para que el switch principal `t()` no rebase los 64KB
+     * por método de la JVM.
+     */
+    private String tEmailHelpEn(String key) {
+        return switch (key) {
+            case "settings.email.field.provider" -> "Email provider";
+            case "settings.email.provider.custom" -> "Custom (manual)";
+            case "settings.email.help.custom" ->
+                    "Enter your SMTP server details manually. Ask your IT or hosting provider for the values.";
+            case "settings.email.help.gmail" ->
+                    "Gmail requires a 16-character App Password (NOT your normal password). Enable 2FA first.";
+            case "settings.email.help.gmail.link" -> "Generate App Password (Google account)";
+            case "settings.email.help.outlook" ->
+                    "If you have MFA enabled, generate an App Password from your Microsoft account.";
+            case "settings.email.help.outlook.link" -> "Generate App Password (Microsoft account)";
+            case "settings.email.help.yahoo" ->
+                    "Yahoo blocks normal passwords for external apps — generate an App Password.";
+            case "settings.email.help.yahoo.link" -> "Generate App Password (Yahoo account)";
+            case "settings.email.help.icloud" ->
+                    "iCloud requires an app-specific password generated from your Apple ID page.";
+            case "settings.email.help.icloud.link" -> "Generate app-specific password (Apple ID)";
+            case "settings.email.help.zoho" ->
+                    "Zoho needs an app password if 2FA is enabled (Account -> Security -> App Passwords).";
+            case "settings.email.help.zoho.link" -> "Manage App Passwords (Zoho)";
+            case "settings.email.help.dondominio" ->
+                    "Replace 'tudominio.com' in the host with your real domain. The password is the one of the email account.";
+            case "settings.email.help.generic_hosting" ->
+                    "Use the SMTP server provided by your hosting (it might differ from the default).";
+            case "settings.email.help.ovh" ->
+                    "ssl0.ovh.net works for accounts hosted in the OVH webmail. Use your full email as user.";
+            case "settings.email.help.ionos" ->
+                    "Use your full IONOS email address as user and your IONOS mail password.";
+            case "settings.email.help.copy_url" -> "Open this URL in your browser:";
+            default -> null;
+        };
+    }
+
     private String tExportsAndChainEs(String key) {
         return switch (key) {
             case "timeclock.export.title" -> "Exportar para Inspeccion";
@@ -10540,6 +10775,43 @@ public class BenjagestUiApplication extends Application {
             case "billing.config.sif.export.to" -> "Hasta";
             case "billing.config.sif.export.pdf" -> "Descargar PDF";
             case "billing.config.sif.export.csv" -> "Descargar CSV";
+            default -> null;
+        };
+    }
+
+    /**
+     * Slice 4A — Helper i18n ES espejo de {@link #tEmailHelpEn}.
+     */
+    private String tEmailHelpEs(String key) {
+        return switch (key) {
+            case "settings.email.field.provider" -> "Proveedor de email";
+            case "settings.email.provider.custom" -> "Personalizado (manual)";
+            case "settings.email.help.custom" ->
+                    "Introduce los datos del servidor SMTP a mano. Pídeselos a tu informático o a tu proveedor de hosting si no los sabes.";
+            case "settings.email.help.gmail" ->
+                    "Gmail requiere una contraseña de aplicación de 16 caracteres (NO tu contraseña normal). Activa antes la verificación en 2 pasos.";
+            case "settings.email.help.gmail.link" -> "Generar contraseña de aplicación (cuenta Google)";
+            case "settings.email.help.outlook" ->
+                    "Si tienes verificación en dos pasos activada, genera una contraseña de aplicación desde tu cuenta Microsoft.";
+            case "settings.email.help.outlook.link" -> "Generar contraseña de aplicación (cuenta Microsoft)";
+            case "settings.email.help.yahoo" ->
+                    "Yahoo bloquea las contraseñas normales para apps externas — genera una contraseña de aplicación.";
+            case "settings.email.help.yahoo.link" -> "Generar contraseña de aplicación (cuenta Yahoo)";
+            case "settings.email.help.icloud" ->
+                    "iCloud necesita una contraseña específica de aplicación generada desde tu Apple ID.";
+            case "settings.email.help.icloud.link" -> "Generar contraseña específica (Apple ID)";
+            case "settings.email.help.zoho" ->
+                    "Zoho necesita una contraseña de aplicación si tienes 2FA activado (Cuenta -> Seguridad -> App Passwords).";
+            case "settings.email.help.zoho.link" -> "Gestionar contraseñas de aplicación (Zoho)";
+            case "settings.email.help.dondominio" ->
+                    "Sustituye 'tudominio.com' del servidor por tu dominio real. La contraseña es la del buzón de correo.";
+            case "settings.email.help.generic_hosting" ->
+                    "Usa el servidor SMTP que te indique tu hosting (puede variar respecto al valor por defecto).";
+            case "settings.email.help.ovh" ->
+                    "ssl0.ovh.net vale para cuentas alojadas en el webmail de OVH. Usa tu email completo como usuario.";
+            case "settings.email.help.ionos" ->
+                    "Usa tu email IONOS completo como usuario y la contraseña del buzón IONOS.";
+            case "settings.email.help.copy_url" -> "Abre esta URL en tu navegador:";
             default -> null;
         };
     }
