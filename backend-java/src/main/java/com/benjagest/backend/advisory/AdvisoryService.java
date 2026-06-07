@@ -47,6 +47,7 @@ public class AdvisoryService {
     }
 
     public List<ManagedClient> listMyManagedClients() {
+        ensureSelfLink();
         return jdbcTemplate.query("""
                 SELECT id, legal_name, trade_name, tax_identifier,
                        company_type, email, phone, city, province
@@ -57,6 +58,52 @@ public class AdvisoryService {
                 this::mapClient,
                 tenantContext.getCurrentCompanyId()
         );
+    }
+
+    /**
+     * Slice 3G — Garantiza que la asesoría logueada tiene una fila
+     * advisory_invitations status=ACCEPTED apuntando a sí misma. La
+     * migración V64 cubre las asesorías que ya existían; este método
+     * cubre cualquier camino futuro (creación posterior, restore de
+     * backup, etc.). Idempotente: si la self-link ya existe no hace
+     * nada. Si la company logueada no es de tipo ADVISORY, tampoco
+     * inserta.
+     *
+     * <p>Se invoca lazy desde {@link #listMyManagedClients()} para no
+     * acoplar el flujo de creación de asesoría — basta con que la
+     * primera vez que el asesor pida su portfolio se asegure de tener
+     * la self-link.
+     */
+    public void ensureSelfLink() {
+        String advisoryId = tenantContext.getCurrentCompanyId();
+        if (advisoryId == null) return;
+        Integer matches = jdbcTemplate.queryForObject("""
+                SELECT COUNT(*) FROM companies
+                 WHERE id = ? AND company_type = 'ADVISORY'
+                """, Integer.class, advisoryId);
+        if (matches == null || matches == 0) return;
+        Integer already = jdbcTemplate.queryForObject("""
+                SELECT COUNT(*) FROM advisory_invitations
+                 WHERE advisory_company_id = ?
+                   AND invited_company_id  = ?
+                   AND status = 'ACCEPTED'
+                """, Integer.class, advisoryId, advisoryId);
+        if (already != null && already > 0) return;
+        jdbcTemplate.update("""
+                INSERT INTO advisory_invitations (
+                    id, advisory_company_id, invited_email, invited_nif,
+                    invited_company_name, invited_company_id, token, status,
+                    expires_at, notes, accepted_at, created_at, updated_at
+                )
+                SELECT UUID(), c.id, NULL, c.tax_identifier,
+                       COALESCE(c.trade_name, 'Mi empresa'), c.id,
+                       CONCAT('SELF:', c.id), 'ACCEPTED',
+                       '2999-12-31 23:59:59',
+                       'Auto-vinculación silenciosa (ensureSelfLink). NO BORRAR.',
+                       CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+                  FROM companies c
+                 WHERE c.id = ?
+                """, advisoryId);
     }
 
     /**
