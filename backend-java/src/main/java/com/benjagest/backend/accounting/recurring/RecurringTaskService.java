@@ -559,15 +559,19 @@ public class RecurringTaskService {
                     bd(l.get("debit")), bd(l.get("credit"))));
         }
         boolean postNow = Boolean.TRUE.equals(p.get("postNow"));
-        // Slice 3O — marcamos auto_proposed=TRUE y source_type para que
-        // el asiento aparezca en "Por validar" del módulo Contabilidad
-        // y el asesor sepa que viene del cron de recurrentes (no es
-        // un asiento manual que se haya escapado validar).
+        // Slice 3X — El editor "Pago periódico sin factura" siempre
+        // genera gastos (cuota autónomo TGSS, modelos AEAT que se
+        // ingresan, comisiones bancarias, cuotas de préstamo, etc.).
+        // Source_type unificado a PURCHASE_INVOICE → en el Diario
+        // aparece como "Gasto" y el concepto lleva "(recurrente)"
+        // para que el asesor lo identifique.
+        String concept = expandPlaceholders((String) p.get("concept"), scheduledDate);
+        if (concept == null || concept.isBlank()) concept = task.name();
+        String conceptWithTag = concept + " (recurrente)";
         ManualJournalEntryService.ManualEntryView v = manualEntries.createDraftAutoProposed(
                 new ManualJournalEntryService.ManualEntryRequest(scheduledDate,
-                        expandPlaceholders((String) p.get("concept"), scheduledDate),
-                        lines, postNow),
-                "RECURRING_TASK",
+                        conceptWithTag, lines, postNow),
+                "PURCHASE_INVOICE",
                 task.id());
         return v.id();
     }
