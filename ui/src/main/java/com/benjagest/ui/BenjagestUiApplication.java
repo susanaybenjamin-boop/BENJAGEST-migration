@@ -11586,6 +11586,7 @@ public class BenjagestUiApplication extends Application {
             case "team.assign.col.role" -> "Role";
             case "team.assign.empty.clients" -> "No clients in your portfolio yet.";
             case "team.assign.empty.matrix" -> "No assignments yet — distribute your clients to see them here.";
+            case "team.assign.my_company" -> "My management";
             case "team.assign.no_selection.title" -> "Select clients";
             case "team.assign.no_selection.body" -> "Tick at least one client on the left before assigning.";
             case "team.assign.no_employee.title" -> "Pick an employee";
@@ -11888,6 +11889,7 @@ public class BenjagestUiApplication extends Application {
             case "team.assign.col.role" -> "Rol";
             case "team.assign.empty.clients" -> "Todavía no hay clientes en tu cartera.";
             case "team.assign.empty.matrix" -> "Aún no hay asignaciones — reparte tus clientes para verlas aquí.";
+            case "team.assign.my_company" -> "Mi gestión";
             case "team.assign.no_selection.title" -> "Selecciona clientes";
             case "team.assign.no_selection.body" -> "Marca al menos un cliente a la izquierda antes de asignar.";
             case "team.assign.no_employee.title" -> "Elige un empleado";
@@ -17501,6 +17503,31 @@ public class BenjagestUiApplication extends Application {
         // vinculados. El backend valida en bulkAssign que parent_company_id
         // del cliente apunta a la asesoría logueada.
         ObservableList<ClientRow> clientRows = FXCollections.observableArrayList();
+
+        // FILA VIRTUAL "Mi gestión" — la propia asesoría se asigna a sí
+        // misma como cliente (V64 self-link). Benjamin pidió que se pueda
+        // repartir el trabajo INTERNO de la asesoría entre empleados con
+        // módulos concretos, igual que con cualquier otro cliente. La
+        // backend valida bypass en validateClientBelongsToAdvisory.
+        String advisoryId = AuthSession.get().activeCompanyId();
+        String advisoryName = AuthSession.get().activeCompanyLegalName();
+        if (advisoryId != null && !advisoryId.isBlank()) {
+            String name = (advisoryName == null || advisoryName.isBlank())
+                    ? t("team.assign.my_company") : advisoryName;
+            // Reusamos CustomerPortfolioEntry — solo necesitamos un
+            // linkedCompanyId y displayName.
+            com.benjagest.ui.model.CustomerPortfolioEntry self =
+                    new com.benjagest.ui.model.CustomerPortfolioEntry(
+                            advisoryId,
+                            "★ " + t("team.assign.my_company") + " — " + name,
+                            null, null,
+                            "ADVISORY",
+                            null, null, null,
+                            advisoryId,
+                            false, false, true);
+            clientRows.add(new ClientRow(self));
+        }
+
         for (com.benjagest.ui.model.CustomerPortfolioEntry c : bundle.clients()) {
             // Solo clientes que tienen shadow company creada (linkedCompanyId
             // != null) son asignables — las asignaciones se hacen contra
@@ -17508,6 +17535,8 @@ public class BenjagestUiApplication extends Application {
             // iniciado la gestión, no podemos asignar empleados (esa decisión
             // se toma cuando el OWNER hace doble-click en "Iniciar gestión").
             if (c.linkedCompanyId() == null || c.linkedCompanyId().isBlank()) continue;
+            // No duplicar si la asesoría aparece por self-link en portfolio
+            if (advisoryId != null && advisoryId.equals(c.linkedCompanyId())) continue;
             clientRows.add(new ClientRow(c));
         }
         TableView<ClientRow> clientTable = new TableView<>();

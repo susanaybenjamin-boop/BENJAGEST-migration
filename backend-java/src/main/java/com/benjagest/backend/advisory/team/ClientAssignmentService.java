@@ -50,7 +50,16 @@ public class ClientAssignmentService {
      * me han asignado?", usar {@link #listMine}.
      */
     public List<ClientAssignment> listForCurrentAdvisory() {
-        String advisoryId = tenantContext.getCurrentCompanyId();
+        // BUG FIX 2026-06-08: usar activeCompanyId del JWT (asesoría real
+        // estable) en lugar de tenantContext (que puede ser el cliente
+        // si la sesión está actuando como cliente). Antes: si Benjamin
+        // tenía residuos de actingForCompanyId, el listado de su Equipo
+        // salía vacío.
+        var user = currentUserService.require();
+        String advisoryId = user.activeCompanyId();
+        if (advisoryId == null || advisoryId.isBlank()) {
+            advisoryId = tenantContext.getCurrentCompanyId();
+        }
         requireOwner(advisoryId);
         return repository.listByAdvisory(advisoryId);
     }
