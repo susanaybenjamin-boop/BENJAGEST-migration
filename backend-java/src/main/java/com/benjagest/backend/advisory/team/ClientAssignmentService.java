@@ -61,7 +61,14 @@ public class ClientAssignmentService {
             advisoryId = tenantContext.getCurrentCompanyId();
         }
         requireOwner(advisoryId);
-        return repository.listByAdvisory(advisoryId);
+        List<ClientAssignment> rows = repository.listByAdvisory(advisoryId);
+        // LOG diagnóstico — Benjamin reporta listado vacío aunque hay
+        // asignaciones en BD. Si advisoryId está mal, lo veremos aquí.
+        // Quitar este log cuando confirmemos que el flujo funciona.
+        org.slf4j.LoggerFactory.getLogger(ClientAssignmentService.class).info(
+                "TEAM-DEBUG listForCurrentAdvisory: userId={} advisoryId={} tenantId={} rows={}",
+                user.userId(), advisoryId, tenantContext.getCurrentCompanyId(), rows.size());
+        return rows;
     }
 
     /**

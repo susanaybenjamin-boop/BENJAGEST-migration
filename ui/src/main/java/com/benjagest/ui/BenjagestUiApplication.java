@@ -17582,9 +17582,21 @@ public class BenjagestUiApplication extends Application {
         roleCombo.setValue("ADVISOR");
         roleCombo.setMaxWidth(Double.MAX_VALUE);
 
-        // Checkboxes por módulo del catálogo. Vacío = asignación abierta.
-        // Filtramos módulos que tienen sentido por cliente (excluye "settings"
-        // y otros que son globales de empresa; el sidebar igualmente los oculta).
+        // Checkboxes por módulo. Solo mostramos los módulos PRINCIPALES
+        // que aparecen en el sidebar del cliente, para mantener el panel
+        // de asignación limpio y alineado con lo que el empleado va a ver.
+        // Benjamin: 'demasiados módulos, deberíamos globalizar'.
+        //
+        // Lista cerrada — refleja el sidebar de un cliente: facturación,
+        // compras, contabilidad, fiscal, laboral, fichajes, autónomos,
+        // agenda, informes, DEHú. Excluye internos como certificados
+        // digitales, eventos SIF, plan contable, etc. (son sub-piezas
+        // de los módulos principales y no se reparten independientemente).
+        java.util.Set<String> ASSIGNABLE_SLUGS = java.util.Set.of(
+                "billing", "purchases", "accounting", "tax", "labor",
+                "timeclock", "time-clock", "self-employed", "reta",
+                "calendar", "reports", "notifications", "dehu"
+        );
         VBox modulesBox = new VBox(4);
         modulesBox.setPadding(new Insets(4, 0, 4, 0));
         List<CheckBox> moduleChecks = new ArrayList<>();
@@ -17595,8 +17607,7 @@ public class BenjagestUiApplication extends Application {
         // checkboxes individuales se ignoran (asignación abierta).
         for (CompanyModuleEntry m : bundle.modules()) {
             if (m == null || m.slug() == null || m.slug().isBlank()) continue;
-            if ("settings".equals(m.slug())) continue; // settings no se reparte
-            if ("team".equals(m.slug())) continue;     // el propio módulo equipo tampoco
+            if (!ASSIGNABLE_SLUGS.contains(m.slug())) continue;
             CheckBox cb = new CheckBox(m.label());
             cb.setUserData(m.slug());
             cb.disableProperty().bind(allModules.selectedProperty());
