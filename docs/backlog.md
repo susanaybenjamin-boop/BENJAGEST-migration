@@ -39,9 +39,27 @@ Para no repetir en cada sección lo que ya está:
 
 Lo que toca **antes** de seguir con features funcionales. Cubre: legalidad, seguridad multi-tenant, y los dos slices que dejamos preparados.
 
-### 🟢 PRIMERA TAREA AL VOLVER (sesión 2026-06-09) — arrancar bloque CTR (contratos)
+### 🟢 PRIMERA TAREA AL VOLVER — continuar bloque CTR (CTR-4 PDF firmable)
 
-**Bloque L4 cerrado al 100%** + decisión de Benjamin (2026-06-08) de arrancar acto seguido el bloque CTR (contratos) — porque la facilidad de preparar contratos es la siguiente pieza de valor visible para el asesor.
+**Bloque L4 cerrado al 100%** + **CTR-1 y CTR-2 cerrados** + Flyway out-of-order arreglado + dos fixes UX transversales (humanización errores HTTP en TODA la app + i18n sexo/estado civil). Próximo: **CTR-4 (PDF firmable)** porque el wizard ya tiene el selector `UNIFIED_2022 / BY_CODE` pero no genera nada todavía.
+
+**Hecho 2026-06-08 tarde:**
+
+- ✅ **fix Flyway outOfOrder** — `FlywayConfig.outOfOrderCustomizer` permite aplicar V71 (creada tras V72/V73). Sin esto el backend abortaba al arrancar con "Detected resolved migration not applied: 71".
+- ✅ **fix UX errores humanos** — `showError` ahora pasa CUALQUIER mensaje por `humanizeBackendError()` que detecta el JSON Spring estándar y extrae solo `"message"`. Aplica a TODA la app sin retoque por call-site.
+- ✅ **fix UX i18n sexo + estado civil** — combos `genderCombo` y `maritalCombo` con StringConverter usando `humanizeFromKey(key, fallback)`. Valores internos siguen siendo MALE/FEMALE/SINGLE/MARRIED/... (no se toca BD). UI muestra "Hombre/Mujer/Soltero/a/..." en ES, equivalentes en EN. 13 keys + helper `humanizeFromKey` reutilizable.
+- ✅ **CTR-1 — V74 catálogos completos**. WebSearch legal previo. Tres tablas con seed: sepe_contract_types (28 códigos post-Reforma 2022 + 2 legacy), collective_agreements + professional_categories (25 convenios PYMEs con 3-6 categorías cada uno y salario mín 2026 + jornada máx + periodo prueba), contract_clause_templates (12 anexos built-in con texto legal completo + placeholders + legal_basis).
+- ✅ **CTR-2 — backend ContractCatalog{Models,Service,Controller} + UI wizard 4 pasos**. 3 GET /api/contracts/catalog/*. UI showContractWizard reemplaza al editor plano: paso 1 SEPE filtrable por familia, paso 2 convenio→categoría cascada con info referencia, paso 3 datos auto-rellenados con warning amarillo si < mínimo, paso 4 resumen + combo modelo PDF (UNIFIED_2022 / BY_CODE) + checkboxes de las 12 cláusulas. WizardState mutable + validateStep + pre-rellenado al editar. 45+ keys i18n ES/EN.
+
+**Decisiones Benjamin 2026-06-08 aplicadas al diseño:**
+  - PDF model: ambos modelos al final del wizard (UNIFIED_2022 + BY_CODE).
+  - XML contrat@: v1 (no posponer).
+  - Anexos: TODOS los posibles + campos libres editables (4 marcados como prioritarios).
+  - SEPE: catálogo completo (~28+).
+
+**Hecho 2026-06-08 mañana:**
+
+- ✅ **L4-4 a L4-7 + V70/V71/V72/V73** — bloque L4 al 100%. Detalles previos abajo.
 
 **Hecho 2026-06-08 — bloque L4 completo:**
 
