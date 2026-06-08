@@ -1562,33 +1562,28 @@ public class BenjagestUiApplication extends Application {
      * EMP-SCOPED-UI — Decide si un item del sidebar debe mostrarse al
      * usuario actual.
      *
-     * <p>Lógica conservadora: filtramos SOLO si:
-     * <ol>
-     *   <li>El scope se cargó (userScope != null).</li>
-     *   <li>El backend dijo explícitamente isFullAccess=false.</li>
-     * </ol>
-     * En cualquier otro caso (scope null por fallo, OWNER/ADMIN, etc.)
-     * devolvemos TRUE — preferimos enseñar de más a romper la app.
-     *
-     * <p>Cuando sí filtramos: los items que están en la lista
-     * {@link #isSidebarBlockedItem} salen siempre fuera. El resto pasa
-     * por el scope.
+     * <p>Usa {@link AuthSession#isOwnerOrAdmin()} para decidir si filtra,
+     * NO el scope async. Razón: scope se carga después del login y puede
+     * fallar (404, timeout); el role local es sincrónico y siempre fiable
+     * desde el momento del login. Si el user es OWNER o ADMIN → todo
+     * visible. En caso contrario (EMPLOYEE, ACCOUNTANT, ADVISOR…) →
+     * filtramos los items "administrativos" + los que el scope diga.
      */
     private boolean shouldShowInSidebar(String moduleId) {
         if (moduleId == null) return true;
         AuthSession auth = AuthSession.get();
-        // Si no hay scope cargado o el user es full access, no filtramos
-        // — el sidebar queda como estaba.
-        if (auth.userScope() == null || auth.userScope().isFullAccess()) {
-            return true;
-        }
-        // Empleado normal — quitar siempre los items de gestión asesoría
+        // OWNER y ADMIN ven TODO. Decisión basada en roleInActiveCompany.
+        if (auth.isOwnerOrAdmin()) return true;
+        // Resto de roles — empleado, contable interno, asesor externo…
         if (isSidebarBlockedItem(moduleId)) return false;
-        // Items que SIEMPRE muestro (no participan del scope por módulo)
+        // Items que SIEMPRE muestro (no participan del scope por módulo).
+        // dashboard / myCompany / clients / dehu son la base operativa
+        // mínima para que el empleado pueda hacer SU trabajo.
         switch (moduleId) {
             case "dashboard":
             case "myCompany":
             case "clients":
+            case "customers":
             case "myClients":
             case "advisory":
             case "notifications":
@@ -1598,25 +1593,29 @@ public class BenjagestUiApplication extends Application {
                 return true;
             default:
         }
-        // El resto: solo si el empleado tiene este módulo asignado en
-        // alguna de sus client_assignments.
+        // Si el scope está cargado, usamos su info de slugs.
+        // Si NO está cargado todavía, conservadoramente ocultamos los
+        // módulos pesados — preferimos que se vea menos pero coherente
+        // a que el empleado vea botones que dan 403.
+        if (auth.userScope() == null) {
+            // Por defecto, el empleado solo ve lo esencial hasta que
+            // llegue el scope. Si quería más, no aparecerá hasta
+            // refrescar.
+            return false;
+        }
         return auth.canAccessModule(moduleId);
     }
 
     /**
-     * EMP-SCOPED-UI — TRUE si el módulo está SIEMPRE prohibido al
-     * empleado (gestión interna de la asesoría). Estos disparan el
-     * panel "Sin acceso" incluso si llegan por deep-link/atajo. Lista
-     * acotada y conservadora — el resto no se bloquea desde aquí para
-     * no romper navegación al OWNER si el scope falla.
+     * EMP-SCOPED-UI — TRUE si el módulo está SIEMPRE prohibido a todo
+     * usuario que NO sea OWNER/ADMIN (gestión interna de la asesoría).
+     * Estos disparan el panel "Sin acceso" incluso por deep-link/atajo.
+     * No depende de scope: solo del role local.
      */
     private boolean isSidebarBlockedItem(String moduleId) {
         if (moduleId == null) return false;
         AuthSession auth = AuthSession.get();
-        // Solo bloqueamos si el scope se cargó y dice NO full access.
-        if (auth.userScope() == null || auth.userScope().isFullAccess()) {
-            return false;
-        }
+        if (auth.isOwnerOrAdmin()) return false;
         return switch (moduleId) {
             case "team", "settings", "configuration", "recurringAdvisory" -> true;
             default -> false;

@@ -220,6 +220,18 @@ public final class AuthSession {
     public String roleInActiveCompany() { return roleInActiveCompany; }
     public List<Membership> memberships() { return memberships; }
 
+    /**
+     * EMP-SCOPED-UI — TRUE si el usuario es OWNER o ADMIN de la empresa
+     * activa. Más confiable que userScope.isFullAccess() porque está
+     * disponible inmediatamente tras el login, sin depender de un
+     * endpoint async. Se usa en el sidebar para decidir si filtrar.
+     */
+    public boolean isOwnerOrAdmin() {
+        if (roleInActiveCompany == null) return false;
+        String r = roleInActiveCompany.toUpperCase();
+        return "OWNER".equals(r) || "ADMIN".equals(r);
+    }
+
     // ================================================================
     //  EMP-SCOPED-UI — Helpers de scope del usuario
     // ================================================================
