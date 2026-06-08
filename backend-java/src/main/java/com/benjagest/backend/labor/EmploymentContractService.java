@@ -51,7 +51,8 @@ public class EmploymentContractService {
                        collective_agreement, professional_category, professional_group,
                        start_date, end_date, weekly_hours, gross_salary,
                        annual_bonuses, vacation_days, irpf_percent,
-                       workplace_address, status, termination_reason
+                       workplace_address, status, termination_reason,
+                       probation_days, pdf_model
                   FROM employment_contracts
                  WHERE company_id = ?
                 """);
@@ -75,8 +76,9 @@ public class EmploymentContractService {
                     collective_agreement, professional_category, professional_group,
                     start_date, end_date, weekly_hours, gross_salary,
                     annual_bonuses, vacation_days, irpf_percent,
-                    workplace_address, status, termination_reason
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    workplace_address, status, termination_reason,
+                    probation_days, pdf_model
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 id, tenantContext.getCurrentCompanyId(),
                 req.employeeId(), req.contractType(), blank(req.sepeContractCode()),
@@ -89,7 +91,9 @@ public class EmploymentContractService {
                 req.irpfPercent(),
                 blank(req.workplaceAddress()),
                 StringUtils.hasText(req.status()) ? req.status() : "ACTIVE",
-                blank(req.terminationReason())
+                blank(req.terminationReason()),
+                req.probationDays(),
+                blank(req.pdfModel())
         );
         return findById(id);
     }
@@ -103,7 +107,8 @@ public class EmploymentContractService {
                        collective_agreement = ?, professional_category = ?, professional_group = ?,
                        start_date = ?, end_date = ?, weekly_hours = ?, gross_salary = ?,
                        annual_bonuses = ?, vacation_days = ?, irpf_percent = ?,
-                       workplace_address = ?, status = ?, termination_reason = ?
+                       workplace_address = ?, status = ?, termination_reason = ?,
+                       probation_days = ?, pdf_model = ?
                  WHERE id = ? AND company_id = ?
                 """,
                 req.contractType(), blank(req.sepeContractCode()),
@@ -115,6 +120,7 @@ public class EmploymentContractService {
                 blank(req.workplaceAddress()),
                 StringUtils.hasText(req.status()) ? req.status() : "ACTIVE",
                 blank(req.terminationReason()),
+                req.probationDays(), blank(req.pdfModel()),
                 id, tenantContext.getCurrentCompanyId());
         if (n == 0) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Contrato no encontrado");
@@ -140,7 +146,8 @@ public class EmploymentContractService {
                        collective_agreement, professional_category, professional_group,
                        start_date, end_date, weekly_hours, gross_salary,
                        annual_bonuses, vacation_days, irpf_percent,
-                       workplace_address, status, termination_reason
+                       workplace_address, status, termination_reason,
+                       probation_days, pdf_model
                   FROM employment_contracts
                  WHERE id = ? AND company_id = ?
                 """, this::mapView, id, tenantContext.getCurrentCompanyId())
@@ -187,7 +194,9 @@ public class EmploymentContractService {
                 rs.getBigDecimal("irpf_percent"),
                 rs.getString("workplace_address"),
                 rs.getString("status"),
-                rs.getString("termination_reason")
+                rs.getString("termination_reason"),
+                (Integer) rs.getObject("probation_days"),
+                rs.getString("pdf_model")
         );
     }
 
@@ -197,7 +206,8 @@ public class EmploymentContractService {
             LocalDate startDate, LocalDate endDate,
             BigDecimal weeklyHours, BigDecimal grossSalary,
             Integer annualBonuses, Integer vacationDays, BigDecimal irpfPercent,
-            String workplaceAddress, String status, String terminationReason
+            String workplaceAddress, String status, String terminationReason,
+            Integer probationDays, String pdfModel
     ) {}
 
     public record UpsertRequest(
@@ -206,7 +216,8 @@ public class EmploymentContractService {
             LocalDate startDate, LocalDate endDate,
             BigDecimal weeklyHours, BigDecimal grossSalary,
             Integer annualBonuses, Integer vacationDays, BigDecimal irpfPercent,
-            String workplaceAddress, String status, String terminationReason
+            String workplaceAddress, String status, String terminationReason,
+            Integer probationDays, String pdfModel
     ) {}
 
     @RestController

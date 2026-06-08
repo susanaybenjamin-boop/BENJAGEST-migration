@@ -220,7 +220,9 @@ public class LaborApiClient {
         b.append(decField("irpfPercent", c.irpfPercent())).append(",");
         b.append(field("workplaceAddress", c.workplaceAddress())).append(",");
         b.append(field("status", c.status())).append(",");
-        b.append(field("terminationReason", c.terminationReason()));
+        b.append(field("terminationReason", c.terminationReason())).append(",");
+        b.append(intField("probationDays", c.probationDays())).append(",");
+        b.append(field("pdfModel", c.pdfModel()));
         b.append("}");
         return b.toString();
     }
@@ -243,7 +245,9 @@ public class LaborApiClient {
                 bigDec(obj, "irpfPercent"),
                 textField(obj, "workplaceAddress"),
                 textField(obj, "status"),
-                textField(obj, "terminationReason")
+                textField(obj, "terminationReason"),
+                intFieldOrNull(obj, "probationDays"),
+                textField(obj, "pdfModel")
         );
     }
 

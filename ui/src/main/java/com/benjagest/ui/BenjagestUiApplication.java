@@ -15598,7 +15598,9 @@ public class BenjagestUiApplication extends Application {
                 state.workplaceAddress == null || state.workplaceAddress.isBlank()
                         ? null : state.workplaceAddress,
                 existing == null ? "ACTIVE" : existing.status(),
-                null);
+                null,
+                state.probationDays,
+                state.pdfModel);
         Task<com.benjagest.ui.model.ContractEntry> task = new Task<>() {
             @Override protected com.benjagest.ui.model.ContractEntry call() throws Exception {
                 com.benjagest.ui.model.ContractEntry saved = existing == null
@@ -15755,7 +15757,9 @@ public class BenjagestUiApplication extends Application {
                     parseDecSafe(irpfField.getText()),
                     blankToNullOrSelf(workplaceField.getText()),
                     statusCombo.getValue(),
-                    null);
+                    null,
+                    existing == null ? null : existing.probationDays(),
+                    existing == null ? null : existing.pdfModel());
             Task<com.benjagest.ui.model.ContractEntry> task = new Task<>() {
                 @Override protected com.benjagest.ui.model.ContractEntry call() throws Exception {
                     return existing == null
