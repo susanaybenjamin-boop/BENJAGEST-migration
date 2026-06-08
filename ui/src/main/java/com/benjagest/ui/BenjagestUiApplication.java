@@ -11579,6 +11579,56 @@ public class BenjagestUiApplication extends Application {
             case "labor.employee.marital.DIVORCED" -> "Divorced";
             case "labor.employee.marital.WIDOWED" -> "Widowed";
             case "labor.employee.marital.DOMESTIC_PARTNER" -> "Domestic partnership";
+            // CTR-2 — Wizard de contrato
+            case "labor.contract.wizard.title" -> "New contract";
+            case "labor.contract.wizard.step" -> "Step";
+            case "labor.contract.wizard.prev" -> "Previous";
+            case "labor.contract.wizard.next" -> "Next";
+            case "labor.contract.wizard.create" -> "Create contract";
+            case "labor.contract.wizard.update" -> "Update contract";
+            case "labor.contract.wizard.load_fail.title" -> "Could not load catalogs";
+            case "labor.contract.wizard.load_fail.body" -> "The contract catalogs (SEPE / agreements / clauses) could not be loaded. Try again.";
+            case "labor.contract.wizard.step1.title" -> "1. Contract type";
+            case "labor.contract.wizard.step1.hint" -> "Pick the SEPE official contract code. You can filter by family to narrow down (Indefinite / Temporary / Training…).";
+            case "labor.contract.wizard.step1.filter" -> "Family filter";
+            case "labor.contract.wizard.step1.sepe" -> "SEPE code";
+            case "labor.contract.wizard.step1.all_families" -> "All families";
+            case "labor.contract.family.INDEFINIDO" -> "Indefinite";
+            case "labor.contract.family.TEMPORAL" -> "Temporary";
+            case "labor.contract.family.FORMATIVO" -> "Training";
+            case "labor.contract.family.PRACTICAS" -> "Internship";
+            case "labor.contract.family.INSERCION" -> "Insertion";
+            case "labor.contract.family.FONDOS_EUROPEOS" -> "EU funds";
+            case "labor.contract.family.DISCAPACIDAD" -> "Disability";
+            case "labor.contract.wizard.step2.title" -> "2. Collective agreement and category";
+            case "labor.contract.wizard.step2.hint" -> "Pick the applicable collective agreement and the worker's professional category. Step 3 will auto-fill the minimum salary, max hours and probation days from the chosen category.";
+            case "labor.contract.wizard.step2.agreement" -> "Agreement";
+            case "labor.contract.wizard.step2.category" -> "Category";
+            case "labor.contract.wizard.step2.min_info" -> "Reference values from the category:";
+            case "labor.contract.wizard.step3.title" -> "3. Economic data";
+            case "labor.contract.wizard.step3.hint" -> "Fields are pre-filled from the chosen category. Edit as needed. A yellow warning shows if salary is below the agreement minimum.";
+            case "labor.contract.wizard.step3.end_optional" -> "Optional";
+            case "labor.contract.wizard.step3.salary_below_minimum" -> "Salary below agreement minimum:";
+            case "labor.contract.wizard.step3.probation_days" -> "Probation days";
+            case "labor.contract.wizard.step4.title" -> "4. Review and sign";
+            case "labor.contract.wizard.step4.hint" -> "Review the contract. Pick the PDF model and the optional clauses, then click Create.";
+            case "labor.contract.wizard.summary.sepe" -> "SEPE:";
+            case "labor.contract.wizard.summary.agreement" -> "Agreement:";
+            case "labor.contract.wizard.summary.category" -> "Category:";
+            case "labor.contract.wizard.step4.pdf_model_label" -> "PDF model:";
+            case "labor.contract.wizard.step4.pdf_model.UNIFIED_2022" -> "Unified model 2022 (recommended)";
+            case "labor.contract.wizard.step4.pdf_model.BY_CODE" -> "Per SEPE code clauses (classic)";
+            case "labor.contract.wizard.step4.clauses_title" -> "Optional clauses (annexes)";
+            case "labor.contract.wizard.step4.clauses_hint" -> "Tick any clauses you want to add as annex to the PDF. Each one has its legal basis (Estatuto, RGPD, etc.) — the OWNER can create custom clauses later from Configuration.";
+            case "labor.contract.wizard.validation.title" -> "Missing data";
+            case "labor.contract.wizard.validation.sepe_required" -> "Pick a SEPE contract type to continue.";
+            case "labor.contract.wizard.validation.agreement_required" -> "Pick an agreement and a category to continue.";
+            case "labor.contract.wizard.validation.start_required" -> "Start date is required.";
+            case "labor.contract.wizard.validation.dates_invalid" -> "End date must be after start date.";
+            case "labor.contract.wizard.validation.hours_required" -> "Weekly hours required.";
+            case "labor.contract.wizard.validation.salary_required" -> "Gross annual salary required.";
+            case "labor.contract.wizard.saved.title" -> "Contract saved";
+            case "labor.contract.wizard.saved.body" -> "The contract is now ACTIVE for the employee.";
             default -> null;
         };
     }
@@ -11747,6 +11797,56 @@ public class BenjagestUiApplication extends Application {
             case "labor.employee.marital.DIVORCED" -> "Divorciado/a";
             case "labor.employee.marital.WIDOWED" -> "Viudo/a";
             case "labor.employee.marital.DOMESTIC_PARTNER" -> "Pareja de hecho";
+            // CTR-2 — Wizard de contrato
+            case "labor.contract.wizard.title" -> "Nuevo contrato";
+            case "labor.contract.wizard.step" -> "Paso";
+            case "labor.contract.wizard.prev" -> "Anterior";
+            case "labor.contract.wizard.next" -> "Siguiente";
+            case "labor.contract.wizard.create" -> "Crear contrato";
+            case "labor.contract.wizard.update" -> "Guardar contrato";
+            case "labor.contract.wizard.load_fail.title" -> "No se pudieron cargar los catálogos";
+            case "labor.contract.wizard.load_fail.body" -> "No se pudieron cargar los catálogos de contrato (SEPE / convenios / cláusulas). Inténtalo de nuevo.";
+            case "labor.contract.wizard.step1.title" -> "1. Tipo de contrato";
+            case "labor.contract.wizard.step1.hint" -> "Elige el código oficial SEPE del contrato. Puedes filtrar por familia para acotar (Indefinido / Temporal / Formativo…).";
+            case "labor.contract.wizard.step1.filter" -> "Filtrar por familia";
+            case "labor.contract.wizard.step1.sepe" -> "Código SEPE";
+            case "labor.contract.wizard.step1.all_families" -> "Todas las familias";
+            case "labor.contract.family.INDEFINIDO" -> "Indefinido";
+            case "labor.contract.family.TEMPORAL" -> "Temporal";
+            case "labor.contract.family.FORMATIVO" -> "Formativo";
+            case "labor.contract.family.PRACTICAS" -> "Prácticas";
+            case "labor.contract.family.INSERCION" -> "Inserción";
+            case "labor.contract.family.FONDOS_EUROPEOS" -> "Fondos UE";
+            case "labor.contract.family.DISCAPACIDAD" -> "Discapacidad";
+            case "labor.contract.wizard.step2.title" -> "2. Convenio colectivo y categoría";
+            case "labor.contract.wizard.step2.hint" -> "Elige el convenio aplicable y la categoría profesional del trabajador. El paso 3 rellenará automáticamente el salario mínimo, jornada máxima y periodo de prueba según la categoría.";
+            case "labor.contract.wizard.step2.agreement" -> "Convenio";
+            case "labor.contract.wizard.step2.category" -> "Categoría";
+            case "labor.contract.wizard.step2.min_info" -> "Valores de referencia de la categoría:";
+            case "labor.contract.wizard.step3.title" -> "3. Datos económicos";
+            case "labor.contract.wizard.step3.hint" -> "Los campos vienen rellenados desde la categoría elegida. Edita lo que necesites. Un aviso amarillo te indica si el salario está por debajo del mínimo del convenio.";
+            case "labor.contract.wizard.step3.end_optional" -> "Opcional";
+            case "labor.contract.wizard.step3.salary_below_minimum" -> "Salario por debajo del mínimo del convenio:";
+            case "labor.contract.wizard.step3.probation_days" -> "Días de periodo de prueba";
+            case "labor.contract.wizard.step4.title" -> "4. Revisar y firmar";
+            case "labor.contract.wizard.step4.hint" -> "Revisa el contrato. Elige el modelo de PDF y las cláusulas opcionales, y pulsa Crear.";
+            case "labor.contract.wizard.summary.sepe" -> "SEPE:";
+            case "labor.contract.wizard.summary.agreement" -> "Convenio:";
+            case "labor.contract.wizard.summary.category" -> "Categoría:";
+            case "labor.contract.wizard.step4.pdf_model_label" -> "Modelo PDF:";
+            case "labor.contract.wizard.step4.pdf_model.UNIFIED_2022" -> "Modelo unificado 2022 (recomendado)";
+            case "labor.contract.wizard.step4.pdf_model.BY_CODE" -> "Cláusulado por código SEPE (clásico)";
+            case "labor.contract.wizard.step4.clauses_title" -> "Cláusulas opcionales (anexos)";
+            case "labor.contract.wizard.step4.clauses_hint" -> "Marca las cláusulas que quieras añadir como anexo al PDF. Cada una lleva su base legal (Estatuto, RGPD, etc.) — el OWNER puede crear cláusulas custom después desde Configuración.";
+            case "labor.contract.wizard.validation.title" -> "Faltan datos";
+            case "labor.contract.wizard.validation.sepe_required" -> "Elige un tipo de contrato SEPE para continuar.";
+            case "labor.contract.wizard.validation.agreement_required" -> "Elige un convenio y una categoría para continuar.";
+            case "labor.contract.wizard.validation.start_required" -> "La fecha de inicio es obligatoria.";
+            case "labor.contract.wizard.validation.dates_invalid" -> "La fecha fin debe ser posterior a la de inicio.";
+            case "labor.contract.wizard.validation.hours_required" -> "Las horas semanales son obligatorias.";
+            case "labor.contract.wizard.validation.salary_required" -> "El salario bruto anual es obligatorio.";
+            case "labor.contract.wizard.saved.title" -> "Contrato guardado";
+            case "labor.contract.wizard.saved.body" -> "El contrato está ACTIVO para el empleado.";
             default -> null;
         };
     }
@@ -14837,7 +14937,11 @@ public class BenjagestUiApplication extends Application {
         Button newC = new Button(t("labor.contracts.action.new"));
         newC.setGraphic(icon("fas-plus"));
         newC.setOnAction(ev -> {
-            showContractEditor(employee, null);
+            // CTR-2: el botón "Nuevo contrato" abre el WIZARD nuevo
+            // (4 pasos con catálogos SEPE/convenios/categorías), no el
+            // editor plano antiguo. El editor antiguo queda como
+            // compatibilidad para los flujos que aún lo usen.
+            showContractWizard(employee, null);
             dialog.close();
         });
         Button editC = new Button(t("labor.contracts.action.edit"));
@@ -14846,7 +14950,8 @@ public class BenjagestUiApplication extends Application {
         editC.setOnAction(ev -> {
             var sel = contractsTable.getSelectionModel().getSelectedItem();
             if (sel != null) {
-                showContractEditor(employee, sel);
+                // CTR-2: editar también pasa por el wizard (pre-rellenado).
+                showContractWizard(employee, sel);
                 dialog.close();
             }
         });
@@ -14857,6 +14962,532 @@ public class BenjagestUiApplication extends Application {
         installDialog(dialog, body);
         dialog.setResizable(true);
         dialog.showAndWait();
+    }
+
+    // ===================================================================
+    //  CTR-2 — Wizard de contrato (4 pasos)
+    // ===================================================================
+
+    /**
+     * Estado mutable del wizard. Vive durante el diálogo y se va llenando
+     * según el usuario navega por los pasos.
+     */
+    private static final class WizardState {
+        com.benjagest.ui.model.ContractCatalog.SepeType sepe;
+        com.benjagest.ui.model.ContractCatalog.Agreement agreement;
+        com.benjagest.ui.model.ContractCatalog.Category category;
+        // Datos económicos (paso 3)
+        java.time.LocalDate startDate = java.time.LocalDate.now();
+        java.time.LocalDate endDate;
+        java.math.BigDecimal weeklyHours;
+        java.math.BigDecimal grossSalary;
+        Integer annualBonuses = 2;
+        Integer vacationDays = 30;
+        java.math.BigDecimal irpfPercent;
+        String workplaceAddress = "";
+        Integer probationDays;
+        // Paso 4: cláusulas seleccionadas
+        final java.util.List<com.benjagest.ui.model.ContractCatalog.ClauseTemplate> selectedClauses
+                = new java.util.ArrayList<>();
+        // Modelo PDF (paso 4) — decisión Benjamin 2026-06-08
+        String pdfModel = "UNIFIED_2022"; // o "BY_CODE"
+    }
+
+    /** Bundle de catálogos cargados una vez al abrir el wizard. */
+    private record WizardCatalogs(
+            java.util.List<com.benjagest.ui.model.ContractCatalog.SepeType> sepe,
+            java.util.List<com.benjagest.ui.model.ContractCatalog.Agreement> agreements,
+            java.util.List<com.benjagest.ui.model.ContractCatalog.ClauseTemplate> clauses
+    ) {}
+
+    /**
+     * Punto de entrada del wizard. Carga catálogos del backend de forma
+     * async; cuando llegan, monta el diálogo con el primer paso. Si la
+     * carga falla, muestra error humano y no abre nada.
+     */
+    private void showContractWizard(com.benjagest.ui.model.EmployeeEntry employee,
+                                      com.benjagest.ui.model.ContractEntry existing) {
+        Task<WizardCatalogs> load = new Task<>() {
+            @Override protected WizardCatalogs call() throws Exception {
+                return new WizardCatalogs(
+                        altaApiClient.listSepeContractTypes(),
+                        altaApiClient.listCollectiveAgreements(),
+                        altaApiClient.listClauseTemplates()
+                );
+            }
+        };
+        load.setOnSucceeded(ev -> openContractWizardDialog(employee, existing, load.getValue()));
+        load.setOnFailed(ev -> showError(t("labor.contract.wizard.load_fail.title"),
+                t("labor.contract.wizard.load_fail.body")));
+        start(load, "contract-wizard-load");
+    }
+
+    private void openContractWizardDialog(com.benjagest.ui.model.EmployeeEntry employee,
+                                            com.benjagest.ui.model.ContractEntry existing,
+                                            WizardCatalogs catalogs) {
+        Dialog<ButtonType> dialog = new Dialog<>();
+        dialog.setTitle(t("labor.contract.wizard.title") + " — " + employee.fullName());
+        dialog.setResizable(true);
+
+        WizardState state = new WizardState();
+        // Pre-rellenar desde contrato existente si lo hay
+        if (existing != null) {
+            // Buscar SEPE por código
+            catalogs.sepe().stream()
+                    .filter(s -> s.code().equals(existing.sepeContractCode()))
+                    .findFirst().ifPresent(s -> state.sepe = s);
+            // Buscar convenio + categoría por nombre (best effort)
+            catalogs.agreements().stream()
+                    .filter(a -> a.name().equals(existing.collectiveAgreement())
+                            || a.code().equals(existing.collectiveAgreement()))
+                    .findFirst().ifPresent(a -> {
+                        state.agreement = a;
+                        a.categories().stream()
+                                .filter(c -> c.categoryName().equals(existing.professionalCategory()))
+                                .findFirst().ifPresent(c -> state.category = c);
+                    });
+            state.startDate = existing.startDate();
+            state.endDate = existing.endDate();
+            state.weeklyHours = existing.weeklyHours();
+            state.grossSalary = existing.grossSalary();
+            state.annualBonuses = existing.annualBonuses();
+            state.vacationDays = existing.vacationDays();
+            state.irpfPercent = existing.irpfPercent();
+            state.workplaceAddress = existing.workplaceAddress() == null
+                    ? "" : existing.workplaceAddress();
+        }
+
+        // Indicador de paso (1/4, 2/4, 3/4, 4/4)
+        Label stepIndicator = new Label();
+        stepIndicator.getStyleClass().add("hero-body");
+        // Contenedor del paso actual
+        StackPane stepHost = new StackPane();
+        stepHost.setMinHeight(360);
+        VBox.setVgrow(stepHost, Priority.ALWAYS);
+
+        // Botonera inferior
+        Button prevBtn = new Button(t("labor.contract.wizard.prev"));
+        prevBtn.setGraphic(icon("fas-arrow-left"));
+        Button nextBtn = new Button(t("labor.contract.wizard.next"));
+        nextBtn.setGraphic(icon("fas-arrow-right"));
+        Button saveBtn = new Button(existing == null
+                ? t("labor.contract.wizard.create") : t("labor.contract.wizard.update"));
+        saveBtn.setGraphic(icon("fas-save"));
+        saveBtn.getStyleClass().add("primary-button");
+        Region spacer = new Region();
+        HBox.setHgrow(spacer, Priority.ALWAYS);
+        HBox bar = new HBox(8, prevBtn, spacer, nextBtn, saveBtn);
+        bar.setPadding(new Insets(10, 0, 0, 0));
+
+        // currentStep mutable via array para que las lambdas lo capturen
+        int[] currentStep = {1};
+        Runnable refreshStep = () -> {
+            stepIndicator.setText(t("labor.contract.wizard.step")
+                    + " " + currentStep[0] + " / 4");
+            Node node = switch (currentStep[0]) {
+                case 1 -> renderWizardStep1(state, catalogs);
+                case 2 -> renderWizardStep2(state, catalogs);
+                case 3 -> renderWizardStep3(state, catalogs);
+                case 4 -> renderWizardStep4(state, catalogs);
+                default -> new Label("Paso desconocido");
+            };
+            stepHost.getChildren().setAll(node);
+            prevBtn.setDisable(currentStep[0] == 1);
+            nextBtn.setVisible(currentStep[0] < 4);
+            saveBtn.setVisible(currentStep[0] == 4);
+        };
+
+        prevBtn.setOnAction(ev -> {
+            if (currentStep[0] > 1) {
+                currentStep[0]--;
+                refreshStep.run();
+            }
+        });
+        nextBtn.setOnAction(ev -> {
+            // Validación mínima por paso antes de avanzar
+            String err = validateStep(currentStep[0], state);
+            if (err != null) {
+                showError(t("labor.contract.wizard.validation.title"), err);
+                return;
+            }
+            if (currentStep[0] < 4) {
+                currentStep[0]++;
+                refreshStep.run();
+            }
+        });
+        saveBtn.setOnAction(ev -> saveContractFromWizard(employee, existing, state, dialog));
+
+        VBox root = new VBox(10, stepIndicator, stepHost, new Separator(), bar);
+        root.setPadding(new Insets(16));
+        root.setPrefWidth(720);
+        installDialog(dialog, root);
+        refreshStep.run();
+        dialog.showAndWait();
+    }
+
+    /** Paso 1: Tipo de contrato (combo SEPE filtrable por familia). */
+    private Node renderWizardStep1(WizardState state, WizardCatalogs cat) {
+        VBox box = new VBox(12);
+        Label title = new Label(t("labor.contract.wizard.step1.title"));
+        title.getStyleClass().add("hero-title");
+        Label hint = new Label(t("labor.contract.wizard.step1.hint"));
+        hint.setWrapText(true);
+        hint.getStyleClass().add("settings-hint");
+
+        ComboBox<String> familyCombo = new ComboBox<>();
+        familyCombo.getItems().addAll("", "INDEFINIDO", "TEMPORAL", "FORMATIVO",
+                "PRACTICAS", "INSERCION", "FONDOS_EUROPEOS", "DISCAPACIDAD");
+        familyCombo.setConverter(new javafx.util.StringConverter<>() {
+            @Override public String toString(String c) {
+                if (c == null || c.isEmpty()) return t("labor.contract.wizard.step1.all_families");
+                return humanizeFromKey("labor.contract.family." + c, c);
+            }
+            @Override public String fromString(String s) { return null; }
+        });
+        familyCombo.setValue("");
+
+        ComboBox<com.benjagest.ui.model.ContractCatalog.SepeType> sepeCombo = new ComboBox<>();
+        sepeCombo.setMaxWidth(Double.MAX_VALUE);
+        sepeCombo.setConverter(new javafx.util.StringConverter<>() {
+            @Override public String toString(com.benjagest.ui.model.ContractCatalog.SepeType s) {
+                return s == null ? "" : s.label();
+            }
+            @Override public com.benjagest.ui.model.ContractCatalog.SepeType fromString(String s) {
+                return null;
+            }
+        });
+
+        Runnable refreshSepe = () -> {
+            String family = familyCombo.getValue();
+            sepeCombo.getItems().clear();
+            for (var s : cat.sepe()) {
+                if (family == null || family.isEmpty() || family.equals(s.family())) {
+                    sepeCombo.getItems().add(s);
+                }
+            }
+            if (state.sepe != null) sepeCombo.setValue(state.sepe);
+        };
+        familyCombo.valueProperty().addListener((o, ov, nv) -> refreshSepe.run());
+        refreshSepe.run();
+        sepeCombo.valueProperty().addListener((o, ov, nv) -> state.sepe = nv);
+
+        Label desc = new Label("");
+        desc.setWrapText(true);
+        desc.getStyleClass().add("settings-hint");
+        sepeCombo.valueProperty().addListener((o, ov, nv) -> {
+            if (nv != null && nv.legalBasis() != null) {
+                desc.setText("📘 " + nv.legalBasis());
+            } else desc.setText("");
+        });
+        if (state.sepe != null && state.sepe.legalBasis() != null) {
+            desc.setText("📘 " + state.sepe.legalBasis());
+        }
+
+        GridPane grid = new GridPane();
+        grid.setHgap(10); grid.setVgap(10);
+        grid.add(new Label(t("labor.contract.wizard.step1.filter")), 0, 0);
+        grid.add(familyCombo, 1, 0);
+        grid.add(new Label(t("labor.contract.wizard.step1.sepe")), 0, 1);
+        grid.add(sepeCombo, 1, 1);
+        javafx.scene.layout.ColumnConstraints col0 = new javafx.scene.layout.ColumnConstraints();
+        col0.setMinWidth(160);
+        javafx.scene.layout.ColumnConstraints col1 = new javafx.scene.layout.ColumnConstraints();
+        col1.setHgrow(Priority.ALWAYS); col1.setFillWidth(true);
+        grid.getColumnConstraints().addAll(col0, col1);
+
+        box.getChildren().addAll(title, hint, grid, desc);
+        return box;
+    }
+
+    /** Paso 2: Convenio + categoría profesional (cascada). */
+    private Node renderWizardStep2(WizardState state, WizardCatalogs cat) {
+        VBox box = new VBox(12);
+        Label title = new Label(t("labor.contract.wizard.step2.title"));
+        title.getStyleClass().add("hero-title");
+        Label hint = new Label(t("labor.contract.wizard.step2.hint"));
+        hint.setWrapText(true);
+        hint.getStyleClass().add("settings-hint");
+
+        ComboBox<com.benjagest.ui.model.ContractCatalog.Agreement> agreeCombo = new ComboBox<>();
+        agreeCombo.setMaxWidth(Double.MAX_VALUE);
+        agreeCombo.getItems().addAll(cat.agreements());
+        agreeCombo.setConverter(new javafx.util.StringConverter<>() {
+            @Override public String toString(com.benjagest.ui.model.ContractCatalog.Agreement a) {
+                return a == null ? "" : a.name();
+            }
+            @Override public com.benjagest.ui.model.ContractCatalog.Agreement fromString(String s) {
+                return null;
+            }
+        });
+        if (state.agreement != null) agreeCombo.setValue(state.agreement);
+
+        ComboBox<com.benjagest.ui.model.ContractCatalog.Category> catCombo = new ComboBox<>();
+        catCombo.setMaxWidth(Double.MAX_VALUE);
+        catCombo.setConverter(new javafx.util.StringConverter<>() {
+            @Override public String toString(com.benjagest.ui.model.ContractCatalog.Category c) {
+                return c == null ? "" : c.label();
+            }
+            @Override public com.benjagest.ui.model.ContractCatalog.Category fromString(String s) {
+                return null;
+            }
+        });
+
+        Label minSalaryHint = new Label("");
+        minSalaryHint.setWrapText(true);
+        minSalaryHint.getStyleClass().add("settings-hint");
+
+        Runnable refreshCats = () -> {
+            var ag = agreeCombo.getValue();
+            catCombo.getItems().clear();
+            if (ag != null) catCombo.getItems().addAll(ag.categories());
+            if (state.category != null && ag != null
+                    && ag.id().equals(state.category.collectiveAgreementId())) {
+                catCombo.setValue(state.category);
+            } else {
+                catCombo.setValue(null);
+            }
+        };
+        agreeCombo.valueProperty().addListener((o, ov, nv) -> {
+            state.agreement = nv;
+            refreshCats.run();
+        });
+        catCombo.valueProperty().addListener((o, ov, nv) -> {
+            state.category = nv;
+            if (nv != null) {
+                String text = t("labor.contract.wizard.step2.min_info") + "\n";
+                if (nv.minAnnualSalary() != null) text += "• Salario mínimo anual: " + nv.minAnnualSalary() + " €\n";
+                if (nv.maxWeeklyHours() != null) text += "• Jornada máxima semanal: " + nv.maxWeeklyHours() + " h\n";
+                if (nv.probationDays() != null) text += "• Periodo de prueba estándar: " + nv.probationDays() + " días\n";
+                minSalaryHint.setText(text);
+            } else minSalaryHint.setText("");
+        });
+        refreshCats.run();
+
+        GridPane grid = new GridPane();
+        grid.setHgap(10); grid.setVgap(10);
+        grid.add(new Label(t("labor.contract.wizard.step2.agreement")), 0, 0);
+        grid.add(agreeCombo, 1, 0);
+        grid.add(new Label(t("labor.contract.wizard.step2.category")), 0, 1);
+        grid.add(catCombo, 1, 1);
+        javafx.scene.layout.ColumnConstraints col0 = new javafx.scene.layout.ColumnConstraints();
+        col0.setMinWidth(160);
+        javafx.scene.layout.ColumnConstraints col1 = new javafx.scene.layout.ColumnConstraints();
+        col1.setHgrow(Priority.ALWAYS); col1.setFillWidth(true);
+        grid.getColumnConstraints().addAll(col0, col1);
+
+        box.getChildren().addAll(title, hint, grid, minSalaryHint);
+        return box;
+    }
+
+    /** Paso 3: Datos económicos (auto-rellenados desde categoría). */
+    private Node renderWizardStep3(WizardState state, WizardCatalogs cat) {
+        VBox box = new VBox(12);
+        Label title = new Label(t("labor.contract.wizard.step3.title"));
+        title.getStyleClass().add("hero-title");
+        Label hint = new Label(t("labor.contract.wizard.step3.hint"));
+        hint.setWrapText(true);
+        hint.getStyleClass().add("settings-hint");
+
+        // Pre-rellenar desde categoría si no se ha tocado ya
+        if (state.category != null) {
+            if (state.weeklyHours == null) state.weeklyHours = state.category.maxWeeklyHours();
+            if (state.grossSalary == null) state.grossSalary = state.category.minAnnualSalary();
+            if (state.probationDays == null) state.probationDays = state.category.probationDays();
+        }
+
+        DatePicker startP = new DatePicker(state.startDate);
+        startP.valueProperty().addListener((o, ov, nv) -> state.startDate = nv);
+        DatePicker endP = new DatePicker(state.endDate);
+        endP.setPromptText(t("labor.contract.wizard.step3.end_optional"));
+        endP.valueProperty().addListener((o, ov, nv) -> state.endDate = nv);
+
+        TextField hoursF = new TextField(state.weeklyHours == null ? "" : state.weeklyHours.toPlainString());
+        hoursF.textProperty().addListener((o, ov, nv) -> state.weeklyHours = parseDecSafe(nv));
+        TextField salaryF = new TextField(state.grossSalary == null ? "" : state.grossSalary.toPlainString());
+        salaryF.textProperty().addListener((o, ov, nv) -> state.grossSalary = parseDecSafe(nv));
+
+        Label salaryWarn = new Label("");
+        salaryWarn.setWrapText(true);
+        salaryWarn.getStyleClass().add("settings-hint");
+        salaryF.textProperty().addListener((o, ov, nv) -> {
+            java.math.BigDecimal s = parseDecSafe(nv);
+            if (s != null && state.category != null && state.category.minAnnualSalary() != null
+                    && s.compareTo(state.category.minAnnualSalary()) < 0) {
+                salaryWarn.setText("⚠ " + t("labor.contract.wizard.step3.salary_below_minimum")
+                        + " " + state.category.minAnnualSalary() + " €");
+                salaryWarn.setStyle("-fx-text-fill: #b58900;");
+            } else {
+                salaryWarn.setText("");
+                salaryWarn.setStyle("");
+            }
+        });
+
+        TextField bonusesF = new TextField(state.annualBonuses == null ? "2" : state.annualBonuses.toString());
+        bonusesF.textProperty().addListener((o, ov, nv) -> state.annualBonuses = parseIntSafe(nv));
+        TextField vacF = new TextField(state.vacationDays == null ? "30" : state.vacationDays.toString());
+        vacF.textProperty().addListener((o, ov, nv) -> state.vacationDays = parseIntSafe(nv));
+        TextField irpfF = new TextField(state.irpfPercent == null ? "" : state.irpfPercent.toPlainString());
+        irpfF.textProperty().addListener((o, ov, nv) -> state.irpfPercent = parseDecSafe(nv));
+        TextField probF = new TextField(state.probationDays == null ? "" : state.probationDays.toString());
+        probF.textProperty().addListener((o, ov, nv) -> state.probationDays = parseIntSafe(nv));
+        TextField wpF = new TextField(state.workplaceAddress);
+        wpF.textProperty().addListener((o, ov, nv) -> state.workplaceAddress = nv == null ? "" : nv);
+
+        GridPane grid = new GridPane();
+        grid.setHgap(10); grid.setVgap(8);
+        int r = 0;
+        grid.add(new Label(t("labor.contract.editor.start")), 0, r);     grid.add(startP, 1, r);
+        grid.add(new Label(t("labor.contract.editor.end")), 2, r);       grid.add(endP, 3, r); r++;
+        grid.add(new Label(t("labor.contract.editor.weekly_hours")), 0, r); grid.add(hoursF, 1, r);
+        grid.add(new Label(t("labor.contract.editor.salary")), 2, r);    grid.add(salaryF, 3, r); r++;
+        grid.add(new Label(t("labor.contract.editor.bonuses")), 0, r);   grid.add(bonusesF, 1, r);
+        grid.add(new Label(t("labor.contract.editor.vacation")), 2, r);  grid.add(vacF, 3, r); r++;
+        grid.add(new Label(t("labor.contract.editor.irpf")), 0, r);      grid.add(irpfF, 1, r);
+        grid.add(new Label(t("labor.contract.wizard.step3.probation_days")), 2, r); grid.add(probF, 3, r); r++;
+        grid.add(new Label(t("labor.contract.editor.workplace")), 0, r); grid.add(wpF, 1, r, 3, 1);
+
+        box.getChildren().addAll(title, hint, grid, salaryWarn);
+        return box;
+    }
+
+    /** Paso 4: Revisión + anexos + crear. */
+    private Node renderWizardStep4(WizardState state, WizardCatalogs cat) {
+        VBox box = new VBox(12);
+        Label title = new Label(t("labor.contract.wizard.step4.title"));
+        title.getStyleClass().add("hero-title");
+        Label hint = new Label(t("labor.contract.wizard.step4.hint"));
+        hint.setWrapText(true);
+        hint.getStyleClass().add("settings-hint");
+
+        // Resumen
+        VBox summary = new VBox(4);
+        summary.getStyleClass().add("settings-section");
+        summary.setPadding(new Insets(8));
+        if (state.sepe != null) summary.getChildren().add(new Label("• " + t("labor.contract.wizard.summary.sepe") + " " + state.sepe.label()));
+        if (state.agreement != null) summary.getChildren().add(new Label("• " + t("labor.contract.wizard.summary.agreement") + " " + state.agreement.name()));
+        if (state.category != null) summary.getChildren().add(new Label("• " + t("labor.contract.wizard.summary.category") + " " + state.category.label()));
+        if (state.startDate != null) summary.getChildren().add(new Label("• " + t("labor.contract.editor.start") + ": " + state.startDate));
+        if (state.endDate != null) summary.getChildren().add(new Label("• " + t("labor.contract.editor.end") + ": " + state.endDate));
+        if (state.grossSalary != null) summary.getChildren().add(new Label("• " + t("labor.contract.editor.salary") + ": " + state.grossSalary + " €"));
+        if (state.weeklyHours != null) summary.getChildren().add(new Label("• " + t("labor.contract.editor.weekly_hours") + ": " + state.weeklyHours + " h"));
+
+        // Combo modelo PDF (decisión 2026-06-08: el asesor elige al final)
+        ComboBox<String> pdfModelCombo = new ComboBox<>();
+        pdfModelCombo.getItems().addAll("UNIFIED_2022", "BY_CODE");
+        pdfModelCombo.setConverter(new javafx.util.StringConverter<>() {
+            @Override public String toString(String c) {
+                return c == null ? "" : humanizeFromKey("labor.contract.wizard.step4.pdf_model." + c, c);
+            }
+            @Override public String fromString(String s) { return null; }
+        });
+        pdfModelCombo.setValue(state.pdfModel);
+        pdfModelCombo.valueProperty().addListener((o, ov, nv) -> state.pdfModel = nv);
+
+        HBox modelRow = new HBox(10,
+                new Label(t("labor.contract.wizard.step4.pdf_model_label")), pdfModelCombo);
+        modelRow.setAlignment(Pos.CENTER_LEFT);
+
+        // Cláusulas opcionales
+        Label clausesTitle = new Label(t("labor.contract.wizard.step4.clauses_title"));
+        clausesTitle.getStyleClass().add("settings-section-title");
+        Label clausesHint = new Label(t("labor.contract.wizard.step4.clauses_hint"));
+        clausesHint.setWrapText(true);
+        clausesHint.getStyleClass().add("settings-hint");
+
+        VBox clausesBox = new VBox(4);
+        for (var clause : cat.clauses()) {
+            CheckBox cb = new CheckBox(clause.title());
+            cb.setSelected(state.selectedClauses.stream()
+                    .anyMatch(s -> s.id().equals(clause.id())));
+            cb.selectedProperty().addListener((o, ov, nv) -> {
+                if (nv) {
+                    if (state.selectedClauses.stream().noneMatch(s -> s.id().equals(clause.id())))
+                        state.selectedClauses.add(clause);
+                } else {
+                    state.selectedClauses.removeIf(s -> s.id().equals(clause.id()));
+                }
+            });
+            clausesBox.getChildren().add(cb);
+        }
+        ScrollPane clausesScroll = new ScrollPane(clausesBox);
+        clausesScroll.setFitToWidth(true);
+        clausesScroll.setPrefViewportHeight(180);
+
+        box.getChildren().addAll(title, hint, summary, modelRow,
+                new Separator(), clausesTitle, clausesHint, clausesScroll);
+        return box;
+    }
+
+    /** Validación por paso. Devuelve null si OK, mensaje si error. */
+    private String validateStep(int step, WizardState s) {
+        return switch (step) {
+            case 1 -> s.sepe == null ? t("labor.contract.wizard.validation.sepe_required") : null;
+            case 2 -> s.agreement == null || s.category == null
+                    ? t("labor.contract.wizard.validation.agreement_required") : null;
+            case 3 -> {
+                if (s.startDate == null) yield t("labor.contract.wizard.validation.start_required");
+                if (s.endDate != null && s.startDate.isAfter(s.endDate))
+                    yield t("labor.contract.wizard.validation.dates_invalid");
+                if (s.weeklyHours == null) yield t("labor.contract.wizard.validation.hours_required");
+                if (s.grossSalary == null) yield t("labor.contract.wizard.validation.salary_required");
+                yield null;
+            }
+            default -> null;
+        };
+    }
+
+    /** Construye el ContractEntry desde el WizardState y persiste. */
+    private void saveContractFromWizard(com.benjagest.ui.model.EmployeeEntry employee,
+                                          com.benjagest.ui.model.ContractEntry existing,
+                                          WizardState state,
+                                          Dialog<ButtonType> dialog) {
+        String err = validateStep(3, state);
+        if (err != null) {
+            showError(t("labor.contract.wizard.validation.title"), err);
+            return;
+        }
+        String contractType = state.sepe == null ? "Indefinido"
+                : humanizeFromKey("labor.contract.family." + state.sepe.family(), state.sepe.family());
+        com.benjagest.ui.model.ContractEntry payload = new com.benjagest.ui.model.ContractEntry(
+                existing == null ? null : existing.id(),
+                employee.id(),
+                contractType,
+                state.sepe == null ? null : state.sepe.code(),
+                state.agreement == null ? null : state.agreement.name(),
+                state.category == null ? null : state.category.categoryName(),
+                state.category == null ? null : state.category.groupCode(),
+                state.startDate,
+                state.endDate,
+                state.weeklyHours,
+                state.grossSalary,
+                state.annualBonuses,
+                state.vacationDays,
+                state.irpfPercent,
+                state.workplaceAddress == null || state.workplaceAddress.isBlank()
+                        ? null : state.workplaceAddress,
+                existing == null ? "ACTIVE" : existing.status(),
+                null);
+        Task<com.benjagest.ui.model.ContractEntry> task = new Task<>() {
+            @Override protected com.benjagest.ui.model.ContractEntry call() throws Exception {
+                return existing == null
+                        ? laborApiClient.createContract(payload)
+                        : laborApiClient.updateContract(existing.id(), payload);
+            }
+        };
+        task.setOnSucceeded(ev -> {
+            dialog.setResult(ButtonType.OK);
+            dialog.close();
+            showInfo(t("labor.contract.wizard.saved.title"),
+                    t("labor.contract.wizard.saved.body"));
+            showLaborModule();
+        });
+        task.setOnFailed(ev -> {
+            Throwable e = task.getException();
+            showError(t("labor.contract.editor.fail.title"),
+                    e == null || e.getMessage() == null
+                            ? t("labor.contract.editor.fail.body") : e.getMessage());
+        });
+        start(task, "contract-save");
     }
 
     private void showContractEditor(com.benjagest.ui.model.EmployeeEntry employee,
