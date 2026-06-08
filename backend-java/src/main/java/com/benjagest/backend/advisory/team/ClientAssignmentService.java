@@ -76,8 +76,21 @@ public class ClientAssignmentService {
      * sidebar entero.
      */
     public List<String> modulesVisibleInClient(String clientCompanyId) {
-        String advisoryId = tenantContext.getCurrentCompanyId();
-        String userId = currentUserService.require().userId();
+        // BUG FIX 2026-06-08: cuando el frontend entra a un cliente,
+        // X-Company-Id es el CLIENTE, no la asesoría. tenantContext lo
+        // refleja. Pero "soy OWNER de mi asesoría" es estable y depende
+        // del JWT (currentUser.activeCompanyId()), no del tenant actual.
+        // Usar el tenant context aquí provocaba que ni siquiera el OWNER
+        // viera tabs cuando entraba como cliente — y el empleado solo
+        // veía Resumen/Certificado porque listas vacías.
+        var user = currentUserService.require();
+        String advisoryId = user.activeCompanyId();
+        String userId = user.userId();
+        // Fallback defensivo: si no hay activeCompanyId en el JWT
+        // (caso muy raro), caemos al tenantContext como antes.
+        if (advisoryId == null || advisoryId.isBlank()) {
+            advisoryId = tenantContext.getCurrentCompanyId();
+        }
         // El OWNER ve todos los módulos siempre
         if (currentUserIsOwnerOfAdvisory(advisoryId)) {
             return List.of(ClientAssignment.MODULE_ALL);
@@ -92,9 +105,15 @@ public class ClientAssignmentService {
      * clientes asignados.
      */
     public List<String> listMine() {
-        String advisoryId = tenantContext.getCurrentCompanyId();
-        String userId = currentUserService.require().userId();
-        return repository.clientIdsVisibleForEmployee(advisoryId, userId);
+        // BUG FIX 2026-06-08: mismo problema que modulesVisibleInClient.
+        // Si el frontend entra a un cliente, tenantContext es el cliente
+        // y no encuentra asignaciones. Usar la asesoría real del JWT.
+        var user = currentUserService.require();
+        String advisoryId = user.activeCompanyId();
+        if (advisoryId == null || advisoryId.isBlank()) {
+            advisoryId = tenantContext.getCurrentCompanyId();
+        }
+        return repository.clientIdsVisibleForEmployee(advisoryId, user.userId());
     }
 
     /**
@@ -414,6 +433,14 @@ public class ClientAssignmentService {
     }
 
     private void validateClientBelongsToAdvisory(String clientCompanyId, String advisoryId) {
+        // Caso especial: la propia asesoría puede asignarse a sí misma
+        // como cliente (Mi gestión). La self-link de V64 hace de la
+        // asesoría su propio cliente virtual; permitir asignaciones
+        // sobre clientCompanyId == advisoryId desbloquea el reparto
+        // del trabajo interno de la asesoría (gestión propia).
+        if (clientCompanyId != null && clientCompanyId.equals(advisoryId)) {
+            return;
+        }
         Integer count = jdbcTemplate.queryForObject("""
                 SELECT COUNT(*) FROM companies
                  WHERE id = ? AND parent_company_id = ?
