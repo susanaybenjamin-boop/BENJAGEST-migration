@@ -11630,6 +11630,14 @@ public class BenjagestUiApplication extends Application {
             case "labor.contract.wizard.validation.salary_required" -> "Gross annual salary required.";
             case "labor.contract.wizard.saved.title" -> "Contract saved";
             case "labor.contract.wizard.saved.body" -> "The contract is now ACTIVE for the employee.";
+            case "labor.contract.docs.offer" -> "Would you like to download the signable PDF or the SEPE Contrat@ XML now?";
+            case "labor.contract.docs.pdf" -> "Download PDF";
+            case "labor.contract.docs.xml" -> "Download XML";
+            case "labor.contract.docs.later" -> "Later";
+            case "labor.contract.docs.downloaded" -> "Document downloaded";
+            case "labor.contract.docs.fail.title" -> "Could not generate document";
+            case "labor.alerts.title" -> "Contract alerts";
+            case "labor.alerts.dismiss" -> "Dismiss";
             default -> null;
         };
     }
@@ -11849,6 +11857,14 @@ public class BenjagestUiApplication extends Application {
             case "labor.contract.wizard.validation.salary_required" -> "El salario bruto anual es obligatorio.";
             case "labor.contract.wizard.saved.title" -> "Contrato guardado";
             case "labor.contract.wizard.saved.body" -> "El contrato está ACTIVO para el empleado.";
+            case "labor.contract.docs.offer" -> "¿Quiere descargar ahora el PDF firmable o el XML para Contrat@ del SEPE?";
+            case "labor.contract.docs.pdf" -> "Descargar PDF";
+            case "labor.contract.docs.xml" -> "Descargar XML";
+            case "labor.contract.docs.later" -> "Más tarde";
+            case "labor.contract.docs.downloaded" -> "Documento descargado";
+            case "labor.contract.docs.fail.title" -> "No se pudo generar el documento";
+            case "labor.alerts.title" -> "Alertas de contratos";
+            case "labor.alerts.dismiss" -> "Descartar";
             default -> null;
         };
     }
@@ -13685,6 +13701,10 @@ public class BenjagestUiApplication extends Application {
         header.setAlignment(Pos.CENTER_LEFT);
         header.getStyleClass().add("module-detail-header");
 
+        // CTR-6 — banner de alertas activas: prueba próxima, fin de contrato
+        // y cumpleaños del día. Si no hay alertas se oculta.
+        Node alertsBanner = buildContractAlertsBanner();
+
         TabPane tabs = new TabPane();
         tabs.getStyleClass().add("settings-tabs");
         tabs.setTabClosingPolicy(TabPane.TabClosingPolicy.UNAVAILABLE);
@@ -13705,8 +13725,79 @@ public class BenjagestUiApplication extends Application {
         tabs.getTabs().addAll(empTab, contractsTab, clockTab, auditTab, payslipsTab, cfgTab);
         VBox.setVgrow(tabs, Priority.ALWAYS);
 
-        content.getChildren().addAll(header, tabs);
+        content.getChildren().addAll(header, alertsBanner, tabs);
         return content;
+    }
+
+    /**
+     * CTR-6 — Banner colapsable con las alertas pendientes del tenant
+     * (prueba próxima, contratos a 30/60d, cumpleaños). El asesor puede
+     * descartar cada una. Se carga en hilo de fondo; si falla, el banner
+     * queda vacío (no rompe el módulo).
+     */
+    private Node buildContractAlertsBanner() {
+        VBox box = new VBox(6);
+        box.setPadding(new Insets(6, 0, 6, 0));
+        box.setManaged(false);
+        box.setVisible(false);
+
+        Task<java.util.List<com.benjagest.ui.model.ContractAlert>> task = new Task<>() {
+            @Override protected java.util.List<com.benjagest.ui.model.ContractAlert> call() throws Exception {
+                return altaApiClient.listContractAlerts();
+            }
+        };
+        task.setOnSucceeded(ev -> {
+            var alerts = task.getValue();
+            if (alerts == null || alerts.isEmpty()) return;
+            Label hdr = new Label(t("labor.alerts.title") + " (" + alerts.size() + ")");
+            hdr.getStyleClass().add("settings-section-title");
+            box.getChildren().add(hdr);
+            for (var alert : alerts) {
+                box.getChildren().add(renderAlertRow(alert, box));
+            }
+            box.setManaged(true);
+            box.setVisible(true);
+        });
+        // No mostrar error si falla — banner opcional.
+        start(task, "contract-alerts");
+        return box;
+    }
+
+    private Node renderAlertRow(com.benjagest.ui.model.ContractAlert a, VBox container) {
+        HBox row = new HBox(8);
+        row.setAlignment(Pos.CENTER_LEFT);
+        row.setPadding(new Insets(6, 8, 6, 8));
+        String style = switch (a.severity() == null ? "INFO" : a.severity()) {
+            case "CRITICAL" -> "-fx-background-color: #fff1f0; -fx-border-color: #ffa39e; -fx-border-radius: 6; -fx-background-radius: 6;";
+            case "WARNING" -> "-fx-background-color: #fffbe6; -fx-border-color: #ffe58f; -fx-border-radius: 6; -fx-background-radius: 6;";
+            default -> "-fx-background-color: #f0f7ff; -fx-border-color: #91d5ff; -fx-border-radius: 6; -fx-background-radius: 6;";
+        };
+        row.setStyle(style);
+
+        Label icon = new Label("BIRTHDAY".equals(a.kind()) ? "🎂"
+                : "PROBATION_ENDING".equals(a.kind()) ? "⏳"
+                : "⚠");
+        Label title = new Label(a.title());
+        title.getStyleClass().add("settings-section-title");
+        Label sub = new Label(a.message() + (a.firesAt() == null ? "" : " — " + a.firesAt()));
+        sub.setWrapText(true);
+        VBox text = new VBox(2, title, sub);
+        HBox.setHgrow(text, Priority.ALWAYS);
+
+        Button dismiss = new Button(t("labor.alerts.dismiss"));
+        dismiss.setOnAction(ev -> {
+            Task<Void> t = new Task<>() {
+                @Override protected Void call() throws Exception {
+                    altaApiClient.dismissContractAlert(a.id());
+                    return null;
+                }
+            };
+            t.setOnSucceeded(e2 -> container.getChildren().remove(row));
+            start(t, "alert-dismiss");
+        });
+
+        row.getChildren().addAll(icon, text, dismiss);
+        return row;
     }
 
     // ----- Sub-tab Empleados -----
@@ -14957,8 +15048,28 @@ public class BenjagestUiApplication extends Application {
                 dialog.close();
             }
         });
-        contractsTable.getSelectionModel().selectedItemProperty().addListener((o, ov, nv) -> editC.setDisable(nv == null));
-        HBox actions = new HBox(8, newC, editC);
+        // CTR-4: botón "PDF" descarga el contrato firmable del seleccionado.
+        Button pdfBtn = new Button(t("labor.contract.docs.pdf"));
+        pdfBtn.setGraphic(icon("fas-file-pdf"));
+        pdfBtn.setDisable(true);
+        pdfBtn.setOnAction(ev -> {
+            var sel = contractsTable.getSelectionModel().getSelectedItem();
+            if (sel != null) downloadContractDocument(sel.id(), null, "pdf");
+        });
+        // CTR-5: botón "XML Contrat@" descarga el XML estructurado SEPE.
+        Button xmlBtn = new Button(t("labor.contract.docs.xml"));
+        xmlBtn.setGraphic(icon("fas-file-code"));
+        xmlBtn.setDisable(true);
+        xmlBtn.setOnAction(ev -> {
+            var sel = contractsTable.getSelectionModel().getSelectedItem();
+            if (sel != null) downloadContractDocument(sel.id(), null, "xml");
+        });
+        contractsTable.getSelectionModel().selectedItemProperty().addListener((o, ov, nv) -> {
+            editC.setDisable(nv == null);
+            pdfBtn.setDisable(nv == null);
+            xmlBtn.setDisable(nv == null);
+        });
+        HBox actions = new HBox(8, newC, editC, pdfBtn, xmlBtn);
         VBox body = new VBox(12, contractsTable, actions);
         body.setPadding(new Insets(10));
         installDialog(dialog, body);
@@ -15490,16 +15601,31 @@ public class BenjagestUiApplication extends Application {
                 null);
         Task<com.benjagest.ui.model.ContractEntry> task = new Task<>() {
             @Override protected com.benjagest.ui.model.ContractEntry call() throws Exception {
-                return existing == null
+                com.benjagest.ui.model.ContractEntry saved = existing == null
                         ? laborApiClient.createContract(payload)
                         : laborApiClient.updateContract(existing.id(), payload);
+                // CTR-7 — vincular las cláusulas/anexos seleccionados al contrato
+                // guardado. Si el contrato ya existía y se editan cláusulas,
+                // la lógica simple intenta vincular todo: el backend devuelve
+                // 409 en duplicados y lo ignoramos.
+                if (saved.id() != null) {
+                    for (var clause : state.selectedClauses) {
+                        try {
+                            altaApiClient.linkContractAnnex(saved.id(), clause.id());
+                        } catch (Exception linkErr) {
+                            // ignore duplicates and continue with the rest
+                        }
+                    }
+                }
+                return saved;
             }
         };
         task.setOnSucceeded(ev -> {
+            com.benjagest.ui.model.ContractEntry saved = task.getValue();
             dialog.setResult(ButtonType.OK);
             dialog.close();
-            showInfo(t("labor.contract.wizard.saved.title"),
-                    t("labor.contract.wizard.saved.body"));
+            // CTR-4/5 — ofrecer descarga inmediata del PDF y XML
+            offerContractDocumentDownloads(saved, state.pdfModel);
             showLaborModule();
         });
         task.setOnFailed(ev -> {
@@ -15509,6 +15635,54 @@ public class BenjagestUiApplication extends Application {
                             ? t("labor.contract.editor.fail.body") : e.getMessage());
         });
         start(task, "contract-save");
+    }
+
+    /**
+     * CTR-4 / CTR-5 — Tras guardar el contrato, abre un diálogo informativo
+     * con dos botones: "Descargar PDF" y "Descargar XML". El asesor decide.
+     * El modelo PDF preferido viene de WizardState (paso 4).
+     */
+    private void offerContractDocumentDownloads(com.benjagest.ui.model.ContractEntry saved, String pdfModel) {
+        if (saved == null || saved.id() == null) {
+            showInfo(t("labor.contract.wizard.saved.title"), t("labor.contract.wizard.saved.body"));
+            return;
+        }
+        Alert a = new Alert(Alert.AlertType.INFORMATION);
+        a.setTitle(t("labor.contract.wizard.saved.title"));
+        a.setHeaderText(t("labor.contract.wizard.saved.body"));
+        a.setContentText(t("labor.contract.docs.offer"));
+        ButtonType pdfBt = new ButtonType(t("labor.contract.docs.pdf"));
+        ButtonType xmlBt = new ButtonType(t("labor.contract.docs.xml"));
+        ButtonType laterBt = new ButtonType(t("labor.contract.docs.later"), ButtonBar.ButtonData.CANCEL_CLOSE);
+        a.getButtonTypes().setAll(pdfBt, xmlBt, laterBt);
+        a.showAndWait().ifPresent(bt -> {
+            if (bt == pdfBt) downloadContractDocument(saved.id(), pdfModel, "pdf");
+            else if (bt == xmlBt) downloadContractDocument(saved.id(), null, "xml");
+        });
+    }
+
+    private void downloadContractDocument(String contractId, String pdfModel, String kind) {
+        Task<java.nio.file.Path> task = new Task<>() {
+            @Override protected java.nio.file.Path call() throws Exception {
+                byte[] bytes = "pdf".equals(kind)
+                        ? altaApiClient.downloadContractPdf(contractId, pdfModel)
+                        : altaApiClient.downloadContractXml(contractId);
+                java.nio.file.Path tmp = java.nio.file.Files.createTempFile(
+                        "contract-" + contractId.substring(0, 8) + "-", "." + kind);
+                java.nio.file.Files.write(tmp, bytes);
+                return tmp;
+            }
+        };
+        task.setOnSucceeded(ev -> {
+            try {
+                java.awt.Desktop.getDesktop().open(task.getValue().toFile());
+            } catch (Exception e) {
+                showInfo(t("labor.contract.docs.downloaded"), task.getValue().toString());
+            }
+        });
+        task.setOnFailed(ev -> showError(t("labor.contract.docs.fail.title"),
+                task.getException() == null ? "" : task.getException().getMessage()));
+        start(task, "contract-doc-" + kind);
     }
 
     private void showContractEditor(com.benjagest.ui.model.EmployeeEntry employee,
