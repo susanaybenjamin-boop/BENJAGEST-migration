@@ -27,5 +27,12 @@ public record EmployeeEntry(
         LocalDate terminationDate,
         String terminationReason,
         boolean geolocationEnabled,
-        boolean active
+        boolean active,
+        /** L4-4: el empleado tiene login con PIN en BENJAGEST. */
+        boolean appAccess,
+        /** L4-4: user_id asociado (null si no se ha provisionado acceso). */
+        String userId,
+        /** L4-4: TRUE si tiene pin_hash configurado en BD.
+         *  La UI muestra "PIN configurado" sin exponer el hash. */
+        boolean hasPin
 ) {}

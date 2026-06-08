@@ -67,7 +67,40 @@ public class LaborApiClient {
         send(req(baseUrl + "/labor/employees/" + id).DELETE());
     }
 
+    /**
+     * L4-4: sobrecargas para pasar PIN + rol al backend en el mismo
+     * upsert. {@code pin} null = no tocar; "" idem; "1234" → bcrypt
+     * en backend. {@code roleInCompany} solo se aplica al provisionar
+     * (primera vez que se marca app_access).
+     */
+    public EmployeeEntry createEmployee(EmployeeEntry e, Boolean appAccess,
+                                          String pin, String roleInCompany)
+            throws IOException, InterruptedException {
+        HttpResponse<String> r = send(req(baseUrl + "/labor/employees")
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(
+                        employeeBody(e, appAccess, pin, roleInCompany))));
+        return mapEmployee(r.body());
+    }
+
+    public EmployeeEntry updateEmployee(String id, EmployeeEntry e, Boolean appAccess,
+                                          String pin, String roleInCompany)
+            throws IOException, InterruptedException {
+        HttpResponse<String> r = send(req(baseUrl + "/labor/employees/" + id)
+                .header("Content-Type", "application/json")
+                .PUT(HttpRequest.BodyPublishers.ofString(
+                        employeeBody(e, appAccess, pin, roleInCompany))));
+        return mapEmployee(r.body());
+    }
+
     private String employeeBody(EmployeeEntry e) {
+        // Compat: las llamadas antiguas no envían info de acceso/PIN —
+        // null = backend no toca app_access ni pin existentes.
+        return employeeBody(e, null, null, null);
+    }
+
+    private String employeeBody(EmployeeEntry e, Boolean appAccess,
+                                  String pin, String roleInCompany) {
         StringBuilder b = new StringBuilder("{");
         b.append(field("fullName", e.fullName())).append(",");
         b.append(field("taxIdentifier", e.taxIdentifier())).append(",");
@@ -92,6 +125,18 @@ public class LaborApiClient {
         b.append(field("terminationReason", e.terminationReason())).append(",");
         b.append("\"geolocationEnabled\":").append(e.geolocationEnabled()).append(",");
         b.append("\"active\":").append(e.active());
+        // L4-4: campos opcionales de acceso. Si appAccess es null, no se
+        // serializa → el backend (UpsertRequest.appAccess() == null) no
+        // hace transición; deja el estado actual intacto.
+        if (appAccess != null) {
+            b.append(",\"appAccess\":").append(appAccess);
+        }
+        if (pin != null && !pin.isBlank()) {
+            b.append(",").append(field("pin", pin));
+        }
+        if (roleInCompany != null && !roleInCompany.isBlank()) {
+            b.append(",").append(field("roleInCompany", roleInCompany));
+        }
         b.append("}");
         return b.toString();
     }
@@ -121,7 +166,11 @@ public class LaborApiClient {
                 parseDate(textField(obj, "terminationDate")),
                 textField(obj, "terminationReason"),
                 boolField(obj, "geolocationEnabled"),
-                boolField(obj, "active")
+                boolField(obj, "active"),
+                // L4-4: 3 campos nuevos
+                boolField(obj, "appAccess"),
+                textField(obj, "userId"),
+                boolField(obj, "hasPin")
         );
     }
 

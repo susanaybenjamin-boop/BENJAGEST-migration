@@ -11452,6 +11452,16 @@ public class BenjagestUiApplication extends Application {
             case "team.member_role.ADVISOR" -> "Tax advisor";
             case "team.member_role.EMPLOYEE" -> "Employee";
             case "team.member_role.VIEWER" -> "Viewer";
+            // L4-4 — sección "Acceso a la app" en editor empleado
+            case "labor.employee.section.app_access" -> "App access (PIN)";
+            case "labor.employee.editor.app_access" -> "This employee can sign into BENJAGEST";
+            case "labor.employee.editor.app_access.hint" -> "If checked, the OWNER assigns a 4-8 digit PIN. The employee uses it on any paired computer of the firm. A user account is created/reused automatically — the employee does not need an email.";
+            case "labor.employee.editor.app_access.role" -> "Role in the firm";
+            case "labor.employee.editor.app_access.pin" -> "PIN (4-8 digits)";
+            case "labor.employee.editor.app_access.pin_prompt" -> "e.g. 4815";
+            case "labor.employee.editor.app_access.pin_keep" -> "Leave empty to keep current";
+            case "labor.employee.editor.app_access.pin_new_hint" -> "Set a numeric PIN of 4 to 8 digits. The employee will sign in with it.";
+            case "labor.employee.editor.app_access.pin_change_hint" -> "Already has a PIN. Type a new one only if you want to replace it.";
             default -> null;
         };
     }
@@ -11551,6 +11561,16 @@ public class BenjagestUiApplication extends Application {
             case "team.member_role.ADVISOR" -> "Asesor";
             case "team.member_role.EMPLOYEE" -> "Empleado";
             case "team.member_role.VIEWER" -> "Consulta";
+            // L4-4 — sección "Acceso a la app" en editor empleado
+            case "labor.employee.section.app_access" -> "Acceso a la app (PIN)";
+            case "labor.employee.editor.app_access" -> "Este empleado entra en BENJAGEST";
+            case "labor.employee.editor.app_access.hint" -> "Si marcas la casilla, el OWNER le asigna un PIN de 4-8 dígitos. El empleado entra con él desde cualquier ordenador emparejado de la asesoría. Su cuenta de usuario se crea/reutiliza automáticamente — no necesita email.";
+            case "labor.employee.editor.app_access.role" -> "Rol en la asesoría";
+            case "labor.employee.editor.app_access.pin" -> "PIN (4-8 dígitos)";
+            case "labor.employee.editor.app_access.pin_prompt" -> "p. ej. 4815";
+            case "labor.employee.editor.app_access.pin_keep" -> "Deja vacío para mantener el actual";
+            case "labor.employee.editor.app_access.pin_new_hint" -> "Define un PIN numérico de 4 a 8 dígitos. El empleado entrará con él.";
+            case "labor.employee.editor.app_access.pin_change_hint" -> "Ya tiene PIN configurado. Escribe uno nuevo SOLO si quieres cambiarlo.";
             default -> null;
         };
     }
@@ -14421,15 +14441,78 @@ public class BenjagestUiApplication extends Application {
         geoHint.setWrapText(true);
         geoHint.getStyleClass().add("settings-hint");
         g.add(geoHint, 1, row, 3, 1); row++;
-        g.add(activeCb, 1, row);
+        g.add(activeCb, 1, row); row++;
+
+        // L4-4: sección "Acceso a la app" — sólo visible para el OWNER
+        // (lo enforce el backend; aquí mostramos siempre pero el guardar
+        // dará 403 si quien edita no tiene rol suficiente).
+        g.add(new Separator(), 0, row++, 4, 1);
+        g.add(label(t("labor.employee.section.app_access"), "settings-section-title"), 0, row++, 4, 1);
+
+        CheckBox appAccessCb = new CheckBox(t("labor.employee.editor.app_access"));
+        appAccessCb.setSelected(existing != null && existing.appAccess());
+        g.add(appAccessCb, 1, row, 3, 1); row++;
+
+        Label appAccessHint = new Label(t("labor.employee.editor.app_access.hint"));
+        appAccessHint.setWrapText(true);
+        appAccessHint.getStyleClass().add("settings-hint");
+        g.add(appAccessHint, 1, row, 3, 1); row++;
+
+        ComboBox<String> roleCombo = new ComboBox<>();
+        roleCombo.getItems().addAll("EMPLOYEE", "ACCOUNTANT", "ADVISOR", "ADMIN");
+        roleCombo.setConverter(new javafx.util.StringConverter<>() {
+            @Override public String toString(String code) {
+                return code == null ? "" : humanizeMemberRole(code);
+            }
+            @Override public String fromString(String s) { return null; }
+        });
+        roleCombo.setValue("EMPLOYEE");
+        g.add(new Label(t("labor.employee.editor.app_access.role")), 0, row);
+        g.add(roleCombo, 1, row); row++;
+
+        PasswordField pinField = new PasswordField();
+        pinField.setPromptText(existing != null && existing.hasPin()
+                ? t("labor.employee.editor.app_access.pin_keep")
+                : t("labor.employee.editor.app_access.pin_prompt"));
+        g.add(new Label(t("labor.employee.editor.app_access.pin")), 0, row);
+        g.add(pinField, 1, row);
+
+        Label pinHint = new Label(existing != null && existing.hasPin()
+                ? t("labor.employee.editor.app_access.pin_change_hint")
+                : t("labor.employee.editor.app_access.pin_new_hint"));
+        pinHint.setWrapText(true);
+        pinHint.getStyleClass().add("settings-hint");
+        g.add(pinHint, 2, row, 2, 1); row++;
+
+        // Habilita/deshabilita los inputs de PIN y rol según el toggle.
+        Runnable refreshAppAccessInputs = () -> {
+            boolean on = appAccessCb.isSelected();
+            roleCombo.setDisable(!on);
+            pinField.setDisable(!on);
+            // Si el empleado ya tenía rol asignado y desmarcamos, lo
+            // dejamos visible pero deshabilitado (informativo).
+        };
+        appAccessCb.selectedProperty().addListener((o, ov, nv) -> refreshAppAccessInputs.run());
+        refreshAppAccessInputs.run();
 
         ScrollPane sp = new ScrollPane(g);
         sp.setFitToWidth(true);
-        sp.setPrefViewportHeight(520);
+        sp.setPrefViewportHeight(560);
         dialog.getDialogPane().setContent(sp);
 
         dialog.showAndWait().ifPresent(bt -> {
             if (bt != saveBt) return;
+            // L4-4: el record EmployeeEntry lleva los 3 campos "read-only"
+            // del backend (appAccess, userId, hasPin) — siempre los enviamos
+            // tal cual vienen del existing para no sobrescribirlos por
+            // error. El TOGGLE intencional de app_access va al método
+            // createEmployee/updateEmployee con la sobrecarga (Boolean,
+            // String pin, String role).
+            boolean appAccessNow = appAccessCb.isSelected();
+            String pinPlain = pinField.getText() == null
+                    ? "" : pinField.getText().trim();
+            String roleSelected = roleCombo.getValue();
+
             com.benjagest.ui.model.EmployeeEntry payload = new com.benjagest.ui.model.EmployeeEntry(
                     existing == null ? null : existing.id(),
                     nameField.getText().trim(),
@@ -14454,18 +14537,32 @@ public class BenjagestUiApplication extends Application {
                     parseDateSafe(termField.getText()),
                     blankToNullOrSelf(termReasonField.getText()),
                     geoCb.isSelected(),
-                    activeCb.isSelected());
+                    activeCb.isSelected(),
+                    // Los campos read-only se devuelven igual: el backend
+                    // ignora estos en UpsertRequest, los toma de la BD.
+                    existing != null && existing.appAccess(),
+                    existing == null ? null : existing.userId(),
+                    existing != null && existing.hasPin());
             Task<com.benjagest.ui.model.EmployeeEntry> task = new Task<>() {
                 @Override
                 protected com.benjagest.ui.model.EmployeeEntry call() throws Exception {
+                    // El backend usa la sobrecarga con 4 args para tomar
+                    // appAccess + pin + role como decisiones explícitas.
                     return existing == null
-                            ? laborApiClient.createEmployee(payload)
-                            : laborApiClient.updateEmployee(existing.id(), payload);
+                            ? laborApiClient.createEmployee(payload, appAccessNow,
+                                    pinPlain.isEmpty() ? null : pinPlain, roleSelected)
+                            : laborApiClient.updateEmployee(existing.id(), payload,
+                                    appAccessNow, pinPlain.isEmpty() ? null : pinPlain,
+                                    roleSelected);
                 }
             };
             task.setOnSucceeded(ev -> showLaborModule());
-            task.setOnFailed(ev -> showError(t("labor.employee.editor.fail.title"),
-                    t("labor.employee.editor.fail.body")));
+            task.setOnFailed(ev -> {
+                Throwable err = task.getException();
+                String msg = err != null && err.getMessage() != null
+                        ? err.getMessage() : t("labor.employee.editor.fail.body");
+                showError(t("labor.employee.editor.fail.title"), msg);
+            });
             start(task, "labor-employee-save");
         });
     }
