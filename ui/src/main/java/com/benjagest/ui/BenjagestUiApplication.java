@@ -11582,6 +11582,7 @@ public class BenjagestUiApplication extends Application {
             // CTR-2 — Wizard de contrato
             case "labor.contract.wizard.title" -> "New contract";
             case "labor.contract.wizard.step" -> "Step";
+            case "labor.contract.wizard.cancel" -> "Cancel";
             case "labor.contract.wizard.prev" -> "Previous";
             case "labor.contract.wizard.next" -> "Next";
             case "labor.contract.wizard.create" -> "Create contract";
@@ -11800,6 +11801,7 @@ public class BenjagestUiApplication extends Application {
             // CTR-2 — Wizard de contrato
             case "labor.contract.wizard.title" -> "Nuevo contrato";
             case "labor.contract.wizard.step" -> "Paso";
+            case "labor.contract.wizard.cancel" -> "Cancelar";
             case "labor.contract.wizard.prev" -> "Anterior";
             case "labor.contract.wizard.next" -> "Siguiente";
             case "labor.contract.wizard.create" -> "Crear contrato";
@@ -15065,7 +15067,13 @@ public class BenjagestUiApplication extends Application {
         stepHost.setMinHeight(360);
         VBox.setVgrow(stepHost, Priority.ALWAYS);
 
-        // Botonera inferior
+        // Botonera inferior. Cancelar a la izquierda + Anterior, Siguiente/Crear a la derecha.
+        Button cancelBtn = new Button(t("labor.contract.wizard.cancel"));
+        cancelBtn.setGraphic(icon("fas-times"));
+        cancelBtn.setOnAction(ev -> {
+            dialog.setResult(ButtonType.CANCEL);
+            dialog.close();
+        });
         Button prevBtn = new Button(t("labor.contract.wizard.prev"));
         prevBtn.setGraphic(icon("fas-arrow-left"));
         Button nextBtn = new Button(t("labor.contract.wizard.next"));
@@ -15076,8 +15084,21 @@ public class BenjagestUiApplication extends Application {
         saveBtn.getStyleClass().add("primary-button");
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
-        HBox bar = new HBox(8, prevBtn, spacer, nextBtn, saveBtn);
+        HBox bar = new HBox(8, cancelBtn, spacer, prevBtn, nextBtn, saveBtn);
         bar.setPadding(new Insets(10, 0, 0, 0));
+
+        // Registrar ButtonType.CANCEL en el DialogPane para que la X de
+        // la ventana y la tecla Escape también cierren el wizard. Sin
+        // esto JavaFX no sabe cómo cerrar un diálogo con DialogPane
+        // sin button types registrados (Benjamin 2026-06-08: "no me
+        // deja cerrar la pagina"). Lo ocultamos visualmente porque
+        // ya tenemos el botón cancelBtn en la barra inferior.
+        dialog.getDialogPane().getButtonTypes().add(ButtonType.CANCEL);
+        Node cancelNode = dialog.getDialogPane().lookupButton(ButtonType.CANCEL);
+        if (cancelNode != null) {
+            cancelNode.setVisible(false);
+            cancelNode.setManaged(false);
+        }
 
         // currentStep mutable via array para que las lambdas lo capturen
         int[] currentStep = {1};

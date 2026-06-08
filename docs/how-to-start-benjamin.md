@@ -158,7 +158,7 @@ Si Maven falla con `PKIX path building failed`, no es un error del codigo. Suele
 ## 8. Arrancar backend
 
 ```powershell
-$env:BENJAGEST_DB_URL="jdbc:mariadb://localhost:3306/benjagest"
+$env:BENJAGEST_DB_URL="jdbc:mariadb://localhost:3307/benjagest"
 $env:BENJAGEST_DB_USER="benjagest"
 $env:BENJAGEST_DB_PASSWORD="benjagest"
 mvn -pl backend-java spring-boot:run
