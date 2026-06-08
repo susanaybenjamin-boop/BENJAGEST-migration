@@ -11032,12 +11032,70 @@ public class BenjagestUiApplication extends Application {
     }
 
     private void showError(String title, String message) {
+        // Humanizamos AQUÍ para que TODO error que pase por showError
+        // se limpie automáticamente — no hay que recordar llamar al
+        // helper en cada call-site. Es la frontera natural entre
+        // "mensajes técnicos del backend" y "mensajes para el usuario".
+        String clean = humanizeBackendError(message);
         Platform.runLater(() -> {
-            Alert alert = new Alert(Alert.AlertType.ERROR, message, ButtonType.OK);
+            Alert alert = new Alert(Alert.AlertType.ERROR, clean, ButtonType.OK);
             alert.setTitle("BENJAGEST");
             alert.setHeaderText(title);
             alert.showAndWait();
         });
+    }
+
+    /**
+     * Convierte mensajes técnicos del backend en texto humano:
+     *
+     * <p>Entrada típica de AltaApiClient/LaborApiClient/etc:
+     * <pre>HTTP 409: {"timestamp":"...","status":409,"error":"Conflict",
+     *               "message":"Otro empleado ya tiene ese PIN...","path":"..."}</pre>
+     *
+     * <p>Sale: {@code "Otro empleado ya tiene ese PIN..."}.
+     *
+     * <p>Reglas:
+     * <ul>
+     *   <li>Si el mensaje contiene un JSON con campo {@code "message"},
+     *       extrae solo ese campo.</li>
+     *   <li>Si no, devuelve el mensaje tal cual (o "" si era null).</li>
+     *   <li>Maneja escapes JSON básicos (\", \n, \\) para que el texto
+     *       final no lleve barras invertidas raras.</li>
+     * </ul>
+     */
+    private static String humanizeBackendError(String raw) {
+        if (raw == null || raw.isBlank()) return "";
+        // Localiza "message":"..." sin importar lo que tenga delante.
+        int idx = raw.indexOf("\"message\"");
+        if (idx < 0) return raw;
+        int colon = raw.indexOf(':', idx);
+        if (colon < 0) return raw;
+        int firstQuote = raw.indexOf('"', colon);
+        if (firstQuote < 0) return raw;
+        StringBuilder sb = new StringBuilder();
+        boolean escape = false;
+        for (int i = firstQuote + 1; i < raw.length(); i++) {
+            char c = raw.charAt(i);
+            if (escape) {
+                switch (c) {
+                    case 'n' -> sb.append('\n');
+                    case 't' -> sb.append('\t');
+                    case 'r' -> { /* drop */ }
+                    case '"' -> sb.append('"');
+                    case '\\' -> sb.append('\\');
+                    default -> sb.append(c);
+                }
+                escape = false;
+            } else if (c == '\\') {
+                escape = true;
+            } else if (c == '"') {
+                String out = sb.toString().trim();
+                return out.isBlank() ? raw : out;
+            } else {
+                sb.append(c);
+            }
+        }
+        return raw;
     }
 
     public static void main(String[] args) {
@@ -11512,6 +11570,15 @@ public class BenjagestUiApplication extends Application {
             case "labor.employee.editor.app_access.pin_keep" -> "Leave empty to keep current";
             case "labor.employee.editor.app_access.pin_new_hint" -> "Set a numeric PIN of 4 to 8 digits. The employee will sign in with it.";
             case "labor.employee.editor.app_access.pin_change_hint" -> "Already has a PIN. Type a new one only if you want to replace it.";
+            // Combos sexo / estado civil
+            case "labor.employee.gender.MALE" -> "Male";
+            case "labor.employee.gender.FEMALE" -> "Female";
+            case "labor.employee.gender.OTHER" -> "Other / Prefer not to say";
+            case "labor.employee.marital.SINGLE" -> "Single";
+            case "labor.employee.marital.MARRIED" -> "Married";
+            case "labor.employee.marital.DIVORCED" -> "Divorced";
+            case "labor.employee.marital.WIDOWED" -> "Widowed";
+            case "labor.employee.marital.DOMESTIC_PARTNER" -> "Domestic partnership";
             default -> null;
         };
     }
@@ -11671,6 +11738,15 @@ public class BenjagestUiApplication extends Application {
             case "labor.employee.editor.app_access.pin_keep" -> "Deja vacío para mantener el actual";
             case "labor.employee.editor.app_access.pin_new_hint" -> "Define un PIN numérico de 4 a 8 dígitos. El empleado entrará con él.";
             case "labor.employee.editor.app_access.pin_change_hint" -> "Ya tiene PIN configurado. Escribe uno nuevo SOLO si quieres cambiarlo.";
+            // Combos sexo / estado civil
+            case "labor.employee.gender.MALE" -> "Hombre";
+            case "labor.employee.gender.FEMALE" -> "Mujer";
+            case "labor.employee.gender.OTHER" -> "Otro / Prefiero no decirlo";
+            case "labor.employee.marital.SINGLE" -> "Soltero/a";
+            case "labor.employee.marital.MARRIED" -> "Casado/a";
+            case "labor.employee.marital.DIVORCED" -> "Divorciado/a";
+            case "labor.employee.marital.WIDOWED" -> "Viudo/a";
+            case "labor.employee.marital.DOMESTIC_PARTNER" -> "Pareja de hecho";
             default -> null;
         };
     }
@@ -14471,11 +14547,29 @@ public class BenjagestUiApplication extends Application {
         TextField birthField = new TextField(existing == null || existing.birthDate() == null
                 ? "" : existing.birthDate().toString());
         birthField.setPromptText("AAAA-MM-DD");
+        // Combos con StringConverter para mostrar texto traducido al
+        // idioma actual; los valores internos (MALE/FEMALE/SINGLE/…) se
+        // mantienen tal cual viajan al backend, así no hay que tocar BD.
         ComboBox<String> genderCombo = new ComboBox<>();
         genderCombo.getItems().addAll("", "MALE", "FEMALE", "OTHER");
+        genderCombo.setConverter(new javafx.util.StringConverter<>() {
+            @Override public String toString(String code) {
+                if (code == null || code.isEmpty()) return "";
+                return humanizeFromKey("labor.employee.gender." + code, code);
+            }
+            @Override public String fromString(String s) { return null; }
+        });
         genderCombo.getSelectionModel().select(existing == null || existing.gender() == null ? "" : existing.gender());
+
         ComboBox<String> maritalCombo = new ComboBox<>();
         maritalCombo.getItems().addAll("", "SINGLE", "MARRIED", "DIVORCED", "WIDOWED", "DOMESTIC_PARTNER");
+        maritalCombo.setConverter(new javafx.util.StringConverter<>() {
+            @Override public String toString(String code) {
+                if (code == null || code.isEmpty()) return "";
+                return humanizeFromKey("labor.employee.marital." + code, code);
+            }
+            @Override public String fromString(String s) { return null; }
+        });
         maritalCombo.getSelectionModel().select(existing == null || existing.maritalStatus() == null ? "" : existing.maritalStatus());
         TextField childrenField = new TextField(existing == null || existing.dependentChildren() == null
                 ? "" : existing.dependentChildren().toString());
@@ -16412,6 +16506,19 @@ public class BenjagestUiApplication extends Application {
         });
 
         dialog.showAndWait();
+    }
+
+    /**
+     * Helper genérico de humanización: si {@code key} tiene traducción
+     * la devuelve, si no devuelve {@code fallback}. Usado por los combos
+     * de empleado (sexo/estado civil) y otros sitios donde tenemos
+     * pares (key, código_bd) que necesitan mostrarse traducidos sin
+     * romper si el código es desconocido.
+     */
+    private String humanizeFromKey(String key, String fallback) {
+        if (key == null || key.isBlank()) return fallback == null ? "" : fallback;
+        String translated = t(key);
+        return key.equals(translated) ? (fallback == null ? "" : fallback) : translated;
     }
 
     /**
