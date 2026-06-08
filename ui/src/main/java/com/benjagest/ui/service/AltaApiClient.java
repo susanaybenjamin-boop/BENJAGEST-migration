@@ -881,6 +881,33 @@ public class AltaApiClient {
     }
 
     /**
+     * Variante de {@link #send} para descargas binarias (PDF, XML…).
+     * Usa byte array body handler en lugar de string. Necesario para
+     * CTR-4/CTR-5 (descarga PDF + XML contrato).
+     */
+    private HttpResponse<byte[]> sendBytes(HttpRequest.Builder builder) throws IOException, InterruptedException {
+        AuthSession.get().authorize(builder);
+        HttpResponse<byte[]> r = httpClient.send(builder.build(), HttpResponse.BodyHandlers.ofByteArray());
+        if (r.statusCode() < 200 || r.statusCode() >= 300) {
+            throw new IOException("HTTP " + r.statusCode());
+        }
+        return r;
+    }
+
+    /**
+     * Variante de {@link #send} para respuestas sin cuerpo (DELETE,
+     * POST 204, etc.). Descarta el body para no consumirlo.
+     */
+    private HttpResponse<Void> sendDiscarding(HttpRequest.Builder builder) throws IOException, InterruptedException {
+        AuthSession.get().authorize(builder);
+        HttpResponse<Void> r = httpClient.send(builder.build(), HttpResponse.BodyHandlers.discarding());
+        if (r.statusCode() < 200 || r.statusCode() >= 300) {
+            throw new IOException("HTTP " + r.statusCode());
+        }
+        return r;
+    }
+
+    /**
      * Variante de {@link #send} que ignora el override actingFor y manda
      * el X-Company-Id real de la asesoría. Usar para llamadas que deben
      * ejecutarse "como la asesoría" incluso si la UI está actuando en
@@ -956,5 +983,189 @@ public class AltaApiClient {
 
     private static String apiBaseUrl() {
         return System.getenv().getOrDefault("BENJAGEST_API_BASE_URL", DEFAULT_API_BASE_URL);
+    }
+
+    // ============================================================
+    // CTR-3 — Plantillas de contrato
+    //   /api/contracts/templates
+    // ============================================================
+
+    public List<com.benjagest.ui.model.ContractTemplate> listContractTemplates()
+            throws IOException, InterruptedException {
+        HttpResponse<String> r = send(req(baseUrl + "/contracts/templates").GET());
+        if (r.statusCode() < 200 || r.statusCode() >= 300) {
+            throw new IOException("HTTP " + r.statusCode() + ": " + r.body());
+        }
+        List<com.benjagest.ui.model.ContractTemplate> out = new ArrayList<>();
+        for (String obj : splitTopLevelObjects(r.body())) {
+            out.add(mapTemplate(obj));
+        }
+        return out;
+    }
+
+    public com.benjagest.ui.model.ContractTemplate createContractTemplate(
+            com.benjagest.ui.model.ContractTemplate tpl) throws IOException, InterruptedException {
+        String json = templateToJson(tpl);
+        HttpResponse<String> r = send(req(baseUrl + "/contracts/templates")
+                .POST(HttpRequest.BodyPublishers.ofString(json))
+                .header("Content-Type", "application/json"));
+        if (r.statusCode() < 200 || r.statusCode() >= 300) {
+            throw new IOException("HTTP " + r.statusCode() + ": " + r.body());
+        }
+        return mapTemplate(r.body());
+    }
+
+    public void deleteContractTemplate(String id) throws IOException, InterruptedException {
+        sendDiscarding(req(baseUrl + "/contracts/templates/" + id).DELETE());
+    }
+
+    private com.benjagest.ui.model.ContractTemplate mapTemplate(String obj) {
+        return new com.benjagest.ui.model.ContractTemplate(
+                textField(obj, "id"),
+                textField(obj, "name"),
+                textField(obj, "description"),
+                textField(obj, "sepeContractCode"),
+                textField(obj, "contractType"),
+                textField(obj, "collectiveAgreementId"),
+                textField(obj, "professionalCategoryId"),
+                textField(obj, "professionalGroup"),
+                bigDecField(obj, "weeklyHours"),
+                bigDecField(obj, "grossSalary"),
+                intFieldOrNull(obj, "annualBonuses"),
+                intFieldOrNull(obj, "vacationDays"),
+                bigDecField(obj, "irpfPercent"),
+                intFieldOrNull(obj, "probationDays"),
+                textField(obj, "workplaceAddress"),
+                textField(obj, "clauseCodes"),
+                textField(obj, "pdfModel"),
+                boolField(obj, "isBuiltIn"),
+                boolField(obj, "active")
+        );
+    }
+
+    private String templateToJson(com.benjagest.ui.model.ContractTemplate t) {
+        StringBuilder sb = new StringBuilder("{");
+        appendStr(sb, "name", t.name());
+        appendStr(sb, "description", t.description());
+        appendStr(sb, "sepeContractCode", t.sepeContractCode());
+        appendStr(sb, "contractType", t.contractType());
+        appendStr(sb, "collectiveAgreementId", t.collectiveAgreementId());
+        appendStr(sb, "professionalCategoryId", t.professionalCategoryId());
+        appendStr(sb, "professionalGroup", t.professionalGroup());
+        appendDec(sb, "weeklyHours", t.weeklyHours());
+        appendDec(sb, "grossSalary", t.grossSalary());
+        appendInt(sb, "annualBonuses", t.annualBonuses());
+        appendInt(sb, "vacationDays", t.vacationDays());
+        appendDec(sb, "irpfPercent", t.irpfPercent());
+        appendInt(sb, "probationDays", t.probationDays());
+        appendStr(sb, "workplaceAddress", t.workplaceAddress());
+        appendStr(sb, "clauseCodes", t.clauseCodes());
+        appendStr(sb, "pdfModel", t.pdfModel());
+        if (sb.charAt(sb.length() - 1) == ',') sb.setLength(sb.length() - 1);
+        sb.append('}');
+        return sb.toString();
+    }
+
+    private static void appendStr(StringBuilder sb, String k, String v) {
+        if (v == null) return;
+        sb.append('"').append(k).append("\":\"").append(escJ(v)).append("\",");
+    }
+    private static void appendDec(StringBuilder sb, String k, BigDecimal v) {
+        if (v == null) return;
+        sb.append('"').append(k).append("\":").append(v.toPlainString()).append(',');
+    }
+    private static void appendInt(StringBuilder sb, String k, Integer v) {
+        if (v == null) return;
+        sb.append('"').append(k).append("\":").append(v).append(',');
+    }
+    private static String escJ(String s) {
+        return s.replace("\\", "\\\\").replace("\"", "\\\"")
+                .replace("\n", "\\n").replace("\r", "");
+    }
+
+    // ============================================================
+    // CTR-6 — Alertas de vencimiento
+    //   /api/contracts/alerts
+    // ============================================================
+
+    public List<com.benjagest.ui.model.ContractAlert> listContractAlerts()
+            throws IOException, InterruptedException {
+        HttpResponse<String> r = send(req(baseUrl + "/contracts/alerts").GET());
+        if (r.statusCode() < 200 || r.statusCode() >= 300) {
+            throw new IOException("HTTP " + r.statusCode() + ": " + r.body());
+        }
+        List<com.benjagest.ui.model.ContractAlert> out = new ArrayList<>();
+        for (String obj : splitTopLevelObjects(r.body())) {
+            out.add(new com.benjagest.ui.model.ContractAlert(
+                    textField(obj, "id"),
+                    textField(obj, "kind"),
+                    textField(obj, "title"),
+                    textField(obj, "message"),
+                    textField(obj, "severity"),
+                    textField(obj, "firesAt"),
+                    boolField(obj, "seen"),
+                    textField(obj, "contractId"),
+                    textField(obj, "employeeId"),
+                    textField(obj, "employeeName")
+            ));
+        }
+        return out;
+    }
+
+    public void dismissContractAlert(String id) throws IOException, InterruptedException {
+        sendDiscarding(req(baseUrl + "/contracts/alerts/" + id + "/dismiss")
+                .POST(HttpRequest.BodyPublishers.noBody()));
+    }
+
+    public void rescanContractAlerts() throws IOException, InterruptedException {
+        HttpResponse<String> r = send(req(baseUrl + "/contracts/alerts/rescan")
+                .POST(HttpRequest.BodyPublishers.noBody()));
+        if (r.statusCode() < 200 || r.statusCode() >= 300) {
+            throw new IOException("HTTP " + r.statusCode() + ": " + r.body());
+        }
+    }
+
+    // ============================================================
+    // CTR-7 — Anexos (cláusulas vinculadas + free clauses)
+    //   /api/contracts/{id}/annexes
+    // ============================================================
+
+    public void linkContractAnnex(String contractId, String clauseTemplateId)
+            throws IOException, InterruptedException {
+        String json = "{\"clauseTemplateId\":\"" + escJ(clauseTemplateId) + "\"}";
+        HttpResponse<String> r = send(req(baseUrl + "/contracts/" + contractId + "/annexes/linked")
+                .POST(HttpRequest.BodyPublishers.ofString(json))
+                .header("Content-Type", "application/json"));
+        if (r.statusCode() < 200 || r.statusCode() >= 300) {
+            throw new IOException("HTTP " + r.statusCode() + ": " + r.body());
+        }
+    }
+
+    public void addContractFreeClause(String contractId, String title, String body)
+            throws IOException, InterruptedException {
+        String json = "{\"title\":\"" + escJ(title) + "\",\"body\":\"" + escJ(body) + "\"}";
+        HttpResponse<String> r = send(req(baseUrl + "/contracts/" + contractId + "/annexes/free")
+                .POST(HttpRequest.BodyPublishers.ofString(json))
+                .header("Content-Type", "application/json"));
+        if (r.statusCode() < 200 || r.statusCode() >= 300) {
+            throw new IOException("HTTP " + r.statusCode() + ": " + r.body());
+        }
+    }
+
+    // ============================================================
+    // CTR-4 / CTR-5 — Descarga PDF + XML
+    //   /api/contracts/{id}/{pdf|xml}
+    // ============================================================
+
+    public byte[] downloadContractPdf(String contractId, String model)
+            throws IOException, InterruptedException {
+        String url = baseUrl + "/contracts/" + contractId + "/pdf"
+                + (model == null ? "" : "?model=" + model);
+        return sendBytes(req(url).GET()).body();
+    }
+
+    public byte[] downloadContractXml(String contractId)
+            throws IOException, InterruptedException {
+        return sendBytes(req(baseUrl + "/contracts/" + contractId + "/xml").GET()).body();
     }
 }
