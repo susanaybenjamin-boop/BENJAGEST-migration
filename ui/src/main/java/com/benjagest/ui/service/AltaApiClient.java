@@ -377,16 +377,23 @@ public class AltaApiClient {
         if (r.statusCode() < 200 || r.statusCode() >= 300) {
             throw new IOException("HTTP " + r.statusCode() + ": " + r.body());
         }
-        return parseObjects(r.body(), "code", obj ->
-                new com.benjagest.ui.model.ContractCatalog.SepeType(
-                        textField(obj, "code"),
-                        textField(obj, "family"),
-                        textField(obj, "workingDay"),
-                        textField(obj, "description"),
-                        textField(obj, "legalBasis"),
-                        boolField(obj, "unifiedModel2022"),
-                        boolField(obj, "active")
-                ));
+        // Usamos splitTopLevelObjects en lugar de parseObjects: aunque
+        // SepeType no lleva arrays anidados, sus descripciones pueden
+        // contener caracteres que rompan el regex `[^{}]*`. Es robusto
+        // por defecto.
+        List<com.benjagest.ui.model.ContractCatalog.SepeType> out = new ArrayList<>();
+        for (String obj : splitTopLevelObjects(r.body())) {
+            out.add(new com.benjagest.ui.model.ContractCatalog.SepeType(
+                    textField(obj, "code"),
+                    textField(obj, "family"),
+                    textField(obj, "workingDay"),
+                    textField(obj, "description"),
+                    textField(obj, "legalBasis"),
+                    boolField(obj, "unifiedModel2022"),
+                    boolField(obj, "active")
+            ));
+        }
+        return out;
     }
 
     public List<com.benjagest.ui.model.ContractCatalog.Agreement> listCollectiveAgreements()
@@ -395,13 +402,16 @@ public class AltaApiClient {
         if (r.statusCode() < 200 || r.statusCode() >= 300) {
             throw new IOException("HTTP " + r.statusCode() + ": " + r.body());
         }
-        // Cada convenio lleva sus categorías anidadas. parseObjects
-        // separa por nivel exterior; para cada uno extraemos el array
-        // de categorías con extractJsonArrayObjects (helper minimalista).
-        return parseObjects(r.body(), "code", agreementObj -> {
+        // NO se puede usar parseObjects() aquí: su regex `[^{}]*` solo
+        // matchea objetos planos sin llaves anidadas — pero cada convenio
+        // lleva categories:[{...},...] dentro y el regex falla devolviendo
+        // lista vacía. Usamos un parser por balance de llaves que
+        // funciona con anidamiento de cualquier nivel.
+        List<com.benjagest.ui.model.ContractCatalog.Agreement> out = new ArrayList<>();
+        for (String agreementObj : splitTopLevelObjects(r.body())) {
             List<com.benjagest.ui.model.ContractCatalog.Category> cats =
                     parseCategoriesFromAgreement(agreementObj);
-            return new com.benjagest.ui.model.ContractCatalog.Agreement(
+            out.add(new com.benjagest.ui.model.ContractCatalog.Agreement(
                     textField(agreementObj, "id"),
                     textField(agreementObj, "code"),
                     textField(agreementObj, "name"),
@@ -409,8 +419,41 @@ public class AltaApiClient {
                     textField(agreementObj, "boeReference"),
                     cats,
                     boolField(agreementObj, "active")
-            );
-        });
+            ));
+        }
+        return out;
+    }
+
+    /**
+     * Divide un array JSON {@code [{...},{...},...]} en los objetos de
+     * primer nivel. A diferencia de {@link #parseObjects}, balancea
+     * llaves y respeta strings con escapes, así que funciona aunque
+     * los objetos lleven arrays / sub-objetos anidados (caso de los
+     * convenios con sus categorías).
+     */
+    private List<String> splitTopLevelObjects(String json) {
+        List<String> out = new ArrayList<>();
+        if (json == null) return out;
+        int depth = 0, objStart = -1;
+        boolean inString = false, escape = false;
+        for (int i = 0; i < json.length(); i++) {
+            char c = json.charAt(i);
+            if (escape) { escape = false; continue; }
+            if (c == '\\' && inString) { escape = true; continue; }
+            if (c == '"') { inString = !inString; continue; }
+            if (inString) continue;
+            if (c == '{') {
+                if (depth == 0) objStart = i;
+                depth++;
+            } else if (c == '}') {
+                depth--;
+                if (depth == 0 && objStart >= 0) {
+                    out.add(json.substring(objStart, i + 1));
+                    objStart = -1;
+                }
+            }
+        }
+        return out;
     }
 
     public List<com.benjagest.ui.model.ContractCatalog.ClauseTemplate> listClauseTemplates()
@@ -419,18 +462,24 @@ public class AltaApiClient {
         if (r.statusCode() < 200 || r.statusCode() >= 300) {
             throw new IOException("HTTP " + r.statusCode() + ": " + r.body());
         }
-        return parseObjects(r.body(), "title", obj ->
-                new com.benjagest.ui.model.ContractCatalog.ClauseTemplate(
-                        textField(obj, "id"),
-                        textField(obj, "code"),
-                        textField(obj, "title"),
-                        textField(obj, "body"),
-                        textField(obj, "category"),
-                        textField(obj, "legalBasis"),
-                        boolField(obj, "isBuiltIn"),
-                        textField(obj, "companyId"),
-                        boolField(obj, "active")
-                ));
+        // splitTopLevelObjects es OBLIGATORIO aquí: el campo `body` lleva
+        // texto legal largo con saltos de línea reales y caracteres
+        // especiales que romperían el regex `[^{}]*` de parseObjects.
+        List<com.benjagest.ui.model.ContractCatalog.ClauseTemplate> out = new ArrayList<>();
+        for (String obj : splitTopLevelObjects(r.body())) {
+            out.add(new com.benjagest.ui.model.ContractCatalog.ClauseTemplate(
+                    textField(obj, "id"),
+                    textField(obj, "code"),
+                    textField(obj, "title"),
+                    textField(obj, "body"),
+                    textField(obj, "category"),
+                    textField(obj, "legalBasis"),
+                    boolField(obj, "isBuiltIn"),
+                    textField(obj, "companyId"),
+                    boolField(obj, "active")
+            ));
+        }
+        return out;
     }
 
     /**
