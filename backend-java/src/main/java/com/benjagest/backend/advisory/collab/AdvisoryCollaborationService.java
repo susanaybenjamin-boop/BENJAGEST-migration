@@ -115,7 +115,7 @@ public class AdvisoryCollaborationService {
                         || "ADVISORY".equalsIgnoreCase(m.companyType()))
                 .findFirst()
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN,
-                        "Solo el OWNER de una asesoría puede aceptar colaboraciones."))
+                        "Solo el Propietario de una asesoría puede aceptar colaboraciones."))
                 .companyId();
 
         repository.accept(collaborationId, partnerAdvisoryId, me.userId());
@@ -215,7 +215,7 @@ public class AdvisoryCollaborationService {
                 """, Integer.class, advisoryCompanyId, userId);
         if (count == null || count == 0) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN,
-                    "Solo el OWNER de la asesoría puede gestionar colaboraciones.");
+                    "Solo el Propietario de la asesoría puede gestionar colaboraciones.");
         }
     }
 
