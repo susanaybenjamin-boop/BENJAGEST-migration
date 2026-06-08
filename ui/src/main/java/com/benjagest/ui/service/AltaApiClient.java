@@ -366,6 +366,141 @@ public class AltaApiClient {
         );
     }
 
+    // ============================================================
+    // CTR-2 — Catálogos de contrato (solo lectura)
+    //   /api/contracts/catalog/*
+    // ============================================================
+
+    public List<com.benjagest.ui.model.ContractCatalog.SepeType> listSepeContractTypes()
+            throws IOException, InterruptedException {
+        HttpResponse<String> r = send(req(baseUrl + "/contracts/catalog/sepe").GET());
+        if (r.statusCode() < 200 || r.statusCode() >= 300) {
+            throw new IOException("HTTP " + r.statusCode() + ": " + r.body());
+        }
+        return parseObjects(r.body(), "code", obj ->
+                new com.benjagest.ui.model.ContractCatalog.SepeType(
+                        textField(obj, "code"),
+                        textField(obj, "family"),
+                        textField(obj, "workingDay"),
+                        textField(obj, "description"),
+                        textField(obj, "legalBasis"),
+                        boolField(obj, "unifiedModel2022"),
+                        boolField(obj, "active")
+                ));
+    }
+
+    public List<com.benjagest.ui.model.ContractCatalog.Agreement> listCollectiveAgreements()
+            throws IOException, InterruptedException {
+        HttpResponse<String> r = send(req(baseUrl + "/contracts/catalog/agreements").GET());
+        if (r.statusCode() < 200 || r.statusCode() >= 300) {
+            throw new IOException("HTTP " + r.statusCode() + ": " + r.body());
+        }
+        // Cada convenio lleva sus categorías anidadas. parseObjects
+        // separa por nivel exterior; para cada uno extraemos el array
+        // de categorías con extractJsonArrayObjects (helper minimalista).
+        return parseObjects(r.body(), "code", agreementObj -> {
+            List<com.benjagest.ui.model.ContractCatalog.Category> cats =
+                    parseCategoriesFromAgreement(agreementObj);
+            return new com.benjagest.ui.model.ContractCatalog.Agreement(
+                    textField(agreementObj, "id"),
+                    textField(agreementObj, "code"),
+                    textField(agreementObj, "name"),
+                    textField(agreementObj, "scope"),
+                    textField(agreementObj, "boeReference"),
+                    cats,
+                    boolField(agreementObj, "active")
+            );
+        });
+    }
+
+    public List<com.benjagest.ui.model.ContractCatalog.ClauseTemplate> listClauseTemplates()
+            throws IOException, InterruptedException {
+        HttpResponse<String> r = send(req(baseUrl + "/contracts/catalog/clauses").GET());
+        if (r.statusCode() < 200 || r.statusCode() >= 300) {
+            throw new IOException("HTTP " + r.statusCode() + ": " + r.body());
+        }
+        return parseObjects(r.body(), "title", obj ->
+                new com.benjagest.ui.model.ContractCatalog.ClauseTemplate(
+                        textField(obj, "id"),
+                        textField(obj, "code"),
+                        textField(obj, "title"),
+                        textField(obj, "body"),
+                        textField(obj, "category"),
+                        textField(obj, "legalBasis"),
+                        boolField(obj, "isBuiltIn"),
+                        textField(obj, "companyId"),
+                        boolField(obj, "active")
+                ));
+    }
+
+    /**
+     * Extrae el array "categories":[...] anidado dentro del JSON de un
+     * convenio y devuelve cada Category. Parser minimalista para no
+     * añadir Jackson en la UI.
+     */
+    private List<com.benjagest.ui.model.ContractCatalog.Category> parseCategoriesFromAgreement(
+            String agreementJson) {
+        List<com.benjagest.ui.model.ContractCatalog.Category> out = new java.util.ArrayList<>();
+        int idx = agreementJson.indexOf("\"categories\"");
+        if (idx < 0) return out;
+        int bracketStart = agreementJson.indexOf('[', idx);
+        if (bracketStart < 0) return out;
+        // Recorrer el array balanceando {} para extraer cada objeto.
+        int depth = 0, objStart = -1;
+        for (int i = bracketStart; i < agreementJson.length(); i++) {
+            char c = agreementJson.charAt(i);
+            if (c == '[') { /* outer bracket */ }
+            else if (c == ']' && depth == 0) break;
+            else if (c == '{') {
+                if (depth == 0) objStart = i;
+                depth++;
+            } else if (c == '}') {
+                depth--;
+                if (depth == 0 && objStart >= 0) {
+                    String obj = agreementJson.substring(objStart, i + 1);
+                    out.add(new com.benjagest.ui.model.ContractCatalog.Category(
+                            textField(obj, "id"),
+                            textField(obj, "collectiveAgreementId"),
+                            textField(obj, "groupCode"),
+                            textField(obj, "categoryName"),
+                            decimalFieldOrNull(obj, "minAnnualSalary"),
+                            decimalFieldOrNull(obj, "minMonthlySalary"),
+                            decimalFieldOrNull(obj, "maxWeeklyHours"),
+                            intFieldOrNull(obj, "probationDays"),
+                            intFieldOrNull(obj, "yearPublished"),
+                            boolField(obj, "active")
+                    ));
+                    objStart = -1;
+                }
+            }
+        }
+        return out;
+    }
+
+    private java.math.BigDecimal decimalFieldOrNull(String obj, String field) {
+        String raw = textField(obj, field);
+        if (raw == null || raw.isBlank()) {
+            // Puede venir sin comillas (número JSON). Buscar directo.
+            int idx = obj.indexOf("\"" + field + "\"");
+            if (idx < 0) return null;
+            int colon = obj.indexOf(':', idx);
+            if (colon < 0) return null;
+            // Extraer hasta la siguiente coma o llave.
+            StringBuilder sb = new StringBuilder();
+            for (int i = colon + 1; i < obj.length(); i++) {
+                char c = obj.charAt(i);
+                if (c == ',' || c == '}' || c == ']') break;
+                if (!Character.isWhitespace(c)) sb.append(c);
+            }
+            String num = sb.toString();
+            if (num.isBlank() || "null".equals(num)) return null;
+            try { return new java.math.BigDecimal(num); }
+            catch (NumberFormatException ex) { return null; }
+        }
+        try { return new java.math.BigDecimal(raw); }
+        catch (NumberFormatException ex) { return null; }
+    }
+
     private static java.time.Instant parseInstantOrNull(String s) {
         if (s == null || s.isBlank()) return null;
         try { return java.time.Instant.parse(s); }
