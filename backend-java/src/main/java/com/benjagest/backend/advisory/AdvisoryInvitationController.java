@@ -34,7 +34,7 @@ public class AdvisoryInvitationController {
     @RestController
     @RequestMapping("/api/advisory/invitations")
     @RequiresModule("advisory")
-    @RequiresRole({"OWNER", "ADMIN", "ACCOUNTANT"})
+    @RequiresRole({"OWNER", "ADMIN", "ACCOUNTANT", "EMPLOYEE"})
     public static class AdvisoryEndpoints {
         private final AdvisoryInvitationService service;
 
@@ -67,7 +67,7 @@ public class AdvisoryInvitationController {
      */
     @RestController
     @RequestMapping("/api/advisory/my-invitations")
-    @RequiresRole({"OWNER", "ADMIN", "ACCOUNTANT"})
+    @RequiresRole({"OWNER", "ADMIN", "ACCOUNTANT", "EMPLOYEE"})
     public static class ClientEndpoints {
         private final AdvisoryInvitationService service;
 
