@@ -34,6 +34,27 @@ import org.springframework.web.server.ResponseStatusException;
  *   <li>Documento alternativo de archivo para Inspección de Trabajo.</li>
  * </ul>
  *
+ * <p><b>CTR-XADES (pendiente para v2)</b> — Firma XAdES-EPES del XML
+ * Contrat@. Pasos previstos:
+ * <ol>
+ *   <li>Reusar el motor {@code com.benjagest.backend.billing.invoice.SignXadesService}
+ *       que ya firma facturas VeriFactu (XAdES-EPES sobre el XML envuelto
+ *       en {@code <ds:Signature>}).</li>
+ *   <li>Cargar el certificado {@code .p12} de la asesoría desde
+ *       {@code stored_certificates} (CERT-IMPORT) y abrirlo con la
+ *       contraseña del OWNER (igual que ya hace SIF).</li>
+ *   <li>Endpoint {@code GET /api/contracts/{id}/xml?signed=true} —
+ *       devuelve el XML firmado. Si {@code signed=true} y no hay
+ *       certificado válido cargado, 412 PRECONDITION_FAILED con
+ *       mensaje que dirige al OWNER a Configuración → Certificado.</li>
+ *   <li>Persistir el XML firmado en disco (mirror del PDF flow):
+ *       columna {@code xml_path} en {@code employment_contracts}
+ *       (ya creada en V75 para esto) y actualizar {@code sepe_sent_at}
+ *       cuando el SEPE acepte el envío telemático.</li>
+ *   <li>Para envío SOAP a Contrat@ — pendiente VF3-SOAP-style:
+ *       wsdl SEPE + autenticación con certificado + parser respuesta.</li>
+ * </ol>
+ *
  * <p>Base legal:
  * <ul>
  *   <li>Orden TES/106/2017 — Sistema RED y comunicación de contratos</li>

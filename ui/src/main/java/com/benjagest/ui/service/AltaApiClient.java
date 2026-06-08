@@ -1157,6 +1157,28 @@ public class AltaApiClient {
     //   /api/contracts/{id}/{pdf|xml}
     // ============================================================
 
+    /**
+     * CTR-7 — Crea (POST) o actualiza (PUT) una cláusula custom del tenant.
+     * Solo cláusulas con is_built_in=FALSE son editables; el backend
+     * rechaza intentos de tocar built-in.
+     */
+    public void upsertClauseTemplate(String existingId, String json)
+            throws IOException, InterruptedException {
+        HttpRequest.Builder b;
+        if (existingId == null) {
+            b = req(baseUrl + "/contracts/catalog/clauses")
+                    .POST(HttpRequest.BodyPublishers.ofString(json));
+        } else {
+            b = req(baseUrl + "/contracts/catalog/clauses/" + existingId)
+                    .PUT(HttpRequest.BodyPublishers.ofString(json));
+        }
+        b.header("Content-Type", "application/json");
+        HttpResponse<String> r = send(b);
+        if (r.statusCode() < 200 || r.statusCode() >= 300) {
+            throw new IOException("HTTP " + r.statusCode() + ": " + r.body());
+        }
+    }
+
     public byte[] downloadContractPdf(String contractId, String model)
             throws IOException, InterruptedException {
         String url = baseUrl + "/contracts/" + contractId + "/pdf"

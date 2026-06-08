@@ -30,4 +30,7 @@ public record ContractTemplate(
     public String label() {
         return name == null ? "—" : name;
     }
+
+    /** Para que ChoiceDialog y ComboBox pinten el nombre por defecto. */
+    @Override public String toString() { return label(); }
 }
