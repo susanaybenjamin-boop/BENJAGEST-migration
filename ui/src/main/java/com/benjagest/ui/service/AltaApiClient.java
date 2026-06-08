@@ -275,6 +275,103 @@ public class AltaApiClient {
     //   /api/advisory/team/assignments
     // ============================================================
 
+    // ============================================================
+    // L4-6/L4-7 — Colaboraciones inter-asesoría
+    //   /api/advisory/collaborations/*
+    // ============================================================
+
+    public List<com.benjagest.ui.model.CollabEntry> listOutgoingCollabs()
+            throws IOException, InterruptedException {
+        HttpResponse<String> r = send(req(baseUrl
+                + "/advisory/collaborations/outgoing").GET());
+        return parseCollabs(r);
+    }
+
+    public List<com.benjagest.ui.model.CollabEntry> listIncomingCollabs()
+            throws IOException, InterruptedException {
+        HttpResponse<String> r = send(req(baseUrl
+                + "/advisory/collaborations/incoming").GET());
+        return parseCollabs(r);
+    }
+
+    public List<com.benjagest.ui.model.CollabEntry> listActiveCollabs()
+            throws IOException, InterruptedException {
+        HttpResponse<String> r = send(req(baseUrl
+                + "/advisory/collaborations/active").GET());
+        return parseCollabs(r);
+    }
+
+    public com.benjagest.ui.model.CollabEntry inviteCollab(String email, String notes)
+            throws IOException, InterruptedException {
+        StringBuilder b = new StringBuilder("{");
+        b.append("\"email\":").append(jsonString(email));
+        if (notes != null && !notes.isBlank()) {
+            b.append(",\"notes\":").append(jsonString(notes));
+        }
+        b.append('}');
+        HttpResponse<String> r = send(req(baseUrl + "/advisory/collaborations")
+                .POST(java.net.http.HttpRequest.BodyPublishers.ofString(b.toString()))
+                .header("Content-Type", "application/json"));
+        if (r.statusCode() < 200 || r.statusCode() >= 300) {
+            throw new IOException("HTTP " + r.statusCode() + ": " + r.body());
+        }
+        return mapCollab(r.body());
+    }
+
+    public void acceptCollab(String id) throws IOException, InterruptedException {
+        HttpResponse<String> r = send(req(baseUrl
+                + "/advisory/collaborations/" + id + "/accept")
+                .POST(java.net.http.HttpRequest.BodyPublishers.noBody()));
+        if (r.statusCode() < 200 || r.statusCode() >= 300) {
+            throw new IOException("HTTP " + r.statusCode() + ": " + r.body());
+        }
+    }
+
+    public void rejectCollab(String id) throws IOException, InterruptedException {
+        HttpResponse<String> r = send(req(baseUrl
+                + "/advisory/collaborations/" + id + "/reject")
+                .POST(java.net.http.HttpRequest.BodyPublishers.noBody()));
+        if (r.statusCode() < 200 || r.statusCode() >= 300) {
+            throw new IOException("HTTP " + r.statusCode() + ": " + r.body());
+        }
+    }
+
+    public void revokeCollab(String id) throws IOException, InterruptedException {
+        HttpResponse<String> r = send(req(baseUrl
+                + "/advisory/collaborations/" + id).DELETE());
+        if (r.statusCode() < 200 || r.statusCode() >= 300) {
+            throw new IOException("HTTP " + r.statusCode() + ": " + r.body());
+        }
+    }
+
+    private List<com.benjagest.ui.model.CollabEntry> parseCollabs(HttpResponse<String> r)
+            throws IOException {
+        if (r.statusCode() < 200 || r.statusCode() >= 300) {
+            throw new IOException("HTTP " + r.statusCode() + ": " + r.body());
+        }
+        return parseObjects(r.body(), "invitedEmail", this::mapCollab);
+    }
+
+    private com.benjagest.ui.model.CollabEntry mapCollab(String obj) {
+        return new com.benjagest.ui.model.CollabEntry(
+                textField(obj, "id"),
+                textField(obj, "advisoryCompanyId"),
+                textField(obj, "partnerAdvisoryId"),
+                textField(obj, "invitedEmail"),
+                textField(obj, "status"),
+                parseInstantOrNull(textField(obj, "invitedAt")),
+                parseInstantOrNull(textField(obj, "acceptedAt")),
+                parseInstantOrNull(textField(obj, "revokedAt")),
+                textField(obj, "notes")
+        );
+    }
+
+    private static java.time.Instant parseInstantOrNull(String s) {
+        if (s == null || s.isBlank()) return null;
+        try { return java.time.Instant.parse(s); }
+        catch (Exception ex) { return null; }
+    }
+
     /**
      * Slice 5C — Lista miembros activos de la asesoría logueada
      * (employees del equipo). Solo OWNER. Backend: 403 si no es OWNER.
