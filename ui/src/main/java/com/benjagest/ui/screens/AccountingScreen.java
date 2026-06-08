@@ -1,6 +1,5 @@
 package com.benjagest.ui.screens;
 
-import com.benjagest.ui.model.AccountingModels;
 import com.benjagest.ui.model.AccountingModels.AccountSummary;
 import com.benjagest.ui.model.AccountingModels.DiaryEntry;
 import com.benjagest.ui.model.AccountingModels.JournalEntryDetail;

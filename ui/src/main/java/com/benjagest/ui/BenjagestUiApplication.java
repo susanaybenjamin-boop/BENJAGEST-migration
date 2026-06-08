@@ -4103,13 +4103,27 @@ public class BenjagestUiApplication extends Application {
 
     private String localizedPunchType(String code) {
         if (code == null) return "";
+        // Para los 4 tipos estándar usamos las keys legacy que ya existían.
+        // Para tipos custom (creados por el OWNER) caemos a humanizeFromKey
+        // con prefix labor.cfg_timeclock.code.* (mismo prefix que el listado
+        // de configuración). Así una cláusula "COMIDA" muestra "Comida"
+        // si hay key, y "COMIDA" como último recurso — pero NUNCA debería
+        // salir el código en bruto si el i18n está completo.
         return switch (code) {
             case "IN" -> t("timeclock.type.in");
             case "OUT" -> t("timeclock.type.out");
             case "BREAK_START" -> t("timeclock.type.break_start");
             case "BREAK_END" -> t("timeclock.type.break_end");
-            default -> code;
+            default -> humanizeFromKey("labor.cfg_timeclock.code." + code,
+                    humanizeCodeSafe(code));
         };
+    }
+
+    /** Última red de seguridad: COMIDA_LIBRE → "Comida libre". */
+    private static String humanizeCodeSafe(String code) {
+        if (code == null || code.isEmpty()) return "";
+        String low = code.replace('_', ' ').toLowerCase(java.util.Locale.ROOT);
+        return Character.toUpperCase(low.charAt(0)) + low.substring(1);
     }
 
     // ===================================================================
@@ -11707,6 +11721,11 @@ public class BenjagestUiApplication extends Application {
             case "labor.contract.viewer.xml_saved" -> "XML saved at:";
             case "labor.contract.viewer.copy_path" -> "Copy path";
             case "labor.contract.viewer.path_copied" -> "Path copied to clipboard.";
+            case "labor.contract.viewer.save_as" -> "Save as…";
+            case "labor.contract.viewer.print" -> "Print";
+            case "labor.contract.viewer.close" -> "Close";
+            case "labor.contract.viewer.printed" -> "Sent to printer.";
+            case "labor.contract.viewer.print_fail" -> "Could not print";
             default -> null;
         };
     }
@@ -12001,6 +12020,11 @@ public class BenjagestUiApplication extends Application {
             case "labor.contract.viewer.xml_saved" -> "XML guardado en:";
             case "labor.contract.viewer.copy_path" -> "Copiar ruta";
             case "labor.contract.viewer.path_copied" -> "Ruta copiada al portapapeles.";
+            case "labor.contract.viewer.save_as" -> "Guardar como…";
+            case "labor.contract.viewer.print" -> "Imprimir";
+            case "labor.contract.viewer.close" -> "Cerrar";
+            case "labor.contract.viewer.printed" -> "Enviado a la impresora.";
+            case "labor.contract.viewer.print_fail" -> "No se pudo imprimir";
             default -> null;
         };
     }
@@ -15144,13 +15168,12 @@ public class BenjagestUiApplication extends Application {
             }
             return new SimpleStringProperty(label);
         });
-        cLabel.setPrefWidth(220);
-        // Columna técnica "Código" — pequeña y a la derecha, solo para
-        // que el OWNER vea el identificador estable (necesario para APIs).
-        TableColumn<com.benjagest.ui.model.TimeClockEventTypeEntry, String> cCode =
-                new TableColumn<>(t("labor.cfg_timeclock.col.code"));
-        cCode.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().code()));
-        cCode.setPrefWidth(110);
+        cLabel.setPrefWidth(280);
+        // Decisión 2026-06-08: NO mostrar la columna "Código" en el listado.
+        // El código (IN/OUT/BREAK_START…) es un identificador interno; el
+        // OWNER solo necesita ver la etiqueta humanizada. El código sigue
+        // siendo visible/editable dentro del diálogo de edición porque es
+        // necesario al CREAR un tipo nuevo.
         TableColumn<com.benjagest.ui.model.TimeClockEventTypeEntry, String> cFlags =
                 new TableColumn<>(t("labor.cfg_timeclock.col.flags"));
         cFlags.setCellValueFactory(c -> {
@@ -15161,8 +15184,8 @@ public class BenjagestUiApplication extends Application {
             if (!e.active()) sb.append(t("labor.cfg_timeclock.inactive"));
             return new SimpleStringProperty(sb.toString().trim());
         });
-        cFlags.setPrefWidth(140);
-        table.getColumns().addAll(java.util.List.of(cOrder, cLabel, cCode, cFlags));
+        cFlags.setPrefWidth(160);
+        table.getColumns().addAll(java.util.List.of(cOrder, cLabel, cFlags));
         table.setItems(FXCollections.observableArrayList(types));
 
         Button addBtn = new Button(t("labor.cfg_timeclock.action.add"));
@@ -16365,17 +16388,42 @@ public class BenjagestUiApplication extends Application {
         start(task, "contract-doc-" + kind);
     }
 
-    /** Abre el visor PDF INTERNO (PDFBox) — no requiere visor del SO. */
-    private void showInternalPdfViewer(byte[] bytes, java.nio.file.Path path) {
+    /**
+     * Abre el visor PDF INTERNO (PDFBox) en una ventana con barra superior
+     * de acciones: Guardar como…, Imprimir, Cerrar. No requiere visor del
+     * SO. Si el visor falla por algún motivo, cae al diálogo de ruta.
+     */
+    private void showInternalPdfViewer(byte[] bytes, java.nio.file.Path tempPath) {
         try {
             com.benjagest.ui.support.PdfViewer viewer = new com.benjagest.ui.support.PdfViewer();
             viewer.loadFromBytes(bytes);
 
             Stage st = new Stage();
-            st.setTitle(t("labor.contract.viewer.title") + " — " + path.getFileName());
-            VBox container = new VBox(viewer);
+            st.setTitle(t("labor.contract.viewer.title") + " — " + tempPath.getFileName());
+
+            // Toolbar con acciones útiles
+            Button saveBtn = new Button(t("labor.contract.viewer.save_as"));
+            saveBtn.setGraphic(icon("fas-download"));
+            saveBtn.setOnAction(ev -> savePdfAs(bytes, tempPath, st));
+
+            Button printBtn = new Button(t("labor.contract.viewer.print"));
+            printBtn.setGraphic(icon("fas-print"));
+            printBtn.setOnAction(ev -> printPdf(bytes));
+
+            Button closeBtn = new Button(t("labor.contract.viewer.close"));
+            closeBtn.setGraphic(icon("fas-times"));
+            closeBtn.setOnAction(ev -> st.close());
+
+            Region spacer = new Region();
+            HBox.setHgrow(spacer, Priority.ALWAYS);
+            HBox toolbar = new HBox(8, saveBtn, printBtn, spacer, closeBtn);
+            toolbar.setPadding(new Insets(8));
+            toolbar.setAlignment(Pos.CENTER_LEFT);
+            toolbar.getStyleClass().add("settings-section");
+
+            VBox container = new VBox(toolbar, viewer);
             VBox.setVgrow(viewer, Priority.ALWAYS);
-            Scene sc = new Scene(container, 900, 700);
+            Scene sc = new Scene(container, 950, 760);
             try {
                 sc.getStylesheets().add(
                         getClass().getResource("/styles/app.css").toExternalForm());
@@ -16384,8 +16432,57 @@ public class BenjagestUiApplication extends Application {
             st.show();
         } catch (Exception e) {
             // Fallback final: mostrar la ruta para que abra a mano.
-            showXmlSavedDialog(path);
+            showXmlSavedDialog(tempPath);
         }
+    }
+
+    /** "Guardar como…" — FileChooser estándar JavaFX, copia los bytes al destino. */
+    private void savePdfAs(byte[] bytes, java.nio.file.Path suggestedName, Stage parent) {
+        javafx.stage.FileChooser fc = new javafx.stage.FileChooser();
+        fc.setTitle(t("labor.contract.viewer.save_as"));
+        fc.setInitialFileName(suggestedName == null ? "contrato.pdf"
+                : suggestedName.getFileName().toString());
+        fc.getExtensionFilters().add(new javafx.stage.FileChooser.ExtensionFilter("PDF", "*.pdf"));
+        java.io.File dest = fc.showSaveDialog(parent);
+        if (dest == null) return;
+        Task<Void> task = new Task<>() {
+            @Override protected Void call() throws Exception {
+                java.nio.file.Files.write(dest.toPath(), bytes);
+                return null;
+            }
+        };
+        task.setOnSucceeded(ev -> showInfo(t("labor.contract.viewer.save_as"), dest.getAbsolutePath()));
+        task.setOnFailed(ev -> showError(t("labor.contract.docs.fail.title"),
+                task.getException() == null ? "" : task.getException().getMessage()));
+        start(task, "pdf-save-as");
+    }
+
+    /**
+     * Imprime el PDF directamente usando PDFBox PDFPrintable. Si el sistema
+     * no tiene impresoras instaladas (ej. servidor headless), muestra error
+     * legible en lugar de stack trace.
+     */
+    private void printPdf(byte[] bytes) {
+        Task<Boolean> task = new Task<>() {
+            @Override protected Boolean call() throws Exception {
+                try (org.apache.pdfbox.pdmodel.PDDocument doc =
+                             org.apache.pdfbox.Loader.loadPDF(bytes)) {
+                    java.awt.print.PrinterJob job = java.awt.print.PrinterJob.getPrinterJob();
+                    job.setPageable(new org.apache.pdfbox.printing.PDFPageable(doc));
+                    if (!job.printDialog()) return false;
+                    job.print();
+                    return true;
+                }
+            }
+        };
+        task.setOnSucceeded(ev -> {
+            if (Boolean.TRUE.equals(task.getValue())) {
+                showInfo(t("labor.contract.viewer.print"), t("labor.contract.viewer.printed"));
+            }
+        });
+        task.setOnFailed(ev -> showError(t("labor.contract.viewer.print_fail"),
+                task.getException() == null ? "" : task.getException().getMessage()));
+        start(task, "pdf-print");
     }
 
     /** Dialogo de "archivo guardado en…" con botón copiar al portapapeles. */
