@@ -11672,7 +11672,7 @@ public class BenjagestUiApplication extends Application {
             case "labor.clauses.col.title" -> "Title";
             case "labor.clauses.col.category" -> "Category";
             case "labor.clauses.col.origin" -> "Origin";
-            case "labor.clauses.origin.builtin" -> "Built-in";
+            case "labor.clauses.origin.builtin" -> "System";
             case "labor.clauses.origin.custom" -> "Custom";
             case "labor.clauses.action.new" -> "New clause";
             case "labor.clauses.action.edit" -> "Edit";
@@ -11687,6 +11687,26 @@ public class BenjagestUiApplication extends Application {
             case "labor.contract.wizard.load_template" -> "Load template";
             case "labor.contract.wizard.save_template" -> "Save as template";
             case "labor.contract.wizard.template.name_prompt" -> "Template name:";
+            // Categorías de cláusulas (CTR-7) — humanizadas
+            case "labor.clauses.cat.CONFIDENTIALITY" -> "Confidentiality";
+            case "labor.clauses.cat.NON_COMPETE" -> "Non-compete";
+            case "labor.clauses.cat.EXCLUSIVITY" -> "Exclusivity";
+            case "labor.clauses.cat.RETENTION_TRAINING" -> "Retention after training";
+            case "labor.clauses.cat.GEOLOCATION_GDPR" -> "Geolocation (GDPR)";
+            case "labor.clauses.cat.TELEWORK" -> "Telework";
+            case "labor.clauses.cat.INTELLECTUAL_PROPERTY" -> "Intellectual property";
+            case "labor.clauses.cat.OBJECTIVES_BONUS" -> "Objectives / bonus";
+            case "labor.clauses.cat.COMPANY_CAR" -> "Company car";
+            case "labor.clauses.cat.COMPANY_PHONE" -> "Company phone";
+            case "labor.clauses.cat.EXPENSE_ALLOWANCE" -> "Expense allowance";
+            case "labor.clauses.cat.WORKING_HOURS_FLEX" -> "Working hours flexibility";
+            case "labor.clauses.cat.CUSTOM" -> "Custom";
+            case "labor.clauses.cat.OTHER" -> "Other";
+            // Visor PDF interno
+            case "labor.contract.viewer.title" -> "Contract PDF";
+            case "labor.contract.viewer.xml_saved" -> "XML saved at:";
+            case "labor.contract.viewer.copy_path" -> "Copy path";
+            case "labor.contract.viewer.path_copied" -> "Path copied to clipboard.";
             default -> null;
         };
     }
@@ -11946,8 +11966,8 @@ public class BenjagestUiApplication extends Application {
             case "labor.clauses.col.title" -> "Título";
             case "labor.clauses.col.category" -> "Categoría";
             case "labor.clauses.col.origin" -> "Origen";
-            case "labor.clauses.origin.builtin" -> "Built-in";
-            case "labor.clauses.origin.custom" -> "Custom";
+            case "labor.clauses.origin.builtin" -> "Del sistema";
+            case "labor.clauses.origin.custom" -> "Personalizada";
             case "labor.clauses.action.new" -> "Nueva cláusula";
             case "labor.clauses.action.edit" -> "Editar";
             case "labor.clauses.action.view" -> "Ver cuerpo";
@@ -11961,6 +11981,26 @@ public class BenjagestUiApplication extends Application {
             case "labor.contract.wizard.load_template" -> "Cargar plantilla";
             case "labor.contract.wizard.save_template" -> "Guardar como plantilla";
             case "labor.contract.wizard.template.name_prompt" -> "Nombre de la plantilla:";
+            // Categorías de cláusulas (CTR-7) — humanizadas
+            case "labor.clauses.cat.CONFIDENTIALITY" -> "Confidencialidad";
+            case "labor.clauses.cat.NON_COMPETE" -> "No competencia";
+            case "labor.clauses.cat.EXCLUSIVITY" -> "Exclusividad";
+            case "labor.clauses.cat.RETENTION_TRAINING" -> "Permanencia tras formación";
+            case "labor.clauses.cat.GEOLOCATION_GDPR" -> "Geolocalización (RGPD)";
+            case "labor.clauses.cat.TELEWORK" -> "Teletrabajo";
+            case "labor.clauses.cat.INTELLECTUAL_PROPERTY" -> "Propiedad intelectual";
+            case "labor.clauses.cat.OBJECTIVES_BONUS" -> "Objetivos / bonus";
+            case "labor.clauses.cat.COMPANY_CAR" -> "Vehículo de empresa";
+            case "labor.clauses.cat.COMPANY_PHONE" -> "Teléfono / dispositivos";
+            case "labor.clauses.cat.EXPENSE_ALLOWANCE" -> "Dietas / gastos";
+            case "labor.clauses.cat.WORKING_HOURS_FLEX" -> "Flexibilidad horaria";
+            case "labor.clauses.cat.CUSTOM" -> "Personalizada";
+            case "labor.clauses.cat.OTHER" -> "Otra";
+            // Visor PDF interno
+            case "labor.contract.viewer.title" -> "PDF del contrato";
+            case "labor.contract.viewer.xml_saved" -> "XML guardado en:";
+            case "labor.contract.viewer.copy_path" -> "Copiar ruta";
+            case "labor.contract.viewer.path_copied" -> "Ruta copiada al portapapeles.";
             default -> null;
         };
     }
@@ -12011,6 +12051,13 @@ public class BenjagestUiApplication extends Application {
             case "labor.cfg_timeclock.col.code" -> "Code";
             case "labor.cfg_timeclock.col.label_es" -> "Label ES";
             case "labor.cfg_timeclock.col.label_en" -> "Label EN";
+            case "labor.cfg_timeclock.col.label" -> "Label";
+            case "labor.cfg_timeclock.flag.work" -> "▶ Work time";
+            case "labor.cfg_timeclock.flag.pause" -> "⏸ Pause";
+            case "labor.cfg_timeclock.code.IN" -> "Clock in";
+            case "labor.cfg_timeclock.code.OUT" -> "Clock out";
+            case "labor.cfg_timeclock.code.BREAK_START" -> "Break start";
+            case "labor.cfg_timeclock.code.BREAK_END" -> "Break end";
             case "labor.cfg_timeclock.col.flags" -> "Flags";
             case "labor.cfg_timeclock.inactive" -> "(inactive)";
             case "labor.cfg_timeclock.legend" -> "▶ = opens work time (counts as working) · ⏸ = pause (doesn't count as working) · (inactive) = button hidden from kiosks and apps";
@@ -12329,6 +12376,13 @@ public class BenjagestUiApplication extends Application {
             case "labor.cfg_timeclock.col.code" -> "Codigo";
             case "labor.cfg_timeclock.col.label_es" -> "Etiqueta ES";
             case "labor.cfg_timeclock.col.label_en" -> "Etiqueta EN";
+            case "labor.cfg_timeclock.col.label" -> "Etiqueta";
+            case "labor.cfg_timeclock.flag.work" -> "▶ Trabajo";
+            case "labor.cfg_timeclock.flag.pause" -> "⏸ Pausa";
+            case "labor.cfg_timeclock.code.IN" -> "Entrada";
+            case "labor.cfg_timeclock.code.OUT" -> "Salida";
+            case "labor.cfg_timeclock.code.BREAK_START" -> "Inicio pausa";
+            case "labor.cfg_timeclock.code.BREAK_END" -> "Fin pausa";
             case "labor.cfg_timeclock.col.flags" -> "Flags";
             case "labor.cfg_timeclock.inactive" -> "(inactivo)";
             case "labor.cfg_timeclock.legend" -> "▶ = abre tiempo de trabajo (cuenta como trabajando) · ⏸ = pausa (no cuenta) · (inactivo) = boton oculto en apps y kioscos";
@@ -14001,7 +14055,12 @@ public class BenjagestUiApplication extends Application {
         return body;
     }
 
-    /** Editor minimal de plantilla. Solo los campos que el wizard usa. */
+    /**
+     * Editor de plantilla — combos cargados del catálogo (igual que el wizard),
+     * no TextField libres. El campo "SEPE" es ComboBox editable: puedes elegir
+     * de la lista oficial o escribir un código a mano si la asesoría usa uno
+     * legacy/raro. El "Modelo PDF" se humaniza ES/EN en el desplegable.
+     */
     private void showContractTemplateEditor(com.benjagest.ui.model.ContractTemplate existing, Runnable onSaved) {
         Dialog<ButtonType> dialog = new Dialog<>();
         dialog.setTitle(existing == null ? t("labor.templates.title.new") : t("labor.templates.title.edit"));
@@ -14012,7 +14071,41 @@ public class BenjagestUiApplication extends Application {
 
         TextField nameF = new TextField(existing == null ? "" : existing.name());
         TextField descrF = new TextField(existing == null ? "" : existing.description());
-        TextField sepeF = new TextField(existing == null ? "" : existing.sepeContractCode());
+
+        // Combo SEPE editable — carga el catálogo en background y permite
+        // también escribir libre por si la asesoría tiene un código legacy
+        // no listado. El converter pinta "100 — Indefinido…" y devuelve el
+        // código limpio.
+        ComboBox<com.benjagest.ui.model.ContractCatalog.SepeType> sepeCombo = new ComboBox<>();
+        sepeCombo.setEditable(true);
+        sepeCombo.setMaxWidth(Double.MAX_VALUE);
+        sepeCombo.setConverter(new javafx.util.StringConverter<>() {
+            @Override public String toString(com.benjagest.ui.model.ContractCatalog.SepeType s) {
+                return s == null ? "" : s.label();
+            }
+            @Override public com.benjagest.ui.model.ContractCatalog.SepeType fromString(String s) {
+                if (s == null || s.isBlank()) return null;
+                String code = s.contains(" ") ? s.substring(0, s.indexOf(' ')).trim() : s.trim();
+                return sepeCombo.getItems().stream()
+                        .filter(it -> code.equals(it.code()))
+                        .findFirst().orElse(null);
+            }
+        });
+        Task<java.util.List<com.benjagest.ui.model.ContractCatalog.SepeType>> sepeTask = new Task<>() {
+            @Override protected java.util.List<com.benjagest.ui.model.ContractCatalog.SepeType> call() throws Exception {
+                return altaApiClient.listSepeContractTypes();
+            }
+        };
+        sepeTask.setOnSucceeded(ev -> {
+            sepeCombo.getItems().setAll(sepeTask.getValue());
+            if (existing != null && existing.sepeContractCode() != null) {
+                sepeCombo.getItems().stream()
+                        .filter(it -> existing.sepeContractCode().equals(it.code()))
+                        .findFirst().ifPresent(sepeCombo.getSelectionModel()::select);
+            }
+        });
+        start(sepeTask, "tpl-sepe-load");
+
         TextField hoursF = new TextField(existing == null || existing.weeklyHours() == null
                 ? "40" : existing.weeklyHours().toPlainString());
         TextField salaryF = new TextField(existing == null || existing.grossSalary() == null
@@ -14023,17 +14116,26 @@ public class BenjagestUiApplication extends Application {
                 ? "30" : existing.vacationDays().toString());
         TextField probF = new TextField(existing == null || existing.probationDays() == null
                 ? "" : existing.probationDays().toString());
+
+        // Combo modelo PDF humanizado (no códigos crudos)
         ComboBox<String> pdfM = new ComboBox<>();
         pdfM.getItems().addAll("UNIFIED_2022", "BY_CODE");
-        pdfM.setValue(existing == null ? "UNIFIED_2022" : (existing.pdfModel() == null ? "UNIFIED_2022" : existing.pdfModel()));
+        pdfM.setConverter(new javafx.util.StringConverter<>() {
+            @Override public String toString(String c) {
+                return c == null ? "" : humanizeFromKey("labor.contract.wizard.step4.pdf_model." + c, c);
+            }
+            @Override public String fromString(String s) { return null; }
+        });
+        pdfM.setValue(existing == null ? "UNIFIED_2022" :
+                (existing.pdfModel() == null ? "UNIFIED_2022" : existing.pdfModel()));
 
         GridPane g = new GridPane();
         g.setHgap(10); g.setVgap(8); g.setPadding(new Insets(10));
         int row = 0;
         g.add(new Label(t("labor.templates.field.name")), 0, row); g.add(nameF, 1, row, 3, 1); row++;
         g.add(new Label(t("labor.templates.field.descr")), 0, row); g.add(descrF, 1, row, 3, 1); row++;
-        g.add(new Label(t("labor.templates.field.sepe")), 0, row); g.add(sepeF, 1, row);
-        g.add(new Label(t("labor.templates.field.pdf")), 2, row); g.add(pdfM, 3, row); row++;
+        g.add(new Label(t("labor.templates.field.sepe")), 0, row); g.add(sepeCombo, 1, row, 3, 1); row++;
+        g.add(new Label(t("labor.templates.field.pdf")), 0, row); g.add(pdfM, 1, row, 3, 1); row++;
         g.add(new Label(t("labor.templates.field.hours")), 0, row); g.add(hoursF, 1, row);
         g.add(new Label(t("labor.templates.field.salary")), 2, row); g.add(salaryF, 3, row); row++;
         g.add(new Label(t("labor.templates.field.bonus")), 0, row); g.add(bonusF, 1, row);
@@ -14047,11 +14149,20 @@ public class BenjagestUiApplication extends Application {
                 showError(t("labor.templates.fail"), t("labor.templates.fail.name"));
                 return;
             }
+            // Si el SEPE viene del combo, sacamos su .code(); si el usuario
+            // escribió a mano, lo tomamos del editor del combo.
+            String sepeCode = null;
+            var selSepe = sepeCombo.getSelectionModel().getSelectedItem();
+            if (selSepe != null) sepeCode = selSepe.code();
+            else if (sepeCombo.getEditor().getText() != null && !sepeCombo.getEditor().getText().isBlank()) {
+                String txt = sepeCombo.getEditor().getText().trim();
+                sepeCode = txt.contains(" ") ? txt.substring(0, txt.indexOf(' ')) : txt;
+            }
             com.benjagest.ui.model.ContractTemplate tpl = new com.benjagest.ui.model.ContractTemplate(
                     existing == null ? null : existing.id(),
                     nameF.getText().trim(),
                     blankToNullOrSelf(descrF.getText()),
-                    blankToNullOrSelf(sepeF.getText()),
+                    sepeCode,
                     null, null, null, null,
                     parseDecSafe(hoursF.getText()),
                     parseDecSafe(salaryF.getText()),
@@ -15019,28 +15130,39 @@ public class BenjagestUiApplication extends Application {
         cOrder.setCellValueFactory(c -> new SimpleStringProperty(String.valueOf(c.getValue().displayOrder())));
         cOrder.setPrefWidth(70);
         cOrder.setComparator(NUMERIC_STRING_COMPARATOR);
+        // Columna "Etiqueta" — muestra label_es o label_en según idioma
+        // actual. Si la BD no trae label (caso raro de tipos huérfanos),
+        // hacemos humanize del code para no enseñar "BREAK_START" crudo.
+        TableColumn<com.benjagest.ui.model.TimeClockEventTypeEntry, String> cLabel =
+                new TableColumn<>(t("labor.cfg_timeclock.col.label"));
+        cLabel.setCellValueFactory(c -> {
+            var e = c.getValue();
+            boolean es = language == Language.ES;
+            String label = es ? e.labelEs() : e.labelEn();
+            if (label == null || label.isBlank()) {
+                label = humanizeFromKey("labor.cfg_timeclock.code." + e.code(), e.code());
+            }
+            return new SimpleStringProperty(label);
+        });
+        cLabel.setPrefWidth(220);
+        // Columna técnica "Código" — pequeña y a la derecha, solo para
+        // que el OWNER vea el identificador estable (necesario para APIs).
         TableColumn<com.benjagest.ui.model.TimeClockEventTypeEntry, String> cCode =
                 new TableColumn<>(t("labor.cfg_timeclock.col.code"));
         cCode.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().code()));
-        cCode.setPrefWidth(140);
-        TableColumn<com.benjagest.ui.model.TimeClockEventTypeEntry, String> cEs =
-                new TableColumn<>(t("labor.cfg_timeclock.col.label_es"));
-        cEs.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().labelEs()));
-        TableColumn<com.benjagest.ui.model.TimeClockEventTypeEntry, String> cEn =
-                new TableColumn<>(t("labor.cfg_timeclock.col.label_en"));
-        cEn.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().labelEn()));
+        cCode.setPrefWidth(110);
         TableColumn<com.benjagest.ui.model.TimeClockEventTypeEntry, String> cFlags =
                 new TableColumn<>(t("labor.cfg_timeclock.col.flags"));
         cFlags.setCellValueFactory(c -> {
             var e = c.getValue();
             StringBuilder sb = new StringBuilder();
-            if (e.isWorkTime()) sb.append("▶ ");
-            if (e.isPause()) sb.append("⏸ ");
+            if (e.isWorkTime()) sb.append(t("labor.cfg_timeclock.flag.work")).append(" ");
+            if (e.isPause()) sb.append(t("labor.cfg_timeclock.flag.pause")).append(" ");
             if (!e.active()) sb.append(t("labor.cfg_timeclock.inactive"));
-            return new SimpleStringProperty(sb.toString());
+            return new SimpleStringProperty(sb.toString().trim());
         });
-        cFlags.setPrefWidth(120);
-        table.getColumns().addAll(java.util.List.of(cOrder, cCode, cEs, cEn, cFlags));
+        cFlags.setPrefWidth(140);
+        table.getColumns().addAll(java.util.List.of(cOrder, cLabel, cCode, cFlags));
         table.setItems(FXCollections.observableArrayList(types));
 
         Button addBtn = new Button(t("labor.cfg_timeclock.action.add"));
@@ -16205,6 +16327,14 @@ public class BenjagestUiApplication extends Application {
         });
     }
 
+    /**
+     * Descarga el PDF o XML del contrato. Para PDF abre el visor interno
+     * basado en PDFBox (no depende de visor externo del sistema). Para
+     * XML guarda en temp y muestra ruta + botón "Copiar ruta" al
+     * portapapeles. Fallback: si el visor interno falla, intenta
+     * {@code Desktop.open} y, si tampoco, deja la ruta visible para que
+     * el usuario abra el archivo manualmente.
+     */
     private void downloadContractDocument(String contractId, String pdfModel, String kind) {
         Task<java.nio.file.Path> task = new Task<>() {
             @Override protected java.nio.file.Path call() throws Exception {
@@ -16218,15 +16348,61 @@ public class BenjagestUiApplication extends Application {
             }
         };
         task.setOnSucceeded(ev -> {
-            try {
-                java.awt.Desktop.getDesktop().open(task.getValue().toFile());
-            } catch (Exception e) {
-                showInfo(t("labor.contract.docs.downloaded"), task.getValue().toString());
+            java.nio.file.Path path = task.getValue();
+            if ("pdf".equals(kind)) {
+                try {
+                    byte[] bytes = java.nio.file.Files.readAllBytes(path);
+                    showInternalPdfViewer(bytes, path);
+                } catch (Exception e) {
+                    showXmlSavedDialog(path);
+                }
+            } else {
+                showXmlSavedDialog(path);
             }
         });
         task.setOnFailed(ev -> showError(t("labor.contract.docs.fail.title"),
                 task.getException() == null ? "" : task.getException().getMessage()));
         start(task, "contract-doc-" + kind);
+    }
+
+    /** Abre el visor PDF INTERNO (PDFBox) — no requiere visor del SO. */
+    private void showInternalPdfViewer(byte[] bytes, java.nio.file.Path path) {
+        try {
+            com.benjagest.ui.support.PdfViewer viewer = new com.benjagest.ui.support.PdfViewer();
+            viewer.loadFromBytes(bytes);
+
+            Stage st = new Stage();
+            st.setTitle(t("labor.contract.viewer.title") + " — " + path.getFileName());
+            VBox container = new VBox(viewer);
+            VBox.setVgrow(viewer, Priority.ALWAYS);
+            Scene sc = new Scene(container, 900, 700);
+            try {
+                sc.getStylesheets().add(
+                        getClass().getResource("/styles/app.css").toExternalForm());
+            } catch (Exception ignore) {}
+            st.setScene(sc);
+            st.show();
+        } catch (Exception e) {
+            // Fallback final: mostrar la ruta para que abra a mano.
+            showXmlSavedDialog(path);
+        }
+    }
+
+    /** Dialogo de "archivo guardado en…" con botón copiar al portapapeles. */
+    private void showXmlSavedDialog(java.nio.file.Path path) {
+        Alert a = new Alert(Alert.AlertType.INFORMATION);
+        a.setTitle(t("labor.contract.docs.downloaded"));
+        a.setHeaderText(t("labor.contract.viewer.xml_saved"));
+        a.setContentText(path.toString());
+        ButtonType copy = new ButtonType(t("labor.contract.viewer.copy_path"));
+        a.getButtonTypes().add(copy);
+        a.showAndWait().ifPresent(bt -> {
+            if (bt == copy) {
+                javafx.scene.input.Clipboard.getSystemClipboard().setContent(
+                        java.util.Map.of(javafx.scene.input.DataFormat.PLAIN_TEXT, path.toString()));
+                showInfo(t("labor.contract.viewer.path_copied"), path.toString());
+            }
+        });
     }
 
     private void showContractEditor(com.benjagest.ui.model.EmployeeEntry employee,
