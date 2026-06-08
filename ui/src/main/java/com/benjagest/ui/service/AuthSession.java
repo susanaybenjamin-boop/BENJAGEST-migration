@@ -46,6 +46,13 @@ public final class AuthSession {
      */
     private String actingForCompanyId;
 
+    // EMP-SCOPED-UI — Scope del usuario en la asesoría logueada.
+    // Cargado tras el login (BenjagestUiApplication.loadUserScope).
+    // Si es null, todavía no se ha cargado o el endpoint falló — el UI
+    // debe asumir "full access" defensivamente para no bloquear al
+    // OWNER en caso de un transitorio.
+    private UserScope userScope;
+
     private AuthSession() {
     }
 
@@ -198,6 +205,7 @@ public final class AuthSession {
         roleInActiveCompany = null;
         actingForCompanyId = null;
         memberships = List.of();
+        userScope = null;
     }
 
     public String accessToken() { return accessToken; }
@@ -211,4 +219,60 @@ public final class AuthSession {
     public String activeCompanyType() { return activeCompanyType; }
     public String roleInActiveCompany() { return roleInActiveCompany; }
     public List<Membership> memberships() { return memberships; }
+
+    // ================================================================
+    //  EMP-SCOPED-UI — Helpers de scope del usuario
+    // ================================================================
+
+    public void setUserScope(UserScope scope) { this.userScope = scope; }
+    public UserScope userScope() { return userScope; }
+
+    /**
+     * TRUE si el usuario debe ver TODO el sidebar y todos los clientes.
+     * Devuelve TRUE si:
+     *   - El scope no se ha cargado todavía (defensivo — no bloquear
+     *     al OWNER si el endpoint tardó o falló).
+     *   - El backend reportó isFullAccess=true (OWNER o ADMIN).
+     */
+    public boolean isFullAccess() {
+        return userScope == null || userScope.isFullAccess();
+    }
+
+    /**
+     * TRUE si el usuario puede ver/usar un módulo concreto al entrar a un
+     * cliente. Con isFullAccess=true siempre TRUE. En caso contrario,
+     * TRUE solo si el slug está en la unión o si alguna asignación es
+     * abierta (contiene "*").
+     */
+    public boolean canAccessModule(String moduleSlug) {
+        if (isFullAccess()) return true;
+        if (moduleSlug == null) return false;
+        var slugs = userScope.moduleSlugs();
+        return slugs.contains("*") || slugs.contains(moduleSlug);
+    }
+
+    /**
+     * TRUE si el usuario puede ver un cliente concreto en "Mis clientes".
+     * Con isFullAccess=true siempre TRUE.
+     */
+    public boolean canSeeCustomer(String customerCompanyId) {
+        if (isFullAccess()) return true;
+        if (customerCompanyId == null) return false;
+        return userScope.customerIds().contains(customerCompanyId);
+    }
+
+    /**
+     * Scope del usuario logueado dentro de su asesoría. Espejo del
+     * DTO backend TeamScopeService.MyScope.
+     */
+    public record UserScope(
+            boolean isFullAccess,
+            List<String> customerIds,
+            List<String> moduleSlugs
+    ) {
+        public UserScope {
+            customerIds = customerIds == null ? List.of() : List.copyOf(customerIds);
+            moduleSlugs = moduleSlugs == null ? List.of() : List.copyOf(moduleSlugs);
+        }
+    }
 }

@@ -1190,4 +1190,63 @@ public class AltaApiClient {
             throws IOException, InterruptedException {
         return sendBytes(req(baseUrl + "/contracts/" + contractId + "/xml").GET()).body();
     }
+
+    // ============================================================
+    // EMP-SCOPED-UI — Scope del usuario en la asesoría
+    //   GET /api/team/me/scope
+    // ============================================================
+
+    /**
+     * Carga el scope del usuario logueado: si tiene acceso completo
+     * (OWNER/ADMIN) o, si no, qué clientes ve y qué módulos puede
+     * tocar (unión de assignment_modules de sus client_assignments).
+     * El UI guarda el resultado en {@link AuthSession#setUserScope}.
+     */
+    public AuthSession.UserScope loadMyScope() throws IOException, InterruptedException {
+        HttpResponse<String> r = send(req(baseUrl + "/team/me/scope").GET());
+        if (r.statusCode() < 200 || r.statusCode() >= 300) {
+            throw new IOException("HTTP " + r.statusCode() + ": " + r.body());
+        }
+        String body = r.body();
+        boolean full = boolField(body, "isFullAccess");
+        List<String> customers = parseStringArray(body, "customerIds");
+        List<String> modules = parseStringArray(body, "moduleSlugs");
+        return new AuthSession.UserScope(full, customers, modules);
+    }
+
+    /**
+     * Parser minimalista para arrays JSON de strings:
+     *   "customerIds":["uuid-1","uuid-2"]
+     * Devuelve lista vacía si el campo no aparece o el array está vacío.
+     */
+    private List<String> parseStringArray(String json, String field) {
+        List<String> out = new ArrayList<>();
+        if (json == null) return out;
+        int idx = json.indexOf("\"" + field + "\"");
+        if (idx < 0) return out;
+        int bracketStart = json.indexOf('[', idx);
+        if (bracketStart < 0) return out;
+        int bracketEnd = json.indexOf(']', bracketStart);
+        if (bracketEnd < 0) return out;
+        String inner = json.substring(bracketStart + 1, bracketEnd);
+        // Tokenizar por comas respetando comillas con escape.
+        boolean inString = false, escape = false;
+        StringBuilder buf = new StringBuilder();
+        for (int i = 0; i < inner.length(); i++) {
+            char c = inner.charAt(i);
+            if (escape) { buf.append(c); escape = false; continue; }
+            if (c == '\\') { buf.append(c); escape = true; continue; }
+            if (c == '"') { inString = !inString; continue; }
+            if (!inString && c == ',') {
+                String tok = buf.toString().trim();
+                if (!tok.isEmpty()) out.add(tok);
+                buf.setLength(0);
+                continue;
+            }
+            if (inString) buf.append(c);
+        }
+        String tail = buf.toString().trim();
+        if (!tail.isEmpty()) out.add(tail);
+        return out;
+    }
 }
