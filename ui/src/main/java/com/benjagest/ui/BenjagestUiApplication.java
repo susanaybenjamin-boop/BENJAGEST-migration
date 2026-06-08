@@ -1533,7 +1533,7 @@ public class BenjagestUiApplication extends Application {
      * coherente con errorPanel (icono grande + título + descripción +
      * botón "Volver al inicio").
      */
-    private Node buildNoAccessPanel(String moduleId) {
+    private VBox buildNoAccessPanel(String moduleId) {
         VBox box = content();
         box.setAlignment(Pos.CENTER);
         box.setPadding(new Insets(40));
