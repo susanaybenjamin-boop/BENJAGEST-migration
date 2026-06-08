@@ -1576,12 +1576,17 @@ public class BenjagestUiApplication extends Application {
         if (auth.isOwnerOrAdmin()) return true;
         // Resto de roles — empleado, contable interno, asesor externo…
         if (isSidebarBlockedItem(moduleId)) return false;
+        // CASO ESPECIAL — "Mi gestión" depende de si el empleado tiene
+        // asignada la propia asesoría como cliente. Si el OWNER le
+        // QUITA esa asignación, debe desaparecer del sidebar.
+        if ("myCompany".equals(moduleId)) {
+            return auth.canSeeCustomer(auth.activeCompanyId());
+        }
         // Items que SIEMPRE muestro (no participan del scope por módulo).
-        // dashboard / myCompany / clients / dehu son la base operativa
-        // mínima para que el empleado pueda hacer SU trabajo.
+        // dashboard / clients / dehu son la base operativa mínima sin
+        // la cual el empleado quedaría aislado.
         switch (moduleId) {
             case "dashboard":
-            case "myCompany":
             case "clients":
             case "customers":
             case "myClients":
