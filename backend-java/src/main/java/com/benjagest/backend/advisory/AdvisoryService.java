@@ -172,7 +172,26 @@ public class AdvisoryService {
      * estén con un click.
      */
     public List<CustomerPortfolioEntry> listPortfolio() {
-        return jdbcTemplate.query("""
+        String advisoryId = tenantContext.getCurrentCompanyId();
+        // EMP-SCOPE-DEEP 2026-06-08: si el usuario NO es OWNER/ADMIN
+        // de la asesoría, devolvemos SOLO los customers cuya company
+        // está asignada a él vía client_assignments. Antes este endpoint
+        // devolvía TODA la cartera sin filtrar — Benjamin reportó que
+        // un empleado con UNA sola asignación podía ver TODOS los
+        // clientes desde 'Mis clientes'. Causa raíz encontrada con
+        // agentes Explore: este método NO replicaba el filtrado que
+        // sí tenía listMyManagedClients(). Ahora sí.
+        List<String> visibleCompanyIds = null;
+        if (assignmentService != null
+                && !assignmentService.currentUserIsOwnerOfAdvisory(advisoryId)) {
+            visibleCompanyIds = assignmentService.listMine();
+            if (visibleCompanyIds.isEmpty()) {
+                // Empleado sin asignaciones — listado vacío. El OWNER
+                // puede asignarle clientes desde el módulo Equipo.
+                return List.of();
+            }
+        }
+        StringBuilder sql = new StringBuilder("""
                 SELECT c.id            AS customer_id,
                        c.legal_name,
                        c.trade_name,
@@ -195,11 +214,6 @@ public class AdvisoryService {
                            AND ((ai2.invited_nif IS NOT NULL AND ai2.invited_nif = c.tax_identifier)
                              OR (ai2.invited_email IS NOT NULL AND ai2.invited_email = pc.email))
                        )                AS unlinked_invitations,
-                       -- Vinculación REAL = invitación aceptada vigente.
-                       -- Sin esto, "tener shadow company" se confundía
-                       -- con "vinculado", lo que hacía que entrar en un
-                       -- cliente shadow lo marcase como vinculado en la
-                       -- UI tras crear su shadow.
                        (SELECT COUNT(*) FROM advisory_invitations ai3
                          WHERE ai3.advisory_company_id = c.company_id
                            AND ai3.status = 'ACCEPTED'
@@ -216,8 +230,24 @@ public class AdvisoryService {
                         AND cp.parent_company_id = c.company_id
                  WHERE c.active = TRUE
                    AND c.company_id = ?
-                 ORDER BY c.legal_name
-                """,
+                """);
+        java.util.List<Object> args = new java.util.ArrayList<>();
+        args.add(advisoryId);
+        if (visibleCompanyIds != null) {
+            // Filtramos por las shadow companies asignadas. El customer
+            // está vinculado a su shadow company por tax_identifier
+            // (mismo JOIN cp arriba). Si cp.id está en la lista de IDs
+            // asignados al empleado, el customer es visible.
+            sql.append(" AND cp.id IN (");
+            for (int i = 0; i < visibleCompanyIds.size(); i++) {
+                if (i > 0) sql.append(',');
+                sql.append('?');
+                args.add(visibleCompanyIds.get(i));
+            }
+            sql.append(") ");
+        }
+        sql.append(" ORDER BY c.legal_name");
+        return jdbcTemplate.query(sql.toString(),
                 (rs, n) -> new CustomerPortfolioEntry(
                         rs.getString("customer_id"),
                         rs.getString("legal_name"),
@@ -232,7 +262,7 @@ public class AdvisoryService {
                         rs.getInt("unlinked_invitations") > 0,
                         rs.getInt("accepted_invitations") > 0
                 ),
-                tenantContext.getCurrentCompanyId());
+                args.toArray());
     }
 
     /**

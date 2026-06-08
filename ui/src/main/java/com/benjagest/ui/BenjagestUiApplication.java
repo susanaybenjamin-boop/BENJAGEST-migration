@@ -18462,7 +18462,18 @@ public class BenjagestUiApplication extends Application {
         colLinked.setPrefWidth(160);
         advisoryPortfolioTable.getColumns().addAll(java.util.List.of(
                 colName, colNif, colCity, colEmail, colLinked));
-        advisoryPortfolioTable.setItems(FXCollections.observableArrayList(portfolio));
+        // EMP-SCOPE-DEEP: defensa en profundidad. El backend ya filtra
+        // listPortfolio() por asignaciones para empleados, pero si por
+        // alguna razón llegan filas no permitidas (caché, race con scope
+        // no cargado, etc.), las descartamos aquí también. OWNER/ADMIN
+        // tiene isFullAccess=true y canSeeCustomer devuelve TRUE para
+        // cualquier id.
+        java.util.List<com.benjagest.ui.model.CustomerPortfolioEntry> filtered =
+                portfolio.stream()
+                        .filter(c -> c.linkedCompanyId() == null
+                                || AuthSession.get().canSeeCustomer(c.linkedCompanyId()))
+                        .toList();
+        advisoryPortfolioTable.setItems(FXCollections.observableArrayList(filtered));
 
         // Doble click → abre el cliente, esté vinculado o no.
         // Si no está vinculado, el backend crea (o devuelve) la shadow
