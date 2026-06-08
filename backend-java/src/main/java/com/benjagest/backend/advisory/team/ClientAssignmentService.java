@@ -311,24 +311,61 @@ public class ClientAssignmentService {
     }
 
     /**
-     * Slice 5C — Lista los miembros activos de la asesoría logueada
-     * (user_accounts ∪ company_memberships). Lo consume la UI del módulo
-     * Equipo para poblar el combo "Asignar a:". Solo OWNER puede ver
-     * el listado completo.
+     * Slice 5C / L4-5 — Lista los miembros del Equipo de la asesoría
+     * logueada. Solo OWNER puede ver el listado completo.
+     *
+     * <p>Refactor L4-5 (2026-06-08): la fuente de la lista cambia de
+     * {@code company_memberships} a {@code employees.app_access=TRUE
+     * JOIN user_accounts}. Antes salían TODOS los users con membership
+     * activa (incluido Marcos, que tiene membership pero no acceso a
+     * la app); ahora solo los empleados con acceso real al login PIN
+     * — los que el módulo Equipo necesita asignar. Marcos desaparece
+     * del Equipo cuando su {@code app_access=FALSE} (queda en Personal).
+     *
+     * <p>El JOIN es LEFT outer porque hay un caso transitorio para el
+     * OWNER: si el OWNER no tiene aún su fila employees (caso de
+     * asesorías creadas antes de L4-4), su user_account con membership
+     * OWNER sigue debiendo aparecer. Lo metemos con UNION del registro
+     * OWNER vía company_memberships para no perder a quien actualmente
+     * está logueado.
      */
     public List<TeamMember> listAdvisoryMembers() {
         String advisoryId = tenantContext.getCurrentCompanyId();
         requireOwner(advisoryId);
+        // El UNION cubre dos casos:
+        //   1) Empleados con app_access=TRUE (caso principal del módulo).
+        //   2) OWNER de la asesoría (siempre presente aunque aún no
+        //      tenga fila en employees — caso transitorio en asesorías
+        //      anteriores a L4-4).
+        // Envolvemos en una subquery para poder hacer ORDER BY con
+        // expresión sobre el resultado del UNION (MariaDB exige
+        // wrapping cuando el ORDER BY toca expresiones derivadas).
         return jdbcTemplate.query("""
-                SELECT u.id, u.email, u.display_name, m.role_name,
-                       u.global_role, u.active
-                  FROM company_memberships m
-                  JOIN user_accounts u ON u.id = m.user_id
-                 WHERE m.company_id = ?
-                   AND m.active = TRUE
-                   AND u.active = TRUE
-                 ORDER BY (m.role_name = 'OWNER') DESC,
-                          u.display_name ASC
+                SELECT id, email, display_name, role_name, global_role, active
+                  FROM (
+                    SELECT u.id, u.email, u.display_name, m.role_name,
+                           u.global_role, u.active
+                      FROM employees e
+                      JOIN user_accounts u ON u.id = e.user_id
+                      JOIN company_memberships m ON m.user_id = u.id
+                                                AND m.company_id = e.company_id
+                     WHERE e.company_id = ?
+                       AND e.app_access = TRUE
+                       AND e.active = TRUE
+                       AND u.active = TRUE
+                       AND m.active = TRUE
+                    UNION
+                    SELECT u.id, u.email, u.display_name, m.role_name,
+                           u.global_role, u.active
+                      FROM company_memberships m
+                      JOIN user_accounts u ON u.id = m.user_id
+                     WHERE m.company_id = ?
+                       AND m.role_name = 'OWNER'
+                       AND m.active = TRUE
+                       AND u.active = TRUE
+                  ) AS team
+                 ORDER BY (role_name = 'OWNER') DESC,
+                          display_name ASC
                 """, (rs, i) -> new TeamMember(
                 rs.getString("id"),
                 rs.getString("email"),
@@ -336,7 +373,7 @@ public class ClientAssignmentService {
                 rs.getString("role_name"),
                 rs.getString("global_role"),
                 rs.getBoolean("active")
-        ), advisoryId);
+        ), advisoryId, advisoryId);
     }
 
     // ================================================================
