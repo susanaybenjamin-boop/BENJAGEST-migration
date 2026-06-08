@@ -1560,39 +1560,38 @@ public class BenjagestUiApplication extends Application {
 
     /**
      * EMP-SCOPED-UI — Decide si un item del sidebar debe mostrarse al
-     * usuario actual. La lógica:
+     * usuario actual.
      *
-     * <ul>
-     *   <li><b>OWNER/ADMIN</b> (isFullAccess=true): TODO visible.
-     *       Sin filtro.</li>
-     *   <li><b>Empleado normal</b>: ocultar los módulos de "gestión de
-     *       la asesoría" que no le tocan (team/settings) Y cualquier
-     *       módulo cuyo slug no esté en su scope.</li>
-     * </ul>
+     * <p>Lógica conservadora: filtramos SOLO si:
+     * <ol>
+     *   <li>El scope se cargó (userScope != null).</li>
+     *   <li>El backend dijo explícitamente isFullAccess=false.</li>
+     * </ol>
+     * En cualquier otro caso (scope null por fallo, OWNER/ADMIN, etc.)
+     * devolvemos TRUE — preferimos enseñar de más a romper la app.
      *
-     * Items siempre visibles para todos (no se filtran porque sin ellos
-     * el empleado quedaría aislado): dashboard, myCompany, clients,
-     * dehu (bandeja oficial), help, profile.
+     * <p>Cuando sí filtramos: los items que están en la lista
+     * {@link #isSidebarBlockedItem} salen siempre fuera. El resto pasa
+     * por el scope.
      */
     private boolean shouldShowInSidebar(String moduleId) {
         if (moduleId == null) return true;
         AuthSession auth = AuthSession.get();
-        if (auth.isFullAccess()) return true;
-        // Items que SIEMPRE oculto al empleado normal (gestión asesoría):
-        switch (moduleId) {
-            case "team":
-            case "settings":
-            case "configuration":
-            case "recurringAdvisory":
-                return false;
-            default:
+        // Si no hay scope cargado o el user es full access, no filtramos
+        // — el sidebar queda como estaba.
+        if (auth.userScope() == null || auth.userScope().isFullAccess()) {
+            return true;
         }
-        // Items que SIEMPRE muestro (no participan del scope por módulo):
+        // Empleado normal — quitar siempre los items de gestión asesoría
+        if (isSidebarBlockedItem(moduleId)) return false;
+        // Items que SIEMPRE muestro (no participan del scope por módulo)
         switch (moduleId) {
             case "dashboard":
             case "myCompany":
             case "clients":
             case "myClients":
+            case "advisory":
+            case "notifications":
             case "dehu":
             case "help":
             case "profile":
@@ -1602,6 +1601,26 @@ public class BenjagestUiApplication extends Application {
         // El resto: solo si el empleado tiene este módulo asignado en
         // alguna de sus client_assignments.
         return auth.canAccessModule(moduleId);
+    }
+
+    /**
+     * EMP-SCOPED-UI — TRUE si el módulo está SIEMPRE prohibido al
+     * empleado (gestión interna de la asesoría). Estos disparan el
+     * panel "Sin acceso" incluso si llegan por deep-link/atajo. Lista
+     * acotada y conservadora — el resto no se bloquea desde aquí para
+     * no romper navegación al OWNER si el scope falla.
+     */
+    private boolean isSidebarBlockedItem(String moduleId) {
+        if (moduleId == null) return false;
+        AuthSession auth = AuthSession.get();
+        // Solo bloqueamos si el scope se cargó y dice NO full access.
+        if (auth.userScope() == null || auth.userScope().isFullAccess()) {
+            return false;
+        }
+        return switch (moduleId) {
+            case "team", "settings", "configuration", "recurringAdvisory" -> true;
+            default -> false;
+        };
     }
 
     private Button navButton(String id, String text, String iconLiteral) {
@@ -1829,12 +1848,13 @@ public class BenjagestUiApplication extends Application {
         recordNav(() -> showModule(module));
         currentModule = module;
         select(module);
-        // EMP-SCOPED-UI — Defensa frente a deep-link / atajos (Ctrl+K) /
-        // botones back/forward que apuntan a módulos que el empleado no
-        // puede usar. Si el sidebar lo oculta pero la pantalla se invoca
-        // por otra ruta, mostramos un panel "Sin acceso" en lugar de
-        // dejar que la pantalla falle con 403 dispersos.
-        if (!shouldShowInSidebar(module)) {
+        // EMP-SCOPED-UI — Defensa solo aplicable a items que SIEMPRE
+        // están vetados al empleado (team, settings, configuration,
+        // recurringAdvisory). El resto pasa al despachador normal;
+        // si el backend devuelve 403, ya está humanizado. Bloquear
+        // todo desde aquí rompía la navegación incluso del OWNER si
+        // el scope tardaba en cargar o el endpoint fallaba.
+        if (isSidebarBlockedItem(module)) {
             setCenterAnimated(scroll(buildNoAccessPanel(module)));
             return;
         }
