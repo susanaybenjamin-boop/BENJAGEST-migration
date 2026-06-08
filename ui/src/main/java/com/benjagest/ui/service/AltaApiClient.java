@@ -584,12 +584,18 @@ public class AltaApiClient {
         if (r.statusCode() < 200 || r.statusCode() >= 300) {
             throw new IOException("HTTP " + r.statusCode() + ": " + r.body());
         }
-        // El backend devuelve [{"assignment": {...}, "moduleSlugs": [...]}]
-        return parseObjects(r.body(), "moduleSlugs", obj -> {
+        // El backend devuelve [{"assignment": {...}, "moduleSlugs": [...]}].
+        // NO se puede usar parseObjects: su regex `[^{}]*` solo matchea
+        // objetos planos. Cada item tiene un sub-objeto `assignment`
+        // anidado que rompe el regex y devuelve lista vacía (mismo bug
+        // que con los convenios del wizard de contratos). Usamos
+        // splitTopLevelObjects que balancea llaves correctamente.
+        List<com.benjagest.ui.model.TeamAssignment> out = new ArrayList<>();
+        for (String obj : splitTopLevelObjects(r.body())) {
             String aBlock = extractJsonObject(obj, "assignment");
-            if (aBlock == null) return null;
+            if (aBlock == null) continue;
             List<String> mods = extractJsonStringArray(obj, "moduleSlugs");
-            return new com.benjagest.ui.model.TeamAssignment(
+            out.add(new com.benjagest.ui.model.TeamAssignment(
                     textField(aBlock, "id"),
                     textField(aBlock, "advisoryCompanyId"),
                     textField(aBlock, "employeeUserId"),
@@ -600,8 +606,9 @@ public class AltaApiClient {
                     parseLocalDate(textField(aBlock, "delegatedFrom")),
                     parseLocalDate(textField(aBlock, "delegatedUntil")),
                     textField(aBlock, "notes"),
-                    mods == null ? List.of() : mods);
-        });
+                    mods == null ? List.of() : mods));
+        }
+        return out;
     }
 
     /**
