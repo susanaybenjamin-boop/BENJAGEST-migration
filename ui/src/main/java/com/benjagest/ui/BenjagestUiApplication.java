@@ -11453,6 +11453,55 @@ public class BenjagestUiApplication extends Application {
             case "team.member_role.ADVISOR" -> "Tax advisor";
             case "team.member_role.EMPLOYEE" -> "Employee";
             case "team.member_role.VIEWER" -> "Viewer";
+            // L4-7 — tab Colaboradores (inter-asesoría)
+            case "team.tab.collaborators" -> "Collaborators";
+            case "team.collab.hint" -> "Invite another tax advisory firm to collaborate on YOUR clients. Once accepted, you can assign your clients to employees of the collaborator from the Assignments tab. They work from their own BENJAGEST and log their own audit trail.";
+            case "team.collab.incoming.title" -> "Pending invitations to you";
+            case "team.collab.incoming.empty" -> "No invitations received.";
+            case "team.collab.active.title" -> "Active collaborators";
+            case "team.collab.active.empty" -> "No active collaborators yet.";
+            case "team.collab.outgoing.title" -> "Pending invitations sent";
+            case "team.collab.outgoing.empty" -> "No pending invitations.";
+            case "team.collab.col.email" -> "Email";
+            case "team.collab.col.status" -> "Status";
+            case "team.collab.col.invited_at" -> "Sent at";
+            case "team.collab.col.accepted_at" -> "Accepted at";
+            case "team.collab.status.PENDING" -> "Pending";
+            case "team.collab.status.ACCEPTED" -> "Accepted";
+            case "team.collab.status.REJECTED" -> "Rejected";
+            case "team.collab.status.REVOKED" -> "Revoked";
+            case "team.collab.accept" -> "Accept invitation";
+            case "team.collab.reject" -> "Reject invitation";
+            case "team.collab.revoke" -> "Revoke collaboration";
+            case "team.collab.invite" -> "Invite collaborator firm";
+            case "team.collab.invite.dialog.title" -> "Invite collaborator firm";
+            case "team.collab.invite.dialog.header" -> "Send an invitation by email to another tax advisory firm";
+            case "team.collab.invite.dialog.email" -> "Owner email";
+            case "team.collab.invite.dialog.email_prompt" -> "owner@partner-firm.com";
+            case "team.collab.invite.dialog.notes" -> "Notes";
+            case "team.collab.invite.dialog.notes_prompt" -> "Internal note (optional)";
+            case "team.collab.invite.dialog.hint" -> "The other firm OWNER will see your invitation as 'pending' the next time they open BENJAGEST. They can accept or reject. Once accepted, you can start assigning clients to their employees.";
+            case "team.collab.invite.dialog.send" -> "Send invitation";
+            case "team.collab.invite.dialog.bad_email.title" -> "Invalid email";
+            case "team.collab.invite.dialog.bad_email.body" -> "Enter a valid email address.";
+            case "team.collab.invite.ok.title" -> "Invitation sent";
+            case "team.collab.invite.ok.body" -> "Pending acceptance from:";
+            case "team.collab.invite.fail.title" -> "Could not send invitation";
+            case "team.collab.invite.fail.body" -> "Check the email and try again.";
+            case "team.collab.accept.ok.title" -> "Invitation accepted";
+            case "team.collab.accept.ok.body" -> "You are now an active collaborator.";
+            case "team.collab.accept.fail.title" -> "Could not accept";
+            case "team.collab.accept.fail.body" -> "Try again. If the problem persists, contact support.";
+            case "team.collab.reject.ok.title" -> "Invitation rejected";
+            case "team.collab.reject.ok.body" -> "The other firm will be notified.";
+            case "team.collab.reject.fail.title" -> "Could not reject";
+            case "team.collab.reject.fail.body" -> "Try again.";
+            case "team.collab.revoke.confirm.title" -> "Revoke collaboration?";
+            case "team.collab.revoke.confirm.body" -> "The other firm's employees will lose access to your clients immediately.";
+            case "team.collab.revoke.ok.title" -> "Collaboration revoked";
+            case "team.collab.revoke.ok.body" -> "All assignments to that firm have been removed.";
+            case "team.collab.revoke.fail.title" -> "Could not revoke";
+            case "team.collab.revoke.fail.body" -> "Try again.";
             // L4-4 — sección "Acceso a la app" en editor empleado
             case "labor.employee.section.app_access" -> "App access (PIN)";
             case "labor.employee.editor.app_access" -> "This employee can sign into BENJAGEST";
@@ -11563,6 +11612,55 @@ public class BenjagestUiApplication extends Application {
             case "team.member_role.ADVISOR" -> "Asesor";
             case "team.member_role.EMPLOYEE" -> "Empleado";
             case "team.member_role.VIEWER" -> "Consulta";
+            // L4-7 — tab Colaboradores (inter-asesoría)
+            case "team.tab.collaborators" -> "Colaboradores";
+            case "team.collab.hint" -> "Invita a OTRA asesoría a colaborar sobre TUS clientes. Una vez aceptada, puedes asignarle clientes a los empleados de la colaboradora desde la pestaña Asignaciones. Ellos trabajan desde SU propio BENJAGEST y la traza de auditoría queda con su user_id.";
+            case "team.collab.incoming.title" -> "Invitaciones recibidas pendientes";
+            case "team.collab.incoming.empty" -> "No has recibido invitaciones.";
+            case "team.collab.active.title" -> "Colaboradoras activas";
+            case "team.collab.active.empty" -> "Todavía no hay colaboradoras activas.";
+            case "team.collab.outgoing.title" -> "Invitaciones enviadas pendientes";
+            case "team.collab.outgoing.empty" -> "No hay invitaciones pendientes.";
+            case "team.collab.col.email" -> "Email";
+            case "team.collab.col.status" -> "Estado";
+            case "team.collab.col.invited_at" -> "Enviada";
+            case "team.collab.col.accepted_at" -> "Aceptada";
+            case "team.collab.status.PENDING" -> "Pendiente";
+            case "team.collab.status.ACCEPTED" -> "Aceptada";
+            case "team.collab.status.REJECTED" -> "Rechazada";
+            case "team.collab.status.REVOKED" -> "Revocada";
+            case "team.collab.accept" -> "Aceptar invitación";
+            case "team.collab.reject" -> "Rechazar invitación";
+            case "team.collab.revoke" -> "Revocar colaboración";
+            case "team.collab.invite" -> "Invitar asesoría colaboradora";
+            case "team.collab.invite.dialog.title" -> "Invitar asesoría colaboradora";
+            case "team.collab.invite.dialog.header" -> "Envía una invitación por email a otra asesoría";
+            case "team.collab.invite.dialog.email" -> "Email del OWNER";
+            case "team.collab.invite.dialog.email_prompt" -> "owner@asesoria-colaboradora.com";
+            case "team.collab.invite.dialog.notes" -> "Notas";
+            case "team.collab.invite.dialog.notes_prompt" -> "Nota interna (opcional)";
+            case "team.collab.invite.dialog.hint" -> "El OWNER de la otra asesoría verá tu invitación como 'pendiente' la próxima vez que abra BENJAGEST. Puede aceptarla o rechazarla. Una vez aceptada, podrás empezar a asignarle clientes a sus empleados.";
+            case "team.collab.invite.dialog.send" -> "Enviar invitación";
+            case "team.collab.invite.dialog.bad_email.title" -> "Email no válido";
+            case "team.collab.invite.dialog.bad_email.body" -> "Introduce una dirección de email válida.";
+            case "team.collab.invite.ok.title" -> "Invitación enviada";
+            case "team.collab.invite.ok.body" -> "Pendiente de aceptación de:";
+            case "team.collab.invite.fail.title" -> "No se pudo enviar la invitación";
+            case "team.collab.invite.fail.body" -> "Comprueba el email e inténtalo de nuevo.";
+            case "team.collab.accept.ok.title" -> "Invitación aceptada";
+            case "team.collab.accept.ok.body" -> "Ya eres colaboradora activa.";
+            case "team.collab.accept.fail.title" -> "No se pudo aceptar";
+            case "team.collab.accept.fail.body" -> "Inténtalo de nuevo. Si el problema persiste, contacta con soporte.";
+            case "team.collab.reject.ok.title" -> "Invitación rechazada";
+            case "team.collab.reject.ok.body" -> "La otra asesoría será notificada.";
+            case "team.collab.reject.fail.title" -> "No se pudo rechazar";
+            case "team.collab.reject.fail.body" -> "Inténtalo de nuevo.";
+            case "team.collab.revoke.confirm.title" -> "¿Revocar colaboración?";
+            case "team.collab.revoke.confirm.body" -> "Los empleados de la otra asesoría perderán acceso a tus clientes al instante.";
+            case "team.collab.revoke.ok.title" -> "Colaboración revocada";
+            case "team.collab.revoke.ok.body" -> "Se han retirado todas las asignaciones a esa asesoría.";
+            case "team.collab.revoke.fail.title" -> "No se pudo revocar";
+            case "team.collab.revoke.fail.body" -> "Inténtalo de nuevo.";
             // L4-4 — sección "Acceso a la app" en editor empleado
             case "labor.employee.section.app_access" -> "Acceso a la app (PIN)";
             case "labor.employee.editor.app_access" -> "Este empleado entra en BENJAGEST";
@@ -15398,17 +15496,30 @@ public class BenjagestUiApplication extends Application {
         currentModule = "team";
         Task<TeamBundle> task = new Task<>() {
             @Override protected TeamBundle call() throws Exception {
-                // Las tres llamadas se hacen en paralelo desde el thread del Task —
-                // sí, secuencialmente dentro del Task, pero la UI ya está reactiva.
-                // En caso de que el user NO sea OWNER, listTeamMembers lanza 403
-                // y caemos al onFailed con el mensaje team.forbidden.
+                // Cargamos secuencialmente desde el thread del Task. La
+                // UI se actualiza cuando todas las llamadas terminan.
+                // 403 en la primera (listTeamMembers) => no OWNER.
                 List<com.benjagest.ui.model.TeamMember> members = altaApiClient.listTeamMembers();
                 List<com.benjagest.ui.model.TeamAssignment> assignments =
                         altaApiClient.listTeamAssignmentsWithModules();
                 List<com.benjagest.ui.model.CustomerPortfolioEntry> clients =
                         altaApiClient.listAdvisoryPortfolio();
                 List<CompanyModuleEntry> modules = settingsApiClient.listModules();
-                return new TeamBundle(members, assignments, clients, modules);
+                // L4-7: colaboraciones. Defensivo — si los endpoints
+                // fallan por cualquier razón (módulo no cargado, BD
+                // legacy), devolvemos listas vacías y la tab muestra
+                // estado vacío en lugar de petar la pantalla entera.
+                List<com.benjagest.ui.model.CollabEntry> outgoing;
+                List<com.benjagest.ui.model.CollabEntry> incoming;
+                List<com.benjagest.ui.model.CollabEntry> active;
+                try { outgoing = altaApiClient.listOutgoingCollabs(); }
+                catch (Exception ex) { outgoing = List.of(); }
+                try { incoming = altaApiClient.listIncomingCollabs(); }
+                catch (Exception ex) { incoming = List.of(); }
+                try { active = altaApiClient.listActiveCollabs(); }
+                catch (Exception ex) { active = List.of(); }
+                return new TeamBundle(members, assignments, clients, modules,
+                        outgoing, incoming, active);
             }
         };
         task.setOnSucceeded(ev -> setCenterAnimated(scroll(teamView(task.getValue()))));
@@ -15426,7 +15537,11 @@ public class BenjagestUiApplication extends Application {
             List<com.benjagest.ui.model.TeamMember> members,
             List<com.benjagest.ui.model.TeamAssignment> assignments,
             List<com.benjagest.ui.model.CustomerPortfolioEntry> clients,
-            List<CompanyModuleEntry> modules
+            List<CompanyModuleEntry> modules,
+            // L4-7: colaboraciones inter-asesoría
+            List<com.benjagest.ui.model.CollabEntry> outgoingCollabs,
+            List<com.benjagest.ui.model.CollabEntry> incomingCollabs,
+            List<com.benjagest.ui.model.CollabEntry> activeCollabs
     ) {}
 
     private VBox teamView(TeamBundle bundle) {
@@ -15453,7 +15568,10 @@ public class BenjagestUiApplication extends Application {
         assignmentsTab.setGraphic(icon("fas-tasks"));
         Tab delegationsTab = new Tab(t("team.tab.delegations"), teamDelegationsTab(bundle));
         delegationsTab.setGraphic(icon("fas-calendar-times"));
-        tabs.getTabs().addAll(membersTab, assignmentsTab, delegationsTab);
+        // L4-7 — nueva tab Colaboradores
+        Tab collabTab = new Tab(t("team.tab.collaborators"), teamCollaboratorsTab(bundle));
+        collabTab.setGraphic(icon("fas-handshake"));
+        tabs.getTabs().addAll(membersTab, assignmentsTab, delegationsTab, collabTab);
         VBox.setVgrow(tabs, Priority.ALWAYS);
 
         content.getChildren().addAll(header, tabs);
@@ -15786,6 +15904,259 @@ public class BenjagestUiApplication extends Application {
     }
 
     // ----- Tab 3: Delegaciones ---------------------------------------------
+
+    // ----- Tab 4: Colaboradores (L4-7) ------------------------------------
+
+    /**
+     * L4-7 — Tab que gestiona las colaboraciones entre asesorías:
+     * <ul>
+     *   <li>Si tengo invitaciones recibidas (pending), sección arriba
+     *       con tabla y botones Aceptar / Rechazar.</li>
+     *   <li>Sección "Colaboradoras activas" con tabla + botón Revocar.</li>
+     *   <li>Sección "Invitaciones enviadas pendientes" con botón Revocar.</li>
+     *   <li>Botón "Invitar asesoría colaboradora" abre diálogo email.</li>
+     * </ul>
+     */
+    private Node teamCollaboratorsTab(TeamBundle bundle) {
+        VBox box = new VBox(16);
+        box.setPadding(new Insets(16));
+
+        Label hint = new Label(t("team.collab.hint"));
+        hint.setWrapText(true);
+        hint.getStyleClass().add("settings-hint");
+        box.getChildren().add(hint);
+
+        // Invitaciones recibidas — solo si las hay
+        if (!bundle.incomingCollabs().isEmpty()) {
+            Label inTitle = new Label(t("team.collab.incoming.title"));
+            inTitle.getStyleClass().add("settings-section-title");
+            TableView<com.benjagest.ui.model.CollabEntry> inTable = collabTable(
+                    bundle.incomingCollabs(), true, false);
+            Button acceptBtn = new Button(t("team.collab.accept"));
+            acceptBtn.setGraphic(icon("fas-check"));
+            acceptBtn.getStyleClass().add("primary-button");
+            acceptBtn.setDisable(true);
+            Button rejectBtn = new Button(t("team.collab.reject"));
+            rejectBtn.setGraphic(icon("fas-times"));
+            rejectBtn.setDisable(true);
+            inTable.getSelectionModel().selectedItemProperty().addListener((o, ov, nv) -> {
+                boolean enabled = nv != null && nv.isPending();
+                acceptBtn.setDisable(!enabled);
+                rejectBtn.setDisable(!enabled);
+            });
+            acceptBtn.setOnAction(ev -> {
+                var sel = inTable.getSelectionModel().getSelectedItem();
+                if (sel == null) return;
+                runCollabAction(() -> altaApiClient.acceptCollab(sel.id()),
+                        "team.collab.accept.ok", "team.collab.accept.fail");
+            });
+            rejectBtn.setOnAction(ev -> {
+                var sel = inTable.getSelectionModel().getSelectedItem();
+                if (sel == null) return;
+                runCollabAction(() -> altaApiClient.rejectCollab(sel.id()),
+                        "team.collab.reject.ok", "team.collab.reject.fail");
+            });
+            HBox inActions = new HBox(8, acceptBtn, rejectBtn);
+            box.getChildren().addAll(inTitle, inTable, inActions);
+        }
+
+        // Colaboradoras activas
+        Label actTitle = new Label(t("team.collab.active.title"));
+        actTitle.getStyleClass().add("settings-section-title");
+        TableView<com.benjagest.ui.model.CollabEntry> actTable = collabTable(
+                bundle.activeCollabs(), false, true);
+        Button revokeActiveBtn = new Button(t("team.collab.revoke"));
+        revokeActiveBtn.setGraphic(icon("fas-unlink"));
+        revokeActiveBtn.setDisable(true);
+        actTable.getSelectionModel().selectedItemProperty().addListener(
+                (o, ov, nv) -> revokeActiveBtn.setDisable(nv == null));
+        revokeActiveBtn.setOnAction(ev -> confirmRevokeCollab(actTable));
+        box.getChildren().addAll(actTitle, actTable, revokeActiveBtn);
+
+        // Invitaciones enviadas pendientes
+        java.util.List<com.benjagest.ui.model.CollabEntry> outgoingPending =
+                bundle.outgoingCollabs().stream()
+                        .filter(com.benjagest.ui.model.CollabEntry::isPending)
+                        .toList();
+        Label outTitle = new Label(t("team.collab.outgoing.title"));
+        outTitle.getStyleClass().add("settings-section-title");
+        TableView<com.benjagest.ui.model.CollabEntry> outTable = collabTable(
+                outgoingPending, false, false);
+        Button revokeOutBtn = new Button(t("team.collab.revoke"));
+        revokeOutBtn.setGraphic(icon("fas-unlink"));
+        revokeOutBtn.setDisable(true);
+        outTable.getSelectionModel().selectedItemProperty().addListener(
+                (o, ov, nv) -> revokeOutBtn.setDisable(nv == null));
+        revokeOutBtn.setOnAction(ev -> confirmRevokeCollab(outTable));
+        box.getChildren().addAll(outTitle, outTable, revokeOutBtn);
+
+        // Botón invitar
+        Button inviteBtn = new Button(t("team.collab.invite"));
+        inviteBtn.setGraphic(icon("fas-paper-plane"));
+        inviteBtn.getStyleClass().add("primary-button");
+        inviteBtn.setOnAction(ev -> openInviteCollabDialog());
+
+        Region spacer2 = new Region();
+        VBox.setVgrow(spacer2, Priority.ALWAYS);
+        HBox bottomBar = new HBox(8, spacer2, inviteBtn);
+        bottomBar.setAlignment(Pos.CENTER_RIGHT);
+        box.getChildren().add(bottomBar);
+
+        return box;
+    }
+
+    /** Tabla común para listar colaboraciones. */
+    private TableView<com.benjagest.ui.model.CollabEntry> collabTable(
+            java.util.List<com.benjagest.ui.model.CollabEntry> data,
+            boolean isIncoming, boolean showAcceptedAt) {
+        TableView<com.benjagest.ui.model.CollabEntry> table = new TableView<>();
+        table.getStyleClass().add("data-table");
+        table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+        table.setPlaceholder(new Label(isIncoming
+                ? t("team.collab.incoming.empty")
+                : (showAcceptedAt ? t("team.collab.active.empty") : t("team.collab.outgoing.empty"))));
+        table.setPrefHeight(160);
+
+        TableColumn<com.benjagest.ui.model.CollabEntry, String> cEmail =
+                new TableColumn<>(t("team.collab.col.email"));
+        cEmail.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().invitedEmail()));
+        cEmail.setPrefWidth(260);
+        TableColumn<com.benjagest.ui.model.CollabEntry, String> cStatus =
+                new TableColumn<>(t("team.collab.col.status"));
+        cStatus.setCellValueFactory(c -> new SimpleStringProperty(
+                humanizeCollabStatus(c.getValue().status())));
+        cStatus.setPrefWidth(120);
+        TableColumn<com.benjagest.ui.model.CollabEntry, String> cDate =
+                new TableColumn<>(showAcceptedAt
+                        ? t("team.collab.col.accepted_at")
+                        : t("team.collab.col.invited_at"));
+        cDate.setCellValueFactory(c -> {
+            var dt = showAcceptedAt
+                    ? c.getValue().acceptedAt()
+                    : c.getValue().invitedAt();
+            return new SimpleStringProperty(dt == null ? "" : shortIso(dt.toString()));
+        });
+        cDate.setPrefWidth(150);
+
+        table.getColumns().addAll(List.of(cEmail, cStatus, cDate));
+        table.setItems(FXCollections.observableArrayList(data));
+        return table;
+    }
+
+    private void openInviteCollabDialog() {
+        Dialog<ButtonType> dialog = new Dialog<>();
+        dialog.setTitle(t("team.collab.invite.dialog.title"));
+        dialog.setHeaderText(t("team.collab.invite.dialog.header"));
+
+        TextField emailF = new TextField();
+        emailF.setPromptText(t("team.collab.invite.dialog.email_prompt"));
+        TextArea notesF = new TextArea();
+        notesF.setPromptText(t("team.collab.invite.dialog.notes_prompt"));
+        notesF.setPrefRowCount(3);
+
+        GridPane g = new GridPane();
+        g.setHgap(10); g.setVgap(10); g.setPadding(new Insets(8));
+        g.add(new Label(t("team.collab.invite.dialog.email")), 0, 0);
+        g.add(emailF, 1, 0);
+        g.add(new Label(t("team.collab.invite.dialog.notes")), 0, 1);
+        g.add(notesF, 1, 1);
+        Label hint = new Label(t("team.collab.invite.dialog.hint"));
+        hint.setWrapText(true);
+        hint.getStyleClass().add("settings-hint");
+        g.add(hint, 0, 2, 2, 1);
+
+        dialog.getDialogPane().setContent(g);
+        ButtonType sendBt = new ButtonType(t("team.collab.invite.dialog.send"),
+                ButtonBar.ButtonData.OK_DONE);
+        dialog.getDialogPane().getButtonTypes().addAll(sendBt, ButtonType.CANCEL);
+        javafx.scene.Node sendNode = dialog.getDialogPane().lookupButton(sendBt);
+        sendNode.addEventFilter(javafx.event.ActionEvent.ACTION, ev -> {
+            String email = emailF.getText() == null ? "" : emailF.getText().trim();
+            if (email.isBlank() || !email.contains("@")) {
+                showError(t("team.collab.invite.dialog.bad_email.title"),
+                        t("team.collab.invite.dialog.bad_email.body"));
+                ev.consume();
+                return;
+            }
+            ev.consume();
+            String notes = notesF.getText();
+            Task<Void> task = new Task<>() {
+                @Override protected Void call() throws Exception {
+                    altaApiClient.inviteCollab(email, notes);
+                    return null;
+                }
+            };
+            task.setOnSucceeded(s -> {
+                dialog.setResult(sendBt);
+                dialog.close();
+                showInfo(t("team.collab.invite.ok.title"),
+                        t("team.collab.invite.ok.body") + " " + email);
+                showTeamModule();
+            });
+            task.setOnFailed(s -> {
+                Throwable err = task.getException();
+                showError(t("team.collab.invite.fail.title"),
+                        err == null || err.getMessage() == null
+                                ? t("team.collab.invite.fail.body")
+                                : err.getMessage());
+            });
+            start(task, "collab-invite");
+        });
+        dialog.showAndWait();
+    }
+
+    private void confirmRevokeCollab(TableView<com.benjagest.ui.model.CollabEntry> table) {
+        var sel = table.getSelectionModel().getSelectedItem();
+        if (sel == null) return;
+        Alert confirm = new Alert(Alert.AlertType.CONFIRMATION);
+        confirm.setTitle(t("team.collab.revoke.confirm.title"));
+        confirm.setHeaderText(t("team.collab.revoke.confirm.title"));
+        confirm.setContentText(t("team.collab.revoke.confirm.body"));
+        confirm.showAndWait().ifPresent(rsp -> {
+            if (rsp == javafx.scene.control.ButtonType.OK) {
+                runCollabAction(() -> altaApiClient.revokeCollab(sel.id()),
+                        "team.collab.revoke.ok", "team.collab.revoke.fail");
+            }
+        });
+    }
+
+    /**
+     * Helper para ejecutar acciones POST/DELETE de colaboración: corre
+     * en Task asíncrono, muestra info/error y recarga el módulo.
+     */
+    private void runCollabAction(ThrowingRunnable action,
+                                   String okKey, String failKey) {
+        Task<Void> task = new Task<>() {
+            @Override protected Void call() throws Exception {
+                action.run();
+                return null;
+            }
+        };
+        task.setOnSucceeded(s -> {
+            showInfo(t(okKey + ".title"), t(okKey + ".body"));
+            showTeamModule();
+        });
+        task.setOnFailed(s -> {
+            Throwable err = task.getException();
+            showError(t(failKey + ".title"),
+                    err == null || err.getMessage() == null
+                            ? t(failKey + ".body") : err.getMessage());
+        });
+        start(task, "collab-action");
+    }
+
+    /** Equivalente a Runnable que puede lanzar checked exceptions. */
+    @FunctionalInterface
+    private interface ThrowingRunnable {
+        void run() throws Exception;
+    }
+
+    private String humanizeCollabStatus(String code) {
+        if (code == null || code.isBlank()) return "";
+        String key = "team.collab.status." + code;
+        String translated = t(key);
+        return key.equals(translated) ? code : translated;
+    }
 
     private Node teamDelegationsTab(TeamBundle bundle) {
         // Slice 5E: editor completo. Botón "Nueva delegación" abre diálogo
