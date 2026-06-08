@@ -493,7 +493,7 @@ public class EmployeeService {
     @RestController
     @RequestMapping("/api/labor/employees")
     @RequiresModule("labor")
-    @RequiresRole({"OWNER", "ADMIN", "ACCOUNTANT"})
+    @RequiresRole({"OWNER", "ADMIN", "ACCOUNTANT", "EMPLOYEE"})
     public static class EmployeeController {
         private final EmployeeService service;
 

@@ -298,7 +298,7 @@ public class TaxFilingService {
     @RestController
     @RequestMapping("/api/tax")
     @RequiresModule("accounting")
-    @RequiresRole({"OWNER", "ADMIN", "ACCOUNTANT"})
+    @RequiresRole({"OWNER", "ADMIN", "ACCOUNTANT", "EMPLOYEE"})
     public static class TaxController {
         private final TaxFilingService service;
 

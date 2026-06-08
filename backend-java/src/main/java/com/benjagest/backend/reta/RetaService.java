@@ -365,7 +365,7 @@ public class RetaService {
     @RestController
     @RequestMapping("/api/reta")
     @RequiresModule("self-employed")
-    @RequiresRole({"OWNER", "ADMIN", "ACCOUNTANT"})
+    @RequiresRole({"OWNER", "ADMIN", "ACCOUNTANT", "EMPLOYEE"})
     public static class RetaController {
         private final RetaService service;
 

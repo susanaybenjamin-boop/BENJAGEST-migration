@@ -207,7 +207,7 @@ public class ContractAnnexService {
     @RestController
     @RequestMapping("/api/contracts/{contractId}/annexes")
     @RequiresModule("labor")
-    @RequiresRole({"OWNER", "ADMIN", "ACCOUNTANT"})
+    @RequiresRole({"OWNER", "ADMIN", "ACCOUNTANT", "EMPLOYEE"})
     public static class Controller {
         private final ContractAnnexService service;
 
