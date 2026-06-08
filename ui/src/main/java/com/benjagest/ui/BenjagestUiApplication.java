@@ -11378,6 +11378,7 @@ public class BenjagestUiApplication extends Application {
             case "team.members.col.email" -> "Email";
             case "team.members.col.role" -> "Role";
             case "team.members.empty" -> "No active employees yet.";
+            case "team.members.you" -> "you";
             // Asignaciones
             case "team.assign.hint" -> "Tick the clients on the left, choose the employee in charge and which modules they handle, and click Assign.";
             case "team.assign.field.employee" -> "Assign to";
@@ -11487,6 +11488,7 @@ public class BenjagestUiApplication extends Application {
             case "team.members.col.email" -> "Email";
             case "team.members.col.role" -> "Rol";
             case "team.members.empty" -> "Todavía no hay empleados activos.";
+            case "team.members.you" -> "tú";
             // Asignaciones
             case "team.assign.hint" -> "Marca los clientes a la izquierda, elige el empleado responsable y qué módulos lleva, y pulsa Asignar.";
             case "team.assign.field.employee" -> "Asignar a";
@@ -15472,10 +15474,20 @@ public class BenjagestUiApplication extends Application {
         table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
         table.setPlaceholder(new Label(t("team.members.empty")));
 
+        // L4-5: marca al usuario actual con "(tú)" en la columna nombre,
+        // para que el OWNER se identifique de un vistazo en su propia
+        // lista de equipo (a menudo solo está él al principio).
+        String myUserId = AuthSession.get().userId();
         TableColumn<com.benjagest.ui.model.TeamMember, String> cName =
                 new TableColumn<>(t("team.members.col.name"));
-        cName.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().displayName()));
-        cName.setPrefWidth(220);
+        cName.setCellValueFactory(c -> {
+            String name = c.getValue().displayName();
+            if (myUserId != null && myUserId.equals(c.getValue().userId())) {
+                name = name + " — " + t("team.members.you");
+            }
+            return new SimpleStringProperty(name);
+        });
+        cName.setPrefWidth(240);
         TableColumn<com.benjagest.ui.model.TeamMember, String> cEmail =
                 new TableColumn<>(t("team.members.col.email"));
         cEmail.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().email()));
