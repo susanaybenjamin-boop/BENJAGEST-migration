@@ -144,19 +144,22 @@ public class ClientAssignmentService {
         validateEmployeeBelongsToAdvisory(req.employeeUserId(), advisoryId);
         validateClientBelongsToAdvisory(req.clientCompanyId(), advisoryId);
 
-        // Bloqueo conflicto: solo puede haber UNA asignación activa
-        // para el mismo cliente dentro de la asesoría. Si ya hay otra,
-        // forzamos al OWNER a reasignar conscientemente.
+        // Decisión 2026-06-08 (Benjamin): un cliente PUEDE ser asignado
+        // a varios empleados simultáneamente (p.ej. OWNER + Marcos
+        // comparten Cliente Auto SL — OWNER lleva fiscal, Marcos
+        // contabilidad). El UNIQUE de BD (advisory, employee, client)
+        // sigue evitando duplicados exactos. Solo bloqueamos si el
+        // MISMO empleado ya tiene ese cliente.
         Optional<String> existing = jdbcTemplate.query("""
                 SELECT id FROM client_assignments
                  WHERE advisory_company_id = ? AND client_company_id = ?
-                   AND active = TRUE
+                   AND employee_user_id = ? AND active = TRUE
                 """,
                 rs -> rs.next() ? Optional.of(rs.getString(1)) : Optional.<String>empty(),
-                advisoryId, req.clientCompanyId());
+                advisoryId, req.clientCompanyId(), req.employeeUserId());
         if (existing != null && existing.isPresent()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
-                    "Este cliente ya está asignado a otro empleado. Reasígnalo en lugar de duplicar.");
+                    "Este empleado ya tiene asignado este cliente. Edita la asignación en lugar de duplicar.");
         }
 
         ClientAssignment a = new ClientAssignment(

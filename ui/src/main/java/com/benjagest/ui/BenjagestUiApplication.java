@@ -17696,6 +17696,18 @@ public class BenjagestUiApplication extends Application {
         matrix.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
         matrix.setPlaceholder(new Label(t("team.assign.empty.matrix")));
         java.util.Map<String, String> clientNameById = new java.util.HashMap<>();
+        // Añadir Mi gestión (asesoría) primero para que las asignaciones
+        // donde client_company_id == advisory_company_id muestren la
+        // etiqueta humana en lugar del UUID. Benjamin: 'cuando le asigno
+        // mi gestion a un empleado en el campo cliente aparece el id'.
+        String myAdvisoryId = AuthSession.get().activeCompanyId();
+        String myAdvisoryName = AuthSession.get().activeCompanyLegalName();
+        if (myAdvisoryId != null && !myAdvisoryId.isBlank()) {
+            String label = "★ " + t("team.assign.my_company")
+                    + (myAdvisoryName == null || myAdvisoryName.isBlank()
+                            ? "" : " — " + myAdvisoryName);
+            clientNameById.put(myAdvisoryId, label);
+        }
         for (com.benjagest.ui.model.CustomerPortfolioEntry c : bundle.clients()) {
             if (c.linkedCompanyId() != null) clientNameById.put(c.linkedCompanyId(), labelOf(c));
         }
