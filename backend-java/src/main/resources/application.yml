@@ -11,7 +11,17 @@ spring:
   application:
     name: benjagest-backend
   datasource:
-    url: ${BENJAGEST_DB_URL:jdbc:mariadb://localhost:3306/benjagest}
+    # VF-CHAIN-FIX 2026-06-08: connectionTimeZone=UTC fuerza al driver
+    # mariadb-java-client a interpretar TIMESTAMP siempre en UTC,
+    # independiente de la zona del JVM. Sin esto, la cadena hash SIF
+    # se rompía sistémicamente tras cualquier reinicio: el INSERT pasaba
+    # Timestamp.from(instant) (UTC), pero el SELECT podía leer el
+    # Timestamp interpretándolo en la zona del sistema, dando un
+    # Instant desplazado. Al recalcular el hash con un OffsetDateTime
+    # distinto al original, todas las cadenas aparecían rotas.
+    # forceConnectionTimeZoneToSession=true: aplica también a la sesión
+    # MariaDB para que CURRENT_TIMESTAMP de la propia BD sea coherente.
+    url: ${BENJAGEST_DB_URL:jdbc:mariadb://localhost:3306/benjagest?connectionTimeZone=UTC&forceConnectionTimeZoneToSession=true}
     username: ${BENJAGEST_DB_USER:benjagest}
     password: ${BENJAGEST_DB_PASSWORD:benjagest}
     driver-class-name: org.mariadb.jdbc.Driver
