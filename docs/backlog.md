@@ -39,33 +39,31 @@ Para no repetir en cada sección lo que ya está:
 
 Lo que toca **antes** de seguir con features funcionales. Cubre: legalidad, seguridad multi-tenant, y los dos slices que dejamos preparados.
 
-### 🟢 PRIMERA TAREA AL VOLVER (sesión 2026-06-08) — cerrar bloque L4 PIN multi-puesto
+### 🟢 PRIMERA TAREA AL VOLVER (sesión 2026-06-09) — arrancar bloque CTR (contratos)
 
-Mañana arrancamos directo por aquí. **No descolocar.** Hoy 2026-06-07 cerramos un cambio arquitectónico importante: el modelo de acceso por **PIN multi-puesto** acordado con Benjamin. La sesión dejó **3 slices pendientes** y todo lo demás ya está en `develop`.
+**Bloque L4 cerrado al 100%** + decisión de Benjamin (2026-06-08) de arrancar acto seguido el bloque CTR (contratos) — porque la facilidad de preparar contratos es la siguiente pieza de valor visible para el asesor.
 
-**Hecho hoy (sesión 2026-06-07):**
+**Hecho 2026-06-08 — bloque L4 completo:**
 
-- ✅ **EQUIPO Slices 5C/5D/5E** — UI módulo Equipo con 3 tabs (Empleados, Asignaciones, Delegaciones); filtrado de sidebar de cliente por asignaciones del empleado; editor de delegación temporal (vacaciones/bajas) con validación rango fechas + sustituto != titular + endpoint `/delegate` con cancelación.
-- ✅ **V69** — slug `team` registrado en `module_catalog` (advisory_only=TRUE) + KNOWN_VIEWS de UI ampliado. Sin esto el módulo Equipo no aparecía en el sidebar aunque el código estuviera (el sidebar viene de BD, no del hardcoded).
-- ✅ **L3-1** — backend calendario laboral (V68 `work_calendars` + `holidays` + records + repository). Servicio y UI quedaron pausados, ver "L3 pausado" abajo.
-- ✅ **L4-1** — V70 (`employees.app_access` + ampliar `pin_hash` a VARCHAR(255) bcrypt + borrar UK por hash determinista + tabla `device_tokens` para emparejar hasta 5 PCs por asesoría). `DeviceToken` record + `DeviceTokenRepository`.
-- ✅ **L4-2** — backend completo del modelo PIN: `DeviceTokenService` (pair, verifyAndTouch, listForCompany, revoke con límite 5/asesoría), `PinAuthService` (loginByPin con verify bcrypt across employees + anti-bruteforce in-memory 3 intentos→bloqueo 30s, setEmployeePin solo OWNER con colision check), `PinAuthController` con 5 endpoints. Anotación `@RestController("pinDeviceAuthController")` explícita para evitar colisión con `workspace.PinAuthController` legacy del kiosko de fichaje. `SecurityConfig` whitelist ampliada para `/devices/pair` y `/pin-login` (públicos pre-JWT).
-- ✅ **L4-3** — UI completa: `DeviceConfig` persiste secret en `%APPDATA%\benjagest\device.json`, `AuthApiClient.pairDevice/pinLogin/revokeDevice`, `showLogin()` ahora dispatcher (sin device.json → emparejar, con device.json → teclado PIN), `showEmailLogin` como flujo secundario "Entrar como administrador", `showPairingScreen` con email+password+nombre PC, `showPinKeypad` con teclado virtual 4x3 + display dots + handler de teclado físico del PC (dígitos 0-9 fila/numpad, Backspace/Supr, Enter, Escape para limpiar). `confirmForgetDevice` revoca en backend + borra device.json. ~70 keys i18n nuevas en `tPinLoginEn/Es`.
-- ✅ **L4-8** — V72 SEED del PIN `2406` para el OWNER de Benjamin (`admin@benjagest.local`). Bcrypt precomputado y verificado (`$2a$10$cZLkhT9IZN/IRWrNPnEC1OyA05Zc8REHeYpokRi4frVb7Ga8hpV2C`). Idempotente; si Benjamin lo cambia desde UI no se sobreescribe.
-- ✅ **Fix labor "clientes" → "Laboral"** — i18n del `module.advisory.labor`. La pantalla siempre mostró empleados de la asesoría propia, no de los clientes; el nombre era engañoso.
-- ✅ **V73** — Restaurar `employees` row de Marcos Encargado (legacy seed V3 perdido en cleanups intermedios). `app_access=FALSE` deliberado para usarlo como caso de prueba "empleado con contrato pero sin acceso a la app" cuando L4-5 cierre. **NOTA**: primera versión de V73 incluía `default_customer_id` apuntando a un customer demo también perdido → FK constraint failed al arrancar backend → editado a `NULL` y FlywayConfig hace `repair()` antes de `migrate()` automáticamente, así que reinicia y aplicará limpio.
+- ✅ **L4-4 — Alta empleado con Acceso a la app + PIN integrado**. EmployeeService.UpsertRequest amplía con appAccess (Boolean tri-state), pin (4-8 dígitos), roleInCompany (default EMPLOYEE). EmployeeView con appAccess/userId/hasPin. create/update detectan transición de app_access y aplican provisionAppAccess / revokeAppAccess. Reusa user_account existente (decisión Benjamin); si no existe lo crea con email sintético `pin-{empId}@local`. setEmployeePinChecked con verify bcrypt in-memory para evitar colisión. EMPLOYEE_APP_ACCESS_GRANTED/REVOKED/PIN_CHANGED en audit. UI showEmployeeEditor con sección "Acceso a la app (PIN)" — CheckBox + ComboBox rol con StringConverter + PasswordField PIN con prompts contextuales. i18n 9 keys ES/EN.
+- ✅ **L4-5 — Refactor módulo Equipo → employees.app_access=TRUE**. ClientAssignmentService.listAdvisoryMembers cambia de company_memberships a employees JOIN user_accounts WHERE app_access=TRUE + UNION con OWNER vía company_memberships (caso transitorio asesorías pre-L4-4). Subquery wrap necesario en MariaDB para ORDER BY UNION. UI marca al usuario actual con " — tú" en columna nombre.
+- ✅ **L4-6 — V71 advisory_collaborations + backend**. Tabla con id, advisory_company_id, partner_advisory_id, invited_email, status PENDING/ACCEPTED/REJECTED/REVOKED, invited_at/by, accepted_at/by, revoked_at/by, notes. partner_advisory_id NULL hasta aceptar. AdvisoryCollaboration record + Repository + Service (invite/accept/reject/revoke + listOutgoing/listIncoming/listActivePartners + listActivePartnerIds helper para L4-7) + Controller con 7 endpoints REST bajo /api/advisory/collaborations. Audit completo.
+- ✅ **L4-7 — Tab Colaboradores en módulo Equipo**. CollabEntry UI record + AltaApiClient con 6 métodos. TeamBundle amplía con outgoing/incoming/active collabs (carga try/catch defensivo). 4ª tab "Colaboradores" (fas-handshake) con 3 secciones: Invitaciones recibidas (solo si las hay) + Aceptar/Rechazar, Colaboradoras activas + Revocar con confirmación, Invitaciones enviadas pendientes + Revocar. Botón "Invitar asesoría colaboradora" → diálogo email/notas con validación. humanizeCollabStatus + helpers (ThrowingRunnable, runCollabAction). i18n ~45 keys ES/EN.
+- ✅ **Decisión 2026-06-08 — bloque CTR (Contratos)** acordado con Benjamin: volumen alto (20+ contratos/mes), todos los pain points marcados. 7 slices CTR-1 a CTR-7 planificados, con prioridad CTR-1 → CTR-2 → CTR-4 (PDF SEPE oficial con barrido legal completo) → CTR-3 → CTR-6 → CTR-7 → CTR-5 (XML contrat@).
 
-**Pendiente — orden estricto para mañana:**
+**Pendiente — orden estricto para próxima sesión:**
 
-1. ⬜ **L4-4 — Alta empleado con "Acceso a la app" + PIN**. En el editor de empleado del módulo Personal, añadir casilla `app_access` + `PasswordField` PIN + selector de rol. Al guardar con `app_access=TRUE`: crear `user_account` automático (email puede ser sintético `pin-{employeeId}@local` si el empleado no tiene email real), crear `company_membership` con el rol elegido, hash bcrypt del PIN. Botón "Cambiar PIN" reusa el endpoint `PUT /api/auth/employees/{id}/pin`. Con esto el OWNER ya puede dar PINs a empleados nuevos sin tocar SQL.
-2. ⬜ **L4-5 — Refactor módulo Equipo → query por `employees.app_access=TRUE`**. Cambiar `ClientAssignmentService.listAdvisoryMembers()` para que use `employees JOIN user_accounts WHERE app_access=TRUE` en lugar de `company_memberships`. Marcar visualmente al usuario actual ("tú") en la fila. Botón cambiar PIN para cualquier empleado (solo OWNER). Marcos desaparecerá automáticamente del Equipo (sigue en Laboral).
-3. ⬜ **L4-6 — V71 `advisory_collaborations` + invitación inter-asesoría**. Tabla nueva (advisory_company_id, partner_advisory_id, status PENDING/ACCEPTED/REVOKED, accepted_at, accepted_by_user_id). Endpoint A invita a B por email → B ve banner "asesoría X te invita a colaborar" → acepta → vinculado.
-4. ⬜ **L4-7 — Sección "Colaboradores" en módulo Equipo + asignar a externo**. Listar miembros de asesorías colaboradoras junto a empleados propios. `client_assignments.employee_user_id` puede apuntar a `user_account` de otra asesoría. Auditoría queda con `user_id` del externo, en `company_id` de A.
+1. ⬜ **CTR-1 — V74 catálogo SEPE + 25 convenios + tablas salariales**. Códigos SEPE oficiales (100/109/200/300/401/402/501/502 con descripción legal completa). 25 convenios PYMEs (Comercio General, Hostelería, Construcción, Oficinas y Despachos, Limpieza, Transporte por Carretera, Sanidad Privada, Enseñanza Privada, Industria Metalúrgica, etc.) con tabla salarial mínima 2024-2025 + categorías profesionales + grupos. Datos plausibles del BOE; el OWNER puede editar después desde Configuración.
+2. ⬜ **CTR-2 — Wizard contrato 4 pasos**. Editor rediseñado: 1) Tipo+SEPE (combo con descripción + filtros Indefinido/Temporal/Prácticas), 2) Convenio + categoría profesional (combos en cascada), 3) Datos económicos (auto-rellenados con mínimos del convenio elegido + warnings amarillos si bajan), 4) Revisión + crear. Integrado con flujo alta empleado L4-4.
+3. ⬜ **CTR-4 — PDF SEPE oficial firmable**. **IMPORTANTE: hacer WebSearch primero** sobre Estatuto de los Trabajadores (RDLeg 2/2015), reforma laboral 2022 (RD-Ley 32/2021), reformas 2024-2025, modelos SEPE oficiales — Benjamin pidió expresamente "barrido en internet para no dejarnos nada según la ley, barreras leyes desde hasta hoy". Plantillas BOE de clausulado por tipo SEPE con variables (nombre, NIF, salario, convenio, jornada, periodo de prueba...) + huecos firma. OpenPDF ya en pom.
+4. ⬜ **CTR-3 — Plantillas reutilizables (contract_templates)**. Tabla con datos del wizard guardados. UI "Crear plantilla desde contrato" + "Aplicar plantilla en bloque" a empleados nuevos.
+5. ⬜ **CTR-6 — Alertas vencimientos**. Cron diario en backend. Escribe en dehu_notifications (ya existe). Plazos por defecto (Benjamin 2026-06-08): periodo prueba 7 días antes, contrato temporal 30 días antes, cláusulas anuales 60 días antes, cumpleaños/aniversarios.
+6. ⬜ **CTR-7 — Anexos**. Plantillas de cláusulas adicionales (confidencialidad, no competencia, exclusividad) que se concatenan al PDF principal según se marquen al crear.
+7. ⬜ **CTR-5 — XML contrat@ alta SEPE oficial**. Generador del XML según esquema oficial del SEPE. Lo último por complejidad — beneficia del testing previo de CTR-1 a CTR-4.
 
-**L3 pausado:** Los slices L3-2 (WorkCalendarService + Controller), L3-3 (templates BOE 2026 + servicio import) y L3-4 (UI modal comparador calendario laboral) quedaron pausados al saltar a L4 cuando Benjamin reformuló el modelo de equipo. **Retomar después de L4-7** o mover a 🟠 ALTA si no es prioritario.
+**L3 pausado:** Slices L3-2 (WorkCalendarService + Controller), L3-3 (templates BOE 2026 + servicio import) y L3-4 (UI modal comparador calendario laboral). **Retomar después del bloque CTR** o mover a 🟠 ALTA si no es prioritario.
 
-**Estado al cerrar 2026-06-07:** backend levanta limpio, V70 + V72 + V73 aplicadas, UI compila, Benjamin puede emparejar su PC + login PIN `2406` end-to-end. Módulo Equipo visible en sidebar (sección "Mis clientes"), módulo Laboral renombrado correctamente.
-
+**Estado al cerrar 2026-06-08:** backend levanta limpio con V70 + V71 + V72 + V73 aplicadas. UI compila. Benjamin tiene login PIN 2406 funcional. Módulo Equipo con 4 tabs (Empleados, Asignaciones, Delegaciones, Colaboradores) cerrado y mergeado a develop. Editor empleado con casilla "Acceso a la app + PIN" funcional. Marcos sigue en Laboral con app_access=FALSE pero NO aparece en Equipo (filtrado correcto por L4-5). Próxima sesión: CTR-1.
 
 ### ⚠️ Deuda transversal — i18n (ES/EN)
 
@@ -275,6 +273,7 @@ Cuando lo crítico esté cerrado.
 - ⬜ Incidencias de nómina.
 - ⬜ Centros de trabajo (`centros_trabajo_180`).
 - ⬜ Reporte coste empresa por empleado.
+- ⬜ Le daremos una vuelta a los contratos y a todo lo referente del alta del empleado.
 
 ### Asesoría / multi-cliente
 
