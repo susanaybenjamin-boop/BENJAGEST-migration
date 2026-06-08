@@ -1001,6 +1001,16 @@ public class BenjagestUiApplication extends Application {
         Task<List<CompanyModuleEntry>> task = new Task<>() {
             @Override
             protected List<CompanyModuleEntry> call() throws Exception {
+                // EMP-SCOPED-UI: cargar el scope del usuario en paralelo
+                // (lo guardamos en AuthSession antes de pintar el shell
+                // para que el sidebar ya pueda filtrar). Si falla, se
+                // queda null y AuthSession.isFullAccess() = true por
+                // defensa.
+                try {
+                    AuthSession.get().setUserScope(altaApiClient.loadMyScope());
+                } catch (Exception scopeErr) {
+                    AuthSession.get().setUserScope(null);
+                }
                 return settingsApiClient.listActiveCatalog();
             }
         };
@@ -1447,6 +1457,7 @@ public class BenjagestUiApplication extends Application {
             // facturación, Mis compras, Configuración, etc.).
             for (ModuleLink link : modules) {
                 if (link.advisoryOnly()) continue;
+                if (!shouldShowInSidebar(link.id())) continue;
                 Button button = navButton(link.id(), moduleTitle(link.id()), link.icon());
                 button.setOnAction(event -> { exitClientMode(); showModule(link.id()); });
                 sidebar.getChildren().add(button);
@@ -1459,6 +1470,7 @@ public class BenjagestUiApplication extends Application {
             sidebar.getChildren().add(clientsSection);
             for (ModuleLink link : modules) {
                 if (!link.advisoryOnly()) continue;
+                if (!shouldShowInSidebar(link.id())) continue;
                 Button button = navButton(link.id(), moduleTitle(link.id()), link.icon());
                 button.setOnAction(event -> { exitClientMode(); showModule(link.id()); });
                 sidebar.getChildren().add(button);
@@ -1470,6 +1482,7 @@ public class BenjagestUiApplication extends Application {
             section.getStyleClass().add("sidebar-section");
             sidebar.getChildren().addAll(section, home);
             for (ModuleLink link : modules) {
+                if (!shouldShowInSidebar(link.id())) continue;
                 Button button = navButton(link.id(), moduleTitle(link.id()), link.icon());
                 button.setOnAction(event -> { exitClientMode(); showModule(link.id()); });
                 sidebar.getChildren().add(button);
@@ -1512,6 +1525,83 @@ public class BenjagestUiApplication extends Application {
             return withMyCompany;
         }
         return base;
+    }
+
+    /**
+     * EMP-SCOPED-UI — Panel "Sin acceso" para deep-links/atajos que
+     * apuntan a módulos que el empleado no tiene permitidos. Estilo
+     * coherente con errorPanel (icono grande + título + descripción +
+     * botón "Volver al inicio").
+     */
+    private Node buildNoAccessPanel(String moduleId) {
+        VBox box = content();
+        box.setAlignment(Pos.CENTER);
+        box.setPadding(new Insets(40));
+
+        StackPane bubble = iconBubble("fas-lock", "module-title-icon");
+        Label title = new Label(t("scope.no_access.title"));
+        title.getStyleClass().add("module-detail-title");
+        Label sub = new Label(t("scope.no_access.subtitle"));
+        sub.getStyleClass().add("module-detail-description");
+        sub.setWrapText(true);
+        sub.setMaxWidth(420);
+
+        Label modName = new Label("• " + moduleTitle(moduleId));
+        modName.getStyleClass().add("settings-section-title");
+
+        Button back = new Button(t("scope.no_access.back_home"));
+        back.setGraphic(icon("fas-home"));
+        back.getStyleClass().add("primary-button");
+        back.setOnAction(ev -> showDashboard());
+
+        box.getChildren().addAll(bubble, title, modName, sub, back);
+        return box;
+    }
+
+    /**
+     * EMP-SCOPED-UI — Decide si un item del sidebar debe mostrarse al
+     * usuario actual. La lógica:
+     *
+     * <ul>
+     *   <li><b>OWNER/ADMIN</b> (isFullAccess=true): TODO visible.
+     *       Sin filtro.</li>
+     *   <li><b>Empleado normal</b>: ocultar los módulos de "gestión de
+     *       la asesoría" que no le tocan (team/settings) Y cualquier
+     *       módulo cuyo slug no esté en su scope.</li>
+     * </ul>
+     *
+     * Items siempre visibles para todos (no se filtran porque sin ellos
+     * el empleado quedaría aislado): dashboard, myCompany, clients,
+     * dehu (bandeja oficial), help, profile.
+     */
+    private boolean shouldShowInSidebar(String moduleId) {
+        if (moduleId == null) return true;
+        AuthSession auth = AuthSession.get();
+        if (auth.isFullAccess()) return true;
+        // Items que SIEMPRE oculto al empleado normal (gestión asesoría):
+        switch (moduleId) {
+            case "team":
+            case "settings":
+            case "configuration":
+            case "recurringAdvisory":
+                return false;
+            default:
+        }
+        // Items que SIEMPRE muestro (no participan del scope por módulo):
+        switch (moduleId) {
+            case "dashboard":
+            case "myCompany":
+            case "clients":
+            case "myClients":
+            case "dehu":
+            case "help":
+            case "profile":
+                return true;
+            default:
+        }
+        // El resto: solo si el empleado tiene este módulo asignado en
+        // alguna de sus client_assignments.
+        return auth.canAccessModule(moduleId);
     }
 
     private Button navButton(String id, String text, String iconLiteral) {
@@ -1739,6 +1829,15 @@ public class BenjagestUiApplication extends Application {
         recordNav(() -> showModule(module));
         currentModule = module;
         select(module);
+        // EMP-SCOPED-UI — Defensa frente a deep-link / atajos (Ctrl+K) /
+        // botones back/forward que apuntan a módulos que el empleado no
+        // puede usar. Si el sidebar lo oculta pero la pantalla se invoca
+        // por otra ruta, mostramos un panel "Sin acceso" en lugar de
+        // dejar que la pantalla falle con 403 dispersos.
+        if (!shouldShowInSidebar(module)) {
+            setCenterAnimated(scroll(buildNoAccessPanel(module)));
+            return;
+        }
         if ("myCompany".equals(module)) {
             // Slice 3G-2 — Entra a la propia gestión de la asesoría
             // como si fuese un cliente vinculado más. Reusa todo el
@@ -11726,6 +11825,9 @@ public class BenjagestUiApplication extends Application {
             case "labor.contract.viewer.close" -> "Close";
             case "labor.contract.viewer.printed" -> "Sent to printer.";
             case "labor.contract.viewer.print_fail" -> "Could not print";
+            case "scope.no_access.title" -> "Access denied";
+            case "scope.no_access.subtitle" -> "Your role does not allow this module. Ask your advisory owner to assign it if you need access.";
+            case "scope.no_access.back_home" -> "Back to home";
             default -> null;
         };
     }
@@ -12025,6 +12127,9 @@ public class BenjagestUiApplication extends Application {
             case "labor.contract.viewer.close" -> "Cerrar";
             case "labor.contract.viewer.printed" -> "Enviado a la impresora.";
             case "labor.contract.viewer.print_fail" -> "No se pudo imprimir";
+            case "scope.no_access.title" -> "Acceso denegado";
+            case "scope.no_access.subtitle" -> "Tu rol no permite acceder a este módulo. Si lo necesitas, pídeselo al Propietario de la asesoría.";
+            case "scope.no_access.back_home" -> "Volver al inicio";
             default -> null;
         };
     }
