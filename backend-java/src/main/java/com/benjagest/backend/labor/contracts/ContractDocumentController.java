@@ -51,7 +51,21 @@ public class ContractDocumentController {
     }
 
     @GetMapping("/{id}/xml")
-    public ResponseEntity<byte[]> downloadXml(@PathVariable("id") String id) {
+    public ResponseEntity<byte[]> downloadXml(@PathVariable("id") String id,
+            @org.springframework.web.bind.annotation.RequestParam(value = "signed", required = false)
+            Boolean signed) {
+        // CTR-XADES (v2): si signed=true, firmar el XML con el cert .p12
+        // de la asesoría (CERT-IMPORT) usando XAdES-EPES. v1 no lo
+        // implementa todavía — devolvemos 501 NOT_IMPLEMENTED con un
+        // mensaje claro para que la UI pueda explicarlo. Ver el javadoc
+        // de ContractXmlGenerator para el plan completo.
+        if (signed != null && signed) {
+            throw new org.springframework.web.server.ResponseStatusException(
+                    org.springframework.http.HttpStatus.NOT_IMPLEMENTED,
+                    "Firma XAdES del XML Contrat@ no implementada todavía. "
+                            + "Disponible en v2 — por ahora descarga el XML sin firma "
+                            + "y firma manualmente con AutoFirma si el SEPE lo requiere.");
+        }
         byte[] xml = xmlGen.generate(id);
         return ResponseEntity.ok()
                 .contentType(MediaType.APPLICATION_XML)

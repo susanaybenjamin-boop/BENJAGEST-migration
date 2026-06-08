@@ -21,5 +21,7 @@ public record ContractEntry(
         BigDecimal irpfPercent,
         String workplaceAddress,
         String status,
-        String terminationReason
+        String terminationReason,
+        Integer probationDays,
+        String pdfModel
 ) {}
