@@ -459,7 +459,7 @@ public class AdvisoryService {
     @RestController
     @RequestMapping("/api/advisory/clients")
     @RequiresModule("advisory")
-    @RequiresRole({"OWNER", "ADMIN", "ACCOUNTANT"})
+    @RequiresRole({"OWNER", "ADMIN", "ACCOUNTANT", "EMPLOYEE"})
     public static class AdvisoryController {
         private final AdvisoryService service;
 

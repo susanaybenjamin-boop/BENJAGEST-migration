@@ -14,7 +14,7 @@ import org.springframework.web.server.ResponseStatusException;
 @RestController
 @RequestMapping("/api/billing/invoice-texts")
 @RequiresModule("billing")
-@RequiresRole({"OWNER", "ADMIN", "ACCOUNTANT"})
+@RequiresRole({"OWNER", "ADMIN", "ACCOUNTANT", "EMPLOYEE"})
 public class InvoiceTextsController {
 
     private final InvoiceTextsService service;

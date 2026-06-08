@@ -294,7 +294,7 @@ public class FiscalYearCloseService {
     @RestController
     @RequestMapping("/api/accounting/year-close")
     @RequiresModule("accounting")
-    @RequiresRole({"OWNER", "ADMIN", "ACCOUNTANT"})
+    @RequiresRole({"OWNER", "ADMIN", "ACCOUNTANT", "EMPLOYEE"})
     public static class FiscalYearCloseController {
         private final FiscalYearCloseService service;
         private final ClosingEntriesService closingEntries;

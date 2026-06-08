@@ -31,7 +31,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/api/billing/vat-rates")
 @RequiresModule("billing")
-@RequiresRole({"OWNER", "ADMIN", "ACCOUNTANT"})
+@RequiresRole({"OWNER", "ADMIN", "ACCOUNTANT", "EMPLOYEE"})
 public class VatRateController {
 
     private final VatRateService service;

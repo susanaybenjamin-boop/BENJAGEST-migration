@@ -254,7 +254,7 @@ public class TimeClockEventTypeService {
     @RestController
     @RequestMapping("/api/timeclock/event-types")
     @RequiresModule("time-clock")
-    @RequiresRole({"OWNER", "ADMIN", "ACCOUNTANT"})
+    @RequiresRole({"OWNER", "ADMIN", "ACCOUNTANT", "EMPLOYEE"})
     public static class EventTypeController {
         private final TimeClockEventTypeService service;
         public EventTypeController(TimeClockEventTypeService service) { this.service = service; }

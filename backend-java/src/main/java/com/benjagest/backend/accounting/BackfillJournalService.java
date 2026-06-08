@@ -161,7 +161,7 @@ public class BackfillJournalService {
     @RestController
     @RequestMapping("/api/accounting/backfill")
     @RequiresModule("accounting")
-    @RequiresRole({"OWNER", "ADMIN", "ACCOUNTANT"})
+    @RequiresRole({"OWNER", "ADMIN", "ACCOUNTANT", "EMPLOYEE"})
     public static class BackfillController {
         private final BackfillJournalService service;
         public BackfillController(BackfillJournalService service) { this.service = service; }

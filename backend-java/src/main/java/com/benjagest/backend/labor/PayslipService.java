@@ -401,7 +401,7 @@ public class PayslipService {
     @RestController
     @RequestMapping("/api/labor/payslips")
     @RequiresModule("labor")
-    @RequiresRole({"OWNER", "ADMIN", "ACCOUNTANT"})
+    @RequiresRole({"OWNER", "ADMIN", "ACCOUNTANT", "EMPLOYEE"})
     public static class PayslipController {
         private final PayslipService service;
 

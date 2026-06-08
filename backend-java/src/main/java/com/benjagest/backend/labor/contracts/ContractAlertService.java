@@ -199,7 +199,7 @@ public class ContractAlertService {
     @RestController
     @RequestMapping("/api/contracts/alerts")
     @RequiresModule("labor")
-    @RequiresRole({"OWNER", "ADMIN", "ACCOUNTANT", "ADVISOR"})
+    @RequiresRole({"OWNER", "ADMIN", "ACCOUNTANT", "ADVISOR", "EMPLOYEE"})
     public static class Controller {
         private final ContractAlertService service;
 

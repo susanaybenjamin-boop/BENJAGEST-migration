@@ -35,7 +35,7 @@ import org.springframework.web.server.ResponseStatusException;
 @RestController
 @RequestMapping("/api/accounting/tercero-config")
 @RequiresModule("accounting")
-@RequiresRole({"OWNER", "ADMIN", "ACCOUNTANT"})
+@RequiresRole({"OWNER", "ADMIN", "ACCOUNTANT", "EMPLOYEE"})
 public class TerceroAccountConfigController {
 
     public record TerceroConfigDto(int length, String mode) {}

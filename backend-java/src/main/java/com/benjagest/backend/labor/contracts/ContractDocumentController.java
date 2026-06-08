@@ -27,7 +27,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/api/contracts")
 @RequiresModule("labor")
-@RequiresRole({"OWNER", "ADMIN", "ACCOUNTANT", "ADVISOR"})
+@RequiresRole({"OWNER", "ADMIN", "ACCOUNTANT", "ADVISOR", "EMPLOYEE"})
 public class ContractDocumentController {
 
     private final ContractPdfGenerator pdfGen;

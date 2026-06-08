@@ -34,7 +34,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/api/accounting/learning")
 @RequiresModule("accounting")
-@RequiresRole({"OWNER", "ADMIN", "ACCOUNTANT"})
+@RequiresRole({"OWNER", "ADMIN", "ACCOUNTANT", "EMPLOYEE"})
 public class AccountingLearningController {
 
     private final AccountingLearningService service;

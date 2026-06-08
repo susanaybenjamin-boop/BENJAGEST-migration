@@ -28,7 +28,7 @@ import org.springframework.web.server.ResponseStatusException;
 @RestController
 @RequestMapping("/api/purchases/pdf-import")
 @RequiresModule("purchases")
-@RequiresRole({"OWNER", "ADMIN", "ACCOUNTANT"})
+@RequiresRole({"OWNER", "ADMIN", "ACCOUNTANT", "EMPLOYEE"})
 public class PdfImportController {
 
     private final PdfTextExtractor textExtractor;

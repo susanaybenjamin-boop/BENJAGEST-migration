@@ -224,7 +224,7 @@ public class SupplierTemplateService {
     @RestController
     @RequestMapping("/api/purchases/extraction-templates")
     @RequiresModule("purchases")
-    @RequiresRole({"OWNER", "ADMIN", "ACCOUNTANT"})
+    @RequiresRole({"OWNER", "ADMIN", "ACCOUNTANT", "EMPLOYEE"})
     public static class TemplateController {
         private final SupplierTemplateService service;
         public TemplateController(SupplierTemplateService service) { this.service = service; }

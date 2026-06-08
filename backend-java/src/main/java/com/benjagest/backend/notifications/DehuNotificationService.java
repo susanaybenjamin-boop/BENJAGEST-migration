@@ -263,7 +263,7 @@ public class DehuNotificationService {
     @RestController
     @RequestMapping("/api/notifications/dehu")
     @RequiresModule("notifications")
-    @RequiresRole({"OWNER", "ADMIN", "ACCOUNTANT"})
+    @RequiresRole({"OWNER", "ADMIN", "ACCOUNTANT", "EMPLOYEE"})
     public static class DehuController {
         private final DehuNotificationService service;
 

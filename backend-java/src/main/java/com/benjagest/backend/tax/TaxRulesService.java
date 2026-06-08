@@ -155,7 +155,7 @@ public class TaxRulesService {
 
     @RestController
     @RequestMapping("/api/tax/rules")
-    @RequiresRole({"OWNER", "ADMIN", "ACCOUNTANT"})
+    @RequiresRole({"OWNER", "ADMIN", "ACCOUNTANT", "EMPLOYEE"})
     public static class TaxRulesController {
         private final TaxRulesService service;
 

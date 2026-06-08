@@ -36,7 +36,7 @@ import org.springframework.web.server.ResponseStatusException;
 @RestController
 @RequestMapping("/api/contracts/catalog")
 @RequiresModule("labor")
-@RequiresRole({"OWNER", "ADMIN", "ACCOUNTANT", "ADVISOR"})
+@RequiresRole({"OWNER", "ADMIN", "ACCOUNTANT", "ADVISOR", "EMPLOYEE"})
 public class ContractCatalogController {
 
     private final ContractCatalogService service;

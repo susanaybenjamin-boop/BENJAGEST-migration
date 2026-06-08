@@ -366,7 +366,7 @@ public class FixedAssetService {
     @RestController
     @RequestMapping("/api/accounting/fixed-assets")
     @RequiresModule("accounting")
-    @RequiresRole({"OWNER", "ADMIN", "ACCOUNTANT"})
+    @RequiresRole({"OWNER", "ADMIN", "ACCOUNTANT", "EMPLOYEE"})
     public static class FixedAssetController {
         private final FixedAssetService service;
         public FixedAssetController(FixedAssetService service) { this.service = service; }

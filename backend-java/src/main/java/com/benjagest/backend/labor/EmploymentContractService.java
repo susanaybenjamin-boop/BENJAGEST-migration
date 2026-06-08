@@ -223,7 +223,7 @@ public class EmploymentContractService {
     @RestController
     @RequestMapping("/api/labor/contracts")
     @RequiresModule("labor")
-    @RequiresRole({"OWNER", "ADMIN", "ACCOUNTANT"})
+    @RequiresRole({"OWNER", "ADMIN", "ACCOUNTANT", "EMPLOYEE"})
     public static class ContractController {
         private final EmploymentContractService service;
 

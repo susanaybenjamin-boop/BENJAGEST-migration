@@ -201,7 +201,7 @@ public class TimeClockAuditService {
     @RestController
     @RequestMapping("/api/timeclock/audit")
     @RequiresModule("time-clock")
-    @RequiresRole({"OWNER", "ADMIN", "ACCOUNTANT"})
+    @RequiresRole({"OWNER", "ADMIN", "ACCOUNTANT", "EMPLOYEE"})
     public static class AuditController {
         private final TimeClockAuditService service;
         public AuditController(TimeClockAuditService service) { this.service = service; }
