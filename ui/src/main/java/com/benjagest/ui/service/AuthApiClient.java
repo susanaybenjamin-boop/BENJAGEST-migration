@@ -125,7 +125,7 @@ public class AuthApiClient {
             throw new IOException("Credenciales no válidas");
         }
         if (response.statusCode() == 403) {
-            throw new IOException("Solo el OWNER de una asesoría puede emparejar dispositivos");
+            throw new IOException("Solo el Propietario de una asesoría puede emparejar dispositivos");
         }
         if (response.statusCode() == 409) {
             // Mensaje específico del backend (5 ya activos).

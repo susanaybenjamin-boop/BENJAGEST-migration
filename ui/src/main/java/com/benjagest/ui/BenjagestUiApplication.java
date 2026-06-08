@@ -1061,7 +1061,7 @@ public class BenjagestUiApplication extends Application {
             card.setMaxWidth(Double.MAX_VALUE);
             VBox cardContent = new VBox(2,
                     label(m.companyLegalName(), "form-title"),
-                    label(m.roleName() + " | " + m.companyType(), "status-detail")
+                    label(humanizeMemberRole(m.roleName()) + " | " + m.companyType(), "status-detail")
             );
             card.setGraphic(cardContent);
             card.setOnAction(event -> dialog.setResult(m));
@@ -11441,7 +11441,7 @@ public class BenjagestUiApplication extends Application {
             case "team.title" -> "Team / Client distribution";
             case "team.subtitle" -> "Split your client portfolio across employees and pick which modules each one handles.";
             case "team.load_failed" -> "Could not load the team.";
-            case "team.forbidden" -> "Only the OWNER of the advisory firm can manage the client distribution.";
+            case "team.forbidden" -> "Only the advisory Owner can manage client distribution.";
             // Tabs
             case "team.tab.members" -> "Employees";
             case "team.tab.assignments" -> "Assignments";
@@ -11516,17 +11516,17 @@ public class BenjagestUiApplication extends Application {
             case "team.deleg.cancel.confirm.body" -> "The substitute will stop seeing the client immediately.";
             case "team.deleg.cancel.fail.title" -> "Could not cancel";
             // Roles dentro del cliente (selector + columna de la matriz)
-            case "team.role.ADVISOR" -> "Tax advisor";
+            case "team.role.ADVISOR" -> "Advisor";
             case "team.role.ACCOUNTANT" -> "Accountant";
             case "team.role.EMPLOYEE" -> "Employee";
-            case "team.role.VIEWER" -> "Viewer (read only)";
+            case "team.role.VIEWER" -> "Read-only";
             // Rol del miembro en la asesoría (columna "Rol" de Empleados)
             case "team.member_role.OWNER" -> "Owner";
             case "team.member_role.ADMIN" -> "Administrator";
             case "team.member_role.ACCOUNTANT" -> "Accountant";
-            case "team.member_role.ADVISOR" -> "Tax advisor";
+            case "team.member_role.ADVISOR" -> "Advisor";
             case "team.member_role.EMPLOYEE" -> "Employee";
-            case "team.member_role.VIEWER" -> "Viewer";
+            case "team.member_role.VIEWER" -> "Read-only";
             // L4-7 — tab Colaboradores (inter-asesoría)
             case "team.tab.collaborators" -> "Collaborators";
             case "team.collab.hint" -> "Invite another tax advisory firm to collaborate on YOUR clients. Once accepted, you can assign your clients to employees of the collaborator from the Assignments tab. They work from their own BENJAGEST and log their own audit trail.";
@@ -11740,7 +11740,7 @@ public class BenjagestUiApplication extends Application {
             case "team.title" -> "Equipo / Reparto de clientes";
             case "team.subtitle" -> "Reparte tu cartera entre los empleados y elige qué módulos lleva cada uno.";
             case "team.load_failed" -> "No se pudo cargar el equipo.";
-            case "team.forbidden" -> "Solo el OWNER de la asesoría puede gestionar el reparto de clientes.";
+            case "team.forbidden" -> "Solo el Propietario de la asesoría puede gestionar el reparto de clientes.";
             // Tabs
             case "team.tab.members" -> "Empleados";
             case "team.tab.assignments" -> "Asignaciones";
@@ -11820,12 +11820,12 @@ public class BenjagestUiApplication extends Application {
             case "team.role.EMPLOYEE" -> "Empleado";
             case "team.role.VIEWER" -> "Solo lectura";
             // Rol del miembro en la asesoría (columna "Rol" de Empleados)
-            case "team.member_role.OWNER" -> "Titular";
+            case "team.member_role.OWNER" -> "Propietario";
             case "team.member_role.ADMIN" -> "Administrador";
             case "team.member_role.ACCOUNTANT" -> "Contable";
             case "team.member_role.ADVISOR" -> "Asesor";
             case "team.member_role.EMPLOYEE" -> "Empleado";
-            case "team.member_role.VIEWER" -> "Consulta";
+            case "team.member_role.VIEWER" -> "Solo lectura";
             // L4-7 — tab Colaboradores (inter-asesoría)
             case "team.tab.collaborators" -> "Colaboradores";
             case "team.collab.hint" -> "Invita a OTRA asesoría a colaborar sobre TUS clientes. Una vez aceptada, puedes asignarle clientes a los empleados de la colaboradora desde la pestaña Asignaciones. Ellos trabajan desde SU propio BENJAGEST y la traza de auditoría queda con su user_id.";
@@ -11849,7 +11849,7 @@ public class BenjagestUiApplication extends Application {
             case "team.collab.invite" -> "Invitar asesoría colaboradora";
             case "team.collab.invite.dialog.title" -> "Invitar asesoría colaboradora";
             case "team.collab.invite.dialog.header" -> "Envía una invitación por email a otra asesoría";
-            case "team.collab.invite.dialog.email" -> "Email del OWNER";
+            case "team.collab.invite.dialog.email" -> "Email del Propietario";
             case "team.collab.invite.dialog.email_prompt" -> "owner@asesoria-colaboradora.com";
             case "team.collab.invite.dialog.notes" -> "Notas";
             case "team.collab.invite.dialog.notes_prompt" -> "Nota interna (opcional)";

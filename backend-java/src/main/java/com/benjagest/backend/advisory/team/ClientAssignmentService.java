@@ -399,7 +399,7 @@ public class ClientAssignmentService {
     private void requireOwner(String advisoryCompanyId) {
         if (!currentUserIsOwnerOfAdvisory(advisoryCompanyId)) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN,
-                    "Solo el OWNER de la asesoría puede gestionar el reparto de clientes.");
+                    "Solo el Propietario de la asesoría puede gestionar el reparto de clientes.");
         }
     }
 
