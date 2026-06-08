@@ -1579,8 +1579,15 @@ public class BenjagestUiApplication extends Application {
         // CASO ESPECIAL — "Mi gestión" depende de si el empleado tiene
         // asignada la propia asesoría como cliente. Si el OWNER le
         // QUITA esa asignación, debe desaparecer del sidebar.
+        // Check EXPLÍCITO sobre scope: si no se ha cargado, ocultamos
+        // por defecto. canSeeCustomer no nos sirve aquí porque tiene
+        // el fallback null→true que para Mi gestión es demasiado
+        // permisivo (Benjamin reportó que seguía viéndose).
         if ("myCompany".equals(moduleId)) {
-            return auth.canSeeCustomer(auth.activeCompanyId());
+            if (auth.userScope() == null) return false;
+            String advisoryId = auth.activeCompanyId();
+            if (advisoryId == null) return false;
+            return auth.userScope().customerIds().contains(advisoryId);
         }
         // Items que SIEMPRE muestro (no participan del scope por módulo).
         // dashboard / clients / dehu son la base operativa mínima sin
@@ -11592,6 +11599,10 @@ public class BenjagestUiApplication extends Application {
             case "team.assign.empty.clients" -> "No clients in your portfolio yet.";
             case "team.assign.empty.matrix" -> "No assignments yet — distribute your clients to see them here.";
             case "team.assign.my_company" -> "My management";
+            case "team.assign.btn.select_all" -> "Select all";
+            case "team.assign.btn.select_none" -> "Clear selection";
+            case "team.assign.delete.confirm.body_many" -> "Delete {n} assignments? This cannot be undone.";
+            case "team.owner_mode_badge" -> "Owner mode · full access";
             case "team.assign.no_selection.title" -> "Select clients";
             case "team.assign.no_selection.body" -> "Tick at least one client on the left before assigning.";
             case "team.assign.no_employee.title" -> "Pick an employee";
@@ -11895,6 +11906,10 @@ public class BenjagestUiApplication extends Application {
             case "team.assign.empty.clients" -> "Todavía no hay clientes en tu cartera.";
             case "team.assign.empty.matrix" -> "Aún no hay asignaciones — reparte tus clientes para verlas aquí.";
             case "team.assign.my_company" -> "Mi gestión";
+            case "team.assign.btn.select_all" -> "Marcar todos";
+            case "team.assign.btn.select_none" -> "Desmarcar todo";
+            case "team.assign.delete.confirm.body_many" -> "¿Eliminar {n} asignaciones? No se puede deshacer.";
+            case "team.owner_mode_badge" -> "Modo Propietario · acceso total";
             case "team.assign.no_selection.title" -> "Selecciona clientes";
             case "team.assign.no_selection.body" -> "Marca al menos un cliente a la izquierda antes de asignar.";
             case "team.assign.no_employee.title" -> "Elige un empleado";
@@ -17428,6 +17443,20 @@ public class BenjagestUiApplication extends Application {
         header.setAlignment(Pos.CENTER_LEFT);
         header.getStyleClass().add("module-detail-header");
 
+        // Badge "Modo Propietario · ves todo" para el OWNER/ADMIN que
+        // entra al módulo Equipo. Implícito antes (modulesVisibleInClient
+        // devuelve MODULE_ALL para OWNER); ahora se hace visible para
+        // que el usuario tenga feedback claro de su contexto.
+        if (AuthSession.get().isOwnerOrAdmin()) {
+            Label ownerBadge = new Label(t("team.owner_mode_badge"));
+            ownerBadge.setGraphic(icon("fas-crown"));
+            ownerBadge.setStyle("-fx-background-color: #fff7e6; "
+                    + "-fx-border-color: #ffd591; -fx-border-radius: 12; "
+                    + "-fx-background-radius: 12; -fx-padding: 6 12 6 12; "
+                    + "-fx-text-fill: #ad6800;");
+            header.getChildren().add(ownerBadge);
+        }
+
         TabPane tabs = new TabPane();
         tabs.getStyleClass().add("settings-tabs");
         tabs.setTabClosingPolicy(TabPane.TabClosingPolicy.UNAVAILABLE);
@@ -17561,6 +17590,19 @@ public class BenjagestUiApplication extends Application {
         clientTable.setItems(clientRows);
         VBox.setVgrow(clientTable, Priority.ALWAYS);
 
+        // Barra superior: botones de selección rápida.
+        Button selectAllBtn = new Button(t("team.assign.btn.select_all"));
+        selectAllBtn.setGraphic(icon("fas-check-double"));
+        selectAllBtn.setOnAction(ev -> clientRows.forEach(r -> r.selected.set(true)));
+        Button clearAllBtn = new Button(t("team.assign.btn.select_none"));
+        clearAllBtn.setGraphic(icon("fas-times-circle"));
+        clearAllBtn.setOnAction(ev -> clientRows.forEach(r -> r.selected.set(false)));
+        HBox selectBar = new HBox(8, selectAllBtn, clearAllBtn);
+        selectBar.setAlignment(Pos.CENTER_LEFT);
+        selectBar.setPadding(new Insets(0, 0, 6, 0));
+        VBox clientsBox = new VBox(0, selectBar, clientTable);
+        VBox.setVgrow(clientTable, Priority.ALWAYS);
+
         // ----- Panel derecho: formulario de asignación -----
         ComboBox<com.benjagest.ui.model.TeamMember> employeeCombo = new ComboBox<>();
         employeeCombo.getItems().addAll(bundle.members());
@@ -17691,7 +17733,7 @@ public class BenjagestUiApplication extends Application {
         VBox right = new VBox(10, form);
         right.setPadding(new Insets(0, 0, 0, 16));
 
-        SplitPane split = new SplitPane(clientTable, right);
+        SplitPane split = new SplitPane(clientsBox, right);
         split.setDividerPositions(0.50);
         VBox.setVgrow(split, Priority.ALWAYS);
 
@@ -17700,6 +17742,9 @@ public class BenjagestUiApplication extends Application {
         matrix.getStyleClass().add("data-table");
         matrix.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
         matrix.setPlaceholder(new Label(t("team.assign.empty.matrix")));
+        // Selección múltiple para poder eliminar varias asignaciones a la vez.
+        matrix.getSelectionModel().setSelectionMode(
+                javafx.scene.control.SelectionMode.MULTIPLE);
         java.util.Map<String, String> clientNameById = new java.util.HashMap<>();
         // Añadir Mi gestión (asesoría) primero para que las asignaciones
         // donde client_company_id == advisory_company_id muestren la
@@ -17762,21 +17807,32 @@ public class BenjagestUiApplication extends Application {
         Button deleteBtn = new Button(t("team.assign.btn.delete"));
         deleteBtn.setGraphic(icon("fas-trash"));
         deleteBtn.setDisable(true);
-        matrix.getSelectionModel().selectedItemProperty().addListener(
-                (o, ov, nv) -> deleteBtn.setDisable(nv == null));
+        matrix.getSelectionModel().getSelectedItems().addListener(
+                (javafx.collections.ListChangeListener<com.benjagest.ui.model.TeamAssignment>)
+                c -> deleteBtn.setDisable(matrix.getSelectionModel().getSelectedItems().isEmpty()));
         deleteBtn.setOnAction(ev -> {
-            var sel = matrix.getSelectionModel().getSelectedItem();
-            if (sel == null) return;
+            var selection = new ArrayList<>(matrix.getSelectionModel().getSelectedItems());
+            if (selection.isEmpty()) return;
             Alert confirm = new Alert(Alert.AlertType.CONFIRMATION);
             confirm.setTitle(t("team.assign.delete.confirm.title"));
             confirm.setHeaderText(t("team.assign.delete.confirm.title"));
-            confirm.setContentText(t("team.assign.delete.confirm.body"));
+            confirm.setContentText(selection.size() == 1
+                    ? t("team.assign.delete.confirm.body")
+                    : t("team.assign.delete.confirm.body_many").replace("{n}", String.valueOf(selection.size())));
             confirm.showAndWait().ifPresent(rsp -> {
                 if (rsp == javafx.scene.control.ButtonType.OK) {
-                    Task<Void> del = new Task<>() {
-                        @Override protected Void call() throws Exception {
-                            altaApiClient.deleteTeamAssignment(sel.id());
-                            return null;
+                    Task<Integer> del = new Task<>() {
+                        @Override protected Integer call() throws Exception {
+                            int ok = 0;
+                            for (var a : selection) {
+                                try {
+                                    altaApiClient.deleteTeamAssignment(a.id());
+                                    ok++;
+                                } catch (Exception ex) {
+                                    // Continúa con las demás aunque alguna falle.
+                                }
+                            }
+                            return ok;
                         }
                     };
                     del.setOnSucceeded(s -> showTeamModule());
