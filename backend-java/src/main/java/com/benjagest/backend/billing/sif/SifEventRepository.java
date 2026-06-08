@@ -79,6 +79,14 @@ public class SifEventRepository {
     public void insert(String id, String companyId, String eventType, String payload,
                        String hashCurrent, String hashPrevious,
                        OffsetDateTime generationTime) {
+        // VF-CHAIN-FIX 2026-06-08: pasamos el OffsetDateTime convertido
+        // a UTC EXPLÍCITAMENTE. Con connectionTimeZone=UTC en la URL,
+        // el driver lo guarda como instant absoluto sin reinterpretar.
+        // Antes pasábamos Timestamp.from(instant) que el driver podía
+        // reinterpretar en zona local del servidor MariaDB en función
+        // de su session_timezone, causando desfase con la lectura.
+        OffsetDateTime utc = generationTime
+                .withOffsetSameInstant(ZoneOffset.UTC);
         jdbcTemplate.update("""
                 INSERT INTO sif_event_registry (
                     id, company_id, event_type, payload,
@@ -92,7 +100,7 @@ public class SifEventRepository {
                 payload,
                 hashCurrent,
                 hashPrevious,
-                Timestamp.from(generationTime.toInstant())
+                utc
         );
     }
 
@@ -218,14 +226,28 @@ public class SifEventRepository {
     }
 
     private ChainRow mapChainRow(ResultSet rs, int rowNum) throws SQLException {
-        Timestamp gen = rs.getTimestamp("generated_at");
+        // VF-CHAIN-FIX 2026-06-08: leemos como OffsetDateTime directo
+        // cuando el driver lo soporte (mariadb-java-client 3.x sí). Con
+        // connectionTimeZone=UTC en la JDBC URL, el driver garantiza
+        // que el OffsetDateTime devuelto tiene offset +00:00 y refleja
+        // el mismo Instant que se insertó. Fallback al método anterior
+        // (Timestamp.toInstant) si el driver no soporta OffsetDateTime
+        // — ese fallback se vuelve seguro porque la sesión también es
+        // UTC por la URL.
+        OffsetDateTime gen;
+        try {
+            gen = rs.getObject("generated_at", OffsetDateTime.class);
+        } catch (SQLException unsupported) {
+            Timestamp ts = rs.getTimestamp("generated_at");
+            gen = ts == null ? null : OffsetDateTime.ofInstant(ts.toInstant(), ZoneOffset.UTC);
+        }
         return new ChainRow(
                 rs.getString("id"),
                 rs.getString("event_type"),
                 rs.getString("payload"),
                 rs.getString("hash_current"),
                 rs.getString("hash_previous"),
-                gen == null ? null : OffsetDateTime.ofInstant(gen.toInstant(), ZoneOffset.UTC)
+                gen
         );
     }
 
