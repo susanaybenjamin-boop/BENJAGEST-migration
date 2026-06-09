@@ -1323,40 +1323,6 @@ public class AltaApiClient {
         return mapWorkCalendar(r.body());
     }
 
-    /**
-     * @deprecated Usa {@link #createEmptyWorkCalendar} + 'Importar PDF'.
-     * El seed HolidaySeed2026 NO está verificado contra BOJA/BOPV/DOGC
-     * oficial — solo los 9 nacionales son ley fija; los autonómicos
-     * los puso Claude de memoria.
-     */
-    @Deprecated
-    public com.benjagest.ui.model.WorkCalendarEntry bootstrapWorkCalendar(
-            int year, String regionCcaa, String regionMunicipality, String name)
-            throws IOException, InterruptedException {
-        String body = "{"
-                + "\"year\":" + year + ","
-                + field("regionCcaa", regionCcaa) + ","
-                + field("regionMunicipality", regionMunicipality) + ","
-                + field("name", name)
-                + "}";
-        HttpResponse<String> r = send(req(baseUrl + "/labor/work-calendars/bootstrap")
-                .header("Content-Type", "application/json")
-                .POST(HttpRequest.BodyPublishers.ofString(body)));
-        if (r.statusCode() < 200 || r.statusCode() >= 300) {
-            throw new IOException("HTTP " + r.statusCode() + ": " + r.body());
-        }
-        // BootstrapResult tiene 'calendar' (objeto) y 'holidays' (array).
-        String calObj = extractJsonObject(r.body(), "calendar");
-        if (calObj == null) {
-            throw new IOException("Bootstrap sin calendar en respuesta");
-        }
-        com.benjagest.ui.model.WorkCalendarEntry cal = mapWorkCalendar(calObj);
-        // No mapeamos los festivos aquí porque la UI los recarga
-        // explícitamente con listHolidaysFor() tras el refresh — más
-        // simple y evita parseo de array anidado.
-        return cal;
-    }
-
     public void deleteWorkCalendar(String id) throws IOException, InterruptedException {
         send(req(baseUrl + "/labor/work-calendars/" + id).DELETE());
     }

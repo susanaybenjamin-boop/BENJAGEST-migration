@@ -147,9 +147,25 @@ public class HolidayPdfExtractor {
             if (!c.isEmpty()) lines.add(c);
         }
 
+        // Pre-pass de unión de líneas partidas: PDFBox suele cortar
+        // descripciones largas cuando las columnas izda/dcha del PDF se
+        // entrelazan. Detectamos el patrón "Por el d[ií]a N, weekday
+        // (descripción..." sin paréntesis de cierre y unimos hasta
+        // encontrar el ')'. Esto convierte el bloque:
+        //   "Por el día 1, domingo (Fiesta de todos los"
+        //   " Lunes 2"
+        //   "Santos)"
+        // en dos líneas usables:
+        //   "Lunes 2 Por el día 1, domingo (Fiesta de todos los Santos)"
+        lines = joinSplitParentheses(lines);
+
         Integer currentMonth = null;
         boolean parsingEvents = false;
         List<DetectedHoliday> items = new ArrayList<>();
+        // Festivos detectados a la espera de descripción (líneas
+        // "weekday N" sin desc adyacente). Se rellenan con la siguiente
+        // línea descriptiva (no-weekday, no-cabecera).
+        List<Integer> pendingNoDescIdx = new ArrayList<>();
 
         for (int i = 0; i < lines.size(); i++) {
             String line = lines.get(i);
@@ -164,8 +180,20 @@ public class HolidayPdfExtractor {
             // Cabecera de mes ("ENERO", "FEBRERO"…).
             Integer mh = findMonthHeader(lower);
             if (mh != null) {
+                // Antes de cambiar de mes, descartamos los pendientes
+                // sin descripción del mes anterior — no tenemos cómo
+                // nombrarlos. Los marcamos como null para purgar al
+                // final (no se puede remove en medio sin desordenar
+                // los índices).
+                for (int idx : pendingNoDescIdx) {
+                    if (idx < items.size()
+                            && "(sin descripción)".equals(items.get(idx).name())) {
+                        items.set(idx, null);
+                    }
+                }
                 currentMonth = mh;
                 parsingEvents = true;
+                pendingNoDescIdx.clear();
                 continue;
             }
 
@@ -173,22 +201,93 @@ public class HolidayPdfExtractor {
             if (currentMonth == null) continue;
 
             ParsedDay parsed = parseDayLine(line);
-            if (parsed == null) continue;
+            if (parsed == null) {
+                // Línea no es "weekday N ...". Puede ser descripción
+                // huérfana de un día previo sin desc. Si hay pendientes,
+                // asignar al ÚLTIMO añadido (LIFO: la desc suele ir
+                // pegada al día más cercano).
+                if (!pendingNoDescIdx.isEmpty() && isDescriptionLine(line)) {
+                    int idx = pendingNoDescIdx.remove(pendingNoDescIdx.size() - 1);
+                    DetectedHoliday prev = items.get(idx);
+                    Classification cls2 = classify(line);
+                    // Remapeo de fecha: si la desc trae "Por el día N"
+                    // / "Por el domingo N", la fecha real es ese N. Se
+                    // usa en PDFs andaluces para compensar festivos
+                    // dominicales.
+                    LocalDate finalDate = prev.date();
+                    Matcher pem2 = Pattern.compile(
+                            "por\\s+el\\s+(?:d[ií]a\\s+)?(?:domingo|s[áa]bado|lunes|martes|mi[ée]rcoles|jueves|viernes)?\\s*(\\d{1,2})\\s*(?:,|\\()",
+                            Pattern.CASE_INSENSITIVE).matcher(line);
+                    if (pem2.find()) {
+                        try {
+                            int alt = Integer.parseInt(pem2.group(1));
+                            if (alt >= 1 && alt <= 31) {
+                                finalDate = LocalDate.of(year, prev.date().getMonthValue(), alt);
+                            }
+                        } catch (Exception ignored) { /* keep prev date */ }
+                    }
+                    // No reasignamos si la línea descriptiva es claramente
+                    // un ajuste/convenio y el día no era ajuste — eso
+                    // sería ensuciar. Mantenemos lo previo en ese caso.
+                    if (!isAdjustment(cls2) || isAdjustment(classify(prev.name()))) {
+                        items.set(idx, new DetectedHoliday(
+                                finalDate,
+                                buildDescription(line),
+                                mapScopeForBenjagest(cls2),
+                                bandFromScore(cls2.confidence * 0.85),
+                                prev.rawSourceLine() + " | " + line
+                        ));
+                    }
+                }
+                continue;
+            }
 
             Classification cls = classify(parsed.desc);
-            // Solo nos quedamos con eventos no laborables (festivos
-            // reales y cierres). Los ajustes de convenio y laborables
-            // extra los descartamos del preview — el usuario los añade
-            // manualmente si los quiere.
-            if (cls.isWorkable) continue;
+
+            // Filtramos solo los TOTALMENTE irrelevantes: laborables
+            // extra explícitos y fallback indeterminado. Los ajustes
+            // de jornada SÍ los devolvemos como "convenio" (LOCAL,
+            // LOW confidence) — el usuario decide si los quiere en el
+            // calendario laboral (Benjamin 2026-06-09).
+            if ("laborable_extra".equals(cls.tipo)) continue;
+            if ("fallback".equals(cls.reason) && (parsed.desc == null || parsed.desc.isBlank())) {
+                // weekday + día sin desc en absoluto — lo dejamos como
+                // pendiente para asignar desc adyacente.
+                LocalDate dateP;
+                try { dateP = LocalDate.of(year, currentMonth, parsed.day); }
+                catch (Exception ex) { continue; }
+                // Patrón "Por el d[ií]a N" en la propia desc no aplica
+                // (desc vacía). Lo añadimos como pendiente.
+                items.add(new DetectedHoliday(dateP, "(sin descripción)",
+                        WorkCalendar.SCOPE_LOCAL, "LOW", line));
+                pendingNoDescIdx.add(items.size() - 1);
+                continue;
+            }
+            if ("fallback".equals(cls.reason)) continue;
 
             String name = buildDescription(parsed.desc);
             String scope = mapScopeForBenjagest(cls);
             String confidence = bandFromScore(cls.confidence);
 
+            // Patrón "Por el d[ií]a N (...)": la fecha REAL es la del
+            // patrón, no la del weekday adyacente. Lo usan los PDFs
+            // andaluces para compensar festivos que cayeron en domingo.
+            // Ejemplo: "Lunes 7 Por el domingo 6 (Constitución
+            // Española)" → la Constitución es el día 6, no el 7.
+            int realDay = parsed.day;
+            Matcher pem = Pattern.compile(
+                    "por\\s+el\\s+(?:d[ií]a\\s+)?(?:domingo|s[áa]bado|lunes|martes|mi[ée]rcoles|jueves|viernes)?\\s*(\\d{1,2})\\s*(?:,|\\()",
+                    Pattern.CASE_INSENSITIVE).matcher(parsed.desc);
+            if (pem.find()) {
+                try {
+                    int alt = Integer.parseInt(pem.group(1));
+                    if (alt >= 1 && alt <= 31) realDay = alt;
+                } catch (NumberFormatException ignored) { /* keep parsed.day */ }
+            }
+
             LocalDate date;
             try {
-                date = LocalDate.of(year, currentMonth, parsed.day);
+                date = LocalDate.of(year, currentMonth, realDay);
             } catch (Exception ex) {
                 continue;
             }
@@ -202,10 +301,111 @@ public class HolidayPdfExtractor {
             ));
         }
 
+        // Limpieza final: si quedaron pendientes sin descripción al
+        // terminar el bucle, los descartamos (no tenemos cómo nombrarlos
+        // de forma útil — el usuario los añadiría a ciegas).
+        for (int idx : pendingNoDescIdx) {
+            if (idx < items.size() && items.get(idx) != null
+                    && "(sin descripción)".equals(items.get(idx).name())) {
+                items.set(idx, null);
+            }
+        }
+        items.removeIf(java.util.Objects::isNull);
+
         items = dedupe(items);
         return new ExtractionResult(year, items,
                 raw.length() > 500 ? raw.substring(0, 500) : raw,
                 lines.size());
+    }
+
+    /**
+     * Une líneas partidas por columnas dentro de un paréntesis abierto.
+     * Caso típico Granada-2026:
+     * <pre>
+     * Por el día 1, domingo (Fiesta de todos los
+     *  Lunes 2
+     * Santos)
+     * </pre>
+     * Sale como una línea "Por el día 1, domingo (Fiesta de todos los
+     * Santos)" + la línea " Lunes 2" se mantiene aparte (el parser
+     * intentará asociar después). Si la siguiente "weekday N" hace de
+     * cuña, la dejamos para que parsedDayLine la pille como día sin
+     * desc — el patrón "Por el día N" del bucle principal hará el
+     * remapeo a la fecha correcta.
+     */
+    private List<String> joinSplitParentheses(List<String> input) {
+        List<String> out = new ArrayList<>();
+        for (int i = 0; i < input.size(); i++) {
+            String line = input.get(i);
+            int op = line.indexOf('(');
+            int cl = line.indexOf(')');
+            if (op >= 0 && cl < op) {
+                // Tiene '(' sin ')' — buscar cierre en líneas siguientes
+                // (máx 3 hacia delante) y juntar todo en una línea final.
+                StringBuilder merged = new StringBuilder(line);
+                List<String> orphans = new ArrayList<>();
+                boolean closed = false;
+                int j = i + 1;
+                int look = Math.min(input.size(), i + 4);
+                for (; j < look; j++) {
+                    String next = input.get(j);
+                    if (findMonthHeader(next.toLowerCase(Locale.ROOT)) != null) break;
+                    if (next.contains(")")) {
+                        merged.append(" ").append(next);
+                        closed = true;
+                        i = j; // saltar las líneas absorbidas
+                        break;
+                    }
+                    // Líneas intermedias: si son "weekday N" las
+                    // dejamos como huérfanas (irán al output tras la
+                    // unida), si son texto se incorporan a la unión.
+                    String nlow = next.toLowerCase(Locale.ROOT);
+                    boolean isDayLine = false;
+                    for (String wd : WEEKDAYS) {
+                        if (nlow.startsWith(wd)) { isDayLine = true; break; }
+                    }
+                    if (isDayLine) {
+                        orphans.add(next);
+                    } else {
+                        merged.append(" ").append(next);
+                    }
+                }
+                if (closed) {
+                    // Emitimos los orfanos PRIMERO. Si la línea unida
+                    // viene después, el bucle principal verá primero
+                    // el "Lunes 2" y lo dejará como pending; al llegar
+                    // la línea unida (no-weekday) la asignará por
+                    // look-back al pending — capturando "Todos los
+                    // Santos" para el 2 nov.
+                    out.addAll(orphans);
+                    out.add(merged.toString());
+                    continue;
+                }
+            }
+            out.add(line);
+        }
+        return out;
+    }
+
+    /** Una línea es "descriptiva" si no es cabecera mes ni weekday ni stop. */
+    private boolean isDescriptionLine(String line) {
+        if (line == null) return false;
+        String lower = line.toLowerCase(Locale.ROOT);
+        if (isStopSection(lower)) return false;
+        if (findMonthHeader(lower) != null) return false;
+        for (String wd : WEEKDAYS) {
+            if (lower.startsWith(wd)) return false;
+        }
+        // Filtros de ruido típico: cabeceras de boletín, paginación.
+        if (lower.contains("boletin oficial") || lower.contains("bolet")
+                && lower.contains("provincia")) return false;
+        if (lower.matches(".*p.gina\\s+\\d+.*")) return false;
+        if (lower.matches("^n.\\s*\\d+.*")) return false;
+        return line.length() >= 4;
+    }
+
+    private boolean isAdjustment(Classification cls) {
+        return cls != null && "convenio".equals(cls.tipo);
     }
 
     // ============================================================
