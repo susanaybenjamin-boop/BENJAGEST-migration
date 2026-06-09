@@ -1256,4 +1256,147 @@ public class AltaApiClient {
         if (!tail.isEmpty()) out.add(tail);
         return out;
     }
+
+    // ============================================================
+    // L3-4 — CALENDARIO LABORAL (/api/labor/work-calendars)
+    // ============================================================
+
+    public List<com.benjagest.ui.model.WorkCalendarEntry> listWorkCalendars()
+            throws IOException, InterruptedException {
+        HttpResponse<String> r = send(req(baseUrl + "/labor/work-calendars").GET());
+        if (r.statusCode() < 200 || r.statusCode() >= 300) {
+            throw new IOException("HTTP " + r.statusCode() + ": " + r.body());
+        }
+        List<com.benjagest.ui.model.WorkCalendarEntry> out = new ArrayList<>();
+        for (String obj : splitTopLevelObjects(r.body())) {
+            out.add(mapWorkCalendar(obj));
+        }
+        return out;
+    }
+
+    public List<com.benjagest.ui.model.HolidayEntry> listHolidaysFor(String calendarId)
+            throws IOException, InterruptedException {
+        HttpResponse<String> r = send(req(baseUrl
+                + "/labor/work-calendars/" + calendarId + "/holidays").GET());
+        if (r.statusCode() < 200 || r.statusCode() >= 300) {
+            throw new IOException("HTTP " + r.statusCode() + ": " + r.body());
+        }
+        List<com.benjagest.ui.model.HolidayEntry> out = new ArrayList<>();
+        for (String obj : splitTopLevelObjects(r.body())) {
+            out.add(mapHoliday(obj));
+        }
+        return out;
+    }
+
+    /**
+     * L3-3 — Crea calendario y lo siembra desde el catálogo BOE/CCAA.
+     * El backend solo soporta year=2026 por ahora; otros años → 501.
+     */
+    public com.benjagest.ui.model.WorkCalendarEntry bootstrapWorkCalendar(
+            int year, String regionCcaa, String regionMunicipality, String name)
+            throws IOException, InterruptedException {
+        String body = "{"
+                + "\"year\":" + year + ","
+                + field("regionCcaa", regionCcaa) + ","
+                + field("regionMunicipality", regionMunicipality) + ","
+                + field("name", name)
+                + "}";
+        HttpResponse<String> r = send(req(baseUrl + "/labor/work-calendars/bootstrap")
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(body)));
+        if (r.statusCode() < 200 || r.statusCode() >= 300) {
+            throw new IOException("HTTP " + r.statusCode() + ": " + r.body());
+        }
+        // BootstrapResult tiene 'calendar' (objeto) y 'holidays' (array).
+        String calObj = extractJsonObject(r.body(), "calendar");
+        if (calObj == null) {
+            throw new IOException("Bootstrap sin calendar en respuesta");
+        }
+        com.benjagest.ui.model.WorkCalendarEntry cal = mapWorkCalendar(calObj);
+        // No mapeamos los festivos aquí porque la UI los recarga
+        // explícitamente con listHolidaysFor() tras el refresh — más
+        // simple y evita parseo de array anidado.
+        return cal;
+    }
+
+    public void deleteWorkCalendar(String id) throws IOException, InterruptedException {
+        send(req(baseUrl + "/labor/work-calendars/" + id).DELETE());
+    }
+
+    public com.benjagest.ui.model.HolidayEntry addHoliday(
+            String calendarId, java.time.LocalDate date, String name,
+            String scope, boolean isPaid, String notes)
+            throws IOException, InterruptedException {
+        String body = "{"
+                + "\"holidayDate\":\"" + date.toString() + "\","
+                + field("name", name) + ","
+                + field("scope", scope) + ","
+                + "\"isPaid\":" + isPaid + ","
+                + field("notes", notes)
+                + "}";
+        HttpResponse<String> r = send(req(baseUrl
+                + "/labor/work-calendars/" + calendarId + "/holidays")
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(body)));
+        if (r.statusCode() < 200 || r.statusCode() >= 300) {
+            throw new IOException("HTTP " + r.statusCode() + ": " + r.body());
+        }
+        return mapHoliday(r.body());
+    }
+
+    public void removeHoliday(String calendarId, String holidayId)
+            throws IOException, InterruptedException {
+        send(req(baseUrl
+                + "/labor/work-calendars/" + calendarId + "/holidays/" + holidayId)
+                .DELETE());
+    }
+
+    private com.benjagest.ui.model.WorkCalendarEntry mapWorkCalendar(String obj) {
+        return new com.benjagest.ui.model.WorkCalendarEntry(
+                textField(obj, "id"),
+                textField(obj, "companyId"),
+                intField(obj, "year"),
+                textField(obj, "regionCcaa"),
+                textField(obj, "regionMunicipality"),
+                textField(obj, "name"),
+                boolField(obj, "active"),
+                parseInstant(textField(obj, "createdAt")),
+                parseInstant(textField(obj, "updatedAt")),
+                List.of()
+        );
+    }
+
+    private com.benjagest.ui.model.HolidayEntry mapHoliday(String obj) {
+        return new com.benjagest.ui.model.HolidayEntry(
+                textField(obj, "id"),
+                textField(obj, "workCalendarId"),
+                parseLocalDate(textField(obj, "holidayDate")),
+                textField(obj, "name"),
+                textField(obj, "scope"),
+                boolField(obj, "isPaid"),
+                textField(obj, "notes"),
+                parseInstant(textField(obj, "createdAt"))
+        );
+    }
+
+    private int intField(String json, String field) {
+        if (json == null) return 0;
+        int idx = json.indexOf("\"" + field + "\"");
+        if (idx < 0) return 0;
+        int colon = json.indexOf(':', idx);
+        if (colon < 0) return 0;
+        int i = colon + 1;
+        while (i < json.length() && Character.isWhitespace(json.charAt(i))) i++;
+        int start = i;
+        while (i < json.length() && (Character.isDigit(json.charAt(i)) || json.charAt(i) == '-')) i++;
+        if (start == i) return 0;
+        try { return Integer.parseInt(json.substring(start, i)); }
+        catch (NumberFormatException ex) { return 0; }
+    }
+
+    private java.time.Instant parseInstant(String s) {
+        if (s == null || s.isBlank()) return null;
+        try { return java.time.Instant.parse(s); }
+        catch (Exception ex) { return null; }
+    }
 }
