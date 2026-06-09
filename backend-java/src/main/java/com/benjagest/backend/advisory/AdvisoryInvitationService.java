@@ -53,17 +53,39 @@ public class AdvisoryInvitationService {
     private final CurrentUserService currentUserService;
     private final TenantContext tenantContext;
     private final AuditService auditService;
+    private final com.benjagest.backend.advisory.notifications.AdvisoryNotificationService notificationService;
 
     public AdvisoryInvitationService(AdvisoryInvitationRepository repository,
                                        JdbcTemplate jdbcTemplate,
                                        CurrentUserService currentUserService,
                                        TenantContext tenantContext,
-                                       AuditService auditService) {
+                                       AuditService auditService,
+                                       com.benjagest.backend.advisory.notifications.AdvisoryNotificationService notificationService) {
         this.repository = repository;
         this.jdbcTemplate = jdbcTemplate;
         this.currentUserService = currentUserService;
         this.tenantContext = tenantContext;
         this.auditService = auditService;
+        this.notificationService = notificationService;
+    }
+
+    /**
+     * Helper interno: notifica al asesor cuando ocurre un evento en
+     * una invitación. Try/catch para que un fallo en notificaciones
+     * NO tumbe el flujo principal de aceptación/rechazo de invitación.
+     */
+    private void notifyAdvisor(String advisoryCompanyId, String clientCompanyId,
+                                String type, String severity,
+                                String title, String message) {
+        if (notificationService == null) return;
+        try {
+            notificationService.emit(
+                    new com.benjagest.backend.advisory.notifications.AdvisoryNotificationService.EmitRequest(
+                            advisoryCompanyId, clientCompanyId, type, severity,
+                            title, message, null));
+        } catch (Exception ex) {
+            // log but swallow — el evento principal ya está auditado.
+        }
     }
 
     // ==================== ASESORÍA ====================
@@ -199,6 +221,16 @@ public class AdvisoryInvitationService {
         auditService.recordAdvisoryInvitationAccepted(
                 user.userId(), tenant, inv.id(), inv.advisoryCompanyId());
 
+        // Notifica al asesor que el cliente aceptó. Distinto del
+        // audit_event (forense): aquí es accionable, aparece en la
+        // bandeja del asesor con badge.
+        notifyAdvisor(inv.advisoryCompanyId(), tenant,
+                "INVITATION_ACCEPTED",
+                com.benjagest.backend.advisory.notifications.AdvisoryNotificationService.SEVERITY_INFO,
+                "Cliente aceptó la invitación",
+                "El cliente con NIF " + (inv.invitedNif() == null ? "?" : inv.invitedNif())
+                        + " ha aceptado la invitación. Ya puedes facturarle y gestionar sus libros.");
+
         return repository.findById(inv.id()).orElseThrow();
     }
 
@@ -263,8 +295,18 @@ public class AdvisoryInvitationService {
         validatePendingAndFresh(inv);
         repository.updateStatus(inv.id(), AdvisoryInvitation.STATUS_REJECTED);
         AuthenticatedUser user = currentUserService.require();
+        String clientTenant = tenantContext.getCurrentCompanyId();
         auditService.recordAdvisoryInvitationRejected(
-                user.userId(), tenantContext.getCurrentCompanyId(), inv.id());
+                user.userId(), clientTenant, inv.id());
+        // Notifica al asesor que el cliente rechazó. Severity WARNING
+        // porque suele requerir acción comercial (llamar al cliente,
+        // entender el motivo, reenviar invitación corregida).
+        notifyAdvisor(inv.advisoryCompanyId(), clientTenant,
+                "INVITATION_REJECTED",
+                com.benjagest.backend.advisory.notifications.AdvisoryNotificationService.SEVERITY_WARNING,
+                "Cliente rechazó la invitación",
+                "El cliente con NIF " + (inv.invitedNif() == null ? "?" : inv.invitedNif())
+                        + " ha rechazado la invitación. Considera contactarle para entender el motivo.");
     }
 
     /**
