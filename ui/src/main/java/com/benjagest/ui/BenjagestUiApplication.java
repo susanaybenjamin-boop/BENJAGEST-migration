@@ -11667,6 +11667,9 @@ public class BenjagestUiApplication extends Application {
             case "workcal.import_pdf.empty_name" -> "All rows need a name.";
             case "workcal.import_pdf.dump_fail" -> "Dump failed";
             case "workcal.import_pdf.btn.cancel" -> "Cancel";
+            case "workcal.import_pdf.counter" -> "{f} holidays · {a} adjustments · {c} closures (max 14 holidays)";
+            case "workcal.import_pdf.dup_date" -> "Date {v} appears twice. Remove the duplicate before dumping.";
+            case "workcal.import_pdf.too_many_festivos" -> "{n} holidays selected — legal max is 14 (Art. 37.2 ET). Change extras to AJUSTE/CIERRE or delete them.";
             case "workcal.btn.new_calendar" -> "New empty calendar";
             case "workcal.new_cal.title" -> "Create empty calendar";
             case "workcal.new_cal.header" -> "Creates an empty calendar. Use 'Import from PDF' afterwards to load the official holidays from your region's official bulletin (BOE/BOJA/BOPV/DOGC).";
@@ -12043,6 +12046,9 @@ public class BenjagestUiApplication extends Application {
             case "workcal.import_pdf.empty_name" -> "Todas las filas necesitan nombre.";
             case "workcal.import_pdf.dump_fail" -> "No se pudo volcar";
             case "workcal.import_pdf.btn.cancel" -> "Cancelar";
+            case "workcal.import_pdf.counter" -> "{f} festivos · {a} ajustes · {c} cierres (máx 14 festivos)";
+            case "workcal.import_pdf.dup_date" -> "La fecha {v} aparece dos veces. Elimina el duplicado antes de volcar.";
+            case "workcal.import_pdf.too_many_festivos" -> "{n} festivos seleccionados — el máximo legal es 14 (Art. 37.2 ET). Cambia los extras a AJUSTE/CIERRE o elimínalos.";
             case "workcal.btn.new_calendar" -> "Nuevo calendario vacío";
             case "workcal.new_cal.title" -> "Crear calendario vacío";
             case "workcal.new_cal.header" -> "Crea un calendario vacío. Después usa 'Importar desde PDF' para cargar los festivos oficiales desde el boletín de tu CCAA (BOE/BOJA/BOPV/DOGC).";
@@ -24026,11 +24032,36 @@ public class BenjagestUiApplication extends Application {
                 if (!already) rightRows.add(EditableHolidayRow.from(det));
             }
         });
+        // Default AJUSTE en filas añadidas a mano: por experiencia, lo
+        // que el usuario añade después del extract suele ser un ajuste
+        // de jornada que el parser no pilló (Benjamin 2026-06-09).
         addRowBtn.setOnAction(ev -> rightRows.add(new EditableHolidayRow(
                 java.time.LocalDate.of(preview.year(), 1, 1),
-                "FESTIVO", "", "LOCAL", "")));
+                "AJUSTE", "", "LOCAL", "")));
         delRowBtn.setOnAction(ev -> rightRows.removeAll(
                 new java.util.ArrayList<>(rightTable.getSelectionModel().getSelectedItems())));
+
+        // Auto-clasificación por nombre: si la desc contiene "ajuste"
+        // / "convenio" / "jornada", forzamos tipo=AJUSTE. Esto cubre
+        // tanto filas añadidas a mano como ediciones del usuario.
+        rightRows.addListener(
+                (javafx.collections.ListChangeListener<EditableHolidayRow>) change -> {
+                    while (change.next()) {
+                        if (change.wasAdded()) {
+                            for (var row : change.getAddedSubList()) {
+                                row.name.addListener((obs, oldV, newV) -> {
+                                    if (newV == null) return;
+                                    String low = newV.toLowerCase(java.util.Locale.ROOT);
+                                    if ((low.contains("ajuste") || low.contains("convenio")
+                                            || low.contains("jornada"))
+                                            && "FESTIVO".equals(row.holidayType.get())) {
+                                        row.holidayType.set("AJUSTE");
+                                    }
+                                });
+                            }
+                        }
+                    }
+                });
 
         VBox rightPanel = new VBox(6, rightLabel, rightTable, rightActions);
         VBox.setVgrow(rightTable, Priority.ALWAYS);
@@ -24045,9 +24076,49 @@ public class BenjagestUiApplication extends Application {
         Button dumpBtn = new Button(t("workcal.import_pdf.btn.dump"));
         dumpBtn.setGraphic(icon("fas-check"));
         dumpBtn.getStyleClass().add("primary-button");
+
+        // Contador en vivo: "X festivos · Y ajustes · 14 máx" — se
+        // pone en rojo si supera el tope legal. Avisa antes de que
+        // el usuario pulse "Volcar" y le evita el error del backend.
+        Label counterLbl = new Label();
+        counterLbl.getStyleClass().add("settings-hint");
+        Runnable updateCounter = () -> {
+            long fest = rightRows.stream()
+                    .filter(r -> "FESTIVO".equals(r.holidayType.get())).count();
+            long aju = rightRows.stream()
+                    .filter(r -> "AJUSTE".equals(r.holidayType.get())).count();
+            long cie = rightRows.stream()
+                    .filter(r -> "CIERRE".equals(r.holidayType.get())).count();
+            String txt = t("workcal.import_pdf.counter")
+                    .replace("{f}", String.valueOf(fest))
+                    .replace("{a}", String.valueOf(aju))
+                    .replace("{c}", String.valueOf(cie));
+            counterLbl.setText(txt);
+            // Color rojo si supera el tope — sin tocar estilos CSS
+            // globales, solo inline.
+            counterLbl.setStyle(fest > 14
+                    ? "-fx-text-fill: #c0392b; -fx-font-weight: bold;"
+                    : "");
+            dumpBtn.setDisable(fest > 14);
+        };
+        rightRows.addListener(
+                (javafx.collections.ListChangeListener<EditableHolidayRow>) c -> {
+                    updateCounter.run();
+                    // Re-suscribir cuando holidayType cambia en filas existentes.
+                    while (c.next()) {
+                        if (c.wasAdded()) {
+                            for (var row : c.getAddedSubList()) {
+                                row.holidayType.addListener((o,b,n) -> updateCounter.run());
+                            }
+                        }
+                    }
+                });
+        updateCounter.run();
+
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
-        HBox footer = new HBox(8, spacer, cancelBtn, dumpBtn);
+        HBox footer = new HBox(8, counterLbl, spacer, cancelBtn, dumpBtn);
+        footer.setAlignment(Pos.CENTER_LEFT);
         footer.setPadding(new Insets(8, 16, 8, 16));
 
         cancelBtn.setOnAction(ev -> modal.close());
@@ -24058,6 +24129,8 @@ public class BenjagestUiApplication extends Application {
             }
             // Validar todas las filas: fecha presente + nombre + scope.
             List<com.benjagest.ui.model.HolidayEntry> toSave = new java.util.ArrayList<>();
+            java.util.Set<java.time.LocalDate> seenDates = new java.util.HashSet<>();
+            long festCount = 0;
             for (var r : rightRows) {
                 java.time.LocalDate d = r.dateValue.get();
                 if (d == null) {
@@ -24065,17 +24138,32 @@ public class BenjagestUiApplication extends Application {
                             t("workcal.import_pdf.bad_date").replace("{v}", "(vacía)"));
                     return;
                 }
+                if (!seenDates.add(d)) {
+                    showError(t("workcal.error"),
+                            t("workcal.import_pdf.dup_date").replace("{v}", d.toString()));
+                    return;
+                }
                 String n = r.name.get();
                 if (n == null || n.isBlank()) {
                     showError(t("workcal.error"), t("workcal.import_pdf.empty_name"));
                     return;
                 }
+                String ht = r.holidayType.get() == null ? "FESTIVO" : r.holidayType.get();
+                if ("FESTIVO".equals(ht)) festCount++;
                 toSave.add(new com.benjagest.ui.model.HolidayEntry(
                         null, calendar.id(), d, n.trim(), r.scope.get(), true,
                         r.notes.get() == null || r.notes.get().isBlank() ? null
                                 : r.notes.get().trim(),
-                        r.holidayType.get() == null ? "FESTIVO" : r.holidayType.get(),
-                        null));
+                        ht, null));
+            }
+            // Aviso anticipado del tope (la UI ya deshabilita el botón
+            // pero si el usuario fuerza por teclado, este check rebota
+            // con un mensaje legible antes del round-trip al backend).
+            if (festCount > 14) {
+                showError(t("workcal.error"),
+                        t("workcal.import_pdf.too_many_festivos")
+                                .replace("{n}", String.valueOf(festCount)));
+                return;
             }
             Task<Void> task = new Task<>() {
                 @Override protected Void call() throws Exception {
