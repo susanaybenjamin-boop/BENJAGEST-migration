@@ -77,6 +77,48 @@ public final class EditableCells {
     }
 
     /**
+     * Sustituye el converter por defecto de un {@link DatePicker} por
+     * uno que acepta varios formatos comunes (ISO, dd/MM/yyyy, etc.).
+     *
+     * <p>El converter por defecto de JavaFX para locale es_ES usa
+     * {@code FormatStyle.SHORT} = {@code dd/MM/yy} (año de 2 dígitos).
+     * Si el usuario teclea "31/12/2026" el converter falla → el valor
+     * queda null al perder el foco y la entrada se pierde silenciosa.
+     *
+     * <p>Aplicar este helper directamente tras construir el DatePicker:
+     * <pre>
+     *   DatePicker picker = new DatePicker();
+     *   EditableCells.installFlexibleConverter(picker);
+     * </pre>
+     *
+     * <p>El toString sigue usando el formato del locale (lo que ve el
+     * usuario al hacer click en el calendario), pero al parsear lo
+     * tecleado acepta todos los formatos de {@link #parseFlexibleDate}.
+     */
+    public static void installFlexibleConverter(DatePicker picker) {
+        if (picker == null) return;
+        javafx.util.StringConverter<LocalDate> original = picker.getConverter();
+        picker.setConverter(new javafx.util.StringConverter<>() {
+            @Override
+            public String toString(LocalDate v) {
+                return original == null ? (v == null ? "" : v.toString())
+                        : original.toString(v);
+            }
+            @Override
+            public LocalDate fromString(String s) {
+                LocalDate v = parseFlexibleDate(s);
+                if (v != null) return v;
+                // Fallback al converter original (formato del locale).
+                if (original != null) {
+                    try { return original.fromString(s); }
+                    catch (Exception ignored) { /* devuelve null */ }
+                }
+                return null;
+            }
+        });
+    }
+
+    /**
      * Fuerza el commit de cualquier {@link DatePicker} dentro de la
      * tabla que tenga texto tecleado en su editor pero sin confirmar.
      *
