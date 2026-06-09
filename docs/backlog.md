@@ -45,9 +45,12 @@ commits, todos compilan y mergeados a develop**.
 - L3-2 backend `WorkCalendarService` + Controller (paquete `labor.workcal/`,
   endpoint `/api/labor/work-calendars`, tope legal 14 festivos/año Art.
   37.2 ET, lista CCAA ISO 3166-2:ES validada).
-- L3-3 `HolidaySeed2026` con 9 festivos nacionales + 17 CCAA × 1-3
-  autonómicos + 2 ciudades autónomas (Ceuta, Melilla). Endpoint
-  `/bootstrap` que crea + siembra de golpe.
+- L3-3 (retirado 2026-06-09): el seed `HolidaySeed2026` con festivos
+  autonómicos hardcoded NO estaba verificado contra BOJA/BOPV/DOGC.
+  Sustituido por flujo PDF: usuario importa el calendario laboral
+  oficial de su CCAA descargado del boletín correspondiente, parser
+  CONTENDO (`HolidayPdfExtractor`) extrae festivos + ajustes, modal
+  side-by-side editable.
 - L3-4 UI tab "Calendario laboral" dentro del módulo Labor con bootstrap
   rápido (CCAA combo + municipio + nombre), tabla calendarios, tabla
   festivos, CRUD inline. i18n ES+EN (45 keys).

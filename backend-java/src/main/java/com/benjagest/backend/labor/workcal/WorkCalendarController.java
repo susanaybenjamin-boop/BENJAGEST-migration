@@ -130,21 +130,6 @@ public class WorkCalendarController {
     }
 
     /**
-     * L3-3 — Bootstrap del calendario laboral desde fuente oficial.
-     * Crea el calendario del año y siembra los festivos canónicos
-     * (nacionales + autonómicos de la CCAA elegida). Cualquier
-     * calendario activo previo se archiva. Los festivos locales se
-     * añaden manualmente después.
-     */
-    @PostMapping("/bootstrap")
-    @ResponseStatus(HttpStatus.CREATED)
-    @RequiresRole({"OWNER", "ADMIN", "ACCOUNTANT"})
-    public WorkCalendarService.BootstrapResult bootstrap(
-            @RequestBody WorkCalendarService.BootstrapRequest req) {
-        return service.bootstrapFromOfficialSources(req);
-    }
-
-    /**
      * CAL-IMPORT-MODAL — Extrae festivos de un PDF que el usuario
      * descargó (BOE/BOJA/BOPV/DOGC, convenio colectivo, etc.).
      *
