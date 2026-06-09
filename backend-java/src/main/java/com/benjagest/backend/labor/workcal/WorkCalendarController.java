@@ -2,6 +2,7 @@ package com.benjagest.backend.labor.workcal;
 
 import com.benjagest.backend.auth.RequiresRole;
 import com.benjagest.backend.modules.RequiresModule;
+import java.io.IOException;
 import java.util.List;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -12,8 +13,11 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
+import org.springframework.web.server.ResponseStatusException;
 
 /**
  * L3-2 — REST API del calendario laboral por empresa.
@@ -36,9 +40,12 @@ import org.springframework.web.bind.annotation.RestController;
 public class WorkCalendarController {
 
     private final WorkCalendarService service;
+    private final HolidayPdfExtractor pdfExtractor;
 
-    public WorkCalendarController(WorkCalendarService service) {
+    public WorkCalendarController(WorkCalendarService service,
+                                    HolidayPdfExtractor pdfExtractor) {
         this.service = service;
+        this.pdfExtractor = pdfExtractor;
     }
 
     // ------------------------------------------------------------
@@ -135,5 +142,34 @@ public class WorkCalendarController {
     public WorkCalendarService.BootstrapResult bootstrap(
             @RequestBody WorkCalendarService.BootstrapRequest req) {
         return service.bootstrapFromOfficialSources(req);
+    }
+
+    /**
+     * CAL-IMPORT-MODAL — Extrae festivos de un PDF que el usuario
+     * descargó (BOE/BOJA/BOPV/DOGC, convenio colectivo, etc.).
+     *
+     * <p>NO persiste nada — devuelve solo el preview con los festivos
+     * detectados + confidence. El UI los muestra en un modal
+     * side-by-side editable; el usuario corrige y luego llama
+     * {@code POST /{id}/holidays/replace} para volcar.
+     *
+     * <p>El archivo viene como multipart con clave {@code file}.
+     * Tamaño máximo controlado por Spring (10MB por defecto, suficiente
+     * para cualquier calendario laboral).
+     */
+    @PostMapping(value = "/extract-pdf", consumes = "multipart/form-data")
+    @RequiresRole({"OWNER", "ADMIN", "ACCOUNTANT"})
+    public HolidayPdfExtractor.ExtractionResult extractFromPdf(
+            @RequestPart("file") MultipartFile file) {
+        if (file == null || file.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Archivo PDF obligatorio");
+        }
+        try {
+            return pdfExtractor.extract(file.getBytes());
+        } catch (IOException ex) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "No se pudo leer el PDF: " + ex.getMessage());
+        }
     }
 }
