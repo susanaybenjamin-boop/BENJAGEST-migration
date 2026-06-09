@@ -11603,6 +11603,49 @@ public class BenjagestUiApplication extends Application {
             case "team.assign.btn.select_none" -> "Clear selection";
             case "team.assign.delete.confirm.body_many" -> "Delete {n} assignments? This cannot be undone.";
             case "team.owner_mode_badge" -> "Owner mode · full access";
+            // L3-4 — Calendario laboral (EN)
+            case "labor.tab.work_calendar" -> "Work calendar";
+            case "workcal.hint" -> "National + regional public holidays (Spanish Labour Law art. 37.2 ET, max 14/year).";
+            case "workcal.btn.bootstrap" -> "Generate 2026 calendar";
+            case "workcal.btn.add_holiday" -> "Add holiday";
+            case "workcal.btn.remove_holiday" -> "Remove holiday";
+            case "workcal.btn.delete_calendar" -> "Delete calendar";
+            case "workcal.empty.calendars" -> "No calendars yet — click \"Generate 2026 calendar\" to start.";
+            case "workcal.empty.holidays" -> "Select a calendar to see its holidays.";
+            case "workcal.col.year" -> "Year";
+            case "workcal.col.name" -> "Name";
+            case "workcal.col.ccaa" -> "Region";
+            case "workcal.col.active" -> "Active";
+            case "workcal.col.date" -> "Date";
+            case "workcal.col.holiday_name" -> "Holiday";
+            case "workcal.col.scope" -> "Scope";
+            case "workcal.col.notes" -> "Notes";
+            case "workcal.section.calendars" -> "Calendars";
+            case "workcal.section.holidays" -> "Holidays";
+            case "workcal.scope.national" -> "National";
+            case "workcal.scope.ccaa" -> "Regional";
+            case "workcal.scope.local" -> "Local";
+            case "workcal.bootstrap.title" -> "Generate work calendar";
+            case "workcal.bootstrap.header" -> "Generates an editable calendar with the official Spanish holidays.";
+            case "workcal.bootstrap.year" -> "Year:";
+            case "workcal.bootstrap.ccaa" -> "Region (CCAA):";
+            case "workcal.bootstrap.muni" -> "Municipality:";
+            case "workcal.bootstrap.muni_placeholder" -> "Optional";
+            case "workcal.bootstrap.name" -> "Name:";
+            case "workcal.bootstrap.fail.title" -> "Could not generate the calendar";
+            case "workcal.add_holiday.title" -> "Add holiday";
+            case "workcal.add_holiday.header" -> "Add a holiday to this calendar.";
+            case "workcal.add_holiday.name_placeholder" -> "e.g. Local saint's day";
+            case "workcal.add_holiday.notes_placeholder" -> "Optional";
+            case "workcal.add_holiday.fail.title" -> "Could not add holiday";
+            case "workcal.add_holiday.fail.missing" -> "Date and name are required.";
+            case "workcal.confirm.delete_holiday.title" -> "Remove holiday";
+            case "workcal.confirm.delete_holiday.body" -> "Are you sure?";
+            case "workcal.confirm.delete_calendar.title" -> "Delete calendar";
+            case "workcal.confirm.delete_calendar.body" -> "Delete the {year} calendar with all its holidays?";
+            case "workcal.load_failed.title" -> "Could not load work calendars";
+            case "workcal.load_failed.body" -> "Try again in a moment.";
+            case "workcal.error" -> "Error";
             case "team.assign.no_selection.title" -> "Select clients";
             case "team.assign.no_selection.body" -> "Tick at least one client on the left before assigning.";
             case "team.assign.no_employee.title" -> "Pick an employee";
@@ -11910,6 +11953,49 @@ public class BenjagestUiApplication extends Application {
             case "team.assign.btn.select_none" -> "Desmarcar todo";
             case "team.assign.delete.confirm.body_many" -> "¿Eliminar {n} asignaciones? No se puede deshacer.";
             case "team.owner_mode_badge" -> "Modo Propietario · acceso total";
+            // L3-4 — Calendario laboral (ES)
+            case "labor.tab.work_calendar" -> "Calendario laboral";
+            case "workcal.hint" -> "Festivos nacionales + autonómicos + locales (Art. 37.2 Estatuto Trabajadores, máx. 14/año).";
+            case "workcal.btn.bootstrap" -> "Generar calendario 2026";
+            case "workcal.btn.add_holiday" -> "Añadir festivo";
+            case "workcal.btn.remove_holiday" -> "Eliminar festivo";
+            case "workcal.btn.delete_calendar" -> "Eliminar calendario";
+            case "workcal.empty.calendars" -> "Aún no hay calendarios — pulsa \"Generar calendario 2026\" para empezar.";
+            case "workcal.empty.holidays" -> "Selecciona un calendario para ver sus festivos.";
+            case "workcal.col.year" -> "Año";
+            case "workcal.col.name" -> "Nombre";
+            case "workcal.col.ccaa" -> "Región";
+            case "workcal.col.active" -> "Activo";
+            case "workcal.col.date" -> "Fecha";
+            case "workcal.col.holiday_name" -> "Festivo";
+            case "workcal.col.scope" -> "Ámbito";
+            case "workcal.col.notes" -> "Notas";
+            case "workcal.section.calendars" -> "Calendarios";
+            case "workcal.section.holidays" -> "Festivos";
+            case "workcal.scope.national" -> "Nacional";
+            case "workcal.scope.ccaa" -> "Autonómico";
+            case "workcal.scope.local" -> "Local";
+            case "workcal.bootstrap.title" -> "Generar calendario laboral";
+            case "workcal.bootstrap.header" -> "Genera un calendario editable con los festivos oficiales de España.";
+            case "workcal.bootstrap.year" -> "Año:";
+            case "workcal.bootstrap.ccaa" -> "CCAA:";
+            case "workcal.bootstrap.muni" -> "Municipio:";
+            case "workcal.bootstrap.muni_placeholder" -> "Opcional";
+            case "workcal.bootstrap.name" -> "Nombre:";
+            case "workcal.bootstrap.fail.title" -> "No se pudo generar el calendario";
+            case "workcal.add_holiday.title" -> "Añadir festivo";
+            case "workcal.add_holiday.header" -> "Añade un festivo a este calendario.";
+            case "workcal.add_holiday.name_placeholder" -> "Ej. Patrón local";
+            case "workcal.add_holiday.notes_placeholder" -> "Opcional";
+            case "workcal.add_holiday.fail.title" -> "No se pudo añadir";
+            case "workcal.add_holiday.fail.missing" -> "Fecha y nombre son obligatorios.";
+            case "workcal.confirm.delete_holiday.title" -> "Eliminar festivo";
+            case "workcal.confirm.delete_holiday.body" -> "¿Seguro?";
+            case "workcal.confirm.delete_calendar.title" -> "Eliminar calendario";
+            case "workcal.confirm.delete_calendar.body" -> "¿Eliminar el calendario {year} y todos sus festivos?";
+            case "workcal.load_failed.title" -> "No se pudieron cargar los calendarios laborales";
+            case "workcal.load_failed.body" -> "Inténtalo en unos segundos.";
+            case "workcal.error" -> "Error";
             case "team.assign.no_selection.title" -> "Selecciona clientes";
             case "team.assign.no_selection.body" -> "Marca al menos un cliente a la izquierda antes de asignar.";
             case "team.assign.no_employee.title" -> "Elige un empleado";
@@ -14046,9 +14132,14 @@ public class BenjagestUiApplication extends Application {
         clausesTab.setGraphic(icon("fas-paragraph"));
         Tab cfgTab = new Tab(t("labor.tab.cfg_timeclock"), buildEventTypeConfigTab(bundle.eventTypes()));
         cfgTab.setGraphic(icon("fas-cog"));
+        // L3-4 — Calendario laboral (festivos nacionales + autonómicos
+        // + locales). Carga lazy en buildWorkCalendarTab para no penalizar
+        // la apertura de Labor en empresas sin calendario configurado.
+        Tab calendarTab = new Tab(t("labor.tab.work_calendar"), buildWorkCalendarTab());
+        calendarTab.setGraphic(icon("fas-calendar-day"));
 
         tabs.getTabs().addAll(empTab, contractsTab, clockTab, auditTab, payslipsTab,
-                templatesTab, clausesTab, cfgTab);
+                templatesTab, clausesTab, cfgTab, calendarTab);
         VBox.setVgrow(tabs, Priority.ALWAYS);
 
         content.getChildren().addAll(header, alertsBanner, tabs);
@@ -23361,5 +23452,306 @@ public class BenjagestUiApplication extends Application {
         }
         sb.append("}");
         return sb.toString();
+    }
+
+    // ================================================================
+    //  L3-4 — Tab CALENDARIO LABORAL (festivos nacionales + autonómicos)
+    // ================================================================
+
+    /**
+     * Construye la pestaña Calendario laboral del módulo Labor. Layout:
+     * <ul>
+     *   <li>Botón "Crear calendario 2026" arriba (bootstrap rápido).</li>
+     *   <li>Tabla de calendarios existentes (años, CCAA, activo).</li>
+     *   <li>Tabla de festivos del calendario seleccionado abajo.</li>
+     *   <li>Botones añadir/eliminar festivo, eliminar calendario.</li>
+     * </ul>
+     */
+    private Node buildWorkCalendarTab() {
+        VBox box = new VBox(12);
+        box.setPadding(new Insets(16));
+        Label hint = new Label(t("workcal.hint"));
+        hint.setWrapText(true);
+        hint.getStyleClass().add("settings-hint");
+
+        // Botón bootstrap arriba.
+        Button bootstrapBtn = new Button(t("workcal.btn.bootstrap"));
+        bootstrapBtn.setGraphic(icon("fas-magic"));
+        bootstrapBtn.getStyleClass().add("primary-button");
+
+        // Tabla calendarios.
+        TableView<com.benjagest.ui.model.WorkCalendarEntry> calTable = new TableView<>();
+        calTable.getStyleClass().add("data-table");
+        calTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+        calTable.setPlaceholder(new Label(t("workcal.empty.calendars")));
+        TableColumn<com.benjagest.ui.model.WorkCalendarEntry, String> cYear =
+                new TableColumn<>(t("workcal.col.year"));
+        cYear.setCellValueFactory(c -> new SimpleStringProperty(String.valueOf(c.getValue().year())));
+        cYear.setPrefWidth(80);
+        TableColumn<com.benjagest.ui.model.WorkCalendarEntry, String> cName =
+                new TableColumn<>(t("workcal.col.name"));
+        cName.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().name()));
+        TableColumn<com.benjagest.ui.model.WorkCalendarEntry, String> cCcaa =
+                new TableColumn<>(t("workcal.col.ccaa"));
+        cCcaa.setCellValueFactory(c -> new SimpleStringProperty(
+                c.getValue().regionCcaa() == null ? "—" : c.getValue().regionCcaa()));
+        cCcaa.setPrefWidth(80);
+        TableColumn<com.benjagest.ui.model.WorkCalendarEntry, String> cActive =
+                new TableColumn<>(t("workcal.col.active"));
+        cActive.setCellValueFactory(c -> new SimpleStringProperty(
+                c.getValue().active() ? "✓" : ""));
+        cActive.setPrefWidth(60);
+        calTable.getColumns().addAll(List.of(cYear, cName, cCcaa, cActive));
+
+        // Tabla festivos.
+        TableView<com.benjagest.ui.model.HolidayEntry> holTable = new TableView<>();
+        holTable.getStyleClass().add("data-table");
+        holTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+        holTable.setPlaceholder(new Label(t("workcal.empty.holidays")));
+        TableColumn<com.benjagest.ui.model.HolidayEntry, String> hDate =
+                new TableColumn<>(t("workcal.col.date"));
+        hDate.setCellValueFactory(c -> new SimpleStringProperty(
+                c.getValue().holidayDate() == null ? "" : c.getValue().holidayDate().toString()));
+        hDate.setPrefWidth(110);
+        TableColumn<com.benjagest.ui.model.HolidayEntry, String> hName =
+                new TableColumn<>(t("workcal.col.holiday_name"));
+        hName.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().name()));
+        TableColumn<com.benjagest.ui.model.HolidayEntry, String> hScope =
+                new TableColumn<>(t("workcal.col.scope"));
+        hScope.setCellValueFactory(c -> new SimpleStringProperty(humanizeScope(c.getValue().scope())));
+        hScope.setPrefWidth(140);
+        TableColumn<com.benjagest.ui.model.HolidayEntry, String> hNotes =
+                new TableColumn<>(t("workcal.col.notes"));
+        hNotes.setCellValueFactory(c -> new SimpleStringProperty(
+                c.getValue().notes() == null ? "" : c.getValue().notes()));
+        holTable.getColumns().addAll(List.of(hDate, hName, hScope, hNotes));
+
+        // Botones de acción.
+        Button addHolBtn = new Button(t("workcal.btn.add_holiday"));
+        addHolBtn.setGraphic(icon("fas-plus"));
+        addHolBtn.setDisable(true);
+        Button delHolBtn = new Button(t("workcal.btn.remove_holiday"));
+        delHolBtn.setGraphic(icon("fas-trash"));
+        delHolBtn.setDisable(true);
+        Button delCalBtn = new Button(t("workcal.btn.delete_calendar"));
+        delCalBtn.setGraphic(icon("fas-times-circle"));
+        delCalBtn.setDisable(true);
+        HBox actionBar = new HBox(8, addHolBtn, delHolBtn, new Region(), delCalBtn);
+        actionBar.setAlignment(Pos.CENTER_LEFT);
+
+        // Carga inicial.
+        Runnable reloadCalendars = () -> {
+            Task<List<com.benjagest.ui.model.WorkCalendarEntry>> task = new Task<>() {
+                @Override protected List<com.benjagest.ui.model.WorkCalendarEntry> call() throws Exception {
+                    return altaApiClient.listWorkCalendars();
+                }
+            };
+            task.setOnSucceeded(ev -> {
+                calTable.setItems(FXCollections.observableArrayList(task.getValue()));
+                holTable.getItems().clear();
+                addHolBtn.setDisable(true);
+                delHolBtn.setDisable(true);
+                delCalBtn.setDisable(true);
+            });
+            task.setOnFailed(ev -> showError(t("workcal.load_failed.title"),
+                    task.getException() == null ? t("workcal.load_failed.body")
+                            : task.getException().getMessage()));
+            start(task, "workcal-load");
+        };
+        Runnable reloadHolidays = () -> {
+            var sel = calTable.getSelectionModel().getSelectedItem();
+            if (sel == null) { holTable.getItems().clear(); return; }
+            Task<List<com.benjagest.ui.model.HolidayEntry>> task = new Task<>() {
+                @Override protected List<com.benjagest.ui.model.HolidayEntry> call() throws Exception {
+                    return altaApiClient.listHolidaysFor(sel.id());
+                }
+            };
+            task.setOnSucceeded(ev ->
+                    holTable.setItems(FXCollections.observableArrayList(task.getValue())));
+            task.setOnFailed(ev -> showError(t("workcal.load_failed.title"),
+                    task.getException() == null ? t("workcal.load_failed.body")
+                            : task.getException().getMessage()));
+            start(task, "workcal-holidays-load");
+        };
+
+        // Selección de calendario → recargar festivos.
+        calTable.getSelectionModel().selectedItemProperty().addListener((o, ov, nv) -> {
+            boolean sel = nv != null;
+            addHolBtn.setDisable(!sel);
+            delCalBtn.setDisable(!sel);
+            delHolBtn.setDisable(true);  // se habilita al seleccionar festivo
+            if (sel) reloadHolidays.run();
+            else holTable.getItems().clear();
+        });
+        holTable.getSelectionModel().selectedItemProperty().addListener(
+                (o, ov, nv) -> delHolBtn.setDisable(nv == null));
+
+        // Acciones.
+        bootstrapBtn.setOnAction(ev -> openWorkCalendarBootstrapDialog(reloadCalendars));
+        addHolBtn.setOnAction(ev -> {
+            var sel = calTable.getSelectionModel().getSelectedItem();
+            if (sel != null) openAddHolidayDialog(sel.id(), reloadHolidays);
+        });
+        delHolBtn.setOnAction(ev -> {
+            var calSel = calTable.getSelectionModel().getSelectedItem();
+            var holSel = holTable.getSelectionModel().getSelectedItem();
+            if (calSel == null || holSel == null) return;
+            Alert confirm = new Alert(Alert.AlertType.CONFIRMATION);
+            confirm.setTitle(t("workcal.confirm.delete_holiday.title"));
+            confirm.setHeaderText(t("workcal.confirm.delete_holiday.body"));
+            confirm.showAndWait().ifPresent(rsp -> {
+                if (rsp == javafx.scene.control.ButtonType.OK) {
+                    Task<Void> del = new Task<>() {
+                        @Override protected Void call() throws Exception {
+                            altaApiClient.removeHoliday(calSel.id(), holSel.id());
+                            return null;
+                        }
+                    };
+                    del.setOnSucceeded(s -> reloadHolidays.run());
+                    del.setOnFailed(s -> showError(t("workcal.error"),
+                            del.getException() == null ? "" : del.getException().getMessage()));
+                    start(del, "workcal-del-holiday");
+                }
+            });
+        });
+        delCalBtn.setOnAction(ev -> {
+            var calSel = calTable.getSelectionModel().getSelectedItem();
+            if (calSel == null) return;
+            Alert confirm = new Alert(Alert.AlertType.CONFIRMATION);
+            confirm.setTitle(t("workcal.confirm.delete_calendar.title"));
+            confirm.setHeaderText(t("workcal.confirm.delete_calendar.body").replace(
+                    "{year}", String.valueOf(calSel.year())));
+            confirm.showAndWait().ifPresent(rsp -> {
+                if (rsp == javafx.scene.control.ButtonType.OK) {
+                    Task<Void> del = new Task<>() {
+                        @Override protected Void call() throws Exception {
+                            altaApiClient.deleteWorkCalendar(calSel.id());
+                            return null;
+                        }
+                    };
+                    del.setOnSucceeded(s -> reloadCalendars.run());
+                    del.setOnFailed(s -> showError(t("workcal.error"),
+                            del.getException() == null ? "" : del.getException().getMessage()));
+                    start(del, "workcal-del-cal");
+                }
+            });
+        });
+
+        reloadCalendars.run();
+
+        VBox.setVgrow(calTable, Priority.SOMETIMES);
+        VBox.setVgrow(holTable, Priority.ALWAYS);
+        box.getChildren().addAll(hint, bootstrapBtn,
+                new Label(t("workcal.section.calendars")), calTable,
+                new Label(t("workcal.section.holidays")), holTable, actionBar);
+        return box;
+    }
+
+    /** Convierte NATIONAL/CCAA/LOCAL al texto humano según idioma. */
+    private String humanizeScope(String scope) {
+        if (scope == null) return "";
+        return switch (scope) {
+            case "NATIONAL" -> t("workcal.scope.national");
+            case "CCAA"     -> t("workcal.scope.ccaa");
+            case "LOCAL"    -> t("workcal.scope.local");
+            default         -> scope;
+        };
+    }
+
+    /** Diálogo Bootstrap: año fijo 2026 + combo CCAA + municipio + nombre. */
+    private void openWorkCalendarBootstrapDialog(Runnable onSuccess) {
+        Dialog<javafx.scene.control.ButtonType> dlg = new Dialog<>();
+        dlg.setTitle(t("workcal.bootstrap.title"));
+        dlg.setHeaderText(t("workcal.bootstrap.header"));
+        ComboBox<String> ccaa = new ComboBox<>(FXCollections.observableArrayList(
+                "", "AN", "AR", "AS", "IB", "CN", "CB", "CL", "CM", "CT",
+                "VC", "EX", "GA", "MD", "MC", "NC", "PV", "RI", "CE", "ML"));
+        ccaa.setValue("");
+        ccaa.setMaxWidth(Double.MAX_VALUE);
+        TextField muni = new TextField();
+        muni.setPromptText(t("workcal.bootstrap.muni_placeholder"));
+        TextField name = new TextField();
+        name.setPromptText("Calendario 2026");
+        GridPane grid = new GridPane();
+        grid.setHgap(8);
+        grid.setVgap(8);
+        grid.setPadding(new Insets(8));
+        grid.addRow(0, new Label(t("workcal.bootstrap.year")),
+                new Label(String.valueOf(2026)));
+        grid.addRow(1, new Label(t("workcal.bootstrap.ccaa")), ccaa);
+        grid.addRow(2, new Label(t("workcal.bootstrap.muni")), muni);
+        grid.addRow(3, new Label(t("workcal.bootstrap.name")), name);
+        dlg.getDialogPane().setContent(grid);
+        dlg.getDialogPane().getButtonTypes().addAll(
+                javafx.scene.control.ButtonType.CANCEL, javafx.scene.control.ButtonType.OK);
+        dlg.showAndWait().ifPresent(bt -> {
+            if (bt == javafx.scene.control.ButtonType.OK) {
+                Task<com.benjagest.ui.model.WorkCalendarEntry> task = new Task<>() {
+                    @Override protected com.benjagest.ui.model.WorkCalendarEntry call() throws Exception {
+                        return altaApiClient.bootstrapWorkCalendar(2026,
+                                ccaa.getValue() == null || ccaa.getValue().isBlank() ? null : ccaa.getValue(),
+                                muni.getText() == null || muni.getText().isBlank() ? null : muni.getText().trim(),
+                                name.getText() == null || name.getText().isBlank() ? null : name.getText().trim());
+                    }
+                };
+                task.setOnSucceeded(s -> onSuccess.run());
+                task.setOnFailed(s -> showError(t("workcal.bootstrap.fail.title"),
+                        task.getException() == null ? "" : task.getException().getMessage()));
+                start(task, "workcal-bootstrap");
+            }
+        });
+    }
+
+    /** Diálogo añadir festivo: DatePicker + nombre + scope + notas. */
+    private void openAddHolidayDialog(String calendarId, Runnable onSuccess) {
+        Dialog<javafx.scene.control.ButtonType> dlg = new Dialog<>();
+        dlg.setTitle(t("workcal.add_holiday.title"));
+        dlg.setHeaderText(t("workcal.add_holiday.header"));
+        DatePicker date = new DatePicker();
+        date.setMaxWidth(Double.MAX_VALUE);
+        TextField name = new TextField();
+        name.setPromptText(t("workcal.add_holiday.name_placeholder"));
+        ComboBox<String> scope = new ComboBox<>(FXCollections.observableArrayList(
+                "NATIONAL", "CCAA", "LOCAL"));
+        scope.setValue("LOCAL");
+        scope.setConverter(new javafx.util.StringConverter<>() {
+            @Override public String toString(String s) { return s == null ? "" : humanizeScope(s); }
+            @Override public String fromString(String s) { return null; }
+        });
+        scope.setMaxWidth(Double.MAX_VALUE);
+        TextField notes = new TextField();
+        notes.setPromptText(t("workcal.add_holiday.notes_placeholder"));
+        GridPane grid = new GridPane();
+        grid.setHgap(8);
+        grid.setVgap(8);
+        grid.setPadding(new Insets(8));
+        grid.addRow(0, new Label(t("workcal.col.date")), date);
+        grid.addRow(1, new Label(t("workcal.col.holiday_name")), name);
+        grid.addRow(2, new Label(t("workcal.col.scope")), scope);
+        grid.addRow(3, new Label(t("workcal.col.notes")), notes);
+        dlg.getDialogPane().setContent(grid);
+        dlg.getDialogPane().getButtonTypes().addAll(
+                javafx.scene.control.ButtonType.CANCEL, javafx.scene.control.ButtonType.OK);
+        dlg.showAndWait().ifPresent(bt -> {
+            if (bt == javafx.scene.control.ButtonType.OK) {
+                if (date.getValue() == null || name.getText() == null || name.getText().isBlank()) {
+                    showError(t("workcal.error"), t("workcal.add_holiday.fail.missing"));
+                    return;
+                }
+                Task<Void> task = new Task<>() {
+                    @Override protected Void call() throws Exception {
+                        altaApiClient.addHoliday(calendarId, date.getValue(),
+                                name.getText().trim(), scope.getValue(), true,
+                                notes.getText() == null || notes.getText().isBlank() ? null
+                                        : notes.getText().trim());
+                        return null;
+                    }
+                };
+                task.setOnSucceeded(s -> onSuccess.run());
+                task.setOnFailed(s -> showError(t("workcal.add_holiday.fail.title"),
+                        task.getException() == null ? "" : task.getException().getMessage()));
+                start(task, "workcal-add-holiday");
+            }
+        });
     }
 }
