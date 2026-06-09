@@ -41,13 +41,66 @@ public class AnomalyDetectionScheduler {
     private final VerifactuRegistryRepository registryRepository;
     private final VerifactuRegistryService verifactuRegistryService;
     private final SifEventService sifEventService;
+    private final org.springframework.jdbc.core.JdbcTemplate jdbc;
+    private final com.benjagest.backend.advisory.notifications.AdvisoryNotificationService notificationService;
 
     public AnomalyDetectionScheduler(VerifactuRegistryRepository registryRepository,
                                       VerifactuRegistryService verifactuRegistryService,
-                                      SifEventService sifEventService) {
+                                      SifEventService sifEventService,
+                                      org.springframework.jdbc.core.JdbcTemplate jdbc,
+                                      com.benjagest.backend.advisory.notifications.AdvisoryNotificationService notificationService) {
         this.registryRepository = registryRepository;
         this.verifactuRegistryService = verifactuRegistryService;
         this.sifEventService = sifEventService;
+        this.jdbc = jdbc;
+        this.notificationService = notificationService;
+    }
+
+    /**
+     * Notifica al asesor (si existe) que la cadena hash SIF de uno de
+     * sus clientes está rota. Severity URGENT por ser tema legal —
+     * inalterabilidad del registro AEAT.
+     *
+     * <p>Try/catch defensivo para no romper el scheduler si falla.
+     */
+    private void notifyAdvisorOfBrokenChain(String clientCompanyId, String target,
+                                             String reason) {
+        if (notificationService == null) return;
+        try {
+            // Buscar la asesoría del cliente (parent_company_id).
+            String advisoryId = jdbc.query(
+                    "SELECT parent_company_id FROM companies WHERE id = ?",
+                    rs -> rs.next() ? rs.getString(1) : null,
+                    clientCompanyId);
+            if (advisoryId == null) return;
+            String clientName = jdbc.query(
+                    "SELECT legal_name FROM companies WHERE id = ?",
+                    rs -> rs.next() ? rs.getString(1) : null,
+                    clientCompanyId);
+            if (clientName == null) clientName = clientCompanyId;
+            String entityRef = "anomaly:" + clientCompanyId + ":" + target
+                    + ":" + java.time.LocalDate.now();
+            // Idempotencia diaria.
+            Integer existing = jdbc.queryForObject("""
+                    SELECT COUNT(*) FROM advisory_notifications
+                     WHERE advisory_company_id = ? AND entity_ref = ?
+                    """, Integer.class, advisoryId, entityRef);
+            if (existing != null && existing > 0) return;
+            notificationService.emit(
+                    new com.benjagest.backend.advisory.notifications.AdvisoryNotificationService.EmitRequest(
+                            advisoryId, clientCompanyId,
+                            "SIF_CHAIN_BROKEN",
+                            com.benjagest.backend.advisory.notifications.AdvisoryNotificationService.SEVERITY_URGENT,
+                            "Cadena hash SIF rota en " + clientName,
+                            "Anomalía detectada en cadena " + target
+                                    + " del cliente " + clientName + ". Motivo: "
+                                    + (reason == null ? "desconocido" : reason)
+                                    + ". Esto puede indicar manipulación de los datos.",
+                            entityRef));
+        } catch (Exception ex) {
+            log.warn("VF-ANOMALY: no se pudo notificar al asesor de {} ({})",
+                    clientCompanyId, ex.getMessage());
+        }
     }
 
     @Scheduled(fixedDelay = TWELVE_HOURS_MS, initialDelay = INITIAL_DELAY_MS)
@@ -91,6 +144,11 @@ public class AnomalyDetectionScheduler {
                             "ANOMALY_DETECTION_INVOICES_HIT", hitPayload);
                     log.warn("VF-ANOMALY: cadena facturas rota en empresa {} mode {} ({})",
                             ref.companyId(), ref.mode(), report.reason());
+                    // Notifica al asesor del cliente (si tiene): la
+                    // cadena hash rota es tema legal — visibilidad
+                    // prioritaria en bandeja con URGENT.
+                    notifyAdvisorOfBrokenChain(ref.companyId(),
+                            "facturas", report.reason());
                 }
             } catch (RuntimeException ex) {
                 log.warn("VF-ANOMALY: error verificando cadena facturas empresa={} mode={}",
@@ -121,6 +179,7 @@ public class AnomalyDetectionScheduler {
                             "ANOMALY_DETECTION_EVENTS_HIT", hitPayload);
                     log.warn("VF-ANOMALY: cadena eventos SIF rota en empresa {} ({})",
                             companyId, report.reason());
+                    notifyAdvisorOfBrokenChain(companyId, "eventos SIF", report.reason());
                 }
             } catch (RuntimeException ex) {
                 log.warn("VF-ANOMALY: error verificando cadena eventos empresa={}",
