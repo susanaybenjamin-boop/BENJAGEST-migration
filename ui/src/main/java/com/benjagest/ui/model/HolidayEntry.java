@@ -17,5 +17,15 @@ public record HolidayEntry(
         String scope,
         boolean isPaid,
         String notes,
+        /** FESTIVO | AJUSTE | CIERRE. Default: FESTIVO. */
+        String holidayType,
         Instant createdAt
-) {}
+) {
+    /** Constructor de compat — usa FESTIVO. */
+    public HolidayEntry(String id, String workCalendarId, LocalDate holidayDate,
+            String name, String scope, boolean isPaid, String notes,
+            Instant createdAt) {
+        this(id, workCalendarId, holidayDate, name, scope, isPaid, notes,
+                "FESTIVO", createdAt);
+    }
+}

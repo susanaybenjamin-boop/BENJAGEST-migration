@@ -21,6 +21,14 @@ public record HolidayPdfPreview(
             String name,
             String scope,
             String confidence,
-            String rawSourceLine
-    ) {}
+            String rawSourceLine,
+            /** FESTIVO | AJUSTE | CIERRE. Default: FESTIVO. */
+            String holidayType
+    ) {
+        /** Compat: constructor de 5 args asume FESTIVO. */
+        public DetectedHoliday(LocalDate date, String name, String scope,
+                String confidence, String rawSourceLine) {
+            this(date, name, scope, confidence, rawSourceLine, "FESTIVO");
+        }
+    }
 }

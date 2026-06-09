@@ -1384,12 +1384,14 @@ public class AltaApiClient {
             if (bracketEnd > bracketStart) {
                 String inner = json.substring(bracketStart + 1, bracketEnd);
                 for (String obj : splitTopLevelObjects(inner)) {
+                    String ht = textField(obj, "holidayType");
                     holidays.add(new com.benjagest.ui.model.HolidayPdfPreview.DetectedHoliday(
                             parseLocalDate(textField(obj, "date")),
                             textField(obj, "name"),
                             textField(obj, "scope"),
                             textField(obj, "confidence"),
-                            textField(obj, "rawSourceLine")));
+                            textField(obj, "rawSourceLine"),
+                            ht == null || ht.isBlank() ? "FESTIVO" : ht));
                 }
             }
         }
@@ -1449,7 +1451,9 @@ public class AltaApiClient {
               .append(field("name", h.name())).append(",")
               .append(field("scope", h.scope())).append(",")
               .append("\"isPaid\":").append(h.isPaid()).append(",")
-              .append(field("notes", h.notes()))
+              .append(field("notes", h.notes())).append(",")
+              .append(field("holidayType",
+                      h.holidayType() == null ? "FESTIVO" : h.holidayType()))
               .append("}");
         }
         sb.append("]");
@@ -1478,6 +1482,7 @@ public class AltaApiClient {
     }
 
     private com.benjagest.ui.model.HolidayEntry mapHoliday(String obj) {
+        String ht = textField(obj, "holidayType");
         return new com.benjagest.ui.model.HolidayEntry(
                 textField(obj, "id"),
                 textField(obj, "workCalendarId"),
@@ -1486,6 +1491,7 @@ public class AltaApiClient {
                 textField(obj, "scope"),
                 boolField(obj, "isPaid"),
                 textField(obj, "notes"),
+                ht == null || ht.isBlank() ? "FESTIVO" : ht,
                 parseInstant(textField(obj, "createdAt"))
         );
     }
