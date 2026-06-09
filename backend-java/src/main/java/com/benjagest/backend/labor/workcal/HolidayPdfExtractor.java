@@ -399,7 +399,71 @@ public class HolidayPdfExtractor {
                     label != null ? 0.95 : 0.75,
                     label != null ? "festivo:subtipo" : "festivo:heuristica");
         }
+        // Mejora sobre CONTENDO v3: si la descripción contiene un
+        // nombre canónico de festivo conocido (Epifanía, Inmaculada,
+        // Asunción, etc.), lo aceptamos como festivo aunque no
+        // contenga "fiesta" o "día de". Confidence MEDIUM (0.7) para
+        // que se vea distinto del HIGH explícito.
+        String dNoAcc = stripAccents(d).replace('�', ' ').replaceAll("\\s+", " ").trim();
+        for (var entry : CANONICAL_HOLIDAYS.entrySet()) {
+            if (dNoAcc.contains(entry.getKey())) {
+                String labelFromCanonical = entry.getValue();
+                return new Classification("festivo_local", false,
+                        label != null ? label : labelFromCanonical,
+                        0.7,
+                        "canonical:" + entry.getKey());
+            }
+        }
         return new Classification("convenio", true, "indeterminado", 0.35, "fallback");
+    }
+
+    /**
+     * Nombres canónicos de festivos españoles (calendario civil/religioso)
+     * que cuando aparecen en la descripción nos permiten clasificar como
+     * festivo aunque no diga la palabra "fiesta" / "día de".
+     *
+     * <p>Mejora conservadora sobre CONTENDO v3 — en CONTENDO,
+     * "Epifanía del Señor" cae a fallback (laborable indeterminado) y se
+     * descarta. Aquí lo pillamos.
+     *
+     * <p>Las claves se buscan en la descripción tras
+     * {@link #stripAccents(String)} (sin tildes, lowercase) para soportar
+     * PDFs con encoding roto que reemplazan tildes por U+FFFD.
+     */
+    private static final Map<String, String> CANONICAL_HOLIDAYS = new LinkedHashMap<>();
+    static {
+        // Festivos nacionales del Estado.
+        CANONICAL_HOLIDAYS.put("ano nuevo",          "nacional"); // 1 ene
+        CANONICAL_HOLIDAYS.put("epifania",           "nacional"); // 6 ene
+        CANONICAL_HOLIDAYS.put("reyes magos",        "nacional");
+        CANONICAL_HOLIDAYS.put("jueves santo",       "nacional");
+        CANONICAL_HOLIDAYS.put("viernes santo",      "nacional");
+        CANONICAL_HOLIDAYS.put("asuncion de la virgen", "nacional"); // 15 ago
+        CANONICAL_HOLIDAYS.put("asuncion",           "nacional");
+        CANONICAL_HOLIDAYS.put("hispanidad",         "nacional"); // 12 oct
+        CANONICAL_HOLIDAYS.put("todos los santos",   "nacional"); // 1 nov
+        CANONICAL_HOLIDAYS.put("constitucion espanola", "nacional"); // 6 dic
+        CANONICAL_HOLIDAYS.put("constitucion",       "nacional");
+        CANONICAL_HOLIDAYS.put("inmaculada concepcion", "nacional"); // 8 dic
+        CANONICAL_HOLIDAYS.put("inmaculada",         "nacional");
+        CANONICAL_HOLIDAYS.put("natividad del senor","nacional"); // 25 dic
+        CANONICAL_HOLIDAYS.put("natividad",          "nacional");
+        CANONICAL_HOLIDAYS.put("navidad",            "nacional");
+        // Algunos autonómicos comunes.
+        CANONICAL_HOLIDAYS.put("dia de andalucia",   "autonomico"); // 28 feb
+        CANONICAL_HOLIDAYS.put("san jorge",          "autonomico"); // 23 abr Aragón
+        CANONICAL_HOLIDAYS.put("dia de galicia",     "autonomico");
+        CANONICAL_HOLIDAYS.put("diada",              "autonomico");
+        CANONICAL_HOLIDAYS.put("corpus christi",     "autonomico");
+        CANONICAL_HOLIDAYS.put("san fermin",         "local");
+    }
+
+    /** Quita tildes (NFD-strip) y baja a lowercase para matching robusto. */
+    private static String stripAccents(String s) {
+        if (s == null) return "";
+        String norm = java.text.Normalizer.normalize(s, java.text.Normalizer.Form.NFD);
+        return norm.replaceAll("\\p{InCombiningDiacriticalMarks}+", "")
+                .toLowerCase(Locale.ROOT);
     }
 
     private String buildDescription(String descOriginal) {
