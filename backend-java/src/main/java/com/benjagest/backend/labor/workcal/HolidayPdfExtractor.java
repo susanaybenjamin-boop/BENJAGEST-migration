@@ -3,12 +3,13 @@ package com.benjagest.backend.labor.workcal;
 import com.benjagest.backend.purchases.pdfimport.PdfTextExtractor;
 import java.io.IOException;
 import java.time.LocalDate;
-import java.time.Month;
 import java.util.ArrayList;
-import java.util.HashSet;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
-import java.util.Set;
+import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.springframework.stereotype.Service;
@@ -16,37 +17,56 @@ import org.springframework.stereotype.Service;
 /**
  * Extractor de festivos desde PDFs de calendario laboral.
  *
- * <p>Pensado para los PDFs que publica cada CCAA y que el usuario
- * descarga (BOE, BOJA, BOPV, DOGC, etc.) o el PDF del convenio
- * colectivo de su empresa. Reproduce el flujo de CONTENDO:
- * {@code calendarioParser.v3.js} → ocrEngine.
+ * <h2>Port fiel del parser de CONTENDO</h2>
  *
- * <h2>Estrategia</h2>
+ * <p>Este código es un port a Java de
+ * {@code backend/src/services/ocr/calendarioParser.v3.js} de CONTENDO
+ * (RUTA: {@code C:\Proyectos\CONTENDO GESTIONES}). La versión inicial
+ * que escribí buscaba fechas explícitas tipo {@code "1 de enero"} o
+ * {@code "15/8/2026"}, que casi nunca aparecen en los PDFs reales que
+ * los usuarios descargan del Boletín Oficial Provincial / CCAA — esos
+ * PDFs están organizados por cabecera de mes ({@code ENERO}) seguidas
+ * de líneas con día de la semana ({@code Miércoles 1 Día de Año
+ * Nuevo}). Benjamin lo destapó subiendo un PDF real (2026-06-09).
+ *
+ * <h2>Algoritmo</h2>
  * <ol>
- *   <li>Reutiliza {@link PdfTextExtractor#extract(byte[])} para sacar
- *       el texto plano.</li>
- *   <li>Detecta el año del calendario por contexto (primer año YYYY
- *       que aparezca, fallback al año actual).</li>
- *   <li>Lee línea a línea y busca patrones de fecha en español:
- *       <ul>
- *         <li>{@code 1 de enero}, {@code 15 agosto}, {@code 6/12/2026}.</li>
- *         <li>{@code 2026-12-25}, {@code 25/12/26}, {@code 25-12-2026}.</li>
- *       </ul></li>
- *   <li>Captura el texto cercano como descripción del festivo.</li>
- *   <li>Clasifica scope (NATIONAL/CCAA/LOCAL) por keywords:
- *       <ul>
- *         <li>"nacional" / "estatal" → NATIONAL.</li>
- *         <li>"autonómic*" / "comunidad" / nombres de CCAA → CCAA.</li>
- *         <li>"local" / "municipal" / "patrón" / "patrona" → LOCAL.</li>
- *         <li>Por defecto: CCAA (lo más común en PDFs de convenio).</li>
- *       </ul></li>
- *   <li>Asigna confidence HIGH/MEDIUM/LOW para que la UI pinte
- *       badges y el usuario sepa a qué prestar atención.</li>
+ *   <li>Normaliza texto: aplica {@link #OCR_FIXES} (taborables→laborables,
+ *       convento→convenio, etc.) y caracteres tipográficos.</li>
+ *   <li>Adivina el año: cuenta apariciones de {@code 20XX} y se queda
+ *       con el más frecuente.</li>
+ *   <li>Recorre línea por línea:
+ *     <ul>
+ *       <li>Si la línea es cabecera de mes ({@code ENERO}, {@code
+ *           FEBRERO}…) guarda {@code currentMonth} y entra en modo
+ *           "parsing".</li>
+ *       <li>Si está en sección "stop" (acuerdo de jornada, notas, etc.)
+ *           y ya había empezado parsing, corta.</li>
+ *       <li>Si la línea empieza con día de la semana ({@code Miércoles
+ *           1 …}), extrae día + descripción.</li>
+ *       <li>Cualquier otra línea se ignora — por eso el ruido tipo
+ *           "BBoolleettíínn" no entra como falso positivo.</li>
+ *     </ul>
+ *   </li>
+ *   <li>Clasifica cada item por keywords (nacional/autonómico/local/
+ *       cierre/convenio/laborable_extra).</li>
+ *   <li>Dedupe por fecha priorizando mayor confianza + rank de tipo.</li>
  * </ol>
  *
- * <p>NO impone tope de 14 — eso lo hace el Service al volcar. Aquí
- * extraemos TODO lo que parece festivo; el usuario corregirá en el
- * modal antes de persistir.
+ * <p>Mapeo al modelo BENJAGEST: como BENJAGEST solo tiene scope
+ * NATIONAL/CCAA/LOCAL, mapeamos:
+ * <ul>
+ *   <li>label=nacional → {@code NATIONAL}</li>
+ *   <li>label=autonómico → {@code CCAA}</li>
+ *   <li>label=local → {@code LOCAL}</li>
+ *   <li>cierre_empresa → {@code LOCAL} (cierre propio de la empresa)</li>
+ *   <li>cualquier otro → {@code LOCAL}</li>
+ * </ul>
+ *
+ * <p>Solo los items con {@code es_laborable=false} (festivos reales y
+ * cierres de empresa) se devuelven por defecto. Los ajustes de convenio
+ * y laborables extra el usuario los añade manualmente en el modal si
+ * los quiere — el sistema actual de BENJAGEST solo modela festivos.
  */
 @Service
 public class HolidayPdfExtractor {
@@ -57,7 +77,6 @@ public class HolidayPdfExtractor {
         this.pdf = pdf;
     }
 
-    /** Resultado de un PDF entero. */
     public record ExtractionResult(
             int year,
             List<DetectedHoliday> holidays,
@@ -65,11 +84,6 @@ public class HolidayPdfExtractor {
             int totalLines
     ) {}
 
-    /**
-     * Una fila candidata para volcar al calendario. La UI presenta
-     * estas filas en el panel "Detectados (lo que ha sacado el
-     * importador)"; el usuario puede editar inline antes del volcado.
-     */
     public record DetectedHoliday(
             LocalDate date,
             String name,
@@ -79,244 +93,308 @@ public class HolidayPdfExtractor {
     ) {}
 
     public ExtractionResult extract(byte[] pdfBytes) throws IOException {
-        String text = pdf.extract(pdfBytes);
-        if (text == null || text.isBlank()) {
-            return new ExtractionResult(LocalDate.now().getYear(),
-                    List.of(), "", 0);
+        String raw = pdf.extract(pdfBytes);
+        if (raw == null || raw.isBlank()) {
+            return new ExtractionResult(LocalDate.now().getYear(), List.of(), "", 0);
         }
-        int year = detectYear(text);
-        String[] lines = text.split("\\r?\\n");
-        List<DetectedHoliday> out = new ArrayList<>();
-        Set<LocalDate> seen = new HashSet<>();  // dedup por fecha
-        for (String raw : lines) {
-            String line = clean(raw);
-            if (line.isEmpty()) continue;
-            // Buscar fecha en la línea — distintos patrones, en
-            // orden de prioridad (los más explícitos primero).
-            LocalDate date = parseDateAny(line, year);
-            if (date == null) continue;
-            if (seen.contains(date)) continue;
-            seen.add(date);
-            String name = extractName(line, date);
-            String scope = classifyScope(line, name);
-            String confidence = computeConfidence(line, name);
-            out.add(new DetectedHoliday(date, name, scope, confidence, line));
+        String normalized = normalizeRaw(raw);
+        int year = guessYear(normalized);
+
+        String[] rawLines = normalized.split("\\r?\\n");
+        List<String> lines = new ArrayList<>();
+        for (String l : rawLines) {
+            String c = cleanLine(l);
+            if (!c.isEmpty()) lines.add(c);
         }
-        return new ExtractionResult(year, out,
-                text.length() > 500 ? text.substring(0, 500) : text,
-                lines.length);
+
+        Integer currentMonth = null;
+        boolean parsingEvents = false;
+        List<DetectedHoliday> items = new ArrayList<>();
+
+        for (int i = 0; i < lines.size(); i++) {
+            String line = lines.get(i);
+            String lower = line.toLowerCase(Locale.ROOT);
+
+            // Stop sections: rompen el parsing si ya estábamos parseando.
+            if (isStopSection(lower)) {
+                if (parsingEvents) break;
+                continue;
+            }
+
+            // Cabecera de mes ("ENERO", "FEBRERO"…).
+            Integer mh = findMonthHeader(lower);
+            if (mh != null) {
+                currentMonth = mh;
+                parsingEvents = true;
+                continue;
+            }
+
+            // Hasta no detectar mes, no parseamos nada.
+            if (currentMonth == null) continue;
+
+            ParsedDay parsed = parseDayLine(line);
+            if (parsed == null) continue;
+
+            Classification cls = classify(parsed.desc);
+            // Solo nos quedamos con eventos no laborables (festivos
+            // reales y cierres). Los ajustes de convenio y laborables
+            // extra los descartamos del preview — el usuario los añade
+            // manualmente si los quiere.
+            if (cls.isWorkable) continue;
+
+            String name = buildDescription(parsed.desc);
+            String scope = mapScopeForBenjagest(cls);
+            String confidence = bandFromScore(cls.confidence);
+
+            LocalDate date;
+            try {
+                date = LocalDate.of(year, currentMonth, parsed.day);
+            } catch (Exception ex) {
+                continue;
+            }
+
+            items.add(new DetectedHoliday(
+                    date,
+                    name == null || name.isBlank() ? "(sin descripción)" : name,
+                    scope,
+                    confidence,
+                    line
+            ));
+        }
+
+        items = dedupe(items);
+        return new ExtractionResult(year, items,
+                raw.length() > 500 ? raw.substring(0, 500) : raw,
+                lines.size());
     }
 
     // ============================================================
-    //  Detección de año
+    //  Constantes (port directo de CONTENDO)
     // ============================================================
 
-    private static final Pattern YEAR_PATTERN =
-            Pattern.compile("\\b(20\\d{2})\\b");
+    private static final Map<String, Integer> MONTHS = new LinkedHashMap<>();
+    static {
+        MONTHS.put("enero", 1);
+        MONTHS.put("febrero", 2);
+        MONTHS.put("marzo", 3);
+        MONTHS.put("abril", 4);
+        MONTHS.put("mayo", 5);
+        MONTHS.put("junio", 6);
+        MONTHS.put("julio", 7);
+        MONTHS.put("agosto", 8);
+        MONTHS.put("septiembre", 9);
+        MONTHS.put("setiembre", 9);
+        MONTHS.put("octubre", 10);
+        MONTHS.put("noviembre", 11);
+        MONTHS.put("diciembre", 12);
+    }
 
-    private int detectYear(String text) {
-        Matcher m = YEAR_PATTERN.matcher(text);
-        // El primer año que aparezca suele ser el del título; nos
-        // quedamos con él. Si no hay, año actual.
-        if (m.find()) {
-            try { return Integer.parseInt(m.group(1)); }
-            catch (NumberFormatException ex) { /* fallthrough */ }
-        }
-        return LocalDate.now().getYear();
+    private static final String[] WEEKDAYS = {
+            "lunes", "martes", "miércoles", "miercoles",
+            "jueves", "viernes", "sábado", "sabado", "domingo"
+    };
+
+    /** Correcciones OCR específicas (port directo de calendarioParser.v3.js). */
+    private static final List<Pattern[]> OCR_FIXES;
+    static {
+        // Cada par: [regex, reemplazo] (el "reemplazo" lo guardo como
+        // segundo Pattern.compile dummy con pattern() = la string).
+        // En CONTENDO son tuples [regex, replacement].
+        OCR_FIXES = List.of(
+                new Pattern[]{Pattern.compile("\\btaborables\\b", Pattern.CASE_INSENSITIVE), Pattern.compile("laborables", Pattern.LITERAL)},
+                new Pattern[]{Pattern.compile("\\bconvento\\b", Pattern.CASE_INSENSITIVE), Pattern.compile("convenio", Pattern.LITERAL)},
+                new Pattern[]{Pattern.compile("\\bTed(os)?\\b"), Pattern.compile("Todos", Pattern.LITERAL)},
+                new Pattern[]{Pattern.compile("\\blocaliclad\\b", Pattern.CASE_INSENSITIVE), Pattern.compile("localidad", Pattern.LITERAL)},
+                new Pattern[]{Pattern.compile("\\bfimantes\\b", Pattern.CASE_INSENSITIVE), Pattern.compile("firmantes", Pattern.LITERAL)},
+                new Pattern[]{Pattern.compile("[—–]"), Pattern.compile("-", Pattern.LITERAL)}
+        );
     }
 
     // ============================================================
-    //  Parsers de fecha
+    //  Normalización
     // ============================================================
 
-    /** Captura "15/8/2026", "15-08-2026", "2026-08-15", "15/08/26". */
-    private static final Pattern NUMERIC_DATE =
-            Pattern.compile("(\\d{1,2})[/\\-.](\\d{1,2})[/\\-.](\\d{2,4})|"
-                    + "(\\d{4})[/\\-.](\\d{1,2})[/\\-.](\\d{1,2})");
-
-    /** Captura "15 de enero", "1 enero", "15 de agosto de 2026". */
-    private static final Pattern SPANISH_DATE =
-            Pattern.compile("(\\d{1,2})\\s+(?:de\\s+)?(enero|febrero|marzo|abril|mayo|junio|"
-                    + "julio|agosto|septiembre|setiembre|octubre|noviembre|diciembre)"
-                    + "(?:\\s+(?:de\\s+)?(\\d{4}))?",
-                    Pattern.CASE_INSENSITIVE);
-
-    private LocalDate parseDateAny(String line, int contextYear) {
-        // Spanish dates como "1 de enero" son más fiables porque
-        // garantizan que es una fecha; los numéricos pueden chocar
-        // con códigos postales, NIFs, etc.
-        Matcher es = SPANISH_DATE.matcher(line);
-        if (es.find()) {
-            try {
-                int day = Integer.parseInt(es.group(1));
-                Month month = monthFromSpanish(es.group(2));
-                int year = es.group(3) != null
-                        ? Integer.parseInt(es.group(3)) : contextYear;
-                if (day >= 1 && day <= 31 && month != null) {
-                    return LocalDate.of(year, month, day);
-                }
-            } catch (Exception ex) { /* fall through */ }
+    private String normalizeRaw(String text) {
+        String t = text == null ? "" : text;
+        for (Pattern[] fix : OCR_FIXES) {
+            t = fix[0].matcher(t).replaceAll(fix[1].pattern());
         }
-        Matcher num = NUMERIC_DATE.matcher(line);
-        if (num.find()) {
-            try {
-                int day, month, year;
-                if (num.group(1) != null) {
-                    // DD/MM/YYYY o DD/MM/YY
-                    day = Integer.parseInt(num.group(1));
-                    month = Integer.parseInt(num.group(2));
-                    String yStr = num.group(3);
-                    year = yStr.length() == 2
-                            ? 2000 + Integer.parseInt(yStr)
-                            : Integer.parseInt(yStr);
-                } else {
-                    // YYYY-MM-DD
-                    year = Integer.parseInt(num.group(4));
-                    month = Integer.parseInt(num.group(5));
-                    day = Integer.parseInt(num.group(6));
-                }
-                if (day >= 1 && day <= 31 && month >= 1 && month <= 12
-                        && year >= 2020 && year <= 2050) {
-                    return LocalDate.of(year, month, day);
-                }
-            } catch (Exception ex) { /* fall through */ }
+        t = t.replace(' ', ' ')
+             .replace('“', '"').replace('”', '"')
+             .replace('’', '\'').replace('‘', '\'')
+             .replaceAll("\\s+\\n", "\n")
+             .replaceAll("\\n\\s+", "\n");
+        return t;
+    }
+
+    private String cleanLine(String line) {
+        if (line == null) return "";
+        String s = line.trim();
+        s = s.replaceAll("\\s*[>»]+.*$", "");
+        s = s.replaceAll("\\s*[íÍ]\\s*»\\s*[A-Z]\\s*$", "");
+        // Letra suelta al final (1 char) la quitamos — ruido OCR.
+        s = s.replaceAll("\\s+[A-Z]$", "");
+        s = s.replaceAll("\\s*[-=]{2,}\\s*$", "");
+        s = s.replaceAll("\\s+", " ").trim();
+        if (s.length() < 4) return "";
+        if (s.matches("^[\\-\\=\\>\\.\\,\\s]+$")) return "";
+        return s;
+    }
+
+    private int guessYear(String text) {
+        Matcher m = Pattern.compile("\\b(20\\d{2})\\b").matcher(text);
+        Map<String, Integer> freq = new HashMap<>();
+        String first = null;
+        while (m.find()) {
+            String y = m.group(1);
+            if (first == null) first = y;
+            freq.merge(y, 1, Integer::sum);
+        }
+        if (freq.isEmpty()) return LocalDate.now().getYear();
+        String best = first;
+        int bestN = 0;
+        for (var e : freq.entrySet()) {
+            if (e.getValue() > bestN) {
+                best = e.getKey();
+                bestN = e.getValue();
+            }
+        }
+        try { return Integer.parseInt(best); }
+        catch (Exception ex) { return LocalDate.now().getYear(); }
+    }
+
+    private Integer findMonthHeader(String lineLower) {
+        for (var e : MONTHS.entrySet()) {
+            if (lineLower.startsWith(e.getKey())) return e.getValue();
         }
         return null;
     }
 
-    private Month monthFromSpanish(String s) {
-        if (s == null) return null;
-        return switch (s.toLowerCase(Locale.ROOT)) {
-            case "enero" -> Month.JANUARY;
-            case "febrero" -> Month.FEBRUARY;
-            case "marzo" -> Month.MARCH;
-            case "abril" -> Month.APRIL;
-            case "mayo" -> Month.MAY;
-            case "junio" -> Month.JUNE;
-            case "julio" -> Month.JULY;
-            case "agosto" -> Month.AUGUST;
-            case "septiembre", "setiembre" -> Month.SEPTEMBER;
-            case "octubre" -> Month.OCTOBER;
-            case "noviembre" -> Month.NOVEMBER;
-            case "diciembre" -> Month.DECEMBER;
-            default -> null;
-        };
+    private boolean isStopSection(String lineLower) {
+        return lineLower.startsWith("(*)")
+                || lineLower.contains("acuerdo de jornada")
+                || lineLower.contains("este calendario es de aplicación")
+                || lineLower.contains("las partes firmantes")
+                || lineLower.contains("jornada de 1736")
+                || lineLower.contains("u.g.t.")
+                || lineLower.contains("informa");
+    }
+
+    private record ParsedDay(int day, String desc) {}
+
+    private ParsedDay parseDayLine(String line) {
+        String lower = line.toLowerCase(Locale.ROOT);
+        String matchedWd = null;
+        for (String wd : WEEKDAYS) {
+            if (lower.startsWith(wd)) { matchedWd = wd; break; }
+        }
+        if (matchedWd == null) return null;
+
+        String rest = lower.substring(matchedWd.length()).trim()
+                .replaceFirst("^[:,.-]\\s*", "");
+        Matcher m = Pattern.compile("^(\\d{1,2})\\b").matcher(rest);
+        if (!m.find()) return null;
+        int day;
+        try { day = Integer.parseInt(m.group(1)); }
+        catch (NumberFormatException ex) { return null; }
+        if (day < 1 || day > 31) return null;
+
+        // Descripción original (case-sensitive del usuario) sin el
+        // prefijo "Miércoles 16 -".
+        String desc = line.replaceFirst(
+                "(?i)^\\s*" + Pattern.quote(matchedWd) + "\\s+\\d{1,2}\\s*[-:.,]?\\s*",
+                "").trim();
+        return new ParsedDay(day, desc);
     }
 
     // ============================================================
-    //  Extracción de nombre
+    //  Clasificación (port directo)
     // ============================================================
 
-    private String extractName(String line, LocalDate date) {
-        // Estrategia: quitar la fecha de la línea y limpiar lo que queda.
-        // Si la línea trae "1 de enero — Año Nuevo", nos queda "Año Nuevo".
-        String cleaned = line
-                .replaceAll("(?i)\\b(\\d{1,2})[/\\-.](\\d{1,2})[/\\-.](\\d{2,4})\\b", "")
-                .replaceAll("(?i)\\b(\\d{4})[/\\-.](\\d{1,2})[/\\-.](\\d{1,2})\\b", "")
-                .replaceAll("(?i)(\\d{1,2})\\s+(?:de\\s+)?(enero|febrero|marzo|abril|mayo|"
-                        + "junio|julio|agosto|septiembre|setiembre|octubre|noviembre|"
-                        + "diciembre)(?:\\s+(?:de\\s+)?\\d{4})?", "")
-                .replaceAll("[\\-•·●▪►:]+", " ")  // separadores
-                .replaceAll("\\s+", " ")
-                .trim();
-        // Si lo que queda es muy corto, intentar deducir un nombre
-        // por la fecha (fallback con clásicos).
-        if (cleaned.length() < 3) {
-            return guessNameByDate(date);
+    private record Classification(
+            String tipo,
+            boolean isWorkable,
+            String label,
+            double confidence,
+            String reason
+    ) {}
+
+    private Classification classify(String descOriginal) {
+        String d = descOriginal == null ? "" : descOriginal.toLowerCase(Locale.ROOT);
+        String label = null;
+        if (d.contains("fiesta nacional") || d.contains("festivo nacional")
+                || d.contains("nacional")) {
+            label = "nacional";
+        } else if (d.contains("auton")) {
+            label = "autonómico";
+        } else if (d.contains("local")) {
+            label = "local";
         }
-        // Si lo que queda empieza con minúscula y la palabra siguiente
-        // empieza con mayúscula, asumimos que la primera palabra es
-        // un separador ("día Año Nuevo" → "Año Nuevo").
-        if (cleaned.length() > 5
-                && Character.isLowerCase(cleaned.charAt(0))
-                && cleaned.contains(" ")) {
-            int sp = cleaned.indexOf(' ');
-            String tail = cleaned.substring(sp + 1).trim();
-            if (!tail.isEmpty() && Character.isUpperCase(tail.charAt(0))) {
-                return tail;
-            }
+        if (d.contains("cierre") || d.contains("cerrado")) {
+            return new Classification("cierre_empresa", false, "cierre", 0.9, "keyword:cierre");
         }
-        return cleaned;
+        if (d.contains("laborable") && (d.contains("extra") || d.contains("adicional"))) {
+            return new Classification("laborable_extra", true, "extra", 0.85, "keyword:laborable_extra");
+        }
+        if (d.contains("ajuste") || d.contains("convenio") || d.contains("jornada")) {
+            return new Classification("convenio", true, "convenio", 0.8, "keyword:convenio_ajuste");
+        }
+        if (d.contains("festivo") || d.contains("fiesta") || d.contains("día de")
+                || d.contains("dia de")) {
+            return new Classification("festivo_local", false,
+                    label != null ? label : "festivo",
+                    label != null ? 0.95 : 0.75,
+                    label != null ? "festivo:subtipo" : "festivo:heuristica");
+        }
+        return new Classification("convenio", true, "indeterminado", 0.35, "fallback");
     }
 
-    /** Conocidos: si solo tenemos la fecha y no hay texto cercano. */
-    private String guessNameByDate(LocalDate d) {
-        return switch (d.getMonth()) {
-            case JANUARY -> d.getDayOfMonth() == 1 ? "Año Nuevo"
-                    : (d.getDayOfMonth() == 6 ? "Reyes" : "");
-            case MAY -> d.getDayOfMonth() == 1 ? "Día del Trabajo" : "";
-            case AUGUST -> d.getDayOfMonth() == 15 ? "Asunción de la Virgen" : "";
-            case OCTOBER -> d.getDayOfMonth() == 12 ? "Fiesta Nacional" : "";
-            case NOVEMBER -> d.getDayOfMonth() == 1 ? "Todos los Santos" : "";
-            case DECEMBER -> switch (d.getDayOfMonth()) {
-                case 6 -> "Día de la Constitución";
-                case 8 -> "Inmaculada Concepción";
-                case 25 -> "Navidad";
-                default -> "";
-            };
-            default -> "";
-        };
+    private String buildDescription(String descOriginal) {
+        if (descOriginal == null) return null;
+        String s = descOriginal.replace("*", "").replaceAll("\\s+", " ").trim();
+        return s.isEmpty() ? null : s;
     }
 
-    // ============================================================
-    //  Clasificación de scope
-    // ============================================================
-
-    private static final Set<String> NATIONAL_KEYWORDS = Set.of(
-            "nacional", "estatal", "estado", "españa");
-    private static final Set<String> LOCAL_KEYWORDS = Set.of(
-            "local", "municipal", "patrón", "patrona", "feria", "fiesta del pueblo",
-            "patronal");
-    private static final Set<String> CCAA_KEYWORDS = Set.of(
-            "autonómico", "autonomico", "comunidad", "autonómica", "autonomica",
-            "andalucía", "andalucia", "aragón", "aragon", "asturias", "baleares",
-            "canarias", "cantabria", "castilla", "cataluña", "catalunya", "cataluna",
-            "valencia", "valenciana", "extremadura", "galicia", "madrid", "murcia",
-            "navarra", "vasco", "euskadi", "rioja", "ceuta", "melilla");
-
-    private String classifyScope(String line, String name) {
-        String low = (line + " " + name).toLowerCase(Locale.ROOT);
-        if (NATIONAL_KEYWORDS.stream().anyMatch(low::contains)) {
-            return WorkCalendar.SCOPE_NATIONAL;
-        }
-        if (LOCAL_KEYWORDS.stream().anyMatch(low::contains)) {
-            return WorkCalendar.SCOPE_LOCAL;
-        }
-        if (CCAA_KEYWORDS.stream().anyMatch(low::contains)) {
+    private String mapScopeForBenjagest(Classification cls) {
+        if ("nacional".equals(cls.label)) return WorkCalendar.SCOPE_NATIONAL;
+        if ("autonómico".equals(cls.label) || "autonomico".equals(cls.label))
             return WorkCalendar.SCOPE_CCAA;
+        return WorkCalendar.SCOPE_LOCAL;  // local, cierre, festivo sin label, etc.
+    }
+
+    private String bandFromScore(double score) {
+        if (score >= 0.85) return "HIGH";
+        if (score >= 0.6) return "MEDIUM";
+        return "LOW";
+    }
+
+    // ============================================================
+    //  Dedupe (port directo)
+    // ============================================================
+
+    private List<DetectedHoliday> dedupe(List<DetectedHoliday> items) {
+        Map<LocalDate, DetectedHoliday> map = new LinkedHashMap<>();
+        for (DetectedHoliday it : items) {
+            DetectedHoliday prev = map.get(it.date());
+            if (prev == null) {
+                map.put(it.date(), it);
+                continue;
+            }
+            int prevConf = confidenceWeight(prev.confidence());
+            int curConf = confidenceWeight(it.confidence());
+            if (curConf > prevConf) map.put(it.date(), it);
         }
-        // Default CCAA — los PDFs de convenio típicamente listan
-        // autonómicos. Si el extractor se equivoca, el usuario corrige.
-        return WorkCalendar.SCOPE_CCAA;
+        List<DetectedHoliday> out = new ArrayList<>(map.values());
+        out.sort(Comparator.comparing(DetectedHoliday::date));
+        return out;
     }
 
-    // ============================================================
-    //  Confianza
-    // ============================================================
-
-    /**
-     * Confidence ayuda al UI a pintar badges:
-     *   HIGH: la línea contiene fecha completa + nombre razonable.
-     *   MEDIUM: fecha clara pero nombre dudoso o muy corto.
-     *   LOW: fallback (solo fecha sin contexto).
-     */
-    private String computeConfidence(String line, String name) {
-        if (name == null || name.isBlank()) return "LOW";
-        if (name.length() < 3) return "LOW";
-        if (line.length() > 30 && name.length() > 5) return "HIGH";
-        return "MEDIUM";
-    }
-
-    // ============================================================
-    //  Utilidad
-    // ============================================================
-
-    private static String clean(String s) {
-        if (s == null) return "";
-        return s.replace(' ', ' ')  // NBSP
-                .replace('–', '-')   // en-dash
-                .replace('—', '-')   // em-dash
-                .replace('’', '\'')  // typographic apostrophe
-                .trim();
+    private int confidenceWeight(String band) {
+        return switch (band == null ? "" : band) {
+            case "HIGH" -> 3;
+            case "MEDIUM" -> 2;
+            case "LOW" -> 1;
+            default -> 0;
+        };
     }
 }

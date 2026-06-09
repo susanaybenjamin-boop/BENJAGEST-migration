@@ -11665,6 +11665,7 @@ public class BenjagestUiApplication extends Application {
             case "workcal.import_pdf.bad_date" -> "Invalid date format: {v} (use YYYY-MM-DD).";
             case "workcal.import_pdf.empty_name" -> "All rows need a name.";
             case "workcal.import_pdf.dump_fail" -> "Dump failed";
+            case "workcal.import_pdf.btn.cancel" -> "Cancel";
             case "workcal.btn.new_calendar" -> "New empty calendar";
             case "workcal.new_cal.title" -> "Create empty calendar";
             case "workcal.new_cal.header" -> "Creates an empty calendar. Use 'Import from PDF' afterwards to load the official holidays from your region's official bulletin (BOE/BOJA/BOPV/DOGC).";
@@ -12039,6 +12040,7 @@ public class BenjagestUiApplication extends Application {
             case "workcal.import_pdf.bad_date" -> "Formato de fecha inválido: {v} (usa AAAA-MM-DD).";
             case "workcal.import_pdf.empty_name" -> "Todas las filas necesitan nombre.";
             case "workcal.import_pdf.dump_fail" -> "No se pudo volcar";
+            case "workcal.import_pdf.btn.cancel" -> "Cancelar";
             case "workcal.btn.new_calendar" -> "Nuevo calendario vacío";
             case "workcal.new_cal.title" -> "Crear calendario vacío";
             case "workcal.new_cal.header" -> "Crea un calendario vacío. Después usa 'Importar desde PDF' para cargar los festivos oficiales desde el boletín de tu CCAA (BOE/BOJA/BOPV/DOGC).";
@@ -24016,7 +24018,7 @@ public class BenjagestUiApplication extends Application {
         VBox.setVgrow(split, Priority.ALWAYS);
 
         // -------- FOOTER --------
-        Button cancelBtn = new Button(t("dialog.cancel"));
+        Button cancelBtn = new Button(t("workcal.import_pdf.btn.cancel"));
         Button dumpBtn = new Button(t("workcal.import_pdf.btn.dump"));
         dumpBtn.setGraphic(icon("fas-check"));
         dumpBtn.getStyleClass().add("primary-button");
