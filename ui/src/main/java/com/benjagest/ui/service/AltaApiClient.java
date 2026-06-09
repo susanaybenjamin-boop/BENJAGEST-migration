@@ -932,15 +932,27 @@ public class AltaApiClient {
     private interface Mapper<T> { T map(String obj); }
 
     /**
-     * Itera por objetos JSON de primer nivel (sin anidamientos) en el
-     * body. `discriminator` debe ser un campo que SIEMPRE aparece en
-     * los objetos para distinguirlos del envoltorio si lo hay.
+     * Itera por objetos JSON de primer nivel en el body.
+     *
+     * <p>El {@code discriminator} debe ser un campo que SIEMPRE aparezca
+     * en los objetos para distinguirlos del envoltorio si lo hay.
+     *
+     * <p>POLISH 2026-06-09: el implementación previa usaba el regex
+     * {@code \{[^{}]*\}} que solo matchea objetos planos y fallaba
+     * silenciosamente con objetos que tuvieran sub-objetos. Esto mordió
+     * tres veces (convenios CTR-2, asignaciones EMP-SCOPE, assignment
+     * matrix). Ahora delegamos en {@link #splitTopLevelObjects} que
+     * balancea llaves y filtra los que contengan el discriminator —
+     * mismo comportamiento para objetos planos pero seguro con anidados.
      */
     private <T> List<T> parseObjects(String json, String discriminator, Mapper<T> mapper) {
         List<T> out = new ArrayList<>();
-        Matcher m = Pattern.compile("\\{[^{}]*\"" + discriminator + "\"\\s*:\\s*(?:\"[^\"]*\"|\\d+)[^{}]*\\}")
-                .matcher(json);
-        while (m.find()) out.add(mapper.map(m.group()));
+        String discToken = "\"" + discriminator + "\"";
+        for (String obj : splitTopLevelObjects(json)) {
+            if (obj.contains(discToken)) {
+                out.add(mapper.map(obj));
+            }
+        }
         return out;
     }
 
