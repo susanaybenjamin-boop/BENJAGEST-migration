@@ -21,7 +21,13 @@ spring:
     # distinto al original, todas las cadenas aparecían rotas.
     # forceConnectionTimeZoneToSession=true: aplica también a la sesión
     # MariaDB para que CURRENT_TIMESTAMP de la propia BD sea coherente.
-    url: ${BENJAGEST_DB_URL:jdbc:mariadb://localhost:3306/benjagest?connectionTimeZone=UTC&forceConnectionTimeZoneToSession=true}
+    # Puerto 3307 = MariaDB 11.4 del proyecto BENJAGEST.
+    # El 3306 lo ocupa otra instancia (entorno de Pablo) que tiene una BD
+    # 'benjagest' casi vacía. Conectarse al 3306 por accidente produce un
+    # bug muy confuso: la UI no ve los datos que sí están en BD (sesión
+    # 2026-06-09 lo cazo). Si necesitas otro host/puerto, exporta
+    # BENJAGEST_DB_URL antes de arrancar.
+    url: ${BENJAGEST_DB_URL:jdbc:mariadb://localhost:3307/benjagest?connectionTimeZone=UTC&forceConnectionTimeZoneToSession=true}
     username: ${BENJAGEST_DB_USER:benjagest}
     password: ${BENJAGEST_DB_PASSWORD:benjagest}
     driver-class-name: org.mariadb.jdbc.Driver
