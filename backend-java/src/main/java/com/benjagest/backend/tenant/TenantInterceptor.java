@@ -35,17 +35,32 @@ public class TenantInterceptor implements HandlerInterceptor {
     @Override
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) {
         String header = request.getHeader("X-Company-Id");
+        String path = request.getRequestURI();
+        String jwtCompanyId = null;
+        String userEmail = "(no-auth)";
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (authentication != null
+                && authentication.getPrincipal() instanceof AuthenticatedUser user) {
+            jwtCompanyId = user.activeCompanyId();
+            userEmail = user.email();
+        }
+
+        // LOG TEMPORAL (Benjamin 2026-06-09): qué companyId se usa en cada
+        // petición. Quitar tras diagnóstico.
+        if (path.contains("/customers") || path.contains("/billing") || path.contains("/audit")
+                || path.contains("/purchases") || path.contains("/work-calendar")) {
+            System.out.println("[TENANT-DEBUG] " + path
+                    + " user=" + userEmail
+                    + " X-Company-Id=" + header
+                    + " JWT.activeCompanyId=" + jwtCompanyId);
+        }
+
         if (header != null && !header.isBlank()) {
             tenantContext.setCurrentCompanyId(header.trim());
             return true;
         }
-
-        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-        if (authentication != null
-                && authentication.getPrincipal() instanceof AuthenticatedUser user
-                && user.activeCompanyId() != null
-                && !user.activeCompanyId().isBlank()) {
-            tenantContext.setCurrentCompanyId(user.activeCompanyId());
+        if (jwtCompanyId != null && !jwtCompanyId.isBlank()) {
+            tenantContext.setCurrentCompanyId(jwtCompanyId);
         }
         return true;
     }
