@@ -373,4 +373,133 @@ public final class EditableCells {
             return null;
         }
     }
+
+    // ============================================================
+    //  TextField flexible para fechas (estilo CONTENDO)
+    // ============================================================
+    //
+    //  CONTENDO usa <input type="date"> nativo HTML: TextField simple
+    //  sin popup, sin lifecycle de focus complejo, sin VirtualFlow
+    //  problemático. Este helper porta ese patrón a JavaFX.
+    //
+    //  Por qué reemplaza al DatePicker en CAL-IMPORT:
+    //   - El DatePicker de JavaFX tiene un popup con su propio focus
+    //     listener. En tablas largas + VirtualFlow + SplitPane el
+    //     commit a veces no se dispara (el popup se cierra antes de
+    //     que la celda lea el valor → bug "01/01/2026 dos veces").
+    //   - El TextField no tiene popup. El usuario teclea, perde foco
+    //     (Tab/Enter/click fuera) y la celda parsea. Si no parsea,
+    //     borde rojo y se mantiene el texto para corregir.
+
+    /**
+     * Factoría de celda con TextField que acepta cualquier formato
+     * común de fecha (ver {@link #parseFlexibleDate}). Sin popup, sin
+     * DatePicker, sin VirtualFlow. Drop-in replacement de
+     * {@link #datePicker()} para columnas {@code LocalDate}.
+     *
+     * <p>Visualización: {@code dd/MM/yyyy}. Al editar acepta también
+     * {@code dd-MM-yyyy}, ISO ({@code yyyy-MM-dd}), {@code d.M.yyyy},
+     * etc. Si el texto no parsea, borde rojo y se mantiene para que el
+     * usuario corrija (no descarta como hacía el DatePicker).
+     *
+     * <p>Atajos uniformes con el resto de cells:
+     * <ul>
+     *   <li>Tab/Enter → parsea y commitea (si OK) o marca rojo.</li>
+     *   <li>Escape → cancela, valor original.</li>
+     *   <li>Pierde foco → idem Tab/Enter.</li>
+     * </ul>
+     */
+    public static <S> Callback<TableColumn<S, LocalDate>, TableCell<S, LocalDate>>
+            flexibleDateTextField() {
+        return col -> new FlexibleDateTextFieldCell<>();
+    }
+
+    private static class FlexibleDateTextFieldCell<S> extends TableCell<S, LocalDate> {
+        private static final DateTimeFormatter DISPLAY =
+                DateTimeFormatter.ofPattern("dd/MM/yyyy");
+        private TextField field;
+
+        @Override
+        public void startEdit() {
+            if (!isEditable() || getTableView() == null
+                    || !getTableView().isEditable()
+                    || !getTableColumn().isEditable()) {
+                return;
+            }
+            super.startEdit();
+            if (field == null) buildField();
+            LocalDate v = getItem();
+            field.setText(v == null ? "" : DISPLAY.format(v));
+            field.setStyle("");
+            setText(null);
+            setGraphic(field);
+            field.selectAll();
+            field.requestFocus();
+        }
+
+        @Override
+        public void cancelEdit() {
+            super.cancelEdit();
+            LocalDate v = getItem();
+            setText(v == null ? "" : DISPLAY.format(v));
+            setGraphic(null);
+        }
+
+        @Override
+        protected void updateItem(LocalDate v, boolean empty) {
+            super.updateItem(v, empty);
+            if (empty) {
+                setText(null);
+                setGraphic(null);
+                return;
+            }
+            if (isEditing()) {
+                if (field != null) field.setText(v == null ? "" : DISPLAY.format(v));
+                setText(null);
+                setGraphic(field);
+            } else {
+                setText(v == null ? "" : DISPLAY.format(v));
+                setGraphic(null);
+            }
+        }
+
+        private void buildField() {
+            field = new TextField();
+            // Commit-on-blur: pierde foco → intenta commitear.
+            field.focusedProperty().addListener((obs, was, isNow) -> {
+                if (was && !isNow && isEditing()) {
+                    attemptCommit();
+                }
+            });
+            field.addEventFilter(KeyEvent.KEY_PRESSED, ev -> {
+                if (ev.getCode() == KeyCode.ESCAPE) {
+                    cancelEdit();
+                    ev.consume();
+                } else if (ev.getCode() == KeyCode.ENTER
+                        || ev.getCode() == KeyCode.TAB) {
+                    attemptCommit();
+                }
+            });
+        }
+
+        private void attemptCommit() {
+            String s = field.getText();
+            if (s == null || s.isBlank()) {
+                // Vacío = mantenemos valor anterior. cancelEdit no lo
+                // pierde, solo cierra el editor.
+                cancelEdit();
+                return;
+            }
+            LocalDate parsed = parseFlexibleDate(s);
+            if (parsed != null) {
+                field.setStyle("");
+                commitEdit(parsed);
+            } else {
+                // Borde rojo + mantener texto para corregir. Mismo
+                // patrón que CONTENDO: el usuario ve que algo va mal
+                // sin perder lo que escribió.
+                field.setStyle("-fx-border-color: #c0392b; -fx-border-width: 1.5px;");
+            }
+        }
+    }
 }

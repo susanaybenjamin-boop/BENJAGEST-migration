@@ -11679,6 +11679,10 @@ public class BenjagestUiApplication extends Application {
             case "workcal.error" -> "Error";
             // CAL-IMPORT (EN)
             case "workcal.btn.import_pdf" -> "Import from PDF";
+            case "workcal.btn.dump_to_agenda" -> "Dump to Agenda";
+            case "workcal.dump_agenda.success.title" -> "Dumped to Agenda";
+            case "workcal.dump_agenda.success.body" -> "{n} events copied to the general Agenda.";
+            case "workcal.dump_agenda.fail.title" -> "Could not dump to Agenda";
             case "workcal.import_pdf.select_calendar" -> "Select a calendar in the list first.";
             case "workcal.import_pdf.choose_file" -> "Choose calendar PDF";
             case "workcal.import_pdf.fail.title" -> "Could not read the PDF";
@@ -12058,6 +12062,10 @@ public class BenjagestUiApplication extends Application {
             case "workcal.error" -> "Error";
             // CAL-IMPORT (ES)
             case "workcal.btn.import_pdf" -> "Importar desde PDF";
+            case "workcal.btn.dump_to_agenda" -> "Volcar a la Agenda";
+            case "workcal.dump_agenda.success.title" -> "Volcado a la Agenda";
+            case "workcal.dump_agenda.success.body" -> "{n} eventos copiados a la Agenda general.";
+            case "workcal.dump_agenda.fail.title" -> "No se pudo volcar a la Agenda";
             case "workcal.import_pdf.select_calendar" -> "Selecciona primero un calendario en la lista.";
             case "workcal.import_pdf.choose_file" -> "Elige el PDF del calendario";
             case "workcal.import_pdf.fail.title" -> "No se pudo leer el PDF";
@@ -12590,6 +12598,8 @@ public class BenjagestUiApplication extends Application {
             case "labor.employee.editor.iban" -> "IBAN (payroll)";
             case "labor.employee.editor.work_type" -> "Work type";
             case "labor.employee.editor.ss_regime" -> "SS regime";
+            case "labor.employee.editor.work_calendar" -> "Work calendar";
+            case "labor.employee.editor.work_calendar.none" -> "— None —";
             case "labor.employee.editor.hire" -> "Hire date";
             case "labor.employee.editor.termination" -> "Termination date";
             case "labor.employee.editor.term_reason" -> "Termination reason";
@@ -12980,6 +12990,8 @@ public class BenjagestUiApplication extends Application {
             case "labor.employee.editor.iban" -> "IBAN (nomina)";
             case "labor.employee.editor.work_type" -> "Tipo de trabajo";
             case "labor.employee.editor.ss_regime" -> "Regimen SS";
+            case "labor.employee.editor.work_calendar" -> "Calendario laboral";
+            case "labor.employee.editor.work_calendar.none" -> "— Ninguno —";
             case "labor.employee.editor.hire" -> "Fecha de alta";
             case "labor.employee.editor.termination" -> "Fecha de baja";
             case "labor.employee.editor.term_reason" -> "Motivo de baja";
@@ -15838,6 +15850,50 @@ public class BenjagestUiApplication extends Application {
         ComboBox<String> ssCombo = new ComboBox<>();
         ssCombo.getItems().addAll("", "GENERAL", "RETA", "AUTONOMO_SOCIETARIO", "ARTISTAS", "MAR", "AGRARIO", "OTHER");
         ssCombo.getSelectionModel().select(existing == null || existing.ssRegime() == null ? "" : existing.ssRegime());
+
+        // CAL-FIX 4 (2026-06-09): combo para asignar calendario laboral.
+        // Carga sincronizada por simplicidad — la lista es pequeña (1-3
+        // entries típicas por empresa). El item "—" representa "sin
+        // calendario asignado" (null en BD). Al fichar/calcular nómina,
+        // si workCalendarId es null, el sistema usa el calendario activo
+        // del año de la empresa (decisión Benjamin 2026-06-09).
+        ComboBox<com.benjagest.ui.model.WorkCalendarEntry> calCombo = new ComboBox<>();
+        calCombo.setConverter(new javafx.util.StringConverter<>() {
+            @Override public String toString(com.benjagest.ui.model.WorkCalendarEntry e) {
+                if (e == null || e.id() == null) return t("labor.employee.editor.work_calendar.none");
+                StringBuilder sb = new StringBuilder();
+                sb.append(e.year()).append(" — ").append(e.name() == null ? "" : e.name());
+                if (e.regionCcaa() != null && !e.regionCcaa().isBlank()) {
+                    sb.append(" (").append(e.regionCcaa()).append(")");
+                }
+                return sb.toString();
+            }
+            @Override public com.benjagest.ui.model.WorkCalendarEntry fromString(String s) { return null; }
+        });
+        // Item sentinel "ninguno" (id=null) para poder limpiar la asignación.
+        com.benjagest.ui.model.WorkCalendarEntry sinCal =
+                new com.benjagest.ui.model.WorkCalendarEntry(
+                        null, null, 0, "", "", "", false,
+                        null, null, java.util.List.of());
+        calCombo.getItems().add(sinCal);
+        try {
+            for (var c : altaApiClient.listWorkCalendars()) {
+                calCombo.getItems().add(c);
+            }
+        } catch (Exception ignored) {
+            // Si falla, dejamos solo "sin calendario" — no bloqueamos
+            // el alta de empleado por un problema en /work-calendars.
+        }
+        // Selección actual: por id si existe, sino "sin calendario".
+        if (existing != null && existing.workCalendarId() != null) {
+            calCombo.getItems().stream()
+                    .filter(x -> existing.workCalendarId().equals(x.id()))
+                    .findFirst()
+                    .ifPresentOrElse(calCombo.getSelectionModel()::select,
+                            () -> calCombo.getSelectionModel().select(sinCal));
+        } else {
+            calCombo.getSelectionModel().select(sinCal);
+        }
         TextField hireField = new TextField(existing == null || existing.hireDate() == null
                 ? "" : existing.hireDate().toString());
         hireField.setPromptText("AAAA-MM-DD");
@@ -15878,6 +15934,7 @@ public class BenjagestUiApplication extends Application {
         g.add(new Label(t("labor.employee.editor.iban")), 0, row); g.add(ibanField, 1, row, 3, 1); row++;
         g.add(new Label(t("labor.employee.editor.work_type")), 0, row); g.add(workTypeField, 1, row);
         g.add(new Label(t("labor.employee.editor.ss_regime")), 2, row); g.add(ssCombo, 3, row); row++;
+        g.add(new Label(t("labor.employee.editor.work_calendar")), 0, row); g.add(calCombo, 1, row, 3, 1); row++;
         g.add(new Label(t("labor.employee.editor.hire")), 0, row); g.add(hireField, 1, row);
         g.add(new Label(t("labor.employee.editor.termination")), 2, row); g.add(termField, 3, row); row++;
         g.add(new Label(t("labor.employee.editor.term_reason")), 0, row); g.add(termReasonField, 1, row, 3, 1); row++;
@@ -15978,6 +16035,8 @@ public class BenjagestUiApplication extends Application {
                     blankToNullOrSelf(ibanField.getText()),
                     blankToNullOrSelf(workTypeField.getText()),
                     blankToNullOrSelf(ssCombo.getValue()),
+                    // CAL-FIX 4: id del calendario laboral (null si "—").
+                    calCombo.getValue() == null ? null : calCombo.getValue().id(),
                     parseDateSafe(hireField.getText()),
                     parseDateSafe(termField.getText()),
                     blankToNullOrSelf(termReasonField.getText()),
@@ -23720,7 +23779,18 @@ public class BenjagestUiApplication extends Application {
         Button importPdfBtn = new Button(t("workcal.btn.import_pdf"));
         importPdfBtn.setGraphic(icon("fas-file-upload"));
         importPdfBtn.getStyleClass().add("primary-button");
-        HBox topBar = new HBox(8, newCalBtn, importPdfBtn);
+        // Eliminar calendario al lado de "Importar PDF" — Benjamin pidió
+        // que esté arriba, no al pie de página (sesión 2026-06-09).
+        Button delCalBtn = new Button(t("workcal.btn.delete_calendar"));
+        delCalBtn.setGraphic(icon("fas-times-circle"));
+        delCalBtn.setDisable(true);
+        // Volcar calendario laboral → Agenda general. Útil para que los
+        // festivos/ajustes aparezcan en la vista general del módulo
+        // Calendar (idempotente — reemplaza, no duplica).
+        Button dumpAgendaBtn = new Button(t("workcal.btn.dump_to_agenda"));
+        dumpAgendaBtn.setGraphic(icon("fas-calendar-alt"));
+        dumpAgendaBtn.setDisable(true);
+        HBox topBar = new HBox(8, newCalBtn, importPdfBtn, delCalBtn, dumpAgendaBtn);
         topBar.setAlignment(Pos.CENTER_LEFT);
 
         // Tabla calendarios.
@@ -23770,17 +23840,15 @@ public class BenjagestUiApplication extends Application {
                 c.getValue().notes() == null ? "" : c.getValue().notes()));
         holTable.getColumns().addAll(List.of(hDate, hName, hScope, hNotes));
 
-        // Botones de acción.
+        // Botones de acción sobre los festivos (delCalBtn vive en el
+        // top bar arriba, no aquí).
         Button addHolBtn = new Button(t("workcal.btn.add_holiday"));
         addHolBtn.setGraphic(icon("fas-plus"));
         addHolBtn.setDisable(true);
         Button delHolBtn = new Button(t("workcal.btn.remove_holiday"));
         delHolBtn.setGraphic(icon("fas-trash"));
         delHolBtn.setDisable(true);
-        Button delCalBtn = new Button(t("workcal.btn.delete_calendar"));
-        delCalBtn.setGraphic(icon("fas-times-circle"));
-        delCalBtn.setDisable(true);
-        HBox actionBar = new HBox(8, addHolBtn, delHolBtn, new Region(), delCalBtn);
+        HBox actionBar = new HBox(8, addHolBtn, delHolBtn);
         actionBar.setAlignment(Pos.CENTER_LEFT);
 
         // Carga inicial.
@@ -23823,6 +23891,7 @@ public class BenjagestUiApplication extends Application {
             boolean sel = nv != null;
             addHolBtn.setDisable(!sel);
             delCalBtn.setDisable(!sel);
+            dumpAgendaBtn.setDisable(!sel);
             delHolBtn.setDisable(true);  // se habilita al seleccionar festivo
             if (sel) reloadHolidays.run();
             else holTable.getItems().clear();
@@ -23891,6 +23960,27 @@ public class BenjagestUiApplication extends Application {
                     start(del, "workcal-del-cal");
                 }
             });
+        });
+        // Volcar a la Agenda general — copia festivos/ajustes/cierres
+        // a calendar_events del módulo Calendar. Idempotente.
+        dumpAgendaBtn.setOnAction(ev -> {
+            var calSel = calTable.getSelectionModel().getSelectedItem();
+            if (calSel == null) return;
+            Task<Integer> dump = new Task<>() {
+                @Override protected Integer call() throws Exception {
+                    return altaApiClient.dumpWorkCalendarToAgenda(calSel.id());
+                }
+            };
+            dump.setOnSucceeded(s -> {
+                Alert ok = new Alert(Alert.AlertType.INFORMATION);
+                ok.setTitle(t("workcal.dump_agenda.success.title"));
+                ok.setHeaderText(t("workcal.dump_agenda.success.body")
+                        .replace("{n}", String.valueOf(dump.getValue())));
+                ok.showAndWait();
+            });
+            dump.setOnFailed(s -> showError(t("workcal.dump_agenda.fail.title"),
+                    dump.getException() == null ? "" : dump.getException().getMessage()));
+            start(dump, "workcal-dump-agenda");
         });
 
         reloadCalendars.run();
@@ -24594,11 +24684,17 @@ public class BenjagestUiApplication extends Application {
         // Atajos uniformes: Escape / click vacío → deselecciona.
         com.benjagest.ui.support.TableSelectionHelper.install(rightTable);
 
-        // Fecha — DatePicker integrado, commit al elegir día / Tab.
+        // Fecha — TextField flexible estilo CONTENDO. Acepta dd/MM/yyyy,
+        // dd-MM-yyyy, ISO, etc. SIN popup, SIN DatePicker, SIN VirtualFlow
+        // problemas. Bug Benjamin 2026-06-09 ("01/01/2026 aparecía dos
+        // veces" al volcar): el DatePicker tiene popup con su propio
+        // focus listener; en tabla larga + SplitPane el commit a veces
+        // no se disparaba antes del read → fecha por defecto del 1-ene
+        // se mantenía. Con TextField simple desaparece la causa raíz.
         TableColumn<EditableHolidayRow, java.time.LocalDate> rDate =
                 new TableColumn<>(t("workcal.col.date"));
         rDate.setCellValueFactory(c -> c.getValue().dateValue);
-        rDate.setCellFactory(com.benjagest.ui.support.EditableCells.datePicker());
+        rDate.setCellFactory(com.benjagest.ui.support.EditableCells.flexibleDateTextField());
         rDate.setOnEditCommit(ev -> ev.getRowValue().dateValue.set(ev.getNewValue()));
         rDate.setPrefWidth(140);
 

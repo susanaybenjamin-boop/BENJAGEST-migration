@@ -147,6 +147,58 @@ public class WorkCalendarRepository {
     }
 
     // ============================================================
+    //  Volcar a la Agenda (calendar_events)
+    // ============================================================
+
+    /**
+     * Vuelca todos los festivos/ajustes del calendario laboral como
+     * entradas en la tabla {@code calendar_events} (la Agenda general).
+     * Si ya había un vuelco previo del mismo calendario, lo reemplaza
+     * (idempotente).
+     *
+     * <p>Mapeo de tipo:
+     * <ul>
+     *   <li>FESTIVO  → event_type = HOLIDAY</li>
+     *   <li>AJUSTE   → event_type = WORK_ADJUSTMENT</li>
+     *   <li>CIERRE   → event_type = WORK_CLOSURE</li>
+     * </ul>
+     *
+     * <p>El {@code source_type='WORK_CALENDAR'} permite distinguir estos
+     * eventos de los que el usuario crea a mano o sincroniza con Google.
+     *
+     * @return número de eventos insertados.
+     */
+    public int dumpHolidaysToAgenda(String companyId, String workCalendarId) {
+        // 1. Limpiar vuelco anterior del MISMO calendario (idempotente).
+        jdbcTemplate.update("""
+                DELETE FROM calendar_events
+                 WHERE company_id = ?
+                   AND source_type = 'WORK_CALENDAR'
+                   AND source_id IN (
+                       SELECT id FROM holidays WHERE work_calendar_id = ?
+                   )
+                """, companyId, workCalendarId);
+        // 2. Insertar los actuales (INSERT ... SELECT).
+        return jdbcTemplate.update("""
+                INSERT INTO calendar_events
+                       (id, company_id, source_type, source_id, event_date,
+                        title, description, event_type, active,
+                        created_at, updated_at)
+                SELECT UUID(), ?, 'WORK_CALENDAR', h.id, h.holiday_date,
+                       h.name, COALESCE(h.notes, ''),
+                       CASE h.holiday_type
+                           WHEN 'FESTIVO' THEN 'HOLIDAY'
+                           WHEN 'AJUSTE'  THEN 'WORK_ADJUSTMENT'
+                           WHEN 'CIERRE'  THEN 'WORK_CLOSURE'
+                           ELSE 'HOLIDAY'
+                       END,
+                       TRUE, NOW(), NOW()
+                  FROM holidays h
+                 WHERE h.work_calendar_id = ?
+                """, companyId, workCalendarId);
+    }
+
+    // ============================================================
     //  Mappers
     // ============================================================
 

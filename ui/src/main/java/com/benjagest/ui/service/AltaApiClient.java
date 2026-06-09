@@ -1327,6 +1327,25 @@ public class AltaApiClient {
         send(req(baseUrl + "/labor/work-calendars/" + id).DELETE());
     }
 
+    /**
+     * Vuelca los festivos/ajustes/cierres del calendario laboral a la
+     * Agenda general. Devuelve el número de eventos volcados.
+     * Idempotente — la segunda llamada reemplaza, no duplica.
+     */
+    public int dumpWorkCalendarToAgenda(String calendarId)
+            throws IOException, InterruptedException {
+        HttpResponse<String> r = send(req(
+                baseUrl + "/labor/work-calendars/" + calendarId + "/dump-to-agenda")
+                .POST(java.net.http.HttpRequest.BodyPublishers.noBody()));
+        if (r.statusCode() < 200 || r.statusCode() >= 300) {
+            throw new IOException("HTTP " + r.statusCode() + ": " + r.body());
+        }
+        // Body: {"events": N}
+        java.util.regex.Matcher m = java.util.regex.Pattern
+                .compile("\"events\"\\s*:\\s*(\\d+)").matcher(r.body());
+        return m.find() ? Integer.parseInt(m.group(1)) : 0;
+    }
+
     // ============================================================
     //  Cotizaciones SS — /api/labor/social-security
     // ============================================================

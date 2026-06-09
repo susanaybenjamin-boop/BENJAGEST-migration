@@ -23,6 +23,9 @@ public record EmployeeEntry(
         String iban,
         String workType,
         String ssRegime,
+        /** CAL-FIX 4: id del calendario laboral asignado (null=sin
+         *  calendario asignado). Para fichaje/nómina. */
+        String workCalendarId,
         LocalDate hireDate,
         LocalDate terminationDate,
         String terminationReason,

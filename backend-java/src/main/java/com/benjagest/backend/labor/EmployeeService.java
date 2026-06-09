@@ -67,7 +67,8 @@ public class EmployeeService {
                        email, phone, birth_date, gender, marital_status,
                        dependent_children, dependent_disabled,
                        address_line, city, province, postal_code, country,
-                       iban, work_type, ss_regime, hire_date, termination_date,
+                       iban, work_type, ss_regime, work_calendar_id,
+                       hire_date, termination_date,
                        termination_reason, geolocation_enabled, active,
                        app_access, user_id,
                        pin_hash IS NOT NULL AS has_pin,
@@ -94,9 +95,10 @@ public class EmployeeService {
                     email, phone, birth_date, gender, marital_status,
                     dependent_children, dependent_disabled,
                     address_line, city, province, postal_code, country,
-                    iban, work_type, ss_regime, hire_date, termination_date,
+                    iban, work_type, ss_regime, work_calendar_id,
+                    hire_date, termination_date,
                     termination_reason, geolocation_enabled, active
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 id, tenantContext.getCurrentCompanyId(),
                 req.fullName(), blank(req.taxIdentifier()), blank(req.socialSecurityNumber()),
@@ -106,6 +108,7 @@ public class EmployeeService {
                 blank(req.addressLine()), blank(req.city()), blank(req.province()),
                 blank(req.postalCode()), blank(req.country()),
                 blank(req.iban()), blank(req.workType()), blank(req.ssRegime()),
+                blank(req.workCalendarId()),
                 req.hireDate(), req.terminationDate(), blank(req.terminationReason()),
                 req.geolocationEnabled() != null && req.geolocationEnabled(),
                 req.active() == null || req.active()
@@ -131,7 +134,8 @@ public class EmployeeService {
                        email = ?, phone = ?, birth_date = ?, gender = ?, marital_status = ?,
                        dependent_children = ?, dependent_disabled = ?,
                        address_line = ?, city = ?, province = ?, postal_code = ?, country = ?,
-                       iban = ?, work_type = ?, ss_regime = ?, hire_date = ?,
+                       iban = ?, work_type = ?, ss_regime = ?, work_calendar_id = ?,
+                       hire_date = ?,
                        termination_date = ?, termination_reason = ?,
                        geolocation_enabled = ?, active = ?
                  WHERE id = ? AND company_id = ?
@@ -143,6 +147,7 @@ public class EmployeeService {
                 blank(req.addressLine()), blank(req.city()), blank(req.province()),
                 blank(req.postalCode()), blank(req.country()),
                 blank(req.iban()), blank(req.workType()), blank(req.ssRegime()),
+                blank(req.workCalendarId()),
                 req.hireDate(), req.terminationDate(), blank(req.terminationReason()),
                 req.geolocationEnabled() != null && req.geolocationEnabled(),
                 req.active() == null || req.active(),
@@ -189,7 +194,8 @@ public class EmployeeService {
                        email, phone, birth_date, gender, marital_status,
                        dependent_children, dependent_disabled,
                        address_line, city, province, postal_code, country,
-                       iban, work_type, ss_regime, hire_date, termination_date,
+                       iban, work_type, ss_regime, work_calendar_id,
+                       hire_date, termination_date,
                        termination_reason, geolocation_enabled, active,
                        app_access, user_id,
                        pin_hash IS NOT NULL AS has_pin,
@@ -430,6 +436,7 @@ public class EmployeeService {
                 rs.getString("iban"),
                 rs.getString("work_type"),
                 rs.getString("ss_regime"),
+                rs.getString("work_calendar_id"),
                 hd == null ? null : hd.toLocalDate(),
                 td == null ? null : td.toLocalDate(),
                 rs.getString("termination_reason"),
@@ -449,6 +456,9 @@ public class EmployeeService {
             Integer dependentChildren, Integer dependentDisabled,
             String addressLine, String city, String province, String postalCode, String country,
             String iban, String workType, String ssRegime,
+            /** CAL-FIX 4: calendario laboral asignado al empleado. null
+             *  = sin calendario (la empresa puede no usar la función). */
+            String workCalendarId,
             LocalDate hireDate, LocalDate terminationDate, String terminationReason,
             boolean geolocationEnabled,
             boolean active,
@@ -471,6 +481,9 @@ public class EmployeeService {
             Integer dependentChildren, Integer dependentDisabled,
             String addressLine, String city, String province, String postalCode, String country,
             String iban, String workType, String ssRegime,
+            /** CAL-FIX 4: id del calendario laboral asignado. null=sin
+             *  calendario (no fuerza nada en fichaje/nómina). */
+            String workCalendarId,
             LocalDate hireDate, LocalDate terminationDate, String terminationReason,
             Boolean geolocationEnabled,
             Boolean active,
