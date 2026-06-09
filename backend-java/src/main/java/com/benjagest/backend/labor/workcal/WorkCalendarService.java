@@ -123,6 +123,52 @@ public class WorkCalendarService {
         repository.delete(c.id());
     }
 
+    /**
+     * L3-3 — Crea el calendario del año dado para la empresa actual y
+     * lo siembra con los festivos canónicos (nacionales + autonómicos
+     * de la CCAA elegida) desde {@link HolidaySeed2026}. Si ya existía
+     * un calendario activo, lo archiva.
+     *
+     * <p>Pensado para arranque rápido: el usuario elige año + CCAA en
+     * la UI L3-4 y obtiene un calendario completo y editable. Los
+     * festivos locales (hasta 2) los añade manualmente después.
+     *
+     * <p>Solo soporta 2026 por ahora. Cuando llegue 2027, añadir el
+     * catálogo {@code HolidaySeed2027} y enrutar aquí.
+     */
+    @Transactional
+    public BootstrapResult bootstrapFromOfficialSources(BootstrapRequest req) {
+        validateYear(req.year());
+        validateCcaa(req.regionCcaa());
+        if (req.year() != HolidaySeed2026.YEAR) {
+            throw new ResponseStatusException(HttpStatus.NOT_IMPLEMENTED,
+                    "Solo hay seed oficial para " + HolidaySeed2026.YEAR
+                            + ". Para otros años, crea el calendario y añade festivos manualmente.");
+        }
+        // Crea el calendario primero (archiva el activo previo).
+        WorkCalendar c = create(new CreateRequest(
+                req.year(),
+                req.regionCcaa(),
+                req.regionMunicipality(),
+                req.name()
+        ));
+        // Volcado de festivos del seed.
+        List<HolidaySeed2026.SeedHoliday> seed =
+                HolidaySeed2026.seedFor(req.regionCcaa());
+        List<HolidayRequest> reqs = seed.stream().map(s -> new HolidayRequest(
+                s.date(),
+                s.name(),
+                // Si la fecha está en la lista nacional, scope=NATIONAL.
+                // Si está en BY_CCAA del ccaa pedido, scope=CCAA.
+                HolidaySeed2026.NATIONAL.stream().anyMatch(n -> n.date().equals(s.date()))
+                        ? WorkCalendar.SCOPE_NATIONAL : WorkCalendar.SCOPE_CCAA,
+                true,
+                s.notes()
+        )).toList();
+        List<Holiday> stored = replaceHolidays(c.id(), reqs);
+        return new BootstrapResult(c, stored);
+    }
+
     // ============================================================
     //  Festivos
     // ============================================================
@@ -306,5 +352,19 @@ public class WorkCalendarService {
             String scope,
             Boolean isPaid,
             String notes
+    ) {}
+
+    /** Petición del bootstrap desde fuente oficial (L3-3). */
+    public record BootstrapRequest(
+            Integer year,
+            String regionCcaa,
+            String regionMunicipality,
+            String name
+    ) {}
+
+    /** Respuesta del bootstrap con el calendario creado + festivos cargados. */
+    public record BootstrapResult(
+            WorkCalendar calendar,
+            List<Holiday> holidays
     ) {}
 }
