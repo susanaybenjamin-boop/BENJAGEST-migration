@@ -1301,9 +1301,35 @@ public class AltaApiClient {
     }
 
     /**
-     * L3-3 — Crea calendario y lo siembra desde el catálogo BOE/CCAA.
-     * El backend solo soporta year=2026 por ahora; otros años → 501.
+     * Crea un calendario VACÍO (sin festivos). El usuario lo puebla
+     * después con el botón 'Importar desde PDF' que sube el calendario
+     * oficial de su CCAA — único camino vinculante.
      */
+    public com.benjagest.ui.model.WorkCalendarEntry createEmptyWorkCalendar(
+            int year, String regionCcaa, String regionMunicipality, String name)
+            throws IOException, InterruptedException {
+        String body = "{"
+                + "\"year\":" + year + ","
+                + field("regionCcaa", regionCcaa) + ","
+                + field("regionMunicipality", regionMunicipality) + ","
+                + field("name", name)
+                + "}";
+        HttpResponse<String> r = send(req(baseUrl + "/labor/work-calendars")
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(body)));
+        if (r.statusCode() < 200 || r.statusCode() >= 300) {
+            throw new IOException("HTTP " + r.statusCode() + ": " + r.body());
+        }
+        return mapWorkCalendar(r.body());
+    }
+
+    /**
+     * @deprecated Usa {@link #createEmptyWorkCalendar} + 'Importar PDF'.
+     * El seed HolidaySeed2026 NO está verificado contra BOJA/BOPV/DOGC
+     * oficial — solo los 9 nacionales son ley fija; los autonómicos
+     * los puso Claude de memoria.
+     */
+    @Deprecated
     public com.benjagest.ui.model.WorkCalendarEntry bootstrapWorkCalendar(
             int year, String regionCcaa, String regionMunicipality, String name)
             throws IOException, InterruptedException {
