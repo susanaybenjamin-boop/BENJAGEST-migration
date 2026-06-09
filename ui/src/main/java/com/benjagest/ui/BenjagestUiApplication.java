@@ -24122,7 +24122,12 @@ public class BenjagestUiApplication extends Application {
         footer.setPadding(new Insets(8, 16, 8, 16));
 
         cancelBtn.setOnAction(ev -> modal.close());
-        dumpBtn.setOnAction(ev -> {
+        // Acción del volcado, separada para poder llamarla desde
+        // Platform.runLater tras forzar commit de cualquier edición
+        // pendiente — el usuario puede haber tecleado una fecha en un
+        // DatePicker pero no pulsar Enter; al hacer click en "Volcar"
+        // forzamos el commit moviendo el foco al propio botón.
+        Runnable doDumpAction = () -> {
             if (rightRows.isEmpty()) {
                 showError(t("workcal.error"), t("workcal.import_pdf.empty_dump"));
                 return;
@@ -24175,6 +24180,19 @@ public class BenjagestUiApplication extends Application {
             task.setOnFailed(s -> showError(t("workcal.import_pdf.dump_fail"),
                     task.getException() == null ? "" : task.getException().getMessage()));
             start(task, "workcal-import-dump");
+        };
+        dumpBtn.setOnAction(ev -> {
+            // Si hay una celda en edición (típicamente un DatePicker con
+            // fecha tecleada sin Enter), movemos el foco al botón. Esto
+            // dispara el listener focused→false del editor de la celda
+            // y commitea el valor. Luego ejecutamos la validación en el
+            // siguiente pulso del hilo JavaFX para dar tiempo al commit.
+            if (rightTable.getEditingCell() != null) {
+                dumpBtn.requestFocus();
+                javafx.application.Platform.runLater(doDumpAction);
+            } else {
+                doDumpAction.run();
+            }
         });
 
         VBox root = new VBox(8, headerLbl, split, footer);

@@ -191,10 +191,14 @@ public final class EditableCells {
             };
             picker.valueProperty().addListener(valueListener);
             // Commit por blur si el usuario tecleó manualmente sin Enter.
+            // IMPORTANTE: usamos el converter del propio DatePicker para
+            // parsear, así soporta el formato del locale (dd/MM/yyyy en
+            // España) + ISO como fallback. Antes solo aceptaba ISO y
+            // perdíamos las fechas tecleadas en formato europeo (bug
+            // Benjamin 2026-06-09: 4 filas se quedaban en 2026-01-01).
             picker.focusedProperty().addListener((obs, was, now) -> {
                 if (was && !now && isEditing()) {
-                    String typed = picker.getEditor().getText();
-                    LocalDate parsed = parseIso(typed);
+                    LocalDate parsed = parseTypedDate(picker.getEditor().getText());
                     if (parsed != null) commitEdit(parsed);
                     else cancelEdit();
                 }
@@ -203,18 +207,32 @@ public final class EditableCells {
                 if (ev.getCode() == KeyCode.ESCAPE) {
                     cancelEdit();
                     ev.consume();
-                } else if (ev.getCode() == KeyCode.TAB) {
-                    String typed = picker.getEditor().getText();
-                    LocalDate parsed = parseIso(typed);
+                } else if (ev.getCode() == KeyCode.TAB
+                        || ev.getCode() == KeyCode.ENTER) {
+                    LocalDate parsed = parseTypedDate(picker.getEditor().getText());
                     if (parsed != null) commitEdit(parsed);
                     else cancelEdit();
                 }
             });
         }
 
-        private static LocalDate parseIso(String s) {
+        /**
+         * Parsea texto tecleado en el DatePicker probando primero el
+         * converter del propio control (respeta el locale del usuario),
+         * y como fallback el formato ISO {@code yyyy-MM-dd}.
+         */
+        private LocalDate parseTypedDate(String s) {
             if (s == null || s.isBlank()) return null;
-            try { return LocalDate.parse(s.trim(), ISO); }
+            String t = s.trim();
+            // 1) Converter del DatePicker (locale-aware, ej. dd/MM/yyyy en ES).
+            if (picker != null && picker.getConverter() != null) {
+                try {
+                    LocalDate v = picker.getConverter().fromString(t);
+                    if (v != null) return v;
+                } catch (Exception ignored) { /* fallthrough */ }
+            }
+            // 2) ISO fallback.
+            try { return LocalDate.parse(t, ISO); }
             catch (DateTimeParseException ex) { return null; }
         }
     }
