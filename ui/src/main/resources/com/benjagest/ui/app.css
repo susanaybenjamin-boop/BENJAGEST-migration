@@ -1508,3 +1508,91 @@
     -fx-border-color: #0aa6a6;
     -fx-border-width: 0 0 2 0;
 }
+
+/* ============================================================
+   DatePicker popup — flechas y cabecera mes/año
+   ============================================================
+   Mejora visual del popup del calendario (Benjamin 2026-06-09):
+   las flechas de avance/retroceso de mes/año por defecto eran
+   pequeñas y poco visibles. Aquí las ampliamos y damos
+   contraste, y el header mes/año queda con tipografía clara.
+*/
+.date-picker-popup {
+    -fx-background-color: #ffffff;
+    -fx-border-color: #0aa6a6;
+    -fx-border-width: 1px;
+    -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.15), 8, 0.0, 0, 2);
+}
+
+.date-picker-popup > .month-year-pane {
+    -fx-background-color: #0aa6a6;
+    -fx-padding: 8 10;
+}
+
+.date-picker-popup > .month-year-pane .spinner {
+    -fx-spacing: 6;
+}
+
+/* Etiqueta del mes y del año en blanco sobre el fondo turquesa */
+.date-picker-popup > .month-year-pane .spinner .label {
+    -fx-text-fill: #ffffff;
+    -fx-font-weight: bold;
+    -fx-font-size: 14px;
+}
+
+/* Botones de flecha < > de mes y año — fondo translúcido y
+   flecha blanca más grande para que se vean claramente. */
+.date-picker-popup > .month-year-pane .spinner .button {
+    -fx-background-color: rgba(255,255,255,0.18);
+    -fx-background-radius: 4;
+    -fx-padding: 4 6;
+    -fx-cursor: hand;
+}
+.date-picker-popup > .month-year-pane .spinner .button:hover {
+    -fx-background-color: rgba(255,255,255,0.35);
+}
+.date-picker-popup > .month-year-pane .spinner .button > .left-arrow,
+.date-picker-popup > .month-year-pane .spinner .button > .right-arrow {
+    -fx-background-color: #ffffff;
+    -fx-padding: 4 4;
+    -fx-shape: "M 0 0 L 8 4 L 0 8 z";
+}
+.date-picker-popup > .month-year-pane .spinner .button > .left-arrow {
+    -fx-shape: "M 8 0 L 0 4 L 8 8 z";
+}
+
+/* Cabecera de días de la semana (Lun Mar Mié...) */
+.date-picker-popup .day-name-cell {
+    -fx-text-fill: #0aa6a6;
+    -fx-font-weight: bold;
+    -fx-font-size: 12px;
+}
+
+/* Números de semana a la izquierda — gris suave */
+.date-picker-popup .week-number-cell {
+    -fx-text-fill: #94a3b8;
+    -fx-font-size: 11px;
+}
+
+/* Celda del día normal */
+.date-picker-popup .day-cell {
+    -fx-text-fill: #213548;
+    -fx-font-size: 13px;
+    -fx-background-radius: 4;
+}
+.date-picker-popup .day-cell:hover {
+    -fx-background-color: #e0f7f7;
+}
+/* Día seleccionado */
+.date-picker-popup .day-cell:selected,
+.date-picker-popup .day-cell:selected:focused {
+    -fx-background-color: #0aa6a6;
+    -fx-text-fill: #ffffff;
+}
+/* Hoy */
+.date-picker-popup .today {
+    -fx-background-color: #fff4d6;
+    -fx-border-color: #f4b400;
+    -fx-border-radius: 4;
+    -fx-background-radius: 4;
+}

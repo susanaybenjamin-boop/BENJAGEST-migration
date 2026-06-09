@@ -7698,6 +7698,7 @@ public class BenjagestUiApplication extends Application {
     private ComboBox<String> editorInvoiceTypeCombo;
     private javafx.scene.control.DatePicker editorInvoiceDate;
     private javafx.scene.control.DatePicker editorDueDate;
+    private CheckBox editorNoDueDateChk;
     private javafx.scene.control.TextArea editorNotesArea;
     private TableView<InvoiceLineDraft> editorLinesTable;
     private Label editorSubtotalLabel;
@@ -7951,11 +7952,27 @@ public class BenjagestUiApplication extends Application {
                 editorCustomerCombo,
                 clientDetail
         );
+        // Checkbox "Sin vencimiento" — para facturas que se cobran al
+        // contado (sin fecha de pago aplazado). Al marcarse, deshabilita
+        // el DatePicker y al guardar enviamos dueDate=null al backend.
+        CheckBox noDueDateChk = new CheckBox(t("editor.field.due_date.none"));
+        noDueDateChk.setSelected(bundle.existing() != null
+                && (bundle.existing().dueDate() == null
+                        || bundle.existing().dueDate().isBlank()));
+        editorDueDate.setDisable(noDueDateChk.isSelected());
+        noDueDateChk.selectedProperty().addListener((obs, oldV, newV) -> {
+            editorDueDate.setDisable(Boolean.TRUE.equals(newV));
+            if (Boolean.TRUE.equals(newV)) editorDueDate.setValue(null);
+        });
+        // Lo guardamos como campo para que el flujo de "save" lo lea.
+        editorNoDueDateChk = noDueDateChk;
+
         VBox colFechas = new VBox(8,
                 label(t("editor.field.invoice_date"), "invoice-field-label"),
                 editorInvoiceDate,
                 label(t("editor.field.due_date"), "invoice-field-label"),
-                editorDueDate
+                editorDueDate,
+                noDueDateChk
         );
         VBox colTipo = new VBox(8,
                 label(t("editor.field.kind"), "invoice-field-label"),
@@ -8550,7 +8567,16 @@ public class BenjagestUiApplication extends Application {
         }
 
         String invoiceDateIso = editorInvoiceDate.getValue() == null ? null : editorInvoiceDate.getValue().toString();
-        String dueDateIso = editorDueDate.getValue() == null ? null : editorDueDate.getValue().toString();
+        // Si el usuario marcó "Sin vencimiento" (factura al contado),
+        // mandamos null al backend independientemente de lo que tenga
+        // el DatePicker (debería estar disabled, pero defensivo).
+        String dueDateIso;
+        if (editorNoDueDateChk != null && editorNoDueDateChk.isSelected()) {
+            dueDateIso = null;
+        } else {
+            dueDateIso = editorDueDate.getValue() == null
+                    ? null : editorDueDate.getValue().toString();
+        }
         String notes = editorNotesArea.getText();
         List<InvoiceLineDraft> lines = new java.util.ArrayList<>(editorLinesTable.getItems());
 
@@ -9325,6 +9351,7 @@ public class BenjagestUiApplication extends Application {
                 case "editor.field.customer" -> "Customer *";
                 case "editor.field.invoice_date" -> "Issue date *";
                 case "editor.field.due_date" -> "Due date";
+                case "editor.field.due_date.none" -> "No due date (paid at sale)";
                 case "editor.field.kind" -> "Type";
                 case "editor.card.header" -> "Invoice header";
                 case "editor.line.add" -> "Add line";
@@ -10251,6 +10278,7 @@ public class BenjagestUiApplication extends Application {
             case "editor.field.customer" -> "Cliente *";
             case "editor.field.invoice_date" -> "Fecha de emision *";
             case "editor.field.due_date" -> "Fecha de vencimiento";
+            case "editor.field.due_date.none" -> "Sin vencimiento (cobrado al contado)";
             case "editor.field.kind" -> "Tipo";
             case "editor.card.header" -> "Cabecera de la factura";
             case "editor.line.add" -> "Anadir linea";
