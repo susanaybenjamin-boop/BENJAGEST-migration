@@ -1363,6 +1363,113 @@ public class AltaApiClient {
                 .DELETE());
     }
 
+    /**
+     * CAL-IMPORT — extrae festivos de un PDF de calendario laboral.
+     * Multipart artesanal porque JDK HttpClient no incluye builder
+     * multipart (mismo patrón que PdfImportApiClient).
+     *
+     * <p>Devuelve un record plano con year + lista de detectados
+     * que la UI usará para popular el modal side-by-side.
+     */
+    public com.benjagest.ui.model.HolidayPdfPreview extractHolidaysFromPdf(java.io.File pdfFile)
+            throws IOException, InterruptedException {
+        String boundary = "----benjagest-" + java.util.UUID.randomUUID();
+        byte[] body = buildMultipartBody(pdfFile, boundary);
+        HttpResponse<String> r = send(req(baseUrl + "/labor/work-calendars/extract-pdf")
+                .header("Content-Type", "multipart/form-data; boundary=" + boundary)
+                .POST(HttpRequest.BodyPublishers.ofByteArray(body)));
+        if (r.statusCode() < 200 || r.statusCode() >= 300) {
+            throw new IOException("HTTP " + r.statusCode() + ": " + r.body());
+        }
+        String json = r.body();
+        int year = intField(json, "year");
+        List<com.benjagest.ui.model.HolidayPdfPreview.DetectedHoliday> holidays = new ArrayList<>();
+        // El array está dentro de "holidays":[{...},{...}]
+        int arrStart = json.indexOf("\"holidays\"");
+        if (arrStart >= 0) {
+            int bracketStart = json.indexOf('[', arrStart);
+            int bracketEnd = matchingBracket(json, bracketStart);
+            if (bracketEnd > bracketStart) {
+                String inner = json.substring(bracketStart + 1, bracketEnd);
+                for (String obj : splitTopLevelObjects(inner)) {
+                    holidays.add(new com.benjagest.ui.model.HolidayPdfPreview.DetectedHoliday(
+                            parseLocalDate(textField(obj, "date")),
+                            textField(obj, "name"),
+                            textField(obj, "scope"),
+                            textField(obj, "confidence"),
+                            textField(obj, "rawSourceLine")));
+                }
+            }
+        }
+        return new com.benjagest.ui.model.HolidayPdfPreview(year, holidays);
+    }
+
+    /** Encuentra el ']' que cierra el '[' en startBracket. -1 si no. */
+    private int matchingBracket(String s, int startBracket) {
+        if (startBracket < 0 || startBracket >= s.length()
+                || s.charAt(startBracket) != '[') return -1;
+        int depth = 0;
+        boolean inString = false;
+        boolean escape = false;
+        for (int i = startBracket; i < s.length(); i++) {
+            char c = s.charAt(i);
+            if (escape) { escape = false; continue; }
+            if (c == '\\') { escape = true; continue; }
+            if (c == '"') { inString = !inString; continue; }
+            if (inString) continue;
+            if (c == '[') depth++;
+            else if (c == ']') {
+                depth--;
+                if (depth == 0) return i;
+            }
+        }
+        return -1;
+    }
+
+    private byte[] buildMultipartBody(java.io.File file, String boundary) throws IOException {
+        String prefix = "--" + boundary + "\r\n"
+                + "Content-Disposition: form-data; name=\"file\"; filename=\"" + file.getName() + "\"\r\n"
+                + "Content-Type: application/pdf\r\n\r\n";
+        String suffix = "\r\n--" + boundary + "--\r\n";
+        byte[] pre = prefix.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        byte[] content = java.nio.file.Files.readAllBytes(file.toPath());
+        byte[] suf = suffix.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        byte[] body = new byte[pre.length + content.length + suf.length];
+        System.arraycopy(pre, 0, body, 0, pre.length);
+        System.arraycopy(content, 0, body, pre.length, content.length);
+        System.arraycopy(suf, 0, body, pre.length + content.length, suf.length);
+        return body;
+    }
+
+    /**
+     * Reemplaza todos los festivos del calendario por la lista dada.
+     * Usado por el modal CAL-IMPORT tras validar los detectados.
+     */
+    public void replaceHolidaysInCalendar(String calendarId,
+                                            List<com.benjagest.ui.model.HolidayEntry> holidays)
+            throws IOException, InterruptedException {
+        StringBuilder sb = new StringBuilder("[");
+        for (int i = 0; i < holidays.size(); i++) {
+            if (i > 0) sb.append(",");
+            com.benjagest.ui.model.HolidayEntry h = holidays.get(i);
+            sb.append("{")
+              .append("\"holidayDate\":\"").append(h.holidayDate().toString()).append("\",")
+              .append(field("name", h.name())).append(",")
+              .append(field("scope", h.scope())).append(",")
+              .append("\"isPaid\":").append(h.isPaid()).append(",")
+              .append(field("notes", h.notes()))
+              .append("}");
+        }
+        sb.append("]");
+        HttpResponse<String> r = send(req(baseUrl
+                + "/labor/work-calendars/" + calendarId + "/holidays/replace")
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(sb.toString())));
+        if (r.statusCode() < 200 || r.statusCode() >= 300) {
+            throw new IOException("HTTP " + r.statusCode() + ": " + r.body());
+        }
+    }
+
     private com.benjagest.ui.model.WorkCalendarEntry mapWorkCalendar(String obj) {
         return new com.benjagest.ui.model.WorkCalendarEntry(
                 textField(obj, "id"),

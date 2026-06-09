@@ -11646,6 +11646,25 @@ public class BenjagestUiApplication extends Application {
             case "workcal.load_failed.title" -> "Could not load work calendars";
             case "workcal.load_failed.body" -> "Try again in a moment.";
             case "workcal.error" -> "Error";
+            // CAL-IMPORT (EN)
+            case "workcal.btn.import_pdf" -> "Import from PDF";
+            case "workcal.import_pdf.select_calendar" -> "Select a calendar in the list first.";
+            case "workcal.import_pdf.choose_file" -> "Choose calendar PDF";
+            case "workcal.import_pdf.fail.title" -> "Could not read the PDF";
+            case "workcal.import_pdf.modal_title" -> "Review imported holidays";
+            case "workcal.import_pdf.modal_header" -> "From {file} — year {year}, {n} holidays detected. Review on the right before dumping.";
+            case "workcal.import_pdf.section_detected" -> "Detected (read-only)";
+            case "workcal.import_pdf.section_to_import" -> "To import (editable)";
+            case "workcal.import_pdf.col_confidence" -> "Confidence";
+            case "workcal.import_pdf.btn.copy_all" -> "← Copy all";
+            case "workcal.import_pdf.btn.copy_selected" -> "← Copy selection";
+            case "workcal.import_pdf.btn.add_row" -> "Add row";
+            case "workcal.import_pdf.btn.del_row" -> "Delete row";
+            case "workcal.import_pdf.btn.dump" -> "Dump to calendar";
+            case "workcal.import_pdf.empty_dump" -> "Nothing to import on the right.";
+            case "workcal.import_pdf.bad_date" -> "Invalid date format: {v} (use YYYY-MM-DD).";
+            case "workcal.import_pdf.empty_name" -> "All rows need a name.";
+            case "workcal.import_pdf.dump_fail" -> "Dump failed";
             case "team.assign.no_selection.title" -> "Select clients";
             case "team.assign.no_selection.body" -> "Tick at least one client on the left before assigning.";
             case "team.assign.no_employee.title" -> "Pick an employee";
@@ -11996,6 +12015,25 @@ public class BenjagestUiApplication extends Application {
             case "workcal.load_failed.title" -> "No se pudieron cargar los calendarios laborales";
             case "workcal.load_failed.body" -> "Inténtalo en unos segundos.";
             case "workcal.error" -> "Error";
+            // CAL-IMPORT (ES)
+            case "workcal.btn.import_pdf" -> "Importar desde PDF";
+            case "workcal.import_pdf.select_calendar" -> "Selecciona primero un calendario en la lista.";
+            case "workcal.import_pdf.choose_file" -> "Elige el PDF del calendario";
+            case "workcal.import_pdf.fail.title" -> "No se pudo leer el PDF";
+            case "workcal.import_pdf.modal_title" -> "Revisar festivos importados";
+            case "workcal.import_pdf.modal_header" -> "Desde {file} — año {year}, {n} festivos detectados. Revisa el panel derecho antes de volcar.";
+            case "workcal.import_pdf.section_detected" -> "Detectados (solo lectura)";
+            case "workcal.import_pdf.section_to_import" -> "Lo que se va a importar (editable)";
+            case "workcal.import_pdf.col_confidence" -> "Confianza";
+            case "workcal.import_pdf.btn.copy_all" -> "← Copiar todo";
+            case "workcal.import_pdf.btn.copy_selected" -> "← Copiar selección";
+            case "workcal.import_pdf.btn.add_row" -> "Añadir fila";
+            case "workcal.import_pdf.btn.del_row" -> "Eliminar fila";
+            case "workcal.import_pdf.btn.dump" -> "Volcar al calendario";
+            case "workcal.import_pdf.empty_dump" -> "No hay nada que importar en el panel derecho.";
+            case "workcal.import_pdf.bad_date" -> "Formato de fecha inválido: {v} (usa AAAA-MM-DD).";
+            case "workcal.import_pdf.empty_name" -> "Todas las filas necesitan nombre.";
+            case "workcal.import_pdf.dump_fail" -> "No se pudo volcar";
             case "team.assign.no_selection.title" -> "Selecciona clientes";
             case "team.assign.no_selection.body" -> "Marca al menos un cliente a la izquierda antes de asignar.";
             case "team.assign.no_employee.title" -> "Elige un empleado";
@@ -23474,10 +23512,14 @@ public class BenjagestUiApplication extends Application {
         hint.setWrapText(true);
         hint.getStyleClass().add("settings-hint");
 
-        // Botón bootstrap arriba.
+        // Botones acción arriba: bootstrap automático + import PDF.
         Button bootstrapBtn = new Button(t("workcal.btn.bootstrap"));
         bootstrapBtn.setGraphic(icon("fas-magic"));
         bootstrapBtn.getStyleClass().add("primary-button");
+        Button importPdfBtn = new Button(t("workcal.btn.import_pdf"));
+        importPdfBtn.setGraphic(icon("fas-file-upload"));
+        HBox topBar = new HBox(8, bootstrapBtn, importPdfBtn);
+        topBar.setAlignment(Pos.CENTER_LEFT);
 
         // Tabla calendarios.
         TableView<com.benjagest.ui.model.WorkCalendarEntry> calTable = new TableView<>();
@@ -23588,6 +23630,14 @@ public class BenjagestUiApplication extends Application {
 
         // Acciones.
         bootstrapBtn.setOnAction(ev -> openWorkCalendarBootstrapDialog(reloadCalendars));
+        importPdfBtn.setOnAction(ev -> {
+            var sel = calTable.getSelectionModel().getSelectedItem();
+            if (sel == null) {
+                showError(t("workcal.error"), t("workcal.import_pdf.select_calendar"));
+                return;
+            }
+            openImportPdfDialog(sel, reloadHolidays);
+        });
         addHolBtn.setOnAction(ev -> {
             var sel = calTable.getSelectionModel().getSelectedItem();
             if (sel != null) openAddHolidayDialog(sel.id(), reloadHolidays);
@@ -23641,7 +23691,7 @@ public class BenjagestUiApplication extends Application {
 
         VBox.setVgrow(calTable, Priority.SOMETIMES);
         VBox.setVgrow(holTable, Priority.ALWAYS);
-        box.getChildren().addAll(hint, bootstrapBtn,
+        box.getChildren().addAll(hint, topBar,
                 new Label(t("workcal.section.calendars")), calTable,
                 new Label(t("workcal.section.holidays")), holTable, actionBar);
         return box;
@@ -23753,5 +23803,265 @@ public class BenjagestUiApplication extends Application {
                 start(task, "workcal-add-holiday");
             }
         });
+    }
+
+    /**
+     * CAL-IMPORT-MODAL — diálogo de importación desde PDF (replica
+     * CONTENDO {@code calendarioParser.v3.js}). Flujo:
+     * <ol>
+     *   <li>FileChooser para elegir el PDF descargado del BOE/CCAA/
+     *       convenio colectivo.</li>
+     *   <li>Llamada al backend para extraer detectados.</li>
+     *   <li>Modal con SplitPane:
+     *     <ul>
+     *       <li>Panel izquierdo: tabla READ-ONLY con detectados +
+     *           confianza + línea fuente. Scroll independiente.</li>
+     *       <li>Panel derecho: tabla EDITABLE con lo que se va a
+     *           importar. Scroll independiente. Botones "← Copiar
+     *           todo", "← Copiar selección", "Añadir fila",
+     *           "Eliminar fila".</li>
+     *     </ul>
+     *   </li>
+     *   <li>Botón "Volcar al calendario" → replaceHolidays en backend.</li>
+     * </ol>
+     */
+    private void openImportPdfDialog(com.benjagest.ui.model.WorkCalendarEntry calendar,
+                                       Runnable onSuccess) {
+        // 1. FileChooser
+        javafx.stage.FileChooser fc = new javafx.stage.FileChooser();
+        fc.setTitle(t("workcal.import_pdf.choose_file"));
+        fc.getExtensionFilters().add(
+                new javafx.stage.FileChooser.ExtensionFilter("PDF", "*.pdf"));
+        java.io.File picked = fc.showOpenDialog(root == null ? null
+                : root.getScene().getWindow());
+        if (picked == null) return;
+
+        // 2. Llamada al backend extract-pdf
+        Task<com.benjagest.ui.model.HolidayPdfPreview> extractTask = new Task<>() {
+            @Override protected com.benjagest.ui.model.HolidayPdfPreview call() throws Exception {
+                return altaApiClient.extractHolidaysFromPdf(picked);
+            }
+        };
+        extractTask.setOnFailed(ev -> showError(t("workcal.import_pdf.fail.title"),
+                extractTask.getException() == null ? "" : extractTask.getException().getMessage()));
+        extractTask.setOnSucceeded(ev -> showImportPreviewModal(
+                calendar, picked.getName(), extractTask.getValue(), onSuccess));
+        start(extractTask, "workcal-import-extract");
+    }
+
+    /** Muestra el modal side-by-side con detectados (izq) e importables (dcha). */
+    private void showImportPreviewModal(com.benjagest.ui.model.WorkCalendarEntry calendar,
+                                          String fileName,
+                                          com.benjagest.ui.model.HolidayPdfPreview preview,
+                                          Runnable onSuccess) {
+        Stage modal = new Stage();
+        modal.initModality(javafx.stage.Modality.APPLICATION_MODAL);
+        modal.setTitle(t("workcal.import_pdf.modal_title"));
+
+        // Header: año detectado + nombre archivo + nº detectados.
+        Label headerLbl = new Label(t("workcal.import_pdf.modal_header")
+                .replace("{file}", fileName)
+                .replace("{year}", String.valueOf(preview.year()))
+                .replace("{n}", String.valueOf(preview.holidays().size())));
+        headerLbl.setWrapText(true);
+        headerLbl.getStyleClass().add("settings-hint");
+
+        // -------- IZQUIERDA: tabla detectados read-only --------
+        TableView<com.benjagest.ui.model.HolidayPdfPreview.DetectedHoliday> leftTable =
+                new TableView<>();
+        leftTable.getStyleClass().add("data-table");
+        leftTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+        leftTable.getSelectionModel().setSelectionMode(
+                javafx.scene.control.SelectionMode.MULTIPLE);
+        TableColumn<com.benjagest.ui.model.HolidayPdfPreview.DetectedHoliday, String> lDate =
+                new TableColumn<>(t("workcal.col.date"));
+        lDate.setCellValueFactory(c -> new SimpleStringProperty(
+                c.getValue().date() == null ? "" : c.getValue().date().toString()));
+        lDate.setPrefWidth(100);
+        TableColumn<com.benjagest.ui.model.HolidayPdfPreview.DetectedHoliday, String> lName =
+                new TableColumn<>(t("workcal.col.holiday_name"));
+        lName.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().name()));
+        TableColumn<com.benjagest.ui.model.HolidayPdfPreview.DetectedHoliday, String> lScope =
+                new TableColumn<>(t("workcal.col.scope"));
+        lScope.setCellValueFactory(c -> new SimpleStringProperty(humanizeScope(c.getValue().scope())));
+        lScope.setPrefWidth(110);
+        TableColumn<com.benjagest.ui.model.HolidayPdfPreview.DetectedHoliday, String> lConf =
+                new TableColumn<>(t("workcal.import_pdf.col_confidence"));
+        lConf.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().confidence()));
+        lConf.setPrefWidth(90);
+        leftTable.getColumns().addAll(List.of(lDate, lName, lScope, lConf));
+        leftTable.setItems(FXCollections.observableArrayList(preview.holidays()));
+
+        Label leftLabel = new Label(t("workcal.import_pdf.section_detected"));
+        leftLabel.getStyleClass().add("module-detail-title");
+        VBox leftPanel = new VBox(6, leftLabel, leftTable);
+        VBox.setVgrow(leftTable, Priority.ALWAYS);
+        leftPanel.setPadding(new Insets(8));
+
+        // -------- DERECHA: tabla editable de lo que se importa --------
+        // Wrapper editable porque HolidayEntry es record inmutable.
+        ObservableList<EditableHolidayRow> rightRows = FXCollections.observableArrayList();
+
+        TableView<EditableHolidayRow> rightTable = new TableView<>();
+        rightTable.getStyleClass().add("data-table");
+        rightTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+        rightTable.setEditable(true);
+        rightTable.getSelectionModel().setSelectionMode(
+                javafx.scene.control.SelectionMode.MULTIPLE);
+        TableColumn<EditableHolidayRow, String> rDate =
+                new TableColumn<>(t("workcal.col.date"));
+        rDate.setCellValueFactory(c -> c.getValue().dateText);
+        rDate.setCellFactory(javafx.scene.control.cell.TextFieldTableCell.forTableColumn());
+        rDate.setOnEditCommit(ev -> ev.getRowValue().setDateText(ev.getNewValue()));
+        rDate.setPrefWidth(110);
+        TableColumn<EditableHolidayRow, String> rName =
+                new TableColumn<>(t("workcal.col.holiday_name"));
+        rName.setCellValueFactory(c -> c.getValue().name);
+        rName.setCellFactory(javafx.scene.control.cell.TextFieldTableCell.forTableColumn());
+        rName.setOnEditCommit(ev -> ev.getRowValue().name.set(ev.getNewValue()));
+        TableColumn<EditableHolidayRow, String> rScope =
+                new TableColumn<>(t("workcal.col.scope"));
+        rScope.setCellValueFactory(c -> c.getValue().scope);
+        rScope.setCellFactory(javafx.scene.control.cell.ComboBoxTableCell.forTableColumn(
+                "NATIONAL", "CCAA", "LOCAL"));
+        rScope.setOnEditCommit(ev -> ev.getRowValue().scope.set(ev.getNewValue()));
+        rScope.setPrefWidth(110);
+        TableColumn<EditableHolidayRow, String> rNotes =
+                new TableColumn<>(t("workcal.col.notes"));
+        rNotes.setCellValueFactory(c -> c.getValue().notes);
+        rNotes.setCellFactory(javafx.scene.control.cell.TextFieldTableCell.forTableColumn());
+        rNotes.setOnEditCommit(ev -> ev.getRowValue().notes.set(ev.getNewValue()));
+        rightTable.getColumns().addAll(List.of(rDate, rName, rScope, rNotes));
+        rightTable.setItems(rightRows);
+
+        Label rightLabel = new Label(t("workcal.import_pdf.section_to_import"));
+        rightLabel.getStyleClass().add("module-detail-title");
+
+        // Botones panel derecho.
+        Button copyAllBtn = new Button(t("workcal.import_pdf.btn.copy_all"));
+        copyAllBtn.setGraphic(icon("fas-angle-double-right"));
+        Button copySelBtn = new Button(t("workcal.import_pdf.btn.copy_selected"));
+        copySelBtn.setGraphic(icon("fas-angle-right"));
+        Button addRowBtn = new Button(t("workcal.import_pdf.btn.add_row"));
+        addRowBtn.setGraphic(icon("fas-plus"));
+        Button delRowBtn = new Button(t("workcal.import_pdf.btn.del_row"));
+        delRowBtn.setGraphic(icon("fas-trash"));
+        delRowBtn.setDisable(true);
+        rightTable.getSelectionModel().getSelectedItems().addListener(
+                (javafx.collections.ListChangeListener<EditableHolidayRow>) c ->
+                        delRowBtn.setDisable(rightTable.getSelectionModel().getSelectedItems().isEmpty()));
+        HBox rightActions = new HBox(8, copyAllBtn, copySelBtn, new Region(),
+                addRowBtn, delRowBtn);
+        HBox.setHgrow(rightActions.getChildren().get(2), Priority.ALWAYS);
+        rightActions.setAlignment(Pos.CENTER_LEFT);
+
+        copyAllBtn.setOnAction(ev -> {
+            rightRows.clear();
+            for (var det : preview.holidays()) {
+                rightRows.add(EditableHolidayRow.from(det));
+            }
+        });
+        copySelBtn.setOnAction(ev -> {
+            for (var det : leftTable.getSelectionModel().getSelectedItems()) {
+                // Evita duplicar por fecha si ya está.
+                String dStr = det.date() == null ? "" : det.date().toString();
+                boolean already = rightRows.stream().anyMatch(
+                        r -> dStr.equals(r.dateText.get()));
+                if (!already) rightRows.add(EditableHolidayRow.from(det));
+            }
+        });
+        addRowBtn.setOnAction(ev -> rightRows.add(new EditableHolidayRow(
+                java.time.LocalDate.of(preview.year(), 1, 1).toString(),
+                "", "LOCAL", "")));
+        delRowBtn.setOnAction(ev -> rightRows.removeAll(
+                new java.util.ArrayList<>(rightTable.getSelectionModel().getSelectedItems())));
+
+        VBox rightPanel = new VBox(6, rightLabel, rightTable, rightActions);
+        VBox.setVgrow(rightTable, Priority.ALWAYS);
+        rightPanel.setPadding(new Insets(8));
+
+        SplitPane split = new SplitPane(leftPanel, rightPanel);
+        split.setDividerPositions(0.5);
+        VBox.setVgrow(split, Priority.ALWAYS);
+
+        // -------- FOOTER --------
+        Button cancelBtn = new Button(t("dialog.cancel"));
+        Button dumpBtn = new Button(t("workcal.import_pdf.btn.dump"));
+        dumpBtn.setGraphic(icon("fas-check"));
+        dumpBtn.getStyleClass().add("primary-button");
+        Region spacer = new Region();
+        HBox.setHgrow(spacer, Priority.ALWAYS);
+        HBox footer = new HBox(8, spacer, cancelBtn, dumpBtn);
+        footer.setPadding(new Insets(8, 16, 8, 16));
+
+        cancelBtn.setOnAction(ev -> modal.close());
+        dumpBtn.setOnAction(ev -> {
+            if (rightRows.isEmpty()) {
+                showError(t("workcal.error"), t("workcal.import_pdf.empty_dump"));
+                return;
+            }
+            // Validar todas las filas: fecha parseable + nombre + scope.
+            List<com.benjagest.ui.model.HolidayEntry> toSave = new java.util.ArrayList<>();
+            for (var r : rightRows) {
+                java.time.LocalDate d;
+                try { d = java.time.LocalDate.parse(r.dateText.get()); }
+                catch (Exception ex) {
+                    showError(t("workcal.error"),
+                            t("workcal.import_pdf.bad_date").replace("{v}", r.dateText.get()));
+                    return;
+                }
+                String n = r.name.get();
+                if (n == null || n.isBlank()) {
+                    showError(t("workcal.error"), t("workcal.import_pdf.empty_name"));
+                    return;
+                }
+                toSave.add(new com.benjagest.ui.model.HolidayEntry(
+                        null, calendar.id(), d, n.trim(), r.scope.get(), true,
+                        r.notes.get() == null || r.notes.get().isBlank() ? null
+                                : r.notes.get().trim(),
+                        null));
+            }
+            Task<Void> task = new Task<>() {
+                @Override protected Void call() throws Exception {
+                    altaApiClient.replaceHolidaysInCalendar(calendar.id(), toSave);
+                    return null;
+                }
+            };
+            task.setOnSucceeded(s -> { modal.close(); onSuccess.run(); });
+            task.setOnFailed(s -> showError(t("workcal.import_pdf.dump_fail"),
+                    task.getException() == null ? "" : task.getException().getMessage()));
+            start(task, "workcal-import-dump");
+        });
+
+        VBox root = new VBox(8, headerLbl, split, footer);
+        root.setPadding(new Insets(8));
+        Scene scene = new Scene(root, 1100, 600);
+        modal.setScene(scene);
+        modal.showAndWait();
+    }
+
+    /** Fila editable mutable para el panel derecho del modal CAL-IMPORT. */
+    private static class EditableHolidayRow {
+        final javafx.beans.property.SimpleStringProperty dateText;
+        final javafx.beans.property.SimpleStringProperty name;
+        final javafx.beans.property.SimpleStringProperty scope;
+        final javafx.beans.property.SimpleStringProperty notes;
+
+        EditableHolidayRow(String dateText, String name, String scope, String notes) {
+            this.dateText = new javafx.beans.property.SimpleStringProperty(dateText);
+            this.name = new javafx.beans.property.SimpleStringProperty(name);
+            this.scope = new javafx.beans.property.SimpleStringProperty(scope);
+            this.notes = new javafx.beans.property.SimpleStringProperty(notes);
+        }
+
+        void setDateText(String v) { dateText.set(v); }
+
+        static EditableHolidayRow from(com.benjagest.ui.model.HolidayPdfPreview.DetectedHoliday d) {
+            return new EditableHolidayRow(
+                    d.date() == null ? "" : d.date().toString(),
+                    d.name() == null ? "" : d.name(),
+                    d.scope() == null ? "LOCAL" : d.scope(),
+                    "");
+        }
     }
 }
