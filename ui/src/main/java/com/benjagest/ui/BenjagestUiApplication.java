@@ -23720,16 +23720,7 @@ public class BenjagestUiApplication extends Application {
         Button importPdfBtn = new Button(t("workcal.btn.import_pdf"));
         importPdfBtn.setGraphic(icon("fas-file-upload"));
         importPdfBtn.getStyleClass().add("primary-button");
-        // Botón "Eliminar calendario" arriba (al lado de Importar PDF)
-        // — Benjamin 2026-06-09 lo pidió aquí en vez de en la barra
-        // inferior junto a "Añadir festivo" (queda más visible y
-        // separa CRUD del calendario vs CRUD de festivos).
-        Button delCalBtn = new Button(t("workcal.btn.delete_calendar"));
-        delCalBtn.setGraphic(icon("fas-times-circle"));
-        delCalBtn.setDisable(true);
-        Region topSpacer = new Region();
-        HBox.setHgrow(topSpacer, Priority.ALWAYS);
-        HBox topBar = new HBox(8, newCalBtn, importPdfBtn, topSpacer, delCalBtn);
+        HBox topBar = new HBox(8, newCalBtn, importPdfBtn);
         topBar.setAlignment(Pos.CENTER_LEFT);
 
         // Tabla calendarios.
@@ -23786,8 +23777,10 @@ public class BenjagestUiApplication extends Application {
         Button delHolBtn = new Button(t("workcal.btn.remove_holiday"));
         delHolBtn.setGraphic(icon("fas-trash"));
         delHolBtn.setDisable(true);
-        // delCalBtn ahora vive arriba en el topBar (movido 2026-06-09).
-        HBox actionBar = new HBox(8, addHolBtn, delHolBtn);
+        Button delCalBtn = new Button(t("workcal.btn.delete_calendar"));
+        delCalBtn.setGraphic(icon("fas-times-circle"));
+        delCalBtn.setDisable(true);
+        HBox actionBar = new HBox(8, addHolBtn, delHolBtn, new Region(), delCalBtn);
         actionBar.setAlignment(Pos.CENTER_LEFT);
 
         // Carga inicial.
@@ -24601,19 +24594,11 @@ public class BenjagestUiApplication extends Application {
         // Atajos uniformes: Escape / click vacío → deselecciona.
         com.benjagest.ui.support.TableSelectionHelper.install(rightTable);
 
-        // Fecha — TextField estilo CONTENDO <input type="date">.
-        // Antes usábamos DatePicker (datePicker()) pero el lifecycle de
-        // commit+blur en TableView con muchas filas dinámicas era
-        // frágil (Benjamin 2026-06-09, agentes paralelos): las fechas
-        // tecleadas en filas añadidas a mano no se commiteaban porque
-        // el converter del DatePicker fallaba con año 4 dígitos.
-        // El TextField acepta dd/MM/yyyy, dd-MM-yyyy, ISO, etc., valida
-        // al perder foco (Tab/Enter/blur), marca en rojo si no parsea,
-        // y guarda como LocalDate. Sin popup, sin lifecycle complejo.
+        // Fecha — DatePicker integrado, commit al elegir día / Tab.
         TableColumn<EditableHolidayRow, java.time.LocalDate> rDate =
                 new TableColumn<>(t("workcal.col.date"));
         rDate.setCellValueFactory(c -> c.getValue().dateValue);
-        rDate.setCellFactory(com.benjagest.ui.support.EditableCells.flexibleDateTextField());
+        rDate.setCellFactory(com.benjagest.ui.support.EditableCells.datePicker());
         rDate.setOnEditCommit(ev -> ev.getRowValue().dateValue.set(ev.getNewValue()));
         rDate.setPrefWidth(140);
 
