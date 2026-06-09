@@ -44,10 +44,13 @@ public class ContractAlertService {
 
     private final JdbcTemplate jdbc;
     private final TenantContext tenant;
+    private final com.benjagest.backend.advisory.notifications.AdvisoryNotificationService notificationService;
 
-    public ContractAlertService(JdbcTemplate jdbc, TenantContext tenant) {
+    public ContractAlertService(JdbcTemplate jdbc, TenantContext tenant,
+                                  com.benjagest.backend.advisory.notifications.AdvisoryNotificationService notificationService) {
         this.jdbc = jdbc;
         this.tenant = tenant;
+        this.notificationService = notificationService;
     }
 
     /**
@@ -74,7 +77,64 @@ public class ContractAlertService {
                 "Contrato finaliza en menos de 60 días",
                 "Ventana legal para preavisar al SEPE conforme al art. 49 ET y el contrato.");
         int bday = scanBirthdays();
+        // Tras el scan, enviar resumen a la bandeja de la asesoría
+        // por cada cliente con alertas críticas nuevas. Un solo
+        // summary notification por asesoría reduce el ruido (en vez
+        // de 1 noti por cada alerta).
+        try {
+            notifyAdvisorsAfterScan();
+        } catch (Exception ex) {
+            // Defensivo: el scan ya está hecho, no romper por noti fallida.
+        }
         return new ScanResult(probation, end30, end60, bday);
+    }
+
+    /**
+     * Recorre las alertas creadas hoy de severidad WARNING en clientes
+     * con asesoría asignada y emite UN resumen por (advisory, client)
+     * al asesor. Idempotente: usa una sub-key en entity_ref con la
+     * fecha para no duplicar el resumen del mismo día.
+     */
+    private void notifyAdvisorsAfterScan() {
+        if (notificationService == null) return;
+        var rows = jdbc.queryForList("""
+                SELECT cp.parent_company_id AS advisory_id,
+                       cp.id AS client_id,
+                       cp.legal_name,
+                       SUM(CASE WHEN ca.severity = 'WARNING' THEN 1 ELSE 0 END) AS warning_count,
+                       SUM(CASE WHEN ca.severity = 'INFO' THEN 1 ELSE 0 END) AS info_count
+                  FROM contract_alerts ca
+                  JOIN companies cp ON cp.id = ca.company_id
+                 WHERE cp.parent_company_id IS NOT NULL
+                   AND DATE(ca.fires_at) = CURRENT_DATE
+                   AND ca.dismissed_at IS NULL
+                 GROUP BY cp.parent_company_id, cp.id, cp.legal_name
+                 HAVING SUM(CASE WHEN ca.severity = 'WARNING' THEN 1 ELSE 0 END) > 0
+                """);
+        for (var row : rows) {
+            String advisoryId = (String) row.get("advisory_id");
+            String clientId = (String) row.get("client_id");
+            String legalName = (String) row.get("legal_name");
+            Number warningCount = (Number) row.get("warning_count");
+            int n = warningCount == null ? 0 : warningCount.intValue();
+            String entityRef = "client:" + clientId + ":alerts:" + java.time.LocalDate.now();
+            // Antes de emitir, comprobar si ya hay una noti del día
+            // para evitar duplicados en re-scan manual.
+            Integer existing = jdbc.queryForObject("""
+                    SELECT COUNT(*) FROM advisory_notifications
+                     WHERE advisory_company_id = ? AND entity_ref = ?
+                    """, Integer.class, advisoryId, entityRef);
+            if (existing != null && existing > 0) continue;
+            notificationService.emit(
+                    new com.benjagest.backend.advisory.notifications.AdvisoryNotificationService.EmitRequest(
+                            advisoryId, clientId,
+                            "CONTRACT_ALERTS_TODAY",
+                            com.benjagest.backend.advisory.notifications.AdvisoryNotificationService.SEVERITY_WARNING,
+                            n + " alerta(s) de contrato en " + legalName,
+                            "Hoy se han detectado " + n + " alertas WARNING en contratos de "
+                                    + legalName + ". Revisa el módulo Labor del cliente.",
+                            entityRef));
+        }
     }
 
     private int scanProbationEndings() {
