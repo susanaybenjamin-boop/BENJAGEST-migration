@@ -63,7 +63,7 @@ public class AuthService {
             );
         }
 
-        AuthRepository.MembershipRecord primary = pickPrimaryMembership(memberships);
+        AuthRepository.MembershipRecord primary = memberships.get(0);
         AuthenticatedUser authenticated = new AuthenticatedUser(
                 user.id(),
                 user.email(),
@@ -111,7 +111,7 @@ public class AuthService {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Usuario sin memberships");
         }
 
-        AuthRepository.MembershipRecord primary = pickPrimaryMembership(memberships);
+        AuthRepository.MembershipRecord primary = memberships.get(0);
         AuthenticatedUser authenticated = new AuthenticatedUser(
                 user.id(),
                 user.email(),
@@ -197,39 +197,6 @@ public class AuthService {
         } catch (Exception ignored) {
             // Token invalido o caducado: nada que revocar.
         }
-    }
-
-    /**
-     * Selecciona la membership "primaria" del usuario al hacer login.
-     *
-     * <p>Antes era simplemente {@code memberships.get(0)}, pero la query
-     * de findMembershipsForUser ordena por {@code companies.legal_name},
-     * lo cual provocaba que un empresario con membership en su propia
-     * empresa + membership en una asesoría como EMPLOYEE/ADVISOR entrara
-     * en la asesoría si su nombre era alfabéticamente menor — perdiendo
-     * acceso a sus propios datos (calendarios, clientes, facturas, etc.).
-     *
-     * <p>Política nueva (Benjamin 2026-06-09):
-     * <ol>
-     *   <li>Si hay membership con role <b>OWNER</b>, entra en esa (un
-     *       OWNER es siempre el dueño de su empresa — debe ver SU
-     *       empresa por defecto).</li>
-     *   <li>Si no, si hay <b>ADMIN</b>, entra en esa.</li>
-     *   <li>Si no, primera de la lista (orden alfabético).</li>
-     * </ol>
-     *
-     * <p>El usuario puede cambiar de empresa después con {@code POST
-     * /api/auth/switch-company}.
-     */
-    private AuthRepository.MembershipRecord pickPrimaryMembership(
-            List<AuthRepository.MembershipRecord> memberships) {
-        return memberships.stream()
-                .filter(m -> "OWNER".equalsIgnoreCase(m.roleName()))
-                .findFirst()
-                .orElseGet(() -> memberships.stream()
-                        .filter(m -> "ADMIN".equalsIgnoreCase(m.roleName()))
-                        .findFirst()
-                        .orElse(memberships.get(0)));
     }
 
     private List<MembershipResponse> toMembershipDtos(List<AuthRepository.MembershipRecord> memberships) {
