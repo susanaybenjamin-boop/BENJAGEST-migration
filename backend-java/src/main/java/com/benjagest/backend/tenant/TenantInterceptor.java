@@ -35,17 +35,19 @@ public class TenantInterceptor implements HandlerInterceptor {
     @Override
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) {
         String header = request.getHeader("X-Company-Id");
+        String jwtCompanyId = null;
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (authentication != null
+                && authentication.getPrincipal() instanceof AuthenticatedUser user) {
+            jwtCompanyId = user.activeCompanyId();
+        }
+
         if (header != null && !header.isBlank()) {
             tenantContext.setCurrentCompanyId(header.trim());
             return true;
         }
-
-        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-        if (authentication != null
-                && authentication.getPrincipal() instanceof AuthenticatedUser user
-                && user.activeCompanyId() != null
-                && !user.activeCompanyId().isBlank()) {
-            tenantContext.setCurrentCompanyId(user.activeCompanyId());
+        if (jwtCompanyId != null && !jwtCompanyId.isBlank()) {
+            tenantContext.setCurrentCompanyId(jwtCompanyId);
         }
         return true;
     }
