@@ -2527,7 +2527,12 @@ public class BenjagestUiApplication extends Application {
     private HBox dayEventCard(ModuleRow event, Dialog<?> dialog) {
         Label title = label(event.fields().getOrDefault("evento", t("calendar.event.default_title")), "calendar-event-card-title");
         Label detail = label(event.fields().getOrDefault("detalle", t("calendar.event.no_detail")), "calendar-event-card-detail");
-        Label type = label(event.fields().getOrDefault("tipo", t("calendar.event.default_type")), "calendar-event-card-type");
+        // CAL-FIX (Benjamin 2026-06-09): humanizar event_type. Los volcados
+        // del calendario laboral usan HOLIDAY/WORK_ADJUSTMENT/WORK_CLOSURE
+        // que son códigos internos. Si hay key i18n, la usamos; si no,
+        // mantenemos el valor original (back-compat con eventos antiguos).
+        String rawType = event.fields().getOrDefault("tipo", t("calendar.event.default_type"));
+        Label type = label(humanizeCalendarEventType(rawType), "calendar-event-card-type");
         VBox copy = new VBox(5, title, detail, type);
         HBox.setHgrow(copy, Priority.ALWAYS);
 
@@ -2553,6 +2558,30 @@ public class BenjagestUiApplication extends Application {
         card.getStyleClass().add("calendar-event-card");
         card.setAlignment(Pos.CENTER_LEFT);
         return card;
+    }
+
+    /**
+     * Humaniza el código de event_type a una etiqueta i18n. Devuelve el
+     * código original si no hay traducción (back-compat con eventos
+     * antiguos cuyo tipo era un valor libre tecleado por el usuario).
+     *
+     * <p>Códigos conocidos:
+     * <ul>
+     *   <li>HOLIDAY → "Festivo" / "Holiday"</li>
+     *   <li>WORK_ADJUSTMENT → "Ajuste de jornada" / "Work adjustment"</li>
+     *   <li>WORK_CLOSURE → "Cierre" / "Closure"</li>
+     *   <li>GENERAL → "General" / "General"</li>
+     * </ul>
+     */
+    private String humanizeCalendarEventType(String raw) {
+        if (raw == null || raw.isBlank()) return "";
+        return switch (raw.trim().toUpperCase(java.util.Locale.ROOT)) {
+            case "HOLIDAY" -> t("calendar.event.type.holiday");
+            case "WORK_ADJUSTMENT" -> t("calendar.event.type.work_adjustment");
+            case "WORK_CLOSURE" -> t("calendar.event.type.work_closure");
+            case "GENERAL" -> t("calendar.event.type.general");
+            default -> raw;
+        };
     }
 
     private void showMonthDialog(LocalDate monthDate, List<ModuleRow> events) {
@@ -10084,6 +10113,10 @@ public class BenjagestUiApplication extends Application {
                 case "calendar.dialog.empty.body" -> "Nothing scheduled. You can create an appointment, deadline or reminder for this day.";
                 case "calendar.dialog.empty.btn" -> "Create event";
                 case "calendar.dialog.planned_one" -> "1 planned event";
+                case "calendar.event.type.holiday" -> "Public holiday";
+                case "calendar.event.type.work_adjustment" -> "Work-day adjustment";
+                case "calendar.event.type.work_closure" -> "Company closure";
+                case "calendar.event.type.general" -> "General";
                 case "calendar.dialog.planned_many_suffix" -> " planned events";
                 case "calendar.dialog.month.no_events" -> "No events this month.";
                 case "calendar.weekday.mon" -> "M";
@@ -11011,6 +11044,10 @@ public class BenjagestUiApplication extends Application {
             case "calendar.dialog.empty.body" -> "No hay nada programado. Puedes crear una cita, vencimiento o recordatorio para este dia.";
             case "calendar.dialog.empty.btn" -> "Crear evento";
             case "calendar.dialog.planned_one" -> "1 evento planificado";
+            case "calendar.event.type.holiday" -> "Festivo";
+            case "calendar.event.type.work_adjustment" -> "Ajuste de jornada";
+            case "calendar.event.type.work_closure" -> "Cierre de empresa";
+            case "calendar.event.type.general" -> "General";
             case "calendar.dialog.planned_many_suffix" -> " eventos planificados";
             case "calendar.dialog.month.no_events" -> "No hay eventos en este mes.";
             case "calendar.weekday.mon" -> "L";
