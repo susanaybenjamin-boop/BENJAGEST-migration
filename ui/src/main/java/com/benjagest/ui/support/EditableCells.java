@@ -4,9 +4,11 @@ import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import javafx.beans.value.ChangeListener;
+import javafx.scene.Node;
 import javafx.scene.control.DatePicker;
 import javafx.scene.control.TableCell;
 import javafx.scene.control.TableColumn;
+import javafx.scene.control.TableView;
 import javafx.scene.control.TextField;
 import javafx.scene.input.KeyCode;
 import javafx.scene.input.KeyEvent;
@@ -37,6 +39,71 @@ public final class EditableCells {
     private EditableCells() {}
 
     private static final DateTimeFormatter ISO = DateTimeFormatter.ISO_LOCAL_DATE;
+
+    /**
+     * Lista de formatos aceptados al parsear texto tecleado en un
+     * DatePicker. El orden importa — probamos primero ISO (formato
+     * canónico del proyecto) y luego patrones humanos comunes en
+     * España.
+     *
+     * <p>El converter por defecto de JavaFX para {@code es_ES} usa
+     * {@code FormatStyle.SHORT} que es {@code "dd/MM/yy"} (año de 2
+     * dígitos). Si el usuario teclea "31/12/2026" (año de 4 dígitos)
+     * el converter falla — por eso aquí aceptamos AMBOS explícitamente.
+     * Bug Benjamin 2026-06-09.
+     */
+    private static final DateTimeFormatter[] DATE_PARSERS = {
+            ISO,                                          // 2026-12-31
+            DateTimeFormatter.ofPattern("d/M/yyyy"),      // 3/6/2026, 31/12/2026
+            DateTimeFormatter.ofPattern("dd/MM/yyyy"),    // 03/06/2026
+            DateTimeFormatter.ofPattern("d-M-yyyy"),      // 3-6-2026
+            DateTimeFormatter.ofPattern("dd-MM-yyyy"),    // 03-06-2026
+            DateTimeFormatter.ofPattern("d/M/yy"),        // 3/6/26
+            DateTimeFormatter.ofPattern("d.M.yyyy"),      // 3.6.2026 (DE/AT)
+    };
+
+    /**
+     * Parsea texto a {@link LocalDate} aceptando varios formatos
+     * comunes. Devuelve null si ninguno encaja.
+     */
+    public static LocalDate parseFlexibleDate(String s) {
+        if (s == null || s.isBlank()) return null;
+        String t = s.trim();
+        for (DateTimeFormatter f : DATE_PARSERS) {
+            try { return LocalDate.parse(t, f); }
+            catch (DateTimeParseException ignored) { /* try next */ }
+        }
+        return null;
+    }
+
+    /**
+     * Fuerza el commit de cualquier {@link DatePicker} dentro de la
+     * tabla que tenga texto tecleado en su editor pero sin confirmar.
+     *
+     * <p>Necesario antes de leer los valores de las filas en un botón
+     * de acción ({@code "Volcar al calendario"}) — los focus listeners
+     * de cada celda pueden no haber disparado todavía cuando el usuario
+     * pulsa el botón directamente desde un editor abierto.
+     */
+    public static void commitPendingDatePickerEdits(TableView<?> table) {
+        if (table == null) return;
+        for (Node n : table.lookupAll(".date-picker")) {
+            if (n instanceof DatePicker dp) {
+                String typed = dp.getEditor() == null ? null : dp.getEditor().getText();
+                if (typed == null || typed.isBlank()) continue;
+                LocalDate parsed = parseFlexibleDate(typed);
+                if (parsed == null && dp.getConverter() != null) {
+                    try { parsed = dp.getConverter().fromString(typed.trim()); }
+                    catch (Exception ignored) { /* ignore */ }
+                }
+                if (parsed != null && !parsed.equals(dp.getValue())) {
+                    // Setear valueProperty dispara el listener de la
+                    // celda → commitEdit → onEditCommit → row.dateValue.
+                    dp.setValue(parsed);
+                }
+            }
+        }
+    }
 
     /**
      * Factoría de celda con TextField que commit-ea al perder foco
@@ -217,23 +284,21 @@ public final class EditableCells {
         }
 
         /**
-         * Parsea texto tecleado en el DatePicker probando primero el
-         * converter del propio control (respeta el locale del usuario),
-         * y como fallback el formato ISO {@code yyyy-MM-dd}.
+         * Parsea texto tecleado en el DatePicker probando primero
+         * varios formatos humanos comunes (ISO, dd/MM/yyyy, etc.) y
+         * como fallback el converter del propio control. El converter
+         * por defecto de JavaFX para es_ES usa año de 2 dígitos —
+         * insuficiente si el usuario teclea "31/12/2026". Por eso
+         * priorizamos los parsers flexibles.
          */
         private LocalDate parseTypedDate(String s) {
-            if (s == null || s.isBlank()) return null;
-            String t = s.trim();
-            // 1) Converter del DatePicker (locale-aware, ej. dd/MM/yyyy en ES).
-            if (picker != null && picker.getConverter() != null) {
-                try {
-                    LocalDate v = picker.getConverter().fromString(t);
-                    if (v != null) return v;
-                } catch (Exception ignored) { /* fallthrough */ }
+            LocalDate v = parseFlexibleDate(s);
+            if (v != null) return v;
+            if (picker != null && picker.getConverter() != null && s != null) {
+                try { return picker.getConverter().fromString(s.trim()); }
+                catch (Exception ignored) { /* none matched */ }
             }
-            // 2) ISO fallback.
-            try { return LocalDate.parse(t, ISO); }
-            catch (DateTimeParseException ex) { return null; }
+            return null;
         }
     }
 }

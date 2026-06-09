@@ -24182,17 +24182,20 @@ public class BenjagestUiApplication extends Application {
             start(task, "workcal-import-dump");
         };
         dumpBtn.setOnAction(ev -> {
-            // Si hay una celda en edición (típicamente un DatePicker con
-            // fecha tecleada sin Enter), movemos el foco al botón. Esto
-            // dispara el listener focused→false del editor de la celda
-            // y commitea el valor. Luego ejecutamos la validación en el
-            // siguiente pulso del hilo JavaFX para dar tiempo al commit.
-            if (rightTable.getEditingCell() != null) {
-                dumpBtn.requestFocus();
-                javafx.application.Platform.runLater(doDumpAction);
-            } else {
-                doDumpAction.run();
-            }
+            // Fuerza commit de cualquier DatePicker abierto en la tabla
+            // cuyo editor tenga texto tecleado sin confirmar. Sin esto,
+            // las fechas tecleadas en formato 'dd/MM/yyyy' (con año de
+            // 4 dígitos) quedaban en el valor por defecto del 'Añadir
+            // fila' (1 ene) porque el converter de JavaFX para es_ES
+            // espera año de 2 dígitos. Bug Benjamin 2026-06-09.
+            com.benjagest.ui.support.EditableCells
+                    .commitPendingDatePickerEdits(rightTable);
+            // También movemos foco al botón por si hay un TextField
+            // (nombre, notas) con texto sin commitear.
+            dumpBtn.requestFocus();
+            // runLater para dejar que el commit propague antes de leer
+            // los valores de las filas en la validación.
+            javafx.application.Platform.runLater(doDumpAction);
         });
 
         VBox root = new VBox(8, headerLbl, split, footer);
