@@ -11619,6 +11619,7 @@ public class BenjagestUiApplication extends Application {
             case "workcal.col.date" -> "Date";
             case "workcal.col.holiday_name" -> "Holiday";
             case "workcal.col.scope" -> "Scope";
+            case "workcal.col.type" -> "Type";
             case "workcal.col.notes" -> "Notes";
             case "workcal.section.calendars" -> "Calendars";
             case "workcal.section.holidays" -> "Holidays";
@@ -11994,6 +11995,7 @@ public class BenjagestUiApplication extends Application {
             case "workcal.col.date" -> "Fecha";
             case "workcal.col.holiday_name" -> "Festivo";
             case "workcal.col.scope" -> "Ámbito";
+            case "workcal.col.type" -> "Tipo";
             case "workcal.col.notes" -> "Notas";
             case "workcal.section.calendars" -> "Calendarios";
             case "workcal.section.holidays" -> "Festivos";
@@ -23924,6 +23926,7 @@ public class BenjagestUiApplication extends Application {
         lConf.setPrefWidth(90);
         leftTable.getColumns().addAll(List.of(lDate, lName, lScope, lConf));
         leftTable.setItems(FXCollections.observableArrayList(preview.holidays()));
+        com.benjagest.ui.support.TableSelectionHelper.install(leftTable);
 
         Label leftLabel = new Label(t("workcal.import_pdf.section_detected"));
         leftLabel.getStyleClass().add("module-detail-title");
@@ -23941,17 +23944,34 @@ public class BenjagestUiApplication extends Application {
         rightTable.setEditable(true);
         rightTable.getSelectionModel().setSelectionMode(
                 javafx.scene.control.SelectionMode.MULTIPLE);
-        TableColumn<EditableHolidayRow, String> rDate =
+        // Atajos uniformes: Escape / click vacío → deselecciona.
+        com.benjagest.ui.support.TableSelectionHelper.install(rightTable);
+
+        // Fecha — DatePicker integrado, commit al elegir día / Tab.
+        TableColumn<EditableHolidayRow, java.time.LocalDate> rDate =
                 new TableColumn<>(t("workcal.col.date"));
-        rDate.setCellValueFactory(c -> c.getValue().dateText);
-        rDate.setCellFactory(javafx.scene.control.cell.TextFieldTableCell.forTableColumn());
-        rDate.setOnEditCommit(ev -> ev.getRowValue().setDateText(ev.getNewValue()));
-        rDate.setPrefWidth(110);
+        rDate.setCellValueFactory(c -> c.getValue().dateValue);
+        rDate.setCellFactory(com.benjagest.ui.support.EditableCells.datePicker());
+        rDate.setOnEditCommit(ev -> ev.getRowValue().dateValue.set(ev.getNewValue()));
+        rDate.setPrefWidth(140);
+
+        // Tipo — combo FESTIVO / AJUSTE / CIERRE.
+        TableColumn<EditableHolidayRow, String> rType =
+                new TableColumn<>(t("workcal.col.type"));
+        rType.setCellValueFactory(c -> c.getValue().holidayType);
+        rType.setCellFactory(javafx.scene.control.cell.ComboBoxTableCell.forTableColumn(
+                "FESTIVO", "AJUSTE", "CIERRE"));
+        rType.setOnEditCommit(ev -> ev.getRowValue().holidayType.set(ev.getNewValue()));
+        rType.setPrefWidth(100);
+
+        // Nombre — TextField con commit-on-blur (no requiere Enter).
         TableColumn<EditableHolidayRow, String> rName =
                 new TableColumn<>(t("workcal.col.holiday_name"));
         rName.setCellValueFactory(c -> c.getValue().name);
-        rName.setCellFactory(javafx.scene.control.cell.TextFieldTableCell.forTableColumn());
+        rName.setCellFactory(com.benjagest.ui.support.EditableCells.textFieldCommitOnBlur());
         rName.setOnEditCommit(ev -> ev.getRowValue().name.set(ev.getNewValue()));
+
+        // Scope — combo.
         TableColumn<EditableHolidayRow, String> rScope =
                 new TableColumn<>(t("workcal.col.scope"));
         rScope.setCellValueFactory(c -> c.getValue().scope);
@@ -23959,12 +23979,15 @@ public class BenjagestUiApplication extends Application {
                 "NATIONAL", "CCAA", "LOCAL"));
         rScope.setOnEditCommit(ev -> ev.getRowValue().scope.set(ev.getNewValue()));
         rScope.setPrefWidth(110);
+
+        // Notas — TextField commit-on-blur.
         TableColumn<EditableHolidayRow, String> rNotes =
                 new TableColumn<>(t("workcal.col.notes"));
         rNotes.setCellValueFactory(c -> c.getValue().notes);
-        rNotes.setCellFactory(javafx.scene.control.cell.TextFieldTableCell.forTableColumn());
+        rNotes.setCellFactory(com.benjagest.ui.support.EditableCells.textFieldCommitOnBlur());
         rNotes.setOnEditCommit(ev -> ev.getRowValue().notes.set(ev.getNewValue()));
-        rightTable.getColumns().addAll(List.of(rDate, rName, rScope, rNotes));
+
+        rightTable.getColumns().addAll(List.of(rDate, rType, rName, rScope, rNotes));
         rightTable.setItems(rightRows);
 
         Label rightLabel = new Label(t("workcal.import_pdf.section_to_import"));
@@ -23997,15 +24020,15 @@ public class BenjagestUiApplication extends Application {
         copySelBtn.setOnAction(ev -> {
             for (var det : leftTable.getSelectionModel().getSelectedItems()) {
                 // Evita duplicar por fecha si ya está.
-                String dStr = det.date() == null ? "" : det.date().toString();
+                java.time.LocalDate dd = det.date();
                 boolean already = rightRows.stream().anyMatch(
-                        r -> dStr.equals(r.dateText.get()));
+                        r -> dd != null && dd.equals(r.dateValue.get()));
                 if (!already) rightRows.add(EditableHolidayRow.from(det));
             }
         });
         addRowBtn.setOnAction(ev -> rightRows.add(new EditableHolidayRow(
-                java.time.LocalDate.of(preview.year(), 1, 1).toString(),
-                "", "LOCAL", "")));
+                java.time.LocalDate.of(preview.year(), 1, 1),
+                "FESTIVO", "", "LOCAL", "")));
         delRowBtn.setOnAction(ev -> rightRows.removeAll(
                 new java.util.ArrayList<>(rightTable.getSelectionModel().getSelectedItems())));
 
@@ -24033,14 +24056,13 @@ public class BenjagestUiApplication extends Application {
                 showError(t("workcal.error"), t("workcal.import_pdf.empty_dump"));
                 return;
             }
-            // Validar todas las filas: fecha parseable + nombre + scope.
+            // Validar todas las filas: fecha presente + nombre + scope.
             List<com.benjagest.ui.model.HolidayEntry> toSave = new java.util.ArrayList<>();
             for (var r : rightRows) {
-                java.time.LocalDate d;
-                try { d = java.time.LocalDate.parse(r.dateText.get()); }
-                catch (Exception ex) {
+                java.time.LocalDate d = r.dateValue.get();
+                if (d == null) {
                     showError(t("workcal.error"),
-                            t("workcal.import_pdf.bad_date").replace("{v}", r.dateText.get()));
+                            t("workcal.import_pdf.bad_date").replace("{v}", "(vacía)"));
                     return;
                 }
                 String n = r.name.get();
@@ -24052,6 +24074,7 @@ public class BenjagestUiApplication extends Application {
                         null, calendar.id(), d, n.trim(), r.scope.get(), true,
                         r.notes.get() == null || r.notes.get().isBlank() ? null
                                 : r.notes.get().trim(),
+                        r.holidayType.get() == null ? "FESTIVO" : r.holidayType.get(),
                         null));
             }
             Task<Void> task = new Task<>() {
@@ -24075,23 +24098,26 @@ public class BenjagestUiApplication extends Application {
 
     /** Fila editable mutable para el panel derecho del modal CAL-IMPORT. */
     private static class EditableHolidayRow {
-        final javafx.beans.property.SimpleStringProperty dateText;
+        final javafx.beans.property.SimpleObjectProperty<java.time.LocalDate> dateValue;
+        final javafx.beans.property.SimpleStringProperty holidayType;
         final javafx.beans.property.SimpleStringProperty name;
         final javafx.beans.property.SimpleStringProperty scope;
         final javafx.beans.property.SimpleStringProperty notes;
 
-        EditableHolidayRow(String dateText, String name, String scope, String notes) {
-            this.dateText = new javafx.beans.property.SimpleStringProperty(dateText);
+        EditableHolidayRow(java.time.LocalDate date, String holidayType,
+                String name, String scope, String notes) {
+            this.dateValue = new javafx.beans.property.SimpleObjectProperty<>(date);
+            this.holidayType = new javafx.beans.property.SimpleStringProperty(
+                    holidayType == null || holidayType.isBlank() ? "FESTIVO" : holidayType);
             this.name = new javafx.beans.property.SimpleStringProperty(name);
             this.scope = new javafx.beans.property.SimpleStringProperty(scope);
             this.notes = new javafx.beans.property.SimpleStringProperty(notes);
         }
 
-        void setDateText(String v) { dateText.set(v); }
-
         static EditableHolidayRow from(com.benjagest.ui.model.HolidayPdfPreview.DetectedHoliday d) {
             return new EditableHolidayRow(
-                    d.date() == null ? "" : d.date().toString(),
+                    d.date(),
+                    d.holidayType() == null ? "FESTIVO" : d.holidayType(),
                     d.name() == null ? "" : d.name(),
                     d.scope() == null ? "LOCAL" : d.scope(),
                     "");

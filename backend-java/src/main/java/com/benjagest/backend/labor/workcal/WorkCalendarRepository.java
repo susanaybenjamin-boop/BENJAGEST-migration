@@ -114,7 +114,7 @@ public class WorkCalendarRepository {
     public List<Holiday> listByCalendar(String workCalendarId) {
         return jdbcTemplate.query("""
                 SELECT id, work_calendar_id, holiday_date, name, scope,
-                       is_paid, notes, created_at
+                       is_paid, notes, holiday_type, created_at
                   FROM holidays
                  WHERE work_calendar_id = ?
                  ORDER BY holiday_date ASC
@@ -125,11 +125,12 @@ public class WorkCalendarRepository {
         jdbcTemplate.update("""
                 INSERT INTO holidays
                        (id, work_calendar_id, holiday_date, name, scope,
-                        is_paid, notes, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, NOW())
+                        is_paid, notes, holiday_type, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())
                 """,
                 h.id(), h.workCalendarId(), h.holidayDate(), h.name(),
-                h.scope(), h.isPaid(), h.notes());
+                h.scope(), h.isPaid(), h.notes(),
+                h.holidayType() == null ? Holiday.TYPE_FESTIVO : h.holidayType());
     }
 
     public void deleteHoliday(String id) {
@@ -169,6 +170,7 @@ public class WorkCalendarRepository {
             rs.getString("scope"),
             rs.getBoolean("is_paid"),
             rs.getString("notes"),
+            rs.getString("holiday_type"),
             toInstant(rs.getTimestamp("created_at"))
     );
 

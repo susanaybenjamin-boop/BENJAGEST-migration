@@ -129,8 +129,17 @@ public class HolidayPdfExtractor {
             String name,
             String scope,
             String confidence,
-            String rawSourceLine
-    ) {}
+            String rawSourceLine,
+            /** FESTIVO | AJUSTE | CIERRE — para envío al volcar. */
+            String holidayType
+    ) {
+        // Constructor de compat (5 args). Algunos sitios viejos lo
+        // siguen invocando — asume FESTIVO por defecto.
+        public DetectedHoliday(LocalDate date, String name, String scope,
+                String confidence, String rawSourceLine) {
+            this(date, name, scope, confidence, rawSourceLine, Holiday.TYPE_FESTIVO);
+        }
+    }
 
     public ExtractionResult extract(byte[] pdfBytes) throws IOException {
         String raw = pdf.extract(pdfBytes);
@@ -235,7 +244,8 @@ public class HolidayPdfExtractor {
                                 buildDescription(line),
                                 mapScopeForBenjagest(cls2),
                                 bandFromScore(cls2.confidence * 0.85),
-                                prev.rawSourceLine() + " | " + line
+                                prev.rawSourceLine() + " | " + line,
+                                typeFromClassification(cls2)
                         ));
                     }
                 }
@@ -297,7 +307,8 @@ public class HolidayPdfExtractor {
                     name == null || name.isBlank() ? "(sin descripción)" : name,
                     scope,
                     confidence,
-                    line
+                    line,
+                    typeFromClassification(cls)
             ));
         }
 
@@ -406,6 +417,18 @@ public class HolidayPdfExtractor {
 
     private boolean isAdjustment(Classification cls) {
         return cls != null && "convenio".equals(cls.tipo);
+    }
+
+    /**
+     * Mapea la clasificación interna del parser (tipo CONTENDO) al
+     * holidayType del modelo BENJAGEST. Los ajustes de jornada se
+     * marcan AJUSTE (no consumen tope legal Art. 37.2 ET).
+     */
+    private String typeFromClassification(Classification cls) {
+        if (cls == null) return Holiday.TYPE_FESTIVO;
+        if ("convenio".equals(cls.tipo)) return Holiday.TYPE_AJUSTE;
+        if ("cierre_empresa".equals(cls.tipo)) return Holiday.TYPE_CIERRE;
+        return Holiday.TYPE_FESTIVO;
     }
 
     // ============================================================

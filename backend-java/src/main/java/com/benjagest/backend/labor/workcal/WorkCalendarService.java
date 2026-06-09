@@ -137,7 +137,13 @@ public class WorkCalendarService {
         WorkCalendar c = getById(workCalendarId);
         validateHolidayRequest(req);
         List<Holiday> existing = repository.listByCalendar(c.id());
-        if (existing.size() >= MAX_HOLIDAYS_PER_YEAR) {
+        // El tope legal SOLO cuenta festivos no laborables (Art. 37.2 ET).
+        // Los AJUSTES de jornada y CIERRES propios de empresa no cuentan.
+        long currentFestivos = existing.stream()
+                .filter(h -> Holiday.TYPE_FESTIVO.equals(h.holidayType()))
+                .count();
+        if (Holiday.TYPE_FESTIVO.equals(req.typeOrDefault())
+                && currentFestivos >= MAX_HOLIDAYS_PER_YEAR) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "Tope legal de 14 festivos al año superado (Art. 37.2 Estatuto Trabajadores).");
         }
@@ -148,7 +154,7 @@ public class WorkCalendarService {
                 .anyMatch(h -> h.holidayDate().equals(req.holidayDate()));
         if (duplicate) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
-                    "Ya existe un festivo en " + req.holidayDate() + " para este calendario.");
+                    "Ya existe una entrada en " + req.holidayDate() + " para este calendario.");
         }
         Holiday h = new Holiday(
                 UUID.randomUUID().toString(),
@@ -158,6 +164,7 @@ public class WorkCalendarService {
                 req.scope(),
                 req.isPaid() == null ? true : req.isPaid(),
                 blank(req.notes()),
+                req.typeOrDefault(),
                 Instant.now()
         );
         repository.insertHoliday(h);
@@ -187,17 +194,24 @@ public class WorkCalendarService {
     @Transactional
     public List<Holiday> replaceHolidays(String workCalendarId, List<HolidayRequest> reqs) {
         WorkCalendar c = getById(workCalendarId);
-        if (reqs.size() > MAX_HOLIDAYS_PER_YEAR) {
+        // Tope legal Art. 37.2 ET aplica SOLO a festivos no laborables.
+        // Ajustes de jornada (convenio) y cierres propios de empresa no
+        // cuentan — un calendario puede tener 14 festivos + 10 ajustes
+        // sin problema.
+        long festivos = reqs.stream()
+                .filter(r -> Holiday.TYPE_FESTIVO.equals(r.typeOrDefault()))
+                .count();
+        if (festivos > MAX_HOLIDAYS_PER_YEAR) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "Tope legal de 14 festivos al año superado (Art. 37.2 Estatuto Trabajadores). "
-                            + "Recibidos: " + reqs.size());
+                            + "Festivos recibidos: " + festivos);
         }
         // Detección de fechas duplicadas en la entrada — el UK lo
         // bloquearía, pero el mensaje SQL es críptico; aquí va legible.
         long distinct = reqs.stream().map(HolidayRequest::holidayDate).distinct().count();
         if (distinct != reqs.size()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "Hay fechas duplicadas en la lista de festivos.");
+                    "Hay fechas duplicadas en la lista.");
         }
         for (HolidayRequest r : reqs) {
             validateHolidayRequest(r);
@@ -210,6 +224,7 @@ public class WorkCalendarService {
                 r.scope(),
                 r.isPaid() == null ? true : r.isPaid(),
                 blank(r.notes()),
+                r.typeOrDefault(),
                 Instant.now()
         )).toList();
         repository.replaceHolidays(c.id(), built);
@@ -261,6 +276,14 @@ public class WorkCalendarService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "scope debe ser NATIONAL | CCAA | LOCAL");
         }
+        String t = r.holidayType();
+        if (t != null && !t.isBlank()
+                && !(t.equals(Holiday.TYPE_FESTIVO)
+                        || t.equals(Holiday.TYPE_AJUSTE)
+                        || t.equals(Holiday.TYPE_CIERRE))) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "holidayType debe ser FESTIVO | AJUSTE | CIERRE");
+        }
     }
 
     private static String blank(String v) {
@@ -305,7 +328,15 @@ public class WorkCalendarService {
             String name,
             String scope,
             Boolean isPaid,
-            String notes
-    ) {}
+            String notes,
+            /** FESTIVO | AJUSTE | CIERRE. null → FESTIVO por defecto. */
+            String holidayType
+    ) {
+        /** Devuelve el tipo no-null (default FESTIVO). */
+        public String typeOrDefault() {
+            return holidayType == null || holidayType.isBlank()
+                    ? Holiday.TYPE_FESTIVO : holidayType;
+        }
+    }
 
 }

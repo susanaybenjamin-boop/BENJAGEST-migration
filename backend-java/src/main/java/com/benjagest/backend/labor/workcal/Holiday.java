@@ -18,6 +18,16 @@ public record Holiday(
         String scope,
         boolean isPaid,
         String notes,
+        /**
+         * Tipo: FESTIVO (festivo legal no laborable) | AJUSTE (día de
+         * ajuste de jornada del convenio colectivo) | CIERRE (cierre
+         * propio de la empresa). Solo los FESTIVO consumen el tope
+         * legal de 14/año (Art. 37.2 ET).
+         */
+        String holidayType,
         Instant createdAt
 ) {
+    public static final String TYPE_FESTIVO = "FESTIVO";
+    public static final String TYPE_AJUSTE = "AJUSTE";
+    public static final String TYPE_CIERRE = "CIERRE";
 }
