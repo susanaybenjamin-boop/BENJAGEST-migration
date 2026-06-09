@@ -12397,6 +12397,7 @@ public class BenjagestUiApplication extends Application {
             case "labor.ss.status.DRAFT" -> "Draft";
             case "labor.ss.status.FILED" -> "Filed";
             case "labor.ss.status.PAID" -> "Paid";
+            case "labor.ss.totals" -> "{n} contributions · Total base: {base} € · Total amount: {cuota} €";
             // ---- TC-AUDIT ----
             case "labor.audit.hint" -> "Time clock audit for RD 8/2019 art. 34.9 (immutability) and 35.8 (public verification). Filter by range, employee or event type. Records are 4-year retained.";
             case "labor.audit.filter.from" -> "From";
@@ -12791,6 +12792,7 @@ public class BenjagestUiApplication extends Application {
             case "labor.ss.status.DRAFT" -> "Borrador";
             case "labor.ss.status.FILED" -> "Enviada";
             case "labor.ss.status.PAID" -> "Pagada";
+            case "labor.ss.totals" -> "{n} cuotas · Total base: {base} € · Total cuota: {cuota} €";
             case "labor.audit.hint" -> "Auditoria de fichajes para el RD 8/2019 art. 34.9 (inalterabilidad) y 35.8 (verificacion publica). Filtra por rango, empleado o tipo. Conservacion 4 anos.";
             case "labor.audit.filter.from" -> "Desde";
             case "labor.audit.filter.to" -> "Hasta";
@@ -24304,7 +24306,31 @@ public class BenjagestUiApplication extends Application {
                             .equals(newV.status()));
         });
 
-        HBox actions = new HBox(8, delBtn);
+        // Totales en footer — útil para verificación rápida contra TC1.
+        Label totalsLbl = new Label();
+        totalsLbl.getStyleClass().add("settings-hint");
+        Runnable recompute = () -> {
+            int n = table.getItems().size();
+            java.math.BigDecimal sumBase = java.math.BigDecimal.ZERO;
+            java.math.BigDecimal sumCuota = java.math.BigDecimal.ZERO;
+            for (var row : table.getItems()) {
+                if (row.baseAmount() != null) sumBase = sumBase.add(row.baseAmount());
+                if (row.contributionAmount() != null) sumCuota = sumCuota.add(row.contributionAmount());
+            }
+            totalsLbl.setText(t("labor.ss.totals")
+                    .replace("{n}", String.valueOf(n))
+                    .replace("{base}", sumBase.toPlainString())
+                    .replace("{cuota}", sumCuota.toPlainString()));
+        };
+        table.getItems().addListener(
+                (javafx.collections.ListChangeListener<com.benjagest.ui.model.SocialSecurityContributionEntry>) c
+                        -> recompute.run());
+        recompute.run();
+
+        Region footerSpacer = new Region();
+        HBox.setHgrow(footerSpacer, Priority.ALWAYS);
+        HBox actions = new HBox(8, totalsLbl, footerSpacer, delBtn);
+        actions.setAlignment(Pos.CENTER_LEFT);
         VBox.setVgrow(table, Priority.ALWAYS);
         content.getChildren().addAll(hint, filters, table, actions);
         return content;
