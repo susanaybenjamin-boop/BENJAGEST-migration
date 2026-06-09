@@ -3,7 +3,7 @@
 > Lista única ordenada de mayor a menor importancia con TODO lo que hay que hacer en BENJAGEST.
 > Se va tachando conforme cada item se crea, prueba, commitea y mergea a `develop`.
 >
-> **Última revisión:** 2026-06-07 (sesión recurrentes COMPLETO — 24 slices 3A-3X). **Bloque RECURRENTES cerrado** con motor + UI + 7 kinds (SALES_INVOICE, PURCHASE, JOURNAL_ENTRY, ACCOUNTING_INCOME, ACCOUNTING_EXPENSE, TEMPLATE_APPLY, LOAN_AUTO_PAY) + transacciones REQUIRES_NEW aisladas + placeholders {MES}/{MES_MAY}/{AÑO}/{YY}/{M}/{D}/{T}/{MM}/{YYYY}/{DD}/{Q} + auto_proposed=TRUE + endpoint already-covers + from-recurring (check determinista via recurring_task_runs.generated_id) + candidatos detectables con banner + botón "Hacer recurrente" contextual en listados (cliente vinculado abre editor legal SALES_INVOICE, shadow abre ACCOUNTING_INCOME) + editor "Pago periódico sin factura" JOURNAL_ENTRY + autovinculación silenciosa asesoría (V64) + "Mi gestión" sidebar (IcoMoon fas-briefcase) + sub-tabs Recurrentes en empresario/cliente vinculado/cliente NO vinculado + badge "Creada por tu asesoría" + auto-resolver cuenta tercero por NIF + V65 ck_rt_kind con ACCOUNTING_INCOME/EXPENSE + commitSpinner fix + placeholder en cursor + purchase_invoice sintético al ejecutar ACCOUNTING_EXPENSE/JOURNAL_ENTRY para centralizar en listado Compras + auto-refresh sub-tabs vía RefreshBus.TOPIC_RECURRING + orígenes Diario unificados (solo "Venta"/"Gasto" con sufijo "(recurrente)" en concepto) + "Compra"→"Gasto" semánticamente correcto + acciones encima del listado (no scroll) + botón "Hacer recurrente" en buildClientBillingTab + buildClientSalesArchivedTab + sidebar asesoría renombrado "Facturacion clientes/Compras revisadas" → "Facturacion/Compras y Gastos" para igualar empresario.
+> **Última revisión:** 2026-06-09 noche (Benjamin presente — cierre del día: revert + fix puerto MariaDB 3307 + bloque CAL-FIX 1-4 + humanizar event_type en Agenda). **Bloque RECURRENTES cerrado** con motor + UI + 7 kinds (SALES_INVOICE, PURCHASE, JOURNAL_ENTRY, ACCOUNTING_INCOME, ACCOUNTING_EXPENSE, TEMPLATE_APPLY, LOAN_AUTO_PAY) + transacciones REQUIRES_NEW aisladas + placeholders {MES}/{MES_MAY}/{AÑO}/{YY}/{M}/{D}/{T}/{MM}/{YYYY}/{DD}/{Q} + auto_proposed=TRUE + endpoint already-covers + from-recurring (check determinista via recurring_task_runs.generated_id) + candidatos detectables con banner + botón "Hacer recurrente" contextual en listados (cliente vinculado abre editor legal SALES_INVOICE, shadow abre ACCOUNTING_INCOME) + editor "Pago periódico sin factura" JOURNAL_ENTRY + autovinculación silenciosa asesoría (V64) + "Mi gestión" sidebar (IcoMoon fas-briefcase) + sub-tabs Recurrentes en empresario/cliente vinculado/cliente NO vinculado + badge "Creada por tu asesoría" + auto-resolver cuenta tercero por NIF + V65 ck_rt_kind con ACCOUNTING_INCOME/EXPENSE + commitSpinner fix + placeholder en cursor + purchase_invoice sintético al ejecutar ACCOUNTING_EXPENSE/JOURNAL_ENTRY para centralizar en listado Compras + auto-refresh sub-tabs vía RefreshBus.TOPIC_RECURRING + orígenes Diario unificados (solo "Venta"/"Gasto" con sufijo "(recurrente)" en concepto) + "Compra"→"Gasto" semánticamente correcto + acciones encima del listado (no scroll) + botón "Hacer recurrente" en buildClientBillingTab + buildClientSalesArchivedTab + sidebar asesoría renombrado "Facturacion clientes/Compras revisadas" → "Facturacion/Compras y Gastos" para igualar empresario.
 >
 > **Sesión 2026-06-05 (referencia previa):** asesoría↔cliente + exports legales. 15 slices: ciclo invitación (UNLINK-SYNC + REINVITE + POLLING-FIX `sendAsOwner` + INSTANT-REFRESH + DEHU-POLLING), sidebar dual `Mi empresa` vs `Mis clientes` con cierre de la deuda `advisory_only` (DUAL-SIDEBAR + V43), bug crítico fichajes `EMP-USER-MAP`, trilogía exports verificables — TC-EXPORT, AUDIT-EXPORT, AUDIT-CHAIN (V44 hash encadenado en `audit_events` con FIX collation MariaDB 11.4 + endpoint `/verify` + display_name humano).
 >
@@ -32,6 +32,85 @@ Para no repetir en cada sección lo que ya está:
 - ✅ Slice C1: login real email/password con JWT, AuthSession con Bearer automático, selector de empresa, modo derivado de `company_type` (toggle eliminado).
 - ✅ Slice C3: módulo Configuración MVP — V9 + Jasypt + 3 controllers `/api/settings/*` con `@RequiresRole`/`@RequiresModule` + UI con TabPane (Empresa/Email SMTP/Módulos) + sticky footer + batched save de módulos + A4 sidebar dinámico (`/api/modules-catalog/active`). i18n cerrado 2026-06-02.
 - ✅ Fix de seguridad: `CustomerRepository.findById/findAllActive` filtran por `company_id` (era fuga pre-existente).
+
+---
+
+## 📅 Sesión 2026-06-09 noche (Benjamin presente — cierre día)
+
+Sesión de cierre tras la autónoma de la tarde. Benjamin volvió,
+probó lo que dejó la sesión autónoma, y aparecieron 2 bugs serios
+que pasaron a primera prioridad antes de cualquier feature nueva.
+
+**Cerrado**:
+
+1. **fix(workcal) — revert UI + backend al estado 71e0697**
+   (commits `49e030d`, `410ccc3`): tras la sesión autónoma de la
+   tarde, varios cambios "preventivos" (pickPrimaryMembership en
+   AuthService, validación X-Company-Id en TenantInterceptor, V79/V80
+   de holiday_type, retoques al modal) habían dejado al usuario
+   empresario `empresario@benjagest.local` sin ver clientes, ventas,
+   compras, auditoría ni calendarios — pese a que la BD los tenía
+   correctos. Revert quirúrgico a 71e0697 (`git checkout 71e0697 --`
+   por archivos, no `git revert` que habría arrastrado más cambios)
+   para restaurar el comportamiento previo.
+
+2. **fix(config) CRITICAL — backend conectado a MariaDB 3306 (Pablo)
+   en vez de 3307** (commit `e98fbb1`): después del revert el bug
+   seguía. Diagnóstico con 3 logs temporales (`[TENANT-DEBUG]`,
+   `[CUSTOMERS-DEBUG]`, `[CUSTOMERS-DEBUG-2]` con contrapruebas
+   countAll/countNoActive/countHardcoded). Resultado: el JdbcTemplate
+   no devolvía datos NI con companyId hardcodeado y `countAll=3`.
+   Aplicación arrancaba contra `MariaDB 12.2`, NO `11.4` del proyecto.
+   `application.yml` tenía `localhost:3306` por defecto, que en la
+   máquina de Benjamin es la instancia de Pablo con una BD `benjagest`
+   casi vacía. Cambio: default a `3307` + comentario explicando por
+   qué para futuras sesiones. Logs temporales eliminados en el mismo
+   commit. **Lección**: si Hikari log dice `MariaDB 12.2` en arranque,
+   estamos contra BD equivocada — la del proyecto es 11.4.
+
+3. **feat(workcal) CAL-FIX — bloque calendario laboral completo**
+   (commit `064b6df`): cierra las 4 peticiones de Benjamin tras el
+   bug del puerto:
+   - **CAL-FIX 1**: DatePicker → TextField flexible en modal
+     CAL-IMPORT, estilo CONTENDO (`<input type=date>` nativo). Nuevo
+     `EditableCells.flexibleDateTextField()`. Sin popup, sin
+     VirtualFlow. Acepta dd/MM/yyyy, ISO, dd-MM-yyyy, d.M.yyyy. Si
+     no parsea, borde rojo y mantiene texto. Elimina el bug
+     "01/01/2026 dos veces" definitivamente.
+   - **CAL-FIX 2**: botón "Eliminar calendario" movido del pie a la
+     barra superior junto a "Importar PDF" + nuevo botón.
+   - **CAL-FIX 3**: botón "Volcar a Agenda" + endpoint
+     `POST /api/labor/work-calendars/{id}/dump-to-agenda`. Copia
+     `holidays` a `calendar_events` con `source_type=WORK_CALENDAR`.
+     Mapeo: FESTIVO→HOLIDAY, AJUSTE→WORK_ADJUSTMENT, CIERRE→
+     WORK_CLOSURE. Idempotente.
+   - **CAL-FIX 4**: V81 `employees.work_calendar_id` CHAR(36) NULL
+     + FK ON DELETE SET NULL. EmployeeService lee/escribe el campo.
+     ComboBox en form de empleado con opción "— Ninguno —" + todos
+     los calendarios. Listo para que fichaje/nómina lo usen
+     (lógica de fichaje extra/bloqueo queda como bloque futuro
+     **TC-CAL**, decisión pendiente: ¿warning visual o bloqueo
+     duro?).
+
+4. **fix(agenda) — humanizar event_type en tarjetas** (commit
+   `8077226`): la modal de Agenda mostraba el código crudo
+   (`WORK_ADJUSTMENT`, `HOLIDAY`, `WORK_CLOSURE`) bajo el título.
+   Nuevo helper `humanizeCalendarEventType()` con switch + fallback
+   al valor original (back-compat con eventos antiguos cuyo tipo
+   era texto libre tecleado). 4 keys i18n ES+EN nuevas.
+
+**Pendiente / propuestas para próxima sesión**:
+
+- **TC-CAL** — usar `employees.work_calendar_id` en fichaje: detectar
+  si el día es FESTIVO/AJUSTE/CIERRE del calendario del empleado y
+  o bien marcar el fichaje como extra, o bloquear. Decisión de
+  comportamiento abierta (preguntar a Benjamin).
+- **Agenda — limpieza de eventos volcados**: si el usuario hace
+  `Volcar a Agenda` con un calendario de 2025 y luego con uno de
+  2026, ambos siguen en la Agenda. Botón "Quitar de Agenda" o
+  limpieza automática al cambiar calendario activo del año.
+- **Badge de color** en lugar de texto plano para tipos de evento
+  (rojo festivo, azul ajuste, gris cierre) — más visual.
 
 ---
 
