@@ -193,3 +193,97 @@ Al cerrar un bloque (3+ slices completados):
 
 Si dudas en algo de esto, abre `docs/agents-debug-pattern.md` o
 pregunta a Benjamin directamente.
+
+---
+
+## 11. Trabajo autónomo cuando Benjamin no está
+
+Benjamin a veces deja la sesión arrancada y se va. Reglas para esos
+intervalos (probadas en sesión 2026-06-09 tarde, lecciones del fix
+del puerto MariaDB la noche del mismo día):
+
+### 11.1. Qué SÍ hacer
+
+- **Cerrar bugs que él haya descrito por escrito** y se puedan
+  diagnosticar con los datos que ya están (logs, código, BD).
+- **Continuar slices previamente acordados** (los que él haya
+  enumerado en su último mensaje antes de irse). Si hay un plan
+  escrito en un comentario o en `docs/`, ese es el camino.
+- **Mejoras aditivas evidentes** al cerrar un slice: ordenación que
+  faltaba, i18n en un botón, footer con totales que se calculan
+  trivialmente. La regla de Benjamin: *"cuando creas que solucionas
+  algo, plantea una mejora extra"*. Aditivo, nunca destructivo.
+- **Commits pequeños por slice**, con co-author Claude.
+- **Push a `feat/Benjamin` + merge `--no-ff` a `develop`** al final
+  de cada slice, NO al final del día. Así si algo va mal, solo se
+  pierde un slice, no el día entero.
+- **Compilar antes de commitear** (`mvn compile -q` desde la raíz).
+  Si no compila, NO commitear — arreglarlo o revertir el WIP.
+
+### 11.2. Qué NO hacer (lecciones duras 2026-06-09)
+
+- **NO añadir validaciones "preventivas"** a código que no es el
+  objetivo del slice. En la tarde añadí validación de `X-Company-Id`
+  contra memberships al `TenantInterceptor` "por si acaso" y rompió
+  el acceso del empresario a sus propios datos. La regla:
+  > Si no es estrictamente necesario para el slice escrito, NO se
+  > toca. Las mejoras "por si acaso" son fuente nº1 de regresiones
+  > silenciosas.
+
+- **NO cambiar AuthService.login() / selección de membership / JWT
+  claims** sin que Benjamin esté delante. Esos cambios afectan a
+  TODOS los usuarios y un fallo no se ve hasta que alguien recarga
+  la UI. Si crees que hay un bug ahí, deja una nota en el backlog y
+  espera.
+
+- **NO crear migraciones que toquen seeds existentes**. Si necesitas
+  un V{N} nuevo, que sea ALTER TABLE / ADD COLUMN aditivo. Cambiar
+  `module_catalog`, `companies`, `user_accounts` o cualquier tabla
+  con seed en V1-V8 sin Benjamin es zona caliente.
+
+- **NO usar `git revert`** cuando el commit a revertir mezcla varios
+  archivos. Usa `git checkout {sha} -- {file}` por archivo —
+  quirúrgico, conservas lo que estaba bien.
+
+- **NO usar `git push --force` ni `git commit --amend`** sobre
+  commits ya pusheados. Benjamin lo dice explícito en sección 3.
+
+### 11.3. Cuándo PARAR y dejar nota
+
+Si pasas más de **2 rounds de "fix → no funciona"** en el mismo bug,
+PARA. Lo más probable es que el síntoma no apunte a la causa. Deja
+una nota en `docs/backlog.md` al inicio de la sección de la sesión
+y espera a que Benjamin vuelva. Adivinar más solo añade ruido al
+git log y dificulta el diagnóstico real cuando él regrese.
+
+Síntomas típicos de "voy por mal camino":
+- El fix toca un archivo distinto cada vez.
+- Necesitas revertir el fix anterior antes de probar el siguiente.
+- El error cambia de forma pero no desaparece.
+- Empiezas a tocar capas (BD → backend → UI → BD…) sin un modelo
+  claro de qué hace cada una.
+
+### 11.4. Comprobaciones rápidas antes de diagnosticar BD
+
+Si los datos están en BD pero no aparecen en UI:
+1. Mira el log de arranque del backend: `Database: jdbc:mariadb://...`
+   ¿Coincide con el puerto donde tú miras los datos? **Benjamin usa
+   3307** (MariaDB 11.4 del proyecto). El 3306 es de Pablo, con BD
+   distinta. Si el log dice `MariaDB 12.2`, estás contra la BD
+   equivocada.
+2. Añade un log `System.out.println(...)` en el repositorio justo
+   tras el `query()` con `companyId=` y `rows=`. Si rows=0 pero la
+   misma SQL ejecutada manualmente devuelve N, el JDBC está contra
+   otra BD/schema o el parámetro no se vincula bien.
+3. **NO** asumas que el bug está en TenantContext/AuthService antes
+   de validar (1) y (2).
+
+### 11.5. Reportar al volver
+
+Cuando Benjamin regrese, primer mensaje debe ser:
+- Lista numerada de slices cerrados con commit hash.
+- Cosas que NO toqué (y por qué).
+- Cualquier nota nueva en `docs/backlog.md`.
+- 1-3 preguntas pendientes de decisión suya, si hay alguna.
+
+NO dar paseo guiado por el código a no ser que él lo pida.
