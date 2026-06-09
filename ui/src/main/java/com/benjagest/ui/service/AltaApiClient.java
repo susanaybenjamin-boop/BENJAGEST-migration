@@ -1327,6 +1327,96 @@ public class AltaApiClient {
         send(req(baseUrl + "/labor/work-calendars/" + id).DELETE());
     }
 
+    // ============================================================
+    //  Bajas médicas (IT) — /api/labor/medical-leaves
+    // ============================================================
+
+    public List<com.benjagest.ui.model.MedicalLeaveEntry> listMedicalLeaves(
+            String employeeId) throws IOException, InterruptedException {
+        String url = baseUrl + "/labor/medical-leaves"
+                + (employeeId == null || employeeId.isBlank()
+                        ? "" : "?employeeId=" + employeeId);
+        HttpResponse<String> r = send(req(url).GET());
+        if (r.statusCode() < 200 || r.statusCode() >= 300) {
+            throw new IOException("HTTP " + r.statusCode() + ": " + r.body());
+        }
+        List<com.benjagest.ui.model.MedicalLeaveEntry> out = new ArrayList<>();
+        for (String obj : splitTopLevelObjects(r.body())) {
+            out.add(mapMedicalLeave(obj));
+        }
+        return out;
+    }
+
+    public com.benjagest.ui.model.MedicalLeaveEntry createMedicalLeave(
+            String employeeId, String leaveType,
+            java.time.LocalDate startDate, java.time.LocalDate endDate,
+            String status, String notes)
+            throws IOException, InterruptedException {
+        String body = "{"
+                + field("employeeId", employeeId) + ","
+                + field("leaveType", leaveType) + ","
+                + "\"startDate\":\"" + startDate.toString() + "\","
+                + (endDate == null
+                        ? "\"endDate\":null"
+                        : "\"endDate\":\"" + endDate.toString() + "\"") + ","
+                + (status == null || status.isBlank()
+                        ? "\"status\":null"
+                        : field("status", status)) + ","
+                + field("notes", notes)
+                + "}";
+        HttpResponse<String> r = send(req(baseUrl + "/labor/medical-leaves")
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(body)));
+        if (r.statusCode() < 200 || r.statusCode() >= 300) {
+            throw new IOException("HTTP " + r.statusCode() + ": " + r.body());
+        }
+        return mapMedicalLeave(r.body());
+    }
+
+    public com.benjagest.ui.model.MedicalLeaveEntry updateMedicalLeave(
+            String id, String leaveType,
+            java.time.LocalDate startDate, java.time.LocalDate endDate,
+            String status, String notes)
+            throws IOException, InterruptedException {
+        StringBuilder sb = new StringBuilder("{");
+        if (leaveType != null) sb.append(field("leaveType", leaveType)).append(",");
+        if (startDate != null) sb.append("\"startDate\":\"").append(startDate).append("\",");
+        if (endDate != null) sb.append("\"endDate\":\"").append(endDate).append("\",");
+        if (status != null) sb.append(field("status", status)).append(",");
+        if (notes != null) sb.append(field("notes", notes)).append(",");
+        if (sb.charAt(sb.length() - 1) == ',') sb.deleteCharAt(sb.length() - 1);
+        sb.append("}");
+        HttpResponse<String> r = send(req(baseUrl + "/labor/medical-leaves/" + id)
+                .header("Content-Type", "application/json")
+                .PUT(HttpRequest.BodyPublishers.ofString(sb.toString())));
+        if (r.statusCode() < 200 || r.statusCode() >= 300) {
+            throw new IOException("HTTP " + r.statusCode() + ": " + r.body());
+        }
+        return mapMedicalLeave(r.body());
+    }
+
+    public void deleteMedicalLeave(String id) throws IOException, InterruptedException {
+        HttpResponse<String> r = send(req(baseUrl + "/labor/medical-leaves/" + id).DELETE());
+        if (r.statusCode() < 200 || r.statusCode() >= 300) {
+            throw new IOException("HTTP " + r.statusCode() + ": " + r.body());
+        }
+    }
+
+    private com.benjagest.ui.model.MedicalLeaveEntry mapMedicalLeave(String obj) {
+        return new com.benjagest.ui.model.MedicalLeaveEntry(
+                textField(obj, "id"),
+                textField(obj, "companyId"),
+                textField(obj, "employeeId"),
+                textField(obj, "leaveType"),
+                parseLocalDate(textField(obj, "startDate")),
+                parseLocalDate(textField(obj, "endDate")),
+                textField(obj, "status"),
+                textField(obj, "notes"),
+                parseInstant(textField(obj, "createdAt")),
+                parseInstant(textField(obj, "updatedAt"))
+        );
+    }
+
     public com.benjagest.ui.model.HolidayEntry addHoliday(
             String calendarId, java.time.LocalDate date, String name,
             String scope, boolean isPaid, String notes)

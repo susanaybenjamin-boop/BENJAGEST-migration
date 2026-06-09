@@ -12330,6 +12330,42 @@ public class BenjagestUiApplication extends Application {
             case "labor.tab.payslips" -> "Payslips";
             case "labor.tab.cfg_timeclock" -> "Time clock settings";
             case "labor.tab.audit" -> "Audit";
+            case "labor.tab.medical_leaves" -> "Medical leaves";
+            case "labor.leaves.hint" -> "Incapacidad Temporal (IT) registered for the company. The amount paid by Social Security comes from the mutua; here we only keep the record so payroll discounts IT days.";
+            case "labor.leaves.placeholder.empty" -> "No medical leaves recorded.";
+            case "labor.leaves.load_failed" -> "Could not load medical leaves.";
+            case "labor.leaves.delete_failed" -> "Could not delete the leave.";
+            case "labor.leaves.save_failed" -> "Could not save the leave.";
+            case "labor.leaves.col.employee" -> "Employee";
+            case "labor.leaves.col.type" -> "Type";
+            case "labor.leaves.col.start" -> "Start";
+            case "labor.leaves.col.end" -> "End";
+            case "labor.leaves.col.status" -> "Status";
+            case "labor.leaves.col.notes" -> "Notes";
+            case "labor.leaves.btn.new" -> "New leave";
+            case "labor.leaves.btn.edit" -> "Edit";
+            case "labor.leaves.btn.delete" -> "Delete";
+            case "labor.leaves.confirm.delete.title" -> "Delete leave?";
+            case "labor.leaves.confirm.delete.body" -> "Cannot be undone. Continue?";
+            case "labor.leaves.editor.title_new" -> "New medical leave";
+            case "labor.leaves.editor.title_edit" -> "Edit medical leave";
+            case "labor.leaves.field.employee" -> "Employee";
+            case "labor.leaves.field.type" -> "Type";
+            case "labor.leaves.field.start" -> "Start date";
+            case "labor.leaves.field.end" -> "End date (empty = open)";
+            case "labor.leaves.field.status" -> "Status";
+            case "labor.leaves.field.notes" -> "Notes";
+            case "labor.leaves.type.COMMON_DISEASE" -> "Common disease";
+            case "labor.leaves.type.WORK_ACCIDENT" -> "Work accident";
+            case "labor.leaves.type.MATERNITY" -> "Maternity";
+            case "labor.leaves.type.PATERNITY" -> "Paternity";
+            case "labor.leaves.type.OTHER" -> "Other";
+            case "labor.leaves.status.OPEN" -> "Open";
+            case "labor.leaves.status.CLOSED" -> "Closed";
+            case "labor.leaves.status.DRAFT" -> "Draft";
+            case "labor.leaves.error" -> "Error";
+            case "labor.leaves.error.no_employee" -> "Please select an employee.";
+            case "labor.leaves.error.no_start" -> "Start date is required.";
             // ---- TC-AUDIT ----
             case "labor.audit.hint" -> "Time clock audit for RD 8/2019 art. 34.9 (immutability) and 35.8 (public verification). Filter by range, employee or event type. Records are 4-year retained.";
             case "labor.audit.filter.from" -> "From";
@@ -12657,6 +12693,42 @@ public class BenjagestUiApplication extends Application {
             case "labor.tab.payslips" -> "Nominas";
             case "labor.tab.cfg_timeclock" -> "Config fichajes";
             case "labor.tab.audit" -> "Auditoria";
+            case "labor.tab.medical_leaves" -> "Bajas (IT)";
+            case "labor.leaves.hint" -> "Incapacidad Temporal (IT) registrada para la empresa. La prestación la calcula la mutua/INSS; aquí solo guardamos el registro para que la nómina descuente los días de IT del salario neto.";
+            case "labor.leaves.placeholder.empty" -> "No hay bajas registradas.";
+            case "labor.leaves.load_failed" -> "No se pudieron cargar las bajas.";
+            case "labor.leaves.delete_failed" -> "No se pudo eliminar la baja.";
+            case "labor.leaves.save_failed" -> "No se pudo guardar la baja.";
+            case "labor.leaves.col.employee" -> "Empleado";
+            case "labor.leaves.col.type" -> "Tipo";
+            case "labor.leaves.col.start" -> "Inicio";
+            case "labor.leaves.col.end" -> "Fin";
+            case "labor.leaves.col.status" -> "Estado";
+            case "labor.leaves.col.notes" -> "Notas";
+            case "labor.leaves.btn.new" -> "Nueva baja";
+            case "labor.leaves.btn.edit" -> "Editar";
+            case "labor.leaves.btn.delete" -> "Eliminar";
+            case "labor.leaves.confirm.delete.title" -> "¿Eliminar baja?";
+            case "labor.leaves.confirm.delete.body" -> "No se puede deshacer. ¿Continuar?";
+            case "labor.leaves.editor.title_new" -> "Nueva baja médica";
+            case "labor.leaves.editor.title_edit" -> "Editar baja médica";
+            case "labor.leaves.field.employee" -> "Empleado";
+            case "labor.leaves.field.type" -> "Tipo";
+            case "labor.leaves.field.start" -> "Fecha de inicio";
+            case "labor.leaves.field.end" -> "Fecha de alta (vacío = abierta)";
+            case "labor.leaves.field.status" -> "Estado";
+            case "labor.leaves.field.notes" -> "Notas";
+            case "labor.leaves.type.COMMON_DISEASE" -> "Enfermedad común";
+            case "labor.leaves.type.WORK_ACCIDENT" -> "Accidente laboral";
+            case "labor.leaves.type.MATERNITY" -> "Maternidad";
+            case "labor.leaves.type.PATERNITY" -> "Paternidad";
+            case "labor.leaves.type.OTHER" -> "Otros";
+            case "labor.leaves.status.OPEN" -> "Abierta";
+            case "labor.leaves.status.CLOSED" -> "Cerrada";
+            case "labor.leaves.status.DRAFT" -> "Borrador";
+            case "labor.leaves.error" -> "Error";
+            case "labor.leaves.error.no_employee" -> "Selecciona un empleado.";
+            case "labor.leaves.error.no_start" -> "La fecha de inicio es obligatoria.";
             case "labor.audit.hint" -> "Auditoria de fichajes para el RD 8/2019 art. 34.9 (inalterabilidad) y 35.8 (verificacion publica). Filtra por rango, empleado o tipo. Conservacion 4 anos.";
             case "labor.audit.filter.from" -> "Desde";
             case "labor.audit.filter.to" -> "Hasta";
@@ -14195,9 +14267,13 @@ public class BenjagestUiApplication extends Application {
         // la apertura de Labor en empresas sin calendario configurado.
         Tab calendarTab = new Tab(t("labor.tab.work_calendar"), buildWorkCalendarTab());
         calendarTab.setGraphic(icon("fas-calendar-day"));
+        // Bajas (IT) — backend cerrado 2026-06-09, UI pendiente.
+        Tab leavesTab = new Tab(t("labor.tab.medical_leaves"),
+                buildMedicalLeavesTab(bundle.employees()));
+        leavesTab.setGraphic(icon("fas-user-injured"));
 
         tabs.getTabs().addAll(empTab, contractsTab, clockTab, auditTab, payslipsTab,
-                templatesTab, clausesTab, cfgTab, calendarTab);
+                templatesTab, clausesTab, cfgTab, calendarTab, leavesTab);
         VBox.setVgrow(tabs, Priority.ALWAYS);
 
         content.getChildren().addAll(header, alertsBanner, tabs);
@@ -23725,6 +23801,275 @@ public class BenjagestUiApplication extends Application {
                 new Label(t("workcal.section.calendars")), calTable,
                 new Label(t("workcal.section.holidays")), holTable, actionBar);
         return box;
+    }
+
+    // ============================================================
+    //  L2-IT — Bajas médicas (Incapacidad Temporal)
+    // ============================================================
+    //
+    //  Pestaña del módulo Labor con CRUD de bajas. Backend cerrado en
+    //  sesión 2026-06-09 (`labor.leaves.MedicalLeaveService`), UI
+    //  pendiente — añadida en sesión autónoma 2026-06-09.
+    //
+    //  Patrón mínimo: tabla (período, empleado, tipo, estado) + botones
+    //  Nueva/Editar/Eliminar + diálogo formulario. Sin filtros por ahora.
+    //  Pendientes futuros: filtro por empleado, exportable, vinculo con
+    //  cálculo nómina.
+    //
+    //  i18n: keys "labor.leaves.*" en ambos idiomas.
+    private Node buildMedicalLeavesTab(
+            java.util.List<com.benjagest.ui.model.EmployeeEntry> employees) {
+        VBox content = new VBox(12);
+        content.setPadding(new Insets(16));
+
+        java.util.Map<String, String> empById = new java.util.HashMap<>();
+        for (var e : employees) empById.put(e.id(), e.fullName());
+
+        Label hint = new Label(t("labor.leaves.hint"));
+        hint.setWrapText(true);
+        hint.getStyleClass().add("settings-hint");
+
+        TableView<com.benjagest.ui.model.MedicalLeaveEntry> table = new TableView<>();
+        table.getStyleClass().add("data-table");
+        table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+        table.setPlaceholder(new Label(t("labor.leaves.placeholder.empty")));
+        com.benjagest.ui.support.TableSelectionHelper.install(table);
+
+        TableColumn<com.benjagest.ui.model.MedicalLeaveEntry, String> cEmp =
+                new TableColumn<>(t("labor.leaves.col.employee"));
+        cEmp.setCellValueFactory(c -> new SimpleStringProperty(
+                empById.getOrDefault(c.getValue().employeeId(),
+                        shortId(c.getValue().employeeId()))));
+        cEmp.setPrefWidth(180);
+
+        TableColumn<com.benjagest.ui.model.MedicalLeaveEntry, String> cType =
+                new TableColumn<>(t("labor.leaves.col.type"));
+        cType.setCellValueFactory(c -> new SimpleStringProperty(
+                t("labor.leaves.type." + c.getValue().leaveType())));
+        cType.setPrefWidth(180);
+
+        TableColumn<com.benjagest.ui.model.MedicalLeaveEntry, String> cStart =
+                new TableColumn<>(t("labor.leaves.col.start"));
+        cStart.setCellValueFactory(c -> new SimpleStringProperty(
+                c.getValue().startDate() == null ? "" : c.getValue().startDate().toString()));
+        cStart.setPrefWidth(110);
+        cStart.setComparator(ISO_DATE_COMPARATOR);
+
+        TableColumn<com.benjagest.ui.model.MedicalLeaveEntry, String> cEnd =
+                new TableColumn<>(t("labor.leaves.col.end"));
+        cEnd.setCellValueFactory(c -> new SimpleStringProperty(
+                c.getValue().endDate() == null ? "" : c.getValue().endDate().toString()));
+        cEnd.setPrefWidth(110);
+        cEnd.setComparator(ISO_DATE_COMPARATOR);
+
+        TableColumn<com.benjagest.ui.model.MedicalLeaveEntry, String> cStatus =
+                new TableColumn<>(t("labor.leaves.col.status"));
+        cStatus.setCellValueFactory(c -> new SimpleStringProperty(
+                t("labor.leaves.status." + c.getValue().status())));
+        cStatus.setPrefWidth(100);
+
+        TableColumn<com.benjagest.ui.model.MedicalLeaveEntry, String> cNotes =
+                new TableColumn<>(t("labor.leaves.col.notes"));
+        cNotes.setCellValueFactory(c -> new SimpleStringProperty(
+                c.getValue().notes() == null ? "" : c.getValue().notes()));
+
+        table.getColumns().addAll(java.util.List.of(cEmp, cType, cStart, cEnd, cStatus, cNotes));
+
+        Runnable reload = () -> {
+            Task<java.util.List<com.benjagest.ui.model.MedicalLeaveEntry>> t = new Task<>() {
+                @Override protected java.util.List<com.benjagest.ui.model.MedicalLeaveEntry> call()
+                        throws Exception {
+                    return altaApiClient.listMedicalLeaves(null);
+                }
+            };
+            t.setOnSucceeded(ev -> table.setItems(
+                    FXCollections.observableArrayList(t.getValue())));
+            t.setOnFailed(ev -> showError(t("labor.leaves.load_failed"),
+                    t.getException() == null ? "" : t.getException().getMessage()));
+            start(t, "labor-leaves-load");
+        };
+        reload.run();
+
+        Button newBtn = new Button(t("labor.leaves.btn.new"));
+        newBtn.setGraphic(icon("fas-plus"));
+        newBtn.getStyleClass().add("primary-button");
+        newBtn.setOnAction(ev -> openMedicalLeaveDialog(null, employees, reload));
+
+        Button editBtn = new Button(t("labor.leaves.btn.edit"));
+        editBtn.setGraphic(icon("fas-pen"));
+        editBtn.setDisable(true);
+        editBtn.setOnAction(ev -> {
+            var sel = table.getSelectionModel().getSelectedItem();
+            if (sel != null) openMedicalLeaveDialog(sel, employees, reload);
+        });
+
+        Button delBtn = new Button(t("labor.leaves.btn.delete"));
+        delBtn.setGraphic(icon("fas-trash"));
+        delBtn.setDisable(true);
+        delBtn.setOnAction(ev -> {
+            var sel = table.getSelectionModel().getSelectedItem();
+            if (sel == null) return;
+            Alert confirm = new Alert(Alert.AlertType.CONFIRMATION);
+            confirm.setTitle(t("labor.leaves.confirm.delete.title"));
+            confirm.setHeaderText(t("labor.leaves.confirm.delete.body"));
+            confirm.showAndWait().ifPresent(rsp -> {
+                if (rsp == javafx.scene.control.ButtonType.OK) {
+                    Task<Void> del = new Task<>() {
+                        @Override protected Void call() throws Exception {
+                            altaApiClient.deleteMedicalLeave(sel.id());
+                            return null;
+                        }
+                    };
+                    del.setOnSucceeded(s -> reload.run());
+                    del.setOnFailed(s -> showError(t("labor.leaves.delete_failed"),
+                            del.getException() == null ? "" : del.getException().getMessage()));
+                    start(del, "labor-leaves-delete");
+                }
+            });
+        });
+
+        table.getSelectionModel().selectedItemProperty().addListener((obs, oldV, newV) -> {
+            boolean has = newV != null;
+            editBtn.setDisable(!has);
+            delBtn.setDisable(!has);
+        });
+
+        HBox actions = new HBox(8, newBtn, editBtn, delBtn);
+        VBox.setVgrow(table, Priority.ALWAYS);
+        content.getChildren().addAll(hint, table, actions);
+        return content;
+    }
+
+    /** Diálogo formulario para nueva/editar baja médica. */
+    private void openMedicalLeaveDialog(
+            com.benjagest.ui.model.MedicalLeaveEntry existing,
+            java.util.List<com.benjagest.ui.model.EmployeeEntry> employees,
+            Runnable onSuccess) {
+        Dialog<javafx.scene.control.ButtonType> dlg = new Dialog<>();
+        dlg.setTitle(existing == null
+                ? t("labor.leaves.editor.title_new")
+                : t("labor.leaves.editor.title_edit"));
+        dlg.getDialogPane().getButtonTypes().addAll(
+                javafx.scene.control.ButtonType.OK,
+                javafx.scene.control.ButtonType.CANCEL);
+
+        GridPane grid = new GridPane();
+        grid.setHgap(10);
+        grid.setVgap(10);
+        grid.setPadding(new Insets(16));
+
+        ComboBox<com.benjagest.ui.model.EmployeeEntry> empCombo = new ComboBox<>();
+        empCombo.getItems().addAll(employees);
+        empCombo.setConverter(new javafx.util.StringConverter<>() {
+            @Override public String toString(com.benjagest.ui.model.EmployeeEntry e) {
+                return e == null ? "" : e.fullName();
+            }
+            @Override public com.benjagest.ui.model.EmployeeEntry fromString(String s) { return null; }
+        });
+        if (existing != null) {
+            for (var e : employees) if (e.id().equals(existing.employeeId())) empCombo.setValue(e);
+            empCombo.setDisable(true);
+        }
+
+        ComboBox<String> typeCombo = new ComboBox<>();
+        typeCombo.getItems().addAll(
+                com.benjagest.ui.model.MedicalLeaveEntry.TYPE_COMMON_DISEASE,
+                com.benjagest.ui.model.MedicalLeaveEntry.TYPE_WORK_ACCIDENT,
+                com.benjagest.ui.model.MedicalLeaveEntry.TYPE_MATERNITY,
+                com.benjagest.ui.model.MedicalLeaveEntry.TYPE_PATERNITY,
+                com.benjagest.ui.model.MedicalLeaveEntry.TYPE_OTHER);
+        typeCombo.setConverter(new javafx.util.StringConverter<>() {
+            @Override public String toString(String s) {
+                return s == null ? "" : t("labor.leaves.type." + s);
+            }
+            @Override public String fromString(String s) { return s; }
+        });
+        typeCombo.setValue(existing == null
+                ? com.benjagest.ui.model.MedicalLeaveEntry.TYPE_COMMON_DISEASE
+                : existing.leaveType());
+
+        DatePicker startPicker = new DatePicker(
+                existing == null ? java.time.LocalDate.now() : existing.startDate());
+        DatePicker endPicker = new DatePicker(
+                existing == null ? null : existing.endDate());
+
+        ComboBox<String> statusCombo = new ComboBox<>();
+        statusCombo.getItems().addAll(
+                com.benjagest.ui.model.MedicalLeaveEntry.STATUS_OPEN,
+                com.benjagest.ui.model.MedicalLeaveEntry.STATUS_CLOSED,
+                com.benjagest.ui.model.MedicalLeaveEntry.STATUS_DRAFT);
+        statusCombo.setConverter(new javafx.util.StringConverter<>() {
+            @Override public String toString(String s) {
+                return s == null ? "" : t("labor.leaves.status." + s);
+            }
+            @Override public String fromString(String s) { return s; }
+        });
+        statusCombo.setValue(existing == null
+                ? com.benjagest.ui.model.MedicalLeaveEntry.STATUS_OPEN
+                : existing.status());
+
+        TextArea notesArea = new TextArea(existing == null ? "" : existing.notes());
+        notesArea.setPrefRowCount(3);
+        notesArea.setWrapText(true);
+
+        int r = 0;
+        grid.addRow(r++, new Label(t("labor.leaves.field.employee")), empCombo);
+        grid.addRow(r++, new Label(t("labor.leaves.field.type")), typeCombo);
+        grid.addRow(r++, new Label(t("labor.leaves.field.start")), startPicker);
+        grid.addRow(r++, new Label(t("labor.leaves.field.end")), endPicker);
+        grid.addRow(r++, new Label(t("labor.leaves.field.status")), statusCombo);
+        grid.addRow(r++, new Label(t("labor.leaves.field.notes")), notesArea);
+
+        dlg.getDialogPane().setContent(grid);
+        dlg.showAndWait().ifPresent(rsp -> {
+            if (rsp != javafx.scene.control.ButtonType.OK) return;
+            if (empCombo.getValue() == null) {
+                showError(t("labor.leaves.error"), t("labor.leaves.error.no_employee"));
+                return;
+            }
+            if (startPicker.getValue() == null) {
+                showError(t("labor.leaves.error"), t("labor.leaves.error.no_start"));
+                return;
+            }
+            // Auto-status si el usuario no toca el combo:
+            // - OPEN si no hay endDate
+            // - CLOSED si hay endDate
+            String status = statusCombo.getValue();
+            if (status == null) {
+                status = endPicker.getValue() != null
+                        ? com.benjagest.ui.model.MedicalLeaveEntry.STATUS_CLOSED
+                        : com.benjagest.ui.model.MedicalLeaveEntry.STATUS_OPEN;
+            }
+            String notes = notesArea.getText() == null || notesArea.getText().isBlank()
+                    ? null : notesArea.getText().trim();
+            final String finalStatus = status;
+            Task<Void> save = new Task<>() {
+                @Override protected Void call() throws Exception {
+                    if (existing == null) {
+                        altaApiClient.createMedicalLeave(
+                                empCombo.getValue().id(),
+                                typeCombo.getValue(),
+                                startPicker.getValue(),
+                                endPicker.getValue(),
+                                finalStatus,
+                                notes);
+                    } else {
+                        altaApiClient.updateMedicalLeave(
+                                existing.id(),
+                                typeCombo.getValue(),
+                                startPicker.getValue(),
+                                endPicker.getValue(),
+                                finalStatus,
+                                notes);
+                    }
+                    return null;
+                }
+            };
+            save.setOnSucceeded(s -> onSuccess.run());
+            save.setOnFailed(s -> showError(t("labor.leaves.save_failed"),
+                    save.getException() == null ? "" : save.getException().getMessage()));
+            start(save, "labor-leaves-save");
+        });
     }
 
     /** Convierte NATIONAL/CCAA/LOCAL al texto humano según idioma. */
