@@ -206,7 +206,7 @@ public class WorkspaceRepository {
     }
 
     private List<ModuleRecord> customers() {
-        return rows("""
+        List<ModuleRecord> out = rows("""
                 SELECT c.id,
                        c.legal_name AS nombre,
                        c.tax_identifier AS nif,
@@ -219,6 +219,10 @@ public class WorkspaceRepository {
                 ORDER BY c.legal_name
                 LIMIT 50
                 """);
+        // LOG TEMPORAL Benjamin 2026-06-09
+        System.out.println("[CUSTOMERS-DEBUG] companyId=" + currentCompanyId()
+                + " rows=" + out.size());
+        return out;
     }
 
     private List<ModuleRecord> invoices() {
