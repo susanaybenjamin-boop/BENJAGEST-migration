@@ -12366,6 +12366,37 @@ public class BenjagestUiApplication extends Application {
             case "labor.leaves.error" -> "Error";
             case "labor.leaves.error.no_employee" -> "Please select an employee.";
             case "labor.leaves.error.no_start" -> "Start date is required.";
+            case "labor.tab.ss_contributions" -> "SS contributions";
+            case "labor.ss.hint" -> "Social Security contributions (TC1 / RED system) calculated by the payroll module. Only DRAFT rows can be deleted — once FILED with Social Security, they are immutable.";
+            case "labor.ss.placeholder.empty" -> "No contributions for the selected filters.";
+            case "labor.ss.load_failed" -> "Could not load contributions.";
+            case "labor.ss.delete_failed" -> "Could not delete the contribution.";
+            case "labor.ss.filter.year" -> "Year";
+            case "labor.ss.filter.month" -> "Month";
+            case "labor.ss.filter.month_all" -> "(all months)";
+            case "labor.ss.filter.employee" -> "Employee";
+            case "labor.ss.filter.employee_all" -> "(all employees)";
+            case "labor.ss.col.period" -> "Period";
+            case "labor.ss.col.scope" -> "Subject";
+            case "labor.ss.col.type" -> "Type";
+            case "labor.ss.col.base" -> "Base";
+            case "labor.ss.col.amount" -> "Amount";
+            case "labor.ss.col.status" -> "Status";
+            case "labor.ss.btn.delete" -> "Delete (DRAFT only)";
+            case "labor.ss.confirm.delete.title" -> "Delete contribution?";
+            case "labor.ss.confirm.delete.body" -> "Only DRAFT contributions can be deleted. Continue?";
+            case "labor.ss.scope.company" -> "(company)";
+            case "labor.ss.type.EMPLOYEE_COMMON" -> "Employee · Common contingencies";
+            case "labor.ss.type.EMPLOYER_COMMON" -> "Employer · Common contingencies";
+            case "labor.ss.type.EMPLOYER_AT_EP" -> "Employer · Work accident / occupational disease";
+            case "labor.ss.type.EMPLOYER_FOGASA" -> "Employer · FOGASA";
+            case "labor.ss.type.EMPLOYER_TRAINING" -> "Employer · Professional training";
+            case "labor.ss.type.EMPLOYER_UNEMPLOYMENT" -> "Employer · Unemployment";
+            case "labor.ss.type.EMPLOYEE_UNEMPLOYMENT" -> "Employee · Unemployment";
+            case "labor.ss.type.MEI" -> "Intergenerational Equity Mechanism (MEI)";
+            case "labor.ss.status.DRAFT" -> "Draft";
+            case "labor.ss.status.FILED" -> "Filed";
+            case "labor.ss.status.PAID" -> "Paid";
             // ---- TC-AUDIT ----
             case "labor.audit.hint" -> "Time clock audit for RD 8/2019 art. 34.9 (immutability) and 35.8 (public verification). Filter by range, employee or event type. Records are 4-year retained.";
             case "labor.audit.filter.from" -> "From";
@@ -12729,6 +12760,37 @@ public class BenjagestUiApplication extends Application {
             case "labor.leaves.error" -> "Error";
             case "labor.leaves.error.no_employee" -> "Selecciona un empleado.";
             case "labor.leaves.error.no_start" -> "La fecha de inicio es obligatoria.";
+            case "labor.tab.ss_contributions" -> "Cotizaciones SS";
+            case "labor.ss.hint" -> "Cuotas de Seguridad Social (TC1 / sistema RED) calculadas desde las nóminas. Solo las cuotas en DRAFT se pueden eliminar — una vez enviadas al RED (FILED) son inalterables.";
+            case "labor.ss.placeholder.empty" -> "No hay cuotas con los filtros seleccionados.";
+            case "labor.ss.load_failed" -> "No se pudieron cargar las cuotas.";
+            case "labor.ss.delete_failed" -> "No se pudo eliminar la cuota.";
+            case "labor.ss.filter.year" -> "Año";
+            case "labor.ss.filter.month" -> "Mes";
+            case "labor.ss.filter.month_all" -> "(todos los meses)";
+            case "labor.ss.filter.employee" -> "Empleado";
+            case "labor.ss.filter.employee_all" -> "(todos los empleados)";
+            case "labor.ss.col.period" -> "Periodo";
+            case "labor.ss.col.scope" -> "Sujeto";
+            case "labor.ss.col.type" -> "Tipo";
+            case "labor.ss.col.base" -> "Base";
+            case "labor.ss.col.amount" -> "Cuota";
+            case "labor.ss.col.status" -> "Estado";
+            case "labor.ss.btn.delete" -> "Eliminar (solo DRAFT)";
+            case "labor.ss.confirm.delete.title" -> "¿Eliminar cuota?";
+            case "labor.ss.confirm.delete.body" -> "Solo las cuotas en DRAFT se pueden eliminar. ¿Continuar?";
+            case "labor.ss.scope.company" -> "(empresa)";
+            case "labor.ss.type.EMPLOYEE_COMMON" -> "Trabajador · Contingencias comunes";
+            case "labor.ss.type.EMPLOYER_COMMON" -> "Empresa · Contingencias comunes";
+            case "labor.ss.type.EMPLOYER_AT_EP" -> "Empresa · Accidente trabajo / EP";
+            case "labor.ss.type.EMPLOYER_FOGASA" -> "Empresa · FOGASA";
+            case "labor.ss.type.EMPLOYER_TRAINING" -> "Empresa · Formación profesional";
+            case "labor.ss.type.EMPLOYER_UNEMPLOYMENT" -> "Empresa · Desempleo";
+            case "labor.ss.type.EMPLOYEE_UNEMPLOYMENT" -> "Trabajador · Desempleo";
+            case "labor.ss.type.MEI" -> "Mecanismo de Equidad Intergeneracional (MEI)";
+            case "labor.ss.status.DRAFT" -> "Borrador";
+            case "labor.ss.status.FILED" -> "Enviada";
+            case "labor.ss.status.PAID" -> "Pagada";
             case "labor.audit.hint" -> "Auditoria de fichajes para el RD 8/2019 art. 34.9 (inalterabilidad) y 35.8 (verificacion publica). Filtra por rango, empleado o tipo. Conservacion 4 anos.";
             case "labor.audit.filter.from" -> "Desde";
             case "labor.audit.filter.to" -> "Hasta";
@@ -14271,9 +14333,15 @@ public class BenjagestUiApplication extends Application {
         Tab leavesTab = new Tab(t("labor.tab.medical_leaves"),
                 buildMedicalLeavesTab(bundle.employees()));
         leavesTab.setGraphic(icon("fas-user-injured"));
+        // Cotizaciones SS (TC1/RED) — backend cerrado 2026-06-09, UI
+        // pendiente. Solo lectura por ahora — las cuotas se calculan
+        // desde las nóminas; el editor manual queda para futuro.
+        Tab ssTab = new Tab(t("labor.tab.ss_contributions"),
+                buildSsContributionsTab(bundle.employees()));
+        ssTab.setGraphic(icon("fas-percent"));
 
         tabs.getTabs().addAll(empTab, contractsTab, clockTab, auditTab, payslipsTab,
-                templatesTab, clausesTab, cfgTab, calendarTab, leavesTab);
+                templatesTab, clausesTab, cfgTab, calendarTab, leavesTab, ssTab);
         VBox.setVgrow(tabs, Priority.ALWAYS);
 
         content.getChildren().addAll(header, alertsBanner, tabs);
@@ -24070,6 +24138,176 @@ public class BenjagestUiApplication extends Application {
                     save.getException() == null ? "" : save.getException().getMessage()));
             start(save, "labor-leaves-save");
         });
+    }
+
+    // ============================================================
+    //  L2-SS — Cotizaciones Seguridad Social (TC1 / sistema RED)
+    // ============================================================
+    //
+    //  Listado solo-lectura. Las cuotas se calculan desde las nóminas;
+    //  el editor manual NO es prioritario (lo que querría editar el
+    //  usuario es la nómina, no la cuota individual).
+    //
+    //  Patrón: filtros Año + Mes + Empleado al cabezal + tabla con
+    //  período, empleado/empresa, tipo, base, cuota, estado. Botón
+    //  Eliminar solo activo para DRAFT (backend bloquea DELETE si
+    //  !=DRAFT vía 409).
+    private Node buildSsContributionsTab(
+            java.util.List<com.benjagest.ui.model.EmployeeEntry> employees) {
+        VBox content = new VBox(12);
+        content.setPadding(new Insets(16));
+
+        java.util.Map<String, String> empById = new java.util.HashMap<>();
+        for (var e : employees) empById.put(e.id(), e.fullName());
+
+        Label hint = new Label(t("labor.ss.hint"));
+        hint.setWrapText(true);
+        hint.getStyleClass().add("settings-hint");
+
+        // Filtros año + mes + empleado.
+        int currentYear = java.time.Year.now().getValue();
+        ComboBox<Integer> yearCombo = new ComboBox<>();
+        for (int y = currentYear; y >= currentYear - 5; y--) yearCombo.getItems().add(y);
+        yearCombo.setValue(currentYear);
+
+        ComboBox<Integer> monthCombo = new ComboBox<>();
+        monthCombo.getItems().add(null);  // (todos)
+        for (int m = 1; m <= 12; m++) monthCombo.getItems().add(m);
+        monthCombo.setConverter(new javafx.util.StringConverter<>() {
+            @Override public String toString(Integer m) {
+                return m == null ? t("labor.ss.filter.month_all") : String.format("%02d", m);
+            }
+            @Override public Integer fromString(String s) { return null; }
+        });
+        monthCombo.setValue(null);
+
+        ComboBox<com.benjagest.ui.model.EmployeeEntry> empFilter = new ComboBox<>();
+        empFilter.getItems().add(null);  // (todos)
+        empFilter.getItems().addAll(employees);
+        empFilter.setConverter(new javafx.util.StringConverter<>() {
+            @Override public String toString(com.benjagest.ui.model.EmployeeEntry e) {
+                return e == null ? t("labor.ss.filter.employee_all") : e.fullName();
+            }
+            @Override public com.benjagest.ui.model.EmployeeEntry fromString(String s) {
+                return null;
+            }
+        });
+        empFilter.setValue(null);
+
+        HBox filters = new HBox(8,
+                new Label(t("labor.ss.filter.year")), yearCombo,
+                new Label(t("labor.ss.filter.month")), monthCombo,
+                new Label(t("labor.ss.filter.employee")), empFilter);
+        filters.setAlignment(Pos.CENTER_LEFT);
+
+        TableView<com.benjagest.ui.model.SocialSecurityContributionEntry> table = new TableView<>();
+        table.getStyleClass().add("data-table");
+        table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+        table.setPlaceholder(new Label(t("labor.ss.placeholder.empty")));
+        com.benjagest.ui.support.TableSelectionHelper.install(table);
+
+        TableColumn<com.benjagest.ui.model.SocialSecurityContributionEntry, String> cPeriod =
+                new TableColumn<>(t("labor.ss.col.period"));
+        cPeriod.setCellValueFactory(c -> new SimpleStringProperty(
+                c.getValue().periodYear() + " · " + String.format("%02d", c.getValue().periodMonth())));
+        cPeriod.setPrefWidth(100);
+
+        TableColumn<com.benjagest.ui.model.SocialSecurityContributionEntry, String> cEmp =
+                new TableColumn<>(t("labor.ss.col.scope"));
+        cEmp.setCellValueFactory(c -> new SimpleStringProperty(
+                c.getValue().employeeId() == null
+                        ? t("labor.ss.scope.company")
+                        : empById.getOrDefault(c.getValue().employeeId(),
+                                shortId(c.getValue().employeeId()))));
+        cEmp.setPrefWidth(180);
+
+        TableColumn<com.benjagest.ui.model.SocialSecurityContributionEntry, String> cType =
+                new TableColumn<>(t("labor.ss.col.type"));
+        cType.setCellValueFactory(c -> new SimpleStringProperty(
+                t("labor.ss.type." + c.getValue().contributionType())));
+        cType.setPrefWidth(220);
+
+        TableColumn<com.benjagest.ui.model.SocialSecurityContributionEntry, String> cBase =
+                new TableColumn<>(t("labor.ss.col.base"));
+        cBase.setCellValueFactory(c -> new SimpleStringProperty(
+                c.getValue().baseAmount() == null ? ""
+                        : c.getValue().baseAmount().toPlainString() + " €"));
+        cBase.setPrefWidth(110);
+        cBase.setComparator(NUMERIC_STRING_COMPARATOR);
+
+        TableColumn<com.benjagest.ui.model.SocialSecurityContributionEntry, String> cAmt =
+                new TableColumn<>(t("labor.ss.col.amount"));
+        cAmt.setCellValueFactory(c -> new SimpleStringProperty(
+                c.getValue().contributionAmount() == null ? ""
+                        : c.getValue().contributionAmount().toPlainString() + " €"));
+        cAmt.setPrefWidth(110);
+        cAmt.setComparator(NUMERIC_STRING_COMPARATOR);
+
+        TableColumn<com.benjagest.ui.model.SocialSecurityContributionEntry, String> cStatus =
+                new TableColumn<>(t("labor.ss.col.status"));
+        cStatus.setCellValueFactory(c -> new SimpleStringProperty(
+                t("labor.ss.status." + c.getValue().status())));
+        cStatus.setPrefWidth(100);
+
+        table.getColumns().addAll(java.util.List.of(cPeriod, cEmp, cType, cBase, cAmt, cStatus));
+
+        Runnable reload = () -> {
+            Integer y = yearCombo.getValue();
+            Integer m = monthCombo.getValue();
+            String empId = empFilter.getValue() == null ? null : empFilter.getValue().id();
+            Task<java.util.List<com.benjagest.ui.model.SocialSecurityContributionEntry>> tk = new Task<>() {
+                @Override protected java.util.List<com.benjagest.ui.model.SocialSecurityContributionEntry> call()
+                        throws Exception {
+                    return altaApiClient.listSocialSecurityContributions(y, m, empId);
+                }
+            };
+            tk.setOnSucceeded(ev -> table.setItems(
+                    FXCollections.observableArrayList(tk.getValue())));
+            tk.setOnFailed(ev -> showError(t("labor.ss.load_failed"),
+                    tk.getException() == null ? "" : tk.getException().getMessage()));
+            start(tk, "labor-ss-load");
+        };
+        yearCombo.valueProperty().addListener((obs, oldV, newV) -> reload.run());
+        monthCombo.valueProperty().addListener((obs, oldV, newV) -> reload.run());
+        empFilter.valueProperty().addListener((obs, oldV, newV) -> reload.run());
+        reload.run();
+
+        Button delBtn = new Button(t("labor.ss.btn.delete"));
+        delBtn.setGraphic(icon("fas-trash"));
+        delBtn.setDisable(true);
+        delBtn.setOnAction(ev -> {
+            var sel = table.getSelectionModel().getSelectedItem();
+            if (sel == null) return;
+            Alert confirm = new Alert(Alert.AlertType.CONFIRMATION);
+            confirm.setTitle(t("labor.ss.confirm.delete.title"));
+            confirm.setHeaderText(t("labor.ss.confirm.delete.body"));
+            confirm.showAndWait().ifPresent(rsp -> {
+                if (rsp == javafx.scene.control.ButtonType.OK) {
+                    Task<Void> del = new Task<>() {
+                        @Override protected Void call() throws Exception {
+                            altaApiClient.deleteSocialSecurityContribution(sel.id());
+                            return null;
+                        }
+                    };
+                    del.setOnSucceeded(s -> reload.run());
+                    del.setOnFailed(s -> showError(t("labor.ss.delete_failed"),
+                            del.getException() == null ? "" : del.getException().getMessage()));
+                    start(del, "labor-ss-delete");
+                }
+            });
+        });
+
+        // Solo permite eliminar DRAFT (backend lo bloquea con 409 si !=DRAFT).
+        table.getSelectionModel().selectedItemProperty().addListener((obs, oldV, newV) -> {
+            delBtn.setDisable(newV == null
+                    || !com.benjagest.ui.model.SocialSecurityContributionEntry.STATUS_DRAFT
+                            .equals(newV.status()));
+        });
+
+        HBox actions = new HBox(8, delBtn);
+        VBox.setVgrow(table, Priority.ALWAYS);
+        content.getChildren().addAll(hint, filters, table, actions);
+        return content;
     }
 
     /** Convierte NATIONAL/CCAA/LOCAL al texto humano según idioma. */

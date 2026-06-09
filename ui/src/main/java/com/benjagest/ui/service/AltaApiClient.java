@@ -1328,6 +1328,61 @@ public class AltaApiClient {
     }
 
     // ============================================================
+    //  Cotizaciones SS — /api/labor/social-security
+    // ============================================================
+
+    public List<com.benjagest.ui.model.SocialSecurityContributionEntry>
+            listSocialSecurityContributions(Integer year, Integer month, String employeeId)
+            throws IOException, InterruptedException {
+        StringBuilder qs = new StringBuilder();
+        if (year != null) qs.append(qs.length() == 0 ? "?" : "&").append("year=").append(year);
+        if (month != null) qs.append(qs.length() == 0 ? "?" : "&").append("month=").append(month);
+        if (employeeId != null && !employeeId.isBlank()) {
+            qs.append(qs.length() == 0 ? "?" : "&").append("employeeId=").append(employeeId);
+        }
+        HttpResponse<String> r = send(req(baseUrl + "/labor/social-security" + qs).GET());
+        if (r.statusCode() < 200 || r.statusCode() >= 300) {
+            throw new IOException("HTTP " + r.statusCode() + ": " + r.body());
+        }
+        List<com.benjagest.ui.model.SocialSecurityContributionEntry> out = new ArrayList<>();
+        for (String obj : splitTopLevelObjects(r.body())) {
+            out.add(mapSocialSecurityContribution(obj));
+        }
+        return out;
+    }
+
+    public void deleteSocialSecurityContribution(String id)
+            throws IOException, InterruptedException {
+        HttpResponse<String> r = send(req(baseUrl + "/labor/social-security/" + id).DELETE());
+        if (r.statusCode() < 200 || r.statusCode() >= 300) {
+            throw new IOException("HTTP " + r.statusCode() + ": " + r.body());
+        }
+    }
+
+    private com.benjagest.ui.model.SocialSecurityContributionEntry
+            mapSocialSecurityContribution(String obj) {
+        return new com.benjagest.ui.model.SocialSecurityContributionEntry(
+                textField(obj, "id"),
+                textField(obj, "companyId"),
+                textField(obj, "employeeId"),
+                intField(obj, "periodYear"),
+                intField(obj, "periodMonth"),
+                textField(obj, "contributionType"),
+                parseDecimal(textField(obj, "baseAmount")),
+                parseDecimal(textField(obj, "contributionAmount")),
+                textField(obj, "status"),
+                parseInstant(textField(obj, "createdAt"))
+        );
+    }
+
+    /** Parser numérico defensivo para BigDecimal desde texto JSON. */
+    private static BigDecimal parseDecimal(String s) {
+        if (s == null || s.isBlank()) return null;
+        try { return new BigDecimal(s.trim()); }
+        catch (NumberFormatException ex) { return null; }
+    }
+
+    // ============================================================
     //  Bajas médicas (IT) — /api/labor/medical-leaves
     // ============================================================
 
