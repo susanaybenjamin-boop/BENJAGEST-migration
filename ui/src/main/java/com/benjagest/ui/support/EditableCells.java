@@ -129,7 +129,17 @@ public final class EditableCells {
      */
     public static void commitPendingDatePickerEdits(TableView<?> table) {
         if (table == null) return;
-        for (Node n : table.lookupAll(".date-picker")) {
+        // FIX 2026-06-09 (Benjamin, diagnóstico agentes paralelos):
+        // buscar en TODA la escena del modal, no solo en la tabla.
+        // El TableView usa VirtualFlow que en JavaFX 21 a veces no
+        // expone hijos por CSS selector si el viewport está bajo
+        // SplitPane. Buscar desde la root del Scene garantiza que
+        // pillamos cualquier DatePicker visible.
+        javafx.scene.Node root = table.getScene() != null
+                && table.getScene().getRoot() != null
+                ? table.getScene().getRoot()
+                : table;
+        for (Node n : root.lookupAll(".date-picker")) {
             if (n instanceof DatePicker dp) {
                 String typed = dp.getEditor() == null ? null : dp.getEditor().getText();
                 if (typed == null || typed.isBlank()) continue;
@@ -138,10 +148,21 @@ public final class EditableCells {
                     try { parsed = dp.getConverter().fromString(typed.trim()); }
                     catch (Exception ignored) { /* ignore */ }
                 }
-                if (parsed != null && !parsed.equals(dp.getValue())) {
+                if (parsed != null) {
                     // Setear valueProperty dispara el listener de la
                     // celda → commitEdit → onEditCommit → row.dateValue.
-                    dp.setValue(parsed);
+                    // No comparamos con el valor actual: aunque sea el
+                    // mismo (por ej. el usuario tecleó la fecha default)
+                    // queremos que el commit baje al modelo de fila.
+                    if (!parsed.equals(dp.getValue())) {
+                        dp.setValue(parsed);
+                    } else {
+                        // Mismo valor que el picker — fuerza notificar
+                        // a la celda llamando setValue dos veces si
+                        // hace falta para que el listener dispare.
+                        dp.setValue(null);
+                        dp.setValue(parsed);
+                    }
                 }
             }
         }
@@ -292,6 +313,16 @@ public final class EditableCells {
 
         private void buildPicker() {
             picker = new DatePicker();
+            // FIX CRÍTICO 2026-06-09 (Benjamin, agentes paralelos):
+            // instalar el converter flexible al construir el picker.
+            // Sin esto, el converter por defecto de JavaFX para es_ES
+            // usa 'dd/MM/yy' (año 2 dígitos) y al teclear "31/12/2026"
+            // (4 dígitos) falla → blur llama cancelEdit() → la fecha
+            // tecleada se descarta y se queda con el default 2026-01-01.
+            // Este olvido era la causa raíz de "1 de enero aparece dos
+            // veces" persistente tras 3 intentos previos de fix.
+            installFlexibleConverter(picker);
+
             // Commit cuando el usuario elige un día (click en popup).
             valueListener = (obs, was, now) -> {
                 if (isEditing() && now != null && !now.equals(was)) {
@@ -300,16 +331,15 @@ public final class EditableCells {
             };
             picker.valueProperty().addListener(valueListener);
             // Commit por blur si el usuario tecleó manualmente sin Enter.
-            // IMPORTANTE: usamos el converter del propio DatePicker para
-            // parsear, así soporta el formato del locale (dd/MM/yyyy en
-            // España) + ISO como fallback. Antes solo aceptaba ISO y
-            // perdíamos las fechas tecleadas en formato europeo (bug
-            // Benjamin 2026-06-09: 4 filas se quedaban en 2026-01-01).
+            // CAMBIO 2026-06-09: si parser falla, NO llamamos cancelEdit
+            // — eso descartaba el texto tecleado. En su lugar dejamos el
+            // editor como está; el usuario verá la celda en blanco hasta
+            // que corrija la fecha y sabrá que falló el parseo.
             picker.focusedProperty().addListener((obs, was, now) -> {
                 if (was && !now && isEditing()) {
                     LocalDate parsed = parseTypedDate(picker.getEditor().getText());
                     if (parsed != null) commitEdit(parsed);
-                    else cancelEdit();
+                    // else: no cancelEdit — preserva texto para corrección.
                 }
             });
             picker.addEventFilter(KeyEvent.KEY_PRESSED, ev -> {
@@ -320,7 +350,7 @@ public final class EditableCells {
                         || ev.getCode() == KeyCode.ENTER) {
                     LocalDate parsed = parseTypedDate(picker.getEditor().getText());
                     if (parsed != null) commitEdit(parsed);
-                    else cancelEdit();
+                    // else: idem, no cancelEdit con Tab/Enter tampoco.
                 }
             });
         }
