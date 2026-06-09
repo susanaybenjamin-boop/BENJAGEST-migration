@@ -35,6 +35,75 @@ Para no repetir en cada sección lo que ya está:
 
 ---
 
+## 📅 Resumen sesión 2026-06-09 (autonomía)
+
+Sesión de trabajo autónomo (Claude solo, con permisos delegados por
+Benjamin) cerrando todo lo aditivo y defensivo del backlog. **17
+commits, todos compilan y mergeados a develop**.
+
+**Bloque L3 cerrado completo**:
+- L3-2 backend `WorkCalendarService` + Controller (paquete `labor.workcal/`,
+  endpoint `/api/labor/work-calendars`, tope legal 14 festivos/año Art.
+  37.2 ET, lista CCAA ISO 3166-2:ES validada).
+- L3-3 `HolidaySeed2026` con 9 festivos nacionales + 17 CCAA × 1-3
+  autonómicos + 2 ciudades autónomas (Ceuta, Melilla). Endpoint
+  `/bootstrap` que crea + siembra de golpe.
+- L3-4 UI tab "Calendario laboral" dentro del módulo Labor con bootstrap
+  rápido (CCAA combo + municipio + nombre), tabla calendarios, tabla
+  festivos, CRUD inline. i18n ES+EN (45 keys).
+
+**Empleados/Nóminas**:
+- `MedicalLeave` backend completo (paquete `labor.leaves/`, endpoint
+  `/api/labor/medical-leaves`, estados OPEN/CLOSED/DRAFT auto).
+- `SocialSecurityContribution` backend completo (paquete `labor.ss/`,
+  endpoint `/api/labor/social-security`, bloqueo DELETE si no es DRAFT
+  por inalterabilidad).
+- `LaborCostReportService` para reporte coste empresa por empleado
+  (suma bruto + cuotas SS empresariales agregadas, endpoint
+  `/api/labor/reports/cost`).
+
+**Asesoría (backend completo, UI pendiente)**:
+- V77 `advisory_messages` + `AdvisoryMessageService`. Timeline
+  unificado A2C/C2A. `resolveParts()` detecta rol asesoría/cliente
+  via `companies.parent_company_id`. Endpoints
+  `/api/advisory/messages/threads/{otherCompanyId}/{send|mark-read}`.
+- V78 `advisory_notifications` + `AdvisoryNotificationService`.
+  Severity INFO/WARNING/URGENT, `entity_ref` para navegación
+  contextual, read/dismiss separados. Endpoints
+  `/api/advisory/notifications`.
+- V78 `advisory_documents` + `AdvisoryDocumentService`. Status
+  UPLOADED→REVIEWED→ACCEPTED|REJECTED con `note` obligatoria al
+  rechazar, bloqueo DELETE si ACCEPTED. Endpoints
+  `/api/advisory/documents`.
+- `AdvisoryDashboardService` con vista panorámica (cartera +
+  obligaciones próximas + workflow + workload por empleado).
+  Endpoint `/api/advisory/dashboard`.
+
+**Hooks (sistema de notificaciones operativo)**:
+- `AdvisoryInvitationService` → emit en accept (INFO) y reject (WARNING).
+- `ContractAlertService.scan()` → emit summary por (asesoría, cliente)
+  con idempotencia diaria.
+- `AnomalyDetectionScheduler` → emit URGENT cuando detecta cadena
+  hash rota (facturas o eventos SIF) en cliente con asesoría.
+
+**Polish técnico**:
+- `parseObjects` ahora delega en `splitTopLevelObjects` — tolera
+  sub-objetos anidados sin romper. Cierra deuda CLAUDE.md.
+
+**Estado al cerrar la sesión**:
+- Backend de Mensajes, Notificaciones, Documentos, Dashboard,
+  Calendario Laboral, MedicalLeave, SocialSecurity, LaborCost listo
+  y testeable vía API.
+- UI pendiente para: bandeja notificaciones del asesor (badge en
+  sidebar), chat de mensajes, file tree de documentos compartidos,
+  dashboard cross-client, listados de MedicalLeave/SocialSecurity/
+  LaborCost.
+- 3 hooks reales emitiendo notificaciones al asesor; otros hooks
+  (TaxFiling, message arrival) en próximas sesiones cuando Benjamin
+  priorice.
+
+---
+
 ## 🔴 CRÍTICA — siguiente bloque a atacar
 
 Lo que toca **antes** de seguir con features funcionales. Cubre: legalidad, seguridad multi-tenant, y los dos slices que dejamos preparados.
