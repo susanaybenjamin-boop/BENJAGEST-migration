@@ -232,6 +232,27 @@ public class WorkCalendarService {
     }
 
     // ============================================================
+    //  Volcado a la Agenda (calendar_events)
+    // ============================================================
+
+    /**
+     * Vuelca todos los festivos/ajustes/cierres del calendario laboral
+     * como entradas visibles en la Agenda general del módulo Calendar.
+     * Idempotente: si se vuelca dos veces, la segunda reemplaza a la
+     * primera (no duplica).
+     *
+     * <p>Solo OWNER/ADMIN/ACCOUNTANT — el empleado puede consultar pero
+     * no decidir qué se publica en la Agenda.
+     *
+     * @return número de eventos volcados.
+     */
+    @Transactional
+    public int dumpHolidaysToAgenda(String workCalendarId) {
+        WorkCalendar c = getById(workCalendarId);  // valida tenant
+        return repository.dumpHolidaysToAgenda(c.companyId(), c.id());
+    }
+
+    // ============================================================
     //  Validaciones y helpers
     // ============================================================
 

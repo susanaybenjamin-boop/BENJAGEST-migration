@@ -130,6 +130,23 @@ public class WorkCalendarController {
     }
 
     /**
+     * Vuelca los festivos/ajustes/cierres del calendario laboral a la
+     * Agenda general de la empresa (tabla {@code calendar_events}).
+     * Idempotente — repetir la operación reemplaza, no duplica.
+     *
+     * @return JSON con el conteo de eventos volcados:
+     *         {@code {"events": N}}
+     */
+    @PostMapping("/{id}/dump-to-agenda")
+    @RequiresRole({"OWNER", "ADMIN", "ACCOUNTANT"})
+    public DumpToAgendaResponse dumpToAgenda(@PathVariable("id") String id) {
+        int n = service.dumpHolidaysToAgenda(id);
+        return new DumpToAgendaResponse(n);
+    }
+
+    public record DumpToAgendaResponse(int events) {}
+
+    /**
      * CAL-IMPORT-MODAL — Extrae festivos de un PDF que el usuario
      * descargó (BOE/BOJA/BOPV/DOGC, convenio colectivo, etc.).
      *

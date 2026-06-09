@@ -120,6 +120,7 @@ public class LaborApiClient {
         b.append(field("iban", e.iban())).append(",");
         b.append(field("workType", e.workType())).append(",");
         b.append(field("ssRegime", e.ssRegime())).append(",");
+        b.append(field("workCalendarId", e.workCalendarId())).append(",");
         b.append(field("hireDate", e.hireDate() == null ? null : e.hireDate().toString())).append(",");
         b.append(field("terminationDate", e.terminationDate() == null ? null : e.terminationDate().toString())).append(",");
         b.append(field("terminationReason", e.terminationReason())).append(",");
@@ -162,6 +163,7 @@ public class LaborApiClient {
                 textField(obj, "iban"),
                 textField(obj, "workType"),
                 textField(obj, "ssRegime"),
+                textField(obj, "workCalendarId"),
                 parseDate(textField(obj, "hireDate")),
                 parseDate(textField(obj, "terminationDate")),
                 textField(obj, "terminationReason"),
