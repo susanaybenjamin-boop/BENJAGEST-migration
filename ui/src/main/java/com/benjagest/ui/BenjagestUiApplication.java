@@ -7830,6 +7830,7 @@ public class BenjagestUiApplication extends Application {
                         : LocalDate.parse(bundle.existing().invoiceDate()));
         editorInvoiceDate.getStyleClass().add("invoice-input");
         editorInvoiceDate.setMaxWidth(Double.MAX_VALUE);
+        com.benjagest.ui.support.EditableCells.installFlexibleConverter(editorInvoiceDate);
 
         editorDueDate = new javafx.scene.control.DatePicker(
                 bundle.existing() == null || bundle.existing().dueDate() == null || bundle.existing().dueDate().isBlank()
@@ -7837,6 +7838,7 @@ public class BenjagestUiApplication extends Application {
                         : LocalDate.parse(bundle.existing().dueDate()));
         editorDueDate.getStyleClass().add("invoice-input");
         editorDueDate.setMaxWidth(Double.MAX_VALUE);
+        com.benjagest.ui.support.EditableCells.installFlexibleConverter(editorDueDate);
 
         editorNotesArea = new javafx.scene.control.TextArea();
         editorNotesArea.setPromptText(t("editor.notes.prompt"));
@@ -24062,6 +24064,8 @@ public class BenjagestUiApplication extends Application {
                 existing == null ? java.time.LocalDate.now() : existing.startDate());
         DatePicker endPicker = new DatePicker(
                 existing == null ? null : existing.endDate());
+        com.benjagest.ui.support.EditableCells.installFlexibleConverter(startPicker);
+        com.benjagest.ui.support.EditableCells.installFlexibleConverter(endPicker);
 
         ComboBox<String> statusCombo = new ComboBox<>();
         statusCombo.getItems().addAll(
