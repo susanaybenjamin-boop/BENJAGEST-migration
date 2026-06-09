@@ -34,6 +34,18 @@ import java.util.Map;
  * al año (9 nacionales + 4 autonómicos + 2 locales). El {@code
  * WorkCalendarService} aplica el tope cuando se siembran/añaden.
  */
+/* @deprecated 2026-06-09: Benjamin auditó este seed y descubrió que
+ * los festivos autonómicos NO estaban verificados contra los boletines
+ * oficiales — los introduje yo de memoria sin cruzar con BOJA/BOPV/
+ * DOGC/etc. Solo los 9 nacionales son ley fija fiable. El flujo
+ * vinculante ahora es {@code POST /api/labor/work-calendars} (calendario
+ * vacío) + {@code /extract-pdf} (importar desde el PDF oficial que el
+ * usuario descarga de su CCAA). El endpoint {@code /bootstrap} y la
+ * UI 'Generar calendario 2026' se retiraron en el commit que añadió
+ * 'Importar desde PDF'. Se conserva esta clase porque el endpoint
+ * sigue existiendo a nivel HTTP por compatibilidad, pero NO debe
+ * usarse para empresas nuevas. */
+@Deprecated
 public final class HolidaySeed2026 {
 
     private HolidaySeed2026() {}

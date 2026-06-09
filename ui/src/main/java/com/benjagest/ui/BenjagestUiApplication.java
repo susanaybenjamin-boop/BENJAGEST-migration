@@ -11665,6 +11665,11 @@ public class BenjagestUiApplication extends Application {
             case "workcal.import_pdf.bad_date" -> "Invalid date format: {v} (use YYYY-MM-DD).";
             case "workcal.import_pdf.empty_name" -> "All rows need a name.";
             case "workcal.import_pdf.dump_fail" -> "Dump failed";
+            case "workcal.btn.new_calendar" -> "New empty calendar";
+            case "workcal.new_cal.title" -> "Create empty calendar";
+            case "workcal.new_cal.header" -> "Creates an empty calendar. Use 'Import from PDF' afterwards to load the official holidays from your region's official bulletin (BOE/BOJA/BOPV/DOGC).";
+            case "workcal.new_cal.fail.title" -> "Could not create the calendar";
+            case "workcal.new_cal.bad_year" -> "Year must be a number (e.g. 2026).";
             case "team.assign.no_selection.title" -> "Select clients";
             case "team.assign.no_selection.body" -> "Tick at least one client on the left before assigning.";
             case "team.assign.no_employee.title" -> "Pick an employee";
@@ -12034,6 +12039,11 @@ public class BenjagestUiApplication extends Application {
             case "workcal.import_pdf.bad_date" -> "Formato de fecha inválido: {v} (usa AAAA-MM-DD).";
             case "workcal.import_pdf.empty_name" -> "Todas las filas necesitan nombre.";
             case "workcal.import_pdf.dump_fail" -> "No se pudo volcar";
+            case "workcal.btn.new_calendar" -> "Nuevo calendario vacío";
+            case "workcal.new_cal.title" -> "Crear calendario vacío";
+            case "workcal.new_cal.header" -> "Crea un calendario vacío. Después usa 'Importar desde PDF' para cargar los festivos oficiales desde el boletín de tu CCAA (BOE/BOJA/BOPV/DOGC).";
+            case "workcal.new_cal.fail.title" -> "No se pudo crear el calendario";
+            case "workcal.new_cal.bad_year" -> "El año debe ser un número (ej. 2026).";
             case "team.assign.no_selection.title" -> "Selecciona clientes";
             case "team.assign.no_selection.body" -> "Marca al menos un cliente a la izquierda antes de asignar.";
             case "team.assign.no_employee.title" -> "Elige un empleado";
@@ -23512,13 +23522,19 @@ public class BenjagestUiApplication extends Application {
         hint.setWrapText(true);
         hint.getStyleClass().add("settings-hint");
 
-        // Botones acción arriba: bootstrap automático + import PDF.
-        Button bootstrapBtn = new Button(t("workcal.btn.bootstrap"));
-        bootstrapBtn.setGraphic(icon("fas-magic"));
-        bootstrapBtn.getStyleClass().add("primary-button");
+        // Botón principal: importar desde PDF oficial (BOE/BOJA/BOPV/
+        // convenio). Decisión 2026-06-09: quitamos el bootstrap auto
+        // con seed hardcoded porque NO estaba verificado contra los
+        // boletines oficiales — solo los 9 nacionales son ley fija;
+        // los autonómicos los puso Claude de memoria sin cruzar con
+        // BOJA/BOPV/DOGC/etc. El único camino fiable es el PDF
+        // oficial que el usuario descarga de su CCAA.
+        Button newCalBtn = new Button(t("workcal.btn.new_calendar"));
+        newCalBtn.setGraphic(icon("fas-plus-circle"));
         Button importPdfBtn = new Button(t("workcal.btn.import_pdf"));
         importPdfBtn.setGraphic(icon("fas-file-upload"));
-        HBox topBar = new HBox(8, bootstrapBtn, importPdfBtn);
+        importPdfBtn.getStyleClass().add("primary-button");
+        HBox topBar = new HBox(8, newCalBtn, importPdfBtn);
         topBar.setAlignment(Pos.CENTER_LEFT);
 
         // Tabla calendarios.
@@ -23629,7 +23645,11 @@ public class BenjagestUiApplication extends Application {
                 (o, ov, nv) -> delHolBtn.setDisable(nv == null));
 
         // Acciones.
-        bootstrapBtn.setOnAction(ev -> openWorkCalendarBootstrapDialog(reloadCalendars));
+        // 'Crear calendario': solo crea el calendario vacío (sin
+        // sembrar festivos). El usuario los carga después con el
+        // botón 'Importar desde PDF'. Reusamos el mismo diálogo de
+        // bootstrap (año + CCAA + nombre) pero con flag noSeed=true.
+        newCalBtn.setOnAction(ev -> openNewCalendarDialog(reloadCalendars));
         importPdfBtn.setOnAction(ev -> {
             var sel = calTable.getSelectionModel().getSelectedItem();
             if (sel == null) {
@@ -23708,11 +23728,17 @@ public class BenjagestUiApplication extends Application {
         };
     }
 
-    /** Diálogo Bootstrap: año fijo 2026 + combo CCAA + municipio + nombre. */
-    private void openWorkCalendarBootstrapDialog(Runnable onSuccess) {
+    /**
+     * Diálogo para crear un calendario VACÍO. Año + CCAA + municipio
+     * + nombre. NO siembra festivos — el usuario los carga después con
+     * el botón 'Importar desde PDF' que sube el calendario oficial de
+     * su CCAA (único camino vinculante: el BOJA/BOPV/DOGC/etc.).
+     */
+    private void openNewCalendarDialog(Runnable onSuccess) {
         Dialog<javafx.scene.control.ButtonType> dlg = new Dialog<>();
-        dlg.setTitle(t("workcal.bootstrap.title"));
-        dlg.setHeaderText(t("workcal.bootstrap.header"));
+        dlg.setTitle(t("workcal.new_cal.title"));
+        dlg.setHeaderText(t("workcal.new_cal.header"));
+        TextField year = new TextField(String.valueOf(java.time.LocalDate.now().getYear()));
         ComboBox<String> ccaa = new ComboBox<>(FXCollections.observableArrayList(
                 "", "AN", "AR", "AS", "IB", "CN", "CB", "CL", "CM", "CT",
                 "VC", "EX", "GA", "MD", "MC", "NC", "PV", "RI", "CE", "ML"));
@@ -23721,13 +23747,12 @@ public class BenjagestUiApplication extends Application {
         TextField muni = new TextField();
         muni.setPromptText(t("workcal.bootstrap.muni_placeholder"));
         TextField name = new TextField();
-        name.setPromptText("Calendario 2026");
+        name.setPromptText("Calendario " + year.getText());
         GridPane grid = new GridPane();
         grid.setHgap(8);
         grid.setVgap(8);
         grid.setPadding(new Insets(8));
-        grid.addRow(0, new Label(t("workcal.bootstrap.year")),
-                new Label(String.valueOf(2026)));
+        grid.addRow(0, new Label(t("workcal.bootstrap.year")), year);
         grid.addRow(1, new Label(t("workcal.bootstrap.ccaa")), ccaa);
         grid.addRow(2, new Label(t("workcal.bootstrap.muni")), muni);
         grid.addRow(3, new Label(t("workcal.bootstrap.name")), name);
@@ -23736,18 +23761,24 @@ public class BenjagestUiApplication extends Application {
                 javafx.scene.control.ButtonType.CANCEL, javafx.scene.control.ButtonType.OK);
         dlg.showAndWait().ifPresent(bt -> {
             if (bt == javafx.scene.control.ButtonType.OK) {
+                int y;
+                try { y = Integer.parseInt(year.getText().trim()); }
+                catch (NumberFormatException ex) {
+                    showError(t("workcal.error"), t("workcal.new_cal.bad_year"));
+                    return;
+                }
                 Task<com.benjagest.ui.model.WorkCalendarEntry> task = new Task<>() {
                     @Override protected com.benjagest.ui.model.WorkCalendarEntry call() throws Exception {
-                        return altaApiClient.bootstrapWorkCalendar(2026,
+                        return altaApiClient.createEmptyWorkCalendar(y,
                                 ccaa.getValue() == null || ccaa.getValue().isBlank() ? null : ccaa.getValue(),
                                 muni.getText() == null || muni.getText().isBlank() ? null : muni.getText().trim(),
                                 name.getText() == null || name.getText().isBlank() ? null : name.getText().trim());
                     }
                 };
                 task.setOnSucceeded(s -> onSuccess.run());
-                task.setOnFailed(s -> showError(t("workcal.bootstrap.fail.title"),
+                task.setOnFailed(s -> showError(t("workcal.new_cal.fail.title"),
                         task.getException() == null ? "" : task.getException().getMessage()));
-                start(task, "workcal-bootstrap");
+                start(task, "workcal-new");
             }
         });
     }
