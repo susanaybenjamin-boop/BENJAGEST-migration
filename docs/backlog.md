@@ -35,6 +35,73 @@ Para no repetir en cada sección lo que ya está:
 
 ---
 
+## 📅 Sesión 2026-06-09 tarde (autonomía total — Benjamin fuera)
+
+Segunda tanda de autonomía: Benjamin pidió continuar solo cerrando lo
+que se pueda mientras él no está, con la regla "cuando creas que
+solucionas algo, plantea una mejora extra". **5 commits, todos
+compilan y mergeados a develop**. Pendiente que Benjamin lo pruebe
+con UI al volver.
+
+**Cerrado autónomamente**:
+
+1. **fix(workcal) — DatePicker parsea varios formatos** (commit `1a43661`):
+   Bug raíz del CAL-IMPORT-MODAL — el converter de JavaFX para es_ES
+   usa `dd/MM/yy` (año 2 dígitos) y al teclear "31/12/2026" fallaba,
+   dejando 4 filas con fecha 2026-01-01 (error duplicado). Fix:
+   `EditableCells.parseFlexibleDate` acepta ISO + `dd/MM/yyyy` +
+   `dd/MM/yy` + `dd-MM-yyyy` + `d.M.yyyy`. + `commitPendingDatePickerEdits(table)`
+   que busca pickers abiertos vía `lookupAll(".date-picker")` y fuerza
+   commit antes de validar. Aplicado al modal de import calendario.
+
+2. **feat(labor) — UI Bajas (IT)** (commit `8fdcff1`): backend
+   `MedicalLeaveService` estaba cerrado, UI pendiente. Pestaña nueva
+   en módulo Labor con tabla (empleado, tipo, inicio, fin, estado,
+   notas) + diálogo formulario para nueva/editar. Auto-status según
+   endDate. 38 i18n keys ES + EN.
+
+3. **feat(labor) — UI Cotizaciones SS** (commit `50dee71`): backend
+   `SocialSecurityContributionService` estaba cerrado. Pestaña solo
+   lectura (las cuotas las calcula el módulo de nóminas; editor
+   manual no es prioritario). Filtros año/mes/empleado, botón
+   Eliminar solo para DRAFT (backend rechaza !=DRAFT con 409).
+   32 i18n keys.
+
+4. **feat(labor/ss) — footer con totales** (commit `9aa61fb`):
+   Mejora aditiva sobre el slice anterior siguiendo la regla
+   Benjamin. Muestra `{n} cuotas · Total base: X € · Total cuota: Y €`
+   en footer, recalcula al cambiar filtros. Verificación rápida
+   contra TC1 sin sumar a mano.
+
+5. **feat(ui) — installFlexibleConverter para DatePickers sueltos**
+   (commit `4729eca`): defensa en profundidad sobre el bug del
+   workcal. `EditableCells.installFlexibleConverter(DatePicker)`
+   reemplaza el converter del DatePicker por uno flexible. Aplicado
+   a 4 DatePickers de alto uso: editor factura emitida (invoiceDate +
+   dueDate) y editor Bajas IT (start + end). Resto pendiente de
+   añadir incrementalmente — el helper está disponible.
+
+**Para probar al volver**:
+- Reiniciar backend (las migraciones aplicarán) + UI.
+- Modal CAL-IMPORT con tu PDF de Granada: las fechas tecleadas
+  `31/12/2026`/`3/6/2026` deben quedar guardadas al volcar.
+- Pestaña "Bajas (IT)" en Labor: añadir/editar/eliminar una baja.
+- Pestaña "Cotizaciones SS" en Labor: filtros + footer con totales.
+- Editor de factura: teclear fecha en formato 4 dígitos no debe
+  perder el valor.
+
+**Lo que NO se atacó** (decisiones conscientes):
+- VG-FULL-SCAN (barrido sistemático de 159 cellValueFactory): muy
+  largo para sesión autónoma, alto riesgo de tocar muchos sitios.
+- UI advisory_documents (V78): el backend explicita "upload multipart
+  real queda como sub-slice pendiente"; sin él la UI no rinde.
+- Modelos AEAT 100/180/200/411: requieren WebSearch legal extenso +
+  decisiones de Benjamin sobre flujo (similar a CTR-4).
+- VF-SIGN-XADES-AEAT estricto + VF3-SOAP afinado: requieren FNMT real
+  + alta SIF en sede AEAT (no aplicable autónomamente).
+
+---
+
 ## 📅 Resumen sesión 2026-06-09 (autonomía)
 
 Sesión de trabajo autónomo (Claude solo, con permisos delegados por
