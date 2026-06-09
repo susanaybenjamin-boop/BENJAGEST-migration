@@ -84,6 +84,46 @@ public class HolidayPdfExtractor {
             int totalLines
     ) {}
 
+    /**
+     * Resultado extendido para diagnóstico. Incluye TODO el texto
+     * extraído por PDFBox + las líneas que el parser consideró pero
+     * NO encontró cabecera de mes / patrón día-semana. Útil para
+     * cuando un PDF no rinde y queremos entender por qué.
+     */
+    public record DebugResult(
+            ExtractionResult result,
+            String fullText,
+            List<String> ignoredLines
+    ) {}
+
+    /** Versión debug del extractor — mismo análisis + texto crudo. */
+    public DebugResult extractWithDebug(byte[] pdfBytes) throws IOException {
+        String raw = pdf.extract(pdfBytes);
+        ExtractionResult res = extract(pdfBytes);
+        // Recoger las líneas ignoradas para diagnóstico — limitado a
+        // 100 para no saturar la respuesta.
+        List<String> ignored = new ArrayList<>();
+        if (raw != null) {
+            String normalized = normalizeRaw(raw);
+            String[] lines = normalized.split("\\r?\\n");
+            boolean afterFirstMonth = false;
+            for (String l : lines) {
+                String c = cleanLine(l);
+                if (c.isEmpty()) continue;
+                String lower = c.toLowerCase(Locale.ROOT);
+                if (findMonthHeader(lower) != null) { afterFirstMonth = true; continue; }
+                if (!afterFirstMonth) continue;
+                // Es una línea de evento o ruido. ¿Empezó por día semana?
+                boolean isDay = false;
+                for (String wd : WEEKDAYS) {
+                    if (lower.startsWith(wd)) { isDay = true; break; }
+                }
+                if (!isDay && ignored.size() < 100) ignored.add(c);
+            }
+        }
+        return new DebugResult(res, raw == null ? "" : raw, ignored);
+    }
+
     public record DetectedHoliday(
             LocalDate date,
             String name,
@@ -241,26 +281,39 @@ public class HolidayPdfExtractor {
         return s;
     }
 
+    /**
+     * Adivina el año del calendario.
+     *
+     * <p>Estrategia mejorada respecto al port directo de CONTENDO:
+     * <ol>
+     *   <li>Si aparece "calendario laboral YYYY" (o variantes) en el
+     *       texto, usar ESE año. Es la pista más fiable.</li>
+     *   <li>Si no, usar el MAYOR año encontrado (no el más frecuente).
+     *       Razón: un calendario 2026 a menudo cita 2025 (año previo)
+     *       o decretos de años pasados (RD 8/2019, RDL 2/2015) y
+     *       quedarse con el más frecuente nos llevaba a 2025 cuando
+     *       el calendario era de 2026.</li>
+     * </ol>
+     */
     private int guessYear(String text) {
+        // Pista 1: "calendario laboral YYYY" o "calendario de YYYY".
+        Matcher hint = Pattern.compile(
+                "calendario\\s+(?:laboral|de|del|para\\s+el\\s+a[ñn]o)?\\s*(20\\d{2})",
+                Pattern.CASE_INSENSITIVE).matcher(text);
+        if (hint.find()) {
+            try { return Integer.parseInt(hint.group(1)); }
+            catch (Exception ex) { /* fallthrough */ }
+        }
+        // Pista 2: mayor año encontrado.
         Matcher m = Pattern.compile("\\b(20\\d{2})\\b").matcher(text);
-        Map<String, Integer> freq = new HashMap<>();
-        String first = null;
+        int max = 0;
         while (m.find()) {
-            String y = m.group(1);
-            if (first == null) first = y;
-            freq.merge(y, 1, Integer::sum);
+            try {
+                int y = Integer.parseInt(m.group(1));
+                if (y > max) max = y;
+            } catch (Exception ignored) { /* skip */ }
         }
-        if (freq.isEmpty()) return LocalDate.now().getYear();
-        String best = first;
-        int bestN = 0;
-        for (var e : freq.entrySet()) {
-            if (e.getValue() > bestN) {
-                best = e.getKey();
-                bestN = e.getValue();
-            }
-        }
-        try { return Integer.parseInt(best); }
-        catch (Exception ex) { return LocalDate.now().getYear(); }
+        return max > 0 ? max : LocalDate.now().getYear();
     }
 
     private Integer findMonthHeader(String lineLower) {

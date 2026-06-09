@@ -19,6 +19,36 @@ salvo que él pida lo contrario.
 Para más contexto del dominio y arquitectura: `docs/architecture.md`,
 `docs/domain-model.md`, `docs/database-model.md`.
 
+### 1.1. CONTENDO como fuente de verdad
+
+**CONTENDO (legacy) está en `C:\Proyectos\CONTENDO GESTIONES`** —
+es el sistema que BENJAGEST está reemplazando.
+
+> **REGLA DE ORO**: cuando Benjamin no esté disponible para responder
+> una decisión de producto o comportamiento, la respuesta por defecto
+> es **"igual que en CONTENDO"**. Buscar la implementación equivalente
+> en la ruta de arriba y portarla a Java fielmente.
+
+Carpetas útiles dentro de CONTENDO:
+- `backend/src/services/` — lógica de negocio JS, incluye parsers
+  (OCR/calendario), servicios fiscales, etc.
+- `backend/src/services/ocr/calendarioParser.v3.js` — parser fiel del
+  calendario laboral que ya porteé como `HolidayPdfExtractor` (sesión
+  2026-06-09).
+- `backend/migrations/` — migraciones SQL legacy que documentan el
+  schema histórico (las tablas `_180` que ves en `gap-analysis-contendo.md`).
+- `app180-frontend/` — Next.js. Útil para ver UI flows aunque
+  BENJAGEST usa JavaFX.
+
+Patrón típico de port:
+1. Localizar el archivo equivalente en CONTENDO (grep por keyword).
+2. Leer el algoritmo completo antes de portar.
+3. Portar fielmente a Java, manteniendo nombres de constantes /
+   keywords / heurísticas idénticas para que sean fáciles de
+   comparar lado a lado.
+4. En el commit message, citar el archivo CONTENDO de origen +
+   commit BENJAGEST de port.
+
 ---
 
 ## 2. Pattern obligatorio: diagnóstico con agentes paralelos
