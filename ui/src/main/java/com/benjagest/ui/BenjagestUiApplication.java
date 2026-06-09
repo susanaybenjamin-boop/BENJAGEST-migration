@@ -24594,11 +24594,19 @@ public class BenjagestUiApplication extends Application {
         // Atajos uniformes: Escape / click vacío → deselecciona.
         com.benjagest.ui.support.TableSelectionHelper.install(rightTable);
 
-        // Fecha — DatePicker integrado, commit al elegir día / Tab.
+        // Fecha — TextField estilo CONTENDO <input type="date">.
+        // Antes usábamos DatePicker (datePicker()) pero el lifecycle de
+        // commit+blur en TableView con muchas filas dinámicas era
+        // frágil (Benjamin 2026-06-09, agentes paralelos): las fechas
+        // tecleadas en filas añadidas a mano no se commiteaban porque
+        // el converter del DatePicker fallaba con año 4 dígitos.
+        // El TextField acepta dd/MM/yyyy, dd-MM-yyyy, ISO, etc., valida
+        // al perder foco (Tab/Enter/blur), marca en rojo si no parsea,
+        // y guarda como LocalDate. Sin popup, sin lifecycle complejo.
         TableColumn<EditableHolidayRow, java.time.LocalDate> rDate =
                 new TableColumn<>(t("workcal.col.date"));
         rDate.setCellValueFactory(c -> c.getValue().dateValue);
-        rDate.setCellFactory(com.benjagest.ui.support.EditableCells.datePicker());
+        rDate.setCellFactory(com.benjagest.ui.support.EditableCells.flexibleDateTextField());
         rDate.setOnEditCommit(ev -> ev.getRowValue().dateValue.set(ev.getNewValue()));
         rDate.setPrefWidth(140);
 
