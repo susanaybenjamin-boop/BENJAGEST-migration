@@ -172,4 +172,26 @@ public class WorkCalendarController {
                     "No se pudo leer el PDF: " + ex.getMessage());
         }
     }
+
+    /**
+     * Versión DEBUG del extract-pdf. Devuelve también el texto crudo
+     * que PDFBox sacó del PDF + las líneas que el parser ignoró por no
+     * encajar con el patrón día-semana. Útil para diagnosticar
+     * cuando un PDF no rinde y queremos ver qué está leyendo.
+     */
+    @PostMapping(value = "/extract-pdf/debug", consumes = "multipart/form-data")
+    @RequiresRole({"OWNER", "ADMIN", "ACCOUNTANT"})
+    public HolidayPdfExtractor.DebugResult extractFromPdfDebug(
+            @RequestPart("file") MultipartFile file) {
+        if (file == null || file.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Archivo PDF obligatorio");
+        }
+        try {
+            return pdfExtractor.extractWithDebug(file.getBytes());
+        } catch (IOException ex) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "No se pudo leer el PDF: " + ex.getMessage());
+        }
+    }
 }
