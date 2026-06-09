@@ -23720,7 +23720,16 @@ public class BenjagestUiApplication extends Application {
         Button importPdfBtn = new Button(t("workcal.btn.import_pdf"));
         importPdfBtn.setGraphic(icon("fas-file-upload"));
         importPdfBtn.getStyleClass().add("primary-button");
-        HBox topBar = new HBox(8, newCalBtn, importPdfBtn);
+        // Botón "Eliminar calendario" arriba (al lado de Importar PDF)
+        // — Benjamin 2026-06-09 lo pidió aquí en vez de en la barra
+        // inferior junto a "Añadir festivo" (queda más visible y
+        // separa CRUD del calendario vs CRUD de festivos).
+        Button delCalBtn = new Button(t("workcal.btn.delete_calendar"));
+        delCalBtn.setGraphic(icon("fas-times-circle"));
+        delCalBtn.setDisable(true);
+        Region topSpacer = new Region();
+        HBox.setHgrow(topSpacer, Priority.ALWAYS);
+        HBox topBar = new HBox(8, newCalBtn, importPdfBtn, topSpacer, delCalBtn);
         topBar.setAlignment(Pos.CENTER_LEFT);
 
         // Tabla calendarios.
@@ -23777,10 +23786,8 @@ public class BenjagestUiApplication extends Application {
         Button delHolBtn = new Button(t("workcal.btn.remove_holiday"));
         delHolBtn.setGraphic(icon("fas-trash"));
         delHolBtn.setDisable(true);
-        Button delCalBtn = new Button(t("workcal.btn.delete_calendar"));
-        delCalBtn.setGraphic(icon("fas-times-circle"));
-        delCalBtn.setDisable(true);
-        HBox actionBar = new HBox(8, addHolBtn, delHolBtn, new Region(), delCalBtn);
+        // delCalBtn ahora vive arriba en el topBar (movido 2026-06-09).
+        HBox actionBar = new HBox(8, addHolBtn, delHolBtn);
         actionBar.setAlignment(Pos.CENTER_LEFT);
 
         // Carga inicial.
