@@ -2533,6 +2533,9 @@ public class BenjagestUiApplication extends Application {
         // mantenemos el valor original (back-compat con eventos antiguos).
         String rawType = event.fields().getOrDefault("tipo", t("calendar.event.default_type"));
         Label type = label(humanizeCalendarEventType(rawType), "calendar-event-card-type");
+        // PORT-5 CAL-A — anadir variante de color segun event_type.
+        String variantClass = calendarEventTypeVariantClass(rawType);
+        if (variantClass != null) type.getStyleClass().add(variantClass);
         VBox copy = new VBox(5, title, detail, type);
         HBox.setHgrow(copy, Priority.ALWAYS);
 
@@ -2581,6 +2584,23 @@ public class BenjagestUiApplication extends Application {
             case "WORK_CLOSURE" -> t("calendar.event.type.work_closure");
             case "GENERAL" -> t("calendar.event.type.general");
             default -> raw;
+        };
+    }
+
+    /**
+     * PORT-5 CAL-A — Variante CSS de color para el badge {@code
+     * calendar-event-card-type} segun el tipo de evento. Devuelve null
+     * cuando no hay variante conocida (badge queda con el color neutro
+     * por defecto).
+     */
+    private String calendarEventTypeVariantClass(String raw) {
+        if (raw == null || raw.isBlank()) return null;
+        return switch (raw.trim().toUpperCase(java.util.Locale.ROOT)) {
+            case "HOLIDAY" -> "calendar-event-card-type--holiday";
+            case "WORK_ADJUSTMENT" -> "calendar-event-card-type--work-adjustment";
+            case "WORK_CLOSURE" -> "calendar-event-card-type--work-closure";
+            case "GENERAL" -> "calendar-event-card-type--general";
+            default -> null;
         };
     }
 
@@ -10085,47 +10105,7 @@ public class BenjagestUiApplication extends Application {
                 case "editor.lines.col.retention" -> "Withh. %";
                 case "editor.lines.col.subtotal" -> "Subtotal";
                 case "editor.lines.col.total" -> "Total";
-                // ---- Calendar / Agenda ----
-                case "calendar.events_count_zero" -> "0 events";
-                case "calendar.events_count_one" -> "1 event";
-                case "calendar.events_count_many" -> " events";
-                case "calendar.mode.day" -> "Day";
-                case "calendar.mode.week" -> "Week";
-                case "calendar.mode.month" -> "Month";
-                case "calendar.mode.year" -> "Year";
-                case "calendar.btn.new_event" -> "New event";
-                case "calendar.day.empty" -> "No events for this day. You can create one from New event.";
-                case "calendar.day.scheduled_one" -> "1 event scheduled";
-                case "calendar.day.scheduled_many_suffix" -> " events scheduled";
-                case "calendar.week.range_prefix" -> "Week of ";
-                case "calendar.week.range_middle" -> " to ";
-                case "calendar.week.no_events" -> "No events";
-                case "calendar.week.more_prefix" -> "+";
-                case "calendar.week.more_suffix" -> " more";
-                case "calendar.year.title_prefix" -> "Yearly view ";
-                case "calendar.event.default_title" -> "Event";
-                case "calendar.event.no_detail" -> "No detail";
-                case "calendar.event.default_type" -> "GENERAL";
-                case "calendar.day_agenda.title" -> "Day agenda";
-                case "calendar.day_agenda.no_events" -> "No events for today.";
-                case "calendar.dialog.title" -> "Agenda";
-                case "calendar.dialog.empty.title" -> "Free day";
-                case "calendar.dialog.empty.body" -> "Nothing scheduled. You can create an appointment, deadline or reminder for this day.";
-                case "calendar.dialog.empty.btn" -> "Create event";
-                case "calendar.dialog.planned_one" -> "1 planned event";
-                case "calendar.event.type.holiday" -> "Public holiday";
-                case "calendar.event.type.work_adjustment" -> "Work-day adjustment";
-                case "calendar.event.type.work_closure" -> "Company closure";
-                case "calendar.event.type.general" -> "General";
-                case "calendar.dialog.planned_many_suffix" -> " planned events";
-                case "calendar.dialog.month.no_events" -> "No events this month.";
-                case "calendar.weekday.mon" -> "M";
-                case "calendar.weekday.tue" -> "T";
-                case "calendar.weekday.wed" -> "W";
-                case "calendar.weekday.thu" -> "T";
-                case "calendar.weekday.fri" -> "F";
-                case "calendar.weekday.sat" -> "S";
-                case "calendar.weekday.sun" -> "S";
+                // ---- Calendar / Agenda ---- (extracted to tCalendarEn helper to keep t() under JVM 64KB limit)
                 case "common.btn.edit" -> "Edit";
                 case "common.btn.delete" -> "Delete";
                 // ---- Generic module views ----
@@ -10192,6 +10172,7 @@ public class BenjagestUiApplication extends Application {
                     if (v == null) v = tEmailHelpEn(key);
                     if (v == null) v = tTeamEn(key);
                     if (v == null) v = tPinLoginEn(key);
+                    if (v == null) v = tCalendarEn(key);
                     yield v != null ? v : (key.startsWith("column.") ? key.substring(7) : key);
                 }
             };
@@ -11016,47 +10997,7 @@ public class BenjagestUiApplication extends Application {
             case "editor.lines.col.retention" -> "Ret. %";
             case "editor.lines.col.subtotal" -> "Subtotal";
             case "editor.lines.col.total" -> "Total";
-            // ---- Calendar / Agenda ----
-            case "calendar.events_count_zero" -> "0 eventos";
-            case "calendar.events_count_one" -> "1 evento";
-            case "calendar.events_count_many" -> " eventos";
-            case "calendar.mode.day" -> "Día";
-            case "calendar.mode.week" -> "Semana";
-            case "calendar.mode.month" -> "Mes";
-            case "calendar.mode.year" -> "Año";
-            case "calendar.btn.new_event" -> "Nuevo evento";
-            case "calendar.day.empty" -> "No hay eventos para este dia. Puedes crear uno desde Nuevo evento.";
-            case "calendar.day.scheduled_one" -> "1 evento programado";
-            case "calendar.day.scheduled_many_suffix" -> " eventos programados";
-            case "calendar.week.range_prefix" -> "Semana del ";
-            case "calendar.week.range_middle" -> " al ";
-            case "calendar.week.no_events" -> "Sin eventos";
-            case "calendar.week.more_prefix" -> "+";
-            case "calendar.week.more_suffix" -> " mas";
-            case "calendar.year.title_prefix" -> "Vista anual ";
-            case "calendar.event.default_title" -> "Evento";
-            case "calendar.event.no_detail" -> "Sin detalle";
-            case "calendar.event.default_type" -> "GENERAL";
-            case "calendar.day_agenda.title" -> "Agenda del dia";
-            case "calendar.day_agenda.no_events" -> "No hay eventos para hoy.";
-            case "calendar.dialog.title" -> "Agenda";
-            case "calendar.dialog.empty.title" -> "Dia libre";
-            case "calendar.dialog.empty.body" -> "No hay nada programado. Puedes crear una cita, vencimiento o recordatorio para este dia.";
-            case "calendar.dialog.empty.btn" -> "Crear evento";
-            case "calendar.dialog.planned_one" -> "1 evento planificado";
-            case "calendar.event.type.holiday" -> "Festivo";
-            case "calendar.event.type.work_adjustment" -> "Ajuste de jornada";
-            case "calendar.event.type.work_closure" -> "Cierre de empresa";
-            case "calendar.event.type.general" -> "General";
-            case "calendar.dialog.planned_many_suffix" -> " eventos planificados";
-            case "calendar.dialog.month.no_events" -> "No hay eventos en este mes.";
-            case "calendar.weekday.mon" -> "L";
-            case "calendar.weekday.tue" -> "M";
-            case "calendar.weekday.wed" -> "X";
-            case "calendar.weekday.thu" -> "J";
-            case "calendar.weekday.fri" -> "V";
-            case "calendar.weekday.sat" -> "S";
-            case "calendar.weekday.sun" -> "D";
+            // ---- Calendar / Agenda ---- (extracted to tCalendarEs helper to keep t() under JVM 64KB limit)
             case "common.btn.edit" -> "Editar";
             case "common.btn.delete" -> "Eliminar";
             // ---- Generic module views ----
@@ -11123,6 +11064,7 @@ public class BenjagestUiApplication extends Application {
                 if (v == null) v = tEmailHelpEs(key);
                 if (v == null) v = tTeamEs(key);
                 if (v == null) v = tPinLoginEs(key);
+                if (v == null) v = tCalendarEs(key);
                 if (v != null) yield v;
                 yield key.startsWith("column.") ? key.substring(7) : switch (key) {
                 case "field.name" -> "Nombre";
@@ -11622,6 +11564,109 @@ public class BenjagestUiApplication extends Application {
             case "pin.forget.fail.title" -> "No se pudo olvidar";
             case "pin.forget.fail.body" -> "No se pudo revocar el emparejado. Comprueba las credenciales e inténtalo de nuevo.";
             case "pin.back_to_keypad" -> "Volver al teclado PIN";
+            default -> null;
+        };
+    }
+
+    /**
+     * FIX-T-LIMIT (2026-06-10) — Helper i18n EN extraido de t() para
+     * mantener la longitud del bytecode del switch principal por debajo
+     * del límite JVM de 64KB por método. Contiene las 40 claves
+     * {@code calendar.*} (Agenda general) que antes vivían inline.
+     * No añade keys nuevas; es refactor puro.
+     */
+    private String tCalendarEn(String key) {
+        return switch (key) {
+            case "calendar.events_count_zero" -> "0 events";
+            case "calendar.events_count_one" -> "1 event";
+            case "calendar.events_count_many" -> " events";
+            case "calendar.mode.day" -> "Day";
+            case "calendar.mode.week" -> "Week";
+            case "calendar.mode.month" -> "Month";
+            case "calendar.mode.year" -> "Year";
+            case "calendar.btn.new_event" -> "New event";
+            case "calendar.day.empty" -> "No events for this day. You can create one from New event.";
+            case "calendar.day.scheduled_one" -> "1 event scheduled";
+            case "calendar.day.scheduled_many_suffix" -> " events scheduled";
+            case "calendar.week.range_prefix" -> "Week of ";
+            case "calendar.week.range_middle" -> " to ";
+            case "calendar.week.no_events" -> "No events";
+            case "calendar.week.more_prefix" -> "+";
+            case "calendar.week.more_suffix" -> " more";
+            case "calendar.year.title_prefix" -> "Yearly view ";
+            case "calendar.event.default_title" -> "Event";
+            case "calendar.event.no_detail" -> "No detail";
+            case "calendar.event.default_type" -> "GENERAL";
+            case "calendar.day_agenda.title" -> "Day agenda";
+            case "calendar.day_agenda.no_events" -> "No events for today.";
+            case "calendar.dialog.title" -> "Agenda";
+            case "calendar.dialog.empty.title" -> "Free day";
+            case "calendar.dialog.empty.body" -> "Nothing scheduled. You can create an appointment, deadline or reminder for this day.";
+            case "calendar.dialog.empty.btn" -> "Create event";
+            case "calendar.dialog.planned_one" -> "1 planned event";
+            case "calendar.event.type.holiday" -> "Public holiday";
+            case "calendar.event.type.work_adjustment" -> "Work-day adjustment";
+            case "calendar.event.type.work_closure" -> "Company closure";
+            case "calendar.event.type.general" -> "General";
+            case "calendar.dialog.planned_many_suffix" -> " planned events";
+            case "calendar.dialog.month.no_events" -> "No events this month.";
+            case "calendar.weekday.mon" -> "M";
+            case "calendar.weekday.tue" -> "T";
+            case "calendar.weekday.wed" -> "W";
+            case "calendar.weekday.thu" -> "T";
+            case "calendar.weekday.fri" -> "F";
+            case "calendar.weekday.sat" -> "S";
+            case "calendar.weekday.sun" -> "S";
+            default -> null;
+        };
+    }
+
+    /**
+     * FIX-T-LIMIT (2026-06-10) — Helper i18n ES extraido de t(). Espejo
+     * de {@link #tCalendarEn(String)}.
+     */
+    private String tCalendarEs(String key) {
+        return switch (key) {
+            case "calendar.events_count_zero" -> "0 eventos";
+            case "calendar.events_count_one" -> "1 evento";
+            case "calendar.events_count_many" -> " eventos";
+            case "calendar.mode.day" -> "Día";
+            case "calendar.mode.week" -> "Semana";
+            case "calendar.mode.month" -> "Mes";
+            case "calendar.mode.year" -> "Año";
+            case "calendar.btn.new_event" -> "Nuevo evento";
+            case "calendar.day.empty" -> "No hay eventos para este dia. Puedes crear uno desde Nuevo evento.";
+            case "calendar.day.scheduled_one" -> "1 evento programado";
+            case "calendar.day.scheduled_many_suffix" -> " eventos programados";
+            case "calendar.week.range_prefix" -> "Semana del ";
+            case "calendar.week.range_middle" -> " al ";
+            case "calendar.week.no_events" -> "Sin eventos";
+            case "calendar.week.more_prefix" -> "+";
+            case "calendar.week.more_suffix" -> " mas";
+            case "calendar.year.title_prefix" -> "Vista anual ";
+            case "calendar.event.default_title" -> "Evento";
+            case "calendar.event.no_detail" -> "Sin detalle";
+            case "calendar.event.default_type" -> "GENERAL";
+            case "calendar.day_agenda.title" -> "Agenda del dia";
+            case "calendar.day_agenda.no_events" -> "No hay eventos para hoy.";
+            case "calendar.dialog.title" -> "Agenda";
+            case "calendar.dialog.empty.title" -> "Dia libre";
+            case "calendar.dialog.empty.body" -> "No hay nada programado. Puedes crear una cita, vencimiento o recordatorio para este dia.";
+            case "calendar.dialog.empty.btn" -> "Crear evento";
+            case "calendar.dialog.planned_one" -> "1 evento planificado";
+            case "calendar.event.type.holiday" -> "Festivo";
+            case "calendar.event.type.work_adjustment" -> "Ajuste de jornada";
+            case "calendar.event.type.work_closure" -> "Cierre de empresa";
+            case "calendar.event.type.general" -> "General";
+            case "calendar.dialog.planned_many_suffix" -> " eventos planificados";
+            case "calendar.dialog.month.no_events" -> "No hay eventos en este mes.";
+            case "calendar.weekday.mon" -> "L";
+            case "calendar.weekday.tue" -> "M";
+            case "calendar.weekday.wed" -> "X";
+            case "calendar.weekday.thu" -> "J";
+            case "calendar.weekday.fri" -> "V";
+            case "calendar.weekday.sat" -> "S";
+            case "calendar.weekday.sun" -> "D";
             default -> null;
         };
     }
