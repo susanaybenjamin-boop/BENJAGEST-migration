@@ -252,6 +252,19 @@ public class WorkCalendarService {
         return repository.dumpHolidaysToAgenda(c.companyId(), c.id());
     }
 
+    /**
+     * PORT-5 CAL-B — Borra de la Agenda general (calendar_events) los
+     * eventos previamente volcados desde este calendario laboral. NO
+     * toca eventos creados a mano por el usuario.
+     *
+     * @return número de eventos borrados de la Agenda.
+     */
+    @Transactional
+    public int removeHolidaysFromAgenda(String workCalendarId) {
+        WorkCalendar c = getById(workCalendarId);  // valida tenant
+        return repository.removeHolidaysFromAgenda(c.companyId(), c.id());
+    }
+
     // ============================================================
     //  Validaciones y helpers
     // ============================================================

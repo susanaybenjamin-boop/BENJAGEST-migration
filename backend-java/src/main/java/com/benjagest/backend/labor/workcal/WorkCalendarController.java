@@ -147,6 +147,20 @@ public class WorkCalendarController {
     public record DumpToAgendaResponse(int events) {}
 
     /**
+     * PORT-5 CAL-B — Inversa de dump-to-agenda. Quita de la Agenda
+     * general los eventos volcados por este calendario laboral.
+     * Idempotente y solo toca eventos con source_type='WORK_CALENDAR'.
+     *
+     * @return JSON con el conteo de eventos borrados: {@code {"events": N}}
+     */
+    @DeleteMapping("/{id}/dump-to-agenda")
+    @RequiresRole({"OWNER", "ADMIN", "ACCOUNTANT"})
+    public DumpToAgendaResponse removeFromAgenda(@PathVariable("id") String id) {
+        int n = service.removeHolidaysFromAgenda(id);
+        return new DumpToAgendaResponse(n);
+    }
+
+    /**
      * CAL-IMPORT-MODAL — Extrae festivos de un PDF que el usuario
      * descargó (BOE/BOJA/BOPV/DOGC, convenio colectivo, etc.).
      *

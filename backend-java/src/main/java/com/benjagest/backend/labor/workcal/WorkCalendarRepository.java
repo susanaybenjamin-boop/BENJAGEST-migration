@@ -168,6 +168,26 @@ public class WorkCalendarRepository {
      *
      * @return número de eventos insertados.
      */
+    /**
+     * PORT-5 CAL-B — Inversa de {@link #dumpHolidaysToAgenda}. Borra de
+     * la Agenda general (calendar_events) los eventos volcados por este
+     * calendario laboral. Operación idempotente: si no hay nada volcado,
+     * devuelve 0. NO borra eventos manuales que el usuario haya creado
+     * a mano (filtra por source_type='WORK_CALENDAR' + source_id).
+     *
+     * @return número de eventos borrados.
+     */
+    public int removeHolidaysFromAgenda(String companyId, String workCalendarId) {
+        return jdbcTemplate.update("""
+                DELETE FROM calendar_events
+                 WHERE company_id = ?
+                   AND source_type = 'WORK_CALENDAR'
+                   AND source_id IN (
+                       SELECT id FROM holidays WHERE work_calendar_id = ?
+                   )
+                """, companyId, workCalendarId);
+    }
+
     public int dumpHolidaysToAgenda(String companyId, String workCalendarId) {
         // 1. Limpiar vuelco anterior del MISMO calendario (idempotente).
         jdbcTemplate.update("""

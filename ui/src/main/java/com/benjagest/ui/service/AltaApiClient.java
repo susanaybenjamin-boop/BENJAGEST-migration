@@ -1346,6 +1346,23 @@ public class AltaApiClient {
         return m.find() ? Integer.parseInt(m.group(1)) : 0;
     }
 
+    /**
+     * PORT-5 CAL-B — Inversa de {@link #dumpWorkCalendarToAgenda}.
+     * Quita de la Agenda general los eventos que se hayan volcado
+     * desde este calendario laboral. Idempotente.
+     */
+    public int removeWorkCalendarFromAgenda(String calendarId)
+            throws IOException, InterruptedException {
+        HttpResponse<String> r = send(req(
+                baseUrl + "/labor/work-calendars/" + calendarId + "/dump-to-agenda").DELETE());
+        if (r.statusCode() < 200 || r.statusCode() >= 300) {
+            throw new IOException("HTTP " + r.statusCode() + ": " + r.body());
+        }
+        java.util.regex.Matcher m = java.util.regex.Pattern
+                .compile("\"events\"\\s*:\\s*(\\d+)").matcher(r.body());
+        return m.find() ? Integer.parseInt(m.group(1)) : 0;
+    }
+
     // ============================================================
     //  Cotizaciones SS — /api/labor/social-security
     // ============================================================
