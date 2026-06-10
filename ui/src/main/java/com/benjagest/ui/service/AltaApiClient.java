@@ -1363,6 +1363,23 @@ public class AltaApiClient {
         return m.find() ? Integer.parseInt(m.group(1)) : 0;
     }
 
+    /**
+     * PORT-5 CAL-C — Carga los 10 festivos nacionales fijos del año del
+     * calendario seleccionado. Idempotente: solo añade los que faltan.
+     */
+    public int loadNationalHolidays(String calendarId)
+            throws IOException, InterruptedException {
+        HttpResponse<String> r = send(req(
+                baseUrl + "/labor/work-calendars/" + calendarId + "/load-national-holidays")
+                .POST(java.net.http.HttpRequest.BodyPublishers.noBody()));
+        if (r.statusCode() < 200 || r.statusCode() >= 300) {
+            throw new IOException("HTTP " + r.statusCode() + ": " + r.body());
+        }
+        java.util.regex.Matcher m = java.util.regex.Pattern
+                .compile("\"inserted\"\\s*:\\s*(\\d+)").matcher(r.body());
+        return m.find() ? Integer.parseInt(m.group(1)) : 0;
+    }
+
     // ============================================================
     //  Cotizaciones SS — /api/labor/social-security
     // ============================================================

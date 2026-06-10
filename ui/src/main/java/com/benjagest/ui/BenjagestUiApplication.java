@@ -11771,6 +11771,10 @@ public class BenjagestUiApplication extends Application {
             case "workcal.remove_agenda.success.title" -> "Removed from Agenda";
             case "workcal.remove_agenda.success.body" -> "{n} events removed from the general Agenda.";
             case "workcal.remove_agenda.fail.title" -> "Could not remove from Agenda";
+            case "workcal.btn.load_national" -> "Load national holidays";
+            case "workcal.load_national.success.title" -> "National holidays loaded";
+            case "workcal.load_national.success.body" -> "{n} national holidays of {year} added to the calendar.";
+            case "workcal.load_national.fail.title" -> "Could not load national holidays";
             case "workcal.import_pdf.select_calendar" -> "Select a calendar in the list first.";
             case "workcal.import_pdf.choose_file" -> "Choose calendar PDF";
             case "workcal.import_pdf.fail.title" -> "Could not read the PDF";
@@ -12160,6 +12164,10 @@ public class BenjagestUiApplication extends Application {
             case "workcal.remove_agenda.success.title" -> "Eventos quitados";
             case "workcal.remove_agenda.success.body" -> "{n} eventos quitados de la Agenda general.";
             case "workcal.remove_agenda.fail.title" -> "No se pudo quitar de la Agenda";
+            case "workcal.btn.load_national" -> "Cargar festivos nacionales";
+            case "workcal.load_national.success.title" -> "Festivos nacionales cargados";
+            case "workcal.load_national.success.body" -> "{n} festivos nacionales de {year} añadidos al calendario.";
+            case "workcal.load_national.fail.title" -> "No se pudieron cargar los festivos nacionales";
             case "workcal.import_pdf.select_calendar" -> "Selecciona primero un calendario en la lista.";
             case "workcal.import_pdf.choose_file" -> "Elige el PDF del calendario";
             case "workcal.import_pdf.fail.title" -> "No se pudo leer el PDF";
@@ -23889,8 +23897,13 @@ public class BenjagestUiApplication extends Application {
         Button removeAgendaBtn = new Button(t("workcal.btn.remove_from_agenda"));
         removeAgendaBtn.setGraphic(icon("fas-calendar-minus"));
         removeAgendaBtn.setDisable(true);
+        // PORT-5 CAL-C — Carga los 10 festivos nacionales fijos del anio
+        // del calendario seleccionado (idempotente).
+        Button loadNationalBtn = new Button(t("workcal.btn.load_national"));
+        loadNationalBtn.setGraphic(icon("fas-flag"));
+        loadNationalBtn.setDisable(true);
         HBox topBar = new HBox(8, newCalBtn, importPdfBtn, delCalBtn,
-                dumpAgendaBtn, removeAgendaBtn);
+                dumpAgendaBtn, removeAgendaBtn, loadNationalBtn);
         topBar.setAlignment(Pos.CENTER_LEFT);
 
         // Tabla calendarios.
@@ -23993,6 +24006,7 @@ public class BenjagestUiApplication extends Application {
             delCalBtn.setDisable(!sel);
             dumpAgendaBtn.setDisable(!sel);
             removeAgendaBtn.setDisable(!sel);
+            loadNationalBtn.setDisable(!sel);
             delHolBtn.setDisable(true);  // se habilita al seleccionar festivo
             if (sel) reloadHolidays.run();
             else holTable.getItems().clear();
@@ -24082,6 +24096,32 @@ public class BenjagestUiApplication extends Application {
             dump.setOnFailed(s -> showError(t("workcal.dump_agenda.fail.title"),
                     dump.getException() == null ? "" : dump.getException().getMessage()));
             start(dump, "workcal-dump-agenda");
+        });
+
+        // PORT-5 CAL-C — Cargar los 10 festivos nacionales fijos del anio
+        // del calendario seleccionado. Idempotente — solo anade los que
+        // faltan. El usuario completa con los autonomicos via PDF o a mano.
+        loadNationalBtn.setOnAction(ev -> {
+            var calSel = calTable.getSelectionModel().getSelectedItem();
+            if (calSel == null) return;
+            Task<Integer> load = new Task<>() {
+                @Override protected Integer call() throws Exception {
+                    return altaApiClient.loadNationalHolidays(calSel.id());
+                }
+            };
+            load.setOnSucceeded(s -> {
+                Alert ok = new Alert(Alert.AlertType.INFORMATION);
+                ok.setTitle(t("workcal.load_national.success.title"));
+                ok.setHeaderText(t("workcal.load_national.success.body")
+                        .replace("{n}", String.valueOf(load.getValue()))
+                        .replace("{year}", String.valueOf(calSel.year())));
+                ok.showAndWait();
+                reloadHolidays.run();
+            });
+            load.setOnFailed(s -> showError(
+                    t("workcal.load_national.fail.title"),
+                    load.getException() == null ? "" : load.getException().getMessage()));
+            start(load, "workcal-load-national");
         });
 
         // PORT-5 CAL-B — Quitar de la Agenda general los eventos volcados
