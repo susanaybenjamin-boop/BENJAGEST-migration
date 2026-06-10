@@ -63,8 +63,17 @@ public class SifEventService {
      * Variante con TenantContext. Si la empresa activa esta en
      * modalidad VeriFactu, no se hace nada (no rompe la cadena de
      * facturas: simplemente la cadena de eventos no se inicia).
+     *
+     * <p>SIF-SCHEDULER-LOCKS (2026-06-10 noche): REQUIRES_NEW garantiza
+     * que cada evento SIF se persiste en su propia transaccion corta,
+     * sin pegarse a una tx exterior larga (p.ej. cuando el scheduler
+     * AnomalyDetectionScheduler emite ANOMALY_DETECTION_*_HIT durante
+     * la verificacion). Sin esto, dos updates concurrentes podian
+     * pelear el {@code SELECT ... FOR UPDATE} de
+     * {@code AuditChainService} y disparar lock-wait-timeout en
+     * {@code audit_events}.
      */
-    @Transactional
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.REQUIRES_NEW)
     public void record(String eventType, String payload) {
         VerifactuConfig config = configRepository.findCurrent().orElse(null);
         if (config == null || !"NO_VERIFACTU".equals(config.modality())) {
@@ -80,8 +89,11 @@ public class SifEventService {
      * parada, jobs cron). Requiere companyId explicito. La modalidad
      * se vuelve a comprobar aqui (defensa: companies puede haber
      * cambiado de modalidad entre que el hook se llama y se ejecuta).
+     *
+     * <p>SIF-SCHEDULER-LOCKS (2026-06-10 noche): REQUIRES_NEW por la
+     * misma razon que {@link #record}.
      */
-    @Transactional
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.REQUIRES_NEW)
     public void recordForCompany(String companyId, String eventType, String payload) {
         if (!isCompanyInNoVerifactu(companyId)) {
             return;

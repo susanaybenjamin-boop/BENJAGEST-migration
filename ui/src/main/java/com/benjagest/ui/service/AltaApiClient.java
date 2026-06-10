@@ -1688,6 +1688,23 @@ public class AltaApiClient {
     }
 
     // ============================================================
+    //  Sprint A 2026-06-10 noche — limpieza cadena SIF legacy
+    // ============================================================
+
+    /** DELETE /api/billing/sif-events/legacy-chain. Devuelve nº de
+     *  eventos borrados de la empresa activa. */
+    public int resetSifLegacyChain() throws IOException, InterruptedException {
+        HttpResponse<String> r = send(req(baseUrl + "/billing/sif-events/legacy-chain")
+                .DELETE());
+        if (r.statusCode() < 200 || r.statusCode() >= 300) {
+            throw new IOException("HTTP " + r.statusCode() + ": " + r.body());
+        }
+        java.util.regex.Matcher m = java.util.regex.Pattern
+                .compile("\"deleted\"\\s*:\\s*(\\d+)").matcher(r.body());
+        return m.find() ? Integer.parseInt(m.group(1)) : 0;
+    }
+
+    // ============================================================
     //  PORT-4 LOGO — Logo de empresa /api/settings/company/logo
     // ============================================================
 
