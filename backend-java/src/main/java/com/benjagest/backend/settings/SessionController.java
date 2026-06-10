@@ -42,13 +42,12 @@ public class SessionController {
 
     @PutMapping
     public SessionStatus save(@RequestBody UpdateRequest req) {
+        // V87 simplificó UserSettings: solo quedan pin_timeout_min y
+        // screensaver_style. Idioma vive en el header, AI no se hará,
+        // avatar = logo empresa, workday_template no aplica.
         UserSettingsService.UpdateRequest u = new UserSettingsService.UpdateRequest(
-                /* language */ null,
                 req.pinTimeoutMin(),
-                req.screensaverStyle(),
-                /* aiEnabled */ null,
-                /* avatarPath */ null,
-                /* workdayTemplate */ null);
+                req.screensaverStyle());
         userSettings.save(u);
         return status();
     }
