@@ -196,6 +196,120 @@ pregunta a Benjamin directamente.
 
 ---
 
+## 10.bis. NO ASUMIR — verificar siempre antes de tocar (lección dura 2026-06-10)
+
+> **Frase de Benjamin (2026-06-10 tarde):** *"no puedes dar por
+> hecho algo sin haberlo consultado, entonces no asumas correcciones
+> sin haber consultado el código. El código está para leerlo y
+> comprobarlo. No tenemos que hacer las cosas rápido, tenemos que
+> hacer las cosas bien."*
+
+Esta regla viene de una tarde con 4 fallos consecutivos por asumir
+sin verificar:
+
+1. **V87 `ADD COLUMN ... AFTER pin_hash`** sobre `user_accounts` —
+   asumí que `user_accounts` tenía `pin_hash`. **No lo tiene**.
+   El PIN de vinculación vive en `employees.pin_hash` desde V3.
+   Si hubiera leído V3 + V70 + el schema actual, lo habría visto.
+
+2. **`UserSettingsService` consultando columnas dropeadas** — V87
+   dropeó `language`, `ai_enabled`, `avatar_path`, `workday_template`
+   de `user_settings` pero **no actualicé el service que las leía**.
+   Tuvo que romperse en arranque para que me diera cuenta. La regla
+   "DROP columna → busca todos los usos en código" no se aplicó.
+
+3. **CompanyLogoService llamado desde InvoicePdfGenerator** —
+   inventé que solo tocaba 1 caller; eran 3. No grepé. Mentí en el
+   commit message.
+
+4. **Editor de cliente "B" sin dirección** — propuse opción "B = 9
+   campos originales" sin haberme parado a pensar que la dirección
+   del cliente es **obligatoria** en la factura. Asunción a ciegas
+   sobre lo que el usuario necesitaba.
+
+### Reglas concretas para evitar esto
+
+#### Antes de TOCAR una columna o tabla en BD:
+
+```bash
+# 1. ¿Qué columnas tiene HOY la tabla? (mira la última migración que
+#    la toca, no solo el CREATE)
+grep -rE "ALTER TABLE <tabla>|CREATE TABLE <tabla>" \
+  backend-java/src/main/resources/db/migration/
+
+# 2. ¿Quién lee/escribe esa columna?
+grep -rn "<columna>" backend-java/src/main/java
+grep -rn "<columna>" ui/src/main/java
+```
+
+Si vas a hacer DROP de una columna, los hits del segundo grep son la
+**lista de cosas que debes refactorizar antes** del DROP, no después.
+
+#### Antes de "porter X de CONTENDO":
+
+```bash
+# 1. ¿Qué columnas tiene la tabla origen?
+grep -A30 "centros_trabajo_180\|emisor_180\|...etc" \
+  "C:/Proyectos/CONTENDO GESTIONES/backend/migrations/*.sql"
+
+# 2. ¿Qué endpoints expone?
+ls "C:/Proyectos/CONTENDO GESTIONES/backend/src/routes/" | grep <slug>
+
+# 3. ¿Qué hace el controller/service?
+# leer 30-50 líneas, no resumen — el detalle se nos escapa
+```
+
+No vale fiarse del resumen de un agente Explore — el agente te da
+estructura pero los detalles los tienes que confirmar tú con `Read`.
+
+#### Antes de añadir una clase nueva al backend:
+
+- ¿Existe ya algo similar? `find backend-java/src/main/java -name "*<slug>*"`
+- ¿Inyecta `TenantContext` o `CurrentUserService`? ¿Por qué? ¿Lo
+  necesita tu clase? Si SÍ, ¿el caller siempre estará dentro de un
+  request scope? Si NO (cron, scheduled, hook PostConstruct), tienes
+  que pasar `companyId` por parámetro.
+
+#### Antes de cambiar la firma de un método público:
+
+```bash
+grep -rn "<nombreMetodo>(" backend-java/src/main/java ui/src/main/java
+```
+
+Cada hit es un caller que debes actualizar. Si el commit message dice
+"toca 1 caller" y el grep da 5, el commit message miente.
+
+#### Antes de cerrar un slice como "completo":
+
+- ¿Compila? `mvn compile -q` desde la raíz. Sin output = OK.
+- ¿Arranca? Para slices que tocan BD o schema: `mvn spring-boot:run`
+  al menos una vez y mirar el log. Si fallaría en arranque, el
+  usuario lo verá en su próximo arranque y dirá la frase de arriba
+  otra vez.
+- ¿Las pantallas afectadas se cargan? Si es UI nueva, ejecutar y
+  abrirla mentalmente: ¿el SELECT que hace el service tiene todas
+  las columnas que la BD tiene HOY?
+
+#### Antes de proponer una decisión al usuario:
+
+No propongas opciones (A/B/C) sin haber verificado las implicaciones
+de cada una. Si "B = 9 campos originales", piensa: **¿esos 9 cubren
+lo que el usuario va a hacer con la pantalla?** Si la pantalla es
+"cliente que se va a facturar" y la opción B no tiene dirección,
+estás proponiendo algo que el usuario va a rechazar al ver el PDF.
+
+### El reflejo correcto
+
+Cuando vayas a hacer algo y la primera reacción sea *"asumo que…"* o
+*"creo recordar que…"*, **PARA** y haz un `Read` / `Grep` para
+confirmar. Cuesta 30 segundos. Pifiarla cuesta una migración rota,
+un endpoint roto en producción, y la confianza de Benjamin.
+
+> **No tenemos que hacer las cosas rápido, tenemos que hacer las
+> cosas bien.**
+
+---
+
 ## 11. Trabajo autónomo cuando Benjamin no está
 
 Benjamin a veces deja la sesión arrancada y se va. Reglas para esos
