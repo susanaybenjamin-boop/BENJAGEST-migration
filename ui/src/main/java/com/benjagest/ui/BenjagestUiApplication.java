@@ -186,15 +186,15 @@ public class BenjagestUiApplication extends Application {
             "advisory", "self-employed", "notifications", "time-clock",
             // Slice 5C — Módulo EQUIPO / Reparto de clientes (advisory_only).
             "team",
-            // PORT-1 — Portal del empleado (4 tabs: calendario, nominas,
-            // notificaciones, trabajos). Visible para todos los roles.
-            "employee-portal",
             // PORT-3 SUG — Buzon de sugerencias/mejoras/bugs hacia el
             // fabricante. Per-tenant, cualquier rol puede sugerir.
-            "suggestions",
-            // PORT-3 PERFIL — Preferencias personales del usuario logueado
-            // (idioma, avatar, bloqueo por inactividad, IA, ...).
-            "profile"
+            "suggestions"
+            // NOTA (2026-06-10 tarde, decisión Benjamin):
+            //   - "employee-portal" eliminado del sidebar — el portal va a
+            //     una app móvil/tablet futura. Backend /api/portal/* sigue.
+            //   - "profile" eliminado — todo lo personal de usuario se
+            //     consolida en Configuración → Sesión.
+            //   - "shifts" eliminado — pasa a sub-pestaña dentro de Labor.
     );
 
     @Override
@@ -1951,23 +1951,19 @@ public class BenjagestUiApplication extends Application {
             showTeamModule();
             return;
         }
-        if ("employee-portal".equals(module)) {
-            // PORT-1 — Portal del empleado con 4 tabs:
-            // Calendario, Nominas, Notificaciones, Trabajos.
-            // Read-only. Filtrado al employee_id del usuario actual.
-            showEmployeePortal();
-            return;
-        }
         if ("suggestions".equals(module)) {
             // PORT-3 SUG — Buzon de sugerencias hacia el fabricante.
             showSuggestionsModule();
             return;
         }
-        if ("profile".equals(module)) {
-            // PORT-3 PERFIL — Preferencias personales del usuario.
-            showProfileModule();
-            return;
-        }
+        // NOTA (2026-06-10 tarde): los dispatchers de "employee-portal",
+        // "profile" y "shifts" se retiraron tras la prueba de Benjamin.
+        // - employee-portal → futura app móvil/tablet.
+        // - profile         → consolidado en Configuración → Sesión.
+        // - shifts          → sub-pestaña dentro de Labor (PORT-2 fase
+        //                      UI).
+        // El código showEmployeePortal/showProfileModule/showShifts queda
+        // en el archivo por si se necesita reactivar, pero NO se llama.
         Task<ModuleData> task = new Task<>() {
             @Override
             protected ModuleData call() throws Exception {
@@ -2604,13 +2600,30 @@ public class BenjagestUiApplication extends Application {
      */
     private String humanizeCalendarEventType(String raw) {
         if (raw == null || raw.isBlank()) return "";
-        return switch (raw.trim().toUpperCase(java.util.Locale.ROOT)) {
-            case "HOLIDAY" -> t("calendar.event.type.holiday");
-            case "WORK_ADJUSTMENT" -> t("calendar.event.type.work_adjustment");
-            case "WORK_CLOSURE" -> t("calendar.event.type.work_closure");
-            case "GENERAL" -> t("calendar.event.type.general");
-            default -> raw;
-        };
+        String up = raw.trim().toUpperCase(java.util.Locale.ROOT);
+        // CAL-A v1: códigos canónicos.
+        switch (up) {
+            case "HOLIDAY":         return t("calendar.event.type.holiday");
+            case "WORK_ADJUSTMENT": return t("calendar.event.type.work_adjustment");
+            case "WORK_CLOSURE":    return t("calendar.event.type.work_closure");
+            case "GENERAL":         return t("calendar.event.type.general");
+            default: /* sigue al matching tolerante */
+        }
+        // CAL-A v2 (2026-06-10 tarde): matching tolerante por palabra
+        // clave para eventos con texto libre — vienen del volcado de
+        // PDF del calendario laboral antes de que se canonizase a
+        // HOLIDAY/WORK_ADJUSTMENT/WORK_CLOSURE.
+        String norm = stripDiacritics(up);
+        if (norm.contains("FESTIV") || norm.contains("FESTIVIDAD")) {
+            return t("calendar.event.type.holiday");
+        }
+        if (norm.contains("AJUST")) {
+            return t("calendar.event.type.work_adjustment");
+        }
+        if (norm.contains("CIERRE") || norm.contains("CERRAD")) {
+            return t("calendar.event.type.work_closure");
+        }
+        return raw;
     }
 
     /**
@@ -2621,13 +2634,33 @@ public class BenjagestUiApplication extends Application {
      */
     private String calendarEventTypeVariantClass(String raw) {
         if (raw == null || raw.isBlank()) return null;
-        return switch (raw.trim().toUpperCase(java.util.Locale.ROOT)) {
-            case "HOLIDAY" -> "calendar-event-card-type--holiday";
-            case "WORK_ADJUSTMENT" -> "calendar-event-card-type--work-adjustment";
-            case "WORK_CLOSURE" -> "calendar-event-card-type--work-closure";
-            case "GENERAL" -> "calendar-event-card-type--general";
-            default -> null;
-        };
+        String up = raw.trim().toUpperCase(java.util.Locale.ROOT);
+        switch (up) {
+            case "HOLIDAY":         return "calendar-event-card-type--holiday";
+            case "WORK_ADJUSTMENT": return "calendar-event-card-type--work-adjustment";
+            case "WORK_CLOSURE":    return "calendar-event-card-type--work-closure";
+            case "GENERAL":         return "calendar-event-card-type--general";
+            default: /* sigue al matching tolerante */
+        }
+        // CAL-A v2 — mismo matching keyword que humanize.
+        String norm = stripDiacritics(up);
+        if (norm.contains("FESTIV") || norm.contains("FESTIVIDAD")) {
+            return "calendar-event-card-type--holiday";
+        }
+        if (norm.contains("AJUST")) {
+            return "calendar-event-card-type--work-adjustment";
+        }
+        if (norm.contains("CIERRE") || norm.contains("CERRAD")) {
+            return "calendar-event-card-type--work-closure";
+        }
+        return null;
+    }
+
+    /** Normaliza tildes/diacríticos a su letra base para matching tolerante. */
+    private static String stripDiacritics(String s) {
+        if (s == null) return null;
+        return java.text.Normalizer.normalize(s, java.text.Normalizer.Form.NFD)
+                .replaceAll("\\p{InCombiningDiacriticalMarks}+", "");
     }
 
     private void showMonthDialog(LocalDate monthDate, List<ModuleRow> events) {
@@ -11876,6 +11909,8 @@ public class BenjagestUiApplication extends Application {
             case "cli.editor.fail.title" -> "Could not load / save the customer";
             case "cli.editor.invalid.title" -> "Invalid number";
             case "cli.editor.invalid.body" -> "Default VAT and retention must be numeric.";
+            case "cli.section.main" -> "Customer";
+            case "cli.section.main.hint" -> "Basic data. Address, billing and extra fields will be enabled when the billing module connects them.";
             case "cli.tab.general" -> "General";
             case "cli.tab.address" -> "Postal address";
             case "cli.tab.billing" -> "Billing";
@@ -11914,6 +11949,8 @@ public class BenjagestUiApplication extends Application {
             case "cli.editor.fail.title" -> "No se pudo cargar / guardar el cliente";
             case "cli.editor.invalid.title" -> "Número inválido";
             case "cli.editor.invalid.body" -> "El IVA y la retención por defecto deben ser numéricos.";
+            case "cli.section.main" -> "Cliente";
+            case "cli.section.main.hint" -> "Datos básicos. La dirección, facturación y campos extra se habilitarán cuando el módulo de Facturación los conecte.";
             case "cli.tab.general" -> "Generales";
             case "cli.tab.address" -> "Dirección postal";
             case "cli.tab.billing" -> "Facturación";
@@ -18581,14 +18618,18 @@ public class BenjagestUiApplication extends Application {
         dialog.setTitle(t("cli.editor.title"));
         dialog.setHeaderText(c.legalName());
 
-        // Campos
+        // PORT-4 CLI v2 (2026-06-10 tarde): revertido a UNA seccion con
+        // los 9 campos originales tras feedback de Benjamin. Los campos
+        // de direccion postal y facturacion siguen en BD (V85) pero no
+        // se editan desde aqui hasta que se conecten con el flujo de
+        // facturacion real.
         TextField fLegal = new TextField(safe(c.legalName()));
         TextField fTrade = new TextField(safe(c.tradeName()));
         TextField fNif = new TextField(safe(c.taxIdentifier()));
-        TextField fCode = new TextField(safe(c.internalCode()));
         ComboBox<String> fType = new ComboBox<>(FXCollections.observableArrayList(
                 "COMPANY", "SELF_EMPLOYED", "PUBLIC_ENTITY", "OTHER"));
-        fType.setValue(c.customerType() == null || c.customerType().isBlank() ? "COMPANY" : c.customerType());
+        fType.setValue(c.customerType() == null || c.customerType().isBlank()
+                ? "COMPANY" : c.customerType());
         TextField fPhone = new TextField(safe(c.phone()));
         TextField fEmail = new TextField(safe(c.email()));
         TextField fWebsite = new TextField(safe(c.website()));
@@ -18596,68 +18637,29 @@ public class BenjagestUiApplication extends Application {
         fNotes.setPrefRowCount(3);
         fNotes.setWrapText(true);
 
-        // Direccion
-        TextField fAddress = new TextField(safe(c.address()));
-        TextField fCity = new TextField(safe(c.city()));
-        TextField fProvince = new TextField(safe(c.province()));
-        TextField fCp = new TextField(safe(c.postalCode()));
-        TextField fCountry = new TextField(c.country() == null || c.country().isBlank() ? "España" : c.country());
+        VBox section = new VBox(12);
+        section.getStyleClass().add("settings-section");
+        section.setPadding(new Insets(16));
+        Label sectionTitle = new Label(t("cli.section.main"));
+        sectionTitle.getStyleClass().add("settings-section-title");
+        Label sectionHint = new Label(t("cli.section.main.hint"));
+        sectionHint.getStyleClass().add("settings-hint");
+        sectionHint.setWrapText(true);
 
-        // Facturacion
-        TextField fBillingEmail = new TextField(safe(c.billingEmail()));
-        TextField fBillingPhone = new TextField(safe(c.billingPhone()));
-        TextField fFiscalType = new TextField(safe(c.fiscalType()));
-        TextField fVat = new TextField(c.defaultVatPercent() == null ? "21"
-                : c.defaultVatPercent().toPlainString());
-        TextField fRet = new TextField(c.defaultRetentionPercent() == null ? "0"
-                : c.defaultRetentionPercent().toPlainString());
-        CheckBox fExempt = new CheckBox(t("cli.field.vatExempt"));
-        fExempt.setSelected(c.vatExempt());
-        TextField fPayment = new TextField(safe(c.paymentMethod()));
-        TextField fIban = new TextField(safe(c.iban()));
-        TextField fMode = new TextField(safe(c.defaultMode()));
-
-        // Tabs
-        TabPane tabs = new TabPane();
-        tabs.setTabClosingPolicy(TabPane.TabClosingPolicy.UNAVAILABLE);
-        tabs.getStyleClass().add("settings-tabs");
-
-        Tab tGen = new Tab(t("cli.tab.general"));
-        tGen.setContent(formGrid(
+        GridPane grid = formGrid(
                 t("cli.field.legalName"), fLegal,
                 t("cli.field.tradeName"), fTrade,
                 t("cli.field.taxId"), fNif,
-                t("cli.field.internalCode"), fCode,
                 t("cli.field.type"), fType,
                 t("cli.field.phone"), fPhone,
                 t("cli.field.email"), fEmail,
                 t("cli.field.website"), fWebsite,
-                t("cli.field.notes"), fNotes));
+                t("cli.field.notes"), fNotes);
 
-        Tab tAddr = new Tab(t("cli.tab.address"));
-        tAddr.setContent(formGrid(
-                t("cli.field.address"), fAddress,
-                t("cli.field.city"), fCity,
-                t("cli.field.province"), fProvince,
-                t("cli.field.postalCode"), fCp,
-                t("cli.field.country"), fCountry));
+        section.getChildren().addAll(sectionTitle, sectionHint, grid);
+        section.setPrefWidth(560);
 
-        Tab tBill = new Tab(t("cli.tab.billing"));
-        tBill.setContent(formGrid(
-                t("cli.field.fiscalType"), fFiscalType,
-                t("cli.field.billingEmail"), fBillingEmail,
-                t("cli.field.billingPhone"), fBillingPhone,
-                t("cli.field.defaultVat"), fVat,
-                t("cli.field.defaultRetention"), fRet,
-                t("cli.field.vatExempt"), fExempt,
-                t("cli.field.payment"), fPayment,
-                t("cli.field.iban"), fIban,
-                t("cli.field.defaultMode"), fMode));
-
-        tabs.getTabs().addAll(tGen, tAddr, tBill);
-        tabs.setPrefSize(720, 500);
-
-        dialog.getDialogPane().setContent(tabs);
+        dialog.getDialogPane().setContent(section);
         dialog.getDialogPane().getButtonTypes().addAll(
                 javafx.scene.control.ButtonType.CANCEL, javafx.scene.control.ButtonType.OK);
         javafx.scene.control.Button okBtn = (javafx.scene.control.Button)
@@ -18666,29 +18668,22 @@ public class BenjagestUiApplication extends Application {
 
         dialog.setResultConverter(bt -> {
             if (bt == javafx.scene.control.ButtonType.OK) {
-                java.math.BigDecimal vatVal;
-                java.math.BigDecimal retVal;
-                try {
-                    vatVal = new java.math.BigDecimal(
-                            fVat.getText() == null || fVat.getText().isBlank() ? "0" : fVat.getText().trim());
-                    retVal = new java.math.BigDecimal(
-                            fRet.getText() == null || fRet.getText().isBlank() ? "0" : fRet.getText().trim());
-                } catch (NumberFormatException ex) {
-                    showError(t("cli.editor.invalid.title"), t("cli.editor.invalid.body"));
-                    return null;
-                }
+                // Preservamos en el PUT todos los campos extendidos que
+                // ya tenia el cliente — no se editan en esta UI pero
+                // tampoco queremos pisarlos con vacios.
                 com.benjagest.ui.model.CustomerExtendedEntry upd =
                         new com.benjagest.ui.model.CustomerExtendedEntry(
                                 c.id(),
                                 fLegal.getText(), fTrade.getText(), fNif.getText(),
                                 fType.getValue(),
-                                fFiscalType.getText(),
-                                fBillingEmail.getText(), fBillingPhone.getText(),
-                                vatVal, retVal, fExempt.isSelected(),
-                                fPayment.getText(), fIban.getText(),
-                                fAddress.getText(), fCity.getText(), fProvince.getText(),
-                                fCp.getText(), fCountry.getText(),
-                                fCode.getText(), fMode.getText(),
+                                c.fiscalType(),
+                                c.billingEmail(), c.billingPhone(),
+                                c.defaultVatPercent(), c.defaultRetentionPercent(),
+                                c.vatExempt(),
+                                c.paymentMethod(), c.iban(),
+                                c.address(), c.city(), c.province(),
+                                c.postalCode(), c.country(),
+                                c.internalCode(), c.defaultMode(),
                                 fPhone.getText(), fEmail.getText(), fWebsite.getText(),
                                 fNotes.getText());
                 Task<Void> save = new Task<>() {
@@ -18697,7 +18692,6 @@ public class BenjagestUiApplication extends Application {
                         return null;
                     }
                 };
-                save.setOnSucceeded(s -> { /* listo, ya cerrado */ });
                 save.setOnFailed(s -> showError(t("cli.editor.fail.title"),
                         save.getException() == null ? "" : save.getException().getMessage()));
                 start(save, "customer-detail-save");
