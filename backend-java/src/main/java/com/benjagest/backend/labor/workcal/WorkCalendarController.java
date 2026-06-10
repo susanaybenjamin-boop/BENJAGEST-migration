@@ -161,6 +161,23 @@ public class WorkCalendarController {
     }
 
     /**
+     * PORT-5 CAL-C — Carga los 10 festivos nacionales fijos del año del
+     * calendario. Solo añade los que faltan (idempotente). Útil como
+     * punto de partida cuando se crea un calendario nuevo, antes de
+     * importar los autonómicos por PDF.
+     *
+     * @return JSON con el número de festivos insertados: {@code {"inserted": N}}
+     */
+    @PostMapping("/{id}/load-national-holidays")
+    @RequiresRole({"OWNER", "ADMIN", "ACCOUNTANT"})
+    public LoadNationalResponse loadNationalHolidays(@PathVariable("id") String id) {
+        java.util.List<Holiday> inserted = service.loadNationalHolidays(id);
+        return new LoadNationalResponse(inserted.size());
+    }
+
+    public record LoadNationalResponse(int inserted) {}
+
+    /**
      * CAL-IMPORT-MODAL — Extrae festivos de un PDF que el usuario
      * descargó (BOE/BOJA/BOPV/DOGC, convenio colectivo, etc.).
      *

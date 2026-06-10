@@ -265,6 +265,97 @@ public class WorkCalendarService {
         return repository.removeHolidaysFromAgenda(c.companyId(), c.id());
     }
 
+    /**
+     * PORT-5 CAL-C — Carga los 10 festivos nacionales fijos del año del
+     * calendario seleccionado. Útil como punto de partida — el usuario
+     * luego añade los autonómicos y locales via {@code Importar PDF} o
+     * a mano.
+     *
+     * <p>Festivos nacionales según el calendario laboral oficial:
+     * <ul>
+     *   <li>01/01 Año Nuevo</li>
+     *   <li>06/01 Epifanía del Señor</li>
+     *   <li>Viernes Santo (movible, derivado del cálculo de Pascua)</li>
+     *   <li>01/05 Fiesta del Trabajo</li>
+     *   <li>15/08 Asunción de la Virgen</li>
+     *   <li>12/10 Fiesta Nacional de España</li>
+     *   <li>01/11 Todos los Santos</li>
+     *   <li>06/12 Día de la Constitución Española</li>
+     *   <li>08/12 Inmaculada Concepción</li>
+     *   <li>25/12 Natividad del Señor</li>
+     * </ul>
+     *
+     * <p>Saltamos los que ya existan en el calendario para esa fecha
+     * (idempotente: dos llamadas consecutivas dan el mismo resultado).
+     *
+     * @return lista de festivos efectivamente insertados.
+     */
+    @Transactional
+    public List<Holiday> loadNationalHolidays(String workCalendarId) {
+        WorkCalendar c = getById(workCalendarId);
+        int year = c.year();
+        List<Holiday> existing = repository.listByCalendar(c.id());
+        java.util.Set<LocalDate> existingDates = existing.stream()
+                .map(Holiday::holidayDate)
+                .collect(java.util.stream.Collectors.toSet());
+        LocalDate goodFriday = goodFridayFor(year);
+        List<NationalHoliday> all = List.of(
+                new NationalHoliday(LocalDate.of(year, 1, 1),  "Año Nuevo"),
+                new NationalHoliday(LocalDate.of(year, 1, 6),  "Epifanía del Señor"),
+                new NationalHoliday(goodFriday,                 "Viernes Santo"),
+                new NationalHoliday(LocalDate.of(year, 5, 1),  "Fiesta del Trabajo"),
+                new NationalHoliday(LocalDate.of(year, 8, 15), "Asunción de la Virgen"),
+                new NationalHoliday(LocalDate.of(year, 10, 12),"Fiesta Nacional de España"),
+                new NationalHoliday(LocalDate.of(year, 11, 1), "Todos los Santos"),
+                new NationalHoliday(LocalDate.of(year, 12, 6), "Día de la Constitución Española"),
+                new NationalHoliday(LocalDate.of(year, 12, 8), "Inmaculada Concepción"),
+                new NationalHoliday(LocalDate.of(year, 12, 25),"Natividad del Señor")
+        );
+        List<Holiday> inserted = new java.util.ArrayList<>();
+        for (NationalHoliday n : all) {
+            if (existingDates.contains(n.date())) continue;
+            Holiday h = new Holiday(
+                    UUID.randomUUID().toString(),
+                    c.id(),
+                    n.date(),
+                    n.name(),
+                    WorkCalendar.SCOPE_NATIONAL,
+                    true,
+                    null,
+                    Holiday.TYPE_FESTIVO,
+                    Instant.now()
+            );
+            repository.insertHoliday(h);
+            inserted.add(h);
+        }
+        return inserted;
+    }
+
+    /**
+     * Algoritmo de Meeus/Jones/Butcher para calcular la fecha del
+     * Domingo de Pascua en el calendario gregoriano. Viernes Santo =
+     * Pascua - 2 días.
+     */
+    static LocalDate goodFridayFor(int year) {
+        int a = year % 19;
+        int b = year / 100;
+        int cc = year % 100;
+        int d = b / 4;
+        int e = b % 4;
+        int f = (b + 8) / 25;
+        int g = (b - f + 1) / 3;
+        int h = (19 * a + b - d - g + 15) % 30;
+        int i = cc / 4;
+        int k = cc % 4;
+        int l = (32 + 2 * e + 2 * i - h - k) % 7;
+        int m = (a + 11 * h + 22 * l) / 451;
+        int month = (h + l - 7 * m + 114) / 31;
+        int day = ((h + l - 7 * m + 114) % 31) + 1;
+        return LocalDate.of(year, month, day).minusDays(2);
+    }
+
+    private record NationalHoliday(LocalDate date, String name) {}
+
     // ============================================================
     //  Validaciones y helpers
     // ============================================================
