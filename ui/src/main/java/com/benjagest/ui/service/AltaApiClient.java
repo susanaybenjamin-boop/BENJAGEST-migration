@@ -1381,6 +1381,88 @@ public class AltaApiClient {
     }
 
     // ============================================================
+    //  PORT-1 — Portal del empleado /api/portal/*
+    // ============================================================
+
+    public List<com.benjagest.ui.model.PortalEvent> listPortalCalendar(
+            java.time.LocalDate from, java.time.LocalDate to)
+            throws IOException, InterruptedException {
+        HttpResponse<String> r = send(req(
+                baseUrl + "/portal/calendar?from=" + from + "&to=" + to).GET());
+        if (r.statusCode() < 200 || r.statusCode() >= 300) {
+            throw new IOException("HTTP " + r.statusCode() + ": " + r.body());
+        }
+        java.util.List<com.benjagest.ui.model.PortalEvent> out = new java.util.ArrayList<>();
+        for (String obj : splitTopLevelObjects(r.body())) {
+            out.add(new com.benjagest.ui.model.PortalEvent(
+                    textField(obj, "id"),
+                    textField(obj, "date"),
+                    textField(obj, "title"),
+                    textField(obj, "detail"),
+                    textField(obj, "eventType"),
+                    textField(obj, "kind"),
+                    textField(obj, "sourceType")));
+        }
+        return out;
+    }
+
+    public List<com.benjagest.ui.model.PortalPayslip> listPortalPayslips()
+            throws IOException, InterruptedException {
+        HttpResponse<String> r = send(req(baseUrl + "/portal/payslips").GET());
+        if (r.statusCode() < 200 || r.statusCode() >= 300) {
+            throw new IOException("HTTP " + r.statusCode() + ": " + r.body());
+        }
+        java.util.List<com.benjagest.ui.model.PortalPayslip> out = new java.util.ArrayList<>();
+        for (String obj : splitTopLevelObjects(r.body())) {
+            out.add(new com.benjagest.ui.model.PortalPayslip(
+                    textField(obj, "id"),
+                    intFieldOrZero(obj, "year"),
+                    intFieldOrZero(obj, "month"),
+                    bigDecField(obj, "grossAmount"),
+                    bigDecField(obj, "netAmount"),
+                    textField(obj, "status"),
+                    textField(obj, "pdfPath")));
+        }
+        return out;
+    }
+
+    public List<com.benjagest.ui.model.PortalNotification> listPortalNotifications()
+            throws IOException, InterruptedException {
+        HttpResponse<String> r = send(req(baseUrl + "/portal/notifications").GET());
+        if (r.statusCode() < 200 || r.statusCode() >= 300) {
+            throw new IOException("HTTP " + r.statusCode() + ": " + r.body());
+        }
+        java.util.List<com.benjagest.ui.model.PortalNotification> out = new java.util.ArrayList<>();
+        for (String obj : splitTopLevelObjects(r.body())) {
+            out.add(new com.benjagest.ui.model.PortalNotification(
+                    textField(obj, "id"),
+                    textField(obj, "severity"),
+                    textField(obj, "title"),
+                    textField(obj, "body"),
+                    textField(obj, "createdAt"),
+                    boolField(obj, "read")));
+        }
+        return out;
+    }
+
+    public List<com.benjagest.ui.model.PortalJob> listPortalJobs()
+            throws IOException, InterruptedException {
+        HttpResponse<String> r = send(req(baseUrl + "/portal/jobs").GET());
+        if (r.statusCode() < 200 || r.statusCode() >= 300) {
+            throw new IOException("HTTP " + r.statusCode() + ": " + r.body());
+        }
+        java.util.List<com.benjagest.ui.model.PortalJob> out = new java.util.ArrayList<>();
+        for (String obj : splitTopLevelObjects(r.body())) {
+            out.add(new com.benjagest.ui.model.PortalJob(
+                    textField(obj, "id"),
+                    textField(obj, "title"),
+                    textField(obj, "date"),
+                    textField(obj, "status")));
+        }
+        return out;
+    }
+
+    // ============================================================
     //  Cotizaciones SS — /api/labor/social-security
     // ============================================================
 
