@@ -196,15 +196,38 @@ public class EmployeePortalService {
     }
 
     /**
-     * Lista los trabajos asignados al empleado. Como BENJAGEST aún no
-     * tiene tabla {@code jobs} dedicada (queda en PORT-2 si se decide
-     * portar work logs de CONTENDO), devolvemos siempre lista vacía.
-     * Endpoint preparado para cuando exista.
+     * Lista los trabajos asignados al empleado. PORT-2 (sesión
+     * 2026-06-10, decisión Benjamin "embebido como CONTENDO") creó la
+     * tabla {@code work_logs} con flag {@code is_billable}. Aquí
+     * leemos los partes propios de los últimos 90 días.
+     *
+     * <p>Defensivo con try/catch porque la tabla puede no existir si
+     * el módulo "shifts" no se ha activado en una empresa concreta.
      */
     public List<PortalJob> listJobs() {
-        // TODO PORT-2 — cuando se decida si portamos work_logs con
-        // billing embebido o separados, leer la tabla correspondiente.
-        return List.of();
+        String employeeId = currentEmployeeIdOrNull();
+        if (employeeId == null) return List.of();
+        try {
+            return jdbcTemplate.query("""
+                    SELECT id,
+                           CAST(log_date AS CHAR) AS log_date,
+                           COALESCE(description, '(sin descripción)') AS title,
+                           status
+                      FROM work_logs
+                     WHERE employee_id = ?
+                       AND log_date >= CURRENT_DATE - INTERVAL 90 DAY
+                     ORDER BY log_date DESC
+                     LIMIT 100
+                    """,
+                    (rs, i) -> new PortalJob(
+                            rs.getString("id"),
+                            rs.getString("title"),
+                            LocalDate.parse(rs.getString("log_date")),
+                            rs.getString("status")),
+                    employeeId);
+        } catch (org.springframework.dao.DataAccessException ex) {
+            return List.of();
+        }
     }
 
     // ============================================================
