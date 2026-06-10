@@ -6654,10 +6654,19 @@ public class BenjagestUiApplication extends Application {
         // botón que acepta uno o varios PDFs y crea asientos directos.
         // Para clientes no vinculados es el flujo natural para cerrar
         // trimestre con los PDFs que el cliente entrega.
+        //
+        // Tarde 2026-06-10 (feedback Benjamin): el empresario NO importa
+        // SUS propias facturas — las crea con "Nueva factura". Solo tiene
+        // sentido cuando es la asesoría actuando como cliente (vinculado
+        // o no). Visible solo si appMode==ADVISORY && actingForClient.
         Button importSalesPdfsBtn = new Button(t("sales.action.import_pdfs"));
         importSalesPdfsBtn.setGraphic(icon("fas-file-import"));
         importSalesPdfsBtn.getStyleClass().add("button-primary");
         importSalesPdfsBtn.setOnAction(ev -> importSalesPdfsMulti());
+        boolean showImportSales = appMode == AppMode.ADVISORY
+                && AuthSession.get().isActingForClient();
+        importSalesPdfsBtn.setVisible(showImportSales);
+        importSalesPdfsBtn.setManaged(showImportSales);
 
         Region billingFiltersSpacer = new Region();
         HBox.setHgrow(billingFiltersSpacer, Priority.ALWAYS);
@@ -12284,8 +12293,8 @@ public class BenjagestUiApplication extends Application {
             case "settings.session.saver.dark" -> "Plain dark";
             case "settings.session.saver.carousel" -> "Logo carousel (animated)";
             // PORT-2 SHIFTS — sub-tab Labor "Partes / jornadas"
-            case "labor.tab.shifts" -> "Shifts / time sheets";
-            case "labor.shifts.hint" -> "Daily time sheets reported by employees. Manual entry available. When the tablet/mobile employee app ships, this tab visualizes what they report from the field.";
+            case "labor.tab.shifts" -> "Work schedules";
+            case "labor.shifts.hint" -> "Define work-day templates by type of work and assign them to employees. Time-sheets reported by employees will land here too once the mobile app ships — for now this tab is a stub for the schedule templates module.";
             case "labor.shifts.from" -> "From";
             case "labor.shifts.to" -> "To";
             case "labor.shifts.reload" -> "Refresh";
@@ -12304,6 +12313,11 @@ public class BenjagestUiApplication extends Application {
             case "labor.shifts.col.billable" -> "Billable";
             case "labor.shifts.col.amount" -> "Amount";
             case "labor.shifts.col.status" -> "Status";
+            // Sub-sections of Jornadas tab (2026-06-10 tarde rework)
+            case "labor.shifts.planned.title" -> "Schedule templates — coming soon";
+            case "labor.shifts.planned.body" -> "Here you will define work-day templates (8h hospitality shift, 4h Saturday, split shift, etc.) and assign them to employees. Equivalent to the CONTENDO Jornadas module — being ported in a follow-up slice.";
+            case "labor.shifts.history.title" -> "Reported time sheets";
+            case "labor.shifts.history.hint" -> "Time sheets already in the database (synced from older work_logs by V90, or pushed by the future mobile employee app). Read-only.";
             // Centros de trabajo
             case "labor.tab.work_centers" -> "Work centers";
             case "labor.centers.hint" -> "Physical work centers. Optional geolocation (lat/lng/radius) validates the punch-in location.";
@@ -12324,6 +12338,11 @@ public class BenjagestUiApplication extends Application {
             case "labor.centers.col.notes" -> "Notes";
             case "labor.centers.error.name_required" -> "Name is required.";
             case "labor.centers.error.numeric" -> "Radius must be numeric.";
+            // Policies (geo) — humanized labels
+            case "labor.centers.policy.none" -> "None — don't validate";
+            case "labor.centers.policy.info" -> "Info — log only";
+            case "labor.centers.policy.soft" -> "Soft — warn if out of zone";
+            case "labor.centers.policy.strict" -> "Strict — block if out of zone";
             default -> null;
         };
     }
@@ -12370,8 +12389,8 @@ public class BenjagestUiApplication extends Application {
             case "settings.session.saver.logo" -> "Logo de empresa centrado";
             case "settings.session.saver.dark" -> "Oscuro liso";
             case "settings.session.saver.carousel" -> "Logo animado (carrusel)";
-            case "labor.tab.shifts" -> "Partes / jornadas";
-            case "labor.shifts.hint" -> "Partes de día reportados por los empleados. Alta manual disponible. Cuando llegue la app móvil/tablet del empleado, esta pestaña visualiza lo que reporten desde el campo.";
+            case "labor.tab.shifts" -> "Jornadas";
+            case "labor.shifts.hint" -> "Define plantillas de jornada por tipo de trabajo y asígnaselas a los empleados. Los partes de día llegarán aquí cuando el empleado los suba desde su app móvil — por ahora esta pestaña es el sitio donde vivirán las plantillas de jornada.";
             case "labor.shifts.from" -> "Desde";
             case "labor.shifts.to" -> "Hasta";
             case "labor.shifts.reload" -> "Actualizar";
@@ -12390,6 +12409,10 @@ public class BenjagestUiApplication extends Application {
             case "labor.shifts.col.billable" -> "Facturable";
             case "labor.shifts.col.amount" -> "Importe";
             case "labor.shifts.col.status" -> "Estado";
+            case "labor.shifts.planned.title" -> "Plantillas de jornada — próximamente";
+            case "labor.shifts.planned.body" -> "Aquí definirás plantillas de jornada (turno hostelería 8h, sábado 4h, jornada partida, etc.) y se las adjudicarás a los empleados. Equivalente al módulo Jornadas de CONTENDO — se porta en el slice siguiente.";
+            case "labor.shifts.history.title" -> "Partes reportados";
+            case "labor.shifts.history.hint" -> "Partes ya registrados en la base de datos (sincronizados desde el work_logs antiguo por V90, o subidos por la futura app móvil del empleado). Solo lectura.";
             case "labor.tab.work_centers" -> "Centros de trabajo";
             case "labor.centers.hint" -> "Centros de trabajo físicos. Geolocalización opcional (lat/lng/radio) valida la ubicación del fichaje.";
             case "labor.centers.reload" -> "Actualizar";
@@ -12409,6 +12432,10 @@ public class BenjagestUiApplication extends Application {
             case "labor.centers.col.notes" -> "Notas";
             case "labor.centers.error.name_required" -> "El nombre es obligatorio.";
             case "labor.centers.error.numeric" -> "El radio debe ser numérico.";
+            case "labor.centers.policy.none" -> "Sin validar";
+            case "labor.centers.policy.info" -> "Informativa — solo registra";
+            case "labor.centers.policy.soft" -> "Suave — avisa si está fuera";
+            case "labor.centers.policy.strict" -> "Estricta — bloquea si está fuera";
             default -> null;
         };
     }
@@ -23948,24 +23975,27 @@ public class BenjagestUiApplication extends Application {
      *              para arriba de Compras.
      */
     private Node buildRecurringCandidatesBanner(String kind) {
+        // Tarde 2026-06-10 (feedback Benjamin): el Hyperlink antes
+        // siempre se veía como "siempre activo" porque el banner ocultaba
+        // el contenedor pero no quedaba claro al usuario. Lo cambiamos
+        // por un Button con estilo destacado, y el banner ENTERO solo
+        // aparece cuando hay candidatos (managed/visible coordinados).
         Label icon = new Label("🔁");
         icon.setStyle("-fx-font-size: 18px;");
         Label msg = new Label();
         msg.getStyleClass().add("muted");
         msg.setWrapText(true);
-        javafx.scene.control.Hyperlink reviewLink =
-                new javafx.scene.control.Hyperlink(t("recurring.candidates.review"));
-        HBox content = new HBox(8, icon, msg, reviewLink);
+        HBox.setHgrow(msg, Priority.ALWAYS);
+        Button reviewBtn = new Button(t("recurring.candidates.review"));
+        reviewBtn.setGraphic(icon("fas-search"));
+        reviewBtn.getStyleClass().add("button-primary");
+        HBox content = new HBox(8, icon, msg, reviewBtn);
         content.setAlignment(javafx.geometry.Pos.CENTER_LEFT);
         content.setPadding(new Insets(8, 12, 8, 12));
         content.setStyle("-fx-background-color: #eef3f8; -fx-background-radius: 8;");
         content.setManaged(false);
         content.setVisible(false);
 
-        // Estado: refresh recarga del backend y actualiza el banner.
-        // Wrapper en array para permitir auto-referencia desde el
-        // lambda (Java no deja referenciar una variable local antes
-        // de su inicialización; el array sí).
         Runnable[] refreshHolder = new Runnable[1];
         refreshHolder[0] = () -> new Thread(() -> {
             try {
@@ -23977,16 +24007,13 @@ public class BenjagestUiApplication extends Application {
                     } else {
                         msg.setText(t("recurring.candidates.banner_text")
                                 .replace("{n}", String.valueOf(list.size())));
-                        reviewLink.setOnAction(e ->
+                        reviewBtn.setOnAction(e ->
                                 showRecurringCandidatesDialog(list, refreshHolder[0]));
                         content.setManaged(true);
                         content.setVisible(true);
                     }
                 });
             } catch (Exception ex) {
-                // En caso de fallo (backend down, módulo no activo)
-                // simplemente no mostramos el banner. No molestamos al
-                // asesor con popup de error — es feature opcional.
                 javafx.application.Platform.runLater(() -> {
                     content.setManaged(false);
                     content.setVisible(false);
@@ -26264,7 +26291,8 @@ public class BenjagestUiApplication extends Application {
         cGeo.setPrefWidth(180);
         TableColumn<com.benjagest.ui.model.WorkCenterEntry, String> cPol =
                 new TableColumn<>(t("labor.centers.col.policy"));
-        cPol.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().geoPolicy()));
+        cPol.setCellValueFactory(c -> new SimpleStringProperty(
+                humanizeGeoPolicy(c.getValue().geoPolicy())));
         cPol.setPrefWidth(80);
 
         table.getColumns().addAll(java.util.List.of(cName, cAddr, cCity, cGeo, cPol));
@@ -26337,6 +26365,19 @@ public class BenjagestUiApplication extends Application {
         TextField radio = new TextField(edit == null ? "100" : String.valueOf(edit.radioM()));
         ComboBox<String> policy = new ComboBox<>(FXCollections.observableArrayList(
                 "none", "info", "soft", "strict"));
+        policy.setConverter(new javafx.util.StringConverter<>() {
+            @Override public String toString(String code) {
+                if (code == null) return "";
+                return switch (code) {
+                    case "none" -> t("labor.centers.policy.none");
+                    case "info" -> t("labor.centers.policy.info");
+                    case "soft" -> t("labor.centers.policy.soft");
+                    case "strict" -> t("labor.centers.policy.strict");
+                    default -> code;
+                };
+            }
+            @Override public String fromString(String s) { return s; }
+        });
         policy.setValue(edit == null ? "info" : edit.geoPolicy());
         TextArea notes = new TextArea(edit == null ? "" : edit.notes());
         notes.setPrefRowCount(3);
@@ -26400,16 +26441,35 @@ public class BenjagestUiApplication extends Application {
         catch (NumberFormatException ex) { return null; }
     }
 
+    /** Tarde 2026-06-10: política geo del centro de trabajo humanizada. */
+    private String humanizeGeoPolicy(String raw) {
+        if (raw == null || raw.isBlank()) return "";
+        return switch (raw.trim().toLowerCase()) {
+            case "none" -> t("labor.centers.policy.none");
+            case "info" -> t("labor.centers.policy.info");
+            case "soft" -> t("labor.centers.policy.soft");
+            case "strict" -> t("labor.centers.policy.strict");
+            default -> raw;
+        };
+    }
+
     // ============================================================
-    //  PORT-2 SHIFTS — Partes/jornadas (sub-tab Labor)
+    //  Jornadas (sub-tab Labor) — refactor 2026-06-10 tarde
     //  ----------------------------------------------------------
-    //  Lee de /api/work-logs. Permite alta manual de partes con
-    //  cliente, minutos, facturable, importe. Cuando llegue la
-    //  version tablet/movil del empleado, esta pestaña visualiza lo
-    //  que reportan los empleados desde el campo.
+    //  Tras feedback Benjamin: esta pestaña se queda en "Jornadas"
+    //  (plantillas de jornada por tipo de trabajo, asignación a
+    //  empleados — equivalente a CONTENDO app/admin/jornadas).
+    //  Los PARTES de día llegarán desde la app móvil del empleado
+    //  cuando se haga; el empresario los verá aquí pero no los crea
+    //  a mano.
+    //
+    //  Por ahora: placeholder de "Plantillas de jornada (próximamente)"
+    //  + sección colapsable con histórico de work_logs ya en BD
+    //  (sincronizado por V90 desde el work_logs viejo de V2). Solo
+    //  lectura — sin botón "Nuevo parte".
     // ============================================================
     private Node buildShiftsTab(java.util.List<com.benjagest.ui.model.EmployeeEntry> employees) {
-        VBox content = new VBox(12);
+        VBox content = new VBox(16);
         content.setPadding(new Insets(16));
 
         java.util.Map<String, String> empById = new java.util.HashMap<>();
@@ -26419,6 +26479,23 @@ public class BenjagestUiApplication extends Application {
         hint.setWrapText(true);
         hint.getStyleClass().add("settings-hint");
 
+        // Placeholder principal — plantillas de jornada por construir.
+        VBox plannedSection = new VBox(8);
+        plannedSection.getStyleClass().add("settings-section");
+        Label plannedTitle = new Label(t("labor.shifts.planned.title"));
+        plannedTitle.getStyleClass().add("settings-section-title");
+        Label plannedBody = new Label(t("labor.shifts.planned.body"));
+        plannedBody.setWrapText(true);
+        plannedBody.getStyleClass().add("settings-hint");
+        plannedSection.getChildren().addAll(plannedTitle, plannedBody);
+
+        // Sección histórico — partes ya en BD (sincronizados desde el
+        // work_logs viejo o futuros llegando desde el móvil).
+        Label historyTitle = label(t("labor.shifts.history.title"), "settings-section-title");
+        Label historyHint = new Label(t("labor.shifts.history.hint"));
+        historyHint.setWrapText(true);
+        historyHint.getStyleClass().add("settings-hint");
+
         java.time.LocalDate now = java.time.LocalDate.now();
         DatePicker fromPick = new DatePicker(now.withDayOfMonth(1));
         DatePicker toPick = new DatePicker(now.withDayOfMonth(1).plusMonths(1).minusDays(1));
@@ -26426,14 +26503,11 @@ public class BenjagestUiApplication extends Application {
         com.benjagest.ui.support.EditableCells.installFlexibleConverter(toPick);
         Button reloadBtn = new Button(t("labor.shifts.reload"));
         reloadBtn.setGraphic(icon("fas-sync-alt"));
-        Button addBtn = new Button(t("labor.shifts.add"));
-        addBtn.setGraphic(icon("fas-plus"));
-        addBtn.getStyleClass().add("button-primary");
 
         HBox filters = new HBox(8,
                 new Label(t("labor.shifts.from")), fromPick,
                 new Label(t("labor.shifts.to")), toPick,
-                reloadBtn, addBtn);
+                reloadBtn);
         filters.setAlignment(Pos.CENTER_LEFT);
 
         TableView<com.benjagest.ui.model.WorkLogEntry> table = new TableView<>();
@@ -26491,11 +26565,15 @@ public class BenjagestUiApplication extends Application {
             start(task, "shifts-load");
         };
         reloadBtn.setOnAction(ev -> reload.run());
-        addBtn.setOnAction(ev -> openShiftCreateDialog(employees, reload));
         reload.run();
 
         VBox.setVgrow(table, Priority.ALWAYS);
-        content.getChildren().addAll(hint, filters, table);
+        content.getChildren().addAll(
+                hint,
+                plannedSection,
+                new Separator(),
+                historyTitle, historyHint,
+                filters, table);
         return content;
     }
 
