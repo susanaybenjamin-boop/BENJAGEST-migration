@@ -2691,6 +2691,13 @@ public class BenjagestUiApplication extends Application {
             showError(t("selectRecord"), t("selectRecordDetail"));
             return;
         }
+        // PORT-4 CLI — para clientes abrimos el editor extendido con
+        // pestanas (datos / direccion / facturacion). Para el resto de
+        // modulos sigue el form genérico como hasta ahora.
+        if ("customers".equals(module)) {
+            showCustomerDetailDialog(selected.id());
+            return;
+        }
         showFormDialog(module, selected);
     }
 
@@ -10202,6 +10209,7 @@ public class BenjagestUiApplication extends Application {
                     if (v == null) v = tEmployeePortalEn(key);
                     if (v == null) v = tSuggestionsEn(key);
                     if (v == null) v = tProfileLockEn(key);
+                    if (v == null) v = tCliEditorEn(key);
                     yield v != null ? v : (key.startsWith("column.") ? key.substring(7) : key);
                 }
             };
@@ -11097,6 +11105,7 @@ public class BenjagestUiApplication extends Application {
                 if (v == null) v = tEmployeePortalEs(key);
                 if (v == null) v = tSuggestionsEs(key);
                 if (v == null) v = tProfileLockEs(key);
+                if (v == null) v = tCliEditorEs(key);
                 if (v != null) yield v;
                 yield key.startsWith("column.") ? key.substring(7) : switch (key) {
                 case "field.name" -> "Nombre";
@@ -11801,6 +11810,82 @@ public class BenjagestUiApplication extends Application {
             case "portal.jobs.col.date" -> "Fecha";
             case "portal.jobs.col.title" -> "Título";
             case "portal.jobs.col.status" -> "Estado";
+            default -> null;
+        };
+    }
+
+    /** PORT-4 CLI — Helper i18n EN editor extendido de clientes. */
+    private String tCliEditorEn(String key) {
+        return switch (key) {
+            case "cli.editor.title" -> "Customer details";
+            case "cli.editor.save" -> "Save";
+            case "cli.editor.fail.title" -> "Could not load / save the customer";
+            case "cli.editor.invalid.title" -> "Invalid number";
+            case "cli.editor.invalid.body" -> "Default VAT and retention must be numeric.";
+            case "cli.tab.general" -> "General";
+            case "cli.tab.address" -> "Postal address";
+            case "cli.tab.billing" -> "Billing";
+            case "cli.field.legalName" -> "Legal name";
+            case "cli.field.tradeName" -> "Trade name";
+            case "cli.field.taxId" -> "Tax ID";
+            case "cli.field.internalCode" -> "Internal code";
+            case "cli.field.type" -> "Type";
+            case "cli.field.phone" -> "Phone";
+            case "cli.field.email" -> "Email";
+            case "cli.field.website" -> "Website";
+            case "cli.field.notes" -> "Notes";
+            case "cli.field.address" -> "Address";
+            case "cli.field.city" -> "City";
+            case "cli.field.province" -> "Province";
+            case "cli.field.postalCode" -> "Postal code";
+            case "cli.field.country" -> "Country";
+            case "cli.field.fiscalType" -> "Fiscal regime";
+            case "cli.field.billingEmail" -> "Billing email";
+            case "cli.field.billingPhone" -> "Billing phone";
+            case "cli.field.defaultVat" -> "Default VAT %";
+            case "cli.field.defaultRetention" -> "Default retention %";
+            case "cli.field.vatExempt" -> "VAT exempt";
+            case "cli.field.payment" -> "Payment method";
+            case "cli.field.iban" -> "IBAN";
+            case "cli.field.defaultMode" -> "Default mode";
+            default -> null;
+        };
+    }
+
+    /** PORT-4 CLI — Helper i18n ES editor extendido de clientes. */
+    private String tCliEditorEs(String key) {
+        return switch (key) {
+            case "cli.editor.title" -> "Ficha de cliente";
+            case "cli.editor.save" -> "Guardar";
+            case "cli.editor.fail.title" -> "No se pudo cargar / guardar el cliente";
+            case "cli.editor.invalid.title" -> "Número inválido";
+            case "cli.editor.invalid.body" -> "El IVA y la retención por defecto deben ser numéricos.";
+            case "cli.tab.general" -> "Generales";
+            case "cli.tab.address" -> "Dirección postal";
+            case "cli.tab.billing" -> "Facturación";
+            case "cli.field.legalName" -> "Nombre fiscal";
+            case "cli.field.tradeName" -> "Nombre comercial";
+            case "cli.field.taxId" -> "NIF / CIF";
+            case "cli.field.internalCode" -> "Código interno";
+            case "cli.field.type" -> "Tipo";
+            case "cli.field.phone" -> "Teléfono";
+            case "cli.field.email" -> "Email";
+            case "cli.field.website" -> "Sitio web";
+            case "cli.field.notes" -> "Notas";
+            case "cli.field.address" -> "Dirección";
+            case "cli.field.city" -> "Ciudad";
+            case "cli.field.province" -> "Provincia";
+            case "cli.field.postalCode" -> "Código postal";
+            case "cli.field.country" -> "País";
+            case "cli.field.fiscalType" -> "Régimen fiscal";
+            case "cli.field.billingEmail" -> "Email de facturación";
+            case "cli.field.billingPhone" -> "Teléfono de facturación";
+            case "cli.field.defaultVat" -> "IVA por defecto %";
+            case "cli.field.defaultRetention" -> "Retención por defecto %";
+            case "cli.field.vatExempt" -> "Exento de IVA";
+            case "cli.field.payment" -> "Forma de pago";
+            case "cli.field.iban" -> "IBAN";
+            case "cli.field.defaultMode" -> "Modo por defecto";
             default -> null;
         };
     }
@@ -18416,6 +18501,173 @@ public class BenjagestUiApplication extends Application {
         box.getChildren().addAll(hint, table);
         return box;
     }
+
+    // ============================================================
+    //  PORT-4 CLI — Editor extendido de cliente
+    //  ----------------------------------------------------------
+    //  Modal con TabPane (Datos / Direccion postal / Facturacion).
+    //  Se abre al hacer doble-click o pulsar "Editar" sobre un cliente
+    //  del modulo customers. CONTENDO equivalente: el formulario rico
+    //  de app/admin/clientes/[id]/page.tsx.
+    // ============================================================
+    private void showCustomerDetailDialog(String customerId) {
+        Task<com.benjagest.ui.model.CustomerExtendedEntry> load = new Task<>() {
+            @Override protected com.benjagest.ui.model.CustomerExtendedEntry call() throws Exception {
+                return altaApiClient.getCustomerExtended(customerId);
+            }
+        };
+        load.setOnSucceeded(ev -> openCustomerDetailDialog(load.getValue()));
+        load.setOnFailed(ev -> showError(t("cli.editor.fail.title"),
+                load.getException() == null ? "" : load.getException().getMessage()));
+        start(load, "customer-detail-load");
+    }
+
+    private void openCustomerDetailDialog(com.benjagest.ui.model.CustomerExtendedEntry c) {
+        Dialog<Void> dialog = new Dialog<>();
+        dialog.setTitle(t("cli.editor.title"));
+        dialog.setHeaderText(c.legalName());
+
+        // Campos
+        TextField fLegal = new TextField(safe(c.legalName()));
+        TextField fTrade = new TextField(safe(c.tradeName()));
+        TextField fNif = new TextField(safe(c.taxIdentifier()));
+        TextField fCode = new TextField(safe(c.internalCode()));
+        ComboBox<String> fType = new ComboBox<>(FXCollections.observableArrayList(
+                "COMPANY", "SELF_EMPLOYED", "PUBLIC_ENTITY", "OTHER"));
+        fType.setValue(c.customerType() == null || c.customerType().isBlank() ? "COMPANY" : c.customerType());
+        TextField fPhone = new TextField(safe(c.phone()));
+        TextField fEmail = new TextField(safe(c.email()));
+        TextField fWebsite = new TextField(safe(c.website()));
+        TextArea fNotes = new TextArea(safe(c.notes()));
+        fNotes.setPrefRowCount(3);
+        fNotes.setWrapText(true);
+
+        // Direccion
+        TextField fAddress = new TextField(safe(c.address()));
+        TextField fCity = new TextField(safe(c.city()));
+        TextField fProvince = new TextField(safe(c.province()));
+        TextField fCp = new TextField(safe(c.postalCode()));
+        TextField fCountry = new TextField(c.country() == null || c.country().isBlank() ? "España" : c.country());
+
+        // Facturacion
+        TextField fBillingEmail = new TextField(safe(c.billingEmail()));
+        TextField fBillingPhone = new TextField(safe(c.billingPhone()));
+        TextField fFiscalType = new TextField(safe(c.fiscalType()));
+        TextField fVat = new TextField(c.defaultVatPercent() == null ? "21"
+                : c.defaultVatPercent().toPlainString());
+        TextField fRet = new TextField(c.defaultRetentionPercent() == null ? "0"
+                : c.defaultRetentionPercent().toPlainString());
+        CheckBox fExempt = new CheckBox(t("cli.field.vatExempt"));
+        fExempt.setSelected(c.vatExempt());
+        TextField fPayment = new TextField(safe(c.paymentMethod()));
+        TextField fIban = new TextField(safe(c.iban()));
+        TextField fMode = new TextField(safe(c.defaultMode()));
+
+        // Tabs
+        TabPane tabs = new TabPane();
+        tabs.setTabClosingPolicy(TabPane.TabClosingPolicy.UNAVAILABLE);
+        tabs.getStyleClass().add("settings-tabs");
+
+        Tab tGen = new Tab(t("cli.tab.general"));
+        tGen.setContent(formGrid(
+                t("cli.field.legalName"), fLegal,
+                t("cli.field.tradeName"), fTrade,
+                t("cli.field.taxId"), fNif,
+                t("cli.field.internalCode"), fCode,
+                t("cli.field.type"), fType,
+                t("cli.field.phone"), fPhone,
+                t("cli.field.email"), fEmail,
+                t("cli.field.website"), fWebsite,
+                t("cli.field.notes"), fNotes));
+
+        Tab tAddr = new Tab(t("cli.tab.address"));
+        tAddr.setContent(formGrid(
+                t("cli.field.address"), fAddress,
+                t("cli.field.city"), fCity,
+                t("cli.field.province"), fProvince,
+                t("cli.field.postalCode"), fCp,
+                t("cli.field.country"), fCountry));
+
+        Tab tBill = new Tab(t("cli.tab.billing"));
+        tBill.setContent(formGrid(
+                t("cli.field.fiscalType"), fFiscalType,
+                t("cli.field.billingEmail"), fBillingEmail,
+                t("cli.field.billingPhone"), fBillingPhone,
+                t("cli.field.defaultVat"), fVat,
+                t("cli.field.defaultRetention"), fRet,
+                t("cli.field.vatExempt"), fExempt,
+                t("cli.field.payment"), fPayment,
+                t("cli.field.iban"), fIban,
+                t("cli.field.defaultMode"), fMode));
+
+        tabs.getTabs().addAll(tGen, tAddr, tBill);
+        tabs.setPrefSize(720, 500);
+
+        dialog.getDialogPane().setContent(tabs);
+        dialog.getDialogPane().getButtonTypes().addAll(
+                javafx.scene.control.ButtonType.CANCEL, javafx.scene.control.ButtonType.OK);
+        javafx.scene.control.Button okBtn = (javafx.scene.control.Button)
+                dialog.getDialogPane().lookupButton(javafx.scene.control.ButtonType.OK);
+        okBtn.setText(t("cli.editor.save"));
+
+        dialog.setResultConverter(bt -> {
+            if (bt == javafx.scene.control.ButtonType.OK) {
+                java.math.BigDecimal vatVal;
+                java.math.BigDecimal retVal;
+                try {
+                    vatVal = new java.math.BigDecimal(
+                            fVat.getText() == null || fVat.getText().isBlank() ? "0" : fVat.getText().trim());
+                    retVal = new java.math.BigDecimal(
+                            fRet.getText() == null || fRet.getText().isBlank() ? "0" : fRet.getText().trim());
+                } catch (NumberFormatException ex) {
+                    showError(t("cli.editor.invalid.title"), t("cli.editor.invalid.body"));
+                    return null;
+                }
+                com.benjagest.ui.model.CustomerExtendedEntry upd =
+                        new com.benjagest.ui.model.CustomerExtendedEntry(
+                                c.id(),
+                                fLegal.getText(), fTrade.getText(), fNif.getText(),
+                                fType.getValue(),
+                                fFiscalType.getText(),
+                                fBillingEmail.getText(), fBillingPhone.getText(),
+                                vatVal, retVal, fExempt.isSelected(),
+                                fPayment.getText(), fIban.getText(),
+                                fAddress.getText(), fCity.getText(), fProvince.getText(),
+                                fCp.getText(), fCountry.getText(),
+                                fCode.getText(), fMode.getText(),
+                                fPhone.getText(), fEmail.getText(), fWebsite.getText(),
+                                fNotes.getText());
+                Task<Void> save = new Task<>() {
+                    @Override protected Void call() throws Exception {
+                        altaApiClient.updateCustomerExtended(upd);
+                        return null;
+                    }
+                };
+                save.setOnSucceeded(s -> { /* listo, ya cerrado */ });
+                save.setOnFailed(s -> showError(t("cli.editor.fail.title"),
+                        save.getException() == null ? "" : save.getException().getMessage()));
+                start(save, "customer-detail-save");
+            }
+            return null;
+        });
+        dialog.showAndWait();
+    }
+
+    private GridPane formGrid(Object... pairs) {
+        GridPane grid = new GridPane();
+        grid.setHgap(12);
+        grid.setVgap(10);
+        grid.setPadding(new Insets(16));
+        int row = 0;
+        for (int i = 0; i + 1 < pairs.length; i += 2) {
+            Label lab = new Label((String) pairs[i]);
+            lab.getStyleClass().add("form-label");
+            grid.addRow(row++, lab, (Node) pairs[i + 1]);
+        }
+        return grid;
+    }
+
+    private static String safe(String s) { return s == null ? "" : s; }
 
     // ============================================================
     //  PORT-3 PERFIL — Modulo Mi perfil

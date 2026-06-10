@@ -1463,6 +1463,84 @@ public class AltaApiClient {
     }
 
     // ============================================================
+    //  PORT-4 CLI — Editor extendido de clientes /api/customers-extended
+    // ============================================================
+
+    public com.benjagest.ui.model.CustomerExtendedEntry getCustomerExtended(String id)
+            throws IOException, InterruptedException {
+        HttpResponse<String> r = send(req(baseUrl + "/customers-extended/" + id).GET());
+        if (r.statusCode() < 200 || r.statusCode() >= 300) {
+            throw new IOException("HTTP " + r.statusCode() + ": " + r.body());
+        }
+        String obj = r.body();
+        return new com.benjagest.ui.model.CustomerExtendedEntry(
+                textField(obj, "id"),
+                textField(obj, "legalName"),
+                textField(obj, "tradeName"),
+                textField(obj, "taxIdentifier"),
+                textField(obj, "customerType"),
+                textField(obj, "fiscalType"),
+                textField(obj, "billingEmail"),
+                textField(obj, "billingPhone"),
+                bigDecField(obj, "defaultVatPercent"),
+                bigDecField(obj, "defaultRetentionPercent"),
+                boolField(obj, "vatExempt"),
+                textField(obj, "paymentMethod"),
+                textField(obj, "iban"),
+                textField(obj, "address"),
+                textField(obj, "city"),
+                textField(obj, "province"),
+                textField(obj, "postalCode"),
+                textField(obj, "country"),
+                textField(obj, "internalCode"),
+                textField(obj, "defaultMode"),
+                textField(obj, "phone"),
+                textField(obj, "email"),
+                textField(obj, "website"),
+                textField(obj, "notes"));
+    }
+
+    public com.benjagest.ui.model.CustomerExtendedEntry updateCustomerExtended(
+            com.benjagest.ui.model.CustomerExtendedEntry c)
+            throws IOException, InterruptedException {
+        StringBuilder b = new StringBuilder("{");
+        b.append("\"id\":").append(jsonString(c.id()));
+        b.append(",\"legalName\":").append(jsonString(c.legalName()));
+        b.append(",\"tradeName\":").append(jsonString(c.tradeName()));
+        b.append(",\"taxIdentifier\":").append(jsonString(c.taxIdentifier()));
+        b.append(",\"customerType\":").append(jsonString(c.customerType()));
+        b.append(",\"fiscalType\":").append(jsonString(c.fiscalType()));
+        b.append(",\"billingEmail\":").append(jsonString(c.billingEmail()));
+        b.append(",\"billingPhone\":").append(jsonString(c.billingPhone()));
+        b.append(",\"defaultVatPercent\":")
+                .append(c.defaultVatPercent() == null ? "0" : c.defaultVatPercent().toPlainString());
+        b.append(",\"defaultRetentionPercent\":")
+                .append(c.defaultRetentionPercent() == null ? "0" : c.defaultRetentionPercent().toPlainString());
+        b.append(",\"vatExempt\":").append(c.vatExempt());
+        b.append(",\"paymentMethod\":").append(jsonString(c.paymentMethod()));
+        b.append(",\"iban\":").append(jsonString(c.iban()));
+        b.append(",\"address\":").append(jsonString(c.address()));
+        b.append(",\"city\":").append(jsonString(c.city()));
+        b.append(",\"province\":").append(jsonString(c.province()));
+        b.append(",\"postalCode\":").append(jsonString(c.postalCode()));
+        b.append(",\"country\":").append(jsonString(c.country()));
+        b.append(",\"internalCode\":").append(jsonString(c.internalCode()));
+        b.append(",\"defaultMode\":").append(jsonString(c.defaultMode()));
+        b.append(",\"phone\":").append(jsonString(c.phone()));
+        b.append(",\"email\":").append(jsonString(c.email()));
+        b.append(",\"website\":").append(jsonString(c.website()));
+        b.append(",\"notes\":").append(jsonString(c.notes()));
+        b.append('}');
+        HttpResponse<String> r = send(req(baseUrl + "/customers-extended/" + c.id())
+                .header("Content-Type", "application/json")
+                .PUT(java.net.http.HttpRequest.BodyPublishers.ofString(b.toString())));
+        if (r.statusCode() < 200 || r.statusCode() >= 300) {
+            throw new IOException("HTTP " + r.statusCode() + ": " + r.body());
+        }
+        return getCustomerExtended(c.id());
+    }
+
+    // ============================================================
     //  PORT-3 PERFIL — User settings /api/profile/settings
     // ============================================================
 
