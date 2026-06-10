@@ -83,6 +83,17 @@ import org.springframework.stereotype.Service;
 @Service
 public class InvoicePdfGenerator {
 
+    /** 2026-06-10 tarde — Inyectado para cargar datos extendidos del
+     *  cliente (NIF + dirección + ciudad + ...) en el bloque del
+     *  cliente del PDF. Sin esto solo pintábamos customerLegalName.
+     *  Tras feedback de Benjamin: "la dirección del cliente, que para
+     *  facturación tiene que estar". */
+    private final org.springframework.jdbc.core.JdbcTemplate jdbcTemplate;
+
+    public InvoicePdfGenerator(org.springframework.jdbc.core.JdbcTemplate jdbcTemplate) {
+        this.jdbcTemplate = jdbcTemplate;
+    }
+
     private static final NumberFormat MONEY = NumberFormat.getCurrencyInstance(Locale.forLanguageTag("es-ES"));
     private static final DateTimeFormatter DATE_DM_Y = DateTimeFormatter.ofPattern("dd/MM/yyyy");
 
@@ -327,7 +338,11 @@ public class InvoicePdfGenerator {
         }
         top.addCell(qrCell);
 
-        // Col 3: cliente (nombre en primera línea, alineado derecha).
+        // Col 3: cliente. Tras feedback Benjamin 2026-06-10 tarde,
+        // ya no se queda solo con el nombre — pinta NIF + dirección
+        // completa + email + teléfono si están definidos en el cliente.
+        // El cliente extendido se carga por customerId; si falla,
+        // caemos al comportamiento previo (solo nombre).
         PdfPCell custCell = new PdfPCell();
         custCell.setBorder(Rectangle.NO_BORDER);
         custCell.setPadding(2f);
@@ -335,6 +350,32 @@ public class InvoicePdfGenerator {
         Paragraph custName = new Paragraph(nz(invoice.customerLegalName()), fCustomerName);
         custName.setAlignment(Element.ALIGN_RIGHT);
         custCell.addElement(custName);
+        CustomerView cust = loadCustomerView(invoice.customerId());
+        if (cust != null) {
+            if (nonBlank(cust.taxIdentifier())) {
+                Paragraph p = new Paragraph("NIF: " + cust.taxIdentifier(), fMeta);
+                p.setAlignment(Element.ALIGN_RIGHT);
+                custCell.addElement(p);
+            }
+            String custAddr = joinNonBlank(", ",
+                    cust.address(), cust.postalCode(), cust.city(), cust.province());
+            if (!custAddr.isBlank()) {
+                Paragraph p = new Paragraph(custAddr, fMeta);
+                p.setAlignment(Element.ALIGN_RIGHT);
+                custCell.addElement(p);
+            }
+            if (nonBlank(cust.country()) && !"España".equalsIgnoreCase(cust.country().trim())) {
+                Paragraph p = new Paragraph(cust.country(), fMeta);
+                p.setAlignment(Element.ALIGN_RIGHT);
+                custCell.addElement(p);
+            }
+            String custContact = joinNonBlank(" · ", cust.phone(), cust.email());
+            if (!custContact.isBlank()) {
+                Paragraph p = new Paragraph(custContact, fMeta);
+                p.setAlignment(Element.ALIGN_RIGHT);
+                custCell.addElement(p);
+            }
+        }
         top.addCell(custCell);
 
         document.add(top);
@@ -675,4 +716,47 @@ public class InvoicePdfGenerator {
         }
         return sb.toString();
     }
+
+    /** 2026-06-10 tarde — Datos extendidos del cliente para el bloque
+     *  del cliente en el PDF de factura. Devuelve null si el cliente
+     *  no existe (factura de demo, customerId roto, etc.) — en ese
+     *  caso solo se pinta el nombre. */
+    private CustomerView loadCustomerView(String customerId) {
+        if (customerId == null || customerId.isBlank()) return null;
+        try {
+            return jdbcTemplate.query("""
+                    SELECT legal_name, tax_identifier,
+                           COALESCE(address, '') AS address,
+                           COALESCE(city, '') AS city,
+                           COALESCE(province, '') AS province,
+                           COALESCE(postal_code, '') AS postal_code,
+                           COALESCE(country, '') AS country,
+                           COALESCE(phone, '') AS phone,
+                           COALESCE(email, '') AS email
+                      FROM customers WHERE id = ?
+                    """, rs -> {
+                        if (!rs.next()) return null;
+                        return new CustomerView(
+                                rs.getString("legal_name"),
+                                rs.getString("tax_identifier"),
+                                rs.getString("address"),
+                                rs.getString("city"),
+                                rs.getString("province"),
+                                rs.getString("postal_code"),
+                                rs.getString("country"),
+                                rs.getString("phone"),
+                                rs.getString("email"));
+                    }, customerId);
+        } catch (Exception ex) {
+            // Defensivo: si V85 no se aplicó por algún motivo, no
+            // queremos romper la generación entera del PDF.
+            return null;
+        }
+    }
+
+    private record CustomerView(
+            String legalName, String taxIdentifier,
+            String address, String city, String province, String postalCode,
+            String country, String phone, String email
+    ) {}
 }

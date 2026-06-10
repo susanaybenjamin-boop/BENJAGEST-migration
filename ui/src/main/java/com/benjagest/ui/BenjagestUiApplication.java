@@ -12446,7 +12446,13 @@ public class BenjagestUiApplication extends Application {
             case "cli.editor.invalid.title" -> "Invalid number";
             case "cli.editor.invalid.body" -> "Default VAT and retention must be numeric.";
             case "cli.section.main" -> "Customer";
-            case "cli.section.main.hint" -> "Basic data. Address, billing and extra fields will be enabled when the billing module connects them.";
+            case "cli.section.main.hint" -> "Basic data of the customer.";
+            case "cli.section.address" -> "Postal address";
+            case "cli.section.address.hint" -> "Required so the customer block prints with full data on invoice PDFs.";
+            case "cli.type.company" -> "Company";
+            case "cli.type.self_employed" -> "Self-employed";
+            case "cli.type.public_entity" -> "Public entity";
+            case "cli.type.other" -> "Other";
             case "cli.tab.general" -> "General";
             case "cli.tab.address" -> "Postal address";
             case "cli.tab.billing" -> "Billing";
@@ -12486,7 +12492,13 @@ public class BenjagestUiApplication extends Application {
             case "cli.editor.invalid.title" -> "Número inválido";
             case "cli.editor.invalid.body" -> "El IVA y la retención por defecto deben ser numéricos.";
             case "cli.section.main" -> "Cliente";
-            case "cli.section.main.hint" -> "Datos básicos. La dirección, facturación y campos extra se habilitarán cuando el módulo de Facturación los conecte.";
+            case "cli.section.main.hint" -> "Datos básicos del cliente.";
+            case "cli.section.address" -> "Dirección postal";
+            case "cli.section.address.hint" -> "Necesaria para que el bloque del cliente salga con los datos completos en los PDF de factura.";
+            case "cli.type.company" -> "Empresa";
+            case "cli.type.self_employed" -> "Autónomo";
+            case "cli.type.public_entity" -> "Entidad pública";
+            case "cli.type.other" -> "Otro";
             case "cli.tab.general" -> "Generales";
             case "cli.tab.address" -> "Dirección postal";
             case "cli.tab.billing" -> "Facturación";
@@ -19171,48 +19183,97 @@ public class BenjagestUiApplication extends Application {
         dialog.setTitle(t("cli.editor.title"));
         dialog.setHeaderText(c.legalName());
 
-        // PORT-4 CLI v2 (2026-06-10 tarde): revertido a UNA seccion con
-        // los 9 campos originales tras feedback de Benjamin. Los campos
-        // de direccion postal y facturacion siguen en BD (V85) pero no
-        // se editan desde aqui hasta que se conecten con el flujo de
-        // facturacion real.
+        // PORT-4 CLI v3 (2026-06-10 tarde tras feedback): editor con
+        // datos basicos + DIRECCION POSTAL (necesaria para PDF de
+        // factura). Sigue siendo 1 seccion sin TabPane. Combo Tipo
+        // traducido. Labels con ColumnConstraints para no truncarse.
         TextField fLegal = new TextField(safe(c.legalName()));
         TextField fTrade = new TextField(safe(c.tradeName()));
         TextField fNif = new TextField(safe(c.taxIdentifier()));
         ComboBox<String> fType = new ComboBox<>(FXCollections.observableArrayList(
                 "COMPANY", "SELF_EMPLOYED", "PUBLIC_ENTITY", "OTHER"));
+        fType.setConverter(new javafx.util.StringConverter<>() {
+            @Override public String toString(String code) {
+                if (code == null) return "";
+                return switch (code) {
+                    case "COMPANY" -> t("cli.type.company");
+                    case "SELF_EMPLOYED" -> t("cli.type.self_employed");
+                    case "PUBLIC_ENTITY" -> t("cli.type.public_entity");
+                    case "OTHER" -> t("cli.type.other");
+                    default -> code;
+                };
+            }
+            @Override public String fromString(String s) { return s; }
+        });
         fType.setValue(c.customerType() == null || c.customerType().isBlank()
                 ? "COMPANY" : c.customerType());
         TextField fPhone = new TextField(safe(c.phone()));
         TextField fEmail = new TextField(safe(c.email()));
         TextField fWebsite = new TextField(safe(c.website()));
+
+        // Direccion postal — NECESARIA para que el PDF de factura
+        // pueda pintar el bloque del cliente con NIF + direccion.
+        TextField fAddress = new TextField(safe(c.address()));
+        TextField fCity = new TextField(safe(c.city()));
+        TextField fProvince = new TextField(safe(c.province()));
+        TextField fCp = new TextField(safe(c.postalCode()));
+        TextField fCountry = new TextField(
+                c.country() == null || c.country().isBlank() ? "España" : c.country());
+
         TextArea fNotes = new TextArea(safe(c.notes()));
         fNotes.setPrefRowCount(3);
         fNotes.setWrapText(true);
 
-        VBox section = new VBox(12);
-        section.getStyleClass().add("settings-section");
-        section.setPadding(new Insets(16));
-        Label sectionTitle = new Label(t("cli.section.main"));
-        sectionTitle.getStyleClass().add("settings-section-title");
-        Label sectionHint = new Label(t("cli.section.main.hint"));
-        sectionHint.getStyleClass().add("settings-hint");
-        sectionHint.setWrapText(true);
+        VBox root = new VBox(16);
+        root.setPadding(new Insets(8));
 
-        GridPane grid = formGrid(
+        VBox sectionBasic = new VBox(8);
+        sectionBasic.getStyleClass().add("settings-section");
+        Label basicTitle = new Label(t("cli.section.main"));
+        basicTitle.getStyleClass().add("settings-section-title");
+        Label basicHint = new Label(t("cli.section.main.hint"));
+        basicHint.getStyleClass().add("settings-hint");
+        basicHint.setWrapText(true);
+        GridPane basicGrid = formGrid(
                 t("cli.field.legalName"), fLegal,
                 t("cli.field.tradeName"), fTrade,
                 t("cli.field.taxId"), fNif,
                 t("cli.field.type"), fType,
                 t("cli.field.phone"), fPhone,
                 t("cli.field.email"), fEmail,
-                t("cli.field.website"), fWebsite,
-                t("cli.field.notes"), fNotes);
+                t("cli.field.website"), fWebsite);
+        sectionBasic.getChildren().addAll(basicTitle, basicHint, basicGrid);
 
-        section.getChildren().addAll(sectionTitle, sectionHint, grid);
-        section.setPrefWidth(560);
+        VBox sectionAddr = new VBox(8);
+        sectionAddr.getStyleClass().add("settings-section");
+        Label addrTitle = new Label(t("cli.section.address"));
+        addrTitle.getStyleClass().add("settings-section-title");
+        Label addrHint = new Label(t("cli.section.address.hint"));
+        addrHint.getStyleClass().add("settings-hint");
+        addrHint.setWrapText(true);
+        GridPane addrGrid = formGrid(
+                t("cli.field.address"), fAddress,
+                t("cli.field.city"), fCity,
+                t("cli.field.province"), fProvince,
+                t("cli.field.postalCode"), fCp,
+                t("cli.field.country"), fCountry);
+        sectionAddr.getChildren().addAll(addrTitle, addrHint, addrGrid);
 
-        dialog.getDialogPane().setContent(section);
+        VBox sectionNotes = new VBox(8);
+        sectionNotes.getStyleClass().add("settings-section");
+        Label notesTitle = new Label(t("cli.field.notes"));
+        notesTitle.getStyleClass().add("settings-section-title");
+        sectionNotes.getChildren().addAll(notesTitle, fNotes);
+
+        root.getChildren().addAll(sectionBasic, sectionAddr, sectionNotes);
+        root.setPrefWidth(620);
+
+        ScrollPane scroll = new ScrollPane(root);
+        scroll.setFitToWidth(true);
+        scroll.setPrefViewportHeight(520);
+        scroll.getStyleClass().add("content-scroll");
+
+        dialog.getDialogPane().setContent(scroll);
         dialog.getDialogPane().getButtonTypes().addAll(
                 javafx.scene.control.ButtonType.CANCEL, javafx.scene.control.ButtonType.OK);
         javafx.scene.control.Button okBtn = (javafx.scene.control.Button)
@@ -19221,9 +19282,10 @@ public class BenjagestUiApplication extends Application {
 
         dialog.setResultConverter(bt -> {
             if (bt == javafx.scene.control.ButtonType.OK) {
-                // Preservamos en el PUT todos los campos extendidos que
-                // ya tenia el cliente — no se editan en esta UI pero
-                // tampoco queremos pisarlos con vacios.
+                // Preservamos los campos de facturacion que aun no se
+                // editan aqui (fiscalType, billingEmail, IBAN, etc.) —
+                // no queremos pisarlos con vacios. Direccion SI la
+                // pisamos porque ahora es editable.
                 com.benjagest.ui.model.CustomerExtendedEntry upd =
                         new com.benjagest.ui.model.CustomerExtendedEntry(
                                 c.id(),
@@ -19234,8 +19296,8 @@ public class BenjagestUiApplication extends Application {
                                 c.defaultVatPercent(), c.defaultRetentionPercent(),
                                 c.vatExempt(),
                                 c.paymentMethod(), c.iban(),
-                                c.address(), c.city(), c.province(),
-                                c.postalCode(), c.country(),
+                                fAddress.getText(), fCity.getText(), fProvince.getText(),
+                                fCp.getText(), fCountry.getText(),
                                 c.internalCode(), c.defaultMode(),
                                 fPhone.getText(), fEmail.getText(), fWebsite.getText(),
                                 fNotes.getText());
@@ -19259,11 +19321,28 @@ public class BenjagestUiApplication extends Application {
         grid.setHgap(12);
         grid.setVgap(10);
         grid.setPadding(new Insets(16));
+        // Fix 2026-06-10 tarde: sin ColumnConstraints, JavaFX truncaba
+        // los Labels y dejaba "Nombr...". Damos a la columna de etiquetas
+        // un minWidth holgado y a la columna de inputs que se estire.
+        javafx.scene.layout.ColumnConstraints labelCol = new javafx.scene.layout.ColumnConstraints();
+        labelCol.setMinWidth(140);
+        labelCol.setPrefWidth(140);
+        labelCol.setHalignment(javafx.geometry.HPos.LEFT);
+        javafx.scene.layout.ColumnConstraints inputCol = new javafx.scene.layout.ColumnConstraints();
+        inputCol.setHgrow(Priority.ALWAYS);
+        inputCol.setFillWidth(true);
+        grid.getColumnConstraints().addAll(labelCol, inputCol);
         int row = 0;
         for (int i = 0; i + 1 < pairs.length; i += 2) {
             Label lab = new Label((String) pairs[i]);
             lab.getStyleClass().add("form-label");
-            grid.addRow(row++, lab, (Node) pairs[i + 1]);
+            lab.setMinWidth(javafx.scene.layout.Region.USE_PREF_SIZE);
+            lab.setWrapText(true);
+            Node input = (Node) pairs[i + 1];
+            if (input instanceof javafx.scene.layout.Region r) {
+                r.setMaxWidth(Double.MAX_VALUE);
+            }
+            grid.addRow(row++, lab, input);
         }
         return grid;
     }
