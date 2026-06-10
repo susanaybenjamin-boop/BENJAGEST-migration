@@ -4453,11 +4453,15 @@ public class BenjagestUiApplication extends Application {
         certificateTab.setGraphic(icon("fas-certificate"));
         Tab auditTab = new Tab(t("settings.tab.audit"), settingsAuditTab());
         auditTab.setGraphic(icon("fas-shield-alt"));
+        // PORT-4 SESSION (2026-06-10) — pestaña Sesión con timeout
+        // de inactividad, PIN de sesión y salvapantallas.
+        Tab sessionTab = new Tab(t("settings.tab.session"), settingsSessionTab());
+        sessionTab.setGraphic(icon("fas-user-clock"));
 
         // "Mi asesoría" solo tiene sentido para empresas CLIENT — una
         // asesoría no necesita otra asesoría que la asesore.
         tabs.getTabs().addAll(companyTab, ownersTab, emailTab, modulesTab,
-                credentialsTab, certificateTab);
+                credentialsTab, certificateTab, sessionTab);
         if (appMode != AppMode.ADVISORY) {
             Tab advisoryTab = new Tab(t("settings.tab.my_advisory"), settingsMyAdvisoryTab());
             advisoryTab.setGraphic(icon("fas-handshake"));
@@ -4572,6 +4576,254 @@ public class BenjagestUiApplication extends Application {
         Label sectionTitle = label(t("settings.company.section_label"), "settings-section-title");
         return tabLayout(sectionTitle, body, actions);
     }
+
+    // ============================================================
+    //  PORT-4 SESSION — Pestaña "Sesión" de Configuración
+    // ============================================================
+    private Node settingsSessionTab() {
+        VBox body = new VBox(20);
+        body.setPadding(new Insets(8));
+
+        // --- Sección 1: bloqueo por inactividad ---
+        Label lockTitle = label(t("settings.session.lock.title"), "settings-section-title");
+        Label lockHint = new Label(t("settings.session.lock.hint"));
+        lockHint.setWrapText(true);
+        lockHint.getStyleClass().add("settings-hint");
+        javafx.scene.control.Spinner<Integer> timeoutSpin =
+                new javafx.scene.control.Spinner<>(0, 120, 0, 1);
+        timeoutSpin.setEditable(true);
+        Label timeoutSuffix = new Label(t("settings.session.lock.minutes"));
+        HBox timeoutRow = new HBox(8, timeoutSpin, timeoutSuffix);
+        timeoutRow.setAlignment(Pos.CENTER_LEFT);
+        Label zeroHint = new Label(t("settings.session.lock.zero_hint"));
+        zeroHint.getStyleClass().add("settings-hint");
+        zeroHint.setWrapText(true);
+        VBox lockSection = new VBox(8, lockTitle, lockHint, timeoutRow, zeroHint);
+        lockSection.getStyleClass().add("settings-section");
+
+        // --- Sección 2: PIN de sesión ---
+        Label pinTitle = label(t("settings.session.pin.title"), "settings-section-title");
+        Label pinHint = new Label(t("settings.session.pin.hint"));
+        pinHint.setWrapText(true);
+        pinHint.getStyleClass().add("settings-hint");
+        Label pinStatus = new Label(t("settings.session.pin.status.unknown"));
+        pinStatus.getStyleClass().add("settings-hint");
+        Button definePinBtn = new Button(t("settings.session.pin.btn.define"));
+        definePinBtn.setGraphic(icon("fas-lock"));
+        Button changePinBtn = new Button(t("settings.session.pin.btn.change"));
+        changePinBtn.setGraphic(icon("fas-key"));
+        Button removePinBtn = new Button(t("settings.session.pin.btn.remove"));
+        removePinBtn.setGraphic(icon("fas-unlock"));
+        HBox pinActions = new HBox(8, definePinBtn, changePinBtn, removePinBtn);
+        pinActions.setAlignment(Pos.CENTER_LEFT);
+        VBox pinSection = new VBox(8, pinTitle, pinHint, pinStatus, pinActions);
+        pinSection.getStyleClass().add("settings-section");
+
+        // --- Sección 3: Salvapantallas ---
+        Label saverTitle = label(t("settings.session.saver.title"), "settings-section-title");
+        Label saverHint = new Label(t("settings.session.saver.hint"));
+        saverHint.setWrapText(true);
+        saverHint.getStyleClass().add("settings-hint");
+        ComboBox<String> saverCombo = new ComboBox<>(FXCollections.observableArrayList(
+                "clock", "logo", "dark", "carousel"));
+        saverCombo.setConverter(new javafx.util.StringConverter<>() {
+            @Override public String toString(String s) {
+                if (s == null) return "";
+                return switch (s) {
+                    case "clock" -> t("settings.session.saver.clock");
+                    case "logo" -> t("settings.session.saver.logo");
+                    case "dark" -> t("settings.session.saver.dark");
+                    case "carousel" -> t("settings.session.saver.carousel");
+                    default -> s;
+                };
+            }
+            @Override public String fromString(String s) { return s; }
+        });
+        saverCombo.setValue("clock");
+        VBox saverSection = new VBox(8, saverTitle, saverHint, saverCombo);
+        saverSection.getStyleClass().add("settings-section");
+
+        // --- Footer guardar ---
+        Button saveBtn = new Button(t("settings.session.save"));
+        saveBtn.setGraphic(icon("fas-save"));
+        saveBtn.getStyleClass().add("button-primary");
+        HBox footer = new HBox(saveBtn);
+        footer.setAlignment(Pos.CENTER_RIGHT);
+
+        body.getChildren().addAll(lockSection, pinSection, saverSection, footer);
+
+        // --- Carga + handlers ---
+        Runnable reload = () -> {
+            Task<com.benjagest.ui.model.SessionStatusEntry> task = new Task<>() {
+                @Override protected com.benjagest.ui.model.SessionStatusEntry call() throws Exception {
+                    return altaApiClient.getSessionStatus();
+                }
+            };
+            task.setOnSucceeded(ev -> {
+                var s = task.getValue();
+                timeoutSpin.getValueFactory().setValue(s.pinTimeoutMin());
+                saverCombo.setValue(
+                        s.screensaverStyle() == null || s.screensaverStyle().isBlank()
+                                ? "clock" : s.screensaverStyle());
+                if (s.pinConfigured()) {
+                    pinStatus.setText(t("settings.session.pin.status.configured"));
+                    definePinBtn.setDisable(true);
+                    changePinBtn.setDisable(false);
+                    removePinBtn.setDisable(false);
+                } else {
+                    pinStatus.setText(t("settings.session.pin.status.missing"));
+                    definePinBtn.setDisable(false);
+                    changePinBtn.setDisable(true);
+                    removePinBtn.setDisable(true);
+                }
+                // Aplicar el timeout al checker LOCK en caliente.
+                refreshLockTimeout(s.pinTimeoutMin());
+                this.screensaverStyle = s.screensaverStyle();
+            });
+            task.setOnFailed(ev -> showError(t("settings.session.fail.title"),
+                    task.getException() == null ? "" : task.getException().getMessage()));
+            start(task, "session-load");
+        };
+
+        saveBtn.setOnAction(ev -> {
+            Task<com.benjagest.ui.model.SessionStatusEntry> save = new Task<>() {
+                @Override protected com.benjagest.ui.model.SessionStatusEntry call() throws Exception {
+                    return altaApiClient.saveSessionSettings(
+                            timeoutSpin.getValue(), saverCombo.getValue());
+                }
+            };
+            save.setOnSucceeded(s -> {
+                refreshLockTimeout(save.getValue().pinTimeoutMin());
+                this.screensaverStyle = save.getValue().screensaverStyle();
+                Alert ok = new Alert(Alert.AlertType.INFORMATION);
+                ok.setTitle(t("settings.session.save.ok.title"));
+                ok.setHeaderText(t("settings.session.save.ok.body"));
+                ok.showAndWait();
+            });
+            save.setOnFailed(s -> showError(t("settings.session.fail.title"),
+                    save.getException() == null ? "" : save.getException().getMessage()));
+            start(save, "session-save");
+        });
+
+        definePinBtn.setOnAction(ev -> openSessionPinDialog(false, reload));
+        changePinBtn.setOnAction(ev -> openSessionPinDialog(true, reload));
+        removePinBtn.setOnAction(ev -> openSessionPinRemoveDialog(reload));
+
+        reload.run();
+
+        ScrollPane scroll = new ScrollPane(body);
+        scroll.setFitToWidth(true);
+        scroll.getStyleClass().add("content-scroll");
+        return scroll;
+    }
+
+    private void openSessionPinDialog(boolean requireCurrent, Runnable onSaved) {
+        Dialog<Void> dialog = new Dialog<>();
+        dialog.setTitle(t(requireCurrent
+                ? "settings.session.pin.dialog.change.title"
+                : "settings.session.pin.dialog.define.title"));
+        dialog.setHeaderText(t(requireCurrent
+                ? "settings.session.pin.dialog.change.header"
+                : "settings.session.pin.dialog.define.header"));
+
+        PasswordField currentField = new PasswordField();
+        currentField.setPromptText(t("settings.session.pin.dialog.current"));
+        PasswordField newField = new PasswordField();
+        newField.setPromptText(t("settings.session.pin.dialog.new"));
+        PasswordField confirmField = new PasswordField();
+        confirmField.setPromptText(t("settings.session.pin.dialog.confirm"));
+
+        VBox form = new VBox(10);
+        if (requireCurrent) {
+            form.getChildren().addAll(
+                    new Label(t("settings.session.pin.dialog.current")), currentField);
+        }
+        form.getChildren().addAll(
+                new Label(t("settings.session.pin.dialog.new")), newField,
+                new Label(t("settings.session.pin.dialog.confirm")), confirmField,
+                new Label(t("settings.session.pin.dialog.rules")));
+        form.setPadding(new Insets(16));
+        form.setPrefWidth(380);
+
+        dialog.getDialogPane().setContent(form);
+        dialog.getDialogPane().getButtonTypes().addAll(
+                javafx.scene.control.ButtonType.CANCEL, javafx.scene.control.ButtonType.OK);
+        ((javafx.scene.control.Button) dialog.getDialogPane()
+                .lookupButton(javafx.scene.control.ButtonType.OK))
+                .setText(t("settings.session.pin.dialog.save"));
+
+        dialog.setResultConverter(bt -> {
+            if (bt == javafx.scene.control.ButtonType.OK) {
+                String newPin = newField.getText();
+                String confirm = confirmField.getText();
+                if (newPin == null || newPin.isBlank() || !newPin.equals(confirm)) {
+                    showError(t("settings.session.pin.dialog.error.title"),
+                            t("settings.session.pin.dialog.error.mismatch"));
+                    return null;
+                }
+                String current = requireCurrent ? currentField.getText() : "";
+                Task<Void> t = new Task<>() {
+                    @Override protected Void call() throws Exception {
+                        altaApiClient.setSessionPin(current, newPin);
+                        return null;
+                    }
+                };
+                t.setOnSucceeded(s -> onSaved.run());
+                t.setOnFailed(s -> showError(t("settings.session.fail.title"),
+                        t.getException() == null ? "" : t.getException().getMessage()));
+                start(t, "session-pin-set");
+            }
+            return null;
+        });
+        dialog.showAndWait();
+    }
+
+    private void openSessionPinRemoveDialog(Runnable onDone) {
+        Dialog<Void> dialog = new Dialog<>();
+        dialog.setTitle(t("settings.session.pin.dialog.remove.title"));
+        dialog.setHeaderText(t("settings.session.pin.dialog.remove.header"));
+
+        PasswordField currentField = new PasswordField();
+        currentField.setPromptText(t("settings.session.pin.dialog.current"));
+        VBox form = new VBox(10,
+                new Label(t("settings.session.pin.dialog.current")), currentField,
+                new Label(t("settings.session.pin.dialog.remove.warning")));
+        form.setPadding(new Insets(16));
+        form.setPrefWidth(380);
+
+        dialog.getDialogPane().setContent(form);
+        dialog.getDialogPane().getButtonTypes().addAll(
+                javafx.scene.control.ButtonType.CANCEL, javafx.scene.control.ButtonType.OK);
+        ((javafx.scene.control.Button) dialog.getDialogPane()
+                .lookupButton(javafx.scene.control.ButtonType.OK))
+                .setText(t("settings.session.pin.dialog.remove.confirm"));
+
+        dialog.setResultConverter(bt -> {
+            if (bt == javafx.scene.control.ButtonType.OK) {
+                String current = currentField.getText();
+                if (current == null || current.isBlank()) {
+                    showError(t("settings.session.pin.dialog.error.title"),
+                            t("settings.session.pin.dialog.error.current_required"));
+                    return null;
+                }
+                Task<Void> t = new Task<>() {
+                    @Override protected Void call() throws Exception {
+                        altaApiClient.deleteSessionPin(current);
+                        return null;
+                    }
+                };
+                t.setOnSucceeded(s -> onDone.run());
+                t.setOnFailed(s -> showError(t("settings.session.fail.title"),
+                        t.getException() == null ? "" : t.getException().getMessage()));
+                start(t, "session-pin-delete");
+            }
+            return null;
+        });
+        dialog.showAndWait();
+    }
+
+    /** Estilo de salvapantallas activo (clock/logo/dark/carousel). */
+    private String screensaverStyle = "clock";
 
     /** PORT-4 LOGO — Sección del logo de empresa en Configuración → Empresa. */
     private Node buildCompanyLogoSection() {
@@ -10376,6 +10628,7 @@ public class BenjagestUiApplication extends Application {
                     if (v == null) v = tProfileLockEn(key);
                     if (v == null) v = tCliEditorEn(key);
                     if (v == null) v = tTcCalEn(key);
+                    if (v == null) v = tSessionEn(key);
                     yield v != null ? v : (key.startsWith("column.") ? key.substring(7) : key);
                 }
             };
@@ -11279,6 +11532,7 @@ public class BenjagestUiApplication extends Application {
                 if (v == null) v = tProfileLockEs(key);
                 if (v == null) v = tCliEditorEs(key);
                 if (v == null) v = tTcCalEs(key);
+                if (v == null) v = tSessionEs(key);
                 if (v != null) yield v;
                 yield key.startsWith("column.") ? key.substring(7) : switch (key) {
                 case "field.name" -> "Nombre";
@@ -11983,6 +12237,98 @@ public class BenjagestUiApplication extends Application {
             case "portal.jobs.col.date" -> "Fecha";
             case "portal.jobs.col.title" -> "Título";
             case "portal.jobs.col.status" -> "Estado";
+            default -> null;
+        };
+    }
+
+    /** PORT-4 SESSION — Helper i18n EN. */
+    private String tSessionEn(String key) {
+        return switch (key) {
+            case "settings.tab.session" -> "Session";
+            case "settings.session.save" -> "Save session settings";
+            case "settings.session.save.ok.title" -> "Saved";
+            case "settings.session.save.ok.body" -> "Your session preferences have been updated.";
+            case "settings.session.fail.title" -> "Could not load or save session settings";
+            case "settings.session.lock.title" -> "Auto-lock by inactivity";
+            case "settings.session.lock.hint" -> "Lock BENJAGEST after this many minutes without mouse or keyboard input. Useful on shared computers.";
+            case "settings.session.lock.minutes" -> "minutes";
+            case "settings.session.lock.zero_hint" -> "0 disables auto-lock. To unlock you need a session PIN — define one below.";
+            case "settings.session.pin.title" -> "Session PIN";
+            case "settings.session.pin.hint" -> "Numeric PIN (4–8 digits) used only to unlock after auto-lock. Different from the device pairing PIN of multi-station mode.";
+            case "settings.session.pin.status.unknown" -> "Checking…";
+            case "settings.session.pin.status.configured" -> "✓ PIN configured.";
+            case "settings.session.pin.status.missing" -> "⚠ No PIN configured — auto-lock can't actually lock you.";
+            case "settings.session.pin.btn.define" -> "Define PIN";
+            case "settings.session.pin.btn.change" -> "Change PIN";
+            case "settings.session.pin.btn.remove" -> "Remove PIN";
+            case "settings.session.pin.dialog.define.title" -> "Define session PIN";
+            case "settings.session.pin.dialog.define.header" -> "Choose a 4–8 digit numeric PIN.";
+            case "settings.session.pin.dialog.change.title" -> "Change session PIN";
+            case "settings.session.pin.dialog.change.header" -> "Enter your current PIN and choose a new one.";
+            case "settings.session.pin.dialog.remove.title" -> "Remove session PIN";
+            case "settings.session.pin.dialog.remove.header" -> "Confirm with your current PIN.";
+            case "settings.session.pin.dialog.remove.warning" -> "After removal, auto-lock won't be able to verify you and will effectively stop locking.";
+            case "settings.session.pin.dialog.remove.confirm" -> "Remove PIN";
+            case "settings.session.pin.dialog.current" -> "Current PIN";
+            case "settings.session.pin.dialog.new" -> "New PIN";
+            case "settings.session.pin.dialog.confirm" -> "Confirm new PIN";
+            case "settings.session.pin.dialog.rules" -> "Numeric, 4 to 8 digits. Different from your password.";
+            case "settings.session.pin.dialog.save" -> "Save PIN";
+            case "settings.session.pin.dialog.error.title" -> "Invalid input";
+            case "settings.session.pin.dialog.error.mismatch" -> "New PIN and confirmation do not match.";
+            case "settings.session.pin.dialog.error.current_required" -> "Enter your current PIN to confirm.";
+            case "settings.session.saver.title" -> "Screensaver";
+            case "settings.session.saver.hint" -> "Background style shown on the lock screen.";
+            case "settings.session.saver.clock" -> "Digital clock on dark background";
+            case "settings.session.saver.logo" -> "Company logo centered";
+            case "settings.session.saver.dark" -> "Plain dark";
+            case "settings.session.saver.carousel" -> "Logo carousel (animated)";
+            default -> null;
+        };
+    }
+
+    /** PORT-4 SESSION — Helper i18n ES. */
+    private String tSessionEs(String key) {
+        return switch (key) {
+            case "settings.tab.session" -> "Sesión";
+            case "settings.session.save" -> "Guardar configuración de sesión";
+            case "settings.session.save.ok.title" -> "Guardado";
+            case "settings.session.save.ok.body" -> "Tus preferencias de sesión se han actualizado.";
+            case "settings.session.fail.title" -> "No se pudo cargar o guardar la configuración de sesión";
+            case "settings.session.lock.title" -> "Bloqueo por inactividad";
+            case "settings.session.lock.hint" -> "Bloquea BENJAGEST tras estos minutos sin tocar el ratón ni el teclado. Útil en ordenadores compartidos.";
+            case "settings.session.lock.minutes" -> "minutos";
+            case "settings.session.lock.zero_hint" -> "0 desactiva el bloqueo automático. Para desbloquear necesitas un PIN de sesión — defínelo abajo.";
+            case "settings.session.pin.title" -> "PIN de sesión";
+            case "settings.session.pin.hint" -> "PIN numérico (4–8 dígitos) usado solo para desbloquear tras el auto-bloqueo. Distinto del PIN de vinculación de equipo en modo multi-puesto.";
+            case "settings.session.pin.status.unknown" -> "Comprobando…";
+            case "settings.session.pin.status.configured" -> "✓ PIN configurado.";
+            case "settings.session.pin.status.missing" -> "⚠ Sin PIN configurado — el auto-bloqueo no podrá bloquear realmente.";
+            case "settings.session.pin.btn.define" -> "Definir PIN";
+            case "settings.session.pin.btn.change" -> "Cambiar PIN";
+            case "settings.session.pin.btn.remove" -> "Eliminar PIN";
+            case "settings.session.pin.dialog.define.title" -> "Definir PIN de sesión";
+            case "settings.session.pin.dialog.define.header" -> "Elige un PIN numérico de 4 a 8 dígitos.";
+            case "settings.session.pin.dialog.change.title" -> "Cambiar PIN de sesión";
+            case "settings.session.pin.dialog.change.header" -> "Introduce tu PIN actual y elige uno nuevo.";
+            case "settings.session.pin.dialog.remove.title" -> "Eliminar PIN de sesión";
+            case "settings.session.pin.dialog.remove.header" -> "Confirma con tu PIN actual.";
+            case "settings.session.pin.dialog.remove.warning" -> "Tras eliminarlo, el auto-bloqueo no podrá verificarte y dejará de bloquear de hecho.";
+            case "settings.session.pin.dialog.remove.confirm" -> "Eliminar PIN";
+            case "settings.session.pin.dialog.current" -> "PIN actual";
+            case "settings.session.pin.dialog.new" -> "Nuevo PIN";
+            case "settings.session.pin.dialog.confirm" -> "Confirmar nuevo PIN";
+            case "settings.session.pin.dialog.rules" -> "Numérico, de 4 a 8 dígitos. Diferente de tu contraseña.";
+            case "settings.session.pin.dialog.save" -> "Guardar PIN";
+            case "settings.session.pin.dialog.error.title" -> "Datos inválidos";
+            case "settings.session.pin.dialog.error.mismatch" -> "El nuevo PIN y la confirmación no coinciden.";
+            case "settings.session.pin.dialog.error.current_required" -> "Introduce tu PIN actual para confirmar.";
+            case "settings.session.saver.title" -> "Salvapantallas";
+            case "settings.session.saver.hint" -> "Estilo del fondo que se muestra en la pantalla de bloqueo.";
+            case "settings.session.saver.clock" -> "Reloj digital sobre fondo oscuro";
+            case "settings.session.saver.logo" -> "Logo de empresa centrado";
+            case "settings.session.saver.dark" -> "Oscuro liso";
+            case "settings.session.saver.carousel" -> "Logo animado (carrusel)";
             default -> null;
         };
     }
@@ -19024,7 +19370,11 @@ public class BenjagestUiApplication extends Application {
         if (elapsedMin >= lockTimeoutMin) showLockStage();
     }
 
-    /** Muestra una Stage UNDECORATED modal pidiendo el PIN. */
+    /** Muestra una Stage UNDECORATED modal pidiendo el PIN.
+     *  PORT-4 SESSION (2026-06-10): verifica contra session_pin_hash
+     *  via /api/settings/session/pin/verify (no contra el PIN de
+     *  vinculación del dispositivo). Fondo varía según
+     *  {@link #screensaverStyle}. */
     private void showLockStage() {
         lockShowing = true;
         javafx.stage.Stage stage = new javafx.stage.Stage();
@@ -19033,16 +19383,16 @@ public class BenjagestUiApplication extends Application {
         stage.setTitle("BENJAGEST — " + t("lock.title"));
 
         Label title = new Label(t("lock.title"));
-        title.getStyleClass().add("hero-title");
+        title.setStyle("-fx-text-fill: white; -fx-font-size: 22px; -fx-font-weight: 800;");
         Label sub = new Label(t("lock.subtitle"));
-        sub.getStyleClass().add("hero-body");
+        sub.setStyle("-fx-text-fill: #d7deea;");
         sub.setWrapText(true);
 
         PasswordField pin = new PasswordField();
         pin.setPromptText("PIN");
         pin.setMaxWidth(220);
         Label err = new Label("");
-        err.setStyle("-fx-text-fill: #b91c1c;");
+        err.setStyle("-fx-text-fill: #fca5a5; -fx-font-weight: 700;");
 
         Button unlock = new Button(t("lock.btn.unlock"));
         unlock.getStyleClass().add("button-primary");
@@ -19050,22 +19400,26 @@ public class BenjagestUiApplication extends Application {
 
         Runnable tryUnlock = () -> {
             if (pin.getText() == null || pin.getText().isBlank()) return;
-            try {
-                com.benjagest.ui.service.DeviceConfig dc =
-                        com.benjagest.ui.service.DeviceConfig.load().orElse(null);
-                if (dc == null) {
-                    err.setText(t("lock.no_device"));
-                    return;
+            Task<Boolean> task = new Task<>() {
+                @Override protected Boolean call() throws Exception {
+                    return altaApiClient.verifySessionPin(pin.getText().trim());
                 }
-                authApiClient.pinLogin(dc.deviceSecret(), pin.getText().trim());
-                // OK — refrescar lastInput y cerrar
-                lastInputAt = System.currentTimeMillis();
-                lockShowing = false;
-                stage.close();
-            } catch (Exception ex) {
+            };
+            task.setOnSucceeded(s -> {
+                if (Boolean.TRUE.equals(task.getValue())) {
+                    lastInputAt = System.currentTimeMillis();
+                    lockShowing = false;
+                    stage.close();
+                } else {
+                    err.setText(t("lock.fail"));
+                    pin.clear();
+                }
+            });
+            task.setOnFailed(s -> {
                 err.setText(t("lock.fail"));
                 pin.clear();
-            }
+            });
+            start(task, "lock-verify");
         };
         unlock.setOnAction(ev -> tryUnlock.run());
         pin.setOnAction(ev -> tryUnlock.run());
@@ -19077,18 +19431,92 @@ public class BenjagestUiApplication extends Application {
             showLogin();
         });
 
-        VBox box = new VBox(14, title, sub, pin, err, unlock, logoutBtn);
-        box.setAlignment(Pos.CENTER);
-        box.setPadding(new Insets(36));
-        box.setStyle("-fx-background-color: #0f1b2d;"
-                + " -fx-min-width: 460; -fx-min-height: 480;");
-        title.setStyle("-fx-text-fill: white; -fx-font-size: 22px;");
-        sub.setStyle("-fx-text-fill: #d7deea;");
+        // ---- Fondo según salvapantallas ----
+        StackPane background = new StackPane();
+        background.setStyle("-fx-background-color: #0a0f1a;"
+                + " -fx-min-width: 520; -fx-min-height: 520;");
+        String style = screensaverStyle == null ? "clock" : screensaverStyle;
+        switch (style) {
+            case "logo" -> background.getChildren().add(buildScreensaverLogo(stage));
+            case "carousel" -> background.getChildren().add(buildScreensaverCarousel(stage));
+            case "clock" -> background.getChildren().add(buildScreensaverClock(stage));
+            case "dark" -> { /* fondo oscuro liso, nada más */ }
+            default -> { /* tipo desconocido → liso */ }
+        }
 
-        Scene scene = new Scene(box);
+        VBox pinBox = new VBox(14, title, sub, pin, err, unlock, logoutBtn);
+        pinBox.setAlignment(Pos.CENTER);
+        pinBox.setMaxWidth(360);
+        pinBox.setStyle("-fx-background-color: rgba(15, 27, 45, 0.85);"
+                + " -fx-background-radius: 14; -fx-padding: 30;");
+        background.getChildren().add(pinBox);
+        StackPane.setAlignment(pinBox, Pos.CENTER);
+
+        Scene scene = new Scene(background);
         stage.setScene(scene);
         stage.setOnCloseRequest(ev -> ev.consume());  // no se cierra por X
         stage.showAndWait();
+    }
+
+    private Node buildScreensaverClock(javafx.stage.Stage owner) {
+        Label clock = new Label();
+        clock.setStyle("-fx-text-fill: white; -fx-font-size: 96px;"
+                + " -fx-font-family: 'Segoe UI Light', 'Inter', monospace;"
+                + " -fx-opacity: 0.65;");
+        Label date = new Label();
+        date.setStyle("-fx-text-fill: #cbd5e1; -fx-font-size: 16px; -fx-opacity: 0.6;");
+        VBox box = new VBox(8, clock, date);
+        box.setAlignment(Pos.TOP_CENTER);
+        box.setPadding(new Insets(60, 0, 0, 0));
+        Runnable tick = () -> {
+            java.time.LocalTime now = java.time.LocalTime.now();
+            java.time.LocalDate today = java.time.LocalDate.now();
+            clock.setText(String.format("%02d:%02d", now.getHour(), now.getMinute()));
+            date.setText(today.format(java.time.format.DateTimeFormatter.ofPattern(
+                    "EEEE, d MMMM yyyy", activeLocale())));
+        };
+        tick.run();
+        javafx.animation.Timeline tl = new javafx.animation.Timeline(
+                new javafx.animation.KeyFrame(javafx.util.Duration.seconds(15),
+                        ev -> tick.run()));
+        tl.setCycleCount(javafx.animation.Timeline.INDEFINITE);
+        tl.play();
+        owner.setOnHidden(ev -> tl.stop());
+        return box;
+    }
+
+    private Node buildScreensaverLogo(javafx.stage.Stage owner) {
+        javafx.scene.image.ImageView iv = new javafx.scene.image.ImageView();
+        iv.setFitWidth(300);
+        iv.setPreserveRatio(true);
+        iv.setSmooth(true);
+        iv.setOpacity(0.85);
+        Task<byte[]> load = new Task<>() {
+            @Override protected byte[] call() throws Exception {
+                return altaApiClient.getCompanyLogoBytes();
+            }
+        };
+        load.setOnSucceeded(s -> {
+            byte[] b = load.getValue();
+            if (b != null) iv.setImage(new javafx.scene.image.Image(
+                    new java.io.ByteArrayInputStream(b)));
+        });
+        start(load, "lock-saver-logo");
+        StackPane p = new StackPane(iv);
+        return p;
+    }
+
+    private Node buildScreensaverCarousel(javafx.stage.Stage owner) {
+        Node base = buildScreensaverLogo(owner);
+        javafx.animation.ScaleTransition st = new javafx.animation.ScaleTransition(
+                javafx.util.Duration.seconds(6), base);
+        st.setFromX(0.95); st.setFromY(0.95);
+        st.setToX(1.08); st.setToY(1.08);
+        st.setAutoReverse(true);
+        st.setCycleCount(javafx.animation.Animation.INDEFINITE);
+        st.play();
+        owner.setOnHidden(ev -> st.stop());
+        return base;
     }
 
     // ============================================================
