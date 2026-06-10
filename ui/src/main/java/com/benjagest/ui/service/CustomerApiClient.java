@@ -103,7 +103,12 @@ public class CustomerApiClient {
                 textField(json, "legalName"),
                 textField(json, "taxIdentifier"),
                 textField(json, "email"),
-                textField(json, "phone")
+                textField(json, "phone"),
+                textField(json, "address"),
+                textField(json, "city"),
+                textField(json, "province"),
+                textField(json, "postalCode"),
+                textField(json, "country")
         );
     }
 

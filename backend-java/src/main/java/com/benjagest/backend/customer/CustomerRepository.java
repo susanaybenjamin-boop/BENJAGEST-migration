@@ -59,8 +59,13 @@ public class CustomerRepository {
                        c.trade_name,
                        c.tax_identifier,
                        pc.full_name AS primary_contact_name,
-                       pc.email,
-                       pc.phone,
+                       NULLIF(COALESCE(NULLIF(c.email, ''), pc.email), '') AS email,
+                       NULLIF(COALESCE(NULLIF(c.phone, ''), pc.phone), '') AS phone,
+                       COALESCE(c.address, '')     AS address,
+                       COALESCE(c.city, '')        AS city,
+                       COALESCE(c.province, '')    AS province,
+                       COALESCE(c.postal_code, '') AS postal_code,
+                       COALESCE(c.country, '')     AS country,
                        c.created_at
                 FROM customers c
                 LEFT JOIN customer_contacts pc
@@ -79,8 +84,15 @@ public class CustomerRepository {
                        c.trade_name,
                        c.tax_identifier,
                        pc.full_name AS primary_contact_name,
-                       pc.email,
-                       pc.phone,
+                       /* Prioridad: customers.email/phone (V85, editor PORT-4 CLI v3).
+                          Fallback al customer_contacts (legacy). */
+                       NULLIF(COALESCE(NULLIF(c.email, ''), pc.email), '') AS email,
+                       NULLIF(COALESCE(NULLIF(c.phone, ''), pc.phone), '') AS phone,
+                       COALESCE(c.address, '')     AS address,
+                       COALESCE(c.city, '')        AS city,
+                       COALESCE(c.province, '')    AS province,
+                       COALESCE(c.postal_code, '') AS postal_code,
+                       COALESCE(c.country, '')     AS country,
                        c.created_at
                 FROM customers c
                 LEFT JOIN customer_contacts pc
@@ -104,6 +116,11 @@ public class CustomerRepository {
                 rs.getString("primary_contact_name"),
                 rs.getString("email"),
                 rs.getString("phone"),
+                rs.getString("address"),
+                rs.getString("city"),
+                rs.getString("province"),
+                rs.getString("postal_code"),
+                rs.getString("country"),
                 createdAt == null ? null : createdAt.toInstant()
         );
     }
