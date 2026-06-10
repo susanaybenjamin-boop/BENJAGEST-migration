@@ -185,7 +185,10 @@ public class BenjagestUiApplication extends Application {
             "tax", "reports", "calendar", "settings",
             "advisory", "self-employed", "notifications", "time-clock",
             // Slice 5C — Módulo EQUIPO / Reparto de clientes (advisory_only).
-            "team"
+            "team",
+            // PORT-1 — Portal del empleado (4 tabs: calendario, nominas,
+            // notificaciones, trabajos). Visible para todos los roles.
+            "employee-portal"
     );
 
     @Override
@@ -1940,6 +1943,13 @@ public class BenjagestUiApplication extends Application {
             // Solo OWNER de asesoría puede gestionar (control real
             // en backend ClientAssignmentService).
             showTeamModule();
+            return;
+        }
+        if ("employee-portal".equals(module)) {
+            // PORT-1 — Portal del empleado con 4 tabs:
+            // Calendario, Nominas, Notificaciones, Trabajos.
+            // Read-only. Filtrado al employee_id del usuario actual.
+            showEmployeePortal();
             return;
         }
         Task<ModuleData> task = new Task<>() {
@@ -10173,6 +10183,7 @@ public class BenjagestUiApplication extends Application {
                     if (v == null) v = tTeamEn(key);
                     if (v == null) v = tPinLoginEn(key);
                     if (v == null) v = tCalendarEn(key);
+                    if (v == null) v = tEmployeePortalEn(key);
                     yield v != null ? v : (key.startsWith("column.") ? key.substring(7) : key);
                 }
             };
@@ -11065,6 +11076,7 @@ public class BenjagestUiApplication extends Application {
                 if (v == null) v = tTeamEs(key);
                 if (v == null) v = tPinLoginEs(key);
                 if (v == null) v = tCalendarEs(key);
+                if (v == null) v = tEmployeePortalEs(key);
                 if (v != null) yield v;
                 yield key.startsWith("column.") ? key.substring(7) : switch (key) {
                 case "field.name" -> "Nombre";
@@ -11667,6 +11679,108 @@ public class BenjagestUiApplication extends Application {
             case "calendar.weekday.fri" -> "V";
             case "calendar.weekday.sat" -> "S";
             case "calendar.weekday.sun" -> "D";
+            default -> null;
+        };
+    }
+
+    /**
+     * PORT-1 — Helper i18n EN del módulo Portal del empleado. Aislado
+     * en helper propio para no rebasar el límite JVM de 64KB por método
+     * de {@code t()}.
+     */
+    private String tEmployeePortalEn(String key) {
+        return switch (key) {
+            // Modulo + header
+            case "module.employee-portal" -> "Employee portal";
+            case "portal.title" -> "My personal portal";
+            case "portal.hint" -> "Your work calendar, payslips, notifications and assigned jobs. Read-only.";
+            // Tabs
+            case "portal.tab.calendar" -> "My calendar";
+            case "portal.tab.payslips" -> "My payslips";
+            case "portal.tab.notifications" -> "My notifications";
+            case "portal.tab.jobs" -> "My jobs";
+            // Tab 1 — calendar
+            case "portal.calendar.hint" -> "Holidays from your work calendar, your medical leaves and any company event in this date range.";
+            case "portal.calendar.from" -> "From";
+            case "portal.calendar.to" -> "To";
+            case "portal.calendar.reload" -> "Refresh";
+            case "portal.calendar.empty" -> "No events in this range.";
+            case "portal.calendar.col.date" -> "Date";
+            case "portal.calendar.col.title" -> "Event";
+            case "portal.calendar.col.type" -> "Type";
+            case "portal.calendar.col.source" -> "Source";
+            case "portal.calendar.col.detail" -> "Detail";
+            case "portal.calendar.kind.calendar" -> "Calendar";
+            case "portal.calendar.kind.leave" -> "Medical leave";
+            case "portal.calendar.fail.title" -> "Could not load the calendar";
+            // Tab 2 — payslips
+            case "portal.payslips.hint" -> "Last 50 payslips processed for you. Status reflects whether they are draft, validated or paid.";
+            case "portal.payslips.empty" -> "No payslips yet for this employee.";
+            case "portal.payslips.col.period" -> "Period";
+            case "portal.payslips.col.gross" -> "Gross";
+            case "portal.payslips.col.net" -> "Net";
+            case "portal.payslips.col.status" -> "Status";
+            case "portal.payslips.fail.title" -> "Could not load payslips";
+            // Tab 3 — notifications
+            case "portal.notifications.hint" -> "Notifications addressed to your company or directly to you. Sorted by most recent.";
+            case "portal.notifications.empty" -> "No notifications to show.";
+            case "portal.notifications.col.when" -> "When";
+            case "portal.notifications.col.severity" -> "Severity";
+            case "portal.notifications.col.title" -> "Title";
+            case "portal.notifications.col.body" -> "Detail";
+            case "portal.notifications.fail.title" -> "Could not load notifications";
+            // Tab 4 — jobs
+            case "portal.jobs.hint" -> "Jobs assigned to you. This tab will populate once the Work Logs module is enabled (PORT-2).";
+            case "portal.jobs.empty" -> "No jobs assigned to you.";
+            case "portal.jobs.col.date" -> "Date";
+            case "portal.jobs.col.title" -> "Title";
+            case "portal.jobs.col.status" -> "Status";
+            default -> null;
+        };
+    }
+
+    /** PORT-1 — Helper i18n ES del módulo Portal del empleado. */
+    private String tEmployeePortalEs(String key) {
+        return switch (key) {
+            case "module.employee-portal" -> "Portal del empleado";
+            case "portal.title" -> "Mi portal personal";
+            case "portal.hint" -> "Tu calendario laboral, tus nóminas, tus notificaciones y tus trabajos asignados. Solo lectura.";
+            case "portal.tab.calendar" -> "Mi calendario";
+            case "portal.tab.payslips" -> "Mis nóminas";
+            case "portal.tab.notifications" -> "Mis notificaciones";
+            case "portal.tab.jobs" -> "Mis trabajos";
+            case "portal.calendar.hint" -> "Festivos de tu calendario laboral, tus bajas y cualquier evento de la empresa en este rango de fechas.";
+            case "portal.calendar.from" -> "Desde";
+            case "portal.calendar.to" -> "Hasta";
+            case "portal.calendar.reload" -> "Actualizar";
+            case "portal.calendar.empty" -> "Sin eventos en este rango.";
+            case "portal.calendar.col.date" -> "Fecha";
+            case "portal.calendar.col.title" -> "Evento";
+            case "portal.calendar.col.type" -> "Tipo";
+            case "portal.calendar.col.source" -> "Origen";
+            case "portal.calendar.col.detail" -> "Detalle";
+            case "portal.calendar.kind.calendar" -> "Agenda";
+            case "portal.calendar.kind.leave" -> "Baja médica";
+            case "portal.calendar.fail.title" -> "No se pudo cargar el calendario";
+            case "portal.payslips.hint" -> "Últimas 50 nóminas procesadas para ti. El estado refleja si están en borrador, validadas o pagadas.";
+            case "portal.payslips.empty" -> "Todavía no hay nóminas para este empleado.";
+            case "portal.payslips.col.period" -> "Periodo";
+            case "portal.payslips.col.gross" -> "Bruto";
+            case "portal.payslips.col.net" -> "Neto";
+            case "portal.payslips.col.status" -> "Estado";
+            case "portal.payslips.fail.title" -> "No se pudieron cargar las nóminas";
+            case "portal.notifications.hint" -> "Notificaciones dirigidas a tu empresa o directamente a ti. Ordenadas por las más recientes.";
+            case "portal.notifications.empty" -> "Sin notificaciones que mostrar.";
+            case "portal.notifications.col.when" -> "Cuándo";
+            case "portal.notifications.col.severity" -> "Gravedad";
+            case "portal.notifications.col.title" -> "Título";
+            case "portal.notifications.col.body" -> "Detalle";
+            case "portal.notifications.fail.title" -> "No se pudieron cargar las notificaciones";
+            case "portal.jobs.hint" -> "Trabajos asignados a ti. Esta pestaña se rellenará cuando el módulo de Partes de día esté activo (PORT-2).";
+            case "portal.jobs.empty" -> "Sin trabajos asignados.";
+            case "portal.jobs.col.date" -> "Fecha";
+            case "portal.jobs.col.title" -> "Título";
+            case "portal.jobs.col.status" -> "Estado";
             default -> null;
         };
     }
@@ -17862,6 +17976,276 @@ public class BenjagestUiApplication extends Application {
     //  3 tabs: Empleados / Asignaciones / Delegaciones.
     //  Solo OWNER (validado en backend; en UI mostramos error si 403).
     // ===================================================================
+
+    // ============================================================
+    //  PORT-1 — Portal del empleado
+    //  ----------------------------------------------------------
+    //  Modulo con 4 tabs (Calendario / Nominas / Notificaciones /
+    //  Trabajos) que el empleado consulta para ver SUS datos. Read-only.
+    //  Backend EmployeePortalService resuelve el employee_id desde el
+    //  user_id; si el usuario no es empleado de la empresa activa
+    //  (OWNER puro), las tabs muestran "sin datos" en vez de petar.
+    //
+    //  CONTENDO equivalente: app/empleado/{calendario,nominas,
+    //  notificaciones,trabajos}/page.tsx. Portado en sesion 2026-06-10
+    //  como modulo unico con TabPane (en JavaFX no necesitamos
+    //  re-autenticar por ruta — el rol ya esta resuelto).
+    // ============================================================
+    private void showEmployeePortal() {
+        currentModule = "employee-portal";
+        recordNav(() -> showEmployeePortal());
+        select("employee-portal");
+
+        // Cabecera + TabPane vacio. Cada tab se rellena cuando se
+        // selecciona por primera vez (lazy load).
+        VBox root = new VBox(16);
+        root.getStyleClass().add("content");
+
+        Label header = label(t("portal.title"), "settings-section-title");
+        Label hint = new Label(t("portal.hint"));
+        hint.setWrapText(true);
+        hint.getStyleClass().add("settings-hint");
+
+        TabPane tabs = new TabPane();
+        tabs.getStyleClass().add("settings-tabs");
+        tabs.setTabClosingPolicy(TabPane.TabClosingPolicy.UNAVAILABLE);
+
+        Tab tCal = new Tab(t("portal.tab.calendar"));
+        Tab tPay = new Tab(t("portal.tab.payslips"));
+        Tab tNot = new Tab(t("portal.tab.notifications"));
+        Tab tJob = new Tab(t("portal.tab.jobs"));
+
+        tCal.setContent(buildPortalCalendarTab());
+        tPay.setContent(buildPortalPayslipsTab());
+        tNot.setContent(buildPortalNotificationsTab());
+        tJob.setContent(buildPortalJobsTab());
+
+        tabs.getTabs().addAll(tCal, tPay, tNot, tJob);
+        VBox.setVgrow(tabs, Priority.ALWAYS);
+
+        root.getChildren().addAll(header, hint, tabs);
+        setCenterAnimated(scroll(root));
+    }
+
+    /** Tab 1 — Mi calendario laboral. */
+    private Node buildPortalCalendarTab() {
+        VBox box = new VBox(12);
+        box.setPadding(new Insets(16));
+
+        Label hint = new Label(t("portal.calendar.hint"));
+        hint.setWrapText(true);
+        hint.getStyleClass().add("settings-hint");
+
+        LocalDate now = LocalDate.now();
+        DatePicker fromPick = new DatePicker(now.withDayOfMonth(1));
+        DatePicker toPick = new DatePicker(now.withDayOfMonth(1).plusMonths(2).minusDays(1));
+        com.benjagest.ui.support.EditableCells.installFlexibleConverter(fromPick);
+        com.benjagest.ui.support.EditableCells.installFlexibleConverter(toPick);
+        Button reloadBtn = new Button(t("portal.calendar.reload"));
+        reloadBtn.setGraphic(icon("fas-sync-alt"));
+        reloadBtn.getStyleClass().add("button-primary");
+        HBox filters = new HBox(8,
+                new Label(t("portal.calendar.from")), fromPick,
+                new Label(t("portal.calendar.to")), toPick,
+                reloadBtn);
+        filters.setAlignment(Pos.CENTER_LEFT);
+
+        TableView<com.benjagest.ui.model.PortalEvent> table = new TableView<>();
+        table.getStyleClass().add("data-table");
+        table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+        table.setPlaceholder(new Label(t("portal.calendar.empty")));
+
+        TableColumn<com.benjagest.ui.model.PortalEvent, String> cDate =
+                new TableColumn<>(t("portal.calendar.col.date"));
+        cDate.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().date()));
+        cDate.setPrefWidth(110);
+        TableColumn<com.benjagest.ui.model.PortalEvent, String> cTitle =
+                new TableColumn<>(t("portal.calendar.col.title"));
+        cTitle.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().title()));
+        TableColumn<com.benjagest.ui.model.PortalEvent, String> cType =
+                new TableColumn<>(t("portal.calendar.col.type"));
+        cType.setCellValueFactory(c -> new SimpleStringProperty(
+                humanizeCalendarEventType(c.getValue().eventType())));
+        cType.setPrefWidth(150);
+        TableColumn<com.benjagest.ui.model.PortalEvent, String> cKind =
+                new TableColumn<>(t("portal.calendar.col.source"));
+        cKind.setCellValueFactory(c -> new SimpleStringProperty(
+                "LEAVE".equals(c.getValue().kind())
+                        ? t("portal.calendar.kind.leave")
+                        : t("portal.calendar.kind.calendar")));
+        cKind.setPrefWidth(120);
+        TableColumn<com.benjagest.ui.model.PortalEvent, String> cDetail =
+                new TableColumn<>(t("portal.calendar.col.detail"));
+        cDetail.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().detail()));
+
+        table.getColumns().addAll(java.util.List.of(cDate, cTitle, cType, cKind, cDetail));
+
+        Runnable reload = () -> {
+            LocalDate from = fromPick.getValue();
+            LocalDate to = toPick.getValue();
+            if (from == null || to == null) return;
+            Task<List<com.benjagest.ui.model.PortalEvent>> task = new Task<>() {
+                @Override protected List<com.benjagest.ui.model.PortalEvent> call() throws Exception {
+                    return altaApiClient.listPortalCalendar(from, to);
+                }
+            };
+            task.setOnSucceeded(ev -> table.setItems(FXCollections.observableArrayList(task.getValue())));
+            task.setOnFailed(ev -> showError(t("portal.calendar.fail.title"),
+                    task.getException() == null ? "" : task.getException().getMessage()));
+            start(task, "portal-calendar-load");
+        };
+        reloadBtn.setOnAction(ev -> reload.run());
+        reload.run();
+
+        VBox.setVgrow(table, Priority.ALWAYS);
+        box.getChildren().addAll(hint, filters, table);
+        return box;
+    }
+
+    /** Tab 2 — Mis nominas. */
+    private Node buildPortalPayslipsTab() {
+        VBox box = new VBox(12);
+        box.setPadding(new Insets(16));
+
+        Label hint = new Label(t("portal.payslips.hint"));
+        hint.setWrapText(true);
+        hint.getStyleClass().add("settings-hint");
+
+        TableView<com.benjagest.ui.model.PortalPayslip> table = new TableView<>();
+        table.getStyleClass().add("data-table");
+        table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+        table.setPlaceholder(new Label(t("portal.payslips.empty")));
+
+        TableColumn<com.benjagest.ui.model.PortalPayslip, String> cPeriod =
+                new TableColumn<>(t("portal.payslips.col.period"));
+        cPeriod.setCellValueFactory(c -> new SimpleStringProperty(
+                c.getValue().year() + "-" + String.format("%02d", c.getValue().month())));
+        cPeriod.setPrefWidth(110);
+        TableColumn<com.benjagest.ui.model.PortalPayslip, String> cGross =
+                new TableColumn<>(t("portal.payslips.col.gross"));
+        cGross.setCellValueFactory(c -> new SimpleStringProperty(money(
+                c.getValue().grossAmount() == null ? "0"
+                        : c.getValue().grossAmount().toPlainString())));
+        cGross.setPrefWidth(120);
+        TableColumn<com.benjagest.ui.model.PortalPayslip, String> cNet =
+                new TableColumn<>(t("portal.payslips.col.net"));
+        cNet.setCellValueFactory(c -> new SimpleStringProperty(money(
+                c.getValue().netAmount() == null ? "0"
+                        : c.getValue().netAmount().toPlainString())));
+        cNet.setPrefWidth(120);
+        TableColumn<com.benjagest.ui.model.PortalPayslip, String> cStatus =
+                new TableColumn<>(t("portal.payslips.col.status"));
+        cStatus.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().status()));
+        cStatus.setPrefWidth(120);
+
+        table.getColumns().addAll(java.util.List.of(cPeriod, cGross, cNet, cStatus));
+
+        Task<List<com.benjagest.ui.model.PortalPayslip>> task = new Task<>() {
+            @Override protected List<com.benjagest.ui.model.PortalPayslip> call() throws Exception {
+                return altaApiClient.listPortalPayslips();
+            }
+        };
+        task.setOnSucceeded(ev -> table.setItems(FXCollections.observableArrayList(task.getValue())));
+        task.setOnFailed(ev -> showError(t("portal.payslips.fail.title"),
+                task.getException() == null ? "" : task.getException().getMessage()));
+        start(task, "portal-payslips-load");
+
+        VBox.setVgrow(table, Priority.ALWAYS);
+        box.getChildren().addAll(hint, table);
+        return box;
+    }
+
+    /** Tab 3 — Mis notificaciones. */
+    private Node buildPortalNotificationsTab() {
+        VBox box = new VBox(12);
+        box.setPadding(new Insets(16));
+
+        Label hint = new Label(t("portal.notifications.hint"));
+        hint.setWrapText(true);
+        hint.getStyleClass().add("settings-hint");
+
+        TableView<com.benjagest.ui.model.PortalNotification> table = new TableView<>();
+        table.getStyleClass().add("data-table");
+        table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+        table.setPlaceholder(new Label(t("portal.notifications.empty")));
+
+        TableColumn<com.benjagest.ui.model.PortalNotification, String> cWhen =
+                new TableColumn<>(t("portal.notifications.col.when"));
+        cWhen.setCellValueFactory(c -> new SimpleStringProperty(
+                c.getValue().createdAt() == null || c.getValue().createdAt().length() < 16
+                        ? c.getValue().createdAt()
+                        : c.getValue().createdAt().substring(0, 16)));
+        cWhen.setPrefWidth(140);
+        TableColumn<com.benjagest.ui.model.PortalNotification, String> cSev =
+                new TableColumn<>(t("portal.notifications.col.severity"));
+        cSev.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().severity()));
+        cSev.setPrefWidth(110);
+        TableColumn<com.benjagest.ui.model.PortalNotification, String> cTitle =
+                new TableColumn<>(t("portal.notifications.col.title"));
+        cTitle.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().title()));
+        cTitle.setPrefWidth(220);
+        TableColumn<com.benjagest.ui.model.PortalNotification, String> cBody =
+                new TableColumn<>(t("portal.notifications.col.body"));
+        cBody.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().body()));
+
+        table.getColumns().addAll(java.util.List.of(cWhen, cSev, cTitle, cBody));
+
+        Task<List<com.benjagest.ui.model.PortalNotification>> task = new Task<>() {
+            @Override protected List<com.benjagest.ui.model.PortalNotification> call() throws Exception {
+                return altaApiClient.listPortalNotifications();
+            }
+        };
+        task.setOnSucceeded(ev -> table.setItems(FXCollections.observableArrayList(task.getValue())));
+        task.setOnFailed(ev -> showError(t("portal.notifications.fail.title"),
+                task.getException() == null ? "" : task.getException().getMessage()));
+        start(task, "portal-notifications-load");
+
+        VBox.setVgrow(table, Priority.ALWAYS);
+        box.getChildren().addAll(hint, table);
+        return box;
+    }
+
+    /** Tab 4 — Mis trabajos. Placeholder hasta que se decida PORT-2. */
+    private Node buildPortalJobsTab() {
+        VBox box = new VBox(12);
+        box.setPadding(new Insets(16));
+
+        Label hint = new Label(t("portal.jobs.hint"));
+        hint.setWrapText(true);
+        hint.getStyleClass().add("settings-hint");
+
+        TableView<com.benjagest.ui.model.PortalJob> table = new TableView<>();
+        table.getStyleClass().add("data-table");
+        table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+        table.setPlaceholder(new Label(t("portal.jobs.empty")));
+
+        TableColumn<com.benjagest.ui.model.PortalJob, String> cDate =
+                new TableColumn<>(t("portal.jobs.col.date"));
+        cDate.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().date()));
+        cDate.setPrefWidth(110);
+        TableColumn<com.benjagest.ui.model.PortalJob, String> cTitle =
+                new TableColumn<>(t("portal.jobs.col.title"));
+        cTitle.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().title()));
+        TableColumn<com.benjagest.ui.model.PortalJob, String> cStatus =
+                new TableColumn<>(t("portal.jobs.col.status"));
+        cStatus.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().status()));
+        cStatus.setPrefWidth(120);
+
+        table.getColumns().addAll(java.util.List.of(cDate, cTitle, cStatus));
+
+        Task<List<com.benjagest.ui.model.PortalJob>> task = new Task<>() {
+            @Override protected List<com.benjagest.ui.model.PortalJob> call() throws Exception {
+                return altaApiClient.listPortalJobs();
+            }
+        };
+        task.setOnSucceeded(ev -> table.setItems(FXCollections.observableArrayList(task.getValue())));
+        task.setOnFailed(ev -> { /* Si endpoint no existe aun, ignorar silenciosamente */ });
+        start(task, "portal-jobs-load");
+
+        VBox.setVgrow(table, Priority.ALWAYS);
+        box.getChildren().addAll(hint, table);
+        return box;
+    }
 
     private void showTeamModule() {
         currentModule = "team";
