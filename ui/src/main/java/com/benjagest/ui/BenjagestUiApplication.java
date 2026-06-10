@@ -8368,6 +8368,31 @@ public class BenjagestUiApplication extends Application {
                     + (c.taxIdentifier() == null || c.taxIdentifier().isBlank() ? "—" : c.taxIdentifier()));
             nif.getStyleClass().add("invoice-detail-line");
             clientDetail.getChildren().addAll(datos, nif);
+            // Tarde 2026-06-10: pintar también dirección postal si está
+            // rellena. Antes el editor solo mostraba NIF/email/teléfono
+            // aunque el cliente ya tuviera dirección en BD → el bloque
+            // del PDF salía completo pero el "preview" en el editor no.
+            StringBuilder addrBuf = new StringBuilder();
+            for (String part : new String[]{c.address(), c.postalCode(),
+                                             c.city(), c.province()}) {
+                if (part != null && !part.isBlank()) {
+                    if (addrBuf.length() > 0) addrBuf.append(", ");
+                    addrBuf.append(part);
+                }
+            }
+            String fullAddress = addrBuf.toString();
+            if (!fullAddress.isBlank()) {
+                Label addr = new Label(fullAddress);
+                addr.getStyleClass().add("invoice-detail-line");
+                addr.setWrapText(true);
+                clientDetail.getChildren().add(addr);
+            }
+            if (c.country() != null && !c.country().isBlank()
+                    && !"España".equalsIgnoreCase(c.country().trim())) {
+                Label cou = new Label(c.country());
+                cou.getStyleClass().add("invoice-detail-line");
+                clientDetail.getChildren().add(cou);
+            }
             if (c.email() != null && !c.email().isBlank()) {
                 Label em = new Label(t("editor.client.email_prefix") + c.email());
                 em.getStyleClass().add("invoice-detail-line");
