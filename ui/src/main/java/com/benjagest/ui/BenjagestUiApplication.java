@@ -15600,6 +15600,7 @@ public class BenjagestUiApplication extends Application {
                 new TableColumn<>(t("labor.templates.col.salary"));
         colSalary.setCellValueFactory(c -> new SimpleStringProperty(
                 c.getValue().grossSalary() == null ? "" : c.getValue().grossSalary().toPlainString() + " €"));
+        colSalary.setComparator(NUMERIC_STRING_COMPARATOR);  // VG-FULL-SCAN
         colSalary.setPrefWidth(110);
         TableColumn<com.benjagest.ui.model.ContractTemplate, String> colDescr =
                 new TableColumn<>(t("labor.templates.col.descr"));
@@ -16099,6 +16100,7 @@ public class BenjagestUiApplication extends Application {
                 new TableColumn<>(t("labor.contracts.col.salary"));
         colSalary.setCellValueFactory(c -> new SimpleStringProperty(
                 c.getValue().grossSalary() == null ? "" : c.getValue().grossSalary().toPlainString() + " €"));
+        colSalary.setComparator(NUMERIC_STRING_COMPARATOR);  // VG-FULL-SCAN
         colSalary.setPrefWidth(110);
         colSalary.setComparator(NUMERIC_STRING_COMPARATOR);
         TableColumn<com.benjagest.ui.model.ContractEntry, String> colStatus =
@@ -17245,6 +17247,7 @@ public class BenjagestUiApplication extends Application {
                 new TableColumn<>(t("labor.contracts.col.salary"));
         colSalary.setCellValueFactory(c -> new SimpleStringProperty(
                 c.getValue().grossSalary() == null ? "" : c.getValue().grossSalary().toPlainString() + " €"));
+        colSalary.setComparator(NUMERIC_STRING_COMPARATOR);  // VG-FULL-SCAN
         colSalary.setPrefWidth(110);
         TableColumn<com.benjagest.ui.model.ContractEntry, String> colStatus =
                 new TableColumn<>(t("labor.contracts.col.status"));
@@ -18472,16 +18475,19 @@ public class BenjagestUiApplication extends Application {
                     new TableColumn<>(t("reta.changes.col.date"));
             cDate.setCellValueFactory(c -> new SimpleStringProperty(
                     c.getValue().effectiveDate() == null ? "" : c.getValue().effectiveDate().toString()));
+            cDate.setComparator(ISO_DATE_COMPARATOR);  // VG-FULL-SCAN
             cDate.setPrefWidth(110);
             TableColumn<com.benjagest.ui.model.RetaBaseChangeEntry, String> cBase =
                     new TableColumn<>(t("reta.changes.col.base"));
             cBase.setCellValueFactory(c -> new SimpleStringProperty(
                     c.getValue().newBase() == null ? "" : c.getValue().newBase().toPlainString() + " €"));
+            cBase.setComparator(NUMERIC_STRING_COMPARATOR);  // VG-FULL-SCAN
             cBase.setPrefWidth(110);
             TableColumn<com.benjagest.ui.model.RetaBaseChangeEntry, String> cQuota =
                     new TableColumn<>(t("reta.changes.col.quota"));
             cQuota.setCellValueFactory(c -> new SimpleStringProperty(
                     c.getValue().newQuota() == null ? "" : c.getValue().newQuota().toPlainString() + " €"));
+            cQuota.setComparator(NUMERIC_STRING_COMPARATOR);  // VG-FULL-SCAN
             cQuota.setPrefWidth(110);
             TableColumn<com.benjagest.ui.model.RetaBaseChangeEntry, String> cReason =
                     new TableColumn<>(t("reta.changes.col.reason"));
