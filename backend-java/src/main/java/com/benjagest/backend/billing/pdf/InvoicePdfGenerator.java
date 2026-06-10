@@ -210,9 +210,13 @@ public class InvoicePdfGenerator {
 
         // === FILA 1 ===
 
-        // Col 1: hueco para el logo (cuando companies.logo_path exista,
-        // aquí va un Image.getInstance(...)). Altura mínima fija para que
-        // se equilibre con el numAndDate del lado derecho.
+        // Col 1: hueco para el logo. PORT-4 LOGO (2026-06-10) — la columna
+        // companies.logo_path ya existe (V87) y el endpoint
+        // /api/settings/company/logo guarda/devuelve los bytes. Falta el
+        // último paso: el generator necesita acceso a esos bytes. Como
+        // cambiar la firma rompe 3 callers (InvoiceEmailService,
+        // SalesInvoiceController, SalesInvoiceService), dejamos el slice
+        // de "logo en PDF" para una iteración aparte (decisión 2026-06-10).
         PdfPCell logoCell = new PdfPCell(new Phrase(" ", fMeta));
         logoCell.setBorder(Rectangle.NO_BORDER);
         logoCell.setMinimumHeight(50f);
