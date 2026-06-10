@@ -191,7 +191,10 @@ public class BenjagestUiApplication extends Application {
             "employee-portal",
             // PORT-3 SUG — Buzon de sugerencias/mejoras/bugs hacia el
             // fabricante. Per-tenant, cualquier rol puede sugerir.
-            "suggestions"
+            "suggestions",
+            // PORT-3 PERFIL — Preferencias personales del usuario logueado
+            // (idioma, avatar, bloqueo por inactividad, IA, ...).
+            "profile"
     );
 
     @Override
@@ -1958,6 +1961,11 @@ public class BenjagestUiApplication extends Application {
         if ("suggestions".equals(module)) {
             // PORT-3 SUG — Buzon de sugerencias hacia el fabricante.
             showSuggestionsModule();
+            return;
+        }
+        if ("profile".equals(module)) {
+            // PORT-3 PERFIL — Preferencias personales del usuario.
+            showProfileModule();
             return;
         }
         Task<ModuleData> task = new Task<>() {
@@ -10193,6 +10201,7 @@ public class BenjagestUiApplication extends Application {
                     if (v == null) v = tCalendarEn(key);
                     if (v == null) v = tEmployeePortalEn(key);
                     if (v == null) v = tSuggestionsEn(key);
+                    if (v == null) v = tProfileLockEn(key);
                     yield v != null ? v : (key.startsWith("column.") ? key.substring(7) : key);
                 }
             };
@@ -11087,6 +11096,7 @@ public class BenjagestUiApplication extends Application {
                 if (v == null) v = tCalendarEs(key);
                 if (v == null) v = tEmployeePortalEs(key);
                 if (v == null) v = tSuggestionsEs(key);
+                if (v == null) v = tProfileLockEs(key);
                 if (v != null) yield v;
                 yield key.startsWith("column.") ? key.substring(7) : switch (key) {
                 case "field.name" -> "Nombre";
@@ -11791,6 +11801,72 @@ public class BenjagestUiApplication extends Application {
             case "portal.jobs.col.date" -> "Fecha";
             case "portal.jobs.col.title" -> "Título";
             case "portal.jobs.col.status" -> "Estado";
+            default -> null;
+        };
+    }
+
+    /** PORT-3 PERFIL + LOCK — Helper i18n EN. */
+    private String tProfileLockEn(String key) {
+        return switch (key) {
+            case "module.profile" -> "My profile";
+            case "profile.title" -> "My profile";
+            case "profile.hint" -> "Personal preferences that follow your user across devices.";
+            case "profile.section.language" -> "Language";
+            case "profile.section.language.hint" -> "Interface language. Applied immediately when you save.";
+            case "profile.section.lock" -> "Auto-lock by inactivity";
+            case "profile.section.lock.hint" -> "After this many minutes without mouse or keyboard input, BENJAGEST locks and asks for your PIN. Useful for shared computers.";
+            case "profile.lock.timeout_label" -> "Minutes of inactivity";
+            case "profile.lock.zero_hint" -> "0 disables the auto-lock.";
+            case "profile.section.ai" -> "AI Copilot";
+            case "profile.section.ai.hint" -> "Reserved for the floating AI Copilot. The feature is not yet active; the flag is stored for when it ships.";
+            case "profile.ai.enable" -> "Enable AI Copilot when available";
+            case "profile.section.avatar" -> "Avatar";
+            case "profile.section.avatar.hint" -> "Local path to your avatar image. The file is not uploaded to the server.";
+            case "profile.avatar.path_prompt" -> "Path to PNG / JPG";
+            case "profile.avatar.browse" -> "Browse…";
+            case "profile.btn.save" -> "Save preferences";
+            case "profile.save.success.title" -> "Preferences saved";
+            case "profile.save.success.body" -> "Your preferences have been updated.";
+            case "profile.fail.title" -> "Could not load / save preferences";
+            case "lock.title" -> "Session locked";
+            case "lock.subtitle" -> "Enter your PIN to continue. Use Logout if you want to switch user.";
+            case "lock.btn.unlock" -> "Unlock";
+            case "lock.btn.logout" -> "Logout";
+            case "lock.fail" -> "Incorrect PIN.";
+            case "lock.no_device" -> "This computer is not paired. Use Logout and pair it again.";
+            default -> null;
+        };
+    }
+
+    /** PORT-3 PERFIL + LOCK — Helper i18n ES. */
+    private String tProfileLockEs(String key) {
+        return switch (key) {
+            case "module.profile" -> "Mi perfil";
+            case "profile.title" -> "Mi perfil";
+            case "profile.hint" -> "Preferencias personales que viajan contigo entre equipos.";
+            case "profile.section.language" -> "Idioma";
+            case "profile.section.language.hint" -> "Idioma de la interfaz. Se aplica al guardar.";
+            case "profile.section.lock" -> "Bloqueo por inactividad";
+            case "profile.section.lock.hint" -> "Tras estos minutos sin tocar el ratón ni el teclado, BENJAGEST se bloquea y pide tu PIN. Útil en ordenadores compartidos.";
+            case "profile.lock.timeout_label" -> "Minutos de inactividad";
+            case "profile.lock.zero_hint" -> "0 desactiva el auto-bloqueo.";
+            case "profile.section.ai" -> "Copilot IA";
+            case "profile.section.ai.hint" -> "Reservado para el Copilot IA flotante. Aún no está activo; la preferencia se guarda para cuando llegue.";
+            case "profile.ai.enable" -> "Activar Copilot IA cuando esté disponible";
+            case "profile.section.avatar" -> "Avatar";
+            case "profile.section.avatar.hint" -> "Ruta local a la imagen del avatar. El archivo no se sube al servidor.";
+            case "profile.avatar.path_prompt" -> "Ruta a PNG / JPG";
+            case "profile.avatar.browse" -> "Examinar…";
+            case "profile.btn.save" -> "Guardar preferencias";
+            case "profile.save.success.title" -> "Preferencias guardadas";
+            case "profile.save.success.body" -> "Tus preferencias se han actualizado.";
+            case "profile.fail.title" -> "No se pudieron cargar / guardar preferencias";
+            case "lock.title" -> "Sesión bloqueada";
+            case "lock.subtitle" -> "Introduce tu PIN para continuar. Pulsa Salir si quieres cambiar de usuario.";
+            case "lock.btn.unlock" -> "Desbloquear";
+            case "lock.btn.logout" -> "Salir";
+            case "lock.fail" -> "PIN incorrecto.";
+            case "lock.no_device" -> "Este equipo no está emparejado. Sal y empárejalo de nuevo.";
             default -> null;
         };
     }
@@ -18339,6 +18415,270 @@ public class BenjagestUiApplication extends Application {
         VBox.setVgrow(table, Priority.ALWAYS);
         box.getChildren().addAll(hint, table);
         return box;
+    }
+
+    // ============================================================
+    //  PORT-3 PERFIL — Modulo Mi perfil
+    //  ----------------------------------------------------------
+    //  Preferencias personales del usuario logueado: idioma, bloqueo
+    //  por inactividad (timeout PIN), estilo de salvapantallas, AI
+    //  Copilot (reservado), avatar, plantilla jornada (reservado).
+    //
+    //  La fila vive en user_settings (V84). El servicio crea defaults
+    //  on-the-fly si no existe.
+    // ============================================================
+    private void showProfileModule() {
+        currentModule = "profile";
+        recordNav(() -> showProfileModule());
+        select("profile");
+
+        VBox root = new VBox(16);
+        root.getStyleClass().add("content");
+
+        Label header = label(t("profile.title"), "settings-section-title");
+        Label hint = new Label(t("profile.hint"));
+        hint.setWrapText(true);
+        hint.getStyleClass().add("settings-hint");
+
+        VBox sections = new VBox(18);
+
+        // --- Seccion: Idioma ---
+        VBox sLang = settingsSection(t("profile.section.language"),
+                t("profile.section.language.hint"));
+        ComboBox<String> langCombo = new ComboBox<>(FXCollections.observableArrayList("es", "en"));
+        langCombo.setConverter(new javafx.util.StringConverter<>() {
+            @Override public String toString(String s) {
+                return "es".equals(s) ? "Español"
+                        : ("en".equals(s) ? "English" : (s == null ? "" : s));
+            }
+            @Override public String fromString(String s) { return s; }
+        });
+        sLang.getChildren().add(langCombo);
+
+        // --- Seccion: Bloqueo por inactividad (PORT-3 LOCK) ---
+        VBox sLock = settingsSection(t("profile.section.lock"),
+                t("profile.section.lock.hint"));
+        javafx.scene.control.Spinner<Integer> timeoutSpin =
+                new javafx.scene.control.Spinner<>(0, 120, 0, 1);
+        timeoutSpin.setEditable(true);
+        Label timeoutHint = new Label(t("profile.lock.zero_hint"));
+        timeoutHint.getStyleClass().add("settings-hint");
+        timeoutHint.setWrapText(true);
+        sLock.getChildren().addAll(
+                new Label(t("profile.lock.timeout_label")), timeoutSpin, timeoutHint);
+
+        // --- Seccion: IA Copilot (reservado) ---
+        VBox sAi = settingsSection(t("profile.section.ai"),
+                t("profile.section.ai.hint"));
+        CheckBox aiBox = new CheckBox(t("profile.ai.enable"));
+        sAi.getChildren().add(aiBox);
+
+        // --- Seccion: Avatar (ruta local) ---
+        VBox sAvatar = settingsSection(t("profile.section.avatar"),
+                t("profile.section.avatar.hint"));
+        TextField avatarField = new TextField();
+        avatarField.setPromptText(t("profile.avatar.path_prompt"));
+        Button browseBtn = new Button(t("profile.avatar.browse"));
+        browseBtn.setOnAction(ev -> {
+            javafx.stage.FileChooser fc = new javafx.stage.FileChooser();
+            fc.setTitle(t("profile.avatar.browse"));
+            fc.getExtensionFilters().add(new javafx.stage.FileChooser.ExtensionFilter(
+                    "PNG / JPG", "*.png", "*.jpg", "*.jpeg"));
+            java.io.File f = fc.showOpenDialog(root.getScene().getWindow());
+            if (f != null) avatarField.setText(f.getAbsolutePath());
+        });
+        HBox avatarRow = new HBox(8, avatarField, browseBtn);
+        HBox.setHgrow(avatarField, Priority.ALWAYS);
+        sAvatar.getChildren().add(avatarRow);
+
+        // Footer
+        Button saveBtn = new Button(t("profile.btn.save"));
+        saveBtn.setGraphic(icon("fas-save"));
+        saveBtn.getStyleClass().add("button-primary");
+        HBox footer = new HBox(8, saveBtn);
+        footer.setAlignment(Pos.CENTER_RIGHT);
+
+        sections.getChildren().addAll(sLang, sLock, sAi, sAvatar);
+        root.getChildren().addAll(header, hint, sections, footer);
+
+        // Carga inicial
+        Task<com.benjagest.ui.model.UserSettingsEntry> load = new Task<>() {
+            @Override protected com.benjagest.ui.model.UserSettingsEntry call() throws Exception {
+                return altaApiClient.getUserSettings();
+            }
+        };
+        load.setOnSucceeded(ev -> {
+            var s = load.getValue();
+            langCombo.setValue(s.language() == null || s.language().isBlank() ? "es" : s.language());
+            timeoutSpin.getValueFactory().setValue(s.pinTimeoutMin());
+            aiBox.setSelected(s.aiEnabled());
+            avatarField.setText(s.avatarPath() == null ? "" : s.avatarPath());
+        });
+        load.setOnFailed(ev -> showError(t("profile.fail.title"),
+                load.getException() == null ? "" : load.getException().getMessage()));
+        start(load, "profile-load");
+
+        saveBtn.setOnAction(ev -> {
+            Task<com.benjagest.ui.model.UserSettingsEntry> save = new Task<>() {
+                @Override protected com.benjagest.ui.model.UserSettingsEntry call() throws Exception {
+                    return altaApiClient.saveUserSettings(
+                            langCombo.getValue(),
+                            timeoutSpin.getValue(),
+                            "clock",
+                            aiBox.isSelected(),
+                            avatarField.getText(),
+                            "");
+                }
+            };
+            save.setOnSucceeded(s -> {
+                // Aplicar inmediatamente cambio de idioma
+                String newLang = save.getValue().language();
+                if ("en".equalsIgnoreCase(newLang) && language != Language.EN) {
+                    language = Language.EN;
+                } else if ("es".equalsIgnoreCase(newLang) && language != Language.ES) {
+                    language = Language.ES;
+                }
+                // Aplicar nuevo timeout LOCK
+                refreshLockTimeout(save.getValue().pinTimeoutMin());
+                Alert ok = new Alert(Alert.AlertType.INFORMATION);
+                ok.setTitle(t("profile.save.success.title"));
+                ok.setHeaderText(t("profile.save.success.body"));
+                ok.showAndWait();
+            });
+            save.setOnFailed(s -> showError(t("profile.fail.title"),
+                    save.getException() == null ? "" : save.getException().getMessage()));
+            start(save, "profile-save");
+        });
+
+        setCenterAnimated(scroll(root));
+    }
+
+    private VBox settingsSection(String title, String hint) {
+        VBox box = new VBox(8);
+        box.getStyleClass().add("settings-section");
+        Label t = new Label(title);
+        t.getStyleClass().add("settings-section-title");
+        Label h = new Label(hint);
+        h.setWrapText(true);
+        h.getStyleClass().add("settings-hint");
+        box.getChildren().addAll(t, h);
+        return box;
+    }
+
+    // ============================================================
+    //  PORT-3 LOCK — Bloqueo por inactividad
+    //  ----------------------------------------------------------
+    //  Cuando el usuario lleva N minutos sin tocar el raton ni el
+    //  teclado (configurado en user_settings.pin_timeout_min, 0 =
+    //  desactivado), aparece una Stage modal UNDECORATED que pide el
+    //  PIN del dispositivo. Solo se cierra cuando el PIN se valida
+    //  con pinLogin.
+    //
+    //  Implementacion minimalista: un Timeline que tick cada 30s y
+    //  compara now contra lastInputAt. lastInputAt se actualiza con
+    //  event filters globales en la Scene.
+    // ============================================================
+    private long lastInputAt = System.currentTimeMillis();
+    private int lockTimeoutMin = 0;
+    private javafx.animation.Timeline lockChecker = null;
+    private boolean lockShowing = false;
+
+    /** Actualiza el timeout activo y arranca/detiene el checker. */
+    private void refreshLockTimeout(int newTimeoutMin) {
+        this.lockTimeoutMin = Math.max(0, newTimeoutMin);
+        if (lockChecker != null) lockChecker.stop();
+        if (this.lockTimeoutMin <= 0) return;
+        installLockInputTracker();
+        lockChecker = new javafx.animation.Timeline(
+                new javafx.animation.KeyFrame(
+                        javafx.util.Duration.seconds(30),
+                        ev -> checkLock()));
+        lockChecker.setCycleCount(javafx.animation.Timeline.INDEFINITE);
+        lockChecker.play();
+    }
+
+    private boolean lockTrackerInstalled = false;
+    private void installLockInputTracker() {
+        if (lockTrackerInstalled) return;
+        if (root == null || root.getScene() == null) return;
+        root.getScene().addEventFilter(javafx.scene.input.MouseEvent.ANY,
+                ev -> lastInputAt = System.currentTimeMillis());
+        root.getScene().addEventFilter(javafx.scene.input.KeyEvent.ANY,
+                ev -> lastInputAt = System.currentTimeMillis());
+        lockTrackerInstalled = true;
+    }
+
+    private void checkLock() {
+        if (lockShowing || lockTimeoutMin <= 0) return;
+        long elapsedMin = (System.currentTimeMillis() - lastInputAt) / 60000L;
+        if (elapsedMin >= lockTimeoutMin) showLockStage();
+    }
+
+    /** Muestra una Stage UNDECORATED modal pidiendo el PIN. */
+    private void showLockStage() {
+        lockShowing = true;
+        javafx.stage.Stage stage = new javafx.stage.Stage();
+        stage.initStyle(javafx.stage.StageStyle.UNDECORATED);
+        stage.initModality(javafx.stage.Modality.APPLICATION_MODAL);
+        stage.setTitle("BENJAGEST — " + t("lock.title"));
+
+        Label title = new Label(t("lock.title"));
+        title.getStyleClass().add("hero-title");
+        Label sub = new Label(t("lock.subtitle"));
+        sub.getStyleClass().add("hero-body");
+        sub.setWrapText(true);
+
+        PasswordField pin = new PasswordField();
+        pin.setPromptText("PIN");
+        pin.setMaxWidth(220);
+        Label err = new Label("");
+        err.setStyle("-fx-text-fill: #b91c1c;");
+
+        Button unlock = new Button(t("lock.btn.unlock"));
+        unlock.getStyleClass().add("button-primary");
+        Button logoutBtn = new Button(t("lock.btn.logout"));
+
+        Runnable tryUnlock = () -> {
+            if (pin.getText() == null || pin.getText().isBlank()) return;
+            try {
+                com.benjagest.ui.service.DeviceConfig dc =
+                        com.benjagest.ui.service.DeviceConfig.load().orElse(null);
+                if (dc == null) {
+                    err.setText(t("lock.no_device"));
+                    return;
+                }
+                authApiClient.pinLogin(dc.deviceSecret(), pin.getText().trim());
+                // OK — refrescar lastInput y cerrar
+                lastInputAt = System.currentTimeMillis();
+                lockShowing = false;
+                stage.close();
+            } catch (Exception ex) {
+                err.setText(t("lock.fail"));
+                pin.clear();
+            }
+        };
+        unlock.setOnAction(ev -> tryUnlock.run());
+        pin.setOnAction(ev -> tryUnlock.run());
+        logoutBtn.setOnAction(ev -> {
+            lockShowing = false;
+            stage.close();
+            try { authApiClient.logout(); } catch (Exception ignore) {}
+            AuthSession.get().clear();
+            showLogin();
+        });
+
+        VBox box = new VBox(14, title, sub, pin, err, unlock, logoutBtn);
+        box.setAlignment(Pos.CENTER);
+        box.setPadding(new Insets(36));
+        box.setStyle("-fx-background-color: #0f1b2d;"
+                + " -fx-min-width: 460; -fx-min-height: 480;");
+        title.setStyle("-fx-text-fill: white; -fx-font-size: 22px;");
+        sub.setStyle("-fx-text-fill: #d7deea;");
+
+        Scene scene = new Scene(box);
+        stage.setScene(scene);
+        stage.setOnCloseRequest(ev -> ev.consume());  // no se cierra por X
+        stage.showAndWait();
     }
 
     // ============================================================
