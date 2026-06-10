@@ -26,13 +26,17 @@ INSERT INTO module_catalog
         display_order, advisory_only)
 VALUES (UUID(), 'employee-portal', 'Portal del empleado',
         'Vistas personales del empleado: su calendario laboral, sus nóminas, sus notificaciones y sus trabajos asignados. Visible para cualquier rol pero pensado para EMPLOYEE.',
-        NULL, 'fas-user-clock', 50, FALSE);
+        NULL, 'fas-user-clock', 50, FALSE)
+ON DUPLICATE KEY UPDATE id = id;
 
+-- Nota: el WHERE 1=1 es OBLIGATORIO. Sin el, MariaDB parsea el ON
+-- DUPLICATE KEY como condicion del CROSS JOIN ... ON, no del INSERT.
 INSERT INTO company_modules (id, company_id, module_id, active,
                               activated_at, activated_by)
 SELECT UUID(), c.id, m.id, TRUE, CURRENT_TIMESTAMP, NULL
   FROM companies c
   CROSS JOIN (SELECT id FROM module_catalog WHERE slug = 'employee-portal') m
+ WHERE 1 = 1
 ON DUPLICATE KEY UPDATE active = TRUE,
                         deactivated_at = NULL,
                         deactivated_by = NULL;
