@@ -77,7 +77,7 @@ public class TimeClockApiClient {
      * Si todo va bien, el dialog de la UI lo muestra al trabajador
      * para que lo guarde (mail, capturilla, etc).
      */
-    public String punch(String employeeId, String eventType) throws IOException, InterruptedException {
+    public PunchOutcome punch(String employeeId, String eventType) throws IOException, InterruptedException {
         String body = "{\"employeeId\":\"" + employeeId
                 + "\",\"eventType\":\"" + eventType
                 + "\",\"origin\":\"WEB\"}";
@@ -90,8 +90,30 @@ public class TimeClockApiClient {
         if (response.statusCode() < 200 || response.statusCode() >= 300) {
             throw new IOException("HTTP " + response.statusCode() + ": " + response.body());
         }
-        Matcher m = Pattern.compile("\"csv\"\\s*:\\s*\"([^\"]+)\"").matcher(response.body());
-        return m.find() ? m.group(1) : "";
+        String responseBody = response.body();
+        Matcher m = Pattern.compile("\"csv\"\\s*:\\s*\"([^\"]+)\"").matcher(responseBody);
+        String csv = m.find() ? m.group(1) : "";
+        // TC-CAL — parsear holidayWarning si el backend lo devolvio.
+        // Estructura JSON: "holidayWarning":{"holidayName":"...","holidayType":"FESTIVO","scope":"NATIONAL"}
+        String holidayName = null, holidayType = null, holidayScope = null;
+        Matcher mw = Pattern.compile(
+                "\"holidayWarning\"\\s*:\\s*\\{([^}]*)\\}").matcher(responseBody);
+        if (mw.find()) {
+            String inner = mw.group(1);
+            Matcher mn = Pattern.compile("\"holidayName\"\\s*:\\s*\"([^\"]*)\"").matcher(inner);
+            if (mn.find()) holidayName = mn.group(1);
+            Matcher mt = Pattern.compile("\"holidayType\"\\s*:\\s*\"([^\"]*)\"").matcher(inner);
+            if (mt.find()) holidayType = mt.group(1);
+            Matcher ms = Pattern.compile("\"scope\"\\s*:\\s*\"([^\"]*)\"").matcher(inner);
+            if (ms.find()) holidayScope = ms.group(1);
+        }
+        return new PunchOutcome(csv, holidayName, holidayType, holidayScope);
+    }
+
+    /** TC-CAL — Resultado de un fichaje: CSV + warning opcional. */
+    public record PunchOutcome(String csv, String holidayName,
+                                String holidayType, String holidayScope) {
+        public boolean hasHolidayWarning() { return holidayName != null; }
     }
 
     /**
