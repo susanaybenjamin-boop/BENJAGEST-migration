@@ -1463,6 +1463,55 @@ public class AltaApiClient {
     }
 
     // ============================================================
+    //  PORT-4 LOGO — Logo de empresa /api/settings/company/logo
+    // ============================================================
+
+    /** Sube un PNG/JPG. Devuelve true si fue OK; false si HTTP error. */
+    public boolean uploadCompanyLogo(java.io.File file)
+            throws IOException, InterruptedException {
+        if (file == null || !file.exists()) return false;
+        String boundary = "----benjagest-logo-" + System.currentTimeMillis();
+        String filename = file.getName().replace("\"", "");
+        String ext = filename.toLowerCase().endsWith(".png") ? "image/png" : "image/jpeg";
+        byte[] fileBytes = java.nio.file.Files.readAllBytes(file.toPath());
+        java.io.ByteArrayOutputStream body = new java.io.ByteArrayOutputStream();
+        body.write(("--" + boundary + "\r\n").getBytes());
+        body.write(("Content-Disposition: form-data; name=\"file\"; filename=\""
+                + filename + "\"\r\n").getBytes());
+        body.write(("Content-Type: " + ext + "\r\n\r\n").getBytes());
+        body.write(fileBytes);
+        body.write(("\r\n--" + boundary + "--\r\n").getBytes());
+        HttpResponse<String> r = send(req(baseUrl + "/settings/company/logo")
+                .header("Content-Type", "multipart/form-data; boundary=" + boundary)
+                .POST(java.net.http.HttpRequest.BodyPublishers.ofByteArray(body.toByteArray())));
+        if (r.statusCode() < 200 || r.statusCode() >= 300) {
+            throw new IOException("HTTP " + r.statusCode() + ": " + r.body());
+        }
+        return true;
+    }
+
+    /** Lee los bytes del logo actual. null si no hay (204). */
+    public byte[] getCompanyLogoBytes() throws IOException, InterruptedException {
+        java.net.http.HttpRequest.Builder b = java.net.http.HttpRequest.newBuilder(
+                java.net.URI.create(baseUrl + "/settings/company/logo")).GET();
+        com.benjagest.ui.service.AuthSession.get().authorize(b);
+        java.net.http.HttpResponse<byte[]> r = httpClient.send(b.build(),
+                java.net.http.HttpResponse.BodyHandlers.ofByteArray());
+        if (r.statusCode() == 204) return null;
+        if (r.statusCode() < 200 || r.statusCode() >= 300) {
+            throw new IOException("HTTP " + r.statusCode());
+        }
+        return r.body();
+    }
+
+    public void deleteCompanyLogo() throws IOException, InterruptedException {
+        HttpResponse<String> r = send(req(baseUrl + "/settings/company/logo").DELETE());
+        if (r.statusCode() < 200 || r.statusCode() >= 300) {
+            throw new IOException("HTTP " + r.statusCode() + ": " + r.body());
+        }
+    }
+
+    // ============================================================
     //  PORT-4 CLI — Editor extendido de clientes /api/customers-extended
     // ============================================================
 

@@ -4550,6 +4550,9 @@ public class BenjagestUiApplication extends Application {
         HBox actions = new HBox(save);
         actions.getStyleClass().add("settings-actions");
 
+        // PORT-4 LOGO (2026-06-10) — Sección Logo de empresa.
+        Node logoSection = buildCompanyLogoSection();
+
         VBox body = new VBox(16,
                 label(t("settings.company.section.general"), "settings-section-title"),
                 generalGrid,
@@ -4561,11 +4564,106 @@ public class BenjagestUiApplication extends Application {
                 label(t("settings.company.section.billing"), "settings-section-title"),
                 label(t("settings.company.section.billing.hint"), "settings-hint"),
                 billingGrid,
-                billingNote
+                billingNote,
+                new Separator(),
+                logoSection
         );
 
         Label sectionTitle = label(t("settings.company.section_label"), "settings-section-title");
         return tabLayout(sectionTitle, body, actions);
+    }
+
+    /** PORT-4 LOGO — Sección del logo de empresa en Configuración → Empresa. */
+    private Node buildCompanyLogoSection() {
+        VBox box = new VBox(10);
+        Label title = label(t("settings.company.section.logo"), "settings-section-title");
+        Label hint = new Label(t("settings.company.section.logo.hint"));
+        hint.setWrapText(true);
+        hint.getStyleClass().add("settings-hint");
+
+        javafx.scene.image.ImageView preview = new javafx.scene.image.ImageView();
+        preview.setFitWidth(200);
+        preview.setFitHeight(120);
+        preview.setPreserveRatio(true);
+        preview.setSmooth(true);
+        StackPane previewBox = new StackPane(preview);
+        previewBox.setMinHeight(120);
+        previewBox.setMaxWidth(220);
+        previewBox.setStyle("-fx-background-color: #f1f5f9; -fx-background-radius: 8;"
+                + " -fx-border-color: #cbd5e1; -fx-border-radius: 8;");
+
+        Button uploadBtn = new Button(t("settings.company.logo.upload"));
+        uploadBtn.setGraphic(icon("fas-upload"));
+        uploadBtn.getStyleClass().add("button-primary");
+        Button deleteBtn = new Button(t("settings.company.logo.delete"));
+        deleteBtn.setGraphic(icon("fas-trash"));
+        deleteBtn.setDisable(true);
+
+        Runnable reload = () -> {
+            Task<byte[]> task = new Task<>() {
+                @Override protected byte[] call() throws Exception {
+                    return altaApiClient.getCompanyLogoBytes();
+                }
+            };
+            task.setOnSucceeded(ev -> {
+                byte[] bytes = task.getValue();
+                if (bytes == null || bytes.length == 0) {
+                    preview.setImage(null);
+                    deleteBtn.setDisable(true);
+                } else {
+                    preview.setImage(new javafx.scene.image.Image(
+                            new java.io.ByteArrayInputStream(bytes)));
+                    deleteBtn.setDisable(false);
+                }
+            });
+            task.setOnFailed(ev -> { /* sin logo o sin permisos — ignorar */ });
+            start(task, "logo-load");
+        };
+
+        uploadBtn.setOnAction(ev -> {
+            javafx.stage.FileChooser fc = new javafx.stage.FileChooser();
+            fc.setTitle(t("settings.company.logo.upload"));
+            fc.getExtensionFilters().add(new javafx.stage.FileChooser.ExtensionFilter(
+                    "PNG / JPG", "*.png", "*.jpg", "*.jpeg"));
+            java.io.File f = fc.showOpenDialog(box.getScene().getWindow());
+            if (f == null) return;
+            Task<Boolean> up = new Task<>() {
+                @Override protected Boolean call() throws Exception {
+                    return altaApiClient.uploadCompanyLogo(f);
+                }
+            };
+            up.setOnSucceeded(s -> reload.run());
+            up.setOnFailed(s -> showError(t("settings.company.logo.fail.title"),
+                    up.getException() == null ? "" : up.getException().getMessage()));
+            start(up, "logo-upload");
+        });
+
+        deleteBtn.setOnAction(ev -> {
+            Alert confirm = new Alert(Alert.AlertType.CONFIRMATION);
+            confirm.setTitle(t("settings.company.logo.delete"));
+            confirm.setHeaderText(t("settings.company.logo.delete.confirm"));
+            confirm.showAndWait().ifPresent(rsp -> {
+                if (rsp == javafx.scene.control.ButtonType.OK) {
+                    Task<Void> d = new Task<>() {
+                        @Override protected Void call() throws Exception {
+                            altaApiClient.deleteCompanyLogo();
+                            return null;
+                        }
+                    };
+                    d.setOnSucceeded(s -> reload.run());
+                    d.setOnFailed(s -> showError(t("settings.company.logo.fail.title"),
+                            d.getException() == null ? "" : d.getException().getMessage()));
+                    start(d, "logo-delete");
+                }
+            });
+        });
+
+        HBox actions = new HBox(8, uploadBtn, deleteBtn);
+        actions.setAlignment(Pos.CENTER_LEFT);
+
+        reload.run();
+        box.getChildren().addAll(title, hint, previewBox, actions);
+        return box;
     }
 
     private void saveCompany(CompanyData data) {
@@ -10101,6 +10199,12 @@ public class BenjagestUiApplication extends Application {
                 case "settings.company.section.address" -> "Postal address";
                 case "settings.company.section.billing" -> "Billing data";
                 case "settings.company.section.billing.hint" -> "Administrative billing data only. Per-invoice texts (footer, legal notes, exempt VAT, reduced VAT, corrective notice) live in Billing → Settings → Legal texts.";
+                case "settings.company.section.logo" -> "Company logo";
+                case "settings.company.section.logo.hint" -> "PNG or JPG, max 5 MB. We auto-resize to ~400 px width and re-compress to under 2 MB. Used in invoice PDFs and as the corporate screensaver.";
+                case "settings.company.logo.upload" -> "Upload logo";
+                case "settings.company.logo.delete" -> "Remove logo";
+                case "settings.company.logo.delete.confirm" -> "Remove the current logo?";
+                case "settings.company.logo.fail.title" -> "Could not update the logo";
                 case "settings.company.billing_note" -> "ℹ The per-invoice footer, legal terms and other texts are configured in Billing → Settings → Legal texts. This avoids duplicated places to edit the same thing.";
                 case "settings.company.prompt.legal_name" -> "Legal name";
                 case "settings.company.prompt.trade_name" -> "Trade name";
@@ -10998,6 +11102,12 @@ public class BenjagestUiApplication extends Application {
             case "settings.company.section.address" -> "Direccion postal";
             case "settings.company.section.billing" -> "Datos de facturacion";
             case "settings.company.section.billing.hint" -> "Solo datos administrativos de facturacion. Los textos por factura (pie, condiciones legales, exencion IVA, IVA reducido, aviso rectificativa) viven en Facturacion → Configuracion → Textos legales.";
+            case "settings.company.section.logo" -> "Logo de la empresa";
+            case "settings.company.section.logo.hint" -> "PNG o JPG, máx 5 MB. Se redimensiona automáticamente al ancho ~400 px y se recomprime para quedar por debajo de 2 MB. Se usa en los PDF de factura y como salvapantallas corporativo.";
+            case "settings.company.logo.upload" -> "Subir logo";
+            case "settings.company.logo.delete" -> "Eliminar logo";
+            case "settings.company.logo.delete.confirm" -> "¿Eliminar el logo actual?";
+            case "settings.company.logo.fail.title" -> "No se pudo actualizar el logo";
             case "settings.company.billing_note" -> "ℹ El pie de factura, condiciones legales y demas textos por factura se configuran en Facturacion → Configuracion → Textos legales. Asi no hay dos sitios para editar lo mismo.";
             case "settings.company.prompt.legal_name" -> "Razon social";
             case "settings.company.prompt.trade_name" -> "Nombre comercial";
