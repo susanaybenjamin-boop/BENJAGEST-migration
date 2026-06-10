@@ -3,7 +3,9 @@
 > Lista única ordenada de mayor a menor importancia con TODO lo que hay que hacer en BENJAGEST.
 > Se va tachando conforme cada item se crea, prueba, commitea y mergea a `develop`.
 >
-> **Última revisión:** 2026-06-09 noche (Benjamin presente — cierre del día: revert + fix puerto MariaDB 3307 + bloque CAL-FIX 1-4 + humanizar event_type en Agenda). **Bloque RECURRENTES cerrado** con motor + UI + 7 kinds (SALES_INVOICE, PURCHASE, JOURNAL_ENTRY, ACCOUNTING_INCOME, ACCOUNTING_EXPENSE, TEMPLATE_APPLY, LOAN_AUTO_PAY) + transacciones REQUIRES_NEW aisladas + placeholders {MES}/{MES_MAY}/{AÑO}/{YY}/{M}/{D}/{T}/{MM}/{YYYY}/{DD}/{Q} + auto_proposed=TRUE + endpoint already-covers + from-recurring (check determinista via recurring_task_runs.generated_id) + candidatos detectables con banner + botón "Hacer recurrente" contextual en listados (cliente vinculado abre editor legal SALES_INVOICE, shadow abre ACCOUNTING_INCOME) + editor "Pago periódico sin factura" JOURNAL_ENTRY + autovinculación silenciosa asesoría (V64) + "Mi gestión" sidebar (IcoMoon fas-briefcase) + sub-tabs Recurrentes en empresario/cliente vinculado/cliente NO vinculado + badge "Creada por tu asesoría" + auto-resolver cuenta tercero por NIF + V65 ck_rt_kind con ACCOUNTING_INCOME/EXPENSE + commitSpinner fix + placeholder en cursor + purchase_invoice sintético al ejecutar ACCOUNTING_EXPENSE/JOURNAL_ENTRY para centralizar en listado Compras + auto-refresh sub-tabs vía RefreshBus.TOPIC_RECURRING + orígenes Diario unificados (solo "Venta"/"Gasto" con sufijo "(recurrente)" en concepto) + "Compra"→"Gasto" semánticamente correcto + acciones encima del listado (no scroll) + botón "Hacer recurrente" en buildClientBillingTab + buildClientSalesArchivedTab + sidebar asesoría renombrado "Facturacion clientes/Compras revisadas" → "Facturacion/Compras y Gastos" para igualar empresario.
+> **Última revisión:** 2026-06-10 (autonomía total — Benjamin fuera). 9 slices cerrados: FIX-T-LIMIT (extracción de keys calendar.* a tCalendarEn/Es para desbloquear compile que estaba roto pre-sesión), PORT-5 CAL-A (badge color por event_type), PORT-5 CAL-B (botón "Quitar de Agenda" con DELETE inverso al volcado), PORT-5 CAL-C (botón "Cargar festivos nacionales" con Easter algoritmo Meeus/Jones/Butcher), PORT-1 EMP-1..4 (módulo Portal del empleado con 4 tabs: Mi calendario, Mis nóminas, Mis notificaciones, Mis trabajos), PORT-3 SUG (módulo Sugerencias con CRUD), PORT-3 PERFIL+LOCK (preferencias usuario + auto-bloqueo por inactividad con PIN), PORT-4 CLI (rediseño editor cliente con TabPane y +10 campos: dirección postal, código interno, modo defecto). Migraciones: V82 (employee-portal), V83 (suggestions), V84 (user_settings + profile), V85 (customers extended). Sin tocar nada que requiera decisión arquitectural de Benjamin. **PORT-2 (Jornadas/Turnos/Plannings/Partes-dia) NO atacado** — bloque grande con decisión estructural pendiente "work logs con billing embebido vs separados". Detalle abajo en la sección de sesión.
+>
+> **Última revisión 2026-06-09 noche** (Benjamin presente — cierre del día: revert + fix puerto MariaDB 3307 + bloque CAL-FIX 1-4 + humanizar event_type en Agenda). **Bloque RECURRENTES cerrado** con motor + UI + 7 kinds (SALES_INVOICE, PURCHASE, JOURNAL_ENTRY, ACCOUNTING_INCOME, ACCOUNTING_EXPENSE, TEMPLATE_APPLY, LOAN_AUTO_PAY) + transacciones REQUIRES_NEW aisladas + placeholders {MES}/{MES_MAY}/{AÑO}/{YY}/{M}/{D}/{T}/{MM}/{YYYY}/{DD}/{Q} + auto_proposed=TRUE + endpoint already-covers + from-recurring (check determinista via recurring_task_runs.generated_id) + candidatos detectables con banner + botón "Hacer recurrente" contextual en listados (cliente vinculado abre editor legal SALES_INVOICE, shadow abre ACCOUNTING_INCOME) + editor "Pago periódico sin factura" JOURNAL_ENTRY + autovinculación silenciosa asesoría (V64) + "Mi gestión" sidebar (IcoMoon fas-briefcase) + sub-tabs Recurrentes en empresario/cliente vinculado/cliente NO vinculado + badge "Creada por tu asesoría" + auto-resolver cuenta tercero por NIF + V65 ck_rt_kind con ACCOUNTING_INCOME/EXPENSE + commitSpinner fix + placeholder en cursor + purchase_invoice sintético al ejecutar ACCOUNTING_EXPENSE/JOURNAL_ENTRY para centralizar en listado Compras + auto-refresh sub-tabs vía RefreshBus.TOPIC_RECURRING + orígenes Diario unificados (solo "Venta"/"Gasto" con sufijo "(recurrente)" en concepto) + "Compra"→"Gasto" semánticamente correcto + acciones encima del listado (no scroll) + botón "Hacer recurrente" en buildClientBillingTab + buildClientSalesArchivedTab + sidebar asesoría renombrado "Facturacion clientes/Compras revisadas" → "Facturacion/Compras y Gastos" para igualar empresario.
 >
 > **Sesión 2026-06-05 (referencia previa):** asesoría↔cliente + exports legales. 15 slices: ciclo invitación (UNLINK-SYNC + REINVITE + POLLING-FIX `sendAsOwner` + INSTANT-REFRESH + DEHU-POLLING), sidebar dual `Mi empresa` vs `Mis clientes` con cierre de la deuda `advisory_only` (DUAL-SIDEBAR + V43), bug crítico fichajes `EMP-USER-MAP`, trilogía exports verificables — TC-EXPORT, AUDIT-EXPORT, AUDIT-CHAIN (V44 hash encadenado en `audit_events` con FIX collation MariaDB 11.4 + endpoint `/verify` + display_name humano).
 >
@@ -32,6 +34,197 @@ Para no repetir en cada sección lo que ya está:
 - ✅ Slice C1: login real email/password con JWT, AuthSession con Bearer automático, selector de empresa, modo derivado de `company_type` (toggle eliminado).
 - ✅ Slice C3: módulo Configuración MVP — V9 + Jasypt + 3 controllers `/api/settings/*` con `@RequiresRole`/`@RequiresModule` + UI con TabPane (Empresa/Email SMTP/Módulos) + sticky footer + batched save de módulos + A4 sidebar dinámico (`/api/modules-catalog/active`). i18n cerrado 2026-06-02.
 - ✅ Fix de seguridad: `CustomerRepository.findById/findAllActive` filtran por `company_id` (era fuga pre-existente).
+
+---
+
+## 📅 Sesión 2026-06-10 (autonomía total — Benjamin fuera, sin Pablo)
+
+Sesión más larga de autonomía hasta la fecha. Benjamin pidió:
+"completar el backlog... mira CONTENDO GESTIONES como está cada
+función, súmale los estilos que tenemos aquí, y cuando termines me
+haces una pregunta — si no contesto al instante, sigue completando
+incluso decisiones que debería tomar yo".
+
+**Plan ejecutado**: 9 slices, todos compilan, todos mergeados a
+`develop`. Patrón "un commit por slice + push + merge --no-ff" sin
+romper la regla de oro.
+
+**Cerrado autónomamente**:
+
+1. ✅ **FIX-T-LIMIT** (`66ff009`): el método `t()` en
+   `BenjagestUiApplication.java` ya superaba el límite JVM de 64KB
+   por método ANTES de empezar (el commit `3e0a1c4` de docs no
+   compilaba). Extraídas las 40 keys `calendar.*` a nuevos helpers
+   `tCalendarEn/Es` siguiendo el patrón de `tNewModulesEs/En`,
+   `tTeamEn/Es`, `tPinLoginEs/En` ya existentes. Refactor puro,
+   sin keys nuevas. **Lección documentada**: si la app no compila
+   al arrancar, el primer slice de la sesión TIENE que ser
+   desbloqueo del compile. Esto va a volver a pasar — los helpers
+   ya son 8, conforme se añadan módulos seguiremos necesitando
+   extraer más bloques.
+
+2. ✅ **PORT-5 CAL-A — Badge color por event_type en Agenda**
+   (`66ff009` mismo commit que FIX-T-LIMIT): rojo para HOLIDAY,
+   azul para WORK_ADJUSTMENT, gris para WORK_CLOSURE, morado para
+   GENERAL. Aplicado en `dayEventCard()` como clase modificadora
+   sobre `calendar-event-card-type`. 4 reglas CSS nuevas.
+
+3. ✅ **PORT-5 CAL-B — Botón "Quitar de Agenda"** (`9da186d`):
+   inversa de `dump-to-agenda`. Endpoint `DELETE
+   /api/labor/work-calendars/{id}/dump-to-agenda` que borra solo
+   los eventos con `source_type='WORK_CALENDAR'` + `source_id IN
+   (SELECT id FROM holidays WHERE work_calendar_id=?)`. Idempotente
+   y NO toca eventos manuales del usuario. UI: botón `fas-calendar-minus`
+   en la top bar del calendario laboral con confirmación.
+
+4. ✅ **PORT-5 CAL-C — Botón "Cargar festivos nacionales"**
+   (`ebc8fa1`): sustituye al seed global que estaba en backlog.
+   Self-service por calendario: el usuario pulsa el botón y se
+   crean los 10 festivos nacionales fijos del año de ese calendario
+   (idempotente — solo añade los que faltan). **Viernes Santo
+   calculado con el algoritmo Meeus/Jones/Butcher** así funciona
+   para cualquier año, no solo 2026. Cubre 01/01, 06/01, Viernes
+   Santo, 01/05, 15/08, 12/10, 01/11, 06/12, 08/12, 25/12. Los
+   autonómicos siguen llegando por PDF.
+
+5. ✅ **PORT-5 CAL-D — CAL-IMPORT-MODAL** (ya estaba): el modal
+   side-by-side editable ya estaba implementado en sesiones
+   previas (CAL-FIX block + sesión 2026-06-04 con
+   `HolidayPdfExtractor`). Solo se confirma como cerrado en el
+   backlog.
+
+6. ✅ **PORT-1 EMP-1..4 — Portal del empleado con 4 tabs**
+   (`9602e22`): un único módulo `employee-portal` con TabPane (Mi
+   calendario / Mis nóminas / Mis notificaciones / Mis trabajos).
+   Decisión implícita aceptada: misma JavaFX en modo empleado, no
+   app aparte — el rol EMPLOYEE ya entra con PIN desde L4-4.
+   - V82 module_catalog + activación en TODAS las companies
+     (advisory_only=FALSE, display=50, icono fas-user-clock).
+   - Backend paquete `portal/`: `EmployeePortalService` con
+     `currentEmployeeIdOrNull` (no falla si OWNER no es empleado),
+     `listCalendar` (combina `calendar_events` + `medical_leaves`
+     del empleado en rango), `listPayslips`, `listNotifications`,
+     `listJobs`. Defensivo: try/catch alrededor de payslips y
+     advisory_notifications por si la tabla no existe.
+   - 4 modelos UI nuevos. AltaApiClient con 4 métodos. Helpers
+     `tEmployeePortalEn/Es` con ~50 keys ES+EN.
+   - Tab "Mis trabajos" queda como placeholder hasta decisión PORT-2
+     (work logs con billing embebido o separados).
+
+7. ✅ **PORT-3 SUG — Módulo Sugerencias** (`74f42ae`): buzón de
+   feedback hacia el equipo BENJAGEST. Per-tenant, cualquier rol
+   puede sugerir, OWNER/ADMIN cierra/borra. Espejo de
+   `sugerencias_180` de CONTENDO pero con nombres en inglés.
+   - V83 tabla `suggestions` con índices + módulo "suggestions"
+     (icono fas-lightbulb, display=880).
+   - Categorías: general/improvement/module/bug/other. Estados:
+     new/read/answered/closed.
+   - `SuggestionService` con whitelist de categorías y estados.
+     `SuggestionController` bajo `/api/suggestions`.
+   - UI: módulo `showSuggestionsModule` con tabla + topbar (Nueva
+     / Cerrar / Eliminar) + modal de formulario con combo categoría.
+   - `humanizeSuggestionCategory` + `humanizeSuggestionStatus` para
+     mostrar etiquetas traducidas sin cambiar códigos en BD.
+
+8. ✅ **PORT-3 PERFIL + LOCK — Preferencias usuario + bloqueo PIN**
+   (`0139e0a`): dos items del backlog cerrados en un bloque por
+   compartir tabla.
+   - V84 `user_settings` (user_id PK, language, pin_timeout_min,
+     screensaver_style, ai_enabled, avatar_path, workday_template)
+     con CASCADE al borrar user_account. Módulo "profile"
+     (fas-user-circle, display=870).
+   - `UserSettingsService` con `getCurrent` (devuelve defaults sin
+     crear fila si no existe) y `save` (UPSERT con validación de
+     rangos: timeout 0-120 min, language es|en).
+   - **PORT-3 PERFIL**: `showProfileModule` con 4 secciones
+     reutilizando `settings-section` (Idioma combo, Bloqueo
+     inactividad spinner 0-120 min, IA Copilot reservada, Avatar
+     con FileChooser local). Save aplica idioma inmediatamente.
+   - **PORT-3 LOCK**: estado `lastInputAt` + `lockTimeoutMin` +
+     `lockChecker` Timeline. Event filters globales en la Scene
+     (MouseEvent.ANY + KeyEvent.ANY) actualizan `lastInputAt`.
+     Timeline cada 30s, dispara `showLockStage` cuando elapsed >=
+     timeout. Stage UNDECORATED + APPLICATION_MODAL con PIN
+     PasswordField + botones Desbloquear / Salir. Verifica vía
+     `authApiClient.pinLogin(deviceSecret, pin)`.
+   - Helpers `tProfileLockEn/Es` con ~50 keys ES+EN.
+
+9. ✅ **PORT-4 CLI — Rediseño editor cliente con TabPane** (`d5cfd05`):
+   Benjamin pidió "la UI de crear clientes está obsoleta y faltan
+   campos". CONTENDO `app/admin/clientes` tenía dirección postal
+   completa + código interno + datos fiscales avanzados — todo eso
+   faltaba en BENJAGEST. Cambios aditivos sin tocar el formulario
+   genérico (otros módulos lo comparten).
+   - V85 ALTER customers ADD COLUMN address, city, province,
+     postal_code, country (default España), internal_code,
+     default_mode, phone, email, website. Índice
+     `ix_customers_internal_code` para búsquedas. Aditivo y
+     nullable — clientes existentes con NULL hasta editar.
+   - `CustomerExtendedController` bajo `/api/customers-extended`
+     con GET/PUT por id. Independiente del CustomerController
+     existente.
+   - Modelo `CustomerExtendedEntry` (24 campos) +
+     `getCustomerExtended/updateCustomerExtended` en AltaApiClient.
+   - `editSelected("customers", ...)` ahora desvía a
+     `showCustomerDetailDialog` en lugar del form genérico. Resto
+     de módulos siguen igual.
+   - `openCustomerDetailDialog`: TabPane con 3 tabs (Generales /
+     Dirección postal / Facturación) y 24 campos repartidos. Combo
+     de tipo (COMPANY/SELF_EMPLOYED/PUBLIC_ENTITY/OTHER). Validación
+     numérica del IVA y retención. Helper `formGrid(pairs)`
+     reutilizable.
+   - Helpers `tCliEditorEn/Es` con ~33 keys ES+EN.
+
+**Lo que NO se atacó** (decisiones conscientes — Benjamin tiene
+que entrar):
+
+- ⬜ **PORT-2 — Fichaje extensión (Jornadas/Turnos/Plannings/
+  Partes-dia)** — bloque enorme (CONTENDO tiene `app/admin/turnos`
+  + `app/admin/jornadas` con 7 componentes + `app/admin/plannings`
+  358 líneas + `app/admin/partes-dia` 572 líneas). Bloqueo
+  arquitectural: el backlog dice literal *"Decidir si work logs
+  con billing embebido (modelo CONTENDO) o separados (modelo
+  BENJAGEST actual)"*. Benjamin debe decidir antes de portar — si
+  embebido, hay que refactorizar también la tabla `sales_invoices`
+  para enlazar a work_logs; si separado, los work_logs viven
+  aparte y la facturación pesca opcional. La decisión cambia la
+  forma del schema, los endpoints, y todo el flujo. Lo dejo
+  apuntado en la lista grande de abajo (sigue 🟠 ALTA).
+
+- ⬜ **Backup local automático** — necesita decisión de Benjamin
+  sobre dónde guardar (ruta) y cuándo (cron o manual).
+- ⬜ **Dashboard widgets personalizables** — decisión de UX (drag
+  drop, layout móvil).
+- ⬜ **Reconciliación bancaria asistida con sugerencias ML** —
+  toca el núcleo contable cerrado el 06-06, zona caliente sin
+  Benjamin delante.
+- ⬜ **VF-SIGN-XADES-AEAT estricto + VF3-SOAP afinado** —
+  requieren FNMT real y testing en sede AEAT, no es atacable
+  autónomamente.
+- ⬜ **Conector DEHú real / SS RED / SILTRA real** — requieren
+  credenciales reales.
+- ⬜ **AI Copilot / PWA / Google Calendar OAuth / Email personal
+  OAuth** — decisiones estructurales o requieren credenciales.
+
+**Pendiente real para Benjamin al volver**:
+
+1. Probar los 9 slices nuevos:
+   - Agenda → comprobar que los badges salen coloreados según tipo.
+   - Calendario laboral → ver botones nuevos "Quitar de Agenda" y
+     "Cargar festivos nacionales".
+   - Sidebar → debería aparecer "Portal del empleado",
+     "Sugerencias", "Mi perfil" como módulos nuevos.
+   - Mi perfil → guardar idioma EN y comprobar que se aplica. Subir
+     timeout a 1 min, esperar, ver el lock screen.
+   - Customers → doble click en un cliente debe abrir el editor
+     nuevo con tabs.
+
+2. Decisión sobre **TC-CAL** (heredada de 06-09): warning amarillo
+   o bloqueo duro al fichar en día festivo del calendario del
+   empleado.
+
+3. Decisión sobre **PORT-2 work logs**: embebido en factura
+   (CONTENDO) o separado (actual BENJAGEST + enlace opcional).
 
 ---
 
@@ -555,13 +748,13 @@ Cuando lo crítico esté cerrado.
 
 ### UI / UX features que CONTENDO tiene
 
-- ⬜ **Lock screen + PIN por inactividad** — desbloqueo de pantalla con `pin_timeout_minutes` y `screensaver_style`. Decisión 6 architecture. [§2.3 `gap-analysis-config-ui`](gap-analysis-config-ui.md).
+- ✅ **Lock screen + PIN por inactividad** — PORT-3 LOCK (sesión 2026-06-10, `0139e0a`). Timeline cada 30s + event filters globales en Scene. Stage UNDECORATED modal con PIN PasswordField. Configurable desde "Mi perfil" (0-120 min). [§2.3 `gap-analysis-config-ui`](gap-analysis-config-ui.md).
 - 🔵 **Command Palette `Ctrl+K`** — buscador global rápido. Implementado el palette + atajos (Ctrl+K abrir, Ctrl+N nueva factura, Ctrl+F facturación, Ctrl+H inicio, F5 refresh, mouse BACK/FORWARD) en sesión 2026-06-02 (i18n incluida). Pendiente: ampliar lista de acciones según vayan saliendo módulos. [§2.2 `gap-analysis-config-ui`](gap-analysis-config-ui.md).
 - ⬜ **Dashboard widgets personalizables** — por usuario, activar/desactivar/reordenar. Layout escritorio vs móvil. [§2.1 `gap-analysis-config-ui`](gap-analysis-config-ui.md).
-- ⬜ **Preferencias por usuario** — tabla `user_settings` o ampliación de `user_accounts` (avatar, `ai_enabled`, plantilla jornada, etc.). [§1 `gap-analysis-config-ui`](gap-analysis-config-ui.md).
+- ✅ **Preferencias por usuario** — PORT-3 PERFIL (sesión 2026-06-10, `0139e0a`). V84 tabla `user_settings` (language, pin_timeout_min, screensaver_style, ai_enabled, avatar_path, workday_template). Módulo "profile" con 4 secciones (Idioma, Bloqueo inactividad, IA Copilot reservada, Avatar). [§1 `gap-analysis-config-ui`](gap-analysis-config-ui.md).
 - ⬜ **Backup local automático** — equivalente JavaFX a la File System Access API de CONTENDO. [§3 `gap-analysis-config-ui`](gap-analysis-config-ui.md).
 
-- ⬜ **Ui para crear clientes** — la que ahora hay esta un poco obsoleta, no va a corde con la ui que existe, hay que remodelarla, incluso pienso que faltan campos por añadir.
+- ✅ **Ui para crear clientes** — PORT-4 CLI (sesión 2026-06-10, `d5cfd05`). V85 ALTER customers + 10 campos nuevos (address, city, province, postal_code, country, internal_code, default_mode, phone, email, website). `CustomerExtendedController` independiente bajo `/api/customers-extended`. `showCustomerDetailDialog` con TabPane (Generales / Dirección postal / Facturación) y 24 campos. Combo de tipo. Validación numérica IVA + retención.
 
 ### Compras / pagos / banco
 
@@ -571,39 +764,43 @@ Cuando lo crítico esté cerrado.
 
 ### Workflow trabajos
 
-- ⬜ **Partes de día con validación admin** — empleado crea, admin valida, entonces facturable. [§11.C](gap-analysis-contendo.md).
-- ⬜ Decidir si **work logs con billing embebido** (modelo CONTENDO) o separados (modelo BENJAGEST actual). [§11.B](gap-analysis-contendo.md).
+- ⬜ **Partes de día con validación admin** — empleado crea, admin valida, entonces facturable. [§11.C](gap-analysis-contendo.md). *(Ver bloque PORT-2 abajo en "Fichajes extensión".)*
+- ⬜ **Decidir work logs con billing embebido vs separados** [§11.B](gap-analysis-contendo.md) — **CRÍTICO para desbloquear bloque PORT-2 entero**. Sesión 2026-06-10 lo dejó marcado como decisión bloqueante.
 
 ### Portal empleado
 
-- ⬜ Decisión arquitectura UI: ¿misma JavaFX en modo empleado o app aparte?
-- ⬜ Vista calendario empleado.
-- ⬜ Nóminas descargables.
-- ⬜ Notificaciones empleado.
-- ⬜ Lista trabajos asignados.
+- ✅ Decisión arquitectura UI — misma JavaFX en modo empleado (no app aparte). Asumida en sesión 2026-06-10 PORT-1 dado que el rol EMPLOYEE ya entra con PIN desde L4-4.
+- ✅ Vista calendario empleado — PORT-1 EMP-1 (sesión 2026-06-10, `9602e22`). Tab "Mi calendario" del módulo Portal del empleado. Combina `calendar_events` + `medical_leaves` propios en rango configurable.
+- ✅ Nóminas descargables — PORT-1 EMP-2 (sesión 2026-06-10, `9602e22`). Tab "Mis nóminas" lee `payslips` del empleado (read-only). Descarga PDF pendiente (slice futuro EMP-PAY-PDF cuando se cierre el bloque nóminas).
+- ✅ Notificaciones empleado — PORT-1 EMP-3 (sesión 2026-06-10, `9602e22`). Tab "Mis notificaciones" lee `advisory_notifications` con target_user_id NULL o = currentUser.
+- ✅ Lista trabajos asignados — PORT-1 EMP-4 (sesión 2026-06-10, `9602e22`). Tab "Mis trabajos" placeholder hasta decisión PORT-2 (work logs embebidos vs separados).
 
-### Fichajes (extensión más allá del legal mínimo)
+### Fichajes (extensión más allá del legal mínimo) — bloque PORT-2
 
-- ⬜ Plantillas de jornada complejas (días tipo, bloques, excepciones).
-- ⬜ Asignación plantillas a empleados.
-- ⬜ Turnos (`turnos_180`, `turno_bloques_180`).
-- ⬜ Plannings (ruta `admin/planings`).
-- ⬜ Fichajes sospechosos (detección de patrones).
+- ⬜ **PORT-2 — Bloque entero pendiente de decisión arquitectural** (sesión 2026-06-10 no lo atacó). Benjamin tiene que decidir antes: **¿work logs con billing embebido (modelo CONTENDO, partes-dia.facturable) o separados (modelo BENJAGEST actual con enlace opcional)?**. Sub-items que dependen de esto:
+  - ⬜ Plantillas de jornada complejas (días tipo, bloques, excepciones). CONTENDO `app/admin/jornadas` con 7 componentes (PlantillasPanel, BloquesEditor, AsignacionPanel, CentrosTrabajoPanel, CopyDiasModal, DeletePlantillaModal, Modal).
+  - ⬜ Asignación plantillas a empleados.
+  - ⬜ Turnos (`turnos_180`, `turno_bloques_180`). CONTENDO `app/admin/turnos` (CrearTurnoForm + page).
+  - ⬜ Plannings (ruta `admin/planings`, 358 líneas en CONTENDO).
+  - ⬜ Partes de día con validación admin (CONTENDO 572 líneas).
+  - ⬜ Fichajes sospechosos (detección de patrones).
+- *(Nota PORT-1 EMP-4)*: el tab "Mis trabajos" del Portal del empleado queda como placeholder vacío hasta que PORT-2 esté decidido. Endpoint `/api/portal/jobs` ya existe y devuelve `[]`; cuando exista la tabla `work_logs` o equivalente, basta con cambiar `EmployeePortalService.listJobs()` para leer de ahí.
 
 ### Calendario
 
-- ⬜ Festivos nacionales/CCAA seed (`festivos_es_180`, 58 filas).
+- ✅ Festivos nacionales seed — PORT-5 CAL-C (sesión 2026-06-10, `ebc8fa1`). Botón "Cargar festivos nacionales" en cada calendario laboral. 10 festivos fijos + Viernes Santo dinámico (Meeus/Jones/Butcher). Los autonómicos siguen importándose por PDF.
 - ⬜ Calendario laboral por empresa (mezcla festivos + cierres propios).
 - ⬜ Integración Google Calendar bidireccional (webhooks + mapeo + log sync).
 - ⬜ Importación masiva de calendarios.
-- ⬜ **CAL-IMPORT-MODAL** — modal de comparación al importar calendario laboral (replicar CONTENDO). Tras detectar eventos desde un PDF/Excel del calendario, abrir un **modal lado-a-lado** con: (a) lista de eventos detectados con tipo (festivo nacional, festivo autonómico, festivo local, cierre empresa, día vacacional, día partido…), fecha, descripción, badge de confianza; (b) lista actual ya en el sistema para ese año. El usuario puede: corregir el tipo/fecha/descripción inline, **añadir** días que el extractor no detectó, **eliminar** falsos positivos, y al pulsar "Volcar" solo se persisten los eventos validados. Mismo extractor de layout/regex que usamos para PDFs de compras (con parsers específicos por formato — calendario laboral CCAA suele venir como PDF tabular o como BOE). Diseño similar a importación de bancos en CONTENDO: previsualización editable antes del commit a BD. Fuera del scope hasta que el módulo Calendario laboral exista; cuando se ataque, abrirlo como slice CAL-IMPORT que reuse `PdfTextExtractor` + un `CalendarParser` específico.
+- ✅ **CAL-IMPORT-MODAL** — ya cerrado en sesiones previas (CAL-FIX block + sesión 2026-06-04). Confirmado como PORT-5 CAL-D en sesión 2026-06-10. Modal side-by-side editable con `HolidayPdfExtractor`. Resto del texto original abajo para referencia histórica de qué requisitos cubría:
+- *(Histórico)* — modal de comparación al importar calendario laboral (replicar CONTENDO). Tras detectar eventos desde un PDF/Excel del calendario, abrir un **modal lado-a-lado** con: (a) lista de eventos detectados con tipo (festivo nacional, festivo autonómico, festivo local, cierre empresa, día vacacional, día partido…), fecha, descripción, badge de confianza; (b) lista actual ya en el sistema para ese año. El usuario puede: corregir el tipo/fecha/descripción inline, **añadir** días que el extractor no detectó, **eliminar** falsos positivos, y al pulsar "Volcar" solo se persisten los eventos validados. Mismo extractor de layout/regex que usamos para PDFs de compras (con parsers específicos por formato — calendario laboral CCAA suele venir como PDF tabular o como BOE). Diseño similar a importación de bancos en CONTENDO: previsualización editable antes del commit a BD. Fuera del scope hasta que el módulo Calendario laboral exista; cuando se ataque, abrirlo como slice CAL-IMPORT que reuse `PdfTextExtractor` + un `CalendarParser` específico.
 
 ---
 
 ## 🟢 BAJA — para más adelante
 
 - ⬜ Alertas de seguridad (`security_alerts_180`) — intentos login, accesos sospechosos.
-- ⬜ Sugerencias (`sugerencias_180`).
+- ✅ Sugerencias (`sugerencias_180`) — PORT-3 SUG (sesión 2026-06-10, `74f42ae`). V83 tabla `suggestions` + módulo "suggestions". Categorías general/improvement/module/bug/other. Estados new/read/answered/closed. CRUD + modal de alta + confirmaciones.
 - ⬜ Análisis BOE (`boe_analysis_180`).
 - ⬜ **Acceso PWA / móvil** — el cliente JavaFX deja fuera el caso móvil. ¿Cómo accederán los clientes desde el móvil? [§2.4 `gap-analysis-config-ui`](gap-analysis-config-ui.md).
 - ⬜ **Email personal via Google OAuth2** — a nivel de usuario, distinto del SMTP empresa. [§1 `gap-analysis-config-ui`](gap-analysis-config-ui.md).
