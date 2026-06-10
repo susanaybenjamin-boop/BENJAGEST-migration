@@ -37,17 +37,23 @@ DELETE FROM module_catalog
 -- ---------------------------------------------------------------------------
 -- (4) Logo empresa: path en disco al PNG/JPG.
 --      Aditivo y nullable — empresas existentes con NULL hasta subir uno.
+--      IF NOT EXISTS: V87 ya pudo ejecutarse a medias en un intento
+--      anterior antes de fallar en la siguiente clausula. ALTER en
+--      MariaDB no es transaccional, por eso queda persistido.
 -- ---------------------------------------------------------------------------
 ALTER TABLE companies
-    ADD COLUMN logo_path VARCHAR(500) NULL AFTER website;
+    ADD COLUMN IF NOT EXISTS logo_path VARCHAR(500) NULL AFTER website;
 
 -- ---------------------------------------------------------------------------
 -- (5) PIN de sesión: hash bcrypt 60 chars. Separado del PIN de
---     vinculación (que vive en device_tokens). Nullable porque hay
+--     vinculación (que vive en EMPLOYEES.pin_hash desde V3/V70 — NO en
+--     user_accounts como asumí inicialmente). Nullable porque hay
 --     usuarios que no usarán bloqueo (timeout=0).
+--     Sin AFTER porque user_accounts no tiene pin_hash; la columna
+--     queda al final, que es lo normal en MariaDB.
 -- ---------------------------------------------------------------------------
 ALTER TABLE user_accounts
-    ADD COLUMN session_pin_hash VARCHAR(255) NULL AFTER pin_hash;
+    ADD COLUMN IF NOT EXISTS session_pin_hash VARCHAR(255) NULL;
 
 -- ---------------------------------------------------------------------------
 -- (6) Limpieza de user_settings: las preferencias que nos quedan son
