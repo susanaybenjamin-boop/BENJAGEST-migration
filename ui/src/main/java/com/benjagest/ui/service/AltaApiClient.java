@@ -1463,6 +1463,159 @@ public class AltaApiClient {
     }
 
     // ============================================================
+    //  Centros de trabajo /api/labor/work-centers (V89)
+    // ============================================================
+
+    public List<com.benjagest.ui.model.WorkCenterEntry> listWorkCenters()
+            throws IOException, InterruptedException {
+        HttpResponse<String> r = send(req(baseUrl + "/labor/work-centers").GET());
+        if (r.statusCode() < 200 || r.statusCode() >= 300) {
+            throw new IOException("HTTP " + r.statusCode() + ": " + r.body());
+        }
+        java.util.List<com.benjagest.ui.model.WorkCenterEntry> out = new java.util.ArrayList<>();
+        for (String obj : splitTopLevelObjects(r.body())) {
+            out.add(new com.benjagest.ui.model.WorkCenterEntry(
+                    textField(obj, "id"),
+                    textField(obj, "name"),
+                    textField(obj, "address"),
+                    textField(obj, "city"),
+                    textField(obj, "province"),
+                    textField(obj, "postalCode"),
+                    bigDecField(obj, "lat"),
+                    bigDecField(obj, "lng"),
+                    intFieldOrZero(obj, "radioM"),
+                    textField(obj, "geoPolicy"),
+                    textField(obj, "notes"),
+                    boolField(obj, "active")));
+        }
+        return out;
+    }
+
+    public com.benjagest.ui.model.WorkCenterEntry saveWorkCenter(
+            String id, String name, String address, String city,
+            String province, String postalCode,
+            java.math.BigDecimal lat, java.math.BigDecimal lng,
+            Integer radioM, String geoPolicy, String notes)
+            throws IOException, InterruptedException {
+        StringBuilder b = new StringBuilder("{");
+        b.append("\"name\":").append(jsonString(name));
+        b.append(",\"address\":").append(jsonString(address == null ? "" : address));
+        b.append(",\"city\":").append(jsonString(city == null ? "" : city));
+        b.append(",\"province\":").append(jsonString(province == null ? "" : province));
+        b.append(",\"postalCode\":").append(jsonString(postalCode == null ? "" : postalCode));
+        if (lat != null) b.append(",\"lat\":").append(lat.toPlainString());
+        if (lng != null) b.append(",\"lng\":").append(lng.toPlainString());
+        if (radioM != null) b.append(",\"radioM\":").append(radioM);
+        b.append(",\"geoPolicy\":").append(jsonString(geoPolicy == null ? "info" : geoPolicy));
+        b.append(",\"notes\":").append(jsonString(notes == null ? "" : notes));
+        b.append('}');
+        String url = id == null || id.isBlank()
+                ? baseUrl + "/labor/work-centers"
+                : baseUrl + "/labor/work-centers/" + id;
+        java.net.http.HttpRequest.Builder builder = req(url)
+                .header("Content-Type", "application/json");
+        if (id == null || id.isBlank()) {
+            builder.POST(java.net.http.HttpRequest.BodyPublishers.ofString(b.toString()));
+        } else {
+            builder.PUT(java.net.http.HttpRequest.BodyPublishers.ofString(b.toString()));
+        }
+        HttpResponse<String> r = send(builder);
+        if (r.statusCode() < 200 || r.statusCode() >= 300) {
+            throw new IOException("HTTP " + r.statusCode() + ": " + r.body());
+        }
+        String obj = r.body();
+        return new com.benjagest.ui.model.WorkCenterEntry(
+                textField(obj, "id"),
+                textField(obj, "name"),
+                textField(obj, "address"),
+                textField(obj, "city"),
+                textField(obj, "province"),
+                textField(obj, "postalCode"),
+                bigDecField(obj, "lat"),
+                bigDecField(obj, "lng"),
+                intFieldOrZero(obj, "radioM"),
+                textField(obj, "geoPolicy"),
+                textField(obj, "notes"),
+                boolField(obj, "active"));
+    }
+
+    public void deleteWorkCenter(String id) throws IOException, InterruptedException {
+        HttpResponse<String> r = send(req(baseUrl + "/labor/work-centers/" + id).DELETE());
+        if (r.statusCode() < 200 || r.statusCode() >= 300) {
+            throw new IOException("HTTP " + r.statusCode() + ": " + r.body());
+        }
+    }
+
+    // ============================================================
+    //  PORT-2 — Work logs /api/work-logs
+    // ============================================================
+
+    public List<com.benjagest.ui.model.WorkLogEntry> listWorkLogs(
+            java.time.LocalDate from, java.time.LocalDate to)
+            throws IOException, InterruptedException {
+        HttpResponse<String> r = send(req(
+                baseUrl + "/work-logs?from=" + from + "&to=" + to).GET());
+        if (r.statusCode() < 200 || r.statusCode() >= 300) {
+            throw new IOException("HTTP " + r.statusCode() + ": " + r.body());
+        }
+        java.util.List<com.benjagest.ui.model.WorkLogEntry> out = new java.util.ArrayList<>();
+        for (String obj : splitTopLevelObjects(r.body())) {
+            out.add(new com.benjagest.ui.model.WorkLogEntry(
+                    textField(obj, "id"),
+                    textField(obj, "employeeId"),
+                    textField(obj, "logDate"),
+                    intFieldOrZero(obj, "minutesWorked"),
+                    textField(obj, "customerId"),
+                    textField(obj, "description"),
+                    boolField(obj, "billable"),
+                    bigDecField(obj, "billableAmount"),
+                    textField(obj, "status"),
+                    textField(obj, "billedInvoiceLineId")));
+        }
+        return out;
+    }
+
+    public com.benjagest.ui.model.WorkLogEntry createWorkLog(
+            String employeeId, java.time.LocalDate logDate, int minutesWorked,
+            String customerId, String description, boolean billable,
+            java.math.BigDecimal billableAmount)
+            throws IOException, InterruptedException {
+        StringBuilder b = new StringBuilder("{");
+        b.append("\"employeeId\":").append(jsonString(employeeId));
+        b.append(",\"logDate\":").append(jsonString(logDate.toString()));
+        b.append(",\"minutesWorked\":").append(minutesWorked);
+        if (customerId != null && !customerId.isBlank()) {
+            b.append(",\"customerId\":").append(jsonString(customerId));
+        }
+        if (description != null && !description.isBlank()) {
+            b.append(",\"description\":").append(jsonString(description));
+        }
+        b.append(",\"isBillable\":").append(billable);
+        if (billableAmount != null) {
+            b.append(",\"billableAmount\":").append(billableAmount.toPlainString());
+        }
+        b.append('}');
+        HttpResponse<String> r = send(req(baseUrl + "/work-logs")
+                .header("Content-Type", "application/json")
+                .POST(java.net.http.HttpRequest.BodyPublishers.ofString(b.toString())));
+        if (r.statusCode() < 200 || r.statusCode() >= 300) {
+            throw new IOException("HTTP " + r.statusCode() + ": " + r.body());
+        }
+        String obj = r.body();
+        return new com.benjagest.ui.model.WorkLogEntry(
+                textField(obj, "id"),
+                textField(obj, "employeeId"),
+                textField(obj, "logDate"),
+                intFieldOrZero(obj, "minutesWorked"),
+                textField(obj, "customerId"),
+                textField(obj, "description"),
+                boolField(obj, "billable"),
+                bigDecField(obj, "billableAmount"),
+                textField(obj, "status"),
+                textField(obj, "billedInvoiceLineId"));
+    }
+
+    // ============================================================
     //  PORT-4 SESSION — Sesion (timeout + PIN + salvapantallas)
     //                   /api/settings/session
     // ============================================================

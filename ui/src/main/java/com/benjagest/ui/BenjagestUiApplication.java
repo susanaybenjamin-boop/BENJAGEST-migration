@@ -12283,6 +12283,47 @@ public class BenjagestUiApplication extends Application {
             case "settings.session.saver.logo" -> "Company logo centered";
             case "settings.session.saver.dark" -> "Plain dark";
             case "settings.session.saver.carousel" -> "Logo carousel (animated)";
+            // PORT-2 SHIFTS — sub-tab Labor "Partes / jornadas"
+            case "labor.tab.shifts" -> "Shifts / time sheets";
+            case "labor.shifts.hint" -> "Daily time sheets reported by employees. Manual entry available. When the tablet/mobile employee app ships, this tab visualizes what they report from the field.";
+            case "labor.shifts.from" -> "From";
+            case "labor.shifts.to" -> "To";
+            case "labor.shifts.reload" -> "Refresh";
+            case "labor.shifts.add" -> "New time sheet";
+            case "labor.shifts.add.header" -> "Create a manual time-sheet entry.";
+            case "labor.shifts.add.desc_prompt" -> "What was done that day…";
+            case "labor.shifts.add.amount_prompt" -> "Billable amount (optional)";
+            case "labor.shifts.add.missing" -> "Employee and date are required.";
+            case "labor.shifts.add.invalid" -> "Minutes and amount must be numeric.";
+            case "labor.shifts.empty" -> "No time sheets in this range.";
+            case "labor.shifts.fail.title" -> "Could not load / save time sheets";
+            case "labor.shifts.col.date" -> "Date";
+            case "labor.shifts.col.employee" -> "Employee";
+            case "labor.shifts.col.minutes" -> "Min";
+            case "labor.shifts.col.description" -> "Description";
+            case "labor.shifts.col.billable" -> "Billable";
+            case "labor.shifts.col.amount" -> "Amount";
+            case "labor.shifts.col.status" -> "Status";
+            // Centros de trabajo
+            case "labor.tab.work_centers" -> "Work centers";
+            case "labor.centers.hint" -> "Physical work centers. Optional geolocation (lat/lng/radius) validates the punch-in location.";
+            case "labor.centers.reload" -> "Refresh";
+            case "labor.centers.add" -> "New center";
+            case "labor.centers.edit" -> "Edit";
+            case "labor.centers.delete" -> "Deactivate";
+            case "labor.centers.delete.confirm" -> "Deactivate this work center? Employees pointing at it lose their assignment.";
+            case "labor.centers.empty" -> "No work centers yet.";
+            case "labor.centers.fail.title" -> "Could not load / save work centers";
+            case "labor.centers.col.name" -> "Name";
+            case "labor.centers.col.address" -> "Address";
+            case "labor.centers.col.city" -> "City";
+            case "labor.centers.col.province" -> "Province";
+            case "labor.centers.col.postal_code" -> "Postal code";
+            case "labor.centers.col.geo" -> "Geo (lat,lng,radius)";
+            case "labor.centers.col.policy" -> "Policy";
+            case "labor.centers.col.notes" -> "Notes";
+            case "labor.centers.error.name_required" -> "Name is required.";
+            case "labor.centers.error.numeric" -> "Radius must be numeric.";
             default -> null;
         };
     }
@@ -12329,6 +12370,45 @@ public class BenjagestUiApplication extends Application {
             case "settings.session.saver.logo" -> "Logo de empresa centrado";
             case "settings.session.saver.dark" -> "Oscuro liso";
             case "settings.session.saver.carousel" -> "Logo animado (carrusel)";
+            case "labor.tab.shifts" -> "Partes / jornadas";
+            case "labor.shifts.hint" -> "Partes de día reportados por los empleados. Alta manual disponible. Cuando llegue la app móvil/tablet del empleado, esta pestaña visualiza lo que reporten desde el campo.";
+            case "labor.shifts.from" -> "Desde";
+            case "labor.shifts.to" -> "Hasta";
+            case "labor.shifts.reload" -> "Actualizar";
+            case "labor.shifts.add" -> "Nuevo parte";
+            case "labor.shifts.add.header" -> "Crea un parte de día manual.";
+            case "labor.shifts.add.desc_prompt" -> "Qué se hizo ese día…";
+            case "labor.shifts.add.amount_prompt" -> "Importe facturable (opcional)";
+            case "labor.shifts.add.missing" -> "Empleado y fecha son obligatorios.";
+            case "labor.shifts.add.invalid" -> "Minutos e importe deben ser numéricos.";
+            case "labor.shifts.empty" -> "Sin partes en este rango.";
+            case "labor.shifts.fail.title" -> "No se pudo cargar / guardar partes";
+            case "labor.shifts.col.date" -> "Fecha";
+            case "labor.shifts.col.employee" -> "Empleado";
+            case "labor.shifts.col.minutes" -> "Min";
+            case "labor.shifts.col.description" -> "Descripción";
+            case "labor.shifts.col.billable" -> "Facturable";
+            case "labor.shifts.col.amount" -> "Importe";
+            case "labor.shifts.col.status" -> "Estado";
+            case "labor.tab.work_centers" -> "Centros de trabajo";
+            case "labor.centers.hint" -> "Centros de trabajo físicos. Geolocalización opcional (lat/lng/radio) valida la ubicación del fichaje.";
+            case "labor.centers.reload" -> "Actualizar";
+            case "labor.centers.add" -> "Nuevo centro";
+            case "labor.centers.edit" -> "Editar";
+            case "labor.centers.delete" -> "Desactivar";
+            case "labor.centers.delete.confirm" -> "¿Desactivar este centro? Los empleados asignados perderán la asignación.";
+            case "labor.centers.empty" -> "Todavía no hay centros de trabajo.";
+            case "labor.centers.fail.title" -> "No se pudo cargar / guardar centros";
+            case "labor.centers.col.name" -> "Nombre";
+            case "labor.centers.col.address" -> "Dirección";
+            case "labor.centers.col.city" -> "Ciudad";
+            case "labor.centers.col.province" -> "Provincia";
+            case "labor.centers.col.postal_code" -> "Código postal";
+            case "labor.centers.col.geo" -> "Geo (lat,lng,radio)";
+            case "labor.centers.col.policy" -> "Política";
+            case "labor.centers.col.notes" -> "Notas";
+            case "labor.centers.error.name_required" -> "El nombre es obligatorio.";
+            case "labor.centers.error.numeric" -> "El radio debe ser numérico.";
             default -> null;
         };
     }
@@ -15401,9 +15481,20 @@ public class BenjagestUiApplication extends Application {
         Tab ssTab = new Tab(t("labor.tab.ss_contributions"),
                 buildSsContributionsTab(bundle.employees()));
         ssTab.setGraphic(icon("fas-percent"));
+        // PORT-2 (2026-06-10 tarde) — Partes/Jornadas como sub-pestaña
+        // de Labor (no como módulo de raíz, decisión Benjamin). Lee de
+        // /api/work-logs. Cuando llegue la versión tablet/móvil del
+        // empleado, esta pestaña visualiza lo que reporta.
+        Tab shiftsTab = new Tab(t("labor.tab.shifts"),
+                buildShiftsTab(bundle.employees()));
+        shiftsTab.setGraphic(icon("fas-business-time"));
+        // Centros de trabajo (port CONTENDO centros_trabajo_180, V89).
+        Tab centersTab = new Tab(t("labor.tab.work_centers"), buildWorkCentersTab());
+        centersTab.setGraphic(icon("fas-map-marker-alt"));
 
         tabs.getTabs().addAll(empTab, contractsTab, clockTab, auditTab, payslipsTab,
-                templatesTab, clausesTab, cfgTab, calendarTab, leavesTab, ssTab);
+                templatesTab, clausesTab, cfgTab, calendarTab, leavesTab, ssTab,
+                shiftsTab, centersTab);
         VBox.setVgrow(tabs, Priority.ALWAYS);
 
         content.getChildren().addAll(header, alertsBanner, tabs);
@@ -26037,6 +26128,366 @@ public class BenjagestUiApplication extends Application {
                 new Label(t("workcal.section.calendars")), calTable,
                 new Label(t("workcal.section.holidays")), holTable, actionBar);
         return box;
+    }
+
+    // ============================================================
+    //  Centros de trabajo — sub-tab Labor (port CONTENDO)
+    // ============================================================
+    private Node buildWorkCentersTab() {
+        VBox content = new VBox(12);
+        content.setPadding(new Insets(16));
+
+        Label hint = new Label(t("labor.centers.hint"));
+        hint.setWrapText(true);
+        hint.getStyleClass().add("settings-hint");
+
+        Button reloadBtn = new Button(t("labor.centers.reload"));
+        reloadBtn.setGraphic(icon("fas-sync-alt"));
+        Button addBtn = new Button(t("labor.centers.add"));
+        addBtn.setGraphic(icon("fas-plus"));
+        addBtn.getStyleClass().add("button-primary");
+        Button editBtn = new Button(t("labor.centers.edit"));
+        editBtn.setGraphic(icon("fas-pen"));
+        editBtn.setDisable(true);
+        Button delBtn = new Button(t("labor.centers.delete"));
+        delBtn.setGraphic(icon("fas-trash"));
+        delBtn.setDisable(true);
+
+        TableView<com.benjagest.ui.model.WorkCenterEntry> table = new TableView<>();
+        table.getStyleClass().add("data-table");
+        table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+        table.setPlaceholder(new Label(t("labor.centers.empty")));
+
+        TableColumn<com.benjagest.ui.model.WorkCenterEntry, String> cName =
+                new TableColumn<>(t("labor.centers.col.name"));
+        cName.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().name()));
+        cName.setPrefWidth(180);
+        TableColumn<com.benjagest.ui.model.WorkCenterEntry, String> cAddr =
+                new TableColumn<>(t("labor.centers.col.address"));
+        cAddr.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().address()));
+        TableColumn<com.benjagest.ui.model.WorkCenterEntry, String> cCity =
+                new TableColumn<>(t("labor.centers.col.city"));
+        cCity.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().city()));
+        cCity.setPrefWidth(120);
+        TableColumn<com.benjagest.ui.model.WorkCenterEntry, String> cGeo =
+                new TableColumn<>(t("labor.centers.col.geo"));
+        cGeo.setCellValueFactory(c -> new SimpleStringProperty(
+                c.getValue().lat() != null && c.getValue().lng() != null
+                        ? c.getValue().lat() + ", " + c.getValue().lng()
+                        + " (" + c.getValue().radioM() + "m)"
+                        : "—"));
+        cGeo.setPrefWidth(180);
+        TableColumn<com.benjagest.ui.model.WorkCenterEntry, String> cPol =
+                new TableColumn<>(t("labor.centers.col.policy"));
+        cPol.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().geoPolicy()));
+        cPol.setPrefWidth(80);
+
+        table.getColumns().addAll(java.util.List.of(cName, cAddr, cCity, cGeo, cPol));
+
+        table.getSelectionModel().selectedItemProperty().addListener((o, ov, nv) -> {
+            boolean sel = nv != null;
+            editBtn.setDisable(!sel);
+            delBtn.setDisable(!sel);
+        });
+
+        Runnable reload = () -> {
+            Task<java.util.List<com.benjagest.ui.model.WorkCenterEntry>> task = new Task<>() {
+                @Override protected java.util.List<com.benjagest.ui.model.WorkCenterEntry> call() throws Exception {
+                    return altaApiClient.listWorkCenters();
+                }
+            };
+            task.setOnSucceeded(ev -> table.setItems(FXCollections.observableArrayList(task.getValue())));
+            task.setOnFailed(ev -> showError(t("labor.centers.fail.title"),
+                    task.getException() == null ? "" : task.getException().getMessage()));
+            start(task, "centers-load");
+        };
+        reloadBtn.setOnAction(ev -> reload.run());
+        addBtn.setOnAction(ev -> openWorkCenterDialog(null, reload));
+        editBtn.setOnAction(ev -> {
+            var sel = table.getSelectionModel().getSelectedItem();
+            if (sel != null) openWorkCenterDialog(sel, reload);
+        });
+        delBtn.setOnAction(ev -> {
+            var sel = table.getSelectionModel().getSelectedItem();
+            if (sel == null) return;
+            Alert confirm = new Alert(Alert.AlertType.CONFIRMATION);
+            confirm.setTitle(t("labor.centers.delete"));
+            confirm.setHeaderText(t("labor.centers.delete.confirm"));
+            confirm.showAndWait().ifPresent(rsp -> {
+                if (rsp == javafx.scene.control.ButtonType.OK) {
+                    Task<Void> d = new Task<>() {
+                        @Override protected Void call() throws Exception {
+                            altaApiClient.deleteWorkCenter(sel.id());
+                            return null;
+                        }
+                    };
+                    d.setOnSucceeded(s -> reload.run());
+                    d.setOnFailed(s -> showError(t("labor.centers.fail.title"),
+                            d.getException() == null ? "" : d.getException().getMessage()));
+                    start(d, "centers-delete");
+                }
+            });
+        });
+        reload.run();
+
+        HBox actions = new HBox(8, reloadBtn, addBtn, editBtn, delBtn);
+        actions.setAlignment(Pos.CENTER_LEFT);
+        VBox.setVgrow(table, Priority.ALWAYS);
+        content.getChildren().addAll(hint, actions, table);
+        return content;
+    }
+
+    private void openWorkCenterDialog(
+            com.benjagest.ui.model.WorkCenterEntry edit, Runnable onSaved) {
+        Dialog<Void> dialog = new Dialog<>();
+        dialog.setTitle(t(edit == null ? "labor.centers.add" : "labor.centers.edit"));
+
+        TextField name = new TextField(edit == null ? "" : edit.name());
+        TextField addr = new TextField(edit == null ? "" : edit.address());
+        TextField city = new TextField(edit == null ? "" : edit.city());
+        TextField prov = new TextField(edit == null ? "" : edit.province());
+        TextField cp = new TextField(edit == null ? "" : edit.postalCode());
+        TextField lat = new TextField(edit == null || edit.lat() == null ? "" : edit.lat().toPlainString());
+        TextField lng = new TextField(edit == null || edit.lng() == null ? "" : edit.lng().toPlainString());
+        TextField radio = new TextField(edit == null ? "100" : String.valueOf(edit.radioM()));
+        ComboBox<String> policy = new ComboBox<>(FXCollections.observableArrayList(
+                "none", "info", "soft", "strict"));
+        policy.setValue(edit == null ? "info" : edit.geoPolicy());
+        TextArea notes = new TextArea(edit == null ? "" : edit.notes());
+        notes.setPrefRowCount(3);
+
+        VBox form = new VBox(8,
+                new Label(t("labor.centers.col.name")), name,
+                new Label(t("labor.centers.col.address")), addr,
+                new Label(t("labor.centers.col.city")), city,
+                new Label(t("labor.centers.col.province")), prov,
+                new Label(t("labor.centers.col.postal_code")), cp,
+                new Label("Lat / Lng / Radio (m)"),
+                new HBox(8, lat, lng, radio),
+                new Label(t("labor.centers.col.policy")), policy,
+                new Label(t("labor.centers.col.notes")), notes);
+        form.setPadding(new Insets(16));
+        form.setPrefWidth(420);
+        dialog.getDialogPane().setContent(form);
+        dialog.getDialogPane().getButtonTypes().addAll(
+                javafx.scene.control.ButtonType.CANCEL, javafx.scene.control.ButtonType.OK);
+
+        dialog.setResultConverter(bt -> {
+            if (bt == javafx.scene.control.ButtonType.OK) {
+                if (name.getText() == null || name.getText().isBlank()) {
+                    showError(t("labor.centers.fail.title"), t("labor.centers.error.name_required"));
+                    return null;
+                }
+                java.math.BigDecimal latVal = parseBdOrNull(lat.getText());
+                java.math.BigDecimal lngVal = parseBdOrNull(lng.getText());
+                Integer radioVal;
+                try {
+                    radioVal = radio.getText() == null || radio.getText().isBlank()
+                            ? null : Integer.valueOf(radio.getText().trim());
+                } catch (NumberFormatException ex) {
+                    showError(t("labor.centers.fail.title"), t("labor.centers.error.numeric"));
+                    return null;
+                }
+                Task<Void> t = new Task<>() {
+                    @Override protected Void call() throws Exception {
+                        altaApiClient.saveWorkCenter(
+                                edit == null ? null : edit.id(),
+                                name.getText(), addr.getText(), city.getText(),
+                                prov.getText(), cp.getText(),
+                                latVal, lngVal, radioVal,
+                                policy.getValue(), notes.getText());
+                        return null;
+                    }
+                };
+                t.setOnSucceeded(s -> onSaved.run());
+                t.setOnFailed(s -> showError(t("labor.centers.fail.title"),
+                        t.getException() == null ? "" : t.getException().getMessage()));
+                start(t, "centers-save");
+            }
+            return null;
+        });
+        dialog.showAndWait();
+    }
+
+    private static java.math.BigDecimal parseBdOrNull(String s) {
+        if (s == null || s.isBlank()) return null;
+        try { return new java.math.BigDecimal(s.trim()); }
+        catch (NumberFormatException ex) { return null; }
+    }
+
+    // ============================================================
+    //  PORT-2 SHIFTS — Partes/jornadas (sub-tab Labor)
+    //  ----------------------------------------------------------
+    //  Lee de /api/work-logs. Permite alta manual de partes con
+    //  cliente, minutos, facturable, importe. Cuando llegue la
+    //  version tablet/movil del empleado, esta pestaña visualiza lo
+    //  que reportan los empleados desde el campo.
+    // ============================================================
+    private Node buildShiftsTab(java.util.List<com.benjagest.ui.model.EmployeeEntry> employees) {
+        VBox content = new VBox(12);
+        content.setPadding(new Insets(16));
+
+        java.util.Map<String, String> empById = new java.util.HashMap<>();
+        for (var e : employees) empById.put(e.id(), e.fullName());
+
+        Label hint = new Label(t("labor.shifts.hint"));
+        hint.setWrapText(true);
+        hint.getStyleClass().add("settings-hint");
+
+        java.time.LocalDate now = java.time.LocalDate.now();
+        DatePicker fromPick = new DatePicker(now.withDayOfMonth(1));
+        DatePicker toPick = new DatePicker(now.withDayOfMonth(1).plusMonths(1).minusDays(1));
+        com.benjagest.ui.support.EditableCells.installFlexibleConverter(fromPick);
+        com.benjagest.ui.support.EditableCells.installFlexibleConverter(toPick);
+        Button reloadBtn = new Button(t("labor.shifts.reload"));
+        reloadBtn.setGraphic(icon("fas-sync-alt"));
+        Button addBtn = new Button(t("labor.shifts.add"));
+        addBtn.setGraphic(icon("fas-plus"));
+        addBtn.getStyleClass().add("button-primary");
+
+        HBox filters = new HBox(8,
+                new Label(t("labor.shifts.from")), fromPick,
+                new Label(t("labor.shifts.to")), toPick,
+                reloadBtn, addBtn);
+        filters.setAlignment(Pos.CENTER_LEFT);
+
+        TableView<com.benjagest.ui.model.WorkLogEntry> table = new TableView<>();
+        table.getStyleClass().add("data-table");
+        table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+        table.setPlaceholder(new Label(t("labor.shifts.empty")));
+
+        TableColumn<com.benjagest.ui.model.WorkLogEntry, String> cDate =
+                new TableColumn<>(t("labor.shifts.col.date"));
+        cDate.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().logDate()));
+        cDate.setPrefWidth(110);
+        TableColumn<com.benjagest.ui.model.WorkLogEntry, String> cEmp =
+                new TableColumn<>(t("labor.shifts.col.employee"));
+        cEmp.setCellValueFactory(c -> new SimpleStringProperty(
+                empById.getOrDefault(c.getValue().employeeId(),
+                        shortId(c.getValue().employeeId()))));
+        TableColumn<com.benjagest.ui.model.WorkLogEntry, String> cMin =
+                new TableColumn<>(t("labor.shifts.col.minutes"));
+        cMin.setCellValueFactory(c -> new SimpleStringProperty(
+                String.valueOf(c.getValue().minutesWorked())));
+        cMin.setPrefWidth(90);
+        TableColumn<com.benjagest.ui.model.WorkLogEntry, String> cDesc =
+                new TableColumn<>(t("labor.shifts.col.description"));
+        cDesc.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().description()));
+        TableColumn<com.benjagest.ui.model.WorkLogEntry, String> cBill =
+                new TableColumn<>(t("labor.shifts.col.billable"));
+        cBill.setCellValueFactory(c -> new SimpleStringProperty(
+                c.getValue().billable() ? "✓" : "—"));
+        cBill.setPrefWidth(80);
+        TableColumn<com.benjagest.ui.model.WorkLogEntry, String> cAmount =
+                new TableColumn<>(t("labor.shifts.col.amount"));
+        cAmount.setCellValueFactory(c -> new SimpleStringProperty(
+                c.getValue().billableAmount() == null ? ""
+                        : money(c.getValue().billableAmount().toPlainString())));
+        cAmount.setPrefWidth(100);
+        TableColumn<com.benjagest.ui.model.WorkLogEntry, String> cStatus =
+                new TableColumn<>(t("labor.shifts.col.status"));
+        cStatus.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().status()));
+        cStatus.setPrefWidth(90);
+
+        table.getColumns().addAll(java.util.List.of(cDate, cEmp, cMin, cDesc, cBill, cAmount, cStatus));
+
+        Runnable reload = () -> {
+            java.time.LocalDate from = fromPick.getValue();
+            java.time.LocalDate to = toPick.getValue();
+            if (from == null || to == null) return;
+            Task<java.util.List<com.benjagest.ui.model.WorkLogEntry>> task = new Task<>() {
+                @Override protected java.util.List<com.benjagest.ui.model.WorkLogEntry> call() throws Exception {
+                    return altaApiClient.listWorkLogs(from, to);
+                }
+            };
+            task.setOnSucceeded(ev -> table.setItems(FXCollections.observableArrayList(task.getValue())));
+            task.setOnFailed(ev -> showError(t("labor.shifts.fail.title"),
+                    task.getException() == null ? "" : task.getException().getMessage()));
+            start(task, "shifts-load");
+        };
+        reloadBtn.setOnAction(ev -> reload.run());
+        addBtn.setOnAction(ev -> openShiftCreateDialog(employees, reload));
+        reload.run();
+
+        VBox.setVgrow(table, Priority.ALWAYS);
+        content.getChildren().addAll(hint, filters, table);
+        return content;
+    }
+
+    private void openShiftCreateDialog(
+            java.util.List<com.benjagest.ui.model.EmployeeEntry> employees,
+            Runnable onSaved) {
+        Dialog<Void> dialog = new Dialog<>();
+        dialog.setTitle(t("labor.shifts.add"));
+        dialog.setHeaderText(t("labor.shifts.add.header"));
+
+        ComboBox<com.benjagest.ui.model.EmployeeEntry> empCombo =
+                new ComboBox<>(FXCollections.observableArrayList(employees));
+        empCombo.setConverter(new javafx.util.StringConverter<>() {
+            @Override public String toString(com.benjagest.ui.model.EmployeeEntry e) {
+                return e == null ? "" : e.fullName();
+            }
+            @Override public com.benjagest.ui.model.EmployeeEntry fromString(String s) { return null; }
+        });
+        DatePicker dateP = new DatePicker(java.time.LocalDate.now());
+        com.benjagest.ui.support.EditableCells.installFlexibleConverter(dateP);
+        TextField minutes = new TextField("0");
+        TextField desc = new TextField();
+        desc.setPromptText(t("labor.shifts.add.desc_prompt"));
+        CheckBox billable = new CheckBox(t("labor.shifts.col.billable"));
+        TextField amount = new TextField();
+        amount.setPromptText(t("labor.shifts.add.amount_prompt"));
+
+        VBox form = new VBox(8,
+                new Label(t("labor.shifts.col.employee")), empCombo,
+                new Label(t("labor.shifts.col.date")), dateP,
+                new Label(t("labor.shifts.col.minutes")), minutes,
+                new Label(t("labor.shifts.col.description")), desc,
+                billable,
+                new Label(t("labor.shifts.col.amount")), amount);
+        form.setPadding(new Insets(16));
+        form.setPrefWidth(400);
+        dialog.getDialogPane().setContent(form);
+        dialog.getDialogPane().getButtonTypes().addAll(
+                javafx.scene.control.ButtonType.CANCEL, javafx.scene.control.ButtonType.OK);
+
+        dialog.setResultConverter(bt -> {
+            if (bt == javafx.scene.control.ButtonType.OK) {
+                if (empCombo.getValue() == null || dateP.getValue() == null) {
+                    showError(t("labor.shifts.fail.title"), t("labor.shifts.add.missing"));
+                    return null;
+                }
+                int mins;
+                java.math.BigDecimal amt = null;
+                try {
+                    mins = Integer.parseInt(minutes.getText().trim());
+                    if (amount.getText() != null && !amount.getText().isBlank()) {
+                        amt = new java.math.BigDecimal(amount.getText().trim());
+                    }
+                } catch (NumberFormatException ex) {
+                    showError(t("labor.shifts.fail.title"), t("labor.shifts.add.invalid"));
+                    return null;
+                }
+                final java.math.BigDecimal amtFinal = amt;
+                final int minsFinal = mins;
+                Task<Void> t = new Task<>() {
+                    @Override protected Void call() throws Exception {
+                        altaApiClient.createWorkLog(
+                                empCombo.getValue().id(),
+                                dateP.getValue(), minsFinal,
+                                null, desc.getText(),
+                                billable.isSelected(), amtFinal);
+                        return null;
+                    }
+                };
+                t.setOnSucceeded(s -> onSaved.run());
+                t.setOnFailed(s -> showError(t("labor.shifts.fail.title"),
+                        t.getException() == null ? "" : t.getException().getMessage()));
+                start(t, "shifts-create");
+            }
+            return null;
+        });
+        dialog.showAndWait();
     }
 
     // ============================================================
