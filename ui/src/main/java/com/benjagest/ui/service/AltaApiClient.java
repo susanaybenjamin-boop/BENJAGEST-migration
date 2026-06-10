@@ -1463,6 +1463,55 @@ public class AltaApiClient {
     }
 
     // ============================================================
+    //  PORT-3 PERFIL — User settings /api/profile/settings
+    // ============================================================
+
+    public com.benjagest.ui.model.UserSettingsEntry getUserSettings()
+            throws IOException, InterruptedException {
+        HttpResponse<String> r = send(req(baseUrl + "/profile/settings").GET());
+        if (r.statusCode() < 200 || r.statusCode() >= 300) {
+            throw new IOException("HTTP " + r.statusCode() + ": " + r.body());
+        }
+        String obj = r.body();
+        return new com.benjagest.ui.model.UserSettingsEntry(
+                textField(obj, "userId"),
+                textField(obj, "language"),
+                intFieldOrZero(obj, "pinTimeoutMin"),
+                textField(obj, "screensaverStyle"),
+                boolField(obj, "aiEnabled"),
+                textField(obj, "avatarPath"),
+                textField(obj, "workdayTemplate"));
+    }
+
+    public com.benjagest.ui.model.UserSettingsEntry saveUserSettings(
+            String language, int pinTimeoutMin, String screensaverStyle,
+            boolean aiEnabled, String avatarPath, String workdayTemplate)
+            throws IOException, InterruptedException {
+        String body = "{\"language\":" + jsonString(language)
+                + ",\"pinTimeoutMin\":" + pinTimeoutMin
+                + ",\"screensaverStyle\":" + jsonString(screensaverStyle)
+                + ",\"aiEnabled\":" + aiEnabled
+                + ",\"avatarPath\":" + jsonString(avatarPath == null ? "" : avatarPath)
+                + ",\"workdayTemplate\":" + jsonString(workdayTemplate == null ? "" : workdayTemplate)
+                + "}";
+        HttpResponse<String> r = send(req(baseUrl + "/profile/settings")
+                .header("Content-Type", "application/json")
+                .PUT(java.net.http.HttpRequest.BodyPublishers.ofString(body)));
+        if (r.statusCode() < 200 || r.statusCode() >= 300) {
+            throw new IOException("HTTP " + r.statusCode() + ": " + r.body());
+        }
+        String obj = r.body();
+        return new com.benjagest.ui.model.UserSettingsEntry(
+                textField(obj, "userId"),
+                textField(obj, "language"),
+                intFieldOrZero(obj, "pinTimeoutMin"),
+                textField(obj, "screensaverStyle"),
+                boolField(obj, "aiEnabled"),
+                textField(obj, "avatarPath"),
+                textField(obj, "workdayTemplate"));
+    }
+
+    // ============================================================
     //  PORT-3 SUG — Sugerencias /api/suggestions
     // ============================================================
 
