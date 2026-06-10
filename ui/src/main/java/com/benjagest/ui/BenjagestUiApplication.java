@@ -188,7 +188,10 @@ public class BenjagestUiApplication extends Application {
             "team",
             // PORT-1 — Portal del empleado (4 tabs: calendario, nominas,
             // notificaciones, trabajos). Visible para todos los roles.
-            "employee-portal"
+            "employee-portal",
+            // PORT-3 SUG — Buzon de sugerencias/mejoras/bugs hacia el
+            // fabricante. Per-tenant, cualquier rol puede sugerir.
+            "suggestions"
     );
 
     @Override
@@ -1950,6 +1953,11 @@ public class BenjagestUiApplication extends Application {
             // Calendario, Nominas, Notificaciones, Trabajos.
             // Read-only. Filtrado al employee_id del usuario actual.
             showEmployeePortal();
+            return;
+        }
+        if ("suggestions".equals(module)) {
+            // PORT-3 SUG — Buzon de sugerencias hacia el fabricante.
+            showSuggestionsModule();
             return;
         }
         Task<ModuleData> task = new Task<>() {
@@ -10184,6 +10192,7 @@ public class BenjagestUiApplication extends Application {
                     if (v == null) v = tPinLoginEn(key);
                     if (v == null) v = tCalendarEn(key);
                     if (v == null) v = tEmployeePortalEn(key);
+                    if (v == null) v = tSuggestionsEn(key);
                     yield v != null ? v : (key.startsWith("column.") ? key.substring(7) : key);
                 }
             };
@@ -11077,6 +11086,7 @@ public class BenjagestUiApplication extends Application {
                 if (v == null) v = tPinLoginEs(key);
                 if (v == null) v = tCalendarEs(key);
                 if (v == null) v = tEmployeePortalEs(key);
+                if (v == null) v = tSuggestionsEs(key);
                 if (v != null) yield v;
                 yield key.startsWith("column.") ? key.substring(7) : switch (key) {
                 case "field.name" -> "Nombre";
@@ -11781,6 +11791,90 @@ public class BenjagestUiApplication extends Application {
             case "portal.jobs.col.date" -> "Fecha";
             case "portal.jobs.col.title" -> "Título";
             case "portal.jobs.col.status" -> "Estado";
+            default -> null;
+        };
+    }
+
+    /** PORT-3 SUG — Helper i18n EN del módulo Sugerencias. */
+    private String tSuggestionsEn(String key) {
+        return switch (key) {
+            case "module.suggestions" -> "Suggestions";
+            case "suggestions.title" -> "Suggestions and feedback";
+            case "suggestions.hint" -> "Send improvement ideas, bug reports or feature requests to the BENJAGEST team. The product team picks them up from the manufacturer console.";
+            case "suggestions.btn.new" -> "New suggestion";
+            case "suggestions.btn.close" -> "Mark as closed";
+            case "suggestions.btn.delete" -> "Delete";
+            case "suggestions.empty" -> "No suggestions yet. Send your first one with New suggestion.";
+            case "suggestions.no_answer" -> "—";
+            case "suggestions.col.date" -> "Sent";
+            case "suggestions.col.title" -> "Title";
+            case "suggestions.col.category" -> "Category";
+            case "suggestions.col.status" -> "Status";
+            case "suggestions.col.answer" -> "Answer";
+            case "suggestions.cat.general" -> "General";
+            case "suggestions.cat.improvement" -> "Improvement";
+            case "suggestions.cat.module" -> "Module";
+            case "suggestions.cat.bug" -> "Bug / error";
+            case "suggestions.cat.other" -> "Other";
+            case "suggestions.status.new" -> "Sent";
+            case "suggestions.status.read" -> "Read";
+            case "suggestions.status.answered" -> "Answered";
+            case "suggestions.status.closed" -> "Closed";
+            case "suggestions.fail.title" -> "Could not finish the operation";
+            case "suggestions.confirm.delete.title" -> "Delete suggestion";
+            case "suggestions.confirm.delete.body" -> "Delete this suggestion permanently?";
+            case "suggestions.form.title" -> "New suggestion";
+            case "suggestions.form.header" -> "Tell us what you would change or improve.";
+            case "suggestions.form.title_prompt" -> "Short summary";
+            case "suggestions.form.desc_prompt" -> "Describe in detail. Include reproduction steps if it is a bug.";
+            case "suggestions.form.field.title" -> "Title";
+            case "suggestions.form.field.category" -> "Category";
+            case "suggestions.form.field.description" -> "Description";
+            case "suggestions.form.btn.send" -> "Send";
+            case "suggestions.form.missing.title" -> "Missing data";
+            case "suggestions.form.missing.body" -> "Title and description are required.";
+            default -> null;
+        };
+    }
+
+    /** PORT-3 SUG — Helper i18n ES del módulo Sugerencias. */
+    private String tSuggestionsEs(String key) {
+        return switch (key) {
+            case "module.suggestions" -> "Sugerencias";
+            case "suggestions.title" -> "Sugerencias y feedback";
+            case "suggestions.hint" -> "Envía ideas de mejora, reportes de bugs o nuevas funciones al equipo de BENJAGEST. El equipo de producto las recoge desde la consola del fabricante.";
+            case "suggestions.btn.new" -> "Nueva sugerencia";
+            case "suggestions.btn.close" -> "Marcar cerrada";
+            case "suggestions.btn.delete" -> "Eliminar";
+            case "suggestions.empty" -> "Aún no hay sugerencias. Envía la primera con Nueva sugerencia.";
+            case "suggestions.no_answer" -> "—";
+            case "suggestions.col.date" -> "Enviada";
+            case "suggestions.col.title" -> "Título";
+            case "suggestions.col.category" -> "Categoría";
+            case "suggestions.col.status" -> "Estado";
+            case "suggestions.col.answer" -> "Respuesta";
+            case "suggestions.cat.general" -> "General";
+            case "suggestions.cat.improvement" -> "Mejora";
+            case "suggestions.cat.module" -> "Módulo";
+            case "suggestions.cat.bug" -> "Bug / error";
+            case "suggestions.cat.other" -> "Otra";
+            case "suggestions.status.new" -> "Enviada";
+            case "suggestions.status.read" -> "Leída";
+            case "suggestions.status.answered" -> "Respondida";
+            case "suggestions.status.closed" -> "Cerrada";
+            case "suggestions.fail.title" -> "No se pudo completar la operación";
+            case "suggestions.confirm.delete.title" -> "Eliminar sugerencia";
+            case "suggestions.confirm.delete.body" -> "¿Eliminar esta sugerencia de forma permanente?";
+            case "suggestions.form.title" -> "Nueva sugerencia";
+            case "suggestions.form.header" -> "Cuéntanos qué cambiarías o mejorarías.";
+            case "suggestions.form.title_prompt" -> "Resumen corto";
+            case "suggestions.form.desc_prompt" -> "Describe en detalle. Incluye pasos de reproducción si es un bug.";
+            case "suggestions.form.field.title" -> "Título";
+            case "suggestions.form.field.category" -> "Categoría";
+            case "suggestions.form.field.description" -> "Descripción";
+            case "suggestions.form.btn.send" -> "Enviar";
+            case "suggestions.form.missing.title" -> "Faltan datos";
+            case "suggestions.form.missing.body" -> "Título y descripción son obligatorios.";
             default -> null;
         };
     }
@@ -18245,6 +18339,223 @@ public class BenjagestUiApplication extends Application {
         VBox.setVgrow(table, Priority.ALWAYS);
         box.getChildren().addAll(hint, table);
         return box;
+    }
+
+    // ============================================================
+    //  PORT-3 SUG — Modulo Sugerencias
+    //  ----------------------------------------------------------
+    //  Buzon de mejoras, bugs y peticiones que el usuario envia al
+    //  fabricante de BENJAGEST. Per-tenant. Cualquier rol puede crear
+    //  y consultar; OWNER/ADMIN pueden cerrar/borrar.
+    //
+    //  CONTENDO equivalente: app/admin/sugerencias/page.tsx (230 lineas).
+    // ============================================================
+    private void showSuggestionsModule() {
+        currentModule = "suggestions";
+        recordNav(() -> showSuggestionsModule());
+        select("suggestions");
+
+        VBox root = new VBox(16);
+        root.getStyleClass().add("content");
+
+        Label header = label(t("suggestions.title"), "settings-section-title");
+        Label hint = new Label(t("suggestions.hint"));
+        hint.setWrapText(true);
+        hint.getStyleClass().add("settings-hint");
+
+        Button newBtn = new Button(t("suggestions.btn.new"));
+        newBtn.setGraphic(icon("fas-plus"));
+        newBtn.getStyleClass().add("button-primary");
+
+        TableView<com.benjagest.ui.model.SuggestionEntry> table = new TableView<>();
+        table.getStyleClass().add("data-table");
+        table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+        table.setPlaceholder(new Label(t("suggestions.empty")));
+        com.benjagest.ui.support.TableSelectionHelper.install(table);
+
+        TableColumn<com.benjagest.ui.model.SuggestionEntry, String> cDate =
+                new TableColumn<>(t("suggestions.col.date"));
+        cDate.setCellValueFactory(c -> new SimpleStringProperty(
+                c.getValue().createdAt() == null || c.getValue().createdAt().length() < 10
+                        ? c.getValue().createdAt()
+                        : c.getValue().createdAt().substring(0, 10)));
+        cDate.setPrefWidth(110);
+        TableColumn<com.benjagest.ui.model.SuggestionEntry, String> cTitle =
+                new TableColumn<>(t("suggestions.col.title"));
+        cTitle.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().title()));
+        TableColumn<com.benjagest.ui.model.SuggestionEntry, String> cCat =
+                new TableColumn<>(t("suggestions.col.category"));
+        cCat.setCellValueFactory(c -> new SimpleStringProperty(
+                humanizeSuggestionCategory(c.getValue().category())));
+        cCat.setPrefWidth(120);
+        TableColumn<com.benjagest.ui.model.SuggestionEntry, String> cStatus =
+                new TableColumn<>(t("suggestions.col.status"));
+        cStatus.setCellValueFactory(c -> new SimpleStringProperty(
+                humanizeSuggestionStatus(c.getValue().status())));
+        cStatus.setPrefWidth(120);
+        TableColumn<com.benjagest.ui.model.SuggestionEntry, String> cAnswer =
+                new TableColumn<>(t("suggestions.col.answer"));
+        cAnswer.setCellValueFactory(c -> new SimpleStringProperty(
+                c.getValue().answer() == null || c.getValue().answer().isBlank()
+                        ? t("suggestions.no_answer") : c.getValue().answer()));
+
+        table.getColumns().addAll(java.util.List.of(cDate, cTitle, cCat, cStatus, cAnswer));
+
+        Button closeBtn = new Button(t("suggestions.btn.close"));
+        closeBtn.setGraphic(icon("fas-check"));
+        closeBtn.setDisable(true);
+        Button delBtn = new Button(t("suggestions.btn.delete"));
+        delBtn.setGraphic(icon("fas-trash"));
+        delBtn.setDisable(true);
+
+        table.getSelectionModel().selectedItemProperty().addListener((o, ov, nv) -> {
+            boolean sel = nv != null;
+            closeBtn.setDisable(!sel || "closed".equals(nv == null ? "" : nv.status()));
+            delBtn.setDisable(!sel);
+        });
+
+        HBox actionBar = new HBox(8, newBtn, closeBtn, delBtn);
+        actionBar.setAlignment(Pos.CENTER_LEFT);
+
+        Runnable reload = () -> {
+            Task<java.util.List<com.benjagest.ui.model.SuggestionEntry>> task = new Task<>() {
+                @Override protected java.util.List<com.benjagest.ui.model.SuggestionEntry> call() throws Exception {
+                    return altaApiClient.listSuggestions();
+                }
+            };
+            task.setOnSucceeded(ev -> table.setItems(FXCollections.observableArrayList(task.getValue())));
+            task.setOnFailed(ev -> showError(t("suggestions.fail.title"),
+                    task.getException() == null ? "" : task.getException().getMessage()));
+            start(task, "suggestions-load");
+        };
+
+        newBtn.setOnAction(ev -> showSuggestionForm(reload));
+        closeBtn.setOnAction(ev -> {
+            var sel = table.getSelectionModel().getSelectedItem();
+            if (sel == null) return;
+            Task<Void> t = new Task<>() {
+                @Override protected Void call() throws Exception {
+                    altaApiClient.updateSuggestionStatus(sel.id(), "closed");
+                    return null;
+                }
+            };
+            t.setOnSucceeded(s -> reload.run());
+            t.setOnFailed(s -> showError(t("suggestions.fail.title"),
+                    t.getException() == null ? "" : t.getException().getMessage()));
+            start(t, "suggestions-close");
+        });
+        delBtn.setOnAction(ev -> {
+            var sel = table.getSelectionModel().getSelectedItem();
+            if (sel == null) return;
+            Alert confirm = new Alert(Alert.AlertType.CONFIRMATION);
+            confirm.setTitle(t("suggestions.confirm.delete.title"));
+            confirm.setHeaderText(t("suggestions.confirm.delete.body"));
+            confirm.showAndWait().ifPresent(rsp -> {
+                if (rsp == javafx.scene.control.ButtonType.OK) {
+                    Task<Void> t = new Task<>() {
+                        @Override protected Void call() throws Exception {
+                            altaApiClient.deleteSuggestion(sel.id());
+                            return null;
+                        }
+                    };
+                    t.setOnSucceeded(s -> reload.run());
+                    t.setOnFailed(s -> showError(t("suggestions.fail.title"),
+                            t.getException() == null ? "" : t.getException().getMessage()));
+                    start(t, "suggestions-delete");
+                }
+            });
+        });
+
+        reload.run();
+
+        VBox.setVgrow(table, Priority.ALWAYS);
+        root.getChildren().addAll(header, hint, actionBar, table);
+        setCenterAnimated(scroll(root));
+    }
+
+    private void showSuggestionForm(Runnable onSaved) {
+        Dialog<Void> dialog = new Dialog<>();
+        dialog.setTitle(t("suggestions.form.title"));
+        dialog.setHeaderText(t("suggestions.form.header"));
+
+        TextField titleField = new TextField();
+        titleField.setPromptText(t("suggestions.form.title_prompt"));
+        TextArea descField = new TextArea();
+        descField.setPromptText(t("suggestions.form.desc_prompt"));
+        descField.setPrefRowCount(6);
+        descField.setWrapText(true);
+        ComboBox<String> catCombo = new ComboBox<>(FXCollections.observableArrayList(
+                "general", "improvement", "module", "bug", "other"));
+        catCombo.setValue("general");
+        catCombo.setConverter(new javafx.util.StringConverter<>() {
+            @Override public String toString(String s) {
+                return s == null ? "" : humanizeSuggestionCategory(s);
+            }
+            @Override public String fromString(String s) { return s; }
+        });
+
+        VBox form = new VBox(10,
+                new Label(t("suggestions.form.field.title")), titleField,
+                new Label(t("suggestions.form.field.category")), catCombo,
+                new Label(t("suggestions.form.field.description")), descField);
+        form.setPadding(new Insets(16));
+        form.setPrefWidth(520);
+
+        dialog.getDialogPane().setContent(form);
+        dialog.getDialogPane().getButtonTypes().addAll(
+                javafx.scene.control.ButtonType.CANCEL, javafx.scene.control.ButtonType.OK);
+        javafx.scene.control.Button okBtn = (javafx.scene.control.Button)
+                dialog.getDialogPane().lookupButton(javafx.scene.control.ButtonType.OK);
+        okBtn.setText(t("suggestions.form.btn.send"));
+
+        dialog.setResultConverter(bt -> {
+            if (bt == javafx.scene.control.ButtonType.OK) {
+                if (titleField.getText() == null || titleField.getText().isBlank()
+                        || descField.getText() == null || descField.getText().isBlank()) {
+                    showError(t("suggestions.form.missing.title"),
+                            t("suggestions.form.missing.body"));
+                    return null;
+                }
+                Task<Void> t = new Task<>() {
+                    @Override protected Void call() throws Exception {
+                        altaApiClient.createSuggestion(
+                                titleField.getText().trim(),
+                                descField.getText().trim(),
+                                catCombo.getValue());
+                        return null;
+                    }
+                };
+                t.setOnSucceeded(s -> onSaved.run());
+                t.setOnFailed(s -> showError(t("suggestions.fail.title"),
+                        t.getException() == null ? "" : t.getException().getMessage()));
+                start(t, "suggestions-create");
+            }
+            return null;
+        });
+        dialog.showAndWait();
+    }
+
+    private String humanizeSuggestionCategory(String raw) {
+        if (raw == null || raw.isBlank()) return "";
+        return switch (raw.trim().toLowerCase()) {
+            case "general" -> t("suggestions.cat.general");
+            case "improvement" -> t("suggestions.cat.improvement");
+            case "module" -> t("suggestions.cat.module");
+            case "bug" -> t("suggestions.cat.bug");
+            case "other" -> t("suggestions.cat.other");
+            default -> raw;
+        };
+    }
+
+    private String humanizeSuggestionStatus(String raw) {
+        if (raw == null || raw.isBlank()) return "";
+        return switch (raw.trim().toLowerCase()) {
+            case "new" -> t("suggestions.status.new");
+            case "read" -> t("suggestions.status.read");
+            case "answered" -> t("suggestions.status.answered");
+            case "closed" -> t("suggestions.status.closed");
+            default -> raw;
+        };
     }
 
     private void showTeamModule() {
