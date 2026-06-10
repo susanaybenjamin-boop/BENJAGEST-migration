@@ -39,13 +39,15 @@ INSERT INTO module_catalog
         display_order, advisory_only)
 VALUES (UUID(), 'profile', 'Mi perfil',
         'Preferencias personales del usuario logueado: idioma, avatar, bloqueo por inactividad y otros ajustes individuales.',
-        NULL, 'fas-user-circle', 870, FALSE);
+        NULL, 'fas-user-circle', 870, FALSE)
+ON DUPLICATE KEY UPDATE id = id;
 
 INSERT INTO company_modules (id, company_id, module_id, active,
                               activated_at, activated_by)
 SELECT UUID(), c.id, m.id, TRUE, CURRENT_TIMESTAMP, NULL
   FROM companies c
   CROSS JOIN (SELECT id FROM module_catalog WHERE slug = 'profile') m
+ WHERE 1 = 1
 ON DUPLICATE KEY UPDATE active = TRUE,
                         deactivated_at = NULL,
                         deactivated_by = NULL;

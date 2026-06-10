@@ -38,13 +38,15 @@ INSERT INTO module_catalog
         display_order, advisory_only)
 VALUES (UUID(), 'suggestions', 'Sugerencias',
         'Buzon de sugerencias, mejoras y reporte de bugs hacia el fabricante de BENJAGEST. El equipo de soporte responde desde el modulo fabricante.',
-        NULL, 'fas-lightbulb', 880, FALSE);
+        NULL, 'fas-lightbulb', 880, FALSE)
+ON DUPLICATE KEY UPDATE id = id;
 
 INSERT INTO company_modules (id, company_id, module_id, active,
                               activated_at, activated_by)
 SELECT UUID(), c.id, m.id, TRUE, CURRENT_TIMESTAMP, NULL
   FROM companies c
   CROSS JOIN (SELECT id FROM module_catalog WHERE slug = 'suggestions') m
+ WHERE 1 = 1
 ON DUPLICATE KEY UPDATE active = TRUE,
                         deactivated_at = NULL,
                         deactivated_by = NULL;

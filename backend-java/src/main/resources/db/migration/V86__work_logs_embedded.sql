@@ -132,11 +132,13 @@ INSERT INTO module_catalog
         display_order, advisory_only)
 VALUES (UUID(), 'shifts', 'Jornadas y partes',
         'Plantillas de jornada, turnos asignados a empleados y partes de día facturables. Modelo embebido: un parte facturable genera línea de factura cuando se cobra.',
-        NULL, 'fas-business-time', 145, FALSE);
+        NULL, 'fas-business-time', 145, FALSE)
+ON DUPLICATE KEY UPDATE id = id;
 
 INSERT INTO company_modules (id, company_id, module_id, active,
                               activated_at, activated_by)
 SELECT UUID(), c.id, m.id, FALSE, NULL, NULL  -- inactivo por defecto
   FROM companies c
   CROSS JOIN (SELECT id FROM module_catalog WHERE slug = 'shifts') m
+ WHERE 1 = 1
 ON DUPLICATE KEY UPDATE active = active;  -- no-op si ya existe
