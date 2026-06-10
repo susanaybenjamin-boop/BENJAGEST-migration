@@ -1463,6 +1463,78 @@ public class AltaApiClient {
     }
 
     // ============================================================
+    //  PORT-4 SESSION — Sesion (timeout + PIN + salvapantallas)
+    //                   /api/settings/session
+    // ============================================================
+
+    public com.benjagest.ui.model.SessionStatusEntry getSessionStatus()
+            throws IOException, InterruptedException {
+        HttpResponse<String> r = send(req(baseUrl + "/settings/session").GET());
+        if (r.statusCode() < 200 || r.statusCode() >= 300) {
+            throw new IOException("HTTP " + r.statusCode() + ": " + r.body());
+        }
+        String obj = r.body();
+        return new com.benjagest.ui.model.SessionStatusEntry(
+                intFieldOrZero(obj, "pinTimeoutMin"),
+                textField(obj, "screensaverStyle"),
+                boolField(obj, "pinConfigured"));
+    }
+
+    public com.benjagest.ui.model.SessionStatusEntry saveSessionSettings(
+            int pinTimeoutMin, String screensaverStyle)
+            throws IOException, InterruptedException {
+        String body = "{\"pinTimeoutMin\":" + pinTimeoutMin
+                + ",\"screensaverStyle\":" + jsonString(screensaverStyle) + "}";
+        HttpResponse<String> r = send(req(baseUrl + "/settings/session")
+                .header("Content-Type", "application/json")
+                .PUT(java.net.http.HttpRequest.BodyPublishers.ofString(body)));
+        if (r.statusCode() < 200 || r.statusCode() >= 300) {
+            throw new IOException("HTTP " + r.statusCode() + ": " + r.body());
+        }
+        String obj = r.body();
+        return new com.benjagest.ui.model.SessionStatusEntry(
+                intFieldOrZero(obj, "pinTimeoutMin"),
+                textField(obj, "screensaverStyle"),
+                boolField(obj, "pinConfigured"));
+    }
+
+    public void setSessionPin(String currentPin, String newPin)
+            throws IOException, InterruptedException {
+        String body = "{\"currentPin\":" + jsonString(currentPin == null ? "" : currentPin)
+                + ",\"newPin\":" + jsonString(newPin) + "}";
+        HttpResponse<String> r = send(req(baseUrl + "/settings/session/pin")
+                .header("Content-Type", "application/json")
+                .POST(java.net.http.HttpRequest.BodyPublishers.ofString(body)));
+        if (r.statusCode() < 200 || r.statusCode() >= 300) {
+            throw new IOException("HTTP " + r.statusCode() + ": " + r.body());
+        }
+    }
+
+    public void deleteSessionPin(String currentPin)
+            throws IOException, InterruptedException {
+        String body = "{\"currentPin\":" + jsonString(currentPin == null ? "" : currentPin)
+                + ",\"newPin\":\"\"}";
+        HttpResponse<String> r = send(req(baseUrl + "/settings/session/pin")
+                .header("Content-Type", "application/json")
+                .method("DELETE", java.net.http.HttpRequest.BodyPublishers.ofString(body)));
+        if (r.statusCode() < 200 || r.statusCode() >= 300) {
+            throw new IOException("HTTP " + r.statusCode() + ": " + r.body());
+        }
+    }
+
+    public boolean verifySessionPin(String pin)
+            throws IOException, InterruptedException {
+        String body = "{\"pin\":" + jsonString(pin) + "}";
+        HttpResponse<String> r = send(req(baseUrl + "/settings/session/pin/verify")
+                .header("Content-Type", "application/json")
+                .POST(java.net.http.HttpRequest.BodyPublishers.ofString(body)));
+        if (r.statusCode() < 200 || r.statusCode() >= 300) {
+            throw new IOException("HTTP " + r.statusCode() + ": " + r.body());
+        }
+        return Boolean.parseBoolean(textField(r.body(), "valid"));
+    }
+
+    // ============================================================
     //  PORT-4 LOGO — Logo de empresa /api/settings/company/logo
     // ============================================================
 
