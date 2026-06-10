@@ -771,6 +771,26 @@
     -fx-padding: 4 9;
 }
 
+/* PORT-5 CAL-A — variantes color por event_type.
+   Aplicadas como clase adicional encima de calendar-event-card-type
+   para que herede tipografia/padding/radius. */
+.calendar-event-card-type--holiday {
+    -fx-background-color: #fee2e2;
+    -fx-text-fill: #b91c1c;
+}
+.calendar-event-card-type--work-adjustment {
+    -fx-background-color: #dbeafe;
+    -fx-text-fill: #1d4ed8;
+}
+.calendar-event-card-type--work-closure {
+    -fx-background-color: #e5e7eb;
+    -fx-text-fill: #374151;
+}
+.calendar-event-card-type--general {
+    -fx-background-color: #ede9fe;
+    -fx-text-fill: #6d28d9;
+}
+
 .calendar-empty-panel {
     -fx-background-color: #ffffff;
     -fx-background-radius: 16;
