@@ -777,14 +777,15 @@ Cuando lo crítico esté cerrado.
 
 ### Fichajes (extensión más allá del legal mínimo) — bloque PORT-2
 
-- ⬜ **PORT-2 — Bloque entero pendiente de decisión arquitectural** (sesión 2026-06-10 no lo atacó). Benjamin tiene que decidir antes: **¿work logs con billing embebido (modelo CONTENDO, partes-dia.facturable) o separados (modelo BENJAGEST actual con enlace opcional)?**. Sub-items que dependen de esto:
+- 🔵 **PORT-2 — Skeleton CERRADO en sesión 2026-06-10** (`c5bbbcb`). Decisión Benjamin: **embebido como CONTENDO**. V86 creó las 4 tablas (`workday_templates`, `workday_template_blocks`, `work_shifts`, `work_logs` con `is_billable` + `billable_amount` + `billed_invoice_line_id` FK opcional) + módulo "shifts" (INACTIVO por defecto, fas-business-time, display=145). `WorkLogService` con `listForCompany` + `listMine` + `create`. Endpoints `/api/work-logs` (OWNER/ADMIN/ACCOUNTANT) y `/api/work-logs/mine` (EMPLOYEE). `EmployeePortalService.listJobs` ahora lee los partes propios de los últimos 90 días — cierra el placeholder de PORT-1 EMP-4. Sub-items aún pendientes (todos requieren diseño UX de Benjamin):
+  - ⬜ UI módulo "shifts" con TabPane (Plantillas / Turnos / Partes / Facturación).
   - ⬜ Plantillas de jornada complejas (días tipo, bloques, excepciones). CONTENDO `app/admin/jornadas` con 7 componentes (PlantillasPanel, BloquesEditor, AsignacionPanel, CentrosTrabajoPanel, CopyDiasModal, DeletePlantillaModal, Modal).
   - ⬜ Asignación plantillas a empleados.
-  - ⬜ Turnos (`turnos_180`, `turno_bloques_180`). CONTENDO `app/admin/turnos` (CrearTurnoForm + page).
-  - ⬜ Plannings (ruta `admin/planings`, 358 líneas en CONTENDO).
-  - ⬜ Partes de día con validación admin (CONTENDO 572 líneas).
+  - ⬜ Turnos rotativos (`turnos_180`, `turno_bloques_180`). CONTENDO `app/admin/turnos` (CrearTurnoForm + page).
+  - ⬜ Plannings — asignación masiva (ruta `admin/planings`, 358 líneas en CONTENDO).
+  - ⬜ Partes de día con validación admin (CONTENDO 572 líneas). Workflow DRAFT → SUBMITTED → APPROVED → BILLED.
+  - ⬜ Conversión work_log → línea de factura. Al cobrar, generar línea de `sales_invoices` con descripción del log + amount = `billable_amount`, setar `billed_invoice_line_id`.
   - ⬜ Fichajes sospechosos (detección de patrones).
-- *(Nota PORT-1 EMP-4)*: el tab "Mis trabajos" del Portal del empleado queda como placeholder vacío hasta que PORT-2 esté decidido. Endpoint `/api/portal/jobs` ya existe y devuelve `[]`; cuando exista la tabla `work_logs` o equivalente, basta con cambiar `EmployeePortalService.listJobs()` para leer de ahí.
 
 ### Calendario
 
