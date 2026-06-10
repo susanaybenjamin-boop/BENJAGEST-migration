@@ -141,4 +141,7 @@ SELECT UUID(), c.id, m.id, FALSE, NULL, NULL  -- inactivo por defecto
   FROM companies c
   CROSS JOIN (SELECT id FROM module_catalog WHERE slug = 'shifts') m
  WHERE 1 = 1
-ON DUPLICATE KEY UPDATE active = active;  -- no-op si ya existe
+ON DUPLICATE KEY UPDATE company_modules.active = company_modules.active;
+-- ↑ cualificado con tabla: el SELECT incluye companies.active, asi que
+--   "active" a secas seria ambiguo. company_modules.active = mismo valor
+--   = no-op (no apagar lo que estuviera ya encendido).
