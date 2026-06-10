@@ -3,7 +3,7 @@
 > Lista única ordenada de mayor a menor importancia con TODO lo que hay que hacer en BENJAGEST.
 > Se va tachando conforme cada item se crea, prueba, commitea y mergea a `develop`.
 >
-> **Última revisión:** 2026-06-10 (autonomía total — Benjamin fuera). 9 slices cerrados: FIX-T-LIMIT (extracción de keys calendar.* a tCalendarEn/Es para desbloquear compile que estaba roto pre-sesión), PORT-5 CAL-A (badge color por event_type), PORT-5 CAL-B (botón "Quitar de Agenda" con DELETE inverso al volcado), PORT-5 CAL-C (botón "Cargar festivos nacionales" con Easter algoritmo Meeus/Jones/Butcher), PORT-1 EMP-1..4 (módulo Portal del empleado con 4 tabs: Mi calendario, Mis nóminas, Mis notificaciones, Mis trabajos), PORT-3 SUG (módulo Sugerencias con CRUD), PORT-3 PERFIL+LOCK (preferencias usuario + auto-bloqueo por inactividad con PIN), PORT-4 CLI (rediseño editor cliente con TabPane y +10 campos: dirección postal, código interno, modo defecto). Migraciones: V82 (employee-portal), V83 (suggestions), V84 (user_settings + profile), V85 (customers extended). Sin tocar nada que requiera decisión arquitectural de Benjamin. **PORT-2 (Jornadas/Turnos/Plannings/Partes-dia) NO atacado** — bloque grande con decisión estructural pendiente "work logs con billing embebido vs separados". Detalle abajo en la sección de sesión.
+> **Última revisión:** 2026-06-10 (autonomía total + 2 decisiones puntuales de Benjamin desde fuera). 11 slices cerrados: FIX-T-LIMIT (extracción de keys calendar.* a tCalendarEn/Es para desbloquear compile que estaba roto pre-sesión), PORT-5 CAL-A (badge color por event_type), PORT-5 CAL-B (botón "Quitar de Agenda" con DELETE inverso al volcado), PORT-5 CAL-C (botón "Cargar festivos nacionales" con Easter algoritmo Meeus/Jones/Butcher), PORT-1 EMP-1..4 (módulo Portal del empleado con 4 tabs: Mi calendario, Mis nóminas, Mis notificaciones, Mis trabajos), PORT-3 SUG (módulo Sugerencias con CRUD), PORT-3 PERFIL+LOCK (preferencias usuario + auto-bloqueo por inactividad con PIN), PORT-4 CLI (rediseño editor cliente con TabPane y +10 campos: dirección postal, código interno, modo defecto). Migraciones: V82 (employee-portal), V83 (suggestions), V84 (user_settings + profile), V85 (customers extended). Sin tocar nada que requiera decisión arquitectural de Benjamin. **PORT-2 (Jornadas/Turnos/Plannings/Partes-dia) NO atacado** — bloque grande con decisión estructural pendiente "work logs con billing embebido vs separados". Detalle abajo en la sección de sesión.
 >
 > **Última revisión 2026-06-09 noche** (Benjamin presente — cierre del día: revert + fix puerto MariaDB 3307 + bloque CAL-FIX 1-4 + humanizar event_type en Agenda). **Bloque RECURRENTES cerrado** con motor + UI + 7 kinds (SALES_INVOICE, PURCHASE, JOURNAL_ENTRY, ACCOUNTING_INCOME, ACCOUNTING_EXPENSE, TEMPLATE_APPLY, LOAN_AUTO_PAY) + transacciones REQUIRES_NEW aisladas + placeholders {MES}/{MES_MAY}/{AÑO}/{YY}/{M}/{D}/{T}/{MM}/{YYYY}/{DD}/{Q} + auto_proposed=TRUE + endpoint already-covers + from-recurring (check determinista via recurring_task_runs.generated_id) + candidatos detectables con banner + botón "Hacer recurrente" contextual en listados (cliente vinculado abre editor legal SALES_INVOICE, shadow abre ACCOUNTING_INCOME) + editor "Pago periódico sin factura" JOURNAL_ENTRY + autovinculación silenciosa asesoría (V64) + "Mi gestión" sidebar (IcoMoon fas-briefcase) + sub-tabs Recurrentes en empresario/cliente vinculado/cliente NO vinculado + badge "Creada por tu asesoría" + auto-resolver cuenta tercero por NIF + V65 ck_rt_kind con ACCOUNTING_INCOME/EXPENSE + commitSpinner fix + placeholder en cursor + purchase_invoice sintético al ejecutar ACCOUNTING_EXPENSE/JOURNAL_ENTRY para centralizar en listado Compras + auto-refresh sub-tabs vía RefreshBus.TOPIC_RECURRING + orígenes Diario unificados (solo "Venta"/"Gasto" con sufijo "(recurrente)" en concepto) + "Compra"→"Gasto" semánticamente correcto + acciones encima del listado (no scroll) + botón "Hacer recurrente" en buildClientBillingTab + buildClientSalesArchivedTab + sidebar asesoría renombrado "Facturacion clientes/Compras revisadas" → "Facturacion/Compras y Gastos" para igualar empresario.
 >
@@ -206,9 +206,37 @@ que entrar):
 - ⬜ **AI Copilot / PWA / Google Calendar OAuth / Email personal
   OAuth** — decisiones estructurales o requieren credenciales.
 
+**Adendas durante la sesión (Benjamin contestó desde fuera)**:
+
+10. ✅ **PORT-2 skeleton** (`c5bbbcb`): tras decisión Benjamin
+    "embebido como CONTENDO", V86 creó 4 tablas (workday_templates,
+    workday_template_blocks, work_shifts, work_logs con
+    is_billable + billable_amount + billed_invoice_line_id FK
+    opcional) + módulo "shifts" inactivo por defecto.
+    WorkLogService con listForCompany/listMine/create. El tab "Mis
+    trabajos" del Portal del empleado ahora lee los partes propios
+    de los últimos 90 días. UX completa (plantillas, turnos,
+    workflow validación, conversión work_log → línea factura)
+    pendiente de slices siguientes.
+
+11. ✅ **TC-CAL — warning amarillo en fichaje de festivo**: tras
+    decisión Benjamin "warning amarillo" (no bloqueo).
+    `TimeClockRepository.findTodaysHolidayForEmployee(employeeId)`
+    cruza `employees.work_calendar_id` con `holidays.holiday_date =
+    CURRENT_DATE`. `TimeClockService.punch` detecta y devuelve
+    `HolidayWarning(holidayName, holidayType, scope)` dentro de
+    `PunchResult`. UI: `TimeClockApiClient` parsea `holidayWarning`
+    del JSON y devuelve `PunchOutcome(csv, holidayName,
+    holidayType, holidayScope)`. El dialog tras fichar añade
+    tarjeta amarilla con tipo humanizado (Festivo/Ajuste/Cierre) +
+    nombre del festivo si aplica. **NO bloquea** — solo informa;
+    la nómina ya podrá tratarlo como horas extra cuando se cierre
+    ese flujo. 4 keys i18n nuevas (`tTcCalEn/Es`) + 4 reglas CSS
+    `holiday-warning-*`.
+
 **Pendiente real para Benjamin al volver**:
 
-1. Probar los 9 slices nuevos:
+1. Probar los 11 slices nuevos:
    - Agenda → comprobar que los badges salen coloreados según tipo.
    - Calendario laboral → ver botones nuevos "Quitar de Agenda" y
      "Cargar festivos nacionales".
@@ -283,7 +311,8 @@ que pasaron a primera prioridad antes de cualquier feature nueva.
      los calendarios. Listo para que fichaje/nómina lo usen
      (lógica de fichaje extra/bloqueo queda como bloque futuro
      **TC-CAL**, decisión pendiente: ¿warning visual o bloqueo
-     duro?).
+     duro?). ✅ **Cerrado 2026-06-10**: Benjamin eligió warning
+     amarillo. Ver sesión 2026-06-10 abajo.
 
 4. **fix(agenda) — humanizar event_type en tarjetas** (commit
    `8077226`): la modal de Agenda mostraba el código crudo

@@ -771,6 +771,25 @@
     -fx-padding: 4 9;
 }
 
+/* TC-CAL — Tarjeta de warning amarillo cuando se ficha en festivo
+   del calendario laboral del empleado. */
+.holiday-warning-card {
+    -fx-background-color: #fef9c3;
+    -fx-background-radius: 8;
+    -fx-border-color: #facc15;
+    -fx-border-radius: 8;
+    -fx-border-width: 1.5;
+}
+.holiday-warning-title {
+    -fx-text-fill: #854d0e;
+    -fx-font-weight: 800;
+    -fx-font-size: 13px;
+}
+.holiday-warning-body {
+    -fx-text-fill: #78350f;
+    -fx-font-size: 12px;
+}
+
 /* PORT-5 CAL-A — variantes color por event_type.
    Aplicadas como clase adicional encima de calendar-event-card-type
    para que herede tipografia/padding/radius. */

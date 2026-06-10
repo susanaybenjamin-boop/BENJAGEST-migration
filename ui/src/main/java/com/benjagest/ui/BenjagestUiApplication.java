@@ -4268,17 +4268,17 @@ public class BenjagestUiApplication extends Application {
     }
 
     private void punch(String employeeId, String eventType) {
-        Task<String> task = new Task<>() {
+        Task<com.benjagest.ui.service.TimeClockApiClient.PunchOutcome> task = new Task<>() {
             @Override
-            protected String call() throws Exception {
+            protected com.benjagest.ui.service.TimeClockApiClient.PunchOutcome call() throws Exception {
                 return timeClockApi.punch(employeeId, eventType);
             }
         };
         task.setOnSucceeded(ev -> {
-            String csv = task.getValue();
+            var outcome = task.getValue();
             // Mostramos el CSV en un dialog con TextField copiable para
             // que el trabajador lo guarde si lo necesita (justificante).
-            javafx.scene.control.TextField field = new javafx.scene.control.TextField(csv);
+            javafx.scene.control.TextField field = new javafx.scene.control.TextField(outcome.csv());
             field.setEditable(false);
             field.setPrefColumnCount(20);
             Alert ok = new Alert(Alert.AlertType.INFORMATION);
@@ -4286,6 +4286,23 @@ public class BenjagestUiApplication extends Application {
             VBox content = new VBox(8,
                     new Label(t("timeclock.success.csv_label")),
                     field);
+            // TC-CAL (Benjamin 2026-06-10): si el backend devolvio
+            // holidayWarning, anadir tarjeta amarilla con icono y
+            // nombre del festivo. No bloquea — solo informa.
+            if (outcome.hasHolidayWarning()) {
+                Label warnTitle = new Label(t("timeclock.holiday_warning.title"));
+                warnTitle.getStyleClass().add("holiday-warning-title");
+                String typeLabel = humanizeHolidayType(outcome.holidayType());
+                Label warnBody = new Label(t("timeclock.holiday_warning.body")
+                        .replace("{type}", typeLabel)
+                        .replace("{name}", outcome.holidayName()));
+                warnBody.setWrapText(true);
+                warnBody.getStyleClass().add("holiday-warning-body");
+                VBox warnBox = new VBox(4, warnTitle, warnBody);
+                warnBox.getStyleClass().add("holiday-warning-card");
+                warnBox.setPadding(new Insets(10));
+                content.getChildren().add(warnBox);
+            }
             content.setPadding(new Insets(8));
             ok.getDialogPane().setContent(content);
             ok.showAndWait();
@@ -4293,6 +4310,17 @@ public class BenjagestUiApplication extends Application {
         });
         task.setOnFailed(ev -> showError(t("timeclock.fail.title"), t("timeclock.fail.body")));
         start(task, "timeclock-punch");
+    }
+
+    /** TC-CAL — humaniza el code de holiday_type para el warning. */
+    private String humanizeHolidayType(String raw) {
+        if (raw == null || raw.isBlank()) return "";
+        return switch (raw.trim().toUpperCase(java.util.Locale.ROOT)) {
+            case "FESTIVO" -> t("holiday.type.festivo");
+            case "AJUSTE" -> t("holiday.type.ajuste");
+            case "CIERRE" -> t("holiday.type.cierre");
+            default -> raw;
+        };
     }
 
     private void reloadTimeClock(String employeeId) {
@@ -10210,6 +10238,7 @@ public class BenjagestUiApplication extends Application {
                     if (v == null) v = tSuggestionsEn(key);
                     if (v == null) v = tProfileLockEn(key);
                     if (v == null) v = tCliEditorEn(key);
+                    if (v == null) v = tTcCalEn(key);
                     yield v != null ? v : (key.startsWith("column.") ? key.substring(7) : key);
                 }
             };
@@ -11106,6 +11135,7 @@ public class BenjagestUiApplication extends Application {
                 if (v == null) v = tSuggestionsEs(key);
                 if (v == null) v = tProfileLockEs(key);
                 if (v == null) v = tCliEditorEs(key);
+                if (v == null) v = tTcCalEs(key);
                 if (v != null) yield v;
                 yield key.startsWith("column.") ? key.substring(7) : switch (key) {
                 case "field.name" -> "Nombre";
@@ -11810,6 +11840,30 @@ public class BenjagestUiApplication extends Application {
             case "portal.jobs.col.date" -> "Fecha";
             case "portal.jobs.col.title" -> "Título";
             case "portal.jobs.col.status" -> "Estado";
+            default -> null;
+        };
+    }
+
+    /** TC-CAL — Helper i18n EN warning festivo en fichaje. */
+    private String tTcCalEn(String key) {
+        return switch (key) {
+            case "timeclock.holiday_warning.title" -> "Heads up — today is a non-working day";
+            case "timeclock.holiday_warning.body" -> "{type}: {name}. Your punch was recorded. Payroll may count it as extra hours.";
+            case "holiday.type.festivo" -> "Public holiday";
+            case "holiday.type.ajuste" -> "Work-day adjustment";
+            case "holiday.type.cierre" -> "Company closure";
+            default -> null;
+        };
+    }
+
+    /** TC-CAL — Helper i18n ES warning festivo en fichaje. */
+    private String tTcCalEs(String key) {
+        return switch (key) {
+            case "timeclock.holiday_warning.title" -> "Atención — hoy es no laborable";
+            case "timeclock.holiday_warning.body" -> "{type}: {name}. Tu fichaje quedó registrado. Nómina podrá contarlo como horas extra.";
+            case "holiday.type.festivo" -> "Festivo";
+            case "holiday.type.ajuste" -> "Ajuste de jornada";
+            case "holiday.type.cierre" -> "Cierre de empresa";
             default -> null;
         };
     }

@@ -91,7 +91,26 @@ public class TimeClockService {
         repository.insertVerification(
                 UUID.randomUUID().toString(), eventId, csv, actor.userId());
 
-        return new PunchResult(event, csv);
+        // TC-CAL (decision Benjamin 2026-06-10): warning amarillo si el
+        // empleado ficha en un dia FESTIVO/AJUSTE/CIERRE de su
+        // work_calendar asignado. NO bloquea — solo informa para que
+        // luego el flujo de nomina pueda marcarlo como extra.
+        HolidayWarning warning = detectHolidayWarning(employeeId);
+
+        return new PunchResult(event, csv, warning);
+    }
+
+    /**
+     * TC-CAL — Comprueba si la fecha actual coincide con un festivo
+     * del calendario laboral asignado al empleado. Devuelve null si
+     * no hay calendario asignado, no hay festivo, o falla la consulta.
+     */
+    private HolidayWarning detectHolidayWarning(String employeeId) {
+        try {
+            return repository.findTodaysHolidayForEmployee(employeeId).orElse(null);
+        } catch (Exception ex) {
+            return null;
+        }
     }
 
     public List<TimeClockEvent> recent(String employeeId, int limit) {
@@ -144,5 +163,14 @@ public class TimeClockService {
                 + "-" + new String(buf, 8, 4) + "-" + new String(buf, 12, 4);
     }
 
-    public record PunchResult(TimeClockEvent event, String csv) {}
+    public record PunchResult(TimeClockEvent event, String csv,
+                              HolidayWarning holidayWarning) {}
+
+    /**
+     * TC-CAL — Datos del festivo coincidente para mostrar warning
+     * amarillo al empleado. {@code holidayType} = FESTIVO | AJUSTE |
+     * CIERRE (codigos canonicos de holidays.holiday_type).
+     */
+    public record HolidayWarning(String holidayName, String holidayType,
+                                  String scope) {}
 }

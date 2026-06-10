@@ -58,6 +58,34 @@ public class TimeClockRepository {
 
     public record MyEmployeeRow(String employeeId, String fullName) {}
 
+    /**
+     * TC-CAL — Si el empleado tiene un {@code work_calendar_id}
+     * asignado y la fecha de hoy coincide con alguna fila de
+     * {@code holidays} de ese calendario, devuelve los datos del
+     * festivo para el warning amarillo. Si no hay calendario o no es
+     * festivo, devuelve empty.
+     */
+    public Optional<TimeClockService.HolidayWarning> findTodaysHolidayForEmployee(String employeeId) {
+        return jdbcTemplate.query("""
+                SELECT h.name AS holiday_name,
+                       h.holiday_type,
+                       h.scope
+                  FROM employees e
+                  JOIN holidays h ON h.work_calendar_id = e.work_calendar_id
+                 WHERE e.id = ?
+                   AND e.work_calendar_id IS NOT NULL
+                   AND h.holiday_date = CURRENT_DATE
+                 LIMIT 1
+                """,
+                rs -> rs.next()
+                        ? Optional.of(new TimeClockService.HolidayWarning(
+                                rs.getString("holiday_name"),
+                                rs.getString("holiday_type"),
+                                rs.getString("scope")))
+                        : Optional.empty(),
+                employeeId);
+    }
+
     public void insertEvent(TimeClockEvent event) {
         jdbcTemplate.update("""
                 INSERT INTO time_clock_events (
