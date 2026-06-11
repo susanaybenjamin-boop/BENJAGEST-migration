@@ -195,7 +195,11 @@ public class BenjagestUiApplication extends Application {
             "team",
             // PORT-3 SUG — Buzon de sugerencias/mejoras/bugs hacia el
             // fabricante. Per-tenant, cualquier rol puede sugerir.
-            "suggestions"
+            "suggestions",
+            // COMM-MOD 2026-06-11 — Comunicación asesoría↔cliente
+            // (mensajes + documentos compartidos). Mismo nombre en
+            // ambos modos.
+            "comm"
             // NOTA (2026-06-10 tarde, decisión Benjamin):
             //   - "employee-portal" eliminado del sidebar — el portal va a
             //     una app móvil/tablet futura. Backend /api/portal/* sigue.
@@ -12644,6 +12648,7 @@ public class BenjagestUiApplication extends Application {
             case "module.comm.recipient.client" -> "Client:";
             case "module.comm.recipient.prompt" -> "Select recipient";
             case "module.comm.recipient.fail.title" -> "Could not load recipients";
+            case "module.comm" -> "Communication";
             case "recurring.candidates.silence" -> "Silence";
             case "recurring.candidates.reload.fail.title" -> "Could not reload candidates";
             case "recurring.silence.title" -> "Silence recurring candidate";
@@ -12816,6 +12821,7 @@ public class BenjagestUiApplication extends Application {
             case "module.comm.recipient.client" -> "Cliente:";
             case "module.comm.recipient.prompt" -> "Selecciona destinatario";
             case "module.comm.recipient.fail.title" -> "No se pudieron cargar los destinatarios";
+            case "module.comm" -> "Comunicación";
             case "recurring.candidates.silence" -> "Silenciar";
             case "recurring.candidates.reload.fail.title" -> "No se pudieron recargar los candidatos";
             case "recurring.silence.title" -> "Silenciar candidato recurrente";
