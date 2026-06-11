@@ -1277,7 +1277,9 @@ public class BenjagestUiApplication extends Application {
     }
 
     private void startAdvisoryNotificationsPolling() {
-        if (advisoryNotificationsPoller != null || appMode != AppMode.ADVISORY) return;
+        // Activa en ambos modos (ADVISORY y BUSINESS). El refresh elige
+        // el endpoint correcto según appMode.
+        if (advisoryNotificationsPoller != null) return;
         advisoryNotificationsPoller = new javafx.animation.Timeline(
                 new javafx.animation.KeyFrame(javafx.util.Duration.ZERO,
                         ev -> refreshAdvisoryNotificationsCount()),
@@ -1298,16 +1300,19 @@ public class BenjagestUiApplication extends Application {
 
     private void refreshAdvisoryNotificationsCount() {
         if (!com.benjagest.ui.service.AuthSession.get().isAuthenticated()) return;
-        if (appMode != AppMode.ADVISORY) return;
+        if (appMode == null) return;
+        boolean advisoryMode = appMode == AppMode.ADVISORY;
         Task<Integer> task = new Task<>() {
             @Override
             protected Integer call() throws Exception {
-                return altaApiClient.countUnreadAdvisoryNotifications();
+                return advisoryMode
+                        ? altaApiClient.countUnreadAdvisoryNotifications()
+                        : altaApiClient.countUnreadBusinessNotifications();
             }
         };
         task.setOnSucceeded(e -> applyAdvisoryNotificationsBadge(task.getValue()));
         task.setOnFailed(e -> { /* backend caído → silencio */ });
-        start(task, "advisory-notif-count");
+        start(task, "notif-count");
     }
 
     private void applyAdvisoryNotificationsBadge(int count) {
@@ -1384,31 +1389,36 @@ public class BenjagestUiApplication extends Application {
             dismiss.setDisable(!has);
         });
 
+        final boolean advisoryMode = appMode == AppMode.ADVISORY;
         Runnable reload = () -> {
             Task<List<com.benjagest.ui.model.AdvisoryNotificationEntry>> tk = new Task<>() {
                 @Override
                 protected List<com.benjagest.ui.model.AdvisoryNotificationEntry> call()
                         throws Exception {
-                    return altaApiClient.listAdvisoryNotifications(false);
+                    return advisoryMode
+                            ? altaApiClient.listAdvisoryNotifications(false)
+                            : altaApiClient.listBusinessNotifications(false);
                 }
             };
             tk.setOnSucceeded(e -> list.getItems().setAll(tk.getValue()));
             tk.setOnFailed(e -> showError(t("advisory.notif.fail.title"),
                     tk.getException().getMessage()));
-            start(tk, "advisory-notif-list");
+            start(tk, "notif-list");
         };
         refresh.setOnAction(e -> reload.run());
         markAll.setOnAction(e -> {
             Task<Integer> tk = new Task<>() {
                 @Override
                 protected Integer call() throws Exception {
-                    return altaApiClient.markAllAdvisoryNotificationsRead();
+                    return advisoryMode
+                            ? altaApiClient.markAllAdvisoryNotificationsRead()
+                            : altaApiClient.markAllBusinessNotificationsRead();
                 }
             };
             tk.setOnSucceeded(ev -> { reload.run(); refreshAdvisoryNotificationsCount(); });
             tk.setOnFailed(ev -> showError(t("advisory.notif.fail.title"),
                     tk.getException().getMessage()));
-            start(tk, "advisory-notif-mark-all");
+            start(tk, "notif-mark-all");
         });
         markRead.setOnAction(e -> {
             com.benjagest.ui.model.AdvisoryNotificationEntry sel = list.getSelectionModel().getSelectedItem();
@@ -1416,14 +1426,15 @@ public class BenjagestUiApplication extends Application {
             Task<Void> tk = new Task<>() {
                 @Override
                 protected Void call() throws Exception {
-                    altaApiClient.markAdvisoryNotificationRead(sel.id());
+                    if (advisoryMode) altaApiClient.markAdvisoryNotificationRead(sel.id());
+                    else altaApiClient.markBusinessNotificationRead(sel.id());
                     return null;
                 }
             };
             tk.setOnSucceeded(ev -> { reload.run(); refreshAdvisoryNotificationsCount(); });
             tk.setOnFailed(ev -> showError(t("advisory.notif.fail.title"),
                     tk.getException().getMessage()));
-            start(tk, "advisory-notif-read");
+            start(tk, "notif-read");
         });
         dismiss.setOnAction(e -> {
             com.benjagest.ui.model.AdvisoryNotificationEntry sel = list.getSelectionModel().getSelectedItem();
@@ -1431,14 +1442,15 @@ public class BenjagestUiApplication extends Application {
             Task<Void> tk = new Task<>() {
                 @Override
                 protected Void call() throws Exception {
-                    altaApiClient.dismissAdvisoryNotification(sel.id());
+                    if (advisoryMode) altaApiClient.dismissAdvisoryNotification(sel.id());
+                    else altaApiClient.dismissBusinessNotification(sel.id());
                     return null;
                 }
             };
             tk.setOnSucceeded(ev -> { reload.run(); refreshAdvisoryNotificationsCount(); });
             tk.setOnFailed(ev -> showError(t("advisory.notif.fail.title"),
                     tk.getException().getMessage()));
-            start(tk, "advisory-notif-dismiss");
+            start(tk, "notif-dismiss");
         });
 
         Button close = new Button(t("close"));
@@ -1465,7 +1477,8 @@ public class BenjagestUiApplication extends Application {
                     protected Integer call() throws Exception {
                         int n = 0;
                         for (var entry : all) {
-                            altaApiClient.dismissAdvisoryNotification(entry.id());
+                            if (advisoryMode) altaApiClient.dismissAdvisoryNotification(entry.id());
+                            else altaApiClient.dismissBusinessNotification(entry.id());
                             n++;
                         }
                         return n;
@@ -1477,7 +1490,7 @@ public class BenjagestUiApplication extends Application {
                 });
                 tk.setOnFailed(ev -> showError(t("advisory.notif.fail.title"),
                         tk.getException().getMessage()));
-                start(tk, "advisory-notif-dismiss-all");
+                start(tk, "notif-dismiss-all");
             });
         });
 
@@ -1694,9 +1707,9 @@ public class BenjagestUiApplication extends Application {
         });
 
         HBox header = new HBox(14, AppBrand.createLogoMark(), titleBlock, spacer);
-        if (appMode == AppMode.ADVISORY) {
-            header.getChildren().add(buildAdvisoryNotificationsBell());
-        }
+        // Campana en AMBOS modos. El bell decide internamente qué
+        // endpoint usar según appMode (advisory vs business).
+        header.getChildren().add(buildAdvisoryNotificationsBell());
         header.getChildren().addAll(languageButton, refresh, logout);
         header.setAlignment(Pos.CENTER_LEFT);
         header.getStyleClass().add("app-header");
@@ -12635,6 +12648,9 @@ public class BenjagestUiApplication extends Application {
             case "advisory.notif.type.invitation_rejected" -> "Invitation rejected";
             case "advisory.notif.type.invoice_overdue" -> "Invoice overdue";
             case "advisory.notif.type.sif_anomaly" -> "SIF chain anomaly";
+            case "advisory.notif.type.advisory_message" -> "Message from your advisor";
+            case "advisory.notif.type.advisory_document" -> "Document from your advisor";
+            case "advisory.notif.type.client_message" -> "Message from the client";
             case "recurring.candidates.silence" -> "Silence";
             case "recurring.candidates.reload.fail.title" -> "Could not reload candidates";
             case "recurring.silence.title" -> "Silence recurring candidate";
@@ -12803,6 +12819,9 @@ public class BenjagestUiApplication extends Application {
             case "advisory.notif.type.invitation_rejected" -> "Invitación rechazada";
             case "advisory.notif.type.invoice_overdue" -> "Factura vencida sin cobrar";
             case "advisory.notif.type.sif_anomaly" -> "Anomalía en cadena hash SIF";
+            case "advisory.notif.type.advisory_message" -> "Mensaje de tu asesoría";
+            case "advisory.notif.type.advisory_document" -> "Documento de tu asesoría";
+            case "advisory.notif.type.client_message" -> "Mensaje del cliente";
             case "recurring.candidates.silence" -> "Silenciar";
             case "recurring.candidates.reload.fail.title" -> "No se pudieron recargar los candidatos";
             case "recurring.silence.title" -> "Silenciar candidato recurrente";

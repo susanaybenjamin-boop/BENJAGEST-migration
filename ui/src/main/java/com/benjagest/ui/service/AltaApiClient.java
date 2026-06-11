@@ -2006,6 +2006,81 @@ public class AltaApiClient {
     }
 
     // ============================================================
+    //  Business Notifications (bandeja del empresario)
+    //  Backend: /api/business/notifications — mismo shape
+    // ============================================================
+
+    public int countUnreadBusinessNotifications() throws IOException, InterruptedException {
+        HttpResponse<String> r = send(req(
+                baseUrl + "/business/notifications/count-unread").GET());
+        if (r.statusCode() < 200 || r.statusCode() >= 300) {
+            throw new IOException("HTTP " + r.statusCode() + ": " + r.body());
+        }
+        java.util.regex.Matcher m = java.util.regex.Pattern
+                .compile("\"unread\"\\s*:\\s*(\\d+)").matcher(r.body());
+        return m.find() ? Integer.parseInt(m.group(1)) : 0;
+    }
+
+    public List<com.benjagest.ui.model.AdvisoryNotificationEntry>
+            listBusinessNotifications(boolean onlyUnread)
+            throws IOException, InterruptedException {
+        HttpResponse<String> r = send(req(
+                baseUrl + "/business/notifications?onlyUnread=" + onlyUnread).GET());
+        if (r.statusCode() < 200 || r.statusCode() >= 300) {
+            throw new IOException("HTTP " + r.statusCode() + ": " + r.body());
+        }
+        List<com.benjagest.ui.model.AdvisoryNotificationEntry> out = new ArrayList<>();
+        for (String obj : splitTopLevelObjects(r.body())) {
+            // Reusa AdvisoryNotificationEntry — campos coinciden con
+            // BusinessNotification salvo relatedCompanyId ↔ clientCompanyId.
+            // El UI sólo los usa como tracking interno.
+            out.add(new com.benjagest.ui.model.AdvisoryNotificationEntry(
+                    textField(obj, "id"),
+                    textField(obj, "relatedCompanyId"),
+                    textField(obj, "notificationType"),
+                    textField(obj, "severity"),
+                    textField(obj, "title"),
+                    textField(obj, "message"),
+                    textField(obj, "entityRef"),
+                    textField(obj, "readAt"),
+                    textField(obj, "createdAt")));
+        }
+        return out;
+    }
+
+    public void markBusinessNotificationRead(String id)
+            throws IOException, InterruptedException {
+        HttpResponse<String> r = send(req(
+                baseUrl + "/business/notifications/" + id + "/read")
+                .POST(java.net.http.HttpRequest.BodyPublishers.noBody()));
+        if (r.statusCode() < 200 || r.statusCode() >= 300) {
+            throw new IOException("HTTP " + r.statusCode());
+        }
+    }
+
+    public void dismissBusinessNotification(String id)
+            throws IOException, InterruptedException {
+        HttpResponse<String> r = send(req(
+                baseUrl + "/business/notifications/" + id + "/dismiss")
+                .POST(java.net.http.HttpRequest.BodyPublishers.noBody()));
+        if (r.statusCode() < 200 || r.statusCode() >= 300) {
+            throw new IOException("HTTP " + r.statusCode());
+        }
+    }
+
+    public int markAllBusinessNotificationsRead() throws IOException, InterruptedException {
+        HttpResponse<String> r = send(req(
+                baseUrl + "/business/notifications/mark-all-read")
+                .POST(java.net.http.HttpRequest.BodyPublishers.noBody()));
+        if (r.statusCode() < 200 || r.statusCode() >= 300) {
+            throw new IOException("HTTP " + r.statusCode() + ": " + r.body());
+        }
+        java.util.regex.Matcher m = java.util.regex.Pattern
+                .compile("\"markedRead\"\\s*:\\s*(\\d+)").matcher(r.body());
+        return m.find() ? Integer.parseInt(m.group(1)) : 0;
+    }
+
+    // ============================================================
     //  Sprint A 2026-06-10 noche — limpieza cadena SIF legacy
     // ============================================================
 
