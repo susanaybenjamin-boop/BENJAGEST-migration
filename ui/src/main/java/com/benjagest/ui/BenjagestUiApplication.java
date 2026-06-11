@@ -5760,7 +5760,188 @@ public class BenjagestUiApplication extends Application {
         VBox body = new VBox(12, infoSlot, new Separator(), tokenBlock);
 
         reload.run();
-        return tabLayout(header, body, actions);
+        Node linkPane = tabLayout(header, body, actions);
+
+        // 2026-06-10 noche — sub-pestañas dentro de "Mi asesoría"
+        // (decisión Benjamin P3a opción B): Vínculo / Mensajes /
+        // Documentos. Backend V77/V78 ya listo, solo falta UI.
+        TabPane sub = new TabPane();
+        sub.setTabClosingPolicy(TabPane.TabClosingPolicy.UNAVAILABLE);
+        sub.getStyleClass().add("settings-tabs");
+        Tab linkTab = new Tab(t("settings.my_advisory.sub.link"), linkPane);
+        linkTab.setGraphic(icon("fas-link"));
+        Tab messagesTab = new Tab(t("settings.my_advisory.sub.messages"),
+                buildAdvisoryMessagesPane());
+        messagesTab.setGraphic(icon("fas-comments"));
+        Tab documentsTab = new Tab(t("settings.my_advisory.sub.documents"),
+                buildAdvisoryDocumentsPane());
+        documentsTab.setGraphic(icon("fas-folder-open"));
+        sub.getTabs().addAll(linkTab, messagesTab, documentsTab);
+        VBox wrap = new VBox(sub);
+        VBox.setVgrow(sub, Priority.ALWAYS);
+        return wrap;
+    }
+
+    /**
+     * 2026-06-10 noche — Sub-pestaña "Mensajes" dentro de "Mi asesoría".
+     * Lista de hilos a la izquierda + timeline + caja envío a la derecha.
+     * Backend: AdvisoryMessageService (V77) con resolveParts que valida
+     * la relación asesoría-cliente.
+     */
+    private Node buildAdvisoryMessagesPane() {
+        VBox root = new VBox(12);
+        root.setPadding(new Insets(12));
+
+        Label title = label(t("advisory.messages.title"), "settings-section-title");
+        Label hint = new Label(t("advisory.messages.hint"));
+        hint.setWrapText(true);
+        hint.getStyleClass().add("settings-hint");
+
+        // Lista de hilos (izquierda)
+        javafx.scene.control.ListView<com.benjagest.ui.model.AdvisoryThreadSummary> threadList =
+                new javafx.scene.control.ListView<>();
+        threadList.setPrefWidth(220);
+        threadList.setCellFactory(lv -> new javafx.scene.control.ListCell<>() {
+            @Override protected void updateItem(
+                    com.benjagest.ui.model.AdvisoryThreadSummary item, boolean empty) {
+                super.updateItem(item, empty);
+                if (empty || item == null) { setText(null); setGraphic(null); return; }
+                String unread = item.unreadCount() > 0
+                        ? " ●" + item.unreadCount() : "";
+                Label l = new Label(shortId(item.otherCompanyId())
+                        + " (" + item.totalCount() + ")" + unread);
+                if (item.unreadCount() > 0) l.setStyle("-fx-font-weight: bold;");
+                setGraphic(l);
+            }
+        });
+
+        // Timeline (centro)
+        javafx.scene.control.ListView<com.benjagest.ui.model.AdvisoryMessageEntry> timeline =
+                new javafx.scene.control.ListView<>();
+        timeline.setCellFactory(lv -> new javafx.scene.control.ListCell<>() {
+            @Override protected void updateItem(
+                    com.benjagest.ui.model.AdvisoryMessageEntry item, boolean empty) {
+                super.updateItem(item, empty);
+                if (empty || item == null) { setText(null); setGraphic(null); return; }
+                VBox bubble = new VBox(2);
+                Label body = new Label(item.body());
+                body.setWrapText(true);
+                Label meta = new Label(item.createdAt() == null ? ""
+                        : item.createdAt().length() > 16
+                            ? item.createdAt().substring(0, 16) : item.createdAt());
+                meta.setStyle("-fx-font-size: 10px; -fx-text-fill: #94a3b8;");
+                bubble.getChildren().addAll(body, meta);
+                bubble.setMaxWidth(420);
+                bubble.setPadding(new Insets(8, 12, 6, 12));
+                boolean isA2C = com.benjagest.ui.model.AdvisoryMessageEntry.DIRECTION_A2C
+                        .equals(item.direction());
+                bubble.setStyle("-fx-background-radius: 12;"
+                        + (isA2C
+                                ? " -fx-background-color: #dbeafe;"
+                                : " -fx-background-color: #f1f5f9;"));
+                javafx.scene.layout.HBox row = new javafx.scene.layout.HBox(bubble);
+                row.setPadding(new Insets(2, 0, 2, 0));
+                row.setAlignment(isA2C ? Pos.CENTER_LEFT : Pos.CENTER_RIGHT);
+                setGraphic(row);
+            }
+        });
+
+        // Caja de envío (abajo)
+        javafx.scene.control.TextArea sendBox = new javafx.scene.control.TextArea();
+        sendBox.setPromptText(t("advisory.messages.send_prompt"));
+        sendBox.setPrefRowCount(3);
+        sendBox.setWrapText(true);
+        Button sendBtn = new Button(t("advisory.messages.send"));
+        sendBtn.setGraphic(icon("fas-paper-plane"));
+        sendBtn.getStyleClass().add("button-primary");
+        sendBtn.setDisable(true);
+        HBox sendRow = new HBox(8, sendBox, sendBtn);
+        HBox.setHgrow(sendBox, Priority.ALWAYS);
+        sendRow.setAlignment(Pos.CENTER_RIGHT);
+
+        // Lógica de selección y carga
+        final String[] currentOther = {null};
+        Runnable reloadThreads = () -> {
+            Task<java.util.List<com.benjagest.ui.model.AdvisoryThreadSummary>> task = new Task<>() {
+                @Override protected java.util.List<com.benjagest.ui.model.AdvisoryThreadSummary> call() throws Exception {
+                    return altaApiClient.listAdvisoryThreads();
+                }
+            };
+            task.setOnSucceeded(ev -> threadList.setItems(
+                    FXCollections.observableArrayList(task.getValue())));
+            task.setOnFailed(ev -> { /* sin vínculo todavía */ });
+            start(task, "advisory-threads-load");
+        };
+        Runnable reloadTimeline = () -> {
+            if (currentOther[0] == null) return;
+            String other = currentOther[0];
+            Task<java.util.List<com.benjagest.ui.model.AdvisoryMessageEntry>> task = new Task<>() {
+                @Override protected java.util.List<com.benjagest.ui.model.AdvisoryMessageEntry> call() throws Exception {
+                    java.util.List<com.benjagest.ui.model.AdvisoryMessageEntry> msgs =
+                            altaApiClient.listAdvisoryThread(other);
+                    try { altaApiClient.markAdvisoryThreadRead(other); } catch (Exception ignore) {}
+                    return msgs;
+                }
+            };
+            task.setOnSucceeded(ev -> {
+                timeline.setItems(FXCollections.observableArrayList(task.getValue()));
+                if (!task.getValue().isEmpty()) {
+                    timeline.scrollTo(task.getValue().size() - 1);
+                }
+                reloadThreads.run();  // refresca contadores
+            });
+            task.setOnFailed(ev -> showError(t("advisory.messages.fail.title"),
+                    task.getException() == null ? "" : task.getException().getMessage()));
+            start(task, "advisory-thread-load");
+        };
+        threadList.getSelectionModel().selectedItemProperty().addListener((o, ov, nv) -> {
+            if (nv == null) {
+                currentOther[0] = null;
+                sendBtn.setDisable(true);
+                timeline.setItems(FXCollections.observableArrayList());
+            } else {
+                currentOther[0] = nv.otherCompanyId();
+                sendBtn.setDisable(false);
+                reloadTimeline.run();
+            }
+        });
+        sendBtn.setOnAction(ev -> {
+            if (currentOther[0] == null) return;
+            String body = sendBox.getText();
+            if (body == null || body.isBlank()) return;
+            Task<Void> task = new Task<>() {
+                @Override protected Void call() throws Exception {
+                    altaApiClient.sendAdvisoryMessage(currentOther[0], body, null);
+                    return null;
+                }
+            };
+            task.setOnSucceeded(e -> { sendBox.clear(); reloadTimeline.run(); });
+            task.setOnFailed(e -> showError(t("advisory.messages.fail.title"),
+                    task.getException() == null ? "" : task.getException().getMessage()));
+            start(task, "advisory-send");
+        });
+
+        reloadThreads.run();
+
+        HBox split = new HBox(12, threadList, new VBox(8, timeline, sendRow));
+        HBox.setHgrow(split.getChildren().get(1), Priority.ALWAYS);
+        VBox.setVgrow(timeline, Priority.ALWAYS);
+        VBox.setVgrow(split, Priority.ALWAYS);
+
+        root.getChildren().addAll(title, hint, split);
+        return root;
+    }
+
+    /** Stub Documentos. Se rellena en el siguiente slice. */
+    private Node buildAdvisoryDocumentsPane() {
+        VBox box = new VBox(12);
+        box.setPadding(new Insets(16));
+        Label title = label(t("advisory.documents.title"), "settings-section-title");
+        Label hint = new Label(t("advisory.documents.hint"));
+        hint.setWrapText(true);
+        hint.getStyleClass().add("settings-hint");
+        box.getChildren().addAll(title, hint);
+        return box;
     }
 
     private Node settingsAuditTab() {
@@ -11886,6 +12067,17 @@ public class BenjagestUiApplication extends Application {
             case "settings.audit.sif_reset.ok.title" -> "Chain reset";
             case "settings.audit.sif_reset.ok.body" -> "Deleted {n} legacy SIF events. Restart the backend to seed a fresh chain.";
             case "settings.audit.sif_reset.fail.title" -> "Could not reset chain";
+            // Sub-tabs Mi asesoría — 2026-06-10 noche
+            case "settings.my_advisory.sub.link" -> "Link";
+            case "settings.my_advisory.sub.messages" -> "Messages";
+            case "settings.my_advisory.sub.documents" -> "Documents";
+            case "advisory.messages.title" -> "Conversations with my advisory";
+            case "advisory.messages.hint" -> "Direct messages between your company and the advisory firm that handles you. Pick a thread on the left and send a reply at the bottom.";
+            case "advisory.messages.send_prompt" -> "Write a message…";
+            case "advisory.messages.send" -> "Send";
+            case "advisory.messages.fail.title" -> "Could not load or send the message";
+            case "advisory.documents.title" -> "Shared documents";
+            case "advisory.documents.hint" -> "Document exchange with your advisory firm. Upload, review and acceptance — implemented in next slice.";
             case "settings.audit.export.from" -> "From";
             case "settings.audit.export.to" -> "To";
             case "settings.audit.export.pdf" -> "Download PDF";
@@ -11978,6 +12170,16 @@ public class BenjagestUiApplication extends Application {
             case "settings.audit.sif_reset.ok.title" -> "Cadena reiniciada";
             case "settings.audit.sif_reset.ok.body" -> "Eliminados {n} eventos SIF antiguos. Reinicia el backend para sembrar la cadena nueva.";
             case "settings.audit.sif_reset.fail.title" -> "No se pudo reiniciar la cadena";
+            case "settings.my_advisory.sub.link" -> "Vínculo";
+            case "settings.my_advisory.sub.messages" -> "Mensajes";
+            case "settings.my_advisory.sub.documents" -> "Documentos";
+            case "advisory.messages.title" -> "Conversaciones con mi asesoría";
+            case "advisory.messages.hint" -> "Mensajes directos entre tu empresa y la asesoría que te lleva. Elige un hilo a la izquierda y envía una respuesta abajo.";
+            case "advisory.messages.send_prompt" -> "Escribe un mensaje…";
+            case "advisory.messages.send" -> "Enviar";
+            case "advisory.messages.fail.title" -> "No se pudo cargar o enviar el mensaje";
+            case "advisory.documents.title" -> "Documentos compartidos";
+            case "advisory.documents.hint" -> "Intercambio de documentos con tu asesoría. Subida, revisión y aceptación — se implementa en el siguiente slice.";
             case "settings.audit.export.hint" -> "Descarga un PDF o CSV verificable del registro completo de auditoria en un rango de fechas. Cada exportacion queda a su vez registrada con el SHA-256 del documento para que el fichero que enseñes al inspector se pueda contrastar con el registro.";
             case "settings.audit.export.from" -> "Desde";
             case "settings.audit.export.to" -> "Hasta";

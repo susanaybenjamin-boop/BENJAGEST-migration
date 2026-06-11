@@ -1688,6 +1688,90 @@ public class AltaApiClient {
     }
 
     // ============================================================
+    //  UI asesoría↔cliente — Mensajes /api/advisory/messages
+    //  (backend V77 — sesión 2026-06-09)
+    // ============================================================
+
+    public List<com.benjagest.ui.model.AdvisoryThreadSummary> listAdvisoryThreads()
+            throws IOException, InterruptedException {
+        HttpResponse<String> r = send(req(baseUrl + "/advisory/messages/threads").GET());
+        if (r.statusCode() < 200 || r.statusCode() >= 300) {
+            throw new IOException("HTTP " + r.statusCode() + ": " + r.body());
+        }
+        java.util.List<com.benjagest.ui.model.AdvisoryThreadSummary> out = new java.util.ArrayList<>();
+        for (String obj : splitTopLevelObjects(r.body())) {
+            out.add(new com.benjagest.ui.model.AdvisoryThreadSummary(
+                    textField(obj, "otherCompanyId"),
+                    textField(obj, "lastAt"),
+                    intFieldOrZero(obj, "unreadCount"),
+                    intFieldOrZero(obj, "totalCount")));
+        }
+        return out;
+    }
+
+    public List<com.benjagest.ui.model.AdvisoryMessageEntry> listAdvisoryThread(
+            String otherCompanyId) throws IOException, InterruptedException {
+        HttpResponse<String> r = send(req(
+                baseUrl + "/advisory/messages/threads/" + otherCompanyId).GET());
+        if (r.statusCode() < 200 || r.statusCode() >= 300) {
+            throw new IOException("HTTP " + r.statusCode() + ": " + r.body());
+        }
+        java.util.List<com.benjagest.ui.model.AdvisoryMessageEntry> out = new java.util.ArrayList<>();
+        for (String obj : splitTopLevelObjects(r.body())) {
+            out.add(new com.benjagest.ui.model.AdvisoryMessageEntry(
+                    textField(obj, "id"),
+                    textField(obj, "advisoryCompanyId"),
+                    textField(obj, "clientCompanyId"),
+                    textField(obj, "direction"),
+                    textField(obj, "fromUserId"),
+                    textField(obj, "body"),
+                    textField(obj, "attachmentPath"),
+                    textField(obj, "readAt"),
+                    textField(obj, "createdAt")));
+        }
+        return out;
+    }
+
+    public com.benjagest.ui.model.AdvisoryMessageEntry sendAdvisoryMessage(
+            String otherCompanyId, String body, String attachmentPath)
+            throws IOException, InterruptedException {
+        String json = "{\"body\":" + jsonString(body)
+                + ",\"attachmentPath\":" + jsonString(attachmentPath == null ? "" : attachmentPath)
+                + "}";
+        HttpResponse<String> r = send(req(
+                baseUrl + "/advisory/messages/threads/" + otherCompanyId + "/send")
+                .header("Content-Type", "application/json")
+                .POST(java.net.http.HttpRequest.BodyPublishers.ofString(json)));
+        if (r.statusCode() < 200 || r.statusCode() >= 300) {
+            throw new IOException("HTTP " + r.statusCode() + ": " + r.body());
+        }
+        String obj = r.body();
+        return new com.benjagest.ui.model.AdvisoryMessageEntry(
+                textField(obj, "id"),
+                textField(obj, "advisoryCompanyId"),
+                textField(obj, "clientCompanyId"),
+                textField(obj, "direction"),
+                textField(obj, "fromUserId"),
+                textField(obj, "body"),
+                textField(obj, "attachmentPath"),
+                textField(obj, "readAt"),
+                textField(obj, "createdAt"));
+    }
+
+    public int markAdvisoryThreadRead(String otherCompanyId)
+            throws IOException, InterruptedException {
+        HttpResponse<String> r = send(req(
+                baseUrl + "/advisory/messages/threads/" + otherCompanyId + "/mark-read")
+                .POST(java.net.http.HttpRequest.BodyPublishers.noBody()));
+        if (r.statusCode() < 200 || r.statusCode() >= 300) {
+            throw new IOException("HTTP " + r.statusCode() + ": " + r.body());
+        }
+        java.util.regex.Matcher m = java.util.regex.Pattern
+                .compile("\"markedRead\"\\s*:\\s*(\\d+)").matcher(r.body());
+        return m.find() ? Integer.parseInt(m.group(1)) : 0;
+    }
+
+    // ============================================================
     //  Sprint A 2026-06-10 noche — limpieza cadena SIF legacy
     // ============================================================
 
