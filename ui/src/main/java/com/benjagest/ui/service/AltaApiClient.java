@@ -2097,6 +2097,16 @@ public class AltaApiClient {
         return m.find() ? Integer.parseInt(m.group(1)) : 0;
     }
 
+    /** POST /api/billing/sif-events/verify-now. Dispara la detección
+     *  de anomalías en todas las cadenas (facturas + eventos). */
+    public void verifySifChainNow() throws IOException, InterruptedException {
+        HttpResponse<String> r = send(req(baseUrl + "/billing/sif-events/verify-now")
+                .POST(java.net.http.HttpRequest.BodyPublishers.noBody()));
+        if (r.statusCode() < 200 || r.statusCode() >= 300) {
+            throw new IOException("HTTP " + r.statusCode() + ": " + r.body());
+        }
+    }
+
     // ============================================================
     //  PORT-4 LOGO — Logo de empresa /api/settings/company/logo
     // ============================================================

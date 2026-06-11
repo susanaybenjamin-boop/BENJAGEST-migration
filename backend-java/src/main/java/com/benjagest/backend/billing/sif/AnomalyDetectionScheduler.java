@@ -5,11 +5,10 @@ import com.benjagest.backend.billing.verifactu.VerifactuRegistryService;
 import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 /**
- * Job de deteccion de anomalias en las cadenas hash — slice VF-ANOMALY.
+ * Detector de anomalias en las cadenas hash — slice VF-ANOMALY.
  *
  * Cumple los eventos 3 a 6 de la lista obligatoria de la Orden
  * HAC/1177/2024 art. 16:
@@ -21,10 +20,16 @@ import org.springframework.stereotype.Component;
  *                                          registros de eventos.
  *   6. ANOMALY_DETECTION_EVENTS_HIT     — se ha encontrado anomalia.
  *
- * Frecuencia: cada 12 horas. La Orden no especifica un periodo concreto;
- * 12h es defensivo (dos pasadas por dia) sin saturar la BD. Cuando una
- * empresa tenga miles de facturas, la verificacion sera lineal (verify
- * recorre toda la cadena) — si el coste se nota, se pasa a diario.
+ * <p>Disparado 2026-06-11 (decisión Benjamin alineado con CONTENDO):
+ * - Al arranque del programa (tras SYSTEM_START en SifEventLifecycle).
+ * - Al cierre del programa (antes de SUMMARY_SHUTDOWN en SifEventLifecycle).
+ * - Bajo demanda desde UI Configuración → Auditoría → "Verificar ahora".
+ *
+ * <p>Antes había un {@code @Scheduled(fixedDelay = 12h)} que saturaba
+ * la BD con eventos RUN aunque nadie usase el programa. Se eliminó por
+ * dos motivos: la Orden no obliga periodicidad concreta, y la integridad
+ * solo importa cuando hay actividad real (que coincide con que el
+ * programa esté arrancado).
  *
  * Iteramos por (companyId, mode) usando findAllChainRefs, asi cada
  * cadena se verifica una vez. Para los eventos SIF la cadena es
@@ -35,8 +40,6 @@ import org.springframework.stereotype.Component;
 public class AnomalyDetectionScheduler {
 
     private static final Logger log = LoggerFactory.getLogger(AnomalyDetectionScheduler.class);
-    private static final long TWELVE_HOURS_MS = 12L * 60L * 60L * 1000L;
-    private static final long INITIAL_DELAY_MS = 15L * 60L * 1000L;
 
     private final VerifactuRegistryRepository registryRepository;
     private final VerifactuRegistryService verifactuRegistryService;
@@ -103,7 +106,6 @@ public class AnomalyDetectionScheduler {
         }
     }
 
-    @Scheduled(fixedDelay = TWELVE_HOURS_MS, initialDelay = INITIAL_DELAY_MS)
     public void run() {
         log.info("VF-ANOMALY: arrancando ciclo de deteccion");
         detectInvoiceChainAnomalies();

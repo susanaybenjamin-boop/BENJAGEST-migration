@@ -28,9 +28,12 @@ public class SifEventLifecycle {
     private static final String SIF_VERSION = "BENJAGEST-0.x";
 
     private final SifEventService eventService;
+    private final AnomalyDetectionScheduler anomalyDetector;
 
-    public SifEventLifecycle(SifEventService eventService) {
+    public SifEventLifecycle(SifEventService eventService,
+                              AnomalyDetectionScheduler anomalyDetector) {
         this.eventService = eventService;
+        this.anomalyDetector = anomalyDetector;
     }
 
     /**
@@ -56,6 +59,17 @@ public class SifEventLifecycle {
                     log.warn("No se pudo registrar SYSTEM_START para empresa {}", companyId, ex);
                 }
             }
+            // 2026-06-11: tras emitir SYSTEM_START hacemos pasada de
+            // detección de anomalías (eventos 3-6 de la lista oficial).
+            // Antes había un @Scheduled de 12h, pero saturaba la BD y la
+            // Orden no obliga periodicidad concreta. Una pasada al
+            // arrancar el programa cubre el caso real (la verificación
+            // solo importa cuando hay actividad).
+            try {
+                anomalyDetector.run();
+            } catch (RuntimeException ex) {
+                log.warn("VF-ANOMALY al arranque fallo (no critico)", ex);
+            }
         } catch (RuntimeException ex) {
             log.warn("No se pudo iniciar el registro SIF (BD aun no disponible?)", ex);
         }
@@ -74,6 +88,14 @@ public class SifEventLifecycle {
      */
     @PreDestroy
     public void onStop() {
+        // Pasada de detección antes del cierre — última oportunidad
+        // de dejar HIT registrado si la cadena quedó rota durante la
+        // sesión.
+        try {
+            anomalyDetector.run();
+        } catch (RuntimeException ex) {
+            log.warn("VF-ANOMALY al cierre fallo (no critico)", ex);
+        }
         try {
             String payload = buildPayload("stoppedAt");
             for (String companyId : eventService.listCompaniesInNoVerifactu()) {

@@ -6594,8 +6594,11 @@ public class BenjagestUiApplication extends Application {
         Button sifResetBtn = new Button(t("settings.audit.sif_reset.btn"));
         sifResetBtn.setGraphic(icon("fas-broom"));
         sifResetBtn.setOnAction(ev -> confirmSifLegacyChainReset());
+        Button sifVerifyNowBtn = new Button(t("settings.audit.sif_verify_now"));
+        sifVerifyNowBtn.setGraphic(icon("fas-shield-alt"));
+        sifVerifyNowBtn.setOnAction(ev -> verifySifChainNow());
         VBox sifResetBlock = new VBox(8, new Separator(), sifResetTitle,
-                sifResetHint, sifResetBtn);
+                sifResetHint, new HBox(8, sifVerifyNowBtn, sifResetBtn));
 
         VBox header = new VBox(8, sectionTitle, hint, filterRow);
         VBox content = new VBox(16, table, exportBlock, sifResetBlock);
@@ -6628,6 +6631,22 @@ public class BenjagestUiApplication extends Application {
                     task.getException() == null ? "" : task.getException().getMessage()));
             start(task, "sif-legacy-reset");
         });
+    }
+
+    /** Dispara verify-now de las cadenas SIF (facturas + eventos).
+     *  Reemplaza al @Scheduled de 12h. */
+    private void verifySifChainNow() {
+        Task<Void> task = new Task<>() {
+            @Override protected Void call() throws Exception {
+                altaApiClient.verifySifChainNow();
+                return null;
+            }
+        };
+        task.setOnSucceeded(ev -> showInfo(t("settings.audit.sif_verify_now.ok.title"),
+                t("settings.audit.sif_verify_now.ok.body")));
+        task.setOnFailed(ev -> showError(t("settings.audit.sif_verify_now.fail.title"),
+                task.getException() == null ? "" : task.getException().getMessage()));
+        start(task, "sif-verify-now");
     }
 
     /** Llama al endpoint /verify y muestra el resultado en un dialog. */
@@ -12599,6 +12618,10 @@ public class BenjagestUiApplication extends Application {
             case "settings.audit.sif_reset.ok.title" -> "Chain reset";
             case "settings.audit.sif_reset.ok.body" -> "Deleted {n} legacy SIF events. Restart the backend to seed a fresh chain.";
             case "settings.audit.sif_reset.fail.title" -> "Could not reset chain";
+            case "settings.audit.sif_verify_now" -> "Verify chain now";
+            case "settings.audit.sif_verify_now.ok.title" -> "Verification launched";
+            case "settings.audit.sif_verify_now.ok.body" -> "Detection cycle finished. Check the audit log and the advisor inbox for any anomaly hits.";
+            case "settings.audit.sif_verify_now.fail.title" -> "Could not launch verification";
             // Sub-tabs Mi asesoría — 2026-06-10 noche
             case "settings.my_advisory.sub.link" -> "Link";
             case "settings.my_advisory.sub.messages" -> "Messages";
@@ -12771,6 +12794,10 @@ public class BenjagestUiApplication extends Application {
             case "settings.audit.sif_reset.ok.title" -> "Cadena reiniciada";
             case "settings.audit.sif_reset.ok.body" -> "Eliminados {n} eventos SIF antiguos. Reinicia el backend para sembrar la cadena nueva.";
             case "settings.audit.sif_reset.fail.title" -> "No se pudo reiniciar la cadena";
+            case "settings.audit.sif_verify_now" -> "Verificar cadena ahora";
+            case "settings.audit.sif_verify_now.ok.title" -> "Verificación lanzada";
+            case "settings.audit.sif_verify_now.ok.body" -> "Ciclo de detección terminado. Revisa el log de auditoría y la bandeja del asesor por si hay anomalías.";
+            case "settings.audit.sif_verify_now.fail.title" -> "No se pudo lanzar la verificación";
             case "settings.my_advisory.sub.link" -> "Vínculo";
             case "settings.my_advisory.sub.messages" -> "Mensajes";
             case "settings.my_advisory.sub.documents" -> "Documentos";
