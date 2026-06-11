@@ -1548,14 +1548,25 @@ public class AltaApiClient {
 
     /**
      * CENTROS-GEOCODE — backend hace la llamada a Nominatim y devuelve
-     * lat/lng/displayName.
+     * lat/lng/displayName. Búsqueda estructurada (street + cp + city +
+     * state) es mucho más precisa que la libre.
      */
-    public GeocodeResult geocodeWorkCenter(String query)
+    public GeocodeResult geocodeWorkCenter(String street, String postalCode,
+                                             String city, String state)
             throws IOException, InterruptedException {
-        String encoded = java.net.URLEncoder.encode(query == null ? "" : query,
-                java.nio.charset.StandardCharsets.UTF_8);
-        HttpResponse<String> r = send(req(
-                baseUrl + "/labor/work-centers/geocode?q=" + encoded).GET());
+        StringBuilder url = new StringBuilder(baseUrl + "/labor/work-centers/geocode?");
+        java.util.function.BiConsumer<String, String> add = (k, v) -> {
+            if (v == null || v.isBlank()) return;
+            url.append("&").append(k).append("=").append(
+                    java.net.URLEncoder.encode(v.trim(),
+                            java.nio.charset.StandardCharsets.UTF_8));
+        };
+        add.accept("street", street);
+        add.accept("postalcode", postalCode);
+        add.accept("city", city);
+        add.accept("state", state);
+        String finalUrl = url.toString().replaceFirst("\\?&", "?");
+        HttpResponse<String> r = send(req(finalUrl).GET());
         if (r.statusCode() < 200 || r.statusCode() >= 300) {
             throw new IOException("HTTP " + r.statusCode() + ": " + r.body());
         }

@@ -1371,6 +1371,8 @@ public class BenjagestUiApplication extends Application {
         refresh.setGraphic(icon("fas-sync-alt"));
         Button markAll = new Button(t("advisory.notif.mark_all_read"));
         markAll.setGraphic(icon("fas-check-double"));
+        Button dismissAll = new Button(t("advisory.notif.dismiss_all"));
+        dismissAll.setGraphic(icon("fas-broom"));
         Button markRead = new Button(t("advisory.notif.mark_read"));
         Button dismiss = new Button(t("advisory.notif.dismiss"));
         markRead.setDisable(true);
@@ -1441,14 +1443,47 @@ public class BenjagestUiApplication extends Application {
 
         Button close = new Button(t("close"));
         close.setOnAction(e -> dlg.close());
+        // Dos filas para que ningún botón se trunque incluso con i18n
+        // largo (ES "Marcar todas como leídas" cabe sobrado a 760).
+        HBox toolbarTop = new HBox(8, refresh, markAll, dismissAll);
+        toolbarTop.setAlignment(javafx.geometry.Pos.CENTER_LEFT);
         Region sp = new Region();
         HBox.setHgrow(sp, Priority.ALWAYS);
-        HBox toolbar = new HBox(8, refresh, markAll, sp, markRead, dismiss, close);
-        toolbar.setAlignment(javafx.geometry.Pos.CENTER_LEFT);
+        HBox toolbarBot = new HBox(8, markRead, dismiss, sp, close);
+        toolbarBot.setAlignment(javafx.geometry.Pos.CENTER_LEFT);
+        VBox toolbar = new VBox(8, toolbarTop, toolbarBot);
+
+        dismissAll.setOnAction(e -> {
+            Alert confirm = new Alert(Alert.AlertType.CONFIRMATION);
+            confirm.setHeaderText(t("advisory.notif.dismiss_all.confirm"));
+            confirm.showAndWait().ifPresent(rsp -> {
+                if (rsp != javafx.scene.control.ButtonType.OK) return;
+                java.util.List<com.benjagest.ui.model.AdvisoryNotificationEntry> all =
+                        new java.util.ArrayList<>(list.getItems());
+                Task<Integer> tk = new Task<>() {
+                    @Override
+                    protected Integer call() throws Exception {
+                        int n = 0;
+                        for (var entry : all) {
+                            altaApiClient.dismissAdvisoryNotification(entry.id());
+                            n++;
+                        }
+                        return n;
+                    }
+                };
+                tk.setOnSucceeded(ev -> {
+                    reload.run();
+                    refreshAdvisoryNotificationsCount();
+                });
+                tk.setOnFailed(ev -> showError(t("advisory.notif.fail.title"),
+                        tk.getException().getMessage()));
+                start(tk, "advisory-notif-dismiss-all");
+            });
+        });
 
         VBox root = new VBox(12, heading, list, toolbar);
         root.setPadding(new javafx.geometry.Insets(16));
-        root.setPrefWidth(560);
+        root.setPrefWidth(760);
 
         javafx.scene.Scene scene = new javafx.scene.Scene(root);
         if (advisoryNotificationsBell != null && advisoryNotificationsBell.getScene() != null) {
@@ -6109,8 +6144,15 @@ public class BenjagestUiApplication extends Application {
                     return altaApiClient.listAdvisoryThreads();
                 }
             };
-            task.setOnSucceeded(ev -> threadList.setItems(
-                    FXCollections.observableArrayList(task.getValue())));
+            task.setOnSucceeded(ev -> {
+                threadList.setItems(FXCollections.observableArrayList(task.getValue()));
+                // Auto-selecciona el primer hilo si no hay nada seleccionado
+                // ya. Así el botón "Enviar" se activa de entrada sin que
+                // el usuario tenga que clicar primero al thread.
+                if (currentOther[0] == null && !task.getValue().isEmpty()) {
+                    threadList.getSelectionModel().select(0);
+                }
+            });
             task.setOnFailed(ev -> { /* sin vínculo todavía */ });
             start(task, "advisory-threads-load");
         };
@@ -6165,7 +6207,12 @@ public class BenjagestUiApplication extends Application {
 
         reloadThreads.run();
 
-        HBox split = new HBox(12, threadList, new VBox(8, timeline, sendRow));
+        // sendRow ARRIBA: la caja de escritura debe ser visible sin
+        // scroll. El timeline ocupa el resto y se queda con scroll
+        // propio (ListView ya scrollea cuando hay más items que altura
+        // visible). El último mensaje se autoscrollea al final con
+        // timeline.scrollTo(size - 1) dentro de reloadTimeline.
+        HBox split = new HBox(12, threadList, new VBox(8, sendRow, timeline));
         HBox.setHgrow(split.getChildren().get(1), Priority.ALWAYS);
         VBox.setVgrow(timeline, Priority.ALWAYS);
         VBox.setVgrow(split, Priority.ALWAYS);
@@ -12579,6 +12626,8 @@ public class BenjagestUiApplication extends Application {
             case "advisory.notif.mark_read" -> "Mark as read";
             case "advisory.notif.dismiss" -> "Dismiss";
             case "advisory.notif.fail.title" -> "Could not load notifications";
+            case "advisory.notif.dismiss_all" -> "Clear all";
+            case "advisory.notif.dismiss_all.confirm" -> "Clear all visible notifications?";
             case "advisory.notif.type.client_uploaded_doc" -> "Client uploaded document";
             case "advisory.notif.type.tax_filing_due_soon" -> "Tax filing due soon";
             case "advisory.notif.type.contract_expiring" -> "Contract about to expire";
@@ -12745,6 +12794,8 @@ public class BenjagestUiApplication extends Application {
             case "advisory.notif.mark_read" -> "Marcar como leída";
             case "advisory.notif.dismiss" -> "Descartar";
             case "advisory.notif.fail.title" -> "No se pudieron cargar las notificaciones";
+            case "advisory.notif.dismiss_all" -> "Limpiar todas";
+            case "advisory.notif.dismiss_all.confirm" -> "¿Limpiar todas las notificaciones visibles?";
             case "advisory.notif.type.client_uploaded_doc" -> "El cliente subió un documento";
             case "advisory.notif.type.tax_filing_due_soon" -> "Vencimiento de modelo AEAT próximo";
             case "advisory.notif.type.contract_expiring" -> "Contrato a punto de finalizar";
@@ -27517,18 +27568,21 @@ public class BenjagestUiApplication extends Application {
         geocodeStatus.getStyleClass().add("settings-hint");
         geocodeStatus.setWrapText(true);
         geocodeBtn.setOnAction(e -> {
-            String q = (addr.getText() + " " + cp.getText() + " "
-                    + city.getText() + " " + prov.getText()).trim();
-            if (q.isBlank()) {
+            if (addr.getText() == null || addr.getText().isBlank()
+                    || city.getText() == null || city.getText().isBlank()) {
                 geocodeStatus.setText(t("labor.centers.geocode.empty"));
                 return;
             }
             geocodeStatus.setText(t("labor.centers.geocode.searching"));
             geocodeBtn.setDisable(true);
+            String street = addr.getText();
+            String postal = cp.getText();
+            String ct = city.getText();
+            String st = prov.getText();
             Task<com.benjagest.ui.service.AltaApiClient.GeocodeResult> gt = new Task<>() {
                 @Override
                 protected com.benjagest.ui.service.AltaApiClient.GeocodeResult call() throws Exception {
-                    return altaApiClient.geocodeWorkCenter(q);
+                    return altaApiClient.geocodeWorkCenter(street, postal, ct, st);
                 }
             };
             gt.setOnSucceeded(ev -> {
