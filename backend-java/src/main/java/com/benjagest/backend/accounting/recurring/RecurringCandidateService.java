@@ -37,11 +37,14 @@ public class RecurringCandidateService {
 
     private final JdbcTemplate jdbcTemplate;
     private final TenantContext tenantContext;
+    private final RecurringCandidateIgnoredService ignoredService;
 
     public RecurringCandidateService(JdbcTemplate jdbcTemplate,
-                                     TenantContext tenantContext) {
+                                     TenantContext tenantContext,
+                                     RecurringCandidateIgnoredService ignoredService) {
         this.jdbcTemplate = jdbcTemplate;
         this.tenantContext = tenantContext;
+        this.ignoredService = ignoredService;
     }
 
     /**
@@ -96,11 +99,22 @@ public class RecurringCandidateService {
         if (companyId == null) return List.of();
         LocalDate from = LocalDate.now().minusDays(Math.max(30, windowDays));
 
-        return switch (kind == null ? "" : kind.toUpperCase()) {
+        List<Candidate> raw = switch (kind == null ? "" : kind.toUpperCase()) {
             case "SALES_INVOICE" -> findSalesCandidates(companyId, from);
             case "PURCHASE" -> findPurchaseCandidates(companyId, from);
             default -> List.of();
         };
+        // REC-IGNORE: filtra los silenciados activos (ignore_until NULL
+        // o futuro). Lo hacemos en memoria — la lista de candidatos es
+        // siempre pequeña (decenas) y mantenemos el código del SQL
+        // simple.
+        List<Candidate> kept = new ArrayList<>();
+        for (Candidate c : raw) {
+            if (!ignoredService.isIgnored(c.kind, c.partyNif, c.partyName, c.totalAmount)) {
+                kept.add(c);
+            }
+        }
+        return kept;
     }
 
     /**
