@@ -43,6 +43,19 @@ public class SifEventHashService {
                               String payload,
                               String previousHash,
                               OffsetDateTime generationTime) {
+        return sha256Hex(canonicalize(nifEmisor, eventType, payload,
+                previousHash, generationTime)).toUpperCase();
+    }
+
+    /**
+     * Devuelve la cadena canónica que entra al SHA-256. Pública para
+     * logging diagnóstico — comparar INSERT vs VERIFY byte a byte.
+     */
+    public String canonicalize(String nifEmisor,
+                                String eventType,
+                                String payload,
+                                String previousHash,
+                                OffsetDateTime generationTime) {
         if (nifEmisor == null || nifEmisor.isBlank()) {
             throw new IllegalArgumentException("nifEmisor requerido");
         }
@@ -52,19 +65,15 @@ public class SifEventHashService {
         if (generationTime == null) {
             throw new IllegalArgumentException("generationTime requerido");
         }
-
         String safePayload = payload == null ? "" : escape(payload);
         String previous = previousHash == null ? "" : previousHash.toUpperCase();
-
-        String chain = String.join("&",
+        return String.join("&",
                 "IDEmisor=" + nifEmisor.trim().toUpperCase(),
                 "TipoEvento=" + eventType.trim(),
                 "Payload=" + safePayload,
                 "Huella=" + previous,
                 "FechaHoraHusoGenRegistro=" + generationTime.format(FECHA_HORA_HUSO)
         );
-
-        return sha256Hex(chain).toUpperCase();
     }
 
     /**
