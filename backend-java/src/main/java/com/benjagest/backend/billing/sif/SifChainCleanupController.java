@@ -10,6 +10,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
@@ -40,13 +41,27 @@ public class SifChainCleanupController {
     private final JdbcTemplate jdbcTemplate;
     private final TenantContext tenantContext;
     private final VerifactuConfigRepository configRepository;
+    private final AnomalyDetectionScheduler anomalyDetector;
 
     public SifChainCleanupController(JdbcTemplate jdbcTemplate,
                                       TenantContext tenantContext,
-                                      VerifactuConfigRepository configRepository) {
+                                      VerifactuConfigRepository configRepository,
+                                      AnomalyDetectionScheduler anomalyDetector) {
         this.jdbcTemplate = jdbcTemplate;
         this.tenantContext = tenantContext;
         this.configRepository = configRepository;
+        this.anomalyDetector = anomalyDetector;
+    }
+
+    /**
+     * Dispara una pasada manual de detección de anomalías SIF. El UI
+     * la expone en Configuración → Auditoría → "Verificar cadena ahora"
+     * para sesiones largas que no reinician el programa.
+     */
+    @PostMapping("/verify-now")
+    public Map<String, Object> verifyNow() {
+        anomalyDetector.run();
+        return Map.of("ok", true);
     }
 
     @DeleteMapping("/legacy-chain")
