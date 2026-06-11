@@ -120,6 +120,12 @@ public class BenjagestUiApplication extends Application {
             // necesitan ver este módulo; el chequeo de visibilidad real
             // (solo OWNER puede gestionar) lo hace el backend.
             new ModuleLink("team", "Equipo", "fas-users-cog"),
+            // 2026-06-11 — Comunicación asesoría↔cliente. Antes vivía
+            // dentro de Configuración → Mi asesoría como tabs. Ahora
+            // tiene su módulo propio para que el ASESOR también lo vea
+            // (antes no tenía sitio en su sidebar). Mismo nombre en
+            // ambos modos.
+            new ModuleLink("comm", "Comunicacion", "fas-comments"),
             new ModuleLink("settings", "Configuracion", "fas-cog")
     );
 
@@ -131,6 +137,7 @@ public class BenjagestUiApplication extends Application {
             new ModuleLink("tax", "Fiscal", "fas-percentage"),
             new ModuleLink("reports", "Informes", "fas-chart-line"),
             new ModuleLink("calendar", "Agenda", "fas-calendar-alt"),
+            new ModuleLink("comm", "Comunicacion", "fas-comments"),
             new ModuleLink("settings", "Configuracion", "fas-cog")
     );
 
@@ -2236,6 +2243,13 @@ public class BenjagestUiApplication extends Application {
         if ("suggestions".equals(module)) {
             // PORT-3 SUG — Buzon de sugerencias hacia el fabricante.
             showSuggestionsModule();
+            return;
+        }
+        if ("comm".equals(module)) {
+            // 2026-06-11 — Comunicación asesoría ↔ cliente. Mismo
+            // módulo en empresario y asesor: selector arriba + tabs
+            // Mensajes/Documentos.
+            showCommModule();
             return;
         }
         // NOTA (2026-06-10 tarde): los dispatchers de "employee-portal",
@@ -6050,35 +6064,20 @@ public class BenjagestUiApplication extends Application {
         VBox body = new VBox(12, infoSlot, new Separator(), tokenBlock);
 
         reload.run();
-        Node linkPane = tabLayout(header, body, actions);
-
-        // 2026-06-10 noche — sub-pestañas dentro de "Mi asesoría"
-        // (decisión Benjamin P3a opción B): Vínculo / Mensajes /
-        // Documentos. Backend V77/V78 ya listo, solo falta UI.
-        TabPane sub = new TabPane();
-        sub.setTabClosingPolicy(TabPane.TabClosingPolicy.UNAVAILABLE);
-        sub.getStyleClass().add("settings-tabs");
-        Tab linkTab = new Tab(t("settings.my_advisory.sub.link"), linkPane);
-        linkTab.setGraphic(icon("fas-link"));
-        Tab messagesTab = new Tab(t("settings.my_advisory.sub.messages"),
-                buildAdvisoryMessagesPane());
-        messagesTab.setGraphic(icon("fas-comments"));
-        Tab documentsTab = new Tab(t("settings.my_advisory.sub.documents"),
-                buildAdvisoryDocumentsPane());
-        documentsTab.setGraphic(icon("fas-folder-open"));
-        sub.getTabs().addAll(linkTab, messagesTab, documentsTab);
-        VBox wrap = new VBox(sub);
-        VBox.setVgrow(sub, Priority.ALWAYS);
-        return wrap;
+        // 2026-06-11 — los sub-tabs Mensajes y Documentos se han movido
+        // al nuevo módulo "Comunicación" del sidebar (showCommModule).
+        // "Mi asesoría" de Configuración mantiene solo el panel de
+        // Vínculo (token de emparejado + datos asesoría + desvincular).
+        return tabLayout(header, body, actions);
     }
 
     /**
-     * 2026-06-10 noche — Sub-pestaña "Mensajes" dentro de "Mi asesoría".
-     * Lista de hilos a la izquierda + timeline + caja envío a la derecha.
-     * Backend: AdvisoryMessageService (V77) con resolveParts que valida
-     * la relación asesoría-cliente.
+     * Pestaña "Mensajes" del módulo Comunicación. Recibe el destinatario
+     * activo como observable — el selector externo lo controla. Cuando
+     * cambia el observable, recarga el timeline.
      */
-    private Node buildAdvisoryMessagesPane() {
+    private Node buildCommMessagesPane(
+            javafx.beans.value.ObservableValue<String> otherIdObs) {
         VBox root = new VBox(12);
         root.setPadding(new Insets(12));
 
@@ -6087,32 +6086,18 @@ public class BenjagestUiApplication extends Application {
         hint.setWrapText(true);
         hint.getStyleClass().add("settings-hint");
 
-        // Lista de hilos (izquierda)
-        javafx.scene.control.ListView<com.benjagest.ui.model.AdvisoryThreadSummary> threadList =
-                new javafx.scene.control.ListView<>();
-        threadList.setPrefWidth(220);
-        threadList.setCellFactory(lv -> new javafx.scene.control.ListCell<>() {
-            @Override protected void updateItem(
-                    com.benjagest.ui.model.AdvisoryThreadSummary item, boolean empty) {
-                super.updateItem(item, empty);
-                if (empty || item == null) { setText(null); setGraphic(null); return; }
-                String unread = item.unreadCount() > 0
-                        ? " ●" + item.unreadCount() : "";
-                Label l = new Label(shortId(item.otherCompanyId())
-                        + " (" + item.totalCount() + ")" + unread);
-                if (item.unreadCount() > 0) l.setStyle("-fx-font-weight: bold;");
-                setGraphic(l);
-            }
-        });
-
-        // Timeline (centro)
+        // Timeline
         javafx.scene.control.ListView<com.benjagest.ui.model.AdvisoryMessageEntry> timeline =
                 new javafx.scene.control.ListView<>();
-        timeline.setCellFactory(lv -> new javafx.scene.control.ListCell<>() {
+        timeline.setCellFactory(lv -> new javafx.scene.control.ListCell<com.benjagest.ui.model.AdvisoryMessageEntry>() {
             @Override protected void updateItem(
                     com.benjagest.ui.model.AdvisoryMessageEntry item, boolean empty) {
                 super.updateItem(item, empty);
-                if (empty || item == null) { setText(null); setGraphic(null); return; }
+                if (empty || item == null) {
+                    setText((String) null);
+                    setGraphic((javafx.scene.Node) null);
+                    return;
+                }
                 VBox bubble = new VBox(2);
                 Label body = new Label(item.body());
                 body.setWrapText(true);
@@ -6121,7 +6106,7 @@ public class BenjagestUiApplication extends Application {
                             ? item.createdAt().substring(0, 16) : item.createdAt());
                 meta.setStyle("-fx-font-size: 10px; -fx-text-fill: #94a3b8;");
                 bubble.getChildren().addAll(body, meta);
-                bubble.setMaxWidth(420);
+                bubble.setMaxWidth(520);
                 bubble.setPadding(new Insets(8, 12, 6, 12));
                 boolean isA2C = com.benjagest.ui.model.AdvisoryMessageEntry.DIRECTION_A2C
                         .equals(item.direction());
@@ -6136,7 +6121,7 @@ public class BenjagestUiApplication extends Application {
             }
         });
 
-        // Caja de envío (abajo)
+        // Caja de envío
         javafx.scene.control.TextArea sendBox = new javafx.scene.control.TextArea();
         sendBox.setPromptText(t("advisory.messages.send_prompt"));
         sendBox.setPrefRowCount(3);
@@ -6144,34 +6129,18 @@ public class BenjagestUiApplication extends Application {
         Button sendBtn = new Button(t("advisory.messages.send"));
         sendBtn.setGraphic(icon("fas-paper-plane"));
         sendBtn.getStyleClass().add("button-primary");
-        sendBtn.setDisable(true);
+        // Desactivado mientras no haya destinatario seleccionado.
+        sendBtn.setDisable(otherIdObs.getValue() == null || otherIdObs.getValue().isBlank());
         HBox sendRow = new HBox(8, sendBox, sendBtn);
         HBox.setHgrow(sendBox, Priority.ALWAYS);
         sendRow.setAlignment(Pos.CENTER_RIGHT);
 
-        // Lógica de selección y carga
-        final String[] currentOther = {null};
-        Runnable reloadThreads = () -> {
-            Task<java.util.List<com.benjagest.ui.model.AdvisoryThreadSummary>> task = new Task<>() {
-                @Override protected java.util.List<com.benjagest.ui.model.AdvisoryThreadSummary> call() throws Exception {
-                    return altaApiClient.listAdvisoryThreads();
-                }
-            };
-            task.setOnSucceeded(ev -> {
-                threadList.setItems(FXCollections.observableArrayList(task.getValue()));
-                // Auto-selecciona el primer hilo si no hay nada seleccionado
-                // ya. Así el botón "Enviar" se activa de entrada sin que
-                // el usuario tenga que clicar primero al thread.
-                if (currentOther[0] == null && !task.getValue().isEmpty()) {
-                    threadList.getSelectionModel().select(0);
-                }
-            });
-            task.setOnFailed(ev -> { /* sin vínculo todavía */ });
-            start(task, "advisory-threads-load");
-        };
         Runnable reloadTimeline = () -> {
-            if (currentOther[0] == null) return;
-            String other = currentOther[0];
+            String other = otherIdObs.getValue();
+            if (other == null || other.isBlank()) {
+                timeline.setItems(FXCollections.observableArrayList());
+                return;
+            }
             Task<java.util.List<com.benjagest.ui.model.AdvisoryMessageEntry>> task = new Task<>() {
                 @Override protected java.util.List<com.benjagest.ui.model.AdvisoryMessageEntry> call() throws Exception {
                     java.util.List<com.benjagest.ui.model.AdvisoryMessageEntry> msgs =
@@ -6185,52 +6154,38 @@ public class BenjagestUiApplication extends Application {
                 if (!task.getValue().isEmpty()) {
                     timeline.scrollTo(task.getValue().size() - 1);
                 }
-                reloadThreads.run();  // refresca contadores
             });
-            task.setOnFailed(ev -> showError(t("advisory.messages.fail.title"),
-                    task.getException() == null ? "" : task.getException().getMessage()));
-            start(task, "advisory-thread-load");
+            task.setOnFailed(ev -> { /* puede no haber thread aún — silencio */ });
+            start(task, "comm-thread-load");
         };
-        threadList.getSelectionModel().selectedItemProperty().addListener((o, ov, nv) -> {
-            if (nv == null) {
-                currentOther[0] = null;
-                sendBtn.setDisable(true);
-                timeline.setItems(FXCollections.observableArrayList());
-            } else {
-                currentOther[0] = nv.otherCompanyId();
-                sendBtn.setDisable(false);
-                reloadTimeline.run();
-            }
+
+        otherIdObs.addListener((o, ov, nv) -> {
+            sendBtn.setDisable(nv == null || nv.isBlank());
+            reloadTimeline.run();
         });
         sendBtn.setOnAction(ev -> {
-            if (currentOther[0] == null) return;
+            String other = otherIdObs.getValue();
+            if (other == null || other.isBlank()) return;
             String body = sendBox.getText();
             if (body == null || body.isBlank()) return;
             Task<Void> task = new Task<>() {
                 @Override protected Void call() throws Exception {
-                    altaApiClient.sendAdvisoryMessage(currentOther[0], body, null);
+                    altaApiClient.sendAdvisoryMessage(other, body, null);
                     return null;
                 }
             };
             task.setOnSucceeded(e -> { sendBox.clear(); reloadTimeline.run(); });
             task.setOnFailed(e -> showError(t("advisory.messages.fail.title"),
                     task.getException() == null ? "" : task.getException().getMessage()));
-            start(task, "advisory-send");
+            start(task, "comm-send");
         });
 
-        reloadThreads.run();
+        reloadTimeline.run();
 
-        // sendRow ARRIBA: la caja de escritura debe ser visible sin
-        // scroll. El timeline ocupa el resto y se queda con scroll
-        // propio (ListView ya scrollea cuando hay más items que altura
-        // visible). El último mensaje se autoscrollea al final con
-        // timeline.scrollTo(size - 1) dentro de reloadTimeline.
-        HBox split = new HBox(12, threadList, new VBox(8, sendRow, timeline));
-        HBox.setHgrow(split.getChildren().get(1), Priority.ALWAYS);
+        VBox body = new VBox(8, sendRow, timeline);
         VBox.setVgrow(timeline, Priority.ALWAYS);
-        VBox.setVgrow(split, Priority.ALWAYS);
-
-        root.getChildren().addAll(title, hint, split);
+        VBox.setVgrow(body, Priority.ALWAYS);
+        root.getChildren().addAll(title, hint, body);
         return root;
     }
 
@@ -6239,7 +6194,8 @@ public class BenjagestUiApplication extends Application {
      * real + review + download. Backend AdvisoryDocumentUploadController
      * añade endpoints upload/download al service V78.
      */
-    private Node buildAdvisoryDocumentsPane() {
+    private Node buildCommDocumentsPane(
+            javafx.beans.value.ObservableValue<String> otherIdObs) {
         VBox root = new VBox(12);
         root.setPadding(new Insets(12));
 
@@ -6247,17 +6203,6 @@ public class BenjagestUiApplication extends Application {
         Label hint = new Label(t("advisory.documents.hint"));
         hint.setWrapText(true);
         hint.getStyleClass().add("settings-hint");
-
-        // Combo selector de hilo (reusa AdvisoryThreadSummary del de mensajes).
-        javafx.scene.control.ComboBox<com.benjagest.ui.model.AdvisoryThreadSummary> threadCombo =
-                new javafx.scene.control.ComboBox<>();
-        threadCombo.setConverter(new javafx.util.StringConverter<>() {
-            @Override public String toString(com.benjagest.ui.model.AdvisoryThreadSummary s) {
-                return s == null ? "" : shortId(s.otherCompanyId());
-            }
-            @Override public com.benjagest.ui.model.AdvisoryThreadSummary
-                    fromString(String s) { return null; }
-        });
 
         TableView<com.benjagest.ui.model.AdvisoryDocumentEntry> table = new TableView<>();
         table.getStyleClass().add("data-table");
@@ -6302,7 +6247,7 @@ public class BenjagestUiApplication extends Application {
         Button uploadBtn = new Button(t("advisory.documents.upload"));
         uploadBtn.setGraphic(icon("fas-upload"));
         uploadBtn.getStyleClass().add("button-primary");
-        uploadBtn.setDisable(true);
+        uploadBtn.setDisable(otherIdObs.getValue() == null || otherIdObs.getValue().isBlank());
         Button downloadBtn = new Button(t("advisory.documents.download"));
         downloadBtn.setGraphic(icon("fas-download"));
         downloadBtn.setDisable(true);
@@ -6316,41 +6261,25 @@ public class BenjagestUiApplication extends Application {
         HBox actions = new HBox(8, uploadBtn, downloadBtn, acceptBtn, rejectBtn);
         actions.setAlignment(Pos.CENTER_LEFT);
 
-        // Carga inicial de hilos
-        Runnable reloadThreads = () -> {
-            Task<java.util.List<com.benjagest.ui.model.AdvisoryThreadSummary>> t = new Task<>() {
-                @Override protected java.util.List<com.benjagest.ui.model.AdvisoryThreadSummary> call() throws Exception {
-                    return altaApiClient.listAdvisoryThreads();
-                }
-            };
-            t.setOnSucceeded(ev -> {
-                threadCombo.getItems().setAll(t.getValue());
-                if (!t.getValue().isEmpty()) threadCombo.getSelectionModel().selectFirst();
-            });
-            t.setOnFailed(ev -> { /* sin vínculo aún */ });
-            start(t, "advisory-docs-threads");
-        };
         Runnable reloadDocs = () -> {
-            var sel = threadCombo.getValue();
-            if (sel == null) { table.getItems().clear(); return; }
+            String other = otherIdObs.getValue();
+            if (other == null || other.isBlank()) { table.getItems().clear(); return; }
             Task<java.util.List<com.benjagest.ui.model.AdvisoryDocumentEntry>> t = new Task<>() {
                 @Override protected java.util.List<com.benjagest.ui.model.AdvisoryDocumentEntry> call() throws Exception {
-                    return altaApiClient.listAdvisoryDocuments(sel.otherCompanyId());
+                    return altaApiClient.listAdvisoryDocuments(other);
                 }
             };
             t.setOnSucceeded(ev -> table.setItems(FXCollections.observableArrayList(t.getValue())));
-            t.setOnFailed(ev -> showError(t("advisory.documents.fail.title"),
-                    t.getException() == null ? "" : t.getException().getMessage()));
-            start(t, "advisory-docs-list");
+            t.setOnFailed(ev -> { /* puede no haber thread aún — silencio */ });
+            start(t, "comm-docs-list");
         };
-        threadCombo.valueProperty().addListener((o, ov, nv) -> {
-            uploadBtn.setDisable(nv == null);
+        otherIdObs.addListener((o, ov, nv) -> {
+            uploadBtn.setDisable(nv == null || nv.isBlank());
             reloadDocs.run();
         });
         table.getSelectionModel().selectedItemProperty().addListener((o, ov, nv) -> {
             boolean sel = nv != null;
             downloadBtn.setDisable(!sel);
-            // Accept/Reject solo si UPLOADED (no en estados terminales).
             boolean reviewable = sel
                     && com.benjagest.ui.model.AdvisoryDocumentEntry.STATUS_UPLOADED.equals(nv.status());
             acceptBtn.setDisable(!reviewable);
@@ -6358,8 +6287,8 @@ public class BenjagestUiApplication extends Application {
         });
 
         uploadBtn.setOnAction(ev -> {
-            var sel = threadCombo.getValue();
-            if (sel == null) return;
+            String other = otherIdObs.getValue();
+            if (other == null || other.isBlank()) return;
             javafx.stage.FileChooser fc = new javafx.stage.FileChooser();
             fc.setTitle(t("advisory.documents.upload"));
             fc.getExtensionFilters().add(new javafx.stage.FileChooser.ExtensionFilter(
@@ -6373,14 +6302,14 @@ public class BenjagestUiApplication extends Application {
             String title2 = td.showAndWait().orElse(f.getName());
             Task<Void> up = new Task<>() {
                 @Override protected Void call() throws Exception {
-                    altaApiClient.uploadAdvisoryDocument(sel.otherCompanyId(), f, title2);
+                    altaApiClient.uploadAdvisoryDocument(other, f, title2);
                     return null;
                 }
             };
             up.setOnSucceeded(s -> reloadDocs.run());
             up.setOnFailed(s -> showError(t("advisory.documents.fail.title"),
                     up.getException() == null ? "" : up.getException().getMessage()));
-            start(up, "advisory-docs-upload");
+            start(up, "comm-docs-upload");
         });
         downloadBtn.setOnAction(ev -> {
             var sel = table.getSelectionModel().getSelectedItem();
@@ -6446,17 +6375,95 @@ public class BenjagestUiApplication extends Application {
             task.setOnSucceeded(s -> reloadDocs.run());
             task.setOnFailed(s -> showError(t("advisory.documents.fail.title"),
                     task.getException() == null ? "" : task.getException().getMessage()));
-            start(task, "advisory-docs-reject");
+            start(task, "comm-docs-reject");
         });
 
-        reloadThreads.run();
+        reloadDocs.run();
 
-        HBox topRow = new HBox(8,
-                new Label(t("advisory.documents.thread")), threadCombo);
-        topRow.setAlignment(Pos.CENTER_LEFT);
         VBox.setVgrow(table, Priority.ALWAYS);
-        root.getChildren().addAll(title, hint, topRow, actions, table);
+        root.getChildren().addAll(title, hint, actions, table);
         return root;
+    }
+
+    /** Item del selector del módulo Comunicación. id = otherCompanyId. */
+    private record CommRecipient(String id, String label) {
+        @Override public String toString() { return label == null ? id : label; }
+    }
+
+    /**
+     * Módulo Comunicación (slice COMM-MOD 2026-06-11):
+     *   - Selector arriba: en BUSINESS la asesoría vinculada (1 item),
+     *     en ADVISORY la cartera de clientes.
+     *   - Tabs Mensajes / Documentos compartiendo el destinatario activo.
+     */
+    private void showCommModule() {
+        VBox content = content();
+        Label title = label(t("module.comm.title"), "module-detail-title");
+        Label hint = new Label(t("module.comm.hint"));
+        hint.setWrapText(true);
+        hint.getStyleClass().add("settings-hint");
+
+        ComboBox<CommRecipient> recipientCombo = new ComboBox<>();
+        recipientCombo.setPromptText(t("module.comm.recipient.prompt"));
+        recipientCombo.setMinWidth(360);
+
+        javafx.beans.property.SimpleStringProperty otherIdProperty =
+                new javafx.beans.property.SimpleStringProperty(null);
+        recipientCombo.valueProperty().addListener((o, ov, nv) ->
+                otherIdProperty.set(nv == null ? null : nv.id()));
+
+        Label recipientLabel = new Label(appMode == AppMode.ADVISORY
+                ? t("module.comm.recipient.client")
+                : t("module.comm.recipient.advisory"));
+        HBox selectorRow = new HBox(8, recipientLabel, recipientCombo);
+        selectorRow.setAlignment(Pos.CENTER_LEFT);
+
+        TabPane tabs = new TabPane();
+        tabs.setTabClosingPolicy(TabPane.TabClosingPolicy.UNAVAILABLE);
+        Tab tMessages = new Tab(t("module.comm.tab.messages"),
+                buildCommMessagesPane(otherIdProperty));
+        tMessages.setGraphic(icon("fas-comments"));
+        Tab tDocs = new Tab(t("module.comm.tab.documents"),
+                buildCommDocumentsPane(otherIdProperty));
+        tDocs.setGraphic(icon("fas-folder-open"));
+        tabs.getTabs().addAll(tMessages, tDocs);
+
+        // Carga inicial de destinatarios según modo
+        Task<java.util.List<CommRecipient>> loadRecipients = new Task<>() {
+            @Override protected java.util.List<CommRecipient> call() throws Exception {
+                java.util.List<CommRecipient> out = new java.util.ArrayList<>();
+                if (appMode == AppMode.ADVISORY) {
+                    for (var c : altaApiClient.listAdvisoryPortfolio()) {
+                        // Para el asesor el otherCompanyId es el companyId
+                        // del cliente (la ficha en companies con
+                        // parent_company_id = la asesoría).
+                        String id = c.linkedCompanyId() != null && !c.linkedCompanyId().isBlank()
+                                ? c.linkedCompanyId() : c.customerId();
+                        out.add(new CommRecipient(id, c.legalName()));
+                    }
+                } else {
+                    var linked = invitationsApi.getLinkedAdvisory();
+                    if (linked != null && linked.id() != null) {
+                        out.add(new CommRecipient(linked.id(), linked.legalName()));
+                    }
+                }
+                return out;
+            }
+        };
+        loadRecipients.setOnSucceeded(ev -> {
+            recipientCombo.getItems().setAll(loadRecipients.getValue());
+            if (!loadRecipients.getValue().isEmpty()) {
+                recipientCombo.getSelectionModel().selectFirst();
+            }
+        });
+        loadRecipients.setOnFailed(ev -> showError(t("module.comm.recipient.fail.title"),
+                loadRecipients.getException() == null ? "" :
+                        loadRecipients.getException().getMessage()));
+        start(loadRecipients, "comm-load-recipients");
+
+        VBox.setVgrow(tabs, Priority.ALWAYS);
+        content.getChildren().addAll(title, hint, selectorRow, tabs);
+        setCenterAnimated(scroll(content));
     }
 
     private String humanizeDocStatus(String raw) {
@@ -12581,10 +12588,6 @@ public class BenjagestUiApplication extends Application {
             case "settings.audit.sif_verify_now.ok.title" -> "Verification launched";
             case "settings.audit.sif_verify_now.ok.body" -> "Detection cycle finished. Check the audit log and the advisor inbox for any anomaly hits.";
             case "settings.audit.sif_verify_now.fail.title" -> "Could not launch verification";
-            // Sub-tabs Mi asesoría — 2026-06-10 noche
-            case "settings.my_advisory.sub.link" -> "Link";
-            case "settings.my_advisory.sub.messages" -> "Messages";
-            case "settings.my_advisory.sub.documents" -> "Documents";
             case "advisory.messages.title" -> "Conversations with my advisory";
             case "advisory.messages.hint" -> "Direct messages between your company and the advisory firm that handles you. Pick a thread on the left and send a reply at the bottom.";
             case "advisory.messages.send_prompt" -> "Write a message…";
@@ -12633,6 +12636,14 @@ public class BenjagestUiApplication extends Application {
             case "advisory.notif.type.advisory_message" -> "Message from your advisor";
             case "advisory.notif.type.advisory_document" -> "Document from your advisor";
             case "advisory.notif.type.client_message" -> "Message from the client";
+            case "module.comm.title" -> "Communication";
+            case "module.comm.hint" -> "Messages and shared documents between the advisor and the client.";
+            case "module.comm.tab.messages" -> "Messages";
+            case "module.comm.tab.documents" -> "Documents";
+            case "module.comm.recipient.advisory" -> "Advisor:";
+            case "module.comm.recipient.client" -> "Client:";
+            case "module.comm.recipient.prompt" -> "Select recipient";
+            case "module.comm.recipient.fail.title" -> "Could not load recipients";
             case "recurring.candidates.silence" -> "Silence";
             case "recurring.candidates.reload.fail.title" -> "Could not reload candidates";
             case "recurring.silence.title" -> "Silence recurring candidate";
@@ -12749,9 +12760,6 @@ public class BenjagestUiApplication extends Application {
             case "settings.audit.sif_verify_now.ok.title" -> "Verificación lanzada";
             case "settings.audit.sif_verify_now.ok.body" -> "Ciclo de detección terminado. Revisa el log de auditoría y la bandeja del asesor por si hay anomalías.";
             case "settings.audit.sif_verify_now.fail.title" -> "No se pudo lanzar la verificación";
-            case "settings.my_advisory.sub.link" -> "Vínculo";
-            case "settings.my_advisory.sub.messages" -> "Mensajes";
-            case "settings.my_advisory.sub.documents" -> "Documentos";
             case "advisory.messages.title" -> "Conversaciones con mi asesoría";
             case "advisory.messages.hint" -> "Mensajes directos entre tu empresa y la asesoría que te lleva. Elige un hilo a la izquierda y envía una respuesta abajo.";
             case "advisory.messages.send_prompt" -> "Escribe un mensaje…";
@@ -12800,6 +12808,14 @@ public class BenjagestUiApplication extends Application {
             case "advisory.notif.type.advisory_message" -> "Mensaje de tu asesoría";
             case "advisory.notif.type.advisory_document" -> "Documento de tu asesoría";
             case "advisory.notif.type.client_message" -> "Mensaje del cliente";
+            case "module.comm.title" -> "Comunicación";
+            case "module.comm.hint" -> "Mensajes y documentos compartidos entre la asesoría y el cliente.";
+            case "module.comm.tab.messages" -> "Mensajes";
+            case "module.comm.tab.documents" -> "Documentos";
+            case "module.comm.recipient.advisory" -> "Asesoría:";
+            case "module.comm.recipient.client" -> "Cliente:";
+            case "module.comm.recipient.prompt" -> "Selecciona destinatario";
+            case "module.comm.recipient.fail.title" -> "No se pudieron cargar los destinatarios";
             case "recurring.candidates.silence" -> "Silenciar";
             case "recurring.candidates.reload.fail.title" -> "No se pudieron recargar los candidatos";
             case "recurring.silence.title" -> "Silenciar candidato recurrente";
