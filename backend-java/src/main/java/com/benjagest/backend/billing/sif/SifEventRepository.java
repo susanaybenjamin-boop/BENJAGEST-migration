@@ -193,11 +193,29 @@ public class SifEventRepository {
      * TenantContext (es una consulta de sistema), de ahi que no se
      * filtre por empresa actual.
      */
+    /**
+     * Empresas-tenant en NO_VERIFACTU que emiten cadena SIF propia.
+     *
+     * <p>SIF-CHAIN-FIX-TENANT 2026-06-11 noche (decisión arquitectónica
+     * Benjamin): filtro {@code parent_company_id IS NULL}. Una empresa
+     * con padre es ficha que OTRA empresa (la asesoría) gestiona —
+     * NO opera dentro de BENJAGEST como tenant, NO tiene login propio,
+     * NO debe emitir SYSTEM_START/STOP ni tener cadena hash SIF. Los
+     * eventos SIF que se emiten cuando la asesoría trabaja "como" ese
+     * cliente quedan registrados en la cadena de la ASESORÍA (que es
+     * quien tiene el SIF activo), no en una cadena propia del cliente.
+     *
+     * <p>Antes esta query incluía MANAGED_CLIENT y CLIENT-con-padre,
+     * por eso aparecían cadenas rotas para "Marcos Construcciones SL"
+     * (cliente gestionado) que el OWNER no podía resetear desde UI
+     * porque no era tenant de esas empresas.
+     */
     public List<String> findCompaniesInNoVerifactu() {
         return jdbcTemplate.queryForList("""
                 SELECT id
                   FROM companies
                  WHERE verifactu_modality = 'NO_VERIFACTU'
+                   AND parent_company_id IS NULL
                 """, String.class);
     }
 
