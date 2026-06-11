@@ -6438,10 +6438,10 @@ public class BenjagestUiApplication extends Application {
         tabs.setTabClosingPolicy(TabPane.TabClosingPolicy.UNAVAILABLE);
         Tab tMessages = new Tab(t("module.comm.tab.messages"),
                 buildCommMessagesPane(otherIdProperty));
-        tMessages.setGraphic(icon("fas-comments"));
+        tMessages.setGraphic(darkTabIcon("fas-comments"));
         Tab tDocs = new Tab(t("module.comm.tab.documents"),
                 buildCommDocumentsPane(otherIdProperty));
-        tDocs.setGraphic(icon("fas-folder-open"));
+        tDocs.setGraphic(darkTabIcon("fas-folder-open"));
         tabs.getTabs().addAll(tMessages, tDocs);
 
         // Carga inicial de destinatarios según modo
@@ -6450,12 +6450,13 @@ public class BenjagestUiApplication extends Application {
                 java.util.List<CommRecipient> out = new java.util.ArrayList<>();
                 if (appMode == AppMode.ADVISORY) {
                     for (var c : altaApiClient.listAdvisoryPortfolio()) {
-                        // Para el asesor el otherCompanyId es el companyId
-                        // del cliente (la ficha en companies con
-                        // parent_company_id = la asesoría).
-                        String id = c.linkedCompanyId() != null && !c.linkedCompanyId().isBlank()
-                                ? c.linkedCompanyId() : c.customerId();
-                        out.add(new CommRecipient(id, c.legalName()));
+                        // Solo clientes con vínculo REAL aceptado: tienen
+                        // su propia company y aceptaron la invitación.
+                        // Las shadow companies (MANAGED_CLIENT) no tienen
+                        // login y nadie podrá leer los mensajes desde el
+                        // otro lado — por eso quedan fuera del selector.
+                        if (!c.fullyLinked() || c.linkedCompanyId() == null) continue;
+                        out.add(new CommRecipient(c.linkedCompanyId(), c.legalName()));
                     }
                 } else {
                     var linked = invitationsApi.getLinkedAdvisory();
@@ -10434,6 +10435,20 @@ public class BenjagestUiApplication extends Application {
         footer.setAlignment(Pos.CENTER_LEFT);
         footer.getStyleClass().add("footer");
         return footer;
+    }
+
+    /**
+     * Icono coloreado para cabeceras de Tab del TabPane. El styleClass
+     * "font-icon" hereda color del tema, que en la barra superior
+     * (oscura) hace los iconos invisibles. Forzamos blanco para que se
+     * vean en la pestaña.
+     */
+    private Node darkTabIcon(String literal) {
+        Node n = icon(literal);
+        if (n instanceof FontIcon fi) {
+            fi.setIconColor(javafx.scene.paint.Color.WHITE);
+        }
+        return n;
     }
 
     private Node icon(String literal) {
