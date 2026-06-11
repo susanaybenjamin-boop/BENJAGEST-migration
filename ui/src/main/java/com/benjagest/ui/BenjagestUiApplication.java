@@ -12586,6 +12586,29 @@ public class BenjagestUiApplication extends Application {
             case "advisory.notif.type.invitation_rejected" -> "Invitation rejected";
             case "advisory.notif.type.invoice_overdue" -> "Invoice overdue";
             case "advisory.notif.type.sif_anomaly" -> "SIF chain anomaly";
+            case "recurring.candidates.silence" -> "Silence";
+            case "recurring.candidates.reload.fail.title" -> "Could not reload candidates";
+            case "recurring.silence.title" -> "Silence recurring candidate";
+            case "recurring.silence.subtitle" -> "It won't be proposed again for:";
+            case "recurring.silence.range" -> "Range";
+            case "recurring.silence.reason" -> "Reason";
+            case "recurring.silence.reason.prompt" -> "Optional — why was this silenced?";
+            case "recurring.silence.range.month" -> "month";
+            case "recurring.silence.range.months" -> "months";
+            case "recurring.silence.range.indefinite" -> "Indefinite";
+            case "recurring.silence.fail.title" -> "Could not silence";
+            case "recurring.ignored.view" -> "View silenced";
+            case "recurring.ignored.title" -> "Silenced candidates";
+            case "recurring.ignored.empty" -> "No silenced candidates.";
+            case "recurring.ignored.rehabilitate" -> "Reactivate";
+            case "recurring.ignored.fail.title" -> "Could not load silenced";
+            case "recurring.ignored.col.kind" -> "Type";
+            case "recurring.ignored.col.party" -> "Third party";
+            case "recurring.ignored.col.amount" -> "Amount";
+            case "recurring.ignored.col.until" -> "Silenced until";
+            case "recurring.ignored.col.action" -> "Action";
+            case "recurring.kind.sales" -> "Sales";
+            case "recurring.kind.purchase" -> "Purchase";
             case "settings.audit.export.from" -> "From";
             case "settings.audit.export.to" -> "To";
             case "settings.audit.export.pdf" -> "Download PDF";
@@ -12724,6 +12747,29 @@ public class BenjagestUiApplication extends Application {
             case "advisory.notif.type.invitation_rejected" -> "Invitación rechazada";
             case "advisory.notif.type.invoice_overdue" -> "Factura vencida sin cobrar";
             case "advisory.notif.type.sif_anomaly" -> "Anomalía en cadena hash SIF";
+            case "recurring.candidates.silence" -> "Silenciar";
+            case "recurring.candidates.reload.fail.title" -> "No se pudieron recargar los candidatos";
+            case "recurring.silence.title" -> "Silenciar candidato recurrente";
+            case "recurring.silence.subtitle" -> "No se volverá a proponer durante:";
+            case "recurring.silence.range" -> "Rango";
+            case "recurring.silence.reason" -> "Motivo";
+            case "recurring.silence.reason.prompt" -> "Opcional — ¿por qué se silencia?";
+            case "recurring.silence.range.month" -> "mes";
+            case "recurring.silence.range.months" -> "meses";
+            case "recurring.silence.range.indefinite" -> "Indefinido";
+            case "recurring.silence.fail.title" -> "No se pudo silenciar";
+            case "recurring.ignored.view" -> "Ver silenciados";
+            case "recurring.ignored.title" -> "Candidatos silenciados";
+            case "recurring.ignored.empty" -> "No hay candidatos silenciados.";
+            case "recurring.ignored.rehabilitate" -> "Reactivar";
+            case "recurring.ignored.fail.title" -> "No se pudieron cargar los silenciados";
+            case "recurring.ignored.col.kind" -> "Tipo";
+            case "recurring.ignored.col.party" -> "Tercero";
+            case "recurring.ignored.col.amount" -> "Importe";
+            case "recurring.ignored.col.until" -> "Silenciado hasta";
+            case "recurring.ignored.col.action" -> "Acción";
+            case "recurring.kind.sales" -> "Ventas";
+            case "recurring.kind.purchase" -> "Compras";
             case "settings.audit.export.hint" -> "Descarga un PDF o CSV verificable del registro completo de auditoria en un rango de fechas. Cada exportacion queda a su vez registrada con el SHA-256 del documento para que el fichero que enseñes al inspector se pueda contrastar con el registro.";
             case "settings.audit.export.from" -> "Desde";
             case "settings.audit.export.to" -> "Hasta";
@@ -24905,16 +24951,20 @@ public class BenjagestUiApplication extends Application {
 
         javafx.scene.control.TableColumn<com.benjagest.ui.model.AccountingModels.RecurringCandidate, Void> cAction =
                 new javafx.scene.control.TableColumn<>(t("recurring.candidates.col.action"));
-        cAction.setCellFactory(c -> new javafx.scene.control.TableCell<>() {
+        cAction.setCellFactory(c -> new javafx.scene.control.TableCell<com.benjagest.ui.model.AccountingModels.RecurringCandidate, Void>() {
             private final Button create = new Button(t("recurring.candidates.create"));
+            private final Button silence = new Button(t("recurring.candidates.silence"));
+            private final HBox box2 = new HBox(6, create, silence);
             {
                 create.setGraphic(icon("fas-plus"));
                 create.getStyleClass().add("button-primary");
+                silence.setGraphic(icon("fas-volume-mute"));
+                silence.getStyleClass().add("button-secondary");
             }
             @Override protected void updateItem(Void v, boolean empty) {
                 super.updateItem(v, empty);
                 if (empty || getIndex() < 0 || getIndex() >= getTableView().getItems().size()) {
-                    setGraphic(null);
+                    setGraphic((javafx.scene.Node) null);
                     return;
                 }
                 var cand = getTableView().getItems().get(getIndex());
@@ -24924,10 +24974,18 @@ public class BenjagestUiApplication extends Application {
                         if (bannerRefresh != null) bannerRefresh.run();
                     });
                 });
-                setGraphic(create);
+                silence.setOnAction(e -> {
+                    showRecurringSilenceDialog(cand, () -> {
+                        // Reabre el diálogo con la lista actualizada.
+                        dlg.close();
+                        if (bannerRefresh != null) bannerRefresh.run();
+                        reloadAndShowCandidatesDialog(cand.kind(), bannerRefresh);
+                    });
+                });
+                setGraphic(box2);
             }
         });
-        cAction.setPrefWidth(160);
+        cAction.setPrefWidth(230);
 
         table.getColumns().add(cParty);
         table.getColumns().add(cAmount);
@@ -24940,10 +24998,239 @@ public class BenjagestUiApplication extends Application {
         hint.setWrapText(true);
         hint.getStyleClass().addAll("muted", "small");
 
-        VBox box = new VBox(8, hint, table);
+        Button viewIgnored = new Button(t("recurring.ignored.view"));
+        viewIgnored.setGraphic(icon("fas-volume-mute"));
+        viewIgnored.setOnAction(e -> showRecurringIgnoredDialog(() -> {
+            // Si el usuario rehabilita algo, volvemos a cargar candidatos.
+            String kind = candidates.isEmpty() ? "PURCHASE" : candidates.get(0).kind();
+            dlg.close();
+            if (bannerRefresh != null) bannerRefresh.run();
+            reloadAndShowCandidatesDialog(kind, bannerRefresh);
+        }));
+        HBox topBar = new HBox(8, hint, new Region(), viewIgnored);
+        HBox.setHgrow(topBar.getChildren().get(1), Priority.ALWAYS);
+
+        VBox box = new VBox(8, topBar, table);
         box.setPadding(new Insets(8));
         dlg.getDialogPane().setContent(box);
         dlg.showAndWait();
+    }
+
+    /**
+     * Recarga los candidatos del kind y reabre el diálogo principal.
+     * Lo usamos tras silenciar / rehabilitar para que el usuario vea el
+     * efecto inmediato sin tener que abrir y cerrar a mano.
+     */
+    private void reloadAndShowCandidatesDialog(String kind, Runnable bannerRefresh) {
+        new Thread(() -> {
+            try {
+                var list = accountingApiClient.listRecurringCandidates(kind, 180);
+                javafx.application.Platform.runLater(() ->
+                        showRecurringCandidatesDialog(list, bannerRefresh));
+            } catch (Exception ex) {
+                javafx.application.Platform.runLater(() ->
+                        showError(t("recurring.candidates.reload.fail.title"),
+                                ex.getMessage()));
+            }
+        }, "recurring-candidates-reload").start();
+    }
+
+    /**
+     * Modal "Silenciar candidato": elige rango (1/3/6/12 meses /
+     * indefinido) y razón opcional. Tras OK, llama al endpoint y
+     * dispara {@code onDone}.
+     */
+    private void showRecurringSilenceDialog(
+            com.benjagest.ui.model.AccountingModels.RecurringCandidate cand,
+            Runnable onDone) {
+        if (cand == null) return;
+        javafx.scene.control.Dialog<javafx.scene.control.ButtonType> dlg =
+                new javafx.scene.control.Dialog<>();
+        dlg.setTitle(t("recurring.silence.title"));
+        dlg.getDialogPane().getButtonTypes().addAll(
+                javafx.scene.control.ButtonType.OK,
+                javafx.scene.control.ButtonType.CANCEL);
+
+        Label sub = new Label(t("recurring.silence.subtitle")
+                + " " + nullSafe(cand.partyName())
+                + " · " + (cand.totalAmount() == null ? "" : cand.totalAmount().toPlainString() + " €"));
+        sub.setWrapText(true);
+
+        javafx.scene.control.ComboBox<String> range = new javafx.scene.control.ComboBox<>();
+        range.getItems().addAll("M1", "M3", "M6", "M12", "INF");
+        range.setValue("M6");
+        range.setCellFactory(lv -> new javafx.scene.control.ListCell<>() {
+            @Override protected void updateItem(String it, boolean empty) {
+                super.updateItem(it, empty);
+                setText(empty || it == null ? "" : silenceRangeLabel(it));
+            }
+        });
+        range.setButtonCell(new javafx.scene.control.ListCell<>() {
+            @Override protected void updateItem(String it, boolean empty) {
+                super.updateItem(it, empty);
+                setText(empty || it == null ? "" : silenceRangeLabel(it));
+            }
+        });
+
+        javafx.scene.control.TextArea reason = new javafx.scene.control.TextArea();
+        reason.setPromptText(t("recurring.silence.reason.prompt"));
+        reason.setPrefRowCount(3);
+
+        GridPane grid = new GridPane();
+        grid.setHgap(10);
+        grid.setVgap(8);
+        grid.add(new Label(t("recurring.silence.range")), 0, 0);
+        grid.add(range, 1, 0);
+        grid.add(new Label(t("recurring.silence.reason")), 0, 1);
+        grid.add(reason, 1, 1);
+
+        VBox box = new VBox(10, sub, grid);
+        box.setPadding(new Insets(8));
+        dlg.getDialogPane().setContent(box);
+
+        dlg.showAndWait().ifPresent(bt -> {
+            if (bt != javafx.scene.control.ButtonType.OK) return;
+            java.time.LocalDate until = switch (range.getValue()) {
+                case "M1"  -> LocalDate.now().plusMonths(1);
+                case "M3"  -> LocalDate.now().plusMonths(3);
+                case "M6"  -> LocalDate.now().plusMonths(6);
+                case "M12" -> LocalDate.now().plusMonths(12);
+                default    -> null;
+            };
+            new Thread(() -> {
+                try {
+                    accountingApiClient.ignoreRecurringCandidate(
+                            cand.kind(), cand.partyNif(), cand.partyName(),
+                            cand.totalAmount(), until, reason.getText());
+                    javafx.application.Platform.runLater(() -> {
+                        if (onDone != null) onDone.run();
+                    });
+                } catch (Exception ex) {
+                    javafx.application.Platform.runLater(() ->
+                            showError(t("recurring.silence.fail.title"), ex.getMessage()));
+                }
+            }, "recurring-silence").start();
+        });
+    }
+
+    private String silenceRangeLabel(String code) {
+        return switch (code) {
+            case "M1"  -> "1 " + t("recurring.silence.range.month");
+            case "M3"  -> "3 " + t("recurring.silence.range.months");
+            case "M6"  -> "6 " + t("recurring.silence.range.months");
+            case "M12" -> "12 " + t("recurring.silence.range.months");
+            case "INF" -> t("recurring.silence.range.indefinite");
+            default    -> code;
+        };
+    }
+
+    /**
+     * Diálogo "Silenciados activos": tabla con columna "Rehabilitar"
+     * por fila. Al rehabilitar uno, vuelve a aparecer en el detector.
+     */
+    private void showRecurringIgnoredDialog(Runnable onChanged) {
+        javafx.scene.control.Dialog<Void> dlg = new javafx.scene.control.Dialog<>();
+        dlg.setTitle(t("recurring.ignored.title"));
+        dlg.getDialogPane().getButtonTypes().add(javafx.scene.control.ButtonType.CLOSE);
+
+        javafx.scene.control.TableView<com.benjagest.ui.model.RecurringCandidateIgnoredEntry> table =
+                new javafx.scene.control.TableView<>();
+        table.setPlaceholder(new Label(t("recurring.ignored.empty")));
+        table.setPrefSize(760, 320);
+
+        javafx.scene.control.TableColumn<com.benjagest.ui.model.RecurringCandidateIgnoredEntry, String> cKind =
+                new javafx.scene.control.TableColumn<>(t("recurring.ignored.col.kind"));
+        cKind.setCellValueFactory(c -> new javafx.beans.property.SimpleStringProperty(
+                c.getValue() == null ? "" : kindLabel(c.getValue().kind())));
+        cKind.setPrefWidth(110);
+
+        javafx.scene.control.TableColumn<com.benjagest.ui.model.RecurringCandidateIgnoredEntry, String> cParty =
+                new javafx.scene.control.TableColumn<>(t("recurring.ignored.col.party"));
+        cParty.setCellValueFactory(c -> new javafx.beans.property.SimpleStringProperty(
+                c.getValue() == null ? "" :
+                        nullSafe(c.getValue().partyNameNorm())
+                                + (c.getValue().partyNif() == null || c.getValue().partyNif().isBlank()
+                                        ? "" : " (" + c.getValue().partyNif() + ")")));
+        cParty.setPrefWidth(240);
+
+        javafx.scene.control.TableColumn<com.benjagest.ui.model.RecurringCandidateIgnoredEntry, String> cAmt =
+                new javafx.scene.control.TableColumn<>(t("recurring.ignored.col.amount"));
+        cAmt.setCellValueFactory(c -> new javafx.beans.property.SimpleStringProperty(
+                c.getValue() == null || c.getValue().totalAmount() == null ? ""
+                        : c.getValue().totalAmount().toPlainString() + " €"));
+        cAmt.setPrefWidth(100);
+
+        javafx.scene.control.TableColumn<com.benjagest.ui.model.RecurringCandidateIgnoredEntry, String> cUntil =
+                new javafx.scene.control.TableColumn<>(t("recurring.ignored.col.until"));
+        cUntil.setCellValueFactory(c -> new javafx.beans.property.SimpleStringProperty(
+                c.getValue() == null ? "" :
+                        (c.getValue().ignoreUntil() == null
+                                ? t("recurring.silence.range.indefinite")
+                                : c.getValue().ignoreUntil().toString())));
+        cUntil.setPrefWidth(120);
+
+        javafx.scene.control.TableColumn<com.benjagest.ui.model.RecurringCandidateIgnoredEntry, Void> cBtn =
+                new javafx.scene.control.TableColumn<>(t("recurring.ignored.col.action"));
+        cBtn.setCellFactory(c -> new javafx.scene.control.TableCell<com.benjagest.ui.model.RecurringCandidateIgnoredEntry, Void>() {
+            private final Button rehab = new Button(t("recurring.ignored.rehabilitate"));
+            { rehab.setGraphic(icon("fas-undo")); }
+            @Override protected void updateItem(Void v, boolean empty) {
+                super.updateItem(v, empty);
+                if (empty || getIndex() < 0 || getIndex() >= getTableView().getItems().size()) {
+                    setGraphic((javafx.scene.Node) null);
+                    return;
+                }
+                var row = getTableView().getItems().get(getIndex());
+                rehab.setOnAction(e -> {
+                    new Thread(() -> {
+                        try {
+                            accountingApiClient.unignoreRecurringCandidate(row.id());
+                            javafx.application.Platform.runLater(() -> {
+                                table.getItems().remove(row);
+                                if (onChanged != null) onChanged.run();
+                            });
+                        } catch (Exception ex) {
+                            javafx.application.Platform.runLater(() ->
+                                    showError(t("recurring.ignored.fail.title"),
+                                            ex.getMessage()));
+                        }
+                    }, "recurring-unignore").start();
+                });
+                setGraphic(rehab);
+            }
+        });
+        cBtn.setPrefWidth(140);
+
+        table.getColumns().add(cKind);
+        table.getColumns().add(cParty);
+        table.getColumns().add(cAmt);
+        table.getColumns().add(cUntil);
+        table.getColumns().add(cBtn);
+
+        VBox box = new VBox(8, table);
+        box.setPadding(new Insets(8));
+        dlg.getDialogPane().setContent(box);
+
+        new Thread(() -> {
+            try {
+                var list = accountingApiClient.listIgnoredRecurringCandidates();
+                javafx.application.Platform.runLater(() -> table.getItems().setAll(list));
+            } catch (Exception ex) {
+                javafx.application.Platform.runLater(() ->
+                        showError(t("recurring.ignored.fail.title"), ex.getMessage()));
+            }
+        }, "recurring-ignored-load").start();
+
+        dlg.showAndWait();
+    }
+
+    private String kindLabel(String kind) {
+        if (kind == null) return "";
+        return switch (kind) {
+            case "SALES_INVOICE" -> t("recurring.kind.sales");
+            case "PURCHASE"      -> t("recurring.kind.purchase");
+            default              -> kind;
+        };
     }
 
     /**

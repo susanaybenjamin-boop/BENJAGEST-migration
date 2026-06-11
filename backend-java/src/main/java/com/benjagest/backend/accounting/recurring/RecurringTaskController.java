@@ -39,13 +39,16 @@ public class RecurringTaskController {
     private final RecurringTaskService service;
     private final RecurringTaskScheduler scheduler;
     private final RecurringCandidateService candidateService;
+    private final RecurringCandidateIgnoredService ignoredService;
 
     public RecurringTaskController(RecurringTaskService service,
                                    RecurringTaskScheduler scheduler,
-                                   RecurringCandidateService candidateService) {
+                                   RecurringCandidateService candidateService,
+                                   RecurringCandidateIgnoredService ignoredService) {
         this.service = service;
         this.scheduler = scheduler;
         this.candidateService = candidateService;
+        this.ignoredService = ignoredService;
     }
 
     /**
@@ -63,6 +66,28 @@ public class RecurringTaskController {
             @RequestParam(value = "windowDays", required = false,
                     defaultValue = "180") int windowDays) {
         return candidateService.findCandidates(kind, windowDays);
+    }
+
+    /**
+     * Slice REC-IGNORE — silencia un candidato. Body con kind,
+     * partyNif, partyName, totalAmount, ignoreUntil (ISO, NULL =
+     * indefinido), reason opcional.
+     */
+    @PostMapping("/candidates/ignore")
+    public RecurringCandidateIgnoredService.Ignored ignoreCandidate(
+            @RequestBody RecurringCandidateIgnoredService.IgnoreRequest req) {
+        return ignoredService.ignore(req);
+    }
+
+    @GetMapping("/candidates/ignored")
+    public List<RecurringCandidateIgnoredService.Ignored> listIgnored() {
+        return ignoredService.listActive();
+    }
+
+    @DeleteMapping("/candidates/ignored/{id}")
+    public Map<String, Object> unignore(@PathVariable("id") String id) {
+        ignoredService.unignore(id);
+        return Map.of("id", id, "removed", true);
     }
 
     /**

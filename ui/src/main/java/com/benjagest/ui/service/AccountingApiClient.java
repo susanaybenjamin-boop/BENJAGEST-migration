@@ -535,6 +535,62 @@ public class AccountingApiClient {
     }
 
     // ====================================================================
+    //  REC-IGNORE — candidatos silenciados
+    // ====================================================================
+
+    /**
+     * Silencia un candidato de recurrencia para que el detector no lo
+     * vuelva a proponer hasta {@code ignoreUntil} (NULL = indefinido).
+     */
+    public com.benjagest.ui.model.RecurringCandidateIgnoredEntry ignoreRecurringCandidate(
+            String kind, String partyNif, String partyName,
+            java.math.BigDecimal totalAmount,
+            java.time.LocalDate ignoreUntil, String reason)
+            throws IOException, InterruptedException {
+        String body = "{"
+                + "\"kind\":" + jq(kind) + ","
+                + "\"partyNif\":" + jq(partyNif == null ? "" : partyNif) + ","
+                + "\"partyName\":" + jq(partyName == null ? "" : partyName) + ","
+                + "\"totalAmount\":" + (totalAmount == null ? "0" : totalAmount.toPlainString()) + ","
+                + "\"ignoreUntil\":" + (ignoreUntil == null ? "null" : jq(ignoreUntil.toString())) + ","
+                + "\"reason\":" + (reason == null || reason.isBlank() ? "null" : jq(reason))
+                + "}";
+        String json = postRaw("/accounting/recurring/candidates/ignore", body);
+        return mapIgnoredEntry(json);
+    }
+
+    public List<com.benjagest.ui.model.RecurringCandidateIgnoredEntry> listIgnoredRecurringCandidates()
+            throws IOException, InterruptedException {
+        String json = get("/accounting/recurring/candidates/ignored");
+        List<com.benjagest.ui.model.RecurringCandidateIgnoredEntry> out = new ArrayList<>();
+        for (String obj : splitJsonArray(json)) {
+            out.add(mapIgnoredEntry(obj));
+        }
+        return out;
+    }
+
+    public void unignoreRecurringCandidate(String id) throws IOException, InterruptedException {
+        delete("/accounting/recurring/candidates/ignored/" + id);
+    }
+
+    private static String jq(String s) {
+        if (s == null) return "\"\"";
+        return "\"" + s.replace("\\", "\\\\").replace("\"", "\\\"") + "\"";
+    }
+
+    private com.benjagest.ui.model.RecurringCandidateIgnoredEntry mapIgnoredEntry(String obj) {
+        return new com.benjagest.ui.model.RecurringCandidateIgnoredEntry(
+                strField(obj, "id"),
+                strField(obj, "kind"),
+                strField(obj, "partyNif"),
+                strField(obj, "partyNameNorm"),
+                decField(obj, "totalAmount"),
+                localDateField(obj, "ignoreUntil"),
+                strField(obj, "reason"),
+                strField(obj, "createdAt"));
+    }
+
+    // ====================================================================
     //  Backfill — regenerar asientos faltantes para facturas existentes
     // ====================================================================
 
