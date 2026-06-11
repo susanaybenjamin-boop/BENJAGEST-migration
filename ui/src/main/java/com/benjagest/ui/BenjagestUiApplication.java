@@ -1246,6 +1246,235 @@ public class BenjagestUiApplication extends Application {
         advisoryPortfolioTable = null;
     }
 
+    // ============================================================
+    //  Notificaciones del asesor — campana con badge en el header
+    // ============================================================
+
+    private javafx.scene.layout.StackPane buildAdvisoryNotificationsBell() {
+        Button bell = new Button();
+        bell.setGraphic(icon("fas-bell"));
+        bell.getStyleClass().addAll("icon-only-button", "advisory-bell");
+        bell.setTooltip(new javafx.scene.control.Tooltip(t("advisory.notif.tooltip")));
+        bell.setOnAction(e -> showAdvisoryNotificationsDialog());
+
+        Label badge = new Label("");
+        badge.getStyleClass().add("advisory-bell-badge");
+        badge.setVisible(false);
+        badge.setManaged(false);
+        badge.setStyle("-fx-background-color: #e53935; -fx-text-fill: white; "
+                + "-fx-padding: 1 6 1 6; -fx-background-radius: 10; "
+                + "-fx-font-size: 10px; -fx-font-weight: bold;");
+
+        javafx.scene.layout.StackPane stack = new javafx.scene.layout.StackPane(bell, badge);
+        javafx.scene.layout.StackPane.setAlignment(badge, javafx.geometry.Pos.TOP_RIGHT);
+        javafx.scene.layout.StackPane.setMargin(badge, new javafx.geometry.Insets(-2, -4, 0, 0));
+
+        this.advisoryNotificationsBell = stack;
+        this.advisoryNotificationsBadge = badge;
+        applyAdvisoryNotificationsBadge(advisoryNotificationsLastCount);
+        startAdvisoryNotificationsPolling();
+        return stack;
+    }
+
+    private void startAdvisoryNotificationsPolling() {
+        if (advisoryNotificationsPoller != null || appMode != AppMode.ADVISORY) return;
+        advisoryNotificationsPoller = new javafx.animation.Timeline(
+                new javafx.animation.KeyFrame(javafx.util.Duration.ZERO,
+                        ev -> refreshAdvisoryNotificationsCount()),
+                new javafx.animation.KeyFrame(javafx.util.Duration.seconds(30)));
+        advisoryNotificationsPoller.setCycleCount(javafx.animation.Animation.INDEFINITE);
+        advisoryNotificationsPoller.play();
+    }
+
+    private void stopAdvisoryNotificationsPolling() {
+        if (advisoryNotificationsPoller != null) {
+            advisoryNotificationsPoller.stop();
+            advisoryNotificationsPoller = null;
+        }
+        advisoryNotificationsBell = null;
+        advisoryNotificationsBadge = null;
+        advisoryNotificationsLastCount = 0;
+    }
+
+    private void refreshAdvisoryNotificationsCount() {
+        if (!com.benjagest.ui.service.AuthSession.get().isAuthenticated()) return;
+        if (appMode != AppMode.ADVISORY) return;
+        Task<Integer> task = new Task<>() {
+            @Override
+            protected Integer call() throws Exception {
+                return altaApiClient.countUnreadAdvisoryNotifications();
+            }
+        };
+        task.setOnSucceeded(e -> applyAdvisoryNotificationsBadge(task.getValue()));
+        task.setOnFailed(e -> { /* backend caído → silencio */ });
+        start(task, "advisory-notif-count");
+    }
+
+    private void applyAdvisoryNotificationsBadge(int count) {
+        advisoryNotificationsLastCount = count;
+        if (advisoryNotificationsBadge == null) return;
+        if (count <= 0) {
+            advisoryNotificationsBadge.setText("");
+            advisoryNotificationsBadge.setVisible(false);
+            advisoryNotificationsBadge.setManaged(false);
+        } else {
+            advisoryNotificationsBadge.setText(count > 99 ? "99+" : String.valueOf(count));
+            advisoryNotificationsBadge.setVisible(true);
+            advisoryNotificationsBadge.setManaged(true);
+        }
+    }
+
+    private void showAdvisoryNotificationsDialog() {
+        javafx.stage.Stage dlg = new javafx.stage.Stage();
+        dlg.initModality(javafx.stage.Modality.WINDOW_MODAL);
+        if (advisoryNotificationsBell != null && advisoryNotificationsBell.getScene() != null) {
+            dlg.initOwner(advisoryNotificationsBell.getScene().getWindow());
+        }
+        dlg.setTitle(t("advisory.notif.dialog.title"));
+
+        Label heading = new Label(t("advisory.notif.dialog.title"));
+        heading.getStyleClass().add("module-detail-title");
+
+        javafx.scene.control.ListView<com.benjagest.ui.model.AdvisoryNotificationEntry> list =
+                new javafx.scene.control.ListView<>();
+        list.setPrefHeight(420);
+        list.setCellFactory(lv -> new javafx.scene.control.ListCell<com.benjagest.ui.model.AdvisoryNotificationEntry>() {
+            @Override
+            protected void updateItem(com.benjagest.ui.model.AdvisoryNotificationEntry n, boolean empty) {
+                super.updateItem(n, empty);
+                if (empty || n == null) {
+                    setText((String) null);
+                    setGraphic((javafx.scene.Node) null);
+                    return;
+                }
+                Label sevDot = new Label("●");
+                sevDot.setStyle("-fx-font-size: 18px; -fx-text-fill: "
+                        + severityColor(n.severity()) + ";");
+                Label title = new Label(n.title());
+                title.setStyle("-fx-font-weight: " + (n.unread() ? "bold" : "normal") + ";");
+                Label sub = new Label(humanizeNotifType(n.notificationType())
+                        + (n.createdAt() == null || n.createdAt().isBlank()
+                                ? "" : "  ·  " + n.createdAt()));
+                sub.getStyleClass().add("settings-hint");
+                Label msg = new Label(n.message() == null ? "" : n.message());
+                msg.setWrapText(true);
+                msg.setMaxWidth(440);
+                VBox texts = new VBox(2, title, sub, msg);
+                HBox row = new HBox(10, sevDot, texts);
+                row.setAlignment(javafx.geometry.Pos.TOP_LEFT);
+                setGraphic(row);
+                setText((String) null);
+            }
+        });
+
+        Button refresh = new Button(t("refresh"));
+        refresh.setGraphic(icon("fas-sync-alt"));
+        Button markAll = new Button(t("advisory.notif.mark_all_read"));
+        markAll.setGraphic(icon("fas-check-double"));
+        Button markRead = new Button(t("advisory.notif.mark_read"));
+        Button dismiss = new Button(t("advisory.notif.dismiss"));
+        markRead.setDisable(true);
+        dismiss.setDisable(true);
+
+        list.getSelectionModel().selectedItemProperty().addListener((o, a, b) -> {
+            boolean has = b != null;
+            markRead.setDisable(!has || !b.unread());
+            dismiss.setDisable(!has);
+        });
+
+        Runnable reload = () -> {
+            Task<List<com.benjagest.ui.model.AdvisoryNotificationEntry>> tk = new Task<>() {
+                @Override
+                protected List<com.benjagest.ui.model.AdvisoryNotificationEntry> call()
+                        throws Exception {
+                    return altaApiClient.listAdvisoryNotifications(false);
+                }
+            };
+            tk.setOnSucceeded(e -> list.getItems().setAll(tk.getValue()));
+            tk.setOnFailed(e -> showError(t("advisory.notif.fail.title"),
+                    tk.getException().getMessage()));
+            start(tk, "advisory-notif-list");
+        };
+        refresh.setOnAction(e -> reload.run());
+        markAll.setOnAction(e -> {
+            Task<Integer> tk = new Task<>() {
+                @Override
+                protected Integer call() throws Exception {
+                    return altaApiClient.markAllAdvisoryNotificationsRead();
+                }
+            };
+            tk.setOnSucceeded(ev -> { reload.run(); refreshAdvisoryNotificationsCount(); });
+            tk.setOnFailed(ev -> showError(t("advisory.notif.fail.title"),
+                    tk.getException().getMessage()));
+            start(tk, "advisory-notif-mark-all");
+        });
+        markRead.setOnAction(e -> {
+            com.benjagest.ui.model.AdvisoryNotificationEntry sel = list.getSelectionModel().getSelectedItem();
+            if (sel == null) return;
+            Task<Void> tk = new Task<>() {
+                @Override
+                protected Void call() throws Exception {
+                    altaApiClient.markAdvisoryNotificationRead(sel.id());
+                    return null;
+                }
+            };
+            tk.setOnSucceeded(ev -> { reload.run(); refreshAdvisoryNotificationsCount(); });
+            tk.setOnFailed(ev -> showError(t("advisory.notif.fail.title"),
+                    tk.getException().getMessage()));
+            start(tk, "advisory-notif-read");
+        });
+        dismiss.setOnAction(e -> {
+            com.benjagest.ui.model.AdvisoryNotificationEntry sel = list.getSelectionModel().getSelectedItem();
+            if (sel == null) return;
+            Task<Void> tk = new Task<>() {
+                @Override
+                protected Void call() throws Exception {
+                    altaApiClient.dismissAdvisoryNotification(sel.id());
+                    return null;
+                }
+            };
+            tk.setOnSucceeded(ev -> { reload.run(); refreshAdvisoryNotificationsCount(); });
+            tk.setOnFailed(ev -> showError(t("advisory.notif.fail.title"),
+                    tk.getException().getMessage()));
+            start(tk, "advisory-notif-dismiss");
+        });
+
+        Button close = new Button(t("close"));
+        close.setOnAction(e -> dlg.close());
+        Region sp = new Region();
+        HBox.setHgrow(sp, Priority.ALWAYS);
+        HBox toolbar = new HBox(8, refresh, markAll, sp, markRead, dismiss, close);
+        toolbar.setAlignment(javafx.geometry.Pos.CENTER_LEFT);
+
+        VBox root = new VBox(12, heading, list, toolbar);
+        root.setPadding(new javafx.geometry.Insets(16));
+        root.setPrefWidth(560);
+
+        javafx.scene.Scene scene = new javafx.scene.Scene(root);
+        if (advisoryNotificationsBell != null && advisoryNotificationsBell.getScene() != null) {
+            scene.getStylesheets().addAll(advisoryNotificationsBell.getScene().getStylesheets());
+        }
+        dlg.setScene(scene);
+        reload.run();
+        dlg.show();
+    }
+
+    private static String severityColor(String sev) {
+        if (sev == null) return "#888";
+        return switch (sev) {
+            case "URGENT"  -> "#e53935";
+            case "WARNING" -> "#fb8c00";
+            default        -> "#1e88e5";
+        };
+    }
+
+    private String humanizeNotifType(String type) {
+        if (type == null || type.isBlank()) return "";
+        String key = "advisory.notif.type." + type.toLowerCase(java.util.Locale.ROOT);
+        String tx = t(key);
+        return tx.equals(key) ? type : tx;
+    }
+
     private void pollAdvisoryClients() {
         if (!com.benjagest.ui.service.AuthSession.get().isAuthenticated()) return;
         if (appMode != AppMode.ADVISORY) return;
@@ -1420,6 +1649,7 @@ public class BenjagestUiApplication extends Application {
             // sirve para generar mas accesses.
             stopInvitationsPolling();
             stopAdvisoryClientsPolling();
+            stopAdvisoryNotificationsPolling();
             stopDehuPolling();
             authApiClient.logout();
             session = null;
@@ -1428,7 +1658,11 @@ public class BenjagestUiApplication extends Application {
             showLogin();
         });
 
-        HBox header = new HBox(14, AppBrand.createLogoMark(), titleBlock, spacer, languageButton, refresh, logout);
+        HBox header = new HBox(14, AppBrand.createLogoMark(), titleBlock, spacer);
+        if (appMode == AppMode.ADVISORY) {
+            header.getChildren().add(buildAdvisoryNotificationsBell());
+        }
+        header.getChildren().addAll(languageButton, refresh, logout);
         header.setAlignment(Pos.CENTER_LEFT);
         header.getStyleClass().add("app-header");
         return header;
@@ -2954,6 +3188,14 @@ public class BenjagestUiApplication extends Application {
     // desvinculación; cuando aparece uno nuevo, detectamos vinculación.
     private final java.util.Set<String> seenLinkedCompanyIds = new java.util.HashSet<>();
     private boolean advisoryClientsBootstrapped = false;
+
+    // Bandeja de notificaciones del asesor. El header (en modo ADVISORY)
+    // muestra una campana con badge numérico; el poller refresca el
+    // count cada 30s y actualiza la etiqueta del badge.
+    private javafx.animation.Timeline advisoryNotificationsPoller;
+    private javafx.scene.layout.StackPane advisoryNotificationsBell;
+    private Label advisoryNotificationsBadge;
+    private int advisoryNotificationsLastCount = 0;
 
     // Live polling de la bandeja DEHú. Persistente desde el primer
     // acceso al módulo; el tick comprueba `currentModule` y solo
@@ -12331,6 +12573,19 @@ public class BenjagestUiApplication extends Application {
             case "advisory.documents.dl.ok.title" -> "Saved";
             case "advisory.documents.dl.ok.body" -> "File saved at:";
             case "advisory.documents.fail.title" -> "Could not complete the operation";
+            case "advisory.notif.tooltip" -> "Advisor inbox";
+            case "advisory.notif.dialog.title" -> "Advisor inbox";
+            case "advisory.notif.mark_all_read" -> "Mark all as read";
+            case "advisory.notif.mark_read" -> "Mark as read";
+            case "advisory.notif.dismiss" -> "Dismiss";
+            case "advisory.notif.fail.title" -> "Could not load notifications";
+            case "advisory.notif.type.client_uploaded_doc" -> "Client uploaded document";
+            case "advisory.notif.type.tax_filing_due_soon" -> "Tax filing due soon";
+            case "advisory.notif.type.contract_expiring" -> "Contract about to expire";
+            case "advisory.notif.type.invitation_accepted" -> "Invitation accepted";
+            case "advisory.notif.type.invitation_rejected" -> "Invitation rejected";
+            case "advisory.notif.type.invoice_overdue" -> "Invoice overdue";
+            case "advisory.notif.type.sif_anomaly" -> "SIF chain anomaly";
             case "settings.audit.export.from" -> "From";
             case "settings.audit.export.to" -> "To";
             case "settings.audit.export.pdf" -> "Download PDF";
@@ -12456,6 +12711,19 @@ public class BenjagestUiApplication extends Application {
             case "advisory.documents.dl.ok.title" -> "Guardado";
             case "advisory.documents.dl.ok.body" -> "Archivo guardado en:";
             case "advisory.documents.fail.title" -> "No se pudo completar la operación";
+            case "advisory.notif.tooltip" -> "Bandeja del asesor";
+            case "advisory.notif.dialog.title" -> "Bandeja del asesor";
+            case "advisory.notif.mark_all_read" -> "Marcar todas como leídas";
+            case "advisory.notif.mark_read" -> "Marcar como leída";
+            case "advisory.notif.dismiss" -> "Descartar";
+            case "advisory.notif.fail.title" -> "No se pudieron cargar las notificaciones";
+            case "advisory.notif.type.client_uploaded_doc" -> "El cliente subió un documento";
+            case "advisory.notif.type.tax_filing_due_soon" -> "Vencimiento de modelo AEAT próximo";
+            case "advisory.notif.type.contract_expiring" -> "Contrato a punto de finalizar";
+            case "advisory.notif.type.invitation_accepted" -> "Invitación aceptada";
+            case "advisory.notif.type.invitation_rejected" -> "Invitación rechazada";
+            case "advisory.notif.type.invoice_overdue" -> "Factura vencida sin cobrar";
+            case "advisory.notif.type.sif_anomaly" -> "Anomalía en cadena hash SIF";
             case "settings.audit.export.hint" -> "Descarga un PDF o CSV verificable del registro completo de auditoria en un rango de fechas. Cada exportacion queda a su vez registrada con el SHA-256 del documento para que el fichero que enseñes al inspector se pueda contrastar con el registro.";
             case "settings.audit.export.from" -> "Desde";
             case "settings.audit.export.to" -> "Hasta";
