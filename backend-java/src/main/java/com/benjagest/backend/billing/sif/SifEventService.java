@@ -45,6 +45,20 @@ public class SifEventService {
     private final TenantContext tenantContext;
     private final XmlSignerService signerService;
 
+    /**
+     * SIF-CHAIN-FIX 2026-06-11: lock por companyId para serializar
+     * dos {@code appendEvent} concurrentes en la misma empresa. El
+     * Sprint B (REQUIRES_NEW) abrió una race donde dos hilos leían el
+     * mismo prev_hash y calculaban hashes inconsistentes; al verificar
+     * el segundo, "Hash recalculado no coincide" porque expectedPrev
+     * acumulado en verify era el hashCurrent del primero, pero el
+     * segundo se computó con el prev_hash anterior. Synchronized aquí
+     * es suficiente para single-instance (caso BENJAGEST hoy); para
+     * multi-instance habría que migrar a un lock distribuido.
+     */
+    private final java.util.concurrent.ConcurrentHashMap<String, Object> companyChainLocks
+            = new java.util.concurrent.ConcurrentHashMap<>();
+
     public SifEventService(VerifactuConfigRepository configRepository,
                            CompanyDataRepository companyRepository,
                            SifEventRepository eventRepository,
@@ -164,32 +178,39 @@ public class SifEventService {
             throw new IllegalStateException(
                     "La empresa " + companyId + " no tiene NIF/CIF. El SIF lo requiere.");
         }
-        String previousHash = eventRepository.findLastHashForCompany(companyId);
-        OffsetDateTime generationTime = OffsetDateTime.now(ZoneId.of("Europe/Madrid"))
-                .truncatedTo(ChronoUnit.SECONDS);
+        // SIF-CHAIN-FIX 2026-06-11: lock por empresa para serializar
+        // findLast → compute → insert. Sin esto, dos record() concurrentes
+        // ven el mismo prev_hash y producen una cadena rota visible
+        // como "Hash recalculado no coincide" al verificar.
+        Object lock = companyChainLocks.computeIfAbsent(companyId, k -> new Object());
+        synchronized (lock) {
+            String previousHash = eventRepository.findLastHashForCompany(companyId);
+            OffsetDateTime generationTime = OffsetDateTime.now(ZoneId.of("Europe/Madrid"))
+                    .truncatedTo(ChronoUnit.SECONDS);
 
-        String hashCurrent = hashService.computeHash(
-                nif, eventType, payload, previousHash, generationTime
-        );
+            String hashCurrent = hashService.computeHash(
+                    nif, eventType, payload, previousHash, generationTime
+            );
 
-        String eventId = UUID.randomUUID().toString();
-        eventRepository.insert(
-                eventId,
-                companyId,
-                eventType,
-                payload,
-                hashCurrent,
-                previousHash,
-                generationTime
-        );
+            String eventId = UUID.randomUUID().toString();
+            eventRepository.insert(
+                    eventId,
+                    companyId,
+                    eventType,
+                    payload,
+                    hashCurrent,
+                    previousHash,
+                    generationTime
+            );
 
-        // VF-SIGN: firmar el evento si hay certificado configurado.
-        // Si falla o no hay cert, el evento queda con status PENDING
-        // — el job VF4 podra reintentar firma mas adelante.
-        String eventXml = buildEventXml(nif, eventType, payload,
-                hashCurrent, previousHash, generationTime);
-        signerService.sign(eventXml).ifPresent(signed ->
-                eventRepository.setSignature(eventId, signed));
+            // VF-SIGN: firmar el evento si hay certificado configurado.
+            // Si falla o no hay cert, el evento queda con status PENDING
+            // — el job VF4 podra reintentar firma mas adelante.
+            String eventXml = buildEventXml(nif, eventType, payload,
+                    hashCurrent, previousHash, generationTime);
+            signerService.sign(eventXml).ifPresent(signed ->
+                    eventRepository.setSignature(eventId, signed));
+        }
     }
 
     /**

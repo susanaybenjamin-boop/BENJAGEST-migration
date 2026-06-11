@@ -37,6 +37,15 @@ public class SifEventRepository {
      * cadena vacia si la cadena esta vacia (primer evento). El orden
      * es por generated_at DESC + id DESC para desempates en el mismo
      * segundo.
+     *
+     * <p>La serialización de dos {@code record()} concurrentes que
+     * leen el mismo prev_hash se hace en {@link SifEventService#appendEvent}
+     * mediante {@code synchronized} por companyId (SIF-CHAIN-FIX
+     * 2026-06-11). No usamos {@code FOR UPDATE} aquí porque el primer
+     * evento de la cadena no tiene fila previa que bloquear (gap lock
+     * no es garantía sólida en InnoDB) y porque el lock Java es
+     * inmune al lock-wait-timeout con AuditChainService que motivó el
+     * Sprint B.
      */
     public String findLastHashForCompany(String companyId) {
         List<String> matches = jdbcTemplate.query("""
