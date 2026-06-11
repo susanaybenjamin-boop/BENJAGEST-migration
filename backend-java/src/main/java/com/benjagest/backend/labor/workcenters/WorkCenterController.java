@@ -54,58 +54,104 @@ public class WorkCenterController {
     }
 
     /**
-     * CENTROS-GEOCODE — geocodifica una dirección libre usando
-     * Nominatim (OpenStreetMap). Devuelve {lat, lng, displayName} de
-     * la primera coincidencia o 404 si no encuentra nada. Restringido
-     * a España para reducir falsos positivos.
+     * CENTROS-GEOCODE — geocodifica una dirección estructurada o libre
+     * usando Nominatim (OpenStreetMap). Restringido a España.
      *
-     * <p>Nominatim Usage Policy obliga a enviar User-Agent identificable
-     * y limita a 1 req/s. La UI solo dispara la llamada bajo botón
-     * explícito del usuario, así que el rate natural está muy por
-     * debajo del límite.
+     * <p>Estrategia de precisión (en orden, devolvemos el primero que
+     * acierte):
+     * <ol>
+     *   <li>Si vienen los params estructurados (street/postalcode/city),
+     *       usar el endpoint estructurado de Nominatim — mucho más
+     *       preciso que la búsqueda libre porque indexa los campos
+     *       por separado.</li>
+     *   <li>Si no, búsqueda libre {@code q=...}.</li>
+     *   <li>Si tampoco, devolvemos 404.</li>
+     * </ol>
+     *
+     * <p>Pedimos {@code addressdetails=1} para que el {@code display_name}
+     * sea humano completo. Nominatim Usage Policy: User-Agent
+     * identificable + 1 req/s máx — el UI solo dispara bajo botón
+     * explícito.
      */
     @GetMapping("/geocode")
-    public Map<String, Object> geocode(@RequestParam("q") String query) {
-        if (query == null || query.isBlank()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "query obligatorio");
+    public Map<String, Object> geocode(
+            @RequestParam(value = "q", required = false) String query,
+            @RequestParam(value = "street", required = false) String street,
+            @RequestParam(value = "postalcode", required = false) String postalcode,
+            @RequestParam(value = "city", required = false) String city,
+            @RequestParam(value = "state", required = false) String state) {
+        boolean hasStructured = (street != null && !street.isBlank())
+                || (postalcode != null && !postalcode.isBlank())
+                || (city != null && !city.isBlank());
+        boolean hasFree = query != null && !query.isBlank();
+        if (!hasStructured && !hasFree) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Aporta street/city/postalcode o q");
         }
         try {
-            String encoded = URLEncoder.encode(query.trim(), StandardCharsets.UTF_8);
-            HttpRequest req = HttpRequest.newBuilder()
-                    .uri(URI.create("https://nominatim.openstreetmap.org/search?format=json"
-                            + "&limit=1&countrycodes=es&q=" + encoded))
-                    .header("User-Agent", "BENJAGEST/0.1 (contact: susanaybenjamin@gmail.com)")
-                    .header("Accept-Language", "es")
-                    .timeout(Duration.ofSeconds(10))
-                    .GET()
-                    .build();
-            HttpResponse<String> res = HTTP.send(req, HttpResponse.BodyHandlers.ofString());
-            if (res.statusCode() >= 400) {
-                throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
-                        "Nominatim HTTP " + res.statusCode());
+            Map<String, Object> result = null;
+            if (hasStructured) {
+                StringBuilder url = new StringBuilder(
+                        "https://nominatim.openstreetmap.org/search?format=json"
+                        + "&addressdetails=1&limit=1&countrycodes=es");
+                if (street != null && !street.isBlank()) {
+                    url.append("&street=").append(URLEncoder.encode(street.trim(), StandardCharsets.UTF_8));
+                }
+                if (postalcode != null && !postalcode.isBlank()) {
+                    url.append("&postalcode=").append(URLEncoder.encode(postalcode.trim(), StandardCharsets.UTF_8));
+                }
+                if (city != null && !city.isBlank()) {
+                    url.append("&city=").append(URLEncoder.encode(city.trim(), StandardCharsets.UTF_8));
+                }
+                if (state != null && !state.isBlank()) {
+                    url.append("&state=").append(URLEncoder.encode(state.trim(), StandardCharsets.UTF_8));
+                }
+                result = callNominatim(url.toString());
             }
-            String body = res.body();
-            if (body == null || body.isBlank() || body.trim().equals("[]")) {
+            if (result == null && hasFree) {
+                String url = "https://nominatim.openstreetmap.org/search?format=json"
+                        + "&addressdetails=1&limit=1&countrycodes=es&q="
+                        + URLEncoder.encode(query.trim(), StandardCharsets.UTF_8);
+                result = callNominatim(url);
+            }
+            if (result == null) {
                 throw new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "Sin resultados para esa dirección");
             }
-            Matcher mLat = LAT_RE.matcher(body);
-            Matcher mLon = LON_RE.matcher(body);
-            Matcher mDisp = DISPLAY_RE.matcher(body);
-            if (!mLat.find() || !mLon.find()) {
-                throw new ResponseStatusException(HttpStatus.NOT_FOUND,
-                        "Respuesta sin coordenadas");
-            }
-            BigDecimal lat = new BigDecimal(mLat.group(1));
-            BigDecimal lng = new BigDecimal(mLon.group(1));
-            String displayName = mDisp.find() ? mDisp.group(1) : "";
-            return Map.of("lat", lat, "lng", lng, "displayName", displayName);
+            return result;
         } catch (ResponseStatusException ex) {
             throw ex;
         } catch (Exception ex) {
             throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
                     "No se pudo contactar con Nominatim: " + ex.getMessage());
         }
+    }
+
+    private Map<String, Object> callNominatim(String url) throws Exception {
+        HttpRequest req = HttpRequest.newBuilder()
+                .uri(URI.create(url))
+                .header("User-Agent", "BENJAGEST/0.1 (contact: susanaybenjamin@gmail.com)")
+                .header("Accept-Language", "es")
+                .timeout(Duration.ofSeconds(10))
+                .GET()
+                .build();
+        HttpResponse<String> res = HTTP.send(req, HttpResponse.BodyHandlers.ofString());
+        if (res.statusCode() >= 400) {
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
+                    "Nominatim HTTP " + res.statusCode());
+        }
+        String body = res.body();
+        if (body == null || body.isBlank() || body.trim().equals("[]")) {
+            return null;
+        }
+        Matcher mLat = LAT_RE.matcher(body);
+        Matcher mLon = LON_RE.matcher(body);
+        Matcher mDisp = DISPLAY_RE.matcher(body);
+        if (!mLat.find() || !mLon.find()) return null;
+        BigDecimal lat = new BigDecimal(mLat.group(1));
+        BigDecimal lng = new BigDecimal(mLon.group(1));
+        String displayName = mDisp.find() ? mDisp.group(1) : "";
+        return Map.of("lat", lat, "lng", lng, "displayName", displayName);
     }
 
     @PostMapping
