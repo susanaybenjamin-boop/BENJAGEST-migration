@@ -104,7 +104,17 @@ public class ThirdPartyBillingAgreementService {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "Ya existe un acuerdo activo o pendiente para este par. Revócalo primero.");
         }
-        boolean initiatedByAdvisory = tenant.getCurrentCompanyId().equals(req.advisoryCompanyId());
+        // Iniciador por activeCompanyId del usuario (JWT estable) — el
+        // tenant del header puede ser el cliente si la asesoría está
+        // "actuando como" el cliente; pero el usuario real sigue siendo
+        // de la asesoría.
+        String myActiveCompanyId = activeCompanyId();
+        boolean initiatedByAdvisory = req.advisoryCompanyId().equals(myActiveCompanyId);
+        // Verificar que el usuario es parte del acuerdo
+        if (!initiatedByAdvisory && !req.clientCompanyId().equals(myActiveCompanyId)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "No eres parte de este acuerdo");
+        }
         String id = UUID.randomUUID().toString();
         String userId = safeUserId();
         jdbc.update("""
@@ -154,8 +164,10 @@ public class ThirdPartyBillingAgreementService {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "El acuerdo no está en estado PROPOSED");
         }
-        // Solo la ASESORÍA puede subir el PDF firmado físicamente por el cliente
-        if (!a.advisoryCompanyId().equals(tenant.getCurrentCompanyId())) {
+        // Solo la ASESORÍA puede subir el PDF firmado físicamente por el cliente.
+        // Comparamos contra activeCompanyId del JWT — la asesoría puede estar
+        // operando "como" cliente y el tenant del header ser el cliente.
+        if (!a.advisoryCompanyId().equals(activeCompanyId())) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN,
                     "Solo la asesoría puede subir el PDF firmado offline");
         }
@@ -220,8 +232,9 @@ public class ThirdPartyBillingAgreementService {
         if (ThirdPartyBillingAgreement.STATUS_REVOKED.equals(a.status())) {
             return a;
         }
-        boolean byAdvisory = a.advisoryCompanyId().equals(tenant.getCurrentCompanyId());
-        boolean byClient   = a.clientCompanyId().equals(tenant.getCurrentCompanyId());
+        String me = activeCompanyId();
+        boolean byAdvisory = a.advisoryCompanyId().equals(me);
+        boolean byClient   = a.clientCompanyId().equals(me);
         if (!byAdvisory && !byClient) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN,
                     "No eres parte de este acuerdo");
@@ -267,6 +280,15 @@ public class ThirdPartyBillingAgreementService {
         } catch (Exception ex) {
             return null;
         }
+    }
+
+    /**
+     * Empresa REAL del usuario logueado, leída del JWT. Estable frente
+     * a "actuar como cliente" (donde tenantContext apunta al cliente
+     * pero el usuario sigue siendo de la asesoría).
+     */
+    private String activeCompanyId() {
+        return currentUserService.require().activeCompanyId();
     }
 
     private static String sanitize(String name) {

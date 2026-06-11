@@ -2081,6 +2081,151 @@ public class AltaApiClient {
     }
 
     // ============================================================
+    //  TPB — Acuerdo previo de facturación por tercero (RD 1619/2012)
+    //  Backend: /api/billing/third-party-agreements
+    // ============================================================
+
+    public com.benjagest.ui.model.TpbAgreementEntry tpbFindCurrent(String otherCompanyId)
+            throws IOException, InterruptedException {
+        String encoded = java.net.URLEncoder.encode(otherCompanyId,
+                java.nio.charset.StandardCharsets.UTF_8);
+        HttpResponse<String> r = send(req(
+                baseUrl + "/billing/third-party-agreements/current?otherCompanyId=" + encoded).GET());
+        if (r.statusCode() < 200 || r.statusCode() >= 300) {
+            throw new IOException("HTTP " + r.statusCode() + ": " + r.body());
+        }
+        String body = r.body();
+        if (body == null || body.isBlank() || "null".equals(body.trim())) return null;
+        return mapTpbAgreement(body);
+    }
+
+    public com.benjagest.ui.model.TpbAgreementEntry tpbPropose(
+            String advisoryCompanyId, String clientCompanyId,
+            boolean scopeSales, boolean scopePurchases, boolean scopeTaxModels)
+            throws IOException, InterruptedException {
+        String json = "{"
+                + "\"advisoryCompanyId\":\"" + advisoryCompanyId + "\","
+                + "\"clientCompanyId\":\"" + clientCompanyId + "\","
+                + "\"scopeSales\":" + scopeSales + ","
+                + "\"scopePurchases\":" + scopePurchases + ","
+                + "\"scopeTaxModels\":" + scopeTaxModels
+                + "}";
+        HttpResponse<String> r = send(req(baseUrl + "/billing/third-party-agreements")
+                .header("Content-Type", "application/json")
+                .POST(java.net.http.HttpRequest.BodyPublishers.ofString(json)));
+        if (r.statusCode() < 200 || r.statusCode() >= 300) {
+            throw new IOException("HTTP " + r.statusCode() + ": " + r.body());
+        }
+        return mapTpbAgreement(r.body());
+    }
+
+    public com.benjagest.ui.model.TpbAgreementEntry tpbSignWithPin(String agreementId, String pin)
+            throws IOException, InterruptedException {
+        String json = "{\"pin\":\"" + (pin == null ? "" : pin) + "\"}";
+        HttpResponse<String> r = send(req(
+                baseUrl + "/billing/third-party-agreements/" + agreementId + "/sign-with-pin")
+                .header("Content-Type", "application/json")
+                .POST(java.net.http.HttpRequest.BodyPublishers.ofString(json)));
+        if (r.statusCode() < 200 || r.statusCode() >= 300) {
+            throw new IOException("HTTP " + r.statusCode() + ": " + r.body());
+        }
+        return mapTpbAgreement(r.body());
+    }
+
+    public com.benjagest.ui.model.TpbAgreementEntry tpbSignWithOfflinePdf(
+            String agreementId, java.io.File pdf)
+            throws IOException, InterruptedException {
+        String boundary = "----benjagest-tpb-" + System.currentTimeMillis();
+        String filename = pdf.getName().replace("\"", "");
+        byte[] fileBytes = java.nio.file.Files.readAllBytes(pdf.toPath());
+        java.io.ByteArrayOutputStream body = new java.io.ByteArrayOutputStream();
+        body.write(("--" + boundary + "\r\n").getBytes());
+        body.write(("Content-Disposition: form-data; name=\"file\"; filename=\""
+                + filename + "\"\r\n").getBytes());
+        body.write(("Content-Type: application/pdf\r\n\r\n").getBytes());
+        body.write(fileBytes);
+        body.write(("\r\n--" + boundary + "--\r\n").getBytes());
+        HttpResponse<String> r = send(req(
+                baseUrl + "/billing/third-party-agreements/" + agreementId + "/sign-with-offline-pdf")
+                .header("Content-Type", "multipart/form-data; boundary=" + boundary)
+                .POST(java.net.http.HttpRequest.BodyPublishers.ofByteArray(body.toByteArray())));
+        if (r.statusCode() < 200 || r.statusCode() >= 300) {
+            throw new IOException("HTTP " + r.statusCode() + ": " + r.body());
+        }
+        return mapTpbAgreement(r.body());
+    }
+
+    public byte[] tpbDownloadProposalPdf(String agreementId)
+            throws IOException, InterruptedException {
+        java.net.http.HttpRequest.Builder b = java.net.http.HttpRequest.newBuilder(
+                java.net.URI.create(baseUrl + "/billing/third-party-agreements/"
+                        + agreementId + "/proposal-pdf"))
+                .timeout(java.time.Duration.ofSeconds(30))
+                .GET();
+        com.benjagest.ui.service.AuthSession.get().authorize(b);
+        HttpResponse<byte[]> r = httpClient.send(b.build(),
+                HttpResponse.BodyHandlers.ofByteArray());
+        if (r.statusCode() < 200 || r.statusCode() >= 300) {
+            throw new IOException("HTTP " + r.statusCode());
+        }
+        return r.body();
+    }
+
+    public byte[] tpbDownloadSignedPdf(String agreementId)
+            throws IOException, InterruptedException {
+        java.net.http.HttpRequest.Builder b = java.net.http.HttpRequest.newBuilder(
+                java.net.URI.create(baseUrl + "/billing/third-party-agreements/"
+                        + agreementId + "/signed-pdf"))
+                .timeout(java.time.Duration.ofSeconds(30))
+                .GET();
+        com.benjagest.ui.service.AuthSession.get().authorize(b);
+        HttpResponse<byte[]> r = httpClient.send(b.build(),
+                HttpResponse.BodyHandlers.ofByteArray());
+        if (r.statusCode() < 200 || r.statusCode() >= 300) {
+            throw new IOException("HTTP " + r.statusCode());
+        }
+        return r.body();
+    }
+
+    public void tpbRevoke(String agreementId, String reason)
+            throws IOException, InterruptedException {
+        String url = baseUrl + "/billing/third-party-agreements/" + agreementId;
+        if (reason != null && !reason.isBlank()) {
+            url += "?reason=" + java.net.URLEncoder.encode(reason,
+                    java.nio.charset.StandardCharsets.UTF_8);
+        }
+        HttpResponse<String> r = send(req(url).DELETE());
+        if (r.statusCode() < 200 || r.statusCode() >= 300) {
+            throw new IOException("HTTP " + r.statusCode() + ": " + r.body());
+        }
+    }
+
+    private com.benjagest.ui.model.TpbAgreementEntry mapTpbAgreement(String obj) {
+        Boolean revokedByAdvisory = null;
+        java.util.regex.Matcher m = java.util.regex.Pattern
+                .compile("\"revokedByAdvisory\"\\s*:\\s*(true|false|null)").matcher(obj);
+        if (m.find() && !"null".equals(m.group(1))) {
+            revokedByAdvisory = Boolean.parseBoolean(m.group(1));
+        }
+        return new com.benjagest.ui.model.TpbAgreementEntry(
+                textField(obj, "id"),
+                textField(obj, "advisoryCompanyId"),
+                textField(obj, "clientCompanyId"),
+                boolField(obj, "scopeSales"),
+                boolField(obj, "scopePurchases"),
+                boolField(obj, "scopeTaxModels"),
+                textField(obj, "status"),
+                boolField(obj, "initiatedByAdvisory"),
+                textField(obj, "signedAt"),
+                textField(obj, "signedMethod"),
+                textField(obj, "signedPdfPath"),
+                textField(obj, "revokedAt"),
+                revokedByAdvisory,
+                textField(obj, "revokedReason"),
+                textField(obj, "createdAt"));
+    }
+
+    // ============================================================
     //  SIF — verificación a demanda (única operación legal)
     // ============================================================
 

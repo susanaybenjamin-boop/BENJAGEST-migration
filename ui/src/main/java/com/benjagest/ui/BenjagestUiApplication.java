@@ -1981,6 +1981,104 @@ public class BenjagestUiApplication extends Application {
      * que el polling periódico ({@link #pollPendingInvitations()}) pueda
      * refrescarlo sin necesidad de reentrar al Home.
      */
+    /** TPB-1 — Banner home del empresario con acuerdo TPB pendiente. */
+    private void loadTpbPendingBanner(VBox slot) {
+        slot.getChildren().clear();
+        Task<com.benjagest.ui.model.TpbAgreementEntry> task = new Task<>() {
+            @Override
+            protected com.benjagest.ui.model.TpbAgreementEntry call() throws Exception {
+                var linked = invitationsApi.getLinkedAdvisory();
+                if (linked == null || linked.id() == null) return null;
+                return altaApiClient.tpbFindCurrent(linked.id());
+            }
+        };
+        task.setOnSucceeded(ev -> {
+            var a = task.getValue();
+            if (a == null || !a.isPending()) return;
+            slot.getChildren().add(buildTpbBannerCard(a, slot));
+        });
+        task.setOnFailed(ev -> { /* sin vínculo o sin BD — silencio */ });
+        start(task, "tpb-banner-load");
+    }
+
+    private Node buildTpbBannerCard(com.benjagest.ui.model.TpbAgreementEntry a,
+                                      VBox parentSlot) {
+        Label icon = new Label("");
+        icon.setStyle("-fx-font-size: 20px;");
+        Label headline = new Label(t("tpb.banner.headline"));
+        headline.setStyle("-fx-font-weight: bold;");
+        Label sub = new Label(t("tpb.banner.body"));
+        sub.setWrapText(true);
+        sub.getStyleClass().add("settings-hint");
+        VBox copy = new VBox(2, headline, sub);
+        Button sign = new Button(t("tpb.banner.sign"));
+        sign.setGraphic(icon("fas-signature"));
+        sign.getStyleClass().add("button-primary");
+        sign.setOnAction(e -> showTpbSignWithPinDialog(a, parentSlot));
+        HBox card = new HBox(14, icon, copy, new Region(), sign);
+        HBox.setHgrow(copy, Priority.ALWAYS);
+        card.setAlignment(Pos.CENTER_LEFT);
+        card.setPadding(new Insets(14, 18, 14, 18));
+        card.setStyle("-fx-background-color: #fef3c7;"
+                + " -fx-background-radius: 10;"
+                + " -fx-border-color: #f59e0b;"
+                + " -fx-border-width: 1.5;"
+                + " -fx-border-radius: 10;");
+        return card;
+    }
+
+    private void showTpbSignWithPinDialog(com.benjagest.ui.model.TpbAgreementEntry a,
+                                            VBox parentSlot) {
+        Dialog<ButtonType> dlg = new Dialog<>();
+        dlg.setTitle(t("tpb.sign.dialog.title"));
+        dlg.getDialogPane().getButtonTypes().addAll(ButtonType.OK, ButtonType.CANCEL);
+        Node okBtn = dlg.getDialogPane().lookupButton(ButtonType.OK);
+        okBtn.setDisable(true);
+
+        Label intro = new Label(t("tpb.sign.dialog.intro"));
+        intro.setWrapText(true);
+
+        Label scope = new Label(t("tpb.field.scope") + " " + humanizeTpbScope(a));
+        scope.setStyle("-fx-font-weight: bold;");
+
+        Label legal = new Label(t("tpb.sign.dialog.legal"));
+        legal.setWrapText(true);
+        legal.getStyleClass().add("settings-hint");
+
+        CheckBox accept = new CheckBox(t("tpb.sign.dialog.accept"));
+        PasswordField pin = new PasswordField();
+        pin.setPromptText(t("tpb.sign.dialog.pin_prompt"));
+
+        Runnable refreshOk = () ->
+                okBtn.setDisable(!accept.isSelected()
+                        || pin.getText() == null || pin.getText().isBlank());
+        accept.selectedProperty().addListener((o, ov, nv) -> refreshOk.run());
+        pin.textProperty().addListener((o, ov, nv) -> refreshOk.run());
+
+        VBox content = new VBox(10, intro, scope, legal, accept, pin);
+        content.setPadding(new Insets(16));
+        content.setPrefWidth(520);
+        dlg.getDialogPane().setContent(content);
+
+        dlg.showAndWait().ifPresent(bt -> {
+            if (bt != ButtonType.OK) return;
+            String pinValue = pin.getText();
+            Task<com.benjagest.ui.model.TpbAgreementEntry> task = new Task<>() {
+                @Override
+                protected com.benjagest.ui.model.TpbAgreementEntry call() throws Exception {
+                    return altaApiClient.tpbSignWithPin(a.id(), pinValue);
+                }
+            };
+            task.setOnSucceeded(e -> {
+                showInfo(t("tpb.sign.ok.title"), t("tpb.sign.ok.body"));
+                loadTpbPendingBanner(parentSlot);
+            });
+            task.setOnFailed(e -> showError(t("tpb.sign.fail.title"),
+                    task.getException() == null ? "" : task.getException().getMessage()));
+            start(task, "tpb-sign-pin");
+        });
+    }
+
     private void loadPendingInvitationsBanner(VBox slot) {
         dashboardInvitationsSlot = slot;
         Task<java.util.List<com.benjagest.ui.model.AdvisoryInvitationEntry>> task = new Task<>() {
@@ -2153,6 +2251,13 @@ public class BenjagestUiApplication extends Application {
             VBox invBannerSlot = new VBox();
             content.getChildren().add(invBannerSlot);
             loadPendingInvitationsBanner(invBannerSlot);
+            // TPB-1: si la asesoría ha propuesto un acuerdo de
+            // facturación por tercero y está pendiente de firma, banner
+            // amarillo prominente en home (solo modo empresario y solo
+            // si hay asesoría vinculada).
+            VBox tpbBannerSlot = new VBox();
+            content.getChildren().add(tpbBannerSlot);
+            loadTpbPendingBanner(tpbBannerSlot);
         }
 
         content.getChildren().addAll(
@@ -15382,6 +15487,50 @@ public class BenjagestUiApplication extends Application {
             case "advisory.client.tab.billing" -> "Billing";
             case "advisory.client.tab.purchases" -> "Purchases & Expenses";
             case "advisory.client.tab.sales_and_expenses" -> "Sales & Expenses";
+            case "advisory.client.tab.tpb_agreement" -> "TPB agreement";
+            case "tpb.title" -> "Third-party billing agreement (RD 1619/2012)";
+            case "tpb.hint" -> "Legal prerequisite before the advisor can materially issue invoices on behalf of this client. Scope, signature method and dates are recorded as evidence.";
+            case "tpb.empty" -> "No active agreement. Propose one to start.";
+            case "tpb.propose.button" -> "Propose agreement";
+            case "tpb.propose.dialog.title" -> "Propose third-party billing agreement";
+            case "tpb.propose.dialog.intro" -> "Select which operations the advisor is authorized to materially issue on behalf of the client.";
+            case "tpb.propose.fail.title" -> "Could not propose";
+            case "tpb.propose.fail.empty_scope" -> "Tick at least one scope.";
+            case "tpb.scope.sales" -> "Issued invoices (sales)";
+            case "tpb.scope.purchases" -> "Received invoices (purchases)";
+            case "tpb.scope.tax_models" -> "AEAT models (tax filings)";
+            case "tpb.field.status" -> "Status:";
+            case "tpb.field.scope" -> "Scope:";
+            case "tpb.field.signed_at" -> "Signed at:";
+            case "tpb.field.signed_method" -> "Method:";
+            case "tpb.status.proposed" -> "Pending signature";
+            case "tpb.status.active" -> "Active";
+            case "tpb.status.revoked" -> "Revoked";
+            case "tpb.method.pin_session" -> "Client session PIN (eIDAS simple e-signature)";
+            case "tpb.method.offline_pdf" -> "Handwritten signature on PDF (offline)";
+            case "tpb.pending.waiting_client" -> "Waiting for the client to sign from their session.";
+            case "tpb.proposal.download" -> "Download PDF for signature";
+            case "tpb.proposal.upload_signed" -> "Upload signed PDF";
+            case "tpb.proposal.download.ok" -> "PDF saved at:";
+            case "tpb.signed.download" -> "Download signed PDF";
+            case "tpb.signed.download.ok" -> "PDF saved at:";
+            case "tpb.revoke" -> "Revoke";
+            case "tpb.revoke.prompt" -> "Reason for revoking (optional):";
+            case "tpb.fail.load" -> "Could not load agreement:";
+            case "tpb.fail.io" -> "I/O error";
+            case "tpb.fail.upload" -> "Could not upload signed PDF";
+            case "tpb.fail.revoke" -> "Could not revoke";
+            case "tpb.banner.headline" -> "Your advisor has proposed a billing agreement";
+            case "tpb.banner.body" -> "They want to issue invoices on your behalf for the operations marked in the agreement. Read and sign with your session PIN.";
+            case "tpb.banner.sign" -> "Read and sign";
+            case "tpb.sign.dialog.title" -> "Sign third-party billing agreement";
+            case "tpb.sign.dialog.intro" -> "By signing this agreement you authorize the advisor to materially issue invoices on your behalf for the operations below.";
+            case "tpb.sign.dialog.legal" -> "Tax responsibility remains yours (RD 1619/2012 art. 5.2). The signature uses your session PIN as electronic evidence (eIDAS art. 25).";
+            case "tpb.sign.dialog.accept" -> "I accept the terms and authorize the advisor.";
+            case "tpb.sign.dialog.pin_prompt" -> "Session PIN";
+            case "tpb.sign.ok.title" -> "Agreement signed";
+            case "tpb.sign.ok.body" -> "Signed PDF is now available for download from your settings.";
+            case "tpb.sign.fail.title" -> "Could not sign";
             case "client.tab.sales" -> "Sales";
             case "client.tab.expenses" -> "Expenses";
             case "client.sales_expenses.hint" -> "This client is NOT linked. Here you only archive invoices the client emitted/received in their own system. No legal invoicing from BENJAGEST — for that, the client must accept the invitation and activate VeriFactu.";
@@ -15932,6 +16081,50 @@ public class BenjagestUiApplication extends Application {
             case "advisory.client.back" -> "← Volver a Mis clientes";
             case "advisory.client.hint" -> "Estas viendo este cliente. Cualquier accion que hagas desde aqui queda registrada en SU empresa, no en la tuya. Tu barra lateral sigue siendo la de tu asesoria — puedes moverte entre las pestañas libremente.";
             case "advisory.client.tab.summary" -> "Resumen";
+            case "advisory.client.tab.tpb_agreement" -> "Acuerdo facturación";
+            case "tpb.title" -> "Acuerdo de facturación por tercero (RD 1619/2012)";
+            case "tpb.hint" -> "Requisito legal previo a que la asesoría pueda emitir materialmente facturas en nombre de este cliente. Quedan registrados el alcance, el método de firma y las fechas como evidencia.";
+            case "tpb.empty" -> "No hay acuerdo activo. Propón uno para empezar.";
+            case "tpb.propose.button" -> "Proponer acuerdo";
+            case "tpb.propose.dialog.title" -> "Proponer acuerdo de facturación por tercero";
+            case "tpb.propose.dialog.intro" -> "Selecciona qué operaciones queda autorizada la asesoría a emitir materialmente en nombre del cliente.";
+            case "tpb.propose.fail.title" -> "No se pudo proponer";
+            case "tpb.propose.fail.empty_scope" -> "Marca al menos un alcance.";
+            case "tpb.scope.sales" -> "Facturas emitidas (ventas)";
+            case "tpb.scope.purchases" -> "Facturas recibidas (compras)";
+            case "tpb.scope.tax_models" -> "Modelos AEAT (declaraciones)";
+            case "tpb.field.status" -> "Estado:";
+            case "tpb.field.scope" -> "Alcance:";
+            case "tpb.field.signed_at" -> "Firmado el:";
+            case "tpb.field.signed_method" -> "Método:";
+            case "tpb.status.proposed" -> "Pendiente de firma";
+            case "tpb.status.active" -> "Activo";
+            case "tpb.status.revoked" -> "Revocado";
+            case "tpb.method.pin_session" -> "PIN de sesión del cliente (firma electrónica simple eIDAS)";
+            case "tpb.method.offline_pdf" -> "Firma manuscrita en PDF (offline)";
+            case "tpb.pending.waiting_client" -> "Esperando que el cliente firme desde su sesión.";
+            case "tpb.proposal.download" -> "Descargar PDF para firma";
+            case "tpb.proposal.upload_signed" -> "Subir PDF firmado";
+            case "tpb.proposal.download.ok" -> "PDF guardado en:";
+            case "tpb.signed.download" -> "Descargar PDF firmado";
+            case "tpb.signed.download.ok" -> "PDF guardado en:";
+            case "tpb.revoke" -> "Revocar";
+            case "tpb.revoke.prompt" -> "Motivo de la revocación (opcional):";
+            case "tpb.fail.load" -> "No se pudo cargar el acuerdo:";
+            case "tpb.fail.io" -> "Error de E/S";
+            case "tpb.fail.upload" -> "No se pudo subir el PDF firmado";
+            case "tpb.fail.revoke" -> "No se pudo revocar";
+            case "tpb.banner.headline" -> "Tu asesoría te ha propuesto un acuerdo de facturación";
+            case "tpb.banner.body" -> "Quiere emitir facturas en tu nombre para las operaciones marcadas en el acuerdo. Léelo y fírmalo con tu PIN de sesión.";
+            case "tpb.banner.sign" -> "Leer y firmar";
+            case "tpb.sign.dialog.title" -> "Firmar acuerdo de facturación por tercero";
+            case "tpb.sign.dialog.intro" -> "Al firmar autorizas a la asesoría a emitir materialmente facturas en tu nombre para las operaciones de abajo.";
+            case "tpb.sign.dialog.legal" -> "La responsabilidad tributaria sigue siendo tuya (RD 1619/2012 art. 5.2). La firma usa tu PIN de sesión como evidencia electrónica (eIDAS art. 25).";
+            case "tpb.sign.dialog.accept" -> "Acepto los términos y autorizo a la asesoría.";
+            case "tpb.sign.dialog.pin_prompt" -> "PIN de sesión";
+            case "tpb.sign.ok.title" -> "Acuerdo firmado";
+            case "tpb.sign.ok.body" -> "El PDF firmado queda disponible para descarga desde tu Configuración.";
+            case "tpb.sign.fail.title" -> "No se pudo firmar";
             case "advisory.client.tab.billing" -> "Facturación";
             case "advisory.client.tab.purchases" -> "Compras y Gastos";
             case "advisory.client.tab.sales_and_expenses" -> "Ventas y Gastos";
@@ -22876,6 +23069,13 @@ public class BenjagestUiApplication extends Application {
         // visible para que cualquier empleado pueda consultar/subir el
         // certificado vigente cuando trabaje con cualquiera de sus tabs.
         tabs.getTabs().add(certificateTab);
+        // TPB-1 — Acuerdo previo de facturación por tercero (RD 1619/2012
+        // art. 5). Siempre visible: es prerrequisito legal antes de
+        // emitir facturas en nombre del cliente.
+        Tab tpbTab = new Tab(t("advisory.client.tab.tpb_agreement"),
+                buildClientTpbAgreementTab(client, isLinked));
+        tpbTab.setGraphic(icon("fas-file-signature"));
+        tabs.getTabs().add(tpbTab);
         VBox.setVgrow(tabs, Priority.ALWAYS);
 
         VBox body = new VBox(12, header, hint, tabs);
@@ -22885,6 +23085,297 @@ public class BenjagestUiApplication extends Application {
 
     private Node buildClientSummaryTab(com.benjagest.ui.model.ManagedClientEntry client) {
         return buildClientSummaryTab(client, true);
+    }
+
+    /**
+     * TPB-1 — Pestaña "Acuerdo de facturación por tercero" en la pantalla
+     * del cliente activo (modo asesoría).
+     */
+    private Node buildClientTpbAgreementTab(
+            com.benjagest.ui.model.ManagedClientEntry client, boolean isLinked) {
+        VBox root = new VBox(14);
+        root.setPadding(new Insets(20));
+
+        Label title = label(t("tpb.title"), "settings-section-title");
+        Label hint = new Label(t("tpb.hint"));
+        hint.setWrapText(true);
+        hint.getStyleClass().add("settings-hint");
+
+        VBox stateSlot = new VBox(10);
+
+        Runnable reload = () -> {
+            stateSlot.getChildren().clear();
+            Task<com.benjagest.ui.model.TpbAgreementEntry> task = new Task<>() {
+                @Override
+                protected com.benjagest.ui.model.TpbAgreementEntry call() throws Exception {
+                    return altaApiClient.tpbFindCurrent(client.id());
+                }
+            };
+            task.setOnSucceeded(ev -> renderTpbState(stateSlot, task.getValue(),
+                    client, isLinked, () -> { /* reload via outer captured runnable */ }));
+            task.setOnFailed(ev -> {
+                Label err = new Label(t("tpb.fail.load") + " "
+                        + (task.getException() == null ? "" : task.getException().getMessage()));
+                err.setWrapText(true);
+                err.setStyle("-fx-text-fill: #b91c1c;");
+                stateSlot.getChildren().add(err);
+            });
+            start(task, "tpb-load");
+        };
+        // El renderer pide al "reload" del tab; lo enlazamos con un wrapper
+        // para que pueda invocarse desde dentro del setOnSucceeded sin
+        // capturarse antes de su inicialización.
+        Runnable[] reloadHolder = new Runnable[]{ reload };
+        // Sustituimos el placeholder por uno que llama a reloadHolder[0]
+        Runnable realReload = () -> {
+            stateSlot.getChildren().clear();
+            Task<com.benjagest.ui.model.TpbAgreementEntry> task = new Task<>() {
+                @Override
+                protected com.benjagest.ui.model.TpbAgreementEntry call() throws Exception {
+                    return altaApiClient.tpbFindCurrent(client.id());
+                }
+            };
+            task.setOnSucceeded(ev -> renderTpbState(stateSlot, task.getValue(),
+                    client, isLinked, reloadHolder[0]));
+            task.setOnFailed(ev -> {
+                Label err = new Label(t("tpb.fail.load") + " "
+                        + (task.getException() == null ? "" : task.getException().getMessage()));
+                err.setWrapText(true);
+                err.setStyle("-fx-text-fill: #b91c1c;");
+                stateSlot.getChildren().add(err);
+            });
+            start(task, "tpb-load");
+        };
+        reloadHolder[0] = realReload;
+        realReload.run();
+
+        root.getChildren().addAll(title, hint, stateSlot);
+        return root;
+    }
+
+    private void renderTpbState(VBox slot,
+                                  com.benjagest.ui.model.TpbAgreementEntry a,
+                                  com.benjagest.ui.model.ManagedClientEntry client,
+                                  boolean isLinked,
+                                  Runnable reload) {
+        slot.getChildren().clear();
+        if (a == null) {
+            // Sin acuerdo — botón proponer
+            Label empty = new Label(t("tpb.empty"));
+            empty.setWrapText(true);
+            Button propose = new Button(t("tpb.propose.button"));
+            propose.setGraphic(icon("fas-plus"));
+            propose.getStyleClass().add("button-primary");
+            propose.setOnAction(e -> showTpbProposeDialog(client, reload));
+            slot.getChildren().addAll(empty, propose);
+            return;
+        }
+        // Estado del acuerdo
+        GridPane g = new GridPane();
+        g.setHgap(20); g.setVgap(6);
+        int r = 0;
+        g.add(new Label(t("tpb.field.status")), 0, r);
+        Label statusLbl = new Label(humanizeTpbStatus(a.status()));
+        statusLbl.setStyle("-fx-font-weight: bold; -fx-text-fill: "
+                + (a.isActive() ? "#16a34a" : a.isPending() ? "#d97706" : "#64748b") + ";");
+        g.add(statusLbl, 1, r++);
+        g.add(new Label(t("tpb.field.scope")), 0, r);
+        g.add(new Label(humanizeTpbScope(a)), 1, r++);
+        if (a.signedAt() != null && !a.signedAt().isBlank()) {
+            g.add(new Label(t("tpb.field.signed_at")), 0, r);
+            g.add(new Label(a.signedAt()), 1, r++);
+            g.add(new Label(t("tpb.field.signed_method")), 0, r);
+            g.add(new Label(humanizeTpbMethod(a.signedMethod())), 1, r++);
+        }
+        slot.getChildren().add(g);
+
+        HBox actions = new HBox(8);
+        actions.setAlignment(Pos.CENTER_LEFT);
+
+        if (a.isPending()) {
+            if (!isLinked) {
+                // Cliente NO vinculado — flujo OFFLINE_PDF
+                Button dlPdf = new Button(t("tpb.proposal.download"));
+                dlPdf.setGraphic(icon("fas-download"));
+                dlPdf.setOnAction(e -> tpbDownloadProposalPdfAction(a.id()));
+                Button uploadSigned = new Button(t("tpb.proposal.upload_signed"));
+                uploadSigned.setGraphic(icon("fas-upload"));
+                uploadSigned.getStyleClass().add("button-primary");
+                uploadSigned.setOnAction(e -> tpbUploadSignedAction(a.id(), reload));
+                actions.getChildren().addAll(dlPdf, uploadSigned);
+            } else {
+                // Cliente vinculado — esperando firma con PIN desde su lado
+                Label wait = new Label(t("tpb.pending.waiting_client"));
+                wait.setWrapText(true);
+                wait.getStyleClass().add("settings-hint");
+                slot.getChildren().add(wait);
+            }
+        } else if (a.isActive()) {
+            Button dl = new Button(t("tpb.signed.download"));
+            dl.setGraphic(icon("fas-file-pdf"));
+            dl.setOnAction(e -> tpbDownloadSignedPdfAction(a.id()));
+            actions.getChildren().add(dl);
+        }
+
+        Button revoke = new Button(t("tpb.revoke"));
+        revoke.setGraphic(icon("fas-ban"));
+        revoke.setOnAction(e -> tpbRevokeAction(a.id(), reload));
+        actions.getChildren().add(revoke);
+        slot.getChildren().add(actions);
+    }
+
+    private void showTpbProposeDialog(com.benjagest.ui.model.ManagedClientEntry client,
+                                        Runnable onSaved) {
+        Dialog<ButtonType> dlg = new Dialog<>();
+        dlg.setTitle(t("tpb.propose.dialog.title"));
+        dlg.getDialogPane().getButtonTypes().addAll(ButtonType.OK, ButtonType.CANCEL);
+
+        CheckBox sales = new CheckBox(t("tpb.scope.sales"));
+        CheckBox purchases = new CheckBox(t("tpb.scope.purchases"));
+        CheckBox taxModels = new CheckBox(t("tpb.scope.tax_models"));
+        sales.setSelected(true);
+
+        Label intro = new Label(t("tpb.propose.dialog.intro"));
+        intro.setWrapText(true);
+        intro.getStyleClass().add("settings-hint");
+        VBox content = new VBox(10, intro, sales, purchases, taxModels);
+        content.setPadding(new Insets(16));
+        content.setPrefWidth(440);
+        dlg.getDialogPane().setContent(content);
+
+        dlg.showAndWait().ifPresent(bt -> {
+            if (bt != ButtonType.OK) return;
+            if (!sales.isSelected() && !purchases.isSelected() && !taxModels.isSelected()) {
+                showError(t("tpb.propose.fail.title"), t("tpb.propose.fail.empty_scope"));
+                return;
+            }
+            String advisoryId = com.benjagest.ui.service.AuthSession.get().activeCompanyId();
+            Task<com.benjagest.ui.model.TpbAgreementEntry> task = new Task<>() {
+                @Override
+                protected com.benjagest.ui.model.TpbAgreementEntry call() throws Exception {
+                    return altaApiClient.tpbPropose(advisoryId, client.id(),
+                            sales.isSelected(), purchases.isSelected(), taxModels.isSelected());
+                }
+            };
+            task.setOnSucceeded(e -> onSaved.run());
+            task.setOnFailed(e -> showError(t("tpb.propose.fail.title"),
+                    task.getException() == null ? "" : task.getException().getMessage()));
+            start(task, "tpb-propose");
+        });
+    }
+
+    private void tpbDownloadProposalPdfAction(String agreementId) {
+        javafx.stage.FileChooser fc = new javafx.stage.FileChooser();
+        fc.setTitle(t("tpb.proposal.download"));
+        fc.setInitialFileName("acuerdo-facturacion-tercero.pdf");
+        fc.getExtensionFilters().add(
+                new javafx.stage.FileChooser.ExtensionFilter("PDF", "*.pdf"));
+        java.io.File target = fc.showSaveDialog(root.getScene().getWindow());
+        if (target == null) return;
+        Task<byte[]> dl = new Task<>() {
+            @Override protected byte[] call() throws Exception {
+                return altaApiClient.tpbDownloadProposalPdf(agreementId);
+            }
+        };
+        dl.setOnSucceeded(s -> {
+            try { java.nio.file.Files.write(target.toPath(), dl.getValue());
+                showInfo(t("tpb.proposal.download.ok"), target.getAbsolutePath());
+            } catch (java.io.IOException ex) {
+                showError(t("tpb.fail.io"), ex.getMessage());
+            }
+        });
+        dl.setOnFailed(s -> showError(t("tpb.fail.io"),
+                dl.getException() == null ? "" : dl.getException().getMessage()));
+        start(dl, "tpb-dl-proposal");
+    }
+
+    private void tpbDownloadSignedPdfAction(String agreementId) {
+        javafx.stage.FileChooser fc = new javafx.stage.FileChooser();
+        fc.setTitle(t("tpb.signed.download"));
+        fc.setInitialFileName("acuerdo-firmado.pdf");
+        fc.getExtensionFilters().add(
+                new javafx.stage.FileChooser.ExtensionFilter("PDF", "*.pdf"));
+        java.io.File target = fc.showSaveDialog(root.getScene().getWindow());
+        if (target == null) return;
+        Task<byte[]> dl = new Task<>() {
+            @Override protected byte[] call() throws Exception {
+                return altaApiClient.tpbDownloadSignedPdf(agreementId);
+            }
+        };
+        dl.setOnSucceeded(s -> {
+            try { java.nio.file.Files.write(target.toPath(), dl.getValue());
+                showInfo(t("tpb.signed.download.ok"), target.getAbsolutePath());
+            } catch (java.io.IOException ex) {
+                showError(t("tpb.fail.io"), ex.getMessage());
+            }
+        });
+        dl.setOnFailed(s -> showError(t("tpb.fail.io"),
+                dl.getException() == null ? "" : dl.getException().getMessage()));
+        start(dl, "tpb-dl-signed");
+    }
+
+    private void tpbUploadSignedAction(String agreementId, Runnable onDone) {
+        javafx.stage.FileChooser fc = new javafx.stage.FileChooser();
+        fc.setTitle(t("tpb.proposal.upload_signed"));
+        fc.getExtensionFilters().add(
+                new javafx.stage.FileChooser.ExtensionFilter("PDF", "*.pdf"));
+        java.io.File f = fc.showOpenDialog(root.getScene().getWindow());
+        if (f == null) return;
+        Task<com.benjagest.ui.model.TpbAgreementEntry> up = new Task<>() {
+            @Override
+            protected com.benjagest.ui.model.TpbAgreementEntry call() throws Exception {
+                return altaApiClient.tpbSignWithOfflinePdf(agreementId, f);
+            }
+        };
+        up.setOnSucceeded(s -> onDone.run());
+        up.setOnFailed(s -> showError(t("tpb.fail.upload"),
+                up.getException() == null ? "" : up.getException().getMessage()));
+        start(up, "tpb-up-signed");
+    }
+
+    private void tpbRevokeAction(String agreementId, Runnable onDone) {
+        javafx.scene.control.TextInputDialog td = new javafx.scene.control.TextInputDialog();
+        td.setTitle(t("tpb.revoke"));
+        td.setHeaderText(t("tpb.revoke.prompt"));
+        String reason = td.showAndWait().orElse(null);
+        if (reason == null) return;
+        Task<Void> task = new Task<>() {
+            @Override protected Void call() throws Exception {
+                altaApiClient.tpbRevoke(agreementId, reason);
+                return null;
+            }
+        };
+        task.setOnSucceeded(s -> onDone.run());
+        task.setOnFailed(s -> showError(t("tpb.fail.revoke"),
+                task.getException() == null ? "" : task.getException().getMessage()));
+        start(task, "tpb-revoke");
+    }
+
+    private String humanizeTpbStatus(String s) {
+        if (s == null) return "";
+        return switch (s) {
+            case "PROPOSED" -> t("tpb.status.proposed");
+            case "ACTIVE"   -> t("tpb.status.active");
+            case "REVOKED"  -> t("tpb.status.revoked");
+            default         -> s;
+        };
+    }
+
+    private String humanizeTpbMethod(String m) {
+        if (m == null) return "";
+        return switch (m) {
+            case "PIN_SESSION" -> t("tpb.method.pin_session");
+            case "OFFLINE_PDF" -> t("tpb.method.offline_pdf");
+            default            -> m;
+        };
+    }
+
+    private String humanizeTpbScope(com.benjagest.ui.model.TpbAgreementEntry a) {
+        java.util.List<String> parts = new java.util.ArrayList<>();
+        if (a.scopeSales()) parts.add(t("tpb.scope.sales"));
+        if (a.scopePurchases()) parts.add(t("tpb.scope.purchases"));
+        if (a.scopeTaxModels()) parts.add(t("tpb.scope.tax_models"));
+        return String.join(" · ", parts);
     }
 
     /**
