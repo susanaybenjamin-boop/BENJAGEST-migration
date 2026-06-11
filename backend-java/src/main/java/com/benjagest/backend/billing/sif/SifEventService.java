@@ -8,7 +8,6 @@ import com.benjagest.backend.settings.CompanyDataResponse;
 import com.benjagest.backend.tenant.TenantContext;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
-import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
@@ -150,14 +149,6 @@ public class SifEventService {
             String recomputed = hashService.computeHash(
                     nif, row.eventType(), row.payload(), expectedPrev, gen);
             if (!recomputed.equalsIgnoreCase(row.hashCurrent())) {
-                // SIF-DEBUG 2026-06-11: log al detectar mismatch para
-                // compararlo con el log de INSERT.
-                log.warn("SIF-DEBUG VERIFY-MISMATCH company={} eventType={} gen={} rawGenFromDb={} expectedPrev={} canonical=[{}] storedHash={} recomputed={}",
-                        companyId, row.eventType(),
-                        gen, row.generatedAt(),
-                        expectedPrev,
-                        hashService.canonicalize(nif, row.eventType(), row.payload(), expectedPrev, gen),
-                        row.hashCurrent(), recomputed);
                 return new ChainVerifyResult(false, checked, row.id(), row.eventType(),
                         "Hash recalculado no coincide");
             }
@@ -196,21 +187,20 @@ public class SifEventService {
         Object lock = companyChainLocks.computeIfAbsent(companyId, k -> new Object());
         synchronized (lock) {
             String previousHash = eventRepository.findLastHashForCompany(companyId);
-            OffsetDateTime generationTime = OffsetDateTime.now(ZoneId.of("Europe/Madrid"))
-                    .truncatedTo(ChronoUnit.SECONDS);
+            // SIF-CHAIN-FIX 2026-06-11 noche: NO truncar a segundos.
+            // Antes el truncate hacía que tres eventos del arranque
+            // (SYSTEM_START + ambos ANOMALY_*_RUN) cayeran en el mismo
+            // segundo, y findLastHashForCompany no podía desempatar
+            // determinísticamente (el UUID es alfabético, no
+            // cronológico). Con TIMESTAMP(6) en BD + microsegundos en
+            // Java, cada now() difiere y el orden es estable. El hash
+            // ignora fracción de segundo (format "ssxxx") así que la
+            // cadena canónica no cambia.
+            OffsetDateTime generationTime = OffsetDateTime.now(ZoneId.of("Europe/Madrid"));
 
             String hashCurrent = hashService.computeHash(
                     nif, eventType, payload, previousHash, generationTime
             );
-            // SIF-DEBUG 2026-06-11: traza temporal para diagnosticar
-            // "Hash recalculado no coincide" — comparar contra el log
-            // de VERIFY en SifEventService.verifyChainForCompany.
-            log.warn("SIF-DEBUG INSERT company={} eventType={} gen={} prev={} canonical=[{}] hash={}",
-                    companyId, eventType,
-                    generationTime,
-                    previousHash,
-                    hashService.canonicalize(nif, eventType, payload, previousHash, generationTime),
-                    hashCurrent);
 
             String eventId = UUID.randomUUID().toString();
             eventRepository.insert(
