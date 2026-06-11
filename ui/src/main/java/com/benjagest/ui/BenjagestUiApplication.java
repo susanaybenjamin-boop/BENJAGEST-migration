@@ -120,12 +120,10 @@ public class BenjagestUiApplication extends Application {
             // necesitan ver este módulo; el chequeo de visibilidad real
             // (solo OWNER puede gestionar) lo hace el backend.
             new ModuleLink("team", "Equipo", "fas-users-cog"),
-            // 2026-06-11 — Comunicación asesoría↔cliente. Antes vivía
-            // dentro de Configuración → Mi asesoría como tabs. Ahora
-            // tiene su módulo propio para que el ASESOR también lo vea
-            // (antes no tenía sitio en su sidebar). Mismo nombre en
-            // ambos modos.
-            new ModuleLink("comm", "Comunicacion", "fas-comments"),
+            // Nota: "comm" (Comunicación) NO se hardcodea aquí. El
+            // backend lo inyecta dinámicamente en /api/modules-catalog/active
+            // cuando detecta vinculación real asesoría↔cliente
+            // (ModuleAccessService + ModuleRepository.hasCommLink).
             new ModuleLink("settings", "Configuracion", "fas-cog")
     );
 
@@ -137,7 +135,6 @@ public class BenjagestUiApplication extends Application {
             new ModuleLink("tax", "Fiscal", "fas-percentage"),
             new ModuleLink("reports", "Informes", "fas-chart-line"),
             new ModuleLink("calendar", "Agenda", "fas-calendar-alt"),
-            new ModuleLink("comm", "Comunicacion", "fas-comments"),
             new ModuleLink("settings", "Configuracion", "fas-cog")
     );
 
@@ -1622,6 +1619,13 @@ public class BenjagestUiApplication extends Application {
                             t("advisory.toast.unlinked.body"));
                 }
             }
+            // COMM-LINK 2026-06-11: si pasamos de "sin clientes" a
+            // "con clientes" (o al revés), el módulo Comunicación
+            // aparece/desaparece. Refrescamos módulos para que el
+            // sidebar lo refleje sin esperar al siguiente login.
+            if (hadNewLinks || hadUnlinks) {
+                refreshActiveModulesAndRender();
+            }
         });
         task.setOnFailed(e -> { /* silencio */ });
         start(task, "advisory-clients-poll");
@@ -2054,6 +2058,11 @@ public class BenjagestUiApplication extends Application {
             // asesoría se enterará en ≤5s por su propio ciclo.
             loadPendingInvitationsBanner(parentSlot);
             pollPendingInvitations();
+            // COMM-LINK 2026-06-11: el módulo Comunicación solo
+            // aparece cuando hay vínculo. Tras aceptar la invitación
+            // ya existe → forzamos refresh de módulos activos para
+            // que el sidebar se redibuje con "Comunicación" incluido.
+            refreshActiveModulesAndRender();
         });
         task.setOnFailed(e -> showError(t("advisory.invitation.accept.fail.title"),
                 t("advisory.invitation.accept.fail.body")));
@@ -6031,6 +6040,9 @@ public class BenjagestUiApplication extends Application {
                     // sin esperar al tick de 5s.
                     reload.run();
                     pollPendingInvitations();
+                    // COMM-LINK 2026-06-11: el módulo Comunicación
+                    // desaparece del sidebar al perder el vínculo.
+                    refreshActiveModulesAndRender();
                 });
                 task.setOnFailed(e -> showError(t("settings.my_advisory.fail.unlink.title"),
                         t("settings.my_advisory.fail.unlink.body")));

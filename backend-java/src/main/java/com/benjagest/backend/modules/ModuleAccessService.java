@@ -29,7 +29,22 @@ public class ModuleAccessService {
     }
 
     public List<Module> listActiveForCurrentCompany() {
-        return filterByCompanyType(repository.findActiveForCompany(tenantContext.getCurrentCompanyId()));
+        List<Module> active = filterByCompanyType(
+                repository.findActiveForCompany(tenantContext.getCurrentCompanyId()));
+        // COMM-LINK 2026-06-11: el módulo de Comunicación NO está en
+        // module_catalog (se eliminó en V95). Lo inyectamos como Module
+        // virtual cuando la empresa actual tiene vinculación real
+        // asesoría↔empresario. Sin vínculo no aparece en el sidebar.
+        if (repository.hasCommLink(tenantContext.getCurrentCompanyId())) {
+            List<Module> out = new java.util.ArrayList<>(active);
+            out.add(new Module(
+                    "comm", "Comunicación",
+                    "Comunicación asesoría ↔ cliente: mensajes y documentos compartidos.",
+                    null, null, "fas-comments",
+                    145, false, true));
+            return out;
+        }
+        return active;
     }
 
     public List<Module> listCatalog() {
