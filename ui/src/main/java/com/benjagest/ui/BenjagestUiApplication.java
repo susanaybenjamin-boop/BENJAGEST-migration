@@ -12609,6 +12609,11 @@ public class BenjagestUiApplication extends Application {
             case "recurring.ignored.col.action" -> "Action";
             case "recurring.kind.sales" -> "Sales";
             case "recurring.kind.purchase" -> "Purchase";
+            case "labor.centers.geocode" -> "Search coordinates (OSM)";
+            case "labor.centers.geocode.empty" -> "Enter address + city first.";
+            case "labor.centers.geocode.searching" -> "Searching…";
+            case "labor.centers.geocode.ok" -> "Found:";
+            case "labor.centers.geocode.fail" -> "Search failed:";
             case "settings.audit.export.from" -> "From";
             case "settings.audit.export.to" -> "To";
             case "settings.audit.export.pdf" -> "Download PDF";
@@ -12770,6 +12775,11 @@ public class BenjagestUiApplication extends Application {
             case "recurring.ignored.col.action" -> "Acción";
             case "recurring.kind.sales" -> "Ventas";
             case "recurring.kind.purchase" -> "Compras";
+            case "labor.centers.geocode" -> "Buscar coordenadas (OSM)";
+            case "labor.centers.geocode.empty" -> "Rellena primero dirección + ciudad.";
+            case "labor.centers.geocode.searching" -> "Buscando…";
+            case "labor.centers.geocode.ok" -> "Encontrado:";
+            case "labor.centers.geocode.fail" -> "Búsqueda fallida:";
             case "settings.audit.export.hint" -> "Descarga un PDF o CSV verificable del registro completo de auditoria en un rango de fechas. Cada exportacion queda a su vez registrada con el SHA-256 del documento para que el fichero que enseñes al inspector se pueda contrastar con el registro.";
             case "settings.audit.export.from" -> "Desde";
             case "settings.audit.export.to" -> "Hasta";
@@ -27501,6 +27511,42 @@ public class BenjagestUiApplication extends Application {
         TextArea notes = new TextArea(edit == null ? "" : edit.notes());
         notes.setPrefRowCount(3);
 
+        Button geocodeBtn = new Button(t("labor.centers.geocode"));
+        geocodeBtn.setGraphic(icon("fas-search-location"));
+        Label geocodeStatus = new Label("");
+        geocodeStatus.getStyleClass().add("settings-hint");
+        geocodeStatus.setWrapText(true);
+        geocodeBtn.setOnAction(e -> {
+            String q = (addr.getText() + " " + cp.getText() + " "
+                    + city.getText() + " " + prov.getText()).trim();
+            if (q.isBlank()) {
+                geocodeStatus.setText(t("labor.centers.geocode.empty"));
+                return;
+            }
+            geocodeStatus.setText(t("labor.centers.geocode.searching"));
+            geocodeBtn.setDisable(true);
+            Task<com.benjagest.ui.service.AltaApiClient.GeocodeResult> gt = new Task<>() {
+                @Override
+                protected com.benjagest.ui.service.AltaApiClient.GeocodeResult call() throws Exception {
+                    return altaApiClient.geocodeWorkCenter(q);
+                }
+            };
+            gt.setOnSucceeded(ev -> {
+                geocodeBtn.setDisable(false);
+                var res = gt.getValue();
+                lat.setText(res.lat().toPlainString());
+                lng.setText(res.lng().toPlainString());
+                geocodeStatus.setText(t("labor.centers.geocode.ok") + " "
+                        + (res.displayName() == null ? "" : res.displayName()));
+            });
+            gt.setOnFailed(ev -> {
+                geocodeBtn.setDisable(false);
+                geocodeStatus.setText(t("labor.centers.geocode.fail") + " "
+                        + (gt.getException() == null ? "" : gt.getException().getMessage()));
+            });
+            start(gt, "centers-geocode");
+        });
+
         VBox form = new VBox(8,
                 new Label(t("labor.centers.col.name")), name,
                 new Label(t("labor.centers.col.address")), addr,
@@ -27509,6 +27555,7 @@ public class BenjagestUiApplication extends Application {
                 new Label(t("labor.centers.col.postal_code")), cp,
                 new Label("Lat / Lng / Radio (m)"),
                 new HBox(8, lat, lng, radio),
+                geocodeBtn, geocodeStatus,
                 new Label(t("labor.centers.col.policy")), policy,
                 new Label(t("labor.centers.col.notes")), notes);
         form.setPadding(new Insets(16));

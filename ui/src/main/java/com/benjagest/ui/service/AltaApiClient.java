@@ -1546,6 +1546,36 @@ public class AltaApiClient {
         }
     }
 
+    /**
+     * CENTROS-GEOCODE — backend hace la llamada a Nominatim y devuelve
+     * lat/lng/displayName.
+     */
+    public GeocodeResult geocodeWorkCenter(String query)
+            throws IOException, InterruptedException {
+        String encoded = java.net.URLEncoder.encode(query == null ? "" : query,
+                java.nio.charset.StandardCharsets.UTF_8);
+        HttpResponse<String> r = send(req(
+                baseUrl + "/labor/work-centers/geocode?q=" + encoded).GET());
+        if (r.statusCode() < 200 || r.statusCode() >= 300) {
+            throw new IOException("HTTP " + r.statusCode() + ": " + r.body());
+        }
+        java.util.regex.Matcher mLat = java.util.regex.Pattern
+                .compile("\"lat\"\\s*:\\s*([-0-9.]+)").matcher(r.body());
+        java.util.regex.Matcher mLng = java.util.regex.Pattern
+                .compile("\"lng\"\\s*:\\s*([-0-9.]+)").matcher(r.body());
+        if (!mLat.find() || !mLng.find()) {
+            throw new IOException("Respuesta sin coordenadas: " + r.body());
+        }
+        return new GeocodeResult(
+                new java.math.BigDecimal(mLat.group(1)),
+                new java.math.BigDecimal(mLng.group(1)),
+                textField(r.body(), "displayName"));
+    }
+
+    public record GeocodeResult(java.math.BigDecimal lat,
+                                 java.math.BigDecimal lng,
+                                 String displayName) {}
+
     // ============================================================
     //  PORT-2 — Work logs /api/work-logs
     // ============================================================
