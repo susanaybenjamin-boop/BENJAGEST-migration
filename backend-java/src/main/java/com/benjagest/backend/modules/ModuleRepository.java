@@ -131,6 +131,41 @@ public class ModuleRepository {
     }
 
     /**
+     * Devuelve TRUE si la empresa tiene al menos una vinculación real
+     * asesoría↔empresario que justifique el módulo de Comunicación.
+     *
+     * <p>Reglas (COMM-LINK 2026-06-11):
+     * <ul>
+     *   <li>INTERNAL/ADVISORY: hay al menos un CLIENT con
+     *       {@code parent_company_id = me}. Los MANAGED_CLIENT no
+     *       cuentan porque son fichas internas sin login.</li>
+     *   <li>CLIENT/BUSINESS: el propio {@code parent_company_id} no es
+     *       NULL — es decir, está vinculada a una asesoría.</li>
+     * </ul>
+     */
+    public boolean hasCommLink(String companyId) {
+        if (companyId == null || companyId.isBlank()) return false;
+        String type = findCompanyType(companyId);
+        if (type == null) return false;
+        boolean isAdvisory = "INTERNAL".equalsIgnoreCase(type)
+                || "ADVISORY".equalsIgnoreCase(type);
+        if (isAdvisory) {
+            Integer n = jdbcTemplate.queryForObject("""
+                    SELECT COUNT(*) FROM companies
+                     WHERE parent_company_id = ?
+                       AND company_type = 'CLIENT'
+                    """, Integer.class, companyId);
+            return n != null && n > 0;
+        }
+        // Empresario: tiene asesoría vinculada si su parent_company_id != NULL.
+        Integer n = jdbcTemplate.queryForObject("""
+                SELECT COUNT(*) FROM companies
+                 WHERE id = ? AND parent_company_id IS NOT NULL
+                """, Integer.class, companyId);
+        return n != null && n > 0;
+    }
+
+    /**
      * Indica si un slug del catalogo es una categoria raiz (parent_id NULL).
      */
     public boolean isRootCategory(String slug) {
