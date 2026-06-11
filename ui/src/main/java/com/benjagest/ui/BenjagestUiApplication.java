@@ -5932,16 +5932,246 @@ public class BenjagestUiApplication extends Application {
         return root;
     }
 
-    /** Stub Documentos. Se rellena en el siguiente slice. */
+    /**
+     * 2026-06-10 noche — Sub-pestaña "Documentos" con upload multipart
+     * real + review + download. Backend AdvisoryDocumentUploadController
+     * añade endpoints upload/download al service V78.
+     */
     private Node buildAdvisoryDocumentsPane() {
-        VBox box = new VBox(12);
-        box.setPadding(new Insets(16));
+        VBox root = new VBox(12);
+        root.setPadding(new Insets(12));
+
         Label title = label(t("advisory.documents.title"), "settings-section-title");
         Label hint = new Label(t("advisory.documents.hint"));
         hint.setWrapText(true);
         hint.getStyleClass().add("settings-hint");
-        box.getChildren().addAll(title, hint);
-        return box;
+
+        // Combo selector de hilo (reusa AdvisoryThreadSummary del de mensajes).
+        javafx.scene.control.ComboBox<com.benjagest.ui.model.AdvisoryThreadSummary> threadCombo =
+                new javafx.scene.control.ComboBox<>();
+        threadCombo.setConverter(new javafx.util.StringConverter<>() {
+            @Override public String toString(com.benjagest.ui.model.AdvisoryThreadSummary s) {
+                return s == null ? "" : shortId(s.otherCompanyId());
+            }
+            @Override public com.benjagest.ui.model.AdvisoryThreadSummary
+                    fromString(String s) { return null; }
+        });
+
+        TableView<com.benjagest.ui.model.AdvisoryDocumentEntry> table = new TableView<>();
+        table.getStyleClass().add("data-table");
+        table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+        table.setPlaceholder(new Label(t("advisory.documents.empty")));
+
+        TableColumn<com.benjagest.ui.model.AdvisoryDocumentEntry, String> cWhen =
+                new TableColumn<>(t("advisory.documents.col.date"));
+        cWhen.setCellValueFactory(c -> new SimpleStringProperty(
+                c.getValue().createdAt() == null || c.getValue().createdAt().length() < 16
+                        ? c.getValue().createdAt()
+                        : c.getValue().createdAt().substring(0, 16)));
+        cWhen.setPrefWidth(140);
+        cWhen.setComparator(ISO_DATE_COMPARATOR);
+        TableColumn<com.benjagest.ui.model.AdvisoryDocumentEntry, String> cDir =
+                new TableColumn<>(t("advisory.documents.col.dir"));
+        cDir.setCellValueFactory(c -> new SimpleStringProperty(
+                "A2C".equals(c.getValue().direction())
+                        ? t("advisory.documents.dir.a2c")
+                        : t("advisory.documents.dir.c2a")));
+        cDir.setPrefWidth(120);
+        TableColumn<com.benjagest.ui.model.AdvisoryDocumentEntry, String> cTitle =
+                new TableColumn<>(t("advisory.documents.col.title"));
+        cTitle.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().title()));
+        TableColumn<com.benjagest.ui.model.AdvisoryDocumentEntry, String> cSize =
+                new TableColumn<>(t("advisory.documents.col.size"));
+        cSize.setCellValueFactory(c -> new SimpleStringProperty(
+                humanSize(c.getValue().fileSizeBytes())));
+        cSize.setPrefWidth(90);
+        TableColumn<com.benjagest.ui.model.AdvisoryDocumentEntry, String> cStatus =
+                new TableColumn<>(t("advisory.documents.col.status"));
+        cStatus.setCellValueFactory(c -> new SimpleStringProperty(
+                humanizeDocStatus(c.getValue().status())));
+        cStatus.setPrefWidth(110);
+        TableColumn<com.benjagest.ui.model.AdvisoryDocumentEntry, String> cNote =
+                new TableColumn<>(t("advisory.documents.col.note"));
+        cNote.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().note()));
+
+        table.getColumns().addAll(java.util.List.of(
+                cWhen, cDir, cTitle, cSize, cStatus, cNote));
+
+        Button uploadBtn = new Button(t("advisory.documents.upload"));
+        uploadBtn.setGraphic(icon("fas-upload"));
+        uploadBtn.getStyleClass().add("button-primary");
+        uploadBtn.setDisable(true);
+        Button downloadBtn = new Button(t("advisory.documents.download"));
+        downloadBtn.setGraphic(icon("fas-download"));
+        downloadBtn.setDisable(true);
+        Button acceptBtn = new Button(t("advisory.documents.accept"));
+        acceptBtn.setGraphic(icon("fas-check"));
+        acceptBtn.setDisable(true);
+        Button rejectBtn = new Button(t("advisory.documents.reject"));
+        rejectBtn.setGraphic(icon("fas-times"));
+        rejectBtn.setDisable(true);
+
+        HBox actions = new HBox(8, uploadBtn, downloadBtn, acceptBtn, rejectBtn);
+        actions.setAlignment(Pos.CENTER_LEFT);
+
+        // Carga inicial de hilos
+        Runnable reloadThreads = () -> {
+            Task<java.util.List<com.benjagest.ui.model.AdvisoryThreadSummary>> t = new Task<>() {
+                @Override protected java.util.List<com.benjagest.ui.model.AdvisoryThreadSummary> call() throws Exception {
+                    return altaApiClient.listAdvisoryThreads();
+                }
+            };
+            t.setOnSucceeded(ev -> {
+                threadCombo.getItems().setAll(t.getValue());
+                if (!t.getValue().isEmpty()) threadCombo.getSelectionModel().selectFirst();
+            });
+            t.setOnFailed(ev -> { /* sin vínculo aún */ });
+            start(t, "advisory-docs-threads");
+        };
+        Runnable reloadDocs = () -> {
+            var sel = threadCombo.getValue();
+            if (sel == null) { table.getItems().clear(); return; }
+            Task<java.util.List<com.benjagest.ui.model.AdvisoryDocumentEntry>> t = new Task<>() {
+                @Override protected java.util.List<com.benjagest.ui.model.AdvisoryDocumentEntry> call() throws Exception {
+                    return altaApiClient.listAdvisoryDocuments(sel.otherCompanyId());
+                }
+            };
+            t.setOnSucceeded(ev -> table.setItems(FXCollections.observableArrayList(t.getValue())));
+            t.setOnFailed(ev -> showError(t("advisory.documents.fail.title"),
+                    t.getException() == null ? "" : t.getException().getMessage()));
+            start(t, "advisory-docs-list");
+        };
+        threadCombo.valueProperty().addListener((o, ov, nv) -> {
+            uploadBtn.setDisable(nv == null);
+            reloadDocs.run();
+        });
+        table.getSelectionModel().selectedItemProperty().addListener((o, ov, nv) -> {
+            boolean sel = nv != null;
+            downloadBtn.setDisable(!sel);
+            // Accept/Reject solo si UPLOADED (no en estados terminales).
+            boolean reviewable = sel
+                    && com.benjagest.ui.model.AdvisoryDocumentEntry.STATUS_UPLOADED.equals(nv.status());
+            acceptBtn.setDisable(!reviewable);
+            rejectBtn.setDisable(!reviewable);
+        });
+
+        uploadBtn.setOnAction(ev -> {
+            var sel = threadCombo.getValue();
+            if (sel == null) return;
+            javafx.stage.FileChooser fc = new javafx.stage.FileChooser();
+            fc.setTitle(t("advisory.documents.upload"));
+            fc.getExtensionFilters().add(new javafx.stage.FileChooser.ExtensionFilter(
+                    "PDF / PNG / JPG / DOCX / XLSX",
+                    "*.pdf", "*.png", "*.jpg", "*.jpeg", "*.docx", "*.xlsx"));
+            java.io.File f = fc.showOpenDialog(root.getScene().getWindow());
+            if (f == null) return;
+            javafx.scene.control.TextInputDialog td = new javafx.scene.control.TextInputDialog(f.getName());
+            td.setTitle(t("advisory.documents.upload"));
+            td.setHeaderText(t("advisory.documents.title_prompt"));
+            String title2 = td.showAndWait().orElse(f.getName());
+            Task<Void> up = new Task<>() {
+                @Override protected Void call() throws Exception {
+                    altaApiClient.uploadAdvisoryDocument(sel.otherCompanyId(), f, title2);
+                    return null;
+                }
+            };
+            up.setOnSucceeded(s -> reloadDocs.run());
+            up.setOnFailed(s -> showError(t("advisory.documents.fail.title"),
+                    up.getException() == null ? "" : up.getException().getMessage()));
+            start(up, "advisory-docs-upload");
+        });
+        downloadBtn.setOnAction(ev -> {
+            var sel = table.getSelectionModel().getSelectedItem();
+            if (sel == null) return;
+            javafx.stage.FileChooser fc = new javafx.stage.FileChooser();
+            fc.setTitle(t("advisory.documents.download"));
+            String filename = sel.filePath() == null ? sel.title()
+                    : java.nio.file.Paths.get(sel.filePath()).getFileName().toString();
+            int dash = filename.indexOf('-');
+            if (dash > 0 && dash < 40) filename = filename.substring(dash + 1);
+            fc.setInitialFileName(filename);
+            java.io.File target = fc.showSaveDialog(root.getScene().getWindow());
+            if (target == null) return;
+            Task<byte[]> dl = new Task<>() {
+                @Override protected byte[] call() throws Exception {
+                    return altaApiClient.downloadAdvisoryDocument(sel.id());
+                }
+            };
+            dl.setOnSucceeded(s -> {
+                try {
+                    java.nio.file.Files.write(target.toPath(), dl.getValue());
+                    showInfo(t("advisory.documents.dl.ok.title"),
+                            t("advisory.documents.dl.ok.body") + "\n"
+                                    + target.getAbsolutePath());
+                } catch (java.io.IOException ex) {
+                    showError(t("advisory.documents.fail.title"), ex.getMessage());
+                }
+            });
+            dl.setOnFailed(s -> showError(t("advisory.documents.fail.title"),
+                    dl.getException() == null ? "" : dl.getException().getMessage()));
+            start(dl, "advisory-docs-download");
+        });
+        acceptBtn.setOnAction(ev -> {
+            var sel = table.getSelectionModel().getSelectedItem();
+            if (sel == null) return;
+            Task<Void> task = new Task<>() {
+                @Override protected Void call() throws Exception {
+                    altaApiClient.reviewAdvisoryDocument(sel.id(),
+                            com.benjagest.ui.model.AdvisoryDocumentEntry.STATUS_ACCEPTED, null);
+                    return null;
+                }
+            };
+            task.setOnSucceeded(s -> reloadDocs.run());
+            task.setOnFailed(s -> showError(t("advisory.documents.fail.title"),
+                    task.getException() == null ? "" : task.getException().getMessage()));
+            start(task, "advisory-docs-accept");
+        });
+        rejectBtn.setOnAction(ev -> {
+            var sel = table.getSelectionModel().getSelectedItem();
+            if (sel == null) return;
+            javafx.scene.control.TextInputDialog td =
+                    new javafx.scene.control.TextInputDialog();
+            td.setTitle(t("advisory.documents.reject"));
+            td.setHeaderText(t("advisory.documents.reject_prompt"));
+            String note = td.showAndWait().orElse("");
+            Task<Void> task = new Task<>() {
+                @Override protected Void call() throws Exception {
+                    altaApiClient.reviewAdvisoryDocument(sel.id(),
+                            com.benjagest.ui.model.AdvisoryDocumentEntry.STATUS_REJECTED, note);
+                    return null;
+                }
+            };
+            task.setOnSucceeded(s -> reloadDocs.run());
+            task.setOnFailed(s -> showError(t("advisory.documents.fail.title"),
+                    task.getException() == null ? "" : task.getException().getMessage()));
+            start(task, "advisory-docs-reject");
+        });
+
+        reloadThreads.run();
+
+        HBox topRow = new HBox(8,
+                new Label(t("advisory.documents.thread")), threadCombo);
+        topRow.setAlignment(Pos.CENTER_LEFT);
+        VBox.setVgrow(table, Priority.ALWAYS);
+        root.getChildren().addAll(title, hint, topRow, actions, table);
+        return root;
+    }
+
+    private String humanizeDocStatus(String raw) {
+        if (raw == null || raw.isBlank()) return "";
+        return switch (raw) {
+            case "UPLOADED" -> t("advisory.documents.status.uploaded");
+            case "REVIEWED" -> t("advisory.documents.status.reviewed");
+            case "ACCEPTED" -> t("advisory.documents.status.accepted");
+            case "REJECTED" -> t("advisory.documents.status.rejected");
+            default -> raw;
+        };
+    }
+
+    private static String humanSize(long bytes) {
+        if (bytes < 1024) return bytes + " B";
+        if (bytes < 1024L * 1024) return String.format("%.1f KB", bytes / 1024.0);
+        return String.format("%.1f MB", bytes / (1024.0 * 1024));
     }
 
     private Node settingsAuditTab() {
@@ -12077,7 +12307,30 @@ public class BenjagestUiApplication extends Application {
             case "advisory.messages.send" -> "Send";
             case "advisory.messages.fail.title" -> "Could not load or send the message";
             case "advisory.documents.title" -> "Shared documents";
-            case "advisory.documents.hint" -> "Document exchange with your advisory firm. Upload, review and acceptance — implemented in next slice.";
+            case "advisory.documents.hint" -> "Document exchange with your advisory firm. Upload PDF, PNG, JPG, DOCX or XLSX up to 20 MB. The other party reviews and accepts or rejects.";
+            case "advisory.documents.thread" -> "Conversation:";
+            case "advisory.documents.upload" -> "Upload document";
+            case "advisory.documents.download" -> "Download";
+            case "advisory.documents.accept" -> "Accept";
+            case "advisory.documents.reject" -> "Reject";
+            case "advisory.documents.title_prompt" -> "Title shown to the other party (optional)";
+            case "advisory.documents.reject_prompt" -> "Reason for rejection (optional)";
+            case "advisory.documents.empty" -> "No documents yet in this conversation.";
+            case "advisory.documents.col.date" -> "Uploaded";
+            case "advisory.documents.col.dir" -> "From";
+            case "advisory.documents.col.title" -> "Title";
+            case "advisory.documents.col.size" -> "Size";
+            case "advisory.documents.col.status" -> "Status";
+            case "advisory.documents.col.note" -> "Note";
+            case "advisory.documents.dir.a2c" -> "Advisory";
+            case "advisory.documents.dir.c2a" -> "Client";
+            case "advisory.documents.status.uploaded" -> "Uploaded";
+            case "advisory.documents.status.reviewed" -> "Reviewed";
+            case "advisory.documents.status.accepted" -> "Accepted";
+            case "advisory.documents.status.rejected" -> "Rejected";
+            case "advisory.documents.dl.ok.title" -> "Saved";
+            case "advisory.documents.dl.ok.body" -> "File saved at:";
+            case "advisory.documents.fail.title" -> "Could not complete the operation";
             case "settings.audit.export.from" -> "From";
             case "settings.audit.export.to" -> "To";
             case "settings.audit.export.pdf" -> "Download PDF";
@@ -12179,7 +12432,30 @@ public class BenjagestUiApplication extends Application {
             case "advisory.messages.send" -> "Enviar";
             case "advisory.messages.fail.title" -> "No se pudo cargar o enviar el mensaje";
             case "advisory.documents.title" -> "Documentos compartidos";
-            case "advisory.documents.hint" -> "Intercambio de documentos con tu asesoría. Subida, revisión y aceptación — se implementa en el siguiente slice.";
+            case "advisory.documents.hint" -> "Intercambio de documentos con tu asesoría. Sube PDF, PNG, JPG, DOCX o XLSX hasta 20 MB. La otra parte revisa y acepta o rechaza.";
+            case "advisory.documents.thread" -> "Conversación:";
+            case "advisory.documents.upload" -> "Subir documento";
+            case "advisory.documents.download" -> "Descargar";
+            case "advisory.documents.accept" -> "Aceptar";
+            case "advisory.documents.reject" -> "Rechazar";
+            case "advisory.documents.title_prompt" -> "Título que verá la otra parte (opcional)";
+            case "advisory.documents.reject_prompt" -> "Motivo del rechazo (opcional)";
+            case "advisory.documents.empty" -> "Aún no hay documentos en esta conversación.";
+            case "advisory.documents.col.date" -> "Subido";
+            case "advisory.documents.col.dir" -> "De";
+            case "advisory.documents.col.title" -> "Título";
+            case "advisory.documents.col.size" -> "Tamaño";
+            case "advisory.documents.col.status" -> "Estado";
+            case "advisory.documents.col.note" -> "Nota";
+            case "advisory.documents.dir.a2c" -> "Asesoría";
+            case "advisory.documents.dir.c2a" -> "Cliente";
+            case "advisory.documents.status.uploaded" -> "Subido";
+            case "advisory.documents.status.reviewed" -> "Revisado";
+            case "advisory.documents.status.accepted" -> "Aceptado";
+            case "advisory.documents.status.rejected" -> "Rechazado";
+            case "advisory.documents.dl.ok.title" -> "Guardado";
+            case "advisory.documents.dl.ok.body" -> "Archivo guardado en:";
+            case "advisory.documents.fail.title" -> "No se pudo completar la operación";
             case "settings.audit.export.hint" -> "Descarga un PDF o CSV verificable del registro completo de auditoria en un rango de fechas. Cada exportacion queda a su vez registrada con el SHA-256 del documento para que el fichero que enseñes al inspector se pueda contrastar con el registro.";
             case "settings.audit.export.from" -> "Desde";
             case "settings.audit.export.to" -> "Hasta";

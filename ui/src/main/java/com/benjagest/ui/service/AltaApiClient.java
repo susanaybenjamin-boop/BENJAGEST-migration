@@ -1772,6 +1772,127 @@ public class AltaApiClient {
     }
 
     // ============================================================
+    //  UI asesoría↔cliente — Documentos /api/advisory/documents
+    //  (backend V78 + upload multipart 2026-06-10 noche)
+    // ============================================================
+
+    public List<com.benjagest.ui.model.AdvisoryDocumentEntry> listAdvisoryDocuments(
+            String otherCompanyId) throws IOException, InterruptedException {
+        HttpResponse<String> r = send(req(
+                baseUrl + "/advisory/documents/threads/" + otherCompanyId).GET());
+        if (r.statusCode() < 200 || r.statusCode() >= 300) {
+            throw new IOException("HTTP " + r.statusCode() + ": " + r.body());
+        }
+        java.util.List<com.benjagest.ui.model.AdvisoryDocumentEntry> out = new java.util.ArrayList<>();
+        for (String obj : splitTopLevelObjects(r.body())) {
+            out.add(new com.benjagest.ui.model.AdvisoryDocumentEntry(
+                    textField(obj, "id"),
+                    textField(obj, "advisoryCompanyId"),
+                    textField(obj, "clientCompanyId"),
+                    textField(obj, "direction"),
+                    textField(obj, "title"),
+                    textField(obj, "filePath"),
+                    longFieldOrZero(obj, "fileSizeBytes"),
+                    textField(obj, "mimeType"),
+                    textField(obj, "status"),
+                    textField(obj, "note"),
+                    textField(obj, "createdAt"),
+                    textField(obj, "reviewedAt")));
+        }
+        return out;
+    }
+
+    public com.benjagest.ui.model.AdvisoryDocumentEntry uploadAdvisoryDocument(
+            String otherCompanyId, java.io.File file, String title)
+            throws IOException, InterruptedException {
+        String boundary = "----benjagest-doc-" + System.currentTimeMillis();
+        String filename = file.getName().replace("\"", "");
+        byte[] fileBytes = java.nio.file.Files.readAllBytes(file.toPath());
+        java.io.ByteArrayOutputStream body = new java.io.ByteArrayOutputStream();
+        body.write(("--" + boundary + "\r\n").getBytes());
+        body.write(("Content-Disposition: form-data; name=\"file\"; filename=\""
+                + filename + "\"\r\n").getBytes());
+        body.write(("Content-Type: application/octet-stream\r\n\r\n").getBytes());
+        body.write(fileBytes);
+        body.write(("\r\n").getBytes());
+        if (title != null && !title.isBlank()) {
+            body.write(("--" + boundary + "\r\n").getBytes());
+            body.write(("Content-Disposition: form-data; name=\"title\"\r\n\r\n").getBytes());
+            body.write(title.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            body.write(("\r\n").getBytes());
+        }
+        body.write(("--" + boundary + "--\r\n").getBytes());
+        HttpResponse<String> r = send(req(
+                baseUrl + "/advisory/documents/threads/" + otherCompanyId + "/upload")
+                .header("Content-Type", "multipart/form-data; boundary=" + boundary)
+                .POST(java.net.http.HttpRequest.BodyPublishers.ofByteArray(body.toByteArray())));
+        if (r.statusCode() < 200 || r.statusCode() >= 300) {
+            throw new IOException("HTTP " + r.statusCode() + ": " + r.body());
+        }
+        String obj = r.body();
+        return new com.benjagest.ui.model.AdvisoryDocumentEntry(
+                textField(obj, "id"),
+                textField(obj, "advisoryCompanyId"),
+                textField(obj, "clientCompanyId"),
+                textField(obj, "direction"),
+                textField(obj, "title"),
+                textField(obj, "filePath"),
+                longFieldOrZero(obj, "fileSizeBytes"),
+                textField(obj, "mimeType"),
+                textField(obj, "status"),
+                textField(obj, "note"),
+                textField(obj, "createdAt"),
+                textField(obj, "reviewedAt"));
+    }
+
+    public byte[] downloadAdvisoryDocument(String id)
+            throws IOException, InterruptedException {
+        java.net.http.HttpRequest.Builder b = java.net.http.HttpRequest.newBuilder(
+                java.net.URI.create(baseUrl + "/advisory/documents/" + id + "/download")).GET();
+        com.benjagest.ui.service.AuthSession.get().authorize(b);
+        java.net.http.HttpResponse<byte[]> r = httpClient.send(b.build(),
+                java.net.http.HttpResponse.BodyHandlers.ofByteArray());
+        if (r.statusCode() < 200 || r.statusCode() >= 300) {
+            throw new IOException("HTTP " + r.statusCode());
+        }
+        return r.body();
+    }
+
+    public com.benjagest.ui.model.AdvisoryDocumentEntry reviewAdvisoryDocument(
+            String id, String status, String note)
+            throws IOException, InterruptedException {
+        String json = "{\"status\":" + jsonString(status)
+                + ",\"note\":" + jsonString(note == null ? "" : note) + "}";
+        HttpResponse<String> r = send(req(
+                baseUrl + "/advisory/documents/" + id + "/review")
+                .header("Content-Type", "application/json")
+                .POST(java.net.http.HttpRequest.BodyPublishers.ofString(json)));
+        if (r.statusCode() < 200 || r.statusCode() >= 300) {
+            throw new IOException("HTTP " + r.statusCode() + ": " + r.body());
+        }
+        String obj = r.body();
+        return new com.benjagest.ui.model.AdvisoryDocumentEntry(
+                textField(obj, "id"),
+                textField(obj, "advisoryCompanyId"),
+                textField(obj, "clientCompanyId"),
+                textField(obj, "direction"),
+                textField(obj, "title"),
+                textField(obj, "filePath"),
+                longFieldOrZero(obj, "fileSizeBytes"),
+                textField(obj, "mimeType"),
+                textField(obj, "status"),
+                textField(obj, "note"),
+                textField(obj, "createdAt"),
+                textField(obj, "reviewedAt"));
+    }
+
+    private long longFieldOrZero(String json, String field) {
+        java.util.regex.Matcher m = java.util.regex.Pattern
+                .compile("\"" + field + "\"\\s*:\\s*(-?\\d+)").matcher(json);
+        return m.find() ? Long.parseLong(m.group(1)) : 0L;
+    }
+
+    // ============================================================
     //  Sprint A 2026-06-10 noche — limpieza cadena SIF legacy
     // ============================================================
 
