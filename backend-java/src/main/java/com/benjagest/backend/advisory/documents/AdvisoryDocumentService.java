@@ -41,12 +41,18 @@ public class AdvisoryDocumentService {
     private final JdbcTemplate jdbc;
     private final TenantContext tenant;
     private final CurrentUserService currentUser;
+    private final com.benjagest.backend.notifications.BusinessNotificationService businessNotif;
+    private final com.benjagest.backend.advisory.notifications.AdvisoryNotificationService advisoryNotif;
 
     public AdvisoryDocumentService(JdbcTemplate jdbc, TenantContext tenant,
-                                    CurrentUserService currentUser) {
+                                    CurrentUserService currentUser,
+                                    com.benjagest.backend.notifications.BusinessNotificationService businessNotif,
+                                    com.benjagest.backend.advisory.notifications.AdvisoryNotificationService advisoryNotif) {
         this.jdbc = jdbc;
         this.tenant = tenant;
         this.currentUser = currentUser;
+        this.businessNotif = businessNotif;
+        this.advisoryNotif = advisoryNotif;
     }
 
     public List<AdvisoryDocument> listThread(String otherCompanyId) {
@@ -124,6 +130,29 @@ public class AdvisoryDocumentService {
                 d.id(), d.advisoryCompanyId(), d.clientCompanyId(), d.direction(),
                 d.title(), d.filePath(), d.fileSizeBytes(), d.mimeType(),
                 d.status(), d.note(), d.uploadedByUserId());
+        // Hook 2026-06-11: notif al destinatario. A2C → cliente
+        // (BusinessNotif); C2A → asesoría (AdvisoryNotif).
+        try {
+            if (AdvisoryDocument.DIRECTION_A2C.equals(d.direction())) {
+                businessNotif.emit(new com.benjagest.backend.notifications.BusinessNotificationService.EmitRequest(
+                        d.clientCompanyId(),
+                        d.advisoryCompanyId(),
+                        "ADVISORY_DOCUMENT",
+                        com.benjagest.backend.notifications.BusinessNotificationService.SEVERITY_INFO,
+                        "Documento de tu asesoría",
+                        d.title(),
+                        "advisory_document:" + d.id()));
+            } else {
+                advisoryNotif.emit(new com.benjagest.backend.advisory.notifications.AdvisoryNotificationService.EmitRequest(
+                        d.advisoryCompanyId(),
+                        d.clientCompanyId(),
+                        "CLIENT_UPLOADED_DOC",
+                        com.benjagest.backend.advisory.notifications.AdvisoryNotificationService.SEVERITY_INFO,
+                        "El cliente subió un documento",
+                        d.title(),
+                        "advisory_document:" + d.id()));
+            }
+        } catch (Exception ignore) { }
         return d;
     }
 

@@ -54,12 +54,18 @@ public class AdvisoryMessageService {
     private final JdbcTemplate jdbc;
     private final TenantContext tenant;
     private final CurrentUserService currentUser;
+    private final com.benjagest.backend.notifications.BusinessNotificationService businessNotif;
+    private final com.benjagest.backend.advisory.notifications.AdvisoryNotificationService advisoryNotif;
 
     public AdvisoryMessageService(JdbcTemplate jdbc, TenantContext tenant,
-                                    CurrentUserService currentUser) {
+                                    CurrentUserService currentUser,
+                                    com.benjagest.backend.notifications.BusinessNotificationService businessNotif,
+                                    com.benjagest.backend.advisory.notifications.AdvisoryNotificationService advisoryNotif) {
         this.jdbc = jdbc;
         this.tenant = tenant;
         this.currentUser = currentUser;
+        this.businessNotif = businessNotif;
+        this.advisoryNotif = advisoryNotif;
     }
 
     /** Lista cronológica del thread con {@code otherCompanyId}. */
@@ -136,6 +142,35 @@ public class AdvisoryMessageService {
                 """,
                 m.id(), m.advisoryCompanyId(), m.clientCompanyId(), m.direction(),
                 m.fromUserId(), m.body(), m.attachmentPath());
+        // Hook 2026-06-11: notifica al destinatario en su bandeja.
+        // A2C → notif al business (cliente); C2A → notif al advisory.
+        // try/catch para que un fallo en notificación no aborte el
+        // mensaje (el mensaje en BD es el dato canónico).
+        try {
+            String preview = m.body().length() > 80
+                    ? m.body().substring(0, 80) + "…" : m.body();
+            if (AdvisoryMessage.DIRECTION_A2C.equals(m.direction())) {
+                businessNotif.emit(new com.benjagest.backend.notifications.BusinessNotificationService.EmitRequest(
+                        m.clientCompanyId(),
+                        m.advisoryCompanyId(),
+                        "ADVISORY_MESSAGE",
+                        com.benjagest.backend.notifications.BusinessNotificationService.SEVERITY_INFO,
+                        "Mensaje de tu asesoría",
+                        preview,
+                        "advisory_message:" + m.id()));
+            } else {
+                advisoryNotif.emit(new com.benjagest.backend.advisory.notifications.AdvisoryNotificationService.EmitRequest(
+                        m.advisoryCompanyId(),
+                        m.clientCompanyId(),
+                        "CLIENT_MESSAGE",
+                        com.benjagest.backend.advisory.notifications.AdvisoryNotificationService.SEVERITY_INFO,
+                        "Mensaje del cliente",
+                        preview,
+                        "advisory_message:" + m.id()));
+            }
+        } catch (Exception ignore) {
+            // No bloquear el envío de mensajes por fallo de notif.
+        }
         return m;
     }
 
