@@ -38,6 +38,9 @@ import org.springframework.util.StringUtils;
 @Service
 public class SifEventService {
 
+    private static final org.slf4j.Logger log =
+            org.slf4j.LoggerFactory.getLogger(SifEventService.class);
+
     private final VerifactuConfigRepository configRepository;
     private final CompanyDataRepository companyRepository;
     private final SifEventRepository eventRepository;
@@ -147,6 +150,14 @@ public class SifEventService {
             String recomputed = hashService.computeHash(
                     nif, row.eventType(), row.payload(), expectedPrev, gen);
             if (!recomputed.equalsIgnoreCase(row.hashCurrent())) {
+                // SIF-DEBUG 2026-06-11: log al detectar mismatch para
+                // compararlo con el log de INSERT.
+                log.warn("SIF-DEBUG VERIFY-MISMATCH company={} eventType={} gen={} rawGenFromDb={} expectedPrev={} canonical=[{}] storedHash={} recomputed={}",
+                        companyId, row.eventType(),
+                        gen, row.generatedAt(),
+                        expectedPrev,
+                        hashService.canonicalize(nif, row.eventType(), row.payload(), expectedPrev, gen),
+                        row.hashCurrent(), recomputed);
                 return new ChainVerifyResult(false, checked, row.id(), row.eventType(),
                         "Hash recalculado no coincide");
             }
@@ -191,6 +202,15 @@ public class SifEventService {
             String hashCurrent = hashService.computeHash(
                     nif, eventType, payload, previousHash, generationTime
             );
+            // SIF-DEBUG 2026-06-11: traza temporal para diagnosticar
+            // "Hash recalculado no coincide" — comparar contra el log
+            // de VERIFY en SifEventService.verifyChainForCompany.
+            log.warn("SIF-DEBUG INSERT company={} eventType={} gen={} prev={} canonical=[{}] hash={}",
+                    companyId, eventType,
+                    generationTime,
+                    previousHash,
+                    hashService.canonicalize(nif, eventType, payload, previousHash, generationTime),
+                    hashCurrent);
 
             String eventId = UUID.randomUUID().toString();
             eventRepository.insert(
