@@ -177,6 +177,11 @@ public class AdvisoryDocumentService {
         jdbc.update("DELETE FROM advisory_documents WHERE id = ?", id);
     }
 
+    /** Público para uso desde {@code AdvisoryDocumentUploadController.download}. */
+    public AdvisoryDocument findById(String id) {
+        return getById(id);
+    }
+
     private AdvisoryDocument getById(String id) {
         Optional<AdvisoryDocument> opt = jdbc.query("""
                 SELECT id, advisory_company_id, client_company_id, direction,
