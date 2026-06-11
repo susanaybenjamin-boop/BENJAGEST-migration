@@ -6582,55 +6582,23 @@ public class BenjagestUiApplication extends Application {
         HBox actions = new HBox(8, refresh, verifyBtn);
         actions.getStyleClass().add("settings-actions");
 
-        // 2026-06-10 noche — Sprint A: bloque de mantenimiento para
-        // resetar la cadena SIF cuando los warnings de VF-ANOMALY vienen
-        // de eventos pre-VF-CHAIN-FIX (deuda 2026-06-08). Solo
-        // OWNER/ADMIN. Bloqueado si la empresa está en VERIFACTU.
-        Label sifResetTitle = label(t("settings.audit.sif_reset.title"),
-                "settings-section-title");
-        Label sifResetHint = new Label(t("settings.audit.sif_reset.hint"));
-        sifResetHint.setWrapText(true);
-        sifResetHint.getStyleClass().add("settings-hint");
-        Button sifResetBtn = new Button(t("settings.audit.sif_reset.btn"));
-        sifResetBtn.setGraphic(icon("fas-broom"));
-        sifResetBtn.setOnAction(ev -> confirmSifLegacyChainReset());
+        // 2026-06-11 noche — SIF-LEGAL-CLEAR: el botón "Reiniciar cadena
+        // SIF" se eliminó por completo. RD 1007/2023 art. 11 prohíbe
+        // que el SIF disponga de cualquier función de cancelación,
+        // modificación o supresión de los registros. Solo se conserva
+        // el botón de VERIFICACIÓN (lectura, legal).
         Button sifVerifyNowBtn = new Button(t("settings.audit.sif_verify_now"));
         sifVerifyNowBtn.setGraphic(icon("fas-shield-alt"));
         sifVerifyNowBtn.setOnAction(ev -> verifySifChainNow());
-        VBox sifResetBlock = new VBox(8, new Separator(), sifResetTitle,
-                sifResetHint, new HBox(8, sifVerifyNowBtn, sifResetBtn));
+        Label sifVerifyHint = new Label(t("settings.audit.sif_verify_now.hint"));
+        sifVerifyHint.setWrapText(true);
+        sifVerifyHint.getStyleClass().add("settings-hint");
+        VBox sifVerifyBlock = new VBox(8, new Separator(), sifVerifyHint, sifVerifyNowBtn);
 
         VBox header = new VBox(8, sectionTitle, hint, filterRow);
-        VBox content = new VBox(16, table, exportBlock, sifResetBlock);
+        VBox content = new VBox(16, table, exportBlock, sifVerifyBlock);
         VBox.setVgrow(table, Priority.ALWAYS);
         return tabLayout(header, content, actions);
-    }
-
-    /** Sprint A — Confirmación + llamada al endpoint de reset. */
-    private void confirmSifLegacyChainReset() {
-        Alert confirm = new Alert(Alert.AlertType.CONFIRMATION);
-        confirm.setTitle(t("settings.audit.sif_reset.confirm.title"));
-        confirm.setHeaderText(t("settings.audit.sif_reset.confirm.header"));
-        confirm.setContentText(t("settings.audit.sif_reset.confirm.body"));
-        confirm.showAndWait().ifPresent(rsp -> {
-            if (rsp != javafx.scene.control.ButtonType.OK) return;
-            Task<Integer> task = new Task<>() {
-                @Override protected Integer call() throws Exception {
-                    return altaApiClient.resetSifLegacyChain();
-                }
-            };
-            task.setOnSucceeded(ev -> {
-                Alert ok = new Alert(Alert.AlertType.INFORMATION);
-                ok.setTitle(t("settings.audit.sif_reset.ok.title"));
-                ok.setHeaderText(t("settings.audit.sif_reset.ok.body")
-                        .replace("{n}", String.valueOf(task.getValue())));
-                ok.showAndWait();
-            });
-            task.setOnFailed(ev -> showError(
-                    t("settings.audit.sif_reset.fail.title"),
-                    task.getException() == null ? "" : task.getException().getMessage()));
-            start(task, "sif-legacy-reset");
-        });
     }
 
     /** Dispara verify-now de las cadenas SIF (facturas + eventos).
@@ -12608,17 +12576,8 @@ public class BenjagestUiApplication extends Application {
             case "timeclock.export.fail.write.title" -> "Could not save file";
             case "settings.audit.export.title" -> "Export for inspection / tax office";
             case "settings.audit.export.hint" -> "Download a verifiable PDF or CSV of the full audit log for a date range. Each export is itself recorded with the document SHA-256 so the file shown to an inspector can be checked against the registry.";
-            // Sprint A 2026-06-10 noche — Reset cadena SIF legacy
-            case "settings.audit.sif_reset.title" -> "SIF chain maintenance (dev only)";
-            case "settings.audit.sif_reset.hint" -> "Some SIF events from before the 2026-06-08 timezone fix (VF-CHAIN-FIX) report broken hashes in the VF-ANOMALY scheduler. Resetting the chain DELETES all SIF events for the current company and lets the next startup seed a fresh, correct chain. BLOCKED for VERIFACTU companies (legal events sent to AEAT).";
-            case "settings.audit.sif_reset.btn" -> "Reset SIF chain (current company)";
-            case "settings.audit.sif_reset.confirm.title" -> "Reset SIF chain?";
-            case "settings.audit.sif_reset.confirm.header" -> "This will delete ALL SIF events for the current company.";
-            case "settings.audit.sif_reset.confirm.body" -> "Use only in development. In NO_VERIFACTU production, you would lose the local registry that the inspector can audit. Continue?";
-            case "settings.audit.sif_reset.ok.title" -> "Chain reset";
-            case "settings.audit.sif_reset.ok.body" -> "Deleted {n} legacy SIF events. Restart the backend to seed a fresh chain.";
-            case "settings.audit.sif_reset.fail.title" -> "Could not reset chain";
-            case "settings.audit.sif_verify_now" -> "Verify chain now";
+            case "settings.audit.sif_verify_now" -> "Verify SIF chain now";
+            case "settings.audit.sif_verify_now.hint" -> "Run an immediate integrity check of the SIF chain (invoices + events). Read-only — required by RD 1007/2023 art. 11, which forbids any cancellation, modification or deletion of the registry.";
             case "settings.audit.sif_verify_now.ok.title" -> "Verification launched";
             case "settings.audit.sif_verify_now.ok.body" -> "Detection cycle finished. Check the audit log and the advisor inbox for any anomaly hits.";
             case "settings.audit.sif_verify_now.fail.title" -> "Could not launch verification";
@@ -12785,16 +12744,8 @@ public class BenjagestUiApplication extends Application {
             case "timeclock.export.fail.range.body" -> "Elige una fecha de inicio anterior o igual a la fecha de fin.";
             case "timeclock.export.fail.write.title" -> "No se pudo guardar el archivo";
             case "settings.audit.export.title" -> "Exportar para Inspeccion / Hacienda";
-            case "settings.audit.sif_reset.title" -> "Mantenimiento cadena SIF (solo desarrollo)";
-            case "settings.audit.sif_reset.hint" -> "Algunos eventos SIF anteriores al fix VF-CHAIN-FIX (2026-06-08, timezone del driver) reportan hashes rotos en el job VF-ANOMALY. Reiniciar la cadena ELIMINA todos los eventos SIF de la empresa actual y deja que el siguiente arranque empiece una cadena nueva y correcta. BLOQUEADO para empresas en VERIFACTU (eventos legales ya enviados a la AEAT).";
-            case "settings.audit.sif_reset.btn" -> "Reiniciar cadena SIF (empresa actual)";
-            case "settings.audit.sif_reset.confirm.title" -> "¿Reiniciar la cadena SIF?";
-            case "settings.audit.sif_reset.confirm.header" -> "Se borrarán TODOS los eventos SIF de la empresa actual.";
-            case "settings.audit.sif_reset.confirm.body" -> "Úsalo solo en desarrollo. En producción NO_VERIFACTU perderías el registro local que el inspector puede auditar. ¿Continuar?";
-            case "settings.audit.sif_reset.ok.title" -> "Cadena reiniciada";
-            case "settings.audit.sif_reset.ok.body" -> "Eliminados {n} eventos SIF antiguos. Reinicia el backend para sembrar la cadena nueva.";
-            case "settings.audit.sif_reset.fail.title" -> "No se pudo reiniciar la cadena";
-            case "settings.audit.sif_verify_now" -> "Verificar cadena ahora";
+            case "settings.audit.sif_verify_now" -> "Verificar cadena SIF ahora";
+            case "settings.audit.sif_verify_now.hint" -> "Lanza una comprobación inmediata de la integridad de la cadena SIF (facturas + eventos). Operación de SOLO LECTURA — el RD 1007/2023 art. 11 prohíbe cualquier función de cancelación, modificación o supresión del registro.";
             case "settings.audit.sif_verify_now.ok.title" -> "Verificación lanzada";
             case "settings.audit.sif_verify_now.ok.body" -> "Ciclo de detección terminado. Revisa el log de auditoría y la bandeja del asesor por si hay anomalías.";
             case "settings.audit.sif_verify_now.fail.title" -> "No se pudo lanzar la verificación";
