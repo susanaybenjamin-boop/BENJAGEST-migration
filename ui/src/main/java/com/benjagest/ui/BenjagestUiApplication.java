@@ -8348,10 +8348,18 @@ public class BenjagestUiApplication extends Application {
         multiAllocBtn.setGraphic(icon("fas-coins"));
         multiAllocBtn.setOnAction(ev -> showMultiAllocationDialog());
 
+        // REC-BANCARIA (#68) — abre dialogo con sugerencias de match
+        // entre movimientos bancarios no conciliados y facturas
+        // pendientes. El asesor confirma cada match.
+        Button bankReconcileBtn = new Button(t("list.action.bank_reconcile"));
+        bankReconcileBtn.setGraphic(icon("fas-link"));
+        bankReconcileBtn.setOnAction(ev -> showBankReconciliationDialog());
+
         Region rowActionsSpacer = new Region();
         HBox.setHgrow(rowActionsSpacer, Priority.ALWAYS);
         HBox rowActions = new HBox(10, validateRowBtn, deleteDraftBtn, voidBtn,
-                toValidatedBtn, makeRecurringBtn, multiAllocBtn, rowActionsSpacer, emailBtn, pdfBtn);
+                toValidatedBtn, makeRecurringBtn, multiAllocBtn, bankReconcileBtn,
+                rowActionsSpacer, emailBtn, pdfBtn);
         rowActions.getStyleClass().add("settings-actions");
 
         // Slice 3V — Acciones SOBRE la tabla, no debajo. Antes vivían
@@ -9905,6 +9913,142 @@ public class BenjagestUiApplication extends Application {
                 new javafx.beans.property.SimpleBooleanProperty(true);
         final javafx.beans.property.SimpleStringProperty amountTextProperty =
                 new javafx.beans.property.SimpleStringProperty("0");
+    }
+
+    /**
+     * REC-BANCARIA — dialogo con sugerencias de match entre
+     * movimientos bancarios no conciliados y facturas pendientes.
+     */
+    private void showBankReconciliationDialog() {
+        Stage dlg = new Stage();
+        dlg.setTitle(t("bank_rec.title"));
+        dlg.initModality(javafx.stage.Modality.APPLICATION_MODAL);
+
+        Label hint = new Label(t("bank_rec.hint"));
+        hint.setWrapText(true);
+        hint.getStyleClass().add("settings-hint");
+
+        TableView<com.benjagest.ui.service.AltaApiClient.BankSuggestionEntry> table = new TableView<>();
+        table.getStyleClass().add("data-table");
+        table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+        table.setPlaceholder(new Label(t("bank_rec.empty")));
+        VBox.setVgrow(table, Priority.ALWAYS);
+
+        TableColumn<com.benjagest.ui.service.AltaApiClient.BankSuggestionEntry, String> colDate =
+                new TableColumn<>(t("bank_rec.col.date"));
+        colDate.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().operationDate()));
+        colDate.setPrefWidth(110);
+        colDate.setComparator(ISO_DATE_COMPARATOR);
+
+        TableColumn<com.benjagest.ui.service.AltaApiClient.BankSuggestionEntry, String> colDesc =
+                new TableColumn<>(t("bank_rec.col.movement"));
+        colDesc.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().description()));
+        colDesc.setPrefWidth(260);
+
+        TableColumn<com.benjagest.ui.service.AltaApiClient.BankSuggestionEntry, String> colAmount =
+                new TableColumn<>(t("bank_rec.col.amount"));
+        colAmount.setCellValueFactory(c -> new SimpleStringProperty(money(c.getValue().amount().toPlainString())));
+        colAmount.setPrefWidth(110);
+        colAmount.setComparator(NUMERIC_STRING_COMPARATOR);
+
+        TableColumn<com.benjagest.ui.service.AltaApiClient.BankSuggestionEntry, String> colInv =
+                new TableColumn<>(t("bank_rec.col.invoice"));
+        colInv.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().invoiceNumber()));
+        colInv.setPrefWidth(120);
+
+        TableColumn<com.benjagest.ui.service.AltaApiClient.BankSuggestionEntry, String> colCust =
+                new TableColumn<>(t("bank_rec.col.customer"));
+        colCust.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().customerLegalName()));
+        colCust.setPrefWidth(220);
+
+        TableColumn<com.benjagest.ui.service.AltaApiClient.BankSuggestionEntry, String> colScore =
+                new TableColumn<>(t("bank_rec.col.score"));
+        colScore.setCellValueFactory(c -> new SimpleStringProperty(
+                String.format("%.0f%%", c.getValue().score() * 100)));
+        colScore.setPrefWidth(80);
+        colScore.setComparator(NUMERIC_STRING_COMPARATOR);
+
+        table.getColumns().addAll(List.of(colDate, colDesc, colAmount, colInv, colCust, colScore));
+
+        Runnable load = () -> {
+            Task<List<com.benjagest.ui.service.AltaApiClient.BankSuggestionEntry>> task = new Task<>() {
+                @Override
+                protected List<com.benjagest.ui.service.AltaApiClient.BankSuggestionEntry> call() throws Exception {
+                    return altaApiClient.listBankSuggestions();
+                }
+            };
+            task.setOnSucceeded(ev -> table.setItems(FXCollections.observableArrayList(task.getValue())));
+            task.setOnFailed(ev -> showError(t("bank_rec.load.fail"),
+                    task.getException() == null ? "" : task.getException().getMessage()));
+            start(task, "bank-rec-load");
+        };
+
+        Button refresh = new Button(t("bank_rec.btn.refresh"));
+        refresh.setGraphic(icon("fas-sync-alt"));
+        refresh.setOnAction(ev -> load.run());
+
+        Button accept = new Button(t("bank_rec.btn.accept"));
+        accept.setGraphic(icon("fas-check"));
+        accept.getStyleClass().add("primary-button");
+        accept.setDisable(true);
+        accept.setOnAction(ev -> {
+            var sel = table.getSelectionModel().getSelectedItem();
+            if (sel == null) return;
+            Task<Void> task = new Task<>() {
+                @Override
+                protected Void call() throws Exception {
+                    altaApiClient.linkBankMovement(sel.movementId(), sel.invoiceId());
+                    return null;
+                }
+            };
+            task.setOnSucceeded(s -> { load.run(); });
+            task.setOnFailed(s -> showError(t("bank_rec.accept.fail"),
+                    task.getException() == null ? "" : task.getException().getMessage()));
+            start(task, "bank-rec-link");
+        });
+
+        Button ignoreBtn = new Button(t("bank_rec.btn.ignore"));
+        ignoreBtn.setGraphic(icon("fas-times"));
+        ignoreBtn.setDisable(true);
+        ignoreBtn.setOnAction(ev -> {
+            var sel = table.getSelectionModel().getSelectedItem();
+            if (sel == null) return;
+            Task<Void> task = new Task<>() {
+                @Override
+                protected Void call() throws Exception {
+                    altaApiClient.ignoreBankMovement(sel.movementId(), "user-ignored-from-rec-ui");
+                    return null;
+                }
+            };
+            task.setOnSucceeded(s -> { load.run(); });
+            task.setOnFailed(s -> showError(t("bank_rec.ignore.fail"),
+                    task.getException() == null ? "" : task.getException().getMessage()));
+            start(task, "bank-rec-ignore");
+        });
+
+        table.getSelectionModel().selectedItemProperty().addListener((obs, o, n) -> {
+            accept.setDisable(n == null);
+            ignoreBtn.setDisable(n == null);
+        });
+
+        Button close = new Button(t("dialog.close"));
+        close.setOnAction(ev -> dlg.close());
+
+        HBox btns = new HBox(10, refresh, accept, ignoreBtn);
+        btns.setAlignment(Pos.CENTER_LEFT);
+        HBox closeRow = new HBox(close);
+        closeRow.setAlignment(Pos.CENTER_RIGHT);
+
+        load.run();
+
+        VBox root = new VBox(12, hint, btns, table, closeRow);
+        root.setPadding(new javafx.geometry.Insets(16));
+        root.setPrefSize(1000, 600);
+        Scene scene = new Scene(root);
+        scene.getStylesheets().add(
+                getClass().getResource("/com/benjagest/ui/app.css").toExternalForm());
+        dlg.setScene(scene);
+        dlg.showAndWait();
     }
 
     private void showInvoiceEditor(String existingInvoiceId) {
@@ -16457,6 +16601,24 @@ public class BenjagestUiApplication extends Application {
             case "multi_alloc.error.sum_mismatch" -> "Sum of allocations must equal total amount";
             case "multi_alloc.ok.title" -> "Payment registered";
             case "multi_alloc.ok.body" -> "Allocations:";
+            case "dialog.cancel" -> "Cancel";
+            case "dialog.close" -> "Close";
+            case "list.action.bank_reconcile" -> "Bank match";
+            case "bank_rec.title" -> "Bank reconciliation suggestions";
+            case "bank_rec.hint" -> "Bank movements (income) not yet linked to any invoice, matched against pending invoices by amount (±1€), date (±7 days) and customer name (Levenshtein <3). Select a row and accept or ignore.";
+            case "bank_rec.empty" -> "No suggestions — all movements are linked or no candidates within tolerance.";
+            case "bank_rec.col.date" -> "Date";
+            case "bank_rec.col.movement" -> "Bank concept";
+            case "bank_rec.col.amount" -> "Amount";
+            case "bank_rec.col.invoice" -> "Invoice";
+            case "bank_rec.col.customer" -> "Customer";
+            case "bank_rec.col.score" -> "Score";
+            case "bank_rec.btn.refresh" -> "Refresh";
+            case "bank_rec.btn.accept" -> "Accept match";
+            case "bank_rec.btn.ignore" -> "Ignore movement";
+            case "bank_rec.load.fail" -> "Could not load suggestions";
+            case "bank_rec.accept.fail" -> "Could not link movement to invoice";
+            case "bank_rec.ignore.fail" -> "Could not ignore movement";
             case "client.tab.sales" -> "Sales";
             case "client.tab.expenses" -> "Expenses";
             case "client.sales_expenses.hint" -> "This client is NOT linked. Here you only archive invoices the client emitted/received in their own system. No legal invoicing from BENJAGEST — for that, the client must accept the invitation and activate VeriFactu.";
@@ -17151,6 +17313,24 @@ public class BenjagestUiApplication extends Application {
             case "multi_alloc.error.sum_mismatch" -> "La suma de los repartos debe coincidir con el importe total";
             case "multi_alloc.ok.title" -> "Pago registrado";
             case "multi_alloc.ok.body" -> "Repartos:";
+            case "dialog.cancel" -> "Cancelar";
+            case "dialog.close" -> "Cerrar";
+            case "list.action.bank_reconcile" -> "Conciliar banco";
+            case "bank_rec.title" -> "Sugerencias de conciliación bancaria";
+            case "bank_rec.hint" -> "Movimientos bancarios (ingresos) no vinculados a factura, cruzados con facturas pendientes por importe (±1€), fecha (±7 días) y nombre del cliente (Levenshtein <3). Selecciona una fila y aceptar o ignorar.";
+            case "bank_rec.empty" -> "Sin sugerencias — todos los movimientos están enlazados o no hay candidatos dentro de tolerancia.";
+            case "bank_rec.col.date" -> "Fecha";
+            case "bank_rec.col.movement" -> "Concepto banco";
+            case "bank_rec.col.amount" -> "Importe";
+            case "bank_rec.col.invoice" -> "Factura";
+            case "bank_rec.col.customer" -> "Cliente";
+            case "bank_rec.col.score" -> "Coincidencia";
+            case "bank_rec.btn.refresh" -> "Recargar";
+            case "bank_rec.btn.accept" -> "Aceptar match";
+            case "bank_rec.btn.ignore" -> "Ignorar movimiento";
+            case "bank_rec.load.fail" -> "No se pudieron cargar las sugerencias";
+            case "bank_rec.accept.fail" -> "No se pudo vincular el movimiento a la factura";
+            case "bank_rec.ignore.fail" -> "No se pudo ignorar el movimiento";
             case "advisory.client.tab.billing" -> "Facturación";
             case "advisory.client.tab.purchases" -> "Compras y Gastos";
             case "advisory.client.tab.sales_and_expenses" -> "Ventas y Gastos";

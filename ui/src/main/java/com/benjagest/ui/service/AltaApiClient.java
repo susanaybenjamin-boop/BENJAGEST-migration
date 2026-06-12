@@ -2316,6 +2316,94 @@ public class AltaApiClient {
     }
 
     // ============================================================
+    //  REC-BANCARIA — conciliacion bancaria /api/accounting
+    // ============================================================
+
+    public record BankSuggestionEntry(
+            String movementId,
+            String operationDate,
+            String description,
+            java.math.BigDecimal amount,
+            String invoiceId,
+            String invoiceNumber,
+            String customerLegalName,
+            java.math.BigDecimal pendingAmount,
+            int dayDiff,
+            int levDistance,
+            double score) {}
+
+    public List<BankSuggestionEntry> listBankSuggestions() throws IOException, InterruptedException {
+        HttpResponse<String> r = send(req(
+                baseUrl + "/accounting/bank-reconciliation/suggestions").GET());
+        if (r.statusCode() < 200 || r.statusCode() >= 300) {
+            throw new IOException("HTTP " + r.statusCode() + ": " + r.body());
+        }
+        List<BankSuggestionEntry> out = new ArrayList<>();
+        for (String mvObj : splitTopLevelObjects(r.body())) {
+            String movementId = textField(mvObj, "movementId");
+            String operationDate = textField(mvObj, "operationDate");
+            String description = textField(mvObj, "description");
+            java.math.BigDecimal amount = decFieldOrZero(mvObj, "amount");
+            java.util.regex.Matcher mArr = java.util.regex.Pattern
+                    .compile("\"suggestions\"\\s*:\\s*\\[(.*?)\\](?=\\s*[,}])",
+                            java.util.regex.Pattern.DOTALL).matcher(mvObj);
+            if (!mArr.find()) continue;
+            String arr = mArr.group(1);
+            for (String sObj : splitTopLevelObjects("[" + arr + "]")) {
+                out.add(new BankSuggestionEntry(
+                        movementId, operationDate, description, amount,
+                        textField(sObj, "invoiceId"),
+                        textField(sObj, "invoiceNumber"),
+                        textField(sObj, "customerLegalName"),
+                        decFieldOrZero(sObj, "pendingAmount"),
+                        intFieldRec(sObj, "dayDiff"),
+                        intFieldRec(sObj, "levDistance"),
+                        doubleFieldRec(sObj, "score")));
+            }
+        }
+        return out;
+    }
+
+    public void linkBankMovement(String movementId, String invoiceId)
+            throws IOException, InterruptedException {
+        String body = "{\"invoiceKind\":\"SALES_INVOICE\",\"invoiceId\":\""
+                + invoiceId + "\"}";
+        HttpResponse<String> r = send(req(
+                baseUrl + "/accounting/bank-movements/" + movementId + "/link")
+                .header("Content-Type", "application/json")
+                .POST(java.net.http.HttpRequest.BodyPublishers.ofString(body)));
+        if (r.statusCode() < 200 || r.statusCode() >= 300) {
+            throw new IOException("HTTP " + r.statusCode() + ": " + r.body());
+        }
+    }
+
+    public void ignoreBankMovement(String movementId, String reason)
+            throws IOException, InterruptedException {
+        String url = baseUrl + "/accounting/bank-movements/" + movementId + "/ignore";
+        if (reason != null && !reason.isBlank()) {
+            url += "?reason=" + java.net.URLEncoder.encode(reason,
+                    java.nio.charset.StandardCharsets.UTF_8);
+        }
+        HttpResponse<String> r = send(req(url)
+                .POST(java.net.http.HttpRequest.BodyPublishers.noBody()));
+        if (r.statusCode() < 200 || r.statusCode() >= 300) {
+            throw new IOException("HTTP " + r.statusCode() + ": " + r.body());
+        }
+    }
+
+    private int intFieldRec(String obj, String key) {
+        java.util.regex.Matcher m = java.util.regex.Pattern
+                .compile("\"" + key + "\"\\s*:\\s*(-?\\d+)").matcher(obj);
+        return m.find() ? Integer.parseInt(m.group(1)) : 0;
+    }
+
+    private double doubleFieldRec(String obj, String key) {
+        java.util.regex.Matcher m = java.util.regex.Pattern
+                .compile("\"" + key + "\"\\s*:\\s*(-?\\d+(?:\\.\\d+)?)").matcher(obj);
+        return m.find() ? Double.parseDouble(m.group(1)) : 0.0;
+    }
+
+    // ============================================================
     //  BACKUP-LOCAL — backups locales /api/system/backup
     // ============================================================
 
