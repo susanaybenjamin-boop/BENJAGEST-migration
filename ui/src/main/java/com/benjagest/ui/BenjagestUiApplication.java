@@ -10698,8 +10698,15 @@ public class BenjagestUiApplication extends Application {
      */
     private Node darkTabIcon(String literal) {
         Node n = icon(literal);
+        // app.css fuerza `.font-icon { -fx-icon-color: #ffffff }` con
+        // especificidad mayor que setIconColor() programático. Quitamos
+        // la styleClass para que el CSS no lo machaque y forzamos el
+        // color por inline style (máxima prioridad en JavaFX).
+        n.getStyleClass().remove("font-icon");
+        n.setStyle("-fx-icon-color: #1e293b; -fx-icon-size: 16px;");
         if (n instanceof FontIcon fi) {
             fi.setIconColor(javafx.scene.paint.Color.web("#1e293b"));
+            fi.setIconSize(16);
         }
         return n;
     }
