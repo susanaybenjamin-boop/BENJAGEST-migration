@@ -58,6 +58,10 @@ public class SecurityConfig {
                                 // — un tercero (Inspección de Trabajo, juzgado…)
                                 // debe poder validar un fichaje sin credenciales.
                                 "/api/public/timeclock/verify",
+                                // TPB Magic Link (V104): el cliente sin cuenta
+                                // accede via enlace email para leer y firmar
+                                // el acuerdo. Token unico + OTP en la URL.
+                                "/api/public/tpb/**",
                                 "/error"
                         ).permitAll()
                         .anyRequest().authenticated()

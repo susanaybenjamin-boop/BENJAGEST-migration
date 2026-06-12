@@ -382,6 +382,15 @@ public class ThirdPartyBillingAgreementService {
         return getById(agreementId);
     }
 
+    /**
+     * Expone {@link #generatePdf} para que el servicio TpbMagicLinkService
+     * pueda persistir el PDF tras firma OTP sin duplicar lógica de
+     * almacenamiento.
+     */
+    public String generateAndStorePdfPublic(ThirdPartyBillingAgreement a, String method) {
+        return generatePdf(a, method);
+    }
+
     private String generatePdf(ThirdPartyBillingAgreement a, String method) {
         try {
             byte[] pdf = pdfGenerator.generate(a, method, Instant.now());
@@ -399,7 +408,7 @@ public class ThirdPartyBillingAgreementService {
         }
     }
 
-    private ThirdPartyBillingAgreement getById(String id) {
+    public ThirdPartyBillingAgreement getById(String id) {
         return jdbc.query("""
                 SELECT * FROM third_party_billing_agreements WHERE id = ?
                 """, MAPPER, id).stream().findFirst().orElseThrow(() ->
