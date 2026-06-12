@@ -2316,6 +2316,41 @@ public class AltaApiClient {
     }
 
     // ============================================================
+    //  BACKUP-LOCAL — backups locales /api/system/backup
+    // ============================================================
+
+    public record BackupInfoEntry(String filename, String fullPath,
+                                   long sizeBytes, String lastModified) {}
+
+    public List<BackupInfoEntry> listBackups() throws IOException, InterruptedException {
+        HttpResponse<String> r = send(req(baseUrl + "/system/backup/list").GET());
+        if (r.statusCode() < 200 || r.statusCode() >= 300) {
+            throw new IOException("HTTP " + r.statusCode() + ": " + r.body());
+        }
+        List<BackupInfoEntry> out = new ArrayList<>();
+        for (String obj : splitTopLevelObjects(r.body())) {
+            java.util.regex.Matcher mSize = java.util.regex.Pattern
+                    .compile("\"sizeBytes\"\\s*:\\s*(\\d+)").matcher(obj);
+            long size = mSize.find() ? Long.parseLong(mSize.group(1)) : 0L;
+            out.add(new BackupInfoEntry(
+                    textField(obj, "filename"),
+                    textField(obj, "fullPath"),
+                    size,
+                    textField(obj, "lastModified")));
+        }
+        return out;
+    }
+
+    public String runBackupNow() throws IOException, InterruptedException {
+        HttpResponse<String> r = send(req(baseUrl + "/system/backup/run")
+                .POST(java.net.http.HttpRequest.BodyPublishers.noBody()));
+        if (r.statusCode() < 200 || r.statusCode() >= 300) {
+            throw new IOException("HTTP " + r.statusCode() + ": " + r.body());
+        }
+        return textField(r.body(), "file");
+    }
+
+    // ============================================================
     //  BOE-RSS — Alertas BOE /api/boe-alerts
     // ============================================================
 
