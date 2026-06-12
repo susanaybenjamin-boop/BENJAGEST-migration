@@ -87,11 +87,23 @@ public class TimeClockRepository {
     }
 
     public void insertEvent(TimeClockEvent event) {
+        insertEvent(event, null, null, null);
+    }
+
+    /**
+     * GEO-FICHAR (V100): inserta con coordenadas + distancia al centro
+     * si vienen. Para fichajes pre-V100 los 3 campos son NULL.
+     */
+    public void insertEvent(TimeClockEvent event,
+                              java.math.BigDecimal lat,
+                              java.math.BigDecimal lng,
+                              Integer geoWarningMeters) {
         jdbcTemplate.update("""
                 INSERT INTO time_clock_events (
                     id, company_id, employee_id, customer_id,
-                    event_type, event_time, origin, status
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    event_type, event_time, origin, status,
+                    lat, lng, geo_warning_meters
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 event.id(),
                 tenantContext.getCurrentCompanyId(),
@@ -100,9 +112,34 @@ public class TimeClockRepository {
                 event.eventType(),
                 Timestamp.from(event.eventTime()),
                 event.origin(),
-                event.status() == null ? "VALID" : event.status()
+                event.status() == null ? "VALID" : event.status(),
+                lat, lng, geoWarningMeters
         );
     }
+
+    /** GEO-FICHAR — datos geo del centro asignado al empleado. */
+    public java.util.Optional<EmployeeWorkCenterGeo> findEmployeeWorkCenterGeo(String employeeId) {
+        java.util.List<EmployeeWorkCenterGeo> matches = jdbcTemplate.query("""
+                SELECT w.lat, w.lng, w.radio_m, w.geo_policy, w.name
+                  FROM employees e
+                  JOIN work_centers w ON w.id = e.work_center_id
+                 WHERE e.id = ?
+                   AND e.company_id = ?
+                """, (rs, n) -> new EmployeeWorkCenterGeo(
+                        rs.getBigDecimal("lat"),
+                        rs.getBigDecimal("lng"),
+                        (Integer) rs.getObject("radio_m"),
+                        rs.getString("geo_policy"),
+                        rs.getString("name")),
+                employeeId, tenantContext.getCurrentCompanyId());
+        return matches.stream().findFirst();
+    }
+
+    public record EmployeeWorkCenterGeo(java.math.BigDecimal lat,
+                                          java.math.BigDecimal lng,
+                                          Integer radioM,
+                                          String geoPolicy,
+                                          String centerName) {}
 
     /**
      * Eventos de la empresa activa entre dos fechas (inclusive). Si

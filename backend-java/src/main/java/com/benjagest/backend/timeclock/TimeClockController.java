@@ -80,7 +80,8 @@ public class TimeClockController {
 
     @PostMapping("/punch")
     public TimeClockService.PunchResult punch(@RequestBody PunchRequest req) {
-        return service.punch(req.employeeId(), req.eventType(), req.customerId(), req.origin());
+        return service.punch(req.employeeId(), req.eventType(), req.customerId(),
+                req.origin(), req.lat(), req.lng());
     }
 
     /**
@@ -113,7 +114,11 @@ public class TimeClockController {
             @NotBlank String employeeId,
             @NotBlank String eventType,
             String customerId,
-            String origin
+            String origin,
+            /** GEO-FICHAR — opcional. Si viene + el empleado tiene
+             *  work_center configurado, se aplica geo_policy. */
+            java.math.BigDecimal lat,
+            java.math.BigDecimal lng
     ) {}
 
     public record CorrectionRequest(
