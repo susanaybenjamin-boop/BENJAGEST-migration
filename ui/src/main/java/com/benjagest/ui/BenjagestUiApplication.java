@@ -24667,11 +24667,61 @@ public class BenjagestUiApplication extends Application {
         // TPB-1 — Acuerdo previo de facturación por tercero (RD 1619/2012
         // art. 5). Siempre visible: es prerrequisito legal antes de
         // emitir facturas en nombre del cliente.
+        //
+        // El callback onTpbActivated se invoca cuando el polling del tab
+        // acuerdo detecta que el cliente acaba de firmar via magic link.
+        // Aprovechamos para anadir el tab "Facturacion" al cliente no
+        // vinculado en caliente (sin tener que cerrar y reabrir).
+        final TabPane finalTabs = tabs;
+        final boolean finalIsLinked = isLinked;
+        final java.util.function.Predicate<String> finalCanSee = canSee;
+        Runnable onTpbActivated = () -> {
+            if (finalIsLinked) return;
+            if (!finalCanSee.test("billing")) return;
+            // Idempotente: si ya hay tab "Facturacion" no anadimos otro.
+            for (Tab existing : finalTabs.getTabs()) {
+                if (existing.getText() != null
+                        && existing.getText().equals(t("advisory.client.tab.billing"))) {
+                    return;
+                }
+            }
+            Tab newBillingTab = new Tab(t("advisory.client.tab.billing"),
+                    wrapWithRecurringSubTab(
+                            buildClientBillingTab(),
+                            "SALES_INVOICE",
+                            t("advisory.client.tab.billing")));
+            newBillingTab.setGraphic(icon("fas-file-invoice-dollar"));
+            // Insertar tras Resumen (indice 1).
+            int insertAt = Math.min(1, finalTabs.getTabs().size());
+            finalTabs.getTabs().add(insertAt, newBillingTab);
+        };
+
         Tab tpbTab = new Tab(t("advisory.client.tab.tpb_agreement"),
-                buildClientTpbAgreementTab(client, isLinked));
+                buildClientTpbAgreementTab(client, isLinked, onTpbActivated));
         tpbTab.setGraphic(icon("fas-file-signature"));
         tabs.getTabs().add(tpbTab);
         VBox.setVgrow(tabs, Priority.ALWAYS);
+
+        // Cliente NO vinculado: comprobar al entrar si ya hay TPB activo
+        // (caso en que el asesor abre el cliente despues de que el
+        // empresario haya firmado por magic link en un evento anterior).
+        // Si lo hay, anadir el tab Facturacion inmediatamente.
+        if (!isLinked) {
+            Task<com.benjagest.ui.model.TpbAgreementEntry> initialCheck = new Task<>() {
+                @Override
+                protected com.benjagest.ui.model.TpbAgreementEntry call() throws Exception {
+                    return altaApiClient.tpbFindCurrent(client.id());
+                }
+            };
+            initialCheck.setOnSucceeded(ev -> {
+                var a = initialCheck.getValue();
+                if (a != null && a.isActive() && a.scopeSales()) {
+                    onTpbActivated.run();
+                }
+            });
+            initialCheck.setOnFailed(ev -> { /* silencio */ });
+            start(initialCheck, "tpb-initial-tab-check");
+        }
 
         VBox body = new VBox(12, header, hint, tabs);
         body.setPadding(new Insets(20));
@@ -24685,9 +24735,16 @@ public class BenjagestUiApplication extends Application {
     /**
      * TPB-1 — Pestaña "Acuerdo de facturación por tercero" en la pantalla
      * del cliente activo (modo asesoría).
+     *
+     * @param onActivated callback que se invoca cuando el polling detecta
+     *                    que el acuerdo acaba de pasar a ACTIVE (caso
+     *                    tipico: cliente sin vinculo firma via magic link
+     *                    desde su navegador). El parent lo usa para
+     *                    anadir el tab "Facturacion" en caliente.
      */
     private Node buildClientTpbAgreementTab(
-            com.benjagest.ui.model.ManagedClientEntry client, boolean isLinked) {
+            com.benjagest.ui.model.ManagedClientEntry client, boolean isLinked,
+            Runnable onActivated) {
         VBox root = new VBox(14);
         root.setPadding(new Insets(20));
 
@@ -24698,30 +24755,13 @@ public class BenjagestUiApplication extends Application {
 
         VBox stateSlot = new VBox(10);
 
-        Runnable reload = () -> {
-            stateSlot.getChildren().clear();
-            Task<com.benjagest.ui.model.TpbAgreementEntry> task = new Task<>() {
-                @Override
-                protected com.benjagest.ui.model.TpbAgreementEntry call() throws Exception {
-                    return altaApiClient.tpbFindCurrent(client.id());
-                }
-            };
-            task.setOnSucceeded(ev -> renderTpbState(stateSlot, task.getValue(),
-                    client, isLinked, () -> { /* reload via outer captured runnable */ }));
-            task.setOnFailed(ev -> {
-                Label err = new Label(t("tpb.fail.load") + " "
-                        + (task.getException() == null ? "" : task.getException().getMessage()));
-                err.setWrapText(true);
-                err.setStyle("-fx-text-fill: #b91c1c;");
-                stateSlot.getChildren().add(err);
-            });
-            start(task, "tpb-load");
-        };
-        // El renderer pide al "reload" del tab; lo enlazamos con un wrapper
-        // para que pueda invocarse desde dentro del setOnSucceeded sin
-        // capturarse antes de su inicialización.
-        Runnable[] reloadHolder = new Runnable[]{ reload };
-        // Sustituimos el placeholder por uno que llama a reloadHolder[0]
+        // Guardamos el ultimo estado conocido para detectar transiciones
+        // (p.ej. PROPOSED -> ACTIVE cuando el cliente firma via magic link).
+        // Sin esto el polling sobreescribiria el UI cada 5s aunque nada
+        // hubiera cambiado.
+        final String[] lastStatus = new String[]{ null };
+
+        Runnable[] reloadHolder = new Runnable[1];
         Runnable realReload = () -> {
             stateSlot.getChildren().clear();
             Task<com.benjagest.ui.model.TpbAgreementEntry> task = new Task<>() {
@@ -24730,8 +24770,19 @@ public class BenjagestUiApplication extends Application {
                     return altaApiClient.tpbFindCurrent(client.id());
                 }
             };
-            task.setOnSucceeded(ev -> renderTpbState(stateSlot, task.getValue(),
-                    client, isLinked, reloadHolder[0]));
+            task.setOnSucceeded(ev -> {
+                var a = task.getValue();
+                renderTpbState(stateSlot, a, client, isLinked, reloadHolder[0]);
+                String newStatus = a == null ? null : a.status();
+                String prev = lastStatus[0];
+                lastStatus[0] = newStatus;
+                // Transicion a ACTIVE: notificar al parent para que pueda
+                // anadir el tab Facturacion en caliente.
+                if ("ACTIVE".equals(newStatus) && !"ACTIVE".equals(prev)
+                        && onActivated != null) {
+                    onActivated.run();
+                }
+            });
             task.setOnFailed(ev -> {
                 Label err = new Label(t("tpb.fail.load") + " "
                         + (task.getException() == null ? "" : task.getException().getMessage()));
@@ -24744,9 +24795,38 @@ public class BenjagestUiApplication extends Application {
         reloadHolder[0] = realReload;
         realReload.run();
 
-        // Boton recargar para que el asesor vea el cambio cuando el
-        // empresario firma desde su lado sin tener que cerrar y volver
-        // a abrir el cliente activo.
+        // Polling cada 5 segundos para auto-detectar firma del cliente
+        // (magic link) sin necesidad de que el asesor pulse "Recargar".
+        // Se inicia siempre; el Timeline se detiene cuando el nodo se
+        // quita de la escena (parentProperty listener).
+        javafx.animation.Timeline poller = new javafx.animation.Timeline(
+                new javafx.animation.KeyFrame(
+                        javafx.util.Duration.seconds(5),
+                        ev -> {
+                            // Solo seguimos polleando mientras el acuerdo no
+                            // este en un estado terminal. Si es null tambien
+                            // seguimos por si el asesor lo crea desde otro
+                            // lado mientras tanto.
+                            String s = lastStatus[0];
+                            if (s == null || "PROPOSED".equals(s)) {
+                                realReload.run();
+                            }
+                        }));
+        poller.setCycleCount(javafx.animation.Animation.INDEFINITE);
+        // Lifecycle: cuando el tab se desvincule de la escena (asesor
+        // cierra el cliente, navega a otro lado), detenemos el polling
+        // para no hacer requests fantasma.
+        root.sceneProperty().addListener((obs, oldScene, newScene) -> {
+            if (newScene == null) {
+                poller.stop();
+            } else {
+                poller.play();
+            }
+        });
+        poller.play();
+
+        // Boton recargar manual (por si el asesor quiere forzar antes
+        // del proximo tick del Timeline).
         Button reloadBtn = new Button(t("tpb.action.reload"));
         reloadBtn.setGraphic(icon("fas-sync-alt"));
         reloadBtn.setOnAction(e -> realReload.run());
