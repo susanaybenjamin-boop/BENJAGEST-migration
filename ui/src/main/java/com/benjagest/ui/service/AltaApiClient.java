@@ -2086,6 +2086,21 @@ public class AltaApiClient {
     // ============================================================
 
     /**
+     * Reenvio del enlace de revocacion (V105): cliente perdio el email
+     * original; la asesoria solicita reenvio al mismo email del SIGN.
+     */
+    public String tpbResendRevokeLink(String agreementId)
+            throws IOException, InterruptedException {
+        HttpResponse<String> r = send(req(baseUrl
+                + "/billing/third-party-agreements/" + agreementId + "/revoke-link/resend")
+                .POST(java.net.http.HttpRequest.BodyPublishers.noBody()));
+        if (r.statusCode() < 200 || r.statusCode() >= 300) {
+            throw new IOException("HTTP " + r.statusCode() + ": " + r.body());
+        }
+        return r.body();
+    }
+
+    /**
      * Magic Link (V104): la asesoria pide al backend enviar al email
      * del cliente un enlace de firma electronica simple. Devuelve el
      * body raw con email y fecha de expiracion.
