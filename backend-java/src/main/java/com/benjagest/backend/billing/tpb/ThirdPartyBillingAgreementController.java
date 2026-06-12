@@ -87,6 +87,22 @@ public class ThirdPartyBillingAgreementController {
                 .body(pdf);
     }
 
+    /**
+     * Diagnostico / reparacion manual: fuerza la creacion de la serie
+     * TPB del acuerdo. Idempotente: si ya existe la devuelve. Si falla,
+     * propaga el error (a diferencia del catch silencioso de signWithPin).
+     * Sirve para reparar acuerdos firmados antes del fix de auto-repair.
+     */
+    @PostMapping("/{id}/ensure-series")
+    public Map<String, Object> ensureSeries(@PathVariable("id") String id) {
+        var result = service.ensureSeriesForAgreement(id);
+        return Map.of(
+                "seriesId", result.seriesId(),
+                "code", result.code(),
+                "nextNumber", result.nextNumber(),
+                "created", result.created());
+    }
+
     @DeleteMapping("/{id}")
     public Map<String, Object> revoke(
             @PathVariable("id") String id,

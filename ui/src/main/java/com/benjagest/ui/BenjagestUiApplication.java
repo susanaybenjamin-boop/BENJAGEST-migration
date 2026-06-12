@@ -16781,6 +16781,11 @@ public class BenjagestUiApplication extends Application {
             case "tpb.pin.setup.ok.title" -> "PIN saved";
             case "tpb.pin.setup.ok.body" -> "Now you can sign the agreement with that PIN.";
             case "tpb.pin.setup.fail.title" -> "Could not save the PIN";
+            case "tpb.action.repair_series" -> "Check TPB series";
+            case "tpb.repair.ok.title" -> "TPB series OK";
+            case "tpb.repair.ok.created" -> "Series created:";
+            case "tpb.repair.ok.existed" -> "Series already existed:";
+            case "tpb.repair.fail.title" -> "Could not create TPB series";
             case "tpb.banner.body" -> "They want to issue invoices on your behalf for the operations marked in the agreement. Read and sign with your session PIN.";
             case "tpb.banner.sign" -> "Read and sign";
             case "tpb.sign.dialog.title" -> "Sign third-party billing agreement";
@@ -17516,6 +17521,11 @@ public class BenjagestUiApplication extends Application {
             case "tpb.pin.setup.ok.title" -> "PIN guardado";
             case "tpb.pin.setup.ok.body" -> "Ya puedes firmar el acuerdo con ese PIN.";
             case "tpb.pin.setup.fail.title" -> "No se pudo guardar el PIN";
+            case "tpb.action.repair_series" -> "Verificar serie TPB";
+            case "tpb.repair.ok.title" -> "Serie TPB OK";
+            case "tpb.repair.ok.created" -> "Serie creada:";
+            case "tpb.repair.ok.existed" -> "La serie ya existía:";
+            case "tpb.repair.fail.title" -> "No se pudo crear la serie TPB";
             case "tpb.banner.body" -> "Quiere emitir facturas en tu nombre para las operaciones marcadas en el acuerdo. Léelo y fírmalo con tu PIN de sesión.";
             case "tpb.banner.sign" -> "Leer y firmar";
             case "tpb.sign.dialog.title" -> "Firmar acuerdo de facturación por tercero";
@@ -24756,6 +24766,16 @@ public class BenjagestUiApplication extends Application {
             dl.setGraphic(icon("fas-file-pdf"));
             dl.setOnAction(e -> tpbDownloadSignedPdfAction(a.id()));
             actions.getChildren().add(dl);
+            // Boton de diagnostico: si el acuerdo esta ACTIVE y cubre
+            // ventas, fuerza la creacion de la serie TPB. Util para
+            // reparar acuerdos firmados antes del fix de auto-repair
+            // (caso Benjamin 2026-06-12).
+            if (a.scopeSales()) {
+                Button repair = new Button(t("tpb.action.repair_series"));
+                repair.setGraphic(icon("fas-wrench"));
+                repair.setOnAction(e -> tpbRepairSeriesAction(a.id(), reload));
+                actions.getChildren().add(repair);
+            }
         }
 
         Button revoke = new Button(t("tpb.revoke"));
@@ -24763,6 +24783,31 @@ public class BenjagestUiApplication extends Application {
         revoke.setOnAction(e -> tpbRevokeAction(a.id(), reload));
         actions.getChildren().add(revoke);
         slot.getChildren().add(actions);
+    }
+
+    private void tpbRepairSeriesAction(String agreementId, Runnable reload) {
+        Task<String> task = new Task<>() {
+            @Override
+            protected String call() throws Exception {
+                return altaApiClient.tpbEnsureSeries(agreementId);
+            }
+        };
+        task.setOnSucceeded(e -> {
+            String json = task.getValue();
+            java.util.regex.Matcher mCode = java.util.regex.Pattern
+                    .compile("\"code\"\\s*:\\s*\"([^\"]+)\"").matcher(json);
+            java.util.regex.Matcher mCreated = java.util.regex.Pattern
+                    .compile("\"created\"\\s*:\\s*(true|false)").matcher(json);
+            String code = mCode.find() ? mCode.group(1) : "?";
+            boolean created = mCreated.find() && "true".equals(mCreated.group(1));
+            showInfo(t("tpb.repair.ok.title"),
+                    (created ? t("tpb.repair.ok.created") : t("tpb.repair.ok.existed"))
+                    + " " + code);
+            if (reload != null) reload.run();
+        });
+        task.setOnFailed(e -> showError(t("tpb.repair.fail.title"),
+                task.getException() == null ? "" : task.getException().getMessage()));
+        start(task, "tpb-repair-series");
     }
 
     private void showTpbProposeDialog(com.benjagest.ui.model.ManagedClientEntry client,
