@@ -16794,6 +16794,8 @@ public class BenjagestUiApplication extends Application {
             case "tpb.method.pin_session" -> "Client session PIN (eIDAS simple e-signature)";
             case "tpb.method.offline_pdf" -> "Handwritten signature on PDF (offline)";
             case "tpb.pending.waiting_client" -> "Waiting for the client to sign from their session.";
+            case "tpb.pending.offline_blocked" -> "This client is NOT linked to BENJAGEST. The offline-PDF signature flow has been disabled for legal safety (RD 1619/2012 art. 5: the holder must expressly consent, and an unverified signature was activating agreements without their knowledge). The client must register in BENJAGEST and sign with their session PIN. Invite them from Communication → Messages.";
+            case "tpb.propose.needs_link" -> "Warning: this client is NOT linked to BENJAGEST. The agreement can be created but cannot be signed legally until the client registers and signs with their PIN (offline-PDF flow is disabled for legal safety).";
             case "tpb.proposal.download" -> "Download PDF for signature";
             case "tpb.proposal.upload_signed" -> "Upload signed PDF";
             case "tpb.proposal.download.ok" -> "PDF saved at:";
@@ -17534,6 +17536,8 @@ public class BenjagestUiApplication extends Application {
             case "tpb.method.pin_session" -> "PIN de sesión del cliente (firma electrónica simple eIDAS)";
             case "tpb.method.offline_pdf" -> "Firma manuscrita en PDF (offline)";
             case "tpb.pending.waiting_client" -> "Esperando que el cliente firme desde su sesión.";
+            case "tpb.pending.offline_blocked" -> "Este cliente NO está vinculado a BENJAGEST. El flujo de firma offline-PDF está deshabilitado por seguridad jurídica (RD 1619/2012 art. 5: el titular debe consentir expresamente, y una firma sin verificar activaba acuerdos sin que el cliente se enterara). El cliente debe registrarse en BENJAGEST y firmar con su PIN de sesión. Invítale desde Comunicación → Mensajes.";
+            case "tpb.propose.needs_link" -> "Aviso: este cliente NO está vinculado a BENJAGEST. El acuerdo se puede crear pero no se podrá firmar legalmente hasta que el cliente se registre y firme con su PIN (el flujo offline-PDF está deshabilitado por seguridad jurídica).";
             case "tpb.proposal.download" -> "Descargar PDF para firma";
             case "tpb.proposal.upload_signed" -> "Subir PDF firmado";
             case "tpb.proposal.download.ok" -> "PDF guardado en:";
@@ -24750,11 +24754,22 @@ public class BenjagestUiApplication extends Application {
             // Sin acuerdo — botón proponer
             Label empty = new Label(t("tpb.empty"));
             empty.setWrapText(true);
+            slot.getChildren().add(empty);
+            if (!isLinked) {
+                // Aviso temprano: sin vinculo no hay forma legal de
+                // firmar el acuerdo. No bloqueamos proponerlo (el
+                // backend lo permite), pero advertimos que el cliente
+                // tendra que vincularse para firmar.
+                Label warn = new Label(t("tpb.propose.needs_link"));
+                warn.setWrapText(true);
+                warn.setStyle("-fx-text-fill: #b91c1c; -fx-font-weight: bold;");
+                slot.getChildren().add(warn);
+            }
             Button propose = new Button(t("tpb.propose.button"));
             propose.setGraphic(icon("fas-plus"));
             propose.getStyleClass().add("button-primary");
             propose.setOnAction(e -> showTpbProposeDialog(client, reload));
-            slot.getChildren().addAll(empty, propose);
+            slot.getChildren().add(propose);
             return;
         }
         // Estado del acuerdo
@@ -24781,15 +24796,17 @@ public class BenjagestUiApplication extends Application {
 
         if (a.isPending()) {
             if (!isLinked) {
-                // Cliente NO vinculado — flujo OFFLINE_PDF
-                Button dlPdf = new Button(t("tpb.proposal.download"));
-                dlPdf.setGraphic(icon("fas-download"));
-                dlPdf.setOnAction(e -> tpbDownloadProposalPdfAction(a.id()));
-                Button uploadSigned = new Button(t("tpb.proposal.upload_signed"));
-                uploadSigned.setGraphic(icon("fas-upload"));
-                uploadSigned.getStyleClass().add("button-primary");
-                uploadSigned.setOnAction(e -> tpbUploadSignedAction(a.id(), reload));
-                actions.getChildren().addAll(dlPdf, uploadSigned);
+                // Cliente NO vinculado — flujo OFFLINE_PDF BLOQUEADO
+                // (decision Benjamin 2026-06-12 por seguridad juridica).
+                // Hasta que se reintroduzca con verificacion criptografica
+                // PKCS7 + comprobacion del NIF firmante, la unica firma
+                // valida es PIN_SESSION (cliente vinculado). Mostramos
+                // mensaje claro y bloqueamos los botones de PDF offline.
+                Label blocked = new Label(t("tpb.pending.offline_blocked"));
+                blocked.setWrapText(true);
+                blocked.getStyleClass().add("settings-hint");
+                blocked.setStyle("-fx-text-fill: #b91c1c; -fx-font-weight: bold;");
+                slot.getChildren().add(blocked);
             } else {
                 // Cliente vinculado — esperando firma con PIN desde su lado
                 Label wait = new Label(t("tpb.pending.waiting_client"));
