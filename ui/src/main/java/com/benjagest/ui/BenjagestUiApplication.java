@@ -8160,7 +8160,7 @@ public class BenjagestUiApplication extends Application {
         // visualización pasa por localizedInvoiceStatus en cellFactory+
         // buttonCell, así el filtro se ve traducido pero internamente
         // sigue hablando el idioma del API.
-        billingStatusFilter.getItems().addAll(t("list.filter.all"), "DRAFT", "VALIDATED", "CANCELLED", "VOIDED");
+        billingStatusFilter.getItems().addAll(t("list.filter.all"), "DRAFT", "PENDING_CLIENT_APPROVAL", "VALIDATED", "CANCELLED", "VOIDED");
         billingStatusFilter.getSelectionModel().selectFirst();
         billingStatusFilter.getStyleClass().add("form-input");
         billingStatusFilter.setCellFactory(lv -> new javafx.scene.control.ListCell<>() {
@@ -8308,7 +8308,13 @@ public class BenjagestUiApplication extends Application {
             row.setOnMouseClicked(ev -> {
                 if (ev.getClickCount() == 2 && !row.isEmpty()) {
                     SalesInvoiceSummary inv = row.getItem();
+                    // TPB-3: PENDING_CLIENT_APPROVAL tambien abre el editor
+                    // — del lado de la asesoria para corregir si el cliente
+                    // la ha rechazado, del lado del cliente para revisarla
+                    // antes de aprobar. El backend ya impide cambios
+                    // ilegales (numeracion ya consumida, status check).
                     boolean editable = "DRAFT".equals(inv.status())
+                            || "PENDING_CLIENT_APPROVAL".equals(inv.status())
                             || "PROFORMA".equals(inv.invoiceType());
                     if (editable) {
                         showInvoiceEditor(inv.id());
@@ -10057,8 +10063,13 @@ public class BenjagestUiApplication extends Application {
         String invoiceId, invoiceNumber, invoiceDate;
         BigDecimal total = BigDecimal.ZERO;
         BigDecimal pending = BigDecimal.ZERO;
+        // Las facturas arrancan DESMARCADAS — el asesor elige cuales
+        // entran en el pago. Si fuera por defecto true, el usuario
+        // tendria que desmarcar las que no quiere y se llevaria la
+        // sensacion de "no me deja marcar varias" al pulsar la 1ª
+        // (que en realidad se estaria desmarcando).
         final javafx.beans.property.SimpleBooleanProperty selectedProperty =
-                new javafx.beans.property.SimpleBooleanProperty(true);
+                new javafx.beans.property.SimpleBooleanProperty(false);
         final javafx.beans.property.SimpleStringProperty amountTextProperty =
                 new javafx.beans.property.SimpleStringProperty("0");
     }
@@ -17060,6 +17071,7 @@ public class BenjagestUiApplication extends Application {
             case "accounting.status.PARTIAL" -> "Partial";
             case "accounting.status.OVERDUE" -> "Overdue";
             case "accounting.status.PENDING" -> "Pending";
+            case "accounting.status.PENDING_CLIENT_APPROVAL" -> "Pending client approval";
             case "accounting.status.CANCELLED" -> "Cancelled";
             case "accounting.status.PROFORMA" -> "Proforma";
             case "accounting.source_type.SALES_INVOICE" -> "Sale";
@@ -17790,6 +17802,7 @@ public class BenjagestUiApplication extends Application {
             case "accounting.status.PARTIAL" -> "Parcial";
             case "accounting.status.OVERDUE" -> "Vencido";
             case "accounting.status.PENDING" -> "Pendiente";
+            case "accounting.status.PENDING_CLIENT_APPROVAL" -> "Pdte. aprobar cliente";
             case "accounting.status.CANCELLED" -> "Cancelado";
             case "accounting.status.PROFORMA" -> "Proforma";
             case "accounting.source_type.SALES_INVOICE" -> "Venta";
@@ -28224,7 +28237,7 @@ public class BenjagestUiApplication extends Application {
         // dejaba la tabla vacía porque las facturas validadas tienen
         // estado VALIDATED.
         ComboBox<String> statusFilter = new ComboBox<>(javafx.collections.FXCollections.observableArrayList(
-                "", "DRAFT", "VALIDATED", "CANCELLED", "VOIDED"));
+                "", "DRAFT", "PENDING_CLIENT_APPROVAL", "VALIDATED", "CANCELLED", "VOIDED"));
         statusFilter.setValue("");
         statusFilter.setConverter(new javafx.util.StringConverter<>() {
             @Override public String toString(String s) {

@@ -91,9 +91,23 @@ public class ThirdPartyBillingAgreementPdfGenerator {
         scopeTitle.setSpacingAfter(4);
         doc.add(scopeTitle);
 
-        doc.add(scopeLine("Facturas emitidas (ventas)", a.scopeSales(), body));
-        doc.add(scopeLine("Facturas recibidas (compras)", a.scopePurchases(), body));
-        doc.add(scopeLine("Modelos AEAT (declaraciones tributarias)", a.scopeTaxModels(), body));
+        // Solo enumerar las operaciones REALMENTE incluidas en el
+        // acuerdo. Listar las no marcadas con ✗ generaba confusion al
+        // cliente — el PDF jurídico debe reflejar el alcance real, no
+        // un checklist de posibilidades.
+        boolean anyScope = a.scopeSales() || a.scopePurchases() || a.scopeTaxModels();
+        if (a.scopeSales()) {
+            doc.add(scopeLine("Facturas emitidas (ventas)", true, body));
+        }
+        if (a.scopePurchases()) {
+            doc.add(scopeLine("Facturas recibidas (compras)", true, body));
+        }
+        if (a.scopeTaxModels()) {
+            doc.add(scopeLine("Modelos AEAT (declaraciones tributarias)", true, body));
+        }
+        if (!anyScope) {
+            doc.add(new Paragraph("(sin operaciones marcadas)", muted));
+        }
 
         // Firma
         Paragraph signTitle = new Paragraph("Firma", h2);
