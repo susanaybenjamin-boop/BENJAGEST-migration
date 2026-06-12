@@ -57,12 +57,32 @@ public class EmailSenderService {
      */
     public void send(String to, String subject, String body,
                      byte[] attachmentBytes, String attachmentName) {
-        if (!StringUtils.hasText(to)) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Destinatario requerido");
-        }
         EmailConfigRow row = repository.findCurrent().orElseThrow(() ->
                 new ResponseStatusException(HttpStatus.BAD_REQUEST,
                         "La empresa no tiene configurado el SMTP. Configuralo en Configuracion -> Email."));
+        sendWith(row, to, subject, body, attachmentBytes, attachmentName);
+    }
+
+    /**
+     * Variante para enviar con la config SMTP de una empresa concreta
+     * (ignorando el tenant del header). Usado en flujos donde una
+     * asesoria opera "como" cliente: ej. TPB Magic Link, el email del
+     * enlace debe salir del SMTP configurado por la asesoria, no del
+     * cliente actual (que normalmente no tiene SMTP).
+     */
+    public void sendAs(String companyId, String to, String subject, String body,
+                         byte[] attachmentBytes, String attachmentName) {
+        EmailConfigRow row = repository.findForCompany(companyId).orElseThrow(() ->
+                new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "La asesoria no tiene SMTP configurado. Configuralo en Configuracion -> Email."));
+        sendWith(row, to, subject, body, attachmentBytes, attachmentName);
+    }
+
+    private void sendWith(EmailConfigRow row, String to, String subject, String body,
+                            byte[] attachmentBytes, String attachmentName) {
+        if (!StringUtils.hasText(to)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Destinatario requerido");
+        }
         if (!StringUtils.hasText(row.smtpHost()) || row.smtpPort() == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "Falta servidor SMTP o puerto en la configuracion");

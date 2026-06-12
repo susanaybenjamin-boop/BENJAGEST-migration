@@ -123,7 +123,11 @@ public class TpbMagicLinkService {
                 "click y del codigo introducido, para respaldar la firma frente a la AEAT.%n",
                 advisoryName, link, otp);
         try {
-            emailSender.send(email, subject, body, null, null);
+            // Envio con el SMTP de la ASESORIA, no del tenant del header.
+            // Cuando la asesoria esta actuando-como cliente, el tenant es
+            // el cliente — que normalmente no tiene SMTP. La asesoria si
+            // lo tiene configurado en Configuracion -> Email.
+            emailSender.sendAs(a.advisoryCompanyId(), email, subject, body, null, null);
         } catch (RuntimeException ex) {
             log.warn("TPB Magic Link: fallo el envio de email (agreement={}, to={})",
                     agreementId, email, ex);
