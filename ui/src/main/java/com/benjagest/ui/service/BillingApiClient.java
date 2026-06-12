@@ -902,7 +902,8 @@ public class BillingApiClient {
                     intFieldOrZero(obj, "nextNumber"),
                     intField(obj, "currentYear"),
                     boolField(obj, "locked"),
-                    boolField(obj, "active")
+                    boolField(obj, "active"),
+                    textField(obj, "expeditedByCompanyId")
             ));
         }
         return list;

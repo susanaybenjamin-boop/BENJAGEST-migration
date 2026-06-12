@@ -8511,10 +8511,17 @@ public class BenjagestUiApplication extends Application {
 
         Region rowActionsSpacer = new Region();
         HBox.setHgrow(rowActionsSpacer, Priority.ALWAYS);
-        HBox rowActions = new HBox(10, validateRowBtn, deleteDraftBtn, voidBtn,
+        HBox rowActions = new HBox(6, validateRowBtn, deleteDraftBtn, voidBtn,
                 toValidatedBtn, makeRecurringBtn, multiAllocBtn, bankReconcileBtn,
                 rowActionsSpacer, emailBtn, pdfBtn);
         rowActions.getStyleClass().add("settings-actions");
+        // Forzar a que los botones se vean enteros: si la barra no cabe
+        // hace overflow horizontal (preferible a truncar con "...").
+        for (Button b : new Button[]{ validateRowBtn, deleteDraftBtn, voidBtn,
+                toValidatedBtn, makeRecurringBtn, multiAllocBtn, bankReconcileBtn,
+                emailBtn, pdfBtn }) {
+            b.setMinWidth(Region.USE_PREF_SIZE);
+        }
 
         // Slice 3V — Acciones SOBRE la tabla, no debajo. Antes vivían
         // bajo el listado y el asesor tenía que hacer scroll para
@@ -8851,6 +8858,7 @@ public class BenjagestUiApplication extends Application {
         if (code == null) return "";
         return switch (code) {
             case "DRAFT" -> t("status.invoice.draft");
+            case "PENDING_CLIENT_APPROVAL" -> t("status.invoice.pending_client_approval");
             case "VALIDATED" -> t("status.invoice.validated");
             case "CANCELLED" -> t("status.invoice.cancelled");
             case "VOIDED" -> t("status.invoice.voided");
@@ -10315,10 +10323,29 @@ public class BenjagestUiApplication extends Application {
         // tienen flujo aparte (proximamente). De este modo cumplimos
         // RD 1619/2012 Art.13 por construccion: el usuario no puede
         // mezclar series por error.
-        SeriesEntry standardSeries = bundle.series().stream()
-                .filter(s -> "STANDARD".equals(s.invoiceKind()))
-                .findFirst()
-                .orElse(null);
+        //
+        // TPB-2: si la sesion esta actuando-como cliente y existe una
+        // serie con expedited_by_company_id = asesoria real, esa es la
+        // serie que el backend usara al validar. La mostramos en el
+        // badge "PROXIMO Nº AL VALIDAR" para que el numero del banner
+        // coincida con el que se asignara.
+        String myRealAdvisoryId = com.benjagest.ui.service.AuthSession.get().activeCompanyId();
+        boolean actingAsClient = com.benjagest.ui.service.AuthSession.get().isActingForClient();
+        SeriesEntry tpbSeries = actingAsClient && myRealAdvisoryId != null
+                ? bundle.series().stream()
+                        .filter(s -> "STANDARD".equals(s.invoiceKind()))
+                        .filter(s -> myRealAdvisoryId.equals(s.expeditedByCompanyId()))
+                        .findFirst()
+                        .orElse(null)
+                : null;
+        SeriesEntry standardSeries = tpbSeries != null
+                ? tpbSeries
+                : bundle.series().stream()
+                        .filter(s -> "STANDARD".equals(s.invoiceKind()))
+                        .filter(s -> s.expeditedByCompanyId() == null
+                                || s.expeditedByCompanyId().isBlank())
+                        .findFirst()
+                        .orElse(null);
 
         editorInvoiceDate = new javafx.scene.control.DatePicker(
                 bundle.existing() == null || bundle.existing().invoiceDate() == null || bundle.existing().invoiceDate().isBlank()
@@ -11907,7 +11934,7 @@ public class BenjagestUiApplication extends Application {
                 case "editor.action.cancel" -> "Cancel";
                 case "editor.action.save_draft" -> "Save draft";
                 case "editor.action.save_changes" -> "Save changes";
-                case "editor.action.validate" -> "Validate and issue";
+                case "editor.action.validate" -> "Validate";
                 case "editor.error.no_customer.title" -> "Missing customer";
                 case "editor.error.no_customer.body" -> "Select a customer.";
                 case "editor.error.no_lines.title" -> "No lines";
@@ -11932,7 +11959,7 @@ public class BenjagestUiApplication extends Application {
                 case "list.filter.label.collection" -> "Collection:";
                 case "list.filter.label.type" -> "Type:";
                 case "list.action.proforma_to_draft" -> "To draft";
-                case "list.action.proforma_to_validated" -> "Convert and validate";
+                case "list.action.proforma_to_validated" -> "Convert";
                 case "list.dialog.proforma.convert_draft.title" -> "Convert proforma to draft invoice";
                 case "list.dialog.proforma.convert_draft.body" -> "The proforma will become a NORMAL draft (without VeriFactu number yet). You can review it and validate later. Continue?";
                 case "list.dialog.proforma.convert_validate.title" -> "Convert and validate";
@@ -11953,7 +11980,7 @@ public class BenjagestUiApplication extends Application {
                 case "list.column.total" -> "Total";
                 case "list.placeholder.empty" -> "No invoices match the current filters.";
                 case "list.draft_label" -> "(draft)";
-                case "list.action.delete_draft" -> "Delete draft";
+                case "list.action.delete_draft" -> "Delete";
                 case "list.action.generate_pdf" -> "PDF";
                 case "list.action.open_pdf" -> "Open PDF";
                 case "list.action.save_pdf" -> "Save PDF";
@@ -11961,7 +11988,7 @@ public class BenjagestUiApplication extends Application {
                 case "list.dialog.pdf.stored_suffix" -> ".";
                 case "list.dialog.pdf.store_failed.title" -> "Could not save PDF";
                 case "list.dialog.pdf.store_failed.body" -> "Check storage path in Settings → Billing and disk permissions.";
-                case "list.action.send_email" -> "Send by email";
+                case "list.action.send_email" -> "Send";
                 case "list.dialog.email.window_title" -> "Send invoice by email";
                 case "list.dialog.email.title" -> "Send invoice by email:";
                 case "list.dialog.email.recipient_label" -> "Recipient (empty = use customer's registered email):";
@@ -12656,6 +12683,7 @@ public class BenjagestUiApplication extends Application {
                 case "list.dialog.pdf.download_failed.body" -> "Check that the backend is running and the invoice exists.";
                 // ---- Invoice statuses ----
                 case "status.invoice.draft" -> "Draft";
+                case "status.invoice.pending_client_approval" -> "Pending client approval";
                 case "status.invoice.validated" -> "Validated";
                 case "status.invoice.cancelled" -> "Cancelled";
                 case "status.invoice.voided" -> "Voided";
@@ -12811,7 +12839,7 @@ public class BenjagestUiApplication extends Application {
             case "editor.action.cancel" -> "Cancelar";
             case "editor.action.save_draft" -> "Guardar borrador";
             case "editor.action.save_changes" -> "Guardar cambios";
-            case "editor.action.validate" -> "Validar y emitir";
+            case "editor.action.validate" -> "Validar";
             case "editor.error.no_customer.title" -> "Falta cliente";
             case "editor.error.no_customer.body" -> "Selecciona un cliente.";
             case "editor.error.no_lines.title" -> "Sin lineas";
@@ -12836,7 +12864,7 @@ public class BenjagestUiApplication extends Application {
             case "list.filter.label.collection" -> "Cobro:";
             case "list.filter.label.type" -> "Tipo:";
             case "list.action.proforma_to_draft" -> "A borrador";
-            case "list.action.proforma_to_validated" -> "Convertir y validar";
+            case "list.action.proforma_to_validated" -> "Convertir";
             case "list.dialog.proforma.convert_draft.title" -> "Convertir proforma en borrador";
             case "list.dialog.proforma.convert_draft.body" -> "La proforma se convertira en un borrador NORMAL (sin numero VeriFactu todavia). Podras revisarla y validarla despues. Continuar?";
             case "list.dialog.proforma.convert_validate.title" -> "Convertir y validar";
@@ -12857,7 +12885,7 @@ public class BenjagestUiApplication extends Application {
             case "list.column.total" -> "Total";
             case "list.placeholder.empty" -> "Sin facturas para los filtros actuales.";
             case "list.draft_label" -> "(borrador)";
-            case "list.action.delete_draft" -> "Eliminar borrador";
+            case "list.action.delete_draft" -> "Eliminar";
             case "list.action.generate_pdf" -> "PDF";
             case "list.action.open_pdf" -> "Abrir PDF";
             case "list.action.save_pdf" -> "Guardar PDF";
@@ -12865,7 +12893,7 @@ public class BenjagestUiApplication extends Application {
             case "list.dialog.pdf.stored_suffix" -> ".";
             case "list.dialog.pdf.store_failed.title" -> "No se pudo guardar el PDF";
             case "list.dialog.pdf.store_failed.body" -> "Comprueba la ruta de almacenamiento en Configuracion -> Facturacion y los permisos de disco.";
-            case "list.action.send_email" -> "Enviar por email";
+            case "list.action.send_email" -> "Enviar";
             case "list.dialog.email.window_title" -> "Enviar factura por email";
             case "list.dialog.email.title" -> "Enviar factura por email:";
             case "list.dialog.email.recipient_label" -> "Destinatario (vacio = email del cliente registrado):";
@@ -13560,6 +13588,7 @@ public class BenjagestUiApplication extends Application {
             case "list.dialog.pdf.download_failed.body" -> "Comprueba que el backend este corriendo y que la factura exista.";
             // ---- Invoice statuses ----
             case "status.invoice.draft" -> "Borrador";
+            case "status.invoice.pending_client_approval" -> "Pendiente aprobación cliente";
             case "status.invoice.validated" -> "Validada";
             case "status.invoice.cancelled" -> "Cancelada";
             case "status.invoice.voided" -> "Anulada";
@@ -16763,7 +16792,7 @@ public class BenjagestUiApplication extends Application {
             case "multi_alloc.ok.body" -> "Allocations:";
             case "dialog.cancel" -> "Cancel";
             case "dialog.close" -> "Close";
-            case "list.action.bank_reconcile" -> "Bank match";
+            case "list.action.bank_reconcile" -> "Reconcile";
             case "bank_rec.title" -> "Bank reconciliation suggestions";
             case "bank_rec.hint" -> "Bank movements (income) not yet linked to any invoice, matched against pending invoices by amount (±1€), date (±7 days) and customer name (Levenshtein <3). Select a row and accept or ignore.";
             case "bank_rec.empty" -> "No suggestions — all movements are linked or no candidates within tolerance.";
@@ -16985,7 +17014,7 @@ public class BenjagestUiApplication extends Application {
             case "recurring.candidates.default_name_expense" -> "Recurring expense from";
             case "recurring.post_validate.title" -> "Make it recurring?";
             case "recurring.post_validate.body" -> "This invoice was just validated. Do you want to turn it into a recurring template so you don't have to enter it manually every month? The editor will open with the fields prefilled.";
-            case "list.action.make_recurring" -> "Make recurring";
+            case "list.action.make_recurring" -> "Recurring";
             case "recurring.new.journal_entry" -> "New periodic payment without invoice";
             case "recurring.new.journal_entry.button" -> "Payment w/o invoice";
             case "recurring.section.payment_data" -> "Payment data";
@@ -17488,7 +17517,7 @@ public class BenjagestUiApplication extends Application {
             case "multi_alloc.ok.body" -> "Repartos:";
             case "dialog.cancel" -> "Cancelar";
             case "dialog.close" -> "Cerrar";
-            case "list.action.bank_reconcile" -> "Conciliar banco";
+            case "list.action.bank_reconcile" -> "Conciliar";
             case "bank_rec.title" -> "Sugerencias de conciliación bancaria";
             case "bank_rec.hint" -> "Movimientos bancarios (ingresos) no vinculados a factura, cruzados con facturas pendientes por importe (±1€), fecha (±7 días) y nombre del cliente (Levenshtein <3). Selecciona una fila y aceptar o ignorar.";
             case "bank_rec.empty" -> "Sin sugerencias — todos los movimientos están enlazados o no hay candidatos dentro de tolerancia.";
@@ -17716,7 +17745,7 @@ public class BenjagestUiApplication extends Application {
             case "recurring.candidates.default_name_expense" -> "Gasto recurrente de";
             case "recurring.post_validate.title" -> "¿Hacer recurrente?";
             case "recurring.post_validate.body" -> "Esta factura se acaba de validar. ¿Quieres convertirla en una plantilla recurrente para no tener que volver a meterla manualmente cada mes? Se abrirá el editor con los datos prellenos.";
-            case "list.action.make_recurring" -> "Hacer recurrente";
+            case "list.action.make_recurring" -> "Recurrente";
             case "recurring.new.journal_entry" -> "Nuevo pago periódico sin factura";
             case "recurring.new.journal_entry.button" -> "Pago sin factura";
             case "recurring.section.payment_data" -> "Datos del pago";
