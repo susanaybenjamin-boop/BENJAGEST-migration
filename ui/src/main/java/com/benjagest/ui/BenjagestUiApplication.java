@@ -10564,6 +10564,20 @@ public class BenjagestUiApplication extends Application {
                 if (newV == null) return;
                 SeriesEntry seriesForType = pickSeriesForInvoiceType(newV, finalSeries, standardSeries);
                 nextNumberBadgeValue.setText(seriesForType == null ? "—" : previewNextNumber(seriesForType));
+                // Re-preguntar al backend la serie real para este kind
+                // (mantiene el badge sincronizado con la logica TPB del
+                // server cuando el usuario cambia NORMAL/PROFORMA).
+                Task<SeriesEntry> retask = new Task<>() {
+                    @Override
+                    protected SeriesEntry call() throws Exception {
+                        return billingApiClient.previewNextSeries(newV);
+                    }
+                };
+                retask.setOnSucceeded(e -> {
+                    SeriesEntry s2 = retask.getValue();
+                    if (s2 != null) nextNumberBadgeValue.setText(previewNextNumber(s2));
+                });
+                start(retask, "editor-preview-next-type");
             });
             kindControl = editorInvoiceTypeCombo;
         }
@@ -10584,6 +10598,28 @@ public class BenjagestUiApplication extends Application {
         } else {
             nextNumberBadgeValue.setText("—");
         }
+        // TPB-2: en lugar de adivinar la serie del bundle, preguntamos
+        // al backend la serie real que usaria al validar (aplica logica
+        // TPB cuando la asesoria actua-como cliente). Asi el badge no
+        // depende de filtros en el frontend que pueden no detectar la
+        // serie TPB. Asincrono — al volver, machaca el badge.
+        Task<SeriesEntry> previewTask = new Task<>() {
+            @Override
+            protected SeriesEntry call() throws Exception {
+                String kind = isRectifying ? "RECTIFYING"
+                        : (editorInvoiceTypeCombo == null
+                            ? "NORMAL" : editorInvoiceTypeCombo.getValue());
+                return billingApiClient.previewNextSeries(kind);
+            }
+        };
+        previewTask.setOnSucceeded(ev -> {
+            SeriesEntry s = previewTask.getValue();
+            if (s != null) {
+                nextNumberBadgeValue.setText(previewNextNumber(s));
+            }
+        });
+        previewTask.setOnFailed(ev -> { /* fallback al badge calculado arriba */ });
+        start(previewTask, "editor-preview-next");
 
         VBox colCliente = new VBox(8,
                 label(t("editor.field.customer"), "invoice-field-label"),
