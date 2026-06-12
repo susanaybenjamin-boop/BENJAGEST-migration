@@ -29,9 +29,18 @@ public class SeriesService {
     private static final Pattern PADDING_PATTERN = Pattern.compile("\\{(0+)\\}");
 
     private final SeriesRepository repository;
+    private final com.benjagest.backend.tenant.TenantContext tenant;
+    private final com.benjagest.backend.auth.CurrentUserService currentUser;
+    private final org.springframework.jdbc.core.JdbcTemplate jdbc;
 
-    public SeriesService(SeriesRepository repository) {
+    public SeriesService(SeriesRepository repository,
+                          com.benjagest.backend.tenant.TenantContext tenant,
+                          com.benjagest.backend.auth.CurrentUserService currentUser,
+                          org.springframework.jdbc.core.JdbcTemplate jdbc) {
         this.repository = repository;
+        this.tenant = tenant;
+        this.currentUser = currentUser;
+        this.jdbc = jdbc;
     }
 
     public List<Series> list() {
@@ -54,6 +63,29 @@ public class SeriesService {
      */
     public Series findActiveByKind(String invoiceKind) {
         String kind = mapInvoiceTypeToSeriesKind(invoiceKind);
+        // TPB-2 (RD 1619/2012 art. 6.1.b): si la asesoría está operando
+        // "como" el cliente y existe acuerdo activo de facturación por
+        // tercero que cubre ventas, usamos la serie TPB específica de
+        // ese par (asesoría, cliente). Solo aplica a STANDARD y
+        // RECTIFYING — proformas y test no son legales y no requieren
+        // serie distinta.
+        if ("STANDARD".equals(kind) || "RECTIFYING".equals(kind)) {
+            String clientId = tenant.getCurrentCompanyId();
+            String advisoryId;
+            try {
+                advisoryId = currentUser.require().activeCompanyId();
+            } catch (RuntimeException ex) {
+                advisoryId = null;
+            }
+            if (advisoryId != null && !advisoryId.equals(clientId)
+                    && hasActiveTpbCoveringSales(clientId, advisoryId)) {
+                java.util.Optional<Series> tpb = repository.findTpbSeries(clientId, advisoryId);
+                if (tpb.isPresent()) return tpb.get();
+                // Caso defensivo: acuerdo activo sin serie creada todavía.
+                // Lo creamos al vuelo y devolvemos.
+                return ensureTpbSeries(clientId, advisoryId);
+            }
+        }
         return repository.findActiveByKind(kind)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.PRECONDITION_REQUIRED,
                         "No hay serie activa de tipo " + kind + " para esta empresa. "
@@ -61,6 +93,53 @@ public class SeriesService {
                                         ? "Configura tu serie de facturacion en Facturacion > Configuracion."
                                         : "La migracion V16 deberia haberla creado automaticamente; "
                                                 + "revisa que se ejecuto.")));
+    }
+
+    /**
+     * TPB-2 — Crea (si no existe) la serie de facturación por tercero
+     * para el par (cliente, asesoría). Llamado desde
+     * ThirdPartyBillingAgreementService al activar el acuerdo y como
+     * fallback defensivo en findActiveByKind.
+     *
+     * <p>Code: {@code TPB-{NIF asesoría sanitizado}} para distinguir
+     * visualmente del prefijo del cliente. Format: {@code T-{YYYY}-{0000}}.
+     */
+    public Series ensureTpbSeries(String clientCompanyId, String advisoryCompanyId) {
+        java.util.Optional<Series> existing = repository.findTpbSeries(
+                clientCompanyId, advisoryCompanyId);
+        if (existing.isPresent()) return existing.get();
+        String advisoryNif = jdbc.query(
+                "SELECT tax_identifier FROM companies WHERE id = ?",
+                rs -> rs.next() ? rs.getString(1) : null,
+                advisoryCompanyId);
+        String code = "TPB-" + (advisoryNif == null ? "X" : advisoryNif.replaceAll("[^A-Za-z0-9]", ""));
+        // Si por alguna razón el code chocara con otra serie, añadimos sufijo.
+        for (int i = 0; ; i++) {
+            String candidate = i == 0 ? code : code + "-" + i;
+            Integer dup = jdbc.queryForObject(
+                    "SELECT COUNT(*) FROM invoice_series WHERE company_id = ? AND code = ?",
+                    Integer.class, clientCompanyId, candidate);
+            if (dup == null || dup == 0) { code = candidate; break; }
+        }
+        String id = java.util.UUID.randomUUID().toString();
+        int currentYear = java.time.LocalDate.now().getYear();
+        repository.insertForCompany(id, clientCompanyId, advisoryCompanyId,
+                code, "STANDARD", "BY_YEAR", "T-{YYYY}-{0000}", 1, currentYear);
+        // Releemos sin tenant filter — el caller puede no tener tenant
+        // alineado con el cliente al que pertenece la serie.
+        return repository.findTpbSeries(clientCompanyId, advisoryCompanyId)
+                .orElseThrow(() ->
+                new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
+                        "TPB series creation race"));
+    }
+
+    private boolean hasActiveTpbCoveringSales(String clientId, String advisoryId) {
+        Integer n = jdbc.queryForObject("""
+                SELECT COUNT(*) FROM third_party_billing_agreements
+                 WHERE advisory_company_id = ? AND client_company_id = ?
+                   AND status = 'ACTIVE' AND scope_sales = TRUE
+                """, Integer.class, advisoryId, clientId);
+        return n != null && n > 0;
     }
 
     /**
