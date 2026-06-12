@@ -564,6 +564,32 @@ public class BillingApiClient {
 
     // -------- series --------
 
+    /**
+     * Pide al backend la serie que usaria al validar (incluye logica
+     * TPB-2 sin que la UI tenga que adivinar). Devuelve la serie como
+     * SeriesEntry para reusar el formateador {@code previewNextNumber}.
+     */
+    public SeriesEntry previewNextSeries(String invoiceKind)
+            throws IOException, InterruptedException {
+        HttpResponse<String> r = sendAuthorized(HttpRequest.newBuilder(URI.create(
+                baseUrl + "/billing/series/preview-next?invoiceKind="
+                        + URLEncoder.encode(invoiceKind, StandardCharsets.UTF_8)))
+                .timeout(Duration.ofSeconds(8)).GET());
+        ensureOk(r);
+        String body = r.body();
+        return new SeriesEntry(
+                textField(body, "id"),
+                textField(body, "code"),
+                "STANDARD",
+                null,
+                textField(body, "formatTemplate"),
+                intFieldOrZero(body, "nextNumber"),
+                intField(body, "currentYear"),
+                false,
+                true,
+                textField(body, "expeditedByCompanyId"));
+    }
+
     public List<SeriesEntry> listSeries() throws IOException, InterruptedException {
         HttpResponse<String> response = sendAuthorized(HttpRequest.newBuilder(URI.create(baseUrl + "/billing/series"))
                 .timeout(Duration.ofSeconds(8))

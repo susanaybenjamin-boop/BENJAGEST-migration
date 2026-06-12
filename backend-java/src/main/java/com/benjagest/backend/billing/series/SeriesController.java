@@ -12,6 +12,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -73,6 +74,30 @@ public class SeriesController {
     public SeriesService.ClaimedNumber claim(@PathVariable("id") String id) {
         return service.claimNextNumber(id);
     }
+
+    /**
+     * Devuelve la serie que el server usaria al validar una factura
+     * del kind indicado, incluida la logica TPB-2: si la sesion esta
+     * actuando-como cliente con acuerdo activo, devuelve la serie TPB.
+     * Sirve al editor para que el banner "PROXIMO Nº AL VALIDAR" muestre
+     * el numero real, sin que la UI tenga que adivinar.
+     */
+    @GetMapping("/preview-next")
+    public PreviewResponse previewNext(
+            @RequestParam(value = "invoiceKind", defaultValue = "STANDARD")
+                    String invoiceKind) {
+        Series s = service.findActiveByKind(invoiceKind);
+        return new PreviewResponse(
+                s.id(), s.code(),
+                s.expeditedByCompanyId(),
+                s.formatTemplate(), s.nextNumber(),
+                s.currentYear() == null ? 0 : s.currentYear());
+    }
+
+    public record PreviewResponse(
+            String id, String code,
+            String expeditedByCompanyId,
+            String formatTemplate, int nextNumber, int currentYear) {}
 
     /**
      * Importacion del proximo correlativo desde otro programa.
