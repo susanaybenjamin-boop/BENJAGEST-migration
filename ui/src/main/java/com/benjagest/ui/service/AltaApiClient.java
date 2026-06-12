@@ -2240,6 +2240,56 @@ public class AltaApiClient {
     }
 
     // ============================================================
+    //  CAL-FISCAL — Calendario AEAT
+    // ============================================================
+
+    public List<com.benjagest.ui.model.TaxCalendarEventEntry> listUpcomingTaxCalendar(int days)
+            throws IOException, InterruptedException {
+        HttpResponse<String> r = send(req(
+                baseUrl + "/fiscal/tax-calendar/upcoming?days=" + days).GET());
+        if (r.statusCode() < 200 || r.statusCode() >= 300) {
+            throw new IOException("HTTP " + r.statusCode() + ": " + r.body());
+        }
+        List<com.benjagest.ui.model.TaxCalendarEventEntry> out = new ArrayList<>();
+        for (String obj : splitTopLevelObjects(r.body())) {
+            out.add(mapTaxCalendarEvent(obj));
+        }
+        return out;
+    }
+
+    public com.benjagest.ui.model.TaxCalendarEventEntry markTaxCalendarSubmitted(String id, String notes)
+            throws IOException, InterruptedException {
+        String url = baseUrl + "/fiscal/tax-calendar/" + id + "/mark-submitted";
+        if (notes != null && !notes.isBlank()) {
+            url += "?notes=" + java.net.URLEncoder.encode(notes,
+                    java.nio.charset.StandardCharsets.UTF_8);
+        }
+        HttpResponse<String> r = send(req(url)
+                .POST(java.net.http.HttpRequest.BodyPublishers.noBody()));
+        if (r.statusCode() < 200 || r.statusCode() >= 300) {
+            throw new IOException("HTTP " + r.statusCode() + ": " + r.body());
+        }
+        return mapTaxCalendarEvent(r.body());
+    }
+
+    private com.benjagest.ui.model.TaxCalendarEventEntry mapTaxCalendarEvent(String obj) {
+        java.util.regex.Matcher mY = java.util.regex.Pattern
+                .compile("\"fiscalYear\"\\s*:\\s*(\\d+)").matcher(obj);
+        int year = mY.find() ? Integer.parseInt(mY.group(1)) : 0;
+        return new com.benjagest.ui.model.TaxCalendarEventEntry(
+                textField(obj, "id"),
+                textField(obj, "companyId"),
+                textField(obj, "modelCode"),
+                textField(obj, "periodLabel"),
+                textField(obj, "dueDate"),
+                textField(obj, "description"),
+                year,
+                textField(obj, "status"),
+                textField(obj, "submittedAt"),
+                textField(obj, "notes"));
+    }
+
+    // ============================================================
     //  PORT-4 LOGO — Logo de empresa /api/settings/company/logo
     // ============================================================
 

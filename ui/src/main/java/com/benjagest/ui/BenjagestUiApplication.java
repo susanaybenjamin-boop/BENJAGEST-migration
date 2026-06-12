@@ -1981,6 +1981,131 @@ public class BenjagestUiApplication extends Application {
      * que el polling periódico ({@link #pollPendingInvitations()}) pueda
      * refrescarlo sin necesidad de reentrar al Home.
      */
+    /** CAL-FISCAL — Banner home con vencimientos AEAT próximos. */
+    private void loadTaxCalendarBanner(VBox slot) {
+        slot.getChildren().clear();
+        Task<java.util.List<com.benjagest.ui.model.TaxCalendarEventEntry>> task = new Task<>() {
+            @Override
+            protected java.util.List<com.benjagest.ui.model.TaxCalendarEventEntry> call()
+                    throws Exception {
+                return altaApiClient.listUpcomingTaxCalendar(30);
+            }
+        };
+        task.setOnSucceeded(ev -> {
+            var list = task.getValue();
+            if (list == null || list.isEmpty()) return;
+            slot.getChildren().add(buildTaxCalendarBannerCard(list, slot));
+        });
+        task.setOnFailed(ev -> { /* sin BD o sin permisos — silencio */ });
+        start(task, "tax-calendar-banner");
+    }
+
+    private Node buildTaxCalendarBannerCard(
+            java.util.List<com.benjagest.ui.model.TaxCalendarEventEntry> list,
+            VBox parentSlot) {
+        Label headline = new Label(t("taxcal.banner.headline")
+                .replace("{n}", String.valueOf(list.size())));
+        headline.setStyle("-fx-font-weight: bold;");
+        var first = list.get(0);
+        Label sub = new Label(t("taxcal.banner.body") + " "
+                + first.modelCode() + " · " + first.dueDate());
+        sub.setWrapText(true);
+        sub.getStyleClass().add("settings-hint");
+        VBox copy = new VBox(2, headline, sub);
+        Button review = new Button(t("taxcal.banner.review"));
+        review.setGraphic(icon("fas-calendar-check"));
+        review.getStyleClass().add("button-primary");
+        review.setOnAction(e -> showTaxCalendarDialog(parentSlot));
+        HBox card = new HBox(14, copy, new Region(), review);
+        HBox.setHgrow(copy, Priority.ALWAYS);
+        card.setAlignment(Pos.CENTER_LEFT);
+        card.setPadding(new Insets(14, 18, 14, 18));
+        card.setStyle("-fx-background-color: #e0f2fe;"
+                + " -fx-background-radius: 10;"
+                + " -fx-border-color: #0284c7;"
+                + " -fx-border-width: 1.5;"
+                + " -fx-border-radius: 10;");
+        return card;
+    }
+
+    private void showTaxCalendarDialog(VBox bannerSlot) {
+        javafx.scene.control.Dialog<Void> dlg = new javafx.scene.control.Dialog<>();
+        dlg.setTitle(t("taxcal.dialog.title"));
+        dlg.getDialogPane().getButtonTypes().add(javafx.scene.control.ButtonType.CLOSE);
+
+        TableView<com.benjagest.ui.model.TaxCalendarEventEntry> table = new TableView<>();
+        table.setPrefSize(820, 420);
+        table.setPlaceholder(new Label(t("taxcal.dialog.empty")));
+
+        TableColumn<com.benjagest.ui.model.TaxCalendarEventEntry, String> cModel =
+                new TableColumn<>(t("taxcal.col.model"));
+        cModel.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().modelCode()));
+        cModel.setPrefWidth(80);
+        TableColumn<com.benjagest.ui.model.TaxCalendarEventEntry, String> cPeriod =
+                new TableColumn<>(t("taxcal.col.period"));
+        cPeriod.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().periodLabel()));
+        cPeriod.setPrefWidth(120);
+        TableColumn<com.benjagest.ui.model.TaxCalendarEventEntry, String> cDue =
+                new TableColumn<>(t("taxcal.col.due"));
+        cDue.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().dueDate()));
+        cDue.setPrefWidth(110);
+        TableColumn<com.benjagest.ui.model.TaxCalendarEventEntry, String> cDesc =
+                new TableColumn<>(t("taxcal.col.desc"));
+        cDesc.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().description()));
+        table.getColumns().addAll(java.util.List.of(cModel, cPeriod, cDue, cDesc));
+
+        Button markBtn = new Button(t("taxcal.mark_submitted"));
+        markBtn.setGraphic(icon("fas-check"));
+        markBtn.getStyleClass().add("button-primary");
+        markBtn.setDisable(true);
+        table.getSelectionModel().selectedItemProperty().addListener((o, ov, nv) ->
+                markBtn.setDisable(nv == null));
+
+        Runnable reload = () -> {
+            Task<java.util.List<com.benjagest.ui.model.TaxCalendarEventEntry>> tk = new Task<>() {
+                @Override protected java.util.List<com.benjagest.ui.model.TaxCalendarEventEntry>
+                        call() throws Exception {
+                    return altaApiClient.listUpcomingTaxCalendar(180);
+                }
+            };
+            tk.setOnSucceeded(e -> {
+                table.setItems(FXCollections.observableArrayList(tk.getValue()));
+                if (tk.getValue().isEmpty()) {
+                    loadTaxCalendarBanner(bannerSlot);
+                    dlg.close();
+                }
+            });
+            tk.setOnFailed(e -> showError(t("taxcal.fail.title"),
+                    tk.getException() == null ? "" : tk.getException().getMessage()));
+            start(tk, "taxcal-reload");
+        };
+        markBtn.setOnAction(e -> {
+            var sel = table.getSelectionModel().getSelectedItem();
+            if (sel == null) return;
+            javafx.scene.control.TextInputDialog td = new javafx.scene.control.TextInputDialog();
+            td.setTitle(t("taxcal.mark_submitted"));
+            td.setHeaderText(t("taxcal.mark_submitted.prompt"));
+            String notes = td.showAndWait().orElse(null);
+            if (notes == null) return;
+            Task<com.benjagest.ui.model.TaxCalendarEventEntry> tk = new Task<>() {
+                @Override protected com.benjagest.ui.model.TaxCalendarEventEntry
+                        call() throws Exception {
+                    return altaApiClient.markTaxCalendarSubmitted(sel.id(), notes);
+                }
+            };
+            tk.setOnSucceeded(s -> reload.run());
+            tk.setOnFailed(s -> showError(t("taxcal.fail.title"),
+                    tk.getException() == null ? "" : tk.getException().getMessage()));
+            start(tk, "taxcal-mark");
+        });
+
+        VBox box = new VBox(10, table, markBtn);
+        box.setPadding(new Insets(8));
+        dlg.getDialogPane().setContent(box);
+        reload.run();
+        dlg.showAndWait();
+    }
+
     /** TPB-3 — Banner home con facturas pendientes de aprobación. */
     private void loadTpbPendingInvoicesBanner(VBox slot) {
         slot.getChildren().clear();
@@ -2406,6 +2531,10 @@ public class BenjagestUiApplication extends Application {
             VBox tpbInvoicesSlot = new VBox();
             content.getChildren().add(tpbInvoicesSlot);
             loadTpbPendingInvoicesBanner(tpbInvoicesSlot);
+            // CAL-FISCAL banner — vencimientos AEAT próximos en 30 días.
+            VBox taxCalendarSlot = new VBox();
+            content.getChildren().add(taxCalendarSlot);
+            loadTaxCalendarBanner(taxCalendarSlot);
         }
 
         content.getChildren().addAll(
@@ -15699,6 +15828,18 @@ public class BenjagestUiApplication extends Application {
             case "tpb.invoices.reject" -> "Reject";
             case "tpb.invoices.reject_prompt" -> "Reason for rejection (the advisor will see it):";
             case "tpb.invoices.fail.title" -> "Operation failed";
+            case "taxcal.banner.headline" -> "{n} AEAT filings due in the next 30 days";
+            case "taxcal.banner.body" -> "Next:";
+            case "taxcal.banner.review" -> "Review";
+            case "taxcal.dialog.title" -> "AEAT tax calendar";
+            case "taxcal.dialog.empty" -> "No upcoming filings.";
+            case "taxcal.col.model" -> "Model";
+            case "taxcal.col.period" -> "Period";
+            case "taxcal.col.due" -> "Due date";
+            case "taxcal.col.desc" -> "Description";
+            case "taxcal.mark_submitted" -> "Mark as submitted";
+            case "taxcal.mark_submitted.prompt" -> "Notes (optional):";
+            case "taxcal.fail.title" -> "Tax calendar operation failed";
             case "client.tab.sales" -> "Sales";
             case "client.tab.expenses" -> "Expenses";
             case "client.sales_expenses.hint" -> "This client is NOT linked. Here you only archive invoices the client emitted/received in their own system. No legal invoicing from BENJAGEST — for that, the client must accept the invitation and activate VeriFactu.";
@@ -16306,6 +16447,18 @@ public class BenjagestUiApplication extends Application {
             case "tpb.invoices.reject" -> "Rechazar";
             case "tpb.invoices.reject_prompt" -> "Motivo del rechazo (lo verá la asesoría):";
             case "tpb.invoices.fail.title" -> "Operación fallida";
+            case "taxcal.banner.headline" -> "{n} declaraciones AEAT vencen en los próximos 30 días";
+            case "taxcal.banner.body" -> "Próxima:";
+            case "taxcal.banner.review" -> "Revisar";
+            case "taxcal.dialog.title" -> "Calendario fiscal AEAT";
+            case "taxcal.dialog.empty" -> "No hay vencimientos próximos.";
+            case "taxcal.col.model" -> "Modelo";
+            case "taxcal.col.period" -> "Período";
+            case "taxcal.col.due" -> "Fecha límite";
+            case "taxcal.col.desc" -> "Descripción";
+            case "taxcal.mark_submitted" -> "Marcar como presentado";
+            case "taxcal.mark_submitted.prompt" -> "Notas (opcional):";
+            case "taxcal.fail.title" -> "Error en calendario fiscal";
             case "advisory.client.tab.billing" -> "Facturación";
             case "advisory.client.tab.purchases" -> "Compras y Gastos";
             case "advisory.client.tab.sales_and_expenses" -> "Ventas y Gastos";
