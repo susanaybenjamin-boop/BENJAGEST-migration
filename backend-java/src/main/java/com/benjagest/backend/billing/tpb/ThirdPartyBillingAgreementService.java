@@ -40,6 +40,9 @@ import org.springframework.web.server.ResponseStatusException;
 @Service
 public class ThirdPartyBillingAgreementService {
 
+    private static final org.slf4j.Logger log =
+            org.slf4j.LoggerFactory.getLogger(ThirdPartyBillingAgreementService.class);
+
     private final JdbcTemplate jdbc;
     private final TenantContext tenant;
     private final CurrentUserService currentUserService;
@@ -77,7 +80,7 @@ public class ThirdPartyBillingAgreementService {
 
     public Optional<ThirdPartyBillingAgreement> findCurrent(String otherCompanyId) {
         String me = tenant.getCurrentCompanyId();
-        return jdbc.query("""
+        Optional<ThirdPartyBillingAgreement> result = jdbc.query("""
                 SELECT * FROM third_party_billing_agreements
                  WHERE ((advisory_company_id = ? AND client_company_id = ?)
                      OR (advisory_company_id = ? AND client_company_id = ?))
@@ -85,6 +88,24 @@ public class ThirdPartyBillingAgreementService {
                  ORDER BY created_at DESC
                  LIMIT 1
                 """, MAPPER, me, otherCompanyId, otherCompanyId, me).stream().findFirst();
+        // Auto-reparacion: si el acuerdo esta ACTIVE y cubre ventas pero
+        // la serie TPB no se creo (caso Benjamin 2026-06-12), la creamos
+        // aqui. Idempotente — ensureTpbSeries retorna la existente si ya
+        // hay. Tragamos cualquier excepcion para no romper la lectura.
+        result.ifPresent(a -> {
+            if (ThirdPartyBillingAgreement.STATUS_ACTIVE.equals(a.status())
+                    && a.scopeSales()) {
+                try {
+                    seriesService.ensureTpbSeries(
+                            a.clientCompanyId(), a.advisoryCompanyId());
+                } catch (RuntimeException ex) {
+                    log.debug("TPB: auto-reparacion serie fallo silenciosamente "
+                            + "(advisory={}, client={})",
+                            a.advisoryCompanyId(), a.clientCompanyId(), ex);
+                }
+            }
+        });
+        return result;
     }
 
     @Transactional
@@ -161,7 +182,18 @@ public class ThirdPartyBillingAgreementService {
         if (a.scopeSales()) {
             try {
                 seriesService.ensureTpbSeries(a.clientCompanyId(), a.advisoryCompanyId());
-            } catch (RuntimeException ex) { /* no bloqueamos firma */ }
+            } catch (RuntimeException ex) {
+                // No bloqueamos la firma — el acuerdo es legalmente
+                // válido aunque la serie tarde un poco más. Pero
+                // logueamos para diagnosticar: sin esto el problema es
+                // invisible (caso real Benjamin 2026-06-12: firmó pero
+                // la serie nunca apareció). findCurrent() auto-repara
+                // en la siguiente consulta.
+                log.warn("TPB: no se pudo crear la serie TPB tras signWithPin "
+                        + "(advisory={}, client={}). Reintento diferido al "
+                        + "proximo findCurrent.",
+                        a.advisoryCompanyId(), a.clientCompanyId(), ex);
+            }
         }
         return getById(agreementId);
     }
@@ -207,7 +239,12 @@ public class ThirdPartyBillingAgreementService {
             if (a.scopeSales()) {
                 try {
                     seriesService.ensureTpbSeries(a.clientCompanyId(), a.advisoryCompanyId());
-                } catch (RuntimeException ex) { /* no bloqueamos firma */ }
+                } catch (RuntimeException ex) {
+                    log.warn("TPB: no se pudo crear la serie TPB tras "
+                            + "signWithOfflinePdf (advisory={}, client={}). "
+                            + "Reintento diferido al proximo findCurrent.",
+                            a.advisoryCompanyId(), a.clientCompanyId(), ex);
+                }
             }
             return getById(agreementId);
         } catch (IOException ex) {
