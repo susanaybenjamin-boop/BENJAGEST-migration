@@ -325,6 +325,31 @@ En el listado de **Facturación**, botón nuevo "Cobrar varias":
 
 ---
 
+## 16. UI-REC-BANCARIA (conciliación bancaria asistida) — `#68`
+
+En el listado de **Facturación**, botón nuevo "Conciliar banco":
+- Tabla con movimientos bancarios no conciliados cruzados con
+  facturas pendientes: fecha + concepto banco + importe + factura
+  + cliente + coincidencia (score 0-100%).
+- Criterios match: ±1€ importe, ±7 días, Levenshtein<3 sobre
+  nombre cliente.
+- Botón "Aceptar match" registra el pago + cierra la factura.
+- Botón "Ignorar movimiento" lo marca como IGNORED (descartar
+  comisiones, transferencias internas, etc.).
+
+**Probar (requiere movimientos importados antes):**
+- Si ya tienes movimientos bancarios cargados, abre el diálogo y
+  verifica que las sugerencias coinciden con las facturas
+  esperadas.
+- Acepta un match → la factura debería pasar a PAID y desaparecer
+  el movimiento de la lista.
+- Ignora un movimiento → desaparece de la lista (status =
+  IGNORED).
+- Si NO hay movimientos cargados, la pantalla muestra "Sin
+  sugerencias" — esto es esperado.
+
+---
+
 # 📋 Resumen rápido de qué se commiteó
 
 | # | Commit | Slice | V | Estado |
@@ -344,6 +369,7 @@ En el listado de **Facturación**, botón nuevo "Cobrar varias":
 | 13 | bf2d644 | UI-BOE-ALERTS #65 | — | Probable |
 | 14 | 44d1be3 | UI-BACKUP-LOCAL #66 | — | Probable |
 | 15 | 6f57cdb | UI-MULTI-ALLOCATION #67 | — | Probable |
+| 16 | a7cb076 | UI-REC-BANCARIA #68 | — | Probable |
 
 **Backend listo y arranca limpio.** UI dedicada ya hecha para
 TPB-1..4, PANORAMA, BOE, BACKUP y MULTI-ALLOCATION. Pendiente UI
