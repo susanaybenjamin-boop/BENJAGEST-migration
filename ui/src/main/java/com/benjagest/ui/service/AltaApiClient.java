@@ -2240,6 +2240,32 @@ public class AltaApiClient {
     }
 
     // ============================================================
+    //  PANORAMA-ASESORIA — KPIs cartera
+    // ============================================================
+
+    public com.benjagest.ui.model.PortfolioFinancialsEntry getPortfolioFinancials()
+            throws IOException, InterruptedException {
+        HttpResponse<String> r = send(req(
+                baseUrl + "/advisory/dashboard/portfolio-financials").GET());
+        if (r.statusCode() < 200 || r.statusCode() >= 300) {
+            throw new IOException("HTTP " + r.statusCode() + ": " + r.body());
+        }
+        String obj = r.body();
+        return new com.benjagest.ui.model.PortfolioFinancialsEntry(
+                decFieldOrZero(obj, "billedThisMonth"),
+                decFieldOrZero(obj, "pendingPayment"),
+                (int) longFieldOrZero(obj, "overdueInvoices"),
+                (int) longFieldOrZero(obj, "activeClientsThisMonth"),
+                (int) longFieldOrZero(obj, "pendingTpbApprovals"));
+    }
+
+    private java.math.BigDecimal decFieldOrZero(String json, String field) {
+        java.util.regex.Matcher m = java.util.regex.Pattern
+                .compile("\"" + field + "\"\\s*:\\s*([-0-9.]+)").matcher(json);
+        return m.find() ? new java.math.BigDecimal(m.group(1)) : java.math.BigDecimal.ZERO;
+    }
+
+    // ============================================================
     //  CAL-FISCAL — Calendario AEAT
     // ============================================================
 

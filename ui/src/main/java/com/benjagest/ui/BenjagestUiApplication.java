@@ -2539,13 +2539,66 @@ public class BenjagestUiApplication extends Application {
 
         content.getChildren().addAll(
                 label(t("mainIndicators"), "section-title"),
-                metrics,
+                metrics);
+        // PANORAMA-ASESORIA — bloque KPIs cartera solo en modo asesoría.
+        if (appMode == AppMode.ADVISORY) {
+            VBox panoramaSlot = new VBox();
+            content.getChildren().addAll(
+                    sectionHeader(t("panorama.title"), t("panorama.subtitle")),
+                    panoramaSlot);
+            loadPortfolioFinancials(panoramaSlot);
+        }
+        content.getChildren().addAll(
                 sectionHeader(t("quickAccess"), t("quickAccessDetail")),
                 launchers,
                 sectionHeader(t("recentActivity"), t("recentActivityDetail")),
                 activity
         );
         return content;
+    }
+
+    /** PANORAMA-ASESORIA — Carga KPIs cartera y los pinta como tiles. */
+    private void loadPortfolioFinancials(VBox slot) {
+        slot.getChildren().clear();
+        Label loading = new Label(t("panorama.loading"));
+        loading.getStyleClass().add("settings-hint");
+        slot.getChildren().add(loading);
+        Task<com.benjagest.ui.model.PortfolioFinancialsEntry> task = new Task<>() {
+            @Override
+            protected com.benjagest.ui.model.PortfolioFinancialsEntry call() throws Exception {
+                return altaApiClient.getPortfolioFinancials();
+            }
+        };
+        task.setOnSucceeded(ev -> {
+            slot.getChildren().clear();
+            var p = task.getValue();
+            TilePane tiles = new TilePane();
+            tiles.setHgap(12);
+            tiles.setVgap(12);
+            tiles.setPrefTileWidth(218);
+            tiles.setPrefTileHeight(110);
+            tiles.getChildren().addAll(
+                    metric(t("panorama.billed"), money(String.valueOf(p.billedThisMonth())),
+                            t("panorama.billed.sub"), "fas-euro-sign", "metric-green"),
+                    metric(t("panorama.pending"), money(String.valueOf(p.pendingPayment())),
+                            t("panorama.pending.sub"), "fas-hourglass-half", "metric-amber"),
+                    metric(t("panorama.overdue"), String.valueOf(p.overdueInvoices()),
+                            t("panorama.overdue.sub"), "fas-exclamation-triangle", "module-red"),
+                    metric(t("panorama.active_clients"), String.valueOf(p.activeClientsThisMonth()),
+                            t("panorama.active_clients.sub"), "fas-users", "module-teal"),
+                    metric(t("panorama.tpb_pending"), String.valueOf(p.pendingTpbApprovals()),
+                            t("panorama.tpb_pending.sub"), "fas-file-signature", "module-violet")
+            );
+            slot.getChildren().add(tiles);
+        });
+        task.setOnFailed(ev -> {
+            slot.getChildren().clear();
+            Label err = new Label(t("panorama.fail"));
+            err.getStyleClass().add("settings-hint");
+            err.setStyle("-fx-text-fill: #b91c1c;");
+            slot.getChildren().add(err);
+        });
+        start(task, "portfolio-financials");
     }
 
     private void showModule(String module) {
@@ -15840,6 +15893,20 @@ public class BenjagestUiApplication extends Application {
             case "taxcal.mark_submitted" -> "Mark as submitted";
             case "taxcal.mark_submitted.prompt" -> "Notes (optional):";
             case "taxcal.fail.title" -> "Tax calendar operation failed";
+            case "panorama.title" -> "My portfolio";
+            case "panorama.subtitle" -> "Cross-client KPIs of all your managed companies.";
+            case "panorama.loading" -> "Loading…";
+            case "panorama.fail" -> "Could not load portfolio KPIs.";
+            case "panorama.billed" -> "Billed this month";
+            case "panorama.billed.sub" -> "Sum of validated invoices";
+            case "panorama.pending" -> "Pending collection";
+            case "panorama.pending.sub" -> "Across all clients";
+            case "panorama.overdue" -> "Overdue invoices";
+            case "panorama.overdue.sub" -> "Past due date";
+            case "panorama.active_clients" -> "Active clients";
+            case "panorama.active_clients.sub" -> "Invoiced this month";
+            case "panorama.tpb_pending" -> "TPB awaiting approval";
+            case "panorama.tpb_pending.sub" -> "Client must accept/reject";
             case "client.tab.sales" -> "Sales";
             case "client.tab.expenses" -> "Expenses";
             case "client.sales_expenses.hint" -> "This client is NOT linked. Here you only archive invoices the client emitted/received in their own system. No legal invoicing from BENJAGEST — for that, the client must accept the invitation and activate VeriFactu.";
@@ -16459,6 +16526,20 @@ public class BenjagestUiApplication extends Application {
             case "taxcal.mark_submitted" -> "Marcar como presentado";
             case "taxcal.mark_submitted.prompt" -> "Notas (opcional):";
             case "taxcal.fail.title" -> "Error en calendario fiscal";
+            case "panorama.title" -> "Mi cartera";
+            case "panorama.subtitle" -> "KPIs cruzados de todas tus empresas gestionadas.";
+            case "panorama.loading" -> "Cargando…";
+            case "panorama.fail" -> "No se pudieron cargar los KPIs de cartera.";
+            case "panorama.billed" -> "Facturado este mes";
+            case "panorama.billed.sub" -> "Suma de facturas validadas";
+            case "panorama.pending" -> "Pendiente de cobro";
+            case "panorama.pending.sub" -> "Total entre todos los clientes";
+            case "panorama.overdue" -> "Facturas vencidas";
+            case "panorama.overdue.sub" -> "Pasadas de vencimiento";
+            case "panorama.active_clients" -> "Clientes activos";
+            case "panorama.active_clients.sub" -> "Han facturado este mes";
+            case "panorama.tpb_pending" -> "TPB pendientes aceptación";
+            case "panorama.tpb_pending.sub" -> "Cliente debe aceptar/rechazar";
             case "advisory.client.tab.billing" -> "Facturación";
             case "advisory.client.tab.purchases" -> "Compras y Gastos";
             case "advisory.client.tab.sales_and_expenses" -> "Ventas y Gastos";
