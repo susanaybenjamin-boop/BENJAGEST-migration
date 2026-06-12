@@ -118,6 +118,30 @@ public class SalesInvoiceController {
     }
 
     /**
+     * TPB-3 — El cliente aprueba una factura emitida por su asesoría
+     * por tercero. Solo accesible desde el tenant del cliente.
+     */
+    @PostMapping("/{id}/client-approve")
+    public SalesInvoice clientApprove(@PathVariable("id") String id) {
+        return service.approveByClient(id);
+    }
+
+    /** TPB-3 — El cliente rechaza con motivo. Vuelve a DRAFT. */
+    @PostMapping("/{id}/client-reject")
+    public SalesInvoice clientReject(@PathVariable("id") String id,
+                                       @RequestBody(required = false)
+                                       java.util.Map<String, String> body) {
+        String reason = body == null ? null : body.get("reason");
+        return service.rejectByClient(id, reason);
+    }
+
+    /** TPB-3 — Listado de facturas pendientes de aprobación del cliente. */
+    @org.springframework.web.bind.annotation.GetMapping("/pending-client-approval")
+    public java.util.List<SalesInvoice> pendingClientApproval() {
+        return service.listPendingClientApproval();
+    }
+
+    /**
      * Valida un lote de facturas DRAFT (multiselección). Recorre cada id
      * y dispara {@link SalesInvoiceService#validate}: PDF, hash chain,
      * SIF event y asiento contable. Devuelve resumen por id.

@@ -135,6 +135,83 @@ public class SalesInvoiceRepository {
     }
 
     /**
+     * TPB-3 — La factura emitida por la asesoría (TPB) se numera pero
+     * NO entra en cadena Verifactu ni se envía hasta que el cliente
+     * la apruebe. Mismas validaciones que markValidated pero status
+     * destino = PENDING_CLIENT_APPROVAL.
+     */
+    public int markPendingClientApproval(String id, String invoiceNumber,
+                                          BigDecimal subtotal, BigDecimal vatTotal,
+                                          BigDecimal retentionTotal, BigDecimal total) {
+        return jdbcTemplate.update("""
+                UPDATE sales_invoices
+                   SET invoice_number = ?,
+                       status = 'PENDING_CLIENT_APPROVAL',
+                       subtotal = ?,
+                       vat_total = ?,
+                       retention_total = ?,
+                       total = ?
+                 WHERE id = ?
+                   AND company_id = ?
+                   AND status = 'DRAFT'
+                """,
+                invoiceNumber, subtotal, vatTotal, retentionTotal, total,
+                id, tenantContext.getCurrentCompanyId());
+    }
+
+    /**
+     * TPB-3 — El cliente aprueba: pasa a VALIDATED y queda registrado
+     * el quién/cuándo. La factura ya tiene número (lo asignó markPending).
+     */
+    public int markApprovedByClient(String id, String userId) {
+        return jdbcTemplate.update("""
+                UPDATE sales_invoices
+                   SET status = 'VALIDATED',
+                       validated_at = CURRENT_TIMESTAMP,
+                       client_approval_state = 'APPROVED',
+                       client_approval_at = CURRENT_TIMESTAMP(6),
+                       client_approval_by_user_id = ?
+                 WHERE id = ?
+                   AND company_id = ?
+                   AND status = 'PENDING_CLIENT_APPROVAL'
+                """,
+                userId, id, tenantContext.getCurrentCompanyId());
+    }
+
+    /**
+     * TPB-3 — El cliente rechaza: vuelve a DRAFT con motivo registrado.
+     * El número de factura se mantiene (queda asignado para reuso).
+     */
+    public int markRejectedByClient(String id, String userId, String reason) {
+        return jdbcTemplate.update("""
+                UPDATE sales_invoices
+                   SET status = 'DRAFT',
+                       client_approval_state = 'REJECTED',
+                       client_approval_at = CURRENT_TIMESTAMP(6),
+                       client_approval_by_user_id = ?,
+                       client_rejection_reason = ?
+                 WHERE id = ?
+                   AND company_id = ?
+                   AND status = 'PENDING_CLIENT_APPROVAL'
+                """,
+                userId, reason, id, tenantContext.getCurrentCompanyId());
+    }
+
+    /**
+     * TPB-3 — Listado de facturas pendientes de aprobación del
+     * cliente actual. Sin paginación: el listado debe ser pequeño;
+     * si crece, se atiende antes que sigue creciendo.
+     */
+    public List<String> findPendingClientApprovalIds() {
+        return jdbcTemplate.queryForList("""
+                SELECT id FROM sales_invoices
+                 WHERE company_id = ?
+                   AND status = 'PENDING_CLIENT_APPROVAL'
+                 ORDER BY invoice_date DESC, id DESC
+                """, String.class, tenantContext.getCurrentCompanyId());
+    }
+
+    /**
      * Marca una factura VALIDATED como VOIDED. Solo se invoca dentro de
      * la transaccion que valida la rectificativa vinculada (es decir,
      * la "anulacion" no es accion directa del usuario sino consecuencia
