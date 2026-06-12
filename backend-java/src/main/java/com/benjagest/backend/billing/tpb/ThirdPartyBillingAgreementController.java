@@ -105,6 +105,16 @@ public class ThirdPartyBillingAgreementController {
     public record SendMagicLinkRequest(String email) {}
 
     /**
+     * Reenviar al cliente el enlace de revocacion (caso: el cliente
+     * perdio el email original). Acuerdo debe estar ACTIVE.
+     */
+    @PostMapping("/{id}/revoke-link/resend")
+    public TpbMagicLinkService.SendResult resendRevocationLink(
+            @PathVariable("id") String id) {
+        return magicLinkService.resendRevocationLink(id);
+    }
+
+    /**
      * Diagnostico / reparacion manual: fuerza la creacion de la serie
      * TPB del acuerdo. Idempotente: si ya existe la devuelve. Si falla,
      * propaga el error (a diferencia del catch silencioso de signWithPin).

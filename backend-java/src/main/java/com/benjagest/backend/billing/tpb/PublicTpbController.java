@@ -94,6 +94,176 @@ public class PublicTpbController {
 
     public record SignRequest(String otp) {}
 
+    // ============================================================
+    //  REVOKE flow — el cliente sin cuenta revoca el acuerdo
+    // ============================================================
+
+    /** Pagina HTML para revocar — guia el flujo "solicita OTP / revoca". */
+    @GetMapping(value = "/revoke-page", produces = MediaType.TEXT_HTML_VALUE)
+    public ResponseEntity<String> revokePage(@RequestParam("token") String token) {
+        var t = magicLinkService.findActiveByToken(token)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "Enlace no encontrado"));
+        String stateMsg;
+        boolean canRevoke = true;
+        if (t.usedAt() != null) {
+            stateMsg = "Este enlace ya fue usado para revocar el acuerdo.";
+            canRevoke = false;
+        } else if (t.invalidatedAt() != null) {
+            stateMsg = "Enlace invalidado.";
+            canRevoke = false;
+        } else if (java.time.Instant.now().isAfter(t.expiresAt())) {
+            stateMsg = "El enlace ha caducado. Pide a tu asesoria un nuevo enlace.";
+            canRevoke = false;
+        } else {
+            stateMsg = "Para revocar el acuerdo: 1) pulsa \"Solicitar codigo\"; 2) introduce el codigo de 6 digitos que te llegara al mismo email; 3) confirma la revocacion.";
+        }
+        String html = renderRevokePage(token, stateMsg, canRevoke);
+        return ResponseEntity.ok()
+                .contentType(MediaType.valueOf("text/html; charset=UTF-8"))
+                .body(html);
+    }
+
+    /** El cliente solicita un nuevo OTP que se enviara a su email. */
+    @PostMapping("/{token}/request-revoke-otp")
+    public Map<String, Object> requestRevokeOtp(@PathVariable("token") String token) {
+        magicLinkService.requestRevokeOtp(token);
+        return Map.of("ok", true);
+    }
+
+    /** El cliente introduce el OTP y se revoca el acuerdo. */
+    @PostMapping("/{token}/revoke")
+    public Map<String, Object> revoke(@PathVariable("token") String token,
+                                        @RequestBody SignRequest body,
+                                        HttpServletRequest request) {
+        String ip = request.getHeader("X-Forwarded-For");
+        if (ip == null || ip.isBlank()) ip = request.getRemoteAddr();
+        String ua = request.getHeader("User-Agent");
+        String agreementId = magicLinkService.revokeWithOtp(token, body.otp(), ip, ua);
+        return Map.of("ok", true, "agreementId", agreementId);
+    }
+
+    private static String renderRevokePage(String token, String stateMsg, boolean canRevoke) {
+        String html = """
+            <!DOCTYPE html>
+            <html lang="es">
+            <head>
+              <meta charset="UTF-8">
+              <meta name="viewport" content="width=device-width, initial-scale=1.0">
+              <title>Revocar acuerdo de facturacion por tercero</title>
+              <style>
+                body { font-family: -apple-system, Segoe UI, Roboto, sans-serif;
+                       max-width: 720px; margin: 24px auto; padding: 0 16px;
+                       color: #1e293b; line-height: 1.5; }
+                h1 { color: #0f172a; font-size: 22px; margin-bottom: 8px; }
+                .sub { color: #64748b; font-size: 14px; margin-bottom: 24px; }
+                .card { border: 1px solid #e2e8f0; border-radius: 12px;
+                        padding: 20px; margin-bottom: 20px; background: #f8fafc; }
+                input { padding: 12px; font-size: 18px; width: 200px;
+                        letter-spacing: 4px; border: 2px solid #cbd5e1;
+                        border-radius: 8px; text-align: center; }
+                button { padding: 12px 22px; background: #b91c1c; color: #fff;
+                         border: 0; border-radius: 8px; font-size: 16px;
+                         cursor: pointer; margin-left: 8px; }
+                button:disabled { background: #94a3b8; cursor: not-allowed; }
+                button.alt { background: #2563eb; }
+                .err { color: #b91c1c; margin-top: 12px; }
+                .ok  { color: #15803d; margin-top: 12px; font-weight: bold; }
+                .note { font-size: 12px; color: #475569; margin-top: 12px; }
+              </style>
+            </head>
+            <body>
+              <h1>Revocar acuerdo de facturacion por tercero</h1>
+              <p class="sub">RD 1619/2012 art. 5 - retira el consentimiento de emision en su nombre.</p>
+
+              <div class="card">
+                <p><strong>__STATE_MSG__</strong></p>
+              </div>
+
+              __FLOW_BLOCK__
+
+              <p class="note">Quedan registrados como evidencia legal su IP, navegador, hora del click y del codigo introducido.</p>
+
+              <script>
+                async function requestOtp() {
+                  const fb = document.getElementById('fb');
+                  const btn = document.getElementById('reqBtn');
+                  fb.textContent = '';
+                  btn.disabled = true;
+                  try {
+                    const res = await fetch('/api/public/tpb/__TOKEN__/request-revoke-otp', { method: 'POST' });
+                    if (!res.ok) {
+                      const text = await res.text();
+                      fb.className = 'err';
+                      fb.textContent = 'Error: ' + text;
+                      btn.disabled = false;
+                      return;
+                    }
+                    fb.className = 'ok';
+                    fb.textContent = 'Codigo enviado al email. Revisa tu bandeja (y la carpeta de spam).';
+                    document.getElementById('confirmBox').style.display = 'block';
+                  } catch (e) {
+                    fb.className = 'err';
+                    fb.textContent = 'Error de red: ' + e.message;
+                    btn.disabled = false;
+                  }
+                }
+                async function doRevoke() {
+                  const otp = document.getElementById('otp').value.trim();
+                  const fb = document.getElementById('fb');
+                  const btn = document.getElementById('revokeBtn');
+                  fb.textContent = '';
+                  if (!/^\\d{6}$/.test(otp)) {
+                    fb.className = 'err';
+                    fb.textContent = 'El OTP debe ser de 6 digitos.';
+                    return;
+                  }
+                  btn.disabled = true;
+                  try {
+                    const res = await fetch('/api/public/tpb/__TOKEN__/revoke', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ otp })
+                    });
+                    if (!res.ok) {
+                      const text = await res.text();
+                      fb.className = 'err';
+                      fb.textContent = 'Error: ' + text;
+                      btn.disabled = false;
+                      return;
+                    }
+                    fb.className = 'ok';
+                    fb.textContent = 'Acuerdo revocado correctamente. Puedes cerrar esta ventana.';
+                    document.getElementById('flowBox').style.display = 'none';
+                  } catch (e) {
+                    fb.className = 'err';
+                    fb.textContent = 'Error de red: ' + e.message;
+                    btn.disabled = false;
+                  }
+                }
+              </script>
+            </body>
+            </html>
+            """;
+        String flow = canRevoke
+                ? """
+                    <div class="card" id="flowBox">
+                      <button id="reqBtn" class="alt" onclick="requestOtp()">Solicitar codigo</button>
+                      <div id="confirmBox" style="margin-top: 20px; display: none;">
+                        <p>Introduce el codigo de 6 digitos que ha llegado a tu email:</p>
+                        <input id="otp" maxlength="6" inputmode="numeric" placeholder="123456">
+                        <button id="revokeBtn" onclick="doRevoke()">Revocar acuerdo</button>
+                      </div>
+                      <div id="fb"></div>
+                    </div>
+                    """
+                : "<div class=\"card err\">No se puede revocar con este enlace.</div>";
+        return html
+                .replace("__STATE_MSG__", escape(stateMsg))
+                .replace("__FLOW_BLOCK__", flow)
+                .replace("__TOKEN__", token);
+    }
+
     private static String renderPage(String token, String agreementId,
                                        String stateMsg, boolean canSign) {
         // Atencion: NO usar String.format en el HTML — el CSS contiene

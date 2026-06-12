@@ -16802,6 +16802,10 @@ public class BenjagestUiApplication extends Application {
             case "tpb.magic.ok.body" -> "The signing link and OTP have been emailed to:";
             case "tpb.magic.fail.title" -> "Could not send the link";
             case "tpb.magic.fail.bad_email" -> "Enter a valid email address.";
+            case "tpb.action.resend_revoke" -> "Resend revoke link";
+            case "tpb.resend_revoke.ok.title" -> "Revoke link sent";
+            case "tpb.resend_revoke.ok.body" -> "The client has received the link to revoke the agreement.";
+            case "tpb.resend_revoke.fail.title" -> "Could not send the revoke link";
             case "tpb.propose.needs_link" -> "Warning: this client is NOT linked to BENJAGEST. The agreement can be created but cannot be signed legally until the client registers and signs with their PIN (offline-PDF flow is disabled for legal safety).";
             case "tpb.proposal.download" -> "Download PDF for signature";
             case "tpb.proposal.upload_signed" -> "Upload signed PDF";
@@ -17551,6 +17555,10 @@ public class BenjagestUiApplication extends Application {
             case "tpb.magic.ok.body" -> "El enlace y el OTP se han enviado por email a:";
             case "tpb.magic.fail.title" -> "No se pudo enviar el enlace";
             case "tpb.magic.fail.bad_email" -> "Introduce un email válido.";
+            case "tpb.action.resend_revoke" -> "Reenviar enlace de revocación";
+            case "tpb.resend_revoke.ok.title" -> "Enlace de revocación enviado";
+            case "tpb.resend_revoke.ok.body" -> "El cliente ha recibido el enlace para revocar el acuerdo.";
+            case "tpb.resend_revoke.fail.title" -> "No se pudo enviar el enlace de revocación";
             case "tpb.propose.needs_link" -> "Aviso: este cliente NO está vinculado a BENJAGEST. El acuerdo se puede crear pero no se podrá firmar legalmente hasta que el cliente se registre y firme con su PIN (el flujo offline-PDF está deshabilitado por seguridad jurídica).";
             case "tpb.proposal.download" -> "Descargar PDF para firma";
             case "tpb.proposal.upload_signed" -> "Subir PDF firmado";
@@ -24696,8 +24704,18 @@ public class BenjagestUiApplication extends Application {
             finalTabs.getTabs().add(insertAt, newBillingTab);
         };
 
+        // V105 — Si el cliente revoca el acuerdo (via magic link de
+        // revocacion), el polling lo detecta y dispara este callback
+        // para quitar el tab Facturacion del cliente no vinculado.
+        Runnable onTpbRevoked = () -> {
+            if (finalIsLinked) return;
+            String billingLabel = t("advisory.client.tab.billing");
+            finalTabs.getTabs().removeIf(tab ->
+                    tab.getText() != null && tab.getText().equals(billingLabel));
+        };
+
         Tab tpbTab = new Tab(t("advisory.client.tab.tpb_agreement"),
-                buildClientTpbAgreementTab(client, isLinked, onTpbActivated));
+                buildClientTpbAgreementTab(client, isLinked, onTpbActivated, onTpbRevoked));
         tpbTab.setGraphic(icon("fas-file-signature"));
         tabs.getTabs().add(tpbTab);
         VBox.setVgrow(tabs, Priority.ALWAYS);
@@ -24741,10 +24759,13 @@ public class BenjagestUiApplication extends Application {
      *                    tipico: cliente sin vinculo firma via magic link
      *                    desde su navegador). El parent lo usa para
      *                    anadir el tab "Facturacion" en caliente.
+     * @param onRevoked   callback simetrico para REVOKED (cliente revoca
+     *                    via magic link). El parent quita el tab
+     *                    "Facturacion".
      */
     private Node buildClientTpbAgreementTab(
             com.benjagest.ui.model.ManagedClientEntry client, boolean isLinked,
-            Runnable onActivated) {
+            Runnable onActivated, Runnable onRevoked) {
         VBox root = new VBox(14);
         root.setPadding(new Insets(20));
 
@@ -24782,6 +24803,11 @@ public class BenjagestUiApplication extends Application {
                         && onActivated != null) {
                     onActivated.run();
                 }
+                // Transicion a REVOKED: simetrico, quitar Facturacion.
+                if ("REVOKED".equals(newStatus) && !"REVOKED".equals(prev)
+                        && onRevoked != null) {
+                    onRevoked.run();
+                }
             });
             task.setOnFailed(ev -> {
                 Label err = new Label(t("tpb.fail.load") + " "
@@ -24803,12 +24829,12 @@ public class BenjagestUiApplication extends Application {
                 new javafx.animation.KeyFrame(
                         javafx.util.Duration.seconds(5),
                         ev -> {
-                            // Solo seguimos polleando mientras el acuerdo no
-                            // este en un estado terminal. Si es null tambien
-                            // seguimos por si el asesor lo crea desde otro
-                            // lado mientras tanto.
+                            // Poleamos mientras no este REVOKED (estado
+                            // terminal). PROPOSED → detectar firma del
+                            // cliente. ACTIVE → detectar revocacion del
+                            // cliente via magic link.
                             String s = lastStatus[0];
-                            if (s == null || "PROPOSED".equals(s)) {
+                            if (!"REVOKED".equals(s)) {
                                 realReload.run();
                             }
                         }));
@@ -24938,6 +24964,15 @@ public class BenjagestUiApplication extends Application {
                 repair.setOnAction(e -> tpbRepairSeriesAction(a.id(), reload));
                 actions.getChildren().add(repair);
             }
+            // V105: si el cliente firmo via Magic Link (no vinculado),
+            // ofrecemos a la asesoria reenviar el enlace de revocacion
+            // por si el cliente perdio el original.
+            if (!isLinked && "MAGIC_LINK_OTP".equals(a.signedMethod())) {
+                Button resend = new Button(t("tpb.action.resend_revoke"));
+                resend.setGraphic(icon("fas-paper-plane"));
+                resend.setOnAction(e -> tpbResendRevokeLinkAction(a.id()));
+                actions.getChildren().add(resend);
+            }
         }
 
         Button revoke = new Button(t("tpb.revoke"));
@@ -24945,6 +24980,20 @@ public class BenjagestUiApplication extends Application {
         revoke.setOnAction(e -> tpbRevokeAction(a.id(), reload));
         actions.getChildren().add(revoke);
         slot.getChildren().add(actions);
+    }
+
+    private void tpbResendRevokeLinkAction(String agreementId) {
+        Task<String> task = new Task<>() {
+            @Override
+            protected String call() throws Exception {
+                return altaApiClient.tpbResendRevokeLink(agreementId);
+            }
+        };
+        task.setOnSucceeded(e -> showInfo(t("tpb.resend_revoke.ok.title"),
+                t("tpb.resend_revoke.ok.body")));
+        task.setOnFailed(e -> showError(t("tpb.resend_revoke.fail.title"),
+                task.getException() == null ? "" : task.getException().getMessage()));
+        start(task, "tpb-resend-revoke");
     }
 
     private void tpbSendMagicLinkAction(String agreementId, String email, Runnable reload) {
