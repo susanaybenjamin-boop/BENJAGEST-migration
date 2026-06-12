@@ -10692,14 +10692,14 @@ public class BenjagestUiApplication extends Application {
 
     /**
      * Icono coloreado para cabeceras de Tab del TabPane. El styleClass
-     * "font-icon" hereda color del tema, que en la barra superior
-     * (oscura) hace los iconos invisibles. Forzamos blanco para que se
-     * vean en la pestaña.
+     * "font-icon" deja el icono sin color explícito y queda invisible
+     * sobre el fondo claro/blanco de los tabs activos. Forzamos un
+     * gris oscuro neutro que contrasta sobre fondo claro.
      */
     private Node darkTabIcon(String literal) {
         Node n = icon(literal);
         if (n instanceof FontIcon fi) {
-            fi.setIconColor(javafx.scene.paint.Color.WHITE);
+            fi.setIconColor(javafx.scene.paint.Color.web("#1e293b"));
         }
         return n;
     }
