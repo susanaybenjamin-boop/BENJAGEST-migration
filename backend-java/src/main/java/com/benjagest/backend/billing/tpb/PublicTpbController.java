@@ -96,6 +96,11 @@ public class PublicTpbController {
 
     private static String renderPage(String token, String agreementId,
                                        String stateMsg, boolean canSign) {
+        // Atencion: NO usar String.format en el HTML — el CSS contiene
+        // tokens "%;" (p.ej. width: 100%;) que Java interpreta como
+        // format specifiers invalidos y lanza
+        // UnknownFormatConversionException: Conversion = ';'.
+        // Usamos replace() para sustituir placeholders explicitos.
         String html = """
             <!DOCTYPE html>
             <html lang="es">
@@ -131,16 +136,16 @@ public class PublicTpbController {
               <p class="sub">RD 1619/2012 art. 5 - firma electronica simple (eIDAS art. 25)</p>
 
               <div class="card">
-                <p><strong>%s</strong></p>
+                <p><strong>__STATE_MSG__</strong></p>
               </div>
 
               <div class="card">
                 <h2 style="font-size:16px;margin:0 0 8px">Lee el acuerdo</h2>
-                <iframe class="pdf" src="/api/public/tpb/%s/pdf"></iframe>
-                <a class="dl" href="/api/public/tpb/%s/pdf" download>Descargar PDF</a>
+                <iframe class="pdf" src="/api/public/tpb/__TOKEN__/pdf"></iframe>
+                <a class="dl" href="/api/public/tpb/__TOKEN__/pdf" download>Descargar PDF</a>
               </div>
 
-              %s
+              __SIGN_BLOCK__
 
               <p class="note">Quedan registrados como evidencia legal su IP, navegador, hora del click y del codigo introducido. Estos datos respaldan la firma frente a la AEAT y tribunales.</p>
 
@@ -157,7 +162,7 @@ public class PublicTpbController {
                   }
                   btn.disabled = true;
                   try {
-                    const res = await fetch('/api/public/tpb/%s/sign', {
+                    const res = await fetch('/api/public/tpb/__TOKEN__/sign', {
                       method: 'POST',
                       headers: { 'Content-Type': 'application/json' },
                       body: JSON.stringify({ otp })
@@ -183,7 +188,7 @@ public class PublicTpbController {
             </html>
             """;
         String signBlock = canSign
-                ? String.format("""
+                ? """
                     <div class="card" id="signBox">
                       <h2 style="font-size:16px;margin:0 0 8px">Firma con tu codigo OTP</h2>
                       <p>Introduce el codigo de 6 digitos que has recibido por email:</p>
@@ -191,13 +196,12 @@ public class PublicTpbController {
                       <button id="signBtn" onclick="doSign()">Firmar acuerdo</button>
                       <div id="fb"></div>
                     </div>
-                    """)
+                    """
                 : "<div class=\"card err\">No se puede firmar este enlace.</div>";
-        return String.format(html,
-                escape(stateMsg),
-                token, token,
-                signBlock,
-                token);
+        return html
+                .replace("__STATE_MSG__", escape(stateMsg))
+                .replace("__SIGN_BLOCK__", signBlock)
+                .replace("__TOKEN__", token);
     }
 
     private static String escape(String s) {
