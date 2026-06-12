@@ -27,6 +27,13 @@ import java.time.Instant;
 public record Series(
         String id,
         String companyId,
+        /**
+         * NULL → serie propia del titular fiscal (lo habitual).
+         * NOT NULL → serie expedida por un tercero (TPB-2, RD 1619/2012
+         * art. 6.1.b). El id apunta a la asesoría que emite
+         * materialmente en nombre del titular.
+         */
+        String expeditedByCompanyId,
         String code,
         String invoiceKind,
         String numberingType,
@@ -38,4 +45,7 @@ public record Series(
         Instant createdAt,
         Instant updatedAt
 ) {
+    public boolean isExpeditedByThirdParty() {
+        return expeditedByCompanyId != null && !expeditedByCompanyId.isBlank();
+    }
 }

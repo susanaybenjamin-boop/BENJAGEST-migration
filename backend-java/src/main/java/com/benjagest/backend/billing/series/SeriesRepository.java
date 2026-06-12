@@ -91,7 +91,7 @@ public class SeriesRepository {
      */
     public Optional<Series> findInactiveByCode(String code) {
         List<Series> matches = jdbcTemplate.query("""
-                SELECT id, company_id, code, invoice_kind, numbering_type,
+                SELECT id, company_id, expedited_by_company_id, code, invoice_kind, numbering_type,
                        format_template, next_number, current_year,
                        locked, active, created_at, updated_at
                   FROM invoice_series
@@ -141,7 +141,7 @@ public class SeriesRepository {
 
     public List<Series> findAllActive() {
         return jdbcTemplate.query("""
-                SELECT id, company_id, code, invoice_kind, numbering_type,
+                SELECT id, company_id, expedited_by_company_id, code, invoice_kind, numbering_type,
                        format_template, next_number, current_year,
                        locked, active, created_at, updated_at
                   FROM invoice_series
@@ -167,7 +167,7 @@ public class SeriesRepository {
      */
     public Optional<Series> findActiveByKind(String invoiceKind) {
         List<Series> matches = jdbcTemplate.query("""
-                SELECT id, company_id, code, invoice_kind, numbering_type,
+                SELECT id, company_id, expedited_by_company_id, code, invoice_kind, numbering_type,
                        format_template, next_number, current_year,
                        locked, active, created_at, updated_at
                   FROM invoice_series
@@ -186,7 +186,7 @@ public class SeriesRepository {
 
     public Optional<Series> findById(String id) {
         List<Series> matches = jdbcTemplate.query("""
-                SELECT id, company_id, code, invoice_kind, numbering_type,
+                SELECT id, company_id, expedited_by_company_id, code, invoice_kind, numbering_type,
                        format_template, next_number, current_year,
                        locked, active, created_at, updated_at
                   FROM invoice_series
@@ -210,7 +210,7 @@ public class SeriesRepository {
      */
     public Optional<Series> findByIdForUpdate(String id) {
         List<Series> matches = jdbcTemplate.query("""
-                SELECT id, company_id, code, invoice_kind, numbering_type,
+                SELECT id, company_id, expedited_by_company_id, code, invoice_kind, numbering_type,
                        format_template, next_number, current_year,
                        locked, active, created_at, updated_at
                   FROM invoice_series
@@ -274,6 +274,7 @@ public class SeriesRepository {
         return new Series(
                 rs.getString("id"),
                 rs.getString("company_id"),
+                rs.getString("expedited_by_company_id"),
                 rs.getString("code"),
                 rs.getString("invoice_kind"),
                 rs.getString("numbering_type"),
@@ -285,5 +286,49 @@ public class SeriesRepository {
                 createdAt == null ? null : createdAt.toInstant(),
                 updatedAt == null ? null : updatedAt.toInstant()
         );
+    }
+
+    // ====================================================================
+    //  TPB-2 — Series expedidas por tercero (RD 1619/2012 art. 6.1.b)
+    // ====================================================================
+
+    /**
+     * Busca la serie TPB activa para el par (clientCompanyId, advisoryCompanyId).
+     * Usado sin TenantContext porque la asesoría puede consultarla
+     * estando "actuando como" el cliente.
+     */
+    public Optional<Series> findTpbSeries(String clientCompanyId, String advisoryCompanyId) {
+        List<Series> matches = jdbcTemplate.query("""
+                SELECT id, company_id, expedited_by_company_id, code, invoice_kind,
+                       numbering_type, format_template, next_number, current_year,
+                       locked, active, created_at, updated_at
+                  FROM invoice_series
+                 WHERE company_id = ?
+                   AND expedited_by_company_id = ?
+                   AND active = TRUE
+                   AND invoice_kind = 'STANDARD'
+                 ORDER BY created_at DESC
+                 LIMIT 1
+                """, this::mapSeries, clientCompanyId, advisoryCompanyId);
+        return matches.stream().findFirst();
+    }
+
+    /**
+     * Inserta una serie TPB con companyId y expeditedByCompanyId explícitos
+     * (sin TenantContext, idéntico patrón a otros inserts "for company").
+     */
+    public void insertForCompany(String id, String clientCompanyId,
+                                   String advisoryCompanyId, String code,
+                                   String invoiceKind, String numberingType,
+                                   String formatTemplate, int nextNumber,
+                                   Integer currentYear) {
+        jdbcTemplate.update("""
+                INSERT INTO invoice_series (
+                    id, company_id, expedited_by_company_id, code, invoice_kind,
+                    numbering_type, format_template, next_number, current_year
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                id, clientCompanyId, advisoryCompanyId, code, invoiceKind,
+                numberingType, formatTemplate, nextNumber, currentYear);
     }
 }

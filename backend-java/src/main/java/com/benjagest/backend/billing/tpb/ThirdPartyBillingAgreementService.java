@@ -45,6 +45,7 @@ public class ThirdPartyBillingAgreementService {
     private final CurrentUserService currentUserService;
     private final SessionPinService pinService;
     private final ThirdPartyBillingAgreementPdfGenerator pdfGenerator;
+    private final com.benjagest.backend.billing.series.SeriesService seriesService;
     private final String storageRoot;
 
     public ThirdPartyBillingAgreementService(JdbcTemplate jdbc,
@@ -52,12 +53,14 @@ public class ThirdPartyBillingAgreementService {
                                               CurrentUserService currentUserService,
                                               SessionPinService pinService,
                                               ThirdPartyBillingAgreementPdfGenerator pdfGenerator,
+                                              com.benjagest.backend.billing.series.SeriesService seriesService,
                                               @Value("${benjagest.invoices.storage-root:}") String defaultRoot) {
         this.jdbc = jdbc;
         this.tenant = tenant;
         this.currentUserService = currentUserService;
         this.pinService = pinService;
         this.pdfGenerator = pdfGenerator;
+        this.seriesService = seriesService;
         this.storageRoot = defaultRoot == null || defaultRoot.isBlank()
                 ? Paths.get(System.getProperty("user.home"), "benjagest-facturas").toString()
                 : defaultRoot;
@@ -154,6 +157,12 @@ public class ThirdPartyBillingAgreementService {
                        signed_method = 'PIN_SESSION', signed_pdf_path = ?
                  WHERE id = ?
                 """, pdfPath, agreementId);
+        // TPB-2: serie TPB obligatoria si el acuerdo cubre ventas.
+        if (a.scopeSales()) {
+            try {
+                seriesService.ensureTpbSeries(a.clientCompanyId(), a.advisoryCompanyId());
+            } catch (RuntimeException ex) { /* no bloqueamos firma */ }
+        }
         return getById(agreementId);
     }
 
@@ -195,6 +204,11 @@ public class ThirdPartyBillingAgreementService {
                            signed_method = 'OFFLINE_PDF', signed_pdf_path = ?
                      WHERE id = ?
                     """, target.toAbsolutePath().toString(), agreementId);
+            if (a.scopeSales()) {
+                try {
+                    seriesService.ensureTpbSeries(a.clientCompanyId(), a.advisoryCompanyId());
+                } catch (RuntimeException ex) { /* no bloqueamos firma */ }
+            }
             return getById(agreementId);
         } catch (IOException ex) {
             throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
