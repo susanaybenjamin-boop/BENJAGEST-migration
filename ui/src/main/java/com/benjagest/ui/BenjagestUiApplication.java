@@ -1981,6 +1981,148 @@ public class BenjagestUiApplication extends Application {
      * que el polling periódico ({@link #pollPendingInvitations()}) pueda
      * refrescarlo sin necesidad de reentrar al Home.
      */
+    /** TPB-3 — Banner home con facturas pendientes de aprobación. */
+    private void loadTpbPendingInvoicesBanner(VBox slot) {
+        slot.getChildren().clear();
+        Task<java.util.List<com.benjagest.ui.model.SalesInvoiceSummary>> task = new Task<>() {
+            @Override
+            protected java.util.List<com.benjagest.ui.model.SalesInvoiceSummary> call() throws Exception {
+                return billingApiClient.listPendingClientApproval();
+            }
+        };
+        task.setOnSucceeded(ev -> {
+            var list = task.getValue();
+            if (list == null || list.isEmpty()) return;
+            slot.getChildren().add(buildTpbInvoicesBannerCard(list.size(), slot));
+        });
+        task.setOnFailed(ev -> { /* sin acuerdo o sin BD — silencio */ });
+        start(task, "tpb-pending-invoices");
+    }
+
+    private Node buildTpbInvoicesBannerCard(int count, VBox parentSlot) {
+        Label headline = new Label(t("tpb.invoices.banner.headline")
+                .replace("{n}", String.valueOf(count)));
+        headline.setStyle("-fx-font-weight: bold;");
+        Label sub = new Label(t("tpb.invoices.banner.body"));
+        sub.setWrapText(true);
+        sub.getStyleClass().add("settings-hint");
+        VBox copy = new VBox(2, headline, sub);
+        Button review = new Button(t("tpb.invoices.banner.review"));
+        review.setGraphic(icon("fas-list-check"));
+        review.getStyleClass().add("button-primary");
+        review.setOnAction(e -> showTpbPendingInvoicesDialog(parentSlot));
+        HBox card = new HBox(14, copy, new Region(), review);
+        HBox.setHgrow(copy, Priority.ALWAYS);
+        card.setAlignment(Pos.CENTER_LEFT);
+        card.setPadding(new Insets(14, 18, 14, 18));
+        card.setStyle("-fx-background-color: #ffedd5;"
+                + " -fx-background-radius: 10;"
+                + " -fx-border-color: #ea580c;"
+                + " -fx-border-width: 1.5;"
+                + " -fx-border-radius: 10;");
+        return card;
+    }
+
+    private void showTpbPendingInvoicesDialog(VBox bannerSlot) {
+        javafx.scene.control.Dialog<Void> dlg = new javafx.scene.control.Dialog<>();
+        dlg.setTitle(t("tpb.invoices.dialog.title"));
+        dlg.getDialogPane().getButtonTypes().add(javafx.scene.control.ButtonType.CLOSE);
+
+        TableView<com.benjagest.ui.model.SalesInvoiceSummary> table = new TableView<>();
+        table.setPrefSize(820, 420);
+        table.setPlaceholder(new Label(t("tpb.invoices.dialog.empty")));
+
+        TableColumn<com.benjagest.ui.model.SalesInvoiceSummary, String> cNum =
+                new TableColumn<>(t("tpb.invoices.col.number"));
+        cNum.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().invoiceNumber()));
+        cNum.setPrefWidth(140);
+        TableColumn<com.benjagest.ui.model.SalesInvoiceSummary, String> cDate =
+                new TableColumn<>(t("tpb.invoices.col.date"));
+        cDate.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().invoiceDate()));
+        cDate.setPrefWidth(110);
+        TableColumn<com.benjagest.ui.model.SalesInvoiceSummary, String> cCust =
+                new TableColumn<>(t("tpb.invoices.col.customer"));
+        cCust.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().customerLegalName()));
+        TableColumn<com.benjagest.ui.model.SalesInvoiceSummary, String> cTotal =
+                new TableColumn<>(t("tpb.invoices.col.total"));
+        cTotal.setCellValueFactory(c -> new SimpleStringProperty(
+                c.getValue().total() == null ? "" : c.getValue().total().toPlainString() + " €"));
+        cTotal.setPrefWidth(110);
+        table.getColumns().addAll(java.util.List.of(cNum, cDate, cCust, cTotal));
+
+        Button approveBtn = new Button(t("tpb.invoices.approve"));
+        approveBtn.setGraphic(icon("fas-check"));
+        approveBtn.getStyleClass().add("button-primary");
+        approveBtn.setDisable(true);
+        Button rejectBtn = new Button(t("tpb.invoices.reject"));
+        rejectBtn.setGraphic(icon("fas-times"));
+        rejectBtn.setDisable(true);
+
+        table.getSelectionModel().selectedItemProperty().addListener((o, ov, nv) -> {
+            boolean sel = nv != null;
+            approveBtn.setDisable(!sel);
+            rejectBtn.setDisable(!sel);
+        });
+
+        Runnable reload = () -> {
+            Task<java.util.List<com.benjagest.ui.model.SalesInvoiceSummary>> tk = new Task<>() {
+                @Override protected java.util.List<com.benjagest.ui.model.SalesInvoiceSummary> call() throws Exception {
+                    return billingApiClient.listPendingClientApproval();
+                }
+            };
+            tk.setOnSucceeded(e -> {
+                table.setItems(FXCollections.observableArrayList(tk.getValue()));
+                if (tk.getValue().isEmpty()) {
+                    loadTpbPendingInvoicesBanner(bannerSlot); // hace que desaparezca
+                    dlg.close();
+                }
+            });
+            tk.setOnFailed(e -> showError(t("tpb.invoices.fail.title"),
+                    tk.getException() == null ? "" : tk.getException().getMessage()));
+            start(tk, "tpb-invoices-reload");
+        };
+
+        approveBtn.setOnAction(e -> {
+            var sel = table.getSelectionModel().getSelectedItem();
+            if (sel == null) return;
+            Task<com.benjagest.ui.model.SalesInvoiceSummary> tk = new Task<>() {
+                @Override protected com.benjagest.ui.model.SalesInvoiceSummary call() throws Exception {
+                    return billingApiClient.clientApprove(sel.id());
+                }
+            };
+            tk.setOnSucceeded(s -> reload.run());
+            tk.setOnFailed(s -> showError(t("tpb.invoices.fail.title"),
+                    tk.getException() == null ? "" : tk.getException().getMessage()));
+            start(tk, "tpb-invoice-approve");
+        });
+        rejectBtn.setOnAction(e -> {
+            var sel = table.getSelectionModel().getSelectedItem();
+            if (sel == null) return;
+            javafx.scene.control.TextInputDialog td = new javafx.scene.control.TextInputDialog();
+            td.setTitle(t("tpb.invoices.reject"));
+            td.setHeaderText(t("tpb.invoices.reject_prompt"));
+            String reason = td.showAndWait().orElse(null);
+            if (reason == null) return;
+            Task<com.benjagest.ui.model.SalesInvoiceSummary> tk = new Task<>() {
+                @Override protected com.benjagest.ui.model.SalesInvoiceSummary call() throws Exception {
+                    return billingApiClient.clientReject(sel.id(), reason);
+                }
+            };
+            tk.setOnSucceeded(s -> reload.run());
+            tk.setOnFailed(s -> showError(t("tpb.invoices.fail.title"),
+                    tk.getException() == null ? "" : tk.getException().getMessage()));
+            start(tk, "tpb-invoice-reject");
+        });
+
+        HBox actions = new HBox(8, approveBtn, rejectBtn);
+        actions.setAlignment(Pos.CENTER_LEFT);
+        VBox box = new VBox(10, table, actions);
+        box.setPadding(new Insets(8));
+        dlg.getDialogPane().setContent(box);
+        reload.run();
+        dlg.showAndWait();
+    }
+
     /** TPB-1 — Banner home del empresario con acuerdo TPB pendiente. */
     private void loadTpbPendingBanner(VBox slot) {
         slot.getChildren().clear();
@@ -2258,6 +2400,12 @@ public class BenjagestUiApplication extends Application {
             VBox tpbBannerSlot = new VBox();
             content.getChildren().add(tpbBannerSlot);
             loadTpbPendingBanner(tpbBannerSlot);
+            // TPB-3: si la asesoría ha emitido facturas que esperan tu
+            // aprobación, banner naranja prominente con botón para
+            // revisarlas todas y aprobar/rechazar una a una.
+            VBox tpbInvoicesSlot = new VBox();
+            content.getChildren().add(tpbInvoicesSlot);
+            loadTpbPendingInvoicesBanner(tpbInvoicesSlot);
         }
 
         content.getChildren().addAll(
@@ -15531,6 +15679,19 @@ public class BenjagestUiApplication extends Application {
             case "tpb.sign.ok.title" -> "Agreement signed";
             case "tpb.sign.ok.body" -> "Signed PDF is now available for download from your settings.";
             case "tpb.sign.fail.title" -> "Could not sign";
+            case "tpb.invoices.banner.headline" -> "{n} invoices waiting for your approval";
+            case "tpb.invoices.banner.body" -> "Your advisor has issued invoices in your name. Review and approve them before they are delivered to the recipient.";
+            case "tpb.invoices.banner.review" -> "Review";
+            case "tpb.invoices.dialog.title" -> "Invoices pending approval";
+            case "tpb.invoices.dialog.empty" -> "No pending invoices.";
+            case "tpb.invoices.col.number" -> "Number";
+            case "tpb.invoices.col.date" -> "Date";
+            case "tpb.invoices.col.customer" -> "Customer";
+            case "tpb.invoices.col.total" -> "Total";
+            case "tpb.invoices.approve" -> "Approve";
+            case "tpb.invoices.reject" -> "Reject";
+            case "tpb.invoices.reject_prompt" -> "Reason for rejection (the advisor will see it):";
+            case "tpb.invoices.fail.title" -> "Operation failed";
             case "client.tab.sales" -> "Sales";
             case "client.tab.expenses" -> "Expenses";
             case "client.sales_expenses.hint" -> "This client is NOT linked. Here you only archive invoices the client emitted/received in their own system. No legal invoicing from BENJAGEST — for that, the client must accept the invitation and activate VeriFactu.";
@@ -16125,6 +16286,19 @@ public class BenjagestUiApplication extends Application {
             case "tpb.sign.ok.title" -> "Acuerdo firmado";
             case "tpb.sign.ok.body" -> "El PDF firmado queda disponible para descarga desde tu Configuración.";
             case "tpb.sign.fail.title" -> "No se pudo firmar";
+            case "tpb.invoices.banner.headline" -> "{n} facturas pendientes de tu aprobación";
+            case "tpb.invoices.banner.body" -> "Tu asesoría ha emitido facturas en tu nombre. Revísalas y apruébalas antes de que se entreguen al destinatario.";
+            case "tpb.invoices.banner.review" -> "Revisar";
+            case "tpb.invoices.dialog.title" -> "Facturas pendientes de aprobación";
+            case "tpb.invoices.dialog.empty" -> "No hay facturas pendientes.";
+            case "tpb.invoices.col.number" -> "Número";
+            case "tpb.invoices.col.date" -> "Fecha";
+            case "tpb.invoices.col.customer" -> "Cliente";
+            case "tpb.invoices.col.total" -> "Total";
+            case "tpb.invoices.approve" -> "Aprobar";
+            case "tpb.invoices.reject" -> "Rechazar";
+            case "tpb.invoices.reject_prompt" -> "Motivo del rechazo (lo verá la asesoría):";
+            case "tpb.invoices.fail.title" -> "Operación fallida";
             case "advisory.client.tab.billing" -> "Facturación";
             case "advisory.client.tab.purchases" -> "Compras y Gastos";
             case "advisory.client.tab.sales_and_expenses" -> "Ventas y Gastos";

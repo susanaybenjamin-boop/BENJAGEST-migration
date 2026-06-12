@@ -160,6 +160,49 @@ public class BillingApiClient {
         return parseInvoiceHeader(response.body());
     }
 
+    // ============================================================
+    //  TPB-3 — Aceptación factura-a-factura por el cliente
+    // ============================================================
+
+    public List<SalesInvoiceSummary> listPendingClientApproval()
+            throws IOException, InterruptedException {
+        HttpRequest.Builder b = HttpRequest.newBuilder(
+                URI.create(baseUrl + "/billing/invoices/pending-client-approval"))
+                .timeout(Duration.ofSeconds(15))
+                .GET();
+        HttpResponse<String> r = sendAuthorized(b);
+        ensureOk(r);
+        return parseInvoices(r.body());
+    }
+
+    public SalesInvoiceSummary clientApprove(String id)
+            throws IOException, InterruptedException {
+        HttpRequest.Builder b = HttpRequest.newBuilder(
+                URI.create(baseUrl + "/billing/invoices/" + id + "/client-approve"))
+                .timeout(Duration.ofSeconds(15))
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.noBody());
+        HttpResponse<String> r = sendAuthorized(b);
+        ensureOk(r);
+        return parseInvoiceHeader(r.body());
+    }
+
+    public SalesInvoiceSummary clientReject(String id, String reason)
+            throws IOException, InterruptedException {
+        String body = "{\"reason\":\""
+                + (reason == null ? ""
+                    : reason.replace("\\", "\\\\").replace("\"", "\\\""))
+                + "\"}";
+        HttpRequest.Builder b = HttpRequest.newBuilder(
+                URI.create(baseUrl + "/billing/invoices/" + id + "/client-reject"))
+                .timeout(Duration.ofSeconds(15))
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(body));
+        HttpResponse<String> r = sendAuthorized(b);
+        ensureOk(r);
+        return parseInvoiceHeader(r.body());
+    }
+
     /**
      * Valida un lote de facturas DRAFT (multiselección). Devuelve el JSON
      * crudo del resumen — la UI lo parsea para mostrar cuántas pasaron.
