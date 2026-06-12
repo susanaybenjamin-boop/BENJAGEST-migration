@@ -217,8 +217,41 @@ public class ThirdPartyBillingAgreementService {
         return getById(agreementId);
     }
 
+    /**
+     * <strong>BLOQUEADO 2026-06-12</strong> tras decisión de Benjamin:
+     * el flujo OFFLINE_PDF se prestaba a abuso (asesoría subía un PDF
+     * sin firmar y activaba el acuerdo, el cliente ni se enteraba).
+     * El método queda como stub que rechaza con HTTP 410 GONE y mensaje
+     * legal. Para reintroducirlo habría que:
+     *   1. Verificar criptográficamente la firma PKCS7 con PDFBox.
+     *   2. Extraer el NIF del CN del certificado.
+     *   3. Comprobar que coincide con el tax_identifier del cliente.
+     *   4. Notificar al cliente con copia del PDF activado.
+     *
+     * Hasta entonces, la única firma aceptada es PIN_SESSION (cliente
+     * vinculado con su PIN). Los clientes sin cuenta deben vincularse
+     * antes de poder firmar.
+     */
     @Transactional
     public ThirdPartyBillingAgreement signWithOfflinePdf(String agreementId, MultipartFile signedPdf) {
+        log.warn("TPB: intento de signWithOfflinePdf rechazado por politica "
+                + "(agreement={}, by={}). Flujo bloqueado 2026-06-12.",
+                agreementId, activeCompanyId());
+        throw new ResponseStatusException(HttpStatus.GONE,
+                "El método de firma offline-PDF ya no se acepta por seguridad jurídica. "
+                + "El cliente debe vincularse a BENJAGEST y firmar el acuerdo con su PIN "
+                + "(RD 1619/2012 art. 5: el titular debe consentir expresamente).");
+    }
+
+    /**
+     * Versión histórica del signWithOfflinePdf que sigue existiendo en
+     * el código fuente para referencia (cuando se reintroduzca con
+     * verificación criptográfica). NO debe llamarse — el endpoint
+     * publica el método de arriba que rechaza con 410.
+     */
+    @SuppressWarnings("unused")
+    private ThirdPartyBillingAgreement signWithOfflinePdfLegacyDoNotCall(
+            String agreementId, MultipartFile signedPdf) {
         ThirdPartyBillingAgreement a = getById(agreementId);
         if (!ThirdPartyBillingAgreement.STATUS_PROPOSED.equals(a.status())) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
