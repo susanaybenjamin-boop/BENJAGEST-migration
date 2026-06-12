@@ -104,6 +104,12 @@ public class SeriesService {
      * <p>Code: {@code TPB-{NIF asesoría sanitizado}} para distinguir
      * visualmente del prefijo del cliente. Format: {@code T-{YYYY}-{0000}}.
      */
+    /** Expone findTpbSeries para diagnostico — no crea, solo consulta. */
+    public java.util.Optional<Series> findTpbSeriesPublic(
+            String clientCompanyId, String advisoryCompanyId) {
+        return repository.findTpbSeries(clientCompanyId, advisoryCompanyId);
+    }
+
     public Series ensureTpbSeries(String clientCompanyId, String advisoryCompanyId) {
         java.util.Optional<Series> existing = repository.findTpbSeries(
                 clientCompanyId, advisoryCompanyId);

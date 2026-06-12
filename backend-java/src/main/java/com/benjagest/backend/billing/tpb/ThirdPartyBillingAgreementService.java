@@ -254,6 +254,35 @@ public class ThirdPartyBillingAgreementService {
     }
 
     /**
+     * Diagnostico / reparacion manual: garantiza que existe la serie
+     * TPB del acuerdo dado. A diferencia del catch silencioso de
+     * signWithPin/signWithOfflinePdf, este metodo propaga cualquier
+     * excepcion al caller. La UI lo usa para diagnosticar acuerdos
+     * firmados antes del fix de auto-repair.
+     */
+    public EnsureSeriesResult ensureSeriesForAgreement(String agreementId) {
+        ThirdPartyBillingAgreement a = getById(agreementId);
+        if (!a.scopeSales()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "El acuerdo no cubre ventas; no requiere serie TPB.");
+        }
+        if (!ThirdPartyBillingAgreement.STATUS_ACTIVE.equals(a.status())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "El acuerdo no esta ACTIVE (estado actual: " + a.status() + ").");
+        }
+        boolean existedBefore = seriesService
+                .findTpbSeriesPublic(a.clientCompanyId(), a.advisoryCompanyId())
+                .isPresent();
+        com.benjagest.backend.billing.series.Series series =
+                seriesService.ensureTpbSeries(a.clientCompanyId(), a.advisoryCompanyId());
+        return new EnsureSeriesResult(series.id(), series.code(),
+                series.nextNumber(), !existedBefore);
+    }
+
+    public record EnsureSeriesResult(String seriesId, String code,
+                                      int nextNumber, boolean created) {}
+
+    /**
      * Genera el PDF "propuesta" descargable para el caso OFFLINE
      * (cliente sin acceso a BENJAGEST imprime, firma y la asesoría
      * sube el escaneado). Se genera bajo demanda — no se persiste

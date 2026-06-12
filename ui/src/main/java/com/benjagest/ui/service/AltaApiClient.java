@@ -2085,6 +2085,23 @@ public class AltaApiClient {
     //  Backend: /api/billing/third-party-agreements
     // ============================================================
 
+    /**
+     * Diagnostico/reparacion: garantiza la serie TPB del acuerdo dado.
+     * Devuelve el JSON crudo con seriesId, code, nextNumber, created.
+     * Si el backend rechaza (acuerdo no ACTIVE, no cubre ventas) lanza
+     * IOException con el codigo HTTP + mensaje.
+     */
+    public String tpbEnsureSeries(String agreementId)
+            throws IOException, InterruptedException {
+        HttpResponse<String> r = send(req(baseUrl
+                + "/billing/third-party-agreements/" + agreementId + "/ensure-series")
+                .POST(java.net.http.HttpRequest.BodyPublishers.noBody()));
+        if (r.statusCode() < 200 || r.statusCode() >= 300) {
+            throw new IOException("HTTP " + r.statusCode() + ": " + r.body());
+        }
+        return r.body();
+    }
+
     public com.benjagest.ui.model.TpbAgreementEntry tpbFindCurrent(String otherCompanyId)
             throws IOException, InterruptedException {
         String encoded = java.net.URLEncoder.encode(otherCompanyId,
