@@ -250,6 +250,81 @@ El cron diario corre a las 06:00.
 
 ---
 
+## 12. PANORAMA-ASESORIA (vista panorámica KPIs cartera) — `#64`
+
+**Solo en modo asesoría.** En el dashboard, debajo de "Indicadores
+principales", aparece un bloque "Mi cartera" con 5 tiles:
+1. **Facturado este mes** — suma de facturas validadas del mes en
+   todas las empresas gestionadas.
+2. **Pendiente de cobro** — total entre todos los clientes.
+3. **Facturas vencidas** — número de facturas pasadas de vencimiento.
+4. **Clientes activos** — han facturado este mes.
+5. **TPB pendientes aceptación** — facturas TPB esperando aceptación
+   del cliente.
+
+**Probar:**
+- Entra como `admin@benjagest.local` (asesoría).
+- Verifica que los 5 tiles cargan y los números coinciden con las
+  facturas reales en BD.
+- En modo cliente NO debe aparecer este bloque.
+
+---
+
+## 13. UI-BOE-ALERTS (pestaña dedicada de alertas BOE) — `#65`
+
+**Solo en modo asesoría.** En **Configuración → Alertas BOE**:
+- Filtro de días atrás (7/30/90/180/365).
+- Tabla con fecha + ID BOE + título + palabras clave + departamento.
+- Botón "Buscar ahora" para forzar el barrido del día actual.
+- Botón "Abrir en navegador" para ir al PDF oficial del BOE.
+
+**Probar:**
+- Abre la pestaña con días=30, verifica que carga (puede estar
+  vacía si el cron aún no ha corrido).
+- Pulsa "Buscar ahora" — debería procesar el sumario del BOE de
+  hoy y refrescar la tabla.
+- Selecciona una fila y "Abrir en navegador" — debe abrir el PDF
+  oficial.
+
+---
+
+## 14. UI-BACKUP-LOCAL (panel Copias de seguridad) — `#66`
+
+En **Configuración → Copias de seguridad** (visible para OWNER/ADMIN):
+- Tabla con fecha + archivo + tamaño + ruta.
+- Botón "Hacer ahora" para forzar un backup inmediato.
+- Botón "Recargar".
+- Botón "Abrir carpeta" sobre la fila seleccionada.
+
+**Probar:**
+- Pulsa "Hacer ahora" — debería crear un .sql.zip en
+  `~/.benjagest/backups/` y aparecer en la tabla.
+- Selecciona la fila y "Abrir carpeta" — debe abrir el explorador
+  en la ruta del backup.
+
+---
+
+## 15. UI-MULTI-ALLOCATION (Cobrar varias facturas) — `#67`
+
+En el listado de **Facturación**, botón nuevo "Cobrar varias":
+- Combo con clientes que tienen facturas pendientes.
+- Tabla con sus facturas VALIDATED (PENDING/PARTIAL): checkbox +
+  numero + fecha + total + pendiente + importe a repartir.
+- Suma seleccionada en vivo.
+- Campos del pago: fecha, importe total, método, referencia, notas.
+
+**Probar:**
+- Pulsa "Cobrar varias", elige un cliente con ≥2 facturas pendientes.
+- Marca 2 facturas, deja los importes por defecto (= pendiente de
+  cada una), pon el total = suma de ambas.
+- "Registrar pago" — ambas facturas deberían pasar a PAID y compartir
+  el mismo `payment_id` en `sales_invoice_payments`.
+- Repite con suma de allocations ≠ total — debe rechazar con mensaje
+  explícito.
+- Repite con un reparto > pendiente — debe rechazar.
+
+---
+
 # 📋 Resumen rápido de qué se commiteó
 
 | # | Commit | Slice | V | Estado |
@@ -265,10 +340,13 @@ El cron diario corre a las 06:00.
 | 9 | face345 | MULTI-ALLOCATION | V102 | Probable |
 | 10 | 655b2af | REC-BANCARIA | — | Probable |
 | 11 | b7c4e9a | BOE-RSS | V103 | Probable |
+| 12 | 546792c | PANORAMA-ASESORIA #64 | — | Probable |
+| 13 | bf2d644 | UI-BOE-ALERTS #65 | — | Probable |
+| 14 | 44d1be3 | UI-BACKUP-LOCAL #66 | — | Probable |
+| 15 | 6f57cdb | UI-MULTI-ALLOCATION #67 | — | Probable |
 
-**Backend listo y arranca limpio.** UI específica de TPB ya hecha;
-para los slices 6–11 los endpoints están operativos pero falta UI
-dedicada (se consumen via Postman para probar el backend mientras
-tanto).
+**Backend listo y arranca limpio.** UI dedicada ya hecha para
+TPB-1..4, PANORAMA, BOE, BACKUP y MULTI-ALLOCATION. Pendiente UI
+para REC-BANCARIA (#61) y para los slices laborales del backlog.
 
 Cuando apruebes cada uno, lo paso de "Probable" a "✅" en backlog.md.
