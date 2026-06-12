@@ -2310,6 +2310,97 @@ public class BenjagestUiApplication extends Application {
 
     private void showTpbSignWithPinDialog(com.benjagest.ui.model.TpbAgreementEntry a,
                                             VBox parentSlot) {
+        // Antes de pedir el PIN para firmar, comprobar si el empresario
+        // ya tiene PIN de sesion configurado. Si no, abrir primero el
+        // modal de "Define tu PIN" — sin PIN no puede firmar y ese mismo
+        // PIN lo usara despues para desbloquear la app cuando se active
+        // el salvapantallas (Configuracion > Sesion).
+        Task<com.benjagest.ui.model.SessionStatusEntry> check = new Task<>() {
+            @Override
+            protected com.benjagest.ui.model.SessionStatusEntry call() throws Exception {
+                return altaApiClient.getSessionStatus();
+            }
+        };
+        check.setOnSucceeded(ev -> {
+            var s = check.getValue();
+            if (s != null && s.pinConfigured()) {
+                openTpbSignDialogWithPin(a, parentSlot);
+            } else {
+                showDefinePinFirstDialog(() -> openTpbSignDialogWithPin(a, parentSlot));
+            }
+        });
+        check.setOnFailed(ev -> showError(t("tpb.sign.fail.title"),
+                check.getException() == null ? "" : check.getException().getMessage()));
+        start(check, "tpb-pin-check");
+    }
+
+    private void showDefinePinFirstDialog(Runnable onPinSet) {
+        Dialog<ButtonType> dlg = new Dialog<>();
+        dlg.setTitle(t("tpb.pin.setup.title"));
+        dlg.getDialogPane().getButtonTypes().addAll(ButtonType.OK, ButtonType.CANCEL);
+        Node okBtn = dlg.getDialogPane().lookupButton(ButtonType.OK);
+        okBtn.setDisable(true);
+
+        Label intro = new Label(t("tpb.pin.setup.intro"));
+        intro.setWrapText(true);
+        Label hint = new Label(t("tpb.pin.setup.hint"));
+        hint.setWrapText(true);
+        hint.getStyleClass().add("settings-hint");
+
+        PasswordField p1 = new PasswordField();
+        p1.setPromptText(t("tpb.pin.setup.prompt_new"));
+        PasswordField p2 = new PasswordField();
+        p2.setPromptText(t("tpb.pin.setup.prompt_repeat"));
+
+        Label feedback = new Label("");
+        feedback.setStyle("-fx-text-fill: #b91c1c;");
+        feedback.setWrapText(true);
+
+        Runnable validate = () -> {
+            String a = p1.getText();
+            String b = p2.getText();
+            boolean ok = a != null && a.length() >= 4 && a.length() <= 12 && a.matches("\\d+") && a.equals(b);
+            if (a == null || a.isBlank() || b == null || b.isBlank()) {
+                feedback.setText("");
+            } else if (!a.matches("\\d+") || a.length() < 4 || a.length() > 12) {
+                feedback.setText(t("tpb.pin.setup.err_format"));
+            } else if (!a.equals(b)) {
+                feedback.setText(t("tpb.pin.setup.err_mismatch"));
+            } else {
+                feedback.setText("");
+            }
+            okBtn.setDisable(!ok);
+        };
+        p1.textProperty().addListener((o, ov, nv) -> validate.run());
+        p2.textProperty().addListener((o, ov, nv) -> validate.run());
+
+        VBox content = new VBox(10, intro, hint, p1, p2, feedback);
+        content.setPadding(new Insets(16));
+        content.setPrefWidth(480);
+        dlg.getDialogPane().setContent(content);
+
+        dlg.showAndWait().ifPresent(bt -> {
+            if (bt != ButtonType.OK) return;
+            String pin = p1.getText();
+            Task<Void> save = new Task<>() {
+                @Override
+                protected Void call() throws Exception {
+                    altaApiClient.setSessionPin(null, pin);
+                    return null;
+                }
+            };
+            save.setOnSucceeded(e -> {
+                showInfo(t("tpb.pin.setup.ok.title"), t("tpb.pin.setup.ok.body"));
+                onPinSet.run();
+            });
+            save.setOnFailed(e -> showError(t("tpb.pin.setup.fail.title"),
+                    save.getException() == null ? "" : save.getException().getMessage()));
+            start(save, "tpb-pin-setup");
+        });
+    }
+
+    private void openTpbSignDialogWithPin(com.benjagest.ui.model.TpbAgreementEntry a,
+                                            VBox parentSlot) {
         Dialog<ButtonType> dlg = new Dialog<>();
         dlg.setTitle(t("tpb.sign.dialog.title"));
         dlg.getDialogPane().getButtonTypes().addAll(ButtonType.OK, ButtonType.CANCEL);
@@ -16680,6 +16771,16 @@ public class BenjagestUiApplication extends Application {
             case "tpb.fail.revoke" -> "Could not revoke";
             case "tpb.banner.headline" -> "Your advisor has proposed a billing agreement";
             case "tpb.banner.headline.from" -> "has proposed a billing agreement";
+            case "tpb.pin.setup.title" -> "Define your session PIN";
+            case "tpb.pin.setup.intro" -> "To sign the agreement you need a session PIN. Define it now.";
+            case "tpb.pin.setup.hint" -> "This 4–12 digit PIN will also be used to unlock the application after inactivity (configurable from Settings → Session). It is your electronic signature for legal actions like accepting this agreement or approving invoices issued on your behalf.";
+            case "tpb.pin.setup.prompt_new" -> "New PIN (4–12 digits)";
+            case "tpb.pin.setup.prompt_repeat" -> "Repeat PIN";
+            case "tpb.pin.setup.err_format" -> "The PIN must be 4 to 12 digits.";
+            case "tpb.pin.setup.err_mismatch" -> "The two PINs do not match.";
+            case "tpb.pin.setup.ok.title" -> "PIN saved";
+            case "tpb.pin.setup.ok.body" -> "Now you can sign the agreement with that PIN.";
+            case "tpb.pin.setup.fail.title" -> "Could not save the PIN";
             case "tpb.banner.body" -> "They want to issue invoices on your behalf for the operations marked in the agreement. Read and sign with your session PIN.";
             case "tpb.banner.sign" -> "Read and sign";
             case "tpb.sign.dialog.title" -> "Sign third-party billing agreement";
@@ -17405,6 +17506,16 @@ public class BenjagestUiApplication extends Application {
             case "tpb.fail.revoke" -> "No se pudo revocar";
             case "tpb.banner.headline" -> "Tu asesoría te ha propuesto un acuerdo de facturación";
             case "tpb.banner.headline.from" -> "te ha propuesto un acuerdo de facturación";
+            case "tpb.pin.setup.title" -> "Define tu PIN de sesión";
+            case "tpb.pin.setup.intro" -> "Para firmar el acuerdo necesitas un PIN de sesión. Defínelo ahora.";
+            case "tpb.pin.setup.hint" -> "Este PIN de 4–12 dígitos también se usará para desbloquear la aplicación tras un periodo de inactividad (configurable desde Configuración → Sesión). Es tu firma electrónica para acciones legales como aceptar este acuerdo o aprobar facturas emitidas en tu nombre.";
+            case "tpb.pin.setup.prompt_new" -> "PIN nuevo (4–12 dígitos)";
+            case "tpb.pin.setup.prompt_repeat" -> "Repetir PIN";
+            case "tpb.pin.setup.err_format" -> "El PIN debe ser numérico, entre 4 y 12 dígitos.";
+            case "tpb.pin.setup.err_mismatch" -> "Los dos PIN no coinciden.";
+            case "tpb.pin.setup.ok.title" -> "PIN guardado";
+            case "tpb.pin.setup.ok.body" -> "Ya puedes firmar el acuerdo con ese PIN.";
+            case "tpb.pin.setup.fail.title" -> "No se pudo guardar el PIN";
             case "tpb.banner.body" -> "Quiere emitir facturas en tu nombre para las operaciones marcadas en el acuerdo. Léelo y fírmalo con tu PIN de sesión.";
             case "tpb.banner.sign" -> "Leer y firmar";
             case "tpb.sign.dialog.title" -> "Firmar acuerdo de facturación por tercero";
