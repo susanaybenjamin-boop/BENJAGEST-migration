@@ -5225,6 +5225,10 @@ public class BenjagestUiApplication extends Application {
             boeTab.setGraphic(icon("fas-newspaper"));
             tabs.getTabs().add(boeTab);
         }
+        // BACKUP-LOCAL — pestaña Backups para OWNER/ADMIN.
+        Tab backupTab = new Tab(t("settings.tab.backup"), settingsBackupTab());
+        backupTab.setGraphic(icon("fas-hdd"));
+        tabs.getTabs().add(backupTab);
         tabs.getTabs().add(auditTab);
         // El TabPane crece hasta el final del area central; sin esto, los
         // botones del pie de cada tab podrian quedar fuera de pantalla en
@@ -7052,6 +7056,110 @@ public class BenjagestUiApplication extends Application {
         task.setOnFailed(ev -> showError(t("settings.boe.run.fail"),
                 task.getException() == null ? "" : task.getException().getMessage()));
         start(task, "boe-alerts-run");
+    }
+
+    /**
+     * BACKUP-LOCAL — pestaña Backups: lista snapshots .sql.zip
+     * existentes, muestra ultima fecha + tamaño, permite forzar
+     * backup ahora y abrir la carpeta en el explorador.
+     */
+    private Node settingsBackupTab() {
+        Label sectionTitle = label(t("settings.backup.section"), "settings-section-title");
+        Label hint = new Label(t("settings.backup.hint"));
+        hint.setWrapText(true);
+        hint.getStyleClass().add("settings-hint");
+
+        TableView<com.benjagest.ui.service.AltaApiClient.BackupInfoEntry> table = new TableView<>();
+        table.getStyleClass().add("data-table");
+        table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+        table.setPlaceholder(new Label(t("settings.backup.empty")));
+
+        TableColumn<com.benjagest.ui.service.AltaApiClient.BackupInfoEntry, String> colName =
+                new TableColumn<>(t("settings.backup.col.file"));
+        colName.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().filename()));
+        colName.setPrefWidth(320);
+
+        TableColumn<com.benjagest.ui.service.AltaApiClient.BackupInfoEntry, String> colSize =
+                new TableColumn<>(t("settings.backup.col.size"));
+        colSize.setCellValueFactory(c -> new SimpleStringProperty(humanSize(c.getValue().sizeBytes())));
+        colSize.setPrefWidth(120);
+
+        TableColumn<com.benjagest.ui.service.AltaApiClient.BackupInfoEntry, String> colWhen =
+                new TableColumn<>(t("settings.backup.col.when"));
+        colWhen.setCellValueFactory(c -> new SimpleStringProperty(shortIso(c.getValue().lastModified())));
+        colWhen.setPrefWidth(180);
+        colWhen.setComparator(ISO_DATE_COMPARATOR);
+
+        TableColumn<com.benjagest.ui.service.AltaApiClient.BackupInfoEntry, String> colPath =
+                new TableColumn<>(t("settings.backup.col.path"));
+        colPath.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().fullPath()));
+        colPath.setPrefWidth(420);
+
+        table.getColumns().addAll(List.of(colWhen, colName, colSize, colPath));
+        VBox.setVgrow(table, Priority.ALWAYS);
+
+        Button refresh = new Button(t("settings.backup.btn.refresh"));
+        refresh.setGraphic(icon("fas-sync-alt"));
+        Runnable load = () -> loadBackups(table);
+        refresh.setOnAction(ev -> load.run());
+
+        Button runNow = new Button(t("settings.backup.btn.run_now"));
+        runNow.setGraphic(icon("fas-save"));
+        runNow.getStyleClass().add("primary-button");
+        runNow.setOnAction(ev -> runBackupNow(load));
+
+        Button openFolder = new Button(t("settings.backup.btn.open_folder"));
+        openFolder.setGraphic(icon("fas-folder-open"));
+        openFolder.setDisable(true);
+        openFolder.setOnAction(ev -> {
+            var sel = table.getSelectionModel().getSelectedItem();
+            if (sel == null || sel.fullPath() == null) return;
+            try {
+                java.io.File parent = new java.io.File(sel.fullPath()).getParentFile();
+                if (parent != null) java.awt.Desktop.getDesktop().open(parent);
+            } catch (Exception ex) {
+                showError(t("settings.backup.open.fail"), ex.getMessage());
+            }
+        });
+        table.getSelectionModel().selectedItemProperty().addListener((obs, o, n) ->
+                openFolder.setDisable(n == null));
+
+        HBox row = new HBox(10, runNow, refresh, openFolder);
+        row.setAlignment(Pos.CENTER_LEFT);
+
+        load.run();
+
+        VBox layout = new VBox(12, sectionTitle, hint, row, table);
+        layout.getStyleClass().add("settings-tab-body");
+        return layout;
+    }
+
+    private void loadBackups(TableView<com.benjagest.ui.service.AltaApiClient.BackupInfoEntry> table) {
+        Task<List<com.benjagest.ui.service.AltaApiClient.BackupInfoEntry>> task = new Task<>() {
+            @Override
+            protected List<com.benjagest.ui.service.AltaApiClient.BackupInfoEntry> call() throws Exception {
+                return altaApiClient.listBackups();
+            }
+        };
+        task.setOnSucceeded(ev -> table.setItems(FXCollections.observableArrayList(task.getValue())));
+        task.setOnFailed(ev -> showError(t("settings.backup.load.fail"),
+                task.getException() == null ? "" : task.getException().getMessage()));
+        start(task, "backup-list");
+    }
+
+    private void runBackupNow(Runnable onDone) {
+        Task<String> task = new Task<>() {
+            @Override
+            protected String call() throws Exception { return altaApiClient.runBackupNow(); }
+        };
+        task.setOnSucceeded(ev -> {
+            showInfo(t("settings.backup.run.ok"),
+                    t("settings.backup.run.ok.body") + "\n" + task.getValue());
+            onDone.run();
+        });
+        task.setOnFailed(ev -> showError(t("settings.backup.run.fail"),
+                task.getException() == null ? "" : task.getException().getMessage()));
+        start(task, "backup-run");
     }
 
     private Node settingsAuditTab() {
@@ -16042,6 +16150,22 @@ public class BenjagestUiApplication extends Application {
             case "settings.boe.open.fail" -> "Could not open the URL";
             case "settings.boe.load.fail" -> "Could not load BOE alerts";
             case "settings.boe.run.fail" -> "BOE scan failed";
+            case "settings.tab.backup" -> "Backups";
+            case "settings.backup.section" -> "Local database backups";
+            case "settings.backup.hint" -> "Automatic snapshot every Monday at 03:00. Includes a SQL dump and the invoice PDFs folder, zipped. The last 12 snapshots are kept and older ones are pruned.";
+            case "settings.backup.empty" -> "No backups yet — click \"Run now\" to create the first one.";
+            case "settings.backup.col.file" -> "File";
+            case "settings.backup.col.size" -> "Size";
+            case "settings.backup.col.when" -> "Created";
+            case "settings.backup.col.path" -> "Path";
+            case "settings.backup.btn.refresh" -> "Refresh";
+            case "settings.backup.btn.run_now" -> "Run now";
+            case "settings.backup.btn.open_folder" -> "Open folder";
+            case "settings.backup.open.fail" -> "Could not open folder";
+            case "settings.backup.load.fail" -> "Could not list backups";
+            case "settings.backup.run.ok" -> "Backup created";
+            case "settings.backup.run.ok.body" -> "Saved at:";
+            case "settings.backup.run.fail" -> "Backup failed";
             case "client.tab.sales" -> "Sales";
             case "client.tab.expenses" -> "Expenses";
             case "client.sales_expenses.hint" -> "This client is NOT linked. Here you only archive invoices the client emitted/received in their own system. No legal invoicing from BENJAGEST — for that, the client must accept the invitation and activate VeriFactu.";
@@ -16691,6 +16815,22 @@ public class BenjagestUiApplication extends Application {
             case "settings.boe.open.fail" -> "No se pudo abrir la URL";
             case "settings.boe.load.fail" -> "No se pudieron cargar las alertas BOE";
             case "settings.boe.run.fail" -> "Falló el barrido BOE";
+            case "settings.tab.backup" -> "Copias de seguridad";
+            case "settings.backup.section" -> "Copias de seguridad locales";
+            case "settings.backup.hint" -> "Snapshot automático cada lunes a las 03:00. Incluye volcado SQL y la carpeta de PDFs de facturas, comprimido. Se conservan las últimas 12 copias y las anteriores se eliminan.";
+            case "settings.backup.empty" -> "Aún no hay copias — pulsa \"Hacer ahora\" para crear la primera.";
+            case "settings.backup.col.file" -> "Archivo";
+            case "settings.backup.col.size" -> "Tamaño";
+            case "settings.backup.col.when" -> "Creada";
+            case "settings.backup.col.path" -> "Ruta";
+            case "settings.backup.btn.refresh" -> "Recargar";
+            case "settings.backup.btn.run_now" -> "Hacer ahora";
+            case "settings.backup.btn.open_folder" -> "Abrir carpeta";
+            case "settings.backup.open.fail" -> "No se pudo abrir la carpeta";
+            case "settings.backup.load.fail" -> "No se pudieron listar las copias";
+            case "settings.backup.run.ok" -> "Copia creada";
+            case "settings.backup.run.ok.body" -> "Guardada en:";
+            case "settings.backup.run.fail" -> "Falló la copia";
             case "advisory.client.tab.billing" -> "Facturación";
             case "advisory.client.tab.purchases" -> "Compras y Gastos";
             case "advisory.client.tab.sales_and_expenses" -> "Ventas y Gastos";
