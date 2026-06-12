@@ -16795,6 +16795,13 @@ public class BenjagestUiApplication extends Application {
             case "tpb.method.offline_pdf" -> "Handwritten signature on PDF (offline)";
             case "tpb.pending.waiting_client" -> "Waiting for the client to sign from their session.";
             case "tpb.pending.offline_blocked" -> "This client is NOT linked to BENJAGEST. The offline-PDF signature flow has been disabled for legal safety (RD 1619/2012 art. 5: the holder must expressly consent, and an unverified signature was activating agreements without their knowledge). The client must register in BENJAGEST and sign with their session PIN. Invite them from Communication → Messages.";
+            case "tpb.magic.hint" -> "The client does NOT have a BENJAGEST account. To sign without installing anything, send a magic link to their email. They will receive a link and a 6-digit OTP. Opening the link opens a simple page where they read the PDF and sign with the OTP. Compliant with eIDAS art. 25 (simple electronic signature).";
+            case "tpb.magic.email_prompt" -> "Client email";
+            case "tpb.magic.send" -> "Send signing link";
+            case "tpb.magic.ok.title" -> "Link sent";
+            case "tpb.magic.ok.body" -> "The signing link and OTP have been emailed to:";
+            case "tpb.magic.fail.title" -> "Could not send the link";
+            case "tpb.magic.fail.bad_email" -> "Enter a valid email address.";
             case "tpb.propose.needs_link" -> "Warning: this client is NOT linked to BENJAGEST. The agreement can be created but cannot be signed legally until the client registers and signs with their PIN (offline-PDF flow is disabled for legal safety).";
             case "tpb.proposal.download" -> "Download PDF for signature";
             case "tpb.proposal.upload_signed" -> "Upload signed PDF";
@@ -17537,6 +17544,13 @@ public class BenjagestUiApplication extends Application {
             case "tpb.method.offline_pdf" -> "Firma manuscrita en PDF (offline)";
             case "tpb.pending.waiting_client" -> "Esperando que el cliente firme desde su sesión.";
             case "tpb.pending.offline_blocked" -> "Este cliente NO está vinculado a BENJAGEST. El flujo de firma offline-PDF está deshabilitado por seguridad jurídica (RD 1619/2012 art. 5: el titular debe consentir expresamente, y una firma sin verificar activaba acuerdos sin que el cliente se enterara). El cliente debe registrarse en BENJAGEST y firmar con su PIN de sesión. Invítale desde Comunicación → Mensajes.";
+            case "tpb.magic.hint" -> "El cliente NO tiene cuenta en BENJAGEST. Para firmar sin instalar nada, envíale un enlace mágico a su email. Recibirá un enlace y un código OTP de 6 dígitos. Al abrir el enlace se le carga una página simple donde lee el PDF y firma con el OTP. Cumple eIDAS art. 25 (firma electrónica simple).";
+            case "tpb.magic.email_prompt" -> "Email del cliente";
+            case "tpb.magic.send" -> "Enviar enlace de firma";
+            case "tpb.magic.ok.title" -> "Enlace enviado";
+            case "tpb.magic.ok.body" -> "El enlace y el OTP se han enviado por email a:";
+            case "tpb.magic.fail.title" -> "No se pudo enviar el enlace";
+            case "tpb.magic.fail.bad_email" -> "Introduce un email válido.";
             case "tpb.propose.needs_link" -> "Aviso: este cliente NO está vinculado a BENJAGEST. El acuerdo se puede crear pero no se podrá firmar legalmente hasta que el cliente se registre y firme con su PIN (el flujo offline-PDF está deshabilitado por seguridad jurídica).";
             case "tpb.proposal.download" -> "Descargar PDF para firma";
             case "tpb.proposal.upload_signed" -> "Subir PDF firmado";
@@ -24796,17 +24810,32 @@ public class BenjagestUiApplication extends Application {
 
         if (a.isPending()) {
             if (!isLinked) {
-                // Cliente NO vinculado — flujo OFFLINE_PDF BLOQUEADO
-                // (decision Benjamin 2026-06-12 por seguridad juridica).
-                // Hasta que se reintroduzca con verificacion criptografica
-                // PKCS7 + comprobacion del NIF firmante, la unica firma
-                // valida es PIN_SESSION (cliente vinculado). Mostramos
-                // mensaje claro y bloqueamos los botones de PDF offline.
-                Label blocked = new Label(t("tpb.pending.offline_blocked"));
-                blocked.setWrapText(true);
-                blocked.getStyleClass().add("settings-hint");
-                blocked.setStyle("-fx-text-fill: #b91c1c; -fx-font-weight: bold;");
-                slot.getChildren().add(blocked);
+                // Cliente NO vinculado — flujo Magic Link + OTP (V104,
+                // decision Benjamin 2026-06-12 tras bloquear offline-PDF).
+                // La asesoria envia al email del cliente un enlace de
+                // firma electronica simple (eIDAS art. 25). El cliente
+                // abre el enlace en cualquier navegador, lee el PDF, e
+                // introduce el OTP que tambien le ha llegado por email.
+                Label hint = new Label(t("tpb.magic.hint"));
+                hint.setWrapText(true);
+                hint.getStyleClass().add("settings-hint");
+
+                TextField emailField = new TextField();
+                emailField.setPromptText(t("tpb.magic.email_prompt"));
+                emailField.setPrefColumnCount(28);
+                if (client.email() != null && !client.email().isBlank()) {
+                    emailField.setText(client.email());
+                }
+
+                Button send = new Button(t("tpb.magic.send"));
+                send.setGraphic(icon("fas-paper-plane"));
+                send.getStyleClass().add("button-primary");
+                send.setOnAction(e -> tpbSendMagicLinkAction(
+                        a.id(), emailField.getText(), reload));
+
+                HBox row = new HBox(8, emailField, send);
+                row.setAlignment(Pos.CENTER_LEFT);
+                slot.getChildren().addAll(hint, row);
             } else {
                 // Cliente vinculado — esperando firma con PIN desde su lado
                 Label wait = new Label(t("tpb.pending.waiting_client"));
@@ -24836,6 +24865,26 @@ public class BenjagestUiApplication extends Application {
         revoke.setOnAction(e -> tpbRevokeAction(a.id(), reload));
         actions.getChildren().add(revoke);
         slot.getChildren().add(actions);
+    }
+
+    private void tpbSendMagicLinkAction(String agreementId, String email, Runnable reload) {
+        if (email == null || email.isBlank() || !email.contains("@")) {
+            showError(t("tpb.magic.fail.title"), t("tpb.magic.fail.bad_email"));
+            return;
+        }
+        Task<String> task = new Task<>() {
+            @Override
+            protected String call() throws Exception {
+                return altaApiClient.tpbSendMagicLink(agreementId, email);
+            }
+        };
+        task.setOnSucceeded(e -> {
+            showInfo(t("tpb.magic.ok.title"), t("tpb.magic.ok.body") + " " + email);
+            if (reload != null) reload.run();
+        });
+        task.setOnFailed(e -> showError(t("tpb.magic.fail.title"),
+                task.getException() == null ? "" : task.getException().getMessage()));
+        start(task, "tpb-send-magic-link");
     }
 
     private void tpbRepairSeriesAction(String agreementId, Runnable reload) {

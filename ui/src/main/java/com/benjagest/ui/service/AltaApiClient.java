@@ -2086,6 +2086,26 @@ public class AltaApiClient {
     // ============================================================
 
     /**
+     * Magic Link (V104): la asesoria pide al backend enviar al email
+     * del cliente un enlace de firma electronica simple. Devuelve el
+     * body raw con email y fecha de expiracion.
+     */
+    public String tpbSendMagicLink(String agreementId, String email)
+            throws IOException, InterruptedException {
+        String body = "{\"email\":\""
+                + (email == null ? "" : email.replace("\\", "\\\\").replace("\"", "\\\""))
+                + "\"}";
+        HttpResponse<String> r = send(req(baseUrl
+                + "/billing/third-party-agreements/" + agreementId + "/magic-link/send")
+                .header("Content-Type", "application/json")
+                .POST(java.net.http.HttpRequest.BodyPublishers.ofString(body)));
+        if (r.statusCode() < 200 || r.statusCode() >= 300) {
+            throw new IOException("HTTP " + r.statusCode() + ": " + r.body());
+        }
+        return r.body();
+    }
+
+    /**
      * Diagnostico/reparacion: garantiza la serie TPB del acuerdo dado.
      * Devuelve el JSON crudo con seriesId, code, nextNumber, created.
      * Si el backend rechaza (acuerdo no ACTIVE, no cubre ventas) lanza

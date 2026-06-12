@@ -31,9 +31,12 @@ import org.springframework.web.multipart.MultipartFile;
 public class ThirdPartyBillingAgreementController {
 
     private final ThirdPartyBillingAgreementService service;
+    private final TpbMagicLinkService magicLinkService;
 
-    public ThirdPartyBillingAgreementController(ThirdPartyBillingAgreementService service) {
+    public ThirdPartyBillingAgreementController(ThirdPartyBillingAgreementService service,
+                                                  TpbMagicLinkService magicLinkService) {
         this.service = service;
+        this.magicLinkService = magicLinkService;
     }
 
     @GetMapping
@@ -86,6 +89,20 @@ public class ThirdPartyBillingAgreementController {
                         "attachment; filename=\"acuerdo-firmado-" + id + ".pdf\"")
                 .body(pdf);
     }
+
+    /**
+     * Magic Link + OTP: la asesoria pide al backend enviar al email del
+     * cliente un enlace de firma electronica (eIDAS art. 25). Decision
+     * Benjamin 2026-06-12 — sustituye al flujo offline-PDF bloqueado.
+     */
+    @PostMapping("/{id}/magic-link/send")
+    public TpbMagicLinkService.SendResult sendMagicLink(
+            @PathVariable("id") String id,
+            @RequestBody SendMagicLinkRequest body) {
+        return magicLinkService.sendMagicLink(id, body.email());
+    }
+
+    public record SendMagicLinkRequest(String email) {}
 
     /**
      * Diagnostico / reparacion manual: fuerza la creacion de la serie
