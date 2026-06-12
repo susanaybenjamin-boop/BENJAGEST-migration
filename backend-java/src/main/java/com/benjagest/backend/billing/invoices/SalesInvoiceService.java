@@ -51,6 +51,8 @@ public class SalesInvoiceService {
     private final com.benjagest.backend.billing.verifactu.VerifactuConfigRepository verifactuConfigRepository;
     private final SalesJournalEntryService salesJournalService;
     private final com.benjagest.backend.auth.CurrentUserService currentUserService;
+    private final com.benjagest.backend.tenant.TenantContext tenantContext;
+    private final org.springframework.jdbc.core.JdbcTemplate jdbcForTpb;
 
     public SalesInvoiceService(SalesInvoiceRepository repository,
                                SeriesService seriesService,
@@ -63,7 +65,9 @@ public class SalesInvoiceService {
                                InvoiceTextsService invoiceTextsService,
                                com.benjagest.backend.billing.verifactu.VerifactuConfigRepository verifactuConfigRepository,
                                SalesJournalEntryService salesJournalService,
-                               com.benjagest.backend.auth.CurrentUserService currentUserService) {
+                               com.benjagest.backend.auth.CurrentUserService currentUserService,
+                               com.benjagest.backend.tenant.TenantContext tenantContext,
+                               org.springframework.jdbc.core.JdbcTemplate jdbcForTpb) {
         this.repository = repository;
         this.seriesService = seriesService;
         this.verifactuRegistryService = verifactuRegistryService;
@@ -76,6 +80,8 @@ public class SalesInvoiceService {
         this.verifactuConfigRepository = verifactuConfigRepository;
         this.salesJournalService = salesJournalService;
         this.currentUserService = currentUserService;
+        this.tenantContext = tenantContext;
+        this.jdbcForTpb = jdbcForTpb;
     }
 
     public List<SalesInvoice> list(String statusFilter,
@@ -236,6 +242,24 @@ public class SalesInvoiceService {
         // @Transactional, el FOR UPDATE forma parte de la misma
         // transaccion que esta validacion.
         SeriesService.ClaimedNumber claimed = seriesService.claimNextNumber(existing.seriesId());
+
+        // TPB-3: si la asesoría está emitiendo por tercero (acuerdo
+        // ACTIVE con scope_sales) la factura queda en
+        // PENDING_CLIENT_APPROVAL en lugar de VALIDATED directo. NO
+        // entra en Verifactu, NO se genera PDF, NO se hace asiento.
+        // Eso todo pasa cuando el cliente la apruebe. La numeración
+        // sí se reserva (queda asignada al id).
+        if (isThirdPartyEmission()) {
+            int aff = repository.markPendingClientApproval(
+                    id, claimed.formatted(),
+                    totals.subtotal(), totals.vatTotal(),
+                    totals.retentionTotal(), totals.total());
+            if (aff == 0) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT,
+                        "La factura ya no esta en DRAFT");
+            }
+            return get(id);
+        }
 
         int affected = repository.markValidated(
                 id, claimed.formatted(),
@@ -643,5 +667,109 @@ public class SalesInvoiceService {
 
     private String blankToNull(String value) {
         return StringUtils.hasText(value) ? value.trim() : null;
+    }
+
+    // ====================================================================
+    //  TPB-3 — Aceptación factura-a-factura por el cliente
+    // ====================================================================
+
+    /**
+     * Detecta si la sesión está emitiendo facturas por tercero: el
+     * usuario real (activeCompanyId del JWT) opera "como" el cliente
+     * (tenantContext) y hay acuerdo ACTIVE con scope_sales.
+     */
+    private boolean isThirdPartyEmission() {
+        String clientId = tenantContext.getCurrentCompanyId();
+        String advisoryId;
+        try {
+            advisoryId = currentUserService.require().activeCompanyId();
+        } catch (RuntimeException ex) {
+            return false;
+        }
+        if (advisoryId == null || advisoryId.equals(clientId)) return false;
+        Integer n = jdbcForTpb.queryForObject("""
+                SELECT COUNT(*) FROM third_party_billing_agreements
+                 WHERE advisory_company_id = ? AND client_company_id = ?
+                   AND status = 'ACTIVE' AND scope_sales = TRUE
+                """, Integer.class, advisoryId, clientId);
+        return n != null && n > 0;
+    }
+
+    /**
+     * El cliente aprueba la factura pendiente. La factura pasa a
+     * VALIDATED y se ejecutan los hooks que el flujo TPB había aplazado:
+     * Verifactu, PDF, asiento contable. Solo el cliente (su tenant)
+     * puede ejecutar este método — si llega desde la asesoría, el
+     * markApprovedByClient devuelve 0 filas por el AND company_id.
+     */
+    @Transactional
+    public SalesInvoice approveByClient(String id) {
+        SalesInvoice existing = get(id);
+        if (!"PENDING_CLIENT_APPROVAL".equals(existing.status())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Solo se aprueba una factura en PENDING_CLIENT_APPROVAL");
+        }
+        String userId;
+        try { userId = currentUserService.require().userId(); }
+        catch (Exception ex) { userId = null; }
+        int aff = repository.markApprovedByClient(id, userId);
+        if (aff == 0) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "La factura ya no está pendiente o no eres parte del acuerdo");
+        }
+        SalesInvoice validated = get(id);
+        // Replicamos el hook normal de validate: Verifactu + PDF.
+        if (!"PROFORMA".equals(validated.invoiceType())) {
+            try { verifactuRegistryService.registerIfActive(validated); }
+            catch (RuntimeException ex) {
+                org.slf4j.LoggerFactory.getLogger(SalesInvoiceService.class)
+                        .warn("VeriFactu falló al aprobar TPB id={}", id, ex);
+            }
+        }
+        try { generateAndStorePdf(validated); }
+        catch (IOException ioe) {
+            org.slf4j.LoggerFactory.getLogger(SalesInvoiceService.class)
+                    .warn("PDF falló al aprobar TPB id={}", id, ioe);
+        } catch (RuntimeException ex) {
+            org.slf4j.LoggerFactory.getLogger(SalesInvoiceService.class)
+                    .warn("PDF error inesperado TPB id={}", id, ex);
+        }
+        return validated;
+    }
+
+    /**
+     * El cliente rechaza. La factura vuelve a DRAFT y la asesoría
+     * puede corregirla. El número queda asignado (se reusa en el
+     * siguiente intento — RD 1619/2012 no prohíbe esto siempre que la
+     * factura rechazada nunca se haya entregado al destinatario).
+     */
+    @Transactional
+    public SalesInvoice rejectByClient(String id, String reason) {
+        SalesInvoice existing = get(id);
+        if (!"PENDING_CLIENT_APPROVAL".equals(existing.status())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Solo se rechaza una factura en PENDING_CLIENT_APPROVAL");
+        }
+        String userId;
+        try { userId = currentUserService.require().userId(); }
+        catch (Exception ex) { userId = null; }
+        int aff = repository.markRejectedByClient(id, userId,
+                reason == null || reason.isBlank() ? null : reason.trim());
+        if (aff == 0) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "La factura ya no está pendiente o no eres parte del acuerdo");
+        }
+        return get(id);
+    }
+
+    /** Lista de facturas pendientes de aprobación del cliente actual. */
+    public List<SalesInvoice> listPendingClientApproval() {
+        List<String> ids = repository.findPendingClientApprovalIds();
+        List<SalesInvoice> out = new java.util.ArrayList<>(ids.size());
+        for (String id : ids) {
+            try { out.add(get(id)); }
+            catch (RuntimeException ex) { /* ignora individuales */ }
+        }
+        return out;
     }
 }
