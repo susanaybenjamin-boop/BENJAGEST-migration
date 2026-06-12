@@ -27,13 +27,24 @@ public class EmailConfigRepository {
     }
 
     public Optional<EmailConfigRow> findCurrent() {
+        return findForCompany(tenantContext.getCurrentCompanyId());
+    }
+
+    /**
+     * Busca la config SMTP de una empresa especifica, sin pasar por
+     * tenantContext. Util para flujos donde la asesoria envia email
+     * mientras esta "actuando como" cliente (TPB Magic Link): el SMTP
+     * configurado es el de la asesoria, no el del cliente.
+     */
+    public Optional<EmailConfigRow> findForCompany(String companyId) {
+        if (companyId == null || companyId.isBlank()) return Optional.empty();
         List<EmailConfigRow> matches = jdbcTemplate.query("""
                 SELECT smtp_host, smtp_port, smtp_user, smtp_password_encrypted,
                        from_address, from_name, reply_to,
                        tls_enabled, auth_required
                   FROM company_email_config
                  WHERE company_id = ?
-                """, this::mapRow, tenantContext.getCurrentCompanyId());
+                """, this::mapRow, companyId);
         return matches.stream().findFirst();
     }
 
