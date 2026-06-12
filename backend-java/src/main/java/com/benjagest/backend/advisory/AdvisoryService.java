@@ -197,8 +197,14 @@ public class AdvisoryService {
                        c.trade_name,
                        c.tax_identifier,
                        c.customer_type,
-                       pc.email,
-                       pc.phone,
+                       /* PORTFOLIO-EMAIL FIX 2026-06-12: priorizar
+                          customers.email (V85, editor moderno) sobre
+                          customer_contacts.email (legacy). Antes solo se
+                          leia pc.email -> al cambiar el email desde el
+                          editor moderno no se reflejaba en "Mis clientes"
+                          ni en flujos posteriores como Magic Link TPB. */
+                       COALESCE(NULLIF(c.email, ''), pc.email) AS email,
+                       COALESCE(NULLIF(c.phone, ''), pc.phone) AS phone,
                        cp.id            AS linked_company_id,
                        cp.city,
                        (SELECT COUNT(*) FROM advisory_invitations ai
@@ -206,19 +212,19 @@ public class AdvisoryService {
                            AND ai.status = 'PENDING'
                            AND ai.expires_at > CURRENT_TIMESTAMP
                            AND ((ai.invited_nif IS NOT NULL AND ai.invited_nif = c.tax_identifier)
-                             OR (ai.invited_email IS NOT NULL AND ai.invited_email = pc.email))
+                             OR (ai.invited_email IS NOT NULL AND ai.invited_email = COALESCE(NULLIF(c.email, ''), pc.email)))
                        )                AS pending_invitations,
                        (SELECT COUNT(*) FROM advisory_invitations ai2
                          WHERE ai2.advisory_company_id = c.company_id
                            AND ai2.status = 'UNLINKED'
                            AND ((ai2.invited_nif IS NOT NULL AND ai2.invited_nif = c.tax_identifier)
-                             OR (ai2.invited_email IS NOT NULL AND ai2.invited_email = pc.email))
+                             OR (ai2.invited_email IS NOT NULL AND ai2.invited_email = COALESCE(NULLIF(c.email, ''), pc.email)))
                        )                AS unlinked_invitations,
                        (SELECT COUNT(*) FROM advisory_invitations ai3
                          WHERE ai3.advisory_company_id = c.company_id
                            AND ai3.status = 'ACCEPTED'
                            AND ((ai3.invited_nif IS NOT NULL AND ai3.invited_nif = c.tax_identifier)
-                             OR (ai3.invited_email IS NOT NULL AND ai3.invited_email = pc.email))
+                             OR (ai3.invited_email IS NOT NULL AND ai3.invited_email = COALESCE(NULLIF(c.email, ''), pc.email)))
                        )                AS accepted_invitations
                   FROM customers c
                   LEFT JOIN customer_contacts pc
