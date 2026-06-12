@@ -63,13 +63,53 @@ public class TpbMagicLinkService {
                                  EmailSenderService emailSender,
                                  ThirdPartyBillingAgreementService agreementService,
                                  com.benjagest.backend.billing.series.SeriesService seriesService,
-                                 @Value("${benjagest.public-base-url:http://localhost:8080}")
-                                 String publicBaseUrl) {
+                                 @Value("${benjagest.public-base-url:}")
+                                 String configuredPublicBaseUrl,
+                                 @Value("${server.port:8080}")
+                                 int serverPort) {
         this.jdbc = jdbc;
         this.emailSender = emailSender;
         this.agreementService = agreementService;
         this.seriesService = seriesService;
-        this.publicBaseUrl = publicBaseUrl.replaceAll("/+$", "");
+        // Si no hay benjagest.public-base-url configurada, intentamos
+        // detectar la IP local de la maquina para que el enlace funcione
+        // tambien desde otros dispositivos de la misma red (movil del
+        // cliente). Si solo se accede desde la misma maquina o la
+        // deteccion falla, cae a localhost.
+        String resolved;
+        if (configuredPublicBaseUrl != null && !configuredPublicBaseUrl.isBlank()) {
+            resolved = configuredPublicBaseUrl;
+        } else {
+            String ip = detectLocalIp();
+            resolved = "http://" + (ip == null ? "localhost" : ip) + ":" + serverPort;
+        }
+        this.publicBaseUrl = resolved.replaceAll("/+$", "");
+        log.info("TPB Magic Link: publicBaseUrl = {}", this.publicBaseUrl);
+    }
+
+    /**
+     * Devuelve la IP IPv4 no-loopback de la primera interfaz UP que
+     * encontremos. Sirve para construir un enlace alcanzable desde el
+     * movil del cliente en la misma red WiFi. Null si no detecta nada.
+     */
+    private static String detectLocalIp() {
+        try {
+            var ifaces = java.net.NetworkInterface.getNetworkInterfaces();
+            while (ifaces.hasMoreElements()) {
+                var iface = ifaces.nextElement();
+                if (!iface.isUp() || iface.isLoopback() || iface.isVirtual()) continue;
+                var addrs = iface.getInetAddresses();
+                while (addrs.hasMoreElements()) {
+                    var addr = addrs.nextElement();
+                    if (addr instanceof java.net.Inet4Address && !addr.isLoopbackAddress()) {
+                        return addr.getHostAddress();
+                    }
+                }
+            }
+        } catch (Exception ex) {
+            log.debug("No se pudo detectar IP local", ex);
+        }
+        return null;
     }
 
     @Transactional
