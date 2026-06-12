@@ -56,6 +56,80 @@ public class AdvisoryDashboardService {
         );
     }
 
+    /**
+     * PANORAMA-ASESORIA — KPIs agregados de TODA la cartera del asesor.
+     * Suma facturación y cobros de todos los clientes (CLIENT con
+     * parent_company_id = la asesoría).
+     */
+    public PortfolioFinancials portfolioFinancials() {
+        String advisoryId = tenant.getCurrentCompanyId();
+        // Total facturado este mes (suma de totals de facturas VALIDATED).
+        java.math.BigDecimal billed = bigDecimalOrZero("""
+                SELECT COALESCE(SUM(si.total), 0)
+                  FROM sales_invoices si
+                  JOIN companies c ON c.id = si.company_id
+                 WHERE c.parent_company_id = ?
+                   AND si.status = 'VALIDATED'
+                   AND si.invoice_date >= DATE_FORMAT(CURRENT_DATE, '%Y-%m-01')
+                """, advisoryId);
+        // Pendiente cobro: total - paid_amount donde payment_status != PAID
+        java.math.BigDecimal pending = bigDecimalOrZero("""
+                SELECT COALESCE(SUM(si.total - COALESCE(si.paid_amount, 0)), 0)
+                  FROM sales_invoices si
+                  JOIN companies c ON c.id = si.company_id
+                 WHERE c.parent_company_id = ?
+                   AND si.status = 'VALIDATED'
+                   AND si.payment_status IN ('PENDING', 'PARTIAL')
+                """, advisoryId);
+        // Facturas vencidas (due_date < today, no pagadas).
+        Integer overdueCount = countOrZero("""
+                SELECT COUNT(*)
+                  FROM sales_invoices si
+                  JOIN companies c ON c.id = si.company_id
+                 WHERE c.parent_company_id = ?
+                   AND si.status = 'VALIDATED'
+                   AND si.payment_status IN ('PENDING', 'PARTIAL')
+                   AND si.due_date IS NOT NULL
+                   AND si.due_date < CURRENT_DATE
+                """, advisoryId);
+        // Clientes activos con al menos 1 factura este mes.
+        Integer activeClients = countOrZero("""
+                SELECT COUNT(DISTINCT si.company_id)
+                  FROM sales_invoices si
+                  JOIN companies c ON c.id = si.company_id
+                 WHERE c.parent_company_id = ?
+                   AND si.status = 'VALIDATED'
+                   AND si.invoice_date >= DATE_FORMAT(CURRENT_DATE, '%Y-%m-01')
+                """, advisoryId);
+        // Pendientes de aprobación TPB-3
+        Integer pendingApprovals = countOrZero("""
+                SELECT COUNT(*) FROM sales_invoices si
+                  JOIN companies c ON c.id = si.company_id
+                 WHERE c.parent_company_id = ?
+                   AND si.status = 'PENDING_CLIENT_APPROVAL'
+                """, advisoryId);
+        return new PortfolioFinancials(billed, pending, overdueCount,
+                activeClients, pendingApprovals);
+    }
+
+    private java.math.BigDecimal bigDecimalOrZero(String sql, Object... args) {
+        try {
+            java.math.BigDecimal v = jdbc.queryForObject(sql,
+                    java.math.BigDecimal.class, args);
+            return v == null ? java.math.BigDecimal.ZERO : v;
+        } catch (Exception ex) {
+            return java.math.BigDecimal.ZERO;
+        }
+    }
+
+    public record PortfolioFinancials(
+            java.math.BigDecimal billedThisMonth,
+            java.math.BigDecimal pendingPayment,
+            int overdueInvoices,
+            int activeClientsThisMonth,
+            int pendingTpbApprovals
+    ) {}
+
     private CarteraStats cartera(String advisoryId) {
         // Customers vinculados/no vinculados de la cartera. Definimos
         // 'vinculado' como tener invitación ACCEPTED vigente; el resto
@@ -236,6 +310,11 @@ public class AdvisoryDashboardService {
         @GetMapping
         public DashboardSnapshot snapshot() {
             return service.snapshot();
+        }
+
+        @GetMapping("/portfolio-financials")
+        public PortfolioFinancials portfolioFinancials() {
+            return service.portfolioFinancials();
         }
     }
 }
