@@ -16793,6 +16793,7 @@ public class BenjagestUiApplication extends Application {
             case "tpb.status.revoked" -> "Revoked";
             case "tpb.method.pin_session" -> "Client session PIN (eIDAS simple e-signature)";
             case "tpb.method.offline_pdf" -> "Handwritten signature on PDF (offline)";
+            case "tpb.method.magic_link_otp" -> "Email magic link + OTP (eIDAS simple e-signature)";
             case "tpb.pending.waiting_client" -> "Waiting for the client to sign from their session.";
             case "tpb.pending.offline_blocked" -> "This client is NOT linked to BENJAGEST. The offline-PDF signature flow has been disabled for legal safety (RD 1619/2012 art. 5: the holder must expressly consent, and an unverified signature was activating agreements without their knowledge). The client must register in BENJAGEST and sign with their session PIN. Invite them from Communication → Messages.";
             case "tpb.magic.hint" -> "The client does NOT have a BENJAGEST account. To sign without installing anything, send a magic link to their email. They will receive a link and a 6-digit OTP. Opening the link opens a simple page where they read the PDF and sign with the OTP. Compliant with eIDAS art. 25 (simple electronic signature).";
@@ -17546,6 +17547,7 @@ public class BenjagestUiApplication extends Application {
             case "tpb.status.revoked" -> "Revocado";
             case "tpb.method.pin_session" -> "PIN de sesión del cliente (firma electrónica simple eIDAS)";
             case "tpb.method.offline_pdf" -> "Firma manuscrita en PDF (offline)";
+            case "tpb.method.magic_link_otp" -> "Enlace mágico por email + OTP (firma electrónica simple eIDAS)";
             case "tpb.pending.waiting_client" -> "Esperando que el cliente firme desde su sesión.";
             case "tpb.pending.offline_blocked" -> "Este cliente NO está vinculado a BENJAGEST. El flujo de firma offline-PDF está deshabilitado por seguridad jurídica (RD 1619/2012 art. 5: el titular debe consentir expresamente, y una firma sin verificar activaba acuerdos sin que el cliente se enterara). El cliente debe registrarse en BENJAGEST y firmar con su PIN de sesión. Invítale desde Comunicación → Mensajes.";
             case "tpb.magic.hint" -> "El cliente NO tiene cuenta en BENJAGEST. Para firmar sin instalar nada, envíale un enlace mágico a su email. Recibirá un enlace y un código OTP de 6 dígitos. Al abrir el enlace se le carga una página simple donde lee el PDF y firma con el OTP. Cumple eIDAS art. 25 (firma electrónica simple).";
@@ -24683,8 +24685,19 @@ public class BenjagestUiApplication extends Application {
         final TabPane finalTabs = tabs;
         final boolean finalIsLinked = isLinked;
         final java.util.function.Predicate<String> finalCanSee = canSee;
+        // Referencia mutable al tab Resumen para poder reconstruirlo
+        // dinamicamente cuando el TPB se active/revoque (caso cliente
+        // no vinculado: con TPB ACTIVE pasa a tener KPIs como cualquier
+        // vinculado; al revocar, vuelve a la version sin KPIs).
+        final Tab summaryTabRef = summaryTab;
+        final com.benjagest.ui.model.ManagedClientEntry finalClient = client;
+
         Runnable onTpbActivated = () -> {
             if (finalIsLinked) return;
+            // 1) Reconstruir el Resumen mostrando KPIs (el TPB activo
+            //    equivale funcionalmente al vinculado para facturacion).
+            summaryTabRef.setContent(buildClientSummaryTab(finalClient, true));
+            // 2) Anadir tab Facturacion si procede.
             if (!finalCanSee.test("billing")) return;
             // Idempotente: si ya hay tab "Facturacion" no anadimos otro.
             for (Tab existing : finalTabs.getTabs()) {
@@ -24706,9 +24719,11 @@ public class BenjagestUiApplication extends Application {
 
         // V105 — Si el cliente revoca el acuerdo (via magic link de
         // revocacion), el polling lo detecta y dispara este callback
-        // para quitar el tab Facturacion del cliente no vinculado.
+        // para quitar el tab Facturacion del cliente no vinculado y
+        // volver el Resumen a la version sin KPIs.
         Runnable onTpbRevoked = () -> {
             if (finalIsLinked) return;
+            summaryTabRef.setContent(buildClientSummaryTab(finalClient, false));
             String billingLabel = t("advisory.client.tab.billing");
             finalTabs.getTabs().removeIf(tab ->
                     tab.getText() != null && tab.getText().equals(billingLabel));
@@ -25181,9 +25196,10 @@ public class BenjagestUiApplication extends Application {
     private String humanizeTpbMethod(String m) {
         if (m == null) return "";
         return switch (m) {
-            case "PIN_SESSION" -> t("tpb.method.pin_session");
-            case "OFFLINE_PDF" -> t("tpb.method.offline_pdf");
-            default            -> m;
+            case "PIN_SESSION"    -> t("tpb.method.pin_session");
+            case "OFFLINE_PDF"    -> t("tpb.method.offline_pdf");
+            case "MAGIC_LINK_OTP" -> t("tpb.method.magic_link_otp");
+            default               -> m;
         };
     }
 
