@@ -68,16 +68,41 @@ public class TimeClockService {
     @Transactional
     public PunchResult punch(String employeeId, String eventType,
                              String customerId, String origin) {
+        return punch(employeeId, eventType, customerId, origin, null, null);
+    }
+
+    /**
+     * GEO-FICHAR (RD 8/2019): variante con coordenadas. Si el empleado
+     * tiene work_center con lat/lng/radio_m, calculamos distancia
+     * Haversine y aplicamos work_centers.geo_policy:
+     *   - none: no verifica.
+     *   - info: registra distancia pero no avisa al UI.
+     *   - soft: warning amarillo si fuera del radio.
+     *   - strict: rechaza fichaje fuera del radio (422).
+     */
+    @Transactional
+    public PunchResult punch(String employeeId, String eventType,
+                             String customerId, String origin,
+                             java.math.BigDecimal lat, java.math.BigDecimal lng) {
         if (employeeId == null || employeeId.isBlank()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "employeeId requerido");
         }
-        // Validacion contra el catalogo configurable por empresa
-        // (TC-CFG, V35). Acepta tanto los 4 originales como cualquier
-        // tipo personalizado que el admin haya creado.
         if (eventType == null || !eventTypeService.isValidCode(eventType)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "eventType no valido. Configura los tipos en Personal -> Config fichajes.");
         }
+
+        // GEO-FICHAR: aplica policy del centro asignado.
+        GeoCheckResult geo = checkGeo(employeeId, lat, lng);
+        if (geo != null && geo.shouldBlock()) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                    "Fichaje rechazado: fuera del radio del centro \""
+                            + geo.centerName() + "\" (a "
+                            + geo.distanceMeters() + " m, máximo " + geo.radioM() + " m). "
+                            + "Aproxima tu posición al centro de trabajo o pide al administrador "
+                            + "que cambie la política de geolocalización.");
+        }
+
         AuthenticatedUser actor = currentUserService.require();
         String eventId = UUID.randomUUID().toString();
         TimeClockEvent event = new TimeClockEvent(
@@ -85,19 +110,63 @@ public class TimeClockService {
                 eventType, Instant.now(),
                 origin == null ? "WEB" : origin,
                 "VALID", null);
-        repository.insertEvent(event);
+        repository.insertEvent(event, lat, lng,
+                geo != null && geo.hasWarning() ? geo.distanceMeters() : null);
 
         String csv = generateCsv();
         repository.insertVerification(
                 UUID.randomUUID().toString(), eventId, csv, actor.userId());
 
-        // TC-CAL (decision Benjamin 2026-06-10): warning amarillo si el
-        // empleado ficha en un dia FESTIVO/AJUSTE/CIERRE de su
-        // work_calendar asignado. NO bloquea — solo informa para que
-        // luego el flujo de nomina pueda marcarlo como extra.
         HolidayWarning warning = detectHolidayWarning(employeeId);
+        GeoWarning geoWarning = (geo != null && geo.shouldWarn())
+                ? new GeoWarning(geo.centerName(), geo.distanceMeters(), geo.radioM())
+                : null;
 
-        return new PunchResult(event, csv, warning);
+        return new PunchResult(event, csv, warning, geoWarning);
+    }
+
+    /** GEO-FICHAR — pivote único de chequeo geo. */
+    private GeoCheckResult checkGeo(String employeeId,
+                                       java.math.BigDecimal lat,
+                                       java.math.BigDecimal lng) {
+        if (lat == null || lng == null) return null;
+        var center = repository.findEmployeeWorkCenterGeo(employeeId).orElse(null);
+        if (center == null || "none".equalsIgnoreCase(center.geoPolicy())) return null;
+        if (center.lat() == null || center.lng() == null || center.radioM() == null) {
+            return null;
+        }
+        int distance = haversineMeters(
+                lat.doubleValue(), lng.doubleValue(),
+                center.lat().doubleValue(), center.lng().doubleValue());
+        boolean outside = distance > center.radioM();
+        return new GeoCheckResult(center.centerName(), distance,
+                center.radioM(), center.geoPolicy(), outside);
+    }
+
+    /** Distancia Haversine en metros. */
+    private static int haversineMeters(double lat1, double lon1, double lat2, double lon2) {
+        double R = 6371000.0;
+        double φ1 = Math.toRadians(lat1);
+        double φ2 = Math.toRadians(lat2);
+        double dφ = Math.toRadians(lat2 - lat1);
+        double dλ = Math.toRadians(lon2 - lon1);
+        double a = Math.sin(dφ/2) * Math.sin(dφ/2)
+                + Math.cos(φ1) * Math.cos(φ2) * Math.sin(dλ/2) * Math.sin(dλ/2);
+        double c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        return (int) Math.round(R * c);
+    }
+
+    private record GeoCheckResult(String centerName, int distanceMeters,
+                                    int radioM, String policy, boolean outside) {
+        boolean shouldBlock() {
+            return outside && "strict".equalsIgnoreCase(policy);
+        }
+        boolean shouldWarn() {
+            return outside && "soft".equalsIgnoreCase(policy);
+        }
+        boolean hasWarning() {
+            return outside; // siempre se persiste si está fuera (auditoría)
+        }
     }
 
     /**
@@ -164,7 +233,19 @@ public class TimeClockService {
     }
 
     public record PunchResult(TimeClockEvent event, String csv,
-                              HolidayWarning holidayWarning) {}
+                              HolidayWarning holidayWarning,
+                              GeoWarning geoWarning) {
+        public PunchResult(TimeClockEvent event, String csv, HolidayWarning hw) {
+            this(event, csv, hw, null);
+        }
+    }
+
+    /**
+     * GEO-FICHAR — warning amarillo cuando el empleado fichó fuera del
+     * radio con geo_policy=soft. Strict bloquea (no llega aquí), info
+     * registra silencioso (no warning), none no comprueba (no warning).
+     */
+    public record GeoWarning(String centerName, int distanceMeters, int radioM) {}
 
     /**
      * TC-CAL — Datos del festivo coincidente para mostrar warning
