@@ -79,15 +79,34 @@ public class ThirdPartyBillingAgreementService {
     }
 
     public Optional<ThirdPartyBillingAgreement> findCurrent(String otherCompanyId) {
-        String me = tenant.getCurrentCompanyId();
+        String tenantId = tenant.getCurrentCompanyId();
+        // "Yo" puede ser el tenant del header (uso normal) o el
+        // activeCompanyId del JWT (caso: asesoria actuando-como cliente,
+        // tenant=cliente pero JWT sigue siendo asesoria). Buscamos
+        // contra ambos para que el tab acuerdo TPB de la asesoria
+        // encuentre el acuerdo aunque la UI pase client.id() como
+        // otherCompanyId (caso Benjamin 2026-06-12: "no devuelve en
+        // asesoria el acuerdo firmado").
+        String jwtId;
+        try { jwtId = currentUserService.require().activeCompanyId(); }
+        catch (RuntimeException ex) { jwtId = null; }
+        String me2 = (jwtId != null && !jwtId.equals(tenantId)) ? jwtId : tenantId;
         Optional<ThirdPartyBillingAgreement> result = jdbc.query("""
                 SELECT * FROM third_party_billing_agreements
-                 WHERE ((advisory_company_id = ? AND client_company_id = ?)
-                     OR (advisory_company_id = ? AND client_company_id = ?))
-                   AND status IN ('PROPOSED', 'ACTIVE')
+                 WHERE status IN ('PROPOSED', 'ACTIVE')
+                   AND (
+                       (advisory_company_id = ? AND client_company_id = ?)
+                    OR (advisory_company_id = ? AND client_company_id = ?)
+                    OR (advisory_company_id = ? AND client_company_id = ?)
+                    OR (advisory_company_id = ? AND client_company_id = ?)
+                   )
                  ORDER BY created_at DESC
                  LIMIT 1
-                """, MAPPER, me, otherCompanyId, otherCompanyId, me).stream().findFirst();
+                """, MAPPER,
+                tenantId, otherCompanyId,
+                otherCompanyId, tenantId,
+                me2, otherCompanyId,
+                otherCompanyId, me2).stream().findFirst();
         // Auto-reparacion: si el acuerdo esta ACTIVE y cubre ventas pero
         // la serie TPB no se creo (caso Benjamin 2026-06-12), la creamos
         // aqui. Idempotente — ensureTpbSeries retorna la existente si ya
