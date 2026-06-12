@@ -8341,10 +8341,17 @@ public class BenjagestUiApplication extends Application {
             makeRecurringBtn.setDisable(!(isValidated && isNormal));
         });
 
+        // MULTI-ALLOCATION (#67) — boton para registrar un pago real
+        // que se reparte entre varias facturas VALIDATED pendientes del
+        // mismo cliente. Siempre habilitado.
+        Button multiAllocBtn = new Button(t("list.action.multi_allocation"));
+        multiAllocBtn.setGraphic(icon("fas-coins"));
+        multiAllocBtn.setOnAction(ev -> showMultiAllocationDialog());
+
         Region rowActionsSpacer = new Region();
         HBox.setHgrow(rowActionsSpacer, Priority.ALWAYS);
         HBox rowActions = new HBox(10, validateRowBtn, deleteDraftBtn, voidBtn,
-                toValidatedBtn, makeRecurringBtn, rowActionsSpacer, emailBtn, pdfBtn);
+                toValidatedBtn, makeRecurringBtn, multiAllocBtn, rowActionsSpacer, emailBtn, pdfBtn);
         rowActions.getStyleClass().add("settings-actions");
 
         // Slice 3V — Acciones SOBRE la tabla, no debajo. Antes vivían
@@ -9644,6 +9651,261 @@ public class BenjagestUiApplication extends Application {
     // porque la clave es el objeto fila por identidad, no por equals.
     private final java.util.Map<InvoiceLineDraft, Label> rowSubtotalLabels = new java.util.IdentityHashMap<>();
     private final java.util.Map<InvoiceLineDraft, Label> rowLineTotalLabels = new java.util.IdentityHashMap<>();
+
+    /**
+     * MULTI-ALLOCATION — dialog para registrar un pago real que se
+     * reparte entre 1..N facturas VALIDATED pendientes del mismo cliente.
+     */
+    private void showMultiAllocationDialog() {
+        Stage dlg = new Stage();
+        dlg.setTitle(t("multi_alloc.title"));
+        dlg.initModality(javafx.stage.Modality.APPLICATION_MODAL);
+
+        Label hint = new Label(t("multi_alloc.hint"));
+        hint.setWrapText(true);
+        hint.getStyleClass().add("settings-hint");
+
+        Label clientLbl = label(t("multi_alloc.field.client"), "form-label");
+        javafx.scene.control.ComboBox<String> clientCombo = new javafx.scene.control.ComboBox<>();
+        clientCombo.getStyleClass().add("form-input");
+        clientCombo.setPrefWidth(300);
+
+        TableView<MultiAllocRow> table = new TableView<>();
+        table.getStyleClass().add("data-table");
+        table.setEditable(true);
+        table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+        table.setPlaceholder(new Label(t("multi_alloc.empty")));
+        table.setPrefHeight(260);
+
+        TableColumn<MultiAllocRow, Boolean> colSel = new TableColumn<>(t("multi_alloc.col.pay"));
+        colSel.setCellValueFactory(c -> c.getValue().selectedProperty);
+        colSel.setCellFactory(javafx.scene.control.cell.CheckBoxTableCell.forTableColumn(colSel));
+        colSel.setEditable(true);
+        colSel.setPrefWidth(60);
+
+        TableColumn<MultiAllocRow, String> colNum = new TableColumn<>(t("multi_alloc.col.invoice"));
+        colNum.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().invoiceNumber));
+        colNum.setPrefWidth(130);
+
+        TableColumn<MultiAllocRow, String> colDate = new TableColumn<>(t("multi_alloc.col.date"));
+        colDate.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().invoiceDate));
+        colDate.setPrefWidth(110);
+
+        TableColumn<MultiAllocRow, String> colTotal = new TableColumn<>(t("multi_alloc.col.total"));
+        colTotal.setCellValueFactory(c -> new SimpleStringProperty(money(c.getValue().total.toPlainString())));
+        colTotal.setPrefWidth(120);
+        colTotal.setComparator(NUMERIC_STRING_COMPARATOR);
+
+        TableColumn<MultiAllocRow, String> colPending = new TableColumn<>(t("multi_alloc.col.pending"));
+        colPending.setCellValueFactory(c -> new SimpleStringProperty(money(c.getValue().pending.toPlainString())));
+        colPending.setPrefWidth(120);
+        colPending.setComparator(NUMERIC_STRING_COMPARATOR);
+
+        TableColumn<MultiAllocRow, String> colAmount = new TableColumn<>(t("multi_alloc.col.allocate"));
+        colAmount.setCellValueFactory(c -> c.getValue().amountTextProperty);
+        colAmount.setCellFactory(javafx.scene.control.cell.TextFieldTableCell.forTableColumn());
+        colAmount.setOnEditCommit(ev -> {
+            MultiAllocRow row = ev.getRowValue();
+            row.amountTextProperty.set(ev.getNewValue());
+            if (!row.selectedProperty.get()) row.selectedProperty.set(true);
+        });
+        colAmount.setEditable(true);
+        colAmount.setPrefWidth(140);
+
+        table.getColumns().addAll(List.of(colSel, colNum, colDate, colTotal, colPending, colAmount));
+
+        Label totalLbl = label(t("multi_alloc.field.total"), "form-label");
+        TextField totalField = new TextField();
+        totalField.getStyleClass().add("form-input");
+        totalField.setPromptText("0,00");
+
+        Label dateLbl = label(t("multi_alloc.field.date"), "form-label");
+        javafx.scene.control.DatePicker datePicker = new javafx.scene.control.DatePicker(LocalDate.now());
+
+        Label methodLbl = label(t("multi_alloc.field.method"), "form-label");
+        javafx.scene.control.ComboBox<String> methodCombo = new javafx.scene.control.ComboBox<>();
+        methodCombo.getItems().addAll("BANK_TRANSFER", "CASH", "CARD", "CHECK", "DIRECT_DEBIT", "OTHER");
+        methodCombo.getSelectionModel().selectFirst();
+        methodCombo.getStyleClass().add("form-input");
+
+        Label refLbl = label(t("multi_alloc.field.reference"), "form-label");
+        TextField refField = new TextField();
+        refField.getStyleClass().add("form-input");
+
+        Label notesLbl = label(t("multi_alloc.field.notes"), "form-label");
+        TextField notesField = new TextField();
+        notesField.getStyleClass().add("form-input");
+
+        Label sumLbl = new Label("");
+        sumLbl.getStyleClass().add("settings-hint");
+
+        Runnable recalcSum = () -> {
+            BigDecimal sum = BigDecimal.ZERO;
+            for (MultiAllocRow r : table.getItems()) {
+                if (!r.selectedProperty.get()) continue;
+                try {
+                    sum = sum.add(new BigDecimal(
+                            r.amountTextProperty.get().replace(",", ".")));
+                } catch (NumberFormatException ignored) { /* skip */ }
+            }
+            sumLbl.setText(t("multi_alloc.field.selected_sum") + " "
+                    + money(sum.toPlainString()));
+        };
+        table.itemsProperty().addListener((obs, o, n) -> recalcSum.run());
+
+        // Cargar facturas pendientes
+        Task<List<SalesInvoiceSummary>> load = new Task<>() {
+            @Override
+            protected List<SalesInvoiceSummary> call() throws Exception {
+                List<SalesInvoiceSummary> a = billingApiClient.listInvoices(
+                        "VALIDATED", "PENDING", null, 500);
+                List<SalesInvoiceSummary> b = billingApiClient.listInvoices(
+                        "VALIDATED", "PARTIAL", null, 500);
+                List<SalesInvoiceSummary> out = new ArrayList<>();
+                out.addAll(a); out.addAll(b);
+                return out;
+            }
+        };
+        load.setOnSucceeded(ev -> {
+            List<SalesInvoiceSummary> all = load.getValue();
+            java.util.TreeSet<String> clients = new java.util.TreeSet<>();
+            for (SalesInvoiceSummary inv : all) {
+                if (inv.customerLegalName() != null) clients.add(inv.customerLegalName());
+            }
+            clientCombo.getItems().setAll(clients);
+            clientCombo.setOnAction(av -> {
+                String sel = clientCombo.getValue();
+                if (sel == null) return;
+                List<MultiAllocRow> rows = new ArrayList<>();
+                for (SalesInvoiceSummary inv : all) {
+                    if (!sel.equals(inv.customerLegalName())) continue;
+                    BigDecimal total = inv.total() == null ? BigDecimal.ZERO : inv.total();
+                    BigDecimal paid = inv.paidAmount() == null ? BigDecimal.ZERO : inv.paidAmount();
+                    BigDecimal pending = total.subtract(paid);
+                    if (pending.signum() <= 0) continue;
+                    MultiAllocRow r = new MultiAllocRow();
+                    r.invoiceId = inv.id();
+                    r.invoiceNumber = inv.invoiceNumber();
+                    r.invoiceDate = inv.invoiceDate();
+                    r.total = total;
+                    r.pending = pending;
+                    r.amountTextProperty.set(pending.toPlainString());
+                    r.selectedProperty.addListener((o2, oV, nV) -> recalcSum.run());
+                    r.amountTextProperty.addListener((o2, oV, nV) -> recalcSum.run());
+                    rows.add(r);
+                }
+                table.setItems(FXCollections.observableArrayList(rows));
+                recalcSum.run();
+            });
+            if (!clients.isEmpty()) {
+                clientCombo.getSelectionModel().selectFirst();
+                clientCombo.fireEvent(new javafx.event.ActionEvent());
+            }
+        });
+        load.setOnFailed(ev -> showError(t("multi_alloc.load.fail"),
+                load.getException() == null ? "" : load.getException().getMessage()));
+        start(load, "multi-alloc-load");
+
+        Button confirm = new Button(t("multi_alloc.btn.confirm"));
+        confirm.setGraphic(icon("fas-check"));
+        confirm.getStyleClass().add("primary-button");
+        confirm.setOnAction(ev -> {
+            BigDecimal total;
+            try {
+                total = new BigDecimal(totalField.getText().replace(",", "."));
+                if (total.signum() <= 0) throw new NumberFormatException();
+            } catch (Exception ex) {
+                showError(t("multi_alloc.error.title"), t("multi_alloc.error.total")); return;
+            }
+            LocalDate date = datePicker.getValue();
+            if (date == null) {
+                showError(t("multi_alloc.error.title"), t("multi_alloc.error.date")); return;
+            }
+            List<com.benjagest.ui.service.BillingApiClient.AllocationDraft> allocs = new ArrayList<>();
+            BigDecimal sum = BigDecimal.ZERO;
+            for (MultiAllocRow r : table.getItems()) {
+                if (!r.selectedProperty.get()) continue;
+                BigDecimal a;
+                try { a = new BigDecimal(r.amountTextProperty.get().replace(",", ".")); }
+                catch (NumberFormatException nx) {
+                    showError(t("multi_alloc.error.title"),
+                            t("multi_alloc.error.row") + " " + r.invoiceNumber); return;
+                }
+                if (a.signum() <= 0) continue;
+                if (a.compareTo(r.pending) > 0) {
+                    showError(t("multi_alloc.error.title"),
+                            t("multi_alloc.error.exceeds") + " " + r.invoiceNumber); return;
+                }
+                allocs.add(new com.benjagest.ui.service.BillingApiClient.AllocationDraft(
+                        r.invoiceId, a.setScale(2, java.math.RoundingMode.HALF_UP)));
+                sum = sum.add(a);
+            }
+            if (allocs.isEmpty()) {
+                showError(t("multi_alloc.error.title"), t("multi_alloc.error.no_rows")); return;
+            }
+            if (sum.setScale(2, java.math.RoundingMode.HALF_UP)
+                    .compareTo(total.setScale(2, java.math.RoundingMode.HALF_UP)) != 0) {
+                showError(t("multi_alloc.error.title"),
+                        t("multi_alloc.error.sum_mismatch")
+                        + " (" + money(sum.toPlainString()) + " ≠ "
+                        + money(total.toPlainString()) + ")");
+                return;
+            }
+            Task<String> save = new Task<>() {
+                @Override
+                protected String call() throws Exception {
+                    return billingApiClient.registerMultiAllocation(
+                            date.toString(), total,
+                            methodCombo.getValue(), refField.getText(), notesField.getText(),
+                            allocs);
+                }
+            };
+            save.setOnSucceeded(s -> {
+                showInfo(t("multi_alloc.ok.title"),
+                        t("multi_alloc.ok.body") + " " + allocs.size());
+                com.benjagest.ui.support.RefreshBus.emit(
+                        com.benjagest.ui.support.RefreshBus.TOPIC_SALES);
+                dlg.close();
+            });
+            save.setOnFailed(s -> showError(t("multi_alloc.save.fail"),
+                    save.getException() == null ? "" : save.getException().getMessage()));
+            start(save, "multi-alloc-save");
+        });
+
+        Button cancel = new Button(t("dialog.cancel"));
+        cancel.setOnAction(ev -> dlg.close());
+
+        HBox btns = new HBox(10, cancel, confirm);
+        btns.setAlignment(Pos.CENTER_RIGHT);
+
+        javafx.scene.layout.GridPane grid = new javafx.scene.layout.GridPane();
+        grid.setHgap(10); grid.setVgap(8);
+        grid.add(clientLbl, 0, 0); grid.add(clientCombo, 1, 0);
+        grid.add(dateLbl, 0, 1); grid.add(datePicker, 1, 1);
+        grid.add(totalLbl, 0, 2); grid.add(totalField, 1, 2);
+        grid.add(methodLbl, 0, 3); grid.add(methodCombo, 1, 3);
+        grid.add(refLbl, 0, 4); grid.add(refField, 1, 4);
+        grid.add(notesLbl, 0, 5); grid.add(notesField, 1, 5);
+
+        VBox root = new VBox(12, hint, grid, table, sumLbl, btns);
+        root.setPadding(new javafx.geometry.Insets(16));
+        root.setPrefWidth(900);
+        Scene scene = new Scene(root);
+        scene.getStylesheets().add(
+                getClass().getResource("/com/benjagest/ui/app.css").toExternalForm());
+        dlg.setScene(scene);
+        dlg.showAndWait();
+    }
+
+    private static class MultiAllocRow {
+        String invoiceId, invoiceNumber, invoiceDate;
+        BigDecimal total = BigDecimal.ZERO;
+        BigDecimal pending = BigDecimal.ZERO;
+        final javafx.beans.property.SimpleBooleanProperty selectedProperty =
+                new javafx.beans.property.SimpleBooleanProperty(true);
+        final javafx.beans.property.SimpleStringProperty amountTextProperty =
+                new javafx.beans.property.SimpleStringProperty("0");
+    }
 
     private void showInvoiceEditor(String existingInvoiceId) {
         recordNav(() -> showInvoiceEditor(existingInvoiceId));
@@ -16166,6 +16428,35 @@ public class BenjagestUiApplication extends Application {
             case "settings.backup.run.ok" -> "Backup created";
             case "settings.backup.run.ok.body" -> "Saved at:";
             case "settings.backup.run.fail" -> "Backup failed";
+            case "list.action.multi_allocation" -> "Pay multiple";
+            case "multi_alloc.title" -> "Register multi-invoice payment";
+            case "multi_alloc.hint" -> "One real payment (bank transfer, etc.) is split across several validated invoices of the same customer. The sum of allocations must match the total amount.";
+            case "multi_alloc.field.client" -> "Customer:";
+            case "multi_alloc.field.date" -> "Payment date:";
+            case "multi_alloc.field.total" -> "Total amount (€):";
+            case "multi_alloc.field.method" -> "Payment method:";
+            case "multi_alloc.field.reference" -> "Reference / bank concept:";
+            case "multi_alloc.field.notes" -> "Notes:";
+            case "multi_alloc.field.selected_sum" -> "Sum of selected:";
+            case "multi_alloc.col.pay" -> "Pay";
+            case "multi_alloc.col.invoice" -> "Invoice";
+            case "multi_alloc.col.date" -> "Date";
+            case "multi_alloc.col.total" -> "Total";
+            case "multi_alloc.col.pending" -> "Pending";
+            case "multi_alloc.col.allocate" -> "Allocate";
+            case "multi_alloc.empty" -> "Customer has no pending invoices.";
+            case "multi_alloc.btn.confirm" -> "Register payment";
+            case "multi_alloc.load.fail" -> "Could not load pending invoices";
+            case "multi_alloc.save.fail" -> "Payment registration failed";
+            case "multi_alloc.error.title" -> "Cannot register payment";
+            case "multi_alloc.error.total" -> "Enter a valid total > 0.";
+            case "multi_alloc.error.date" -> "Enter a payment date.";
+            case "multi_alloc.error.row" -> "Invalid amount on invoice";
+            case "multi_alloc.error.exceeds" -> "Amount exceeds pending on invoice";
+            case "multi_alloc.error.no_rows" -> "Select at least one invoice.";
+            case "multi_alloc.error.sum_mismatch" -> "Sum of allocations must equal total amount";
+            case "multi_alloc.ok.title" -> "Payment registered";
+            case "multi_alloc.ok.body" -> "Allocations:";
             case "client.tab.sales" -> "Sales";
             case "client.tab.expenses" -> "Expenses";
             case "client.sales_expenses.hint" -> "This client is NOT linked. Here you only archive invoices the client emitted/received in their own system. No legal invoicing from BENJAGEST — for that, the client must accept the invitation and activate VeriFactu.";
@@ -16831,6 +17122,35 @@ public class BenjagestUiApplication extends Application {
             case "settings.backup.run.ok" -> "Copia creada";
             case "settings.backup.run.ok.body" -> "Guardada en:";
             case "settings.backup.run.fail" -> "Falló la copia";
+            case "list.action.multi_allocation" -> "Cobrar varias";
+            case "multi_alloc.title" -> "Registrar pago de varias facturas";
+            case "multi_alloc.hint" -> "Un pago real (transferencia, ingreso, etc.) se reparte entre varias facturas validadas del mismo cliente. La suma de los repartos debe coincidir con el importe total del pago.";
+            case "multi_alloc.field.client" -> "Cliente:";
+            case "multi_alloc.field.date" -> "Fecha del pago:";
+            case "multi_alloc.field.total" -> "Importe total (€):";
+            case "multi_alloc.field.method" -> "Método de pago:";
+            case "multi_alloc.field.reference" -> "Referencia / concepto bancario:";
+            case "multi_alloc.field.notes" -> "Notas:";
+            case "multi_alloc.field.selected_sum" -> "Suma seleccionada:";
+            case "multi_alloc.col.pay" -> "Cobrar";
+            case "multi_alloc.col.invoice" -> "Factura";
+            case "multi_alloc.col.date" -> "Fecha";
+            case "multi_alloc.col.total" -> "Total";
+            case "multi_alloc.col.pending" -> "Pendiente";
+            case "multi_alloc.col.allocate" -> "Repartir";
+            case "multi_alloc.empty" -> "El cliente no tiene facturas pendientes.";
+            case "multi_alloc.btn.confirm" -> "Registrar pago";
+            case "multi_alloc.load.fail" -> "No se pudieron cargar las facturas pendientes";
+            case "multi_alloc.save.fail" -> "Falló el registro del pago";
+            case "multi_alloc.error.title" -> "No se puede registrar el pago";
+            case "multi_alloc.error.total" -> "Introduce un total válido > 0.";
+            case "multi_alloc.error.date" -> "Introduce una fecha de pago.";
+            case "multi_alloc.error.row" -> "Importe inválido en factura";
+            case "multi_alloc.error.exceeds" -> "El importe excede el pendiente de la factura";
+            case "multi_alloc.error.no_rows" -> "Selecciona al menos una factura.";
+            case "multi_alloc.error.sum_mismatch" -> "La suma de los repartos debe coincidir con el importe total";
+            case "multi_alloc.ok.title" -> "Pago registrado";
+            case "multi_alloc.ok.body" -> "Repartos:";
             case "advisory.client.tab.billing" -> "Facturación";
             case "advisory.client.tab.purchases" -> "Compras y Gastos";
             case "advisory.client.tab.sales_and_expenses" -> "Ventas y Gastos";

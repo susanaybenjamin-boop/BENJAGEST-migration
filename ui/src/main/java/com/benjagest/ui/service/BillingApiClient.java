@@ -161,6 +161,54 @@ public class BillingApiClient {
     }
 
     // ============================================================
+    //  MULTI-ALLOCATION — un pago salda varias facturas (V102)
+    // ============================================================
+
+    public record AllocationDraft(String invoiceId, java.math.BigDecimal amount) {}
+
+    /**
+     * Registra un pago real que se reparte entre varias facturas
+     * VALIDATED con pago pendiente. Devuelve el paymentId comun.
+     */
+    public String registerMultiAllocation(
+            String paymentDateIso, java.math.BigDecimal totalAmount,
+            String paymentMethod, String reference, String notes,
+            java.util.List<AllocationDraft> allocations)
+            throws IOException, InterruptedException {
+        StringBuilder body = new StringBuilder("{");
+        body.append("\"paymentDate\":\"").append(paymentDateIso).append("\",");
+        body.append("\"totalAmount\":").append(totalAmount.toPlainString()).append(',');
+        if (paymentMethod != null && !paymentMethod.isBlank()) {
+            body.append(field("paymentMethod", paymentMethod)).append(",");
+        }
+        if (reference != null && !reference.isBlank()) {
+            body.append(field("reference", reference)).append(",");
+        }
+        if (notes != null && !notes.isBlank()) {
+            body.append(field("notes", notes)).append(",");
+        }
+        body.append("\"allocations\":[");
+        for (int i = 0; i < allocations.size(); i++) {
+            if (i > 0) body.append(',');
+            AllocationDraft a = allocations.get(i);
+            body.append("{\"invoiceId\":\"").append(a.invoiceId()).append("\",")
+                    .append("\"amount\":").append(a.amount().toPlainString()).append('}');
+        }
+        body.append("]}");
+
+        HttpRequest.Builder b = HttpRequest.newBuilder(URI.create(
+                baseUrl + "/billing/payments/multi-allocation"))
+                .timeout(Duration.ofSeconds(20))
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(body.toString()));
+        HttpResponse<String> r = sendAuthorized(b);
+        ensureOk(r);
+        java.util.regex.Matcher m = java.util.regex.Pattern
+                .compile("\"paymentId\"\\s*:\\s*\"([^\"]+)\"").matcher(r.body());
+        return m.find() ? m.group(1) : null;
+    }
+
+    // ============================================================
     //  TPB-3 — Aceptación factura-a-factura por el cliente
     // ============================================================
 
