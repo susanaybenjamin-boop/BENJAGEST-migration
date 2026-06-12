@@ -2316,6 +2316,45 @@ public class AltaApiClient {
     }
 
     // ============================================================
+    //  BOE-RSS — Alertas BOE /api/boe-alerts
+    // ============================================================
+
+    public List<com.benjagest.ui.model.BoeAlertEntry> listBoeAlerts(int days)
+            throws IOException, InterruptedException {
+        HttpResponse<String> r = send(req(
+                baseUrl + "/boe-alerts?days=" + days).GET());
+        if (r.statusCode() < 200 || r.statusCode() >= 300) {
+            throw new IOException("HTTP " + r.statusCode() + ": " + r.body());
+        }
+        List<com.benjagest.ui.model.BoeAlertEntry> out = new ArrayList<>();
+        for (String obj : splitTopLevelObjects(r.body())) {
+            out.add(new com.benjagest.ui.model.BoeAlertEntry(
+                    textField(obj, "id"),
+                    textField(obj, "alertDate"),
+                    textField(obj, "boeId"),
+                    textField(obj, "title"),
+                    textField(obj, "url"),
+                    textField(obj, "department"),
+                    textField(obj, "keywordsMatched"),
+                    textField(obj, "createdAt")));
+        }
+        return out;
+    }
+
+    public void runBoeAlertsNow(String dateIsoOrNull)
+            throws IOException, InterruptedException {
+        String url = baseUrl + "/boe-alerts/run-now";
+        if (dateIsoOrNull != null && !dateIsoOrNull.isBlank()) {
+            url += "?date=" + dateIsoOrNull;
+        }
+        HttpResponse<String> r = send(req(url)
+                .POST(java.net.http.HttpRequest.BodyPublishers.noBody()));
+        if (r.statusCode() < 200 || r.statusCode() >= 300) {
+            throw new IOException("HTTP " + r.statusCode() + ": " + r.body());
+        }
+    }
+
+    // ============================================================
     //  PORT-4 LOGO — Logo de empresa /api/settings/company/logo
     // ============================================================
 

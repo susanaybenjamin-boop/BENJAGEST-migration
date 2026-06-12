@@ -5219,6 +5219,12 @@ public class BenjagestUiApplication extends Application {
             advisoryTab.setGraphic(icon("fas-handshake"));
             tabs.getTabs().add(advisoryTab);
         }
+        // BOE-RSS — Alertas BOE solo en modo asesoría.
+        if (appMode == AppMode.ADVISORY) {
+            Tab boeTab = new Tab(t("settings.tab.boe_alerts"), settingsBoeAlertsTab());
+            boeTab.setGraphic(icon("fas-newspaper"));
+            tabs.getTabs().add(boeTab);
+        }
         tabs.getTabs().add(auditTab);
         // El TabPane crece hasta el final del area central; sin esto, los
         // botones del pie de cada tab podrian quedar fuera de pantalla en
@@ -6933,6 +6939,119 @@ public class BenjagestUiApplication extends Application {
         if (bytes < 1024) return bytes + " B";
         if (bytes < 1024L * 1024) return String.format("%.1f KB", bytes / 1024.0);
         return String.format("%.1f MB", bytes / (1024.0 * 1024));
+    }
+
+    /**
+     * BOE-RSS — Pestaña de alertas BOE para la asesoría.
+     * Lista alertas históricas (últimos N días, default 30) y permite
+     * forzar el barrido del día actual (botón "Buscar ahora").
+     */
+    private Node settingsBoeAlertsTab() {
+        Label sectionTitle = label(t("settings.boe.section"), "settings-section-title");
+        Label hint = new Label(t("settings.boe.hint"));
+        hint.setWrapText(true);
+        hint.getStyleClass().add("settings-hint");
+
+        javafx.scene.control.ComboBox<Integer> daysCombo = new javafx.scene.control.ComboBox<>();
+        daysCombo.getItems().addAll(7, 30, 90, 180, 365);
+        daysCombo.getSelectionModel().select(Integer.valueOf(30));
+        daysCombo.getStyleClass().add("form-input");
+
+        TableView<com.benjagest.ui.model.BoeAlertEntry> table = new TableView<>();
+        table.getStyleClass().add("data-table");
+        table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+        table.setPlaceholder(new Label(t("settings.boe.empty")));
+
+        TableColumn<com.benjagest.ui.model.BoeAlertEntry, String> colDate =
+                new TableColumn<>(t("settings.boe.col.date"));
+        colDate.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().alertDate()));
+        colDate.setPrefWidth(110);
+        colDate.setComparator(ISO_DATE_COMPARATOR);
+
+        TableColumn<com.benjagest.ui.model.BoeAlertEntry, String> colBoeId =
+                new TableColumn<>(t("settings.boe.col.boe_id"));
+        colBoeId.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().boeId()));
+        colBoeId.setPrefWidth(140);
+
+        TableColumn<com.benjagest.ui.model.BoeAlertEntry, String> colTitle =
+                new TableColumn<>(t("settings.boe.col.title"));
+        colTitle.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().title()));
+        colTitle.setPrefWidth(420);
+
+        TableColumn<com.benjagest.ui.model.BoeAlertEntry, String> colKw =
+                new TableColumn<>(t("settings.boe.col.keywords"));
+        colKw.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().keywordsMatched()));
+        colKw.setPrefWidth(220);
+
+        TableColumn<com.benjagest.ui.model.BoeAlertEntry, String> colDept =
+                new TableColumn<>(t("settings.boe.col.department"));
+        colDept.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().department()));
+        colDept.setPrefWidth(220);
+
+        table.getColumns().addAll(List.of(colDate, colBoeId, colTitle, colKw, colDept));
+        VBox.setVgrow(table, Priority.ALWAYS);
+
+        Button openPdf = new Button(t("settings.boe.btn.open"));
+        openPdf.setGraphic(icon("fas-external-link-alt"));
+        openPdf.setDisable(true);
+        openPdf.setOnAction(ev -> {
+            var sel = table.getSelectionModel().getSelectedItem();
+            if (sel == null || sel.url() == null || sel.url().isBlank()) return;
+            try { java.awt.Desktop.getDesktop().browse(java.net.URI.create(sel.url())); }
+            catch (Exception ex) { showError(t("settings.boe.open.fail"), ex.getMessage()); }
+        });
+        table.getSelectionModel().selectedItemProperty().addListener((obs, o, n) ->
+                openPdf.setDisable(n == null || n.url() == null || n.url().isBlank()));
+
+        Button refresh = new Button(t("settings.boe.btn.refresh"));
+        refresh.setGraphic(icon("fas-sync-alt"));
+        Runnable load = () -> loadBoeAlerts(table, daysCombo.getValue());
+        refresh.setOnAction(ev -> load.run());
+        daysCombo.setOnAction(ev -> load.run());
+
+        Button runNow = new Button(t("settings.boe.btn.run_now"));
+        runNow.setGraphic(icon("fas-bolt"));
+        runNow.getStyleClass().add("primary-button");
+        runNow.setOnAction(ev -> runBoeNow(load));
+
+        HBox filterRow = new HBox(10,
+                label(t("settings.boe.filter.days"), "form-label"),
+                daysCombo, refresh, runNow, openPdf);
+        filterRow.setAlignment(Pos.CENTER_LEFT);
+
+        load.run();
+
+        VBox layout = new VBox(12, sectionTitle, hint, filterRow, table);
+        layout.getStyleClass().add("settings-tab-body");
+        return layout;
+    }
+
+    private void loadBoeAlerts(TableView<com.benjagest.ui.model.BoeAlertEntry> table, Integer days) {
+        int d = days == null ? 30 : days;
+        Task<List<com.benjagest.ui.model.BoeAlertEntry>> task = new Task<>() {
+            @Override
+            protected List<com.benjagest.ui.model.BoeAlertEntry> call() throws Exception {
+                return altaApiClient.listBoeAlerts(d);
+            }
+        };
+        task.setOnSucceeded(ev -> table.setItems(FXCollections.observableArrayList(task.getValue())));
+        task.setOnFailed(ev -> showError(t("settings.boe.load.fail"),
+                task.getException() == null ? "" : task.getException().getMessage()));
+        start(task, "boe-alerts-load");
+    }
+
+    private void runBoeNow(Runnable onDone) {
+        Task<Void> task = new Task<>() {
+            @Override
+            protected Void call() throws Exception {
+                altaApiClient.runBoeAlertsNow(null);
+                return null;
+            }
+        };
+        task.setOnSucceeded(ev -> onDone.run());
+        task.setOnFailed(ev -> showError(t("settings.boe.run.fail"),
+                task.getException() == null ? "" : task.getException().getMessage()));
+        start(task, "boe-alerts-run");
     }
 
     private Node settingsAuditTab() {
@@ -15907,6 +16026,22 @@ public class BenjagestUiApplication extends Application {
             case "panorama.active_clients.sub" -> "Invoiced this month";
             case "panorama.tpb_pending" -> "TPB awaiting approval";
             case "panorama.tpb_pending.sub" -> "Client must accept/reject";
+            case "settings.tab.boe_alerts" -> "BOE alerts";
+            case "settings.boe.section" -> "BOE alerts — fiscal & labor";
+            case "settings.boe.hint" -> "Daily scan of the Spanish Official Gazette for new rules on AEAT, IVA, IRPF, payroll, Verifactu and labor law. Each match shown below is also sent as a notification.";
+            case "settings.boe.empty" -> "No BOE matches for the selected range.";
+            case "settings.boe.filter.days" -> "Days back:";
+            case "settings.boe.col.date" -> "Date";
+            case "settings.boe.col.boe_id" -> "BOE ID";
+            case "settings.boe.col.title" -> "Title";
+            case "settings.boe.col.keywords" -> "Matched keywords";
+            case "settings.boe.col.department" -> "Department";
+            case "settings.boe.btn.refresh" -> "Refresh";
+            case "settings.boe.btn.run_now" -> "Scan now";
+            case "settings.boe.btn.open" -> "Open in browser";
+            case "settings.boe.open.fail" -> "Could not open the URL";
+            case "settings.boe.load.fail" -> "Could not load BOE alerts";
+            case "settings.boe.run.fail" -> "BOE scan failed";
             case "client.tab.sales" -> "Sales";
             case "client.tab.expenses" -> "Expenses";
             case "client.sales_expenses.hint" -> "This client is NOT linked. Here you only archive invoices the client emitted/received in their own system. No legal invoicing from BENJAGEST — for that, the client must accept the invitation and activate VeriFactu.";
@@ -16540,6 +16675,22 @@ public class BenjagestUiApplication extends Application {
             case "panorama.active_clients.sub" -> "Han facturado este mes";
             case "panorama.tpb_pending" -> "TPB pendientes aceptación";
             case "panorama.tpb_pending.sub" -> "Cliente debe aceptar/rechazar";
+            case "settings.tab.boe_alerts" -> "Alertas BOE";
+            case "settings.boe.section" -> "Alertas BOE — fiscal y laboral";
+            case "settings.boe.hint" -> "Barrido diario del Boletín Oficial del Estado por nuevas normas sobre AEAT, IVA, IRPF, nóminas, Verifactu y derecho laboral. Cada coincidencia también se envía como notificación.";
+            case "settings.boe.empty" -> "Sin coincidencias del BOE en el rango seleccionado.";
+            case "settings.boe.filter.days" -> "Días atrás:";
+            case "settings.boe.col.date" -> "Fecha";
+            case "settings.boe.col.boe_id" -> "ID BOE";
+            case "settings.boe.col.title" -> "Título";
+            case "settings.boe.col.keywords" -> "Palabras clave";
+            case "settings.boe.col.department" -> "Departamento";
+            case "settings.boe.btn.refresh" -> "Recargar";
+            case "settings.boe.btn.run_now" -> "Buscar ahora";
+            case "settings.boe.btn.open" -> "Abrir en navegador";
+            case "settings.boe.open.fail" -> "No se pudo abrir la URL";
+            case "settings.boe.load.fail" -> "No se pudieron cargar las alertas BOE";
+            case "settings.boe.run.fail" -> "Falló el barrido BOE";
             case "advisory.client.tab.billing" -> "Facturación";
             case "advisory.client.tab.purchases" -> "Compras y Gastos";
             case "advisory.client.tab.sales_and_expenses" -> "Ventas y Gastos";
