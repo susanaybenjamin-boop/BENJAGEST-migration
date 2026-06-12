@@ -41,17 +41,49 @@ public class VerifactuRegistryService {
     private final VerifactuRegistryRepository registryRepository;
     private final VerifactuHashService hashService;
     private final XmlSignerService signerService;
+    private final org.springframework.jdbc.core.JdbcTemplate jdbcForTpb;
 
     public VerifactuRegistryService(VerifactuConfigRepository configRepository,
                                     CompanyDataRepository companyRepository,
                                     VerifactuRegistryRepository registryRepository,
                                     VerifactuHashService hashService,
-                                    XmlSignerService signerService) {
+                                    XmlSignerService signerService,
+                                    org.springframework.jdbc.core.JdbcTemplate jdbcForTpb) {
         this.configRepository = configRepository;
         this.companyRepository = companyRepository;
         this.registryRepository = registryRepository;
         this.hashService = hashService;
         this.signerService = signerService;
+        this.jdbcForTpb = jdbcForTpb;
+    }
+
+    /** TPB-4 — datos del tercero expedidor leídos de la serie. */
+    private record ThirdPartyInfo(String companyId, String nif, String name) {
+        boolean isPresent() { return nif != null && !nif.isBlank(); }
+    }
+
+    /**
+     * Si la serie de la factura tiene expedited_by_company_id NOT NULL,
+     * la factura ha sido expedida por un tercero (asesoría). Devuelve
+     * un snapshot del NIF y nombre de esa asesoría para incluirlo en
+     * el canonical del hash y persistirlo en verifactu_registry. Las
+     * facturas no-TPB devuelven ThirdPartyInfo vacío.
+     */
+    private ThirdPartyInfo loadThirdPartyInfoFromSeries(String seriesId) {
+        if (seriesId == null) return new ThirdPartyInfo(null, null, null);
+        return jdbcForTpb.query("""
+                SELECT s.expedited_by_company_id, c.tax_identifier, c.legal_name
+                  FROM invoice_series s
+                  LEFT JOIN companies c ON c.id = s.expedited_by_company_id
+                 WHERE s.id = ?
+                """, rs -> {
+            if (!rs.next()) return new ThirdPartyInfo(null, null, null);
+            String id = rs.getString("expedited_by_company_id");
+            if (id == null) return new ThirdPartyInfo(null, null, null);
+            return new ThirdPartyInfo(id,
+                    rs.getString("tax_identifier"),
+                    rs.getString("legal_name"));
+        }, seriesId);
     }
 
     @Transactional
@@ -94,6 +126,11 @@ public class VerifactuRegistryService {
         OffsetDateTime generationTime = OffsetDateTime.now(ZoneId.of("Europe/Madrid"))
                 .truncatedTo(ChronoUnit.SECONDS);
 
+        // TPB-4: si la serie es de tercero, extendemos el canonical del
+        // hash con el bloque EmitidaPorTercero + Tercero. Para facturas
+        // no-TPB tpInfo está vacío y el hash se calcula como siempre.
+        ThirdPartyInfo tpInfo = loadThirdPartyInfoFromSeries(invoice.seriesId());
+
         String hashCurrent = hashService.computeHash(
                 company.taxIdentifier(),
                 invoice.invoiceNumber(),
@@ -101,7 +138,9 @@ public class VerifactuRegistryService {
                 invoice.vatTotal(),
                 invoice.total(),
                 previousHash,
-                generationTime
+                generationTime,
+                tpInfo.nif(),
+                tpInfo.name()
         );
 
         registryRepository.insertWithGenerationTime(
@@ -112,6 +151,17 @@ public class VerifactuRegistryService {
                 previousHash,
                 generationTime
         );
+        if (tpInfo.isPresent()) {
+            jdbcForTpb.update("""
+                    UPDATE verifactu_registry
+                       SET issued_by_third_party = TRUE,
+                           third_party_company_id = ?,
+                           third_party_nif = ?,
+                           third_party_name = ?
+                     WHERE invoice_id = ? AND mode = ?
+                    """, tpInfo.companyId(), tpInfo.nif(), tpInfo.name(),
+                    invoice.id(), mode);
+        }
 
         // VF-SIGN: firma XML-DSig del registro con el certificado de la
         // empresa. Es MVP (no XAdES-EPES estricto todavia — ver
@@ -206,7 +256,9 @@ public class VerifactuRegistryService {
                     row.vatTotal(),
                     row.total(),
                     expectedPrev,
-                    gen
+                    gen,
+                    row.thirdPartyNif(),
+                    row.thirdPartyName()
             );
             if (!recomputed.equalsIgnoreCase(row.hashCurrent())) {
                 return new IntegrityReport(false, checked, row.invoiceId(), row.invoiceNumber(),

@@ -65,6 +65,26 @@ public class VerifactuHashService {
                               BigDecimal total,
                               String previousHash,
                               OffsetDateTime generationTime) {
+        return computeHash(nifEmisor, invoiceNumber, invoiceDate, vatTotal, total,
+                previousHash, generationTime, null, null);
+    }
+
+    /**
+     * TPB-4 — Sobrecarga con datos del tercero expedidor. Si
+     * {@code thirdPartyNif} viene non-null, extiende el canonical con
+     * &EmitidaPorTercero=T&TerceroNif&TerceroNombre. Cuando es null o
+     * vacío, devuelve el canonical clásico — las cadenas históricas
+     * de facturas no-TPB siguen verificables sin cambios.
+     */
+    public String computeHash(String nifEmisor,
+                              String invoiceNumber,
+                              LocalDate invoiceDate,
+                              BigDecimal vatTotal,
+                              BigDecimal total,
+                              String previousHash,
+                              OffsetDateTime generationTime,
+                              String thirdPartyNif,
+                              String thirdPartyName) {
         if (nifEmisor == null || nifEmisor.isBlank()) {
             throw new IllegalArgumentException("nifEmisor requerido");
         }
@@ -96,6 +116,16 @@ public class VerifactuHashService {
                 "Huella=" + previous,
                 "FechaHoraHusoGenRegistro=" + generationTime.format(FECHA_HORA_HUSO)
         );
+
+        // TPB-4: solo se añade si hay tercero expedidor real. Para
+        // facturas no-TPB el canonical queda exactamente como antes,
+        // las cadenas históricas siguen verificables.
+        if (thirdPartyNif != null && !thirdPartyNif.isBlank()) {
+            chain = chain
+                    + "&EmitidaPorTercero=T"
+                    + "&TerceroNif=" + thirdPartyNif.trim().toUpperCase()
+                    + "&TerceroNombre=" + (thirdPartyName == null ? "" : thirdPartyName.trim());
+        }
 
         return sha256Hex(chain).toUpperCase();
     }

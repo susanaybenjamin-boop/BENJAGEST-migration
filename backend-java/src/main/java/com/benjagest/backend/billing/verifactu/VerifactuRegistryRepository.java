@@ -181,7 +181,8 @@ public class VerifactuRegistryRepository {
         return jdbcTemplate.query("""
                 SELECT r.invoice_id, i.invoice_number, i.invoice_date,
                        i.vat_total, i.total,
-                       r.hash_current, r.hash_previous, r.generated_at
+                       r.hash_current, r.hash_previous, r.generated_at,
+                       r.third_party_nif, r.third_party_name
                   FROM verifactu_registry r
                   JOIN sales_invoices i ON i.id = r.invoice_id
                  WHERE r.company_id = ?
@@ -378,8 +379,15 @@ public class VerifactuRegistryRepository {
                 // El TIMESTAMP vuelve como Instant; lo expresamos como
                 // OffsetDateTime para que el servicio lo proyecte a
                 // Europe/Madrid y el formato del hash coincida.
-                gen == null ? null : OffsetDateTime.ofInstant(gen.toInstant(), ZoneOffset.UTC)
+                gen == null ? null : OffsetDateTime.ofInstant(gen.toInstant(), ZoneOffset.UTC),
+                hasColumn(rs, "third_party_nif") ? rs.getString("third_party_nif") : null,
+                hasColumn(rs, "third_party_name") ? rs.getString("third_party_name") : null
         );
+    }
+
+    private static boolean hasColumn(ResultSet rs, String col) {
+        try { rs.findColumn(col); return true; }
+        catch (SQLException ex) { return false; }
     }
 
     public record ChainRow(
@@ -390,7 +398,11 @@ public class VerifactuRegistryRepository {
             BigDecimal total,
             String hashCurrent,
             String hashPrevious,
-            OffsetDateTime generatedAt
+            OffsetDateTime generatedAt,
+            /** TPB-4 — NIF del tercero expedidor o null si no aplica. */
+            String thirdPartyNif,
+            /** TPB-4 — Nombre del tercero expedidor o null si no aplica. */
+            String thirdPartyName
     ) {
     }
 
