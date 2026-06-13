@@ -15974,6 +15974,16 @@ public class BenjagestUiApplication extends Application {
             case "labor.leaves.error.no_start" -> "Start date is required.";
             case "labor.tab.ss_contributions" -> "SS contributions";
             case "labor.tab.employer_cost" -> "Employer cost";
+            case "labor.tab.ss_rates" -> "SS rates";
+            case "labor.ssrates.hint" -> "Social Security contribution rates by year. Payroll reads them from here, so when the law changes you only add/edit the year — no code change. Rows are national legal rates (same for all companies).";
+            case "labor.ssrates.empty" -> "No rates configured.";
+            case "labor.ssrates.col.year" -> "Year";
+            case "labor.ssrates.col.ref" -> "Legal reference";
+            case "labor.ssrates.add" -> "+ Add year";
+            case "labor.ssrates.edit" -> "Edit year";
+            case "labor.ssrates.save_btn" -> "Save";
+            case "labor.ssrates.load_failed" -> "Could not load the rates";
+            case "labor.ssrates.save_failed" -> "Could not save the rates";
             case "labor.cost.hint" -> "Yearly cost to the company per employee: gross paid + employer Social Security (TC employer quotas). Source of truth: payrolls and TC quotas.";
             case "labor.cost.filter.year" -> "Year";
             case "labor.cost.col.employee" -> "Employee";
@@ -16394,6 +16404,16 @@ public class BenjagestUiApplication extends Application {
             case "labor.leaves.error.no_start" -> "La fecha de inicio es obligatoria.";
             case "labor.tab.ss_contributions" -> "Cotizaciones SS";
             case "labor.tab.employer_cost" -> "Coste empresa";
+            case "labor.tab.ss_rates" -> "Tipos cotización";
+            case "labor.ssrates.hint" -> "Tipos de cotización a la Seguridad Social por año. La nómina los lee de aquí, así que cuando cambia la ley solo añades/editas el año — sin tocar código. Son tipos legales nacionales (iguales para todas las empresas).";
+            case "labor.ssrates.empty" -> "No hay tipos configurados.";
+            case "labor.ssrates.col.year" -> "Año";
+            case "labor.ssrates.col.ref" -> "Referencia legal";
+            case "labor.ssrates.add" -> "+ Añadir año";
+            case "labor.ssrates.edit" -> "Editar año";
+            case "labor.ssrates.save_btn" -> "Guardar";
+            case "labor.ssrates.load_failed" -> "No se pudieron cargar los tipos";
+            case "labor.ssrates.save_failed" -> "No se pudieron guardar los tipos";
             case "labor.cost.hint" -> "Coste anual para la empresa por empleado: bruto pagado + Seguridad Social a cargo de la empresa (cuotas TC patronales). Fuente: nóminas y cuotas TC.";
             case "labor.cost.filter.year" -> "Año";
             case "labor.cost.col.employee" -> "Empleado";
@@ -18558,6 +18578,9 @@ public class BenjagestUiApplication extends Application {
         // Reporte de coste de empresa por empleado (bloque NOM).
         Tab costTab = new Tab(t("labor.tab.employer_cost"), buildEmployerCostTab());
         costTab.setGraphic(icon("fas-coins"));
+        // Tipos de cotización SS por año (PARAM-YEAR).
+        Tab ratesTab = new Tab(t("labor.tab.ss_rates"), buildSsRatesTab());
+        ratesTab.setGraphic(icon("fas-table"));
         // PORT-2 (2026-06-10 tarde) — Partes/Jornadas como sub-pestaña
         // de Labor (no como módulo de raíz, decisión Benjamin). Lee de
         // /api/work-logs. Cuando llegue la versión tablet/móvil del
@@ -18571,7 +18594,7 @@ public class BenjagestUiApplication extends Application {
 
         tabs.getTabs().addAll(empTab, contractsTab, clockTab, auditTab, payslipsTab,
                 templatesTab, clausesTab, cfgTab, calendarTab, leavesTab, ssTab,
-                costTab, shiftsTab, centersTab);
+                costTab, ratesTab, shiftsTab, centersTab);
         VBox.setVgrow(tabs, Priority.ALWAYS);
 
         content.getChildren().addAll(header, alertsBanner, tabs);
@@ -31239,6 +31262,138 @@ public class BenjagestUiApplication extends Application {
     //  período, empleado/empresa, tipo, base, cuota, estado. Botón
     //  Eliminar solo activo para DRAFT (backend bloquea DELETE si
     //  !=DRAFT vía 409).
+    /**
+     * Tipos de cotización a la Seguridad Social por año (PARAM-YEAR). El
+     * cálculo de nóminas los lee de aquí; al cambiar la ley solo hay que
+     * añadir/editar el año, sin tocar código.
+     */
+    private Node buildSsRatesTab() {
+        VBox content = new VBox(12);
+        content.setPadding(new Insets(16));
+        Label hint = new Label(t("labor.ssrates.hint"));
+        hint.setWrapText(true);
+        hint.getStyleClass().add("settings-hint");
+
+        TableView<com.benjagest.ui.model.SsRateEntry> table = new TableView<>();
+        table.getStyleClass().add("data-table");
+        table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+        table.setPlaceholder(new Label(t("labor.ssrates.empty")));
+        com.benjagest.ui.support.TableSelectionHelper.install(table);
+
+        addColSorted(table, t("labor.ssrates.col.year"), r -> String.valueOf(r.year()), 60, NUMERIC_STRING_COMPARATOR);
+        addColSorted(table, "Trab. CC", r -> pctTxt(r.eeCommon()), 80, NUMERIC_STRING_COMPARATOR);
+        addColSorted(table, "Trab. Desempleo", r -> pctTxt(r.eeUnemployment()), 110, NUMERIC_STRING_COMPARATOR);
+        addColSorted(table, "Trab. Form.", r -> pctTxt(r.eeTraining()), 80, NUMERIC_STRING_COMPARATOR);
+        addColSorted(table, "Trab. MEI", r -> pctTxt(r.eeMei()), 75, NUMERIC_STRING_COMPARATOR);
+        addColSorted(table, "Emp. CC", r -> pctTxt(r.erCommon()), 80, NUMERIC_STRING_COMPARATOR);
+        addColSorted(table, "Emp. Desempleo", r -> pctTxt(r.erUnemployment()), 110, NUMERIC_STRING_COMPARATOR);
+        addColSorted(table, "Emp. FOGASA", r -> pctTxt(r.erFogasa()), 90, NUMERIC_STRING_COMPARATOR);
+        addColSorted(table, "Emp. Form.", r -> pctTxt(r.erTraining()), 80, NUMERIC_STRING_COMPARATOR);
+        addColSorted(table, "Emp. MEI", r -> pctTxt(r.erMei()), 75, NUMERIC_STRING_COMPARATOR);
+        addColSorted(table, "AT/EP def.", r -> pctTxt(r.defaultAtEp()), 80, NUMERIC_STRING_COMPARATOR);
+        addColSorted(table, t("labor.ssrates.col.ref"),
+                r -> r.legalReference() == null ? "" : r.legalReference(), 160, String.CASE_INSENSITIVE_ORDER);
+
+        Runnable reload = () -> {
+            Task<java.util.List<com.benjagest.ui.model.SsRateEntry>> tk = new Task<>() {
+                @Override protected java.util.List<com.benjagest.ui.model.SsRateEntry> call() throws Exception {
+                    return laborApiClient.listSsRates();
+                }
+            };
+            tk.setOnSucceeded(ev -> table.setItems(FXCollections.observableArrayList(tk.getValue())));
+            tk.setOnFailed(ev -> showError(t("labor.ssrates.load_failed"),
+                    tk.getException() == null ? "" : tk.getException().getMessage()));
+            start(tk, "ssrates-load");
+        };
+
+        Button addBtn = new Button(t("labor.ssrates.add"));
+        addBtn.getStyleClass().add("button-primary");
+        addBtn.setOnAction(e -> {
+            // Copia del año más reciente como base para el siguiente.
+            var items = table.getItems();
+            com.benjagest.ui.model.SsRateEntry base = items.isEmpty() ? null : items.get(0);
+            int nextYear = base == null ? java.time.Year.now().getValue() + 1 : base.year() + 1;
+            showSsRateEditor(base, nextYear, reload);
+        });
+        Button editBtn = new Button(t("labor.ssrates.edit"));
+        editBtn.getStyleClass().add("button-secondary");
+        editBtn.setOnAction(e -> {
+            var sel = table.getSelectionModel().getSelectedItem();
+            if (sel != null) showSsRateEditor(sel, sel.year(), reload);
+        });
+        HBox actions = new HBox(8, addBtn, editBtn);
+
+        reload.run();
+        VBox body = new VBox(10, hint, actions, table);
+        VBox.setVgrow(table, Priority.ALWAYS);
+        content.getChildren().add(body);
+        VBox.setVgrow(body, Priority.ALWAYS);
+        return content;
+    }
+
+    private String pctTxt(java.math.BigDecimal v) {
+        return v == null ? "" : v.toPlainString().replace(".", ",") + " %";
+    }
+
+    private void showSsRateEditor(com.benjagest.ui.model.SsRateEntry base, int year, Runnable onSaved) {
+        Dialog<ButtonType> d = new Dialog<>();
+        d.setTitle(t("labor.ssrates.edit") + " — " + year);
+        ButtonType save = new ButtonType(t("labor.ssrates.save_btn"), ButtonBar.ButtonData.OK_DONE);
+        d.getDialogPane().getButtonTypes().addAll(save, ButtonType.CANCEL);
+
+        TextField yearF = new TextField(String.valueOf(year));
+        TextField eeC = rateField(base == null ? null : base.eeCommon(), "4.70");
+        TextField eeU = rateField(base == null ? null : base.eeUnemployment(), "1.55");
+        TextField eeT = rateField(base == null ? null : base.eeTraining(), "0.10");
+        TextField eeM = rateField(base == null ? null : base.eeMei(), "0.15");
+        TextField erC = rateField(base == null ? null : base.erCommon(), "23.60");
+        TextField erU = rateField(base == null ? null : base.erUnemployment(), "5.50");
+        TextField erF = rateField(base == null ? null : base.erFogasa(), "0.20");
+        TextField erT = rateField(base == null ? null : base.erTraining(), "0.60");
+        TextField erM = rateField(base == null ? null : base.erMei(), "0.75");
+        TextField atEp = rateField(base == null ? null : base.defaultAtEp(), "1.50");
+        TextField ref = new TextField(base == null || base.legalReference() == null ? "" : base.legalReference());
+
+        GridPane g = new GridPane();
+        g.setHgap(10); g.setVgap(8); g.setPadding(new Insets(12));
+        int r = 0;
+        g.add(new Label(t("labor.ssrates.col.year")), 0, r); g.add(yearF, 1, r++);
+        g.add(new Label("Trabajador — Cont. comunes"), 0, r); g.add(eeC, 1, r++);
+        g.add(new Label("Trabajador — Desempleo"), 0, r); g.add(eeU, 1, r++);
+        g.add(new Label("Trabajador — Formación"), 0, r); g.add(eeT, 1, r++);
+        g.add(new Label("Trabajador — MEI"), 0, r); g.add(eeM, 1, r++);
+        g.add(new Label("Empresa — Cont. comunes"), 0, r); g.add(erC, 1, r++);
+        g.add(new Label("Empresa — Desempleo"), 0, r); g.add(erU, 1, r++);
+        g.add(new Label("Empresa — FOGASA"), 0, r); g.add(erF, 1, r++);
+        g.add(new Label("Empresa — Formación"), 0, r); g.add(erT, 1, r++);
+        g.add(new Label("Empresa — MEI"), 0, r); g.add(erM, 1, r++);
+        g.add(new Label("AT/EP por defecto"), 0, r); g.add(atEp, 1, r++);
+        g.add(new Label(t("labor.ssrates.col.ref")), 0, r); g.add(ref, 1, r++);
+        installDialog(d, g);
+
+        d.showAndWait().ifPresent(bt -> {
+            if (bt != save) return;
+            com.benjagest.ui.model.SsRateEntry e = new com.benjagest.ui.model.SsRateEntry(
+                    parseIntSafe(yearF.getText()) == null ? year : parseIntSafe(yearF.getText()),
+                    parseDecSafe(eeC.getText()), parseDecSafe(eeU.getText()),
+                    parseDecSafe(eeT.getText()), parseDecSafe(eeM.getText()),
+                    parseDecSafe(erC.getText()), parseDecSafe(erU.getText()), parseDecSafe(erF.getText()),
+                    parseDecSafe(erT.getText()), parseDecSafe(erM.getText()), parseDecSafe(atEp.getText()),
+                    blankToNullOrSelf(ref.getText()));
+            Task<Void> tk = new Task<>() {
+                @Override protected Void call() throws Exception { laborApiClient.upsertSsRate(e); return null; }
+            };
+            tk.setOnSucceeded(ev -> onSaved.run());
+            tk.setOnFailed(ev -> showError(t("labor.ssrates.save_failed"),
+                    tk.getException() == null ? "" : tk.getException().getMessage()));
+            start(tk, "ssrates-save");
+        });
+    }
+
+    private TextField rateField(java.math.BigDecimal v, String fallback) {
+        return new TextField(v == null ? fallback : v.toPlainString());
+    }
+
     /**
      * Reporte de coste de empresa por empleado (bloque NOM). Coste anual
      * = bruto pagado + SS a cargo de la empresa (cuotas TC EMPLOYER_*).

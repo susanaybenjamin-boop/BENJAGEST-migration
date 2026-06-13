@@ -2,6 +2,7 @@ package com.benjagest.backend.labor;
 
 import com.benjagest.backend.auth.RequiresRole;
 import com.benjagest.backend.modules.RequiresModule;
+import com.benjagest.backend.labor.ss.SsContributionRatesService;
 import com.benjagest.backend.tax.TaxRulesService;
 import com.benjagest.backend.tenant.TenantContext;
 import java.math.BigDecimal;
@@ -62,25 +63,15 @@ import org.springframework.web.server.ResponseStatusException;
 @Service
 public class PayslipService {
 
-    // === Tipos de cotización a la Seguridad Social (Orden PJC/297/2026) ===
-    // A cargo del trabajador (total 6,50 % en 2026, ya con MEI 0,15 %).
-    private static final BigDecimal EE_COMMON       = new BigDecimal("4.70");
-    private static final BigDecimal EE_UNEMPLOYMENT = new BigDecimal("1.55");
-    private static final BigDecimal EE_TRAINING     = new BigDecimal("0.10");
-    private static final BigDecimal EE_MEI          = new BigDecimal("0.15");
-    // A cargo de la empresa (AT/EP va aparte, por contrato).
-    private static final BigDecimal ER_COMMON       = new BigDecimal("23.60");
-    private static final BigDecimal ER_UNEMPLOYMENT = new BigDecimal("5.50");
-    private static final BigDecimal ER_FOGASA       = new BigDecimal("0.20");
-    private static final BigDecimal ER_TRAINING     = new BigDecimal("0.60");
-    private static final BigDecimal ER_MEI          = new BigDecimal("0.75");
-    private static final BigDecimal AT_EP_DEFAULT   = new BigDecimal("1.50");
+    // Los tipos de cotización SS ya NO van a fuego aquí: se leen por año de
+    // ss_contribution_rates (SsContributionRatesService), bloque PARAM-YEAR.
 
     private final JdbcTemplate jdbcTemplate;
     private final TenantContext tenantContext;
     private final TaxRulesService taxRulesService;
     private final PayslipPdfGenerator pdfGenerator;
     private final PayslipJournalEntryService journalService;
+    private final com.benjagest.backend.labor.ss.SsContributionRatesService ssRatesService;
     private final com.benjagest.backend.settings.EmailSenderService emailSender;
     private final com.benjagest.backend.settings.CompanyDataService companyDataService;
 
@@ -89,6 +80,7 @@ public class PayslipService {
                            TaxRulesService taxRulesService,
                            PayslipPdfGenerator pdfGenerator,
                            PayslipJournalEntryService journalService,
+                           com.benjagest.backend.labor.ss.SsContributionRatesService ssRatesService,
                            com.benjagest.backend.settings.EmailSenderService emailSender,
                            com.benjagest.backend.settings.CompanyDataService companyDataService) {
         this.jdbcTemplate = jdbcTemplate;
@@ -96,6 +88,7 @@ public class PayslipService {
         this.taxRulesService = taxRulesService;
         this.pdfGenerator = pdfGenerator;
         this.journalService = journalService;
+        this.ssRatesService = ssRatesService;
         this.emailSender = emailSender;
         this.companyDataService = companyDataService;
     }
@@ -320,9 +313,10 @@ public class PayslipService {
         } else {
             cotizationBase = gross;
         }
+        SsContributionRatesService.Rates rates = ssRatesService.ratesForYear(req.year());
         BigDecimal atEp = contract.atEpPercent != null && contract.atEpPercent.signum() >= 0
-                ? contract.atEpPercent : AT_EP_DEFAULT;
-        SsBreakdown ss = computeSs(cotizationBase, atEp);
+                ? contract.atEpPercent : rates.defaultAtEp();
+        SsBreakdown ss = computeSs(cotizationBase, atEp, rates);
         BigDecimal ssEmployee = ss.employeeTotal();
 
         // 3) IRPF sobre el devengo tributable (solo conceptos sujetos a IRPF).
@@ -541,13 +535,14 @@ public class PayslipService {
         return base.multiply(percent).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
     }
 
-    private SsBreakdown computeSs(BigDecimal base, BigDecimal atEpPercent) {
+    private SsBreakdown computeSs(BigDecimal base, BigDecimal atEpPercent,
+                                  SsContributionRatesService.Rates r) {
         return new SsBreakdown(
-                pct(base, EE_COMMON), pct(base, EE_UNEMPLOYMENT),
-                pct(base, EE_TRAINING), pct(base, EE_MEI),
-                pct(base, ER_COMMON), pct(base, ER_UNEMPLOYMENT),
-                pct(base, ER_FOGASA), pct(base, ER_TRAINING),
-                pct(base, ER_MEI), pct(base, atEpPercent));
+                pct(base, r.eeCommon()), pct(base, r.eeUnemployment()),
+                pct(base, r.eeTraining()), pct(base, r.eeMei()),
+                pct(base, r.erCommon()), pct(base, r.erUnemployment()),
+                pct(base, r.erFogasa()), pct(base, r.erTraining()),
+                pct(base, r.erMei()), pct(base, atEpPercent));
     }
 
     /**
