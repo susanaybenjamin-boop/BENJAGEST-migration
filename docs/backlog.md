@@ -357,7 +357,7 @@ Nóminas; afinar topes de cotización; pagas extra.
 ## Empleados / Nóminas
 
 - ✅ ⚖️ **Payrolls — ciclo mensual** — cerrado en bloque NOM (calcular/pagar/PDF/email + asientos devengo/pago + SS empresa vía cuotas TC).
-- ⬜ 💰 **Reporte coste empresa por empleado** — AHORA FACTIBLE (la SS empresa ya está en cuotas TC). Falta construir el informe: coste = bruto + Σ EMPLOYER_* por empleado/periodo.
+- ✅ 💰 **Reporte coste empresa por empleado** — cerrado (NOM-6, `aa61627`): pestaña "Coste empresa" en Labor con bruto anual + SS empresa + coste total por empleado y totales al pie.
 - ⬜ **Entrega de nóminas con firma trabajador** — fecha + vía (acuse de recibo).
 - ⬜ **Incidencias de nómina** — horas extra, bajas, complementos variables por periodo.
 - ⬜ **Topes de cotización TGSS + pagas extra cotizadas** — afinar el cálculo NOM (hoy base = bruto sin topes; EXTRA_* sin asiento).
