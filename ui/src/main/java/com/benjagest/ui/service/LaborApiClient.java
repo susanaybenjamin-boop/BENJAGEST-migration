@@ -498,7 +498,8 @@ public class LaborApiClient {
 
     public com.benjagest.ui.model.PayslipEntry calculatePayslip(String employeeId, int year, int month,
                                                                   String type, boolean extraProrated,
-                                                                  java.math.BigDecimal otherDeductions, String notes)
+                                                                  java.math.BigDecimal otherDeductions, String notes,
+                                                                  java.util.List<com.benjagest.ui.model.SalaryItemEntry> extraConcepts)
             throws IOException, InterruptedException {
         StringBuilder b = new StringBuilder("{");
         b.append(field("employeeId", employeeId)).append(",");
@@ -507,6 +508,20 @@ public class LaborApiClient {
         b.append("\"includeExtraProrated\":").append(extraProrated).append(",");
         b.append(decField("otherDeductions", otherDeductions)).append(",");
         b.append(field("notes", notes));
+        b.append(",\"extraConcepts\":[");
+        if (extraConcepts != null) {
+            for (int i = 0; i < extraConcepts.size(); i++) {
+                var ec = extraConcepts.get(i);
+                if (i > 0) b.append(",");
+                b.append("{")
+                 .append(field("name", ec.conceptName())).append(",")
+                 .append(decField("amount", ec.annualAmount())).append(",")
+                 .append("\"cotizes\":").append(ec.cotizes()).append(",")
+                 .append("\"taxable\":").append(ec.taxable())
+                 .append("}");
+            }
+        }
+        b.append("]");
         b.append("}");
         HttpResponse<String> r = send(req(baseUrl + "/labor/payslips/calculate")
                 .header("Content-Type", "application/json")

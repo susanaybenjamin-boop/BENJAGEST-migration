@@ -16115,6 +16115,9 @@ public class BenjagestUiApplication extends Application {
             case "labor.payslips.calc.save" -> "Calculate";
             case "labor.payslips.calc.employee" -> "Employee";
             case "labor.payslips.calc.employee.prompt" -> "Select an employee…";
+            case "labor.payslips.calc.complement.title" -> "Complements for this payslip";
+            case "labor.payslips.calc.complement.hint" -> "Variable concepts for this month (dietas, mileage, attendance bonus…). Amount in euros for this payslip. Mark whether each one contributes to Social Security / is subject to income tax (e.g. exempt dietas: neither).";
+            case "labor.payslips.calc.complement.amount" -> "Amount €";
             case "labor.payslips.calc.year" -> "Year";
             case "labor.payslips.calc.month" -> "Month";
             case "labor.payslips.calc.type" -> "Type";
@@ -16527,6 +16530,9 @@ public class BenjagestUiApplication extends Application {
             case "labor.payslips.calc.save" -> "Calcular";
             case "labor.payslips.calc.employee" -> "Empleado";
             case "labor.payslips.calc.employee.prompt" -> "Selecciona un empleado…";
+            case "labor.payslips.calc.complement.title" -> "Complementos de esta nómina";
+            case "labor.payslips.calc.complement.hint" -> "Conceptos variables de este mes (dietas, kilometraje, plus asistencia…). Importe en euros para esta nómina. Marca si cada uno cotiza a la Seguridad Social / tributa por IRPF (p. ej. dietas exentas: ninguno).";
+            case "labor.payslips.calc.complement.amount" -> "Importe €";
             case "labor.payslips.calc.year" -> "Ano";
             case "labor.payslips.calc.month" -> "Mes";
             case "labor.payslips.calc.type" -> "Tipo";
@@ -19508,7 +19514,13 @@ public class BenjagestUiApplication extends Application {
         g.add(extraProrated, 1, 4);
         g.add(new Label(t("labor.payslips.calc.other_deductions")), 0, 5); g.add(otherField, 1, 5);
         g.add(new Label(t("labor.payslips.calc.notes")), 0, 6); g.add(notesArea, 1, 6);
-        installDialog(dialog, g);
+
+        // Complementos de esta nómina (dietas, kilometraje, asistencia…).
+        SalaryComplementsEditor extras = new SalaryComplementsEditor(
+                new java.util.ArrayList<>(), "labor.payslips.calc.complement.amount",
+                "labor.payslips.calc.complement.title", "labor.payslips.calc.complement.hint");
+        Separator csep = new Separator();
+        installDialog(dialog, new VBox(10, g, csep, extras.node));
 
         dialog.showAndWait().ifPresent(bt -> {
             if (bt != saveBt) return;
@@ -19518,13 +19530,14 @@ public class BenjagestUiApplication extends Application {
                 return;
             }
             java.math.BigDecimal other = parseDecSafe(otherField.getText());
+            java.util.List<com.benjagest.ui.model.SalaryItemEntry> extraConcepts = extras.getComplements();
             Task<com.benjagest.ui.model.PayslipEntry> task = new Task<>() {
                 @Override
                 protected com.benjagest.ui.model.PayslipEntry call() throws Exception {
                     return laborApiClient.calculatePayslip(emp.id(),
                             yearCombo.getValue(), monthCombo.getValue(),
                             typeCombo.getValue(), extraProrated.isSelected(),
-                            other, blankToNullOrSelf(notesArea.getText()));
+                            other, blankToNullOrSelf(notesArea.getText()), extraConcepts);
                 }
             };
             task.setOnSucceeded(ev -> showLaborModule());
@@ -21274,6 +21287,7 @@ public class BenjagestUiApplication extends Application {
         final VBox node = new VBox(6);
         private final VBox rowsBox = new VBox(4);
         private final java.util.List<Row> rows = new java.util.ArrayList<>();
+        private final String amountPromptKey;
 
         private final class Row {
             final HBox box;
@@ -21286,7 +21300,7 @@ public class BenjagestUiApplication extends Application {
                 name.setPromptText(t("labor.contract.salary.concept"));
                 name.setPrefWidth(200);
                 amount = new TextField(it.annualAmount() == null ? "" : it.annualAmount().toPlainString());
-                amount.setPromptText(t("labor.contract.salary.annual"));
+                amount.setPromptText(t(amountPromptKey));
                 amount.setPrefWidth(110);
                 cot = new CheckBox(t("labor.contract.salary.cotizes"));
                 cot.setSelected(it.cotizes());
@@ -21301,9 +21315,16 @@ public class BenjagestUiApplication extends Application {
         }
 
         SalaryComplementsEditor(java.util.List<com.benjagest.ui.model.SalaryItemEntry> initial) {
-            Label title = new Label(t("labor.contract.salary.title"));
+            this(initial, "labor.contract.salary.annual", "labor.contract.salary.title",
+                    "labor.contract.salary.hint");
+        }
+
+        SalaryComplementsEditor(java.util.List<com.benjagest.ui.model.SalaryItemEntry> initial,
+                                 String amountPromptKey, String titleKey, String hintKey) {
+            this.amountPromptKey = amountPromptKey;
+            Label title = new Label(t(titleKey));
             title.getStyleClass().add("settings-hint");
-            Label hint = new Label(t("labor.contract.salary.hint"));
+            Label hint = new Label(t(hintKey));
             hint.getStyleClass().add("settings-hint");
             hint.setWrapText(true);
             Button add = new Button(t("labor.contract.salary.add"));
