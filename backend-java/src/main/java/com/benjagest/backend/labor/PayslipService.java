@@ -248,7 +248,8 @@ public class PayslipService {
         ContractData contract = resolveActiveContract(req.employeeId(), req.year(), req.month());
         if (contract == null || contract.grossSalary == null) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
-                    "Empleado sin contrato activo o sin salario en " + req.year() + "/" + req.month());
+                    "Empleado sin contrato activo o sin salario en " + req.year() + "/" + req.month()
+                            + ". " + diagnoseContracts(req.employeeId(), req.year(), req.month()));
         }
 
         // 1) Bruto mensual = bruto anual / (12 + pagas extras prorratables)
@@ -413,6 +414,34 @@ public class PayslipService {
                 """, this::mapView, id, tenantContext.getCurrentCompanyId())
                 .stream().findFirst()
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Nomina no encontrada"));
+    }
+
+    /**
+     * Diagnóstico temporal: lista todos los contratos del empleado (en
+     * cualquier empresa) para entender por qué resolveActiveContract no
+     * encontró uno activo. Se incluye en el mensaje de error.
+     */
+    private String diagnoseContracts(String employeeId, int year, int month) {
+        String tenant = tenantContext.getCurrentCompanyId();
+        StringBuilder sb = new StringBuilder("[diag tenant=" + tenant
+                + " ref=" + year + "-" + String.format("%02d", month) + "-01 emp=" + employeeId + "] ");
+        try {
+            var rows = jdbcTemplate.query("""
+                    SELECT company_id, start_date, end_date, status, gross_salary
+                      FROM employment_contracts WHERE employee_id = ?
+                    """,
+                    (rs, n) -> "company=" + rs.getString("company_id")
+                            + " start=" + rs.getString("start_date")
+                            + " end=" + rs.getString("end_date")
+                            + " status=" + rs.getString("status")
+                            + " salary=" + rs.getString("gross_salary"),
+                    employeeId);
+            if (rows.isEmpty()) sb.append("(no hay NINGUN contrato para este employee_id)");
+            else sb.append(rows.size()).append(" contrato(s): ").append(String.join(" | ", rows));
+        } catch (Exception ex) {
+            sb.append("(error diag: ").append(ex.getMessage()).append(")");
+        }
+        return sb.toString();
     }
 
     private ContractData resolveActiveContract(String employeeId, int year, int month) {
