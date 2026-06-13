@@ -19,11 +19,10 @@ import java.awt.Color;
 import java.io.ByteArrayOutputStream;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
-import java.sql.ResultSet;
-import java.sql.SQLException;
 import java.time.LocalDate;
 import java.time.Month;
 import java.time.format.TextStyle;
+import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
 import org.springframework.http.HttpStatus;
@@ -32,26 +31,26 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
 /**
- * Generador de recibo de salario (nomina) en PDF.
+ * Generador de recibo de salario (nómina) en PDF, con el layout clásico
+ * de los programas profesionales de nómina (estilo Nomio / A3 / Sage),
+ * conforme a la Orden ESS/2098/2014 (modelo oficial).
  *
- * Estructura simplificada pero conforme a la Orden ESS/2098/2014 (modelo
- * oficial de recibo de salarios). Cubre los apartados obligatorios:
+ * <p>Estructura:
+ * <ol>
+ *   <li>Cabecera EMPRESA (NIF, domicilio, Nº SS) + TRABAJADOR (DNI,
+ *       Nº afiliación, categoría, fecha alta, antigüedad, % IRPF, periodo).</li>
+ *   <li>Tabla de conceptos: CLAVE | CONCEPTO | CANTIDAD | IMPORTE |
+ *       DEVENGOS | DEDUCCIONES + totales.</li>
+ *   <li>Bases de cotización (Remuneración + Prorrata + IT = Total).</li>
+ *   <li>Líquido a percibir.</li>
+ *   <li>Dos tablas lado a lado: aportación del TRABAJADOR y aportación de
+ *       la EMPRESA a la Seguridad Social (art. 104.2 LGSS).</li>
+ *   <li>Firmas trabajador / empresa.</li>
+ * </ol>
  *
- *   - Cabecera: empresa (NIF, CCC, domicilio) + trabajador (NIF, NUSS,
- *     categoría, fecha alta, antigüedad).
- *   - Período de liquidación.
- *   - Devengos (salario base, complementos, pagas prorrateadas).
- *   - Deducciones (SS empleado, IRPF, anticipos, otros).
- *   - Base imponible IRPF, base de cotización, líquido.
- *   - Pie: firma empresa + firma trabajador + fecha entrega.
- *
- * Limitaciones honestas:
- *   - No separa "Salario base / complementos" — toma `gross_amount`
- *     como bloque único. El recibo legal exige desglose; sub-slice
- *     para añadir tabla de conceptos.
- *   - El CCC (Cuenta Cotización Cliente) de la empresa no se pinta
- *     (no está en companies todavía).
- *   - La antigüedad se calcula sobre hire_date del empleado.
+ * <p>El desglose de cotización (trabajador y empresa) se lee de las cuotas
+ * TC ({@code social_security_contributions}) del periodo. Si no existen
+ * (nóminas antiguas), se degrada a una línea única.
  */
 @Service
 public class PayslipPdfGenerator {
@@ -88,9 +87,9 @@ public class PayslipPdfGenerator {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Nómina no encontrada");
         }
 
-        // Cuotas TC del periodo (desglose de cotización trabajador + empresa).
-        java.util.Map<String, BigDecimal> tcAmt = new java.util.HashMap<>();
-        java.util.Map<String, BigDecimal> tcBase = new java.util.HashMap<>();
+        // Cuotas TC del periodo (desglose cotización trabajador + empresa).
+        Map<String, BigDecimal> tcAmt = new HashMap<>();
+        Map<String, BigDecimal> tcBase = new HashMap<>();
         jdbcTemplate.query("""
                 SELECT contribution_type, base_amount, contribution_amount
                   FROM social_security_contributions
@@ -106,238 +105,238 @@ public class PayslipPdfGenerator {
 
         CompanyDataResponse company = companyDataService.getCurrent();
 
+        // ---- Magnitudes ----
+        int year = ((Number) data.get("period_year")).intValue();
+        int month = ((Number) data.get("period_month")).intValue();
+        BigDecimal gross = nz((BigDecimal) data.get("gross_amount"));
+        BigDecimal ssEmp = nz((BigDecimal) data.get("ss_employee_amount"));
+        BigDecimal irpf = nz((BigDecimal) data.get("irpf_amount"));
+        BigDecimal otros = nz((BigDecimal) data.get("other_deductions"));
+        BigDecimal net = nz((BigDecimal) data.get("net_amount"));
+        BigDecimal irpfPct = pctOf(irpf, gross);
+        BigDecimal totalDed = ssEmp.add(irpf).add(otros);
+
+        // Base de cotización (= anual/12, incluye prorrata pagas extras).
+        BigDecimal cotBase = tcBase.get("EMPLOYEE_COMMON");
+        if (cotBase == null) cotBase = tcBase.getOrDefault("EMPLOYER_COMMON", gross);
+        BigDecimal prorrata = cotBase.subtract(gross);
+        if (prorrata.signum() < 0) prorrata = BigDecimal.ZERO;
+
+        boolean hasEe = tcAmt.keySet().stream().anyMatch(k -> k.startsWith("EMPLOYEE"));
+        boolean hasEr = tcAmt.keySet().stream().anyMatch(k -> k.startsWith("EMPLOYER"));
+
         ByteArrayOutputStream out = new ByteArrayOutputStream();
-        Document doc = new Document(PageSize.A4, 36, 36, 36, 36);
+        Document doc = new Document(PageSize.A4, 30, 30, 30, 30);
         try {
             PdfWriter.getInstance(doc, out);
             doc.open();
 
-            // Fuentes
-            Font fH1 = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 11, new Color(30, 60, 110));
-            Font fBold = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 9, Color.BLACK);
-            Font fNormal = FontFactory.getFont(FontFactory.HELVETICA, 9, Color.BLACK);
-            Font fSmall = FontFactory.getFont(FontFactory.HELVETICA, 8, Color.DARK_GRAY);
+            Font fLbl = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 6.5f, new Color(90, 90, 95));
+            Font fVal = FontFactory.getFont(FontFactory.HELVETICA, 8.5f, Color.BLACK);
+            Font fHead = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 7.5f, Color.BLACK);
+            Font fNormal = FontFactory.getFont(FontFactory.HELVETICA, 8f, Color.BLACK);
+            Font fBold = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 8f, Color.BLACK);
+            Font fSmall = FontFactory.getFont(FontFactory.HELVETICA, 7f, Color.DARK_GRAY);
 
-            // Sin titulón. El modelo oficial no lleva un título destacado;
-            // como mucho una referencia discreta al modelo legal.
-            Paragraph caption = new Paragraph(
-                    "Recibo individual justificativo del pago de salarios", fSmall);
-            caption.setAlignment(Element.ALIGN_LEFT);
-            caption.setSpacingAfter(6f);
-            doc.add(caption);
+            // ===== 1. Cabecera EMPRESA =====
+            PdfPTable emp = new PdfPTable(new float[]{4, 2});
+            emp.setWidthPercentage(100);
+            emp.addCell(lv("EMPRESA", company.legalName(), fLbl, fVal));
+            emp.addCell(lv("N.I.F.", company.taxIdentifier(), fLbl, fVal));
+            emp.addCell(lv("DOMICILIO", safeJoin(company.addressLine(), company.city(),
+                    company.postalCode(), company.province()), fLbl, fVal));
+            emp.addCell(lv("Nº INSCRIPCIÓN S.S. (CCC)", "", fLbl, fVal));
+            doc.add(emp);
 
-            // Cabecera: 2 columnas (empresa | trabajador)
-            PdfPTable header = new PdfPTable(2);
-            header.setWidthPercentage(100);
-            header.setSpacingAfter(10f);
+            // ===== 2. Cabecera TRABAJADOR =====
+            PdfPTable trab1 = new PdfPTable(new float[]{4, 2.5f, 3});
+            trab1.setWidthPercentage(100);
+            trab1.setSpacingBefore(2f);
+            trab1.addCell(lv("TRABAJADOR/A", str(data.get("employee_name")), fLbl, fVal));
+            trab1.addCell(lv("D.N.I.", str(data.get("employee_nif")), fLbl, fVal));
+            trab1.addCell(lv("Nº AFILIACIÓN S.S.", str(data.get("employee_nuss")), fLbl, fVal));
+            doc.add(trab1);
 
-            PdfPCell empresa = sectionCell("EMPRESA", fH1);
-            empresa.addElement(fieldLine("Razón social", company.legalName(), fBold, fNormal));
-            empresa.addElement(fieldLine("NIF/CIF", company.taxIdentifier(), fBold, fNormal));
-            empresa.addElement(fieldLine("Domicilio",
-                    safeJoin(company.addressLine(), company.city(),
-                            company.postalCode(), company.province()), fBold, fNormal));
-            header.addCell(empresa);
+            java.sql.Date hire = (java.sql.Date) data.get("hire_date");
+            String antig = hire == null ? "-" : yearsSince(hire.toLocalDate()) + " años";
+            String periodo = "1 al " + Month.of(month).length(java.time.Year.of(year).isLeap())
+                    + " de " + Month.of(month).getDisplayName(TextStyle.FULL, new Locale("es"));
+            PdfPTable trab2 = new PdfPTable(new float[]{3, 2.5f, 2, 1.5f, 3.5f, 1.2f});
+            trab2.setWidthPercentage(100);
+            trab2.addCell(lv("CATEGORÍA PROFESIONAL", str(data.get("professional_category")), fLbl, fVal));
+            trab2.addCell(lv("CONTRATO", str(data.get("contract_type")), fLbl, fVal));
+            trab2.addCell(lv("FECHA ALTA", hire == null ? "-" : hire.toLocalDate().toString(), fLbl, fVal));
+            trab2.addCell(lv("ANTIGÜEDAD", antig, fLbl, fVal));
+            trab2.addCell(lv("PERIODO DE LIQUIDACIÓN", periodo + " " + year, fLbl, fVal));
+            trab2.addCell(lv("DÍAS", "30", fLbl, fVal));
+            doc.add(trab2);
 
-            PdfPCell trabajador = sectionCell("TRABAJADOR", fH1);
-            trabajador.addElement(fieldLine("Nombre", str(data.get("employee_name")), fBold, fNormal));
-            trabajador.addElement(fieldLine("NIF", str(data.get("employee_nif")), fBold, fNormal));
-            trabajador.addElement(fieldLine("Nº SS", str(data.get("employee_nuss")), fBold, fNormal));
-            java.sql.Date hireDate = (java.sql.Date) data.get("hire_date");
-            String antiguedad = hireDate == null ? "-" :
-                    hireDate.toLocalDate() + " (" + yearsSince(hireDate.toLocalDate()) + " años)";
-            trabajador.addElement(fieldLine("Antigüedad", antiguedad, fBold, fNormal));
-            trabajador.addElement(fieldLine("Categoría",
-                    str(data.get("professional_category")), fBold, fNormal));
-            trabajador.addElement(fieldLine("Contrato",
-                    str(data.get("contract_type")), fBold, fNormal));
-            header.addCell(trabajador);
+            // ===== 3. Tabla de conceptos (devengos / deducciones) =====
+            PdfPTable con = new PdfPTable(new float[]{1.2f, 4.5f, 1.6f, 1.8f, 1.9f, 1.9f});
+            con.setWidthPercentage(100);
+            con.setSpacingBefore(8f);
+            con.addCell(hdr("CLAVE", fHead));
+            con.addCell(hdr("CONCEPTO", fHead));
+            con.addCell(hdr("CANTIDAD", fHead));
+            con.addCell(hdr("IMPORTE", fHead));
+            con.addCell(hdr("DEVENGOS", fHead));
+            con.addCell(hdr("DEDUCCIONES", fHead));
 
-            doc.add(header);
+            // Devengo (un único concepto: salario bruto del periodo).
+            con.addCell(cell("1", fNormal, Element.ALIGN_LEFT));
+            con.addCell(cell("Salario bruto del periodo", fNormal, Element.ALIGN_LEFT));
+            con.addCell(cell("30", fNormal, Element.ALIGN_CENTER));
+            con.addCell(cell("", fNormal, Element.ALIGN_RIGHT));
+            con.addCell(cell(money(gross), fNormal, Element.ALIGN_RIGHT));
+            con.addCell(cell("", fNormal, Element.ALIGN_RIGHT));
 
-            // Periodo
-            int year = ((Number) data.get("period_year")).intValue();
-            int month = ((Number) data.get("period_month")).intValue();
-            String monthName = Month.of(month).getDisplayName(TextStyle.FULL, new Locale("es"));
-            String periodLabel = monthName.toUpperCase(new Locale("es"))
-                    + " " + year + "  ·  "
-                    + ("MONTHLY".equals(data.get("payslip_type")) ? "Mensual" : str(data.get("payslip_type")));
-
-            PdfPTable periodTbl = new PdfPTable(1);
-            periodTbl.setWidthPercentage(100);
-            periodTbl.setSpacingAfter(8f);
-            PdfPCell pc = new PdfPCell(new Phrase(periodLabel, fBold));
-            pc.setBackgroundColor(new Color(220, 230, 245));
-            pc.setHorizontalAlignment(Element.ALIGN_CENTER);
-            pc.setPadding(6f);
-            periodTbl.addCell(pc);
-            doc.add(periodTbl);
-
-            // Devengos
-            doc.add(sectionTitle("DEVENGOS", fH1));
-            PdfPTable devengos = new PdfPTable(new float[]{6, 2, 2});
-            devengos.setWidthPercentage(100);
-            devengos.addCell(headerCell("Concepto", fBold));
-            devengos.addCell(headerCell("Cantidad", fBold));
-            devengos.addCell(headerCell("Importe", fBold));
-
-            BigDecimal gross = (BigDecimal) data.get("gross_amount");
-            devengos.addCell(textCell("Salario bruto del periodo", fNormal, Element.ALIGN_LEFT));
-            devengos.addCell(textCell("1", fNormal, Element.ALIGN_CENTER));
-            devengos.addCell(textCell(money(gross), fNormal, Element.ALIGN_RIGHT));
-
-            PdfPCell totalDev = new PdfPCell(new Phrase("TOTAL DEVENGADO", fBold));
-            totalDev.setColspan(2);
-            totalDev.setHorizontalAlignment(Element.ALIGN_RIGHT);
-            totalDev.setBackgroundColor(new Color(245, 245, 250));
-            totalDev.setPadding(4f);
-            devengos.addCell(totalDev);
-            devengos.addCell(headerCellRight(money(gross), fBold));
-
-            devengos.setSpacingAfter(10f);
-            doc.add(devengos);
-
-            // Deducciones
-            doc.add(sectionTitle("DEDUCCIONES", fH1));
-            PdfPTable deducciones = new PdfPTable(new float[]{6, 2, 2});
-            deducciones.setWidthPercentage(100);
-            deducciones.addCell(headerCell("Concepto", fBold));
-            deducciones.addCell(headerCell("%", fBold));
-            deducciones.addCell(headerCell("Importe", fBold));
-
-            BigDecimal ss = (BigDecimal) data.get("ss_employee_amount");
-            BigDecimal irpf = (BigDecimal) data.get("irpf_amount");
-            BigDecimal otros = (BigDecimal) data.get("other_deductions");
-            BigDecimal irpfPct = pctOf(irpf, gross);
-
-            // Desglose de la aportación del trabajador a la SS por concepto
-            // (cuotas TC). Si no hay cuotas TC (nóminas antiguas), una sola línea.
-            boolean hasEeTc = tcAmt.keySet().stream().anyMatch(k -> k.startsWith("EMPLOYEE"));
-            if (hasEeTc) {
-                addDeduccion(deducciones, "Contingencias comunes", "EMPLOYEE_COMMON", tcAmt, tcBase, fNormal);
-                addDeduccion(deducciones, "Desempleo", "EMPLOYEE_UNEMPLOYMENT", tcAmt, tcBase, fNormal);
-                addDeduccion(deducciones, "Formación profesional", "EMPLOYEE_TRAINING", tcAmt, tcBase, fNormal);
-                addDeduccion(deducciones, "MEI", "EMPLOYEE_MEI", tcAmt, tcBase, fNormal);
+            // Deducciones del trabajador.
+            if (hasEe) {
+                conceptDed(con, "5100", "Contingencias comunes", "EMPLOYEE_COMMON", tcAmt, tcBase, fNormal);
+                conceptDed(con, "5101", "Desempleo", "EMPLOYEE_UNEMPLOYMENT", tcAmt, tcBase, fNormal);
+                conceptDed(con, "5102", "Formación profesional", "EMPLOYEE_TRAINING", tcAmt, tcBase, fNormal);
+                conceptDed(con, "5103", "MEI", "EMPLOYEE_MEI", tcAmt, tcBase, fNormal);
             } else {
-                deducciones.addCell(textCell("Aportación trabajador SS", fNormal, Element.ALIGN_LEFT));
-                deducciones.addCell(textCell(pctOf(ss, gross).toPlainString() + " %", fNormal, Element.ALIGN_CENTER));
-                deducciones.addCell(textCell(money(ss), fNormal, Element.ALIGN_RIGHT));
+                con.addCell(cell("5100", fNormal, Element.ALIGN_LEFT));
+                con.addCell(cell("Aportación trabajador SS", fNormal, Element.ALIGN_LEFT));
+                con.addCell(cell(pctStr(ssEmp, gross), fNormal, Element.ALIGN_CENTER));
+                con.addCell(cell(money(gross), fNormal, Element.ALIGN_RIGHT));
+                con.addCell(cell("", fNormal, Element.ALIGN_RIGHT));
+                con.addCell(cell(money(ssEmp), fNormal, Element.ALIGN_RIGHT));
+            }
+            con.addCell(cell("5120", fNormal, Element.ALIGN_LEFT));
+            con.addCell(cell("Retención I.R.P.F.", fNormal, Element.ALIGN_LEFT));
+            con.addCell(cell(irpfPct.toPlainString().replace(".", ",") + " %", fNormal, Element.ALIGN_CENTER));
+            con.addCell(cell(money(gross), fNormal, Element.ALIGN_RIGHT));
+            con.addCell(cell("", fNormal, Element.ALIGN_RIGHT));
+            con.addCell(cell(money(irpf), fNormal, Element.ALIGN_RIGHT));
+            if (otros.signum() > 0) {
+                con.addCell(cell("", fNormal, Element.ALIGN_LEFT));
+                con.addCell(cell("Otras deducciones", fNormal, Element.ALIGN_LEFT));
+                con.addCell(cell("", fNormal, Element.ALIGN_CENTER));
+                con.addCell(cell("", fNormal, Element.ALIGN_RIGHT));
+                con.addCell(cell("", fNormal, Element.ALIGN_RIGHT));
+                con.addCell(cell(money(otros), fNormal, Element.ALIGN_RIGHT));
             }
 
-            deducciones.addCell(textCell("Retención IRPF", fNormal, Element.ALIGN_LEFT));
-            deducciones.addCell(textCell(irpfPct.toPlainString() + " %", fNormal, Element.ALIGN_CENTER));
-            deducciones.addCell(textCell(money(irpf), fNormal, Element.ALIGN_RIGHT));
+            // Totales.
+            PdfPCell tot = new PdfPCell(new Phrase("TOTAL", fBold));
+            tot.setColspan(4);
+            tot.setHorizontalAlignment(Element.ALIGN_RIGHT);
+            tot.setBackgroundColor(new Color(235, 235, 238));
+            tot.setPadding(3f);
+            con.addCell(tot);
+            con.addCell(totCell(money(gross), fBold));
+            con.addCell(totCell(money(totalDed), fBold));
+            doc.add(con);
 
-            if (otros != null && otros.signum() > 0) {
-                deducciones.addCell(textCell("Otras deducciones", fNormal, Element.ALIGN_LEFT));
-                deducciones.addCell(textCell("", fNormal, Element.ALIGN_CENTER));
-                deducciones.addCell(textCell(money(otros), fNormal, Element.ALIGN_RIGHT));
-            }
+            // ===== 4. Bases de cotización =====
+            PdfPTable bc = new PdfPTable(new float[]{4, 2, 2, 1.5f, 2});
+            bc.setWidthPercentage(100);
+            bc.setSpacingBefore(8f);
+            bc.addCell(hdr("", fHead));
+            bc.addCell(hdr("REMUNERACIÓN", fHead));
+            bc.addCell(hdr("PRORRATA P. EXTRAS", fHead));
+            bc.addCell(hdr("I.T.", fHead));
+            bc.addCell(hdr("TOTAL BASE", fHead));
 
-            BigDecimal totalDed = ss.add(irpf).add(otros == null ? BigDecimal.ZERO : otros);
-            PdfPCell totalDedLbl = new PdfPCell(new Phrase("TOTAL DEDUCIDO", fBold));
-            totalDedLbl.setColspan(2);
-            totalDedLbl.setHorizontalAlignment(Element.ALIGN_RIGHT);
-            totalDedLbl.setBackgroundColor(new Color(245, 245, 250));
-            totalDedLbl.setPadding(4f);
-            deducciones.addCell(totalDedLbl);
-            deducciones.addCell(headerCellRight(money(totalDed), fBold));
+            bc.addCell(cell("Base cotización cont. comunes", fNormal, Element.ALIGN_LEFT));
+            bc.addCell(cell(money(gross), fNormal, Element.ALIGN_RIGHT));
+            bc.addCell(cell(money(prorrata), fNormal, Element.ALIGN_RIGHT));
+            bc.addCell(cell(money(BigDecimal.ZERO), fNormal, Element.ALIGN_RIGHT));
+            bc.addCell(cell(money(cotBase), fNormal, Element.ALIGN_RIGHT));
 
-            deducciones.setSpacingAfter(12f);
-            doc.add(deducciones);
+            bc.addCell(cell("Base cotización desempleo / FP / AT-EP", fNormal, Element.ALIGN_LEFT));
+            bc.addCell(cell(money(gross), fNormal, Element.ALIGN_RIGHT));
+            bc.addCell(cell(money(prorrata), fNormal, Element.ALIGN_RIGHT));
+            bc.addCell(cell(money(BigDecimal.ZERO), fNormal, Element.ALIGN_RIGHT));
+            bc.addCell(cell(money(cotBase), fNormal, Element.ALIGN_RIGHT));
 
-            // Líquido
-            BigDecimal net = (BigDecimal) data.get("net_amount");
-            PdfPTable netoTbl = new PdfPTable(2);
-            netoTbl.setWidthPercentage(100);
-            netoTbl.setWidths(new float[]{6, 2});
-            PdfPCell netoLbl = new PdfPCell(new Phrase("LÍQUIDO A PERCIBIR", FontFactory.getFont(
-                    FontFactory.HELVETICA_BOLD, 12, Color.WHITE)));
-            netoLbl.setBackgroundColor(new Color(30, 60, 110));
-            netoLbl.setHorizontalAlignment(Element.ALIGN_RIGHT);
-            netoLbl.setPadding(8f);
-            netoTbl.addCell(netoLbl);
-            PdfPCell netoVal = new PdfPCell(new Phrase(money(net), FontFactory.getFont(
-                    FontFactory.HELVETICA_BOLD, 12, Color.WHITE)));
-            netoVal.setBackgroundColor(new Color(30, 60, 110));
-            netoVal.setHorizontalAlignment(Element.ALIGN_RIGHT);
-            netoVal.setPadding(8f);
-            netoTbl.addCell(netoVal);
-            netoTbl.setSpacingAfter(20f);
-            doc.add(netoTbl);
+            bc.addCell(cell("Base sujeta a retención I.R.P.F.", fNormal, Element.ALIGN_LEFT));
+            PdfPCell irpfBase = new PdfPCell(new Phrase(money(gross), fNormal));
+            irpfBase.setColspan(4);
+            irpfBase.setHorizontalAlignment(Element.ALIGN_RIGHT);
+            irpfBase.setPadding(3f);
+            bc.addCell(irpfBase);
+            doc.add(bc);
 
-            // Determinación de las bases de cotización y aportación de la
-            // empresa (Orden ESS/2098/2014 — art. 104.2 LGSS). Es el apartado
-            // que distingue al recibo oficial: la empresa debe informar de su
-            // propia aportación, separada de la del trabajador.
-            doc.add(sectionTitle("DETERMINACIÓN DE LAS BASES DE COTIZACIÓN Y APORTACIÓN DE LA EMPRESA", fH1));
-            PdfPTable bases = new PdfPTable(new float[]{5, 2, 1.3f, 2});
-            bases.setWidthPercentage(100);
-            bases.addCell(headerCell("Concepto", fBold));
-            bases.addCell(headerCell("Base", fBold));
-            bases.addCell(headerCell("Tipo", fBold));
-            bases.addCell(headerCell("Aportación empresa", fBold));
+            // ===== 5. Líquido a percibir =====
+            PdfPTable liq = new PdfPTable(new float[]{6, 2});
+            liq.setWidthPercentage(100);
+            liq.setSpacingBefore(8f);
+            PdfPCell ll = new PdfPCell(new Phrase("LÍQUIDO TOTAL A PERCIBIR",
+                    FontFactory.getFont(FontFactory.HELVETICA_BOLD, 11, Color.WHITE)));
+            ll.setBackgroundColor(new Color(30, 60, 110));
+            ll.setHorizontalAlignment(Element.ALIGN_RIGHT);
+            ll.setPadding(7f);
+            liq.addCell(ll);
+            PdfPCell lvv = new PdfPCell(new Phrase(money(net),
+                    FontFactory.getFont(FontFactory.HELVETICA_BOLD, 11, Color.WHITE)));
+            lvv.setBackgroundColor(new Color(30, 60, 110));
+            lvv.setHorizontalAlignment(Element.ALIGN_RIGHT);
+            lvv.setPadding(7f);
+            liq.addCell(lvv);
+            doc.add(liq);
 
-            boolean hasErTc = tcAmt.keySet().stream().anyMatch(k -> k.startsWith("EMPLOYER"));
-            BigDecimal totalEr = BigDecimal.ZERO;
-            if (hasErTc) {
-                totalEr = totalEr.add(addAportacion(bases, "Contingencias comunes", "EMPLOYER_COMMON", tcAmt, tcBase, fNormal));
-                totalEr = totalEr.add(addAportacion(bases, "Contingencias profesionales (AT y EP)", "EMPLOYER_AT_EP", tcAmt, tcBase, fNormal));
-                totalEr = totalEr.add(addAportacion(bases, "Desempleo", "EMPLOYER_UNEMPLOYMENT", tcAmt, tcBase, fNormal));
-                totalEr = totalEr.add(addAportacion(bases, "Formación profesional", "EMPLOYER_TRAINING", tcAmt, tcBase, fNormal));
-                totalEr = totalEr.add(addAportacion(bases, "FOGASA", "EMPLOYER_FOGASA", tcAmt, tcBase, fNormal));
-                totalEr = totalEr.add(addAportacion(bases, "MEI", "EMPLOYER_MEI", tcAmt, tcBase, fNormal));
+            // ===== 6. Aportaciones a la Seguridad Social (trabajador | empresa) =====
+            BigDecimal totalEe = sumPrefix(tcAmt, "EMPLOYEE");
+            BigDecimal totalEr = sumPrefix(tcAmt, "EMPLOYER");
 
-                PdfPCell totLbl = new PdfPCell(new Phrase("TOTAL APORTACIÓN EMPRESA", fBold));
-                totLbl.setColspan(3);
-                totLbl.setHorizontalAlignment(Element.ALIGN_RIGHT);
-                totLbl.setBackgroundColor(new Color(245, 245, 250));
-                totLbl.setPadding(4f);
-                bases.addCell(totLbl);
-                bases.addCell(headerCellRight(money(totalEr), fBold));
-            } else {
-                PdfPCell none = new PdfPCell(new Phrase(
-                        "Sin desglose de cotización disponible para este periodo.", fNormal));
-                none.setColspan(4);
-                none.setPadding(6f);
-                bases.addCell(none);
-            }
-            bases.setSpacingAfter(14f);
-            doc.add(bases);
+            PdfPTable both = new PdfPTable(2);
+            both.setWidthPercentage(100);
+            both.setSpacingBefore(10f);
+            both.getDefaultCell().setBorder(Rectangle.NO_BORDER);
+            both.getDefaultCell().setPadding(0f);
+            both.getDefaultCell().setPaddingRight(6f);
 
-            // Coste total para la empresa (informativo).
-            if (hasErTc) {
+            PdfPCell leftWrap = new PdfPCell();
+            leftWrap.setBorder(Rectangle.NO_BORDER);
+            leftWrap.setPaddingRight(6f);
+            leftWrap.addElement(aportTable("APORTACIÓN DEL TRABAJADOR A LA SEGURIDAD SOCIAL",
+                    money(totalEe), "EMPLOYEE", tcAmt, tcBase, fHead, fNormal, fBold));
+            both.addCell(leftWrap);
+
+            PdfPCell rightWrap = new PdfPCell();
+            rightWrap.setBorder(Rectangle.NO_BORDER);
+            rightWrap.setPaddingLeft(6f);
+            rightWrap.addElement(aportTable("APORTACIÓN DE LA EMPRESA A LA SEGURIDAD SOCIAL",
+                    money(totalEr), "EMPLOYER", tcAmt, tcBase, fHead, fNormal, fBold));
+            both.addCell(rightWrap);
+            doc.add(both);
+
+            if (hasEr) {
                 Paragraph coste = new Paragraph(
                         "Coste total para la empresa (bruto + aportación SS empresa): "
                         + money(gross.add(totalEr)), fBold);
-                coste.setSpacingAfter(26f);
+                coste.setSpacingBefore(8f);
                 doc.add(coste);
             }
 
-            // Firmas
+            // ===== 7. Firmas =====
             PdfPTable firmas = new PdfPTable(2);
-            firmas.setWidthPercentage(80);
-            firmas.setHorizontalAlignment(Element.ALIGN_CENTER);
-            PdfPCell f1 = new PdfPCell(new Phrase("Firma de la empresa", fSmall));
+            firmas.setWidthPercentage(100);
+            firmas.setSpacingBefore(30f);
+            PdfPCell f1 = new PdfPCell();
             f1.setBorder(Rectangle.TOP);
             f1.setBorderWidth(0.5f);
-            f1.setHorizontalAlignment(Element.ALIGN_CENTER);
-            f1.setPaddingTop(40f);
-            PdfPCell f2 = new PdfPCell(new Phrase("Recibí del trabajador", fSmall));
+            f1.setPaddingTop(6f);
+            f1.addElement(new Paragraph("Firma del trabajador/a (Recibí)", fSmall));
+            f1.addElement(new Paragraph("Fecha: ____________________", fSmall));
+            PdfPCell f2 = new PdfPCell();
             f2.setBorder(Rectangle.TOP);
             f2.setBorderWidth(0.5f);
-            f2.setHorizontalAlignment(Element.ALIGN_CENTER);
-            f2.setPaddingTop(40f);
+            f2.setPaddingTop(6f);
+            f2.addElement(new Paragraph("Firma y sello de la empresa", fSmall));
+            f2.addElement(new Paragraph("Municipio: ____________________", fSmall));
             firmas.addCell(f1);
             firmas.addCell(f2);
             doc.add(firmas);
 
-            // Pie
             Paragraph pie = new Paragraph(
-                    "Documento generado conforme al modelo oficial de recibo de salario (Orden ESS/2098/2014).",
+                    "Documento generado conforme al modelo oficial de recibo de salarios (Orden ESS/2098/2014).",
                     fSmall);
             pie.setAlignment(Element.ALIGN_CENTER);
-            pie.setSpacingBefore(20f);
+            pie.setSpacingBefore(14f);
             doc.add(pie);
 
             doc.close();
@@ -347,82 +346,117 @@ public class PayslipPdfGenerator {
         return out.toByteArray();
     }
 
-    // ---- helpers PDF ----
+    // ---- helpers ----
 
-    private PdfPCell sectionCell(String title, Font fTitle) {
+    /** Celda etiqueta-valor (label pequeño arriba, valor debajo). */
+    private PdfPCell lv(String label, String value, Font fLabel, Font fValue) {
         PdfPCell c = new PdfPCell();
-        c.setBorderColor(new Color(200, 200, 210));
+        c.setBorderColor(new Color(170, 170, 180));
         c.setBorderWidth(0.5f);
-        c.setPadding(8f);
-        Paragraph p = new Paragraph(title, fTitle);
-        p.setSpacingAfter(4f);
-        c.addElement(p);
+        c.setPadding(4f);
+        Paragraph pl = new Paragraph(label, fLabel);
+        pl.setLeading(8f);
+        Paragraph pv = new Paragraph(value == null || value.isBlank() ? " " : value, fValue);
+        pv.setLeading(10f);
+        c.addElement(pl);
+        c.addElement(pv);
         return c;
     }
 
-    private Paragraph fieldLine(String label, String value, Font fLabel, Font fValue) {
-        Paragraph p = new Paragraph();
-        p.add(new Phrase(label + ": ", fLabel));
-        p.add(new Phrase(value == null ? "-" : value, fValue));
-        p.setLeading(11f);
-        return p;
-    }
-
-    private Paragraph sectionTitle(String text, Font f) {
-        Paragraph p = new Paragraph(text, f);
-        p.setSpacingBefore(4f);
-        p.setSpacingAfter(4f);
-        return p;
-    }
-
-    private PdfPCell headerCell(String text, Font f) {
+    private PdfPCell hdr(String text, Font f) {
         PdfPCell c = new PdfPCell(new Phrase(text, f));
-        c.setBackgroundColor(new Color(30, 60, 110));
+        c.setBackgroundColor(new Color(225, 228, 235));
         c.setHorizontalAlignment(Element.ALIGN_CENTER);
-        c.setPadding(4f);
-        Font white = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 9, Color.WHITE);
-        c.setPhrase(new Phrase(text, white));
+        c.setBorderColor(new Color(170, 170, 180));
+        c.setPadding(3f);
         return c;
     }
 
-    private PdfPCell headerCellRight(String text, Font f) {
-        PdfPCell c = new PdfPCell(new Phrase(text, f));
-        c.setBackgroundColor(new Color(245, 245, 250));
-        c.setHorizontalAlignment(Element.ALIGN_RIGHT);
-        c.setPadding(4f);
-        return c;
-    }
-
-    private PdfPCell textCell(String text, Font f, int align) {
-        PdfPCell c = new PdfPCell(new Phrase(text, f));
+    private PdfPCell cell(String text, Font f, int align) {
+        PdfPCell c = new PdfPCell(new Phrase(text == null ? "" : text, f));
         c.setHorizontalAlignment(align);
-        c.setPadding(4f);
+        c.setBorderColor(new Color(190, 190, 200));
+        c.setPadding(3f);
         return c;
     }
 
-    /** Añade una fila de deducción del trabajador (concepto / % / importe). */
-    private void addDeduccion(PdfPTable t, String label, String type,
-                               Map<String, BigDecimal> amt, Map<String, BigDecimal> base, Font f) {
+    private PdfPCell totCell(String text, Font f) {
+        PdfPCell c = new PdfPCell(new Phrase(text, f));
+        c.setHorizontalAlignment(Element.ALIGN_RIGHT);
+        c.setBackgroundColor(new Color(235, 235, 238));
+        c.setPadding(3f);
+        return c;
+    }
+
+    /** Fila de deducción del trabajador en la tabla de conceptos. */
+    private void conceptDed(PdfPTable t, String clave, String label, String type,
+                             Map<String, BigDecimal> amt, Map<String, BigDecimal> base, Font f) {
         BigDecimal a = amt.get(type);
         if (a == null) return;
         BigDecimal b = base.get(type);
-        t.addCell(textCell(label, f, Element.ALIGN_LEFT));
-        t.addCell(textCell(pctOf(a, b).toPlainString() + " %", f, Element.ALIGN_CENTER));
-        t.addCell(textCell(money(a), f, Element.ALIGN_RIGHT));
+        t.addCell(cell(clave, f, Element.ALIGN_LEFT));
+        t.addCell(cell(label, f, Element.ALIGN_LEFT));
+        t.addCell(cell(pctStr(a, b), f, Element.ALIGN_CENTER));
+        t.addCell(cell(money(b), f, Element.ALIGN_RIGHT));
+        t.addCell(cell("", f, Element.ALIGN_RIGHT));
+        t.addCell(cell(money(a), f, Element.ALIGN_RIGHT));
     }
 
-    /** Añade una fila de aportación de la empresa (concepto / base / tipo /
-     *  aportación) y devuelve el importe aportado (0 si no existe). */
-    private BigDecimal addAportacion(PdfPTable t, String label, String type,
-                                      Map<String, BigDecimal> amt, Map<String, BigDecimal> base, Font f) {
+    /** Sub-tabla de aportación a la SS (trabajador o empresa). */
+    private PdfPTable aportTable(String title, String total, String prefix,
+                                  Map<String, BigDecimal> amt, Map<String, BigDecimal> base,
+                                  Font fHead, Font fNormal, Font fBold) {
+        PdfPTable t = new PdfPTable(new float[]{4, 2, 1.4f, 2});
+        t.setWidthPercentage(100);
+
+        PdfPCell head = new PdfPCell(new Phrase(title + "   →   " + total, fBold));
+        head.setColspan(4);
+        head.setBackgroundColor(new Color(225, 228, 235));
+        head.setBorderColor(new Color(170, 170, 180));
+        head.setPadding(4f);
+        t.addCell(head);
+
+        t.addCell(hdr("CONCEPTO", fHead));
+        t.addCell(hdr("BASE", fHead));
+        t.addCell(hdr("%", fHead));
+        t.addCell(hdr("TOTAL", fHead));
+
+        if ("EMPLOYEE".equals(prefix)) {
+            aportRow(t, "Contingencias comunes", "EMPLOYEE_COMMON", amt, base, fNormal);
+            aportRow(t, "Desempleo", "EMPLOYEE_UNEMPLOYMENT", amt, base, fNormal);
+            aportRow(t, "Formación profesional", "EMPLOYEE_TRAINING", amt, base, fNormal);
+            aportRow(t, "MEI", "EMPLOYEE_MEI", amt, base, fNormal);
+        } else {
+            aportRow(t, "Contingencias comunes", "EMPLOYER_COMMON", amt, base, fNormal);
+            aportRow(t, "Contingencias prof. (AT y EP)", "EMPLOYER_AT_EP", amt, base, fNormal);
+            aportRow(t, "Desempleo", "EMPLOYER_UNEMPLOYMENT", amt, base, fNormal);
+            aportRow(t, "Formación profesional", "EMPLOYER_TRAINING", amt, base, fNormal);
+            aportRow(t, "FOGASA", "EMPLOYER_FOGASA", amt, base, fNormal);
+            aportRow(t, "MEI", "EMPLOYER_MEI", amt, base, fNormal);
+        }
+        return t;
+    }
+
+    private void aportRow(PdfPTable t, String label, String type,
+                           Map<String, BigDecimal> amt, Map<String, BigDecimal> base, Font f) {
         BigDecimal a = amt.get(type);
-        if (a == null) return BigDecimal.ZERO;
+        if (a == null) return;
         BigDecimal b = base.get(type);
-        t.addCell(textCell(label, f, Element.ALIGN_LEFT));
-        t.addCell(textCell(money(b), f, Element.ALIGN_RIGHT));
-        t.addCell(textCell(pctOf(a, b).toPlainString() + " %", f, Element.ALIGN_CENTER));
-        t.addCell(textCell(money(a), f, Element.ALIGN_RIGHT));
-        return a;
+        t.addCell(cell(label, f, Element.ALIGN_LEFT));
+        t.addCell(cell(money(b), f, Element.ALIGN_RIGHT));
+        t.addCell(cell(pctStr(a, b), f, Element.ALIGN_CENTER));
+        t.addCell(cell(money(a), f, Element.ALIGN_RIGHT));
+    }
+
+    private BigDecimal sumPrefix(Map<String, BigDecimal> amt, String prefix) {
+        return amt.entrySet().stream()
+                .filter(e -> e.getKey().startsWith(prefix))
+                .map(Map.Entry::getValue)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
+    private static BigDecimal nz(BigDecimal v) {
+        return v == null ? BigDecimal.ZERO : v;
     }
 
     private String money(BigDecimal amount) {
@@ -435,6 +469,10 @@ public class PayslipPdfGenerator {
         if (base == null || base.signum() == 0) return BigDecimal.ZERO;
         return value.multiply(BigDecimal.valueOf(100))
                 .divide(base, 2, RoundingMode.HALF_UP);
+    }
+
+    private String pctStr(BigDecimal value, BigDecimal base) {
+        return pctOf(value, base).toPlainString().replace(".", ",") + " %";
     }
 
     private String str(Object o) {
