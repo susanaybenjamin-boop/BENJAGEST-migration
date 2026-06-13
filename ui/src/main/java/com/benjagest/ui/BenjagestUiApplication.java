@@ -10336,9 +10336,15 @@ public class BenjagestUiApplication extends Application {
             // sentido abrir el editor. Mensaje accionable en vez de un
             // formulario en blanco que despues falla al guardar.
             if (existingInvoiceId == null && bundle.customers().isEmpty()) {
+                // TPB-CLIENT-SETUP F1: en vez de bloquear sin accion,
+                // ofrecemos crear el cliente-receptor aqui mismo. Tras
+                // crearlo, reabrimos el editor (ya habra >=1 customer).
                 setCenterAnimated(scroll(prerequisitePanel(
                         t("prereq.no_customers.title"),
-                        t("prereq.no_customers.body"))));
+                        t("prereq.no_customers.body"),
+                        t("prereq.no_customers.create"),
+                        "fas-user-plus",
+                        () -> openNewCustomerDialog(() -> showInvoiceEditor(null)))));
                 return;
             }
             if (existingInvoiceId == null && bundle.series().isEmpty()) {
@@ -11650,6 +11656,17 @@ public class BenjagestUiApplication extends Application {
      * volver a Facturacion.
      */
     private VBox prerequisitePanel(String title, String details) {
+        return prerequisitePanel(title, details, null, null, null);
+    }
+
+    /**
+     * Variante con un boton de accion primario (p.ej. "Crear cliente"
+     * cuando faltan receptores para facturar). Si actionLabel es null,
+     * solo muestra el boton de volver.
+     */
+    private VBox prerequisitePanel(String title, String details,
+                                     String actionLabel, String actionIcon,
+                                     Runnable action) {
         VBox panel = content();
         Label titleLabel = new Label(title);
         titleLabel.getStyleClass().add("module-detail-title");
@@ -11659,7 +11676,15 @@ public class BenjagestUiApplication extends Application {
         Button back = new Button(t("common.btn.back_to_billing"));
         back.setGraphic(icon("fas-arrow-left"));
         back.setOnAction(event -> showBilling());
-        VBox card = new VBox(12, titleLabel, detailsLabel, back);
+        HBox buttons = new HBox(10, back);
+        if (actionLabel != null && action != null) {
+            Button act = new Button(actionLabel);
+            if (actionIcon != null) act.setGraphic(icon(actionIcon));
+            act.getStyleClass().add("primary-button");
+            act.setOnAction(e -> action.run());
+            buttons.getChildren().add(act);
+        }
+        VBox card = new VBox(12, titleLabel, detailsLabel, buttons);
         card.getStyleClass().add("module-detail-header");
         panel.getChildren().add(card);
         return panel;
@@ -12079,7 +12104,8 @@ public class BenjagestUiApplication extends Application {
                 case "editor.saved.validated_prefix" -> "Invoice validated: ";
                 case "editor.saved.draft" -> "Draft saved.";
                 case "prereq.no_customers.title" -> "You need to create a customer before billing";
-                case "prereq.no_customers.body" -> "Go to Customers and create at least one. Then come back and press 'New invoice'.";
+                case "prereq.no_customers.body" -> "This client has no billing recipients yet. Create one (the customer this client invoices) and the editor will reopen.";
+                case "prereq.no_customers.create" -> "Create customer";
                 case "prereq.no_series.title" -> "You need to configure a numbering series";
                 case "prereq.no_series.body" -> "Go to Billing > Configuration > Series and press 'Define my invoice series'. Suggestion: STANDARD type, BY_YEAR numbering, next nº 1.";
                 case "prereq.editor_failed" -> "Could not open the editor: active customers or series missing.";
@@ -12984,7 +13010,8 @@ public class BenjagestUiApplication extends Application {
             case "editor.saved.validated_prefix" -> "Factura validada: ";
             case "editor.saved.draft" -> "Borrador guardado.";
             case "prereq.no_customers.title" -> "Necesitas crear un cliente antes de facturar";
-            case "prereq.no_customers.body" -> "Ve a Clientes y da de alta al menos uno. Despues vuelve aqui y pulsa 'Nueva factura'.";
+            case "prereq.no_customers.body" -> "Este cliente todavía no tiene destinatarios de factura. Crea uno (el cliente al que este factura) y el editor se reabrirá.";
+            case "prereq.no_customers.create" -> "Crear cliente";
             case "prereq.no_series.title" -> "Necesitas configurar una serie de numeracion";
             case "prereq.no_series.body" -> "Ve a Facturacion > Configuracion > Series y pulsa 'Definir mi serie de facturas'. Sugerencia: tipo STANDARD, numeracion BY_YEAR, proximo nº 1.";
             case "prereq.editor_failed" -> "No se pudo abrir el editor: faltan clientes o series activos.";
@@ -14848,6 +14875,9 @@ public class BenjagestUiApplication extends Application {
     private String tCliEditorEn(String key) {
         return switch (key) {
             case "cli.editor.title" -> "Customer details";
+            case "cli.editor.title.new" -> "New customer";
+            case "cli.editor.header.new" -> "New billing recipient";
+            case "cli.editor.required.body" -> "Legal name and tax ID are required.";
             case "cli.editor.save" -> "Save";
             case "cli.editor.fail.title" -> "Could not load / save the customer";
             case "cli.editor.invalid.title" -> "Invalid number";
@@ -14894,6 +14924,9 @@ public class BenjagestUiApplication extends Application {
     private String tCliEditorEs(String key) {
         return switch (key) {
             case "cli.editor.title" -> "Ficha de cliente";
+            case "cli.editor.title.new" -> "Nuevo cliente";
+            case "cli.editor.header.new" -> "Nuevo destinatario de factura";
+            case "cli.editor.required.body" -> "El nombre fiscal y el NIF/CIF son obligatorios.";
             case "cli.editor.save" -> "Guardar";
             case "cli.editor.fail.title" -> "No se pudo cargar / guardar el cliente";
             case "cli.editor.invalid.title" -> "Número inválido";
@@ -22128,9 +22161,29 @@ public class BenjagestUiApplication extends Application {
     }
 
     private void openCustomerDetailDialog(com.benjagest.ui.model.CustomerExtendedEntry c) {
+        openCustomerDetailDialog(c, false, null);
+    }
+
+    /**
+     * TPB-CLIENT-SETUP F1 — Abre la ficha vacia para dar de alta un
+     * cliente-receptor nuevo bajo el tenant actual. onSaved se ejecuta
+     * tras crear (p.ej. recargar el combo del editor de factura).
+     */
+    private void openNewCustomerDialog(Runnable onSaved) {
+        com.benjagest.ui.model.CustomerExtendedEntry empty =
+                new com.benjagest.ui.model.CustomerExtendedEntry(
+                        null, "", "", "", "COMPANY", "", "", "",
+                        java.math.BigDecimal.valueOf(21), java.math.BigDecimal.ZERO, false,
+                        "", "", "", "", "", "", "España", "", "", "", "", "", "");
+        openCustomerDetailDialog(empty, true, onSaved);
+    }
+
+    private void openCustomerDetailDialog(com.benjagest.ui.model.CustomerExtendedEntry c,
+                                            boolean isNew, Runnable onSaved) {
         Dialog<Void> dialog = new Dialog<>();
-        dialog.setTitle(t("cli.editor.title"));
-        dialog.setHeaderText(c.legalName());
+        dialog.setTitle(isNew ? t("cli.editor.title.new") : t("cli.editor.title"));
+        dialog.setHeaderText(isNew ? t("cli.editor.header.new")
+                : (c.legalName() == null || c.legalName().isBlank() ? "—" : c.legalName()));
 
         // PORT-4 CLI v3 (2026-06-10 tarde tras feedback): editor con
         // datos basicos + DIRECCION POSTAL (necesaria para PDF de
@@ -22250,12 +22303,24 @@ public class BenjagestUiApplication extends Application {
                                 c.internalCode(), c.defaultMode(),
                                 fPhone.getText(), fEmail.getText(), fWebsite.getText(),
                                 fNotes.getText());
+                // Validacion minima en alta: nombre + NIF obligatorios
+                // (el backend tambien valida, pero damos feedback claro).
+                if (isNew && (fLegal.getText() == null || fLegal.getText().isBlank()
+                        || fNif.getText() == null || fNif.getText().isBlank())) {
+                    showError(t("cli.editor.fail.title"), t("cli.editor.required.body"));
+                    return null;
+                }
                 Task<Void> save = new Task<>() {
                     @Override protected Void call() throws Exception {
-                        altaApiClient.updateCustomerExtended(upd);
+                        if (isNew) {
+                            altaApiClient.createCustomerExtended(upd);
+                        } else {
+                            altaApiClient.updateCustomerExtended(upd);
+                        }
                         return null;
                     }
                 };
+                save.setOnSucceeded(s -> { if (onSaved != null) onSaved.run(); });
                 save.setOnFailed(s -> showError(t("cli.editor.fail.title"),
                         save.getException() == null ? "" : save.getException().getMessage()));
                 start(save, "customer-detail-save");
