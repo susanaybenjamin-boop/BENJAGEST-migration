@@ -286,6 +286,23 @@ public class PayslipService {
             lines.add(new PayslipLine("Salario bruto del periodo", "SALARY_BASE",
                     contract.grossSalary.divide(BigDecimal.valueOf(divisor), 2, RoundingMode.HALF_UP)));
         }
+
+        // Complementos extra de ESTA nómina (dietas, kilometraje, asistencia…):
+        // importe del mes (no anual), se añaden como devengo. Solo suman a la
+        // base de cotización / IRPF si están marcados como que cotizan/tributan
+        // (p. ej. dietas exentas: ni cotizan ni tributan hasta el límite).
+        BigDecimal extraCotizable = BigDecimal.ZERO;
+        BigDecimal extraTaxable = BigDecimal.ZERO;
+        if (req.extraConcepts() != null) {
+            for (ExtraConcept ec : req.extraConcepts()) {
+                if (ec.name() == null || ec.name().isBlank()) continue;
+                BigDecimal amt = ec.amount() == null ? BigDecimal.ZERO : ec.amount();
+                lines.add(new PayslipLine(ec.name().trim(), "COMPLEMENT", amt));
+                if (ec.cotizes() == null || ec.cotizes()) extraCotizable = extraCotizable.add(amt);
+                if (ec.taxable() == null || ec.taxable()) extraTaxable = extraTaxable.add(amt);
+            }
+        }
+
         BigDecimal gross = lines.stream().map(PayslipLine::amount)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
@@ -296,9 +313,10 @@ public class PayslipService {
         //    que cotizan. (Simplificación: sin topes mín/máx por grupo.)
         BigDecimal cotizationBase;
         if ("MONTHLY".equals(type)) {
-            cotizationBase = cotizableAnnual.divide(BigDecimal.valueOf(12), 2, RoundingMode.HALF_UP);
+            cotizationBase = cotizableAnnual.divide(BigDecimal.valueOf(12), 2, RoundingMode.HALF_UP)
+                    .add(extraCotizable);
         } else if ("EXTRA_SUMMER".equals(type) || "EXTRA_CHRISTMAS".equals(type)) {
-            cotizationBase = BigDecimal.ZERO;
+            cotizationBase = extraCotizable;
         } else {
             cotizationBase = gross;
         }
@@ -311,7 +329,8 @@ public class PayslipService {
         BigDecimal irpfPct = contract.irpfPercent != null && contract.irpfPercent.signum() > 0
                 ? contract.irpfPercent
                 : computeIrpfPercent(contract.grossSalary, req.year());
-        BigDecimal taxableDevengo = taxableAnnual.divide(BigDecimal.valueOf(divisor), 2, RoundingMode.HALF_UP);
+        BigDecimal taxableDevengo = taxableAnnual.divide(BigDecimal.valueOf(divisor), 2, RoundingMode.HALF_UP)
+                .add(extraTaxable);
         BigDecimal irpf = taxableDevengo.multiply(irpfPct)
                 .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
 
@@ -672,7 +691,8 @@ public class PayslipService {
 
     public record CalculateRequest(
             String employeeId, int year, int month, String payslipType,
-            Boolean includeExtraProrated, BigDecimal otherDeductions, String notes
+            Boolean includeExtraProrated, BigDecimal otherDeductions, String notes,
+            List<ExtraConcept> extraConcepts
     ) {
         public boolean extraProratedOrDefault() {
             // Default legal: 14 pagas (NO prorrateado) salvo que el convenio
@@ -680,6 +700,11 @@ public class PayslipService {
             return includeExtraProrated != null && includeExtraProrated;
         }
     }
+
+    /** Complemento de devengo añadido en la propia nómina (importe del mes,
+     *  no anual): dietas, kilometraje, plus asistencia, etc. */
+    public record ExtraConcept(String name, BigDecimal amount,
+                                Boolean cotizes, Boolean taxable) {}
 
     public record MarkPaidRequest(LocalDate paidAt) {}
 
