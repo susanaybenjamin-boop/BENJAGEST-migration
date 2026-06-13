@@ -16809,6 +16809,7 @@ public class BenjagestUiApplication extends Application {
             case "advisory.client.tab.summary" -> "Summary";
             case "advisory.client.tab.billing" -> "Billing";
             case "advisory.client.tab.customers" -> "Customers";
+            case "advisory.client.tab.billing_config" -> "Billing config";
             case "client.customers.empty" -> "This client has no billing recipients yet.";
             case "client.customers.hint" -> "Customers this client invoices. The advisor manages them here so they can be selected when issuing invoices on the client's behalf.";
             case "client.customers.new" -> "New customer";
@@ -17907,6 +17908,7 @@ public class BenjagestUiApplication extends Application {
             case "settings.my_tpb.advisor" -> "Asesoría:";
             case "advisory.client.tab.billing" -> "Facturación";
             case "advisory.client.tab.customers" -> "Clientes";
+            case "advisory.client.tab.billing_config" -> "Config. facturación";
             case "client.customers.empty" -> "Este cliente todavía no tiene destinatarios de factura.";
             case "client.customers.hint" -> "Clientes a los que este cliente factura. La asesoría los gestiona aquí para poder seleccionarlos al emitir facturas en su nombre.";
             case "client.customers.new" -> "Nuevo cliente";
@@ -24886,6 +24888,11 @@ public class BenjagestUiApplication extends Application {
                         buildClientCustomersTab());
                 linkedCustomersTab.setGraphic(icon("fas-address-book"));
                 tabs.getTabs().add(linkedCustomersTab);
+                // F3 — config de facturacion del titular (Verifactu, series).
+                Tab linkedBillingCfgTab = new Tab(t("advisory.client.tab.billing_config"),
+                        buildClientBillingConfigTab());
+                linkedBillingCfgTab.setGraphic(icon("fas-cog"));
+                tabs.getTabs().add(linkedBillingCfgTab);
             }
         } else {
             // En no vinculado, el tab unificado contiene Ventas y Gastos —
@@ -24954,6 +24961,15 @@ public class BenjagestUiApplication extends Application {
                 custTab.setGraphic(icon("fas-address-book"));
                 finalTabs.getTabs().add(insertAt + 1, custTab);
             }
+            // F3 — config facturacion del titular junto a Clientes.
+            String cfgLabel = t("advisory.client.tab.billing_config");
+            boolean hasCfg = finalTabs.getTabs().stream().anyMatch(tab ->
+                    cfgLabel.equals(tab.getText()));
+            if (!hasCfg) {
+                Tab cfgTab = new Tab(cfgLabel, buildClientBillingConfigTab());
+                cfgTab.setGraphic(icon("fas-cog"));
+                finalTabs.getTabs().add(insertAt + 2, cfgTab);
+            }
         };
 
         // V105 — Si el cliente revoca el acuerdo (via magic link de
@@ -24965,9 +24981,11 @@ public class BenjagestUiApplication extends Application {
             summaryTabRef.setContent(buildClientSummaryTab(finalClient, false));
             String billingLabel = t("advisory.client.tab.billing");
             String customersLabel = t("advisory.client.tab.customers");
+            String cfgLabel = t("advisory.client.tab.billing_config");
             finalTabs.getTabs().removeIf(tab -> tab.getText() != null
                     && (tab.getText().equals(billingLabel)
-                        || tab.getText().equals(customersLabel)));
+                        || tab.getText().equals(customersLabel)
+                        || tab.getText().equals(cfgLabel)));
         };
 
         Tab tpbTab = new Tab(t("advisory.client.tab.tpb_agreement"),
@@ -28913,6 +28931,44 @@ public class BenjagestUiApplication extends Application {
         task.setOnFailed(ev -> System.err.println("[client-sales-archived] "
                 + (task.getException() == null ? "?" : task.getException().getMessage())));
         start(task, "client-sales-archived");
+    }
+
+    /**
+     * TPB-CLIENT-SETUP F3 — Sub-pestaña "Config. facturación" del
+     * titular: reusa la pantalla de configuracion de facturacion
+     * (billingConfigTab) cargada bajo el tenant del cliente. Permite a
+     * la asesoria elegir VERIFACTU / NO_VERIFACTU para el cliente,
+     * configurar series, textos y certificado. El boton Guardar
+     * persiste bajo la shadow company del titular (actingForCompanyId).
+     */
+    private Node buildClientBillingConfigTab() {
+        VBox holder = new VBox();
+        holder.setPadding(new Insets(12));
+        Label loading = new Label(t("panorama.loading"));
+        loading.getStyleClass().add("settings-hint");
+        holder.getChildren().add(loading);
+        Task<BillingBundle> task = new Task<>() {
+            @Override
+            protected BillingBundle call() throws Exception {
+                List<SeriesEntry> series = billingApiClient.listSeries();
+                VerifactuConfig vfConfig = billingApiClient.getVerifactuConfig();
+                InvoiceTexts texts = billingApiClient.getInvoiceTexts();
+                List<CertificateOption> certificates;
+                try { certificates = billingApiClient.listCertificateOptions(); }
+                catch (Exception ignored) { certificates = List.of(); }
+                return new BillingBundle(List.of(), series, vfConfig, texts, certificates);
+            }
+        };
+        task.setOnSucceeded(ev -> {
+            var b = task.getValue();
+            VBox wrap = new VBox(billingConfigTab(b.verifactuConfig(), b.series(),
+                    b.certificates(), b.invoiceTexts()));
+            holder.getChildren().setAll(scroll(wrap));
+        });
+        task.setOnFailed(ev -> holder.getChildren().setAll(
+                errorPanel(t("billing.shell.load_failed"))));
+        start(task, "client-billing-config-load");
+        return holder;
     }
 
     /**
