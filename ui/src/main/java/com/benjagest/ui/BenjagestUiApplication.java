@@ -16201,6 +16201,7 @@ public class BenjagestUiApplication extends Application {
             case "labor.contract.editor.bonuses" -> "Annual bonuses";
             case "labor.contract.editor.vacation" -> "Vacation days";
             case "labor.contract.editor.irpf" -> "IRPF %";
+            case "labor.contract.editor.at_ep" -> "Occupational accident % (AT/EP)";
             case "labor.contract.editor.workplace" -> "Workplace address";
             case "labor.contract.editor.status" -> "Status";
             case "labor.contract.editor.fail.title" -> "Could not save";
@@ -16593,6 +16594,7 @@ public class BenjagestUiApplication extends Application {
             case "labor.contract.editor.bonuses" -> "Pagas extras";
             case "labor.contract.editor.vacation" -> "Vacaciones";
             case "labor.contract.editor.irpf" -> "IRPF %";
+            case "labor.contract.editor.at_ep" -> "% Accidentes trabajo (AT/EP)";
             case "labor.contract.editor.workplace" -> "Centro de trabajo";
             case "labor.contract.editor.status" -> "Estado";
             case "labor.contract.editor.fail.title" -> "No se pudo guardar";
@@ -20353,6 +20355,7 @@ public class BenjagestUiApplication extends Application {
         Integer annualBonuses = 2;
         Integer vacationDays = 30;
         java.math.BigDecimal irpfPercent;
+        java.math.BigDecimal atEpPercent = new java.math.BigDecimal("1.50");
         String workplaceAddress = "";
         Integer probationDays;
         // Paso 4: cláusulas seleccionadas
@@ -20422,6 +20425,7 @@ public class BenjagestUiApplication extends Application {
             state.annualBonuses = existing.annualBonuses();
             state.vacationDays = existing.vacationDays();
             state.irpfPercent = existing.irpfPercent();
+            if (existing.atEpPercent() != null) state.atEpPercent = existing.atEpPercent();
             state.workplaceAddress = existing.workplaceAddress() == null
                     ? "" : existing.workplaceAddress();
         }
@@ -20773,6 +20777,8 @@ public class BenjagestUiApplication extends Application {
         vacF.textProperty().addListener((o, ov, nv) -> state.vacationDays = parseIntSafe(nv));
         TextField irpfF = new TextField(state.irpfPercent == null ? "" : state.irpfPercent.toPlainString());
         irpfF.textProperty().addListener((o, ov, nv) -> state.irpfPercent = parseDecSafe(nv));
+        TextField atEpF = new TextField(state.atEpPercent == null ? "" : state.atEpPercent.toPlainString());
+        atEpF.textProperty().addListener((o, ov, nv) -> state.atEpPercent = parseDecSafe(nv));
         TextField probF = new TextField(state.probationDays == null ? "" : state.probationDays.toString());
         probF.textProperty().addListener((o, ov, nv) -> state.probationDays = parseIntSafe(nv));
         TextField wpF = new TextField(state.workplaceAddress);
@@ -20789,6 +20795,7 @@ public class BenjagestUiApplication extends Application {
         grid.add(new Label(t("labor.contract.editor.vacation")), 2, r);  grid.add(vacF, 3, r); r++;
         grid.add(new Label(t("labor.contract.editor.irpf")), 0, r);      grid.add(irpfF, 1, r);
         grid.add(new Label(t("labor.contract.wizard.step3.probation_days")), 2, r); grid.add(probF, 3, r); r++;
+        grid.add(new Label(t("labor.contract.editor.at_ep")), 0, r);     grid.add(atEpF, 1, r); r++;
         grid.add(new Label(t("labor.contract.editor.workplace")), 0, r); grid.add(wpF, 1, r, 3, 1);
 
         box.getChildren().addAll(title, hint, grid, salaryWarn);
@@ -20951,6 +20958,7 @@ public class BenjagestUiApplication extends Application {
                 state.annualBonuses,
                 state.vacationDays,
                 state.irpfPercent,
+                state.atEpPercent,
                 state.workplaceAddress == null || state.workplaceAddress.isBlank()
                         ? null : state.workplaceAddress,
                 existing == null ? "ACTIVE" : existing.status(),
@@ -21198,6 +21206,8 @@ public class BenjagestUiApplication extends Application {
                 ? "30" : existing.vacationDays().toString());
         TextField irpfField = new TextField(existing == null || existing.irpfPercent() == null
                 ? "" : existing.irpfPercent().toPlainString());
+        TextField atEpField = new TextField(existing == null || existing.atEpPercent() == null
+                ? "1.50" : existing.atEpPercent().toPlainString());
         TextField workplaceField = new TextField(existing == null ? "" : existing.workplaceAddress());
         ComboBox<String> statusCombo = new ComboBox<>();
         statusCombo.getItems().addAll("DRAFT", "ACTIVE", "SUSPENDED", "TERMINATED");
@@ -21220,6 +21230,7 @@ public class BenjagestUiApplication extends Application {
         g.add(new Label(t("labor.contract.editor.vacation")), 2, row); g.add(vacationField, 3, row); row++;
         g.add(new Label(t("labor.contract.editor.irpf")), 0, row); g.add(irpfField, 1, row);
         g.add(new Label(t("labor.contract.editor.status")), 2, row); g.add(statusCombo, 3, row); row++;
+        g.add(new Label(t("labor.contract.editor.at_ep")), 0, row); g.add(atEpField, 1, row); row++;
         g.add(new Label(t("labor.contract.editor.workplace")), 0, row); g.add(workplaceField, 1, row, 3, 1);
 
         installDialog(dialog, g);
@@ -21240,6 +21251,7 @@ public class BenjagestUiApplication extends Application {
                     parseIntSafe(bonusesField.getText()),
                     parseIntSafe(vacationField.getText()),
                     parseDecSafe(irpfField.getText()),
+                    parseDecSafe(atEpField.getText()),
                     blankToNullOrSelf(workplaceField.getText()),
                     statusCombo.getValue(),
                     null,

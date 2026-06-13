@@ -62,12 +62,25 @@ import org.springframework.web.server.ResponseStatusException;
 @Service
 public class PayslipService {
 
-    private static final BigDecimal SS_EMPLOYEE_PERCENT = new BigDecimal("6.35");
+    // === Tipos de cotización a la Seguridad Social (Orden PJC/297/2026) ===
+    // A cargo del trabajador (total 6,50 % en 2026, ya con MEI 0,15 %).
+    private static final BigDecimal EE_COMMON       = new BigDecimal("4.70");
+    private static final BigDecimal EE_UNEMPLOYMENT = new BigDecimal("1.55");
+    private static final BigDecimal EE_TRAINING     = new BigDecimal("0.10");
+    private static final BigDecimal EE_MEI          = new BigDecimal("0.15");
+    // A cargo de la empresa (AT/EP va aparte, por contrato).
+    private static final BigDecimal ER_COMMON       = new BigDecimal("23.60");
+    private static final BigDecimal ER_UNEMPLOYMENT = new BigDecimal("5.50");
+    private static final BigDecimal ER_FOGASA       = new BigDecimal("0.20");
+    private static final BigDecimal ER_TRAINING     = new BigDecimal("0.60");
+    private static final BigDecimal ER_MEI          = new BigDecimal("0.75");
+    private static final BigDecimal AT_EP_DEFAULT   = new BigDecimal("1.50");
 
     private final JdbcTemplate jdbcTemplate;
     private final TenantContext tenantContext;
     private final TaxRulesService taxRulesService;
     private final PayslipPdfGenerator pdfGenerator;
+    private final PayslipJournalEntryService journalService;
     private final com.benjagest.backend.settings.EmailSenderService emailSender;
     private final com.benjagest.backend.settings.CompanyDataService companyDataService;
 
@@ -75,12 +88,14 @@ public class PayslipService {
                            TenantContext tenantContext,
                            TaxRulesService taxRulesService,
                            PayslipPdfGenerator pdfGenerator,
+                           PayslipJournalEntryService journalService,
                            com.benjagest.backend.settings.EmailSenderService emailSender,
                            com.benjagest.backend.settings.CompanyDataService companyDataService) {
         this.jdbcTemplate = jdbcTemplate;
         this.tenantContext = tenantContext;
         this.taxRulesService = taxRulesService;
         this.pdfGenerator = pdfGenerator;
+        this.journalService = journalService;
         this.emailSender = emailSender;
         this.companyDataService = companyDataService;
     }
@@ -196,10 +211,12 @@ public class PayslipService {
         BigDecimal gross = contract.grossSalary
                 .divide(BigDecimal.valueOf(divisor), 2, RoundingMode.HALF_UP);
 
-        // 2) Base cotización = bruto (simplificación; en realidad hay tope SS)
-        BigDecimal ssEmployee = gross
-                .multiply(SS_EMPLOYEE_PERCENT)
-                .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
+        // 2) Desglose de cotización a la Seguridad Social sobre la base
+        //    (= bruto, simplificación; en realidad hay topes mín/máx).
+        BigDecimal atEp = contract.atEpPercent != null && contract.atEpPercent.signum() >= 0
+                ? contract.atEpPercent : AT_EP_DEFAULT;
+        SsBreakdown ss = computeSs(gross, atEp);
+        BigDecimal ssEmployee = ss.employeeTotal();
 
         // 3) IRPF
         BigDecimal irpfPct = contract.irpfPercent != null && contract.irpfPercent.signum() > 0
@@ -227,6 +244,7 @@ public class PayslipService {
                 req.year(), req.month(), type)
                 .stream().findFirst().orElse(null);
 
+        String id;
         if (existingId != null) {
             jdbcTemplate.update("""
                     UPDATE payslips
@@ -240,25 +258,51 @@ public class PayslipService {
                     otherDeductions, net,
                     req.notes(),
                     existingId, tenantContext.getCurrentCompanyId());
-            return findById(existingId);
+            id = existingId;
+        } else {
+            id = UUID.randomUUID().toString();
+            jdbcTemplate.update("""
+                    INSERT INTO payslips (
+                        id, company_id, employee_id, contract_id,
+                        period_year, period_month, payslip_type,
+                        gross_amount, ss_employee_amount, irpf_amount,
+                        other_deductions, net_amount, status, notes
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'CALCULATED', ?)
+                    """,
+                    id, tenantContext.getCurrentCompanyId(),
+                    req.employeeId(), contract.id,
+                    req.year(), req.month(), type,
+                    gross, ssEmployee, irpf,
+                    otherDeductions, net,
+                    req.notes());
         }
 
-        String id = UUID.randomUUID().toString();
-        jdbcTemplate.update("""
-                INSERT INTO payslips (
-                    id, company_id, employee_id, contract_id,
-                    period_year, period_month, payslip_type,
-                    gross_amount, ss_employee_amount, irpf_amount,
-                    other_deductions, net_amount, status, notes
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'CALCULATED', ?)
-                """,
-                id, tenantContext.getCurrentCompanyId(),
-                req.employeeId(), contract.id,
-                req.year(), req.month(), type,
-                gross, ssEmployee, irpf,
-                otherDeductions, net,
-                req.notes());
+        // La nómina alimenta la tabla de cuotas TC (fuente de verdad de
+        // la SS empresa) — solo para nóminas mensuales ordinarias. Las
+        // pagas extra cotizan prorrateadas y se afinarán en otro slice.
+        if ("MONTHLY".equals(type)) {
+            upsertContributions(req.employeeId(), req.year(), req.month(), gross, ss);
+            // Asiento de devengo (lee la SS de la tabla TC recién escrita).
+            try {
+                String empName = employeeName(req.employeeId());
+                journalService.createAccrual(new PayslipJournalEntryService.PayslipAccrual(
+                        id, req.employeeId(), empName, req.year(), req.month(), gross, irpf),
+                        null);
+            } catch (Exception ex) {
+                // El asiento es independiente de la nómina: si falla
+                // (falta plan contable / ejercicio cerrado) la nómina
+                // se calcula igual. Igual que ventas/compras.
+            }
+        }
         return findById(id);
+    }
+
+    private String employeeName(String employeeId) {
+        return jdbcTemplate.query("""
+                SELECT full_name FROM employees WHERE id = ? AND company_id = ?
+                """, (rs, n) -> rs.getString("full_name"),
+                employeeId, tenantContext.getCurrentCompanyId())
+                .stream().findFirst().orElse(null);
     }
 
     @Transactional
@@ -270,11 +314,30 @@ public class PayslipService {
                  WHERE id = ? AND company_id = ?
                 """, paidAt, id, tenantContext.getCurrentCompanyId());
         if (n == 0) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Nomina no encontrada");
-        return findById(id);
+        PayslipView view = findById(id);
+        // Asiento de pago (465 → 572). Solo nóminas mensuales ordinarias.
+        if ("MONTHLY".equals(view.payslipType())) {
+            try {
+                journalService.createPayment(new PayslipJournalEntryService.PayslipAccrual(
+                        view.id(), view.employeeId(), view.employeeName(),
+                        view.periodYear(), view.periodMonth(),
+                        view.grossAmount(), view.irpfAmount()),
+                        view.paidAt(), null);
+            } catch (Exception ex) {
+                // El asiento es independiente; si falla, la nómina queda pagada igual.
+            }
+        }
+        return view;
     }
 
     @Transactional
     public void delete(String id) {
+        // Revertir asientos (devengo + pago) antes de borrar la nómina.
+        try {
+            journalService.reverseAll(id);
+        } catch (Exception ex) {
+            // Si no había asientos, seguimos con el borrado.
+        }
         int n = jdbcTemplate.update("""
                 DELETE FROM payslips
                  WHERE id = ? AND company_id = ? AND status IN ('DRAFT', 'CALCULATED', 'CANCELLED')
@@ -306,7 +369,7 @@ public class PayslipService {
         LocalDate ref = LocalDate.of(year, month, 1);
         return jdbcTemplate.query("""
                 SELECT id, contract_type, start_date, end_date,
-                       gross_salary, annual_bonuses, irpf_percent
+                       gross_salary, annual_bonuses, irpf_percent, at_ep_percent
                   FROM employment_contracts
                  WHERE company_id = ? AND employee_id = ?
                    AND start_date <= ?
@@ -326,6 +389,7 @@ public class PayslipService {
                     Integer bonuses = (Integer) rs.getObject("annual_bonuses");
                     d.annualBonuses = bonuses == null ? 2 : bonuses;
                     d.irpfPercent = rs.getBigDecimal("irpf_percent");
+                    d.atEpPercent = rs.getBigDecimal("at_ep_percent");
                     return d;
                 },
                 tenantContext.getCurrentCompanyId(), employeeId, ref, ref)
@@ -342,6 +406,91 @@ public class PayslipService {
         return calc.effectiveRate();
     }
 
+    /**
+     * Desglose de cotización a la SS de un periodo. Cada importe es el
+     * resultado de aplicar el tipo correspondiente sobre la base (= bruto
+     * del periodo, simplificación sin topes).
+     */
+    private record SsBreakdown(
+            BigDecimal eeCommon, BigDecimal eeUnemployment, BigDecimal eeTraining, BigDecimal eeMei,
+            BigDecimal erCommon, BigDecimal erUnemployment, BigDecimal erFogasa,
+            BigDecimal erTraining, BigDecimal erMei, BigDecimal erAtEp) {
+        BigDecimal employeeTotal() {
+            return eeCommon.add(eeUnemployment).add(eeTraining).add(eeMei);
+        }
+    }
+
+    private static BigDecimal pct(BigDecimal base, BigDecimal percent) {
+        return base.multiply(percent).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
+    }
+
+    private SsBreakdown computeSs(BigDecimal base, BigDecimal atEpPercent) {
+        return new SsBreakdown(
+                pct(base, EE_COMMON), pct(base, EE_UNEMPLOYMENT),
+                pct(base, EE_TRAINING), pct(base, EE_MEI),
+                pct(base, ER_COMMON), pct(base, ER_UNEMPLOYMENT),
+                pct(base, ER_FOGASA), pct(base, ER_TRAINING),
+                pct(base, ER_MEI), pct(base, atEpPercent));
+    }
+
+    /**
+     * Escribe (o actualiza) las filas de {@code social_security_contributions}
+     * derivadas de la nómina, una por tipo de cotización. Solo toca filas en
+     * estado DRAFT: si una cuota ya está FILED/PAID (presentada al sistema
+     * RED), se respeta y no se sobrescribe.
+     */
+    private void upsertContributions(String employeeId, int year, int month,
+                                      BigDecimal base, SsBreakdown ss) {
+        upsertContribution(employeeId, year, month, "EMPLOYEE_COMMON", base, ss.eeCommon());
+        upsertContribution(employeeId, year, month, "EMPLOYEE_UNEMPLOYMENT", base, ss.eeUnemployment());
+        upsertContribution(employeeId, year, month, "EMPLOYEE_TRAINING", base, ss.eeTraining());
+        upsertContribution(employeeId, year, month, "EMPLOYEE_MEI", base, ss.eeMei());
+        upsertContribution(employeeId, year, month, "EMPLOYER_COMMON", base, ss.erCommon());
+        upsertContribution(employeeId, year, month, "EMPLOYER_UNEMPLOYMENT", base, ss.erUnemployment());
+        upsertContribution(employeeId, year, month, "EMPLOYER_FOGASA", base, ss.erFogasa());
+        upsertContribution(employeeId, year, month, "EMPLOYER_TRAINING", base, ss.erTraining());
+        upsertContribution(employeeId, year, month, "EMPLOYER_MEI", base, ss.erMei());
+        upsertContribution(employeeId, year, month, "EMPLOYER_AT_EP", base, ss.erAtEp());
+    }
+
+    private void upsertContribution(String employeeId, int year, int month,
+                                     String type, BigDecimal base, BigDecimal amount) {
+        String companyId = tenantContext.getCurrentCompanyId();
+        String existing = jdbcTemplate.query("""
+                SELECT id FROM social_security_contributions
+                 WHERE company_id = ? AND employee_id = ?
+                   AND period_year = ? AND period_month = ?
+                   AND contribution_type = ? AND status = 'DRAFT'
+                """, (rs, n) -> rs.getString("id"),
+                companyId, employeeId, year, month, type)
+                .stream().findFirst().orElse(null);
+        if (existing != null) {
+            jdbcTemplate.update("""
+                    UPDATE social_security_contributions
+                       SET base_amount = ?, contribution_amount = ?
+                     WHERE id = ?
+                    """, base, amount, existing);
+            return;
+        }
+        // Si ya existe pero NO en DRAFT (FILED/PAID), no tocamos nada.
+        Integer nonDraft = jdbcTemplate.queryForObject("""
+                SELECT COUNT(*) FROM social_security_contributions
+                 WHERE company_id = ? AND employee_id = ?
+                   AND period_year = ? AND period_month = ?
+                   AND contribution_type = ?
+                """, Integer.class,
+                companyId, employeeId, year, month, type);
+        if (nonDraft != null && nonDraft > 0) return;
+        jdbcTemplate.update("""
+                INSERT INTO social_security_contributions
+                       (id, company_id, employee_id, period_year, period_month,
+                        contribution_type, base_amount, contribution_amount, status, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'DRAFT', NOW())
+                """,
+                UUID.randomUUID().toString(), companyId, employeeId,
+                year, month, type, base, amount);
+    }
+
     private static class ContractData {
         String id;
         String contractType;
@@ -350,6 +499,7 @@ public class PayslipService {
         BigDecimal grossSalary;
         int annualBonuses;
         BigDecimal irpfPercent;
+        BigDecimal atEpPercent;
     }
 
     private PayslipView mapView(ResultSet rs, int rowNum) throws SQLException {
