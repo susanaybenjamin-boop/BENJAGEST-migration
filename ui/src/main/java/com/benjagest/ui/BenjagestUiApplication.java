@@ -19497,8 +19497,14 @@ public class BenjagestUiApplication extends Application {
                 }
             };
             task.setOnSucceeded(ev -> showLaborModule());
-            task.setOnFailed(ev -> showError(t("labor.payslips.calc.fail.title"),
-                    t("labor.payslips.calc.fail.body")));
+            task.setOnFailed(ev -> {
+                Throwable ex = task.getException();
+                String detail = ex == null ? null : humanizeBackendError(ex.getMessage());
+                showError(t("labor.payslips.calc.fail.title"),
+                        (detail == null || detail.isBlank())
+                                ? t("labor.payslips.calc.fail.body")
+                                : detail);
+            });
             start(task, "payslip-calculate");
         });
     }
