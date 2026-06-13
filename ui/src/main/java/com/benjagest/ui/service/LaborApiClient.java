@@ -496,6 +496,41 @@ public class LaborApiClient {
         ));
     }
 
+    // ==== Tipos de cotización SS por año (PARAM-YEAR) ====
+
+    public java.util.List<com.benjagest.ui.model.SsRateEntry> listSsRates()
+            throws IOException, InterruptedException {
+        HttpResponse<String> r = send(req(baseUrl + "/labor/ss-rates").GET());
+        return parseObjects(r.body(), "year", o -> new com.benjagest.ui.model.SsRateEntry(
+                intFieldOrZero(o, "year"),
+                bigDec(o, "eeCommon"), bigDec(o, "eeUnemployment"),
+                bigDec(o, "eeTraining"), bigDec(o, "eeMei"),
+                bigDec(o, "erCommon"), bigDec(o, "erUnemployment"), bigDec(o, "erFogasa"),
+                bigDec(o, "erTraining"), bigDec(o, "erMei"), bigDec(o, "defaultAtEp"),
+                textField(o, "legalReference")));
+    }
+
+    public void upsertSsRate(com.benjagest.ui.model.SsRateEntry e)
+            throws IOException, InterruptedException {
+        StringBuilder b = new StringBuilder("{");
+        b.append("\"year\":").append(e.year()).append(",");
+        b.append(decField("eeCommon", e.eeCommon())).append(",");
+        b.append(decField("eeUnemployment", e.eeUnemployment())).append(",");
+        b.append(decField("eeTraining", e.eeTraining())).append(",");
+        b.append(decField("eeMei", e.eeMei())).append(",");
+        b.append(decField("erCommon", e.erCommon())).append(",");
+        b.append(decField("erUnemployment", e.erUnemployment())).append(",");
+        b.append(decField("erFogasa", e.erFogasa())).append(",");
+        b.append(decField("erTraining", e.erTraining())).append(",");
+        b.append(decField("erMei", e.erMei())).append(",");
+        b.append(decField("defaultAtEp", e.defaultAtEp())).append(",");
+        b.append(field("legalReference", e.legalReference()));
+        b.append("}");
+        send(req(baseUrl + "/labor/ss-rates")
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(b.toString())));
+    }
+
     public com.benjagest.ui.model.PayslipEntry calculatePayslip(String employeeId, int year, int month,
                                                                   String type, boolean extraProrated,
                                                                   java.math.BigDecimal otherDeductions, String notes,
