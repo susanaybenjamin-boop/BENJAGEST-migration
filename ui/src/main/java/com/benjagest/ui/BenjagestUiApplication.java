@@ -16114,6 +16114,7 @@ public class BenjagestUiApplication extends Application {
             case "labor.payslips.calc.title" -> "Calculate payslip";
             case "labor.payslips.calc.save" -> "Calculate";
             case "labor.payslips.calc.employee" -> "Employee";
+            case "labor.payslips.calc.employee.prompt" -> "Select an employee…";
             case "labor.payslips.calc.year" -> "Year";
             case "labor.payslips.calc.month" -> "Month";
             case "labor.payslips.calc.type" -> "Type";
@@ -16517,6 +16518,7 @@ public class BenjagestUiApplication extends Application {
             case "labor.payslips.calc.title" -> "Calcular nomina";
             case "labor.payslips.calc.save" -> "Calcular";
             case "labor.payslips.calc.employee" -> "Empleado";
+            case "labor.payslips.calc.employee.prompt" -> "Selecciona un empleado…";
             case "labor.payslips.calc.year" -> "Ano";
             case "labor.payslips.calc.month" -> "Mes";
             case "labor.payslips.calc.type" -> "Tipo";
@@ -19375,7 +19377,17 @@ public class BenjagestUiApplication extends Application {
 
         Button calcBtn = new Button(t("labor.payslips.action.calculate"));
         calcBtn.setGraphic(icon("fas-calculator"));
-        calcBtn.setOnAction(ev -> showCalculatePayslipDialog(bundle.employees()));
+        calcBtn.setOnAction(ev -> {
+            // Solo se puede nominar a empleados con contrato. Esto excluye
+            // filas sintéticas como la del OWNER (creada solo para login PIN),
+            // que no tienen contrato y no son nominables.
+            java.util.Set<String> withContract = bundle.contracts().stream()
+                    .map(com.benjagest.ui.model.ContractEntry::employeeId)
+                    .collect(java.util.stream.Collectors.toSet());
+            var payrollEmployees = bundle.employees().stream()
+                    .filter(e -> withContract.contains(e.id())).toList();
+            showCalculatePayslipDialog(payrollEmployees);
+        });
 
         Button payBtn = new Button(t("labor.payslips.action.pay"));
         payBtn.setGraphic(icon("fas-money-check-alt"));
@@ -19444,7 +19456,9 @@ public class BenjagestUiApplication extends Application {
             @Override public com.benjagest.ui.model.EmployeeEntry fromString(String s) { return null; }
         });
         empCombo.getItems().addAll(employees.stream().filter(com.benjagest.ui.model.EmployeeEntry::active).toList());
-        if (!empCombo.getItems().isEmpty()) empCombo.getSelectionModel().selectFirst();
+        empCombo.setPromptText(t("labor.payslips.calc.employee.prompt"));
+        // No autoseleccionar: forzar elección consciente para no nominar
+        // por error al empleado equivocado (p. ej. el primero por orden).
 
         ComboBox<Integer> yearCombo = new ComboBox<>();
         int year = java.time.LocalDate.now().getYear();
