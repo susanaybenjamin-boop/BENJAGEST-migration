@@ -40,6 +40,27 @@
 
 # ✅ HECHO — orden cronológico inverso (más reciente arriba)
 
+## 📅 2026-06-13 — TPB-CLIENT-SETUP + navegación + i18n + pulido (sesión autónoma)
+
+> Todo en `develop`, compila limpio. Pendiente prueba de Benjamin.
+
+| Slice | Commits | Qué hace |
+|---|---|---|
+| ✅ **I18N-ENUMS** | `07e501b` | ~20 valores enum en bruto (COMPANY, RETA, MONTHLY, BANK_TRANSFER…) traducidos. Helpers `localizedEnum` + `localizeEnumCombo` + ~70 keys ES/EN. Auditado con 2 agentes Explore. |
+| ✅ **TPB-CLIENT-SETUP F1** | `ddc515d` | El editor de factura del cliente sin receptores ofrece "Crear cliente" (alta receptor bajo la shadow company). Backend POST /api/customers-extended. |
+| ✅ **TPB-CLIENT-SETUP F2** | `97e4347` | Sub-pestaña "Clientes" en la ficha del titular: crear/editar/listar su cartera de receptores. |
+| ✅ **TPB-CLIENT-SETUP F3** | `5432f1a` | Sub-pestaña "Config. facturación" del titular: VERIFACTU/NO_VERIFACTU + series + textos + certificado bajo su tenant. |
+| ✅ **NAV-CLIENT-BACK** | `3c886bd` | En modo cliente, "Nueva factura" ya no deja atrapado: "Volver"/"Cancelar"/tras emitir reconstruyen la pantalla del cliente con sus tabs. Auditado: era el único editor que reemplazaba el centro desde modo cliente. |
+| ✅ **VG-FULL-SCAN-2** | `9b0b0a1` | Comparadores de ordenación añadidos en columnas numéricas/fecha restantes (contabilidad, facturación cliente, empleados, AEAT, portal nóminas, contratos, partes, calendario fiscal). Helper `addColSorted`. |
+
+### 🔎 Hallazgos de la sesión (para decisión de Benjamin)
+
+- **Payrolls UI (#43)**: la UI YA EXISTE y es completa (calcular/pagar/PDF/email/eliminar). El único fleco del "ciclo completo" es el **asiento contable de nómina** al pagar (cuentas 640/642/476/4751/465). NO atacado en autónomo — toca PGC legal. **Decisión Benjamin**: ¿qué cuentas y en qué momento se contabiliza?
+- **Reporte coste empresa/empleado** (🟠 alta, diferencial 💰): CONTENDO lo tiene (`resumenEmpresario`: coste = bruto + SS empresa, agrupado por empleado). Pero `payslips` en BENJAGEST **no tiene** columna `ss_employer_amount`. Requiere: V106 ADD COLUMN + calcular SS empresa al generar la nómina. **Decisión Benjamin**: ¿% de cotización empresa fijo (~30%) o introducido manualmente por nómina? (varía por CNAE para AT/EP).
+- **Backlog.md desactualizado**: varios items marcados ⬜ ya están cerrados (Mensajes/Documentos/Notificaciones asesoría↔cliente, PANORAMA, CTR-3/5/6/7). Conviene una pasada de marcado ✅ cuando Benjamin valide.
+
+---
+
 ## 📅 2026-06-11 / 06-12 — Bloque TPB completo + UIs autónomas + Magic Link + i18n enums
 
 > Sesión larga de 2 días. Migraciones nuevas: V96–V105. Todo en `develop`.
