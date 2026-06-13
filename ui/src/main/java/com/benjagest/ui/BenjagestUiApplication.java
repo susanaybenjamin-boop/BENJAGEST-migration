@@ -5062,11 +5062,11 @@ public class BenjagestUiApplication extends Application {
         colType.setPrefWidth(150);
         TableColumn<com.benjagest.ui.model.TimeClockEntry, String> colOrigin =
                 new TableColumn<>(t("timeclock.col.origin"));
-        colOrigin.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().origin()));
+        colOrigin.setCellValueFactory(c -> new SimpleStringProperty(localizedEnum("timeclock_origin", c.getValue().origin())));
         colOrigin.setPrefWidth(100);
         TableColumn<com.benjagest.ui.model.TimeClockEntry, String> colStatus =
                 new TableColumn<>(t("timeclock.col.status"));
-        colStatus.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().status()));
+        colStatus.setCellValueFactory(c -> new SimpleStringProperty(localizedEnum("timeclock_status", c.getValue().status())));
         colStatus.setPrefWidth(110);
         timeClockTable.getColumns().addAll(java.util.List.of(colWhen, colType, colOrigin, colStatus));
 
@@ -5400,7 +5400,8 @@ public class BenjagestUiApplication extends Application {
         billingNote.setWrapText(true);
         billingNote.getStyleClass().add("settings-hint");
 
-        Label typeNote = new Label(t("settings.company.type_note_prefix") + company.companyType()
+        Label typeNote = new Label(t("settings.company.type_note_prefix")
+                + localizedEnum("customer_type", company.companyType())
                 + t("settings.company.type_note_suffix"));
         typeNote.getStyleClass().add("settings-hint");
 
@@ -7758,9 +7759,11 @@ public class BenjagestUiApplication extends Application {
         TextField nifField = new TextField(existing == null ? "" : existing.taxIdentifier());
         ComboBox<String> roleCombo = new ComboBox<>();
         roleCombo.getItems().addAll("ADMINISTRATOR", "JOINT", "SOLE", "BOARD_MEMBER", "PARTNER", "AUTONOMOUS");
+        localizeEnumCombo(roleCombo, "owner_role");
         roleCombo.getSelectionModel().select(existing == null ? "ADMINISTRATOR" : existing.role());
         ComboBox<String> ssCombo = new ComboBox<>();
         ssCombo.getItems().addAll("RETA", "GENERAL", "AUTONOMO_SOCIETARIO", "NO_COTIZA", "OTHER");
+        localizeEnumCombo(ssCombo, "ss_regime");
         ssCombo.getSelectionModel().select(existing == null || existing.ssRegime() == null || existing.ssRegime().isBlank()
                 ? "RETA" : existing.ssRegime());
         TextField pctField = new TextField(existing == null || existing.ownershipPercent() == null
@@ -9754,6 +9757,7 @@ public class BenjagestUiApplication extends Application {
 
         ComboBox<String> numberingCombo = new ComboBox<>();
         numberingCombo.getItems().addAll("STANDARD", "BY_YEAR", "PREFIXED");
+        localizeEnumCombo(numberingCombo, "numbering");
         numberingCombo.getSelectionModel().select(existing == null ? "BY_YEAR" : existing.numberingType());
         numberingCombo.getStyleClass().add("form-input");
 
@@ -9986,6 +9990,7 @@ public class BenjagestUiApplication extends Application {
         Label methodLbl = label(t("multi_alloc.field.method"), "form-label");
         javafx.scene.control.ComboBox<String> methodCombo = new javafx.scene.control.ComboBox<>();
         methodCombo.getItems().addAll("BANK_TRANSFER", "CASH", "CARD", "CHECK", "DIRECT_DEBIT", "OTHER");
+        localizeEnumCombo(methodCombo, "payment_method");
         methodCombo.getSelectionModel().selectFirst();
         methodCombo.getStyleClass().add("form-input");
 
@@ -16794,6 +16799,72 @@ public class BenjagestUiApplication extends Application {
             case "tpb.method.pin_session" -> "Client session PIN (eIDAS simple e-signature)";
             case "tpb.method.offline_pdf" -> "Handwritten signature on PDF (offline)";
             case "tpb.method.magic_link_otp" -> "Email magic link + OTP (eIDAS simple e-signature)";
+            // ============ I18N-ENUMS (EN) ============
+            case "enum.customer_type.COMPANY" -> "Company";
+            case "enum.customer_type.SELF_EMPLOYED" -> "Self-employed";
+            case "enum.customer_type.PUBLIC_ENTITY" -> "Public entity";
+            case "enum.customer_type.OTHER" -> "Other";
+            case "enum.ss_regime.RETA" -> "RETA (self-employed)";
+            case "enum.ss_regime.GENERAL" -> "General regime";
+            case "enum.ss_regime.AUTONOMO_SOCIETARIO" -> "RETA (corporate)";
+            case "enum.ss_regime.NO_COTIZA" -> "Not contributing";
+            case "enum.ss_regime.OTHER" -> "Other";
+            case "enum.owner_role.ADMINISTRATOR" -> "Administrator";
+            case "enum.owner_role.JOINT_ADMINISTRATOR" -> "Joint administrator";
+            case "enum.owner_role.JOINT" -> "Joint administrator";
+            case "enum.owner_role.SOLE_ADMINISTRATOR" -> "Sole administrator";
+            case "enum.owner_role.SOLE" -> "Sole administrator";
+            case "enum.owner_role.BOARD_MEMBER" -> "Board member";
+            case "enum.owner_role.PARTNER" -> "Partner";
+            case "enum.owner_role.AUTONOMOUS" -> "Self-employed";
+            case "enum.payslip_type.MONTHLY" -> "Monthly";
+            case "enum.payslip_type.EXTRA_SUMMER" -> "Summer extra pay";
+            case "enum.payslip_type.EXTRA_CHRISTMAS" -> "Christmas extra pay";
+            case "enum.payslip_type.BONUS" -> "Bonus";
+            case "enum.payslip_type.SETTLEMENT" -> "Settlement";
+            case "enum.payslip_status.DRAFT" -> "Draft";
+            case "enum.payslip_status.CALCULATED" -> "Calculated";
+            case "enum.payslip_status.PAID" -> "Paid";
+            case "enum.payslip_status.CANCELLED" -> "Cancelled";
+            case "enum.tax_status.DRAFT" -> "Draft";
+            case "enum.tax_status.READY" -> "Ready";
+            case "enum.tax_status.PRESENTED" -> "Submitted";
+            case "enum.tax_status.PAID" -> "Paid";
+            case "enum.tax_status.REJECTED" -> "Rejected";
+            case "enum.tax_status.CANCELLED" -> "Cancelled";
+            case "enum.frequency.DAILY" -> "Daily";
+            case "enum.frequency.WEEKLY" -> "Weekly";
+            case "enum.frequency.MONTHLY" -> "Monthly";
+            case "enum.frequency.QUARTERLY" -> "Quarterly";
+            case "enum.frequency.YEARLY" -> "Yearly";
+            case "enum.frequency.CUSTOM" -> "Custom";
+            case "enum.frequency.CUSTOM_MONTHS" -> "Every N months";
+            case "enum.contract_status.DRAFT" -> "Draft";
+            case "enum.contract_status.ACTIVE" -> "Active";
+            case "enum.contract_status.SUSPENDED" -> "Suspended";
+            case "enum.contract_status.TERMINATED" -> "Terminated";
+            case "enum.numbering.STANDARD" -> "Sequential";
+            case "enum.numbering.BY_YEAR" -> "Reset each year";
+            case "enum.numbering.PREFIXED" -> "Fixed prefix";
+            case "enum.payment_method.BANK_TRANSFER" -> "Bank transfer";
+            case "enum.payment_method.CASH" -> "Cash";
+            case "enum.payment_method.CARD" -> "Card";
+            case "enum.payment_method.CHECK" -> "Cheque";
+            case "enum.payment_method.DIRECT_DEBIT" -> "Direct debit";
+            case "enum.payment_method.OTHER" -> "Other";
+            case "enum.invoice_type.NORMAL" -> "Standard";
+            case "enum.invoice_type.RECTIFYING" -> "Rectifying";
+            case "enum.invoice_type.PROFORMA" -> "Proforma";
+            case "enum.timeclock_origin.WEB" -> "Web";
+            case "enum.timeclock_origin.MOBILE" -> "Mobile";
+            case "enum.timeclock_origin.KIOSK" -> "Kiosk";
+            case "enum.timeclock_status.VALID" -> "Valid";
+            case "enum.timeclock_status.PENDING" -> "Pending";
+            case "enum.timeclock_status.CORRECTED" -> "Corrected";
+            case "enum.timeclock_status.VOIDED" -> "Voided";
+            case "enum.worklog_status.DRAFT" -> "Draft";
+            case "enum.worklog_status.APPROVED" -> "Approved";
+            case "enum.worklog_status.BILLED" -> "Billed";
             case "tpb.pending.waiting_client" -> "Waiting for the client to sign from their session.";
             case "tpb.pending.offline_blocked" -> "This client is NOT linked to BENJAGEST. The offline-PDF signature flow has been disabled for legal safety (RD 1619/2012 art. 5: the holder must expressly consent, and an unverified signature was activating agreements without their knowledge). The client must register in BENJAGEST and sign with their session PIN. Invite them from Communication → Messages.";
             case "tpb.magic.hint" -> "The client does NOT have a BENJAGEST account. To sign without installing anything, send a magic link to their email. They will receive a link and a 6-digit OTP. Opening the link opens a simple page where they read the PDF and sign with the OTP. Compliant with eIDAS art. 25 (simple electronic signature).";
@@ -17548,6 +17619,72 @@ public class BenjagestUiApplication extends Application {
             case "tpb.method.pin_session" -> "PIN de sesión del cliente (firma electrónica simple eIDAS)";
             case "tpb.method.offline_pdf" -> "Firma manuscrita en PDF (offline)";
             case "tpb.method.magic_link_otp" -> "Enlace mágico por email + OTP (firma electrónica simple eIDAS)";
+            // ============ I18N-ENUMS (ES) ============
+            case "enum.customer_type.COMPANY" -> "Empresa";
+            case "enum.customer_type.SELF_EMPLOYED" -> "Autónomo";
+            case "enum.customer_type.PUBLIC_ENTITY" -> "Entidad pública";
+            case "enum.customer_type.OTHER" -> "Otro";
+            case "enum.ss_regime.RETA" -> "RETA (autónomos)";
+            case "enum.ss_regime.GENERAL" -> "Régimen general";
+            case "enum.ss_regime.AUTONOMO_SOCIETARIO" -> "RETA societario";
+            case "enum.ss_regime.NO_COTIZA" -> "No cotiza";
+            case "enum.ss_regime.OTHER" -> "Otro";
+            case "enum.owner_role.ADMINISTRATOR" -> "Administrador";
+            case "enum.owner_role.JOINT_ADMINISTRATOR" -> "Administrador mancomunado";
+            case "enum.owner_role.JOINT" -> "Administrador mancomunado";
+            case "enum.owner_role.SOLE_ADMINISTRATOR" -> "Administrador único";
+            case "enum.owner_role.SOLE" -> "Administrador único";
+            case "enum.owner_role.BOARD_MEMBER" -> "Miembro del consejo";
+            case "enum.owner_role.PARTNER" -> "Socio";
+            case "enum.owner_role.AUTONOMOUS" -> "Autónomo";
+            case "enum.payslip_type.MONTHLY" -> "Mensual";
+            case "enum.payslip_type.EXTRA_SUMMER" -> "Paga extra verano";
+            case "enum.payslip_type.EXTRA_CHRISTMAS" -> "Paga extra Navidad";
+            case "enum.payslip_type.BONUS" -> "Bonus";
+            case "enum.payslip_type.SETTLEMENT" -> "Finiquito";
+            case "enum.payslip_status.DRAFT" -> "Borrador";
+            case "enum.payslip_status.CALCULATED" -> "Calculada";
+            case "enum.payslip_status.PAID" -> "Pagada";
+            case "enum.payslip_status.CANCELLED" -> "Cancelada";
+            case "enum.tax_status.DRAFT" -> "Borrador";
+            case "enum.tax_status.READY" -> "Lista";
+            case "enum.tax_status.PRESENTED" -> "Presentada";
+            case "enum.tax_status.PAID" -> "Pagada";
+            case "enum.tax_status.REJECTED" -> "Rechazada";
+            case "enum.tax_status.CANCELLED" -> "Cancelada";
+            case "enum.frequency.DAILY" -> "Diaria";
+            case "enum.frequency.WEEKLY" -> "Semanal";
+            case "enum.frequency.MONTHLY" -> "Mensual";
+            case "enum.frequency.QUARTERLY" -> "Trimestral";
+            case "enum.frequency.YEARLY" -> "Anual";
+            case "enum.frequency.CUSTOM" -> "Personalizada";
+            case "enum.frequency.CUSTOM_MONTHS" -> "Cada N meses";
+            case "enum.contract_status.DRAFT" -> "Borrador";
+            case "enum.contract_status.ACTIVE" -> "Activo";
+            case "enum.contract_status.SUSPENDED" -> "Suspendido";
+            case "enum.contract_status.TERMINATED" -> "Finalizado";
+            case "enum.numbering.STANDARD" -> "Correlativa";
+            case "enum.numbering.BY_YEAR" -> "Reinicia cada año";
+            case "enum.numbering.PREFIXED" -> "Prefijo fijo";
+            case "enum.payment_method.BANK_TRANSFER" -> "Transferencia";
+            case "enum.payment_method.CASH" -> "Efectivo";
+            case "enum.payment_method.CARD" -> "Tarjeta";
+            case "enum.payment_method.CHECK" -> "Cheque";
+            case "enum.payment_method.DIRECT_DEBIT" -> "Domiciliación";
+            case "enum.payment_method.OTHER" -> "Otro";
+            case "enum.invoice_type.NORMAL" -> "Estándar";
+            case "enum.invoice_type.RECTIFYING" -> "Rectificativa";
+            case "enum.invoice_type.PROFORMA" -> "Proforma";
+            case "enum.timeclock_origin.WEB" -> "Web";
+            case "enum.timeclock_origin.MOBILE" -> "Móvil";
+            case "enum.timeclock_origin.KIOSK" -> "Kiosco";
+            case "enum.timeclock_status.VALID" -> "Válido";
+            case "enum.timeclock_status.PENDING" -> "Pendiente";
+            case "enum.timeclock_status.CORRECTED" -> "Corregido";
+            case "enum.timeclock_status.VOIDED" -> "Anulado";
+            case "enum.worklog_status.DRAFT" -> "Borrador";
+            case "enum.worklog_status.APPROVED" -> "Aprobado";
+            case "enum.worklog_status.BILLED" -> "Facturado";
             case "tpb.pending.waiting_client" -> "Esperando que el cliente firme desde su sesión.";
             case "tpb.pending.offline_blocked" -> "Este cliente NO está vinculado a BENJAGEST. El flujo de firma offline-PDF está deshabilitado por seguridad jurídica (RD 1619/2012 art. 5: el titular debe consentir expresamente, y una firma sin verificar activaba acuerdos sin que el cliente se enterara). El cliente debe registrarse en BENJAGEST y firmar con su PIN de sesión. Invítale desde Comunicación → Mensajes.";
             case "tpb.magic.hint" -> "El cliente NO tiene cuenta en BENJAGEST. Para firmar sin instalar nada, envíale un enlace mágico a su email. Recibirá un enlace y un código OTP de 6 dígitos. Al abrir el enlace se le carga una página simple donde lee el PDF y firma con el OTP. Cumple eIDAS art. 25 (firma electrónica simple).";
@@ -18823,7 +18960,7 @@ public class BenjagestUiApplication extends Application {
         colHire.setComparator(ISO_DATE_COMPARATOR);
         TableColumn<com.benjagest.ui.model.EmployeeEntry, String> colSs =
                 new TableColumn<>(t("labor.employees.col.ss"));
-        colSs.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().ssRegime()));
+        colSs.setCellValueFactory(c -> new SimpleStringProperty(localizedEnum("ss_regime", c.getValue().ssRegime())));
         colSs.setPrefWidth(110);
         TableColumn<com.benjagest.ui.model.EmployeeEntry, String> colGeo =
                 new TableColumn<>(t("labor.employees.col.geo"));
@@ -18927,7 +19064,7 @@ public class BenjagestUiApplication extends Application {
         colSalary.setComparator(NUMERIC_STRING_COMPARATOR);
         TableColumn<com.benjagest.ui.model.ContractEntry, String> colStatus =
                 new TableColumn<>(t("labor.contracts.col.status"));
-        colStatus.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().status()));
+        colStatus.setCellValueFactory(c -> new SimpleStringProperty(localizedEnum("contract_status", c.getValue().status())));
         colStatus.setPrefWidth(110);
         table.getColumns().addAll(java.util.List.of(colEmp, colType, colSepe, colStart, colEnd, colSalary, colStatus));
         table.setItems(FXCollections.observableArrayList(bundle.contracts()));
@@ -18995,11 +19132,11 @@ public class BenjagestUiApplication extends Application {
         colType.setPrefWidth(140);
         TableColumn<com.benjagest.ui.model.TimeClockEntry, String> colOrigin =
                 new TableColumn<>(t("timeclock.col.origin"));
-        colOrigin.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().origin()));
+        colOrigin.setCellValueFactory(c -> new SimpleStringProperty(localizedEnum("timeclock_origin", c.getValue().origin())));
         colOrigin.setPrefWidth(100);
         TableColumn<com.benjagest.ui.model.TimeClockEntry, String> colStatus =
                 new TableColumn<>(t("timeclock.col.status"));
-        colStatus.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().status()));
+        colStatus.setCellValueFactory(c -> new SimpleStringProperty(localizedEnum("timeclock_status", c.getValue().status())));
         colStatus.setPrefWidth(110);
         table.getColumns().addAll(java.util.List.of(colWhen, colType, colOrigin, colStatus));
         timeClockTable = table;
@@ -19226,6 +19363,7 @@ public class BenjagestUiApplication extends Application {
 
         ComboBox<String> typeCombo = new ComboBox<>();
         typeCombo.getItems().addAll("MONTHLY", "EXTRA_SUMMER", "EXTRA_CHRISTMAS", "BONUS", "SETTLEMENT");
+        localizeEnumCombo(typeCombo, "payslip_type");
         typeCombo.getSelectionModel().select("MONTHLY");
 
         CheckBox extraProrated = new CheckBox(t("labor.payslips.calc.extra_prorated"));
@@ -19457,15 +19595,15 @@ public class BenjagestUiApplication extends Application {
         dEmp.setPrefWidth(180);
         TableColumn<com.benjagest.ui.model.TimeClockAuditEntry, String> dType =
                 new TableColumn<>(t("labor.audit.col.type"));
-        dType.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().eventType()));
+        dType.setCellValueFactory(c -> new SimpleStringProperty(localizedPunchType(c.getValue().eventType())));
         dType.setPrefWidth(120);
         TableColumn<com.benjagest.ui.model.TimeClockAuditEntry, String> dOrigin =
                 new TableColumn<>(t("labor.audit.col.origin"));
-        dOrigin.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().origin()));
+        dOrigin.setCellValueFactory(c -> new SimpleStringProperty(localizedEnum("timeclock_origin", c.getValue().origin())));
         dOrigin.setPrefWidth(90);
         TableColumn<com.benjagest.ui.model.TimeClockAuditEntry, String> dStatus =
                 new TableColumn<>(t("labor.audit.col.status"));
-        dStatus.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().status()));
+        dStatus.setCellValueFactory(c -> new SimpleStringProperty(localizedEnum("timeclock_status", c.getValue().status())));
         dStatus.setPrefWidth(100);
         TableColumn<com.benjagest.ui.model.TimeClockAuditEntry, String> dCorr =
                 new TableColumn<>(t("labor.audit.col.has_corrections"));
@@ -20073,7 +20211,7 @@ public class BenjagestUiApplication extends Application {
         colSalary.setPrefWidth(110);
         TableColumn<com.benjagest.ui.model.ContractEntry, String> colStatus =
                 new TableColumn<>(t("labor.contracts.col.status"));
-        colStatus.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().status()));
+        colStatus.setCellValueFactory(c -> new SimpleStringProperty(localizedEnum("contract_status", c.getValue().status())));
         colStatus.setPrefWidth(100);
         contractsTable.getColumns().addAll(java.util.List.of(colType, colSepe, colStart, colEnd, colSalary, colStatus));
         contractsTable.setItems(FXCollections.observableArrayList(contracts));
@@ -20996,6 +21134,7 @@ public class BenjagestUiApplication extends Application {
         TextField workplaceField = new TextField(existing == null ? "" : existing.workplaceAddress());
         ComboBox<String> statusCombo = new ComboBox<>();
         statusCombo.getItems().addAll("DRAFT", "ACTIVE", "SUSPENDED", "TERMINATED");
+        localizeEnumCombo(statusCombo, "contract_status");
         statusCombo.getSelectionModel().select(existing == null ? "ACTIVE" : existing.status());
 
         GridPane g = new GridPane();
@@ -21856,7 +21995,7 @@ public class BenjagestUiApplication extends Application {
         cNet.setPrefWidth(120);
         TableColumn<com.benjagest.ui.model.PortalPayslip, String> cStatus =
                 new TableColumn<>(t("portal.payslips.col.status"));
-        cStatus.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().status()));
+        cStatus.setCellValueFactory(c -> new SimpleStringProperty(localizedEnum("payslip_status", c.getValue().status())));
         cStatus.setPrefWidth(120);
 
         table.getColumns().addAll(java.util.List.of(cPeriod, cGross, cNet, cStatus));
@@ -25203,6 +25342,42 @@ public class BenjagestUiApplication extends Application {
         };
     }
 
+    /**
+     * I18N-ENUMS — Traduce un valor enum/codigo de BD a su etiqueta
+     * localizada. Construye la clave {@code enum.<prefix>.<CODIGO>} y la
+     * pasa por {@link #t}. Si el valor es null/blank devuelve "". Si la
+     * clave no existe en el switch de t() se devuelve el codigo en bruto
+     * (fallback del propio t()), nunca rompe.
+     *
+     * <p>Centraliza la traduccion de los muchos enums que antes se
+     * pintaban en crudo (COMPANY, RETA, MONTHLY, BANK_TRANSFER, ...).
+     */
+    private String localizedEnum(String prefix, String code) {
+        if (code == null || code.isBlank()) return "";
+        return t("enum." + prefix + "." + code);
+    }
+
+    /**
+     * I18N-ENUMS — Configura un ComboBox&lt;String&gt; cuyos items son
+     * codigos enum para que muestre la etiqueta traducida (via
+     * {@link #localizedEnum}) sin cambiar el valor interno. El usuario
+     * ve "Transferencia" pero el combo sigue devolviendo "BANK_TRANSFER".
+     */
+    private void localizeEnumCombo(ComboBox<String> combo, String prefix) {
+        combo.setCellFactory(lv -> new javafx.scene.control.ListCell<>() {
+            @Override protected void updateItem(String item, boolean empty) {
+                super.updateItem(item, empty);
+                setText(empty || item == null ? "" : localizedEnum(prefix, item));
+            }
+        });
+        combo.setButtonCell(new javafx.scene.control.ListCell<>() {
+            @Override protected void updateItem(String item, boolean empty) {
+                super.updateItem(item, empty);
+                setText(empty || item == null ? "" : localizedEnum(prefix, item));
+            }
+        });
+    }
+
     private String humanizeTpbScope(com.benjagest.ui.model.TpbAgreementEntry a) {
         java.util.List<String> parts = new java.util.ArrayList<>();
         if (a.scopeSales()) parts.add(t("tpb.scope.sales"));
@@ -25233,7 +25408,7 @@ public class BenjagestUiApplication extends Application {
         g.add(new Label(client.taxIdentifier() == null ? "—" : client.taxIdentifier()), 1, r++);
         if (client.companyType() != null) {
             g.add(new Label(t("advisory.client.field.type")), 0, r);
-            g.add(new Label(client.companyType()), 1, r++);
+            g.add(new Label(localizedEnum("customer_type", client.companyType())), 1, r++);
         }
         if (client.email() != null) {
             g.add(new Label(t("advisory.client.field.email")), 0, r);
@@ -26284,6 +26459,7 @@ public class BenjagestUiApplication extends Application {
         javafx.scene.control.ComboBox<String> freqCombo =
                 new javafx.scene.control.ComboBox<>();
         freqCombo.getItems().addAll("MONTHLY", "QUARTERLY", "YEARLY", "WEEKLY", "CUSTOM");
+        localizeEnumCombo(freqCombo, "frequency");
         freqCombo.setValue(existing == null ? "MONTHLY" : existing.frequency());
 
         javafx.scene.control.Spinner<Integer> domSpinner = new javafx.scene.control.Spinner<>(1, 31,
@@ -26749,6 +26925,7 @@ public class BenjagestUiApplication extends Application {
 
         javafx.scene.control.ComboBox<String> freqCombo = new javafx.scene.control.ComboBox<>();
         freqCombo.getItems().addAll("MONTHLY", "QUARTERLY", "YEARLY", "WEEKLY", "CUSTOM");
+        localizeEnumCombo(freqCombo, "frequency");
         freqCombo.setValue(existing == null ? "MONTHLY" : existing.frequency());
         applyFrequencyComboCells(freqCombo);
 
@@ -27041,6 +27218,7 @@ public class BenjagestUiApplication extends Application {
 
         javafx.scene.control.ComboBox<String> freqCombo = new javafx.scene.control.ComboBox<>();
         freqCombo.getItems().addAll("MONTHLY", "QUARTERLY", "YEARLY", "WEEKLY", "CUSTOM");
+        localizeEnumCombo(freqCombo, "frequency");
         freqCombo.setValue(existing == null ? "MONTHLY" : existing.frequency());
         applyFrequencyComboCells(freqCombo);
 
@@ -28641,7 +28819,7 @@ public class BenjagestUiApplication extends Application {
         addCol(table, t("billing.col.number"), v -> v.invoiceNumber() == null ? "" : v.invoiceNumber(), 130);
         addCol(table, t("billing.col.date"), v -> v.invoiceDate() == null ? "" : v.invoiceDate(), 100);
         addCol(table, t("billing.col.customer"), v -> v.customerLegalName() == null ? "" : v.customerLegalName(), 240);
-        addCol(table, t("billing.col.type"), v -> v.invoiceType() == null ? "" : v.invoiceType(), 90);
+        addCol(table, t("billing.col.type"), v -> localizedEnum("invoice_type", v.invoiceType()), 90);
         addCol(table, t("billing.col.total"), v -> v.total() == null ? "" : v.total().toString(), 110);
         addCol(table, t("billing.col.paid"), v -> v.paidAmount() == null ? "" : v.paidAmount().toString(), 100);
         addCol(table, t("billing.col.status"),
@@ -28834,7 +29012,7 @@ public class BenjagestUiApplication extends Application {
                 new javafx.scene.control.TableView<>();
         addCol(table, t("labor.col.name"), v -> v.fullName() == null ? "" : v.fullName(), 220);
         addCol(table, t("labor.col.nif"), v -> v.taxIdentifier() == null ? "" : v.taxIdentifier(), 110);
-        addCol(table, t("labor.col.regime"), v -> v.ssRegime() == null ? "" : v.ssRegime(), 110);
+        addCol(table, t("labor.col.regime"), v -> localizedEnum("ss_regime", v.ssRegime()), 110);
         addCol(table, t("labor.col.hire_date"), v -> v.hireDate() == null ? "" : v.hireDate().toString(), 100);
         addCol(table, t("labor.col.active"), v -> v.active() ? "✓" : "✗", 70);
 
@@ -29237,6 +29415,7 @@ public class BenjagestUiApplication extends Application {
 
         ComboBox<String> statusCombo = new ComboBox<>();
         statusCombo.getItems().addAll("DRAFT", "READY", "PRESENTED", "PAID", "REJECTED", "CANCELLED");
+        localizeEnumCombo(statusCombo, "tax_status");
         statusCombo.getSelectionModel().select(existing.status());
         TextField amountField = new TextField(existing.totalAmount() == null
                 ? "" : existing.totalAmount().toPlainString());
@@ -30145,7 +30324,7 @@ public class BenjagestUiApplication extends Application {
         cAmount.setPrefWidth(100);
         TableColumn<com.benjagest.ui.model.WorkLogEntry, String> cStatus =
                 new TableColumn<>(t("labor.shifts.col.status"));
-        cStatus.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().status()));
+        cStatus.setCellValueFactory(c -> new SimpleStringProperty(localizedEnum("worklog_status", c.getValue().status())));
         cStatus.setPrefWidth(90);
 
         table.getColumns().addAll(java.util.List.of(cDate, cEmp, cMin, cDesc, cBill, cAmount, cStatus));
