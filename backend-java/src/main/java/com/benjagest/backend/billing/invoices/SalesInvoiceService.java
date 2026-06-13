@@ -245,11 +245,18 @@ public class SalesInvoiceService {
 
         // TPB-3: si la asesoría está emitiendo por tercero (acuerdo
         // ACTIVE con scope_sales) la factura queda en
-        // PENDING_CLIENT_APPROVAL en lugar de VALIDATED directo. NO
-        // entra en Verifactu, NO se genera PDF, NO se hace asiento.
-        // Eso todo pasa cuando el cliente la apruebe. La numeración
-        // sí se reserva (queda asignada al id).
-        if (isThirdPartyEmission()) {
+        // PENDING_CLIENT_APPROVAL en lugar de VALIDATED directo —
+        // PERO SOLO si el cliente PUEDE aprobarla (es tenant real con
+        // login propio). Si el cliente es una ficha gestionada sin
+        // login (shadow company, parent_company_id NOT NULL), NO tiene
+        // forma de aprobar nada (no usa BENJAGEST), asi que la factura
+        // se valida directamente — la asesoria la emite materialmente
+        // en su nombre con la cobertura del acuerdo TPB firmado.
+        // Fix Benjamin 2026-06-13: antes TODA emision TPB quedaba en
+        // PENDING_CLIENT_APPROVAL, dejando atascadas las facturas de
+        // clientes sin vinculo (imposibles de aprobar).
+        String tpbClientId = tenantContext.getCurrentCompanyId();
+        if (isThirdPartyEmission() && clientCanSelfApprove(tpbClientId)) {
             int aff = repository.markPendingClientApproval(
                     id, claimed.formatted(),
                     totals.subtotal(), totals.vatTotal(),
@@ -693,6 +700,25 @@ public class SalesInvoiceService {
                    AND status = 'ACTIVE' AND scope_sales = TRUE
                 """, Integer.class, advisoryId, clientId);
         return n != null && n > 0;
+    }
+
+    /**
+     * ¿El cliente puede aprobar por sí mismo una factura emitida en su
+     * nombre? Solo si es un tenant real (company con
+     * {@code parent_company_id IS NULL}) — esos tienen login propio y
+     * pueden entrar a BENJAGEST a aprobar/rechazar. Las fichas
+     * gestionadas por la asesoría (shadow companies,
+     * {@code parent_company_id NOT NULL}) NO tienen login ni programa,
+     * asi que no pueden aprobar nada: sus facturas TPB se validan
+     * directamente.
+     */
+    private boolean clientCanSelfApprove(String clientCompanyId) {
+        if (clientCompanyId == null) return false;
+        Integer realTenant = jdbcForTpb.queryForObject("""
+                SELECT COUNT(*) FROM companies
+                 WHERE id = ? AND parent_company_id IS NULL
+                """, Integer.class, clientCompanyId);
+        return realTenant != null && realTenant > 0;
     }
 
     /**

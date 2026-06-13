@@ -9411,6 +9411,7 @@ public class BenjagestUiApplication extends Application {
 
         ComboBox<String> kindCombo = new ComboBox<>();
         kindCombo.getItems().addAll("VAT", "WITHHOLDING");
+        localizeEnumCombo(kindCombo, "vat_kind");
         kindCombo.getSelectionModel().select(existing == null ? "VAT" : existing.kind());
         kindCombo.setDisable(existing != null);  // no editable tras crear
 
@@ -16915,6 +16916,8 @@ public class BenjagestUiApplication extends Application {
             case "enum.timeclock_status.PENDING" -> "Pending";
             case "enum.timeclock_status.CORRECTED" -> "Corrected";
             case "enum.timeclock_status.VOIDED" -> "Voided";
+            case "enum.vat_kind.VAT" -> "VAT";
+            case "enum.vat_kind.WITHHOLDING" -> "Withholding";
             case "enum.worklog_status.DRAFT" -> "Draft";
             case "enum.worklog_status.APPROVED" -> "Approved";
             case "enum.worklog_status.BILLED" -> "Billed";
@@ -17735,6 +17738,8 @@ public class BenjagestUiApplication extends Application {
             case "enum.timeclock_status.PENDING" -> "Pendiente";
             case "enum.timeclock_status.CORRECTED" -> "Corregido";
             case "enum.timeclock_status.VOIDED" -> "Anulado";
+            case "enum.vat_kind.VAT" -> "IVA";
+            case "enum.vat_kind.WITHHOLDING" -> "Retención";
             case "enum.worklog_status.DRAFT" -> "Borrador";
             case "enum.worklog_status.APPROVED" -> "Aprobado";
             case "enum.worklog_status.BILLED" -> "Facturado";
@@ -29182,6 +29187,41 @@ public class BenjagestUiApplication extends Application {
         newInvoiceBtn.getStyleClass().add("button-primary");
         newInvoiceBtn.setOnAction(e -> showInvoiceEditor(null));
 
+        // Fix Benjamin 2026-06-13: el listado del cliente no permitia
+        // ni validar un borrador ni abrirlo para corregir. Anadimos:
+        //  - Doble clic en DRAFT / PENDING_CLIENT_APPROVAL -> editor.
+        //  - Boton "Validar" para el DRAFT seleccionado.
+        Button validateBtn = new Button(t("editor.action.validate"));
+        validateBtn.setGraphic(icon("fas-check"));
+        validateBtn.setDisable(true);
+        validateBtn.setOnAction(e -> {
+            var sel = table.getSelectionModel().getSelectedItem();
+            if (sel != null) validateInvoiceFromList(sel);
+        });
+        table.getSelectionModel().selectedItemProperty().addListener((o, ov, nv) ->
+                validateBtn.setDisable(nv == null || !"DRAFT".equals(nv.status())));
+        table.setRowFactory(tv -> {
+            javafx.scene.control.TableRow<com.benjagest.ui.model.SalesInvoiceSummary> row =
+                    new javafx.scene.control.TableRow<>();
+            row.setOnMouseClicked(ev -> {
+                if (ev.getClickCount() == 2 && !row.isEmpty()) {
+                    var inv = row.getItem();
+                    boolean editable = "DRAFT".equals(inv.status())
+                            || "PENDING_CLIENT_APPROVAL".equals(inv.status())
+                            || "PROFORMA".equals(inv.invoiceType());
+                    if (editable) {
+                        showInvoiceEditor(inv.id());
+                    } else {
+                        Alert info = new Alert(Alert.AlertType.INFORMATION,
+                                t("list.dialog.validated_no_edit"), ButtonType.OK);
+                        info.setHeaderText(t("list.dialog.validated_no_edit.header"));
+                        info.showAndWait();
+                    }
+                }
+            });
+            return row;
+        });
+
         Button importSalesPdfsBtn = new Button(t("sales.action.import_pdfs"));
         importSalesPdfsBtn.setGraphic(icon("fas-file-import"));
         importSalesPdfsBtn.getStyleClass().add("button-primary");
@@ -29224,7 +29264,7 @@ public class BenjagestUiApplication extends Application {
                 new Label(t("client.filter.search")), search,
                 new Label(t("client.filter.status")), statusFilter,
                 new Label(t("client.filter.type")), typeFilter,
-                clientBillingSpacer, makeRecurringBtnBilling, refresh, importSalesPdfsBtn, newInvoiceBtn);
+                clientBillingSpacer, validateBtn, makeRecurringBtnBilling, refresh, importSalesPdfsBtn, newInvoiceBtn);
         actions.setAlignment(Pos.CENTER_LEFT);
 
         com.benjagest.ui.support.RefreshBus.subscribe(
