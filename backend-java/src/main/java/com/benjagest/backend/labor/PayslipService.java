@@ -158,6 +158,53 @@ public class PayslipService {
                 .stream().findFirst().orElse(null);
     }
 
+    /**
+     * Reporte de coste de empresa por empleado en un año: bruto anual
+     * (suma de todas las nóminas del periodo) + SS a cargo de la empresa
+     * (suma de las cuotas TC EMPLOYER_*). El coste total para la empresa
+     * es la suma de ambos. Solo aparecen empleados con datos en el año.
+     */
+    public List<EmployerCostRow> employerCost(int year) {
+        return jdbcTemplate.query("""
+                SELECT e.id AS employee_id, e.full_name AS employee_name,
+                       COALESCE(p.gross, 0) AS gross,
+                       COALESCE(s.er, 0) AS employer_ss
+                  FROM employees e
+                  LEFT JOIN (
+                        SELECT employee_id, SUM(gross_amount) AS gross
+                          FROM payslips
+                         WHERE company_id = ? AND period_year = ?
+                         GROUP BY employee_id
+                  ) p ON p.employee_id = e.id
+                  LEFT JOIN (
+                        SELECT employee_id, SUM(contribution_amount) AS er
+                          FROM social_security_contributions
+                         WHERE company_id = ? AND period_year = ?
+                           AND contribution_type LIKE 'EMPLOYER%'
+                         GROUP BY employee_id
+                  ) s ON s.employee_id = e.id
+                 WHERE e.company_id = ?
+                   AND (p.gross IS NOT NULL OR s.er IS NOT NULL)
+                 ORDER BY e.full_name
+                """,
+                (rs, n) -> {
+                    BigDecimal gross = rs.getBigDecimal("gross");
+                    BigDecimal er = rs.getBigDecimal("employer_ss");
+                    return new EmployerCostRow(
+                            rs.getString("employee_id"),
+                            rs.getString("employee_name"),
+                            gross, er, gross.add(er));
+                },
+                tenantContext.getCurrentCompanyId(), year,
+                tenantContext.getCurrentCompanyId(), year,
+                tenantContext.getCurrentCompanyId());
+    }
+
+    public record EmployerCostRow(
+            String employeeId, String employeeName,
+            BigDecimal grossTotal, BigDecimal employerSsTotal, BigDecimal costTotal
+    ) {}
+
     public List<PayslipView> list(Integer year, String status, String employeeId)
             throws ResponseStatusException {
         StringBuilder sql = new StringBuilder("""
@@ -591,6 +638,12 @@ public class PayslipService {
         @PostMapping("/{id}/email")
         @ResponseStatus(HttpStatus.NO_CONTENT)
         public void email(@PathVariable("id") String id) { service.emailToEmployee(id); }
+
+        @GetMapping("/employer-cost")
+        public List<EmployerCostRow> employerCost(
+                @RequestParam(value = "year", required = false) Integer year) {
+            return service.employerCost(year == null ? Year.now().getValue() : year);
+        }
 
         @GetMapping("/resolve-self")
         public java.util.Map<String, String> resolveSelf(

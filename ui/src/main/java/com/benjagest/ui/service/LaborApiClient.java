@@ -410,6 +410,24 @@ public class LaborApiClient {
         ));
     }
 
+    /** Fila del reporte de coste de empresa por empleado (bloque NOM). */
+    public record EmployerCostEntry(
+            String employeeId, String employeeName,
+            java.math.BigDecimal grossTotal, java.math.BigDecimal employerSsTotal,
+            java.math.BigDecimal costTotal) {}
+
+    public java.util.List<EmployerCostEntry> employerCost(int year)
+            throws IOException, InterruptedException {
+        HttpResponse<String> r = send(req(baseUrl + "/labor/payslips/employer-cost?year=" + year).GET());
+        return parseObjects(r.body(), "employeeId", obj -> new EmployerCostEntry(
+                textField(obj, "employeeId"),
+                textField(obj, "employeeName"),
+                bigDec(obj, "grossTotal"),
+                bigDec(obj, "employerSsTotal"),
+                bigDec(obj, "costTotal")
+        ));
+    }
+
     public com.benjagest.ui.model.PayslipEntry calculatePayslip(String employeeId, int year, int month,
                                                                   String type, boolean extraProrated,
                                                                   java.math.BigDecimal otherDeductions, String notes)
