@@ -63,7 +63,8 @@ public class EmploymentContractService {
             args.add(employeeId);
         }
         sql.append(" ORDER BY start_date DESC");
-        return jdbcTemplate.query(sql.toString(), this::mapView, args.toArray());
+        return jdbcTemplate.query(sql.toString(), this::mapView, args.toArray())
+                .stream().map(this::withItems).toList();
     }
 
     @Transactional
@@ -96,6 +97,11 @@ public class EmploymentContractService {
                 req.probationDays(),
                 blank(req.pdfModel())
         );
+        BigDecimal recomputed = replaceSalaryItems(id, req.salaryItems());
+        if (recomputed != null) {
+            jdbcTemplate.update("UPDATE employment_contracts SET gross_salary = ? WHERE id = ? AND company_id = ?",
+                    recomputed, id, tenantContext.getCurrentCompanyId());
+        }
         return findById(id);
     }
 
@@ -127,6 +133,11 @@ public class EmploymentContractService {
         if (n == 0) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Contrato no encontrado");
         }
+        BigDecimal recomputed = replaceSalaryItems(id, req.salaryItems());
+        if (recomputed != null) {
+            jdbcTemplate.update("UPDATE employment_contracts SET gross_salary = ? WHERE id = ? AND company_id = ?",
+                    recomputed, id, tenantContext.getCurrentCompanyId());
+        }
         return findById(id);
     }
 
@@ -154,6 +165,7 @@ public class EmploymentContractService {
                  WHERE id = ? AND company_id = ?
                 """, this::mapView, id, tenantContext.getCurrentCompanyId())
                 .stream().findFirst()
+                .map(this::withItems)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Contrato no encontrado"));
     }
 
@@ -204,8 +216,58 @@ public class EmploymentContractService {
                 rs.getString("status"),
                 rs.getString("termination_reason"),
                 (Integer) rs.getObject("probation_days"),
-                rs.getString("pdf_model")
+                rs.getString("pdf_model"),
+                List.of() // se rellena en withItems (carga en 2 fases)
         );
+    }
+
+    /** Carga los conceptos salariales de un contrato y devuelve una copia
+     *  de la vista con la lista rellena (evita query anidada en el mapper). */
+    private ContractView withItems(ContractView c) {
+        List<SalaryItemView> items = jdbcTemplate.query("""
+                SELECT id, concept_name, kind, annual_amount, cotizes, taxable, sort_order
+                  FROM contract_salary_items
+                 WHERE contract_id = ? AND company_id = ?
+                 ORDER BY sort_order, concept_name
+                """,
+                (rs, n) -> new SalaryItemView(
+                        rs.getString("id"), rs.getString("concept_name"), rs.getString("kind"),
+                        rs.getBigDecimal("annual_amount"), rs.getBoolean("cotizes"),
+                        rs.getBoolean("taxable"), rs.getInt("sort_order")),
+                c.id(), tenantContext.getCurrentCompanyId());
+        return new ContractView(c.id(), c.employeeId(), c.contractType(), c.sepeContractCode(),
+                c.collectiveAgreement(), c.professionalCategory(), c.professionalGroup(),
+                c.startDate(), c.endDate(), c.weeklyHours(), c.grossSalary(),
+                c.annualBonuses(), c.vacationDays(), c.irpfPercent(), c.atEpPercent(),
+                c.workplaceAddress(), c.status(), c.terminationReason(),
+                c.probationDays(), c.pdfModel(), items);
+    }
+
+    /** Borra y reescribe los conceptos salariales del contrato. Devuelve el
+     *  bruto anual recalculado (suma de conceptos) o null si no se enviaron. */
+    private BigDecimal replaceSalaryItems(String contractId, List<SalaryItem> items) {
+        jdbcTemplate.update("DELETE FROM contract_salary_items WHERE contract_id = ? AND company_id = ?",
+                contractId, tenantContext.getCurrentCompanyId());
+        if (items == null || items.isEmpty()) return null;
+        BigDecimal total = BigDecimal.ZERO;
+        int order = 0;
+        for (SalaryItem it : items) {
+            if (it.conceptName() == null || it.conceptName().isBlank()) continue;
+            BigDecimal amt = it.annualAmount() == null ? BigDecimal.ZERO : it.annualAmount();
+            String kind = it.kind() == null || it.kind().isBlank() ? "COMPLEMENT" : it.kind();
+            jdbcTemplate.update("""
+                    INSERT INTO contract_salary_items
+                           (id, company_id, contract_id, concept_name, kind,
+                            annual_amount, cotizes, taxable, sort_order)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    UUID.randomUUID().toString(), tenantContext.getCurrentCompanyId(),
+                    contractId, it.conceptName().trim(), kind, amt,
+                    it.cotizes() == null || it.cotizes(),
+                    it.taxable() == null || it.taxable(), order++);
+            total = total.add(amt);
+        }
+        return total;
     }
 
     public record ContractView(
@@ -216,7 +278,8 @@ public class EmploymentContractService {
             Integer annualBonuses, Integer vacationDays, BigDecimal irpfPercent,
             BigDecimal atEpPercent,
             String workplaceAddress, String status, String terminationReason,
-            Integer probationDays, String pdfModel
+            Integer probationDays, String pdfModel,
+            List<SalaryItemView> salaryItems
     ) {}
 
     public record UpsertRequest(
@@ -227,7 +290,20 @@ public class EmploymentContractService {
             Integer annualBonuses, Integer vacationDays, BigDecimal irpfPercent,
             BigDecimal atEpPercent,
             String workplaceAddress, String status, String terminationReason,
-            Integer probationDays, String pdfModel
+            Integer probationDays, String pdfModel,
+            List<SalaryItem> salaryItems
+    ) {}
+
+    /** Concepto salarial recibido del editor de contrato. */
+    public record SalaryItem(
+            String id, String conceptName, String kind,
+            BigDecimal annualAmount, Boolean cotizes, Boolean taxable
+    ) {}
+
+    /** Concepto salarial devuelto al editor. */
+    public record SalaryItemView(
+            String id, String conceptName, String kind,
+            BigDecimal annualAmount, boolean cotizes, boolean taxable, int sortOrder
     ) {}
 
     @RestController
