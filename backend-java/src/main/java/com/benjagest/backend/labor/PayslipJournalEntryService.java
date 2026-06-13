@@ -8,7 +8,6 @@ import java.util.List;
 import java.util.UUID;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 /**
  * Bloque NOM — genera los asientos contables de una nómina. Espejo de
@@ -73,8 +72,13 @@ public class PayslipJournalEntryService {
      * cualquier asiento de devengo previo de esta nómina para ser
      * idempotente ante recálculos. Devuelve el id del asiento o
      * {@code null} si no se pudo crear.
+     *
+     * <p>NO lleva {@code @Transactional}: se invoca siempre dentro de la
+     * transacción del caller ({@code PayslipService.calculate/markPaid/
+     * delete}). Si fuera transaccional y lanzara una excepción, Spring
+     * marcaría la transacción de la nómina como rollback-only y el cálculo
+     * reventaría aunque la nómina fuese correcta.
      */
-    @Transactional
     public String createAccrual(PayslipAccrual p, String userId) {
         if (p.gross() == null) return null;
         String companyId = tenantContext.getCurrentCompanyId();
@@ -141,8 +145,8 @@ public class PayslipJournalEntryService {
 
     /**
      * Crea el asiento de pago de la nómina (465 → 572). Idempotente.
+     * Sin {@code @Transactional} por el mismo motivo que {@link #createAccrual}.
      */
-    @Transactional
     public String createPayment(PayslipAccrual p, LocalDate paidAt, String userId) {
         if (p.gross() == null) return null;
         String companyId = tenantContext.getCurrentCompanyId();
@@ -189,9 +193,8 @@ public class PayslipJournalEntryService {
     /**
      * Borra los asientos (devengo y pago) vinculados a una nómina cuando
      * esta se elimina. Mismo trato que ventas/compras: hueco en el Diario
-     * en lugar de VOIDED.
+     * en lugar de VOIDED. Sin {@code @Transactional} (corre en la tx del caller).
      */
-    @Transactional
     public void reverseAll(String payslipId) {
         String companyId = tenantContext.getCurrentCompanyId();
         reverseBySource(companyId, payslipId, SRC_ACCRUAL);

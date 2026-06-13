@@ -328,17 +328,20 @@ public class PayslipService {
         // la SS empresa) — solo para nóminas mensuales ordinarias. Las
         // pagas extra cotizan prorrateadas y se afinarán en otro slice.
         if ("MONTHLY".equals(type)) {
-            upsertContributions(req.employeeId(), req.year(), req.month(), gross, ss);
-            // Asiento de devengo (lee la SS de la tabla TC recién escrita).
+            // La tabla TC y el asiento son derivados de la nómina: si
+            // algo falla (falta plan contable / ejercicio cerrado), la
+            // nómina se calcula igual. Por eso van dentro de try/catch y
+            // PayslipJournalEntryService NO es @Transactional (si lo
+            // fuera, una excepción suya marcaría la transacción de la
+            // nómina como rollback-only y reventaría el cálculo).
             try {
+                upsertContributions(req.employeeId(), req.year(), req.month(), gross, ss);
                 String empName = employeeName(req.employeeId());
                 journalService.createAccrual(new PayslipJournalEntryService.PayslipAccrual(
                         id, req.employeeId(), empName, req.year(), req.month(), gross, irpf),
                         null);
             } catch (Exception ex) {
-                // El asiento es independiente de la nómina: si falla
-                // (falta plan contable / ejercicio cerrado) la nómina
-                // se calcula igual. Igual que ventas/compras.
+                // No bloquea la nómina.
             }
         }
         return findById(id);
