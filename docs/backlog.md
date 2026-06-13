@@ -1,6 +1,6 @@
 # Backlog operativo BENJAGEST
 
-> **Última actualización:** 2026-06-10 noche (reescritura completa con verificación contra código por agente Explore + grep). Se identificó EQUIPO S1 marcado como ⬜ pero realmente cerrado en V66; se incorpora correctamente como ✅.
+> **Última actualización:** 2026-06-12 noche (bloque TPB completo V96–V105 + UIs autónomas + Magic Link/revocación + barrido i18n enums). Sección nueva al principio.
 >
 > **Forma de trabajo (junio 2026):** Benjamin lidera y decide. Pablo solo entra de uvas a peras desde 05-30. Todo el trabajo va por `feat/Benjamin` → prueba local → commit → merge `--no-ff` a `develop`. Cada item cerrado lleva commit hash + fecha. **Regla 10.bis de CLAUDE.md aplica siempre: verificar código antes de tocar.**
 >
@@ -39,6 +39,50 @@
 ---
 
 # ✅ HECHO — orden cronológico inverso (más reciente arriba)
+
+## 📅 2026-06-11 / 06-12 — Bloque TPB completo + UIs autónomas + Magic Link + i18n enums
+
+> Sesión larga de 2 días. Migraciones nuevas: V96–V105. Todo en `develop`.
+
+### Bloque TPB (facturación por tercero, RD 1619/2012 art. 5)
+
+| Slice | Commits | Qué hace |
+|---|---|---|
+| ✅ **TPB-1** Acuerdo previo | `V96` | Tabla `third_party_billing_agreements`. Propuesta + estados PROPOSED/ACTIVE/REVOKED. Scope ventas/compras/modelos. PDF del acuerdo. |
+| ✅ **TPB-2** Serie por tercero | `V97` | `invoice_series.expedited_by_company_id`. Serie TPB separada (art. 6.1.b). Auto-reparación en `findCurrent`. Endpoint `preview-next` para que el editor muestre la serie correcta en el banner. |
+| ✅ **TPB-3** Aceptación factura-a-factura | `V98` | Estado `PENDING_CLIENT_APPROVAL`. El cliente vinculado aprueba/rechaza. Doble clic abre el editor para revisión/corrección. |
+| ✅ **TPB-4** Marca AEAT Verifactu | `V99` | Campos `issued_by_third_party` en verifactu_registry. |
+| ✅ **TPB firma con PIN** | varios | Modal "Define tu PIN" si el empresario no lo tiene antes de firmar. |
+| ✅ **TPB offline-PDF BLOQUEADO** | `332bd69` | Flujo de subir PDF sin verificar → HTTP 410. Se prestaba a fraude (asesoría activaba sin firma real del cliente). Memoria guardada. |
+| ✅ **TPB Magic Link + OTP** | `V104`, `9c2abb4` | Cliente sin cuenta firma desde el navegador: enlace por email + OTP de 6 dígitos. Página HTML pública servida por Spring. Evidencia legal (IP/UA/hora). eIDAS art. 25. |
+| ✅ **TPB revocación cliente** | `V105`, `0f83a06` | Cliente sin cuenta revoca igual que firmó: email con enlace permanente + OTP al entrar. Protección de evidencia (no revoca si hay facturas sin PDF guardado). |
+| ✅ **TPB live polling** | `bb81539` | Tab acuerdo se auto-actualiza cada 5s. Al firmar aparece el tab Facturación + KPIs en caliente; al revocar desaparece. |
+
+### UIs autónomas sobre backend ya existente
+
+| Slice | Commit | Qué hace |
+|---|---|---|
+| ✅ **PANORAMA-ASESORIA** | `546792c` | Dashboard asesoría: 5 KPIs cruzados de cartera. |
+| ✅ **UI-BOE-ALERTS** | `bf2d644` | Pestaña Configuración → Alertas BOE con barrido + abrir PDF oficial. |
+| ✅ **UI-BACKUP-LOCAL** | `44d1be3` | Pestaña Copias de seguridad: tabla + hacer ahora + abrir carpeta. |
+| ✅ **UI-MULTI-ALLOCATION** | `6f57cdb` | Modal "Cobrar varias": un pago reparte entre N facturas. |
+| ✅ **UI-REC-BANCARIA** | `a7cb076` | Diálogo conciliación bancaria asistida (Levenshtein). |
+
+### Fixes en vivo
+
+| Fix | Commit | Qué hace |
+|---|---|---|
+| ✅ Iconos tabs Comunicación invisibles | — | Color inline #1e293b (CSS .font-icon los pisaba). |
+| ✅ Banner TPB con nombre asesoría | `037137f` | Antes decía "Tu asesoría", ahora el nombre real. |
+| ✅ Tab "Mi acuerdo facturación" empresario | `037137f` | Configuración del cliente para gestionar su TPB. |
+| ✅ Botones barra facturación truncados | `3bc16aa` | Textos acortados + minWidth para que no se corten con "...". |
+| ✅ Estado PENDING_CLIENT_APPROVAL traducido | `3bc16aa` | Faltaba en localizedInvoiceStatus. |
+| ✅ Email cliente desde `customers.email` | `4200245` | El portfolio leía solo customer_contacts legacy → magic link iba al email viejo. |
+| ✅ Magic link SMTP de la asesoría | `d7f8f81` | Buscaba SMTP del cliente (tenant header) en vez del de la asesoría. |
+| ✅ Página magic link 500 + IP LAN | `b28a24f`, `6b592b0` | CSS con `%` rompía String.format; enlace usaba localhost (no accesible desde móvil) → IP de red local. |
+| ✅ **I18N-ENUMS** | `07e501b` | Barrido con 2 agentes Explore: ~20 valores enum mostrados en bruto (COMPANY, RETA, MONTHLY, BANK_TRANSFER...) ahora traducidos. Helpers `localizedEnum` + `localizeEnumCombo` + ~70 keys ES/EN. |
+
+---
 
 ## 📅 2026-06-10 noche — Sprint A+B SIF + fixes editor factura
 
