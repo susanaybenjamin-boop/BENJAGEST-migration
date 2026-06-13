@@ -13874,6 +13874,10 @@ public class BenjagestUiApplication extends Application {
         };
     }
 
+    private String money(BigDecimal value) {
+        return CURRENCY_FORMAT.format(value == null ? BigDecimal.ZERO : value);
+    }
+
     private String money(String value) {
         if (value == null || value.isBlank()) {
             return CURRENCY_FORMAT.format(BigDecimal.ZERO);
@@ -15969,6 +15973,16 @@ public class BenjagestUiApplication extends Application {
             case "labor.leaves.error.no_employee" -> "Please select an employee.";
             case "labor.leaves.error.no_start" -> "Start date is required.";
             case "labor.tab.ss_contributions" -> "SS contributions";
+            case "labor.tab.employer_cost" -> "Employer cost";
+            case "labor.cost.hint" -> "Yearly cost to the company per employee: gross paid + employer Social Security (TC employer quotas). Source of truth: payrolls and TC quotas.";
+            case "labor.cost.filter.year" -> "Year";
+            case "labor.cost.col.employee" -> "Employee";
+            case "labor.cost.col.gross" -> "Annual gross";
+            case "labor.cost.col.employer_ss" -> "Employer SS";
+            case "labor.cost.col.total" -> "Total cost";
+            case "labor.cost.totals" -> "Totals — Gross: {gross} · Employer SS: {ss} · Cost: {total}";
+            case "labor.cost.placeholder.empty" -> "No payroll data for this year.";
+            case "labor.cost.load_failed" -> "Could not load the cost report";
             case "labor.ss.hint" -> "Social Security contributions (TC1 / RED system) calculated by the payroll module. Only DRAFT rows can be deleted — once FILED with Social Security, they are immutable.";
             case "labor.ss.placeholder.empty" -> "No contributions for the selected filters.";
             case "labor.ss.load_failed" -> "Could not load contributions.";
@@ -16367,6 +16381,16 @@ public class BenjagestUiApplication extends Application {
             case "labor.leaves.error.no_employee" -> "Selecciona un empleado.";
             case "labor.leaves.error.no_start" -> "La fecha de inicio es obligatoria.";
             case "labor.tab.ss_contributions" -> "Cotizaciones SS";
+            case "labor.tab.employer_cost" -> "Coste empresa";
+            case "labor.cost.hint" -> "Coste anual para la empresa por empleado: bruto pagado + Seguridad Social a cargo de la empresa (cuotas TC patronales). Fuente: nóminas y cuotas TC.";
+            case "labor.cost.filter.year" -> "Año";
+            case "labor.cost.col.employee" -> "Empleado";
+            case "labor.cost.col.gross" -> "Bruto anual";
+            case "labor.cost.col.employer_ss" -> "SS empresa";
+            case "labor.cost.col.total" -> "Coste total";
+            case "labor.cost.totals" -> "Totales — Bruto: {gross} · SS empresa: {ss} · Coste: {total}";
+            case "labor.cost.placeholder.empty" -> "No hay datos de nómina para este año.";
+            case "labor.cost.load_failed" -> "No se pudo cargar el reporte de coste";
             case "labor.ss.hint" -> "Cuotas de Seguridad Social (TC1 / sistema RED) calculadas desde las nóminas. Solo las cuotas en DRAFT se pueden eliminar — una vez enviadas al RED (FILED) son inalterables.";
             case "labor.ss.placeholder.empty" -> "No hay cuotas con los filtros seleccionados.";
             case "labor.ss.load_failed" -> "No se pudieron cargar las cuotas.";
@@ -18507,6 +18531,9 @@ public class BenjagestUiApplication extends Application {
         Tab ssTab = new Tab(t("labor.tab.ss_contributions"),
                 buildSsContributionsTab(bundle.employees()));
         ssTab.setGraphic(icon("fas-percent"));
+        // Reporte de coste de empresa por empleado (bloque NOM).
+        Tab costTab = new Tab(t("labor.tab.employer_cost"), buildEmployerCostTab());
+        costTab.setGraphic(icon("fas-coins"));
         // PORT-2 (2026-06-10 tarde) — Partes/Jornadas como sub-pestaña
         // de Labor (no como módulo de raíz, decisión Benjamin). Lee de
         // /api/work-logs. Cuando llegue la versión tablet/móvil del
@@ -18520,7 +18547,7 @@ public class BenjagestUiApplication extends Application {
 
         tabs.getTabs().addAll(empTab, contractsTab, clockTab, auditTab, payslipsTab,
                 templatesTab, clausesTab, cfgTab, calendarTab, leavesTab, ssTab,
-                shiftsTab, centersTab);
+                costTab, shiftsTab, centersTab);
         VBox.setVgrow(tabs, Priority.ALWAYS);
 
         content.getChildren().addAll(header, alertsBanner, tabs);
@@ -31054,6 +31081,97 @@ public class BenjagestUiApplication extends Application {
     //  período, empleado/empresa, tipo, base, cuota, estado. Botón
     //  Eliminar solo activo para DRAFT (backend bloquea DELETE si
     //  !=DRAFT vía 409).
+    /**
+     * Reporte de coste de empresa por empleado (bloque NOM). Coste anual
+     * = bruto pagado + SS a cargo de la empresa (cuotas TC EMPLOYER_*).
+     */
+    private Node buildEmployerCostTab() {
+        VBox content = new VBox(12);
+        content.setPadding(new Insets(16));
+
+        Label hint = new Label(t("labor.cost.hint"));
+        hint.setWrapText(true);
+        hint.getStyleClass().add("settings-hint");
+
+        int currentYear = java.time.Year.now().getValue();
+        ComboBox<Integer> yearCombo = new ComboBox<>();
+        for (int y = currentYear; y >= currentYear - 5; y--) yearCombo.getItems().add(y);
+        yearCombo.setValue(currentYear);
+        HBox filters = new HBox(8, new Label(t("labor.cost.filter.year")), yearCombo);
+        filters.setAlignment(Pos.CENTER_LEFT);
+
+        TableView<com.benjagest.ui.service.LaborApiClient.EmployerCostEntry> table = new TableView<>();
+        table.getStyleClass().add("data-table");
+        table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+        table.setPlaceholder(new Label(t("labor.cost.placeholder.empty")));
+        com.benjagest.ui.support.TableSelectionHelper.install(table);
+
+        TableColumn<com.benjagest.ui.service.LaborApiClient.EmployerCostEntry, String> cEmp =
+                new TableColumn<>(t("labor.cost.col.employee"));
+        cEmp.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().employeeName()));
+        cEmp.setPrefWidth(240);
+
+        TableColumn<com.benjagest.ui.service.LaborApiClient.EmployerCostEntry, String> cGross =
+                new TableColumn<>(t("labor.cost.col.gross"));
+        cGross.setCellValueFactory(c -> new SimpleStringProperty(money(c.getValue().grossTotal())));
+        cGross.setPrefWidth(150);
+        cGross.setComparator(NUMERIC_STRING_COMPARATOR);
+
+        TableColumn<com.benjagest.ui.service.LaborApiClient.EmployerCostEntry, String> cSs =
+                new TableColumn<>(t("labor.cost.col.employer_ss"));
+        cSs.setCellValueFactory(c -> new SimpleStringProperty(money(c.getValue().employerSsTotal())));
+        cSs.setPrefWidth(170);
+        cSs.setComparator(NUMERIC_STRING_COMPARATOR);
+
+        TableColumn<com.benjagest.ui.service.LaborApiClient.EmployerCostEntry, String> cCost =
+                new TableColumn<>(t("labor.cost.col.total"));
+        cCost.setCellValueFactory(c -> new SimpleStringProperty(money(c.getValue().costTotal())));
+        cCost.setPrefWidth(170);
+        cCost.setComparator(NUMERIC_STRING_COMPARATOR);
+
+        table.getColumns().addAll(java.util.List.of(cEmp, cGross, cSs, cCost));
+
+        Label totals = new Label();
+        totals.getStyleClass().add("settings-hint");
+
+        Runnable reload = () -> {
+            Integer y = yearCombo.getValue();
+            Task<java.util.List<com.benjagest.ui.service.LaborApiClient.EmployerCostEntry>> tk = new Task<>() {
+                @Override protected java.util.List<com.benjagest.ui.service.LaborApiClient.EmployerCostEntry> call()
+                        throws Exception {
+                    return laborApiClient.employerCost(y == null ? currentYear : y);
+                }
+            };
+            tk.setOnSucceeded(ev -> {
+                var rows = tk.getValue();
+                table.setItems(FXCollections.observableArrayList(rows));
+                java.math.BigDecimal tGross = java.math.BigDecimal.ZERO;
+                java.math.BigDecimal tSs = java.math.BigDecimal.ZERO;
+                java.math.BigDecimal tCost = java.math.BigDecimal.ZERO;
+                for (var rr : rows) {
+                    if (rr.grossTotal() != null) tGross = tGross.add(rr.grossTotal());
+                    if (rr.employerSsTotal() != null) tSs = tSs.add(rr.employerSsTotal());
+                    if (rr.costTotal() != null) tCost = tCost.add(rr.costTotal());
+                }
+                totals.setText(t("labor.cost.totals")
+                        .replace("{gross}", money(tGross))
+                        .replace("{ss}", money(tSs))
+                        .replace("{total}", money(tCost)));
+            });
+            tk.setOnFailed(ev -> showError(t("labor.cost.load_failed"),
+                    tk.getException() == null ? "" : tk.getException().getMessage()));
+            start(tk, "labor-cost-load");
+        };
+        yearCombo.valueProperty().addListener((obs, oldV, newV) -> reload.run());
+        reload.run();
+
+        VBox body = new VBox(10, hint, filters, table, totals);
+        VBox.setVgrow(table, Priority.ALWAYS);
+        content.getChildren().add(body);
+        VBox.setVgrow(body, Priority.ALWAYS);
+        return content;
+    }
+
     private Node buildSsContributionsTab(
             java.util.List<com.benjagest.ui.model.EmployeeEntry> employees) {
         VBox content = new VBox(12);
