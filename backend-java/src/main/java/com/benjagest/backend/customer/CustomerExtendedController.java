@@ -5,8 +5,10 @@ import com.benjagest.backend.tenant.TenantContext;
 import java.util.List;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -95,6 +97,63 @@ public class CustomerExtendedController {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Cliente no encontrado");
         }
         return rows.get(0);
+    }
+
+    /**
+     * TPB-CLIENT-SETUP F1 — Alta de cliente-receptor. Crea el customer
+     * bajo el {@code company_id} del tenant actual (cuando la asesoria
+     * actua-como un cliente sin vinculo, sera la shadow company de ese
+     * titular, asi que el receptor queda asociado al cliente correcto).
+     */
+    @PostMapping
+    public ResponseEntity<CustomerExtended> create(@RequestBody CustomerExtended req) {
+        String companyId = tenantContext.getCurrentCompanyId();
+        if (req.legalName() == null || req.legalName().isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "El nombre fiscal es obligatorio");
+        }
+        if (req.taxIdentifier() == null || req.taxIdentifier().isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "El NIF/CIF es obligatorio");
+        }
+        String id = java.util.UUID.randomUUID().toString();
+        jdbcTemplate.update("""
+                INSERT INTO customers (
+                    id, company_id, legal_name, trade_name, tax_identifier,
+                    customer_type, fiscal_type, billing_email, billing_phone,
+                    default_vat_percent, default_retention_percent, vat_exempt,
+                    payment_method, iban, address, city, province, postal_code,
+                    country, internal_code, default_mode, phone, email, website,
+                    notes, active
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                          ?, ?, ?, ?, ?, ?, ?, TRUE)
+                """,
+                id, companyId,
+                req.legalName().trim(),
+                blank(req.tradeName()),
+                req.taxIdentifier().trim(),
+                req.customerType() == null || req.customerType().isBlank()
+                        ? "COMPANY" : req.customerType(),
+                blank(req.fiscalType()),
+                blank(req.billingEmail()),
+                blank(req.billingPhone()),
+                req.defaultVatPercent(),
+                req.defaultRetentionPercent(),
+                req.vatExempt(),
+                blank(req.paymentMethod()),
+                blank(req.iban()),
+                blank(req.address()),
+                blank(req.city()),
+                blank(req.province()),
+                blank(req.postalCode()),
+                blank(req.country()),
+                blank(req.internalCode()),
+                blank(req.defaultMode()),
+                blank(req.phone()),
+                blank(req.email()),
+                blank(req.website()),
+                blank(req.notes()));
+        return ResponseEntity.status(HttpStatus.CREATED).body(get(id));
     }
 
     @PutMapping("/{id}")

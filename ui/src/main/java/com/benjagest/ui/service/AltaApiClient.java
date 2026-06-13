@@ -2588,7 +2588,10 @@ public class AltaApiClient {
         if (r.statusCode() < 200 || r.statusCode() >= 300) {
             throw new IOException("HTTP " + r.statusCode() + ": " + r.body());
         }
-        String obj = r.body();
+        return mapCustomerExtended(r.body());
+    }
+
+    private com.benjagest.ui.model.CustomerExtendedEntry mapCustomerExtended(String obj) {
         return new com.benjagest.ui.model.CustomerExtendedEntry(
                 textField(obj, "id"),
                 textField(obj, "legalName"),
@@ -2614,6 +2617,60 @@ public class AltaApiClient {
                 textField(obj, "email"),
                 textField(obj, "website"),
                 textField(obj, "notes"));
+    }
+
+    /**
+     * TPB-CLIENT-SETUP F1 — Crea un cliente-receptor extendido bajo el
+     * tenant actual (POST). Devuelve la entidad creada con su id.
+     */
+    public com.benjagest.ui.model.CustomerExtendedEntry createCustomerExtended(
+            com.benjagest.ui.model.CustomerExtendedEntry c)
+            throws IOException, InterruptedException {
+        String body = buildCustomerExtendedJson(c, null);
+        HttpResponse<String> r = send(req(baseUrl + "/customers-extended")
+                .header("Content-Type", "application/json")
+                .POST(java.net.http.HttpRequest.BodyPublishers.ofString(body)));
+        if (r.statusCode() < 200 || r.statusCode() >= 300) {
+            throw new IOException("HTTP " + r.statusCode() + ": " + r.body());
+        }
+        return mapCustomerExtended(r.body());
+    }
+
+    /** Serializa una CustomerExtendedEntry a JSON. idOverride: id a usar
+     *  (null = omite el campo id, para POST de creacion). */
+    private String buildCustomerExtendedJson(
+            com.benjagest.ui.model.CustomerExtendedEntry c, String idOverride) {
+        StringBuilder b = new StringBuilder("{");
+        if (idOverride != null) {
+            b.append("\"id\":").append(jsonString(idOverride)).append(",");
+        }
+        b.append("\"legalName\":").append(jsonString(c.legalName()));
+        b.append(",\"tradeName\":").append(jsonString(c.tradeName()));
+        b.append(",\"taxIdentifier\":").append(jsonString(c.taxIdentifier()));
+        b.append(",\"customerType\":").append(jsonString(c.customerType()));
+        b.append(",\"fiscalType\":").append(jsonString(c.fiscalType()));
+        b.append(",\"billingEmail\":").append(jsonString(c.billingEmail()));
+        b.append(",\"billingPhone\":").append(jsonString(c.billingPhone()));
+        b.append(",\"defaultVatPercent\":")
+                .append(c.defaultVatPercent() == null ? "0" : c.defaultVatPercent().toPlainString());
+        b.append(",\"defaultRetentionPercent\":")
+                .append(c.defaultRetentionPercent() == null ? "0" : c.defaultRetentionPercent().toPlainString());
+        b.append(",\"vatExempt\":").append(c.vatExempt());
+        b.append(",\"paymentMethod\":").append(jsonString(c.paymentMethod()));
+        b.append(",\"iban\":").append(jsonString(c.iban()));
+        b.append(",\"address\":").append(jsonString(c.address()));
+        b.append(",\"city\":").append(jsonString(c.city()));
+        b.append(",\"province\":").append(jsonString(c.province()));
+        b.append(",\"postalCode\":").append(jsonString(c.postalCode()));
+        b.append(",\"country\":").append(jsonString(c.country()));
+        b.append(",\"internalCode\":").append(jsonString(c.internalCode()));
+        b.append(",\"defaultMode\":").append(jsonString(c.defaultMode()));
+        b.append(",\"phone\":").append(jsonString(c.phone()));
+        b.append(",\"email\":").append(jsonString(c.email()));
+        b.append(",\"website\":").append(jsonString(c.website()));
+        b.append(",\"notes\":").append(jsonString(c.notes()));
+        b.append('}');
+        return b.toString();
     }
 
     public com.benjagest.ui.model.CustomerExtendedEntry updateCustomerExtended(
