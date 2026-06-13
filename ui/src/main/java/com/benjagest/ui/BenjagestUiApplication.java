@@ -2051,6 +2051,7 @@ public class BenjagestUiApplication extends Application {
                 new TableColumn<>(t("taxcal.col.due"));
         cDue.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().dueDate()));
         cDue.setPrefWidth(110);
+        cDue.setComparator(ISO_DATE_COMPARATOR);
         TableColumn<com.benjagest.ui.model.TaxCalendarEventEntry, String> cDesc =
                 new TableColumn<>(t("taxcal.col.desc"));
         cDesc.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().description()));
@@ -2167,6 +2168,7 @@ public class BenjagestUiApplication extends Application {
                 new TableColumn<>(t("tpb.invoices.col.date"));
         cDate.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().invoiceDate()));
         cDate.setPrefWidth(110);
+        cDate.setComparator(ISO_DATE_COMPARATOR);
         TableColumn<com.benjagest.ui.model.SalesInvoiceSummary, String> cCust =
                 new TableColumn<>(t("tpb.invoices.col.customer"));
         cCust.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().customerLegalName()));
@@ -20256,11 +20258,13 @@ public class BenjagestUiApplication extends Application {
         colStart.setCellValueFactory(c -> new SimpleStringProperty(
                 c.getValue().startDate() == null ? "" : c.getValue().startDate().toString()));
         colStart.setPrefWidth(110);
+        colStart.setComparator(ISO_DATE_COMPARATOR);
         TableColumn<com.benjagest.ui.model.ContractEntry, String> colEnd =
                 new TableColumn<>(t("labor.contracts.col.end"));
         colEnd.setCellValueFactory(c -> new SimpleStringProperty(
                 c.getValue().endDate() == null ? "" : c.getValue().endDate().toString()));
         colEnd.setPrefWidth(110);
+        colEnd.setComparator(ISO_DATE_COMPARATOR);
         TableColumn<com.benjagest.ui.model.ContractEntry, String> colSalary =
                 new TableColumn<>(t("labor.contracts.col.salary"));
         colSalary.setCellValueFactory(c -> new SimpleStringProperty(
@@ -22045,12 +22049,14 @@ public class BenjagestUiApplication extends Application {
                 c.getValue().grossAmount() == null ? "0"
                         : c.getValue().grossAmount().toPlainString())));
         cGross.setPrefWidth(120);
+        cGross.setComparator(NUMERIC_STRING_COMPARATOR);
         TableColumn<com.benjagest.ui.model.PortalPayslip, String> cNet =
                 new TableColumn<>(t("portal.payslips.col.net"));
         cNet.setCellValueFactory(c -> new SimpleStringProperty(money(
                 c.getValue().netAmount() == null ? "0"
                         : c.getValue().netAmount().toPlainString())));
         cNet.setPrefWidth(120);
+        cNet.setComparator(NUMERIC_STRING_COMPARATOR);
         TableColumn<com.benjagest.ui.model.PortalPayslip, String> cStatus =
                 new TableColumn<>(t("portal.payslips.col.status"));
         cStatus.setCellValueFactory(c -> new SimpleStringProperty(localizedEnum("payslip_status", c.getValue().status())));
@@ -28272,12 +28278,12 @@ public class BenjagestUiApplication extends Application {
         colNum.setSortable(false);
         colNum.setPrefWidth(60);
 
-        addCol(table, t("accounting.col.date"),
-                v -> v.entryDate() == null ? "" : v.entryDate().toString(), 110);
+        addColSorted(table, t("accounting.col.date"),
+                v -> v.entryDate() == null ? "" : v.entryDate().toString(), 110, ISO_DATE_COMPARATOR);
         addCol(table, t("accounting.col.concept"),
                 v -> v.concept() == null ? "" : v.concept(), 320);
-        addCol(table, t("accounting.col.debit_total"),
-                v -> v.totalDebit() == null ? "" : v.totalDebit().toString(), 110);
+        addColSorted(table, t("accounting.col.debit_total"),
+                v -> v.totalDebit() == null ? "" : v.totalDebit().toString(), 110, NUMERIC_STRING_COMPARATOR);
         addCol(table, t("accounting.col.status"),
                 v -> v.status() == null ? "" : t("accounting.status." + v.status()), 110);
 
@@ -29082,11 +29088,11 @@ public class BenjagestUiApplication extends Application {
         javafx.scene.control.TableView<com.benjagest.ui.model.SalesInvoiceSummary> table =
                 new javafx.scene.control.TableView<>();
         addCol(table, t("billing.col.number"), v -> v.invoiceNumber() == null ? "" : v.invoiceNumber(), 130);
-        addCol(table, t("billing.col.date"), v -> v.invoiceDate() == null ? "" : v.invoiceDate(), 100);
+        addColSorted(table, t("billing.col.date"), v -> v.invoiceDate() == null ? "" : v.invoiceDate(), 100, ISO_DATE_COMPARATOR);
         addCol(table, t("billing.col.customer"), v -> v.customerLegalName() == null ? "" : v.customerLegalName(), 240);
         addCol(table, t("billing.col.type"), v -> localizedEnum("invoice_type", v.invoiceType()), 90);
-        addCol(table, t("billing.col.total"), v -> v.total() == null ? "" : v.total().toString(), 110);
-        addCol(table, t("billing.col.paid"), v -> v.paidAmount() == null ? "" : v.paidAmount().toString(), 100);
+        addColSorted(table, t("billing.col.total"), v -> v.total() == null ? "" : v.total().toString(), 110, NUMERIC_STRING_COMPARATOR);
+        addColSorted(table, t("billing.col.paid"), v -> v.paidAmount() == null ? "" : v.paidAmount().toString(), 100, NUMERIC_STRING_COMPARATOR);
         addCol(table, t("billing.col.status"),
                 v -> v.status() == null ? "" : t("accounting.status." + v.status()), 110);
         addCol(table, t("billing.col.payment_status"),
@@ -29278,7 +29284,7 @@ public class BenjagestUiApplication extends Application {
         addCol(table, t("labor.col.name"), v -> v.fullName() == null ? "" : v.fullName(), 220);
         addCol(table, t("labor.col.nif"), v -> v.taxIdentifier() == null ? "" : v.taxIdentifier(), 110);
         addCol(table, t("labor.col.regime"), v -> localizedEnum("ss_regime", v.ssRegime()), 110);
-        addCol(table, t("labor.col.hire_date"), v -> v.hireDate() == null ? "" : v.hireDate().toString(), 100);
+        addColSorted(table, t("labor.col.hire_date"), v -> v.hireDate() == null ? "" : v.hireDate().toString(), 100, ISO_DATE_COMPARATOR);
         addCol(table, t("labor.col.active"), v -> v.active() ? "✓" : "✗", 70);
 
         Button refresh = new Button(t("accounting.action.refresh"));
@@ -29318,8 +29324,8 @@ public class BenjagestUiApplication extends Application {
         addCol(table, t("tax.col.month"), v -> v.periodMonth() == null ? "" : String.valueOf(v.periodMonth()), 60);
         addCol(table, t("tax.col.status"),
                 v -> v.status() == null ? "" : t("tax.filing_status." + v.status()), 110);
-        addCol(table, t("tax.col.amount"), v -> v.totalAmount() == null ? "" : v.totalAmount().toString(), 120);
-        addCol(table, t("tax.col.deadline"), v -> v.deadlineAt() == null ? "" : v.deadlineAt().toString(), 110);
+        addColSorted(table, t("tax.col.amount"), v -> v.totalAmount() == null ? "" : v.totalAmount().toString(), 120, NUMERIC_STRING_COMPARATOR);
+        addColSorted(table, t("tax.col.deadline"), v -> v.deadlineAt() == null ? "" : v.deadlineAt().toString(), 110, ISO_DATE_COMPARATOR);
 
         Button refresh = new Button(t("accounting.action.refresh"));
         refresh.setOnAction(e -> loadClientFilings(table));
@@ -29350,6 +29356,21 @@ public class BenjagestUiApplication extends Application {
         javafx.scene.control.TableColumn<T, String> c = new javafx.scene.control.TableColumn<>(header);
         c.setPrefWidth(width);
         c.setCellValueFactory(cd -> new javafx.beans.property.SimpleStringProperty(getter.apply(cd.getValue())));
+        table.getColumns().add(c);
+    }
+
+    /**
+     * VG-FULL-SCAN-2 — Variante de {@link #addCol} con comparador de
+     * ordenacion para columnas numericas (importes) o de fecha. Sin
+     * esto JavaFX ordena como texto y "10" cae antes de "9".
+     */
+    private <T> void addColSorted(javafx.scene.control.TableView<T> table, String header,
+                                    java.util.function.Function<T, String> getter, double width,
+                                    java.util.Comparator<String> comparator) {
+        javafx.scene.control.TableColumn<T, String> c = new javafx.scene.control.TableColumn<>(header);
+        c.setPrefWidth(width);
+        c.setCellValueFactory(cd -> new javafx.beans.property.SimpleStringProperty(getter.apply(cd.getValue())));
+        c.setComparator(comparator);
         table.getColumns().add(c);
     }
 
@@ -30563,6 +30584,7 @@ public class BenjagestUiApplication extends Application {
                 new TableColumn<>(t("labor.shifts.col.date"));
         cDate.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().logDate()));
         cDate.setPrefWidth(110);
+        cDate.setComparator(ISO_DATE_COMPARATOR);
         TableColumn<com.benjagest.ui.model.WorkLogEntry, String> cEmp =
                 new TableColumn<>(t("labor.shifts.col.employee"));
         cEmp.setCellValueFactory(c -> new SimpleStringProperty(
@@ -30573,6 +30595,7 @@ public class BenjagestUiApplication extends Application {
         cMin.setCellValueFactory(c -> new SimpleStringProperty(
                 String.valueOf(c.getValue().minutesWorked())));
         cMin.setPrefWidth(90);
+        cMin.setComparator(NUMERIC_STRING_COMPARATOR);
         TableColumn<com.benjagest.ui.model.WorkLogEntry, String> cDesc =
                 new TableColumn<>(t("labor.shifts.col.description"));
         cDesc.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().description()));
@@ -30587,6 +30610,7 @@ public class BenjagestUiApplication extends Application {
                 c.getValue().billableAmount() == null ? ""
                         : money(c.getValue().billableAmount().toPlainString())));
         cAmount.setPrefWidth(100);
+        cAmount.setComparator(NUMERIC_STRING_COMPARATOR);
         TableColumn<com.benjagest.ui.model.WorkLogEntry, String> cStatus =
                 new TableColumn<>(t("labor.shifts.col.status"));
         cStatus.setCellValueFactory(c -> new SimpleStringProperty(localizedEnum("worklog_status", c.getValue().status())));
