@@ -254,21 +254,36 @@ public class PayslipService {
                     + " esté activo y empiece antes de ese mes.");
         }
 
-        // 1) Bruto mensual = bruto anual / (12 + pagas extras prorratables)
-        //    Si las pagas extras no se prorratean, dividir solo entre 12 y
-        //    las pagas extras se calculan aparte como nóminas EXTRA_*.
-        int divisor = req.extraProratedOrDefault() ? 12 + contract.annualBonuses : 12;
+        String type = StringUtils.hasText(req.payslipType()) ? req.payslipType() : "MONTHLY";
+
+        // 1) Devengo del periodo (bruto pagado este mes). Prorrateo de pagas
+        //    extras (art. 31 ET): si se prorratea (12 pagas) -> anual/12; si
+        //    no (14 pagas, default legal salvo convenio) -> anual/(12+extras)
+        //    y las extras se pagan como nóminas EXTRA_*.
+        int divisor = req.extraProratedOrDefault() ? 12 : (12 + contract.annualBonuses);
         BigDecimal gross = contract.grossSalary
                 .divide(BigDecimal.valueOf(divisor), 2, RoundingMode.HALF_UP);
 
-        // 2) Desglose de cotización a la Seguridad Social sobre la base
-        //    (= bruto, simplificación; en realidad hay topes mín/máx).
+        // 2) Base de cotización a la Seguridad Social. SIEMPRE incluye la
+        //    prorrata de las pagas extras = anual/12 (art. 147 LGSS / RD
+        //    2064/1995), con independencia de en cuántas pagas se cobre.
+        //    Las pagas EXTRA_* NO cotizan aparte (su prorrata ya está en la
+        //    base mensual). BONUS/SETTLEMENT cotizan sobre su importe.
+        //    (Simplificación: sin topes mín/máx por grupo de cotización.)
+        BigDecimal cotizationBase;
+        if ("MONTHLY".equals(type)) {
+            cotizationBase = contract.grossSalary.divide(BigDecimal.valueOf(12), 2, RoundingMode.HALF_UP);
+        } else if ("EXTRA_SUMMER".equals(type) || "EXTRA_CHRISTMAS".equals(type)) {
+            cotizationBase = BigDecimal.ZERO;
+        } else {
+            cotizationBase = gross;
+        }
         BigDecimal atEp = contract.atEpPercent != null && contract.atEpPercent.signum() >= 0
                 ? contract.atEpPercent : AT_EP_DEFAULT;
-        SsBreakdown ss = computeSs(gross, atEp);
+        SsBreakdown ss = computeSs(cotizationBase, atEp);
         BigDecimal ssEmployee = ss.employeeTotal();
 
-        // 3) IRPF
+        // 3) IRPF sobre el devengo (bruto pagado en el periodo).
         BigDecimal irpfPct = contract.irpfPercent != null && contract.irpfPercent.signum() > 0
                 ? contract.irpfPercent
                 : computeIrpfPercent(contract.grossSalary, req.year());
@@ -280,8 +295,6 @@ public class PayslipService {
 
         // 4) Líquido
         BigDecimal net = gross.subtract(ssEmployee).subtract(irpf).subtract(otherDeductions);
-
-        String type = StringUtils.hasText(req.payslipType()) ? req.payslipType() : "MONTHLY";
 
         // Si ya existe una para (employee, year, month, type), actualizar
         String existingId = jdbcTemplate.query("""
@@ -338,7 +351,7 @@ public class PayslipService {
             // fuera, una excepción suya marcaría la transacción de la
             // nómina como rollback-only y reventaría el cálculo).
             try {
-                upsertContributions(req.employeeId(), req.year(), req.month(), gross, ss);
+                upsertContributions(req.employeeId(), req.year(), req.month(), cotizationBase, ss);
                 String empName = employeeName(req.employeeId());
                 journalService.createAccrual(new PayslipJournalEntryService.PayslipAccrual(
                         id, req.employeeId(), empName, req.year(), req.month(), gross, irpf),
@@ -595,7 +608,9 @@ public class PayslipService {
             Boolean includeExtraProrated, BigDecimal otherDeductions, String notes
     ) {
         public boolean extraProratedOrDefault() {
-            return includeExtraProrated == null || includeExtraProrated;
+            // Default legal: 14 pagas (NO prorrateado) salvo que el convenio
+            // lo permita y se marque la casilla. Art. 31 ET.
+            return includeExtraProrated != null && includeExtraProrated;
         }
     }
 

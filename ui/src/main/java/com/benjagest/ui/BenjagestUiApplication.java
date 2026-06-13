@@ -19475,7 +19475,8 @@ public class BenjagestUiApplication extends Application {
         typeCombo.getSelectionModel().select("MONTHLY");
 
         CheckBox extraProrated = new CheckBox(t("labor.payslips.calc.extra_prorated"));
-        extraProrated.setSelected(true);
+        // Default legal: 14 pagas (sin prorratear) salvo convenio. Art. 31 ET.
+        extraProrated.setSelected(false);
 
         TextField otherField = new TextField();
         otherField.setPromptText(t("labor.payslips.calc.other_deductions.prompt"));
