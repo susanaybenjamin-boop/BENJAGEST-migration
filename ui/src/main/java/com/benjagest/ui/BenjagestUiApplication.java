@@ -16118,6 +16118,13 @@ public class BenjagestUiApplication extends Application {
             case "labor.payslips.status.CANCELLED" -> "Cancelled";
             case "labor.payslips.action.calculate" -> "Calculate payslip";
             case "labor.payslips.action.pay" -> "Mark as paid";
+            case "labor.payslips.action.batch" -> "Batch to target";
+            case "labor.payslips.batch.title" -> "Generate payslips to a target salary";
+            case "labor.payslips.batch.hint" -> "For each selected employee, the plus needed to reach the target is computed and the payslip is generated. Same gross → same plus; same net → different plus per family situation.";
+            case "labor.payslips.batch.employees" -> "Employees (same category usually):";
+            case "labor.payslips.batch.generate" -> "Generate payslips";
+            case "labor.payslips.batch.none_selected" -> "Select at least one employee.";
+            case "labor.payslips.batch.done" -> "{n} payslip(s) generated.";
             case "labor.payslips.action.pdf" -> "Download PDF";
             case "labor.payslips.action.email" -> "Send by email";
             case "labor.payslips.action.delete" -> "Delete";
@@ -16553,6 +16560,13 @@ public class BenjagestUiApplication extends Application {
             case "labor.payslips.status.CANCELLED" -> "Cancelada";
             case "labor.payslips.action.calculate" -> "Calcular nomina";
             case "labor.payslips.action.pay" -> "Marcar pagada";
+            case "labor.payslips.action.batch" -> "Lote a objetivo";
+            case "labor.payslips.batch.title" -> "Generar nóminas a un sueldo objetivo";
+            case "labor.payslips.batch.hint" -> "Para cada empleado seleccionado se calcula el plus necesario para llegar al objetivo y se genera la nómina. Mismo bruto → mismo plus; mismo neto → plus distinto por situación familiar.";
+            case "labor.payslips.batch.employees" -> "Empleados (normalmente de la misma categoría):";
+            case "labor.payslips.batch.generate" -> "Generar nóminas";
+            case "labor.payslips.batch.none_selected" -> "Selecciona al menos un empleado.";
+            case "labor.payslips.batch.done" -> "{n} nómina(s) generada(s).";
             case "labor.payslips.action.pdf" -> "Descargar PDF";
             case "labor.payslips.action.email" -> "Enviar por email";
             case "labor.payslips.action.delete" -> "Borrar";
@@ -19454,6 +19468,10 @@ public class BenjagestUiApplication extends Application {
             showCalculatePayslipDialog(payrollEmployees);
         });
 
+        Button batchBtn = new Button(t("labor.payslips.action.batch"));
+        batchBtn.setGraphic(icon("fas-layer-group"));
+        batchBtn.setOnAction(ev -> showBatchTargetDialog(bundle));
+
         Button payBtn = new Button(t("labor.payslips.action.pay"));
         payBtn.setGraphic(icon("fas-money-check-alt"));
         payBtn.setDisable(true);
@@ -19494,7 +19512,7 @@ public class BenjagestUiApplication extends Application {
             delBtn.setDisable(none || "PAID".equals(nv == null ? "" : nv.status()));
         });
 
-        HBox actions = new HBox(8, calcBtn, payBtn, pdfBtn, emailBtn, delBtn);
+        HBox actions = new HBox(8, calcBtn, batchBtn, payBtn, pdfBtn, emailBtn, delBtn);
         actions.setAlignment(Pos.CENTER_LEFT);
 
         Label hint = new Label(t("labor.payslips.hint"));
@@ -19505,6 +19523,119 @@ public class BenjagestUiApplication extends Application {
         VBox.setVgrow(payslipsTable, Priority.ALWAYS);
         body.setPadding(new Insets(12));
         return screenScroll(body);
+    }
+
+    /**
+     * REPLICAR — generar nóminas en lote para varios empleados a un mismo
+     * sueldo objetivo (bruto o neto). Para cada empleado calcula el "plus"
+     * (mejora voluntaria) con solve-target y genera la nómina. Útil cuando
+     * el empresario quiere que varios de la misma categoría cobren igual.
+     */
+    private void showBatchTargetDialog(LaborBundle bundle) {
+        java.util.Set<String> withContract = bundle.contracts().stream()
+                .map(com.benjagest.ui.model.ContractEntry::employeeId)
+                .collect(java.util.stream.Collectors.toSet());
+        java.util.Map<String, String> catByEmp = new java.util.HashMap<>();
+        for (var c : bundle.contracts()) catByEmp.putIfAbsent(c.employeeId(), c.professionalCategory());
+        var emps = bundle.employees().stream()
+                .filter(e -> e.active() && withContract.contains(e.id())).toList();
+
+        Dialog<ButtonType> d = new Dialog<>();
+        d.setTitle(t("labor.payslips.batch.title"));
+        d.getDialogPane().getButtonTypes().add(ButtonType.CLOSE);
+
+        int yNow = java.time.LocalDate.now().getYear();
+        ComboBox<Integer> yearCombo = new ComboBox<>();
+        for (int y = yNow + 1; y >= yNow - 5; y--) yearCombo.getItems().add(y);
+        yearCombo.getSelectionModel().select(Integer.valueOf(yNow));
+        ComboBox<Integer> monthCombo = new ComboBox<>();
+        for (int m = 1; m <= 12; m++) monthCombo.getItems().add(m);
+        monthCombo.getSelectionModel().select(Integer.valueOf(java.time.LocalDate.now().getMonthValue()));
+
+        ComboBox<String> mode = new ComboBox<>();
+        mode.getItems().addAll("GROSS", "NET");
+        mode.setConverter(new javafx.util.StringConverter<>() {
+            @Override public String toString(String m) {
+                return "GROSS".equals(m) ? t("labor.payslips.calc.target.gross")
+                        : t("labor.payslips.calc.target.net");
+            }
+            @Override public String fromString(String s) { return null; }
+        });
+        mode.getSelectionModel().select("NET");
+        TextField targetField = new TextField();
+        targetField.setPromptText(t("labor.payslips.calc.target.prompt"));
+        targetField.setPrefWidth(120);
+
+        VBox empBox = new VBox(4);
+        java.util.Map<String, CheckBox> checks = new java.util.HashMap<>();
+        for (var e : emps) {
+            String cat = catByEmp.getOrDefault(e.id(), "");
+            CheckBox cb = new CheckBox(e.fullName()
+                    + (cat == null || cat.isBlank() ? "" : "   (" + cat + ")"));
+            checks.put(e.id(), cb);
+            empBox.getChildren().add(cb);
+        }
+        ScrollPane empScroll = new ScrollPane(empBox);
+        empScroll.setFitToWidth(true);
+        empScroll.setPrefHeight(160);
+
+        Label status = new Label(t("labor.payslips.batch.hint"));
+        status.getStyleClass().add("settings-hint");
+        status.setWrapText(true);
+        Button genBtn = new Button(t("labor.payslips.batch.generate"));
+        genBtn.getStyleClass().add("button-primary");
+        genBtn.setOnAction(ev -> {
+            var targets = emps.stream().filter(e -> checks.get(e.id()).isSelected()).toList();
+            if (targets.isEmpty()) { status.setText(t("labor.payslips.batch.none_selected")); return; }
+            java.math.BigDecimal target = parseDecSafe(targetField.getText());
+            if (target == null) { status.setText(t("labor.payslips.calc.target.prompt")); return; }
+            int yr = yearCombo.getValue(), mo = monthCombo.getValue();
+            String modeV = mode.getValue();
+            Task<String> tk = new Task<>() {
+                @Override protected String call() throws Exception {
+                    int ok = 0;
+                    StringBuilder errs = new StringBuilder();
+                    for (var e : targets) {
+                        try {
+                            java.math.BigDecimal plus = laborApiClient.solveTargetPlus(
+                                    e.id(), yr, mo, "MONTHLY", false, modeV, target, java.util.List.of());
+                            laborApiClient.calculatePayslip(e.id(), yr, mo, "MONTHLY", false, null, null,
+                                    java.util.List.of(new com.benjagest.ui.model.SalaryItemEntry(
+                                            null, t("labor.payslips.calc.target.concept"), "COMPLEMENT",
+                                            plus, true, true)));
+                            ok++;
+                        } catch (Exception ex) {
+                            errs.append("• ").append(e.fullName()).append(": ")
+                                .append(humanizeBackendError(ex.getMessage())).append("\n");
+                        }
+                    }
+                    return ok + "||" + errs;
+                }
+            };
+            tk.setOnSucceeded(ev2 -> {
+                String[] parts = tk.getValue().split("\\|\\|", 2);
+                String msg = t("labor.payslips.batch.done").replace("{n}", parts[0]);
+                if (parts.length > 1 && !parts[1].isBlank()) msg += "\n" + parts[1];
+                status.setText(msg);
+            });
+            tk.setOnFailed(ev2 -> status.setText(tk.getException() == null ? "" : tk.getException().getMessage()));
+            start(tk, "payslip-batch");
+        });
+
+        GridPane top = new GridPane();
+        top.setHgap(10); top.setVgap(8);
+        int r = 0;
+        top.add(new Label(t("labor.payslips.calc.year")), 0, r); top.add(yearCombo, 1, r);
+        top.add(new Label(t("labor.payslips.calc.month")), 2, r); top.add(monthCombo, 3, r); r++;
+        top.add(new Label(t("labor.payslips.calc.target.label")), 0, r);
+        top.add(new HBox(8, mode, targetField), 1, r, 3, 1); r++;
+
+        VBox content = new VBox(10, top, new Label(t("labor.payslips.batch.employees")),
+                empScroll, genBtn, status);
+        content.setPadding(new Insets(12));
+        installDialog(d, content);
+        d.showAndWait();
+        showLaborModule();
     }
 
     private void showCalculatePayslipDialog(java.util.List<com.benjagest.ui.model.EmployeeEntry> employees) {
