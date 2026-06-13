@@ -16217,6 +16217,14 @@ public class BenjagestUiApplication extends Application {
             case "labor.contract.editor.vacation" -> "Vacation days";
             case "labor.contract.editor.irpf" -> "IRPF %";
             case "labor.contract.editor.at_ep" -> "Occupational accident % (AT/EP)";
+            case "labor.contract.salary.title" -> "Salary complements";
+            case "labor.contract.salary.hint" -> "Base salary goes in the field above. Add here any extra salary concepts (seniority, voluntary improvement, transport allowance…). Each one can be marked as contributing to Social Security / subject to income tax.";
+            case "labor.contract.salary.add" -> "+ Add complement";
+            case "labor.contract.salary.concept" -> "Concept";
+            case "labor.contract.salary.annual" -> "Annual €";
+            case "labor.contract.salary.cotizes" -> "SS";
+            case "labor.contract.salary.taxable" -> "Tax";
+            case "labor.contract.salary.base_default" -> "Base salary";
             case "labor.contract.editor.workplace" -> "Workplace address";
             case "labor.contract.editor.status" -> "Status";
             case "labor.contract.editor.fail.title" -> "Could not save";
@@ -16621,6 +16629,14 @@ public class BenjagestUiApplication extends Application {
             case "labor.contract.editor.vacation" -> "Vacaciones";
             case "labor.contract.editor.irpf" -> "IRPF %";
             case "labor.contract.editor.at_ep" -> "% Accidentes trabajo (AT/EP)";
+            case "labor.contract.salary.title" -> "Complementos salariales";
+            case "labor.contract.salary.hint" -> "El salario base va en el campo de arriba. Añade aquí los conceptos extra (antigüedad, mejora voluntaria, plus transporte…). Cada uno puede marcarse como que cotiza a la Seguridad Social / tributa por IRPF.";
+            case "labor.contract.salary.add" -> "+ Añadir complemento";
+            case "labor.contract.salary.concept" -> "Concepto";
+            case "labor.contract.salary.annual" -> "Anual €";
+            case "labor.contract.salary.cotizes" -> "SS";
+            case "labor.contract.salary.taxable" -> "IRPF";
+            case "labor.contract.salary.base_default" -> "Salario base";
             case "labor.contract.editor.workplace" -> "Centro de trabajo";
             case "labor.contract.editor.status" -> "Estado";
             case "labor.contract.editor.fail.title" -> "No se pudo guardar";
@@ -21012,7 +21028,8 @@ public class BenjagestUiApplication extends Application {
                 existing == null ? "ACTIVE" : existing.status(),
                 null,
                 state.probationDays,
-                state.pdfModel);
+                state.pdfModel,
+                null); // el asistente no toca los complementos (se editan en el editor)
         Task<com.benjagest.ui.model.ContractEntry> task = new Task<>() {
             @Override protected com.benjagest.ui.model.ContractEntry call() throws Exception {
                 com.benjagest.ui.model.ContractEntry saved = existing == null
@@ -21227,6 +21244,95 @@ public class BenjagestUiApplication extends Application {
         });
     }
 
+    /** Importe del salario base de un contrato (concepto SALARY_BASE) o, si
+     *  no hay desglose, el bruto anual completo. */
+    private java.math.BigDecimal baseSalaryOf(com.benjagest.ui.model.ContractEntry c) {
+        if (c == null) return null;
+        if (c.salaryItems() != null) {
+            for (var it : c.salaryItems()) {
+                if ("SALARY_BASE".equals(it.kind())) return it.annualAmount();
+            }
+        }
+        return c.grossSalary();
+    }
+
+    /** Complementos (todo lo que no es el salario base) de un contrato. */
+    private java.util.List<com.benjagest.ui.model.SalaryItemEntry> complementsOf(
+            com.benjagest.ui.model.ContractEntry c) {
+        java.util.List<com.benjagest.ui.model.SalaryItemEntry> out = new java.util.ArrayList<>();
+        if (c != null && c.salaryItems() != null) {
+            for (var it : c.salaryItems()) {
+                if (!"SALARY_BASE".equals(it.kind())) out.add(it);
+            }
+        }
+        return out;
+    }
+
+    /** Editor de complementos salariales: filas (concepto, importe anual,
+     *  cotiza, tributa) + botón añadir. El salario base va aparte. */
+    private final class SalaryComplementsEditor {
+        final VBox node = new VBox(6);
+        private final VBox rowsBox = new VBox(4);
+        private final java.util.List<Row> rows = new java.util.ArrayList<>();
+
+        private final class Row {
+            final HBox box;
+            final TextField name;
+            final TextField amount;
+            final CheckBox cot;
+            final CheckBox tax;
+            Row(com.benjagest.ui.model.SalaryItemEntry it) {
+                name = new TextField(it.conceptName() == null ? "" : it.conceptName());
+                name.setPromptText(t("labor.contract.salary.concept"));
+                name.setPrefWidth(200);
+                amount = new TextField(it.annualAmount() == null ? "" : it.annualAmount().toPlainString());
+                amount.setPromptText(t("labor.contract.salary.annual"));
+                amount.setPrefWidth(110);
+                cot = new CheckBox(t("labor.contract.salary.cotizes"));
+                cot.setSelected(it.cotizes());
+                tax = new CheckBox(t("labor.contract.salary.taxable"));
+                tax.setSelected(it.taxable());
+                Button del = new Button("✕");
+                del.getStyleClass().add("button-secondary");
+                box = new HBox(8, name, amount, cot, tax, del);
+                box.setAlignment(Pos.CENTER_LEFT);
+                del.setOnAction(e -> { rows.remove(this); rowsBox.getChildren().remove(box); });
+            }
+        }
+
+        SalaryComplementsEditor(java.util.List<com.benjagest.ui.model.SalaryItemEntry> initial) {
+            Label title = new Label(t("labor.contract.salary.title"));
+            title.getStyleClass().add("settings-hint");
+            Label hint = new Label(t("labor.contract.salary.hint"));
+            hint.getStyleClass().add("settings-hint");
+            hint.setWrapText(true);
+            Button add = new Button(t("labor.contract.salary.add"));
+            add.getStyleClass().add("button-secondary");
+            add.setOnAction(e -> addRow(new com.benjagest.ui.model.SalaryItemEntry(
+                    null, "", "COMPLEMENT", null, true, true)));
+            node.getChildren().addAll(title, hint, rowsBox, add);
+            if (initial != null) for (var it : initial) addRow(it);
+        }
+
+        private void addRow(com.benjagest.ui.model.SalaryItemEntry it) {
+            Row r = new Row(it);
+            rows.add(r);
+            rowsBox.getChildren().add(r.box);
+        }
+
+        java.util.List<com.benjagest.ui.model.SalaryItemEntry> getComplements() {
+            java.util.List<com.benjagest.ui.model.SalaryItemEntry> out = new java.util.ArrayList<>();
+            for (Row r : rows) {
+                String nm = r.name.getText() == null ? "" : r.name.getText().trim();
+                if (nm.isEmpty()) continue;
+                out.add(new com.benjagest.ui.model.SalaryItemEntry(
+                        null, nm, "COMPLEMENT", parseDecSafe(r.amount.getText()),
+                        r.cot.isSelected(), r.tax.isSelected()));
+            }
+            return out;
+        }
+    }
+
     private void showContractEditor(com.benjagest.ui.model.EmployeeEntry employee,
                                      com.benjagest.ui.model.ContractEntry existing) {
         Dialog<ButtonType> dialog = new Dialog<>();
@@ -21246,8 +21352,9 @@ public class BenjagestUiApplication extends Application {
                 ? "" : existing.endDate().toString());
         TextField hoursField = new TextField(existing == null || existing.weeklyHours() == null
                 ? "40" : existing.weeklyHours().toPlainString());
-        TextField salaryField = new TextField(existing == null || existing.grossSalary() == null
-                ? "" : existing.grossSalary().toPlainString());
+        java.math.BigDecimal baseSal = baseSalaryOf(existing);
+        TextField salaryField = new TextField(baseSal == null ? "" : baseSal.toPlainString());
+        SalaryComplementsEditor compEditor = new SalaryComplementsEditor(complementsOf(existing));
         TextField bonusesField = new TextField(existing == null || existing.annualBonuses() == null
                 ? "2" : existing.annualBonuses().toString());
         TextField vacationField = new TextField(existing == null || existing.vacationDays() == null
@@ -21281,9 +21388,17 @@ public class BenjagestUiApplication extends Application {
         g.add(new Label(t("labor.contract.editor.at_ep")), 0, row); g.add(atEpField, 1, row); row++;
         g.add(new Label(t("labor.contract.editor.workplace")), 0, row); g.add(workplaceField, 1, row, 3, 1);
 
-        installDialog(dialog, g);
+        Separator sep = new Separator();
+        VBox editorBox = new VBox(10, g, sep, compEditor.node);
+        installDialog(dialog, editorBox);
         dialog.showAndWait().ifPresent(bt -> {
             if (bt != saveBt) return;
+            // Conceptos: salario base (campo) + complementos (editor).
+            java.util.List<com.benjagest.ui.model.SalaryItemEntry> items = new java.util.ArrayList<>();
+            items.add(new com.benjagest.ui.model.SalaryItemEntry(
+                    null, t("labor.contract.salary.base_default"), "SALARY_BASE",
+                    parseDecSafe(salaryField.getText()), true, true));
+            items.addAll(compEditor.getComplements());
             com.benjagest.ui.model.ContractEntry payload = new com.benjagest.ui.model.ContractEntry(
                     existing == null ? null : existing.id(),
                     employee.id(),
@@ -21304,7 +21419,8 @@ public class BenjagestUiApplication extends Application {
                     statusCombo.getValue(),
                     null,
                     existing == null ? null : existing.probationDays(),
-                    existing == null ? null : existing.pdfModel());
+                    existing == null ? null : existing.pdfModel(),
+                    items);
             Task<com.benjagest.ui.model.ContractEntry> task = new Task<>() {
                 @Override protected com.benjagest.ui.model.ContractEntry call() throws Exception {
                     return existing == null

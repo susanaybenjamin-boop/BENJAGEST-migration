@@ -24,5 +24,6 @@ public record ContractEntry(
         String status,
         String terminationReason,
         Integer probationDays,
-        String pdfModel
+        String pdfModel,
+        java.util.List<SalaryItemEntry> salaryItems
 ) {}
