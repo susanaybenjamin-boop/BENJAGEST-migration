@@ -1,6 +1,6 @@
 # Backlog operativo BENJAGEST
 
-> **Última actualización:** 2026-06-12 noche (bloque TPB completo V96–V105 + UIs autónomas + Magic Link/revocación + barrido i18n enums). Sección nueva al principio.
+> **Última actualización:** 2026-06-13 (bloque NOM nómina V106 + pasada de marcado ✅ de items que estaban cerrados pero seguían como ⬜). Sección NOM al principio.
 >
 > **Forma de trabajo (junio 2026):** Benjamin lidera y decide. Pablo solo entra de uvas a peras desde 05-30. Todo el trabajo va por `feat/Benjamin` → prueba local → commit → merge `--no-ff` a `develop`. Cada item cerrado lleva commit hash + fecha. **Regla 10.bis de CLAUDE.md aplica siempre: verificar código antes de tocar.**
 >
@@ -70,11 +70,11 @@ Nóminas; afinar topes de cotización; pagas extra.
 
 ## 📊 Resumen ejecutivo
 
-- **Cerrado a fecha de hoy**: bloque VeriFactu / Facturación + Contabilidad PGC PYMES completo + RD 8/2019 fichaje legal + Asesoría↔cliente con sidebar dual + **EQUIPO S1** + exports verificables (audit + SIF + fichajes) + L4 contratos hasta CTR-2 + PORT-1..5 de junio 10.
-- **🔴 Crítico abierto**: CTR-4 (PDF contrato SEPE firmable), JORNADAS UI completa, MOBILE-EMPLEADO (decisión estructural).
-- **🟠 Alta abierta**: Modelos AEAT 100/180/200/411, UI asesoría↔cliente (mensajes/docs/notif), Payrolls UI dedicada, Conector DEHú/SS RED reales.
-- **🟡 Media abierta**: Reconciliación bancaria asistida, Multi-allocation pagos, CENTROS-MAP, REC-IGNORE, Dashboard widgets, Backup local, OCR PDFs.
-- **🟢 Baja abierta**: Análisis BOE, Email personal OAuth.
+- **Cerrado a fecha de hoy**: bloque VeriFactu / Facturación + Contabilidad PGC PYMES completo + RD 8/2019 fichaje legal + Asesoría↔cliente con sidebar dual y módulo Comunicación + **EQUIPO S1** + exports verificables (audit + SIF + fichajes) + bloque CTR contratos completo (CTR-1..7) + PORT-1..5 + bloque TPB (facturación por tercero + Magic Link/revocación) + UIs autónomas (PANORAMA, BOE, Backup, Multi-allocation, Rec. bancaria, Cal. fiscal) + **bloque NOM (ciclo mensual de nómina con asientos)**.
+- **🔴 Crítico abierto**: Modelos AEAT 100/180/200/411; VeriFactu estricto (XAdES + SOAP + alta SIF en sede AEAT) — todo **bloqueado por certificado FNMT real**; decisiones estructurales MOBILE-EMPLEADO + JORNADAS UI.
+- **🟠 Alta abierta**: Reporte coste empresa/empleado, entrega nóminas con firma + incidencias, conectores DEHú/SS RED reales (necesitan certificado).
+- **🟡 Media abierta**: Reconciliación ML "casi-iguales", régimen especial IVA/prorrata/criterio caja, dashboard widgets, CENTROS-MAP interactivo, OCR PDFs escaneados, VG-FULL-SCAN restante, workflow partes de día (ligado a app móvil).
+- **🟢 Baja abierta**: Alertas de seguridad, Email personal OAuth, PWA (cubierto por MOBILE-EMPLEADO).
 
 ---
 
@@ -93,11 +93,11 @@ Nóminas; afinar topes de cotización; pagas extra.
 | ✅ **NAV-CLIENT-BACK** | `3c886bd` | En modo cliente, "Nueva factura" ya no deja atrapado: "Volver"/"Cancelar"/tras emitir reconstruyen la pantalla del cliente con sus tabs. Auditado: era el único editor que reemplazaba el centro desde modo cliente. |
 | ✅ **VG-FULL-SCAN-2** | `9b0b0a1` | Comparadores de ordenación añadidos en columnas numéricas/fecha restantes (contabilidad, facturación cliente, empleados, AEAT, portal nóminas, contratos, partes, calendario fiscal). Helper `addColSorted`. |
 
-### 🔎 Hallazgos de la sesión (para decisión de Benjamin)
+### 🔎 Hallazgos de la sesión — resueltos en NOM (2026-06-13)
 
-- **Payrolls UI (#43)**: la UI YA EXISTE y es completa (calcular/pagar/PDF/email/eliminar). El único fleco del "ciclo completo" es el **asiento contable de nómina** al pagar (cuentas 640/642/476/4751/465). NO atacado en autónomo — toca PGC legal. **Decisión Benjamin**: ¿qué cuentas y en qué momento se contabiliza?
-- **Reporte coste empresa/empleado** (🟠 alta, diferencial 💰): CONTENDO lo tiene (`resumenEmpresario`: coste = bruto + SS empresa, agrupado por empleado). Pero `payslips` en BENJAGEST **no tiene** columna `ss_employer_amount`. Requiere: V106 ADD COLUMN + calcular SS empresa al generar la nómina. **Decisión Benjamin**: ¿% de cotización empresa fijo (~30%) o introducido manualmente por nómina? (varía por CNAE para AT/EP).
-- **Backlog.md desactualizado**: varios items marcados ⬜ ya están cerrados (Mensajes/Documentos/Notificaciones asesoría↔cliente, PANORAMA, CTR-3/5/6/7). Conviene una pasada de marcado ✅ cuando Benjamin valide.
+- ✅ **Payrolls UI / asiento de nómina (#43)**: CERRADO en bloque NOM (ver arriba). Decisiones tomadas con Benjamin: SS empresa vía cuotas TC, 2 asientos (devengo+pago), AT/EP por contrato.
+- 🟠 **Reporte coste empresa/empleado**: AHORA FACTIBLE — el bloque NOM ya escribe la SS empresa en `social_security_contributions` por empleado/periodo. Falta solo construir el informe (coste = bruto + Σ EMPLOYER_* cuotas TC, agrupado por empleado). Pendiente en Alta prioridad.
+- ✅ **Backlog desactualizado**: pasada de marcado ✅ hecha en esta misma sesión (06-13). Mensajes/Documentos/Notificaciones, PANORAMA, CTR-3/5/6/7, Backup, Multi-allocation, Rec. bancaria, Cal. fiscal, BOE, GEO-FICHAR, REC-IGNORE → todos cerrados.
 
 ---
 
@@ -334,7 +334,7 @@ Nóminas; afinar topes de cotización; pagas extra.
 
 ## ⚖️ Legal obligatorio
 
-- ⭐ ⬜ ⚖️ **CTR-4 — PDF SEPE oficial firmable**. El wizard de CTR-2 tiene combo `UNIFIED_2022 / BY_CODE` pero no genera nada. **WebSearch legal previo obligatorio** sobre Estatuto Trabajadores (RDLeg 2/2015), reforma 2022 (RD-Ley 32/2021), reformas 2024-2025, modelos SEPE oficiales. OpenPDF ya en `pom.xml`.
+- ✅ ⚖️ **CTR-4 — PDF SEPE oficial firmable** *(cerrado — `ContractPdfGenerator` con modelo UNIFIED_2022 / BY_CODE)*.
 - ⬜ ⚖️ **VF-SIGN-XADES-AEAT estricto** — ampliar `XmlSignerService` para producir XAdES-EPES estricto sobre XML canónico AEAT (XSD oficial). Incluye `SignaturePolicyIdentifier` + `SignedSignatureProperties` + `SigningCertificate`. Requiere FNMT real.
 - ⬜ ⚖️ **VF3-SOAP afinado** — parseo real respuesta AEAT (Aceptado / AceptadoConErrores / Rechazado). Requiere FNMT real + alta SIF en sede AEAT.
 - ⬜ ⚖️ **Obligaciones fabricante VeriFactu** — registro como SIF en sede AEAT + documento declaraciones responsables + página pública de cumplimiento. Atacar antes de despliegue comercial.
@@ -349,24 +349,23 @@ Nóminas; afinar topes de cotización; pagas extra.
 
 # 🟠 PENDIENTE — ALTA PRIORIDAD
 
-## 💰 UI asesoría↔cliente (backend listo, falta UI)
+## 💰 UI asesoría↔cliente
 
-- ⬜ 💰 **Mensajes asesoría↔cliente UI** — backend V77 `advisory_messages` LISTO. Falta: pestaña sidebar "Mensajes" con timeline + badge no leídos.
-- ⬜ 💰 **Documentos compartidos UI** — backend V78 `advisory_documents` LISTO. Falta: pestaña con upload multipart real + lista por estado (UPLOADED/REVIEWED/ACCEPTED/REJECTED).
-- ⬜ 💰 **Notificaciones asesor UI badge sidebar** — backend V78 `advisory_notifications` LISTO. Falta: badge `countUnread` + dropdown + marcar leído.
-- ⬜ 💰 **Vista panorámica asesoría** — cross-client dashboard con KPIs agregados + vencimientos por cliente.
+- ✅ 💰 **Mensajes / Documentos / Notificaciones** — cerrado en módulo **Comunicación** (COMM-MOD/COMM-LINK, V77/V78). Timeline + upload multipart + badge no leídos. Solo visible si hay vínculo asesoría↔empresario.
+- ✅ 💰 **Vista panorámica asesoría** — cerrado (PANORAMA-ASESORIA, `546792c`): 5 KPIs cruzados de cartera.
 
 ## Empleados / Nóminas
 
-- ⬜ ⚖️ **Payrolls UI dedicada** — `PayslipService` + `PayslipPdfGenerator` existen. Falta módulo OWNER con ciclo mensual: generar borrador → ver detalle → validar → asiento contable mensual + integración SS RED.
-- ⬜ **Entrega de nóminas con firma trabajador** — fecha + vía.
-- ⬜ **Incidencias de nómina**.
-- ⬜ **Reporte coste empresa por empleado**.
+- ✅ ⚖️ **Payrolls — ciclo mensual** — cerrado en bloque NOM (calcular/pagar/PDF/email + asientos devengo/pago + SS empresa vía cuotas TC).
+- ⬜ 💰 **Reporte coste empresa por empleado** — AHORA FACTIBLE (la SS empresa ya está en cuotas TC). Falta construir el informe: coste = bruto + Σ EMPLOYER_* por empleado/periodo.
+- ⬜ **Entrega de nóminas con firma trabajador** — fecha + vía (acuse de recibo).
+- ⬜ **Incidencias de nómina** — horas extra, bajas, complementos variables por periodo.
+- ⬜ **Topes de cotización TGSS + pagas extra cotizadas** — afinar el cálculo NOM (hoy base = bruto sin topes; EXTRA_* sin asiento).
 - ⬜ Revisión completa contratos + flujo alta del empleado.
 
 ## ⚖️ RD 8/2019 fichajes extensión
 
-- ⬜ **Geolocalización al fichar** — `work_centers` ya tiene lat/lng/radio_m + geo_policy. Falta verificación en `TimeClockService.punch`.
+- ✅ **Geolocalización al fichar** — cerrado (GEO-FICHAR): verificación en `TimeClockService.punch` contra `work_centers` (lat/lng/radio_m + geo_policy).
 - ⬜ **Sincronización offline batches** (kioskos sin red) — para cuando exista app móvil.
 
 ## ⚖️ Conectores externos reales
@@ -376,10 +375,10 @@ Nóminas; afinar topes de cotización; pagas extra.
 
 ## CTR bloque restante
 
-- ⬜ **CTR-3 — Plantillas reutilizables** (`contract_templates`) — UI "Crear plantilla desde contrato" + "Aplicar plantilla en bloque".
-- ⬜ **CTR-6 — Alertas vencimientos** — cron diario en `dehu_notifications`. Plazos: prueba 7d antes, temporal 30d, anuales 60d.
-- ⬜ **CTR-7 — Anexos** — confidencialidad/no competencia/exclusividad.
-- ⬜ ⚖️ **CTR-5 — XML contrat@ SEPE oficial** — generador XML para alta SEPE.
+- ✅ **CTR-3 — Plantillas reutilizables** (`contract_templates`) — cerrado.
+- ✅ **CTR-6 — Alertas vencimientos** — cerrado (cron + plazos prueba/temporal/anuales).
+- ✅ **CTR-7 — Anexos** — cerrado (confidencialidad/no competencia/exclusividad).
+- ✅ ⚖️ **CTR-5 — XML contrat@ SEPE oficial** — cerrado (`ContractXmlGenerator`).
 
 ---
 
@@ -387,13 +386,13 @@ Nóminas; afinar topes de cotización; pagas extra.
 
 ## Compras / pagos / banco
 
-- ⬜ **Reconciliación bancaria asistida con sugerencias ML** — hoy es por importe+fecha exactos. Sugerir matches "casi-iguales".
-- ⬜ **Gastos recurrentes silenciados** — marcar temporalmente por vacaciones/baja.
-- ⬜ **Multi-allocation pagos** — distribuir 1 pago en varias facturas/trabajos.
+- ✅ **Reconciliación bancaria asistida** — cerrado (REC-BANCARIA, Levenshtein "casi-iguales"). *Refinamiento ML adicional queda como mejora futura.*
+- ✅ **Gastos recurrentes silenciados** — cerrado (REC-IGNORE, V91).
+- ✅ **Multi-allocation pagos** — cerrado (un pago reparte entre N facturas).
 
 ## Fiscal afinado
 
-- ⬜ ⚖️ **Calendario fiscal con vencimientos** — seed oficial AEAT (303/130/347/390…) + alertas automáticas.
+- ✅ ⚖️ **Calendario fiscal con vencimientos** — cerrado (CAL-FISCAL, seed 303/130/111/190/347/390/200 + tabla próximos vencimientos).
 - ⬜ ⚖️ **Régimen especial IVA, prorrata, criterio caja** — catálogo cuentas lo soporta pero no hay UI.
 - ⬜ **CONS-CIERRE** — previsualización del asiento de regularización antes del cierre. Hoy YEAR-CLOSE lo hace en un solo click.
 - ⬜ **Consolidación empresas asociadas** — eliminación operaciones intragrupo. No urgente.
@@ -401,9 +400,9 @@ Nóminas; afinar topes de cotización; pagas extra.
 ## UI/UX
 
 - ⬜ **Dashboard widgets personalizables** — por usuario, activar/desactivar/reordenar.
-- ⬜ ❓ **Backup local automático** — equivalente JavaFX a File System Access API. Necesito decisión: ruta + cron.
-- ⬜ **CENTROS-MAP** — mapa interactivo Leaflet+Nominatim en WebView para seleccionar lat/lng.
-- ⬜ **REC-IGNORE** — botón "Ignorar candidato recurrente". V91 tabla + filtro + UI.
+- ✅ **Backup local automático** — cerrado (BACKUP-LOCAL semanal lunes 03:00 + panel Configuración).
+- ⬜ **CENTROS-MAP** — mapa interactivo Leaflet+Nominatim en WebView para seleccionar lat/lng. *(El botón "Buscar coordenadas" con Nominatim ya está hecho — CENTROS-GEOCODE; falta solo el mapa visual.)*
+- ✅ **REC-IGNORE** — cerrado (botón "Ignorar candidato recurrente", V91).
 - ⬜ Editor calendario event card "Editar"/"Eliminar".
 - ⬜ Auditar otros módulos viejos (customers detail, dashboard CRUDs).
 - ⬜ **VG-FULL-SCAN restante** — ~25 omisiones de NUMERIC_STRING_COMPARATOR / ISO_DATE_COMPARATOR.
@@ -431,7 +430,7 @@ Nóminas; afinar topes de cotización; pagas extra.
 # 🟢 PENDIENTE — BAJA PRIORIDAD
 
 - ⬜ Alertas de seguridad (`security_alerts_180`) — intentos login, accesos sospechosos.
-- ⬜ Análisis BOE (`boe_analysis_180`).
+- ✅ Análisis / Alertas BOE — cerrado (BOE-RSS diario + pantalla dedicada con apertura de PDF oficial).
 - ⬜ Acceso PWA / móvil *(posiblemente cubierto por MOBILE-EMPLEADO)*.
 - ⬜ Email personal via Google OAuth2 — a nivel usuario.
 
@@ -453,10 +452,12 @@ Nóminas; afinar topes de cotización; pagas extra.
 |---|---|---|
 | 🔴 App móvil empleado: stack técnico | MOBILE-EMPLEADO + PORT-2 partes reales | Capacitor (compartir Java backend vía REST) |
 | 🔴 JORNADAS: modelo plantilla-bloques-asignación | PORT-2 UI completa | 1 plantilla = N bloques + adjudicada a M empleados (CONTENDO) |
-| 🟡 Backup local: ruta + cron | ⬜ Backup local | `{userHome}/BENJAGEST-backup/{YYYY-MM-DD}.zip` semanal |
 | 🟡 OCR Tesseract | ⬜ OCR PDFs escaneados | Sí, instalar binario nativo. Hoy PDFs imagen rechazan con 422. |
 | 🟡 CENTROS-MAP | ⬜ Mapa lat/lng | WebView + Leaflet + Nominatim (offline-friendly) |
+| 🟡 Régimen especial IVA / prorrata / criterio caja | UI fiscal afinado | Modelar tras un caso real de cliente que lo necesite |
 | ✅ Hechas | — | — |
+| Nómina: SS empresa + asiento (NOM) | SS vía cuotas TC, 2 asientos, AT/EP por contrato | |
+| Backup local: ruta + cron | semanal lunes 03:00 | |
 | TC-CAL fichaje en festivo | warning amarillo, no bloqueo | |
 | work_logs embebido vs separado | embebido CONTENDO | |
 | Avatar usuario | = logo empresa | |
