@@ -50,7 +50,7 @@ public class EmploymentContractService {
                 SELECT id, employee_id, contract_type, sepe_contract_code,
                        collective_agreement, professional_category, professional_group,
                        start_date, end_date, weekly_hours, gross_salary,
-                       annual_bonuses, vacation_days, irpf_percent,
+                       annual_bonuses, vacation_days, irpf_percent, at_ep_percent,
                        workplace_address, status, termination_reason,
                        probation_days, pdf_model
                   FROM employment_contracts
@@ -75,10 +75,10 @@ public class EmploymentContractService {
                     id, company_id, employee_id, contract_type, sepe_contract_code,
                     collective_agreement, professional_category, professional_group,
                     start_date, end_date, weekly_hours, gross_salary,
-                    annual_bonuses, vacation_days, irpf_percent,
+                    annual_bonuses, vacation_days, irpf_percent, at_ep_percent,
                     workplace_address, status, termination_reason,
                     probation_days, pdf_model
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 id, tenantContext.getCurrentCompanyId(),
                 req.employeeId(), req.contractType(), blank(req.sepeContractCode()),
@@ -89,6 +89,7 @@ public class EmploymentContractService {
                 req.annualBonuses() == null ? 2 : req.annualBonuses(),
                 req.vacationDays() == null ? 30 : req.vacationDays(),
                 req.irpfPercent(),
+                req.atEpPercent() == null ? new BigDecimal("1.50") : req.atEpPercent(),
                 blank(req.workplaceAddress()),
                 StringUtils.hasText(req.status()) ? req.status() : "ACTIVE",
                 blank(req.terminationReason()),
@@ -106,7 +107,7 @@ public class EmploymentContractService {
                    SET contract_type = ?, sepe_contract_code = ?,
                        collective_agreement = ?, professional_category = ?, professional_group = ?,
                        start_date = ?, end_date = ?, weekly_hours = ?, gross_salary = ?,
-                       annual_bonuses = ?, vacation_days = ?, irpf_percent = ?,
+                       annual_bonuses = ?, vacation_days = ?, irpf_percent = ?, at_ep_percent = ?,
                        workplace_address = ?, status = ?, termination_reason = ?,
                        probation_days = ?, pdf_model = ?
                  WHERE id = ? AND company_id = ?
@@ -117,6 +118,7 @@ public class EmploymentContractService {
                 req.startDate(), req.endDate(),
                 req.weeklyHours(), req.grossSalary(),
                 req.annualBonuses(), req.vacationDays(), req.irpfPercent(),
+                req.atEpPercent() == null ? new BigDecimal("1.50") : req.atEpPercent(),
                 blank(req.workplaceAddress()),
                 StringUtils.hasText(req.status()) ? req.status() : "ACTIVE",
                 blank(req.terminationReason()),
@@ -145,7 +147,7 @@ public class EmploymentContractService {
                 SELECT id, employee_id, contract_type, sepe_contract_code,
                        collective_agreement, professional_category, professional_group,
                        start_date, end_date, weekly_hours, gross_salary,
-                       annual_bonuses, vacation_days, irpf_percent,
+                       annual_bonuses, vacation_days, irpf_percent, at_ep_percent,
                        workplace_address, status, termination_reason,
                        probation_days, pdf_model
                   FROM employment_contracts
@@ -170,6 +172,11 @@ public class EmploymentContractService {
                         || req.irpfPercent().compareTo(BigDecimal.valueOf(50)) > 0)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "irpfPercent fuera de rango");
         }
+        if (req.atEpPercent() != null
+                && (req.atEpPercent().signum() < 0
+                        || req.atEpPercent().compareTo(BigDecimal.valueOf(20)) > 0)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "atEpPercent fuera de rango");
+        }
     }
 
     private String blank(String v) { return v == null || v.isBlank() ? null : v.trim(); }
@@ -192,6 +199,7 @@ public class EmploymentContractService {
                 (Integer) rs.getObject("annual_bonuses"),
                 (Integer) rs.getObject("vacation_days"),
                 rs.getBigDecimal("irpf_percent"),
+                rs.getBigDecimal("at_ep_percent"),
                 rs.getString("workplace_address"),
                 rs.getString("status"),
                 rs.getString("termination_reason"),
@@ -206,6 +214,7 @@ public class EmploymentContractService {
             LocalDate startDate, LocalDate endDate,
             BigDecimal weeklyHours, BigDecimal grossSalary,
             Integer annualBonuses, Integer vacationDays, BigDecimal irpfPercent,
+            BigDecimal atEpPercent,
             String workplaceAddress, String status, String terminationReason,
             Integer probationDays, String pdfModel
     ) {}
@@ -216,6 +225,7 @@ public class EmploymentContractService {
             LocalDate startDate, LocalDate endDate,
             BigDecimal weeklyHours, BigDecimal grossSalary,
             Integer annualBonuses, Integer vacationDays, BigDecimal irpfPercent,
+            BigDecimal atEpPercent,
             String workplaceAddress, String status, String terminationReason,
             Integer probationDays, String pdfModel
     ) {}

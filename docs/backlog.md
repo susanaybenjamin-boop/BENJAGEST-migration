@@ -8,6 +8,46 @@
 
 ---
 
+## 2026-06-13 — Bloque NOM (ciclo mensual de nómina) ⚖️
+
+Retomadas las decisiones aparcadas de la tarea #43 (Payrolls UI). Análisis
+conjunto Benjamin + Claude barriendo internet (Orden PJC/297/2026, ejemplos
+de asiento de Sage/Cegid/Wolters Kluwer/Billin).
+
+**Decisiones cerradas (2026-06-13):**
+1. **SS a cargo de la empresa** → se lee enlazando la tabla de cuotas TC
+   (`social_security_contributions`); la nómina la alimenta (es su propósito
+   documentado).
+2. **Asiento contable** → dos asientos: devengo (al calcular) + pago (al
+   marcar pagada). Estructura PGC 640/642 → 476/4751/465 y 465 → 572.
+3. **AT/EP (accidentes de trabajo)** → tipo **por contrato** (varía por CNAE).
+   Columna `at_ep_percent` en `employment_contracts`, default 1,50 %.
+
+**Implementado:**
+- ✅ **NOM-1** — `PayslipService.calculate()` calcula el desglose SS 2026 y
+  hace upsert de las filas TC (EMPLOYEE_* / EMPLOYER_*) del periodo. Solo
+  toca filas DRAFT (respeta FILED/PAID). Solo nóminas MONTHLY.
+- ✅ **NOM-2** — fix SS trabajador **6,35 % → 6,50 %** (faltaba el MEI 2026).
+- ✅ **NOM-3** — `PayslipJournalEntryService` (clon del de ventas): asiento de
+  devengo, leyendo la SS empresa (642) y el acreedor TGSS (476) de las cuotas
+  TC. Idempotente ante recálculos (borra el DRAFT previo).
+- ✅ **NOM-4** — asiento de pago (465 → 572) al marcar pagada; reversión de
+  ambos asientos al borrar la nómina.
+- ✅ **NOM-5** — `at_ep_percent` cableado de punta a punta (migración V106 +
+  EmploymentContractService + ContractEntry/LaborApiClient + ambos editores
+  de contrato en la UI, con i18n ES/EN).
+
+**Limitaciones honestas (documentadas en el javadoc):**
+- Base de cotización = bruto (sin topes mín/máx por categoría TGSS).
+- Desempleo/AT a tipos de indefinido; las pagas extra (EXTRA_*) no generan
+  asiento todavía (cotizan prorrateadas — slice futuro).
+- "Otras deducciones" (embargos/anticipos) quedan fuera del asiento MVP.
+
+**Pendiente / próximo:** mostrar SS empresa + enlace al asiento en la pestaña
+Nóminas; afinar topes de cotización; pagas extra.
+
+---
+
 ## 🗺️ Leyenda visual
 
 | Marcador | Significado |
