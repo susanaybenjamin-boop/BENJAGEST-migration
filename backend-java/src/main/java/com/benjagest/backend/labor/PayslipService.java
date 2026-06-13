@@ -225,8 +225,12 @@ public class PayslipService {
      * Calcula y persiste (o actualiza si ya existía DRAFT/CALCULATED para ese
      * período) una nómina del empleado en el mes/año dado.
      */
-    @Transactional
-    public PayslipView calculate(CalculateRequest req) {
+    /**
+     * Cálculo puro de la nómina (sin persistir). Lo usan {@link #calculate}
+     * (para guardar), {@link #preview} (vista previa) y el solver de objetivo
+     * de sueldo. Lanza 409 si el empleado no tiene contrato activo.
+     */
+    private Computed compute(CalculateRequest req) {
         if (!StringUtils.hasText(req.employeeId())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "employeeId requerido");
         }
@@ -237,7 +241,6 @@ public class PayslipService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "month invalido");
         }
 
-        // Cargar contrato activo del empleado en ese mes
         ContractData contract = resolveActiveContract(req.employeeId(), req.year(), req.month());
         if (contract == null || contract.grossSalary == null) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
@@ -249,31 +252,24 @@ public class PayslipService {
 
         String type = StringUtils.hasText(req.payslipType()) ? req.payslipType() : "MONTHLY";
 
-        // Prorrateo de pagas extras (art. 31 ET): si se prorratea (12 pagas)
-        // -> anual/12; si no (14 pagas, default legal salvo convenio) ->
-        // anual/(12+extras) y las extras se pagan como nóminas EXTRA_*.
+        // Prorrateo de pagas extras (art. 31 ET): 12 pagas -> anual/12; 14 pagas
+        // (default legal) -> anual/(12+extras) y las extras como nóminas EXTRA_*.
         int divisor = req.extraProratedOrDefault() ? 12 : (12 + contract.annualBonuses);
 
-        // 1) Devengos: una línea por concepto salarial del contrato (salario
-        //    base + complementos). Si el contrato no tiene conceptos (legacy),
-        //    un único bloque = bruto anual. Se acumulan los anuales que cotizan
-        //    a la SS y los que tributan por IRPF, por separado.
+        // 1) Devengos: una línea por concepto salarial del contrato.
         List<SalaryConcept> concepts = loadSalaryConcepts(contract.id);
         java.util.List<PayslipLine> lines = new java.util.ArrayList<>();
-        BigDecimal totalAnnual = BigDecimal.ZERO;
         BigDecimal cotizableAnnual = BigDecimal.ZERO;
         BigDecimal taxableAnnual = BigDecimal.ZERO;
         if (!concepts.isEmpty()) {
             for (SalaryConcept c : concepts) {
                 BigDecimal a = c.annual() == null ? BigDecimal.ZERO : c.annual();
-                totalAnnual = totalAnnual.add(a);
                 if (c.cotizes()) cotizableAnnual = cotizableAnnual.add(a);
                 if (c.taxable()) taxableAnnual = taxableAnnual.add(a);
                 lines.add(new PayslipLine(c.name(), c.kind(),
                         a.divide(BigDecimal.valueOf(divisor), 2, RoundingMode.HALF_UP)));
             }
         } else {
-            totalAnnual = contract.grossSalary;
             cotizableAnnual = contract.grossSalary;
             taxableAnnual = contract.grossSalary;
             lines.add(new PayslipLine("Salario bruto del periodo", "SALARY_BASE",
@@ -281,9 +277,7 @@ public class PayslipService {
         }
 
         // Complementos extra de ESTA nómina (dietas, kilometraje, asistencia…):
-        // importe del mes (no anual), se añaden como devengo. Solo suman a la
-        // base de cotización / IRPF si están marcados como que cotizan/tributan
-        // (p. ej. dietas exentas: ni cotizan ni tributan hasta el límite).
+        // importe del mes (no anual). Solo suman a la base SS/IRPF si cotizan/tributan.
         BigDecimal extraCotizable = BigDecimal.ZERO;
         BigDecimal extraTaxable = BigDecimal.ZERO;
         if (req.extraConcepts() != null) {
@@ -299,11 +293,8 @@ public class PayslipService {
         BigDecimal gross = lines.stream().map(PayslipLine::amount)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
-        // 2) Base de cotización a la SS. SIEMPRE incluye la prorrata de pagas
-        //    extras = (cotizable anual)/12 (art. 147 LGSS / RD 2064/1995),
-        //    con independencia de en cuántas pagas se cobre. EXTRA_* NO
-        //    cotizan aparte; BONUS/SETTLEMENT sobre su importe. Solo conceptos
-        //    que cotizan. (Simplificación: sin topes mín/máx por grupo.)
+        // 2) Base de cotización a la SS = (cotizable anual)/12 (incluye prorrata,
+        //    art. 147 LGSS) + extras cotizables del mes. EXTRA_* no cotizan aparte.
         BigDecimal cotizationBase;
         if ("MONTHLY".equals(type)) {
             cotizationBase = cotizableAnnual.divide(BigDecimal.valueOf(12), 2, RoundingMode.HALF_UP)
@@ -319,7 +310,7 @@ public class PayslipService {
         SsBreakdown ss = computeSs(cotizationBase, atEp, rates);
         BigDecimal ssEmployee = ss.employeeTotal();
 
-        // 3) IRPF sobre el devengo tributable (solo conceptos sujetos a IRPF).
+        // 3) IRPF sobre el devengo tributable.
         BigDecimal irpfPct = contract.irpfPercent != null && contract.irpfPercent.signum() > 0
                 ? contract.irpfPercent
                 : computeIrpfPercent(contract.grossSalary, req.year());
@@ -333,6 +324,87 @@ public class PayslipService {
 
         // 4) Líquido
         BigDecimal net = gross.subtract(ssEmployee).subtract(irpf).subtract(otherDeductions);
+
+        return new Computed(contract.id, type, lines, gross, cotizationBase, ss,
+                ssEmployee, irpf, irpfPct, otherDeductions, net);
+    }
+
+    /** Vista previa de una nómina sin guardarla. */
+    public PreviewResult preview(CalculateRequest req) {
+        Computed c = compute(req);
+        BigDecimal employerTotal = c.ss().employerTotal();
+        List<LineView> dev = c.lines().stream()
+                .map(l -> new LineView(l.name(), l.amount())).toList();
+        return new PreviewResult(c.gross(), c.cotizationBase(), c.ssEmployee(), c.irpf(),
+                c.irpfPct(), c.otherDeductions(), c.net(), employerTotal,
+                c.gross().add(employerTotal), dev);
+    }
+
+    public record TargetRequest(
+            String employeeId, int year, int month, String payslipType,
+            Boolean includeExtraProrated, String mode, BigDecimal target,
+            List<ExtraConcept> extraConcepts) {}
+
+    public record TargetResult(BigDecimal plus, PreviewResult preview) {}
+
+    /**
+     * Calcula el "plus" (mejora voluntaria del mes) necesario para llegar a un
+     * sueldo objetivo: BRUTO (resta directa) o NETO (modelo lineal con el % de
+     * IRPF del contrato). Devuelve el importe del plus y la vista previa con él
+     * aplicado, para que el asesor lo añada como complemento.
+     */
+    public TargetResult solveTarget(TargetRequest tr) {
+        if (tr.target() == null || tr.target().signum() <= 0) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Importe objetivo inválido");
+        }
+        CalculateRequest base = new CalculateRequest(tr.employeeId(), tr.year(), tr.month(),
+                tr.payslipType(), tr.includeExtraProrated(), null, null, tr.extraConcepts());
+        Computed c = compute(base);
+
+        BigDecimal plus;
+        if ("GROSS".equalsIgnoreCase(tr.mode())) {
+            plus = tr.target().subtract(c.gross());
+        } else {
+            // NETO: cada € de mejora (cotiza+tributa) deja (1 - eeRate - irpfFrac)
+            // de neto. Modelo lineal con el % IRPF del contrato.
+            SsContributionRatesService.Rates r = ssRatesService.ratesForYear(tr.year());
+            BigDecimal eeRate = r.eeCommon().add(r.eeUnemployment()).add(r.eeTraining()).add(r.eeMei())
+                    .divide(BigDecimal.valueOf(100), 6, RoundingMode.HALF_UP);
+            BigDecimal irpfFrac = c.irpfPct().divide(BigDecimal.valueOf(100), 6, RoundingMode.HALF_UP);
+            BigDecimal factor = BigDecimal.ONE.subtract(eeRate).subtract(irpfFrac);
+            if (factor.signum() <= 0) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT,
+                        "Los tipos no permiten el cálculo inverso (SS+IRPF >= 100%).");
+            }
+            plus = tr.target().subtract(c.net()).divide(factor, 2, RoundingMode.HALF_UP);
+        }
+        if (plus.signum() < 0) plus = BigDecimal.ZERO;
+        plus = plus.setScale(2, RoundingMode.HALF_UP);
+
+        java.util.List<ExtraConcept> withPlus = new java.util.ArrayList<>();
+        if (tr.extraConcepts() != null) withPlus.addAll(tr.extraConcepts());
+        withPlus.add(new ExtraConcept("Mejora voluntaria", plus, true, true));
+        CalculateRequest full = new CalculateRequest(tr.employeeId(), tr.year(), tr.month(),
+                tr.payslipType(), tr.includeExtraProrated(), null, null, withPlus);
+        return new TargetResult(plus, preview(full));
+    }
+
+    /**
+     * Calcula y persiste (o actualiza) una nómina del empleado en el mes/año.
+     */
+    @Transactional
+    public PayslipView calculate(CalculateRequest req) {
+        Computed cmp = compute(req);
+        String type = cmp.type();
+        String contractId = cmp.contractId();
+        java.util.List<PayslipLine> lines = cmp.lines();
+        BigDecimal gross = cmp.gross();
+        BigDecimal cotizationBase = cmp.cotizationBase();
+        SsBreakdown ss = cmp.ss();
+        BigDecimal ssEmployee = cmp.ssEmployee();
+        BigDecimal irpf = cmp.irpf();
+        BigDecimal otherDeductions = cmp.otherDeductions();
+        BigDecimal net = cmp.net();
 
         // Si ya existe una para (employee, year, month, type), actualizar
         String existingId = jdbcTemplate.query("""
@@ -355,7 +427,7 @@ public class PayslipService {
                            status = 'CALCULATED', notes = ?
                      WHERE id = ? AND company_id = ?
                     """,
-                    contract.id, gross, ssEmployee, irpf,
+                    contractId, gross, ssEmployee, irpf,
                     otherDeductions, net,
                     req.notes(),
                     existingId, tenantContext.getCurrentCompanyId());
@@ -371,7 +443,7 @@ public class PayslipService {
                     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'CALCULATED', ?)
                     """,
                     id, tenantContext.getCurrentCompanyId(),
-                    req.employeeId(), contract.id,
+                    req.employeeId(), contractId,
                     req.year(), req.month(), type,
                     gross, ssEmployee, irpf,
                     otherDeductions, net,
@@ -529,7 +601,26 @@ public class PayslipService {
         BigDecimal employeeTotal() {
             return eeCommon.add(eeUnemployment).add(eeTraining).add(eeMei);
         }
+        BigDecimal employerTotal() {
+            return erCommon.add(erUnemployment).add(erFogasa).add(erTraining).add(erMei).add(erAtEp);
+        }
     }
+
+    /** Resultado del cálculo puro (sin persistir). */
+    private record Computed(
+            String contractId, String type, List<PayslipLine> lines,
+            BigDecimal gross, BigDecimal cotizationBase, SsBreakdown ss,
+            BigDecimal ssEmployee, BigDecimal irpf, BigDecimal irpfPct,
+            BigDecimal otherDeductions, BigDecimal net) {}
+
+    /** Vista previa de una nómina (no se guarda). */
+    public record PreviewResult(
+            BigDecimal gross, BigDecimal cotizationBase, BigDecimal ssEmployee,
+            BigDecimal irpf, BigDecimal irpfPct, BigDecimal otherDeductions,
+            BigDecimal net, BigDecimal employerTotal, BigDecimal employerCost,
+            List<LineView> devengos) {}
+
+    public record LineView(String concept, BigDecimal amount) {}
 
     private static BigDecimal pct(BigDecimal base, BigDecimal percent) {
         return base.multiply(percent).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
@@ -722,6 +813,16 @@ public class PayslipService {
         @PostMapping("/calculate")
         public PayslipView calculate(@RequestBody CalculateRequest req) {
             return service.calculate(req);
+        }
+
+        @PostMapping("/preview")
+        public PreviewResult preview(@RequestBody CalculateRequest req) {
+            return service.preview(req);
+        }
+
+        @PostMapping("/solve-target")
+        public TargetResult solveTarget(@RequestBody TargetRequest req) {
+            return service.solveTarget(req);
         }
 
         @PutMapping("/{id}/pay")

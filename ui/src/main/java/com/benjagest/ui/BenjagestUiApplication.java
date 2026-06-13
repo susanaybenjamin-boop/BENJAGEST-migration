@@ -16128,6 +16128,16 @@ public class BenjagestUiApplication extends Application {
             case "labor.payslips.calc.complement.title" -> "Complements for this payslip";
             case "labor.payslips.calc.complement.hint" -> "Variable concepts for this month (dietas, mileage, attendance bonus…). Amount in euros for this payslip. Mark whether each one contributes to Social Security / is subject to income tax (e.g. exempt dietas: neither).";
             case "labor.payslips.calc.complement.amount" -> "Amount €";
+            case "labor.payslips.calc.validate" -> "Validate";
+            case "labor.payslips.calc.preview_btn" -> "Preview";
+            case "labor.payslips.calc.preview.empty" -> "Press \"Preview\" to see gross, deductions and net.";
+            case "labor.payslips.calc.preview.text" -> "Gross: {gross}  ·  Employee SS: {ss}  ·  Income tax: {irpf}  ·  NET: {net}\nEmployer SS: {er}  ·  Total company cost: {ercost}";
+            case "labor.payslips.calc.target.label" -> "Reach a target:";
+            case "labor.payslips.calc.target.gross" -> "Gross";
+            case "labor.payslips.calc.target.net" -> "Net";
+            case "labor.payslips.calc.target.prompt" -> "€ / month";
+            case "labor.payslips.calc.target.propose" -> "Propose complement";
+            case "labor.payslips.calc.target.concept" -> "Voluntary improvement";
             case "labor.payslips.calc.year" -> "Year";
             case "labor.payslips.calc.month" -> "Month";
             case "labor.payslips.calc.type" -> "Type";
@@ -16553,6 +16563,16 @@ public class BenjagestUiApplication extends Application {
             case "labor.payslips.calc.complement.title" -> "Complementos de esta nómina";
             case "labor.payslips.calc.complement.hint" -> "Conceptos variables de este mes (dietas, kilometraje, plus asistencia…). Importe en euros para esta nómina. Marca si cada uno cotiza a la Seguridad Social / tributa por IRPF (p. ej. dietas exentas: ninguno).";
             case "labor.payslips.calc.complement.amount" -> "Importe €";
+            case "labor.payslips.calc.validate" -> "Validar";
+            case "labor.payslips.calc.preview_btn" -> "Previsualizar";
+            case "labor.payslips.calc.preview.empty" -> "Pulsa \"Previsualizar\" para ver bruto, deducciones y neto.";
+            case "labor.payslips.calc.preview.text" -> "Bruto: {gross}  ·  SS trabajador: {ss}  ·  IRPF: {irpf}  ·  NETO: {net}\nSS empresa: {er}  ·  Coste total empresa: {ercost}";
+            case "labor.payslips.calc.target.label" -> "Llegar a un objetivo:";
+            case "labor.payslips.calc.target.gross" -> "Bruto";
+            case "labor.payslips.calc.target.net" -> "Neto";
+            case "labor.payslips.calc.target.prompt" -> "€ / mes";
+            case "labor.payslips.calc.target.propose" -> "Proponer complemento";
+            case "labor.payslips.calc.target.concept" -> "Mejora voluntaria";
             case "labor.payslips.calc.year" -> "Ano";
             case "labor.payslips.calc.month" -> "Mes";
             case "labor.payslips.calc.type" -> "Tipo";
@@ -19490,7 +19510,7 @@ public class BenjagestUiApplication extends Application {
     private void showCalculatePayslipDialog(java.util.List<com.benjagest.ui.model.EmployeeEntry> employees) {
         Dialog<ButtonType> dialog = new Dialog<>();
         dialog.setTitle(t("labor.payslips.calc.title"));
-        ButtonType saveBt = new ButtonType(t("labor.payslips.calc.save"), ButtonBar.ButtonData.OK_DONE);
+        ButtonType saveBt = new ButtonType(t("labor.payslips.calc.validate"), ButtonBar.ButtonData.OK_DONE);
         dialog.getDialogPane().getButtonTypes().addAll(saveBt, ButtonType.CANCEL);
 
         ComboBox<com.benjagest.ui.model.EmployeeEntry> empCombo = new ComboBox<>();
@@ -19542,8 +19562,95 @@ public class BenjagestUiApplication extends Application {
         SalaryComplementsEditor extras = new SalaryComplementsEditor(
                 new java.util.ArrayList<>(), "labor.payslips.calc.complement.amount",
                 "labor.payslips.calc.complement.title", "labor.payslips.calc.complement.hint");
-        Separator csep = new Separator();
-        installDialog(dialog, new VBox(10, g, csep, extras.node));
+
+        // OBJETIVO — proponer un plus para llegar a un sueldo bruto o neto.
+        ComboBox<String> targetMode = new ComboBox<>();
+        targetMode.getItems().addAll("GROSS", "NET");
+        targetMode.setConverter(new javafx.util.StringConverter<>() {
+            @Override public String toString(String m) {
+                return "GROSS".equals(m) ? t("labor.payslips.calc.target.gross")
+                        : t("labor.payslips.calc.target.net");
+            }
+            @Override public String fromString(String s) { return null; }
+        });
+        targetMode.getSelectionModel().select("NET");
+        TextField targetField = new TextField();
+        targetField.setPromptText(t("labor.payslips.calc.target.prompt"));
+        targetField.setPrefWidth(110);
+        Button proposeBtn = new Button(t("labor.payslips.calc.target.propose"));
+        proposeBtn.getStyleClass().add("button-secondary");
+        HBox targetBox = new HBox(8, new Label(t("labor.payslips.calc.target.label")),
+                targetMode, targetField, proposeBtn);
+        targetBox.setAlignment(Pos.CENTER_LEFT);
+
+        // PREVIEW — resumen en vivo (bruto / SS / IRPF / neto / coste empresa).
+        Label summary = new Label(t("labor.payslips.calc.preview.empty"));
+        summary.getStyleClass().add("settings-hint");
+        summary.setWrapText(true);
+        Button previewBtn = new Button(t("labor.payslips.calc.preview_btn"));
+        previewBtn.getStyleClass().add("button-secondary");
+
+        Runnable doPreview = () -> {
+            var emp = empCombo.getValue();
+            if (emp == null) { showError(t("labor.payslips.calc.fail.title"),
+                    t("labor.payslips.calc.fail.no_employee")); return; }
+            Task<com.benjagest.ui.model.PayslipPreview> tk = new Task<>() {
+                @Override protected com.benjagest.ui.model.PayslipPreview call() throws Exception {
+                    return laborApiClient.previewPayslip(emp.id(), yearCombo.getValue(), monthCombo.getValue(),
+                            typeCombo.getValue(), extraProrated.isSelected(),
+                            parseDecSafe(otherField.getText()), extras.getComplements());
+                }
+            };
+            tk.setOnSucceeded(ev -> {
+                var p = tk.getValue();
+                summary.setText(t("labor.payslips.calc.preview.text")
+                        .replace("{gross}", money(p.gross()))
+                        .replace("{ss}", money(p.ssEmployee()))
+                        .replace("{irpf}", money(p.irpf()))
+                        .replace("{net}", money(p.net()))
+                        .replace("{er}", money(p.employerTotal()))
+                        .replace("{ercost}", money(p.employerCost())));
+            });
+            tk.setOnFailed(ev -> {
+                Throwable ex = tk.getException();
+                String d = ex == null ? null : humanizeBackendError(ex.getMessage());
+                summary.setText(d == null || d.isBlank() ? t("labor.payslips.calc.fail.body") : d);
+            });
+            start(tk, "payslip-preview");
+        };
+        previewBtn.setOnAction(e -> doPreview.run());
+
+        proposeBtn.setOnAction(e -> {
+            var emp = empCombo.getValue();
+            if (emp == null) { showError(t("labor.payslips.calc.fail.title"),
+                    t("labor.payslips.calc.fail.no_employee")); return; }
+            java.math.BigDecimal target = parseDecSafe(targetField.getText());
+            if (target == null) { showError(t("labor.payslips.calc.target.label"),
+                    t("labor.payslips.calc.target.prompt")); return; }
+            Task<java.math.BigDecimal> tk = new Task<>() {
+                @Override protected java.math.BigDecimal call() throws Exception {
+                    return laborApiClient.solveTargetPlus(emp.id(), yearCombo.getValue(), monthCombo.getValue(),
+                            typeCombo.getValue(), extraProrated.isSelected(), targetMode.getValue(),
+                            target, extras.getComplements());
+                }
+            };
+            tk.setOnSucceeded(ev -> {
+                extras.addComplement(new com.benjagest.ui.model.SalaryItemEntry(
+                        null, t("labor.payslips.calc.target.concept"), "COMPLEMENT",
+                        tk.getValue(), true, true));
+                doPreview.run();
+            });
+            tk.setOnFailed(ev -> {
+                Throwable ex = tk.getException();
+                String d = ex == null ? null : humanizeBackendError(ex.getMessage());
+                showError(t("labor.payslips.calc.target.label"),
+                        d == null || d.isBlank() ? t("labor.payslips.calc.fail.body") : d);
+            });
+            start(tk, "payslip-target");
+        });
+
+        VBox previewBox = new VBox(8, new Separator(), targetBox, previewBtn, summary);
+        installDialog(dialog, new VBox(10, g, new Separator(), extras.node, previewBox));
 
         dialog.showAndWait().ifPresent(bt -> {
             if (bt != saveBt) return;
@@ -21363,6 +21470,9 @@ public class BenjagestUiApplication extends Application {
             rows.add(r);
             rowsBox.getChildren().add(r.box);
         }
+
+        /** Añade un complemento desde código (p. ej. el plus de objetivo). */
+        void addComplement(com.benjagest.ui.model.SalaryItemEntry it) { addRow(it); }
 
         java.util.List<com.benjagest.ui.model.SalaryItemEntry> getComplements() {
             java.util.List<com.benjagest.ui.model.SalaryItemEntry> out = new java.util.ArrayList<>();

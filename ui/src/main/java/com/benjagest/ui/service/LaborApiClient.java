@@ -496,6 +496,65 @@ public class LaborApiClient {
         ));
     }
 
+    // ==== Previsualización + objetivo de sueldo (PREVIEW / OBJETIVO) ====
+
+    private String payslipBody(String employeeId, int year, int month, String type,
+                               boolean extraProrated, java.math.BigDecimal otherDeductions, String notes,
+                               java.util.List<com.benjagest.ui.model.SalaryItemEntry> extras,
+                               String mode, java.math.BigDecimal target) {
+        StringBuilder b = new StringBuilder("{");
+        b.append(field("employeeId", employeeId)).append(",");
+        b.append("\"year\":").append(year).append(",\"month\":").append(month).append(",");
+        b.append(field("payslipType", type)).append(",");
+        b.append("\"includeExtraProrated\":").append(extraProrated).append(",");
+        b.append(decField("otherDeductions", otherDeductions)).append(",");
+        b.append(field("notes", notes));
+        if (mode != null) { b.append(",").append(field("mode", mode)); }
+        if (target != null) { b.append(",").append(decField("target", target)); }
+        b.append(",\"extraConcepts\":[");
+        if (extras != null) {
+            for (int i = 0; i < extras.size(); i++) {
+                var ec = extras.get(i);
+                if (i > 0) b.append(",");
+                b.append("{")
+                 .append(field("name", ec.conceptName())).append(",")
+                 .append(decField("amount", ec.annualAmount())).append(",")
+                 .append("\"cotizes\":").append(ec.cotizes()).append(",")
+                 .append("\"taxable\":").append(ec.taxable())
+                 .append("}");
+            }
+        }
+        b.append("]}");
+        return b.toString();
+    }
+
+    public com.benjagest.ui.model.PayslipPreview previewPayslip(String employeeId, int year, int month,
+            String type, boolean extraProrated, java.math.BigDecimal otherDeductions,
+            java.util.List<com.benjagest.ui.model.SalaryItemEntry> extras)
+            throws IOException, InterruptedException {
+        HttpResponse<String> r = send(req(baseUrl + "/labor/payslips/preview")
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(
+                        payslipBody(employeeId, year, month, type, extraProrated, otherDeductions, null, extras, null, null))));
+        String o = r.body();
+        return new com.benjagest.ui.model.PayslipPreview(
+                bigDec(o, "gross"), bigDec(o, "cotizationBase"), bigDec(o, "ssEmployee"),
+                bigDec(o, "irpf"), bigDec(o, "irpfPct"), bigDec(o, "otherDeductions"),
+                bigDec(o, "net"), bigDec(o, "employerTotal"), bigDec(o, "employerCost"));
+    }
+
+    /** Devuelve el "plus" (mejora voluntaria) para llegar al objetivo. */
+    public java.math.BigDecimal solveTargetPlus(String employeeId, int year, int month, String type,
+            boolean extraProrated, String mode, java.math.BigDecimal target,
+            java.util.List<com.benjagest.ui.model.SalaryItemEntry> extras)
+            throws IOException, InterruptedException {
+        HttpResponse<String> r = send(req(baseUrl + "/labor/payslips/solve-target")
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(
+                        payslipBody(employeeId, year, month, type, extraProrated, null, null, extras, mode, target))));
+        return bigDec(r.body(), "plus");
+    }
+
     // ==== Tipos de cotización SS por año (PARAM-YEAR) ====
 
     public java.util.List<com.benjagest.ui.model.SsRateEntry> listSsRates()
