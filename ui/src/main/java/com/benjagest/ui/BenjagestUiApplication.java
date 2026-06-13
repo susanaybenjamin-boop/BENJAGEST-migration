@@ -16808,6 +16808,12 @@ public class BenjagestUiApplication extends Application {
             case "advisory.client.hint" -> "You are now viewing this client. Anything you do from here is recorded under their company, not yours. Your sidebar still belongs to your advisory firm — you can switch between tabs freely.";
             case "advisory.client.tab.summary" -> "Summary";
             case "advisory.client.tab.billing" -> "Billing";
+            case "advisory.client.tab.customers" -> "Customers";
+            case "client.customers.empty" -> "This client has no billing recipients yet.";
+            case "client.customers.hint" -> "Customers this client invoices. The advisor manages them here so they can be selected when issuing invoices on the client's behalf.";
+            case "client.customers.new" -> "New customer";
+            case "client.customers.edit" -> "Edit";
+            case "client.customers.load.fail" -> "Could not load customers";
             case "advisory.client.tab.purchases" -> "Purchases & Expenses";
             case "advisory.client.tab.sales_and_expenses" -> "Sales & Expenses";
             case "advisory.client.tab.tpb_agreement" -> "TPB agreement";
@@ -17900,6 +17906,12 @@ public class BenjagestUiApplication extends Application {
             case "settings.my_tpb.empty" -> "Tu asesoría aún no te ha propuesto un acuerdo de facturación.";
             case "settings.my_tpb.advisor" -> "Asesoría:";
             case "advisory.client.tab.billing" -> "Facturación";
+            case "advisory.client.tab.customers" -> "Clientes";
+            case "client.customers.empty" -> "Este cliente todavía no tiene destinatarios de factura.";
+            case "client.customers.hint" -> "Clientes a los que este cliente factura. La asesoría los gestiona aquí para poder seleccionarlos al emitir facturas en su nombre.";
+            case "client.customers.new" -> "Nuevo cliente";
+            case "client.customers.edit" -> "Editar";
+            case "client.customers.load.fail" -> "No se pudieron cargar los clientes";
             case "advisory.client.tab.purchases" -> "Compras y Gastos";
             case "advisory.client.tab.sales_and_expenses" -> "Ventas y Gastos";
             case "client.tab.sales" -> "Ventas";
@@ -22149,12 +22161,16 @@ public class BenjagestUiApplication extends Application {
     //  de app/admin/clientes/[id]/page.tsx.
     // ============================================================
     private void showCustomerDetailDialog(String customerId) {
+        showCustomerDetailDialog(customerId, null);
+    }
+
+    private void showCustomerDetailDialog(String customerId, Runnable onSaved) {
         Task<com.benjagest.ui.model.CustomerExtendedEntry> load = new Task<>() {
             @Override protected com.benjagest.ui.model.CustomerExtendedEntry call() throws Exception {
                 return altaApiClient.getCustomerExtended(customerId);
             }
         };
-        load.setOnSucceeded(ev -> openCustomerDetailDialog(load.getValue()));
+        load.setOnSucceeded(ev -> openCustomerDetailDialog(load.getValue(), false, onSaved));
         load.setOnFailed(ev -> showError(t("cli.editor.fail.title"),
                 load.getException() == null ? "" : load.getException().getMessage()));
         start(load, "customer-detail-load");
@@ -24862,6 +24878,15 @@ public class BenjagestUiApplication extends Application {
         if (isLinked) {
             if (canSee.test("billing")) tabs.getTabs().add(billingTab);
             if (canSee.test("purchases")) tabs.getTabs().add(purchasesTab);
+            // TPB-CLIENT-SETUP F2 — tab "Clientes" del titular (sus
+            // receptores). Para vinculados siempre; para sin-vinculo se
+            // anade dinamicamente al activar TPB (onTpbActivated).
+            if (canSee.test("billing")) {
+                Tab linkedCustomersTab = new Tab(t("advisory.client.tab.customers"),
+                        buildClientCustomersTab());
+                linkedCustomersTab.setGraphic(icon("fas-address-book"));
+                tabs.getTabs().add(linkedCustomersTab);
+            }
         } else {
             // En no vinculado, el tab unificado contiene Ventas y Gastos —
             // por seguridad lo enseñamos si tiene billing O purchases.
@@ -24919,6 +24944,16 @@ public class BenjagestUiApplication extends Application {
             // Insertar tras Resumen (indice 1).
             int insertAt = Math.min(1, finalTabs.getTabs().size());
             finalTabs.getTabs().add(insertAt, newBillingTab);
+            // TPB-CLIENT-SETUP F2 — tab "Clientes" del titular junto a
+            // Facturacion (para dar de alta sus receptores). Idempotente.
+            String custLabel = t("advisory.client.tab.customers");
+            boolean hasCust = finalTabs.getTabs().stream().anyMatch(tab ->
+                    custLabel.equals(tab.getText()));
+            if (!hasCust) {
+                Tab custTab = new Tab(custLabel, buildClientCustomersTab());
+                custTab.setGraphic(icon("fas-address-book"));
+                finalTabs.getTabs().add(insertAt + 1, custTab);
+            }
         };
 
         // V105 — Si el cliente revoca el acuerdo (via magic link de
@@ -24929,8 +24964,10 @@ public class BenjagestUiApplication extends Application {
             if (finalIsLinked) return;
             summaryTabRef.setContent(buildClientSummaryTab(finalClient, false));
             String billingLabel = t("advisory.client.tab.billing");
-            finalTabs.getTabs().removeIf(tab ->
-                    tab.getText() != null && tab.getText().equals(billingLabel));
+            String customersLabel = t("advisory.client.tab.customers");
+            finalTabs.getTabs().removeIf(tab -> tab.getText() != null
+                    && (tab.getText().equals(billingLabel)
+                        || tab.getText().equals(customersLabel)));
         };
 
         Tab tpbTab = new Tab(t("advisory.client.tab.tpb_agreement"),
@@ -28876,6 +28913,79 @@ public class BenjagestUiApplication extends Application {
         task.setOnFailed(ev -> System.err.println("[client-sales-archived] "
                 + (task.getException() == null ? "?" : task.getException().getMessage())));
         start(task, "client-sales-archived");
+    }
+
+    /**
+     * TPB-CLIENT-SETUP F2 — Sub-pestaña "Clientes" del titular: lista
+     * los receptores (customers) del cliente activo y permite crear /
+     * editar. Las llamadas heredan el actingForCompanyId, asi que los
+     * customers son los de la shadow company del titular.
+     */
+    private Node buildClientCustomersTab() {
+        javafx.scene.control.TableView<com.benjagest.ui.model.CustomerSummary> table =
+                new javafx.scene.control.TableView<>();
+        table.getStyleClass().add("data-table");
+        table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+        table.setPlaceholder(new Label(t("client.customers.empty")));
+        addCol(table, t("cli.field.legalName"), v -> v.legalName() == null ? "" : v.legalName(), 240);
+        addCol(table, t("cli.field.taxId"), v -> v.taxIdentifier() == null ? "" : v.taxIdentifier(), 120);
+        addCol(table, t("cli.field.city"), v -> v.city() == null ? "" : v.city(), 140);
+        addCol(table, t("cli.field.email"), v -> v.email() == null ? "" : v.email(), 220);
+        addCol(table, t("cli.field.phone"), v -> v.phone() == null ? "" : v.phone(), 120);
+        VBox.setVgrow(table, Priority.ALWAYS);
+
+        Runnable reload = () -> {
+            Task<List<com.benjagest.ui.model.CustomerSummary>> task = new Task<>() {
+                @Override
+                protected List<com.benjagest.ui.model.CustomerSummary> call() throws Exception {
+                    return customerApiClient.list();
+                }
+            };
+            task.setOnSucceeded(ev -> table.setItems(FXCollections.observableArrayList(task.getValue())));
+            task.setOnFailed(ev -> showError(t("client.customers.load.fail"),
+                    task.getException() == null ? "" : task.getException().getMessage()));
+            start(task, "client-customers-load");
+        };
+
+        Button newBtn = new Button(t("client.customers.new"));
+        newBtn.setGraphic(icon("fas-user-plus"));
+        newBtn.getStyleClass().add("primary-button");
+        newBtn.setOnAction(e -> openNewCustomerDialog(reload));
+
+        Button editBtn = new Button(t("client.customers.edit"));
+        editBtn.setGraphic(icon("fas-pen"));
+        editBtn.setDisable(true);
+        editBtn.setOnAction(e -> {
+            var sel = table.getSelectionModel().getSelectedItem();
+            if (sel != null) showCustomerDetailDialog(sel.id(), reload);
+        });
+        table.getSelectionModel().selectedItemProperty().addListener((o, ov, nv) ->
+                editBtn.setDisable(nv == null));
+        table.setRowFactory(tv -> {
+            javafx.scene.control.TableRow<com.benjagest.ui.model.CustomerSummary> row =
+                    new javafx.scene.control.TableRow<>();
+            row.setOnMouseClicked(ev -> {
+                if (ev.getClickCount() == 2 && !row.isEmpty()) {
+                    showCustomerDetailDialog(row.getItem().id(), reload);
+                }
+            });
+            return row;
+        });
+
+        Button refresh = new Button(t("accounting.action.refresh"));
+        refresh.setGraphic(icon("fas-sync-alt"));
+        refresh.setOnAction(e -> reload.run());
+
+        Label hint = new Label(t("client.customers.hint"));
+        hint.setWrapText(true);
+        hint.getStyleClass().add("settings-hint");
+
+        HBox actions = new HBox(8, newBtn, editBtn, refresh);
+        actions.setAlignment(Pos.CENTER_LEFT);
+        VBox box = new VBox(10, hint, actions, table);
+        box.setPadding(new Insets(12));
+        reload.run();
+        return box;
     }
 
     private Node buildClientBillingTab() {
