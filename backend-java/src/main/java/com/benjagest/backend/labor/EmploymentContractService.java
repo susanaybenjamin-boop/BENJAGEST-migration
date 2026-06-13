@@ -246,9 +246,10 @@ public class EmploymentContractService {
     /** Borra y reescribe los conceptos salariales del contrato. Devuelve el
      *  bruto anual recalculado (suma de conceptos) o null si no se enviaron. */
     private BigDecimal replaceSalaryItems(String contractId, List<SalaryItem> items) {
+        if (items == null) return null; // null = no tocar los conceptos existentes
         jdbcTemplate.update("DELETE FROM contract_salary_items WHERE contract_id = ? AND company_id = ?",
                 contractId, tenantContext.getCurrentCompanyId());
-        if (items == null || items.isEmpty()) return null;
+        if (items.isEmpty()) return null;
         BigDecimal total = BigDecimal.ZERO;
         int order = 0;
         for (SalaryItem it : items) {

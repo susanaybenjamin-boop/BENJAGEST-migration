@@ -184,7 +184,11 @@ public class LaborApiClient {
         String url = baseUrl + "/labor/contracts" + (employeeId == null || employeeId.isBlank()
                 ? "" : "?employeeId=" + employeeId);
         HttpResponse<String> r = send(req(url).GET());
-        return parseObjects(r.body(), "contractType", this::mapContract);
+        // Los contratos llevan un array anidado (salaryItems): el parser
+        // plano no sirve; usamos el splitter por llaves balanceadas.
+        java.util.List<ContractEntry> outc = new ArrayList<>();
+        for (String objc : splitTopLevelObjects(r.body())) outc.add(mapContract(objc));
+        return outc;
     }
 
     public ContractEntry createContract(ContractEntry c) throws IOException, InterruptedException {
@@ -226,6 +230,24 @@ public class LaborApiClient {
         b.append(field("terminationReason", c.terminationReason())).append(",");
         b.append(intField("probationDays", c.probationDays())).append(",");
         b.append(field("pdfModel", c.pdfModel()));
+        java.util.List<com.benjagest.ui.model.SalaryItemEntry> items = c.salaryItems();
+        if (items == null) {
+            b.append(",\"salaryItems\":null");
+        } else {
+            b.append(",\"salaryItems\":[");
+            for (int i = 0; i < items.size(); i++) {
+                var it = items.get(i);
+                if (i > 0) b.append(",");
+                b.append("{")
+                 .append(field("conceptName", it.conceptName())).append(",")
+                 .append(field("kind", it.kind())).append(",")
+                 .append(decField("annualAmount", it.annualAmount())).append(",")
+                 .append("\"cotizes\":").append(it.cotizes()).append(",")
+                 .append("\"taxable\":").append(it.taxable())
+                 .append("}");
+            }
+            b.append("]");
+        }
         b.append("}");
         return b.toString();
     }
@@ -251,8 +273,54 @@ public class LaborApiClient {
                 textField(obj, "status"),
                 textField(obj, "terminationReason"),
                 intFieldOrNull(obj, "probationDays"),
-                textField(obj, "pdfModel")
+                textField(obj, "pdfModel"),
+                parseSalaryItems(obj)
         );
+    }
+
+    /** Extrae el array anidado "salaryItems" de un objeto contrato. */
+    private java.util.List<com.benjagest.ui.model.SalaryItemEntry> parseSalaryItems(String contractObj) {
+        java.util.List<com.benjagest.ui.model.SalaryItemEntry> out = new ArrayList<>();
+        int idx = contractObj.indexOf("\"salaryItems\"");
+        if (idx < 0) return out;
+        int lb = contractObj.indexOf('[', idx);
+        if (lb < 0) return out;
+        int depth = 0, end = -1;
+        boolean inStr = false;
+        char prev = 0;
+        for (int i = lb; i < contractObj.length(); i++) {
+            char ch = contractObj.charAt(i);
+            if (inStr) { if (ch == '"' && prev != '\\') inStr = false; prev = ch; continue; }
+            if (ch == '"') { inStr = true; prev = ch; continue; }
+            if (ch == '[') depth++;
+            else if (ch == ']') { depth--; if (depth == 0) { end = i; break; } }
+            prev = ch;
+        }
+        if (end < 0) return out;
+        for (String o : splitTopLevelObjects(contractObj.substring(lb, end + 1))) {
+            out.add(new com.benjagest.ui.model.SalaryItemEntry(
+                    textField(o, "id"), textField(o, "conceptName"), textField(o, "kind"),
+                    bigDec(o, "annualAmount"), boolField(o, "cotizes"), boolField(o, "taxable")));
+        }
+        return out;
+    }
+
+    /** Divide los objetos {...} de primer nivel de un JSON, balanceando
+     *  llaves y respetando strings (soporta objetos/arrays anidados). */
+    private java.util.List<String> splitTopLevelObjects(String json) {
+        java.util.List<String> out = new ArrayList<>();
+        int depth = 0, start = -1;
+        boolean inStr = false;
+        char prev = 0;
+        for (int i = 0; i < json.length(); i++) {
+            char c = json.charAt(i);
+            if (inStr) { if (c == '"' && prev != '\\') inStr = false; prev = c; continue; }
+            if (c == '"') { inStr = true; prev = c; continue; }
+            if (c == '{') { if (depth == 0) start = i; depth++; }
+            else if (c == '}') { depth--; if (depth == 0 && start >= 0) { out.add(json.substring(start, i + 1)); start = -1; } }
+            prev = c;
+        }
+        return out;
     }
 
     // ====================================================================
