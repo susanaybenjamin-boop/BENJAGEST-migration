@@ -70,7 +70,7 @@ public class PayslipPdfGenerator {
 
     public byte[] generate(String payslipId) {
         Map<String, Object> data = jdbcTemplate.queryForMap("""
-                SELECT p.id, p.period_year, p.period_month, p.payslip_type,
+                SELECT p.id, p.employee_id, p.period_year, p.period_month, p.payslip_type,
                        p.gross_amount, p.ss_employee_amount, p.irpf_amount,
                        p.other_deductions, p.net_amount, p.status, p.paid_at,
                        e.full_name AS employee_name, e.tax_identifier AS employee_nif,
@@ -88,6 +88,22 @@ public class PayslipPdfGenerator {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Nómina no encontrada");
         }
 
+        // Cuotas TC del periodo (desglose de cotización trabajador + empresa).
+        java.util.Map<String, BigDecimal> tcAmt = new java.util.HashMap<>();
+        java.util.Map<String, BigDecimal> tcBase = new java.util.HashMap<>();
+        jdbcTemplate.query("""
+                SELECT contribution_type, base_amount, contribution_amount
+                  FROM social_security_contributions
+                 WHERE company_id = ? AND employee_id = ?
+                   AND period_year = ? AND period_month = ?
+                """, rs -> {
+                    tcAmt.put(rs.getString("contribution_type"), rs.getBigDecimal("contribution_amount"));
+                    tcBase.put(rs.getString("contribution_type"), rs.getBigDecimal("base_amount"));
+                },
+                tenantContext.getCurrentCompanyId(), str(data.get("employee_id")),
+                ((Number) data.get("period_year")).intValue(),
+                ((Number) data.get("period_month")).intValue());
+
         CompanyDataResponse company = companyDataService.getCurrent();
 
         ByteArrayOutputStream out = new ByteArrayOutputStream();
@@ -97,17 +113,18 @@ public class PayslipPdfGenerator {
             doc.open();
 
             // Fuentes
-            Font fTitle = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 14, Color.BLACK);
             Font fH1 = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 11, new Color(30, 60, 110));
             Font fBold = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 9, Color.BLACK);
             Font fNormal = FontFactory.getFont(FontFactory.HELVETICA, 9, Color.BLACK);
             Font fSmall = FontFactory.getFont(FontFactory.HELVETICA, 8, Color.DARK_GRAY);
 
-            // Título
-            Paragraph title = new Paragraph("RECIBO DE SALARIO", fTitle);
-            title.setAlignment(Element.ALIGN_CENTER);
-            title.setSpacingAfter(8f);
-            doc.add(title);
+            // Sin titulón. El modelo oficial no lleva un título destacado;
+            // como mucho una referencia discreta al modelo legal.
+            Paragraph caption = new Paragraph(
+                    "Recibo individual justificativo del pago de salarios", fSmall);
+            caption.setAlignment(Element.ALIGN_LEFT);
+            caption.setSpacingAfter(6f);
+            doc.add(caption);
 
             // Cabecera: 2 columnas (empresa | trabajador)
             PdfPTable header = new PdfPTable(2);
@@ -191,13 +208,21 @@ public class PayslipPdfGenerator {
             BigDecimal ss = (BigDecimal) data.get("ss_employee_amount");
             BigDecimal irpf = (BigDecimal) data.get("irpf_amount");
             BigDecimal otros = (BigDecimal) data.get("other_deductions");
-
-            BigDecimal ssPct = pctOf(ss, gross);
             BigDecimal irpfPct = pctOf(irpf, gross);
 
-            deducciones.addCell(textCell("Aportación trabajador SS", fNormal, Element.ALIGN_LEFT));
-            deducciones.addCell(textCell(ssPct.toPlainString() + " %", fNormal, Element.ALIGN_CENTER));
-            deducciones.addCell(textCell(money(ss), fNormal, Element.ALIGN_RIGHT));
+            // Desglose de la aportación del trabajador a la SS por concepto
+            // (cuotas TC). Si no hay cuotas TC (nóminas antiguas), una sola línea.
+            boolean hasEeTc = tcAmt.keySet().stream().anyMatch(k -> k.startsWith("EMPLOYEE"));
+            if (hasEeTc) {
+                addDeduccion(deducciones, "Contingencias comunes", "EMPLOYEE_COMMON", tcAmt, tcBase, fNormal);
+                addDeduccion(deducciones, "Desempleo", "EMPLOYEE_UNEMPLOYMENT", tcAmt, tcBase, fNormal);
+                addDeduccion(deducciones, "Formación profesional", "EMPLOYEE_TRAINING", tcAmt, tcBase, fNormal);
+                addDeduccion(deducciones, "MEI", "EMPLOYEE_MEI", tcAmt, tcBase, fNormal);
+            } else {
+                deducciones.addCell(textCell("Aportación trabajador SS", fNormal, Element.ALIGN_LEFT));
+                deducciones.addCell(textCell(pctOf(ss, gross).toPlainString() + " %", fNormal, Element.ALIGN_CENTER));
+                deducciones.addCell(textCell(money(ss), fNormal, Element.ALIGN_RIGHT));
+            }
 
             deducciones.addCell(textCell("Retención IRPF", fNormal, Element.ALIGN_LEFT));
             deducciones.addCell(textCell(irpfPct.toPlainString() + " %", fNormal, Element.ALIGN_CENTER));
@@ -241,27 +266,53 @@ public class PayslipPdfGenerator {
             netoTbl.setSpacingAfter(20f);
             doc.add(netoTbl);
 
-            // Bases
-            doc.add(sectionTitle("BASES Y APORTACIONES", fH1));
-            PdfPTable bases = new PdfPTable(new float[]{4, 2, 2, 2});
+            // Determinación de las bases de cotización y aportación de la
+            // empresa (Orden ESS/2098/2014 — art. 104.2 LGSS). Es el apartado
+            // que distingue al recibo oficial: la empresa debe informar de su
+            // propia aportación, separada de la del trabajador.
+            doc.add(sectionTitle("DETERMINACIÓN DE LAS BASES DE COTIZACIÓN Y APORTACIÓN DE LA EMPRESA", fH1));
+            PdfPTable bases = new PdfPTable(new float[]{5, 2, 1.3f, 2});
             bases.setWidthPercentage(100);
             bases.addCell(headerCell("Concepto", fBold));
             bases.addCell(headerCell("Base", fBold));
-            bases.addCell(headerCell("%", fBold));
-            bases.addCell(headerCell("Aportación", fBold));
+            bases.addCell(headerCell("Tipo", fBold));
+            bases.addCell(headerCell("Aportación empresa", fBold));
 
-            bases.addCell(textCell("Cotización contingencias comunes", fNormal, Element.ALIGN_LEFT));
-            bases.addCell(textCell(money(gross), fNormal, Element.ALIGN_RIGHT));
-            bases.addCell(textCell("6,35 %", fNormal, Element.ALIGN_CENTER));
-            bases.addCell(textCell(money(ss), fNormal, Element.ALIGN_RIGHT));
+            boolean hasErTc = tcAmt.keySet().stream().anyMatch(k -> k.startsWith("EMPLOYER"));
+            BigDecimal totalEr = BigDecimal.ZERO;
+            if (hasErTc) {
+                totalEr = totalEr.add(addAportacion(bases, "Contingencias comunes", "EMPLOYER_COMMON", tcAmt, tcBase, fNormal));
+                totalEr = totalEr.add(addAportacion(bases, "Contingencias profesionales (AT y EP)", "EMPLOYER_AT_EP", tcAmt, tcBase, fNormal));
+                totalEr = totalEr.add(addAportacion(bases, "Desempleo", "EMPLOYER_UNEMPLOYMENT", tcAmt, tcBase, fNormal));
+                totalEr = totalEr.add(addAportacion(bases, "Formación profesional", "EMPLOYER_TRAINING", tcAmt, tcBase, fNormal));
+                totalEr = totalEr.add(addAportacion(bases, "FOGASA", "EMPLOYER_FOGASA", tcAmt, tcBase, fNormal));
+                totalEr = totalEr.add(addAportacion(bases, "MEI", "EMPLOYER_MEI", tcAmt, tcBase, fNormal));
 
-            bases.addCell(textCell("Retención IRPF", fNormal, Element.ALIGN_LEFT));
-            bases.addCell(textCell(money(gross), fNormal, Element.ALIGN_RIGHT));
-            bases.addCell(textCell(irpfPct.toPlainString() + " %", fNormal, Element.ALIGN_CENTER));
-            bases.addCell(textCell(money(irpf), fNormal, Element.ALIGN_RIGHT));
-
-            bases.setSpacingAfter(30f);
+                PdfPCell totLbl = new PdfPCell(new Phrase("TOTAL APORTACIÓN EMPRESA", fBold));
+                totLbl.setColspan(3);
+                totLbl.setHorizontalAlignment(Element.ALIGN_RIGHT);
+                totLbl.setBackgroundColor(new Color(245, 245, 250));
+                totLbl.setPadding(4f);
+                bases.addCell(totLbl);
+                bases.addCell(headerCellRight(money(totalEr), fBold));
+            } else {
+                PdfPCell none = new PdfPCell(new Phrase(
+                        "Sin desglose de cotización disponible para este periodo.", fNormal));
+                none.setColspan(4);
+                none.setPadding(6f);
+                bases.addCell(none);
+            }
+            bases.setSpacingAfter(14f);
             doc.add(bases);
+
+            // Coste total para la empresa (informativo).
+            if (hasErTc) {
+                Paragraph coste = new Paragraph(
+                        "Coste total para la empresa (bruto + aportación SS empresa): "
+                        + money(gross.add(totalEr)), fBold);
+                coste.setSpacingAfter(26f);
+                doc.add(coste);
+            }
 
             // Firmas
             PdfPTable firmas = new PdfPTable(2);
@@ -347,6 +398,31 @@ public class PayslipPdfGenerator {
         c.setHorizontalAlignment(align);
         c.setPadding(4f);
         return c;
+    }
+
+    /** Añade una fila de deducción del trabajador (concepto / % / importe). */
+    private void addDeduccion(PdfPTable t, String label, String type,
+                               Map<String, BigDecimal> amt, Map<String, BigDecimal> base, Font f) {
+        BigDecimal a = amt.get(type);
+        if (a == null) return;
+        BigDecimal b = base.get(type);
+        t.addCell(textCell(label, f, Element.ALIGN_LEFT));
+        t.addCell(textCell(pctOf(a, b).toPlainString() + " %", f, Element.ALIGN_CENTER));
+        t.addCell(textCell(money(a), f, Element.ALIGN_RIGHT));
+    }
+
+    /** Añade una fila de aportación de la empresa (concepto / base / tipo /
+     *  aportación) y devuelve el importe aportado (0 si no existe). */
+    private BigDecimal addAportacion(PdfPTable t, String label, String type,
+                                      Map<String, BigDecimal> amt, Map<String, BigDecimal> base, Font f) {
+        BigDecimal a = amt.get(type);
+        if (a == null) return BigDecimal.ZERO;
+        BigDecimal b = base.get(type);
+        t.addCell(textCell(label, f, Element.ALIGN_LEFT));
+        t.addCell(textCell(money(b), f, Element.ALIGN_RIGHT));
+        t.addCell(textCell(pctOf(a, b).toPlainString() + " %", f, Element.ALIGN_CENTER));
+        t.addCell(textCell(money(a), f, Element.ALIGN_RIGHT));
+        return a;
     }
 
     private String money(BigDecimal amount) {
