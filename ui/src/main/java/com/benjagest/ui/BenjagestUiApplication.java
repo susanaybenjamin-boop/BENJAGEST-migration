@@ -1147,6 +1147,8 @@ public class BenjagestUiApplication extends Application {
         AuthSession.get().setActingForCompanyId(null);
         actingClientName = null;
         actingForClientLinked = true; // Slice 3T — reset al default
+        activeClientEntry = null;     // NAV-CLIENT-BACK — limpiar ref
+        activeClientModules = List.of("*");
         refreshClientModeBanner();
     }
 
@@ -3783,6 +3785,13 @@ public class BenjagestUiApplication extends Application {
      * lo resetea {@link #exitClientMode()}.
      */
     private boolean actingForClientLinked = true;
+    // NAV-CLIENT-BACK — referencia al cliente actualmente abierto en
+    // modo "actuar como" + sus modulos visibles, para poder reconstruir
+    // su pantalla (buildClientDetailView) cuando un editor que reemplaza
+    // el centro (Nueva factura, etc.) quiere volver atras. Null cuando
+    // no se esta en modo cliente.
+    private com.benjagest.ui.model.ManagedClientEntry activeClientEntry;
+    private List<String> activeClientModules = List.of("*");
     private VBox topContainer;
 
     // Live polling de invitaciones — evita tener que refrescar la pantalla.
@@ -10372,9 +10381,11 @@ public class BenjagestUiApplication extends Application {
         VBox content = content();
 
         // ----- Header -----
+        // NAV-CLIENT-BACK: "Volver" vuelve al cliente si la asesoria
+        // esta actuando-como uno; si no, a la facturacion normal.
         Button back = new Button(t("editor.back"));
         back.setGraphic(icon("fas-arrow-left"));
-        back.setOnAction(event -> showBilling());
+        back.setOnAction(event -> returnToClientOrBilling());
 
         Label title = new Label(existingId == null ? t("editor.title.new") : t("editor.title.edit"));
         title.getStyleClass().add("module-detail-title");
@@ -10746,7 +10757,7 @@ public class BenjagestUiApplication extends Application {
 
         // ----- Footer bar -----
         Button cancel = new Button(t("editor.action.cancel"));
-        cancel.setOnAction(event -> showBilling());
+        cancel.setOnAction(event -> returnToClientOrBilling());
 
         Button saveDraft = new Button(existingId == null ? t("editor.action.save_draft") : t("editor.action.save_changes"));
         saveDraft.setGraphic(icon("fas-save"));
@@ -11300,7 +11311,7 @@ public class BenjagestUiApplication extends Application {
             Alert ok = new Alert(Alert.AlertType.INFORMATION, msg, ButtonType.OK);
             ok.setHeaderText(null);
             ok.showAndWait();
-            showBilling();
+            returnToClientOrBilling();
             // Crear/editar borrador o validar: emite SALES + JOURNAL si
             // se validó (con asiento). El listado de facturación se
             // refresca aunque no estuviera abierto antes.
@@ -11675,7 +11686,7 @@ public class BenjagestUiApplication extends Application {
         detailsLabel.getStyleClass().add("module-detail-description");
         Button back = new Button(t("common.btn.back_to_billing"));
         back.setGraphic(icon("fas-arrow-left"));
-        back.setOnAction(event -> showBilling());
+        back.setOnAction(event -> returnToClientOrBilling());
         HBox buttons = new HBox(10, back);
         if (actionLabel != null && action != null) {
             Button act = new Button(actionLabel);
@@ -24651,11 +24662,34 @@ public class BenjagestUiApplication extends Application {
                 return altaApiClient.myModulesInClient(client.id());
             }
         };
-        task.setOnSucceeded(ev ->
-                setCenterAnimated(buildClientDetailView(client, isLinked, task.getValue())));
-        task.setOnFailed(ev ->
-                setCenterAnimated(buildClientDetailView(client, isLinked, List.of("*"))));
+        task.setOnSucceeded(ev -> {
+            activeClientEntry = client;
+            activeClientModules = task.getValue();
+            setCenterAnimated(buildClientDetailView(client, isLinked, task.getValue()));
+        });
+        task.setOnFailed(ev -> {
+            activeClientEntry = client;
+            activeClientModules = List.of("*");
+            setCenterAnimated(buildClientDetailView(client, isLinked, List.of("*")));
+        });
         start(task, "team-my-modules");
+    }
+
+    /**
+     * NAV-CLIENT-BACK — "Volver" inteligente: si la asesoria esta
+     * actuando-como un cliente, reconstruye la pantalla de detalle de
+     * ESE cliente (con sus tabs). Si no, vuelve a la facturacion normal
+     * de la asesoria/empresa. Lo usan los editores que reemplazan el
+     * centro (Nueva factura, etc.) para no dejar al asesor atrapado.
+     */
+    private void returnToClientOrBilling() {
+        if (com.benjagest.ui.service.AuthSession.get().isActingForClient()
+                && activeClientEntry != null) {
+            setCenterAnimated(buildClientDetailView(
+                    activeClientEntry, actingForClientLinked, activeClientModules));
+        } else {
+            showBilling();
+        }
     }
 
     /**
