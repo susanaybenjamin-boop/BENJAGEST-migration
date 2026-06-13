@@ -8,6 +8,35 @@
 
 ---
 
+## 2026-06-13 tarde — Bloque NOM-FLUJO (nómina profesional) ⚖️💰
+
+Sobre el bloque NOM, construido el flujo completo estilo A3/Nomio:
+
+- ✅ **NOM-6 Coste empresa/empleado** — pestaña Labor "Coste empresa".
+- ✅ **PDF recibo modelo oficial** (Orden ESS/2098/2014, estilo Nomio): cabecera
+  rejilla + tabla conceptos CLAVE/DEVENGOS/DEDUCCIONES + bases cotización
+  (remuneración+prorrata) + 2 tablas aportación trabajador|empresa + firmas.
+- ✅ **Fix base cotización = anual/12 SIEMPRE** (incluye prorrata, art.147 LGSS).
+  Casilla prorrateo invertida corregida; default 14 pagas (art.31 ET).
+- ✅ **DEV-DESGLOSE** (V107): `contract_salary_items` (salario base + complementos
+  libres con cotiza/tributa) + `payslip_lines`. Editor de complementos en el
+  editor de contrato. Nómina con una línea de devengo por concepto.
+- ✅ **Complementos por nómina** (dietas/km/asistencia) en el diálogo de calcular.
+- ✅ **PARAM-YEAR** (V108): `ss_contribution_rates` global por año (seed 2026).
+  El cálculo lee los tipos de la tabla (no a fuego). Pestaña "Tipos cotización".
+- ✅ **PREVIEW**: `compute()` puro + `preview()` + endpoint `/preview`. Botón
+  Previsualizar + resumen en vivo + botón **Validar** en el diálogo.
+- ✅ **OBJETIVO**: `solveTarget()` + endpoint `/solve-target`. "Llegar a objetivo"
+  (bruto=resta / neto=modelo lineal con %IRPF contrato) → propone Mejora voluntaria.
+- ✅ **REPLICAR**: botón "Lote a objetivo" → genera nóminas a un sueldo objetivo
+  para varios empleados (mismo bruto=mismo plus; mismo neto=plus distinto por
+  situación familiar).
+
+**Pendiente futuro:** topes cotización TGSS; pagas extra EXTRA_* cotizadas;
+complementos en el asistente de alta; inverso NET con IRPF por tramo (hoy %fijo).
+
+---
+
 ## 2026-06-13 — Bloque NOM (ciclo mensual de nómina) ⚖️
 
 Retomadas las decisiones aparcadas de la tarea #43 (Payrolls UI). Análisis
