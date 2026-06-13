@@ -256,23 +256,47 @@ public class PayslipService {
 
         String type = StringUtils.hasText(req.payslipType()) ? req.payslipType() : "MONTHLY";
 
-        // 1) Devengo del periodo (bruto pagado este mes). Prorrateo de pagas
-        //    extras (art. 31 ET): si se prorratea (12 pagas) -> anual/12; si
-        //    no (14 pagas, default legal salvo convenio) -> anual/(12+extras)
-        //    y las extras se pagan como nóminas EXTRA_*.
+        // Prorrateo de pagas extras (art. 31 ET): si se prorratea (12 pagas)
+        // -> anual/12; si no (14 pagas, default legal salvo convenio) ->
+        // anual/(12+extras) y las extras se pagan como nóminas EXTRA_*.
         int divisor = req.extraProratedOrDefault() ? 12 : (12 + contract.annualBonuses);
-        BigDecimal gross = contract.grossSalary
-                .divide(BigDecimal.valueOf(divisor), 2, RoundingMode.HALF_UP);
 
-        // 2) Base de cotización a la Seguridad Social. SIEMPRE incluye la
-        //    prorrata de las pagas extras = anual/12 (art. 147 LGSS / RD
-        //    2064/1995), con independencia de en cuántas pagas se cobre.
-        //    Las pagas EXTRA_* NO cotizan aparte (su prorrata ya está en la
-        //    base mensual). BONUS/SETTLEMENT cotizan sobre su importe.
-        //    (Simplificación: sin topes mín/máx por grupo de cotización.)
+        // 1) Devengos: una línea por concepto salarial del contrato (salario
+        //    base + complementos). Si el contrato no tiene conceptos (legacy),
+        //    un único bloque = bruto anual. Se acumulan los anuales que cotizan
+        //    a la SS y los que tributan por IRPF, por separado.
+        List<SalaryConcept> concepts = loadSalaryConcepts(contract.id);
+        java.util.List<PayslipLine> lines = new java.util.ArrayList<>();
+        BigDecimal totalAnnual = BigDecimal.ZERO;
+        BigDecimal cotizableAnnual = BigDecimal.ZERO;
+        BigDecimal taxableAnnual = BigDecimal.ZERO;
+        if (!concepts.isEmpty()) {
+            for (SalaryConcept c : concepts) {
+                BigDecimal a = c.annual() == null ? BigDecimal.ZERO : c.annual();
+                totalAnnual = totalAnnual.add(a);
+                if (c.cotizes()) cotizableAnnual = cotizableAnnual.add(a);
+                if (c.taxable()) taxableAnnual = taxableAnnual.add(a);
+                lines.add(new PayslipLine(c.name(), c.kind(),
+                        a.divide(BigDecimal.valueOf(divisor), 2, RoundingMode.HALF_UP)));
+            }
+        } else {
+            totalAnnual = contract.grossSalary;
+            cotizableAnnual = contract.grossSalary;
+            taxableAnnual = contract.grossSalary;
+            lines.add(new PayslipLine("Salario bruto del periodo", "SALARY_BASE",
+                    contract.grossSalary.divide(BigDecimal.valueOf(divisor), 2, RoundingMode.HALF_UP)));
+        }
+        BigDecimal gross = lines.stream().map(PayslipLine::amount)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        // 2) Base de cotización a la SS. SIEMPRE incluye la prorrata de pagas
+        //    extras = (cotizable anual)/12 (art. 147 LGSS / RD 2064/1995),
+        //    con independencia de en cuántas pagas se cobre. EXTRA_* NO
+        //    cotizan aparte; BONUS/SETTLEMENT sobre su importe. Solo conceptos
+        //    que cotizan. (Simplificación: sin topes mín/máx por grupo.)
         BigDecimal cotizationBase;
         if ("MONTHLY".equals(type)) {
-            cotizationBase = contract.grossSalary.divide(BigDecimal.valueOf(12), 2, RoundingMode.HALF_UP);
+            cotizationBase = cotizableAnnual.divide(BigDecimal.valueOf(12), 2, RoundingMode.HALF_UP);
         } else if ("EXTRA_SUMMER".equals(type) || "EXTRA_CHRISTMAS".equals(type)) {
             cotizationBase = BigDecimal.ZERO;
         } else {
@@ -283,11 +307,12 @@ public class PayslipService {
         SsBreakdown ss = computeSs(cotizationBase, atEp);
         BigDecimal ssEmployee = ss.employeeTotal();
 
-        // 3) IRPF sobre el devengo (bruto pagado en el periodo).
+        // 3) IRPF sobre el devengo tributable (solo conceptos sujetos a IRPF).
         BigDecimal irpfPct = contract.irpfPercent != null && contract.irpfPercent.signum() > 0
                 ? contract.irpfPercent
                 : computeIrpfPercent(contract.grossSalary, req.year());
-        BigDecimal irpf = gross.multiply(irpfPct)
+        BigDecimal taxableDevengo = taxableAnnual.divide(BigDecimal.valueOf(divisor), 2, RoundingMode.HALF_UP);
+        BigDecimal irpf = taxableDevengo.multiply(irpfPct)
                 .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
 
         BigDecimal otherDeductions = req.otherDeductions() != null
@@ -338,6 +363,13 @@ public class PayslipService {
                     gross, ssEmployee, irpf,
                     otherDeductions, net,
                     req.notes());
+        }
+
+        // Líneas de devengo (snapshot de los conceptos de este recibo).
+        try {
+            persistPayslipLines(id, lines);
+        } catch (Exception ex) {
+            // El PDF degrada a línea única si fallara; no bloquea la nómina.
         }
 
         // La nómina alimenta la tabla de cuotas TC (fuente de verdad de
@@ -555,6 +587,41 @@ public class PayslipService {
                 """,
                 UUID.randomUUID().toString(), companyId, employeeId,
                 year, month, type, base, amount);
+    }
+
+    /** Concepto salarial del contrato (leído de contract_salary_items). */
+    private record SalaryConcept(String name, String kind, BigDecimal annual,
+                                  boolean cotizes, boolean taxable) {}
+
+    /** Línea de devengo calculada para una nómina. */
+    private record PayslipLine(String name, String kind, BigDecimal amount) {}
+
+    private List<SalaryConcept> loadSalaryConcepts(String contractId) {
+        return jdbcTemplate.query("""
+                SELECT concept_name, kind, annual_amount, cotizes, taxable
+                  FROM contract_salary_items
+                 WHERE contract_id = ? AND company_id = ?
+                 ORDER BY sort_order, concept_name
+                """,
+                (rs, n) -> new SalaryConcept(
+                        rs.getString("concept_name"), rs.getString("kind"),
+                        rs.getBigDecimal("annual_amount"),
+                        rs.getBoolean("cotizes"), rs.getBoolean("taxable")),
+                contractId, tenantContext.getCurrentCompanyId());
+    }
+
+    private void persistPayslipLines(String payslipId, List<PayslipLine> lines) {
+        jdbcTemplate.update("DELETE FROM payslip_lines WHERE payslip_id = ? AND company_id = ?",
+                payslipId, tenantContext.getCurrentCompanyId());
+        int order = 0;
+        for (PayslipLine l : lines) {
+            jdbcTemplate.update("""
+                    INSERT INTO payslip_lines (id, company_id, payslip_id, concept_name, kind, amount, sort_order)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    UUID.randomUUID().toString(), tenantContext.getCurrentCompanyId(), payslipId,
+                    l.name(), l.kind() == null ? "COMPLEMENT" : l.kind(), l.amount(), order++);
+        }
     }
 
     private static class ContractData {

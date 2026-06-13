@@ -103,6 +103,17 @@ public class PayslipPdfGenerator {
                 ((Number) data.get("period_year")).intValue(),
                 ((Number) data.get("period_month")).intValue());
 
+        // Líneas de devengo (conceptos salariales de este recibo).
+        java.util.List<String[]> devLines = jdbcTemplate.query("""
+                SELECT concept_name, amount
+                  FROM payslip_lines
+                 WHERE payslip_id = ? AND company_id = ?
+                 ORDER BY sort_order, concept_name
+                """,
+                (rs, n) -> new String[]{rs.getString("concept_name"),
+                        money(rs.getBigDecimal("amount"))},
+                payslipId, tenantContext.getCurrentCompanyId());
+
         CompanyDataResponse company = companyDataService.getCurrent();
 
         // ---- Magnitudes ----
@@ -182,13 +193,26 @@ public class PayslipPdfGenerator {
             con.addCell(hdr("DEVENGOS", fHead));
             con.addCell(hdr("DEDUCCIONES", fHead));
 
-            // Devengo (un único concepto: salario bruto del periodo).
-            con.addCell(cell("1", fNormal, Element.ALIGN_LEFT));
-            con.addCell(cell("Salario bruto del periodo", fNormal, Element.ALIGN_LEFT));
-            con.addCell(cell("30", fNormal, Element.ALIGN_CENTER));
-            con.addCell(cell("", fNormal, Element.ALIGN_RIGHT));
-            con.addCell(cell(money(gross), fNormal, Element.ALIGN_RIGHT));
-            con.addCell(cell("", fNormal, Element.ALIGN_RIGHT));
+            // Devengos: una línea por concepto salarial (salario base +
+            // complementos). Fallback a línea única si no hay desglose.
+            if (!devLines.isEmpty()) {
+                int clave = 1;
+                for (String[] l : devLines) {
+                    con.addCell(cell(String.valueOf(clave++), fNormal, Element.ALIGN_LEFT));
+                    con.addCell(cell(l[0], fNormal, Element.ALIGN_LEFT));
+                    con.addCell(cell("", fNormal, Element.ALIGN_CENTER));
+                    con.addCell(cell("", fNormal, Element.ALIGN_RIGHT));
+                    con.addCell(cell(l[1], fNormal, Element.ALIGN_RIGHT));
+                    con.addCell(cell("", fNormal, Element.ALIGN_RIGHT));
+                }
+            } else {
+                con.addCell(cell("1", fNormal, Element.ALIGN_LEFT));
+                con.addCell(cell("Salario bruto del periodo", fNormal, Element.ALIGN_LEFT));
+                con.addCell(cell("30", fNormal, Element.ALIGN_CENTER));
+                con.addCell(cell("", fNormal, Element.ALIGN_RIGHT));
+                con.addCell(cell(money(gross), fNormal, Element.ALIGN_RIGHT));
+                con.addCell(cell("", fNormal, Element.ALIGN_RIGHT));
+            }
 
             // Deducciones del trabajador.
             if (hasEe) {
