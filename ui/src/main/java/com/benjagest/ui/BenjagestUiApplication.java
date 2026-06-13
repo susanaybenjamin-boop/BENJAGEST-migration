@@ -17168,7 +17168,7 @@ public class BenjagestUiApplication extends Application {
             case "advisory.client.tab.banks" -> "Banks";
             case "advisory.client.tab.loans" -> "Loans";
             case "advisory.client.tab.assets" -> "Fixed assets";
-            case "advisory.client.tab.labor" -> "Employees";
+            case "advisory.client.tab.labor" -> "HR / Labor";
             case "advisory.client.tab.tax_models" -> "AEAT models";
             case "advisory.client.tab.certificate" -> "Certificate";
             // ============ Accounting module (AccountingScreen) ============
@@ -18000,7 +18000,7 @@ public class BenjagestUiApplication extends Application {
             case "advisory.client.tab.banks" -> "Bancos";
             case "advisory.client.tab.loans" -> "Préstamos";
             case "advisory.client.tab.assets" -> "Inmovilizado";
-            case "advisory.client.tab.labor" -> "Empleados";
+            case "advisory.client.tab.labor" -> "RR.HH. / Laboral";
             case "advisory.client.tab.tax_models" -> "Modelos AEAT";
             case "advisory.client.tab.certificate" -> "Certificado";
             // ============ Módulo Contabilidad (AccountingScreen) ============
@@ -29314,40 +29314,38 @@ public class BenjagestUiApplication extends Application {
     }
 
     /**
-     * Pestaña Empleados del cliente — lista empleados activos del
-     * tenant del cliente. Para nóminas/contratos/fichajes, el asesor
-     * accede al módulo Labor completo desde el sidebar de asesoría.
+     * Pestaña Laboral/Empleados del cliente — antes solo listaba los
+     * empleados (lectura). Fix Benjamin 2026-06-13: ahora reusa el
+     * módulo Labor COMPLETO ({@link #laborView}) cargado bajo el tenant
+     * del cliente (las llamadas heredan actingForCompanyId). Asi la
+     * asesoria puede dar de alta empleados, generar nominas, gestionar
+     * contratos y fichajes del cliente SIN salir de su pantalla.
      */
     private Node buildClientLaborTab() {
-        javafx.scene.control.TableView<com.benjagest.ui.model.EmployeeEntry> table =
-                new javafx.scene.control.TableView<>();
-        addCol(table, t("labor.col.name"), v -> v.fullName() == null ? "" : v.fullName(), 220);
-        addCol(table, t("labor.col.nif"), v -> v.taxIdentifier() == null ? "" : v.taxIdentifier(), 110);
-        addCol(table, t("labor.col.regime"), v -> localizedEnum("ss_regime", v.ssRegime()), 110);
-        addColSorted(table, t("labor.col.hire_date"), v -> v.hireDate() == null ? "" : v.hireDate().toString(), 100, ISO_DATE_COMPARATOR);
-        addCol(table, t("labor.col.active"), v -> v.active() ? "✓" : "✗", 70);
-
-        Button refresh = new Button(t("accounting.action.refresh"));
-        refresh.setOnAction(e -> loadClientLabor(table));
-        HBox actions = new HBox(8, refresh);
-        VBox box = new VBox(8, actions, table);
-        VBox.setVgrow(table, Priority.ALWAYS);
-        box.setPadding(new Insets(12));
-        loadClientLabor(table);
-        return box;
-    }
-
-    private void loadClientLabor(javafx.scene.control.TableView<com.benjagest.ui.model.EmployeeEntry> table) {
-        Task<java.util.List<com.benjagest.ui.model.EmployeeEntry>> task = new Task<>() {
-            @Override protected java.util.List<com.benjagest.ui.model.EmployeeEntry> call() throws Exception {
-                return laborApiClient.listEmployees(true);
+        VBox holder = new VBox();
+        holder.setPadding(new Insets(12));
+        Label loading = new Label(t("panorama.loading"));
+        loading.getStyleClass().add("settings-hint");
+        holder.getChildren().add(loading);
+        Task<LaborBundle> task = new Task<>() {
+            @Override
+            protected LaborBundle call() throws Exception {
+                var employees = laborApiClient.listEmployees(true);
+                var contracts = laborApiClient.listContracts(null);
+                int year = java.time.LocalDate.now().getYear();
+                var payslips = laborApiClient.listPayslips(year, null, null);
+                java.util.List<com.benjagest.ui.model.TimeClockEventTypeEntry> evTypes;
+                try { evTypes = laborApiClient.listTimeClockEventTypes(true); }
+                catch (Exception ex) { evTypes = java.util.List.of(); }
+                return new LaborBundle(employees, contracts, payslips, evTypes, year);
             }
         };
-        task.setOnSucceeded(ev -> table.setItems(
-                javafx.collections.FXCollections.observableArrayList(task.getValue())));
-        task.setOnFailed(ev -> System.err.println("[client-labor] "
-                + (task.getException() == null ? "?" : task.getException().getMessage())));
-        start(task, "client-labor");
+        task.setOnSucceeded(ev ->
+                holder.getChildren().setAll(scroll(laborView(task.getValue()))));
+        task.setOnFailed(ev ->
+                holder.getChildren().setAll(errorPanel(t("labor.load_failed"))));
+        start(task, "client-labor-full");
+        return holder;
     }
 
     /**
