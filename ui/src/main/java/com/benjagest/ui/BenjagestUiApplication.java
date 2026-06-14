@@ -20253,7 +20253,14 @@ public class BenjagestUiApplication extends Application {
             byte[] bytes = task.getValue();
             javafx.stage.FileChooser fc = new javafx.stage.FileChooser();
             fc.setTitle(t("labor.payslips.pdf.save_as"));
-            fc.setInitialFileName("nomina-" + p.periodYear() + "-"
+            String typeSeg = switch (p.payslipType() == null ? "MONTHLY" : p.payslipType()) {
+                case "EXTRA_SUMMER" -> "extra-verano-";
+                case "EXTRA_CHRISTMAS" -> "extra-navidad-";
+                case "BONUS" -> "bonus-";
+                case "SETTLEMENT" -> "finiquito-";
+                default -> "";
+            };
+            fc.setInitialFileName("nomina-" + typeSeg + p.periodYear() + "-"
                     + String.format("%02d", p.periodMonth()) + "-"
                     + (p.employeeName() == null ? p.employeeId() : p.employeeName().replace(" ", "_")) + ".pdf");
             fc.getExtensionFilters().add(new javafx.stage.FileChooser.ExtensionFilter("PDF", "*.pdf"));
