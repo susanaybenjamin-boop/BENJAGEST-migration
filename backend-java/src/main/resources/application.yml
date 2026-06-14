@@ -33,6 +33,16 @@ spring:
     driver-class-name: org.mariadb.jdbc.Driver
     hikari:
       initialization-fail-timeout: 0
+      # Resiliencia del pool: si la BD se reinicia o el equipo se suspende, las
+      # conexiones quedan muertas. Con esto Hikari valida antes de entregar
+      # (SELECT 1), refresca las inactivas (keepalive) y retira las viejas
+      # (max-lifetime), en vez de propagar "setNetworkTimeout cannot be called
+      # on a closed connection".
+      connection-test-query: SELECT 1
+      keepalive-time: 150000        # 2,5 min: ping a conexiones inactivas
+      max-lifetime: 600000          # 10 min: retira y recrea conexiones
+      validation-timeout: 5000
+      connection-timeout: 20000
   sql:
     init:
       mode: never
