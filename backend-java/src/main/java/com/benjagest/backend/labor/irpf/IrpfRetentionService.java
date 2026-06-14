@@ -113,6 +113,12 @@ public class IrpfRetentionService {
         double ss = annualSs == null ? 0 : annualSs.doubleValue();
         if (gross <= 0) return BigDecimal.ZERO;
 
+        // art. 81: límite excluyente — no se retiene por debajo del mínimo.
+        int situation = m != null ? m.familySituation() : 3;
+        int children = m != null ? m.descendants() : 0;
+        double exempt = exemptThreshold(year, situation, children);
+        if (gross <= exempt) return BigDecimal.ZERO;
+
         // 1) Reducción por obtención de rendimientos del trabajo (art. 20).
         double rnPrev = gross - ss - p.expenseDeduction;
         double workReduction;
@@ -155,6 +161,14 @@ public class IrpfRetentionService {
         double cuota1 = applyScale(base, brackets);
         double cuota2 = applyScale(Math.min(mpf, base), brackets);
         double cuota = Math.max(0, cuota1 - cuota2);
+
+        // art. 85.3: para rentas <= cap, la cuota no supera el limitRate% de
+        // (retribución − mínimo excluido). Suaviza el salto al salir del exento.
+        if (gross <= p.limitIncomeCap && exempt > 0) {
+            double limite = p.limitRate / 100.0 * (gross - exempt);
+            if (limite < 0) limite = 0;
+            if (cuota > limite) cuota = limite;
+        }
 
         // Minoración por préstamo vivienda anterior a 2013 (rentas < 33.007,2).
         if (m != null && m.mortgageBefore2013() && gross <= 33007.20) {
@@ -199,6 +213,27 @@ public class IrpfRetentionService {
         return rows;
     }
 
+    /** Mínimo excluido de retención (art. 81) para situación y nº de hijos. */
+    private double exemptThreshold(int year, int situation, int children) {
+        int ch = Math.min(Math.max(children, 0), 2);
+        Integer ey = jdbc.query("SELECT MAX(year) y FROM irpf_exempt_thresholds WHERE year <= ?",
+                (rs, n) -> (Integer) rs.getObject("y"), year).stream().findFirst().orElse(null);
+        if (ey == null) return 0;
+        Double v = jdbc.query("""
+                SELECT threshold FROM irpf_exempt_thresholds
+                 WHERE year = ? AND situation = ? AND children = ?
+                """, (rs, n) -> rs.getDouble("threshold"), ey, situation, ch)
+                .stream().findFirst().orElse(null);
+        if (v != null) return v;
+        // Fallback: situación 3 (la más común) con ese nº de hijos.
+        Double v3 = jdbc.query("""
+                SELECT threshold FROM irpf_exempt_thresholds
+                 WHERE year = ? AND situation = 3 AND children = ?
+                """, (rs, n) -> rs.getDouble("threshold"), ey, ch)
+                .stream().findFirst().orElse(null);
+        return v3 != null ? v3 : 0;
+    }
+
     private Params loadParams(int year) {
         return jdbc.query("""
                 SELECT * FROM irpf_retention_params
@@ -224,6 +259,8 @@ public class IrpfRetentionService {
                     p.workThreshold1 = rs.getDouble("work_reduction_threshold1");
                     p.workThreshold2 = rs.getDouble("work_reduction_threshold2");
                     p.workFactor = rs.getDouble("work_reduction_factor");
+                    p.limitRate = rs.getDouble("limit_rate");
+                    p.limitIncomeCap = rs.getDouble("limit_income_cap");
                     return p;
                 }, year)
                 .stream().findFirst().orElseGet(Params::defaults2026);
@@ -237,6 +274,7 @@ public class IrpfRetentionService {
         double ascOver65, ascOver75;
         double disability33, disability65, disabilityMobility;
         double expenseDeduction, workMax, workThreshold1, workThreshold2, workFactor;
+        double limitRate = 43, limitIncomeCap = 35200;
         static Params defaults2026() {
             Params p = new Params();
             p.personalMin = 5550; p.personalOver65 = 1150; p.personalOver75 = 1400;
@@ -245,6 +283,7 @@ public class IrpfRetentionService {
             p.disability33 = 3000; p.disability65 = 9000; p.disabilityMobility = 3000;
             p.expenseDeduction = 2000; p.workMax = 7302; p.workThreshold1 = 14852;
             p.workThreshold2 = 17673.52; p.workFactor = 1.75;
+            p.limitRate = 43; p.limitIncomeCap = 35200;
             return p;
         }
     }
