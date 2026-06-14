@@ -251,10 +251,14 @@ public class PayslipService {
         }
 
         String type = StringUtils.hasText(req.payslipType()) ? req.payslipType() : "MONTHLY";
+        boolean isExtra = "EXTRA_SUMMER".equals(type) || "EXTRA_CHRISTMAS".equals(type);
 
         // Prorrateo de pagas extras (art. 31 ET): 12 pagas -> anual/12; 14 pagas
         // (default legal) -> anual/(12+extras) y las extras como nóminas EXTRA_*.
-        int divisor = req.extraProratedOrDefault() ? 12 : (12 + contract.annualBonuses);
+        // Una nómina EXTRA es UNA mensualidad = anual/(12+nº pagas), siempre.
+        int divisor = isExtra
+                ? (12 + contract.annualBonuses)
+                : (req.extraProratedOrDefault() ? 12 : (12 + contract.annualBonuses));
 
         // 1) Devengos: una línea por concepto salarial del contrato.
         List<SalaryConcept> concepts = loadSalaryConcepts(contract.id);

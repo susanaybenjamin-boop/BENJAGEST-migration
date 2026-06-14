@@ -16121,6 +16121,10 @@ public class BenjagestUiApplication extends Application {
             case "labor.payslips.action.calculate" -> "Calculate payslip";
             case "labor.payslips.action.pay" -> "Mark as paid";
             case "labor.payslips.action.batch" -> "Batch to target";
+            case "labor.payslips.action.extra" -> "Extra payment";
+            case "labor.payslips.extra.title" -> "Generate extra payment (summer / Christmas)";
+            case "labor.payslips.extra.hint" -> "Generates the extra payment payslip for the selected employees. Amount = one monthly payment; no Social Security of its own (its share is already paid monthly), only income tax.";
+            case "labor.payslips.extra.generate" -> "Generate extra payments";
             case "labor.payslips.batch.title" -> "Generate payslips to a target salary";
             case "labor.payslips.batch.hint" -> "For each selected employee, the plus needed to reach the target is computed and the payslip is generated. Same gross → same plus; same net → different plus per family situation.";
             case "labor.payslips.batch.employees" -> "Employees (same category usually):";
@@ -16565,6 +16569,10 @@ public class BenjagestUiApplication extends Application {
             case "labor.payslips.action.calculate" -> "Calcular nomina";
             case "labor.payslips.action.pay" -> "Marcar pagada";
             case "labor.payslips.action.batch" -> "Lote a objetivo";
+            case "labor.payslips.action.extra" -> "Paga extra";
+            case "labor.payslips.extra.title" -> "Generar paga extra (verano / navidad)";
+            case "labor.payslips.extra.hint" -> "Genera la nómina de paga extra para los empleados seleccionados. Importe = una mensualidad; sin cotización propia (su parte ya cotiza en las mensuales), solo IRPF.";
+            case "labor.payslips.extra.generate" -> "Generar pagas extra";
             case "labor.payslips.batch.title" -> "Generar nóminas a un sueldo objetivo";
             case "labor.payslips.batch.hint" -> "Para cada empleado seleccionado se calcula el plus necesario para llegar al objetivo y se genera la nómina. Mismo bruto → mismo plus; mismo neto → plus distinto por situación familiar.";
             case "labor.payslips.batch.employees" -> "Empleados (normalmente de la misma categoría):";
@@ -19476,6 +19484,10 @@ public class BenjagestUiApplication extends Application {
         batchBtn.setGraphic(icon("fas-layer-group"));
         batchBtn.setOnAction(ev -> showBatchTargetDialog(bundle));
 
+        Button extraBtn = new Button(t("labor.payslips.action.extra"));
+        extraBtn.setGraphic(icon("fas-gift"));
+        extraBtn.setOnAction(ev -> showExtraPagaDialog(bundle));
+
         Button payBtn = new Button(t("labor.payslips.action.pay"));
         payBtn.setGraphic(icon("fas-money-check-alt"));
         payBtn.setDisable(true);
@@ -19516,7 +19528,7 @@ public class BenjagestUiApplication extends Application {
             delBtn.setDisable(none || "PAID".equals(nv == null ? "" : nv.status()));
         });
 
-        HBox actions = new HBox(8, calcBtn, batchBtn, payBtn, pdfBtn, emailBtn, delBtn);
+        HBox actions = new HBox(8, calcBtn, batchBtn, extraBtn, payBtn, pdfBtn, emailBtn, delBtn);
         actions.setAlignment(Pos.CENTER_LEFT);
 
         Label hint = new Label(t("labor.payslips.hint"));
@@ -19527,6 +19539,97 @@ public class BenjagestUiApplication extends Application {
         VBox.setVgrow(payslipsTable, Priority.ALWAYS);
         body.setPadding(new Insets(12));
         return screenScroll(body);
+    }
+
+    /**
+     * Pagas extras — genera la nómina de paga extra (verano / navidad) para
+     * los empleados seleccionados. Importe = una mensualidad (anual/(12+pagas)),
+     * sin cotización propia (su prorrata ya cotiza en las mensuales), solo IRPF.
+     */
+    private void showExtraPagaDialog(LaborBundle bundle) {
+        java.util.Set<String> withContract = bundle.contracts().stream()
+                .map(com.benjagest.ui.model.ContractEntry::employeeId)
+                .collect(java.util.stream.Collectors.toSet());
+        var emps = bundle.employees().stream()
+                .filter(e -> e.active() && withContract.contains(e.id())).toList();
+
+        Dialog<ButtonType> d = new Dialog<>();
+        d.setTitle(t("labor.payslips.extra.title"));
+        d.getDialogPane().getButtonTypes().add(ButtonType.CLOSE);
+
+        int yNow = java.time.LocalDate.now().getYear();
+        ComboBox<Integer> yearCombo = new ComboBox<>();
+        for (int y = yNow + 1; y >= yNow - 5; y--) yearCombo.getItems().add(y);
+        yearCombo.getSelectionModel().select(Integer.valueOf(yNow));
+        ComboBox<Integer> monthCombo = new ComboBox<>();
+        for (int m = 1; m <= 12; m++) monthCombo.getItems().add(m);
+        monthCombo.getSelectionModel().select(Integer.valueOf(java.time.LocalDate.now().getMonthValue()));
+        ComboBox<String> typeCombo = new ComboBox<>();
+        typeCombo.getItems().addAll("EXTRA_SUMMER", "EXTRA_CHRISTMAS");
+        localizeEnumCombo(typeCombo, "payslip_type");
+        typeCombo.getSelectionModel().select("EXTRA_SUMMER");
+
+        VBox empBox = new VBox(4);
+        java.util.Map<String, CheckBox> checks = new java.util.HashMap<>();
+        for (var e : emps) {
+            CheckBox cb = new CheckBox(e.fullName());
+            checks.put(e.id(), cb);
+            empBox.getChildren().add(cb);
+        }
+        ScrollPane empScroll = new ScrollPane(empBox);
+        empScroll.setFitToWidth(true);
+        empScroll.setPrefHeight(160);
+
+        Label status = new Label(t("labor.payslips.extra.hint"));
+        status.getStyleClass().add("settings-hint");
+        status.setWrapText(true);
+        Button genBtn = new Button(t("labor.payslips.extra.generate"));
+        genBtn.getStyleClass().add("button-primary");
+        genBtn.setOnAction(ev -> {
+            var targets = emps.stream().filter(e -> checks.get(e.id()).isSelected()).toList();
+            if (targets.isEmpty()) { status.setText(t("labor.payslips.batch.none_selected")); return; }
+            int yr = yearCombo.getValue(), mo = monthCombo.getValue();
+            String type = typeCombo.getValue();
+            Task<String> tk = new Task<>() {
+                @Override protected String call() throws Exception {
+                    int ok = 0;
+                    StringBuilder errs = new StringBuilder();
+                    for (var e : targets) {
+                        try {
+                            laborApiClient.calculatePayslip(e.id(), yr, mo, type, false, null, null,
+                                    java.util.List.of());
+                            ok++;
+                        } catch (Exception ex) {
+                            errs.append("• ").append(e.fullName()).append(": ")
+                                .append(humanizeBackendError(ex.getMessage())).append("\n");
+                        }
+                    }
+                    return ok + "||" + errs;
+                }
+            };
+            tk.setOnSucceeded(ev2 -> {
+                String[] parts = tk.getValue().split("\\|\\|", 2);
+                String msg = t("labor.payslips.batch.done").replace("{n}", parts[0]);
+                if (parts.length > 1 && !parts[1].isBlank()) msg += "\n" + parts[1];
+                status.setText(msg);
+            });
+            tk.setOnFailed(ev2 -> status.setText(tk.getException() == null ? "" : tk.getException().getMessage()));
+            start(tk, "payslip-extra");
+        });
+
+        GridPane top = new GridPane();
+        top.setHgap(10); top.setVgap(8);
+        int r = 0;
+        top.add(new Label(t("labor.payslips.calc.year")), 0, r); top.add(yearCombo, 1, r);
+        top.add(new Label(t("labor.payslips.calc.month")), 2, r); top.add(monthCombo, 3, r); r++;
+        top.add(new Label(t("labor.payslips.calc.type")), 0, r); top.add(typeCombo, 1, r); r++;
+
+        VBox content = new VBox(10, top, new Label(t("labor.payslips.batch.employees")),
+                empScroll, genBtn, status);
+        content.setPadding(new Insets(12));
+        installDialog(d, content);
+        d.showAndWait();
+        showLaborModule();
     }
 
     /**
