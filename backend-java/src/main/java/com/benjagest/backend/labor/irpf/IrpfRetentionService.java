@@ -288,6 +288,103 @@ public class IrpfRetentionService {
         }
     }
 
+    // ===== Administración de parámetros IRPF por año (punto 2) =====
+
+    public record Bracket(BigDecimal lowerLimit, BigDecimal rate) {}
+
+    public List<Integer> listParamYears() {
+        return jdbc.query("SELECT year FROM irpf_retention_params ORDER BY year DESC",
+                (rs, n) -> rs.getInt("year"));
+    }
+
+    public List<Bracket> listBrackets(int year) {
+        return jdbc.query("""
+                SELECT lower_limit, rate FROM irpf_retention_brackets
+                 WHERE year = ? ORDER BY lower_limit
+                """, (rs, n) -> new Bracket(rs.getBigDecimal("lower_limit"), rs.getBigDecimal("rate")), year);
+    }
+
+    @Transactional
+    public void replaceBrackets(int year, List<Bracket> brackets) {
+        jdbc.update("DELETE FROM irpf_retention_brackets WHERE year = ?", year);
+        if (brackets == null) return;
+        for (Bracket b : brackets) {
+            if (b.lowerLimit() == null || b.rate() == null) continue;
+            jdbc.update("INSERT INTO irpf_retention_brackets (year, lower_limit, rate) VALUES (?, ?, ?)",
+                    year, b.lowerLimit(), b.rate());
+        }
+    }
+
+    /** Clona toda la configuración IRPF (escala + parámetros + mínimos exentos)
+     *  del último año disponible a {@code toYear}, para arrancar un año nuevo. */
+    @Transactional
+    public void cloneYear(int toYear) {
+        Integer from = jdbc.query(
+                "SELECT MAX(year) y FROM irpf_retention_params WHERE year < ?",
+                (rs, n) -> (Integer) rs.getObject("y"), toYear).stream().findFirst().orElse(null);
+        if (from == null) {
+            throw new org.springframework.web.server.ResponseStatusException(
+                    org.springframework.http.HttpStatus.CONFLICT, "No hay un año previo que clonar");
+        }
+        jdbc.update("DELETE FROM irpf_retention_brackets WHERE year = ?", toYear);
+        jdbc.update("""
+                INSERT INTO irpf_retention_brackets (year, lower_limit, rate)
+                SELECT ?, lower_limit, rate FROM irpf_retention_brackets WHERE year = ?
+                """, toYear, from);
+        jdbc.update("DELETE FROM irpf_exempt_thresholds WHERE year = ?", toYear);
+        jdbc.update("""
+                INSERT INTO irpf_exempt_thresholds (year, situation, children, threshold)
+                SELECT ?, situation, children, threshold FROM irpf_exempt_thresholds WHERE year = ?
+                """, toYear, from);
+        jdbc.update("DELETE FROM irpf_retention_params WHERE year = ?", toYear);
+        jdbc.update("""
+                INSERT INTO irpf_retention_params
+                    (year, personal_min, personal_over65, personal_over75, descendant_1,
+                     descendant_2, descendant_3, descendant_4plus, descendant_under3,
+                     ascendant_over65, ascendant_over75, disability_33, disability_65,
+                     disability_mobility, expense_deduction, work_reduction_max,
+                     work_reduction_threshold1, work_reduction_threshold2, work_reduction_factor,
+                     limit_rate, limit_income_cap, legal_reference)
+                SELECT ?, personal_min, personal_over65, personal_over75, descendant_1,
+                     descendant_2, descendant_3, descendant_4plus, descendant_under3,
+                     ascendant_over65, ascendant_over75, disability_33, disability_65,
+                     disability_mobility, expense_deduction, work_reduction_max,
+                     work_reduction_threshold1, work_reduction_threshold2, work_reduction_factor,
+                     limit_rate, limit_income_cap, legal_reference
+                  FROM irpf_retention_params WHERE year = ?
+                """, toYear, from);
+    }
+
+    @RestController
+    @RequestMapping("/api/labor/irpf-params")
+    @RequiresModule("labor")
+    @RequiresRole({"OWNER", "ADMIN", "ACCOUNTANT", "EMPLOYEE"})
+    public static class ParamsController {
+        private final IrpfRetentionService service;
+
+        public ParamsController(IrpfRetentionService service) { this.service = service; }
+
+        @GetMapping("/years")
+        public List<Integer> years() { return service.listParamYears(); }
+
+        @GetMapping("/brackets/{year}")
+        public List<Bracket> brackets(@PathVariable("year") int year) { return service.listBrackets(year); }
+
+        @PostMapping("/brackets/{year}")
+        @RequiresRole({"OWNER", "ADMIN", "ACCOUNTANT"})
+        public List<Bracket> saveBrackets(@PathVariable("year") int year, @RequestBody List<Bracket> b) {
+            service.replaceBrackets(year, b);
+            return service.listBrackets(year);
+        }
+
+        @PostMapping("/clone/{year}")
+        @RequiresRole({"OWNER", "ADMIN", "ACCOUNTANT"})
+        public List<Integer> clone(@PathVariable("year") int year) {
+            service.cloneYear(year);
+            return service.listParamYears();
+        }
+    }
+
     @RestController
     @RequestMapping("/api/labor/irpf-data")
     @RequiresModule("labor")

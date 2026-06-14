@@ -16002,6 +16002,17 @@ public class BenjagestUiApplication extends Application {
             case "labor.tab.ss_contributions" -> "SS contributions";
             case "labor.tab.employer_cost" -> "Employer cost";
             case "labor.tab.ss_rates" -> "SS rates";
+            case "labor.tab.irpf_params" -> "Income-tax scale";
+            case "labor.irpfparams.hint" -> "Income-tax withholding scale by year. To start a new year, clone the previous one and edit the scale if it changed. Minimums/reductions are carried over by the clone.";
+            case "labor.irpfparams.empty" -> "No scale for this year.";
+            case "labor.irpfparams.from" -> "From (€)";
+            case "labor.irpfparams.rate" -> "Rate";
+            case "labor.irpfparams.clone" -> "Add year (clone)";
+            case "labor.irpfparams.clone_prompt" -> "Year to create (copies the latest):";
+            case "labor.irpfparams.edit" -> "Edit scale";
+            case "labor.irpfparams.edit_hint" -> "Each row is a bracket: income from which the rate applies.";
+            case "labor.irpfparams.add_row" -> "+ Add bracket";
+            case "labor.irpfparams.load_failed" -> "Could not load the scale";
             case "labor.ssrates.hint" -> "Social Security contribution rates by year. Payroll reads them from here, so when the law changes you only add/edit the year — no code change. Rows are national legal rates (same for all companies).";
             case "labor.ssrates.empty" -> "No rates configured.";
             case "labor.ssrates.col.year" -> "Year";
@@ -16482,6 +16493,17 @@ public class BenjagestUiApplication extends Application {
             case "labor.tab.ss_contributions" -> "Cotizaciones SS";
             case "labor.tab.employer_cost" -> "Coste empresa";
             case "labor.tab.ss_rates" -> "Tipos cotización";
+            case "labor.tab.irpf_params" -> "Escala IRPF";
+            case "labor.irpfparams.hint" -> "Escala de retención de IRPF por año. Para empezar un año nuevo, clona el anterior y edita la escala si cambió. Los mínimos/reducciones se arrastran al clonar.";
+            case "labor.irpfparams.empty" -> "No hay escala para este año.";
+            case "labor.irpfparams.from" -> "Desde (€)";
+            case "labor.irpfparams.rate" -> "Tipo";
+            case "labor.irpfparams.clone" -> "Añadir año (clonar)";
+            case "labor.irpfparams.clone_prompt" -> "Año a crear (copia el más reciente):";
+            case "labor.irpfparams.edit" -> "Editar escala";
+            case "labor.irpfparams.edit_hint" -> "Cada fila es un tramo: renta a partir de la cual se aplica el tipo.";
+            case "labor.irpfparams.add_row" -> "+ Añadir tramo";
+            case "labor.irpfparams.load_failed" -> "No se pudo cargar la escala";
             case "labor.ssrates.hint" -> "Tipos de cotización a la Seguridad Social por año. La nómina los lee de aquí, así que cuando cambia la ley solo añades/editas el año — sin tocar código. Son tipos legales nacionales (iguales para todas las empresas).";
             case "labor.ssrates.empty" -> "No hay tipos configurados.";
             case "labor.ssrates.col.year" -> "Año";
@@ -18681,6 +18703,9 @@ public class BenjagestUiApplication extends Application {
         // Tipos de cotización SS por año (PARAM-YEAR).
         Tab ratesTab = new Tab(t("labor.tab.ss_rates"), buildSsRatesTab());
         ratesTab.setGraphic(icon("fas-table"));
+        // Parámetros IRPF por año (escala).
+        Tab irpfParamsTab = new Tab(t("labor.tab.irpf_params"), buildIrpfParamsTab());
+        irpfParamsTab.setGraphic(icon("fas-percent"));
         // PORT-2 (2026-06-10 tarde) — Partes/Jornadas como sub-pestaña
         // de Labor (no como módulo de raíz, decisión Benjamin). Lee de
         // /api/work-logs. Cuando llegue la versión tablet/móvil del
@@ -18694,7 +18719,7 @@ public class BenjagestUiApplication extends Application {
 
         tabs.getTabs().addAll(empTab, contractsTab, clockTab, auditTab, payslipsTab,
                 templatesTab, clausesTab, cfgTab, calendarTab, leavesTab, ssTab,
-                costTab, ratesTab, shiftsTab, centersTab);
+                costTab, ratesTab, irpfParamsTab, shiftsTab, centersTab);
         VBox.setVgrow(tabs, Priority.ALWAYS);
 
         content.getChildren().addAll(header, alertsBanner, tabs);
@@ -31925,6 +31950,149 @@ public class BenjagestUiApplication extends Application {
 
     private TextField rateField(java.math.BigDecimal v, String fallback) {
         return new TextField(v == null ? fallback : v.toPlainString());
+    }
+
+    /**
+     * Parámetros de IRPF por año: escala de retención editable + clonar año.
+     * Los mínimos/reducciones se arrastran al clonar (raramente cambian).
+     */
+    private Node buildIrpfParamsTab() {
+        VBox content = new VBox(12);
+        content.setPadding(new Insets(16));
+        Label hint = new Label(t("labor.irpfparams.hint"));
+        hint.setWrapText(true);
+        hint.getStyleClass().add("settings-hint");
+
+        ComboBox<Integer> yearCombo = new ComboBox<>();
+        TableView<double[]> table = new TableView<>();
+        table.getStyleClass().add("data-table");
+        table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+        table.setPlaceholder(new Label(t("labor.irpfparams.empty")));
+        TableColumn<double[], String> cFrom = new TableColumn<>(t("labor.irpfparams.from"));
+        cFrom.setCellValueFactory(c -> new SimpleStringProperty(money(java.math.BigDecimal.valueOf(c.getValue()[0]))));
+        cFrom.setComparator(NUMERIC_STRING_COMPARATOR);
+        TableColumn<double[], String> cRate = new TableColumn<>(t("labor.irpfparams.rate"));
+        cRate.setCellValueFactory(c -> new SimpleStringProperty(
+                java.math.BigDecimal.valueOf(c.getValue()[1]).stripTrailingZeros().toPlainString().replace(".", ",") + " %"));
+        cRate.setComparator(NUMERIC_STRING_COMPARATOR);
+        table.getColumns().addAll(java.util.List.of(cFrom, cRate));
+
+        Runnable loadBrackets = () -> {
+            Integer y = yearCombo.getValue();
+            if (y == null) return;
+            Task<java.util.List<double[]>> tk = new Task<>() {
+                @Override protected java.util.List<double[]> call() throws Exception {
+                    return laborApiClient.listIrpfBrackets(y);
+                }
+            };
+            tk.setOnSucceeded(ev -> table.setItems(FXCollections.observableArrayList(tk.getValue())));
+            tk.setOnFailed(ev -> showError(t("labor.irpfparams.load_failed"),
+                    tk.getException() == null ? "" : tk.getException().getMessage()));
+            start(tk, "irpfparams-brackets");
+        };
+        yearCombo.valueProperty().addListener((o, ov, nv) -> loadBrackets.run());
+
+        Runnable loadYears = () -> {
+            Task<java.util.List<Integer>> tk = new Task<>() {
+                @Override protected java.util.List<Integer> call() throws Exception {
+                    return laborApiClient.listIrpfYears();
+                }
+            };
+            tk.setOnSucceeded(ev -> {
+                Integer prev = yearCombo.getValue();
+                yearCombo.getItems().setAll(tk.getValue());
+                if (prev != null && tk.getValue().contains(prev)) yearCombo.getSelectionModel().select(prev);
+                else if (!tk.getValue().isEmpty()) yearCombo.getSelectionModel().selectFirst();
+                loadBrackets.run();
+            });
+            tk.setOnFailed(ev -> showError(t("labor.irpfparams.load_failed"),
+                    tk.getException() == null ? "" : tk.getException().getMessage()));
+            start(tk, "irpfparams-years");
+        };
+
+        Button cloneBtn = new Button(t("labor.irpfparams.clone"));
+        cloneBtn.getStyleClass().add("button-primary");
+        cloneBtn.setOnAction(e -> {
+            int next = (yearCombo.getItems().isEmpty() ? java.time.Year.now().getValue()
+                    : yearCombo.getItems().get(0)) + 1;
+            TextInputDialog ask = new TextInputDialog(String.valueOf(next));
+            ask.setTitle(t("labor.irpfparams.clone"));
+            ask.setHeaderText(t("labor.irpfparams.clone_prompt"));
+            ask.showAndWait().ifPresent(s -> {
+                Integer y = parseIntSafe(s);
+                if (y == null) return;
+                Task<Void> tk = new Task<>() {
+                    @Override protected Void call() throws Exception { laborApiClient.cloneIrpfYear(y); return null; }
+                };
+                tk.setOnSucceeded(ev -> { yearCombo.getSelectionModel().clearSelection(); loadYears.run(); });
+                tk.setOnFailed(ev -> showError(t("labor.irpfparams.clone"),
+                        humanizeBackendError(tk.getException() == null ? "" : tk.getException().getMessage())));
+                start(tk, "irpfparams-clone");
+            });
+        });
+        Button editBtn = new Button(t("labor.irpfparams.edit"));
+        editBtn.getStyleClass().add("button-secondary");
+        editBtn.setOnAction(e -> {
+            Integer y = yearCombo.getValue();
+            if (y != null) showIrpfBracketsEditor(y, new java.util.ArrayList<>(table.getItems()), loadBrackets);
+        });
+        HBox actions = new HBox(8, new Label(t("labor.ssrates.col.year")), yearCombo, editBtn, cloneBtn);
+        actions.setAlignment(Pos.CENTER_LEFT);
+
+        loadYears.run();
+        VBox body = new VBox(10, hint, actions, table);
+        VBox.setVgrow(table, Priority.ALWAYS);
+        content.getChildren().add(body);
+        VBox.setVgrow(body, Priority.ALWAYS);
+        return content;
+    }
+
+    private void showIrpfBracketsEditor(int year, java.util.List<double[]> initial, Runnable onSaved) {
+        Dialog<ButtonType> d = new Dialog<>();
+        d.setTitle(t("labor.irpfparams.edit") + " — " + year);
+        ButtonType save = new ButtonType(t("labor.ssrates.save_btn"), ButtonBar.ButtonData.OK_DONE);
+        d.getDialogPane().getButtonTypes().addAll(save, ButtonType.CANCEL);
+
+        VBox rows = new VBox(6);
+        java.util.List<TextField[]> fields = new java.util.ArrayList<>();
+        java.util.function.BiConsumer<Double, Double> addRow = (lo, ra) -> {
+            TextField fLo = new TextField(lo == null ? "" : java.math.BigDecimal.valueOf(lo).toPlainString());
+            fLo.setPromptText(t("labor.irpfparams.from")); fLo.setPrefWidth(140);
+            TextField fRa = new TextField(ra == null ? "" : java.math.BigDecimal.valueOf(ra).toPlainString());
+            fRa.setPromptText(t("labor.irpfparams.rate")); fRa.setPrefWidth(90);
+            TextField[] pair = {fLo, fRa};
+            fields.add(pair);
+            Button del = new Button("✕"); del.getStyleClass().add("button-secondary");
+            HBox row = new HBox(8, fLo, fRa, del);
+            row.setAlignment(Pos.CENTER_LEFT);
+            del.setOnAction(e -> { fields.remove(pair); rows.getChildren().remove(row); });
+            rows.getChildren().add(row);
+        };
+        for (double[] b : initial) addRow.accept(b[0], b[1]);
+        Button addBtn = new Button(t("labor.irpfparams.add_row"));
+        addBtn.getStyleClass().add("button-secondary");
+        addBtn.setOnAction(e -> addRow.accept(0.0, 19.0));
+
+        VBox box = new VBox(10, new Label(t("labor.irpfparams.edit_hint")), rows, addBtn);
+        box.setPadding(new Insets(12));
+        installDialog(d, box);
+        d.showAndWait().ifPresent(bt -> {
+            if (bt != save) return;
+            java.util.List<double[]> out = new java.util.ArrayList<>();
+            for (TextField[] p : fields) {
+                java.math.BigDecimal lo = parseDecSafe(p[0].getText());
+                java.math.BigDecimal ra = parseDecSafe(p[1].getText());
+                if (ra == null) continue;
+                out.add(new double[]{lo == null ? 0 : lo.doubleValue(), ra.doubleValue()});
+            }
+            Task<Void> tk = new Task<>() {
+                @Override protected Void call() throws Exception { laborApiClient.saveIrpfBrackets(year, out); return null; }
+            };
+            tk.setOnSucceeded(ev -> onSaved.run());
+            tk.setOnFailed(ev -> showError(t("labor.irpfparams.edit"),
+                    tk.getException() == null ? "" : tk.getException().getMessage()));
+            start(tk, "irpfparams-save");
+        });
     }
 
     /**

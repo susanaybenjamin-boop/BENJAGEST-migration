@@ -555,6 +555,48 @@ public class LaborApiClient {
         return bigDec(r.body(), "plus");
     }
 
+    // ==== Parámetros IRPF por año (escala) ====
+
+    public java.util.List<Integer> listIrpfYears() throws IOException, InterruptedException {
+        HttpResponse<String> r = send(req(baseUrl + "/labor/irpf-params/years").GET());
+        java.util.List<Integer> out = new ArrayList<>();
+        Matcher m = Pattern.compile("-?\\d+").matcher(r.body());
+        while (m.find()) out.add(Integer.parseInt(m.group()));
+        return out;
+    }
+
+    /** Devuelve la escala de un año como pares [lowerLimit, rate]. */
+    public java.util.List<double[]> listIrpfBrackets(int year) throws IOException, InterruptedException {
+        HttpResponse<String> r = send(req(baseUrl + "/labor/irpf-params/brackets/" + year).GET());
+        java.util.List<double[]> out = new ArrayList<>();
+        for (String o : splitTopLevelObjects(r.body())) {
+            java.math.BigDecimal lo = bigDec(o, "lowerLimit");
+            java.math.BigDecimal ra = bigDec(o, "rate");
+            out.add(new double[]{lo == null ? 0 : lo.doubleValue(), ra == null ? 0 : ra.doubleValue()});
+        }
+        return out;
+    }
+
+    public void saveIrpfBrackets(int year, java.util.List<double[]> brackets)
+            throws IOException, InterruptedException {
+        StringBuilder b = new StringBuilder("[");
+        for (int i = 0; i < brackets.size(); i++) {
+            if (i > 0) b.append(",");
+            b.append("{\"lowerLimit\":").append(brackets.get(i)[0])
+             .append(",\"rate\":").append(brackets.get(i)[1]).append("}");
+        }
+        b.append("]");
+        send(req(baseUrl + "/labor/irpf-params/brackets/" + year)
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(b.toString())));
+    }
+
+    public void cloneIrpfYear(int year) throws IOException, InterruptedException {
+        send(req(baseUrl + "/labor/irpf-params/clone/" + year)
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString("{}")));
+    }
+
     // ==== Modelo 145 (datos IRPF del empleado) ====
 
     public com.benjagest.ui.model.Modelo145Entry getIrpfData(String employeeId)
