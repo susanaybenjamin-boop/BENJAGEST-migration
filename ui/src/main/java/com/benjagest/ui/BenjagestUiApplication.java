@@ -16303,6 +16303,7 @@ public class BenjagestUiApplication extends Application {
             case "labor.contract.salary.cotizes" -> "SS";
             case "labor.contract.salary.taxable" -> "Tax";
             case "labor.contract.salary.base_default" -> "Base salary";
+            case "labor.contract.salary.catalog" -> "Add typical…";
             case "labor.contract.editor.workplace" -> "Workplace address";
             case "labor.contract.editor.status" -> "Status";
             case "labor.contract.editor.fail.title" -> "Could not save";
@@ -16793,6 +16794,7 @@ public class BenjagestUiApplication extends Application {
             case "labor.contract.salary.cotizes" -> "SS";
             case "labor.contract.salary.taxable" -> "IRPF";
             case "labor.contract.salary.base_default" -> "Salario base";
+            case "labor.contract.salary.catalog" -> "Añadir típico…";
             case "labor.contract.editor.workplace" -> "Centro de trabajo";
             case "labor.contract.editor.status" -> "Estado";
             case "labor.contract.editor.fail.title" -> "No se pudo guardar";
@@ -21875,8 +21877,27 @@ public class BenjagestUiApplication extends Application {
         return out;
     }
 
+    /** Catálogo de complementos típicos: [nombre, cotiza(1/0), tributa(1/0)].
+     *  Para alta rápida; el asesor puede teclear cualquier otro. */
+    private static final java.util.List<String[]> TYPICAL_COMPLEMENTS = java.util.List.of(
+            new String[]{"Antigüedad", "1", "1"},
+            new String[]{"Plus convenio", "1", "1"},
+            new String[]{"Mejora voluntaria", "1", "1"},
+            new String[]{"Plus de transporte", "1", "1"},
+            new String[]{"Plus de productividad", "1", "1"},
+            new String[]{"Plus de asistencia / puntualidad", "1", "1"},
+            new String[]{"Complemento de puesto", "1", "1"},
+            new String[]{"Plus de responsabilidad", "1", "1"},
+            new String[]{"Plus de idiomas", "1", "1"},
+            new String[]{"Plus de nocturnidad", "1", "1"},
+            new String[]{"Plus de peligrosidad / penosidad", "1", "1"},
+            new String[]{"Horas extraordinarias", "1", "1"},
+            new String[]{"Dietas (exentas)", "0", "0"},
+            new String[]{"Kilometraje (exento)", "0", "0"});
+
     /** Editor de complementos salariales: filas (concepto, importe anual,
-     *  cotiza, tributa) + botón añadir. El salario base va aparte. */
+     *  cotiza, tributa) + botón añadir + catálogo de típicos. El salario base
+     *  va aparte. */
     private final class SalaryComplementsEditor {
         final VBox node = new VBox(6);
         private final VBox rowsBox = new VBox(4);
@@ -21925,7 +21946,24 @@ public class BenjagestUiApplication extends Application {
             add.getStyleClass().add("button-secondary");
             add.setOnAction(e -> addRow(new com.benjagest.ui.model.SalaryItemEntry(
                     null, "", "COMPLEMENT", null, true, true)));
-            node.getChildren().addAll(title, hint, rowsBox, add);
+            // Catálogo de complementos típicos (alta de un clic). Cada uno trae
+            // sus marcas SS/IRPF por defecto (p. ej. dietas/kilometraje exentos).
+            ComboBox<String[]> catalog = new ComboBox<>();
+            catalog.getItems().addAll(TYPICAL_COMPLEMENTS);
+            catalog.setPromptText(t("labor.contract.salary.catalog"));
+            catalog.setConverter(new javafx.util.StringConverter<>() {
+                @Override public String toString(String[] c) { return c == null ? "" : c[0]; }
+                @Override public String[] fromString(String s) { return null; }
+            });
+            catalog.valueProperty().addListener((o, ov, nv) -> {
+                if (nv == null) return;
+                addRow(new com.benjagest.ui.model.SalaryItemEntry(
+                        null, nv[0], "COMPLEMENT", null, "1".equals(nv[1]), "1".equals(nv[2])));
+                javafx.application.Platform.runLater(() -> catalog.getSelectionModel().clearSelection());
+            });
+            HBox addRowBar = new HBox(8, add, catalog);
+            addRowBar.setAlignment(Pos.CENTER_LEFT);
+            node.getChildren().addAll(title, hint, rowsBox, addRowBar);
             if (initial != null) for (var it : initial) addRow(it);
         }
 
