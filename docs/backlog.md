@@ -1,6 +1,6 @@
 # Backlog operativo BENJAGEST
 
-> **Última actualización:** 2026-06-14 (cierre y validación del bloque NOM: complementos mensuales, mejora del objetivo al contrato, prorrateo por contrato, recibo de paga extra, **IRPF validado contra la calculadora AEAT 2026** + editor UI de mínimos/reducciones por año. Arrancamos CICLO-VIDA CV-1 finiquito).
+> **Última actualización:** 2026-06-14 (NOM validado contra AEAT + **bloque CICLO-VIDA completo y probado por Benjamin**: vacaciones, finiquito, despido/baja automático con indemnización, carta de despido + certificado de empresa, nóminas mensuales recurrentes. Ajustes tras pruebas: antigüedad en años/meses/días, fecha de antigüedad reconocida (V115), tipo de trabajo localizado, pool Hikari resiliente).
 >
 > **Forma de trabajo (junio 2026):** Benjamin lidera y decide. Pablo solo entra de uvas a peras desde 05-30. Todo el trabajo va por `feat/Benjamin` → prueba local → commit → merge `--no-ff` a `develop`. Cada item cerrado lleva commit hash + fecha. **Regla 10.bis de CLAUDE.md aplica siempre: verificar código antes de tocar.**
 >
@@ -23,8 +23,14 @@
 > TerminationService), CV-3 (jubilación = tipo RETIREMENT), CV-DOC (carta de
 > despido + certificado de empresa, TerminationDocsService) y PAY-RECURRENT
 > ("Generar mes": nómina mensual de todos los activos de una vez, idempotente).
-> **Listo para probar el bloque completo.** Pendientes (futuro): CV-4 baja RED
-> real, CV-5 excedencias, CV-6/7 autónomos, CV-8 empresa.
+> **Bloque CV probado por Benjamin (va todo bien).** Ajustes tras pruebas:
+> antigüedad en años/meses/días; **fecha de antigüedad reconocida** en el
+> contrato (V115) para indemnización con contratos sucesivos; tipo de trabajo
+> localizado (combo Jornada completa/parcial); al despedir, el empleado pasa a
+> baja si no le queda contrato activo; pool **Hikari** resiliente a conexiones
+> muertas (suspensión del equipo / reinicio de MariaDB).
+> Pendientes (futuro): CV-4 baja RED real, CV-5 excedencias, CV-6/7 autónomos
+> (cese de actividad / jubilación RETA), CV-8 cese de empresa.
 
 **Empleados (laboral):**
 - ✅ ⚖️ **CV-1 Finiquito / liquidación** *(2026-06-14)* — al
