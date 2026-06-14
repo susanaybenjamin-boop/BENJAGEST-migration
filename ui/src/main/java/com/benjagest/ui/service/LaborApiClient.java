@@ -557,6 +557,50 @@ public class LaborApiClient {
         return bigDec(r.body(), "plus");
     }
 
+    // ==== Vacaciones (CV-VAC) ====
+
+    public java.util.List<com.benjagest.ui.model.VacationEntry> listVacations(String employeeId, Integer year)
+            throws IOException, InterruptedException {
+        StringBuilder url = new StringBuilder(baseUrl + "/labor/vacations?");
+        if (employeeId != null && !employeeId.isBlank()) url.append("employeeId=").append(employeeId).append("&");
+        if (year != null) url.append("year=").append(year);
+        HttpResponse<String> r = send(req(url.toString()).GET());
+        java.util.List<com.benjagest.ui.model.VacationEntry> out = new ArrayList<>();
+        for (String o : splitTopLevelObjects(r.body())) out.add(mapVacation(o));
+        return out;
+    }
+
+    public void createVacation(com.benjagest.ui.model.VacationEntry v) throws IOException, InterruptedException {
+        send(req(baseUrl + "/labor/vacations").header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(vacationBody(v))));
+    }
+
+    public void updateVacation(String id, com.benjagest.ui.model.VacationEntry v)
+            throws IOException, InterruptedException {
+        send(req(baseUrl + "/labor/vacations/" + id).header("Content-Type", "application/json")
+                .PUT(HttpRequest.BodyPublishers.ofString(vacationBody(v))));
+    }
+
+    public void deleteVacation(String id) throws IOException, InterruptedException {
+        send(req(baseUrl + "/labor/vacations/" + id).DELETE());
+    }
+
+    private String vacationBody(com.benjagest.ui.model.VacationEntry v) {
+        return "{" + field("employeeId", v.employeeId()) + ","
+                + field("startDate", v.startDate() == null ? null : v.startDate().toString()) + ","
+                + field("endDate", v.endDate() == null ? null : v.endDate().toString()) + ","
+                + decField("days", v.days()) + ","
+                + field("status", v.status()) + ","
+                + field("notes", v.notes()) + "}";
+    }
+
+    private com.benjagest.ui.model.VacationEntry mapVacation(String o) {
+        return new com.benjagest.ui.model.VacationEntry(
+                textField(o, "id"), textField(o, "employeeId"), textField(o, "employeeName"),
+                parseDate(textField(o, "startDate")), parseDate(textField(o, "endDate")),
+                bigDec(o, "days"), textField(o, "status"), textField(o, "notes"));
+    }
+
     /** Calcula los conceptos de un finiquito (salario días trabajados +
      *  vacaciones no disfrutadas + prorrata pagas extra) para revisar/editar. */
     public java.util.List<com.benjagest.ui.model.SalaryItemEntry> settlementConcepts(

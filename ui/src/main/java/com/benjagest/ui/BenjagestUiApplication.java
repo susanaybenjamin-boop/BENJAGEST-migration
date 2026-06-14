@@ -15965,6 +15965,22 @@ public class BenjagestUiApplication extends Application {
             case "labor.tab.cfg_timeclock" -> "Time clock settings";
             case "labor.tab.audit" -> "Audit";
             case "labor.tab.medical_leaves" -> "Medical leaves";
+            case "labor.tab.vacations" -> "Holidays";
+            case "labor.vac.title" -> "Holidays";
+            case "labor.vac.hint" -> "Record each employee's holiday periods. The settlement uses them to work out the pending (accrued − taken) holidays automatically.";
+            case "labor.vac.empty" -> "No holidays recorded.";
+            case "labor.vac.new" -> "Add holidays";
+            case "labor.vac.col.employee" -> "Employee";
+            case "labor.vac.col.from" -> "From";
+            case "labor.vac.col.to" -> "To";
+            case "labor.vac.col.days" -> "Days";
+            case "labor.vac.col.status" -> "Status";
+            case "labor.vac.col.notes" -> "Notes";
+            case "labor.vac.status.APPROVED" -> "Approved";
+            case "labor.vac.status.REQUESTED" -> "Requested";
+            case "labor.vac.status.REJECTED" -> "Rejected";
+            case "common.edit" -> "Edit";
+            case "common.delete" -> "Delete";
             case "labor.leaves.hint" -> "Incapacidad Temporal (IT) registered for the company. The amount paid by Social Security comes from the mutua; here we only keep the record so payroll discounts IT days.";
             case "labor.leaves.placeholder.empty" -> "No medical leaves recorded.";
             case "labor.leaves.load_failed" -> "Could not load medical leaves.";
@@ -16503,6 +16519,22 @@ public class BenjagestUiApplication extends Application {
             case "labor.tab.cfg_timeclock" -> "Config fichajes";
             case "labor.tab.audit" -> "Auditoria";
             case "labor.tab.medical_leaves" -> "Bajas (IT)";
+            case "labor.tab.vacations" -> "Vacaciones";
+            case "labor.vac.title" -> "Vacaciones";
+            case "labor.vac.hint" -> "Registra los periodos de vacaciones de cada empleado. El finiquito los usa para calcular las vacaciones pendientes (devengadas − disfrutadas) automáticamente.";
+            case "labor.vac.empty" -> "Sin vacaciones registradas.";
+            case "labor.vac.new" -> "Registrar vacaciones";
+            case "labor.vac.col.employee" -> "Empleado";
+            case "labor.vac.col.from" -> "Desde";
+            case "labor.vac.col.to" -> "Hasta";
+            case "labor.vac.col.days" -> "Días";
+            case "labor.vac.col.status" -> "Estado";
+            case "labor.vac.col.notes" -> "Notas";
+            case "labor.vac.status.APPROVED" -> "Aprobadas";
+            case "labor.vac.status.REQUESTED" -> "Solicitadas";
+            case "labor.vac.status.REJECTED" -> "Rechazadas";
+            case "common.edit" -> "Editar";
+            case "common.delete" -> "Eliminar";
             case "labor.leaves.hint" -> "Incapacidad Temporal (IT) registrada para la empresa. La prestación la calcula la mutua/INSS; aquí solo guardamos el registro para que la nómina descuente los días de IT del salario neto.";
             case "labor.leaves.placeholder.empty" -> "No hay bajas registradas.";
             case "labor.leaves.load_failed" -> "No se pudieron cargar las bajas.";
@@ -18791,6 +18823,10 @@ public class BenjagestUiApplication extends Application {
         Tab leavesTab = new Tab(t("labor.tab.medical_leaves"),
                 buildMedicalLeavesTab(bundle.employees()));
         leavesTab.setGraphic(icon("fas-user-injured"));
+        // Vacaciones (CV-VAC) — registro de días disfrutados por empleado.
+        Tab vacationsTab = new Tab(t("labor.tab.vacations"),
+                buildVacationsTab(bundle.employees()));
+        vacationsTab.setGraphic(icon("fas-umbrella-beach"));
         // Cotizaciones SS (TC1/RED) — backend cerrado 2026-06-09, UI
         // pendiente. Solo lectura por ahora — las cuotas se calculan
         // desde las nóminas; el editor manual queda para futuro.
@@ -18818,7 +18854,7 @@ public class BenjagestUiApplication extends Application {
         centersTab.setGraphic(icon("fas-map-marker-alt"));
 
         tabs.getTabs().addAll(empTab, contractsTab, clockTab, auditTab, payslipsTab,
-                templatesTab, clausesTab, cfgTab, calendarTab, leavesTab, ssTab,
+                templatesTab, clausesTab, cfgTab, calendarTab, leavesTab, vacationsTab, ssTab,
                 costTab, ratesTab, irpfParamsTab, shiftsTab, centersTab);
         VBox.setVgrow(tabs, Priority.ALWAYS);
         // Restaurar la pestaña activa y recordar los cambios de pestaña, para
@@ -32564,6 +32600,163 @@ public class BenjagestUiApplication extends Application {
             tk.setOnFailed(ev -> showError(t("labor.irpfp.title"),
                     humanizeBackendError(tk.getException() == null ? "" : tk.getException().getMessage())));
             start(tk, "irpf-params-save");
+        });
+    }
+
+    /**
+     * CV-VAC — Registro de vacaciones por empleado. Permite que el finiquito
+     * calcule las vacaciones pendientes (devengadas − disfrutadas) solo.
+     */
+    private Node buildVacationsTab(java.util.List<com.benjagest.ui.model.EmployeeEntry> employees) {
+        VBox content = new VBox(12);
+        content.setPadding(new Insets(16));
+        Label hint = new Label(t("labor.vac.hint"));
+        hint.setWrapText(true);
+        hint.getStyleClass().add("settings-hint");
+
+        TableView<com.benjagest.ui.model.VacationEntry> table = new TableView<>();
+        table.getStyleClass().add("data-table");
+        table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+        table.setPlaceholder(new Label(t("labor.vac.empty")));
+
+        TableColumn<com.benjagest.ui.model.VacationEntry, String> cEmp = new TableColumn<>(t("labor.vac.col.employee"));
+        cEmp.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().employeeName()));
+        TableColumn<com.benjagest.ui.model.VacationEntry, String> cFrom = new TableColumn<>(t("labor.vac.col.from"));
+        cFrom.setCellValueFactory(c -> new SimpleStringProperty(
+                c.getValue().startDate() == null ? "" : c.getValue().startDate().toString()));
+        cFrom.setComparator(ISO_DATE_COMPARATOR);
+        TableColumn<com.benjagest.ui.model.VacationEntry, String> cTo = new TableColumn<>(t("labor.vac.col.to"));
+        cTo.setCellValueFactory(c -> new SimpleStringProperty(
+                c.getValue().endDate() == null ? "" : c.getValue().endDate().toString()));
+        cTo.setComparator(ISO_DATE_COMPARATOR);
+        TableColumn<com.benjagest.ui.model.VacationEntry, String> cDays = new TableColumn<>(t("labor.vac.col.days"));
+        cDays.setCellValueFactory(c -> new SimpleStringProperty(
+                c.getValue().days() == null ? "" : c.getValue().days().toPlainString()));
+        cDays.setComparator(NUMERIC_STRING_COMPARATOR);
+        TableColumn<com.benjagest.ui.model.VacationEntry, String> cStatus = new TableColumn<>(t("labor.vac.col.status"));
+        cStatus.setCellValueFactory(c -> new SimpleStringProperty(t("labor.vac.status." + c.getValue().status())));
+        table.getColumns().addAll(java.util.List.of(cEmp, cFrom, cTo, cDays, cStatus));
+
+        Runnable reload = () -> {
+            Task<java.util.List<com.benjagest.ui.model.VacationEntry>> tk = new Task<>() {
+                @Override protected java.util.List<com.benjagest.ui.model.VacationEntry> call() throws Exception {
+                    return laborApiClient.listVacations(null, null);
+                }
+            };
+            tk.setOnSucceeded(ev -> table.setItems(FXCollections.observableArrayList(tk.getValue())));
+            tk.setOnFailed(ev -> showError(t("labor.vac.title"),
+                    tk.getException() == null ? "" : tk.getException().getMessage()));
+            start(tk, "vac-list");
+        };
+
+        Button newBtn = new Button(t("labor.vac.new"));
+        newBtn.setGraphic(icon("fas-plus"));
+        newBtn.setOnAction(e -> showVacationEditor(employees, null, reload));
+        Button editBtn = new Button(t("common.edit"));
+        editBtn.setDisable(true);
+        editBtn.setOnAction(e -> {
+            var sel = table.getSelectionModel().getSelectedItem();
+            if (sel != null) showVacationEditor(employees, sel, reload);
+        });
+        Button delBtn = new Button(t("common.delete"));
+        delBtn.setDisable(true);
+        delBtn.setOnAction(e -> {
+            var sel = table.getSelectionModel().getSelectedItem();
+            if (sel == null) return;
+            Task<Void> tk = new Task<>() {
+                @Override protected Void call() throws Exception { laborApiClient.deleteVacation(sel.id()); return null; }
+            };
+            tk.setOnSucceeded(ev -> reload.run());
+            tk.setOnFailed(ev -> showError(t("labor.vac.title"),
+                    tk.getException() == null ? "" : tk.getException().getMessage()));
+            start(tk, "vac-del");
+        });
+        table.getSelectionModel().selectedItemProperty().addListener((o, ov, nv) -> {
+            editBtn.setDisable(nv == null);
+            delBtn.setDisable(nv == null);
+        });
+
+        HBox actions = new HBox(8, newBtn, editBtn, delBtn);
+        actions.setAlignment(Pos.CENTER_LEFT);
+        reload.run();
+        VBox body = new VBox(10, hint, actions, table);
+        VBox.setVgrow(table, Priority.ALWAYS);
+        return screenScroll(body);
+    }
+
+    private void showVacationEditor(java.util.List<com.benjagest.ui.model.EmployeeEntry> employees,
+                                     com.benjagest.ui.model.VacationEntry existing, Runnable onSaved) {
+        Dialog<ButtonType> d = new Dialog<>();
+        d.setTitle(t("labor.vac.title"));
+        ButtonType save = new ButtonType(t("labor.ssrates.save_btn"), ButtonBar.ButtonData.OK_DONE);
+        d.getDialogPane().getButtonTypes().addAll(save, ButtonType.CANCEL);
+
+        ComboBox<com.benjagest.ui.model.EmployeeEntry> empCombo = new ComboBox<>();
+        empCombo.setConverter(new javafx.util.StringConverter<>() {
+            @Override public String toString(com.benjagest.ui.model.EmployeeEntry e) { return e == null ? "" : e.fullName(); }
+            @Override public com.benjagest.ui.model.EmployeeEntry fromString(String s) { return null; }
+        });
+        empCombo.getItems().addAll(employees.stream().filter(com.benjagest.ui.model.EmployeeEntry::active).toList());
+        if (existing != null) {
+            employees.stream().filter(e -> e.id().equals(existing.employeeId())).findFirst()
+                    .ifPresent(empCombo.getSelectionModel()::select);
+        }
+        DatePicker fromDate = new DatePicker(existing == null ? java.time.LocalDate.now() : existing.startDate());
+        DatePicker toDate = new DatePicker(existing == null ? java.time.LocalDate.now() : existing.endDate());
+        TextField daysField = new TextField(existing == null || existing.days() == null
+                ? "" : existing.days().toPlainString());
+        daysField.setPromptText(t("labor.vac.col.days"));
+        ComboBox<String> statusCombo = new ComboBox<>();
+        statusCombo.getItems().addAll("APPROVED", "REQUESTED", "REJECTED");
+        statusCombo.setConverter(new javafx.util.StringConverter<>() {
+            @Override public String toString(String s) { return s == null ? "" : t("labor.vac.status." + s); }
+            @Override public String fromString(String s) { return null; }
+        });
+        statusCombo.getSelectionModel().select(existing == null ? "APPROVED" : existing.status());
+        TextField notesField = new TextField(existing == null ? "" : existing.notes());
+
+        // Sugerir días laborables al elegir fechas (lunes-viernes), editable.
+        Runnable suggestDays = () -> {
+            if (fromDate.getValue() == null || toDate.getValue() == null) return;
+            if (!daysField.getText().isBlank()) return;
+            long d2 = 0;
+            for (java.time.LocalDate x = fromDate.getValue(); !x.isAfter(toDate.getValue()); x = x.plusDays(1)) {
+                if (x.getDayOfWeek().getValue() <= 5) d2++;
+            }
+            daysField.setText(String.valueOf(d2));
+        };
+        fromDate.valueProperty().addListener((o, ov, nv) -> suggestDays.run());
+        toDate.valueProperty().addListener((o, ov, nv) -> suggestDays.run());
+
+        GridPane g = new GridPane();
+        g.setHgap(10); g.setVgap(8); g.setPadding(new Insets(12));
+        int r = 0;
+        g.add(new Label(t("labor.vac.col.employee")), 0, r); g.add(empCombo, 1, r++);
+        g.add(new Label(t("labor.vac.col.from")), 0, r); g.add(fromDate, 1, r++);
+        g.add(new Label(t("labor.vac.col.to")), 0, r); g.add(toDate, 1, r++);
+        g.add(new Label(t("labor.vac.col.days")), 0, r); g.add(daysField, 1, r++);
+        g.add(new Label(t("labor.vac.col.status")), 0, r); g.add(statusCombo, 1, r++);
+        g.add(new Label(t("labor.vac.col.notes")), 0, r); g.add(notesField, 1, r++);
+        installDialog(d, g);
+        d.showAndWait().ifPresent(bt -> {
+            if (bt != save) return;
+            var emp = empCombo.getValue();
+            if (emp == null) { showError(t("labor.vac.title"), t("labor.payslips.calc.fail.no_employee")); return; }
+            com.benjagest.ui.model.VacationEntry payload = new com.benjagest.ui.model.VacationEntry(
+                    existing == null ? null : existing.id(), emp.id(), null,
+                    fromDate.getValue(), toDate.getValue(), parseDecSafe(daysField.getText()),
+                    statusCombo.getValue(), blankToNullOrSelf(notesField.getText()));
+            Task<Void> tk = new Task<>() {
+                @Override protected Void call() throws Exception {
+                    if (existing == null) laborApiClient.createVacation(payload);
+                    else laborApiClient.updateVacation(existing.id(), payload);
+                    return null;
+                }
+            };
+            tk.setOnSucceeded(ev -> onSaved.run());
+            tk.setOnFailed(ev -> showError(t("labor.vac.title"),
+                    humanizeBackendError(tk.getException() == null ? "" : tk.getException().getMessage())));
+            start(tk, "vac-save");
         });
     }
 
