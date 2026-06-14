@@ -16300,6 +16300,10 @@ public class BenjagestUiApplication extends Application {
             case "labor.term.type.DISMISSAL_UNFAIR" -> "Unfair dismissal (33 d/yr)";
             case "labor.term.type.DISMISSAL_DISCIPLINARY" -> "Disciplinary dismissal (no severance)";
             case "labor.term.type.RETIREMENT" -> "Retirement";
+            case "labor.term.docs.title" -> "Termination done — documents";
+            case "labor.term.docs.hint" -> "The contract is closed and the settlement generated. Download the documents:";
+            case "labor.term.docs.letter" -> "Dismissal letter";
+            case "labor.term.docs.cert" -> "Company certificate";
             case "labor.employee.editor.title_new" -> "New employee";
             case "labor.employee.editor.title_edit" -> "Edit employee";
             case "labor.employee.editor.save" -> "Save";
@@ -16863,6 +16867,10 @@ public class BenjagestUiApplication extends Application {
             case "labor.term.type.DISMISSAL_UNFAIR" -> "Despido improcedente (33 d/año)";
             case "labor.term.type.DISMISSAL_DISCIPLINARY" -> "Despido disciplinario (sin indemnización)";
             case "labor.term.type.RETIREMENT" -> "Jubilación";
+            case "labor.term.docs.title" -> "Baja realizada — documentos";
+            case "labor.term.docs.hint" -> "El contrato queda cerrado y el finiquito generado. Descarga los documentos:";
+            case "labor.term.docs.letter" -> "Carta de despido";
+            case "labor.term.docs.cert" -> "Certificado de empresa";
             case "labor.employee.editor.title_new" -> "Nuevo empleado";
             case "labor.employee.editor.title_edit" -> "Editar empleado";
             case "labor.employee.editor.save" -> "Guardar";
@@ -19477,12 +19485,68 @@ public class BenjagestUiApplication extends Application {
                         return null;
                     }
                 };
-                tk.setOnSucceeded(ev -> showLaborModule());
+                tk.setOnSucceeded(ev -> showTerminationDocsDialog(employee, ce, typeCombo.getValue()));
                 tk.setOnFailed(ev -> showError(t("labor.term.title"),
                         humanizeBackendError(tk.getException() == null ? "" : tk.getException().getMessage())));
                 start(tk, "term-execute");
             });
         });
+    }
+
+    /** Tras una baja, ofrece descargar la carta de despido y el certificado de
+     *  empresa. Al cerrar, recarga el módulo. */
+    private void showTerminationDocsDialog(com.benjagest.ui.model.EmployeeEntry employee,
+                                            java.time.LocalDate ceseDate, String type) {
+        Dialog<ButtonType> d = new Dialog<>();
+        d.setTitle(t("labor.term.docs.title"));
+        d.getDialogPane().getButtonTypes().add(ButtonType.CLOSE);
+        String safeName = employee.fullName() == null ? employee.id() : employee.fullName().replace(" ", "_");
+        Button letter = new Button(t("labor.term.docs.letter"));
+        letter.setGraphic(icon("fas-file-pdf"));
+        letter.setOnAction(e -> downloadTermDoc("dismissal-letter", employee.id(), ceseDate, type,
+                "carta-despido-" + safeName + ".pdf"));
+        Button cert = new Button(t("labor.term.docs.cert"));
+        cert.setGraphic(icon("fas-file-pdf"));
+        cert.setOnAction(e -> downloadTermDoc("company-certificate", employee.id(), ceseDate, type,
+                "certificado-empresa-" + safeName + ".pdf"));
+        Label hint = new Label(t("labor.term.docs.hint"));
+        hint.setWrapText(true);
+        hint.getStyleClass().add("settings-hint");
+        VBox box = new VBox(12, hint, new HBox(8, letter, cert));
+        box.setPadding(new Insets(12));
+        installDialog(d, box);
+        d.showAndWait();
+        showLaborModule();
+    }
+
+    private void downloadTermDoc(String which, String employeeId, java.time.LocalDate date,
+                                  String type, String filename) {
+        Task<byte[]> tk = new Task<>() {
+            @Override protected byte[] call() throws Exception {
+                return laborApiClient.downloadTerminationDoc(which, employeeId, date, type);
+            }
+        };
+        tk.setOnSucceeded(ev -> savePdfBytes(tk.getValue(), filename));
+        tk.setOnFailed(ev -> showError(t("labor.term.docs.title"),
+                humanizeBackendError(tk.getException() == null ? "" : tk.getException().getMessage())));
+        start(tk, "term-doc");
+    }
+
+    /** Guarda unos bytes PDF en un fichero elegido por el usuario y lo abre. */
+    private void savePdfBytes(byte[] bytes, String filename) {
+        javafx.stage.FileChooser fc = new javafx.stage.FileChooser();
+        fc.setInitialFileName(filename);
+        fc.getExtensionFilters().add(new javafx.stage.FileChooser.ExtensionFilter("PDF", "*.pdf"));
+        java.io.File f = fc.showSaveDialog(root.getScene().getWindow());
+        if (f == null) return;
+        try {
+            java.nio.file.Files.write(f.toPath(), bytes);
+            if (java.awt.Desktop.isDesktopSupported()) {
+                try { java.awt.Desktop.getDesktop().open(f); } catch (Exception ignored) {}
+            }
+        } catch (java.io.IOException ex) {
+            showError(t("labor.payslips.pdf.fail.title"), ex.getMessage());
+        }
     }
 
     /** Editor del modelo 145 (datos IRPF) de un empleado. El motor de
