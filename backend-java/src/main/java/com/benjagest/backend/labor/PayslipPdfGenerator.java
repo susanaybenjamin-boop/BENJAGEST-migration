@@ -76,7 +76,8 @@ public class PayslipPdfGenerator {
                        e.social_security_number AS employee_nuss,
                        e.hire_date, e.address_line, e.city, e.postal_code,
                        c.contract_type, c.collective_agreement,
-                       c.professional_category, c.weekly_hours, c.gross_salary
+                       c.professional_category, c.weekly_hours, c.gross_salary,
+                       c.start_date AS contract_start_date
                   FROM payslips p
                   JOIN employees e ON e.id = p.employee_id
                   LEFT JOIN employment_contracts c ON c.id = p.contract_id
@@ -186,8 +187,13 @@ public class PayslipPdfGenerator {
             trab1.addCell(lv("Nº AFILIACIÓN S.S.", str(data.get("employee_nuss")), fLbl, fVal));
             doc.add(trab1);
 
+            // FECHA ALTA / ANTIGÜEDAD: fecha de contratación del empleado y, si
+            // no está, fecha de inicio del contrato (alta en la empresa).
             java.sql.Date hire = (java.sql.Date) data.get("hire_date");
-            String antig = hire == null ? "-" : yearsSince(hire.toLocalDate()) + " años";
+            java.sql.Date cStart = (java.sql.Date) data.get("contract_start_date");
+            java.time.LocalDate altaDate = hire != null ? hire.toLocalDate()
+                    : (cStart != null ? cStart.toLocalDate() : null);
+            String antig = altaDate == null ? "-" : yearsSince(altaDate) + " años";
             String periodo = "1 al " + Month.of(month).length(java.time.Year.of(year).isLeap())
                     + " de " + Month.of(month).getDisplayName(TextStyle.FULL, new Locale("es"));
             // En pagas extra se identifica la gratificación en el período.
@@ -198,7 +204,7 @@ public class PayslipPdfGenerator {
             trab2.setWidthPercentage(100);
             trab2.addCell(lv("CATEGORÍA PROFESIONAL", str(data.get("professional_category")), fLbl, fVal));
             trab2.addCell(lv("CONTRATO", str(data.get("contract_type")), fLbl, fVal));
-            trab2.addCell(lv("FECHA ALTA", hire == null ? "-" : hire.toLocalDate().toString(), fLbl, fVal));
+            trab2.addCell(lv("FECHA ALTA", altaDate == null ? "-" : altaDate.toString(), fLbl, fVal));
             trab2.addCell(lv("ANTIGÜEDAD", antig, fLbl, fVal));
             trab2.addCell(lv("PERIODO DE LIQUIDACIÓN", periodo + " " + year, fLbl, fVal));
             trab2.addCell(lv("DÍAS", "30", fLbl, fVal));
