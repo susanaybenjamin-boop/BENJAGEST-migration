@@ -279,10 +279,13 @@ public class PayslipPdfGenerator {
                     + (hasEe ? 4 : (ssEmp.signum() > 0 ? 1 : 0))
                     + 1 // IRPF
                     + (otros.signum() > 0 ? 1 : 0);
+            // Las filas de relleno reservan altura pero SIN contorno (borde
+            // transparente): solo las filas con datos muestran rejilla.
             for (int i = bodyRows; i < 14; i++) {
                 for (int c = 0; c < 6; c++) {
                     PdfPCell filler = new PdfPCell(new Phrase(" ", fNormal));
                     filler.setMinimumHeight(15f);
+                    filler.setBorder(Rectangle.NO_BORDER);
                     con.addCell(filler);
                 }
             }
