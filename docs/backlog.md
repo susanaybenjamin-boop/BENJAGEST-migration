@@ -1,6 +1,6 @@
 # Backlog operativo BENJAGEST
 
-> **Última actualización:** 2026-06-13 (bloque NOM nómina V106 + pasada de marcado ✅ de items que estaban cerrados pero seguían como ⬜). Sección NOM al principio.
+> **Última actualización:** 2026-06-14 (cierre y validación del bloque NOM: complementos mensuales, mejora del objetivo al contrato, prorrateo por contrato, recibo de paga extra, **IRPF validado contra la calculadora AEAT 2026** + editor UI de mínimos/reducciones por año. Arrancamos CICLO-VIDA CV-1 finiquito).
 >
 > **Forma de trabajo (junio 2026):** Benjamin lidera y decide. Pablo solo entra de uvas a peras desde 05-30. Todo el trabajo va por `feat/Benjamin` → prueba local → commit → merge `--no-ff` a `develop`. Cada item cerrado lleva commit hash + fecha. **Regla 10.bis de CLAUDE.md aplica siempre: verificar código antes de tocar.**
 >
@@ -16,12 +16,13 @@
 > de bloque a abordar tras validar el IRPF. Orden por dependencia/valor.
 
 **Empleados (laboral):**
-- ⬜ ⚖️ **CV-1 Finiquito / liquidación** — al terminar cualquier contrato (baja
-  voluntaria, fin de contrato, despido, jubilación): salario de los días
-  trabajados + vacaciones no disfrutadas + prorrata de pagas extras + pluses
-  pendientes. Genera **recibo de finiquito** (PDF). Reusa el motor de nómina
-  (es una nómina de tipo `SETTLEMENT`, ya contemplado en el enum). Cotiza/
-  tributa por conceptos; la indemnización va aparte.
+- 🔄 ⚖️ **CV-1 Finiquito / liquidación** *(EN CURSO, arrancado 2026-06-14)* — al
+  terminar cualquier contrato (baja voluntaria, fin de contrato, despido,
+  jubilación): salario de los días trabajados + vacaciones no disfrutadas +
+  prorrata de pagas extras devengadas no cobradas + pluses pendientes. Genera
+  **recibo de finiquito** (PDF). Reusa el motor de nómina (tipo `SETTLEMENT`).
+  Cotiza/tributa por conceptos; la **indemnización va aparte** (campo propio,
+  exenta de IRPF hasta el límite legal; el detalle de tipos de despido es CV-2).
 - ⬜ ⚖️ **CV-2 Despido + indemnización** — tipos: improcedente (33 días/año,
   máx. 24 mensualidades; tramo a 45 días hasta 2012-02), objetivo/procedente
   (20 días/año, máx. 12), disciplinario (0). Cálculo por antigüedad y salario
@@ -78,8 +79,9 @@ Sobre el bloque NOM, construido el flujo completo estilo A3/Nomio:
   para varios empleados (mismo bruto=mismo plus; mismo neto=plus distinto por
   situación familiar).
 
-**Pendiente futuro:** topes cotización TGSS; pagas extra EXTRA_* cotizadas;
-complementos en el asistente de alta; inverso NET con IRPF por tramo (hoy %fijo).
+**Pendiente futuro:** complementos en el asistente de alta.
+(✅ topes cotización TGSS — V109; ✅ pagas extra EXTRA_* sin cotización propia;
+✅ inverso NET por bisección con tipo IRPF real — 2026-06-14.)
 
 **Pendiente NOM (refinamiento complementos, 2026-06-14):**
 - ⬜ ❓ **Reparto del objetivo entre varios complementos con min/max** — hoy
@@ -88,11 +90,41 @@ complementos en el asistente de alta; inverso NET con IRPF por tramo (hoy %fijo)
   mínimo/máximo, de forma idempotente. **Decisión pendiente**: definir el modelo
   (¿qué complementos son "ajustables", su orden y topes?). No es estándar A3
   (A3 usa un único concepto "a cuenta convenio"/mejora para cuadrar).
-- ⬜ **Unificar complementos contrato (anual) vs nómina (mensual)** — hoy son dos
-  sistemas con unidades distintas; en el cálculo se muestran los del contrato en
-  solo lectura para no duplicar. Valorar un modelo único.
 - ⬜ **IRPF: regularización intra-anual** (recalcular al cambiar datos a mitad de
   año) y **límite art. 85.3 afinado** por meses restantes.
+- ⬜ **Reducciones algoritmo no modeladas**: pensionista (600), desempleado que
+  acepta puesto (1.200), anualidades por alimentos (+1.980 en cuota2). Hoy no se
+  modela situación pensionista/desempleado del perceptor.
+- ⬜ **Aviso BOE de cambios de parámetros** — afinar BOE-RSS para alertar cuando
+  se publique la norma de retenciones/cotización del nuevo año (recordatorio de
+  actualizar las tablas por año).
+
+---
+
+## 2026-06-14 tarde — Cierre y validación del bloque NOM ✅⚖️
+
+- ✅ **Complementos del contrato MENSUALES** (€/mes, se guardan ×12). Base /N pagas,
+  complementos /12; en pagas extra solo el salario base.
+- ✅ **Objetivo → mejora al contrato (recurrente)**: "Proponer complemento" guarda
+  la mejora como complemento mensual del contrato (anualiza en SS e IRPF).
+  `solveTarget` reescrito por **bisección** (NETO no lineal). `recurringConcepts`
+  reemplazan al concepto del contrato del mismo nombre (sin doble conteo). Lote idem.
+  Endpoint POST `/api/labor/contracts/recurring-complement`.
+- ✅ **Prorrateo por contrato** (V112): `extras_prorated`; casilla en el editor de
+  contrato; en calcular nómina la casilla se ajusta al contrato del empleado.
+- ✅ **Recibo de paga extra**: sin cuotas SS ni prorrata (solo MONTHLY genera TC);
+  devengo "Paga extra de verano/Navidad"; período lo indica; nombre del PDF por
+  tipo (`nomina-extra-verano-…`). FECHA ALTA cae a inicio del contrato si falta
+  hire_date. Filas de relleno del recibo sin borde; zona conceptos mín. 14 filas.
+- ✅ **Persistencia de sub-tab Labor**: tras cualquier acción se vuelve a la pestaña
+  activa (no salta a Empleados).
+- ✅ **IRPF VALIDADO contra calculadora AEAT 2026** (algoritmo oficial 26-12-2025).
+  Caso Marcos (sit.3, 3 hijos, hipoteca) clava 8,62 %. Correcciones (V113):
+  reducción **+2 descendientes 600 €** (el desfase), RNT art.20 = retrib − cotiz.,
+  3er tramo art.20, truncado del tipo y de la minoración (como AEAT).
+- ✅ **Editor UI de mínimos/reducciones IRPF por año** (pestaña Parámetros IRPF →
+  "Mínimos y reducciones"). Con clonar año + editar escala, el sistema queda
+  **100 % no-code para 2027**.
 
 ---
 
