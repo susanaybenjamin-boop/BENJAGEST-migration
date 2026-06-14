@@ -16189,6 +16189,17 @@ public class BenjagestUiApplication extends Application {
             case "labor.payslips.action.pay" -> "Mark as paid";
             case "labor.payslips.action.batch" -> "Batch to target";
             case "labor.payslips.action.extra" -> "Extra payment";
+            case "labor.payslips.action.settlement" -> "Settlement";
+            case "labor.settlement.title" -> "Settlement / final pay";
+            case "labor.settlement.generate" -> "Generate settlement";
+            case "labor.settlement.cese_date" -> "Termination date";
+            case "labor.settlement.vacation_days" -> "Unused holiday days";
+            case "labor.settlement.accrual" -> "Extra-pay accrual";
+            case "labor.settlement.accrual.semi" -> "Half-yearly (summer Jan–Jun / Christmas Jul–Dec)";
+            case "labor.settlement.accrual.annual" -> "Yearly (12 months)";
+            case "labor.settlement.calc_btn" -> "Calculate items";
+            case "labor.settlement.concepts.title" -> "Settlement items (editable)";
+            case "labor.settlement.concepts.hint" -> "Salary for the days worked + unused holidays + accrued unpaid extra pay. You can adjust the amounts per collective agreement before generating. The severance pay is handled separately (CV-2).";
             case "labor.payslips.extra.title" -> "Generate extra payment (summer / Christmas)";
             case "labor.payslips.extra.hint" -> "Generates the extra payment payslip for the selected employees. Amount = one monthly payment; no Social Security of its own (its share is already paid monthly), only income tax.";
             case "labor.payslips.extra.generate" -> "Generate extra payments";
@@ -16711,6 +16722,17 @@ public class BenjagestUiApplication extends Application {
             case "labor.payslips.action.pay" -> "Marcar pagada";
             case "labor.payslips.action.batch" -> "Lote a objetivo";
             case "labor.payslips.action.extra" -> "Paga extra";
+            case "labor.payslips.action.settlement" -> "Finiquito";
+            case "labor.settlement.title" -> "Finiquito / liquidación";
+            case "labor.settlement.generate" -> "Generar finiquito";
+            case "labor.settlement.cese_date" -> "Fecha de cese";
+            case "labor.settlement.vacation_days" -> "Días de vacaciones no disfrutadas";
+            case "labor.settlement.accrual" -> "Devengo pagas extra";
+            case "labor.settlement.accrual.semi" -> "Semestral (verano ene–jun / Navidad jul–dic)";
+            case "labor.settlement.accrual.annual" -> "Anual (12 meses)";
+            case "labor.settlement.calc_btn" -> "Calcular conceptos";
+            case "labor.settlement.concepts.title" -> "Conceptos del finiquito (editables)";
+            case "labor.settlement.concepts.hint" -> "Salario de los días trabajados + vacaciones no disfrutadas + prorrata de pagas extra devengadas. Puedes ajustar los importes según convenio antes de generar. La indemnización se trata aparte (CV-2).";
             case "labor.payslips.extra.title" -> "Generar paga extra (verano / navidad)";
             case "labor.payslips.extra.hint" -> "Genera la nómina de paga extra para los empleados seleccionados. Importe = una mensualidad; sin cotización propia (su parte ya cotiza en las mensuales), solo IRPF.";
             case "labor.payslips.extra.generate" -> "Generar pagas extra";
@@ -19767,6 +19789,10 @@ public class BenjagestUiApplication extends Application {
         extraBtn.setGraphic(icon("fas-gift"));
         extraBtn.setOnAction(ev -> showExtraPagaDialog(bundle));
 
+        Button settlementBtn = new Button(t("labor.payslips.action.settlement"));
+        settlementBtn.setGraphic(icon("fas-handshake"));
+        settlementBtn.setOnAction(ev -> showSettlementDialog(bundle));
+
         Button payBtn = new Button(t("labor.payslips.action.pay"));
         payBtn.setGraphic(icon("fas-money-check-alt"));
         payBtn.setDisable(true);
@@ -19807,7 +19833,7 @@ public class BenjagestUiApplication extends Application {
             delBtn.setDisable(none || "PAID".equals(nv == null ? "" : nv.status()));
         });
 
-        HBox actions = new HBox(8, calcBtn, batchBtn, extraBtn, payBtn, pdfBtn, emailBtn, delBtn);
+        HBox actions = new HBox(8, calcBtn, batchBtn, extraBtn, settlementBtn, payBtn, pdfBtn, emailBtn, delBtn);
         actions.setAlignment(Pos.CENTER_LEFT);
 
         Label hint = new Label(t("labor.payslips.hint"));
@@ -19818,6 +19844,143 @@ public class BenjagestUiApplication extends Application {
         VBox.setVgrow(payslipsTable, Priority.ALWAYS);
         body.setPadding(new Insets(12));
         return screenScroll(body);
+    }
+
+    /**
+     * CV-1 Finiquito / liquidación. Calcula los conceptos (salario de los días
+     * trabajados + vacaciones no disfrutadas + prorrata de pagas extra) y los
+     * muestra editables; al validar genera una nómina tipo SETTLEMENT.
+     */
+    private void showSettlementDialog(LaborBundle bundle) {
+        java.util.Set<String> withContract = bundle.contracts().stream()
+                .map(com.benjagest.ui.model.ContractEntry::employeeId)
+                .collect(java.util.stream.Collectors.toSet());
+        var employees = bundle.employees().stream()
+                .filter(e -> e.active() && withContract.contains(e.id())).toList();
+
+        Dialog<ButtonType> dialog = new Dialog<>();
+        dialog.setTitle(t("labor.settlement.title"));
+        ButtonType saveBt = new ButtonType(t("labor.settlement.generate"), ButtonBar.ButtonData.OK_DONE);
+        dialog.getDialogPane().getButtonTypes().addAll(saveBt, ButtonType.CANCEL);
+
+        ComboBox<com.benjagest.ui.model.EmployeeEntry> empCombo = new ComboBox<>();
+        empCombo.setConverter(new javafx.util.StringConverter<>() {
+            @Override public String toString(com.benjagest.ui.model.EmployeeEntry e) { return e == null ? "" : e.fullName(); }
+            @Override public com.benjagest.ui.model.EmployeeEntry fromString(String s) { return null; }
+        });
+        empCombo.getItems().addAll(employees);
+        empCombo.setPromptText(t("labor.payslips.calc.employee.prompt"));
+
+        DatePicker ceseDate = new DatePicker(java.time.LocalDate.now());
+        TextField vacationField = new TextField("0");
+        vacationField.setPrefWidth(80);
+        ComboBox<String> accrualCombo = new ComboBox<>();
+        accrualCombo.getItems().addAll("SEMIANNUAL", "ANNUAL");
+        accrualCombo.setConverter(new javafx.util.StringConverter<>() {
+            @Override public String toString(String s) {
+                return "ANNUAL".equals(s) ? t("labor.settlement.accrual.annual") : t("labor.settlement.accrual.semi");
+            }
+            @Override public String fromString(String s) { return null; }
+        });
+        accrualCombo.getSelectionModel().select("SEMIANNUAL");
+        TextField otherField = new TextField();
+        otherField.setPromptText(t("labor.payslips.calc.other_deductions.prompt"));
+        TextArea notesArea = new TextArea(); notesArea.setPrefRowCount(2);
+
+        GridPane g = new GridPane();
+        g.setHgap(10); g.setVgap(8); g.setPadding(new Insets(10));
+        int r = 0;
+        g.add(new Label(t("labor.payslips.calc.employee")), 0, r); g.add(empCombo, 1, r++);
+        g.add(new Label(t("labor.settlement.cese_date")), 0, r); g.add(ceseDate, 1, r++);
+        g.add(new Label(t("labor.settlement.vacation_days")), 0, r); g.add(vacationField, 1, r++);
+        g.add(new Label(t("labor.settlement.accrual")), 0, r); g.add(accrualCombo, 1, r++);
+        g.add(new Label(t("labor.payslips.calc.other_deductions")), 0, r); g.add(otherField, 1, r++);
+        g.add(new Label(t("labor.payslips.calc.notes")), 0, r); g.add(notesArea, 1, r++);
+
+        SalaryComplementsEditor concepts = new SalaryComplementsEditor(
+                new java.util.ArrayList<>(), "labor.payslips.calc.complement.amount",
+                "labor.settlement.concepts.title", "labor.settlement.concepts.hint");
+
+        Label summary = new Label(t("labor.payslips.calc.preview.empty"));
+        summary.getStyleClass().add("settings-hint");
+        summary.setWrapText(true);
+
+        Button calcBtn = new Button(t("labor.settlement.calc_btn"));
+        calcBtn.getStyleClass().add("button-secondary");
+        Button previewBtn = new Button(t("labor.payslips.calc.preview_btn"));
+        previewBtn.getStyleClass().add("button-secondary");
+
+        Runnable doPreview = () -> {
+            var emp = empCombo.getValue();
+            if (emp == null) { showError(t("labor.settlement.title"), t("labor.payslips.calc.fail.no_employee")); return; }
+            java.time.LocalDate d = ceseDate.getValue();
+            Task<com.benjagest.ui.model.PayslipPreview> tk = new Task<>() {
+                @Override protected com.benjagest.ui.model.PayslipPreview call() throws Exception {
+                    return laborApiClient.previewPayslip(emp.id(), d.getYear(), d.getMonthValue(),
+                            "SETTLEMENT", false, parseDecSafe(otherField.getText()), concepts.getComplements());
+                }
+            };
+            tk.setOnSucceeded(ev -> {
+                var p = tk.getValue();
+                summary.setText(t("labor.payslips.calc.preview.text")
+                        .replace("{gross}", money(p.gross())).replace("{ss}", money(p.ssEmployee()))
+                        .replace("{irpf}", money(p.irpf())).replace("{net}", money(p.net()))
+                        .replace("{er}", money(p.employerTotal())).replace("{ercost}", money(p.employerCost())));
+            });
+            tk.setOnFailed(ev -> {
+                Throwable ex = tk.getException();
+                String dd = ex == null ? null : humanizeBackendError(ex.getMessage());
+                summary.setText(dd == null || dd.isBlank() ? t("labor.payslips.calc.fail.body") : dd);
+            });
+            start(tk, "settlement-preview");
+        };
+        previewBtn.setOnAction(e -> doPreview.run());
+
+        calcBtn.setOnAction(e -> {
+            var emp = empCombo.getValue();
+            if (emp == null) { showError(t("labor.settlement.title"), t("labor.payslips.calc.fail.no_employee")); return; }
+            java.time.LocalDate d = ceseDate.getValue();
+            if (d == null) { showError(t("labor.settlement.title"), t("labor.settlement.cese_date")); return; }
+            Task<java.util.List<com.benjagest.ui.model.SalaryItemEntry>> tk = new Task<>() {
+                @Override protected java.util.List<com.benjagest.ui.model.SalaryItemEntry> call() throws Exception {
+                    return laborApiClient.settlementConcepts(emp.id(), d.getYear(), d.getMonthValue(),
+                            d.getDayOfMonth(), parseDecSafe(vacationField.getText()), accrualCombo.getValue());
+                }
+            };
+            tk.setOnSucceeded(ev -> {
+                concepts.clear();
+                for (var c : tk.getValue()) concepts.addComplement(c);
+                doPreview.run();
+            });
+            tk.setOnFailed(ev -> showError(t("labor.settlement.title"),
+                    humanizeBackendError(tk.getException() == null ? "" : tk.getException().getMessage())));
+            start(tk, "settlement-concepts");
+        });
+
+        VBox box = new VBox(10, g, new Separator(), new HBox(8, calcBtn), concepts.node,
+                new Separator(), new HBox(8, previewBtn), summary);
+        installDialog(dialog, box);
+        dialog.showAndWait().ifPresent(bt -> {
+            if (bt != saveBt) return;
+            var emp = empCombo.getValue();
+            java.time.LocalDate d = ceseDate.getValue();
+            if (emp == null || d == null) {
+                showError(t("labor.settlement.title"), t("labor.payslips.calc.fail.no_employee"));
+                return;
+            }
+            var lines = concepts.getComplements();
+            Task<com.benjagest.ui.model.PayslipEntry> task = new Task<>() {
+                @Override protected com.benjagest.ui.model.PayslipEntry call() throws Exception {
+                    return laborApiClient.calculatePayslip(emp.id(), d.getYear(), d.getMonthValue(),
+                            "SETTLEMENT", false, parseDecSafe(otherField.getText()),
+                            blankToNullOrSelf(notesArea.getText()), lines);
+                }
+            };
+            task.setOnSucceeded(ev -> showLaborModule());
+            task.setOnFailed(ev -> showError(t("labor.settlement.title"),
+                    humanizeBackendError(task.getException() == null ? "" : task.getException().getMessage())));
+            start(task, "settlement-generate");
+        });
     }
 
     /**
@@ -22133,6 +22296,9 @@ public class BenjagestUiApplication extends Application {
 
         /** Añade un complemento desde código (p. ej. el plus de objetivo). */
         void addComplement(com.benjagest.ui.model.SalaryItemEntry it) { addRow(it); }
+
+        /** Vacía todas las filas (p. ej. al recalcular un finiquito). */
+        void clear() { rows.clear(); rowsBox.getChildren().clear(); }
 
         /** Si ya existe una fila con ese concepto, actualiza su importe; si no,
          *  la añade. Hace idempotente "proponer plus" (no duplica filas). */

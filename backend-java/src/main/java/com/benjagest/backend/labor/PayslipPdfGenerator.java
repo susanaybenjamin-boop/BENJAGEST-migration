@@ -88,12 +88,13 @@ public class PayslipPdfGenerator {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Nómina no encontrada");
         }
 
-        // Solo las nóminas MENSUALES generan cuotas TC. Las pagas extra (14
-        // pagas) NO cotizan aparte: su cotización ya va prorrateada en las 12
-        // mensuales. Si leyéramos las cuotas por (empleado, año, mes) sin más,
-        // el recibo de la extra mostraría la cotización de la mensual de ese
-        // mes (cruce). Por eso solo cargamos cuotas para la nómina mensual.
-        boolean isMonthly = "MONTHLY".equals(str(data.get("payslip_type")));
+        // Las nóminas MENSUALES y los FINIQUITOS generan cuotas TC (cotizan).
+        // Las pagas extra (14 pagas) NO cotizan aparte: su cotización ya va
+        // prorrateada en las 12 mensuales. Si leyéramos las cuotas por
+        // (empleado, año, mes) sin más, el recibo de la extra mostraría la
+        // cotización de la mensual de ese mes (cruce).
+        String tipoNom = str(data.get("payslip_type"));
+        boolean isMonthly = "MONTHLY".equals(tipoNom) || "SETTLEMENT".equals(tipoNom);
         Map<String, BigDecimal> tcAmt = new HashMap<>();
         Map<String, BigDecimal> tcBase = new HashMap<>();
         if (isMonthly) {
@@ -196,10 +197,10 @@ public class PayslipPdfGenerator {
             String antig = altaDate == null ? "-" : yearsSince(altaDate) + " años";
             String periodo = "1 al " + Month.of(month).length(java.time.Year.of(year).isLeap())
                     + " de " + Month.of(month).getDisplayName(TextStyle.FULL, new Locale("es"));
-            // En pagas extra se identifica la gratificación en el período.
-            String tipoNom = str(data.get("payslip_type"));
+            // Se identifica el tipo de recibo en el período (extra / finiquito).
             if ("EXTRA_SUMMER".equals(tipoNom)) periodo += " · Paga extra de verano";
             else if ("EXTRA_CHRISTMAS".equals(tipoNom)) periodo += " · Paga extra de Navidad";
+            else if ("SETTLEMENT".equals(tipoNom)) periodo += " · Finiquito / liquidación";
             PdfPTable trab2 = new PdfPTable(new float[]{3, 2.5f, 2, 1.5f, 3.5f, 1.2f});
             trab2.setWidthPercentage(100);
             trab2.addCell(lv("CATEGORÍA PROFESIONAL", str(data.get("professional_category")), fLbl, fVal));
