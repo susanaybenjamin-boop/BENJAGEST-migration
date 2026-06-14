@@ -557,6 +557,29 @@ public class LaborApiClient {
         return bigDec(r.body(), "plus");
     }
 
+    /** Calcula los conceptos de un finiquito (salario días trabajados +
+     *  vacaciones no disfrutadas + prorrata pagas extra) para revisar/editar. */
+    public java.util.List<com.benjagest.ui.model.SalaryItemEntry> settlementConcepts(
+            String employeeId, int year, int month, int ceseDay,
+            java.math.BigDecimal vacationDays, String extrasAccrual)
+            throws IOException, InterruptedException {
+        String body = "{" + field("employeeId", employeeId) + ","
+                + intField("year", year) + "," + intField("month", month) + ","
+                + intField("ceseDay", ceseDay) + ","
+                + decField("vacationDays", vacationDays) + ","
+                + field("extrasAccrual", extrasAccrual) + "}";
+        HttpResponse<String> r = send(req(baseUrl + "/labor/payslips/settlement-concepts")
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(body)));
+        java.util.List<com.benjagest.ui.model.SalaryItemEntry> out = new ArrayList<>();
+        for (String o : splitTopLevelObjects(r.body())) {
+            out.add(new com.benjagest.ui.model.SalaryItemEntry(
+                    null, textField(o, "name"), "COMPLEMENT", bigDec(o, "amount"),
+                    boolField(o, "cotizes"), boolField(o, "taxable")));
+        }
+        return out;
+    }
+
     /** Guarda (o actualiza por nombre) un complemento MENSUAL recurrente en el
      *  contrato activo del empleado. La mejora de "llegar a un objetivo" vive en
      *  el contrato para anualizar en base SS e IRPF. */

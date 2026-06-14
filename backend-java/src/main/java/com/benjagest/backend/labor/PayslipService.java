@@ -255,6 +255,11 @@ public class PayslipService {
 
         String type = StringUtils.hasText(req.payslipType()) ? req.payslipType() : "MONTHLY";
         boolean isExtra = "EXTRA_SUMMER".equals(type) || "EXTRA_CHRISTMAS".equals(type);
+        // Finiquito: los conceptos vienen calculados como extraConcepts (salario
+        // de días trabajados, vacaciones no disfrutadas, prorrata de pagas extra).
+        // No se añaden los conceptos del contrato como líneas; los totales anuales
+        // SÍ se acumulan para calcular el tipo de IRPF (rate anual normal).
+        boolean isSettlement = "SETTLEMENT".equals(type);
 
         // Prorrateo de pagas extras (art. 31 ET): 12 pagas -> anual/12; 14 pagas
         // (default legal) -> anual/(12+extras) y las extras como nóminas EXTRA_*.
@@ -291,6 +296,9 @@ public class PayslipService {
                 // (base + complementos), también en pagas extra.
                 if (c.cotizes()) cotizableAnnual = cotizableAnnual.add(a);
                 if (c.taxable()) taxableAnnual = taxableAnnual.add(a);
+                // El finiquito no añade líneas del contrato (las trae como
+                // extraConcepts ya prorrateadas); solo usamos el anual para el tipo.
+                if (isSettlement) continue;
                 // En pagas extra solo se abona el salario base; los complementos
                 // (mejoras, plus mensuales) no se incluyen en la extra.
                 if (isExtra && !isBase) continue;
@@ -307,10 +315,12 @@ public class PayslipService {
         } else {
             cotizableAnnual = contract.grossSalary;
             taxableAnnual = contract.grossSalary;
-            BigDecimal base = contract.grossSalary.divide(BigDecimal.valueOf(divisor), 2, RoundingMode.HALF_UP);
-            lines.add(new PayslipLine(isExtra ? extraPagaLabel(type) : "Salario bruto del periodo",
-                    "SALARY_BASE", base));
-            taxableDevengo = base;
+            if (!isSettlement) {
+                BigDecimal base = contract.grossSalary.divide(BigDecimal.valueOf(divisor), 2, RoundingMode.HALF_UP);
+                lines.add(new PayslipLine(isExtra ? extraPagaLabel(type) : "Salario bruto del periodo",
+                        "SALARY_BASE", base));
+                taxableDevengo = base;
+            }
         }
 
         // Complementos recurrentes simulados (solver de objetivo): se tratan
@@ -353,7 +363,9 @@ public class PayslipService {
         if ("MONTHLY".equals(type)) {
             cotizationBase = cotizableAnnual.divide(BigDecimal.valueOf(12), 2, RoundingMode.HALF_UP)
                     .add(extraCotizable);
-        } else if ("EXTRA_SUMMER".equals(type) || "EXTRA_CHRISTMAS".equals(type)) {
+        } else if ("EXTRA_SUMMER".equals(type) || "EXTRA_CHRISTMAS".equals(type) || isSettlement) {
+            // Pagas extra y finiquito: solo cotizan los conceptos marcados como
+            // cotizables (la prorrata de extras del finiquito ya cotizó mes a mes).
             cotizationBase = extraCotizable;
         } else {
             cotizationBase = gross;
@@ -476,6 +488,91 @@ public class PayslipService {
         return new TargetResult(plus, toPreview(withMejora.apply(plus)));
     }
 
+    // ===== CV-1 Finiquito / liquidación =====
+
+    public record SettlementRequest(
+            String employeeId, int year, int month, int ceseDay,
+            BigDecimal vacationDays, String extrasAccrual,
+            BigDecimal otherDeductions, String notes) {}
+
+    /**
+     * Construye los conceptos de un finiquito para revisar/editar antes de
+     * generar el recibo (nómina tipo SETTLEMENT):
+     *  - Salario de los días trabajados del mes del cese (÷ días naturales).
+     *  - Vacaciones no disfrutadas = días × (salario mensual con prorrata ÷ 30)
+     *    = anual ÷ 360. Cotiza y tributa.
+     *  - Prorrata de pagas extra devengadas no cobradas (si no prorrateadas):
+     *    devengo semestral (verano ene–jun / Navidad jul–dic) o anual. Tributa
+     *    IRPF; NO cotiza de nuevo (ya cotizó prorrateada mes a mes).
+     */
+    public List<ExtraConcept> settlementConcepts(SettlementRequest r) {
+        ContractData c = resolveActiveContract(r.employeeId(), r.year(), r.month());
+        if (c == null || c.grossSalary == null) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "El empleado no tiene un contrato activo en ese periodo.");
+        }
+        int daysInMonth = java.time.YearMonth.of(r.year(), r.month()).lengthOfMonth();
+        int worked = Math.max(1, Math.min(r.ceseDay() <= 0 ? daysInMonth : r.ceseDay(), daysInMonth));
+        int divisor = c.extrasProrated ? 12 : (12 + c.annualBonuses);
+        BigDecimal workedFactor = BigDecimal.valueOf(worked)
+                .divide(BigDecimal.valueOf(daysInMonth), 8, RoundingMode.HALF_UP);
+
+        java.util.List<ExtraConcept> out = new java.util.ArrayList<>();
+        List<SalaryConcept> concepts = loadSalaryConcepts(c.id);
+        BigDecimal baseAnnual = c.grossSalary;
+        if (!concepts.isEmpty()) {
+            for (SalaryConcept sc : concepts) {
+                boolean isBase = "SALARY_BASE".equals(sc.kind());
+                BigDecimal annual = sc.annual() == null ? BigDecimal.ZERO : sc.annual();
+                if (isBase) baseAnnual = annual;
+                BigDecimal monthly = annual.divide(BigDecimal.valueOf(isBase ? divisor : 12), 8, RoundingMode.HALF_UP);
+                BigDecimal amt = monthly.multiply(workedFactor).setScale(2, RoundingMode.HALF_UP);
+                out.add(new ExtraConcept(sc.name() + " (" + worked + " días)", amt, sc.cotizes(), sc.taxable()));
+            }
+        } else {
+            BigDecimal monthly = c.grossSalary.divide(BigDecimal.valueOf(divisor), 8, RoundingMode.HALF_UP);
+            out.add(new ExtraConcept("Salario (" + worked + " días)",
+                    monthly.multiply(workedFactor).setScale(2, RoundingMode.HALF_UP), true, true));
+        }
+
+        // Vacaciones no disfrutadas.
+        BigDecimal vacDays = r.vacationDays() == null ? BigDecimal.ZERO : r.vacationDays();
+        if (vacDays.signum() > 0) {
+            BigDecimal salarioDiaVac = c.grossSalary.divide(BigDecimal.valueOf(360), 8, RoundingMode.HALF_UP);
+            out.add(new ExtraConcept("Vacaciones no disfrutadas",
+                    vacDays.multiply(salarioDiaVac).setScale(2, RoundingMode.HALF_UP), true, true));
+        }
+
+        // Prorrata de pagas extra devengadas no cobradas.
+        if (!c.extrasProrated && c.annualBonuses > 0) {
+            BigDecimal importePaga = baseAnnual.divide(
+                    BigDecimal.valueOf(12 + c.annualBonuses), 8, RoundingMode.HALF_UP);
+            java.time.LocalDate cese = java.time.LocalDate.of(r.year(), r.month(), worked);
+            BigDecimal prorrata;
+            if ("ANNUAL".equalsIgnoreCase(r.extrasAccrual())) {
+                java.time.LocalDate y0 = java.time.LocalDate.of(r.year(), 1, 1);
+                long dias = java.time.temporal.ChronoUnit.DAYS.between(y0, cese) + 1;
+                int diasAnio = java.time.Year.of(r.year()).length();
+                prorrata = importePaga.multiply(BigDecimal.valueOf(c.annualBonuses))
+                        .multiply(BigDecimal.valueOf(dias))
+                        .divide(BigDecimal.valueOf(diasAnio), 2, RoundingMode.HALF_UP);
+            } else { // SEMIANNUAL (por defecto)
+                java.time.LocalDate semStart = r.month() <= 6
+                        ? java.time.LocalDate.of(r.year(), 1, 1) : java.time.LocalDate.of(r.year(), 7, 1);
+                java.time.LocalDate semEnd = r.month() <= 6
+                        ? java.time.LocalDate.of(r.year(), 6, 30) : java.time.LocalDate.of(r.year(), 12, 31);
+                long dias = java.time.temporal.ChronoUnit.DAYS.between(semStart, cese) + 1;
+                long diasSem = java.time.temporal.ChronoUnit.DAYS.between(semStart, semEnd) + 1;
+                prorrata = importePaga.multiply(BigDecimal.valueOf(dias))
+                        .divide(BigDecimal.valueOf(diasSem), 2, RoundingMode.HALF_UP);
+            }
+            if (prorrata.signum() > 0) {
+                out.add(new ExtraConcept("Prorrata pagas extra", prorrata, false, true));
+            }
+        }
+        return out;
+    }
+
     /**
      * Calcula y persiste (o actualiza) una nómina del empleado en el mes/año.
      */
@@ -545,9 +642,10 @@ public class PayslipService {
         }
 
         // La nómina alimenta la tabla de cuotas TC (fuente de verdad de
-        // la SS empresa) — solo para nóminas mensuales ordinarias. Las
-        // pagas extra cotizan prorrateadas y se afinarán en otro slice.
-        if ("MONTHLY".equals(type)) {
+        // la SS empresa) — nóminas mensuales y FINIQUITOS (que también cotizan:
+        // salario de días trabajados + vacaciones). Las pagas extra NO (su
+        // cotización ya va prorrateada en las mensuales).
+        if ("MONTHLY".equals(type) || "SETTLEMENT".equals(type)) {
             // La tabla TC y el asiento son derivados de la nómina: si
             // algo falla (falta plan contable / ejercicio cerrado), la
             // nómina se calcula igual. Por eso van dentro de try/catch y
@@ -923,6 +1021,11 @@ public class PayslipService {
         @PostMapping("/solve-target")
         public TargetResult solveTarget(@RequestBody TargetRequest req) {
             return service.solveTarget(req);
+        }
+
+        @PostMapping("/settlement-concepts")
+        public List<ExtraConcept> settlementConcepts(@RequestBody SettlementRequest req) {
+            return service.settlementConcepts(req);
         }
 
         @PutMapping("/{id}/pay")
