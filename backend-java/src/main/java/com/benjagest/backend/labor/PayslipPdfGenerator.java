@@ -272,6 +272,21 @@ public class PayslipPdfGenerator {
                 con.addCell(cell(money(otros), fNormal, Element.ALIGN_RIGHT));
             }
 
+            // Relleno: reservamos una zona de conceptos de altura mínima (como
+            // el modelo oficial) para que el recibo ocupe la página y no quede
+            // todo comprimido arriba cuando hay pocos devengos (p. ej. extras).
+            int bodyRows = (devLines.isEmpty() ? 1 : devLines.size())
+                    + (hasEe ? 4 : (ssEmp.signum() > 0 ? 1 : 0))
+                    + 1 // IRPF
+                    + (otros.signum() > 0 ? 1 : 0);
+            for (int i = bodyRows; i < 14; i++) {
+                for (int c = 0; c < 6; c++) {
+                    PdfPCell filler = new PdfPCell(new Phrase(" ", fNormal));
+                    filler.setMinimumHeight(15f);
+                    con.addCell(filler);
+                }
+            }
+
             // Totales.
             PdfPCell tot = new PdfPCell(new Phrase("TOTAL", fBold));
             tot.setColspan(4);
