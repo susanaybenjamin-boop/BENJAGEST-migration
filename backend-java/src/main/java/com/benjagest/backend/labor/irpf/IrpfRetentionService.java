@@ -381,6 +381,81 @@ public class IrpfRetentionService {
                 """, toYear, from);
     }
 
+    /** Parámetros (mínimos y reducciones) editables de un año. */
+    public record RetentionParams(
+            BigDecimal personalMin, BigDecimal personalOver65, BigDecimal personalOver75,
+            BigDecimal desc1, BigDecimal desc2, BigDecimal desc3, BigDecimal desc4plus, BigDecimal descUnder3,
+            BigDecimal ascOver65, BigDecimal ascOver75,
+            BigDecimal disability33, BigDecimal disability65, BigDecimal disabilityMobility,
+            BigDecimal expenseDeduction, BigDecimal workMax, BigDecimal workThreshold1,
+            BigDecimal workThreshold2, BigDecimal workFactor,
+            BigDecimal workMax2, BigDecimal workThreshold3, BigDecimal workFactor2,
+            BigDecimal moreThan2Desc, BigDecimal limitRate, BigDecimal limitIncomeCap) {}
+
+    /** Lee los parámetros del año (exacto si existe; si no, el último año <=). */
+    public RetentionParams getParams(int year) {
+        return jdbc.query("""
+                SELECT * FROM irpf_retention_params
+                 WHERE year = (SELECT MAX(year) FROM irpf_retention_params WHERE year <= ?)
+                """,
+                (rs, n) -> new RetentionParams(
+                        rs.getBigDecimal("personal_min"), rs.getBigDecimal("personal_over65"),
+                        rs.getBigDecimal("personal_over75"),
+                        rs.getBigDecimal("descendant_1"), rs.getBigDecimal("descendant_2"),
+                        rs.getBigDecimal("descendant_3"), rs.getBigDecimal("descendant_4plus"),
+                        rs.getBigDecimal("descendant_under3"),
+                        rs.getBigDecimal("ascendant_over65"), rs.getBigDecimal("ascendant_over75"),
+                        rs.getBigDecimal("disability_33"), rs.getBigDecimal("disability_65"),
+                        rs.getBigDecimal("disability_mobility"),
+                        rs.getBigDecimal("expense_deduction"), rs.getBigDecimal("work_reduction_max"),
+                        rs.getBigDecimal("work_reduction_threshold1"), rs.getBigDecimal("work_reduction_threshold2"),
+                        rs.getBigDecimal("work_reduction_factor"),
+                        rs.getBigDecimal("work_reduction_max2"), rs.getBigDecimal("work_reduction_threshold3"),
+                        rs.getBigDecimal("work_reduction_factor2"),
+                        rs.getBigDecimal("reduction_more_than_2_desc"),
+                        rs.getBigDecimal("limit_rate"), rs.getBigDecimal("limit_income_cap")),
+                year).stream().findFirst().orElse(null);
+    }
+
+    @Transactional
+    public void saveParams(int year, RetentionParams p) {
+        jdbc.update("""
+                INSERT INTO irpf_retention_params
+                    (year, personal_min, personal_over65, personal_over75, descendant_1,
+                     descendant_2, descendant_3, descendant_4plus, descendant_under3,
+                     ascendant_over65, ascendant_over75, disability_33, disability_65,
+                     disability_mobility, expense_deduction, work_reduction_max,
+                     work_reduction_threshold1, work_reduction_threshold2, work_reduction_factor,
+                     work_reduction_max2, work_reduction_threshold3, work_reduction_factor2,
+                     reduction_more_than_2_desc, limit_rate, limit_income_cap, legal_reference)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                        'Editado en la aplicación')
+                ON DUPLICATE KEY UPDATE
+                     personal_min = VALUES(personal_min), personal_over65 = VALUES(personal_over65),
+                     personal_over75 = VALUES(personal_over75), descendant_1 = VALUES(descendant_1),
+                     descendant_2 = VALUES(descendant_2), descendant_3 = VALUES(descendant_3),
+                     descendant_4plus = VALUES(descendant_4plus), descendant_under3 = VALUES(descendant_under3),
+                     ascendant_over65 = VALUES(ascendant_over65), ascendant_over75 = VALUES(ascendant_over75),
+                     disability_33 = VALUES(disability_33), disability_65 = VALUES(disability_65),
+                     disability_mobility = VALUES(disability_mobility), expense_deduction = VALUES(expense_deduction),
+                     work_reduction_max = VALUES(work_reduction_max),
+                     work_reduction_threshold1 = VALUES(work_reduction_threshold1),
+                     work_reduction_threshold2 = VALUES(work_reduction_threshold2),
+                     work_reduction_factor = VALUES(work_reduction_factor),
+                     work_reduction_max2 = VALUES(work_reduction_max2),
+                     work_reduction_threshold3 = VALUES(work_reduction_threshold3),
+                     work_reduction_factor2 = VALUES(work_reduction_factor2),
+                     reduction_more_than_2_desc = VALUES(reduction_more_than_2_desc),
+                     limit_rate = VALUES(limit_rate), limit_income_cap = VALUES(limit_income_cap)
+                """,
+                year, p.personalMin(), p.personalOver65(), p.personalOver75(),
+                p.desc1(), p.desc2(), p.desc3(), p.desc4plus(), p.descUnder3(),
+                p.ascOver65(), p.ascOver75(), p.disability33(), p.disability65(), p.disabilityMobility(),
+                p.expenseDeduction(), p.workMax(), p.workThreshold1(), p.workThreshold2(), p.workFactor(),
+                p.workMax2(), p.workThreshold3(), p.workFactor2(),
+                p.moreThan2Desc(), p.limitRate(), p.limitIncomeCap());
+    }
+
     @RestController
     @RequestMapping("/api/labor/irpf-params")
     @RequiresModule("labor")
@@ -395,6 +470,16 @@ public class IrpfRetentionService {
 
         @GetMapping("/brackets/{year}")
         public List<Bracket> brackets(@PathVariable("year") int year) { return service.listBrackets(year); }
+
+        @GetMapping("/params/{year}")
+        public RetentionParams params(@PathVariable("year") int year) { return service.getParams(year); }
+
+        @PostMapping("/params/{year}")
+        @RequiresRole({"OWNER", "ADMIN", "ACCOUNTANT"})
+        public RetentionParams saveParams(@PathVariable("year") int year, @RequestBody RetentionParams p) {
+            service.saveParams(year, p);
+            return service.getParams(year);
+        }
 
         @PostMapping("/brackets/{year}")
         @RequiresRole({"OWNER", "ADMIN", "ACCOUNTANT"})

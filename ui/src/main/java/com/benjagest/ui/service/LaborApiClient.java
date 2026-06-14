@@ -570,6 +570,42 @@ public class LaborApiClient {
                 .POST(HttpRequest.BodyPublishers.ofString(body)));
     }
 
+    /** Claves de los parámetros IRPF editables por año (mínimos/reducciones). */
+    public static final String[] IRPF_PARAM_KEYS = {
+            "personalMin", "personalOver65", "personalOver75",
+            "desc1", "desc2", "desc3", "desc4plus", "descUnder3",
+            "ascOver65", "ascOver75", "disability33", "disability65", "disabilityMobility",
+            "expenseDeduction", "workMax", "workThreshold1", "workThreshold2", "workFactor",
+            "workMax2", "workThreshold3", "workFactor2",
+            "moreThan2Desc", "limitRate", "limitIncomeCap"
+    };
+
+    /** Lee los parámetros (mínimos/reducciones) IRPF de un año. */
+    public java.util.Map<String, java.math.BigDecimal> getIrpfParams(int year)
+            throws IOException, InterruptedException {
+        HttpResponse<String> r = send(req(baseUrl + "/labor/irpf-params/params/" + year).GET());
+        java.util.LinkedHashMap<String, java.math.BigDecimal> m = new java.util.LinkedHashMap<>();
+        for (String k : IRPF_PARAM_KEYS) m.put(k, bigDec(r.body(), k));
+        return m;
+    }
+
+    /** Guarda los parámetros (mínimos/reducciones) IRPF de un año. */
+    public void saveIrpfParams(int year, java.util.Map<String, java.math.BigDecimal> p)
+            throws IOException, InterruptedException {
+        StringBuilder b = new StringBuilder("{");
+        boolean first = true;
+        for (String k : IRPF_PARAM_KEYS) {
+            if (!first) b.append(",");
+            first = false;
+            java.math.BigDecimal v = p.get(k);
+            b.append("\"").append(k).append("\":").append(v == null ? "null" : v.toPlainString());
+        }
+        b.append("}");
+        send(req(baseUrl + "/labor/irpf-params/params/" + year)
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(b.toString())));
+    }
+
     // ==== Parámetros IRPF por año (escala) ====
 
     public java.util.List<Integer> listIrpfYears() throws IOException, InterruptedException {
