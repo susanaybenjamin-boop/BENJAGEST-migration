@@ -20034,7 +20034,7 @@ public class BenjagestUiApplication extends Application {
                 }
             };
             tk.setOnSucceeded(ev -> {
-                extras.addComplement(new com.benjagest.ui.model.SalaryItemEntry(
+                extras.setOrAddComplement(new com.benjagest.ui.model.SalaryItemEntry(
                         null, t("labor.payslips.calc.target.concept"), "COMPLEMENT",
                         tk.getValue(), true, true));
                 doPreview.run();
@@ -21873,6 +21873,20 @@ public class BenjagestUiApplication extends Application {
 
         /** Añade un complemento desde código (p. ej. el plus de objetivo). */
         void addComplement(com.benjagest.ui.model.SalaryItemEntry it) { addRow(it); }
+
+        /** Si ya existe una fila con ese concepto, actualiza su importe; si no,
+         *  la añade. Hace idempotente "proponer plus" (no duplica filas). */
+        void setOrAddComplement(com.benjagest.ui.model.SalaryItemEntry it) {
+            for (Row r : rows) {
+                if (it.conceptName() != null && it.conceptName().equals(r.name.getText())) {
+                    r.amount.setText(it.annualAmount() == null ? "" : it.annualAmount().toPlainString());
+                    r.cot.setSelected(it.cotizes());
+                    r.tax.setSelected(it.taxable());
+                    return;
+                }
+            }
+            addRow(it);
+        }
 
         java.util.List<com.benjagest.ui.model.SalaryItemEntry> getComplements() {
             java.util.List<com.benjagest.ui.model.SalaryItemEntry> out = new java.util.ArrayList<>();
