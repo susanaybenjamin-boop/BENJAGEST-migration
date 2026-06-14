@@ -17,6 +17,7 @@ public record ContractEntry(
         BigDecimal weeklyHours,
         BigDecimal grossSalary,
         Integer annualBonuses,
+        Boolean extrasProrated,
         Integer vacationDays,
         BigDecimal irpfPercent,
         BigDecimal atEpPercent,

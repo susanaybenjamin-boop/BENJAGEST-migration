@@ -259,9 +259,12 @@ public class PayslipService {
         // Prorrateo de pagas extras (art. 31 ET): 12 pagas -> anual/12; 14 pagas
         // (default legal) -> anual/(12+extras) y las extras como nóminas EXTRA_*.
         // Una nómina EXTRA es UNA mensualidad = anual/(12+nº pagas), siempre.
+        // Prorrateo: lo manda el request (casilla) y si no, el del contrato.
+        boolean prorated = req.includeExtraProrated() != null
+                ? req.includeExtraProrated() : contract.extrasProrated;
         int divisor = isExtra
                 ? (12 + contract.annualBonuses)
-                : (req.extraProratedOrDefault() ? 12 : (12 + contract.annualBonuses));
+                : (prorated ? 12 : (12 + contract.annualBonuses));
 
         // 1) Devengos: una línea por concepto salarial del contrato.
         List<SalaryConcept> concepts = loadSalaryConcepts(contract.id);
@@ -621,7 +624,7 @@ public class PayslipService {
         LocalDate ref = LocalDate.of(year, month, 1);
         return jdbcTemplate.query("""
                 SELECT id, contract_type, start_date, end_date,
-                       gross_salary, annual_bonuses, irpf_percent, at_ep_percent
+                       gross_salary, annual_bonuses, extras_prorated, irpf_percent, at_ep_percent
                   FROM employment_contracts
                  WHERE company_id = ? AND employee_id = ?
                    AND start_date <= ?
@@ -640,6 +643,7 @@ public class PayslipService {
                     d.grossSalary = rs.getBigDecimal("gross_salary");
                     Integer bonuses = (Integer) rs.getObject("annual_bonuses");
                     d.annualBonuses = bonuses == null ? 2 : bonuses;
+                    d.extrasProrated = rs.getBoolean("extras_prorated");
                     d.irpfPercent = rs.getBigDecimal("irpf_percent");
                     d.atEpPercent = rs.getBigDecimal("at_ep_percent");
                     return d;
@@ -805,6 +809,7 @@ public class PayslipService {
         LocalDate endDate;
         BigDecimal grossSalary;
         int annualBonuses;
+        boolean extrasProrated;
         BigDecimal irpfPercent;
         BigDecimal atEpPercent;
     }
