@@ -75,6 +75,7 @@ public class PayslipService {
     private final com.benjagest.backend.labor.irpf.IrpfRetentionService irpfService;
     private final com.benjagest.backend.settings.EmailSenderService emailSender;
     private final com.benjagest.backend.settings.CompanyDataService companyDataService;
+    private final EmployeeVacationService vacationService;
 
     public PayslipService(JdbcTemplate jdbcTemplate,
                            TenantContext tenantContext,
@@ -84,7 +85,8 @@ public class PayslipService {
                            com.benjagest.backend.labor.ss.SsContributionRatesService ssRatesService,
                            com.benjagest.backend.labor.irpf.IrpfRetentionService irpfService,
                            com.benjagest.backend.settings.EmailSenderService emailSender,
-                           com.benjagest.backend.settings.CompanyDataService companyDataService) {
+                           com.benjagest.backend.settings.CompanyDataService companyDataService,
+                           EmployeeVacationService vacationService) {
         this.jdbcTemplate = jdbcTemplate;
         this.tenantContext = tenantContext;
         this.taxRulesService = taxRulesService;
@@ -94,6 +96,7 @@ public class PayslipService {
         this.irpfService = irpfService;
         this.emailSender = emailSender;
         this.companyDataService = companyDataService;
+        this.vacationService = vacationService;
     }
 
     public byte[] generatePdf(String id) {
@@ -535,8 +538,26 @@ public class PayslipService {
                     monthly.multiply(workedFactor).setScale(2, RoundingMode.HALF_UP), true, true));
         }
 
-        // Vacaciones no disfrutadas.
-        BigDecimal vacDays = r.vacationDays() == null ? BigDecimal.ZERO : r.vacationDays();
+        // Vacaciones no disfrutadas. Si no se indican días, se calculan solos:
+        // devengadas en el año hasta el cese (proporcional) − disfrutadas
+        // (registro de vacaciones). Con días indicados (>=0) se respeta el valor.
+        BigDecimal vacDays;
+        if (r.vacationDays() != null && r.vacationDays().signum() >= 0) {
+            vacDays = r.vacationDays();
+        } else {
+            java.time.LocalDate cese = java.time.LocalDate.of(r.year(), r.month(), worked);
+            java.time.LocalDate yearStart = java.time.LocalDate.of(r.year(), 1, 1);
+            java.time.LocalDate workStart = (c.startDate != null && c.startDate.isAfter(yearStart))
+                    ? c.startDate : yearStart;
+            long diasTrabajadosAnio = java.time.temporal.ChronoUnit.DAYS.between(workStart, cese) + 1;
+            int diasAnio = java.time.Year.of(r.year()).length();
+            BigDecimal devengadas = BigDecimal.valueOf(c.vacationDays)
+                    .multiply(BigDecimal.valueOf(diasTrabajadosAnio))
+                    .divide(BigDecimal.valueOf(diasAnio), 1, RoundingMode.HALF_UP);
+            BigDecimal disfrutadas = vacationService.daysTakenInYear(r.employeeId(), r.year(), cese);
+            vacDays = devengadas.subtract(disfrutadas);
+            if (vacDays.signum() < 0) vacDays = BigDecimal.ZERO;
+        }
         if (vacDays.signum() > 0) {
             BigDecimal salarioDiaVac = c.grossSalary.divide(BigDecimal.valueOf(360), 8, RoundingMode.HALF_UP);
             out.add(new ExtraConcept("Vacaciones no disfrutadas",
@@ -744,7 +765,8 @@ public class PayslipService {
         LocalDate ref = LocalDate.of(year, month, 1);
         return jdbcTemplate.query("""
                 SELECT id, contract_type, start_date, end_date,
-                       gross_salary, annual_bonuses, extras_prorated, irpf_percent, at_ep_percent
+                       gross_salary, annual_bonuses, extras_prorated, vacation_days,
+                       irpf_percent, at_ep_percent
                   FROM employment_contracts
                  WHERE company_id = ? AND employee_id = ?
                    AND start_date <= ?
@@ -764,6 +786,8 @@ public class PayslipService {
                     Integer bonuses = (Integer) rs.getObject("annual_bonuses");
                     d.annualBonuses = bonuses == null ? 2 : bonuses;
                     d.extrasProrated = rs.getBoolean("extras_prorated");
+                    Integer vac = (Integer) rs.getObject("vacation_days");
+                    d.vacationDays = vac == null ? 30 : vac;
                     d.irpfPercent = rs.getBigDecimal("irpf_percent");
                     d.atEpPercent = rs.getBigDecimal("at_ep_percent");
                     return d;
@@ -930,6 +954,7 @@ public class PayslipService {
         BigDecimal grossSalary;
         int annualBonuses;
         boolean extrasProrated;
+        int vacationDays;
         BigDecimal irpfPercent;
         BigDecimal atEpPercent;
     }
