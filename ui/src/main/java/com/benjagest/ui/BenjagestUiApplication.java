@@ -16206,6 +16206,11 @@ public class BenjagestUiApplication extends Application {
             case "labor.payslips.action.batch" -> "Batch to target";
             case "labor.payslips.action.extra" -> "Extra payment";
             case "labor.payslips.action.settlement" -> "Settlement";
+            case "labor.payslips.action.gen_month" -> "Generate month";
+            case "labor.genmonth.title" -> "Generate monthly payslips";
+            case "labor.genmonth.run" -> "Generate";
+            case "labor.genmonth.hint" -> "Generates the monthly payslip for every active employee with a current contract. Already-generated payslips are skipped. Do it once a month.";
+            case "labor.genmonth.done" -> "{gen} payslips generated, {skip} already existed.";
             case "labor.settlement.title" -> "Settlement / final pay";
             case "labor.settlement.generate" -> "Generate settlement";
             case "labor.settlement.cese_date" -> "Termination date";
@@ -16773,6 +16778,11 @@ public class BenjagestUiApplication extends Application {
             case "labor.payslips.action.batch" -> "Lote a objetivo";
             case "labor.payslips.action.extra" -> "Paga extra";
             case "labor.payslips.action.settlement" -> "Finiquito";
+            case "labor.payslips.action.gen_month" -> "Generar mes";
+            case "labor.genmonth.title" -> "Generar nóminas del mes";
+            case "labor.genmonth.run" -> "Generar";
+            case "labor.genmonth.hint" -> "Genera la nómina mensual de cada empleado activo con contrato vigente. Las ya generadas se saltan. Hazlo una vez al mes.";
+            case "labor.genmonth.done" -> "{gen} nóminas generadas, {skip} ya existían.";
             case "labor.settlement.title" -> "Finiquito / liquidación";
             case "labor.settlement.generate" -> "Generar finiquito";
             case "labor.settlement.cese_date" -> "Fecha de cese";
@@ -20034,6 +20044,10 @@ public class BenjagestUiApplication extends Application {
             showCalculatePayslipDialog(payrollEmployees, bundle);
         });
 
+        Button genMonthBtn = new Button(t("labor.payslips.action.gen_month"));
+        genMonthBtn.setGraphic(icon("fas-calendar-check"));
+        genMonthBtn.setOnAction(ev -> showGenerateMonthDialog());
+
         Button batchBtn = new Button(t("labor.payslips.action.batch"));
         batchBtn.setGraphic(icon("fas-layer-group"));
         batchBtn.setOnAction(ev -> showBatchTargetDialog(bundle));
@@ -20086,7 +20100,8 @@ public class BenjagestUiApplication extends Application {
             delBtn.setDisable(none || "PAID".equals(nv == null ? "" : nv.status()));
         });
 
-        HBox actions = new HBox(8, calcBtn, batchBtn, extraBtn, settlementBtn, payBtn, pdfBtn, emailBtn, delBtn);
+        HBox actions = new HBox(8, calcBtn, genMonthBtn, batchBtn, extraBtn, settlementBtn,
+                payBtn, pdfBtn, emailBtn, delBtn);
         actions.setAlignment(Pos.CENTER_LEFT);
 
         Label hint = new Label(t("labor.payslips.hint"));
@@ -20097,6 +20112,52 @@ public class BenjagestUiApplication extends Application {
         VBox.setVgrow(payslipsTable, Priority.ALWAYS);
         body.setPadding(new Insets(12));
         return screenScroll(body);
+    }
+
+    /**
+     * PAY-RECURRENT — Genera de una vez la nómina mensual de todos los empleados
+     * activos del mes (salta las ya hechas). Recurrente: un clic al mes.
+     */
+    private void showGenerateMonthDialog() {
+        Dialog<ButtonType> d = new Dialog<>();
+        d.setTitle(t("labor.genmonth.title"));
+        ButtonType gen = new ButtonType(t("labor.genmonth.run"), ButtonBar.ButtonData.OK_DONE);
+        d.getDialogPane().getButtonTypes().addAll(gen, ButtonType.CANCEL);
+        int yNow = java.time.LocalDate.now().getYear();
+        ComboBox<Integer> yearCombo = new ComboBox<>();
+        for (int y = yNow + 1; y >= yNow - 5; y--) yearCombo.getItems().add(y);
+        yearCombo.getSelectionModel().select(Integer.valueOf(yNow));
+        ComboBox<Integer> monthCombo = new ComboBox<>();
+        for (int m = 1; m <= 12; m++) monthCombo.getItems().add(m);
+        monthCombo.getSelectionModel().select(Integer.valueOf(java.time.LocalDate.now().getMonthValue()));
+        Label hint = new Label(t("labor.genmonth.hint"));
+        hint.setWrapText(true); hint.getStyleClass().add("settings-hint");
+        GridPane g = new GridPane();
+        g.setHgap(10); g.setVgap(8); g.setPadding(new Insets(12));
+        g.add(new Label(t("labor.payslips.calc.year")), 0, 0); g.add(yearCombo, 1, 0);
+        g.add(new Label(t("labor.payslips.calc.month")), 0, 1); g.add(monthCombo, 1, 1);
+        installDialog(d, new VBox(10, hint, g));
+        d.showAndWait().ifPresent(bt -> {
+            if (bt != gen) return;
+            int y = yearCombo.getValue(), m = monthCombo.getValue();
+            Task<com.benjagest.ui.model.MonthlyRunEntry> tk = new Task<>() {
+                @Override protected com.benjagest.ui.model.MonthlyRunEntry call() throws Exception {
+                    return laborApiClient.generateMonthPayslips(y, m);
+                }
+            };
+            tk.setOnSucceeded(ev -> {
+                var res = tk.getValue();
+                String msg = t("labor.genmonth.done")
+                        .replace("{gen}", String.valueOf(res.generated()))
+                        .replace("{skip}", String.valueOf(res.skipped()));
+                if (!res.errors().isEmpty()) msg += "\n\n" + String.join("\n", res.errors());
+                showInfo(t("labor.genmonth.title"), msg);
+                showLaborModule();
+            });
+            tk.setOnFailed(ev -> showError(t("labor.genmonth.title"),
+                    humanizeBackendError(tk.getException() == null ? "" : tk.getException().getMessage())));
+            start(tk, "gen-month");
+        });
     }
 
     /**
