@@ -87,21 +87,28 @@ public class PayslipPdfGenerator {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Nómina no encontrada");
         }
 
-        // Cuotas TC del periodo (desglose cotización trabajador + empresa).
+        // Solo las nóminas MENSUALES generan cuotas TC. Las pagas extra (14
+        // pagas) NO cotizan aparte: su cotización ya va prorrateada en las 12
+        // mensuales. Si leyéramos las cuotas por (empleado, año, mes) sin más,
+        // el recibo de la extra mostraría la cotización de la mensual de ese
+        // mes (cruce). Por eso solo cargamos cuotas para la nómina mensual.
+        boolean isMonthly = "MONTHLY".equals(str(data.get("payslip_type")));
         Map<String, BigDecimal> tcAmt = new HashMap<>();
         Map<String, BigDecimal> tcBase = new HashMap<>();
-        jdbcTemplate.query("""
-                SELECT contribution_type, base_amount, contribution_amount
-                  FROM social_security_contributions
-                 WHERE company_id = ? AND employee_id = ?
-                   AND period_year = ? AND period_month = ?
-                """, rs -> {
-                    tcAmt.put(rs.getString("contribution_type"), rs.getBigDecimal("contribution_amount"));
-                    tcBase.put(rs.getString("contribution_type"), rs.getBigDecimal("base_amount"));
-                },
-                tenantContext.getCurrentCompanyId(), str(data.get("employee_id")),
-                ((Number) data.get("period_year")).intValue(),
-                ((Number) data.get("period_month")).intValue());
+        if (isMonthly) {
+            jdbcTemplate.query("""
+                    SELECT contribution_type, base_amount, contribution_amount
+                      FROM social_security_contributions
+                     WHERE company_id = ? AND employee_id = ?
+                       AND period_year = ? AND period_month = ?
+                    """, rs -> {
+                        tcAmt.put(rs.getString("contribution_type"), rs.getBigDecimal("contribution_amount"));
+                        tcBase.put(rs.getString("contribution_type"), rs.getBigDecimal("base_amount"));
+                    },
+                    tenantContext.getCurrentCompanyId(), str(data.get("employee_id")),
+                    ((Number) data.get("period_year")).intValue(),
+                    ((Number) data.get("period_month")).intValue());
+        }
 
         // Líneas de devengo (conceptos salariales de este recibo).
         java.util.List<String[]> devLines = jdbcTemplate.query("""
@@ -127,11 +134,19 @@ public class PayslipPdfGenerator {
         BigDecimal irpfPct = pctOf(irpf, gross);
         BigDecimal totalDed = ssEmp.add(irpf).add(otros);
 
-        // Base de cotización (= anual/12, incluye prorrata pagas extras).
-        BigDecimal cotBase = tcBase.get("EMPLOYEE_COMMON");
-        if (cotBase == null) cotBase = tcBase.getOrDefault("EMPLOYER_COMMON", gross);
-        BigDecimal prorrata = cotBase.subtract(gross);
-        if (prorrata.signum() < 0) prorrata = BigDecimal.ZERO;
+        // Base de cotización (= anual/12, incluye prorrata pagas extras). En
+        // pagas extra no hay cotización propia, así que base y prorrata son 0.
+        BigDecimal cotBase;
+        BigDecimal prorrata;
+        if (isMonthly) {
+            cotBase = tcBase.get("EMPLOYEE_COMMON");
+            if (cotBase == null) cotBase = tcBase.getOrDefault("EMPLOYER_COMMON", gross);
+            prorrata = cotBase.subtract(gross);
+            if (prorrata.signum() < 0) prorrata = BigDecimal.ZERO;
+        } else {
+            cotBase = BigDecimal.ZERO;
+            prorrata = BigDecimal.ZERO;
+        }
 
         boolean hasEe = tcAmt.keySet().stream().anyMatch(k -> k.startsWith("EMPLOYEE"));
         boolean hasEr = tcAmt.keySet().stream().anyMatch(k -> k.startsWith("EMPLOYER"));
@@ -223,7 +238,7 @@ public class PayslipPdfGenerator {
                 conceptDed(con, "5101", "Desempleo", "EMPLOYEE_UNEMPLOYMENT", tcAmt, tcBase, fNormal);
                 conceptDed(con, "5102", "Formación profesional", "EMPLOYEE_TRAINING", tcAmt, tcBase, fNormal);
                 conceptDed(con, "5103", "MEI", "EMPLOYEE_MEI", tcAmt, tcBase, fNormal);
-            } else {
+            } else if (ssEmp.signum() > 0) {
                 con.addCell(cell("5100", fNormal, Element.ALIGN_LEFT));
                 con.addCell(cell("Aportación trabajador SS", fNormal, Element.ALIGN_LEFT));
                 con.addCell(cell(pctStr(ssEmp, gross), fNormal, Element.ALIGN_CENTER));
@@ -231,6 +246,7 @@ public class PayslipPdfGenerator {
                 con.addCell(cell("", fNormal, Element.ALIGN_RIGHT));
                 con.addCell(cell(money(ssEmp), fNormal, Element.ALIGN_RIGHT));
             }
+            // (en pagas extra ssEmp = 0: no se muestra línea de cotización)
             con.addCell(cell("5120", fNormal, Element.ALIGN_LEFT));
             con.addCell(cell("Retención I.R.P.F.", fNormal, Element.ALIGN_LEFT));
             con.addCell(cell(irpfPct.toPlainString().replace(".", ",") + " %", fNormal, Element.ALIGN_CENTER));
@@ -306,8 +322,10 @@ public class PayslipPdfGenerator {
             doc.add(liq);
 
             // ===== 6. Aportaciones a la Seguridad Social (trabajador | empresa) =====
+            // Solo si hay cotización (nómina mensual). En pagas extra no hay.
             BigDecimal totalEe = sumPrefix(tcAmt, "EMPLOYEE");
             BigDecimal totalEr = sumPrefix(tcAmt, "EMPLOYER");
+            if (hasEe || hasEr) {
 
             PdfPTable both = new PdfPTable(2);
             both.setWidthPercentage(100);
@@ -338,6 +356,7 @@ public class PayslipPdfGenerator {
                 coste.setSpacingBefore(8f);
                 doc.add(coste);
             }
+            } // fin if (hasEe || hasEr)
 
             // Las firmas y el pie legal se dibujan al pie de la página en
             // FirmasFooter.onEndPage (margen inferior reservado = 90).
