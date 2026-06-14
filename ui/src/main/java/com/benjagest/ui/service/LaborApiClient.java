@@ -557,6 +557,61 @@ public class LaborApiClient {
         return bigDec(r.body(), "plus");
     }
 
+    // ==== Baja / despido (CV-ORQ) ====
+
+    public com.benjagest.ui.model.TerminationPreviewEntry previewTermination(
+            String employeeId, java.time.LocalDate ceseDate, String type, String extrasAccrual,
+            java.math.BigDecimal otherDeductions, String notes) throws IOException, InterruptedException {
+        HttpResponse<String> r = send(req(baseUrl + "/labor/terminations/preview")
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(
+                        terminationBody(employeeId, ceseDate, type, extrasAccrual, otherDeductions, notes))));
+        String s = extractObject(r.body(), "settlement");
+        String v = extractObject(r.body(), "severance");
+        return new com.benjagest.ui.model.TerminationPreviewEntry(
+                bigDec(s, "gross"), bigDec(s, "ssEmployee"), bigDec(s, "irpf"), bigDec(s, "net"),
+                bigDec(s, "employerCost"),
+                bigDec(v, "gross"), bigDec(v, "exempt"), bigDec(v, "taxable"),
+                bigDec(v, "days"), bigDec(v, "antiquityYears"), bigDec(v, "dailySalary"));
+    }
+
+    public void executeTermination(String employeeId, java.time.LocalDate ceseDate, String type,
+            String extrasAccrual, java.math.BigDecimal otherDeductions, String notes)
+            throws IOException, InterruptedException {
+        send(req(baseUrl + "/labor/terminations/execute")
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(
+                        terminationBody(employeeId, ceseDate, type, extrasAccrual, otherDeductions, notes))));
+    }
+
+    private String terminationBody(String employeeId, java.time.LocalDate ceseDate, String type,
+            String accrual, java.math.BigDecimal other, String notes) {
+        return "{" + field("employeeId", employeeId) + ","
+                + field("ceseDate", ceseDate == null ? null : ceseDate.toString()) + ","
+                + field("type", type) + ","
+                + field("extrasAccrual", accrual) + ","
+                + decField("otherDeductions", other) + ","
+                + field("notes", notes) + "}";
+    }
+
+    /** Extrae el sub-objeto JSON "key":{...} balanceando llaves. */
+    private String extractObject(String json, String key) {
+        int i = json.indexOf("\"" + key + "\"");
+        if (i < 0) return "{}";
+        int lb = json.indexOf('{', i);
+        if (lb < 0) return "{}";
+        int depth = 0; boolean inStr = false; char prev = 0;
+        for (int j = lb; j < json.length(); j++) {
+            char ch = json.charAt(j);
+            if (inStr) { if (ch == '"' && prev != '\\') inStr = false; }
+            else if (ch == '"') inStr = true;
+            else if (ch == '{') depth++;
+            else if (ch == '}') { depth--; if (depth == 0) return json.substring(lb, j + 1); }
+            prev = ch;
+        }
+        return "{}";
+    }
+
     // ==== Vacaciones (CV-VAC) ====
 
     public java.util.List<com.benjagest.ui.model.VacationEntry> listVacations(String employeeId, Integer year)

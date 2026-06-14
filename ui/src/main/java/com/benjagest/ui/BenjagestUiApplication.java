@@ -16286,6 +16286,20 @@ public class BenjagestUiApplication extends Application {
             case "labor.employees.action.edit" -> "Edit";
             case "labor.employees.action.contracts" -> "Contracts…";
             case "labor.employees.action.delete" -> "Deactivate";
+            case "labor.employees.action.terminate" -> "Dismissal / settlement";
+            case "labor.term.title" -> "Termination / dismissal";
+            case "labor.term.reason" -> "Reason for leaving";
+            case "labor.term.confirm" -> "Confirm termination";
+            case "labor.term.confirm_body" -> "{name} will be terminated on {date} and their settlement generated. The contract will be closed. Continue?";
+            case "labor.term.hint" -> "Choose the termination date and the reason. The app extracts everything automatically: final pay (days worked), pending holidays, accrued extra pay and the severance by type. The contract is closed on confirm.";
+            case "labor.term.preview.empty" -> "Choose date and reason to see the settlement and severance.";
+            case "labor.term.preview.text" -> "Settlement: gross {gross} · SS {ss} · income tax {irpf} · net {net}\nSeverance: {sevdays} days for {years} years → {sev} (exempt {sevexempt} · taxable {sevtax})";
+            case "labor.term.type.VOLUNTARY" -> "Voluntary resignation";
+            case "labor.term.type.END_OF_CONTRACT" -> "End of fixed-term contract";
+            case "labor.term.type.DISMISSAL_OBJECTIVE" -> "Objective dismissal (20 d/yr)";
+            case "labor.term.type.DISMISSAL_UNFAIR" -> "Unfair dismissal (33 d/yr)";
+            case "labor.term.type.DISMISSAL_DISCIPLINARY" -> "Disciplinary dismissal (no severance)";
+            case "labor.term.type.RETIREMENT" -> "Retirement";
             case "labor.employee.editor.title_new" -> "New employee";
             case "labor.employee.editor.title_edit" -> "Edit employee";
             case "labor.employee.editor.save" -> "Save";
@@ -16835,6 +16849,20 @@ public class BenjagestUiApplication extends Application {
             case "labor.employees.action.edit" -> "Editar";
             case "labor.employees.action.contracts" -> "Contratos…";
             case "labor.employees.action.delete" -> "Dar de baja";
+            case "labor.employees.action.terminate" -> "Despedir / finiquito";
+            case "labor.term.title" -> "Baja / despido";
+            case "labor.term.reason" -> "Motivo de baja";
+            case "labor.term.confirm" -> "Confirmar baja";
+            case "labor.term.confirm_body" -> "Se dará de baja a {name} con fecha {date} y se generará su finiquito. El contrato quedará cerrado. ¿Continuar?";
+            case "labor.term.hint" -> "Elige la fecha de cese y el motivo. El programa lo extrae todo solo: última nómina (días trabajados), vacaciones pendientes, prorrata de pagas extra y la indemnización según el tipo. Al confirmar se cierra el contrato.";
+            case "labor.term.preview.empty" -> "Elige fecha y motivo para ver el finiquito y la indemnización.";
+            case "labor.term.preview.text" -> "Finiquito: bruto {gross} · SS {ss} · IRPF {irpf} · líquido {net}\nIndemnización: {sevdays} días por {years} años → {sev} (exenta {sevexempt} · sujeta {sevtax})";
+            case "labor.term.type.VOLUNTARY" -> "Baja voluntaria";
+            case "labor.term.type.END_OF_CONTRACT" -> "Fin de contrato temporal";
+            case "labor.term.type.DISMISSAL_OBJECTIVE" -> "Despido objetivo (20 d/año)";
+            case "labor.term.type.DISMISSAL_UNFAIR" -> "Despido improcedente (33 d/año)";
+            case "labor.term.type.DISMISSAL_DISCIPLINARY" -> "Despido disciplinario (sin indemnización)";
+            case "labor.term.type.RETIREMENT" -> "Jubilación";
             case "labor.employee.editor.title_new" -> "Nuevo empleado";
             case "labor.employee.editor.title_edit" -> "Editar empleado";
             case "labor.employee.editor.save" -> "Guardar";
@@ -19340,6 +19368,123 @@ public class BenjagestUiApplication extends Application {
 
     // ----- Sub-tab Empleados -----
 
+    /**
+     * CV-ORQ — Dar de baja / despedir a un empleado. El asesor solo indica la
+     * fecha de cese y el motivo; el programa calcula el finiquito (última
+     * nómina + vacaciones pendientes + prorrata de extras) y la indemnización
+     * según el tipo, y al confirmar cierra el contrato.
+     */
+    private void showTerminationDialog(com.benjagest.ui.model.EmployeeEntry employee) {
+        Dialog<ButtonType> d = new Dialog<>();
+        d.setTitle(t("labor.term.title") + " — " + employee.fullName());
+        ButtonType confirmBt = new ButtonType(t("labor.term.confirm"), ButtonBar.ButtonData.OK_DONE);
+        d.getDialogPane().getButtonTypes().addAll(confirmBt, ButtonType.CANCEL);
+
+        DatePicker ceseDate = new DatePicker(java.time.LocalDate.now());
+        ComboBox<String> typeCombo = new ComboBox<>();
+        typeCombo.getItems().addAll("VOLUNTARY", "END_OF_CONTRACT", "DISMISSAL_OBJECTIVE",
+                "DISMISSAL_UNFAIR", "DISMISSAL_DISCIPLINARY", "RETIREMENT");
+        typeCombo.setConverter(new javafx.util.StringConverter<>() {
+            @Override public String toString(String s) { return s == null ? "" : t("labor.term.type." + s); }
+            @Override public String fromString(String s) { return null; }
+        });
+        typeCombo.getSelectionModel().select("DISMISSAL_OBJECTIVE");
+        ComboBox<String> accrualCombo = new ComboBox<>();
+        accrualCombo.getItems().addAll("SEMIANNUAL", "ANNUAL");
+        accrualCombo.setConverter(new javafx.util.StringConverter<>() {
+            @Override public String toString(String s) {
+                return "ANNUAL".equals(s) ? t("labor.settlement.accrual.annual") : t("labor.settlement.accrual.semi");
+            }
+            @Override public String fromString(String s) { return null; }
+        });
+        accrualCombo.getSelectionModel().select("SEMIANNUAL");
+        TextField otherField = new TextField();
+        otherField.setPromptText(t("labor.payslips.calc.other_deductions.prompt"));
+        TextArea notesArea = new TextArea(); notesArea.setPrefRowCount(2);
+
+        Label summary = new Label(t("labor.term.preview.empty"));
+        summary.getStyleClass().add("settings-hint");
+        summary.setWrapText(true);
+        Button previewBtn = new Button(t("labor.payslips.calc.preview_btn"));
+        previewBtn.getStyleClass().add("button-secondary");
+        Runnable doPreview = () -> {
+            java.time.LocalDate ce = ceseDate.getValue();
+            if (ce == null || typeCombo.getValue() == null) return;
+            Task<com.benjagest.ui.model.TerminationPreviewEntry> tk = new Task<>() {
+                @Override protected com.benjagest.ui.model.TerminationPreviewEntry call() throws Exception {
+                    return laborApiClient.previewTermination(employee.id(), ce, typeCombo.getValue(),
+                            accrualCombo.getValue(), parseDecSafe(otherField.getText()),
+                            blankToNullOrSelf(notesArea.getText()));
+                }
+            };
+            tk.setOnSucceeded(ev -> {
+                var p = tk.getValue();
+                summary.setText(t("labor.term.preview.text")
+                        .replace("{gross}", money(p.settlementGross()))
+                        .replace("{ss}", money(p.settlementSs()))
+                        .replace("{irpf}", money(p.settlementIrpf()))
+                        .replace("{net}", money(p.settlementNet()))
+                        .replace("{years}", p.sevAntiquity() == null ? "0" : p.sevAntiquity().toPlainString())
+                        .replace("{sevdays}", p.sevDays() == null ? "0" : p.sevDays().toPlainString())
+                        .replace("{sev}", money(p.sevGross()))
+                        .replace("{sevexempt}", money(p.sevExempt()))
+                        .replace("{sevtax}", money(p.sevTaxable())));
+            });
+            tk.setOnFailed(ev -> {
+                Throwable ex = tk.getException();
+                String dd = ex == null ? null : humanizeBackendError(ex.getMessage());
+                summary.setText(dd == null || dd.isBlank() ? t("labor.payslips.calc.fail.body") : dd);
+            });
+            start(tk, "term-preview");
+        };
+        previewBtn.setOnAction(e -> doPreview.run());
+        ceseDate.valueProperty().addListener((o, ov, nv) -> doPreview.run());
+        typeCombo.valueProperty().addListener((o, ov, nv) -> doPreview.run());
+        accrualCombo.valueProperty().addListener((o, ov, nv) -> doPreview.run());
+
+        GridPane g = new GridPane();
+        g.setHgap(10); g.setVgap(8); g.setPadding(new Insets(10));
+        int r = 0;
+        g.add(new Label(t("labor.settlement.cese_date")), 0, r); g.add(ceseDate, 1, r++);
+        g.add(new Label(t("labor.term.reason")), 0, r); g.add(typeCombo, 1, r++);
+        g.add(new Label(t("labor.settlement.accrual")), 0, r); g.add(accrualCombo, 1, r++);
+        g.add(new Label(t("labor.payslips.calc.other_deductions")), 0, r); g.add(otherField, 1, r++);
+        g.add(new Label(t("labor.payslips.calc.notes")), 0, r); g.add(notesArea, 1, r++);
+
+        Label hint = new Label(t("labor.term.hint"));
+        hint.getStyleClass().add("settings-hint"); hint.setWrapText(true);
+        VBox box = new VBox(10, hint, g, new Separator(), new HBox(8, previewBtn), summary);
+        installDialog(d, box);
+        javafx.application.Platform.runLater(doPreview);
+        d.showAndWait().ifPresent(bt -> {
+            if (bt != confirmBt) return;
+            java.time.LocalDate ce = ceseDate.getValue();
+            if (ce == null || typeCombo.getValue() == null) {
+                showError(t("labor.term.title"), t("labor.term.reason")); return;
+            }
+            Alert c = new Alert(Alert.AlertType.CONFIRMATION,
+                    t("labor.term.confirm_body").replace("{name}", employee.fullName())
+                            .replace("{date}", ce.toString()),
+                    ButtonType.OK, ButtonType.CANCEL);
+            c.setHeaderText(t("labor.term.confirm"));
+            c.showAndWait().ifPresent(bt2 -> {
+                if (bt2 != ButtonType.OK) return;
+                Task<Void> tk = new Task<>() {
+                    @Override protected Void call() throws Exception {
+                        laborApiClient.executeTermination(employee.id(), ce, typeCombo.getValue(),
+                                accrualCombo.getValue(), parseDecSafe(otherField.getText()),
+                                blankToNullOrSelf(notesArea.getText()));
+                        return null;
+                    }
+                };
+                tk.setOnSucceeded(ev -> showLaborModule());
+                tk.setOnFailed(ev -> showError(t("labor.term.title"),
+                        humanizeBackendError(tk.getException() == null ? "" : tk.getException().getMessage())));
+                start(tk, "term-execute");
+            });
+        });
+    }
+
     /** Editor del modelo 145 (datos IRPF) de un empleado. El motor de
      *  retención usa estos datos para calcular el tipo como A3. */
     private void showIrpf145Dialog(com.benjagest.ui.model.EmployeeEntry employee) {
@@ -19518,6 +19663,13 @@ public class BenjagestUiApplication extends Application {
             var sel = employeesTable.getSelectionModel().getSelectedItem();
             if (sel != null) showIrpf145Dialog(sel);
         });
+        Button terminateBtn = new Button(t("labor.employees.action.terminate"));
+        terminateBtn.setGraphic(icon("fas-handshake"));
+        terminateBtn.setDisable(true);
+        terminateBtn.setOnAction(ev -> {
+            var sel = employeesTable.getSelectionModel().getSelectedItem();
+            if (sel != null) showTerminationDialog(sel);
+        });
         Button deleteBtn = new Button(t("labor.employees.action.delete"));
         deleteBtn.setGraphic(icon("fas-user-slash"));
         deleteBtn.setDisable(true);
@@ -19530,10 +19682,11 @@ public class BenjagestUiApplication extends Application {
             editBtn.setDisable(nv == null);
             contractsBtn.setDisable(nv == null);
             irpfBtn.setDisable(nv == null);
+            terminateBtn.setDisable(nv == null || !nv.active());
             deleteBtn.setDisable(nv == null || !nv.active());
         });
 
-        HBox actions = new HBox(8, newEmployee, editBtn, contractsBtn, irpfBtn, deleteBtn);
+        HBox actions = new HBox(8, newEmployee, editBtn, contractsBtn, irpfBtn, terminateBtn, deleteBtn);
         actions.setAlignment(Pos.CENTER_LEFT);
         actions.setPadding(new Insets(0, 0, 8, 0));
 
