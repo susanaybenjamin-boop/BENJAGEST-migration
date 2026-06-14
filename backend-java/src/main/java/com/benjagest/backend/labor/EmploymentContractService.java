@@ -49,7 +49,7 @@ public class EmploymentContractService {
         StringBuilder sql = new StringBuilder("""
                 SELECT id, employee_id, contract_type, sepe_contract_code,
                        collective_agreement, professional_category, professional_group,
-                       start_date, end_date, weekly_hours, gross_salary,
+                       start_date, seniority_date, end_date, weekly_hours, gross_salary,
                        annual_bonuses, extras_prorated, vacation_days, irpf_percent, at_ep_percent,
                        workplace_address, status, termination_reason,
                        probation_days, pdf_model
@@ -75,17 +75,17 @@ public class EmploymentContractService {
                 INSERT INTO employment_contracts (
                     id, company_id, employee_id, contract_type, sepe_contract_code,
                     collective_agreement, professional_category, professional_group,
-                    start_date, end_date, weekly_hours, gross_salary,
+                    start_date, seniority_date, end_date, weekly_hours, gross_salary,
                     annual_bonuses, extras_prorated, vacation_days, irpf_percent, at_ep_percent,
                     workplace_address, status, termination_reason,
                     probation_days, pdf_model
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 id, tenantContext.getCurrentCompanyId(),
                 req.employeeId(), req.contractType(), blank(req.sepeContractCode()),
                 blank(req.collectiveAgreement()), blank(req.professionalCategory()),
                 blank(req.professionalGroup()),
-                req.startDate(), req.endDate(),
+                req.startDate(), req.seniorityDate(), req.endDate(),
                 req.weeklyHours(), req.grossSalary(),
                 req.annualBonuses() == null ? 2 : req.annualBonuses(),
                 req.extrasProrated() != null && req.extrasProrated(),
@@ -113,7 +113,7 @@ public class EmploymentContractService {
                 UPDATE employment_contracts
                    SET contract_type = ?, sepe_contract_code = ?,
                        collective_agreement = ?, professional_category = ?, professional_group = ?,
-                       start_date = ?, end_date = ?, weekly_hours = ?, gross_salary = ?,
+                       start_date = ?, seniority_date = ?, end_date = ?, weekly_hours = ?, gross_salary = ?,
                        annual_bonuses = ?, extras_prorated = ?, vacation_days = ?, irpf_percent = ?, at_ep_percent = ?,
                        workplace_address = ?, status = ?, termination_reason = ?,
                        probation_days = ?, pdf_model = ?
@@ -122,7 +122,7 @@ public class EmploymentContractService {
                 req.contractType(), blank(req.sepeContractCode()),
                 blank(req.collectiveAgreement()), blank(req.professionalCategory()),
                 blank(req.professionalGroup()),
-                req.startDate(), req.endDate(),
+                req.startDate(), req.seniorityDate(), req.endDate(),
                 req.weeklyHours(), req.grossSalary(),
                 req.annualBonuses(), req.extrasProrated() != null && req.extrasProrated(),
                 req.vacationDays(), req.irpfPercent(),
@@ -217,7 +217,7 @@ public class EmploymentContractService {
         return jdbcTemplate.query("""
                 SELECT id, employee_id, contract_type, sepe_contract_code,
                        collective_agreement, professional_category, professional_group,
-                       start_date, end_date, weekly_hours, gross_salary,
+                       start_date, seniority_date, end_date, weekly_hours, gross_salary,
                        annual_bonuses, extras_prorated, vacation_days, irpf_percent, at_ep_percent,
                        workplace_address, status, termination_reason,
                        probation_days, pdf_model
@@ -255,6 +255,7 @@ public class EmploymentContractService {
 
     private ContractView mapView(ResultSet rs, int rowNum) throws SQLException {
         java.sql.Date s = rs.getDate("start_date");
+        java.sql.Date sen = rs.getDate("seniority_date");
         java.sql.Date e = rs.getDate("end_date");
         return new ContractView(
                 rs.getString("id"),
@@ -265,6 +266,7 @@ public class EmploymentContractService {
                 rs.getString("professional_category"),
                 rs.getString("professional_group"),
                 s == null ? null : s.toLocalDate(),
+                sen == null ? null : sen.toLocalDate(),
                 e == null ? null : e.toLocalDate(),
                 rs.getBigDecimal("weekly_hours"),
                 rs.getBigDecimal("gross_salary"),
@@ -298,7 +300,7 @@ public class EmploymentContractService {
                 c.id(), tenantContext.getCurrentCompanyId());
         return new ContractView(c.id(), c.employeeId(), c.contractType(), c.sepeContractCode(),
                 c.collectiveAgreement(), c.professionalCategory(), c.professionalGroup(),
-                c.startDate(), c.endDate(), c.weeklyHours(), c.grossSalary(),
+                c.startDate(), c.seniorityDate(), c.endDate(), c.weeklyHours(), c.grossSalary(),
                 c.annualBonuses(), c.extrasProrated(), c.vacationDays(), c.irpfPercent(), c.atEpPercent(),
                 c.workplaceAddress(), c.status(), c.terminationReason(),
                 c.probationDays(), c.pdfModel(), items);
@@ -335,7 +337,7 @@ public class EmploymentContractService {
     public record ContractView(
             String id, String employeeId, String contractType, String sepeContractCode,
             String collectiveAgreement, String professionalCategory, String professionalGroup,
-            LocalDate startDate, LocalDate endDate,
+            LocalDate startDate, LocalDate seniorityDate, LocalDate endDate,
             BigDecimal weeklyHours, BigDecimal grossSalary,
             Integer annualBonuses, Boolean extrasProrated, Integer vacationDays, BigDecimal irpfPercent,
             BigDecimal atEpPercent,
@@ -347,7 +349,7 @@ public class EmploymentContractService {
     public record UpsertRequest(
             String employeeId, String contractType, String sepeContractCode,
             String collectiveAgreement, String professionalCategory, String professionalGroup,
-            LocalDate startDate, LocalDate endDate,
+            LocalDate startDate, LocalDate seniorityDate, LocalDate endDate,
             BigDecimal weeklyHours, BigDecimal grossSalary,
             Integer annualBonuses, Boolean extrasProrated, Integer vacationDays, BigDecimal irpfPercent,
             BigDecimal atEpPercent,

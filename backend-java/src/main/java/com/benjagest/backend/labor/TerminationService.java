@@ -60,11 +60,15 @@ public class TerminationService {
 
     public record TerminationResult(PayslipService.PayslipView settlement, Severance severance) {}
 
-    private record ActiveContract(String id, LocalDate startDate, BigDecimal grossSalary) {}
+    private record ActiveContract(String id, LocalDate startDate, LocalDate seniorityDate,
+                                   BigDecimal grossSalary) {
+        /** Fecha desde la que cuenta la antigüedad para la indemnización. */
+        LocalDate antiquityFrom() { return seniorityDate != null ? seniorityDate : startDate; }
+    }
 
     private ActiveContract loadActiveContract(String employeeId, LocalDate ref) {
         return jdbc.query("""
-                SELECT id, start_date, gross_salary FROM employment_contracts
+                SELECT id, start_date, seniority_date, gross_salary FROM employment_contracts
                  WHERE company_id = ? AND employee_id = ?
                    AND start_date <= ?
                    AND (end_date IS NULL OR end_date >= ?)
@@ -73,6 +77,7 @@ public class TerminationService {
                 """,
                 (rs, n) -> new ActiveContract(rs.getString("id"),
                         rs.getDate("start_date") == null ? null : rs.getDate("start_date").toLocalDate(),
+                        rs.getDate("seniority_date") == null ? null : rs.getDate("seniority_date").toLocalDate(),
                         rs.getBigDecimal("gross_salary")),
                 tenant.getCurrentCompanyId(), employeeId, ref, ref)
                 .stream().findFirst().orElse(null);
@@ -139,7 +144,7 @@ public class TerminationService {
         PayslipService.PreviewResult settlement = payslipService.preview(new PayslipService.CalculateRequest(
                 r.employeeId(), r.ceseDate().getYear(), r.ceseDate().getMonthValue(), "SETTLEMENT",
                 false, r.otherDeductions(), r.notes(), concepts, null));
-        Severance sev = computeSeverance(r.type(), c.grossSalary(), c.startDate(), r.ceseDate());
+        Severance sev = computeSeverance(r.type(), c.grossSalary(), c.antiquityFrom(), r.ceseDate());
         return new TerminationPreview(concepts, settlement, sev);
     }
 
@@ -153,7 +158,7 @@ public class TerminationService {
         PayslipService.PayslipView settlement = payslipService.calculate(new PayslipService.CalculateRequest(
                 r.employeeId(), r.ceseDate().getYear(), r.ceseDate().getMonthValue(), "SETTLEMENT",
                 false, r.otherDeductions(), r.notes(), concepts, null));
-        Severance sev = computeSeverance(r.type(), c.grossSalary(), c.startDate(), r.ceseDate());
+        Severance sev = computeSeverance(r.type(), c.grossSalary(), c.antiquityFrom(), r.ceseDate());
         // Cierra el contrato con el motivo de baja.
         jdbc.update("""
                 UPDATE employment_contracts
