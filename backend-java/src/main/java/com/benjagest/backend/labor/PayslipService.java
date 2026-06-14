@@ -72,6 +72,7 @@ public class PayslipService {
     private final PayslipPdfGenerator pdfGenerator;
     private final PayslipJournalEntryService journalService;
     private final com.benjagest.backend.labor.ss.SsContributionRatesService ssRatesService;
+    private final com.benjagest.backend.labor.irpf.IrpfRetentionService irpfService;
     private final com.benjagest.backend.settings.EmailSenderService emailSender;
     private final com.benjagest.backend.settings.CompanyDataService companyDataService;
 
@@ -81,6 +82,7 @@ public class PayslipService {
                            PayslipPdfGenerator pdfGenerator,
                            PayslipJournalEntryService journalService,
                            com.benjagest.backend.labor.ss.SsContributionRatesService ssRatesService,
+                           com.benjagest.backend.labor.irpf.IrpfRetentionService irpfService,
                            com.benjagest.backend.settings.EmailSenderService emailSender,
                            com.benjagest.backend.settings.CompanyDataService companyDataService) {
         this.jdbcTemplate = jdbcTemplate;
@@ -89,6 +91,7 @@ public class PayslipService {
         this.pdfGenerator = pdfGenerator;
         this.journalService = journalService;
         this.ssRatesService = ssRatesService;
+        this.irpfService = irpfService;
         this.emailSender = emailSender;
         this.companyDataService = companyDataService;
     }
@@ -324,10 +327,23 @@ public class PayslipService {
         SsBreakdown ss = computeSs(cotizationBase, atEp, rates);
         BigDecimal ssEmployee = ss.employeeTotal();
 
-        // 3) IRPF sobre el devengo tributable.
-        BigDecimal irpfPct = contract.irpfPercent != null && contract.irpfPercent.signum() > 0
-                ? contract.irpfPercent
-                : computeIrpfPercent(contract.grossSalary, req.year());
+        // 3) IRPF. Si el empleado tiene datos del modelo 145, se calcula el
+        //    tipo con el motor de retención (como A3); si no, el % fijo del
+        //    contrato; en último término, estimación por tramos.
+        BigDecimal irpfPct;
+        com.benjagest.backend.labor.irpf.IrpfRetentionService.Modelo145 m145 =
+                irpfService.findForEmployee(req.employeeId());
+        if (m145 != null) {
+            BigDecimal eeRate = rates.eeCommon().add(rates.eeUnemployment())
+                    .add(rates.eeTraining()).add(rates.eeMei());
+            BigDecimal annualSs = cotizableAnnual.multiply(eeRate)
+                    .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
+            irpfPct = irpfService.computeRate(req.year(), taxableAnnual, annualSs, m145);
+        } else if (contract.irpfPercent != null && contract.irpfPercent.signum() > 0) {
+            irpfPct = contract.irpfPercent;
+        } else {
+            irpfPct = computeIrpfPercent(contract.grossSalary, req.year());
+        }
         BigDecimal taxableDevengo = taxableAnnual.divide(BigDecimal.valueOf(divisor), 2, RoundingMode.HALF_UP)
                 .add(extraTaxable);
         BigDecimal irpf = taxableDevengo.multiply(irpfPct)

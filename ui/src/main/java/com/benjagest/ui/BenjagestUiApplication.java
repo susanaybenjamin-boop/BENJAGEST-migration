@@ -15931,6 +15931,33 @@ public class BenjagestUiApplication extends Application {
             case "labor.title" -> "HR / Personnel";
             case "labor.subtitle" -> "Workforce, contracts, time tracking and payslips — all in one place.";
             case "labor.tab.employees" -> "Employees";
+            case "labor.employees.action.irpf" -> "Income tax (form 145)";
+            case "labor.irpf.title" -> "Income-tax data (form 145)";
+            case "labor.irpf.saved" -> "Data saved. The income-tax rate will be computed automatically.";
+            case "labor.irpf.load_failed" -> "Could not load the data";
+            case "labor.irpf.save_failed" -> "Could not save the data";
+            case "labor.irpf.fam_situation" -> "Family situation";
+            case "labor.irpf.fam.1" -> "1 — Single parent with children";
+            case "labor.irpf.fam.2" -> "2 — Married, spouse earns < 1.500 €";
+            case "labor.irpf.fam.3" -> "3 — Other situations";
+            case "labor.irpf.spouse_nif" -> "Spouse NIF (situation 2)";
+            case "labor.irpf.descendants" -> "Children/descendants (< 25)";
+            case "labor.irpf.desc_under3" -> "…of which under 3 years";
+            case "labor.irpf.desc_dis33" -> "…with disability 33-64%";
+            case "labor.irpf.desc_dis65" -> "…with disability ≥ 65%";
+            case "labor.irpf.exclusive" -> "Exclusive custody (otherwise 50%)";
+            case "labor.irpf.asc65" -> "Ascendants 65-74";
+            case "labor.irpf.asc75" -> "Ascendants ≥ 75";
+            case "labor.irpf.own_dis" -> "Worker's disability";
+            case "labor.irpf.dis.NONE" -> "None";
+            case "labor.irpf.dis.D33" -> "33-64%";
+            case "labor.irpf.dis.D65" -> "≥ 65%";
+            case "labor.irpf.mobility" -> "Reduced mobility / needs help";
+            case "labor.irpf.over65" -> "Worker over 65";
+            case "labor.irpf.over75" -> "Worker over 75";
+            case "labor.irpf.under_year" -> "Contract under 1 year (min. 2%)";
+            case "labor.irpf.geo_mobility" -> "Geographic mobility";
+            case "labor.irpf.mortgage" -> "Pre-2013 home loan";
             case "labor.tab.contracts" -> "Contracts";
             case "labor.tab.timeclock" -> "Time clock";
             case "labor.tab.payslips" -> "Payslips";
@@ -16384,6 +16411,33 @@ public class BenjagestUiApplication extends Application {
             case "labor.title" -> "Personal";
             case "labor.subtitle" -> "Plantilla, contratos, fichajes y nominas — todo en una sola pantalla.";
             case "labor.tab.employees" -> "Empleados";
+            case "labor.employees.action.irpf" -> "IRPF (mod. 145)";
+            case "labor.irpf.title" -> "Datos IRPF (modelo 145)";
+            case "labor.irpf.saved" -> "Datos guardados. El tipo de IRPF se calculará automáticamente.";
+            case "labor.irpf.load_failed" -> "No se pudieron cargar los datos";
+            case "labor.irpf.save_failed" -> "No se pudieron guardar los datos";
+            case "labor.irpf.fam_situation" -> "Situación familiar";
+            case "labor.irpf.fam.1" -> "1 — Familia monoparental con hijos";
+            case "labor.irpf.fam.2" -> "2 — Casado/a, cónyuge gana < 1.500 €";
+            case "labor.irpf.fam.3" -> "3 — Resto de situaciones";
+            case "labor.irpf.spouse_nif" -> "NIF cónyuge (situación 2)";
+            case "labor.irpf.descendants" -> "Hijos/descendientes (< 25)";
+            case "labor.irpf.desc_under3" -> "…de ellos, menores de 3 años";
+            case "labor.irpf.desc_dis33" -> "…con discapacidad 33-64%";
+            case "labor.irpf.desc_dis65" -> "…con discapacidad ≥ 65%";
+            case "labor.irpf.exclusive" -> "Cómputo exclusivo (si no, 50%)";
+            case "labor.irpf.asc65" -> "Ascendientes 65-74";
+            case "labor.irpf.asc75" -> "Ascendientes ≥ 75";
+            case "labor.irpf.own_dis" -> "Discapacidad del trabajador";
+            case "labor.irpf.dis.NONE" -> "Ninguna";
+            case "labor.irpf.dis.D33" -> "33-64%";
+            case "labor.irpf.dis.D65" -> "≥ 65%";
+            case "labor.irpf.mobility" -> "Movilidad reducida / ayuda terceros";
+            case "labor.irpf.over65" -> "Trabajador mayor de 65";
+            case "labor.irpf.over75" -> "Trabajador mayor de 75";
+            case "labor.irpf.under_year" -> "Contrato < 1 año (mín. 2%)";
+            case "labor.irpf.geo_mobility" -> "Movilidad geográfica";
+            case "labor.irpf.mortgage" -> "Préstamo vivienda anterior a 2013";
             case "labor.tab.contracts" -> "Contratos";
             case "labor.tab.timeclock" -> "Fichajes";
             case "labor.tab.payslips" -> "Nominas";
@@ -19118,6 +19172,105 @@ public class BenjagestUiApplication extends Application {
 
     // ----- Sub-tab Empleados -----
 
+    /** Editor del modelo 145 (datos IRPF) de un empleado. El motor de
+     *  retención usa estos datos para calcular el tipo como A3. */
+    private void showIrpf145Dialog(com.benjagest.ui.model.EmployeeEntry employee) {
+        Task<com.benjagest.ui.model.Modelo145Entry> load = new Task<>() {
+            @Override protected com.benjagest.ui.model.Modelo145Entry call() throws Exception {
+                return laborApiClient.getIrpfData(employee.id());
+            }
+        };
+        load.setOnSucceeded(ev -> buildIrpf145Form(employee, load.getValue()));
+        load.setOnFailed(ev -> showError(t("labor.irpf.load_failed"),
+                load.getException() == null ? "" : load.getException().getMessage()));
+        start(load, "irpf-load");
+    }
+
+    private void buildIrpf145Form(com.benjagest.ui.model.EmployeeEntry employee,
+                                   com.benjagest.ui.model.Modelo145Entry m) {
+        Dialog<ButtonType> d = new Dialog<>();
+        d.setTitle(t("labor.irpf.title") + " — " + employee.fullName());
+        ButtonType save = new ButtonType(t("labor.ssrates.save_btn"), ButtonBar.ButtonData.OK_DONE);
+        d.getDialogPane().getButtonTypes().addAll(save, ButtonType.CANCEL);
+
+        ComboBox<Integer> famSit = new ComboBox<>();
+        famSit.getItems().addAll(1, 2, 3);
+        famSit.setConverter(new javafx.util.StringConverter<>() {
+            @Override public String toString(Integer s) { return s == null ? "" : t("labor.irpf.fam." + s); }
+            @Override public Integer fromString(String s) { return null; }
+        });
+        famSit.getSelectionModel().select(Integer.valueOf(m.familySituation() == 0 ? 3 : m.familySituation()));
+        TextField spouseNif = new TextField(m.spouseNif() == null ? "" : m.spouseNif());
+        TextField desc = new TextField(String.valueOf(m.descendants()));
+        TextField descU3 = new TextField(String.valueOf(m.descendantsUnder3()));
+        TextField desc33 = new TextField(String.valueOf(m.descendantsDisability33()));
+        TextField desc65 = new TextField(String.valueOf(m.descendantsDisability65()));
+        CheckBox exclusive = new CheckBox(t("labor.irpf.exclusive")); exclusive.setSelected(m.exclusiveCustody());
+        TextField asc65 = new TextField(String.valueOf(m.ascendantsOver65()));
+        TextField asc75 = new TextField(String.valueOf(m.ascendantsOver75()));
+        ComboBox<String> ownDis = new ComboBox<>();
+        ownDis.getItems().addAll("NONE", "D33", "D65");
+        ownDis.setConverter(new javafx.util.StringConverter<>() {
+            @Override public String toString(String s) { return s == null ? "" : t("labor.irpf.dis." + s); }
+            @Override public String fromString(String s) { return null; }
+        });
+        ownDis.getSelectionModel().select(m.ownDisability() == null || m.ownDisability().isBlank() ? "NONE" : m.ownDisability());
+        CheckBox mobility = new CheckBox(t("labor.irpf.mobility")); mobility.setSelected(m.ownMobility());
+        CheckBox over65 = new CheckBox(t("labor.irpf.over65")); over65.setSelected(m.taxpayerOver65());
+        CheckBox over75 = new CheckBox(t("labor.irpf.over75")); over75.setSelected(m.taxpayerOver75());
+        CheckBox under1 = new CheckBox(t("labor.irpf.under_year")); under1.setSelected(m.contractUnderYear());
+        CheckBox geoMob = new CheckBox(t("labor.irpf.geo_mobility")); geoMob.setSelected(m.geographicMobility());
+        CheckBox mortgage = new CheckBox(t("labor.irpf.mortgage")); mortgage.setSelected(m.mortgageBefore2013());
+
+        GridPane g = new GridPane();
+        g.setHgap(10); g.setVgap(8); g.setPadding(new Insets(12));
+        int r = 0;
+        g.add(new Label(t("labor.irpf.fam_situation")), 0, r); g.add(famSit, 1, r++);
+        g.add(new Label(t("labor.irpf.spouse_nif")), 0, r); g.add(spouseNif, 1, r++);
+        g.add(new Label(t("labor.irpf.descendants")), 0, r); g.add(desc, 1, r++);
+        g.add(new Label(t("labor.irpf.desc_under3")), 0, r); g.add(descU3, 1, r++);
+        g.add(new Label(t("labor.irpf.desc_dis33")), 0, r); g.add(desc33, 1, r++);
+        g.add(new Label(t("labor.irpf.desc_dis65")), 0, r); g.add(desc65, 1, r++);
+        g.add(exclusive, 1, r++);
+        g.add(new Label(t("labor.irpf.asc65")), 0, r); g.add(asc65, 1, r++);
+        g.add(new Label(t("labor.irpf.asc75")), 0, r); g.add(asc75, 1, r++);
+        g.add(new Label(t("labor.irpf.own_dis")), 0, r); g.add(ownDis, 1, r++);
+        g.add(mobility, 1, r++);
+        g.add(over65, 1, r++);
+        g.add(over75, 1, r++);
+        g.add(under1, 1, r++);
+        g.add(geoMob, 1, r++);
+        g.add(mortgage, 1, r++);
+        installDialog(d, g);
+
+        d.showAndWait().ifPresent(bt -> {
+            if (bt != save) return;
+            com.benjagest.ui.model.Modelo145Entry out = new com.benjagest.ui.model.Modelo145Entry(
+                    famSit.getValue() == null ? 3 : famSit.getValue(),
+                    blankToNullOrSelf(spouseNif.getText()),
+                    intOr0(desc.getText()), intOr0(descU3.getText()),
+                    intOr0(desc33.getText()), intOr0(desc65.getText()), exclusive.isSelected(),
+                    intOr0(asc65.getText()), intOr0(asc75.getText()),
+                    ownDis.getValue(), mobility.isSelected(),
+                    over65.isSelected(), over75.isSelected(),
+                    under1.isSelected(), geoMob.isSelected(), mortgage.isSelected());
+            Task<Void> tk = new Task<>() {
+                @Override protected Void call() throws Exception {
+                    laborApiClient.saveIrpfData(employee.id(), out); return null;
+                }
+            };
+            tk.setOnSucceeded(ev -> showInfo(t("labor.irpf.title"), t("labor.irpf.saved")));
+            tk.setOnFailed(ev -> showError(t("labor.irpf.save_failed"),
+                    tk.getException() == null ? "" : tk.getException().getMessage()));
+            start(tk, "irpf-save");
+        });
+    }
+
+    private int intOr0(String s) {
+        Integer v = parseIntSafe(s);
+        return v == null ? 0 : v;
+    }
+
     private Node buildEmployeesTab(java.util.List<com.benjagest.ui.model.EmployeeEntry> employees) {
         Button newEmployee = new Button(t("labor.action.new_employee"));
         newEmployee.setGraphic(icon("fas-plus"));
@@ -19182,6 +19335,13 @@ public class BenjagestUiApplication extends Application {
             var sel = employeesTable.getSelectionModel().getSelectedItem();
             if (sel != null) showEmployeeContracts(sel);
         });
+        Button irpfBtn = new Button(t("labor.employees.action.irpf"));
+        irpfBtn.setGraphic(icon("fas-percentage"));
+        irpfBtn.setDisable(true);
+        irpfBtn.setOnAction(ev -> {
+            var sel = employeesTable.getSelectionModel().getSelectedItem();
+            if (sel != null) showIrpf145Dialog(sel);
+        });
         Button deleteBtn = new Button(t("labor.employees.action.delete"));
         deleteBtn.setGraphic(icon("fas-user-slash"));
         deleteBtn.setDisable(true);
@@ -19193,10 +19353,11 @@ public class BenjagestUiApplication extends Application {
         employeesTable.getSelectionModel().selectedItemProperty().addListener((o, ov, nv) -> {
             editBtn.setDisable(nv == null);
             contractsBtn.setDisable(nv == null);
+            irpfBtn.setDisable(nv == null);
             deleteBtn.setDisable(nv == null || !nv.active());
         });
 
-        HBox actions = new HBox(8, newEmployee, editBtn, contractsBtn, deleteBtn);
+        HBox actions = new HBox(8, newEmployee, editBtn, contractsBtn, irpfBtn, deleteBtn);
         actions.setAlignment(Pos.CENTER_LEFT);
         actions.setPadding(new Insets(0, 0, 8, 0));
 
