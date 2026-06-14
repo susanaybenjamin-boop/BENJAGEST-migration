@@ -557,6 +557,27 @@ public class LaborApiClient {
         return bigDec(r.body(), "plus");
     }
 
+    /** Genera las nóminas mensuales de todos los empleados activos del mes. */
+    public com.benjagest.ui.model.MonthlyRunEntry generateMonthPayslips(int year, int month)
+            throws IOException, InterruptedException {
+        HttpResponse<String> r = send(req(baseUrl + "/labor/payslips/generate-month?year=" + year + "&month=" + month)
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString("{}")));
+        String b = r.body();
+        Integer gen = intFieldOrNull(b, "generated");
+        Integer skip = intFieldOrNull(b, "skipped");
+        java.util.List<String> errs = new ArrayList<>();
+        int ei = b.indexOf("\"errors\"");
+        if (ei >= 0) {
+            int lb = b.indexOf('[', ei), rb = b.indexOf(']', lb);
+            if (lb >= 0 && rb > lb) {
+                Matcher m = Pattern.compile("\"((?:[^\"\\\\]|\\\\.)*)\"").matcher(b.substring(lb + 1, rb));
+                while (m.find()) errs.add(m.group(1).replace("\\\"", "\""));
+            }
+        }
+        return new com.benjagest.ui.model.MonthlyRunEntry(gen == null ? 0 : gen, skip == null ? 0 : skip, errs);
+    }
+
     // ==== Baja / despido (CV-ORQ) ====
 
     public com.benjagest.ui.model.TerminationPreviewEntry previewTermination(

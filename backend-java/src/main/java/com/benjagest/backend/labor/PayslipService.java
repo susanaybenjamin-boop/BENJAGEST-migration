@@ -594,6 +594,52 @@ public class PayslipService {
         return out;
     }
 
+    // ===== PAY-RECURRENT: nóminas mensuales recurrentes =====
+
+    public record MonthlyRunResult(int generated, int skipped, java.util.List<String> errors) {}
+
+    /**
+     * Genera la nómina MENSUAL de todos los empleados activos con contrato
+     * vigente en el mes, saltando los que ya la tengan (idempotente). Sustituye
+     * al "una a una": un clic al mes, como ventas/gastos recurrentes.
+     */
+    public MonthlyRunResult generateMonth(int year, int month) {
+        LocalDate monthStart = LocalDate.of(year, month, 1);
+        LocalDate monthEnd = monthStart.withDayOfMonth(monthStart.lengthOfMonth());
+        List<String[]> emps = jdbcTemplate.query("""
+                SELECT DISTINCT c.employee_id, e.full_name
+                  FROM employment_contracts c
+                  JOIN employees e ON e.id = c.employee_id AND e.company_id = c.company_id
+                 WHERE c.company_id = ? AND e.active = TRUE
+                   AND c.status IN ('ACTIVE', 'SUSPENDED')
+                   AND c.start_date <= ? AND (c.end_date IS NULL OR c.end_date >= ?)
+                 ORDER BY e.full_name
+                """,
+                (rs, n) -> new String[]{rs.getString("employee_id"), rs.getString("full_name")},
+                tenantContext.getCurrentCompanyId(), monthEnd, monthStart);
+
+        int generated = 0, skipped = 0;
+        java.util.List<String> errors = new java.util.ArrayList<>();
+        for (String[] e : emps) {
+            Integer exists = jdbcTemplate.query("""
+                    SELECT COUNT(*) FROM payslips
+                     WHERE company_id = ? AND employee_id = ?
+                       AND period_year = ? AND period_month = ? AND payslip_type = 'MONTHLY'
+                    """, (rs, n) -> rs.getInt(1),
+                    tenantContext.getCurrentCompanyId(), e[0], year, month)
+                    .stream().findFirst().orElse(0);
+            if (exists != null && exists > 0) { skipped++; continue; }
+            try {
+                calculate(new CalculateRequest(e[0], year, month, "MONTHLY",
+                        null, null, null, null, null));
+                generated++;
+            } catch (Exception ex) {
+                errors.add(e[1] + ": " + ex.getMessage());
+            }
+        }
+        return new MonthlyRunResult(generated, skipped, errors);
+    }
+
     /**
      * Calcula y persiste (o actualiza) una nómina del empleado en el mes/año.
      */
@@ -1051,6 +1097,12 @@ public class PayslipService {
         @PostMapping("/settlement-concepts")
         public List<ExtraConcept> settlementConcepts(@RequestBody SettlementRequest req) {
             return service.settlementConcepts(req);
+        }
+
+        @PostMapping("/generate-month")
+        public MonthlyRunResult generateMonth(@RequestParam("year") int year,
+                                               @RequestParam("month") int month) {
+            return service.generateMonth(year, month);
         }
 
         @PutMapping("/{id}/pay")
