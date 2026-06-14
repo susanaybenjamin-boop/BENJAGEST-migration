@@ -81,6 +81,19 @@ Sobre el bloque NOM, construido el flujo completo estilo A3/Nomio:
 **Pendiente futuro:** topes cotización TGSS; pagas extra EXTRA_* cotizadas;
 complementos en el asistente de alta; inverso NET con IRPF por tramo (hoy %fijo).
 
+**Pendiente NOM (refinamiento complementos, 2026-06-14):**
+- ⬜ ❓ **Reparto del objetivo entre varios complementos con min/max** — hoy
+  "Proponer plus" añade/actualiza UNA "Mejora voluntaria" (idempotente). Benjamin
+  quiere poder repartir el objetivo entre varios complementos, cada uno con un
+  mínimo/máximo, de forma idempotente. **Decisión pendiente**: definir el modelo
+  (¿qué complementos son "ajustables", su orden y topes?). No es estándar A3
+  (A3 usa un único concepto "a cuenta convenio"/mejora para cuadrar).
+- ⬜ **Unificar complementos contrato (anual) vs nómina (mensual)** — hoy son dos
+  sistemas con unidades distintas; en el cálculo se muestran los del contrato en
+  solo lectura para no duplicar. Valorar un modelo único.
+- ⬜ **IRPF: regularización intra-anual** (recalcular al cambiar datos a mitad de
+  año) y **límite art. 85.3 afinado** por meses restantes.
+
 ---
 
 ## 2026-06-13 — Bloque NOM (ciclo mensual de nómina) ⚖️
