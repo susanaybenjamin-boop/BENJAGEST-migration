@@ -15979,6 +15979,8 @@ public class BenjagestUiApplication extends Application {
             case "labor.ssrates.empty" -> "No rates configured.";
             case "labor.ssrates.col.year" -> "Year";
             case "labor.ssrates.col.ref" -> "Legal reference";
+            case "labor.ssrates.col.basemax" -> "Max base (€/month)";
+            case "labor.ssrates.col.basemin" -> "Min base (€/month)";
             case "labor.ssrates.add" -> "+ Add year";
             case "labor.ssrates.edit" -> "Edit year";
             case "labor.ssrates.save_btn" -> "Save";
@@ -16426,6 +16428,8 @@ public class BenjagestUiApplication extends Application {
             case "labor.ssrates.empty" -> "No hay tipos configurados.";
             case "labor.ssrates.col.year" -> "Año";
             case "labor.ssrates.col.ref" -> "Referencia legal";
+            case "labor.ssrates.col.basemax" -> "Base máx. (€/mes)";
+            case "labor.ssrates.col.basemin" -> "Base mín. (€/mes)";
             case "labor.ssrates.add" -> "+ Añadir año";
             case "labor.ssrates.edit" -> "Editar año";
             case "labor.ssrates.save_btn" -> "Guardar";
@@ -31533,6 +31537,10 @@ public class BenjagestUiApplication extends Application {
         addColSorted(table, "Emp. Form.", r -> pctTxt(r.erTraining()), 80, NUMERIC_STRING_COMPARATOR);
         addColSorted(table, "Emp. MEI", r -> pctTxt(r.erMei()), 75, NUMERIC_STRING_COMPARATOR);
         addColSorted(table, "AT/EP def.", r -> pctTxt(r.defaultAtEp()), 80, NUMERIC_STRING_COMPARATOR);
+        addColSorted(table, t("labor.ssrates.col.basemax"),
+                r -> r.baseMaxMonthly() == null ? "" : money(r.baseMaxMonthly()), 100, NUMERIC_STRING_COMPARATOR);
+        addColSorted(table, t("labor.ssrates.col.basemin"),
+                r -> r.baseMinMonthly() == null ? "" : money(r.baseMinMonthly()), 100, NUMERIC_STRING_COMPARATOR);
         addColSorted(table, t("labor.ssrates.col.ref"),
                 r -> r.legalReference() == null ? "" : r.legalReference(), 160, String.CASE_INSENSITIVE_ORDER);
 
@@ -31594,6 +31602,8 @@ public class BenjagestUiApplication extends Application {
         TextField erT = rateField(base == null ? null : base.erTraining(), "0.60");
         TextField erM = rateField(base == null ? null : base.erMei(), "0.75");
         TextField atEp = rateField(base == null ? null : base.defaultAtEp(), "1.50");
+        TextField baseMax = rateField(base == null ? null : base.baseMaxMonthly(), "5101.20");
+        TextField baseMin = rateField(base == null ? null : base.baseMinMonthly(), "0");
         TextField ref = new TextField(base == null || base.legalReference() == null ? "" : base.legalReference());
 
         GridPane g = new GridPane();
@@ -31610,6 +31620,8 @@ public class BenjagestUiApplication extends Application {
         g.add(new Label("Empresa — Formación"), 0, r); g.add(erT, 1, r++);
         g.add(new Label("Empresa — MEI"), 0, r); g.add(erM, 1, r++);
         g.add(new Label("AT/EP por defecto"), 0, r); g.add(atEp, 1, r++);
+        g.add(new Label(t("labor.ssrates.col.basemax")), 0, r); g.add(baseMax, 1, r++);
+        g.add(new Label(t("labor.ssrates.col.basemin")), 0, r); g.add(baseMin, 1, r++);
         g.add(new Label(t("labor.ssrates.col.ref")), 0, r); g.add(ref, 1, r++);
         installDialog(d, g);
 
@@ -31621,6 +31633,7 @@ public class BenjagestUiApplication extends Application {
                     parseDecSafe(eeT.getText()), parseDecSafe(eeM.getText()),
                     parseDecSafe(erC.getText()), parseDecSafe(erU.getText()), parseDecSafe(erF.getText()),
                     parseDecSafe(erT.getText()), parseDecSafe(erM.getText()), parseDecSafe(atEp.getText()),
+                    parseDecSafe(baseMax.getText()), parseDecSafe(baseMin.getText()),
                     blankToNullOrSelf(ref.getText()));
             Task<Void> tk = new Task<>() {
                 @Override protected Void call() throws Exception { laborApiClient.upsertSsRate(e); return null; }
