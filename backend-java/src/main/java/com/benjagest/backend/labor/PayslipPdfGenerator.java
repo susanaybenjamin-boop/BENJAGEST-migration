@@ -137,9 +137,9 @@ public class PayslipPdfGenerator {
         boolean hasEr = tcAmt.keySet().stream().anyMatch(k -> k.startsWith("EMPLOYER"));
 
         ByteArrayOutputStream out = new ByteArrayOutputStream();
-        // Margen inferior amplio (90) para reservar el espacio de las firmas,
-        // que se dibujan SIEMPRE al pie de la página mediante un page event.
-        Document doc = new Document(PageSize.A4, 30, 30, 30, 90);
+        // Margen inferior amplio (115) para reservar el espacio de las firmas
+        // + pie legal, que se dibujan SIEMPRE al pie mediante un page event.
+        Document doc = new Document(PageSize.A4, 30, 30, 30, 115);
         try {
             PdfWriter writer = PdfWriter.getInstance(doc, out);
             writer.setPageEvent(new FirmasFooter());
@@ -362,22 +362,23 @@ public class PayslipPdfGenerator {
             float colW = (right - left - gap) / 2f;
             float xL = left;
             float xR = left + colW + gap;
-            float yLine = document.bottom() - 28f;   // línea de firma
+            float yLine = document.bottom() - 30f;   // línea de firma
             cb.setLineWidth(0.5f);
             cb.setColorStroke(new Color(120, 120, 130));
             cb.moveTo(xL, yLine); cb.lineTo(xL + colW, yLine); cb.stroke();
             cb.moveTo(xR, yLine); cb.lineTo(xR + colW, yLine); cb.stroke();
             com.lowagie.text.pdf.ColumnText.showTextAligned(cb, Element.ALIGN_LEFT,
-                    new Phrase("Firma del trabajador/a (Recibí)", f), xL, yLine - 11f, 0);
+                    new Phrase("Firma del trabajador/a (Recibí)", f), xL, yLine - 12f, 0);
             com.lowagie.text.pdf.ColumnText.showTextAligned(cb, Element.ALIGN_LEFT,
-                    new Phrase("Fecha: ____________________", f), xL, yLine - 22f, 0);
+                    new Phrase("Fecha: ____________________", f), xL, yLine - 24f, 0);
             com.lowagie.text.pdf.ColumnText.showTextAligned(cb, Element.ALIGN_LEFT,
-                    new Phrase("Firma y sello de la empresa", f), xR, yLine - 11f, 0);
+                    new Phrase("Firma y sello de la empresa", f), xR, yLine - 12f, 0);
             com.lowagie.text.pdf.ColumnText.showTextAligned(cb, Element.ALIGN_LEFT,
-                    new Phrase("Municipio: ____________________", f), xR, yLine - 22f, 0);
+                    new Phrase("Municipio: ____________________", f), xR, yLine - 24f, 0);
+            // Pie legal MUY abajo, separado de las firmas para que no se cruce.
             com.lowagie.text.pdf.ColumnText.showTextAligned(cb, Element.ALIGN_CENTER,
                     new Phrase("Documento generado conforme al modelo oficial de recibo de salarios (Orden ESS/2098/2014).", f),
-                    (left + right) / 2f, document.bottom() - 50f, 0);
+                    (left + right) / 2f, 22f, 0);
         }
     }
 
