@@ -222,6 +222,7 @@ public class LaborApiClient {
         b.append(decField("weeklyHours", c.weeklyHours())).append(",");
         b.append(decField("grossSalary", c.grossSalary())).append(",");
         b.append(intField("annualBonuses", c.annualBonuses())).append(",");
+        b.append("\"extrasProrated\":").append(c.extrasProrated() != null && c.extrasProrated()).append(",");
         b.append(intField("vacationDays", c.vacationDays())).append(",");
         b.append(decField("irpfPercent", c.irpfPercent())).append(",");
         b.append(decField("atEpPercent", c.atEpPercent())).append(",");
@@ -266,6 +267,7 @@ public class LaborApiClient {
                 bigDec(obj, "weeklyHours"),
                 bigDec(obj, "grossSalary"),
                 intFieldOrNull(obj, "annualBonuses"),
+                boolField(obj, "extrasProrated"),
                 intFieldOrNull(obj, "vacationDays"),
                 bigDec(obj, "irpfPercent"),
                 bigDec(obj, "atEpPercent"),

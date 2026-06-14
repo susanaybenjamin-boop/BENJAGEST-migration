@@ -16293,6 +16293,7 @@ public class BenjagestUiApplication extends Application {
             case "labor.contract.editor.salary" -> "Annual gross salary";
             case "labor.contract.editor.base_salary" -> "Annual base salary";
             case "labor.contract.editor.bonuses" -> "Annual bonuses";
+            case "labor.contract.editor.prorated" -> "Extra payments prorated (paid across 12 months)";
             case "labor.contract.editor.vacation" -> "Vacation days";
             case "labor.contract.editor.irpf" -> "IRPF %";
             case "labor.contract.editor.at_ep" -> "Occupational accident % (AT/EP)";
@@ -16786,6 +16787,7 @@ public class BenjagestUiApplication extends Application {
             case "labor.contract.editor.salary" -> "Salario bruto anual";
             case "labor.contract.editor.base_salary" -> "Salario base anual";
             case "labor.contract.editor.bonuses" -> "Pagas extras";
+            case "labor.contract.editor.prorated" -> "Pagas extra prorrateadas (repartidas en 12 mensualidades)";
             case "labor.contract.editor.vacation" -> "Vacaciones";
             case "labor.contract.editor.irpf" -> "IRPF %";
             case "labor.contract.editor.at_ep" -> "% Accidentes trabajo (AT/EP)";
@@ -19966,7 +19968,12 @@ public class BenjagestUiApplication extends Application {
         // aquí se muestran solo lectura para no duplicarlos en el editor).
         java.util.Map<String, java.util.List<com.benjagest.ui.model.SalaryItemEntry>> contractComps =
                 new java.util.HashMap<>();
+        // Prorrateo de pagas extra por empleado (del contrato): la casilla del
+        // cálculo aparecerá marcada/desmarcada según el contrato del empleado.
+        java.util.Map<String, Boolean> proratedByEmp = new java.util.HashMap<>();
         for (var c : bundle.contracts()) {
+            proratedByEmp.putIfAbsent(c.employeeId(),
+                    c.extrasProrated() != null && c.extrasProrated());
             if (c.salaryItems() == null) continue;
             var comps = c.salaryItems().stream()
                     .filter(it -> !"SALARY_BASE".equals(it.kind())).toList();
@@ -20025,6 +20032,10 @@ public class BenjagestUiApplication extends Application {
         CheckBox extraProrated = new CheckBox(t("labor.payslips.calc.extra_prorated"));
         // Default legal: 14 pagas (sin prorratear) salvo convenio. Art. 31 ET.
         extraProrated.setSelected(false);
+        // Refleja el prorrateo del contrato del empleado seleccionado.
+        empCombo.valueProperty().addListener((o, ov, nv) ->
+                extraProrated.setSelected(nv != null
+                        && Boolean.TRUE.equals(proratedByEmp.get(nv.id()))));
 
         TextField otherField = new TextField();
         otherField.setPromptText(t("labor.payslips.calc.other_deductions.prompt"));
@@ -21681,6 +21692,7 @@ public class BenjagestUiApplication extends Application {
                 state.weeklyHours,
                 state.grossSalary,
                 state.annualBonuses,
+                existing != null && Boolean.TRUE.equals(existing.extrasProrated()),
                 state.vacationDays,
                 state.irpfPercent,
                 state.atEpPercent,
@@ -22100,6 +22112,8 @@ public class BenjagestUiApplication extends Application {
         SalaryComplementsEditor compEditor = new SalaryComplementsEditor(complementsOf(existing));
         TextField bonusesField = new TextField(existing == null || existing.annualBonuses() == null
                 ? "2" : existing.annualBonuses().toString());
+        CheckBox proratedField = new CheckBox(t("labor.contract.editor.prorated"));
+        proratedField.setSelected(existing != null && Boolean.TRUE.equals(existing.extrasProrated()));
         TextField vacationField = new TextField(existing == null || existing.vacationDays() == null
                 ? "30" : existing.vacationDays().toString());
         TextField irpfField = new TextField(existing == null || existing.irpfPercent() == null
@@ -22126,6 +22140,7 @@ public class BenjagestUiApplication extends Application {
         g.add(new Label(t("labor.contract.editor.base_salary")), 2, row); g.add(salaryField, 3, row); row++;
         g.add(new Label(t("labor.contract.editor.bonuses")), 0, row); g.add(bonusesField, 1, row);
         g.add(new Label(t("labor.contract.editor.vacation")), 2, row); g.add(vacationField, 3, row); row++;
+        g.add(proratedField, 1, row, 3, 1); row++;
         g.add(new Label(t("labor.contract.editor.irpf")), 0, row); g.add(irpfField, 1, row);
         g.add(new Label(t("labor.contract.editor.status")), 2, row); g.add(statusCombo, 3, row); row++;
         g.add(new Label(t("labor.contract.editor.at_ep")), 0, row); g.add(atEpField, 1, row); row++;
@@ -22155,6 +22170,7 @@ public class BenjagestUiApplication extends Application {
                     parseDecSafe(hoursField.getText()),
                     parseDecSafe(salaryField.getText()),
                     parseIntSafe(bonusesField.getText()),
+                    proratedField.isSelected(),
                     parseIntSafe(vacationField.getText()),
                     parseDecSafe(irpfField.getText()),
                     parseDecSafe(atEpField.getText()),
