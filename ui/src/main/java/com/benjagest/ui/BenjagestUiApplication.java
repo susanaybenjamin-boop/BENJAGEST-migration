@@ -20639,8 +20639,9 @@ public class BenjagestUiApplication extends Application {
         editC.setOnAction(ev -> {
             var sel = contractsTable.getSelectionModel().getSelectedItem();
             if (sel != null) {
-                // CTR-2: editar también pasa por el wizard (pre-rellenado).
-                showContractWizard(employee, sel);
+                // Editar usa el editor plano: tiene todos los campos + la
+                // sección de complementos salariales (el wizard no la tiene).
+                showContractEditor(employee, sel);
                 dialog.close();
             }
         });
