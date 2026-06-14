@@ -19261,6 +19261,14 @@ public class BenjagestUiApplication extends Application {
 
         GridPane g = new GridPane();
         g.setHgap(10); g.setVgap(8); g.setPadding(new Insets(12));
+        // Col 0 (etiquetas): nunca por debajo de su ancho preferido para que no
+        // se corten los encabezados al estrechar la ventana. Col 1 (campos) crece.
+        javafx.scene.layout.ColumnConstraints labelCol = new javafx.scene.layout.ColumnConstraints();
+        labelCol.setMinWidth(javafx.scene.layout.Region.USE_PREF_SIZE);
+        javafx.scene.layout.ColumnConstraints fieldCol = new javafx.scene.layout.ColumnConstraints();
+        fieldCol.setHgrow(javafx.scene.layout.Priority.ALWAYS);
+        fieldCol.setFillWidth(true);
+        g.getColumnConstraints().addAll(labelCol, fieldCol);
         int r = 0;
         g.add(new Label(t("labor.irpf.fam_situation")), 0, r); g.add(famSit, 1, r++);
         g.add(new Label(t("labor.irpf.spouse_nif")), 0, r); g.add(spouseNif, 1, r++);
