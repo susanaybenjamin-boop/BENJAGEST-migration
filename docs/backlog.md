@@ -15,22 +15,33 @@
 > conlleva nóminas, pagos, indemnizaciones y documentos legales. Propuesta
 > de bloque a abordar tras validar el IRPF. Orden por dependencia/valor.
 
+> **Avance 2026-06-14 (todo en develop):** el bloque CV se ha rediseñado como
+> flujo AUTOMÁTICO (decisión Benjamin): la acción "Despedir / finiquito" sobre
+> el empleado extrae todo solo (no se teclea cese/días). Cerrados:
+> CV-VAC (registro de vacaciones, V114), CV-1 (finiquito SETTLEMENT),
+> CV-2 (indemnización por tipo), CV-ORQ (orquestador baja/despido,
+> TerminationService) y CV-3 (jubilación = tipo RETIREMENT). Pendientes del
+> bloque: CV-DOC (carta despido + certificado empresa), PAY-RECURRENT
+> (nóminas recurrentes), CV-4 RED, CV-5 excedencias, CV-6/7 autónomos, CV-8 empresa.
+
 **Empleados (laboral):**
-- 🔄 ⚖️ **CV-1 Finiquito / liquidación** *(EN CURSO, arrancado 2026-06-14)* — al
+- ✅ ⚖️ **CV-1 Finiquito / liquidación** *(2026-06-14)* — al
   terminar cualquier contrato (baja voluntaria, fin de contrato, despido,
   jubilación): salario de los días trabajados + vacaciones no disfrutadas +
   prorrata de pagas extras devengadas no cobradas + pluses pendientes. Genera
   **recibo de finiquito** (PDF). Reusa el motor de nómina (tipo `SETTLEMENT`).
   Cotiza/tributa por conceptos; la **indemnización va aparte** (campo propio,
   exenta de IRPF hasta el límite legal; el detalle de tipos de despido es CV-2).
-- ⬜ ⚖️ **CV-2 Despido + indemnización** — tipos: improcedente (33 días/año,
-  máx. 24 mensualidades; tramo a 45 días hasta 2012-02), objetivo/procedente
-  (20 días/año, máx. 12), disciplinario (0). Cálculo por antigüedad y salario
-  diario. **Indemnización exenta de IRPF** hasta el límite legal (lo obligatorio,
-  tope 180.000 €); el exceso tributa. Genera **carta de despido** + finiquito.
-- ⬜ ⚖️ **CV-3 Jubilación del empleado** — baja por jubilación (ordinaria/
-  anticipada/parcial con contrato de relevo/activa) → finiquito + baja en
-  Sistema RED + **certificado de empresa** para la SS/SEPE.
+- ✅ ⚖️ **CV-2 Despido + indemnización** *(2026-06-14, motor)* — improcedente
+  33 d/año (tope 24 mens; tramo 45 d hasta 2012-02-12, tope 42 mens), objetivo
+  20 d/año (tope 12 mens), disciplinario 0, fin temporal 12 d/año. Salario
+  diario=anual/365, antigüedad por fechas. Exenta IRPF hasta 180.000 €.
+  (La **carta de despido** es CV-DOC, pendiente.)
+- 🔄 ⚖️ **CV-DOC Documentos de baja** *(pendiente)* — carta de despido (por
+  tipo) + certificado de empresa (SEPE/SS). Se descargan tras la baja.
+- ✅ ⚖️ **CV-3 Jubilación del empleado** *(2026-06-14)* — tipo RETIREMENT del
+  orquestador: finiquito sin indemnización + cierre de contrato. (Baja RED +
+  certificado de empresa: CV-DOC / CV-4.)
 - ⬜ ⚖️ **CV-4 Baja en Sistema RED / certificado de empresa** — al cesar
   cualquier empleado: comunicación de baja (RED) + certificado de empresa
   (datos de cotización para la prestación). Hoy solo está el alta (contrat@).
