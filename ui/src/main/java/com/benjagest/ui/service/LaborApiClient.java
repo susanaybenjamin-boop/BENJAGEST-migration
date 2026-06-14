@@ -218,6 +218,7 @@ public class LaborApiClient {
         b.append(field("professionalCategory", c.professionalCategory())).append(",");
         b.append(field("professionalGroup", c.professionalGroup())).append(",");
         b.append(field("startDate", c.startDate() == null ? null : c.startDate().toString())).append(",");
+        b.append(field("seniorityDate", c.seniorityDate() == null ? null : c.seniorityDate().toString())).append(",");
         b.append(field("endDate", c.endDate() == null ? null : c.endDate().toString())).append(",");
         b.append(decField("weeklyHours", c.weeklyHours())).append(",");
         b.append(decField("grossSalary", c.grossSalary())).append(",");
@@ -263,6 +264,7 @@ public class LaborApiClient {
                 textField(obj, "professionalCategory"),
                 textField(obj, "professionalGroup"),
                 parseDate(textField(obj, "startDate")),
+                parseDate(textField(obj, "seniorityDate")),
                 parseDate(textField(obj, "endDate")),
                 bigDec(obj, "weeklyHours"),
                 bigDec(obj, "grossSalary"),

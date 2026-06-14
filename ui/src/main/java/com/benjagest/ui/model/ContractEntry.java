@@ -13,6 +13,7 @@ public record ContractEntry(
         String professionalCategory,
         String professionalGroup,
         LocalDate startDate,
+        LocalDate seniorityDate,
         LocalDate endDate,
         BigDecimal weeklyHours,
         BigDecimal grossSalary,

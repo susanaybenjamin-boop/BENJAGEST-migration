@@ -16333,6 +16333,8 @@ public class BenjagestUiApplication extends Application {
             case "labor.employee.editor.country" -> "Country";
             case "labor.employee.editor.iban" -> "IBAN (payroll)";
             case "labor.employee.editor.work_type" -> "Work type";
+            case "labor.worktype.full" -> "Full-time";
+            case "labor.worktype.part" -> "Part-time";
             case "labor.employee.editor.ss_regime" -> "SS regime";
             case "labor.employee.editor.work_calendar" -> "Work calendar";
             case "labor.employee.editor.work_calendar.none" -> "— None —";
@@ -16367,6 +16369,7 @@ public class BenjagestUiApplication extends Application {
             case "labor.contract.editor.category" -> "Category";
             case "labor.contract.editor.group" -> "Group";
             case "labor.contract.editor.start" -> "Start date";
+            case "labor.contract.editor.seniority" -> "Recognised seniority date (optional, for severance with successive contracts)";
             case "labor.contract.editor.end" -> "End date";
             case "labor.contract.editor.weekly_hours" -> "Weekly hours";
             case "labor.contract.editor.salary" -> "Annual gross salary";
@@ -16905,6 +16908,8 @@ public class BenjagestUiApplication extends Application {
             case "labor.employee.editor.country" -> "Pais";
             case "labor.employee.editor.iban" -> "IBAN (nomina)";
             case "labor.employee.editor.work_type" -> "Tipo de trabajo";
+            case "labor.worktype.full" -> "Jornada completa";
+            case "labor.worktype.part" -> "Jornada parcial";
             case "labor.employee.editor.ss_regime" -> "Regimen SS";
             case "labor.employee.editor.work_calendar" -> "Calendario laboral";
             case "labor.employee.editor.work_calendar.none" -> "— Ninguno —";
@@ -16939,6 +16944,7 @@ public class BenjagestUiApplication extends Application {
             case "labor.contract.editor.category" -> "Categoria";
             case "labor.contract.editor.group" -> "Grupo";
             case "labor.contract.editor.start" -> "Fecha inicio";
+            case "labor.contract.editor.seniority" -> "Fecha de antigüedad reconocida (opcional, para indemnización con contratos sucesivos)";
             case "labor.contract.editor.end" -> "Fecha fin";
             case "labor.contract.editor.weekly_hours" -> "Horas semanales";
             case "labor.contract.editor.salary" -> "Salario bruto anual";
@@ -21283,7 +21289,24 @@ public class BenjagestUiApplication extends Application {
         TextField countryField = new TextField(existing == null || existing.country() == null || existing.country().isBlank()
                 ? "Espana" : existing.country());
         TextField ibanField = new TextField(existing == null ? "" : existing.iban());
-        TextField workTypeField = new TextField(existing == null ? "" : existing.workType());
+        ComboBox<String> workTypeCombo = new ComboBox<>();
+        workTypeCombo.getItems().addAll("FULL_TIME", "PART_TIME");
+        workTypeCombo.setConverter(new javafx.util.StringConverter<>() {
+            @Override public String toString(String v) {
+                if (v == null) return "";
+                return switch (v) {
+                    case "FULL_TIME" -> t("labor.worktype.full");
+                    case "PART_TIME" -> t("labor.worktype.part");
+                    default -> v;
+                };
+            }
+            @Override public String fromString(String s) { return null; }
+        });
+        String wt0 = existing == null ? "FULL_TIME" : existing.workType();
+        if (wt0 != null && !wt0.isBlank() && !workTypeCombo.getItems().contains(wt0)) {
+            workTypeCombo.getItems().add(wt0);
+        }
+        workTypeCombo.getSelectionModel().select(wt0 == null || wt0.isBlank() ? "FULL_TIME" : wt0);
         ComboBox<String> ssCombo = new ComboBox<>();
         ssCombo.getItems().addAll("", "GENERAL", "RETA", "AUTONOMO_SOCIETARIO", "ARTISTAS", "MAR", "AGRARIO", "OTHER");
         ssCombo.getSelectionModel().select(existing == null || existing.ssRegime() == null ? "" : existing.ssRegime());
@@ -21369,7 +21392,7 @@ public class BenjagestUiApplication extends Application {
         g.add(new Separator(), 0, row++, 4, 1);
         g.add(label(t("labor.employee.section.work"), "settings-section-title"), 0, row++, 4, 1);
         g.add(new Label(t("labor.employee.editor.iban")), 0, row); g.add(ibanField, 1, row, 3, 1); row++;
-        g.add(new Label(t("labor.employee.editor.work_type")), 0, row); g.add(workTypeField, 1, row);
+        g.add(new Label(t("labor.employee.editor.work_type")), 0, row); g.add(workTypeCombo, 1, row);
         g.add(new Label(t("labor.employee.editor.ss_regime")), 2, row); g.add(ssCombo, 3, row); row++;
         g.add(new Label(t("labor.employee.editor.work_calendar")), 0, row); g.add(calCombo, 1, row, 3, 1); row++;
         g.add(new Label(t("labor.employee.editor.hire")), 0, row); g.add(hireField, 1, row);
@@ -21470,7 +21493,7 @@ public class BenjagestUiApplication extends Application {
                     blankToNullOrSelf(postalField.getText()),
                     blankToNullOrSelf(countryField.getText()),
                     blankToNullOrSelf(ibanField.getText()),
-                    blankToNullOrSelf(workTypeField.getText()),
+                    workTypeCombo.getValue(),
                     blankToNullOrSelf(ssCombo.getValue()),
                     // CAL-FIX 4: id del calendario laboral (null si "—").
                     calCombo.getValue() == null ? null : calCombo.getValue().id(),
@@ -22252,6 +22275,7 @@ public class BenjagestUiApplication extends Application {
                 state.category == null ? null : state.category.categoryName(),
                 state.category == null ? null : state.category.groupCode(),
                 state.startDate,
+                existing == null ? null : existing.seniorityDate(),
                 state.endDate,
                 state.weeklyHours,
                 state.grossSalary,
@@ -22670,6 +22694,9 @@ public class BenjagestUiApplication extends Application {
         TextField groupField = new TextField(existing == null ? "" : existing.professionalGroup());
         TextField startField = new TextField(existing == null || existing.startDate() == null
                 ? LocalDate.now().toString() : existing.startDate().toString());
+        TextField seniorityField = new TextField(existing == null || existing.seniorityDate() == null
+                ? "" : existing.seniorityDate().toString());
+        seniorityField.setPromptText("AAAA-MM-DD");
         TextField endField = new TextField(existing == null || existing.endDate() == null
                 ? "" : existing.endDate().toString());
         TextField hoursField = new TextField(existing == null || existing.weeklyHours() == null
@@ -22703,6 +22730,7 @@ public class BenjagestUiApplication extends Application {
         g.add(new Label(t("labor.contract.editor.group")), 2, row); g.add(groupField, 3, row); row++;
         g.add(new Label(t("labor.contract.editor.start")), 0, row); g.add(startField, 1, row);
         g.add(new Label(t("labor.contract.editor.end")), 2, row); g.add(endField, 3, row); row++;
+        g.add(new Label(t("labor.contract.editor.seniority")), 0, row); g.add(seniorityField, 1, row, 3, 1); row++;
         g.add(new Label(t("labor.contract.editor.weekly_hours")), 0, row); g.add(hoursField, 1, row);
         g.add(new Label(t("labor.contract.editor.base_salary")), 2, row); g.add(salaryField, 3, row); row++;
         g.add(new Label(t("labor.contract.editor.bonuses")), 0, row); g.add(bonusesField, 1, row);
@@ -22733,6 +22761,7 @@ public class BenjagestUiApplication extends Application {
                     blankToNullOrSelf(catField.getText()),
                     blankToNullOrSelf(groupField.getText()),
                     parseDateSafe(startField.getText()),
+                    parseDateSafe(seniorityField.getText()),
                     parseDateSafe(endField.getText()),
                     parseDecSafe(hoursField.getText()),
                     parseDecSafe(salaryField.getText()),
