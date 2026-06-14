@@ -122,6 +122,47 @@ Sobre el bloque NOM, construido el flujo completo estilo A3/Nomio:
 
 ---
 
+## 2026-06-14 — PROPUESTA: Análisis financiero del cliente (FIN-ANALYSIS) 📊💰
+
+> Idea de Benjamin: que la asesoría pueda sacar un **análisis financiero
+> instantáneo** de cualquier cliente, con KPIs, y proponer cómo mejorar el
+> beneficio. **Pendiente** (no arrancado). Exploración hecha 2026-06-14.
+
+**Base que YA existe (reutilizar, NO duplicar):**
+- `SalesAndExpensesKpiService` — P&L por empresa desde el diario: ventas (7xx
+  haber), gastos (6xx debe), IVA repercutido (477) / soportado (472), **modelo
+  303 estimado**, asientos DRAFT. Por rango de fechas, <200 ms.
+- `AdvisoryDashboardService` — nivel cartera (cross-cliente): facturado,
+  pendiente de cobro, vencidas, obligaciones, workflow.
+- Labor `EmployerCostRow` (coste empresa/empleado por año); `fiscal`/`tax`
+  (modelos + `tax_filings`); `accounting` cierre de ejercicio (precalcula
+  resultado); `purchases` + banco (compras, conciliación).
+
+**Plan por slices (orden por valor/dependencia):**
+- ⬜ **FIN-1 Cuadro de mando del cliente (KPIs nivel 1)** — servicio
+  `ClientFinancialsService(companyId, periodo)` que reúne: ingresos, gastos,
+  **margen y beneficio**; coste de personal y su % sobre ingresos; carga fiscal
+  (303 estimado ya está + IRPF/retenciones); tesorería (cobros/pagos
+  pendientes desde `sales_invoices`/`purchases`); ratios (margen %, gasto/ingreso,
+  ticket medio, DSO morosidad). UI: pantalla por cliente con tarjetas KPI.
+- ⬜ **FIN-2 Evolución y comparativa** — serie mensual ingresos/gastos/beneficio
+  del año + comparativa interanual (gráfica).
+- ⬜ **FIN-3 Proyección de cierre** — extrapola tendencia + estima beneficio e
+  IS de fin de año (reusa `year-close precalculate`). Aviso de tesorería futura.
+- ⬜ **FIN-4 Recomendaciones (prescriptivo)** — reglas: IVA soportado sin
+  deducir, gastos atípicos/recurrentes altos, amortizaciones pendientes, tipo
+  IRPF del autónomo / pagos fraccionados, morosos a reclamar. Presentadas como
+  "sugerencias a revisar por el asesor". Opcional: narrativa con IA (el cálculo
+  va sobre datos reales, no inventado).
+- ⬜ **FIN-5 Informe PDF** del cuadro de mando + recomendaciones.
+
+**Límites honestos:** la proyección es tan buena como el histórico; sin
+benchmarks de sector no se puede comparar "con empresas similares"; las
+recomendaciones fiscales se marcan como sugerencias (las decide el asesor).
+Empezar por **FIN-1 + FIN-2** (sólido y rápido); FIN-3/4/5 incrementales.
+
+---
+
 ## 2026-06-14 tarde — Cierre y validación del bloque NOM ✅⚖️
 
 - ✅ **Complementos del contrato MENSUALES** (€/mes, se guardan ×12). Base /N pagas,
