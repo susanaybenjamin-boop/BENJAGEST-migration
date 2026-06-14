@@ -20,9 +20,11 @@
 > el empleado extrae todo solo (no se teclea cese/días). Cerrados:
 > CV-VAC (registro de vacaciones, V114), CV-1 (finiquito SETTLEMENT),
 > CV-2 (indemnización por tipo), CV-ORQ (orquestador baja/despido,
-> TerminationService) y CV-3 (jubilación = tipo RETIREMENT). Pendientes del
-> bloque: CV-DOC (carta despido + certificado empresa), PAY-RECURRENT
-> (nóminas recurrentes), CV-4 RED, CV-5 excedencias, CV-6/7 autónomos, CV-8 empresa.
+> TerminationService), CV-3 (jubilación = tipo RETIREMENT), CV-DOC (carta de
+> despido + certificado de empresa, TerminationDocsService) y PAY-RECURRENT
+> ("Generar mes": nómina mensual de todos los activos de una vez, idempotente).
+> **Listo para probar el bloque completo.** Pendientes (futuro): CV-4 baja RED
+> real, CV-5 excedencias, CV-6/7 autónomos, CV-8 empresa.
 
 **Empleados (laboral):**
 - ✅ ⚖️ **CV-1 Finiquito / liquidación** *(2026-06-14)* — al
@@ -37,8 +39,10 @@
   20 d/año (tope 12 mens), disciplinario 0, fin temporal 12 d/año. Salario
   diario=anual/365, antigüedad por fechas. Exenta IRPF hasta 180.000 €.
   (La **carta de despido** es CV-DOC, pendiente.)
-- 🔄 ⚖️ **CV-DOC Documentos de baja** *(pendiente)* — carta de despido (por
-  tipo) + certificado de empresa (SEPE/SS). Se descargan tras la baja.
+- ✅ ⚖️ **CV-DOC Documentos de baja** *(2026-06-14)* — carta de despido (por
+  tipo) + certificado de empresa. Se descargan tras la baja (TerminationDocsService).
+- ✅ ⚙️ **PAY-RECURRENT** *(2026-06-14)* — "Generar mes": nómina mensual de todos
+  los empleados activos de una vez, salta las ya hechas. Recurrente como ventas/gastos.
 - ✅ ⚖️ **CV-3 Jubilación del empleado** *(2026-06-14)* — tipo RETIREMENT del
   orquestador: finiquito sin indemnización + cierre de contrato. (Baja RED +
   certificado de empresa: CV-DOC / CV-4.)
