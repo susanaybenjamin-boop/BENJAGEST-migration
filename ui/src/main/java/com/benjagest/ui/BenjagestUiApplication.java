@@ -16296,10 +16296,11 @@ public class BenjagestUiApplication extends Application {
             case "labor.contract.editor.irpf" -> "IRPF %";
             case "labor.contract.editor.at_ep" -> "Occupational accident % (AT/EP)";
             case "labor.contract.salary.title" -> "Salary complements";
-            case "labor.contract.salary.hint" -> "Base salary goes in the field above. Add here any extra salary concepts (seniority, voluntary improvement, transport allowance…). Each one can be marked as contributing to Social Security / subject to income tax.";
+            case "labor.contract.salary.hint" -> "Base salary goes in the field above. Add here any extra salary concepts (seniority, voluntary improvement, transport allowance…) as a MONTHLY amount. Each one can be marked as contributing to Social Security / subject to income tax.";
             case "labor.contract.salary.add" -> "+ Add complement";
             case "labor.contract.salary.concept" -> "Concept";
             case "labor.contract.salary.annual" -> "Annual €";
+            case "labor.contract.salary.monthly" -> "€/month";
             case "labor.contract.salary.cotizes" -> "SS";
             case "labor.contract.salary.taxable" -> "Tax";
             case "labor.contract.salary.base_default" -> "Base salary";
@@ -16787,10 +16788,11 @@ public class BenjagestUiApplication extends Application {
             case "labor.contract.editor.irpf" -> "IRPF %";
             case "labor.contract.editor.at_ep" -> "% Accidentes trabajo (AT/EP)";
             case "labor.contract.salary.title" -> "Complementos salariales";
-            case "labor.contract.salary.hint" -> "El salario base va en el campo de arriba. Añade aquí los conceptos extra (antigüedad, mejora voluntaria, plus transporte…). Cada uno puede marcarse como que cotiza a la Seguridad Social / tributa por IRPF.";
+            case "labor.contract.salary.hint" -> "El salario base va en el campo de arriba. Añade aquí los conceptos extra (antigüedad, mejora voluntaria, plus transporte…) como importe MENSUAL. Cada uno puede marcarse como que cotiza a la Seguridad Social / tributa por IRPF.";
             case "labor.contract.salary.add" -> "+ Añadir complemento";
             case "labor.contract.salary.concept" -> "Concepto";
             case "labor.contract.salary.annual" -> "Anual €";
+            case "labor.contract.salary.monthly" -> "€/mes";
             case "labor.contract.salary.cotizes" -> "SS";
             case "labor.contract.salary.taxable" -> "IRPF";
             case "labor.contract.salary.base_default" -> "Salario base";
@@ -21903,6 +21905,17 @@ public class BenjagestUiApplication extends Application {
         private final VBox rowsBox = new VBox(4);
         private final java.util.List<Row> rows = new java.util.ArrayList<>();
         private final String amountPromptKey;
+        // monthlyMode=true (contrato): el usuario teclea importe MENSUAL; se
+        // guarda anual (×12). false (nómina): importe del mes tal cual.
+        private final boolean monthlyMode;
+
+        private String displayAmount(java.math.BigDecimal annual) {
+            if (annual == null) return "";
+            java.math.BigDecimal v = monthlyMode
+                    ? annual.divide(java.math.BigDecimal.valueOf(12), 2, java.math.RoundingMode.HALF_UP)
+                    : annual;
+            return v.toPlainString();
+        }
 
         private final class Row {
             final HBox box;
@@ -21914,7 +21927,7 @@ public class BenjagestUiApplication extends Application {
                 name = new TextField(it.conceptName() == null ? "" : it.conceptName());
                 name.setPromptText(t("labor.contract.salary.concept"));
                 name.setPrefWidth(200);
-                amount = new TextField(it.annualAmount() == null ? "" : it.annualAmount().toPlainString());
+                amount = new TextField(displayAmount(it.annualAmount()));
                 amount.setPromptText(t(amountPromptKey));
                 amount.setPrefWidth(110);
                 cot = new CheckBox(t("labor.contract.salary.cotizes"));
@@ -21930,13 +21943,20 @@ public class BenjagestUiApplication extends Application {
         }
 
         SalaryComplementsEditor(java.util.List<com.benjagest.ui.model.SalaryItemEntry> initial) {
-            this(initial, "labor.contract.salary.annual", "labor.contract.salary.title",
-                    "labor.contract.salary.hint");
+            this(initial, "labor.contract.salary.monthly", "labor.contract.salary.title",
+                    "labor.contract.salary.hint", true);
         }
 
         SalaryComplementsEditor(java.util.List<com.benjagest.ui.model.SalaryItemEntry> initial,
                                  String amountPromptKey, String titleKey, String hintKey) {
+            this(initial, amountPromptKey, titleKey, hintKey, false);
+        }
+
+        SalaryComplementsEditor(java.util.List<com.benjagest.ui.model.SalaryItemEntry> initial,
+                                 String amountPromptKey, String titleKey, String hintKey,
+                                 boolean monthlyMode) {
             this.amountPromptKey = amountPromptKey;
+            this.monthlyMode = monthlyMode;
             Label title = new Label(t(titleKey));
             title.getStyleClass().add("settings-hint");
             Label hint = new Label(t(hintKey));
@@ -21981,7 +22001,7 @@ public class BenjagestUiApplication extends Application {
         void setOrAddComplement(com.benjagest.ui.model.SalaryItemEntry it) {
             for (Row r : rows) {
                 if (it.conceptName() != null && it.conceptName().equals(r.name.getText())) {
-                    r.amount.setText(it.annualAmount() == null ? "" : it.annualAmount().toPlainString());
+                    r.amount.setText(displayAmount(it.annualAmount()));
                     r.cot.setSelected(it.cotizes());
                     r.tax.setSelected(it.taxable());
                     return;
@@ -21995,8 +22015,11 @@ public class BenjagestUiApplication extends Application {
             for (Row r : rows) {
                 String nm = r.name.getText() == null ? "" : r.name.getText().trim();
                 if (nm.isEmpty()) continue;
+                java.math.BigDecimal amt = parseDecSafe(r.amount.getText());
+                // En modo mensual el usuario teclea €/mes; persistimos anual (×12).
+                if (monthlyMode && amt != null) amt = amt.multiply(java.math.BigDecimal.valueOf(12));
                 out.add(new com.benjagest.ui.model.SalaryItemEntry(
-                        null, nm, "COMPLEMENT", parseDecSafe(r.amount.getText()),
+                        null, nm, "COMPLEMENT", amt,
                         r.cot.isSelected(), r.tax.isSelected()));
             }
             return out;

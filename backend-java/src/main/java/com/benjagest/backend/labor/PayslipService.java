@@ -266,21 +266,33 @@ public class PayslipService {
         // 1) Devengos: una línea por concepto salarial del contrato.
         List<SalaryConcept> concepts = loadSalaryConcepts(contract.id);
         java.util.List<PayslipLine> lines = new java.util.ArrayList<>();
-        BigDecimal cotizableAnnual = BigDecimal.ZERO;
-        BigDecimal taxableAnnual = BigDecimal.ZERO;
+        BigDecimal cotizableAnnual = BigDecimal.ZERO; // base SS + tipo IRPF (anual completo)
+        BigDecimal taxableAnnual = BigDecimal.ZERO;   // tipo IRPF (anual completo)
+        BigDecimal taxableDevengo = BigDecimal.ZERO;  // tributable abonado ESTE periodo
         if (!concepts.isEmpty()) {
             for (SalaryConcept c : concepts) {
+                boolean isBase = "SALARY_BASE".equals(c.kind());
                 BigDecimal a = c.annual() == null ? BigDecimal.ZERO : c.annual();
+                // Totales anuales para el tipo IRPF y la base SS: SIEMPRE completos
+                // (base + complementos), también en pagas extra.
                 if (c.cotizes()) cotizableAnnual = cotizableAnnual.add(a);
                 if (c.taxable()) taxableAnnual = taxableAnnual.add(a);
-                lines.add(new PayslipLine(c.name(), c.kind(),
-                        a.divide(BigDecimal.valueOf(divisor), 2, RoundingMode.HALF_UP)));
+                // En pagas extra solo se abona el salario base; los complementos
+                // (mejoras, plus mensuales) no se incluyen en la extra.
+                if (isExtra && !isBase) continue;
+                // El salario base se prorratea entre las N pagas; los complementos
+                // se cobran en 12 mensualidades (importe anual/12), no por pagas.
+                int periodDivisor = isBase ? divisor : 12;
+                BigDecimal lineAmount = a.divide(BigDecimal.valueOf(periodDivisor), 2, RoundingMode.HALF_UP);
+                lines.add(new PayslipLine(c.name(), c.kind(), lineAmount));
+                if (c.taxable()) taxableDevengo = taxableDevengo.add(lineAmount);
             }
         } else {
             cotizableAnnual = contract.grossSalary;
             taxableAnnual = contract.grossSalary;
-            lines.add(new PayslipLine("Salario bruto del periodo", "SALARY_BASE",
-                    contract.grossSalary.divide(BigDecimal.valueOf(divisor), 2, RoundingMode.HALF_UP)));
+            BigDecimal base = contract.grossSalary.divide(BigDecimal.valueOf(divisor), 2, RoundingMode.HALF_UP);
+            lines.add(new PayslipLine("Salario bruto del periodo", "SALARY_BASE", base));
+            taxableDevengo = base;
         }
 
         // Complementos extra de ESTA nómina (dietas, kilometraje, asistencia…):
@@ -344,8 +356,9 @@ public class PayslipService {
         } else {
             irpfPct = computeIrpfPercent(contract.grossSalary, req.year());
         }
-        BigDecimal taxableDevengo = taxableAnnual.divide(BigDecimal.valueOf(divisor), 2, RoundingMode.HALF_UP)
-                .add(extraTaxable);
+        // taxableDevengo ya acumula el tributable de los conceptos de este periodo
+        // (base prorrateada + complementos/12); sumamos los extras del mes.
+        taxableDevengo = taxableDevengo.add(extraTaxable);
         BigDecimal irpf = taxableDevengo.multiply(irpfPct)
                 .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
 
