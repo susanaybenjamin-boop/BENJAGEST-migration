@@ -132,7 +132,13 @@ public class TerminationDocsService {
             doc.add(p("Fecha de alta: " + (start == null ? "-" : start.format(DF)), fBold, Element.ALIGN_LEFT, 2));
             doc.add(p("Fecha de baja: " + ceseDate.format(DF), fBold, Element.ALIGN_LEFT, 2));
             doc.add(p("Causa de la baja: " + reasonLabel(type), fBold, Element.ALIGN_LEFT, 12));
-            doc.add(p("Las bases de cotización de los últimos 180 días, a efectos de la prestación "
+            long diasAlta = start == null ? 0
+                    : java.time.temporal.ChronoUnit.DAYS.between(start, ceseDate) + 1;
+            String periodoBases = (start != null && diasAlta < 180)
+                    ? "del periodo de alta (desde " + start.format(DF) + " hasta " + ceseDate.format(DF)
+                      + ", " + diasAlta + " días)"
+                    : "de los últimos 180 días";
+            doc.add(p("Las bases de cotización " + periodoBases + ", a efectos de la prestación "
                     + "por desempleo, se comunican a la Tesorería General de la Seguridad Social a "
                     + "través del Sistema RED / certific@2.", fB, Element.ALIGN_JUSTIFIED, 24));
             doc.add(p("Y para que conste a los efectos oportunos, se expide el presente certificado en "
@@ -162,7 +168,7 @@ public class TerminationDocsService {
         String indem = sev.gross() != null && sev.gross().signum() > 0
                 ? "Le corresponde una indemnización de " + money(sev.gross()) + " € ("
                   + sev.days().stripTrailingZeros().toPlainString() + " días de salario por "
-                  + sev.antiquityYears().toPlainString() + " años de antigüedad)."
+                  + antiquityText(sev) + " de antigüedad)."
                 : "";
         java.util.List<String> b = new java.util.ArrayList<>();
         switch (type == null ? "" : type) {
@@ -204,6 +210,17 @@ public class TerminationDocsService {
                     + "trabajo " + efectos + ".");
         }
         return b;
+    }
+
+    /** Antigüedad legible: "X años, Y meses y Z días" (omite las partes a 0). */
+    static String antiquityText(TerminationService.Severance sev) {
+        java.util.List<String> parts = new java.util.ArrayList<>();
+        if (sev.antiqYears() > 0) parts.add(sev.antiqYears() + (sev.antiqYears() == 1 ? " año" : " años"));
+        if (sev.antiqMonths() > 0) parts.add(sev.antiqMonths() + (sev.antiqMonths() == 1 ? " mes" : " meses"));
+        if (sev.antiqDays() > 0) parts.add(sev.antiqDays() + (sev.antiqDays() == 1 ? " día" : " días"));
+        if (parts.isEmpty()) return "0 días";
+        if (parts.size() == 1) return parts.get(0);
+        return String.join(", ", parts.subList(0, parts.size() - 1)) + " y " + parts.get(parts.size() - 1);
     }
 
     private String reasonLabel(String type) {

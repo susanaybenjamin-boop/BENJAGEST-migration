@@ -16298,7 +16298,7 @@ public class BenjagestUiApplication extends Application {
             case "labor.term.confirm_body" -> "{name} will be terminated on {date} and their settlement generated. The contract will be closed. Continue?";
             case "labor.term.hint" -> "Choose the termination date and the reason. The app extracts everything automatically: final pay (days worked), pending holidays, accrued extra pay and the severance by type. The contract is closed on confirm.";
             case "labor.term.preview.empty" -> "Choose date and reason to see the settlement and severance.";
-            case "labor.term.preview.text" -> "Settlement: gross {gross} · SS {ss} · income tax {irpf} · net {net}\nSeverance: {sevdays} days for {years} years → {sev} (exempt {sevexempt} · taxable {sevtax})";
+            case "labor.term.preview.text" -> "Settlement: gross {gross} · SS {ss} · income tax {irpf} · net {net}\nSeverance: {sevdays} days for {years} of service → {sev} (exempt {sevexempt} · taxable {sevtax})";
             case "labor.term.type.VOLUNTARY" -> "Voluntary resignation";
             case "labor.term.type.END_OF_CONTRACT" -> "End of fixed-term contract";
             case "labor.term.type.DISMISSAL_OBJECTIVE" -> "Objective dismissal (20 d/yr)";
@@ -16870,7 +16870,7 @@ public class BenjagestUiApplication extends Application {
             case "labor.term.confirm_body" -> "Se dará de baja a {name} con fecha {date} y se generará su finiquito. El contrato quedará cerrado. ¿Continuar?";
             case "labor.term.hint" -> "Elige la fecha de cese y el motivo. El programa lo extrae todo solo: última nómina (días trabajados), vacaciones pendientes, prorrata de pagas extra y la indemnización según el tipo. Al confirmar se cierra el contrato.";
             case "labor.term.preview.empty" -> "Elige fecha y motivo para ver el finiquito y la indemnización.";
-            case "labor.term.preview.text" -> "Finiquito: bruto {gross} · SS {ss} · IRPF {irpf} · líquido {net}\nIndemnización: {sevdays} días por {years} años → {sev} (exenta {sevexempt} · sujeta {sevtax})";
+            case "labor.term.preview.text" -> "Finiquito: bruto {gross} · SS {ss} · IRPF {irpf} · líquido {net}\nIndemnización: {sevdays} días por {years} de antigüedad → {sev} (exenta {sevexempt} · sujeta {sevtax})";
             case "labor.term.type.VOLUNTARY" -> "Baja voluntaria";
             case "labor.term.type.END_OF_CONTRACT" -> "Fin de contrato temporal";
             case "labor.term.type.DISMISSAL_OBJECTIVE" -> "Despido objetivo (20 d/año)";
@@ -19442,7 +19442,7 @@ public class BenjagestUiApplication extends Application {
                         .replace("{ss}", money(p.settlementSs()))
                         .replace("{irpf}", money(p.settlementIrpf()))
                         .replace("{net}", money(p.settlementNet()))
-                        .replace("{years}", p.sevAntiquity() == null ? "0" : p.sevAntiquity().toPlainString())
+                        .replace("{years}", formatAntiquity(p.antiqYears(), p.antiqMonths(), p.antiqDays()))
                         .replace("{sevdays}", p.sevDays() == null ? "0" : p.sevDays().toPlainString())
                         .replace("{sev}", money(p.sevGross()))
                         .replace("{sevexempt}", money(p.sevExempt()))
@@ -19501,6 +19501,17 @@ public class BenjagestUiApplication extends Application {
                 start(tk, "term-execute");
             });
         });
+    }
+
+    /** Antigüedad legible: "X años, Y meses y Z días" (omite las partes a 0). */
+    private String formatAntiquity(int y, int m, int dd) {
+        java.util.List<String> parts = new java.util.ArrayList<>();
+        if (y > 0) parts.add(y + (y == 1 ? " año" : " años"));
+        if (m > 0) parts.add(m + (m == 1 ? " mes" : " meses"));
+        if (dd > 0) parts.add(dd + (dd == 1 ? " día" : " días"));
+        if (parts.isEmpty()) return "0 días";
+        if (parts.size() == 1) return parts.get(0);
+        return String.join(", ", parts.subList(0, parts.size() - 1)) + " y " + parts.get(parts.size() - 1);
     }
 
     /** Tras una baja, ofrece descargar la carta de despido y el certificado de
@@ -32996,7 +33007,6 @@ public class BenjagestUiApplication extends Application {
         // Sugerir días laborables al elegir fechas (lunes-viernes), editable.
         Runnable suggestDays = () -> {
             if (fromDate.getValue() == null || toDate.getValue() == null) return;
-            if (!daysField.getText().isBlank()) return;
             long d2 = 0;
             for (java.time.LocalDate x = fromDate.getValue(); !x.isAfter(toDate.getValue()); x = x.plusDays(1)) {
                 if (x.getDayOfWeek().getValue() <= 5) d2++;

@@ -51,7 +51,8 @@ public class TerminationService {
 
     public record Severance(
             BigDecimal gross, BigDecimal exempt, BigDecimal taxable,
-            BigDecimal days, BigDecimal antiquityYears, BigDecimal dailySalary) {}
+            BigDecimal days, BigDecimal antiquityYears, BigDecimal dailySalary,
+            int antiqYears, int antiqMonths, int antiqDays) {}
 
     public record TerminationPreview(
             List<PayslipService.ExtraConcept> concepts,
@@ -82,12 +83,15 @@ public class TerminationService {
                                        LocalDate start, LocalDate cese) {
         BigDecimal zero = BigDecimal.ZERO.setScale(2);
         if (grossAnnual == null || start == null || cese == null || cese.isBefore(start)) {
-            return new Severance(zero, zero, zero, zero, zero, zero);
+            return new Severance(zero, zero, zero, zero, zero, zero, 0, 0, 0);
         }
         BigDecimal dailySalary = grossAnnual.divide(BigDecimal.valueOf(365), 4, RoundingMode.HALF_UP);
         double totalDaysService = ChronoUnit.DAYS.between(start, cese) + 1;
         double years = totalDaysService / 365.0;
         BigDecimal antiquity = BigDecimal.valueOf(years).setScale(2, RoundingMode.HALF_UP);
+        // Antigüedad legible (años, meses, días), cese incluido.
+        java.time.Period per = java.time.Period.between(start, cese.plusDays(1));
+        int antiqY = per.getYears(), antiqM = per.getMonths(), antiqD = per.getDays();
 
         double indemDays;
         boolean exempt;
@@ -115,7 +119,8 @@ public class TerminationService {
         BigDecimal exemptAmt = exempt ? gross.min(IRPF_EXEMPT_CAP) : zero;
         BigDecimal taxable = gross.subtract(exemptAmt).max(zero);
         return new Severance(gross, exemptAmt.setScale(2), taxable.setScale(2),
-                days, antiquity, dailySalary.setScale(2, RoundingMode.HALF_UP));
+                days, antiquity, dailySalary.setScale(2, RoundingMode.HALF_UP),
+                antiqY, antiqM, antiqD);
     }
 
     private PayslipService.SettlementRequest settlementReq(TerminationRequest r) {
@@ -155,6 +160,17 @@ public class TerminationService {
                    SET status = 'TERMINATED', end_date = ?, termination_reason = ?
                  WHERE id = ? AND company_id = ?
                 """, r.ceseDate(), r.type(), c.id(), tenant.getCurrentCompanyId());
+        // Si no le queda ningún contrato activo, el empleado pasa a baja
+        // (deja de aparecer como activo y no se le puede volver a despedir).
+        Integer otros = jdbc.query("""
+                SELECT COUNT(*) FROM employment_contracts
+                 WHERE company_id = ? AND employee_id = ? AND status IN ('ACTIVE', 'SUSPENDED')
+                """, (rs, n) -> rs.getInt(1), tenant.getCurrentCompanyId(), r.employeeId())
+                .stream().findFirst().orElse(0);
+        if (otros == null || otros == 0) {
+            jdbc.update("UPDATE employees SET active = FALSE WHERE id = ? AND company_id = ?",
+                    r.employeeId(), tenant.getCurrentCompanyId());
+        }
         return new TerminationResult(settlement, sev);
     }
 

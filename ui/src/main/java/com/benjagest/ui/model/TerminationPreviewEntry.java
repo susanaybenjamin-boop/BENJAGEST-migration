@@ -14,5 +14,8 @@ public record TerminationPreviewEntry(
         BigDecimal sevTaxable,
         BigDecimal sevDays,
         BigDecimal sevAntiquity,
-        BigDecimal sevDaily
+        BigDecimal sevDaily,
+        int antiqYears,
+        int antiqMonths,
+        int antiqDays
 ) {}
