@@ -16014,6 +16014,34 @@ public class BenjagestUiApplication extends Application {
             case "labor.irpfparams.edit_hint" -> "Each row is a bracket: income from which the rate applies.";
             case "labor.irpfparams.add_row" -> "+ Add bracket";
             case "labor.irpfparams.load_failed" -> "Could not load the scale";
+            case "labor.irpfp.edit_btn" -> "Minimums & reductions";
+            case "labor.irpfp.title" -> "IRPF minimums & reductions";
+            case "labor.irpfp.hint" -> "Personal/family minimums and reductions used by the withholding engine, for the selected year. When they change (e.g. 2027) you edit them here — no code change.";
+            case "labor.irpfp.saved" -> "Parameters saved.";
+            case "labor.irpfp.f.personalMin" -> "Taxpayer minimum";
+            case "labor.irpfp.f.personalOver65" -> "Increase 65+";
+            case "labor.irpfp.f.personalOver75" -> "Increase 75+";
+            case "labor.irpfp.f.desc1" -> "1st child";
+            case "labor.irpfp.f.desc2" -> "2nd child";
+            case "labor.irpfp.f.desc3" -> "3rd child";
+            case "labor.irpfp.f.desc4plus" -> "4th and onwards";
+            case "labor.irpfp.f.descUnder3" -> "Child under 3";
+            case "labor.irpfp.f.ascOver65" -> "Ascendant 65+";
+            case "labor.irpfp.f.ascOver75" -> "Ascendant 75+ (increase)";
+            case "labor.irpfp.f.disability33" -> "Disability 33-65%";
+            case "labor.irpfp.f.disability65" -> "Disability ≥65%";
+            case "labor.irpfp.f.disabilityMobility" -> "Assistance / mobility costs";
+            case "labor.irpfp.f.expenseDeduction" -> "Other expenses (art. 19.2.f)";
+            case "labor.irpfp.f.workMax" -> "Work-income reduction (max)";
+            case "labor.irpfp.f.workThreshold1" -> "Work reduction threshold 1";
+            case "labor.irpfp.f.workThreshold2" -> "Work reduction threshold 2";
+            case "labor.irpfp.f.workFactor" -> "Tranche 2 factor";
+            case "labor.irpfp.f.workMax2" -> "Tranche 3 reduction (max)";
+            case "labor.irpfp.f.workThreshold3" -> "Work reduction threshold 3";
+            case "labor.irpfp.f.workFactor2" -> "Tranche 3 factor";
+            case "labor.irpfp.f.moreThan2Desc" -> "More-than-2-children reduction";
+            case "labor.irpfp.f.limitRate" -> "Art. 85.3 limit (%)";
+            case "labor.irpfp.f.limitIncomeCap" -> "Art. 85.3 income cap";
             case "labor.ssrates.hint" -> "Social Security contribution rates by year. Payroll reads them from here, so when the law changes you only add/edit the year — no code change. Rows are national legal rates (same for all companies).";
             case "labor.ssrates.empty" -> "No rates configured.";
             case "labor.ssrates.col.year" -> "Year";
@@ -16513,6 +16541,34 @@ public class BenjagestUiApplication extends Application {
             case "labor.irpfparams.edit_hint" -> "Cada fila es un tramo: renta a partir de la cual se aplica el tipo.";
             case "labor.irpfparams.add_row" -> "+ Añadir tramo";
             case "labor.irpfparams.load_failed" -> "No se pudo cargar la escala";
+            case "labor.irpfp.edit_btn" -> "Mínimos y reducciones";
+            case "labor.irpfp.title" -> "Mínimos y reducciones IRPF";
+            case "labor.irpfp.hint" -> "Mínimos personales/familiares y reducciones que usa el motor de retención, para el año seleccionado. Cuando cambien (p. ej. 2027) se editan aquí, sin tocar código.";
+            case "labor.irpfp.saved" -> "Parámetros guardados.";
+            case "labor.irpfp.f.personalMin" -> "Mínimo del contribuyente";
+            case "labor.irpfp.f.personalOver65" -> "Incremento +65 años";
+            case "labor.irpfp.f.personalOver75" -> "Incremento +75 años";
+            case "labor.irpfp.f.desc1" -> "1er descendiente";
+            case "labor.irpfp.f.desc2" -> "2º descendiente";
+            case "labor.irpfp.f.desc3" -> "3er descendiente";
+            case "labor.irpfp.f.desc4plus" -> "4º y siguientes";
+            case "labor.irpfp.f.descUnder3" -> "Descendiente < 3 años";
+            case "labor.irpfp.f.ascOver65" -> "Ascendiente +65";
+            case "labor.irpfp.f.ascOver75" -> "Ascendiente +75 (incremento)";
+            case "labor.irpfp.f.disability33" -> "Discapacidad 33-65%";
+            case "labor.irpfp.f.disability65" -> "Discapacidad ≥65%";
+            case "labor.irpfp.f.disabilityMobility" -> "Gastos asistencia / movilidad";
+            case "labor.irpfp.f.expenseDeduction" -> "Otros gastos (art. 19.2.f)";
+            case "labor.irpfp.f.workMax" -> "Reducción rdtos. trabajo (máx.)";
+            case "labor.irpfp.f.workThreshold1" -> "Umbral 1 reducción trabajo";
+            case "labor.irpfp.f.workThreshold2" -> "Umbral 2 reducción trabajo";
+            case "labor.irpfp.f.workFactor" -> "Factor tramo 2";
+            case "labor.irpfp.f.workMax2" -> "Reducción tramo 3 (máx.)";
+            case "labor.irpfp.f.workThreshold3" -> "Umbral 3 reducción trabajo";
+            case "labor.irpfp.f.workFactor2" -> "Factor tramo 3";
+            case "labor.irpfp.f.moreThan2Desc" -> "Reducción +2 descendientes";
+            case "labor.irpfp.f.limitRate" -> "Límite art. 85.3 (%)";
+            case "labor.irpfp.f.limitIncomeCap" -> "Tope renta límite art. 85.3";
             case "labor.ssrates.hint" -> "Tipos de cotización a la Seguridad Social por año. La nómina los lee de aquí, así que cuando cambia la ley solo añades/editas el año — sin tocar código. Son tipos legales nacionales (iguales para todas las empresas).";
             case "labor.ssrates.empty" -> "No hay tipos configurados.";
             case "labor.ssrates.col.year" -> "Año";
@@ -32222,7 +32278,13 @@ public class BenjagestUiApplication extends Application {
             Integer y = yearCombo.getValue();
             if (y != null) showIrpfBracketsEditor(y, new java.util.ArrayList<>(table.getItems()), loadBrackets);
         });
-        HBox actions = new HBox(8, new Label(t("labor.ssrates.col.year")), yearCombo, editBtn, cloneBtn);
+        Button paramsBtn = new Button(t("labor.irpfp.edit_btn"));
+        paramsBtn.getStyleClass().add("button-secondary");
+        paramsBtn.setOnAction(e -> {
+            Integer y = yearCombo.getValue();
+            if (y != null) showIrpfParamsEditor(y);
+        });
+        HBox actions = new HBox(8, new Label(t("labor.ssrates.col.year")), yearCombo, editBtn, paramsBtn, cloneBtn);
         actions.setAlignment(Pos.CENTER_LEFT);
 
         loadYears.run();
@@ -32278,6 +32340,64 @@ public class BenjagestUiApplication extends Application {
             tk.setOnFailed(ev -> showError(t("labor.irpfparams.edit"),
                     tk.getException() == null ? "" : tk.getException().getMessage()));
             start(tk, "irpfparams-save");
+        });
+    }
+
+    /** Editor de los parámetros (mínimos y reducciones) IRPF de un año. Todo
+     *  por año y editable: cuando cambien en 2027 se editan aquí, sin tocar
+     *  código. */
+    private void showIrpfParamsEditor(int year) {
+        Task<java.util.Map<String, java.math.BigDecimal>> load = new Task<>() {
+            @Override protected java.util.Map<String, java.math.BigDecimal> call() throws Exception {
+                return laborApiClient.getIrpfParams(year);
+            }
+        };
+        load.setOnSucceeded(ev -> buildIrpfParamsForm(year, load.getValue()));
+        load.setOnFailed(ev -> showError(t("labor.irpfparams.load_failed"),
+                load.getException() == null ? "" : load.getException().getMessage()));
+        start(load, "irpf-params-load");
+    }
+
+    private void buildIrpfParamsForm(int year, java.util.Map<String, java.math.BigDecimal> values) {
+        Dialog<ButtonType> d = new Dialog<>();
+        d.setTitle(t("labor.irpfp.title") + " — " + year);
+        ButtonType save = new ButtonType(t("labor.ssrates.save_btn"), ButtonBar.ButtonData.OK_DONE);
+        d.getDialogPane().getButtonTypes().addAll(save, ButtonType.CANCEL);
+
+        String[] keys = com.benjagest.ui.service.LaborApiClient.IRPF_PARAM_KEYS;
+        java.util.Map<String, TextField> fields = new java.util.LinkedHashMap<>();
+        GridPane g = new GridPane();
+        g.setHgap(10); g.setVgap(8); g.setPadding(new Insets(12));
+        int row = 0, col = 0;
+        for (String k : keys) {
+            Label lbl = new Label(t("labor.irpfp.f." + k));
+            lbl.setMinWidth(javafx.scene.layout.Region.USE_PREF_SIZE);
+            java.math.BigDecimal v = values.get(k);
+            TextField tf = new TextField(v == null ? "" : v.toPlainString());
+            tf.setPrefWidth(110);
+            fields.put(k, tf);
+            g.add(lbl, col * 2, row);
+            g.add(tf, col * 2 + 1, row);
+            col++;
+            if (col == 2) { col = 0; row++; }
+        }
+        Label hint = new Label(t("labor.irpfp.hint"));
+        hint.getStyleClass().add("settings-hint");
+        hint.setWrapText(true);
+        VBox box = new VBox(10, hint, g);
+        box.setPadding(new Insets(4));
+        installDialog(d, box);
+        d.showAndWait().ifPresent(bt -> {
+            if (bt != save) return;
+            java.util.Map<String, java.math.BigDecimal> out = new java.util.LinkedHashMap<>();
+            for (String k : keys) out.put(k, parseDecSafe(fields.get(k).getText()));
+            Task<Void> tk = new Task<>() {
+                @Override protected Void call() throws Exception { laborApiClient.saveIrpfParams(year, out); return null; }
+            };
+            tk.setOnSucceeded(ev -> showInfo(t("labor.irpfp.title"), t("labor.irpfp.saved")));
+            tk.setOnFailed(ev -> showError(t("labor.irpfp.title"),
+                    humanizeBackendError(tk.getException() == null ? "" : tk.getException().getMessage())));
+            start(tk, "irpf-params-save");
         });
     }
 
