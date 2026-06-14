@@ -16179,6 +16179,9 @@ public class BenjagestUiApplication extends Application {
             case "labor.payslips.calc.complement.title" -> "Complements for this payslip";
             case "labor.payslips.calc.complement.hint" -> "Variable concepts for this month (dietas, mileage, attendance bonus…). Amount in euros for this payslip. Mark whether each one contributes to Social Security / is subject to income tax (e.g. exempt dietas: neither).";
             case "labor.payslips.calc.complement.amount" -> "Amount €";
+            case "labor.payslips.calc.contract_comps.none" -> "Select an employee to see their contract complements.";
+            case "labor.payslips.calc.contract_comps.empty" -> "This contract has no complements (only base salary). Add monthly extras below if needed.";
+            case "labor.payslips.calc.contract_comps.title" -> "Contract complements (applied automatically — do NOT re-add them below):";
             case "labor.payslips.calc.validate" -> "Validate";
             case "labor.payslips.calc.preview_btn" -> "Preview";
             case "labor.payslips.calc.preview.empty" -> "Press \"Preview\" to see gross, deductions and net.";
@@ -16287,6 +16290,7 @@ public class BenjagestUiApplication extends Application {
             case "labor.contract.editor.end" -> "End date";
             case "labor.contract.editor.weekly_hours" -> "Weekly hours";
             case "labor.contract.editor.salary" -> "Annual gross salary";
+            case "labor.contract.editor.base_salary" -> "Annual base salary";
             case "labor.contract.editor.bonuses" -> "Annual bonuses";
             case "labor.contract.editor.vacation" -> "Vacation days";
             case "labor.contract.editor.irpf" -> "IRPF %";
@@ -16665,6 +16669,9 @@ public class BenjagestUiApplication extends Application {
             case "labor.payslips.calc.complement.title" -> "Complementos de esta nómina";
             case "labor.payslips.calc.complement.hint" -> "Conceptos variables de este mes (dietas, kilometraje, plus asistencia…). Importe en euros para esta nómina. Marca si cada uno cotiza a la Seguridad Social / tributa por IRPF (p. ej. dietas exentas: ninguno).";
             case "labor.payslips.calc.complement.amount" -> "Importe €";
+            case "labor.payslips.calc.contract_comps.none" -> "Selecciona un empleado para ver los complementos de su contrato.";
+            case "labor.payslips.calc.contract_comps.empty" -> "Este contrato no tiene complementos (solo salario base). Añade abajo extras del mes si hace falta.";
+            case "labor.payslips.calc.contract_comps.title" -> "Complementos del contrato (se aplican automáticamente — NO los vuelvas a añadir abajo):";
             case "labor.payslips.calc.validate" -> "Validar";
             case "labor.payslips.calc.preview_btn" -> "Previsualizar";
             case "labor.payslips.calc.preview.empty" -> "Pulsa \"Previsualizar\" para ver bruto, deducciones y neto.";
@@ -16773,6 +16780,7 @@ public class BenjagestUiApplication extends Application {
             case "labor.contract.editor.end" -> "Fecha fin";
             case "labor.contract.editor.weekly_hours" -> "Horas semanales";
             case "labor.contract.editor.salary" -> "Salario bruto anual";
+            case "labor.contract.editor.base_salary" -> "Salario base anual";
             case "labor.contract.editor.bonuses" -> "Pagas extras";
             case "labor.contract.editor.vacation" -> "Vacaciones";
             case "labor.contract.editor.irpf" -> "IRPF %";
@@ -19663,7 +19671,7 @@ public class BenjagestUiApplication extends Application {
                     .collect(java.util.stream.Collectors.toSet());
             var payrollEmployees = bundle.employees().stream()
                     .filter(e -> withContract.contains(e.id())).toList();
-            showCalculatePayslipDialog(payrollEmployees);
+            showCalculatePayslipDialog(payrollEmployees, bundle);
         });
 
         Button batchBtn = new Button(t("labor.payslips.action.batch"));
@@ -19931,11 +19939,23 @@ public class BenjagestUiApplication extends Application {
         showLaborModule();
     }
 
-    private void showCalculatePayslipDialog(java.util.List<com.benjagest.ui.model.EmployeeEntry> employees) {
+    private void showCalculatePayslipDialog(java.util.List<com.benjagest.ui.model.EmployeeEntry> employees,
+                                             LaborBundle bundle) {
         Dialog<ButtonType> dialog = new Dialog<>();
         dialog.setTitle(t("labor.payslips.calc.title"));
         ButtonType saveBt = new ButtonType(t("labor.payslips.calc.validate"), ButtonBar.ButtonData.OK_DONE);
         dialog.getDialogPane().getButtonTypes().addAll(saveBt, ButtonType.CANCEL);
+
+        // Complementos del CONTRATO por empleado (se aplican automáticamente;
+        // aquí se muestran solo lectura para no duplicarlos en el editor).
+        java.util.Map<String, java.util.List<com.benjagest.ui.model.SalaryItemEntry>> contractComps =
+                new java.util.HashMap<>();
+        for (var c : bundle.contracts()) {
+            if (c.salaryItems() == null) continue;
+            var comps = c.salaryItems().stream()
+                    .filter(it -> !"SALARY_BASE".equals(it.kind())).toList();
+            contractComps.putIfAbsent(c.employeeId(), new java.util.ArrayList<>(comps));
+        }
 
         ComboBox<com.benjagest.ui.model.EmployeeEntry> empCombo = new ComboBox<>();
         empCombo.setConverter(new javafx.util.StringConverter<>() {
@@ -19948,6 +19968,24 @@ public class BenjagestUiApplication extends Application {
         empCombo.setPromptText(t("labor.payslips.calc.employee.prompt"));
         // No autoseleccionar: forzar elección consciente para no nominar
         // por error al empleado equivocado (p. ej. el primero por orden).
+
+        // Listado (solo lectura) de los complementos del contrato del empleado.
+        Label contractCompsInfo = new Label(t("labor.payslips.calc.contract_comps.none"));
+        contractCompsInfo.getStyleClass().add("settings-hint");
+        contractCompsInfo.setWrapText(true);
+        empCombo.valueProperty().addListener((o, ov, nv) -> {
+            if (nv == null) { contractCompsInfo.setText(t("labor.payslips.calc.contract_comps.none")); return; }
+            var comps = contractComps.getOrDefault(nv.id(), java.util.List.of());
+            if (comps.isEmpty()) { contractCompsInfo.setText(t("labor.payslips.calc.contract_comps.empty")); return; }
+            StringBuilder sb = new StringBuilder(t("labor.payslips.calc.contract_comps.title")).append("\n");
+            for (var it : comps) {
+                sb.append("• ").append(it.conceptName()).append(": ")
+                  .append(it.annualAmount() == null ? "0" : it.annualAmount().toPlainString()).append(" €/año")
+                  .append("  [").append(it.cotizes() ? "SS" : "no SS").append(", ")
+                  .append(it.taxable() ? "IRPF" : "no IRPF").append("]\n");
+            }
+            contractCompsInfo.setText(sb.toString().trim());
+        });
 
         ComboBox<Integer> yearCombo = new ComboBox<>();
         int year = java.time.LocalDate.now().getYear();
@@ -20074,7 +20112,8 @@ public class BenjagestUiApplication extends Application {
         });
 
         VBox previewBox = new VBox(8, new Separator(), targetBox, previewBtn, summary);
-        installDialog(dialog, new VBox(10, g, new Separator(), extras.node, previewBox));
+        installDialog(dialog, new VBox(10, g, new Separator(), contractCompsInfo,
+                extras.node, previewBox));
 
         dialog.showAndWait().ifPresent(bt -> {
             if (bt != saveBt) return;
@@ -21973,7 +22012,7 @@ public class BenjagestUiApplication extends Application {
         g.add(new Label(t("labor.contract.editor.start")), 0, row); g.add(startField, 1, row);
         g.add(new Label(t("labor.contract.editor.end")), 2, row); g.add(endField, 3, row); row++;
         g.add(new Label(t("labor.contract.editor.weekly_hours")), 0, row); g.add(hoursField, 1, row);
-        g.add(new Label(t("labor.contract.editor.salary")), 2, row); g.add(salaryField, 3, row); row++;
+        g.add(new Label(t("labor.contract.editor.base_salary")), 2, row); g.add(salaryField, 3, row); row++;
         g.add(new Label(t("labor.contract.editor.bonuses")), 0, row); g.add(bonusesField, 1, row);
         g.add(new Label(t("labor.contract.editor.vacation")), 2, row); g.add(vacationField, 3, row); row++;
         g.add(new Label(t("labor.contract.editor.irpf")), 0, row); g.add(irpfField, 1, row);
