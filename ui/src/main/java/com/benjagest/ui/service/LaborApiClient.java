@@ -555,6 +555,19 @@ public class LaborApiClient {
         return bigDec(r.body(), "plus");
     }
 
+    /** Guarda (o actualiza por nombre) un complemento MENSUAL recurrente en el
+     *  contrato activo del empleado. La mejora de "llegar a un objetivo" vive en
+     *  el contrato para anualizar en base SS e IRPF. */
+    public void upsertRecurringComplement(String employeeId, String conceptName,
+            java.math.BigDecimal monthlyAmount) throws IOException, InterruptedException {
+        String body = "{" + field("employeeId", employeeId) + ","
+                + field("conceptName", conceptName) + ","
+                + decField("monthlyAmount", monthlyAmount) + "}";
+        send(req(baseUrl + "/labor/contracts/recurring-complement")
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(body)));
+    }
+
     // ==== Parámetros IRPF por año (escala) ====
 
     public java.util.List<Integer> listIrpfYears() throws IOException, InterruptedException {

@@ -16192,6 +16192,7 @@ public class BenjagestUiApplication extends Application {
             case "labor.payslips.calc.target.prompt" -> "€ / month";
             case "labor.payslips.calc.target.propose" -> "Propose complement";
             case "labor.payslips.calc.target.concept" -> "Voluntary improvement";
+            case "labor.payslips.calc.target.confirm" -> "A monthly \"Voluntary improvement\" complement of {amount} will be added to {name}'s contract (it recurs every month and counts towards Social Security and income-tax bases). Continue?";
             case "labor.payslips.calc.year" -> "Year";
             case "labor.payslips.calc.month" -> "Month";
             case "labor.payslips.calc.type" -> "Type";
@@ -16684,6 +16685,7 @@ public class BenjagestUiApplication extends Application {
             case "labor.payslips.calc.target.prompt" -> "€ / mes";
             case "labor.payslips.calc.target.propose" -> "Proponer complemento";
             case "labor.payslips.calc.target.concept" -> "Mejora voluntaria";
+            case "labor.payslips.calc.target.confirm" -> "Se añadirá al contrato de {name} un complemento mensual \"Mejora voluntaria\" de {amount} (se cobra todos los meses y cuenta para la base de cotización y de IRPF). ¿Continuar?";
             case "labor.payslips.calc.year" -> "Ano";
             case "labor.payslips.calc.month" -> "Mes";
             case "labor.payslips.calc.type" -> "Tipo";
@@ -19912,10 +19914,12 @@ public class BenjagestUiApplication extends Application {
                         try {
                             java.math.BigDecimal plus = laborApiClient.solveTargetPlus(
                                     e.id(), yr, mo, "MONTHLY", false, modeV, target, java.util.List.of());
+                            // La mejora es recurrente: se guarda en el contrato
+                            // (anualiza en SS e IRPF) y se calcula la nómina normal.
+                            laborApiClient.upsertRecurringComplement(
+                                    e.id(), t("labor.payslips.calc.target.concept"), plus);
                             laborApiClient.calculatePayslip(e.id(), yr, mo, "MONTHLY", false, null, null,
-                                    java.util.List.of(new com.benjagest.ui.model.SalaryItemEntry(
-                                            null, t("labor.payslips.calc.target.concept"), "COMPLEMENT",
-                                            plus, true, true)));
+                                    java.util.List.of());
                             ok++;
                         } catch (Exception ex) {
                             errs.append("• ").append(e.fullName()).append(": ")
@@ -19985,19 +19989,24 @@ public class BenjagestUiApplication extends Application {
         Label contractCompsInfo = new Label(t("labor.payslips.calc.contract_comps.none"));
         contractCompsInfo.getStyleClass().add("settings-hint");
         contractCompsInfo.setWrapText(true);
-        empCombo.valueProperty().addListener((o, ov, nv) -> {
+        Runnable refreshContractComps = () -> {
+            var nv = empCombo.getValue();
             if (nv == null) { contractCompsInfo.setText(t("labor.payslips.calc.contract_comps.none")); return; }
             var comps = contractComps.getOrDefault(nv.id(), java.util.List.of());
             if (comps.isEmpty()) { contractCompsInfo.setText(t("labor.payslips.calc.contract_comps.empty")); return; }
             StringBuilder sb = new StringBuilder(t("labor.payslips.calc.contract_comps.title")).append("\n");
             for (var it : comps) {
+                // Importe anual del contrato mostrado como mensual (/12).
+                java.math.BigDecimal monthly = it.annualAmount() == null ? java.math.BigDecimal.ZERO
+                        : it.annualAmount().divide(java.math.BigDecimal.valueOf(12), 2, java.math.RoundingMode.HALF_UP);
                 sb.append("• ").append(it.conceptName()).append(": ")
-                  .append(it.annualAmount() == null ? "0" : it.annualAmount().toPlainString()).append(" €/año")
+                  .append(monthly.toPlainString()).append(" €/mes")
                   .append("  [").append(it.cotizes() ? "SS" : "no SS").append(", ")
                   .append(it.taxable() ? "IRPF" : "no IRPF").append("]\n");
             }
             contractCompsInfo.setText(sb.toString().trim());
-        });
+        };
+        empCombo.valueProperty().addListener((o, ov, nv) -> refreshContractComps.run());
 
         ComboBox<Integer> yearCombo = new ComboBox<>();
         int year = java.time.LocalDate.now().getYear();
@@ -20109,10 +20118,43 @@ public class BenjagestUiApplication extends Application {
                 }
             };
             tk.setOnSucceeded(ev -> {
-                extras.setOrAddComplement(new com.benjagest.ui.model.SalaryItemEntry(
-                        null, t("labor.payslips.calc.target.concept"), "COMPLEMENT",
-                        tk.getValue(), true, true));
-                doPreview.run();
+                java.math.BigDecimal x = tk.getValue();
+                String concept = t("labor.payslips.calc.target.concept");
+                // La mejora es recurrente: se guarda como complemento mensual
+                // del contrato (anualiza en base SS e IRPF). Confirmamos antes.
+                Alert c = new Alert(Alert.AlertType.CONFIRMATION,
+                        t("labor.payslips.calc.target.confirm")
+                                .replace("{amount}", money(x))
+                                .replace("{name}", emp.fullName()),
+                        ButtonType.OK, ButtonType.CANCEL);
+                c.setHeaderText(t("labor.payslips.calc.target.propose"));
+                c.showAndWait().ifPresent(bt -> {
+                    if (bt != ButtonType.OK) return;
+                    Task<Void> wr = new Task<>() {
+                        @Override protected Void call() throws Exception {
+                            laborApiClient.upsertRecurringComplement(emp.id(), concept, x);
+                            return null;
+                        }
+                    };
+                    wr.setOnSucceeded(e2 -> {
+                        // Refleja la mejora en el listado local del contrato.
+                        var list = contractComps.computeIfAbsent(emp.id(),
+                                k -> new java.util.ArrayList<>());
+                        list.removeIf(it -> concept.equals(it.conceptName()));
+                        list.add(new com.benjagest.ui.model.SalaryItemEntry(
+                                null, concept, "COMPLEMENT",
+                                x.multiply(java.math.BigDecimal.valueOf(12)), true, true));
+                        refreshContractComps.run();
+                        doPreview.run();
+                    });
+                    wr.setOnFailed(e2 -> {
+                        Throwable ex = wr.getException();
+                        String d = ex == null ? null : humanizeBackendError(ex.getMessage());
+                        showError(t("labor.payslips.calc.target.label"),
+                                d == null || d.isBlank() ? t("labor.payslips.calc.fail.body") : d);
+                    });
+                    start(wr, "mejora-contract");
+                });
             });
             tk.setOnFailed(ev -> {
                 Throwable ex = tk.getException();
