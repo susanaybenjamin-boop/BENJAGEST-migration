@@ -2770,6 +2770,7 @@ public class BenjagestUiApplication extends Application {
             return;
         }
         if ("labor".equals(module)) {
+            laborTabIndex = 0; // entrar desde el menú abre en "Empleados"
             showLaborModule();
             return;
         }
@@ -18627,6 +18628,11 @@ public class BenjagestUiApplication extends Application {
         setCenterAnimated((javafx.scene.Node) screen.buildView());
     }
 
+    // Sub-pestaña activa de Labor: se recuerda para que, tras cualquier acción
+    // que recargue el módulo (calcular nómina, marcar pagada, borrar…), se
+    // vuelva a la misma pestaña en lugar de saltar a "Empleados".
+    private int laborTabIndex = 0;
+
     private void showLaborModule() {
         Task<LaborBundle> task = new Task<>() {
             @Override
@@ -18737,6 +18743,13 @@ public class BenjagestUiApplication extends Application {
                 templatesTab, clausesTab, cfgTab, calendarTab, leavesTab, ssTab,
                 costTab, ratesTab, irpfParamsTab, shiftsTab, centersTab);
         VBox.setVgrow(tabs, Priority.ALWAYS);
+        // Restaurar la pestaña activa y recordar los cambios de pestaña, para
+        // no perder el contexto al recargar el módulo tras una acción.
+        if (laborTabIndex >= 0 && laborTabIndex < tabs.getTabs().size()) {
+            tabs.getSelectionModel().select(laborTabIndex);
+        }
+        tabs.getSelectionModel().selectedIndexProperty().addListener(
+                (o, ov, nv) -> laborTabIndex = nv.intValue());
 
         content.getChildren().addAll(header, alertsBanner, tabs);
         return content;
