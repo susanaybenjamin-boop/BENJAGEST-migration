@@ -120,15 +120,22 @@ public class IrpfRetentionService {
         if (gross <= exempt) return BigDecimal.ZERO;
 
         // 1) Reducción por obtención de rendimientos del trabajo (art. 20).
-        double rnPrev = gross - ss - p.expenseDeduction;
+        //    El RNT del algoritmo es retribución − cotizaciones (sin restar los
+        //    "otros gastos" de 2.000). Tres tramos hasta 19.747,50.
+        double rnt = gross - ss;
+        if (rnt < 0) rnt = 0;
         double workReduction;
-        if (rnPrev <= p.workThreshold1) workReduction = p.workMax;
-        else if (rnPrev < p.workThreshold2) workReduction = p.workMax - p.workFactor * (rnPrev - p.workThreshold1);
+        if (rnt <= p.workThreshold1) workReduction = p.workMax;
+        else if (rnt <= p.workThreshold2) workReduction = p.workMax - p.workFactor * (rnt - p.workThreshold1);
+        else if (rnt < p.workThreshold3) workReduction = p.workMax2 - p.workFactor2 * (rnt - p.workThreshold2);
         else workReduction = 0;
         if (workReduction < 0) workReduction = 0;
 
-        // 2) Base para calcular el tipo.
-        double base = gross - ss - p.expenseDeduction - workReduction;
+        // 2) Base para calcular el tipo = (retribución − cotizaciones − otros
+        //    gastos − reducción art. 20) menos las reducciones del art. 83.3:
+        //    en particular 600 € si hay MÁS DE DOS descendientes.
+        double moreDesc = (m != null && m.descendants() > 2) ? p.moreThan2Desc : 0;
+        double base = gross - ss - p.expenseDeduction - workReduction - moreDesc;
         if (base < 0) base = 0;
 
         // 3) Mínimo personal y familiar.
@@ -171,16 +178,21 @@ public class IrpfRetentionService {
         }
 
         // Minoración por préstamo vivienda anterior a 2013 (rentas < 33.007,2).
-        if (m != null && m.mortgageBefore2013() && gross <= 33007.20) {
-            cuota -= gross * 0.02; // minoración aproximada (2% sobre la retribución)
+        // El algoritmo AEAT trunca la minoración (2% de la retribución).
+        if (m != null && m.mortgageBefore2013() && gross < 33007.20) {
+            double minopago = Math.floor(gross * 0.02 * 100.0) / 100.0; // TRUNCAR 2 dec.
+            cuota -= minopago;
             if (cuota < 0) cuota = 0;
         }
 
-        // 5) Tipo de retención.
+        // 5) Tipo de retención. El algoritmo AEAT TRUNCA el tipo a 2 decimales.
         double tipo = cuota / gross * 100.0;
-        if (m != null && m.contractUnderYear() && tipo < 2.0) tipo = 2.0;
-        if (tipo < 0) tipo = 0;
-        return BigDecimal.valueOf(tipo).setScale(2, RoundingMode.HALF_UP);
+        BigDecimal tipoBd = BigDecimal.valueOf(tipo).setScale(2, RoundingMode.DOWN);
+        if (m != null && m.contractUnderYear() && tipoBd.compareTo(BigDecimal.valueOf(2)) < 0) {
+            tipoBd = BigDecimal.valueOf(2).setScale(2);
+        }
+        if (tipoBd.signum() < 0) tipoBd = BigDecimal.ZERO.setScale(2);
+        return tipoBd;
     }
 
     private double applyScale(double amount, List<double[]> brackets) {
@@ -259,6 +271,10 @@ public class IrpfRetentionService {
                     p.workThreshold1 = rs.getDouble("work_reduction_threshold1");
                     p.workThreshold2 = rs.getDouble("work_reduction_threshold2");
                     p.workFactor = rs.getDouble("work_reduction_factor");
+                    p.workMax2 = rs.getDouble("work_reduction_max2");
+                    p.workThreshold3 = rs.getDouble("work_reduction_threshold3");
+                    p.workFactor2 = rs.getDouble("work_reduction_factor2");
+                    p.moreThan2Desc = rs.getDouble("reduction_more_than_2_desc");
                     p.limitRate = rs.getDouble("limit_rate");
                     p.limitIncomeCap = rs.getDouble("limit_income_cap");
                     return p;
@@ -274,6 +290,10 @@ public class IrpfRetentionService {
         double ascOver65, ascOver75;
         double disability33, disability65, disabilityMobility;
         double expenseDeduction, workMax, workThreshold1, workThreshold2, workFactor;
+        // 3er tramo de la reducción art. 20 (17.673,52 - 19.747,50).
+        double workMax2 = 2364.34, workThreshold3 = 19747.50, workFactor2 = 1.14;
+        // Reducción por más de dos descendientes (art. 83.3 RIRPF).
+        double moreThan2Desc = 600;
         double limitRate = 43, limitIncomeCap = 35200;
         static Params defaults2026() {
             Params p = new Params();
@@ -283,6 +303,8 @@ public class IrpfRetentionService {
             p.disability33 = 3000; p.disability65 = 9000; p.disabilityMobility = 3000;
             p.expenseDeduction = 2000; p.workMax = 7302; p.workThreshold1 = 14852;
             p.workThreshold2 = 17673.52; p.workFactor = 1.75;
+            p.workMax2 = 2364.34; p.workThreshold3 = 19747.50; p.workFactor2 = 1.14;
+            p.moreThan2Desc = 600;
             p.limitRate = 43; p.limitIncomeCap = 35200;
             return p;
         }
@@ -344,12 +366,16 @@ public class IrpfRetentionService {
                      ascendant_over65, ascendant_over75, disability_33, disability_65,
                      disability_mobility, expense_deduction, work_reduction_max,
                      work_reduction_threshold1, work_reduction_threshold2, work_reduction_factor,
+                     work_reduction_max2, work_reduction_threshold3, work_reduction_factor2,
+                     reduction_more_than_2_desc,
                      limit_rate, limit_income_cap, legal_reference)
                 SELECT ?, personal_min, personal_over65, personal_over75, descendant_1,
                      descendant_2, descendant_3, descendant_4plus, descendant_under3,
                      ascendant_over65, ascendant_over75, disability_33, disability_65,
                      disability_mobility, expense_deduction, work_reduction_max,
                      work_reduction_threshold1, work_reduction_threshold2, work_reduction_factor,
+                     work_reduction_max2, work_reduction_threshold3, work_reduction_factor2,
+                     reduction_more_than_2_desc,
                      limit_rate, limit_income_cap, legal_reference
                   FROM irpf_retention_params WHERE year = ?
                 """, toYear, from);
