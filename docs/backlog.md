@@ -8,6 +8,52 @@
 
 ---
 
+## 2026-06-14 — PROPUESTA: Ciclo de vida laboral y societario (CICLO-VIDA) ⚖️💰
+
+> Identificado por Benjamin: hoy solo gestionamos **altas** (empleados,
+> contratos, RETA autónomos, empresa). Falta toda la **salida/cese**, que
+> conlleva nóminas, pagos, indemnizaciones y documentos legales. Propuesta
+> de bloque a abordar tras validar el IRPF. Orden por dependencia/valor.
+
+**Empleados (laboral):**
+- ⬜ ⚖️ **CV-1 Finiquito / liquidación** — al terminar cualquier contrato (baja
+  voluntaria, fin de contrato, despido, jubilación): salario de los días
+  trabajados + vacaciones no disfrutadas + prorrata de pagas extras + pluses
+  pendientes. Genera **recibo de finiquito** (PDF). Reusa el motor de nómina
+  (es una nómina de tipo `SETTLEMENT`, ya contemplado en el enum). Cotiza/
+  tributa por conceptos; la indemnización va aparte.
+- ⬜ ⚖️ **CV-2 Despido + indemnización** — tipos: improcedente (33 días/año,
+  máx. 24 mensualidades; tramo a 45 días hasta 2012-02), objetivo/procedente
+  (20 días/año, máx. 12), disciplinario (0). Cálculo por antigüedad y salario
+  diario. **Indemnización exenta de IRPF** hasta el límite legal (lo obligatorio,
+  tope 180.000 €); el exceso tributa. Genera **carta de despido** + finiquito.
+- ⬜ ⚖️ **CV-3 Jubilación del empleado** — baja por jubilación (ordinaria/
+  anticipada/parcial con contrato de relevo/activa) → finiquito + baja en
+  Sistema RED + **certificado de empresa** para la SS/SEPE.
+- ⬜ ⚖️ **CV-4 Baja en Sistema RED / certificado de empresa** — al cesar
+  cualquier empleado: comunicación de baja (RED) + certificado de empresa
+  (datos de cotización para la prestación). Hoy solo está el alta (contrat@).
+- ⬜ **CV-5 Excedencias / suspensiones / reducción de jornada** — afectan
+  cotización y nómina (suspensión sin sueldo, reducción por guarda legal…).
+
+**Autónomos (RETA):**
+- ⬜ ⚖️ **CV-6 Cese de actividad autónomo** — baja en RETA + AEAT (036/037) +
+  prestación por cese de actividad ("paro del autónomo"). Liquidación de cuotas.
+- ⬜ ⚖️ **CV-7 Jubilación del autónomo** — baja en RETA, compatibilidad
+  jubilación activa, cálculo de la base reguladora.
+
+**Empresa (societario):**
+- ⬜ ⚖️ **CV-8 Cese / disolución de empresa** — baja de todos los empleados +
+  finiquitos, despido colectivo (ERE) si aplica, baja de la empresa en SS y
+  AEAT, liquidación. Implica N finiquitos + documentación.
+
+**Transversal:** todos estos generan **documentos** (finiquito, carta despido,
+certificado empresa) + **cálculos** (indemnización exenta/sujeta) + **pagos** +
+**comunicaciones** (RED/AEAT). Decisiones pendientes de Benjamin: alcance de
+cada uno (¿solo cálculo+PDF, o también el envío telemático real?).
+
+---
+
 ## 2026-06-13 tarde — Bloque NOM-FLUJO (nómina profesional) ⚖️💰
 
 Sobre el bloque NOM, construido el flujo completo estilo A3/Nomio:
