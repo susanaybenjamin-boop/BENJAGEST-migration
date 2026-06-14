@@ -272,8 +272,19 @@ public class PayslipService {
         BigDecimal cotizableAnnual = BigDecimal.ZERO; // base SS + tipo IRPF (anual completo)
         BigDecimal taxableAnnual = BigDecimal.ZERO;   // tipo IRPF (anual completo)
         BigDecimal taxableDevengo = BigDecimal.ZERO;  // tributable abonado ESTE periodo
+        // Nombres de los complementos recurrentes simulados: REEMPLAZAN al
+        // concepto del contrato con el mismo nombre (no se suman), para que el
+        // solver de objetivo no cuente dos veces la "Mejora voluntaria" ya
+        // guardada en el contrato.
+        java.util.Set<String> recurringNames = new java.util.HashSet<>();
+        if (req.recurringConcepts() != null) {
+            for (ExtraConcept rc : req.recurringConcepts()) {
+                if (rc.name() != null && !rc.name().isBlank()) recurringNames.add(rc.name().trim());
+            }
+        }
         if (!concepts.isEmpty()) {
             for (SalaryConcept c : concepts) {
+                if (c.name() != null && recurringNames.contains(c.name().trim())) continue;
                 boolean isBase = "SALARY_BASE".equals(c.kind());
                 BigDecimal a = c.annual() == null ? BigDecimal.ZERO : c.annual();
                 // Totales anuales para el tipo IRPF y la base SS: SIEMPRE completos
