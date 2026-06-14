@@ -919,6 +919,19 @@ public class LaborApiClient {
         return r.body();
     }
 
+    /** Descarga un documento de baja (carta de despido / certificado de empresa). */
+    public byte[] downloadTerminationDoc(String which, String employeeId, java.time.LocalDate date, String type)
+            throws IOException, InterruptedException {
+        String url = baseUrl + "/labor/terminations/docs/" + which
+                + "?employeeId=" + employeeId + "&date=" + date + "&type=" + type;
+        HttpRequest.Builder b = HttpRequest.newBuilder(URI.create(url))
+                .timeout(Duration.ofSeconds(30)).GET();
+        AuthSession.get().authorize(b);
+        HttpResponse<byte[]> r = httpClient.send(b.build(), HttpResponse.BodyHandlers.ofByteArray());
+        if (r.statusCode() < 200 || r.statusCode() >= 300) throw new IOException("HTTP " + r.statusCode());
+        return r.body();
+    }
+
     public void emailPayslipToEmployee(String id) throws IOException, InterruptedException {
         send(req(baseUrl + "/labor/payslips/" + id + "/email")
                 .header("Content-Type", "application/json")
