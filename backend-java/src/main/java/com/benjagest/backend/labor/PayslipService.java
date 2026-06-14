@@ -298,14 +298,18 @@ public class PayslipService {
                 // se cobran en 12 mensualidades (importe anual/12), no por pagas.
                 int periodDivisor = isBase ? divisor : 12;
                 BigDecimal lineAmount = a.divide(BigDecimal.valueOf(periodDivisor), 2, RoundingMode.HALF_UP);
-                lines.add(new PayslipLine(c.name(), c.kind(), lineAmount));
+                // En la paga extra el devengo del salario base se identifica como
+                // gratificación extraordinaria (verano/Navidad), no "Salario base".
+                String lineName = (isExtra && isBase) ? extraPagaLabel(type) : c.name();
+                lines.add(new PayslipLine(lineName, c.kind(), lineAmount));
                 if (c.taxable()) taxableDevengo = taxableDevengo.add(lineAmount);
             }
         } else {
             cotizableAnnual = contract.grossSalary;
             taxableAnnual = contract.grossSalary;
             BigDecimal base = contract.grossSalary.divide(BigDecimal.valueOf(divisor), 2, RoundingMode.HALF_UP);
-            lines.add(new PayslipLine("Salario bruto del periodo", "SALARY_BASE", base));
+            lines.add(new PayslipLine(isExtra ? extraPagaLabel(type) : "Salario bruto del periodo",
+                    "SALARY_BASE", base));
             taxableDevengo = base;
         }
 
@@ -629,6 +633,13 @@ public class PayslipService {
                 """, this::mapView, id, tenantContext.getCurrentCompanyId())
                 .stream().findFirst()
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Nomina no encontrada"));
+    }
+
+    /** Etiqueta del devengo para una paga extraordinaria. */
+    private static String extraPagaLabel(String type) {
+        if ("EXTRA_SUMMER".equals(type)) return "Paga extra de verano";
+        if ("EXTRA_CHRISTMAS".equals(type)) return "Paga extra de Navidad";
+        return "Salario base";
     }
 
     private ContractData resolveActiveContract(String employeeId, int year, int month) {

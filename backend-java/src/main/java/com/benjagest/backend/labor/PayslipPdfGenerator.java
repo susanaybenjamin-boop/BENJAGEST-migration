@@ -190,6 +190,10 @@ public class PayslipPdfGenerator {
             String antig = hire == null ? "-" : yearsSince(hire.toLocalDate()) + " años";
             String periodo = "1 al " + Month.of(month).length(java.time.Year.of(year).isLeap())
                     + " de " + Month.of(month).getDisplayName(TextStyle.FULL, new Locale("es"));
+            // En pagas extra se identifica la gratificación en el período.
+            String tipoNom = str(data.get("payslip_type"));
+            if ("EXTRA_SUMMER".equals(tipoNom)) periodo += " · Paga extra de verano";
+            else if ("EXTRA_CHRISTMAS".equals(tipoNom)) periodo += " · Paga extra de Navidad";
             PdfPTable trab2 = new PdfPTable(new float[]{3, 2.5f, 2, 1.5f, 3.5f, 1.2f});
             trab2.setWidthPercentage(100);
             trab2.addCell(lv("CATEGORÍA PROFESIONAL", str(data.get("professional_category")), fLbl, fVal));
