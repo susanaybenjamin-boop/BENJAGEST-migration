@@ -295,6 +295,23 @@ public class PayslipService {
             taxableDevengo = base;
         }
 
+        // Complementos recurrentes simulados (solver de objetivo): se tratan
+        // como un complemento mensual del contrato -> anualizan en la base de
+        // cotización y en el tipo IRPF (importe anual = mensual x 12).
+        if (req.recurringConcepts() != null && !isExtra) {
+            for (ExtraConcept rc : req.recurringConcepts()) {
+                if (rc.name() == null || rc.name().isBlank()) continue;
+                BigDecimal amt = rc.amount() == null ? BigDecimal.ZERO : rc.amount();
+                BigDecimal annual = amt.multiply(BigDecimal.valueOf(12));
+                boolean cot = rc.cotizes() == null || rc.cotizes();
+                boolean tax = rc.taxable() == null || rc.taxable();
+                if (cot) cotizableAnnual = cotizableAnnual.add(annual);
+                if (tax) taxableAnnual = taxableAnnual.add(annual);
+                lines.add(new PayslipLine(rc.name().trim(), "COMPLEMENT", amt));
+                if (tax) taxableDevengo = taxableDevengo.add(amt);
+            }
+        }
+
         // Complementos extra de ESTA nómina (dietas, kilometraje, asistencia…):
         // importe del mes (no anual). Solo suman a la base SS/IRPF si cotizan/tributan.
         BigDecimal extraCotizable = BigDecimal.ZERO;
@@ -374,7 +391,10 @@ public class PayslipService {
 
     /** Vista previa de una nómina sin guardarla. */
     public PreviewResult preview(CalculateRequest req) {
-        Computed c = compute(req);
+        return toPreview(compute(req));
+    }
+
+    private PreviewResult toPreview(Computed c) {
         BigDecimal employerTotal = c.ss().employerTotal();
         List<LineView> dev = c.lines().stream()
                 .map(l -> new LineView(l.name(), l.amount())).toList();
@@ -382,6 +402,10 @@ public class PayslipService {
                 c.irpfPct(), c.otherDeductions(), c.net(), employerTotal,
                 c.gross().add(employerTotal), dev);
     }
+
+    /** Nombre del complemento de mejora que el solver de objetivo guarda en el
+     *  contrato (recurrente). Debe coincidir con la etiqueta usada por la UI. */
+    public static final String MEJORA_CONCEPT = "Mejora voluntaria";
 
     public record TargetRequest(
             String employeeId, int year, int month, String payslipType,
@@ -391,45 +415,47 @@ public class PayslipService {
     public record TargetResult(BigDecimal plus, PreviewResult preview) {}
 
     /**
-     * Calcula el "plus" (mejora voluntaria del mes) necesario para llegar a un
-     * sueldo objetivo: BRUTO (resta directa) o NETO (modelo lineal con el % de
-     * IRPF del contrato). Devuelve el importe del plus y la vista previa con él
-     * aplicado, para que el asesor lo añada como complemento.
+     * Calcula la "mejora voluntaria" MENSUAL recurrente necesaria para llegar a
+     * un sueldo objetivo BRUTO o NETO. La mejora se trata como un complemento
+     * del contrato (anualiza en base SS e IRPF): en NETO el tipo de retención
+     * sube con la propia mejora, así que la relación no es lineal y se resuelve
+     * por bisección. Devuelve el importe mensual y la vista previa con él
+     * aplicado, para que la UI lo guarde como complemento del contrato.
      */
     public TargetResult solveTarget(TargetRequest tr) {
         if (tr.target() == null || tr.target().signum() <= 0) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Importe objetivo inválido");
         }
-        CalculateRequest base = new CalculateRequest(tr.employeeId(), tr.year(), tr.month(),
-                tr.payslipType(), tr.includeExtraProrated(), null, null, tr.extraConcepts());
-        Computed c = compute(base);
+        java.util.function.Function<BigDecimal, Computed> withMejora = x -> {
+            java.util.List<ExtraConcept> rec = java.util.List.of(
+                    new ExtraConcept(MEJORA_CONCEPT, x, true, true));
+            return compute(new CalculateRequest(tr.employeeId(), tr.year(), tr.month(),
+                    tr.payslipType(), tr.includeExtraProrated(), null, null,
+                    tr.extraConcepts(), rec));
+        };
 
         BigDecimal plus;
         if ("GROSS".equalsIgnoreCase(tr.mode())) {
-            plus = tr.target().subtract(c.gross());
+            // El bruto crece exactamente en el importe de la mejora.
+            plus = tr.target().subtract(withMejora.apply(BigDecimal.ZERO).gross());
         } else {
-            // NETO: cada € de mejora (cotiza+tributa) deja (1 - eeRate - irpfFrac)
-            // de neto. Modelo lineal con el % IRPF del contrato.
-            SsContributionRatesService.Rates r = ssRatesService.ratesForYear(tr.year());
-            BigDecimal eeRate = r.eeCommon().add(r.eeUnemployment()).add(r.eeTraining()).add(r.eeMei())
-                    .divide(BigDecimal.valueOf(100), 6, RoundingMode.HALF_UP);
-            BigDecimal irpfFrac = c.irpfPct().divide(BigDecimal.valueOf(100), 6, RoundingMode.HALF_UP);
-            BigDecimal factor = BigDecimal.ONE.subtract(eeRate).subtract(irpfFrac);
-            if (factor.signum() <= 0) {
-                throw new ResponseStatusException(HttpStatus.CONFLICT,
-                        "Los tipos no permiten el cálculo inverso (SS+IRPF >= 100%).");
+            // NETO: el neto crece de forma monótona con la mejora; bisección.
+            BigDecimal lo = BigDecimal.ZERO;
+            BigDecimal hi = tr.target().max(BigDecimal.valueOf(1));
+            int guard = 0;
+            while (withMejora.apply(hi).net().compareTo(tr.target()) < 0 && guard++ < 40) {
+                hi = hi.multiply(BigDecimal.valueOf(2));
             }
-            plus = tr.target().subtract(c.net()).divide(factor, 2, RoundingMode.HALF_UP);
+            for (int i = 0; i < 40; i++) {
+                BigDecimal mid = lo.add(hi).divide(BigDecimal.valueOf(2), 6, RoundingMode.HALF_UP);
+                if (withMejora.apply(mid).net().compareTo(tr.target()) < 0) lo = mid; else hi = mid;
+            }
+            plus = lo.add(hi).divide(BigDecimal.valueOf(2), 2, RoundingMode.HALF_UP);
         }
         if (plus.signum() < 0) plus = BigDecimal.ZERO;
         plus = plus.setScale(2, RoundingMode.HALF_UP);
 
-        java.util.List<ExtraConcept> withPlus = new java.util.ArrayList<>();
-        if (tr.extraConcepts() != null) withPlus.addAll(tr.extraConcepts());
-        withPlus.add(new ExtraConcept("Mejora voluntaria", plus, true, true));
-        CalculateRequest full = new CalculateRequest(tr.employeeId(), tr.year(), tr.month(),
-                tr.payslipType(), tr.includeExtraProrated(), null, null, withPlus);
-        return new TargetResult(plus, preview(full));
+        return new TargetResult(plus, toPreview(withMejora.apply(plus)));
     }
 
     /**
@@ -821,7 +847,11 @@ public class PayslipService {
     public record CalculateRequest(
             String employeeId, int year, int month, String payslipType,
             Boolean includeExtraProrated, BigDecimal otherDeductions, String notes,
-            List<ExtraConcept> extraConcepts
+            List<ExtraConcept> extraConcepts,
+            // Complementos MENSUALES recurrentes (anualizan en base SS e IRPF).
+            // Lo usa el solver de objetivo para simular la mejora antes de
+            // guardarla en el contrato; null en el flujo normal de cálculo.
+            List<ExtraConcept> recurringConcepts
     ) {
         public boolean extraProratedOrDefault() {
             // Default legal: 14 pagas (NO prorrateado) salvo que el convenio

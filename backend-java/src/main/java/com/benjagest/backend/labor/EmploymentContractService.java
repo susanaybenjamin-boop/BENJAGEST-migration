@@ -153,6 +153,64 @@ public class EmploymentContractService {
         }
     }
 
+    /**
+     * Añade (o actualiza si ya existe por nombre) un complemento salarial
+     * MENSUAL recurrente en el contrato ACTIVE del empleado. El importe se
+     * guarda anual (mensual x 12) y se recalcula gross_salary. Lo usa "llegar a
+     * un objetivo": la mejora voluntaria vive en el contrato para que anualice
+     * en la base de cotización y en el tipo de IRPF.
+     */
+    @Transactional
+    public ContractView upsertRecurringComplement(String employeeId, String conceptName,
+                                                   BigDecimal monthlyAmount) {
+        if (!StringUtils.hasText(employeeId)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "employeeId requerido");
+        }
+        if (!StringUtils.hasText(conceptName)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "conceptName requerido");
+        }
+        BigDecimal monthly = monthlyAmount == null ? BigDecimal.ZERO : monthlyAmount;
+        BigDecimal annual = monthly.multiply(BigDecimal.valueOf(12));
+        String contractId = jdbcTemplate.query("""
+                SELECT id FROM employment_contracts
+                 WHERE company_id = ? AND employee_id = ? AND status = 'ACTIVE'
+                 ORDER BY start_date DESC
+                """, (rs, n) -> rs.getString("id"),
+                tenantContext.getCurrentCompanyId(), employeeId)
+                .stream().findFirst().orElse(null);
+        if (contractId == null) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "El empleado no tiene un contrato ACTIVE al que añadir el complemento.");
+        }
+        int updated = jdbcTemplate.update("""
+                UPDATE contract_salary_items
+                   SET annual_amount = ?, cotizes = 1, taxable = 1, kind = 'COMPLEMENT'
+                 WHERE contract_id = ? AND company_id = ? AND concept_name = ?
+                """, annual, contractId, tenantContext.getCurrentCompanyId(), conceptName.trim());
+        if (updated == 0) {
+            Integer maxOrder = jdbcTemplate.query("""
+                    SELECT COALESCE(MAX(sort_order), 0) FROM contract_salary_items
+                     WHERE contract_id = ? AND company_id = ?
+                    """, (rs, n) -> rs.getInt(1), contractId, tenantContext.getCurrentCompanyId())
+                    .stream().findFirst().orElse(0);
+            jdbcTemplate.update("""
+                    INSERT INTO contract_salary_items
+                           (id, company_id, contract_id, concept_name, kind,
+                            annual_amount, cotizes, taxable, sort_order)
+                    VALUES (?, ?, ?, ?, 'COMPLEMENT', ?, 1, 1, ?)
+                    """, UUID.randomUUID().toString(), tenantContext.getCurrentCompanyId(),
+                    contractId, conceptName.trim(), annual, maxOrder + 1);
+        }
+        BigDecimal total = jdbcTemplate.query("""
+                SELECT COALESCE(SUM(annual_amount), 0) FROM contract_salary_items
+                 WHERE contract_id = ? AND company_id = ?
+                """, (rs, n) -> rs.getBigDecimal(1), contractId, tenantContext.getCurrentCompanyId())
+                .stream().findFirst().orElse(BigDecimal.ZERO);
+        jdbcTemplate.update("UPDATE employment_contracts SET gross_salary = ? WHERE id = ? AND company_id = ?",
+                total, contractId, tenantContext.getCurrentCompanyId());
+        return findById(contractId);
+    }
+
     private ContractView findById(String id) {
         return jdbcTemplate.query("""
                 SELECT id, employee_id, contract_type, sepe_contract_code,
@@ -323,6 +381,15 @@ public class EmploymentContractService {
 
         @PostMapping
         public ContractView create(@RequestBody UpsertRequest req) { return service.create(req); }
+
+        public record RecurringComplementRequest(
+                String employeeId, String conceptName, BigDecimal monthlyAmount) {}
+
+        @PostMapping("/recurring-complement")
+        public ContractView upsertRecurringComplement(@RequestBody RecurringComplementRequest req) {
+            return service.upsertRecurringComplement(
+                    req.employeeId(), req.conceptName(), req.monthlyAmount());
+        }
 
         @PutMapping("/{id}")
         public ContractView update(@PathVariable("id") String id, @RequestBody UpsertRequest req) {
