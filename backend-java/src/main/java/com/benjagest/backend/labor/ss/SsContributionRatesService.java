@@ -40,7 +40,7 @@ public class SsContributionRatesService {
         List<Rates> rows = jdbc.query("""
                 SELECT year, ee_common, ee_unemployment, ee_training, ee_mei,
                        er_common, er_unemployment, er_fogasa, er_training, er_mei,
-                       default_at_ep, legal_reference
+                       default_at_ep, base_max_monthly, base_min_monthly, legal_reference
                   FROM ss_contribution_rates
                  WHERE year <= ?
                  ORDER BY year DESC LIMIT 1
@@ -51,14 +51,14 @@ public class SsContributionRatesService {
                 new BigDecimal("4.70"), new BigDecimal("1.55"), new BigDecimal("0.10"), new BigDecimal("0.15"),
                 new BigDecimal("23.60"), new BigDecimal("5.50"), new BigDecimal("0.20"),
                 new BigDecimal("0.60"), new BigDecimal("0.75"), new BigDecimal("1.50"),
-                "Defaults 2026");
+                new BigDecimal("5101.20"), BigDecimal.ZERO, "Defaults 2026");
     }
 
     public List<Rates> listAll() {
         return jdbc.query("""
                 SELECT year, ee_common, ee_unemployment, ee_training, ee_mei,
                        er_common, er_unemployment, er_fogasa, er_training, er_mei,
-                       default_at_ep, legal_reference
+                       default_at_ep, base_max_monthly, base_min_monthly, legal_reference
                   FROM ss_contribution_rates
                  ORDER BY year DESC
                 """, MAPPER);
@@ -73,19 +73,21 @@ public class SsContributionRatesService {
                 INSERT INTO ss_contribution_rates
                     (year, ee_common, ee_unemployment, ee_training, ee_mei,
                      er_common, er_unemployment, er_fogasa, er_training, er_mei,
-                     default_at_ep, legal_reference)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     default_at_ep, base_max_monthly, base_min_monthly, legal_reference)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON DUPLICATE KEY UPDATE
                      ee_common = VALUES(ee_common), ee_unemployment = VALUES(ee_unemployment),
                      ee_training = VALUES(ee_training), ee_mei = VALUES(ee_mei),
                      er_common = VALUES(er_common), er_unemployment = VALUES(er_unemployment),
                      er_fogasa = VALUES(er_fogasa), er_training = VALUES(er_training),
                      er_mei = VALUES(er_mei), default_at_ep = VALUES(default_at_ep),
+                     base_max_monthly = VALUES(base_max_monthly),
+                     base_min_monthly = VALUES(base_min_monthly),
                      legal_reference = VALUES(legal_reference)
                 """,
                 r.year(), nz(r.eeCommon()), nz(r.eeUnemployment()), nz(r.eeTraining()), nz(r.eeMei()),
                 nz(r.erCommon()), nz(r.erUnemployment()), nz(r.erFogasa()), nz(r.erTraining()), nz(r.erMei()),
-                nz(r.defaultAtEp()), r.legalReference());
+                nz(r.defaultAtEp()), nz(r.baseMaxMonthly()), nz(r.baseMinMonthly()), r.legalReference());
         return ratesForYear(r.year());
     }
 
@@ -97,13 +99,15 @@ public class SsContributionRatesService {
             rs.getBigDecimal("ee_training"), rs.getBigDecimal("ee_mei"),
             rs.getBigDecimal("er_common"), rs.getBigDecimal("er_unemployment"),
             rs.getBigDecimal("er_fogasa"), rs.getBigDecimal("er_training"), rs.getBigDecimal("er_mei"),
-            rs.getBigDecimal("default_at_ep"), rs.getString("legal_reference"));
+            rs.getBigDecimal("default_at_ep"), rs.getBigDecimal("base_max_monthly"),
+            rs.getBigDecimal("base_min_monthly"), rs.getString("legal_reference"));
 
     public record Rates(
             int year,
             BigDecimal eeCommon, BigDecimal eeUnemployment, BigDecimal eeTraining, BigDecimal eeMei,
             BigDecimal erCommon, BigDecimal erUnemployment, BigDecimal erFogasa,
             BigDecimal erTraining, BigDecimal erMei, BigDecimal defaultAtEp,
+            BigDecimal baseMaxMonthly, BigDecimal baseMinMonthly,
             String legalReference
     ) {}
 

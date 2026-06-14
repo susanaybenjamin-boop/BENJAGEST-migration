@@ -305,6 +305,16 @@ public class PayslipService {
             cotizationBase = gross;
         }
         SsContributionRatesService.Rates rates = ssRatesService.ratesForYear(req.year());
+        // Topes de cotización: limitar la base a [mínimo, máximo] del año.
+        if (rates.baseMaxMonthly() != null && rates.baseMaxMonthly().signum() > 0
+                && cotizationBase.compareTo(rates.baseMaxMonthly()) > 0) {
+            cotizationBase = rates.baseMaxMonthly();
+        }
+        if (rates.baseMinMonthly() != null && rates.baseMinMonthly().signum() > 0
+                && cotizationBase.signum() > 0
+                && cotizationBase.compareTo(rates.baseMinMonthly()) < 0) {
+            cotizationBase = rates.baseMinMonthly();
+        }
         BigDecimal atEp = contract.atEpPercent != null && contract.atEpPercent.signum() >= 0
                 ? contract.atEpPercent : rates.defaultAtEp();
         SsBreakdown ss = computeSs(cotizationBase, atEp, rates);

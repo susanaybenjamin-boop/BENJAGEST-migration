@@ -8,5 +8,6 @@ public record SsRateEntry(
         BigDecimal eeCommon, BigDecimal eeUnemployment, BigDecimal eeTraining, BigDecimal eeMei,
         BigDecimal erCommon, BigDecimal erUnemployment, BigDecimal erFogasa,
         BigDecimal erTraining, BigDecimal erMei, BigDecimal defaultAtEp,
+        BigDecimal baseMaxMonthly, BigDecimal baseMinMonthly,
         String legalReference
 ) {}

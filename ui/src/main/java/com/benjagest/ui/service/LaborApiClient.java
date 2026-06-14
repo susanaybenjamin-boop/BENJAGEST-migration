@@ -566,6 +566,7 @@ public class LaborApiClient {
                 bigDec(o, "eeTraining"), bigDec(o, "eeMei"),
                 bigDec(o, "erCommon"), bigDec(o, "erUnemployment"), bigDec(o, "erFogasa"),
                 bigDec(o, "erTraining"), bigDec(o, "erMei"), bigDec(o, "defaultAtEp"),
+                bigDec(o, "baseMaxMonthly"), bigDec(o, "baseMinMonthly"),
                 textField(o, "legalReference")));
     }
 
@@ -583,6 +584,8 @@ public class LaborApiClient {
         b.append(decField("erTraining", e.erTraining())).append(",");
         b.append(decField("erMei", e.erMei())).append(",");
         b.append(decField("defaultAtEp", e.defaultAtEp())).append(",");
+        b.append(decField("baseMaxMonthly", e.baseMaxMonthly())).append(",");
+        b.append(decField("baseMinMonthly", e.baseMinMonthly())).append(",");
         b.append(field("legalReference", e.legalReference()));
         b.append("}");
         send(req(baseUrl + "/labor/ss-rates")
