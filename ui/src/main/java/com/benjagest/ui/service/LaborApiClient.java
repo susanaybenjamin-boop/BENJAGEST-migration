@@ -555,6 +555,49 @@ public class LaborApiClient {
         return bigDec(r.body(), "plus");
     }
 
+    // ==== Modelo 145 (datos IRPF del empleado) ====
+
+    public com.benjagest.ui.model.Modelo145Entry getIrpfData(String employeeId)
+            throws IOException, InterruptedException {
+        HttpResponse<String> r = send(req(baseUrl + "/labor/irpf-data/" + employeeId).GET());
+        String o = r.body();
+        return new com.benjagest.ui.model.Modelo145Entry(
+                intFieldOrZero(o, "familySituation"), textField(o, "spouseNif"),
+                intFieldOrZero(o, "descendants"), intFieldOrZero(o, "descendantsUnder3"),
+                intFieldOrZero(o, "descendantsDisability33"), intFieldOrZero(o, "descendantsDisability65"),
+                boolField(o, "exclusiveCustody"),
+                intFieldOrZero(o, "ascendantsOver65"), intFieldOrZero(o, "ascendantsOver75"),
+                textField(o, "ownDisability"), boolField(o, "ownMobility"),
+                boolField(o, "taxpayerOver65"), boolField(o, "taxpayerOver75"),
+                boolField(o, "contractUnderYear"), boolField(o, "geographicMobility"),
+                boolField(o, "mortgageBefore2013"));
+    }
+
+    public void saveIrpfData(String employeeId, com.benjagest.ui.model.Modelo145Entry m)
+            throws IOException, InterruptedException {
+        StringBuilder b = new StringBuilder("{");
+        b.append("\"familySituation\":").append(m.familySituation()).append(",");
+        b.append(field("spouseNif", m.spouseNif())).append(",");
+        b.append("\"descendants\":").append(m.descendants()).append(",");
+        b.append("\"descendantsUnder3\":").append(m.descendantsUnder3()).append(",");
+        b.append("\"descendantsDisability33\":").append(m.descendantsDisability33()).append(",");
+        b.append("\"descendantsDisability65\":").append(m.descendantsDisability65()).append(",");
+        b.append("\"exclusiveCustody\":").append(m.exclusiveCustody()).append(",");
+        b.append("\"ascendantsOver65\":").append(m.ascendantsOver65()).append(",");
+        b.append("\"ascendantsOver75\":").append(m.ascendantsOver75()).append(",");
+        b.append(field("ownDisability", m.ownDisability())).append(",");
+        b.append("\"ownMobility\":").append(m.ownMobility()).append(",");
+        b.append("\"taxpayerOver65\":").append(m.taxpayerOver65()).append(",");
+        b.append("\"taxpayerOver75\":").append(m.taxpayerOver75()).append(",");
+        b.append("\"contractUnderYear\":").append(m.contractUnderYear()).append(",");
+        b.append("\"geographicMobility\":").append(m.geographicMobility()).append(",");
+        b.append("\"mortgageBefore2013\":").append(m.mortgageBefore2013());
+        b.append("}");
+        send(req(baseUrl + "/labor/irpf-data/" + employeeId)
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(b.toString())));
+    }
+
     // ==== Tipos de cotización SS por año (PARAM-YEAR) ====
 
     public java.util.List<com.benjagest.ui.model.SsRateEntry> listSsRates()
