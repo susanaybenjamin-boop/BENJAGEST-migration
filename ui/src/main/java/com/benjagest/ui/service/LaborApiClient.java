@@ -593,7 +593,13 @@ public class LaborApiClient {
                 bigDec(s, "gross"), bigDec(s, "ssEmployee"), bigDec(s, "irpf"), bigDec(s, "net"),
                 bigDec(s, "employerCost"),
                 bigDec(v, "gross"), bigDec(v, "exempt"), bigDec(v, "taxable"),
-                bigDec(v, "days"), bigDec(v, "antiquityYears"), bigDec(v, "dailySalary"));
+                bigDec(v, "days"), bigDec(v, "antiquityYears"), bigDec(v, "dailySalary"),
+                intVal(v, "antiqYears"), intVal(v, "antiqMonths"), intVal(v, "antiqDays"));
+    }
+
+    private int intVal(String json, String field) {
+        Integer v = intFieldOrNull(json, field);
+        return v == null ? 0 : v;
     }
 
     public void executeTermination(String employeeId, java.time.LocalDate ceseDate, String type,
