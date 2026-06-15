@@ -2176,6 +2176,7 @@ public class BenjagestUiApplication extends Application {
                 new TableColumn<>(t("tpb.invoices.col.total"));
         cTotal.setCellValueFactory(c -> new SimpleStringProperty(
                 c.getValue().total() == null ? "" : c.getValue().total().toPlainString() + " €"));
+        cTotal.setComparator(NUMERIC_STRING_COMPARATOR);
         cTotal.setPrefWidth(110);
         table.getColumns().addAll(java.util.List.of(cNum, cDate, cCust, cTotal));
 
@@ -6256,6 +6257,7 @@ public class BenjagestUiApplication extends Application {
                 c.getValue().validTo() == null ? "—"
                         : c.getValue().validTo().atZone(java.time.ZoneId.systemDefault())
                               .toLocalDate().toString()));
+        colValidUntil.setComparator(ISO_DATE_COMPARATOR);
         colValidUntil.setPrefWidth(120);
 
         TableColumn<com.benjagest.ui.model.CertificateSummaryEntry, String> colUploadedBy =
@@ -9967,6 +9969,7 @@ public class BenjagestUiApplication extends Application {
 
         TableColumn<MultiAllocRow, String> colDate = new TableColumn<>(t("multi_alloc.col.date"));
         colDate.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().invoiceDate));
+        colDate.setComparator(ISO_DATE_COMPARATOR);
         colDate.setPrefWidth(110);
 
         TableColumn<MultiAllocRow, String> colTotal = new TableColumn<>(t("multi_alloc.col.total"));
@@ -9988,6 +9991,7 @@ public class BenjagestUiApplication extends Application {
             if (!row.selectedProperty.get()) row.selectedProperty.set(true);
         });
         colAmount.setEditable(true);
+        colAmount.setComparator(NUMERIC_STRING_COMPARATOR);
         colAmount.setPrefWidth(140);
 
         table.getColumns().addAll(List.of(colSel, colNum, colDate, colTotal, colPending, colAmount));
@@ -29240,6 +29244,7 @@ public class BenjagestUiApplication extends Application {
         cAmount.setCellValueFactory(c -> new javafx.beans.property.SimpleStringProperty(
                 c.getValue() == null || c.getValue().totalAmount() == null ? ""
                         : c.getValue().totalAmount().toPlainString() + " €"));
+        cAmount.setComparator(NUMERIC_STRING_COMPARATOR);
         cAmount.setPrefWidth(110);
 
         javafx.scene.control.TableColumn<com.benjagest.ui.model.AccountingModels.RecurringCandidate, Integer> cOcc =
@@ -29463,6 +29468,7 @@ public class BenjagestUiApplication extends Application {
         cAmt.setCellValueFactory(c -> new javafx.beans.property.SimpleStringProperty(
                 c.getValue() == null || c.getValue().totalAmount() == null ? ""
                         : c.getValue().totalAmount().toPlainString() + " €"));
+        cAmt.setComparator(NUMERIC_STRING_COMPARATOR);
         cAmt.setPrefWidth(100);
 
         javafx.scene.control.TableColumn<com.benjagest.ui.model.RecurringCandidateIgnoredEntry, String> cUntil =
@@ -29472,6 +29478,7 @@ public class BenjagestUiApplication extends Application {
                         (c.getValue().ignoreUntil() == null
                                 ? t("recurring.silence.range.indefinite")
                                 : c.getValue().ignoreUntil().toString())));
+        cUntil.setComparator(ISO_DATE_COMPARATOR);
         cUntil.setPrefWidth(120);
 
         javafx.scene.control.TableColumn<com.benjagest.ui.model.RecurringCandidateIgnoredEntry, Void> cBtn =
