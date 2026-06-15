@@ -324,6 +324,142 @@ public class RetaService {
             BigDecimal baseMax, BigDecimal quotaMin
     ) {}
 
+    // ====================================================================
+    //  RETA-2 — Auto-asegurar perfil del autónomo (owner con régimen RETA)
+    // ====================================================================
+
+    /**
+     * Crea (si faltan) perfiles RETA para los titulares de la empresa que
+     * cotizan en RETA (company_owners.ss_regime IN RETA/AUTONOMO_SOCIETARIO).
+     * Idempotente. No toca sociedades sin autónomo. Devuelve cuántos creó.
+     */
+    /** Asegura perfiles de titulares RETA de la empresa actual (tenant). */
+    public int ensureOwnerProfilesForCurrent() {
+        return ensureOwnerProfiles(tenantContext.getCurrentCompanyId());
+    }
+
+    @org.springframework.transaction.annotation.Transactional
+    public int ensureOwnerProfiles(String companyId) {
+        List<java.util.Map<String, Object>> owners = jdbcTemplate.queryForList("""
+                SELECT o.id, o.full_name, o.tax_identifier
+                  FROM company_owners o
+                 WHERE o.company_id = ? AND o.active = TRUE
+                   AND o.ss_regime IN ('RETA', 'AUTONOMO_SOCIETARIO')
+                   AND NOT EXISTS (
+                       SELECT 1 FROM reta_profiles p
+                        WHERE p.company_id = o.company_id AND p.owner_id = o.id)
+                """, companyId);
+        int created = 0;
+        for (var o : owners) {
+            jdbcTemplate.update("""
+                    INSERT INTO reta_profiles (id, company_id, owner_id, full_name,
+                        tax_identifier, active)
+                    VALUES (?, ?, ?, ?, ?, TRUE)
+                    """,
+                    UUID.randomUUID().toString(), companyId, (String) o.get("id"),
+                    (String) o.get("full_name"), (String) o.get("tax_identifier"));
+            created++;
+        }
+        return created;
+    }
+
+    // ====================================================================
+    //  RETA-3 — Alerta de regularización (base vs tramo por rendimiento REAL)
+    // ====================================================================
+
+    /**
+     * Recorre la empresa actual + su cartera (companies.parent_company_id =
+     * empresa actual) y marca los autónomos cuya base de cotización está fuera
+     * del tramo que les corresponde por su RENDIMIENTO REAL (P&L del ejercicio:
+     * grupos 7xx haber − 6xx debe en asientos POSTED). Decisión Benjamin
+     * 2026-06-15. Auto-asegura perfiles de titulares RETA antes de revisar.
+     */
+    public List<RegularizationAlert> scanRegularization(int year) {
+        String selfId = tenantContext.getCurrentCompanyId();
+        // Empresa propia + cartera gestionada.
+        List<java.util.Map<String, Object>> companies = new java.util.ArrayList<>();
+        java.util.Map<String, Object> self = new java.util.HashMap<>();
+        self.put("id", selfId);
+        self.put("name", jdbcTemplate.query(
+                "SELECT COALESCE(trade_name, legal_name) AS n FROM companies WHERE id = ?",
+                (rs, n) -> rs.getString("n"), selfId).stream().findFirst().orElse("—"));
+        companies.add(self);
+        companies.addAll(jdbcTemplate.queryForList("""
+                SELECT id, COALESCE(trade_name, legal_name) AS name
+                  FROM companies
+                 WHERE parent_company_id = ?
+                 ORDER BY name
+                """, selfId));
+
+        java.sql.Date from = java.sql.Date.valueOf(java.time.LocalDate.of(year, 1, 1));
+        java.sql.Date to = java.sql.Date.valueOf(java.time.LocalDate.of(year, 12, 31));
+
+        List<RegularizationAlert> out = new java.util.ArrayList<>();
+        for (var co : companies) {
+            String companyId = (String) co.get("id");
+            String companyName = (String) co.get("name");
+            try { ensureOwnerProfiles(companyId); } catch (Exception ignored) { /* best-effort */ }
+
+            List<java.util.Map<String, Object>> profiles = jdbcTemplate.queryForList("""
+                    SELECT id, full_name, current_base
+                      FROM reta_profiles
+                     WHERE company_id = ? AND active = TRUE
+                    """, companyId);
+            if (profiles.isEmpty()) continue;
+
+            BigDecimal income = sumGroup(companyId, from, to, "7", true);   // ventas (haber)
+            BigDecimal expense = sumGroup(companyId, from, to, "6", false); // gastos (debe)
+            BigDecimal net = income.subtract(expense);
+            TramoSuggestion tr;
+            try {
+                tr = suggestTramo(year, net);
+            } catch (Exception ex) {
+                continue; // sin tramos para ese año → no se puede evaluar
+            }
+
+            for (var p : profiles) {
+                BigDecimal base = (BigDecimal) p.get("current_base");
+                String fullName = (String) p.get("full_name");
+                String status;
+                if (base == null || base.signum() == 0) {
+                    status = "NO_BASE";
+                } else if (base.compareTo(tr.baseMinima()) < 0) {
+                    status = "UNDER"; // cotiza por debajo → regularización a pagar
+                } else if (base.compareTo(tr.baseMaxima()) > 0) {
+                    status = "OVER";  // cotiza por encima → paga de más
+                } else {
+                    continue; // base dentro del tramo → OK
+                }
+                out.add(new RegularizationAlert(
+                        companyId, companyName, (String) p.get("id"), fullName,
+                        base, net, tr.tramoLabel(), tr.baseMinima(), tr.baseMaxima(), status));
+            }
+        }
+        return out;
+    }
+
+    private BigDecimal sumGroup(String companyId, java.sql.Date from, java.sql.Date to,
+                                 String accountPrefix, boolean credit) {
+        String col = credit ? "l.credit" : "l.debit";
+        BigDecimal v = jdbcTemplate.queryForObject(
+                "SELECT COALESCE(SUM(" + col + "), 0) "
+                + "  FROM journal_entry_lines l "
+                + "  JOIN journal_entries e ON e.id = l.journal_entry_id "
+                + "  JOIN accounting_accounts a ON a.id = l.account_id "
+                + " WHERE e.company_id = ? AND e.status = 'POSTED' "
+                + "   AND e.entry_date BETWEEN ? AND ? AND a.code LIKE ?",
+                BigDecimal.class, companyId, from, to, accountPrefix + "%");
+        return v == null ? BigDecimal.ZERO : v;
+    }
+
+    public record RegularizationAlert(
+            String companyId, String companyName,
+            String profileId, String fullName,
+            BigDecimal currentBase, BigDecimal netIncome,
+            String tramoLabel, BigDecimal baseMin, BigDecimal baseMax,
+            String status // NO_BASE | UNDER | OVER
+    ) {}
+
     private String blank(String v) { return v == null || v.isBlank() ? null : v.trim(); }
 
     private void validate(UpsertProfile req) {
@@ -483,6 +619,20 @@ public class RetaService {
         public List<TramoRow> cloneTramos(@PathVariable("year") int year,
                                            @PathVariable("src") int src) {
             return service.cloneTramos(src, year);
+        }
+
+        // RETA-2 — crear perfiles de titulares RETA que falten en la empresa
+        // actual (idempotente). El scan también lo hace en toda la cartera.
+        @PostMapping("/ensure-profiles")
+        public java.util.Map<String, Integer> ensureProfiles() {
+            return java.util.Map.of("created", service.ensureOwnerProfilesForCurrent());
+        }
+
+        // RETA-3 — escaneo de regularización (empresa propia + cartera).
+        @PostMapping("/regularization/scan")
+        public List<RegularizationAlert> scanRegularization(
+                @RequestParam(value = "year", required = false) Integer year) {
+            return service.scanRegularization(year == null ? Year.now().getValue() : year);
         }
     }
 }

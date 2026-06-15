@@ -16051,6 +16051,22 @@ public class BenjagestUiApplication extends Application {
             case "labor.tab.ss_rates" -> "SS rates";
             case "labor.tab.irpf_params" -> "Income-tax scale";
             case "labor.tab.reta_tramos" -> "Self-employed brackets";
+            case "labor.tab.reta_alerts" -> "RETA review";
+            case "labor.retaalerts.hint" -> "Self-employed whose contribution base is outside the bracket matching their REAL income (P&L). From 'My management' it covers the whole portfolio. Since 2023 the TGSS regularizes against real income the following year — adjust before year-end to avoid paying too much or owing.";
+            case "labor.retaalerts.empty" -> "No self-employed to review for this year.";
+            case "labor.retaalerts.col.company" -> "Company";
+            case "labor.retaalerts.col.name" -> "Self-employed";
+            case "labor.retaalerts.col.net" -> "Real net income";
+            case "labor.retaalerts.col.base" -> "Current base";
+            case "labor.retaalerts.col.tramo" -> "Bracket (min–max base)";
+            case "labor.retaalerts.col.status" -> "Status";
+            case "labor.retaalerts.status.NO_BASE" -> "No base set";
+            case "labor.retaalerts.status.UNDER" -> "Under-contributing (will owe)";
+            case "labor.retaalerts.status.OVER" -> "Over-contributing (paying too much)";
+            case "labor.retaalerts.scan" -> "Review now";
+            case "labor.retaalerts.ok" -> "All self-employed within their bracket.";
+            case "labor.retaalerts.count" -> "{n} self-employed to review";
+            case "labor.retaalerts.failed" -> "Could not run the RETA review";
             case "labor.retatramos.hint" -> "Self-employed (RETA) contribution brackets by year. Edit them here when they change — no code needed. Clone a year to start from the previous one.";
             case "labor.retatramos.empty" -> "No brackets for this year. Clone the previous year and edit.";
             case "labor.retatramos.col.label" -> "Bracket";
@@ -16656,6 +16672,22 @@ public class BenjagestUiApplication extends Application {
             case "labor.tab.ss_rates" -> "Tipos cotización";
             case "labor.tab.irpf_params" -> "Escala IRPF";
             case "labor.tab.reta_tramos" -> "Tramos autónomo";
+            case "labor.tab.reta_alerts" -> "Revisión RETA";
+            case "labor.retaalerts.hint" -> "Autónomos cuya base de cotización está fuera del tramo que les corresponde por su rendimiento REAL (P&L). Desde 'Mi gestión' cubre toda la cartera. Desde 2023 la TGSS regulariza contra el rendimiento real al año siguiente — conviene ajustar antes de fin de año para no pagar de más ni tener que regularizar.";
+            case "labor.retaalerts.empty" -> "No hay autónomos que revisar para este año.";
+            case "labor.retaalerts.col.company" -> "Empresa";
+            case "labor.retaalerts.col.name" -> "Autónomo";
+            case "labor.retaalerts.col.net" -> "Rendimiento real";
+            case "labor.retaalerts.col.base" -> "Base actual";
+            case "labor.retaalerts.col.tramo" -> "Tramo (base mín–máx)";
+            case "labor.retaalerts.col.status" -> "Estado";
+            case "labor.retaalerts.status.NO_BASE" -> "Sin base definida";
+            case "labor.retaalerts.status.UNDER" -> "Cotiza de menos (regularizará a pagar)";
+            case "labor.retaalerts.status.OVER" -> "Cotiza de más (paga de más)";
+            case "labor.retaalerts.scan" -> "Revisar ahora";
+            case "labor.retaalerts.ok" -> "Todos los autónomos dentro de su tramo.";
+            case "labor.retaalerts.count" -> "{n} autónomos a revisar";
+            case "labor.retaalerts.failed" -> "No se pudo ejecutar la revisión RETA";
             case "labor.retatramos.hint" -> "Tramos de cotización del autónomo (RETA) por año. Edítalos aquí cuando cambien — sin tocar código. Clona un año para partir del anterior.";
             case "labor.retatramos.empty" -> "No hay tramos para este año. Clona el año anterior y edítalos.";
             case "labor.retatramos.col.label" -> "Tramo";
@@ -19053,6 +19085,9 @@ public class BenjagestUiApplication extends Application {
         // RETA-0 — Tramos de cotización del autónomo por año (editables, no-code).
         Tab retaTramosTab = new Tab(t("labor.tab.reta_tramos"), buildRetaTramosTab());
         retaTramosTab.setGraphic(icon("fas-layer-group"));
+        // RETA-3 — Avisos de regularización (base vs tramo por rendimiento real).
+        Tab retaAlertsTab = new Tab(t("labor.tab.reta_alerts"), buildRetaAlertsTab());
+        retaAlertsTab.setGraphic(icon("fas-triangle-exclamation"));
         // PORT-2 (2026-06-10 tarde) — Partes/Jornadas como sub-pestaña
         // de Labor (no como módulo de raíz, decisión Benjamin). Lee de
         // /api/work-logs. Cuando llegue la versión tablet/móvil del
@@ -19066,7 +19101,7 @@ public class BenjagestUiApplication extends Application {
 
         tabs.getTabs().addAll(empTab, contractsTab, clockTab, auditTab, payslipsTab,
                 templatesTab, clausesTab, cfgTab, calendarTab, leavesTab, vacationsTab, ssTab,
-                costTab, ratesTab, irpfParamsTab, retaTramosTab, shiftsTab, centersTab);
+                costTab, ratesTab, irpfParamsTab, retaTramosTab, retaAlertsTab, shiftsTab, centersTab);
         VBox.setVgrow(tabs, Priority.ALWAYS);
         // Restaurar la pestaña activa y recordar los cambios de pestaña, para
         // no perder el contexto al recargar el módulo tras una acción.
@@ -33224,6 +33259,86 @@ public class BenjagestUiApplication extends Application {
      * (tabla reta_tramos). Mismo patrón que los parámetros IRPF: combo de año,
      * clonar año y editar la tabla. No-code: al cambiar 2027 se edita aquí.
      */
+    /**
+     * RETA-3 — Avisos de regularización: recorre la empresa actual + su cartera
+     * y marca los autónomos con la base de cotización fuera del tramo que les
+     * toca por su rendimiento real (P&L). Desde "Mi gestión" cubre toda la cartera.
+     */
+    private Node buildRetaAlertsTab() {
+        VBox content = new VBox(12);
+        content.setPadding(new Insets(16));
+        Label hint = new Label(t("labor.retaalerts.hint"));
+        hint.setWrapText(true);
+        hint.getStyleClass().add("settings-hint");
+
+        ComboBox<Integer> yearCombo = new ComboBox<>();
+        int cy = java.time.Year.now().getValue();
+        for (int y = cy; y >= cy - 4; y--) yearCombo.getItems().add(y);
+        yearCombo.setValue(cy);
+        yearCombo.setPrefWidth(110);
+
+        TableView<com.benjagest.ui.model.RetaRegularizationEntry> table = new TableView<>();
+        table.getStyleClass().add("data-table");
+        table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+        table.setPlaceholder(new Label(t("labor.retaalerts.empty")));
+        TableColumn<com.benjagest.ui.model.RetaRegularizationEntry, String> cCo = new TableColumn<>(t("labor.retaalerts.col.company"));
+        cCo.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().companyName()));
+        TableColumn<com.benjagest.ui.model.RetaRegularizationEntry, String> cName = new TableColumn<>(t("labor.retaalerts.col.name"));
+        cName.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().fullName()));
+        TableColumn<com.benjagest.ui.model.RetaRegularizationEntry, String> cNet = new TableColumn<>(t("labor.retaalerts.col.net"));
+        cNet.setCellValueFactory(c -> new SimpleStringProperty(money(c.getValue().netIncome())));
+        cNet.setComparator(NUMERIC_STRING_COMPARATOR);
+        TableColumn<com.benjagest.ui.model.RetaRegularizationEntry, String> cBase = new TableColumn<>(t("labor.retaalerts.col.base"));
+        cBase.setCellValueFactory(c -> new SimpleStringProperty(money(c.getValue().currentBase())));
+        cBase.setComparator(NUMERIC_STRING_COMPARATOR);
+        TableColumn<com.benjagest.ui.model.RetaRegularizationEntry, String> cTramo = new TableColumn<>(t("labor.retaalerts.col.tramo"));
+        cTramo.setCellValueFactory(c -> new SimpleStringProperty(
+                c.getValue().tramoLabel() + " (" + money(c.getValue().baseMin()) + " – " + money(c.getValue().baseMax()) + ")"));
+        TableColumn<com.benjagest.ui.model.RetaRegularizationEntry, String> cStatus = new TableColumn<>(t("labor.retaalerts.col.status"));
+        cStatus.setCellValueFactory(c -> new SimpleStringProperty(t("labor.retaalerts.status." + c.getValue().status())));
+        table.getColumns().addAll(java.util.List.of(cCo, cName, cNet, cBase, cTramo, cStatus));
+
+        Label summary = new Label("");
+        summary.getStyleClass().add("settings-hint");
+
+        Runnable scan = () -> {
+            Integer y = yearCombo.getValue();
+            if (y == null) return;
+            summary.setText(t("panorama.loading"));
+            Task<java.util.List<com.benjagest.ui.model.RetaRegularizationEntry>> tk = new Task<>() {
+                @Override protected java.util.List<com.benjagest.ui.model.RetaRegularizationEntry> call() throws Exception {
+                    return laborApiClient.scanRetaRegularization(y);
+                }
+            };
+            tk.setOnSucceeded(ev -> {
+                var rows = tk.getValue();
+                table.setItems(FXCollections.observableArrayList(rows));
+                summary.setText(rows.isEmpty()
+                        ? t("labor.retaalerts.ok")
+                        : t("labor.retaalerts.count").replace("{n}", String.valueOf(rows.size())));
+            });
+            tk.setOnFailed(ev -> { summary.setText(""); showError(t("labor.retaalerts.failed"),
+                    tk.getException() == null ? "" : tk.getException().getMessage()); });
+            start(tk, "reta-regularization-scan");
+        };
+        yearCombo.valueProperty().addListener((o, a, b) -> scan.run());
+
+        Button refresh = new Button(t("labor.retaalerts.scan"));
+        refresh.setGraphic(icon("fas-magnifying-glass-chart"));
+        refresh.getStyleClass().add("button-primary");
+        refresh.setOnAction(e -> scan.run());
+
+        HBox actions = new HBox(8, new Label(t("labor.ssrates.col.year")), yearCombo, refresh, summary);
+        actions.setAlignment(Pos.CENTER_LEFT);
+
+        scan.run();
+        VBox body = new VBox(10, hint, actions, table);
+        VBox.setVgrow(table, Priority.ALWAYS);
+        content.getChildren().add(body);
+        VBox.setVgrow(body, Priority.ALWAYS);
+        return content;
+    }
+
     private Node buildRetaTramosTab() {
         VBox content = new VBox(12);
         content.setPadding(new Insets(16));

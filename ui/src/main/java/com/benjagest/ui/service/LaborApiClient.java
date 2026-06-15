@@ -857,6 +857,25 @@ public class LaborApiClient {
         return v == null ? "0" : v.toPlainString();
     }
 
+    // ==== RETA-3: escaneo de regularización (base vs tramo por P&L real) ====
+
+    public java.util.List<com.benjagest.ui.model.RetaRegularizationEntry> scanRetaRegularization(int year)
+            throws IOException, InterruptedException {
+        HttpResponse<String> r = send(req(baseUrl + "/reta/regularization/scan?year=" + year)
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString("{}")));
+        java.util.List<com.benjagest.ui.model.RetaRegularizationEntry> out = new ArrayList<>();
+        for (String o : splitTopLevelObjects(r.body())) {
+            out.add(new com.benjagest.ui.model.RetaRegularizationEntry(
+                    textField(o, "companyId"), textField(o, "companyName"),
+                    textField(o, "profileId"), textField(o, "fullName"),
+                    bigDec(o, "currentBase"), bigDec(o, "netIncome"),
+                    textField(o, "tramoLabel"), bigDec(o, "baseMin"), bigDec(o, "baseMax"),
+                    textField(o, "status")));
+        }
+        return out;
+    }
+
     // ==== Modelo 145 (datos IRPF del empleado) ====
 
     public com.benjagest.ui.model.Modelo145Entry getIrpfData(String employeeId)
