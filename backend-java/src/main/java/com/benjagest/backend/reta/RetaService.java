@@ -351,6 +351,23 @@ public class RetaService {
                 "activityDescriptions", distinct("activity_description", companyId));
     }
 
+    /**
+     * Catálogo OFICIAL de actividades por tipo (CNAE | IAE) — tabla
+     * activity_catalog (sembrada desde INE/AEAT). Global (no por empresa).
+     */
+    public List<java.util.Map<String, String>> activityCatalog(String type) {
+        String t = "IAE".equalsIgnoreCase(type) ? "IAE" : "CNAE";
+        return jdbcTemplate.query(
+                "SELECT code, description FROM activity_catalog "
+                + "WHERE catalog_type = ? AND active = TRUE ORDER BY code",
+                (rs, n) -> {
+                    java.util.Map<String, String> m = new java.util.LinkedHashMap<>();
+                    m.put("code", rs.getString("code"));
+                    m.put("description", rs.getString("description"));
+                    return m;
+                }, t);
+    }
+
     private List<String> distinct(String column, String companyId) {
         // Nombre de columna controlado (whitelist), no entra input de usuario.
         // Filtrado por company_id (aislamiento multi-tenant).
@@ -673,6 +690,13 @@ public class RetaService {
         @GetMapping("/catalogs")
         public java.util.Map<String, List<String>> catalogs() {
             return service.catalogs();
+        }
+
+        // Catálogo OFICIAL de actividades (CNAE | IAE) sembrado desde INE/AEAT.
+        @GetMapping("/activity-catalog")
+        public List<java.util.Map<String, String>> activityCatalog(
+                @RequestParam("type") String type) {
+            return service.activityCatalog(type);
         }
 
         // RETA-3 — escaneo de regularización (empresa propia + cartera).
