@@ -338,6 +338,28 @@ public class RetaService {
         return ensureOwnerProfiles(tenantContext.getCurrentCompanyId());
     }
 
+    /**
+     * Catálogos para los combos del editor: valores DISTINTOS ya usados en los
+     * perfiles RETA (código actividad, epígrafe IAE, descripción). El editor los
+     * ofrece en un combo editable (elegir uno existente o teclear uno nuevo).
+     */
+    public java.util.Map<String, List<String>> catalogs() {
+        String companyId = tenantContext.getCurrentCompanyId();
+        return java.util.Map.of(
+                "activityCodes", distinct("activity_code", companyId),
+                "iaeEpigraphs", distinct("iae_epigraph", companyId),
+                "activityDescriptions", distinct("activity_description", companyId));
+    }
+
+    private List<String> distinct(String column, String companyId) {
+        // Nombre de columna controlado (whitelist), no entra input de usuario.
+        // Filtrado por company_id (aislamiento multi-tenant).
+        return jdbcTemplate.queryForList(
+                "SELECT DISTINCT " + column + " FROM reta_profiles "
+                + "WHERE company_id = ? AND " + column + " IS NOT NULL AND " + column + " <> '' "
+                + "ORDER BY " + column, String.class, companyId);
+    }
+
     @org.springframework.transaction.annotation.Transactional
     public int ensureOwnerProfiles(String companyId) {
         List<java.util.Map<String, Object>> owners = jdbcTemplate.queryForList("""
@@ -629,6 +651,12 @@ public class RetaService {
         @PostMapping("/ensure-profiles")
         public java.util.Map<String, Integer> ensureProfiles() {
             return java.util.Map.of("created", service.ensureOwnerProfilesForCurrent());
+        }
+
+        // Catálogos para los combos del editor (valores ya usados + custom libre).
+        @GetMapping("/catalogs")
+        public java.util.Map<String, List<String>> catalogs() {
+            return service.catalogs();
         }
 
         // RETA-3 — escaneo de regularización (empresa propia + cartera).

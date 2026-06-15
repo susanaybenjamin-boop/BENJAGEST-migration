@@ -16050,6 +16050,7 @@ public class BenjagestUiApplication extends Application {
             case "labor.tab.employer_cost" -> "Employer cost";
             case "labor.tab.ss_rates" -> "SS rates";
             case "labor.tab.irpf_params" -> "Income-tax scale";
+            case "reta.tab.profiles" -> "Profiles";
             case "labor.tab.reta_tramos" -> "Self-employed brackets";
             case "labor.tab.reta_alerts" -> "RETA review";
             case "labor.retaalerts.hint" -> "Self-employed whose contribution base is outside the bracket matching their REAL income (P&L). From 'My management' it covers the whole portfolio. Since 2023 the TGSS regularizes against real income the following year — adjust before year-end to avoid paying too much or owing.";
@@ -16497,6 +16498,10 @@ public class BenjagestUiApplication extends Application {
             case "reta.editor.net_income" -> "Expected annual net income";
             case "reta.editor.base" -> "Current base";
             case "reta.editor.quota" -> "Current quota";
+            case "reta.editor.suggest" -> "Suggest base/quota from income";
+            case "reta.editor.suggest_need_income" -> "Enter the expected net income first.";
+            case "reta.editor.suggest_done" -> "Bracket {t}: base {min}–{max} €. Filled with the minimum base and quota (adjustable).";
+            case "reta.editor.suggest_fail" -> "Could not suggest (are the year's brackets set?).";
             case "reta.editor.notes" -> "Notes";
             case "reta.editor.active" -> "Active";
             case "reta.editor.fail.title" -> "Could not save";
@@ -16671,6 +16676,7 @@ public class BenjagestUiApplication extends Application {
             case "labor.tab.employer_cost" -> "Coste empresa";
             case "labor.tab.ss_rates" -> "Tipos cotización";
             case "labor.tab.irpf_params" -> "Escala IRPF";
+            case "reta.tab.profiles" -> "Perfiles";
             case "labor.tab.reta_tramos" -> "Tramos autónomo";
             case "labor.tab.reta_alerts" -> "Revisión RETA";
             case "labor.retaalerts.hint" -> "Autónomos cuya base de cotización está fuera del tramo que les corresponde por su rendimiento REAL (P&L). Desde 'Mi gestión' cubre toda la cartera. Desde 2023 la TGSS regulariza contra el rendimiento real al año siguiente — conviene ajustar antes de fin de año para no pagar de más ni tener que regularizar.";
@@ -17113,6 +17119,10 @@ public class BenjagestUiApplication extends Application {
             case "reta.editor.net_income" -> "Rendimiento neto anual previsto";
             case "reta.editor.base" -> "Base actual";
             case "reta.editor.quota" -> "Cuota actual";
+            case "reta.editor.suggest" -> "Sugerir base/cuota desde rendimiento";
+            case "reta.editor.suggest_need_income" -> "Introduce primero el rendimiento neto previsto.";
+            case "reta.editor.suggest_done" -> "Tramo {t}: base {min}–{max} €. Rellenadas base y cuota mínimas (ajustables).";
+            case "reta.editor.suggest_fail" -> "No se pudo sugerir (¿están definidos los tramos del año?).";
             case "reta.editor.notes" -> "Notas";
             case "reta.editor.active" -> "Activo";
             case "reta.editor.fail.title" -> "No se pudo guardar";
@@ -19082,12 +19092,8 @@ public class BenjagestUiApplication extends Application {
         // Parámetros IRPF por año (escala).
         Tab irpfParamsTab = new Tab(t("labor.tab.irpf_params"), buildIrpfParamsTab());
         irpfParamsTab.setGraphic(icon("fas-percent"));
-        // RETA-0 — Tramos de cotización del autónomo por año (editables, no-code).
-        Tab retaTramosTab = new Tab(t("labor.tab.reta_tramos"), buildRetaTramosTab());
-        retaTramosTab.setGraphic(icon("fas-layer-group"));
-        // RETA-3 — Avisos de regularización (base vs tramo por rendimiento real).
-        Tab retaAlertsTab = new Tab(t("labor.tab.reta_alerts"), buildRetaAlertsTab());
-        retaAlertsTab.setGraphic(icon("fas-triangle-exclamation"));
+        // RETA-0/RETA-3 — Tramos y Revisión viven ahora en la pestaña "Autónomos
+        // (RETA)" de la ficha (consolidado 2026-06-15), NO aquí en Laboral.
         // PORT-2 (2026-06-10 tarde) — Partes/Jornadas como sub-pestaña
         // de Labor (no como módulo de raíz, decisión Benjamin). Lee de
         // /api/work-logs. Cuando llegue la versión tablet/móvil del
@@ -19101,7 +19107,7 @@ public class BenjagestUiApplication extends Application {
 
         tabs.getTabs().addAll(empTab, contractsTab, clockTab, auditTab, payslipsTab,
                 templatesTab, clausesTab, cfgTab, calendarTab, leavesTab, vacationsTab, ssTab,
-                costTab, ratesTab, irpfParamsTab, retaTramosTab, retaAlertsTab, shiftsTab, centersTab);
+                costTab, ratesTab, irpfParamsTab, shiftsTab, centersTab);
         VBox.setVgrow(tabs, Priority.ALWAYS);
         // Restaurar la pestaña activa y recordar los cambios de pestaña, para
         // no perder el contexto al recargar el módulo tras una acción.
@@ -23078,14 +23084,8 @@ public class BenjagestUiApplication extends Application {
     private TableView<com.benjagest.ui.model.RetaProfileEntry> retaTable;
 
     private void showRetaModule() {
-        Task<java.util.List<com.benjagest.ui.model.RetaProfileEntry>> task = new Task<>() {
-            @Override protected java.util.List<com.benjagest.ui.model.RetaProfileEntry> call() throws Exception {
-                return laborApiClient.listRetaProfiles(true);
-            }
-        };
-        task.setOnSucceeded(ev -> setCenterAnimated(scroll(retaView(task.getValue()))));
-        task.setOnFailed(ev -> setCenterAnimated(scroll(errorPanel(t("reta.load_failed")))));
-        start(task, "reta-load");
+        // Vista consolidada (Perfiles · Tramos · Revisión), igual que en la ficha.
+        setCenterAnimated(buildClientRetaTab());
     }
 
     private VBox retaView(java.util.List<com.benjagest.ui.model.RetaProfileEntry> profiles) {
@@ -23201,15 +23201,59 @@ public class BenjagestUiApplication extends Application {
         tarifa.setSelected(existing != null && existing.tarifaPlana());
         TextField tarifaUntil = new TextField(existing == null || existing.tarifaPlanaUntil() == null ? "" : existing.tarifaPlanaUntil().toString());
         tarifaUntil.setPromptText("AAAA-MM-DD");
-        TextField actCode = new TextField(existing == null ? "" : existing.activityCode());
-        TextField actDesc = new TextField(existing == null ? "" : existing.activityDescription());
-        TextField iae = new TextField(existing == null ? "" : existing.iaeEpigraph());
+        // Combos editables (lista de valores ya usados + custom escribiendo).
+        ComboBox<String> actCode = new ComboBox<>(); actCode.setEditable(true); actCode.setMaxWidth(Double.MAX_VALUE);
+        actCode.getEditor().setText(existing == null || existing.activityCode() == null ? "" : existing.activityCode());
+        ComboBox<String> actDesc = new ComboBox<>(); actDesc.setEditable(true); actDesc.setMaxWidth(Double.MAX_VALUE);
+        actDesc.getEditor().setText(existing == null || existing.activityDescription() == null ? "" : existing.activityDescription());
+        ComboBox<String> iae = new ComboBox<>(); iae.setEditable(true); iae.setMaxWidth(Double.MAX_VALUE);
+        iae.getEditor().setText(existing == null || existing.iaeEpigraph() == null ? "" : existing.iaeEpigraph());
+        // Cargar catálogos (valores ya usados) en los combos, sin bloquear.
+        Task<java.util.Map<String, java.util.List<String>>> catTask = new Task<>() {
+            @Override protected java.util.Map<String, java.util.List<String>> call() throws Exception {
+                return laborApiClient.retaCatalogs();
+            }
+        };
+        catTask.setOnSucceeded(e2 -> {
+            var cat = catTask.getValue();
+            actCode.getItems().setAll(cat.getOrDefault("activityCodes", java.util.List.of()));
+            iae.getItems().setAll(cat.getOrDefault("iaeEpigraphs", java.util.List.of()));
+            actDesc.getItems().setAll(cat.getOrDefault("activityDescriptions", java.util.List.of()));
+        });
+        start(catTask, "reta-catalogs");
+
         TextField netIncome = new TextField(existing == null || existing.expectedNetIncome() == null
                 ? "" : existing.expectedNetIncome().toPlainString());
         TextField base = new TextField(existing == null || existing.currentBase() == null
                 ? "" : existing.currentBase().toPlainString());
         TextField quota = new TextField(existing == null || existing.currentQuota() == null
                 ? "" : existing.currentQuota().toPlainString());
+        // B1 — Sugerir base+cuota desde el rendimiento neto previsto (tramos en BD).
+        Button suggestBtn = new Button(t("reta.editor.suggest"));
+        suggestBtn.setGraphic(icon("fas-wand-magic-sparkles"));
+        Label suggestInfo = new Label("");
+        suggestInfo.getStyleClass().add("settings-hint");
+        suggestBtn.setOnAction(ev -> {
+            java.math.BigDecimal net = parseDecSafe(netIncome.getText());
+            if (net == null) { suggestInfo.setText(t("reta.editor.suggest_need_income")); return; }
+            int y = java.time.Year.now().getValue();
+            Task<com.benjagest.ui.model.RetaTramoEntry> sTask = new Task<>() {
+                @Override protected com.benjagest.ui.model.RetaTramoEntry call() throws Exception {
+                    return laborApiClient.suggestRetaTramo(y, net);
+                }
+            };
+            sTask.setOnSucceeded(e2 -> {
+                var tr = sTask.getValue();
+                if (tr.baseMin() != null) base.setText(tr.baseMin().toPlainString());
+                if (tr.quotaMin() != null) quota.setText(tr.quotaMin().toPlainString());
+                suggestInfo.setText(t("reta.editor.suggest_done")
+                        .replace("{t}", tr.label() == null ? "" : tr.label())
+                        .replace("{min}", tr.baseMin() == null ? "" : tr.baseMin().toPlainString())
+                        .replace("{max}", tr.baseMax() == null ? "" : tr.baseMax().toPlainString()));
+            });
+            sTask.setOnFailed(e2 -> suggestInfo.setText(t("reta.editor.suggest_fail")));
+            start(sTask, "reta-suggest");
+        });
         TextArea notes = new TextArea(existing == null ? "" : existing.notes());
         notes.setPrefRowCount(2);
         CheckBox active = new CheckBox(t("reta.editor.active"));
@@ -23231,9 +23275,11 @@ public class BenjagestUiApplication extends Application {
         g.add(new Label(t("reta.editor.activity_desc")), 0, row); g.add(actDesc, 1, row, 3, 1); row++;
         g.add(new Separator(), 0, row++, 4, 1);
         g.add(new Label(t("reta.editor.net_income")), 0, row); g.add(netIncome, 1, row);
-        g.add(new Label(t("reta.editor.base")), 2, row); g.add(base, 3, row); row++;
-        g.add(new Label(t("reta.editor.quota")), 0, row); g.add(quota, 1, row);
-        g.add(active, 3, row); row++;
+        g.add(suggestBtn, 2, row, 2, 1); row++;
+        g.add(new Label(t("reta.editor.base")), 0, row); g.add(base, 1, row);
+        g.add(new Label(t("reta.editor.quota")), 2, row); g.add(quota, 3, row); row++;
+        g.add(suggestInfo, 0, row++, 4, 1);
+        g.add(active, 1, row++);
         g.add(new Label(t("reta.editor.notes")), 0, row); g.add(notes, 1, row, 3, 1);
 
         ScrollPane sp = new ScrollPane(g);
@@ -23252,9 +23298,9 @@ public class BenjagestUiApplication extends Application {
                     parseDateSafe(endField.getText()),
                     pluri.isSelected(), tarifa.isSelected(),
                     parseDateSafe(tarifaUntil.getText()),
-                    blankToNullOrSelf(actCode.getText()),
-                    blankToNullOrSelf(actDesc.getText()),
-                    blankToNullOrSelf(iae.getText()),
+                    blankToNullOrSelf(actCode.getEditor().getText()),
+                    blankToNullOrSelf(actDesc.getEditor().getText()),
+                    blankToNullOrSelf(iae.getEditor().getText()),
                     parseDecSafe(netIncome.getText()),
                     parseDecSafe(base.getText()),
                     parseDecSafe(quota.getText()),
@@ -31225,7 +31271,30 @@ public class BenjagestUiApplication extends Application {
      * de cotización + cambios de base. Reutiliza {@code retaView}. Es operativa
      * por-tenant (las llamadas llevan el X-Company-Id activo).
      */
+    /**
+     * Pestaña "Autónomos (RETA)" de la ficha: TODO lo de RETA en un sitio →
+     * sub-pestañas Perfiles · Tramos por año · Revisión (regularización).
+     * Consolidado 2026-06-15 (antes Tramos/Revisión estaban enterrados en Laboral).
+     */
     private Node buildClientRetaTab() {
+        TabPane tabs = new TabPane();
+        tabs.getStyleClass().add("settings-tabs");
+        tabs.setTabClosingPolicy(TabPane.TabClosingPolicy.UNAVAILABLE);
+        Tab profiles = new Tab(t("reta.tab.profiles"), buildRetaProfilesHolder());
+        profiles.setGraphic(icon("fas-user-tie"));
+        Tab tramos = new Tab(t("labor.tab.reta_tramos"), buildRetaTramosTab());
+        tramos.setGraphic(icon("fas-layer-group"));
+        Tab alerts = new Tab(t("labor.tab.reta_alerts"), buildRetaAlertsTab());
+        alerts.setGraphic(icon("fas-triangle-exclamation"));
+        tabs.getTabs().addAll(profiles, tramos, alerts);
+        VBox.setVgrow(tabs, Priority.ALWAYS);
+        VBox box = new VBox(tabs);
+        VBox.setVgrow(tabs, Priority.ALWAYS);
+        return box;
+    }
+
+    /** Sub-pestaña "Perfiles" — lista + editor de autónomos (retaView async). */
+    private Node buildRetaProfilesHolder() {
         VBox holder = new VBox();
         Label loading = new Label(t("panorama.loading"));
         loading.getStyleClass().add("settings-hint");
