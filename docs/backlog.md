@@ -616,7 +616,7 @@ Nóminas; afinar topes de cotización; pagas extra.
 
 - ✅ ⚖️ **Calendario fiscal con vencimientos** — cerrado (CAL-FISCAL, seed 303/130/111/190/347/390/200 + tabla próximos vencimientos).
 - ⬜ ⚖️ **Régimen especial IVA, prorrata, criterio caja** — catálogo cuentas lo soporta pero no hay UI.
-- ⬜ **CONS-CIERRE** — previsualización del asiento de regularización antes del cierre. Hoy YEAR-CLOSE lo hace en un solo click.
+- 🔵 **CONS-CIERRE** — previsualización del asiento de regularización antes del cierre. **Backend YA listo** (GET `/accounting/year-close/{year}/preview-regularization` → `RegularizationPreview` con gastos/ingresos/resultado, sin crear asiento). **Falta solo cablearlo en la UI.** ⚠️ **Hallazgo 2026-06-15:** los métodos de cierre en `LaborApiClient` (`listYearCloses`/`precalculateYear`/`closeYear`/`reopenYear`) **no se invocan desde la UI** (`BenjagestUiApplication` no tiene pantalla de cierre cableada). Antes de añadir el preview hay que decidir/localizar con Benjamin dónde vive (o debería vivir) la pantalla de cierre de ejercicio. No tocado en autónomo para no construir a ciegas.
 - ⬜ **Consolidación empresas asociadas** — eliminación operaciones intragrupo. No urgente.
 
 ## UI/UX
@@ -625,9 +625,9 @@ Nóminas; afinar topes de cotización; pagas extra.
 - ✅ **Backup local automático** — cerrado (BACKUP-LOCAL semanal lunes 03:00 + panel Configuración).
 - ⬜ **CENTROS-MAP** — mapa interactivo Leaflet+Nominatim en WebView para seleccionar lat/lng. *(El botón "Buscar coordenadas" con Nominatim ya está hecho — CENTROS-GEOCODE; falta solo el mapa visual.)*
 - ✅ **REC-IGNORE** — cerrado (botón "Ignorar candidato recurrente", V91).
-- ⬜ Editor calendario event card "Editar"/"Eliminar".
+- ✅ Editor calendario event card "Editar"/"Eliminar" *(ya implementado — verificado 2026-06-15: `dayEventCard` tiene botones Editar (`showFormDialog("calendar", …)`) y Eliminar (`deleteCalendarEvent` → DELETE `/calendar/{id}`); backlog estaba desactualizado).
 - ⬜ Auditar otros módulos viejos (customers detail, dashboard CRUDs).
-- ⬜ **VG-FULL-SCAN restante** — ~25 omisiones de NUMERIC_STRING_COMPARATOR / ISO_DATE_COMPARATOR.
+- ✅ **VG-FULL-SCAN restante** *(2026-06-15)* — auditado con agente Explore (294 columnas). Añadido comparador a las 7 columnas numéricas/fecha que faltaban (TPB total, validez cert., multi-asignación fecha+importe, recurrentes importe+fecha). Las de tamaño de archivo (humanSize, unidades mezcladas KB/MB) se excluyen a propósito.
 - ⬜ ❓ **OCR para PDFs escaneados** (Tess4J + Tesseract) — necesito decisión: instalar binario nativo.
 
 ## Workflow trabajos / Derivados PORT-2
