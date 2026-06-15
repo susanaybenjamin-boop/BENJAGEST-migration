@@ -1,10 +1,50 @@
 # Backlog operativo BENJAGEST
 
-> **Última actualización:** 2026-06-14 (NOM validado contra AEAT + **bloque CICLO-VIDA completo y probado por Benjamin**: vacaciones, finiquito, despido/baja automático con indemnización, carta de despido + certificado de empresa, nóminas mensuales recurrentes. Ajustes tras pruebas: antigüedad en años/meses/días, fecha de antigüedad reconocida (V115), tipo de trabajo localizado, pool Hikari resiliente).
+> **Última actualización:** 2026-06-14 (NOM validado contra AEAT + **bloque CICLO-VIDA completo y probado** + sesión autónoma: análisis de **preparación para LOCAL/on-premise** y **Verifactu en local** con dos agentes Explore → guía `docs/despliegue-local.md`, scripts de arranque y bloque **DEPLOY-LOCAL** en este backlog).
 >
 > **Forma de trabajo (junio 2026):** Benjamin lidera y decide. Pablo solo entra de uvas a peras desde 05-30. Todo el trabajo va por `feat/Benjamin` → prueba local → commit → merge `--no-ff` a `develop`. Cada item cerrado lleva commit hash + fecha. **Regla 10.bis de CLAUDE.md aplica siempre: verificar código antes de tocar.**
 >
 > **Fuentes complementarias:** [`gap-analysis-contendo.md`](gap-analysis-contendo.md), [`gap-analysis-config-ui.md`](gap-analysis-config-ui.md), [`migration-roadmap.md`](migration-roadmap.md), [`vf-chain-fix.md`](vf-chain-fix.md), [`agents-debug-pattern.md`](agents-debug-pattern.md).
+
+---
+
+## 2026-06-14 — DEPLOY-LOCAL: ¿está listo para funcionar en local? ✅🖥️
+
+> Pregunta de Benjamin (se fue a trabajar): *"este programa va a trabajar en
+> local, ¿estamos preparándolo para eso? ¿Verifactu está preparado?"*.
+> Investigado con **dos agentes Explore en paralelo** (preparación local +
+> Verifactu). Veredicto y entregables abajo.
+
+**Veredicto: SÍ, el código está local-ready (≈85-90%).** No hay acoplamiento a
+la nube (ni S3, ni OAuth Google, ni subdominios SaaS). UI→backend configurable
+por `BENJAGEST_API_BASE_URL`; BD y puerto por env vars; ficheros en filesystem
+local configurable (`benjagest.invoices.storage-root`,
+`benjagest.imported-pdfs.root`); multitenant por `company_id` encaja en una
+asesoría local con N clientes. La UI es **JavaFX de escritorio (HttpClient)** →
+**no hay problema de CORS** al apuntar a otra IP de la LAN. Servicios externos
+(AEAT, BOE, email, geocoding) son **opcionales y degradan bien** sin internet.
+
+**Verifactu en local:** funciona **100% offline en modalidad NO_VERIFACTU**
+(huella SHA-256 encadenada + firma local + QR + eventos SIF, todo en el
+servidor). La modalidad **VERI*FACTU** (envío a la AEAT) está implementada pero
+**NO probada contra la AEAT**: requiere certificado FNMT registrado + ajustar el
+XML al XSD oficial + firma XAdES-EPES (`AeatVerifactuClient` lo dice). El
+scheduler de envío con reintentos ya existe. Para una asesoría on-premise, lo
+correcto hoy es **NO_VERIFACTU**; el salto a VERI*FACTU es mejora futura con una
+salida puntual a internet.
+
+**Hecho en esta sesión (aditivo, sin tocar auth/seeds/AEAT):**
+- ✅ `docs/despliegue-local.md` — guía oficina (1 servidor + N puestos por LAN).
+- ✅ `start-local-server.ps1` (servidor: Docker + espera BD + backend) y
+  `start-ui.ps1 -ServerIp <IP>` (puesto: fija API base + lanza UI).
+
+**Pendientes DEPLOY-LOCAL (operación/empaquetado, no arquitectura):**
+- ⬜ **jpackage** UI → `.exe`/`.msi` (evita tener Java en cada puesto).
+- ⬜ Backend como **servicio de Windows** (arranque automático en el servidor).
+- ⬜ Instalador único que orqueste MariaDB + backend + accesos directos.
+- ⬜ **VF-SIGN-XADES** (cuando se quiera VERI*FACTU real): cert FNMT + XSD AEAT
+  oficial + XAdES-EPES + parseo de respuesta AEAT. Probar contra preproducción.
+- ⬜ Revisar/abrir puerto 8080 en firewall del servidor para la LAN (operación).
 
 ---
 
