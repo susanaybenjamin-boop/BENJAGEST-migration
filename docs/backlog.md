@@ -648,7 +648,7 @@ Nóminas; afinar topes de cotización; pagas extra.
 
 - ✅ ⚖️ **Calendario fiscal con vencimientos** — cerrado (CAL-FISCAL, seed 303/130/111/190/347/390/200 + tabla próximos vencimientos).
 - ⬜ ⚖️ **Régimen especial IVA, prorrata, criterio caja** — catálogo cuentas lo soporta pero no hay UI.
-- 🔵 **CONS-CIERRE** — previsualización del asiento de regularización antes del cierre. **Backend YA listo** (GET `/accounting/year-close/{year}/preview-regularization` → `RegularizationPreview` con gastos/ingresos/resultado, sin crear asiento). **Falta solo cablearlo en la UI.** ⚠️ **Hallazgo 2026-06-15:** los métodos de cierre en `LaborApiClient` (`listYearCloses`/`precalculateYear`/`closeYear`/`reopenYear`) **no se invocan desde la UI** (`BenjagestUiApplication` no tiene pantalla de cierre cableada). Antes de añadir el preview hay que decidir/localizar con Benjamin dónde vive (o debería vivir) la pantalla de cierre de ejercicio. No tocado en autónomo para no construir a ciegas.
+- ✅ **CONS-CIERRE** *(2026-06-15)* — nueva pestaña **"Cierre de ejercicio"** en el módulo Contabilidad (`AccountingScreen`): precalcular (ingresos/gastos/resultado + IS 25%), **previsualizar el asiento de regularización** (6x/7x→129) sin crear asiento, **cerrar** con aplicación del resultado (reservas/dividendos/pérdidas, cuadre en vivo + confirmación) y **reabrir**. Resuelve el hallazgo previo: el backend del cierre existía pero la UI no lo invocaba (los métodos year-close estaban muertos en `LaborApiClient`; movidos a `AccountingApiClient`). *Nota: "previsualizar regularización" requiere fila en `fiscal_years` (si falta, 404 manejado); precalcular/cerrar no.* Compila limpio.
 - ⬜ **Consolidación empresas asociadas** — eliminación operaciones intragrupo. No urgente.
 
 ## UI/UX

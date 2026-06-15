@@ -1162,50 +1162,8 @@ public class LaborApiClient {
         );
     }
 
-    // ====================================================================
-    //  Cierre ejercicio (C2)
-    // ====================================================================
-
-    public java.util.List<com.benjagest.ui.model.FiscalYearCloseEntry> listYearCloses()
-            throws IOException, InterruptedException {
-        HttpResponse<String> r = send(req(baseUrl + "/accounting/year-close").GET());
-        return parseObjects(r.body(), "periodYear", this::mapClose);
-    }
-
-    public com.benjagest.ui.model.FiscalYearCloseEntry precalculateYear(int year)
-            throws IOException, InterruptedException {
-        HttpResponse<String> r = send(req(baseUrl + "/accounting/year-close/" + year + "/precalculate")
-                .header("Content-Type", "application/json")
-                .POST(HttpRequest.BodyPublishers.ofString("{}")));
-        return mapClose(r.body());
-    }
-
-    public com.benjagest.ui.model.FiscalYearCloseEntry closeYear(int year,
-            java.math.BigDecimal reserves, java.math.BigDecimal dividends,
-            java.math.BigDecimal losses, String notes) throws IOException, InterruptedException {
-        StringBuilder b = new StringBuilder("{");
-        b.append(decField("reservesAllocation", reserves)).append(",");
-        b.append(decField("dividendsAllocation", dividends)).append(",");
-        b.append(decField("accumulatedLossesAllocation", losses)).append(",");
-        b.append(field("notes", notes));
-        b.append("}");
-        HttpResponse<String> r = send(req(baseUrl + "/accounting/year-close/" + year + "/close")
-                .header("Content-Type", "application/json")
-                .PUT(HttpRequest.BodyPublishers.ofString(b.toString())));
-        return mapClose(r.body());
-    }
-
-    private com.benjagest.ui.model.FiscalYearCloseEntry mapClose(String obj) {
-        return new com.benjagest.ui.model.FiscalYearCloseEntry(
-                textField(obj, "id"), intFieldOrZero(obj, "periodYear"), textField(obj, "status"),
-                bigDec(obj, "incomeTotal"), bigDec(obj, "expenseTotal"),
-                bigDec(obj, "resultAmount"), bigDec(obj, "taxAmount"),
-                bigDec(obj, "resultAfterTax"),
-                bigDec(obj, "reservesAllocation"), bigDec(obj, "dividendsAllocation"),
-                bigDec(obj, "accumulatedLossesAllocation"),
-                textField(obj, "closedAt"), textField(obj, "reopenedAt"),
-                textField(obj, "notes"));
-    }
+    // Cierre de ejercicio (CONS-CIERRE): los métodos viven ahora en
+    // AccountingApiClient (es donde se consume, desde AccountingScreen).
 
     // ====================================================================
     //  DEHu
