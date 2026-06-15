@@ -20,6 +20,11 @@
 - ⬜ **Datos fiscales/identidad**: NIF, régimen fiscal, epígrafe IAE/CNAE,
   dirección, periodicidad de modelos (mensual/trimestral). Parte ya existe en
   `companies`/`customers`; consolidar aquí.
+  - ✅ **ACT-CATALOG** *(2026-06-15)* — catálogo OFICIAL CNAE-2009 (INE, 1010) +
+    IAE (AEAT, 908) en `activity_catalog` (V118), descargado de las fuentes
+    oficiales. Endpoint `/api/reta/activity-catalog?type=`. Editor RETA: combos
+    CNAE/IAE **filtrables al teclear** (código+descripción) + custom; al elegir
+    CNAE autocompleta la descripción. Reutilizable para el resto de la ficha.
 - ⬜ **Cotización RETA del titular (manual)**: rendimiento neto previsto + base +
   cuota → alimenta la Revisión RETA en no vinculados (ya soportado vía
   `reta_profiles.expected_net_income`; aquí un acceso directo).
