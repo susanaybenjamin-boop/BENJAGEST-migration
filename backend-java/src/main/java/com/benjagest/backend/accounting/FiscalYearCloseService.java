@@ -220,7 +220,7 @@ public class FiscalYearCloseService {
 
     private BigDecimal sumIncome(int year) {
         BigDecimal v = jdbcTemplate.queryForObject("""
-                SELECT COALESCE(SUM(total_amount), 0)
+                SELECT COALESCE(SUM(total), 0)
                   FROM sales_invoices
                  WHERE company_id = ?
                    AND status IN ('VALIDATED', 'PAID', 'PARTIAL', 'OVERDUE')
