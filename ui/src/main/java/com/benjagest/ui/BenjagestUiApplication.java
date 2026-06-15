@@ -23088,6 +23088,24 @@ public class BenjagestUiApplication extends Application {
         setCenterAnimated(buildClientRetaTab());
     }
 
+    /**
+     * Refresca SOLO la tabla de perfiles RETA en su sitio (tras guardar/borrar/
+     * cambios de base), sin reconstruir el centro. Antes se llamaba a
+     * showRetaModule(), que reemplazaba el centro y, dentro de la ficha de un
+     * cliente, escondía las pestañas de la ficha (bug 2026-06-15).
+     */
+    private void reloadRetaProfiles() {
+        if (retaTable == null) return;
+        Task<java.util.List<com.benjagest.ui.model.RetaProfileEntry>> task = new Task<>() {
+            @Override protected java.util.List<com.benjagest.ui.model.RetaProfileEntry> call() throws Exception {
+                return laborApiClient.listRetaProfiles(true);
+            }
+        };
+        task.setOnSucceeded(ev -> retaTable.setItems(FXCollections.observableArrayList(task.getValue())));
+        task.setOnFailed(ev -> { /* la tabla mantiene lo anterior */ });
+        start(task, "reta-reload-profiles");
+    }
+
     private VBox retaView(java.util.List<com.benjagest.ui.model.RetaProfileEntry> profiles) {
         VBox content = content();
         Label title = new Label(t("reta.title"));
@@ -23386,7 +23404,7 @@ public class BenjagestUiApplication extends Application {
                             : laborApiClient.updateRetaProfile(existing.id(), payload);
                 }
             };
-            task.setOnSucceeded(ev -> showRetaModule());
+            task.setOnSucceeded(ev -> reloadRetaProfiles());
             task.setOnFailed(ev -> showError(t("reta.editor.fail.title"), t("reta.editor.fail.body")));
             start(task, "reta-save");
         });
@@ -23405,7 +23423,7 @@ public class BenjagestUiApplication extends Application {
                     return null;
                 }
             };
-            task.setOnSucceeded(ev -> showRetaModule());
+            task.setOnSucceeded(ev -> reloadRetaProfiles());
             task.setOnFailed(ev -> showError(t("reta.editor.fail.title"), t("reta.editor.fail.body")));
             start(task, "reta-delete");
         });
@@ -23520,7 +23538,7 @@ public class BenjagestUiApplication extends Application {
                     return laborApiClient.createRetaChange(profile.id(), payload);
                 }
             };
-            task.setOnSucceeded(ev -> showRetaModule());
+            task.setOnSucceeded(ev -> reloadRetaProfiles());
             task.setOnFailed(ev -> showError(t("reta.change.editor.fail.title"),
                     t("reta.change.editor.fail.body")));
             start(task, "reta-change-save");
