@@ -876,6 +876,38 @@ public class LaborApiClient {
         return out;
     }
 
+    /** Sugiere el tramo (base mín/máx + cuota mín) para un rendimiento anual. */
+    public com.benjagest.ui.model.RetaTramoEntry suggestRetaTramo(int year, java.math.BigDecimal annualNetIncome)
+            throws IOException, InterruptedException {
+        HttpResponse<String> r = send(req(baseUrl + "/reta/tramos/suggest?annualNetIncome="
+                + (annualNetIncome == null ? "0" : annualNetIncome.toPlainString())
+                + "&year=" + year).GET());
+        String o = r.body();
+        return new com.benjagest.ui.model.RetaTramoEntry(
+                textField(o, "tramoLabel"), null,
+                bigDec(o, "baseMinima"), bigDec(o, "baseMaxima"), bigDec(o, "cuotaMinima"));
+    }
+
+    /** Valores ya usados para los combos del editor (código actividad, IAE, descripción). */
+    public java.util.Map<String, java.util.List<String>> retaCatalogs()
+            throws IOException, InterruptedException {
+        HttpResponse<String> r = send(req(baseUrl + "/reta/catalogs").GET());
+        java.util.Map<String, java.util.List<String>> out = new java.util.LinkedHashMap<>();
+        for (String key : new String[]{"activityCodes", "iaeEpigraphs", "activityDescriptions"}) {
+            out.put(key, parseStringArray(r.body(), key));
+        }
+        return out;
+    }
+
+    private java.util.List<String> parseStringArray(String json, String key) {
+        java.util.List<String> out = new ArrayList<>();
+        Matcher km = Pattern.compile("\"" + key + "\"\\s*:\\s*\\[(.*?)\\]", Pattern.DOTALL).matcher(json);
+        if (!km.find()) return out;
+        Matcher vm = Pattern.compile("\"((?:[^\"\\\\]|\\\\.)*)\"").matcher(km.group(1));
+        while (vm.find()) out.add(vm.group(1).replace("\\\"", "\"").replace("\\\\", "\\"));
+        return out;
+    }
+
     // ==== Modelo 145 (datos IRPF del empleado) ====
 
     public com.benjagest.ui.model.Modelo145Entry getIrpfData(String employeeId)
