@@ -888,6 +888,19 @@ public class LaborApiClient {
                 bigDec(o, "baseMinima"), bigDec(o, "baseMaxima"), bigDec(o, "cuotaMinima"));
     }
 
+    /** Catálogo oficial de actividades (type = CNAE | IAE) como "código — descripción". */
+    public java.util.List<String> activityCatalog(String type) throws IOException, InterruptedException {
+        HttpResponse<String> r = send(req(baseUrl + "/reta/activity-catalog?type=" + type).GET());
+        java.util.List<String> out = new ArrayList<>();
+        for (String o : splitTopLevelObjects(r.body())) {
+            String code = textField(o, "code");
+            String desc = textField(o, "description");
+            if (code == null) continue;
+            out.add(desc == null || desc.isBlank() ? code : code + " — " + desc);
+        }
+        return out;
+    }
+
     /** Valores ya usados para los combos del editor (código actividad, IAE, descripción). */
     public java.util.Map<String, java.util.List<String>> retaCatalogs()
             throws IOException, InterruptedException {

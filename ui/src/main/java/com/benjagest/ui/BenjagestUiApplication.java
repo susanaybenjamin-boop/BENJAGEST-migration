@@ -23182,6 +23182,48 @@ public class BenjagestUiApplication extends Application {
         return content;
     }
 
+    /**
+     * Hace un ComboBox editable FILTRABLE: al teclear, el desplegable muestra
+     * solo los items que CONTIENEN el texto (en código o descripción), ignorando
+     * mayúsculas y acentos. Evita tener que recorrer listas largas (CNAE/IAE).
+     */
+    private void installComboFilter(ComboBox<String> combo, java.util.List<String> all) {
+        final java.util.List<String> master = new java.util.ArrayList<>(all);
+        combo.getItems().setAll(master);
+        final boolean[] guard = {false};
+        combo.getEditor().textProperty().addListener((obs, ov, nv) -> {
+            if (guard[0]) return;
+            guard[0] = true;
+            try {
+                String q = nv == null ? "" : stripDiacritics(nv.toLowerCase()).trim();
+                if (q.isEmpty()) {
+                    combo.getItems().setAll(master);
+                } else {
+                    java.util.List<String> f = new java.util.ArrayList<>();
+                    for (String it : master) {
+                        if (stripDiacritics(it.toLowerCase()).contains(q)) f.add(it);
+                    }
+                    combo.getItems().setAll(f);
+                    if (!combo.isShowing()) combo.show();
+                }
+                // setAll puede tocar el editor: restauramos lo tecleado + caret.
+                combo.getEditor().setText(nv);
+                combo.getEditor().positionCaret(nv == null ? 0 : nv.length());
+            } finally {
+                guard[0] = false;
+            }
+        });
+    }
+
+    /** De "6201 — Actividades de programación" devuelve "6201" (máx 20). Si el
+     *  usuario tecleó un valor libre sin separador, lo devuelve tal cual. */
+    private String retaCodePart(String s) {
+        if (s == null) return null;
+        String v = s.contains(" — ") ? s.substring(0, s.indexOf(" — ")) : s;
+        v = v.trim();
+        return v.length() > 20 ? v.substring(0, 20) : v;
+    }
+
     private void showRetaEditor(com.benjagest.ui.model.RetaProfileEntry existing) {
         Dialog<ButtonType> dialog = new Dialog<>();
         dialog.setTitle(existing == null ? t("reta.editor.title_new") : t("reta.editor.title_edit"));
@@ -23208,19 +23250,38 @@ public class BenjagestUiApplication extends Application {
         actDesc.getEditor().setText(existing == null || existing.activityDescription() == null ? "" : existing.activityDescription());
         ComboBox<String> iae = new ComboBox<>(); iae.setEditable(true); iae.setMaxWidth(Double.MAX_VALUE);
         iae.getEditor().setText(existing == null || existing.iaeEpigraph() == null ? "" : existing.iaeEpigraph());
-        // Cargar catálogos (valores ya usados) en los combos, sin bloquear.
+        // Cargar el CATÁLOGO OFICIAL (CNAE para actividad, IAE para epígrafe) en
+        // los combos como "código — descripción"; siguen siendo editables (custom).
+        Task<java.util.List<String>> cnaeTask = new Task<>() {
+            @Override protected java.util.List<String> call() throws Exception {
+                return laborApiClient.activityCatalog("CNAE");
+            }
+        };
+        cnaeTask.setOnSucceeded(e2 -> installComboFilter(actCode, cnaeTask.getValue()));
+        start(cnaeTask, "reta-cnae");
+        Task<java.util.List<String>> iaeTask = new Task<>() {
+            @Override protected java.util.List<String> call() throws Exception {
+                return laborApiClient.activityCatalog("IAE");
+            }
+        };
+        iaeTask.setOnSucceeded(e2 -> installComboFilter(iae, iaeTask.getValue()));
+        start(iaeTask, "reta-iae");
+        // Descripción: valores ya usados (la descripción se autocompleta al elegir CNAE).
         Task<java.util.Map<String, java.util.List<String>>> catTask = new Task<>() {
             @Override protected java.util.Map<String, java.util.List<String>> call() throws Exception {
                 return laborApiClient.retaCatalogs();
             }
         };
-        catTask.setOnSucceeded(e2 -> {
-            var cat = catTask.getValue();
-            actCode.getItems().setAll(cat.getOrDefault("activityCodes", java.util.List.of()));
-            iae.getItems().setAll(cat.getOrDefault("iaeEpigraphs", java.util.List.of()));
-            actDesc.getItems().setAll(cat.getOrDefault("activityDescriptions", java.util.List.of()));
-        });
+        catTask.setOnSucceeded(e2 ->
+                installComboFilter(actDesc, catTask.getValue().getOrDefault("activityDescriptions", java.util.List.of())));
         start(catTask, "reta-catalogs");
+        // Al elegir una actividad CNAE ("código — descripción"), autocompletar la
+        // descripción si está vacía.
+        actCode.valueProperty().addListener((o, ov, nv) -> {
+            if (nv != null && nv.contains(" — ") && actDesc.getEditor().getText().isBlank()) {
+                actDesc.getEditor().setText(nv.substring(nv.indexOf(" — ") + 3).trim());
+            }
+        });
 
         TextField netIncome = new TextField(existing == null || existing.expectedNetIncome() == null
                 ? "" : existing.expectedNetIncome().toPlainString());
@@ -23298,9 +23359,9 @@ public class BenjagestUiApplication extends Application {
                     parseDateSafe(endField.getText()),
                     pluri.isSelected(), tarifa.isSelected(),
                     parseDateSafe(tarifaUntil.getText()),
-                    blankToNullOrSelf(actCode.getEditor().getText()),
+                    blankToNullOrSelf(retaCodePart(actCode.getEditor().getText())),
                     blankToNullOrSelf(actDesc.getEditor().getText()),
-                    blankToNullOrSelf(iae.getEditor().getText()),
+                    blankToNullOrSelf(retaCodePart(iae.getEditor().getText())),
                     parseDecSafe(netIncome.getText()),
                     parseDecSafe(base.getText()),
                     parseDecSafe(quota.getText()),
