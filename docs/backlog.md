@@ -8,6 +8,39 @@
 
 ---
 
+## 2026-06-15 — CLIENT-CONFIG: tab "Configuración" en la ficha del cliente (plan)
+
+> Decisión Benjamin: cada cliente de la asesoría tendrá un tab **"Configuración"
+> en 2º lugar** (tras Resumen). Sirve para clientes **sin vínculo** (sin
+> contabilidad en BENJAGEST de la que extraer datos) y para que no falle nada al
+> cargar. **"Mi gestión" = solo la gestión de la propia asesoría**; lo
+> cross-cartera va a notificaciones/banners (ver AVISOS).
+
+**Contenido (las 4 secciones elegidas):**
+- ⬜ **Datos fiscales/identidad**: NIF, régimen fiscal, epígrafe IAE/CNAE,
+  dirección, periodicidad de modelos (mensual/trimestral). Parte ya existe en
+  `companies`/`customers`; consolidar aquí.
+- ⬜ **Cotización RETA del titular (manual)**: rendimiento neto previsto + base +
+  cuota → alimenta la Revisión RETA en no vinculados (ya soportado vía
+  `reta_profiles.expected_net_income`; aquí un acceso directo).
+- ⬜ **Datos para extraer/estimar sin contabilidad**: cifras manuales de
+  ventas/gastos/resultado por periodo para clientes que no llevan contabilidad
+  aquí → alimentan avisos y KPIs. **Requiere tabla nueva** (p.ej.
+  `client_manual_financials`).
+- ⬜ **Preferencias de gestión**: módulos/avisos activos por cliente, vía de
+  contacto, notas internas de la asesoría. **Requiere tabla/campos nuevos**.
+
+**Notas de implementación:**
+- El tab va en `buildClientDetailView`, posición 2 (tras Resumen), para TODOS los
+  clientes (vinculados y no). Pensado para que cargar un no vinculado no dé error.
+- Reusar lo que ya existe (NIF/IAE en companies/customers; RETA en
+  reta_profiles) y añadir solo lo nuevo (financials manuales, prefs, notas).
+- ⚠️ Benjamin reporta posible "error al cargar" clientes no vinculados — verificar
+  el caso real (no encontrado aún en código; puede haberse resuelto con la
+  Revisión RETA por-cliente).
+
+---
+
 ## 2026-06-15 — AVISOS: centro de "Tareas pendientes" (plan, auditado por agente)
 
 > Origen: Benjamin vio 2 asientos por validar y no se enteró ("si no entro no me
