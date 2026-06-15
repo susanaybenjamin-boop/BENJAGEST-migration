@@ -8,6 +8,28 @@
 
 ---
 
+## 2026-06-15 — Sesión con Benjamin: cierre, nómina, sidebar ✅
+
+- ✅ **CONS-CIERRE** — pantalla de cierre de ejercicio cableada en Contabilidad
+  (precalcular + preview regularización + cerrar con aplicación + reabrir).
+- ✅ **fix cierre** — `sumIncome` usaba `sales_invoices.total_amount` (no existe);
+  corregido a `total`. El "Precalcular" ya no da *bad SQL grammar*.
+- ✅ **PAY-DELIVERY** — entrega de nómina con vía + acuse de recibo (V116).
+- ✅ **VG-FULL-SCAN restante** — 7 comparadores de ordenación.
+- ✅ **SIDEBAR-ADMIN** *(decisión Benjamin)* — el sidebar de la asesoría queda
+  como **administración** (Clientes, Equipo, Informes, Agenda, Configuración,
+  Asesoría) y la **operativa del propio negocio** (Fiscal/Laboral/Facturación/
+  Compras/Contabilidad) se accede entrando en **"Mi gestión"**, que ahora muestra
+  las **pantallas completas** (no versiones reducidas) para la empresa propia.
+- ✅ **DEPLOY-PKG** anotado — instalable Windows autocontenido (MariaDB embebida,
+  "todo es un puesto", dos versiones Asesoría/Empleado); se empaqueta al terminar.
+- 🔵 **Pendiente nómina**: incidencias por periodo (horas extra/bajas/variables)
+  — necesita decisión de modelo (se solapa con complementos por nómina).
+- 🔵 **Pendiente legal-sensible**: topes de cotización TGSS + pagas extra
+  cotizadas — construir y validar con Benjamin como el IRPF.
+
+---
+
 ## 2026-06-14 — DEPLOY-LOCAL: ¿está listo para funcionar en local? ✅🖥️
 
 > Pregunta de Benjamin (se fue a trabajar): *"este programa va a trabajar en
