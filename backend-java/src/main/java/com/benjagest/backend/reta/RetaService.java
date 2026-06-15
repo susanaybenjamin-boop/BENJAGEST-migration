@@ -435,26 +435,32 @@ public class RetaService {
         try { ensureOwnerProfiles(companyId); } catch (Exception ignored) { /* best-effort */ }
 
         List<java.util.Map<String, Object>> profiles = jdbcTemplate.queryForList("""
-                SELECT id, full_name, current_base
+                SELECT id, full_name, current_base, expected_net_income
                   FROM reta_profiles
                  WHERE company_id = ? AND active = TRUE
                 """, companyId);
         if (profiles.isEmpty()) return;
 
+        // Rendimiento REAL de la contabilidad (P&L). Si la empresa no lleva
+        // contabilidad aquí (no vinculado), companyNet queda sin datos y se usa
+        // el rendimiento PREVISTO que la asesoría haya metido en cada perfil.
         BigDecimal income = sumGroup(companyId, from, to, "7", true);   // ventas (haber)
         BigDecimal expense = sumGroup(companyId, from, to, "6", false); // gastos (debe)
-        // Sin contabilidad ese año (sin movimientos 6xx/7xx) NO se puede estimar
-        // el rendimiento real → se omite para no dar falsos avisos.
-        if (income.signum() == 0 && expense.signum() == 0) return;
-        BigDecimal net = income.subtract(expense);
-        TramoSuggestion tr;
-        try {
-            tr = suggestTramo(year, net);
-        } catch (Exception ex) {
-            return; // sin tramos para ese año → no se puede evaluar
-        }
+        boolean hasAccounting = income.signum() != 0 || expense.signum() != 0;
+        BigDecimal companyNet = income.subtract(expense);
 
         for (var p : profiles) {
+            // Rendimiento a usar: real (contabilidad) si lo hay; si no, el previsto.
+            BigDecimal effIncome = hasAccounting
+                    ? companyNet
+                    : (BigDecimal) p.get("expected_net_income");
+            if (effIncome == null) continue; // sin P&L ni previsto → no se puede evaluar
+            TramoSuggestion tr;
+            try {
+                tr = suggestTramo(year, effIncome);
+            } catch (Exception ex) {
+                continue; // sin tramos para ese año
+            }
             BigDecimal base = (BigDecimal) p.get("current_base");
             String fullName = (String) p.get("full_name");
             String status;
@@ -469,7 +475,7 @@ public class RetaService {
             }
             out.add(new RegularizationAlert(
                     companyId, companyName, (String) p.get("id"), fullName,
-                    base, net, tr.tramoLabel(), tr.baseMinima(), tr.baseMaxima(), status));
+                    base, effIncome, tr.tramoLabel(), tr.baseMinima(), tr.baseMaxima(), status));
         }
     }
 
