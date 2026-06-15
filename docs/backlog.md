@@ -38,13 +38,45 @@ salida puntual a internet.
 - ✅ `start-local-server.ps1` (servidor: Docker + espera BD + backend) y
   `start-ui.ps1 -ServerIp <IP>` (puesto: fija API base + lanza UI).
 
-**Pendientes DEPLOY-LOCAL (operación/empaquetado, no arquitectura):**
-- ⬜ **jpackage** UI → `.exe`/`.msi` (evita tener Java en cada puesto).
-- ⬜ Backend como **servicio de Windows** (arranque automático en el servidor).
-- ⬜ Instalador único que orqueste MariaDB + backend + accesos directos.
+### 🎯 DEPLOY-PKG — Instalable Windows (decisiones Benjamin 2026-06-15)
+
+> **NO construir todavía.** Se empaqueta **al terminar la app**. Anotado aquí para
+> no perder las decisiones de producto.
+
+**Visión de producto:**
+- El programa tendrá **dos versiones**: **Asesoría** y **Empleado**.
+- **Modelo por defecto = "todo es un puesto"**: en una sola máquina se instala
+  **UI + backend + MariaDB embebida**, autocontenido. Un **empresario con un solo
+  PC no necesita un segundo ordenador** ni configurar nada de red.
+- **Asesoría con varios empleados (caso opcional/avanzado):** el PC del **OWNER
+  hace de servidor** (tiene la BD + backend) y los **empleados son puestos** que
+  apuntan a su IP por la LAN. Reusa el modo LAN ya documentado en
+  `docs/despliegue-local.md`. Pero **no es obligatorio**: si la asesoría es de una
+  persona, también funciona como puesto único.
+- Implicación técnica clave: la app debe poder arrancar en **modo embebido**
+  (todo local en una máquina) como caso primario; el modo cliente→servidor LAN es
+  configuración (apuntar `BENJAGEST_API_BASE_URL` a otra IP), ya soportado.
+
+**Decisiones cerradas:**
+- ✅ **MariaDB embebida/portable** dentro del instalador (sin Docker). Se empaqueta
+  al final.
+- ✅ Runtime de **Java incluido** vía `jpackage`/`jlink` (verificado: ambas
+  herramientas están en el JDK Temurin 21 de la máquina; la UI ya es modular con
+  `module-info.java`).
+
+**Pendientes DEPLOY-PKG (al terminar la app, no arquitectura):**
+- ⬜ **jpackage** del puesto (UI) + backend embebido + MariaDB portable → un
+  instalable que arranque todo automático en una máquina ("todo es un puesto").
+- ⬜ Backend (+ MariaDB) como **servicio de Windows** con auto-arranque (necesario
+  sobre todo en el rol servidor/OWNER; en puesto único puede arrancar al abrir la app).
+- ⬜ Instalar **WiX Toolset v3** en la máquina de build para generar `.msi`/`.exe`
+  nativo (servicio + accesos directos + desinstalador). Sin WiX solo "app-image".
+- ⬜ Variante de instalador/branding por **versión (Asesoría / Empleado)**.
+- ⬜ Revisar/abrir puerto 8080 en firewall solo en el rol servidor (LAN).
+
+**Pendiente Verifactu real (independiente del empaquetado):**
 - ⬜ **VF-SIGN-XADES** (cuando se quiera VERI*FACTU real): cert FNMT + XSD AEAT
   oficial + XAdES-EPES + parseo de respuesta AEAT. Probar contra preproducción.
-- ⬜ Revisar/abrir puerto 8080 en firewall del servidor para la LAN (operación).
 
 ---
 
