@@ -14,6 +14,11 @@
 > (en la ficha) y **vigilancia** cross-cliente (admin). Casi todos los clientes
 > de la asesoría son autónomos (detrás de cada empresa hay un autónomo).
 
+- ✅ **RETA-0** *(2026-06-15)* — tramos de cotización por **año en BD** (V117
+  `reta_tramos` + seed 2026) en vez de hardcodeados en Java; `suggestTramo` los
+  lee de BD; **editor no-code** en Laboral → "Tramos autónomo" (clonar año +
+  editar). 2027 sin tocar código. *Ojo: el seed son valores 2025 placeholder;
+  revisar/ajustar al publicarse el PGE 2026.*
 - ✅ **RETA-1** *(2026-06-15)* — operativa RETA movida a la ficha (pestaña
   "Autónomos (RETA)" en Mi gestión + cada cliente, reutiliza `retaView`);
   quitada del sidebar del cockpit propio (filtro `activeModules`).
