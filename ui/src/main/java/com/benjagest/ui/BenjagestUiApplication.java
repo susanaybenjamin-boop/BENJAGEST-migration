@@ -108,10 +108,12 @@ public class BenjagestUiApplication extends Application {
             // separación entre su gestión y la de sus clientes.
             new ModuleLink("myCompany", "Mi gestión", "fas-briefcase"),
             new ModuleLink("customers", "Clientes", "fas-users"),
-            new ModuleLink("tax", "Fiscal", "fas-percentage"),
-            new ModuleLink("labor", "Laboral", "fas-hard-hat"),
-            new ModuleLink("billing", "Facturacion", "fas-file-invoice-dollar"),
-            new ModuleLink("purchases", "Compras", "fas-receipt"),
+            // 2026-06-15 (decisión Benjamin): el sidebar de asesoría es
+            // ADMINISTRACIÓN; la OPERATIVA del propio negocio (Fiscal,
+            // Laboral, Facturación, Compras) se accede entrando en "Mi
+            // gestión", donde ahora se muestran las pantallas COMPLETAS
+            // (no versiones reducidas). Por eso ya NO se listan aquí Fiscal,
+            // Laboral, Facturación ni Compras como módulos sueltos.
             new ModuleLink("reports", "Informes", "fas-chart-line"),
             new ModuleLink("calendar", "Agenda", "fas-calendar-alt"),
             // Slice 5C — Módulo EQUIPO solo visible para asesorías.
@@ -1818,6 +1820,21 @@ public class BenjagestUiApplication extends Application {
             base = activeModulesCache;
         } else {
             base = appMode == AppMode.ADVISORY ? ADVISORY_MODULES : BUSINESS_MODULES;
+        }
+        // 2026-06-15 (decisión Benjamin): en el cockpit PROPIO de la asesoría
+        // (modo ADVISORY y NO actuando por un cliente) el sidebar es de
+        // ADMINISTRACIÓN. La operativa del propio negocio (Fiscal, Laboral,
+        // Facturación, Compras, Contabilidad) se accede entrando en "Mi
+        // gestión", donde se muestran las pantallas COMPLETAS. Por eso se
+        // filtran esos módulos del sidebar (vengan del catálogo backend o del
+        // fallback). NO aplica cuando se actúa por un cliente (ahí el sidebar
+        // es el del cliente).
+        if (appMode == AppMode.ADVISORY && !AuthSession.get().isActingForClient()) {
+            java.util.Set<String> ownOperativa = java.util.Set.of(
+                    "tax", "labor", "billing", "purchases", "accounting");
+            base = base.stream()
+                    .filter(m -> !ownOperativa.contains(m.id()))
+                    .toList();
         }
         // Slice 3L — "Mi gestión" es un acceso virtual al modo cliente
         // de la propia asesoría. NO es un módulo de BD (no está en
@@ -3841,6 +3858,15 @@ public class BenjagestUiApplication extends Application {
     private java.util.List<com.benjagest.ui.model.PurchaseInvoiceEntry> purchaseInvoicesCache = java.util.List.of();
 
     private void showPurchasesWithImport() {
+        setCenterAnimated(purchasesWithImportView());
+    }
+
+    /**
+     * Pantalla completa de Compras (listado con importar PDF + sub-tab
+     * Recurrentes). Devuelve el nodo para poder reutilizarla tanto en el
+     * centro (módulo del sidebar) como embebida en "Mi gestión".
+     */
+    private Node purchasesWithImportView() {
         // Slice 3C — Envolvemos la pantalla de Compras del empresario en
         // un TabPane con un segundo sub-tab "Recurrentes" (kind=PURCHASE)
         // para los gastos que se repiten cada mes/trimestre/año (cuota
@@ -3860,7 +3886,7 @@ public class BenjagestUiApplication extends Application {
 
         wrapper.getTabs().addAll(expensesTab, recurringTab);
         VBox.setVgrow(wrapper, Priority.ALWAYS);
-        setCenterAnimated(wrapper);
+        return wrapper;
     }
 
     /**
@@ -26529,6 +26555,14 @@ public class BenjagestUiApplication extends Application {
         java.util.function.Predicate<String> canSee = slug ->
                 seeAll || visibleModules.contains(slug);
 
+        // ¿Es "Mi gestión" (la propia empresa de la asesoría) y no un cliente
+        // real? En ese caso las pestañas operativas (Facturación, Compras,
+        // Fiscal) usan las PANTALLAS COMPLETAS del módulo (las mismas que el
+        // sidebar), no las versiones reducidas de cliente. Decisión Benjamin
+        // 2026-06-15: sidebar = administración; "Mi gestión" = operativa completa.
+        final String ownCompanyId = com.benjagest.ui.service.AuthSession.get().activeCompanyId();
+        final boolean isOwn = client.id() != null && client.id().equals(ownCompanyId);
+
         Button backBtn = new Button(t("advisory.client.back"));
         backBtn.setGraphic(icon("fas-arrow-left"));
         backBtn.setOnAction(ev -> {
@@ -26587,14 +26621,19 @@ public class BenjagestUiApplication extends Application {
             // la asesoría pueda crear plantillas DENTRO del tenant
             // del cliente (recurring_tasks.company_id = cliente). El
             // cliente las ve también en su propia app.
+            // "Mi gestión" (empresa propia): pantalla COMPLETA del módulo
+            // (incluye su propio sub-tab Recurrentes). Cliente real: vista de
+            // cliente envuelta con el sub-tab Recurrentes del tenant del cliente.
             billingTab = new Tab(t("advisory.client.tab.billing"),
-                    wrapWithRecurringSubTab(
+                    isOwn ? buildOwnBillingTab()
+                          : wrapWithRecurringSubTab(
                             buildClientBillingTab(),
                             "SALES_INVOICE",
                             t("advisory.client.tab.billing")));
             billingTab.setGraphic(icon("fas-file-invoice-dollar"));
             purchasesTab = new Tab(t("advisory.client.tab.purchases"),
-                    wrapWithRecurringSubTab(
+                    isOwn ? buildOwnPurchasesTab()
+                          : wrapWithRecurringSubTab(
                             buildClientPurchasesTab(),
                             "PURCHASE",
                             t("advisory.client.tab.purchases")));
@@ -26633,7 +26672,7 @@ public class BenjagestUiApplication extends Application {
         laborTab.setGraphic(icon("fas-users"));
 
         Tab taxTab = new Tab(t("advisory.client.tab.tax_models"),
-                buildClientTaxFilingsTab());
+                isOwn ? buildOwnTaxTab() : buildClientTaxFilingsTab());
         taxTab.setGraphic(icon("fas-landmark"));
 
         Tab certificateTab = new Tab(t("advisory.client.tab.certificate"),
@@ -31046,6 +31085,70 @@ public class BenjagestUiApplication extends Application {
      * asesoria puede dar de alta empleados, generar nominas, gestionar
      * contratos y fichajes del cliente SIN salir de su pantalla.
      */
+    /**
+     * Mi gestión — Facturación COMPLETA (la misma pantalla que el módulo
+     * del sidebar: dashboard + facturas + recurrentes + configuración).
+     * Reutiliza {@code billingView}. Carga async como buildClientLaborTab.
+     */
+    private Node buildOwnBillingTab() {
+        VBox holder = new VBox();
+        Label loading = new Label(t("panorama.loading"));
+        loading.getStyleClass().add("settings-hint");
+        loading.setPadding(new Insets(12));
+        holder.getChildren().add(loading);
+        VBox.setVgrow(holder, Priority.ALWAYS);
+        Task<BillingBundle> task = new Task<>() {
+            @Override protected BillingBundle call() throws Exception {
+                List<SalesInvoiceSummary> invoices = billingApiClient.listInvoices(null, null, null, 200);
+                List<SeriesEntry> series = billingApiClient.listSeries();
+                VerifactuConfig vfConfig = billingApiClient.getVerifactuConfig();
+                InvoiceTexts texts = billingApiClient.getInvoiceTexts();
+                List<CertificateOption> certificates;
+                try { certificates = billingApiClient.listCertificateOptions(); }
+                catch (Exception ignored) { certificates = List.of(); }
+                return new BillingBundle(invoices, series, vfConfig, texts, certificates);
+            }
+        };
+        task.setOnSucceeded(ev -> holder.getChildren().setAll(billingView(task.getValue())));
+        task.setOnFailed(ev -> holder.getChildren().setAll(errorPanel(t("billing.shell.load_failed"))));
+        start(task, "own-billing-load");
+        return holder;
+    }
+
+    /**
+     * Mi gestión — Compras COMPLETA (listado con importar PDF + recurrentes),
+     * la misma del módulo del sidebar. Reutiliza {@code purchasesWithImportView}.
+     */
+    private Node buildOwnPurchasesTab() {
+        return purchasesWithImportView();
+    }
+
+    /**
+     * Mi gestión — Modelos AEAT COMPLETO (catálogo + declaraciones + editores
+     * 303/130 + calendario fiscal), la misma pantalla que el módulo del sidebar.
+     * Reutiliza {@code taxView}. Carga async.
+     */
+    private Node buildOwnTaxTab() {
+        VBox holder = new VBox();
+        Label loading = new Label(t("panorama.loading"));
+        loading.getStyleClass().add("settings-hint");
+        loading.setPadding(new Insets(12));
+        holder.getChildren().add(loading);
+        VBox.setVgrow(holder, Priority.ALWAYS);
+        Task<TaxBundle> task = new Task<>() {
+            @Override protected TaxBundle call() throws Exception {
+                return new TaxBundle(
+                        altaApiClient.listTaxModels(),
+                        altaApiClient.listFilings(taxCurrentYear, null, null),
+                        altaApiClient.calendar(taxCurrentYear));
+            }
+        };
+        task.setOnSucceeded(ev -> holder.getChildren().setAll(scroll(taxView(task.getValue()))));
+        task.setOnFailed(ev -> holder.getChildren().setAll(errorPanel(t("tax.load_failed"))));
+        start(task, "own-tax-load");
+        return holder;
+    }
+
     private Node buildClientLaborTab() {
         VBox holder = new VBox();
         holder.setPadding(new Insets(12));
