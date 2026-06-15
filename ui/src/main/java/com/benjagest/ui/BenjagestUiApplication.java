@@ -16050,6 +16050,18 @@ public class BenjagestUiApplication extends Application {
             case "labor.tab.employer_cost" -> "Employer cost";
             case "labor.tab.ss_rates" -> "SS rates";
             case "labor.tab.irpf_params" -> "Income-tax scale";
+            case "labor.tab.reta_tramos" -> "Self-employed brackets";
+            case "labor.retatramos.hint" -> "Self-employed (RETA) contribution brackets by year. Edit them here when they change — no code needed. Clone a year to start from the previous one.";
+            case "labor.retatramos.empty" -> "No brackets for this year. Clone the previous year and edit.";
+            case "labor.retatramos.col.label" -> "Bracket";
+            case "labor.retatramos.col.income_max" -> "Monthly income up to";
+            case "labor.retatramos.col.base_min" -> "Min base";
+            case "labor.retatramos.col.base_max" -> "Max base";
+            case "labor.retatramos.col.quota_min" -> "Min quota";
+            case "labor.retatramos.load_failed" -> "Could not load the RETA brackets";
+            case "labor.retatramos.clone_prompt" -> "Year to create (clones the selected year)";
+            case "labor.retatramos.edit" -> "Edit brackets";
+            case "labor.retatramos.edit_hint" -> "Each row: bracket name, monthly net income upper limit, min/max base and minimum quota. Ordered by increasing income.";
             case "labor.irpfparams.hint" -> "Income-tax withholding scale by year. To start a new year, clone the previous one and edit the scale if it changed. Minimums/reductions are carried over by the clone.";
             case "labor.irpfparams.empty" -> "No scale for this year.";
             case "labor.irpfparams.from" -> "From (€)";
@@ -16643,6 +16655,18 @@ public class BenjagestUiApplication extends Application {
             case "labor.tab.employer_cost" -> "Coste empresa";
             case "labor.tab.ss_rates" -> "Tipos cotización";
             case "labor.tab.irpf_params" -> "Escala IRPF";
+            case "labor.tab.reta_tramos" -> "Tramos autónomo";
+            case "labor.retatramos.hint" -> "Tramos de cotización del autónomo (RETA) por año. Edítalos aquí cuando cambien — sin tocar código. Clona un año para partir del anterior.";
+            case "labor.retatramos.empty" -> "No hay tramos para este año. Clona el año anterior y edítalos.";
+            case "labor.retatramos.col.label" -> "Tramo";
+            case "labor.retatramos.col.income_max" -> "Rendimiento mensual hasta";
+            case "labor.retatramos.col.base_min" -> "Base mín.";
+            case "labor.retatramos.col.base_max" -> "Base máx.";
+            case "labor.retatramos.col.quota_min" -> "Cuota mín.";
+            case "labor.retatramos.load_failed" -> "No se pudieron cargar los tramos RETA";
+            case "labor.retatramos.clone_prompt" -> "Año a crear (clona el año seleccionado)";
+            case "labor.retatramos.edit" -> "Editar tramos";
+            case "labor.retatramos.edit_hint" -> "Cada fila: nombre del tramo, límite superior de rendimiento mensual, base mín/máx y cuota mínima. Ordenados por rendimiento creciente.";
             case "labor.irpfparams.hint" -> "Escala de retención de IRPF por año. Para empezar un año nuevo, clona el anterior y edita la escala si cambió. Los mínimos/reducciones se arrastran al clonar.";
             case "labor.irpfparams.empty" -> "No hay escala para este año.";
             case "labor.irpfparams.from" -> "Desde (€)";
@@ -19026,6 +19050,9 @@ public class BenjagestUiApplication extends Application {
         // Parámetros IRPF por año (escala).
         Tab irpfParamsTab = new Tab(t("labor.tab.irpf_params"), buildIrpfParamsTab());
         irpfParamsTab.setGraphic(icon("fas-percent"));
+        // RETA-0 — Tramos de cotización del autónomo por año (editables, no-code).
+        Tab retaTramosTab = new Tab(t("labor.tab.reta_tramos"), buildRetaTramosTab());
+        retaTramosTab.setGraphic(icon("fas-layer-group"));
         // PORT-2 (2026-06-10 tarde) — Partes/Jornadas como sub-pestaña
         // de Labor (no como módulo de raíz, decisión Benjamin). Lee de
         // /api/work-logs. Cuando llegue la versión tablet/móvil del
@@ -19039,7 +19066,7 @@ public class BenjagestUiApplication extends Application {
 
         tabs.getTabs().addAll(empTab, contractsTab, clockTab, auditTab, payslipsTab,
                 templatesTab, clausesTab, cfgTab, calendarTab, leavesTab, vacationsTab, ssTab,
-                costTab, ratesTab, irpfParamsTab, shiftsTab, centersTab);
+                costTab, ratesTab, irpfParamsTab, retaTramosTab, shiftsTab, centersTab);
         VBox.setVgrow(tabs, Priority.ALWAYS);
         // Restaurar la pestaña activa y recordar los cambios de pestaña, para
         // no perder el contexto al recargar el módulo tras una acción.
@@ -33189,6 +33216,169 @@ public class BenjagestUiApplication extends Application {
             tk.setOnFailed(ev -> showError(t("labor.irpfparams.edit"),
                     tk.getException() == null ? "" : tk.getException().getMessage()));
             start(tk, "irpfparams-save");
+        });
+    }
+
+    /**
+     * RETA-0 — Editor de los TRAMOS de cotización del autónomo por año
+     * (tabla reta_tramos). Mismo patrón que los parámetros IRPF: combo de año,
+     * clonar año y editar la tabla. No-code: al cambiar 2027 se edita aquí.
+     */
+    private Node buildRetaTramosTab() {
+        VBox content = new VBox(12);
+        content.setPadding(new Insets(16));
+        Label hint = new Label(t("labor.retatramos.hint"));
+        hint.setWrapText(true);
+        hint.getStyleClass().add("settings-hint");
+
+        ComboBox<Integer> yearCombo = new ComboBox<>();
+        TableView<com.benjagest.ui.model.RetaTramoEntry> table = new TableView<>();
+        table.getStyleClass().add("data-table");
+        table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+        table.setPlaceholder(new Label(t("labor.retatramos.empty")));
+        TableColumn<com.benjagest.ui.model.RetaTramoEntry, String> cLabel = new TableColumn<>(t("labor.retatramos.col.label"));
+        cLabel.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().label()));
+        TableColumn<com.benjagest.ui.model.RetaTramoEntry, String> cInc = new TableColumn<>(t("labor.retatramos.col.income_max"));
+        cInc.setCellValueFactory(c -> new SimpleStringProperty(money(c.getValue().incomeMaxMonthly())));
+        cInc.setComparator(NUMERIC_STRING_COMPARATOR);
+        TableColumn<com.benjagest.ui.model.RetaTramoEntry, String> cBmin = new TableColumn<>(t("labor.retatramos.col.base_min"));
+        cBmin.setCellValueFactory(c -> new SimpleStringProperty(money(c.getValue().baseMin())));
+        cBmin.setComparator(NUMERIC_STRING_COMPARATOR);
+        TableColumn<com.benjagest.ui.model.RetaTramoEntry, String> cBmax = new TableColumn<>(t("labor.retatramos.col.base_max"));
+        cBmax.setCellValueFactory(c -> new SimpleStringProperty(money(c.getValue().baseMax())));
+        cBmax.setComparator(NUMERIC_STRING_COMPARATOR);
+        TableColumn<com.benjagest.ui.model.RetaTramoEntry, String> cQ = new TableColumn<>(t("labor.retatramos.col.quota_min"));
+        cQ.setCellValueFactory(c -> new SimpleStringProperty(money(c.getValue().quotaMin())));
+        cQ.setComparator(NUMERIC_STRING_COMPARATOR);
+        table.getColumns().addAll(java.util.List.of(cLabel, cInc, cBmin, cBmax, cQ));
+
+        Runnable loadTramos = () -> {
+            Integer y = yearCombo.getValue();
+            if (y == null) return;
+            Task<java.util.List<com.benjagest.ui.model.RetaTramoEntry>> tk = new Task<>() {
+                @Override protected java.util.List<com.benjagest.ui.model.RetaTramoEntry> call() throws Exception {
+                    return laborApiClient.listRetaTramos(y);
+                }
+            };
+            tk.setOnSucceeded(ev -> table.setItems(FXCollections.observableArrayList(tk.getValue())));
+            tk.setOnFailed(ev -> showError(t("labor.retatramos.load_failed"),
+                    tk.getException() == null ? "" : tk.getException().getMessage()));
+            start(tk, "retatramos-load");
+        };
+        yearCombo.valueProperty().addListener((o, ov, nv) -> loadTramos.run());
+
+        Runnable loadYears = () -> {
+            Task<java.util.List<Integer>> tk = new Task<>() {
+                @Override protected java.util.List<Integer> call() throws Exception {
+                    return laborApiClient.listRetaTramoYears();
+                }
+            };
+            tk.setOnSucceeded(ev -> {
+                Integer prev = yearCombo.getValue();
+                yearCombo.getItems().setAll(tk.getValue());
+                if (prev != null && tk.getValue().contains(prev)) yearCombo.getSelectionModel().select(prev);
+                else if (!tk.getValue().isEmpty()) yearCombo.getSelectionModel().selectFirst();
+                loadTramos.run();
+            });
+            tk.setOnFailed(ev -> showError(t("labor.retatramos.load_failed"),
+                    tk.getException() == null ? "" : tk.getException().getMessage()));
+            start(tk, "retatramos-years");
+        };
+
+        Button cloneBtn = new Button(t("labor.irpfparams.clone"));
+        cloneBtn.getStyleClass().add("button-primary");
+        cloneBtn.setOnAction(e -> {
+            int next = (yearCombo.getItems().isEmpty() ? java.time.Year.now().getValue()
+                    : yearCombo.getItems().get(0)) + 1;
+            TextInputDialog ask = new TextInputDialog(String.valueOf(next));
+            ask.setTitle(t("labor.irpfparams.clone"));
+            ask.setHeaderText(t("labor.retatramos.clone_prompt"));
+            ask.showAndWait().ifPresent(s -> {
+                Integer y = parseIntSafe(s);
+                if (y == null) return;
+                int src = yearCombo.getValue() != null ? yearCombo.getValue()
+                        : (yearCombo.getItems().isEmpty() ? y - 1 : yearCombo.getItems().get(0));
+                Task<Void> tk = new Task<>() {
+                    @Override protected Void call() throws Exception { laborApiClient.cloneRetaTramos(y, src); return null; }
+                };
+                tk.setOnSucceeded(ev -> { yearCombo.getSelectionModel().clearSelection(); loadYears.run(); });
+                tk.setOnFailed(ev -> showError(t("labor.irpfparams.clone"),
+                        humanizeBackendError(tk.getException() == null ? "" : tk.getException().getMessage())));
+                start(tk, "retatramos-clone");
+            });
+        });
+        Button editBtn = new Button(t("labor.irpfparams.edit"));
+        editBtn.getStyleClass().add("button-secondary");
+        editBtn.setOnAction(e -> {
+            Integer y = yearCombo.getValue();
+            if (y != null) showRetaTramosEditor(y, new java.util.ArrayList<>(table.getItems()), loadTramos);
+        });
+        HBox actions = new HBox(8, new Label(t("labor.ssrates.col.year")), yearCombo, editBtn, cloneBtn);
+        actions.setAlignment(Pos.CENTER_LEFT);
+
+        loadYears.run();
+        VBox body = new VBox(10, hint, actions, table);
+        VBox.setVgrow(table, Priority.ALWAYS);
+        content.getChildren().add(body);
+        VBox.setVgrow(body, Priority.ALWAYS);
+        return content;
+    }
+
+    private void showRetaTramosEditor(int year,
+            java.util.List<com.benjagest.ui.model.RetaTramoEntry> initial, Runnable onSaved) {
+        Dialog<ButtonType> d = new Dialog<>();
+        d.setTitle(t("labor.retatramos.edit") + " — " + year);
+        ButtonType save = new ButtonType(t("labor.ssrates.save_btn"), ButtonBar.ButtonData.OK_DONE);
+        d.getDialogPane().getButtonTypes().addAll(save, ButtonType.CANCEL);
+
+        VBox rows = new VBox(6);
+        java.util.List<TextField[]> fields = new java.util.ArrayList<>();
+        java.util.function.Consumer<com.benjagest.ui.model.RetaTramoEntry> addRow = tr -> {
+            TextField fLabel = new TextField(tr == null || tr.label() == null ? "" : tr.label());
+            fLabel.setPromptText(t("labor.retatramos.col.label")); fLabel.setPrefWidth(150);
+            TextField fInc = new TextField(tr == null || tr.incomeMaxMonthly() == null ? "" : tr.incomeMaxMonthly().toPlainString());
+            fInc.setPromptText(t("labor.retatramos.col.income_max")); fInc.setPrefWidth(110);
+            TextField fBmin = new TextField(tr == null || tr.baseMin() == null ? "" : tr.baseMin().toPlainString());
+            fBmin.setPromptText(t("labor.retatramos.col.base_min")); fBmin.setPrefWidth(100);
+            TextField fBmax = new TextField(tr == null || tr.baseMax() == null ? "" : tr.baseMax().toPlainString());
+            fBmax.setPromptText(t("labor.retatramos.col.base_max")); fBmax.setPrefWidth(100);
+            TextField fQ = new TextField(tr == null || tr.quotaMin() == null ? "" : tr.quotaMin().toPlainString());
+            fQ.setPromptText(t("labor.retatramos.col.quota_min")); fQ.setPrefWidth(100);
+            TextField[] tuple = {fLabel, fInc, fBmin, fBmax, fQ};
+            fields.add(tuple);
+            Button del = new Button("✕"); del.getStyleClass().add("button-secondary");
+            HBox row = new HBox(8, fLabel, fInc, fBmin, fBmax, fQ, del);
+            row.setAlignment(Pos.CENTER_LEFT);
+            del.setOnAction(e -> { fields.remove(tuple); rows.getChildren().remove(row); });
+            rows.getChildren().add(row);
+        };
+        for (com.benjagest.ui.model.RetaTramoEntry b : initial) addRow.accept(b);
+        Button addBtn = new Button(t("labor.irpfparams.add_row"));
+        addBtn.getStyleClass().add("button-secondary");
+        addBtn.setOnAction(e -> addRow.accept(null));
+
+        VBox box = new VBox(10, new Label(t("labor.retatramos.edit_hint")), rows, addBtn);
+        box.setPadding(new Insets(12));
+        installDialog(d, box);
+        d.showAndWait().ifPresent(bt -> {
+            if (bt != save) return;
+            java.util.List<com.benjagest.ui.model.RetaTramoEntry> out = new java.util.ArrayList<>();
+            for (TextField[] p : fields) {
+                java.math.BigDecimal inc = parseDecSafe(p[1].getText());
+                java.math.BigDecimal bmin = parseDecSafe(p[2].getText());
+                java.math.BigDecimal bmax = parseDecSafe(p[3].getText());
+                java.math.BigDecimal q = parseDecSafe(p[4].getText());
+                String label = p[0].getText() == null ? "" : p[0].getText().trim();
+                if (inc == null && bmin == null && bmax == null && q == null && label.isBlank()) continue;
+                out.add(new com.benjagest.ui.model.RetaTramoEntry(label, inc, bmin, bmax, q));
+            }
+            Task<Void> tk = new Task<>() {
+                @Override protected Void call() throws Exception { laborApiClient.saveRetaTramos(year, out); return null; }
+            };
+            tk.setOnSucceeded(ev -> onSaved.run());
+            tk.setOnFailed(ev -> showError(t("labor.retatramos.edit"),
+                    tk.getException() == null ? "" : tk.getException().getMessage()));
+            start(tk, "retatramos-save");
         });
     }
 
