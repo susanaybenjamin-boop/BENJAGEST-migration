@@ -612,7 +612,7 @@ Nóminas; afinar topes de cotización; pagas extra.
 
 - ✅ ⚖️ **Payrolls — ciclo mensual** — cerrado en bloque NOM (calcular/pagar/PDF/email + asientos devengo/pago + SS empresa vía cuotas TC).
 - ✅ 💰 **Reporte coste empresa por empleado** — cerrado (NOM-6, `aa61627`): pestaña "Coste empresa" en Labor con bruto anual + SS empresa + coste total por empleado y totales al pie.
-- ⬜ **Entrega de nóminas con firma trabajador** — fecha + vía (acuse de recibo).
+- ✅ **Entrega de nóminas con firma trabajador** *(PAY-DELIVERY, 2026-06-15)* — V116 (delivered_at, delivery_method, acknowledged_at). Pestaña Nóminas: columna "Entrega" (Pendiente/Entregada/Firmada) + botón "Entrega / acuse" (fecha + vía HAND/EMAIL/PORTAL/POSTAL + acuse del trabajador). ET art. 29.
 - ⬜ **Incidencias de nómina** — horas extra, bajas, complementos variables por periodo.
 - ⬜ **Topes de cotización TGSS + pagas extra cotizadas** — afinar el cálculo NOM (hoy base = bruto sin topes; EXTRA_* sin asiento).
 - ⬜ Revisión completa contratos + flujo alta del empleado.
