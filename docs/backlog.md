@@ -8,6 +8,46 @@
 
 ---
 
+## 2026-06-15 — AVISOS: centro de "Tareas pendientes" (plan, auditado por agente)
+
+> Origen: Benjamin vio 2 asientos por validar y no se enteró ("si no entro no me
+> entero"). Quiere un centro de avisos que mantenga informada a la asesoría (y
+> al empresario) de TODO lo pendiente. Agente Explore auditó 35 estados
+> accionables; Claude supervisó/curó el set v1.
+
+**Arquitectura:** `PendingTasksService` agregador EN VIVO (estado actual, no
+eventos) → buckets `{tipo, etiqueta, count, severidad, destino}`. Panel "Tareas
+pendientes" + contador en la campana existente (`AdvisoryNotificationService` +
+`buildAdvisoryNotificationsBell`). Dos ámbitos: **por empresa** (empresario / Mi
+gestión / dentro de un cliente) y **cross-cliente** (asesoría sobre cartera,
+reusar patrón `AdvisoryDashboardService`). Todas las tablas ya tienen índice
+(company_id, status) → rápido.
+
+**v1 (curado):**
+- 🔴 Asientos DRAFT por validar · Facturas vencidas sin cobrar · Declaraciones
+  fiscales que vencen sin presentar · Asiento de cierre fiscal pendiente.
+- 🟠 Nóminas del mes sin generar/pagar/entregar · Facturas PENDING_CLIENT_APPROVAL
+  (TPB) · **RETA fuera de tramo (RETA-3)** · DEHú pendientes · Contratos por
+  vencer (ContractAlertService) · VeriFactu en ERROR.
+- 🟡 Movimientos bancarios sin conciliar · Docs/mensajes cliente sin leer ·
+  Notificaciones URGENT · Certificados por caducar.
+- Descartado v1 (ruido/ya cubierto): clientes sin email, importaciones históricas,
+  asignaciones sin módulos, colaboraciones, candidatos recurrentes (ya tiene
+  banner), BOE (ya tiene pantalla).
+
+**Plan de construcción (incremental, por riesgo):**
+- ⬜ **AVISOS-1** — `PendingTasksService` **por empresa** (tenant actual) con las
+  queries v1 + panel "Tareas pendientes" + badge. Resuelve la pain directamente
+  (en Mi gestión / empresario / dentro de un cliente). Bajo riesgo (sin cross-tenant).
+- ⬜ **AVISOS-2** — roll-up **cross-cliente** para la asesoría (recorre cartera).
+  Reusar el patrón de aislamiento de `AdvisoryDashboardService` (¡cuidado
+  multi-tenant!). Incluye RETA-3 con P&L real por cliente.
+- ⬜ **AVISOS-3** — replicar en modo empresario (su propia empresa) — en parte
+  sale gratis de AVISOS-1 si se hace agnóstico del modo.
+- Inventario completo (35 fuentes) documentado para ampliar después.
+
+---
+
 ## 2026-06-15 — RETA: split operativa + alerta de regularización (plan)
 
 > Decisión Benjamin: RETA tiene dos naturalezas → **operativa** del autónomo
