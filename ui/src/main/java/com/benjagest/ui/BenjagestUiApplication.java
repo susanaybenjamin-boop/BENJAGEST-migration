@@ -16053,7 +16053,7 @@ public class BenjagestUiApplication extends Application {
             case "reta.tab.profiles" -> "Profiles";
             case "labor.tab.reta_tramos" -> "Self-employed brackets";
             case "labor.tab.reta_alerts" -> "RETA review";
-            case "labor.retaalerts.hint" -> "Self-employed whose contribution base is outside the bracket matching their REAL income (P&L). From 'My management' it covers the whole portfolio. Since 2023 the TGSS regularizes against real income the following year — adjust before year-end to avoid paying too much or owing.";
+            case "labor.retaalerts.hint" -> "Self-employed of THIS company whose contribution base is outside the bracket matching their REAL income (P&L). Since 2023 the TGSS regularizes against real income the following year — adjust before year-end to avoid paying too much or owing. (The whole-portfolio roll-up will live in the notifications centre.)";
             case "labor.retaalerts.empty" -> "No self-employed to review for this year.";
             case "labor.retaalerts.col.company" -> "Company";
             case "labor.retaalerts.col.name" -> "Self-employed";
@@ -16679,7 +16679,7 @@ public class BenjagestUiApplication extends Application {
             case "reta.tab.profiles" -> "Perfiles";
             case "labor.tab.reta_tramos" -> "Tramos autónomo";
             case "labor.tab.reta_alerts" -> "Revisión RETA";
-            case "labor.retaalerts.hint" -> "Autónomos cuya base de cotización está fuera del tramo que les corresponde por su rendimiento REAL (P&L). Desde 'Mi gestión' cubre toda la cartera. Desde 2023 la TGSS regulariza contra el rendimiento real al año siguiente — conviene ajustar antes de fin de año para no pagar de más ni tener que regularizar.";
+            case "labor.retaalerts.hint" -> "Autónomos de ESTA empresa cuya base de cotización está fuera del tramo que les corresponde por su rendimiento REAL (P&L). Desde 2023 la TGSS regulariza contra el rendimiento real al año siguiente — conviene ajustar antes de fin de año para no pagar de más ni tener que regularizar. (El resumen de toda la cartera vivirá en el centro de notificaciones.)";
             case "labor.retaalerts.empty" -> "No hay autónomos que revisar para este año.";
             case "labor.retaalerts.col.company" -> "Empresa";
             case "labor.retaalerts.col.name" -> "Autónomo";

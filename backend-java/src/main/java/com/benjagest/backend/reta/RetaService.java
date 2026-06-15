@@ -390,77 +390,87 @@ public class RetaService {
     // ====================================================================
 
     /**
-     * Recorre la empresa actual + su cartera (companies.parent_company_id =
-     * empresa actual) y marca los autónomos cuya base de cotización está fuera
-     * del tramo que les corresponde por su RENDIMIENTO REAL (P&L del ejercicio:
-     * grupos 7xx haber − 6xx debe en asientos POSTED). Decisión Benjamin
-     * 2026-06-15. Auto-asegura perfiles de titulares RETA antes de revisar.
+     * Revisión RETA de la EMPRESA ACTUAL (tenant): autónomos cuya base de
+     * cotización está fuera del tramo que les corresponde por su RENDIMIENTO
+     * REAL (P&L: 7xx haber − 6xx debe, POSTED). Decisión Benjamin 2026-06-15:
+     * es POR-CLIENTE — en "Mi gestión" evalúa la propia asesoría; dentro de la
+     * ficha de un cliente, ese cliente. El roll-up de toda la cartera (para
+     * notificaciones) es {@link #scanRegularizationPortfolio(int)}.
      */
     public List<RegularizationAlert> scanRegularization(int year) {
         String selfId = tenantContext.getCurrentCompanyId();
-        // Empresa propia + cartera gestionada.
-        List<java.util.Map<String, Object>> companies = new java.util.ArrayList<>();
-        java.util.Map<String, Object> self = new java.util.HashMap<>();
-        self.put("id", selfId);
-        self.put("name", jdbcTemplate.query(
-                "SELECT COALESCE(trade_name, legal_name) AS n FROM companies WHERE id = ?",
-                (rs, n) -> rs.getString("n"), selfId).stream().findFirst().orElse("—"));
-        companies.add(self);
-        companies.addAll(jdbcTemplate.queryForList("""
-                SELECT id, COALESCE(trade_name, legal_name) AS name
-                  FROM companies
-                 WHERE parent_company_id = ?
-                 ORDER BY name
-                """, selfId));
-
-        java.sql.Date from = java.sql.Date.valueOf(java.time.LocalDate.of(year, 1, 1));
-        java.sql.Date to = java.sql.Date.valueOf(java.time.LocalDate.of(year, 12, 31));
-
         List<RegularizationAlert> out = new java.util.ArrayList<>();
-        for (var co : companies) {
-            String companyId = (String) co.get("id");
-            String companyName = (String) co.get("name");
-            try { ensureOwnerProfiles(companyId); } catch (Exception ignored) { /* best-effort */ }
+        evalCompanyRegularization(selfId, companyName(selfId), year, out);
+        return out;
+    }
 
-            List<java.util.Map<String, Object>> profiles = jdbcTemplate.queryForList("""
-                    SELECT id, full_name, current_base
-                      FROM reta_profiles
-                     WHERE company_id = ? AND active = TRUE
-                    """, companyId);
-            if (profiles.isEmpty()) continue;
-
-            BigDecimal income = sumGroup(companyId, from, to, "7", true);   // ventas (haber)
-            BigDecimal expense = sumGroup(companyId, from, to, "6", false); // gastos (debe)
-            // Sin contabilidad ese año (sin movimientos 6xx/7xx) NO se puede
-            // estimar el rendimiento real → se omite para no dar falsos avisos.
-            if (income.signum() == 0 && expense.signum() == 0) continue;
-            BigDecimal net = income.subtract(expense);
-            TramoSuggestion tr;
-            try {
-                tr = suggestTramo(year, net);
-            } catch (Exception ex) {
-                continue; // sin tramos para ese año → no se puede evaluar
-            }
-
-            for (var p : profiles) {
-                BigDecimal base = (BigDecimal) p.get("current_base");
-                String fullName = (String) p.get("full_name");
-                String status;
-                if (base == null || base.signum() == 0) {
-                    status = "NO_BASE";
-                } else if (base.compareTo(tr.baseMinima()) < 0) {
-                    status = "UNDER"; // cotiza por debajo → regularización a pagar
-                } else if (base.compareTo(tr.baseMaxima()) > 0) {
-                    status = "OVER";  // cotiza por encima → paga de más
-                } else {
-                    continue; // base dentro del tramo → OK
-                }
-                out.add(new RegularizationAlert(
-                        companyId, companyName, (String) p.get("id"), fullName,
-                        base, net, tr.tramoLabel(), tr.baseMinima(), tr.baseMaxima(), status));
-            }
+    /**
+     * Roll-up de regularización de TODA la cartera (empresa propia + clientes con
+     * parent_company_id = la asesoría). Para el centro de notificaciones/avisos,
+     * NO para "Mi gestión" (que solo muestra la gestión de la propia asesoría).
+     */
+    public List<RegularizationAlert> scanRegularizationPortfolio(int year) {
+        String selfId = tenantContext.getCurrentCompanyId();
+        List<RegularizationAlert> out = new java.util.ArrayList<>();
+        evalCompanyRegularization(selfId, companyName(selfId), year, out);
+        for (var co : jdbcTemplate.queryForList(
+                "SELECT id, COALESCE(trade_name, legal_name) AS name FROM companies "
+                + "WHERE parent_company_id = ? ORDER BY name", selfId)) {
+            evalCompanyRegularization((String) co.get("id"), (String) co.get("name"), year, out);
         }
         return out;
+    }
+
+    private String companyName(String companyId) {
+        return jdbcTemplate.query(
+                "SELECT COALESCE(trade_name, legal_name) AS n FROM companies WHERE id = ?",
+                (rs, n) -> rs.getString("n"), companyId).stream().findFirst().orElse("—");
+    }
+
+    /** Evalúa una empresa y añade a {@code out} los autónomos con base a revisar. */
+    private void evalCompanyRegularization(String companyId, String companyName, int year,
+                                            List<RegularizationAlert> out) {
+        java.sql.Date from = java.sql.Date.valueOf(java.time.LocalDate.of(year, 1, 1));
+        java.sql.Date to = java.sql.Date.valueOf(java.time.LocalDate.of(year, 12, 31));
+        try { ensureOwnerProfiles(companyId); } catch (Exception ignored) { /* best-effort */ }
+
+        List<java.util.Map<String, Object>> profiles = jdbcTemplate.queryForList("""
+                SELECT id, full_name, current_base
+                  FROM reta_profiles
+                 WHERE company_id = ? AND active = TRUE
+                """, companyId);
+        if (profiles.isEmpty()) return;
+
+        BigDecimal income = sumGroup(companyId, from, to, "7", true);   // ventas (haber)
+        BigDecimal expense = sumGroup(companyId, from, to, "6", false); // gastos (debe)
+        // Sin contabilidad ese año (sin movimientos 6xx/7xx) NO se puede estimar
+        // el rendimiento real → se omite para no dar falsos avisos.
+        if (income.signum() == 0 && expense.signum() == 0) return;
+        BigDecimal net = income.subtract(expense);
+        TramoSuggestion tr;
+        try {
+            tr = suggestTramo(year, net);
+        } catch (Exception ex) {
+            return; // sin tramos para ese año → no se puede evaluar
+        }
+
+        for (var p : profiles) {
+            BigDecimal base = (BigDecimal) p.get("current_base");
+            String fullName = (String) p.get("full_name");
+            String status;
+            if (base == null || base.signum() == 0) {
+                status = "NO_BASE";
+            } else if (base.compareTo(tr.baseMinima()) < 0) {
+                status = "UNDER"; // cotiza por debajo → regularización a pagar
+            } else if (base.compareTo(tr.baseMaxima()) > 0) {
+                status = "OVER";  // cotiza por encima → paga de más
+            } else {
+                continue; // base dentro del tramo → OK
+            }
+            out.add(new RegularizationAlert(
+                    companyId, companyName, (String) p.get("id"), fullName,
+                    base, net, tr.tramoLabel(), tr.baseMinima(), tr.baseMaxima(), status));
+        }
     }
 
     private BigDecimal sumGroup(String companyId, java.sql.Date from, java.sql.Date to,
