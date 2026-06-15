@@ -18,5 +18,8 @@ public record PayslipEntry(
         String status,
         String paidAt,
         String pdfPath,
-        String notes
+        String notes,
+        String deliveredAt,
+        String deliveryMethod,
+        String acknowledgedAt
 ) {}

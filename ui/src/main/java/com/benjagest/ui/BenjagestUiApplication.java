@@ -16237,6 +16237,19 @@ public class BenjagestUiApplication extends Application {
             case "labor.payslips.action.pdf" -> "Download PDF";
             case "labor.payslips.action.email" -> "Send by email";
             case "labor.payslips.action.delete" -> "Delete";
+            case "labor.payslips.action.deliver" -> "Delivery / receipt";
+            case "labor.payslips.col.delivery" -> "Delivery";
+            case "labor.payslips.delivery.title" -> "Register payslip delivery";
+            case "labor.payslips.delivery.date" -> "Delivery date";
+            case "labor.payslips.delivery.method" -> "Method";
+            case "labor.payslips.delivery.method.HAND" -> "In person";
+            case "labor.payslips.delivery.method.EMAIL" -> "Email";
+            case "labor.payslips.delivery.method.PORTAL" -> "Employee portal";
+            case "labor.payslips.delivery.method.POSTAL" -> "Postal mail";
+            case "labor.payslips.delivery.ack_check" -> "The worker acknowledged receipt (signed)";
+            case "labor.payslips.delivery.ack_date" -> "Acknowledgement date";
+            case "labor.payslips.delivery.delivered" -> "Delivered";
+            case "labor.payslips.delivery.signed" -> "Signed";
             case "labor.payslips.calc.title" -> "Calculate payslip";
             case "labor.payslips.calc.save" -> "Calculate";
             case "labor.payslips.calc.employee" -> "Employee";
@@ -16812,6 +16825,19 @@ public class BenjagestUiApplication extends Application {
             case "labor.payslips.action.pdf" -> "Descargar PDF";
             case "labor.payslips.action.email" -> "Enviar por email";
             case "labor.payslips.action.delete" -> "Borrar";
+            case "labor.payslips.action.deliver" -> "Entrega / acuse";
+            case "labor.payslips.col.delivery" -> "Entrega";
+            case "labor.payslips.delivery.title" -> "Registrar entrega de la nómina";
+            case "labor.payslips.delivery.date" -> "Fecha de entrega";
+            case "labor.payslips.delivery.method" -> "Vía";
+            case "labor.payslips.delivery.method.HAND" -> "En mano";
+            case "labor.payslips.delivery.method.EMAIL" -> "Correo electrónico";
+            case "labor.payslips.delivery.method.PORTAL" -> "Portal del empleado";
+            case "labor.payslips.delivery.method.POSTAL" -> "Correo postal";
+            case "labor.payslips.delivery.ack_check" -> "El trabajador acusó recibo (firmó)";
+            case "labor.payslips.delivery.ack_date" -> "Fecha del acuse";
+            case "labor.payslips.delivery.delivered" -> "Entregada";
+            case "labor.payslips.delivery.signed" -> "Firmada";
             case "labor.payslips.calc.title" -> "Calcular nomina";
             case "labor.payslips.calc.save" -> "Calcular";
             case "labor.payslips.calc.employee" -> "Empleado";
@@ -20122,7 +20148,11 @@ public class BenjagestUiApplication extends Application {
                 new TableColumn<>(t("labor.payslips.col.status"));
         cStatus.setCellValueFactory(c -> new SimpleStringProperty(t("labor.payslips.status." + c.getValue().status())));
         cStatus.setPrefWidth(110);
-        payslipsTable.getColumns().addAll(java.util.List.of(cPeriod, cEmp, cType, cGross, cSs, cIrpf, cNet, cStatus));
+        TableColumn<com.benjagest.ui.model.PayslipEntry, String> cDelivery =
+                new TableColumn<>(t("labor.payslips.col.delivery"));
+        cDelivery.setCellValueFactory(c -> new SimpleStringProperty(payslipDeliveryLabel(c.getValue())));
+        cDelivery.setPrefWidth(150);
+        payslipsTable.getColumns().addAll(java.util.List.of(cPeriod, cEmp, cType, cGross, cSs, cIrpf, cNet, cStatus, cDelivery));
         payslipsTable.setItems(FXCollections.observableArrayList(bundle.payslips()));
 
         Button calcBtn = new Button(t("labor.payslips.action.calculate"));
@@ -20163,6 +20193,14 @@ public class BenjagestUiApplication extends Application {
             if (sel != null) markPayslipPaid(sel);
         });
 
+        Button deliverBtn = new Button(t("labor.payslips.action.deliver"));
+        deliverBtn.setGraphic(icon("fas-hand-holding"));
+        deliverBtn.setDisable(true);
+        deliverBtn.setOnAction(ev -> {
+            var sel = payslipsTable.getSelectionModel().getSelectedItem();
+            if (sel != null) showPayslipDeliveryDialog(sel);
+        });
+
         Button pdfBtn = new Button(t("labor.payslips.action.pdf"));
         pdfBtn.setGraphic(icon("fas-file-pdf"));
         pdfBtn.setDisable(true);
@@ -20190,13 +20228,14 @@ public class BenjagestUiApplication extends Application {
         payslipsTable.getSelectionModel().selectedItemProperty().addListener((o, ov, nv) -> {
             boolean none = nv == null;
             payBtn.setDisable(none || "PAID".equals(nv == null ? "" : nv.status()));
+            deliverBtn.setDisable(none);
             pdfBtn.setDisable(none);
             emailBtn.setDisable(none);
             delBtn.setDisable(none || "PAID".equals(nv == null ? "" : nv.status()));
         });
 
         HBox actions = new HBox(8, calcBtn, genMonthBtn, batchBtn, extraBtn, settlementBtn,
-                payBtn, pdfBtn, emailBtn, delBtn);
+                payBtn, deliverBtn, pdfBtn, emailBtn, delBtn);
         actions.setAlignment(Pos.CENTER_LEFT);
 
         Label hint = new Label(t("labor.payslips.hint"));
@@ -20849,6 +20888,80 @@ public class BenjagestUiApplication extends Application {
                                 : detail);
             });
             start(task, "payslip-calculate");
+        });
+    }
+
+    /** Etiqueta de la columna "Entrega": firmada > entregada > pendiente. */
+    private String payslipDeliveryLabel(com.benjagest.ui.model.PayslipEntry p) {
+        if (p.acknowledgedAt() != null && !p.acknowledgedAt().isBlank()) {
+            return t("labor.payslips.delivery.signed") + " " + p.acknowledgedAt();
+        }
+        if (p.deliveredAt() != null && !p.deliveredAt().isBlank()) {
+            String m = (p.deliveryMethod() == null || p.deliveryMethod().isBlank())
+                    ? "" : " (" + t("labor.payslips.delivery.method." + p.deliveryMethod()) + ")";
+            return t("labor.payslips.delivery.delivered") + " " + p.deliveredAt() + m;
+        }
+        return "—";
+    }
+
+    /**
+     * PAY-DELIVERY — Registra la entrega del recibo de salarios al trabajador
+     * (fecha + vía) y opcionalmente el acuse de recibo (firma). ET art. 29 /
+     * Orden ESS/2098/2014.
+     */
+    private void showPayslipDeliveryDialog(com.benjagest.ui.model.PayslipEntry p) {
+        Dialog<ButtonType> d = new Dialog<>();
+        d.setTitle(t("labor.payslips.delivery.title"));
+        d.setHeaderText(p.employeeName() + " — " + p.periodMonth() + "/" + p.periodYear());
+        ButtonType save = new ButtonType(t("save"), ButtonBar.ButtonData.OK_DONE);
+        d.getDialogPane().getButtonTypes().addAll(save, ButtonType.CANCEL);
+
+        DatePicker deliveredPicker = new DatePicker(
+                (p.deliveredAt() != null && !p.deliveredAt().isBlank())
+                        ? java.time.LocalDate.parse(p.deliveredAt()) : java.time.LocalDate.now());
+
+        ComboBox<String> methodCombo = new ComboBox<>();
+        methodCombo.getItems().addAll("HAND", "EMAIL", "PORTAL", "POSTAL");
+        methodCombo.setConverter(new javafx.util.StringConverter<>() {
+            @Override public String toString(String code) {
+                return code == null ? "" : t("labor.payslips.delivery.method." + code);
+            }
+            @Override public String fromString(String s) { return s; }
+        });
+        methodCombo.setValue(p.deliveryMethod() == null || p.deliveryMethod().isBlank()
+                ? "HAND" : p.deliveryMethod());
+
+        CheckBox ackCheck = new CheckBox(t("labor.payslips.delivery.ack_check"));
+        DatePicker ackPicker = new DatePicker(
+                (p.acknowledgedAt() != null && !p.acknowledgedAt().isBlank())
+                        ? java.time.LocalDate.parse(p.acknowledgedAt()) : java.time.LocalDate.now());
+        ackCheck.setSelected(p.acknowledgedAt() != null && !p.acknowledgedAt().isBlank());
+        ackPicker.disableProperty().bind(ackCheck.selectedProperty().not());
+
+        GridPane g = new GridPane();
+        g.setHgap(10); g.setVgap(10); g.setPadding(new Insets(12));
+        g.add(new Label(t("labor.payslips.delivery.date")), 0, 0); g.add(deliveredPicker, 1, 0);
+        g.add(new Label(t("labor.payslips.delivery.method")), 0, 1); g.add(methodCombo, 1, 1);
+        g.add(ackCheck, 0, 2, 2, 1);
+        g.add(new Label(t("labor.payslips.delivery.ack_date")), 0, 3); g.add(ackPicker, 1, 3);
+        d.getDialogPane().setContent(g);
+
+        d.showAndWait().ifPresent(bt -> {
+            if (bt != save) return;
+            java.time.LocalDate delivered = deliveredPicker.getValue();
+            String method = methodCombo.getValue();
+            boolean ack = ackCheck.isSelected();
+            java.time.LocalDate ackDate = ackPicker.getValue();
+            Task<Void> task = new Task<>() {
+                @Override protected Void call() throws Exception {
+                    laborApiClient.markPayslipDelivered(p.id(), delivered, method);
+                    if (ack) laborApiClient.markPayslipAcknowledged(p.id(), ackDate);
+                    return null;
+                }
+            };
+            task.setOnSucceeded(ev -> showLaborModule());
+            task.setOnFailed(ev -> showError(t("labor.payslips.calc.fail.title"), t("labor.payslips.calc.fail.body")));
+            start(task, "payslip-deliver");
         });
     }
 
