@@ -224,48 +224,105 @@ public class RetaService {
     }
 
     /**
-     * Devuelve el tramo RETA recomendado para 2026 dado un rendimiento
-     * neto anual previsto. Tabla embebida segun PGE 2026 (placeholder
-     * con valores 2025 — confirmar al publicarse BOE 2026).
+     * Devuelve el tramo RETA recomendado para el año en curso dado un
+     * rendimiento neto anual. Lee la tabla {@code reta_tramos} de BD
+     * (RETA-0: ya NO está hardcodeada; se edita por año desde la UI).
      */
     public TramoSuggestion suggestTramo(BigDecimal annualNetIncome) {
+        return suggestTramo(Year.now().getValue(), annualNetIncome);
+    }
+
+    /** Como {@link #suggestTramo(BigDecimal)} pero para un año concreto. */
+    public TramoSuggestion suggestTramo(int year, BigDecimal annualNetIncome) {
         if (annualNetIncome == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "annualNetIncome requerido");
         }
-        // Tabla 2025 (valores transitorios hasta PGE 2026):
-        // 15 tramos. Cada uno tiene baseMin, baseMax, cuotaMinima.
-        // Fuente: Resolucion 17-01-2025 BOE, art. 308 LGSS.
         BigDecimal monthly = annualNetIncome.divide(BigDecimal.valueOf(12), 2, RoundingMode.HALF_UP);
-        Object[][] tramos = {
-                {"Tramo 1 reducida", new BigDecimal("670.00"), new BigDecimal("718.85"), new BigDecimal("216.78")},
-                {"Tramo 2 reducida", new BigDecimal("827.50"), new BigDecimal("899.74"), new BigDecimal("267.59")},
-                {"Tramo 3 reducida", new BigDecimal("952.59"), new BigDecimal("1167.00"), new BigDecimal("303.88")},
-                {"Tramo 1 general", new BigDecimal("960.78"), new BigDecimal("1143.79"), new BigDecimal("298.13")},
-                {"Tramo 2 general", new BigDecimal("960.78"), new BigDecimal("1209.39"), new BigDecimal("314.39")},
-                {"Tramo 3 general", new BigDecimal("960.78"), new BigDecimal("1272.87"), new BigDecimal("325.18")},
-                {"Tramo 4 general", new BigDecimal("1013.07"), new BigDecimal("1336.35"), new BigDecimal("335.97")},
-                {"Tramo 5 general", new BigDecimal("1029.41"), new BigDecimal("1454.25"), new BigDecimal("366.21")},
-                {"Tramo 6 general", new BigDecimal("1045.75"), new BigDecimal("1700.32"), new BigDecimal("428.99")},
-                {"Tramo 7 general", new BigDecimal("1078.43"), new BigDecimal("1900.10"), new BigDecimal("478.85")},
-                {"Tramo 8 general", new BigDecimal("1143.79"), new BigDecimal("2030.91"), new BigDecimal("511.41")},
-                {"Tramo 9 general", new BigDecimal("1209.15"), new BigDecimal("2346.18"), new BigDecimal("594.40")},
-                {"Tramo 10 general", new BigDecimal("1274.51"), new BigDecimal("2660.43"), new BigDecimal("674.40")},
-                {"Tramo 11 general", new BigDecimal("1356.21"), new BigDecimal("2994.95"), new BigDecimal("754.84")},
-                {"Tramo 12 general", new BigDecimal("1437.91"), new BigDecimal("4720.50"), new BigDecimal("1191.40")}
-        };
-        // Cae en el tramo cuyo limite superior (rendimiento mensual) cubre el monthly
-        String[] thresholds = {"670", "900", "1167", "1300", "1500", "1700", "1850", "2030", "2330", "2760", "3190", "3620", "4050", "6000", "9999"};
-        int idx = 0;
-        for (int i = 0; i < thresholds.length; i++) {
-            BigDecimal th = new BigDecimal(thresholds[i]);
-            if (monthly.compareTo(th) <= 0) { idx = i; break; }
-            idx = i;
+        List<TramoRow> tramos = getTramos(year);
+        if (tramos.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "No hay tramos RETA configurados para " + year
+                            + ". Define o clona los tramos del año en la UI.");
         }
-        Object[] t = tramos[Math.min(idx, tramos.length - 1)];
+        // Cae en el primer tramo cuyo límite superior (rendimiento mensual) cubre
+        // el monthly; si lo supera todos, el último tramo.
+        TramoRow chosen = tramos.get(tramos.size() - 1);
+        for (TramoRow tr : tramos) {
+            if (monthly.compareTo(tr.incomeMaxMonthly()) <= 0) { chosen = tr; break; }
+        }
         return new TramoSuggestion(
-                (String) t[0], (BigDecimal) t[1], (BigDecimal) t[2], (BigDecimal) t[3],
+                chosen.label(), chosen.baseMin(), chosen.baseMax(), chosen.quotaMin(),
                 annualNetIncome, monthly);
     }
+
+    // ====================================================================
+    //  RETA-0 — Tramos por año (tabla reta_tramos, editable desde la UI)
+    // ====================================================================
+
+    /** Años con tramos definidos (desc). */
+    public List<Integer> listTramoYears() {
+        return jdbcTemplate.queryForList(
+                "SELECT DISTINCT year_number FROM reta_tramos ORDER BY year_number DESC",
+                Integer.class);
+    }
+
+    /** Tramos de un año, ordenados por {@code ord} (rendimiento creciente). */
+    public List<TramoRow> getTramos(int year) {
+        return jdbcTemplate.query("""
+                SELECT id, year_number, ord, label, income_max_monthly,
+                       base_min, base_max, quota_min
+                  FROM reta_tramos
+                 WHERE year_number = ?
+                 ORDER BY ord
+                """, (rs, n) -> new TramoRow(
+                        rs.getString("id"), rs.getInt("year_number"), rs.getInt("ord"),
+                        rs.getString("label"), rs.getBigDecimal("income_max_monthly"),
+                        rs.getBigDecimal("base_min"), rs.getBigDecimal("base_max"),
+                        rs.getBigDecimal("quota_min")),
+                year);
+    }
+
+    /** Reemplaza por completo los tramos de un año (borra e inserta). */
+    @org.springframework.transaction.annotation.Transactional
+    public List<TramoRow> saveTramos(int year, List<TramoRow> rows) {
+        jdbcTemplate.update("DELETE FROM reta_tramos WHERE year_number = ?", year);
+        int ord = 0;
+        for (TramoRow r : rows) {
+            jdbcTemplate.update("""
+                    INSERT INTO reta_tramos (id, year_number, ord, label,
+                        income_max_monthly, base_min, base_max, quota_min)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    UUID.randomUUID().toString(), year, ord++,
+                    blank(r.label()) == null ? ("Tramo " + ord) : r.label(),
+                    r.incomeMaxMonthly() == null ? BigDecimal.ZERO : r.incomeMaxMonthly(),
+                    r.baseMin() == null ? BigDecimal.ZERO : r.baseMin(),
+                    r.baseMax() == null ? BigDecimal.ZERO : r.baseMax(),
+                    r.quotaMin() == null ? BigDecimal.ZERO : r.quotaMin());
+        }
+        return getTramos(year);
+    }
+
+    /** Clona los tramos de {@code fromYear} en {@code toYear} (si éste no existe). */
+    @org.springframework.transaction.annotation.Transactional
+    public List<TramoRow> cloneTramos(int fromYear, int toYear) {
+        if (!getTramos(toYear).isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "El año " + toYear + " ya tiene tramos. Bórralos antes de clonar.");
+        }
+        List<TramoRow> src = getTramos(fromYear);
+        if (src.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "El año origen " + fromYear + " no tiene tramos.");
+        }
+        return saveTramos(toYear, src);
+    }
+
+    public record TramoRow(
+            String id, int year, int ord, String label,
+            BigDecimal incomeMaxMonthly, BigDecimal baseMin,
+            BigDecimal baseMax, BigDecimal quotaMin
+    ) {}
 
     private String blank(String v) { return v == null || v.isBlank() ? null : v.trim(); }
 
@@ -401,8 +458,31 @@ public class RetaService {
         }
 
         @GetMapping("/tramos/suggest")
-        public TramoSuggestion suggest(@RequestParam("annualNetIncome") BigDecimal annual) {
-            return service.suggestTramo(annual);
+        public TramoSuggestion suggest(@RequestParam("annualNetIncome") BigDecimal annual,
+                                        @RequestParam(value = "year", required = false) Integer year) {
+            return year == null ? service.suggestTramo(annual)
+                                 : service.suggestTramo(year, annual);
+        }
+
+        // RETA-0 — tramos por año (editables desde la UI, sin tocar código).
+        @GetMapping("/tramos/years")
+        public List<Integer> tramoYears() { return service.listTramoYears(); }
+
+        @GetMapping("/tramos/{year}")
+        public List<TramoRow> tramos(@PathVariable("year") int year) {
+            return service.getTramos(year);
+        }
+
+        @PutMapping("/tramos/{year}")
+        public List<TramoRow> saveTramos(@PathVariable("year") int year,
+                                          @RequestBody List<TramoRow> rows) {
+            return service.saveTramos(year, rows);
+        }
+
+        @PostMapping("/tramos/{year}/clone-from/{src}")
+        public List<TramoRow> cloneTramos(@PathVariable("year") int year,
+                                           @PathVariable("src") int src) {
+            return service.cloneTramos(src, year);
         }
     }
 }

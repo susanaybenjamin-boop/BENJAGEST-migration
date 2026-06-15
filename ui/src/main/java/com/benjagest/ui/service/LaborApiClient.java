@@ -802,6 +802,61 @@ public class LaborApiClient {
                 .POST(HttpRequest.BodyPublishers.ofString("{}")));
     }
 
+    // ==== RETA-0: tramos de cotización por año (editables, no-code) ====
+
+    public java.util.List<Integer> listRetaTramoYears() throws IOException, InterruptedException {
+        HttpResponse<String> r = send(req(baseUrl + "/reta/tramos/years").GET());
+        java.util.List<Integer> out = new ArrayList<>();
+        Matcher m = Pattern.compile("-?\\d+").matcher(r.body());
+        while (m.find()) out.add(Integer.parseInt(m.group()));
+        return out;
+    }
+
+    public java.util.List<com.benjagest.ui.model.RetaTramoEntry> listRetaTramos(int year)
+            throws IOException, InterruptedException {
+        HttpResponse<String> r = send(req(baseUrl + "/reta/tramos/" + year).GET());
+        java.util.List<com.benjagest.ui.model.RetaTramoEntry> out = new ArrayList<>();
+        for (String o : splitTopLevelObjects(r.body())) {
+            out.add(new com.benjagest.ui.model.RetaTramoEntry(
+                    textField(o, "label"),
+                    bigDec(o, "incomeMaxMonthly"),
+                    bigDec(o, "baseMin"),
+                    bigDec(o, "baseMax"),
+                    bigDec(o, "quotaMin")));
+        }
+        return out;
+    }
+
+    public void saveRetaTramos(int year, java.util.List<com.benjagest.ui.model.RetaTramoEntry> rows)
+            throws IOException, InterruptedException {
+        StringBuilder b = new StringBuilder("[");
+        for (int i = 0; i < rows.size(); i++) {
+            var tr = rows.get(i);
+            if (i > 0) b.append(",");
+            String label = tr.label() == null ? "" :
+                    tr.label().replace("\\", "\\\\").replace("\"", "\\\"");
+            b.append("{\"label\":\"").append(label).append("\",")
+             .append("\"incomeMaxMonthly\":").append(plain(tr.incomeMaxMonthly())).append(",")
+             .append("\"baseMin\":").append(plain(tr.baseMin())).append(",")
+             .append("\"baseMax\":").append(plain(tr.baseMax())).append(",")
+             .append("\"quotaMin\":").append(plain(tr.quotaMin())).append("}");
+        }
+        b.append("]");
+        send(req(baseUrl + "/reta/tramos/" + year)
+                .header("Content-Type", "application/json")
+                .PUT(HttpRequest.BodyPublishers.ofString(b.toString())));
+    }
+
+    public void cloneRetaTramos(int targetYear, int srcYear) throws IOException, InterruptedException {
+        send(req(baseUrl + "/reta/tramos/" + targetYear + "/clone-from/" + srcYear)
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString("{}")));
+    }
+
+    private static String plain(java.math.BigDecimal v) {
+        return v == null ? "0" : v.toPlainString();
+    }
+
     // ==== Modelo 145 (datos IRPF del empleado) ====
 
     public com.benjagest.ui.model.Modelo145Entry getIrpfData(String employeeId)
