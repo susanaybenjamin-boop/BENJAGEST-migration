@@ -1831,7 +1831,7 @@ public class BenjagestUiApplication extends Application {
         // es el del cliente).
         if (appMode == AppMode.ADVISORY && !AuthSession.get().isActingForClient()) {
             java.util.Set<String> ownOperativa = java.util.Set.of(
-                    "tax", "labor", "billing", "purchases", "accounting");
+                    "tax", "labor", "billing", "purchases", "accounting", "self-employed");
             base = base.stream()
                     .filter(m -> !ownOperativa.contains(m.id()))
                     .toList();
@@ -17596,6 +17596,7 @@ public class BenjagestUiApplication extends Application {
             case "advisory.client.tab.loans" -> "Loans";
             case "advisory.client.tab.assets" -> "Fixed assets";
             case "advisory.client.tab.labor" -> "HR / Labor";
+            case "advisory.client.tab.reta" -> "Self-employed (RETA)";
             case "advisory.client.tab.tax_models" -> "AEAT models";
             case "advisory.client.tab.certificate" -> "Certificate";
             // ============ Accounting module (AccountingScreen) ============
@@ -18465,6 +18466,7 @@ public class BenjagestUiApplication extends Application {
             case "advisory.client.tab.loans" -> "Préstamos";
             case "advisory.client.tab.assets" -> "Inmovilizado";
             case "advisory.client.tab.labor" -> "RR.HH. / Laboral";
+            case "advisory.client.tab.reta" -> "Autónomos (RETA)";
             case "advisory.client.tab.tax_models" -> "Modelos AEAT";
             case "advisory.client.tab.certificate" -> "Certificado";
             // ============ Módulo Contabilidad (AccountingScreen) ============
@@ -26711,6 +26713,13 @@ public class BenjagestUiApplication extends Application {
             tabs.getTabs().addAll(accountingTab, banksTab, loansTab, assetsTab);
         }
         if (canSee.test("labor")) tabs.getTabs().add(laborTab);
+        // Autónomos (RETA) — operativa por-tenant. Decisión 2026-06-15: la
+        // operativa RETA vive en la ficha (no como módulo suelto del sidebar).
+        if (canSee.test("self-employed") || canSee.test("labor")) {
+            Tab retaTab = new Tab(t("advisory.client.tab.reta"), buildClientRetaTab());
+            retaTab.setGraphic(icon("fas-user-tie"));
+            tabs.getTabs().add(retaTab);
+        }
         if (canSee.test("tax")) tabs.getTabs().add(taxTab);
         // Certificado: identidad fiscal del cliente. Lo mantenemos siempre
         // visible para que cualquier empleado pueda consultar/subir el
@@ -31146,6 +31155,29 @@ public class BenjagestUiApplication extends Application {
         task.setOnSucceeded(ev -> holder.getChildren().setAll(scroll(taxView(task.getValue()))));
         task.setOnFailed(ev -> holder.getChildren().setAll(errorPanel(t("tax.load_failed"))));
         start(task, "own-tax-load");
+        return holder;
+    }
+
+    /**
+     * Ficha (Mi gestión / cliente) — Autónomos (RETA) de la empresa: perfiles
+     * de cotización + cambios de base. Reutiliza {@code retaView}. Es operativa
+     * por-tenant (las llamadas llevan el X-Company-Id activo).
+     */
+    private Node buildClientRetaTab() {
+        VBox holder = new VBox();
+        Label loading = new Label(t("panorama.loading"));
+        loading.getStyleClass().add("settings-hint");
+        loading.setPadding(new Insets(12));
+        holder.getChildren().add(loading);
+        VBox.setVgrow(holder, Priority.ALWAYS);
+        Task<java.util.List<com.benjagest.ui.model.RetaProfileEntry>> task = new Task<>() {
+            @Override protected java.util.List<com.benjagest.ui.model.RetaProfileEntry> call() throws Exception {
+                return laborApiClient.listRetaProfiles(true);
+            }
+        };
+        task.setOnSucceeded(ev -> holder.getChildren().setAll(scroll(retaView(task.getValue()))));
+        task.setOnFailed(ev -> holder.getChildren().setAll(errorPanel(t("reta.load_failed"))));
+        start(task, "client-reta-load");
         return holder;
     }
 
