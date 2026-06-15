@@ -478,7 +478,10 @@ public class LaborApiClient {
                 textField(obj, "status"),
                 textField(obj, "paidAt"),
                 textField(obj, "pdfPath"),
-                textField(obj, "notes")
+                textField(obj, "notes"),
+                textField(obj, "deliveredAt"),
+                textField(obj, "deliveryMethod"),
+                textField(obj, "acknowledgedAt")
         ));
     }
 
@@ -919,13 +922,34 @@ public class LaborApiClient {
                 bigDec(obj, "grossAmount"), bigDec(obj, "ssEmployeeAmount"),
                 bigDec(obj, "irpfAmount"), bigDec(obj, "otherDeductions"),
                 bigDec(obj, "netAmount"), textField(obj, "status"),
-                textField(obj, "paidAt"), textField(obj, "pdfPath"), textField(obj, "notes"));
+                textField(obj, "paidAt"), textField(obj, "pdfPath"), textField(obj, "notes"),
+                textField(obj, "deliveredAt"), textField(obj, "deliveryMethod"),
+                textField(obj, "acknowledgedAt"));
     }
 
     public void markPayslipPaid(String id) throws IOException, InterruptedException {
         send(req(baseUrl + "/labor/payslips/" + id + "/pay")
                 .header("Content-Type", "application/json")
                 .PUT(HttpRequest.BodyPublishers.ofString("{}")));
+    }
+
+    /** Registra la entrega del recibo al trabajador (fecha + vía). */
+    public void markPayslipDelivered(String id, java.time.LocalDate deliveredAt, String method)
+            throws IOException, InterruptedException {
+        String body = "{\"deliveredAt\":" + (deliveredAt == null ? "null" : "\"" + deliveredAt + "\"")
+                + ",\"method\":" + (method == null ? "null" : "\"" + method + "\"") + "}";
+        send(req(baseUrl + "/labor/payslips/" + id + "/deliver")
+                .header("Content-Type", "application/json")
+                .PUT(HttpRequest.BodyPublishers.ofString(body)));
+    }
+
+    /** Registra el acuse de recibo (firma) del trabajador. */
+    public void markPayslipAcknowledged(String id, java.time.LocalDate acknowledgedAt)
+            throws IOException, InterruptedException {
+        String body = "{\"acknowledgedAt\":" + (acknowledgedAt == null ? "null" : "\"" + acknowledgedAt + "\"") + "}";
+        send(req(baseUrl + "/labor/payslips/" + id + "/acknowledge")
+                .header("Content-Type", "application/json")
+                .PUT(HttpRequest.BodyPublishers.ofString(body)));
     }
 
     public void deletePayslip(String id) throws IOException, InterruptedException {

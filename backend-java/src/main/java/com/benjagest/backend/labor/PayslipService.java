@@ -213,6 +213,7 @@ public class PayslipService {
                        p.gross_amount, p.ss_employee_amount, p.irpf_amount,
                        p.other_deductions, p.net_amount,
                        p.status, p.paid_at, p.pdf_path, p.notes,
+                       p.delivered_at, p.delivery_method, p.acknowledged_at,
                        p.created_at, p.updated_at
                   FROM payslips p
                   JOIN employees e ON e.id = p.employee_id
@@ -765,6 +766,29 @@ public class PayslipService {
         return view;
     }
 
+    /** Registra la entrega del recibo de salarios al trabajador (fecha + vía). */
+    public PayslipView markDelivered(String id, LocalDate deliveredAt, String method) {
+        int n = jdbcTemplate.update("""
+                UPDATE payslips
+                   SET delivered_at = COALESCE(?, CURRENT_DATE()),
+                       delivery_method = ?
+                 WHERE id = ? AND company_id = ?
+                """, deliveredAt, method, id, tenantContext.getCurrentCompanyId());
+        if (n == 0) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Nomina no encontrada");
+        return findById(id);
+    }
+
+    /** Registra el acuse de recibo (firma) del trabajador sobre el recibo entregado. */
+    public PayslipView markAcknowledged(String id, LocalDate acknowledgedAt) {
+        int n = jdbcTemplate.update("""
+                UPDATE payslips
+                   SET acknowledged_at = COALESCE(?, CURRENT_DATE())
+                 WHERE id = ? AND company_id = ?
+                """, acknowledgedAt, id, tenantContext.getCurrentCompanyId());
+        if (n == 0) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Nomina no encontrada");
+        return findById(id);
+    }
+
     @Transactional
     public void delete(String id) {
         // Revertir asientos (devengo + pago) antes de borrar la nómina.
@@ -791,6 +815,7 @@ public class PayslipService {
                        p.gross_amount, p.ss_employee_amount, p.irpf_amount,
                        p.other_deductions, p.net_amount,
                        p.status, p.paid_at, p.pdf_path, p.notes,
+                       p.delivered_at, p.delivery_method, p.acknowledged_at,
                        p.created_at, p.updated_at
                   FROM payslips p
                   JOIN employees e ON e.id = p.employee_id
@@ -1007,6 +1032,8 @@ public class PayslipService {
 
     private PayslipView mapView(ResultSet rs, int rowNum) throws SQLException {
         java.sql.Date pd = rs.getDate("paid_at");
+        java.sql.Date dd = rs.getDate("delivered_at");
+        java.sql.Date ad = rs.getDate("acknowledged_at");
         Timestamp ca = rs.getTimestamp("created_at");
         Timestamp ua = rs.getTimestamp("updated_at");
         return new PayslipView(
@@ -1026,6 +1053,9 @@ public class PayslipService {
                 pd == null ? null : pd.toLocalDate(),
                 rs.getString("pdf_path"),
                 rs.getString("notes"),
+                dd == null ? null : dd.toLocalDate(),
+                rs.getString("delivery_method"),
+                ad == null ? null : ad.toLocalDate(),
                 ca == null ? null : ca.toInstant(),
                 ua == null ? null : ua.toInstant()
         );
@@ -1037,6 +1067,7 @@ public class PayslipService {
             BigDecimal grossAmount, BigDecimal ssEmployeeAmount, BigDecimal irpfAmount,
             BigDecimal otherDeductions, BigDecimal netAmount,
             String status, LocalDate paidAt, String pdfPath, String notes,
+            LocalDate deliveredAt, String deliveryMethod, LocalDate acknowledgedAt,
             Instant createdAt, Instant updatedAt
     ) {}
 
@@ -1062,6 +1093,10 @@ public class PayslipService {
                                 Boolean cotizes, Boolean taxable) {}
 
     public record MarkPaidRequest(LocalDate paidAt) {}
+
+    public record MarkDeliveredRequest(LocalDate deliveredAt, String method) {}
+
+    public record MarkAcknowledgedRequest(LocalDate acknowledgedAt) {}
 
     @RestController
     @RequestMapping("/api/labor/payslips")
@@ -1109,6 +1144,20 @@ public class PayslipService {
         public PayslipView markPaid(@PathVariable("id") String id,
                                      @RequestBody MarkPaidRequest req) {
             return service.markPaid(id, req == null ? null : req.paidAt());
+        }
+
+        @PutMapping("/{id}/deliver")
+        public PayslipView markDelivered(@PathVariable("id") String id,
+                                          @RequestBody MarkDeliveredRequest req) {
+            return service.markDelivered(id,
+                    req == null ? null : req.deliveredAt(),
+                    req == null ? null : req.method());
+        }
+
+        @PutMapping("/{id}/acknowledge")
+        public PayslipView markAcknowledged(@PathVariable("id") String id,
+                                             @RequestBody MarkAcknowledgedRequest req) {
+            return service.markAcknowledged(id, req == null ? null : req.acknowledgedAt());
         }
 
         @DeleteMapping("/{id}")
