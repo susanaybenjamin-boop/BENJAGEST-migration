@@ -16498,7 +16498,7 @@ public class BenjagestUiApplication extends Application {
             case "reta.editor.net_income" -> "Expected annual net income";
             case "reta.editor.base" -> "Current base";
             case "reta.editor.quota" -> "Current quota";
-            case "reta.editor.suggest" -> "Suggest base/quota from income";
+            case "reta.editor.suggest" -> "Suggest base & quota";
             case "reta.editor.suggest_need_income" -> "Enter the expected net income first.";
             case "reta.editor.suggest_done" -> "Bracket {t}: base {min}–{max} €. Filled with the minimum base and quota (adjustable).";
             case "reta.editor.suggest_fail" -> "Could not suggest (are the year's brackets set?).";
@@ -17119,7 +17119,7 @@ public class BenjagestUiApplication extends Application {
             case "reta.editor.net_income" -> "Rendimiento neto anual previsto";
             case "reta.editor.base" -> "Base actual";
             case "reta.editor.quota" -> "Cuota actual";
-            case "reta.editor.suggest" -> "Sugerir base/cuota desde rendimiento";
+            case "reta.editor.suggest" -> "Sugerir base y cuota";
             case "reta.editor.suggest_need_income" -> "Introduce primero el rendimiento neto previsto.";
             case "reta.editor.suggest_done" -> "Tramo {t}: base {min}–{max} €. Rellenadas base y cuota mínimas (ajustables).";
             case "reta.editor.suggest_fail" -> "No se pudo sugerir (¿están definidos los tramos del año?).";
@@ -23322,6 +23322,17 @@ public class BenjagestUiApplication extends Application {
 
         GridPane g = new GridPane();
         g.setHgap(10); g.setVgap(6); g.setPadding(new Insets(10));
+        // Anchos de columna: las etiquetas (col 0 y 2) con ancho mínimo para que
+        // no se trunquen a "..."; los campos (col 1 y 3) crecen.
+        javafx.scene.layout.ColumnConstraints gcLabel = new javafx.scene.layout.ColumnConstraints();
+        gcLabel.setMinWidth(165); gcLabel.setHalignment(javafx.geometry.HPos.LEFT);
+        javafx.scene.layout.ColumnConstraints gcField = new javafx.scene.layout.ColumnConstraints();
+        gcField.setHgrow(Priority.ALWAYS); gcField.setMinWidth(120); gcField.setFillWidth(true);
+        javafx.scene.layout.ColumnConstraints gcLabel2 = new javafx.scene.layout.ColumnConstraints();
+        gcLabel2.setMinWidth(110); gcLabel2.setHalignment(javafx.geometry.HPos.LEFT);
+        javafx.scene.layout.ColumnConstraints gcField2 = new javafx.scene.layout.ColumnConstraints();
+        gcField2.setHgrow(Priority.ALWAYS); gcField2.setMinWidth(90); gcField2.setFillWidth(true);
+        g.getColumnConstraints().addAll(gcLabel, gcField, gcLabel2, gcField2);
         int row = 0;
         g.add(new Label(t("reta.editor.name")), 0, row); g.add(nameField, 1, row, 3, 1); row++;
         g.add(new Label(t("reta.editor.nif")), 0, row); g.add(nifField, 1, row);
