@@ -8,6 +8,33 @@
 
 ---
 
+## 2026-06-15 — RETA: split operativa + alerta de regularización (plan)
+
+> Decisión Benjamin: RETA tiene dos naturalezas → **operativa** del autónomo
+> (en la ficha) y **vigilancia** cross-cliente (admin). Casi todos los clientes
+> de la asesoría son autónomos (detrás de cada empresa hay un autónomo).
+
+- ✅ **RETA-1** *(2026-06-15)* — operativa RETA movida a la ficha (pestaña
+  "Autónomos (RETA)" en Mi gestión + cada cliente, reutiliza `retaView`);
+  quitada del sidebar del cockpit propio (filtro `activeModules`).
+- ⬜ **RETA-2** — auto-asegurar un `reta_profile` para el autónomo (owner) de
+  cada empresa, para que la vigilancia cubra a todos (incl. la propia asesoría).
+  Definir quién es "autónomo" (owner con RETA / administrador). Idempotente.
+- ⬜ **RETA-3 (alerta de regularización, cross-cliente)** — **decisión Benjamin:
+  usar el RENDIMIENTO REAL de la contabilidad (P&L del cliente)**, no el previsto.
+  Servicio en `advisory` que recorre la cartera (+ la propia asesoría) y, por
+  cada `reta_profile`: (1) calcula el resultado real del ejercicio desde
+  contabilidad/P&L (reutilizar `SalesAndExpensesKpiService`), (2) determina el
+  **tramo 2026** que le corresponde a ese rendimiento (`RetaService.suggestTramo`,
+  mensual = anual/12), (3) compara la **base cotizada actual** con la horquilla
+  [base mín, base máx] del tramo → marca **"base a revisar"** (paga de más / de
+  menos). UI: panel de avisos en el sidebar/PANORAMA de la asesoría.
+  **Legal-sensible**: validar la regla con Benjamin como se hizo con el IRPF
+  (RD-Ley 13/2022: cotización por rendimientos reales; la TGSS regulariza al año
+  siguiente). Solo aplica a clientes que lleven contabilidad en BENJAGEST.
+
+---
+
 ## 2026-06-15 — Sesión con Benjamin: cierre, nómina, sidebar ✅
 
 - ✅ **CONS-CIERRE** — pantalla de cierre de ejercicio cableada en Contabilidad
