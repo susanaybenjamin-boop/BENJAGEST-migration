@@ -409,6 +409,9 @@ public class RetaService {
 
             BigDecimal income = sumGroup(companyId, from, to, "7", true);   // ventas (haber)
             BigDecimal expense = sumGroup(companyId, from, to, "6", false); // gastos (debe)
+            // Sin contabilidad ese año (sin movimientos 6xx/7xx) NO se puede
+            // estimar el rendimiento real → se omite para no dar falsos avisos.
+            if (income.signum() == 0 && expense.signum() == 0) continue;
             BigDecimal net = income.subtract(expense);
             TramoSuggestion tr;
             try {
