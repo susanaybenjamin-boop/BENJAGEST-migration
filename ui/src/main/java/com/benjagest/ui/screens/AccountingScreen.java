@@ -7,6 +7,8 @@ import com.benjagest.ui.model.AccountingModels.JournalEntryDetail;
 import com.benjagest.ui.model.AccountingModels.JournalLine;
 import com.benjagest.ui.model.AccountingModels.LearningRule;
 import com.benjagest.ui.model.AccountingModels.RecurringTask;
+import com.benjagest.ui.model.FiscalYearCloseEntry;
+import com.benjagest.ui.model.RegularizationPreviewEntry;
 import com.benjagest.ui.service.AccountingApiClient;
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -98,7 +100,8 @@ public class AccountingScreen {
                 new Tab(tt.apply("accounting.tab.pending"), buildPendingTab()),
                 new Tab(tt.apply("accounting.tab.diary"), buildDiaryTab()),
                 new Tab(tt.apply("accounting.tab.manual"), buildManualTab()),
-                new Tab(tt.apply("accounting.tab.rules"), buildRulesTab())
+                new Tab(tt.apply("accounting.tab.rules"), buildRulesTab()),
+                new Tab(tt.apply("accounting.tab.year_close"), buildYearCloseTab())
         );
         VBox.setVgrow(tabs, Priority.ALWAYS);
         VBox root = new VBox(tabs);
@@ -645,6 +648,238 @@ public class AccountingScreen {
         async(() -> api.listRules(null, null),
                 rows -> rulesTable.setItems(FXCollections.observableArrayList(rows)),
                 err -> logSilent("load", err));
+    }
+
+    // ====================================================================
+    //  Tab: Cierre de ejercicio (CONS-CIERRE)
+    // ====================================================================
+
+    private TableView<FiscalYearCloseEntry> closesTable;
+    private VBox closeDetailBox;
+
+    private Node buildYearCloseTab() {
+        int currentYear = LocalDate.now().getYear();
+
+        ComboBox<Integer> yearCombo = new ComboBox<>();
+        for (int y = currentYear; y >= currentYear - 6; y--) yearCombo.getItems().add(y);
+        yearCombo.setValue(currentYear - 1); // se cierra el ejercicio anterior
+        yearCombo.setPrefWidth(110);
+
+        Button precalc = new Button(tt.apply("accounting.yc.precalculate"));
+        precalc.getStyleClass().add("button-primary");
+        precalc.setOnAction(e -> {
+            Integer y = yearCombo.getValue();
+            if (y == null) return;
+            async(() -> api.precalculateYear(y),
+                    entry -> { loadYearCloses(); selectYearInTable(y); },
+                    err -> showError(tt.apply("accounting.yc.error_precalculate"), err));
+        });
+
+        Button preview = new Button(tt.apply("accounting.yc.preview_reg"));
+        preview.setOnAction(e -> {
+            Integer y = yearCombo.getValue();
+            if (y == null) return;
+            async(() -> api.previewRegularization(y),
+                    this::showRegularizationPreview,
+                    err -> showError(tt.apply("accounting.yc.error_preview"), err));
+        });
+
+        Button refresh = new Button(tt.apply("accounting.action.refresh"));
+        refresh.setOnAction(e -> loadYearCloses());
+
+        HBox toolbar = new HBox(8,
+                new Label(tt.apply("accounting.yc.fiscal_year")), yearCombo,
+                precalc, preview, refresh);
+        toolbar.setAlignment(Pos.CENTER_LEFT);
+
+        closesTable = new TableView<>();
+        closesTable.setPlaceholder(new Label(tt.apply("accounting.yc.empty")));
+        closesTable.getColumns().addAll(List.of(
+                col(tt.apply("accounting.yc.col.year"), c -> String.valueOf(c.periodYear()), 80),
+                col(tt.apply("accounting.yc.col.status"), c -> tt.apply("accounting.yc.status." + c.status()), 120),
+                colMoney(tt.apply("accounting.yc.col.income"), FiscalYearCloseEntry::incomeTotal, 120),
+                colMoney(tt.apply("accounting.yc.col.expense"), FiscalYearCloseEntry::expenseTotal, 120),
+                colMoney(tt.apply("accounting.yc.col.result"), FiscalYearCloseEntry::resultAmount, 120),
+                colMoney(tt.apply("accounting.yc.col.tax"), FiscalYearCloseEntry::taxAmount, 110),
+                colMoney(tt.apply("accounting.yc.col.after_tax"), FiscalYearCloseEntry::resultAfterTax, 120),
+                col(tt.apply("accounting.yc.col.closed_at"), c -> c.closedAt() == null ? "" : c.closedAt(), 160)
+        ));
+        closesTable.getSelectionModel().selectedItemProperty().addListener(
+                (o, a, b) -> renderCloseDetail(b));
+
+        closeDetailBox = new VBox(8);
+        closeDetailBox.setPadding(new Insets(8, 0, 0, 0));
+
+        Label hint = new Label(tt.apply("accounting.yc.hint"));
+        hint.setWrapText(true);
+        hint.setStyle("-fx-text-fill: #6e6e6e;");
+
+        VBox box = new VBox(10, hint, toolbar, closesTable, new Separator(), closeDetailBox);
+        VBox.setVgrow(closesTable, Priority.ALWAYS);
+        box.setPadding(new Insets(8));
+        loadYearCloses();
+        return box;
+    }
+
+    private void loadYearCloses() {
+        async(api::listYearCloses,
+                rows -> {
+                    closesTable.setItems(FXCollections.observableArrayList(rows));
+                    renderCloseDetail(closesTable.getSelectionModel().getSelectedItem());
+                },
+                err -> logSilent("year-close-load", err));
+    }
+
+    private void selectYearInTable(int year) {
+        for (FiscalYearCloseEntry e : closesTable.getItems()) {
+            if (e.periodYear() == year) { closesTable.getSelectionModel().select(e); break; }
+        }
+    }
+
+    /** Pinta el panel de detalle/cierre para el ejercicio seleccionado. */
+    private void renderCloseDetail(FiscalYearCloseEntry e) {
+        if (closeDetailBox == null) return;
+        closeDetailBox.getChildren().clear();
+        if (e == null) {
+            Label none = new Label(tt.apply("accounting.yc.select_hint"));
+            none.setStyle("-fx-text-fill: #6e6e6e; -fx-font-style: italic;");
+            closeDetailBox.getChildren().add(none);
+            return;
+        }
+
+        Label title = new Label(tt.apply("accounting.yc.detail_title").replace("{y}", String.valueOf(e.periodYear())));
+        title.setStyle("-fx-font-weight: bold; -fx-font-size: 13px;");
+
+        VBox figures = new VBox(3,
+                kv(tt.apply("accounting.yc.col.income"), eur(e.incomeTotal())),
+                kv(tt.apply("accounting.yc.col.expense"), eur(e.expenseTotal())),
+                kv(tt.apply("accounting.yc.col.result"), eur(e.resultAmount())),
+                kv(tt.apply("accounting.yc.col.tax"), eur(e.taxAmount())),
+                kv(tt.apply("accounting.yc.col.after_tax"), eur(e.resultAfterTax())));
+
+        if ("CLOSED".equals(e.status())) {
+            Label closed = new Label(tt.apply("accounting.yc.is_closed"));
+            closed.setStyle("-fx-text-fill: #1e7e34; -fx-font-weight: bold;");
+            Button reopen = new Button(tt.apply("accounting.yc.reopen"));
+            reopen.setOnAction(ev -> confirmReopen(e));
+            closeDetailBox.getChildren().addAll(title, figures, closed, reopen);
+            return;
+        }
+
+        // PRE_CLOSE / REOPENED → permitir cerrar con aplicación de resultado.
+        BigDecimal after = e.resultAfterTax() == null ? BigDecimal.ZERO : e.resultAfterTax();
+        boolean profit = after.signum() >= 0;
+
+        TextField reservesField = new TextField(profit ? after.toPlainString() : "0");
+        TextField dividendsField = new TextField("0");
+        TextField lossesField = new TextField(profit ? "0" : after.toPlainString());
+        reservesField.setPrefWidth(140);
+        dividendsField.setPrefWidth(140);
+        lossesField.setPrefWidth(140);
+
+        Label balanceHint = new Label();
+        Runnable updateBalance = () -> {
+            BigDecimal sum = parse(reservesField.getText())
+                    .add(parse(dividendsField.getText()))
+                    .add(parse(lossesField.getText()));
+            BigDecimal diff = after.subtract(sum);
+            if (diff.abs().compareTo(new BigDecimal("0.01")) <= 0) {
+                balanceHint.setText(tt.apply("accounting.yc.balanced"));
+                balanceHint.setStyle("-fx-text-fill: #1e7e34;");
+            } else {
+                balanceHint.setText(tt.apply("accounting.yc.unbalanced").replace("{d}", eur(diff)));
+                balanceHint.setStyle("-fx-text-fill: #b00020;");
+            }
+        };
+        reservesField.textProperty().addListener((o, a, b) -> updateBalance.run());
+        dividendsField.textProperty().addListener((o, a, b) -> updateBalance.run());
+        lossesField.textProperty().addListener((o, a, b) -> updateBalance.run());
+        updateBalance.run();
+
+        Label allocTitle = new Label(tt.apply("accounting.yc.allocation_title"));
+        allocTitle.setStyle("-fx-font-weight: bold;");
+
+        Button closeBtn = new Button(tt.apply("accounting.yc.close"));
+        closeBtn.getStyleClass().add("button-primary");
+        closeBtn.setOnAction(ev -> {
+            BigDecimal sum = parse(reservesField.getText())
+                    .add(parse(dividendsField.getText()))
+                    .add(parse(lossesField.getText()));
+            if (after.subtract(sum).abs().compareTo(new BigDecimal("0.01")) > 0) {
+                showError(tt.apply("accounting.yc.error_close"),
+                        tt.apply("accounting.yc.unbalanced").replace("{d}", eur(after.subtract(sum))));
+                return;
+            }
+            Alert confirm = new Alert(AlertType.CONFIRMATION,
+                    tt.apply("accounting.yc.confirm_close").replace("{y}", String.valueOf(e.periodYear())),
+                    ButtonType.YES, ButtonType.NO);
+            confirm.setHeaderText(null);
+            confirm.showAndWait().ifPresent(bt -> {
+                if (bt != ButtonType.YES) return;
+                async(() -> api.closeYear(e.periodYear(),
+                                parse(reservesField.getText()),
+                                parse(dividendsField.getText()),
+                                parse(lossesField.getText()), null),
+                        done -> {
+                            loadYearCloses();
+                            selectYearInTable(e.periodYear());
+                            new Alert(AlertType.INFORMATION,
+                                    tt.apply("accounting.yc.closed_ok").replace("{y}", String.valueOf(e.periodYear())))
+                                    .showAndWait();
+                        },
+                        err -> showError(tt.apply("accounting.yc.error_close"), err));
+            });
+        });
+
+        closeDetailBox.getChildren().addAll(title, figures, new Separator(),
+                allocTitle,
+                row(tt.apply("accounting.yc.reserves"), reservesField),
+                row(tt.apply("accounting.yc.dividends"), dividendsField),
+                row(tt.apply("accounting.yc.losses"), lossesField),
+                balanceHint, closeBtn);
+    }
+
+    private void confirmReopen(FiscalYearCloseEntry e) {
+        Alert confirm = new Alert(AlertType.WARNING,
+                tt.apply("accounting.yc.confirm_reopen").replace("{y}", String.valueOf(e.periodYear())),
+                ButtonType.YES, ButtonType.NO);
+        confirm.setHeaderText(null);
+        confirm.showAndWait().ifPresent(bt -> {
+            if (bt != ButtonType.YES) return;
+            async(() -> api.reopenYear(e.periodYear(), "Reapertura desde UI"),
+                    done -> { loadYearCloses(); selectYearInTable(e.periodYear()); },
+                    err -> showError(tt.apply("accounting.yc.error_reopen"), err));
+        });
+    }
+
+    private void showRegularizationPreview(RegularizationPreviewEntry p) {
+        String body = tt.apply("accounting.yc.col.income") + ":  " + eur(p.incomesTotal()) + "\n"
+                + tt.apply("accounting.yc.col.expense") + ":  " + eur(p.expensesTotal()) + "\n"
+                + tt.apply("accounting.yc.col.result") + ":  " + eur(p.resultAmount());
+        Alert a = new Alert(AlertType.INFORMATION, body);
+        a.setHeaderText(tt.apply("accounting.yc.preview_title").replace("{y}", String.valueOf(p.periodYear())));
+        a.showAndWait();
+    }
+
+    private TableColumn<FiscalYearCloseEntry, String> colMoney(
+            String header, Function<FiscalYearCloseEntry, BigDecimal> getter, double width) {
+        return col(header, e -> eur(getter.apply(e)), width);
+    }
+
+    private HBox kv(String k, String v) {
+        Label key = new Label(k + ":");
+        key.setMinWidth(170);
+        key.setStyle("-fx-text-fill: #6e6e6e;");
+        Label val = new Label(v);
+        val.setStyle("-fx-font-weight: bold;");
+        HBox h = new HBox(8, key, val);
+        h.setAlignment(Pos.CENTER_LEFT);
+        return h;
+    }
+
+    private String eur(BigDecimal v) {
+        if (v == null) return "0,00 €";
+        return String.format(java.util.Locale.of("es", "ES"), "%,.2f €", v);
     }
 
     // ====================================================================

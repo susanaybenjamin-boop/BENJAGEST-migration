@@ -759,6 +759,76 @@ public class AccountingApiClient {
     }
 
     // ====================================================================
+    //  Cierre de ejercicio (CONS-CIERRE)
+    // ====================================================================
+
+    /** Lista los cierres de ejercicio de la empresa (más reciente primero). */
+    public List<com.benjagest.ui.model.FiscalYearCloseEntry> listYearCloses()
+            throws IOException, InterruptedException {
+        String json = get("/accounting/year-close");
+        List<com.benjagest.ui.model.FiscalYearCloseEntry> out = new ArrayList<>();
+        for (String obj : splitJsonArray(json)) out.add(mapClose(obj));
+        return out;
+    }
+
+    /** Precalcula ingresos/gastos/resultado/IS estimado del ejercicio (deja PRE_CLOSE). */
+    public com.benjagest.ui.model.FiscalYearCloseEntry precalculateYear(int year)
+            throws IOException, InterruptedException {
+        return mapClose(postRaw("/accounting/year-close/" + year + "/precalculate", "{}"));
+    }
+
+    /**
+     * Vista previa del asiento de regularización (6x/7x → 129) sin crear
+     * ningún asiento. Útil para enseñar el resultado antes de confirmar el cierre.
+     */
+    public com.benjagest.ui.model.RegularizationPreviewEntry previewRegularization(int year)
+            throws IOException, InterruptedException {
+        String json = get("/accounting/year-close/" + year + "/preview-regularization");
+        return new com.benjagest.ui.model.RegularizationPreviewEntry(
+                intField(json, "periodYear") == 0 ? year : intField(json, "periodYear"),
+                decField(json, "expensesTotal"),
+                decField(json, "incomesTotal"),
+                decField(json, "resultAmount"));
+    }
+
+    /** Cierra el ejercicio aplicando el resultado a reservas/dividendos/pérdidas. */
+    public com.benjagest.ui.model.FiscalYearCloseEntry closeYear(int year,
+            BigDecimal reserves, BigDecimal dividends, BigDecimal losses, String notes)
+            throws IOException, InterruptedException {
+        StringBuilder b = new StringBuilder("{");
+        b.append("\"reservesAllocation\":").append(reserves == null ? "0" : reserves.toPlainString()).append(',');
+        b.append("\"dividendsAllocation\":").append(dividends == null ? "0" : dividends.toPlainString()).append(',');
+        b.append("\"accumulatedLossesAllocation\":").append(losses == null ? "0" : losses.toPlainString()).append(',');
+        b.append("\"notes\":\"").append(escape(notes == null ? "" : notes)).append("\"}");
+        return mapClose(put("/accounting/year-close/" + year + "/close", b.toString()));
+    }
+
+    /** Reabre un ejercicio cerrado (acción de OWNER, queda en auditoría). */
+    public com.benjagest.ui.model.FiscalYearCloseEntry reopenYear(int year, String reason)
+            throws IOException, InterruptedException {
+        String body = "{\"reason\":\"" + escape(reason == null ? "" : reason) + "\"}";
+        return mapClose(put("/accounting/year-close/" + year + "/reopen", body));
+    }
+
+    private com.benjagest.ui.model.FiscalYearCloseEntry mapClose(String obj) {
+        return new com.benjagest.ui.model.FiscalYearCloseEntry(
+                strField(obj, "id"),
+                intField(obj, "periodYear"),
+                strField(obj, "status"),
+                decField(obj, "incomeTotal"),
+                decField(obj, "expenseTotal"),
+                decField(obj, "resultAmount"),
+                decField(obj, "taxAmount"),
+                decField(obj, "resultAfterTax"),
+                decField(obj, "reservesAllocation"),
+                decField(obj, "dividendsAllocation"),
+                decField(obj, "accumulatedLossesAllocation"),
+                strField(obj, "closedAt"),
+                strField(obj, "reopenedAt"),
+                strField(obj, "notes"));
+    }
+
+    // ====================================================================
     //  HTTP helpers
     // ====================================================================
 
