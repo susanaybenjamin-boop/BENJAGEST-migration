@@ -72,6 +72,7 @@ public class PayslipService {
     private final PayslipPdfGenerator pdfGenerator;
     private final PayslipJournalEntryService journalService;
     private final com.benjagest.backend.labor.ss.SsContributionRatesService ssRatesService;
+    private final com.benjagest.backend.labor.ss.SsGroupBasesService ssGroupBasesService;
     private final com.benjagest.backend.labor.irpf.IrpfRetentionService irpfService;
     private final com.benjagest.backend.settings.EmailSenderService emailSender;
     private final com.benjagest.backend.settings.CompanyDataService companyDataService;
@@ -83,6 +84,7 @@ public class PayslipService {
                            PayslipPdfGenerator pdfGenerator,
                            PayslipJournalEntryService journalService,
                            com.benjagest.backend.labor.ss.SsContributionRatesService ssRatesService,
+                           com.benjagest.backend.labor.ss.SsGroupBasesService ssGroupBasesService,
                            com.benjagest.backend.labor.irpf.IrpfRetentionService irpfService,
                            com.benjagest.backend.settings.EmailSenderService emailSender,
                            com.benjagest.backend.settings.CompanyDataService companyDataService,
@@ -93,6 +95,7 @@ public class PayslipService {
         this.pdfGenerator = pdfGenerator;
         this.journalService = journalService;
         this.ssRatesService = ssRatesService;
+        this.ssGroupBasesService = ssGroupBasesService;
         this.irpfService = irpfService;
         this.emailSender = emailSender;
         this.companyDataService = companyDataService;
@@ -375,15 +378,28 @@ public class PayslipService {
             cotizationBase = gross;
         }
         SsContributionRatesService.Rates rates = ssRatesService.ratesForYear(req.year());
-        // Topes de cotización: limitar la base a [mínimo, máximo] del año.
-        if (rates.baseMaxMonthly() != null && rates.baseMaxMonthly().signum() > 0
-                && cotizationBase.compareTo(rates.baseMaxMonthly()) > 0) {
-            cotizationBase = rates.baseMaxMonthly();
+        // Topes de cotización por GRUPO de cotización (V121/V122), leídos de la
+        // tabla editable por año (no-code): base mínima del grupo del contrato
+        // (default grupo 7) + tope máximo común. Si no hay tabla de grupos o el
+        // contrato no tiene grupo, se mantiene el tope global de
+        // ss_contribution_rates (comportamiento anterior).
+        // NOTA (refinamientos pendientes — paso 4): para grupos 1-3 con base por
+        // debajo de su mínimo (raro, p.ej. tiempo parcial) la ley usa el "tope
+        // mínimo común" en las contingencias PROFESIONALES (desglose BCCC/BCCP);
+        // y los grupos 8-11 (base diaria) + el tiempo parcial requieren cálculo
+        // específico. Aquí se aplica base única [mín grupo, máx común], correcta
+        // para la práctica totalidad de los casos a jornada completa.
+        BigDecimal[] caps = resolveGroupCaps(req.year(), contract.ssContributionGroup);
+        BigDecimal minCap = caps != null ? caps[0] : rates.baseMinMonthly();
+        BigDecimal maxCap = caps != null ? caps[1] : rates.baseMaxMonthly();
+        if (maxCap != null && maxCap.signum() > 0
+                && cotizationBase.compareTo(maxCap) > 0) {
+            cotizationBase = maxCap;
         }
-        if (rates.baseMinMonthly() != null && rates.baseMinMonthly().signum() > 0
+        if (minCap != null && minCap.signum() > 0
                 && cotizationBase.signum() > 0
-                && cotizationBase.compareTo(rates.baseMinMonthly()) < 0) {
-            cotizationBase = rates.baseMinMonthly();
+                && cotizationBase.compareTo(minCap) < 0) {
+            cotizationBase = minCap;
         }
         BigDecimal atEp = contract.atEpPercent != null && contract.atEpPercent.signum() >= 0
                 ? contract.atEpPercent : rates.defaultAtEp();
@@ -837,7 +853,7 @@ public class PayslipService {
         return jdbcTemplate.query("""
                 SELECT id, contract_type, start_date, end_date,
                        gross_salary, annual_bonuses, extras_prorated, vacation_days,
-                       irpf_percent, at_ep_percent
+                       irpf_percent, at_ep_percent, ss_contribution_group
                   FROM employment_contracts
                  WHERE company_id = ? AND employee_id = ?
                    AND start_date <= ?
@@ -861,6 +877,7 @@ public class PayslipService {
                     d.vacationDays = vac == null ? 30 : vac;
                     d.irpfPercent = rs.getBigDecimal("irpf_percent");
                     d.atEpPercent = rs.getBigDecimal("at_ep_percent");
+                    d.ssContributionGroup = (Integer) rs.getObject("ss_contribution_group");
                     return d;
                 },
                 tenantContext.getCurrentCompanyId(), employeeId, ref, ref)
@@ -912,6 +929,39 @@ public class PayslipService {
 
     private static BigDecimal pct(BigDecimal base, BigDecimal percent) {
         return base.multiply(percent).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
+    }
+
+    /**
+     * Devuelve {@code [baseMin, baseMax]} del grupo de cotización para el año,
+     * leídos de la tabla editable {@code ss_contribution_group_bases} (no-code,
+     * V121/V122). Devuelve {@code null} si no procede aplicar el tope por grupo
+     * (sin tabla para el año, contrato sin grupo, o grupo no encontrado), en cuyo
+     * caso el llamador usa el tope global de {@code ss_contribution_rates}.
+     * Para grupos de base diaria (8-11) se devuelve solo el tope máximo (mínimo 0)
+     * porque el cálculo diario es un refinamiento pendiente (paso 4).
+     */
+    private BigDecimal[] resolveGroupCaps(int year, Integer group) {
+        if (group == null) return null;
+        var rows = ssGroupBasesService.listByYear(year);
+        if (rows == null || rows.isEmpty()) return null;
+        BigDecimal maxMonthly = null;
+        BigDecimal groupMin = null;
+        boolean groupIsDaily = false;
+        boolean found = false;
+        for (var g : rows) {
+            if (!g.daily() && g.baseMax() != null
+                    && (maxMonthly == null || g.baseMax().compareTo(maxMonthly) > 0)) {
+                maxMonthly = g.baseMax();
+            }
+            if (g.cotizGroup() == group) {
+                groupMin = g.baseMin();
+                groupIsDaily = g.daily();
+                found = true;
+            }
+        }
+        if (!found) return null;
+        if (groupIsDaily) return new BigDecimal[]{ BigDecimal.ZERO, maxMonthly };
+        return new BigDecimal[]{ groupMin, maxMonthly };
     }
 
     private SsBreakdown computeSs(BigDecimal base, BigDecimal atEpPercent,
@@ -1028,6 +1078,7 @@ public class PayslipService {
         int vacationDays;
         BigDecimal irpfPercent;
         BigDecimal atEpPercent;
+        Integer ssContributionGroup;
     }
 
     private PayslipView mapView(ResultSet rs, int rowNum) throws SQLException {

@@ -22,6 +22,7 @@ public record ContractEntry(
         Integer vacationDays,
         BigDecimal irpfPercent,
         BigDecimal atEpPercent,
+        Integer ssContributionGroup,
         String workplaceAddress,
         String status,
         String terminationReason,

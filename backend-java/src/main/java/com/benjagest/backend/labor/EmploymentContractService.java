@@ -51,6 +51,7 @@ public class EmploymentContractService {
                        collective_agreement, professional_category, professional_group,
                        start_date, seniority_date, end_date, weekly_hours, gross_salary,
                        annual_bonuses, extras_prorated, vacation_days, irpf_percent, at_ep_percent,
+                       ss_contribution_group,
                        workplace_address, status, termination_reason,
                        probation_days, pdf_model
                   FROM employment_contracts
@@ -77,9 +78,10 @@ public class EmploymentContractService {
                     collective_agreement, professional_category, professional_group,
                     start_date, seniority_date, end_date, weekly_hours, gross_salary,
                     annual_bonuses, extras_prorated, vacation_days, irpf_percent, at_ep_percent,
+                    ss_contribution_group,
                     workplace_address, status, termination_reason,
                     probation_days, pdf_model
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 id, tenantContext.getCurrentCompanyId(),
                 req.employeeId(), req.contractType(), blank(req.sepeContractCode()),
@@ -92,6 +94,7 @@ public class EmploymentContractService {
                 req.vacationDays() == null ? 30 : req.vacationDays(),
                 req.irpfPercent(),
                 req.atEpPercent() == null ? new BigDecimal("1.50") : req.atEpPercent(),
+                req.ssContributionGroup() == null ? 7 : req.ssContributionGroup(),
                 blank(req.workplaceAddress()),
                 StringUtils.hasText(req.status()) ? req.status() : "ACTIVE",
                 blank(req.terminationReason()),
@@ -115,6 +118,7 @@ public class EmploymentContractService {
                        collective_agreement = ?, professional_category = ?, professional_group = ?,
                        start_date = ?, seniority_date = ?, end_date = ?, weekly_hours = ?, gross_salary = ?,
                        annual_bonuses = ?, extras_prorated = ?, vacation_days = ?, irpf_percent = ?, at_ep_percent = ?,
+                       ss_contribution_group = ?,
                        workplace_address = ?, status = ?, termination_reason = ?,
                        probation_days = ?, pdf_model = ?
                  WHERE id = ? AND company_id = ?
@@ -127,6 +131,7 @@ public class EmploymentContractService {
                 req.annualBonuses(), req.extrasProrated() != null && req.extrasProrated(),
                 req.vacationDays(), req.irpfPercent(),
                 req.atEpPercent() == null ? new BigDecimal("1.50") : req.atEpPercent(),
+                req.ssContributionGroup() == null ? 7 : req.ssContributionGroup(),
                 blank(req.workplaceAddress()),
                 StringUtils.hasText(req.status()) ? req.status() : "ACTIVE",
                 blank(req.terminationReason()),
@@ -219,6 +224,7 @@ public class EmploymentContractService {
                        collective_agreement, professional_category, professional_group,
                        start_date, seniority_date, end_date, weekly_hours, gross_salary,
                        annual_bonuses, extras_prorated, vacation_days, irpf_percent, at_ep_percent,
+                       ss_contribution_group,
                        workplace_address, status, termination_reason,
                        probation_days, pdf_model
                   FROM employment_contracts
@@ -275,6 +281,7 @@ public class EmploymentContractService {
                 (Integer) rs.getObject("vacation_days"),
                 rs.getBigDecimal("irpf_percent"),
                 rs.getBigDecimal("at_ep_percent"),
+                (Integer) rs.getObject("ss_contribution_group"),
                 rs.getString("workplace_address"),
                 rs.getString("status"),
                 rs.getString("termination_reason"),
@@ -302,6 +309,7 @@ public class EmploymentContractService {
                 c.collectiveAgreement(), c.professionalCategory(), c.professionalGroup(),
                 c.startDate(), c.seniorityDate(), c.endDate(), c.weeklyHours(), c.grossSalary(),
                 c.annualBonuses(), c.extrasProrated(), c.vacationDays(), c.irpfPercent(), c.atEpPercent(),
+                c.ssContributionGroup(),
                 c.workplaceAddress(), c.status(), c.terminationReason(),
                 c.probationDays(), c.pdfModel(), items);
     }
@@ -340,7 +348,7 @@ public class EmploymentContractService {
             LocalDate startDate, LocalDate seniorityDate, LocalDate endDate,
             BigDecimal weeklyHours, BigDecimal grossSalary,
             Integer annualBonuses, Boolean extrasProrated, Integer vacationDays, BigDecimal irpfPercent,
-            BigDecimal atEpPercent,
+            BigDecimal atEpPercent, Integer ssContributionGroup,
             String workplaceAddress, String status, String terminationReason,
             Integer probationDays, String pdfModel,
             List<SalaryItemView> salaryItems
@@ -352,7 +360,7 @@ public class EmploymentContractService {
             LocalDate startDate, LocalDate seniorityDate, LocalDate endDate,
             BigDecimal weeklyHours, BigDecimal grossSalary,
             Integer annualBonuses, Boolean extrasProrated, Integer vacationDays, BigDecimal irpfPercent,
-            BigDecimal atEpPercent,
+            BigDecimal atEpPercent, Integer ssContributionGroup,
             String workplaceAddress, String status, String terminationReason,
             Integer probationDays, String pdfModel,
             List<SalaryItem> salaryItems
