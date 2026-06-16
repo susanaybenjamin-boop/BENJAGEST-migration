@@ -101,6 +101,7 @@ public class ClientConfigService {
                 base.contactValue(), base.internalNotes(), legalForm);
     }
 
+    @org.springframework.transaction.annotation.Transactional
     public AdvisoryConfig saveConfig(AdvisoryConfig c) {
         String companyId = tenant.getCurrentCompanyId();
         jdbc.update("""
