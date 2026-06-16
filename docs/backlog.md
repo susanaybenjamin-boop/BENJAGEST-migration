@@ -28,9 +28,11 @@
    sin contabilidad: ANUAL obligatorio + desglose TRIMESTRAL opcional** (tabla
    nueva, alimenta RETA/KPIs/avisos); (d) preferencias (módulos activos, contacto,
    notas internas). Que cargar un no-vinculado NO dé error.
-2. **AVISOS** — **las dos cosas a la vez**: per-empresa (badge en campana) + 
-   roll-up cross-cartera. Fuentes v1 ya curadas (ver sección AVISOS). Incluir
-   modo empresario.
+2. ✅ **AVISOS** *(2026-06-15)* — `PendingTasksService` (8 buckets) per-empresa +
+   cartera; entrada "Tareas pendientes" en sidebar + panel con toggle Esta
+   empresa/Cartera + tarjetas por severidad + "Abrir". Vale para empresario.
+   Pendiente menor: badge total en la campana; añadir RETA/contratos como buckets.
+   [Spec abajo.] **AVISOS** — per-empresa + cartera + empresario.
 3. **Topes cotización TGSS + asiento pagas extra** — **construir** con topes 2026
    (mín/máx por grupo) y dejar marcadas las cifras para que Benjamin las VALIDE
    a la vuelta (legal, como el IRPF).
