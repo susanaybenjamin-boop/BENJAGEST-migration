@@ -415,7 +415,21 @@ public class PayslipService {
         if (m145 != null) {
             BigDecimal eeRate = rates.eeCommon().add(rates.eeUnemployment())
                     .add(rates.eeTraining()).add(rates.eeMei());
-            BigDecimal annualSs = cotizableAnnual.multiply(eeRate)
+            // La SS anual para el motor de IRPF debe calcularse sobre la base ANUAL
+            // ACOTADA por los mismos topes (mín del grupo / máx común), no sobre el
+            // cotizable bruto: para salarios fuera del tope, usar el bruto desviaba
+            // la retención (encontrado en auditoría 2026-06-16).
+            BigDecimal annualBaseForSs = cotizableAnnual;
+            if (maxCap != null && maxCap.signum() > 0) {
+                BigDecimal annualMax = maxCap.multiply(BigDecimal.valueOf(12));
+                if (annualBaseForSs.compareTo(annualMax) > 0) annualBaseForSs = annualMax;
+            }
+            if (minCap != null && minCap.signum() > 0
+                    && annualBaseForSs.signum() > 0) {
+                BigDecimal annualMin = minCap.multiply(BigDecimal.valueOf(12));
+                if (annualBaseForSs.compareTo(annualMin) < 0) annualBaseForSs = annualMin;
+            }
+            BigDecimal annualSs = annualBaseForSs.multiply(eeRate)
                     .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
             irpfPct = irpfService.computeRate(req.year(), taxableAnnual, annualSs, m145);
         } else if (contract.irpfPercent != null && contract.irpfPercent.signum() > 0) {

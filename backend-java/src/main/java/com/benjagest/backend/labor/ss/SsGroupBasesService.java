@@ -27,9 +27,10 @@ import org.springframework.web.server.ResponseStatusException;
  * el año y ajusta las cifras. La base mínima depende del grupo (1..11); la
  * máxima es común. Grupos 8-11 usan base DIARIA.
  *
- * <p><b>Importante:</b> el motor de nóminas todavía NO consume esta tabla (usa
- * el tope global de {@code ss_contribution_rates}). El cableado se hará cuando
- * Benjamin valide las cifras 2026 ({@code pendingValidation}).
+ * <p><b>Consumo:</b> el motor de nóminas YA usa esta tabla desde
+ * {@code PayslipService.resolveGroupCaps()} (V123, 2026-06-16): acota la base al
+ * [mín del grupo del contrato, máx común]. Refinamientos pendientes (paso 4):
+ * desglose BCCC/BCCP, tiempo parcial (base horaria) y grupos 8-11 (base diaria).
  */
 @Service
 public class SsGroupBasesService {
