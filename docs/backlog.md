@@ -91,10 +91,12 @@ certificado es el punto crítico:
     empresa. Si es **sociedad** → exigir los datos del **titular OWNER** que
     cotiza RETA (company_owner ss_regime=RETA) → perfil desde el titular. Así
     SIEMPRE hay perfil RETA. (Extiende RETA-2.) Migración nueva (companies.legal_form).
-12. **FICHA-TABS — agrupar pestañas de la ficha del cliente** *(decisión Benjamin
-    2026-06-15)*. Reducir de ~14 a ~9: **Contabilidad** = sub-tabs {Diario/Validar,
-    Bancos, Préstamos, Inmovilizado}; **Facturación** = sub-tabs {Ventas, Clientes
-    del titular, Config. facturación, Acuerdo TPB}. En `buildClientDetailView`.
+12. 🔵 **FICHA-TABS — agrupar pestañas de la ficha** *(parcial 2026-06-15)*.
+    ✅ **Contabilidad** agrupada en sub-tabs {Diario/Validar, Bancos, Préstamos,
+    Inmovilizado}. ⬜ **Facturación** {Ventas, Clientes, Config, TPB} PENDIENTE:
+    el TPB se añade/quita dinámicamente a la barra principal (onTpbActivated/
+    onTpbRevoked insertan por índice y quitan por etiqueta); agruparla exige
+    reescribir esa lógica para apuntar al sub-TabPane. Hacerlo con cuidado.
 
 **AL TERMINAR LA COLA (pedido Benjamin 2026-06-15, con agentes/equipo):**
 - **SEC-AUDIT** — barrido de seguridad del proyecto completo (inyección SQL,
