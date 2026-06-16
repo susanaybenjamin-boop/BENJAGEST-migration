@@ -56,9 +56,17 @@ certificado es el punto crítico:
    empresa/Cartera + tarjetas por severidad + "Abrir". Vale para empresario.
    Pendiente menor: badge total en la campana; añadir RETA/contratos como buckets.
    [Spec abajo.] **AVISOS** — per-empresa + cartera + empresario.
-3. **Topes cotización TGSS + asiento pagas extra** — **construir** con topes 2026
-   (mín/máx por grupo) y dejar marcadas las cifras para que Benjamin las VALIDE
-   a la vuelta (legal, como el IRPF).
+3. 🔵 **Topes cotización TGSS + asiento pagas extra** *(parcial 2026-06-16)*.
+   ✅ Tabla **no-code editable de bases por GRUPO de cotización (1-11) y año**:
+   V121 `ss_contribution_group_bases` (seed 2026 PROVISIONAL marcado
+   `pending_validation`), `SsGroupBasesService` (+API), y pestaña **"Bases por
+   grupo"** en Laboral (selector año + editar grupo + clonar año + banner ⚠).
+   ⬜ PENDIENTE (necesita a Benjamin): **validar las cifras 2026** (mínimas hoy
+   = 2025 placeholder); **cablear el motor de nóminas** para que use la mín del
+   grupo del empleado (hoy usa el tope global de `ss_contribution_rates`) — falta
+   además normalizar el grupo de cotización 1-11 en el empleado; y el **asiento
+   de pagas extra** (provisión/pago). No se cablea sin sus cifras validadas
+   (es legal, como el IRPF).
 4. **Incidencias de nómina** — **igual que CONTENDO** (localizar su modelo en
    `C:\Proyectos\CONTENDO GESTIONES` y portarlo): horas extra, ausencias/bajas,
    complementos variables por periodo, que alimentan el cálculo de la nómina.
