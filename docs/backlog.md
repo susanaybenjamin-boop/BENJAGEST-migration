@@ -14,7 +14,12 @@
 > (CLAUDE.md §11: commit por slice + merge develop + compilar antes de commitear;
 > reportar a la vuelta). Orden de ejecución y decisiones:
 
-1. **CLIENT-CONFIG + fix no-vinculados** — tab "Configuración" (2º lugar) en la
+1. ✅ **CLIENT-CONFIG + fix no-vinculados** *(2026-06-15)* — #1 `ensure-operativa`
+   (auto-activa módulos al entrar al cliente) + #2 tab "Configuración" (V119:
+   cifras manuales anual/trimestral + datos de gestión: periodicidad/régimen/
+   contacto/notas). Pendiente menor: toggles de módulos manuales en el tab (hoy
+   auto-activados). [Spec original abajo.]
+   **CLIENT-CONFIG + fix no-vinculados** — tab "Configuración" (2º lugar) en la
    ficha. **Decisión:** **auto-activar los módulos operativos** del cliente al
    gestionarlo desde la asesoría (no más error "módulo no activo") **+ toggles**
    de módulos por cliente en el tab Config. Secciones del tab: (a) datos
