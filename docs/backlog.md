@@ -1,10 +1,48 @@
 # Backlog operativo BENJAGEST
 
-> **Última actualización:** 2026-06-14 (NOM validado contra AEAT + **bloque CICLO-VIDA completo y probado** + sesión autónoma: análisis de **preparación para LOCAL/on-premise** y **Verifactu en local** con dos agentes Explore → guía `docs/despliegue-local.md`, scripts de arranque y bloque **DEPLOY-LOCAL** en este backlog).
+> **Última actualización:** 2026-06-16 (cerrada la **COLA AUTÓNOMA** salvo lo no
+> prioritario; **topes de cotización SS por grupo** cableados 1+2+3 con cifras
+> oficiales 2026; **auditoría completa del ciclo de vida del empleado** con 4
+> agentes — contabilidad confirmada correcta, bugs triados; **investigación legal
+> del ascenso** → bloque **CONTRATO-VIGENCIAS** decidido. Lo pendiente del bloque
+> nómina queda como **PRIORIDAD 1** abajo).
 >
 > **Forma de trabajo (junio 2026):** Benjamin lidera y decide. Pablo solo entra de uvas a peras desde 05-30. Todo el trabajo va por `feat/Benjamin` → prueba local → commit → merge `--no-ff` a `develop`. Cada item cerrado lleva commit hash + fecha. **Regla 10.bis de CLAUDE.md aplica siempre: verificar código antes de tocar.**
 >
 > **Fuentes complementarias:** [`gap-analysis-contendo.md`](gap-analysis-contendo.md), [`gap-analysis-config-ui.md`](gap-analysis-config-ui.md), [`migration-roadmap.md`](migration-roadmap.md), [`vf-chain-fix.md`](vf-chain-fix.md), [`agents-debug-pattern.md`](agents-debug-pattern.md).
+
+---
+
+## 🔴 PRIORIDAD 1 — CERRAR EL BLOQUE NÓMINA (2026-06-16)
+
+> Benjamin: cerrar el bloque de nóminas con lo que quede pendiente, antes de
+> seguir con el resto de la cola. Orden sugerido:
+
+- **N1 · CONTRATO-VIGENCIAS** (ascenso + derivar grupo) → bloque detallado abajo
+  (VIG-0…VIG-4). Empezar por **VIG-0** (derivar grupo de cotización de la
+  categoría, additive) en sesión nueva con contexto fresco.
+- **N2 · NOM paso 4 (refinamientos del clamp por grupo)** *(de item #3)*:
+  desglose **BCCC/BCCP** (mín del grupo solo en contingencias comunes; mín común
+  1.424,40 en AT/EP, desempleo, FOGASA, FP); **tiempo parcial** (base por horas /
+  base mínima horaria, leer `weekly_hours` — hoy se ignora, sobrecotiza parciales);
+  **grupos 8-11 base diaria** (base diaria × días). Validar con caso real.
+- **N3 · NO-CODE de nómina** *(principio Benjamin: nada legal hardcodeado)*:
+  topes de **indemnización** (33/720/45/1260/20/360 días, exención 180.000€) en
+  `TerminationService` → tabla por año editable; quitar los **fallbacks
+  hardcodeados 2026** de `SsContributionRatesService` e `IrpfRetentionService`
+  (que devuelven 2026 en silencio si la tabla está vacía → lanzar excepción o usar
+  último año con aviso). Forma parte del NO-CODE-YEAR-AUDIT general.
+- **N4 · Bugs menores del ciclo de vida** *(auditoría 4 agentes 2026-06-16)*:
+  el asistente de contrato no guarda `professional_category`; `markPaid` debería
+  bloquear re-pago de una nómina ya PAID; validar **NIF** del empleado (formato +
+  único por empresa); revisar vacaciones **/360 vs /365** contra CONTENDO.
+- **N5 · Incidencias de nómina** *(item #4 de la cola)* — portar de CONTENDO:
+  horas extra, ausencias/bajas, complementos variables por periodo, que alimentan
+  el cálculo. (Toca el cálculo → mismo cuidado legal.)
+
+> Hecho ya del bloque nómina: tabla de bases por grupo (V121) + cifras oficiales
+> 2026 (V122) + grupo en contrato (V123) + clamp por grupo + provisión/pago de
+> pagas extra + fix IRPF (SS anual acotada). Ver item #3 abajo.
 
 ---
 
