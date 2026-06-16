@@ -16140,7 +16140,7 @@ public class BenjagestUiApplication extends Application {
             case "labor.ssrates.save_failed" -> "Could not save the rates";
             case "labor.tab.ss_group_bases" -> "Bases by group";
             case "labor.ssgroup.hint" -> "Minimum/maximum Social Security contribution bases by contribution group (1-11) and year. The minimum base depends on the group; the maximum is common. Groups 8-11 use a DAILY base. Editable from here — no code change.";
-            case "labor.ssgroup.validate_warning" -> "⚠ 2026 figures are PROVISIONAL and pending validation: maximums are 2026 official, but minimums are copied from 2025 as placeholders. Review and confirm them. Payroll does NOT use this table yet — it will be wired in once you validate the figures.";
+            case "labor.ssgroup.validate_warning" -> "2026 figures from the official Order PJC/297/2026 (BOE-A-2026-7296). Double-check against the BOE if there are later corrections. Note: payroll does NOT use this table yet — it will be wired in next.";
             case "labor.ssgroup.empty" -> "No group bases for this year.";
             case "labor.ssgroup.year" -> "Year:";
             case "labor.ssgroup.col.group" -> "Group";
@@ -16788,7 +16788,7 @@ public class BenjagestUiApplication extends Application {
             case "labor.ssrates.save_failed" -> "No se pudieron guardar los tipos";
             case "labor.tab.ss_group_bases" -> "Bases por grupo";
             case "labor.ssgroup.hint" -> "Bases mínima/máxima de cotización a la Seguridad Social por grupo de cotización (1-11) y año. La base mínima depende del grupo; la máxima es común. Los grupos 8-11 usan base DIARIA. Editable aquí — sin tocar código.";
-            case "labor.ssgroup.validate_warning" -> "⚠ Las cifras de 2026 son PROVISIONALES y están pendientes de validar: los máximos son oficiales 2026, pero los mínimos se han copiado de 2025 como referencia. Revísalas y confírmalas. La nómina NO usa todavía esta tabla — se cableará cuando valides las cifras.";
+            case "labor.ssgroup.validate_warning" -> "Cifras 2026 según la Orden oficial PJC/297/2026 (BOE-A-2026-7296). Coteja contra el BOE por si hay correcciones posteriores. Nota: la nómina NO usa todavía esta tabla — se cableará a continuación.";
             case "labor.ssgroup.empty" -> "No hay bases por grupo para este año.";
             case "labor.ssgroup.year" -> "Año:";
             case "labor.ssgroup.col.group" -> "Grupo";
