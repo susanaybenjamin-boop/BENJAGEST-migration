@@ -50,6 +50,16 @@
 10. **CENTROS-MAP** — ❌ NO por ahora (Benjamin: nos quedamos con el geocoder por
     texto).
 
+**AL TERMINAR LA COLA (pedido Benjamin 2026-06-15, con agentes/equipo):**
+- **SEC-AUDIT** — barrido de seguridad del proyecto completo (inyección SQL,
+  fuga multi-tenant, authz/`@RequiresRole`/`@RequiresModule`, secretos, cifrado
+  Jasypt, validación de entrada, path traversal en ficheros, etc.) y **corregir**
+  lo encontrado. Usar agentes Explore en paralelo (CLAUDE.md §2).
+- **I18N-AUDIT** — verificar que TODO pasa por `t(key)` con par ES+EN y que no
+  queda nada hardcodeado, **incluidos los listados/combos/enums**. *Matiz: el
+  catálogo CNAE/IAE son términos legales oficiales en español (no se traducen);
+  el resto de la UI sí.* Hacerlo en el mismo barrido de agentes que SEC-AUDIT.
+
 **Bloqueado (no tocar hasta tener certificado FNMT real):** VeriFactu estricto
 (XAdES/SOAP), obligaciones fabricante SIF, Modelos AEAT 100/180/200/411,
 conectores DEHú y SS RED/SILTRA reales. **Para el final:** DEPLOY-PKG, CV-4..8.
