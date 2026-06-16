@@ -399,7 +399,38 @@ public class RetaService {
                     (String) o.get("full_name"), (String) o.get("tax_identifier"));
             created++;
         }
+        // RETA-4 (2026-06-15): si la empresa es AUTONOMO (forma jurídica) y no
+        // tiene NINGÚN perfil RETA activo, crear uno desde la propia empresa
+        // (la empresa ES el autónomo). Así vinculado o no SIEMPRE hay perfil.
+        created += ensureSelfEmployedProfile(companyId);
         return created;
+    }
+
+    /** Si la empresa es AUTONOMO y no tiene perfil RETA, crea uno con su identidad. */
+    private int ensureSelfEmployedProfile(String companyId) {
+        String legalForm = jdbcTemplate.query(
+                "SELECT legal_form FROM companies WHERE id = ?",
+                rs -> rs.next() ? rs.getString("legal_form") : null, companyId);
+        if (!"AUTONOMO".equalsIgnoreCase(legalForm)) return 0;
+        Integer existing = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM reta_profiles WHERE company_id = ? AND active = TRUE",
+                Integer.class, companyId);
+        if (existing != null && existing > 0) return 0;
+        var comp = jdbcTemplate.query(
+                "SELECT COALESCE(trade_name, legal_name) AS name, tax_identifier FROM companies WHERE id = ?",
+                rs -> rs.next()
+                        ? new String[]{rs.getString("name"), rs.getString("tax_identifier")}
+                        : null,
+                companyId);
+        if (comp == null) return 0;
+        jdbcTemplate.update("""
+                INSERT INTO reta_profiles (id, company_id, owner_id, employee_id, full_name,
+                    tax_identifier, active)
+                VALUES (?, ?, NULL, NULL, ?, ?, TRUE)
+                """,
+                UUID.randomUUID().toString(), companyId,
+                comp[0] == null ? "Autónomo" : comp[0], comp[1]);
+        return 1;
     }
 
     // ====================================================================

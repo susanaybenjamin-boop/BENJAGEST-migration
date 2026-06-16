@@ -17326,6 +17326,17 @@ public class BenjagestUiApplication extends Application {
             case "advisory.client.tab.summary" -> "Summary";
             case "advisory.client.tab.config" -> "Configuration";
             case "clientcfg.section.management" -> "Management data";
+            case "clientcfg.legal_form" -> "Legal form";
+            case "clientcfg.legalform.AUTONOMO" -> "Self-employed";
+            case "clientcfg.legalform.SL" -> "S.L.";
+            case "clientcfg.legalform.SA" -> "S.A.";
+            case "clientcfg.legalform.SLU" -> "S.L.U.";
+            case "clientcfg.legalform.SC" -> "Civil partnership (S.C.)";
+            case "clientcfg.legalform.CB" -> "Community of goods (C.B.)";
+            case "clientcfg.legalform.COOPERATIVA" -> "Cooperative";
+            case "clientcfg.legalform.OTRO" -> "Other";
+            case "clientcfg.legalform.hint_autonomo" -> "The client is self-employed → a RETA profile is created automatically.";
+            case "clientcfg.legalform.hint_society" -> "Company: register the self-employed OWNER (administrator) in Self-employed (RETA) so they have a RETA profile.";
             case "clientcfg.fiscal_period" -> "Filing frequency";
             case "clientcfg.tax_regime" -> "Tax regime";
             case "clientcfg.contact_channel" -> "Contact channel";
@@ -18242,6 +18253,17 @@ public class BenjagestUiApplication extends Application {
             case "advisory.client.tab.summary" -> "Resumen";
             case "advisory.client.tab.config" -> "Configuración";
             case "clientcfg.section.management" -> "Datos de gestión";
+            case "clientcfg.legal_form" -> "Forma jurídica";
+            case "clientcfg.legalform.AUTONOMO" -> "Autónomo";
+            case "clientcfg.legalform.SL" -> "S.L.";
+            case "clientcfg.legalform.SA" -> "S.A.";
+            case "clientcfg.legalform.SLU" -> "S.L.U.";
+            case "clientcfg.legalform.SC" -> "Sociedad civil (S.C.)";
+            case "clientcfg.legalform.CB" -> "Comunidad de bienes (C.B.)";
+            case "clientcfg.legalform.COOPERATIVA" -> "Cooperativa";
+            case "clientcfg.legalform.OTRO" -> "Otra";
+            case "clientcfg.legalform.hint_autonomo" -> "El cliente es autónomo → se le crea un perfil RETA automáticamente.";
+            case "clientcfg.legalform.hint_society" -> "Sociedad: da de alta al TITULAR autónomo (administrador) en Autónomos (RETA) para que tenga perfil RETA.";
             case "clientcfg.fiscal_period" -> "Periodicidad de modelos";
             case "clientcfg.tax_regime" -> "Régimen fiscal";
             case "clientcfg.contact_channel" -> "Vía de contacto";
@@ -31618,7 +31640,7 @@ public class BenjagestUiApplication extends Application {
                 buildClientConfigContent(cfgTask.getValue())));
         cfgTask.setOnFailed(ev -> holder.getChildren().setAll(
                 buildClientConfigContent(new com.benjagest.ui.model.ClientConfigModels.AdvisoryConfigEntry(
-                        null, null, null, null, null))));
+                        null, null, null, null, null, null))));
         start(cfgTask, "client-config-load");
         return holder;
     }
@@ -31627,6 +31649,18 @@ public class BenjagestUiApplication extends Application {
         // --- Sección 1: datos de gestión ---
         Label t1 = new Label(t("clientcfg.section.management"));
         t1.getStyleClass().add("settings-section-title");
+
+        ComboBox<String> legalForm = localizedConfigCombo("clientcfg.legalform.",
+                java.util.List.of("AUTONOMO", "SL", "SA", "SLU", "SC", "CB", "COOPERATIVA", "OTRO"),
+                cfg.legalForm());
+        Label legalFormHint = new Label("");
+        legalFormHint.getStyleClass().add("settings-hint");
+        legalFormHint.setWrapText(true);
+        Runnable updLegalHint = () -> legalFormHint.setText(
+                "AUTONOMO".equals(legalForm.getValue()) ? t("clientcfg.legalform.hint_autonomo")
+                        : (legalForm.getValue() == null ? "" : t("clientcfg.legalform.hint_society")));
+        legalForm.valueProperty().addListener((o, a, b) -> updLegalHint.run());
+        updLegalHint.run();
 
         ComboBox<String> fiscalPeriod = localizedConfigCombo("clientcfg.fiscalperiod.",
                 java.util.List.of("MONTHLY", "QUARTERLY"), cfg.fiscalPeriod());
@@ -31646,6 +31680,8 @@ public class BenjagestUiApplication extends Application {
         gf.setHgrow(Priority.ALWAYS); gf.setFillWidth(true);
         g.getColumnConstraints().addAll(gl, gf);
         int r = 0;
+        g.add(new Label(t("clientcfg.legal_form")), 0, r); g.add(legalForm, 1, r++);
+        g.add(legalFormHint, 1, r++);
         g.add(new Label(t("clientcfg.fiscal_period")), 0, r); g.add(fiscalPeriod, 1, r++);
         g.add(new Label(t("clientcfg.tax_regime")), 0, r); g.add(taxRegime, 1, r++);
         g.add(new Label(t("clientcfg.contact_channel")), 0, r); g.add(contactChannel, 1, r++);
@@ -31659,7 +31695,8 @@ public class BenjagestUiApplication extends Application {
         saveCfg.setOnAction(e -> {
             var payload = new com.benjagest.ui.model.ClientConfigModels.AdvisoryConfigEntry(
                     fiscalPeriod.getValue(), taxRegime.getValue(), contactChannel.getValue(),
-                    blankToNullOrSelf(contactValue.getText()), blankToNullOrSelf(internalNotes.getText()));
+                    blankToNullOrSelf(contactValue.getText()), blankToNullOrSelf(internalNotes.getText()),
+                    legalForm.getValue());
             Task<Void> tk = new Task<>() {
                 @Override protected Void call() throws Exception { laborApiClient.saveClientAdvisoryConfig(payload); return null; }
             };
@@ -31844,6 +31881,9 @@ public class BenjagestUiApplication extends Application {
         VBox.setVgrow(holder, Priority.ALWAYS);
         Task<java.util.List<com.benjagest.ui.model.RetaProfileEntry>> task = new Task<>() {
             @Override protected java.util.List<com.benjagest.ui.model.RetaProfileEntry> call() throws Exception {
+                // RETA-4: crea el perfil del autónomo si falta (empresa AUTONOMO o
+                // titular RETA) antes de listar, para que no salga vacío.
+                try { laborApiClient.ensureRetaProfiles(); } catch (Exception ignored) { }
                 return laborApiClient.listRetaProfiles(true);
             }
         };

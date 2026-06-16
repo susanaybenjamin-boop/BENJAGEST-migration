@@ -935,6 +935,14 @@ public class LaborApiClient {
         return out;
     }
 
+    /** Crea los perfiles RETA que falten en la empresa actual (titulares RETA o,
+     *  si la empresa es AUTONOMO, el perfil de la propia empresa). Idempotente. */
+    public void ensureRetaProfiles() throws IOException, InterruptedException {
+        send(req(baseUrl + "/reta/ensure-profiles")
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString("{}")));
+    }
+
     // ==== CLIENT-CONFIG: cifras manuales + config interna del cliente ====
 
     public java.util.List<com.benjagest.ui.model.ClientConfigModels.ManualFinancialEntry>
@@ -975,7 +983,8 @@ public class LaborApiClient {
         String o = r.body();
         return new com.benjagest.ui.model.ClientConfigModels.AdvisoryConfigEntry(
                 textField(o, "fiscalPeriod"), textField(o, "taxRegime"),
-                textField(o, "contactChannel"), textField(o, "contactValue"), textField(o, "internalNotes"));
+                textField(o, "contactChannel"), textField(o, "contactValue"), textField(o, "internalNotes"),
+                textField(o, "legalForm"));
     }
 
     public void saveClientAdvisoryConfig(com.benjagest.ui.model.ClientConfigModels.AdvisoryConfigEntry c)
@@ -985,7 +994,8 @@ public class LaborApiClient {
                 + "\"taxRegime\":" + jsonStr(c.taxRegime()) + ","
                 + "\"contactChannel\":" + jsonStr(c.contactChannel()) + ","
                 + "\"contactValue\":" + jsonStr(c.contactValue()) + ","
-                + "\"internalNotes\":" + jsonStr(c.internalNotes()) + "}";
+                + "\"internalNotes\":" + jsonStr(c.internalNotes()) + ","
+                + "\"legalForm\":" + jsonStr(c.legalForm()) + "}";
         send(req(baseUrl + "/client-config/advisory")
                 .header("Content-Type", "application/json")
                 .PUT(HttpRequest.BodyPublishers.ofString(body)));
