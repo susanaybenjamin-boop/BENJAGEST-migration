@@ -17725,6 +17725,7 @@ public class BenjagestUiApplication extends Application {
             case "client.unbalanced.hint" -> "Debit ≠ Credit by more than 1 cent. Usually points to a bug in the importer. Reach out to support if you can't fix it from the journal editor.";
             case "client.unbalanced.none" -> "No unbalanced entries.";
             case "advisory.client.tab.accounting" -> "Accounting";
+            case "advisory.client.tab.accounting_diary" -> "Journal / Validate";
             case "advisory.client.tab.banks" -> "Banks";
             case "advisory.client.tab.loans" -> "Loans";
             case "advisory.client.tab.assets" -> "Fixed assets";
@@ -18652,6 +18653,7 @@ public class BenjagestUiApplication extends Application {
             case "client.unbalanced.hint" -> "Debe ≠ Haber por más de 1 céntimo. Normalmente apunta a un bug del importador. Si no puedes arreglarlo desde el editor del Diario, contacta soporte.";
             case "client.unbalanced.none" -> "No hay asientos descuadrados.";
             case "advisory.client.tab.accounting" -> "Contabilidad";
+            case "advisory.client.tab.accounting_diary" -> "Diario / Validar";
             case "advisory.client.tab.banks" -> "Bancos";
             case "advisory.client.tab.loans" -> "Préstamos";
             case "advisory.client.tab.assets" -> "Inmovilizado";
@@ -27105,19 +27107,10 @@ public class BenjagestUiApplication extends Application {
         // cliente.
         com.benjagest.ui.screens.AccountingScreen accountingScreen =
                 new com.benjagest.ui.screens.AccountingScreen(accountingApiClient, this::t);
-        Tab accountingTab = new Tab(t("advisory.client.tab.accounting"),
-                accountingScreen.buildView());
-        accountingTab.setGraphic(icon("fas-book"));
-
-        // Bancos / Préstamos / Inmovilizado — reutiliza ClientFinancialsScreen.
+        // FICHA-TABS (2026-06-15): Contabilidad se agrupa (Diario/Validar, Bancos,
+        // Préstamos, Inmovilizado) como sub-tabs — ver el bloque de añadido.
         com.benjagest.ui.screens.ClientFinancialsScreen financials =
                 new com.benjagest.ui.screens.ClientFinancialsScreen(accountingApiClient, this::t);
-        Tab banksTab = new Tab(t("advisory.client.tab.banks"), financials.buildBanksTab());
-        banksTab.setGraphic(icon("fas-university"));
-        Tab loansTab = new Tab(t("advisory.client.tab.loans"), financials.buildLoansTab());
-        loansTab.setGraphic(icon("fas-hand-holding-usd"));
-        Tab assetsTab = new Tab(t("advisory.client.tab.assets"), financials.buildAssetsTab());
-        assetsTab.setGraphic(icon("fas-cubes"));
 
         Tab laborTab = new Tab(t("advisory.client.tab.labor"),
                 buildClientLaborTab());
@@ -27166,7 +27159,22 @@ public class BenjagestUiApplication extends Application {
             }
         }
         if (canSee.test("accounting")) {
-            tabs.getTabs().addAll(accountingTab, banksTab, loansTab, assetsTab);
+            // FICHA-TABS: una sola pestaña "Contabilidad" con sub-tabs.
+            TabPane accSub = new TabPane();
+            accSub.getStyleClass().add("settings-tabs");
+            accSub.setTabClosingPolicy(TabPane.TabClosingPolicy.UNAVAILABLE);
+            Tab subDiary = new Tab(t("advisory.client.tab.accounting_diary"), accountingScreen.buildView());
+            subDiary.setGraphic(icon("fas-book"));
+            Tab subBanks = new Tab(t("advisory.client.tab.banks"), financials.buildBanksTab());
+            subBanks.setGraphic(icon("fas-university"));
+            Tab subLoans = new Tab(t("advisory.client.tab.loans"), financials.buildLoansTab());
+            subLoans.setGraphic(icon("fas-hand-holding-usd"));
+            Tab subAssets = new Tab(t("advisory.client.tab.assets"), financials.buildAssetsTab());
+            subAssets.setGraphic(icon("fas-cubes"));
+            accSub.getTabs().addAll(subDiary, subBanks, subLoans, subAssets);
+            Tab contabGroup = new Tab(t("advisory.client.tab.accounting"), accSub);
+            contabGroup.setGraphic(icon("fas-book"));
+            tabs.getTabs().add(contabGroup);
         }
         if (canSee.test("labor")) tabs.getTabs().add(laborTab);
         // Autónomos (RETA) — operativa por-tenant. Decisión 2026-06-15: la
