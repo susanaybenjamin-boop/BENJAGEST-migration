@@ -17378,6 +17378,8 @@ public class BenjagestUiApplication extends Application {
             case "pending.subtitle" -> "What needs doing — kept in view so nothing slips by.";
             case "pending.scope.company" -> "This company";
             case "pending.scope.portfolio" -> "Whole portfolio";
+            case "pending.scope.company.label" -> "Tasks for:";
+            case "pending.scope.portfolio.label" -> "Tasks across your whole portfolio.";
             case "pending.empty" -> "Nothing pending. All caught up.";
             case "pending.failed" -> "Could not load pending tasks";
             case "pending.go" -> "Open";
@@ -18306,6 +18308,8 @@ public class BenjagestUiApplication extends Application {
             case "pending.subtitle" -> "Lo que hay que hacer — a la vista para que no se escape nada.";
             case "pending.scope.company" -> "Esta empresa";
             case "pending.scope.portfolio" -> "Toda la cartera";
+            case "pending.scope.company.label" -> "Tareas de:";
+            case "pending.scope.portfolio.label" -> "Tareas de toda tu cartera.";
             case "pending.empty" -> "Nada pendiente. Todo al día.";
             case "pending.failed" -> "No se pudieron cargar las tareas pendientes";
             case "pending.go" -> "Abrir";
@@ -23242,7 +23246,11 @@ public class BenjagestUiApplication extends Application {
         VBox content = content();
         Label title = new Label(t("pending.title"));
         title.getStyleClass().add("module-detail-title");
-        Label subtitle = new Label(t("pending.subtitle"));
+        // El subtítulo indica DE QUIÉN son las tareas mostradas (Benjamin
+        // 2026-06-16): entrando desde el sidebar uno puede confundir las
+        // tareas de la asesoría con las del cliente que estaba viendo.
+        Label subtitle = new Label(pendingScopeText());
+        subtitle.setId("pending-scope-label");
         subtitle.getStyleClass().add("module-detail-description");
         VBox titleBox = new VBox(4, title, subtitle);
         StackPane moduleIcon = iconBubble("fas-clipboard-list", "module-title-icon");
@@ -23276,9 +23284,20 @@ public class BenjagestUiApplication extends Application {
         loadPendingInto(content);
     }
 
+    /** Texto "de quién son" las tareas que se están mostrando. */
+    private String pendingScopeText() {
+        if (pendingPortfolioMode) return t("pending.scope.portfolio.label");
+        var s = com.benjagest.ui.service.AuthSession.get();
+        String name = s.isActingForClient() && actingClientName != null && !actingClientName.isBlank()
+                ? actingClientName : session.companyName();
+        return t("pending.scope.company.label") + " " + (name == null ? "" : name);
+    }
+
     private void loadPendingInto(VBox content) {
         VBox listBox = (VBox) content.lookup("#pending-list");
         if (listBox == null) return;
+        Label scope = (Label) content.lookup("#pending-scope-label");
+        if (scope != null) scope.setText(pendingScopeText());
         boolean portfolio = pendingPortfolioMode;
         Task<java.util.List<com.benjagest.ui.model.PendingTaskBucket>> task = new Task<>() {
             @Override protected java.util.List<com.benjagest.ui.model.PendingTaskBucket> call() throws Exception {
