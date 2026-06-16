@@ -14,5 +14,6 @@ public final class ClientConfigModels {
     /** Config interna del cliente gestionada por la asesoría. */
     public record AdvisoryConfigEntry(
             String fiscalPeriod, String taxRegime,
-            String contactChannel, String contactValue, String internalNotes) {}
+            String contactChannel, String contactValue, String internalNotes,
+            String legalForm) {}
 }

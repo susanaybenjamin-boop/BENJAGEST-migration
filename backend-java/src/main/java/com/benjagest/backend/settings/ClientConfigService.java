@@ -85,15 +85,20 @@ public class ClientConfigService {
 
     public AdvisoryConfig getConfig() {
         String companyId = tenant.getCurrentCompanyId();
-        return jdbc.query("""
+        // legal_form vive en companies (RETA-4); el resto en client_advisory_config.
+        String legalForm = jdbc.query("SELECT legal_form FROM companies WHERE id = ?",
+                rs -> rs.next() ? rs.getString("legal_form") : null, companyId);
+        AdvisoryConfig base = jdbc.query("""
                 SELECT fiscal_period, tax_regime, contact_channel, contact_value, internal_notes
                   FROM client_advisory_config WHERE company_id = ?
                 """, rs -> rs.next()
                         ? new AdvisoryConfig(rs.getString("fiscal_period"), rs.getString("tax_regime"),
                                 rs.getString("contact_channel"), rs.getString("contact_value"),
-                                rs.getString("internal_notes"))
-                        : new AdvisoryConfig(null, null, null, null, null),
+                                rs.getString("internal_notes"), null)
+                        : new AdvisoryConfig(null, null, null, null, null, null),
                 companyId);
+        return new AdvisoryConfig(base.fiscalPeriod(), base.taxRegime(), base.contactChannel(),
+                base.contactValue(), base.internalNotes(), legalForm);
     }
 
     public AdvisoryConfig saveConfig(AdvisoryConfig c) {
@@ -109,6 +114,8 @@ public class ClientConfigService {
                 """,
                 companyId, blank(c.fiscalPeriod()), blank(c.taxRegime()),
                 blank(c.contactChannel()), blank(c.contactValue()), blank(c.internalNotes()));
+        // RETA-4: forma jurídica en companies.
+        jdbc.update("UPDATE companies SET legal_form = ? WHERE id = ?", blank(c.legalForm()), companyId);
         return getConfig();
     }
 
@@ -125,7 +132,7 @@ public class ClientConfigService {
             BigDecimal income, BigDecimal expenses, BigDecimal netResult, String notes) {}
 
     public record AdvisoryConfig(String fiscalPeriod, String taxRegime,
-            String contactChannel, String contactValue, String internalNotes) {}
+            String contactChannel, String contactValue, String internalNotes, String legalForm) {}
 
     @RestController
     @RequestMapping("/api/client-config")
