@@ -742,6 +742,15 @@ public class PayslipService {
                 journalService.createAccrual(new PayslipJournalEntryService.PayslipAccrual(
                         id, req.employeeId(), empName, req.year(), req.month(), gross, irpf),
                         null);
+                // Provisión MENSUAL de pagas extra NO prorrateadas (devengo art. 38
+                // CdC): reconoce cada mes 1/12 de las pagas que se pagarán aparte.
+                if ("MONTHLY".equals(type)) {
+                    ContractData cd = resolveActiveContract(req.employeeId(), req.year(), req.month());
+                    if (cd != null && !cd.extrasProrated && cd.annualBonuses > 0) {
+                        journalService.createExtraProvision(id, empName, req.year(), req.month(),
+                                extraProvisionMonthly(cd), null);
+                    }
+                }
             } catch (Exception ex) {
                 // No bloquea la nómina.
             }
@@ -777,6 +786,19 @@ public class PayslipService {
                         view.paidAt(), null);
             } catch (Exception ex) {
                 // El asiento es independiente; si falla, la nómina queda pagada igual.
+            }
+        } else if ("EXTRA_SUMMER".equals(view.payslipType())
+                || "EXTRA_CHRISTMAS".equals(view.payslipType())) {
+            // Paga extra: el pago cancela la provisión acumulada (465 → 4751/572),
+            // sin SS (ya cotizó prorrateada mes a mes).
+            try {
+                journalService.createExtraPayment(new PayslipJournalEntryService.PayslipAccrual(
+                        view.id(), view.employeeId(), view.employeeName(),
+                        view.periodYear(), view.periodMonth(),
+                        view.grossAmount(), view.irpfAmount()),
+                        view.paidAt(), null);
+            } catch (Exception ex) {
+                // No bloquea el marcado de pago.
             }
         }
         return view;
@@ -962,6 +984,28 @@ public class PayslipService {
         if (!found) return null;
         if (groupIsDaily) return new BigDecimal[]{ BigDecimal.ZERO, maxMonthly };
         return new BigDecimal[]{ groupMin, maxMonthly };
+    }
+
+    /**
+     * Importe mensual a provisionar de las pagas extra de un contrato NO
+     * prorrateado: 1/12 de las pagas extra anuales. Una paga extra = salario
+     * base anual / (12 + nº pagas) (las extra solo incluyen salario base, no
+     * complementos). Fallback al bruto del contrato si no hay desglose de
+     * conceptos (contratos antiguos). Devuelve 0 si no procede.
+     */
+    private BigDecimal extraProvisionMonthly(ContractData c) {
+        int n = c.annualBonuses;
+        if (n <= 0) return BigDecimal.ZERO;
+        BigDecimal baseAnnual = jdbcTemplate.queryForObject("""
+                SELECT COALESCE(SUM(annual_amount), 0) FROM contract_salary_items
+                 WHERE contract_id = ? AND company_id = ? AND kind = 'SALARY_BASE'
+                """, BigDecimal.class, c.id, tenantContext.getCurrentCompanyId());
+        if (baseAnnual == null || baseAnnual.signum() <= 0) baseAnnual = c.grossSalary;
+        if (baseAnnual == null || baseAnnual.signum() <= 0) return BigDecimal.ZERO;
+        int divisor = 12 + n;
+        BigDecimal pagasAnual = baseAnnual.multiply(BigDecimal.valueOf(n))
+                .divide(BigDecimal.valueOf(divisor), 2, RoundingMode.HALF_UP);
+        return pagasAnual.divide(BigDecimal.valueOf(12), 2, RoundingMode.HALF_UP);
     }
 
     private SsBreakdown computeSs(BigDecimal base, BigDecimal atEpPercent,

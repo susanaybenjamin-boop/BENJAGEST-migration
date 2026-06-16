@@ -56,17 +56,21 @@ certificado es el punto crítico:
    empresa/Cartera + tarjetas por severidad + "Abrir". Vale para empresario.
    Pendiente menor: badge total en la campana; añadir RETA/contratos como buckets.
    [Spec abajo.] **AVISOS** — per-empresa + cartera + empresario.
-3. 🔵 **Topes cotización TGSS + asiento pagas extra** *(parcial 2026-06-16)*.
-   ✅ Tabla **no-code editable de bases por GRUPO de cotización (1-11) y año**:
-   V121 `ss_contribution_group_bases` (seed 2026 PROVISIONAL marcado
-   `pending_validation`), `SsGroupBasesService` (+API), y pestaña **"Bases por
-   grupo"** en Laboral (selector año + editar grupo + clonar año + banner ⚠).
-   ⬜ PENDIENTE (necesita a Benjamin): **validar las cifras 2026** (mínimas hoy
-   = 2025 placeholder); **cablear el motor de nóminas** para que use la mín del
-   grupo del empleado (hoy usa el tope global de `ss_contribution_rates`) — falta
-   además normalizar el grupo de cotización 1-11 en el empleado; y el **asiento
-   de pagas extra** (provisión/pago). No se cablea sin sus cifras validadas
-   (es legal, como el IRPF).
+3. ✅ **Topes cotización TGSS + asiento pagas extra** *(2026-06-16)*. Pasos 1+2+3
+   cableados (decisión Benjamin: hacerlo según la ley):
+   - Tabla no-code de bases por GRUPO (V121) + cifras OFICIALES 2026 (V122, Orden
+     PJC/297/2026) + pestaña "Bases por grupo" en Laboral.
+   - **Paso 1**: V123 `employment_contracts.ss_contribution_group` (1-11, default
+     7) + desplegable en el editor de contrato.
+   - **Paso 2**: `PayslipService` acota la base al [mín del grupo, máx común]
+     leído de la tabla por año (no-code); fallback al tope global si no hay grupo.
+   - **Paso 3**: provisión MENSUAL de pagas extra no prorrateadas (640→465) +
+     asiento de pago de la paga extra (465→4751/572, sin SS). Asientos DRAFT,
+     try/catch, aditivos (las pagas extra no generaban asiento antes).
+   - ⬜ Refinamientos PENDIENTES (paso 4, en memoria): desglose BCCC/BCCP (mín
+     común para AT/EP en grupos 1-3 bajo mínimo), tiempo parcial (base horaria),
+     grupos 8-11 base diaria. **A VALIDAR por Benjamin contra un caso real** los
+     asientos de pagas extra antes de confiar.
 4. **Incidencias de nómina** — **igual que CONTENDO** (localizar su modelo en
    `C:\Proyectos\CONTENDO GESTIONES` y portarlo): horas extra, ausencias/bajas,
    complementos variables por periodo, que alimentan el cálculo de la nómina.
