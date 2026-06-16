@@ -921,6 +921,67 @@ public class LaborApiClient {
         return out;
     }
 
+    // ==== CLIENT-CONFIG: cifras manuales + config interna del cliente ====
+
+    public java.util.List<com.benjagest.ui.model.ClientConfigModels.ManualFinancialEntry>
+            listClientFinancials(Integer year) throws IOException, InterruptedException {
+        String url = baseUrl + "/client-config/financials" + (year == null ? "" : "?year=" + year);
+        HttpResponse<String> r = send(req(url).GET());
+        java.util.List<com.benjagest.ui.model.ClientConfigModels.ManualFinancialEntry> out = new ArrayList<>();
+        for (String o : splitTopLevelObjects(r.body())) {
+            out.add(new com.benjagest.ui.model.ClientConfigModels.ManualFinancialEntry(
+                    textField(o, "id"), intFieldOrZero(o, "periodYear"), intFieldOrZero(o, "periodQuarter"),
+                    bigDec(o, "income"), bigDec(o, "expenses"), bigDec(o, "netResult"), textField(o, "notes")));
+        }
+        return out;
+    }
+
+    public void upsertClientFinancial(com.benjagest.ui.model.ClientConfigModels.ManualFinancialEntry f)
+            throws IOException, InterruptedException {
+        String body = "{"
+                + (f.id() == null ? "" : "\"id\":\"" + f.id() + "\",")
+                + "\"periodYear\":" + f.periodYear() + ","
+                + "\"periodQuarter\":" + f.periodQuarter() + ","
+                + "\"income\":" + plain(f.income()) + ","
+                + "\"expenses\":" + plain(f.expenses()) + ","
+                + "\"netResult\":" + (f.netResult() == null ? "null" : plain(f.netResult())) + ","
+                + "\"notes\":" + jsonStr(f.notes()) + "}";
+        send(req(baseUrl + "/client-config/financials")
+                .header("Content-Type", "application/json")
+                .PUT(HttpRequest.BodyPublishers.ofString(body)));
+    }
+
+    public void deleteClientFinancial(String id) throws IOException, InterruptedException {
+        send(req(baseUrl + "/client-config/financials/" + id).DELETE());
+    }
+
+    public com.benjagest.ui.model.ClientConfigModels.AdvisoryConfigEntry getClientAdvisoryConfig()
+            throws IOException, InterruptedException {
+        HttpResponse<String> r = send(req(baseUrl + "/client-config/advisory").GET());
+        String o = r.body();
+        return new com.benjagest.ui.model.ClientConfigModels.AdvisoryConfigEntry(
+                textField(o, "fiscalPeriod"), textField(o, "taxRegime"),
+                textField(o, "contactChannel"), textField(o, "contactValue"), textField(o, "internalNotes"));
+    }
+
+    public void saveClientAdvisoryConfig(com.benjagest.ui.model.ClientConfigModels.AdvisoryConfigEntry c)
+            throws IOException, InterruptedException {
+        String body = "{"
+                + "\"fiscalPeriod\":" + jsonStr(c.fiscalPeriod()) + ","
+                + "\"taxRegime\":" + jsonStr(c.taxRegime()) + ","
+                + "\"contactChannel\":" + jsonStr(c.contactChannel()) + ","
+                + "\"contactValue\":" + jsonStr(c.contactValue()) + ","
+                + "\"internalNotes\":" + jsonStr(c.internalNotes()) + "}";
+        send(req(baseUrl + "/client-config/advisory")
+                .header("Content-Type", "application/json")
+                .PUT(HttpRequest.BodyPublishers.ofString(body)));
+    }
+
+    private static String jsonStr(String v) {
+        if (v == null) return "null";
+        return "\"" + v.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n") + "\"";
+    }
+
     // ==== Modelo 145 (datos IRPF del empleado) ====
 
     public com.benjagest.ui.model.Modelo145Entry getIrpfData(String employeeId)
