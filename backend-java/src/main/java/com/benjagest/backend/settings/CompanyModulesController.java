@@ -44,6 +44,16 @@ public class CompanyModulesController {
         return service.setActive(slug, request.active());
     }
 
+    /**
+     * Activa los módulos operativos que falten en la empresa actual (tenant).
+     * La asesoría lo invoca al entrar en un cliente para evitar el error
+     * "módulo no activo" al cargar las pestañas operativas.
+     */
+    @org.springframework.web.bind.annotation.PostMapping("/ensure-operativa")
+    public List<CompanyModuleView> ensureOperativa() {
+        return service.ensureOperativaModules();
+    }
+
     public record SetActiveRequest(@NotNull Boolean active) {
     }
 }

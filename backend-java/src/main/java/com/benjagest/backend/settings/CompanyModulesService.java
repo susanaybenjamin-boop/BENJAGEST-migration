@@ -49,6 +49,14 @@ public class CompanyModulesService {
             "core", "customers", "settings", "users"
     );
 
+    /**
+     * Módulos OPERATIVOS que se auto-activan al gestionar un cliente desde la
+     * asesoría (decisión Benjamin 2026-06-15: que cargar un cliente NO dé error
+     * "módulo no activo"). La asesoría gestiona toda la operativa del cliente.
+     */
+    private static final List<String> OPERATIVA_SLUGS = List.of(
+            "billing", "purchases", "accounting", "labor", "tax", "self-employed");
+
     private final ModuleRepository moduleRepository;
     private final ModuleAccessService moduleAccessService;
     private final TenantContext tenantContext;
@@ -89,6 +97,25 @@ public class CompanyModulesService {
                         activeSlugs.contains(m.slug())
                 ))
                 .toList();
+    }
+
+    /**
+     * Asegura que la empresa actual (tenant) tiene activos los módulos
+     * operativos ({@link #OPERATIVA_SLUGS}). Idempotente: solo activa los que
+     * falten. La UI lo llama al entrar la asesoría en un cliente para que las
+     * pestañas operativas no fallen con "módulo no activo". Respeta dependencias.
+     */
+    @Transactional
+    public List<CompanyModuleView> ensureOperativaModules() {
+        AuthenticatedUser actor = currentUserService.require();
+        String companyId = tenantContext.getCurrentCompanyId();
+        for (String slug : OPERATIVA_SLUGS) {
+            if (moduleRepository.findIdBySlug(slug) == null) continue; // no en catálogo
+            if (moduleAccessService.isEnabledForCurrentCompany(slug)) continue; // ya activo
+            activateWithDependencies(slug, companyId, actor.userId(), new HashSet<>());
+            auditService.recordModuleToggled(actor.userId(), companyId, slug, true);
+        }
+        return list();
     }
 
     @Transactional
