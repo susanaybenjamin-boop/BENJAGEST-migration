@@ -16479,6 +16479,7 @@ public class BenjagestUiApplication extends Application {
             case "labor.contract.editor.vacation" -> "Vacation days";
             case "labor.contract.editor.irpf" -> "IRPF %";
             case "labor.contract.editor.at_ep" -> "Occupational accident % (AT/EP)";
+            case "labor.contract.editor.ss_group" -> "Contribution group (1-11)";
             case "labor.contract.salary.title" -> "Salary complements";
             case "labor.contract.salary.hint" -> "Base salary goes in the field above. Add here any extra salary concepts (seniority, voluntary improvement, transport allowance…) as a MONTHLY amount. Each one can be marked as contributing to Social Security / subject to income tax.";
             case "labor.contract.salary.add" -> "+ Add complement";
@@ -17122,6 +17123,7 @@ public class BenjagestUiApplication extends Application {
             case "labor.contract.editor.vacation" -> "Vacaciones";
             case "labor.contract.editor.irpf" -> "IRPF %";
             case "labor.contract.editor.at_ep" -> "% Accidentes trabajo (AT/EP)";
+            case "labor.contract.editor.ss_group" -> "Grupo de cotización (1-11)";
             case "labor.contract.salary.title" -> "Complementos salariales";
             case "labor.contract.salary.hint" -> "El salario base va en el campo de arriba. Añade aquí los conceptos extra (antigüedad, mejora voluntaria, plus transporte…) como importe MENSUAL. Cada uno puede marcarse como que cotiza a la Seguridad Social / tributa por IRPF.";
             case "labor.contract.salary.add" -> "+ Añadir complemento";
@@ -22748,6 +22750,8 @@ public class BenjagestUiApplication extends Application {
                 state.vacationDays,
                 state.irpfPercent,
                 state.atEpPercent,
+                existing == null || existing.ssContributionGroup() == null
+                        ? Integer.valueOf(7) : existing.ssContributionGroup(),
                 state.workplaceAddress == null || state.workplaceAddress.isBlank()
                         ? null : state.workplaceAddress,
                 existing == null ? "ACTIVE" : existing.status(),
@@ -23178,6 +23182,11 @@ public class BenjagestUiApplication extends Application {
                 ? "" : existing.irpfPercent().toPlainString());
         TextField atEpField = new TextField(existing == null || existing.atEpPercent() == null
                 ? "1.50" : existing.atEpPercent().toPlainString());
+        ComboBox<Integer> ssGroupCombo = new ComboBox<>();
+        for (int gi = 1; gi <= 11; gi++) ssGroupCombo.getItems().add(gi);
+        ssGroupCombo.getSelectionModel().select(Integer.valueOf(
+                existing == null || existing.ssContributionGroup() == null
+                        ? 7 : existing.ssContributionGroup()));
         TextField workplaceField = new TextField(existing == null ? "" : existing.workplaceAddress());
         ComboBox<String> statusCombo = new ComboBox<>();
         statusCombo.getItems().addAll("DRAFT", "ACTIVE", "SUSPENDED", "TERMINATED");
@@ -23202,7 +23211,8 @@ public class BenjagestUiApplication extends Application {
         g.add(proratedField, 1, row, 3, 1); row++;
         g.add(new Label(t("labor.contract.editor.irpf")), 0, row); g.add(irpfField, 1, row);
         g.add(new Label(t("labor.contract.editor.status")), 2, row); g.add(statusCombo, 3, row); row++;
-        g.add(new Label(t("labor.contract.editor.at_ep")), 0, row); g.add(atEpField, 1, row); row++;
+        g.add(new Label(t("labor.contract.editor.at_ep")), 0, row); g.add(atEpField, 1, row);
+        g.add(new Label(t("labor.contract.editor.ss_group")), 2, row); g.add(ssGroupCombo, 3, row); row++;
         g.add(new Label(t("labor.contract.editor.workplace")), 0, row); g.add(workplaceField, 1, row, 3, 1);
 
         Separator sep = new Separator();
@@ -23234,6 +23244,7 @@ public class BenjagestUiApplication extends Application {
                     parseIntSafe(vacationField.getText()),
                     parseDecSafe(irpfField.getText()),
                     parseDecSafe(atEpField.getText()),
+                    ssGroupCombo.getValue() == null ? 7 : ssGroupCombo.getValue(),
                     blankToNullOrSelf(workplaceField.getText()),
                     statusCombo.getValue(),
                     null,
