@@ -17314,6 +17314,37 @@ public class BenjagestUiApplication extends Application {
             case "advisory.client.back" -> "← Back to My clients";
             case "advisory.client.hint" -> "You are now viewing this client. Anything you do from here is recorded under their company, not yours. Your sidebar still belongs to your advisory firm — you can switch between tabs freely.";
             case "advisory.client.tab.summary" -> "Summary";
+            case "advisory.client.tab.config" -> "Configuration";
+            case "clientcfg.section.management" -> "Management data";
+            case "clientcfg.fiscal_period" -> "Filing frequency";
+            case "clientcfg.tax_regime" -> "Tax regime";
+            case "clientcfg.contact_channel" -> "Contact channel";
+            case "clientcfg.contact_value" -> "Contact (email/phone)";
+            case "clientcfg.internal_notes" -> "Internal notes";
+            case "clientcfg.fiscalperiod.MONTHLY" -> "Monthly";
+            case "clientcfg.fiscalperiod.QUARTERLY" -> "Quarterly";
+            case "clientcfg.regime.ESTIMACION_DIRECTA" -> "Direct estimation";
+            case "clientcfg.regime.MODULOS" -> "Modules (objective estimation)";
+            case "clientcfg.regime.SOCIEDADES" -> "Corporate tax";
+            case "clientcfg.regime.OTHER" -> "Other";
+            case "clientcfg.contact.EMAIL" -> "Email";
+            case "clientcfg.contact.PHONE" -> "Phone";
+            case "clientcfg.contact.WHATSAPP" -> "WhatsApp";
+            case "clientcfg.contact.IN_PERSON" -> "In person";
+            case "clientcfg.contact.OTHER" -> "Other";
+            case "clientcfg.saved" -> "Saved.";
+            case "clientcfg.save_failed" -> "Could not save";
+            case "clientcfg.section.financials" -> "Manual figures (no bookkeeping here)";
+            case "clientcfg.financials.hint" -> "For clients whose bookkeeping is not in BENJAGEST: enter income/expenses by year (and optionally by quarter). They feed RETA, KPIs and alerts when there is no journal.";
+            case "clientcfg.financials.empty" -> "No manual figures yet.";
+            case "clientcfg.financials.add" -> "Add figures";
+            case "clientcfg.col.year" -> "Year";
+            case "clientcfg.col.period" -> "Period";
+            case "clientcfg.col.income" -> "Income";
+            case "clientcfg.col.expenses" -> "Expenses";
+            case "clientcfg.col.result" -> "Result";
+            case "clientcfg.period.annual" -> "Annual";
+            case "clientcfg.result_auto" -> "auto = income − expenses";
             case "advisory.client.tab.billing" -> "Billing";
             case "advisory.client.tab.customers" -> "Customers";
             case "advisory.client.tab.billing_config" -> "Billing config";
@@ -18184,6 +18215,37 @@ public class BenjagestUiApplication extends Application {
             case "advisory.client.back" -> "← Volver a Mis clientes";
             case "advisory.client.hint" -> "Estas viendo este cliente. Cualquier accion que hagas desde aqui queda registrada en SU empresa, no en la tuya. Tu barra lateral sigue siendo la de tu asesoria — puedes moverte entre las pestañas libremente.";
             case "advisory.client.tab.summary" -> "Resumen";
+            case "advisory.client.tab.config" -> "Configuración";
+            case "clientcfg.section.management" -> "Datos de gestión";
+            case "clientcfg.fiscal_period" -> "Periodicidad de modelos";
+            case "clientcfg.tax_regime" -> "Régimen fiscal";
+            case "clientcfg.contact_channel" -> "Vía de contacto";
+            case "clientcfg.contact_value" -> "Contacto (email/teléfono)";
+            case "clientcfg.internal_notes" -> "Notas internas";
+            case "clientcfg.fiscalperiod.MONTHLY" -> "Mensual";
+            case "clientcfg.fiscalperiod.QUARTERLY" -> "Trimestral";
+            case "clientcfg.regime.ESTIMACION_DIRECTA" -> "Estimación directa";
+            case "clientcfg.regime.MODULOS" -> "Módulos (estimación objetiva)";
+            case "clientcfg.regime.SOCIEDADES" -> "Impuesto de sociedades";
+            case "clientcfg.regime.OTHER" -> "Otro";
+            case "clientcfg.contact.EMAIL" -> "Email";
+            case "clientcfg.contact.PHONE" -> "Teléfono";
+            case "clientcfg.contact.WHATSAPP" -> "WhatsApp";
+            case "clientcfg.contact.IN_PERSON" -> "En persona";
+            case "clientcfg.contact.OTHER" -> "Otro";
+            case "clientcfg.saved" -> "Guardado.";
+            case "clientcfg.save_failed" -> "No se pudo guardar";
+            case "clientcfg.section.financials" -> "Cifras manuales (sin contabilidad aquí)";
+            case "clientcfg.financials.hint" -> "Para clientes cuya contabilidad no está en BENJAGEST: introduce ingresos/gastos por año (y opcionalmente por trimestre). Alimentan RETA, KPIs y avisos cuando no hay diario.";
+            case "clientcfg.financials.empty" -> "Aún no hay cifras manuales.";
+            case "clientcfg.financials.add" -> "Añadir cifras";
+            case "clientcfg.col.year" -> "Año";
+            case "clientcfg.col.period" -> "Periodo";
+            case "clientcfg.col.income" -> "Ingresos";
+            case "clientcfg.col.expenses" -> "Gastos";
+            case "clientcfg.col.result" -> "Resultado";
+            case "clientcfg.period.annual" -> "Anual";
+            case "clientcfg.result_auto" -> "auto = ingresos − gastos";
             case "advisory.client.tab.tpb_agreement" -> "Acuerdo facturación";
             case "tpb.title" -> "Acuerdo de facturación por tercero (RD 1619/2012)";
             case "tpb.hint" -> "Requisito legal previo a que la asesoría pueda emitir materialmente facturas en nombre de este cliente. Quedan registrados el alcance, el método de firma y las fechas como evidencia.";
@@ -26887,6 +26949,12 @@ public class BenjagestUiApplication extends Application {
         // no un módulo del catálogo). Equivalente al "perfil" del cliente
         // que todo empleado autorizado puede consultar.
         tabs.getTabs().add(summaryTab);
+        // CLIENT-CONFIG (2026-06-15) — "Configuración" en 2º lugar, para TODOS los
+        // clientes (vinculados o no): datos fiscales, cifras manuales sin
+        // contabilidad, contacto y notas internas.
+        Tab clientConfigTab = new Tab(t("advisory.client.tab.config"), buildClientConfigTab());
+        clientConfigTab.setGraphic(icon("fas-sliders-h"));
+        tabs.getTabs().add(clientConfigTab);
         if (isLinked) {
             if (canSee.test("billing")) tabs.getTabs().add(billingTab);
             if (canSee.test("purchases")) tabs.getTabs().add(purchasesTab);
@@ -31365,6 +31433,221 @@ public class BenjagestUiApplication extends Application {
      * de cotización + cambios de base. Reutiliza {@code retaView}. Es operativa
      * por-tenant (las llamadas llevan el X-Company-Id activo).
      */
+    /**
+     * CLIENT-CONFIG — tab "Configuración" de la ficha del cliente: datos de
+     * gestión (periodicidad modelos, régimen, contacto, notas internas) + cifras
+     * manuales para clientes sin contabilidad (anual + trimestral). Por-tenant.
+     */
+    private Node buildClientConfigTab() {
+        VBox holder = new VBox(14);
+        holder.setPadding(new Insets(16));
+        Label loading = new Label(t("panorama.loading"));
+        loading.getStyleClass().add("settings-hint");
+        holder.getChildren().add(loading);
+
+        Task<com.benjagest.ui.model.ClientConfigModels.AdvisoryConfigEntry> cfgTask = new Task<>() {
+            @Override protected com.benjagest.ui.model.ClientConfigModels.AdvisoryConfigEntry call() throws Exception {
+                return laborApiClient.getClientAdvisoryConfig();
+            }
+        };
+        cfgTask.setOnSucceeded(ev -> holder.getChildren().setAll(
+                buildClientConfigContent(cfgTask.getValue())));
+        cfgTask.setOnFailed(ev -> holder.getChildren().setAll(
+                buildClientConfigContent(new com.benjagest.ui.model.ClientConfigModels.AdvisoryConfigEntry(
+                        null, null, null, null, null))));
+        start(cfgTask, "client-config-load");
+        return holder;
+    }
+
+    private VBox buildClientConfigContent(com.benjagest.ui.model.ClientConfigModels.AdvisoryConfigEntry cfg) {
+        // --- Sección 1: datos de gestión ---
+        Label t1 = new Label(t("clientcfg.section.management"));
+        t1.getStyleClass().add("settings-section-title");
+
+        ComboBox<String> fiscalPeriod = localizedConfigCombo("clientcfg.fiscalperiod.",
+                java.util.List.of("MONTHLY", "QUARTERLY"), cfg.fiscalPeriod());
+        ComboBox<String> taxRegime = localizedConfigCombo("clientcfg.regime.",
+                java.util.List.of("ESTIMACION_DIRECTA", "MODULOS", "SOCIEDADES", "OTHER"), cfg.taxRegime());
+        ComboBox<String> contactChannel = localizedConfigCombo("clientcfg.contact.",
+                java.util.List.of("EMAIL", "PHONE", "WHATSAPP", "IN_PERSON", "OTHER"), cfg.contactChannel());
+        TextField contactValue = new TextField(cfg.contactValue() == null ? "" : cfg.contactValue());
+        TextArea internalNotes = new TextArea(cfg.internalNotes() == null ? "" : cfg.internalNotes());
+        internalNotes.setPrefRowCount(3); internalNotes.setWrapText(true);
+
+        GridPane g = new GridPane();
+        g.setHgap(10); g.setVgap(8);
+        javafx.scene.layout.ColumnConstraints gl = new javafx.scene.layout.ColumnConstraints();
+        gl.setMinWidth(180); gl.setHalignment(javafx.geometry.HPos.LEFT);
+        javafx.scene.layout.ColumnConstraints gf = new javafx.scene.layout.ColumnConstraints();
+        gf.setHgrow(Priority.ALWAYS); gf.setFillWidth(true);
+        g.getColumnConstraints().addAll(gl, gf);
+        int r = 0;
+        g.add(new Label(t("clientcfg.fiscal_period")), 0, r); g.add(fiscalPeriod, 1, r++);
+        g.add(new Label(t("clientcfg.tax_regime")), 0, r); g.add(taxRegime, 1, r++);
+        g.add(new Label(t("clientcfg.contact_channel")), 0, r); g.add(contactChannel, 1, r++);
+        g.add(new Label(t("clientcfg.contact_value")), 0, r); g.add(contactValue, 1, r++);
+        g.add(new Label(t("clientcfg.internal_notes")), 0, r); g.add(internalNotes, 1, r++);
+
+        Button saveCfg = new Button(t("common.btn.save"));
+        saveCfg.getStyleClass().add("button-primary");
+        Label cfgSaved = new Label("");
+        cfgSaved.getStyleClass().add("settings-hint");
+        saveCfg.setOnAction(e -> {
+            var payload = new com.benjagest.ui.model.ClientConfigModels.AdvisoryConfigEntry(
+                    fiscalPeriod.getValue(), taxRegime.getValue(), contactChannel.getValue(),
+                    blankToNullOrSelf(contactValue.getText()), blankToNullOrSelf(internalNotes.getText()));
+            Task<Void> tk = new Task<>() {
+                @Override protected Void call() throws Exception { laborApiClient.saveClientAdvisoryConfig(payload); return null; }
+            };
+            tk.setOnSucceeded(ev -> cfgSaved.setText(t("clientcfg.saved")));
+            tk.setOnFailed(ev -> showError(t("clientcfg.save_failed"),
+                    tk.getException() == null ? "" : tk.getException().getMessage()));
+            start(tk, "client-config-save");
+        });
+        HBox saveRow = new HBox(8, saveCfg, cfgSaved);
+        saveRow.setAlignment(Pos.CENTER_LEFT);
+
+        // --- Sección 2: cifras manuales ---
+        Label t2 = new Label(t("clientcfg.section.financials"));
+        t2.getStyleClass().add("settings-section-title");
+        Label t2hint = new Label(t("clientcfg.financials.hint"));
+        t2hint.setWrapText(true); t2hint.getStyleClass().add("settings-hint");
+
+        TableView<com.benjagest.ui.model.ClientConfigModels.ManualFinancialEntry> table = new TableView<>();
+        table.getStyleClass().add("data-table");
+        table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+        table.setPlaceholder(new Label(t("clientcfg.financials.empty")));
+        TableColumn<com.benjagest.ui.model.ClientConfigModels.ManualFinancialEntry, String> cYear =
+                new TableColumn<>(t("clientcfg.col.year"));
+        cYear.setCellValueFactory(c -> new SimpleStringProperty(String.valueOf(c.getValue().periodYear())));
+        cYear.setComparator(NUMERIC_STRING_COMPARATOR);
+        TableColumn<com.benjagest.ui.model.ClientConfigModels.ManualFinancialEntry, String> cPeriod =
+                new TableColumn<>(t("clientcfg.col.period"));
+        cPeriod.setCellValueFactory(c -> new SimpleStringProperty(
+                c.getValue().periodQuarter() == 0 ? t("clientcfg.period.annual")
+                        : "T" + c.getValue().periodQuarter()));
+        TableColumn<com.benjagest.ui.model.ClientConfigModels.ManualFinancialEntry, String> cInc =
+                new TableColumn<>(t("clientcfg.col.income"));
+        cInc.setCellValueFactory(c -> new SimpleStringProperty(money(c.getValue().income())));
+        cInc.setComparator(NUMERIC_STRING_COMPARATOR);
+        TableColumn<com.benjagest.ui.model.ClientConfigModels.ManualFinancialEntry, String> cExp =
+                new TableColumn<>(t("clientcfg.col.expenses"));
+        cExp.setCellValueFactory(c -> new SimpleStringProperty(money(c.getValue().expenses())));
+        cExp.setComparator(NUMERIC_STRING_COMPARATOR);
+        TableColumn<com.benjagest.ui.model.ClientConfigModels.ManualFinancialEntry, String> cRes =
+                new TableColumn<>(t("clientcfg.col.result"));
+        cRes.setCellValueFactory(c -> new SimpleStringProperty(money(manualResult(c.getValue()))));
+        cRes.setComparator(NUMERIC_STRING_COMPARATOR);
+        table.getColumns().addAll(java.util.List.of(cYear, cPeriod, cInc, cExp, cRes));
+
+        Runnable reload = () -> {
+            Task<java.util.List<com.benjagest.ui.model.ClientConfigModels.ManualFinancialEntry>> tk = new Task<>() {
+                @Override protected java.util.List<com.benjagest.ui.model.ClientConfigModels.ManualFinancialEntry> call() throws Exception {
+                    return laborApiClient.listClientFinancials(null);
+                }
+            };
+            tk.setOnSucceeded(ev -> table.setItems(FXCollections.observableArrayList(tk.getValue())));
+            tk.setOnFailed(ev -> { /* tabla vacía */ });
+            start(tk, "client-financials-load");
+        };
+
+        Button addBtn = new Button(t("clientcfg.financials.add"));
+        addBtn.setGraphic(icon("fas-plus"));
+        addBtn.setOnAction(e -> showManualFinancialEditor(null, reload));
+        Button editBtn = new Button(t("common.btn.edit"));
+        editBtn.setOnAction(e -> {
+            var sel = table.getSelectionModel().getSelectedItem();
+            if (sel != null) showManualFinancialEditor(sel, reload);
+        });
+        Button delBtn = new Button(t("common.btn.delete"));
+        delBtn.setOnAction(e -> {
+            var sel = table.getSelectionModel().getSelectedItem();
+            if (sel == null) return;
+            Task<Void> tk = new Task<>() {
+                @Override protected Void call() throws Exception { laborApiClient.deleteClientFinancial(sel.id()); return null; }
+            };
+            tk.setOnSucceeded(ev -> reload.run());
+            tk.setOnFailed(ev -> showError(t("clientcfg.save_failed"), ""));
+            start(tk, "client-financial-del");
+        });
+        HBox finActions = new HBox(8, addBtn, editBtn, delBtn);
+        finActions.setAlignment(Pos.CENTER_LEFT);
+
+        reload.run();
+
+        VBox box = new VBox(12, t1, g, saveRow, new Separator(), t2, t2hint, finActions, table);
+        VBox.setVgrow(table, Priority.ALWAYS);
+        return box;
+    }
+
+    private java.math.BigDecimal manualResult(com.benjagest.ui.model.ClientConfigModels.ManualFinancialEntry f) {
+        if (f.netResult() != null) return f.netResult();
+        java.math.BigDecimal inc = f.income() == null ? java.math.BigDecimal.ZERO : f.income();
+        java.math.BigDecimal exp = f.expenses() == null ? java.math.BigDecimal.ZERO : f.expenses();
+        return inc.subtract(exp);
+    }
+
+    /** ComboBox con valores fijos localizados via t(prefix + value). */
+    private ComboBox<String> localizedConfigCombo(String prefix, java.util.List<String> values, String selected) {
+        ComboBox<String> cb = new ComboBox<>();
+        cb.getItems().addAll(values);
+        cb.setConverter(new javafx.util.StringConverter<>() {
+            @Override public String toString(String v) { return v == null ? "" : t(prefix + v); }
+            @Override public String fromString(String s) { return s; }
+        });
+        cb.setMaxWidth(Double.MAX_VALUE);
+        if (selected != null && values.contains(selected)) cb.setValue(selected);
+        return cb;
+    }
+
+    private void showManualFinancialEditor(com.benjagest.ui.model.ClientConfigModels.ManualFinancialEntry existing,
+                                            Runnable onSaved) {
+        Dialog<ButtonType> d = new Dialog<>();
+        d.setTitle(t("clientcfg.financials.add"));
+        ButtonType save = new ButtonType(t("common.btn.save"), ButtonBar.ButtonData.OK_DONE);
+        d.getDialogPane().getButtonTypes().addAll(save, ButtonType.CANCEL);
+
+        TextField year = new TextField(existing == null ? String.valueOf(java.time.Year.now().getValue() - 1)
+                : String.valueOf(existing.periodYear()));
+        ComboBox<Integer> quarter = new ComboBox<>();
+        quarter.getItems().addAll(0, 1, 2, 3, 4);
+        quarter.setConverter(new javafx.util.StringConverter<>() {
+            @Override public String toString(Integer q) { return q == null || q == 0 ? t("clientcfg.period.annual") : "T" + q; }
+            @Override public Integer fromString(String s) { return 0; }
+        });
+        quarter.setValue(existing == null ? 0 : existing.periodQuarter());
+        TextField income = new TextField(existing == null || existing.income() == null ? "" : existing.income().toPlainString());
+        TextField expenses = new TextField(existing == null || existing.expenses() == null ? "" : existing.expenses().toPlainString());
+        TextField netResult = new TextField(existing == null || existing.netResult() == null ? "" : existing.netResult().toPlainString());
+        netResult.setPromptText(t("clientcfg.result_auto"));
+
+        GridPane g = new GridPane(); g.setHgap(10); g.setVgap(8); g.setPadding(new Insets(12));
+        int r = 0;
+        g.add(new Label(t("clientcfg.col.year")), 0, r); g.add(year, 1, r);
+        g.add(new Label(t("clientcfg.col.period")), 2, r); g.add(quarter, 3, r++);
+        g.add(new Label(t("clientcfg.col.income")), 0, r); g.add(income, 1, r);
+        g.add(new Label(t("clientcfg.col.expenses")), 2, r); g.add(expenses, 3, r++);
+        g.add(new Label(t("clientcfg.col.result")), 0, r); g.add(netResult, 1, r++);
+        installDialog(d, g);
+        d.showAndWait().ifPresent(bt -> {
+            if (bt != save) return;
+            Integer y = parseIntSafe(year.getText());
+            if (y == null) return;
+            var payload = new com.benjagest.ui.model.ClientConfigModels.ManualFinancialEntry(
+                    existing == null ? null : existing.id(), y,
+                    quarter.getValue() == null ? 0 : quarter.getValue(),
+                    parseDecSafe(income.getText()), parseDecSafe(expenses.getText()),
+                    parseDecSafe(netResult.getText()), null);
+            Task<Void> tk = new Task<>() {
+                @Override protected Void call() throws Exception { laborApiClient.upsertClientFinancial(payload); return null; }
+            };
+            tk.setOnSucceeded(ev -> onSaved.run());
+            tk.setOnFailed(ev -> showError(t("clientcfg.save_failed"),
+                    tk.getException() == null ? "" : tk.getException().getMessage()));
+            start(tk, "client-financial-save");
+        });
+    }
+
     /**
      * Pestaña "Autónomos (RETA)" de la ficha: TODO lo de RETA en un sitio →
      * sub-pestañas Perfiles · Tramos por año · Revisión (regularización).
