@@ -899,7 +899,8 @@ public class PayslipService {
                     d.vacationDays = vac == null ? 30 : vac;
                     d.irpfPercent = rs.getBigDecimal("irpf_percent");
                     d.atEpPercent = rs.getBigDecimal("at_ep_percent");
-                    d.ssContributionGroup = (Integer) rs.getObject("ss_contribution_group");
+                    d.ssContributionGroup = rs.getObject("ss_contribution_group") instanceof Number sg
+                            ? sg.intValue() : null;
                     return d;
                 },
                 tenantContext.getCurrentCompanyId(), employeeId, ref, ref)

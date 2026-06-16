@@ -281,7 +281,7 @@ public class EmploymentContractService {
                 (Integer) rs.getObject("vacation_days"),
                 rs.getBigDecimal("irpf_percent"),
                 rs.getBigDecimal("at_ep_percent"),
-                (Integer) rs.getObject("ss_contribution_group"),
+                rs.getObject("ss_contribution_group") instanceof Number sg ? sg.intValue() : null,
                 rs.getString("workplace_address"),
                 rs.getString("status"),
                 rs.getString("termination_reason"),
