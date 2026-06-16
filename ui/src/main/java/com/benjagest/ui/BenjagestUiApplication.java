@@ -16482,6 +16482,10 @@ public class BenjagestUiApplication extends Application {
             case "reta.action.new" -> "New profile";
             case "reta.action.suggest_tramo" -> "Bracket calculator";
             case "reta.placeholder.empty" -> "No RETA profiles yet.";
+            case "reta.empty.hint" -> "No self-employed (RETA) profile for this company. If this company IS a sole trader (autónomo), mark it as such to auto-create its profile. If it is a company (S.L., S.A., …), use \"New profile\" to register the owner who pays RETA.";
+            case "reta.empty.mark_autonomo" -> "Mark company as sole trader (autónomo)";
+            case "reta.empty.mark_confirm" -> "This sets the company's legal form to \"Sole trader (autónomo)\" and creates its RETA profile. You can change the legal form later in the Configuration tab. Continue?";
+            case "reta.empty.marked_ok" -> "Marked as sole trader. RETA profile created.";
             case "reta.col.name" -> "Full name";
             case "reta.col.nif" -> "Tax ID";
             case "reta.col.base" -> "Current base";
@@ -17103,6 +17107,10 @@ public class BenjagestUiApplication extends Application {
             case "reta.action.new" -> "Nuevo perfil";
             case "reta.action.suggest_tramo" -> "Calculadora de tramos";
             case "reta.placeholder.empty" -> "Aun no hay perfiles RETA.";
+            case "reta.empty.hint" -> "Esta empresa no tiene perfil de autónomo (RETA). Si la empresa ES un autónomo, márcala como tal para crear su perfil automáticamente. Si es una sociedad (S.L., S.A., …), usa \"Nuevo perfil\" para dar de alta al titular que cotiza en RETA.";
+            case "reta.empty.mark_autonomo" -> "Marcar empresa como Autónomo";
+            case "reta.empty.mark_confirm" -> "Esto fija la forma jurídica de la empresa como \"Autónomo\" y crea su perfil RETA. Podrás cambiar la forma jurídica más tarde en la pestaña Configuración. ¿Continuar?";
+            case "reta.empty.marked_ok" -> "Marcada como autónomo. Perfil RETA creado.";
             case "reta.col.name" -> "Nombre";
             case "reta.col.nif" -> "NIF";
             case "reta.col.base" -> "Base actual";
@@ -23379,7 +23387,7 @@ public class BenjagestUiApplication extends Application {
         retaTable = new TableView<>();
         retaTable.getStyleClass().add("data-table");
         retaTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
-        retaTable.setPlaceholder(new Label(t("reta.placeholder.empty")));
+        retaTable.setPlaceholder(retaEmptyState());
         TableColumn<com.benjagest.ui.model.RetaProfileEntry, String> colName =
                 new TableColumn<>(t("reta.col.name"));
         colName.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().fullName()));
@@ -23448,6 +23456,69 @@ public class BenjagestUiApplication extends Application {
         VBox.setVgrow(retaTable, Priority.ALWAYS);
         content.getChildren().addAll(header, body, actions);
         return content;
+    }
+
+    /**
+     * Estado vacío ACCIONABLE de la lista de perfiles RETA. Si la empresa aún no
+     * tiene forma jurídica = AUTONOMO, el perfil no se autocrea y la tabla sale
+     * vacía. Este panel permite marcarla como autónomo (fija companies.legal_form
+     * y crea el perfil) sin tener que buscar la pestaña Configuración. Resuelve la
+     * confusión recurrente "marqué autónomo y no aparece" (Benjamin 2026-06-16):
+     * el "Tipo" del editor de cliente-receptor (customers.customer_type) NO es lo
+     * mismo que la forma jurídica de la empresa gestionada (companies.legal_form),
+     * que es lo que mira RETA.
+     */
+    private Node retaEmptyState() {
+        Label hint = new Label(t("reta.empty.hint"));
+        hint.getStyleClass().add("settings-hint");
+        hint.setWrapText(true);
+        hint.setMaxWidth(520);
+        Button mark = new Button(t("reta.empty.mark_autonomo"));
+        mark.setGraphic(icon("fas-check"));
+        mark.getStyleClass().add("button-primary");
+        mark.setOnAction(ev -> markCompanyAutonomoAndCreateProfile());
+        VBox box = new VBox(12, hint, mark);
+        box.setAlignment(Pos.CENTER);
+        box.setPadding(new Insets(24));
+        return box;
+    }
+
+    /**
+     * Fija companies.legal_form = AUTONOMO en la empresa actual (tenant) y crea su
+     * perfil RETA. Preserva el resto de la config de la asesoría. Tras crear,
+     * recarga la tabla en su sitio (sin reconstruir el centro).
+     */
+    private void markCompanyAutonomoAndCreateProfile() {
+        Alert confirm = new Alert(Alert.AlertType.CONFIRMATION,
+                t("reta.empty.mark_confirm"), ButtonType.OK, ButtonType.CANCEL);
+        confirm.setHeaderText(t("reta.empty.mark_autonomo"));
+        confirm.showAndWait().filter(b -> b == ButtonType.OK).ifPresent(b -> {
+            Task<Void> task = new Task<>() {
+                @Override protected Void call() throws Exception {
+                    var cfg = laborApiClient.getClientAdvisoryConfig();
+                    var upd = new com.benjagest.ui.model.ClientConfigModels.AdvisoryConfigEntry(
+                            cfg == null ? null : cfg.fiscalPeriod(),
+                            cfg == null ? null : cfg.taxRegime(),
+                            cfg == null ? null : cfg.contactChannel(),
+                            cfg == null ? null : cfg.contactValue(),
+                            cfg == null ? null : cfg.internalNotes(),
+                            "AUTONOMO");
+                    laborApiClient.saveClientAdvisoryConfig(upd);
+                    laborApiClient.ensureRetaProfiles();
+                    return null;
+                }
+            };
+            task.setOnSucceeded(ev -> {
+                reloadRetaProfiles();
+                Alert ok = new Alert(Alert.AlertType.INFORMATION,
+                        t("reta.empty.marked_ok"), ButtonType.OK);
+                ok.setHeaderText(null);
+                ok.showAndWait();
+            });
+            task.setOnFailed(ev -> showError(t("reta.load_failed"),
+                    task.getException() == null ? "" : task.getException().getMessage()));
+            start(task, "reta-mark-autonomo");
+        });
     }
 
     /**
