@@ -31700,7 +31700,16 @@ public class BenjagestUiApplication extends Application {
             Task<Void> tk = new Task<>() {
                 @Override protected Void call() throws Exception { laborApiClient.saveClientAdvisoryConfig(payload); return null; }
             };
-            tk.setOnSucceeded(ev -> cfgSaved.setText(t("clientcfg.saved")));
+            tk.setOnSucceeded(ev -> {
+                cfgSaved.setText(t("clientcfg.saved"));
+                // RETA-4: si se marcó AUTONOMO, crear el perfil RETA y refrescar
+                // la tabla de perfiles (que pudo construirse antes de marcarlo).
+                Task<Void> ensure = new Task<>() {
+                    @Override protected Void call() throws Exception { laborApiClient.ensureRetaProfiles(); return null; }
+                };
+                ensure.setOnSucceeded(e2 -> reloadRetaProfiles());
+                start(ensure, "client-config-ensure-reta");
+            });
             tk.setOnFailed(ev -> showError(t("clientcfg.save_failed"),
                     tk.getException() == null ? "" : tk.getException().getMessage()));
             start(tk, "client-config-save");
