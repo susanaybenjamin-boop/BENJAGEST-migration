@@ -8,6 +8,54 @@
 
 ---
 
+## 2026-06-15 — 🚀 COLA AUTÓNOMA (decisiones cerradas por Benjamin)
+
+> Benjamin se va a trabajar y deja esta cola decidida para trabajo autónomo
+> (CLAUDE.md §11: commit por slice + merge develop + compilar antes de commitear;
+> reportar a la vuelta). Orden de ejecución y decisiones:
+
+1. **CLIENT-CONFIG + fix no-vinculados** — tab "Configuración" (2º lugar) en la
+   ficha. **Decisión:** **auto-activar los módulos operativos** del cliente al
+   gestionarlo desde la asesoría (no más error "módulo no activo") **+ toggles**
+   de módulos por cliente en el tab Config. Secciones del tab: (a) datos
+   fiscales/identidad (reusar `companies`/`customers` + ACT-CATALOG ya hecho);
+   (b) cotización RETA manual (acceso directo a perfil); (c) **cifras manuales
+   sin contabilidad: ANUAL obligatorio + desglose TRIMESTRAL opcional** (tabla
+   nueva, alimenta RETA/KPIs/avisos); (d) preferencias (módulos activos, contacto,
+   notas internas). Que cargar un no-vinculado NO dé error.
+2. **AVISOS** — **las dos cosas a la vez**: per-empresa (badge en campana) + 
+   roll-up cross-cartera. Fuentes v1 ya curadas (ver sección AVISOS). Incluir
+   modo empresario.
+3. **Topes cotización TGSS + asiento pagas extra** — **construir** con topes 2026
+   (mín/máx por grupo) y dejar marcadas las cifras para que Benjamin las VALIDE
+   a la vuelta (legal, como el IRPF).
+4. **Incidencias de nómina** — **igual que CONTENDO** (localizar su modelo en
+   `C:\Proyectos\CONTENDO GESTIONES` y portarlo): horas extra, ausencias/bajas,
+   complementos variables por periodo, que alimentan el cálculo de la nómina.
+5. **FIN-ANALYSIS completo** — FIN-1 (cuadro de mando: ingresos/gastos/margen/
+   beneficio/coste personal %/tesorería/ratios) + FIN-2 (evolución mensual e
+   interanual) + FIN-3 (proyección cierre + IS) + FIN-4 (recomendaciones para
+   mejorar beneficio) + FIN-5 (informe PDF). Reusar `SalesAndExpensesKpiService`,
+   `AdvisoryDashboardService`, year-close.
+6. **JORNADAS UI (PORT-2)** — modelo **CONTENDO**: 1 plantilla = N bloques
+   horarios, adjudicable a M empleados; partes reportados en solo-lectura hasta
+   la app móvil. Backend skeleton ya en V86/V88.
+7. **Asistente de ALTA de empleado completo** — wizard: datos → contrato
+   (SEPE/convenio) → acceso app/PIN → perfil RETA si procede, con validaciones.
+8. **Partes de día (work_logs) lado asesoría** — workflow DRAFT→APROBADO→
+   FACTURADO + convertir parte aprobado en línea de `sales_invoice` al cobrar.
+9. **OCR (Tess4J + Tesseract)** — integrar OCR para PDFs escaneados (importación
+   facturas/calendario) + **anotar en DEPLOY-PKG** que el instalable Windows debe
+   empaquetar el binario Tesseract.
+10. **CENTROS-MAP** — ❌ NO por ahora (Benjamin: nos quedamos con el geocoder por
+    texto).
+
+**Bloqueado (no tocar hasta tener certificado FNMT real):** VeriFactu estricto
+(XAdES/SOAP), obligaciones fabricante SIF, Modelos AEAT 100/180/200/411,
+conectores DEHú y SS RED/SILTRA reales. **Para el final:** DEPLOY-PKG, CV-4..8.
+
+---
+
 ## 2026-06-15 — CLIENT-CONFIG: tab "Configuración" en la ficha del cliente (plan)
 
 > Decisión Benjamin: cada cliente de la asesoría tendrá un tab **"Configuración"
