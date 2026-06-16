@@ -1785,6 +1785,10 @@ public class BenjagestUiApplication extends Application {
                 button.setOnAction(event -> { exitClientMode(); showModule(link.id()); });
                 sidebar.getChildren().add(button);
             }
+            // AVISOS — Tareas pendientes de toda la cartera (admin).
+            Button tareas = navButton("pending-tasks", t("pending.title"), "fas-clipboard-list");
+            tareas.setOnAction(event -> { exitClientMode(); showPendingTasksPanel(); });
+            sidebar.getChildren().add(tareas);
         } else {
             // Empresario, o asesoría operando dentro de un cliente:
             // sidebar plano con una sola sección "Módulos".
@@ -1797,6 +1801,10 @@ public class BenjagestUiApplication extends Application {
                 button.setOnAction(event -> { exitClientMode(); showModule(link.id()); });
                 sidebar.getChildren().add(button);
             }
+            // AVISOS — Tareas pendientes de la empresa.
+            Button tareas = navButton("pending-tasks", t("pending.title"), "fas-clipboard-list");
+            tareas.setOnAction(event -> showPendingTasksPanel());
+            sidebar.getChildren().add(tareas);
         }
 
         Region spacer = new Region();
@@ -17345,6 +17353,21 @@ public class BenjagestUiApplication extends Application {
             case "clientcfg.col.result" -> "Result";
             case "clientcfg.period.annual" -> "Annual";
             case "clientcfg.result_auto" -> "auto = income − expenses";
+            case "pending.title" -> "Pending tasks";
+            case "pending.subtitle" -> "What needs doing — kept in view so nothing slips by.";
+            case "pending.scope.company" -> "This company";
+            case "pending.scope.portfolio" -> "Whole portfolio";
+            case "pending.empty" -> "Nothing pending. All caught up.";
+            case "pending.failed" -> "Could not load pending tasks";
+            case "pending.go" -> "Open";
+            case "pending.type.DRAFT_JOURNAL" -> "Journal entries to validate";
+            case "pending.type.OVERDUE_INVOICES" -> "Overdue invoices to collect";
+            case "pending.type.DRAFT_PAYSLIPS" -> "Payslips not finalised";
+            case "pending.type.UNDELIVERED_PAYSLIPS" -> "Payslips paid but not delivered";
+            case "pending.type.OVERDUE_FILINGS" -> "Tax filings overdue";
+            case "pending.type.DEHU_PENDING" -> "DEHú notifications pending";
+            case "pending.type.UNRECONCILED_BANK" -> "Bank movements to reconcile";
+            case "pending.type.VERIFACTU_ERROR" -> "VeriFactu submissions in error";
             case "advisory.client.tab.billing" -> "Billing";
             case "advisory.client.tab.customers" -> "Customers";
             case "advisory.client.tab.billing_config" -> "Billing config";
@@ -18246,6 +18269,21 @@ public class BenjagestUiApplication extends Application {
             case "clientcfg.col.result" -> "Resultado";
             case "clientcfg.period.annual" -> "Anual";
             case "clientcfg.result_auto" -> "auto = ingresos − gastos";
+            case "pending.title" -> "Tareas pendientes";
+            case "pending.subtitle" -> "Lo que hay que hacer — a la vista para que no se escape nada.";
+            case "pending.scope.company" -> "Esta empresa";
+            case "pending.scope.portfolio" -> "Toda la cartera";
+            case "pending.empty" -> "Nada pendiente. Todo al día.";
+            case "pending.failed" -> "No se pudieron cargar las tareas pendientes";
+            case "pending.go" -> "Abrir";
+            case "pending.type.DRAFT_JOURNAL" -> "Asientos por validar";
+            case "pending.type.OVERDUE_INVOICES" -> "Facturas vencidas por cobrar";
+            case "pending.type.DRAFT_PAYSLIPS" -> "Nóminas sin finalizar";
+            case "pending.type.UNDELIVERED_PAYSLIPS" -> "Nóminas pagadas sin entregar";
+            case "pending.type.OVERDUE_FILINGS" -> "Modelos fiscales vencidos";
+            case "pending.type.DEHU_PENDING" -> "Notificaciones DEHú pendientes";
+            case "pending.type.UNRECONCILED_BANK" -> "Movimientos bancarios por conciliar";
+            case "pending.type.VERIFACTU_ERROR" -> "Envíos VeriFactu con error";
             case "advisory.client.tab.tpb_agreement" -> "Acuerdo facturación";
             case "tpb.title" -> "Acuerdo de facturación por tercero (RD 1619/2012)";
             case "tpb.hint" -> "Requisito legal previo a que la asesoría pueda emitir materialmente facturas en nombre de este cliente. Quedan registrados el alcance, el método de firma y las fechas como evidencia.";
@@ -23148,6 +23186,130 @@ public class BenjagestUiApplication extends Application {
     private void showRetaModule() {
         // Vista consolidada (Perfiles · Tramos · Revisión), igual que en la ficha.
         setCenterAnimated(buildClientRetaTab());
+    }
+
+    // ====================================================================
+    //  AVISOS — Centro de "Tareas pendientes"
+    // ====================================================================
+
+    private boolean pendingPortfolioMode = false;
+
+    /** Panel de tareas pendientes. En la asesoría (cockpit propio) ofrece toggle
+     *  "Esta empresa / Cartera"; en empresario o dentro de un cliente, su empresa. */
+    private void showPendingTasksPanel() {
+        boolean advisoryCockpit = appMode == AppMode.ADVISORY
+                && !com.benjagest.ui.service.AuthSession.get().isActingForClient();
+        // Por defecto: cartera para la asesoría, empresa para el resto.
+        pendingPortfolioMode = advisoryCockpit;
+        renderPendingTasks(advisoryCockpit);
+    }
+
+    private void renderPendingTasks(boolean advisoryCockpit) {
+        VBox content = content();
+        Label title = new Label(t("pending.title"));
+        title.getStyleClass().add("module-detail-title");
+        Label subtitle = new Label(t("pending.subtitle"));
+        subtitle.getStyleClass().add("module-detail-description");
+        VBox titleBox = new VBox(4, title, subtitle);
+        StackPane moduleIcon = iconBubble("fas-clipboard-list", "module-title-icon");
+        Region spacer = new Region();
+        HBox.setHgrow(spacer, Priority.ALWAYS);
+        HBox header = new HBox(16, titleBox, moduleIcon, spacer);
+        header.setAlignment(Pos.CENTER_LEFT);
+        header.getStyleClass().add("module-detail-header");
+
+        if (advisoryCockpit) {
+            javafx.scene.control.ToggleGroup tg = new javafx.scene.control.ToggleGroup();
+            javafx.scene.control.ToggleButton own = new javafx.scene.control.ToggleButton(t("pending.scope.company"));
+            javafx.scene.control.ToggleButton port = new javafx.scene.control.ToggleButton(t("pending.scope.portfolio"));
+            own.setToggleGroup(tg); port.setToggleGroup(tg);
+            (pendingPortfolioMode ? port : own).setSelected(true);
+            own.setOnAction(e -> { pendingPortfolioMode = false; loadPendingInto(content); });
+            port.setOnAction(e -> { pendingPortfolioMode = true; loadPendingInto(content); });
+            HBox seg = new HBox(0, own, port);
+            seg.setAlignment(Pos.CENTER_LEFT);
+            header.getChildren().add(seg);
+        }
+
+        VBox listBox = new VBox(8);
+        listBox.setId("pending-list");
+        Label loading = new Label(t("panorama.loading"));
+        loading.getStyleClass().add("settings-hint");
+        listBox.getChildren().add(loading);
+
+        content.getChildren().addAll(header, listBox);
+        setCenterAnimated(scroll(content));
+        loadPendingInto(content);
+    }
+
+    private void loadPendingInto(VBox content) {
+        VBox listBox = (VBox) content.lookup("#pending-list");
+        if (listBox == null) return;
+        boolean portfolio = pendingPortfolioMode;
+        Task<java.util.List<com.benjagest.ui.model.PendingTaskBucket>> task = new Task<>() {
+            @Override protected java.util.List<com.benjagest.ui.model.PendingTaskBucket> call() throws Exception {
+                return laborApiClient.pendingTasks(portfolio);
+            }
+        };
+        task.setOnSucceeded(ev -> {
+            var buckets = task.getValue();
+            listBox.getChildren().clear();
+            if (buckets.isEmpty()) {
+                Label ok = new Label(t("pending.empty"));
+                ok.getStyleClass().add("settings-hint");
+                listBox.getChildren().add(ok);
+                return;
+            }
+            for (var b : buckets) listBox.getChildren().add(pendingTaskCard(b, portfolio));
+        });
+        task.setOnFailed(ev -> {
+            listBox.getChildren().clear();
+            listBox.getChildren().add(errorPanel(t("pending.failed")));
+        });
+        start(task, "pending-tasks-load");
+    }
+
+    private Node pendingTaskCard(com.benjagest.ui.model.PendingTaskBucket b, boolean portfolio) {
+        String color = switch (b.severity() == null ? "INFO" : b.severity()) {
+            case "URGENT" -> "#e53935";
+            case "WARNING" -> "#fb8c00";
+            default -> "#90a4ae";
+        };
+        Label dot = new Label("●");
+        dot.setStyle("-fx-text-fill: " + color + "; -fx-font-size: 14px;");
+        Label count = new Label(String.valueOf(b.count()));
+        count.setStyle("-fx-font-weight: bold; -fx-font-size: 16px;");
+        count.setMinWidth(40);
+        Label label = new Label(t("pending.type." + b.type()));
+        label.setWrapText(true);
+        HBox.setHgrow(label, Priority.ALWAYS);
+        HBox row = new HBox(12, dot, count, label);
+        row.setAlignment(Pos.CENTER_LEFT);
+        row.getStyleClass().add("settings-card");
+        row.setStyle("-fx-padding: 10 14; -fx-background-color: -fx-control-inner-background; "
+                + "-fx-background-radius: 8; -fx-border-color: #e0e0e0; -fx-border-radius: 8;");
+        // Navegación (best-effort) solo en vista de empresa actual.
+        if (!portfolio) {
+            Runnable nav = pendingNav(b.type());
+            if (nav != null) {
+                Button go = new Button(t("pending.go"));
+                go.getStyleClass().add("button-secondary");
+                go.setOnAction(e -> nav.run());
+                row.getChildren().add(go);
+            }
+        }
+        return row;
+    }
+
+    /** Mapea el tipo de aviso al módulo donde resolverlo (vista empresa actual). */
+    private Runnable pendingNav(String type) {
+        return switch (type) {
+            case "DRAFT_JOURNAL", "UNRECONCILED_BANK" -> this::showAccountingModule;
+            case "OVERDUE_INVOICES", "VERIFACTU_ERROR" -> () -> showModule("billing");
+            case "DRAFT_PAYSLIPS", "UNDELIVERED_PAYSLIPS" -> this::showLaborModule;
+            case "OVERDUE_FILINGS" -> () -> showModule("tax");
+            default -> null;
+        };
     }
 
     /**

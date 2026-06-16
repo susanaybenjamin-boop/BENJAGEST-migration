@@ -921,6 +921,20 @@ public class LaborApiClient {
         return out;
     }
 
+    // ==== AVISOS: tareas pendientes (per-empresa / cartera) ====
+
+    public java.util.List<com.benjagest.ui.model.PendingTaskBucket> pendingTasks(boolean portfolio)
+            throws IOException, InterruptedException {
+        String url = baseUrl + "/pending-tasks" + (portfolio ? "/portfolio" : "");
+        HttpResponse<String> r = send(req(url).GET());
+        java.util.List<com.benjagest.ui.model.PendingTaskBucket> out = new ArrayList<>();
+        for (String o : splitTopLevelObjects(r.body())) {
+            out.add(new com.benjagest.ui.model.PendingTaskBucket(
+                    textField(o, "type"), intFieldOrZero(o, "count"), textField(o, "severity")));
+        }
+        return out;
+    }
+
     // ==== CLIENT-CONFIG: cifras manuales + config interna del cliente ====
 
     public java.util.List<com.benjagest.ui.model.ClientConfigModels.ManualFinancialEntry>
