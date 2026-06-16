@@ -1087,6 +1087,60 @@ public class LaborApiClient {
                 .POST(HttpRequest.BodyPublishers.ofString(b.toString())));
     }
 
+    // ==== Bases de cotización SS por GRUPO y año (V121, no-code) ====
+
+    public java.util.List<Integer> listSsGroupBaseYears() throws IOException, InterruptedException {
+        HttpResponse<String> r = send(req(baseUrl + "/labor/ss-group-bases/years").GET());
+        java.util.List<Integer> out = new ArrayList<>();
+        Matcher m = Pattern.compile("-?\\d+").matcher(r.body());
+        while (m.find()) out.add(Integer.parseInt(m.group()));
+        return out;
+    }
+
+    public java.util.List<com.benjagest.ui.model.SsGroupBaseEntry> listSsGroupBases(int year)
+            throws IOException, InterruptedException {
+        HttpResponse<String> r = send(req(baseUrl + "/labor/ss-group-bases/" + year).GET());
+        java.util.List<com.benjagest.ui.model.SsGroupBaseEntry> out = new ArrayList<>();
+        for (String o : splitTopLevelObjects(r.body())) {
+            out.add(new com.benjagest.ui.model.SsGroupBaseEntry(
+                    intFieldOrZero(o, "yearNumber"),
+                    intFieldOrZero(o, "cotizGroup"),
+                    textField(o, "label"),
+                    bigDec(o, "baseMin"),
+                    bigDec(o, "baseMax"),
+                    boolField(o, "daily"),
+                    boolField(o, "pendingValidation")));
+        }
+        return out;
+    }
+
+    public void saveSsGroupBases(int year, java.util.List<com.benjagest.ui.model.SsGroupBaseEntry> rows)
+            throws IOException, InterruptedException {
+        StringBuilder b = new StringBuilder("[");
+        for (int i = 0; i < rows.size(); i++) {
+            var g = rows.get(i);
+            if (i > 0) b.append(",");
+            String label = g.label() == null ? "" :
+                    g.label().replace("\\", "\\\\").replace("\"", "\\\"");
+            b.append("{\"cotizGroup\":").append(g.cotizGroup()).append(",")
+             .append("\"label\":\"").append(label).append("\",")
+             .append("\"baseMin\":").append(plain(g.baseMin())).append(",")
+             .append("\"baseMax\":").append(plain(g.baseMax())).append(",")
+             .append("\"daily\":").append(g.daily()).append(",")
+             .append("\"pendingValidation\":").append(g.pendingValidation()).append("}");
+        }
+        b.append("]");
+        send(req(baseUrl + "/labor/ss-group-bases/" + year)
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(b.toString())));
+    }
+
+    public void cloneSsGroupBases(int targetYear) throws IOException, InterruptedException {
+        send(req(baseUrl + "/labor/ss-group-bases/clone?targetYear=" + targetYear)
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString("{}")));
+    }
+
     public com.benjagest.ui.model.PayslipEntry calculatePayslip(String employeeId, int year, int month,
                                                                   String type, boolean extraProrated,
                                                                   java.math.BigDecimal otherDeductions, String notes,
