@@ -8,6 +8,33 @@
 
 ---
 
+## 2026-06-16 — BLOQUE CONTRATO-VIGENCIAS (decidido por Benjamin) 🔵
+
+> Decisión Benjamin tras barrido legal + competencia (A3Nom/Nóminasol/Factorial):
+> el ascenso/cambio de condiciones se modela con **VIGENCIAS con fecha de efecto**
+> sobre el MISMO contrato (no contrato nuevo; antigüedad intacta; variación SS no
+> SEPE). Detalle en memoria `project_benjagest_ascenso_vigencias.md`. Bloque grande
+> que toca el motor de nóminas → hacer con contexto fresco, slice a slice, validar.
+
+- **VIG-0 (derivar grupo, prerequisito y ya decidido)**: V124 ADD COLUMN
+  `professional_categories.ss_contribution_group SMALLINT` + seed 1-11 por categoría
+  (~80 filas; Titulado→1/2, Jefe admin→3, Oficial admin→5, Aux→7, Oficial
+  construcción/metal→8/9 diaria, Peón/Ayudante→10). `ContractCatalogService` expone
+  el campo. UI asistente: al elegir categoría, fija el combo de grupo de cotización.
+- **VIG-1 (tabla)**: `contract_vigencias` (id, contract_id, effective_from,
+  professional_group, professional_category, ss_contribution_group, gross_salary,
+  weekly_hours, irpf_percent, at_ep_percent, …) append-only. Backfill: una vigencia
+  inicial por contrato existente (effective_from = start_date) con sus datos actuales.
+- **VIG-2 (resolución en motor)**: `PayslipService.resolveActiveContract` resuelve
+  la vigencia **vigente a la fecha del periodo** (no la última). Nóminas pasadas
+  intactas, futuras con datos nuevos. Cuidado legal: validar con caso real.
+- **VIG-3 (UI ascenso)**: acción "Ascender / cambiar condiciones" → crea vigencia
+  nueva con fecha de efecto; antigüedad intacta. Bloquear edición destructiva de
+  datos históricos en contratos con nóminas. Distinguir cambio de categoría
+  (variación SS, escrito) vs cambio de tipo de contrato (novación SEPE 100/200/300).
+- **VIG-4 (atrasos de convenio)**: cálculo de atrasos comparando vigencias en el
+  periodo afectado (caso de uso que justifica el histórico). Para más adelante.
+
 ## 2026-06-15 — PROPUESTA: GESTOR-NAVEGADOR (navegador embebido a AEAT/DEHÚ/SS RED/SILTRA) 🌐
 
 > Idea de Benjamin: un tab por cliente (y para la propia asesoría) con un
