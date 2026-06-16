@@ -16138,6 +16138,24 @@ public class BenjagestUiApplication extends Application {
             case "labor.ssrates.save_btn" -> "Save";
             case "labor.ssrates.load_failed" -> "Could not load the rates";
             case "labor.ssrates.save_failed" -> "Could not save the rates";
+            case "labor.tab.ss_group_bases" -> "Bases by group";
+            case "labor.ssgroup.hint" -> "Minimum/maximum Social Security contribution bases by contribution group (1-11) and year. The minimum base depends on the group; the maximum is common. Groups 8-11 use a DAILY base. Editable from here — no code change.";
+            case "labor.ssgroup.validate_warning" -> "⚠ 2026 figures are PROVISIONAL and pending validation: maximums are 2026 official, but minimums are copied from 2025 as placeholders. Review and confirm them. Payroll does NOT use this table yet — it will be wired in once you validate the figures.";
+            case "labor.ssgroup.empty" -> "No group bases for this year.";
+            case "labor.ssgroup.year" -> "Year:";
+            case "labor.ssgroup.col.group" -> "Group";
+            case "labor.ssgroup.col.label" -> "Category";
+            case "labor.ssgroup.col.basemin" -> "Min base";
+            case "labor.ssgroup.col.basemax" -> "Max base";
+            case "labor.ssgroup.col.daily" -> "Daily?";
+            case "labor.ssgroup.col.pending" -> "To validate";
+            case "labor.ssgroup.edit" -> "Edit group";
+            case "labor.ssgroup.clone" -> "Clone to year…";
+            case "labor.ssgroup.clone_prompt" -> "New year to create (clones the latest year):";
+            case "labor.ssgroup.save_btn" -> "Save";
+            case "labor.ssgroup.load_failed" -> "Could not load the group bases";
+            case "labor.ssgroup.save_failed" -> "Could not save the group bases";
+            case "labor.ssgroup.edit_pending" -> "Mark as validated (uncheck = still pending)";
             case "labor.cost.hint" -> "Yearly cost to the company per employee: gross paid + employer Social Security (TC employer quotas). Source of truth: payrolls and TC quotas.";
             case "labor.cost.filter.year" -> "Year";
             case "labor.cost.col.employee" -> "Employee";
@@ -16768,6 +16786,24 @@ public class BenjagestUiApplication extends Application {
             case "labor.ssrates.save_btn" -> "Guardar";
             case "labor.ssrates.load_failed" -> "No se pudieron cargar los tipos";
             case "labor.ssrates.save_failed" -> "No se pudieron guardar los tipos";
+            case "labor.tab.ss_group_bases" -> "Bases por grupo";
+            case "labor.ssgroup.hint" -> "Bases mínima/máxima de cotización a la Seguridad Social por grupo de cotización (1-11) y año. La base mínima depende del grupo; la máxima es común. Los grupos 8-11 usan base DIARIA. Editable aquí — sin tocar código.";
+            case "labor.ssgroup.validate_warning" -> "⚠ Las cifras de 2026 son PROVISIONALES y están pendientes de validar: los máximos son oficiales 2026, pero los mínimos se han copiado de 2025 como referencia. Revísalas y confírmalas. La nómina NO usa todavía esta tabla — se cableará cuando valides las cifras.";
+            case "labor.ssgroup.empty" -> "No hay bases por grupo para este año.";
+            case "labor.ssgroup.year" -> "Año:";
+            case "labor.ssgroup.col.group" -> "Grupo";
+            case "labor.ssgroup.col.label" -> "Categoría";
+            case "labor.ssgroup.col.basemin" -> "Base mín.";
+            case "labor.ssgroup.col.basemax" -> "Base máx.";
+            case "labor.ssgroup.col.daily" -> "¿Diaria?";
+            case "labor.ssgroup.col.pending" -> "Validar";
+            case "labor.ssgroup.edit" -> "Editar grupo";
+            case "labor.ssgroup.clone" -> "Clonar a año…";
+            case "labor.ssgroup.clone_prompt" -> "Año nuevo a crear (clona el último año):";
+            case "labor.ssgroup.save_btn" -> "Guardar";
+            case "labor.ssgroup.load_failed" -> "No se pudieron cargar las bases por grupo";
+            case "labor.ssgroup.save_failed" -> "No se pudieron guardar las bases por grupo";
+            case "labor.ssgroup.edit_pending" -> "Marcar como validada (desmarcar = sigue pendiente)";
             case "labor.cost.hint" -> "Coste anual para la empresa por empleado: bruto pagado + Seguridad Social a cargo de la empresa (cuotas TC patronales). Fuente: nóminas y cuotas TC.";
             case "labor.cost.filter.year" -> "Año";
             case "labor.cost.col.employee" -> "Empleado";
@@ -19227,6 +19263,9 @@ public class BenjagestUiApplication extends Application {
         // Tipos de cotización SS por año (PARAM-YEAR).
         Tab ratesTab = new Tab(t("labor.tab.ss_rates"), buildSsRatesTab());
         ratesTab.setGraphic(icon("fas-table"));
+        // Bases de cotización por GRUPO (1-11) y año (V121, no-code).
+        Tab groupBasesTab = new Tab(t("labor.tab.ss_group_bases"), buildSsGroupBasesTab());
+        groupBasesTab.setGraphic(icon("fas-layer-group"));
         // Parámetros IRPF por año (escala).
         Tab irpfParamsTab = new Tab(t("labor.tab.irpf_params"), buildIrpfParamsTab());
         irpfParamsTab.setGraphic(icon("fas-percent"));
@@ -19245,7 +19284,7 @@ public class BenjagestUiApplication extends Application {
 
         tabs.getTabs().addAll(empTab, contractsTab, clockTab, auditTab, payslipsTab,
                 templatesTab, clausesTab, cfgTab, calendarTab, leavesTab, vacationsTab, ssTab,
-                costTab, ratesTab, irpfParamsTab, shiftsTab, centersTab);
+                costTab, ratesTab, groupBasesTab, irpfParamsTab, shiftsTab, centersTab);
         VBox.setVgrow(tabs, Priority.ALWAYS);
         // Restaurar la pestaña activa y recordar los cambios de pestaña, para
         // no perder el contexto al recargar el módulo tras una acción.
@@ -33860,6 +33899,167 @@ public class BenjagestUiApplication extends Application {
 
     private TextField rateField(java.math.BigDecimal v, String fallback) {
         return new TextField(v == null ? fallback : v.toPlainString());
+    }
+
+    /**
+     * Bases de cotización SS por GRUPO (1-11) y año (V121, patrón no-code).
+     * Tabla editable: el asesor selecciona el año, edita las bases mín/máx de
+     * cada grupo y puede clonar el último año a uno nuevo. La nómina NO consume
+     * todavía esta tabla; las cifras 2026 están marcadas "pendiente de validar".
+     */
+    private Node buildSsGroupBasesTab() {
+        VBox content = new VBox(12);
+        content.setPadding(new Insets(16));
+
+        Label warn = new Label(t("labor.ssgroup.validate_warning"));
+        warn.setWrapText(true);
+        warn.setStyle("-fx-text-fill:#7a4f01; -fx-background-color:#fff7e6; "
+                + "-fx-padding:10 14; -fx-background-radius:8; "
+                + "-fx-border-color:#ffd591; -fx-border-radius:8;");
+        Label hint = new Label(t("labor.ssgroup.hint"));
+        hint.setWrapText(true);
+        hint.getStyleClass().add("settings-hint");
+
+        ComboBox<Integer> yearCombo = new ComboBox<>();
+
+        TableView<com.benjagest.ui.model.SsGroupBaseEntry> table = new TableView<>();
+        table.getStyleClass().add("data-table");
+        table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+        table.setPlaceholder(new Label(t("labor.ssgroup.empty")));
+        com.benjagest.ui.support.TableSelectionHelper.install(table);
+
+        addColSorted(table, t("labor.ssgroup.col.group"),
+                r -> String.valueOf(r.cotizGroup()), 60, NUMERIC_STRING_COMPARATOR);
+        addCol(table, t("labor.ssgroup.col.label"), r -> r.label() == null ? "" : r.label(), 320);
+        addColSorted(table, t("labor.ssgroup.col.basemin"),
+                r -> r.baseMin() == null ? "" : money(r.baseMin()), 110, NUMERIC_STRING_COMPARATOR);
+        addColSorted(table, t("labor.ssgroup.col.basemax"),
+                r -> r.baseMax() == null ? "" : money(r.baseMax()), 110, NUMERIC_STRING_COMPARATOR);
+        addCol(table, t("labor.ssgroup.col.daily"), r -> r.daily() ? "✓" : "", 70);
+        addCol(table, t("labor.ssgroup.col.pending"), r -> r.pendingValidation() ? "⚠" : "✓", 70);
+
+        Runnable reloadTable = () -> {
+            Integer y = yearCombo.getValue();
+            if (y == null) return;
+            Task<java.util.List<com.benjagest.ui.model.SsGroupBaseEntry>> tk = new Task<>() {
+                @Override protected java.util.List<com.benjagest.ui.model.SsGroupBaseEntry> call() throws Exception {
+                    return laborApiClient.listSsGroupBases(y);
+                }
+            };
+            tk.setOnSucceeded(ev -> table.setItems(FXCollections.observableArrayList(tk.getValue())));
+            tk.setOnFailed(ev -> showError(t("labor.ssgroup.load_failed"),
+                    tk.getException() == null ? "" : tk.getException().getMessage()));
+            start(tk, "ssgroup-load");
+        };
+        yearCombo.valueProperty().addListener((o, a, b) -> reloadTable.run());
+
+        Runnable loadYears = () -> {
+            Task<java.util.List<Integer>> yt = new Task<>() {
+                @Override protected java.util.List<Integer> call() throws Exception {
+                    return laborApiClient.listSsGroupBaseYears();
+                }
+            };
+            yt.setOnSucceeded(ev -> {
+                var years = yt.getValue();
+                Integer keep = yearCombo.getValue();
+                yearCombo.getItems().setAll(years);
+                if (keep != null && years.contains(keep)) yearCombo.setValue(keep);
+                else if (!years.isEmpty()) yearCombo.getSelectionModel().selectFirst();
+                reloadTable.run();
+            });
+            yt.setOnFailed(ev -> showError(t("labor.ssgroup.load_failed"),
+                    yt.getException() == null ? "" : yt.getException().getMessage()));
+            start(yt, "ssgroup-years");
+        };
+
+        Button editBtn = new Button(t("labor.ssgroup.edit"));
+        editBtn.getStyleClass().add("button-secondary");
+        editBtn.setOnAction(e -> {
+            var sel = table.getSelectionModel().getSelectedItem();
+            if (sel != null && yearCombo.getValue() != null) {
+                showSsGroupBaseEditor(sel, yearCombo.getValue(), table, reloadTable);
+            }
+        });
+        Button cloneBtn = new Button(t("labor.ssgroup.clone"));
+        cloneBtn.getStyleClass().add("button-secondary");
+        cloneBtn.setOnAction(e -> {
+            TextInputDialog dlg = new TextInputDialog(
+                    String.valueOf(java.time.Year.now().getValue() + 1));
+            dlg.setTitle(t("labor.ssgroup.clone"));
+            dlg.setHeaderText(t("labor.ssgroup.clone_prompt"));
+            dlg.showAndWait().ifPresent(s -> {
+                Integer ty = parseIntSafe(s);
+                if (ty == null) return;
+                Task<Void> tk = new Task<>() {
+                    @Override protected Void call() throws Exception {
+                        laborApiClient.cloneSsGroupBases(ty); return null;
+                    }
+                };
+                tk.setOnSucceeded(ev -> { yearCombo.setValue(ty); loadYears.run(); });
+                tk.setOnFailed(ev -> showError(t("labor.ssgroup.save_failed"),
+                        tk.getException() == null ? "" : tk.getException().getMessage()));
+                start(tk, "ssgroup-clone");
+            });
+        });
+
+        HBox actions = new HBox(8, new Label(t("labor.ssgroup.year")), yearCombo, editBtn, cloneBtn);
+        actions.setAlignment(Pos.CENTER_LEFT);
+
+        loadYears.run();
+        VBox body = new VBox(10, warn, hint, actions, table);
+        VBox.setVgrow(table, Priority.ALWAYS);
+        content.getChildren().add(body);
+        VBox.setVgrow(body, Priority.ALWAYS);
+        return content;
+    }
+
+    private void showSsGroupBaseEditor(com.benjagest.ui.model.SsGroupBaseEntry base, int year,
+            TableView<com.benjagest.ui.model.SsGroupBaseEntry> table, Runnable onSaved) {
+        Dialog<ButtonType> d = new Dialog<>();
+        d.setTitle(t("labor.ssgroup.edit") + " — " + t("labor.ssgroup.col.group") + " " + base.cotizGroup());
+        ButtonType save = new ButtonType(t("labor.ssgroup.save_btn"), ButtonBar.ButtonData.OK_DONE);
+        d.getDialogPane().getButtonTypes().addAll(save, ButtonType.CANCEL);
+
+        TextField labelF = new TextField(base.label() == null ? "" : base.label());
+        labelF.setPrefColumnCount(30);
+        TextField minF = rateField(base.baseMin(), "0");
+        TextField maxF = rateField(base.baseMax(), "0");
+        CheckBox dailyC = new CheckBox();
+        dailyC.setSelected(base.daily());
+        CheckBox validC = new CheckBox(t("labor.ssgroup.edit_pending"));
+        validC.setSelected(!base.pendingValidation());
+
+        GridPane g = new GridPane();
+        g.setHgap(10); g.setVgap(8); g.setPadding(new Insets(12));
+        int r = 0;
+        g.add(new Label(t("labor.ssgroup.col.label")), 0, r); g.add(labelF, 1, r++);
+        g.add(new Label(t("labor.ssgroup.col.basemin")), 0, r); g.add(minF, 1, r++);
+        g.add(new Label(t("labor.ssgroup.col.basemax")), 0, r); g.add(maxF, 1, r++);
+        g.add(new Label(t("labor.ssgroup.col.daily")), 0, r); g.add(dailyC, 1, r++);
+        g.add(new Label(t("labor.ssgroup.col.pending")), 0, r); g.add(validC, 1, r++);
+        installDialog(d, g);
+
+        d.showAndWait().ifPresent(bt -> {
+            if (bt != save) return;
+            var updated = new com.benjagest.ui.model.SsGroupBaseEntry(
+                    year, base.cotizGroup(), labelF.getText(),
+                    parseDecSafe(minF.getText()), parseDecSafe(maxF.getText()),
+                    dailyC.isSelected(), !validC.isSelected());
+            // Persistimos el año completo reemplazando la fila editada.
+            var items = new java.util.ArrayList<>(table.getItems());
+            for (int i = 0; i < items.size(); i++) {
+                if (items.get(i).cotizGroup() == base.cotizGroup()) { items.set(i, updated); break; }
+            }
+            Task<Void> tk = new Task<>() {
+                @Override protected Void call() throws Exception {
+                    laborApiClient.saveSsGroupBases(year, items); return null;
+                }
+            };
+            tk.setOnSucceeded(ev -> onSaved.run());
+            tk.setOnFailed(ev -> showError(t("labor.ssgroup.save_failed"),
+                    tk.getException() == null ? "" : tk.getException().getMessage()));
+            start(tk, "ssgroup-save");
+        });
     }
 
     /**
