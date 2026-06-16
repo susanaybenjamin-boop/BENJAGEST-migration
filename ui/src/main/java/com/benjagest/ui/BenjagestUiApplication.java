@@ -12844,6 +12844,7 @@ public class BenjagestUiApplication extends Application {
                 // ---- Calendar / Agenda ---- (extracted to tCalendarEn helper to keep t() under JVM 64KB limit)
                 case "common.btn.edit" -> "Edit";
                 case "common.btn.delete" -> "Delete";
+                case "common.btn.save" -> "Save";
                 // ---- Generic module views ----
                 case "module.records_count_suffix" -> " records";
                 case "module.section.summary" -> "Summary";
@@ -13750,6 +13751,7 @@ public class BenjagestUiApplication extends Application {
             // ---- Calendar / Agenda ---- (extracted to tCalendarEs helper to keep t() under JVM 64KB limit)
             case "common.btn.edit" -> "Editar";
             case "common.btn.delete" -> "Eliminar";
+            case "common.btn.save" -> "Guardar";
             // ---- Generic module views ----
             case "module.records_count_suffix" -> " registros";
             case "module.section.summary" -> "Resumen";
@@ -23278,15 +23280,15 @@ public class BenjagestUiApplication extends Application {
         Label dot = new Label("●");
         dot.setStyle("-fx-text-fill: " + color + "; -fx-font-size: 14px;");
         Label count = new Label(String.valueOf(b.count()));
-        count.setStyle("-fx-font-weight: bold; -fx-font-size: 16px;");
+        count.setStyle("-fx-font-weight: bold; -fx-font-size: 16px; -fx-text-fill: #1e293b;");
         count.setMinWidth(40);
         Label label = new Label(t("pending.type." + b.type()));
         label.setWrapText(true);
+        label.setStyle("-fx-text-fill: #1e293b;");
         HBox.setHgrow(label, Priority.ALWAYS);
         HBox row = new HBox(12, dot, count, label);
         row.setAlignment(Pos.CENTER_LEFT);
-        row.getStyleClass().add("settings-card");
-        row.setStyle("-fx-padding: 10 14; -fx-background-color: -fx-control-inner-background; "
+        row.setStyle("-fx-padding: 10 14; -fx-background-color: #ffffff; "
                 + "-fx-background-radius: 8; -fx-border-color: #e0e0e0; -fx-border-radius: 8;");
         // Navegación (best-effort) solo en vista de empresa actual.
         if (!portfolio) {
