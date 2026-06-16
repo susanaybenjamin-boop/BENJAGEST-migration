@@ -56,6 +56,18 @@
    empaquetar el binario Tesseract.
 10. **CENTROS-MAP** — ❌ NO por ahora (Benjamin: nos quedamos con el geocoder por
     texto).
+11. **RETA-4 — forma jurídica + perfil RETA garantizado** *(decisión Benjamin
+    2026-06-15)*. Añadir **forma jurídica** a la empresa (combo: AUTONOMO, S.L.,
+    S.A., S.L.U., S.C., C.B., COOPERATIVA, OTRO) editable en el perfil de la
+    empresa (empresario y asesoría, vinculado y no). Regla: si **AUTONOMO** → el
+    propio cliente es el autónomo → auto-crear su perfil RETA con nombre/NIF de la
+    empresa. Si es **sociedad** → exigir los datos del **titular OWNER** que
+    cotiza RETA (company_owner ss_regime=RETA) → perfil desde el titular. Así
+    SIEMPRE hay perfil RETA. (Extiende RETA-2.) Migración nueva (companies.legal_form).
+12. **FICHA-TABS — agrupar pestañas de la ficha del cliente** *(decisión Benjamin
+    2026-06-15)*. Reducir de ~14 a ~9: **Contabilidad** = sub-tabs {Diario/Validar,
+    Bancos, Préstamos, Inmovilizado}; **Facturación** = sub-tabs {Ventas, Clientes
+    del titular, Config. facturación, Acuerdo TPB}. En `buildClientDetailView`.
 
 **AL TERMINAR LA COLA (pedido Benjamin 2026-06-15, con agentes/equipo):**
 - **SEC-AUDIT** — barrido de seguridad del proyecto completo (inyección SQL,
