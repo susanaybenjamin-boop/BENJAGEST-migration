@@ -8,6 +8,29 @@
 
 ---
 
+## 2026-06-15 — PROPUESTA: GESTOR-NAVEGADOR (navegador embebido a AEAT/DEHÚ/SS RED/SILTRA) 🌐
+
+> Idea de Benjamin: un tab por cliente (y para la propia asesoría) con un
+> **navegador embebido con pestañas** a DEHÚ, AEAT, SS RED y SILTRA, logueado con
+> el **certificado** ya importado del cliente, persistente hasta cerrar el
+> programa. (CONTENDO lo intentó vía API/conexión directa y fue inviable.)
+
+**Opinión crítica (Claude):** alto valor y diferencial, PERO el login con
+certificado es el punto crítico:
+- **JavaFX WebView NO sirve** (WebKit antiguo, sin TLS de cliente ni Autofirma →
+  renderiza pero falla el login). Hay que embeber **Chromium real**: **JCEF**
+  (gratis, integración pesada) o **JxBrowser** (de pago, soporta client-certs).
+  Ambos suman ~150 MB al instalable.
+- "Auto-login sin prompt inyectando el .p12" es lo más caro y sensible (cert en
+  memoria, aislado por cliente). Sesiones AEAT/SS caducan en su servidor igual.
+- **Fases:** Fase 1 = pestañas embebidas persistentes + el usuario elige el
+  certificado una vez por sesión (ya enorme). Fase 2 = inyección automática del
+  certificado. 
+- **Cuándo:** tras cerrar la cola actual y tener el instalable (afecta peso/
+  empaquetado). Decisión pendiente: JCEF vs JxBrowser; Fase 1 primero.
+
+---
+
 ## 2026-06-15 — 🚀 COLA AUTÓNOMA (decisiones cerradas por Benjamin)
 
 > Benjamin se va a trabajar y deja esta cola decidida para trabajo autónomo
