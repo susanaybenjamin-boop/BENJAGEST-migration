@@ -51,6 +51,10 @@ public class PayslipJournalEntryService {
 
     public static final String SRC_ACCRUAL = "PAYSLIP_ACCRUAL";
     public static final String SRC_PAYMENT = "PAYSLIP_PAYMENT";
+    /** Provisión mensual de la parte devengada de pagas extra NO prorrateadas. */
+    public static final String SRC_EXTRA_PROVISION = "PAYSLIP_EXTRA_PROVISION";
+    /** Pago de la paga extra: cancela la provisión acumulada (465 → 4751/572). */
+    public static final String SRC_EXTRA_PAYMENT = "PAYSLIP_EXTRA_PAYMENT";
 
     private final JdbcTemplate jdbcTemplate;
     private final TenantContext tenantContext;
@@ -191,6 +195,91 @@ public class PayslipJournalEntryService {
     }
 
     /**
+     * Provisión MENSUAL de la parte devengada de las pagas extra cuando NO se
+     * prorratean (se pagan aparte en junio/Navidad). Reconoce el gasto por
+     * devengo cada mes (art. 38 CdC): {@code 640 Sueldos y salarios → 465
+     * Remuneraciones pendientes de pago}. La cotización de la paga ya circula
+     * mes a mes por (642) — aquí solo se provisiona el salario. Idempotente.
+     * Devuelve el id del asiento o {@code null} si no procede.
+     */
+    public String createExtraProvision(String payslipId, String employeeName,
+            int year, int month, BigDecimal monthlyAmount, String userId) {
+        if (monthlyAmount == null || monthlyAmount.signum() <= 0) return null;
+        String companyId = tenantContext.getCurrentCompanyId();
+        LocalDate entryDate = LocalDate.of(year, month, 1)
+                .withDayOfMonth(LocalDate.of(year, month, 1).lengthOfMonth());
+        String fiscalYearId = findOpenFiscalYearId(companyId, entryDate);
+        if (fiscalYearId == null) return null;
+        String acc640 = findAccountByPrefix(companyId, "640");
+        String acc465 = findAccountByPrefix(companyId, "465");
+        if (acc640 == null || acc465 == null) return null;
+
+        reverseBySource(companyId, payslipId, SRC_EXTRA_PROVISION);
+        String name = (employeeName == null || employeeName.isBlank()) ? "Empleado" : employeeName;
+        String period = String.format("%02d/%d", month, year);
+        String entryId = UUID.randomUUID().toString();
+        jdbcTemplate.update("""
+                INSERT INTO journal_entries (
+                    id, company_id, fiscal_year_id, entry_number,
+                    entry_date, concept, source_type, source_id,
+                    status, reviewed, auto_proposed, proposed_confidence, created_by
+                ) VALUES (?, ?, ?, NULL, ?, ?, ?, ?, 'DRAFT', FALSE, TRUE, NULL, ?)
+                """,
+                entryId, companyId, fiscalYearId, Date.valueOf(entryDate),
+                "Provisión pagas extra " + period + " — " + name,
+                SRC_EXTRA_PROVISION, payslipId, userId);
+        insertLine(entryId, acc640, "Provisión pagas extra — " + name, monthlyAmount, BigDecimal.ZERO);
+        insertLine(entryId, acc465, "Pagas extra pendientes de pago — " + name, BigDecimal.ZERO, monthlyAmount);
+        return entryId;
+    }
+
+    /**
+     * Pago de la PAGA EXTRA (no prorrateada): cancela la provisión acumulada.
+     * {@code 465 Debe = bruto paga; 4751 Haber = IRPF; 572 Haber = neto}. SIN
+     * línea de Seguridad Social (ya cotizó prorrateada mes a mes). Idempotente.
+     */
+    public String createExtraPayment(PayslipAccrual p, LocalDate paidAt, String userId) {
+        if (p.gross() == null || p.gross().signum() <= 0) return null;
+        String companyId = tenantContext.getCurrentCompanyId();
+        LocalDate entryDate = paidAt != null ? paidAt
+                : LocalDate.of(p.year(), p.month(), 1)
+                        .withDayOfMonth(LocalDate.of(p.year(), p.month(), 1).lengthOfMonth());
+        String fiscalYearId = findOpenFiscalYearId(companyId, entryDate);
+        if (fiscalYearId == null) return null;
+        BigDecimal irpf = p.irpf() == null ? BigDecimal.ZERO : p.irpf();
+        BigDecimal neto = p.gross().subtract(irpf);
+        if (neto.signum() <= 0) return null;
+
+        String acc465 = findAccountByPrefix(companyId, "465");
+        String acc4751 = findAccountByPrefix(companyId, "4751");
+        if (acc4751 == null) acc4751 = findAccountByPrefix(companyId, "475");
+        String acc572 = findAccountByPrefix(companyId, "572");
+        if (acc572 == null) acc572 = findAccountByPrefix(companyId, "57");
+        if (acc465 == null || acc572 == null || acc4751 == null) return null;
+
+        reverseBySource(companyId, p.payslipId(), SRC_EXTRA_PAYMENT);
+        String name = (p.employeeName() == null || p.employeeName().isBlank()) ? "Empleado" : p.employeeName();
+        String period = String.format("%02d/%d", p.month(), p.year());
+        String entryId = UUID.randomUUID().toString();
+        jdbcTemplate.update("""
+                INSERT INTO journal_entries (
+                    id, company_id, fiscal_year_id, entry_number,
+                    entry_date, concept, source_type, source_id,
+                    status, reviewed, auto_proposed, proposed_confidence, created_by
+                ) VALUES (?, ?, ?, NULL, ?, ?, ?, ?, 'DRAFT', FALSE, TRUE, NULL, ?)
+                """,
+                entryId, companyId, fiscalYearId, Date.valueOf(entryDate),
+                "Pago paga extra " + period + " — " + name,
+                SRC_EXTRA_PAYMENT, p.payslipId(), userId);
+        insertLine(entryId, acc465, "Pagas extra pendientes de pago — " + name, p.gross(), BigDecimal.ZERO);
+        if (irpf.signum() > 0) {
+            insertLine(entryId, acc4751, "Retención IRPF paga extra — " + name, BigDecimal.ZERO, irpf);
+        }
+        insertLine(entryId, acc572, "Pago paga extra " + period + " — " + name, BigDecimal.ZERO, neto);
+        return entryId;
+    }
+
+    /**
      * Borra los asientos (devengo y pago) vinculados a una nómina cuando
      * esta se elimina. Mismo trato que ventas/compras: hueco en el Diario
      * en lugar de VOIDED. Sin {@code @Transactional} (corre en la tx del caller).
@@ -199,6 +288,8 @@ public class PayslipJournalEntryService {
         String companyId = tenantContext.getCurrentCompanyId();
         reverseBySource(companyId, payslipId, SRC_ACCRUAL);
         reverseBySource(companyId, payslipId, SRC_PAYMENT);
+        reverseBySource(companyId, payslipId, SRC_EXTRA_PROVISION);
+        reverseBySource(companyId, payslipId, SRC_EXTRA_PAYMENT);
     }
 
     // ---- helpers ----------------------------------------------------------
