@@ -56,7 +56,11 @@
    empaquetar el binario Tesseract.
 10. **CENTROS-MAP** — ❌ NO por ahora (Benjamin: nos quedamos con el geocoder por
     texto).
-11. **RETA-4 — forma jurídica + perfil RETA garantizado** *(decisión Benjamin
+11. ✅ **RETA-4** *(2026-06-15)* — V120 `companies.legal_form` + combo en tab
+    Configuración; AUTONOMO → auto-perfil RETA de la empresa; ensure al abrir
+    Perfiles. *Pendiente menor: combo también en Configuración→Empresa del
+    empresario.* [Spec original:]
+    **RETA-4 — forma jurídica + perfil RETA garantizado** *(decisión Benjamin
     2026-06-15)*. Añadir **forma jurídica** a la empresa (combo: AUTONOMO, S.L.,
     S.A., S.L.U., S.C., C.B., COOPERATIVA, OTRO) editable en el perfil de la
     empresa (empresario y asesoría, vinculado y no). Regla: si **AUTONOMO** → el
