@@ -685,6 +685,17 @@ public class AltaApiClient {
      * Slice 5C — Módulos visibles para el user actual en un cliente.
      * Devuelve ["*"] si la lista es abierta (todos los módulos).
      */
+    /**
+     * Activa los módulos operativos que falten en el cliente actual (el
+     * X-Company-Id de la sesión, ya fijado al entrar al cliente). Evita el
+     * error "módulo no activo" al cargar las pestañas operativas. Idempotente.
+     */
+    public void ensureOperativaModules() throws IOException, InterruptedException {
+        send(req(baseUrl + "/settings/modules/ensure-operativa")
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString("{}")));
+    }
+
     public List<String> myModulesInClient(String clientId)
             throws IOException, InterruptedException {
         HttpResponse<String> r = send(req(baseUrl

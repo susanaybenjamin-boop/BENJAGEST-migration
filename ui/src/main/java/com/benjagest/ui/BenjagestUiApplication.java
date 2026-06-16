@@ -26618,6 +26618,10 @@ public class BenjagestUiApplication extends Application {
         // el flujo de acceso al cliente.
         Task<List<String>> task = new Task<>() {
             @Override protected List<String> call() throws Exception {
+                // CLIENT-CONFIG (2026-06-15): auto-activar los módulos operativos
+                // del cliente ANTES de cargar las pestañas (evita "módulo no
+                // activo" en no vinculados). Best-effort: si falla, seguimos.
+                try { altaApiClient.ensureOperativaModules(); } catch (Exception ignored) { }
                 return altaApiClient.myModulesInClient(client.id());
             }
         };
