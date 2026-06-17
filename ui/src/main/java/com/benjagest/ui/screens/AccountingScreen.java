@@ -319,7 +319,11 @@ public class AccountingScreen {
         diaryTable = createDiaryTable(false);
 
         fromPicker = new DatePicker(LocalDate.now().withDayOfYear(1));
-        toPicker = new DatePicker(LocalDate.now());
+        // El Libro Diario se ve por EJERCICIO completo: hasta el 31/12 del año,
+        // no hasta "hoy". Si no, los asientos con fecha futura dentro del año (p.
+        // ej. el DEVENGO de la nómina del mes, datado a fin de mes) no aparecían
+        // aunque estuvieran validados. Bug reportado por Benjamin 2026-06-17.
+        toPicker = new DatePicker(LocalDate.now().withMonth(12).withDayOfMonth(31));
         statusFilter = new ComboBox<>(FXCollections.observableArrayList(
                 "", "DRAFT", "POSTED", "VOIDED"));
         statusFilter.setValue("POSTED");
