@@ -100,6 +100,11 @@ public class AccountingScreen {
                 new Tab(tt.apply("accounting.tab.pending"), buildPendingTab()),
                 new Tab(tt.apply("accounting.tab.diary"), buildDiaryTab()),
                 new Tab(tt.apply("accounting.tab.manual"), buildManualTab()),
+                // REPORTS-UI — informes contables (backend ya existía; faltaba UI).
+                new Tab(tt.apply("accounting.tab.ledger"), buildLedgerTab()),
+                new Tab(tt.apply("accounting.tab.trial_balance"), buildTrialBalanceTab()),
+                new Tab(tt.apply("accounting.tab.balance_sheet"), buildBalanceSheetTab()),
+                new Tab(tt.apply("accounting.tab.pyg"), buildPygTab()),
                 new Tab(tt.apply("accounting.tab.rules"), buildRulesTab()),
                 new Tab(tt.apply("accounting.tab.year_close"), buildYearCloseTab())
         );
@@ -1215,6 +1220,202 @@ public class AccountingScreen {
     // ====================================================================
     //  Helpers
     // ====================================================================
+
+    // ====================================================================
+    //  REPORTS-UI — Libro Mayor, Sumas y Saldos, Balance de Situación, PyG
+    // ====================================================================
+
+    /** Libro Mayor: elige cuenta + rango → movimientos con saldo corriente. */
+    private Node buildLedgerTab() {
+        ComboBox<AccountSummary> accountCombo = new ComboBox<>();
+        accountCombo.setPrefWidth(360);
+        accountCombo.setConverter(new javafx.util.StringConverter<>() {
+            @Override public String toString(AccountSummary a) {
+                return a == null ? "" : a.code() + " — " + a.name();
+            }
+            @Override public AccountSummary fromString(String s) { return null; }
+        });
+        async(() -> api.listAccounts(null),
+                accts -> accountCombo.setItems(FXCollections.observableArrayList(accts)),
+                err -> logSilent("ledger-accounts", err));
+
+        DatePicker from = new DatePicker(LocalDate.now().withDayOfYear(1));
+        DatePicker to = new DatePicker(LocalDate.now().withMonth(12).withDayOfMonth(31));
+
+        Label opening = new Label("");
+        opening.getStyleClass().add("settings-hint");
+        Label closing = new Label("");
+        closing.setStyle("-fx-font-weight: bold;");
+
+        TableView<AccountingModels.LedgerLineView> table = new TableView<>();
+        table.getColumns().addAll(List.of(
+                col(tt.apply("accounting.col.date"), m -> m.entryDate() == null ? "" : m.entryDate().toString(), 100),
+                col(tt.apply("accounting.col.num"), m -> m.entryNumber() <= 0 ? "—" : String.valueOf(m.entryNumber()), 60),
+                col(tt.apply("accounting.col.concept"), m -> first(m.lineDescription(), m.concept()), 280),
+                col(tt.apply("accounting.col.status"), m -> m.status() == null ? "" : tt.apply("accounting.status." + m.status()), 90),
+                col(tt.apply("accounting.col.debit_total"), m -> eur(m.debit()), 110),
+                col(tt.apply("accounting.col.credit_total"), m -> eur(m.credit()), 110),
+                col(tt.apply("accounting.col.balance"), m -> eur(m.runningBalance()), 120)));
+        VBox.setVgrow(table, Priority.ALWAYS);
+
+        Button view = new Button(tt.apply("accounting.action.view"));
+        view.getStyleClass().add("primary-button");
+        Runnable run = () -> {
+            AccountSummary a = accountCombo.getValue();
+            if (a == null) { showError(tt.apply("accounting.report.fail"), tt.apply("accounting.ledger.pick_account")); return; }
+            async(() -> api.ledger(a.id(), from.getValue(), to.getValue()), lv -> {
+                table.setItems(FXCollections.observableArrayList(lv.movements()));
+                opening.setText(tt.apply("accounting.ledger.opening") + " " + eur(lv.openingBalance()));
+                closing.setText(tt.apply("accounting.ledger.closing") + " " + eur(lv.closingBalance()));
+            }, err -> showError(tt.apply("accounting.report.fail"), err));
+        };
+        view.setOnAction(e -> run.run());
+
+        HBox filters = new HBox(8,
+                new Label(tt.apply("accounting.ledger.account")), accountCombo,
+                new Label(tt.apply("accounting.filter.from")), from,
+                new Label(tt.apply("accounting.filter.to")), to, view);
+        filters.setAlignment(Pos.CENTER_LEFT);
+        HBox totals = new HBox(16, opening, closing);
+        totals.setAlignment(Pos.CENTER_LEFT);
+        VBox box = new VBox(10, filters, table, totals);
+        box.setPadding(new Insets(8));
+        VBox.setVgrow(box, Priority.ALWAYS);
+        return box;
+    }
+
+    /** Balance de Sumas y Saldos: por rango, debe/haber/saldo por cuenta + totales. */
+    private Node buildTrialBalanceTab() {
+        DatePicker from = new DatePicker(LocalDate.now().withDayOfYear(1));
+        DatePicker to = new DatePicker(LocalDate.now().withMonth(12).withDayOfMonth(31));
+        TextField prefix = new TextField();
+        prefix.setPromptText(tt.apply("accounting.trial.prefix_prompt"));
+        prefix.setPrefColumnCount(6);
+
+        TableView<AccountingModels.TrialBalanceRow> table = new TableView<>();
+        table.getColumns().addAll(List.of(
+                col(tt.apply("accounting.col.account_code"), AccountingModels.TrialBalanceRow::code, 90),
+                col(tt.apply("accounting.col.account_name"), AccountingModels.TrialBalanceRow::name, 280),
+                col(tt.apply("accounting.col.debit_total"), r -> eur(r.totalDebit()), 110),
+                col(tt.apply("accounting.col.credit_total"), r -> eur(r.totalCredit()), 110),
+                col(tt.apply("accounting.trial.debtor"), r -> eur(r.saldoDeudor()), 110),
+                col(tt.apply("accounting.trial.creditor"), r -> eur(r.saldoAcreedor()), 110)));
+        VBox.setVgrow(table, Priority.ALWAYS);
+
+        Label totals = new Label("");
+        totals.setStyle("-fx-font-weight: bold;");
+
+        Button view = new Button(tt.apply("accounting.action.view"));
+        view.getStyleClass().add("primary-button");
+        view.setOnAction(e -> async(() -> api.trialBalance(from.getValue(), to.getValue(),
+                prefix.getText() == null ? null : prefix.getText().trim()), rows -> {
+            table.setItems(FXCollections.observableArrayList(rows));
+            BigDecimal td = BigDecimal.ZERO, tc = BigDecimal.ZERO, sd = BigDecimal.ZERO, sa = BigDecimal.ZERO;
+            for (var r : rows) {
+                td = td.add(r.totalDebit() == null ? BigDecimal.ZERO : r.totalDebit());
+                tc = tc.add(r.totalCredit() == null ? BigDecimal.ZERO : r.totalCredit());
+                sd = sd.add(r.saldoDeudor() == null ? BigDecimal.ZERO : r.saldoDeudor());
+                sa = sa.add(r.saldoAcreedor() == null ? BigDecimal.ZERO : r.saldoAcreedor());
+            }
+            totals.setText(tt.apply("accounting.trial.totals")
+                    .replace("{debit}", eur(td)).replace("{credit}", eur(tc))
+                    .replace("{debtor}", eur(sd)).replace("{creditor}", eur(sa)));
+        }, err -> showError(tt.apply("accounting.report.fail"), err)));
+
+        HBox filters = new HBox(8,
+                new Label(tt.apply("accounting.filter.from")), from,
+                new Label(tt.apply("accounting.filter.to")), to,
+                new Label(tt.apply("accounting.trial.prefix")), prefix, view);
+        filters.setAlignment(Pos.CENTER_LEFT);
+        VBox box = new VBox(10, filters, table, totals);
+        box.setPadding(new Insets(8));
+        VBox.setVgrow(box, Priority.ALWAYS);
+        return box;
+    }
+
+    /** Balance de Situación a una fecha: Activo vs Pasivo + PN por masas. */
+    private Node buildBalanceSheetTab() {
+        DatePicker asOf = new DatePicker(LocalDate.now());
+        VBox content = new VBox(12);
+        content.setPadding(new Insets(8));
+        javafx.scene.control.ScrollPane scroll = new javafx.scene.control.ScrollPane(content);
+        scroll.setFitToWidth(true);
+        VBox.setVgrow(scroll, Priority.ALWAYS);
+
+        Button view = new Button(tt.apply("accounting.action.view"));
+        view.getStyleClass().add("primary-button");
+        view.setOnAction(e -> async(() -> api.balanceSheet(asOf.getValue()), bs -> {
+            content.getChildren().setAll(
+                    sectionGroup(tt.apply("accounting.balance.activo"), bs.activo(), bs.totalActivo()),
+                    new javafx.scene.control.Separator(),
+                    sectionGroup(tt.apply("accounting.balance.pasivo"), bs.pasivo(), bs.totalPasivo()));
+        }, err -> showError(tt.apply("accounting.report.fail"), err)));
+
+        HBox filters = new HBox(8, new Label(tt.apply("accounting.balance.as_of")), asOf, view);
+        filters.setAlignment(Pos.CENTER_LEFT);
+        VBox box = new VBox(10, filters, scroll);
+        box.setPadding(new Insets(8));
+        VBox.setVgrow(box, Priority.ALWAYS);
+        return box;
+    }
+
+    /** Cuenta de Pérdidas y Ganancias de un periodo. */
+    private Node buildPygTab() {
+        DatePicker from = new DatePicker(LocalDate.now().withDayOfYear(1));
+        DatePicker to = new DatePicker(LocalDate.now().withMonth(12).withDayOfMonth(31));
+        VBox content = new VBox(12);
+        content.setPadding(new Insets(8));
+        javafx.scene.control.ScrollPane scroll = new javafx.scene.control.ScrollPane(content);
+        scroll.setFitToWidth(true);
+        VBox.setVgrow(scroll, Priority.ALWAYS);
+
+        Button view = new Button(tt.apply("accounting.action.view"));
+        view.getStyleClass().add("primary-button");
+        view.setOnAction(e -> async(() -> api.profitAndLoss(from.getValue(), to.getValue()), pl -> {
+            Label result = new Label(tt.apply("accounting.pyg.result") + " " + eur(pl.resultadoExplotacion()));
+            result.setStyle("-fx-font-weight: bold; -fx-font-size: 14px;");
+            content.getChildren().setAll(
+                    sectionGroup(tt.apply("accounting.pyg.ingresos"), pl.ingresos(), pl.totalIngresos()),
+                    new javafx.scene.control.Separator(),
+                    sectionGroup(tt.apply("accounting.pyg.gastos"), pl.gastos(), pl.totalGastos()),
+                    new javafx.scene.control.Separator(), result);
+        }, err -> showError(tt.apply("accounting.report.fail"), err)));
+
+        HBox filters = new HBox(8,
+                new Label(tt.apply("accounting.filter.from")), from,
+                new Label(tt.apply("accounting.filter.to")), to, view);
+        filters.setAlignment(Pos.CENTER_LEFT);
+        VBox box = new VBox(10, filters, scroll);
+        box.setPadding(new Insets(8));
+        VBox.setVgrow(box, Priority.ALWAYS);
+        return box;
+    }
+
+    /** Renderiza un grupo (Activo/Pasivo/Ingresos/Gastos) con sus masas, líneas y total. */
+    private VBox sectionGroup(String title, List<AccountingModels.ReportSection> sections, BigDecimal grandTotal) {
+        VBox group = new VBox(8);
+        Label header = new Label(title + "   " + eur(grandTotal));
+        header.setStyle("-fx-font-weight: bold; -fx-font-size: 15px;");
+        group.getChildren().add(header);
+        if (sections != null) {
+            for (var sec : sections) {
+                Label secName = new Label(sec.name() + "   " + eur(sec.total()));
+                secName.setStyle("-fx-font-weight: bold;");
+                VBox secBox = new VBox(2, secName);
+                secBox.setPadding(new Insets(0, 0, 0, 12));
+                if (sec.items() != null) {
+                    for (var it : sec.items()) {
+                        Label line = new Label((it.code() == null ? "" : it.code() + "  ")
+                                + (it.name() == null ? "" : it.name()) + "   " + eur(it.amount()));
+                        line.setPadding(new Insets(0, 0, 0, 16));
+                        secBox.getChildren().add(line);
+                    }
+                }
+                group.getChildren().add(secBox);
+            }
+        }
+        return group;
+    }
 
     private TableView<DiaryEntry> createDiaryTable(boolean showConfidence) {
         TableView<DiaryEntry> table = new TableView<>();

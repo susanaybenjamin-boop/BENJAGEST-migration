@@ -829,6 +829,98 @@ public class AccountingApiClient {
     }
 
     // ====================================================================
+    //  REPORTS-UI — Mayor, Sumas y Saldos, Balance de Situación, PyG
+    // ====================================================================
+
+    /** Libro Mayor de una cuenta (saldo apertura + movimientos + saldo final). */
+    public AccountingModels.LedgerView ledger(String accountId, LocalDate from, LocalDate to)
+            throws IOException, InterruptedException {
+        StringBuilder q = new StringBuilder();
+        if (from != null) append(q, "from", from.toString());
+        if (to != null)   append(q, "to", to.toString());
+        String json = get("/accounting/ledger/"
+                + URLEncoder.encode(accountId, StandardCharsets.UTF_8) + q);
+        List<AccountingModels.LedgerLineView> moves = new ArrayList<>();
+        String arr = extractArrayField(json, "movements");
+        if (arr != null) {
+            for (String o : splitJsonArray(arr)) {
+                moves.add(new AccountingModels.LedgerLineView(
+                        strField(o, "entryId"), intField(o, "entryNumber"),
+                        localDateField(o, "entryDate"), strField(o, "concept"),
+                        strField(o, "status"), strField(o, "lineDescription"),
+                        bdField(o, "debit"), bdField(o, "credit"), bdField(o, "runningBalance")));
+            }
+        }
+        return new AccountingModels.LedgerView(
+                strField(json, "accountId"), strField(json, "accountCode"),
+                strField(json, "accountName"), bdField(json, "openingBalance"),
+                bdField(json, "closingBalance"), moves);
+    }
+
+    /** Balance de Sumas y Saldos (debe/haber/saldo por cuenta). */
+    public List<AccountingModels.TrialBalanceRow> trialBalance(LocalDate from, LocalDate to, String prefix)
+            throws IOException, InterruptedException {
+        StringBuilder q = new StringBuilder();
+        if (from != null) append(q, "from", from.toString());
+        if (to != null)   append(q, "to", to.toString());
+        if (prefix != null && !prefix.isBlank()) append(q, "prefix", prefix);
+        String json = get("/accounting/balance" + q);
+        List<AccountingModels.TrialBalanceRow> out = new ArrayList<>();
+        for (String o : splitJsonArray(json)) {
+            out.add(new AccountingModels.TrialBalanceRow(
+                    strField(o, "accountId"), strField(o, "code"), strField(o, "name"),
+                    bdField(o, "totalDebit"), bdField(o, "totalCredit"),
+                    bdField(o, "saldoDeudor"), bdField(o, "saldoAcreedor")));
+        }
+        return out;
+    }
+
+    /** Balance de Situación a una fecha. */
+    public AccountingModels.BalanceSheetView balanceSheet(LocalDate asOf)
+            throws IOException, InterruptedException {
+        StringBuilder q = new StringBuilder();
+        if (asOf != null) append(q, "asOf", asOf.toString());
+        String json = get("/accounting/reports/balance-sheet" + q);
+        return new AccountingModels.BalanceSheetView(
+                localDateField(json, "asOf"),
+                parseReportSections(extractArrayField(json, "activo")), bdField(json, "totalActivo"),
+                parseReportSections(extractArrayField(json, "pasivo")), bdField(json, "totalPasivo"));
+    }
+
+    /** Cuenta de Pérdidas y Ganancias de un periodo. */
+    public AccountingModels.ProfitAndLossView profitAndLoss(LocalDate from, LocalDate to)
+            throws IOException, InterruptedException {
+        StringBuilder q = new StringBuilder();
+        if (from != null) append(q, "from", from.toString());
+        if (to != null)   append(q, "to", to.toString());
+        String json = get("/accounting/reports/profit-and-loss" + q);
+        return new AccountingModels.ProfitAndLossView(
+                localDateField(json, "from"), localDateField(json, "to"),
+                parseReportSections(extractArrayField(json, "ingresos")), bdField(json, "totalIngresos"),
+                parseReportSections(extractArrayField(json, "gastos")), bdField(json, "totalGastos"),
+                bdField(json, "resultadoExplotacion"));
+    }
+
+    /** Parsea las secciones (masas) anidadas de un informe Balance/PyG. */
+    private List<AccountingModels.ReportSection> parseReportSections(String arr) {
+        List<AccountingModels.ReportSection> out = new ArrayList<>();
+        if (arr == null) return out;
+        for (String sec : splitJsonArray(arr)) {
+            List<AccountingModels.ReportItem> items = new ArrayList<>();
+            String itemsArr = extractArrayField(sec, "items");
+            if (itemsArr != null) {
+                for (String it : splitJsonArray(itemsArr)) {
+                    items.add(new AccountingModels.ReportItem(
+                            strField(it, "code"), strField(it, "name"), bdField(it, "amount")));
+                }
+            }
+            out.add(new AccountingModels.ReportSection(
+                    strField(sec, "name"), items, bdField(sec, "total")));
+        }
+        return out;
+    }
+
+    // ====================================================================
     //  HTTP helpers
     // ====================================================================
 

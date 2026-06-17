@@ -55,23 +55,25 @@
 
 ---
 
-## 📊 REPORTS-UI — Pantallas de informes contables (pedido Benjamin 2026-06-17)
+## 📊 REPORTS-UI — Pantallas de informes contables — ✅ HECHO 2026-06-17
 
-> Benjamin: en CONTENDO sí están y le gusta cómo se hicieron; aquí faltan. Backend
-> COMPLETO con endpoints; lo que falta es la UI (pantalla + métodos en
-> AccountingApiClient). Replicar el estilo de CONTENDO.
+> Benjamin: en CONTENDO sí estaban y le gustaban; aquí faltaba la UI (el backend
+> ya estaba). Construidas 4 pestañas nuevas en `AccountingScreen`.
 
-- ⬜ **Libro Mayor** — backend `/api/accounting/ledger/{accountId}` (saldo apertura
-  + movimientos + saldo corriente). UI: elegir cuenta + rango → tabla con saldo.
-- ⬜ **Balance de Sumas y Saldos** — backend `/api/accounting/balance` (debe/haber/
-  saldo por cuenta). UI: rango → tabla + totales que cuadran.
-- ⬜ **Balance de Situación** — backend `/api/accounting/reports/balance-sheet`
-  (`FinancialReportsService.balanceSheet`, Activo/Pasivo/PN por masas).
-- ⬜ **Pérdidas y Ganancias (PyG)** — backend `/api/accounting/reports/profit-and-loss`.
-- ⬜ **ECPN (cambios en patrimonio neto)** — backend `/reports/equity-changes` (opcional).
-- Sugerido: pestañas nuevas en `AccountingScreen` (Mayor, Balance, PyG) + export
-  PDF. NOTA backlog: ACC-BOOKS / REPORTS-CONTABLES estaban marcados ✅ pero era
-  SOLO backend (corregido arriba).
+- ✅ **Libro Mayor** — pestaña: combo de cuenta + rango → movimientos con saldo
+  corriente + saldo apertura/final. `AccountingApiClient.ledger`.
+- ✅ **Balance de Sumas y Saldos** — rango + filtro por grupo → debe/haber/saldo
+  deudor/acreedor por cuenta + totales. `AccountingApiClient.trialBalance`.
+- ✅ **Balance de Situación** — a fecha → Activo vs Patrimonio Neto y Pasivo por
+  masas. `AccountingApiClient.balanceSheet`.
+- ✅ **Pérdidas y Ganancias (PyG)** — rango → Ingresos / Gastos por masas +
+  resultado. `AccountingApiClient.profitAndLoss`.
+- ⬜ **ECPN** (`/reports/equity-changes`) — backend listo, UI no añadida (opcional).
+- ⬜ **Export PDF** de estos informes — pendiente (mejora).
+- Parseo JSON anidado (Balance/PyG) con `extractArrayField` + `splitJsonArray`
+  (sin Jackson en UI). NOTA: ACC-BOOKS / REPORTS-CONTABLES estaban marcados ✅
+  pero era solo backend; ahora la UI también está. **Pendiente: prueba visual de
+  Benjamin.**
 
 ---
 
