@@ -1110,6 +1110,39 @@ public class LaborApiClient {
                 .POST(HttpRequest.BodyPublishers.ofString(b.toString())));
     }
 
+    // ==== Topes de indemnización por año (V127, no-code) — N3(b) ====
+
+    public java.util.List<com.benjagest.ui.model.SeveranceParamEntry> listSeveranceParams()
+            throws IOException, InterruptedException {
+        HttpResponse<String> r = send(req(baseUrl + "/labor/severance-params").GET());
+        return parseObjects(r.body(), "yearNumber", o -> new com.benjagest.ui.model.SeveranceParamEntry(
+                intFieldOrZero(o, "yearNumber"),
+                bigDec(o, "unfairDaysPerYear"), intFieldOrZero(o, "unfairCapDays"),
+                bigDec(o, "unfairPre2012DaysPerYear"), intFieldOrZero(o, "unfairPre2012CapDays"),
+                bigDec(o, "objectiveDaysPerYear"), intFieldOrZero(o, "objectiveCapDays"),
+                bigDec(o, "endContractDaysPerYear"), bigDec(o, "irpfExemptCap"),
+                textField(o, "legalReference")));
+    }
+
+    public void upsertSeveranceParam(com.benjagest.ui.model.SeveranceParamEntry e)
+            throws IOException, InterruptedException {
+        StringBuilder b = new StringBuilder("{");
+        b.append("\"yearNumber\":").append(e.yearNumber()).append(",");
+        b.append(decField("unfairDaysPerYear", e.unfairDaysPerYear())).append(",");
+        b.append("\"unfairCapDays\":").append(e.unfairCapDays()).append(",");
+        b.append(decField("unfairPre2012DaysPerYear", e.unfairPre2012DaysPerYear())).append(",");
+        b.append("\"unfairPre2012CapDays\":").append(e.unfairPre2012CapDays()).append(",");
+        b.append(decField("objectiveDaysPerYear", e.objectiveDaysPerYear())).append(",");
+        b.append("\"objectiveCapDays\":").append(e.objectiveCapDays()).append(",");
+        b.append(decField("endContractDaysPerYear", e.endContractDaysPerYear())).append(",");
+        b.append(decField("irpfExemptCap", e.irpfExemptCap())).append(",");
+        b.append(field("legalReference", e.legalReference()));
+        b.append("}");
+        send(req(baseUrl + "/labor/severance-params")
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(b.toString())));
+    }
+
     // ==== Bases de cotización SS por GRUPO y año (V121, no-code) ====
 
     public java.util.List<Integer> listSsGroupBaseYears() throws IOException, InterruptedException {

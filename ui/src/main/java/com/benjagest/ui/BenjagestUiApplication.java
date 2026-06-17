@@ -16127,6 +16127,24 @@ public class BenjagestUiApplication extends Application {
             case "labor.tab.employer_cost" -> "Employer cost";
             case "labor.tab.ss_rates" -> "SS rates";
             case "labor.tab.irpf_params" -> "Income-tax scale";
+            case "labor.tab.severance" -> "Severance";
+            case "labor.severance.hint" -> "Severance caps by year (days/year and limits per dismissal type + income-tax exemption). The termination engine reads these for the termination year. No-code: clone the latest year and edit when the law changes.";
+            case "labor.severance.empty" -> "No severance parameters yet.";
+            case "labor.severance.add" -> "Add year";
+            case "labor.severance.edit" -> "Edit";
+            case "labor.severance.save_btn" -> "Save";
+            case "labor.severance.load_failed" -> "Could not load severance parameters";
+            case "labor.severance.save_failed" -> "Could not save severance parameters";
+            case "labor.severance.col.year" -> "Year";
+            case "labor.severance.col.unfair" -> "Unfair (days/yr)";
+            case "labor.severance.col.unfair_cap" -> "Unfair cap";
+            case "labor.severance.col.pre2012" -> "Pre-2012 (days/yr)";
+            case "labor.severance.col.pre2012_cap" -> "Pre-2012 cap";
+            case "labor.severance.col.objective" -> "Objective (days/yr)";
+            case "labor.severance.col.objective_cap" -> "Objective cap";
+            case "labor.severance.col.end_contract" -> "End of contract (days/yr)";
+            case "labor.severance.col.exempt" -> "Income-tax exemption";
+            case "labor.severance.col.ref" -> "Legal reference";
             case "reta.tab.profiles" -> "Profiles";
             case "labor.tab.reta_tramos" -> "Self-employed brackets";
             case "labor.tab.reta_alerts" -> "RETA review";
@@ -16786,6 +16804,24 @@ public class BenjagestUiApplication extends Application {
             case "labor.tab.employer_cost" -> "Coste empresa";
             case "labor.tab.ss_rates" -> "Tipos cotización";
             case "labor.tab.irpf_params" -> "Escala IRPF";
+            case "labor.tab.severance" -> "Indemnización";
+            case "labor.severance.hint" -> "Topes de indemnización por año (días/año y topes por tipo de despido + exención de IRPF). El motor de cese los lee para el año del cese. No-code: clona el último año y edítalo cuando cambie la ley.";
+            case "labor.severance.empty" -> "Aún no hay parámetros de indemnización.";
+            case "labor.severance.add" -> "Añadir año";
+            case "labor.severance.edit" -> "Editar";
+            case "labor.severance.save_btn" -> "Guardar";
+            case "labor.severance.load_failed" -> "No se pudieron cargar los parámetros de indemnización";
+            case "labor.severance.save_failed" -> "No se pudieron guardar los parámetros de indemnización";
+            case "labor.severance.col.year" -> "Año";
+            case "labor.severance.col.unfair" -> "Improcedente (días/año)";
+            case "labor.severance.col.unfair_cap" -> "Tope improc.";
+            case "labor.severance.col.pre2012" -> "Pre-2012 (días/año)";
+            case "labor.severance.col.pre2012_cap" -> "Tope pre-2012";
+            case "labor.severance.col.objective" -> "Objetivo (días/año)";
+            case "labor.severance.col.objective_cap" -> "Tope objetivo";
+            case "labor.severance.col.end_contract" -> "Fin de contrato (días/año)";
+            case "labor.severance.col.exempt" -> "Exención IRPF";
+            case "labor.severance.col.ref" -> "Referencia legal";
             case "reta.tab.profiles" -> "Perfiles";
             case "labor.tab.reta_tramos" -> "Tramos autónomo";
             case "labor.tab.reta_alerts" -> "Revisión RETA";
@@ -19382,6 +19418,9 @@ public class BenjagestUiApplication extends Application {
         // Parámetros IRPF por año (escala).
         Tab irpfParamsTab = new Tab(t("labor.tab.irpf_params"), buildIrpfParamsTab());
         irpfParamsTab.setGraphic(icon("fas-percent"));
+        // N3(b) — Topes de indemnización por despido y año (V127, no-code).
+        Tab severanceTab = new Tab(t("labor.tab.severance"), buildSeveranceParamsTab());
+        severanceTab.setGraphic(icon("fas-hand-holding-usd"));
         // RETA-0/RETA-3 — Tramos y Revisión viven ahora en la pestaña "Autónomos
         // (RETA)" de la ficha (consolidado 2026-06-15), NO aquí en Laboral.
         // PORT-2 (2026-06-10 tarde) — Partes/Jornadas como sub-pestaña
@@ -19397,7 +19436,7 @@ public class BenjagestUiApplication extends Application {
 
         tabs.getTabs().addAll(empTab, contractsTab, clockTab, auditTab, payslipsTab,
                 templatesTab, clausesTab, cfgTab, calendarTab, leavesTab, vacationsTab, ssTab,
-                costTab, ratesTab, groupBasesTab, irpfParamsTab, shiftsTab, centersTab);
+                costTab, ratesTab, groupBasesTab, irpfParamsTab, severanceTab, shiftsTab, centersTab);
         VBox.setVgrow(tabs, Priority.ALWAYS);
         // Restaurar la pestaña activa y recordar los cambios de pestaña, para
         // no perder el contexto al recargar el módulo tras una acción.
@@ -34152,6 +34191,137 @@ public class BenjagestUiApplication extends Application {
 
     private TextField rateField(java.math.BigDecimal v, String fallback) {
         return new TextField(v == null ? fallback : v.toPlainString());
+    }
+
+    /**
+     * N3(b) — Topes de INDEMNIZACIÓN por despido por año (no-code, V127).
+     * Tabla editable: el asesor clona el último año y ajusta días/año, topes y
+     * exención de IRPF cuando cambie la ley, sin tocar código. El motor de cese
+     * (TerminationService) lee de aquí el año del cese.
+     */
+    private Node buildSeveranceParamsTab() {
+        VBox content = new VBox(12);
+        content.setPadding(new Insets(16));
+        Label hint = new Label(t("labor.severance.hint"));
+        hint.setWrapText(true);
+        hint.getStyleClass().add("settings-hint");
+
+        TableView<com.benjagest.ui.model.SeveranceParamEntry> table = new TableView<>();
+        table.getStyleClass().add("data-table");
+        table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+        table.setPlaceholder(new Label(t("labor.severance.empty")));
+        com.benjagest.ui.support.TableSelectionHelper.install(table);
+
+        addColSorted(table, t("labor.severance.col.year"), r -> String.valueOf(r.yearNumber()), 60, NUMERIC_STRING_COMPARATOR);
+        addColSorted(table, t("labor.severance.col.unfair"),
+                r -> daysTxt(r.unfairDaysPerYear()), 100, NUMERIC_STRING_COMPARATOR);
+        addColSorted(table, t("labor.severance.col.unfair_cap"),
+                r -> String.valueOf(r.unfairCapDays()), 90, NUMERIC_STRING_COMPARATOR);
+        addColSorted(table, t("labor.severance.col.pre2012"),
+                r -> daysTxt(r.unfairPre2012DaysPerYear()), 110, NUMERIC_STRING_COMPARATOR);
+        addColSorted(table, t("labor.severance.col.pre2012_cap"),
+                r -> String.valueOf(r.unfairPre2012CapDays()), 100, NUMERIC_STRING_COMPARATOR);
+        addColSorted(table, t("labor.severance.col.objective"),
+                r -> daysTxt(r.objectiveDaysPerYear()), 100, NUMERIC_STRING_COMPARATOR);
+        addColSorted(table, t("labor.severance.col.objective_cap"),
+                r -> String.valueOf(r.objectiveCapDays()), 90, NUMERIC_STRING_COMPARATOR);
+        addColSorted(table, t("labor.severance.col.end_contract"),
+                r -> daysTxt(r.endContractDaysPerYear()), 110, NUMERIC_STRING_COMPARATOR);
+        addColSorted(table, t("labor.severance.col.exempt"),
+                r -> r.irpfExemptCap() == null ? "" : money(r.irpfExemptCap()), 110, NUMERIC_STRING_COMPARATOR);
+        addCol(table, t("labor.severance.col.ref"),
+                r -> r.legalReference() == null ? "" : r.legalReference(), 200);
+
+        Runnable reload = () -> {
+            Task<java.util.List<com.benjagest.ui.model.SeveranceParamEntry>> tk = new Task<>() {
+                @Override protected java.util.List<com.benjagest.ui.model.SeveranceParamEntry> call() throws Exception {
+                    return laborApiClient.listSeveranceParams();
+                }
+            };
+            tk.setOnSucceeded(ev -> table.setItems(FXCollections.observableArrayList(tk.getValue())));
+            tk.setOnFailed(ev -> showError(t("labor.severance.load_failed"),
+                    tk.getException() == null ? "" : tk.getException().getMessage()));
+            start(tk, "severance-load");
+        };
+
+        Button addBtn = new Button(t("labor.severance.add"));
+        addBtn.getStyleClass().add("button-primary");
+        addBtn.setOnAction(e -> {
+            var items = table.getItems();
+            com.benjagest.ui.model.SeveranceParamEntry base = items.isEmpty() ? null : items.get(0);
+            int nextYear = base == null ? java.time.Year.now().getValue() : base.yearNumber() + 1;
+            showSeveranceParamEditor(base, nextYear, reload);
+        });
+        Button editBtn = new Button(t("labor.severance.edit"));
+        editBtn.getStyleClass().add("button-secondary");
+        editBtn.setOnAction(e -> {
+            var sel = table.getSelectionModel().getSelectedItem();
+            if (sel != null) showSeveranceParamEditor(sel, sel.yearNumber(), reload);
+        });
+        HBox actions = new HBox(8, addBtn, editBtn);
+
+        reload.run();
+        VBox body = new VBox(10, hint, actions, table);
+        VBox.setVgrow(table, Priority.ALWAYS);
+        content.getChildren().add(body);
+        VBox.setVgrow(body, Priority.ALWAYS);
+        return content;
+    }
+
+    private String daysTxt(java.math.BigDecimal v) {
+        return v == null ? "" : v.toPlainString().replace(".", ",");
+    }
+
+    private void showSeveranceParamEditor(com.benjagest.ui.model.SeveranceParamEntry base, int year,
+                                          Runnable onSaved) {
+        Dialog<ButtonType> d = new Dialog<>();
+        d.setTitle(t("labor.severance.edit") + " — " + year);
+        ButtonType save = new ButtonType(t("labor.severance.save_btn"), ButtonBar.ButtonData.OK_DONE);
+        d.getDialogPane().getButtonTypes().addAll(save, ButtonType.CANCEL);
+
+        TextField yearF = new TextField(String.valueOf(year));
+        TextField unfair = rateField(base == null ? null : base.unfairDaysPerYear(), "33");
+        TextField unfairCap = new TextField(base == null ? "720" : String.valueOf(base.unfairCapDays()));
+        TextField pre = rateField(base == null ? null : base.unfairPre2012DaysPerYear(), "45");
+        TextField preCap = new TextField(base == null ? "1260" : String.valueOf(base.unfairPre2012CapDays()));
+        TextField objective = rateField(base == null ? null : base.objectiveDaysPerYear(), "20");
+        TextField objectiveCap = new TextField(base == null ? "360" : String.valueOf(base.objectiveCapDays()));
+        TextField endContract = rateField(base == null ? null : base.endContractDaysPerYear(), "12");
+        TextField exempt = rateField(base == null ? null : base.irpfExemptCap(), "180000");
+        TextField ref = new TextField(base == null || base.legalReference() == null ? "" : base.legalReference());
+
+        GridPane g = new GridPane();
+        g.setHgap(10); g.setVgap(8); g.setPadding(new Insets(12));
+        int r = 0;
+        g.add(new Label(t("labor.severance.col.year")), 0, r); g.add(yearF, 1, r++);
+        g.add(new Label(t("labor.severance.col.unfair")), 0, r); g.add(unfair, 1, r++);
+        g.add(new Label(t("labor.severance.col.unfair_cap")), 0, r); g.add(unfairCap, 1, r++);
+        g.add(new Label(t("labor.severance.col.pre2012")), 0, r); g.add(pre, 1, r++);
+        g.add(new Label(t("labor.severance.col.pre2012_cap")), 0, r); g.add(preCap, 1, r++);
+        g.add(new Label(t("labor.severance.col.objective")), 0, r); g.add(objective, 1, r++);
+        g.add(new Label(t("labor.severance.col.objective_cap")), 0, r); g.add(objectiveCap, 1, r++);
+        g.add(new Label(t("labor.severance.col.end_contract")), 0, r); g.add(endContract, 1, r++);
+        g.add(new Label(t("labor.severance.col.exempt")), 0, r); g.add(exempt, 1, r++);
+        g.add(new Label(t("labor.severance.col.ref")), 0, r); g.add(ref, 1, r++);
+        installDialog(d, g);
+
+        d.showAndWait().ifPresent(bt -> {
+            if (bt != save) return;
+            com.benjagest.ui.model.SeveranceParamEntry e = new com.benjagest.ui.model.SeveranceParamEntry(
+                    parseIntSafe(yearF.getText()) == null ? year : parseIntSafe(yearF.getText()),
+                    parseDecSafe(unfair.getText()), parseIntSafe(unfairCap.getText()) == null ? 0 : parseIntSafe(unfairCap.getText()),
+                    parseDecSafe(pre.getText()), parseIntSafe(preCap.getText()) == null ? 0 : parseIntSafe(preCap.getText()),
+                    parseDecSafe(objective.getText()), parseIntSafe(objectiveCap.getText()) == null ? 0 : parseIntSafe(objectiveCap.getText()),
+                    parseDecSafe(endContract.getText()), parseDecSafe(exempt.getText()),
+                    blankToNullOrSelf(ref.getText()));
+            Task<Void> tk = new Task<>() {
+                @Override protected Void call() throws Exception { laborApiClient.upsertSeveranceParam(e); return null; }
+            };
+            tk.setOnSucceeded(ev -> onSaved.run());
+            tk.setOnFailed(ev -> showError(t("labor.severance.save_failed"),
+                    tk.getException() == null ? "" : tk.getException().getMessage()));
+            start(tk, "severance-save");
+        });
     }
 
     /**
