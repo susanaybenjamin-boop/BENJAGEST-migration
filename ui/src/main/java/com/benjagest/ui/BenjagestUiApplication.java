@@ -18047,6 +18047,10 @@ public class BenjagestUiApplication extends Application {
             case "accounting.source_type.MANUAL_REVERSAL" -> "Reversal";
             case "accounting.source_type.RECURRING_TASK" -> "Recurring task";
             case "accounting.source_type.RECURRING_ACCOUNTING" -> "Recurring accounting entry";
+            case "accounting.source_type.PAYSLIP_ACCRUAL" -> "Payroll (accrual)";
+            case "accounting.source_type.PAYSLIP_PAYMENT" -> "Payroll (payment)";
+            case "accounting.source_type.PAYSLIP_EXTRA_PROVISION" -> "Extra-pay provision";
+            case "accounting.source_type.PAYSLIP_EXTRA_PAYMENT" -> "Extra-pay payment";
             case "accounting.col.name" -> "Name";
             case "accounting.col.rule_kind" -> "Rule kind";
             case "accounting.col.nif" -> "Tax ID";
@@ -18980,6 +18984,10 @@ public class BenjagestUiApplication extends Application {
             case "accounting.source_type.MANUAL_REVERSAL" -> "Contraasiento";
             case "accounting.source_type.RECURRING_TASK" -> "Recurrente";
             case "accounting.source_type.RECURRING_ACCOUNTING" -> "Asiento recurrente";
+            case "accounting.source_type.PAYSLIP_ACCRUAL" -> "Nómina (devengo)";
+            case "accounting.source_type.PAYSLIP_PAYMENT" -> "Nómina (pago)";
+            case "accounting.source_type.PAYSLIP_EXTRA_PROVISION" -> "Provisión pagas extra";
+            case "accounting.source_type.PAYSLIP_EXTRA_PAYMENT" -> "Pago paga extra";
             case "accounting.col.name" -> "Nombre";
             case "accounting.col.rule_kind" -> "Tipo de regla";
             case "accounting.col.nif" -> "NIF";
