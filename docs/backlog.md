@@ -48,21 +48,37 @@
 
 ## 2026-06-16 — BLOQUE FICHAJE-MÓVIL/KIOSCO (pedido Benjamin) 📱
 
-> Benjamin: falta el **fichaje en modo MÓVIL y KIOSCO (tablet)** con **invitación**,
-> **igual que en CONTENDO** (ver `C:\Proyectos\CONTENDO GESTIONES`, app180-frontend +
-> servicios de fichaje). Reglas: por ley (RD-Ley 8/2019 registro de jornada), datos
-> año-dependientes en tablas, hacerlo bien. Plan (explorar CONTENDO primero):
-> - **FM-0**: explorar el modelo CONTENDO (cómo invita, cómo ficha, geo, PIN/token,
->   kiosco vs móvil). Portar fielmente.
-> - **FM-1 (invitación)**: token/QR/PIN por empleado para acceder al fichaje sin login
->   completo (additive; NO tocar AuthService core — reusar `employees.pin_hash` V3 +
->   device tokens V70). Endpoint de canje de invitación.
-> - **FM-2 (móvil web)**: página de fichaje servida por el backend (Spring), accesible
->   desde el móvil en la LAN, con geolocalización (reusar GEO-FICHAR), entrada/salida,
->   pausas. Responsive.
-> - **FM-3 (kiosco/tablet)**: vista a pantalla completa (dispositivo compartido en el
->   centro), el empleado ficha con su PIN; la misma web en modo kiosco o vista JavaFX.
-> - **FM-4**: que lo fichado alimente Jornadas/partes (PORT-2) y el calendario laboral.
+> Benjamin: falta el **fichaje MÓVIL y KIOSCO (tablet)** con **invitación**, igual
+> que en CONTENDO. Por ley (RD-Ley 8/2019). **Bloque grande → contexto fresco.**
+>
+> ✅ **FM-0 explorado** (agente, 2026-06-16). Modelo CONTENDO + qué hay en BENJAGEST:
+> - **Reusar (ya existe):** `time_clock_events` (V2, = `fichajes_180`) con geo
+>   (GEO-FICHAR) + cadena hash + correcciones/verificaciones (V21, RD 8/2019);
+>   `work_centers` con lat/lng + radio + `geo_policy` none/info/soft/strict (V89,
+>   = `centros_trabajo_180` + `geoValidator.js`); `daily_work_reports` (V2, =
+>   `jornadas_180`); `device_tokens` + `employees.pin_hash` (V70).
+> - **Falta (crear):** tablas de KIOSCO + OTP + cola offline. CONTENDO:
+>   `kiosk_devices_180` (device_token secreto + offline_pin), `kiosk_activation_tokens_180`
+>   (token QR 30 min), OTP por email/SMS, offline sync.
+> - **Fichaje** CONTENDO: `POST /api/fichaje` (tipo entrada|salida|descanso_inicio|
+>   descanso_fin; subtipo pausa_corta|comida|trayecto; lat/lng/accuracy). Kiosco:
+>   /activate, /config, /identify, /estado, /fichaje, /otp/request, /void (60s).
+> - **Invitación (matiz):** en CONTENDO el kiosco se EMPAREJA con QR (token 30 min),
+>   no hay invitación por email de empleados. Para BENJAGEST local: el OWNER habilita
+>   al empleado (PIN, ya existe) + empareja la tablet con QR. ⚠️ Confirmar con Benjamin
+>   si "invitación" = habilitar empleado + QR de tablet, o algo más (p.ej. enlace al móvil).
+>
+> Plan de implementación (fresco, slice a slice, compilar+verificar):
+> - **FM-1**: migración kiosco (`kiosk_devices`, `kiosk_activation_tokens`,
+>   `kiosk_employee_assignments`) + `otp_codes`. Additive, NO tocar AuthService core.
+> - **FM-2**: `KioskController` (Java) + `KioskTokenInterceptor` (header `KioskToken`),
+>   reusando `TimeClockService`/`time_clock_events` para crear el fichaje. OTP por email
+>   (SES ya existe). Geo validada con `work_centers.geo_policy` (reusar).
+> - **FM-3 (móvil web)**: página de fichaje servida por el backend, accesible desde el
+>   móvil en la LAN (entrada/salida/pausas + geo). Responsive.
+> - **FM-4 (kiosco)**: pantalla completa (idle→identificar→confirmar→OTP/PIN→éxito,
+>   ventana de deshacer 60s); la misma web en modo kiosco o vista JavaFX. + cola offline.
+> - **FM-5**: que lo fichado alimente jornadas/partes (PORT-2) y el calendario.
 > Coherente con despliegue local ("todo es un puesto").
 
 ## 2026-06-16 — BLOQUE CONTRATO-VIGENCIAS (decidido por Benjamin) 🔵
