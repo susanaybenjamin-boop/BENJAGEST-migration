@@ -218,9 +218,11 @@ public class IrpfRetentionService {
                 (rs, n) -> new double[]{rs.getBigDecimal("lower_limit").doubleValue(),
                         rs.getBigDecimal("rate").doubleValue()}, year);
         if (rows.isEmpty()) {
-            // Fallback escala 2026.
-            rows = List.of(new double[]{0, 19}, new double[]{12450, 24}, new double[]{20200, 30},
-                    new double[]{35200, 37}, new double[]{60000, 45}, new double[]{300000, 47});
+            // N3 — Sin fallback silencioso: la escala IRPF vive en BD (V113).
+            throw new org.springframework.web.server.ResponseStatusException(
+                    org.springframework.http.HttpStatus.UNPROCESSABLE_ENTITY,
+                    "No hay escala de IRPF configurada para " + year + " ni años anteriores."
+                    + " Configúrala en Laboral → Parámetros IRPF.");
         }
         return rows;
     }
@@ -279,7 +281,11 @@ public class IrpfRetentionService {
                     p.limitIncomeCap = rs.getDouble("limit_income_cap");
                     return p;
                 }, year)
-                .stream().findFirst().orElseGet(Params::defaults2026);
+                .stream().findFirst().orElseThrow(() ->
+                        new org.springframework.web.server.ResponseStatusException(
+                                org.springframework.http.HttpStatus.UNPROCESSABLE_ENTITY,
+                                "No hay parámetros de IRPF configurados para " + year
+                                + " ni años anteriores. Configúralos en Laboral → Parámetros IRPF."));
     }
 
     private static String blank(String v) { return v == null || v.isBlank() ? null : v.trim(); }
@@ -295,19 +301,8 @@ public class IrpfRetentionService {
         // Reducción por más de dos descendientes (art. 83.3 RIRPF).
         double moreThan2Desc = 600;
         double limitRate = 43, limitIncomeCap = 35200;
-        static Params defaults2026() {
-            Params p = new Params();
-            p.personalMin = 5550; p.personalOver65 = 1150; p.personalOver75 = 1400;
-            p.desc1 = 2400; p.desc2 = 2700; p.desc3 = 4000; p.desc4plus = 4500; p.descUnder3 = 2800;
-            p.ascOver65 = 1150; p.ascOver75 = 1400;
-            p.disability33 = 3000; p.disability65 = 9000; p.disabilityMobility = 3000;
-            p.expenseDeduction = 2000; p.workMax = 7302; p.workThreshold1 = 14852;
-            p.workThreshold2 = 17673.52; p.workFactor = 1.75;
-            p.workMax2 = 2364.34; p.workThreshold3 = 19747.50; p.workFactor2 = 1.14;
-            p.moreThan2Desc = 600;
-            p.limitRate = 43; p.limitIncomeCap = 35200;
-            return p;
-        }
+        // N3 — defaults2026() eliminado: los parámetros viven en BD (V113). Si no
+        // hay fila para el año, loadParams() falla de forma ruidosa (no a fuego).
     }
 
     // ===== Administración de parámetros IRPF por año (punto 2) =====

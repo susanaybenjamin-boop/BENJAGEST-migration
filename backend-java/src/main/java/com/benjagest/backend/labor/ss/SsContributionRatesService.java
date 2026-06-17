@@ -34,8 +34,8 @@ public class SsContributionRatesService {
     }
 
     /** Tipos vigentes para un año. Si no existe la fila exacta, usa la del
-     *  último año disponible &le; al pedido. Si la tabla está vacía, valores
-     *  2026 por defecto (no debería ocurrir: V108 siembra 2026). */
+     *  último año disponible &le; al pedido. Si NO hay ninguno (tabla vacía),
+     *  lanza 422 — no se calcula con tipos a fuego (N3). V108 siembra 2026. */
     public Rates ratesForYear(int year) {
         List<Rates> rows = jdbc.query("""
                 SELECT year, ee_common, ee_unemployment, ee_training, ee_mei,
@@ -46,12 +46,12 @@ public class SsContributionRatesService {
                  ORDER BY year DESC LIMIT 1
                 """, MAPPER, year);
         if (!rows.isEmpty()) return rows.get(0);
-        // Fallback duro (defaults 2026).
-        return new Rates(2026,
-                new BigDecimal("4.70"), new BigDecimal("1.55"), new BigDecimal("0.10"), new BigDecimal("0.15"),
-                new BigDecimal("23.60"), new BigDecimal("5.50"), new BigDecimal("0.20"),
-                new BigDecimal("0.60"), new BigDecimal("0.75"), new BigDecimal("1.50"),
-                new BigDecimal("5101.20"), BigDecimal.ZERO, "Defaults 2026");
+        // N3 — Sin fallback silencioso a 2026. V108 siembra 2026; si la tabla está
+        // vacía es un error de configuración y NO se calcula con tipos a fuego que
+        // podrían no ser los legales del año. Se falla de forma ruidosa.
+        throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                "No hay tipos de cotización a la Seguridad Social configurados para "
+                + year + " ni años anteriores. Configúralos en Laboral → Tipos de cotización.");
     }
 
     public List<Rates> listAll() {
