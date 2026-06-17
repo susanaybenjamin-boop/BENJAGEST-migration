@@ -1,6 +1,7 @@
 # Backlog operativo BENJAGEST
 
 > **Última actualización:** 2026-06-16 (cerrada la **COLA AUTÓNOMA** salvo lo no
+> [ver bloque de estado verificado justo debajo, 2026-06-17]
 > prioritario; **topes de cotización SS por grupo** cableados 1+2+3 con cifras
 > oficiales 2026; **auditoría completa del ciclo de vida del empleado** con 4
 > agentes — contabilidad confirmada correcta, bugs triados; **investigación legal
@@ -10,6 +11,38 @@
 > **Forma de trabajo (junio 2026):** Benjamin lidera y decide. Pablo solo entra de uvas a peras desde 05-30. Todo el trabajo va por `feat/Benjamin` → prueba local → commit → merge `--no-ff` a `develop`. Cada item cerrado lleva commit hash + fecha. **Regla 10.bis de CLAUDE.md aplica siempre: verificar código antes de tocar.**
 >
 > **Fuentes complementarias:** [`gap-analysis-contendo.md`](gap-analysis-contendo.md), [`gap-analysis-config-ui.md`](gap-analysis-config-ui.md), [`migration-roadmap.md`](migration-roadmap.md), [`vf-chain-fix.md`](vf-chain-fix.md), [`agents-debug-pattern.md`](agents-debug-pattern.md).
+
+---
+
+## ✅ ESTADO VERIFICADO — auditoría 4 agentes + verificación manual (2026-06-17)
+
+> Barrido del código (backend + UI) para reconciliar el backlog con la realidad.
+> Veredicto: el backlog estaba ~85-90% fiel. Confirmado que la app es muy completa
+> en lo on-premise. Trampa recurrente detectada: **endpoint backend ≠ UI**.
+
+**Correcciones aplicadas (estaban marcadas como hechas pero NO lo estaban del todo):**
+- 🔶 **BANK-IMPORT** (Norma 43 / CSV): solo backend, **falta UI** para subir el fichero.
+- 🔶 **EXPORT-CONTABLE** (Contasol/A3/Sage): solo backend, **falta UI** de exportación.
+- 🔶 **ACC-TEMPLATES**: backend con endpoints, **falta UI de gestión** de plantillas.
+- 🔶 **ECPN** (cambios patrimonio neto): solo backend (opcional).
+- Matiz **Modelos AEAT 347/390/190**: backend OK pero **editor UI genérico** (JSON);
+  solo 130/303 tienen editor específico.
+- Matiz **VeriFactu**: NO_VERIFACTU (offline) ✅ completo; envío AEAT (VERI*FACTU) +
+  XAdES-EPES estricto 🔵 implementado pero **NO probado contra AEAT** (bloqueado FNMT).
+
+**Confirmado ✅ COMPLETO (backend + UI), antes con dudas:**
+- **REPORTS-UI** (Mayor, Sumas y Saldos, Balance de Situación, PyG) — hecho 2026-06-17.
+- **REC-BANCARIA** (conciliación asistida) — tiene diálogo UI (verificado).
+- Bloques Nómina/NOM, Contratos/CTR, RETA-0..4, VIG-0..3, CV-1..3, TPB, Comunicación,
+  Equipo S1, AVISOS-1, Auth/JWT/PIN, Cierre de ejercicio, Calendario fiscal,
+  Modelos 130/303, fichaje RD 8/2019 de escritorio + GEO.
+
+**Gaps reales pendientes (no empezados o parciales), por prioridad:**
+- 🔴 **N2** clamp BCCC/BCCP + tiempo parcial (ignora `weekly_hours`) + grupos 8-11 (legal; validar caso real).
+- 🟠 **N5** incidencias de nómina · **PORT-2 jornadas** (skeleton, falta modelo plantilla) · UI de BANK-IMPORT / EXPORT-CONTABLE / ACC-TEMPLATES.
+- 🟡 **FIN-ANALYSIS** (plan, sin código) · editores AEAT específicos 347/390/190 · VIG-3 menor (bloquear edición start_date con nóminas) · VIG-4 atrasos · régimen especial IVA · OCR · AVISOS-2 cross-cartera (verificar).
+- 🔵 **Decisiones/planes sin código:** MOBILE-EMPLEADO (stack) · FICHAJE-MÓVIL/KIOSCO (FM-1..5) · GESTOR-NAVEGADOR (JCEF) · DEPLOY-PKG · CV-4..8 · EQUIPO S2.
+- 🔒 **Bloqueado por certificado FNMT real:** VeriFactu estricto/envío AEAT, Modelos 100/180/200/411, conectores DEHú/SS RED/SILTRA.
 
 ---
 
@@ -931,25 +964,31 @@ Nóminas; afinar topes de cotización; pagas extra.
 - V56 `companies.tercero_account_length/mode` + UI.
 - V57 `sales_invoices.concept/purchase_invoices.concept`.
 - Asientos manuales con bloqueo periodo (ACC-MANUAL).
-- ⚖️ Libro Diario + Mayor + Sumas y Saldos (ACC-BOOKS) — ⚠️ **solo Libro Diario
-  tiene UI**. Mayor (`/ledger/{cuenta}`) y Sumas y Saldos (`/balance`) están en
-  BACKEND con endpoint pero **sin pantalla** (verificado 2026-06-17). Ver REPORTS-UI abajo.
+- ✅ Libro Diario + Mayor + Sumas y Saldos (ACC-BOOKS) — **UI COMPLETA 2026-06-17**
+  (Diario ya la tenía; Mayor/Sumas y Saldos añadidos en REPORTS-UI).
 - Cuentas bancarias + movimientos + cobros/pagos (BANK-ACCOUNTS).
-- Importación Norma 43 + CSV bancario + auto-conciliación (BANK-IMPORT).
+- 🔶 Importación Norma 43 + CSV bancario (BANK-IMPORT) — **solo BACKEND**
+  (`BankImportService` + endpoint); **falta UI** para elegir y subir el fichero
+  (verificado 2026-06-17: sin botón ni método en AccountingApiClient). La
+  auto-conciliación (REC-BANCARIA) sí tiene UI.
 - Préstamos + cuadro amortización (LOANS).
 - Inmovilizado + amortización (ASSETS-ENTRIES).
-- ✅ **Plantillas asiento manual (ACC-TEMPLATES)**.
-- ⚖️ Balance situación + PyG (REPORTS-CONTABLES) — ⚠️ **solo BACKEND**. Endpoints
-  `/reports/balance-sheet`, `/reports/profit-and-loss`, `/reports/equity-changes`
-  (`FinancialReportsService`) existen y calculan, pero **no hay UI** (verificado
-  2026-06-17). El `AccountingApiClient` ni los llama. Ver REPORTS-UI abajo.
+- 🔶 **Plantillas asiento manual (ACC-TEMPLATES)** — backend con endpoints, pero
+  **falta UI de gestión (CRUD)** de plantillas (verificado 2026-06-17).
+- ✅ Balance situación + PyG (REPORTS-CONTABLES) — **UI COMPLETA 2026-06-17**
+  (REPORTS-UI: pestañas Balance de Situación y PyG en AccountingScreen). ECPN
+  (`/reports/equity-changes`) sigue 🔶 solo-backend (opcional).
 - Aprendizaje contable UI (ACC-LEARN-UI).
-- Exportación contable Contasol/A3/Sage (EXPORT-CONTABLE) + EXT-IMPORT inversa.
+- 🔶 Exportación contable Contasol/A3/Sage (EXPORT-CONTABLE) + EXT-IMPORT inversa —
+  **solo BACKEND** (`AccountingExportService`); **falta UI** (selector de formato +
+  descarga). Verificado 2026-06-17.
 - 💰 Motor recurrentes (cron) con 7 kinds.
 - RefreshBus publish/subscribe central.
 - V59 relax UK tax_identifier para shadow companies + start-management.
 - V60 `journal_entries.source_pdf_path` + visor PDF reutilizable PDFBox.
-- ⚖️ Modelos AEAT **347 + 390 + 190** (AEAT-EXTRAS).
+- ⚖️ Modelos AEAT **347 + 390 + 190** (AEAT-EXTRAS) — backend completo; UI con
+  **editor genérico (JSON)** salvo 130/303 que tienen editor específico (matiz
+  verificado 2026-06-17). Editores específicos 347/390/190 = mejora pendiente.
 - ✅ ⚖️ **YEAR-CLOSE — Cierre ejercicio con aplicación resultado**.
 
 ## 📅 2026-06-05 — Asesoría↔cliente + exports legales (15 slices)
