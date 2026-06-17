@@ -8919,6 +8919,11 @@ public class BenjagestUiApplication extends Application {
             ok.setHeaderText(null);
             ok.showAndWait();
             reloadInvoices();
+            // REFRESH-AUDIT — al validar la conversión se crea asiento de ventas:
+            // avisar a Contabilidad (y al listado de ventas embebido en la ficha).
+            com.benjagest.ui.support.RefreshBus.emit(
+                    com.benjagest.ui.support.RefreshBus.TOPIC_SALES,
+                    com.benjagest.ui.support.RefreshBus.TOPIC_JOURNAL);
         });
         task.setOnFailed(ev -> showError(t("list.dialog.proforma.fail.title"),
                 t("list.dialog.proforma.fail.body")));
@@ -10326,7 +10331,16 @@ public class BenjagestUiApplication extends Application {
                     return null;
                 }
             };
-            task.setOnSucceeded(s -> { load.run(); });
+            task.setOnSucceeded(s -> {
+                load.run();
+                // REFRESH-AUDIT — conciliar crea asiento (journal_entries) y marca
+                // la factura cobrada: avisar a Contabilidad, bancos y facturas.
+                com.benjagest.ui.support.RefreshBus.emit(
+                        com.benjagest.ui.support.RefreshBus.TOPIC_JOURNAL,
+                        com.benjagest.ui.support.RefreshBus.TOPIC_BANK_ACCOUNTS,
+                        com.benjagest.ui.support.RefreshBus.TOPIC_SALES,
+                        com.benjagest.ui.support.RefreshBus.TOPIC_PURCHASES);
+            });
             task.setOnFailed(s -> showError(t("bank_rec.accept.fail"),
                     task.getException() == null ? "" : task.getException().getMessage()));
             start(task, "bank-rec-link");
@@ -10345,7 +10359,11 @@ public class BenjagestUiApplication extends Application {
                     return null;
                 }
             };
-            task.setOnSucceeded(s -> { load.run(); });
+            task.setOnSucceeded(s -> {
+                load.run();
+                com.benjagest.ui.support.RefreshBus.emit(
+                        com.benjagest.ui.support.RefreshBus.TOPIC_BANK_ACCOUNTS);
+            });
             task.setOnFailed(s -> showError(t("bank_rec.ignore.fail"),
                     task.getException() == null ? "" : task.getException().getMessage()));
             start(task, "bank-rec-ignore");
@@ -19351,6 +19369,20 @@ public class BenjagestUiApplication extends Application {
     //     vista con pestañas. Mismo patrón que reloadRetaProfiles para RETA.
     private Runnable laborRefresh = this::showLaborModule;
 
+    /**
+     * REFRESH-AUDIT (2026-06-17) — Refresca Labor Y avisa a Contabilidad. Las
+     * acciones de nómina que crean/revierten asientos (calcular, marcar pagada,
+     * borrar, generar mes, finiquito/despido) tienen un EFECTO CROSS-MÓDULO: el
+     * backend escribe en journal_entries vía PayslipJournalEntryService. Sin
+     * emitir TOPIC_JOURNAL, la Contabilidad embebida en la ficha (suscrita a ese
+     * topic) quedaba obsoleta hasta refrescar a mano (bug reportado por Benjamin).
+     */
+    private void refreshLaborAndJournal() {
+        laborRefresh.run();
+        com.benjagest.ui.support.RefreshBus.emit(
+                com.benjagest.ui.support.RefreshBus.TOPIC_JOURNAL);
+    }
+
     private void showLaborModule() {
         // Al entrar al módulo standalone, el refresco vuelve a ser standalone.
         laborRefresh = this::showLaborModule;
@@ -20094,7 +20126,12 @@ public class BenjagestUiApplication extends Application {
                         return null;
                     }
                 };
-                tk.setOnSucceeded(ev -> showTerminationDocsDialog(employee, ce, typeCombo.getValue()));
+                tk.setOnSucceeded(ev -> {
+                    // El finiquito crea asiento (SETTLEMENT) y cierra el contrato:
+                    // refresca Labor + Contabilidad antes de los documentos de baja.
+                    refreshLaborAndJournal();
+                    showTerminationDocsDialog(employee, ce, typeCombo.getValue());
+                });
                 tk.setOnFailed(ev -> showError(t("labor.term.title"),
                         humanizeBackendError(tk.getException() == null ? "" : tk.getException().getMessage())));
                 start(tk, "term-execute");
@@ -20775,7 +20812,7 @@ public class BenjagestUiApplication extends Application {
                         .replace("{skip}", String.valueOf(res.skipped()));
                 if (!res.errors().isEmpty()) msg += "\n\n" + String.join("\n", res.errors());
                 showInfo(t("labor.genmonth.title"), msg);
-                laborRefresh.run();
+                refreshLaborAndJournal();
             });
             tk.setOnFailed(ev -> showError(t("labor.genmonth.title"),
                     humanizeBackendError(tk.getException() == null ? "" : tk.getException().getMessage())));
@@ -20913,7 +20950,7 @@ public class BenjagestUiApplication extends Application {
                             blankToNullOrSelf(notesArea.getText()), lines);
                 }
             };
-            task.setOnSucceeded(ev -> laborRefresh.run());
+            task.setOnSucceeded(ev -> refreshLaborAndJournal());
             task.setOnFailed(ev -> showError(t("labor.settlement.title"),
                     humanizeBackendError(task.getException() == null ? "" : task.getException().getMessage())));
             start(task, "settlement-generate");
@@ -21008,7 +21045,7 @@ public class BenjagestUiApplication extends Application {
         content.setPadding(new Insets(12));
         installDialog(d, content);
         d.showAndWait();
-        laborRefresh.run();
+        refreshLaborAndJournal();
     }
 
     /**
@@ -21123,7 +21160,7 @@ public class BenjagestUiApplication extends Application {
         content.setPadding(new Insets(12));
         installDialog(d, content);
         d.showAndWait();
-        laborRefresh.run();
+        refreshLaborAndJournal();
     }
 
     private void showCalculatePayslipDialog(java.util.List<com.benjagest.ui.model.EmployeeEntry> employees,
@@ -21382,7 +21419,7 @@ public class BenjagestUiApplication extends Application {
                             other, blankToNullOrSelf(notesArea.getText()), extraConcepts);
                 }
             };
-            task.setOnSucceeded(ev -> laborRefresh.run());
+            task.setOnSucceeded(ev -> refreshLaborAndJournal());
             task.setOnFailed(ev -> {
                 Throwable ex = task.getException();
                 String detail = ex == null ? null : humanizeBackendError(ex.getMessage());
@@ -21482,7 +21519,7 @@ public class BenjagestUiApplication extends Application {
                     return null;
                 }
             };
-            task.setOnSucceeded(ev -> laborRefresh.run());
+            task.setOnSucceeded(ev -> refreshLaborAndJournal());
             task.setOnFailed(ev -> showError(t("labor.payslips.calc.fail.title"), t("labor.payslips.calc.fail.body")));
             start(task, "payslip-pay");
         });
@@ -21559,7 +21596,7 @@ public class BenjagestUiApplication extends Application {
                     return null;
                 }
             };
-            task.setOnSucceeded(ev -> laborRefresh.run());
+            task.setOnSucceeded(ev -> refreshLaborAndJournal());
             task.setOnFailed(ev -> showError(t("labor.payslips.calc.fail.title"),
                     t("labor.payslips.calc.fail.body")));
             start(task, "payslip-delete");

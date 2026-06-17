@@ -173,6 +173,12 @@ public class ClientFinancialsScreen {
                     v -> {
                         loadInstallments(installmentsTable, sel.id());
                         loadLoans(loansTable);
+                        // REFRESH-AUDIT — pagar cuota crea asiento de pago:
+                        // avisar a Contabilidad, préstamos y bancos.
+                        com.benjagest.ui.support.RefreshBus.emit(
+                                com.benjagest.ui.support.RefreshBus.TOPIC_JOURNAL,
+                                com.benjagest.ui.support.RefreshBus.TOPIC_LOANS,
+                                com.benjagest.ui.support.RefreshBus.TOPIC_BANK_ACCOUNTS);
                     },
                     err -> showError("Error al pagar cuota", err));
         });
@@ -243,8 +249,16 @@ public class ClientFinancialsScreen {
             if (sel == null) return;
             int year = LocalDate.now().getYear();
             async(() -> { api.postAssetDepreciationEntry(sel.id(), year, null); return null; },
-                    v -> showInfo("Asiento de amortización creado",
-                            "Se ha posteado la dotación del año " + year + " para " + sel.code()),
+                    v -> {
+                        showInfo("Asiento de amortización creado",
+                                "Se ha posteado la dotación del año " + year + " para " + sel.code());
+                        loadAssets(table);
+                        // REFRESH-AUDIT — la dotación crea asiento: avisar a
+                        // Contabilidad y al inventario de inmovilizado.
+                        com.benjagest.ui.support.RefreshBus.emit(
+                                com.benjagest.ui.support.RefreshBus.TOPIC_JOURNAL,
+                                com.benjagest.ui.support.RefreshBus.TOPIC_FIXED_ASSETS);
+                    },
                     err -> showError("Error al dotar amortización", err));
         });
 
