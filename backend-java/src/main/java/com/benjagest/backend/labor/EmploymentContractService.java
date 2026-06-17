@@ -106,6 +106,9 @@ public class EmploymentContractService {
             jdbcTemplate.update("UPDATE employment_contracts SET gross_salary = ? WHERE id = ? AND company_id = ?",
                     recomputed, id, tenantContext.getCurrentCompanyId());
         }
+        // VIG-3: vigencia inicial (effective_from = inicio del contrato).
+        syncVigencia(id, tenantContext.getCurrentCompanyId(), req.startDate(), req,
+                recomputed != null ? recomputed : req.grossSalary(), "Alta inicial", true);
         return findById(id);
     }
 
@@ -145,7 +148,104 @@ public class EmploymentContractService {
             jdbcTemplate.update("UPDATE employment_contracts SET gross_salary = ? WHERE id = ? AND company_id = ?",
                     recomputed, id, tenantContext.getCurrentCompanyId());
         }
+        // VIG-3: editar el contrato sincroniza la vigencia MÁS RECIENTE (corrección
+        // de las condiciones actuales). Un ascenso con fecha de efecto usa promote().
+        syncVigencia(id, tenantContext.getCurrentCompanyId(), null, req,
+                recomputed != null ? recomputed : req.grossSalary(), null, false);
         return findById(id);
+    }
+
+    /**
+     * VIG-3: ASCENSO / cambio de condiciones con fecha de efecto. Crea una nueva
+     * vigencia (la novación del mismo contrato; la antigüedad NO se toca) y
+     * actualiza la fila del contrato a las condiciones nuevas (= condición actual).
+     * Las nóminas de periodos anteriores siguen usando la vigencia previa.
+     */
+    @Transactional
+    public ContractView promote(String id, java.time.LocalDate effectiveFrom,
+                                 UpsertRequest req, String reason) {
+        validate(req);
+        if (effectiveFrom == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Falta la fecha de efecto del ascenso");
+        }
+        String companyId = tenantContext.getCurrentCompanyId();
+        // 1) La fila del contrato pasa a reflejar las condiciones nuevas (actuales);
+        //    NO tocamos start_date ni seniority_date (la antigüedad se conserva).
+        int n = jdbcTemplate.update("""
+                UPDATE employment_contracts
+                   SET collective_agreement = ?, professional_category = ?, professional_group = ?,
+                       weekly_hours = ?, gross_salary = ?, annual_bonuses = ?, extras_prorated = ?,
+                       vacation_days = ?, irpf_percent = ?, at_ep_percent = ?, ss_contribution_group = ?
+                 WHERE id = ? AND company_id = ?
+                """,
+                blank(req.collectiveAgreement()), blank(req.professionalCategory()),
+                blank(req.professionalGroup()), req.weeklyHours(), req.grossSalary(),
+                req.annualBonuses(), req.extrasProrated() != null && req.extrasProrated(),
+                req.vacationDays(), req.irpfPercent(),
+                req.atEpPercent() == null ? new BigDecimal("1.50") : req.atEpPercent(),
+                req.ssContributionGroup() == null ? 7 : req.ssContributionGroup(),
+                id, companyId);
+        if (n == 0) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Contrato no encontrado");
+        }
+        BigDecimal recomputed = replaceSalaryItems(id, req.salaryItems());
+        if (recomputed != null) {
+            jdbcTemplate.update("UPDATE employment_contracts SET gross_salary = ? WHERE id = ? AND company_id = ?",
+                    recomputed, id, companyId);
+        }
+        // 2) Nueva vigencia con la fecha de efecto.
+        syncVigencia(id, companyId, effectiveFrom, req,
+                recomputed != null ? recomputed : req.grossSalary(),
+                reason == null || reason.isBlank() ? "Cambio de condiciones" : reason.trim(), true);
+        return findById(id);
+    }
+
+    /**
+     * VIG: sincroniza la tabla de vigencias con las condiciones del contrato.
+     * {@code createNew=true} inserta (o upserta por fecha) una vigencia con
+     * {@code effectiveFrom}; {@code createNew=false} actualiza la vigencia MÁS
+     * RECIENTE (corrección de condiciones actuales sin cambiar de fecha).
+     */
+    private void syncVigencia(String contractId, String companyId, java.time.LocalDate effectiveFrom,
+                               UpsertRequest req, BigDecimal grossSalary, String reason, boolean createNew) {
+        int ssGroup = req.ssContributionGroup() == null ? 7 : req.ssContributionGroup();
+        BigDecimal atEp = req.atEpPercent() == null ? new BigDecimal("1.50") : req.atEpPercent();
+        boolean prorated = req.extrasProrated() != null && req.extrasProrated();
+        if (createNew) {
+            jdbcTemplate.update("""
+                    INSERT INTO contract_vigencias
+                        (id, company_id, contract_id, effective_from, professional_group,
+                         professional_category, ss_contribution_group, gross_salary, weekly_hours,
+                         annual_bonuses, extras_prorated, vacation_days, irpf_percent, at_ep_percent,
+                         change_reason)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON DUPLICATE KEY UPDATE
+                        professional_group = VALUES(professional_group),
+                        professional_category = VALUES(professional_category),
+                        ss_contribution_group = VALUES(ss_contribution_group),
+                        gross_salary = VALUES(gross_salary), weekly_hours = VALUES(weekly_hours),
+                        annual_bonuses = VALUES(annual_bonuses), extras_prorated = VALUES(extras_prorated),
+                        vacation_days = VALUES(vacation_days), irpf_percent = VALUES(irpf_percent),
+                        at_ep_percent = VALUES(at_ep_percent), change_reason = VALUES(change_reason)
+                    """,
+                    UUID.randomUUID().toString(), companyId, contractId, effectiveFrom,
+                    blank(req.professionalGroup()), blank(req.professionalCategory()), ssGroup,
+                    grossSalary, req.weeklyHours(), req.annualBonuses(), prorated,
+                    req.vacationDays(), req.irpfPercent(), atEp, reason);
+        } else {
+            jdbcTemplate.update("""
+                    UPDATE contract_vigencias SET
+                        professional_group = ?, professional_category = ?, ss_contribution_group = ?,
+                        gross_salary = ?, weekly_hours = ?, annual_bonuses = ?, extras_prorated = ?,
+                        vacation_days = ?, irpf_percent = ?, at_ep_percent = ?
+                     WHERE contract_id = ? AND effective_from = (
+                           SELECT mx FROM (SELECT MAX(effective_from) AS mx FROM contract_vigencias
+                                            WHERE contract_id = ?) t)
+                    """,
+                    blank(req.professionalGroup()), blank(req.professionalCategory()), ssGroup,
+                    grossSalary, req.weeklyHours(), req.annualBonuses(), prorated,
+                    req.vacationDays(), req.irpfPercent(), atEp, contractId, contractId);
+        }
     }
 
     @Transactional
@@ -366,6 +466,9 @@ public class EmploymentContractService {
             List<SalaryItem> salaryItems
     ) {}
 
+    /** VIG-3: petición de ascenso/cambio de condiciones con fecha de efecto. */
+    public record PromoteRequest(String effectiveFrom, String reason, UpsertRequest contract) {}
+
     /** Concepto salarial recibido del editor de contrato. */
     public record SalaryItem(
             String id, String conceptName, String kind,
@@ -407,6 +510,14 @@ public class EmploymentContractService {
         @PutMapping("/{id}")
         public ContractView update(@PathVariable("id") String id, @RequestBody UpsertRequest req) {
             return service.update(id, req);
+        }
+
+        /** VIG-3: ascenso/cambio de condiciones con fecha de efecto (nueva vigencia). */
+        @PostMapping("/{id}/promote")
+        public ContractView promote(@PathVariable("id") String id, @RequestBody PromoteRequest req) {
+            java.time.LocalDate eff = req.effectiveFrom() == null || req.effectiveFrom().isBlank()
+                    ? null : java.time.LocalDate.parse(req.effectiveFrom());
+            return service.promote(id, eff, req.contract(), req.reason());
         }
 
         @DeleteMapping("/{id}")
