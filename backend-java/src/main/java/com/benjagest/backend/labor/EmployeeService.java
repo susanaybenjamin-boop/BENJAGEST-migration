@@ -88,6 +88,7 @@ public class EmployeeService {
     @Transactional
     public EmployeeView create(UpsertRequest req) {
         validate(req);
+        checkNifUnique(req.taxIdentifier(), null);
         String id = UUID.randomUUID().toString();
         jdbcTemplate.update("""
                 INSERT INTO employees (
@@ -125,6 +126,7 @@ public class EmployeeService {
     @Transactional
     public EmployeeView update(String id, UpsertRequest req) {
         validate(req);
+        checkNifUnique(req.taxIdentifier(), id);
         // Leemos el estado previo del empleado para detectar transiciones
         // de app_access (FALSE→TRUE provisiona, TRUE→FALSE revoca).
         EmployeeView prev = findById(id);
@@ -210,6 +212,15 @@ public class EmployeeService {
     private void validate(UpsertRequest req) {
         if (!StringUtils.hasText(req.fullName())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Nombre requerido");
+        }
+        // N4 — NIF/identificador fiscal: formato laxo (igual que CONTENDO,
+        // siiService.js: 8-9 alfanuméricos). NO validamos la letra de control
+        // para no rechazar pasaportes / documentos extranjeros de trabajadores.
+        // La unicidad por empresa la comprueban create()/update() contra la BD.
+        String nif = blank(req.taxIdentifier());
+        if (nif != null && !normalizeNif(nif).matches("[A-Z0-9]{8,9}")) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "El NIF/identificador fiscal no tiene un formato válido (8-9 caracteres).");
         }
         if (req.ssRegime() != null && !req.ssRegime().isBlank()
                 && !List.of("RETA", "GENERAL", "AUTONOMO_SOCIETARIO", "ARTISTAS", "MAR", "AGRARIO", "OTHER")
@@ -408,6 +419,34 @@ public class EmployeeService {
 
     private String blank(String v) {
         return v == null || v.isBlank() ? null : v.trim();
+    }
+
+    /** N4 — Normaliza un NIF para comparar: sin guiones/espacios, mayúsculas. */
+    private String normalizeNif(String nif) {
+        return nif == null ? "" : nif.replaceAll("[-\\s]", "").toUpperCase();
+    }
+
+    /**
+     * N4 — Unicidad del NIF por empresa: no puede haber dos empleados ACTIVOS
+     * de la misma empresa con el mismo identificador fiscal (normalizado). Se
+     * excluye al propio empleado al editar. No bloquea reutilizar el NIF de un
+     * empleado dado de baja (re-alta como ficha nueva).
+     */
+    private void checkNifUnique(String taxIdentifier, String excludeEmployeeId) {
+        String nif = blank(taxIdentifier);
+        if (nif == null) return;
+        Integer count = jdbcTemplate.queryForObject("""
+                SELECT COUNT(*) FROM employees
+                 WHERE company_id = ?
+                   AND id <> ?
+                   AND active = TRUE
+                   AND UPPER(REPLACE(REPLACE(tax_identifier, '-', ''), ' ', '')) = ?
+                """, Integer.class, tenantContext.getCurrentCompanyId(),
+                excludeEmployeeId == null ? "" : excludeEmployeeId, normalizeNif(nif));
+        if (count != null && count > 0) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Ya existe un empleado con ese NIF en esta empresa.");
+        }
     }
 
     private EmployeeView mapView(ResultSet rs, int rowNum) throws SQLException {

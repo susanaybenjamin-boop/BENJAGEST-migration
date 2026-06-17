@@ -533,8 +533,12 @@ public class PayslipService {
      * Construye los conceptos de un finiquito para revisar/editar antes de
      * generar el recibo (nómina tipo SETTLEMENT):
      *  - Salario de los días trabajados del mes del cese (÷ días naturales).
-     *  - Vacaciones no disfrutadas = días × (salario mensual con prorrata ÷ 30)
-     *    = anual ÷ 360. Cotiza y tributa.
+     *  - Vacaciones no disfrutadas = días naturales × (salario anual ÷ 365).
+     *    N4 (2026-06-17): salario diario = anual/365 (día natural), criterio
+     *    legal/estándar para valorar vacaciones no disfrutadas — igual que A3Nom,
+     *    INEAF y CONTENDO, y coherente con la indemnización (TerminationService,
+     *    también /365). El /30 (= anual/360) es el salario diario a efectos de
+     *    COTIZACIÓN, no el de valoración de vacaciones en finiquito. Cotiza y tributa.
      *  - Prorrata de pagas extra devengadas no cobradas (si no prorrateadas):
      *    devengo semestral (verano ene–jun / Navidad jul–dic) o anual. Tributa
      *    IRPF; NO cotiza de nuevo (ya cotizó prorrateada mes a mes).
@@ -590,7 +594,7 @@ public class PayslipService {
             if (vacDays.signum() < 0) vacDays = BigDecimal.ZERO;
         }
         if (vacDays.signum() > 0) {
-            BigDecimal salarioDiaVac = c.grossSalary.divide(BigDecimal.valueOf(360), 8, RoundingMode.HALF_UP);
+            BigDecimal salarioDiaVac = c.grossSalary.divide(BigDecimal.valueOf(365), 8, RoundingMode.HALF_UP);
             out.add(new ExtraConcept("Vacaciones no disfrutadas",
                     vacDays.multiply(salarioDiaVac).setScale(2, RoundingMode.HALF_UP), true, true));
         }
