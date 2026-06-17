@@ -80,17 +80,20 @@
   *Pendiente menor: editor de catálogo de categorías en la UI para ajustar el
   grupo por categoría (hoy se ajusta por-contrato en el editor plano); revisar los
   defaults del seed por convenio.*
-- **VIG-1 (tabla)**: `contract_vigencias` (id, contract_id, effective_from,
-  professional_group, professional_category, ss_contribution_group, gross_salary,
-  weekly_hours, irpf_percent, at_ep_percent, …) append-only. Backfill: una vigencia
-  inicial por contrato existente (effective_from = start_date) con sus datos actuales.
-- **VIG-2 (resolución en motor)**: `PayslipService.resolveActiveContract` resuelve
-  la vigencia **vigente a la fecha del periodo** (no la última). Nóminas pasadas
-  intactas, futuras con datos nuevos. Cuidado legal: validar con caso real.
-- **VIG-3 (UI ascenso)**: acción "Ascender / cambiar condiciones" → crea vigencia
-  nueva con fecha de efecto; antigüedad intacta. Bloquear edición destructiva de
-  datos históricos en contratos con nóminas. Distinguir cambio de categoría
-  (variación SS, escrito) vs cambio de tipo de contrato (novación SEPE 100/200/300).
+- ✅ **VIG-1 (tabla)** *(2026-06-16, ba3c754)*: `contract_vigencias` append-only +
+  backfill (una vigencia inicial por contrato, effective_from = start_date).
+- ✅ **VIG-2 (resolución en motor)** *(2026-06-16, 071639f)*:
+  `PayslipService.resolveActiveContract` lee la vigencia vigente a la fecha del
+  periodo (COALESCE con fallback al contrato). Behavior-preserving con 1 vigencia;
+  query verificada contra BD. **Validar con caso real al ascender.**
+- 🔵 **VIG-3** *(backend hecho 2026-06-16, a8bd3ab; falta UI)*: create()/update()
+  sincronizan la vigencia (alta=crea inicial; editar=actualiza la última);
+  `promote()` + endpoint `POST /contracts/{id}/promote` = ascenso con fecha de
+  efecto (nueva vigencia, antigüedad intacta). SQL validadas + backend arranca OK.
+  ⬜ **PENDIENTE: UI "Ascender / cambiar condiciones"** (diálogo: fecha de efecto +
+  nuevos datos → llama a /promote) + bloquear edición destructiva de start_date/
+  antigüedad en contratos con nóminas. Distinguir cambio de categoría (variación
+  SS) vs cambio de tipo de contrato (novación SEPE 100/200/300). + e2e real.
 - **VIG-4 (atrasos de convenio)**: cálculo de atrasos comparando vigencias en el
   periodo afectado (caso de uso que justifica el histórico). Para más adelante.
 
