@@ -209,6 +209,25 @@ public class LaborApiClient {
         send(req(baseUrl + "/labor/contracts/" + id).DELETE());
     }
 
+    /**
+     * VIG-3 — Ascenso/cambio de condiciones con fecha de efecto. Crea una
+     * nueva vigencia del MISMO contrato (antigüedad intacta) y deja la fila
+     * del contrato con las condiciones nuevas. Las nóminas de periodos
+     * anteriores siguen usando la vigencia previa.
+     */
+    public ContractEntry promoteContract(String id, String effectiveFrom, String reason,
+                                          ContractEntry c) throws IOException, InterruptedException {
+        String body = "{"
+                + field("effectiveFrom", effectiveFrom) + ","
+                + field("reason", reason) + ","
+                + "\"contract\":" + contractBody(c)
+                + "}";
+        HttpResponse<String> r = send(req(baseUrl + "/labor/contracts/" + id + "/promote")
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(body)));
+        return mapContract(r.body());
+    }
+
     private String contractBody(ContractEntry c) {
         StringBuilder b = new StringBuilder("{");
         b.append(field("employeeId", c.employeeId())).append(",");
