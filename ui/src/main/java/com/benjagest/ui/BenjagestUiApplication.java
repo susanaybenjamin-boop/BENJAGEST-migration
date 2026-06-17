@@ -22750,8 +22750,13 @@ public class BenjagestUiApplication extends Application {
                 state.vacationDays,
                 state.irpfPercent,
                 state.atEpPercent,
-                existing == null || existing.ssContributionGroup() == null
-                        ? Integer.valueOf(7) : existing.ssContributionGroup(),
+                // VIG-0: el grupo de cotización se DERIVA de la categoría elegida
+                // (el catálogo lo trae); si la categoría no lo define, se conserva
+                // el del contrato existente o por defecto el 7 (auxiliar admin).
+                state.category != null && state.category.ssContributionGroup() != null
+                        ? state.category.ssContributionGroup()
+                        : (existing == null || existing.ssContributionGroup() == null
+                                ? Integer.valueOf(7) : existing.ssContributionGroup()),
                 state.workplaceAddress == null || state.workplaceAddress.isBlank()
                         ? null : state.workplaceAddress,
                 existing == null ? "ACTIVE" : existing.status(),

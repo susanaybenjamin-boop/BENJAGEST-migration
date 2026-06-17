@@ -85,8 +85,8 @@ public class ContractCatalogService {
         });
         // 2) Categorías agregadas a su convenio
         jdbcTemplate.query("""
-                SELECT id, collective_agreement_id, group_code, category_name,
-                       min_annual_salary, min_monthly_salary, max_weekly_hours,
+                SELECT id, collective_agreement_id, group_code, ss_contribution_group,
+                       category_name, min_annual_salary, min_monthly_salary, max_weekly_hours,
                        probation_days, year_published, active
                   FROM professional_categories
                  WHERE active = TRUE
@@ -99,6 +99,7 @@ public class ContractCatalogService {
                     rs.getString("id"),
                     agreementId,
                     rs.getString("group_code"),
+                    rs.getObject("ss_contribution_group") instanceof Number n ? n.intValue() : null,
                     rs.getString("category_name"),
                     rs.getBigDecimal("min_annual_salary"),
                     rs.getBigDecimal("min_monthly_salary"),
