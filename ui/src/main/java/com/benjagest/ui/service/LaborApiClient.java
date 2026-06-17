@@ -1110,6 +1110,21 @@ public class LaborApiClient {
                 .POST(HttpRequest.BodyPublishers.ofString(b.toString())));
     }
 
+    /**
+     * IRPF-VOL — Tipo de retención sugerido (mínimo legal) para un empleado y un
+     * bruto anual. El editor de contrato lo muestra y avisa si la retención
+     * voluntaria es menor.
+     */
+    public java.math.BigDecimal suggestIrpfRate(String employeeId, java.math.BigDecimal annualGross, int year)
+            throws IOException, InterruptedException {
+        String url = baseUrl + "/labor/payslips/suggest-irpf?employeeId="
+                + java.net.URLEncoder.encode(employeeId, java.nio.charset.StandardCharsets.UTF_8)
+                + "&annualGross=" + (annualGross == null ? "0" : annualGross.toPlainString())
+                + "&year=" + year;
+        HttpResponse<String> r = send(req(url).GET());
+        return bigDec(r.body(), "rate");
+    }
+
     // ==== Topes de indemnización por año (V127, no-code) — N3(b) ====
 
     public java.util.List<com.benjagest.ui.model.SeveranceParamEntry> listSeveranceParams()
