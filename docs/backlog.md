@@ -46,10 +46,20 @@
 
 ---
 
-## 🐞 BUGS UX/NAV GLOBALES (reportados Benjamin 2026-06-16) — PRIORITARIO
+## 🐞 BUGS UX/NAV GLOBALES (reportados Benjamin 2026-06-16) — ✅ CERRADOS 2026-06-17
 
 > Dos bugs globales de la capa de UI/navegación. Causa ya diagnosticada; fix en
 > sesión enfocada (tocan muchos sitios → riesgo de regresión, §11.2). Hacerlos bien.
+>
+> **CERRADOS 2026-06-17** (feat/Benjamin): BUG-UX-2 en `7cc10fa`, BUG-NAV-1 en
+> `6131984`. Pendiente: validación visual de Benjamin (toast nuevo + recarga en
+> sitio) antes de mergear a develop. Hallazgo NAV-1: solo Labor (14 sitios) y
+> Facturación (2 sitios, CRUD de series) tenían el bug. **Compras** ya refrescaba
+> en sitio (`reloadPurchaseInvoices`) y **Contabilidad** usa instancias propias de
+> `AccountingScreen`/`ClientFinancialsScreen` sin acceso al centro del padre → no
+> tenían el bug. Fix con indirección `laborRefresh`/`billingRefresh` (patrón
+> `reloadRetaProfiles`). Helpers nuevos reusables: `toast()`, `highlightMissing()`,
+> `clearMissingOnChange()` + clases CSS `.toast`/`.field-error`.
 
 - **BUG-NAV-1 · La acción de un sub-tab pierde los tabs generales.** En "Mi gestión"
   (y la ficha de cliente), que se montan con `buildClientDetailView` (vista con

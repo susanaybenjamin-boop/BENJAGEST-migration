@@ -8160,7 +8160,16 @@ public class BenjagestUiApplication extends Application {
     //  no se inventan paletas; se reutilizan las clases de Pablo.
     // ===================================================================
 
+    // BUG-NAV-1 — Refresco contextual de Facturación. Las acciones que hoy
+    // recargan toda la pantalla (CRUD de series → showBilling()) llaman a
+    // billingRefresh.run(): standalone reemplaza el centro; embebido en
+    // "Mi gestión" recarga su holder en su sitio sin destruir las pestañas
+    // de la ficha. El listado de facturas ya refresca en sitio
+    // (reloadInvoices), así que solo el CRUD de series necesitaba esto.
+    private Runnable billingRefresh = this::showBilling;
+
     private void showBilling() {
+        billingRefresh = this::showBilling;
         Task<BillingBundle> task = new Task<>() {
             @Override
             protected BillingBundle call() throws Exception {
@@ -9773,7 +9782,7 @@ public class BenjagestUiApplication extends Application {
             ok.setHeaderText(null);
             ok.showAndWait();
             pendingBillingTab = "config";
-            showBilling();
+            billingRefresh.run();
         });
         task.setOnFailed(event -> showError(t("billing.config.migration.fail.title"),
                 t("billing.config.migration.fail.body")));
@@ -9902,7 +9911,7 @@ public class BenjagestUiApplication extends Application {
             // pestaña Configuracion para que el usuario vea su cambio
             // reflejado sin tener que cambiar de tab.
             pendingBillingTab = "config";
-            showBilling();
+            billingRefresh.run();
         });
         task.setOnFailed(ev -> showError(
                 existing == null ? t("billing.series.editor.fail.create.title") : t("billing.series.editor.fail.save.title"),
@@ -13960,6 +13969,64 @@ public class BenjagestUiApplication extends Application {
             alert.setTitle("BENJAGEST");
             alert.setHeaderText(title);
             alert.showAndWait();
+        });
+    }
+
+    /**
+     * BUG-UX-2 — Globo de notificación NO modal (toast) reutilizable.
+     * Aparece arriba-centro de la ventana indicada y se desvanece solo a
+     * los ~3 s. A diferencia de {@link #showError}, no bloquea ni
+     * interrumpe el flujo: es para avisos del tipo "te falta un campo",
+     * que no son errores reales. Patrón global pensado para reusar en
+     * cualquier diálogo (empezamos por el de calcular nómina).
+     */
+    private void toast(javafx.stage.Window owner, String message) {
+        if (owner == null || message == null) return;
+        Label label = new Label(message);
+        label.getStyleClass().add("toast");
+        label.setWrapText(true);
+        label.setMaxWidth(360);
+
+        javafx.stage.Popup popup = new javafx.stage.Popup();
+        popup.setAutoFix(true);
+        popup.getContent().add(label);
+        popup.show(owner);
+        // Centrar arriba una vez conocido el ancho real tras el layout.
+        Platform.runLater(() -> {
+            popup.setX(owner.getX() + (owner.getWidth() - label.getWidth()) / 2);
+            popup.setY(owner.getY() + 72);
+        });
+
+        javafx.animation.FadeTransition fade = new javafx.animation.FadeTransition(
+                javafx.util.Duration.millis(450), label);
+        fade.setDelay(javafx.util.Duration.seconds(2.4));
+        fade.setFromValue(1.0);
+        fade.setToValue(0.0);
+        fade.setOnFinished(e -> popup.hide());
+        fade.play();
+    }
+
+    /**
+     * BUG-UX-2 — Resalta un control obligatorio que falta (borde rojo) y
+     * le da el foco. El resaltado se quita solo cuando el usuario lo
+     * rellena (ver {@link #clearMissingOnChange}).
+     */
+    private void highlightMissing(javafx.scene.control.Control field) {
+        if (field == null) return;
+        if (!field.getStyleClass().contains("field-error")) {
+            field.getStyleClass().add("field-error");
+        }
+        field.requestFocus();
+    }
+
+    /**
+     * BUG-UX-2 — Engancha a un ComboBox para quitar el resaltado de
+     * "campo que falta" en cuanto el usuario selecciona un valor.
+     */
+    private void clearMissingOnChange(javafx.scene.control.ComboBox<?> combo) {
+        if (combo == null) return;
+        combo.valueProperty().addListener((o, ov, nv) -> {
+            if (nv != null) combo.getStyleClass().remove("field-error");
         });
     }
 
@@ -19181,7 +19248,19 @@ public class BenjagestUiApplication extends Application {
     // vuelva a la misma pestaña en lugar de saltar a "Empleados".
     private int laborTabIndex = 0;
 
+    // BUG-NAV-1 — Refresco contextual de Labor. Las ~14 acciones de los
+    // sub-tabs (calcular nómina, marcar pagada, borrar…) llaman a
+    // laborRefresh.run() en vez de a showLaborModule() directamente:
+    //   - Standalone (módulo del sidebar): apunta a showLaborModule(), que
+    //     reemplaza el centro. Es lo correcto, no hay pestañas de ficha.
+    //   - Embebido (Mi gestión / ficha de cliente): buildClientLaborTab()
+    //     lo reapunta a recargar SU holder en su sitio, sin destruir la
+    //     vista con pestañas. Mismo patrón que reloadRetaProfiles para RETA.
+    private Runnable laborRefresh = this::showLaborModule;
+
     private void showLaborModule() {
+        // Al entrar al módulo standalone, el refresco vuelve a ser standalone.
+        laborRefresh = this::showLaborModule;
         Task<LaborBundle> task = new Task<>() {
             @Override
             protected LaborBundle call() throws Exception {
@@ -19934,7 +20013,7 @@ public class BenjagestUiApplication extends Application {
         box.setPadding(new Insets(12));
         installDialog(d, box);
         d.showAndWait();
-        showLaborModule();
+        laborRefresh.run();
     }
 
     private void downloadTermDoc(String which, String employeeId, java.time.LocalDate date,
@@ -20573,7 +20652,7 @@ public class BenjagestUiApplication extends Application {
                         .replace("{skip}", String.valueOf(res.skipped()));
                 if (!res.errors().isEmpty()) msg += "\n\n" + String.join("\n", res.errors());
                 showInfo(t("labor.genmonth.title"), msg);
-                showLaborModule();
+                laborRefresh.run();
             });
             tk.setOnFailed(ev -> showError(t("labor.genmonth.title"),
                     humanizeBackendError(tk.getException() == null ? "" : tk.getException().getMessage())));
@@ -20711,7 +20790,7 @@ public class BenjagestUiApplication extends Application {
                             blankToNullOrSelf(notesArea.getText()), lines);
                 }
             };
-            task.setOnSucceeded(ev -> showLaborModule());
+            task.setOnSucceeded(ev -> laborRefresh.run());
             task.setOnFailed(ev -> showError(t("labor.settlement.title"),
                     humanizeBackendError(task.getException() == null ? "" : task.getException().getMessage())));
             start(task, "settlement-generate");
@@ -20806,7 +20885,7 @@ public class BenjagestUiApplication extends Application {
         content.setPadding(new Insets(12));
         installDialog(d, content);
         d.showAndWait();
-        showLaborModule();
+        laborRefresh.run();
     }
 
     /**
@@ -20921,7 +21000,7 @@ public class BenjagestUiApplication extends Application {
         content.setPadding(new Insets(12));
         installDialog(d, content);
         d.showAndWait();
-        showLaborModule();
+        laborRefresh.run();
     }
 
     private void showCalculatePayslipDialog(java.util.List<com.benjagest.ui.model.EmployeeEntry> employees,
@@ -20958,6 +21037,8 @@ public class BenjagestUiApplication extends Application {
         empCombo.setPromptText(t("labor.payslips.calc.employee.prompt"));
         // No autoseleccionar: forzar elección consciente para no nominar
         // por error al empleado equivocado (p. ej. el primero por orden).
+        // BUG-UX-2 — quita el resaltado rojo en cuanto se elige empleado.
+        clearMissingOnChange(empCombo);
 
         // Listado (solo lectura) de los complementos del contrato del empleado.
         Label contractCompsInfo = new Label(t("labor.payslips.calc.contract_comps.none"));
@@ -21147,13 +21228,26 @@ public class BenjagestUiApplication extends Application {
         installDialog(dialog, new VBox(10, g, new Separator(), contractCompsInfo,
                 extras.node, previewBox));
 
+        // BUG-UX-2 — Validar sin empleado NO debe cerrar el diálogo ni
+        // sacar un Alert: no es un error, es un campo que falta. El filtro
+        // de ACTION consume el evento (evita el cierre) y avisa con un
+        // toast no modal + resalta el combo.
+        final javafx.scene.Node saveNode = dialog.getDialogPane().lookupButton(saveBt);
+        saveNode.addEventFilter(javafx.event.ActionEvent.ACTION, ev -> {
+            if (empCombo.getValue() == null) {
+                ev.consume();
+                toast(dialog.getDialogPane().getScene().getWindow(),
+                        t("labor.payslips.calc.fail.no_employee"));
+                highlightMissing(empCombo);
+            }
+        });
+
         dialog.showAndWait().ifPresent(bt -> {
             if (bt != saveBt) return;
             var emp = empCombo.getValue();
-            if (emp == null) {
-                showError(t("labor.payslips.calc.fail.title"), t("labor.payslips.calc.fail.no_employee"));
-                return;
-            }
+            // El filtro de ACTION ya impide llegar aquí sin empleado; este
+            // guard queda como red de seguridad (no muestra error).
+            if (emp == null) return;
             java.math.BigDecimal other = parseDecSafe(otherField.getText());
             java.util.List<com.benjagest.ui.model.SalaryItemEntry> extraConcepts = extras.getComplements();
             Task<com.benjagest.ui.model.PayslipEntry> task = new Task<>() {
@@ -21165,7 +21259,7 @@ public class BenjagestUiApplication extends Application {
                             other, blankToNullOrSelf(notesArea.getText()), extraConcepts);
                 }
             };
-            task.setOnSucceeded(ev -> showLaborModule());
+            task.setOnSucceeded(ev -> laborRefresh.run());
             task.setOnFailed(ev -> {
                 Throwable ex = task.getException();
                 String detail = ex == null ? null : humanizeBackendError(ex.getMessage());
@@ -21246,7 +21340,7 @@ public class BenjagestUiApplication extends Application {
                     return null;
                 }
             };
-            task.setOnSucceeded(ev -> showLaborModule());
+            task.setOnSucceeded(ev -> laborRefresh.run());
             task.setOnFailed(ev -> showError(t("labor.payslips.calc.fail.title"), t("labor.payslips.calc.fail.body")));
             start(task, "payslip-deliver");
         });
@@ -21265,7 +21359,7 @@ public class BenjagestUiApplication extends Application {
                     return null;
                 }
             };
-            task.setOnSucceeded(ev -> showLaborModule());
+            task.setOnSucceeded(ev -> laborRefresh.run());
             task.setOnFailed(ev -> showError(t("labor.payslips.calc.fail.title"), t("labor.payslips.calc.fail.body")));
             start(task, "payslip-pay");
         });
@@ -21342,7 +21436,7 @@ public class BenjagestUiApplication extends Application {
                     return null;
                 }
             };
-            task.setOnSucceeded(ev -> showLaborModule());
+            task.setOnSucceeded(ev -> laborRefresh.run());
             task.setOnFailed(ev -> showError(t("labor.payslips.calc.fail.title"),
                     t("labor.payslips.calc.fail.body")));
             start(task, "payslip-delete");
@@ -21690,7 +21784,7 @@ public class BenjagestUiApplication extends Application {
                             order, isWork.isSelected(), isPause.isSelected(), active.isSelected());
                 }
             };
-            task.setOnSucceeded(ev -> showLaborModule());
+            task.setOnSucceeded(ev -> laborRefresh.run());
             task.setOnFailed(ev -> showError(t("labor.cfg_timeclock.editor.fail.title"),
                     t("labor.cfg_timeclock.editor.fail.body")));
             start(task, "tc-cfg-save");
@@ -21710,7 +21804,7 @@ public class BenjagestUiApplication extends Application {
                     return null;
                 }
             };
-            task.setOnSucceeded(ev -> showLaborModule());
+            task.setOnSucceeded(ev -> laborRefresh.run());
             task.setOnFailed(ev -> showError(t("labor.cfg_timeclock.editor.fail.title"),
                     t("labor.cfg_timeclock.editor.fail.body")));
             start(task, "tc-cfg-delete");
@@ -21998,7 +22092,7 @@ public class BenjagestUiApplication extends Application {
                                     roleSelected);
                 }
             };
-            task.setOnSucceeded(ev -> showLaborModule());
+            task.setOnSucceeded(ev -> laborRefresh.run());
             task.setOnFailed(ev -> {
                 Throwable err = task.getException();
                 String msg = err != null && err.getMessage() != null
@@ -22022,7 +22116,7 @@ public class BenjagestUiApplication extends Application {
                     return null;
                 }
             };
-            task.setOnSucceeded(ev -> showLaborModule());
+            task.setOnSucceeded(ev -> laborRefresh.run());
             task.setOnFailed(ev -> showError(t("labor.employee.editor.fail.title"),
                     t("labor.employee.editor.fail.body")));
             start(task, "labor-employee-delete");
@@ -22803,7 +22897,7 @@ public class BenjagestUiApplication extends Application {
             dialog.close();
             // CTR-4/5 — ofrecer descarga inmediata del PDF y XML
             offerContractDocumentDownloads(saved, state.pdfModel);
-            showLaborModule();
+            laborRefresh.run();
         });
         task.setOnFailed(ev -> {
             Throwable e = task.getException();
@@ -31723,11 +31817,22 @@ public class BenjagestUiApplication extends Application {
      */
     private Node buildOwnBillingTab() {
         VBox holder = new VBox();
-        Label loading = new Label(t("panorama.loading"));
-        loading.getStyleClass().add("settings-hint");
-        loading.setPadding(new Insets(12));
-        holder.getChildren().add(loading);
         VBox.setVgrow(holder, Priority.ALWAYS);
+        // BUG-NAV-1 — embebido en "Mi gestión": el refresco tras un CRUD de
+        // series recarga ESTE holder en su sitio, no el centro entero.
+        billingRefresh = () -> loadOwnBillingIntoHolder(holder);
+        loadOwnBillingIntoHolder(holder);
+        return holder;
+    }
+
+    /** Carga (o recarga en su sitio) la Facturación completa embebida. */
+    private void loadOwnBillingIntoHolder(VBox holder) {
+        if (holder.getChildren().isEmpty()) {
+            Label loading = new Label(t("panorama.loading"));
+            loading.getStyleClass().add("settings-hint");
+            loading.setPadding(new Insets(12));
+            holder.getChildren().add(loading);
+        }
         Task<BillingBundle> task = new Task<>() {
             @Override protected BillingBundle call() throws Exception {
                 List<SalesInvoiceSummary> invoices = billingApiClient.listInvoices(null, null, null, 200);
@@ -31743,7 +31848,6 @@ public class BenjagestUiApplication extends Application {
         task.setOnSucceeded(ev -> holder.getChildren().setAll(billingView(task.getValue())));
         task.setOnFailed(ev -> holder.getChildren().setAll(errorPanel(t("billing.shell.load_failed"))));
         start(task, "own-billing-load");
-        return holder;
     }
 
     /**
@@ -32080,9 +32184,24 @@ public class BenjagestUiApplication extends Application {
     private Node buildClientLaborTab() {
         VBox holder = new VBox();
         holder.setPadding(new Insets(12));
-        Label loading = new Label(t("panorama.loading"));
-        loading.getStyleClass().add("settings-hint");
-        holder.getChildren().add(loading);
+        // BUG-NAV-1 — embebido en la ficha: el refresco tras una acción
+        // recarga ESTE holder en su sitio, sin reemplazar el centro (que
+        // borraría las pestañas de la ficha). loadLaborIntoHolder es la
+        // versión reusable del cargador (también lo invoca laborRefresh).
+        laborRefresh = () -> loadLaborIntoHolder(holder);
+        loadLaborIntoHolder(holder);
+        return holder;
+    }
+
+    /** Carga (o recarga en su sitio) el módulo Labor embebido en un holder. */
+    private void loadLaborIntoHolder(VBox holder) {
+        // Solo mostrar "Cargando…" en la primera carga; en los refrescos se
+        // mantiene el contenido anterior hasta que llega el nuevo (sin parpadeo).
+        if (holder.getChildren().isEmpty()) {
+            Label loading = new Label(t("panorama.loading"));
+            loading.getStyleClass().add("settings-hint");
+            holder.getChildren().add(loading);
+        }
         Task<LaborBundle> task = new Task<>() {
             @Override
             protected LaborBundle call() throws Exception {
@@ -32101,7 +32220,6 @@ public class BenjagestUiApplication extends Application {
         task.setOnFailed(ev ->
                 holder.getChildren().setAll(errorPanel(t("labor.load_failed"))));
         start(task, "client-labor-full");
-        return holder;
     }
 
     /**
