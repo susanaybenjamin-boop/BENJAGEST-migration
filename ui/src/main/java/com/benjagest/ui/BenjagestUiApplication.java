@@ -16530,6 +16530,16 @@ public class BenjagestUiApplication extends Application {
             case "labor.contract.editor.title_new" -> "New contract";
             case "labor.contract.editor.title_edit" -> "Edit contract";
             case "labor.contract.editor.save" -> "Save";
+            case "labor.contracts.action.promote" -> "Promote / change conditions";
+            case "labor.contract.promote.title" -> "Promote / change conditions";
+            case "labor.contract.promote.hint" -> "Records a change of conditions (raise, category change…) effective from a date, keeping the SAME contract. Seniority is NOT touched and payslips of earlier periods keep the previous terms. A new validity record is created.";
+            case "labor.contract.promote.effective_from" -> "Effective date";
+            case "labor.contract.promote.reason" -> "Reason for the change (optional)";
+            case "labor.contract.promote.reason.prompt" -> "e.g. Annual collective-agreement raise, promotion to Officer 1st…";
+            case "labor.contract.promote.save" -> "Apply change";
+            case "labor.contract.promote.no_date" -> "Enter the effective date of the change.";
+            case "labor.contract.promote.fail.title" -> "Could not apply the change";
+            case "labor.contract.promote.fail.body" -> "The promotion could not be saved. Please review the data and try again.";
             case "labor.contract.editor.type" -> "Type";
             case "labor.contract.editor.sepe" -> "SEPE code";
             case "labor.contract.editor.agreement" -> "Collective agreement";
@@ -17174,6 +17184,16 @@ public class BenjagestUiApplication extends Application {
             case "labor.contract.editor.title_new" -> "Nuevo contrato";
             case "labor.contract.editor.title_edit" -> "Editar contrato";
             case "labor.contract.editor.save" -> "Guardar";
+            case "labor.contracts.action.promote" -> "Ascender / cambiar condiciones";
+            case "labor.contract.promote.title" -> "Ascender / cambiar condiciones";
+            case "labor.contract.promote.hint" -> "Registra un cambio de condiciones (subida, cambio de categoría…) con fecha de efecto, manteniendo el MISMO contrato. La antigüedad NO se toca y las nóminas de periodos anteriores conservan las condiciones previas. Se crea una nueva vigencia.";
+            case "labor.contract.promote.effective_from" -> "Fecha de efecto";
+            case "labor.contract.promote.reason" -> "Motivo del cambio (opcional)";
+            case "labor.contract.promote.reason.prompt" -> "p. ej. Subida de convenio anual, ascenso a Oficial 1ª…";
+            case "labor.contract.promote.save" -> "Aplicar cambio";
+            case "labor.contract.promote.no_date" -> "Indica la fecha de efecto del cambio.";
+            case "labor.contract.promote.fail.title" -> "No se pudo aplicar el cambio";
+            case "labor.contract.promote.fail.body" -> "No se pudo guardar el ascenso. Revisa los datos e inténtalo de nuevo.";
             case "labor.contract.editor.type" -> "Tipo";
             case "labor.contract.editor.sepe" -> "Codigo SEPE";
             case "labor.contract.editor.agreement" -> "Convenio colectivo";
@@ -22217,12 +22237,25 @@ public class BenjagestUiApplication extends Application {
             var sel = contractsTable.getSelectionModel().getSelectedItem();
             if (sel != null) downloadContractDocument(sel.id(), null, "xml");
         });
+        // VIG-3 — "Ascender / cambiar condiciones": abre el editor en modo
+        // ascenso (fecha de efecto + nueva vigencia, antigüedad intacta).
+        Button promoteC = new Button(t("labor.contracts.action.promote"));
+        promoteC.setGraphic(icon("fas-arrow-up"));
+        promoteC.setDisable(true);
+        promoteC.setOnAction(ev -> {
+            var sel = contractsTable.getSelectionModel().getSelectedItem();
+            if (sel != null) {
+                showContractEditor(employee, sel, true);
+                dialog.close();
+            }
+        });
         contractsTable.getSelectionModel().selectedItemProperty().addListener((o, ov, nv) -> {
             editC.setDisable(nv == null);
+            promoteC.setDisable(nv == null);
             pdfBtn.setDisable(nv == null);
             xmlBtn.setDisable(nv == null);
         });
-        HBox actions = new HBox(8, newC, editC, pdfBtn, xmlBtn);
+        HBox actions = new HBox(8, newC, editC, promoteC, pdfBtn, xmlBtn);
         VBox body = new VBox(12, contractsTable, actions);
         body.setPadding(new Insets(10));
         installDialog(dialog, body);
@@ -23260,10 +23293,25 @@ public class BenjagestUiApplication extends Application {
 
     private void showContractEditor(com.benjagest.ui.model.EmployeeEntry employee,
                                      com.benjagest.ui.model.ContractEntry existing) {
+        showContractEditor(employee, existing, false);
+    }
+
+    /**
+     * VIG-3 — Editor de contrato. Con {@code promoteMode=true} actúa como
+     * "Ascender / cambiar condiciones": pide fecha de efecto + motivo, deja
+     * fijos los datos que el ascenso NO cambia (tipo, SEPE, fechas, antigüedad,
+     * estado, centro) y guarda vía /promote (nueva vigencia, antigüedad
+     * intacta). Solo válido sobre un contrato existente.
+     */
+    private void showContractEditor(com.benjagest.ui.model.EmployeeEntry employee,
+                                     com.benjagest.ui.model.ContractEntry existing,
+                                     boolean promoteMode) {
         Dialog<ButtonType> dialog = new Dialog<>();
-        dialog.setTitle((existing == null ? t("labor.contract.editor.title_new")
+        dialog.setTitle((promoteMode ? t("labor.contract.promote.title")
+                : existing == null ? t("labor.contract.editor.title_new")
                 : t("labor.contract.editor.title_edit")) + " — " + employee.fullName());
-        ButtonType saveBt = new ButtonType(t("labor.contract.editor.save"), ButtonBar.ButtonData.OK_DONE);
+        ButtonType saveBt = new ButtonType(promoteMode ? t("labor.contract.promote.save")
+                : t("labor.contract.editor.save"), ButtonBar.ButtonData.OK_DONE);
         dialog.getDialogPane().getButtonTypes().addAll(saveBt, ButtonType.CANCEL);
 
         TextField typeField = new TextField(existing == null ? "Indefinido" : existing.contractType());
@@ -23304,6 +23352,23 @@ public class BenjagestUiApplication extends Application {
         localizeEnumCombo(statusCombo, "contract_status");
         statusCombo.getSelectionModel().select(existing == null ? "ACTIVE" : existing.status());
 
+        // VIG-3 — Campos del ascenso (fecha de efecto + motivo) y bloqueo de los
+        // datos que el ascenso NO cambia: tipo, SEPE, fechas, antigüedad, estado y
+        // centro. La antigüedad se conserva (promote no toca start/seniority).
+        TextField effectiveField = new TextField(LocalDate.now().toString());
+        effectiveField.setPromptText("AAAA-MM-DD");
+        TextField reasonField = new TextField();
+        reasonField.setPromptText(t("labor.contract.promote.reason.prompt"));
+        if (promoteMode) {
+            for (TextField f : new TextField[]{typeField, sepeField, startField,
+                    seniorityField, endField, workplaceField}) {
+                f.setDisable(true);
+            }
+            statusCombo.setDisable(true);
+            effectiveField.textProperty().addListener((o, ov, nv) ->
+                    effectiveField.getStyleClass().remove("field-error"));
+        }
+
         GridPane g = new GridPane();
         g.setHgap(10); g.setVgap(8); g.setPadding(new Insets(10));
         int row = 0;
@@ -23327,8 +23392,34 @@ public class BenjagestUiApplication extends Application {
         g.add(new Label(t("labor.contract.editor.workplace")), 0, row); g.add(workplaceField, 1, row, 3, 1);
 
         Separator sep = new Separator();
-        VBox editorBox = new VBox(10, g, sep, compEditor.node);
+        VBox editorBox = new VBox(10);
+        if (promoteMode) {
+            Label promoteHint = new Label(t("labor.contract.promote.hint"));
+            promoteHint.setWrapText(true);
+            promoteHint.getStyleClass().add("settings-hint");
+            GridPane pg = new GridPane();
+            pg.setHgap(10); pg.setVgap(8);
+            pg.add(new Label(t("labor.contract.promote.effective_from")), 0, 0); pg.add(effectiveField, 1, 0);
+            pg.add(new Label(t("labor.contract.promote.reason")), 0, 1); pg.add(reasonField, 1, 1, 3, 1);
+            editorBox.getChildren().addAll(promoteHint, pg, new Separator());
+        }
+        editorBox.getChildren().addAll(g, sep, compEditor.node);
         installDialog(dialog, editorBox);
+
+        // VIG-3 — validar la fecha de efecto sin cerrar el diálogo (reusa el
+        // patrón toast/consume del BUG-UX-2).
+        if (promoteMode) {
+            final javafx.scene.Node saveNode = dialog.getDialogPane().lookupButton(saveBt);
+            saveNode.addEventFilter(javafx.event.ActionEvent.ACTION, ev -> {
+                if (parseDateSafe(effectiveField.getText()) == null) {
+                    ev.consume();
+                    toast(dialog.getDialogPane().getScene().getWindow(),
+                            t("labor.contract.promote.no_date"));
+                    highlightMissing(effectiveField);
+                }
+            });
+        }
+
         dialog.showAndWait().ifPresent(bt -> {
             if (bt != saveBt) return;
             // Conceptos: salario base (campo) + complementos (editor).
@@ -23362,17 +23453,23 @@ public class BenjagestUiApplication extends Application {
                     existing == null ? null : existing.probationDays(),
                     existing == null ? null : existing.pdfModel(),
                     items);
+            final String effFrom = promoteMode ? effectiveField.getText().trim() : null;
+            final String promoteReason = promoteMode ? blankToNullOrSelf(reasonField.getText()) : null;
             Task<com.benjagest.ui.model.ContractEntry> task = new Task<>() {
                 @Override protected com.benjagest.ui.model.ContractEntry call() throws Exception {
+                    if (promoteMode) {
+                        return laborApiClient.promoteContract(existing.id(), effFrom, promoteReason, payload);
+                    }
                     return existing == null
                             ? laborApiClient.createContract(payload)
                             : laborApiClient.updateContract(existing.id(), payload);
                 }
             };
             task.setOnSucceeded(ev -> showEmployeeContracts(employee));
-            task.setOnFailed(ev -> showError(t("labor.contract.editor.fail.title"),
-                    t("labor.contract.editor.fail.body")));
-            start(task, "labor-contract-save");
+            task.setOnFailed(ev -> showError(
+                    promoteMode ? t("labor.contract.promote.fail.title") : t("labor.contract.editor.fail.title"),
+                    promoteMode ? t("labor.contract.promote.fail.body") : t("labor.contract.editor.fail.body")));
+            start(task, promoteMode ? "labor-contract-promote" : "labor-contract-save");
         });
     }
 

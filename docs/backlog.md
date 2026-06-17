@@ -19,23 +19,29 @@
 > seguir con el resto de la cola. Orden sugerido:
 
 - **N1 · CONTRATO-VIGENCIAS** (ascenso + derivar grupo) → bloque detallado abajo.
-  ✅ **VIG-0** hecho (derivar grupo de la categoría). Sigue **VIG-1** (tabla de
-  vigencias) → VIG-2 (resolución en motor) → VIG-3 (UI ascenso) → VIG-4 (atrasos).
-- **N2 · NOM paso 4 (refinamientos del clamp por grupo)** *(de item #3)*:
+  ✅ **VIG-0/1/2** hechos. ✅ **VIG-3 (UI ascenso)** *(2026-06-17, 4a6d226)*:
+  diálogo "Ascender / cambiar condiciones" (fecha de efecto + motivo → /promote,
+  nueva vigencia, antigüedad intacta). Sigue **VIG-4** (atrasos). *Pendiente menor
+  VIG-3: bloquear edición destructiva de start_date/antigüedad en contratos CON
+  nóminas (requiere check backend hasPayslips).*
+- **N2 · NOM paso 4 (refinamientos del clamp por grupo)** *(de item #3)* — ⬜
+  **PENDIENTE, a validar con caso real (legal-sensible, toca importes):**
   desglose **BCCC/BCCP** (mín del grupo solo en contingencias comunes; mín común
   1.424,40 en AT/EP, desempleo, FOGASA, FP); **tiempo parcial** (base por horas /
   base mínima horaria, leer `weekly_hours` — hoy se ignora, sobrecotiza parciales);
   **grupos 8-11 base diaria** (base diaria × días). Validar con caso real.
 - **N3 · NO-CODE de nómina** *(principio Benjamin: nada legal hardcodeado)*:
+  ✅ **N3(a)** *(2026-06-17, fdc4df8)*: quitados los fallbacks 2026 a fuego de
+  `SsContributionRatesService` e `IrpfRetentionService` → lanzan 422 si la tabla
+  está vacía (el fallback al último año ≤ pedido se mantiene). ⬜ **N3(b) PENDIENTE**:
   topes de **indemnización** (33/720/45/1260/20/360 días, exención 180.000€) en
-  `TerminationService` → tabla por año editable; quitar los **fallbacks
-  hardcodeados 2026** de `SsContributionRatesService` e `IrpfRetentionService`
-  (que devuelven 2026 en silencio si la tabla está vacía → lanzar excepción o usar
-  último año con aviso). Forma parte del NO-CODE-YEAR-AUDIT general.
-- **N4 · Bugs menores del ciclo de vida** *(auditoría 4 agentes 2026-06-16)*:
-  el asistente de contrato no guarda `professional_category`; `markPaid` debería
-  bloquear re-pago de una nómina ya PAID; validar **NIF** del empleado (formato +
-  único por empresa); revisar vacaciones **/360 vs /365** contra CONTENDO.
+  `TerminationService` → tabla por año editable.
+- **N4 · Bugs menores del ciclo de vida** *(auditoría 4 agentes 2026-06-16)* —
+  ✅ **CERRADO** *(2026-06-17, 0cdf0e4)*: validación **NIF** (formato laxo como
+  CONTENDO + único por empresa) + vacaciones del finiquito a **/365** (criterio
+  legal/estándar, barrido A3Nom/INEAF; coherente con la indemnización). El
+  `professional_category` ya lo guardaba el wizard (verificado); `markPaid`
+  re-pago ya estaba cerrado (0e6c566).
 - **N5 · Incidencias de nómina** *(item #4 de la cola)* — portar de CONTENDO:
   horas extra, ausencias/bajas, complementos variables por periodo, que alimentan
   el cálculo. (Toca el cálculo → mismo cuidado legal.)
@@ -142,14 +148,17 @@
   `PayslipService.resolveActiveContract` lee la vigencia vigente a la fecha del
   periodo (COALESCE con fallback al contrato). Behavior-preserving con 1 vigencia;
   query verificada contra BD. **Validar con caso real al ascender.**
-- 🔵 **VIG-3** *(backend hecho 2026-06-16, a8bd3ab; falta UI)*: create()/update()
+- ✅ **VIG-3** *(backend a8bd3ab 2026-06-16; UI 4a6d226 2026-06-17)*: create()/update()
   sincronizan la vigencia (alta=crea inicial; editar=actualiza la última);
   `promote()` + endpoint `POST /contracts/{id}/promote` = ascenso con fecha de
-  efecto (nueva vigencia, antigüedad intacta). SQL validadas + backend arranca OK.
-  ⬜ **PENDIENTE: UI "Ascender / cambiar condiciones"** (diálogo: fecha de efecto +
-  nuevos datos → llama a /promote) + bloquear edición destructiva de start_date/
-  antigüedad en contratos con nóminas. Distinguir cambio de categoría (variación
-  SS) vs cambio de tipo de contrato (novación SEPE 100/200/300). + e2e real.
+  efecto (nueva vigencia, antigüedad intacta). **UI hecha**: botón "Ascender /
+  cambiar condiciones" en el diálogo de contratos del empleado → editor en modo
+  ascenso (fecha de efecto + motivo, bloquea tipo/SEPE/fechas/antigüedad/estado,
+  valida la fecha con toast). `LaborApiClient.promoteContract`.
+  ⬜ **Pendiente menor**: bloquear edición destructiva de start_date/antigüedad en
+  contratos CON nóminas en el editor normal (requiere check backend hasPayslips).
+  Distinguir cambio de categoría (variación SS) vs cambio de tipo de contrato
+  (novación SEPE 100/200/300). + e2e real al ascender.
 - **VIG-4 (atrasos de convenio)**: cálculo de atrasos comparando vigencias en el
   periodo afectado (caso de uso que justifica el histórico). Para más adelante.
 
