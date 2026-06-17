@@ -46,6 +46,25 @@
 
 ---
 
+## 2026-06-16 — BLOQUE FICHAJE-MÓVIL/KIOSCO (pedido Benjamin) 📱
+
+> Benjamin: falta el **fichaje en modo MÓVIL y KIOSCO (tablet)** con **invitación**,
+> **igual que en CONTENDO** (ver `C:\Proyectos\CONTENDO GESTIONES`, app180-frontend +
+> servicios de fichaje). Reglas: por ley (RD-Ley 8/2019 registro de jornada), datos
+> año-dependientes en tablas, hacerlo bien. Plan (explorar CONTENDO primero):
+> - **FM-0**: explorar el modelo CONTENDO (cómo invita, cómo ficha, geo, PIN/token,
+>   kiosco vs móvil). Portar fielmente.
+> - **FM-1 (invitación)**: token/QR/PIN por empleado para acceder al fichaje sin login
+>   completo (additive; NO tocar AuthService core — reusar `employees.pin_hash` V3 +
+>   device tokens V70). Endpoint de canje de invitación.
+> - **FM-2 (móvil web)**: página de fichaje servida por el backend (Spring), accesible
+>   desde el móvil en la LAN, con geolocalización (reusar GEO-FICHAR), entrada/salida,
+>   pausas. Responsive.
+> - **FM-3 (kiosco/tablet)**: vista a pantalla completa (dispositivo compartido en el
+>   centro), el empleado ficha con su PIN; la misma web en modo kiosco o vista JavaFX.
+> - **FM-4**: que lo fichado alimente Jornadas/partes (PORT-2) y el calendario laboral.
+> Coherente con despliegue local ("todo es un puesto").
+
 ## 2026-06-16 — BLOQUE CONTRATO-VIGENCIAS (decidido por Benjamin) 🔵
 
 > Decisión Benjamin tras barrido legal + competencia (A3Nom/Nóminasol/Factorial):
