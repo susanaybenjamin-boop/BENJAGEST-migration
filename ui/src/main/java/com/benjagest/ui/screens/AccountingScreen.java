@@ -1225,19 +1225,54 @@ public class AccountingScreen {
     //  REPORTS-UI — Libro Mayor, Sumas y Saldos, Balance de Situación, PyG
     // ====================================================================
 
+    /**
+     * Hace un ComboBox editable FILTRABLE al teclear: con el campo vacío muestra
+     * TODAS las opciones; al escribir filtra por subcadena (código o nombre). Es
+     * la versión local del helper de la app (AccountingScreen es clase aparte).
+     */
+    private void installAccountFilter(ComboBox<String> combo, List<String> all) {
+        final List<String> master = new ArrayList<>(all);
+        combo.getItems().setAll(master);
+        final boolean[] guard = {false};
+        combo.getEditor().textProperty().addListener((obs, ov, nv) -> {
+            if (guard[0]) return;
+            guard[0] = true;
+            try {
+                String q = nv == null ? "" : nv.toLowerCase().trim();
+                if (q.isEmpty()) {
+                    combo.getItems().setAll(master);
+                } else {
+                    List<String> f = new ArrayList<>();
+                    for (String it : master) if (it.toLowerCase().contains(q)) f.add(it);
+                    combo.getItems().setAll(f);
+                    if (!combo.isShowing()) combo.show();
+                }
+                combo.getEditor().setText(nv);
+                combo.getEditor().positionCaret(nv == null ? 0 : nv.length());
+            } finally {
+                guard[0] = false;
+            }
+        });
+    }
+
     /** Libro Mayor: elige cuenta + rango → movimientos con saldo corriente. */
     private Node buildLedgerTab() {
-        ComboBox<AccountSummary> accountCombo = new ComboBox<>();
+        // Combo de cuenta EDITABLE y FILTRABLE al teclear: si el campo está vacío
+        // se ven todas las cuentas; al escribir se filtra por código o nombre.
+        ComboBox<String> accountCombo = new ComboBox<>();
+        accountCombo.setEditable(true);
         accountCombo.setPrefWidth(360);
-        accountCombo.setConverter(new javafx.util.StringConverter<>() {
-            @Override public String toString(AccountSummary a) {
-                return a == null ? "" : a.code() + " — " + a.name();
+        final java.util.Map<String, AccountSummary> accountsByLabel = new java.util.LinkedHashMap<>();
+        async(() -> api.listAccounts(null), accts -> {
+            accountsByLabel.clear();
+            List<String> labels = new ArrayList<>();
+            for (AccountSummary a : accts) {
+                String label = a.code() + " — " + a.name();
+                accountsByLabel.put(label, a);
+                labels.add(label);
             }
-            @Override public AccountSummary fromString(String s) { return null; }
-        });
-        async(() -> api.listAccounts(null),
-                accts -> accountCombo.setItems(FXCollections.observableArrayList(accts)),
-                err -> logSilent("ledger-accounts", err));
+            installAccountFilter(accountCombo, labels);
+        }, err -> logSilent("ledger-accounts", err));
 
         DatePicker from = new DatePicker(LocalDate.now().withDayOfYear(1));
         DatePicker to = new DatePicker(LocalDate.now().withMonth(12).withDayOfMonth(31));
@@ -1261,9 +1296,12 @@ public class AccountingScreen {
         Button view = new Button(tt.apply("accounting.action.view"));
         view.getStyleClass().add("primary-button");
         Runnable run = () -> {
-            AccountSummary a = accountCombo.getValue();
-            if (a == null) { showError(tt.apply("accounting.report.fail"), tt.apply("accounting.ledger.pick_account")); return; }
-            async(() -> api.ledger(a.id(), from.getValue(), to.getValue()), lv -> {
+            String label = accountCombo.getEditor().getText();
+            AccountSummary sel = accountsByLabel.get(label);
+            if (sel == null) sel = accountsByLabel.get(accountCombo.getValue());
+            if (sel == null) { showError(tt.apply("accounting.report.fail"), tt.apply("accounting.ledger.pick_account")); return; }
+            final String accId = sel.id();
+            async(() -> api.ledger(accId, from.getValue(), to.getValue()), lv -> {
                 table.setItems(FXCollections.observableArrayList(lv.movements()));
                 opening.setText(tt.apply("accounting.ledger.opening") + " " + eur(lv.openingBalance()));
                 closing.setText(tt.apply("accounting.ledger.closing") + " " + eur(lv.closingBalance()));
