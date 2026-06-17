@@ -33,9 +33,12 @@
 - **N3 · NO-CODE de nómina** *(principio Benjamin: nada legal hardcodeado)*:
   ✅ **N3(a)** *(2026-06-17, fdc4df8)*: quitados los fallbacks 2026 a fuego de
   `SsContributionRatesService` e `IrpfRetentionService` → lanzan 422 si la tabla
-  está vacía (el fallback al último año ≤ pedido se mantiene). ⬜ **N3(b) PENDIENTE**:
-  topes de **indemnización** (33/720/45/1260/20/360 días, exención 180.000€) en
-  `TerminationService` → tabla por año editable.
+  está vacía (el fallback al último año ≤ pedido se mantiene). ✅ **N3(b)**
+  *(2026-06-17, a2dc7a6)*: topes de **indemnización** (33/720/45/1260/20/360 días,
+  exención 180.000€) a tabla no-code `severance_params` (V127, seed 2012 = valores
+  actuales, behavior-preserving) + `SeveranceParamsService` + `TerminationService`
+  la lee por el año del cese + pestaña "Indemnización" en Laboral. `REFORM_2012`
+  (hito legal fijo) se queda en código.
 - **N4 · Bugs menores del ciclo de vida** *(auditoría 4 agentes 2026-06-16)* —
   ✅ **CERRADO** *(2026-06-17, 0cdf0e4)*: validación **NIF** (formato laxo como
   CONTENDO + único por empresa) + vacaciones del finiquito a **/365** (criterio

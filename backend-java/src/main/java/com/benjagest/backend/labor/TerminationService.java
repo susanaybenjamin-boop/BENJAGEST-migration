@@ -31,18 +31,21 @@ import org.springframework.web.server.ResponseStatusException;
 @Service
 public class TerminationService {
 
-    /** RD-Ley 3/2012: el tramo de 45 días/año aplica a servicios anteriores. */
+    /** RD-Ley 3/2012: el tramo de 45 días/año aplica a servicios anteriores.
+     *  Es un hito legal fijo (no parámetro por año), se queda en código. */
     private static final LocalDate REFORM_2012 = LocalDate.of(2012, 2, 12);
-    private static final BigDecimal IRPF_EXEMPT_CAP = BigDecimal.valueOf(180_000);
 
     private final JdbcTemplate jdbc;
     private final TenantContext tenant;
     private final PayslipService payslipService;
+    private final SeveranceParamsService severanceParamsService;
 
-    public TerminationService(JdbcTemplate jdbc, TenantContext tenant, PayslipService payslipService) {
+    public TerminationService(JdbcTemplate jdbc, TenantContext tenant, PayslipService payslipService,
+                              SeveranceParamsService severanceParamsService) {
         this.jdbc = jdbc;
         this.tenant = tenant;
         this.payslipService = payslipService;
+        this.severanceParamsService = severanceParamsService;
     }
 
     public record TerminationRequest(
@@ -98,30 +101,41 @@ public class TerminationService {
         java.time.Period per = java.time.Period.between(start, cese.plusDays(1));
         int antiqY = per.getYears(), antiqM = per.getMonths(), antiqD = per.getDays();
 
+        // N3(b) — días/año, topes y exención de IRPF leídos de tabla no-code
+        // (severance_params) por el año del cese. Antes estaban a fuego.
+        SeveranceParamsService.Params sp = severanceParamsService.paramsForYear(cese.getYear());
+        double unfairPerYear = sp.unfairDaysPerYear().doubleValue();
+        double unfairCap = sp.unfairCapDays();
+        double pre2012PerYear = sp.unfairPre2012DaysPerYear().doubleValue();
+        double pre2012Cap = sp.unfairPre2012CapDays();
+
         double indemDays;
         boolean exempt;
         switch (type == null ? "" : type) {
             case "DISMISSAL_UNFAIR" -> {
                 if (!start.isBefore(REFORM_2012)) {
-                    indemDays = Math.min(33 * years, 720);
+                    indemDays = Math.min(unfairPerYear * years, unfairCap);
                 } else {
                     double yearsBefore = (ChronoUnit.DAYS.between(start, REFORM_2012)) / 365.0;
                     double yearsAfter = (ChronoUnit.DAYS.between(REFORM_2012, cese) + 1) / 365.0;
-                    double daysBefore = 45 * yearsBefore;
-                    double daysAfter = 33 * yearsAfter;
+                    double daysBefore = pre2012PerYear * yearsBefore;
+                    double daysAfter = unfairPerYear * yearsAfter;
                     double total = daysBefore + daysAfter;
-                    double maxDays = daysBefore <= 720 ? 720 : Math.min(daysBefore, 1260);
+                    double maxDays = daysBefore <= unfairCap ? unfairCap : Math.min(daysBefore, pre2012Cap);
                     indemDays = Math.min(total, maxDays);
                 }
                 exempt = true;
             }
-            case "DISMISSAL_OBJECTIVE" -> { indemDays = Math.min(20 * years, 360); exempt = true; }
-            case "END_OF_CONTRACT" -> { indemDays = 12 * years; exempt = false; }
+            case "DISMISSAL_OBJECTIVE" -> {
+                indemDays = Math.min(sp.objectiveDaysPerYear().doubleValue() * years, sp.objectiveCapDays());
+                exempt = true;
+            }
+            case "END_OF_CONTRACT" -> { indemDays = sp.endContractDaysPerYear().doubleValue() * years; exempt = false; }
             default -> { indemDays = 0; exempt = false; } // voluntaria, disciplinario, jubilación
         }
         BigDecimal days = BigDecimal.valueOf(indemDays).setScale(2, RoundingMode.HALF_UP);
         BigDecimal gross = dailySalary.multiply(days).setScale(2, RoundingMode.HALF_UP);
-        BigDecimal exemptAmt = exempt ? gross.min(IRPF_EXEMPT_CAP) : zero;
+        BigDecimal exemptAmt = exempt ? gross.min(sp.irpfExemptCap()) : zero;
         BigDecimal taxable = gross.subtract(exemptAmt).max(zero);
         return new Severance(gross, exemptAmt.setScale(2), taxable.setScale(2),
                 days, antiquity, dailySalary.setScale(2, RoundingMode.HALF_UP),
