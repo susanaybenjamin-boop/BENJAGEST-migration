@@ -16572,7 +16572,10 @@ public class BenjagestUiApplication extends Application {
             case "labor.contract.editor.bonuses" -> "Annual bonuses";
             case "labor.contract.editor.prorated" -> "Extra payments prorated (paid across 12 months)";
             case "labor.contract.editor.vacation" -> "Vacation days";
-            case "labor.contract.editor.irpf" -> "IRPF %";
+            case "labor.contract.editor.irpf" -> "Income-tax %";
+            case "labor.contract.editor.irpf_suggest" -> "Suggest";
+            case "labor.contract.editor.irpf_suggested" -> "Suggested (legal minimum): {pct} %. You may raise it (voluntary), not lower it.";
+            case "labor.contract.editor.irpf_below_min" -> "The % is below the calculated legal minimum. By law you can only raise it, not lower it.";
             case "labor.contract.editor.at_ep" -> "Occupational accident % (AT/EP)";
             case "labor.contract.editor.ss_group" -> "Contribution group (1-11)";
             case "labor.contract.salary.title" -> "Salary complements";
@@ -17245,6 +17248,9 @@ public class BenjagestUiApplication extends Application {
             case "labor.contract.editor.prorated" -> "Pagas extra prorrateadas (repartidas en 12 mensualidades)";
             case "labor.contract.editor.vacation" -> "Vacaciones";
             case "labor.contract.editor.irpf" -> "IRPF %";
+            case "labor.contract.editor.irpf_suggest" -> "Sugerir";
+            case "labor.contract.editor.irpf_suggested" -> "Sugerido (mínimo legal): {pct} %. Puedes subirlo (voluntario), no bajarlo.";
+            case "labor.contract.editor.irpf_below_min" -> "El % es inferior al mínimo legal calculado. Por ley solo puedes subirlo, no bajarlo.";
             case "labor.contract.editor.at_ep" -> "% Accidentes trabajo (AT/EP)";
             case "labor.contract.editor.ss_group" -> "Grupo de cotización (1-11)";
             case "labor.contract.salary.title" -> "Complementos salariales";
@@ -23419,6 +23425,48 @@ public class BenjagestUiApplication extends Application {
                     effectiveField.getStyleClass().remove("field-error"));
         }
 
+        // IRPF-VOL — Botón "Sugerir": calcula el tipo de retención (mínimo legal,
+        // del Modelo 145 del empleado o estimación por tramos) y lo muestra; si el
+        // campo está vacío lo rellena, y si el tecleado es MENOR avisa (por ley
+        // solo se puede subir, no bajar). El campo sigue siendo el % voluntario.
+        Button suggestIrpfBtn = new Button(t("labor.contract.editor.irpf_suggest"));
+        suggestIrpfBtn.getStyleClass().add("button-secondary");
+        Label irpfSuggestLbl = new Label("");
+        irpfSuggestLbl.getStyleClass().add("settings-hint");
+        irpfSuggestLbl.setWrapText(true);
+        suggestIrpfBtn.setOnAction(ev -> {
+            java.math.BigDecimal annualGross = parseDecSafe(salaryField.getText());
+            if (annualGross == null) annualGross = java.math.BigDecimal.ZERO;
+            for (var it : compEditor.getComplements()) {
+                if (it.annualAmount() != null) annualGross = annualGross.add(it.annualAmount());
+            }
+            final java.math.BigDecimal ag = annualGross;
+            java.time.LocalDate sd = parseDateSafe(startField.getText());
+            final int yr = sd != null ? sd.getYear() : java.time.LocalDate.now().getYear();
+            Task<java.math.BigDecimal> tk = new Task<>() {
+                @Override protected java.math.BigDecimal call() throws Exception {
+                    return laborApiClient.suggestIrpfRate(employee.id(), ag, yr);
+                }
+            };
+            tk.setOnSucceeded(e2 -> {
+                java.math.BigDecimal sug = tk.getValue();
+                irpfSuggestLbl.setText(t("labor.contract.editor.irpf_suggested")
+                        .replace("{pct}", sug == null ? "?" : sug.toPlainString()));
+                java.math.BigDecimal cur = parseDecSafe(irpfField.getText());
+                if (cur == null || cur.signum() == 0) {
+                    irpfField.setText(sug == null ? "" : sug.toPlainString());
+                } else if (sug != null && cur.compareTo(sug) < 0) {
+                    toast(dialog.getDialogPane().getScene().getWindow(),
+                            t("labor.contract.editor.irpf_below_min"));
+                    highlightMissing(irpfField);
+                }
+            });
+            tk.setOnFailed(e2 -> irpfSuggestLbl.setText(""));
+            start(tk, "suggest-irpf");
+        });
+        HBox irpfBox = new HBox(6, irpfField, suggestIrpfBtn);
+        irpfBox.setAlignment(Pos.CENTER_LEFT);
+
         GridPane g = new GridPane();
         g.setHgap(10); g.setVgap(8); g.setPadding(new Insets(10));
         int row = 0;
@@ -23435,8 +23483,9 @@ public class BenjagestUiApplication extends Application {
         g.add(new Label(t("labor.contract.editor.bonuses")), 0, row); g.add(bonusesField, 1, row);
         g.add(new Label(t("labor.contract.editor.vacation")), 2, row); g.add(vacationField, 3, row); row++;
         g.add(proratedField, 1, row, 3, 1); row++;
-        g.add(new Label(t("labor.contract.editor.irpf")), 0, row); g.add(irpfField, 1, row);
+        g.add(new Label(t("labor.contract.editor.irpf")), 0, row); g.add(irpfBox, 1, row);
         g.add(new Label(t("labor.contract.editor.status")), 2, row); g.add(statusCombo, 3, row); row++;
+        g.add(irpfSuggestLbl, 0, row, 4, 1); row++;
         g.add(new Label(t("labor.contract.editor.at_ep")), 0, row); g.add(atEpField, 1, row);
         g.add(new Label(t("labor.contract.editor.ss_group")), 2, row); g.add(ssGroupCombo, 3, row); row++;
         g.add(new Label(t("labor.contract.editor.workplace")), 0, row); g.add(workplaceField, 1, row, 3, 1);

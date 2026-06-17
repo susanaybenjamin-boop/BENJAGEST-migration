@@ -431,7 +431,12 @@ public class PayslipService {
             }
             BigDecimal annualSs = annualBaseForSs.multiply(eeRate)
                     .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
-            irpfPct = irpfService.computeRate(req.year(), taxableAnnual, annualSs, m145);
+            BigDecimal legalMin = irpfService.computeRate(req.year(), taxableAnnual, annualSs, m145);
+            // IRPF-VOL — Retención VOLUNTARIA del contrato: solo se aplica si
+            // SUPERA el mínimo legal calculado (art. 88.5 RIRPF). Nunca por
+            // debajo (el tipo calculado es el mínimo de obligado cumplimiento).
+            irpfPct = (contract.irpfPercent != null && contract.irpfPercent.compareTo(legalMin) > 0)
+                    ? contract.irpfPercent : legalMin;
         } else if (contract.irpfPercent != null && contract.irpfPercent.signum() > 0) {
             irpfPct = contract.irpfPercent;
         } else {
@@ -961,6 +966,24 @@ public class PayslipService {
     }
 
     /**
+     * IRPF-VOL — Tipo de retención SUGERIDO (mínimo legal) para un empleado y un
+     * bruto anual: con Modelo 145 usa el algoritmo oficial de la AEAT; si no, la
+     * estimación por tramos. Lo usa el editor de contrato para mostrar el % auto
+     * y avisar si la retención voluntaria que teclea el usuario es menor.
+     */
+    public BigDecimal suggestIrpfRate(String employeeId, BigDecimal annualGross, int year) {
+        if (annualGross == null || annualGross.signum() <= 0) return BigDecimal.ZERO;
+        var m145 = irpfService.findForEmployee(employeeId);
+        if (m145 == null) return computeIrpfPercent(annualGross, year);
+        var rates = ssRatesService.ratesForYear(year);
+        BigDecimal eeRate = rates.eeCommon().add(rates.eeUnemployment())
+                .add(rates.eeTraining()).add(rates.eeMei());
+        BigDecimal annualSs = annualGross.multiply(eeRate)
+                .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
+        return irpfService.computeRate(year, annualGross, annualSs, m145);
+    }
+
+    /**
      * Desglose de cotización a la SS de un periodo. Cada importe es el
      * resultado de aplicar el tipo correspondiente sobre la base (= bruto
      * del periodo, simplificación sin topes).
@@ -1275,6 +1298,17 @@ public class PayslipService {
         @PostMapping("/solve-target")
         public TargetResult solveTarget(@RequestBody TargetRequest req) {
             return service.solveTarget(req);
+        }
+
+        /** IRPF-VOL — tipo de retención sugerido (mínimo legal) para mostrar en
+         *  el editor de contrato. */
+        @GetMapping("/suggest-irpf")
+        public java.util.Map<String, BigDecimal> suggestIrpf(
+                @RequestParam("employeeId") String employeeId,
+                @RequestParam("annualGross") BigDecimal annualGross,
+                @RequestParam(value = "year", required = false) Integer year) {
+            int y = year == null ? java.time.LocalDate.now().getYear() : year;
+            return java.util.Map.of("rate", service.suggestIrpfRate(employeeId, annualGross, y));
         }
 
         @PostMapping("/settlement-concepts")
