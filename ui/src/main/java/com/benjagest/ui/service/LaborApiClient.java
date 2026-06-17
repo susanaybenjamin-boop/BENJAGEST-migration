@@ -986,7 +986,8 @@ public class LaborApiClient {
         return new com.benjagest.ui.model.ClientConfigModels.AdvisoryConfigEntry(
                 textField(o, "fiscalPeriod"), textField(o, "taxRegime"),
                 textField(o, "contactChannel"), textField(o, "contactValue"), textField(o, "internalNotes"),
-                textField(o, "legalForm"));
+                textField(o, "legalForm"),
+                !o.matches("(?s).*\"provisionExtraPay\"\\s*:\\s*false.*"));
     }
 
     public void saveClientAdvisoryConfig(com.benjagest.ui.model.ClientConfigModels.AdvisoryConfigEntry c)
@@ -997,7 +998,8 @@ public class LaborApiClient {
                 + "\"contactChannel\":" + jsonStr(c.contactChannel()) + ","
                 + "\"contactValue\":" + jsonStr(c.contactValue()) + ","
                 + "\"internalNotes\":" + jsonStr(c.internalNotes()) + ","
-                + "\"legalForm\":" + jsonStr(c.legalForm()) + "}";
+                + "\"legalForm\":" + jsonStr(c.legalForm()) + ","
+                + "\"provisionExtraPay\":" + c.provisionExtraPay() + "}";
         send(req(baseUrl + "/client-config/advisory")
                 .header("Content-Type", "application/json")
                 .PUT(HttpRequest.BodyPublishers.ofString(body)));

@@ -758,7 +758,7 @@ public class PayslipService {
                         null);
                 // Provisión MENSUAL de pagas extra NO prorrateadas (devengo art. 38
                 // CdC): reconoce cada mes 1/12 de las pagas que se pagarán aparte.
-                if ("MONTHLY".equals(type)) {
+                if ("MONTHLY".equals(type) && isExtraPayProvisionEnabled()) {
                     ContractData cd = resolveActiveContract(req.employeeId(), req.year(), req.month());
                     if (cd != null && !cd.extrasProrated && cd.annualBonuses > 0) {
                         journalService.createExtraProvision(id, empName, req.year(), req.month(),
@@ -1033,6 +1033,15 @@ public class PayslipService {
      * complementos). Fallback al bruto del contrato si no hay desglose de
      * conceptos (contratos antiguos). Devuelve 0 si no procede.
      */
+    /** Política de empresa (V126): ¿provisionar mensualmente las pagas extra?
+     *  Por defecto TRUE (criterio de devengo). Editable en Configuración. */
+    private boolean isExtraPayProvisionEnabled() {
+        Boolean v = jdbcTemplate.query("SELECT provision_extra_pay FROM companies WHERE id = ?",
+                rs -> rs.next() ? rs.getBoolean("provision_extra_pay") : Boolean.TRUE,
+                tenantContext.getCurrentCompanyId());
+        return v == null || v;
+    }
+
     private BigDecimal extraProvisionMonthly(ContractData c) {
         int n = c.annualBonuses;
         if (n <= 0) return BigDecimal.ZERO;

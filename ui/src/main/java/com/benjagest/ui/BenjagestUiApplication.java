@@ -17388,6 +17388,8 @@ public class BenjagestUiApplication extends Application {
             case "clientcfg.contact_channel" -> "Contact channel";
             case "clientcfg.contact_value" -> "Contact (email/phone)";
             case "clientcfg.internal_notes" -> "Internal notes";
+            case "clientcfg.provision_extra_pay" -> "Provision extra pay monthly";
+            case "clientcfg.provision_extra_pay.hint" -> "Accrual basis: each month books 1/12 of non-prorated extra pay (640→465). Uncheck to book the expense only when the extra pay is paid (simpler, but doesn't follow accrual).";
             case "clientcfg.fiscalperiod.MONTHLY" -> "Monthly";
             case "clientcfg.fiscalperiod.QUARTERLY" -> "Quarterly";
             case "clientcfg.regime.ESTIMACION_DIRECTA" -> "Direct estimation";
@@ -18322,6 +18324,8 @@ public class BenjagestUiApplication extends Application {
             case "clientcfg.contact_channel" -> "Vía de contacto";
             case "clientcfg.contact_value" -> "Contacto (email/teléfono)";
             case "clientcfg.internal_notes" -> "Notas internas";
+            case "clientcfg.provision_extra_pay" -> "Provisionar pagas extra mensualmente";
+            case "clientcfg.provision_extra_pay.hint" -> "Criterio de devengo: cada mes contabiliza 1/12 de las pagas extra no prorrateadas (640→465). Desmárcalo para contabilizar el gasto solo al pagar la paga (más simple, pero no respeta el devengo).";
             case "clientcfg.fiscalperiod.MONTHLY" -> "Mensual";
             case "clientcfg.fiscalperiod.QUARTERLY" -> "Trimestral";
             case "clientcfg.regime.ESTIMACION_DIRECTA" -> "Estimación directa";
@@ -23584,7 +23588,8 @@ public class BenjagestUiApplication extends Application {
                             cfg == null ? null : cfg.contactChannel(),
                             cfg == null ? null : cfg.contactValue(),
                             cfg == null ? null : cfg.internalNotes(),
-                            "AUTONOMO");
+                            "AUTONOMO",
+                            cfg == null || cfg.provisionExtraPay());
                     laborApiClient.saveClientAdvisoryConfig(upd);
                     laborApiClient.ensureRetaProfiles();
                     return null;
@@ -31801,7 +31806,7 @@ public class BenjagestUiApplication extends Application {
                 buildClientConfigContent(cfgTask.getValue())));
         cfgTask.setOnFailed(ev -> holder.getChildren().setAll(
                 buildClientConfigContent(new com.benjagest.ui.model.ClientConfigModels.AdvisoryConfigEntry(
-                        null, null, null, null, null, null))));
+                        null, null, null, null, null, null, true))));
         start(cfgTask, "client-config-load");
         return holder;
     }
@@ -31822,6 +31827,13 @@ public class BenjagestUiApplication extends Application {
                         : (legalForm.getValue() == null ? "" : t("clientcfg.legalform.hint_society")));
         legalForm.valueProperty().addListener((o, a, b) -> updLegalHint.run());
         updLegalHint.run();
+
+        // V126 — política contable: provisionar pagas extra mensualmente (devengo).
+        CheckBox provisionExtra = new CheckBox(t("clientcfg.provision_extra_pay"));
+        provisionExtra.setSelected(cfg.provisionExtraPay());
+        Label provisionHint = new Label(t("clientcfg.provision_extra_pay.hint"));
+        provisionHint.getStyleClass().add("settings-hint");
+        provisionHint.setWrapText(true);
 
         ComboBox<String> fiscalPeriod = localizedConfigCombo("clientcfg.fiscalperiod.",
                 java.util.List.of("MONTHLY", "QUARTERLY"), cfg.fiscalPeriod());
@@ -31848,6 +31860,8 @@ public class BenjagestUiApplication extends Application {
         g.add(new Label(t("clientcfg.contact_channel")), 0, r); g.add(contactChannel, 1, r++);
         g.add(new Label(t("clientcfg.contact_value")), 0, r); g.add(contactValue, 1, r++);
         g.add(new Label(t("clientcfg.internal_notes")), 0, r); g.add(internalNotes, 1, r++);
+        g.add(provisionExtra, 1, r++);
+        g.add(provisionHint, 1, r++);
 
         Button saveCfg = new Button(t("common.btn.save"));
         saveCfg.getStyleClass().add("button-primary");
@@ -31857,7 +31871,7 @@ public class BenjagestUiApplication extends Application {
             var payload = new com.benjagest.ui.model.ClientConfigModels.AdvisoryConfigEntry(
                     fiscalPeriod.getValue(), taxRegime.getValue(), contactChannel.getValue(),
                     blankToNullOrSelf(contactValue.getText()), blankToNullOrSelf(internalNotes.getText()),
-                    legalForm.getValue());
+                    legalForm.getValue(), provisionExtra.isSelected());
             Task<Void> tk = new Task<>() {
                 @Override protected Void call() throws Exception { laborApiClient.saveClientAdvisoryConfig(payload); return null; }
             };
