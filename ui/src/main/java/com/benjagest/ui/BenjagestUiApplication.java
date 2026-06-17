@@ -2796,7 +2796,9 @@ public class BenjagestUiApplication extends Application {
             return;
         }
         if ("labor".equals(module)) {
-            laborTabIndex = 0; // entrar desde el menú abre en "Empleados"
+            // Entrar desde el menú abre en la 1ª categoría (Personal → Empleados).
+            laborCatIndex = 0;
+            laborSubIndex = 0;
             showLaborModule();
             return;
         }
@@ -16128,6 +16130,11 @@ public class BenjagestUiApplication extends Application {
             case "labor.tab.ss_rates" -> "SS rates";
             case "labor.tab.irpf_params" -> "Income-tax scale";
             case "labor.tab.severance" -> "Severance";
+            case "labor.cat.personal" -> "Staff";
+            case "labor.cat.payroll" -> "Payroll";
+            case "labor.cat.time" -> "Time & attendance";
+            case "labor.cat.absences" -> "Absences";
+            case "labor.cat.params" -> "Parameters (per year)";
             case "labor.severance.hint" -> "Severance caps by year (days/year and limits per dismissal type + income-tax exemption). The termination engine reads these for the termination year. No-code: clone the latest year and edit when the law changes.";
             case "labor.severance.empty" -> "No severance parameters yet.";
             case "labor.severance.add" -> "Add year";
@@ -16808,6 +16815,11 @@ public class BenjagestUiApplication extends Application {
             case "labor.tab.ss_rates" -> "Tipos cotización";
             case "labor.tab.irpf_params" -> "Escala IRPF";
             case "labor.tab.severance" -> "Indemnización";
+            case "labor.cat.personal" -> "Personal";
+            case "labor.cat.payroll" -> "Nóminas";
+            case "labor.cat.time" -> "Tiempo y jornada";
+            case "labor.cat.absences" -> "Ausencias";
+            case "labor.cat.params" -> "Parámetros (por año)";
             case "labor.severance.hint" -> "Topes de indemnización por año (días/año y topes por tipo de despido + exención de IRPF). El motor de cese los lee para el año del cese. No-code: clona el último año y edítalo cuando cambie la ley.";
             case "labor.severance.empty" -> "Aún no hay parámetros de indemnización.";
             case "labor.severance.add" -> "Añadir año";
@@ -19305,10 +19317,29 @@ public class BenjagestUiApplication extends Application {
         setCenterAnimated((javafx.scene.Node) screen.buildView());
     }
 
-    // Sub-pestaña activa de Labor: se recuerda para que, tras cualquier acción
-    // que recargue el módulo (calcular nómina, marcar pagada, borrar…), se
-    // vuelva a la misma pestaña en lugar de saltar a "Empleados".
-    private int laborTabIndex = 0;
+    // Categoría + sub-pestaña activas de Labor (RR.HH.-CAT): se recuerdan para
+    // que, tras cualquier acción que recargue el módulo (calcular nómina, marcar
+    // pagada, borrar…), se vuelva a la misma sección en vez de saltar al inicio.
+    private int laborCatIndex = 0;
+    private int laborSubIndex = 0;
+
+    /** RR.HH.-CAT — TabPane interno de una categoría con sus sub-pestañas. */
+    private TabPane laborSubPane(Tab... leaves) {
+        TabPane inner = new TabPane();
+        inner.getStyleClass().add("settings-tabs");
+        inner.setTabClosingPolicy(TabPane.TabClosingPolicy.UNAVAILABLE);
+        inner.getTabs().addAll(leaves);
+        VBox.setVgrow(inner, Priority.ALWAYS);
+        return inner;
+    }
+
+    /** RR.HH.-CAT — Pestaña de categoría (nivel superior) que contiene un TabPane. */
+    private Tab laborCategoryTab(String titleKey, String iconCode, TabPane inner) {
+        Tab cat = new Tab(t(titleKey), inner);
+        cat.setGraphic(icon(iconCode));
+        cat.setClosable(false);
+        return cat;
+    }
 
     // BUG-NAV-1 — Refresco contextual de Labor. Las ~14 acciones de los
     // sub-tabs (calcular nómina, marcar pagada, borrar…) llaman a
@@ -19440,17 +19471,44 @@ public class BenjagestUiApplication extends Application {
         Tab centersTab = new Tab(t("labor.tab.work_centers"), buildWorkCentersTab());
         centersTab.setGraphic(icon("fas-map-marker-alt"));
 
-        tabs.getTabs().addAll(empTab, contractsTab, clockTab, auditTab, payslipsTab,
-                templatesTab, clausesTab, cfgTab, calendarTab, leavesTab, vacationsTab, ssTab,
-                costTab, ratesTab, groupBasesTab, irpfParamsTab, severanceTab, shiftsTab, centersTab);
+        // RR.HH.-CAT (2026-06-17) — Los 19 sub-tabs se agrupan en 5 categorías
+        // (pestañas anidadas) para no tener una fila ilegible: operativa diaria
+        // separada de las tablas de parámetros legales (set-and-forget).
+        TabPane personalPane = laborSubPane(empTab, contractsTab, templatesTab, clausesTab);
+        TabPane payrollPane = laborSubPane(payslipsTab, costTab, ssTab);
+        TabPane timePane = laborSubPane(clockTab, auditTab, shiftsTab, calendarTab, centersTab, cfgTab);
+        TabPane absencePane = laborSubPane(leavesTab, vacationsTab);
+        TabPane paramsPane = laborSubPane(ratesTab, groupBasesTab, irpfParamsTab, severanceTab);
+        final TabPane[] panes = {personalPane, payrollPane, timePane, absencePane, paramsPane};
+
+        tabs.getTabs().addAll(
+                laborCategoryTab("labor.cat.personal", "fas-users", personalPane),
+                laborCategoryTab("labor.cat.payroll", "fas-file-invoice-dollar", payrollPane),
+                laborCategoryTab("labor.cat.time", "fas-clock", timePane),
+                laborCategoryTab("labor.cat.absences", "fas-user-injured", absencePane),
+                laborCategoryTab("labor.cat.params", "fas-sliders-h", paramsPane));
         VBox.setVgrow(tabs, Priority.ALWAYS);
-        // Restaurar la pestaña activa y recordar los cambios de pestaña, para
-        // no perder el contexto al recargar el módulo tras una acción.
-        if (laborTabIndex >= 0 && laborTabIndex < tabs.getTabs().size()) {
-            tabs.getSelectionModel().select(laborTabIndex);
+
+        // Restaurar categoría + sub-pestaña activas (no perder contexto al
+        // recargar tras una acción). laborCatIndex/laborSubIndex se recuerdan.
+        if (laborCatIndex < 0 || laborCatIndex >= panes.length) laborCatIndex = 0;
+        tabs.getSelectionModel().select(laborCatIndex);
+        TabPane activePane = panes[laborCatIndex];
+        if (laborSubIndex >= 0 && laborSubIndex < activePane.getTabs().size()) {
+            activePane.getSelectionModel().select(laborSubIndex);
         }
-        tabs.getSelectionModel().selectedIndexProperty().addListener(
-                (o, ov, nv) -> laborTabIndex = nv.intValue());
+        tabs.getSelectionModel().selectedIndexProperty().addListener((o, ov, nv) -> {
+            laborCatIndex = nv.intValue();
+            laborSubIndex = (laborCatIndex >= 0 && laborCatIndex < panes.length)
+                    ? panes[laborCatIndex].getSelectionModel().getSelectedIndex() : 0;
+        });
+        for (TabPane p : panes) {
+            p.getSelectionModel().selectedIndexProperty().addListener((o, ov, nv) -> {
+                if (laborCatIndex >= 0 && laborCatIndex < panes.length && panes[laborCatIndex] == p) {
+                    laborSubIndex = nv.intValue();
+                }
+            });
+        }
 
         content.getChildren().addAll(header, alertsBanner, tabs);
         return content;
