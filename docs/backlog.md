@@ -18,9 +18,9 @@
 > Benjamin: cerrar el bloque de nóminas con lo que quede pendiente, antes de
 > seguir con el resto de la cola. Orden sugerido:
 
-- **N1 · CONTRATO-VIGENCIAS** (ascenso + derivar grupo) → bloque detallado abajo
-  (VIG-0…VIG-4). Empezar por **VIG-0** (derivar grupo de cotización de la
-  categoría, additive) en sesión nueva con contexto fresco.
+- **N1 · CONTRATO-VIGENCIAS** (ascenso + derivar grupo) → bloque detallado abajo.
+  ✅ **VIG-0** hecho (derivar grupo de la categoría). Sigue **VIG-1** (tabla de
+  vigencias) → VIG-2 (resolución en motor) → VIG-3 (UI ascenso) → VIG-4 (atrasos).
 - **N2 · NOM paso 4 (refinamientos del clamp por grupo)** *(de item #3)*:
   desglose **BCCC/BCCP** (mín del grupo solo en contingencias comunes; mín común
   1.424,40 en AT/EP, desempleo, FOGASA, FP); **tiempo parcial** (base por horas /
@@ -54,11 +54,13 @@
 > SEPE). Detalle en memoria `project_benjagest_ascenso_vigencias.md`. Bloque grande
 > que toca el motor de nóminas → hacer con contexto fresco, slice a slice, validar.
 
-- **VIG-0 (derivar grupo, prerequisito y ya decidido)**: V124 ADD COLUMN
-  `professional_categories.ss_contribution_group SMALLINT` + seed 1-11 por categoría
-  (~80 filas; Titulado→1/2, Jefe admin→3, Oficial admin→5, Aux→7, Oficial
-  construcción/metal→8/9 diaria, Peón/Ayudante→10). `ContractCatalogService` expone
-  el campo. UI asistente: al elegir categoría, fija el combo de grupo de cotización.
+- ✅ **VIG-0 (derivar grupo)** *(2026-06-16, commit 06c99d7)*: V124
+  `professional_categories.ss_contribution_group` (1-11) + seed por categoría
+  (~80 filas, defaults editables). `ContractCatalogService` expone el campo; el
+  **asistente** de contrato deriva el grupo de cotización de la categoría elegida.
+  *Pendiente menor: editor de catálogo de categorías en la UI para ajustar el
+  grupo por categoría (hoy se ajusta por-contrato en el editor plano); revisar los
+  defaults del seed por convenio.*
 - **VIG-1 (tabla)**: `contract_vigencias` (id, contract_id, effective_from,
   professional_group, professional_category, ss_contribution_group, gross_salary,
   weekly_hours, irpf_percent, at_ep_percent, …) append-only. Backfill: una vigencia
