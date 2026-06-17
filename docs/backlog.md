@@ -46,6 +46,36 @@
 
 ---
 
+## 🐞 BUGS UX/NAV GLOBALES (reportados Benjamin 2026-06-16) — PRIORITARIO
+
+> Dos bugs globales de la capa de UI/navegación. Causa ya diagnosticada; fix en
+> sesión enfocada (tocan muchos sitios → riesgo de regresión, §11.2). Hacerlos bien.
+
+- **BUG-NAV-1 · La acción de un sub-tab pierde los tabs generales.** En "Mi gestión"
+  (y la ficha de cliente), que se montan con `buildClientDetailView` (vista con
+  pestañas; Laboral = `buildClientLaborTab()`), al **validar una nómina** (y en
+  general cualquier acción de los sub-tabs de Laboral) el handler llama a
+  `showLaborModule()` → `setCenterAnimated(laborView standalone)`, que **reemplaza
+  toda la vista con pestañas** y deja solo los tabs de personal; hay que volver a
+  pulsar "Mi gestión". **Causa:** ~15 llamadas a `showLaborModule()` en los handlers
+  de acción (grep `showLaborModule()`), pensadas para el módulo standalone del
+  sidebar, NO para la vista embebida en ficha. **Fix:** refresco contextual — un
+  `Runnable` de recarga que, embebido, refresca el holder del tab en su sitio (como
+  ya se hizo con `reloadRetaProfiles` para RETA), y solo standalone use
+  showLaborModule. Revisar también Facturación/Compras/Contabilidad por el mismo
+  patrón (probablemente igual). Afecta a TODOS los sub-tabs según Benjamin.
+- **BUG-UX-2 · Validar sin empleado cierra el diálogo y saca ventana de error.** Al
+  calcular nómina sin empleado y pulsar Validar: sale un `Alert` de error Y se cierra
+  el diálogo de calcular. **Correcto (Benjamin):** NO cerrar el diálogo, NO sacar
+  ventana de error (no es un error, es un campo que falta); mostrar **globo de
+  notificación (toast) no modal + sombrear el campo** que falta. **Fix:** en el
+  diálogo de calcular nómina, `addEventFilter(ACTION)` en el botón Validar que
+  `consume()` el evento si falta el empleado (evita el cierre) + helper `toast()`
+  reusable + resaltar el campo. Es un patrón global (vale para todos los diálogos);
+  empezar por el de calcular nómina y dejar el helper para reusar.
+
+---
+
 ## 2026-06-16 — BLOQUE FICHAJE-MÓVIL/KIOSCO (pedido Benjamin) 📱
 
 > Benjamin: falta el **fichaje MÓVIL y KIOSCO (tablet)** con **invitación**, igual
