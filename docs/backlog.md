@@ -113,7 +113,12 @@ certificado es el punto crítico:
   certificado una vez por sesión (ya enorme). Fase 2 = inyección automática del
   certificado. 
 - **Cuándo:** tras cerrar la cola actual y tener el instalable (afecta peso/
-  empaquetado). Decisión pendiente: JCEF vs JxBrowser; Fase 1 primero.
+  empaquetado). Fase 1 primero.
+- ✅ **DECIDIDO (Benjamin 2026-06-16): usar JCEF** (gratis, siempre sin coste; NO
+  JxBrowser de pago). Crear el tab en modo asesoría **por cliente** con navegador
+  embebido con pestañas. **Tarea de última prioridad**: solo si se termina TODO el
+  resto del backlog. Fase 1 (pestañas persistentes + el usuario elige certificado
+  una vez por sesión) primero.
 
 ---
 
