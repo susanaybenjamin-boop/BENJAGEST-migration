@@ -782,12 +782,22 @@ public class PayslipService {
 
     @Transactional
     public PayslipView markPaid(String id, LocalDate paidAt) {
+        String companyId = tenantContext.getCurrentCompanyId();
+        // Bloquear re-pago de una nómina ya pagada (auditoría 2026-06-16): evita
+        // regenerar el asiento de pago y descuadrar el Diario.
+        String current = jdbcTemplate.query(
+                "SELECT status FROM payslips WHERE id = ? AND company_id = ?",
+                rs -> rs.next() ? rs.getString(1) : null, id, companyId);
+        if (current == null) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Nomina no encontrada");
+        if ("PAID".equals(current)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "La nómina ya está pagada");
+        }
         int n = jdbcTemplate.update("""
                 UPDATE payslips
                    SET status = 'PAID',
                        paid_at = COALESCE(?, CURRENT_DATE())
                  WHERE id = ? AND company_id = ?
-                """, paidAt, id, tenantContext.getCurrentCompanyId());
+                """, paidAt, id, companyId);
         if (n == 0) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Nomina no encontrada");
         PayslipView view = findById(id);
         // Asiento de pago (465 → 572). Solo nóminas mensuales ordinarias.
