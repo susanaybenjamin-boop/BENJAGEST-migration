@@ -194,7 +194,12 @@ public class PayslipPdfGenerator {
             java.sql.Date cStart = (java.sql.Date) data.get("contract_start_date");
             java.time.LocalDate altaDate = hire != null ? hire.toLocalDate()
                     : (cStart != null ? cStart.toLocalDate() : null);
-            String antig = altaDate == null ? "-" : yearsSince(altaDate) + " años";
+            // Antigüedad a fin del periodo de la nómina, mostrando la unidad
+            // mayor no nula: si no llega a un año → meses; si no llega a un mes
+            // → días. Antes mostraba siempre "X años" (0 años para altas recientes).
+            java.time.LocalDate antigRef = java.time.LocalDate.of(
+                    year, month, Month.of(month).length(java.time.Year.of(year).isLeap()));
+            String antig = humanizeAntiquity(altaDate, antigRef);
             String periodo = "1 al " + Month.of(month).length(java.time.Year.of(year).isLeap())
                     + " de " + Month.of(month).getDisplayName(TextStyle.FULL, new Locale("es"));
             // Se identifica el tipo de recibo en el período (extra / finiquito).
@@ -573,8 +578,15 @@ public class PayslipPdfGenerator {
         return sb.toString();
     }
 
-    private int yearsSince(LocalDate date) {
-        if (date == null) return 0;
-        return LocalDate.now().getYear() - date.getYear();
+    /**
+     * Antigüedad legible mostrando la unidad mayor no nula: años; si 0 años,
+     * meses; si 0 meses, días. {@code to} se cuenta inclusivo (día del periodo).
+     */
+    private String humanizeAntiquity(LocalDate from, LocalDate to) {
+        if (from == null || to == null || to.isBefore(from)) return "-";
+        java.time.Period p = java.time.Period.between(from, to.plusDays(1));
+        if (p.getYears() > 0) return p.getYears() + (p.getYears() == 1 ? " año" : " años");
+        if (p.getMonths() > 0) return p.getMonths() + (p.getMonths() == 1 ? " mes" : " meses");
+        return p.getDays() + (p.getDays() == 1 ? " día" : " días");
     }
 }

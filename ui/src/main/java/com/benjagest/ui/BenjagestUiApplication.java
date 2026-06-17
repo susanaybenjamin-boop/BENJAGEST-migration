@@ -23355,8 +23355,19 @@ public class BenjagestUiApplication extends Application {
 
         TextField typeField = new TextField(existing == null ? "Indefinido" : existing.contractType());
         TextField sepeField = new TextField(existing == null ? "100" : existing.sepeContractCode());
-        TextField agreementField = new TextField(existing == null ? "" : existing.collectiveAgreement());
-        TextField catField = new TextField(existing == null ? "" : existing.professionalCategory());
+        // Convenio y categoría como combos del catálogo, FILTRABLES al teclear
+        // (igual que el contrato nuevo). Editables: si el valor guardado no está
+        // en el catálogo (contratos antiguos), se conserva como texto libre.
+        ComboBox<String> agreementCombo = new ComboBox<>();
+        agreementCombo.setEditable(true);
+        agreementCombo.setMaxWidth(Double.MAX_VALUE);
+        agreementCombo.getEditor().setText(existing == null || existing.collectiveAgreement() == null
+                ? "" : existing.collectiveAgreement());
+        ComboBox<String> catCombo = new ComboBox<>();
+        catCombo.setEditable(true);
+        catCombo.setMaxWidth(Double.MAX_VALUE);
+        catCombo.getEditor().setText(existing == null || existing.professionalCategory() == null
+                ? "" : existing.professionalCategory());
         TextField groupField = new TextField(existing == null ? "" : existing.professionalGroup());
         TextField startField = new TextField(existing == null || existing.startDate() == null
                 ? LocalDate.now().toString() : existing.startDate().toString());
@@ -23413,8 +23424,8 @@ public class BenjagestUiApplication extends Application {
         int row = 0;
         g.add(new Label(t("labor.contract.editor.type")), 0, row); g.add(typeField, 1, row);
         g.add(new Label(t("labor.contract.editor.sepe")), 2, row); g.add(sepeField, 3, row); row++;
-        g.add(new Label(t("labor.contract.editor.agreement")), 0, row); g.add(agreementField, 1, row, 3, 1); row++;
-        g.add(new Label(t("labor.contract.editor.category")), 0, row); g.add(catField, 1, row);
+        g.add(new Label(t("labor.contract.editor.agreement")), 0, row); g.add(agreementCombo, 1, row, 3, 1); row++;
+        g.add(new Label(t("labor.contract.editor.category")), 0, row); g.add(catCombo, 1, row);
         g.add(new Label(t("labor.contract.editor.group")), 2, row); g.add(groupField, 3, row); row++;
         g.add(new Label(t("labor.contract.editor.start")), 0, row); g.add(startField, 1, row);
         g.add(new Label(t("labor.contract.editor.end")), 2, row); g.add(endField, 3, row); row++;
@@ -23445,6 +23456,48 @@ public class BenjagestUiApplication extends Application {
         editorBox.getChildren().addAll(g, sep, compEditor.node);
         installDialog(dialog, editorBox);
 
+        // Catálogo de convenios → combos filtrables. Async: el diálogo se abre ya
+        // y los combos se rellenan al llegar. Si falla/está vacío, quedan como
+        // texto libre (el editor del combo es la fuente de verdad al guardar).
+        final java.util.Map<String, com.benjagest.ui.model.ContractCatalog.Category> categoriesByName =
+                new java.util.HashMap<>();
+        Task<java.util.List<com.benjagest.ui.model.ContractCatalog.Agreement>> catTask = new Task<>() {
+            @Override protected java.util.List<com.benjagest.ui.model.ContractCatalog.Agreement> call() throws Exception {
+                return altaApiClient.listCollectiveAgreements();
+            }
+        };
+        catTask.setOnSucceeded(cev -> {
+            var agreements = catTask.getValue();
+            if (agreements == null || agreements.isEmpty()) return;
+            String prevAg = agreementCombo.getEditor().getText();
+            String prevCat = catCombo.getEditor().getText();
+            java.util.List<String> agNames = new java.util.ArrayList<>();
+            java.util.List<String> catNames = new java.util.ArrayList<>();
+            for (var ag : agreements) {
+                if (ag.name() != null) agNames.add(ag.name());
+                if (ag.categories() != null) for (var c : ag.categories()) {
+                    if (c.categoryName() == null) continue;
+                    if (!categoriesByName.containsKey(c.categoryName())) catNames.add(c.categoryName());
+                    categoriesByName.putIfAbsent(c.categoryName(), c);
+                }
+            }
+            installComboFilter(agreementCombo, agNames);
+            installComboFilter(catCombo, catNames);
+            // installComboFilter resetea el editor; restauramos el valor previo.
+            agreementCombo.getEditor().setText(prevAg);
+            catCombo.getEditor().setText(prevCat);
+            // Al elegir una categoría del catálogo, derivar grupo profesional y
+            // grupo de cotización (VIG-0). El usuario puede ajustarlos después.
+            catCombo.valueProperty().addListener((o, ov, nv) -> {
+                var cat = categoriesByName.get(nv);
+                if (cat != null) {
+                    if (cat.groupCode() != null) groupField.setText(cat.groupCode());
+                    if (cat.ssContributionGroup() != null) ssGroupCombo.getSelectionModel().select(cat.ssContributionGroup());
+                }
+            });
+        });
+        start(catTask, "contract-editor-catalog");
+
         // VIG-3 — validar la fecha de efecto sin cerrar el diálogo (reusa el
         // patrón toast/consume del BUG-UX-2).
         if (promoteMode) {
@@ -23472,8 +23525,8 @@ public class BenjagestUiApplication extends Application {
                     employee.id(),
                     typeField.getText().trim(),
                     blankToNullOrSelf(sepeField.getText()),
-                    blankToNullOrSelf(agreementField.getText()),
-                    blankToNullOrSelf(catField.getText()),
+                    blankToNullOrSelf(agreementCombo.getEditor().getText()),
+                    blankToNullOrSelf(catCombo.getEditor().getText()),
                     blankToNullOrSelf(groupField.getText()),
                     parseDateSafe(startField.getText()),
                     parseDateSafe(seniorityField.getText()),
