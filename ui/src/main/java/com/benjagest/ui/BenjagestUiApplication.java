@@ -13964,6 +13964,64 @@ public class BenjagestUiApplication extends Application {
     }
 
     /**
+     * BUG-UX-2 — Globo de notificación NO modal (toast) reutilizable.
+     * Aparece arriba-centro de la ventana indicada y se desvanece solo a
+     * los ~3 s. A diferencia de {@link #showError}, no bloquea ni
+     * interrumpe el flujo: es para avisos del tipo "te falta un campo",
+     * que no son errores reales. Patrón global pensado para reusar en
+     * cualquier diálogo (empezamos por el de calcular nómina).
+     */
+    private void toast(javafx.stage.Window owner, String message) {
+        if (owner == null || message == null) return;
+        Label label = new Label(message);
+        label.getStyleClass().add("toast");
+        label.setWrapText(true);
+        label.setMaxWidth(360);
+
+        javafx.stage.Popup popup = new javafx.stage.Popup();
+        popup.setAutoFix(true);
+        popup.getContent().add(label);
+        popup.show(owner);
+        // Centrar arriba una vez conocido el ancho real tras el layout.
+        Platform.runLater(() -> {
+            popup.setX(owner.getX() + (owner.getWidth() - label.getWidth()) / 2);
+            popup.setY(owner.getY() + 72);
+        });
+
+        javafx.animation.FadeTransition fade = new javafx.animation.FadeTransition(
+                javafx.util.Duration.millis(450), label);
+        fade.setDelay(javafx.util.Duration.seconds(2.4));
+        fade.setFromValue(1.0);
+        fade.setToValue(0.0);
+        fade.setOnFinished(e -> popup.hide());
+        fade.play();
+    }
+
+    /**
+     * BUG-UX-2 — Resalta un control obligatorio que falta (borde rojo) y
+     * le da el foco. El resaltado se quita solo cuando el usuario lo
+     * rellena (ver {@link #clearMissingOnChange}).
+     */
+    private void highlightMissing(javafx.scene.control.Control field) {
+        if (field == null) return;
+        if (!field.getStyleClass().contains("field-error")) {
+            field.getStyleClass().add("field-error");
+        }
+        field.requestFocus();
+    }
+
+    /**
+     * BUG-UX-2 — Engancha a un ComboBox para quitar el resaltado de
+     * "campo que falta" en cuanto el usuario selecciona un valor.
+     */
+    private void clearMissingOnChange(javafx.scene.control.ComboBox<?> combo) {
+        if (combo == null) return;
+        combo.valueProperty().addListener((o, ov, nv) -> {
+            if (nv != null) combo.getStyleClass().remove("field-error");
+        });
+    }
+
+    /**
      * Convierte mensajes técnicos del backend en texto humano:
      *
      * <p>Entrada típica de AltaApiClient/LaborApiClient/etc:
@@ -20958,6 +21016,8 @@ public class BenjagestUiApplication extends Application {
         empCombo.setPromptText(t("labor.payslips.calc.employee.prompt"));
         // No autoseleccionar: forzar elección consciente para no nominar
         // por error al empleado equivocado (p. ej. el primero por orden).
+        // BUG-UX-2 — quita el resaltado rojo en cuanto se elige empleado.
+        clearMissingOnChange(empCombo);
 
         // Listado (solo lectura) de los complementos del contrato del empleado.
         Label contractCompsInfo = new Label(t("labor.payslips.calc.contract_comps.none"));
@@ -21147,13 +21207,26 @@ public class BenjagestUiApplication extends Application {
         installDialog(dialog, new VBox(10, g, new Separator(), contractCompsInfo,
                 extras.node, previewBox));
 
+        // BUG-UX-2 — Validar sin empleado NO debe cerrar el diálogo ni
+        // sacar un Alert: no es un error, es un campo que falta. El filtro
+        // de ACTION consume el evento (evita el cierre) y avisa con un
+        // toast no modal + resalta el combo.
+        final javafx.scene.Node saveNode = dialog.getDialogPane().lookupButton(saveBt);
+        saveNode.addEventFilter(javafx.event.ActionEvent.ACTION, ev -> {
+            if (empCombo.getValue() == null) {
+                ev.consume();
+                toast(dialog.getDialogPane().getScene().getWindow(),
+                        t("labor.payslips.calc.fail.no_employee"));
+                highlightMissing(empCombo);
+            }
+        });
+
         dialog.showAndWait().ifPresent(bt -> {
             if (bt != saveBt) return;
             var emp = empCombo.getValue();
-            if (emp == null) {
-                showError(t("labor.payslips.calc.fail.title"), t("labor.payslips.calc.fail.no_employee"));
-                return;
-            }
+            // El filtro de ACTION ya impide llegar aquí sin empleado; este
+            // guard queda como red de seguridad (no muestra error).
+            if (emp == null) return;
             java.math.BigDecimal other = parseDecSafe(otherField.getText());
             java.util.List<com.benjagest.ui.model.SalaryItemEntry> extraConcepts = extras.getComplements();
             Task<com.benjagest.ui.model.PayslipEntry> task = new Task<>() {
