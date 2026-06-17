@@ -55,6 +55,28 @@
 
 ---
 
+## 📊 REPORTS-UI — Pantallas de informes contables — ✅ HECHO 2026-06-17
+
+> Benjamin: en CONTENDO sí estaban y le gustaban; aquí faltaba la UI (el backend
+> ya estaba). Construidas 4 pestañas nuevas en `AccountingScreen`.
+
+- ✅ **Libro Mayor** — pestaña: combo de cuenta + rango → movimientos con saldo
+  corriente + saldo apertura/final. `AccountingApiClient.ledger`.
+- ✅ **Balance de Sumas y Saldos** — rango + filtro por grupo → debe/haber/saldo
+  deudor/acreedor por cuenta + totales. `AccountingApiClient.trialBalance`.
+- ✅ **Balance de Situación** — a fecha → Activo vs Patrimonio Neto y Pasivo por
+  masas. `AccountingApiClient.balanceSheet`.
+- ✅ **Pérdidas y Ganancias (PyG)** — rango → Ingresos / Gastos por masas +
+  resultado. `AccountingApiClient.profitAndLoss`.
+- ⬜ **ECPN** (`/reports/equity-changes`) — backend listo, UI no añadida (opcional).
+- ⬜ **Export PDF** de estos informes — pendiente (mejora).
+- Parseo JSON anidado (Balance/PyG) con `extractArrayField` + `splitJsonArray`
+  (sin Jackson en UI). NOTA: ACC-BOOKS / REPORTS-CONTABLES estaban marcados ✅
+  pero era solo backend; ahora la UI también está. **Pendiente: prueba visual de
+  Benjamin.**
+
+---
+
 ## 🐞 BUGS UX/NAV GLOBALES (reportados Benjamin 2026-06-16) — ✅ CERRADOS 2026-06-17
 
 > Dos bugs globales de la capa de UI/navegación. Causa ya diagnosticada; fix en
@@ -909,13 +931,18 @@ Nóminas; afinar topes de cotización; pagas extra.
 - V56 `companies.tercero_account_length/mode` + UI.
 - V57 `sales_invoices.concept/purchase_invoices.concept`.
 - Asientos manuales con bloqueo periodo (ACC-MANUAL).
-- ⚖️ Libro Diario + Mayor + Sumas y Saldos (ACC-BOOKS).
+- ⚖️ Libro Diario + Mayor + Sumas y Saldos (ACC-BOOKS) — ⚠️ **solo Libro Diario
+  tiene UI**. Mayor (`/ledger/{cuenta}`) y Sumas y Saldos (`/balance`) están en
+  BACKEND con endpoint pero **sin pantalla** (verificado 2026-06-17). Ver REPORTS-UI abajo.
 - Cuentas bancarias + movimientos + cobros/pagos (BANK-ACCOUNTS).
 - Importación Norma 43 + CSV bancario + auto-conciliación (BANK-IMPORT).
 - Préstamos + cuadro amortización (LOANS).
 - Inmovilizado + amortización (ASSETS-ENTRIES).
 - ✅ **Plantillas asiento manual (ACC-TEMPLATES)**.
-- ⚖️ Balance situación + PyG (REPORTS-CONTABLES).
+- ⚖️ Balance situación + PyG (REPORTS-CONTABLES) — ⚠️ **solo BACKEND**. Endpoints
+  `/reports/balance-sheet`, `/reports/profit-and-loss`, `/reports/equity-changes`
+  (`FinancialReportsService`) existen y calculan, pero **no hay UI** (verificado
+  2026-06-17). El `AccountingApiClient` ni los llama. Ver REPORTS-UI abajo.
 - Aprendizaje contable UI (ACC-LEARN-UI).
 - Exportación contable Contasol/A3/Sage (EXPORT-CONTABLE) + EXT-IMPORT inversa.
 - 💰 Motor recurrentes (cron) con 7 kinds.

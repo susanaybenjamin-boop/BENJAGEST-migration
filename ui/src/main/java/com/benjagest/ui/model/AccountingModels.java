@@ -199,4 +199,48 @@ public final class AccountingModels {
             BigDecimal usefulLifeYears, String depreciationMethod,
             boolean active
     ) {}
+
+    // ==== REPORTS-UI — Informes contables (Mayor, Sumas y Saldos, Balance, PyG) ====
+
+    /** Movimiento del Libro Mayor de una cuenta (con saldo corriente). */
+    public record LedgerLineView(
+            String entryId, int entryNumber, LocalDate entryDate,
+            String concept, String status, String lineDescription,
+            BigDecimal debit, BigDecimal credit, BigDecimal runningBalance
+    ) {}
+
+    /** Libro Mayor de una cuenta: saldo de apertura + movimientos + saldo final. */
+    public record LedgerView(
+            String accountId, String accountCode, String accountName,
+            BigDecimal openingBalance, BigDecimal closingBalance,
+            List<LedgerLineView> movements
+    ) {}
+
+    /** Fila del Balance de Sumas y Saldos. */
+    public record TrialBalanceRow(
+            String accountId, String code, String name,
+            BigDecimal totalDebit, BigDecimal totalCredit,
+            BigDecimal saldoDeudor, BigDecimal saldoAcreedor
+    ) {}
+
+    /** Línea de un informe por masas (Balance de Situación / PyG). */
+    public record ReportItem(String code, String name, BigDecimal amount) {}
+
+    /** Sección (masa) de un informe con sus líneas y total. */
+    public record ReportSection(String name, List<ReportItem> items, BigDecimal total) {}
+
+    /** Balance de Situación a una fecha (Activo / Pasivo + PN por masas). */
+    public record BalanceSheetView(
+            LocalDate asOf,
+            List<ReportSection> activo, BigDecimal totalActivo,
+            List<ReportSection> pasivo, BigDecimal totalPasivo
+    ) {}
+
+    /** Cuenta de Pérdidas y Ganancias de un periodo. */
+    public record ProfitAndLossView(
+            LocalDate from, LocalDate to,
+            List<ReportSection> ingresos, BigDecimal totalIngresos,
+            List<ReportSection> gastos, BigDecimal totalGastos,
+            BigDecimal resultadoExplotacion
+    ) {}
 }
