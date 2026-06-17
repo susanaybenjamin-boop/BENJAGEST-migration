@@ -57,6 +57,7 @@ public final class ContractCatalogModels {
             String id,
             String collectiveAgreementId,
             String groupCode,
+            Integer ssContributionGroup,
             String categoryName,
             BigDecimal minAnnualSalary,
             BigDecimal minMonthlySalary,

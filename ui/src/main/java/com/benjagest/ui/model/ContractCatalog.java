@@ -42,6 +42,7 @@ public final class ContractCatalog {
             String id,
             String collectiveAgreementId,
             String groupCode,
+            Integer ssContributionGroup,
             String categoryName,
             BigDecimal minAnnualSalary,
             BigDecimal minMonthlySalary,

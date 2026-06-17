@@ -511,6 +511,7 @@ public class AltaApiClient {
                             textField(obj, "id"),
                             textField(obj, "collectiveAgreementId"),
                             textField(obj, "groupCode"),
+                            intFieldOrNull(obj, "ssContributionGroup"),
                             textField(obj, "categoryName"),
                             decimalFieldOrNull(obj, "minAnnualSalary"),
                             decimalFieldOrNull(obj, "minMonthlySalary"),
