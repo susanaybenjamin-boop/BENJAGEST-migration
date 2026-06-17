@@ -886,16 +886,31 @@ public class PayslipService {
 
     private ContractData resolveActiveContract(String employeeId, int year, int month) {
         LocalDate ref = LocalDate.of(year, month, 1);
+        // VIG-2: las condiciones variables (salario, grupo, IRPF, AT/EP, pagas…)
+        // se leen de la VIGENCIA vigente a la fecha del periodo (la última con
+        // effective_from <= ref); los datos fijos (tipo, fechas) del contrato.
+        // Fallback al valor del contrato si no hubiera vigencia (no debería tras
+        // el backfill V125). Así las nóminas pasadas no cambian al ascender.
         return jdbcTemplate.query("""
-                SELECT id, contract_type, start_date, end_date,
-                       gross_salary, annual_bonuses, extras_prorated, vacation_days,
-                       irpf_percent, at_ep_percent, ss_contribution_group
-                  FROM employment_contracts
-                 WHERE company_id = ? AND employee_id = ?
-                   AND start_date <= ?
-                   AND (end_date IS NULL OR end_date >= ?)
-                   AND status IN ('ACTIVE', 'SUSPENDED')
-                 ORDER BY start_date DESC LIMIT 1
+                SELECT c.id, c.contract_type, c.start_date, c.end_date,
+                       COALESCE(v.gross_salary, c.gross_salary) AS gross_salary,
+                       COALESCE(v.annual_bonuses, c.annual_bonuses) AS annual_bonuses,
+                       COALESCE(v.extras_prorated, c.extras_prorated) AS extras_prorated,
+                       COALESCE(v.vacation_days, c.vacation_days) AS vacation_days,
+                       COALESCE(v.irpf_percent, c.irpf_percent) AS irpf_percent,
+                       COALESCE(v.at_ep_percent, c.at_ep_percent) AS at_ep_percent,
+                       COALESCE(v.ss_contribution_group, c.ss_contribution_group) AS ss_contribution_group
+                  FROM employment_contracts c
+                  LEFT JOIN contract_vigencias v ON v.id = (
+                        SELECT v2.id FROM contract_vigencias v2
+                         WHERE v2.contract_id = c.id AND v2.effective_from <= ?
+                         ORDER BY v2.effective_from DESC LIMIT 1
+                  )
+                 WHERE c.company_id = ? AND c.employee_id = ?
+                   AND c.start_date <= ?
+                   AND (c.end_date IS NULL OR c.end_date >= ?)
+                   AND c.status IN ('ACTIVE', 'SUSPENDED')
+                 ORDER BY c.start_date DESC LIMIT 1
                 """,
                 (rs, n) -> {
                     ContractData d = new ContractData();
@@ -917,7 +932,7 @@ public class PayslipService {
                             ? sg.intValue() : null;
                     return d;
                 },
-                tenantContext.getCurrentCompanyId(), employeeId, ref, ref)
+                ref, tenantContext.getCurrentCompanyId(), employeeId, ref, ref)
                 .stream().findFirst().orElse(null);
     }
 
