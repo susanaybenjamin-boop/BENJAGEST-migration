@@ -89,19 +89,22 @@ Todas con `company_id` (multi-tenant) e índices por (company_id, …).
   calendario. UI admin: pestaña "Kioscos/Dispositivos" en Laboral (alta + QR + asignar
   empleados) — JavaFX, mostrando el QR de activación.
 
-## 6. DECISIONES ABIERTAS para Benjamin (confirmar antes de FM-2)
+## 6. DECISIONES CERRADAS (Benjamin 2026-06-17)
 
-1. **"Invitación"** — ¿qué significa exactamente?
-   - **(A) [Recomendado, = CONTENDO]** OWNER habilita al empleado (PIN, ya existe) +
-     empareja la tablet con **QR** (token 30 min). Sin email de invitación.
-   - (B) Además, **enlace al móvil** del empleado (p. ej. un magic-link por email que
-     abre `/fichar` ya identificado en su móvil personal). Es trabajo extra sobre (A).
-   - (C) Otra cosa que tengas en mente.
-2. **OTP** — CONTENDO permite EMAIL/SMS. ¿Solo **email** (SES ya está) o también SMS?
-   SMS necesita un proveedor (Twilio/etc.) y coste → recomiendo **solo email** de inicio.
-3. **Offline** — ¿hace falta cola offline real (kiosco sin red) en la primera versión,
-   o lo dejamos para una 2ª fase? Recomiendo **online primero** (FM-1..FM-3) y offline
-   (FM-4 cola) como fase 2 — entrega valor antes y reduce riesgo.
+1. **Invitación = (A)**: OWNER habilita al empleado por **PIN** (ya existe) + empareja
+   la tablet con **QR** (token 30 min). Sin enlace al móvil personal, sin email de invitación.
+2. **Seguridad / OTP**: **NO OTP por email** (el PIN se reenvía y no prueba presencia).
+   En su lugar, **foto OPCIONAL al fichar** (configurable por dispositivo `require_photo`,
+   apagada por defecto) — **foto-evidencia, NUNCA reconocimiento facial** (AEPD nov-2023:
+   el facial es categoría especial art. 9 y casi nunca pasa el test de proporcionalidad;
+   sanciones hasta 200.000 €). La foto requiere aviso al empleado + retención limitada
+   (`photo_retention_days`). Presencia: **geo** (ya existe) en el móvil; en el kiosco la
+   tablet ya está físicamente en el centro.
+3. **Offline = fase 2.** Online primero (FM-1..FM-3); cola offline después.
+
+✅ **FM-1 HECHO** (2026-06-17): V129 `kiosk_devices` + `kiosk_activation_tokens` +
+`kiosk_employee_assignments` (con `require_photo`/`photo_retention_days`, secretos
+hasheados). Aplicada y backend arranca OK.
 
 ## 7. Notas / riesgos
 
