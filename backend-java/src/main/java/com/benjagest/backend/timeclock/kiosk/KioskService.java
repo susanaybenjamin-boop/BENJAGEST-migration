@@ -16,6 +16,8 @@ import java.util.Base64;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -52,14 +54,20 @@ public class KioskService {
     private final TenantContext tenant;
     private final PasswordEncoder encoder;
     private final TimeClockService timeClock;
+    private final KioskPhotoStorageService photoStorage;
+    private final com.benjagest.backend.timeclock.TimeClockEventTypeService eventTypeService;
     private final SecureRandom rnd = new SecureRandom();
 
     public KioskService(JdbcTemplate jdbc, TenantContext tenant,
-                        PasswordEncoder encoder, TimeClockService timeClock) {
+                        PasswordEncoder encoder, TimeClockService timeClock,
+                        KioskPhotoStorageService photoStorage,
+                        com.benjagest.backend.timeclock.TimeClockEventTypeService eventTypeService) {
         this.jdbc = jdbc;
         this.tenant = tenant;
         this.encoder = encoder;
         this.timeClock = timeClock;
+        this.photoStorage = photoStorage;
+        this.eventTypeService = eventTypeService;
     }
 
     // ====================================================================
@@ -235,7 +243,11 @@ public class KioskService {
                 """, (rs, n) -> new EmployeeRef(rs.getString("id"), rs.getString("full_name")),
                 deviceId, tenant.getCurrentCompanyId());
         jdbc.update("UPDATE kiosk_devices SET last_seen_at = NOW() WHERE id = ?", deviceId);
-        return new ConfigView(d.name(), d.requirePhoto(), emps);
+        List<EventType> types = new ArrayList<>();
+        for (var t : eventTypeService.list(false)) {
+            types.add(new EventType(t.code(), t.labelEs(), t.labelEn(), t.icon(), t.isPause()));
+        }
+        return new ConfigView(d.name(), d.requirePhoto(), emps, types);
     }
 
     /** Identifica al empleado por PIN entre los asignados al kiosco. */
@@ -278,6 +290,23 @@ public class KioskService {
         TimeClockService.PunchResult pr = timeClock.punch(
                 req.employeeId(), req.eventType(), null, "KIOSK", req.lat(), req.lng(), actor);
         jdbc.update("UPDATE kiosk_devices SET last_seen_at = NOW() WHERE id = ?", deviceId);
+        // FM-4: foto-evidencia opcional. Si falla guardarla, el fichaje YA está
+        // registrado (no se revierte por la foto); solo se omite la evidencia.
+        if (req.photoBase64() != null && !req.photoBase64().isBlank() && pr.event() != null) {
+            try {
+                String path = photoStorage.savePhoto(tenant.getCurrentCompanyId(),
+                        pr.event().id(), req.photoBase64());
+                if (path != null) {
+                    jdbc.update("""
+                            INSERT INTO kiosk_punch_photos (id, company_id, event_id, kiosk_device_id, file_path)
+                            VALUES (?, ?, ?, ?, ?)
+                            """, UUID.randomUUID().toString(), tenant.getCurrentCompanyId(),
+                            pr.event().id(), deviceId, path);
+                }
+            } catch (Exception ignore) {
+                // la evidencia es secundaria; no romper el fichaje
+            }
+        }
         String geo = pr.geoWarning() == null ? null
                 : "Fuera del radio del centro (" + pr.geoWarning().distanceMeters() + " m)";
         return new FichajeResult(pr.csv(), req.eventType(), geo);
@@ -339,11 +368,14 @@ public class KioskService {
     public record ActivationView(String activationToken, Instant expiresAt) {}
     public record ActivateResult(String deviceToken, String deviceName, String companyName) {}
     public record EmployeeRef(String id, String fullName) {}
-    public record ConfigView(String deviceName, boolean requirePhoto, List<EmployeeRef> employees) {}
+    public record ConfigView(String deviceName, boolean requirePhoto, List<EmployeeRef> employees,
+                             List<EventType> eventTypes) {}
+    public record EventType(String code, String labelEs, String labelEn, String icon, boolean isPause) {}
     public record EstadoView(String lastEventType, Instant lastAt) {}
     public record IdentifyRequest(String pin) {}
     public record AssignRequest(List<String> employeeIds) {}
-    public record FichajeRequest(String employeeId, String eventType, BigDecimal lat, BigDecimal lng) {}
+    public record FichajeRequest(String employeeId, String eventType, BigDecimal lat, BigDecimal lng,
+                                 String photoBase64) {}
     public record FichajeResult(String csv, String eventType, String geoWarning) {}
     public record EstadoRequest(String employeeId) {}
 
@@ -407,6 +439,13 @@ public class KioskService {
             return service.activate(body == null ? null : body.get("activationToken"));
         }
 
+        /** FM-3/4: página web del kiosco/móvil (responsive). Carga sin token; usa
+         *  el KioskToken de localStorage para las llamadas de sesión. */
+        @GetMapping(value = "/app", produces = MediaType.TEXT_HTML_VALUE)
+        public ResponseEntity<String> app() {
+            return ResponseEntity.ok().contentType(MediaType.valueOf("text/html; charset=UTF-8")).body(APP_HTML);
+        }
+
         @GetMapping("/config")
         public ConfigView config(HttpServletRequest request) {
             return service.config(deviceId(request));
@@ -432,5 +471,152 @@ public class KioskService {
             if (id == null) throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Sesión de kiosco no válida.");
             return id.toString();
         }
+
+        // SPA del kiosco/móvil. Vanilla JS, sin dependencias. Guarda el KioskToken
+        // en localStorage tras activar y lo manda en cada llamada de sesión.
+        private static final String APP_HTML = """
+                <!DOCTYPE html><html lang="es"><head>
+                <meta charset="UTF-8">
+                <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+                <title>Fichaje BENJAGEST</title>
+                <style>
+                  :root{--blue:#1d4ed8;--dark:#0f1b2d;--ok:#0a8f4f;--bg:#eef3f8;}
+                  *{box-sizing:border-box;font-family:'Segoe UI',Arial,sans-serif;}
+                  body{margin:0;background:var(--bg);color:#172033;}
+                  .wrap{max-width:680px;margin:0 auto;padding:18px;}
+                  h1{font-size:20px;margin:6px 0 16px;}
+                  .muted{color:#5b6b80;font-size:14px;}
+                  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px;}
+                  button{cursor:pointer;border:none;border-radius:12px;font-weight:700;}
+                  .emp{padding:22px 12px;background:#fff;border:1px solid #d8e2f0;font-size:16px;color:#172033;}
+                  .emp:active{background:#e7eefb;}
+                  .act{padding:24px 12px;font-size:18px;color:#fff;background:var(--blue);}
+                  .act.pause{background:#6b7280;}
+                  .primary{padding:14px 18px;background:var(--blue);color:#fff;font-size:16px;}
+                  input{width:100%;padding:14px;font-size:22px;text-align:center;border:1px solid #c7d3e6;border-radius:10px;letter-spacing:6px;}
+                  .pad{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:14px;}
+                  .pad button{padding:20px;font-size:22px;background:#fff;border:1px solid #d8e2f0;}
+                  .card{background:#fff;border:1px solid #d8e2f0;border-radius:14px;padding:18px;}
+                  .big{font-size:22px;font-weight:800;margin:4px 0;}
+                  .hide{display:none;}
+                  .topbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;}
+                  .link{background:none;color:var(--blue);font-size:14px;padding:6px;}
+                  .done{text-align:center;padding:40px 16px;}
+                  .done .check{font-size:64px;color:var(--ok);}
+                  .err{color:#b91c1c;font-size:14px;min-height:18px;margin-top:8px;}
+                  video{width:100%;border-radius:10px;background:#000;margin-top:10px;max-height:180px;object-fit:cover;}
+                </style></head><body><div class="wrap">
+
+                <div id="scr-activate" class="hide">
+                  <h1>Activar este dispositivo</h1>
+                  <p class="muted">Pega el codigo de activacion que te da el administrador en Laboral &rarr; Kioscos.</p>
+                  <input id="actToken" placeholder="Codigo de activacion" autocomplete="off">
+                  <div class="err" id="actErr"></div>
+                  <button class="primary" style="margin-top:12px;width:100%" onclick="doActivate()">Activar</button>
+                </div>
+
+                <div id="scr-home" class="hide">
+                  <div class="topbar"><h1 id="devName">Fichaje</h1></div>
+                  <p class="muted">Toca tu nombre para fichar.</p>
+                  <div class="grid" id="empGrid"></div>
+                </div>
+
+                <div id="scr-pin" class="hide">
+                  <div class="topbar"><span class="big" id="pinEmp"></span><button class="link" onclick="go('home')">Cancelar</button></div>
+                  <input id="pin" type="password" inputmode="numeric" readonly placeholder="PIN">
+                  <div class="err" id="pinErr"></div>
+                  <div class="pad" id="pinPad"></div>
+                </div>
+
+                <div id="scr-actions" class="hide">
+                  <div class="topbar"><span class="big" id="actEmp"></span><button class="link" onclick="go('home')">Salir</button></div>
+                  <p class="muted" id="estado"></p>
+                  <video id="cam" class="hide" autoplay playsinline muted></video>
+                  <div class="err" id="actErr2"></div>
+                  <div class="grid" id="actGrid" style="margin-top:12px"></div>
+                </div>
+
+                <div id="scr-done" class="hide">
+                  <div class="done"><div class="check">&#10004;</div>
+                  <p class="big" id="doneMsg">Fichaje registrado</p>
+                  <p class="muted" id="doneCsv"></p></div>
+                </div>
+
+                </div><script>
+                var API='/api/public/kiosk';
+                var token=localStorage.getItem('kioskToken');
+                var cfg=null, curEmp=null, stream=null;
+                function go(s){['activate','home','pin','actions','done'].forEach(function(x){
+                  document.getElementById('scr-'+x).classList.toggle('hide', x!==s);});}
+                function hdrs(){return {'Content-Type':'application/json','KioskToken':token||''};}
+                function api(path,method,body){return fetch(API+path,{method:method||'GET',headers:hdrs(),
+                  body:body?JSON.stringify(body):undefined}).then(function(r){
+                  if(!r.ok){return r.text().then(function(t){throw new Error(t||('HTTP '+r.status));});}
+                  var ct=r.headers.get('content-type')||''; return ct.indexOf('json')>=0?r.json():null;});}
+                function doActivate(){
+                  var t=document.getElementById('actToken').value.trim();
+                  document.getElementById('actErr').textContent='';
+                  fetch(API+'/activate',{method:'POST',headers:{'Content-Type':'application/json'},
+                    body:JSON.stringify({activationToken:t})}).then(function(r){
+                    if(!r.ok)throw new Error('Codigo no valido o caducado.');return r.json();}).then(function(d){
+                    token=d.deviceToken; localStorage.setItem('kioskToken',token); init();
+                  }).catch(function(e){document.getElementById('actErr').textContent=e.message;});}
+                function init(){
+                  if(!token){go('activate');return;}
+                  api('/config').then(function(c){cfg=c;
+                    document.getElementById('devName').textContent=c.deviceName||'Fichaje';
+                    var g=document.getElementById('empGrid');g.innerHTML='';
+                    (c.employees||[]).forEach(function(e){var b=document.createElement('button');
+                      b.className='emp';b.textContent=e.fullName;b.onclick=function(){openPin(e);};g.appendChild(b);});
+                    if(!c.employees||!c.employees.length){g.innerHTML='<p class="muted">No hay empleados asignados a este kiosco.</p>';}
+                    go('home');
+                  }).catch(function(e){
+                    if((e.message||'').indexOf('401')>=0||(e.message||'').indexOf('no v')>=0){
+                      localStorage.removeItem('kioskToken');token=null;go('activate');
+                    } else {alert(e.message);} });}
+                function openPin(emp){curEmp=emp;document.getElementById('pinEmp').textContent=emp.fullName;
+                  document.getElementById('pin').value='';document.getElementById('pinErr').textContent='';
+                  var pad=document.getElementById('pinPad');pad.innerHTML='';
+                  ['1','2','3','4','5','6','7','8','9','C','0','OK'].forEach(function(k){
+                    var b=document.createElement('button');b.textContent=k;b.onclick=function(){pinKey(k);};pad.appendChild(b);});
+                  go('pin');}
+                function pinKey(k){var i=document.getElementById('pin');
+                  if(k==='C'){i.value='';return;} if(k==='OK'){submitPin();return;} i.value+=k;}
+                function submitPin(){var pin=document.getElementById('pin').value;
+                  api('/identify','POST',{pin:pin}).then(function(emp){curEmp=emp;openActions(emp);})
+                  .catch(function(){document.getElementById('pinErr').textContent='PIN no valido.';
+                    document.getElementById('pin').value='';});}
+                function openActions(emp){document.getElementById('actEmp').textContent=emp.fullName;
+                  document.getElementById('actErr2').textContent='';
+                  api('/estado','POST',{employeeId:emp.id}).then(function(s){
+                    document.getElementById('estado').textContent=s&&s.lastEventType?('Ultimo: '+s.lastEventType):'Sin fichajes hoy.';});
+                  var g=document.getElementById('actGrid');g.innerHTML='';
+                  (cfg.eventTypes||[]).forEach(function(t){var b=document.createElement('button');
+                    b.className='act'+(t.isPause?' pause':'');b.textContent=t.labelEs||t.code;
+                    b.onclick=function(){doFichaje(t.code);};g.appendChild(b);});
+                  startCam(); go('actions');}
+                function startCam(){var v=document.getElementById('cam');
+                  if(cfg&&cfg.requirePhoto&&navigator.mediaDevices){
+                    navigator.mediaDevices.getUserMedia({video:{facingMode:'user'}}).then(function(s){
+                      stream=s;v.srcObject=s;v.classList.remove('hide');}).catch(function(){});
+                  } else {v.classList.add('hide');}}
+                function stopCam(){if(stream){stream.getTracks().forEach(function(t){t.stop();});stream=null;}
+                  document.getElementById('cam').classList.add('hide');}
+                function snapshot(){if(!stream)return null;var v=document.getElementById('cam');
+                  var c=document.createElement('canvas');c.width=v.videoWidth||320;c.height=v.videoHeight||240;
+                  c.getContext('2d').drawImage(v,0,0,c.width,c.height);return c.toDataURL('image/jpeg',0.6);}
+                function doFichaje(code){var photo=cfg&&cfg.requirePhoto?snapshot():null;
+                  document.getElementById('actErr2').textContent='Registrando...';
+                  function send(lat,lng){api('/fichaje','POST',{employeeId:curEmp.id,eventType:code,
+                    lat:lat,lng:lng,photoBase64:photo}).then(function(r){stopCam();
+                    document.getElementById('doneCsv').textContent=r&&r.csv?('CSV: '+r.csv):'';
+                    go('done');setTimeout(function(){go('home');},4000);})
+                    .catch(function(e){document.getElementById('actErr2').textContent=e.message;});}
+                  if(navigator.geolocation){navigator.geolocation.getCurrentPosition(
+                    function(p){send(p.coords.latitude,p.coords.longitude);},
+                    function(){send(null,null);},{timeout:4000});} else {send(null,null);}}
+                init();
+                </script></body></html>
+                """;
     }
 }
