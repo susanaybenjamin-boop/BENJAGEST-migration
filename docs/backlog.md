@@ -165,6 +165,12 @@ PDF de informes**. Plan de cada uno en su sección. Todo compila y mergeado a de
 
 ## 2026-06-16 — BLOQUE FICHAJE-MÓVIL/KIOSCO (pedido Benjamin) 📱
 
+> **➡️ PLAN DE ATAQUE DETALLADO: [`plan-fichaje-movil-kiosco.md`](plan-fichaje-movil-kiosco.md)**
+> (2026-06-17). Enfoque = web servido por Spring (no nativo); API portada de
+> CONTENDO; reutiliza TimeClockService/work_centers; 3 decisiones abiertas para
+> Benjamin (invitación, OTP email/SMS, offline ahora o fase 2). **Benjamin quiere
+> atacar este módulo lo siguiente.**
+>
 > Benjamin: falta el **fichaje MÓVIL y KIOSCO (tablet)** con **invitación**, igual
 > que en CONTENDO. Por ley (RD-Ley 8/2019). **Bloque grande → contexto fresco.**
 >
