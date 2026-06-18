@@ -332,6 +332,8 @@ public class AccountingScreen {
         // ej. el DEVENGO de la nómina del mes, datado a fin de mes) no aparecían
         // aunque estuvieran validados. Bug reportado por Benjamin 2026-06-17.
         toPicker = new DatePicker(LocalDate.now().withMonth(12).withDayOfMonth(31));
+        com.benjagest.ui.support.EditableCells.installFlexibleConverter(fromPicker);
+        com.benjagest.ui.support.EditableCells.installFlexibleConverter(toPicker);
         statusFilter = new ComboBox<>(FXCollections.observableArrayList(
                 "", "DRAFT", "POSTED", "VOIDED"));
         statusFilter.setValue("POSTED");
@@ -979,6 +981,7 @@ public class AccountingScreen {
     private javafx.stage.Stage buildEntryDialog(JournalEntryDetail detail, List<AccountSummary> accounts) {
         DatePicker datePicker = new DatePicker(
                 detail == null ? LocalDate.now() : detail.entryDate());
+        com.benjagest.ui.support.EditableCells.installFlexibleConverter(datePicker);
         TextArea conceptArea = new TextArea(detail == null ? "" : detail.concept());
         conceptArea.setPrefRowCount(2);
 
@@ -1288,6 +1291,8 @@ public class AccountingScreen {
 
         DatePicker from = new DatePicker(LocalDate.now().withDayOfYear(1));
         DatePicker to = new DatePicker(LocalDate.now().withMonth(12).withDayOfMonth(31));
+        com.benjagest.ui.support.EditableCells.installFlexibleConverter(from);
+        com.benjagest.ui.support.EditableCells.installFlexibleConverter(to);
 
         Label opening = new Label("");
         opening.getStyleClass().add("settings-hint");
@@ -1338,6 +1343,8 @@ public class AccountingScreen {
     private Node buildTrialBalanceTab() {
         DatePicker from = new DatePicker(LocalDate.now().withDayOfYear(1));
         DatePicker to = new DatePicker(LocalDate.now().withMonth(12).withDayOfMonth(31));
+        com.benjagest.ui.support.EditableCells.installFlexibleConverter(from);
+        com.benjagest.ui.support.EditableCells.installFlexibleConverter(to);
         TextField prefix = new TextField();
         prefix.setPromptText(tt.apply("accounting.trial.prefix_prompt"));
         prefix.setPrefColumnCount(6);
@@ -1386,6 +1393,7 @@ public class AccountingScreen {
     /** Balance de Situación a una fecha: Activo vs Pasivo + PN por masas. */
     private Node buildBalanceSheetTab() {
         DatePicker asOf = new DatePicker(LocalDate.now());
+        com.benjagest.ui.support.EditableCells.installFlexibleConverter(asOf);
         VBox content = new VBox(12);
         content.setPadding(new Insets(8));
         javafx.scene.control.ScrollPane scroll = new javafx.scene.control.ScrollPane(content);
@@ -1413,6 +1421,8 @@ public class AccountingScreen {
     private Node buildEcpnTab() {
         DatePicker from = new DatePicker(LocalDate.now().withDayOfYear(1));
         DatePicker to = new DatePicker(LocalDate.now().withMonth(12).withDayOfMonth(31));
+        com.benjagest.ui.support.EditableCells.installFlexibleConverter(from);
+        com.benjagest.ui.support.EditableCells.installFlexibleConverter(to);
         TableView<AccountingModels.EquityMovementRow> table = new TableView<>();
         table.getColumns().addAll(List.of(
                 col(tt.apply("accounting.col.account_code"), AccountingModels.EquityMovementRow::code, 90),
@@ -1440,6 +1450,8 @@ public class AccountingScreen {
     private Node buildPygTab() {
         DatePicker from = new DatePicker(LocalDate.now().withDayOfYear(1));
         DatePicker to = new DatePicker(LocalDate.now().withMonth(12).withDayOfMonth(31));
+        com.benjagest.ui.support.EditableCells.installFlexibleConverter(from);
+        com.benjagest.ui.support.EditableCells.installFlexibleConverter(to);
         VBox content = new VBox(12);
         content.setPadding(new Insets(8));
         javafx.scene.control.ScrollPane scroll = new javafx.scene.control.ScrollPane(content);
@@ -1487,6 +1499,8 @@ public class AccountingScreen {
         expTarget.setValue("JOURNAL_ENTRIES");
         DatePicker expFrom = new DatePicker(LocalDate.now().withDayOfYear(1));
         DatePicker expTo = new DatePicker(LocalDate.now().withMonth(12).withDayOfMonth(31));
+        com.benjagest.ui.support.EditableCells.installFlexibleConverter(expFrom);
+        com.benjagest.ui.support.EditableCells.installFlexibleConverter(expTo);
         javafx.scene.control.CheckBox expDrafts = new javafx.scene.control.CheckBox(tt.apply("accounting.exchange.include_drafts"));
         Button expBtn = new Button(tt.apply("accounting.exchange.export_btn"));
         expBtn.getStyleClass().add("primary-button");

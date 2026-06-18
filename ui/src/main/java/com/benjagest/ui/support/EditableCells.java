@@ -134,6 +134,29 @@ public final class EditableCells {
     }
 
     /**
+     * Activa la máscara de fecha en TODOS los DatePicker de una Scene de
+     * forma perezosa: cuando el editor de un DatePicker recibe el foco, si
+     * aún no tiene máscara, se le instala. Cubre toda la ventana con una
+     * sola llamada, sin tener que tocar cada DatePicker, y sin problemas de
+     * timing (se instala justo cuando el usuario va a teclear). Idempotente.
+     */
+    public static void enableDateMaskOnFocus(javafx.scene.Scene scene) {
+        if (scene == null) return;
+        scene.focusOwnerProperty().addListener((obs, oldNode, node) -> {
+            Node n = node;
+            for (int i = 0; i < 6 && n != null; i++) {
+                if (n instanceof DatePicker dp) {
+                    if (dp.getEditor() != null && dp.getEditor().getTextFormatter() == null) {
+                        installDateMask(dp);
+                    }
+                    return;
+                }
+                n = n.getParent();
+            }
+        });
+    }
+
+    /**
      * Máscara de HORA: el usuario teclea solo dígitos y los dos puntos
      * {@code HH:mm} aparecen automáticamente. P. ej. teclear {@code 0900}
      * muestra {@code 09:00}.
