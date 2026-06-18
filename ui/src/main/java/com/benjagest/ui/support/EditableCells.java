@@ -41,6 +41,10 @@ public final class EditableCells {
 
     private static final DateTimeFormatter ISO = DateTimeFormatter.ISO_LOCAL_DATE;
 
+    /** Formato de display unificado dd-MM-yyyy (con ceros) — coherente con la
+     *  máscara de entrada, para que valor mostrado y máscara nunca se descuadren. */
+    private static final DateTimeFormatter DISPLAY_DASH = DateTimeFormatter.ofPattern("dd-MM-yyyy");
+
     /**
      * Lista de formatos aceptados al parsear texto tecleado en un
      * DatePicker. El orden importa — probamos primero ISO (formato
@@ -102,8 +106,9 @@ public final class EditableCells {
         picker.setConverter(new javafx.util.StringConverter<>() {
             @Override
             public String toString(LocalDate v) {
-                return original == null ? (v == null ? "" : v.toString())
-                        : original.toString(v);
+                // Display unificado dd-MM-yyyy (con ceros): coincide con la
+                // máscara de entrada, así nunca se descuadran los guiones.
+                return v == null ? "" : v.format(DISPLAY_DASH);
             }
             @Override
             public LocalDate fromString(String s) {
@@ -146,8 +151,11 @@ public final class EditableCells {
             Node n = node;
             for (int i = 0; i < 6 && n != null; i++) {
                 if (n instanceof DatePicker dp) {
+                    // Instala conversor flexible (display dd-MM-yyyy) + máscara
+                    // juntos, para que formato y máscara concuerden. Idempotente:
+                    // si ya tiene máscara, no repetimos.
                     if (dp.getEditor() != null && dp.getEditor().getTextFormatter() == null) {
-                        installDateMask(dp);
+                        installFlexibleConverter(dp);
                     }
                     return;
                 }
