@@ -84,6 +84,21 @@ public class TimeClockService {
     public PunchResult punch(String employeeId, String eventType,
                              String customerId, String origin,
                              java.math.BigDecimal lat, java.math.BigDecimal lng) {
+        return punch(employeeId, eventType, customerId, origin, lat, lng,
+                currentUserService.require().userId());
+    }
+
+    /**
+     * FM-2 (kiosco): variante con actor EXPLÍCITO. El fichaje desde un kiosco
+     * NO tiene JWT de usuario (se valida por KioskToken), así que el verificador
+     * se pasa por parámetro (el user_id del propio empleado) en vez de leerlo de
+     * {@code currentUserService.require()}, que lanzaría sin sesión.
+     */
+    @Transactional
+    public PunchResult punch(String employeeId, String eventType,
+                             String customerId, String origin,
+                             java.math.BigDecimal lat, java.math.BigDecimal lng,
+                             String actorUserId) {
         if (employeeId == null || employeeId.isBlank()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "employeeId requerido");
         }
@@ -103,7 +118,6 @@ public class TimeClockService {
                             + "que cambie la política de geolocalización.");
         }
 
-        AuthenticatedUser actor = currentUserService.require();
         String eventId = UUID.randomUUID().toString();
         TimeClockEvent event = new TimeClockEvent(
                 eventId, null, employeeId, customerId,
@@ -115,7 +129,7 @@ public class TimeClockService {
 
         String csv = generateCsv();
         repository.insertVerification(
-                UUID.randomUUID().toString(), eventId, csv, actor.userId());
+                UUID.randomUUID().toString(), eventId, csv, actorUserId);
 
         HolidayWarning warning = detectHolidayWarning(employeeId);
         GeoWarning geoWarning = (geo != null && geo.shouldWarn())

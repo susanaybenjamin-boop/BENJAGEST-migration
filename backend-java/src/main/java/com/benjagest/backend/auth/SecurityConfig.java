@@ -62,6 +62,11 @@ public class SecurityConfig {
                                 // accede via enlace email para leer y firmar
                                 // el acuerdo. Token unico + OTP en la URL.
                                 "/api/public/tpb/**",
+                                // FM-2: kiosco de fichaje. activate canjea el QR;
+                                // la sesión (config/identify/estado/fichaje) se
+                                // valida con KioskToken (KioskTokenInterceptor),
+                                // no con JWT de usuario.
+                                "/api/public/kiosk/**",
                                 "/error"
                         ).permitAll()
                         .anyRequest().authenticated()

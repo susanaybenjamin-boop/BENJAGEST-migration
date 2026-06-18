@@ -76,10 +76,14 @@ Todas con `company_id` (multi-tenant) e índices por (company_id, …).
 ## 5. Plan slice a slice
 
 - **FM-1** — Migración additive (las 4 tablas) + entidades/repos. Sin tocar auth core.
-- **FM-2** — `KioskController` + `KioskTokenInterceptor` (valida `KioskToken` →
-  resuelve company + device). Endpoints admin (register/devices/activation-token/
-  assign) + `activate`. Reutiliza `TimeClockService` para el fichaje. OTP por email
-  con `EmailSenderService`.
+- ✅ **FM-2 HECHO** (2026-06-17) — `KioskService` + `KioskTokenInterceptor` +
+  controllers admin (`/api/kiosk/devices...`: alta/listar/editar/borrar + QR de
+  activación + asignar empleados) y público (`/api/public/kiosk/activate` +
+  sesión config/identify/estado/fichaje). `punch(...,actorUserId)` añadido para
+  fichar sin JWT; reutiliza geo + cadena hash. SecurityConfig (ruta pública) +
+  WebMvcConfig (interceptor). Sin OTP (decisión Benjamin). Verificado: arranca +
+  smoke (activate→410 token malo, config sin token→401). **Foto = en FM-4 (captura
+  en la UI web).**
 - **FM-3 (móvil web)** — página `/fichar` responsive servida por Spring (entrada/
   salida/pausas + geo del navegador). Identificación por PIN. Mismo backend que el
   kiosco.
