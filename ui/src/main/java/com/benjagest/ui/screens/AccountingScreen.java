@@ -43,6 +43,7 @@ import javafx.scene.control.TableView;
 import javafx.scene.control.TextArea;
 import javafx.scene.control.TextField;
 import javafx.scene.layout.BorderPane;
+import javafx.scene.layout.GridPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
@@ -106,7 +107,8 @@ public class AccountingScreen {
                 new Tab(tt.apply("accounting.tab.balance_sheet"), buildBalanceSheetTab()),
                 new Tab(tt.apply("accounting.tab.pyg"), buildPygTab()),
                 new Tab(tt.apply("accounting.tab.rules"), buildRulesTab()),
-                new Tab(tt.apply("accounting.tab.year_close"), buildYearCloseTab())
+                new Tab(tt.apply("accounting.tab.year_close"), buildYearCloseTab()),
+                new Tab(tt.apply("accounting.tab.exchange"), buildExportImportTab())
         );
         VBox.setVgrow(tabs, Priority.ALWAYS);
         VBox root = new VBox(tabs);
@@ -1429,6 +1431,110 @@ public class AccountingScreen {
         return box;
     }
 
+    /**
+     * EXPORT-CONTABLE + EXT-IMPORT — exportar a otros programas (CSV/Contasol/
+     * JSON) y reimportar. Formatos implementados en backend: CSV, CONTASOL,
+     * JSON_BENJAGEST (A3/SAGE = pendientes en backend).
+     */
+    private Node buildExportImportTab() {
+        // ----- Exportar -----
+        Label expTitle = new Label(tt.apply("accounting.exchange.export_title"));
+        expTitle.getStyleClass().add("settings-section-title");
+        ComboBox<String> expFormat = new ComboBox<>(FXCollections.observableArrayList("CSV", "CONTASOL", "JSON_BENJAGEST"));
+        expFormat.setValue("CSV");
+        ComboBox<String> expTarget = new ComboBox<>(FXCollections.observableArrayList(
+                "JOURNAL_ENTRIES", "ACCOUNTS", "CUSTOMERS", "SUPPLIERS",
+                "INVOICES_SALES", "INVOICES_PURCHASE", "FIXED_ASSETS", "LOANS"));
+        expTarget.setValue("JOURNAL_ENTRIES");
+        DatePicker expFrom = new DatePicker(LocalDate.now().withDayOfYear(1));
+        DatePicker expTo = new DatePicker(LocalDate.now().withMonth(12).withDayOfMonth(31));
+        javafx.scene.control.CheckBox expDrafts = new javafx.scene.control.CheckBox(tt.apply("accounting.exchange.include_drafts"));
+        Button expBtn = new Button(tt.apply("accounting.exchange.export_btn"));
+        expBtn.getStyleClass().add("primary-button");
+        expBtn.setOnAction(e -> async(
+                () -> api.exportAccounting(expFormat.getValue(), expTarget.getValue(),
+                        expFrom.getValue(), expTo.getValue(), expDrafts.isSelected()),
+                content -> {
+                    javafx.stage.FileChooser fc = new javafx.stage.FileChooser();
+                    fc.setTitle(tt.apply("accounting.exchange.export_btn"));
+                    String ext = "JSON_BENJAGEST".equals(expFormat.getValue()) ? ".json"
+                            : "CONTASOL".equals(expFormat.getValue()) ? ".txt" : ".csv";
+                    fc.setInitialFileName(expTarget.getValue().toLowerCase() + "-"
+                            + LocalDate.now() + ext);
+                    java.io.File f = fc.showSaveDialog(expBtn.getScene().getWindow());
+                    if (f == null) return;
+                    try {
+                        java.nio.file.Files.writeString(f.toPath(), content == null ? "" : content);
+                        showInfo(tt.apply("accounting.exchange.export_done"), f.getName());
+                    } catch (java.io.IOException ex) {
+                        showInfo(tt.apply("accounting.exchange.export_fail"), ex.getMessage());
+                    }
+                },
+                err -> showError(tt.apply("accounting.exchange.export_fail"), err)));
+        GridPane expG = new GridPane();
+        expG.setHgap(10); expG.setVgap(8);
+        expG.add(new Label(tt.apply("accounting.exchange.format")), 0, 0); expG.add(expFormat, 1, 0);
+        expG.add(new Label(tt.apply("accounting.exchange.target")), 2, 0); expG.add(expTarget, 3, 0);
+        expG.add(new Label(tt.apply("accounting.filter.from")), 0, 1); expG.add(expFrom, 1, 1);
+        expG.add(new Label(tt.apply("accounting.filter.to")), 2, 1); expG.add(expTo, 3, 1);
+        expG.add(expDrafts, 1, 2); expG.add(expBtn, 3, 2);
+
+        // ----- Importar -----
+        Label impTitle = new Label(tt.apply("accounting.exchange.import_title"));
+        impTitle.getStyleClass().add("settings-section-title");
+        ComboBox<String> impFormat = new ComboBox<>(FXCollections.observableArrayList("CSV", "CONTASOL", "JSON_BENJAGEST"));
+        impFormat.setValue("CSV");
+        ComboBox<String> impTarget = new ComboBox<>(FXCollections.observableArrayList(
+                "JOURNAL_ENTRIES", "ACCOUNTS", "CUSTOMERS", "SUPPLIERS"));
+        impTarget.setValue("JOURNAL_ENTRIES");
+        Label impFile = new Label(tt.apply("bank.import.no_file"));
+        impFile.setStyle("-fx-text-fill: #6e6e6e;");
+        final java.io.File[] impChosen = {null};
+        Button impPick = new Button(tt.apply("bank.import.pick_file"));
+        impPick.setOnAction(e -> {
+            javafx.stage.FileChooser fc = new javafx.stage.FileChooser();
+            fc.getExtensionFilters().addAll(
+                    new javafx.stage.FileChooser.ExtensionFilter("CSV / TXT / JSON", "*.csv", "*.txt", "*.json"),
+                    new javafx.stage.FileChooser.ExtensionFilter("Todos", "*.*"));
+            java.io.File f = fc.showOpenDialog(impPick.getScene().getWindow());
+            if (f != null) { impChosen[0] = f; impFile.setText(f.getName()); }
+        });
+        Button impBtn = new Button(tt.apply("accounting.exchange.import_btn"));
+        impBtn.setOnAction(e -> {
+            if (impChosen[0] == null) { showInfo(tt.apply("accounting.exchange.import_title"), tt.apply("bank.import.missing")); return; }
+            final java.io.File f = impChosen[0];
+            async(() -> {
+                String content = java.nio.file.Files.readString(f.toPath());
+                return api.importExternal(impFormat.getValue(), impTarget.getValue(), f.getName(), content);
+            }, res -> {
+                showInfo(tt.apply("accounting.exchange.import_done"), tt.apply("accounting.exchange.import_done_body")
+                        .replace("{total}", String.valueOf(res.rowsTotal()))
+                        .replace("{imported}", String.valueOf(res.rowsImported()))
+                        .replace("{skipped}", String.valueOf(res.rowsSkipped()))
+                        .replace("{errors}", String.valueOf(res.rowsAutoMatched())));
+                com.benjagest.ui.support.RefreshBus.emit(
+                        com.benjagest.ui.support.RefreshBus.TOPIC_JOURNAL,
+                        com.benjagest.ui.support.RefreshBus.TOPIC_ACCOUNTS_CATALOG,
+                        com.benjagest.ui.support.RefreshBus.TOPIC_CUSTOMERS,
+                        com.benjagest.ui.support.RefreshBus.TOPIC_SUPPLIERS);
+            }, err -> showError(tt.apply("accounting.exchange.import_fail"), err));
+        });
+        GridPane impG = new GridPane();
+        impG.setHgap(10); impG.setVgap(8);
+        impG.add(new Label(tt.apply("accounting.exchange.format")), 0, 0); impG.add(impFormat, 1, 0);
+        impG.add(new Label(tt.apply("accounting.exchange.target")), 2, 0); impG.add(impTarget, 3, 0);
+        impG.add(new Label(tt.apply("accounting.exchange.file")), 0, 1); impG.add(new HBox(8, impPick, impFile), 1, 1, 3, 1);
+        impG.add(impBtn, 3, 2);
+
+        Label hint = new Label(tt.apply("accounting.exchange.hint"));
+        hint.setWrapText(true); hint.getStyleClass().add("settings-hint");
+
+        VBox box = new VBox(14, expTitle, expG, new javafx.scene.control.Separator(),
+                impTitle, impG, new javafx.scene.control.Separator(), hint);
+        box.setPadding(new Insets(12));
+        return box;
+    }
+
     /** Renderiza un grupo (Activo/Pasivo/Ingresos/Gastos) con sus masas, líneas y total. */
     private VBox sectionGroup(String title, List<AccountingModels.ReportSection> sections, BigDecimal grandTotal) {
         VBox group = new VBox(8);
@@ -1604,6 +1710,12 @@ public class AccountingScreen {
 
     private void showError(String title, String body) {
         Alert a = new Alert(AlertType.ERROR, title + "\n\n" + body);
+        a.showAndWait();
+    }
+
+    private void showInfo(String title, String body) {
+        Alert a = new Alert(AlertType.INFORMATION, body);
+        a.setHeaderText(title);
         a.showAndWait();
     }
 
