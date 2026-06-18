@@ -889,6 +889,15 @@ public class AccountingScreen {
         return h;
     }
 
+    /** Muestra un ComboBox de códigos con etiqueta traducida (prefijo + código).
+     *  El valor seleccionado sigue siendo el código (lo que espera el backend). */
+    private void localizeCombo(ComboBox<String> combo, String prefix) {
+        combo.setConverter(new javafx.util.StringConverter<>() {
+            @Override public String toString(String code) { return code == null ? "" : tt.apply(prefix + code); }
+            @Override public String fromString(String s) { return s; }
+        });
+    }
+
     private String eur(BigDecimal v) {
         if (v == null) return "0,00 €";
         return String.format(java.util.Locale.of("es", "ES"), "%,.2f €", v);
@@ -1473,6 +1482,7 @@ public class AccountingScreen {
         ComboBox<String> expTarget = new ComboBox<>(FXCollections.observableArrayList(
                 "JOURNAL_ENTRIES", "ACCOUNTS", "CUSTOMERS", "SUPPLIERS",
                 "INVOICES_SALES", "INVOICES_PURCHASE", "FIXED_ASSETS", "LOANS"));
+        localizeCombo(expTarget, "accounting.exchange.target.");
         expTarget.setValue("JOURNAL_ENTRIES");
         DatePicker expFrom = new DatePicker(LocalDate.now().withDayOfYear(1));
         DatePicker expTo = new DatePicker(LocalDate.now().withMonth(12).withDayOfMonth(31));
@@ -1514,6 +1524,7 @@ public class AccountingScreen {
         impFormat.setValue("CSV");
         ComboBox<String> impTarget = new ComboBox<>(FXCollections.observableArrayList(
                 "JOURNAL_ENTRIES", "ACCOUNTS", "CUSTOMERS", "SUPPLIERS"));
+        localizeCombo(impTarget, "accounting.exchange.target.");
         impTarget.setValue("JOURNAL_ENTRIES");
         Label impFile = new Label(tt.apply("bank.import.no_file"));
         impFile.setStyle("-fx-text-fill: #6e6e6e;");
