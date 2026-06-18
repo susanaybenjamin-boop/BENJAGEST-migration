@@ -119,9 +119,9 @@ public class EmployeeAppService {
             throw new ResponseStatusException(HttpStatus.GONE, "Invitación no válida");
         }
         InvRow inv = rows.get(0);
-        if (inv.usedAt() != null) {
-            throw new ResponseStatusException(HttpStatus.GONE, "Esta invitación ya se usó");
-        }
+        // Reutilizable hasta caducar (NO de un solo uso): en iOS la PWA instalada
+        // usa un almacen distinto del navegador, asi que el empleado tiene que
+        // activar DENTRO de la app instalada aunque ya lo hiciera en Safari.
         if (inv.expiresAt() != null && inv.expiresAt().toInstant().isBefore(Instant.now())) {
             throw new ResponseStatusException(HttpStatus.GONE, "La invitación ha caducado");
         }
@@ -296,7 +296,7 @@ public class EmployeeAppService {
             """;
 
     private static final String SERVICE_WORKER_JS = """
-            const CACHE = 'benjagest-empleado-v2';
+            const CACHE = 'benjagest-empleado-v3';
             self.addEventListener('install', (e) => {
               self.skipWaiting();
               e.waitUntil(caches.open(CACHE).then((c) => c.addAll(['/api/public/empleado/app'])));
@@ -381,7 +381,15 @@ public class EmployeeAppService {
 
                 <div id="screen-invite" class="hidden">
                   <h1>Activar la app</h1>
-                  <p class="sub">Abre el enlace de invitacion que te ha enviado tu empresa para activar esta aplicacion en tu movil.</p>
+                  <p class="sub">Introduce el codigo de invitacion que te ha enviado tu empresa.</p>
+                  <div id="installHint" class="card hidden">
+                    <strong>Instala la app primero</strong>
+                    <ol style="margin:8px 0 0; padding-left:18px; color:#cbd5e1; font-size:14px; line-height:1.5;">
+                      <li>Copia el codigo de abajo.</li>
+                      <li>Toca <b>Compartir</b> (el cuadrado con la flecha) y <b>Anadir a pantalla de inicio</b>.</li>
+                      <li>Abre la app desde su icono, pega el codigo y pulsa Activar.</li>
+                    </ol>
+                  </div>
                   <div class="card">
                     <label>Codigo de invitacion</label>
                     <input id="inviteInput" inputmode="text" placeholder="pega aqui el codigo"/>
@@ -520,25 +528,36 @@ public class EmployeeAppService {
                   gotoPin();
                 };
 
-                // Arranque: si llega ?invite=, activar; si hay secret, pedir PIN; si no, pantalla de invitacion.
+                function store(res) {
+                  localStorage.setItem(LS_SECRET, res.deviceSecret);
+                  localStorage.setItem(LS_NAME, res.employeeName || '');
+                  localStorage.setItem(LS_COMPANY, res.companyName || '');
+                }
+                // iOS: la PWA instalada tiene almacenamiento propio (distinto de Safari),
+                // por eso solo activamos automaticamente DENTRO de la app instalada.
+                const standalone = window.matchMedia('(display-mode: standalone)').matches
+                  || window.navigator.standalone === true;
+
                 (async function init() {
+                  if (localStorage.getItem(LS_SECRET)) { gotoPin(); return; }
                   const invite = qp('invite');
-                  if (invite && !localStorage.getItem(LS_SECRET)) {
+                  if (invite && standalone) {
                     try {
                       const res = await activate(invite);
-                      localStorage.setItem(LS_SECRET, res.deviceSecret);
-                      localStorage.setItem(LS_NAME, res.employeeName || '');
-                      localStorage.setItem(LS_COMPANY, res.companyName || '');
+                      store(res);
                       history.replaceState({}, '', '/api/public/empleado/app');
                       gotoPin();
                       return;
                     } catch (e) {
                       show('screen-invite');
+                      document.getElementById('inviteInput').value = invite;
                       msg('inviteMsg', e.message);
                       return;
                     }
                   }
-                  if (localStorage.getItem(LS_SECRET)) { gotoPin(); } else { show('screen-invite'); }
+                  show('screen-invite');
+                  if (invite) { document.getElementById('inviteInput').value = invite; }
+                  if (!standalone) { document.getElementById('installHint').classList.remove('hidden'); }
                 })();
 
                 if ('serviceWorker' in navigator) {
