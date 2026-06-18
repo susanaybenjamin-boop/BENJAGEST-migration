@@ -952,6 +952,23 @@ public class AccountingApiClient {
                 bdField(json, "resultadoExplotacion"));
     }
 
+    /** ECPN — Estado de Cambios en el Patrimonio Neto de un periodo. */
+    public List<AccountingModels.EquityMovementRow> equityChanges(LocalDate from, LocalDate to)
+            throws IOException, InterruptedException {
+        StringBuilder q = new StringBuilder();
+        if (from != null) append(q, "from", from.toString());
+        if (to != null)   append(q, "to", to.toString());
+        String json = get("/accounting/reports/equity-changes" + q);
+        List<AccountingModels.EquityMovementRow> out = new ArrayList<>();
+        for (String o : splitJsonArray(json)) {
+            out.add(new AccountingModels.EquityMovementRow(
+                    strField(o, "code"), strField(o, "name"),
+                    bdField(o, "openingBalance"), bdField(o, "closingBalance"),
+                    bdField(o, "variation")));
+        }
+        return out;
+    }
+
     /** Parsea las secciones (masas) anidadas de un informe Balance/PyG. */
     private List<AccountingModels.ReportSection> parseReportSections(String arr) {
         List<AccountingModels.ReportSection> out = new ArrayList<>();
