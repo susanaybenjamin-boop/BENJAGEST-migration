@@ -13913,6 +13913,18 @@ public class BenjagestUiApplication extends Application {
         return label;
     }
 
+    /**
+     * Etiqueta de formulario que NUNCA se trunca a "...": fija
+     * {@code minWidth} al ancho de su texto, así en un HBox apretado el
+     * texto se lee entero (el resto de controles ceden el espacio). Es el
+     * patrón que ya se usa en partes del código (p. ej. formulario IRPF).
+     */
+    private Label formLabel(String key) {
+        Label l = new Label(t(key));
+        l.setMinWidth(javafx.scene.layout.Region.USE_PREF_SIZE);
+        return l;
+    }
+
     private void add(Map<String, TextField> fields, String... namesAndPrompts) {
         for (int index = 0; index < namesAndPrompts.length; index += 2) {
             TextField field = new TextField();
@@ -34668,9 +34680,9 @@ public class BenjagestUiApplication extends Application {
             if (sel != null) { all.remove(sel); refreshDay.run(); }
         });
         HBox form = new HBox(8,
-                new Label(t("labor.schedule.col.type")), type,
-                new Label(t("labor.workdays.col.in")), start,
-                new Label(t("labor.workdays.col.out")), end, addRow, delRow);
+                formLabel("labor.schedule.col.type"), type,
+                formLabel("labor.workdays.col.in"), start,
+                formLabel("labor.workdays.col.out"), end, addRow, delRow);
         form.setAlignment(Pos.CENTER_LEFT);
 
         // --- Acciones de día: copiar a otros días / vaciar ---
@@ -34723,9 +34735,11 @@ public class BenjagestUiApplication extends Application {
         HBox dayActions = new HBox(8, copyBtn, clearBtn);
         dayActions.setAlignment(Pos.CENTER_LEFT);
 
-        VBox box = new VBox(10, hint,
-                new HBox(8, new Label(t("labor.schedule.day") + ":"), dayBar),
-                table, form, dayActions);
+        Label dayLbl = new Label(t("labor.schedule.day") + ":");
+        dayLbl.setMinWidth(javafx.scene.layout.Region.USE_PREF_SIZE);
+        HBox dayRow = new HBox(8, dayLbl, dayBar);
+        dayRow.setAlignment(Pos.CENTER_LEFT);
+        VBox box = new VBox(10, hint, dayRow, table, form, dayActions);
         box.setPadding(new Insets(12));
         dialog.getDialogPane().setContent(box);
 
@@ -34766,7 +34780,7 @@ public class BenjagestUiApplication extends Application {
         Dialog<Void> dialog = new Dialog<>();
         dialog.setTitle(t("labor.schedule.assign") + " — " + template.name());
         dialog.getDialogPane().getButtonTypes().add(ButtonType.CLOSE);
-        dialog.getDialogPane().setPrefWidth(560);
+        dialog.getDialogPane().setPrefWidth(660);
 
         javafx.collections.ObservableList<com.benjagest.ui.model.ScheduleAssignmentEntry> rows =
                 FXCollections.observableArrayList();
@@ -34809,8 +34823,11 @@ public class BenjagestUiApplication extends Application {
             }
             @Override public com.benjagest.ui.model.EmployeeEntry fromString(String s) { return null; }
         });
+        empCombo.setPrefWidth(190);
         DatePicker fromP = new DatePicker(java.time.LocalDate.now());
         DatePicker toP = new DatePicker();
+        fromP.setPrefWidth(130);
+        toP.setPrefWidth(130);
         com.benjagest.ui.support.EditableCells.installFlexibleConverter(fromP);
         com.benjagest.ui.support.EditableCells.installFlexibleConverter(toP);
         Button addBtn = new Button(t("labor.schedule.assign.add"));
@@ -34848,8 +34865,8 @@ public class BenjagestUiApplication extends Application {
         });
 
         HBox form = new HBox(8, empCombo,
-                new Label(t("labor.schedule.col.from")), fromP,
-                new Label(t("labor.schedule.col.to")), toP, addBtn, removeBtn);
+                formLabel("labor.schedule.col.from"), fromP,
+                formLabel("labor.schedule.col.to"), toP, addBtn, removeBtn);
         form.setAlignment(Pos.CENTER_LEFT);
         VBox box = new VBox(10, table, form);
         box.setPadding(new Insets(12));
