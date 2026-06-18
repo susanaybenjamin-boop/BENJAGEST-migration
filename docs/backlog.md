@@ -1132,18 +1132,33 @@ Nóminas; afinar topes de cotización; pagas extra.
     + /activar + activate-install). NO nativa, NO Next.js.
   - **Alcance = completo**: fichar, vacaciones/bajas (con adjuntos), nóminas
     (recibir/confirmar/firmar/descargar), calendario/jornada/plan del día.
-  - **Conectividad = PENDIENTE de Benjamin** ("lo hablamos"). Opciones explicadas:
-    Solo-LAN (0€, máx. seguridad, no desde casa) · Cloudflare Tunnel (gratis, sin
-    abrir puertos, recomendado si quiere acceso externo) · port-forward (riesgo RGPD,
-    desaconsejado) · nube/VPS (abandona el on-premise). **Clave: NO bloquea construir**
-    — la PWA es el mismo código por LAN/túnel/nube; la conectividad es decisión de
-    empaquetado. Se construye LAN-first (funciona ya en el WiFi de la oficina).
-  - **Plan slices**: MEMP-1 invitación+activación+login+cascarón PWA · MEMP-2 fichar
-    (reusa TimeClockService.punch) · MEMP-3 calendario/jornada/plan (horario JOR-2 +
-    jornada real JOR-1) · MEMP-4 vacaciones/bajas · MEMP-5 nóminas (entrega+firma,
-    falta backend de entrega/firma). Fuente CONTENDO: empleado*Controller.js,
-    nominaEntregasController.js, app180-frontend/app/empleado + /activar.
-  - **Siguiente**: arrancar MEMP-1 cuando Benjamin confirme.
+  - **Caso de uso clave (Benjamin 2026-06-18)**: EMPRESA DE SERVICIOS cuyos empleados
+    fichan en VARIOS clientes y lugares distintos. Aquí el kiosko NO sirve (no hay
+    centro fijo) → fichaje por PWA en el móvil con GEO obligatorio. El modelo YA lo
+    soporta: `time_clock_events.customer_id` + `latitude/longitude` y el `punch(...)`
+    los aceptan; la geo se captura como EVIDENCIA (geo_policy `info`), no contra radio
+    fijo (`strict` es solo para centros físicos/kiosko).
+  - **Conectividad = CLOUDFLARE TUNNEL** (decidido Benjamin 2026-06-18). Acceso
+    externo obligatorio (el empleado ficha fuera del WiFi de la oficina); túnel
+    saliente del equipo on-premise → URL HTTPS sin abrir puertos del router. Gratis.
+    Solo-LAN queda para clientes con un único centro físico (kiosko). **NO bloquea
+    construir**: la PWA es el mismo código; el túnel se configura al empaquetar.
+    Se construye LAN-first para desarrollo.
+  - **Plan slices**:
+    - ✅ **MEMP-1 HECHO** (2026-06-18) — invitación + activación + login + cascarón PWA.
+      MEMP-1a: V132 `employee_app_invitations` + `EmployeeAppService` (admin invita /
+      público activa) + `DeviceTokenService.pairEmployeeDevice` (additive, reusa modelo
+      PIN). MEMP-1b: PWA servida por Spring (`/api/public/empleado/app` + manifest + sw
+      + icon): activar→PIN→home con stubs. MEMP-1c: botón "Invitar al móvil" en el
+      editor de empleado (enlace + código copiables). El empleado entra por
+      `/api/auth/pin-login` (JWT EMPLOYEE). Verificado: V132 aplica, smoke OK, PWA sirve.
+    - ⬜ **MEMP-2** fichar desde la PWA (reusa `TimeClockService.punch` + geo + customer_id).
+    - ⬜ **MEMP-3** calendario/jornada/plan (horario JOR-2 + jornada real JOR-1).
+    - ⬜ **MEMP-4** vacaciones/bajas (pedir + adjuntos).
+    - ⬜ **MEMP-5** nóminas (recibir/confirmar/firmar/descargar; falta backend entrega/firma).
+    - Fuente CONTENDO: empleado*Controller.js, nominaEntregasController.js,
+      app180-frontend/app/empleado + /activar.
+  - **Siguiente**: MEMP-2 (fichar desde el móvil).
 - ✅ **PORT-2 JORNADAS — CERRADO 2026-06-18** (decisión Benjamin: real + planificación,
   modelo 1 plantilla = N bloques → M empleados, CONTENDO). Entregado:
   - **JOR-1** jornada REAL desde fichajes: `WorkdayService` calcula horas

@@ -67,6 +67,10 @@ public class SecurityConfig {
                                 // valida con KioskToken (KioskTokenInterceptor),
                                 // no con JWT de usuario.
                                 "/api/public/kiosk/**",
+                                // MEMP-1: PWA del empleado. activate canjea la
+                                // invitación y empareja el móvil; luego el empleado
+                                // entra por /api/auth/pin-login (ya público).
+                                "/api/public/empleado/**",
                                 "/error"
                         ).permitAll()
                         .anyRequest().authenticated()

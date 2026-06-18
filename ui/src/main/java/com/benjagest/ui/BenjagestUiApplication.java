@@ -15666,6 +15666,16 @@ public class BenjagestUiApplication extends Application {
             case "labor.employee.editor.app_access.pin_keep" -> "Leave empty to keep current";
             case "labor.employee.editor.app_access.pin_new_hint" -> "Set a numeric PIN of 4 to 8 digits. The employee will sign in with it.";
             case "labor.employee.editor.app_access.pin_change_hint" -> "Already has a PIN. Type a new one only if you want to replace it.";
+            case "labor.employee.app_invite.btn" -> "Invite to mobile app";
+            case "labor.employee.app_invite.hint" -> "Generates a one-time link so the employee installs the app (PWA) on their phone and clocks in from anywhere.";
+            case "labor.employee.app_invite.title" -> "Invite to the employee app";
+            case "labor.employee.app_invite.dialog.hint" -> "Send the employee this link (or the code). They open it on their phone, install the app and sign in with their PIN.";
+            case "labor.employee.app_invite.link" -> "Link";
+            case "labor.employee.app_invite.code" -> "Code (to paste in the app)";
+            case "labor.employee.app_invite.copy" -> "Copy";
+            case "labor.employee.app_invite.copied" -> "Copied";
+            case "labor.employee.app_invite.expires" -> "The invitation expires in {h} h.";
+            case "labor.employee.app_invite.fail" -> "Could not generate the invitation";
             // Combos sexo / estado civil
             case "labor.employee.gender.MALE" -> "Male";
             case "labor.employee.gender.FEMALE" -> "Female";
@@ -16059,6 +16069,16 @@ public class BenjagestUiApplication extends Application {
             case "labor.employee.editor.app_access.pin_keep" -> "Deja vacío para mantener el actual";
             case "labor.employee.editor.app_access.pin_new_hint" -> "Define un PIN numérico de 4 a 8 dígitos. El empleado entrará con él.";
             case "labor.employee.editor.app_access.pin_change_hint" -> "Ya tiene PIN configurado. Escribe uno nuevo SOLO si quieres cambiarlo.";
+            case "labor.employee.app_invite.btn" -> "Invitar al móvil (app)";
+            case "labor.employee.app_invite.hint" -> "Genera un enlace de un solo uso para que el empleado instale la app (PWA) en su móvil y fiche desde cualquier sitio.";
+            case "labor.employee.app_invite.title" -> "Invitar a la app del empleado";
+            case "labor.employee.app_invite.dialog.hint" -> "Envía al empleado este enlace (o el código). Lo abre en su móvil, instala la app y entra con su PIN.";
+            case "labor.employee.app_invite.link" -> "Enlace";
+            case "labor.employee.app_invite.code" -> "Código (para pegar en la app)";
+            case "labor.employee.app_invite.copy" -> "Copiar";
+            case "labor.employee.app_invite.copied" -> "Copiado";
+            case "labor.employee.app_invite.expires" -> "La invitación caduca en {h} h.";
+            case "labor.employee.app_invite.fail" -> "No se pudo generar la invitación";
             // Combos sexo / estado civil
             case "labor.employee.gender.MALE" -> "Hombre";
             case "labor.employee.gender.FEMALE" -> "Mujer";
@@ -22268,6 +22288,61 @@ public class BenjagestUiApplication extends Application {
         });
     }
 
+    /** MEMP-1c — Genera una invitación a la PWA y muestra el enlace + código. */
+    private void showEmployeeAppInvite(com.benjagest.ui.model.EmployeeEntry emp) {
+        Task<com.benjagest.ui.model.AppInvitationResult> task = new Task<>() {
+            @Override protected com.benjagest.ui.model.AppInvitationResult call() throws Exception {
+                return laborApiClient.generateAppInvitation(emp.id());
+            }
+        };
+        task.setOnSucceeded(ev -> {
+            var inv = task.getValue();
+            Dialog<Void> d = new Dialog<>();
+            d.setTitle(t("labor.employee.app_invite.title"));
+            d.getDialogPane().getButtonTypes().add(ButtonType.CLOSE);
+            d.getDialogPane().setPrefWidth(520);
+
+            Label hint = new Label(t("labor.employee.app_invite.dialog.hint"));
+            hint.setWrapText(true); hint.getStyleClass().add("settings-hint");
+
+            TextField linkField = new TextField(inv.url());
+            linkField.setEditable(false);
+            Button copyLink = new Button(t("labor.employee.app_invite.copy"));
+            copyLink.setOnAction(e -> copyToClipboard(inv.url()));
+            HBox linkRow = new HBox(8, linkField, copyLink);
+            HBox.setHgrow(linkField, Priority.ALWAYS);
+
+            TextField codeField = new TextField(inv.token());
+            codeField.setEditable(false);
+            Button copyCode = new Button(t("labor.employee.app_invite.copy"));
+            copyCode.setOnAction(e -> copyToClipboard(inv.token()));
+            HBox codeRow = new HBox(8, codeField, copyCode);
+            HBox.setHgrow(codeField, Priority.ALWAYS);
+
+            Label expires = new Label(t("labor.employee.app_invite.expires")
+                    .replace("{h}", String.valueOf(inv.expiresInHours())));
+            expires.getStyleClass().add("settings-hint");
+
+            VBox box = new VBox(8, hint,
+                    label(t("labor.employee.app_invite.link"), "settings-section-title"), linkRow,
+                    label(t("labor.employee.app_invite.code"), "settings-section-title"), codeRow,
+                    expires);
+            box.setPadding(new Insets(12));
+            d.getDialogPane().setContent(box);
+            d.showAndWait();
+        });
+        task.setOnFailed(ev -> showError(t("labor.employee.app_invite.fail"),
+                task.getException() == null ? "" : task.getException().getMessage()));
+        start(task, "emp-app-invite");
+    }
+
+    private void copyToClipboard(String text) {
+        javafx.scene.input.ClipboardContent cc = new javafx.scene.input.ClipboardContent();
+        cc.putString(text);
+        javafx.scene.input.Clipboard.getSystemClipboard().setContent(cc);
+        toast(t("labor.employee.app_invite.copied"));
+    }
+
     private void showEmployeeEditor(com.benjagest.ui.model.EmployeeEntry existing) {
         Dialog<ButtonType> dialog = new Dialog<>();
         dialog.setTitle(existing == null ? t("labor.employee.editor.title_new") : t("labor.employee.editor.title_edit"));
@@ -22474,6 +22549,19 @@ public class BenjagestUiApplication extends Application {
         pinHint.setWrapText(true);
         pinHint.getStyleClass().add("settings-hint");
         g.add(pinHint, 2, row, 2, 1); row++;
+
+        // MEMP-1c — Invitar al móvil (PWA). Solo si el empleado ya tiene
+        // acceso a la app + PIN (lo exige el backend).
+        if (existing != null && existing.appAccess() && existing.hasPin()) {
+            Button inviteMobileBtn = new Button(t("labor.employee.app_invite.btn"));
+            inviteMobileBtn.setGraphic(icon("fas-mobile-alt"));
+            final com.benjagest.ui.model.EmployeeEntry inviteEmp = existing;
+            inviteMobileBtn.setOnAction(ev -> showEmployeeAppInvite(inviteEmp));
+            Label inviteHint = new Label(t("labor.employee.app_invite.hint"));
+            inviteHint.setWrapText(true);
+            inviteHint.getStyleClass().add("settings-hint");
+            g.add(inviteMobileBtn, 1, row); g.add(inviteHint, 2, row, 2, 1); row++;
+        }
 
         // Habilita/deshabilita los inputs de PIN y rol según el toggle.
         Runnable refreshAppAccessInputs = () -> {

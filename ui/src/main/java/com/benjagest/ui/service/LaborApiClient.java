@@ -282,6 +282,20 @@ public class LaborApiClient {
                 boolField(o, "active"), boolField(o, "activated"));
     }
 
+    // ===== MEMP-1: invitacion a la PWA del empleado =====
+
+    public com.benjagest.ui.model.AppInvitationResult generateAppInvitation(String employeeId)
+            throws IOException, InterruptedException {
+        HttpResponse<String> r = send(req(baseUrl + "/labor/employees/" + employeeId + "/app-invitation")
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString("{}")));
+        String token = textField(r.body(), "token");
+        String path = textField(r.body(), "path");
+        int hours = intFieldOrZero(r.body(), "expiresInHours");
+        String host = baseUrl.replaceAll("/api/?$", "");
+        return new com.benjagest.ui.model.AppInvitationResult(token, host + path, hours);
+    }
+
     // ===== JOR-1: jornada real desde fichajes =====
 
     public java.util.List<com.benjagest.ui.model.WorkdayEntry> listWorkdays(
