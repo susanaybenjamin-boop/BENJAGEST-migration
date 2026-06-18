@@ -192,5 +192,291 @@ public class EmployeeAppService {
         public ActivateResult activate(@RequestBody ActivateRequest req) {
             return service.activate(req.token(), req.deviceName());
         }
+
+        @org.springframework.web.bind.annotation.GetMapping(
+                value = "/app",
+                produces = org.springframework.http.MediaType.TEXT_HTML_VALUE)
+        public org.springframework.http.ResponseEntity<String> app() {
+            return org.springframework.http.ResponseEntity.ok()
+                    .contentType(org.springframework.http.MediaType.valueOf("text/html; charset=UTF-8"))
+                    .body(APP_HTML);
+        }
+
+        @org.springframework.web.bind.annotation.GetMapping(
+                value = "/manifest.webmanifest",
+                produces = "application/manifest+json")
+        public org.springframework.http.ResponseEntity<String> manifest() {
+            return org.springframework.http.ResponseEntity.ok()
+                    .contentType(org.springframework.http.MediaType.valueOf("application/manifest+json"))
+                    .body(MANIFEST_JSON);
+        }
+
+        @org.springframework.web.bind.annotation.GetMapping(
+                value = "/sw.js",
+                produces = "application/javascript")
+        public org.springframework.http.ResponseEntity<String> serviceWorker() {
+            return org.springframework.http.ResponseEntity.ok()
+                    .contentType(org.springframework.http.MediaType.valueOf("application/javascript; charset=UTF-8"))
+                    .body(SERVICE_WORKER_JS);
+        }
+
+        @org.springframework.web.bind.annotation.GetMapping(
+                value = "/icon.svg",
+                produces = "image/svg+xml")
+        public org.springframework.http.ResponseEntity<String> icon() {
+            return org.springframework.http.ResponseEntity.ok()
+                    .contentType(org.springframework.http.MediaType.valueOf("image/svg+xml"))
+                    .body(ICON_SVG);
+        }
     }
+
+    // ===================== PWA estática (MEMP-1b) =====================
+
+    private static final String MANIFEST_JSON = """
+            {
+              "name": "BENJAGEST Empleado",
+              "short_name": "BENJAGEST",
+              "start_url": "/api/public/empleado/app",
+              "scope": "/api/public/empleado/",
+              "display": "standalone",
+              "background_color": "#0f172a",
+              "theme_color": "#0f172a",
+              "lang": "es",
+              "icons": [
+                { "src": "/api/public/empleado/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+              ]
+            }
+            """;
+
+    private static final String SERVICE_WORKER_JS = """
+            const CACHE = 'benjagest-empleado-v1';
+            self.addEventListener('install', (e) => {
+              self.skipWaiting();
+              e.waitUntil(caches.open(CACHE).then((c) => c.addAll(['/api/public/empleado/app'])));
+            });
+            self.addEventListener('activate', (e) => { self.clients.claim(); });
+            self.addEventListener('fetch', (e) => {
+              const url = e.request.url;
+              // Solo cachear el cascaron; las llamadas a la API siempre van a red.
+              if (e.request.method === 'GET' && url.indexOf('/api/public/empleado/app') !== -1) {
+                e.respondWith(
+                  fetch(e.request).then((r) => {
+                    const copy = r.clone();
+                    caches.open(CACHE).then((c) => c.put(e.request, copy));
+                    return r;
+                  }).catch(() => caches.match(e.request))
+                );
+              }
+            });
+            """;
+
+    private static final String ICON_SVG = """
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192">
+              <rect width="192" height="192" rx="36" fill="#0f172a"/>
+              <text x="96" y="128" font-family="Arial, sans-serif" font-size="110" font-weight="700"
+                    fill="#38bdf8" text-anchor="middle">B</text>
+            </svg>
+            """;
+
+    private static final String APP_HTML = """
+            <!DOCTYPE html>
+            <html lang="es">
+            <head>
+              <meta charset="UTF-8"/>
+              <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
+              <meta name="theme-color" content="#0f172a"/>
+              <title>BENJAGEST Empleado</title>
+              <link rel="manifest" href="/api/public/empleado/manifest.webmanifest"/>
+              <link rel="icon" href="/api/public/empleado/icon.svg" type="image/svg+xml"/>
+              <style>
+                * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+                body { margin: 0; font-family: -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+                       background: #0f172a; color: #e2e8f0; min-height: 100vh; }
+                .wrap { max-width: 440px; margin: 0 auto; padding: 24px 20px 40px; }
+                h1 { font-size: 22px; margin: 8px 0 4px; }
+                .sub { color: #94a3b8; font-size: 14px; margin: 0 0 24px; }
+                .card { background: #1e293b; border-radius: 16px; padding: 20px; margin-bottom: 16px; }
+                label { display: block; font-size: 13px; color: #94a3b8; margin-bottom: 6px; }
+                input { width: 100%; padding: 14px; font-size: 18px; border-radius: 12px;
+                        border: 1px solid #334155; background: #0f172a; color: #e2e8f0; text-align: center;
+                        letter-spacing: 6px; }
+                button { width: 100%; padding: 15px; font-size: 16px; font-weight: 600; border: none;
+                         border-radius: 12px; background: #38bdf8; color: #04263a; margin-top: 14px; }
+                button.secondary { background: transparent; color: #94a3b8; border: 1px solid #334155; }
+                .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+                .tile { background: #1e293b; border-radius: 16px; padding: 22px 12px; text-align: center; }
+                .tile .ic { font-size: 30px; }
+                .tile .lbl { margin-top: 8px; font-size: 14px; }
+                .tile .soon { display:block; font-size: 11px; color: #64748b; margin-top: 4px; }
+                .msg { padding: 12px; border-radius: 12px; font-size: 14px; margin-top: 12px; }
+                .msg.err { background: #7f1d1d; color: #fecaca; }
+                .msg.ok { background: #14532d; color: #bbf7d0; }
+                .hidden { display: none; }
+                .center { text-align: center; }
+              </style>
+            </head>
+            <body>
+              <div class="wrap">
+                <div class="center">
+                  <img src="/api/public/empleado/icon.svg" width="56" height="56" alt=""/>
+                </div>
+
+                <div id="screen-invite" class="hidden">
+                  <h1>Activar la app</h1>
+                  <p class="sub">Abre el enlace de invitacion que te ha enviado tu empresa para activar esta aplicacion en tu movil.</p>
+                  <div class="card">
+                    <label>Codigo de invitacion</label>
+                    <input id="inviteInput" inputmode="text" placeholder="pega aqui el codigo"/>
+                    <button id="activateBtn">Activar</button>
+                  </div>
+                  <div id="inviteMsg"></div>
+                </div>
+
+                <div id="screen-pin" class="hidden">
+                  <h1 id="pinHello">Hola</h1>
+                  <p class="sub" id="pinCompany"></p>
+                  <div class="card">
+                    <label>Introduce tu PIN</label>
+                    <input id="pinInput" type="password" inputmode="numeric" maxlength="8" placeholder="****"/>
+                    <button id="pinBtn">Entrar</button>
+                  </div>
+                  <div id="pinMsg"></div>
+                  <button class="secondary" id="forgetBtn">Desvincular este dispositivo</button>
+                </div>
+
+                <div id="screen-home" class="hidden">
+                  <h1 id="homeHello">Hola</h1>
+                  <p class="sub" id="homeCompany"></p>
+                  <div class="grid">
+                    <div class="tile"><div class="ic">&#128337;</div><div class="lbl">Fichar</div><span class="soon">proximamente</span></div>
+                    <div class="tile"><div class="ic">&#127958;</div><div class="lbl">Vacaciones y bajas</div><span class="soon">proximamente</span></div>
+                    <div class="tile"><div class="ic">&#128196;</div><div class="lbl">Nominas</div><span class="soon">proximamente</span></div>
+                    <div class="tile"><div class="ic">&#128197;</div><div class="lbl">Mi jornada</div><span class="soon">proximamente</span></div>
+                  </div>
+                  <button class="secondary" id="logoutBtn">Cerrar sesion</button>
+                </div>
+              </div>
+
+              <script>
+                const API = '/api';
+                const LS_SECRET = 'benjagest_emp_secret';
+                const LS_NAME = 'benjagest_emp_name';
+                const LS_COMPANY = 'benjagest_emp_company';
+                const LS_TOKEN = 'benjagest_emp_token';
+
+                function show(id) {
+                  ['screen-invite','screen-pin','screen-home'].forEach(s => {
+                    document.getElementById(s).classList.toggle('hidden', s !== id);
+                  });
+                }
+                function msg(el, text, ok) {
+                  const m = document.getElementById(el);
+                  m.className = 'msg ' + (ok ? 'ok' : 'err');
+                  m.textContent = text;
+                }
+                function qp(name) {
+                  const m = new RegExp('[?&]' + name + '=([^&]+)').exec(location.search);
+                  return m ? decodeURIComponent(m[1]) : null;
+                }
+
+                async function activate(token) {
+                  const r = await fetch(API + '/public/empleado/activate', {
+                    method: 'POST', headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ token: token, deviceName: navigator.userAgent.slice(0, 40) })
+                  });
+                  if (!r.ok) {
+                    let e = 'No se pudo activar';
+                    try { e = (await r.json()).message || e; } catch (x) {}
+                    throw new Error(e);
+                  }
+                  return r.json();
+                }
+
+                async function pinLogin(secret, pin) {
+                  const r = await fetch(API + '/auth/pin-login', {
+                    method: 'POST', headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ deviceSecret: secret, pin: pin })
+                  });
+                  if (!r.ok) {
+                    let e = 'PIN incorrecto';
+                    try { e = (await r.json()).message || e; } catch (x) {}
+                    throw new Error(e);
+                  }
+                  return r.json();
+                }
+
+                function gotoPin() {
+                  document.getElementById('pinHello').textContent = 'Hola, ' + (localStorage.getItem(LS_NAME) || '');
+                  document.getElementById('pinCompany').textContent = localStorage.getItem(LS_COMPANY) || '';
+                  show('screen-pin');
+                }
+                function gotoHome() {
+                  document.getElementById('homeHello').textContent = 'Hola, ' + (localStorage.getItem(LS_NAME) || '');
+                  document.getElementById('homeCompany').textContent = localStorage.getItem(LS_COMPANY) || '';
+                  show('screen-home');
+                }
+
+                document.getElementById('activateBtn').onclick = async () => {
+                  const token = document.getElementById('inviteInput').value.trim();
+                  if (!token) { msg('inviteMsg', 'Pega el codigo de invitacion'); return; }
+                  try {
+                    const res = await activate(token);
+                    localStorage.setItem(LS_SECRET, res.deviceSecret);
+                    localStorage.setItem(LS_NAME, res.employeeName || '');
+                    localStorage.setItem(LS_COMPANY, res.companyName || '');
+                    gotoPin();
+                  } catch (e) { msg('inviteMsg', e.message); }
+                };
+
+                document.getElementById('pinBtn').onclick = async () => {
+                  const pin = document.getElementById('pinInput').value.trim();
+                  const secret = localStorage.getItem(LS_SECRET);
+                  if (!secret) { show('screen-invite'); return; }
+                  try {
+                    const res = await pinLogin(secret, pin);
+                    localStorage.setItem(LS_TOKEN, res.accessToken);
+                    if (res.displayName) localStorage.setItem(LS_NAME, res.displayName);
+                    document.getElementById('pinInput').value = '';
+                    gotoHome();
+                  } catch (e) { msg('pinMsg', e.message); }
+                };
+
+                document.getElementById('forgetBtn').onclick = () => {
+                  localStorage.removeItem(LS_SECRET);
+                  localStorage.removeItem(LS_TOKEN);
+                  show('screen-invite');
+                };
+                document.getElementById('logoutBtn').onclick = () => {
+                  localStorage.removeItem(LS_TOKEN);
+                  gotoPin();
+                };
+
+                // Arranque: si llega ?invite=, activar; si hay secret, pedir PIN; si no, pantalla de invitacion.
+                (async function init() {
+                  const invite = qp('invite');
+                  if (invite && !localStorage.getItem(LS_SECRET)) {
+                    try {
+                      const res = await activate(invite);
+                      localStorage.setItem(LS_SECRET, res.deviceSecret);
+                      localStorage.setItem(LS_NAME, res.employeeName || '');
+                      localStorage.setItem(LS_COMPANY, res.companyName || '');
+                      history.replaceState({}, '', '/api/public/empleado/app');
+                      gotoPin();
+                      return;
+                    } catch (e) {
+                      show('screen-invite');
+                      msg('inviteMsg', e.message);
+                      return;
+                    }
+                  }
+                  if (localStorage.getItem(LS_SECRET)) { gotoPin(); } else { show('screen-invite'); }
+                })();
+
+                if ('serviceWorker' in navigator) {
+                  navigator.serviceWorker.register('/api/public/empleado/sw.js').catch(() => {});
+                }
+              </script>
+            </body>
+            </html>
+            """;
 }
