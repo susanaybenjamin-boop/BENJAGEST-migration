@@ -215,6 +215,73 @@ public class LaborApiClient {
         return r.body() != null && r.body().contains("true");
     }
 
+    // ==== FM — Kioscos de fichaje (admin) ====
+
+    public java.util.List<com.benjagest.ui.model.KioskDeviceEntry> listKioskDevices()
+            throws IOException, InterruptedException {
+        HttpResponse<String> r = send(req(baseUrl + "/kiosk/devices").GET());
+        java.util.List<com.benjagest.ui.model.KioskDeviceEntry> out = new ArrayList<>();
+        for (String o : splitTopLevelObjects(r.body())) out.add(mapKioskDevice(o));
+        return out;
+    }
+
+    public com.benjagest.ui.model.KioskDeviceEntry createKioskDevice(
+            String name, String workCenterId, boolean requirePhoto)
+            throws IOException, InterruptedException {
+        String body = "{" + field("name", name) + "," + field("workCenterId", workCenterId)
+                + ",\"requirePhoto\":" + requirePhoto + "}";
+        HttpResponse<String> r = send(req(baseUrl + "/kiosk/devices")
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(body)));
+        return mapKioskDevice(r.body());
+    }
+
+    public void deleteKioskDevice(String id) throws IOException, InterruptedException {
+        send(req(baseUrl + "/kiosk/devices/" + id).DELETE());
+    }
+
+    /** Genera el código de activación (para el QR / a teclear en el dispositivo). */
+    public String generateKioskActivationToken(String id) throws IOException, InterruptedException {
+        HttpResponse<String> r = send(req(baseUrl + "/kiosk/devices/" + id + "/activation-token")
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString("{}")));
+        return textField(r.body(), "activationToken");
+    }
+
+    /** IDs de los empleados asignados a un kiosco. */
+    public java.util.List<String> listKioskEmployeeIds(String deviceId)
+            throws IOException, InterruptedException {
+        HttpResponse<String> r = send(req(baseUrl + "/kiosk/devices/" + deviceId + "/employees").GET());
+        java.util.List<String> out = new ArrayList<>();
+        for (String o : splitTopLevelObjects(r.body())) out.add(textField(o, "id"));
+        return out;
+    }
+
+    public void assignKioskEmployees(String deviceId, java.util.List<String> employeeIds)
+            throws IOException, InterruptedException {
+        StringBuilder b = new StringBuilder("{\"employeeIds\":[");
+        for (int i = 0; i < employeeIds.size(); i++) {
+            if (i > 0) b.append(",");
+            b.append("\"").append(employeeIds.get(i)).append("\"");
+        }
+        b.append("]}");
+        send(req(baseUrl + "/kiosk/devices/" + deviceId + "/employees")
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(b.toString())));
+    }
+
+    public void removeKioskEmployee(String deviceId, String employeeId)
+            throws IOException, InterruptedException {
+        send(req(baseUrl + "/kiosk/devices/" + deviceId + "/employees/" + employeeId).DELETE());
+    }
+
+    private com.benjagest.ui.model.KioskDeviceEntry mapKioskDevice(String o) {
+        return new com.benjagest.ui.model.KioskDeviceEntry(
+                textField(o, "id"), textField(o, "name"), textField(o, "workCenterId"),
+                boolField(o, "requirePhoto"), intFieldOrZero(o, "photoRetentionDays"),
+                boolField(o, "active"), boolField(o, "activated"));
+    }
+
     /**
      * VIG-3 — Ascenso/cambio de condiciones con fecha de efecto. Crea una
      * nueva vigencia del MISMO contrato (antigüedad intacta) y deja la fila

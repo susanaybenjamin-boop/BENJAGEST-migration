@@ -14873,6 +14873,31 @@ public class BenjagestUiApplication extends Application {
             case "labor.shifts.history.hint" -> "Time sheets already in the database (synced from older work_logs by V90, or pushed by the future mobile employee app). Read-only.";
             // Centros de trabajo
             case "labor.tab.work_centers" -> "Work centers";
+            case "labor.tab.kiosk" -> "Kiosks / PDA";
+            case "labor.kiosk.hint" -> "Time-clock kiosks (tablet) and mobile web. The device opens the clock-in page and is paired with the activation code generated here. Employees identify with their PIN.";
+            case "labor.kiosk.empty" -> "No kiosks yet.";
+            case "labor.kiosk.fail" -> "Kiosk operation failed";
+            case "labor.kiosk.col.name" -> "Name";
+            case "labor.kiosk.col.activated" -> "Activated";
+            case "labor.kiosk.col.photo" -> "Photo";
+            case "labor.kiosk.col.active" -> "Active";
+            case "labor.kiosk.yes" -> "Yes";
+            case "labor.kiosk.no" -> "No";
+            case "labor.kiosk.new" -> "New kiosk";
+            case "labor.kiosk.save" -> "Save";
+            case "labor.kiosk.delete" -> "Delete";
+            case "labor.kiosk.delete.body" -> "Delete this kiosk?";
+            case "labor.kiosk.activation" -> "Activation code";
+            case "labor.kiosk.employees" -> "Employees";
+            case "labor.kiosk.name.prompt" -> "e.g. Tablet entrance";
+            case "labor.kiosk.name.required" -> "Enter a name.";
+            case "labor.kiosk.require_photo" -> "Take a photo when clocking in (optional, evidence — not facial recognition)";
+            case "labor.kiosk.photo.legal" -> "The photo is evidence to prevent clocking in for someone else. Inform employees and keep it for a limited time (AEPD). Never facial recognition.";
+            case "labor.kiosk.activation.body" -> "On the device, open the clock-in page and paste this activation code (valid 30 min):";
+            case "labor.kiosk.activation.url" -> "Page: http://<server-IP>:8080/api/public/kiosk/app";
+            case "labor.kiosk.activation.expire" -> "The code expires in 30 minutes and can only be used once.";
+            case "labor.kiosk.employees.hint" -> "Employees that appear on this kiosk to clock in:";
+            case "labor.kiosk.no_employees" -> "No active employees.";
             case "labor.centers.hint" -> "Physical work centers. Optional geolocation (lat/lng/radius) validates the punch-in location.";
             case "labor.centers.reload" -> "Refresh";
             case "labor.centers.add" -> "New center";
@@ -14967,6 +14992,31 @@ public class BenjagestUiApplication extends Application {
             case "labor.shifts.history.title" -> "Partes reportados";
             case "labor.shifts.history.hint" -> "Partes ya registrados en la base de datos (sincronizados desde el work_logs antiguo por V90, o subidos por la futura app móvil del empleado). Solo lectura.";
             case "labor.tab.work_centers" -> "Centros de trabajo";
+            case "labor.tab.kiosk" -> "Kioscos / PDA";
+            case "labor.kiosk.hint" -> "Kioscos de fichaje (tablet) y web móvil. El dispositivo abre la página de fichaje y se empareja con el código de activación generado aquí. El empleado se identifica con su PIN.";
+            case "labor.kiosk.empty" -> "Aún no hay kioscos.";
+            case "labor.kiosk.fail" -> "Falló la operación del kiosco";
+            case "labor.kiosk.col.name" -> "Nombre";
+            case "labor.kiosk.col.activated" -> "Activado";
+            case "labor.kiosk.col.photo" -> "Foto";
+            case "labor.kiosk.col.active" -> "Activo";
+            case "labor.kiosk.yes" -> "Sí";
+            case "labor.kiosk.no" -> "No";
+            case "labor.kiosk.new" -> "Nuevo kiosco";
+            case "labor.kiosk.save" -> "Guardar";
+            case "labor.kiosk.delete" -> "Borrar";
+            case "labor.kiosk.delete.body" -> "¿Borrar este kiosco?";
+            case "labor.kiosk.activation" -> "Código de activación";
+            case "labor.kiosk.employees" -> "Empleados";
+            case "labor.kiosk.name.prompt" -> "p. ej. Tablet entrada";
+            case "labor.kiosk.name.required" -> "Indica un nombre.";
+            case "labor.kiosk.require_photo" -> "Hacer foto al fichar (opcional, evidencia — no reconocimiento facial)";
+            case "labor.kiosk.photo.legal" -> "La foto es evidencia para evitar que fichen por otro. Informa a los empleados y consérvala un tiempo limitado (AEPD). Nunca reconocimiento facial.";
+            case "labor.kiosk.activation.body" -> "En el dispositivo, abre la página de fichaje y pega este código de activación (válido 30 min):";
+            case "labor.kiosk.activation.url" -> "Página: http://<IP-del-servidor>:8080/api/public/kiosk/app";
+            case "labor.kiosk.activation.expire" -> "El código caduca en 30 minutos y solo se puede usar una vez.";
+            case "labor.kiosk.employees.hint" -> "Empleados que aparecen en este kiosco para fichar:";
+            case "labor.kiosk.no_employees" -> "No hay empleados activos.";
             case "labor.centers.hint" -> "Centros de trabajo físicos. Geolocalización opcional (lat/lng/radio) valida la ubicación del fichaje.";
             case "labor.centers.reload" -> "Actualizar";
             case "labor.centers.add" -> "Nuevo centro";
@@ -19640,13 +19690,16 @@ public class BenjagestUiApplication extends Application {
         // Centros de trabajo (port CONTENDO centros_trabajo_180, V89).
         Tab centersTab = new Tab(t("labor.tab.work_centers"), buildWorkCentersTab());
         centersTab.setGraphic(icon("fas-map-marker-alt"));
+        // FM — Kioscos/PDA de fichaje (alta + QR de activación + empleados).
+        Tab kioskTab = new Tab(t("labor.tab.kiosk"), buildKioskDevicesTab(bundle.employees()));
+        kioskTab.setGraphic(icon("fas-tablet-alt"));
 
         // RR.HH.-CAT (2026-06-17) — Los 19 sub-tabs se agrupan en 5 categorías
         // (pestañas anidadas) para no tener una fila ilegible: operativa diaria
         // separada de las tablas de parámetros legales (set-and-forget).
         TabPane personalPane = laborSubPane(empTab, contractsTab, templatesTab, clausesTab);
         TabPane payrollPane = laborSubPane(payslipsTab, costTab, ssTab);
-        TabPane timePane = laborSubPane(clockTab, auditTab, shiftsTab, calendarTab, centersTab, cfgTab);
+        TabPane timePane = laborSubPane(clockTab, auditTab, shiftsTab, calendarTab, centersTab, kioskTab, cfgTab);
         TabPane absencePane = laborSubPane(leavesTab, vacationsTab);
         TabPane paramsPane = laborSubPane(ratesTab, groupBasesTab, irpfParamsTab, severanceTab);
         final TabPane[] panes = {personalPane, payrollPane, timePane, absencePane, paramsPane};
@@ -34549,6 +34602,218 @@ public class BenjagestUiApplication extends Application {
 
     private TextField rateField(java.math.BigDecimal v, String fallback) {
         return new TextField(v == null ? fallback : v.toPlainString());
+    }
+
+    /**
+     * FM — Gestión de KIOSCOS de fichaje: alta, código de activación (QR) y
+     * empleados asignados. El dispositivo abre la web /api/public/kiosk/app y se
+     * activa con el código generado aquí.
+     */
+    private Node buildKioskDevicesTab(java.util.List<com.benjagest.ui.model.EmployeeEntry> employees) {
+        Label hint = new Label(t("labor.kiosk.hint"));
+        hint.setWrapText(true);
+        hint.getStyleClass().add("settings-hint");
+
+        TableView<com.benjagest.ui.model.KioskDeviceEntry> table = new TableView<>();
+        table.getStyleClass().add("data-table");
+        table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+        table.setPlaceholder(new Label(t("labor.kiosk.empty")));
+        addCol(table, t("labor.kiosk.col.name"), com.benjagest.ui.model.KioskDeviceEntry::name, 200);
+        addCol(table, t("labor.kiosk.col.activated"),
+                d -> d.activated() ? t("labor.kiosk.yes") : t("labor.kiosk.no"), 110);
+        addCol(table, t("labor.kiosk.col.photo"),
+                d -> d.requirePhoto() ? t("labor.kiosk.yes") : t("labor.kiosk.no"), 90);
+        addCol(table, t("labor.kiosk.col.active"),
+                d -> d.active() ? "✓" : "✗", 70);
+
+        Runnable reload = () -> {
+            Task<java.util.List<com.benjagest.ui.model.KioskDeviceEntry>> tk = new Task<>() {
+                @Override protected java.util.List<com.benjagest.ui.model.KioskDeviceEntry> call() throws Exception {
+                    return laborApiClient.listKioskDevices();
+                }
+            };
+            tk.setOnSucceeded(ev -> table.setItems(FXCollections.observableArrayList(tk.getValue())));
+            tk.setOnFailed(ev -> showError(t("labor.kiosk.fail"),
+                    tk.getException() == null ? "" : tk.getException().getMessage()));
+            start(tk, "kiosk-list");
+        };
+
+        Button newBtn = new Button(t("labor.kiosk.new"));
+        newBtn.getStyleClass().add("button-primary");
+        newBtn.setGraphic(icon("fas-plus"));
+        newBtn.setOnAction(e -> showKioskEditor(reload));
+
+        Button activationBtn = new Button(t("labor.kiosk.activation"));
+        activationBtn.setGraphic(icon("fas-qrcode"));
+        activationBtn.setDisable(true);
+        activationBtn.setOnAction(e -> {
+            var sel = table.getSelectionModel().getSelectedItem();
+            if (sel != null) showKioskActivation(sel);
+        });
+
+        Button empBtn = new Button(t("labor.kiosk.employees"));
+        empBtn.setGraphic(icon("fas-users"));
+        empBtn.setDisable(true);
+        empBtn.setOnAction(e -> {
+            var sel = table.getSelectionModel().getSelectedItem();
+            if (sel != null) showKioskEmployees(sel, employees);
+        });
+
+        Button delBtn = new Button(t("labor.kiosk.delete"));
+        delBtn.setGraphic(icon("fas-trash"));
+        delBtn.setDisable(true);
+        delBtn.setOnAction(e -> {
+            var sel = table.getSelectionModel().getSelectedItem();
+            if (sel == null) return;
+            Alert c = new Alert(Alert.AlertType.CONFIRMATION,
+                    t("labor.kiosk.delete.body") + " " + sel.name(), ButtonType.OK, ButtonType.CANCEL);
+            c.setHeaderText(t("labor.kiosk.delete"));
+            c.showAndWait().ifPresent(bt -> {
+                if (bt != ButtonType.OK) return;
+                Task<Void> tk = new Task<>() {
+                    @Override protected Void call() throws Exception { laborApiClient.deleteKioskDevice(sel.id()); return null; }
+                };
+                tk.setOnSucceeded(ev -> reload.run());
+                tk.setOnFailed(ev -> showError(t("labor.kiosk.fail"),
+                        tk.getException() == null ? "" : tk.getException().getMessage()));
+                start(tk, "kiosk-delete");
+            });
+        });
+
+        table.getSelectionModel().selectedItemProperty().addListener((o, ov, nv) -> {
+            boolean none = nv == null;
+            activationBtn.setDisable(none);
+            empBtn.setDisable(none);
+            delBtn.setDisable(none);
+        });
+
+        reload.run();
+        HBox actions = new HBox(8, newBtn, activationBtn, empBtn, delBtn);
+        VBox box = new VBox(12, hint, actions, table);
+        box.setPadding(new Insets(16));
+        VBox.setVgrow(table, Priority.ALWAYS);
+        return box;
+    }
+
+    private void showKioskEditor(Runnable onSaved) {
+        Dialog<ButtonType> d = new Dialog<>();
+        d.setTitle(t("labor.kiosk.new"));
+        ButtonType save = new ButtonType(t("labor.kiosk.save"), ButtonBar.ButtonData.OK_DONE);
+        d.getDialogPane().getButtonTypes().addAll(save, ButtonType.CANCEL);
+        TextField nameF = new TextField();
+        nameF.setPromptText(t("labor.kiosk.name.prompt"));
+        CheckBox photoF = new CheckBox(t("labor.kiosk.require_photo"));
+        Label legal = new Label(t("labor.kiosk.photo.legal"));
+        legal.setWrapText(true); legal.getStyleClass().add("settings-hint");
+        VBox box = new VBox(10, new Label(t("labor.kiosk.col.name")), nameF, photoF, legal);
+        box.setPadding(new Insets(12));
+        installDialog(d, box);
+        final javafx.scene.Node saveNode = d.getDialogPane().lookupButton(save);
+        saveNode.addEventFilter(javafx.event.ActionEvent.ACTION, ev -> {
+            if (nameF.getText() == null || nameF.getText().isBlank()) {
+                ev.consume();
+                toast(d.getDialogPane().getScene().getWindow(), t("labor.kiosk.name.required"));
+                highlightMissing(nameF);
+            }
+        });
+        d.showAndWait().ifPresent(bt -> {
+            if (bt != save) return;
+            Task<Void> tk = new Task<>() {
+                @Override protected Void call() throws Exception {
+                    laborApiClient.createKioskDevice(nameF.getText().trim(), null, photoF.isSelected());
+                    return null;
+                }
+            };
+            tk.setOnSucceeded(ev -> onSaved.run());
+            tk.setOnFailed(ev -> showError(t("labor.kiosk.fail"),
+                    tk.getException() == null ? "" : tk.getException().getMessage()));
+            start(tk, "kiosk-create");
+        });
+    }
+
+    private void showKioskActivation(com.benjagest.ui.model.KioskDeviceEntry device) {
+        Task<String> tk = new Task<>() {
+            @Override protected String call() throws Exception {
+                return laborApiClient.generateKioskActivationToken(device.id());
+            }
+        };
+        tk.setOnSucceeded(ev -> {
+            String code = tk.getValue();
+            Dialog<ButtonType> d = new Dialog<>();
+            d.setTitle(t("labor.kiosk.activation") + " — " + device.name());
+            d.getDialogPane().getButtonTypes().add(ButtonType.CLOSE);
+            Label step1 = new Label(t("labor.kiosk.activation.body"));
+            step1.setWrapText(true);
+            TextArea codeArea = new TextArea(code);
+            codeArea.setEditable(false); codeArea.setWrapText(true); codeArea.setPrefRowCount(2);
+            codeArea.setStyle("-fx-font-size:16px; -fx-font-weight:bold;");
+            Label urlLbl = new Label(t("labor.kiosk.activation.url"));
+            urlLbl.setWrapText(true); urlLbl.getStyleClass().add("settings-hint");
+            Label expire = new Label(t("labor.kiosk.activation.expire"));
+            expire.getStyleClass().add("settings-hint");
+            VBox box = new VBox(10, step1, codeArea, urlLbl, expire);
+            box.setPadding(new Insets(12)); box.setPrefWidth(440);
+            installDialog(d, box);
+            d.showAndWait();
+        });
+        tk.setOnFailed(ev -> showError(t("labor.kiosk.fail"),
+                tk.getException() == null ? "" : tk.getException().getMessage()));
+        start(tk, "kiosk-activation");
+    }
+
+    private void showKioskEmployees(com.benjagest.ui.model.KioskDeviceEntry device,
+                                    java.util.List<com.benjagest.ui.model.EmployeeEntry> employees) {
+        Task<java.util.List<String>> load = new Task<>() {
+            @Override protected java.util.List<String> call() throws Exception {
+                return laborApiClient.listKioskEmployeeIds(device.id());
+            }
+        };
+        load.setOnSucceeded(ev -> {
+            java.util.Set<String> assigned = new java.util.HashSet<>(load.getValue());
+            Dialog<ButtonType> d = new Dialog<>();
+            d.setTitle(t("labor.kiosk.employees") + " — " + device.name());
+            ButtonType save = new ButtonType(t("labor.kiosk.save"), ButtonBar.ButtonData.OK_DONE);
+            d.getDialogPane().getButtonTypes().addAll(save, ButtonType.CANCEL);
+            VBox list = new VBox(6);
+            java.util.Map<String, CheckBox> boxes = new java.util.LinkedHashMap<>();
+            for (var e : employees) {
+                if (!e.active()) continue;
+                CheckBox cb = new CheckBox(e.fullName());
+                cb.setSelected(assigned.contains(e.id()));
+                boxes.put(e.id(), cb);
+                list.getChildren().add(cb);
+            }
+            if (boxes.isEmpty()) list.getChildren().add(new Label(t("labor.kiosk.no_employees")));
+            ScrollPane sp = new ScrollPane(list);
+            sp.setFitToWidth(true); sp.setPrefHeight(360);
+            VBox box = new VBox(8, new Label(t("labor.kiosk.employees.hint")), sp);
+            box.setPadding(new Insets(12)); box.setPrefWidth(420);
+            installDialog(d, box);
+            d.showAndWait().ifPresent(bt -> {
+                if (bt != save) return;
+                java.util.List<String> toAssign = new java.util.ArrayList<>();
+                java.util.List<String> toRemove = new java.util.ArrayList<>();
+                for (var en : boxes.entrySet()) {
+                    boolean checked = en.getValue().isSelected();
+                    boolean was = assigned.contains(en.getKey());
+                    if (checked) toAssign.add(en.getKey());
+                    if (!checked && was) toRemove.add(en.getKey());
+                }
+                Task<Void> tk = new Task<>() {
+                    @Override protected Void call() throws Exception {
+                        if (!toAssign.isEmpty()) laborApiClient.assignKioskEmployees(device.id(), toAssign);
+                        for (String id : toRemove) laborApiClient.removeKioskEmployee(device.id(), id);
+                        return null;
+                    }
+                };
+                tk.setOnFailed(ev2 -> showError(t("labor.kiosk.fail"),
+                        tk.getException() == null ? "" : tk.getException().getMessage()));
+                start(tk, "kiosk-assign");
+            });
+        });
+        load.setOnFailed(ev -> showError(t("labor.kiosk.fail"),
+                load.getException() == null ? "" : load.getException().getMessage()));
+        start(load, "kiosk-emp-load");
     }
 
     /**
