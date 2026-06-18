@@ -829,6 +829,55 @@ public class AccountingApiClient {
     }
 
     // ====================================================================
+    //  BANK-IMPORT / EXPORT-CONTABLE
+    // ====================================================================
+
+    /** Importa un extracto bancario (N43 o CSV) a una cuenta. */
+    public AccountingModels.ImportResult importBankExtract(
+            String bankAccountId, String format, String fileName, String content)
+            throws IOException, InterruptedException {
+        StringBuilder b = new StringBuilder("{");
+        appendKV(b, "bankAccountId", bankAccountId, true);
+        appendKV(b, "format", format, false);
+        appendKV(b, "fileName", fileName, false);
+        appendKV(b, "content", content, false);
+        b.append("}");
+        String json = postRaw("/accounting/bank-imports", b.toString());
+        return new AccountingModels.ImportResult(
+                intField(json, "rowsTotal"), intField(json, "rowsImported"),
+                intField(json, "rowsSkipped"), intField(json, "rowsAutoMatched"));
+    }
+
+    /** Importación contable inversa (Contasol/A3/Sage/CSV) hacia un targetKind. */
+    public AccountingModels.ImportResult importExternal(
+            String format, String targetKind, String fileName, String content)
+            throws IOException, InterruptedException {
+        StringBuilder b = new StringBuilder("{");
+        appendKV(b, "format", format, true);
+        appendKV(b, "targetKind", targetKind, false);
+        appendKV(b, "fileName", fileName, false);
+        appendKV(b, "content", content, false);
+        b.append("}");
+        String json = postRaw("/accounting/external-imports", b.toString());
+        return new AccountingModels.ImportResult(
+                intField(json, "rowsTotal"), intField(json, "rowsImported"),
+                intField(json, "rowsSkipped"), intField(json, "rowsAutoMatched"));
+    }
+
+    /** Exportación contable: devuelve el contenido (CSV/texto) del export. */
+    public String exportAccounting(String format, String targetKind,
+            LocalDate from, LocalDate to, boolean includeDrafts)
+            throws IOException, InterruptedException {
+        StringBuilder q = new StringBuilder();
+        append(q, "format", format);
+        append(q, "targetKind", targetKind);
+        if (from != null) append(q, "from", from.toString());
+        if (to != null)   append(q, "to", to.toString());
+        append(q, "includeDrafts", String.valueOf(includeDrafts));
+        return get("/accounting/exports" + q);
+    }
+
+    // ====================================================================
     //  REPORTS-UI — Mayor, Sumas y Saldos, Balance de Situación, PyG
     // ====================================================================
 

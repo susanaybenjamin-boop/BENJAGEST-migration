@@ -91,6 +91,10 @@ public class ClientFinancialsScreen {
                     err -> showError("No se cargaron movimientos", err));
         });
 
+        // BANK-IMPORT — importar extracto bancario (Norma 43 / CSV).
+        Button importBtn = new Button(tt.apply("bank.import.btn"));
+        importBtn.setOnAction(e -> showBankImportDialog(accountsTable, movementsTable));
+
         accountsTable.getSelectionModel().selectedItemProperty().addListener((obs, oldV, newV) -> {
             if (newV == null) { movementsTable.getItems().clear(); return; }
             async(() -> api.listBankMovements(newV.id(), null, null, null),
@@ -100,7 +104,7 @@ public class ClientFinancialsScreen {
 
         Label accLabel = new Label("Cuentas bancarias");
         accLabel.getStyleClass().add("settings-section-title");
-        HBox accActions = new HBox(8, refreshAccounts, loadMovs);
+        HBox accActions = new HBox(8, refreshAccounts, loadMovs, importBtn);
         VBox accountsBox = new VBox(8, accLabel, accActions, accountsTable);
         VBox.setVgrow(accountsTable, Priority.ALWAYS);
         accountsBox.setPadding(new Insets(8));
@@ -125,6 +129,90 @@ public class ClientFinancialsScreen {
         async(() -> api.listBankAccounts(null),
                 rows -> table.setItems(FXCollections.observableArrayList(rows)),
                 err -> logSilent("bank-accounts", err));
+    }
+
+    /** BANK-IMPORT — diálogo: cuenta + formato (N43/CSV) + fichero → importar. */
+    private void showBankImportDialog(TableView<BankAccountView> accountsTable,
+                                      TableView<BankMovementRow> movementsTable) {
+        if (accountsTable.getItems().isEmpty()) {
+            showInfo(tt.apply("bank.import.btn"), tt.apply("bank.import.no_accounts"));
+            return;
+        }
+        javafx.scene.control.Dialog<javafx.scene.control.ButtonType> d = new javafx.scene.control.Dialog<>();
+        d.setTitle(tt.apply("bank.import.title"));
+        javafx.scene.control.ButtonType ok = new javafx.scene.control.ButtonType(
+                tt.apply("bank.import.do"), javafx.scene.control.ButtonBar.ButtonData.OK_DONE);
+        d.getDialogPane().getButtonTypes().addAll(ok, javafx.scene.control.ButtonType.CANCEL);
+
+        javafx.scene.control.ComboBox<BankAccountView> accCombo = new javafx.scene.control.ComboBox<>(
+                FXCollections.observableArrayList(accountsTable.getItems()));
+        accCombo.setConverter(new javafx.util.StringConverter<>() {
+            @Override public String toString(BankAccountView a) {
+                return a == null ? "" : a.alias() + " — " + (a.iban() == null ? "" : a.iban());
+            }
+            @Override public BankAccountView fromString(String s) { return null; }
+        });
+        BankAccountView selAcc = accountsTable.getSelectionModel().getSelectedItem();
+        accCombo.setValue(selAcc != null ? selAcc : accountsTable.getItems().get(0));
+
+        javafx.scene.control.ComboBox<String> formatCombo = new javafx.scene.control.ComboBox<>(
+                FXCollections.observableArrayList("N43", "CSV"));
+        formatCombo.setValue("N43");
+
+        Label fileLabel = new Label(tt.apply("bank.import.no_file"));
+        fileLabel.setStyle("-fx-text-fill: #6e6e6e;");
+        final java.io.File[] chosen = {null};
+        Button pick = new Button(tt.apply("bank.import.pick_file"));
+        pick.setOnAction(ev -> {
+            javafx.stage.FileChooser fc = new javafx.stage.FileChooser();
+            fc.setTitle(tt.apply("bank.import.pick_file"));
+            fc.getExtensionFilters().addAll(
+                    new javafx.stage.FileChooser.ExtensionFilter("N43 / CSV / TXT", "*.n43", "*.csv", "*.txt"),
+                    new javafx.stage.FileChooser.ExtensionFilter("Todos", "*.*"));
+            java.io.File f = fc.showOpenDialog(accountsTable.getScene().getWindow());
+            if (f != null) {
+                chosen[0] = f;
+                fileLabel.setText(f.getName());
+                String n = f.getName().toLowerCase();
+                if (n.endsWith(".csv")) formatCombo.setValue("CSV");
+                else if (n.endsWith(".n43")) formatCombo.setValue("N43");
+            }
+        });
+
+        javafx.scene.layout.GridPane g = new javafx.scene.layout.GridPane();
+        g.setHgap(10); g.setVgap(8); g.setPadding(new Insets(12));
+        g.add(new Label(tt.apply("bank.import.account")), 0, 0); g.add(accCombo, 1, 0);
+        g.add(new Label(tt.apply("bank.import.format")), 0, 1); g.add(formatCombo, 1, 1);
+        g.add(new Label(tt.apply("bank.import.file")), 0, 2); g.add(new HBox(8, pick, fileLabel), 1, 2);
+        d.getDialogPane().setContent(g);
+
+        d.showAndWait().ifPresent(bt -> {
+            if (bt != ok) return;
+            BankAccountView acc = accCombo.getValue();
+            if (acc == null || chosen[0] == null) {
+                showInfo(tt.apply("bank.import.title"), tt.apply("bank.import.missing"));
+                return;
+            }
+            final String fmt = formatCombo.getValue();
+            final java.io.File file = chosen[0];
+            async(() -> {
+                String content = java.nio.file.Files.readString(file.toPath());
+                return api.importBankExtract(acc.id(), fmt, file.getName(), content);
+            }, res -> {
+                showInfo(tt.apply("bank.import.done_title"), tt.apply("bank.import.done_body")
+                        .replace("{total}", String.valueOf(res.rowsTotal()))
+                        .replace("{imported}", String.valueOf(res.rowsImported()))
+                        .replace("{skipped}", String.valueOf(res.rowsSkipped()))
+                        .replace("{matched}", String.valueOf(res.rowsAutoMatched())));
+                async(() -> api.listBankMovements(acc.id(), null, null, null),
+                        rows -> movementsTable.setItems(FXCollections.observableArrayList(rows)),
+                        err -> { /* silencioso */ });
+                // La auto-conciliación pudo crear asientos: avisar a Contabilidad.
+                com.benjagest.ui.support.RefreshBus.emit(
+                        com.benjagest.ui.support.RefreshBus.TOPIC_BANK_ACCOUNTS,
+                        com.benjagest.ui.support.RefreshBus.TOPIC_JOURNAL);
+            }, err -> showError(tt.apply("bank.import.fail"), err));
+        });
     }
 
     // ====================================================================

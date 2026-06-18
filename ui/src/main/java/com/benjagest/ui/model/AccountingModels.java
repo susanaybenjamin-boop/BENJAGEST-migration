@@ -236,6 +236,11 @@ public final class AccountingModels {
             List<ReportSection> pasivo, BigDecimal totalPasivo
     ) {}
 
+    /** Resultado de un import (extracto bancario / contable). */
+    public record ImportResult(
+            int rowsTotal, int rowsImported, int rowsSkipped, int rowsAutoMatched
+    ) {}
+
     /** Cuenta de Pérdidas y Ganancias de un periodo. */
     public record ProfitAndLossView(
             LocalDate from, LocalDate to,
