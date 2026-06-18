@@ -252,33 +252,33 @@ public class WorkScheduleService {
         }
 
         @GetMapping("/{id}")
-        public TemplateDetail detail(@PathVariable String id) { return service.getTemplate(id); }
+        public TemplateDetail detail(@PathVariable("id") String id) { return service.getTemplate(id); }
 
         @PutMapping("/{id}")
-        public void update(@PathVariable String id, @RequestBody TemplateUpsert req) {
+        public void update(@PathVariable("id") String id, @RequestBody TemplateUpsert req) {
             service.updateTemplate(id, req);
         }
 
         @DeleteMapping("/{id}")
-        public void delete(@PathVariable String id) { service.deleteTemplate(id); }
+        public void delete(@PathVariable("id") String id) { service.deleteTemplate(id); }
 
         @PutMapping("/{id}/blocks")
-        public void replaceBlocks(@PathVariable String id, @RequestBody List<BlockInput> blocks) {
+        public void replaceBlocks(@PathVariable("id") String id, @RequestBody List<BlockInput> blocks) {
             service.replaceBlocks(id, blocks);
         }
 
         @GetMapping("/{id}/assignments")
-        public List<Assignment> assignments(@PathVariable String id) {
+        public List<Assignment> assignments(@PathVariable("id") String id) {
             return service.listAssignments(id);
         }
 
         @PostMapping("/{id}/assignments")
-        public java.util.Map<String, String> assign(@PathVariable String id, @RequestBody AssignRequest req) {
+        public java.util.Map<String, String> assign(@PathVariable("id") String id, @RequestBody AssignRequest req) {
             return java.util.Map.of("id", service.assign(id, req));
         }
 
         @DeleteMapping("/assignments/{assignmentId}")
-        public void removeAssignment(@PathVariable String assignmentId) {
+        public void removeAssignment(@PathVariable("assignmentId") String assignmentId) {
             service.removeAssignment(assignmentId);
         }
     }
