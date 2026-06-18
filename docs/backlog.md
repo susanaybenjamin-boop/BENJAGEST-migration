@@ -1127,7 +1127,20 @@ Nóminas; afinar topes de cotización; pagas extra.
 ## 🔴 Decisiones bloqueantes
 
 - ❓ **MOBILE-EMPLEADO — App móvil/tablet del empleado**. Los partes de día + Portal del empleado vivirán en una app que el empresario instala en el dispositivo del empleado. **Sin diseño técnico aún**: ¿Capacitor/Tauri? ¿React-native? ¿PWA? ¿Compartirá BD vía API REST?
-- ❓ 💰 **PORT-2 JORNADAS — UI completa** *(decisión arquitectura ya tomada: embebido CONTENDO)*. Backend skeleton ya en V86+V88. **Necesito tu diseño UX**: ¿TabPane interno o sub-pestañas? ¿1 plantilla = N bloques + adjudicada a M empleados como CONTENDO?
+- ✅ **PORT-2 JORNADAS — CERRADO 2026-06-18** (decisión Benjamin: real + planificación,
+  modelo 1 plantilla = N bloques → M empleados, CONTENDO). Entregado:
+  - **JOR-1** jornada REAL desde fichajes: `WorkdayService` calcula horas
+    trabajadas/pausas por empleado-día agregando `time_clock_events` (flag
+    `is_work_time`), `GET /api/labor/workdays`. UI: sección "Jornadas fichadas"
+    en la pestaña Jornadas. **Esto cierra FM-5 (fichaje→jornada).**
+  - **JOR-2** planificación: V131 `work_schedule_templates`+`work_schedule_blocks`
+    +`work_schedule_assignments`; `WorkScheduleService` (CRUD plantillas, reemplazo
+    de bloques con validación fin>inicio y sin solapes, asignaciones con vigencia);
+    `/api/labor/schedule-templates`.
+  - **JOR-3** UI: pestaña "Planificación" (Tiempo y jornada) con CRUD plantillas +
+    editor de bloques por día + asignación a empleados.
+  - **Pendiente menor (no bloqueante):** excepciones por fecha (CONTENDO
+    `plantilla_excepciones_180`); comparación planificado-vs-real (JOR-4).
 
 ---
 
