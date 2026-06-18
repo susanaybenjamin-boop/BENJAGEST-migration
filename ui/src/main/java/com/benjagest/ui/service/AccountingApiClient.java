@@ -859,9 +859,11 @@ public class AccountingApiClient {
         appendKV(b, "content", content, false);
         b.append("}");
         String json = postRaw("/accounting/external-imports", b.toString());
+        // OJO: el BatchResult del import contable usa total/imported/skipped/errors
+        // (distinto del bancario). El 4º campo aquí son ERRORES, no auto-matched.
         return new AccountingModels.ImportResult(
-                intField(json, "rowsTotal"), intField(json, "rowsImported"),
-                intField(json, "rowsSkipped"), intField(json, "rowsAutoMatched"));
+                intField(json, "total"), intField(json, "imported"),
+                intField(json, "skipped"), intField(json, "errors"));
     }
 
     /** Exportación contable: devuelve el contenido (CSV/texto) del export. */
