@@ -14,6 +14,43 @@
 
 ---
 
+## 📅 SESIÓN 2026-06-18 — Jornadas + Portal empleado (PWA) + UX. Estado y pendientes
+
+**Cerrado y mergeado a develop hoy:**
+- **PORT-2 / JORNADAS completo** (JOR-1 jornada real desde fichajes + JOR-2/3
+  planificación de plantillas). Ver bloque "PORT-2 JORNADAS" en Decisiones.
+- **MEMP-1** (portal del empleado, PWA): invitación + activación + login PIN +
+  cascarón PWA instalable (iOS arreglado: storage separado → reutilizable +
+  "Copiar código" en navegador). Conectividad = **Cloudflare Tunnel** (decidido).
+  Ver bloque MEMP en "Decisiones bloqueantes".
+- **Máscaras de entrada** (UX global): horas `HH:mm` y fechas `dd-MM-yyyy` con los
+  separadores automáticos (`EditableCells.installTimeMask/installDateMask/
+  enableDateMaskOnFocus`); conversor de fecha unificado a `dd-MM-yyyy`.
+- **Fix `@PathVariable` sin nombre** en WorkScheduleService (rompía asignar/bloques).
+- **Editor de bloques rediseñado** tipo CONTENDO (día + copiar a días).
+
+**PENDIENTE — UX-DIMENSIONES (barrido de campos/etiquetas truncadas):**
+Diagnóstico con 2 agentes Explore (convergieron). Causa raíz: `Label` en `HBox`
+sin `setMinWidth(Region.USE_PREF_SIZE)` + combos/pickers sin `setMaxWidth(MAX)` y
+`GridPane` sin `ColumnConstraints` Hgrow. Helper `formLabel(...)` ya creado y
+aplicado a los diálogos de horarios (Asignar + bloques). **Falta aplicar el mismo
+patrón en** (file:line de BenjagestUiApplication.java, aprox.):
+  - Editor de empleado: combos sexo/estado civil/régimen SS (~22383).
+  - Editor/wizard de contrato: convenio/categoría/grupo SS/estado (~23867, ~23002, ~23133).
+  - Suspender/finiquitar empleado: combos tipo/devengo (~20370).
+  - Editor RETA tramos (~36240), calcular nómina objetivo BRUTO/NETO (~21621).
+  - Long tail: algún DatePicker dentro de `Dialog<>` que no pase por el helper
+    puede necesitar máscara (revisar si aparece sin separadores al usar).
+
+**PENDIENTE — MEMP-2…5** (funciones reales de la PWA del empleado): fichar,
+mi jornada/calendario/plan, vacaciones/bajas, nóminas. **Siguiente: MEMP-2 (fichar)**.
+Para probar en producción: arrancar backend + `cloudflared tunnel --url
+http://localhost:8080` + `BENJAGEST_PUBLIC_BASE_URL`=URL del túnel.
+
+**PENDIENTE — JORNADAS menor:** excepciones por fecha; comparación plan-vs-real (JOR-4).
+
+---
+
 ## ✅ ESTADO VERIFICADO — auditoría 4 agentes + verificación manual (2026-06-17)
 
 > Barrido del código (backend + UI) para reconciliar el backlog con la realidad.
