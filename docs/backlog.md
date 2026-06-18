@@ -1132,12 +1132,18 @@ Nóminas; afinar topes de cotización; pagas extra.
     + /activar + activate-install). NO nativa, NO Next.js.
   - **Alcance = completo**: fichar, vacaciones/bajas (con adjuntos), nóminas
     (recibir/confirmar/firmar/descargar), calendario/jornada/plan del día.
-  - **Conectividad = PENDIENTE de Benjamin** ("lo hablamos"). Opciones explicadas:
-    Solo-LAN (0€, máx. seguridad, no desde casa) · Cloudflare Tunnel (gratis, sin
-    abrir puertos, recomendado si quiere acceso externo) · port-forward (riesgo RGPD,
-    desaconsejado) · nube/VPS (abandona el on-premise). **Clave: NO bloquea construir**
-    — la PWA es el mismo código por LAN/túnel/nube; la conectividad es decisión de
-    empaquetado. Se construye LAN-first (funciona ya en el WiFi de la oficina).
+  - **Caso de uso clave (Benjamin 2026-06-18)**: EMPRESA DE SERVICIOS cuyos empleados
+    fichan en VARIOS clientes y lugares distintos. Aquí el kiosko NO sirve (no hay
+    centro fijo) → fichaje por PWA en el móvil con GEO obligatorio. El modelo YA lo
+    soporta: `time_clock_events.customer_id` + `latitude/longitude` y el `punch(...)`
+    los aceptan; la geo se captura como EVIDENCIA (geo_policy `info`), no contra radio
+    fijo (`strict` es solo para centros físicos/kiosko).
+  - **Conectividad = acceso externo OBLIGATORIO** para este perfil (no "solo LAN"):
+    el empleado ficha fuera del WiFi de la oficina. Opciones: Cloudflare Tunnel
+    (gratis, sin abrir puertos — RECOMENDADO on-premise) o nube/VPS. Port-forward
+    desaconsejado (RGPD). Solo-LAN queda para clientes con un único centro físico
+    (kiosko). **Clave: NO bloquea construir** — la PWA es el mismo código por
+    LAN/túnel/nube; el canal externo se elige al empaquetar. Se construye LAN-first.
   - **Plan slices**: MEMP-1 invitación+activación+login+cascarón PWA · MEMP-2 fichar
     (reusa TimeClockService.punch) · MEMP-3 calendario/jornada/plan (horario JOR-2 +
     jornada real JOR-1) · MEMP-4 vacaciones/bajas · MEMP-5 nóminas (entrega+firma,
