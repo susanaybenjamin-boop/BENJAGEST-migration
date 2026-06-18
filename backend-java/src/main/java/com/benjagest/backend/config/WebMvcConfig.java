@@ -52,6 +52,6 @@ public class WebMvcConfig implements WebMvcConfigurer {
         // aplica a /activate (aún no hay token).
         registry.addInterceptor(kioskTokenInterceptor)
                 .addPathPatterns("/api/public/kiosk/**")
-                .excludePathPatterns("/api/public/kiosk/activate");
+                .excludePathPatterns("/api/public/kiosk/activate", "/api/public/kiosk/app");
     }
 }
