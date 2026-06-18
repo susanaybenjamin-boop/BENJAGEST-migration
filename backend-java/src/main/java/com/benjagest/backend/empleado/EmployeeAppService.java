@@ -337,7 +337,9 @@ public class EmployeeAppService {
                   <p class="sub" id="pinCompany"></p>
                   <div class="card">
                     <label>Introduce tu PIN</label>
-                    <input id="pinInput" type="password" inputmode="numeric" maxlength="8" placeholder="****"/>
+                    <input id="pinInput" type="password" inputmode="numeric" maxlength="8"
+                           autocomplete="off" autocorrect="off" autocapitalize="off"
+                           name="benjagest-pin" placeholder="****"/>
                     <button id="pinBtn">Entrar</button>
                   </div>
                   <div id="pinMsg"></div>
@@ -428,10 +430,19 @@ public class EmployeeAppService {
                   } catch (e) { msg('inviteMsg', e.message); }
                 };
 
+                // Fuerza solo digitos (evita basura de autofill de iOS) y limita a 8.
+                document.getElementById('pinInput').addEventListener('input', (e) => {
+                  e.target.value = e.target.value.replace(/[^0-9]/g, '').slice(0, 8);
+                });
+
                 document.getElementById('pinBtn').onclick = async () => {
-                  const pin = document.getElementById('pinInput').value.trim();
+                  const pin = document.getElementById('pinInput').value.replace(/[^0-9]/g, '');
                   const secret = localStorage.getItem(LS_SECRET);
                   if (!secret) { show('screen-invite'); return; }
+                  if (pin.length < 4 || pin.length > 8) {
+                    msg('pinMsg', 'El PIN son de 4 a 8 digitos.');
+                    return;
+                  }
                   try {
                     const res = await pinLogin(secret, pin);
                     localStorage.setItem(LS_TOKEN, res.accessToken);
