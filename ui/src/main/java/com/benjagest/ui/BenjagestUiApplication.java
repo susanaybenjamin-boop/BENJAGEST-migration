@@ -14917,6 +14917,14 @@ public class BenjagestUiApplication extends Application {
             case "labor.schedule.blocks.hint" -> "Add the time blocks for each weekday. Blocks must not overlap and end time must be after start time. A weekday with no blocks is a day off.";
             case "labor.schedule.block.add" -> "Add block";
             case "labor.schedule.block.remove" -> "Remove block";
+            case "labor.schedule.day" -> "Day";
+            case "labor.schedule.day.empty" -> "No blocks for this day (day off).";
+            case "labor.schedule.copy_days" -> "Copy to other days";
+            case "labor.schedule.copy_days.hint" -> "Copy {day}'s blocks to the days you check (replaces theirs).";
+            case "labor.schedule.clear_day" -> "Clear day";
+            case "labor.schedule.no_blocks" -> "This day has no blocks to copy.";
+            case "labor.schedule.block.order" -> "End time must be after start time.";
+            case "labor.schedule.block.overlap" -> "The block overlaps another on the same day.";
             case "labor.schedule.time.invalid" -> "Times must be in HH:mm format (e.g. 09:00)";
             case "labor.schedule.type.work" -> "Work";
             case "labor.schedule.type.break" -> "Break";
@@ -15083,6 +15091,14 @@ public class BenjagestUiApplication extends Application {
             case "labor.schedule.blocks.hint" -> "Añade los bloques horarios de cada día. Los bloques no pueden solaparse y la hora de fin debe ser posterior a la de inicio. Un día sin bloques es día libre.";
             case "labor.schedule.block.add" -> "Añadir bloque";
             case "labor.schedule.block.remove" -> "Quitar bloque";
+            case "labor.schedule.day" -> "Día";
+            case "labor.schedule.day.empty" -> "Este día no tiene bloques (día libre).";
+            case "labor.schedule.copy_days" -> "Copiar a otros días";
+            case "labor.schedule.copy_days.hint" -> "Copia los bloques de {day} a los días que marques (reemplaza los suyos).";
+            case "labor.schedule.clear_day" -> "Vaciar día";
+            case "labor.schedule.no_blocks" -> "Este día no tiene bloques que copiar.";
+            case "labor.schedule.block.order" -> "La hora de fin debe ser posterior a la de inicio.";
+            case "labor.schedule.block.overlap" -> "El bloque se solapa con otro del mismo día.";
             case "labor.schedule.time.invalid" -> "Las horas deben tener formato HH:mm (p. ej. 09:00)";
             case "labor.schedule.type.work" -> "Trabajo";
             case "labor.schedule.type.break" -> "Pausa";
@@ -34539,21 +34555,30 @@ public class BenjagestUiApplication extends Application {
         Dialog<Void> dialog = new Dialog<>();
         dialog.setTitle(t("labor.schedule.blocks") + " — " + template.name());
         dialog.getDialogPane().getButtonTypes().addAll(ButtonType.OK, ButtonType.CANCEL);
-        dialog.getDialogPane().setPrefWidth(560);
+        dialog.getDialogPane().setPrefWidth(640);
 
         Label hint = new Label(t("labor.schedule.blocks.hint"));
         hint.setWrapText(true); hint.getStyleClass().add("settings-hint");
 
-        javafx.collections.ObservableList<com.benjagest.ui.model.ScheduleBlockEntry> rows =
+        // Todos los bloques (todos los días) en memoria; se guardan al Aceptar.
+        final javafx.collections.ObservableList<com.benjagest.ui.model.ScheduleBlockEntry> all =
                 FXCollections.observableArrayList();
+        final int[] selDay = {1};
 
-        TableView<com.benjagest.ui.model.ScheduleBlockEntry> table = new TableView<>(rows);
+        // --- Selector de día (Lun..Dom) con contador de bloques por día ---
+        javafx.scene.control.ToggleGroup tg = new javafx.scene.control.ToggleGroup();
+        javafx.scene.control.ToggleButton[] dayBtns = new javafx.scene.control.ToggleButton[8];
+        HBox dayBar = new HBox(6);
+        dayBar.setAlignment(Pos.CENTER_LEFT);
+
+        // --- Tabla SOLO del día seleccionado ---
+        final javafx.collections.ObservableList<com.benjagest.ui.model.ScheduleBlockEntry> dayRows =
+                FXCollections.observableArrayList();
+        TableView<com.benjagest.ui.model.ScheduleBlockEntry> table = new TableView<>(dayRows);
         table.getStyleClass().add("data-table");
         table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
-        table.setPrefHeight(220);
-        TableColumn<com.benjagest.ui.model.ScheduleBlockEntry, String> wc =
-                new TableColumn<>(t("labor.schedule.col.weekday"));
-        wc.setCellValueFactory(c -> new SimpleStringProperty(weekdayName(c.getValue().weekday())));
+        table.setPrefHeight(200);
+        table.setPlaceholder(new Label(t("labor.schedule.day.empty")));
         TableColumn<com.benjagest.ui.model.ScheduleBlockEntry, String> tc =
                 new TableColumn<>(t("labor.schedule.col.type"));
         tc.setCellValueFactory(c -> new SimpleStringProperty(
@@ -34565,15 +34590,9 @@ public class BenjagestUiApplication extends Application {
         TableColumn<com.benjagest.ui.model.ScheduleBlockEntry, String> ec =
                 new TableColumn<>(t("labor.workdays.col.out"));
         ec.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().endTime()));
-        table.getColumns().addAll(java.util.List.of(wc, tc, sc, ec));
+        table.getColumns().addAll(java.util.List.of(tc, sc, ec));
 
-        // Formulario para añadir un bloque.
-        ComboBox<Integer> weekday = new ComboBox<>(FXCollections.observableArrayList(1, 2, 3, 4, 5, 6, 7));
-        weekday.setConverter(new javafx.util.StringConverter<>() {
-            @Override public String toString(Integer i) { return i == null ? "" : weekdayName(i); }
-            @Override public Integer fromString(String s) { return null; }
-        });
-        weekday.getSelectionModel().selectFirst();
+        // --- Formulario de añadir bloque al día seleccionado ---
         ComboBox<String> type = new ComboBox<>(FXCollections.observableArrayList("WORK", "BREAK"));
         type.setConverter(new javafx.util.StringConverter<>() {
             @Override public String toString(String s) {
@@ -34582,34 +34601,125 @@ public class BenjagestUiApplication extends Application {
             @Override public String fromString(String s) { return null; }
         });
         type.getSelectionModel().selectFirst();
-        TextField start = new TextField(); start.setPromptText("09:00"); start.setPrefWidth(70);
-        TextField end = new TextField(); end.setPromptText("14:00"); end.setPrefWidth(70);
+        type.setPrefWidth(150);
+        TextField start = new TextField(); start.setPromptText("09:00"); start.setPrefWidth(80);
+        TextField end = new TextField(); end.setPromptText("14:00"); end.setPrefWidth(80);
+
+        java.util.Comparator<com.benjagest.ui.model.ScheduleBlockEntry> byStart =
+                java.util.Comparator.comparing(com.benjagest.ui.model.ScheduleBlockEntry::startTime);
+
+        Runnable refreshDay = () -> {
+            dayRows.setAll(all.stream().filter(b -> b.weekday() == selDay[0]).sorted(byStart).toList());
+            for (int d = 1; d <= 7; d++) {
+                final int dd = d;
+                long c = all.stream().filter(b -> b.weekday() == dd).count();
+                dayBtns[d].setText(weekdayName(d) + (c > 0 ? " (" + c + ")" : ""));
+            }
+            // Pre-rellena la entrada del siguiente bloque con la salida del último (contiguo).
+            start.setText(dayRows.isEmpty() ? "09:00" : dayRows.get(dayRows.size() - 1).endTime());
+            end.clear();
+        };
+
+        for (int d = 1; d <= 7; d++) {
+            javafx.scene.control.ToggleButton tb = new javafx.scene.control.ToggleButton(weekdayName(d));
+            tb.setToggleGroup(tg);
+            final int dd = d;
+            tb.setOnAction(e -> { if (tb.isSelected()) { selDay[0] = dd; refreshDay.run(); } });
+            dayBtns[d] = tb;
+            dayBar.getChildren().add(tb);
+        }
+        dayBtns[1].setSelected(true);
+
         Button addRow = new Button(t("labor.schedule.block.add"));
         addRow.setGraphic(icon("fas-plus"));
+        addRow.getStyleClass().add("primary-button");
         addRow.setOnAction(e -> {
             if (!isHhmm(start.getText()) || !isHhmm(end.getText())) {
                 showError(t("labor.schedule.fail.title"), t("labor.schedule.time.invalid"));
                 return;
             }
-            rows.add(new com.benjagest.ui.model.ScheduleBlockEntry(
-                    null, weekday.getValue(), type.getValue(), start.getText().trim(), end.getText().trim()));
-            rows.sort(java.util.Comparator
-                    .comparingInt(com.benjagest.ui.model.ScheduleBlockEntry::weekday)
-                    .thenComparing(com.benjagest.ui.model.ScheduleBlockEntry::startTime));
-            start.clear(); end.clear();
+            java.time.LocalTime s = java.time.LocalTime.parse(start.getText().trim());
+            java.time.LocalTime en = java.time.LocalTime.parse(end.getText().trim());
+            if (!en.isAfter(s)) {
+                showError(t("labor.schedule.fail.title"), t("labor.schedule.block.order"));
+                return;
+            }
+            for (var b : dayRows) {
+                if (s.isBefore(java.time.LocalTime.parse(b.endTime()))
+                        && java.time.LocalTime.parse(b.startTime()).isBefore(en)) {
+                    showError(t("labor.schedule.fail.title"), t("labor.schedule.block.overlap"));
+                    return;
+                }
+            }
+            all.add(new com.benjagest.ui.model.ScheduleBlockEntry(
+                    null, selDay[0], type.getValue(), start.getText().trim(), end.getText().trim()));
+            refreshDay.run();
         });
         Button delRow = new Button(t("labor.schedule.block.remove"));
         delRow.setGraphic(icon("fas-trash"));
         delRow.setOnAction(e -> {
             var sel = table.getSelectionModel().getSelectedItem();
-            if (sel != null) rows.remove(sel);
+            if (sel != null) { all.remove(sel); refreshDay.run(); }
         });
-        HBox form = new HBox(8, weekday, type,
+        HBox form = new HBox(8,
+                new Label(t("labor.schedule.col.type")), type,
                 new Label(t("labor.workdays.col.in")), start,
                 new Label(t("labor.workdays.col.out")), end, addRow, delRow);
         form.setAlignment(Pos.CENTER_LEFT);
 
-        VBox box = new VBox(10, hint, table, form);
+        // --- Acciones de día: copiar a otros días / vaciar ---
+        Button copyBtn = new Button(t("labor.schedule.copy_days"));
+        copyBtn.setGraphic(icon("fas-copy"));
+        copyBtn.setOnAction(e -> {
+            if (dayRows.isEmpty()) { showInfo(t("labor.schedule.copy_days"), t("labor.schedule.no_blocks")); return; }
+            Dialog<Void> cd = new Dialog<>();
+            cd.setTitle(t("labor.schedule.copy_days"));
+            cd.getDialogPane().getButtonTypes().addAll(ButtonType.OK, ButtonType.CANCEL);
+            Label ch = new Label(t("labor.schedule.copy_days.hint")
+                    .replace("{day}", weekdayName(selDay[0])));
+            ch.setWrapText(true); ch.getStyleClass().add("settings-hint");
+            VBox checks = new VBox(6);
+            java.util.List<CheckBox> cbs = new java.util.ArrayList<>();
+            for (int d = 1; d <= 7; d++) {
+                if (d == selDay[0]) continue;
+                CheckBox cb = new CheckBox(weekdayName(d));
+                cb.setUserData(d);
+                cbs.add(cb);
+                checks.getChildren().add(cb);
+            }
+            VBox cbox = new VBox(10, ch, checks);
+            cbox.setPadding(new Insets(12));
+            cd.getDialogPane().setContent(cbox);
+            cd.setResultConverter(bt -> {
+                if (bt != ButtonType.OK) return null;
+                java.util.List<com.benjagest.ui.model.ScheduleBlockEntry> src =
+                        new java.util.ArrayList<>(dayRows);
+                for (CheckBox cb : cbs) {
+                    if (!cb.isSelected()) continue;
+                    int dd = (Integer) cb.getUserData();
+                    all.removeIf(b -> b.weekday() == dd);
+                    for (var b : src) {
+                        all.add(new com.benjagest.ui.model.ScheduleBlockEntry(
+                                null, dd, b.blockType(), b.startTime(), b.endTime()));
+                    }
+                }
+                refreshDay.run();
+                return null;
+            });
+            cd.showAndWait();
+        });
+        Button clearBtn = new Button(t("labor.schedule.clear_day"));
+        clearBtn.setGraphic(icon("fas-eraser"));
+        clearBtn.setOnAction(e -> {
+            all.removeIf(b -> b.weekday() == selDay[0]);
+            refreshDay.run();
+        });
+        HBox dayActions = new HBox(8, copyBtn, clearBtn);
+        dayActions.setAlignment(Pos.CENTER_LEFT);
+
+        VBox box = new VBox(10, hint,
+                new HBox(8, new Label(t("labor.schedule.day") + ":"), dayBar),
+                table, form, dayActions);
         box.setPadding(new Insets(12));
         dialog.getDialogPane().setContent(box);
 
@@ -34619,13 +34729,16 @@ public class BenjagestUiApplication extends Application {
                 return laborApiClient.getScheduleBlocks(template.id());
             }
         };
-        load.setOnSucceeded(ev -> rows.setAll(load.getValue()));
+        load.setOnSucceeded(ev -> { all.setAll(load.getValue()); refreshDay.run(); });
+        load.setOnFailed(ev -> showError(t("labor.schedule.fail.title"),
+                load.getException() == null ? "" : load.getException().getMessage()));
         start(load, "schedule-blocks-load");
+        refreshDay.run();
 
         dialog.setResultConverter(bt -> {
             if (bt != ButtonType.OK) return null;
             java.util.List<com.benjagest.ui.model.ScheduleBlockEntry> snapshot =
-                    new java.util.ArrayList<>(rows);
+                    new java.util.ArrayList<>(all);
             Task<Void> task = new Task<>() {
                 @Override protected Void call() throws Exception {
                     laborApiClient.replaceScheduleBlocks(template.id(), snapshot);
