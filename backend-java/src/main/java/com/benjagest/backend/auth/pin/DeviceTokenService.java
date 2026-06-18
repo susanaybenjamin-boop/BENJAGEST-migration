@@ -122,6 +122,31 @@ public class DeviceTokenService {
     }
 
     /**
+     * MEMP-1 — Empareja el móvil personal de un empleado SIN credenciales
+     * OWNER. La autorización la da una invitación one-time ya validada por
+     * {@code EmployeeAppService}; aquí solo se crea el device_token ligado a
+     * la empresa del empleado, igual que {@link #pair} pero sin el handshake
+     * email+password. El empleado luego entra por PIN (loginByPin).
+     */
+    public PairResponse pairEmployeeDevice(String companyId, String deviceName, String byUserId) {
+        String secret = newSecret();
+        String prefix = secret.substring(0, TOKEN_PREFIX_CHARS);
+        String hash = passwordEncoder.encode(secret);
+        String tokenId = UUID.randomUUID().toString();
+
+        DeviceToken token = new DeviceToken(tokenId, companyId,
+                hash, prefix, deviceName,
+                null, byUserId, null, null, null);
+        repository.insert(token);
+
+        auditService.recordGeneric(companyId, byUserId,
+                "DEVICE_TOKEN_PAIRED", "device_token", tokenId, "OK",
+                "{\"deviceName\":\"" + escape(deviceName) + "\",\"channel\":\"EMPLOYEE_APP\"}");
+
+        return new PairResponse(tokenId, secret, companyId, null, byUserId);
+    }
+
+    /**
      * Resuelve qué dispositivo es el secret en plano que viene del PC.
      * Filtra por prefijo (los primeros 8 chars) para minimizar verificaciones
      * bcrypt. Si encuentra el match correcto actualiza last_seen.
