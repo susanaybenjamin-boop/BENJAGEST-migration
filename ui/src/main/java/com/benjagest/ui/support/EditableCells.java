@@ -10,6 +10,7 @@ import javafx.scene.control.TableCell;
 import javafx.scene.control.TableColumn;
 import javafx.scene.control.TableView;
 import javafx.scene.control.TextField;
+import javafx.scene.control.TextFormatter;
 import javafx.scene.input.KeyCode;
 import javafx.scene.input.KeyEvent;
 import javafx.util.Callback;
@@ -116,6 +117,59 @@ public final class EditableCells {
                 return null;
             }
         });
+        // Máscara: al teclear los dígitos, los guiones aparecen solos (dd-MM-yyyy).
+        installDateMask(picker);
+    }
+
+    /**
+     * Máscara de FECHA: el usuario teclea solo dígitos y los guiones
+     * {@code dd-MM-yyyy} aparecen automáticamente cuando hacen falta. No
+     * cambia el valor del DatePicker (es solo formato del texto); al
+     * confirmar, el converter flexible parsea {@code dd-MM-yyyy}.
+     */
+    public static void installDateMask(DatePicker picker) {
+        if (picker == null || picker.getEditor() == null) return;
+        picker.getEditor().setTextFormatter(
+                new TextFormatter<>(c -> maskChange(c, new int[]{2, 4}, '-', 8)));
+    }
+
+    /**
+     * Máscara de HORA: el usuario teclea solo dígitos y los dos puntos
+     * {@code HH:mm} aparecen automáticamente. P. ej. teclear {@code 0900}
+     * muestra {@code 09:00}.
+     */
+    public static void installTimeMask(TextField field) {
+        if (field == null) return;
+        field.setTextFormatter(new TextFormatter<>(c -> maskChange(c, new int[]{2}, ':', 4)));
+    }
+
+    /**
+     * Reformatea el texto de un cambio: extrae solo los dígitos (máximo
+     * {@code maxDigits}) e inserta {@code sep} después de las posiciones
+     * indicadas en {@code sepAfter}. Caret al final. Los separadores solo
+     * aparecen cuando ya hay dígitos que los precedan.
+     */
+    private static TextFormatter.Change maskChange(
+            TextFormatter.Change c, int[] sepAfter, char sep, int maxDigits) {
+        if (!c.isContentChange()) return c;
+        String proposed = c.getControlNewText();
+        StringBuilder digits = new StringBuilder();
+        for (int i = 0; i < proposed.length() && digits.length() < maxDigits; i++) {
+            char ch = proposed.charAt(i);
+            if (Character.isDigit(ch)) digits.append(ch);
+        }
+        StringBuilder out = new StringBuilder();
+        for (int i = 0; i < digits.length(); i++) {
+            for (int s : sepAfter) if (i == s) out.append(sep);
+            out.append(digits.charAt(i));
+        }
+        String formatted = out.toString();
+        if (formatted.equals(c.getControlText())) return null; // sin cambios reales
+        c.setRange(0, c.getControlText().length());
+        c.setText(formatted);
+        c.setCaretPosition(formatted.length());
+        c.setAnchor(formatted.length());
+        return c;
     }
 
     /**

@@ -34604,6 +34604,8 @@ public class BenjagestUiApplication extends Application {
         type.setPrefWidth(150);
         TextField start = new TextField(); start.setPromptText("09:00"); start.setPrefWidth(80);
         TextField end = new TextField(); end.setPromptText("14:00"); end.setPrefWidth(80);
+        com.benjagest.ui.support.EditableCells.installTimeMask(start);
+        com.benjagest.ui.support.EditableCells.installTimeMask(end);
 
         java.util.Comparator<com.benjagest.ui.model.ScheduleBlockEntry> byStart =
                 java.util.Comparator.comparing(com.benjagest.ui.model.ScheduleBlockEntry::startTime);
