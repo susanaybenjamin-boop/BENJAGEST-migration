@@ -191,13 +191,18 @@ CSV + xDiario + SUENLACE.**
 
 ---
 
-## 2026-06-16 — BLOQUE FICHAJE-MÓVIL/KIOSCO (pedido Benjamin) 📱
+## 2026-06-16 — BLOQUE FICHAJE-MÓVIL/KIOSCO (pedido Benjamin) 📱 — ✅ MÓDULO CERRADO 2026-06-17
 
-> **➡️ PLAN DE ATAQUE DETALLADO: [`plan-fichaje-movil-kiosco.md`](plan-fichaje-movil-kiosco.md)**
-> (2026-06-17). Enfoque = web servido por Spring (no nativo); API portada de
-> CONTENDO; reutiliza TimeClockService/work_centers; 3 decisiones abiertas para
-> Benjamin (invitación, OTP email/SMS, offline ahora o fase 2). **Benjamin quiere
-> atacar este módulo lo siguiente.**
+> **➡️ PLAN/ESTADO: [`plan-fichaje-movil-kiosco.md`](plan-fichaje-movil-kiosco.md)**.
+> ✅ **Backend + frontend del fichaje kiosco/móvil COMPLETO** (2026-06-17):
+> FM-1 V129 (tablas) · FM-2 KioskService+interceptor+API · FM-3/4 V130 + página web
+> `/api/public/kiosk/app` (activar→PIN→fichar+foto+geo) · FM-admin pestaña "Kioscos"
+> en Laboral (alta+código activación+empleados). Decisiones: PIN+QR, foto opcional
+> no-facial (AEPD), geo, sin OTP. Verificado: compila, arranca, V129/V130 aplican,
+> /app sirve la página, smoke OK.
+> **Pendiente FUERA de este módulo:** FM-5 (fichaje→jornadas) = parte de PORT-2
+> (jornadas, decisión de diseño pendiente); cola offline = fase 2; deshacer-60s =
+> vía correcciones (mejora). Probar en vivo con una tablet/móvil en la LAN.
 >
 > Benjamin: falta el **fichaje MÓVIL y KIOSCO (tablet)** con **invitación**, igual
 > que en CONTENDO. Por ley (RD-Ley 8/2019). **Bloque grande → contexto fresco.**

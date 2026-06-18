@@ -84,14 +84,24 @@ Todas con `company_id` (multi-tenant) e índices por (company_id, …).
   WebMvcConfig (interceptor). Sin OTP (decisión Benjamin). Verificado: arranca +
   smoke (activate→410 token malo, config sin token→401). **Foto = en FM-4 (captura
   en la UI web).**
-- **FM-3 (móvil web)** — página `/fichar` responsive servida por Spring (entrada/
-  salida/pausas + geo del navegador). Identificación por PIN. Mismo backend que el
-  kiosco.
-- **FM-4 (kiosco)** — pantalla completa (idle → identificar PIN → confirmar → OTP/PIN
-  → éxito, con ventana de deshacer 60 s) + cola offline (localStorage → /sync-offline).
-- **FM-5** — que lo fichado alimente `daily_work_reports`/jornadas (PORT-2) y el
-  calendario. UI admin: pestaña "Kioscos/Dispositivos" en Laboral (alta + QR + asignar
-  empleados) — JavaFX, mostrando el QR de activación.
+- ✅ **FM-3/FM-4 HECHO** (2026-06-17) — página web responsive servida por Spring
+  (`GET /api/public/kiosk/app`): activar dispositivo (canjea QR→KioskToken en
+  localStorage) → elegir empleado → PIN → fichar con los tipos de evento
+  configurados → estado del día → **foto opcional** (cámara) + **geo** → éxito.
+  Backend de foto: V130 `kiosk_punch_photos` + `KioskPhotoStorageService` + fichaje
+  acepta `photoBase64`. Verificado: V130 aplica, `/app` sirve la página (200).
+- ✅ **FM-admin HECHO** (2026-06-17) — pestaña "Kioscos / PDA" en Laboral (Tiempo y
+  jornada): lista, alta (foto opcional con aviso legal), borrar, **código de
+  activación** (con la URL del dispositivo) y asignar empleados. JavaFX +
+  LaborApiClient.
+- ⬜ **FM-5 / offline / deshacer-60s — PENDIENTE, fuera del módulo de fichaje:**
+  - **FM-5 (fichaje → jornadas/calendario)** pertenece a **PORT-2 (jornadas)**, que
+    es un módulo aparte con decisión de diseño pendiente de Benjamin ("1 plantilla =
+    N bloques"). Hoy `worklogs`/`daily_work_reports` NO leen `time_clock_events`.
+    Se aborda al retomar PORT-2.
+  - **Cola offline** (kiosco sin red): fase 2 (decidido).
+  - **Deshacer 60 s**: vía `requestCorrection` (mecanismo RD 8/2019 ya existe);
+    su UI/endpoint de kiosco queda como mejora (no se anula el original — corrección).
 
 ## 6. DECISIONES CERRADAS (Benjamin 2026-06-17)
 
