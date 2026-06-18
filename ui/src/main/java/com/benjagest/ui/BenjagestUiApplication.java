@@ -16601,6 +16601,7 @@ public class BenjagestUiApplication extends Application {
             case "labor.contract.editor.irpf_suggest" -> "Suggest";
             case "labor.contract.editor.irpf_suggested" -> "Suggested (legal minimum): {pct} %. You may raise it (voluntary), not lower it.";
             case "labor.contract.editor.irpf_below_min" -> "The % is below the calculated legal minimum. By law you can only raise it, not lower it.";
+            case "labor.contract.editor.dates_locked" -> "This contract already has payslips: the start date and seniority are locked (changing them would corrupt seniority and severance). To change conditions, use \"Promote / change conditions\".";
             case "labor.contract.editor.at_ep" -> "Occupational accident % (AT/EP)";
             case "labor.contract.editor.ss_group" -> "Contribution group (1-11)";
             case "labor.contract.salary.title" -> "Salary complements";
@@ -17281,6 +17282,7 @@ public class BenjagestUiApplication extends Application {
             case "labor.contract.editor.irpf_suggest" -> "Sugerir";
             case "labor.contract.editor.irpf_suggested" -> "Sugerido (mínimo legal): {pct} %. Puedes subirlo (voluntario), no bajarlo.";
             case "labor.contract.editor.irpf_below_min" -> "El % es inferior al mínimo legal calculado. Por ley solo puedes subirlo, no bajarlo.";
+            case "labor.contract.editor.dates_locked" -> "Este contrato ya tiene nóminas: la fecha de inicio y la antigüedad están bloqueadas (cambiarlas corrompería la antigüedad y la indemnización). Para cambiar condiciones usa \"Ascender / cambiar condiciones\".";
             case "labor.contract.editor.at_ep" -> "% Accidentes trabajo (AT/EP)";
             case "labor.contract.editor.ss_group" -> "Grupo de cotización (1-11)";
             case "labor.contract.salary.title" -> "Complementos salariales";
@@ -23755,6 +23757,29 @@ public class BenjagestUiApplication extends Application {
             });
         });
         start(catTask, "contract-editor-catalog");
+
+        // VIG-3 (menor) — si el contrato YA tiene nóminas, bloquear la edición de
+        // fecha de inicio / antigüedad (cambiarlas corrompe antigüedad e
+        // indemnización; para cambiar condiciones está "Ascender"). Solo en
+        // edición normal (no en alta ni en ascenso, que ya las bloquea).
+        if (existing != null && existing.id() != null && !promoteMode) {
+            Task<Boolean> payTask = new Task<>() {
+                @Override protected Boolean call() throws Exception {
+                    return laborApiClient.contractHasPayslips(existing.id());
+                }
+            };
+            payTask.setOnSucceeded(pev -> {
+                if (Boolean.TRUE.equals(payTask.getValue())) {
+                    startField.setDisable(true);
+                    seniorityField.setDisable(true);
+                    Label lock = new Label(t("labor.contract.editor.dates_locked"));
+                    lock.setWrapText(true);
+                    lock.getStyleClass().add("settings-hint");
+                    editorBox.getChildren().add(0, lock);
+                }
+            });
+            start(payTask, "contract-has-payslips");
+        }
 
         // VIG-3 — validar la fecha de efecto sin cerrar el diálogo (reusa el
         // patrón toast/consume del BUG-UX-2).
