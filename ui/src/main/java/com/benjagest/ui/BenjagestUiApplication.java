@@ -215,6 +215,8 @@ public class BenjagestUiApplication extends Application {
         Scene scene = new Scene(root, 1180, 760);
         scene.getStylesheets().add(getClass().getResource("/com/benjagest/ui/app.css").toExternalForm());
         setupGlobalShortcuts(scene);
+        // Máscara de fecha (dd-MM-yyyy) en todos los DatePicker de la ventana.
+        com.benjagest.ui.support.EditableCells.enableDateMaskOnFocus(scene);
 
         stage.setTitle("BENJAGEST");
         stage.getIcons().add(AppBrand.loadWindowIcon());
@@ -10226,6 +10228,7 @@ public class BenjagestUiApplication extends Application {
         Scene scene = new Scene(root);
         scene.getStylesheets().add(
                 getClass().getResource("/com/benjagest/ui/app.css").toExternalForm());
+        com.benjagest.ui.support.EditableCells.enableDateMaskOnFocus(scene);
         dlg.setScene(scene);
         dlg.showAndWait();
     }
@@ -10390,6 +10393,7 @@ public class BenjagestUiApplication extends Application {
         Scene scene = new Scene(root);
         scene.getStylesheets().add(
                 getClass().getResource("/com/benjagest/ui/app.css").toExternalForm());
+        com.benjagest.ui.support.EditableCells.enableDateMaskOnFocus(scene);
         dlg.setScene(scene);
         dlg.showAndWait();
     }
@@ -34604,6 +34608,8 @@ public class BenjagestUiApplication extends Application {
         type.setPrefWidth(150);
         TextField start = new TextField(); start.setPromptText("09:00"); start.setPrefWidth(80);
         TextField end = new TextField(); end.setPromptText("14:00"); end.setPrefWidth(80);
+        com.benjagest.ui.support.EditableCells.installTimeMask(start);
+        com.benjagest.ui.support.EditableCells.installTimeMask(end);
 
         java.util.Comparator<com.benjagest.ui.model.ScheduleBlockEntry> byStart =
                 java.util.Comparator.comparing(com.benjagest.ui.model.ScheduleBlockEntry::startTime);
