@@ -21,12 +21,17 @@
 > en lo on-premise. Trampa recurrente detectada: **endpoint backend ≠ UI**.
 
 **Correcciones aplicadas (estaban marcadas como hechas pero NO lo estaban del todo):**
-- 🔶 **BANK-IMPORT** (Norma 43 / CSV): solo backend, **falta UI** para subir el fichero.
-- 🔶 **EXPORT-CONTABLE** (Contasol/A3/Sage): solo backend, **falta UI** de exportación.
-- 🔶 **ACC-TEMPLATES**: backend con endpoints, **falta UI de gestión** de plantillas.
-- 🔶 **ECPN** (cambios patrimonio neto): solo backend (opcional).
+- ✅ **BANK-IMPORT** (Norma 43 / CSV): **UI hecha 2026-06-17** (sesión autónoma,
+  botón "Importar extracto" en pestaña Bancos).
+- ✅ **EXPORT-CONTABLE + EXT-IMPORT** (CSV/Contasol/JSON): **UI hecha 2026-06-17**
+  (pestaña "Exportar/Importar" en Contabilidad). A3/Sage siguen pendientes en backend.
+- 🔶 **ACC-TEMPLATES**: backend con endpoints, **falta UI de gestión (CRUD)**. NO
+  hecha aún — es la pieza más compleja (editor de líneas FIXED/VARIABLE/FORMULA +
+  diálogo de aplicar con variables). Siguiente al volver Benjamin.
+- ✅ **ECPN** (cambios patrimonio neto): **UI hecha 2026-06-17** (pestaña ECPN).
 - Matiz **Modelos AEAT 347/390/190**: backend OK pero **editor UI genérico** (JSON);
-  solo 130/303 tienen editor específico.
+  solo 130/303 tienen editor específico. **Benjamin pidió editores específicos
+  (greenlight)** — pendiente; requiere mapear campos exactos por modelo.
 - Matiz **VeriFactu**: NO_VERIFACTU (offline) ✅ completo; envío AEAT (VERI*FACTU) +
   XAdES-EPES estricto 🔵 implementado pero **NO probado contra AEAT** (bloqueado FNMT).
 
@@ -37,10 +42,18 @@
   Equipo S1, AVISOS-1, Auth/JWT/PIN, Cierre de ejercicio, Calendario fiscal,
   Modelos 130/303, fichaje RD 8/2019 de escritorio + GEO.
 
+**Sesión autónoma 2026-06-17 (Benjamin fuera hasta 15:00) — CERRADO:**
+1. BANK-IMPORT UI (`1378858`) · 2. EXPORT-CONTABLE+EXT-IMPORT UI (`0df00e3`) ·
+3. ECPN tab (`277cfa7`) · 4. VIG-3 menor / bloqueo fechas (`d6006c0`).
+Greenlit por Benjamin pero NO empezados (parado en punto limpio, §11.3, para no
+dejar UI compleja sin probar): **ACC-TEMPLATES** (CRUD con editor de líneas),
+**editores AEAT específicos 347/390/190**, **FIN-1** (cuadro de mando), **export
+PDF de informes**. Plan de cada uno en su sección. Todo compila y mergeado a develop.
+
 **Gaps reales pendientes (no empezados o parciales), por prioridad:**
 - 🔴 **N2** clamp BCCC/BCCP + tiempo parcial (ignora `weekly_hours`) + grupos 8-11 (legal; validar caso real).
-- 🟠 **N5** incidencias de nómina · **PORT-2 jornadas** (skeleton, falta modelo plantilla) · UI de BANK-IMPORT / EXPORT-CONTABLE / ACC-TEMPLATES.
-- 🟡 **FIN-ANALYSIS** (plan, sin código) · editores AEAT específicos 347/390/190 · VIG-3 menor (bloquear edición start_date con nóminas) · VIG-4 atrasos · régimen especial IVA · OCR · AVISOS-2 cross-cartera (verificar).
+- 🟠 **N5** incidencias de nómina · **PORT-2 jornadas** (skeleton, falta modelo plantilla) · **ACC-TEMPLATES UI** · **editores AEAT 347/390/190** (greenlit) · **FIN-1** (greenlit).
+- 🟡 **FIN-ANALYSIS** FIN-2..5 · export PDF de informes contables · VIG-4 atrasos · régimen especial IVA · OCR · AVISOS-2 cross-cartera (verificar).
 - 🔵 **Decisiones/planes sin código:** MOBILE-EMPLEADO (stack) · FICHAJE-MÓVIL/KIOSCO (FM-1..5) · GESTOR-NAVEGADOR (JCEF) · DEPLOY-PKG · CV-4..8 · EQUIPO S2.
 - 🔒 **Bloqueado por certificado FNMT real:** VeriFactu estricto/envío AEAT, Modelos 100/180/200/411, conectores DEHú/SS RED/SILTRA.
 
