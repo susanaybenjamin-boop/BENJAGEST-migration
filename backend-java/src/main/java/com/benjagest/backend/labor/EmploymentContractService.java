@@ -248,6 +248,19 @@ public class EmploymentContractService {
         }
     }
 
+    /**
+     * VIG-3 (menor): ¿el contrato tiene nóminas calculadas? La UI lo usa para
+     * bloquear la edición de fecha de inicio / antigüedad (cambiarlas tras correr
+     * nóminas corrompe antigüedad e indemnización; el cambio de condiciones se
+     * hace con "Ascender", que crea una vigencia sin tocar la antigüedad).
+     */
+    public boolean hasPayslips(String id) {
+        Integer n = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM payslips WHERE contract_id = ? AND company_id = ?",
+                Integer.class, id, tenantContext.getCurrentCompanyId());
+        return n != null && n > 0;
+    }
+
     @Transactional
     public void delete(String id) {
         int n = jdbcTemplate.update("""
@@ -510,6 +523,12 @@ public class EmploymentContractService {
         @PutMapping("/{id}")
         public ContractView update(@PathVariable("id") String id, @RequestBody UpsertRequest req) {
             return service.update(id, req);
+        }
+
+        /** VIG-3 (menor): ¿tiene nóminas? La UI bloquea editar fechas/antigüedad. */
+        @GetMapping("/{id}/has-payslips")
+        public java.util.Map<String, Boolean> hasPayslips(@PathVariable("id") String id) {
+            return java.util.Map.of("hasPayslips", service.hasPayslips(id));
         }
 
         /** VIG-3: ascenso/cambio de condiciones con fecha de efecto (nueva vigencia). */

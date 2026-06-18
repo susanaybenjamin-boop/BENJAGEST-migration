@@ -209,6 +209,12 @@ public class LaborApiClient {
         send(req(baseUrl + "/labor/contracts/" + id).DELETE());
     }
 
+    /** VIG-3 (menor): ¿el contrato tiene nóminas? Para bloquear editar fechas. */
+    public boolean contractHasPayslips(String id) throws IOException, InterruptedException {
+        HttpResponse<String> r = send(req(baseUrl + "/labor/contracts/" + id + "/has-payslips").GET());
+        return r.body() != null && r.body().contains("true");
+    }
+
     /**
      * VIG-3 — Ascenso/cambio de condiciones con fecha de efecto. Crea una
      * nueva vigencia del MISMO contrato (antigüedad intacta) y deja la fila
