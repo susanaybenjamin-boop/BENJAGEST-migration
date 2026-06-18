@@ -1126,7 +1126,24 @@ Nóminas; afinar topes de cotización; pagas extra.
 
 ## 🔴 Decisiones bloqueantes
 
-- ❓ **MOBILE-EMPLEADO — App móvil/tablet del empleado**. Los partes de día + Portal del empleado vivirán en una app que el empresario instala en el dispositivo del empleado. **Sin diseño técnico aún**: ¿Capacitor/Tauri? ¿React-native? ¿PWA? ¿Compartirá BD vía API REST?
+- 🟡 **MEMP — Portal del empleado (móvil)**. Decisiones Benjamin 2026-06-18:
+  - **Tecnología = PWA servida por Spring** (HTML/JS + manifest + service worker,
+    mismo patrón que la página del kiosko). Igual que CONTENDO (Next.js + manifest.ts
+    + /activar + activate-install). NO nativa, NO Next.js.
+  - **Alcance = completo**: fichar, vacaciones/bajas (con adjuntos), nóminas
+    (recibir/confirmar/firmar/descargar), calendario/jornada/plan del día.
+  - **Conectividad = PENDIENTE de Benjamin** ("lo hablamos"). Opciones explicadas:
+    Solo-LAN (0€, máx. seguridad, no desde casa) · Cloudflare Tunnel (gratis, sin
+    abrir puertos, recomendado si quiere acceso externo) · port-forward (riesgo RGPD,
+    desaconsejado) · nube/VPS (abandona el on-premise). **Clave: NO bloquea construir**
+    — la PWA es el mismo código por LAN/túnel/nube; la conectividad es decisión de
+    empaquetado. Se construye LAN-first (funciona ya en el WiFi de la oficina).
+  - **Plan slices**: MEMP-1 invitación+activación+login+cascarón PWA · MEMP-2 fichar
+    (reusa TimeClockService.punch) · MEMP-3 calendario/jornada/plan (horario JOR-2 +
+    jornada real JOR-1) · MEMP-4 vacaciones/bajas · MEMP-5 nóminas (entrega+firma,
+    falta backend de entrega/firma). Fuente CONTENDO: empleado*Controller.js,
+    nominaEntregasController.js, app180-frontend/app/empleado + /activar.
+  - **Siguiente**: arrancar MEMP-1 cuando Benjamin confirme.
 - ✅ **PORT-2 JORNADAS — CERRADO 2026-06-18** (decisión Benjamin: real + planificación,
   modelo 1 plantilla = N bloques → M empleados, CONTENDO). Entregado:
   - **JOR-1** jornada REAL desde fichajes: `WorkdayService` calcula horas
