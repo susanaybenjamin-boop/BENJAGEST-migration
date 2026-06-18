@@ -106,6 +106,7 @@ public class AccountingScreen {
                 new Tab(tt.apply("accounting.tab.trial_balance"), buildTrialBalanceTab()),
                 new Tab(tt.apply("accounting.tab.balance_sheet"), buildBalanceSheetTab()),
                 new Tab(tt.apply("accounting.tab.pyg"), buildPygTab()),
+                new Tab(tt.apply("accounting.tab.ecpn"), buildEcpnTab()),
                 new Tab(tt.apply("accounting.tab.rules"), buildRulesTab()),
                 new Tab(tt.apply("accounting.tab.year_close"), buildYearCloseTab()),
                 new Tab(tt.apply("accounting.tab.exchange"), buildExportImportTab())
@@ -1394,6 +1395,33 @@ public class AccountingScreen {
         HBox filters = new HBox(8, new Label(tt.apply("accounting.balance.as_of")), asOf, view);
         filters.setAlignment(Pos.CENTER_LEFT);
         VBox box = new VBox(10, filters, scroll);
+        box.setPadding(new Insets(8));
+        VBox.setVgrow(box, Priority.ALWAYS);
+        return box;
+    }
+
+    /** ECPN — Estado de Cambios en el Patrimonio Neto: saldo inicial/final + variación. */
+    private Node buildEcpnTab() {
+        DatePicker from = new DatePicker(LocalDate.now().withDayOfYear(1));
+        DatePicker to = new DatePicker(LocalDate.now().withMonth(12).withDayOfMonth(31));
+        TableView<AccountingModels.EquityMovementRow> table = new TableView<>();
+        table.getColumns().addAll(List.of(
+                col(tt.apply("accounting.col.account_code"), AccountingModels.EquityMovementRow::code, 90),
+                col(tt.apply("accounting.col.account_name"), AccountingModels.EquityMovementRow::name, 280),
+                col(tt.apply("accounting.ecpn.opening"), r -> eur(r.openingBalance()), 120),
+                col(tt.apply("accounting.ecpn.closing"), r -> eur(r.closingBalance()), 120),
+                col(tt.apply("accounting.ecpn.variation"), r -> eur(r.variation()), 120)));
+        VBox.setVgrow(table, Priority.ALWAYS);
+        Button view = new Button(tt.apply("accounting.action.view"));
+        view.getStyleClass().add("primary-button");
+        view.setOnAction(e -> async(() -> api.equityChanges(from.getValue(), to.getValue()),
+                rows -> table.setItems(FXCollections.observableArrayList(rows)),
+                err -> showError(tt.apply("accounting.report.fail"), err)));
+        HBox filters = new HBox(8,
+                new Label(tt.apply("accounting.filter.from")), from,
+                new Label(tt.apply("accounting.filter.to")), to, view);
+        filters.setAlignment(Pos.CENTER_LEFT);
+        VBox box = new VBox(10, filters, table);
         box.setPadding(new Insets(8));
         VBox.setVgrow(box, Priority.ALWAYS);
         return box;

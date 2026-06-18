@@ -17974,6 +17974,10 @@ public class BenjagestUiApplication extends Application {
             case "accounting.pyg.ingresos" -> "INCOME";
             case "accounting.pyg.gastos" -> "EXPENSES";
             case "accounting.pyg.result" -> "Profit/loss for the period:";
+            case "accounting.tab.ecpn" -> "Equity changes";
+            case "accounting.ecpn.opening" -> "Opening balance";
+            case "accounting.ecpn.closing" -> "Closing balance";
+            case "accounting.ecpn.variation" -> "Change";
             case "accounting.tab.exchange" -> "Export / Import";
             case "accounting.exchange.export_title" -> "Export to another program";
             case "accounting.exchange.import_title" -> "Import from another program";
@@ -18963,6 +18967,10 @@ public class BenjagestUiApplication extends Application {
             case "accounting.pyg.ingresos" -> "INGRESOS";
             case "accounting.pyg.gastos" -> "GASTOS";
             case "accounting.pyg.result" -> "Resultado del ejercicio:";
+            case "accounting.tab.ecpn" -> "Cambios Patrimonio Neto";
+            case "accounting.ecpn.opening" -> "Saldo inicial";
+            case "accounting.ecpn.closing" -> "Saldo final";
+            case "accounting.ecpn.variation" -> "Variación";
             case "accounting.tab.exchange" -> "Exportar / Importar";
             case "accounting.exchange.export_title" -> "Exportar a otro programa";
             case "accounting.exchange.import_title" -> "Importar desde otro programa";

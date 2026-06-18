@@ -236,6 +236,14 @@ public final class AccountingModels {
             List<ReportSection> pasivo, BigDecimal totalPasivo
     ) {}
 
+    /** Fila del Estado de Cambios en el Patrimonio Neto (ECPN). */
+    public record EquityMovementRow(
+            String code, String name,
+            java.math.BigDecimal openingBalance,
+            java.math.BigDecimal closingBalance,
+            java.math.BigDecimal variation
+    ) {}
+
     /** Resultado de un import (extracto bancario / contable). */
     public record ImportResult(
             int rowsTotal, int rowsImported, int rowsSkipped, int rowsAutoMatched
