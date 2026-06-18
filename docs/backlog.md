@@ -1144,12 +1144,21 @@ Nóminas; afinar topes de cotización; pagas extra.
     Solo-LAN queda para clientes con un único centro físico (kiosko). **NO bloquea
     construir**: la PWA es el mismo código; el túnel se configura al empaquetar.
     Se construye LAN-first para desarrollo.
-  - **Plan slices**: MEMP-1 invitación+activación+login+cascarón PWA · MEMP-2 fichar
-    (reusa TimeClockService.punch) · MEMP-3 calendario/jornada/plan (horario JOR-2 +
-    jornada real JOR-1) · MEMP-4 vacaciones/bajas · MEMP-5 nóminas (entrega+firma,
-    falta backend de entrega/firma). Fuente CONTENDO: empleado*Controller.js,
-    nominaEntregasController.js, app180-frontend/app/empleado + /activar.
-  - **Siguiente**: arrancar MEMP-1 cuando Benjamin confirme.
+  - **Plan slices**:
+    - ✅ **MEMP-1 HECHO** (2026-06-18) — invitación + activación + login + cascarón PWA.
+      MEMP-1a: V132 `employee_app_invitations` + `EmployeeAppService` (admin invita /
+      público activa) + `DeviceTokenService.pairEmployeeDevice` (additive, reusa modelo
+      PIN). MEMP-1b: PWA servida por Spring (`/api/public/empleado/app` + manifest + sw
+      + icon): activar→PIN→home con stubs. MEMP-1c: botón "Invitar al móvil" en el
+      editor de empleado (enlace + código copiables). El empleado entra por
+      `/api/auth/pin-login` (JWT EMPLOYEE). Verificado: V132 aplica, smoke OK, PWA sirve.
+    - ⬜ **MEMP-2** fichar desde la PWA (reusa `TimeClockService.punch` + geo + customer_id).
+    - ⬜ **MEMP-3** calendario/jornada/plan (horario JOR-2 + jornada real JOR-1).
+    - ⬜ **MEMP-4** vacaciones/bajas (pedir + adjuntos).
+    - ⬜ **MEMP-5** nóminas (recibir/confirmar/firmar/descargar; falta backend entrega/firma).
+    - Fuente CONTENDO: empleado*Controller.js, nominaEntregasController.js,
+      app180-frontend/app/empleado + /activar.
+  - **Siguiente**: MEMP-2 (fichar desde el móvil).
 - ✅ **PORT-2 JORNADAS — CERRADO 2026-06-18** (decisión Benjamin: real + planificación,
   modelo 1 plantilla = N bloques → M empleados, CONTENDO). Entregado:
   - **JOR-1** jornada REAL desde fichajes: `WorkdayService` calcula horas
