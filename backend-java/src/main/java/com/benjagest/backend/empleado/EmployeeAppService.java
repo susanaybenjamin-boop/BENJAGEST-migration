@@ -296,7 +296,7 @@ public class EmployeeAppService {
             """;
 
     private static final String SERVICE_WORKER_JS = """
-            const CACHE = 'benjagest-empleado-v3';
+            const CACHE = 'benjagest-empleado-v4';
             self.addEventListener('install', (e) => {
               self.skipWaiting();
               e.waitUntil(caches.open(CACHE).then((c) => c.addAll(['/api/public/empleado/app'])));
@@ -385,14 +385,15 @@ public class EmployeeAppService {
                   <div id="installHint" class="card hidden">
                     <strong>Instala la app primero</strong>
                     <ol style="margin:8px 0 0; padding-left:18px; color:#cbd5e1; font-size:14px; line-height:1.5;">
-                      <li>Copia el codigo de abajo.</li>
+                      <li>Pulsa <b>Copiar codigo</b>.</li>
                       <li>Toca <b>Compartir</b> (el cuadrado con la flecha) y <b>Anadir a pantalla de inicio</b>.</li>
-                      <li>Abre la app desde su icono, pega el codigo y pulsa Activar.</li>
+                      <li>Abre la app desde su icono y pulsa <b>Activar</b>.</li>
                     </ol>
                   </div>
                   <div class="card">
                     <label>Codigo de invitacion</label>
                     <input id="inviteInput" inputmode="text" placeholder="pega aqui el codigo"/>
+                    <button id="copyCodeBtn" class="hidden">Copiar codigo</button>
                     <button id="activateBtn">Activar</button>
                   </div>
                   <div id="inviteMsg"></div>
@@ -501,6 +502,20 @@ public class EmployeeAppService {
                   e.target.value = e.target.value.replace(/[^0-9]/g, '').slice(0, 8);
                 });
 
+                document.getElementById('copyCodeBtn').onclick = async () => {
+                  const code = document.getElementById('inviteInput').value.trim();
+                  if (!code) { msg('inviteMsg', 'No hay codigo para copiar'); return; }
+                  try {
+                    await navigator.clipboard.writeText(code);
+                  } catch (err) {
+                    const el = document.getElementById('inviteInput');
+                    el.removeAttribute('readonly'); el.select();
+                    try { document.execCommand('copy'); } catch (e2) {}
+                    el.setAttribute('readonly', 'readonly');
+                  }
+                  msg('inviteMsg', 'Codigo copiado. Ahora instala la app y abrela desde el icono.', true);
+                };
+
                 document.getElementById('pinBtn').onclick = async () => {
                   const pin = document.getElementById('pinInput').value.replace(/[^0-9]/g, '');
                   const secret = localStorage.getItem(LS_SECRET);
@@ -557,7 +572,15 @@ public class EmployeeAppService {
                   }
                   show('screen-invite');
                   if (invite) { document.getElementById('inviteInput').value = invite; }
-                  if (!standalone) { document.getElementById('installHint').classList.remove('hidden'); }
+                  if (!standalone) {
+                    // En el navegador: instalar primero. No mostramos "Activar"
+                    // (gastaria la activacion en Safari, que tiene otro almacen);
+                    // en su lugar, boton para copiar el codigo.
+                    document.getElementById('installHint').classList.remove('hidden');
+                    document.getElementById('activateBtn').classList.add('hidden');
+                    document.getElementById('copyCodeBtn').classList.remove('hidden');
+                    document.getElementById('inviteInput').setAttribute('readonly', 'readonly');
+                  }
                 })();
 
                 if ('serviceWorker' in navigator) {
