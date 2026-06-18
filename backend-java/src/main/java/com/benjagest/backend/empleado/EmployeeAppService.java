@@ -50,13 +50,17 @@ public class EmployeeAppService {
     private final JdbcTemplate jdbc;
     private final TenantContext tenant;
     private final DeviceTokenService deviceTokenService;
+    private final String publicBaseUrl;
     private final SecureRandom secureRandom = new SecureRandom();
 
     public EmployeeAppService(JdbcTemplate jdbc, TenantContext tenant,
-                              DeviceTokenService deviceTokenService) {
+                              DeviceTokenService deviceTokenService,
+                              @org.springframework.beans.factory.annotation.Value(
+                                      "${benjagest.public-base-url:}") String publicBaseUrl) {
         this.jdbc = jdbc;
         this.tenant = tenant;
         this.deviceTokenService = deviceTokenService;
+        this.publicBaseUrl = publicBaseUrl;
     }
 
     /** Admin: genera una invitación one-time para un empleado con app_access. */
@@ -89,8 +93,11 @@ public class EmployeeAppService {
                 VALUES (?, ?, ?, ?, ?)
                 """, id, companyId, employeeId, sha256(token), java.sql.Timestamp.from(expires));
 
-        return new InvitationResult(token, "/api/public/empleado/app?invite=" + token,
-                INVITATION_TTL_HOURS);
+        String path = "/api/public/empleado/app?invite=" + token;
+        String url = (publicBaseUrl != null && !publicBaseUrl.isBlank())
+                ? publicBaseUrl.replaceAll("/+$", "") + path
+                : path;
+        return new InvitationResult(token, url, INVITATION_TTL_HOURS);
     }
 
     /** Público: el móvil del empleado canjea el token y queda emparejado. */
@@ -112,9 +119,9 @@ public class EmployeeAppService {
             throw new ResponseStatusException(HttpStatus.GONE, "Invitación no válida");
         }
         InvRow inv = rows.get(0);
-        if (inv.usedAt() != null) {
-            throw new ResponseStatusException(HttpStatus.GONE, "Esta invitación ya se usó");
-        }
+        // Reutilizable hasta caducar (NO de un solo uso): en iOS la PWA instalada
+        // usa un almacen distinto del navegador, asi que el empleado tiene que
+        // activar DENTRO de la app instalada aunque ya lo hiciera en Safari.
         if (inv.expiresAt() != null && inv.expiresAt().toInstant().isBefore(Instant.now())) {
             throw new ResponseStatusException(HttpStatus.GONE, "La invitación ha caducado");
         }
@@ -162,7 +169,7 @@ public class EmployeeAppService {
     private record InvRow(String id, String companyId, String employeeId,
                           java.sql.Timestamp usedAt, java.sql.Timestamp expiresAt) {}
 
-    public record InvitationResult(String token, String path, int expiresInHours) {}
+    public record InvitationResult(String token, String url, int expiresInHours) {}
     public record ActivateResult(String deviceSecret, String employeeName, String companyName) {}
     public record ActivateRequest(String token, String deviceName) {}
 
@@ -228,6 +235,46 @@ public class EmployeeAppService {
                     .contentType(org.springframework.http.MediaType.valueOf("image/svg+xml"))
                     .body(ICON_SVG);
         }
+
+        @org.springframework.web.bind.annotation.GetMapping(
+                value = "/icon-180.png",
+                produces = org.springframework.http.MediaType.IMAGE_PNG_VALUE)
+        public org.springframework.http.ResponseEntity<byte[]> iconPng() {
+            return org.springframework.http.ResponseEntity.ok()
+                    .contentType(org.springframework.http.MediaType.IMAGE_PNG).body(pngIcon());
+        }
+    }
+
+    /** Icono PNG 180x180 para apple-touch-icon (iOS no acepta SVG). Cacheado. */
+    private static volatile byte[] cachedPng;
+    static byte[] pngIcon() {
+        if (cachedPng != null) return cachedPng;
+        try {
+            int s = 180;
+            java.awt.image.BufferedImage img =
+                    new java.awt.image.BufferedImage(s, s, java.awt.image.BufferedImage.TYPE_INT_ARGB);
+            java.awt.Graphics2D g = img.createGraphics();
+            g.setRenderingHint(java.awt.RenderingHints.KEY_ANTIALIASING,
+                    java.awt.RenderingHints.VALUE_ANTIALIAS_ON);
+            g.setRenderingHint(java.awt.RenderingHints.KEY_TEXT_ANTIALIASING,
+                    java.awt.RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
+            g.setColor(java.awt.Color.decode("#0f172a"));
+            g.fillRoundRect(0, 0, s, s, 40, 40);
+            g.setColor(java.awt.Color.decode("#38bdf8"));
+            g.setFont(new java.awt.Font("Arial", java.awt.Font.BOLD, 120));
+            java.awt.FontMetrics fm = g.getFontMetrics();
+            String b = "B";
+            int x = (s - fm.stringWidth(b)) / 2;
+            int y = (s - fm.getHeight()) / 2 + fm.getAscent();
+            g.drawString(b, x, y);
+            g.dispose();
+            java.io.ByteArrayOutputStream bos = new java.io.ByteArrayOutputStream();
+            javax.imageio.ImageIO.write(img, "png", bos);
+            cachedPng = bos.toByteArray();
+            return cachedPng;
+        } catch (Exception e) {
+            throw new IllegalStateException("No se pudo generar el icono PNG", e);
+        }
     }
 
     // ===================== PWA estática (MEMP-1b) =====================
@@ -249,12 +296,18 @@ public class EmployeeAppService {
             """;
 
     private static final String SERVICE_WORKER_JS = """
-            const CACHE = 'benjagest-empleado-v1';
+            const CACHE = 'benjagest-empleado-v4';
             self.addEventListener('install', (e) => {
               self.skipWaiting();
               e.waitUntil(caches.open(CACHE).then((c) => c.addAll(['/api/public/empleado/app'])));
             });
-            self.addEventListener('activate', (e) => { self.clients.claim(); });
+            self.addEventListener('activate', (e) => {
+              e.waitUntil(
+                caches.keys().then((ks) => Promise.all(
+                  ks.filter((k) => k !== CACHE).map((k) => caches.delete(k))
+                )).then(() => self.clients.claim())
+              );
+            });
             self.addEventListener('fetch', (e) => {
               const url = e.request.url;
               // Solo cachear el cascaron; las llamadas a la API siempre van a red.
@@ -288,6 +341,11 @@ public class EmployeeAppService {
               <title>BENJAGEST Empleado</title>
               <link rel="manifest" href="/api/public/empleado/manifest.webmanifest"/>
               <link rel="icon" href="/api/public/empleado/icon.svg" type="image/svg+xml"/>
+              <link rel="apple-touch-icon" href="/api/public/empleado/icon-180.png"/>
+              <meta name="apple-mobile-web-app-capable" content="yes"/>
+              <meta name="mobile-web-app-capable" content="yes"/>
+              <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+              <meta name="apple-mobile-web-app-title" content="BENJAGEST"/>
               <style>
                 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
                 body { margin: 0; font-family: -apple-system, Segoe UI, Roboto, Arial, sans-serif;
@@ -323,10 +381,19 @@ public class EmployeeAppService {
 
                 <div id="screen-invite" class="hidden">
                   <h1>Activar la app</h1>
-                  <p class="sub">Abre el enlace de invitacion que te ha enviado tu empresa para activar esta aplicacion en tu movil.</p>
+                  <p class="sub">Introduce el codigo de invitacion que te ha enviado tu empresa.</p>
+                  <div id="installHint" class="card hidden">
+                    <strong>Instala la app primero</strong>
+                    <ol style="margin:8px 0 0; padding-left:18px; color:#cbd5e1; font-size:14px; line-height:1.5;">
+                      <li>Pulsa <b>Copiar codigo</b>.</li>
+                      <li>Toca <b>Compartir</b> (el cuadrado con la flecha) y <b>Anadir a pantalla de inicio</b>.</li>
+                      <li>Abre la app desde su icono y pulsa <b>Activar</b>.</li>
+                    </ol>
+                  </div>
                   <div class="card">
                     <label>Codigo de invitacion</label>
                     <input id="inviteInput" inputmode="text" placeholder="pega aqui el codigo"/>
+                    <button id="copyCodeBtn" class="hidden">Copiar codigo</button>
                     <button id="activateBtn">Activar</button>
                   </div>
                   <div id="inviteMsg"></div>
@@ -337,7 +404,9 @@ public class EmployeeAppService {
                   <p class="sub" id="pinCompany"></p>
                   <div class="card">
                     <label>Introduce tu PIN</label>
-                    <input id="pinInput" type="password" inputmode="numeric" maxlength="8" placeholder="****"/>
+                    <input id="pinInput" type="password" inputmode="numeric" maxlength="8"
+                           autocomplete="off" autocorrect="off" autocapitalize="off"
+                           name="benjagest-pin" placeholder="****"/>
                     <button id="pinBtn">Entrar</button>
                   </div>
                   <div id="pinMsg"></div>
@@ -428,10 +497,33 @@ public class EmployeeAppService {
                   } catch (e) { msg('inviteMsg', e.message); }
                 };
 
+                // Fuerza solo digitos (evita basura de autofill de iOS) y limita a 8.
+                document.getElementById('pinInput').addEventListener('input', (e) => {
+                  e.target.value = e.target.value.replace(/[^0-9]/g, '').slice(0, 8);
+                });
+
+                document.getElementById('copyCodeBtn').onclick = async () => {
+                  const code = document.getElementById('inviteInput').value.trim();
+                  if (!code) { msg('inviteMsg', 'No hay codigo para copiar'); return; }
+                  try {
+                    await navigator.clipboard.writeText(code);
+                  } catch (err) {
+                    const el = document.getElementById('inviteInput');
+                    el.removeAttribute('readonly'); el.select();
+                    try { document.execCommand('copy'); } catch (e2) {}
+                    el.setAttribute('readonly', 'readonly');
+                  }
+                  msg('inviteMsg', 'Codigo copiado. Ahora instala la app y abrela desde el icono.', true);
+                };
+
                 document.getElementById('pinBtn').onclick = async () => {
-                  const pin = document.getElementById('pinInput').value.trim();
+                  const pin = document.getElementById('pinInput').value.replace(/[^0-9]/g, '');
                   const secret = localStorage.getItem(LS_SECRET);
                   if (!secret) { show('screen-invite'); return; }
+                  if (pin.length < 4 || pin.length > 8) {
+                    msg('pinMsg', 'El PIN son de 4 a 8 digitos.');
+                    return;
+                  }
                   try {
                     const res = await pinLogin(secret, pin);
                     localStorage.setItem(LS_TOKEN, res.accessToken);
@@ -451,25 +543,44 @@ public class EmployeeAppService {
                   gotoPin();
                 };
 
-                // Arranque: si llega ?invite=, activar; si hay secret, pedir PIN; si no, pantalla de invitacion.
+                function store(res) {
+                  localStorage.setItem(LS_SECRET, res.deviceSecret);
+                  localStorage.setItem(LS_NAME, res.employeeName || '');
+                  localStorage.setItem(LS_COMPANY, res.companyName || '');
+                }
+                // iOS: la PWA instalada tiene almacenamiento propio (distinto de Safari),
+                // por eso solo activamos automaticamente DENTRO de la app instalada.
+                const standalone = window.matchMedia('(display-mode: standalone)').matches
+                  || window.navigator.standalone === true;
+
                 (async function init() {
+                  if (localStorage.getItem(LS_SECRET)) { gotoPin(); return; }
                   const invite = qp('invite');
-                  if (invite && !localStorage.getItem(LS_SECRET)) {
+                  if (invite && standalone) {
                     try {
                       const res = await activate(invite);
-                      localStorage.setItem(LS_SECRET, res.deviceSecret);
-                      localStorage.setItem(LS_NAME, res.employeeName || '');
-                      localStorage.setItem(LS_COMPANY, res.companyName || '');
+                      store(res);
                       history.replaceState({}, '', '/api/public/empleado/app');
                       gotoPin();
                       return;
                     } catch (e) {
                       show('screen-invite');
+                      document.getElementById('inviteInput').value = invite;
                       msg('inviteMsg', e.message);
                       return;
                     }
                   }
-                  if (localStorage.getItem(LS_SECRET)) { gotoPin(); } else { show('screen-invite'); }
+                  show('screen-invite');
+                  if (invite) { document.getElementById('inviteInput').value = invite; }
+                  if (!standalone) {
+                    // En el navegador: instalar primero. No mostramos "Activar"
+                    // (gastaria la activacion en Safari, que tiene otro almacen);
+                    // en su lugar, boton para copiar el codigo.
+                    document.getElementById('installHint').classList.remove('hidden');
+                    document.getElementById('activateBtn').classList.add('hidden');
+                    document.getElementById('copyCodeBtn').classList.remove('hidden');
+                    document.getElementById('inviteInput').setAttribute('readonly', 'readonly');
+                  }
                 })();
 
                 if ('serviceWorker' in navigator) {

@@ -290,10 +290,14 @@ public class LaborApiClient {
                 .header("Content-Type", "application/json")
                 .POST(HttpRequest.BodyPublishers.ofString("{}")));
         String token = textField(r.body(), "token");
-        String path = textField(r.body(), "path");
+        String url = textField(r.body(), "url");
         int hours = intFieldOrZero(r.body(), "expiresInHours");
-        String host = baseUrl.replaceAll("/api/?$", "");
-        return new com.benjagest.ui.model.AppInvitationResult(token, host + path, hours);
+        // Si el backend devuelve URL absoluta (benjagest.public-base-url
+        // configurado: tunel/dominio), usarla tal cual; si no, componer con
+        // el host de la API local.
+        String full = (url != null && url.startsWith("http"))
+                ? url : baseUrl.replaceAll("/api/?$", "") + url;
+        return new com.benjagest.ui.model.AppInvitationResult(token, full, hours);
     }
 
     // ===== JOR-1: jornada real desde fichajes =====
