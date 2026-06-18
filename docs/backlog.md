@@ -101,6 +101,34 @@ PDF de informes**. Plan de cada uno en su sección. Todo compila y mergeado a de
 
 ---
 
+## 🔁 FORMATS-EXCHANGE — Export/Import contable por formato estándar (decidido Benjamin 2026-06-17)
+
+> Benjamin: no poner nombres de programas competidores en el combo, y JSON no se
+> conoce. Investigación (web): no hay un estándar único, pero **xDiario** (Sage 50/
+> ContaPlus/ContaSol/Aplifisa), **SUENLACE** (A3 Wolters Kluwer), **Conta3** (Cegid)
+> y **CSV/Excel** (universal) son los formatos de intercambio reales. Dato: A3 carga
+> el saldo de apertura EN la cuenta, no como asiento.
+
+**Decisión Benjamin: etiquetar por FORMATO estándar (no por programa) y soportar
+CSV + xDiario + SUENLACE.**
+- ✅ Interino 2026-06-17: combos traducidos ("CSV / Excel (universal)", "Contasol",
+  "Copia BENJAGEST (interna)") + el combo "Datos" traducido.
+- ⬜ **xDiario** export+import (backend) — cubre Sage/ContaPlus/ContaSol/Aplifisa.
+- ⬜ **SUENLACE** export+import (backend) — A3. Ojo apertura→saldos de cuenta.
+- ⬜ Reetiquetar el combo a "xDiario (Sage/ContaPlus/ContaSol)" y "SUENLACE (A3)"
+  al tenerlos. El "Contasol" actual probablemente ya sea xDiario-compatible (verificar
+  AccountingExportService al implementar). A3/SAGE/XML_ESPI hoy lanzan "no implementado".
+- Fuentes: ayudacontasol.sdelsol.com (C662), es-kb.sage.com (Enlace A3), criterium.es.
+
+## 🧾 AEAT-EDITORS — Editores específicos 347/390/190 (greenlit Benjamin 2026-06-17)
+
+> Hoy 130/303 tienen editor campo-a-campo; 347/390/190 usan editor genérico (JSON).
+> Benjamin: hacerlos visuales como CONTENDO (le gustan más). **Greenlit, es de lo
+> siguiente que quiere.** Necesita: un 347/390/190 real (o de CONTENDO) para copiar
+> las casillas fielmente. Backend ya calcula (AeatExtraModelsService).
+
+---
+
 ## 📊 REPORTS-UI — Pantallas de informes contables — ✅ HECHO 2026-06-17
 
 > Benjamin: en CONTENDO sí estaban y le gustaban; aquí faltaba la UI (el backend
