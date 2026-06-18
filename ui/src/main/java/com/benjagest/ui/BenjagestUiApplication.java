@@ -14026,6 +14026,15 @@ public class BenjagestUiApplication extends Application {
         fade.play();
     }
 
+    /** Toast sobre la ventana activa (sin tener que pasarla explícitamente). */
+    private void toast(String message) {
+        javafx.stage.Window w = javafx.stage.Window.getWindows().stream()
+                .filter(javafx.stage.Window::isFocused).findFirst()
+                .orElseGet(() -> javafx.stage.Window.getWindows().stream()
+                        .filter(javafx.stage.Window::isShowing).findFirst().orElse(null));
+        toast(w, message);
+    }
+
     /**
      * BUG-UX-2 — Resalta un control obligatorio que falta (borde rojo) y
      * le da el foco. El resaltado se quita solo cuando el usuario lo
@@ -14874,6 +14883,53 @@ public class BenjagestUiApplication extends Application {
             // Centros de trabajo
             case "labor.tab.work_centers" -> "Work centers";
             case "labor.tab.kiosk" -> "Kiosks / PDA";
+            case "labor.tab.schedule" -> "Scheduling";
+            case "labor.workdays.title" -> "Recorded workdays (from clock-ins)";
+            case "labor.workdays.hint" -> "Worked time computed from each employee's clock-in/out and breaks. Read-only: it aggregates the time-clock events, it does not alter them.";
+            case "labor.workdays.reload" -> "Reload";
+            case "labor.workdays.empty" -> "No clock-ins in this range.";
+            case "labor.workdays.col.in" -> "First in";
+            case "labor.workdays.col.out" -> "Last out";
+            case "labor.workdays.col.worked" -> "Worked";
+            case "labor.workdays.col.pause" -> "Breaks";
+            case "labor.workdays.fail.title" -> "Could not load workdays";
+            case "labor.schedule.hint" -> "Work-schedule templates: one template = several time blocks per weekday, assignable to several employees with an effective date.";
+            case "labor.schedule.empty" -> "No templates yet.";
+            case "labor.schedule.col.name" -> "Name";
+            case "labor.schedule.col.description" -> "Description";
+            case "labor.schedule.col.blocks" -> "Blocks";
+            case "labor.schedule.col.assignments" -> "Assigned";
+            case "labor.schedule.col.active" -> "Active";
+            case "labor.schedule.col.weekday" -> "Weekday";
+            case "labor.schedule.col.type" -> "Type";
+            case "labor.schedule.col.from" -> "From";
+            case "labor.schedule.col.to" -> "To";
+            case "labor.schedule.new" -> "New template";
+            case "labor.schedule.edit" -> "Edit";
+            case "labor.schedule.blocks" -> "Time blocks";
+            case "labor.schedule.assign" -> "Assign";
+            case "labor.schedule.delete" -> "Delete";
+            case "labor.schedule.delete.confirm" -> "Delete template \"{name}\" and its blocks and assignments?";
+            case "labor.schedule.deleted" -> "Deleted";
+            case "labor.schedule.saved" -> "Saved";
+            case "labor.schedule.fail.title" -> "Schedule operation failed";
+            case "labor.schedule.name.required" -> "Name is required";
+            case "labor.schedule.blocks.hint" -> "Add the time blocks for each weekday. Blocks must not overlap and end time must be after start time. A weekday with no blocks is a day off.";
+            case "labor.schedule.block.add" -> "Add block";
+            case "labor.schedule.block.remove" -> "Remove block";
+            case "labor.schedule.time.invalid" -> "Times must be in HH:mm format (e.g. 09:00)";
+            case "labor.schedule.type.work" -> "Work";
+            case "labor.schedule.type.break" -> "Break";
+            case "labor.schedule.assign.add" -> "Assign";
+            case "labor.schedule.assign.remove" -> "Remove";
+            case "labor.schedule.employee.required" -> "Pick an employee";
+            case "weekday.mon" -> "Mon";
+            case "weekday.tue" -> "Tue";
+            case "weekday.wed" -> "Wed";
+            case "weekday.thu" -> "Thu";
+            case "weekday.fri" -> "Fri";
+            case "weekday.sat" -> "Sat";
+            case "weekday.sun" -> "Sun";
             case "labor.kiosk.hint" -> "Time-clock kiosks (tablet) and mobile web. The device opens the clock-in page and is paired with the activation code generated here. Employees identify with their PIN.";
             case "labor.kiosk.empty" -> "No kiosks yet.";
             case "labor.kiosk.fail" -> "Kiosk operation failed";
@@ -14993,6 +15049,53 @@ public class BenjagestUiApplication extends Application {
             case "labor.shifts.history.hint" -> "Partes ya registrados en la base de datos (sincronizados desde el work_logs antiguo por V90, o subidos por la futura app móvil del empleado). Solo lectura.";
             case "labor.tab.work_centers" -> "Centros de trabajo";
             case "labor.tab.kiosk" -> "Kioscos / PDA";
+            case "labor.tab.schedule" -> "Planificación";
+            case "labor.workdays.title" -> "Jornadas fichadas (desde los fichajes)";
+            case "labor.workdays.hint" -> "Tiempo trabajado calculado a partir de las entradas/salidas y pausas de cada empleado. Solo lectura: agrega los fichajes, no los altera.";
+            case "labor.workdays.reload" -> "Recargar";
+            case "labor.workdays.empty" -> "No hay fichajes en este rango.";
+            case "labor.workdays.col.in" -> "Entrada";
+            case "labor.workdays.col.out" -> "Salida";
+            case "labor.workdays.col.worked" -> "Trabajado";
+            case "labor.workdays.col.pause" -> "Pausas";
+            case "labor.workdays.fail.title" -> "No se pudieron cargar las jornadas";
+            case "labor.schedule.hint" -> "Plantillas de horario: 1 plantilla = varios bloques horarios por día de la semana, asignable a varios empleados con fecha de efecto.";
+            case "labor.schedule.empty" -> "Aún no hay plantillas.";
+            case "labor.schedule.col.name" -> "Nombre";
+            case "labor.schedule.col.description" -> "Descripción";
+            case "labor.schedule.col.blocks" -> "Bloques";
+            case "labor.schedule.col.assignments" -> "Asignados";
+            case "labor.schedule.col.active" -> "Activa";
+            case "labor.schedule.col.weekday" -> "Día";
+            case "labor.schedule.col.type" -> "Tipo";
+            case "labor.schedule.col.from" -> "Desde";
+            case "labor.schedule.col.to" -> "Hasta";
+            case "labor.schedule.new" -> "Nueva plantilla";
+            case "labor.schedule.edit" -> "Editar";
+            case "labor.schedule.blocks" -> "Bloques horarios";
+            case "labor.schedule.assign" -> "Asignar";
+            case "labor.schedule.delete" -> "Eliminar";
+            case "labor.schedule.delete.confirm" -> "¿Eliminar la plantilla \"{name}\" con sus bloques y asignaciones?";
+            case "labor.schedule.deleted" -> "Eliminada";
+            case "labor.schedule.saved" -> "Guardado";
+            case "labor.schedule.fail.title" -> "Falló la operación de planificación";
+            case "labor.schedule.name.required" -> "El nombre es obligatorio";
+            case "labor.schedule.blocks.hint" -> "Añade los bloques horarios de cada día. Los bloques no pueden solaparse y la hora de fin debe ser posterior a la de inicio. Un día sin bloques es día libre.";
+            case "labor.schedule.block.add" -> "Añadir bloque";
+            case "labor.schedule.block.remove" -> "Quitar bloque";
+            case "labor.schedule.time.invalid" -> "Las horas deben tener formato HH:mm (p. ej. 09:00)";
+            case "labor.schedule.type.work" -> "Trabajo";
+            case "labor.schedule.type.break" -> "Pausa";
+            case "labor.schedule.assign.add" -> "Asignar";
+            case "labor.schedule.assign.remove" -> "Quitar";
+            case "labor.schedule.employee.required" -> "Elige un empleado";
+            case "weekday.mon" -> "Lun";
+            case "weekday.tue" -> "Mar";
+            case "weekday.wed" -> "Mié";
+            case "weekday.thu" -> "Jue";
+            case "weekday.fri" -> "Vie";
+            case "weekday.sat" -> "Sáb";
+            case "weekday.sun" -> "Dom";
             case "labor.kiosk.hint" -> "Kioscos de fichaje (tablet) y web móvil. El dispositivo abre la página de fichaje y se empareja con el código de activación generado aquí. El empleado se identifica con su PIN.";
             case "labor.kiosk.empty" -> "Aún no hay kioscos.";
             case "labor.kiosk.fail" -> "Falló la operación del kiosco";
@@ -19693,13 +19796,16 @@ public class BenjagestUiApplication extends Application {
         // FM — Kioscos/PDA de fichaje (alta + QR de activación + empleados).
         Tab kioskTab = new Tab(t("labor.tab.kiosk"), buildKioskDevicesTab(bundle.employees()));
         kioskTab.setGraphic(icon("fas-tablet-alt"));
+        // JOR-2 — Planificacion de jornada (plantillas de horario).
+        Tab scheduleTab = new Tab(t("labor.tab.schedule"), buildScheduleTemplatesTab(bundle.employees()));
+        scheduleTab.setGraphic(icon("fas-calendar-week"));
 
         // RR.HH.-CAT (2026-06-17) — Los 19 sub-tabs se agrupan en 5 categorías
         // (pestañas anidadas) para no tener una fila ilegible: operativa diaria
         // separada de las tablas de parámetros legales (set-and-forget).
         TabPane personalPane = laborSubPane(empTab, contractsTab, templatesTab, clausesTab);
         TabPane payrollPane = laborSubPane(payslipsTab, costTab, ssTab);
-        TabPane timePane = laborSubPane(clockTab, auditTab, shiftsTab, calendarTab, centersTab, kioskTab, cfgTab);
+        TabPane timePane = laborSubPane(clockTab, auditTab, shiftsTab, scheduleTab, calendarTab, centersTab, kioskTab, cfgTab);
         TabPane absencePane = laborSubPane(leavesTab, vacationsTab);
         TabPane paramsPane = laborSubPane(ratesTab, groupBasesTab, irpfParamsTab, severanceTab);
         final TabPane[] panes = {personalPane, payrollPane, timePane, absencePane, paramsPane};
@@ -34003,15 +34109,8 @@ public class BenjagestUiApplication extends Application {
         hint.setWrapText(true);
         hint.getStyleClass().add("settings-hint");
 
-        // Placeholder principal — plantillas de jornada por construir.
-        VBox plannedSection = new VBox(8);
-        plannedSection.getStyleClass().add("settings-section");
-        Label plannedTitle = new Label(t("labor.shifts.planned.title"));
-        plannedTitle.getStyleClass().add("settings-section-title");
-        Label plannedBody = new Label(t("labor.shifts.planned.body"));
-        plannedBody.setWrapText(true);
-        plannedBody.getStyleClass().add("settings-hint");
-        plannedSection.getChildren().addAll(plannedTitle, plannedBody);
+        // JOR-1 — Jornadas fichadas: jornada REAL calculada desde los fichajes.
+        Node plannedSection = buildWorkdaysSection(empById);
 
         // Sección histórico — partes ya en BD (sincronizados desde el
         // work_logs viejo o futuros llegando desde el móvil).
@@ -34102,6 +34201,472 @@ public class BenjagestUiApplication extends Application {
                 historyTitle, historyHint,
                 filters, table);
         return content;
+    }
+
+    // ===== JOR-1: jornadas reales calculadas desde los fichajes =====
+
+    private Node buildWorkdaysSection(java.util.Map<String, String> empById) {
+        VBox box = new VBox(8);
+        box.getStyleClass().add("settings-section");
+        Label title = label(t("labor.workdays.title"), "settings-section-title");
+        Label hint = new Label(t("labor.workdays.hint"));
+        hint.setWrapText(true);
+        hint.getStyleClass().add("settings-hint");
+
+        java.time.LocalDate now = java.time.LocalDate.now();
+        DatePicker fromPick = new DatePicker(now.withDayOfMonth(1));
+        DatePicker toPick = new DatePicker(now);
+        com.benjagest.ui.support.EditableCells.installFlexibleConverter(fromPick);
+        com.benjagest.ui.support.EditableCells.installFlexibleConverter(toPick);
+        Button reloadBtn = new Button(t("labor.workdays.reload"));
+        reloadBtn.setGraphic(icon("fas-sync-alt"));
+        HBox filters = new HBox(8,
+                new Label(t("labor.shifts.from")), fromPick,
+                new Label(t("labor.shifts.to")), toPick, reloadBtn);
+        filters.setAlignment(Pos.CENTER_LEFT);
+
+        TableView<com.benjagest.ui.model.WorkdayEntry> table = new TableView<>();
+        table.getStyleClass().add("data-table");
+        table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+        table.setPlaceholder(new Label(t("labor.workdays.empty")));
+        table.setPrefHeight(220);
+
+        TableColumn<com.benjagest.ui.model.WorkdayEntry, String> cDate =
+                new TableColumn<>(t("labor.shifts.col.date"));
+        cDate.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().date()));
+        cDate.setPrefWidth(110);
+        cDate.setComparator(ISO_DATE_COMPARATOR);
+        TableColumn<com.benjagest.ui.model.WorkdayEntry, String> cEmp =
+                new TableColumn<>(t("labor.shifts.col.employee"));
+        cEmp.setCellValueFactory(c -> new SimpleStringProperty(
+                c.getValue().employeeName() != null && !c.getValue().employeeName().isBlank()
+                        ? c.getValue().employeeName()
+                        : empById.getOrDefault(c.getValue().employeeId(), shortId(c.getValue().employeeId()))));
+        TableColumn<com.benjagest.ui.model.WorkdayEntry, String> cIn =
+                new TableColumn<>(t("labor.workdays.col.in"));
+        cIn.setCellValueFactory(c -> new SimpleStringProperty(hhmm(c.getValue().firstIn())));
+        cIn.setPrefWidth(90);
+        TableColumn<com.benjagest.ui.model.WorkdayEntry, String> cOut =
+                new TableColumn<>(t("labor.workdays.col.out"));
+        cOut.setCellValueFactory(c -> new SimpleStringProperty(hhmm(c.getValue().lastOut())));
+        cOut.setPrefWidth(90);
+        TableColumn<com.benjagest.ui.model.WorkdayEntry, String> cWorked =
+                new TableColumn<>(t("labor.workdays.col.worked"));
+        cWorked.setCellValueFactory(c -> new SimpleStringProperty(fmtMinutes(c.getValue().workedMinutes())));
+        cWorked.setPrefWidth(100);
+        TableColumn<com.benjagest.ui.model.WorkdayEntry, String> cPause =
+                new TableColumn<>(t("labor.workdays.col.pause"));
+        cPause.setCellValueFactory(c -> new SimpleStringProperty(fmtMinutes(c.getValue().pauseMinutes())));
+        cPause.setPrefWidth(100);
+        table.getColumns().addAll(java.util.List.of(cDate, cEmp, cIn, cOut, cWorked, cPause));
+
+        Runnable reload = () -> {
+            java.time.LocalDate from = fromPick.getValue();
+            java.time.LocalDate to = toPick.getValue();
+            if (from == null || to == null) return;
+            Task<java.util.List<com.benjagest.ui.model.WorkdayEntry>> task = new Task<>() {
+                @Override protected java.util.List<com.benjagest.ui.model.WorkdayEntry> call() throws Exception {
+                    return laborApiClient.listWorkdays(from, to, null);
+                }
+            };
+            task.setOnSucceeded(ev -> table.setItems(FXCollections.observableArrayList(task.getValue())));
+            task.setOnFailed(ev -> showError(t("labor.workdays.fail.title"),
+                    task.getException() == null ? "" : task.getException().getMessage()));
+            start(task, "workdays-load");
+        };
+        reloadBtn.setOnAction(ev -> reload.run());
+        reload.run();
+
+        box.getChildren().addAll(title, hint, filters, table);
+        return box;
+    }
+
+    private String fmtMinutes(int min) {
+        if (min <= 0) return "—";
+        return String.format("%dh %02dm", min / 60, min % 60);
+    }
+
+    private String hhmm(String iso) {
+        if (iso == null || iso.isBlank()) return "—";
+        try {
+            return java.time.Instant.parse(iso).atZone(java.time.ZoneId.systemDefault())
+                    .toLocalTime().withSecond(0).withNano(0).toString();
+        } catch (Exception e) {
+            return iso.length() >= 16 ? iso.substring(11, 16) : iso;
+        }
+    }
+
+    // ===== JOR-2: planificacion de jornada (plantillas de horario) =====
+
+    private Node buildScheduleTemplatesTab(java.util.List<com.benjagest.ui.model.EmployeeEntry> employees) {
+        VBox content = new VBox(16);
+        content.setPadding(new Insets(16));
+
+        Label hint = new Label(t("labor.schedule.hint"));
+        hint.setWrapText(true);
+        hint.getStyleClass().add("settings-hint");
+
+        TableView<com.benjagest.ui.model.ScheduleTemplateEntry> table = new TableView<>();
+        table.getStyleClass().add("data-table");
+        table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+        table.setPlaceholder(new Label(t("labor.schedule.empty")));
+
+        TableColumn<com.benjagest.ui.model.ScheduleTemplateEntry, String> cName =
+                new TableColumn<>(t("labor.schedule.col.name"));
+        cName.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().name()));
+        TableColumn<com.benjagest.ui.model.ScheduleTemplateEntry, String> cDesc =
+                new TableColumn<>(t("labor.schedule.col.description"));
+        cDesc.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().description()));
+        TableColumn<com.benjagest.ui.model.ScheduleTemplateEntry, String> cBlocks =
+                new TableColumn<>(t("labor.schedule.col.blocks"));
+        cBlocks.setCellValueFactory(c -> new SimpleStringProperty(String.valueOf(c.getValue().blocks())));
+        cBlocks.setPrefWidth(80);
+        TableColumn<com.benjagest.ui.model.ScheduleTemplateEntry, String> cAssign =
+                new TableColumn<>(t("labor.schedule.col.assignments"));
+        cAssign.setCellValueFactory(c -> new SimpleStringProperty(String.valueOf(c.getValue().assignments())));
+        cAssign.setPrefWidth(90);
+        TableColumn<com.benjagest.ui.model.ScheduleTemplateEntry, String> cActive =
+                new TableColumn<>(t("labor.schedule.col.active"));
+        cActive.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().active() ? "✓" : "—"));
+        cActive.setPrefWidth(70);
+        table.getColumns().addAll(java.util.List.of(cName, cDesc, cBlocks, cAssign, cActive));
+        VBox.setVgrow(table, Priority.ALWAYS);
+
+        Runnable reload = () -> {
+            Task<java.util.List<com.benjagest.ui.model.ScheduleTemplateEntry>> task = new Task<>() {
+                @Override protected java.util.List<com.benjagest.ui.model.ScheduleTemplateEntry> call() throws Exception {
+                    return laborApiClient.listScheduleTemplates();
+                }
+            };
+            task.setOnSucceeded(ev -> table.setItems(FXCollections.observableArrayList(task.getValue())));
+            task.setOnFailed(ev -> showError(t("labor.schedule.fail.title"),
+                    task.getException() == null ? "" : task.getException().getMessage()));
+            start(task, "schedule-load");
+        };
+
+        Button newBtn = new Button(t("labor.schedule.new"));
+        newBtn.getStyleClass().add("primary-button");
+        newBtn.setGraphic(icon("fas-plus"));
+        newBtn.setOnAction(e -> showScheduleTemplateDialog(null, reload));
+
+        Button editBtn = new Button(t("labor.schedule.edit"));
+        editBtn.setGraphic(icon("fas-pen"));
+        editBtn.setOnAction(e -> {
+            var sel = table.getSelectionModel().getSelectedItem();
+            if (sel != null) showScheduleTemplateDialog(sel, reload);
+        });
+
+        Button blocksBtn = new Button(t("labor.schedule.blocks"));
+        blocksBtn.setGraphic(icon("fas-clock"));
+        blocksBtn.setOnAction(e -> {
+            var sel = table.getSelectionModel().getSelectedItem();
+            if (sel != null) showScheduleBlocksDialog(sel, reload);
+        });
+
+        Button assignBtn = new Button(t("labor.schedule.assign"));
+        assignBtn.setGraphic(icon("fas-user-plus"));
+        assignBtn.setOnAction(e -> {
+            var sel = table.getSelectionModel().getSelectedItem();
+            if (sel != null) showScheduleAssignDialog(sel, employees, reload);
+        });
+
+        Button delBtn = new Button(t("labor.schedule.delete"));
+        delBtn.setGraphic(icon("fas-trash"));
+        delBtn.setOnAction(e -> {
+            var sel = table.getSelectionModel().getSelectedItem();
+            if (sel == null) return;
+            Alert confirm = new Alert(Alert.AlertType.CONFIRMATION,
+                    t("labor.schedule.delete.confirm").replace("{name}", sel.name()),
+                    ButtonType.YES, ButtonType.NO);
+            confirm.setHeaderText(t("labor.schedule.delete"));
+            confirm.showAndWait().ifPresent(bt -> {
+                if (bt != ButtonType.YES) return;
+                Task<Void> task = new Task<>() {
+                    @Override protected Void call() throws Exception {
+                        laborApiClient.deleteScheduleTemplate(sel.id());
+                        return null;
+                    }
+                };
+                task.setOnSucceeded(ev -> { toast(t("labor.schedule.deleted")); reload.run(); });
+                task.setOnFailed(ev -> showError(t("labor.schedule.fail.title"),
+                        task.getException() == null ? "" : task.getException().getMessage()));
+                start(task, "schedule-delete");
+            });
+        });
+
+        HBox actions = new HBox(8, newBtn, editBtn, blocksBtn, assignBtn, delBtn);
+        actions.setAlignment(Pos.CENTER_LEFT);
+
+        reload.run();
+        content.getChildren().addAll(hint, actions, table);
+        return content;
+    }
+
+    private void showScheduleTemplateDialog(
+            com.benjagest.ui.model.ScheduleTemplateEntry existing, Runnable onSaved) {
+        Dialog<Void> dialog = new Dialog<>();
+        dialog.setTitle(existing == null ? t("labor.schedule.new") : t("labor.schedule.edit"));
+        dialog.getDialogPane().getButtonTypes().addAll(ButtonType.OK, ButtonType.CANCEL);
+
+        TextField name = new TextField(existing == null ? "" : existing.name());
+        TextField desc = new TextField(existing == null ? "" : existing.description());
+        CheckBox active = new CheckBox(t("labor.schedule.col.active"));
+        active.setSelected(existing == null || existing.active());
+
+        javafx.scene.layout.GridPane gp = new javafx.scene.layout.GridPane();
+        gp.setHgap(8); gp.setVgap(8); gp.setPadding(new Insets(12));
+        gp.add(new Label(t("labor.schedule.col.name")), 0, 0); gp.add(name, 1, 0);
+        gp.add(new Label(t("labor.schedule.col.description")), 0, 1); gp.add(desc, 1, 1);
+        if (existing != null) gp.add(active, 1, 2);
+        dialog.getDialogPane().setContent(gp);
+
+        dialog.setResultConverter(bt -> {
+            if (bt != ButtonType.OK) return null;
+            if (name.getText() == null || name.getText().isBlank()) {
+                showError(t("labor.schedule.fail.title"), t("labor.schedule.name.required"));
+                return null;
+            }
+            Task<Void> task = new Task<>() {
+                @Override protected Void call() throws Exception {
+                    if (existing == null) {
+                        laborApiClient.createScheduleTemplate(name.getText().trim(), desc.getText());
+                    } else {
+                        laborApiClient.updateScheduleTemplate(existing.id(), name.getText().trim(),
+                                desc.getText(), active.isSelected());
+                    }
+                    return null;
+                }
+            };
+            task.setOnSucceeded(ev -> { toast(t("labor.schedule.saved")); onSaved.run(); });
+            task.setOnFailed(ev -> showError(t("labor.schedule.fail.title"),
+                    task.getException() == null ? "" : task.getException().getMessage()));
+            start(task, "schedule-save");
+            return null;
+        });
+        dialog.showAndWait();
+    }
+
+    private void showScheduleBlocksDialog(
+            com.benjagest.ui.model.ScheduleTemplateEntry template, Runnable onSaved) {
+        Dialog<Void> dialog = new Dialog<>();
+        dialog.setTitle(t("labor.schedule.blocks") + " — " + template.name());
+        dialog.getDialogPane().getButtonTypes().addAll(ButtonType.OK, ButtonType.CANCEL);
+        dialog.getDialogPane().setPrefWidth(560);
+
+        Label hint = new Label(t("labor.schedule.blocks.hint"));
+        hint.setWrapText(true); hint.getStyleClass().add("settings-hint");
+
+        javafx.collections.ObservableList<com.benjagest.ui.model.ScheduleBlockEntry> rows =
+                FXCollections.observableArrayList();
+
+        TableView<com.benjagest.ui.model.ScheduleBlockEntry> table = new TableView<>(rows);
+        table.getStyleClass().add("data-table");
+        table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+        table.setPrefHeight(220);
+        TableColumn<com.benjagest.ui.model.ScheduleBlockEntry, String> wc =
+                new TableColumn<>(t("labor.schedule.col.weekday"));
+        wc.setCellValueFactory(c -> new SimpleStringProperty(weekdayName(c.getValue().weekday())));
+        TableColumn<com.benjagest.ui.model.ScheduleBlockEntry, String> tc =
+                new TableColumn<>(t("labor.schedule.col.type"));
+        tc.setCellValueFactory(c -> new SimpleStringProperty(
+                "BREAK".equals(c.getValue().blockType()) ? t("labor.schedule.type.break")
+                        : t("labor.schedule.type.work")));
+        TableColumn<com.benjagest.ui.model.ScheduleBlockEntry, String> sc =
+                new TableColumn<>(t("labor.workdays.col.in"));
+        sc.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().startTime()));
+        TableColumn<com.benjagest.ui.model.ScheduleBlockEntry, String> ec =
+                new TableColumn<>(t("labor.workdays.col.out"));
+        ec.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().endTime()));
+        table.getColumns().addAll(java.util.List.of(wc, tc, sc, ec));
+
+        // Formulario para añadir un bloque.
+        ComboBox<Integer> weekday = new ComboBox<>(FXCollections.observableArrayList(1, 2, 3, 4, 5, 6, 7));
+        weekday.setConverter(new javafx.util.StringConverter<>() {
+            @Override public String toString(Integer i) { return i == null ? "" : weekdayName(i); }
+            @Override public Integer fromString(String s) { return null; }
+        });
+        weekday.getSelectionModel().selectFirst();
+        ComboBox<String> type = new ComboBox<>(FXCollections.observableArrayList("WORK", "BREAK"));
+        type.setConverter(new javafx.util.StringConverter<>() {
+            @Override public String toString(String s) {
+                return "BREAK".equals(s) ? t("labor.schedule.type.break") : t("labor.schedule.type.work");
+            }
+            @Override public String fromString(String s) { return null; }
+        });
+        type.getSelectionModel().selectFirst();
+        TextField start = new TextField(); start.setPromptText("09:00"); start.setPrefWidth(70);
+        TextField end = new TextField(); end.setPromptText("14:00"); end.setPrefWidth(70);
+        Button addRow = new Button(t("labor.schedule.block.add"));
+        addRow.setGraphic(icon("fas-plus"));
+        addRow.setOnAction(e -> {
+            if (!isHhmm(start.getText()) || !isHhmm(end.getText())) {
+                showError(t("labor.schedule.fail.title"), t("labor.schedule.time.invalid"));
+                return;
+            }
+            rows.add(new com.benjagest.ui.model.ScheduleBlockEntry(
+                    null, weekday.getValue(), type.getValue(), start.getText().trim(), end.getText().trim()));
+            rows.sort(java.util.Comparator
+                    .comparingInt(com.benjagest.ui.model.ScheduleBlockEntry::weekday)
+                    .thenComparing(com.benjagest.ui.model.ScheduleBlockEntry::startTime));
+            start.clear(); end.clear();
+        });
+        Button delRow = new Button(t("labor.schedule.block.remove"));
+        delRow.setGraphic(icon("fas-trash"));
+        delRow.setOnAction(e -> {
+            var sel = table.getSelectionModel().getSelectedItem();
+            if (sel != null) rows.remove(sel);
+        });
+        HBox form = new HBox(8, weekday, type,
+                new Label(t("labor.workdays.col.in")), start,
+                new Label(t("labor.workdays.col.out")), end, addRow, delRow);
+        form.setAlignment(Pos.CENTER_LEFT);
+
+        VBox box = new VBox(10, hint, table, form);
+        box.setPadding(new Insets(12));
+        dialog.getDialogPane().setContent(box);
+
+        // Carga inicial de los bloques existentes.
+        Task<java.util.List<com.benjagest.ui.model.ScheduleBlockEntry>> load = new Task<>() {
+            @Override protected java.util.List<com.benjagest.ui.model.ScheduleBlockEntry> call() throws Exception {
+                return laborApiClient.getScheduleBlocks(template.id());
+            }
+        };
+        load.setOnSucceeded(ev -> rows.setAll(load.getValue()));
+        start(load, "schedule-blocks-load");
+
+        dialog.setResultConverter(bt -> {
+            if (bt != ButtonType.OK) return null;
+            java.util.List<com.benjagest.ui.model.ScheduleBlockEntry> snapshot =
+                    new java.util.ArrayList<>(rows);
+            Task<Void> task = new Task<>() {
+                @Override protected Void call() throws Exception {
+                    laborApiClient.replaceScheduleBlocks(template.id(), snapshot);
+                    return null;
+                }
+            };
+            task.setOnSucceeded(ev -> { toast(t("labor.schedule.saved")); onSaved.run(); });
+            task.setOnFailed(ev -> showError(t("labor.schedule.fail.title"),
+                    task.getException() == null ? "" : task.getException().getMessage()));
+            start(task, "schedule-blocks-save");
+            return null;
+        });
+        dialog.showAndWait();
+    }
+
+    private void showScheduleAssignDialog(
+            com.benjagest.ui.model.ScheduleTemplateEntry template,
+            java.util.List<com.benjagest.ui.model.EmployeeEntry> employees, Runnable onSaved) {
+        Dialog<Void> dialog = new Dialog<>();
+        dialog.setTitle(t("labor.schedule.assign") + " — " + template.name());
+        dialog.getDialogPane().getButtonTypes().add(ButtonType.CLOSE);
+        dialog.getDialogPane().setPrefWidth(560);
+
+        javafx.collections.ObservableList<com.benjagest.ui.model.ScheduleAssignmentEntry> rows =
+                FXCollections.observableArrayList();
+        TableView<com.benjagest.ui.model.ScheduleAssignmentEntry> table = new TableView<>(rows);
+        table.getStyleClass().add("data-table");
+        table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+        table.setPrefHeight(200);
+        TableColumn<com.benjagest.ui.model.ScheduleAssignmentEntry, String> ec =
+                new TableColumn<>(t("labor.shifts.col.employee"));
+        ec.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().employeeName()));
+        TableColumn<com.benjagest.ui.model.ScheduleAssignmentEntry, String> fc =
+                new TableColumn<>(t("labor.schedule.col.from"));
+        fc.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().effectiveFrom()));
+        fc.setPrefWidth(110);
+        TableColumn<com.benjagest.ui.model.ScheduleAssignmentEntry, String> toc =
+                new TableColumn<>(t("labor.schedule.col.to"));
+        toc.setCellValueFactory(c -> new SimpleStringProperty(
+                c.getValue().effectiveTo() == null || c.getValue().effectiveTo().isBlank()
+                        ? "—" : c.getValue().effectiveTo()));
+        toc.setPrefWidth(110);
+        table.getColumns().addAll(java.util.List.of(ec, fc, toc));
+
+        Runnable reloadAssign = () -> {
+            Task<java.util.List<com.benjagest.ui.model.ScheduleAssignmentEntry>> task = new Task<>() {
+                @Override protected java.util.List<com.benjagest.ui.model.ScheduleAssignmentEntry> call() throws Exception {
+                    return laborApiClient.listScheduleAssignments(template.id());
+                }
+            };
+            task.setOnSucceeded(ev -> rows.setAll(task.getValue()));
+            task.setOnFailed(ev -> showError(t("labor.schedule.fail.title"),
+                    task.getException() == null ? "" : task.getException().getMessage()));
+            start(task, "schedule-assign-load");
+        };
+
+        ComboBox<com.benjagest.ui.model.EmployeeEntry> empCombo =
+                new ComboBox<>(FXCollections.observableArrayList(employees));
+        empCombo.setConverter(new javafx.util.StringConverter<>() {
+            @Override public String toString(com.benjagest.ui.model.EmployeeEntry e) {
+                return e == null ? "" : e.fullName();
+            }
+            @Override public com.benjagest.ui.model.EmployeeEntry fromString(String s) { return null; }
+        });
+        DatePicker fromP = new DatePicker(java.time.LocalDate.now());
+        DatePicker toP = new DatePicker();
+        com.benjagest.ui.support.EditableCells.installFlexibleConverter(fromP);
+        com.benjagest.ui.support.EditableCells.installFlexibleConverter(toP);
+        Button addBtn = new Button(t("labor.schedule.assign.add"));
+        addBtn.getStyleClass().add("primary-button");
+        addBtn.setGraphic(icon("fas-plus"));
+        addBtn.setOnAction(e -> {
+            var emp = empCombo.getValue();
+            if (emp == null) { showError(t("labor.schedule.fail.title"), t("labor.schedule.employee.required")); return; }
+            Task<Void> task = new Task<>() {
+                @Override protected Void call() throws Exception {
+                    laborApiClient.assignSchedule(template.id(), emp.id(), fromP.getValue(), toP.getValue());
+                    return null;
+                }
+            };
+            task.setOnSucceeded(ev -> { toast(t("labor.schedule.saved")); reloadAssign.run(); onSaved.run(); });
+            task.setOnFailed(ev -> showError(t("labor.schedule.fail.title"),
+                    task.getException() == null ? "" : task.getException().getMessage()));
+            start(task, "schedule-assign-add");
+        });
+        Button removeBtn = new Button(t("labor.schedule.assign.remove"));
+        removeBtn.setGraphic(icon("fas-trash"));
+        removeBtn.setOnAction(e -> {
+            var sel = table.getSelectionModel().getSelectedItem();
+            if (sel == null) return;
+            Task<Void> task = new Task<>() {
+                @Override protected Void call() throws Exception {
+                    laborApiClient.removeScheduleAssignment(sel.id());
+                    return null;
+                }
+            };
+            task.setOnSucceeded(ev -> { toast(t("labor.schedule.deleted")); reloadAssign.run(); onSaved.run(); });
+            task.setOnFailed(ev -> showError(t("labor.schedule.fail.title"),
+                    task.getException() == null ? "" : task.getException().getMessage()));
+            start(task, "schedule-assign-remove");
+        });
+
+        HBox form = new HBox(8, empCombo,
+                new Label(t("labor.schedule.col.from")), fromP,
+                new Label(t("labor.schedule.col.to")), toP, addBtn, removeBtn);
+        form.setAlignment(Pos.CENTER_LEFT);
+        VBox box = new VBox(10, table, form);
+        box.setPadding(new Insets(12));
+        dialog.getDialogPane().setContent(box);
+
+        reloadAssign.run();
+        dialog.showAndWait();
+    }
+
+    private String weekdayName(int wd) {
+        return switch (wd) {
+            case 1 -> t("weekday.mon");
+            case 2 -> t("weekday.tue");
+            case 3 -> t("weekday.wed");
+            case 4 -> t("weekday.thu");
+            case 5 -> t("weekday.fri");
+            case 6 -> t("weekday.sat");
+            case 7 -> t("weekday.sun");
+            default -> String.valueOf(wd);
+        };
+    }
+
+    private boolean isHhmm(String s) {
+        return s != null && s.trim().matches("([01]?\\d|2[0-3]):[0-5]\\d");
     }
 
     private void openShiftCreateDialog(

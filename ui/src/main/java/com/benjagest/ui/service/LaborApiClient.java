@@ -282,6 +282,149 @@ public class LaborApiClient {
                 boolField(o, "active"), boolField(o, "activated"));
     }
 
+    // ===== JOR-1: jornada real desde fichajes =====
+
+    public java.util.List<com.benjagest.ui.model.WorkdayEntry> listWorkdays(
+            LocalDate from, LocalDate to, String employeeId)
+            throws IOException, InterruptedException {
+        StringBuilder url = new StringBuilder(baseUrl + "/labor/workdays?from=" + from + "&to=" + to);
+        if (employeeId != null && !employeeId.isBlank()) url.append("&employeeId=").append(employeeId);
+        HttpResponse<String> r = send(req(url.toString()).GET());
+        java.util.List<com.benjagest.ui.model.WorkdayEntry> out = new ArrayList<>();
+        for (String o : splitTopLevelObjects(r.body())) {
+            out.add(new com.benjagest.ui.model.WorkdayEntry(
+                    textField(o, "employeeId"), textField(o, "employeeName"),
+                    parseDateStr(textField(o, "date")),
+                    textField(o, "firstIn"), textField(o, "lastOut"),
+                    (int) longField(o, "workedMinutes"), (int) longField(o, "pauseMinutes"),
+                    intFieldOrZero(o, "events")));
+        }
+        return out;
+    }
+
+    // ===== JOR-2: plantillas de horario (planificacion) =====
+
+    public java.util.List<com.benjagest.ui.model.ScheduleTemplateEntry> listScheduleTemplates()
+            throws IOException, InterruptedException {
+        HttpResponse<String> r = send(req(baseUrl + "/labor/schedule-templates").GET());
+        java.util.List<com.benjagest.ui.model.ScheduleTemplateEntry> out = new ArrayList<>();
+        for (String o : splitTopLevelObjects(r.body())) out.add(mapScheduleTemplate(o));
+        return out;
+    }
+
+    public String createScheduleTemplate(String name, String description)
+            throws IOException, InterruptedException {
+        String body = "{" + field("name", name) + "," + field("description", description) + "}";
+        HttpResponse<String> r = send(req(baseUrl + "/labor/schedule-templates")
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(body)));
+        return textField(r.body(), "id");
+    }
+
+    public void updateScheduleTemplate(String id, String name, String description, boolean active)
+            throws IOException, InterruptedException {
+        String body = "{" + field("name", name) + "," + field("description", description)
+                + ",\"active\":" + active + "}";
+        send(req(baseUrl + "/labor/schedule-templates/" + id)
+                .header("Content-Type", "application/json")
+                .PUT(HttpRequest.BodyPublishers.ofString(body)));
+    }
+
+    public void deleteScheduleTemplate(String id) throws IOException, InterruptedException {
+        send(req(baseUrl + "/labor/schedule-templates/" + id).DELETE());
+    }
+
+    /** Devuelve los bloques de una plantilla (la cabecera ya viene del listado). */
+    public java.util.List<com.benjagest.ui.model.ScheduleBlockEntry> getScheduleBlocks(String id)
+            throws IOException, InterruptedException {
+        HttpResponse<String> r = send(req(baseUrl + "/labor/schedule-templates/" + id).GET());
+        String blocksArr = extractArray(r.body(), "blocks");
+        java.util.List<com.benjagest.ui.model.ScheduleBlockEntry> out = new ArrayList<>();
+        for (String o : splitTopLevelObjects(blocksArr)) {
+            out.add(new com.benjagest.ui.model.ScheduleBlockEntry(
+                    textField(o, "id"), intFieldOrZero(o, "weekday"),
+                    textField(o, "blockType"), textField(o, "startTime"), textField(o, "endTime")));
+        }
+        return out;
+    }
+
+    public void replaceScheduleBlocks(String id,
+            java.util.List<com.benjagest.ui.model.ScheduleBlockEntry> blocks)
+            throws IOException, InterruptedException {
+        StringBuilder b = new StringBuilder("[");
+        for (int i = 0; i < blocks.size(); i++) {
+            var bl = blocks.get(i);
+            if (i > 0) b.append(",");
+            b.append("{\"weekday\":").append(bl.weekday()).append(",")
+             .append(field("blockType", bl.blockType())).append(",")
+             .append(field("startTime", bl.startTime())).append(",")
+             .append(field("endTime", bl.endTime())).append("}");
+        }
+        b.append("]");
+        send(req(baseUrl + "/labor/schedule-templates/" + id + "/blocks")
+                .header("Content-Type", "application/json")
+                .PUT(HttpRequest.BodyPublishers.ofString(b.toString())));
+    }
+
+    public java.util.List<com.benjagest.ui.model.ScheduleAssignmentEntry> listScheduleAssignments(String id)
+            throws IOException, InterruptedException {
+        HttpResponse<String> r = send(req(baseUrl + "/labor/schedule-templates/" + id + "/assignments").GET());
+        java.util.List<com.benjagest.ui.model.ScheduleAssignmentEntry> out = new ArrayList<>();
+        for (String o : splitTopLevelObjects(r.body())) {
+            out.add(new com.benjagest.ui.model.ScheduleAssignmentEntry(
+                    textField(o, "id"), textField(o, "employeeId"), textField(o, "employeeName"),
+                    parseDateStr(textField(o, "effectiveFrom")), parseDateStr(textField(o, "effectiveTo"))));
+        }
+        return out;
+    }
+
+    public void assignSchedule(String templateId, String employeeId, LocalDate from, LocalDate to)
+            throws IOException, InterruptedException {
+        String body = "{" + field("employeeId", employeeId) + ","
+                + field("effectiveFrom", from == null ? null : from.toString()) + ","
+                + field("effectiveTo", to == null ? null : to.toString()) + "}";
+        send(req(baseUrl + "/labor/schedule-templates/" + templateId + "/assignments")
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(body)));
+    }
+
+    public void removeScheduleAssignment(String assignmentId) throws IOException, InterruptedException {
+        send(req(baseUrl + "/labor/schedule-templates/assignments/" + assignmentId).DELETE());
+    }
+
+    private com.benjagest.ui.model.ScheduleTemplateEntry mapScheduleTemplate(String o) {
+        return new com.benjagest.ui.model.ScheduleTemplateEntry(
+                textField(o, "id"), textField(o, "name"), textField(o, "description"),
+                boolField(o, "active"), intFieldOrZero(o, "blocks"), intFieldOrZero(o, "assignments"));
+    }
+
+    /** Extrae el cuerpo de un array JSON ("campo":[...]) balanceando corchetes. */
+    private String extractArray(String json, String field) {
+        int k = json.indexOf("\"" + field + "\"");
+        if (k < 0) return "";
+        int lb = json.indexOf('[', k);
+        if (lb < 0) return "";
+        int depth = 0;
+        for (int i = lb; i < json.length(); i++) {
+            char c = json.charAt(i);
+            if (c == '[') depth++;
+            else if (c == ']') { depth--; if (depth == 0) return json.substring(lb, i + 1); }
+        }
+        return json.substring(lb);
+    }
+
+    private long longField(String json, String f) {
+        Matcher m = Pattern.compile("\"" + f + "\"\\s*:\\s*(-?\\d+)").matcher(json);
+        if (!m.find()) return 0L;
+        try { return Long.parseLong(m.group(1)); } catch (NumberFormatException e) { return 0L; }
+    }
+
+    /** Normaliza fecha (soporta ISO instant) a "yyyy-MM-dd" o "". */
+    private String parseDateStr(String s) {
+        LocalDate d = parseDate(s);
+        return d == null ? "" : d.toString();
+    }
+
     /**
      * VIG-3 — Ascenso/cambio de condiciones con fecha de efecto. Crea una
      * nueva vigencia del MISMO contrato (antigüedad intacta) y deja la fila

@@ -94,11 +94,12 @@ Todas con `company_id` (multi-tenant) e índices por (company_id, …).
   jornada): lista, alta (foto opcional con aviso legal), borrar, **código de
   activación** (con la URL del dispositivo) y asignar empleados. JavaFX +
   LaborApiClient.
-- ⬜ **FM-5 / offline / deshacer-60s — PENDIENTE, fuera del módulo de fichaje:**
-  - **FM-5 (fichaje → jornadas/calendario)** pertenece a **PORT-2 (jornadas)**, que
-    es un módulo aparte con decisión de diseño pendiente de Benjamin ("1 plantilla =
-    N bloques"). Hoy `worklogs`/`daily_work_reports` NO leen `time_clock_events`.
-    Se aborda al retomar PORT-2.
+- ✅ **FM-5 HECHO** (2026-06-18, como JOR-1 dentro de PORT-2) — la jornada REAL se
+  calcula desde `time_clock_events` (`WorkdayService` + `GET /api/labor/workdays`)
+  y se muestra en la pestaña Jornadas ("Jornadas fichadas"). No duplica eventos ni
+  cadena hash; los agrega. PORT-2 (planificación de horarios) cerrado el mismo día
+  (JOR-2/JOR-3). Ver `docs/backlog.md` (sección PORT-2 JORNADAS).
+- ⬜ **offline / deshacer-60s — PENDIENTE, fuera del módulo de fichaje:**
   - **Cola offline** (kiosco sin red): fase 2 (decidido).
   - **Deshacer 60 s**: vía `requestCorrection` (mecanismo RD 8/2019 ya existe);
     su UI/endpoint de kiosco queda como mejora (no se anula el original — corrección).
