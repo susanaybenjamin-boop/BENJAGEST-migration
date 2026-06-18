@@ -1478,6 +1478,7 @@ public class AccountingScreen {
         Label expTitle = new Label(tt.apply("accounting.exchange.export_title"));
         expTitle.getStyleClass().add("settings-section-title");
         ComboBox<String> expFormat = new ComboBox<>(FXCollections.observableArrayList("CSV", "CONTASOL", "JSON_BENJAGEST"));
+        localizeCombo(expFormat, "accounting.exchange.fmt.");
         expFormat.setValue("CSV");
         ComboBox<String> expTarget = new ComboBox<>(FXCollections.observableArrayList(
                 "JOURNAL_ENTRIES", "ACCOUNTS", "CUSTOMERS", "SUPPLIERS",
@@ -1521,6 +1522,7 @@ public class AccountingScreen {
         Label impTitle = new Label(tt.apply("accounting.exchange.import_title"));
         impTitle.getStyleClass().add("settings-section-title");
         ComboBox<String> impFormat = new ComboBox<>(FXCollections.observableArrayList("CSV", "CONTASOL", "JSON_BENJAGEST"));
+        localizeCombo(impFormat, "accounting.exchange.fmt.");
         impFormat.setValue("CSV");
         ComboBox<String> impTarget = new ComboBox<>(FXCollections.observableArrayList(
                 "JOURNAL_ENTRIES", "ACCOUNTS", "CUSTOMERS", "SUPPLIERS"));

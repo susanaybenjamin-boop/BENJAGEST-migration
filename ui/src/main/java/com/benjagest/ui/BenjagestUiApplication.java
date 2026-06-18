@@ -18003,6 +18003,9 @@ public class BenjagestUiApplication extends Application {
             case "accounting.exchange.target.INVOICES_PURCHASE" -> "Purchase invoices";
             case "accounting.exchange.target.FIXED_ASSETS" -> "Fixed assets";
             case "accounting.exchange.target.LOANS" -> "Loans";
+            case "accounting.exchange.fmt.CSV" -> "CSV / Excel (universal)";
+            case "accounting.exchange.fmt.CONTASOL" -> "Contasol";
+            case "accounting.exchange.fmt.JSON_BENJAGEST" -> "BENJAGEST copy (internal)";
             case "accounting.yc.fiscal_year" -> "Fiscal year:";
             case "accounting.yc.precalculate" -> "Pre-calculate";
             case "accounting.yc.error_precalculate" -> "Could not pre-calculate the year";
@@ -19004,6 +19007,9 @@ public class BenjagestUiApplication extends Application {
             case "accounting.exchange.target.INVOICES_PURCHASE" -> "Facturas de compra";
             case "accounting.exchange.target.FIXED_ASSETS" -> "Inmovilizado";
             case "accounting.exchange.target.LOANS" -> "Préstamos";
+            case "accounting.exchange.fmt.CSV" -> "CSV / Excel (universal)";
+            case "accounting.exchange.fmt.CONTASOL" -> "Contasol";
+            case "accounting.exchange.fmt.JSON_BENJAGEST" -> "Copia BENJAGEST (interna)";
             case "accounting.yc.fiscal_year" -> "Ejercicio:";
             case "accounting.yc.precalculate" -> "Precalcular";
             case "accounting.yc.error_precalculate" -> "No se pudo precalcular el ejercicio";
