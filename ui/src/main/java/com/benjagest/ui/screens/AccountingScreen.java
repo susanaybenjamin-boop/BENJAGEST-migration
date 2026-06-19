@@ -1047,6 +1047,7 @@ public class AccountingScreen {
     private Label finDraftWarn;
     private TableView<AccountingModels.MonthPoint> finMonthly;
     private FlowPane finProjection;
+    private VBox finRecommendations;
 
     private static final java.text.NumberFormat MONEY =
             java.text.NumberFormat.getCurrencyInstance(java.util.Locale.forLanguageTag("es-ES"));
@@ -1097,8 +1098,17 @@ public class AccountingScreen {
         projHint.setWrapText(true);
         finProjection = new FlowPane(14, 14);
 
+        // FIN-4 — recomendaciones (reglas sobre los datos ya cargados).
+        Label recTitle = new Label(tt.apply("accounting.fin.recommendations"));
+        recTitle.setStyle("-fx-font-weight: bold; -fx-font-size: 13px;");
+        Label recHint = new Label(tt.apply("accounting.fin.recommendations_hint"));
+        recHint.setStyle("-fx-text-fill: #6e6e6e; -fx-font-style: italic;");
+        recHint.setWrapText(true);
+        finRecommendations = new VBox(6);
+
         VBox content = new VBox(12, finCards, new Separator(),
                 projTitle, projHint, finProjection, new Separator(),
+                recTitle, recHint, finRecommendations, new Separator(),
                 evoTitle, finMonthly);
         ScrollPane sp = new ScrollPane(content);
         sp.setFitToWidth(true);
@@ -1180,6 +1190,68 @@ public class AccountingScreen {
             finDraftWarn.setVisible(false);
             finDraftWarn.setManaged(false);
         }
+        renderRecommendations(f);
+    }
+
+    /**
+     * FIN-4 — recomendaciones prescriptivas derivadas de las cifras del
+     * periodo. Reglas simples y honestas; se presentan como sugerencias a
+     * revisar por el asesor (no decisiones automáticas).
+     */
+    private void renderRecommendations(AccountingModels.ClientFinancials f) {
+        finRecommendations.getChildren().clear();
+        java.util.List<Node> recs = new ArrayList<>();
+
+        if (f.overdueInvoices() > 0) {
+            recs.add(recLine("WARN", tt.apply("accounting.rec.overdue")
+                    .replace("{n}", String.valueOf(f.overdueInvoices()))
+                    .replace("{x}", money(f.pendingCollections()))));
+        }
+        if (f.result().signum() < 0) {
+            recs.add(recLine("WARN", tt.apply("accounting.rec.loss")
+                    .replace("{x}", money(f.result()))));
+        }
+        if (f.income().signum() > 0 && f.personnelRatioPct().compareTo(new BigDecimal("40")) > 0) {
+            recs.add(recLine("WARN", tt.apply("accounting.rec.personnel_high")
+                    .replace("{p}", pctStr(f.personnelRatioPct()))));
+        }
+        if (f.income().signum() > 0 && f.expenseRatioPct().compareTo(new BigDecimal("90")) > 0
+                && f.result().signum() >= 0) {
+            recs.add(recLine("INFO", tt.apply("accounting.rec.thin_margin")
+                    .replace("{p}", pctStr(f.expenseRatioPct()))));
+        }
+        if (f.model303Estimated().signum() > 0) {
+            recs.add(recLine("INFO", tt.apply("accounting.rec.vat_to_pay")
+                    .replace("{x}", money(f.model303Estimated()))));
+        } else if (f.model303Estimated().signum() < 0) {
+            recs.add(recLine("INFO", tt.apply("accounting.rec.vat_to_offset")
+                    .replace("{x}", money(f.model303Estimated().abs()))));
+        }
+        if (f.draftCount() > 0) {
+            recs.add(recLine("INFO", tt.apply("accounting.rec.validate_drafts")
+                    .replace("{n}", String.valueOf(f.draftCount()))));
+        }
+
+        if (recs.isEmpty()) {
+            recs.add(recLine("OK", tt.apply("accounting.rec.all_good")));
+        }
+        finRecommendations.getChildren().addAll(recs);
+    }
+
+    private Node recLine(String severity, String text) {
+        String color = switch (severity) {
+            case "WARN" -> "#c62828";
+            case "OK" -> "#2e7d32";
+            default -> "#1565c0";
+        };
+        Label dot = new Label("●");
+        dot.setStyle("-fx-text-fill: " + color + ";");
+        Label msg = new Label(text);
+        msg.setWrapText(true);
+        HBox h = new HBox(8, dot, msg);
+        HBox.setHgrow(msg, Priority.ALWAYS);
+        h.setAlignment(Pos.TOP_LEFT);
+        return h;
     }
 
     /** Tarjeta KPI: título arriba, valor grande con color de acento, subtítulo opcional. */
