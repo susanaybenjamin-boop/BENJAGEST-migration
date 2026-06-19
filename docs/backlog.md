@@ -51,16 +51,24 @@ aparte — context Spring + Flyway OK):**
   (OpenPDF): PDF del Balance de Situación y de PyG. Endpoints `/reports/{balance-sheet,
   profit-and-loss}/export.pdf` + botón "Exportar PDF" en ambas pestañas + helper `savePdf`.
   Cierra parcialmente "Export PDF de informes": **pendiente Mayor + Sumas y Saldos**.
+- ✅ **ACC-TEMPLATES fix UX** *(c012964 → merge fb99233)* — feedback Benjamin: diálogo
+  dimensionado (setPrefSize + resizable + CONSTRAINED_RESIZE columnas que no se cortan),
+  **enums traducidos** (D/H = Debe/Haber, Tipo = Fijo/Variable/Fórmula vía codeLabelConverter),
+  **cuenta = selector del PGC** (TplAccountCell, autocompletar + alta de tercero 4000/4300).
+- ✅ **FIN-1b pendiente de pago a proveedores** *(83821d2 → merge ee7e66d)* — saldo acreedor
+  400/410 del diario (medida robusta tras la reestructuración V45; el pago se rastrea por
+  conciliación bancaria). Tarjeta en el cuadro de mando + línea en el PDF.
 
-> **Validación:** todo compila (backend+ui) y el backend ARRANCA limpio (Spring + Flyway,
-> sin UnsatisfiedDependency); todas las rutas nuevas (FIN ×5 + /templates + 2 PDF de
-> informes) responden 403 (mapeadas y protegidas). Smoke con login real → 19:00 con Benjamin.
+> **Validación:** todo compila (backend+ui) y el backend ARRANCA limpio (Spring + Flyway);
+> rutas nuevas responden 403 (mapeadas y protegidas). Smoke con login real → 19:00.
 
 **Pendiente del plan (NO empezado por presupuesto de la sesión; orden sugerido):**
 - ⬜ **A restante**: Export PDF de **Mayor + Sumas y Saldos** (Balance+PyG ya hechos) ·
   **FORMATS-EXCHANGE** (xDiario + SUENLACE export/import, por spec, marcar para validar).
-- ⬜ **B restante**: **FIN-1b** pendiente de PAGO a proveedores (`purchase_invoices`
-  cambió de esquema en V45 → verificar modelo de pagos antes de cablear; regla 10.bis).
+- ⬜ **PAGO-PROVEEDOR (decisión Benjamin pendiente)**: acción "Registrar pago" en compras
+  (banco 572 / caja 570 / ticket) con fecha + método → asiento 400→572/570. Hoy solo por
+  conciliación bancaria. CONTENDO usa metodo_pago+fecha_pago; competidores saldan vencimientos
+  contra cuenta de tesorería. FIN-1b ya muestra el pendiente; falta la UX de registrar el pago.
 - ⬜ **C entero**: MEMP-2 (fichar móvil) · MEMP-3 · MEMP-4 · JOR-4 · partes de día ·
   fichajes sospechosos.
 - ⬜ **D entero** (decisión Benjamin: construir + MARCAR para validar): VIG-3 menor
