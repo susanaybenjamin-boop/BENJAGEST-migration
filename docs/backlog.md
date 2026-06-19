@@ -72,12 +72,13 @@ aparte — context Spring + Flyway OK):**
   ❌ **PV-6 DESCARTADO** (innecesario): el saldo acreedor 400/410 que ya usa FIN-1b **YA
   refleja los pagos** (pagar un vencimiento/conciliar reduce el saldo 400). Leer de los
   vencimientos infracontaría las compras sin vencimiento creado aún. Se queda el 400/410.
-  🔵 **PV-7 REPLANTEAR** (no hacer "a lo bruto"): ventas YA tiene modelo de cobro
-  (`payment_status`+`paid_amount`+`due_date`+multi-allocation+conciliación). Añadir
-  vencimientos múltiples a ventas solo tiene sentido como **unificación** (los vencimientos
-  PAID **conducen** el `payment_status`), no como sistema paralelo. Decisión de Benjamin
-  pendiente si quiere cobros aplazados en N plazos. **Bloque NÓMINA backend lo soporta** (el
-  servicio/endpoint ya son kind-aware), solo falta la UI + la unificación con payment_status.
+  ✅ **PV-7 COBRO POR PLAZOS** *(0c50de3 → merge 49d0110)* (decidido Benjamin: sí, cobrar
+  a plazos). Hecho **con unificación** (no sistema paralelo): `syncSalesPaymentStatus`
+  proyecta los vencimientos PAGADOS de venta al `payment_status`+`paid_amount` de la factura
+  (los vencimientos son la fuente). UI: botón **"Vencimientos / Cobro"** en Ventas (VALIDATED)
+  que reutiliza el diálogo de vencimientos con kind=SALES. *Mejora menor: labels del diálogo
+  por kind ("Cobrar" vs "Pagar"). Edge case: multi-allocation no pasa por vencimientos.*
+  **→ Bloque PAGO/COBRO POR VENCIMIENTOS (PV-1..7) COMPLETO** (PV-6 descartado a propósito).
 - ✅ **MEMP-2 fichar desde el móvil** *(420d31b → merge 41f352b)* — `EmployeeFichajeController`
   /api/empleado/fichaje (rol EMPLOYEE, reusa TimeClockService) + pantalla de fichaje en la PWA
   (Entrada/Salida/Pausa/Vuelta + geo + estado + últimos). **Probado en vivo OK** por Benjamin
