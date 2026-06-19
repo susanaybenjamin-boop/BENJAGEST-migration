@@ -18249,6 +18249,9 @@ public class BenjagestUiApplication extends Application {
             case "accounting.fin.pending_collections" -> "Pending collections";
             case "accounting.fin.overdue" -> "{n} overdue invoice(s)";
             case "accounting.fin.draft_warn" -> "Heads up: {n} draft entries are not validated and are NOT included in these figures.";
+            case "accounting.fin.evolution" -> "Monthly evolution";
+            case "accounting.fin.no_data" -> "No data for this year.";
+            case "accounting.fin.month" -> "Month";
             case "accounting.ecpn.opening" -> "Opening balance";
             case "accounting.ecpn.closing" -> "Closing balance";
             case "accounting.ecpn.variation" -> "Change";
@@ -19320,6 +19323,9 @@ public class BenjagestUiApplication extends Application {
             case "accounting.fin.pending_collections" -> "Pendiente de cobro";
             case "accounting.fin.overdue" -> "{n} factura(s) vencida(s)";
             case "accounting.fin.draft_warn" -> "Atención: hay {n} asientos en borrador sin validar que NO se incluyen en estas cifras.";
+            case "accounting.fin.evolution" -> "Evolución mensual";
+            case "accounting.fin.no_data" -> "Sin datos para este año.";
+            case "accounting.fin.month" -> "Mes";
             case "accounting.ecpn.opening" -> "Saldo inicial";
             case "accounting.ecpn.closing" -> "Saldo final";
             case "accounting.ecpn.variation" -> "Variación";

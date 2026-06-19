@@ -251,6 +251,12 @@ public class AccountingFullController {
         return clientFinancials.compute(from, to);
     }
 
+    @GetMapping("/financials/monthly")
+    public List<ClientFinancialsService.MonthPoint> financialsMonthly(
+            @RequestParam("year") int year) {
+        return clientFinancials.monthlySeries(year);
+    }
+
     @PostMapping("/templates/{id}/apply")
     public ManualJournalEntryService.ManualEntryView applyTemplate(
             @PathVariable("id") String id,

@@ -83,6 +83,48 @@ public class ClientFinancialsService {
                 k.draftCount());
     }
 
+    // ====================================================================
+    //  FIN-2 — Evolución mensual (serie del año)
+    // ====================================================================
+
+    public record MonthPoint(int month, BigDecimal income, BigDecimal expenses, BigDecimal result) {}
+
+    /**
+     * Serie mensual (12 puntos) de ingresos/gastos/beneficio del año, desde
+     * el diario POSTED. Los meses sin movimiento salen a cero.
+     */
+    public java.util.List<MonthPoint> monthlySeries(int year) {
+        String companyId = tenant.getCurrentCompanyId();
+        BigDecimal[] income = new BigDecimal[13];
+        BigDecimal[] expenses = new BigDecimal[13];
+        for (int i = 1; i <= 12; i++) { income[i] = BigDecimal.ZERO; expenses[i] = BigDecimal.ZERO; }
+        jdbc.query("""
+                SELECT MONTH(e.entry_date) AS m,
+                       COALESCE(SUM(CASE WHEN a.code LIKE '7%' THEN l.credit ELSE 0 END), 0) AS income,
+                       COALESCE(SUM(CASE WHEN a.code LIKE '6%' THEN l.debit  ELSE 0 END), 0) AS expenses
+                  FROM journal_entries e
+                  JOIN journal_entry_lines l ON l.journal_entry_id = e.id
+                  JOIN accounting_accounts a ON a.id = l.account_id
+                 WHERE e.company_id = ?
+                   AND e.status = 'POSTED'
+                   AND YEAR(e.entry_date) = ?
+                 GROUP BY MONTH(e.entry_date)
+                """, rs -> {
+            int m = rs.getInt("m");
+            if (m >= 1 && m <= 12) {
+                income[m] = rs.getBigDecimal("income");
+                expenses[m] = rs.getBigDecimal("expenses");
+            }
+        }, companyId, year);
+        java.util.List<MonthPoint> out = new java.util.ArrayList<>();
+        for (int m = 1; m <= 12; m++) {
+            BigDecimal inc = nz(income[m]);
+            BigDecimal exp = nz(expenses[m]);
+            out.add(new MonthPoint(m, inc, exp, inc.subtract(exp)));
+        }
+        return out;
+    }
+
     /** Suma del DEBE de líneas con cuenta de prefijo dado en asientos POSTED del rango. */
     private BigDecimal sumDebitPrefix(String companyId, LocalDate from, LocalDate to, String prefix) {
         BigDecimal v = jdbc.queryForObject("""
