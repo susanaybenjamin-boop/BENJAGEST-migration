@@ -130,12 +130,14 @@ public class AccountingScreen {
         root.setPadding(new Insets(8));
         VBox.setVgrow(tabs, Priority.ALWAYS);
 
-        // Auto-refresh de Por validar y Diario cuando alguien emita
-        // JOURNAL (validar asiento, aceptar, batch, reclasificar,
-        // borrar gasto/venta…). Auto-baja al desmontar.
+        // Auto-refresh de Por validar, Diario y Cuadro de mando cuando alguien
+        // emita JOURNAL (validar asiento, aceptar, batch, reclasificar,
+        // borrar gasto/venta, aplicar plantilla…). Así el aviso del cuadro de
+        // mando ("X por validar") desaparece solo al validar, sin que el
+        // usuario tenga que pulsar Refrescar. Auto-baja al desmontar.
         com.benjagest.ui.support.RefreshBus.subscribe(
                 com.benjagest.ui.support.RefreshBus.TOPIC_JOURNAL,
-                () -> { loadPending(); loadDiary(); }, root);
+                () -> { loadPending(); loadDiary(); reloadFinancialsIfReady(); }, root);
         // También refrescar reglas y recurrentes con sus topics.
         com.benjagest.ui.support.RefreshBus.subscribe(
                 com.benjagest.ui.support.RefreshBus.TOPIC_RULES,
@@ -1279,6 +1281,11 @@ public class AccountingScreen {
         VBox.setVgrow(sp, Priority.ALWAYS);
         loadFinancials();
         return box;
+    }
+
+    /** Refresca el cuadro de mando si su pestaña ya está construida (auto-refresh). */
+    private void reloadFinancialsIfReady() {
+        if (finFrom != null && finTo != null) loadFinancials();
     }
 
     private void loadFinancials() {
