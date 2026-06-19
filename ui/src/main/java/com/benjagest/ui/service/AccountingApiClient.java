@@ -1093,6 +1093,26 @@ public class AccountingApiClient {
     }
 
     // ====================================================================
+    //  FIN-1 — Cuadro de mando financiero del cliente
+    // ====================================================================
+
+    public AccountingModels.ClientFinancials clientFinancials(LocalDate from, LocalDate to)
+            throws IOException, InterruptedException {
+        StringBuilder q = new StringBuilder();
+        append(q, "from", from.toString());
+        append(q, "to", to.toString());
+        String json = get("/accounting/financials" + q);
+        return new AccountingModels.ClientFinancials(
+                from, to,
+                decField(json, "income"), decField(json, "expenses"), decField(json, "result"),
+                decField(json, "personnelCost"), decField(json, "vatCharged"),
+                decField(json, "vatBorne"), decField(json, "model303Estimated"),
+                decField(json, "pendingCollections"), intField(json, "overdueInvoices"),
+                decField(json, "marginPct"), decField(json, "expenseRatioPct"),
+                decField(json, "personnelRatioPct"), intField(json, "draftCount"));
+    }
+
+    // ====================================================================
     //  HTTP helpers
     // ====================================================================
 

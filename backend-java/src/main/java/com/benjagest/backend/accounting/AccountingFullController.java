@@ -45,6 +45,7 @@ public class AccountingFullController {
     private final FixedAssetEntriesService assetEntries;
     private final AccountingTemplateService templates;
     private final FinancialReportsService reports;
+    private final ClientFinancialsService clientFinancials;
 
     public AccountingFullController(BankAccountService bankAccounts,
                                       BankMovementService bankMovements,
@@ -52,7 +53,8 @@ public class AccountingFullController {
                                       LoanService loans,
                                       FixedAssetEntriesService assetEntries,
                                       AccountingTemplateService templates,
-                                      FinancialReportsService reports) {
+                                      FinancialReportsService reports,
+                                      ClientFinancialsService clientFinancials) {
         this.bankAccounts = bankAccounts;
         this.bankMovements = bankMovements;
         this.bankImport = bankImport;
@@ -60,6 +62,7 @@ public class AccountingFullController {
         this.assetEntries = assetEntries;
         this.templates = templates;
         this.reports = reports;
+        this.clientFinancials = clientFinancials;
     }
 
     // ===== BANK ACCOUNTS =====
@@ -237,6 +240,15 @@ public class AccountingFullController {
     public Map<String, Object> archiveTemplate(@PathVariable("id") String id) {
         templates.setActive(id, false);
         return Map.of("id", id, "active", false);
+    }
+
+    // ===== FIN-1 — Cuadro de mando financiero del cliente =====
+
+    @GetMapping("/financials")
+    public ClientFinancialsService.ClientFinancials financials(
+            @RequestParam("from") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam("to") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
+        return clientFinancials.compute(from, to);
     }
 
     @PostMapping("/templates/{id}/apply")

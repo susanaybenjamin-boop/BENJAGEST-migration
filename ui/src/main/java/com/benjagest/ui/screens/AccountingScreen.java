@@ -49,6 +49,7 @@ import javafx.scene.control.TextField;
 import javafx.scene.control.cell.ComboBoxTableCell;
 import javafx.scene.control.cell.TextFieldTableCell;
 import javafx.scene.layout.BorderPane;
+import javafx.scene.layout.FlowPane;
 import javafx.scene.layout.GridPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
@@ -112,6 +113,8 @@ public class AccountingScreen {
                 new Tab(tt.apply("accounting.tab.trial_balance"), buildTrialBalanceTab()),
                 new Tab(tt.apply("accounting.tab.balance_sheet"), buildBalanceSheetTab()),
                 new Tab(tt.apply("accounting.tab.pyg"), buildPygTab()),
+                // FIN-1 — cuadro de mando financiero del cliente.
+                new Tab(tt.apply("accounting.tab.dashboard"), buildFinancialsTab()),
                 new Tab(tt.apply("accounting.tab.ecpn"), buildEcpnTab()),
                 new Tab(tt.apply("accounting.tab.rules"), buildRulesTab()),
                 // ACC-TEMPLATES — plantillas de asiento manual recurrente
@@ -1033,6 +1036,122 @@ public class AccountingScreen {
 
     private String nz(String s) { return s == null ? "" : s; }
     private String blankNull(String s) { return s == null || s.isBlank() ? null : s.trim(); }
+
+    // ====================================================================
+    //  Tab: Cuadro de mando financiero (FIN-1)
+    // ====================================================================
+
+    private DatePicker finFrom;
+    private DatePicker finTo;
+    private FlowPane finCards;
+    private Label finDraftWarn;
+
+    private static final java.text.NumberFormat MONEY =
+            java.text.NumberFormat.getCurrencyInstance(java.util.Locale.forLanguageTag("es-ES"));
+
+    private Node buildFinancialsTab() {
+        int y = LocalDate.now().getYear();
+        finFrom = new DatePicker(LocalDate.of(y, 1, 1));
+        finTo = new DatePicker(LocalDate.now());
+        Button refresh = new Button(tt.apply("accounting.action.refresh"));
+        refresh.setOnAction(e -> loadFinancials());
+
+        HBox controls = new HBox(8,
+                new Label(tt.apply("accounting.fin.from")), finFrom,
+                new Label(tt.apply("accounting.fin.to")), finTo, refresh);
+        controls.setAlignment(Pos.CENTER_LEFT);
+
+        Label hint = new Label(tt.apply("accounting.fin.hint"));
+        hint.setStyle("-fx-text-fill: #6e6e6e;");
+        hint.setWrapText(true);
+
+        finDraftWarn = new Label();
+        finDraftWarn.setStyle("-fx-text-fill: #b8860b;");
+        finDraftWarn.setWrapText(true);
+        finDraftWarn.setVisible(false);
+        finDraftWarn.setManaged(false);
+
+        finCards = new FlowPane(14, 14);
+        finCards.setPadding(new Insets(6, 0, 0, 0));
+
+        VBox box = new VBox(10, hint, controls, finDraftWarn,
+                new ScrollPane(finCards));
+        box.setPadding(new Insets(8));
+        ScrollPane sp = (ScrollPane) box.getChildren().get(3);
+        sp.setFitToWidth(true);
+        VBox.setVgrow(sp, Priority.ALWAYS);
+        loadFinancials();
+        return box;
+    }
+
+    private void loadFinancials() {
+        LocalDate from = finFrom.getValue();
+        LocalDate to = finTo.getValue();
+        if (from == null || to == null) return;
+        async(() -> api.clientFinancials(from, to),
+                this::renderFinancials,
+                err -> logSilent("load-financials", err));
+    }
+
+    private void renderFinancials(AccountingModels.ClientFinancials f) {
+        finCards.getChildren().clear();
+        finCards.getChildren().addAll(
+                kpiCard(tt.apply("accounting.fin.income"), money(f.income()), null, "#2e7d32"),
+                kpiCard(tt.apply("accounting.fin.expenses"), money(f.expenses()), null, "#c62828"),
+                kpiCard(tt.apply("accounting.fin.result"), money(f.result()),
+                        tt.apply("accounting.fin.margin") + " " + pctStr(f.marginPct()),
+                        f.result().signum() >= 0 ? "#2e7d32" : "#c62828"),
+                kpiCard(tt.apply("accounting.fin.personnel"), money(f.personnelCost()),
+                        tt.apply("accounting.fin.over_income") + " " + pctStr(f.personnelRatioPct()), "#1565c0"),
+                kpiCard(tt.apply("accounting.fin.expense_ratio"), pctStr(f.expenseRatioPct()),
+                        tt.apply("accounting.fin.over_income"), "#6e6e6e"),
+                kpiCard(tt.apply("accounting.fin.vat_charged"), money(f.vatCharged()), null, "#6e6e6e"),
+                kpiCard(tt.apply("accounting.fin.vat_borne"), money(f.vatBorne()), null, "#6e6e6e"),
+                kpiCard(tt.apply("accounting.fin.model303"), money(f.model303Estimated()),
+                        tt.apply("accounting.fin.estimated"), "#6e6e6e"),
+                kpiCard(tt.apply("accounting.fin.pending_collections"), money(f.pendingCollections()),
+                        f.overdueInvoices() > 0
+                                ? tt.apply("accounting.fin.overdue").replace("{n}", String.valueOf(f.overdueInvoices()))
+                                : null,
+                        f.overdueInvoices() > 0 ? "#c62828" : "#1565c0")
+        );
+        if (f.draftCount() > 0) {
+            finDraftWarn.setText(tt.apply("accounting.fin.draft_warn")
+                    .replace("{n}", String.valueOf(f.draftCount())));
+            finDraftWarn.setVisible(true);
+            finDraftWarn.setManaged(true);
+        } else {
+            finDraftWarn.setVisible(false);
+            finDraftWarn.setManaged(false);
+        }
+    }
+
+    /** Tarjeta KPI: título arriba, valor grande con color de acento, subtítulo opcional. */
+    private Node kpiCard(String title, String value, String subtitle, String accent) {
+        Label t = new Label(title);
+        t.setStyle("-fx-text-fill: #6e6e6e; -fx-font-size: 12px;");
+        Label v = new Label(value);
+        v.setStyle("-fx-font-size: 20px; -fx-font-weight: bold; -fx-text-fill: " + accent + ";");
+        VBox card = new VBox(4, t, v);
+        if (subtitle != null && !subtitle.isBlank()) {
+            Label s = new Label(subtitle);
+            s.setStyle("-fx-text-fill: #6e6e6e; -fx-font-size: 11px;");
+            card.getChildren().add(s);
+        }
+        card.setPadding(new Insets(12, 16, 12, 16));
+        card.setPrefWidth(210);
+        card.setStyle("-fx-background-color: white; -fx-border-color: #e0e0e0;"
+                + " -fx-border-radius: 6; -fx-background-radius: 6;");
+        return card;
+    }
+
+    private String money(BigDecimal v) {
+        return MONEY.format(v == null ? BigDecimal.ZERO : v);
+    }
+
+    private String pctStr(BigDecimal v) {
+        return (v == null ? "0" : v.toPlainString()) + " %";
+    }
 
     // ====================================================================
     //  Tab: Cierre de ejercicio (CONS-CIERRE)

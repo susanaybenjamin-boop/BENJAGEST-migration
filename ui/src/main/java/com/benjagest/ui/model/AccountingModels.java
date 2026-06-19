@@ -281,4 +281,18 @@ public final class AccountingModels {
             String amountKind,  // FIXED | VARIABLE | FORMULA
             BigDecimal fixedAmount, String formula, String variableName
     ) {}
+
+    // ====================================================================
+    //  FIN-1 — Cuadro de mando financiero del cliente
+    // ====================================================================
+
+    public record ClientFinancials(
+            LocalDate from, LocalDate to,
+            BigDecimal income, BigDecimal expenses, BigDecimal result,
+            BigDecimal personnelCost, BigDecimal vatCharged, BigDecimal vatBorne,
+            BigDecimal model303Estimated,
+            BigDecimal pendingCollections, int overdueInvoices,
+            BigDecimal marginPct, BigDecimal expenseRatioPct, BigDecimal personnelRatioPct,
+            int draftCount
+    ) {}
 }
