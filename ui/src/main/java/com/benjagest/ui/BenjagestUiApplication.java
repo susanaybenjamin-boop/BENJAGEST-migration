@@ -2273,7 +2273,10 @@ public class BenjagestUiApplication extends Application {
 
         HBox actions = new HBox(8, approveBtn, rejectBtn);
         actions.setAlignment(Pos.CENTER_LEFT);
-        VBox box = new VBox(10, table, actions);
+        // Acciones ARRIBA de la tabla (no debajo): con muchas facturas no hay
+        // que hacer scroll dentro del diálogo para llegar a Aprobar/Rechazar.
+        VBox box = new VBox(10, actions, table);
+        VBox.setVgrow(table, Priority.ALWAYS);
         box.setPadding(new Insets(8));
         dlg.getDialogPane().setContent(box);
         reload.run();
@@ -20643,7 +20646,7 @@ public class BenjagestUiApplication extends Application {
         hint.getStyleClass().add("settings-hint");
 
         HBox actions = new HBox(8, newBtn, editBtn, delBtn);
-        VBox body = new VBox(10, hint, table, actions);
+        VBox body = new VBox(10, hint, actions, table); // acciones arriba (no debajo)
         VBox.setVgrow(table, Priority.ALWAYS);
         body.setPadding(new Insets(12));
         return body;
@@ -20877,7 +20880,7 @@ public class BenjagestUiApplication extends Application {
         hint.getStyleClass().add("settings-hint");
 
         HBox actions = new HBox(8, newBtn, editBtn, viewBtn);
-        VBox body = new VBox(10, hint, table, actions);
+        VBox body = new VBox(10, hint, actions, table); // acciones arriba (no debajo)
         VBox.setVgrow(table, Priority.ALWAYS);
         body.setPadding(new Insets(12));
         return body;
