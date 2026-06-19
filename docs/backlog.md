@@ -56,24 +56,33 @@ aparte — context Spring + Flyway OK):**
   **enums traducidos** (D/H = Debe/Haber, Tipo = Fijo/Variable/Fórmula vía codeLabelConverter),
   **cuenta = selector del PGC** (TplAccountCell, autocompletar + alta de tercero 4000/4300).
 - ✅ **FIN-1b pendiente de pago a proveedores** *(83821d2 → merge ee7e66d)* — saldo acreedor
-  400/410 del diario (medida robusta tras la reestructuración V45; el pago se rastrea por
-  conciliación bancaria). Tarjeta en el cuadro de mando + línea en el PDF.
+  400/410 del diario (medida robusta tras la reestructuración V45). Tarjeta + línea PDF.
+- ✅ **FIN fix "por validar"** *(ade0d83 → merge bd2c386)* — el contador del cuadro de mando
+  contaba TODOS los DRAFT en vez de solo los auto-propuestos (pestaña "Por validar"). Ahora
+  coinciden. + atajo "Ir a Por validar" *(e2d6a1e)*.
+- ✅ **PAGO-PROVEEDOR — VENCIMIENTOS (PV-1..4, núcleo funcional)** — plan en
+  [`plan-pago-proveedor-vencimientos.md`](plan-pago-proveedor-vencimientos.md):
+  · **PV-1** V133 `invoice_due_dates` (compras+ventas) · **PV-2** `PaymentScheduleService`
+  (vencimientos + pagar contra tesorería 572/570 → asiento 400→572/570, unpay, replace)
+  · **PV-3** `DueDateController` /api/due-dates · **PV-4** UI en Compras (botón
+  "Vencimientos / Pago": tabla + Pagar banco/caja + **Pagar al contado** (ticket) +
+  Deshacer + Editar cuadro). *(622492d, 1fc5192 → merge bbfced7, 11a51d8)*.
+  ⬜ **Pendiente PV-5** (conciliación bancaria ↔ marcar vencimiento PAID) · **PV-6** (FIN lee
+  pendiente de los vencimientos) · **PV-7** (simetría cobros de ventas).
+- ✅ **MEMP-2 fichar desde el móvil** *(420d31b → merge 41f352b)* — `EmployeeFichajeController`
+  /api/empleado/fichaje (rol EMPLOYEE, reusa TimeClockService) + pantalla de fichaje en la PWA
+  (Entrada/Salida/Pausa/Vuelta + geo + estado + últimos). Caso "empresa de servicios" cubierto.
 
-> **Validación:** todo compila (backend+ui) y el backend ARRANCA limpio (Spring + Flyway);
-> rutas nuevas responden 403 (mapeadas y protegidas). Smoke con login real → 19:00.
+> **Validación:** todo compila (backend+ui), el backend ARRANCA limpio (V133 migra OK),
+> rutas nuevas 403 (mapeadas/protegidas), la PWA sirve el HTML nuevo. Smoke con login real
+> → con Benjamin.
 
-**Pendiente del plan (NO empezado por presupuesto de la sesión; orden sugerido):**
+**Pendiente del plan (orden sugerido):**
 - ⬜ **A restante**: Export PDF de **Mayor + Sumas y Saldos** (Balance+PyG ya hechos) ·
   **FORMATS-EXCHANGE** (xDiario + SUENLACE export/import, por spec, marcar para validar).
-- ⬜ **PAGO-PROVEEDOR — VENCIMIENTOS** *(decidido Benjamin 2026-06-19: modelo completo
-  estilo A3/Sage)*. Plan slice a slice en
-  [`plan-pago-proveedor-vencimientos.md`](plan-pago-proveedor-vencimientos.md): tabla
-  `invoice_due_dates` (compras+ventas) → saldar cada vencimiento contra tesorería
-  (Banco 572 / Caja 570) con fecha+método → asiento 400→572/570; cubre extracto/ticket/caja.
-  PV-1 migración · PV-2 servicio · PV-3 endpoints · PV-4 UI compras · PV-5 conciliación↔venc
-  · PV-6 FIN lee de vencimientos · PV-7 simetría ventas. **Bloque grande → contexto fresco.**
-- ⬜ **C entero**: MEMP-2 (fichar móvil) · MEMP-3 · MEMP-4 · JOR-4 · partes de día ·
-  fichajes sospechosos.
+- ⬜ **PV-5/6/7** (enhancements de pago proveedor, ver arriba).
+- ⬜ **C resto**: MEMP-3 (calendario/jornada) · MEMP-4 (vacaciones/bajas) · MEMP-5 (nóminas) ·
+  JOR-4 · partes de día · fichajes sospechosos.
 - ⬜ **D entero** (decisión Benjamin: construir + MARCAR para validar): VIG-3 menor
   (guard `hasPayslips`) · VIG-4 atrasos · CV-5 excedencias/suspensiones · CV-8 cese empresa.
 - ⬜ **GESTOR-NAVEGADOR (JCEF)** Fase 1 — integración pesada (binarios nativos Chromium);
