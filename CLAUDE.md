@@ -127,6 +127,15 @@ git checkout feat/Benjamin
   `setPrefSize(...)` (+ `setResizable(true)` si tiene tabla) y las tablas
   anchas usan `CONSTRAINED_RESIZE_POLICY` para que las columnas no se corten
   fuera de la ventana. No crear ventanas “a ojo”.
+- **Controles/datos ARRIBA del listado, nunca debajo (patrón "Slice 3V").**
+  Botones de acción, filtros, totales y paneles secundarios van **encima** de
+  la `TableView`/`ListView`, y la tabla **crece** con
+  `VBox.setVgrow(tabla, Priority.ALWAYS)` para llenar el espacio. Así el usuario
+  no tiene que hacer **scroll vertical** para llegar a controles/datos del
+  fondo (perdiendo de vista la lista). Si una pantalla tiene mucho contenido +
+  una lista dentro de un `ScrollPane`, pon lo principal (KPIs + la lista) arriba
+  y lo derivado abajo. La mayoría de pantallas ya lo cumplen; al crear o tocar
+  una, verifícalo.
 - **Auto-refresh (REGLA DURA — verificar en CADA acción que muta datos).**
   El usuario **NO** debe pulsar "Refrescar" para ver el resultado de una acción.
   Toda acción que cree/edite/borre/valide/pague algo tiene que **refrescar

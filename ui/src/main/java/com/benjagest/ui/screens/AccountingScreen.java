@@ -1269,10 +1269,13 @@ public class AccountingScreen {
         recHint.setWrapText(true);
         finRecommendations = new VBox(6);
 
+        // Orden: lo principal arriba (KPIs + evolución mensual) y lo derivado
+        // abajo (proyección + recomendaciones). Antes la tabla de evolución
+        // quedaba enterrada al fondo del scroll y había que bajar a buscarla.
         VBox content = new VBox(12, finCards, new Separator(),
+                evoTitle, finMonthly, new Separator(),
                 projTitle, projHint, finProjection, new Separator(),
-                recTitle, recHint, finRecommendations, new Separator(),
-                evoTitle, finMonthly);
+                recTitle, recHint, finRecommendations);
         ScrollPane sp = new ScrollPane(content);
         sp.setFitToWidth(true);
 
