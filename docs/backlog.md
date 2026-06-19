@@ -47,14 +47,18 @@ aparte — context Spring + Flyway OK):**
   (OpenPDF): resumen + proyección + recomendaciones + evolución mensual. Endpoint
   `/financials/export.pdf` + botón "Exportar PDF".
   **→ Bloque FIN-ANALYSIS (FIN-1..5) COMPLETO.**
+- ✅ **REPORTS-PDF (Balance + PyG)** *(0d2e7ef → merge 4582d0d)* — `AccountingReportsPdfService`
+  (OpenPDF): PDF del Balance de Situación y de PyG. Endpoints `/reports/{balance-sheet,
+  profit-and-loss}/export.pdf` + botón "Exportar PDF" en ambas pestañas + helper `savePdf`.
+  Cierra parcialmente "Export PDF de informes": **pendiente Mayor + Sumas y Saldos**.
 
 > **Validación:** todo compila (backend+ui) y el backend ARRANCA limpio (Spring + Flyway,
-> sin UnsatisfiedDependency); las 5 rutas FIN + /templates responden 403 (mapeadas y
-> protegidas). Smoke con login real → a las 19:00 con Benjamin.
+> sin UnsatisfiedDependency); todas las rutas nuevas (FIN ×5 + /templates + 2 PDF de
+> informes) responden 403 (mapeadas y protegidas). Smoke con login real → 19:00 con Benjamin.
 
 **Pendiente del plan (NO empezado por presupuesto de la sesión; orden sugerido):**
-- ⬜ **A restante**: Export PDF de informes contables · **FORMATS-EXCHANGE** (xDiario +
-  SUENLACE export/import, por spec, marcar para validar con fichero real).
+- ⬜ **A restante**: Export PDF de **Mayor + Sumas y Saldos** (Balance+PyG ya hechos) ·
+  **FORMATS-EXCHANGE** (xDiario + SUENLACE export/import, por spec, marcar para validar).
 - ⬜ **B restante**: **FIN-1b** pendiente de PAGO a proveedores (`purchase_invoices`
   cambió de esquema en V45 → verificar modelo de pagos antes de cablear; regla 10.bis).
 - ⬜ **C entero**: MEMP-2 (fichar móvil) · MEMP-3 · MEMP-4 · JOR-4 · partes de día ·
