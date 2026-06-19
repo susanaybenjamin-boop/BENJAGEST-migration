@@ -174,7 +174,7 @@ public class FinancialDashboardPdfService {
                     + " (a compensar o devolver).");
         }
         if (f.draftCount() > 0) {
-            out.add("Hay " + f.draftCount() + " asientos en borrador por validar; "
+            out.add("Hay " + f.draftCount() + " asiento(s) por validar (pestaña \"Por validar\"); "
                     + "las cifras no son definitivas.");
         }
         if (out.isEmpty()) {
