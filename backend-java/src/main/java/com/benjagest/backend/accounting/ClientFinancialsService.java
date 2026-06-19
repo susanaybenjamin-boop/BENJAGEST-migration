@@ -82,7 +82,24 @@ public class ClientFinancialsService {
                 nz(k.vatCharged()), nz(k.vatBorne()), nz(k.model303Estimated()),
                 pending, overdue, pendingPay,
                 pct(result, income), pct(expenses, income), pct(personnel, income),
-                k.draftCount());
+                pendingValidationCount(companyId));
+    }
+
+    /**
+     * Asientos realmente "por validar": DRAFT + {@code auto_proposed=TRUE}.
+     * Debe COINCIDIR con lo que muestra la pestaña "Por validar" (que filtra
+     * por auto-propuestos). Los DRAFT manuales (p.ej. aplicar una plantilla
+     * sin contabilizar, o un asiento manual en borrador) NO son "por validar"
+     * — se gestionan desde el Diario — así que NO se cuentan aquí, para no
+     * mandar al usuario a una pestaña vacía. {@code k.draftCount()} (todos los
+     * DRAFT) era el origen del desajuste.
+     */
+    private int pendingValidationCount(String companyId) {
+        Integer c = jdbc.queryForObject("""
+                SELECT COUNT(*) FROM journal_entries
+                 WHERE company_id = ? AND status = 'DRAFT' AND auto_proposed = TRUE
+                """, Integer.class, companyId);
+        return c == null ? 0 : c;
     }
 
     /**

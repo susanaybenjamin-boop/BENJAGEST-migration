@@ -18255,7 +18255,7 @@ public class BenjagestUiApplication extends Application {
             case "accounting.fin.pending_payments" -> "Pending payments";
             case "accounting.fin.suppliers" -> "to suppliers";
             case "accounting.fin.overdue" -> "{n} overdue invoice(s)";
-            case "accounting.fin.draft_warn" -> "Heads up: {n} draft entries are not validated and are NOT included in these figures.";
+            case "accounting.fin.draft_warn" -> "You have {n} entr(y/ies) to validate in the \"To validate\" tab. They are not included in these figures until validated.";
             case "accounting.fin.evolution" -> "Monthly evolution";
             case "accounting.fin.no_data" -> "No data for this year.";
             case "accounting.fin.month" -> "Month";
@@ -18276,7 +18276,7 @@ public class BenjagestUiApplication extends Application {
             case "accounting.rec.thin_margin" -> "Expenses are {p} of income; the margin is very thin.";
             case "accounting.rec.vat_to_pay" -> "Estimated VAT to pay (Form 303): {x}. Set aside cash for the settlement.";
             case "accounting.rec.vat_to_offset" -> "Estimated VAT in your favour: {x} (to offset or refund).";
-            case "accounting.rec.validate_drafts" -> "There are {n} draft entries to validate; the figures are not final.";
+            case "accounting.rec.validate_drafts" -> "There are {n} auto-proposed entr(y/ies) to validate in the \"To validate\" tab; the figures are not final.";
             case "accounting.rec.all_good" -> "No alerts for this period. Healthy figures.";
             case "accounting.fin.export_pdf" -> "Export PDF";
             case "accounting.fin.export_ok_title" -> "PDF saved";
@@ -19359,7 +19359,7 @@ public class BenjagestUiApplication extends Application {
             case "accounting.fin.pending_payments" -> "Pendiente de pago";
             case "accounting.fin.suppliers" -> "a proveedores";
             case "accounting.fin.overdue" -> "{n} factura(s) vencida(s)";
-            case "accounting.fin.draft_warn" -> "Atención: hay {n} asientos en borrador sin validar que NO se incluyen en estas cifras.";
+            case "accounting.fin.draft_warn" -> "Tienes {n} asiento(s) por validar en la pestaña \"Por validar\". No entran en estas cifras hasta que los valides.";
             case "accounting.fin.evolution" -> "Evolución mensual";
             case "accounting.fin.no_data" -> "Sin datos para este año.";
             case "accounting.fin.month" -> "Mes";
@@ -19380,7 +19380,7 @@ public class BenjagestUiApplication extends Application {
             case "accounting.rec.thin_margin" -> "Los gastos son el {p} de los ingresos; el margen es muy ajustado.";
             case "accounting.rec.vat_to_pay" -> "IVA estimado a pagar (Modelo 303): {x}. Provisiona la liquidación.";
             case "accounting.rec.vat_to_offset" -> "IVA estimado a tu favor: {x} (a compensar o devolver).";
-            case "accounting.rec.validate_drafts" -> "Hay {n} asientos en borrador por validar; las cifras no son definitivas.";
+            case "accounting.rec.validate_drafts" -> "Hay {n} asiento(s) auto-propuestos por validar en la pestaña \"Por validar\"; las cifras no son definitivas.";
             case "accounting.rec.all_good" -> "Sin alertas para este periodo. Cifras saludables.";
             case "accounting.fin.export_pdf" -> "Exportar PDF";
             case "accounting.fin.export_ok_title" -> "PDF guardado";
