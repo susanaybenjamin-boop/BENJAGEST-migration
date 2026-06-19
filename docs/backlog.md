@@ -67,8 +67,17 @@ aparte — context Spring + Flyway OK):**
   · **PV-3** `DueDateController` /api/due-dates · **PV-4** UI en Compras (botón
   "Vencimientos / Pago": tabla + Pagar banco/caja + **Pagar al contado** (ticket) +
   Deshacer + Editar cuadro). *(622492d, 1fc5192 → merge bbfced7, 11a51d8)*.
-  ⬜ **Pendiente PV-5** (conciliación bancaria ↔ marcar vencimiento PAID) · **PV-6** (FIN lee
-  pendiente de los vencimientos) · **PV-7** (simetría cobros de ventas).
+  ✅ **PV-5** *(3badeb4 → merge 58da3fd)* — la **conciliación bancaria marca el vencimiento
+  como PAGADO** (settleByBankMovement, sin asiento nuevo). Unifica las dos vías de pago.
+  ❌ **PV-6 DESCARTADO** (innecesario): el saldo acreedor 400/410 que ya usa FIN-1b **YA
+  refleja los pagos** (pagar un vencimiento/conciliar reduce el saldo 400). Leer de los
+  vencimientos infracontaría las compras sin vencimiento creado aún. Se queda el 400/410.
+  🔵 **PV-7 REPLANTEAR** (no hacer "a lo bruto"): ventas YA tiene modelo de cobro
+  (`payment_status`+`paid_amount`+`due_date`+multi-allocation+conciliación). Añadir
+  vencimientos múltiples a ventas solo tiene sentido como **unificación** (los vencimientos
+  PAID **conducen** el `payment_status`), no como sistema paralelo. Decisión de Benjamin
+  pendiente si quiere cobros aplazados en N plazos. **Bloque NÓMINA backend lo soporta** (el
+  servicio/endpoint ya son kind-aware), solo falta la UI + la unificación con payment_status.
 - ✅ **MEMP-2 fichar desde el móvil** *(420d31b → merge 41f352b)* — `EmployeeFichajeController`
   /api/empleado/fichaje (rol EMPLOYEE, reusa TimeClockService) + pantalla de fichaje en la PWA
   (Entrada/Salida/Pausa/Vuelta + geo + estado + últimos). **Probado en vivo OK** por Benjamin
@@ -83,6 +92,12 @@ aparte — context Spring + Flyway OK):**
 > rutas nuevas 403 (mapeadas/protegidas), la PWA sirve el HTML nuevo. **MEMP-2 probado en vivo.**
 
 **Pendiente del plan (orden sugerido):**
+- ⭐ **PRÓXIMA SESIÓN (decidido Benjamin 2026-06-19): terminar el PORTAL DEL EMPLEADO (MEMP)** —
+  **MEMP-3** calendario / jornada / plan del día (que el empleado vea SU horario JOR-2 + su
+  jornada real JOR-1 + festivos) · **MEMP-4** vacaciones y bajas (pedir desde el móvil, con
+  adjuntos) · **MEMP-5** nóminas (recibir/confirmar/firmar/descargar; falta backend de
+  entrega/firma). MEMP-2 (fichar) ya está. *Sinergia: MEMP-3 comparte con FICHAJE-JORNADA la
+  resolución del horario del empleado; conviene hacer FICHAJE-JORNADA antes o a la vez.*
 - ⬜ **FICHAJE-JORNADA** *(pedido Benjamin 2026-06-19)* — botones de fichaje según el horario
   asignado (estilo CONTENDO: ±15 min, "solo el botón que toca"). Plan slice a slice (FJ-1..5,
   incluye la incidencia schedule-aware + acción de revisar/corregir = punto 2) en
