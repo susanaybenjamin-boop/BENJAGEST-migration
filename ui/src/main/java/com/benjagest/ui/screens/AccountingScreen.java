@@ -1045,6 +1045,7 @@ public class AccountingScreen {
     private DatePicker finTo;
     private FlowPane finCards;
     private Label finDraftWarn;
+    private TableView<AccountingModels.MonthPoint> finMonthly;
 
     private static final java.text.NumberFormat MONEY =
             java.text.NumberFormat.getCurrencyInstance(java.util.Locale.forLanguageTag("es-ES"));
@@ -1074,11 +1075,25 @@ public class AccountingScreen {
         finCards = new FlowPane(14, 14);
         finCards.setPadding(new Insets(6, 0, 0, 0));
 
-        VBox box = new VBox(10, hint, controls, finDraftWarn,
-                new ScrollPane(finCards));
-        box.setPadding(new Insets(8));
-        ScrollPane sp = (ScrollPane) box.getChildren().get(3);
+        // FIN-2 — evolución mensual del año (del 'Hasta').
+        Label evoTitle = new Label(tt.apply("accounting.fin.evolution"));
+        evoTitle.setStyle("-fx-font-weight: bold; -fx-font-size: 13px;");
+        finMonthly = new TableView<>();
+        finMonthly.setPlaceholder(new Label(tt.apply("accounting.fin.no_data")));
+        finMonthly.setPrefHeight(360);
+        finMonthly.getColumns().addAll(List.of(
+                col(tt.apply("accounting.fin.month"), m -> monthName(m.month()), 120),
+                col(tt.apply("accounting.fin.income"), m -> money(m.income()), 130),
+                col(tt.apply("accounting.fin.expenses"), m -> money(m.expenses()), 130),
+                col(tt.apply("accounting.fin.result"), m -> money(m.result()), 130)
+        ));
+
+        VBox content = new VBox(12, finCards, new Separator(), evoTitle, finMonthly);
+        ScrollPane sp = new ScrollPane(content);
         sp.setFitToWidth(true);
+
+        VBox box = new VBox(10, hint, controls, finDraftWarn, sp);
+        box.setPadding(new Insets(8));
         VBox.setVgrow(sp, Priority.ALWAYS);
         loadFinancials();
         return box;
@@ -1091,6 +1106,17 @@ public class AccountingScreen {
         async(() -> api.clientFinancials(from, to),
                 this::renderFinancials,
                 err -> logSilent("load-financials", err));
+        int year = to.getYear();
+        async(() -> api.financialsMonthly(year),
+                rows -> finMonthly.setItems(FXCollections.observableArrayList(rows)),
+                err -> logSilent("load-financials-monthly", err));
+    }
+
+    private String monthName(int m) {
+        if (m < 1 || m > 12) return String.valueOf(m);
+        return java.time.Month.of(m).getDisplayName(
+                java.time.format.TextStyle.FULL,
+                java.util.Locale.forLanguageTag("es-ES"));
     }
 
     private void renderFinancials(AccountingModels.ClientFinancials f) {

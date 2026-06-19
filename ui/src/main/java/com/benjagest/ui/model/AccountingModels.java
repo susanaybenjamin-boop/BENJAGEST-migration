@@ -295,4 +295,7 @@ public final class AccountingModels {
             BigDecimal marginPct, BigDecimal expenseRatioPct, BigDecimal personnelRatioPct,
             int draftCount
     ) {}
+
+    /** FIN-2 — un punto de la serie mensual (mes 1-12). */
+    public record MonthPoint(int month, BigDecimal income, BigDecimal expenses, BigDecimal result) {}
 }

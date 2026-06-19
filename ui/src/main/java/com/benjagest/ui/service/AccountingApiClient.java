@@ -1112,6 +1112,18 @@ public class AccountingApiClient {
                 decField(json, "personnelRatioPct"), intField(json, "draftCount"));
     }
 
+    public List<AccountingModels.MonthPoint> financialsMonthly(int year)
+            throws IOException, InterruptedException {
+        String json = get("/accounting/financials/monthly?year=" + year);
+        List<AccountingModels.MonthPoint> out = new ArrayList<>();
+        for (String o : splitJsonArray(json)) {
+            out.add(new AccountingModels.MonthPoint(
+                    intField(o, "month"), decField(o, "income"),
+                    decField(o, "expenses"), decField(o, "result")));
+        }
+        return out;
+    }
+
     // ====================================================================
     //  HTTP helpers
     // ====================================================================
