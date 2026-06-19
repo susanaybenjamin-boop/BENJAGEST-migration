@@ -88,16 +88,22 @@ aparte — context Spring + Flyway OK):**
   resumen explicando que el click de fila filtra el detalle (vía de revisión de la incidencia).
 - ✅ **Fix i18n source_type DUE_DATE_PAYMENT** + **CLAUDE.md §4/§10 regla dura de i18n**
   (valores de enum/estado/source_type que el backend genera necesitan clave ES+EN).
+- ✅ **Fix filtro Origen (Diario)** *(b1f116e)* — listaba 13 de 19 source_types; faltaban
+  nóminas/recurrente/DUE_DATE_PAYMENT/venta-PDF. Ahora completo (verificado contra BD).
+- ✅ **Auto-refresh cuadro de mando** *(390fca0)* + **CLAUDE.md §4/§10 regla dura de auto-refresh**
+  (toda acción → `RefreshBus.emit`; toda vista/aviso → `subscribe`; el usuario nunca refresca).
+- ✅ **ASIENTO MANUAL INTUITIVO (ME-1/2/3)** *(f78bd81, e9da2fc → merge 124d4d0, 886cae2)* —
+  plan en [`plan-asientos-manuales-intuitivos.md`](plan-asientos-manuales-intuitivos.md).
+  **ME-1** Tab recorre la fila (cuenta→desc→debe→haber→sig. línea). **ME-2** al elegir cuenta
+  de tercero (43x/40x) muestra sus facturas pendientes debajo. **ME-3** sugiere cuentas
+  (histórico de co-ocurrencia + regla IVA) como botones; clic rellena línea. Backend
+  `ManualEntryAssistService` + `/api/accounting/assist/*`. **Pendiente: validación en vivo**
+  (tacto del Tab y sugerencias) + fase 2 (clic en factura rellena importe; encadenar sugerencias).
 
 > **Validación:** todo compila (backend+ui), el backend ARRANCA limpio (V133 migra OK),
 > rutas nuevas 403 (mapeadas/protegidas), la PWA sirve el HTML nuevo. **MEMP-2 probado en vivo.**
 
 **Pendiente del plan (orden sugerido):**
-- ⬜ **ASIENTO MANUAL INTUITIVO** *(pedido Benjamin 2026-06-19)* — plan en
-  [`plan-asientos-manuales-intuitivos.md`](plan-asientos-manuales-intuitivos.md): **ME-1**
-  Tab que recorra la fila (bug); **ME-2** mostrar facturas pendientes del tercero al elegir
-  su cuenta (430/400); **ME-3** sugerir la cuenta de IVA de contrapartida (7→477, 6→472).
-  Filosofía: sugerir sin imponer, el usuario sigue mandando. **Probar en vivo (backend up)**.
 - ⭐ **PRÓXIMA SESIÓN (decidido Benjamin 2026-06-19): terminar el PORTAL DEL EMPLEADO (MEMP)** —
   **MEMP-3** calendario / jornada / plan del día (que el empleado vea SU horario JOR-2 + su
   jornada real JOR-1 + festivos) · **MEMP-4** vacaciones y bajas (pedir desde el móvil, con
