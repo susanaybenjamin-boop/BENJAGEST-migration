@@ -298,4 +298,11 @@ public final class AccountingModels {
 
     /** FIN-2 — un punto de la serie mensual (mes 1-12). */
     public record MonthPoint(int month, BigDecimal income, BigDecimal expenses, BigDecimal result) {}
+
+    /** FIN-3 — proyección de cierre + IS estimado. */
+    public record ClosingProjection(
+            int year, int monthsElapsed,
+            BigDecimal resultToDate, BigDecimal projectedResult,
+            BigDecimal estimatedCorporateTax, BigDecimal projectedAfterTax
+    ) {}
 }

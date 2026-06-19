@@ -1046,6 +1046,7 @@ public class AccountingScreen {
     private FlowPane finCards;
     private Label finDraftWarn;
     private TableView<AccountingModels.MonthPoint> finMonthly;
+    private FlowPane finProjection;
 
     private static final java.text.NumberFormat MONEY =
             java.text.NumberFormat.getCurrencyInstance(java.util.Locale.forLanguageTag("es-ES"));
@@ -1088,7 +1089,17 @@ public class AccountingScreen {
                 col(tt.apply("accounting.fin.result"), m -> money(m.result()), 130)
         ));
 
-        VBox content = new VBox(12, finCards, new Separator(), evoTitle, finMonthly);
+        // FIN-3 — proyección de cierre + IS estimado (del año del 'Hasta').
+        Label projTitle = new Label(tt.apply("accounting.fin.projection"));
+        projTitle.setStyle("-fx-font-weight: bold; -fx-font-size: 13px;");
+        Label projHint = new Label(tt.apply("accounting.fin.projection_hint"));
+        projHint.setStyle("-fx-text-fill: #6e6e6e; -fx-font-style: italic;");
+        projHint.setWrapText(true);
+        finProjection = new FlowPane(14, 14);
+
+        VBox content = new VBox(12, finCards, new Separator(),
+                projTitle, projHint, finProjection, new Separator(),
+                evoTitle, finMonthly);
         ScrollPane sp = new ScrollPane(content);
         sp.setFitToWidth(true);
 
@@ -1110,6 +1121,25 @@ public class AccountingScreen {
         async(() -> api.financialsMonthly(year),
                 rows -> finMonthly.setItems(FXCollections.observableArrayList(rows)),
                 err -> logSilent("load-financials-monthly", err));
+        async(() -> api.financialsProjection(year),
+                this::renderProjection,
+                err -> logSilent("load-financials-projection", err));
+    }
+
+    private void renderProjection(AccountingModels.ClosingProjection p) {
+        finProjection.getChildren().clear();
+        finProjection.getChildren().addAll(
+                kpiCard(tt.apply("accounting.fin.result_ytd"), money(p.resultToDate()),
+                        tt.apply("accounting.fin.months_elapsed").replace("{n}", String.valueOf(p.monthsElapsed())),
+                        p.resultToDate().signum() >= 0 ? "#2e7d32" : "#c62828"),
+                kpiCard(tt.apply("accounting.fin.projected_result"), money(p.projectedResult()),
+                        tt.apply("accounting.fin.year_end"),
+                        p.projectedResult().signum() >= 0 ? "#2e7d32" : "#c62828"),
+                kpiCard(tt.apply("accounting.fin.estimated_is"), money(p.estimatedCorporateTax()),
+                        tt.apply("accounting.fin.is_rate"), "#1565c0"),
+                kpiCard(tt.apply("accounting.fin.after_tax"), money(p.projectedAfterTax()), null,
+                        p.projectedAfterTax().signum() >= 0 ? "#2e7d32" : "#c62828")
+        );
     }
 
     private String monthName(int m) {

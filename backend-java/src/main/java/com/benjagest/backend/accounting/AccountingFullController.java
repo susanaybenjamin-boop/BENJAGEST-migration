@@ -257,6 +257,12 @@ public class AccountingFullController {
         return clientFinancials.monthlySeries(year);
     }
 
+    @GetMapping("/financials/projection")
+    public ClientFinancialsService.ClosingProjection financialsProjection(
+            @RequestParam("year") int year) {
+        return clientFinancials.projectYearEnd(year);
+    }
+
     @PostMapping("/templates/{id}/apply")
     public ManualJournalEntryService.ManualEntryView applyTemplate(
             @PathVariable("id") String id,
