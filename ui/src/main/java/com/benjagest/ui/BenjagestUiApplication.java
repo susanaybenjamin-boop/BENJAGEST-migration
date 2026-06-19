@@ -18192,6 +18192,11 @@ public class BenjagestUiApplication extends Application {
             case "accounting.col.lines" -> "Lines";
             case "accounting.col.side" -> "Dr/Cr";
             case "accounting.col.kind" -> "Type";
+            case "accounting.side.DEBIT" -> "Debit";
+            case "accounting.side.CREDIT" -> "Credit";
+            case "accounting.kind.FIXED" -> "Fixed";
+            case "accounting.kind.VARIABLE" -> "Variable";
+            case "accounting.kind.FORMULA" -> "Formula";
             case "accounting.col.fixed_amount" -> "Fixed amount";
             case "accounting.col.variable" -> "Variable / Formula";
             case "accounting.tpl_cat.PAYROLL" -> "Payroll";
@@ -19289,6 +19294,11 @@ public class BenjagestUiApplication extends Application {
             case "accounting.col.lines" -> "Líneas";
             case "accounting.col.side" -> "D/H";
             case "accounting.col.kind" -> "Tipo";
+            case "accounting.side.DEBIT" -> "Debe";
+            case "accounting.side.CREDIT" -> "Haber";
+            case "accounting.kind.FIXED" -> "Fijo";
+            case "accounting.kind.VARIABLE" -> "Variable";
+            case "accounting.kind.FORMULA" -> "Fórmula";
             case "accounting.col.fixed_amount" -> "Importe fijo";
             case "accounting.col.variable" -> "Variable / Fórmula";
             case "accounting.tpl_cat.PAYROLL" -> "Nómina";

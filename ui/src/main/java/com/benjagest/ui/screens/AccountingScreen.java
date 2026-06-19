@@ -778,10 +778,105 @@ public class AccountingScreen {
         }
     }
 
+    /**
+     * Celda de cuenta para la tabla de líneas de plantilla: ComboBox editable
+     * con el Plan General de cuentas (código + nombre), filtrado al teclear, y
+     * que persiste solo el CÓDIGO en la línea. Si el asesor teclea un código de
+     * tercero (4000xxx/4300xxx) que aún no existe, el backend lo crea al aplicar
+     * la plantilla. Misma UX que el editor de asientos manuales.
+     */
+    private static class TplAccountCell extends javafx.scene.control.TableCell<TplLineRow, String> {
+        private final ComboBox<String> combo;
+        private final ObservableList<String> allOptions;
+        private final List<AccountSummary> accounts;
+        private boolean updatingFromFilter = false;
+
+        TplAccountCell(List<AccountSummary> accounts) {
+            this.accounts = accounts;
+            this.combo = new ComboBox<>();
+            this.allOptions = FXCollections.observableArrayList();
+            for (AccountSummary a : accounts) allOptions.add(a.code() + "  " + a.name());
+            combo.setItems(FXCollections.observableArrayList(allOptions));
+            combo.setEditable(true);
+            combo.setVisibleRowCount(12);
+            combo.setMaxWidth(Double.MAX_VALUE);
+
+            combo.getEditor().textProperty().addListener((obs, oldV, newV) -> {
+                if (updatingFromFilter) return;
+                String typed = newV == null ? "" : newV.trim();
+                if (typed.contains("  ")) return;
+                String prefix = typed.toLowerCase();
+                ObservableList<String> filtered = FXCollections.observableArrayList();
+                for (String opt : allOptions) {
+                    if (prefix.isEmpty() || opt.toLowerCase().startsWith(prefix)) filtered.add(opt);
+                }
+                updatingFromFilter = true;
+                try {
+                    combo.setItems(filtered);
+                    if (!prefix.isEmpty() && !filtered.isEmpty() && !combo.isShowing()) combo.show();
+                } finally {
+                    updatingFromFilter = false;
+                }
+            });
+
+            combo.setOnAction(ev -> persist());
+            combo.focusedProperty().addListener((obs, had, has) -> { if (had && !has) persist(); });
+            combo.getEditor().focusedProperty().addListener((obs, had, has) -> { if (had && !has) persist(); });
+            setContentDisplay(ContentDisplay.GRAPHIC_ONLY);
+        }
+
+        private void persist() {
+            String v = combo.getEditor().getText();
+            if (v == null) return;
+            String code = v.contains("  ") ? v.substring(0, v.indexOf("  ")).trim() : v.trim();
+            if (getTableRow() != null && getTableRow().getItem() != null) {
+                TplLineRow row = getTableRow().getItem();
+                row.accountCode.set(code);
+                if (row.description.get() == null || row.description.get().isBlank()) {
+                    for (AccountSummary a : accounts) {
+                        if (code.equals(a.code())) { row.description.set(a.name()); break; }
+                    }
+                }
+            }
+            setText(code);
+        }
+
+        @Override
+        protected void updateItem(String item, boolean empty) {
+            super.updateItem(item, empty);
+            if (empty) { setGraphic(null); return; }
+            String shown = item == null ? "" : item;
+            if (item != null && !item.isBlank()) {
+                for (AccountSummary a : accounts) {
+                    if (item.equals(a.code())) { shown = a.code() + "  " + a.name(); break; }
+                }
+            }
+            updatingFromFilter = true;
+            try {
+                combo.getEditor().setText(shown);
+                combo.setItems(FXCollections.observableArrayList(allOptions));
+            } finally {
+                updatingFromFilter = false;
+            }
+            setGraphic(combo);
+        }
+    }
+
     /** Editor de plantilla (alta si {@code existing == null}, edición si no). */
     private void openTemplateEditor(AccountingModels.EntryTemplate existing) {
+        // Cargar el Plan General de cuentas antes de construir el editor
+        // (igual que el editor de asientos manuales) para ofrecer el
+        // selector de cuentas + alta de tercero al teclear un 4000/4300.
+        async(() -> api.listAccounts(null),
+                accounts -> buildTemplateEditor(existing, accounts),
+                err -> showError(tt.apply("accounting.error.template_save"), err));
+    }
+
+    private void buildTemplateEditor(AccountingModels.EntryTemplate existing,
+                                       List<AccountSummary> accounts) {
         boolean isNew = existing == null;
         Dialog<ButtonType> dlg = new Dialog<>();
+        dlg.setResizable(true);
         dlg.setTitle(isNew ? tt.apply("accounting.action.new_template")
                 : tt.apply("accounting.action.edit"));
         ButtonType saveBt = new ButtonType(tt.apply("accounting.action.save"), ButtonBar.ButtonData.OK_DONE);
@@ -828,14 +923,25 @@ public class AccountingScreen {
 
         TableView<TplLineRow> linesTable = new TableView<>(lineRows);
         linesTable.setEditable(true);
-        linesTable.setPrefHeight(220);
+        linesTable.setPrefHeight(240);
+        // Las columnas se reparten el ancho de la tabla (no se desbordan ni
+        // se cortan fuera del diálogo).
+        linesTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
+
+        // Cuenta: selector del Plan General de cuentas (autocompletar por
+        // código/nombre) + alta de tercero al teclear un 4000/4300.
+        TableColumn<TplLineRow, String> accCol = new TableColumn<>(tt.apply("accounting.col.account"));
+        accCol.setPrefWidth(180);
+        accCol.setCellValueFactory(cd -> cd.getValue().accountCode);
+        accCol.setCellFactory(c -> new TplAccountCell(accounts));
+
         linesTable.getColumns().addAll(List.of(
-                editCol(tt.apply("accounting.col.account"), r -> r.accountCode, 110),
-                editCol(tt.apply("accounting.col.concept"), r -> r.description, 160),
-                comboCol(tt.apply("accounting.col.side"), r -> r.side, LINE_SIDES, 100),
-                comboCol(tt.apply("accounting.col.kind"), r -> r.kind, LINE_KINDS, 110),
+                accCol,
+                editCol(tt.apply("accounting.col.concept"), r -> r.description, 150),
+                comboColLoc(tt.apply("accounting.col.side"), r -> r.side, LINE_SIDES, "accounting.side.", 90),
+                comboColLoc(tt.apply("accounting.col.kind"), r -> r.kind, LINE_KINDS, "accounting.kind.", 100),
                 editCol(tt.apply("accounting.col.fixed_amount"), r -> r.amount, 110),
-                editCol(tt.apply("accounting.col.variable"), r -> r.variable, 140)
+                editCol(tt.apply("accounting.col.variable"), r -> r.variable, 130)
         ));
 
         Button addLine = new Button(tt.apply("accounting.action.add_line"));
@@ -867,8 +973,12 @@ public class AccountingScreen {
         VBox content = new VBox(10, head, new Separator(),
                 new Label(tt.apply("accounting.tpl.lines")), tplHint, linesTable, lineActions);
         content.setPadding(new Insets(4));
-        content.setPrefWidth(720);
-        dlg.getDialogPane().setContent(new ScrollPane(content));
+        VBox.setVgrow(linesTable, Priority.ALWAYS);
+        ScrollPane sp = new ScrollPane(content);
+        sp.setFitToWidth(true);
+        dlg.getDialogPane().setContent(sp);
+        dlg.getDialogPane().setPrefSize(880, 660);
+        dlg.getDialogPane().setMinWidth(720);
 
         // Validación antes de cerrar con "Guardar".
         Button saveButton = (Button) dlg.getDialogPane().lookupButton(saveBt);
@@ -897,6 +1007,7 @@ public class AccountingScreen {
     /** Diálogo para aplicar la plantilla → genera un asiento. */
     private void openTemplateApply(AccountingModels.EntryTemplate tpl) {
         Dialog<ButtonType> dlg = new Dialog<>();
+        dlg.setResizable(true);
         dlg.setTitle(tt.apply("accounting.action.apply_template") + " — " + tpl.name());
         ButtonType applyBt = new ButtonType(tt.apply("accounting.action.generate_entry"), ButtonBar.ButtonData.OK_DONE);
         dlg.getDialogPane().getButtonTypes().addAll(applyBt, ButtonType.CANCEL);
@@ -932,10 +1043,14 @@ public class AccountingScreen {
             grid.add(vh, 0, rowIdx, 2, 1);
         }
 
+        GridPane.setHgrow(conceptField, Priority.ALWAYS);
         VBox content = new VBox(10, grid);
         content.setPadding(new Insets(6));
-        content.setPrefWidth(420);
-        dlg.getDialogPane().setContent(content);
+        ScrollPane sp = new ScrollPane(content);
+        sp.setFitToWidth(true);
+        dlg.getDialogPane().setContent(sp);
+        dlg.getDialogPane().setPrefSize(460, 420);
+        dlg.getDialogPane().setMinWidth(420);
 
         dlg.showAndWait().ifPresent(bt -> {
             if (bt != applyBt) return;
@@ -1014,15 +1129,36 @@ public class AccountingScreen {
         return c;
     }
 
-    private TableColumn<TplLineRow, String> comboCol(String header,
-            Function<TplLineRow, SimpleStringProperty> prop, List<String> options, double width) {
+    /**
+     * Columna ComboBox cuyo valor interno es un código (DEBIT, FIXED…) pero
+     * que SE MUESTRA traducido (Debe, Fijo…) tanto en la celda como en el
+     * desplegable, vía {@code i18nPrefix + código}.
+     */
+    private TableColumn<TplLineRow, String> comboColLoc(String header,
+            Function<TplLineRow, SimpleStringProperty> prop, List<String> options,
+            String i18nPrefix, double width) {
         TableColumn<TplLineRow, String> c = new TableColumn<>(header);
         c.setPrefWidth(width);
         c.setCellValueFactory(cd -> prop.apply(cd.getValue()));
         c.setCellFactory(ComboBoxTableCell.forTableColumn(
+                codeLabelConverter(i18nPrefix, options),
                 FXCollections.observableArrayList(options)));
         c.setOnEditCommit(ev -> prop.apply(ev.getRowValue()).set(ev.getNewValue()));
         return c;
+    }
+
+    private javafx.util.StringConverter<String> codeLabelConverter(String i18nPrefix, List<String> codes) {
+        return new javafx.util.StringConverter<>() {
+            @Override public String toString(String code) {
+                return code == null ? "" : tt.apply(i18nPrefix + code);
+            }
+            @Override public String fromString(String label) {
+                for (String code : codes) {
+                    if (tt.apply(i18nPrefix + code).equals(label)) return code;
+                }
+                return label;
+            }
+        };
     }
 
     private javafx.scene.control.ListCell<String> tplCategoryCell() {
