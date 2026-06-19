@@ -1846,6 +1846,10 @@ public class AccountingScreen {
         assistBox.setVisible(false);
         assistBox.setManaged(false);
 
+        // Holder para refrescar los totales tras rellenar líneas desde una
+        // factura (refreshTotals se define más abajo; aquí aún no existe).
+        final Runnable[] refreshHolder = new Runnable[1];
+
         java.util.function.Consumer<String> loadAssist = code -> {
             if (code == null || code.isBlank()) return;
             java.util.List<String> present = new java.util.ArrayList<>();
@@ -1857,7 +1861,8 @@ public class AccountingScreen {
                     || code.startsWith("40") || code.startsWith("41");
             if (tercero) {
                 async(() -> api.openInvoicesForAccount(code),
-                        invs -> renderEntryOpenInvoices(openInvBox, invs),
+                        invs -> renderEntryOpenInvoices(openInvBox, invs, lines, code, accounts,
+                                () -> { if (refreshHolder[0] != null) refreshHolder[0].run(); }),
                         err -> openInvBox.getChildren().clear());
             } else {
                 openInvBox.getChildren().clear();
@@ -1952,6 +1957,7 @@ public class AccountingScreen {
         linesTable.setOnKeyReleased(e -> refreshTotals.run());
         linesTable.setOnMouseClicked(e -> refreshTotals.run());
         refreshTotals.run();
+        refreshHolder[0] = refreshTotals; // ME-2 fase 2: refrescar totales al rellenar desde factura
 
         Button addLine = new Button("+ línea");
         addLine.setOnAction(e -> { lines.add(new EditableLine()); refreshTotals.run(); });
@@ -2051,9 +2057,15 @@ public class AccountingScreen {
         return dialog;
     }
 
-    /** ME-2 — pinta las facturas pendientes del tercero bajo el asiento. */
+    /**
+     * ME-2 — pinta las facturas pendientes del tercero bajo el asiento. Cada
+     * una es CLICABLE (fase 2): al pulsarla, rellena la línea del tercero y la
+     * contrapartida de tesorería (572) con el importe en el debe/haber correcto.
+     */
     private void renderEntryOpenInvoices(VBox box,
-            java.util.List<AccountingModels.OpenInvoice> invs) {
+            java.util.List<AccountingModels.OpenInvoice> invs,
+            ObservableList<EditableLine> lines, String terceroCode,
+            List<AccountSummary> accounts, Runnable onChange) {
         box.getChildren().clear();
         if (invs == null || invs.isEmpty()) return;
         Label title = new Label(tt.apply("accounting.assist.open_invoices"));
@@ -2061,20 +2073,85 @@ public class AccountingScreen {
         box.getChildren().add(title);
         int shown = 0;
         for (AccountingModels.OpenInvoice oi : invs) {
-            if (shown++ >= 6) {
-                Label more = new Label("… +" + (invs.size() - 6));
+            if (shown++ >= 8) {
+                Label more = new Label("… +" + (invs.size() - 8));
                 more.setStyle("-fx-text-fill:#6e6e6e; -fx-font-size:12px;");
                 box.getChildren().add(more);
                 break;
             }
-            String line = (oi.number() == null ? "" : oi.number()) + "   ·   "
+            String text = (oi.number() == null ? "" : oi.number()) + "   ·   "
                     + (oi.date() == null ? "" : oi.date().toString()) + "   ·   "
                     + tt.apply("accounting.assist.pending") + " " + eur(oi.pending());
-            Label l = new Label(line);
-            l.setStyle("-fx-text-fill:#444; -fx-font-size:12px;");
-            box.getChildren().add(l);
+            javafx.scene.control.Hyperlink link = new javafx.scene.control.Hyperlink(text);
+            link.setStyle("-fx-font-size:12px;");
+            link.setOnAction(e -> applyOpenInvoice(lines, terceroCode, oi, accounts, onChange));
+            box.getChildren().add(link);
         }
     }
+
+    /**
+     * Rellena el asiento a partir de una factura pendiente del tercero:
+     * - Cliente (43x): Haber en la cuenta del cliente + Debe en tesorería (572).
+     * - Proveedor (40x/41x): Debe en la cuenta del proveedor + Haber en tesorería.
+     * El importe = pendiente de la factura. Tesorería por defecto 572 (banco);
+     * el usuario puede cambiarla a 570 (caja) o editar lo que quiera.
+     */
+    private void applyOpenInvoice(ObservableList<EditableLine> lines, String terceroCode,
+            AccountingModels.OpenInvoice oi, List<AccountSummary> accounts, Runnable onChange) {
+        boolean cliente = terceroCode.startsWith("43") || terceroCode.startsWith("44");
+        BigDecimal amt = oi.pending() == null ? BigDecimal.ZERO : oi.pending();
+        String amtStr = amt.toPlainString();
+        String concept = (cliente ? "Cobro factura " : "Pago factura ")
+                + (oi.number() == null ? "" : oi.number());
+        // Cuenta de tesorería REAL (572 banco) — resuelta del plan de la empresa.
+        String treasuryCode = resolveCodeByPrefix(accounts, "572");
+
+        // Línea del tercero (la que ya tiene su cuenta) o la primera en blanco.
+        EditableLine tline = findLineByCode(lines, terceroCode);
+        if (tline == null) { tline = firstBlankOrAdd(lines); tline.accountCodeProp.set(terceroCode); }
+        if (cliente) { tline.creditProp.set(amtStr); tline.debitProp.set(""); }
+        else { tline.debitProp.set(amtStr); tline.creditProp.set(""); }
+        if (isBlank(tline.descriptionProp.get())) tline.descriptionProp.set(concept);
+
+        // Contrapartida de tesorería (572 banco por defecto) en el lado opuesto.
+        EditableLine treas = firstBlankOrAdd(lines);
+        treas.accountCodeProp.set(treasuryCode);
+        if (cliente) { treas.debitProp.set(amtStr); treas.creditProp.set(""); }
+        else { treas.creditProp.set(amtStr); treas.debitProp.set(""); }
+        if (isBlank(treas.descriptionProp.get())) treas.descriptionProp.set(concept);
+
+        if (onChange != null) onChange.run();
+    }
+
+    /** Resuelve un código de cuenta existente por prefijo (exacto o la subcuenta más corta). */
+    private String resolveCodeByPrefix(List<AccountSummary> accounts, String prefix) {
+        if (accounts != null) {
+            for (AccountSummary a : accounts) if (prefix.equals(a.code())) return a.code();
+            String best = null;
+            for (AccountSummary a : accounts) {
+                if (a.code() != null && a.code().startsWith(prefix)
+                        && (best == null || a.code().length() < best.length())) best = a.code();
+            }
+            if (best != null) return best;
+        }
+        return prefix;
+    }
+
+    private EditableLine findLineByCode(ObservableList<EditableLine> lines, String code) {
+        for (EditableLine l : lines) if (code.equals(l.accountCodeProp.get())) return l;
+        return null;
+    }
+
+    private EditableLine firstBlankOrAdd(ObservableList<EditableLine> lines) {
+        for (EditableLine l : lines) {
+            if (isBlank(l.accountCodeProp.get())) return l;
+        }
+        EditableLine l = new EditableLine();
+        lines.add(l);
+        return l;
+    }
+
+    private boolean isBlank(String s) { return s == null || s.isBlank(); }
 
     /** ME-3 — pinta las cuentas sugeridas como botones; un clic rellena una línea. */
     private void renderEntrySuggestions(FlowPane pane, Label title,
