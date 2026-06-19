@@ -28,12 +28,16 @@ import javafx.scene.Node;
 import javafx.scene.control.Alert;
 import javafx.scene.control.Alert.AlertType;
 import javafx.scene.control.Button;
+import javafx.scene.control.ButtonBar;
 import javafx.scene.control.ButtonType;
+import javafx.scene.control.CheckBox;
 import javafx.scene.control.ComboBox;
 import javafx.scene.control.ContentDisplay;
 import javafx.scene.control.DatePicker;
+import javafx.scene.control.Dialog;
 import javafx.scene.control.Label;
 import javafx.scene.control.RadioButton;
+import javafx.scene.control.ScrollPane;
 import javafx.scene.control.Separator;
 import javafx.scene.control.Tab;
 import javafx.scene.control.ToggleGroup;
@@ -42,6 +46,8 @@ import javafx.scene.control.TableColumn;
 import javafx.scene.control.TableView;
 import javafx.scene.control.TextArea;
 import javafx.scene.control.TextField;
+import javafx.scene.control.cell.ComboBoxTableCell;
+import javafx.scene.control.cell.TextFieldTableCell;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.GridPane;
 import javafx.scene.layout.HBox;
@@ -108,6 +114,9 @@ public class AccountingScreen {
                 new Tab(tt.apply("accounting.tab.pyg"), buildPygTab()),
                 new Tab(tt.apply("accounting.tab.ecpn"), buildEcpnTab()),
                 new Tab(tt.apply("accounting.tab.rules"), buildRulesTab()),
+                // ACC-TEMPLATES — plantillas de asiento manual recurrente
+                // (backend ya existía; faltaba la UI de gestión + aplicar).
+                new Tab(tt.apply("accounting.tab.templates"), buildTemplatesTab()),
                 new Tab(tt.apply("accounting.tab.year_close"), buildYearCloseTab()),
                 new Tab(tt.apply("accounting.tab.exchange"), buildExportImportTab())
         );
@@ -663,6 +672,367 @@ public class AccountingScreen {
                 rows -> rulesTable.setItems(FXCollections.observableArrayList(rows)),
                 err -> logSilent("load", err));
     }
+
+    // ====================================================================
+    //  Tab: Plantillas de asiento (ACC-TEMPLATES)
+    // ====================================================================
+
+    private TableView<AccountingModels.EntryTemplate> templatesTable;
+    private CheckBox templatesShowArchived;
+
+    /** Categorías de plantilla (coinciden con las del backend). */
+    private static final List<String> TEMPLATE_CATEGORIES =
+            List.of("PAYROLL", "TAX", "PROVISION", "PERIODIFICATION", "OTHER");
+    private static final List<String> LINE_SIDES = List.of("DEBIT", "CREDIT");
+    private static final List<String> LINE_KINDS = List.of("FIXED", "VARIABLE", "FORMULA");
+
+    private Node buildTemplatesTab() {
+        templatesTable = new TableView<>();
+        templatesTable.setPlaceholder(new Label(tt.apply("accounting.templates.empty")));
+        templatesTable.getColumns().addAll(List.of(
+                col(tt.apply("accounting.col.code"), AccountingModels.EntryTemplate::code, 90),
+                col(tt.apply("accounting.col.name"), AccountingModels.EntryTemplate::name, 200),
+                col(tt.apply("accounting.col.category"),
+                        t -> tt.apply("accounting.tpl_cat." + t.category()), 130),
+                col(tt.apply("accounting.col.lines"), t -> String.valueOf(t.lines().size()), 60),
+                col(tt.apply("accounting.col.applied"), t -> String.valueOf(t.timesUsed()), 70),
+                col(tt.apply("accounting.col.active"), t -> t.active() ? "✓" : "✗", 60)
+        ));
+        templatesTable.setRowFactory(tv -> {
+            javafx.scene.control.TableRow<AccountingModels.EntryTemplate> r = new javafx.scene.control.TableRow<>();
+            r.setOnMouseClicked(ev -> {
+                if (ev.getClickCount() == 2 && !r.isEmpty()) openTemplateEditor(r.getItem());
+            });
+            return r;
+        });
+
+        Button create = new Button(tt.apply("accounting.action.new_template"));
+        create.setOnAction(e -> openTemplateEditor(null));
+        Button edit = new Button(tt.apply("accounting.action.edit"));
+        edit.setOnAction(e -> {
+            AccountingModels.EntryTemplate sel = templatesTable.getSelectionModel().getSelectedItem();
+            if (sel != null) openTemplateEditor(sel);
+        });
+        Button apply = new Button(tt.apply("accounting.action.apply_template"));
+        apply.setOnAction(e -> {
+            AccountingModels.EntryTemplate sel = templatesTable.getSelectionModel().getSelectedItem();
+            if (sel != null) openTemplateApply(sel);
+        });
+        Button archive = new Button(tt.apply("accounting.action.archive"));
+        archive.setOnAction(e -> {
+            AccountingModels.EntryTemplate sel = templatesTable.getSelectionModel().getSelectedItem();
+            if (sel == null || !sel.active()) return;
+            Alert confirm = new Alert(AlertType.CONFIRMATION,
+                    tt.apply("accounting.confirm.archive_template"),
+                    ButtonType.YES, ButtonType.NO);
+            confirm.showAndWait().ifPresent(bt -> {
+                if (bt == ButtonType.YES) {
+                    async(() -> { api.archiveTemplate(sel.id()); return null; },
+                            v -> loadTemplates(),
+                            err -> showError(tt.apply("accounting.error.archive"), err));
+                }
+            });
+        });
+        Button refresh = new Button(tt.apply("accounting.action.refresh"));
+        refresh.setOnAction(e -> loadTemplates());
+
+        templatesShowArchived = new CheckBox(tt.apply("accounting.templates.show_archived"));
+        templatesShowArchived.selectedProperty().addListener((o, a, b) -> loadTemplates());
+
+        Label hint = new Label(tt.apply("accounting.templates.hint"));
+        hint.setStyle("-fx-text-fill: #6e6e6e;");
+        hint.setWrapText(true);
+
+        HBox actions = new HBox(8, create, edit, apply, archive, refresh,
+                new Separator(javafx.geometry.Orientation.VERTICAL), templatesShowArchived);
+        actions.setAlignment(Pos.CENTER_LEFT);
+
+        VBox box = new VBox(10, hint, actions, templatesTable);
+        VBox.setVgrow(templatesTable, Priority.ALWAYS);
+        box.setPadding(new Insets(8));
+        loadTemplates();
+        return box;
+    }
+
+    private void loadTemplates() {
+        Boolean activeOnly = (templatesShowArchived != null && templatesShowArchived.isSelected())
+                ? null : Boolean.TRUE;
+        async(() -> api.listTemplates(null, activeOnly),
+                rows -> templatesTable.setItems(FXCollections.observableArrayList(rows)),
+                err -> logSilent("load-templates", err));
+    }
+
+    /** Holder mutable editable de una línea de plantilla (UI). */
+    private static class TplLineRow {
+        final SimpleStringProperty accountCode, description, side, kind, amount, variable;
+        TplLineRow(String ac, String desc, String side, String kind, String amount, String variable) {
+            this.accountCode = new SimpleStringProperty(ac == null ? "" : ac);
+            this.description = new SimpleStringProperty(desc == null ? "" : desc);
+            this.side = new SimpleStringProperty(side == null ? "DEBIT" : side);
+            this.kind = new SimpleStringProperty(kind == null ? "FIXED" : kind);
+            this.amount = new SimpleStringProperty(amount == null ? "" : amount);
+            this.variable = new SimpleStringProperty(variable == null ? "" : variable);
+        }
+    }
+
+    /** Editor de plantilla (alta si {@code existing == null}, edición si no). */
+    private void openTemplateEditor(AccountingModels.EntryTemplate existing) {
+        boolean isNew = existing == null;
+        Dialog<ButtonType> dlg = new Dialog<>();
+        dlg.setTitle(isNew ? tt.apply("accounting.action.new_template")
+                : tt.apply("accounting.action.edit"));
+        ButtonType saveBt = new ButtonType(tt.apply("accounting.action.save"), ButtonBar.ButtonData.OK_DONE);
+        dlg.getDialogPane().getButtonTypes().addAll(saveBt, ButtonType.CANCEL);
+
+        TextField codeField = new TextField(isNew ? "" : existing.code());
+        codeField.setDisable(!isNew); // el código no se cambia en edición (backend no lo toca)
+        TextField nameField = new TextField(isNew ? "" : existing.name());
+        ComboBox<String> categoryCombo = new ComboBox<>(FXCollections.observableArrayList(TEMPLATE_CATEGORIES));
+        categoryCombo.setValue(isNew ? "OTHER" : existing.category());
+        categoryCombo.setButtonCell(tplCategoryCell());
+        categoryCombo.setCellFactory(lv -> tplCategoryCell());
+        TextField conceptField = new TextField(isNew ? "" : nz(existing.defaultConcept()));
+        TextField descField = new TextField(isNew ? "" : nz(existing.description()));
+
+        GridPane head = new GridPane();
+        head.setHgap(8); head.setVgap(6);
+        head.addRow(0, new Label(tt.apply("accounting.col.code")), codeField);
+        head.addRow(1, new Label(tt.apply("accounting.col.name")), nameField);
+        head.addRow(2, new Label(tt.apply("accounting.col.category")), categoryCombo);
+        head.addRow(3, new Label(tt.apply("accounting.tpl.default_concept")), conceptField);
+        head.addRow(4, new Label(tt.apply("accounting.tpl.description")), descField);
+        for (Node n : List.of(nameField, categoryCombo, conceptField, descField)) {
+            GridPane.setHgrow(n, Priority.ALWAYS);
+            if (n instanceof Region r) r.setMaxWidth(Double.MAX_VALUE);
+        }
+
+        // Tabla editable de líneas.
+        ObservableList<TplLineRow> lineRows = FXCollections.observableArrayList();
+        if (!isNew) {
+            for (AccountingModels.EntryTemplateLine l : existing.lines()) {
+                String amount = "FIXED".equals(l.amountKind()) && l.fixedAmount() != null
+                        ? l.fixedAmount().toPlainString() : "";
+                String variable = "VARIABLE".equals(l.amountKind()) ? nz(l.variableName())
+                        : "FORMULA".equals(l.amountKind()) ? nz(l.formula()) : "";
+                lineRows.add(new TplLineRow(l.accountCode(), l.description(),
+                        l.side(), l.amountKind(), amount, variable));
+            }
+        }
+        if (lineRows.isEmpty()) {
+            lineRows.add(new TplLineRow("", "", "DEBIT", "FIXED", "", ""));
+            lineRows.add(new TplLineRow("", "", "CREDIT", "FIXED", "", ""));
+        }
+
+        TableView<TplLineRow> linesTable = new TableView<>(lineRows);
+        linesTable.setEditable(true);
+        linesTable.setPrefHeight(220);
+        linesTable.getColumns().addAll(List.of(
+                editCol(tt.apply("accounting.col.account"), r -> r.accountCode, 110),
+                editCol(tt.apply("accounting.col.concept"), r -> r.description, 160),
+                comboCol(tt.apply("accounting.col.side"), r -> r.side, LINE_SIDES, 100),
+                comboCol(tt.apply("accounting.col.kind"), r -> r.kind, LINE_KINDS, 110),
+                editCol(tt.apply("accounting.col.fixed_amount"), r -> r.amount, 110),
+                editCol(tt.apply("accounting.col.variable"), r -> r.variable, 140)
+        ));
+
+        Button addLine = new Button(tt.apply("accounting.action.add_line"));
+        addLine.setOnAction(e -> lineRows.add(new TplLineRow("", "", "DEBIT", "FIXED", "", "")));
+        Button removeLine = new Button(tt.apply("accounting.action.remove_line"));
+        removeLine.setOnAction(e -> {
+            TplLineRow sel = linesTable.getSelectionModel().getSelectedItem();
+            if (sel != null) lineRows.remove(sel);
+        });
+        Label balanceLbl = new Label();
+        balanceLbl.setStyle("-fx-text-fill: #6e6e6e;");
+        Runnable recalc = () -> balanceLbl.setText(fixedBalanceHint(lineRows));
+        lineRows.addListener((javafx.collections.ListChangeListener<TplLineRow>) c -> recalc.run());
+        for (TplLineRow r : lineRows) {
+            r.amount.addListener((o, a, b) -> recalc.run());
+            r.side.addListener((o, a, b) -> recalc.run());
+            r.kind.addListener((o, a, b) -> recalc.run());
+        }
+        recalc.run();
+
+        Label tplHint = new Label(tt.apply("accounting.tpl.lines_hint"));
+        tplHint.setStyle("-fx-text-fill: #6e6e6e; -fx-font-style: italic;");
+        tplHint.setWrapText(true);
+
+        HBox lineActions = new HBox(8, addLine, removeLine, new Region(), balanceLbl);
+        HBox.setHgrow(lineActions.getChildren().get(2), Priority.ALWAYS);
+        lineActions.setAlignment(Pos.CENTER_LEFT);
+
+        VBox content = new VBox(10, head, new Separator(),
+                new Label(tt.apply("accounting.tpl.lines")), tplHint, linesTable, lineActions);
+        content.setPadding(new Insets(4));
+        content.setPrefWidth(720);
+        dlg.getDialogPane().setContent(new ScrollPane(content));
+
+        // Validación antes de cerrar con "Guardar".
+        Button saveButton = (Button) dlg.getDialogPane().lookupButton(saveBt);
+        saveButton.addEventFilter(javafx.event.ActionEvent.ACTION, ev -> {
+            String err = validateTemplate(codeField.getText(), nameField.getText(), lineRows);
+            if (err != null) {
+                ev.consume();
+                showError(tt.apply("accounting.error.template_invalid"), err);
+            }
+        });
+
+        dlg.showAndWait().ifPresent(bt -> {
+            if (bt != saveBt) return;
+            AccountingModels.EntryTemplate payload = new AccountingModels.EntryTemplate(
+                    isNew ? null : existing.id(),
+                    codeField.getText().trim(), nameField.getText().trim(),
+                    categoryCombo.getValue(), blankNull(conceptField.getText()),
+                    blankNull(descField.getText()), true, 0, null,
+                    toLineRequests(lineRows));
+            async(() -> isNew ? api.createTemplate(payload) : api.updateTemplate(existing.id(), payload),
+                    saved -> loadTemplates(),
+                    err -> showError(tt.apply("accounting.error.template_save"), err));
+        });
+    }
+
+    /** Diálogo para aplicar la plantilla → genera un asiento. */
+    private void openTemplateApply(AccountingModels.EntryTemplate tpl) {
+        Dialog<ButtonType> dlg = new Dialog<>();
+        dlg.setTitle(tt.apply("accounting.action.apply_template") + " — " + tpl.name());
+        ButtonType applyBt = new ButtonType(tt.apply("accounting.action.generate_entry"), ButtonBar.ButtonData.OK_DONE);
+        dlg.getDialogPane().getButtonTypes().addAll(applyBt, ButtonType.CANCEL);
+
+        DatePicker datePicker = new DatePicker(LocalDate.now());
+        TextField conceptField = new TextField(
+                first(tpl.defaultConcept(), tpl.name()));
+        CheckBox postNow = new CheckBox(tt.apply("accounting.tpl.post_now"));
+
+        GridPane grid = new GridPane();
+        grid.setHgap(8); grid.setVgap(6);
+        grid.addRow(0, new Label(tt.apply("accounting.tpl.entry_date")), datePicker);
+        grid.addRow(1, new Label(tt.apply("accounting.tpl.concept")), conceptField);
+        grid.add(postNow, 1, 2);
+        GridPane.setHgrow(conceptField, Priority.ALWAYS);
+        conceptField.setMaxWidth(Double.MAX_VALUE);
+
+        // Un campo por cada variable distinta de las líneas VARIABLE/FORMULA.
+        java.util.LinkedHashMap<String, TextField> varFields = new java.util.LinkedHashMap<>();
+        int rowIdx = 3;
+        for (AccountingModels.EntryTemplateLine l : tpl.lines()) {
+            String varName = "VARIABLE".equals(l.amountKind()) ? l.variableName()
+                    : "FORMULA".equals(l.amountKind()) ? l.formula() : null;
+            if (varName == null || varName.isBlank() || varFields.containsKey(varName)) continue;
+            TextField vf = new TextField();
+            vf.setPromptText("0,00");
+            varFields.put(varName, vf);
+            grid.addRow(rowIdx++, new Label(varName), vf);
+        }
+        if (!varFields.isEmpty()) {
+            Label vh = new Label(tt.apply("accounting.tpl.variables_hint"));
+            vh.setStyle("-fx-text-fill: #6e6e6e; -fx-font-style: italic;");
+            grid.add(vh, 0, rowIdx, 2, 1);
+        }
+
+        VBox content = new VBox(10, grid);
+        content.setPadding(new Insets(6));
+        content.setPrefWidth(420);
+        dlg.getDialogPane().setContent(content);
+
+        dlg.showAndWait().ifPresent(bt -> {
+            if (bt != applyBt) return;
+            java.util.Map<String, BigDecimal> vars = new java.util.HashMap<>();
+            for (var e : varFields.entrySet()) vars.put(e.getKey(), parse(e.getValue().getText()));
+            LocalDate date = datePicker.getValue();
+            String concept = conceptField.getText();
+            boolean post = postNow.isSelected();
+            async(() -> api.applyTemplate(tpl.id(), date, concept, vars, post),
+                    entryId -> {
+                        loadTemplates();
+                        com.benjagest.ui.support.RefreshBus.emit(
+                                com.benjagest.ui.support.RefreshBus.TOPIC_JOURNAL);
+                        showInfo(tt.apply("accounting.tpl.applied_title"),
+                                tt.apply("accounting.tpl.applied_body"));
+                    },
+                    err -> showError(tt.apply("accounting.error.template_apply"), err));
+        });
+    }
+
+    // ----- helpers ACC-TEMPLATES -----
+
+    private List<AccountingModels.EntryTemplateLine> toLineRequests(List<TplLineRow> rows) {
+        List<AccountingModels.EntryTemplateLine> out = new ArrayList<>();
+        for (TplLineRow r : rows) {
+            String kind = r.kind.get();
+            BigDecimal fixed = "FIXED".equals(kind) ? parse(r.amount.get()) : null;
+            String variableName = "VARIABLE".equals(kind) ? blankNull(r.variable.get()) : null;
+            String formula = "FORMULA".equals(kind) ? blankNull(r.variable.get()) : null;
+            out.add(new AccountingModels.EntryTemplateLine(
+                    r.accountCode.get().trim(), blankNull(r.description.get()),
+                    r.side.get(), kind, fixed, formula, variableName));
+        }
+        return out;
+    }
+
+    private String validateTemplate(String code, String name, List<TplLineRow> rows) {
+        if (empty(code)) return tt.apply("accounting.error.code_required");
+        if (empty(name)) return tt.apply("accounting.error.name_required");
+        if (rows.size() < 2) return tt.apply("accounting.error.min_lines");
+        for (TplLineRow r : rows) {
+            if (empty(r.accountCode.get())) return tt.apply("accounting.error.account_required");
+            if ("VARIABLE".equals(r.kind.get()) && empty(r.variable.get()))
+                return tt.apply("accounting.error.variable_required");
+            if ("FORMULA".equals(r.kind.get()) && empty(r.variable.get()))
+                return tt.apply("accounting.error.formula_required");
+        }
+        return null;
+    }
+
+    /** Pista de cuadre solo sobre líneas FIXED (las VARIABLE no se conocen aún). */
+    private String fixedBalanceHint(List<TplLineRow> rows) {
+        BigDecimal debit = BigDecimal.ZERO, credit = BigDecimal.ZERO;
+        boolean hasVariable = false;
+        for (TplLineRow r : rows) {
+            if (!"FIXED".equals(r.kind.get())) { hasVariable = true; continue; }
+            BigDecimal amt = parse(r.amount.get());
+            if ("DEBIT".equals(r.side.get())) debit = debit.add(amt);
+            else credit = credit.add(amt);
+        }
+        String base = tt.apply("accounting.tpl.fixed_balance")
+                .replace("{d}", debit.toPlainString())
+                .replace("{h}", credit.toPlainString());
+        if (debit.compareTo(credit) == 0) base += "  ✓";
+        if (hasVariable) base += "  " + tt.apply("accounting.tpl.has_variables");
+        return base;
+    }
+
+    private TableColumn<TplLineRow, String> editCol(String header,
+            Function<TplLineRow, SimpleStringProperty> prop, double width) {
+        TableColumn<TplLineRow, String> c = new TableColumn<>(header);
+        c.setPrefWidth(width);
+        c.setCellValueFactory(cd -> prop.apply(cd.getValue()));
+        c.setCellFactory(TextFieldTableCell.forTableColumn());
+        c.setOnEditCommit(ev -> prop.apply(ev.getRowValue()).set(ev.getNewValue()));
+        return c;
+    }
+
+    private TableColumn<TplLineRow, String> comboCol(String header,
+            Function<TplLineRow, SimpleStringProperty> prop, List<String> options, double width) {
+        TableColumn<TplLineRow, String> c = new TableColumn<>(header);
+        c.setPrefWidth(width);
+        c.setCellValueFactory(cd -> prop.apply(cd.getValue()));
+        c.setCellFactory(ComboBoxTableCell.forTableColumn(
+                FXCollections.observableArrayList(options)));
+        c.setOnEditCommit(ev -> prop.apply(ev.getRowValue()).set(ev.getNewValue()));
+        return c;
+    }
+
+    private javafx.scene.control.ListCell<String> tplCategoryCell() {
+        return new javafx.scene.control.ListCell<>() {
+            @Override protected void updateItem(String item, boolean empty) {
+                super.updateItem(item, empty);
+                setText(empty || item == null ? null : tt.apply("accounting.tpl_cat." + item));
+            }
+        };
+    }
+
+    private String nz(String s) { return s == null ? "" : s; }
+    private String blankNull(String s) { return s == null || s.isBlank() ? null : s.trim(); }
 
     // ====================================================================
     //  Tab: Cierre de ejercicio (CONS-CIERRE)

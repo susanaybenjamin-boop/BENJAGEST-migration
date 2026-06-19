@@ -256,4 +256,29 @@ public final class AccountingModels {
             List<ReportSection> gastos, BigDecimal totalGastos,
             BigDecimal resultadoExplotacion
     ) {}
+
+    // ====================================================================
+    //  ACC-TEMPLATES — Plantillas de asiento manual recurrente
+    // ====================================================================
+
+    /** Cabecera + líneas de una plantilla de asiento (GET /templates/{id}). */
+    public record EntryTemplate(
+            String id, String code, String name, String category,
+            String defaultConcept, String description, boolean active,
+            int timesUsed, String lastUsedAt,
+            List<EntryTemplateLine> lines
+    ) {}
+
+    /**
+     * Una línea de la plantilla. El importe se resuelve al aplicar según
+     * {@code amountKind}: FIXED (importe fijo), VARIABLE (lo teclea el
+     * usuario al aplicar, identificado por {@code variableName}) o FORMULA
+     * (referencia a otra variable, por ahora).
+     */
+    public record EntryTemplateLine(
+            String accountCode, String description,
+            String side,        // DEBIT | CREDIT
+            String amountKind,  // FIXED | VARIABLE | FORMULA
+            BigDecimal fixedAmount, String formula, String variableName
+    ) {}
 }

@@ -989,6 +989,110 @@ public class AccountingApiClient {
     }
 
     // ====================================================================
+    //  ACC-TEMPLATES — Plantillas de asiento manual recurrente
+    // ====================================================================
+
+    /** Lista las plantillas de la empresa (opcionalmente por categoría / solo activas). */
+    public List<AccountingModels.EntryTemplate> listTemplates(String category, Boolean activeOnly)
+            throws IOException, InterruptedException {
+        StringBuilder q = new StringBuilder();
+        if (category != null && !category.isBlank()) append(q, "category", category);
+        if (activeOnly != null) append(q, "active", activeOnly.toString());
+        String json = get("/accounting/templates" + q);
+        List<AccountingModels.EntryTemplate> out = new ArrayList<>();
+        for (String obj : splitJsonArray(json)) out.add(parseTemplate(obj));
+        return out;
+    }
+
+    public AccountingModels.EntryTemplate createTemplate(AccountingModels.EntryTemplate tpl)
+            throws IOException, InterruptedException {
+        return parseTemplate(postRaw("/accounting/templates", buildTemplateRequest(tpl)));
+    }
+
+    public AccountingModels.EntryTemplate updateTemplate(String id, AccountingModels.EntryTemplate tpl)
+            throws IOException, InterruptedException {
+        return parseTemplate(put("/accounting/templates/" + id, buildTemplateRequest(tpl)));
+    }
+
+    /** Archiva (desactiva) la plantilla. El backend hace setActive(false). */
+    public void archiveTemplate(String id) throws IOException, InterruptedException {
+        delete("/accounting/templates/" + id);
+    }
+
+    /**
+     * Aplica la plantilla generando un asiento (DRAFT o POSTED según postNow).
+     * {@code variables} mapea variableName → importe para las líneas
+     * VARIABLE/FORMULA. Devuelve el id del asiento creado.
+     */
+    public String applyTemplate(String templateId, LocalDate entryDate, String concept,
+                                 java.util.Map<String, BigDecimal> variables, boolean postNow)
+            throws IOException, InterruptedException {
+        StringBuilder b = new StringBuilder("{");
+        appendKV(b, "entryDate", entryDate == null ? null : entryDate.toString(), true);
+        appendKV(b, "concept", concept, false);
+        b.append(",\"postNow\":").append(postNow);
+        b.append(",\"variables\":{");
+        if (variables != null) {
+            boolean first = true;
+            for (var e : variables.entrySet()) {
+                if (!first) b.append(',');
+                first = false;
+                b.append('"').append(escape(e.getKey())).append("\":")
+                        .append(e.getValue() == null ? "0" : e.getValue().toPlainString());
+            }
+        }
+        b.append("}}");
+        String json = postRaw("/accounting/templates/" + templateId + "/apply", b.toString());
+        return strField(json, "id");
+    }
+
+    private AccountingModels.EntryTemplate parseTemplate(String json) {
+        List<AccountingModels.EntryTemplateLine> lines = new ArrayList<>();
+        String arr = extractArrayField(json, "lines");
+        if (arr != null) {
+            for (String o : splitJsonArray(arr)) {
+                lines.add(new AccountingModels.EntryTemplateLine(
+                        strField(o, "accountCode"), strField(o, "description"),
+                        strField(o, "side"), strField(o, "amountKind"),
+                        decField(o, "fixedAmount"), strField(o, "formula"),
+                        strField(o, "variableName")));
+            }
+        }
+        return new AccountingModels.EntryTemplate(
+                strField(json, "id"), strField(json, "code"), strField(json, "name"),
+                strField(json, "category"), strField(json, "defaultConcept"),
+                strField(json, "description"), boolField(json, "active"),
+                intField(json, "timesUsed"), strField(json, "lastUsedAt"), lines);
+    }
+
+    private String buildTemplateRequest(AccountingModels.EntryTemplate tpl) {
+        StringBuilder b = new StringBuilder("{");
+        appendKV(b, "code", tpl.code(), true);
+        appendKV(b, "name", tpl.name(), false);
+        appendKV(b, "category", tpl.category(), false);
+        appendKV(b, "defaultConcept", tpl.defaultConcept(), false);
+        appendKV(b, "description", tpl.description(), false);
+        b.append(",\"lines\":[");
+        List<AccountingModels.EntryTemplateLine> lines = tpl.lines();
+        for (int i = 0; i < lines.size(); i++) {
+            AccountingModels.EntryTemplateLine l = lines.get(i);
+            if (i > 0) b.append(',');
+            b.append("{");
+            appendKV(b, "accountCode", l.accountCode(), true);
+            appendKV(b, "description", l.description(), false);
+            appendKV(b, "side", l.side(), false);
+            appendKV(b, "amountKind", l.amountKind(), false);
+            b.append(",\"fixedAmount\":")
+                    .append(l.fixedAmount() == null ? "null" : l.fixedAmount().toPlainString());
+            appendKV(b, "formula", l.formula(), false);
+            appendKV(b, "variableName", l.variableName(), false);
+            b.append("}");
+        }
+        b.append("]}");
+        return b.toString();
+    }
+
+    // ====================================================================
     //  HTTP helpers
     // ====================================================================
 
