@@ -1,0 +1,336 @@
+package com.benjagest.backend.accounting;
+
+import com.benjagest.backend.auth.CurrentUserService;
+import com.benjagest.backend.tenant.TenantContext;
+import java.math.BigDecimal;
+import java.sql.Date;
+import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.UUID;
+import org.springframework.http.HttpStatus;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
+
+/**
+ * PAGO-PROVEEDOR (PV-2) — Vencimientos de factura + pago contra tesorería.
+ *
+ * <p>Cada factura (compra o venta) puede tener N vencimientos
+ * ({@code invoice_due_dates}). Cada vencimiento se salda contra una cuenta de
+ * tesorería (Banco 572 / Caja 570), generando el asiento:
+ * <ul>
+ *   <li>Compra: Debe 400 (proveedor) / Haber 572·570.</li>
+ *   <li>Venta:  Debe 572·570 / Haber 430 (cliente).</li>
+ * </ul>
+ * Cubre los tres casos que pidió Benjamin: extracto bancario (vía
+ * conciliación, PV-5), ticket y caja (pago directo aquí).
+ *
+ * <p>Tenant-scoped. El asiento se replica del patrón ya probado de
+ * {@code BankMovementService} (cuentas por código/prefijo + ejercicio fiscal).
+ */
+@Service
+public class PaymentScheduleService {
+
+    private final JdbcTemplate jdbc;
+    private final TenantContext tenant;
+    private final CurrentUserService currentUser;
+
+    public PaymentScheduleService(JdbcTemplate jdbc, TenantContext tenant,
+                                    CurrentUserService currentUser) {
+        this.jdbc = jdbc;
+        this.tenant = tenant;
+        this.currentUser = currentUser;
+    }
+
+    // ====================================================================
+    //  Consulta + planificación
+    // ====================================================================
+
+    /** Vencimientos de una factura (crea uno por defecto si no tiene). */
+    @Transactional
+    public List<DueDate> listByInvoice(String invoiceKind, String invoiceId) {
+        kindCheck(invoiceKind);
+        ensureDefault(invoiceKind, invoiceId);
+        return jdbc.query("""
+                SELECT id, invoice_id, invoice_kind, seq, due_date, amount, status,
+                       paid_date, payment_method, treasury_account_code,
+                       journal_entry_id, notes
+                  FROM invoice_due_dates
+                 WHERE company_id = ? AND invoice_kind = ? AND invoice_id = ?
+                 ORDER BY seq
+                """, this::map, tenant.getCurrentCompanyId(), invoiceKind, invoiceId);
+    }
+
+    /**
+     * Si la factura no tiene vencimientos, crea uno = total a la fecha de
+     * factura (PENDING). Idempotente.
+     */
+    @Transactional
+    public void ensureDefault(String invoiceKind, String invoiceId) {
+        Integer n = jdbc.queryForObject("""
+                SELECT COUNT(*) FROM invoice_due_dates
+                 WHERE company_id = ? AND invoice_kind = ? AND invoice_id = ?
+                """, Integer.class, tenant.getCurrentCompanyId(), invoiceKind, invoiceId);
+        if (n != null && n > 0) return;
+        InvoiceInfo info = loadInvoice(invoiceKind, invoiceId);
+        insertDueDate(invoiceKind, invoiceId, 1, info.date(), info.total(), null);
+    }
+
+    /**
+     * Reemplaza el cuadro de vencimientos PENDIENTES de una factura. Valida
+     * que la suma (incluidos los ya pagados) cuadre con el total de la factura.
+     * No toca los vencimientos ya PAGADOS.
+     */
+    @Transactional
+    public List<DueDate> replaceSchedule(String invoiceKind, String invoiceId,
+                                           List<DueDateRequest> rows) {
+        kindCheck(invoiceKind);
+        if (rows == null || rows.isEmpty()) throw bad("Indica al menos un vencimiento.");
+        InvoiceInfo info = loadInvoice(invoiceKind, invoiceId);
+
+        BigDecimal paidSum = jdbc.queryForObject("""
+                SELECT COALESCE(SUM(amount), 0) FROM invoice_due_dates
+                 WHERE company_id = ? AND invoice_kind = ? AND invoice_id = ? AND status = 'PAID'
+                """, BigDecimal.class, tenant.getCurrentCompanyId(), invoiceKind, invoiceId);
+        BigDecimal newSum = BigDecimal.ZERO;
+        for (DueDateRequest r : rows) {
+            if (r.amount() == null || r.amount().signum() <= 0) throw bad("Importe de vencimiento inválido.");
+            if (r.dueDate() == null) throw bad("Falta la fecha de un vencimiento.");
+            newSum = newSum.add(r.amount());
+        }
+        BigDecimal total = newSum.add(paidSum == null ? BigDecimal.ZERO : paidSum);
+        if (total.subtract(info.total()).abs().compareTo(new BigDecimal("0.01")) > 0) {
+            throw bad("La suma de vencimientos (" + total.toPlainString()
+                    + ") no cuadra con el total de la factura (" + info.total().toPlainString() + ").");
+        }
+
+        // Borra solo los PENDIENTES y reinserta; conserva los pagados.
+        jdbc.update("""
+                DELETE FROM invoice_due_dates
+                 WHERE company_id = ? AND invoice_kind = ? AND invoice_id = ? AND status = 'PENDING'
+                """, tenant.getCurrentCompanyId(), invoiceKind, invoiceId);
+        Integer maxSeq = jdbc.queryForObject("""
+                SELECT COALESCE(MAX(seq), 0) FROM invoice_due_dates
+                 WHERE company_id = ? AND invoice_kind = ? AND invoice_id = ?
+                """, Integer.class, tenant.getCurrentCompanyId(), invoiceKind, invoiceId);
+        int seq = maxSeq == null ? 0 : maxSeq;
+        for (DueDateRequest r : rows) {
+            insertDueDate(invoiceKind, invoiceId, ++seq, r.dueDate(), r.amount(), r.notes());
+        }
+        return listByInvoice(invoiceKind, invoiceId);
+    }
+
+    // ====================================================================
+    //  Pago / cobro de un vencimiento
+    // ====================================================================
+
+    @Transactional
+    public DueDate pay(String dueDateId, PayRequest req) {
+        String companyId = tenant.getCurrentCompanyId();
+        DueDate dd = getOne(dueDateId);
+        if ("PAID".equals(dd.status())) throw bad("Este vencimiento ya está pagado.");
+        if (req.treasuryAccountCode() == null || req.treasuryAccountCode().isBlank()) {
+            throw bad("Indica la cuenta de tesorería (Banco 572 / Caja 570).");
+        }
+        LocalDate payDate = req.paidDate() == null ? LocalDate.now() : req.paidDate();
+
+        String treasuryId = resolveAccount(companyId, req.treasuryAccountCode());
+        if (treasuryId == null) throw bad("La cuenta de tesorería " + req.treasuryAccountCode() + " no existe.");
+        String counterPrefix = "SALES".equals(dd.invoiceKind()) ? "430" : "400";
+        String counterId = findAccountByPrefix(companyId, counterPrefix);
+        if (counterId == null) throw bad("No se encontró cuenta " + counterPrefix + " de contrapartida.");
+
+        String fiscalYearId = findFiscalYearId(companyId, payDate);
+        if (fiscalYearId == null) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "No hay ejercicio fiscal abierto para " + payDate + ".");
+        }
+        String entryId = createPaymentEntry(companyId, fiscalYearId, dd,
+                treasuryId, counterId, payDate);
+
+        jdbc.update("""
+                UPDATE invoice_due_dates
+                   SET status = 'PAID', paid_date = ?, payment_method = ?,
+                       treasury_account_code = ?, journal_entry_id = ?
+                 WHERE id = ? AND company_id = ?
+                """, Date.valueOf(payDate), blank(req.paymentMethod()),
+                req.treasuryAccountCode().trim(), entryId, dueDateId, companyId);
+        return getOne(dueDateId);
+    }
+
+    /** Revierte el pago de un vencimiento (borra el asiento, vuelve a PENDING). */
+    @Transactional
+    public DueDate unpay(String dueDateId) {
+        String companyId = tenant.getCurrentCompanyId();
+        DueDate dd = getOne(dueDateId);
+        if (!"PAID".equals(dd.status())) throw bad("Este vencimiento no está pagado.");
+        if (dd.journalEntryId() != null) {
+            jdbc.update("DELETE FROM journal_entry_lines WHERE journal_entry_id = ?", dd.journalEntryId());
+            jdbc.update("DELETE FROM journal_entries WHERE id = ? AND company_id = ?",
+                    dd.journalEntryId(), companyId);
+        }
+        jdbc.update("""
+                UPDATE invoice_due_dates
+                   SET status = 'PENDING', paid_date = NULL, payment_method = NULL,
+                       treasury_account_code = NULL, journal_entry_id = NULL,
+                       bank_movement_id = NULL
+                 WHERE id = ? AND company_id = ?
+                """, dueDateId, companyId);
+        return getOne(dueDateId);
+    }
+
+    // ====================================================================
+    //  Helpers
+    // ====================================================================
+
+    private String createPaymentEntry(String companyId, String fiscalYearId, DueDate dd,
+                                        String treasuryId, String counterId, LocalDate payDate) {
+        Integer max = jdbc.queryForObject("""
+                SELECT COALESCE(MAX(entry_number), 0) FROM journal_entries
+                 WHERE company_id = ? AND fiscal_year_id = ?
+                """, Integer.class, companyId, fiscalYearId);
+        int entryNumber = (max == null ? 0 : max) + 1;
+        String entryId = UUID.randomUUID().toString();
+        boolean sales = "SALES".equals(dd.invoiceKind());
+        String concept = (sales ? "Cobro vto. " : "Pago vto. ") + dd.seq();
+
+        jdbc.update("""
+                INSERT INTO journal_entries (
+                    id, company_id, fiscal_year_id, entry_number,
+                    entry_date, concept, source_type, source_id,
+                    status, reviewed, auto_proposed, created_by
+                ) VALUES (?, ?, ?, ?, ?, ?, 'DUE_DATE_PAYMENT', ?, 'POSTED', FALSE, FALSE, ?)
+                """, entryId, companyId, fiscalYearId, entryNumber,
+                Date.valueOf(payDate), concept, dd.id(), safeUserId());
+
+        BigDecimal amt = dd.amount();
+        if (sales) {
+            // Cobro: Debe tesorería / Haber 430
+            insertLine(entryId, treasuryId, "Cobro", amt, BigDecimal.ZERO);
+            insertLine(entryId, counterId, "Cobro cliente", BigDecimal.ZERO, amt);
+        } else {
+            // Pago: Debe 400 / Haber tesorería
+            insertLine(entryId, counterId, "Pago proveedor", amt, BigDecimal.ZERO);
+            insertLine(entryId, treasuryId, "Pago", BigDecimal.ZERO, amt);
+        }
+        return entryId;
+    }
+
+    private void insertLine(String entryId, String accountId, String desc,
+                              BigDecimal debit, BigDecimal credit) {
+        jdbc.update("""
+                INSERT INTO journal_entry_lines (id, journal_entry_id, account_id, description, debit, credit)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """, UUID.randomUUID().toString(), entryId, accountId, desc, debit, credit);
+    }
+
+    private void insertDueDate(String kind, String invoiceId, int seq,
+                                 LocalDate dueDate, BigDecimal amount, String notes) {
+        jdbc.update("""
+                INSERT INTO invoice_due_dates (
+                    id, company_id, invoice_id, invoice_kind, seq, due_date, amount, status, notes
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, 'PENDING', ?)
+                """, UUID.randomUUID().toString(), tenant.getCurrentCompanyId(),
+                invoiceId, kind, seq, Date.valueOf(dueDate), amount, blank(notes));
+    }
+
+    private DueDate getOne(String id) {
+        List<DueDate> rows = jdbc.query("""
+                SELECT id, invoice_id, invoice_kind, seq, due_date, amount, status,
+                       paid_date, payment_method, treasury_account_code, journal_entry_id, notes
+                  FROM invoice_due_dates
+                 WHERE id = ? AND company_id = ?
+                """, this::map, id, tenant.getCurrentCompanyId());
+        if (rows.isEmpty()) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Vencimiento no encontrado.");
+        return rows.get(0);
+    }
+
+    private record InvoiceInfo(BigDecimal total, LocalDate date) {}
+
+    private InvoiceInfo loadInvoice(String kind, String invoiceId) {
+        String companyId = tenant.getCurrentCompanyId();
+        String sql = "SALES".equals(kind)
+                ? "SELECT total AS t, invoice_date AS d FROM sales_invoices WHERE id = ? AND company_id = ?"
+                : "SELECT total_amount AS t, invoice_date AS d FROM purchase_invoices WHERE id = ? AND company_id = ?";
+        List<InvoiceInfo> rows = jdbc.query(sql, (rs, n) -> {
+            BigDecimal t = rs.getBigDecimal("t");
+            Date d = rs.getDate("d");
+            return new InvoiceInfo(t == null ? BigDecimal.ZERO : t,
+                    d == null ? LocalDate.now() : d.toLocalDate());
+        }, invoiceId, companyId);
+        if (rows.isEmpty()) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Factura no encontrada.");
+        return rows.get(0);
+    }
+
+    /** Resuelve cuenta por código exacto y, si no, por prefijo (subcuenta). */
+    private String resolveAccount(String companyId, String code) {
+        String c = code.trim();
+        List<String> ids = jdbc.query("""
+                SELECT id FROM accounting_accounts
+                 WHERE company_id = ? AND code = ? AND active = TRUE LIMIT 1
+                """, (rs, n) -> rs.getString("id"), companyId, c);
+        if (!ids.isEmpty()) return ids.get(0);
+        return findAccountByPrefix(companyId, c);
+    }
+
+    private String findAccountByPrefix(String companyId, String prefix) {
+        List<String> ids = jdbc.query("""
+                SELECT id FROM accounting_accounts
+                 WHERE company_id = ? AND active = TRUE AND code LIKE ?
+                 ORDER BY LENGTH(code), code LIMIT 1
+                """, (rs, n) -> rs.getString("id"), companyId, prefix + "%");
+        return ids.isEmpty() ? null : ids.get(0);
+    }
+
+    private String findFiscalYearId(String companyId, LocalDate date) {
+        List<String> ids = jdbc.query("""
+                SELECT id FROM fiscal_years
+                 WHERE company_id = ? AND start_date <= ? AND end_date >= ? LIMIT 1
+                """, (rs, n) -> rs.getString("id"), companyId, Date.valueOf(date), Date.valueOf(date));
+        return ids.isEmpty() ? null : ids.get(0);
+    }
+
+    private DueDate map(java.sql.ResultSet rs, int n) throws java.sql.SQLException {
+        Date pd = rs.getDate("paid_date");
+        Date du = rs.getDate("due_date");
+        return new DueDate(
+                rs.getString("id"), rs.getString("invoice_id"), rs.getString("invoice_kind"),
+                rs.getInt("seq"), du == null ? null : du.toLocalDate(),
+                rs.getBigDecimal("amount"), rs.getString("status"),
+                pd == null ? null : pd.toLocalDate(),
+                rs.getString("payment_method"), rs.getString("treasury_account_code"),
+                rs.getString("journal_entry_id"), rs.getString("notes"));
+    }
+
+    private void kindCheck(String kind) {
+        if (!"PURCHASE".equals(kind) && !"SALES".equals(kind)) {
+            throw bad("invoiceKind debe ser PURCHASE o SALES.");
+        }
+    }
+
+    private String safeUserId() {
+        try { return currentUser.require().userId(); } catch (Exception ex) { return null; }
+    }
+
+    private static String blank(String v) { return v == null || v.isBlank() ? null : v.trim(); }
+    private static ResponseStatusException bad(String msg) {
+        return new ResponseStatusException(HttpStatus.BAD_REQUEST, msg);
+    }
+
+    // ====================================================================
+    //  DTOs
+    // ====================================================================
+
+    public record DueDate(
+            String id, String invoiceId, String invoiceKind, int seq,
+            LocalDate dueDate, BigDecimal amount, String status,
+            LocalDate paidDate, String paymentMethod, String treasuryAccountCode,
+            String journalEntryId, String notes
+    ) {}
+
+    public record DueDateRequest(LocalDate dueDate, BigDecimal amount, String notes) {}
+
+    public record PayRequest(String treasuryAccountCode, LocalDate paidDate, String paymentMethod) {}
+}
