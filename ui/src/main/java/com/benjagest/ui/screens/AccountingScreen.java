@@ -1836,11 +1836,48 @@ public class AccountingScreen {
         }
         linesTable.setItems(lines);
 
+        // ME-2/ME-3 — paneles de asistencia (facturas pendientes del tercero +
+        // cuentas sugeridas). Se rellenan al confirmar una cuenta.
+        VBox openInvBox = new VBox(2);
+        FlowPane suggestPane = new FlowPane(6, 6);
+        Label suggestTitle = new Label(tt.apply("accounting.assist.suggestions"));
+        suggestTitle.setStyle("-fx-font-weight: bold; -fx-font-size: 12px;");
+        VBox assistBox = new VBox(6, openInvBox, suggestTitle, suggestPane);
+        assistBox.setVisible(false);
+        assistBox.setManaged(false);
+
+        java.util.function.Consumer<String> loadAssist = code -> {
+            if (code == null || code.isBlank()) return;
+            java.util.List<String> present = new java.util.ArrayList<>();
+            for (EditableLine l : lines) {
+                String c = l.accountCodeProp.get();
+                if (c != null && !c.isBlank()) present.add(c);
+            }
+            boolean tercero = code.startsWith("43") || code.startsWith("44")
+                    || code.startsWith("40") || code.startsWith("41");
+            if (tercero) {
+                async(() -> api.openInvoicesForAccount(code),
+                        invs -> renderEntryOpenInvoices(openInvBox, invs),
+                        err -> openInvBox.getChildren().clear());
+            } else {
+                openInvBox.getChildren().clear();
+            }
+            async(() -> api.suggestAccounts(code, present),
+                    sugg -> renderEntrySuggestions(suggestPane, suggestTitle, sugg, lines),
+                    err -> { suggestPane.getChildren().clear(); });
+            assistBox.setVisible(true);
+            assistBox.setManaged(true);
+        };
+
         TableColumn<EditableLine, String> accCol = new TableColumn<>(tt.apply("accounting.col.account"));
         accCol.setPrefWidth(220);
         accCol.setCellValueFactory(c -> c.getValue().accountCodeProp);
-        // Editable via ComboBox de cuentas.
-        accCol.setCellFactory(c -> new AccountComboCell(accounts));
+        // Editable via ComboBox de cuentas. ME-2/ME-3: al confirmar, asistencia.
+        accCol.setCellFactory(c -> {
+            AccountComboCell cell = new AccountComboCell(accounts);
+            cell.setOnCommit(loadAssist);
+            return cell;
+        });
 
         TableColumn<EditableLine, String> descCol = new TableColumn<>(tt.apply("accounting.col.description"));
         descCol.setPrefWidth(260);
@@ -1959,7 +1996,7 @@ public class AccountingScreen {
         body.setPadding(new Insets(12));
         body.setTop(header);
         body.setCenter(linesTable);
-        body.setBottom(new VBox(6, totals, actions));
+        body.setBottom(new VBox(6, assistBox, totals, actions));
 
         // Visor PDF embebido si el asiento es DRAFT y tiene PDF asociado
         // (típico en asientos creados por multi-import de gastos/ventas).
@@ -2012,6 +2049,61 @@ public class AccountingScreen {
         javafx.scene.Scene scene = new javafx.scene.Scene(rootForScene, w, 600);
         dialog.setScene(scene);
         return dialog;
+    }
+
+    /** ME-2 — pinta las facturas pendientes del tercero bajo el asiento. */
+    private void renderEntryOpenInvoices(VBox box,
+            java.util.List<AccountingModels.OpenInvoice> invs) {
+        box.getChildren().clear();
+        if (invs == null || invs.isEmpty()) return;
+        Label title = new Label(tt.apply("accounting.assist.open_invoices"));
+        title.setStyle("-fx-font-weight: bold; -fx-font-size: 12px;");
+        box.getChildren().add(title);
+        int shown = 0;
+        for (AccountingModels.OpenInvoice oi : invs) {
+            if (shown++ >= 6) {
+                Label more = new Label("… +" + (invs.size() - 6));
+                more.setStyle("-fx-text-fill:#6e6e6e; -fx-font-size:12px;");
+                box.getChildren().add(more);
+                break;
+            }
+            String line = (oi.number() == null ? "" : oi.number()) + "   ·   "
+                    + (oi.date() == null ? "" : oi.date().toString()) + "   ·   "
+                    + tt.apply("accounting.assist.pending") + " " + eur(oi.pending());
+            Label l = new Label(line);
+            l.setStyle("-fx-text-fill:#444; -fx-font-size:12px;");
+            box.getChildren().add(l);
+        }
+    }
+
+    /** ME-3 — pinta las cuentas sugeridas como botones; un clic rellena una línea. */
+    private void renderEntrySuggestions(FlowPane pane, Label title,
+            java.util.List<AccountingModels.SuggestedAccount> sugg,
+            ObservableList<EditableLine> lines) {
+        pane.getChildren().clear();
+        boolean any = sugg != null && !sugg.isEmpty();
+        title.setVisible(any);
+        title.setManaged(any);
+        if (!any) return;
+        for (AccountingModels.SuggestedAccount s : sugg) {
+            Button b = new Button(s.code() + "  " + (s.name() == null ? "" : s.name()));
+            b.setStyle("-fx-background-color:#eef2ff; -fx-text-fill:#1e3a8a; -fx-font-size:12px;");
+            b.setOnAction(e -> applyEntrySuggestion(lines, s.code(), s.name()));
+            pane.getChildren().add(b);
+        }
+    }
+
+    /** Rellena la primera línea en blanco (o añade una) con la cuenta sugerida. */
+    private void applyEntrySuggestion(ObservableList<EditableLine> lines, String code, String name) {
+        EditableLine target = null;
+        for (EditableLine l : lines) {
+            if (l.accountCodeProp.get() == null || l.accountCodeProp.get().isBlank()) { target = l; break; }
+        }
+        if (target == null) { target = new EditableLine(); lines.add(target); }
+        target.accountCodeProp.set(code);
+        if ((target.descriptionProp.get() == null || target.descriptionProp.get().isBlank()) && name != null) {
+            target.descriptionProp.set(name);
+        }
     }
 
     private void persistEntry(JournalEntryDetail original, LocalDate entryDate,
@@ -2711,6 +2803,11 @@ public class AccountingScreen {
         private final ObservableList<String> allOptions;
         private final List<AccountSummary> accounts;
         private boolean updatingFromFilter = false;
+        /** ME-2/ME-3 — callback al confirmar una cuenta (código) para que el
+         *  editor cargue facturas pendientes del tercero + sugerencias. */
+        private java.util.function.Consumer<String> onCommit;
+
+        void setOnCommit(java.util.function.Consumer<String> c) { this.onCommit = c; }
 
         AccountComboCell(List<AccountSummary> accounts) {
             this.accounts = accounts;
@@ -2788,6 +2885,7 @@ public class AccountingScreen {
                 }
             }
             setText(code);
+            if (onCommit != null && !code.isBlank()) onCommit.accept(code);
         }
 
         @Override

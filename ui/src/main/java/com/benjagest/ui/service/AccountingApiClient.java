@@ -1141,6 +1141,39 @@ public class AccountingApiClient {
                 + "&to=" + to + "&year=" + year);
     }
 
+    /** ME-2 — facturas pendientes del tercero de una cuenta (43x/40x). */
+    public List<AccountingModels.OpenInvoice> openInvoicesForAccount(String accountCode)
+            throws IOException, InterruptedException {
+        String json = get("/accounting/assist/open-invoices?accountCode="
+                + java.net.URLEncoder.encode(accountCode, java.nio.charset.StandardCharsets.UTF_8));
+        List<AccountingModels.OpenInvoice> out = new ArrayList<>();
+        for (String o : splitJsonArray(json)) {
+            out.add(new AccountingModels.OpenInvoice(
+                    strField(o, "kind"), strField(o, "number"), localDateField(o, "date"),
+                    decField(o, "total"), decField(o, "pending")));
+        }
+        return out;
+    }
+
+    /** ME-3 — cuentas sugeridas para una cuenta ancla (histórico + reglas). */
+    public List<AccountingModels.SuggestedAccount> suggestAccounts(String anchor, List<String> exclude)
+            throws IOException, InterruptedException {
+        StringBuilder q = new StringBuilder("/accounting/assist/suggest?anchor=");
+        q.append(java.net.URLEncoder.encode(anchor, java.nio.charset.StandardCharsets.UTF_8));
+        if (exclude != null && !exclude.isEmpty()) {
+            q.append("&exclude=").append(java.net.URLEncoder.encode(
+                    String.join(",", exclude), java.nio.charset.StandardCharsets.UTF_8));
+        }
+        String json = get(q.toString());
+        List<AccountingModels.SuggestedAccount> out = new ArrayList<>();
+        for (String o : splitJsonArray(json)) {
+            out.add(new AccountingModels.SuggestedAccount(
+                    strField(o, "code"), strField(o, "name"),
+                    intField(o, "score"), strField(o, "reason")));
+        }
+        return out;
+    }
+
     /** Export PDF del Balance de Situación. */
     public byte[] balanceSheetPdf(LocalDate asOf) throws IOException, InterruptedException {
         return getBytes("/accounting/reports/balance-sheet/export.pdf?asOf=" + asOf);

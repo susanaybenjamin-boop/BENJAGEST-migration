@@ -18615,6 +18615,9 @@ public class BenjagestUiApplication extends Application {
             case "duedates.edit.remove" -> "Remove";
             case "duedates.edit.save" -> "Save schedule";
             case "accounting.fin.export_pdf" -> "Export PDF";
+            case "accounting.assist.suggestions" -> "Suggested accounts (click to add)";
+            case "accounting.assist.open_invoices" -> "Open invoices for this party";
+            case "accounting.assist.pending" -> "pending";
             case "accounting.fin.export_ok_title" -> "PDF saved";
             case "accounting.fin.export_ok_body" -> "The dashboard report was saved to:";
             case "accounting.fin.export_fail" -> "Could not generate the PDF.";
@@ -19759,6 +19762,9 @@ public class BenjagestUiApplication extends Application {
             case "duedates.edit.remove" -> "Quitar";
             case "duedates.edit.save" -> "Guardar cuadro";
             case "accounting.fin.export_pdf" -> "Exportar PDF";
+            case "accounting.assist.suggestions" -> "Cuentas sugeridas (clic para añadir)";
+            case "accounting.assist.open_invoices" -> "Facturas pendientes de este tercero";
+            case "accounting.assist.pending" -> "pendiente";
             case "accounting.fin.export_ok_title" -> "PDF guardado";
             case "accounting.fin.export_ok_body" -> "El informe del cuadro de mando se guardó en:";
             case "accounting.fin.export_fail" -> "No se pudo generar el PDF.";
