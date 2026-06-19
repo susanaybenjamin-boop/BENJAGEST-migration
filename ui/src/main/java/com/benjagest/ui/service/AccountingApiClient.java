@@ -1108,6 +1108,7 @@ public class AccountingApiClient {
                 decField(json, "personnelCost"), decField(json, "vatCharged"),
                 decField(json, "vatBorne"), decField(json, "model303Estimated"),
                 decField(json, "pendingCollections"), intField(json, "overdueInvoices"),
+                decField(json, "pendingPayments"),
                 decField(json, "marginPct"), decField(json, "expenseRatioPct"),
                 decField(json, "personnelRatioPct"), intField(json, "draftCount"));
     }

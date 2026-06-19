@@ -1367,7 +1367,9 @@ public class AccountingScreen {
                         f.overdueInvoices() > 0
                                 ? tt.apply("accounting.fin.overdue").replace("{n}", String.valueOf(f.overdueInvoices()))
                                 : null,
-                        f.overdueInvoices() > 0 ? "#c62828" : "#1565c0")
+                        f.overdueInvoices() > 0 ? "#c62828" : "#1565c0"),
+                kpiCard(tt.apply("accounting.fin.pending_payments"), money(f.pendingPayments()),
+                        tt.apply("accounting.fin.suppliers"), "#1565c0")
         );
         if (f.draftCount() > 0) {
             finDraftWarn.setText(tt.apply("accounting.fin.draft_warn")

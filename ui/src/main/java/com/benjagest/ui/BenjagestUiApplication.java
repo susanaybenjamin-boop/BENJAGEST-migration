@@ -18252,6 +18252,8 @@ public class BenjagestUiApplication extends Application {
             case "accounting.fin.model303" -> "Form 303 (est.)";
             case "accounting.fin.estimated" -> "estimated";
             case "accounting.fin.pending_collections" -> "Pending collections";
+            case "accounting.fin.pending_payments" -> "Pending payments";
+            case "accounting.fin.suppliers" -> "to suppliers";
             case "accounting.fin.overdue" -> "{n} overdue invoice(s)";
             case "accounting.fin.draft_warn" -> "Heads up: {n} draft entries are not validated and are NOT included in these figures.";
             case "accounting.fin.evolution" -> "Monthly evolution";
@@ -19354,6 +19356,8 @@ public class BenjagestUiApplication extends Application {
             case "accounting.fin.model303" -> "Modelo 303 (est.)";
             case "accounting.fin.estimated" -> "estimado";
             case "accounting.fin.pending_collections" -> "Pendiente de cobro";
+            case "accounting.fin.pending_payments" -> "Pendiente de pago";
+            case "accounting.fin.suppliers" -> "a proveedores";
             case "accounting.fin.overdue" -> "{n} factura(s) vencida(s)";
             case "accounting.fin.draft_warn" -> "Atención: hay {n} asientos en borrador sin validar que NO se incluyen en estas cifras.";
             case "accounting.fin.evolution" -> "Evolución mensual";

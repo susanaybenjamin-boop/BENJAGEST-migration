@@ -94,6 +94,7 @@ public class FinancialDashboardPdfService {
         kvRow(t, "Modelo 303 estimado", money(f.model303Estimated()));
         kvRow(t, "Pendiente de cobro", money(f.pendingCollections()));
         kvRow(t, "Facturas vencidas", String.valueOf(f.overdueInvoices()));
+        kvRow(t, "Pendiente de pago (proveedores)", money(f.pendingPayments()));
         doc.add(t);
         doc.add(new Paragraph(" "));
 

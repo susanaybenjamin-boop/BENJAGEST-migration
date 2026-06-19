@@ -57,6 +57,7 @@ public class ClientFinancialsService {
             BigDecimal model303Estimated, // 477 − 472
             BigDecimal pendingCollections,// pendiente de cobro (ventas)
             int overdueInvoices,          // facturas de venta vencidas sin cobrar
+            BigDecimal pendingPayments,   // pendiente de pago (saldo acreedor 400/410)
             BigDecimal marginPct,         // result / income * 100
             BigDecimal expenseRatioPct,   // expenses / income * 100
             BigDecimal personnelRatioPct, // personnelCost / income * 100
@@ -74,13 +75,37 @@ public class ClientFinancialsService {
 
         BigDecimal pending = pendingCollections(companyId);
         int overdue = overdueInvoices(companyId);
+        BigDecimal pendingPay = pendingPayments(companyId, to);
 
         return new ClientFinancials(
                 from, to, income, expenses, result, personnel,
                 nz(k.vatCharged()), nz(k.vatBorne()), nz(k.model303Estimated()),
-                pending, overdue,
+                pending, overdue, pendingPay,
                 pct(result, income), pct(expenses, income), pct(personnel, income),
                 k.draftCount());
+    }
+
+    /**
+     * Pendiente de pago a proveedores/acreedores = saldo ACREEDOR (haber − debe)
+     * de las cuentas 400 (Proveedores) y 410 (Acreedores por prestaciones de
+     * servicios) acumulado hasta la fecha, en asientos POSTED. Es la medida
+     * contable robusta tras la reestructuración de purchase_invoices (V45): no
+     * depende del estado de cada factura, que hoy se rastrea por conciliación
+     * bancaria. Si el saldo fuese deudor (raro), se devuelve 0.
+     */
+    private BigDecimal pendingPayments(String companyId, LocalDate to) {
+        BigDecimal v = jdbc.queryForObject("""
+                SELECT COALESCE(SUM(l.credit - l.debit), 0)
+                  FROM journal_entry_lines l
+                  JOIN journal_entries e ON e.id = l.journal_entry_id
+                  JOIN accounting_accounts a ON a.id = l.account_id
+                 WHERE e.company_id = ?
+                   AND e.status = 'POSTED'
+                   AND e.entry_date <= ?
+                   AND (a.code LIKE '400%' OR a.code LIKE '410%')
+                """, BigDecimal.class, companyId, Date.valueOf(to));
+        if (v == null || v.signum() < 0) return BigDecimal.ZERO;
+        return v;
     }
 
     // ====================================================================

@@ -292,6 +292,7 @@ public final class AccountingModels {
             BigDecimal personnelCost, BigDecimal vatCharged, BigDecimal vatBorne,
             BigDecimal model303Estimated,
             BigDecimal pendingCollections, int overdueInvoices,
+            BigDecimal pendingPayments,
             BigDecimal marginPct, BigDecimal expenseRatioPct, BigDecimal personnelRatioPct,
             int draftCount
     ) {}
