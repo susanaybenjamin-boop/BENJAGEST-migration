@@ -3798,6 +3798,9 @@ public class BenjagestUiApplication extends Application {
     private final com.benjagest.ui.service.PurchaseInvoiceApiClient purchasesApi =
             new com.benjagest.ui.service.PurchaseInvoiceApiClient();
 
+    private final com.benjagest.ui.service.DueDateApiClient dueDateApi =
+            new com.benjagest.ui.service.DueDateApiClient();
+
     private final com.benjagest.ui.service.AdvisoryInvitationApiClient invitationsApi =
             new com.benjagest.ui.service.AdvisoryInvitationApiClient();
 
@@ -4073,6 +4076,16 @@ public class BenjagestUiApplication extends Application {
                     sel.invoiceDate());
         });
 
+        // PV-4 — Vencimientos / pago de la factura seleccionada (1 fila).
+        Button dueDatesBtn = new Button(t("duedates.action.open"));
+        dueDatesBtn.setGraphic(icon("fas-calendar-check"));
+        dueDatesBtn.setDisable(true);
+        dueDatesBtn.setOnAction(ev -> {
+            var sel = purchaseInvoicesTable.getSelectionModel().getSelectedItem();
+            if (sel != null) openDueDatesDialog("PURCHASE", sel.id(),
+                    sel.supplierName(), sel.totalAmount());
+        });
+
         purchaseInvoicesTable.getSelectionModel().getSelectedItems()
                 .addListener((javafx.collections.ListChangeListener<com.benjagest.ui.model.PurchaseInvoiceEntry>)
                         ch -> {
@@ -4085,13 +4098,15 @@ public class BenjagestUiApplication extends Application {
                     boolean onePosted = sel.size() == 1 && sel.get(0) != null
                             && "POSTED".equalsIgnoreCase(sel.get(0).status());
                     makeRecurringPurchaseBtn.setDisable(!onePosted);
+                    // Vencimientos: solo selección única.
+                    dueDatesBtn.setDisable(sel.size() != 1);
                 });
 
         // Slice 3V — Acciones SOBRE la tabla, no debajo. Antes vivían
         // bajo el listado y Benjamin tenía que hacer scroll para verlos
         // cuando el listado era largo. Ahora van encima, junto a los
         // filtros, en su propia fila para no recargar la primera.
-        HBox actions = new HBox(10, validateBatchBtn, makeRecurringPurchaseBtn, deleteBtn);
+        HBox actions = new HBox(10, validateBatchBtn, makeRecurringPurchaseBtn, dueDatesBtn, deleteBtn);
         actions.setAlignment(javafx.geometry.Pos.CENTER_LEFT);
 
         VBox body = new VBox(12);
@@ -4268,6 +4283,270 @@ public class BenjagestUiApplication extends Application {
                     t("purchases.delete.fail.body")));
             start(task, "purchase-invoice-delete");
         });
+    }
+
+    // ====================================================================
+    //  PV-4 — Vencimientos / pago de factura (compras y ventas)
+    // ====================================================================
+
+    private static final java.util.List<String> DD_METHODS =
+            java.util.List.of("TRANSFER", "CASH", "CARD", "BIZUM", "OTHER");
+
+    private void openDueDatesDialog(String kind, String invoiceId,
+                                     String partyName, java.math.BigDecimal total) {
+        javafx.scene.control.Dialog<ButtonType> dlg = new javafx.scene.control.Dialog<>();
+        dlg.setResizable(true);
+        dlg.setTitle(t("duedates.title") + " — " + (partyName == null ? "" : partyName));
+        ButtonType closeBt = new ButtonType(t("duedates.close"),
+                javafx.scene.control.ButtonBar.ButtonData.CANCEL_CLOSE);
+        dlg.getDialogPane().getButtonTypes().add(closeBt);
+
+        TableView<com.benjagest.ui.model.DueDateEntry> table = new TableView<>();
+        table.setPlaceholder(new Label(t("duedates.empty")));
+        table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
+        TableColumn<com.benjagest.ui.model.DueDateEntry, String> cSeq = new TableColumn<>(t("duedates.col.seq"));
+        cSeq.setCellValueFactory(c -> new javafx.beans.property.SimpleStringProperty(String.valueOf(c.getValue().seq())));
+        TableColumn<com.benjagest.ui.model.DueDateEntry, String> cDue = new TableColumn<>(t("duedates.col.due"));
+        cDue.setCellValueFactory(c -> new javafx.beans.property.SimpleStringProperty(
+                c.getValue().dueDate() == null ? "" : c.getValue().dueDate().format(DISPLAY_DATE)));
+        TableColumn<com.benjagest.ui.model.DueDateEntry, String> cAmt = new TableColumn<>(t("duedates.col.amount"));
+        cAmt.setCellValueFactory(c -> new javafx.beans.property.SimpleStringProperty(eur(c.getValue().amount())));
+        TableColumn<com.benjagest.ui.model.DueDateEntry, String> cSt = new TableColumn<>(t("duedates.col.status"));
+        cSt.setCellValueFactory(c -> new javafx.beans.property.SimpleStringProperty(
+                t("duedates.status." + c.getValue().status())));
+        TableColumn<com.benjagest.ui.model.DueDateEntry, String> cPaid = new TableColumn<>(t("duedates.col.paid"));
+        cPaid.setCellValueFactory(c -> new javafx.beans.property.SimpleStringProperty(
+                c.getValue().paidDate() == null ? "" : c.getValue().paidDate().format(DISPLAY_DATE)));
+        TableColumn<com.benjagest.ui.model.DueDateEntry, String> cMet = new TableColumn<>(t("duedates.col.method"));
+        cMet.setCellValueFactory(c -> new javafx.beans.property.SimpleStringProperty(
+                c.getValue().paymentMethod() == null ? "" : t("duedates.method." + c.getValue().paymentMethod())));
+        table.getColumns().setAll(java.util.List.of(cSeq, cDue, cAmt, cSt, cPaid, cMet));
+
+        Runnable reload = () -> {
+            Task<java.util.List<com.benjagest.ui.model.DueDateEntry>> tk = new Task<>() {
+                @Override protected java.util.List<com.benjagest.ui.model.DueDateEntry> call() throws Exception {
+                    return dueDateApi.list(kind, invoiceId);
+                }
+            };
+            tk.setOnSucceeded(e -> table.setItems(FXCollections.observableArrayList(tk.getValue())));
+            tk.setOnFailed(e -> showError(t("duedates.fail"), msgOf(tk.getException())));
+            start(tk, "due-dates-load");
+        };
+
+        Button payBtn = new Button(t("duedates.action.pay"));
+        payBtn.getStyleClass().add("button-primary");
+        payBtn.setDisable(true);
+        payBtn.setOnAction(ev -> {
+            var sel = table.getSelectionModel().getSelectedItem();
+            if (sel != null && "PENDING".equals(sel.status())) openPayDueDate(sel, reload);
+        });
+        Button cashBtn = new Button(t("duedates.action.pay_cash"));
+        cashBtn.setDisable(true);
+        cashBtn.setOnAction(ev -> {
+            var sel = table.getSelectionModel().getSelectedItem();
+            if (sel != null && "PENDING".equals(sel.status())) {
+                payDueDate(sel.id(), "570", LocalDate.now(), "CASH", reload);
+            }
+        });
+        Button unpayBtn = new Button(t("duedates.action.unpay"));
+        unpayBtn.setDisable(true);
+        unpayBtn.setOnAction(ev -> {
+            var sel = table.getSelectionModel().getSelectedItem();
+            if (sel == null || !"PAID".equals(sel.status())) return;
+            Task<com.benjagest.ui.model.DueDateEntry> tk = new Task<>() {
+                @Override protected com.benjagest.ui.model.DueDateEntry call() throws Exception {
+                    return dueDateApi.unpay(sel.id());
+                }
+            };
+            tk.setOnSucceeded(e -> { reload.run(); com.benjagest.ui.support.RefreshBus.emit(
+                    com.benjagest.ui.support.RefreshBus.TOPIC_JOURNAL); });
+            tk.setOnFailed(e -> showError(t("duedates.fail"), msgOf(tk.getException())));
+            start(tk, "due-dates-unpay");
+        });
+        Button editBtn = new Button(t("duedates.action.edit_schedule"));
+        editBtn.setOnAction(ev -> openEditSchedule(kind, invoiceId, total, reload));
+        Button refreshBtn = new Button(t("duedates.action.refresh"));
+        refreshBtn.setOnAction(ev -> reload.run());
+
+        table.getSelectionModel().selectedItemProperty().addListener((o, a, b) -> {
+            boolean pending = b != null && "PENDING".equals(b.status());
+            boolean paid = b != null && "PAID".equals(b.status());
+            payBtn.setDisable(!pending);
+            cashBtn.setDisable(!pending);
+            unpayBtn.setDisable(!paid);
+        });
+
+        Label info = new Label(t("duedates.total") + " " + eur(total));
+        info.setStyle("-fx-font-weight: bold;");
+        HBox actions = new HBox(8, payBtn, cashBtn, unpayBtn, editBtn, refreshBtn);
+        actions.setAlignment(javafx.geometry.Pos.CENTER_LEFT);
+        Label hint = new Label(t("duedates.hint"));
+        hint.setWrapText(true);
+        hint.getStyleClass().add("settings-hint");
+
+        VBox content = new VBox(10, info, hint, actions, table);
+        content.setPadding(new Insets(12));
+        VBox.setVgrow(table, Priority.ALWAYS);
+        dlg.getDialogPane().setContent(content);
+        dlg.getDialogPane().setPrefSize(780, 540);
+        dlg.getDialogPane().setMinWidth(640);
+        reload.run();
+        dlg.showAndWait();
+    }
+
+    /** Sub-diálogo: elegir tesorería + fecha + método y pagar el vencimiento. */
+    private void openPayDueDate(com.benjagest.ui.model.DueDateEntry dd, Runnable after) {
+        javafx.scene.control.Dialog<ButtonType> dlg = new javafx.scene.control.Dialog<>();
+        dlg.setResizable(true);
+        dlg.setTitle(t("duedates.pay.title"));
+        ButtonType okBt = new ButtonType(t("duedates.action.pay"),
+                javafx.scene.control.ButtonBar.ButtonData.OK_DONE);
+        dlg.getDialogPane().getButtonTypes().addAll(okBt, ButtonType.CANCEL);
+
+        ComboBox<String> treasury = new ComboBox<>(FXCollections.observableArrayList("572", "570"));
+        treasury.setValue("572");
+        treasury.setButtonCell(treasuryCell());
+        treasury.setCellFactory(lv -> treasuryCell());
+        treasury.setMaxWidth(Double.MAX_VALUE);
+        DatePicker datePicker = new DatePicker(LocalDate.now());
+        datePicker.setMaxWidth(Double.MAX_VALUE);
+        ComboBox<String> method = new ComboBox<>(FXCollections.observableArrayList(DD_METHODS));
+        method.setValue("TRANSFER");
+        method.setButtonCell(methodCell());
+        method.setCellFactory(lv -> methodCell());
+        method.setMaxWidth(Double.MAX_VALUE);
+
+        GridPane g = new GridPane();
+        g.setHgap(8); g.setVgap(8);
+        g.addRow(0, new Label(t("duedates.col.amount")), new Label(eur(dd.amount())));
+        g.addRow(1, new Label(t("duedates.pay.treasury")), treasury);
+        g.addRow(2, new Label(t("duedates.pay.date")), datePicker);
+        g.addRow(3, new Label(t("duedates.pay.method")), method);
+        for (Node n : java.util.List.of(treasury, datePicker, method)) GridPane.setHgrow(n, Priority.ALWAYS);
+        g.setPadding(new Insets(10));
+        dlg.getDialogPane().setContent(g);
+        dlg.getDialogPane().setPrefWidth(420);
+
+        dlg.showAndWait().ifPresent(bt -> {
+            if (bt != okBt) return;
+            payDueDate(dd.id(), treasury.getValue(), datePicker.getValue(), method.getValue(), after);
+        });
+    }
+
+    private void payDueDate(String id, String treasuryCode, LocalDate date, String method, Runnable after) {
+        Task<com.benjagest.ui.model.DueDateEntry> tk = new Task<>() {
+            @Override protected com.benjagest.ui.model.DueDateEntry call() throws Exception {
+                return dueDateApi.pay(id, treasuryCode, date, method);
+            }
+        };
+        tk.setOnSucceeded(e -> { after.run(); com.benjagest.ui.support.RefreshBus.emit(
+                com.benjagest.ui.support.RefreshBus.TOPIC_JOURNAL); });
+        tk.setOnFailed(e -> showError(t("duedates.fail"), msgOf(tk.getException())));
+        start(tk, "due-dates-pay");
+    }
+
+    /** Editor del cuadro de vencimientos: filas (fecha + importe). */
+    private void openEditSchedule(String kind, String invoiceId,
+                                   java.math.BigDecimal total, Runnable after) {
+        javafx.scene.control.Dialog<ButtonType> dlg = new javafx.scene.control.Dialog<>();
+        dlg.setResizable(true);
+        dlg.setTitle(t("duedates.edit.title"));
+        ButtonType saveBt = new ButtonType(t("duedates.edit.save"),
+                javafx.scene.control.ButtonBar.ButtonData.OK_DONE);
+        dlg.getDialogPane().getButtonTypes().addAll(saveBt, ButtonType.CANCEL);
+
+        ObservableList<DueRow> rows = FXCollections.observableArrayList();
+        rows.add(new DueRow(LocalDate.now().format(DD_FMT), total == null ? "" : total.toPlainString()));
+
+        TableView<DueRow> tbl = new TableView<>(rows);
+        tbl.setEditable(true);
+        tbl.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
+        tbl.setPrefHeight(220);
+        TableColumn<DueRow, String> colDate = new TableColumn<>(t("duedates.col.due"));
+        colDate.setCellValueFactory(c -> c.getValue().date);
+        colDate.setCellFactory(javafx.scene.control.cell.TextFieldTableCell.forTableColumn());
+        colDate.setOnEditCommit(ev -> ev.getRowValue().date.set(ev.getNewValue()));
+        TableColumn<DueRow, String> colAmt = new TableColumn<>(t("duedates.col.amount"));
+        colAmt.setCellValueFactory(c -> c.getValue().amount);
+        colAmt.setCellFactory(javafx.scene.control.cell.TextFieldTableCell.forTableColumn());
+        colAmt.setOnEditCommit(ev -> ev.getRowValue().amount.set(ev.getNewValue()));
+        tbl.getColumns().setAll(java.util.List.of(colDate, colAmt));
+
+        Button add = new Button(t("duedates.edit.add"));
+        add.setOnAction(e -> rows.add(new DueRow(LocalDate.now().format(DD_FMT), "")));
+        Button rem = new Button(t("duedates.edit.remove"));
+        rem.setOnAction(e -> { DueRow s = tbl.getSelectionModel().getSelectedItem(); if (s != null) rows.remove(s); });
+        Label hint = new Label(t("duedates.edit.hint").replace("{t}", eur(total)));
+        hint.setWrapText(true); hint.getStyleClass().add("settings-hint");
+
+        VBox box = new VBox(10, hint, new HBox(8, add, rem), tbl);
+        box.setPadding(new Insets(12));
+        VBox.setVgrow(tbl, Priority.ALWAYS);
+        dlg.getDialogPane().setContent(box);
+        dlg.getDialogPane().setPrefSize(540, 420);
+
+        dlg.showAndWait().ifPresent(bt -> {
+            if (bt != saveBt) return;
+            java.util.List<com.benjagest.ui.service.DueDateApiClient.DueDateReq> reqs = new java.util.ArrayList<>();
+            for (DueRow r : rows) {
+                LocalDate d = com.benjagest.ui.support.EditableCells.parseFlexibleDate(r.date.get());
+                java.math.BigDecimal amt;
+                try { amt = new java.math.BigDecimal(r.amount.get().replace(',', '.').trim()); }
+                catch (Exception ex) { amt = null; }
+                reqs.add(new com.benjagest.ui.service.DueDateApiClient.DueDateReq(d, amt, null));
+            }
+            Task<java.util.List<com.benjagest.ui.model.DueDateEntry>> tk = new Task<>() {
+                @Override protected java.util.List<com.benjagest.ui.model.DueDateEntry> call() throws Exception {
+                    return dueDateApi.replace(kind, invoiceId, reqs);
+                }
+            };
+            tk.setOnSucceeded(e -> after.run());
+            tk.setOnFailed(e -> showError(t("duedates.fail"), msgOf(tk.getException())));
+            start(tk, "due-dates-replace");
+        });
+    }
+
+    private static final DateTimeFormatter DD_FMT = DateTimeFormatter.ofPattern("dd-MM-yyyy");
+
+    /** Holder editable de una fila del cuadro de vencimientos. */
+    private static class DueRow {
+        final javafx.beans.property.SimpleStringProperty date;
+        final javafx.beans.property.SimpleStringProperty amount;
+        DueRow(String d, String a) {
+            this.date = new javafx.beans.property.SimpleStringProperty(d);
+            this.amount = new javafx.beans.property.SimpleStringProperty(a);
+        }
+    }
+
+    private javafx.scene.control.ListCell<String> treasuryCell() {
+        return new javafx.scene.control.ListCell<>() {
+            @Override protected void updateItem(String item, boolean empty) {
+                super.updateItem(item, empty);
+                if (empty || item == null) { setText(null); return; }
+                setText("572".equals(item) ? t("duedates.pay.bank") : t("duedates.pay.cash"));
+            }
+        };
+    }
+
+    private javafx.scene.control.ListCell<String> methodCell() {
+        return new javafx.scene.control.ListCell<>() {
+            @Override protected void updateItem(String item, boolean empty) {
+                super.updateItem(item, empty);
+                setText(empty || item == null ? null : t("duedates.method." + item));
+            }
+        };
+    }
+
+    private String msgOf(Throwable ex) {
+        if (ex == null) return "";
+        String m = ex.getMessage() == null ? ex.toString() : ex.getMessage();
+        int i = m.indexOf("\"message\":\"");
+        if (i >= 0) { int s = i + 11; int e = m.indexOf('"', s); if (e > s) return m.substring(s, e); }
+        return m;
+    }
+
+    private String eur(java.math.BigDecimal v) {
+        return CURRENCY_FORMAT.format(v == null ? java.math.BigDecimal.ZERO : v);
     }
 
     private void importPurchasePdf() {
@@ -18279,6 +18558,43 @@ public class BenjagestUiApplication extends Application {
             case "accounting.rec.validate_drafts" -> "There are {n} auto-proposed entr(y/ies) to validate in the \"To validate\" tab; the figures are not final.";
             case "accounting.rec.all_good" -> "No alerts for this period. Healthy figures.";
             case "accounting.fin.go_pending" -> "Go to \"To validate\"";
+            // PV-4 — vencimientos / pago
+            case "duedates.action.open" -> "Due dates / Payment";
+            case "duedates.title" -> "Due dates";
+            case "duedates.close" -> "Close";
+            case "duedates.empty" -> "No due dates.";
+            case "duedates.total" -> "Invoice total:";
+            case "duedates.hint" -> "Split the invoice into due dates and settle each one against the bank (572) or cash (570). Use \"Pay in cash\" for tickets paid on the spot.";
+            case "duedates.col.seq" -> "No.";
+            case "duedates.col.due" -> "Due date";
+            case "duedates.col.amount" -> "Amount";
+            case "duedates.col.status" -> "Status";
+            case "duedates.col.paid" -> "Paid on";
+            case "duedates.col.method" -> "Method";
+            case "duedates.status.PENDING" -> "Pending";
+            case "duedates.status.PAID" -> "Paid";
+            case "duedates.method.TRANSFER" -> "Transfer";
+            case "duedates.method.CASH" -> "Cash";
+            case "duedates.method.CARD" -> "Card";
+            case "duedates.method.BIZUM" -> "Bizum";
+            case "duedates.method.OTHER" -> "Other";
+            case "duedates.action.pay" -> "Pay";
+            case "duedates.action.pay_cash" -> "Pay in cash";
+            case "duedates.action.unpay" -> "Undo payment";
+            case "duedates.action.edit_schedule" -> "Edit schedule";
+            case "duedates.action.refresh" -> "Refresh";
+            case "duedates.pay.title" -> "Register payment";
+            case "duedates.pay.treasury" -> "Treasury account";
+            case "duedates.pay.bank" -> "Bank (572)";
+            case "duedates.pay.cash" -> "Cash (570)";
+            case "duedates.pay.date" -> "Payment date";
+            case "duedates.pay.method" -> "Method";
+            case "duedates.fail" -> "Could not complete the due-date operation.";
+            case "duedates.edit.title" -> "Edit due-date schedule";
+            case "duedates.edit.hint" -> "The sum of the due dates must match the invoice total ({t}).";
+            case "duedates.edit.add" -> "Add";
+            case "duedates.edit.remove" -> "Remove";
+            case "duedates.edit.save" -> "Save schedule";
             case "accounting.fin.export_pdf" -> "Export PDF";
             case "accounting.fin.export_ok_title" -> "PDF saved";
             case "accounting.fin.export_ok_body" -> "The dashboard report was saved to:";
@@ -19384,6 +19700,43 @@ public class BenjagestUiApplication extends Application {
             case "accounting.rec.validate_drafts" -> "Hay {n} asiento(s) auto-propuestos por validar en la pestaña \"Por validar\"; las cifras no son definitivas.";
             case "accounting.rec.all_good" -> "Sin alertas para este periodo. Cifras saludables.";
             case "accounting.fin.go_pending" -> "Ir a \"Por validar\"";
+            // PV-4 — vencimientos / pago
+            case "duedates.action.open" -> "Vencimientos / Pago";
+            case "duedates.title" -> "Vencimientos";
+            case "duedates.close" -> "Cerrar";
+            case "duedates.empty" -> "Sin vencimientos.";
+            case "duedates.total" -> "Total factura:";
+            case "duedates.hint" -> "Reparte la factura en vencimientos y salda cada uno contra el banco (572) o la caja (570). Usa \"Pagar al contado\" para tickets pagados en el momento.";
+            case "duedates.col.seq" -> "Nº";
+            case "duedates.col.due" -> "Vencimiento";
+            case "duedates.col.amount" -> "Importe";
+            case "duedates.col.status" -> "Estado";
+            case "duedates.col.paid" -> "Pagado el";
+            case "duedates.col.method" -> "Método";
+            case "duedates.status.PENDING" -> "Pendiente";
+            case "duedates.status.PAID" -> "Pagado";
+            case "duedates.method.TRANSFER" -> "Transferencia";
+            case "duedates.method.CASH" -> "Efectivo";
+            case "duedates.method.CARD" -> "Tarjeta";
+            case "duedates.method.BIZUM" -> "Bizum";
+            case "duedates.method.OTHER" -> "Otro";
+            case "duedates.action.pay" -> "Pagar";
+            case "duedates.action.pay_cash" -> "Pagar al contado";
+            case "duedates.action.unpay" -> "Deshacer pago";
+            case "duedates.action.edit_schedule" -> "Editar cuadro";
+            case "duedates.action.refresh" -> "Refrescar";
+            case "duedates.pay.title" -> "Registrar pago";
+            case "duedates.pay.treasury" -> "Cuenta de tesorería";
+            case "duedates.pay.bank" -> "Banco (572)";
+            case "duedates.pay.cash" -> "Caja (570)";
+            case "duedates.pay.date" -> "Fecha de pago";
+            case "duedates.pay.method" -> "Método";
+            case "duedates.fail" -> "No se pudo completar la operación de vencimientos.";
+            case "duedates.edit.title" -> "Editar cuadro de vencimientos";
+            case "duedates.edit.hint" -> "La suma de los vencimientos debe cuadrar con el total de la factura ({t}).";
+            case "duedates.edit.add" -> "Añadir";
+            case "duedates.edit.remove" -> "Quitar";
+            case "duedates.edit.save" -> "Guardar cuadro";
             case "accounting.fin.export_pdf" -> "Exportar PDF";
             case "accounting.fin.export_ok_title" -> "PDF guardado";
             case "accounting.fin.export_ok_body" -> "El informe del cuadro de mando se guardó en:";
