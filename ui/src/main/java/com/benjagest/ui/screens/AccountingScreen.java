@@ -1560,6 +1560,11 @@ public class AccountingScreen {
         ));
         closesTable.getSelectionModel().selectedItemProperty().addListener(
                 (o, a, b) -> renderCloseDetail(b));
+        // Tabla de ejercicios pequeña (pocos años): altura fija para que NO
+        // empuje el detalle/pie de cierre fuera de la vista. El detalle es lo
+        // interactivo (reservas/dividendos/cerrar) y ocupa el espacio sobrante.
+        closesTable.setPrefHeight(200);
+        closesTable.setMaxHeight(260);
 
         closeDetailBox = new VBox(8);
         closeDetailBox.setPadding(new Insets(8, 0, 0, 0));
@@ -1569,7 +1574,7 @@ public class AccountingScreen {
         hint.setStyle("-fx-text-fill: #6e6e6e;");
 
         VBox box = new VBox(10, hint, toolbar, closesTable, new Separator(), closeDetailBox);
-        VBox.setVgrow(closesTable, Priority.ALWAYS);
+        VBox.setVgrow(closeDetailBox, Priority.ALWAYS);
         box.setPadding(new Insets(8));
         loadYearCloses();
         return box;
@@ -2379,9 +2384,11 @@ public class AccountingScreen {
                 new Label(tt.apply("accounting.filter.from")), from,
                 new Label(tt.apply("accounting.filter.to")), to, view);
         filters.setAlignment(Pos.CENTER_LEFT);
+        // Saldos de apertura/final ARRIBA de la tabla: siempre visibles sin
+        // hacer scroll hasta el fondo (la tabla de movimientos puede ser larga).
         HBox totals = new HBox(16, opening, closing);
         totals.setAlignment(Pos.CENTER_LEFT);
-        VBox box = new VBox(10, filters, table, totals);
+        VBox box = new VBox(10, filters, totals, table);
         box.setPadding(new Insets(8));
         VBox.setVgrow(box, Priority.ALWAYS);
         return box;
@@ -2432,7 +2439,8 @@ public class AccountingScreen {
                 new Label(tt.apply("accounting.filter.to")), to,
                 new Label(tt.apply("accounting.trial.prefix")), prefix, view);
         filters.setAlignment(Pos.CENTER_LEFT);
-        VBox box = new VBox(10, filters, table, totals);
+        // Totales ARRIBA de la tabla: siempre visibles sin scroll al fondo.
+        VBox box = new VBox(10, filters, totals, table);
         box.setPadding(new Insets(8));
         VBox.setVgrow(box, Priority.ALWAYS);
         return box;
