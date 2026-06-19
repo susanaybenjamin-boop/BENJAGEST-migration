@@ -97,8 +97,10 @@ aparte — context Spring + Flyway OK):**
   **ME-1** Tab recorre la fila (cuenta→desc→debe→haber→sig. línea). **ME-2** al elegir cuenta
   de tercero (43x/40x) muestra sus facturas pendientes debajo. **ME-3** sugiere cuentas
   (histórico de co-ocurrencia + regla IVA) como botones; clic rellena línea. Backend
-  `ManualEntryAssistService` + `/api/accounting/assist/*`. **Pendiente: validación en vivo**
-  (tacto del Tab y sugerencias) + fase 2 (clic en factura rellena importe; encadenar sugerencias).
+  `ManualEntryAssistService` + `/api/accounting/assist/*`. **Probado por Benjamin: mejor que
+  CONTENDO.** ✅ **ME-2 fase 2** *(5fc376c)*: facturas pendientes CLICABLES → rellenan la línea
+  del tercero + contrapartida tesorería (572) con el importe en el debe/haber correcto.
+  Pendiente menor: encadenar sugerencias ME-3; clic en factura podría dejar elegir banco/caja.
 
 > **Validación:** todo compila (backend+ui), el backend ARRANCA limpio (V133 migra OK),
 > rutas nuevas 403 (mapeadas/protegidas), la PWA sirve el HTML nuevo. **MEMP-2 probado en vivo.**
