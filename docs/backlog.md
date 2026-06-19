@@ -93,6 +93,11 @@ aparte — context Spring + Flyway OK):**
 > rutas nuevas 403 (mapeadas/protegidas), la PWA sirve el HTML nuevo. **MEMP-2 probado en vivo.**
 
 **Pendiente del plan (orden sugerido):**
+- ⬜ **ASIENTO MANUAL INTUITIVO** *(pedido Benjamin 2026-06-19)* — plan en
+  [`plan-asientos-manuales-intuitivos.md`](plan-asientos-manuales-intuitivos.md): **ME-1**
+  Tab que recorra la fila (bug); **ME-2** mostrar facturas pendientes del tercero al elegir
+  su cuenta (430/400); **ME-3** sugerir la cuenta de IVA de contrapartida (7→477, 6→472).
+  Filosofía: sugerir sin imponer, el usuario sigue mandando. **Probar en vivo (backend up)**.
 - ⭐ **PRÓXIMA SESIÓN (decidido Benjamin 2026-06-19): terminar el PORTAL DEL EMPLEADO (MEMP)** —
   **MEMP-3** calendario / jornada / plan del día (que el empleado vea SU horario JOR-2 + su
   jornada real JOR-1 + festivos) · **MEMP-4** vacaciones y bajas (pedir desde el móvil, con
