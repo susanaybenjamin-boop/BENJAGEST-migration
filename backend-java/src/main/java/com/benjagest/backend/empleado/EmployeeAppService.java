@@ -296,7 +296,7 @@ public class EmployeeAppService {
             """;
 
     private static final String SERVICE_WORKER_JS = """
-            const CACHE = 'benjagest-empleado-v4';
+            const CACHE = 'benjagest-empleado-v5';
             self.addEventListener('install', (e) => {
               self.skipWaiting();
               e.waitUntil(caches.open(CACHE).then((c) => c.addAll(['/api/public/empleado/app'])));
@@ -417,12 +417,27 @@ public class EmployeeAppService {
                   <h1 id="homeHello">Hola</h1>
                   <p class="sub" id="homeCompany"></p>
                   <div class="grid">
-                    <div class="tile"><div class="ic">&#128337;</div><div class="lbl">Fichar</div><span class="soon">proximamente</span></div>
+                    <div class="tile" style="cursor:pointer" onclick="gotoFichar()"><div class="ic">&#128337;</div><div class="lbl">Fichar</div></div>
                     <div class="tile"><div class="ic">&#127958;</div><div class="lbl">Vacaciones y bajas</div><span class="soon">proximamente</span></div>
                     <div class="tile"><div class="ic">&#128196;</div><div class="lbl">Nominas</div><span class="soon">proximamente</span></div>
                     <div class="tile"><div class="ic">&#128197;</div><div class="lbl">Mi jornada</div><span class="soon">proximamente</span></div>
                   </div>
                   <button class="secondary" id="logoutBtn">Cerrar sesion</button>
+                </div>
+
+                <div id="screen-fichar" class="hidden">
+                  <h1>Fichar</h1>
+                  <p class="sub" id="ficharState">&nbsp;</p>
+                  <div class="grid">
+                    <button onclick="doPunch('IN')">Entrada</button>
+                    <button onclick="doPunch('OUT')">Salida</button>
+                    <button class="secondary" onclick="doPunch('BREAK_START')">Pausa</button>
+                    <button class="secondary" onclick="doPunch('BREAK_END')">Volver de pausa</button>
+                  </div>
+                  <div id="ficharMsg"></div>
+                  <p class="sub" style="margin-top:18px">Ultimos fichajes</p>
+                  <ul id="ficharRecent" style="list-style:none;padding:0;margin:0;color:#cbd5e1;font-size:14px"></ul>
+                  <button class="secondary" onclick="gotoHome()">Volver</button>
                 </div>
               </div>
 
@@ -434,7 +449,7 @@ public class EmployeeAppService {
                 const LS_TOKEN = 'benjagest_emp_token';
 
                 function show(id) {
-                  ['screen-invite','screen-pin','screen-home'].forEach(s => {
+                  ['screen-invite','screen-pin','screen-home','screen-fichar'].forEach(s => {
                     document.getElementById(s).classList.toggle('hidden', s !== id);
                   });
                 }
@@ -483,6 +498,73 @@ public class EmployeeAppService {
                   document.getElementById('homeHello').textContent = 'Hola, ' + (localStorage.getItem(LS_NAME) || '');
                   document.getElementById('homeCompany').textContent = localStorage.getItem(LS_COMPANY) || '';
                   show('screen-home');
+                }
+
+                // ---- MEMP-2: fichaje ----
+                function authHeaders() {
+                  return { 'Content-Type': 'application/json',
+                           'Authorization': 'Bearer ' + (localStorage.getItem(LS_TOKEN) || '') };
+                }
+                function typeLabel(t) {
+                  return ({IN:'Entrada', OUT:'Salida', BREAK_START:'Pausa', BREAK_END:'Vuelta de pausa'})[t] || t;
+                }
+                function fmtTime(iso) {
+                  try { return new Date(iso).toLocaleString('es-ES'); } catch (e) { return iso; }
+                }
+                function getGeo() {
+                  return new Promise((res) => {
+                    if (!navigator.geolocation) { res({}); return; }
+                    navigator.geolocation.getCurrentPosition(
+                      (p) => res({ lat: p.coords.latitude, lng: p.coords.longitude }),
+                      () => res({}),
+                      { timeout: 6000, enableHighAccuracy: true });
+                  });
+                }
+                function gotoFichar() { show('screen-fichar'); document.getElementById('ficharMsg').textContent=''; loadEstado(); }
+                async function loadEstado() {
+                  try {
+                    const r = await fetch(API + '/empleado/fichaje/estado', { headers: authHeaders() });
+                    if (r.status === 401 || r.status === 403) { localStorage.removeItem(LS_TOKEN); gotoPin(); return; }
+                    if (!r.ok) {
+                      let e = 'No se pudo cargar tu estado';
+                      try { e = (await r.json()).message || e; } catch (x) {}
+                      throw new Error(e);
+                    }
+                    const d = await r.json();
+                    document.getElementById('ficharState').textContent =
+                      d.clockedIn ? 'Estas DENTRO (jornada iniciada)' : 'Estas FUERA';
+                    const ul = document.getElementById('ficharRecent');
+                    ul.innerHTML = '';
+                    (d.recent || []).forEach((e) => {
+                      const li = document.createElement('li');
+                      li.style.padding = '6px 0';
+                      li.style.borderBottom = '1px solid #1e293b';
+                      li.textContent = typeLabel(e.eventType) + '  -  ' + fmtTime(e.eventTime);
+                      ul.appendChild(li);
+                    });
+                  } catch (e) { msg('ficharMsg', e.message); }
+                }
+                async function doPunch(type) {
+                  msg('ficharMsg', 'Fichando...', true);
+                  const geo = await getGeo();
+                  try {
+                    const r = await fetch(API + '/empleado/fichaje', {
+                      method: 'POST', headers: authHeaders(),
+                      body: JSON.stringify({ eventType: type,
+                        lat: (geo.lat == null ? null : geo.lat),
+                        lng: (geo.lng == null ? null : geo.lng) })
+                    });
+                    if (r.status === 401 || r.status === 403) { localStorage.removeItem(LS_TOKEN); gotoPin(); return; }
+                    if (!r.ok) {
+                      let e = 'No se pudo fichar';
+                      try { e = (await r.json()).message || e; } catch (x) {}
+                      throw new Error(e);
+                    }
+                    const d = await r.json();
+                    msg('ficharMsg', typeLabel(d.eventType) + ' registrada'
+                      + (d.warning ? '. ' + d.warning : ''), true);
+                    loadEstado();
+                  } catch (e) { msg('ficharMsg', e.message); }
                 }
 
                 document.getElementById('activateBtn').onclick = async () => {
