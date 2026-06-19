@@ -2344,7 +2344,11 @@ public class AccountingScreen {
         table.getColumns().addAll(List.of(
                 col(tt.apply("accounting.col.date"), m -> m.entryDate() == null ? "" : m.entryDate().toString(), 100),
                 col(tt.apply("accounting.col.num"), m -> m.entryNumber() <= 0 ? "—" : String.valueOf(m.entryNumber()), 60),
-                col(tt.apply("accounting.col.concept"), m -> first(m.lineDescription(), m.concept()), 280),
+                // El Mayor muestra el CONCEPTO del asiento (la glosa, igual que el
+                // Diario); cae a la descripción de línea solo si el asiento no tiene
+                // concepto. Antes priorizaba la descripción de línea, que a menudo es
+                // el nombre de la cuenta (redundante en el Mayor de esa misma cuenta).
+                col(tt.apply("accounting.col.concept"), m -> first(m.concept(), m.lineDescription()), 280),
                 col(tt.apply("accounting.col.status"), m -> m.status() == null ? "" : tt.apply("accounting.status." + m.status()), 90),
                 col(tt.apply("accounting.col.debit_total"), m -> eur(m.debit()), 110),
                 col(tt.apply("accounting.col.credit_total"), m -> eur(m.credit()), 110),
