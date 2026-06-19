@@ -125,6 +125,48 @@ public class ClientFinancialsService {
         return out;
     }
 
+    // ====================================================================
+    //  FIN-3 — Proyección de cierre + IS estimado
+    // ====================================================================
+
+    public record ClosingProjection(
+            int year, int monthsElapsed,
+            BigDecimal resultToDate,        // beneficio acumulado YTD (POSTED)
+            BigDecimal projectedResult,     // extrapolado a fin de año (lineal)
+            BigDecimal estimatedCorporateTax, // IS estimado (25% si beneficio > 0)
+            BigDecimal projectedAfterTax
+    ) {}
+
+    /**
+     * Proyección ORIENTATIVA de cierre: extrapola linealmente el beneficio
+     * acumulado del año a 12 meses y estima el Impuesto de Sociedades al tipo
+     * general del 25% (igual que la precalculadora de cierre). NO es una
+     * declaración: es una estimación para tesorería/planificación. Tan fiable
+     * como el histórico (negocios estacionales se desvían).
+     */
+    public ClosingProjection projectYearEnd(int year) {
+        LocalDate today = LocalDate.now();
+        boolean currentYear = (year == today.getYear());
+        LocalDate from = LocalDate.of(year, 1, 1);
+        LocalDate to = currentYear ? today : LocalDate.of(year, 12, 31);
+
+        ClientFinancials ytd = compute(from, to);
+        BigDecimal resultToDate = ytd.result();
+        int monthsElapsed = currentYear ? today.getMonthValue() : 12;
+
+        BigDecimal projected = (currentYear && monthsElapsed > 0)
+                ? resultToDate.multiply(BigDecimal.valueOf(12))
+                        .divide(BigDecimal.valueOf(monthsElapsed), 2, RoundingMode.HALF_UP)
+                : resultToDate;
+
+        BigDecimal tax = projected.signum() > 0
+                ? projected.multiply(new BigDecimal("0.25")).setScale(2, RoundingMode.HALF_UP)
+                : BigDecimal.ZERO;
+
+        return new ClosingProjection(year, monthsElapsed, resultToDate,
+                projected, tax, projected.subtract(tax));
+    }
+
     /** Suma del DEBE de líneas con cuenta de prefijo dado en asientos POSTED del rango. */
     private BigDecimal sumDebitPrefix(String companyId, LocalDate from, LocalDate to, String prefix) {
         BigDecimal v = jdbc.queryForObject("""

@@ -1124,6 +1124,15 @@ public class AccountingApiClient {
         return out;
     }
 
+    public AccountingModels.ClosingProjection financialsProjection(int year)
+            throws IOException, InterruptedException {
+        String json = get("/accounting/financials/projection?year=" + year);
+        return new AccountingModels.ClosingProjection(
+                intField(json, "year"), intField(json, "monthsElapsed"),
+                decField(json, "resultToDate"), decField(json, "projectedResult"),
+                decField(json, "estimatedCorporateTax"), decField(json, "projectedAfterTax"));
+    }
+
     // ====================================================================
     //  HTTP helpers
     // ====================================================================
