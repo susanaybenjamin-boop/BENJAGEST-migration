@@ -160,6 +160,43 @@ public class PaymentScheduleService {
         return getOne(dueDateId);
     }
 
+    /**
+     * PV-5 — Marca como PAGADOS los vencimientos de una factura al CONCILIAR un
+     * movimiento bancario con ella. NO genera asiento (la conciliación ya creó
+     * el suyo, 400→572 / 572→430): solo vincula el vencimiento al movimiento y
+     * al asiento existente. Marca los PENDIENTES más antiguos mientras el
+     * importe del movimiento los cubra por completo (sin pago parcial de un
+     * vencimiento). Best-effort: cualquier fallo se ignora (la conciliación
+     * cuenta igual por el asiento).
+     */
+    @Transactional
+    public void settleByBankMovement(String invoiceKind, String invoiceId,
+                                       String bankMovementId, String journalEntryId,
+                                       LocalDate paidDate, BigDecimal amount) {
+        if (!"PURCHASE".equals(invoiceKind) && !"SALES".equals(invoiceKind)) return;
+        ensureDefault(invoiceKind, invoiceId);
+        List<DueDate> pend = jdbc.query("""
+                SELECT id, invoice_id, invoice_kind, seq, due_date, amount, status,
+                       paid_date, payment_method, treasury_account_code, journal_entry_id, notes
+                  FROM invoice_due_dates
+                 WHERE company_id = ? AND invoice_kind = ? AND invoice_id = ? AND status = 'PENDING'
+                 ORDER BY seq
+                """, this::map, tenant.getCurrentCompanyId(), invoiceKind, invoiceId);
+        BigDecimal remaining = amount == null ? BigDecimal.ZERO : amount.abs();
+        for (DueDate dd : pend) {
+            if (remaining.add(new BigDecimal("0.01")).compareTo(dd.amount()) < 0) break;
+            jdbc.update("""
+                    UPDATE invoice_due_dates
+                       SET status = 'PAID', paid_date = ?, payment_method = 'TRANSFER',
+                           treasury_account_code = '572', journal_entry_id = ?,
+                           bank_movement_id = ?
+                     WHERE id = ? AND company_id = ?
+                    """, paidDate == null ? null : Date.valueOf(paidDate), journalEntryId,
+                    bankMovementId, dd.id(), tenant.getCurrentCompanyId());
+            remaining = remaining.subtract(dd.amount());
+        }
+    }
+
     /** Revierte el pago de un vencimiento (borra el asiento, vuelve a PENDING). */
     @Transactional
     public DueDate unpay(String dueDateId) {

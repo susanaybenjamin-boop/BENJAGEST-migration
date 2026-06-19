@@ -40,16 +40,19 @@ public class BankMovementService {
     private final BankAccountService bankAccounts;
     private final FiscalYearGuardService fiscalGuard;
     private final CurrentUserService currentUserService;
+    private final PaymentScheduleService paymentSchedule;
 
     public BankMovementService(JdbcTemplate jdbcTemplate, TenantContext tenantContext,
                                  BankAccountService bankAccounts,
                                  FiscalYearGuardService fiscalGuard,
-                                 CurrentUserService currentUserService) {
+                                 CurrentUserService currentUserService,
+                                 PaymentScheduleService paymentSchedule) {
         this.jdbcTemplate = jdbcTemplate;
         this.tenantContext = tenantContext;
         this.bankAccounts = bankAccounts;
         this.fiscalGuard = fiscalGuard;
         this.currentUserService = currentUserService;
+        this.paymentSchedule = paymentSchedule;
     }
 
     // ====================================================================
@@ -132,6 +135,15 @@ public class BankMovementService {
 
         // Actualizar status de la factura si está disponible.
         updateInvoicePaymentStatus(req.invoiceKind(), req.invoiceId(), m);
+
+        // PV-5 — marcar el/los vencimiento(s) de la factura como pagados por
+        // esta conciliación (sin generar asiento: ya lo creó el cobro/pago).
+        try {
+            paymentSchedule.settleByBankMovement(req.invoiceKind(), req.invoiceId(),
+                    movementId, entryId, m.operationDate(), m.amount());
+        } catch (Exception ex) {
+            // Best-effort: la conciliación cuenta igual por el asiento.
+        }
 
         return get(movementId);
     }
