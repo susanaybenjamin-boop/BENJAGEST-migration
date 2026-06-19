@@ -127,6 +127,21 @@ git checkout feat/Benjamin
   `setPrefSize(...)` (+ `setResizable(true)` si tiene tabla) y las tablas
   anchas usan `CONSTRAINED_RESIZE_POLICY` para que las columnas no se corten
   fuera de la ventana. No crear ventanas “a ojo”.
+- **Auto-refresh (REGLA DURA — verificar en CADA acción que muta datos).**
+  El usuario **NO** debe pulsar "Refrescar" para ver el resultado de una acción.
+  Toda acción que cree/edite/borre/valide/pague algo tiene que **refrescar
+  automáticamente** las vistas afectadas. Patrón del proyecto = `RefreshBus`:
+    1. La acción, al terminar OK, hace `RefreshBus.emit(TOPIC_X)` del/los topic(s)
+       afectados (`TOPIC_JOURNAL`, `TOPIC_SALES`, `TOPIC_PURCHASES`, `TOPIC_EMPLOYEES`…).
+    2. **Toda pantalla que muestre datos que pueden cambiar** se **suscribe** a su
+       topic con `RefreshBus.subscribe(TOPIC_X, this::loadX, ownerNode)` (se auto-baja
+       al desmontar). Si construyes una vista nueva, suscríbela.
+    3. Caso típico que se olvida: un **aviso/badge/contador** (p.ej. "X por validar"
+       del cuadro de mando) debe desaparecer solo al resolverlo → la vista del aviso
+       también se suscribe al topic de la acción. Bug real 2026-06-19: el cuadro de
+       mando no se refrescaba al validar; arreglado suscribiéndolo a `TOPIC_JOURNAL`.
+  No cerrar un slice sin preguntarte: *¿qué vistas quedan obsoletas tras esta acción,
+  y se refrescan solas?* Si no, falta el `emit`/`subscribe`.
 - **Botón Cancelar/Cerrar** en todos los wizards y diálogos largos.
 - **Visor PDF**: usar `PdfViewer` interno (PDFBox), no `Desktop.open()`
   (no requiere visor del SO).
@@ -211,7 +226,12 @@ Al cerrar un bloque (3+ slices completados):
 - Antes de tocar UI: **CSS reusable + i18n + diálogo dimensionado + no emoji**.
 - **i18n en CADA slice**: ¿algún **valor nuevo** (source_type/estado/enum/
   método) llega a la UI? → añade su clave `t(...)` en **ES y EN** (sección 4,
-  checklist). Si falta una de las dos, la UI muestra la clave cruda.
+  checklist). Si falta una de las dos, la UI muestra la clave cruda. Si añades
+  un valor que se filtra en un combo (p.ej. el filtro de Origen del Diario),
+  **añádelo también a la lista del filtro**.
+- **Auto-refresh en CADA acción**: tras crear/editar/borrar/validar/pagar →
+  `RefreshBus.emit(TOPIC)`; toda vista afectada (incl. avisos/contadores) se
+  `subscribe`. El usuario nunca pulsa "Refrescar" (sección 4).
 - Antes de tocar endpoint: **`@RequiresRole` con EMPLOYEE si es operacional**.
 - Antes de parsear JSON anidado: **`splitTopLevelObjects`**, no
   `parseObjects`.
