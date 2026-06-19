@@ -138,6 +138,14 @@ public final class ResponsiveLayout {
         }
         ScrollPane sp = new ScrollPane(content);
         sp.setFitToWidth(true);
+        // FIT-TO-HEIGHT: el contenido llena el alto del viewport (no toma su
+        // altura "natural"), de modo que VBox.setVgrow(tabla, ALWAYS) y los
+        // SplitPane funcionan: las tablas hacen scroll INTERNO y los totales/
+        // pies/paneles inferiores quedan SIEMPRE visibles, sin scroll global.
+        // El scrollbar exterior solo aparece si el contenido MÍNIMO excede el
+        // viewport (ventanas muy pequeñas). Antes faltaba esta línea y por eso
+        // había que bajar mucho para ver datos del fondo (Mayor, Sumas, Bancos…).
+        sp.setFitToHeight(true);
         sp.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
         sp.getStyleClass().add("screen-scroll");
         return sp;
