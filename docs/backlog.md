@@ -65,10 +65,13 @@ aparte — context Spring + Flyway OK):**
 **Pendiente del plan (NO empezado por presupuesto de la sesión; orden sugerido):**
 - ⬜ **A restante**: Export PDF de **Mayor + Sumas y Saldos** (Balance+PyG ya hechos) ·
   **FORMATS-EXCHANGE** (xDiario + SUENLACE export/import, por spec, marcar para validar).
-- ⬜ **PAGO-PROVEEDOR (decisión Benjamin pendiente)**: acción "Registrar pago" en compras
-  (banco 572 / caja 570 / ticket) con fecha + método → asiento 400→572/570. Hoy solo por
-  conciliación bancaria. CONTENDO usa metodo_pago+fecha_pago; competidores saldan vencimientos
-  contra cuenta de tesorería. FIN-1b ya muestra el pendiente; falta la UX de registrar el pago.
+- ⬜ **PAGO-PROVEEDOR — VENCIMIENTOS** *(decidido Benjamin 2026-06-19: modelo completo
+  estilo A3/Sage)*. Plan slice a slice en
+  [`plan-pago-proveedor-vencimientos.md`](plan-pago-proveedor-vencimientos.md): tabla
+  `invoice_due_dates` (compras+ventas) → saldar cada vencimiento contra tesorería
+  (Banco 572 / Caja 570) con fecha+método → asiento 400→572/570; cubre extracto/ticket/caja.
+  PV-1 migración · PV-2 servicio · PV-3 endpoints · PV-4 UI compras · PV-5 conciliación↔venc
+  · PV-6 FIN lee de vencimientos · PV-7 simetría ventas. **Bloque grande → contexto fresco.**
 - ⬜ **C entero**: MEMP-2 (fichar móvil) · MEMP-3 · MEMP-4 · JOR-4 · partes de día ·
   fichajes sospechosos.
 - ⬜ **D entero** (decisión Benjamin: construir + MARCAR para validar): VIG-3 menor
