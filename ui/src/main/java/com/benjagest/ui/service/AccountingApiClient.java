@@ -1140,6 +1140,17 @@ public class AccountingApiClient {
                 + "&to=" + to + "&year=" + year);
     }
 
+    /** Export PDF del Balance de Situación. */
+    public byte[] balanceSheetPdf(LocalDate asOf) throws IOException, InterruptedException {
+        return getBytes("/accounting/reports/balance-sheet/export.pdf?asOf=" + asOf);
+    }
+
+    /** Export PDF de la cuenta de Pérdidas y Ganancias. */
+    public byte[] profitAndLossPdf(LocalDate from, LocalDate to)
+            throws IOException, InterruptedException {
+        return getBytes("/accounting/reports/profit-and-loss/export.pdf?from=" + from + "&to=" + to);
+    }
+
     // ====================================================================
     //  HTTP helpers
     // ====================================================================
