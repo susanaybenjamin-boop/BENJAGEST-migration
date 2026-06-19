@@ -375,14 +375,19 @@ public class AccountingScreen {
         // facturas: Venta y Gasto. La opción RECURRING_TASK queda
         // para distinguir asientos creados explícitamente como
         // plantillas JOURNAL_ENTRY (sin metadata fiscal).
+        // Lista COMPLETA de orígenes (todos los source_type que el backend
+        // puede escribir en journal_entries y que tienen clave i18n). Si se
+        // añade un source_type nuevo, añadirlo también aquí (y su clave ES+EN).
         sourceFilter = new ComboBox<>(FXCollections.observableArrayList(
-                "", "MANUAL", "SALES_INVOICE", "PURCHASE_INVOICE",
-                "BANK_MOVEMENT",
+                "", "MANUAL", "MANUAL_REVERSAL",
+                "SALES_INVOICE", "SALES_PDF_IMPORT", "PURCHASE_INVOICE",
+                "BANK_MOVEMENT", "DUE_DATE_PAYMENT",
+                "PAYSLIP_ACCRUAL", "PAYSLIP_PAYMENT",
+                "PAYSLIP_EXTRA_PROVISION", "PAYSLIP_EXTRA_PAYMENT",
+                "LOAN_INSTALLMENT",
+                "ASSET_ACQUISITION", "ASSET_DEPRECIATION", "ASSET_DISPOSAL",
                 "YEAR_CLOSE_REGULARIZATION", "YEAR_CLOSE_CLOSING",
-                "LOAN_INSTALLMENT", "ASSET_DEPRECIATION",
-                "ASSET_ACQUISITION", "ASSET_DISPOSAL",
-                "MANUAL_REVERSAL",
-                "RECURRING_TASK"));
+                "RECURRING_TASK", "RECURRING_ACCOUNTING"));
         installSourceCellFactory(sourceFilter);
 
         // Búsqueda libre — filtra por texto que aparezca en concepto, nº
