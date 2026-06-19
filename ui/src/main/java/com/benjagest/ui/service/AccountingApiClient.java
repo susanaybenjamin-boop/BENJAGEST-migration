@@ -1133,6 +1133,13 @@ public class AccountingApiClient {
                 decField(json, "estimatedCorporateTax"), decField(json, "projectedAfterTax"));
     }
 
+    /** FIN-5 — descarga el PDF del cuadro de mando (bytes). */
+    public byte[] financialsPdf(LocalDate from, LocalDate to, int year)
+            throws IOException, InterruptedException {
+        return getBytes("/accounting/financials/export.pdf?from=" + from
+                + "&to=" + to + "&year=" + year);
+    }
+
     // ====================================================================
     //  HTTP helpers
     // ====================================================================

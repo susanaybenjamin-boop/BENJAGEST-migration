@@ -46,6 +46,7 @@ public class AccountingFullController {
     private final AccountingTemplateService templates;
     private final FinancialReportsService reports;
     private final ClientFinancialsService clientFinancials;
+    private final FinancialDashboardPdfService financialsPdf;
 
     public AccountingFullController(BankAccountService bankAccounts,
                                       BankMovementService bankMovements,
@@ -54,7 +55,8 @@ public class AccountingFullController {
                                       FixedAssetEntriesService assetEntries,
                                       AccountingTemplateService templates,
                                       FinancialReportsService reports,
-                                      ClientFinancialsService clientFinancials) {
+                                      ClientFinancialsService clientFinancials,
+                                      FinancialDashboardPdfService financialsPdf) {
         this.bankAccounts = bankAccounts;
         this.bankMovements = bankMovements;
         this.bankImport = bankImport;
@@ -63,6 +65,7 @@ public class AccountingFullController {
         this.templates = templates;
         this.reports = reports;
         this.clientFinancials = clientFinancials;
+        this.financialsPdf = financialsPdf;
     }
 
     // ===== BANK ACCOUNTS =====
@@ -261,6 +264,18 @@ public class AccountingFullController {
     public ClientFinancialsService.ClosingProjection financialsProjection(
             @RequestParam("year") int year) {
         return clientFinancials.projectYearEnd(year);
+    }
+
+    @GetMapping(value = "/financials/export.pdf", produces = "application/pdf")
+    public org.springframework.http.ResponseEntity<byte[]> financialsPdf(
+            @RequestParam("from") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam("to") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
+            @RequestParam("year") int year) {
+        byte[] body = financialsPdf.exportPdf(from, to, year);
+        return org.springframework.http.ResponseEntity.ok()
+                .header("Content-Disposition",
+                        "attachment; filename=\"cuadro-mando-" + from + "_" + to + ".pdf\"")
+                .body(body);
     }
 
     @PostMapping("/templates/{id}/apply")

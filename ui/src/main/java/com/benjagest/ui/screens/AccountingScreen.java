@@ -1058,10 +1058,12 @@ public class AccountingScreen {
         finTo = new DatePicker(LocalDate.now());
         Button refresh = new Button(tt.apply("accounting.action.refresh"));
         refresh.setOnAction(e -> loadFinancials());
+        Button exportPdf = new Button(tt.apply("accounting.fin.export_pdf"));
+        exportPdf.setOnAction(e -> downloadFinancialsPdf());
 
         HBox controls = new HBox(8,
                 new Label(tt.apply("accounting.fin.from")), finFrom,
-                new Label(tt.apply("accounting.fin.to")), finTo, refresh);
+                new Label(tt.apply("accounting.fin.to")), finTo, refresh, exportPdf);
         controls.setAlignment(Pos.CENTER_LEFT);
 
         Label hint = new Label(tt.apply("accounting.fin.hint"));
@@ -1134,6 +1136,33 @@ public class AccountingScreen {
         async(() -> api.financialsProjection(year),
                 this::renderProjection,
                 err -> logSilent("load-financials-projection", err));
+    }
+
+    /** FIN-5 — descarga el informe PDF del cuadro de mando y lo guarda. */
+    private void downloadFinancialsPdf() {
+        LocalDate from = finFrom.getValue();
+        LocalDate to = finTo.getValue();
+        if (from == null || to == null) return;
+        int year = to.getYear();
+        async(() -> api.financialsPdf(from, to, year),
+                bytes -> {
+                    javafx.stage.FileChooser fc = new javafx.stage.FileChooser();
+                    fc.setTitle(tt.apply("accounting.fin.export_pdf"));
+                    fc.setInitialFileName("cuadro-mando-" + from + "_" + to + ".pdf");
+                    fc.getExtensionFilters().add(
+                            new javafx.stage.FileChooser.ExtensionFilter("PDF", "*.pdf"));
+                    java.io.File target = fc.showSaveDialog(finCards.getScene() == null
+                            ? null : finCards.getScene().getWindow());
+                    if (target == null) return;
+                    try {
+                        java.nio.file.Files.write(target.toPath(), bytes);
+                        showInfo(tt.apply("accounting.fin.export_ok_title"),
+                                tt.apply("accounting.fin.export_ok_body") + "\n" + target.getAbsolutePath());
+                    } catch (Exception ex) {
+                        showError(tt.apply("accounting.fin.export_fail"), ex.getMessage());
+                    }
+                },
+                err -> showError(tt.apply("accounting.fin.export_fail"), err));
     }
 
     private void renderProjection(AccountingModels.ClosingProjection p) {
