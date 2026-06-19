@@ -306,4 +306,11 @@ public final class AccountingModels {
             BigDecimal resultToDate, BigDecimal projectedResult,
             BigDecimal estimatedCorporateTax, BigDecimal projectedAfterTax
     ) {}
+
+    /** ME-2 — factura pendiente de un tercero (cobro/pago manual). */
+    public record OpenInvoice(String kind, String number, LocalDate date,
+                              BigDecimal total, BigDecimal pending) {}
+
+    /** ME-3 — cuenta sugerida para el asiento (histórico/reglas). */
+    public record SuggestedAccount(String code, String name, int score, String reason) {}
 }
