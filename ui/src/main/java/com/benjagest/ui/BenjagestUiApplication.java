@@ -18278,6 +18278,7 @@ public class BenjagestUiApplication extends Application {
             case "accounting.rec.vat_to_offset" -> "Estimated VAT in your favour: {x} (to offset or refund).";
             case "accounting.rec.validate_drafts" -> "There are {n} auto-proposed entr(y/ies) to validate in the \"To validate\" tab; the figures are not final.";
             case "accounting.rec.all_good" -> "No alerts for this period. Healthy figures.";
+            case "accounting.fin.go_pending" -> "Go to \"To validate\"";
             case "accounting.fin.export_pdf" -> "Export PDF";
             case "accounting.fin.export_ok_title" -> "PDF saved";
             case "accounting.fin.export_ok_body" -> "The dashboard report was saved to:";
@@ -19382,6 +19383,7 @@ public class BenjagestUiApplication extends Application {
             case "accounting.rec.vat_to_offset" -> "IVA estimado a tu favor: {x} (a compensar o devolver).";
             case "accounting.rec.validate_drafts" -> "Hay {n} asiento(s) auto-propuestos por validar en la pestaña \"Por validar\"; las cifras no son definitivas.";
             case "accounting.rec.all_good" -> "Sin alertas para este periodo. Cifras saludables.";
+            case "accounting.fin.go_pending" -> "Ir a \"Por validar\"";
             case "accounting.fin.export_pdf" -> "Exportar PDF";
             case "accounting.fin.export_ok_title" -> "PDF guardado";
             case "accounting.fin.export_ok_body" -> "El informe del cuadro de mando se guardó en:";

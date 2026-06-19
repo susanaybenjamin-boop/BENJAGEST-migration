@@ -96,6 +96,7 @@ public class AccountingScreen {
     /** Devuelve el nodo raíz para encajar en el viewport. */
     public Node buildView() {
         TabPane tabs = new TabPane();
+        this.accountingTabs = tabs;
         tabs.setTabClosingPolicy(TabPane.TabClosingPolicy.UNAVAILABLE);
         // Slice 3O — Eliminado el tab "Recurrentes" de Contabilidad.
         // Las plantillas recurrentes viven en su sitio natural:
@@ -104,8 +105,9 @@ public class AccountingScreen {
         //     Compras y Gastos
         // El asesor accede ahí, no desde Contabilidad. Mantener ambas
         // entradas duplicaba la funcionalidad y confundía.
+        pendingTab = new Tab(tt.apply("accounting.tab.pending"), buildPendingTab());
         tabs.getTabs().addAll(
-                new Tab(tt.apply("accounting.tab.pending"), buildPendingTab()),
+                pendingTab,
                 new Tab(tt.apply("accounting.tab.diary"), buildDiaryTab()),
                 new Tab(tt.apply("accounting.tab.manual"), buildManualTab()),
                 // REPORTS-UI — informes contables (backend ya existía; faltaba UI).
@@ -149,6 +151,16 @@ public class AccountingScreen {
     // ====================================================================
 
     private TableView<DiaryEntry> pendingTable;
+    private TabPane accountingTabs;
+    private Tab pendingTab;
+
+    /** Selecciona la pestaña "Por validar" y recarga su contenido. */
+    private void goToPendingTab() {
+        if (accountingTabs != null && pendingTab != null) {
+            accountingTabs.getSelectionModel().select(pendingTab);
+            loadPending();
+        }
+    }
 
     private Node buildPendingTab() {
         pendingTable = createDiaryTable(true);
@@ -1181,6 +1193,7 @@ public class AccountingScreen {
     private DatePicker finTo;
     private FlowPane finCards;
     private Label finDraftWarn;
+    private HBox finDraftWarnBox;
     private TableView<AccountingModels.MonthPoint> finMonthly;
     private FlowPane finProjection;
     private VBox finRecommendations;
@@ -1209,8 +1222,13 @@ public class AccountingScreen {
         finDraftWarn = new Label();
         finDraftWarn.setStyle("-fx-text-fill: #b8860b;");
         finDraftWarn.setWrapText(true);
-        finDraftWarn.setVisible(false);
-        finDraftWarn.setManaged(false);
+        HBox.setHgrow(finDraftWarn, Priority.ALWAYS);
+        Button goPending = new Button(tt.apply("accounting.fin.go_pending"));
+        goPending.setOnAction(e -> goToPendingTab());
+        finDraftWarnBox = new HBox(8, finDraftWarn, goPending);
+        finDraftWarnBox.setAlignment(Pos.CENTER_LEFT);
+        finDraftWarnBox.setVisible(false);
+        finDraftWarnBox.setManaged(false);
 
         finCards = new FlowPane(14, 14);
         finCards.setPadding(new Insets(6, 0, 0, 0));
@@ -1251,7 +1269,7 @@ public class AccountingScreen {
         ScrollPane sp = new ScrollPane(content);
         sp.setFitToWidth(true);
 
-        VBox box = new VBox(10, hint, controls, finDraftWarn, sp);
+        VBox box = new VBox(10, hint, controls, finDraftWarnBox, sp);
         box.setPadding(new Insets(8));
         VBox.setVgrow(sp, Priority.ALWAYS);
         loadFinancials();
@@ -1374,11 +1392,11 @@ public class AccountingScreen {
         if (f.draftCount() > 0) {
             finDraftWarn.setText(tt.apply("accounting.fin.draft_warn")
                     .replace("{n}", String.valueOf(f.draftCount())));
-            finDraftWarn.setVisible(true);
-            finDraftWarn.setManaged(true);
+            finDraftWarnBox.setVisible(true);
+            finDraftWarnBox.setManaged(true);
         } else {
-            finDraftWarn.setVisible(false);
-            finDraftWarn.setManaged(false);
+            finDraftWarnBox.setVisible(false);
+            finDraftWarnBox.setManaged(false);
         }
         renderRecommendations(f);
     }
