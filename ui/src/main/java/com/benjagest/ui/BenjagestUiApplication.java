@@ -8943,17 +8943,31 @@ public class BenjagestUiApplication extends Application {
         bankReconcileBtn.setGraphic(icon("fas-link"));
         bankReconcileBtn.setOnAction(ev -> showBankReconciliationDialog());
 
+        // PV-7 — cobro por plazos: vencimientos de la factura de venta.
+        // Solo para facturas VALIDATED (un borrador no tiene cobro).
+        Button dueDatesSalesBtn = new Button(t("duedates.action.open_sales"));
+        dueDatesSalesBtn.setGraphic(icon("fas-calendar-check"));
+        dueDatesSalesBtn.setDisable(true);
+        dueDatesSalesBtn.setOnAction(ev -> {
+            SalesInvoiceSummary sel = billingTable.getSelectionModel().getSelectedItem();
+            if (sel != null) openDueDatesDialog("SALES", sel.id(),
+                    sel.customerLegalName(), sel.total());
+        });
+        billingTable.getSelectionModel().selectedItemProperty().addListener((obs, oldV, newV) ->
+                dueDatesSalesBtn.setDisable(newV == null || !"VALIDATED".equals(newV.status())));
+
         Region rowActionsSpacer = new Region();
         HBox.setHgrow(rowActionsSpacer, Priority.ALWAYS);
         HBox rowActions = new HBox(6, validateRowBtn, deleteDraftBtn, voidBtn,
                 toValidatedBtn, makeRecurringBtn, multiAllocBtn, bankReconcileBtn,
+                dueDatesSalesBtn,
                 rowActionsSpacer, emailBtn, pdfBtn);
         rowActions.getStyleClass().add("settings-actions");
         // Forzar a que los botones se vean enteros: si la barra no cabe
         // hace overflow horizontal (preferible a truncar con "...").
         for (Button b : new Button[]{ validateRowBtn, deleteDraftBtn, voidBtn,
                 toValidatedBtn, makeRecurringBtn, multiAllocBtn, bankReconcileBtn,
-                emailBtn, pdfBtn }) {
+                dueDatesSalesBtn, emailBtn, pdfBtn }) {
             b.setMinWidth(Region.USE_PREF_SIZE);
         }
 
@@ -18564,6 +18578,7 @@ public class BenjagestUiApplication extends Application {
             case "accounting.fin.go_pending" -> "Go to \"To validate\"";
             // PV-4 — vencimientos / pago
             case "duedates.action.open" -> "Due dates / Payment";
+            case "duedates.action.open_sales" -> "Due dates / Collection";
             case "duedates.title" -> "Due dates";
             case "duedates.close" -> "Close";
             case "duedates.empty" -> "No due dates.";
@@ -19707,6 +19722,7 @@ public class BenjagestUiApplication extends Application {
             case "accounting.fin.go_pending" -> "Ir a \"Por validar\"";
             // PV-4 — vencimientos / pago
             case "duedates.action.open" -> "Vencimientos / Pago";
+            case "duedates.action.open_sales" -> "Vencimientos / Cobro";
             case "duedates.title" -> "Vencimientos";
             case "duedates.close" -> "Cerrar";
             case "duedates.empty" -> "Sin vencimientos.";

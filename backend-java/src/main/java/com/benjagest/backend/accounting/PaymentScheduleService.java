@@ -157,7 +157,36 @@ public class PaymentScheduleService {
                  WHERE id = ? AND company_id = ?
                 """, Date.valueOf(payDate), blank(req.paymentMethod()),
                 req.treasuryAccountCode().trim(), entryId, dueDateId, companyId);
+        if ("SALES".equals(dd.invoiceKind())) syncSalesPaymentStatus(dd.invoiceId());
         return getOne(dueDateId);
+    }
+
+    /**
+     * PV-7 — Unificación: el estado de cobro de la factura de VENTA
+     * (`sales_invoices.payment_status` + `paid_amount`) se deriva de la suma de
+     * sus vencimientos PAGADOS, para que el cobro por plazos y el modelo de
+     * cobro existente (listados, KPIs, conciliación) queden coherentes. Los
+     * vencimientos son la fuente; aquí se proyecta a la factura. Best-effort.
+     */
+    private void syncSalesPaymentStatus(String invoiceId) {
+        try {
+            String companyId = tenant.getCurrentCompanyId();
+            BigDecimal total = loadInvoice("SALES", invoiceId).total();
+            BigDecimal paid = jdbc.queryForObject("""
+                    SELECT COALESCE(SUM(amount), 0) FROM invoice_due_dates
+                     WHERE company_id = ? AND invoice_kind = 'SALES'
+                       AND invoice_id = ? AND status = 'PAID'
+                    """, BigDecimal.class, companyId, invoiceId);
+            BigDecimal p = paid == null ? BigDecimal.ZERO : paid;
+            String st = p.signum() <= 0 ? "PENDING"
+                    : (p.add(new BigDecimal("0.01")).compareTo(total) >= 0 ? "PAID" : "PARTIAL");
+            jdbc.update("""
+                    UPDATE sales_invoices SET payment_status = ?, paid_amount = ?
+                     WHERE id = ? AND company_id = ?
+                    """, st, p, invoiceId, companyId);
+        } catch (Exception ex) {
+            // best-effort: el cobro cuenta por el asiento aunque no se proyecte.
+        }
     }
 
     /**
@@ -195,6 +224,7 @@ public class PaymentScheduleService {
                     bankMovementId, dd.id(), tenant.getCurrentCompanyId());
             remaining = remaining.subtract(dd.amount());
         }
+        if ("SALES".equals(invoiceKind)) syncSalesPaymentStatus(invoiceId);
     }
 
     /** Revierte el pago de un vencimiento (borra el asiento, vuelve a PENDING). */
@@ -215,6 +245,7 @@ public class PaymentScheduleService {
                        bank_movement_id = NULL
                  WHERE id = ? AND company_id = ?
                 """, dueDateId, companyId);
+        if ("SALES".equals(dd.invoiceKind())) syncSalesPaymentStatus(dd.invoiceId());
         return getOne(dueDateId);
     }
 
