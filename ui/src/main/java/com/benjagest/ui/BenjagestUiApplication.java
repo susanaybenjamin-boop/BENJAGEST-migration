@@ -16812,6 +16812,8 @@ public class BenjagestUiApplication extends Application {
             case "labor.audit.col.incidence" -> "Incidence";
             case "labor.audit.incidence.yes" -> "Review";
             case "labor.audit.incidence.no" -> "OK";
+            case "labor.audit.all" -> "All";
+            case "labor.audit.incidence.tooltip" -> "Click a row to review that employee's punches in the detail below. An incidence flags days with a missing clock-in or clock-out.";
             case "labor.audit.col.when" -> "Date/time";
             case "labor.audit.col.type" -> "Type";
             case "labor.audit.col.origin" -> "Origin";
@@ -17497,6 +17499,8 @@ public class BenjagestUiApplication extends Application {
             case "labor.audit.col.incidence" -> "Incidencia";
             case "labor.audit.incidence.yes" -> "Revisar";
             case "labor.audit.incidence.no" -> "OK";
+            case "labor.audit.all" -> "Todos";
+            case "labor.audit.incidence.tooltip" -> "Haz clic en una fila para revisar los fichajes de ese empleado en el detalle de abajo. La incidencia marca días sin entrada o sin salida.";
             case "labor.audit.col.when" -> "Fecha/hora";
             case "labor.audit.col.type" -> "Tipo";
             case "labor.audit.col.origin" -> "Origen";
@@ -22533,13 +22537,28 @@ public class BenjagestUiApplication extends Application {
         ComboBox<com.benjagest.ui.model.EmployeeEntry> empCombo = new ComboBox<>();
         empCombo.setConverter(new javafx.util.StringConverter<>() {
             @Override public String toString(com.benjagest.ui.model.EmployeeEntry e) {
-                return e == null ? "(todos)" : e.fullName();
+                return e == null ? t("labor.audit.all") : e.fullName();
             }
             @Override public com.benjagest.ui.model.EmployeeEntry fromString(String s) { return null; }
         });
-        empCombo.getItems().add(null);
+        // El item null = "Todos" debe verse claramente en el desplegable
+        // (con el cell factory por defecto sale en blanco) para poder volver
+        // a seleccionarlo tras filtrar por un empleado.
+        empCombo.setCellFactory(lv -> new javafx.scene.control.ListCell<>() {
+            @Override protected void updateItem(com.benjagest.ui.model.EmployeeEntry e, boolean empty) {
+                super.updateItem(e, empty);
+                setText(empty ? null : (e == null ? t("labor.audit.all") : e.fullName()));
+            }
+        });
+        empCombo.setButtonCell(new javafx.scene.control.ListCell<>() {
+            @Override protected void updateItem(com.benjagest.ui.model.EmployeeEntry e, boolean empty) {
+                super.updateItem(e, empty);
+                setText(empty ? null : (e == null ? t("labor.audit.all") : e.fullName()));
+            }
+        });
+        empCombo.getItems().add(null); // "Todos"
         empCombo.getItems().addAll(allEmployees);
-        empCombo.setValue(null);
+        empCombo.setValue(null); // seleccionado "Todos" al abrir
 
         TextField eventTypeField = new TextField();
         eventTypeField.setPromptText("IN, OUT, COMIDA…");
@@ -22551,6 +22570,7 @@ public class BenjagestUiApplication extends Application {
         summaryTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
         summaryTable.setPlaceholder(new Label(t("labor.audit.summary.placeholder.empty")));
         summaryTable.setPrefHeight(180);
+        summaryTable.setTooltip(new javafx.scene.control.Tooltip(t("labor.audit.incidence.tooltip")));
 
         TableColumn<com.benjagest.ui.model.TimeClockAuditSummary, String> sName =
                 new TableColumn<>(t("labor.audit.col.employee"));

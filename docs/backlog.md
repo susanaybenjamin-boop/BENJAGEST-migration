@@ -71,13 +71,22 @@ aparte — context Spring + Flyway OK):**
   pendiente de los vencimientos) · **PV-7** (simetría cobros de ventas).
 - ✅ **MEMP-2 fichar desde el móvil** *(420d31b → merge 41f352b)* — `EmployeeFichajeController`
   /api/empleado/fichaje (rol EMPLOYEE, reusa TimeClockService) + pantalla de fichaje en la PWA
-  (Entrada/Salida/Pausa/Vuelta + geo + estado + últimos). Caso "empresa de servicios" cubierto.
+  (Entrada/Salida/Pausa/Vuelta + geo + estado + últimos). **Probado en vivo OK** por Benjamin
+  (fichaje móvil de Marcos visible en Auditoría). Caso "empresa de servicios" cubierto.
+- ✅ **Auditoría fichajes — fixes UX** *(tras feedback Benjamin)* — combo empleado con **"Todos"**
+  visible en el desplegable (cellFactory/buttonCell) y seleccionado al abrir; tooltip en el
+  resumen explicando que el click de fila filtra el detalle (vía de revisión de la incidencia).
+- ✅ **Fix i18n source_type DUE_DATE_PAYMENT** + **CLAUDE.md §4/§10 regla dura de i18n**
+  (valores de enum/estado/source_type que el backend genera necesitan clave ES+EN).
 
 > **Validación:** todo compila (backend+ui), el backend ARRANCA limpio (V133 migra OK),
-> rutas nuevas 403 (mapeadas/protegidas), la PWA sirve el HTML nuevo. Smoke con login real
-> → con Benjamin.
+> rutas nuevas 403 (mapeadas/protegidas), la PWA sirve el HTML nuevo. **MEMP-2 probado en vivo.**
 
 **Pendiente del plan (orden sugerido):**
+- ⬜ **FICHAJE-JORNADA** *(pedido Benjamin 2026-06-19)* — botones de fichaje según el horario
+  asignado (estilo CONTENDO: ±15 min, "solo el botón que toca"). Plan slice a slice (FJ-1..5,
+  incluye la incidencia schedule-aware + acción de revisar/corregir = punto 2) en
+  [`plan-fichaje-por-jornada.md`](plan-fichaje-por-jornada.md). **Feature grande → contexto fresco.**
 - ⬜ **A restante**: Export PDF de **Mayor + Sumas y Saldos** (Balance+PyG ya hechos) ·
   **FORMATS-EXCHANGE** (xDiario + SUENLACE export/import, por spec, marcar para validar).
 - ⬜ **PV-5/6/7** (enhancements de pago proveedor, ver arriba).
