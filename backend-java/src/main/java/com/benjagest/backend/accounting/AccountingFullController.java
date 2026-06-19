@@ -47,6 +47,7 @@ public class AccountingFullController {
     private final FinancialReportsService reports;
     private final ClientFinancialsService clientFinancials;
     private final FinancialDashboardPdfService financialsPdf;
+    private final AccountingReportsPdfService reportsPdf;
 
     public AccountingFullController(BankAccountService bankAccounts,
                                       BankMovementService bankMovements,
@@ -56,7 +57,8 @@ public class AccountingFullController {
                                       AccountingTemplateService templates,
                                       FinancialReportsService reports,
                                       ClientFinancialsService clientFinancials,
-                                      FinancialDashboardPdfService financialsPdf) {
+                                      FinancialDashboardPdfService financialsPdf,
+                                      AccountingReportsPdfService reportsPdf) {
         this.bankAccounts = bankAccounts;
         this.bankMovements = bankMovements;
         this.bankImport = bankImport;
@@ -66,6 +68,7 @@ public class AccountingFullController {
         this.reports = reports;
         this.clientFinancials = clientFinancials;
         this.financialsPdf = financialsPdf;
+        this.reportsPdf = reportsPdf;
     }
 
     // ===== BANK ACCOUNTS =====
@@ -301,6 +304,25 @@ public class AccountingFullController {
             @RequestParam(value = "to", required = false)
             @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
         return reports.profitAndLoss(from, to);
+    }
+
+    @GetMapping(value = "/reports/balance-sheet/export.pdf", produces = "application/pdf")
+    public org.springframework.http.ResponseEntity<byte[]> balanceSheetPdf(
+            @RequestParam("asOf") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate asOf) {
+        byte[] body = reportsPdf.balanceSheetPdf(asOf);
+        return org.springframework.http.ResponseEntity.ok()
+                .header("Content-Disposition", "attachment; filename=\"balance-" + asOf + ".pdf\"")
+                .body(body);
+    }
+
+    @GetMapping(value = "/reports/profit-and-loss/export.pdf", produces = "application/pdf")
+    public org.springframework.http.ResponseEntity<byte[]> profitAndLossPdf(
+            @RequestParam("from") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam("to") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
+        byte[] body = reportsPdf.profitAndLossPdf(from, to);
+        return org.springframework.http.ResponseEntity.ok()
+                .header("Content-Disposition", "attachment; filename=\"pyg-" + from + "_" + to + ".pdf\"")
+                .body(body);
     }
 
     @GetMapping("/reports/equity-changes")

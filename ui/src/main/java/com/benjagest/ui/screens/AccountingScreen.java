@@ -1165,6 +1165,29 @@ public class AccountingScreen {
                 err -> showError(tt.apply("accounting.fin.export_fail"), err));
     }
 
+    /** Descarga genérica de un PDF (informes contables) → FileChooser + guardado. */
+    private void savePdf(ApiCall<byte[]> supplier, String suggestedName, Node owner) {
+        async(supplier,
+                bytes -> {
+                    javafx.stage.FileChooser fc = new javafx.stage.FileChooser();
+                    fc.setTitle(tt.apply("accounting.fin.export_pdf"));
+                    fc.setInitialFileName(suggestedName);
+                    fc.getExtensionFilters().add(
+                            new javafx.stage.FileChooser.ExtensionFilter("PDF", "*.pdf"));
+                    java.io.File target = fc.showSaveDialog(
+                            owner.getScene() == null ? null : owner.getScene().getWindow());
+                    if (target == null) return;
+                    try {
+                        java.nio.file.Files.write(target.toPath(), bytes);
+                        showInfo(tt.apply("accounting.fin.export_ok_title"),
+                                tt.apply("accounting.fin.export_ok_body") + "\n" + target.getAbsolutePath());
+                    } catch (Exception ex) {
+                        showError(tt.apply("accounting.fin.export_fail"), ex.getMessage());
+                    }
+                },
+                err -> showError(tt.apply("accounting.fin.export_fail"), err));
+    }
+
     private void renderProjection(AccountingModels.ClosingProjection p) {
         finProjection.getChildren().clear();
         finProjection.getChildren().addAll(
@@ -2055,7 +2078,11 @@ public class AccountingScreen {
                     sectionGroup(tt.apply("accounting.balance.pasivo"), bs.pasivo(), bs.totalPasivo()));
         }, err -> showError(tt.apply("accounting.report.fail"), err)));
 
-        HBox filters = new HBox(8, new Label(tt.apply("accounting.balance.as_of")), asOf, view);
+        Button exportPdf = new Button(tt.apply("accounting.fin.export_pdf"));
+        exportPdf.setOnAction(e -> savePdf(() -> api.balanceSheetPdf(asOf.getValue()),
+                "balance-" + asOf.getValue() + ".pdf", view));
+
+        HBox filters = new HBox(8, new Label(tt.apply("accounting.balance.as_of")), asOf, view, exportPdf);
         filters.setAlignment(Pos.CENTER_LEFT);
         VBox box = new VBox(10, filters, scroll);
         box.setPadding(new Insets(8));
@@ -2116,9 +2143,13 @@ public class AccountingScreen {
                     new javafx.scene.control.Separator(), result);
         }, err -> showError(tt.apply("accounting.report.fail"), err)));
 
+        Button exportPdf = new Button(tt.apply("accounting.fin.export_pdf"));
+        exportPdf.setOnAction(e -> savePdf(() -> api.profitAndLossPdf(from.getValue(), to.getValue()),
+                "pyg-" + from.getValue() + "_" + to.getValue() + ".pdf", view));
+
         HBox filters = new HBox(8,
                 new Label(tt.apply("accounting.filter.from")), from,
-                new Label(tt.apply("accounting.filter.to")), to, view);
+                new Label(tt.apply("accounting.filter.to")), to, view, exportPdf);
         filters.setAlignment(Pos.CENTER_LEFT);
         VBox box = new VBox(10, filters, scroll);
         box.setPadding(new Insets(8));
