@@ -40,13 +40,23 @@ aparte — context Spring + Flyway OK):**
 - ✅ **FIN-3 proyección de cierre + IS** *(7b3c7d3 → merge 88ef72f)* — `projectYearEnd`
   (extrapola YTD a 12 meses + IS 25%, orientativo, NO declaración). Endpoint
   `/financials/projection`. Sección "Proyección de cierre" con 4 tarjetas.
+- ✅ **FIN-4 recomendaciones** *(fdb3013 → merge 1af1d7d)* — sección "Recomendaciones"
+  con reglas sobre las cifras (vencidas, pérdida, coste personal >40%, margen ajustado,
+  IVA a pagar/compensar, drafts). Calculadas en UI para pasar por i18n ES+EN.
+- ✅ **FIN-5 informe PDF** *(0aedd89 → merge df560bb)* — `FinancialDashboardPdfService`
+  (OpenPDF): resumen + proyección + recomendaciones + evolución mensual. Endpoint
+  `/financials/export.pdf` + botón "Exportar PDF".
+  **→ Bloque FIN-ANALYSIS (FIN-1..5) COMPLETO.**
+
+> **Validación:** todo compila (backend+ui) y el backend ARRANCA limpio (Spring + Flyway,
+> sin UnsatisfiedDependency); las 5 rutas FIN + /templates responden 403 (mapeadas y
+> protegidas). Smoke con login real → a las 19:00 con Benjamin.
 
 **Pendiente del plan (NO empezado por presupuesto de la sesión; orden sugerido):**
 - ⬜ **A restante**: Export PDF de informes contables · **FORMATS-EXCHANGE** (xDiario +
   SUENLACE export/import, por spec, marcar para validar con fichero real).
 - ⬜ **B restante**: **FIN-1b** pendiente de PAGO a proveedores (`purchase_invoices`
-  cambió de esquema en V45 → verificar modelo de pagos antes de cablear; regla 10.bis) ·
-  **FIN-4** recomendaciones · **FIN-5** informe PDF.
+  cambió de esquema en V45 → verificar modelo de pagos antes de cablear; regla 10.bis).
 - ⬜ **C entero**: MEMP-2 (fichar móvil) · MEMP-3 · MEMP-4 · JOR-4 · partes de día ·
   fichajes sospechosos.
 - ⬜ **D entero** (decisión Benjamin: construir + MARCAR para validar): VIG-3 menor
