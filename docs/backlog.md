@@ -14,6 +14,50 @@
 
 ---
 
+## 📅 SESIÓN 2026-06-19 — Autónoma (Benjamin fuera hasta 19:00). Bloques A + B (FIN)
+
+> Benjamin dejó cola decidida: cerrar A, B, C, D + GESTOR-NAVEGADOR (E y F a otra
+> sesión). Decisiones: bloque D = construir cálculo pero MARCAR para validar juntos;
+> FORMATS-EXCHANGE = por especificación; profundidad (100% cerrado) > amplitud.
+> Pruebas de flujo a las 19:00 juntos.
+
+**Cerrado y mergeado a develop hoy (compila limpio; backend arranca limpio en puerto
+aparte — context Spring + Flyway OK):**
+- ✅ **ACC-TEMPLATES UI** *(edded5c → merge ff3c4fc)* — cierra el bloque Contabilidad.
+  Nueva pestaña "Plantillas" en `AccountingScreen`: tabla + filtro archivadas; editor
+  (cabecera + tabla editable de líneas FIXED/VARIABLE/FORMULA con pista de cuadre y
+  validación); aplicar plantilla (fecha + concepto + contabilizar-ya + un campo por
+  variable → genera asiento DRAFT/POSTED y refresca el Diario). `AccountingApiClient`
+  list/create/update/archive/apply + `AccountingModels.EntryTemplate(+Line)`. i18n ES+EN.
+- ✅ **FIN-1 cuadro de mando** *(3002195 → merge 8794dd3)* — `ClientFinancialsService`
+  (tenant) reusa `SalesAndExpensesKpiService` + coste personal (64x) + ratios (margen %,
+  gasto/ingreso %, personal/ingreso %) + tesorería de COBROS (sales_invoices) + aviso
+  de drafts. Endpoint `/api/accounting/financials`. Pestaña "Cuadro de mando" con
+  tarjetas KPI + rango de fechas.
+- ✅ **FIN-2 evolución mensual** *(956691d → merge ec39dea)* — `monthlySeries(year)` (12
+  meses, una query agrupada). Endpoint `/financials/monthly`. Tabla "Evolución mensual"
+  bajo las tarjetas.
+- ✅ **FIN-3 proyección de cierre + IS** *(7b3c7d3 → merge 88ef72f)* — `projectYearEnd`
+  (extrapola YTD a 12 meses + IS 25%, orientativo, NO declaración). Endpoint
+  `/financials/projection`. Sección "Proyección de cierre" con 4 tarjetas.
+
+**Pendiente del plan (NO empezado por presupuesto de la sesión; orden sugerido):**
+- ⬜ **A restante**: Export PDF de informes contables · **FORMATS-EXCHANGE** (xDiario +
+  SUENLACE export/import, por spec, marcar para validar con fichero real).
+- ⬜ **B restante**: **FIN-1b** pendiente de PAGO a proveedores (`purchase_invoices`
+  cambió de esquema en V45 → verificar modelo de pagos antes de cablear; regla 10.bis) ·
+  **FIN-4** recomendaciones · **FIN-5** informe PDF.
+- ⬜ **C entero**: MEMP-2 (fichar móvil) · MEMP-3 · MEMP-4 · JOR-4 · partes de día ·
+  fichajes sospechosos.
+- ⬜ **D entero** (decisión Benjamin: construir + MARCAR para validar): VIG-3 menor
+  (guard `hasPayslips`) · VIG-4 atrasos · CV-5 excedencias/suspensiones · CV-8 cese empresa.
+- ⬜ **GESTOR-NAVEGADOR (JCEF)** Fase 1 — integración pesada (binarios nativos Chromium);
+  pendiente entera. Aviso: posible muro de entorno (descarga libs nativas).
+- **Nota puertos:** dejé 8080 y 8090 libres tras validar; al probar a las 19:00 se
+  arranca backend fresco con el código nuevo. MariaDB 3307 intacta.
+
+---
+
 ## 📅 SESIÓN 2026-06-18 — Jornadas + Portal empleado (PWA) + UX. Estado y pendientes
 
 **Cerrado y mergeado a develop hoy:**
@@ -62,9 +106,9 @@ http://localhost:8080` + `BENJAGEST_PUBLIC_BASE_URL`=URL del túnel.
   botón "Importar extracto" en pestaña Bancos).
 - ✅ **EXPORT-CONTABLE + EXT-IMPORT** (CSV/Contasol/JSON): **UI hecha 2026-06-17**
   (pestaña "Exportar/Importar" en Contabilidad). A3/Sage siguen pendientes en backend.
-- 🔶 **ACC-TEMPLATES**: backend con endpoints, **falta UI de gestión (CRUD)**. NO
-  hecha aún — es la pieza más compleja (editor de líneas FIXED/VARIABLE/FORMULA +
-  diálogo de aplicar con variables). Siguiente al volver Benjamin.
+- ✅ **ACC-TEMPLATES**: **UI de gestión (CRUD) hecha 2026-06-19** (edded5c) — pestaña
+  "Plantillas" con editor de líneas FIXED/VARIABLE/FORMULA + diálogo de aplicar con
+  variables. Cierra el bloque Contabilidad.
 - ✅ **ECPN** (cambios patrimonio neto): **UI hecha 2026-06-17** (pestaña ECPN).
 - Matiz **Modelos AEAT 347/390/190**: backend OK pero **editor UI genérico** (JSON);
   solo 130/303 tienen editor específico. **Benjamin pidió editores específicos
