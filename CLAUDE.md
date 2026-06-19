@@ -102,8 +102,31 @@ git checkout feat/Benjamin
 - **No tocar estilos**: reusar clases CSS existentes (`module-detail-title`,
   `settings-section`, `data-table`, `primary-button`, `settings-hint`,
   etc.). CSS nuevo solo si imitando paleta y patrones de `app.css`.
-- **i18n obligatorio**: toda string visible va por `t(key)` con par
-  ES + EN. Nunca hardcodear español.
+- **i18n obligatorio (REGLA DURA — verificar en CADA ejecución, antes de
+  cerrar el slice).** Toda string visible va por `t(key)` con par ES + EN.
+  Nunca hardcodear español. Esto **NO es solo para los textos de la UI** —
+  el bug que más se repite es olvidar la clave de un **VALOR de enum / estado
+  / código / `source_type`** que el backend produce y la UI pinta con
+  `t("prefijo." + valor)`. Checklist obligatorio:
+    1. ¿He creado un **valor nuevo** que llega a la UI? (un `source_type` de
+       asiento como `DUE_DATE_PAYMENT`, un `status`, un código de
+       enum como `DEBIT`/`FIXED`, una categoría, un método de pago…).
+       → Añadir su clave `t(...)` en **AMBOS** bloques del switch (ES **y** EN)
+       de `BenjagestUiApplication`. Buscar el grupo existente
+       (`accounting.source_type.*`, `duedates.method.*`, etc.) y añadir ahí.
+    2. ¿He puesto algún literal en español en código JavaFX, en un combo, en
+       una columna de tabla, en un `Alert`, o en un text-block HTML de PWA?
+       → Pasarlo por `t(key)` con par ES+EN. (La PWA del empleado es ES por
+       diseño; ahí sí puede ir literal, pero anótalo.)
+    3. Antes de commitear: si he añadido una clave EN, ¿existe su gemela ES
+       (y viceversa)? Si una falta, la UI muestra la **clave cruda**
+       (`accounting.source_type.DU…`) — exactamente el bug a evitar.
+  No cerrar un slice sin haber repasado este checklist. Cuesta 30 s; volver a
+  corregirlo después cuesta la confianza de Benjamin.
+- **Diálogos dimensionados**: todo `Dialog`/`Stage` nuevo lleva
+  `setPrefSize(...)` (+ `setResizable(true)` si tiene tabla) y las tablas
+  anchas usan `CONSTRAINED_RESIZE_POLICY` para que las columnas no se corten
+  fuera de la ventana. No crear ventanas “a ojo”.
 - **Botón Cancelar/Cerrar** en todos los wizards y diálogos largos.
 - **Visor PDF**: usar `PdfViewer` interno (PDFBox), no `Desktop.open()`
   (no requiere visor del SO).
@@ -185,7 +208,10 @@ Al cerrar un bloque (3+ slices completados):
 ## 10. No olvides
 
 - Antes de un fix complejo: **agentes paralelos** (sección 2).
-- Antes de tocar UI: **CSS reusable + i18n + no emoji**.
+- Antes de tocar UI: **CSS reusable + i18n + diálogo dimensionado + no emoji**.
+- **i18n en CADA slice**: ¿algún **valor nuevo** (source_type/estado/enum/
+  método) llega a la UI? → añade su clave `t(...)` en **ES y EN** (sección 4,
+  checklist). Si falta una de las dos, la UI muestra la clave cruda.
 - Antes de tocar endpoint: **`@RequiresRole` con EMPLOYEE si es operacional**.
 - Antes de parsear JSON anidado: **`splitTopLevelObjects`**, no
   `parseObjects`.

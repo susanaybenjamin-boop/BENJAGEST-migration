@@ -18891,6 +18891,7 @@ public class BenjagestUiApplication extends Application {
             case "accounting.source_type.PAYSLIP_PAYMENT" -> "Payroll (payment)";
             case "accounting.source_type.PAYSLIP_EXTRA_PROVISION" -> "Extra-pay provision";
             case "accounting.source_type.PAYSLIP_EXTRA_PAYMENT" -> "Extra-pay payment";
+            case "accounting.source_type.DUE_DATE_PAYMENT" -> "Due-date payment";
             case "accounting.col.name" -> "Name";
             case "accounting.col.rule_kind" -> "Rule kind";
             case "accounting.col.nif" -> "Tax ID";
@@ -20036,6 +20037,7 @@ public class BenjagestUiApplication extends Application {
             case "accounting.source_type.PAYSLIP_PAYMENT" -> "Nómina (pago)";
             case "accounting.source_type.PAYSLIP_EXTRA_PROVISION" -> "Provisión pagas extra";
             case "accounting.source_type.PAYSLIP_EXTRA_PAYMENT" -> "Pago paga extra";
+            case "accounting.source_type.DUE_DATE_PAYMENT" -> "Pago de vencimiento";
             case "accounting.col.name" -> "Nombre";
             case "accounting.col.rule_kind" -> "Tipo de regla";
             case "accounting.col.nif" -> "NIF";
