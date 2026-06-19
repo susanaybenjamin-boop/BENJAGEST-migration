@@ -1862,6 +1862,41 @@ public class AccountingScreen {
 
         linesTable.getColumns().addAll(List.of(accCol, descCol, debitCol, creditCol));
 
+        // ME-1 — Tab recorre la FILA (cuenta → descripción → debe → haber) y,
+        // al final, salta a la cuenta de la siguiente línea (creándola si es la
+        // última). Shift+Tab va hacia atrás. Sin esto, la traversal por defecto
+        // de JavaFX baja a la cuenta de la línea siguiente.
+        linesTable.addEventFilter(javafx.scene.input.KeyEvent.KEY_PRESSED, ev -> {
+            if (ev.getCode() != javafx.scene.input.KeyCode.TAB) return;
+            ev.consume();
+            int nCols = linesTable.getColumns().size();
+            int row, col;
+            javafx.scene.control.TablePosition<EditableLine, ?> editing = linesTable.getEditingCell();
+            if (editing != null) {
+                row = editing.getRow();
+                col = linesTable.getColumns().indexOf(editing.getTableColumn());
+            } else {
+                var f = linesTable.getFocusModel().getFocusedCell();
+                row = Math.max(0, f.getRow());
+                col = f.getTableColumn() == null ? 0 : linesTable.getColumns().indexOf(f.getTableColumn());
+                if (col < 0) col = 0;
+            }
+            int next = col + (ev.isShiftDown() ? -1 : 1);
+            int nextRow = row;
+            if (next >= nCols) { next = 0; nextRow = row + 1; }
+            else if (next < 0) { next = nCols - 1; nextRow = row - 1; }
+            if (nextRow < 0) { nextRow = 0; next = 0; }
+            if (nextRow >= lines.size()) lines.add(new EditableLine());
+            final int fr = nextRow;
+            final TableColumn<EditableLine, ?> fc = linesTable.getColumns().get(next);
+            javafx.application.Platform.runLater(() -> {
+                linesTable.getSelectionModel().clearAndSelect(fr, fc);
+                linesTable.getFocusModel().focus(fr, fc);
+                linesTable.scrollTo(fr);
+                linesTable.edit(fr, fc);
+            });
+        });
+
         Label totals = new Label();
         Runnable refreshTotals = () -> {
             BigDecimal sumD = BigDecimal.ZERO;
