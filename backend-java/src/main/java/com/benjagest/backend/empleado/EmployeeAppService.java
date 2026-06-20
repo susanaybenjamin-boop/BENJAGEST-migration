@@ -361,6 +361,7 @@ public class EmployeeAppService {
                 button { width: 100%; padding: 15px; font-size: 16px; font-weight: 600; border: none;
                          border-radius: 12px; background: #38bdf8; color: #04263a; margin-top: 14px; }
                 button.secondary { background: transparent; color: #94a3b8; border: 1px solid #334155; }
+                button:disabled { opacity: 0.35; }
                 .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
                 .tile { background: #1e293b; border-radius: 16px; padding: 22px 12px; text-align: center; position: relative; }
                 .tbadge { position: absolute; top: 8px; right: 8px; min-width: 20px; height: 20px;
@@ -446,6 +447,7 @@ public class EmployeeAppService {
                     <button id="btn-BREAK_START" class="secondary" onclick="doPunch('BREAK_START')">Pausa</button>
                     <button id="btn-BREAK_END" class="secondary" onclick="doPunch('BREAK_END')">Volver de pausa</button>
                   </div>
+                  <button class="secondary hidden" id="ficharOverride" onclick="ficharOverride()" style="margin-top:8px">Fichar otra cosa</button>
                   <div id="ficharMsg"></div>
                   <p class="sub" style="margin-top:18px">Ultimos fichajes</p>
                   <ul id="ficharRecent" style="list-style:none;padding:0;margin:0;color:#cbd5e1;font-size:14px"></ul>
@@ -584,10 +586,18 @@ public class EmployeeAppService {
                 function clearSuggestion() {
                   ['IN','OUT','BREAK_START','BREAK_END'].forEach(a => {
                     const b = document.getElementById('btn-' + a);
-                    if (b) b.classList.remove('suggested');
+                    if (b) { b.classList.remove('suggested'); b.disabled = false; }
                   });
                   const s = document.getElementById('ficharSuggest');
                   s.classList.add('hidden'); s.classList.remove('soft');
+                  document.getElementById('ficharOverride').classList.add('hidden');
+                }
+                // CONTENDO: solo el boton que toca. "Fichar otra cosa" reactiva todos.
+                function ficharOverride() {
+                  ['IN','OUT','BREAK_START','BREAK_END'].forEach(a => {
+                    const b = document.getElementById('btn-' + a); if (b) b.disabled = false;
+                  });
+                  document.getElementById('ficharOverride').classList.add('hidden');
                 }
                 async function loadSugerencia() {
                   clearSuggestion();
@@ -610,6 +620,12 @@ public class EmployeeAppService {
                         + 'Hora prevista ' + d.scheduledTime + ' (margen ' + d.windowFrom + '-' + d.windowTo + ').';
                       const b = document.getElementById('btn-' + d.action);
                       if (b) b.classList.add('suggested');
+                      // Desactiva los demas para no confundir (override los reactiva).
+                      ['IN','OUT','BREAK_START','BREAK_END'].forEach(a => {
+                        const x = document.getElementById('btn-' + a);
+                        if (x) x.disabled = (a !== d.action);
+                      });
+                      document.getElementById('ficharOverride').classList.remove('hidden');
                     } else {
                       s.classList.add('soft');
                       s.innerHTML = '<span class="big">Proximo: ' + label + ' a las ' + d.scheduledTime + '</span>'

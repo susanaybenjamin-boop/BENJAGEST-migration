@@ -5352,6 +5352,8 @@ public class BenjagestUiApplication extends Application {
     private TableView<com.benjagest.ui.model.TimeClockEntry> timeClockTable;
     // FJ-3 — banner + botones del fichaje, para resaltar el que toca segun la jornada.
     private Label timeClockSuggestBanner;
+    // FJ — enlace para reactivar los botones cuando se desactivan los no sugeridos.
+    private javafx.scene.control.Hyperlink timeClockOverrideLink;
     private final java.util.Map<String, Button> timeClockPunchButtons = new java.util.HashMap<>();
 
     private void showTimeClock() {
@@ -5428,6 +5430,15 @@ public class BenjagestUiApplication extends Application {
         timeClockSuggestBanner.setMaxWidth(Double.MAX_VALUE);
         timeClockSuggestBanner.setManaged(false);
         timeClockSuggestBanner.setVisible(false);
+        // FJ — "Fichar otra cosa": reactiva los botones desactivados (desviación real).
+        timeClockOverrideLink = new javafx.scene.control.Hyperlink(t("timeclock.suggest.override"));
+        timeClockOverrideLink.setManaged(false);
+        timeClockOverrideLink.setVisible(false);
+        timeClockOverrideLink.setOnAction(ev -> {
+            timeClockPunchButtons.values().forEach(b -> b.setDisable(false));
+            timeClockOverrideLink.setManaged(false);
+            timeClockOverrideLink.setVisible(false);
+        });
 
         // Listado últimos N fichajes del empleado.
         timeClockTable = new TableView<>();
@@ -5486,7 +5497,8 @@ public class BenjagestUiApplication extends Application {
         exportRow.setAlignment(Pos.CENTER_LEFT);
         VBox exportBlock = new VBox(8, exportTitle, exportHint, exportRow);
 
-        VBox body = new VBox(16, header, hint, timeClockSuggestBanner, punchRow, refresh, timeClockTable,
+        VBox body = new VBox(16, header, hint, timeClockSuggestBanner, punchRow, timeClockOverrideLink,
+                refresh, timeClockTable,
                 new Separator(), exportBlock);
         body.setPadding(new Insets(20));
 
@@ -5520,8 +5532,15 @@ public class BenjagestUiApplication extends Application {
     }
 
     private void applyTimeClockSuggestion(com.benjagest.ui.service.TimeClockApiClient.Suggestion s) {
-        // Limpia el resaltado previo de todos los botones.
-        timeClockPunchButtons.values().forEach(b -> b.getStyleClass().remove("punch-suggested"));
+        // Reset: limpia resaltado y reactiva todos los botones; oculta el override.
+        timeClockPunchButtons.values().forEach(b -> {
+            b.getStyleClass().remove("punch-suggested");
+            b.setDisable(false);
+        });
+        if (timeClockOverrideLink != null) {
+            timeClockOverrideLink.setManaged(false);
+            timeClockOverrideLink.setVisible(false);
+        }
         Label banner = timeClockSuggestBanner;
         banner.getStyleClass().removeAll("suggest-banner", "suggest-banner-soft");
         if (s == null || !s.hasSchedule()) {
@@ -5547,6 +5566,13 @@ public class BenjagestUiApplication extends Application {
             Button b = timeClockPunchButtons.get(s.action());
             if (b != null && !b.getStyleClass().contains("punch-suggested")) {
                 b.getStyleClass().add("punch-suggested");
+            }
+            // CONTENDO: solo el botón que toca. Desactiva los demás para no confundir;
+            // "Fichar otra cosa" los reactiva (desviación real, RD 8/2019).
+            timeClockPunchButtons.forEach((code, btn) -> btn.setDisable(!code.equals(s.action())));
+            if (timeClockOverrideLink != null) {
+                timeClockOverrideLink.setManaged(true);
+                timeClockOverrideLink.setVisible(true);
             }
         } else {
             banner.getStyleClass().addAll("suggest-banner", "suggest-banner-soft");
@@ -12779,6 +12805,7 @@ public class BenjagestUiApplication extends Application {
                 case "timeclock.suggest.next" -> "Next: {action} at {time}";
                 case "timeclock.suggest.next_hint" -> "Not time yet (it will highlight from {from}).";
                 case "timeclock.suggest.completed" -> "You have completed today's schedule.";
+                case "timeclock.suggest.override" -> "Clock something else";
                 case "timeclock.placeholder.empty" -> "No punches yet.";
                 case "timeclock.col.when" -> "When";
                 case "timeclock.col.type" -> "Type";
@@ -13691,6 +13718,7 @@ public class BenjagestUiApplication extends Application {
             case "timeclock.suggest.next" -> "Proximo: {action} a las {time}";
             case "timeclock.suggest.next_hint" -> "Aun no es la hora (se resaltara a partir de {from}).";
             case "timeclock.suggest.completed" -> "Has fichado toda tu jornada de hoy.";
+            case "timeclock.suggest.override" -> "Fichar otra cosa";
             case "timeclock.placeholder.empty" -> "Sin fichajes todavia.";
             case "timeclock.col.when" -> "Cuando";
             case "timeclock.col.type" -> "Tipo";
