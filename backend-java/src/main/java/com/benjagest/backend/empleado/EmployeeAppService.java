@@ -428,7 +428,7 @@ public class EmployeeAppService {
                     <div class="tile" style="cursor:pointer" onclick="gotoFichar()"><div class="ic">&#128337;</div><div class="lbl">Fichar</div></div>
                     <div class="tile"><div class="ic">&#127958;</div><div class="lbl">Vacaciones y bajas</div><span class="soon">proximamente</span></div>
                     <div class="tile"><div class="ic">&#128196;</div><div class="lbl">Nominas</div><span class="soon">proximamente</span></div>
-                    <div class="tile"><div class="ic">&#128197;</div><div class="lbl">Mi jornada</div><span class="soon">proximamente</span></div>
+                    <div class="tile" style="cursor:pointer" onclick="gotoJornada()"><div class="ic">&#128197;</div><div class="lbl">Mi jornada</div></div>
                   </div>
                   <button class="secondary" id="logoutBtn">Cerrar sesion</button>
                 </div>
@@ -448,6 +448,14 @@ public class EmployeeAppService {
                   <ul id="ficharRecent" style="list-style:none;padding:0;margin:0;color:#cbd5e1;font-size:14px"></ul>
                   <button class="secondary" onclick="gotoHome()">Volver</button>
                 </div>
+
+                <div id="screen-jornada" class="hidden">
+                  <h1>Mi jornada</h1>
+                  <p class="sub" id="jornadaDate">&nbsp;</p>
+                  <div id="jornadaBody"></div>
+                  <div id="jornadaMsg"></div>
+                  <button class="secondary" onclick="gotoHome()">Volver</button>
+                </div>
               </div>
 
               <script>
@@ -458,7 +466,7 @@ public class EmployeeAppService {
                 const LS_TOKEN = 'benjagest_emp_token';
 
                 function show(id) {
-                  ['screen-invite','screen-pin','screen-home','screen-fichar'].forEach(s => {
+                  ['screen-invite','screen-pin','screen-home','screen-fichar','screen-jornada'].forEach(s => {
                     document.getElementById(s).classList.toggle('hidden', s !== id);
                   });
                 }
@@ -612,6 +620,72 @@ public class EmployeeAppService {
                     loadEstado();
                     loadSugerencia();
                   } catch (e) { msg('ficharMsg', e.message); }
+                }
+
+                // ---- MEMP-3: mi jornada (horario + jornada real + festivo) ----
+                function fmtMins(m) {
+                  if (m == null) return '0h';
+                  const h = Math.floor(m / 60), mm = m % 60;
+                  return (h > 0 ? h + 'h ' : '') + (mm > 0 || h === 0 ? mm + 'm' : '').trim();
+                }
+                function gotoJornada() {
+                  show('screen-jornada');
+                  document.getElementById('jornadaMsg').textContent = '';
+                  document.getElementById('jornadaBody').innerHTML = '';
+                  loadJornada();
+                }
+                async function loadJornada() {
+                  try {
+                    const r = await fetch(API + '/empleado/jornada', { headers: authHeaders() });
+                    if (r.status === 401 || r.status === 403) { localStorage.removeItem(LS_TOKEN); gotoPin(); return; }
+                    if (!r.ok) {
+                      let e = 'No se pudo cargar tu jornada';
+                      try { e = (await r.json()).message || e; } catch (x) {}
+                      throw new Error(e);
+                    }
+                    const d = await r.json();
+                    document.getElementById('jornadaDate').textContent = 'Hoy ' + (d.date || '');
+                    let html = '';
+                    if (d.holiday) {
+                      html += '<div class="suggest soft" style="border-color:#facc15;background:#422006;color:#fde68a">'
+                        + '<span class="big">Hoy es festivo</span>' + (d.holiday.name || '') + '</div>';
+                    }
+                    // Horario asignado (JOR-2)
+                    html += '<div class="card"><p class="sub" style="margin:0 0 10px">Tu horario de hoy</p>';
+                    if (d.hasSchedule && d.blocks && d.blocks.length) {
+                      html += '<ul style="list-style:none;padding:0;margin:0">';
+                      d.blocks.forEach(b => {
+                        const tag = b.type === 'BREAK' ? 'Pausa' : 'Trabajo';
+                        const col = b.type === 'BREAK' ? '#94a3b8' : '#38bdf8';
+                        html += '<li style="padding:6px 0;border-bottom:1px solid #0f172a">'
+                          + '<span style="color:' + col + ';font-weight:600">' + b.start + ' - ' + b.end + '</span>'
+                          + '<span style="color:#94a3b8;margin-left:10px;font-size:13px">' + tag + '</span></li>';
+                      });
+                      html += '</ul>';
+                    } else {
+                      html += '<p style="margin:0;color:#94a3b8">No tienes horario asignado para hoy (dia libre).</p>';
+                    }
+                    html += '</div>';
+                    // Que toca ahora (FJ)
+                    if (d.suggestion && d.suggestion.hasSchedule && d.suggestion.action) {
+                      const lbl = typeLabel(d.suggestion.action);
+                      html += '<div class="suggest' + (d.suggestion.inWindow ? '' : ' soft') + '">'
+                        + '<span class="big">' + (d.suggestion.inWindow ? 'Te toca: ' + lbl : 'Proximo: ' + lbl + ' a las ' + d.suggestion.scheduledTime) + '</span>'
+                        + (d.suggestion.inWindow ? 'Hora prevista ' + d.suggestion.scheduledTime : 'Se activara a partir de ' + d.suggestion.windowFrom) + '.</div>';
+                    }
+                    // Jornada real fichada (JOR-1)
+                    html += '<div class="card"><p class="sub" style="margin:0 0 10px">Lo que llevas fichado hoy</p>';
+                    if (d.worked) {
+                      html += '<div style="font-size:15px">Trabajado: <b>' + fmtMins(d.worked.workedMinutes) + '</b>'
+                        + ' &nbsp;·&nbsp; Pausa: ' + fmtMins(d.worked.pauseMinutes) + '</div>';
+                      if (d.worked.firstIn) html += '<div style="color:#94a3b8;font-size:13px;margin-top:6px">Entrada ' + d.worked.firstIn
+                        + (d.worked.lastOut ? ' · Ultima salida ' + d.worked.lastOut : '') + '</div>';
+                    } else {
+                      html += '<p style="margin:0;color:#94a3b8">Aun no has fichado hoy.</p>';
+                    }
+                    html += '</div>';
+                    document.getElementById('jornadaBody').innerHTML = html;
+                  } catch (e) { msg('jornadaMsg', e.message); }
                 }
 
                 document.getElementById('activateBtn').onclick = async () => {

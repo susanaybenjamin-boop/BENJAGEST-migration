@@ -93,6 +93,26 @@ public class ScheduleFichajeService {
         return new Suggestion(true, next.action(), hhmm(scheduled), hhmm(from), hhmm(to), inWindow);
     }
 
+    /**
+     * MEMP-3 — Bloques del horario asignado al empleado para ese día (JOR-2),
+     * en orden. Lista vacía si no hay plantilla vigente o es día libre.
+     */
+    public List<DayBlock> scheduledBlocksForDay(String employeeId, LocalDate day) {
+        String templateId = resolveTemplateId(employeeId, day);
+        if (templateId == null) {
+            return List.of();
+        }
+        int weekday = day.getDayOfWeek().getValue();
+        List<DayBlock> out = new ArrayList<>();
+        for (Block b : loadBlocks(templateId, weekday)) {
+            out.add(new DayBlock(b.isBreak() ? "BREAK" : "WORK", hhmm(b.start()), hhmm(b.end())));
+        }
+        return out;
+    }
+
+    /** Un bloque de horario para la vista del empleado: tipo + horas "HH:mm". */
+    public record DayBlock(String type, String start, String end) {}
+
     // ---- Resolución de jornada -------------------------------------------
 
     /** Plantilla vigente del empleado a la fecha (la más reciente que cubre {@code day}). */
