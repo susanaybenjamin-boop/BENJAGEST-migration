@@ -32,15 +32,24 @@
   el original). i18n `labor.audit.correct.*`.
 - ✅ **MEMP-3** *(5b90f64)* — "Mi jornada" en la PWA: `GET /api/empleado/jornada` compone
   horario (JOR-2) + jornada real (JOR-1, WorkdayService) + festivo + qué toca (FJ).
+- ✅ **MEMP-4** *(17c5f01)* — solicitudes de vacaciones/bajas desde el móvil + aprobación.
+  V134 `employee_leave_requests` + `employee_leave_attachments` (BLOB). Tipos VACATION/
+  SICK_LEAVE/PAID_LEAVE/OTHER (baja exige adjunto). PWA: pedir/listar/cancelar. Escritorio:
+  sub-tab "Solicitudes" en Laboral>Ausencias (aprobar/rechazar + ver adjunto). Aprobar
+  VACATION espeja a `employee_vacations` (finiquito). Decidido por Benjamin: 4 tipos +
+  aprueban empresario y asesoría (OWNER/ADMIN/ACCOUNTANT).
+- ✅ **MEMP-5** *(240e4ad)* — nóminas en la PWA: recibir/descargar PDF/confirmar recibí.
+  `PayslipService.listForEmployeeApp/pdfForEmployee/acknowledgeOwn` (guarda de propiedad) +
+  `EmployeePayslipController /api/empleado/nominas`. Reusa V116 (delivered_at/acknowledged_at).
+  **→ Portal del empleado MEMP-2..5 COMPLETO.**
 
 **Pendiente:**
 - ⬜ **FJ-5b** — incidencia "schedule-aware" (esperado-por-jornada vs fichado por día
   cerrado). Toca semántica **legal-sensible** del flag → validar con Benjamin con caso real.
-- ⬜ **MEMP-4** (vacaciones/bajas con adjuntos) — decisiones de producto pendientes
-  (tipos de ausencia, adjuntos de baja, quién aprueba). `employee_vacations` (V114) ya
-  tiene status REQUESTED/APPROVED/REJECTED reutilizable para vacaciones.
-- ⬜ **MEMP-5** (nóminas: recibir/confirmar/firmar/descargar) — falta backend de entrega/firma.
-- **Pruebas en vivo pendientes** de todo lo de hoy (escritorio + PWA) con Benjamin.
+- **Pruebas en vivo pendientes** de TODO lo de hoy (escritorio + PWA) con Benjamin, y luego
+  **merges `--no-ff` a develop** por bloque (FICHAJE-JORNADA, MEMP-3, MEMP-4, MEMP-5).
+- Posibles mejoras menores tras probar: encadenar sugerencias FJ; que el empresario pueda
+  "entregar"/publicar nóminas explícitamente; calendario semanal en "Mi jornada".
 
 ---
 
