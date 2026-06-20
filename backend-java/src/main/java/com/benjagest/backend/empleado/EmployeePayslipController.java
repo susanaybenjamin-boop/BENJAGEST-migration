@@ -11,6 +11,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -59,10 +60,25 @@ public class EmployeePayslipController {
     }
 
     @PostMapping("/{id}/acknowledge")
-    public void acknowledge(@PathVariable("id") String id) {
+    public void acknowledge(@PathVariable("id") String id,
+                            @RequestBody(required = false) AckRequest req,
+                            jakarta.servlet.http.HttpServletRequest http) {
         TimeClockController.MyEmployeeInfo me = timeClock.resolveCurrentEmployee();
-        payslips.acknowledgeOwn(id, me.employeeId());
+        String pin = req == null ? null : req.pin();
+        String device = req == null ? null : req.device();
+        payslips.acknowledgeOwn(id, me.employeeId(), pin, device, clientIp(http));
     }
+
+    /** IP del cliente tras el túnel Cloudflare (CF-Connecting-IP / X-Forwarded-For). */
+    private String clientIp(jakarta.servlet.http.HttpServletRequest http) {
+        String cf = http.getHeader("CF-Connecting-IP");
+        if (cf != null && !cf.isBlank()) return cf.trim();
+        String xff = http.getHeader("X-Forwarded-For");
+        if (xff != null && !xff.isBlank()) return xff.split(",")[0].trim();
+        return http.getRemoteAddr();
+    }
+
+    public record AckRequest(String pin, String device) {}
 
     public record NominaView(
             String id, int year, int month, String payslipType,

@@ -78,6 +78,7 @@ public class PayslipService {
     private final com.benjagest.backend.settings.CompanyDataService companyDataService;
     private final EmployeeVacationService vacationService;
     private final com.benjagest.backend.realtime.RealtimeService realtime;
+    private final org.springframework.security.crypto.password.PasswordEncoder passwordEncoder;
 
     public PayslipService(JdbcTemplate jdbcTemplate,
                            TenantContext tenantContext,
@@ -90,7 +91,8 @@ public class PayslipService {
                            com.benjagest.backend.settings.EmailSenderService emailSender,
                            com.benjagest.backend.settings.CompanyDataService companyDataService,
                            EmployeeVacationService vacationService,
-                           com.benjagest.backend.realtime.RealtimeService realtime) {
+                           com.benjagest.backend.realtime.RealtimeService realtime,
+                           org.springframework.security.crypto.password.PasswordEncoder passwordEncoder) {
         this.jdbcTemplate = jdbcTemplate;
         this.tenantContext = tenantContext;
         this.taxRulesService = taxRulesService;
@@ -103,6 +105,7 @@ public class PayslipService {
         this.companyDataService = companyDataService;
         this.vacationService = vacationService;
         this.realtime = realtime;
+        this.passwordEncoder = passwordEncoder;
     }
 
     public byte[] generatePdf(String id) {
@@ -895,25 +898,46 @@ public class PayslipService {
     }
 
     /**
-     * Acuse de recibo del propio empleado ("Recibí"). Marca acknowledged_at y, si
-     * aún no constaba entregada, delivered_at + method APP (la entrega es la propia
-     * disponibilidad en la app). Solo sobre nóminas suyas.
+     * MEMP-5b (SIGN) — Firma electrónica simple del recibí por el propio empleado.
+     * Step-up: re-verifica el PIN del empleado (el acto de firma) y guarda evidencias
+     * (IP, dispositivo, método PIN_APP, código de verificación) + sello acknowledged_at.
+     * Sin certificado cualificado (estilo Sesame). Idempotente: no pisa una firma previa.
      */
     @Transactional
-    public void acknowledgeOwn(String id, String employeeId) {
+    public void acknowledgeOwn(String id, String employeeId, String pin, String device, String ip) {
+        // Verificación del PIN del empleado (autentica el acto de firma).
+        String pinHash = jdbcTemplate.query(
+                "SELECT pin_hash FROM employees WHERE id = ? AND company_id = ?",
+                rs -> rs.next() ? rs.getString(1) : null,
+                employeeId, tenantContext.getCurrentCompanyId());
+        if (pinHash == null || pin == null || pin.isBlank() || !passwordEncoder.matches(pin, pinHash)) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "PIN incorrecto");
+        }
+        String code = "RC-" + UUID.randomUUID().toString().replace("-", "").substring(0, 12).toUpperCase();
         int n = jdbcTemplate.update("""
                 UPDATE payslips
-                   SET acknowledged_at = COALESCE(acknowledged_at, CURRENT_DATE()),
-                       delivered_at    = COALESCE(delivered_at, CURRENT_DATE()),
-                       delivery_method = COALESCE(delivery_method, 'APP')
+                   SET acknowledged_at     = COALESCE(acknowledged_at, CURRENT_DATE()),
+                       delivered_at        = COALESCE(delivered_at, CURRENT_DATE()),
+                       delivery_method     = COALESCE(delivery_method, 'APP'),
+                       acknowledged_ip     = COALESCE(acknowledged_ip, ?),
+                       acknowledged_device = COALESCE(acknowledged_device, ?),
+                       acknowledged_method = COALESCE(acknowledged_method, 'PIN_APP'),
+                       acknowledged_code   = COALESCE(acknowledged_code, ?)
                  WHERE id = ? AND company_id = ? AND employee_id = ?
-                """, id, tenantContext.getCurrentCompanyId(), employeeId);
+                """, trim(ip, 60), trim(device, 255), code,
+                id, tenantContext.getCurrentCompanyId(), employeeId);
         if (n == 0) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Nomina no encontrada");
-        // NOTIF-RT — avisar a la empresa de que el empleado ha confirmado el recibí.
+        // NOTIF-RT — avisar a la empresa de que el empleado ha firmado el recibí.
         try {
             realtime.publishToCompany(tenantContext.getCurrentCompanyId(), "payslip",
                     "{\"action\":\"acknowledged\",\"id\":\"" + id + "\",\"employeeId\":\"" + employeeId + "\"}");
         } catch (Exception ignored) {}
+    }
+
+    private static String trim(String s, int max) {
+        if (s == null) return null;
+        s = s.trim();
+        return s.length() > max ? s.substring(0, max) : s;
     }
 
     @Transactional

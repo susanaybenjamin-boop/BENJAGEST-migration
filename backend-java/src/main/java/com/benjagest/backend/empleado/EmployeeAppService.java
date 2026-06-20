@@ -494,10 +494,21 @@ public class EmployeeAppService {
 
                 <div id="screen-nominas" class="hidden">
                   <h1>Mis nominas</h1>
-                  <p class="sub">Consulta, descarga y confirma el recibi de tus nominas.</p>
+                  <p class="sub">Consulta, descarga y firma el recibi de tus nominas.</p>
                   <div id="nominasMsg"></div>
                   <div id="nominasLista"></div>
                   <button class="secondary" onclick="gotoHome()">Volver</button>
+                </div>
+
+                <div id="ackModal" class="hidden" style="position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;padding:20px;z-index:50">
+                  <div class="card" style="max-width:360px;width:100%;margin:0">
+                    <h1 style="font-size:18px;margin-top:0">Firmar recibi</h1>
+                    <p class="sub">Introduce tu PIN para firmar el recibi de la nomina (queda registrado con fecha y dispositivo).</p>
+                    <input id="ackPin" type="password" inputmode="numeric" maxlength="8" autocomplete="off" placeholder="****"/>
+                    <button onclick="confirmAck()">Firmar</button>
+                    <button class="secondary" onclick="closeAck()">Cancelar</button>
+                    <div id="ackMsg"></div>
+                  </div>
                 </div>
               </div>
 
@@ -897,7 +908,7 @@ public class EmployeeAppService {
                       row.appendChild(pdfBtn);
                       if (!ack) {
                         const ackBtn = document.createElement('button');
-                        ackBtn.className = 'secondary'; ackBtn.textContent = 'Confirmar recibi';
+                        ackBtn.className = 'secondary'; ackBtn.textContent = 'Firmar recibi';
                         ackBtn.onclick = () => ackNomina(p.id);
                         row.appendChild(ackBtn);
                       }
@@ -924,18 +935,38 @@ public class EmployeeAppService {
                     document.getElementById('nominasMsg').textContent = '';
                   } catch (e) { msg('nominasMsg', e.message); }
                 }
-                async function ackNomina(id) {
+                let ackPayslipId = null;
+                function ackNomina(id) {
+                  ackPayslipId = id;
+                  document.getElementById('ackPin').value = '';
+                  document.getElementById('ackMsg').textContent = '';
+                  document.getElementById('ackModal').classList.remove('hidden');
+                  setTimeout(() => { try { document.getElementById('ackPin').focus(); } catch(e){} }, 50);
+                }
+                function closeAck() {
+                  document.getElementById('ackModal').classList.add('hidden');
+                  ackPayslipId = null;
+                }
+                async function confirmAck() {
+                  const pin = document.getElementById('ackPin').value.replace(/[^0-9]/g, '');
+                  if (pin.length < 4) { msg('ackMsg', 'Introduce tu PIN (4-8 digitos)'); return; }
+                  if (!ackPayslipId) { closeAck(); return; }
+                  msg('ackMsg', 'Firmando...', true);
                   try {
-                    const r = await fetch(API + '/empleado/nominas/' + id + '/acknowledge', {
-                      method: 'POST', headers: authHeaders() });
+                    const r = await fetch(API + '/empleado/nominas/' + ackPayslipId + '/acknowledge', {
+                      method: 'POST', headers: authHeaders(),
+                      body: JSON.stringify({ pin: pin, device: navigator.userAgent.slice(0, 200) })
+                    });
                     if (!r.ok) {
-                      let e = 'No se pudo confirmar';
+                      let e = 'No se pudo firmar';
                       try { e = (await r.json()).message || e; } catch (x) {}
-                      throw new Error(e);
+                      // 401 aqui = PIN incorrecto (no es sesion caducada): no cerramos sesion.
+                      throw new Error(r.status === 401 ? (e || 'PIN incorrecto') : e);
                     }
-                    msg('nominasMsg', 'Recibi confirmado. Gracias.', true);
-                    loadNominas();
-                  } catch (e) { msg('nominasMsg', e.message); }
+                    closeAck();
+                    msg('nominasMsg', 'Recibi firmado. Gracias.', true);
+                    loadNominas(); updateHomeBadges();
+                  } catch (e) { msg('ackMsg', e.message); }
                 }
 
                 // ---- NOTIF-RT: tiempo real (SSE) + badges del home ----
