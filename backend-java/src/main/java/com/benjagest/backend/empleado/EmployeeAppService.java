@@ -371,6 +371,14 @@ public class EmployeeAppService {
                 .msg.ok { background: #14532d; color: #bbf7d0; }
                 .hidden { display: none; }
                 .center { text-align: center; }
+                .suggest { padding: 12px 14px; border-radius: 12px; font-size: 14px; margin: 0 0 14px;
+                           background: #0c4a6e; color: #e0f2fe; border: 1px solid #0ea5e9; }
+                .suggest.soft { background: #1e293b; color: #cbd5e1; border-color: #334155; }
+                .suggest .big { display:block; font-size:16px; font-weight:600; margin-bottom:2px; }
+                button.suggested { box-shadow: 0 0 0 3px #38bdf8, 0 0 16px #38bdf8; animation: pulse 1.6s infinite; }
+                button.suggested.secondary { background: #38bdf8; color: #04263a; }
+                @keyframes pulse { 0%,100% { box-shadow: 0 0 0 3px #38bdf8, 0 0 8px #38bdf8; }
+                                   50% { box-shadow: 0 0 0 3px #7dd3fc, 0 0 20px #7dd3fc; } }
               </style>
             </head>
             <body>
@@ -428,11 +436,12 @@ public class EmployeeAppService {
                 <div id="screen-fichar" class="hidden">
                   <h1>Fichar</h1>
                   <p class="sub" id="ficharState">&nbsp;</p>
+                  <div id="ficharSuggest" class="suggest hidden"></div>
                   <div class="grid">
-                    <button onclick="doPunch('IN')">Entrada</button>
-                    <button onclick="doPunch('OUT')">Salida</button>
-                    <button class="secondary" onclick="doPunch('BREAK_START')">Pausa</button>
-                    <button class="secondary" onclick="doPunch('BREAK_END')">Volver de pausa</button>
+                    <button id="btn-IN" onclick="doPunch('IN')">Entrada</button>
+                    <button id="btn-OUT" onclick="doPunch('OUT')">Salida</button>
+                    <button id="btn-BREAK_START" class="secondary" onclick="doPunch('BREAK_START')">Pausa</button>
+                    <button id="btn-BREAK_END" class="secondary" onclick="doPunch('BREAK_END')">Volver de pausa</button>
                   </div>
                   <div id="ficharMsg"></div>
                   <p class="sub" style="margin-top:18px">Ultimos fichajes</p>
@@ -520,7 +529,44 @@ public class EmployeeAppService {
                       { timeout: 6000, enableHighAccuracy: true });
                   });
                 }
-                function gotoFichar() { show('screen-fichar'); document.getElementById('ficharMsg').textContent=''; loadEstado(); }
+                function gotoFichar() { show('screen-fichar'); document.getElementById('ficharMsg').textContent=''; loadEstado(); loadSugerencia(); }
+                // FJ-4: resalta el boton que toca segun la jornada asignada (+/-15 min). No bloquea.
+                function clearSuggestion() {
+                  ['IN','OUT','BREAK_START','BREAK_END'].forEach(a => {
+                    const b = document.getElementById('btn-' + a);
+                    if (b) b.classList.remove('suggested');
+                  });
+                  const s = document.getElementById('ficharSuggest');
+                  s.classList.add('hidden'); s.classList.remove('soft');
+                }
+                async function loadSugerencia() {
+                  clearSuggestion();
+                  try {
+                    const r = await fetch(API + '/empleado/fichaje/sugerencia', { headers: authHeaders() });
+                    if (!r.ok) return; // sin jornada o error: comportamiento normal, todos los botones
+                    const d = await r.json();
+                    const s = document.getElementById('ficharSuggest');
+                    if (!d.hasSchedule) return;                 // hoy sin jornada / dia libre
+                    if (!d.action) {                            // jornada ya completada
+                      s.classList.remove('hidden'); s.classList.add('soft');
+                      s.textContent = 'Has fichado toda tu jornada de hoy.';
+                      return;
+                    }
+                    const label = typeLabel(d.action);
+                    s.classList.remove('hidden');
+                    if (d.inWindow) {
+                      s.classList.remove('soft');
+                      s.innerHTML = '<span class="big">Te toca: ' + label + '</span>'
+                        + 'Hora prevista ' + d.scheduledTime + ' (margen ' + d.windowFrom + '-' + d.windowTo + ').';
+                      const b = document.getElementById('btn-' + d.action);
+                      if (b) b.classList.add('suggested');
+                    } else {
+                      s.classList.add('soft');
+                      s.innerHTML = '<span class="big">Proximo: ' + label + ' a las ' + d.scheduledTime + '</span>'
+                        + 'Aun no es la hora (el boton se resaltara a partir de ' + d.windowFrom + ').';
+                    }
+                  } catch (e) { /* silencioso: no romper el fichaje por la sugerencia */ }
+                }
                 async function loadEstado() {
                   try {
                     const r = await fetch(API + '/empleado/fichaje/estado', { headers: authHeaders() });
@@ -564,6 +610,7 @@ public class EmployeeAppService {
                     msg('ficharMsg', typeLabel(d.eventType) + ' registrada'
                       + (d.warning ? '. ' + d.warning : ''), true);
                     loadEstado();
+                    loadSugerencia();
                   } catch (e) { msg('ficharMsg', e.message); }
                 }
 

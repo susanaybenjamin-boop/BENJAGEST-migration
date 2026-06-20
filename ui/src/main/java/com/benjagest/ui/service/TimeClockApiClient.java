@@ -149,6 +149,45 @@ public class TimeClockApiClient {
         return response.body();
     }
 
+    /**
+     * FJ-2/FJ-3 — Sugerencia de "qué toca fichar ahora" según la jornada
+     * asignada. Reutiliza el endpoint del portal del empleado, que resuelve
+     * el empleado del JWT (en escritorio = el propio usuario logueado).
+     */
+    public Suggestion suggestion() throws IOException, InterruptedException {
+        HttpRequest.Builder builder = HttpRequest.newBuilder(
+                        URI.create(baseUrl + "/empleado/fichaje/sugerencia"))
+                .timeout(Duration.ofSeconds(10)).GET();
+        AuthSession.get().authorize(builder);
+        HttpResponse<String> response = httpClient.send(builder.build(), HttpResponse.BodyHandlers.ofString());
+        if (response.statusCode() < 200 || response.statusCode() >= 300) {
+            throw new IOException("HTTP " + response.statusCode() + ": " + response.body());
+        }
+        String b = response.body();
+        return new Suggestion(
+                bool(b, "hasSchedule"),
+                emptyToNull(extract(b, "action")),
+                emptyToNull(extract(b, "scheduledTime")),
+                emptyToNull(extract(b, "windowFrom")),
+                emptyToNull(extract(b, "windowTo")),
+                bool(b, "inWindow"));
+    }
+
+    /** Sugerencia de fichaje por jornada (FJ). {@code action} null = jornada completa. */
+    public record Suggestion(boolean hasSchedule, String action, String scheduledTime,
+                             String windowFrom, String windowTo, boolean inWindow) {
+        public boolean hasAction() { return action != null && !action.isBlank(); }
+    }
+
+    private boolean bool(String json, String field) {
+        Matcher m = Pattern.compile("\"" + field + "\"\\s*:\\s*(true|false)").matcher(json);
+        return m.find() && "true".equals(m.group(1));
+    }
+
+    private static String emptyToNull(String s) {
+        return s == null || s.isBlank() ? null : s;
+    }
+
     public List<TimeClockEntry> recent(String employeeId, int limit) throws IOException, InterruptedException {
         HttpRequest.Builder builder = HttpRequest.newBuilder(URI.create(
                 baseUrl + "/timeclock/employee/" + employeeId + "/recent?limit=" + limit))

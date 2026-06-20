@@ -5314,6 +5314,9 @@ public class BenjagestUiApplication extends Application {
     private final com.benjagest.ui.service.TimeClockApiClient timeClockApi =
             new com.benjagest.ui.service.TimeClockApiClient();
     private TableView<com.benjagest.ui.model.TimeClockEntry> timeClockTable;
+    // FJ-3 — banner + botones del fichaje, para resaltar el que toca segun la jornada.
+    private Label timeClockSuggestBanner;
+    private final java.util.Map<String, Button> timeClockPunchButtons = new java.util.HashMap<>();
 
     private void showTimeClock() {
         // EMP-USER-MAP: el employeeId NO es el userId. Buscamos primero
@@ -5378,6 +5381,18 @@ public class BenjagestUiApplication extends Application {
         Button breakEndBtn = bigPunchButton(t("timeclock.action.break_end"), "fas-utensils", "BREAK_END", employeeId);
         HBox punchRow = new HBox(12, inBtn, outBtn, breakStartBtn, breakEndBtn);
 
+        // FJ-3 — registro de botones para poder resaltar el que toca + banner de sugerencia.
+        timeClockPunchButtons.clear();
+        timeClockPunchButtons.put("IN", inBtn);
+        timeClockPunchButtons.put("OUT", outBtn);
+        timeClockPunchButtons.put("BREAK_START", breakStartBtn);
+        timeClockPunchButtons.put("BREAK_END", breakEndBtn);
+        timeClockSuggestBanner = new Label();
+        timeClockSuggestBanner.setWrapText(true);
+        timeClockSuggestBanner.setMaxWidth(Double.MAX_VALUE);
+        timeClockSuggestBanner.setManaged(false);
+        timeClockSuggestBanner.setVisible(false);
+
         // Listado últimos N fichajes del empleado.
         timeClockTable = new TableView<>();
         timeClockTable.getStyleClass().add("data-table");
@@ -5435,13 +5450,72 @@ public class BenjagestUiApplication extends Application {
         exportRow.setAlignment(Pos.CENTER_LEFT);
         VBox exportBlock = new VBox(8, exportTitle, exportHint, exportRow);
 
-        VBox body = new VBox(16, header, hint, punchRow, refresh, timeClockTable,
+        VBox body = new VBox(16, header, hint, timeClockSuggestBanner, punchRow, refresh, timeClockTable,
                 new Separator(), exportBlock);
         body.setPadding(new Insets(20));
 
         setCenterAnimated(scroll(body));
         reloadTimeClock(employeeId);
+        refreshTimeClockSuggestion();
     }
+
+    /**
+     * FJ-3 — Pide la sugerencia de "que toca fichar ahora" segun la jornada
+     * asignada y, si estamos en ventana (+/-15 min), resalta ese boton y muestra
+     * un banner. Fuera de ventana o jornada completa: banner suave. Sin jornada
+     * hoy: no muestra nada (todos los botones normales). Nunca bloquea ni rompe
+     * el fichaje si la sugerencia falla.
+     */
+    private void refreshTimeClockSuggestion() {
+        if (timeClockSuggestBanner == null) return;
+        Task<com.benjagest.ui.service.TimeClockApiClient.Suggestion> task = new Task<>() {
+            @Override protected com.benjagest.ui.service.TimeClockApiClient.Suggestion call() throws Exception {
+                return timeClockApi.suggestion();
+            }
+        };
+        task.setOnSucceeded(ev -> applyTimeClockSuggestion(task.getValue()));
+        task.setOnFailed(ev -> applyTimeClockSuggestion(null)); // silencioso
+        start(task, "timeclock-suggestion");
+    }
+
+    private void applyTimeClockSuggestion(com.benjagest.ui.service.TimeClockApiClient.Suggestion s) {
+        // Limpia el resaltado previo de todos los botones.
+        timeClockPunchButtons.values().forEach(b -> b.getStyleClass().remove("punch-suggested"));
+        Label banner = timeClockSuggestBanner;
+        banner.getStyleClass().removeAll("suggest-banner", "suggest-banner-soft");
+        if (s == null || !s.hasSchedule()) {
+            banner.setManaged(false);
+            banner.setVisible(false);
+            return;
+        }
+        banner.setManaged(true);
+        banner.setVisible(true);
+        if (!s.hasAction()) { // jornada completa
+            banner.getStyleClass().addAll("suggest-banner", "suggest-banner-soft");
+            banner.setText(t("timeclock.suggest.completed"));
+            return;
+        }
+        String actionLabel = localizedPunchType(s.action());
+        if (s.inWindow()) {
+            banner.getStyleClass().add("suggest-banner");
+            banner.setText(t("timeclock.suggest.now").replace("{action}", actionLabel)
+                    + "  " + t("timeclock.suggest.scheduled")
+                            .replace("{time}", nz(s.scheduledTime()))
+                            .replace("{from}", nz(s.windowFrom()))
+                            .replace("{to}", nz(s.windowTo())));
+            Button b = timeClockPunchButtons.get(s.action());
+            if (b != null && !b.getStyleClass().contains("punch-suggested")) {
+                b.getStyleClass().add("punch-suggested");
+            }
+        } else {
+            banner.getStyleClass().addAll("suggest-banner", "suggest-banner-soft");
+            banner.setText(t("timeclock.suggest.next").replace("{action}", actionLabel)
+                            .replace("{time}", nz(s.scheduledTime()))
+                    + "  " + t("timeclock.suggest.next_hint").replace("{from}", nz(s.windowFrom())));
+        }
+    }
+
+    private static String nz(String s) { return s == null ? "" : s; }
 
     /** Descarga el export de fichajes y ofrece guardarlo. */
     private void downloadTimeClockExport(String format,
@@ -5530,6 +5604,7 @@ public class BenjagestUiApplication extends Application {
             ok.getDialogPane().setContent(content);
             ok.showAndWait();
             reloadTimeClock(employeeId);
+            refreshTimeClockSuggestion();
         });
         task.setOnFailed(ev -> showError(t("timeclock.fail.title"), t("timeclock.fail.body")));
         start(task, "timeclock-punch");
@@ -12658,6 +12733,11 @@ public class BenjagestUiApplication extends Application {
                 case "timeclock.action.break_start" -> "Break start";
                 case "timeclock.action.break_end" -> "Break end";
                 case "timeclock.action.refresh" -> "Refresh";
+                case "timeclock.suggest.now" -> "Now it's your turn: {action}";
+                case "timeclock.suggest.scheduled" -> "Scheduled at {time} (window {from}–{to}).";
+                case "timeclock.suggest.next" -> "Next: {action} at {time}";
+                case "timeclock.suggest.next_hint" -> "Not time yet (it will highlight from {from}).";
+                case "timeclock.suggest.completed" -> "You have completed today's schedule.";
                 case "timeclock.placeholder.empty" -> "No punches yet.";
                 case "timeclock.col.when" -> "When";
                 case "timeclock.col.type" -> "Type";
@@ -13565,6 +13645,11 @@ public class BenjagestUiApplication extends Application {
             case "timeclock.action.break_start" -> "Iniciar pausa";
             case "timeclock.action.break_end" -> "Fin pausa";
             case "timeclock.action.refresh" -> "Refrescar";
+            case "timeclock.suggest.now" -> "Ahora te toca: {action}";
+            case "timeclock.suggest.scheduled" -> "Hora prevista {time} (margen {from}–{to}).";
+            case "timeclock.suggest.next" -> "Proximo: {action} a las {time}";
+            case "timeclock.suggest.next_hint" -> "Aun no es la hora (se resaltara a partir de {from}).";
+            case "timeclock.suggest.completed" -> "Has fichado toda tu jornada de hoy.";
             case "timeclock.placeholder.empty" -> "Sin fichajes todavia.";
             case "timeclock.col.when" -> "Cuando";
             case "timeclock.col.type" -> "Tipo";
