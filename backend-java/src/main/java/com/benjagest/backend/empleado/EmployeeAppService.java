@@ -426,7 +426,7 @@ public class EmployeeAppService {
                   <p class="sub" id="homeCompany"></p>
                   <div class="grid">
                     <div class="tile" style="cursor:pointer" onclick="gotoFichar()"><div class="ic">&#128337;</div><div class="lbl">Fichar</div></div>
-                    <div class="tile"><div class="ic">&#127958;</div><div class="lbl">Vacaciones y bajas</div><span class="soon">proximamente</span></div>
+                    <div class="tile" style="cursor:pointer" onclick="gotoAusencias()"><div class="ic">&#127958;</div><div class="lbl">Vacaciones y bajas</div></div>
                     <div class="tile"><div class="ic">&#128196;</div><div class="lbl">Nominas</div><span class="soon">proximamente</span></div>
                     <div class="tile" style="cursor:pointer" onclick="gotoJornada()"><div class="ic">&#128197;</div><div class="lbl">Mi jornada</div></div>
                   </div>
@@ -456,6 +456,36 @@ public class EmployeeAppService {
                   <div id="jornadaMsg"></div>
                   <button class="secondary" onclick="gotoHome()">Volver</button>
                 </div>
+
+                <div id="screen-ausencias" class="hidden">
+                  <h1>Vacaciones y bajas</h1>
+                  <p class="sub">Solicita y consulta el estado de tus ausencias.</p>
+                  <div class="card">
+                    <label>Tipo</label>
+                    <select id="ausTipo" onchange="refreshAdjLabel()" style="width:100%;padding:14px;font-size:16px;border-radius:12px;border:1px solid #334155;background:#0f172a;color:#e2e8f0">
+                      <option value="VACATION">Vacaciones</option>
+                      <option value="SICK_LEAVE">Baja medica (IT)</option>
+                      <option value="PAID_LEAVE">Permiso retribuido</option>
+                      <option value="OTHER">Otros</option>
+                    </select>
+                    <div style="display:flex;gap:10px;margin-top:12px">
+                      <div style="flex:1"><label>Desde</label>
+                        <input id="ausDesde" type="date" style="letter-spacing:normal;text-align:left"/></div>
+                      <div style="flex:1"><label>Hasta</label>
+                        <input id="ausHasta" type="date" style="letter-spacing:normal;text-align:left"/></div>
+                    </div>
+                    <label style="margin-top:12px">Motivo (opcional)</label>
+                    <input id="ausMotivo" type="text" style="letter-spacing:normal;text-align:left" placeholder="motivo"/>
+                    <label style="margin-top:12px" id="ausAdjLbl">Adjunto (foto o PDF)</label>
+                    <input id="ausAdjunto" type="file" accept="image/*,application/pdf" multiple
+                           style="letter-spacing:normal;text-align:left;padding:10px"/>
+                    <button id="ausEnviar" onclick="submitAusencia()">Enviar solicitud</button>
+                  </div>
+                  <div id="ausMsg"></div>
+                  <p class="sub" style="margin-top:18px">Mis solicitudes</p>
+                  <div id="ausLista"></div>
+                  <button class="secondary" onclick="gotoHome()">Volver</button>
+                </div>
               </div>
 
               <script>
@@ -466,7 +496,7 @@ public class EmployeeAppService {
                 const LS_TOKEN = 'benjagest_emp_token';
 
                 function show(id) {
-                  ['screen-invite','screen-pin','screen-home','screen-fichar','screen-jornada'].forEach(s => {
+                  ['screen-invite','screen-pin','screen-home','screen-fichar','screen-jornada','screen-ausencias'].forEach(s => {
                     document.getElementById(s).classList.toggle('hidden', s !== id);
                   });
                 }
@@ -686,6 +716,117 @@ public class EmployeeAppService {
                     html += '</div>';
                     document.getElementById('jornadaBody').innerHTML = html;
                   } catch (e) { msg('jornadaMsg', e.message); }
+                }
+
+                // ---- MEMP-4: vacaciones y bajas ----
+                function ausKindLabel(k) {
+                  return ({VACATION:'Vacaciones', SICK_LEAVE:'Baja medica', PAID_LEAVE:'Permiso retribuido', OTHER:'Otros'})[k] || k;
+                }
+                function ausStatusInfo(s) {
+                  return ({REQUESTED:['Pendiente','#0c4a6e','#7dd3fc'], APPROVED:['Aprobada','#14532d','#bbf7d0'],
+                           REJECTED:['Rechazada','#7f1d1d','#fecaca'], CANCELLED:['Cancelada','#334155','#cbd5e1']})[s]
+                         || [s,'#334155','#cbd5e1'];
+                }
+                function gotoAusencias() {
+                  show('screen-ausencias');
+                  document.getElementById('ausMsg').textContent = '';
+                  const hoy = new Date().toISOString().slice(0,10);
+                  document.getElementById('ausDesde').value = hoy;
+                  document.getElementById('ausHasta').value = hoy;
+                  document.getElementById('ausMotivo').value = '';
+                  document.getElementById('ausAdjunto').value = '';
+                  document.getElementById('ausTipo').value = 'VACATION';
+                  refreshAdjLabel();
+                  loadAusencias();
+                }
+                function refreshAdjLabel() {
+                  const baja = document.getElementById('ausTipo').value === 'SICK_LEAVE';
+                  document.getElementById('ausAdjLbl').textContent = baja
+                    ? 'Parte de baja (obligatorio)' : 'Adjunto (opcional: foto o PDF)';
+                }
+                async function loadAusencias() {
+                  try {
+                    const r = await fetch(API + '/empleado/ausencias', { headers: authHeaders() });
+                    if (r.status === 401 || r.status === 403) { localStorage.removeItem(LS_TOKEN); gotoPin(); return; }
+                    if (!r.ok) throw new Error('No se pudieron cargar tus solicitudes');
+                    const list = await r.json();
+                    const cont = document.getElementById('ausLista');
+                    cont.innerHTML = '';
+                    if (!list.length) { cont.innerHTML = '<p style="color:#94a3b8">Aun no tienes solicitudes.</p>'; return; }
+                    list.forEach(s => {
+                      const si = ausStatusInfo(s.status);
+                      const nAdj = (s.attachments || []).length;
+                      const div = document.createElement('div');
+                      div.className = 'card';
+                      div.style.padding = '14px';
+                      div.innerHTML =
+                        '<div style="display:flex;justify-content:space-between;align-items:center">'
+                        + '<b>' + ausKindLabel(s.kind) + '</b>'
+                        + '<span style="background:' + si[1] + ';color:' + si[2] + ';padding:3px 10px;border-radius:10px;font-size:12px">' + si[0] + '</span></div>'
+                        + '<div style="color:#cbd5e1;font-size:14px;margin-top:6px">' + s.startDate + ' &rarr; ' + s.endDate
+                        + (s.days ? ' (' + s.days + ' dias)' : '') + '</div>'
+                        + (s.reason ? '<div style="color:#94a3b8;font-size:13px;margin-top:4px">' + s.reason + '</div>' : '')
+                        + (nAdj ? '<div style="color:#94a3b8;font-size:13px;margin-top:4px">&#128206; ' + nAdj + ' adjunto(s)</div>' : '')
+                        + (s.reviewNotes ? '<div style="color:#94a3b8;font-size:13px;margin-top:4px">Nota: ' + s.reviewNotes + '</div>' : '');
+                      if (s.status === 'REQUESTED') {
+                        const btn = document.createElement('button');
+                        btn.className = 'secondary'; btn.textContent = 'Cancelar solicitud';
+                        btn.onclick = () => cancelAusencia(s.id);
+                        div.appendChild(btn);
+                      }
+                      cont.appendChild(div);
+                    });
+                  } catch (e) { msg('ausMsg', e.message); }
+                }
+                function readFileB64(file) {
+                  return new Promise((res, rej) => {
+                    const fr = new FileReader();
+                    fr.onload = () => res({ filename: file.name, contentType: file.type, base64: fr.result });
+                    fr.onerror = () => rej(new Error('No se pudo leer ' + file.name));
+                    fr.readAsDataURL(file);
+                  });
+                }
+                async function submitAusencia() {
+                  const kind = document.getElementById('ausTipo').value;
+                  const desde = document.getElementById('ausDesde').value;
+                  const hasta = document.getElementById('ausHasta').value;
+                  const motivo = document.getElementById('ausMotivo').value.trim();
+                  const files = document.getElementById('ausAdjunto').files;
+                  if (!desde || !hasta) { msg('ausMsg', 'Indica las fechas desde y hasta'); return; }
+                  if (hasta < desde) { msg('ausMsg', 'La fecha hasta es anterior a la de inicio'); return; }
+                  if (kind === 'SICK_LEAVE' && files.length === 0) { msg('ausMsg', 'La baja requiere adjuntar el parte de baja'); return; }
+                  msg('ausMsg', 'Enviando...', true);
+                  try {
+                    const attachments = [];
+                    for (let i = 0; i < files.length; i++) attachments.push(await readFileB64(files[i]));
+                    const r = await fetch(API + '/empleado/ausencias', {
+                      method: 'POST', headers: authHeaders(),
+                      body: JSON.stringify({ kind: kind, startDate: desde, endDate: hasta,
+                        reason: motivo || null, attachments: attachments })
+                    });
+                    if (r.status === 401 || r.status === 403) { localStorage.removeItem(LS_TOKEN); gotoPin(); return; }
+                    if (!r.ok) {
+                      let e = 'No se pudo enviar la solicitud';
+                      try { e = (await r.json()).message || e; } catch (x) {}
+                      throw new Error(e);
+                    }
+                    msg('ausMsg', 'Solicitud enviada', true);
+                    document.getElementById('ausAdjunto').value = '';
+                    document.getElementById('ausMotivo').value = '';
+                    loadAusencias();
+                  } catch (e) { msg('ausMsg', e.message); }
+                }
+                async function cancelAusencia(id) {
+                  try {
+                    const r = await fetch(API + '/empleado/ausencias/' + id + '/cancel', {
+                      method: 'POST', headers: authHeaders() });
+                    if (!r.ok) {
+                      let e = 'No se pudo cancelar';
+                      try { e = (await r.json()).message || e; } catch (x) {}
+                      throw new Error(e);
+                    }
+                    loadAusencias();
+                  } catch (e) { msg('ausMsg', e.message); }
                 }
 
                 document.getElementById('activateBtn').onclick = async () => {

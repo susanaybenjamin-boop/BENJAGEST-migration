@@ -1548,6 +1548,70 @@ public class LaborApiClient {
         return r.body();
     }
 
+    // ---- MEMP-4: solicitudes de ausencia (vacaciones / bajas) ----
+
+    public java.util.List<com.benjagest.ui.model.LeaveRequestEntry> listLeaveRequests(String status, String employeeId)
+            throws IOException, InterruptedException {
+        StringBuilder url = new StringBuilder(baseUrl + "/labor/leave-requests?");
+        if (status != null && !status.isBlank()) url.append("status=").append(status).append("&");
+        if (employeeId != null && !employeeId.isBlank()) url.append("employeeId=").append(employeeId);
+        HttpResponse<String> r = send(req(url.toString()).GET());
+        java.util.List<com.benjagest.ui.model.LeaveRequestEntry> out = new ArrayList<>();
+        for (String obj : splitTopLevelObjects(r.body())) {
+            if (!obj.contains("\"kind\"")) continue;
+            // attachmentCount = nº de "filename" dentro del objeto (su array anidado).
+            int count = 0, idx = 0;
+            while ((idx = obj.indexOf("\"filename\"", idx)) >= 0) { count++; idx += 10; }
+            out.add(new com.benjagest.ui.model.LeaveRequestEntry(
+                    textField(obj, "id"), textField(obj, "employeeId"), textField(obj, "employeeName"),
+                    textField(obj, "kind"), textField(obj, "startDate"), textField(obj, "endDate"),
+                    numberField(obj, "days"), textField(obj, "reason"), textField(obj, "status"),
+                    textField(obj, "reviewNotes"), count));
+        }
+        return out;
+    }
+
+    public void approveLeaveRequest(String id, String notes) throws IOException, InterruptedException {
+        send(req(baseUrl + "/labor/leave-requests/" + id + "/approve")
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString("{" + field("reviewNotes", notes) + "}")));
+    }
+
+    public void rejectLeaveRequest(String id, String notes) throws IOException, InterruptedException {
+        send(req(baseUrl + "/labor/leave-requests/" + id + "/reject")
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString("{" + field("reviewNotes", notes) + "}")));
+    }
+
+    public java.util.List<com.benjagest.ui.model.LeaveAttachmentMeta> listLeaveAttachments(String requestId)
+            throws IOException, InterruptedException {
+        HttpResponse<String> r = send(req(baseUrl + "/labor/leave-requests/" + requestId + "/attachments").GET());
+        java.util.List<com.benjagest.ui.model.LeaveAttachmentMeta> out = new ArrayList<>();
+        for (String obj : splitTopLevelObjects(r.body())) {
+            if (!obj.contains("\"filename\"")) continue;
+            out.add(new com.benjagest.ui.model.LeaveAttachmentMeta(
+                    textField(obj, "id"), textField(obj, "filename"),
+                    textField(obj, "contentType"), intFieldOrZero(obj, "sizeBytes")));
+        }
+        return out;
+    }
+
+    public byte[] downloadLeaveAttachment(String attachmentId) throws IOException, InterruptedException {
+        HttpRequest.Builder b = HttpRequest.newBuilder(
+                        URI.create(baseUrl + "/labor/leave-requests/attachments/" + attachmentId))
+                .timeout(Duration.ofSeconds(30)).GET();
+        AuthSession.get().authorize(b);
+        HttpResponse<byte[]> r = httpClient.send(b.build(), HttpResponse.BodyHandlers.ofByteArray());
+        if (r.statusCode() < 200 || r.statusCode() >= 300) throw new IOException("HTTP " + r.statusCode());
+        return r.body();
+    }
+
+    /** Extrae un campo numérico (sin comillas) como texto; "" si es null/ausente. */
+    private String numberField(String json, String f) {
+        Matcher m = Pattern.compile("\"" + f + "\"\\s*:\\s*(-?\\d+(?:\\.\\d+)?)").matcher(json);
+        return m.find() ? m.group(1) : "";
+    }
+
     public void emailPayslipToEmployee(String id) throws IOException, InterruptedException {
         send(req(baseUrl + "/labor/payslips/" + id + "/email")
                 .header("Content-Type", "application/json")

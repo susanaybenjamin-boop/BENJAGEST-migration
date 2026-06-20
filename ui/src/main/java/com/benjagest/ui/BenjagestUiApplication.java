@@ -16679,6 +16679,45 @@ public class BenjagestUiApplication extends Application {
             case "labor.tab.audit" -> "Audit";
             case "labor.tab.medical_leaves" -> "Medical leaves";
             case "labor.tab.vacations" -> "Holidays";
+            case "labor.tab.leave_requests" -> "Requests";
+            case "labor.leavereq.hint" -> "Leave requests submitted by employees from their app (holidays, sick leave, paid leave, other). Approve or reject them; approving a holiday request also records it in Holidays for the settlement.";
+            case "labor.leavereq.filter.status" -> "Status";
+            case "labor.leavereq.filter.all" -> "All";
+            case "labor.leavereq.col.employee" -> "Employee";
+            case "labor.leavereq.col.type" -> "Type";
+            case "labor.leavereq.col.from" -> "From";
+            case "labor.leavereq.col.to" -> "To";
+            case "labor.leavereq.col.days" -> "Days";
+            case "labor.leavereq.col.status" -> "Status";
+            case "labor.leavereq.col.attachments" -> "Files";
+            case "labor.leavereq.col.reason" -> "Reason / note";
+            case "labor.leavereq.kind.vacation" -> "Holidays";
+            case "labor.leavereq.kind.sick_leave" -> "Sick leave";
+            case "labor.leavereq.kind.paid_leave" -> "Paid leave";
+            case "labor.leavereq.kind.other" -> "Other";
+            case "labor.leavereq.status.requested" -> "Pending";
+            case "labor.leavereq.status.approved" -> "Approved";
+            case "labor.leavereq.status.rejected" -> "Rejected";
+            case "labor.leavereq.status.cancelled" -> "Cancelled";
+            case "labor.leavereq.action.reload" -> "Refresh";
+            case "labor.leavereq.action.approve" -> "Approve";
+            case "labor.leavereq.action.reject" -> "Reject";
+            case "labor.leavereq.action.view_attachments" -> "View files";
+            case "labor.leavereq.select.none" -> "Select a pending request first.";
+            case "labor.leavereq.note" -> "Note (optional):";
+            case "labor.leavereq.approve.title" -> "Approve request";
+            case "labor.leavereq.approve.header" -> "Approve this leave request?";
+            case "labor.leavereq.reject.title" -> "Reject request";
+            case "labor.leavereq.reject.header" -> "Reject this leave request?";
+            case "labor.leavereq.ok.approved" -> "Request approved";
+            case "labor.leavereq.ok.rejected" -> "Request rejected";
+            case "labor.leavereq.fail.title" -> "Action failed";
+            case "labor.leavereq.fail.body" -> "The action could not be completed. Please try again.";
+            case "labor.leavereq.attach.title" -> "Attachments";
+            case "labor.leavereq.attach.none" -> "This request has no attachments.";
+            case "labor.leavereq.attach.choose" -> "Choose a file to download:";
+            case "labor.leavereq.attach.saved" -> "File saved to:";
+            case "labor.leavereq.placeholder.empty" -> "No requests for this filter.";
             case "labor.vac.title" -> "Holidays";
             case "labor.vac.hint" -> "Record each employee's holiday periods. The settlement uses them to work out the pending (accrued − taken) holidays automatically.";
             case "labor.vac.empty" -> "No holidays recorded.";
@@ -17384,6 +17423,45 @@ public class BenjagestUiApplication extends Application {
             case "labor.tab.audit" -> "Auditoria";
             case "labor.tab.medical_leaves" -> "Bajas (IT)";
             case "labor.tab.vacations" -> "Vacaciones";
+            case "labor.tab.leave_requests" -> "Solicitudes";
+            case "labor.leavereq.hint" -> "Solicitudes de ausencia que los empleados envían desde su app (vacaciones, baja, permiso, otros). Apruébalas o recházalas; al aprobar unas vacaciones se registran también en Vacaciones para el finiquito.";
+            case "labor.leavereq.filter.status" -> "Estado";
+            case "labor.leavereq.filter.all" -> "Todas";
+            case "labor.leavereq.col.employee" -> "Empleado";
+            case "labor.leavereq.col.type" -> "Tipo";
+            case "labor.leavereq.col.from" -> "Desde";
+            case "labor.leavereq.col.to" -> "Hasta";
+            case "labor.leavereq.col.days" -> "Días";
+            case "labor.leavereq.col.status" -> "Estado";
+            case "labor.leavereq.col.attachments" -> "Adjuntos";
+            case "labor.leavereq.col.reason" -> "Motivo / nota";
+            case "labor.leavereq.kind.vacation" -> "Vacaciones";
+            case "labor.leavereq.kind.sick_leave" -> "Baja médica";
+            case "labor.leavereq.kind.paid_leave" -> "Permiso retribuido";
+            case "labor.leavereq.kind.other" -> "Otros";
+            case "labor.leavereq.status.requested" -> "Pendiente";
+            case "labor.leavereq.status.approved" -> "Aprobada";
+            case "labor.leavereq.status.rejected" -> "Rechazada";
+            case "labor.leavereq.status.cancelled" -> "Cancelada";
+            case "labor.leavereq.action.reload" -> "Refrescar";
+            case "labor.leavereq.action.approve" -> "Aprobar";
+            case "labor.leavereq.action.reject" -> "Rechazar";
+            case "labor.leavereq.action.view_attachments" -> "Ver adjuntos";
+            case "labor.leavereq.select.none" -> "Selecciona antes una solicitud pendiente.";
+            case "labor.leavereq.note" -> "Nota (opcional):";
+            case "labor.leavereq.approve.title" -> "Aprobar solicitud";
+            case "labor.leavereq.approve.header" -> "¿Aprobar esta solicitud de ausencia?";
+            case "labor.leavereq.reject.title" -> "Rechazar solicitud";
+            case "labor.leavereq.reject.header" -> "¿Rechazar esta solicitud de ausencia?";
+            case "labor.leavereq.ok.approved" -> "Solicitud aprobada";
+            case "labor.leavereq.ok.rejected" -> "Solicitud rechazada";
+            case "labor.leavereq.fail.title" -> "No se pudo completar la acción";
+            case "labor.leavereq.fail.body" -> "No se pudo completar la acción. Inténtalo de nuevo.";
+            case "labor.leavereq.attach.title" -> "Adjuntos";
+            case "labor.leavereq.attach.none" -> "Esta solicitud no tiene adjuntos.";
+            case "labor.leavereq.attach.choose" -> "Elige un archivo para descargar:";
+            case "labor.leavereq.attach.saved" -> "Archivo guardado en:";
+            case "labor.leavereq.placeholder.empty" -> "Sin solicitudes para este filtro.";
             case "labor.vac.title" -> "Vacaciones";
             case "labor.vac.hint" -> "Registra los periodos de vacaciones de cada empleado. El finiquito los usa para calcular las vacaciones pendientes (devengadas − disfrutadas) automáticamente.";
             case "labor.vac.empty" -> "Sin vacaciones registradas.";
@@ -20517,6 +20595,10 @@ public class BenjagestUiApplication extends Application {
         Tab vacationsTab = new Tab(t("labor.tab.vacations"),
                 buildVacationsTab(bundle.employees()));
         vacationsTab.setGraphic(icon("fas-umbrella-beach"));
+        // MEMP-4 — Solicitudes de ausencia pedidas por el empleado (PWA): aprobar/rechazar.
+        Tab leaveReqTab = new Tab(t("labor.tab.leave_requests"),
+                buildLeaveRequestsTab(bundle.employees()));
+        leaveReqTab.setGraphic(icon("fas-inbox"));
         // Cotizaciones SS (TC1/RED) — backend cerrado 2026-06-09, UI
         // pendiente. Solo lectura por ahora — las cuotas se calculan
         // desde las nóminas; el editor manual queda para futuro.
@@ -20563,7 +20645,7 @@ public class BenjagestUiApplication extends Application {
         TabPane personalPane = laborSubPane(empTab, contractsTab, templatesTab, clausesTab);
         TabPane payrollPane = laborSubPane(payslipsTab, costTab, ssTab);
         TabPane timePane = laborSubPane(clockTab, auditTab, shiftsTab, scheduleTab, calendarTab, centersTab, kioskTab, cfgTab);
-        TabPane absencePane = laborSubPane(leavesTab, vacationsTab);
+        TabPane absencePane = laborSubPane(leaveReqTab, leavesTab, vacationsTab);
         TabPane paramsPane = laborSubPane(ratesTab, groupBasesTab, irpfParamsTab, severanceTab);
         final TabPane[] panes = {personalPane, payrollPane, timePane, absencePane, paramsPane};
 
@@ -23002,6 +23084,189 @@ public class BenjagestUiApplication extends Application {
         } catch (Exception e) {
             return null;
         }
+    }
+
+    // ----- MEMP-4: sub-tab Solicitudes de ausencia (aprobar/rechazar) -----
+
+    private Node buildLeaveRequestsTab(java.util.List<com.benjagest.ui.model.EmployeeEntry> allEmployees) {
+        Label hint = new Label(t("labor.leavereq.hint"));
+        hint.setWrapText(true);
+        hint.getStyleClass().add("settings-hint");
+
+        ComboBox<String> statusFilter = new ComboBox<>();
+        statusFilter.getItems().addAll("", "REQUESTED", "APPROVED", "REJECTED", "CANCELLED");
+        statusFilter.setValue("REQUESTED");
+        statusFilter.setConverter(new javafx.util.StringConverter<>() {
+            @Override public String toString(String s) {
+                return s == null || s.isBlank() ? t("labor.leavereq.filter.all")
+                        : t("labor.leavereq.status." + s.toLowerCase());
+            }
+            @Override public String fromString(String s) { return null; }
+        });
+
+        TableView<com.benjagest.ui.model.LeaveRequestEntry> table = new TableView<>();
+        table.getStyleClass().add("data-table");
+        table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+        table.setPlaceholder(new Label(t("labor.leavereq.placeholder.empty")));
+
+        TableColumn<com.benjagest.ui.model.LeaveRequestEntry, String> cEmp = new TableColumn<>(t("labor.leavereq.col.employee"));
+        cEmp.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().employeeName()));
+        cEmp.setPrefWidth(170);
+        TableColumn<com.benjagest.ui.model.LeaveRequestEntry, String> cKind = new TableColumn<>(t("labor.leavereq.col.type"));
+        cKind.setCellValueFactory(c -> new SimpleStringProperty(t("labor.leavereq.kind." + c.getValue().kind().toLowerCase())));
+        cKind.setPrefWidth(130);
+        TableColumn<com.benjagest.ui.model.LeaveRequestEntry, String> cFrom = new TableColumn<>(t("labor.leavereq.col.from"));
+        cFrom.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().startDate()));
+        cFrom.setPrefWidth(100);
+        TableColumn<com.benjagest.ui.model.LeaveRequestEntry, String> cTo = new TableColumn<>(t("labor.leavereq.col.to"));
+        cTo.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().endDate()));
+        cTo.setPrefWidth(100);
+        TableColumn<com.benjagest.ui.model.LeaveRequestEntry, String> cDays = new TableColumn<>(t("labor.leavereq.col.days"));
+        cDays.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().days()));
+        cDays.setPrefWidth(60);
+        TableColumn<com.benjagest.ui.model.LeaveRequestEntry, String> cStatus = new TableColumn<>(t("labor.leavereq.col.status"));
+        cStatus.setCellValueFactory(c -> new SimpleStringProperty(t("labor.leavereq.status." + c.getValue().status().toLowerCase())));
+        cStatus.setPrefWidth(110);
+        TableColumn<com.benjagest.ui.model.LeaveRequestEntry, String> cAtt = new TableColumn<>(t("labor.leavereq.col.attachments"));
+        cAtt.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().attachmentCount() > 0
+                ? "📎 " + c.getValue().attachmentCount() : ""));
+        cAtt.setPrefWidth(90);
+        TableColumn<com.benjagest.ui.model.LeaveRequestEntry, String> cReason = new TableColumn<>(t("labor.leavereq.col.reason"));
+        cReason.setCellValueFactory(c -> new SimpleStringProperty(
+                (c.getValue().reason() == null ? "" : c.getValue().reason())
+                + (c.getValue().reviewNotes() == null || c.getValue().reviewNotes().isBlank()
+                        ? "" : "  · " + c.getValue().reviewNotes())));
+        table.getColumns().addAll(java.util.List.of(cEmp, cKind, cFrom, cTo, cDays, cStatus, cAtt, cReason));
+
+        Runnable reload = () -> {
+            String st = statusFilter.getValue();
+            Task<java.util.List<com.benjagest.ui.model.LeaveRequestEntry>> task = new Task<>() {
+                @Override protected java.util.List<com.benjagest.ui.model.LeaveRequestEntry> call() throws Exception {
+                    return laborApiClient.listLeaveRequests(st, null);
+                }
+            };
+            task.setOnSucceeded(ev -> table.setItems(FXCollections.observableArrayList(task.getValue())));
+            task.setOnFailed(ev -> table.getItems().clear());
+            start(task, "leavereq-list");
+        };
+
+        Button reloadBtn = new Button(t("labor.leavereq.action.reload"));
+        reloadBtn.setGraphic(icon("fas-sync-alt"));
+        reloadBtn.setOnAction(ev -> reload.run());
+        statusFilter.valueProperty().addListener((o, ov, nv) -> reload.run());
+
+        Button approveBtn = new Button(t("labor.leavereq.action.approve"));
+        approveBtn.setGraphic(icon("fas-check"));
+        approveBtn.getStyleClass().add("invoice-validate-action");
+        approveBtn.setDisable(true);
+        Button rejectBtn = new Button(t("labor.leavereq.action.reject"));
+        rejectBtn.setGraphic(icon("fas-times"));
+        rejectBtn.setDisable(true);
+        Button attBtn = new Button(t("labor.leavereq.action.view_attachments"));
+        attBtn.setGraphic(icon("fas-paperclip"));
+        attBtn.setDisable(true);
+
+        table.getSelectionModel().selectedItemProperty().addListener((o, ov, nv) -> {
+            boolean req = nv != null && "REQUESTED".equals(nv.status());
+            approveBtn.setDisable(!req);
+            rejectBtn.setDisable(!req);
+            attBtn.setDisable(nv == null || nv.attachmentCount() == 0);
+        });
+
+        approveBtn.setOnAction(ev -> reviewLeaveRequest(table.getSelectionModel().getSelectedItem(), true, reload));
+        rejectBtn.setOnAction(ev -> reviewLeaveRequest(table.getSelectionModel().getSelectedItem(), false, reload));
+        attBtn.setOnAction(ev -> viewLeaveAttachments(table.getSelectionModel().getSelectedItem()));
+
+        HBox controls = new HBox(8,
+                new Label(t("labor.leavereq.filter.status")), statusFilter,
+                reloadBtn, approveBtn, rejectBtn, attBtn);
+        controls.setAlignment(Pos.CENTER_LEFT);
+
+        VBox body = new VBox(10, hint, controls, table);
+        VBox.setVgrow(table, Priority.ALWAYS);
+        body.setPadding(new Insets(12));
+
+        Task<Void> initial = new Task<>() { @Override protected Void call() throws Exception { Thread.sleep(50); return null; } };
+        initial.setOnSucceeded(ev -> reload.run());
+        start(initial, "leavereq-initial");
+        return screenScroll(body);
+    }
+
+    /** Aprueba o rechaza una solicitud pidiendo una nota opcional. */
+    private void reviewLeaveRequest(com.benjagest.ui.model.LeaveRequestEntry sel, boolean approve, Runnable onDone) {
+        if (sel == null) { showInfo(t("labor.leavereq.action.approve"), t("labor.leavereq.select.none")); return; }
+        TextInputDialog dlg = new TextInputDialog();
+        dlg.initOwner(root.getScene().getWindow());
+        dlg.setTitle(approve ? t("labor.leavereq.approve.title") : t("labor.leavereq.reject.title"));
+        dlg.setHeaderText(approve ? t("labor.leavereq.approve.header") : t("labor.leavereq.reject.header"));
+        dlg.setContentText(t("labor.leavereq.note"));
+        java.util.Optional<String> res = dlg.showAndWait();
+        if (res.isEmpty()) return; // cancelado
+        String notes = res.get().trim();
+        Task<Void> task = new Task<>() {
+            @Override protected Void call() throws Exception {
+                if (approve) laborApiClient.approveLeaveRequest(sel.id(), notes);
+                else laborApiClient.rejectLeaveRequest(sel.id(), notes);
+                return null;
+            }
+        };
+        task.setOnSucceeded(ev -> {
+            showInfo(approve ? t("labor.leavereq.ok.approved") : t("labor.leavereq.ok.rejected"), "");
+            if (onDone != null) onDone.run();
+        });
+        task.setOnFailed(ev -> showError(t("labor.leavereq.fail.title"), t("labor.leavereq.fail.body")));
+        start(task, "leavereq-review");
+    }
+
+    /** Lista los adjuntos de la solicitud y permite descargarlos. */
+    private void viewLeaveAttachments(com.benjagest.ui.model.LeaveRequestEntry sel) {
+        if (sel == null) return;
+        Task<java.util.List<com.benjagest.ui.model.LeaveAttachmentMeta>> task = new Task<>() {
+            @Override protected java.util.List<com.benjagest.ui.model.LeaveAttachmentMeta> call() throws Exception {
+                return laborApiClient.listLeaveAttachments(sel.id());
+            }
+        };
+        task.setOnSucceeded(ev -> {
+            var metas = task.getValue();
+            if (metas.isEmpty()) { showInfo(t("labor.leavereq.attach.title"), t("labor.leavereq.attach.none")); return; }
+            if (metas.size() == 1) { downloadLeaveAttachment(metas.get(0)); return; }
+            // Varios: elegir por etiqueta única "i. nombre" y mapear de vuelta.
+            java.util.Map<String, com.benjagest.ui.model.LeaveAttachmentMeta> byLabel = new java.util.LinkedHashMap<>();
+            int i = 1;
+            for (var m : metas) byLabel.put((i++) + ". " + (m.filename() == null ? "adjunto" : m.filename()), m);
+            java.util.List<String> labels = new java.util.ArrayList<>(byLabel.keySet());
+            ChoiceDialog<String> picker = new ChoiceDialog<>(labels.get(0), labels);
+            picker.initOwner(root.getScene().getWindow());
+            picker.setTitle(t("labor.leavereq.attach.title"));
+            picker.setHeaderText(t("labor.leavereq.attach.choose"));
+            picker.setContentText("");
+            picker.showAndWait().ifPresent(lbl -> downloadLeaveAttachment(byLabel.get(lbl)));
+        });
+        task.setOnFailed(ev -> showError(t("labor.leavereq.fail.title"), t("labor.leavereq.fail.body")));
+        start(task, "leavereq-attachments");
+    }
+
+    private void downloadLeaveAttachment(com.benjagest.ui.model.LeaveAttachmentMeta meta) {
+        Task<byte[]> task = new Task<>() {
+            @Override protected byte[] call() throws Exception {
+                return laborApiClient.downloadLeaveAttachment(meta.id());
+            }
+        };
+        task.setOnSucceeded(ev -> {
+            javafx.stage.FileChooser fc = new javafx.stage.FileChooser();
+            fc.setInitialFileName(meta.filename() == null ? "adjunto" : meta.filename());
+            java.io.File target = fc.showSaveDialog(root.getScene().getWindow());
+            if (target == null) return;
+            try {
+                java.nio.file.Files.write(target.toPath(), task.getValue());
+                showInfo(t("labor.leavereq.attach.title"),
+                        t("labor.leavereq.attach.saved") + "\n" + target.getAbsolutePath());
+            } catch (java.io.IOException ex) {
+                showError(t("labor.leavereq.fail.title"), ex.getMessage());
+            }
+        });
+        task.setOnFailed(ev -> showError(t("labor.leavereq.fail.title"), t("labor.leavereq.fail.body")));
+        start(task, "leavereq-att-download");
     }
 
     // ----- Sub-tab Config Fichajes (TC-CFG) -----
