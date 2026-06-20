@@ -362,7 +362,10 @@ public class EmployeeAppService {
                          border-radius: 12px; background: #38bdf8; color: #04263a; margin-top: 14px; }
                 button.secondary { background: transparent; color: #94a3b8; border: 1px solid #334155; }
                 .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-                .tile { background: #1e293b; border-radius: 16px; padding: 22px 12px; text-align: center; }
+                .tile { background: #1e293b; border-radius: 16px; padding: 22px 12px; text-align: center; position: relative; }
+                .tbadge { position: absolute; top: 8px; right: 8px; min-width: 20px; height: 20px;
+                          background: #ef4444; color: #fff; border-radius: 10px; font-size: 12px;
+                          font-weight: 700; line-height: 20px; padding: 0 6px; }
                 .tile .ic { font-size: 30px; }
                 .tile .lbl { margin-top: 8px; font-size: 14px; }
                 .tile .soon { display:block; font-size: 11px; color: #64748b; margin-top: 4px; }
@@ -426,8 +429,8 @@ public class EmployeeAppService {
                   <p class="sub" id="homeCompany"></p>
                   <div class="grid">
                     <div class="tile" style="cursor:pointer" onclick="gotoFichar()"><div class="ic">&#128337;</div><div class="lbl">Fichar</div></div>
-                    <div class="tile" style="cursor:pointer" onclick="gotoAusencias()"><div class="ic">&#127958;</div><div class="lbl">Vacaciones y bajas</div></div>
-                    <div class="tile" style="cursor:pointer" onclick="gotoNominas()"><div class="ic">&#128196;</div><div class="lbl">Nominas</div></div>
+                    <div class="tile" style="cursor:pointer" onclick="gotoAusencias()"><span class="tbadge hidden" id="badge-ausencias"></span><div class="ic">&#127958;</div><div class="lbl">Vacaciones y bajas</div></div>
+                    <div class="tile" style="cursor:pointer" onclick="gotoNominas()"><span class="tbadge hidden" id="badge-nominas"></span><div class="ic">&#128196;</div><div class="lbl">Nominas</div></div>
                     <div class="tile" style="cursor:pointer" onclick="gotoJornada()"><div class="ic">&#128197;</div><div class="lbl">Mi jornada</div></div>
                   </div>
                   <button class="secondary" id="logoutBtn">Cerrar sesion</button>
@@ -553,6 +556,7 @@ public class EmployeeAppService {
                   document.getElementById('homeHello').textContent = 'Hola, ' + (localStorage.getItem(LS_NAME) || '');
                   document.getElementById('homeCompany').textContent = localStorage.getItem(LS_COMPANY) || '';
                   show('screen-home');
+                  updateHomeBadges();
                 }
 
                 // ---- MEMP-2: fichaje ----
@@ -737,6 +741,7 @@ public class EmployeeAppService {
                 }
                 function gotoAusencias() {
                   show('screen-ausencias');
+                  localStorage.removeItem('aus_pending'); setBadge('badge-ausencias', '');
                   document.getElementById('ausMsg').textContent = '';
                   const hoy = new Date().toISOString().slice(0,10);
                   document.getElementById('ausDesde').value = hoy;
@@ -917,6 +922,56 @@ public class EmployeeAppService {
                   } catch (e) { msg('nominasMsg', e.message); }
                 }
 
+                // ---- NOTIF-RT: tiempo real (SSE) + badges del home ----
+                let evtSource = null;
+                function currentScreen() {
+                  for (const s of ['screen-fichar','screen-jornada','screen-ausencias','screen-nominas','screen-home']) {
+                    if (!document.getElementById(s).classList.contains('hidden')) return s;
+                  }
+                  return null;
+                }
+                function setBadge(id, text) {
+                  const el = document.getElementById(id);
+                  if (!el) return;
+                  if (text) { el.textContent = text; el.classList.remove('hidden'); }
+                  else { el.classList.add('hidden'); }
+                }
+                async function updateHomeBadges() {
+                  // Nominas sin recibi confirmado.
+                  try {
+                    const r = await fetch(API + '/empleado/nominas', { headers: authHeaders() });
+                    if (r.ok) {
+                      const list = await r.json();
+                      const pend = list.filter(p => !p.acknowledgedAt).length;
+                      setBadge('badge-nominas', pend > 0 ? String(pend) : '');
+                    }
+                  } catch (e) {}
+                  // Solicitudes resueltas sin ver (marca local).
+                  setBadge('badge-ausencias', localStorage.getItem('aus_pending') === '1' ? '!' : '');
+                }
+                function connectRealtime() {
+                  const token = localStorage.getItem(LS_TOKEN);
+                  if (!token) return;
+                  if (evtSource) { evtSource.close(); evtSource = null; }
+                  try {
+                    evtSource = new EventSource(API + '/realtime/stream?token=' + encodeURIComponent(token));
+                  } catch (e) { return; }
+                  evtSource.addEventListener('timeclock', () => {
+                    if (currentScreen() === 'screen-fichar') { loadEstado(); loadSugerencia(); }
+                    if (currentScreen() === 'screen-jornada') loadJornada();
+                  });
+                  evtSource.addEventListener('leave_reviewed', () => {
+                    if (currentScreen() === 'screen-ausencias') loadAusencias();
+                    else { localStorage.setItem('aus_pending', '1'); updateHomeBadges(); }
+                  });
+                  evtSource.addEventListener('payslip', () => {
+                    if (currentScreen() === 'screen-nominas') loadNominas();
+                    updateHomeBadges();
+                  });
+                  // onerror: EventSource reintenta solo; no hacemos nada.
+                }
+                function disconnectRealtime() { if (evtSource) { evtSource.close(); evtSource = null; } }
+
                 document.getElementById('activateBtn').onclick = async () => {
                   const token = document.getElementById('inviteInput').value.trim();
                   if (!token) { msg('inviteMsg', 'Pega el codigo de invitacion'); return; }
@@ -962,15 +1017,18 @@ public class EmployeeAppService {
                     if (res.displayName) localStorage.setItem(LS_NAME, res.displayName);
                     document.getElementById('pinInput').value = '';
                     gotoHome();
+                    connectRealtime();
                   } catch (e) { msg('pinMsg', e.message); }
                 };
 
                 document.getElementById('forgetBtn').onclick = () => {
+                  disconnectRealtime();
                   localStorage.removeItem(LS_SECRET);
                   localStorage.removeItem(LS_TOKEN);
                   show('screen-invite');
                 };
                 document.getElementById('logoutBtn').onclick = () => {
+                  disconnectRealtime();
                   localStorage.removeItem(LS_TOKEN);
                   gotoPin();
                 };

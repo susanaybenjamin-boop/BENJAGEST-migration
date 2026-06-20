@@ -1137,6 +1137,38 @@ public class BenjagestUiApplication extends Application {
         root.setBottom(footer());
         startInvitationsPolling();
         startAdvisoryClientsPolling();
+        startRealtime();
+    }
+
+    /**
+     * NOTIF-RT — Arranca el cliente SSE. Cada evento del backend refresca SOLO lo
+     * afectado (vía RefreshBus) + el contador de la campana, sin recargar en bucle.
+     */
+    private void startRealtime() {
+        if (realtimeClient != null) return;
+        realtimeClient = new com.benjagest.ui.service.RealtimeClient(this::onRealtimeEvent);
+        realtimeClient.start();
+    }
+
+    private void stopRealtime() {
+        if (realtimeClient != null) { realtimeClient.stop(); realtimeClient = null; }
+    }
+
+    /** Mapea el evento SSE (hilo de red) a refrescos de UI (RefreshBus marshalla al FX). */
+    private void onRealtimeEvent(String type, String data) {
+        switch (type) {
+            case "timeclock" -> com.benjagest.ui.support.RefreshBus.emit(
+                    com.benjagest.ui.support.RefreshBus.TOPIC_TIMECLOCK,
+                    com.benjagest.ui.support.RefreshBus.TOPIC_AUDIT);
+            case "leave" -> {
+                com.benjagest.ui.support.RefreshBus.emit(
+                        com.benjagest.ui.support.RefreshBus.TOPIC_LEAVE_REQUESTS);
+                javafx.application.Platform.runLater(this::refreshAdvisoryNotificationsCount);
+            }
+            case "payslip" -> com.benjagest.ui.support.RefreshBus.emit(
+                    com.benjagest.ui.support.RefreshBus.TOPIC_PAYSLIPS);
+            default -> { /* ready / desconocido: ignorar */ }
+        }
     }
 
     /**
@@ -1720,6 +1752,7 @@ public class BenjagestUiApplication extends Application {
             stopAdvisoryClientsPolling();
             stopAdvisoryNotificationsPolling();
             stopDehuPolling();
+            stopRealtime();
             authApiClient.logout();
             session = null;
             activeModulesCache = List.of();
@@ -3867,6 +3900,9 @@ public class BenjagestUiApplication extends Application {
     // la pantalla "live" más obvia del módulo labor.
     private javafx.animation.Timeline dehuPoller;
 
+    // NOTIF-RT — cliente SSE: push del backend en lugar de sondeo. Vivo toda la sesión.
+    private com.benjagest.ui.service.RealtimeClient realtimeClient;
+
     private TableView<com.benjagest.ui.model.PurchaseInvoiceEntry> purchaseInvoicesTable;
     private ComboBox<String> purchaseYearFilter;
     private ComboBox<String> purchaseQuarterFilter;
@@ -5457,6 +5493,11 @@ public class BenjagestUiApplication extends Application {
         setCenterAnimated(scroll(body));
         reloadTimeClock(employeeId);
         refreshTimeClockSuggestion();
+        // NOTIF-RT — refresco en vivo de la lista + sugerencia cuando llega un fichaje.
+        com.benjagest.ui.support.RefreshBus.subscribe(
+                com.benjagest.ui.support.RefreshBus.TOPIC_TIMECLOCK,
+                () -> { reloadTimeClock(employeeId); refreshTimeClockSuggestion(); },
+                timeClockTable);
     }
 
     /**
@@ -22959,6 +23000,9 @@ public class BenjagestUiApplication extends Application {
         };
         initial.setOnSucceeded(ev -> reload.run());
         start(initial, "tc-audit-initial");
+        // NOTIF-RT — refresco en vivo cuando llega un fichaje (del móvil/kiosco).
+        com.benjagest.ui.support.RefreshBus.subscribe(
+                com.benjagest.ui.support.RefreshBus.TOPIC_AUDIT, reload, detailTable);
 
         return screenScroll(body);
     }
@@ -23191,6 +23235,9 @@ public class BenjagestUiApplication extends Application {
         Task<Void> initial = new Task<>() { @Override protected Void call() throws Exception { Thread.sleep(50); return null; } };
         initial.setOnSucceeded(ev -> reload.run());
         start(initial, "leavereq-initial");
+        // NOTIF-RT — refresco en vivo cuando llega una solicitud nueva o se resuelve.
+        com.benjagest.ui.support.RefreshBus.subscribe(
+                com.benjagest.ui.support.RefreshBus.TOPIC_LEAVE_REQUESTS, reload, table);
         return screenScroll(body);
     }
 
