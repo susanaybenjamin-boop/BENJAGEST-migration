@@ -14,6 +14,36 @@
 
 ---
 
+## 📅 SESIÓN 2026-06-20 — FICHAJE-JORNADA + Portal empleado (MEMP-3). En curso.
+
+> Benjamin: terminar el portal del empleado en orden FICHAJE-JORNADA → MEMP-3 →
+> MEMP-4 → MEMP-5 y luego testear juntos. Trabajo en `feat/Benjamin` (pusheada);
+> **merges a develop pospuestos hasta tras las pruebas** (decisión "testeamos al final").
+
+**Cerrado hoy en `feat/Benjamin` (compila backend+ui):**
+- ✅ **FJ-1/FJ-2** *(e61f7b4)* — `ScheduleFichajeService.suggestNextPunch` (resuelve
+  plantilla vigente + bloques del día → transiciones IN/BREAK_START/BREAK_END/OUT →
+  siguiente que toca con ventana ±15 min) + endpoint `GET /api/empleado/fichaje/sugerencia`.
+- ✅ **FJ-3/FJ-4** *(c14663b)* — resaltado del botón que toca: escritorio (renderTimeClock,
+  banner `.suggest-banner` + `.punch-suggested`, i18n `timeclock.suggest.*` ES+EN) y PWA
+  (pantalla Fichar). No bloquea (solo sugiere).
+- ✅ **FJ-5a** *(6267860)* — "Corregir…" accionable en Auditoría de fichajes: diálogo
+  TIME_ADJUST/TYPE_CHANGE/VOID → `POST /api/timeclock/correction` (RD 8/2019, no altera
+  el original). i18n `labor.audit.correct.*`.
+- ✅ **MEMP-3** *(5b90f64)* — "Mi jornada" en la PWA: `GET /api/empleado/jornada` compone
+  horario (JOR-2) + jornada real (JOR-1, WorkdayService) + festivo + qué toca (FJ).
+
+**Pendiente:**
+- ⬜ **FJ-5b** — incidencia "schedule-aware" (esperado-por-jornada vs fichado por día
+  cerrado). Toca semántica **legal-sensible** del flag → validar con Benjamin con caso real.
+- ⬜ **MEMP-4** (vacaciones/bajas con adjuntos) — decisiones de producto pendientes
+  (tipos de ausencia, adjuntos de baja, quién aprueba). `employee_vacations` (V114) ya
+  tiene status REQUESTED/APPROVED/REJECTED reutilizable para vacaciones.
+- ⬜ **MEMP-5** (nóminas: recibir/confirmar/firmar/descargar) — falta backend de entrega/firma.
+- **Pruebas en vivo pendientes** de todo lo de hoy (escritorio + PWA) con Benjamin.
+
+---
+
 ## 📅 SESIÓN 2026-06-19 — Autónoma (Benjamin fuera hasta 19:00). Bloques A + B (FIN)
 
 > Benjamin dejó cola decidida: cerrar A, B, C, D + GESTOR-NAVEGADOR (E y F a otra
