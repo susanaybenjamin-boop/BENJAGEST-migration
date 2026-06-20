@@ -1640,6 +1640,31 @@ public class LaborApiClient {
         ));
     }
 
+    /**
+     * FJ-5 — Solicita una correccion sobre un fichaje (RD 8/2019 art. 34.9: el
+     * original NO se toca; se crea una correccion PENDING). {@code correctionType}
+     * = TIME_ADJUST | TYPE_CHANGE | VOID. {@code proposedEventType} solo para
+     * TYPE_CHANGE; {@code proposedEventTimeIso} (instante ISO-8601) solo para
+     * TIME_ADJUST; {@code reason} obligatorio.
+     */
+    public void requestCorrection(String originalEventId, String correctionType,
+                                  String proposedEventType, String proposedEventTimeIso,
+                                  String reason) throws IOException, InterruptedException {
+        StringBuilder b = new StringBuilder("{");
+        b.append(field("originalEventId", originalEventId)).append(",");
+        b.append(field("correctionType", correctionType));
+        if (proposedEventType != null && !proposedEventType.isBlank()) {
+            b.append(",").append(field("proposedEventType", proposedEventType));
+        }
+        if (proposedEventTimeIso != null && !proposedEventTimeIso.isBlank()) {
+            b.append(",").append(field("proposedEventTime", proposedEventTimeIso));
+        }
+        b.append(",").append(field("reason", reason)).append("}");
+        send(req(baseUrl + "/timeclock/correction")
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(b.toString())));
+    }
+
     public java.util.List<com.benjagest.ui.model.TimeClockAuditSummary> auditSummary(
             String fromIsoDate, String toIsoDate) throws IOException, InterruptedException {
         StringBuilder url = new StringBuilder(baseUrl + "/timeclock/audit/summary?");

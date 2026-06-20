@@ -16916,6 +16916,23 @@ public class BenjagestUiApplication extends Application {
             case "labor.audit.incidence.no" -> "OK";
             case "labor.audit.all" -> "All";
             case "labor.audit.incidence.tooltip" -> "Click a row to review that employee's punches in the detail below. An incidence flags days with a missing clock-in or clock-out.";
+            case "labor.audit.correct.btn" -> "Correct…";
+            case "labor.audit.correct.none" -> "Select a punch in the detail to correct it.";
+            case "labor.audit.correct.title" -> "Correct punch";
+            case "labor.audit.correct.type" -> "Correction type";
+            case "labor.audit.correct.type.time_adjust" -> "Adjust time";
+            case "labor.audit.correct.type.type_change" -> "Change type";
+            case "labor.audit.correct.type.void" -> "Void punch";
+            case "labor.audit.correct.new_time" -> "New time (yyyy-MM-dd HH:mm)";
+            case "labor.audit.correct.new_type" -> "New type";
+            case "labor.audit.correct.reason" -> "Reason";
+            case "labor.audit.correct.reason.required" -> "Reason is required.";
+            case "labor.audit.correct.time.invalid" -> "Invalid time. Use yyyy-MM-dd HH:mm.";
+            case "labor.audit.correct.type.required" -> "Choose the new type.";
+            case "labor.audit.correct.ok.title" -> "Correction requested";
+            case "labor.audit.correct.ok.body" -> "The correction has been recorded (pending review). The original punch is not altered (RD 8/2019 art. 34.9).";
+            case "labor.audit.correct.fail.title" -> "Could not record the correction";
+            case "labor.audit.correct.fail.body" -> "The correction could not be saved. Please try again.";
             case "labor.audit.col.when" -> "Date/time";
             case "labor.audit.col.type" -> "Type";
             case "labor.audit.col.origin" -> "Origin";
@@ -17603,6 +17620,23 @@ public class BenjagestUiApplication extends Application {
             case "labor.audit.incidence.no" -> "OK";
             case "labor.audit.all" -> "Todos";
             case "labor.audit.incidence.tooltip" -> "Haz clic en una fila para revisar los fichajes de ese empleado en el detalle de abajo. La incidencia marca días sin entrada o sin salida.";
+            case "labor.audit.correct.btn" -> "Corregir…";
+            case "labor.audit.correct.none" -> "Selecciona un fichaje del detalle para corregirlo.";
+            case "labor.audit.correct.title" -> "Corregir fichaje";
+            case "labor.audit.correct.type" -> "Tipo de corrección";
+            case "labor.audit.correct.type.time_adjust" -> "Ajustar hora";
+            case "labor.audit.correct.type.type_change" -> "Cambiar tipo";
+            case "labor.audit.correct.type.void" -> "Anular fichaje";
+            case "labor.audit.correct.new_time" -> "Nueva hora (aaaa-MM-dd HH:mm)";
+            case "labor.audit.correct.new_type" -> "Nuevo tipo";
+            case "labor.audit.correct.reason" -> "Motivo";
+            case "labor.audit.correct.reason.required" -> "El motivo es obligatorio.";
+            case "labor.audit.correct.time.invalid" -> "Hora no válida. Usa aaaa-MM-dd HH:mm.";
+            case "labor.audit.correct.type.required" -> "Elige el nuevo tipo.";
+            case "labor.audit.correct.ok.title" -> "Corrección solicitada";
+            case "labor.audit.correct.ok.body" -> "La corrección ha quedado registrada (pendiente de revisión). El fichaje original no se altera (RD 8/2019 art. 34.9).";
+            case "labor.audit.correct.fail.title" -> "No se pudo registrar la corrección";
+            case "labor.audit.correct.fail.body" -> "No se pudo guardar la corrección. Inténtalo de nuevo.";
             case "labor.audit.col.when" -> "Fecha/hora";
             case "labor.audit.col.type" -> "Tipo";
             case "labor.audit.col.origin" -> "Origen";
@@ -22791,12 +22825,26 @@ public class BenjagestUiApplication extends Application {
         exportBtn.setDisable(true); // habilitado tras TC-EXPORT (próximo slice)
         exportBtn.setTooltip(new javafx.scene.control.Tooltip(t("labor.audit.export.tooltip")));
 
+        // FJ-5 — "Corregir…": con un fichaje del detalle seleccionado, abre el
+        // diálogo de corrección (RD 8/2019: no toca el original, crea una
+        // corrección PENDING). Hasta ahora "Revisar" no llevaba a ninguna acción.
+        Button correctBtn = new Button(t("labor.audit.correct.btn"));
+        correctBtn.setGraphic(icon("fas-pen"));
+        correctBtn.setDisable(true);
+        detailTable.getSelectionModel().selectedItemProperty().addListener(
+                (o, ov, nv) -> correctBtn.setDisable(nv == null));
+        correctBtn.setOnAction(ev -> {
+            var sel = detailTable.getSelectionModel().getSelectedItem();
+            if (sel == null) { showInfo(t("labor.audit.correct.btn"), t("labor.audit.correct.none")); return; }
+            openTimeClockCorrectionDialog(sel, reload);
+        });
+
         HBox filters = new HBox(8,
                 new Label(t("labor.audit.filter.from")), fromField,
                 new Label(t("labor.audit.filter.to")), toField,
                 new Label(t("labor.audit.filter.employee")), empCombo,
                 new Label(t("labor.audit.filter.type")), eventTypeField,
-                reloadBtn, exportBtn);
+                reloadBtn, exportBtn, correctBtn);
         filters.setAlignment(Pos.CENTER_LEFT);
 
         // Click sobre fila del resumen → filtra el detalle por ese empleado
@@ -22829,6 +22877,131 @@ public class BenjagestUiApplication extends Application {
         start(initial, "tc-audit-initial");
 
         return screenScroll(body);
+    }
+
+    /**
+     * FJ-5 — Diálogo de corrección de un fichaje (RD 8/2019 art. 34.9: el original
+     * es inalterable; se registra una corrección PENDING que un responsable revisa).
+     * Tres tipos: ajustar hora (TIME_ADJUST), cambiar tipo (TYPE_CHANGE) o anular
+     * (VOID). El motivo es obligatorio. {@code onDone} recarga la auditoría al éxito.
+     */
+    private void openTimeClockCorrectionDialog(com.benjagest.ui.model.TimeClockAuditEntry entry, Runnable onDone) {
+        Dialog<Boolean> dialog = new Dialog<>();
+        dialog.setTitle(t("labor.audit.correct.title"));
+        dialog.initOwner(root.getScene().getWindow());
+        dialog.getDialogPane().getButtonTypes().addAll(ButtonType.OK, ButtonType.CANCEL);
+
+        // Tipo de corrección.
+        ComboBox<String> typeCombo = new ComboBox<>();
+        typeCombo.getItems().addAll("TIME_ADJUST", "TYPE_CHANGE", "VOID");
+        typeCombo.setValue("TIME_ADJUST");
+        typeCombo.setConverter(new javafx.util.StringConverter<>() {
+            @Override public String toString(String c) { return c == null ? "" : t("labor.audit.correct.type." + c.toLowerCase()); }
+            @Override public String fromString(String s) { return null; }
+        });
+
+        // Nueva hora (para TIME_ADJUST), prerrellenada con la hora local del evento.
+        TextField timeField = new TextField(localDateTimeForEdit(entry.eventTime()));
+        timeField.setPromptText("aaaa-MM-dd HH:mm");
+
+        // Nuevo tipo (para TYPE_CHANGE).
+        ComboBox<String> newTypeCombo = new ComboBox<>();
+        newTypeCombo.getItems().addAll("IN", "OUT", "BREAK_START", "BREAK_END");
+        newTypeCombo.setConverter(new javafx.util.StringConverter<>() {
+            @Override public String toString(String c) { return c == null ? "" : localizedPunchType(c); }
+            @Override public String fromString(String s) { return null; }
+        });
+
+        TextArea reasonArea = new TextArea();
+        reasonArea.setPromptText(t("labor.audit.correct.reason"));
+        reasonArea.setPrefRowCount(3);
+        reasonArea.setWrapText(true);
+
+        Label timeLbl = new Label(t("labor.audit.correct.new_time"));
+        Label newTypeLbl = new Label(t("labor.audit.correct.new_type"));
+        // Solo se muestra el campo relevante según el tipo elegido.
+        Runnable refreshVisibility = () -> {
+            boolean adjust = "TIME_ADJUST".equals(typeCombo.getValue());
+            boolean change = "TYPE_CHANGE".equals(typeCombo.getValue());
+            timeLbl.setManaged(adjust); timeLbl.setVisible(adjust);
+            timeField.setManaged(adjust); timeField.setVisible(adjust);
+            newTypeLbl.setManaged(change); newTypeLbl.setVisible(change);
+            newTypeCombo.setManaged(change); newTypeCombo.setVisible(change);
+        };
+        typeCombo.valueProperty().addListener((o, ov, nv) -> refreshVisibility.run());
+        refreshVisibility.run();
+
+        Label current = new Label(localizedPunchType(entry.eventType()) + "  ·  " + shortIso(entry.eventTime()));
+        current.getStyleClass().add("settings-hint");
+
+        VBox content = new VBox(10,
+                current,
+                new Label(t("labor.audit.correct.type")), typeCombo,
+                timeLbl, timeField,
+                newTypeLbl, newTypeCombo,
+                new Label(t("labor.audit.correct.reason")), reasonArea);
+        content.setPadding(new Insets(12));
+        content.setPrefWidth(420);
+        dialog.getDialogPane().setContent(content);
+
+        // Validación sin cerrar el diálogo si falta algo (patrón BUG-UX-2).
+        Button okBtn = (Button) dialog.getDialogPane().lookupButton(ButtonType.OK);
+        okBtn.addEventFilter(javafx.event.ActionEvent.ACTION, ev -> {
+            String type = typeCombo.getValue();
+            String reason = reasonArea.getText() == null ? "" : reasonArea.getText().trim();
+            if (reason.isEmpty()) { ev.consume(); showError(t("labor.audit.correct.title"), t("labor.audit.correct.reason.required")); return; }
+            if ("TIME_ADJUST".equals(type) && editTextToInstantIso(timeField.getText()) == null) {
+                ev.consume(); showError(t("labor.audit.correct.title"), t("labor.audit.correct.time.invalid")); return;
+            }
+            if ("TYPE_CHANGE".equals(type) && newTypeCombo.getValue() == null) {
+                ev.consume(); showError(t("labor.audit.correct.title"), t("labor.audit.correct.type.required")); return;
+            }
+        });
+
+        dialog.setResultConverter(bt -> bt == ButtonType.OK ? Boolean.TRUE : null);
+        if (!Boolean.TRUE.equals(dialog.showAndWait().orElse(null))) return; // cancelado
+
+        // Validado por el event filter: aquí los datos son correctos.
+        String type = typeCombo.getValue();
+        String proposedType = "TYPE_CHANGE".equals(type) ? newTypeCombo.getValue() : null;
+        String proposedTimeIso = "TIME_ADJUST".equals(type) ? editTextToInstantIso(timeField.getText()) : null;
+        String reason = reasonArea.getText().trim();
+
+        Task<Void> task = new Task<>() {
+            @Override protected Void call() throws Exception {
+                laborApiClient.requestCorrection(entry.id(), type, proposedType, proposedTimeIso, reason);
+                return null;
+            }
+        };
+        task.setOnSucceeded(ev -> {
+            showInfo(t("labor.audit.correct.ok.title"), t("labor.audit.correct.ok.body"));
+            if (onDone != null) onDone.run();
+        });
+        task.setOnFailed(ev -> showError(t("labor.audit.correct.fail.title"), t("labor.audit.correct.fail.body")));
+        start(task, "tc-audit-correction");
+    }
+
+    /** Convierte el instante ISO del evento a "aaaa-MM-dd HH:mm" en zona local para editar. */
+    private String localDateTimeForEdit(String eventTimeIso) {
+        try {
+            java.time.Instant i = java.time.Instant.parse(eventTimeIso);
+            java.time.LocalDateTime ldt = java.time.LocalDateTime.ofInstant(i, java.time.ZoneId.systemDefault());
+            return ldt.format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"));
+        } catch (Exception e) {
+            return "";
+        }
+    }
+
+    /** Parsea "aaaa-MM-dd HH:mm" (zona local) a instante ISO-8601, o null si no es válido. */
+    private String editTextToInstantIso(String text) {
+        if (text == null || text.isBlank()) return null;
+        try {
+            java.time.LocalDateTime ldt = java.time.LocalDateTime.parse(text.trim(),
+                    java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"));
+            return ldt.atZone(java.time.ZoneId.systemDefault()).toInstant().toString();
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     // ----- Sub-tab Config Fichajes (TC-CFG) -----
