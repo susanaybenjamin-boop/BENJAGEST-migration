@@ -427,7 +427,7 @@ public class EmployeeAppService {
                   <div class="grid">
                     <div class="tile" style="cursor:pointer" onclick="gotoFichar()"><div class="ic">&#128337;</div><div class="lbl">Fichar</div></div>
                     <div class="tile" style="cursor:pointer" onclick="gotoAusencias()"><div class="ic">&#127958;</div><div class="lbl">Vacaciones y bajas</div></div>
-                    <div class="tile"><div class="ic">&#128196;</div><div class="lbl">Nominas</div><span class="soon">proximamente</span></div>
+                    <div class="tile" style="cursor:pointer" onclick="gotoNominas()"><div class="ic">&#128196;</div><div class="lbl">Nominas</div></div>
                     <div class="tile" style="cursor:pointer" onclick="gotoJornada()"><div class="ic">&#128197;</div><div class="lbl">Mi jornada</div></div>
                   </div>
                   <button class="secondary" id="logoutBtn">Cerrar sesion</button>
@@ -486,6 +486,14 @@ public class EmployeeAppService {
                   <div id="ausLista"></div>
                   <button class="secondary" onclick="gotoHome()">Volver</button>
                 </div>
+
+                <div id="screen-nominas" class="hidden">
+                  <h1>Mis nominas</h1>
+                  <p class="sub">Consulta, descarga y confirma el recibi de tus nominas.</p>
+                  <div id="nominasMsg"></div>
+                  <div id="nominasLista"></div>
+                  <button class="secondary" onclick="gotoHome()">Volver</button>
+                </div>
               </div>
 
               <script>
@@ -496,7 +504,7 @@ public class EmployeeAppService {
                 const LS_TOKEN = 'benjagest_emp_token';
 
                 function show(id) {
-                  ['screen-invite','screen-pin','screen-home','screen-fichar','screen-jornada','screen-ausencias'].forEach(s => {
+                  ['screen-invite','screen-pin','screen-home','screen-fichar','screen-jornada','screen-ausencias','screen-nominas'].forEach(s => {
                     document.getElementById(s).classList.toggle('hidden', s !== id);
                   });
                 }
@@ -827,6 +835,86 @@ public class EmployeeAppService {
                     }
                     loadAusencias();
                   } catch (e) { msg('ausMsg', e.message); }
+                }
+
+                // ---- MEMP-5: nominas ----
+                function mesNombre(m) {
+                  return ['','Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto',
+                          'Septiembre','Octubre','Noviembre','Diciembre'][m] || ('Mes ' + m);
+                }
+                function gotoNominas() {
+                  show('screen-nominas');
+                  document.getElementById('nominasMsg').textContent = '';
+                  document.getElementById('nominasLista').innerHTML = '';
+                  loadNominas();
+                }
+                async function loadNominas() {
+                  try {
+                    const r = await fetch(API + '/empleado/nominas', { headers: authHeaders() });
+                    if (r.status === 401 || r.status === 403) { localStorage.removeItem(LS_TOKEN); gotoPin(); return; }
+                    if (!r.ok) throw new Error('No se pudieron cargar tus nominas');
+                    const list = await r.json();
+                    const cont = document.getElementById('nominasLista');
+                    cont.innerHTML = '';
+                    if (!list.length) { cont.innerHTML = '<p style="color:#94a3b8">Aun no tienes nominas disponibles.</p>'; return; }
+                    list.forEach(p => {
+                      const ack = !!p.acknowledgedAt;
+                      const div = document.createElement('div');
+                      div.className = 'card'; div.style.padding = '14px';
+                      div.innerHTML =
+                        '<div style="display:flex;justify-content:space-between;align-items:center">'
+                        + '<b>' + mesNombre(p.month) + ' ' + p.year + '</b>'
+                        + (ack ? '<span style="background:#14532d;color:#bbf7d0;padding:3px 10px;border-radius:10px;font-size:12px">Recibi confirmado</span>'
+                               : '<span style="background:#0c4a6e;color:#7dd3fc;padding:3px 10px;border-radius:10px;font-size:12px">Pendiente de recibi</span>')
+                        + '</div>'
+                        + '<div style="color:#cbd5e1;font-size:14px;margin-top:6px">Liquido: <b>' + (p.net != null ? p.net : '-') + ' EUR</b>'
+                        + '<span style="color:#94a3b8"> &nbsp;·&nbsp; Bruto ' + (p.gross != null ? p.gross : '-') + '</span></div>';
+                      const row = document.createElement('div');
+                      row.style.display = 'flex'; row.style.gap = '10px';
+                      const pdfBtn = document.createElement('button');
+                      pdfBtn.textContent = 'Ver PDF'; pdfBtn.onclick = () => openNominaPdf(p.id);
+                      row.appendChild(pdfBtn);
+                      if (!ack) {
+                        const ackBtn = document.createElement('button');
+                        ackBtn.className = 'secondary'; ackBtn.textContent = 'Confirmar recibi';
+                        ackBtn.onclick = () => ackNomina(p.id);
+                        row.appendChild(ackBtn);
+                      }
+                      div.appendChild(row);
+                      cont.appendChild(div);
+                    });
+                  } catch (e) { msg('nominasMsg', e.message); }
+                }
+                async function openNominaPdf(id) {
+                  msg('nominasMsg', 'Abriendo PDF...', true);
+                  try {
+                    const r = await fetch(API + '/empleado/nominas/' + id + '/pdf', { headers: authHeaders() });
+                    if (r.status === 401 || r.status === 403) { localStorage.removeItem(LS_TOKEN); gotoPin(); return; }
+                    if (!r.ok) throw new Error('No se pudo abrir el PDF');
+                    const blob = await r.blob();
+                    const url = URL.createObjectURL(blob);
+                    // Abrir en pestana nueva; si el navegador lo bloquea, descargar.
+                    const w = window.open(url, '_blank');
+                    if (!w) {
+                      const a = document.createElement('a');
+                      a.href = url; a.download = 'nomina.pdf'; document.body.appendChild(a); a.click(); a.remove();
+                    }
+                    setTimeout(() => URL.revokeObjectURL(url), 60000);
+                    document.getElementById('nominasMsg').textContent = '';
+                  } catch (e) { msg('nominasMsg', e.message); }
+                }
+                async function ackNomina(id) {
+                  try {
+                    const r = await fetch(API + '/empleado/nominas/' + id + '/acknowledge', {
+                      method: 'POST', headers: authHeaders() });
+                    if (!r.ok) {
+                      let e = 'No se pudo confirmar';
+                      try { e = (await r.json()).message || e; } catch (x) {}
+                      throw new Error(e);
+                    }
+                    msg('nominasMsg', 'Recibi confirmado. Gracias.', true);
+                    loadNominas();
+                  } catch (e) { msg('nominasMsg', e.message); }
                 }
 
                 document.getElementById('activateBtn').onclick = async () => {

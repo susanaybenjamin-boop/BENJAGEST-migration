@@ -860,6 +860,48 @@ public class PayslipService {
         return findById(id);
     }
 
+    // ---- MEMP-5: acceso del propio empleado (portal PWA) -----------------
+
+    /** Nóminas finalizadas (no DRAFT) del empleado, para que las vea en su app. */
+    public List<PayslipView> listForEmployeeApp(String employeeId) {
+        return list(null, null, employeeId).stream()
+                .filter(p -> !"DRAFT".equalsIgnoreCase(p.status()))
+                .toList();
+    }
+
+    /** Verifica que la nómina pertenece a ESE empleado (no solo al tenant). */
+    private void assertOwnedBy(String id, String employeeId) {
+        Integer n = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM payslips WHERE id = ? AND company_id = ? AND employee_id = ?",
+                Integer.class, id, tenantContext.getCurrentCompanyId(), employeeId);
+        if (n == null || n == 0) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Nomina no encontrada");
+        }
+    }
+
+    /** PDF de una nómina del propio empleado (con guarda de propiedad). */
+    public byte[] pdfForEmployee(String id, String employeeId) {
+        assertOwnedBy(id, employeeId);
+        return pdfGenerator.generate(id);
+    }
+
+    /**
+     * Acuse de recibo del propio empleado ("Recibí"). Marca acknowledged_at y, si
+     * aún no constaba entregada, delivered_at + method APP (la entrega es la propia
+     * disponibilidad en la app). Solo sobre nóminas suyas.
+     */
+    @Transactional
+    public void acknowledgeOwn(String id, String employeeId) {
+        int n = jdbcTemplate.update("""
+                UPDATE payslips
+                   SET acknowledged_at = COALESCE(acknowledged_at, CURRENT_DATE()),
+                       delivered_at    = COALESCE(delivered_at, CURRENT_DATE()),
+                       delivery_method = COALESCE(delivery_method, 'APP')
+                 WHERE id = ? AND company_id = ? AND employee_id = ?
+                """, id, tenantContext.getCurrentCompanyId(), employeeId);
+        if (n == 0) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Nomina no encontrada");
+    }
+
     @Transactional
     public void delete(String id) {
         // Revertir asientos (devengo + pago) antes de borrar la nómina.
