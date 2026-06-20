@@ -37,6 +37,9 @@ public class RealtimeService {
         emitter.onTimeout(() -> { connections.remove(conn); emitter.complete(); });
         emitter.onError(e -> connections.remove(conn));
         try {
+            // Padding inicial (~2 KB de comentario): fuerza a los proxies (Cloudflare)
+            // a vaciar el buffer y empezar a entregar el stream de inmediato.
+            emitter.send(SseEmitter.event().comment(" ".repeat(2048)));
             emitter.send(SseEmitter.event().name("ready").data("{}"));
         } catch (IOException ignored) {
             connections.remove(conn);

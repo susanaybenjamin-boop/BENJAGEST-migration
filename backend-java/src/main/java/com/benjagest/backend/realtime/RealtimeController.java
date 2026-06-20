@@ -3,6 +3,7 @@ package com.benjagest.backend.realtime;
 import com.benjagest.backend.auth.AuthenticatedUser;
 import com.benjagest.backend.auth.CurrentUserService;
 import com.benjagest.backend.auth.RequiresRole;
+import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -32,7 +33,13 @@ public class RealtimeController {
     }
 
     @GetMapping(value = "/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    public SseEmitter stream() {
+    public SseEmitter stream(HttpServletResponse response) {
+        // Evitar buffering/compresión de proxies (Cloudflare) sobre el stream SSE:
+        // no-transform impide que Cloudflare lo comprima/bufferice; X-Accel-Buffering
+        // lo desactiva en nginx. Sin esto, los eventos no llegan a la PWA por el túnel.
+        response.setHeader("Cache-Control", "no-cache, no-transform");
+        response.setHeader("X-Accel-Buffering", "no");
+        response.setHeader("Connection", "keep-alive");
         AuthenticatedUser user = currentUser.require();
         String companyId = user.activeCompanyId();
         String employeeId = resolveEmployeeId(user.userId(), companyId);
