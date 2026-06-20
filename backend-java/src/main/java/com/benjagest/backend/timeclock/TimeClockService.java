@@ -34,15 +34,18 @@ public class TimeClockService {
     private final CurrentUserService currentUserService;
     private final TimeClockEventTypeService eventTypeService;
     private final TenantContext tenantContext;
+    private final com.benjagest.backend.realtime.RealtimeService realtime;
 
     public TimeClockService(TimeClockRepository repository,
                             CurrentUserService currentUserService,
                             TimeClockEventTypeService eventTypeService,
-                            TenantContext tenantContext) {
+                            TenantContext tenantContext,
+                            com.benjagest.backend.realtime.RealtimeService realtime) {
         this.repository = repository;
         this.currentUserService = currentUserService;
         this.eventTypeService = eventTypeService;
         this.tenantContext = tenantContext;
+        this.realtime = realtime;
     }
 
     /**
@@ -135,6 +138,16 @@ public class TimeClockService {
         GeoWarning geoWarning = (geo != null && geo.shouldWarn())
                 ? new GeoWarning(geo.centerName(), geo.distanceMeters(), geo.radioM())
                 : null;
+
+        // NOTIF-RT — push del fichaje a las pantallas de la empresa (escritorio
+        // y PWA): que vean el nuevo evento sin recargar. Nunca rompe el fichaje.
+        try {
+            String companyId = tenantContext.getCurrentCompanyId();
+            realtime.publishToCompany(companyId, "timeclock",
+                    "{\"employeeId\":\"" + employeeId + "\",\"eventType\":\"" + eventType + "\"}");
+        } catch (Exception ignored) {
+            // sin tenant (p.ej. kiosco fuera de scope) o fallo del bus: se ignora.
+        }
 
         return new PunchResult(event, csv, warning, geoWarning);
     }

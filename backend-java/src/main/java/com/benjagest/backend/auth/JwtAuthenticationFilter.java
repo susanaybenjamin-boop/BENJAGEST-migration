@@ -38,8 +38,16 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                                      HttpServletResponse response,
                                      FilterChain chain) throws ServletException, IOException {
         String header = request.getHeader("Authorization");
+        String token = null;
         if (header != null && header.startsWith(BEARER_PREFIX)) {
-            String token = header.substring(BEARER_PREFIX.length()).trim();
+            token = header.substring(BEARER_PREFIX.length()).trim();
+        } else if (request.getRequestURI() != null && request.getRequestURI().contains("/api/realtime/")) {
+            // SSE: EventSource (PWA) no puede enviar cabeceras → token por query,
+            // admitido SOLO en el endpoint de tiempo real para limitar exposición.
+            String q = request.getParameter("token");
+            if (q != null && !q.isBlank()) token = q.trim();
+        }
+        if (token != null) {
             try {
                 Claims claims = jwtService.parseAndValidate(token);
                 if (jwtService.isAccessToken(claims)) {

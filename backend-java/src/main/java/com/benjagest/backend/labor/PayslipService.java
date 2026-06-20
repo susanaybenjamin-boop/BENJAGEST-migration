@@ -77,6 +77,7 @@ public class PayslipService {
     private final com.benjagest.backend.settings.EmailSenderService emailSender;
     private final com.benjagest.backend.settings.CompanyDataService companyDataService;
     private final EmployeeVacationService vacationService;
+    private final com.benjagest.backend.realtime.RealtimeService realtime;
 
     public PayslipService(JdbcTemplate jdbcTemplate,
                            TenantContext tenantContext,
@@ -88,7 +89,8 @@ public class PayslipService {
                            com.benjagest.backend.labor.irpf.IrpfRetentionService irpfService,
                            com.benjagest.backend.settings.EmailSenderService emailSender,
                            com.benjagest.backend.settings.CompanyDataService companyDataService,
-                           EmployeeVacationService vacationService) {
+                           EmployeeVacationService vacationService,
+                           com.benjagest.backend.realtime.RealtimeService realtime) {
         this.jdbcTemplate = jdbcTemplate;
         this.tenantContext = tenantContext;
         this.taxRulesService = taxRulesService;
@@ -100,6 +102,7 @@ public class PayslipService {
         this.emailSender = emailSender;
         this.companyDataService = companyDataService;
         this.vacationService = vacationService;
+        this.realtime = realtime;
     }
 
     public byte[] generatePdf(String id) {
@@ -846,7 +849,13 @@ public class PayslipService {
                  WHERE id = ? AND company_id = ?
                 """, deliveredAt, method, id, tenantContext.getCurrentCompanyId());
         if (n == 0) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Nomina no encontrada");
-        return findById(id);
+        PayslipView view = findById(id);
+        // NOTIF-RT — avisar al empleado de que tiene una nómina disponible.
+        try {
+            realtime.publishToEmployee(tenantContext.getCurrentCompanyId(), view.employeeId(),
+                    "payslip", "{\"action\":\"delivered\",\"id\":\"" + id + "\"}");
+        } catch (Exception ignored) {}
+        return view;
     }
 
     /** Registra el acuse de recibo (firma) del trabajador sobre el recibo entregado. */
@@ -900,6 +909,11 @@ public class PayslipService {
                  WHERE id = ? AND company_id = ? AND employee_id = ?
                 """, id, tenantContext.getCurrentCompanyId(), employeeId);
         if (n == 0) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Nomina no encontrada");
+        // NOTIF-RT — avisar a la empresa de que el empleado ha confirmado el recibí.
+        try {
+            realtime.publishToCompany(tenantContext.getCurrentCompanyId(), "payslip",
+                    "{\"action\":\"acknowledged\",\"id\":\"" + id + "\",\"employeeId\":\"" + employeeId + "\"}");
+        } catch (Exception ignored) {}
     }
 
     @Transactional

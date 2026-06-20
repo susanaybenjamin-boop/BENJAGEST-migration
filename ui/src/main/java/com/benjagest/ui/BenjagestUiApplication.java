@@ -18289,6 +18289,7 @@ public class BenjagestUiApplication extends Application {
             case "pending.type.DRAFT_JOURNAL" -> "Journal entries to validate";
             case "pending.type.OVERDUE_INVOICES" -> "Overdue invoices to collect";
             case "pending.type.DRAFT_PAYSLIPS" -> "Payslips not finalised";
+            case "pending.type.LEAVE_REQUESTS" -> "Leave requests to review";
             case "pending.type.UNDELIVERED_PAYSLIPS" -> "Payslips paid but not delivered";
             case "pending.type.OVERDUE_FILINGS" -> "Tax filings overdue";
             case "pending.type.DEHU_PENDING" -> "DEHú notifications pending";
@@ -19436,6 +19437,7 @@ public class BenjagestUiApplication extends Application {
             case "pending.type.DRAFT_JOURNAL" -> "Asientos por validar";
             case "pending.type.OVERDUE_INVOICES" -> "Facturas vencidas por cobrar";
             case "pending.type.DRAFT_PAYSLIPS" -> "Nóminas sin finalizar";
+            case "pending.type.LEAVE_REQUESTS" -> "Solicitudes de ausencia por revisar";
             case "pending.type.UNDELIVERED_PAYSLIPS" -> "Nóminas pagadas sin entregar";
             case "pending.type.OVERDUE_FILINGS" -> "Modelos fiscales vencidos";
             case "pending.type.DEHU_PENDING" -> "Notificaciones DEHú pendientes";
@@ -25418,7 +25420,7 @@ public class BenjagestUiApplication extends Application {
         return switch (type) {
             case "DRAFT_JOURNAL", "UNRECONCILED_BANK" -> this::showAccountingModule;
             case "OVERDUE_INVOICES", "VERIFACTU_ERROR" -> () -> showModule("billing");
-            case "DRAFT_PAYSLIPS", "UNDELIVERED_PAYSLIPS" -> this::showLaborModule;
+            case "DRAFT_PAYSLIPS", "UNDELIVERED_PAYSLIPS", "LEAVE_REQUESTS" -> this::showLaborModule;
             case "OVERDUE_FILINGS" -> () -> showModule("tax");
             default -> null;
         };

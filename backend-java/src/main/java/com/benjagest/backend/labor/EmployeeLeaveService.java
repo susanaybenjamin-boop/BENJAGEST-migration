@@ -53,15 +53,20 @@ public class EmployeeLeaveService {
     private final TenantContext tenant;
     private final CurrentUserService currentUser;
     private final EmployeeVacationService vacationService;
+    private final com.benjagest.backend.realtime.RealtimeService realtime;
 
     public EmployeeLeaveService(JdbcTemplate jdbc, TenantContext tenant,
                                 CurrentUserService currentUser,
-                                EmployeeVacationService vacationService) {
+                                EmployeeVacationService vacationService,
+                                com.benjagest.backend.realtime.RealtimeService realtime) {
         this.jdbc = jdbc;
         this.tenant = tenant;
         this.currentUser = currentUser;
         this.vacationService = vacationService;
+        this.realtime = realtime;
     }
+
+    private void emitSafe(Runnable r) { try { r.run(); } catch (Exception ignored) {} }
 
     // ---- Creación (empleado) ---------------------------------------------
 
@@ -114,6 +119,9 @@ public class EmployeeLeaveService {
                     StringUtils.hasText(a.filename()) ? a.filename() : "adjunto",
                     blank(a.contentType()), bytes.length, bytes);
         }
+        // NOTIF-RT — avisar a la empresa (empresario/asesoría) de la nueva solicitud.
+        emitSafe(() -> realtime.publishToCompany(companyId, "leave",
+                "{\"action\":\"created\",\"kind\":\"" + kind + "\",\"employeeId\":\"" + employeeId + "\"}"));
         return findById(id);
     }
 
@@ -212,6 +220,7 @@ public class EmployeeLeaveService {
                     days, "APPROVED",
                     "MEMP-4: solicitud del empleado" + (StringUtils.hasText(before.reason()) ? " — " + before.reason() : "")));
         }
+        emitReviewed(before, "APPROVED");
         return findById(id);
     }
 
@@ -222,7 +231,17 @@ public class EmployeeLeaveService {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "La solicitud ya fue revisada.");
         }
         setReviewed(id, "REJECTED", reviewNotes);
+        emitReviewed(before, "REJECTED");
         return findById(id);
+    }
+
+    /** NOTIF-RT — avisa al empleado (su PWA) de la resolución y refresca a la empresa. */
+    private void emitReviewed(LeaveView before, String status) {
+        String companyId = tenant.getCurrentCompanyId();
+        String json = "{\"action\":\"reviewed\",\"status\":\"" + status
+                + "\",\"kind\":\"" + before.kind() + "\"}";
+        emitSafe(() -> realtime.publishToEmployee(companyId, before.employeeId(), "leave_reviewed", json));
+        emitSafe(() -> realtime.publishToCompany(companyId, "leave", json));
     }
 
     private void setReviewed(String id, String status, String reviewNotes) {
