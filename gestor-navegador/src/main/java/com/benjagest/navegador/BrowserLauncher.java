@@ -63,12 +63,27 @@ public final class BrowserLauncher {
         }
         if (tabs.isEmpty()) tabs.putAll(DEFAULT_TABS);
 
+        setupLookAndFeel();
         try {
             launch(title, tabs);
         } catch (Exception ex) {
             System.err.println("[gestor-navegador] No se pudo iniciar JCEF: " + ex.getMessage());
             ex.printStackTrace();
             System.exit(2);
+        }
+    }
+
+    /** Look&Feel plano moderno (FlatLaf) con el azul de acento de BENJAGEST. */
+    private static void setupLookAndFeel() {
+        try {
+            com.formdev.flatlaf.FlatLightLaf.setup();
+            java.awt.Color accent = new java.awt.Color(0x25, 0x63, 0xEB); // azul BENJAGEST
+            javax.swing.UIManager.put("Component.accentColor", accent);
+            javax.swing.UIManager.put("Component.focusColor", accent);
+            javax.swing.UIManager.put("TabbedPane.underlineColor", accent);
+            javax.swing.UIManager.put("TabbedPane.tabHeight", 38);
+        } catch (Exception ignored) {
+            // sin FlatLaf seguimos con el L&F por defecto (no rompe el navegador).
         }
     }
 
@@ -90,6 +105,11 @@ public final class BrowserLauncher {
 
         final JFrame frame = new JFrame(title);
         final JTabbedPane pane = new JTabbedPane();
+        // Estilo moderno (FlatLaf): pestañas subrayadas con el acento, no recuadros.
+        pane.putClientProperty("JTabbedPane.tabType", "underlined");
+        pane.putClientProperty("JTabbedPane.showTabSeparators", Boolean.TRUE);
+        pane.putClientProperty("JTabbedPane.tabAreaAlignment", "leading");
+        pane.setFont(pane.getFont().deriveFont(13f));
 
         List<CefBrowser> browsers = new ArrayList<>();
         for (Map.Entry<String, String> e : tabs.entrySet()) {
@@ -118,6 +138,7 @@ public final class BrowserLauncher {
 
         JToolBar bar = new JToolBar();
         bar.setFloatable(false);
+        bar.setBorder(javax.swing.BorderFactory.createEmptyBorder(6, 8, 6, 8));
         JButton back = new JButton("◀");
         back.setToolTipText("Atrás");
         back.addActionListener(a -> browser.goBack());
@@ -129,11 +150,19 @@ public final class BrowserLauncher {
         reload.addActionListener(a -> browser.reload());
         JTextField address = new JTextField(browser.getURL());
         address.addActionListener(a -> browser.loadURL(address.getText().trim()));
-        address.setPreferredSize(new Dimension(600, 26));
+        address.setPreferredSize(new Dimension(600, 30));
+        // Estética FlatLaf: botones de barra sin borde + campo de dirección redondeado.
+        for (JButton b : new JButton[]{back, fwd, reload}) {
+            b.putClientProperty("JButton.buttonType", "toolBarButton");
+            b.setFocusable(false);
+        }
+        address.putClientProperty("JTextField.placeholderText", "Dirección…");
+        address.putClientProperty("JComponent.roundRect", Boolean.TRUE);
 
         bar.add(back);
         bar.add(fwd);
         bar.add(reload);
+        bar.addSeparator();
         bar.add(address);
 
         panel.add(bar, BorderLayout.NORTH);

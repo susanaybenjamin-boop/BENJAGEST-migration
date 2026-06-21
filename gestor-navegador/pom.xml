@@ -30,6 +30,13 @@
             <artifactId>jcefmaven</artifactId>
             <version>127.3.1</version>
         </dependency>
+        <!-- FlatLaf: Look&Feel plano moderno para que el navegador case con la
+             estética de BENJAGEST (azul de acento, pestañas subrayadas). -->
+        <dependency>
+            <groupId>com.formdev</groupId>
+            <artifactId>flatlaf</artifactId>
+            <version>3.5.1</version>
+        </dependency>
     </dependencies>
 
     <build>
