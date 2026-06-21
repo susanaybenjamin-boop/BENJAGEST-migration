@@ -9986,6 +9986,26 @@ public class BenjagestUiApplication extends Application {
         return t("sif.event_type." + code);
     }
 
+    /**
+     * Humaniza el payload JSON del evento SIF a "Etiqueta: valor · …" (claves comunes
+     * traducidas; valores largos como UUID se acortan). Si no se puede parsear, lo deja tal cual.
+     */
+    private String humanizeSifPayload(String payload) {
+        if (payload == null || payload.isBlank()) return "";
+        java.util.Map<String, String> map = parseDataMap(payload);
+        if (map.isEmpty()) return payload;
+        StringBuilder sb = new StringBuilder();
+        for (java.util.Map.Entry<String, String> e : map.entrySet()) {
+            String label = t("sif.payload." + e.getKey());
+            if (label.equals("sif.payload." + e.getKey())) label = e.getKey(); // sin traducción
+            String val = e.getValue() == null ? "" : e.getValue();
+            if (val.length() > 14) val = val.substring(0, 12) + "…";
+            if (sb.length() > 0) sb.append("   ·   ");
+            sb.append(label).append(": ").append(val);
+        }
+        return sb.toString();
+    }
+
     private Node sifEventsAuditBlock() {
         Label header = label(t("billing.config.sif.section"), "settings-section-title");
         Label hint = new Label(t("billing.config.sif.hint"));
@@ -10037,7 +10057,7 @@ public class BenjagestUiApplication extends Application {
         TableColumn<com.benjagest.ui.model.SifEventEntry, String> colPayload =
                 new TableColumn<>(t("billing.config.sif.col.payload"));
         colPayload.setCellValueFactory(c -> new SimpleStringProperty(
-                c.getValue().payload() == null ? "" : c.getValue().payload()));
+                humanizeSifPayload(c.getValue().payload())));
         sifEventsTable.getColumns().addAll(List.of(colWhen, colType, colHash, colPayload));
 
         Button refresh = new Button(t("billing.config.sif.refresh"));
@@ -12920,6 +12940,17 @@ public class BenjagestUiApplication extends Application {
                 case "sif.event_type.EXPORT_EVENTS" -> "Events export";
                 case "sif.event_type.SUMMARY_6H" -> "6h summary";
                 case "sif.event_type.SUMMARY_SHUTDOWN" -> "Shutdown summary";
+                case "sif.payload.invoiceId" -> "Invoice";
+                case "sif.payload.number" -> "Number";
+                case "sif.payload.from" -> "From";
+                case "sif.payload.to" -> "To";
+                case "sif.payload.format" -> "Format";
+                case "sif.payload.startedAt" -> "Started";
+                case "sif.payload.stoppedAt" -> "Stopped";
+                case "sif.payload.count" -> "Count";
+                case "sif.payload.reason" -> "Reason";
+                case "sif.payload.file" -> "File";
+                case "sif.payload.version" -> "Version";
                 case "billing.config.sif.col.hash" -> "Hash";
                 case "billing.config.sif.col.payload" -> "Payload";
                 case "billing.config.sif.refresh" -> "Refresh";
@@ -13884,6 +13915,17 @@ public class BenjagestUiApplication extends Application {
             case "sif.event_type.EXPORT_EVENTS" -> "Exportación de eventos";
             case "sif.event_type.SUMMARY_6H" -> "Resumen 6h";
             case "sif.event_type.SUMMARY_SHUTDOWN" -> "Resumen al apagar";
+            case "sif.payload.invoiceId" -> "Factura";
+            case "sif.payload.number" -> "Número";
+            case "sif.payload.from" -> "Desde";
+            case "sif.payload.to" -> "Hasta";
+            case "sif.payload.format" -> "Formato";
+            case "sif.payload.startedAt" -> "Iniciado";
+            case "sif.payload.stoppedAt" -> "Detenido";
+            case "sif.payload.count" -> "Nº";
+            case "sif.payload.reason" -> "Motivo";
+            case "sif.payload.file" -> "Archivo";
+            case "sif.payload.version" -> "Versión";
             case "billing.config.sif.col.hash" -> "Huella";
             case "billing.config.sif.col.payload" -> "Datos";
             case "billing.config.sif.refresh" -> "Refrescar";
