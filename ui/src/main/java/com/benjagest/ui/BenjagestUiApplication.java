@@ -29426,8 +29426,10 @@ public class BenjagestUiApplication extends Application {
                 buildClientLaborTab());
         laborTab.setGraphic(icon("fas-users"));
 
-        Tab taxTab = new Tab(t("advisory.client.tab.tax_models"),
-                isOwn ? buildOwnTaxTab() : buildClientTaxFilingsTab());
+        // La asesoría genera/edita los modelos de SUS clientes (vinculados o no) desde
+        // su ficha, igual que en "Mi gestión": el editor completo opera sobre la empresa
+        // activa (X-Company-Id del cliente). Antes el cliente solo tenía un listado.
+        Tab taxTab = new Tab(t("advisory.client.tab.tax_models"), buildOwnTaxTab());
         taxTab.setGraphic(icon("fas-landmark"));
 
         Tab certificateTab = new Tab(t("advisory.client.tab.certificate"),
@@ -33923,22 +33925,29 @@ public class BenjagestUiApplication extends Application {
      */
     private Node buildOwnTaxTab() {
         VBox holder = new VBox();
-        Label loading = new Label(t("panorama.loading"));
-        loading.getStyleClass().add("settings-hint");
-        loading.setPadding(new Insets(12));
-        holder.getChildren().add(loading);
         VBox.setVgrow(holder, Priority.ALWAYS);
-        Task<TaxBundle> task = new Task<>() {
-            @Override protected TaxBundle call() throws Exception {
-                return new TaxBundle(
-                        altaApiClient.listTaxModels(),
-                        altaApiClient.listFilings(taxCurrentYear, null, null),
-                        altaApiClient.calendar(taxCurrentYear));
-            }
+        // Embebido en una ficha (Mi gestión o cliente): el módulo opera sobre la
+        // empresa activa (X-Company-Id del cliente al gestionarlo). El refresco
+        // recarga SOLO esta pestaña, sin reemplazar el centro (no pierde la ficha).
+        Runnable reload = () -> {
+            Label loading = new Label(t("panorama.loading"));
+            loading.getStyleClass().add("settings-hint");
+            loading.setPadding(new Insets(12));
+            holder.getChildren().setAll(loading);
+            Task<TaxBundle> task = new Task<>() {
+                @Override protected TaxBundle call() throws Exception {
+                    return new TaxBundle(
+                            altaApiClient.listTaxModels(),
+                            altaApiClient.listFilings(taxCurrentYear, null, null),
+                            altaApiClient.calendar(taxCurrentYear));
+                }
+            };
+            task.setOnSucceeded(ev -> holder.getChildren().setAll(scroll(taxView(task.getValue()))));
+            task.setOnFailed(ev -> holder.getChildren().setAll(errorPanel(t("tax.load_failed"))));
+            start(task, "own-tax-load");
         };
-        task.setOnSucceeded(ev -> holder.getChildren().setAll(scroll(taxView(task.getValue()))));
-        task.setOnFailed(ev -> holder.getChildren().setAll(errorPanel(t("tax.load_failed"))));
-        start(task, "own-tax-load");
+        taxRefresh = reload;
+        reload.run();
         return holder;
     }
 
@@ -34356,8 +34365,18 @@ public class BenjagestUiApplication extends Application {
     private TableView<com.benjagest.ui.model.TaxFilingEntry> taxFilingsTable;
     private TableView<com.benjagest.ui.model.TaxDueDateEntry> taxCalendarTable;
     private int taxCurrentYear = LocalDate.now().getYear();
+    // Refresco contextual del módulo Modelos AEAT: en standalone recarga el centro;
+    // embebido en una ficha (Mi gestión o cliente), recarga solo la pestaña (evita
+    // perder las pestañas de la ficha al guardar — patrón BUG-NAV-1).
+    private Runnable taxRefresh;
+
+    /** Refresca Modelos AEAT por el camino correcto según el contexto. */
+    private void runTaxRefresh() {
+        if (taxRefresh != null) taxRefresh.run(); else showTaxModels();
+    }
 
     private void showTaxModels() {
+        taxRefresh = this::showTaxModels; // standalone: refrescar = recargar el centro
         Task<TaxBundle> task = new Task<>() {
             @Override
             protected TaxBundle call() throws Exception {
@@ -34571,7 +34590,7 @@ public class BenjagestUiApplication extends Application {
                     return null;
                 }
             };
-            task.setOnSucceeded(ev -> showTaxModels());
+            task.setOnSucceeded(ev -> runTaxRefresh());
             task.setOnFailed(ev -> showError(t("tax.filings.delete.fail.title"),
                     t("tax.filings.delete.fail.body")));
             start(task, "tax-filing-delete");
@@ -35317,7 +35336,7 @@ public class BenjagestUiApplication extends Application {
                         blankToNullOrSelf(notes));
             }
         };
-        task.setOnSucceeded(ev -> showTaxModels());
+        task.setOnSucceeded(ev -> runTaxRefresh());
         task.setOnFailed(ev -> showError(t("tax.editor.fail.title"), t("tax.editor.fail.body")));
         start(task, "tax-filing-save");
     }
