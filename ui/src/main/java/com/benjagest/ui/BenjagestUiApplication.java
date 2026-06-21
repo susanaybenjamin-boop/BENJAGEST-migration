@@ -29369,7 +29369,29 @@ public class BenjagestUiApplication extends Application {
         cmd.add("Seg. Social (RED)=https://www.seg-social.es/wps/portal/wss/internet/Inicio");
         Task<Void> task = new Task<>() {
             @Override protected Void call() throws Exception {
-                new ProcessBuilder(cmd).inheritIO().start();
+                // Fase 2: importar el .p12 del cliente activo (X-Company-Id) al
+                // almacen de Windows para que Chromium lo ofrezca en su dialogo
+                // nativo de certificado. Best-effort: si falla, el navegador abre
+                // igual y el usuario usa su almacen del sistema.
+                String thumbprint = null;
+                try {
+                    thumbprint = altaApiClient.openBrowserCertSession();
+                } catch (Exception ex) {
+                    System.err.println("[gestor] No se pudo preparar el certificado del cliente: "
+                            + ex.getMessage());
+                }
+                Process proc = new ProcessBuilder(cmd).inheritIO().start();
+                // Esperar al cierre del gestor (hilo dedicado) para luego quitar la
+                // huella del almacen — no dejamos la clave del cliente residente.
+                proc.waitFor();
+                if (thumbprint != null) {
+                    try {
+                        altaApiClient.closeBrowserCertSession(thumbprint);
+                    } catch (Exception ex) {
+                        System.err.println("[gestor] No se pudo quitar el certificado del almacen: "
+                                + ex.getMessage());
+                    }
+                }
                 return null;
             }
         };
