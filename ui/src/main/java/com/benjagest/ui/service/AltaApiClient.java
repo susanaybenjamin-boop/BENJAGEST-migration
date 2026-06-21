@@ -983,6 +983,43 @@ public class AltaApiClient {
                 .replace("\r", "");
     }
 
+    // ---- AEAT-ED-1: modelo 347 (operaciones con terceros) ----
+
+    /** Calcula el 347 del año desde facturas/compras (no persiste): filas por NIF. */
+    public java.util.List<com.benjagest.ui.model.Aeat347Row> preview347(int year)
+            throws IOException, InterruptedException {
+        HttpResponse<String> r = send(req(baseUrl + "/aeat/extras/347/" + year + "/preview").GET());
+        return parse347Rows(r.body());
+    }
+
+    /** Parsea las filas del 347 desde el JSON guardado en tax_filings.data. */
+    public java.util.List<com.benjagest.ui.model.Aeat347Row> parse347(String json) {
+        return parse347Rows(json);
+    }
+
+    private java.util.List<com.benjagest.ui.model.Aeat347Row> parse347Rows(String json) {
+        java.util.List<com.benjagest.ui.model.Aeat347Row> out = new ArrayList<>();
+        if (json == null || json.isBlank()) return out;
+        int idx = json.indexOf("\"rows\"");
+        String region = idx >= 0 ? json.substring(idx) : json;
+        for (String obj : splitTopLevelObjects(region)) {
+            if (!obj.contains("\"operationType\"") && !obj.contains("\"nif\"")) continue;
+            out.add(new com.benjagest.ui.model.Aeat347Row(
+                    textField(obj, "operationType"),
+                    textField(obj, "nif"),
+                    textField(obj, "name"),
+                    numberField(obj, "q1"), numberField(obj, "q2"),
+                    numberField(obj, "q3"), numberField(obj, "q4")));
+        }
+        return out;
+    }
+
+    /** Extrae un campo numérico (sin comillas) como texto; "0" si null/ausente. */
+    private String numberField(String json, String field) {
+        Matcher m = Pattern.compile("\"" + field + "\"\\s*:\\s*(-?\\d+(?:\\.\\d+)?)").matcher(json);
+        return m.find() ? m.group(1) : "0";
+    }
+
     private String textField(String json, String field) {
         Pattern p = Pattern.compile("\"" + field + "\"\\s*:\\s*(null|\"((?:\\\\.|[^\"])*)\")");
         Matcher m = p.matcher(json);
