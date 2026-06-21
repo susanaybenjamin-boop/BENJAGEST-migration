@@ -33,6 +33,20 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         this.jwtService = jwtService;
     }
 
+    /**
+     * El stream SSE (/api/realtime/stream) corre como request ASÍNCRONO.
+     * Por defecto OncePerRequestFilter NO se re-ejecuta en el dispatch
+     * async → el SecurityContext queda vacío y el AuthorizationFilter de
+     * Spring Security (que SÍ corre en dispatches async desde Security 6)
+     * lanza AccessDenied al completar el stream ("response already
+     * committed"). Devolviendo false re-autenticamos también en el dispatch
+     * async (el token sigue disponible por header o por ?token=).
+     */
+    @Override
+    protected boolean shouldNotFilterAsyncDispatch() {
+        return false;
+    }
+
     @Override
     protected void doFilterInternal(HttpServletRequest request,
                                      HttpServletResponse response,
