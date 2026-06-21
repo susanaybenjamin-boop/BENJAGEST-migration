@@ -29366,7 +29366,7 @@ public class BenjagestUiApplication extends Application {
         cmd.add("--title=" + (clientName == null || clientName.isBlank() ? "Cliente" : clientName));
         cmd.add("AEAT=https://sede.agenciatributaria.gob.es");
         cmd.add("DEHú=https://dehu.redsara.es/");
-        cmd.add("Seg. Social (RED)=https://www.seg-social.es/wps/portal/wss/internet/Inicio");
+        cmd.add("Import@ss=https://portal.seg-social.gob.es/");
         Task<Void> task = new Task<>() {
             @Override protected Void call() throws Exception {
                 // Fase 2: importar el .p12 del cliente activo (X-Company-Id) al

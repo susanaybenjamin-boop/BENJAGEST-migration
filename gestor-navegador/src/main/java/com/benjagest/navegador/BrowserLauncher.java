@@ -43,7 +43,7 @@ public final class BrowserLauncher {
     static {
         DEFAULT_TABS.put("AEAT", "https://sede.agenciatributaria.gob.es");
         DEFAULT_TABS.put("DEHú", "https://dehu.redsara.es/");
-        DEFAULT_TABS.put("Seg. Social (RED)", "https://www.seg-social.es/wps/portal/wss/internet/Inicio");
+        DEFAULT_TABS.put("Import@ss", "https://portal.seg-social.gob.es/");
     }
 
     private BrowserLauncher() {}
