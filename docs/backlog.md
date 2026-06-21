@@ -72,6 +72,10 @@
 - ✅ **Fix push escritorio al firmar nómina** *(3babd8f)* — faltaba suscribir Nóminas a TOPIC_PAYSLIPS.
 
 **Pendiente (siguiente sesión / por decidir):**
+- ⬜ **DISEÑO módulo Comunicación asesoría↔clientes** (pedido Benjamin 2026-06-21): darle el
+  mismo aire moderno que el Gestor-Navegador (azul de acento, look limpio). OJO: ese módulo
+  es JavaFX → NO es FlatLaf (eso es Swing, solo del navegador); es pulir su CSS/layout
+  (tabs Mensajes/Documentos, ~`tMessages`/`tDocs`) con la paleta de app.css. NO OLVIDAR.
 - ⬜ **FJ-5b** — incidencia "schedule-aware" (esperado vs fichado por día cerrado). Flag
   **legal-sensible** → validar con caso real.
 - ⬜ **Push instantáneo en PWA** — el quick-tunnel bufferiza SSE; aparcado (Benjamin no tiene
