@@ -17,6 +17,46 @@
 
 ---
 
+## 📅 SESIÓN 2026-06-21 — GESTOR-NAVEGADOR (ventana aparte) + login por certificado (Fase 2)
+
+> Benjamin: arrancar el GESTOR-NAVEGADOR (navegador embebido a AEAT/DEHú/SS RED/SILTRA) y
+> luego el **login por certificado electrónico**. Camino: spike → ventana aparte por cliente
+> → intento de embeber de verdad → pared técnica → revert → certificado.
+
+**Cerrado en `feat/Benjamin` (compila backend+ui):**
+- ✅ **GESTOR-NAVEGADOR** — módulo nuevo `gestor-navegador` (NO modular a propósito: los jars
+  de JCEF tienen nombres ilegales para JPMS). Chromium real vía `jcefmaven 127.3.1`, FlatLaf
+  para estética BENJAGEST (azul de acento, pestañas subrayadas). Ventana aparte por cliente
+  (proceso `java -jar`), pestañas AEAT/DEHú/SS RED. Fixes: barra con BorderLayout (botones no
+  se ocultaban al redimensionar), botón X de cierre, `cache_path` propio (singleton).
+  **PROBADO OK** por Benjamin (entró en AEAT/DEHú con certificado del almacén de Windows).
+- 🧱 **PARED TÉCNICA — embeber dentro de BENJAGEST es inviable con JCEF.** Se intentó
+  des-modularizar `ui` (E1) para meter el navegador en una pestaña JavaFX. Dos paredes:
+  (1) airspace JavaFX/AWT pesado; (2) **`CefBrowser` (jcef 127) NO expone
+  `sendMouseEvent/sendKeyEvent/wasResized`** → un OSR a JavaFX sería **solo-lectura** (sin
+  clics ni teclado). Decisión Benjamin: **revertir E1, quedarnos con ventana aparte** *(9c518fe)*.
+- ✅ **LOGIN POR CERTIFICADO — Fase 2** *(commits backend + ui en `feat/Benjamin`)*.
+  · Hallazgo: **JCEF 127 NO expone `onSelectClientCertificate`** → NO se puede auto-seleccionar
+    el cert por código. Lo único viable: dejar el cert del cliente en el **almacén de Windows**
+    para que el diálogo nativo de Chromium lo ofrezca.
+  · Diseño (clave privada NO viaja por HTTP): al abrir el gestor de un cliente, el **backend**
+    (mismo usuario on-premise) descifra el `.p12` del cliente activo (X-Company-Id) y lo
+    **importa a `Cert:\CurrentUser\My`** vía PowerShell (contraseña por variable de entorno,
+    `.pfx` temporal borrado tras importar). Registra el uso en `certificate_usage_log` (LOPD).
+    Al cerrar el gestor, **quita la huella** del almacén (no deja la clave del cliente residente).
+  · `WindowsCertStoreService` + `BrowserCertSessionService` + `POST /api/certificates/browser/{open,close}`;
+    UI: `openBrowserCertSession`/`closeBrowserCertSession` cableados en `launchGestorNavegador`.
+
+**⚠️ PENDIENTE DE PRUEBA EN WINDOWS (Benjamin):** que el cert del cliente **aparezca** en el
+diálogo de Chromium al abrir el gestor desde su ficha, y que **desaparezca** del almacén
+(`certmgr.msc` → Personal) al cerrar el gestor. Si falla el import, el navegador abre igual
+(fallback: almacén del sistema). Tras validar → **merge a develop**.
+
+**No olvidar (sigue vivo):** DISEÑO módulo Comunicación asesoría↔clientes con el aire del
+Gestor-Navegador (es JavaFX → CSS/app.css, NO FlatLaf). Ver "Pendiente" de la sesión 06-20.
+
+---
+
 ## 📅 SESIÓN 2026-06-20 — FICHAJE-JORNADA + Portal empleado (MEMP-3/4/5) + firma nóminas + tiempo real
 
 > Benjamin: terminar el portal del empleado (FICHAJE-JORNADA → MEMP-3 → MEMP-4 → MEMP-5),
