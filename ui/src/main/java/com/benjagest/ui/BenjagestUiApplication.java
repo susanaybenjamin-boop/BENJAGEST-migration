@@ -21978,6 +21978,22 @@ public class BenjagestUiApplication extends Application {
         VBox body = new VBox(10, hint, actions, payslipsTable);
         VBox.setVgrow(payslipsTable, Priority.ALWAYS);
         body.setPadding(new Insets(12));
+
+        // NOTIF-RT — refresco en vivo cuando el empleado firma el recibí (o cambia
+        // la entrega) desde su app: recarga la tabla para ver el estado actualizado.
+        com.benjagest.ui.support.RefreshBus.subscribe(
+                com.benjagest.ui.support.RefreshBus.TOPIC_PAYSLIPS,
+                () -> {
+                    Task<java.util.List<com.benjagest.ui.model.PayslipEntry>> rt = new Task<>() {
+                        @Override protected java.util.List<com.benjagest.ui.model.PayslipEntry> call() throws Exception {
+                            return laborApiClient.listPayslips(bundle.currentYear(), null, null);
+                        }
+                    };
+                    rt.setOnSucceeded(e -> payslipsTable.setItems(
+                            FXCollections.observableArrayList(rt.getValue())));
+                    start(rt, "payslips-rt-reload");
+                },
+                payslipsTable);
         return screenScroll(body);
     }
 
