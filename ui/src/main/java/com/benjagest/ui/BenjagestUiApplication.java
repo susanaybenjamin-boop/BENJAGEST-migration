@@ -1167,6 +1167,8 @@ public class BenjagestUiApplication extends Application {
             }
             case "payslip" -> com.benjagest.ui.support.RefreshBus.emit(
                     com.benjagest.ui.support.RefreshBus.TOPIC_PAYSLIPS);
+            case "invitation" -> javafx.application.Platform.runLater(this::pollPendingInvitations);
+            case "clients" -> javafx.application.Platform.runLater(this::pollAdvisoryClients);
             default -> { /* ready / desconocido: ignorar */ }
         }
     }
@@ -1239,16 +1241,9 @@ public class BenjagestUiApplication extends Application {
      * si hay invitaciones nuevas y el usuario está en otra pantalla.
      */
     private void startInvitationsPolling() {
-        if (invitationsPoller != null) return; // ya activo
-        // 5s: el empresario tiene que ver las invitaciones de su
-        // asesoría casi al instante para sentir que la comunicación
-        // está viva.
-        invitationsPoller = new javafx.animation.Timeline(
-                new javafx.animation.KeyFrame(
-                        javafx.util.Duration.seconds(5),
-                        ev -> pollPendingInvitations()));
-        invitationsPoller.setCycleCount(javafx.animation.Animation.INDEFINITE);
-        invitationsPoller.play();
+        // NOTIF-RT: ya NO sondeamos cada 5s (causaba parpadeo al reconstruir las
+        // tarjetas). Carga inicial una vez; los cambios llegan por push SSE
+        // (evento "invitation" -> onRealtimeEvent -> pollPendingInvitations()).
         pollPendingInvitations();
     }
 
@@ -1268,17 +1263,10 @@ public class BenjagestUiApplication extends Application {
      * una invitación). Solo arranca si appMode == ADVISORY.
      */
     private void startAdvisoryClientsPolling() {
-        if (advisoryClientsPoller != null || appMode != AppMode.ADVISORY) return;
-        // 5s: queremos que la asesoría detecte vinculaciones y
-        // desvinculaciones de forma "casi en vivo" durante el flujo de
-        // comunicación con clientes. El endpoint es ligero (una query
-        // sobre customers con dos subqueries por fila); 5s no es agresivo.
-        advisoryClientsPoller = new javafx.animation.Timeline(
-                new javafx.animation.KeyFrame(
-                        javafx.util.Duration.seconds(5),
-                        ev -> pollAdvisoryClients()));
-        advisoryClientsPoller.setCycleCount(javafx.animation.Animation.INDEFINITE);
-        advisoryClientsPoller.play();
+        if (appMode != AppMode.ADVISORY) return;
+        // NOTIF-RT: ya NO sondeamos cada 5s (causaba parpadeo al hacer setAll de la
+        // tabla de cartera). Carga inicial una vez; las (des)vinculaciones llegan por
+        // push SSE (evento "clients" -> onRealtimeEvent -> pollAdvisoryClients()).
         pollAdvisoryClients();
     }
 
