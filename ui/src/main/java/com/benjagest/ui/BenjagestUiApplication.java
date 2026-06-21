@@ -7890,10 +7890,10 @@ public class BenjagestUiApplication extends Application {
         colWhen.setPrefWidth(160);
         colWhen.setComparator(ISO_DATE_COMPARATOR);
         TableColumn<AuditEvent, String> colType = new TableColumn<>(t("settings.audit.col.type"));
-        colType.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().eventType()));
+        colType.setCellValueFactory(c -> new SimpleStringProperty(humanizeCode(c.getValue().eventType())));
         colType.setPrefWidth(150);
         TableColumn<AuditEvent, String> colResult = new TableColumn<>(t("settings.audit.col.result"));
-        colResult.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().result()));
+        colResult.setCellValueFactory(c -> new SimpleStringProperty(localizedEnum("audit_result", c.getValue().result())));
         colResult.setPrefWidth(80);
         TableColumn<AuditEvent, String> colSeq = new TableColumn<>(t("settings.audit.col.seq"));
         colSeq.setCellValueFactory(c -> new SimpleStringProperty(
@@ -7910,7 +7910,7 @@ public class BenjagestUiApplication extends Application {
         colUser.setPrefWidth(160);
         TableColumn<AuditEvent, String> colEntity = new TableColumn<>(t("settings.audit.col.entity"));
         colEntity.setCellValueFactory(c -> new SimpleStringProperty(
-                c.getValue().entityType() == null ? "" : c.getValue().entityType() + ":" + shortId(c.getValue().entityId())
+                c.getValue().entityType() == null ? "" : humanizeCode(c.getValue().entityType()) + ":" + shortId(c.getValue().entityId())
         ));
         colEntity.setPrefWidth(160);
         TableColumn<AuditEvent, String> colIp = new TableColumn<>(t("settings.audit.col.ip"));
@@ -8488,6 +8488,7 @@ public class BenjagestUiApplication extends Application {
         ComboBox<String> sysCombo = new ComboBox<>();
         sysCombo.getItems().addAll("DEHU", "SS_RED", "SILTRA", "AEAT_CLAVE",
                 "NOTIFICA_GOB", "SEDE_AEAT", "BANCO_ESPANA", "OTHER");
+        localizeEnumCombo(sysCombo, "credential_system");
         sysCombo.getSelectionModel().select(existing == null ? "DEHU" : existing.systemCode());
         sysCombo.setDisable(existing != null);
 
@@ -9529,6 +9530,7 @@ public class BenjagestUiApplication extends Application {
         // deshabilita visualmente.
         verifactuModeCombo = new ComboBox<>();
         verifactuModeCombo.getItems().addAll("TEST", "PROD");
+        localizeEnumCombo(verifactuModeCombo, "verifactu_mode");
         verifactuModeCombo.getSelectionModel().select(config.mode() == null ? "TEST" : config.mode());
         verifactuModeCombo.getStyleClass().add("form-input");
         verifactuModeCombo.setDisable(!"VERIFACTU".equals(verifactuModalityCombo.getValue()));
@@ -18546,6 +18548,18 @@ public class BenjagestUiApplication extends Application {
             case "enum.customer_type.OTHER" -> "Other";
             case "enum.customer_type.ADVISORY" -> "Accounting firm";
             case "enum.customer_type.CLIENT" -> "Client";
+            case "enum.verifactu_mode.TEST" -> "Test";
+            case "enum.verifactu_mode.PROD" -> "Production";
+            case "enum.credential_system.DEHU" -> "DEHú";
+            case "enum.credential_system.SS_RED" -> "Social Security (RED)";
+            case "enum.credential_system.SILTRA" -> "SILTRA";
+            case "enum.credential_system.AEAT_CLAVE" -> "AEAT Cl@ve";
+            case "enum.credential_system.NOTIFICA_GOB" -> "Notifica.gob.es";
+            case "enum.credential_system.SEDE_AEAT" -> "AEAT e-office";
+            case "enum.credential_system.BANCO_ESPANA" -> "Bank of Spain";
+            case "enum.credential_system.OTHER" -> "Other";
+            case "enum.audit_result.OK" -> "OK";
+            case "enum.audit_result.FAIL" -> "Failed";
             case "enum.ss_regime.RETA" -> "RETA (self-employed)";
             case "enum.ss_regime.GENERAL" -> "General regime";
             case "enum.ss_regime.AUTONOMO_SOCIETARIO" -> "RETA (corporate)";
@@ -19687,6 +19701,18 @@ public class BenjagestUiApplication extends Application {
             case "enum.customer_type.OTHER" -> "Otro";
             case "enum.customer_type.ADVISORY" -> "Asesoría";
             case "enum.customer_type.CLIENT" -> "Cliente";
+            case "enum.verifactu_mode.TEST" -> "Pruebas";
+            case "enum.verifactu_mode.PROD" -> "Producción";
+            case "enum.credential_system.DEHU" -> "DEHú";
+            case "enum.credential_system.SS_RED" -> "Seguridad Social (RED)";
+            case "enum.credential_system.SILTRA" -> "SILTRA";
+            case "enum.credential_system.AEAT_CLAVE" -> "AEAT Cl@ve";
+            case "enum.credential_system.NOTIFICA_GOB" -> "Notifica.gob.es";
+            case "enum.credential_system.SEDE_AEAT" -> "Sede AEAT";
+            case "enum.credential_system.BANCO_ESPANA" -> "Banco de España";
+            case "enum.credential_system.OTHER" -> "Otro";
+            case "enum.audit_result.OK" -> "Correcto";
+            case "enum.audit_result.FAIL" -> "Fallido";
             case "enum.ss_regime.RETA" -> "RETA (autónomos)";
             case "enum.ss_regime.GENERAL" -> "Régimen general";
             case "enum.ss_regime.AUTONOMO_SOCIETARIO" -> "RETA societario";
@@ -26747,7 +26773,7 @@ public class BenjagestUiApplication extends Application {
         cTitle.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().title()));
         TableColumn<com.benjagest.ui.model.PortalJob, String> cStatus =
                 new TableColumn<>(t("portal.jobs.col.status"));
-        cStatus.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().status()));
+        cStatus.setCellValueFactory(c -> new SimpleStringProperty(localizedEnum("worklog_status", c.getValue().status())));
         cStatus.setPrefWidth(120);
 
         table.getColumns().addAll(java.util.List.of(cDate, cTitle, cStatus));
@@ -30148,6 +30174,17 @@ public class BenjagestUiApplication extends Application {
     private String localizedEnum(String prefix, String code) {
         if (code == null || code.isBlank()) return "";
         return t("enum." + prefix + "." + code);
+    }
+
+    /**
+     * Humaniza un código sin etiqueta i18n específica (LOGIN_OK → "Login ok"): quita
+     * guiones bajos y capitaliza. Para conjuntos de valores grandes/abiertos (p.ej.
+     * tipos de evento de auditoría) donde mantener un catálogo completo no compensa.
+     */
+    private String humanizeCode(String code) {
+        if (code == null || code.isBlank()) return "";
+        String s = code.replace('_', ' ').trim().toLowerCase();
+        return s.isEmpty() ? "" : Character.toUpperCase(s.charAt(0)) + s.substring(1);
     }
 
     /**
