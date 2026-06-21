@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.benjagest</groupId>
+        <artifactId>benjagest</artifactId>
+        <version>0.1.0-SNAPSHOT</version>
+        <relativePath>../pom.xml</relativePath>
+    </parent>
+
+    <artifactId>gestor-navegador</artifactId>
+    <name>BENJAGEST Gestor-Navegador</name>
+    <description>
+        Navegador embebido (Chromium real vía JCEF) para AEAT/DEHú/SS RED/SILTRA
+        con el certificado del cliente. Módulo SEPARADO y NO modular (sin module-info)
+        a propósito: JCEF trae jars con nombres no válidos para módulos automáticos
+        de JPMS (p.ej. jcef-api-...+cef-...+chromium-...jar), por eso no se puede
+        integrar dentro del módulo `ui` (modular). Se lanza como PROCESO/ventana
+        aparte desde la app JavaFX (decisión Benjamin: "ventana aparte por cliente").
+    </description>
+
+    <dependencies>
+        <!-- jcefmaven descarga e instala el bundle nativo de Chromium correcto
+             para el SO en el PRIMER arranque (~150-200 MB). -->
+        <dependency>
+            <groupId>me.friwi</groupId>
+            <artifactId>jcefmaven</artifactId>
+            <version>127.3.1</version>
+        </dependency>
+        <!-- FlatLaf: Look&Feel plano moderno para que el navegador case con la
+             estética de BENJAGEST (azul de acento, pestañas subrayadas). -->
+        <dependency>
+            <groupId>com.formdev</groupId>
+            <artifactId>flatlaf</artifactId>
+            <version>3.5.1</version>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <finalName>gestor-navegador</finalName>
+        <plugins>
+            <!-- Fat-jar ejecutable: la app JavaFX lo lanza con `java -jar`. -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-shade-plugin</artifactId>
+                <version>3.5.1</version>
+                <executions>
+                    <execution>
+                        <phase>package</phase>
+                        <goals><goal>shade</goal></goals>
+                        <configuration>
+                            <transformers>
+                                <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
+                                    <mainClass>com.benjagest.navegador.BrowserLauncher</mainClass>
+                                </transformer>
+                            </transformers>
+                            <filters>
+                                <filter>
+                                    <artifact>*:*</artifact>
+                                    <excludes>
+                                        <exclude>META-INF/*.SF</exclude>
+                                        <exclude>META-INF/*.DSA</exclude>
+                                        <exclude>META-INF/*.RSA</exclude>
+                                    </excludes>
+                                </filter>
+                            </filters>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+</project>

@@ -18449,6 +18449,9 @@ public class BenjagestUiApplication extends Application {
             case "settings.my_advisory.paste_token.fail.empty.title" -> "Empty token";
             case "settings.my_advisory.paste_token.fail.empty.body" -> "Paste a token before accepting.";
             case "advisory.client.back" -> "← Back to My clients";
+            case "advisory.client.gestor_navegador" -> "Browser manager";
+            case "gestor.jar.notfound" -> "The browser manager is not built yet. Run: mvn -pl gestor-navegador package";
+            case "gestor.launch.fail" -> "Could not start the browser manager.";
             case "advisory.client.hint" -> "You are now viewing this client. Anything you do from here is recorded under their company, not yours. Your sidebar still belongs to your advisory firm — you can switch between tabs freely.";
             case "advisory.client.tab.summary" -> "Summary";
             case "advisory.client.tab.config" -> "Configuration";
@@ -19612,6 +19615,9 @@ public class BenjagestUiApplication extends Application {
             case "settings.my_advisory.paste_token.fail.empty.title" -> "Token vacio";
             case "settings.my_advisory.paste_token.fail.empty.body" -> "Pega un token antes de aceptar.";
             case "advisory.client.back" -> "← Volver a Mis clientes";
+            case "advisory.client.gestor_navegador" -> "Gestor navegador";
+            case "gestor.jar.notfound" -> "El gestor navegador aún no está compilado. Ejecuta: mvn -pl gestor-navegador package";
+            case "gestor.launch.fail" -> "No se pudo abrir el gestor navegador.";
             case "advisory.client.hint" -> "Estas viendo este cliente. Cualquier accion que hagas desde aqui queda registrada en SU empresa, no en la tuya. Tu barra lateral sigue siendo la de tu asesoria — puedes moverte entre las pestañas libremente.";
             case "advisory.client.tab.summary" -> "Resumen";
             case "advisory.client.tab.config" -> "Configuración";
@@ -29340,6 +29346,78 @@ public class BenjagestUiApplication extends Application {
     }
 
     /**
+     * GESTOR-NAVEGADOR (Fase 1b) — Lanza el navegador embebido (módulo
+     * `gestor-navegador`, Chromium/JCEF) como PROCESO/ventana aparte, con el
+     * título = nombre del cliente y pestañas a las sedes (AEAT/DEHú/SS RED). Usa
+     * el mismo JRE que la app y el almacén de certificados del sistema.
+     */
+    private void launchGestorNavegador(String clientName) {
+        java.io.File jar = locateGestorJar();
+        if (jar == null) {
+            showError(t("advisory.client.gestor_navegador"), t("gestor.jar.notfound"));
+            return;
+        }
+        String javaBin = System.getProperty("java.home") + java.io.File.separator
+                + "bin" + java.io.File.separator + "java";
+        java.util.List<String> cmd = new java.util.ArrayList<>();
+        cmd.add(javaBin);
+        cmd.add("-jar");
+        cmd.add(jar.getAbsolutePath());
+        cmd.add("--title=" + (clientName == null || clientName.isBlank() ? "Cliente" : clientName));
+        cmd.add("AEAT=https://sede.agenciatributaria.gob.es");
+        cmd.add("DEHú=https://dehu.redsara.es/");
+        cmd.add("Import@ss=https://portal.seg-social.gob.es/");
+        Task<Void> task = new Task<>() {
+            @Override protected Void call() throws Exception {
+                // Fase 2: importar el .p12 del cliente activo (X-Company-Id) al
+                // almacen de Windows para que Chromium lo ofrezca en su dialogo
+                // nativo de certificado. Best-effort: si falla, el navegador abre
+                // igual y el usuario usa su almacen del sistema.
+                String thumbprint = null;
+                try {
+                    thumbprint = altaApiClient.openBrowserCertSession();
+                } catch (Exception ex) {
+                    System.err.println("[gestor] No se pudo preparar el certificado del cliente: "
+                            + ex.getMessage());
+                }
+                Process proc = new ProcessBuilder(cmd).inheritIO().start();
+                // Esperar al cierre del gestor (hilo dedicado) para luego quitar la
+                // huella del almacen — no dejamos la clave del cliente residente.
+                proc.waitFor();
+                if (thumbprint != null) {
+                    try {
+                        altaApiClient.closeBrowserCertSession(thumbprint);
+                    } catch (Exception ex) {
+                        System.err.println("[gestor] No se pudo quitar el certificado del almacen: "
+                                + ex.getMessage());
+                    }
+                }
+                return null;
+            }
+        };
+        task.setOnFailed(ev -> showError(t("advisory.client.gestor_navegador"), t("gestor.launch.fail")));
+        start(task, "gestor-navegador-launch");
+    }
+
+    /** Localiza el fat-jar del gestor-navegador (dev: relativo al repo; override por -D). */
+    private java.io.File locateGestorJar() {
+        String override = System.getProperty("benjagest.gestor.jar");
+        if (override != null && !override.isBlank()) {
+            java.io.File f = new java.io.File(override);
+            if (f.isFile()) return f;
+        }
+        String[] candidates = {
+                "gestor-navegador/target/gestor-navegador.jar",
+                "../gestor-navegador/target/gestor-navegador.jar",
+        };
+        for (String c : candidates) {
+            java.io.File f = new java.io.File(System.getProperty("user.dir"), c);
+            if (f.isFile()) return f;
+        }
+        return null;
+    }
+
+    /**
      * Entrada unificada para abrir un cliente desde la cartera:
      * <ul>
      *   <li>Si el cliente está vinculado → {@link #switchToClient} directo
@@ -29470,7 +29548,13 @@ public class BenjagestUiApplication extends Application {
         StackPane clientIcon = iconBubble("fas-building", "module-title-icon");
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
-        HBox header = new HBox(16, backBtn, clientIcon, clientTitle, spacer);
+        // GESTOR-NAVEGADOR — abre el navegador embebido (proceso aparte) con las sedes
+        // (AEAT/DEHú/SS RED) y el certificado del cliente. Título = nombre del cliente.
+        Button gestorBtn = new Button(t("advisory.client.gestor_navegador"));
+        gestorBtn.setGraphic(icon("fas-globe"));
+        gestorBtn.getStyleClass().add("button-secondary");
+        gestorBtn.setOnAction(ev -> launchGestorNavegador(client.legalName()));
+        HBox header = new HBox(16, backBtn, clientIcon, clientTitle, spacer, gestorBtn);
         header.setAlignment(Pos.CENTER_LEFT);
         header.getStyleClass().add("module-detail-header");
 

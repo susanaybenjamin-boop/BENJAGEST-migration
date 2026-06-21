@@ -271,6 +271,44 @@ public class AltaApiClient {
     }
 
     // ============================================================
+    // GESTOR-NAVEGADOR — sesion de certificado (Fase 2)
+    //   /api/certificates/browser/{open,close}
+    // ============================================================
+
+    /**
+     * Importa el .p12 del cliente activo (X-Company-Id) al almacen de
+     * Windows para que Chromium lo ofrezca en su dialogo nativo. Devuelve
+     * la huella, o null si el cliente no tiene certificado (HTTP 204): en
+     * ese caso el gestor abre igual y el usuario usa su almacen del sistema.
+     */
+    public String openBrowserCertSession() throws IOException, InterruptedException {
+        HttpResponse<String> r = send(req(baseUrl + "/certificates/browser/open")
+                .POST(java.net.http.HttpRequest.BodyPublishers.noBody()));
+        if (r.statusCode() == 204) {
+            return null;
+        }
+        if (r.statusCode() < 200 || r.statusCode() >= 300) {
+            throw new IOException("HTTP " + r.statusCode() + ": " + r.body());
+        }
+        return textField(r.body(), "thumbprint");
+    }
+
+    /** Quita la huella del almacen de Windows al cerrar el gestor. */
+    public void closeBrowserCertSession(String thumbprint)
+            throws IOException, InterruptedException {
+        if (thumbprint == null || thumbprint.isBlank()) {
+            return;
+        }
+        HttpResponse<String> r = send(req(baseUrl + "/certificates/browser/close")
+                .POST(java.net.http.HttpRequest.BodyPublishers.ofString(
+                        "{\"thumbprint\":" + jsonString(thumbprint) + "}"))
+                .header("Content-Type", "application/json"));
+        if (r.statusCode() < 200 || r.statusCode() >= 300) {
+            throw new IOException("HTTP " + r.statusCode() + ": " + r.body());
+        }
+    }
+
+    // ============================================================
     // EQUIPO / Reparto de clientes — Slice 5C
     //   /api/advisory/team/assignments
     // ============================================================

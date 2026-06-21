@@ -53,6 +53,15 @@ public class CertificateService {
                 .toList();
     }
 
+    /**
+     * Certificados activos del tenant actual CON los datos sensibles ya
+     * descifrados (.p12 + contrasena). Uso interno (firma, importar al
+     * almacen para el navegador). NUNCA se serializa al cliente.
+     */
+    public List<Certificate> listActiveDecrypted() {
+        return repository.findAllActive();
+    }
+
     public CertificateSummary getSummary(String id) {
         return repository.findById(id)
                 .map(this::toSummary)
