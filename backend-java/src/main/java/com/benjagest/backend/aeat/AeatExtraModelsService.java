@@ -82,7 +82,6 @@ public class AeatExtraModelsService {
                   FROM purchase_invoices
                  WHERE company_id = ?
                    AND YEAR(invoice_date) = ?
-                   AND supplier_nif IS NOT NULL
                 """, (rs, n) -> new Object[]{
                         rs.getString("supplier_nif"),
                         rs.getString("supplier_name"),
@@ -91,9 +90,15 @@ public class AeatExtraModelsService {
                 companyId, year);
         for (Object[] r : purchaseRows) {
             String nif = (String) r[0];
-            if (nif == null || nif.isBlank()) continue;
-            bySupplier.computeIfAbsent(nif.toUpperCase(),
-                    k -> new NifTotals((String) r[1]))
+            String name = (String) r[1];
+            // Incluimos también proveedores SIN NIF (la asesoría lo rellena en el editor);
+            // se agrupan por nombre. Solo se descartan filas sin NIF y sin nombre.
+            if ((nif == null || nif.isBlank()) && (name == null || name.isBlank())) continue;
+            boolean hasNif = nif != null && !nif.isBlank();
+            String key = hasNif ? "NIF:" + nif.toUpperCase().trim()
+                    : "NAME:" + (name == null ? "" : name.toUpperCase().trim());
+            bySupplier.computeIfAbsent(key,
+                    k -> new NifTotals(name, hasNif ? nif.toUpperCase().trim() : ""))
                     .add((LocalDate) r[2], (BigDecimal) r[3]);
         }
 
@@ -121,9 +126,9 @@ public class AeatExtraModelsService {
             String nif = (String) r[1];
             if (name == null || name.isBlank()) continue;
             // Clave por NIF si existe; si no, por nombre (el asesor corrige el NIF en el editor).
-            String key = (nif != null && !nif.isBlank())
-                    ? nif.toUpperCase().trim() : name.toUpperCase().trim();
-            byCustomer.computeIfAbsent(key, k -> new NifTotals(name))
+            boolean hasNif = nif != null && !nif.isBlank();
+            String key = hasNif ? "NIF:" + nif.toUpperCase().trim() : "NAME:" + name.toUpperCase().trim();
+            byCustomer.computeIfAbsent(key, k -> new NifTotals(name, hasNif ? nif.toUpperCase().trim() : ""))
                     .add((LocalDate) r[2], (BigDecimal) r[3]);
         }
 
@@ -132,14 +137,14 @@ public class AeatExtraModelsService {
         for (Map.Entry<String, NifTotals> e : bySupplier.entrySet()) {
             if (e.getValue().total.compareTo(THRESHOLD_347) > 0) {
                 NifTotals t = e.getValue();
-                rows.add(new Model347Row("A", e.getKey(), t.name,
+                rows.add(new Model347Row("A", t.nif, t.name,
                         t.q1, t.q2, t.q3, t.q4, t.total));
             }
         }
         for (Map.Entry<String, NifTotals> e : byCustomer.entrySet()) {
             if (e.getValue().total.compareTo(THRESHOLD_347) > 0) {
                 NifTotals t = e.getValue();
-                rows.add(new Model347Row("B", e.getKey(), t.name,
+                rows.add(new Model347Row("B", t.nif, t.name,
                         t.q1, t.q2, t.q3, t.q4, t.total));
             }
         }
@@ -381,10 +386,12 @@ public class AeatExtraModelsService {
 
     private static class NifTotals {
         String name;
+        String nif;
         BigDecimal q1 = BigDecimal.ZERO, q2 = BigDecimal.ZERO,
                    q3 = BigDecimal.ZERO, q4 = BigDecimal.ZERO,
                    total = BigDecimal.ZERO;
-        NifTotals(String n) { this.name = n; }
+        NifTotals(String n) { this(n, ""); }
+        NifTotals(String n, String nif) { this.name = n; this.nif = nif == null ? "" : nif; }
         void add(LocalDate date, BigDecimal amt) {
             if (amt == null) return;
             int q = (date.getMonthValue() - 1) / 3 + 1;
