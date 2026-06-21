@@ -969,8 +969,10 @@ public class EmployeeAppService {
                   } catch (e) { msg('ackMsg', e.message); }
                 }
 
-                // ---- NOTIF-RT: tiempo real (SSE) + badges del home ----
+                // ---- NOTIF-RT: tiempo real (SSE) + fallback de sondeo + badges ----
                 let evtSource = null;
+                let sseAlive = false;     // se pone true si el SSE entrega algun evento
+                let pollTimer = null;     // fallback cuando el SSE no fluye (tunel bufferiza)
                 function currentScreen() {
                   for (const s of ['screen-fichar','screen-jornada','screen-ausencias','screen-nominas','screen-home']) {
                     if (!document.getElementById(s).classList.contains('hidden')) return s;
@@ -999,25 +1001,47 @@ public class EmployeeAppService {
                 function connectRealtime() {
                   const token = localStorage.getItem(LS_TOKEN);
                   if (!token) return;
+                  sseAlive = false;
                   if (evtSource) { evtSource.close(); evtSource = null; }
                   try {
                     evtSource = new EventSource(API + '/realtime/stream?token=' + encodeURIComponent(token));
                   } catch (e) { return; }
+                  evtSource.addEventListener('ready', () => { sseAlive = true; });
                   evtSource.addEventListener('timeclock', () => {
+                    sseAlive = true;
                     if (currentScreen() === 'screen-fichar') { loadEstado(); loadSugerencia(); }
                     if (currentScreen() === 'screen-jornada') loadJornada();
                   });
                   evtSource.addEventListener('leave_reviewed', () => {
+                    sseAlive = true;
                     if (currentScreen() === 'screen-ausencias') loadAusencias();
                     else { localStorage.setItem('aus_pending', '1'); updateHomeBadges(); }
                   });
                   evtSource.addEventListener('payslip', () => {
+                    sseAlive = true;
                     if (currentScreen() === 'screen-nominas') loadNominas();
                     updateHomeBadges();
                   });
-                  // onerror: EventSource reintenta solo; no hacemos nada.
+                  // onerror: EventSource reintenta solo; el sondeo cubre mientras tanto.
                 }
                 function disconnectRealtime() { if (evtSource) { evtSource.close(); evtSource = null; } }
+
+                // Fallback de sondeo: si el SSE no entrega (Cloudflare bufferiza el
+                // quick-tunnel), refrescamos la pantalla abierta + badges cada 18s.
+                // Si el SSE funciona (sseAlive), el sondeo no hace nada.
+                function startPolling() {
+                  if (pollTimer) return;
+                  pollTimer = setInterval(() => {
+                    if (sseAlive || !localStorage.getItem(LS_TOKEN)) return;
+                    const scr = currentScreen();
+                    if (scr === 'screen-fichar') { loadEstado(); loadSugerencia(); }
+                    else if (scr === 'screen-jornada') loadJornada();
+                    else if (scr === 'screen-ausencias') loadAusencias();
+                    else if (scr === 'screen-nominas') loadNominas();
+                    updateHomeBadges();
+                  }, 18000);
+                }
+                function stopPolling() { if (pollTimer) { clearInterval(pollTimer); pollTimer = null; } }
 
                 document.getElementById('activateBtn').onclick = async () => {
                   const token = document.getElementById('inviteInput').value.trim();
@@ -1065,17 +1089,18 @@ public class EmployeeAppService {
                     document.getElementById('pinInput').value = '';
                     gotoHome();
                     connectRealtime();
+                    startPolling();
                   } catch (e) { msg('pinMsg', e.message); }
                 };
 
                 document.getElementById('forgetBtn').onclick = () => {
-                  disconnectRealtime();
+                  disconnectRealtime(); stopPolling();
                   localStorage.removeItem(LS_SECRET);
                   localStorage.removeItem(LS_TOKEN);
                   show('screen-invite');
                 };
                 document.getElementById('logoutBtn').onclick = () => {
-                  disconnectRealtime();
+                  disconnectRealtime(); stopPolling();
                   localStorage.removeItem(LS_TOKEN);
                   gotoPin();
                 };

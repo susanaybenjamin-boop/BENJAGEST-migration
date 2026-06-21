@@ -37,9 +37,11 @@ public class RealtimeService {
         emitter.onTimeout(() -> { connections.remove(conn); emitter.complete(); });
         emitter.onError(e -> connections.remove(conn));
         try {
-            // Padding inicial (~2 KB de comentario): fuerza a los proxies (Cloudflare)
-            // a vaciar el buffer y empezar a entregar el stream de inmediato.
-            emitter.send(SseEmitter.event().comment(" ".repeat(2048)));
+            // Padding inicial (~16 KB de comentario): intenta forzar a los proxies
+            // (Cloudflare) a vaciar el buffer. NOTA: los quick-tunnels gratuitos de
+            // Cloudflare suelen bufferizar SSE igualmente; la PWA tiene un fallback
+            // de sondeo. En localhost (escritorio) el SSE fluye sin problema.
+            emitter.send(SseEmitter.event().comment(" ".repeat(16384)));
             emitter.send(SseEmitter.event().name("ready").data("{}"));
         } catch (IOException ignored) {
             connections.remove(conn);
