@@ -69,11 +69,11 @@ public class SifEventExportService {
         sb.append("GENERATED_AT;EVENT_TYPE;STATUS;HASH_CURRENT;HASH_PREVIOUS;PAYLOAD\n");
         for (SifEvent ev : events) {
             sb.append(DATETIME.format(ev.generatedAt().atZone(ZoneId.systemDefault())))
-                    .append(';').append(nullSafe(ev.eventType()))
-                    .append(';').append(nullSafe(ev.status()))
+                    .append(';').append(eventTypeLabel(ev.eventType()))
+                    .append(';').append(statusLabel(ev.status()))
                     .append(';').append(nullSafe(ev.hashCurrent()))
                     .append(';').append(nullSafe(ev.hashPrevious()))
-                    .append(';').append(escape(nullSafe(ev.payload())))
+                    .append(';').append(escape(humanizePayload(ev.payload())))
                     .append('\n');
         }
         byte[] body = sb.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8);
@@ -100,7 +100,7 @@ public class SifEventExportService {
         doc.add(new Paragraph(companyName + " · NIF " + companyNif, smallFont));
         doc.add(new Paragraph("Período: " + DATE.format(from) + " a " + DATE.format(to)
                 + (eventTypeFilter == null || eventTypeFilter.isBlank()
-                    ? "" : " · Tipo: " + eventTypeFilter),
+                    ? "" : " · Tipo: " + eventTypeLabel(eventTypeFilter)),
                 smallFont));
         doc.add(new Paragraph("Generado: " + DATETIME.format(Instant.now().atZone(ZoneId.systemDefault()))
                 + " · " + events.size() + " eventos. RD 1007/2023 + Orden HAC/1177/2024.", smallFont));
@@ -117,11 +117,11 @@ public class SifEventExportService {
 
         for (SifEvent ev : events) {
             addCell(table, DATETIME.format(ev.generatedAt().atZone(ZoneId.systemDefault())), cellFont);
-            addCell(table, nullSafe(ev.eventType()), cellFont);
-            addCell(table, nullSafe(ev.status()), cellFont);
+            addCell(table, eventTypeLabel(ev.eventType()), cellFont);
+            addCell(table, statusLabel(ev.status()), cellFont);
             addCell(table, shortHash(ev.hashCurrent()), cellFont);
             addCell(table, shortHash(ev.hashPrevious()), cellFont);
-            addCell(table, truncate(nullSafe(ev.payload()), 200), cellFont);
+            addCell(table, truncate(humanizePayload(ev.payload()), 200), cellFont);
         }
         doc.add(table);
 
@@ -197,6 +197,73 @@ public class SifEventExportService {
     }
 
     private static String nullSafe(String s) { return s == null ? "" : s; }
+
+    /** Etiqueta legible (ES) del tipo de evento SIF para el documento legal. */
+    private static String eventTypeLabel(String code) {
+        if (code == null || code.isBlank()) return "";
+        return switch (code) {
+            case "SYSTEM_START" -> "Arranque del sistema";
+            case "SYSTEM_STOP" -> "Parada del sistema";
+            case "INVOICE_VALIDATED" -> "Factura validada";
+            case "INVOICE_VOIDED" -> "Factura anulada";
+            case "ANOMALY_DETECTION_INVOICES_RUN" -> "Escaneo de anomalías (facturas)";
+            case "ANOMALY_DETECTION_INVOICES_HIT" -> "Anomalía detectada (facturas)";
+            case "ANOMALY_DETECTION_EVENTS_RUN" -> "Escaneo de anomalías (eventos)";
+            case "ANOMALY_DETECTION_EVENTS_HIT" -> "Anomalía detectada (eventos)";
+            case "BACKUP_RESTORED" -> "Copia restaurada";
+            case "EXPORT_INVOICES" -> "Exportación de facturas";
+            case "EXPORT_EVENTS" -> "Exportación de eventos";
+            case "SUMMARY_6H" -> "Resumen 6h";
+            case "SUMMARY_SHUTDOWN" -> "Resumen al apagar";
+            default -> code;
+        };
+    }
+
+    /** Etiqueta legible (ES) del estado del evento SIF. */
+    private static String statusLabel(String code) {
+        if (code == null || code.isBlank()) return "";
+        return switch (code) {
+            case "PENDING" -> "Pendiente";
+            case "REGISTERED" -> "Registrado";
+            case "PROCESSED" -> "Procesado";
+            case "SENT" -> "Enviado";
+            case "ERROR" -> "Error";
+            default -> code;
+        };
+    }
+
+    /** Convierte el payload JSON plano a "Etiqueta: valor · …" legible (ES). */
+    private static String humanizePayload(String payload) {
+        if (payload == null || payload.isBlank()) return "";
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile(
+                "\"([^\"]+)\"\\s*:\\s*(?:\"([^\"]*)\"|(-?\\d+(?:\\.\\d+)?)|(true|false))").matcher(payload);
+        StringBuilder sb = new StringBuilder();
+        while (m.find()) {
+            String key = m.group(1);
+            String val = m.group(2) != null ? m.group(2) : (m.group(3) != null ? m.group(3) : m.group(4));
+            if (val != null && val.length() > 20) val = val.substring(0, 18) + "…";
+            if (sb.length() > 0) sb.append(" · ");
+            sb.append(payloadKeyLabel(key)).append(": ").append(val);
+        }
+        return sb.length() == 0 ? payload : sb.toString();
+    }
+
+    private static String payloadKeyLabel(String key) {
+        return switch (key) {
+            case "invoiceId" -> "Factura";
+            case "invoiceNumber" -> "Número";
+            case "from" -> "Desde";
+            case "to" -> "Hasta";
+            case "format" -> "Formato";
+            case "count" -> "Nº";
+            case "sha256" -> "SHA-256";
+            case "startedAt" -> "Iniciado";
+            case "stoppedAt" -> "Detenido";
+            case "reason" -> "Motivo";
+            case "version" -> "Versión";
+            default -> key;
+        };
+    }
 
     private static String escape(String s) {
         if (s == null) return "";
