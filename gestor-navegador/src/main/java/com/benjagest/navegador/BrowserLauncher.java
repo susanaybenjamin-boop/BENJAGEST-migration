@@ -91,6 +91,10 @@ public final class BrowserLauncher {
         CefAppBuilder builder = new CefAppBuilder();
         builder.getCefSettings().windowless_rendering_enabled = false; // modo ventana (no OSR)
         builder.setInstallDir(new File(System.getProperty("user.home"), ".benjagest/jcef-bundle"));
+        // Cache persistente (cookies/sesión) + silencia el aviso/singleton del cache por defecto.
+        File cacheDir = new File(System.getProperty("user.home"), ".benjagest/jcef-cache");
+        cacheDir.mkdirs();
+        builder.getCefSettings().cache_path = cacheDir.getAbsolutePath();
         builder.setAppHandler(new MavenCefAppHandlerAdapter() {
             @Override
             public void stateHasChanged(CefAppState state) {
