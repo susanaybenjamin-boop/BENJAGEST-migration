@@ -4,6 +4,7 @@ import com.benjagest.backend.auth.RequiresRole;
 import jakarta.validation.Valid;
 import java.util.List;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -35,9 +36,12 @@ import org.springframework.web.bind.annotation.RestController;
 public class CertificateController {
 
     private final CertificateService service;
+    private final BrowserCertSessionService browserSession;
 
-    public CertificateController(CertificateService service) {
+    public CertificateController(CertificateService service,
+                                 BrowserCertSessionService browserSession) {
         this.service = service;
+        this.browserSession = browserSession;
     }
 
     @GetMapping
@@ -66,5 +70,29 @@ public class CertificateController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void delete(@PathVariable("id") String id) {
         service.delete(id);
+    }
+
+    /**
+     * GESTOR-NAVEGADOR (Fase 2): importa el .p12 activo del cliente
+     * (X-Company-Id) al almacen de Windows para que Chromium lo ofrezca
+     * al entrar en AEAT/DEHu/SS. Devuelve 200 con la huella o 204 si el
+     * cliente no tiene certificado (el gestor abre igual).
+     */
+    @PostMapping("/browser/open")
+    public ResponseEntity<BrowserCertSessionService.BrowserCertSession> openBrowserSession() {
+        return browserSession.open()
+                .map(ResponseEntity::ok)
+                .orElseGet(() -> ResponseEntity.noContent().build());
+    }
+
+    /** Quita la huella del almacen al cerrar el gestor. */
+    @PostMapping("/browser/close")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void closeBrowserSession(@RequestBody BrowserCloseRequest request) {
+        browserSession.close(request == null ? null : request.thumbprint());
+    }
+
+    /** Cuerpo de cierre: la huella devuelta por /browser/open. */
+    public record BrowserCloseRequest(String thumbprint) {
     }
 }
