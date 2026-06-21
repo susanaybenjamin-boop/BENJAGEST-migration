@@ -53,8 +53,18 @@ falla, el navegador abre igual (almacén del sistema).
 - ✅ **Fix enlace SS → Import@ss** *(abf82d9)* — la pestaña de Seguridad Social apuntaba al
   portal público general; cambiada a `portal.seg-social.gob.es` (Import@ss).
 
-**No olvidar (sigue vivo):** DISEÑO módulo Comunicación asesoría↔clientes con el aire del
-Gestor-Navegador (es JavaFX → CSS/app.css, NO FlatLaf). Ver "Pendiente" de la sesión 06-20.
+**✅ HECHO — DISEÑO módulo Comunicación asesoría↔cliente** (el "no olvidar" de antes):
+aire moderno en JavaFX vía CSS/app.css (no FlatLaf). Burbujas tipo chat (`.comm-bubble`
+in/out con remitente Asesoría/Empresa + hora), lienzo tarjeta, composer inferior, pestañas
+`settings-tabs` limpias (fuera la barra negra y los iconos rotos), cabecera con icono y sin
+títulos duplicados *(1e0909a, 9757765)*.
+- ✅ **Fix import .NET puro** *(95669e4)* — `Import-PfxCertificate`/`ConvertTo-SecureString`
+  fallaban por autoload de módulos; ahora `X509Store`/`X509Certificate2`. PROBADO OK.
+- ✅ **Fix 403 SSE** *(cc1a0b3)* — `JwtAuthenticationFilter.shouldNotFilterAsyncDispatch()=false`
+  (re-autentica en el dispatch async del stream). Quita el `AccessDenied` repetido del log.
+- ✅ **LOPD log** *(3c9d13e)* — el log de la sesión de navegador ya no escribe alias
+  (nombre+NIF) ni huella; el audit vive en `certificate_usage_log`.
+- ✅ Todo mergeado a develop *(merge ae32b1e)*.
 
 ---
 
