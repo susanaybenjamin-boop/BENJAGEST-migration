@@ -61,8 +61,11 @@ public class BrowserCertSessionService {
             byte[] p12 = Base64.getDecoder().decode(cert.certificateDataBase64());
             String thumbprint = windowsCertStore.importToUserStore(p12, cert.passwordPlaintext());
             usageLog.recordUsage(cert.id(), user.userId(), PURPOSE, null, true, null, null);
-            log.info("[browser-cert] Importado cert {} (huella {}) para sesion de navegador",
-                    cert.alias(), thumbprint);
+            // No registramos alias (lleva nombre + NIF = dato personal LOPD) ni la huella
+            // en el log de aplicacion; el audit serio vive en certificate_usage_log con el
+            // certificate_id opaco, usuario y fecha.
+            log.info("[browser-cert] Certificado {} importado al almacen para sesion de navegador",
+                    cert.id());
             return Optional.of(new BrowserCertSession(
                     cert.id(), thumbprint, cert.alias(), cert.subjectName()));
         } catch (RuntimeException ex) {

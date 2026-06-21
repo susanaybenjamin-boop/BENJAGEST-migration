@@ -45,17 +45,26 @@ public class WindowsCertStoreService {
         try {
             tmp = Files.createTempFile("bg-cert-", ".pfx");
             Files.write(tmp, p12);
-            // Contrasena por $env:BG_PFX_PW (no en argv). Ruta entre comillas simples
-            // (literal PowerShell: no interpola, las barras invertidas no escapan).
+            // .NET puro (X509Certificate2 + X509Store): NO usamos Import-PfxCertificate
+            // ni ConvertTo-SecureString porque dependen de autocargar modulos
+            // (pki / Microsoft.PowerShell.Security) y en algunos equipos ese
+            // autoload falla ("CouldNotAutoloadMatchingModule"). System.Security
+            // .Cryptography siempre esta disponible. Contrasena por $env:BG_PFX_PW
+            // (no en argv). PersistKeySet: la clave persiste al anadirla al almacen.
+            String path = tmp.toAbsolutePath().toString();
             String script = "$ErrorActionPreference='Stop';"
-                    + "$pw = ConvertTo-SecureString -String $env:BG_PFX_PW -AsPlainText -Force;"
-                    + "$c = Import-PfxCertificate -FilePath '" + tmp.toAbsolutePath()
-                    + "' -CertStoreLocation Cert:\\CurrentUser\\My -Password $pw;"
-                    + "Write-Output $c.Thumbprint";
+                    + "$bytes=[System.IO.File]::ReadAllBytes('" + path + "');"
+                    + "$flags=[System.Security.Cryptography.X509Certificates.X509KeyStorageFlags]'PersistKeySet';"
+                    + "$cert=New-Object System.Security.Cryptography.X509Certificates.X509Certificate2"
+                    + " -ArgumentList $bytes,$env:BG_PFX_PW,$flags;"
+                    + "$store=New-Object System.Security.Cryptography.X509Certificates.X509Store"
+                    + " -ArgumentList 'My','CurrentUser';"
+                    + "$store.Open('ReadWrite');$store.Add($cert);$store.Close();"
+                    + "Write-Output $cert.Thumbprint";
             String out = runPowerShell(script, password, true);
             String thumb = lastNonEmptyLine(out);
             if (thumb == null || !thumb.matches("[0-9A-Fa-f]{40}")) {
-                log.warn("[cert-store] Import-PfxCertificate sin huella valida. Salida: {}", out);
+                log.warn("[cert-store] Import al almacen sin huella valida. Salida: {}", out);
                 throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
                         "No se pudo importar el certificado al almacen de Windows");
             }
@@ -79,8 +88,16 @@ public class WindowsCertStoreService {
         if (!isWindows() || thumbprint == null || !thumbprint.matches("[0-9A-Fa-f]{40}")) {
             return;
         }
+        // .NET puro tambien al quitar (mismo motivo: no depender de Cert:\ provider).
         String script = "$ErrorActionPreference='SilentlyContinue';"
-                + "Remove-Item -Path ('Cert:\\CurrentUser\\My\\" + thumbprint + "') -Force";
+                + "$store=New-Object System.Security.Cryptography.X509Certificates.X509Store"
+                + " -ArgumentList 'My','CurrentUser';"
+                + "$store.Open('ReadWrite');"
+                + "$found=$store.Certificates.Find("
+                + "[System.Security.Cryptography.X509Certificates.X509FindType]::FindByThumbprint,'"
+                + thumbprint + "',$false);"
+                + "foreach($c in $found){$store.Remove($c)};"
+                + "$store.Close()";
         try {
             runPowerShell(script, null, false);
         } catch (RuntimeException ex) {
