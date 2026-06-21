@@ -13204,6 +13204,26 @@ public class BenjagestUiApplication extends Application {
                 case "aeat347.remove" -> "Remove row";
                 case "aeat347.recalc" -> "Recalculate from invoices";
                 case "aeat347.hint" -> "Third parties with operations over 3,005.06 € per year. Key A = purchases (supplier), B = sales (customer). Edit, recalculate from invoices, or add rows; the annual total is the sum of the quarters.";
+                case "aeat390.devengado" -> "Output VAT (sales) by rate";
+                case "aeat390.deducible" -> "Deductible VAT (purchases) by rate";
+                case "aeat390.other" -> "Other operations";
+                case "aeat390.cuota_dev" -> "Output VAT amount";
+                case "aeat390.cuota_ded" -> "Deductible VAT amount";
+                case "aeat390.exentas" -> "Exempt operations";
+                case "aeat390.intracom" -> "Intra-community operations";
+                case "aeat390.compensaciones" -> "Carry-forward to offset";
+                case "aeat390.result" -> "Result (output − deductible):";
+                case "aeat390.result_final" -> "Final result (after offset):";
+                case "aeat390.volume" -> "Volume of operations:";
+                case "aeat390.hint" -> "Enter the VAT bases by rate; the amounts (base × rate), totals and result are calculated. \"Recalculate from invoices\" fills the bases from the year's sales/purchases.";
+                case "aeat190.placeholder" -> "No recipients. Use \"Recalculate\" or add rows.";
+                case "aeat190.totals" -> "Earnings: {base} €   ·   Withholdings: {ret} €   ·   {n} recipients";
+                case "aeat190.col.key" -> "Key";
+                case "aeat190.col.nif" -> "Tax ID";
+                case "aeat190.col.name" -> "Name";
+                case "aeat190.col.base" -> "Earnings";
+                case "aeat190.col.ret" -> "Withholding";
+                case "aeat190.hint" -> "Recipients of withholdings. Key A = employment income (payroll), G = professional activities. Edit, recalculate from payroll/invoices, or add rows.";
                 case "tax.editor.status" -> "Status";
                 case "tax.editor.total" -> "Total amount";
                 case "tax.editor.csv" -> "AEAT CSV";
@@ -13400,7 +13420,11 @@ public class BenjagestUiApplication extends Application {
                 }
             };
         }
+        return tEs(key);
+    }
 
+    /** Traducciones ES — extraído de t() para no superar el límite de 64KB de bytecode por método. */
+    private String tEs(String key) {
         return switch (key) {
             case "pinIdentification" -> "Identificacion por PIN de empleado";
             case "login" -> "Entrar";
@@ -14131,6 +14155,26 @@ public class BenjagestUiApplication extends Application {
             case "aeat347.remove" -> "Quitar fila";
             case "aeat347.recalc" -> "Recalcular desde facturas";
             case "aeat347.hint" -> "Terceros con operaciones superiores a 3.005,06 € al año. Clave A = compras (proveedor), B = ventas (cliente). Edita, recalcula desde facturas o añade filas; el total anual es la suma de los trimestres.";
+            case "aeat390.devengado" -> "IVA devengado (ventas) por tipo";
+            case "aeat390.deducible" -> "IVA deducible (compras) por tipo";
+            case "aeat390.other" -> "Otras operaciones";
+            case "aeat390.cuota_dev" -> "Cuota IVA devengado";
+            case "aeat390.cuota_ded" -> "Cuota IVA deducible";
+            case "aeat390.exentas" -> "Operaciones exentas";
+            case "aeat390.intracom" -> "Operaciones intracomunitarias";
+            case "aeat390.compensaciones" -> "Cuotas a compensar";
+            case "aeat390.result" -> "Resultado (devengado − deducible):";
+            case "aeat390.result_final" -> "Resultado final (tras compensar):";
+            case "aeat390.volume" -> "Volumen de operaciones:";
+            case "aeat390.hint" -> "Introduce las bases de IVA por tipo; las cuotas (base × tipo), totales y resultado se calculan. \"Recalcular desde facturas\" rellena las bases con las ventas/compras del año.";
+            case "aeat190.placeholder" -> "Sin perceptores. Usa \"Recalcular\" o añade filas.";
+            case "aeat190.totals" -> "Retribuciones: {base} €   ·   Retenciones: {ret} €   ·   {n} perceptores";
+            case "aeat190.col.key" -> "Clave";
+            case "aeat190.col.nif" -> "NIF";
+            case "aeat190.col.name" -> "Nombre";
+            case "aeat190.col.base" -> "Retribuciones";
+            case "aeat190.col.ret" -> "Retención";
+            case "aeat190.hint" -> "Perceptores de retenciones. Clave A = rendimientos del trabajo (nóminas), G = actividades profesionales. Edita, recalcula desde nóminas/facturas o añade filas.";
             case "tax.editor.status" -> "Estado";
             case "tax.editor.total" -> "Importe total";
             case "tax.editor.csv" -> "CSV AEAT";
@@ -34546,6 +34590,10 @@ public class BenjagestUiApplication extends Application {
             show130Editor(existing);
         } else if ("347".equals(modelCode)) {
             show347Editor(existing);
+        } else if ("390".equals(modelCode)) {
+            show390Editor(existing);
+        } else if ("190".equals(modelCode)) {
+            show190Editor(existing);
         } else {
             showGenericFilingEditor(existing, catalog);
         }
@@ -34971,6 +35019,269 @@ public class BenjagestUiApplication extends Application {
     private String jsonEsc(String s) {
         if (s == null) return "";
         return s.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n");
+    }
+
+    /**
+     * AEAT-ED-2 — Editor específico y editable del modelo 390 (resumen anual IVA).
+     * Bases IVA devengado/deducible al 4/10/21 (editables) → cuotas (base×tipo),
+     * totales, resultado, volumen y resultado final calculados. Fiel a CONTENDO.
+     */
+    private void show390Editor(com.benjagest.ui.model.TaxFilingEntry existing) {
+        Dialog<ButtonType> dialog = new Dialog<>();
+        dialog.setTitle("Modelo 390 — " + formatPeriod(existing));
+        ButtonType saveBt = new ButtonType(t("tax.editor.save"), ButtonBar.ButtonData.OK_DONE);
+        dialog.getDialogPane().getButtonTypes().addAll(saveBt, ButtonType.CANCEL);
+
+        com.benjagest.ui.model.Aeat390Data d = altaApiClient.parse390(existing.dataJson());
+
+        TextField bd4 = new TextField(d.baseDev4), bd10 = new TextField(d.baseDev10), bd21 = new TextField(d.baseDev21);
+        TextField bs4 = new TextField(d.baseDed4), bs10 = new TextField(d.baseDed10), bs21 = new TextField(d.baseDed21);
+        TextField exentas = new TextField(d.exentas), intracom = new TextField(d.intracom);
+        TextField compensaciones = new TextField(d.compensaciones);
+
+        Label cuotaDev = new Label(), cuotaDed = new Label(), resultado = new Label(),
+                volumen = new Label(), resultadoFinal = new Label();
+        resultado.getStyleClass().add("settings-section-title");
+        resultadoFinal.getStyleClass().add("settings-section-title");
+
+        Runnable recompute = () -> {
+            java.math.BigDecimal cd = pct390(bd4, 4).add(pct390(bd10, 10)).add(pct390(bd21, 21));
+            java.math.BigDecimal cs = pct390(bs4, 4).add(pct390(bs10, 10)).add(pct390(bs21, 21));
+            java.math.BigDecimal res = cd.subtract(cs);
+            java.math.BigDecimal vol = dec347(bd4.getText()).add(dec347(bd10.getText())).add(dec347(bd21.getText()))
+                    .add(dec347(exentas.getText())).add(dec347(intracom.getText()));
+            java.math.BigDecimal resFinal = res.subtract(dec347(compensaciones.getText()));
+            cuotaDev.setText(eur390(cd));
+            cuotaDed.setText(eur390(cs));
+            resultado.setText(t("aeat390.result") + " " + eur390(res));
+            volumen.setText(t("aeat390.volume") + " " + eur390(vol));
+            resultadoFinal.setText(t("aeat390.result_final") + " " + eur390(resFinal));
+        };
+        for (TextField f : new TextField[]{bd4, bd10, bd21, bs4, bs10, bs21, exentas, intracom, compensaciones}) {
+            f.textProperty().addListener((o, ov, nv) -> recompute.run());
+        }
+
+        ComboBox<String> statusCombo = new ComboBox<>();
+        statusCombo.getItems().addAll("DRAFT", "READY", "PRESENTED", "PAID", "REJECTED");
+        statusCombo.getSelectionModel().select(existing.status());
+        TextField csvField = new TextField(existing.csvAeat());
+
+        Button recalcBtn = new Button(t("aeat347.recalc"));
+        recalcBtn.setGraphic(icon("fas-sync"));
+        recalcBtn.setOnAction(e -> {
+            Task<com.benjagest.ui.model.Aeat390Data> tk = new Task<>() {
+                @Override protected com.benjagest.ui.model.Aeat390Data call() throws Exception {
+                    return altaApiClient.preview390(existing.periodYear());
+                }
+            };
+            tk.setOnSucceeded(ev -> {
+                var nd = tk.getValue();
+                bd4.setText(nd.baseDev4); bd10.setText(nd.baseDev10); bd21.setText(nd.baseDev21);
+                bs4.setText(nd.baseDed4); bs10.setText(nd.baseDed10); bs21.setText(nd.baseDed21);
+                recompute.run();
+            });
+            tk.setOnFailed(ev -> showError(t("tax.editor.fail.title"), t("tax.editor.fail.body")));
+            start(tk, "aeat390-recalc");
+        });
+
+        GridPane g = new GridPane();
+        g.setHgap(12); g.setVgap(8); g.setPadding(new Insets(12));
+        int r = 0;
+        g.add(label(t("aeat390.devengado"), "settings-section-title"), 0, r++, 3, 1);
+        g.add(new Label("4%"), 0, r); g.add(bd4, 1, r++);
+        g.add(new Label("10%"), 0, r); g.add(bd10, 1, r++);
+        g.add(new Label("21%"), 0, r); g.add(bd21, 1, r++);
+        g.add(new Label(t("aeat390.cuota_dev")), 0, r); g.add(cuotaDev, 1, r++);
+        g.add(label(t("aeat390.deducible"), "settings-section-title"), 0, r++, 3, 1);
+        g.add(new Label("4%"), 0, r); g.add(bs4, 1, r++);
+        g.add(new Label("10%"), 0, r); g.add(bs10, 1, r++);
+        g.add(new Label("21%"), 0, r); g.add(bs21, 1, r++);
+        g.add(new Label(t("aeat390.cuota_ded")), 0, r); g.add(cuotaDed, 1, r++);
+        g.add(label(t("aeat390.other"), "settings-section-title"), 0, r++, 3, 1);
+        g.add(new Label(t("aeat390.exentas")), 0, r); g.add(exentas, 1, r++);
+        g.add(new Label(t("aeat390.intracom")), 0, r); g.add(intracom, 1, r++);
+        g.add(new Label(t("aeat390.compensaciones")), 0, r); g.add(compensaciones, 1, r++);
+        g.add(new Separator(), 0, r++, 3, 1);
+        g.add(volumen, 0, r++, 3, 1);
+        g.add(resultado, 0, r++, 3, 1);
+        g.add(resultadoFinal, 0, r++, 3, 1);
+        g.add(new Separator(), 0, r++, 3, 1);
+        g.add(new Label(t("tax.editor.status")), 0, r); g.add(statusCombo, 1, r++);
+        g.add(new Label(t("tax.editor.csv")), 0, r); g.add(csvField, 1, r++);
+
+        Label hint = new Label(t("aeat390.hint"));
+        hint.setWrapText(true); hint.getStyleClass().add("settings-hint");
+        HBox tools = new HBox(8, recalcBtn);
+        VBox box = new VBox(10, hint, tools, g);
+        box.setPrefWidth(560);
+        recompute.run();
+        installDialog(dialog, scroll(box));
+        dialog.setResizable(true);
+
+        dialog.showAndWait().ifPresent(bt -> {
+            if (bt != saveBt) return;
+            java.math.BigDecimal cd = pct390(bd4, 4).add(pct390(bd10, 10)).add(pct390(bd21, 21));
+            java.math.BigDecimal cs = pct390(bs4, 4).add(pct390(bs10, 10)).add(pct390(bs21, 21));
+            java.math.BigDecimal res = cd.subtract(cs);
+            java.math.BigDecimal vol = dec347(bd4.getText()).add(dec347(bd10.getText())).add(dec347(bd21.getText()))
+                    .add(dec347(exentas.getText())).add(dec347(intracom.getText()));
+            java.math.BigDecimal resFinal = res.subtract(dec347(compensaciones.getText()));
+            String json = "{\"year\":" + existing.periodYear()
+                    + ",\"baseDev4\":" + dec347(bd4.getText()).toPlainString()
+                    + ",\"baseDev10\":" + dec347(bd10.getText()).toPlainString()
+                    + ",\"baseDev21\":" + dec347(bd21.getText()).toPlainString()
+                    + ",\"baseDed4\":" + dec347(bs4.getText()).toPlainString()
+                    + ",\"baseDed10\":" + dec347(bs10.getText()).toPlainString()
+                    + ",\"baseDed21\":" + dec347(bs21.getText()).toPlainString()
+                    + ",\"exentas\":" + dec347(exentas.getText()).toPlainString()
+                    + ",\"intracom\":" + dec347(intracom.getText()).toPlainString()
+                    + ",\"compensaciones\":" + dec347(compensaciones.getText()).toPlainString()
+                    + ",\"cuotaDevengada\":" + cd.toPlainString()
+                    + ",\"cuotaDeducible\":" + cs.toPlainString()
+                    + ",\"resultado\":" + res.toPlainString()
+                    + ",\"volumen\":" + vol.toPlainString()
+                    + ",\"resultadoFinal\":" + resFinal.toPlainString() + "}";
+            saveFiling(existing, statusCombo.getValue(), json,
+                    resFinal.setScale(2, java.math.RoundingMode.HALF_UP),
+                    csvField.getText(), existing.notes(), java.util.List.of());
+        });
+    }
+
+    /**
+     * AEAT-ED-3 — Editor específico y editable del modelo 190 (retenciones IRPF).
+     * Tabla editable de perceptores (clave A trabajo / G profesionales, NIF, nombre,
+     * retribuciones, retención) + totales + recalcular desde facturas/nóminas.
+     */
+    private void show190Editor(com.benjagest.ui.model.TaxFilingEntry existing) {
+        Dialog<ButtonType> dialog = new Dialog<>();
+        dialog.setTitle("Modelo 190 — " + formatPeriod(existing));
+        ButtonType saveBt = new ButtonType(t("tax.editor.save"), ButtonBar.ButtonData.OK_DONE);
+        dialog.getDialogPane().getButtonTypes().addAll(saveBt, ButtonType.CANCEL);
+
+        javafx.collections.ObservableList<com.benjagest.ui.model.Aeat190Row> rows =
+                FXCollections.observableArrayList(altaApiClient.parse190(existing.dataJson()));
+
+        TableView<com.benjagest.ui.model.Aeat190Row> table = new TableView<>(rows);
+        table.setEditable(true);
+        table.getStyleClass().add("data-table");
+        table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+        table.setPlaceholder(new Label(t("aeat190.placeholder")));
+        table.setPrefHeight(320);
+
+        Label totalsLabel = new Label();
+        totalsLabel.getStyleClass().add("settings-section-title");
+        Runnable recompute = () -> {
+            java.math.BigDecimal b = java.math.BigDecimal.ZERO, ret = java.math.BigDecimal.ZERO;
+            for (var r : rows) { b = b.add(dec347(r.base)); ret = ret.add(dec347(r.retencion)); }
+            totalsLabel.setText(t("aeat190.totals")
+                    .replace("{base}", b.setScale(2, java.math.RoundingMode.HALF_UP).toPlainString())
+                    .replace("{ret}", ret.setScale(2, java.math.RoundingMode.HALF_UP).toPlainString())
+                    .replace("{n}", String.valueOf(rows.size())));
+        };
+
+        TableColumn<com.benjagest.ui.model.Aeat190Row, String> cClave = new TableColumn<>(t("aeat190.col.key"));
+        cClave.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().clave));
+        cClave.setCellFactory(javafx.scene.control.cell.ChoiceBoxTableCell.forTableColumn("A", "G"));
+        cClave.setOnEditCommit(e -> e.getRowValue().clave = e.getNewValue());
+        cClave.setPrefWidth(70);
+        TableColumn<com.benjagest.ui.model.Aeat190Row, String> cNif = new TableColumn<>(t("aeat190.col.nif"));
+        cNif.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().nif));
+        cNif.setCellFactory(javafx.scene.control.cell.TextFieldTableCell.forTableColumn());
+        cNif.setOnEditCommit(e -> e.getRowValue().nif = e.getNewValue());
+        cNif.setPrefWidth(110);
+        TableColumn<com.benjagest.ui.model.Aeat190Row, String> cName = new TableColumn<>(t("aeat190.col.name"));
+        cName.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().name));
+        cName.setCellFactory(javafx.scene.control.cell.TextFieldTableCell.forTableColumn());
+        cName.setOnEditCommit(e -> e.getRowValue().name = e.getNewValue());
+        cName.setPrefWidth(200);
+        TableColumn<com.benjagest.ui.model.Aeat190Row, String> cBase = new TableColumn<>(t("aeat190.col.base"));
+        cBase.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().base));
+        cBase.setCellFactory(javafx.scene.control.cell.TextFieldTableCell.forTableColumn());
+        cBase.setOnEditCommit(e -> { e.getRowValue().base = e.getNewValue() == null ? "0" : e.getNewValue().trim(); recompute.run(); });
+        cBase.setPrefWidth(110);
+        TableColumn<com.benjagest.ui.model.Aeat190Row, String> cRet = new TableColumn<>(t("aeat190.col.ret"));
+        cRet.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().retencion));
+        cRet.setCellFactory(javafx.scene.control.cell.TextFieldTableCell.forTableColumn());
+        cRet.setOnEditCommit(e -> { e.getRowValue().retencion = e.getNewValue() == null ? "0" : e.getNewValue().trim(); recompute.run(); });
+        cRet.setPrefWidth(110);
+        table.getColumns().addAll(java.util.List.of(cClave, cNif, cName, cBase, cRet));
+
+        Button addBtn = new Button(t("aeat347.add"));
+        addBtn.setOnAction(e -> { rows.add(new com.benjagest.ui.model.Aeat190Row()); recompute.run(); });
+        Button delBtn = new Button(t("aeat347.remove"));
+        delBtn.setOnAction(e -> {
+            var sel = table.getSelectionModel().getSelectedItem();
+            if (sel != null) { rows.remove(sel); recompute.run(); }
+        });
+        Button recalcBtn = new Button(t("aeat347.recalc"));
+        recalcBtn.setGraphic(icon("fas-sync"));
+        recalcBtn.setOnAction(e -> {
+            Task<java.util.List<com.benjagest.ui.model.Aeat190Row>> tk = new Task<>() {
+                @Override protected java.util.List<com.benjagest.ui.model.Aeat190Row> call() throws Exception {
+                    return altaApiClient.preview190(existing.periodYear());
+                }
+            };
+            tk.setOnSucceeded(ev -> { rows.setAll(tk.getValue()); recompute.run(); });
+            tk.setOnFailed(ev -> showError(t("tax.editor.fail.title"), t("tax.editor.fail.body")));
+            start(tk, "aeat190-recalc");
+        });
+
+        ComboBox<String> statusCombo = new ComboBox<>();
+        statusCombo.getItems().addAll("DRAFT", "READY", "PRESENTED", "PAID", "REJECTED");
+        statusCombo.getSelectionModel().select(existing.status());
+        TextField csvField = new TextField(existing.csvAeat());
+
+        recompute.run();
+        Label hint = new Label(t("aeat190.hint"));
+        hint.setWrapText(true); hint.getStyleClass().add("settings-hint");
+        HBox tools = new HBox(8, recalcBtn, addBtn, delBtn);
+        tools.setAlignment(Pos.CENTER_LEFT);
+        HBox foot = new HBox(8, new Label(t("tax.editor.status")), statusCombo,
+                new Label(t("tax.editor.csv")), csvField);
+        foot.setAlignment(Pos.CENTER_LEFT);
+        VBox box = new VBox(10, hint, tools, totalsLabel, table, new Separator(), foot);
+        VBox.setVgrow(table, Priority.ALWAYS);
+        box.setPrefWidth(720);
+        installDialog(dialog, box);
+        dialog.setResizable(true);
+
+        dialog.showAndWait().ifPresent(bt -> {
+            if (bt != saveBt) return;
+            java.math.BigDecimal totBase = java.math.BigDecimal.ZERO, totRet = java.math.BigDecimal.ZERO;
+            StringBuilder rowsJson = new StringBuilder("[");
+            for (int i = 0; i < rows.size(); i++) {
+                var r = rows.get(i);
+                totBase = totBase.add(dec347(r.base));
+                totRet = totRet.add(dec347(r.retencion));
+                if (i > 0) rowsJson.append(",");
+                rowsJson.append("{\"nif\":\"").append(jsonEsc(r.nif))
+                        .append("\",\"name\":\"").append(jsonEsc(r.name))
+                        .append("\",\"subclave\":\"").append("G".equalsIgnoreCase(r.clave) ? "G" : "A")
+                        .append("\",\"clave\":\"").append("G".equalsIgnoreCase(r.clave) ? "G" : "A")
+                        .append("\",\"base\":").append(dec347(r.base).toPlainString())
+                        .append(",\"retencion\":").append(dec347(r.retencion).toPlainString())
+                        .append("}");
+            }
+            rowsJson.append("]");
+            String json = "{\"year\":" + existing.periodYear()
+                    + ",\"perceptoresCount\":" + rows.size()
+                    + ",\"totalBase\":" + totBase.toPlainString()
+                    + ",\"totalRetenciones\":" + totRet.toPlainString()
+                    + ",\"rows\":" + rowsJson + "}";
+            saveFiling(existing, statusCombo.getValue(), json,
+                    totRet.setScale(2, java.math.RoundingMode.HALF_UP),
+                    csvField.getText(), existing.notes(), java.util.List.of());
+        });
+    }
+
+    /** Cuota IVA = base × tipo% (para el 390). */
+    private java.math.BigDecimal pct390(TextField baseField, int tipo) {
+        return dec347(baseField.getText())
+                .multiply(new java.math.BigDecimal(tipo)).divide(new java.math.BigDecimal(100));
+    }
+
+    private String eur390(java.math.BigDecimal v) {
+        return v.setScale(2, java.math.RoundingMode.HALF_UP).toPlainString() + " €";
     }
 
     private void saveFiling(com.benjagest.ui.model.TaxFilingEntry existing, String status,

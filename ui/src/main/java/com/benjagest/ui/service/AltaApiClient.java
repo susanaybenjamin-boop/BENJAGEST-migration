@@ -1014,10 +1014,87 @@ public class AltaApiClient {
         return out;
     }
 
+    // ---- AEAT-ED-3: modelo 190 (retenciones IRPF) ----
+
+    public java.util.List<com.benjagest.ui.model.Aeat190Row> preview190(int year)
+            throws IOException, InterruptedException {
+        HttpResponse<String> r = send(req(baseUrl + "/aeat/extras/190/" + year + "/preview").GET());
+        return parse190Rows(r.body());
+    }
+
+    public java.util.List<com.benjagest.ui.model.Aeat190Row> parse190(String json) {
+        return parse190Rows(json);
+    }
+
+    private java.util.List<com.benjagest.ui.model.Aeat190Row> parse190Rows(String json) {
+        java.util.List<com.benjagest.ui.model.Aeat190Row> out = new ArrayList<>();
+        if (json == null || json.isBlank()) return out;
+        int idx = json.indexOf("\"rows\"");
+        String region = idx >= 0 ? json.substring(idx) : json;
+        for (String obj : splitTopLevelObjects(region)) {
+            if (!obj.contains("\"nif\"") && !obj.contains("\"retencion\"")) continue;
+            String clave = textField(obj, "clave");
+            if (clave.isBlank()) clave = textField(obj, "subclave");
+            out.add(new com.benjagest.ui.model.Aeat190Row(
+                    clave, textField(obj, "nif"), textField(obj, "name"),
+                    numberField(obj, "base"), numberField(obj, "retencion")));
+        }
+        return out;
+    }
+
     /** Extrae un campo numérico (sin comillas) como texto; "0" si null/ausente. */
     private String numberField(String json, String field) {
+        String v = numberFieldOrNull(json, field);
+        return v == null ? "0" : v;
+    }
+
+    private String numberFieldOrNull(String json, String field) {
+        if (json == null) return null;
         Matcher m = Pattern.compile("\"" + field + "\"\\s*:\\s*(-?\\d+(?:\\.\\d+)?)").matcher(json);
-        return m.find() ? m.group(1) : "0";
+        return m.find() ? m.group(1) : null;
+    }
+
+    /** Primer campo numérico presente entre varias claves; "0" si ninguna. */
+    private String coalesceNum(String json, String... fields) {
+        for (String f : fields) {
+            String v = numberFieldOrNull(json, f);
+            if (v != null) return v;
+        }
+        return "0";
+    }
+
+    // ---- AEAT-ED-2: modelo 390 (resumen anual IVA) ----
+
+    /** Calcula el 390 del año desde facturas/compras (no persiste): bases por tipo. */
+    public com.benjagest.ui.model.Aeat390Data preview390(int year)
+            throws IOException, InterruptedException {
+        HttpResponse<String> r = send(req(baseUrl + "/aeat/extras/390/" + year + "/preview").GET());
+        String j = r.body();
+        com.benjagest.ui.model.Aeat390Data d = new com.benjagest.ui.model.Aeat390Data();
+        d.baseDev4 = numberField(j, "01_base04");
+        d.baseDev10 = numberField(j, "02_base10");
+        d.baseDev21 = numberField(j, "03_base21");
+        d.baseDed4 = numberField(j, "22_base_soportada_04");
+        d.baseDed10 = numberField(j, "24_base_soportada_10");
+        d.baseDed21 = numberField(j, "28_base_soportada_21");
+        return d;
+    }
+
+    /** Lee el 390 del JSON guardado (mis claves planas) o, si es uno ya generado,
+     *  de las casillas del backend. */
+    public com.benjagest.ui.model.Aeat390Data parse390(String json) {
+        com.benjagest.ui.model.Aeat390Data d = new com.benjagest.ui.model.Aeat390Data();
+        if (json == null || json.isBlank()) return d;
+        d.baseDev4 = coalesceNum(json, "baseDev4", "01_base04");
+        d.baseDev10 = coalesceNum(json, "baseDev10", "02_base10");
+        d.baseDev21 = coalesceNum(json, "baseDev21", "03_base21");
+        d.baseDed4 = coalesceNum(json, "baseDed4", "22_base_soportada_04");
+        d.baseDed10 = coalesceNum(json, "baseDed10", "24_base_soportada_10");
+        d.baseDed21 = coalesceNum(json, "baseDed21", "28_base_soportada_21");
+        d.exentas = numberField(json, "exentas");
+        d.intracom = numberField(json, "intracom");
+        d.compensaciones = numberField(json, "compensaciones");
+        return d;
     }
 
     private String textField(String json, String field) {
