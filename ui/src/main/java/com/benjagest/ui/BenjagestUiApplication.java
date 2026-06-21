@@ -9980,6 +9980,12 @@ public class BenjagestUiApplication extends Application {
     private TableView<com.benjagest.ui.model.SifEventEntry> sifEventsTable;
     private ComboBox<String> sifEventTypeFilter;
 
+    /** Traduce el código de tipo de evento SIF (INVOICE_VALIDATED → "Factura validada"…). */
+    private String localizedSifEventType(String code) {
+        if (code == null || code.isBlank()) return "";
+        return t("sif.event_type." + code);
+    }
+
     private Node sifEventsAuditBlock() {
         Label header = label(t("billing.config.sif.section"), "settings-section-title");
         Label hint = new Label(t("billing.config.sif.hint"));
@@ -9998,6 +10004,14 @@ public class BenjagestUiApplication extends Application {
                 "SUMMARY_6H", "SUMMARY_SHUTDOWN");
         sifEventTypeFilter.getSelectionModel().selectFirst();
         sifEventTypeFilter.getStyleClass().add("form-input");
+        // Mostrar los tipos traducidos en el combo (el valor interno sigue siendo el
+        // código, para que el filtro funcione igual).
+        sifEventTypeFilter.setConverter(new javafx.util.StringConverter<>() {
+            @Override public String toString(String s) {
+                return s == null || s.equals(t("list.filter.all")) ? s : localizedSifEventType(s);
+            }
+            @Override public String fromString(String s) { return s; }
+        });
 
         sifEventsTable = new TableView<>();
         sifEventsTable.getStyleClass().add("data-table");
@@ -10012,7 +10026,7 @@ public class BenjagestUiApplication extends Application {
         colWhen.setComparator(ISO_DATE_COMPARATOR);
         TableColumn<com.benjagest.ui.model.SifEventEntry, String> colType =
                 new TableColumn<>(t("billing.config.sif.col.type"));
-        colType.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().eventType()));
+        colType.setCellValueFactory(c -> new SimpleStringProperty(localizedSifEventType(c.getValue().eventType())));
         colType.setPrefWidth(220);
         TableColumn<com.benjagest.ui.model.SifEventEntry, String> colHash =
                 new TableColumn<>(t("billing.config.sif.col.hash"));
@@ -12893,6 +12907,19 @@ public class BenjagestUiApplication extends Application {
                 case "billing.config.sif.placeholder.empty" -> "No SIF events yet. They appear as soon as the system starts and invoices are validated.";
                 case "billing.config.sif.col.when" -> "When";
                 case "billing.config.sif.col.type" -> "Event type";
+                case "sif.event_type.SYSTEM_START" -> "System start";
+                case "sif.event_type.SYSTEM_STOP" -> "System stop";
+                case "sif.event_type.INVOICE_VALIDATED" -> "Invoice validated";
+                case "sif.event_type.INVOICE_VOIDED" -> "Invoice voided";
+                case "sif.event_type.ANOMALY_DETECTION_INVOICES_RUN" -> "Anomaly scan (invoices)";
+                case "sif.event_type.ANOMALY_DETECTION_INVOICES_HIT" -> "Anomaly found (invoices)";
+                case "sif.event_type.ANOMALY_DETECTION_EVENTS_RUN" -> "Anomaly scan (events)";
+                case "sif.event_type.ANOMALY_DETECTION_EVENTS_HIT" -> "Anomaly found (events)";
+                case "sif.event_type.BACKUP_RESTORED" -> "Backup restored";
+                case "sif.event_type.EXPORT_INVOICES" -> "Invoices export";
+                case "sif.event_type.EXPORT_EVENTS" -> "Events export";
+                case "sif.event_type.SUMMARY_6H" -> "6h summary";
+                case "sif.event_type.SUMMARY_SHUTDOWN" -> "Shutdown summary";
                 case "billing.config.sif.col.hash" -> "Hash";
                 case "billing.config.sif.col.payload" -> "Payload";
                 case "billing.config.sif.refresh" -> "Refresh";
@@ -13844,6 +13871,19 @@ public class BenjagestUiApplication extends Application {
             case "billing.config.sif.placeholder.empty" -> "Aun no hay eventos SIF. Apareceran en cuanto arranque el sistema y se validen facturas.";
             case "billing.config.sif.col.when" -> "Cuando";
             case "billing.config.sif.col.type" -> "Tipo de evento";
+            case "sif.event_type.SYSTEM_START" -> "Arranque del sistema";
+            case "sif.event_type.SYSTEM_STOP" -> "Parada del sistema";
+            case "sif.event_type.INVOICE_VALIDATED" -> "Factura validada";
+            case "sif.event_type.INVOICE_VOIDED" -> "Factura anulada";
+            case "sif.event_type.ANOMALY_DETECTION_INVOICES_RUN" -> "Escaneo de anomalías (facturas)";
+            case "sif.event_type.ANOMALY_DETECTION_INVOICES_HIT" -> "Anomalía detectada (facturas)";
+            case "sif.event_type.ANOMALY_DETECTION_EVENTS_RUN" -> "Escaneo de anomalías (eventos)";
+            case "sif.event_type.ANOMALY_DETECTION_EVENTS_HIT" -> "Anomalía detectada (eventos)";
+            case "sif.event_type.BACKUP_RESTORED" -> "Copia restaurada";
+            case "sif.event_type.EXPORT_INVOICES" -> "Exportación de facturas";
+            case "sif.event_type.EXPORT_EVENTS" -> "Exportación de eventos";
+            case "sif.event_type.SUMMARY_6H" -> "Resumen 6h";
+            case "sif.event_type.SUMMARY_SHUTDOWN" -> "Resumen al apagar";
             case "billing.config.sif.col.hash" -> "Huella";
             case "billing.config.sif.col.payload" -> "Datos";
             case "billing.config.sif.refresh" -> "Refrescar";
