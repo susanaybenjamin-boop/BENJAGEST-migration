@@ -18461,6 +18461,8 @@ public class BenjagestUiApplication extends Application {
             case "enum.customer_type.SELF_EMPLOYED" -> "Self-employed";
             case "enum.customer_type.PUBLIC_ENTITY" -> "Public entity";
             case "enum.customer_type.OTHER" -> "Other";
+            case "enum.customer_type.ADVISORY" -> "Accounting firm";
+            case "enum.customer_type.CLIENT" -> "Client";
             case "enum.ss_regime.RETA" -> "RETA (self-employed)";
             case "enum.ss_regime.GENERAL" -> "General regime";
             case "enum.ss_regime.AUTONOMO_SOCIETARIO" -> "RETA (corporate)";
@@ -19599,6 +19601,8 @@ public class BenjagestUiApplication extends Application {
             case "enum.customer_type.SELF_EMPLOYED" -> "Autónomo";
             case "enum.customer_type.PUBLIC_ENTITY" -> "Entidad pública";
             case "enum.customer_type.OTHER" -> "Otro";
+            case "enum.customer_type.ADVISORY" -> "Asesoría";
+            case "enum.customer_type.CLIENT" -> "Cliente";
             case "enum.ss_regime.RETA" -> "RETA (autónomos)";
             case "enum.ss_regime.GENERAL" -> "Régimen general";
             case "enum.ss_regime.AUTONOMO_SOCIETARIO" -> "RETA societario";
@@ -34719,6 +34723,7 @@ public class BenjagestUiApplication extends Application {
 
         ComboBox<String> statusCombo = new ComboBox<>();
         statusCombo.getItems().addAll("DRAFT", "READY", "PRESENTED", "PAID", "REJECTED");
+        applyFilingStatusLabels(statusCombo);
         statusCombo.getSelectionModel().select(existing.status());
         TextField csvField = new TextField(existing.csvAeat());
 
@@ -34793,6 +34798,7 @@ public class BenjagestUiApplication extends Application {
 
         ComboBox<String> statusCombo = new ComboBox<>();
         statusCombo.getItems().addAll("DRAFT", "READY", "PRESENTED", "PAID", "REJECTED");
+        applyFilingStatusLabels(statusCombo);
         statusCombo.getSelectionModel().select(existing.status());
         TextField csvField = new TextField(existing.csvAeat());
 
@@ -34938,6 +34944,7 @@ public class BenjagestUiApplication extends Application {
 
         ComboBox<String> statusCombo = new ComboBox<>();
         statusCombo.getItems().addAll("DRAFT", "READY", "PRESENTED", "PAID", "REJECTED");
+        applyFilingStatusLabels(statusCombo);
         statusCombo.getSelectionModel().select(existing.status());
         TextField csvField = new TextField(existing.csvAeat());
 
@@ -35021,6 +35028,14 @@ public class BenjagestUiApplication extends Application {
         return s.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n");
     }
 
+    /** Etiquetas traducidas para un combo de estado de declaración (DRAFT→Borrador…). */
+    private void applyFilingStatusLabels(ComboBox<String> combo) {
+        combo.setConverter(new javafx.util.StringConverter<>() {
+            @Override public String toString(String s) { return s == null ? "" : t("tax.filing_status." + s); }
+            @Override public String fromString(String s) { return s; }
+        });
+    }
+
     /**
      * AEAT-ED-2 — Editor específico y editable del modelo 390 (resumen anual IVA).
      * Bases IVA devengado/deducible al 4/10/21 (editables) → cuotas (base×tipo),
@@ -35063,6 +35078,7 @@ public class BenjagestUiApplication extends Application {
 
         ComboBox<String> statusCombo = new ComboBox<>();
         statusCombo.getItems().addAll("DRAFT", "READY", "PRESENTED", "PAID", "REJECTED");
+        applyFilingStatusLabels(statusCombo);
         statusCombo.getSelectionModel().select(existing.status());
         TextField csvField = new TextField(existing.csvAeat());
 
@@ -35228,6 +35244,7 @@ public class BenjagestUiApplication extends Application {
 
         ComboBox<String> statusCombo = new ComboBox<>();
         statusCombo.getItems().addAll("DRAFT", "READY", "PRESENTED", "PAID", "REJECTED");
+        applyFilingStatusLabels(statusCombo);
         statusCombo.getSelectionModel().select(existing.status());
         TextField csvField = new TextField(existing.csvAeat());
 
