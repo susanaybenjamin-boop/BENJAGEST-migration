@@ -15,6 +15,7 @@
     <modules>
         <module>backend-java</module>
         <module>ui</module>
+        <module>gestor-navegador</module>
     </modules>
 
     <properties>
