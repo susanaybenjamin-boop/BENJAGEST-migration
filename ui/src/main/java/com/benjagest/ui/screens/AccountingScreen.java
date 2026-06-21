@@ -1032,6 +1032,7 @@ public class AccountingScreen {
         dlg.getDialogPane().getButtonTypes().addAll(applyBt, ButtonType.CANCEL);
 
         DatePicker datePicker = new DatePicker(LocalDate.now());
+        com.benjagest.ui.support.EditableCells.installFlexibleConverter(datePicker);
         TextField conceptField = new TextField(
                 first(tpl.defaultConcept(), tpl.name()));
         CheckBox postNow = new CheckBox(tt.apply("accounting.tpl.post_now"));

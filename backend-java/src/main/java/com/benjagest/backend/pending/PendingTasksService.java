@@ -69,6 +69,7 @@ public class PendingTasksService {
                 "status IN ('DRAFT','CALCULATED')", in, args));
         add(out, "LEAVE_REQUESTS", WARNING, count("employee_leave_requests",
                 "status = 'REQUESTED'", in, args));
+        add(out, "SUPPLIERS_NO_NIF", WARNING, countSuppliersNoNif(in, args));
         add(out, "UNDELIVERED_PAYSLIPS", INFO, count("payslips",
                 "status = 'PAID' AND delivered_at IS NULL", in, args));
         add(out, "OVERDUE_FILINGS", URGENT, count("tax_filings",
@@ -84,6 +85,29 @@ public class PendingTasksService {
 
     private void add(List<Bucket> out, String type, String severity, int count) {
         if (count > 0) out.add(new Bucket(type, count, severity));
+    }
+
+    /**
+     * Proveedores del año en curso cuyo total supera el umbral del 347 (3.005,06 €)
+     * pero NO tienen NIF: la asesoría debe pedírselo antes de presentar el 347
+     * (sin NIF no entran en el modelo). Agrupa por nombre de proveedor.
+     */
+    private int countSuppliersNoNif(String inClause, Object[] args) {
+        try {
+            Integer n = jdbc.queryForObject(
+                    "SELECT COUNT(*) FROM ("
+                  + "  SELECT supplier_name FROM purchase_invoices"
+                  + "   WHERE company_id IN (" + inClause + ")"
+                  + "     AND (supplier_nif IS NULL OR supplier_nif = '')"
+                  + "     AND YEAR(invoice_date) = YEAR(CURRENT_DATE)"
+                  + "   GROUP BY supplier_name"
+                  + "   HAVING SUM(total_amount) > 3005.06"
+                  + ") t",
+                    Integer.class, args);
+            return n == null ? 0 : n;
+        } catch (Exception ex) {
+            return 0;
+        }
     }
 
     /** Cuenta filas. table/cond son constantes del código (sin input externo);

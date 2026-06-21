@@ -54,19 +54,34 @@ public class AdvisoryInvitationService {
     private final TenantContext tenantContext;
     private final AuditService auditService;
     private final com.benjagest.backend.advisory.notifications.AdvisoryNotificationService notificationService;
+    private final com.benjagest.backend.realtime.RealtimeService realtime;
 
     public AdvisoryInvitationService(AdvisoryInvitationRepository repository,
                                        JdbcTemplate jdbcTemplate,
                                        CurrentUserService currentUserService,
                                        TenantContext tenantContext,
                                        AuditService auditService,
-                                       com.benjagest.backend.advisory.notifications.AdvisoryNotificationService notificationService) {
+                                       com.benjagest.backend.advisory.notifications.AdvisoryNotificationService notificationService,
+                                       com.benjagest.backend.realtime.RealtimeService realtime) {
         this.repository = repository;
         this.jdbcTemplate = jdbcTemplate;
         this.currentUserService = currentUserService;
         this.tenantContext = tenantContext;
         this.auditService = auditService;
         this.notificationService = notificationService;
+        this.realtime = realtime;
+    }
+
+    /** NOTIF-RT — empuja "invitation" a las empresas cuyo NIF coincide con el invitado
+     *  (la invitación se dirige por NIF/email, aún sin companyId hasta aceptar). */
+    private void emitInvitationToNif(String nif) {
+        if (nif == null || nif.isBlank()) return;
+        try {
+            for (String id : jdbcTemplate.queryForList(
+                    "SELECT id FROM companies WHERE tax_identifier = ?", String.class, nif)) {
+                realtime.publishToCompany(id, "invitation", "{}");
+            }
+        } catch (Exception ignored) {}
     }
 
     /**
@@ -122,6 +137,8 @@ public class AdvisoryInvitationService {
         auditService.recordAdvisoryInvitationCreated(
                 user.userId(), advisoryCompanyId, id, invitation.invitedNif(),
                 invitation.invitedEmail());
+        // NOTIF-RT: avisa al empresario destinatario (su lista de invitaciones).
+        emitInvitationToNif(invitation.invitedNif());
         return invitation;
     }
 
@@ -145,6 +162,8 @@ public class AdvisoryInvitationService {
         AuthenticatedUser user = currentUserService.require();
         auditService.recordAdvisoryInvitationRevoked(
                 user.userId(), tenantContext.getCurrentCompanyId(), id);
+        // NOTIF-RT: el empresario destinatario debe ver que desaparece de su lista.
+        emitInvitationToNif(inv.invitedNif());
     }
 
     // ==================== EMPRESARIO ====================
@@ -231,6 +250,11 @@ public class AdvisoryInvitationService {
                 "El cliente con NIF " + (inv.invitedNif() == null ? "?" : inv.invitedNif())
                         + " ha aceptado la invitación. Ya puedes facturarle y gestionar sus libros.");
 
+        // NOTIF-RT: la asesoría ve el nuevo cliente vinculado (cartera) y el
+        // empresario ve desaparecer la invitación aceptada de su lista.
+        realtime.publishToCompany(inv.advisoryCompanyId(), "clients", "{}");
+        realtime.publishToCompany(tenant, "invitation", "{}");
+
         return repository.findById(inv.id()).orElseThrow();
     }
 
@@ -307,6 +331,8 @@ public class AdvisoryInvitationService {
                 "Cliente rechazó la invitación",
                 "El cliente con NIF " + (inv.invitedNif() == null ? "?" : inv.invitedNif())
                         + " ha rechazado la invitación. Considera contactarle para entender el motivo.");
+        // NOTIF-RT: la invitación rechazada desaparece de la lista del empresario.
+        realtime.publishToCompany(clientTenant, "invitation", "{}");
     }
 
     /**
@@ -342,6 +368,8 @@ public class AdvisoryInvitationService {
                 .ifPresent(inv -> repository.updateStatusUnlinked(inv.id()));
 
         auditService.recordAdvisoryUnlinked(user.userId(), tenant, currentParent);
+        // NOTIF-RT: la asesoría ve desaparecer al cliente desvinculado de su cartera.
+        realtime.publishToCompany(currentParent, "clients", "{}");
     }
 
     /**

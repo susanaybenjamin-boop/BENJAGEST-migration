@@ -86,9 +86,9 @@ public class TimeClockExportService {
                     .append(DATETIME.format(ev.eventTime().atZone(ZoneId.systemDefault())))
                     .append(';')
                     .append(escape(emp)).append(';')
-                    .append(nullSafe(ev.eventType())).append(';')
-                    .append(nullSafe(ev.origin())).append(';')
-                    .append(nullSafe(ev.status())).append('\n');
+                    .append(eventTypeLabel(ev.eventType())).append(';')
+                    .append(originLabel(ev.origin())).append(';')
+                    .append(statusLabel(ev.status())).append('\n');
         }
         byte[] body = sb.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8);
         recordAuditExport("CSV", from, to, employeeId, events.size(), sha256(body));
@@ -136,9 +136,9 @@ public class TimeClockExportService {
             addCell(table, csv, cellFont);
             addCell(table, DATETIME.format(ev.eventTime().atZone(ZoneId.systemDefault())), cellFont);
             addCell(table, emp, cellFont);
-            addCell(table, nullSafe(ev.eventType()), cellFont);
-            addCell(table, nullSafe(ev.origin()), cellFont);
-            addCell(table, nullSafe(ev.status()), cellFont);
+            addCell(table, eventTypeLabel(ev.eventType()), cellFont);
+            addCell(table, originLabel(ev.origin()), cellFont);
+            addCell(table, statusLabel(ev.status()), cellFont);
         }
         doc.add(table);
 
@@ -210,6 +210,40 @@ public class TimeClockExportService {
     }
 
     private static String nullSafe(String s) { return s == null ? "" : s; }
+
+    /** Etiqueta legible (ES) del tipo de fichaje para el documento legal. */
+    private static String eventTypeLabel(String code) {
+        if (code == null || code.isBlank()) return "";
+        return switch (code) {
+            case "IN" -> "Entrada";
+            case "OUT" -> "Salida";
+            case "BREAK_START" -> "Inicio pausa";
+            case "BREAK_END" -> "Fin pausa";
+            default -> code;
+        };
+    }
+
+    private static String originLabel(String code) {
+        if (code == null || code.isBlank()) return "";
+        return switch (code) {
+            case "WEB" -> "Web";
+            case "MOBILE" -> "Móvil";
+            case "KIOSK" -> "Kiosco";
+            case "MANUAL" -> "Manual";
+            case "DESKTOP" -> "Escritorio";
+            default -> code;
+        };
+    }
+
+    private static String statusLabel(String code) {
+        if (code == null || code.isBlank()) return "";
+        return switch (code) {
+            case "VALID" -> "Válido";
+            case "VOIDED" -> "Anulado";
+            case "DISPUTED" -> "En revisión";
+            default -> code;
+        };
+    }
 
     private static String escape(String s) {
         if (s == null) return "";

@@ -175,6 +175,16 @@ public final class EditableCells {
     }
 
     /**
+     * Máscara de FECHA ISO en un TextField: el usuario teclea solo dígitos y los
+     * guiones {@code yyyy-MM-dd} aparecen solos (para campos que guardan/parsean
+     * la fecha en formato ISO, no DatePicker). P. ej. {@code 20260131} → {@code 2026-01-31}.
+     */
+    public static void installIsoDateMask(TextField field) {
+        if (field == null) return;
+        field.setTextFormatter(new TextFormatter<>(c -> maskChange(c, new int[]{4, 6}, '-', 8)));
+    }
+
+    /**
      * Reformatea el texto de un cambio: extrae solo los dígitos (máximo
      * {@code maxDigits}) e inserta {@code sep} después de las posiciones
      * indicadas en {@code sepAfter}. Caret al final. Los separadores solo

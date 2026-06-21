@@ -82,7 +82,6 @@ public class AeatExtraModelsService {
                   FROM purchase_invoices
                  WHERE company_id = ?
                    AND YEAR(invoice_date) = ?
-                   AND supplier_nif IS NOT NULL
                 """, (rs, n) -> new Object[]{
                         rs.getString("supplier_nif"),
                         rs.getString("supplier_name"),
@@ -91,9 +90,15 @@ public class AeatExtraModelsService {
                 companyId, year);
         for (Object[] r : purchaseRows) {
             String nif = (String) r[0];
-            if (nif == null || nif.isBlank()) continue;
-            bySupplier.computeIfAbsent(nif.toUpperCase(),
-                    k -> new NifTotals((String) r[1]))
+            String name = (String) r[1];
+            // Incluimos también proveedores SIN NIF (la asesoría lo rellena en el editor);
+            // se agrupan por nombre. Solo se descartan filas sin NIF y sin nombre.
+            if ((nif == null || nif.isBlank()) && (name == null || name.isBlank())) continue;
+            boolean hasNif = nif != null && !nif.isBlank();
+            String key = hasNif ? "NIF:" + nif.toUpperCase().trim()
+                    : "NAME:" + (name == null ? "" : name.toUpperCase().trim());
+            bySupplier.computeIfAbsent(key,
+                    k -> new NifTotals(name, hasNif ? nif.toUpperCase().trim() : ""))
                     .add((LocalDate) r[2], (BigDecimal) r[3]);
         }
 
@@ -102,22 +107,29 @@ public class AeatExtraModelsService {
         // si hay customers; si no, solo por legal_name (el asesor lo
         // revisará — esto es el behavior 80%).
         List<Object[]> salesRows = jdbcTemplate.query("""
-                SELECT customer_legal_name, invoice_date, total_amount, customer_id
-                  FROM sales_invoices
-                 WHERE company_id = ?
-                   AND YEAR(invoice_date) = ?
-                   AND status IN ('VALIDATED','PAID','PARTIAL','OVERDUE')
+                SELECT c.legal_name AS customer_legal_name,
+                       COALESCE(c.tax_identifier, '') AS customer_nif,
+                       s.invoice_date, s.total AS total_amount
+                  FROM sales_invoices s
+                  JOIN customers c ON c.id = s.customer_id
+                 WHERE s.company_id = ?
+                   AND YEAR(s.invoice_date) = ?
+                   AND s.status = 'VALIDATED'
                 """, (rs, n) -> new Object[]{
                         rs.getString("customer_legal_name"),
+                        rs.getString("customer_nif"),
                         rs.getDate("invoice_date").toLocalDate(),
                         rs.getBigDecimal("total_amount")},
                 companyId, year);
         for (Object[] r : salesRows) {
             String name = (String) r[0];
+            String nif = (String) r[1];
             if (name == null || name.isBlank()) continue;
-            String key = name.toUpperCase().trim();
-            byCustomer.computeIfAbsent(key, k -> new NifTotals(name))
-                    .add((LocalDate) r[1], (BigDecimal) r[2]);
+            // Clave por NIF si existe; si no, por nombre (el asesor corrige el NIF en el editor).
+            boolean hasNif = nif != null && !nif.isBlank();
+            String key = hasNif ? "NIF:" + nif.toUpperCase().trim() : "NAME:" + name.toUpperCase().trim();
+            byCustomer.computeIfAbsent(key, k -> new NifTotals(name, hasNif ? nif.toUpperCase().trim() : ""))
+                    .add((LocalDate) r[2], (BigDecimal) r[3]);
         }
 
         // Filtrar por umbral 3.005,06€.
@@ -125,14 +137,14 @@ public class AeatExtraModelsService {
         for (Map.Entry<String, NifTotals> e : bySupplier.entrySet()) {
             if (e.getValue().total.compareTo(THRESHOLD_347) > 0) {
                 NifTotals t = e.getValue();
-                rows.add(new Model347Row("A", e.getKey(), t.name,
+                rows.add(new Model347Row("A", t.nif, t.name,
                         t.q1, t.q2, t.q3, t.q4, t.total));
             }
         }
         for (Map.Entry<String, NifTotals> e : byCustomer.entrySet()) {
             if (e.getValue().total.compareTo(THRESHOLD_347) > 0) {
                 NifTotals t = e.getValue();
-                rows.add(new Model347Row("B", e.getKey(), t.name,
+                rows.add(new Model347Row("B", t.nif, t.name,
                         t.q1, t.q2, t.q3, t.q4, t.total));
             }
         }
@@ -161,20 +173,20 @@ public class AeatExtraModelsService {
         // IVA REPERCUTIDO desde sales_invoices.
         VatBreakdown rep = jdbcTemplate.queryForObject("""
                 SELECT
-                  COALESCE(SUM(CASE WHEN vat_total > 0 AND total_amount > 0
+                  COALESCE(SUM(CASE WHEN vat_total > 0 AND total > 0
                                     AND ABS((vat_total / NULLIF(subtotal, 0)) * 100 - 4) < 1
                                     THEN subtotal ELSE 0 END), 0) AS base04,
-                  COALESCE(SUM(CASE WHEN vat_total > 0 AND total_amount > 0
+                  COALESCE(SUM(CASE WHEN vat_total > 0 AND total > 0
                                     AND ABS((vat_total / NULLIF(subtotal, 0)) * 100 - 10) < 1
                                     THEN subtotal ELSE 0 END), 0) AS base10,
-                  COALESCE(SUM(CASE WHEN vat_total > 0 AND total_amount > 0
+                  COALESCE(SUM(CASE WHEN vat_total > 0 AND total > 0
                                     AND ABS((vat_total / NULLIF(subtotal, 0)) * 100 - 21) < 1
                                     THEN subtotal ELSE 0 END), 0) AS base21,
                   COALESCE(SUM(vat_total), 0) AS iva_total
                   FROM sales_invoices
                  WHERE company_id = ?
                    AND YEAR(invoice_date) = ?
-                   AND status IN ('VALIDATED','PAID','PARTIAL','OVERDUE')
+                   AND status = 'VALIDATED'
                 """, (rs, n) -> new VatBreakdown(
                         rs.getBigDecimal("base04"),
                         rs.getBigDecimal("base10"),
@@ -374,10 +386,12 @@ public class AeatExtraModelsService {
 
     private static class NifTotals {
         String name;
+        String nif;
         BigDecimal q1 = BigDecimal.ZERO, q2 = BigDecimal.ZERO,
                    q3 = BigDecimal.ZERO, q4 = BigDecimal.ZERO,
                    total = BigDecimal.ZERO;
-        NifTotals(String n) { this.name = n; }
+        NifTotals(String n) { this(n, ""); }
+        NifTotals(String n, String nif) { this.name = n; this.nif = nif == null ? "" : nif; }
         void add(LocalDate date, BigDecimal amt) {
             if (amt == null) return;
             int q = (date.getMonthValue() - 1) / 3 + 1;
