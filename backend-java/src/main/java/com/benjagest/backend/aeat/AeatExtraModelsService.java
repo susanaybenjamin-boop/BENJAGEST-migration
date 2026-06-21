@@ -102,22 +102,29 @@ public class AeatExtraModelsService {
         // si hay customers; si no, solo por legal_name (el asesor lo
         // revisará — esto es el behavior 80%).
         List<Object[]> salesRows = jdbcTemplate.query("""
-                SELECT customer_legal_name, invoice_date, total_amount, customer_id
-                  FROM sales_invoices
-                 WHERE company_id = ?
-                   AND YEAR(invoice_date) = ?
-                   AND status IN ('VALIDATED','PAID','PARTIAL','OVERDUE')
+                SELECT c.legal_name AS customer_legal_name,
+                       COALESCE(c.tax_identifier, '') AS customer_nif,
+                       s.invoice_date, s.total AS total_amount
+                  FROM sales_invoices s
+                  JOIN customers c ON c.id = s.customer_id
+                 WHERE s.company_id = ?
+                   AND YEAR(s.invoice_date) = ?
+                   AND s.status = 'VALIDATED'
                 """, (rs, n) -> new Object[]{
                         rs.getString("customer_legal_name"),
+                        rs.getString("customer_nif"),
                         rs.getDate("invoice_date").toLocalDate(),
                         rs.getBigDecimal("total_amount")},
                 companyId, year);
         for (Object[] r : salesRows) {
             String name = (String) r[0];
+            String nif = (String) r[1];
             if (name == null || name.isBlank()) continue;
-            String key = name.toUpperCase().trim();
+            // Clave por NIF si existe; si no, por nombre (el asesor corrige el NIF en el editor).
+            String key = (nif != null && !nif.isBlank())
+                    ? nif.toUpperCase().trim() : name.toUpperCase().trim();
             byCustomer.computeIfAbsent(key, k -> new NifTotals(name))
-                    .add((LocalDate) r[1], (BigDecimal) r[2]);
+                    .add((LocalDate) r[2], (BigDecimal) r[3]);
         }
 
         // Filtrar por umbral 3.005,06€.
@@ -161,20 +168,20 @@ public class AeatExtraModelsService {
         // IVA REPERCUTIDO desde sales_invoices.
         VatBreakdown rep = jdbcTemplate.queryForObject("""
                 SELECT
-                  COALESCE(SUM(CASE WHEN vat_total > 0 AND total_amount > 0
+                  COALESCE(SUM(CASE WHEN vat_total > 0 AND total > 0
                                     AND ABS((vat_total / NULLIF(subtotal, 0)) * 100 - 4) < 1
                                     THEN subtotal ELSE 0 END), 0) AS base04,
-                  COALESCE(SUM(CASE WHEN vat_total > 0 AND total_amount > 0
+                  COALESCE(SUM(CASE WHEN vat_total > 0 AND total > 0
                                     AND ABS((vat_total / NULLIF(subtotal, 0)) * 100 - 10) < 1
                                     THEN subtotal ELSE 0 END), 0) AS base10,
-                  COALESCE(SUM(CASE WHEN vat_total > 0 AND total_amount > 0
+                  COALESCE(SUM(CASE WHEN vat_total > 0 AND total > 0
                                     AND ABS((vat_total / NULLIF(subtotal, 0)) * 100 - 21) < 1
                                     THEN subtotal ELSE 0 END), 0) AS base21,
                   COALESCE(SUM(vat_total), 0) AS iva_total
                   FROM sales_invoices
                  WHERE company_id = ?
                    AND YEAR(invoice_date) = ?
-                   AND status IN ('VALIDATED','PAID','PARTIAL','OVERDUE')
+                   AND status = 'VALIDATED'
                 """, (rs, n) -> new VatBreakdown(
                         rs.getBigDecimal("base04"),
                         rs.getBigDecimal("base10"),
