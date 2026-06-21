@@ -2,7 +2,6 @@ package com.benjagest.navegador;
 
 import java.awt.BorderLayout;
 import java.awt.Component;
-import java.awt.Dimension;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import java.io.File;
@@ -15,7 +14,6 @@ import javax.swing.JFrame;
 import javax.swing.JPanel;
 import javax.swing.JTabbedPane;
 import javax.swing.JTextField;
-import javax.swing.JToolBar;
 import javax.swing.SwingUtilities;
 import me.friwi.jcefmaven.CefAppBuilder;
 import me.friwi.jcefmaven.MavenCefAppHandlerAdapter;
@@ -132,42 +130,51 @@ public final class BrowserLauncher {
         SwingUtilities.invokeLater(() -> frame.setVisible(true));
     }
 
-    /** Una pestaña = barra (atrás/adelante/recargar + dirección) + navegador. */
+    /** Una pestaña = barra (atrás/adelante/recargar + dirección + cerrar) + navegador. */
     private static JPanel buildTab(CefBrowser browser) {
         JPanel panel = new JPanel(new BorderLayout());
 
-        JToolBar bar = new JToolBar();
-        bar.setFloatable(false);
-        bar.setBorder(javax.swing.BorderFactory.createEmptyBorder(6, 8, 6, 8));
-        JButton back = new JButton("◀");
-        back.setToolTipText("Atrás");
-        back.addActionListener(a -> browser.goBack());
-        JButton fwd = new JButton("▶");
-        fwd.setToolTipText("Adelante");
-        fwd.addActionListener(a -> browser.goForward());
-        JButton reload = new JButton("⟳");
-        reload.setToolTipText("Recargar");
-        reload.addActionListener(a -> browser.reload());
+        JButton back = navButton("◀", "Atrás", a -> browser.goBack());
+        JButton fwd = navButton("▶", "Adelante", a -> browser.goForward());
+        JButton reload = navButton("⟳", "Recargar", a -> browser.reload());
+
         JTextField address = new JTextField(browser.getURL());
         address.addActionListener(a -> browser.loadURL(address.getText().trim()));
-        address.setPreferredSize(new Dimension(600, 30));
-        // Estética FlatLaf: botones de barra sin borde + campo de dirección redondeado.
-        for (JButton b : new JButton[]{back, fwd, reload}) {
-            b.putClientProperty("JButton.buttonType", "toolBarButton");
-            b.setFocusable(false);
-        }
         address.putClientProperty("JTextField.placeholderText", "Dirección…");
         address.putClientProperty("JComponent.roundRect", Boolean.TRUE);
 
-        bar.add(back);
-        bar.add(fwd);
-        bar.add(reload);
-        bar.addSeparator();
-        bar.add(address);
+        // Layout robusto: botones fijos a la izquierda, la dirección rellena el resto.
+        // (Con JToolBar, el campo de ancho fijo empujaba los botones fuera al estrechar.)
+        JPanel left = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.LEFT, 4, 0));
+        left.add(back);
+        left.add(fwd);
+        left.add(reload);
+
+        JButton close = navButton("✕", "Cerrar pestaña/ventana", a -> {
+            java.awt.Window w = SwingUtilities.getWindowAncestor((Component) a.getSource());
+            if (w != null) w.dispose();
+        });
+        JPanel right = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.RIGHT, 4, 0));
+        right.add(close);
+
+        JPanel bar = new JPanel(new BorderLayout(6, 0));
+        bar.setBorder(javax.swing.BorderFactory.createEmptyBorder(6, 8, 6, 8));
+        bar.add(left, BorderLayout.WEST);
+        bar.add(address, BorderLayout.CENTER);
+        bar.add(right, BorderLayout.EAST);
 
         panel.add(bar, BorderLayout.NORTH);
         Component ui = browser.getUIComponent();
         panel.add(ui, BorderLayout.CENTER);
         return panel;
+    }
+
+    private static JButton navButton(String text, String tip, java.awt.event.ActionListener onClick) {
+        JButton b = new JButton(text);
+        b.setToolTipText(tip);
+        b.addActionListener(onClick);
+        b.putClientProperty("JButton.buttonType", "toolBarButton");
+        b.setFocusable(false);
+        return b;
     }
 }
