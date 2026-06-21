@@ -62,6 +62,9 @@ public final class RefreshBus {
     public static final String TOPIC_ACCOUNTS_CATALOG = "accounts_catalog";
     public static final String TOPIC_TEMPLATES = "templates";
     public static final String TOPIC_VAT_TYPES = "vat_types";
+    public static final String TOPIC_TIMECLOCK = "timeclock";
+    public static final String TOPIC_LEAVE_REQUESTS = "leave_requests";
+    public static final String TOPIC_PAYSLIPS = "payslips";
 
     // ---- Implementación ---------------------------------------------------
 

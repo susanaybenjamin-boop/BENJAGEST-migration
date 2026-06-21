@@ -67,6 +67,8 @@ public class PendingTasksService {
                 "status = 'VALIDATED' AND payment_status IN ('PENDING','PARTIAL') AND due_date < CURRENT_DATE", in, args));
         add(out, "DRAFT_PAYSLIPS", WARNING, count("payslips",
                 "status IN ('DRAFT','CALCULATED')", in, args));
+        add(out, "LEAVE_REQUESTS", WARNING, count("employee_leave_requests",
+                "status = 'REQUESTED'", in, args));
         add(out, "UNDELIVERED_PAYSLIPS", INFO, count("payslips",
                 "status = 'PAID' AND delivered_at IS NULL", in, args));
         add(out, "OVERDUE_FILINGS", URGENT, count("tax_filings",

@@ -77,6 +77,8 @@ public class PayslipService {
     private final com.benjagest.backend.settings.EmailSenderService emailSender;
     private final com.benjagest.backend.settings.CompanyDataService companyDataService;
     private final EmployeeVacationService vacationService;
+    private final com.benjagest.backend.realtime.RealtimeService realtime;
+    private final org.springframework.security.crypto.password.PasswordEncoder passwordEncoder;
 
     public PayslipService(JdbcTemplate jdbcTemplate,
                            TenantContext tenantContext,
@@ -88,7 +90,9 @@ public class PayslipService {
                            com.benjagest.backend.labor.irpf.IrpfRetentionService irpfService,
                            com.benjagest.backend.settings.EmailSenderService emailSender,
                            com.benjagest.backend.settings.CompanyDataService companyDataService,
-                           EmployeeVacationService vacationService) {
+                           EmployeeVacationService vacationService,
+                           com.benjagest.backend.realtime.RealtimeService realtime,
+                           org.springframework.security.crypto.password.PasswordEncoder passwordEncoder) {
         this.jdbcTemplate = jdbcTemplate;
         this.tenantContext = tenantContext;
         this.taxRulesService = taxRulesService;
@@ -100,6 +104,8 @@ public class PayslipService {
         this.emailSender = emailSender;
         this.companyDataService = companyDataService;
         this.vacationService = vacationService;
+        this.realtime = realtime;
+        this.passwordEncoder = passwordEncoder;
     }
 
     public byte[] generatePdf(String id) {
@@ -846,7 +852,13 @@ public class PayslipService {
                  WHERE id = ? AND company_id = ?
                 """, deliveredAt, method, id, tenantContext.getCurrentCompanyId());
         if (n == 0) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Nomina no encontrada");
-        return findById(id);
+        PayslipView view = findById(id);
+        // NOTIF-RT — avisar al empleado de que tiene una nómina disponible.
+        try {
+            realtime.publishToEmployee(tenantContext.getCurrentCompanyId(), view.employeeId(),
+                    "payslip", "{\"action\":\"delivered\",\"id\":\"" + id + "\"}");
+        } catch (Exception ignored) {}
+        return view;
     }
 
     /** Registra el acuse de recibo (firma) del trabajador sobre el recibo entregado. */
@@ -858,6 +870,74 @@ public class PayslipService {
                 """, acknowledgedAt, id, tenantContext.getCurrentCompanyId());
         if (n == 0) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Nomina no encontrada");
         return findById(id);
+    }
+
+    // ---- MEMP-5: acceso del propio empleado (portal PWA) -----------------
+
+    /** Nóminas finalizadas (no DRAFT) del empleado, para que las vea en su app. */
+    public List<PayslipView> listForEmployeeApp(String employeeId) {
+        return list(null, null, employeeId).stream()
+                .filter(p -> !"DRAFT".equalsIgnoreCase(p.status()))
+                .toList();
+    }
+
+    /** Verifica que la nómina pertenece a ESE empleado (no solo al tenant). */
+    private void assertOwnedBy(String id, String employeeId) {
+        Integer n = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM payslips WHERE id = ? AND company_id = ? AND employee_id = ?",
+                Integer.class, id, tenantContext.getCurrentCompanyId(), employeeId);
+        if (n == null || n == 0) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Nomina no encontrada");
+        }
+    }
+
+    /** PDF de una nómina del propio empleado (con guarda de propiedad). */
+    public byte[] pdfForEmployee(String id, String employeeId) {
+        assertOwnedBy(id, employeeId);
+        return pdfGenerator.generate(id);
+    }
+
+    /**
+     * MEMP-5b (SIGN) — Firma electrónica simple del recibí por el propio empleado.
+     * Step-up: re-verifica el PIN del empleado (el acto de firma) y guarda evidencias
+     * (IP, dispositivo, método PIN_APP, código de verificación) + sello acknowledged_at.
+     * Sin certificado cualificado (estilo Sesame). Idempotente: no pisa una firma previa.
+     */
+    @Transactional
+    public void acknowledgeOwn(String id, String employeeId, String pin, String device, String ip) {
+        // Verificación del PIN del empleado (autentica el acto de firma).
+        String pinHash = jdbcTemplate.query(
+                "SELECT pin_hash FROM employees WHERE id = ? AND company_id = ?",
+                rs -> rs.next() ? rs.getString(1) : null,
+                employeeId, tenantContext.getCurrentCompanyId());
+        if (pinHash == null || pin == null || pin.isBlank() || !passwordEncoder.matches(pin, pinHash)) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "PIN incorrecto");
+        }
+        String code = "RC-" + UUID.randomUUID().toString().replace("-", "").substring(0, 12).toUpperCase();
+        int n = jdbcTemplate.update("""
+                UPDATE payslips
+                   SET acknowledged_at     = COALESCE(acknowledged_at, CURRENT_DATE()),
+                       delivered_at        = COALESCE(delivered_at, CURRENT_DATE()),
+                       delivery_method     = COALESCE(delivery_method, 'APP'),
+                       acknowledged_ip     = COALESCE(acknowledged_ip, ?),
+                       acknowledged_device = COALESCE(acknowledged_device, ?),
+                       acknowledged_method = COALESCE(acknowledged_method, 'PIN_APP'),
+                       acknowledged_code   = COALESCE(acknowledged_code, ?)
+                 WHERE id = ? AND company_id = ? AND employee_id = ?
+                """, trim(ip, 60), trim(device, 255), code,
+                id, tenantContext.getCurrentCompanyId(), employeeId);
+        if (n == 0) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Nomina no encontrada");
+        // NOTIF-RT — avisar a la empresa de que el empleado ha firmado el recibí.
+        try {
+            realtime.publishToCompany(tenantContext.getCurrentCompanyId(), "payslip",
+                    "{\"action\":\"acknowledged\",\"id\":\"" + id + "\",\"employeeId\":\"" + employeeId + "\"}");
+        } catch (Exception ignored) {}
+    }
+
+    private static String trim(String s, int max) {
+        if (s == null) return null;
+        s = s.trim();
+        return s.length() > max ? s.substring(0, max) : s;
     }
 
     @Transactional

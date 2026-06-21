@@ -790,6 +790,33 @@
     -fx-font-size: 12px;
 }
 
+/* FJ-3 — banner de "que toca fichar" segun la jornada asignada (estilo CONTENDO).
+   Reusa la paleta azul de acento; la variante -soft (jornada completa / fuera de
+   ventana) baja a gris. .punch-suggested resalta el boton del fichaje sugerido. */
+.suggest-banner {
+    -fx-background-color: #dbeafe;
+    -fx-background-radius: 8;
+    -fx-border-color: #2563eb;
+    -fx-border-radius: 8;
+    -fx-border-width: 1.5;
+    -fx-text-fill: #1d4ed8;
+    -fx-font-size: 13px;
+    -fx-font-weight: 700;
+    -fx-padding: 10 14 10 14;
+}
+.suggest-banner-soft {
+    -fx-background-color: #f1f5f9;
+    -fx-border-color: #cbd5e1;
+    -fx-text-fill: #475569;
+    -fx-font-weight: 600;
+}
+.punch-suggested {
+    -fx-border-color: #2563eb;
+    -fx-border-width: 3;
+    -fx-border-radius: 6;
+    -fx-effect: dropshadow(gaussian, #2563eb, 12, 0.4, 0, 0);
+}
+
 /* PORT-5 CAL-A — variantes color por event_type.
    Aplicadas como clase adicional encima de calendar-event-card-type
    para que herede tipografia/padding/radius. */

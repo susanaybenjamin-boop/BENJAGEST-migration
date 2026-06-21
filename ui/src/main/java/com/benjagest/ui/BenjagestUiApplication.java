@@ -1137,6 +1137,38 @@ public class BenjagestUiApplication extends Application {
         root.setBottom(footer());
         startInvitationsPolling();
         startAdvisoryClientsPolling();
+        startRealtime();
+    }
+
+    /**
+     * NOTIF-RT — Arranca el cliente SSE. Cada evento del backend refresca SOLO lo
+     * afectado (vía RefreshBus) + el contador de la campana, sin recargar en bucle.
+     */
+    private void startRealtime() {
+        if (realtimeClient != null) return;
+        realtimeClient = new com.benjagest.ui.service.RealtimeClient(this::onRealtimeEvent);
+        realtimeClient.start();
+    }
+
+    private void stopRealtime() {
+        if (realtimeClient != null) { realtimeClient.stop(); realtimeClient = null; }
+    }
+
+    /** Mapea el evento SSE (hilo de red) a refrescos de UI (RefreshBus marshalla al FX). */
+    private void onRealtimeEvent(String type, String data) {
+        switch (type) {
+            case "timeclock" -> com.benjagest.ui.support.RefreshBus.emit(
+                    com.benjagest.ui.support.RefreshBus.TOPIC_TIMECLOCK,
+                    com.benjagest.ui.support.RefreshBus.TOPIC_AUDIT);
+            case "leave" -> {
+                com.benjagest.ui.support.RefreshBus.emit(
+                        com.benjagest.ui.support.RefreshBus.TOPIC_LEAVE_REQUESTS);
+                javafx.application.Platform.runLater(this::refreshAdvisoryNotificationsCount);
+            }
+            case "payslip" -> com.benjagest.ui.support.RefreshBus.emit(
+                    com.benjagest.ui.support.RefreshBus.TOPIC_PAYSLIPS);
+            default -> { /* ready / desconocido: ignorar */ }
+        }
     }
 
     /**
@@ -1720,6 +1752,7 @@ public class BenjagestUiApplication extends Application {
             stopAdvisoryClientsPolling();
             stopAdvisoryNotificationsPolling();
             stopDehuPolling();
+            stopRealtime();
             authApiClient.logout();
             session = null;
             activeModulesCache = List.of();
@@ -3867,6 +3900,9 @@ public class BenjagestUiApplication extends Application {
     // la pantalla "live" más obvia del módulo labor.
     private javafx.animation.Timeline dehuPoller;
 
+    // NOTIF-RT — cliente SSE: push del backend en lugar de sondeo. Vivo toda la sesión.
+    private com.benjagest.ui.service.RealtimeClient realtimeClient;
+
     private TableView<com.benjagest.ui.model.PurchaseInvoiceEntry> purchaseInvoicesTable;
     private ComboBox<String> purchaseYearFilter;
     private ComboBox<String> purchaseQuarterFilter;
@@ -5314,6 +5350,11 @@ public class BenjagestUiApplication extends Application {
     private final com.benjagest.ui.service.TimeClockApiClient timeClockApi =
             new com.benjagest.ui.service.TimeClockApiClient();
     private TableView<com.benjagest.ui.model.TimeClockEntry> timeClockTable;
+    // FJ-3 — banner + botones del fichaje, para resaltar el que toca segun la jornada.
+    private Label timeClockSuggestBanner;
+    // FJ — enlace para reactivar los botones cuando se desactivan los no sugeridos.
+    private javafx.scene.control.Hyperlink timeClockOverrideLink;
+    private final java.util.Map<String, Button> timeClockPunchButtons = new java.util.HashMap<>();
 
     private void showTimeClock() {
         // EMP-USER-MAP: el employeeId NO es el userId. Buscamos primero
@@ -5378,6 +5419,27 @@ public class BenjagestUiApplication extends Application {
         Button breakEndBtn = bigPunchButton(t("timeclock.action.break_end"), "fas-utensils", "BREAK_END", employeeId);
         HBox punchRow = new HBox(12, inBtn, outBtn, breakStartBtn, breakEndBtn);
 
+        // FJ-3 — registro de botones para poder resaltar el que toca + banner de sugerencia.
+        timeClockPunchButtons.clear();
+        timeClockPunchButtons.put("IN", inBtn);
+        timeClockPunchButtons.put("OUT", outBtn);
+        timeClockPunchButtons.put("BREAK_START", breakStartBtn);
+        timeClockPunchButtons.put("BREAK_END", breakEndBtn);
+        timeClockSuggestBanner = new Label();
+        timeClockSuggestBanner.setWrapText(true);
+        timeClockSuggestBanner.setMaxWidth(Double.MAX_VALUE);
+        timeClockSuggestBanner.setManaged(false);
+        timeClockSuggestBanner.setVisible(false);
+        // FJ — "Fichar otra cosa": reactiva los botones desactivados (desviación real).
+        timeClockOverrideLink = new javafx.scene.control.Hyperlink(t("timeclock.suggest.override"));
+        timeClockOverrideLink.setManaged(false);
+        timeClockOverrideLink.setVisible(false);
+        timeClockOverrideLink.setOnAction(ev -> {
+            timeClockPunchButtons.values().forEach(b -> b.setDisable(false));
+            timeClockOverrideLink.setManaged(false);
+            timeClockOverrideLink.setVisible(false);
+        });
+
         // Listado últimos N fichajes del empleado.
         timeClockTable = new TableView<>();
         timeClockTable.getStyleClass().add("data-table");
@@ -5435,13 +5497,92 @@ public class BenjagestUiApplication extends Application {
         exportRow.setAlignment(Pos.CENTER_LEFT);
         VBox exportBlock = new VBox(8, exportTitle, exportHint, exportRow);
 
-        VBox body = new VBox(16, header, hint, punchRow, refresh, timeClockTable,
+        VBox body = new VBox(16, header, hint, timeClockSuggestBanner, punchRow, timeClockOverrideLink,
+                refresh, timeClockTable,
                 new Separator(), exportBlock);
         body.setPadding(new Insets(20));
 
         setCenterAnimated(scroll(body));
         reloadTimeClock(employeeId);
+        refreshTimeClockSuggestion();
+        // NOTIF-RT — refresco en vivo de la lista + sugerencia cuando llega un fichaje.
+        com.benjagest.ui.support.RefreshBus.subscribe(
+                com.benjagest.ui.support.RefreshBus.TOPIC_TIMECLOCK,
+                () -> { reloadTimeClock(employeeId); refreshTimeClockSuggestion(); },
+                timeClockTable);
     }
+
+    /**
+     * FJ-3 — Pide la sugerencia de "que toca fichar ahora" segun la jornada
+     * asignada y, si estamos en ventana (+/-15 min), resalta ese boton y muestra
+     * un banner. Fuera de ventana o jornada completa: banner suave. Sin jornada
+     * hoy: no muestra nada (todos los botones normales). Nunca bloquea ni rompe
+     * el fichaje si la sugerencia falla.
+     */
+    private void refreshTimeClockSuggestion() {
+        if (timeClockSuggestBanner == null) return;
+        Task<com.benjagest.ui.service.TimeClockApiClient.Suggestion> task = new Task<>() {
+            @Override protected com.benjagest.ui.service.TimeClockApiClient.Suggestion call() throws Exception {
+                return timeClockApi.suggestion();
+            }
+        };
+        task.setOnSucceeded(ev -> applyTimeClockSuggestion(task.getValue()));
+        task.setOnFailed(ev -> applyTimeClockSuggestion(null)); // silencioso
+        start(task, "timeclock-suggestion");
+    }
+
+    private void applyTimeClockSuggestion(com.benjagest.ui.service.TimeClockApiClient.Suggestion s) {
+        // Reset: limpia resaltado y reactiva todos los botones; oculta el override.
+        timeClockPunchButtons.values().forEach(b -> {
+            b.getStyleClass().remove("punch-suggested");
+            b.setDisable(false);
+        });
+        if (timeClockOverrideLink != null) {
+            timeClockOverrideLink.setManaged(false);
+            timeClockOverrideLink.setVisible(false);
+        }
+        Label banner = timeClockSuggestBanner;
+        banner.getStyleClass().removeAll("suggest-banner", "suggest-banner-soft");
+        if (s == null || !s.hasSchedule()) {
+            banner.setManaged(false);
+            banner.setVisible(false);
+            return;
+        }
+        banner.setManaged(true);
+        banner.setVisible(true);
+        if (!s.hasAction()) { // jornada completa
+            banner.getStyleClass().addAll("suggest-banner", "suggest-banner-soft");
+            banner.setText(t("timeclock.suggest.completed"));
+            return;
+        }
+        String actionLabel = localizedPunchType(s.action());
+        if (s.inWindow()) {
+            banner.getStyleClass().add("suggest-banner");
+            banner.setText(t("timeclock.suggest.now").replace("{action}", actionLabel)
+                    + "  " + t("timeclock.suggest.scheduled")
+                            .replace("{time}", nz(s.scheduledTime()))
+                            .replace("{from}", nz(s.windowFrom()))
+                            .replace("{to}", nz(s.windowTo())));
+            Button b = timeClockPunchButtons.get(s.action());
+            if (b != null && !b.getStyleClass().contains("punch-suggested")) {
+                b.getStyleClass().add("punch-suggested");
+            }
+            // CONTENDO: solo el botón que toca. Desactiva los demás para no confundir;
+            // "Fichar otra cosa" los reactiva (desviación real, RD 8/2019).
+            timeClockPunchButtons.forEach((code, btn) -> btn.setDisable(!code.equals(s.action())));
+            if (timeClockOverrideLink != null) {
+                timeClockOverrideLink.setManaged(true);
+                timeClockOverrideLink.setVisible(true);
+            }
+        } else {
+            banner.getStyleClass().addAll("suggest-banner", "suggest-banner-soft");
+            banner.setText(t("timeclock.suggest.next").replace("{action}", actionLabel)
+                            .replace("{time}", nz(s.scheduledTime()))
+                    + "  " + t("timeclock.suggest.next_hint").replace("{from}", nz(s.windowFrom())));
+        }
+    }
+
+    private static String nz(String s) { return s == null ? "" : s; }
 
     /** Descarga el export de fichajes y ofrece guardarlo. */
     private void downloadTimeClockExport(String format,
@@ -5530,6 +5671,7 @@ public class BenjagestUiApplication extends Application {
             ok.getDialogPane().setContent(content);
             ok.showAndWait();
             reloadTimeClock(employeeId);
+            refreshTimeClockSuggestion();
         });
         task.setOnFailed(ev -> showError(t("timeclock.fail.title"), t("timeclock.fail.body")));
         start(task, "timeclock-punch");
@@ -12658,6 +12800,12 @@ public class BenjagestUiApplication extends Application {
                 case "timeclock.action.break_start" -> "Break start";
                 case "timeclock.action.break_end" -> "Break end";
                 case "timeclock.action.refresh" -> "Refresh";
+                case "timeclock.suggest.now" -> "Now it's your turn: {action}";
+                case "timeclock.suggest.scheduled" -> "Scheduled at {time} (window {from}–{to}).";
+                case "timeclock.suggest.next" -> "Next: {action} at {time}";
+                case "timeclock.suggest.next_hint" -> "Not time yet (it will highlight from {from}).";
+                case "timeclock.suggest.completed" -> "You have completed today's schedule.";
+                case "timeclock.suggest.override" -> "Clock something else";
                 case "timeclock.placeholder.empty" -> "No punches yet.";
                 case "timeclock.col.when" -> "When";
                 case "timeclock.col.type" -> "Type";
@@ -13565,6 +13713,12 @@ public class BenjagestUiApplication extends Application {
             case "timeclock.action.break_start" -> "Iniciar pausa";
             case "timeclock.action.break_end" -> "Fin pausa";
             case "timeclock.action.refresh" -> "Refrescar";
+            case "timeclock.suggest.now" -> "Ahora te toca: {action}";
+            case "timeclock.suggest.scheduled" -> "Hora prevista {time} (margen {from}–{to}).";
+            case "timeclock.suggest.next" -> "Proximo: {action} a las {time}";
+            case "timeclock.suggest.next_hint" -> "Aun no es la hora (se resaltara a partir de {from}).";
+            case "timeclock.suggest.completed" -> "Has fichado toda tu jornada de hoy.";
+            case "timeclock.suggest.override" -> "Fichar otra cosa";
             case "timeclock.placeholder.empty" -> "Sin fichajes todavia.";
             case "timeclock.col.when" -> "Cuando";
             case "timeclock.col.type" -> "Tipo";
@@ -16594,6 +16748,45 @@ public class BenjagestUiApplication extends Application {
             case "labor.tab.audit" -> "Audit";
             case "labor.tab.medical_leaves" -> "Medical leaves";
             case "labor.tab.vacations" -> "Holidays";
+            case "labor.tab.leave_requests" -> "Requests";
+            case "labor.leavereq.hint" -> "Leave requests submitted by employees from their app (holidays, sick leave, paid leave, other). Approve or reject them; approving a holiday request also records it in Holidays for the settlement.";
+            case "labor.leavereq.filter.status" -> "Status";
+            case "labor.leavereq.filter.all" -> "All";
+            case "labor.leavereq.col.employee" -> "Employee";
+            case "labor.leavereq.col.type" -> "Type";
+            case "labor.leavereq.col.from" -> "From";
+            case "labor.leavereq.col.to" -> "To";
+            case "labor.leavereq.col.days" -> "Days";
+            case "labor.leavereq.col.status" -> "Status";
+            case "labor.leavereq.col.attachments" -> "Files";
+            case "labor.leavereq.col.reason" -> "Reason / note";
+            case "labor.leavereq.kind.vacation" -> "Holidays";
+            case "labor.leavereq.kind.sick_leave" -> "Sick leave";
+            case "labor.leavereq.kind.paid_leave" -> "Paid leave";
+            case "labor.leavereq.kind.other" -> "Other";
+            case "labor.leavereq.status.requested" -> "Pending";
+            case "labor.leavereq.status.approved" -> "Approved";
+            case "labor.leavereq.status.rejected" -> "Rejected";
+            case "labor.leavereq.status.cancelled" -> "Cancelled";
+            case "labor.leavereq.action.reload" -> "Refresh";
+            case "labor.leavereq.action.approve" -> "Approve";
+            case "labor.leavereq.action.reject" -> "Reject";
+            case "labor.leavereq.action.view_attachments" -> "View files";
+            case "labor.leavereq.select.none" -> "Select a pending request first.";
+            case "labor.leavereq.note" -> "Note (optional):";
+            case "labor.leavereq.approve.title" -> "Approve request";
+            case "labor.leavereq.approve.header" -> "Approve this leave request?";
+            case "labor.leavereq.reject.title" -> "Reject request";
+            case "labor.leavereq.reject.header" -> "Reject this leave request?";
+            case "labor.leavereq.ok.approved" -> "Request approved";
+            case "labor.leavereq.ok.rejected" -> "Request rejected";
+            case "labor.leavereq.fail.title" -> "Action failed";
+            case "labor.leavereq.fail.body" -> "The action could not be completed. Please try again.";
+            case "labor.leavereq.attach.title" -> "Attachments";
+            case "labor.leavereq.attach.none" -> "This request has no attachments.";
+            case "labor.leavereq.attach.choose" -> "Choose a file to download:";
+            case "labor.leavereq.attach.saved" -> "File saved to:";
+            case "labor.leavereq.placeholder.empty" -> "No requests for this filter.";
             case "labor.vac.title" -> "Holidays";
             case "labor.vac.hint" -> "Record each employee's holiday periods. The settlement uses them to work out the pending (accrued − taken) holidays automatically.";
             case "labor.vac.empty" -> "No holidays recorded.";
@@ -16831,6 +17024,23 @@ public class BenjagestUiApplication extends Application {
             case "labor.audit.incidence.no" -> "OK";
             case "labor.audit.all" -> "All";
             case "labor.audit.incidence.tooltip" -> "Click a row to review that employee's punches in the detail below. An incidence flags days with a missing clock-in or clock-out.";
+            case "labor.audit.correct.btn" -> "Correct…";
+            case "labor.audit.correct.none" -> "Select a punch in the detail to correct it.";
+            case "labor.audit.correct.title" -> "Correct punch";
+            case "labor.audit.correct.type" -> "Correction type";
+            case "labor.audit.correct.type.time_adjust" -> "Adjust time";
+            case "labor.audit.correct.type.type_change" -> "Change type";
+            case "labor.audit.correct.type.void" -> "Void punch";
+            case "labor.audit.correct.new_time" -> "New time (yyyy-MM-dd HH:mm)";
+            case "labor.audit.correct.new_type" -> "New type";
+            case "labor.audit.correct.reason" -> "Reason";
+            case "labor.audit.correct.reason.required" -> "Reason is required.";
+            case "labor.audit.correct.time.invalid" -> "Invalid time. Use yyyy-MM-dd HH:mm.";
+            case "labor.audit.correct.type.required" -> "Choose the new type.";
+            case "labor.audit.correct.ok.title" -> "Correction requested";
+            case "labor.audit.correct.ok.body" -> "The correction has been recorded (pending review). The original punch is not altered (RD 8/2019 art. 34.9).";
+            case "labor.audit.correct.fail.title" -> "Could not record the correction";
+            case "labor.audit.correct.fail.body" -> "The correction could not be saved. Please try again.";
             case "labor.audit.col.when" -> "Date/time";
             case "labor.audit.col.type" -> "Type";
             case "labor.audit.col.origin" -> "Origin";
@@ -17282,6 +17492,45 @@ public class BenjagestUiApplication extends Application {
             case "labor.tab.audit" -> "Auditoria";
             case "labor.tab.medical_leaves" -> "Bajas (IT)";
             case "labor.tab.vacations" -> "Vacaciones";
+            case "labor.tab.leave_requests" -> "Solicitudes";
+            case "labor.leavereq.hint" -> "Solicitudes de ausencia que los empleados envían desde su app (vacaciones, baja, permiso, otros). Apruébalas o recházalas; al aprobar unas vacaciones se registran también en Vacaciones para el finiquito.";
+            case "labor.leavereq.filter.status" -> "Estado";
+            case "labor.leavereq.filter.all" -> "Todas";
+            case "labor.leavereq.col.employee" -> "Empleado";
+            case "labor.leavereq.col.type" -> "Tipo";
+            case "labor.leavereq.col.from" -> "Desde";
+            case "labor.leavereq.col.to" -> "Hasta";
+            case "labor.leavereq.col.days" -> "Días";
+            case "labor.leavereq.col.status" -> "Estado";
+            case "labor.leavereq.col.attachments" -> "Adjuntos";
+            case "labor.leavereq.col.reason" -> "Motivo / nota";
+            case "labor.leavereq.kind.vacation" -> "Vacaciones";
+            case "labor.leavereq.kind.sick_leave" -> "Baja médica";
+            case "labor.leavereq.kind.paid_leave" -> "Permiso retribuido";
+            case "labor.leavereq.kind.other" -> "Otros";
+            case "labor.leavereq.status.requested" -> "Pendiente";
+            case "labor.leavereq.status.approved" -> "Aprobada";
+            case "labor.leavereq.status.rejected" -> "Rechazada";
+            case "labor.leavereq.status.cancelled" -> "Cancelada";
+            case "labor.leavereq.action.reload" -> "Refrescar";
+            case "labor.leavereq.action.approve" -> "Aprobar";
+            case "labor.leavereq.action.reject" -> "Rechazar";
+            case "labor.leavereq.action.view_attachments" -> "Ver adjuntos";
+            case "labor.leavereq.select.none" -> "Selecciona antes una solicitud pendiente.";
+            case "labor.leavereq.note" -> "Nota (opcional):";
+            case "labor.leavereq.approve.title" -> "Aprobar solicitud";
+            case "labor.leavereq.approve.header" -> "¿Aprobar esta solicitud de ausencia?";
+            case "labor.leavereq.reject.title" -> "Rechazar solicitud";
+            case "labor.leavereq.reject.header" -> "¿Rechazar esta solicitud de ausencia?";
+            case "labor.leavereq.ok.approved" -> "Solicitud aprobada";
+            case "labor.leavereq.ok.rejected" -> "Solicitud rechazada";
+            case "labor.leavereq.fail.title" -> "No se pudo completar la acción";
+            case "labor.leavereq.fail.body" -> "No se pudo completar la acción. Inténtalo de nuevo.";
+            case "labor.leavereq.attach.title" -> "Adjuntos";
+            case "labor.leavereq.attach.none" -> "Esta solicitud no tiene adjuntos.";
+            case "labor.leavereq.attach.choose" -> "Elige un archivo para descargar:";
+            case "labor.leavereq.attach.saved" -> "Archivo guardado en:";
+            case "labor.leavereq.placeholder.empty" -> "Sin solicitudes para este filtro.";
             case "labor.vac.title" -> "Vacaciones";
             case "labor.vac.hint" -> "Registra los periodos de vacaciones de cada empleado. El finiquito los usa para calcular las vacaciones pendientes (devengadas − disfrutadas) automáticamente.";
             case "labor.vac.empty" -> "Sin vacaciones registradas.";
@@ -17518,6 +17767,23 @@ public class BenjagestUiApplication extends Application {
             case "labor.audit.incidence.no" -> "OK";
             case "labor.audit.all" -> "Todos";
             case "labor.audit.incidence.tooltip" -> "Haz clic en una fila para revisar los fichajes de ese empleado en el detalle de abajo. La incidencia marca días sin entrada o sin salida.";
+            case "labor.audit.correct.btn" -> "Corregir…";
+            case "labor.audit.correct.none" -> "Selecciona un fichaje del detalle para corregirlo.";
+            case "labor.audit.correct.title" -> "Corregir fichaje";
+            case "labor.audit.correct.type" -> "Tipo de corrección";
+            case "labor.audit.correct.type.time_adjust" -> "Ajustar hora";
+            case "labor.audit.correct.type.type_change" -> "Cambiar tipo";
+            case "labor.audit.correct.type.void" -> "Anular fichaje";
+            case "labor.audit.correct.new_time" -> "Nueva hora (aaaa-MM-dd HH:mm)";
+            case "labor.audit.correct.new_type" -> "Nuevo tipo";
+            case "labor.audit.correct.reason" -> "Motivo";
+            case "labor.audit.correct.reason.required" -> "El motivo es obligatorio.";
+            case "labor.audit.correct.time.invalid" -> "Hora no válida. Usa aaaa-MM-dd HH:mm.";
+            case "labor.audit.correct.type.required" -> "Elige el nuevo tipo.";
+            case "labor.audit.correct.ok.title" -> "Corrección solicitada";
+            case "labor.audit.correct.ok.body" -> "La corrección ha quedado registrada (pendiente de revisión). El fichaje original no se altera (RD 8/2019 art. 34.9).";
+            case "labor.audit.correct.fail.title" -> "No se pudo registrar la corrección";
+            case "labor.audit.correct.fail.body" -> "No se pudo guardar la corrección. Inténtalo de nuevo.";
             case "labor.audit.col.when" -> "Fecha/hora";
             case "labor.audit.col.type" -> "Tipo";
             case "labor.audit.col.origin" -> "Origen";
@@ -18092,6 +18358,7 @@ public class BenjagestUiApplication extends Application {
             case "pending.type.DRAFT_JOURNAL" -> "Journal entries to validate";
             case "pending.type.OVERDUE_INVOICES" -> "Overdue invoices to collect";
             case "pending.type.DRAFT_PAYSLIPS" -> "Payslips not finalised";
+            case "pending.type.LEAVE_REQUESTS" -> "Leave requests to review";
             case "pending.type.UNDELIVERED_PAYSLIPS" -> "Payslips paid but not delivered";
             case "pending.type.OVERDUE_FILINGS" -> "Tax filings overdue";
             case "pending.type.DEHU_PENDING" -> "DEHú notifications pending";
@@ -19239,6 +19506,7 @@ public class BenjagestUiApplication extends Application {
             case "pending.type.DRAFT_JOURNAL" -> "Asientos por validar";
             case "pending.type.OVERDUE_INVOICES" -> "Facturas vencidas por cobrar";
             case "pending.type.DRAFT_PAYSLIPS" -> "Nóminas sin finalizar";
+            case "pending.type.LEAVE_REQUESTS" -> "Solicitudes de ausencia por revisar";
             case "pending.type.UNDELIVERED_PAYSLIPS" -> "Nóminas pagadas sin entregar";
             case "pending.type.OVERDUE_FILINGS" -> "Modelos fiscales vencidos";
             case "pending.type.DEHU_PENDING" -> "Notificaciones DEHú pendientes";
@@ -20398,6 +20666,10 @@ public class BenjagestUiApplication extends Application {
         Tab vacationsTab = new Tab(t("labor.tab.vacations"),
                 buildVacationsTab(bundle.employees()));
         vacationsTab.setGraphic(icon("fas-umbrella-beach"));
+        // MEMP-4 — Solicitudes de ausencia pedidas por el empleado (PWA): aprobar/rechazar.
+        Tab leaveReqTab = new Tab(t("labor.tab.leave_requests"),
+                buildLeaveRequestsTab(bundle.employees()));
+        leaveReqTab.setGraphic(icon("fas-inbox"));
         // Cotizaciones SS (TC1/RED) — backend cerrado 2026-06-09, UI
         // pendiente. Solo lectura por ahora — las cuotas se calculan
         // desde las nóminas; el editor manual queda para futuro.
@@ -20444,7 +20716,7 @@ public class BenjagestUiApplication extends Application {
         TabPane personalPane = laborSubPane(empTab, contractsTab, templatesTab, clausesTab);
         TabPane payrollPane = laborSubPane(payslipsTab, costTab, ssTab);
         TabPane timePane = laborSubPane(clockTab, auditTab, shiftsTab, scheduleTab, calendarTab, centersTab, kioskTab, cfgTab);
-        TabPane absencePane = laborSubPane(leavesTab, vacationsTab);
+        TabPane absencePane = laborSubPane(leaveReqTab, leavesTab, vacationsTab);
         TabPane paramsPane = laborSubPane(ratesTab, groupBasesTab, irpfParamsTab, severanceTab);
         final TabPane[] panes = {personalPane, payrollPane, timePane, absencePane, paramsPane};
 
@@ -21706,6 +21978,22 @@ public class BenjagestUiApplication extends Application {
         VBox body = new VBox(10, hint, actions, payslipsTable);
         VBox.setVgrow(payslipsTable, Priority.ALWAYS);
         body.setPadding(new Insets(12));
+
+        // NOTIF-RT — refresco en vivo cuando el empleado firma el recibí (o cambia
+        // la entrega) desde su app: recarga la tabla para ver el estado actualizado.
+        com.benjagest.ui.support.RefreshBus.subscribe(
+                com.benjagest.ui.support.RefreshBus.TOPIC_PAYSLIPS,
+                () -> {
+                    Task<java.util.List<com.benjagest.ui.model.PayslipEntry>> rt = new Task<>() {
+                        @Override protected java.util.List<com.benjagest.ui.model.PayslipEntry> call() throws Exception {
+                            return laborApiClient.listPayslips(bundle.currentYear(), null, null);
+                        }
+                    };
+                    rt.setOnSucceeded(e -> payslipsTable.setItems(
+                            FXCollections.observableArrayList(rt.getValue())));
+                    start(rt, "payslips-rt-reload");
+                },
+                payslipsTable);
         return screenScroll(body);
     }
 
@@ -22706,12 +22994,26 @@ public class BenjagestUiApplication extends Application {
         exportBtn.setDisable(true); // habilitado tras TC-EXPORT (próximo slice)
         exportBtn.setTooltip(new javafx.scene.control.Tooltip(t("labor.audit.export.tooltip")));
 
+        // FJ-5 — "Corregir…": con un fichaje del detalle seleccionado, abre el
+        // diálogo de corrección (RD 8/2019: no toca el original, crea una
+        // corrección PENDING). Hasta ahora "Revisar" no llevaba a ninguna acción.
+        Button correctBtn = new Button(t("labor.audit.correct.btn"));
+        correctBtn.setGraphic(icon("fas-pen"));
+        correctBtn.setDisable(true);
+        detailTable.getSelectionModel().selectedItemProperty().addListener(
+                (o, ov, nv) -> correctBtn.setDisable(nv == null));
+        correctBtn.setOnAction(ev -> {
+            var sel = detailTable.getSelectionModel().getSelectedItem();
+            if (sel == null) { showInfo(t("labor.audit.correct.btn"), t("labor.audit.correct.none")); return; }
+            openTimeClockCorrectionDialog(sel, reload);
+        });
+
         HBox filters = new HBox(8,
                 new Label(t("labor.audit.filter.from")), fromField,
                 new Label(t("labor.audit.filter.to")), toField,
                 new Label(t("labor.audit.filter.employee")), empCombo,
                 new Label(t("labor.audit.filter.type")), eventTypeField,
-                reloadBtn, exportBtn);
+                reloadBtn, exportBtn, correctBtn);
         filters.setAlignment(Pos.CENTER_LEFT);
 
         // Click sobre fila del resumen → filtra el detalle por ese empleado
@@ -22742,8 +23044,322 @@ public class BenjagestUiApplication extends Application {
         };
         initial.setOnSucceeded(ev -> reload.run());
         start(initial, "tc-audit-initial");
+        // NOTIF-RT — refresco en vivo cuando llega un fichaje (del móvil/kiosco).
+        com.benjagest.ui.support.RefreshBus.subscribe(
+                com.benjagest.ui.support.RefreshBus.TOPIC_AUDIT, reload, detailTable);
 
         return screenScroll(body);
+    }
+
+    /**
+     * FJ-5 — Diálogo de corrección de un fichaje (RD 8/2019 art. 34.9: el original
+     * es inalterable; se registra una corrección PENDING que un responsable revisa).
+     * Tres tipos: ajustar hora (TIME_ADJUST), cambiar tipo (TYPE_CHANGE) o anular
+     * (VOID). El motivo es obligatorio. {@code onDone} recarga la auditoría al éxito.
+     */
+    private void openTimeClockCorrectionDialog(com.benjagest.ui.model.TimeClockAuditEntry entry, Runnable onDone) {
+        Dialog<Boolean> dialog = new Dialog<>();
+        dialog.setTitle(t("labor.audit.correct.title"));
+        dialog.initOwner(root.getScene().getWindow());
+        dialog.getDialogPane().getButtonTypes().addAll(ButtonType.OK, ButtonType.CANCEL);
+
+        // Tipo de corrección.
+        ComboBox<String> typeCombo = new ComboBox<>();
+        typeCombo.getItems().addAll("TIME_ADJUST", "TYPE_CHANGE", "VOID");
+        typeCombo.setValue("TIME_ADJUST");
+        typeCombo.setConverter(new javafx.util.StringConverter<>() {
+            @Override public String toString(String c) { return c == null ? "" : t("labor.audit.correct.type." + c.toLowerCase()); }
+            @Override public String fromString(String s) { return null; }
+        });
+
+        // Nueva hora (para TIME_ADJUST), prerrellenada con la hora local del evento.
+        TextField timeField = new TextField(localDateTimeForEdit(entry.eventTime()));
+        timeField.setPromptText("aaaa-MM-dd HH:mm");
+
+        // Nuevo tipo (para TYPE_CHANGE).
+        ComboBox<String> newTypeCombo = new ComboBox<>();
+        newTypeCombo.getItems().addAll("IN", "OUT", "BREAK_START", "BREAK_END");
+        newTypeCombo.setConverter(new javafx.util.StringConverter<>() {
+            @Override public String toString(String c) { return c == null ? "" : localizedPunchType(c); }
+            @Override public String fromString(String s) { return null; }
+        });
+
+        TextArea reasonArea = new TextArea();
+        reasonArea.setPromptText(t("labor.audit.correct.reason"));
+        reasonArea.setPrefRowCount(3);
+        reasonArea.setWrapText(true);
+
+        Label timeLbl = new Label(t("labor.audit.correct.new_time"));
+        Label newTypeLbl = new Label(t("labor.audit.correct.new_type"));
+        // Solo se muestra el campo relevante según el tipo elegido.
+        Runnable refreshVisibility = () -> {
+            boolean adjust = "TIME_ADJUST".equals(typeCombo.getValue());
+            boolean change = "TYPE_CHANGE".equals(typeCombo.getValue());
+            timeLbl.setManaged(adjust); timeLbl.setVisible(adjust);
+            timeField.setManaged(adjust); timeField.setVisible(adjust);
+            newTypeLbl.setManaged(change); newTypeLbl.setVisible(change);
+            newTypeCombo.setManaged(change); newTypeCombo.setVisible(change);
+        };
+        typeCombo.valueProperty().addListener((o, ov, nv) -> refreshVisibility.run());
+        refreshVisibility.run();
+
+        Label current = new Label(localizedPunchType(entry.eventType()) + "  ·  " + shortIso(entry.eventTime()));
+        current.getStyleClass().add("settings-hint");
+
+        VBox content = new VBox(10,
+                current,
+                new Label(t("labor.audit.correct.type")), typeCombo,
+                timeLbl, timeField,
+                newTypeLbl, newTypeCombo,
+                new Label(t("labor.audit.correct.reason")), reasonArea);
+        content.setPadding(new Insets(12));
+        content.setPrefWidth(420);
+        dialog.getDialogPane().setContent(content);
+
+        // Validación sin cerrar el diálogo si falta algo (patrón BUG-UX-2).
+        Button okBtn = (Button) dialog.getDialogPane().lookupButton(ButtonType.OK);
+        okBtn.addEventFilter(javafx.event.ActionEvent.ACTION, ev -> {
+            String type = typeCombo.getValue();
+            String reason = reasonArea.getText() == null ? "" : reasonArea.getText().trim();
+            if (reason.isEmpty()) { ev.consume(); showError(t("labor.audit.correct.title"), t("labor.audit.correct.reason.required")); return; }
+            if ("TIME_ADJUST".equals(type) && editTextToInstantIso(timeField.getText()) == null) {
+                ev.consume(); showError(t("labor.audit.correct.title"), t("labor.audit.correct.time.invalid")); return;
+            }
+            if ("TYPE_CHANGE".equals(type) && newTypeCombo.getValue() == null) {
+                ev.consume(); showError(t("labor.audit.correct.title"), t("labor.audit.correct.type.required")); return;
+            }
+        });
+
+        dialog.setResultConverter(bt -> bt == ButtonType.OK ? Boolean.TRUE : null);
+        if (!Boolean.TRUE.equals(dialog.showAndWait().orElse(null))) return; // cancelado
+
+        // Validado por el event filter: aquí los datos son correctos.
+        String type = typeCombo.getValue();
+        String proposedType = "TYPE_CHANGE".equals(type) ? newTypeCombo.getValue() : null;
+        String proposedTimeIso = "TIME_ADJUST".equals(type) ? editTextToInstantIso(timeField.getText()) : null;
+        String reason = reasonArea.getText().trim();
+
+        Task<Void> task = new Task<>() {
+            @Override protected Void call() throws Exception {
+                laborApiClient.requestCorrection(entry.id(), type, proposedType, proposedTimeIso, reason);
+                return null;
+            }
+        };
+        task.setOnSucceeded(ev -> {
+            showInfo(t("labor.audit.correct.ok.title"), t("labor.audit.correct.ok.body"));
+            if (onDone != null) onDone.run();
+        });
+        task.setOnFailed(ev -> showError(t("labor.audit.correct.fail.title"), t("labor.audit.correct.fail.body")));
+        start(task, "tc-audit-correction");
+    }
+
+    /** Convierte el instante ISO del evento a "aaaa-MM-dd HH:mm" en zona local para editar. */
+    private String localDateTimeForEdit(String eventTimeIso) {
+        try {
+            java.time.Instant i = java.time.Instant.parse(eventTimeIso);
+            java.time.LocalDateTime ldt = java.time.LocalDateTime.ofInstant(i, java.time.ZoneId.systemDefault());
+            return ldt.format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"));
+        } catch (Exception e) {
+            return "";
+        }
+    }
+
+    /** Parsea "aaaa-MM-dd HH:mm" (zona local) a instante ISO-8601, o null si no es válido. */
+    private String editTextToInstantIso(String text) {
+        if (text == null || text.isBlank()) return null;
+        try {
+            java.time.LocalDateTime ldt = java.time.LocalDateTime.parse(text.trim(),
+                    java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"));
+            return ldt.atZone(java.time.ZoneId.systemDefault()).toInstant().toString();
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    // ----- MEMP-4: sub-tab Solicitudes de ausencia (aprobar/rechazar) -----
+
+    private Node buildLeaveRequestsTab(java.util.List<com.benjagest.ui.model.EmployeeEntry> allEmployees) {
+        Label hint = new Label(t("labor.leavereq.hint"));
+        hint.setWrapText(true);
+        hint.getStyleClass().add("settings-hint");
+
+        ComboBox<String> statusFilter = new ComboBox<>();
+        statusFilter.getItems().addAll("", "REQUESTED", "APPROVED", "REJECTED", "CANCELLED");
+        statusFilter.setValue("REQUESTED");
+        statusFilter.setConverter(new javafx.util.StringConverter<>() {
+            @Override public String toString(String s) {
+                return s == null || s.isBlank() ? t("labor.leavereq.filter.all")
+                        : t("labor.leavereq.status." + s.toLowerCase());
+            }
+            @Override public String fromString(String s) { return null; }
+        });
+
+        TableView<com.benjagest.ui.model.LeaveRequestEntry> table = new TableView<>();
+        table.getStyleClass().add("data-table");
+        table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+        table.setPlaceholder(new Label(t("labor.leavereq.placeholder.empty")));
+
+        TableColumn<com.benjagest.ui.model.LeaveRequestEntry, String> cEmp = new TableColumn<>(t("labor.leavereq.col.employee"));
+        cEmp.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().employeeName()));
+        cEmp.setPrefWidth(170);
+        TableColumn<com.benjagest.ui.model.LeaveRequestEntry, String> cKind = new TableColumn<>(t("labor.leavereq.col.type"));
+        cKind.setCellValueFactory(c -> new SimpleStringProperty(t("labor.leavereq.kind." + c.getValue().kind().toLowerCase())));
+        cKind.setPrefWidth(130);
+        TableColumn<com.benjagest.ui.model.LeaveRequestEntry, String> cFrom = new TableColumn<>(t("labor.leavereq.col.from"));
+        cFrom.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().startDate()));
+        cFrom.setPrefWidth(100);
+        TableColumn<com.benjagest.ui.model.LeaveRequestEntry, String> cTo = new TableColumn<>(t("labor.leavereq.col.to"));
+        cTo.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().endDate()));
+        cTo.setPrefWidth(100);
+        TableColumn<com.benjagest.ui.model.LeaveRequestEntry, String> cDays = new TableColumn<>(t("labor.leavereq.col.days"));
+        cDays.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().days()));
+        cDays.setPrefWidth(60);
+        TableColumn<com.benjagest.ui.model.LeaveRequestEntry, String> cStatus = new TableColumn<>(t("labor.leavereq.col.status"));
+        cStatus.setCellValueFactory(c -> new SimpleStringProperty(t("labor.leavereq.status." + c.getValue().status().toLowerCase())));
+        cStatus.setPrefWidth(110);
+        TableColumn<com.benjagest.ui.model.LeaveRequestEntry, String> cAtt = new TableColumn<>(t("labor.leavereq.col.attachments"));
+        cAtt.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().attachmentCount() > 0
+                ? "📎 " + c.getValue().attachmentCount() : ""));
+        cAtt.setPrefWidth(90);
+        TableColumn<com.benjagest.ui.model.LeaveRequestEntry, String> cReason = new TableColumn<>(t("labor.leavereq.col.reason"));
+        cReason.setCellValueFactory(c -> new SimpleStringProperty(
+                (c.getValue().reason() == null ? "" : c.getValue().reason())
+                + (c.getValue().reviewNotes() == null || c.getValue().reviewNotes().isBlank()
+                        ? "" : "  · " + c.getValue().reviewNotes())));
+        table.getColumns().addAll(java.util.List.of(cEmp, cKind, cFrom, cTo, cDays, cStatus, cAtt, cReason));
+
+        Runnable reload = () -> {
+            String st = statusFilter.getValue();
+            Task<java.util.List<com.benjagest.ui.model.LeaveRequestEntry>> task = new Task<>() {
+                @Override protected java.util.List<com.benjagest.ui.model.LeaveRequestEntry> call() throws Exception {
+                    return laborApiClient.listLeaveRequests(st, null);
+                }
+            };
+            task.setOnSucceeded(ev -> table.setItems(FXCollections.observableArrayList(task.getValue())));
+            task.setOnFailed(ev -> table.getItems().clear());
+            start(task, "leavereq-list");
+        };
+
+        Button reloadBtn = new Button(t("labor.leavereq.action.reload"));
+        reloadBtn.setGraphic(icon("fas-sync-alt"));
+        reloadBtn.setOnAction(ev -> reload.run());
+        statusFilter.valueProperty().addListener((o, ov, nv) -> reload.run());
+
+        Button approveBtn = new Button(t("labor.leavereq.action.approve"));
+        approveBtn.setGraphic(icon("fas-check"));
+        approveBtn.getStyleClass().add("invoice-validate-action");
+        approveBtn.setDisable(true);
+        Button rejectBtn = new Button(t("labor.leavereq.action.reject"));
+        rejectBtn.setGraphic(icon("fas-times"));
+        rejectBtn.setDisable(true);
+        Button attBtn = new Button(t("labor.leavereq.action.view_attachments"));
+        attBtn.setGraphic(icon("fas-paperclip"));
+        attBtn.setDisable(true);
+
+        table.getSelectionModel().selectedItemProperty().addListener((o, ov, nv) -> {
+            boolean req = nv != null && "REQUESTED".equals(nv.status());
+            approveBtn.setDisable(!req);
+            rejectBtn.setDisable(!req);
+            attBtn.setDisable(nv == null || nv.attachmentCount() == 0);
+        });
+
+        approveBtn.setOnAction(ev -> reviewLeaveRequest(table.getSelectionModel().getSelectedItem(), true, reload));
+        rejectBtn.setOnAction(ev -> reviewLeaveRequest(table.getSelectionModel().getSelectedItem(), false, reload));
+        attBtn.setOnAction(ev -> viewLeaveAttachments(table.getSelectionModel().getSelectedItem()));
+
+        HBox controls = new HBox(8,
+                new Label(t("labor.leavereq.filter.status")), statusFilter,
+                reloadBtn, approveBtn, rejectBtn, attBtn);
+        controls.setAlignment(Pos.CENTER_LEFT);
+
+        VBox body = new VBox(10, hint, controls, table);
+        VBox.setVgrow(table, Priority.ALWAYS);
+        body.setPadding(new Insets(12));
+
+        Task<Void> initial = new Task<>() { @Override protected Void call() throws Exception { Thread.sleep(50); return null; } };
+        initial.setOnSucceeded(ev -> reload.run());
+        start(initial, "leavereq-initial");
+        // NOTIF-RT — refresco en vivo cuando llega una solicitud nueva o se resuelve.
+        com.benjagest.ui.support.RefreshBus.subscribe(
+                com.benjagest.ui.support.RefreshBus.TOPIC_LEAVE_REQUESTS, reload, table);
+        return screenScroll(body);
+    }
+
+    /** Aprueba o rechaza una solicitud pidiendo una nota opcional. */
+    private void reviewLeaveRequest(com.benjagest.ui.model.LeaveRequestEntry sel, boolean approve, Runnable onDone) {
+        if (sel == null) { showInfo(t("labor.leavereq.action.approve"), t("labor.leavereq.select.none")); return; }
+        TextInputDialog dlg = new TextInputDialog();
+        dlg.initOwner(root.getScene().getWindow());
+        dlg.setTitle(approve ? t("labor.leavereq.approve.title") : t("labor.leavereq.reject.title"));
+        dlg.setHeaderText(approve ? t("labor.leavereq.approve.header") : t("labor.leavereq.reject.header"));
+        dlg.setContentText(t("labor.leavereq.note"));
+        java.util.Optional<String> res = dlg.showAndWait();
+        if (res.isEmpty()) return; // cancelado
+        String notes = res.get().trim();
+        Task<Void> task = new Task<>() {
+            @Override protected Void call() throws Exception {
+                if (approve) laborApiClient.approveLeaveRequest(sel.id(), notes);
+                else laborApiClient.rejectLeaveRequest(sel.id(), notes);
+                return null;
+            }
+        };
+        task.setOnSucceeded(ev -> {
+            showInfo(approve ? t("labor.leavereq.ok.approved") : t("labor.leavereq.ok.rejected"), "");
+            if (onDone != null) onDone.run();
+        });
+        task.setOnFailed(ev -> showError(t("labor.leavereq.fail.title"), t("labor.leavereq.fail.body")));
+        start(task, "leavereq-review");
+    }
+
+    /** Lista los adjuntos de la solicitud y permite descargarlos. */
+    private void viewLeaveAttachments(com.benjagest.ui.model.LeaveRequestEntry sel) {
+        if (sel == null) return;
+        Task<java.util.List<com.benjagest.ui.model.LeaveAttachmentMeta>> task = new Task<>() {
+            @Override protected java.util.List<com.benjagest.ui.model.LeaveAttachmentMeta> call() throws Exception {
+                return laborApiClient.listLeaveAttachments(sel.id());
+            }
+        };
+        task.setOnSucceeded(ev -> {
+            var metas = task.getValue();
+            if (metas.isEmpty()) { showInfo(t("labor.leavereq.attach.title"), t("labor.leavereq.attach.none")); return; }
+            if (metas.size() == 1) { downloadLeaveAttachment(metas.get(0)); return; }
+            // Varios: elegir por etiqueta única "i. nombre" y mapear de vuelta.
+            java.util.Map<String, com.benjagest.ui.model.LeaveAttachmentMeta> byLabel = new java.util.LinkedHashMap<>();
+            int i = 1;
+            for (var m : metas) byLabel.put((i++) + ". " + (m.filename() == null ? "adjunto" : m.filename()), m);
+            java.util.List<String> labels = new java.util.ArrayList<>(byLabel.keySet());
+            ChoiceDialog<String> picker = new ChoiceDialog<>(labels.get(0), labels);
+            picker.initOwner(root.getScene().getWindow());
+            picker.setTitle(t("labor.leavereq.attach.title"));
+            picker.setHeaderText(t("labor.leavereq.attach.choose"));
+            picker.setContentText("");
+            picker.showAndWait().ifPresent(lbl -> downloadLeaveAttachment(byLabel.get(lbl)));
+        });
+        task.setOnFailed(ev -> showError(t("labor.leavereq.fail.title"), t("labor.leavereq.fail.body")));
+        start(task, "leavereq-attachments");
+    }
+
+    private void downloadLeaveAttachment(com.benjagest.ui.model.LeaveAttachmentMeta meta) {
+        Task<byte[]> task = new Task<>() {
+            @Override protected byte[] call() throws Exception {
+                return laborApiClient.downloadLeaveAttachment(meta.id());
+            }
+        };
+        task.setOnSucceeded(ev -> {
+            javafx.stage.FileChooser fc = new javafx.stage.FileChooser();
+            fc.setInitialFileName(meta.filename() == null ? "adjunto" : meta.filename());
+            java.io.File target = fc.showSaveDialog(root.getScene().getWindow());
+            if (target == null) return;
+            try {
+                java.nio.file.Files.write(target.toPath(), task.getValue());
+                showInfo(t("labor.leavereq.attach.title"),
+                        t("labor.leavereq.attach.saved") + "\n" + target.getAbsolutePath());
+            } catch (java.io.IOException ex) {
+                showError(t("labor.leavereq.fail.title"), ex.getMessage());
+            }
+        });
+        task.setOnFailed(ev -> showError(t("labor.leavereq.fail.title"), t("labor.leavereq.fail.body")));
+        start(task, "leavereq-att-download");
     }
 
     // ----- Sub-tab Config Fichajes (TC-CFG) -----
@@ -24895,7 +25511,7 @@ public class BenjagestUiApplication extends Application {
         return switch (type) {
             case "DRAFT_JOURNAL", "UNRECONCILED_BANK" -> this::showAccountingModule;
             case "OVERDUE_INVOICES", "VERIFACTU_ERROR" -> () -> showModule("billing");
-            case "DRAFT_PAYSLIPS", "UNDELIVERED_PAYSLIPS" -> this::showLaborModule;
+            case "DRAFT_PAYSLIPS", "UNDELIVERED_PAYSLIPS", "LEAVE_REQUESTS" -> this::showLaborModule;
             case "OVERDUE_FILINGS" -> () -> showModule("tax");
             default -> null;
         };

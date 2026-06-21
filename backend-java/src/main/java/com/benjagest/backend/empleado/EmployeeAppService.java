@@ -361,8 +361,12 @@ public class EmployeeAppService {
                 button { width: 100%; padding: 15px; font-size: 16px; font-weight: 600; border: none;
                          border-radius: 12px; background: #38bdf8; color: #04263a; margin-top: 14px; }
                 button.secondary { background: transparent; color: #94a3b8; border: 1px solid #334155; }
+                button:disabled { opacity: 0.35; }
                 .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-                .tile { background: #1e293b; border-radius: 16px; padding: 22px 12px; text-align: center; }
+                .tile { background: #1e293b; border-radius: 16px; padding: 22px 12px; text-align: center; position: relative; }
+                .tbadge { position: absolute; top: 8px; right: 8px; min-width: 20px; height: 20px;
+                          background: #ef4444; color: #fff; border-radius: 10px; font-size: 12px;
+                          font-weight: 700; line-height: 20px; padding: 0 6px; }
                 .tile .ic { font-size: 30px; }
                 .tile .lbl { margin-top: 8px; font-size: 14px; }
                 .tile .soon { display:block; font-size: 11px; color: #64748b; margin-top: 4px; }
@@ -371,6 +375,14 @@ public class EmployeeAppService {
                 .msg.ok { background: #14532d; color: #bbf7d0; }
                 .hidden { display: none; }
                 .center { text-align: center; }
+                .suggest { padding: 12px 14px; border-radius: 12px; font-size: 14px; margin: 0 0 14px;
+                           background: #0c4a6e; color: #e0f2fe; border: 1px solid #0ea5e9; }
+                .suggest.soft { background: #1e293b; color: #cbd5e1; border-color: #334155; }
+                .suggest .big { display:block; font-size:16px; font-weight:600; margin-bottom:2px; }
+                button.suggested { box-shadow: 0 0 0 3px #38bdf8, 0 0 16px #38bdf8; animation: pulse 1.6s infinite; }
+                button.suggested.secondary { background: #38bdf8; color: #04263a; }
+                @keyframes pulse { 0%,100% { box-shadow: 0 0 0 3px #38bdf8, 0 0 8px #38bdf8; }
+                                   50% { box-shadow: 0 0 0 3px #7dd3fc, 0 0 20px #7dd3fc; } }
               </style>
             </head>
             <body>
@@ -418,9 +430,9 @@ public class EmployeeAppService {
                   <p class="sub" id="homeCompany"></p>
                   <div class="grid">
                     <div class="tile" style="cursor:pointer" onclick="gotoFichar()"><div class="ic">&#128337;</div><div class="lbl">Fichar</div></div>
-                    <div class="tile"><div class="ic">&#127958;</div><div class="lbl">Vacaciones y bajas</div><span class="soon">proximamente</span></div>
-                    <div class="tile"><div class="ic">&#128196;</div><div class="lbl">Nominas</div><span class="soon">proximamente</span></div>
-                    <div class="tile"><div class="ic">&#128197;</div><div class="lbl">Mi jornada</div><span class="soon">proximamente</span></div>
+                    <div class="tile" style="cursor:pointer" onclick="gotoAusencias()"><span class="tbadge hidden" id="badge-ausencias"></span><div class="ic">&#127958;</div><div class="lbl">Vacaciones y bajas</div></div>
+                    <div class="tile" style="cursor:pointer" onclick="gotoNominas()"><span class="tbadge hidden" id="badge-nominas"></span><div class="ic">&#128196;</div><div class="lbl">Nominas</div></div>
+                    <div class="tile" style="cursor:pointer" onclick="gotoJornada()"><div class="ic">&#128197;</div><div class="lbl">Mi jornada</div></div>
                   </div>
                   <button class="secondary" id="logoutBtn">Cerrar sesion</button>
                 </div>
@@ -428,16 +440,75 @@ public class EmployeeAppService {
                 <div id="screen-fichar" class="hidden">
                   <h1>Fichar</h1>
                   <p class="sub" id="ficharState">&nbsp;</p>
+                  <div id="ficharSuggest" class="suggest hidden"></div>
                   <div class="grid">
-                    <button onclick="doPunch('IN')">Entrada</button>
-                    <button onclick="doPunch('OUT')">Salida</button>
-                    <button class="secondary" onclick="doPunch('BREAK_START')">Pausa</button>
-                    <button class="secondary" onclick="doPunch('BREAK_END')">Volver de pausa</button>
+                    <button id="btn-IN" onclick="doPunch('IN')">Entrada</button>
+                    <button id="btn-OUT" onclick="doPunch('OUT')">Salida</button>
+                    <button id="btn-BREAK_START" class="secondary" onclick="doPunch('BREAK_START')">Pausa</button>
+                    <button id="btn-BREAK_END" class="secondary" onclick="doPunch('BREAK_END')">Volver de pausa</button>
                   </div>
+                  <button class="secondary hidden" id="ficharOverride" onclick="ficharOverride()" style="margin-top:8px">Fichar otra cosa</button>
                   <div id="ficharMsg"></div>
                   <p class="sub" style="margin-top:18px">Ultimos fichajes</p>
                   <ul id="ficharRecent" style="list-style:none;padding:0;margin:0;color:#cbd5e1;font-size:14px"></ul>
                   <button class="secondary" onclick="gotoHome()">Volver</button>
+                </div>
+
+                <div id="screen-jornada" class="hidden">
+                  <h1>Mi jornada</h1>
+                  <p class="sub" id="jornadaDate">&nbsp;</p>
+                  <div id="jornadaBody"></div>
+                  <div id="jornadaMsg"></div>
+                  <button class="secondary" onclick="gotoHome()">Volver</button>
+                </div>
+
+                <div id="screen-ausencias" class="hidden">
+                  <h1>Vacaciones y bajas</h1>
+                  <p class="sub">Solicita y consulta el estado de tus ausencias.</p>
+                  <div class="card">
+                    <label>Tipo</label>
+                    <select id="ausTipo" onchange="refreshAdjLabel()" style="width:100%;padding:14px;font-size:16px;border-radius:12px;border:1px solid #334155;background:#0f172a;color:#e2e8f0">
+                      <option value="VACATION">Vacaciones</option>
+                      <option value="SICK_LEAVE">Baja medica (IT)</option>
+                      <option value="PAID_LEAVE">Permiso retribuido</option>
+                      <option value="OTHER">Otros</option>
+                    </select>
+                    <div style="display:flex;gap:10px;margin-top:12px">
+                      <div style="flex:1"><label>Desde</label>
+                        <input id="ausDesde" type="date" style="letter-spacing:normal;text-align:left"/></div>
+                      <div style="flex:1"><label>Hasta</label>
+                        <input id="ausHasta" type="date" style="letter-spacing:normal;text-align:left"/></div>
+                    </div>
+                    <label style="margin-top:12px">Motivo (opcional)</label>
+                    <input id="ausMotivo" type="text" style="letter-spacing:normal;text-align:left" placeholder="motivo"/>
+                    <label style="margin-top:12px" id="ausAdjLbl">Adjunto (foto o PDF)</label>
+                    <input id="ausAdjunto" type="file" accept="image/*,application/pdf" multiple
+                           style="letter-spacing:normal;text-align:left;padding:10px"/>
+                    <button id="ausEnviar" onclick="submitAusencia()">Enviar solicitud</button>
+                  </div>
+                  <div id="ausMsg"></div>
+                  <p class="sub" style="margin-top:18px">Mis solicitudes</p>
+                  <div id="ausLista"></div>
+                  <button class="secondary" onclick="gotoHome()">Volver</button>
+                </div>
+
+                <div id="screen-nominas" class="hidden">
+                  <h1>Mis nominas</h1>
+                  <p class="sub">Consulta, descarga y firma el recibi de tus nominas.</p>
+                  <div id="nominasMsg"></div>
+                  <div id="nominasLista"></div>
+                  <button class="secondary" onclick="gotoHome()">Volver</button>
+                </div>
+
+                <div id="ackModal" style="position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;align-items:center;justify-content:center;padding:20px;z-index:50">
+                  <div class="card" style="max-width:360px;width:100%;margin:0">
+                    <h1 style="font-size:18px;margin-top:0">Firmar recibi</h1>
+                    <p class="sub">Introduce tu PIN para firmar el recibi de la nomina (queda registrado con fecha y dispositivo).</p>
+                    <input id="ackPin" type="password" inputmode="numeric" maxlength="8" autocomplete="off" placeholder="****"/>
+                    <button onclick="confirmAck()">Firmar</button>
+                    <button class="secondary" onclick="closeAck()">Cancelar</button>
+                    <div id="ackMsg"></div>
+                  </div>
                 </div>
               </div>
 
@@ -449,7 +520,7 @@ public class EmployeeAppService {
                 const LS_TOKEN = 'benjagest_emp_token';
 
                 function show(id) {
-                  ['screen-invite','screen-pin','screen-home','screen-fichar'].forEach(s => {
+                  ['screen-invite','screen-pin','screen-home','screen-fichar','screen-jornada','screen-ausencias','screen-nominas'].forEach(s => {
                     document.getElementById(s).classList.toggle('hidden', s !== id);
                   });
                 }
@@ -498,6 +569,7 @@ public class EmployeeAppService {
                   document.getElementById('homeHello').textContent = 'Hola, ' + (localStorage.getItem(LS_NAME) || '');
                   document.getElementById('homeCompany').textContent = localStorage.getItem(LS_COMPANY) || '';
                   show('screen-home');
+                  updateHomeBadges();
                 }
 
                 // ---- MEMP-2: fichaje ----
@@ -520,7 +592,58 @@ public class EmployeeAppService {
                       { timeout: 6000, enableHighAccuracy: true });
                   });
                 }
-                function gotoFichar() { show('screen-fichar'); document.getElementById('ficharMsg').textContent=''; loadEstado(); }
+                function gotoFichar() { show('screen-fichar'); document.getElementById('ficharMsg').textContent=''; loadEstado(); loadSugerencia(); }
+                // FJ-4: resalta el boton que toca segun la jornada asignada (+/-15 min). No bloquea.
+                function clearSuggestion() {
+                  ['IN','OUT','BREAK_START','BREAK_END'].forEach(a => {
+                    const b = document.getElementById('btn-' + a);
+                    if (b) { b.classList.remove('suggested'); b.disabled = false; }
+                  });
+                  const s = document.getElementById('ficharSuggest');
+                  s.classList.add('hidden'); s.classList.remove('soft');
+                  document.getElementById('ficharOverride').classList.add('hidden');
+                }
+                // CONTENDO: solo el boton que toca. "Fichar otra cosa" reactiva todos.
+                function ficharOverride() {
+                  ['IN','OUT','BREAK_START','BREAK_END'].forEach(a => {
+                    const b = document.getElementById('btn-' + a); if (b) b.disabled = false;
+                  });
+                  document.getElementById('ficharOverride').classList.add('hidden');
+                }
+                async function loadSugerencia() {
+                  clearSuggestion();
+                  try {
+                    const r = await fetch(API + '/empleado/fichaje/sugerencia', { headers: authHeaders() });
+                    if (!r.ok) return; // sin jornada o error: comportamiento normal, todos los botones
+                    const d = await r.json();
+                    const s = document.getElementById('ficharSuggest');
+                    if (!d.hasSchedule) return;                 // hoy sin jornada / dia libre
+                    if (!d.action) {                            // jornada ya completada
+                      s.classList.remove('hidden'); s.classList.add('soft');
+                      s.textContent = 'Has fichado toda tu jornada de hoy.';
+                      return;
+                    }
+                    const label = typeLabel(d.action);
+                    s.classList.remove('hidden');
+                    if (d.inWindow) {
+                      s.classList.remove('soft');
+                      s.innerHTML = '<span class="big">Te toca: ' + label + '</span>'
+                        + 'Hora prevista ' + d.scheduledTime + ' (margen ' + d.windowFrom + '-' + d.windowTo + ').';
+                      const b = document.getElementById('btn-' + d.action);
+                      if (b) b.classList.add('suggested');
+                      // Desactiva los demas para no confundir (override los reactiva).
+                      ['IN','OUT','BREAK_START','BREAK_END'].forEach(a => {
+                        const x = document.getElementById('btn-' + a);
+                        if (x) x.disabled = (a !== d.action);
+                      });
+                      document.getElementById('ficharOverride').classList.remove('hidden');
+                    } else {
+                      s.classList.add('soft');
+                      s.innerHTML = '<span class="big">Proximo: ' + label + ' a las ' + d.scheduledTime + '</span>'
+                        + 'Aun no es la hora (el boton se resaltara a partir de ' + d.windowFrom + ').';
+                    }
+                  } catch (e) { /* silencioso: no romper el fichaje por la sugerencia */ }
+                }
                 async function loadEstado() {
                   try {
                     const r = await fetch(API + '/empleado/fichaje/estado', { headers: authHeaders() });
@@ -564,8 +687,361 @@ public class EmployeeAppService {
                     msg('ficharMsg', typeLabel(d.eventType) + ' registrada'
                       + (d.warning ? '. ' + d.warning : ''), true);
                     loadEstado();
+                    loadSugerencia();
                   } catch (e) { msg('ficharMsg', e.message); }
                 }
+
+                // ---- MEMP-3: mi jornada (horario + jornada real + festivo) ----
+                function fmtMins(m) {
+                  if (m == null) return '0h';
+                  const h = Math.floor(m / 60), mm = m % 60;
+                  return (h > 0 ? h + 'h ' : '') + (mm > 0 || h === 0 ? mm + 'm' : '').trim();
+                }
+                function gotoJornada() {
+                  show('screen-jornada');
+                  document.getElementById('jornadaMsg').textContent = '';
+                  document.getElementById('jornadaBody').innerHTML = '';
+                  loadJornada();
+                }
+                async function loadJornada() {
+                  try {
+                    const r = await fetch(API + '/empleado/jornada', { headers: authHeaders() });
+                    if (r.status === 401 || r.status === 403) { localStorage.removeItem(LS_TOKEN); gotoPin(); return; }
+                    if (!r.ok) {
+                      let e = 'No se pudo cargar tu jornada';
+                      try { e = (await r.json()).message || e; } catch (x) {}
+                      throw new Error(e);
+                    }
+                    const d = await r.json();
+                    document.getElementById('jornadaDate').textContent = 'Hoy ' + (d.date || '');
+                    let html = '';
+                    if (d.holiday) {
+                      html += '<div class="suggest soft" style="border-color:#facc15;background:#422006;color:#fde68a">'
+                        + '<span class="big">Hoy es festivo</span>' + (d.holiday.name || '') + '</div>';
+                    }
+                    // Horario asignado (JOR-2)
+                    html += '<div class="card"><p class="sub" style="margin:0 0 10px">Tu horario de hoy</p>';
+                    if (d.hasSchedule && d.blocks && d.blocks.length) {
+                      html += '<ul style="list-style:none;padding:0;margin:0">';
+                      d.blocks.forEach(b => {
+                        const tag = b.type === 'BREAK' ? 'Pausa' : 'Trabajo';
+                        const col = b.type === 'BREAK' ? '#94a3b8' : '#38bdf8';
+                        html += '<li style="padding:6px 0;border-bottom:1px solid #0f172a">'
+                          + '<span style="color:' + col + ';font-weight:600">' + b.start + ' - ' + b.end + '</span>'
+                          + '<span style="color:#94a3b8;margin-left:10px;font-size:13px">' + tag + '</span></li>';
+                      });
+                      html += '</ul>';
+                    } else {
+                      html += '<p style="margin:0;color:#94a3b8">No tienes horario asignado para hoy (dia libre).</p>';
+                    }
+                    html += '</div>';
+                    // Que toca ahora (FJ)
+                    if (d.suggestion && d.suggestion.hasSchedule && d.suggestion.action) {
+                      const lbl = typeLabel(d.suggestion.action);
+                      html += '<div class="suggest' + (d.suggestion.inWindow ? '' : ' soft') + '">'
+                        + '<span class="big">' + (d.suggestion.inWindow ? 'Te toca: ' + lbl : 'Proximo: ' + lbl + ' a las ' + d.suggestion.scheduledTime) + '</span>'
+                        + (d.suggestion.inWindow ? 'Hora prevista ' + d.suggestion.scheduledTime : 'Se activara a partir de ' + d.suggestion.windowFrom) + '.</div>';
+                    }
+                    // Jornada real fichada (JOR-1)
+                    html += '<div class="card"><p class="sub" style="margin:0 0 10px">Lo que llevas fichado hoy</p>';
+                    if (d.worked) {
+                      html += '<div style="font-size:15px">Trabajado: <b>' + fmtMins(d.worked.workedMinutes) + '</b>'
+                        + ' &nbsp;·&nbsp; Pausa: ' + fmtMins(d.worked.pauseMinutes) + '</div>';
+                      if (d.worked.firstIn) html += '<div style="color:#94a3b8;font-size:13px;margin-top:6px">Entrada ' + d.worked.firstIn
+                        + (d.worked.lastOut ? ' · Ultima salida ' + d.worked.lastOut : '') + '</div>';
+                    } else {
+                      html += '<p style="margin:0;color:#94a3b8">Aun no has fichado hoy.</p>';
+                    }
+                    html += '</div>';
+                    document.getElementById('jornadaBody').innerHTML = html;
+                  } catch (e) { msg('jornadaMsg', e.message); }
+                }
+
+                // ---- MEMP-4: vacaciones y bajas ----
+                function ausKindLabel(k) {
+                  return ({VACATION:'Vacaciones', SICK_LEAVE:'Baja medica', PAID_LEAVE:'Permiso retribuido', OTHER:'Otros'})[k] || k;
+                }
+                function ausStatusInfo(s) {
+                  return ({REQUESTED:['Pendiente','#0c4a6e','#7dd3fc'], APPROVED:['Aprobada','#14532d','#bbf7d0'],
+                           REJECTED:['Rechazada','#7f1d1d','#fecaca'], CANCELLED:['Cancelada','#334155','#cbd5e1']})[s]
+                         || [s,'#334155','#cbd5e1'];
+                }
+                function gotoAusencias() {
+                  show('screen-ausencias');
+                  localStorage.removeItem('aus_pending'); setBadge('badge-ausencias', '');
+                  document.getElementById('ausMsg').textContent = '';
+                  const hoy = new Date().toISOString().slice(0,10);
+                  document.getElementById('ausDesde').value = hoy;
+                  document.getElementById('ausHasta').value = hoy;
+                  document.getElementById('ausMotivo').value = '';
+                  document.getElementById('ausAdjunto').value = '';
+                  document.getElementById('ausTipo').value = 'VACATION';
+                  refreshAdjLabel();
+                  loadAusencias();
+                }
+                function refreshAdjLabel() {
+                  const baja = document.getElementById('ausTipo').value === 'SICK_LEAVE';
+                  document.getElementById('ausAdjLbl').textContent = baja
+                    ? 'Parte de baja (obligatorio)' : 'Adjunto (opcional: foto o PDF)';
+                }
+                async function loadAusencias() {
+                  try {
+                    const r = await fetch(API + '/empleado/ausencias', { headers: authHeaders() });
+                    if (r.status === 401 || r.status === 403) { localStorage.removeItem(LS_TOKEN); gotoPin(); return; }
+                    if (!r.ok) throw new Error('No se pudieron cargar tus solicitudes');
+                    const list = await r.json();
+                    const cont = document.getElementById('ausLista');
+                    cont.innerHTML = '';
+                    if (!list.length) { cont.innerHTML = '<p style="color:#94a3b8">Aun no tienes solicitudes.</p>'; return; }
+                    list.forEach(s => {
+                      const si = ausStatusInfo(s.status);
+                      const nAdj = (s.attachments || []).length;
+                      const div = document.createElement('div');
+                      div.className = 'card';
+                      div.style.padding = '14px';
+                      div.innerHTML =
+                        '<div style="display:flex;justify-content:space-between;align-items:center">'
+                        + '<b>' + ausKindLabel(s.kind) + '</b>'
+                        + '<span style="background:' + si[1] + ';color:' + si[2] + ';padding:3px 10px;border-radius:10px;font-size:12px">' + si[0] + '</span></div>'
+                        + '<div style="color:#cbd5e1;font-size:14px;margin-top:6px">' + s.startDate + ' &rarr; ' + s.endDate
+                        + (s.days ? ' (' + s.days + ' dias)' : '') + '</div>'
+                        + (s.reason ? '<div style="color:#94a3b8;font-size:13px;margin-top:4px">' + s.reason + '</div>' : '')
+                        + (nAdj ? '<div style="color:#94a3b8;font-size:13px;margin-top:4px">&#128206; ' + nAdj + ' adjunto(s)</div>' : '')
+                        + (s.reviewNotes ? '<div style="color:#94a3b8;font-size:13px;margin-top:4px">Nota: ' + s.reviewNotes + '</div>' : '');
+                      if (s.status === 'REQUESTED') {
+                        const btn = document.createElement('button');
+                        btn.className = 'secondary'; btn.textContent = 'Cancelar solicitud';
+                        btn.onclick = () => cancelAusencia(s.id);
+                        div.appendChild(btn);
+                      }
+                      cont.appendChild(div);
+                    });
+                  } catch (e) { msg('ausMsg', e.message); }
+                }
+                function readFileB64(file) {
+                  return new Promise((res, rej) => {
+                    const fr = new FileReader();
+                    fr.onload = () => res({ filename: file.name, contentType: file.type, base64: fr.result });
+                    fr.onerror = () => rej(new Error('No se pudo leer ' + file.name));
+                    fr.readAsDataURL(file);
+                  });
+                }
+                async function submitAusencia() {
+                  const kind = document.getElementById('ausTipo').value;
+                  const desde = document.getElementById('ausDesde').value;
+                  const hasta = document.getElementById('ausHasta').value;
+                  const motivo = document.getElementById('ausMotivo').value.trim();
+                  const files = document.getElementById('ausAdjunto').files;
+                  if (!desde || !hasta) { msg('ausMsg', 'Indica las fechas desde y hasta'); return; }
+                  if (hasta < desde) { msg('ausMsg', 'La fecha hasta es anterior a la de inicio'); return; }
+                  if (kind === 'SICK_LEAVE' && files.length === 0) { msg('ausMsg', 'La baja requiere adjuntar el parte de baja'); return; }
+                  msg('ausMsg', 'Enviando...', true);
+                  try {
+                    const attachments = [];
+                    for (let i = 0; i < files.length; i++) attachments.push(await readFileB64(files[i]));
+                    const r = await fetch(API + '/empleado/ausencias', {
+                      method: 'POST', headers: authHeaders(),
+                      body: JSON.stringify({ kind: kind, startDate: desde, endDate: hasta,
+                        reason: motivo || null, attachments: attachments })
+                    });
+                    if (r.status === 401 || r.status === 403) { localStorage.removeItem(LS_TOKEN); gotoPin(); return; }
+                    if (!r.ok) {
+                      let e = 'No se pudo enviar la solicitud';
+                      try { e = (await r.json()).message || e; } catch (x) {}
+                      throw new Error(e);
+                    }
+                    msg('ausMsg', 'Solicitud enviada', true);
+                    document.getElementById('ausAdjunto').value = '';
+                    document.getElementById('ausMotivo').value = '';
+                    loadAusencias();
+                  } catch (e) { msg('ausMsg', e.message); }
+                }
+                async function cancelAusencia(id) {
+                  try {
+                    const r = await fetch(API + '/empleado/ausencias/' + id + '/cancel', {
+                      method: 'POST', headers: authHeaders() });
+                    if (!r.ok) {
+                      let e = 'No se pudo cancelar';
+                      try { e = (await r.json()).message || e; } catch (x) {}
+                      throw new Error(e);
+                    }
+                    loadAusencias();
+                  } catch (e) { msg('ausMsg', e.message); }
+                }
+
+                // ---- MEMP-5: nominas ----
+                function mesNombre(m) {
+                  return ['','Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto',
+                          'Septiembre','Octubre','Noviembre','Diciembre'][m] || ('Mes ' + m);
+                }
+                function gotoNominas() {
+                  show('screen-nominas');
+                  document.getElementById('nominasMsg').textContent = '';
+                  document.getElementById('nominasLista').innerHTML = '';
+                  loadNominas();
+                }
+                async function loadNominas() {
+                  try {
+                    const r = await fetch(API + '/empleado/nominas', { headers: authHeaders() });
+                    if (r.status === 401 || r.status === 403) { localStorage.removeItem(LS_TOKEN); gotoPin(); return; }
+                    if (!r.ok) throw new Error('No se pudieron cargar tus nominas');
+                    const list = await r.json();
+                    const cont = document.getElementById('nominasLista');
+                    cont.innerHTML = '';
+                    if (!list.length) { cont.innerHTML = '<p style="color:#94a3b8">Aun no tienes nominas disponibles.</p>'; return; }
+                    list.forEach(p => {
+                      const ack = !!p.acknowledgedAt;
+                      const div = document.createElement('div');
+                      div.className = 'card'; div.style.padding = '14px';
+                      div.innerHTML =
+                        '<div style="display:flex;justify-content:space-between;align-items:center">'
+                        + '<b>' + mesNombre(p.month) + ' ' + p.year + '</b>'
+                        + (ack ? '<span style="background:#14532d;color:#bbf7d0;padding:3px 10px;border-radius:10px;font-size:12px">Recibi confirmado</span>'
+                               : '<span style="background:#0c4a6e;color:#7dd3fc;padding:3px 10px;border-radius:10px;font-size:12px">Pendiente de recibi</span>')
+                        + '</div>'
+                        + '<div style="color:#cbd5e1;font-size:14px;margin-top:6px">Liquido: <b>' + (p.net != null ? p.net : '-') + ' EUR</b>'
+                        + '<span style="color:#94a3b8"> &nbsp;·&nbsp; Bruto ' + (p.gross != null ? p.gross : '-') + '</span></div>';
+                      const row = document.createElement('div');
+                      row.style.display = 'flex'; row.style.gap = '10px';
+                      const pdfBtn = document.createElement('button');
+                      pdfBtn.textContent = 'Ver PDF'; pdfBtn.onclick = () => openNominaPdf(p.id);
+                      row.appendChild(pdfBtn);
+                      if (!ack) {
+                        const ackBtn = document.createElement('button');
+                        ackBtn.className = 'secondary'; ackBtn.textContent = 'Firmar recibi';
+                        ackBtn.onclick = () => ackNomina(p.id);
+                        row.appendChild(ackBtn);
+                      }
+                      div.appendChild(row);
+                      cont.appendChild(div);
+                    });
+                  } catch (e) { msg('nominasMsg', e.message); }
+                }
+                async function openNominaPdf(id) {
+                  msg('nominasMsg', 'Abriendo PDF...', true);
+                  try {
+                    const r = await fetch(API + '/empleado/nominas/' + id + '/pdf', { headers: authHeaders() });
+                    if (r.status === 401 || r.status === 403) { localStorage.removeItem(LS_TOKEN); gotoPin(); return; }
+                    if (!r.ok) throw new Error('No se pudo abrir el PDF');
+                    const blob = await r.blob();
+                    const url = URL.createObjectURL(blob);
+                    // Abrir en pestana nueva; si el navegador lo bloquea, descargar.
+                    const w = window.open(url, '_blank');
+                    if (!w) {
+                      const a = document.createElement('a');
+                      a.href = url; a.download = 'nomina.pdf'; document.body.appendChild(a); a.click(); a.remove();
+                    }
+                    setTimeout(() => URL.revokeObjectURL(url), 60000);
+                    document.getElementById('nominasMsg').textContent = '';
+                  } catch (e) { msg('nominasMsg', e.message); }
+                }
+                let ackPayslipId = null;
+                function ackNomina(id) {
+                  ackPayslipId = id;
+                  document.getElementById('ackPin').value = '';
+                  document.getElementById('ackMsg').textContent = '';
+                  document.getElementById('ackModal').style.display = 'flex';
+                  setTimeout(() => { try { document.getElementById('ackPin').focus(); } catch(e){} }, 50);
+                }
+                function closeAck() {
+                  document.getElementById('ackModal').style.display = 'none';
+                  ackPayslipId = null;
+                }
+                async function confirmAck() {
+                  const pin = document.getElementById('ackPin').value.replace(/[^0-9]/g, '');
+                  if (pin.length < 4) { msg('ackMsg', 'Introduce tu PIN (4-8 digitos)'); return; }
+                  if (!ackPayslipId) { closeAck(); return; }
+                  msg('ackMsg', 'Firmando...', true);
+                  try {
+                    const r = await fetch(API + '/empleado/nominas/' + ackPayslipId + '/acknowledge', {
+                      method: 'POST', headers: authHeaders(),
+                      body: JSON.stringify({ pin: pin, device: navigator.userAgent.slice(0, 200) })
+                    });
+                    if (!r.ok) {
+                      let e = 'No se pudo firmar';
+                      try { e = (await r.json()).message || e; } catch (x) {}
+                      // 401 aqui = PIN incorrecto (no es sesion caducada): no cerramos sesion.
+                      throw new Error(r.status === 401 ? (e || 'PIN incorrecto') : e);
+                    }
+                    closeAck();
+                    msg('nominasMsg', 'Recibi firmado. Gracias.', true);
+                    loadNominas(); updateHomeBadges();
+                  } catch (e) { msg('ackMsg', e.message); }
+                }
+
+                // ---- NOTIF-RT: tiempo real (SSE) + fallback de sondeo + badges ----
+                let evtSource = null;
+                let sseAlive = false;     // se pone true si el SSE entrega algun evento
+                let pollTimer = null;     // fallback cuando el SSE no fluye (tunel bufferiza)
+                function currentScreen() {
+                  for (const s of ['screen-fichar','screen-jornada','screen-ausencias','screen-nominas','screen-home']) {
+                    if (!document.getElementById(s).classList.contains('hidden')) return s;
+                  }
+                  return null;
+                }
+                function setBadge(id, text) {
+                  const el = document.getElementById(id);
+                  if (!el) return;
+                  if (text) { el.textContent = text; el.classList.remove('hidden'); }
+                  else { el.classList.add('hidden'); }
+                }
+                async function updateHomeBadges() {
+                  // Nominas sin recibi confirmado.
+                  try {
+                    const r = await fetch(API + '/empleado/nominas', { headers: authHeaders() });
+                    if (r.ok) {
+                      const list = await r.json();
+                      const pend = list.filter(p => !p.acknowledgedAt).length;
+                      setBadge('badge-nominas', pend > 0 ? String(pend) : '');
+                    }
+                  } catch (e) {}
+                  // Solicitudes resueltas sin ver (marca local).
+                  setBadge('badge-ausencias', localStorage.getItem('aus_pending') === '1' ? '!' : '');
+                }
+                function connectRealtime() {
+                  const token = localStorage.getItem(LS_TOKEN);
+                  if (!token) return;
+                  sseAlive = false;
+                  if (evtSource) { evtSource.close(); evtSource = null; }
+                  try {
+                    evtSource = new EventSource(API + '/realtime/stream?token=' + encodeURIComponent(token));
+                  } catch (e) { return; }
+                  evtSource.addEventListener('ready', () => { sseAlive = true; });
+                  evtSource.addEventListener('timeclock', () => {
+                    sseAlive = true;
+                    if (currentScreen() === 'screen-fichar') { loadEstado(); loadSugerencia(); }
+                    if (currentScreen() === 'screen-jornada') loadJornada();
+                  });
+                  evtSource.addEventListener('leave_reviewed', () => {
+                    sseAlive = true;
+                    if (currentScreen() === 'screen-ausencias') loadAusencias();
+                    else { localStorage.setItem('aus_pending', '1'); updateHomeBadges(); }
+                  });
+                  evtSource.addEventListener('payslip', () => {
+                    sseAlive = true;
+                    if (currentScreen() === 'screen-nominas') loadNominas();
+                    updateHomeBadges();
+                  });
+                  // onerror: EventSource reintenta solo; el sondeo cubre mientras tanto.
+                }
+                function disconnectRealtime() { if (evtSource) { evtSource.close(); evtSource = null; } }
+
+                // Fallback de sondeo: si el SSE no entrega (Cloudflare bufferiza el
+                // quick-tunnel), refrescamos la pantalla abierta + badges cada 18s.
+                // Si el SSE funciona (sseAlive), el sondeo no hace nada.
+                function startPolling() {
+                  if (pollTimer) return;
+                  pollTimer = setInterval(() => {
+                    if (sseAlive || !localStorage.getItem(LS_TOKEN)) return;
+                    const scr = currentScreen();
+                    if (scr === 'screen-fichar') { loadEstado(); loadSugerencia(); }
+                    else if (scr === 'screen-jornada') loadJornada();
+                    else if (scr === 'screen-ausencias') loadAusencias();
+                    else if (scr === 'screen-nominas') loadNominas();
+                    updateHomeBadges();
+                  }, 18000);
+                }
+                function stopPolling() { if (pollTimer) { clearInterval(pollTimer); pollTimer = null; } }
 
                 document.getElementById('activateBtn').onclick = async () => {
                   const token = document.getElementById('inviteInput').value.trim();
@@ -612,15 +1088,19 @@ public class EmployeeAppService {
                     if (res.displayName) localStorage.setItem(LS_NAME, res.displayName);
                     document.getElementById('pinInput').value = '';
                     gotoHome();
+                    connectRealtime();
+                    startPolling();
                   } catch (e) { msg('pinMsg', e.message); }
                 };
 
                 document.getElementById('forgetBtn').onclick = () => {
+                  disconnectRealtime(); stopPolling();
                   localStorage.removeItem(LS_SECRET);
                   localStorage.removeItem(LS_TOKEN);
                   show('screen-invite');
                 };
                 document.getElementById('logoutBtn').onclick = () => {
+                  disconnectRealtime(); stopPolling();
                   localStorage.removeItem(LS_TOKEN);
                   gotoPin();
                 };

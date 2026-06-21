@@ -72,6 +72,8 @@ public class PayslipPdfGenerator {
                 SELECT p.id, p.employee_id, p.period_year, p.period_month, p.payslip_type,
                        p.gross_amount, p.ss_employee_amount, p.irpf_amount,
                        p.other_deductions, p.net_amount, p.status, p.paid_at,
+                       p.acknowledged_at, p.acknowledged_ip, p.acknowledged_device,
+                       p.acknowledged_method, p.acknowledged_code,
                        e.full_name AS employee_name, e.tax_identifier AS employee_nif,
                        e.social_security_number AS employee_nuss,
                        e.hire_date, e.address_line, e.city, e.postal_code,
@@ -391,6 +393,36 @@ public class PayslipPdfGenerator {
                 doc.add(coste);
             }
             } // fin if (hasEe || hasEr)
+
+            // MEMP-5b (SIGN) — bloque de firma electrónica (acuse de recibo) si el
+            // empleado ya ha firmado el recibí desde su app. Evidencias + código.
+            Object ackObj = data.get("acknowledged_at");
+            if (ackObj != null) {
+                String name = str(data.get("employee_name"));
+                String nif = str(data.get("employee_nif"));
+                String method = str(data.get("acknowledged_method"));
+                String device = str(data.get("acknowledged_device"));
+                String ip = str(data.get("acknowledged_ip"));
+                String code = str(data.get("acknowledged_code"));
+                PdfPTable box = new PdfPTable(1);
+                box.setWidthPercentage(100);
+                box.setSpacingBefore(12f);
+                PdfPCell c = new PdfPCell();
+                c.setPadding(8f);
+                c.setBorderColor(new Color(37, 99, 235));
+                c.addElement(new Paragraph("RECIBÍ — Firma electrónica (acuse de recibo)", fHead));
+                c.addElement(new Paragraph("Firmado por: " + name
+                        + (nif.isBlank() ? "" : " (NIF " + nif + ")"), fNormal));
+                c.addElement(new Paragraph("Fecha de firma: " + ackObj
+                        + "     Método: " + (method.isBlank() ? "PIN_APP" : method), fNormal));
+                if (!device.isBlank()) c.addElement(new Paragraph("Dispositivo: " + device, fNormal));
+                if (!ip.isBlank()) c.addElement(new Paragraph("IP: " + ip, fNormal));
+                if (!code.isBlank()) c.addElement(new Paragraph("Código de verificación: " + code, fNormal));
+                c.addElement(new Paragraph("Firma electrónica simple con valor probatorio (acuse de "
+                        + "recibo del recibo de salarios). No requiere certificado cualificado.", fLbl));
+                box.addCell(c);
+                doc.add(box);
+            }
 
             // Las firmas y el pie legal se dibujan al pie de la página en
             // FirmasFooter.onEndPage (margen inferior reservado = 90).

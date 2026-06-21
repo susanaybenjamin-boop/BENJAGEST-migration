@@ -1,5 +1,8 @@
 # Backlog operativo BENJAGEST
 
+> **Última actualización:** 2026-06-20 (Portal del empleado MEMP-2..5 COMPLETO +
+> firma de nóminas + notificaciones en tiempo real (SSE); ver sesión 2026-06-20).
+> Histórico previo:
 > **Última actualización:** 2026-06-16 (cerrada la **COLA AUTÓNOMA** salvo lo no
 > [ver bloque de estado verificado justo debajo, 2026-06-17]
 > prioritario; **topes de cotización SS por grupo** cableados 1+2+3 con cifras
@@ -11,6 +14,63 @@
 > **Forma de trabajo (junio 2026):** Benjamin lidera y decide. Pablo solo entra de uvas a peras desde 05-30. Todo el trabajo va por `feat/Benjamin` → prueba local → commit → merge `--no-ff` a `develop`. Cada item cerrado lleva commit hash + fecha. **Regla 10.bis de CLAUDE.md aplica siempre: verificar código antes de tocar.**
 >
 > **Fuentes complementarias:** [`gap-analysis-contendo.md`](gap-analysis-contendo.md), [`gap-analysis-config-ui.md`](gap-analysis-config-ui.md), [`migration-roadmap.md`](migration-roadmap.md), [`vf-chain-fix.md`](vf-chain-fix.md), [`agents-debug-pattern.md`](agents-debug-pattern.md).
+
+---
+
+## 📅 SESIÓN 2026-06-20 — FICHAJE-JORNADA + Portal empleado (MEMP-3/4/5) + firma nóminas + tiempo real
+
+> Benjamin: terminar el portal del empleado (FICHAJE-JORNADA → MEMP-3 → MEMP-4 → MEMP-5),
+> luego firma de nóminas y notificaciones en tiempo real. **PROBADO EN VIVO OK** (escritorio
+> directo + PWA por túnel Cloudflare). Todo en `feat/Benjamin` (pusheada). **Merges a develop
+> pendientes** (cierre de bloque, ver abajo).
+
+**Cerrado y PROBADO hoy en `feat/Benjamin` (compila backend+ui):**
+- ✅ **FJ-1/FJ-2** *(e61f7b4)* — `ScheduleFichajeService.suggestNextPunch` (plantilla vigente
+  + bloques → transiciones IN/BREAK_START/BREAK_END/OUT → siguiente con ventana ±15 min) +
+  `GET /api/empleado/fichaje/sugerencia`.
+- ✅ **FJ-3/FJ-4** *(c14663b)* — resaltado del botón que toca en escritorio + PWA.
+- ✅ **FJ disable-others** *(64678d6)* — en ventana, solo el botón sugerido activo; los demás
+  desactivados (estilo CONTENDO) + enlace "Fichar otra cosa" (RD 8/2019: registrar tiempo real).
+- ✅ **FJ-5a** *(6267860)* — "Corregir…" accionable en Auditoría de fichajes (TIME_ADJUST/
+  TYPE_CHANGE/VOID → `POST /api/timeclock/correction`).
+- ✅ **MEMP-3** *(5b90f64)* — "Mi jornada" en la PWA: horario (JOR-2) + jornada real (JOR-1) +
+  festivo + qué toca (FJ). `GET /api/empleado/jornada`.
+- ✅ **MEMP-4** *(17c5f01)* — solicitudes vacaciones/bajas desde el móvil + aprobación. V134
+  `employee_leave_requests` + `employee_leave_attachments` (BLOB). Tipos VACATION/SICK_LEAVE/
+  PAID_LEAVE/OTHER (baja exige adjunto). PWA pedir/listar/cancelar; escritorio sub-tab
+  "Solicitudes" (aprobar/rechazar + adjunto). Aprobar VACATION espeja a `employee_vacations`.
+- ✅ **MEMP-5** *(240e4ad)* — nóminas en la PWA: recibir/descargar PDF/confirmar recibí.
+  `EmployeePayslipController /api/empleado/nominas`. **→ Portal MEMP-2..5 COMPLETO.**
+- ✅ **MEMP-5b SIGN** *(84516f1)* — firma electrónica simple del recibí (estilo Sesame, sin
+  certificado). V135 evidencias (`acknowledged_ip/device/method/code`). Step-up de PIN
+  (`passwordEncoder.matches` vs `employees.pin_hash`); el PDF incluye bloque "RECIBÍ — Firma
+  electrónica" (firmante/NIF/fecha/dispositivo/IP/código) que el jefe descarga. PWA: modal
+  que pide PIN para firmar.
+- ✅ **NOTIF-RT** *(c203582, f983830)* — notificaciones en tiempo real (SSE):
+  · Backend `RealtimeService` (conexiones por empresa/empleado, publishToCompany/Employee,
+    heartbeat, publicación AFTER-COMMIT) + `RealtimeController GET /api/realtime/stream`
+    (token por query SOLO en /api/realtime/ para EventSource).
+  · Eventos emitidos: fichaje, solicitud creada/resuelta, nómina entregada/firmada.
+  · Escritorio: `RealtimeClient` (SSE por localhost) → `RefreshBus` (TIMECLOCK/AUDIT/
+    LEAVE_REQUESTS/PAYSLIPS) + campana. Pantallas suscritas: fichajes, auditoría, Solicitudes,
+    **Nóminas** *(3babd8f, fix: faltaba la suscripción)*.
+  · PWA: `EventSource` + **fallback de sondeo 18s** *(b5b6977)* porque el quick-tunnel de
+    Cloudflare **bufferiza el SSE** (diagnosticado: 0 bytes por túnel vs OK en localhost).
+  · AVISOS: bucket `LEAVE_REQUESTS` en PendingTasksService + i18n + navegación → resuelve
+    "¿dónde recibe el empresario las solicitudes?".
+- ✅ **Fixes:** SSE anti-buffering (cabeceras no-transform + padding) *(b8201d1)*; modal de
+  firma PWA salía siempre por `display:flex` inline venciendo a `.hidden` *(c2e5043)*.
+
+**Pendiente (siguiente sesión / por decidir):**
+- ⬜ **Merges `--no-ff` a develop** de todo el bloque de hoy (workflow §3/§9). Pendiente de OK.
+- ⬜ **FJ-5b** — incidencia "schedule-aware" (esperado vs fichado por día cerrado). Flag
+  **legal-sensible** → validar con caso real.
+- ⬜ **Push instantáneo en PWA** — el quick-tunnel bufferiza SSE; para instantáneo en móvil:
+  **túnel con nombre** (dominio en Cloudflare, URL fija) o pasar el canal a **WebSocket**.
+- ⬜ **Pollers 5s → push** — `advisoryClientsPoller`/`invitationsPoller` siguen sondeando
+  (vinculación de clientes / invitaciones no emiten SSE aún). Convertir a eventos.
+- Mejoras menores: email al jefe con el PDF al firmar; encadenar sugerencias FJ; calendario
+  semanal en "Mi jornada".
 
 ---
 

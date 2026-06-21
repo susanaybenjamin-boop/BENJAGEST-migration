@@ -1,11 +1,13 @@
 package com.benjagest.backend.empleado;
 
 import com.benjagest.backend.auth.RequiresRole;
+import com.benjagest.backend.timeclock.ScheduleFichajeService;
 import com.benjagest.backend.timeclock.TimeClockController;
 import com.benjagest.backend.timeclock.TimeClockEvent;
 import com.benjagest.backend.timeclock.TimeClockService;
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -31,9 +33,11 @@ import org.springframework.web.bind.annotation.RestController;
 public class EmployeeFichajeController {
 
     private final TimeClockService service;
+    private final ScheduleFichajeService scheduleService;
 
-    public EmployeeFichajeController(TimeClockService service) {
+    public EmployeeFichajeController(TimeClockService service, ScheduleFichajeService scheduleService) {
         this.service = service;
+        this.scheduleService = scheduleService;
     }
 
     /** Ficha un evento (IN/OUT/BREAK_START/BREAK_END) con geo opcional. */
@@ -64,6 +68,17 @@ public class EmployeeFichajeController {
             items.add(new PunchOut(e.eventType(), e.eventTime(), null, null));
         }
         return new Estado(me.fullName(), clockedIn, lastType, items);
+    }
+
+    /**
+     * FJ-2 — Qué fichaje toca ahora según la jornada asignada (estilo CONTENDO).
+     * La PWA destaca el botón sugerido cuando {@code inWindow}; los demás quedan
+     * disponibles (no se bloquea nada). {@code hasSchedule=false} = hoy sin jornada.
+     */
+    @GetMapping("/sugerencia")
+    public ScheduleFichajeService.Suggestion sugerencia() {
+        TimeClockController.MyEmployeeInfo me = service.resolveCurrentEmployee();
+        return scheduleService.suggestNextPunch(me.employeeId(), LocalDateTime.now());
     }
 
     public record PunchIn(String eventType, BigDecimal lat, BigDecimal lng) {}
