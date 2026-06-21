@@ -62,7 +62,7 @@
   firma PWA salía siempre por `display:flex` inline venciendo a `.hidden` *(c2e5043)*.
 
 **Pendiente (siguiente sesión / por decidir):**
-- ⬜ **Merges `--no-ff` a develop** de todo el bloque de hoy (workflow §3/§9). Pendiente de OK.
+- ✅ **Merge `--no-ff` a develop** de todo el bloque de hoy *(merge 496c6f3, 2026-06-20)*.
 - ⬜ **FJ-5b** — incidencia "schedule-aware" (esperado vs fichado por día cerrado). Flag
   **legal-sensible** → validar con caso real.
 - ⬜ **Push instantáneo en PWA** — el quick-tunnel bufferiza SSE; para instantáneo en móvil:
