@@ -54,7 +54,9 @@
                 <artifactId>javafx-maven-plugin</artifactId>
                 <version>0.0.8</version>
                 <configuration>
-                    <mainClass>com.benjagest.ui/com.benjagest.ui.BenjagestUiApplication</mainClass>
+                    <!-- App NO modular (sin module-info, classpath) para poder integrar
+                         JCEF embebido. mainClass sin prefijo de módulo. -->
+                    <mainClass>com.benjagest.ui.BenjagestUiApplication</mainClass>
                 </configuration>
             </plugin>
         </plugins>
