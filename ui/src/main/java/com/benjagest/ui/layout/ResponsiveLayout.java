@@ -190,6 +190,11 @@ public final class ResponsiveLayout {
     public static void installDialog(Dialog<?> dialog, Node content,
                                        boolean wrapInScroll) {
         DialogPane pane = dialog.getDialogPane();
+        // Máscara de fecha automática (dd-MM-yyyy) en TODOS los DatePicker del diálogo.
+        // La escena del diálogo no existe hasta mostrarse → la enganchamos por
+        // sceneProperty. Idempotente. Las horas (HH:mm) van por campo (installTimeMask),
+        // porque un TextField de hora no se distingue por tipo.
+        hookDialogDateMask(pane);
         Rectangle2D vb = Screen.getPrimary().getVisualBounds();
 
         if (!wrapInScroll) {
@@ -238,6 +243,16 @@ public final class ResponsiveLayout {
      * en que el Stage hereda prefHeight calculado del contenido y se
      * salta el cap del DialogPane tras un layout pass.
      */
+    /** Activa la máscara de fecha en la escena del diálogo en cuanto exista. */
+    private static void hookDialogDateMask(DialogPane pane) {
+        if (pane.getScene() != null) {
+            com.benjagest.ui.support.EditableCells.enableDateMaskOnFocus(pane.getScene());
+        }
+        pane.sceneProperty().addListener((o, oldSc, sc) -> {
+            if (sc != null) com.benjagest.ui.support.EditableCells.enableDateMaskOnFocus(sc);
+        });
+    }
+
     private static void installStageCap(Dialog<?> dialog, Rectangle2D vb) {
         DialogPane pane = dialog.getDialogPane();
         dialog.setOnShown(ev -> {

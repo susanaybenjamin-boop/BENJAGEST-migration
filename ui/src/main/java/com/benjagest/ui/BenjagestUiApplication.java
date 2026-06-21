@@ -4436,6 +4436,7 @@ public class BenjagestUiApplication extends Application {
         treasury.setCellFactory(lv -> treasuryCell());
         treasury.setMaxWidth(Double.MAX_VALUE);
         DatePicker datePicker = new DatePicker(LocalDate.now());
+        com.benjagest.ui.support.EditableCells.installFlexibleConverter(datePicker);
         datePicker.setMaxWidth(Double.MAX_VALUE);
         ComboBox<String> method = new ComboBox<>(FXCollections.observableArrayList(DD_METHODS));
         method.setValue("TRANSFER");
@@ -6824,8 +6825,10 @@ public class BenjagestUiApplication extends Application {
         nifField.setPrefColumnCount(16);
         TextField validFromField = new TextField();
         validFromField.setPromptText("AAAA-MM-DD");
+        com.benjagest.ui.support.EditableCells.installIsoDateMask(validFromField);
         TextField validToField = new TextField();
         validToField.setPromptText("AAAA-MM-DD");
+        com.benjagest.ui.support.EditableCells.installIsoDateMask(validToField);
 
         Button inspectBtn = new Button(t("settings.cert.upload.inspect"));
         inspectBtn.setDisable(true); // habilita cuando hay archivo
@@ -8234,8 +8237,10 @@ public class BenjagestUiApplication extends Application {
                 ? "" : existing.ownershipPercent().toPlainString());
         TextField apptField = new TextField(existing == null ? "" : existing.appointmentDate());
         apptField.setPromptText("AAAA-MM-DD");
+        com.benjagest.ui.support.EditableCells.installIsoDateMask(apptField);
         TextField termField = new TextField(existing == null ? "" : existing.terminationDate());
         termField.setPromptText("AAAA-MM-DD");
+        com.benjagest.ui.support.EditableCells.installIsoDateMask(termField);
         TextField emailField = new TextField(existing == null ? "" : existing.email());
         TextField phoneField = new TextField(existing == null ? "" : existing.phone());
         TextArea notesField = new TextArea(existing == null ? "" : existing.notes());
@@ -22857,6 +22862,7 @@ public class BenjagestUiApplication extends Application {
         DatePicker deliveredPicker = new DatePicker(
                 (p.deliveredAt() != null && !p.deliveredAt().isBlank())
                         ? java.time.LocalDate.parse(p.deliveredAt()) : java.time.LocalDate.now());
+        com.benjagest.ui.support.EditableCells.installFlexibleConverter(deliveredPicker);
 
         ComboBox<String> methodCombo = new ComboBox<>();
         methodCombo.getItems().addAll("HAND", "EMAIL", "PORTAL", "POSTAL");
@@ -22873,6 +22879,7 @@ public class BenjagestUiApplication extends Application {
         DatePicker ackPicker = new DatePicker(
                 (p.acknowledgedAt() != null && !p.acknowledgedAt().isBlank())
                         ? java.time.LocalDate.parse(p.acknowledgedAt()) : java.time.LocalDate.now());
+        com.benjagest.ui.support.EditableCells.installFlexibleConverter(ackPicker);
         ackCheck.setSelected(p.acknowledgedAt() != null && !p.acknowledgedAt().isBlank());
         ackPicker.disableProperty().bind(ackCheck.selectedProperty().not());
 
@@ -23781,6 +23788,7 @@ public class BenjagestUiApplication extends Application {
         TextField birthField = new TextField(existing == null || existing.birthDate() == null
                 ? "" : existing.birthDate().toString());
         birthField.setPromptText("AAAA-MM-DD");
+        com.benjagest.ui.support.EditableCells.installIsoDateMask(birthField);
         // Combos con StringConverter para mostrar texto traducido al
         // idioma actual; los valores internos (MALE/FEMALE/SINGLE/…) se
         // mantienen tal cual viajan al backend, así no hay que tocar BD.
@@ -23885,9 +23893,11 @@ public class BenjagestUiApplication extends Application {
         TextField hireField = new TextField(existing == null || existing.hireDate() == null
                 ? "" : existing.hireDate().toString());
         hireField.setPromptText("AAAA-MM-DD");
+        com.benjagest.ui.support.EditableCells.installIsoDateMask(hireField);
         TextField termField = new TextField(existing == null || existing.terminationDate() == null
                 ? "" : existing.terminationDate().toString());
         termField.setPromptText("AAAA-MM-DD");
+        com.benjagest.ui.support.EditableCells.installIsoDateMask(termField);
         TextField termReasonField = new TextField(existing == null ? "" : existing.terminationReason());
         CheckBox geoCb = new CheckBox(t("labor.employee.editor.geolocation"));
         geoCb.setSelected(existing != null && existing.geolocationEnabled());
@@ -25284,6 +25294,7 @@ public class BenjagestUiApplication extends Application {
         TextField seniorityField = new TextField(existing == null || existing.seniorityDate() == null
                 ? "" : existing.seniorityDate().toString());
         seniorityField.setPromptText("AAAA-MM-DD");
+        com.benjagest.ui.support.EditableCells.installIsoDateMask(seniorityField);
         TextField endField = new TextField(existing == null || existing.endDate() == null
                 ? "" : existing.endDate().toString());
         TextField hoursField = new TextField(existing == null || existing.weeklyHours() == null
@@ -25317,6 +25328,7 @@ public class BenjagestUiApplication extends Application {
         // centro. La antigüedad se conserva (promote no toca start/seniority).
         TextField effectiveField = new TextField(LocalDate.now().toString());
         effectiveField.setPromptText("AAAA-MM-DD");
+        com.benjagest.ui.support.EditableCells.installIsoDateMask(effectiveField);
         TextField reasonField = new TextField();
         reasonField.setPromptText(t("labor.contract.promote.reason.prompt"));
         if (promoteMode) {
@@ -25921,14 +25933,17 @@ public class BenjagestUiApplication extends Application {
         TextField nussField = new TextField(existing == null ? "" : existing.socialSecurityNumber());
         TextField startField = new TextField(existing == null || existing.retaStartDate() == null ? "" : existing.retaStartDate().toString());
         startField.setPromptText("AAAA-MM-DD");
+        com.benjagest.ui.support.EditableCells.installIsoDateMask(startField);
         TextField endField = new TextField(existing == null || existing.retaEndDate() == null ? "" : existing.retaEndDate().toString());
         endField.setPromptText("AAAA-MM-DD");
+        com.benjagest.ui.support.EditableCells.installIsoDateMask(endField);
         CheckBox pluri = new CheckBox(t("reta.editor.pluriactividad"));
         pluri.setSelected(existing != null && existing.pluriactividad());
         CheckBox tarifa = new CheckBox(t("reta.editor.tarifa_plana"));
         tarifa.setSelected(existing != null && existing.tarifaPlana());
         TextField tarifaUntil = new TextField(existing == null || existing.tarifaPlanaUntil() == null ? "" : existing.tarifaPlanaUntil().toString());
         tarifaUntil.setPromptText("AAAA-MM-DD");
+        com.benjagest.ui.support.EditableCells.installIsoDateMask(tarifaUntil);
         // Combos editables (lista de valores ya usados + custom escribiendo).
         ComboBox<String> actCode = new ComboBox<>(); actCode.setEditable(true); actCode.setMaxWidth(Double.MAX_VALUE);
         actCode.getEditor().setText(existing == null || existing.activityCode() == null ? "" : existing.activityCode());
@@ -26169,6 +26184,7 @@ public class BenjagestUiApplication extends Application {
 
         TextField effective = new TextField(LocalDate.now().toString());
         effective.setPromptText("AAAA-MM-DD");
+        com.benjagest.ui.support.EditableCells.installIsoDateMask(effective);
         TextField reason = new TextField();
         reason.setPromptText(t("reta.change.editor.reason.prompt"));
         TextField base = new TextField(profile.currentBase() == null ? "" : profile.currentBase().toPlainString());
@@ -38720,6 +38736,7 @@ public class BenjagestUiApplication extends Application {
         dlg.setTitle(t("workcal.add_holiday.title"));
         dlg.setHeaderText(t("workcal.add_holiday.header"));
         DatePicker date = new DatePicker();
+        com.benjagest.ui.support.EditableCells.installFlexibleConverter(date);
         date.setMaxWidth(Double.MAX_VALUE);
         TextField name = new TextField();
         name.setPromptText(t("workcal.add_holiday.name_placeholder"));
