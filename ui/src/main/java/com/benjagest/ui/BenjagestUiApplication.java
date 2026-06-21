@@ -7119,12 +7119,7 @@ public class BenjagestUiApplication extends Application {
     private Node buildCommMessagesPane(
             javafx.beans.value.ObservableValue<String> otherIdObs) {
         VBox root = new VBox(12);
-        root.setPadding(new Insets(12));
-
-        Label title = label(t("advisory.messages.title"), "settings-section-title");
-        Label hint = new Label(t("advisory.messages.hint"));
-        hint.setWrapText(true);
-        hint.getStyleClass().add("settings-hint");
+        root.setPadding(new Insets(12, 4, 4, 4));
 
         // Timeline
         javafx.scene.control.ListView<com.benjagest.ui.model.AdvisoryMessageEntry> timeline =
@@ -7239,7 +7234,7 @@ public class BenjagestUiApplication extends Application {
         VBox body = new VBox(10, timeline, sendRow);
         VBox.setVgrow(timeline, Priority.ALWAYS);
         VBox.setVgrow(body, Priority.ALWAYS);
-        root.getChildren().addAll(title, hint, body);
+        root.getChildren().add(body);
         return root;
     }
 
@@ -7251,12 +7246,7 @@ public class BenjagestUiApplication extends Application {
     private Node buildCommDocumentsPane(
             javafx.beans.value.ObservableValue<String> otherIdObs) {
         VBox root = new VBox(12);
-        root.setPadding(new Insets(12));
-
-        Label title = label(t("advisory.documents.title"), "settings-section-title");
-        Label hint = new Label(t("advisory.documents.hint"));
-        hint.setWrapText(true);
-        hint.getStyleClass().add("settings-hint");
+        root.setPadding(new Insets(12, 4, 4, 4));
 
         TableView<com.benjagest.ui.model.AdvisoryDocumentEntry> table = new TableView<>();
         table.getStyleClass().add("data-table");
@@ -7435,7 +7425,7 @@ public class BenjagestUiApplication extends Application {
         reloadDocs.run();
 
         VBox.setVgrow(table, Priority.ALWAYS);
-        root.getChildren().addAll(title, hint, actions, table);
+        root.getChildren().addAll(actions, table);
         return root;
     }
 
@@ -7478,13 +7468,14 @@ public class BenjagestUiApplication extends Application {
         selectorRow.setAlignment(Pos.CENTER_LEFT);
 
         TabPane tabs = new TabPane();
+        tabs.getStyleClass().add("settings-tabs");
         tabs.setTabClosingPolicy(TabPane.TabClosingPolicy.UNAVAILABLE);
         Tab tMessages = new Tab(t("module.comm.tab.messages"),
                 buildCommMessagesPane(otherIdProperty));
-        tMessages.setGraphic(darkTabIcon("fas-comments"));
+        tMessages.setGraphic(icon("fas-comments"));
         Tab tDocs = new Tab(t("module.comm.tab.documents"),
                 buildCommDocumentsPane(otherIdProperty));
-        tDocs.setGraphic(darkTabIcon("fas-folder-open"));
+        tDocs.setGraphic(icon("fas-folder-open"));
         tabs.getTabs().addAll(tMessages, tDocs);
 
         // Carga inicial de destinatarios según modo
