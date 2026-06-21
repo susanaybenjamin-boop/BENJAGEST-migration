@@ -47,10 +47,11 @@
   · `WindowsCertStoreService` + `BrowserCertSessionService` + `POST /api/certificates/browser/{open,close}`;
     UI: `openBrowserCertSession`/`closeBrowserCertSession` cableados en `launchGestorNavegador`.
 
-**⚠️ PENDIENTE DE PRUEBA EN WINDOWS (Benjamin):** que el cert del cliente **aparezca** en el
-diálogo de Chromium al abrir el gestor desde su ficha, y que **desaparezca** del almacén
-(`certmgr.msc` → Personal) al cerrar el gestor. Si falla el import, el navegador abre igual
-(fallback: almacén del sistema). Tras validar → **merge a develop**.
+**✅ PROBADO OK por Benjamin (2026-06-21):** "el certificado va perfecto". Mergeado a
+develop *(merge 7c461fb)* junto con la cola post-pruebas pendiente. Fallback: si el import
+falla, el navegador abre igual (almacén del sistema).
+- ✅ **Fix enlace SS → Import@ss** *(abf82d9)* — la pestaña de Seguridad Social apuntaba al
+  portal público general; cambiada a `portal.seg-social.gob.es` (Import@ss).
 
 **No olvidar (sigue vivo):** DISEÑO módulo Comunicación asesoría↔clientes con el aire del
 Gestor-Navegador (es JavaFX → CSS/app.css, NO FlatLaf). Ver "Pendiente" de la sesión 06-20.
