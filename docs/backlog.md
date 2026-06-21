@@ -1,5 +1,11 @@
 # Backlog operativo BENJAGEST
 
+> **Última actualización:** 2026-06-21 (GESTOR-NAVEGADOR en ventana aparte + login por
+> certificado Fase 2 (importa el .p12 del cliente al almacén de Windows) + rediseño del
+> módulo **Comunicación** + fixes cert .NET / 403 SSE / LOPD en logs; todo mergeado a
+> develop. Revisión y reconciliación COMPLETA del backlog contra el código — ver
+> "ESTADO Y PENDIENTE VERIFICADO" justo debajo).
+> Histórico previo:
 > **Última actualización:** 2026-06-20 (Portal del empleado MEMP-2..5 COMPLETO +
 > firma de nóminas + notificaciones en tiempo real (SSE); ver sesión 2026-06-20).
 > Histórico previo:
@@ -14,6 +20,45 @@
 > **Forma de trabajo (junio 2026):** Benjamin lidera y decide. Pablo solo entra de uvas a peras desde 05-30. Todo el trabajo va por `feat/Benjamin` → prueba local → commit → merge `--no-ff` a `develop`. Cada item cerrado lleva commit hash + fecha. **Regla 10.bis de CLAUDE.md aplica siempre: verificar código antes de tocar.**
 >
 > **Fuentes complementarias:** [`gap-analysis-contendo.md`](gap-analysis-contendo.md), [`gap-analysis-config-ui.md`](gap-analysis-config-ui.md), [`migration-roadmap.md`](migration-roadmap.md), [`vf-chain-fix.md`](vf-chain-fix.md), [`agents-debug-pattern.md`](agents-debug-pattern.md).
+
+---
+
+## 🧭 ESTADO Y PENDIENTE VERIFICADO (2026-06-21)
+
+> Snapshot reconciliado con el código a día de hoy. Es la foto rápida de "qué queda";
+> el detalle vive en los cubos de prioridad del final (ALTA/MEDIA/BAJA) y en cada sesión.
+> Verificado: MEMP-2..5 ✅, JORNADAS ✅, topes de cotización SS ✅ (V109/V121),
+> Comunicación ✅, gestor-navegador + cert Fase 2 ✅.
+
+**🔴 Bloqueado por certificado FNMT real / alta SIF en sede AEAT (no se puede cerrar sin eso):**
+- VeriFactu estricto: XAdES-EPES sobre XML canónico AEAT + parseo SOAP real + alta como SIF
+  en sede + obligaciones de fabricante. *(Los editables 347/390/190 ya están.)*
+- Conectores reales **DEHú / SS RED / SILTRA** (envío real con certificado).
+- Modelos **AEAT 100 / 180 / 200 / 411**.
+
+**🟠 Funcional atacable (sin bloqueos):**
+- **Export PDF Mayor + Sumas y Saldos** (Balance + PyG ya exportan).
+- **FORMATS-EXCHANGE**: export/import xDiario + SUENLACE (por spec; marcar para validar).
+- **Nómina — incidencias**: horas extra, complementos variables por periodo; **pagas extra
+  cotizadas con asiento** (EXTRA_* hoy sin asiento). *(Topes de cotización: ya hechos.)*
+- **CONTRATO-VIGENCIAS (bloque D)**: VIG-3 (guard `hasPayslips`), VIG-4 atrasos,
+  CV-5 excedencias/suspensiones, CV-8 cese empresa (construir + MARCAR para validar).
+- **FJ-5b** incidencia "schedule-aware" (legal-sensible → validar con caso real).
+- **JOR-4** comparación planificado-vs-real + excepciones de calendario por fecha.
+- **Partes de día** (DRAFT→SUBMITTED→APPROVED→BILLED) + conversión work_log→línea factura
+  + fichajes sospechosos.
+- **Push instantáneo PWA** (túnel con nombre o WebSocket; el quick-tunnel bufferiza SSE).
+
+**🟡 Media / decisión:**
+- Régimen especial IVA / prorrata / criterio caja (UI). · OCR PDFs escaneados (decidir
+  binario Tesseract). · CENTROS-MAP (mapa Leaflet; el geocode ya está). · Dashboard widgets
+  personalizables. · Consolidación intragrupo. · EQUIPO S2 (permisos finos).
+
+**🟢 Baja:** Alertas de seguridad · Email personal OAuth · Google Calendar bidireccional.
+
+**🧹 Limpieza técnica menor:** `gestor-navegador/dependency-reduced-pom.xml` (artefacto del
+shade) está trackeado → llevar a `.gitignore`. · Código muerto `buildClientTaxFilingsTab`/
+`loadClientFilings` (sustituidos por el editor de Modelos AEAT en la ficha).
 
 ---
 
@@ -53,8 +98,18 @@ falla, el navegador abre igual (almacén del sistema).
 - ✅ **Fix enlace SS → Import@ss** *(abf82d9)* — la pestaña de Seguridad Social apuntaba al
   portal público general; cambiada a `portal.seg-social.gob.es` (Import@ss).
 
-**No olvidar (sigue vivo):** DISEÑO módulo Comunicación asesoría↔clientes con el aire del
-Gestor-Navegador (es JavaFX → CSS/app.css, NO FlatLaf). Ver "Pendiente" de la sesión 06-20.
+**✅ HECHO — DISEÑO módulo Comunicación asesoría↔cliente** (el "no olvidar" de antes):
+aire moderno en JavaFX vía CSS/app.css (no FlatLaf). Burbujas tipo chat (`.comm-bubble`
+in/out con remitente Asesoría/Empresa + hora), lienzo tarjeta, composer inferior, pestañas
+`settings-tabs` limpias (fuera la barra negra y los iconos rotos), cabecera con icono y sin
+títulos duplicados *(1e0909a, 9757765)*.
+- ✅ **Fix import .NET puro** *(95669e4)* — `Import-PfxCertificate`/`ConvertTo-SecureString`
+  fallaban por autoload de módulos; ahora `X509Store`/`X509Certificate2`. PROBADO OK.
+- ✅ **Fix 403 SSE** *(cc1a0b3)* — `JwtAuthenticationFilter.shouldNotFilterAsyncDispatch()=false`
+  (re-autentica en el dispatch async del stream). Quita el `AccessDenied` repetido del log.
+- ✅ **LOPD log** *(3c9d13e)* — el log de la sesión de navegador ya no escribe alias
+  (nombre+NIF) ni huella; el audit vive en `certificate_usage_log`.
+- ✅ Todo mergeado a develop *(merge ae32b1e)*.
 
 ---
 
@@ -1112,11 +1167,23 @@ Nóminas; afinar topes de cotización; pagas extra.
 
 ## 📊 Resumen ejecutivo
 
-- **Cerrado a fecha de hoy**: bloque VeriFactu / Facturación + Contabilidad PGC PYMES completo + RD 8/2019 fichaje legal + Asesoría↔cliente con sidebar dual y módulo Comunicación + **EQUIPO S1** + exports verificables (audit + SIF + fichajes) + bloque CTR contratos completo (CTR-1..7) + PORT-1..5 + bloque TPB (facturación por tercero + Magic Link/revocación) + UIs autónomas (PANORAMA, BOE, Backup, Multi-allocation, Rec. bancaria, Cal. fiscal) + **bloque NOM (ciclo mensual de nómina con asientos)**.
-- **🔴 Crítico abierto**: Modelos AEAT 100/180/200/411; VeriFactu estricto (XAdES + SOAP + alta SIF en sede AEAT) — todo **bloqueado por certificado FNMT real**; decisiones estructurales MOBILE-EMPLEADO + JORNADAS UI.
-- **🟠 Alta abierta**: Reporte coste empresa/empleado, entrega nóminas con firma + incidencias, conectores DEHú/SS RED reales (necesitan certificado).
-- **🟡 Media abierta**: Reconciliación ML "casi-iguales", régimen especial IVA/prorrata/criterio caja, dashboard widgets, CENTROS-MAP interactivo, OCR PDFs escaneados, VG-FULL-SCAN restante, workflow partes de día (ligado a app móvil).
-- **🟢 Baja abierta**: Alertas de seguridad, Email personal OAuth, PWA (cubierto por MOBILE-EMPLEADO).
+- **Cerrado a fecha de hoy**: VeriFactu / Facturación + Contabilidad PGC PYMES completo +
+  RD 8/2019 fichaje legal + **FICHAJE-JORNADA** + Asesoría↔cliente (sidebar dual + módulo
+  **Comunicación** rediseñado) + **EQUIPO S1** + exports verificables (audit + SIF + fichajes)
+  + bloque **CTR** (CTR-1..7) + **PORT-1..5 / JORNADAS** + bloque **TPB** (+ Magic Link/revocación)
+  + UIs autónomas (PANORAMA, BOE, Backup, Multi-allocation, Rec. bancaria, Cal. fiscal) +
+  **bloque NOM** (ciclo nómina + asientos + topes cotización) + **FIN-ANALYSIS** (cuadro de
+  mando) + **PAGO/COBRO por vencimientos (PV-1..7)** + **AEAT editores 347/390/190** +
+  **Portal del empleado (MEMP-1..5b: fichar/jornada/vacaciones-bajas/nóminas + firma)** +
+  **notificaciones en tiempo real (SSE)** + **GESTOR-NAVEGADOR + login por certificado**.
+- **🔴 Crítico abierto**: Modelos AEAT 100/180/200/411; VeriFactu estricto (XAdES + SOAP +
+  alta SIF en sede AEAT); conectores DEHú/SS RED/SILTRA reales — todo **bloqueado por
+  certificado FNMT real / alta SIF**.
+- **🟠 Alta abierta**: Export PDF Mayor + Sumas y Saldos, FORMATS-EXCHANGE (xDiario/SUENLACE),
+  incidencias de nómina (+ pagas extra cotizadas), CONTRATO-VIGENCIAS (bloque D), partes de día.
+- **🟡 Media abierta**: régimen especial IVA/prorrata/criterio caja, dashboard widgets,
+  CENTROS-MAP interactivo, OCR PDFs escaneados, push instantáneo PWA, EQUIPO S2.
+- **🟢 Baja abierta**: Alertas de seguridad, Email personal OAuth, Google Calendar bidireccional.
 
 ---
 
@@ -1395,7 +1462,8 @@ Nóminas; afinar topes de cotización; pagas extra.
 
 ## 🔴 Decisiones bloqueantes
 
-- 🟡 **MEMP — Portal del empleado (móvil)**. Decisiones Benjamin 2026-06-18:
+- ✅ **MEMP — Portal del empleado (móvil) — COMPLETO 2026-06-20** (MEMP-1..5b probado en
+  vivo). Decisiones Benjamin 2026-06-18 que se cumplieron:
   - **Tecnología = PWA servida por Spring** (HTML/JS + manifest + service worker,
     mismo patrón que la página del kiosko). Igual que CONTENDO (Next.js + manifest.ts
     + /activar + activate-install). NO nativa, NO Next.js.
@@ -1421,13 +1489,13 @@ Nóminas; afinar topes de cotización; pagas extra.
       + icon): activar→PIN→home con stubs. MEMP-1c: botón "Invitar al móvil" en el
       editor de empleado (enlace + código copiables). El empleado entra por
       `/api/auth/pin-login` (JWT EMPLOYEE). Verificado: V132 aplica, smoke OK, PWA sirve.
-    - ⬜ **MEMP-2** fichar desde la PWA (reusa `TimeClockService.punch` + geo + customer_id).
-    - ⬜ **MEMP-3** calendario/jornada/plan (horario JOR-2 + jornada real JOR-1).
-    - ⬜ **MEMP-4** vacaciones/bajas (pedir + adjuntos).
-    - ⬜ **MEMP-5** nóminas (recibir/confirmar/firmar/descargar; falta backend entrega/firma).
+    - ✅ **MEMP-2** fichar desde la PWA *(420d31b → merge 41f352b)* — probado en vivo.
+    - ✅ **MEMP-3** calendario/jornada/plan *(5b90f64)* — horario JOR-2 + real JOR-1 + festivo.
+    - ✅ **MEMP-4** vacaciones/bajas con adjuntos *(17c5f01, V134)* — pedir/listar/cancelar + aprobar.
+    - ✅ **MEMP-5** nóminas *(240e4ad)* + **MEMP-5b** firma del recibí estilo Sesame *(84516f1, V135)*.
     - Fuente CONTENDO: empleado*Controller.js, nominaEntregasController.js,
       app180-frontend/app/empleado + /activar.
-  - **Siguiente**: MEMP-2 (fichar desde el móvil).
+  - **→ PORTAL DEL EMPLEADO (MEMP-1..5b) COMPLETO** (2026-06-20, probado en vivo).
 - ✅ **PORT-2 JORNADAS — CERRADO 2026-06-18** (decisión Benjamin: real + planificación,
   modelo 1 plantilla = N bloques → M empleados, CONTENDO). Entregado:
   - **JOR-1** jornada REAL desde fichajes: `WorkdayService` calcula horas
@@ -1458,7 +1526,9 @@ Nóminas; afinar topes de cotización; pagas extra.
 - ✅ 💰 **Reporte coste empresa por empleado** — cerrado (NOM-6, `aa61627`): pestaña "Coste empresa" en Labor con bruto anual + SS empresa + coste total por empleado y totales al pie.
 - ✅ **Entrega de nóminas con firma trabajador** *(PAY-DELIVERY, 2026-06-15)* — V116 (delivered_at, delivery_method, acknowledged_at). Pestaña Nóminas: columna "Entrega" (Pendiente/Entregada/Firmada) + botón "Entrega / acuse" (fecha + vía HAND/EMAIL/PORTAL/POSTAL + acuse del trabajador). ET art. 29.
 - ⬜ **Incidencias de nómina** — horas extra, bajas, complementos variables por periodo.
-- ⬜ **Topes de cotización TGSS + pagas extra cotizadas** — afinar el cálculo NOM (hoy base = bruto sin topes; EXTRA_* sin asiento).
+- ✅ **Topes de cotización TGSS por grupo** — cerrado (V109 `ss_contribution_base_caps` +
+  V121 `ss_contribution_group_bases`, aplicados en `PayslipService`, cifras 2026).
+- ⬜ **Pagas extra cotizadas con asiento** — EXTRA_* hoy sin asiento (resto del afinado NOM).
 - ⬜ Revisión completa contratos + flujo alta del empleado.
 
 ## ⚖️ RD 8/2019 fichajes extensión
@@ -1548,12 +1618,12 @@ Nóminas; afinar topes de cotización; pagas extra.
 
 | Decisión | Bloquea | Mi recomendación si decido yo |
 |---|---|---|
-| 🔴 App móvil empleado: stack técnico | MOBILE-EMPLEADO + PORT-2 partes reales | Capacitor (compartir Java backend vía REST) |
-| 🔴 JORNADAS: modelo plantilla-bloques-asignación | PORT-2 UI completa | 1 plantilla = N bloques + adjudicada a M empleados (CONTENDO) |
 | 🟡 OCR Tesseract | ⬜ OCR PDFs escaneados | Sí, instalar binario nativo. Hoy PDFs imagen rechazan con 422. |
 | 🟡 CENTROS-MAP | ⬜ Mapa lat/lng | WebView + Leaflet + Nominatim (offline-friendly) |
 | 🟡 Régimen especial IVA / prorrata / criterio caja | UI fiscal afinado | Modelar tras un caso real de cliente que lo necesite |
 | ✅ Hechas | — | — |
+| App móvil empleado: stack técnico | **PWA servida por Spring** (no Capacitor/Next); MEMP-1..5b completo | |
+| JORNADAS: modelo plantilla-bloques-asignación | 1 plantilla = N bloques → M empleados (CONTENDO); PORT-2 cerrado | |
 | Nómina: SS empresa + asiento (NOM) | SS vía cuotas TC, 2 asientos, AT/EP por contrato | |
 | Backup local: ruta + cron | semanal lunes 03:00 | |
 | TC-CAL fichaje en festivo | warning amarillo, no bloqueo | |
