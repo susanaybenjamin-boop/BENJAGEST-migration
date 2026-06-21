@@ -500,7 +500,7 @@ public class EmployeeAppService {
                   <button class="secondary" onclick="gotoHome()">Volver</button>
                 </div>
 
-                <div id="ackModal" class="hidden" style="position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;padding:20px;z-index:50">
+                <div id="ackModal" style="position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;align-items:center;justify-content:center;padding:20px;z-index:50">
                   <div class="card" style="max-width:360px;width:100%;margin:0">
                     <h1 style="font-size:18px;margin-top:0">Firmar recibi</h1>
                     <p class="sub">Introduce tu PIN para firmar el recibi de la nomina (queda registrado con fecha y dispositivo).</p>
@@ -940,11 +940,11 @@ public class EmployeeAppService {
                   ackPayslipId = id;
                   document.getElementById('ackPin').value = '';
                   document.getElementById('ackMsg').textContent = '';
-                  document.getElementById('ackModal').classList.remove('hidden');
+                  document.getElementById('ackModal').style.display = 'flex';
                   setTimeout(() => { try { document.getElementById('ackPin').focus(); } catch(e){} }, 50);
                 }
                 function closeAck() {
-                  document.getElementById('ackModal').classList.add('hidden');
+                  document.getElementById('ackModal').style.display = 'none';
                   ackPayslipId = null;
                 }
                 async function confirmAck() {
