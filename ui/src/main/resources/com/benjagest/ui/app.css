@@ -1682,3 +1682,80 @@
     -fx-border-width: 1.5;
     -fx-border-radius: 6;
 }
+
+/* ===========================================================================
+   COMUNICACIÓN (módulo asesoría ↔ cliente) — 2026-06-21
+   Aire moderno con la paleta de BENJAGEST (acento #2563eb), tipo chat
+   limpio. Reusa la estética de tarjetas (.module-card) para el lienzo.
+   =========================================================================== */
+
+/* Lienzo de la conversación: tarjeta blanca, sin bordes de celda. */
+.comm-timeline {
+    -fx-background-color: #f8fafc;
+    -fx-background-radius: 16;
+    -fx-border-color: #e2e8f0;
+    -fx-border-radius: 16;
+    -fx-padding: 6;
+}
+.comm-timeline .list-cell {
+    -fx-background-color: transparent;
+    -fx-padding: 2 6 2 6;
+}
+.comm-timeline .list-cell:filled:selected,
+.comm-timeline .list-cell:filled:hover {
+    -fx-background-color: transparent;
+}
+
+/* Burbuja base + variantes por emisor (entrante asesoría / saliente empresa). */
+.comm-bubble {
+    -fx-background-radius: 14;
+    -fx-padding: 9 13 8 13;
+    -fx-effect: dropshadow(gaussian, rgba(15, 27, 45, 0.06), 6, 0.10, 0, 2);
+}
+.comm-bubble-in {
+    -fx-background-color: #ffffff;
+    -fx-border-color: #e2e8f0;
+    -fx-border-radius: 14;
+}
+.comm-bubble-out {
+    -fx-background-color: linear-gradient(to bottom right, #e0ecff, #dbeafe);
+    -fx-border-color: #bfd4fb;
+    -fx-border-radius: 14;
+}
+.comm-bubble-body {
+    -fx-text-fill: #0f172a;
+    -fx-font-size: 13px;
+}
+.comm-sender {
+    -fx-font-size: 11px;
+    -fx-font-weight: 800;
+    -fx-text-fill: #1d4ed8;
+}
+.comm-sender-company {
+    -fx-text-fill: #25636d;
+}
+.comm-meta {
+    -fx-font-size: 10px;
+    -fx-text-fill: #94a3b8;
+}
+
+/* Barra de redacción inferior, estilo chat. */
+.comm-composer {
+    -fx-background-color: #ffffff;
+    -fx-background-radius: 16;
+    -fx-border-color: #dbe3ef;
+    -fx-border-radius: 16;
+    -fx-padding: 10;
+    -fx-effect: dropshadow(gaussian, rgba(15, 27, 45, 0.06), 10, 0.12, 0, 3);
+}
+.comm-composer .text-area,
+.comm-composer .text-area .content {
+    -fx-background-color: transparent;
+    -fx-background-radius: 12;
+}
+
+/* Estado vacío centrado y discreto. */
+.comm-empty {
+    -fx-text-fill: #94a3b8;
+    -fx-font-size: 13px;
+}

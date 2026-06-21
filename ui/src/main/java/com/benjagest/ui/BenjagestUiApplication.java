@@ -7129,6 +7129,11 @@ public class BenjagestUiApplication extends Application {
         // Timeline
         javafx.scene.control.ListView<com.benjagest.ui.model.AdvisoryMessageEntry> timeline =
                 new javafx.scene.control.ListView<>();
+        timeline.getStyleClass().add("comm-timeline");
+        Label timelinePlaceholder = new Label(t("module.comm.messages.pick_recipient"));
+        timelinePlaceholder.getStyleClass().add("comm-empty");
+        timelinePlaceholder.setWrapText(true);
+        timeline.setPlaceholder(timelinePlaceholder);
         timeline.setCellFactory(lv -> new javafx.scene.control.ListCell<com.benjagest.ui.model.AdvisoryMessageEntry>() {
             @Override protected void updateItem(
                     com.benjagest.ui.model.AdvisoryMessageEntry item, boolean empty) {
@@ -7138,33 +7143,38 @@ public class BenjagestUiApplication extends Application {
                     setGraphic((javafx.scene.Node) null);
                     return;
                 }
+                boolean isA2C = com.benjagest.ui.model.AdvisoryMessageEntry.DIRECTION_A2C
+                        .equals(item.direction());
                 VBox bubble = new VBox(2);
+                Label sender = new Label(isA2C
+                        ? t("module.comm.sender.advisory")
+                        : t("module.comm.sender.company"));
+                sender.getStyleClass().add("comm-sender");
+                if (!isA2C) {
+                    sender.getStyleClass().add("comm-sender-company");
+                }
                 Label body = new Label(item.body());
                 body.setWrapText(true);
+                body.getStyleClass().add("comm-bubble-body");
                 Label meta = new Label(item.createdAt() == null ? ""
                         : item.createdAt().length() > 16
                             ? item.createdAt().substring(0, 16) : item.createdAt());
-                meta.setStyle("-fx-font-size: 10px; -fx-text-fill: #94a3b8;");
-                bubble.getChildren().addAll(body, meta);
+                meta.getStyleClass().add("comm-meta");
+                bubble.getChildren().addAll(sender, body, meta);
                 bubble.setMaxWidth(520);
-                bubble.setPadding(new Insets(8, 12, 6, 12));
-                boolean isA2C = com.benjagest.ui.model.AdvisoryMessageEntry.DIRECTION_A2C
-                        .equals(item.direction());
-                bubble.setStyle("-fx-background-radius: 12;"
-                        + (isA2C
-                                ? " -fx-background-color: #dbeafe;"
-                                : " -fx-background-color: #f1f5f9;"));
+                bubble.getStyleClass().addAll("comm-bubble",
+                        isA2C ? "comm-bubble-in" : "comm-bubble-out");
                 javafx.scene.layout.HBox row = new javafx.scene.layout.HBox(bubble);
-                row.setPadding(new Insets(2, 0, 2, 0));
+                row.setPadding(new Insets(3, 4, 3, 4));
                 row.setAlignment(isA2C ? Pos.CENTER_LEFT : Pos.CENTER_RIGHT);
                 setGraphic(row);
             }
         });
 
-        // Caja de envío
+        // Caja de envío — composer inferior estilo chat.
         javafx.scene.control.TextArea sendBox = new javafx.scene.control.TextArea();
         sendBox.setPromptText(t("advisory.messages.send_prompt"));
-        sendBox.setPrefRowCount(3);
+        sendBox.setPrefRowCount(2);
         sendBox.setWrapText(true);
         Button sendBtn = new Button(t("advisory.messages.send"));
         sendBtn.setGraphic(icon("fas-paper-plane"));
@@ -7172,15 +7182,18 @@ public class BenjagestUiApplication extends Application {
         // Desactivado mientras no haya destinatario seleccionado.
         sendBtn.setDisable(otherIdObs.getValue() == null || otherIdObs.getValue().isBlank());
         HBox sendRow = new HBox(8, sendBox, sendBtn);
+        sendRow.getStyleClass().add("comm-composer");
         HBox.setHgrow(sendBox, Priority.ALWAYS);
-        sendRow.setAlignment(Pos.CENTER_RIGHT);
+        sendRow.setAlignment(Pos.BOTTOM_RIGHT);
 
         Runnable reloadTimeline = () -> {
             String other = otherIdObs.getValue();
             if (other == null || other.isBlank()) {
+                timelinePlaceholder.setText(t("module.comm.messages.pick_recipient"));
                 timeline.setItems(FXCollections.observableArrayList());
                 return;
             }
+            timelinePlaceholder.setText(t("module.comm.messages.empty"));
             Task<java.util.List<com.benjagest.ui.model.AdvisoryMessageEntry>> task = new Task<>() {
                 @Override protected java.util.List<com.benjagest.ui.model.AdvisoryMessageEntry> call() throws Exception {
                     java.util.List<com.benjagest.ui.model.AdvisoryMessageEntry> msgs =
@@ -7222,7 +7235,8 @@ public class BenjagestUiApplication extends Application {
 
         reloadTimeline.run();
 
-        VBox body = new VBox(8, sendRow, timeline);
+        // Conversación arriba (crece), composer abajo (siempre visible) — patrón chat.
+        VBox body = new VBox(10, timeline, sendRow);
         VBox.setVgrow(timeline, Priority.ALWAYS);
         VBox.setVgrow(body, Priority.ALWAYS);
         root.getChildren().addAll(title, hint, body);
@@ -7438,10 +7452,15 @@ public class BenjagestUiApplication extends Application {
      */
     private void showCommModule() {
         VBox content = content();
+        StackPane commIcon = iconBubble("fas-comments", "module-title-icon");
         Label title = label(t("module.comm.title"), "module-detail-title");
         Label hint = new Label(t("module.comm.hint"));
         hint.setWrapText(true);
         hint.getStyleClass().add("settings-hint");
+        VBox commTitleBox = new VBox(2, title, hint);
+        HBox commHeader = new HBox(16, commIcon, commTitleBox);
+        commHeader.setAlignment(Pos.CENTER_LEFT);
+        commHeader.getStyleClass().add("module-detail-header");
 
         ComboBox<CommRecipient> recipientCombo = new ComboBox<>();
         recipientCombo.setPromptText(t("module.comm.recipient.prompt"));
@@ -7503,7 +7522,7 @@ public class BenjagestUiApplication extends Application {
         start(loadRecipients, "comm-load-recipients");
 
         VBox.setVgrow(tabs, Priority.ALWAYS);
-        content.getChildren().addAll(title, hint, selectorRow, tabs);
+        content.getChildren().addAll(commHeader, selectorRow, tabs);
         setCenterAnimated(scroll(content));
     }
 
@@ -14867,6 +14886,10 @@ public class BenjagestUiApplication extends Application {
             case "module.comm.recipient.client" -> "Client:";
             case "module.comm.recipient.prompt" -> "Select recipient";
             case "module.comm.recipient.fail.title" -> "Could not load recipients";
+            case "module.comm.sender.advisory" -> "Advisory";
+            case "module.comm.sender.company" -> "Company";
+            case "module.comm.messages.empty" -> "No messages in this conversation yet. Write the first one below.";
+            case "module.comm.messages.pick_recipient" -> "Pick a recipient above to see the conversation.";
             case "module.comm" -> "Communication";
             case "recurring.candidates.silence" -> "Silence";
             case "recurring.candidates.reload.fail.title" -> "Could not reload candidates";
@@ -15040,6 +15063,10 @@ public class BenjagestUiApplication extends Application {
             case "module.comm.recipient.client" -> "Cliente:";
             case "module.comm.recipient.prompt" -> "Selecciona destinatario";
             case "module.comm.recipient.fail.title" -> "No se pudieron cargar los destinatarios";
+            case "module.comm.sender.advisory" -> "Asesoría";
+            case "module.comm.sender.company" -> "Empresa";
+            case "module.comm.messages.empty" -> "Aún no hay mensajes en esta conversación. Escribe el primero abajo.";
+            case "module.comm.messages.pick_recipient" -> "Elige un destinatario arriba para ver la conversación.";
             case "module.comm" -> "Comunicación";
             case "recurring.candidates.silence" -> "Silenciar";
             case "recurring.candidates.reload.fail.title" -> "No se pudieron recargar los candidatos";
