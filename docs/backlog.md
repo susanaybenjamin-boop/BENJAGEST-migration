@@ -61,16 +61,25 @@
 - ✅ **Fixes:** SSE anti-buffering (cabeceras no-transform + padding) *(b8201d1)*; modal de
   firma PWA salía siempre por `display:flex` inline venciendo a `.hidden` *(c2e5043)*.
 
+**Cerrado DESPUÉS de las pruebas (mismo día, ya en `feat/Benjamin`):**
+- ✅ **Merge `--no-ff` a develop** del bloque inicial *(merge 496c6f3)*.
+- ✅ **Pollers 5s → push** *(9fb47fb)* — quita el parpadeo: `AdvisoryInvitationService` emite
+  eventos SSE (invitation/clients) en create/accept/reject/revoke/unlink; el escritorio
+  refresca por push y ya NO crea Timeline de 5s (solo carga inicial).
+- ✅ **AEAT-ED-1/2/3** — editores específicos y editables 347 *(59a728e)*, 390 y 190
+  *(2cba953)*, fieles a CONTENDO, sustituyen el editor JSON genérico. Recalcular desde
+  facturas + guardado. (Split de `t()` → `tEs()` por límite 64KB de bytecode.)
+- ✅ **Fix push escritorio al firmar nómina** *(3babd8f)* — faltaba suscribir Nóminas a TOPIC_PAYSLIPS.
+
 **Pendiente (siguiente sesión / por decidir):**
-- ✅ **Merge `--no-ff` a develop** de todo el bloque de hoy *(merge 496c6f3, 2026-06-20)*.
 - ⬜ **FJ-5b** — incidencia "schedule-aware" (esperado vs fichado por día cerrado). Flag
   **legal-sensible** → validar con caso real.
-- ⬜ **Push instantáneo en PWA** — el quick-tunnel bufferiza SSE; para instantáneo en móvil:
-  **túnel con nombre** (dominio en Cloudflare, URL fija) o pasar el canal a **WebSocket**.
-- ⬜ **Pollers 5s → push** — `advisoryClientsPoller`/`invitationsPoller` siguen sondeando
-  (vinculación de clientes / invitaciones no emiten SSE aún). Convertir a eventos.
+- ⬜ **Push instantáneo en PWA** — el quick-tunnel bufferiza SSE; aparcado (Benjamin no tiene
+  cuenta Cloudflare). Para instantáneo en móvil: **túnel con nombre** o **WebSocket**.
+  Mientras: fallback de sondeo 18s en la PWA.
+- ⬜ **Merge a develop** del trabajo post-pruebas (de-flicker + AEAT editores) cuando se valide.
 - Mejoras menores: email al jefe con el PDF al firmar; encadenar sugerencias FJ; calendario
-  semanal en "Mi jornada".
+  semanal en "Mi jornada"; AEAT 180 (arrendamientos) editor si se quiere.
 
 ---
 
@@ -333,12 +342,14 @@ CSV + xDiario + SUENLACE.**
   AccountingExportService al implementar). A3/SAGE/XML_ESPI hoy lanzan "no implementado".
 - Fuentes: ayudacontasol.sdelsol.com (C662), es-kb.sage.com (Enlace A3), criterium.es.
 
-## 🧾 AEAT-EDITORS — Editores específicos 347/390/190 (greenlit Benjamin 2026-06-17)
+## 🧾 AEAT-EDITORS — Editores específicos 347/390/190 — ✅ HECHO 2026-06-20
 
-> Hoy 130/303 tienen editor campo-a-campo; 347/390/190 usan editor genérico (JSON).
-> Benjamin: hacerlos visuales como CONTENDO (le gustan más). **Greenlit, es de lo
-> siguiente que quiere.** Necesita: un 347/390/190 real (o de CONTENDO) para copiar
-> las casillas fielmente. Backend ya calcula (AeatExtraModelsService).
+> ✅ **HECHO 2026-06-20** (commits 59a728e + 2cba953): editores específicos y editables
+> 347 (tabla terceros), 390 (casillas IVA con cuotas auto) y 190 (tabla perceptores),
+> fieles a CONTENDO, con "Recalcular desde facturas" y guardado. Sustituyen el editor
+> genérico JSON. (Antes: 130/303 ya tenían editor; el resto JSON.)
+> Pendiente opcional: editor del 180 (arrendamientos) si se quiere; layout aún más
+> fiel a las casillas oficiales si Benjamin pasa un modelo real.
 
 ---
 
