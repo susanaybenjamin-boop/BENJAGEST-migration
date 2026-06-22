@@ -55,6 +55,9 @@ public class PayslipJournalEntryService {
     public static final String SRC_EXTRA_PROVISION = "PAYSLIP_EXTRA_PROVISION";
     /** Pago de la paga extra: cancela la provisión acumulada (465 → 4751/572). */
     public static final String SRC_EXTRA_PAYMENT = "PAYSLIP_EXTRA_PAYMENT";
+    /** Devengo COMPLETO de la paga extra cuando NO se provisiona mensualmente
+     *  (640 → 465 por el bruto). El pago lo cancela igual (465 → 4751/572). */
+    public static final String SRC_EXTRA_ACCRUAL = "PAYSLIP_EXTRA_ACCRUAL";
 
     private final JdbcTemplate jdbcTemplate;
     private final TenantContext tenantContext;
@@ -234,6 +237,46 @@ public class PayslipJournalEntryService {
     }
 
     /**
+     * INC-4 — Devengo COMPLETO de la paga extra cuando la empresa NO provisiona
+     * mensualmente (no hay 465 acumulado). Reconoce el gasto de la paga extra de
+     * una vez: {@code 640 Sueldos y salarios → 465 Remuneraciones pendientes de
+     * pago} por el BRUTO. El pago ({@link #createExtraPayment}) cancela ese 465
+     * (465 → 4751/572), exactamente igual que en el modelo con provisión, así que
+     * no hay doble conteo de IRPF. SIN línea de SS (ya cotizó prorrateada mes a
+     * mes). Idempotente.
+     */
+    public String createExtraAccrual(String payslipId, String employeeName,
+            int year, int month, BigDecimal gross, String userId) {
+        if (gross == null || gross.signum() <= 0) return null;
+        String companyId = tenantContext.getCurrentCompanyId();
+        LocalDate entryDate = LocalDate.of(year, month, 1)
+                .withDayOfMonth(LocalDate.of(year, month, 1).lengthOfMonth());
+        String fiscalYearId = findOpenFiscalYearId(companyId, entryDate);
+        if (fiscalYearId == null) return null;
+        String acc640 = findAccountByPrefix(companyId, "640");
+        String acc465 = findAccountByPrefix(companyId, "465");
+        if (acc640 == null || acc465 == null) return null;
+
+        reverseBySource(companyId, payslipId, SRC_EXTRA_ACCRUAL);
+        String name = (employeeName == null || employeeName.isBlank()) ? "Empleado" : employeeName;
+        String period = String.format("%02d/%d", month, year);
+        String entryId = UUID.randomUUID().toString();
+        jdbcTemplate.update("""
+                INSERT INTO journal_entries (
+                    id, company_id, fiscal_year_id, entry_number,
+                    entry_date, concept, source_type, source_id,
+                    status, reviewed, auto_proposed, proposed_confidence, created_by
+                ) VALUES (?, ?, ?, NULL, ?, ?, ?, ?, 'DRAFT', FALSE, TRUE, NULL, ?)
+                """,
+                entryId, companyId, fiscalYearId, Date.valueOf(entryDate),
+                "Devengo paga extra " + period + " — " + name,
+                SRC_EXTRA_ACCRUAL, payslipId, userId);
+        insertLine(entryId, acc640, "Paga extra — " + name, gross, BigDecimal.ZERO);
+        insertLine(entryId, acc465, "Pagas extra pendientes de pago — " + name, BigDecimal.ZERO, gross);
+        return entryId;
+    }
+
+    /**
      * Pago de la PAGA EXTRA (no prorrateada): cancela la provisión acumulada.
      * {@code 465 Debe = bruto paga; 4751 Haber = IRPF; 572 Haber = neto}. SIN
      * línea de Seguridad Social (ya cotizó prorrateada mes a mes). Idempotente.
@@ -289,6 +332,7 @@ public class PayslipJournalEntryService {
         reverseBySource(companyId, payslipId, SRC_ACCRUAL);
         reverseBySource(companyId, payslipId, SRC_PAYMENT);
         reverseBySource(companyId, payslipId, SRC_EXTRA_PROVISION);
+        reverseBySource(companyId, payslipId, SRC_EXTRA_ACCRUAL);
         reverseBySource(companyId, payslipId, SRC_EXTRA_PAYMENT);
     }
 

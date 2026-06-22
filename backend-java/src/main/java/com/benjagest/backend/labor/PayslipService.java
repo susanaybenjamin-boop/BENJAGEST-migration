@@ -868,6 +868,18 @@ public class PayslipService {
             } catch (Exception ex) {
                 // No bloquea la nómina.
             }
+        } else if (("EXTRA_SUMMER".equals(type) || "EXTRA_CHRISTMAS".equals(type))
+                && !isExtraPayProvisionEnabled()) {
+            // INC-4 — Paga extra SIN provisión mensual: el devengo se reconoce aquí
+            // de una vez (640 → 465). El pago (markPaid) lo cancela (465 → 4751/572),
+            // igual que con provisión, sin doble conteo de IRPF ni SS. Con provisión
+            // ACTIVADA no se hace aquí (lo cubren las provisiones mensuales 1/12).
+            try {
+                journalService.createExtraAccrual(id, employeeName(req.employeeId()),
+                        req.year(), req.month(), gross, null);
+            } catch (Exception ex) {
+                // El asiento es derivado; si falla, la nómina se calcula igual.
+            }
         }
         return findById(id);
     }
