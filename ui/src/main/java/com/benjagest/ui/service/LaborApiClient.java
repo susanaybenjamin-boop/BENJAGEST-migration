@@ -334,7 +334,8 @@ public class LaborApiClient {
                     parseDateStr(textField(o, "date")),
                     (int) longField(o, "plannedMinutes"),
                     (int) longField(o, "workedMinutes"),
-                    (int) longField(o, "diffMinutes")));
+                    (int) longField(o, "diffMinutes"),
+                    boolField(o, "holiday")));
         }
         return out;
     }
