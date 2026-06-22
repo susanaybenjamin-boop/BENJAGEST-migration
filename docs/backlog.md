@@ -52,7 +52,16 @@
   preguntar. Columna "Repartir" pasa a SOLO LECTURA (la calcula el diálogo). Backend
   `MultiAllocationPaymentService` ya soportaba el parcial → PARTIAL; no se tocó.
   *(Antes, el "solo aparece una factura" era porque hay que seleccionar el cliente en
-  el combo — el diálogo agrupa por cliente; no era bug.)*
+  el combo — el diálogo agrupa por cliente; no era bug.)* **Mejora posterior (feedback
+  Benjamin):** selección MÚLTIPLE de facturas a completar (casillas + control de que la
+  suma marcada no supere el pago), para poder pagar enteras varias de una vez.
+- ✅ **Fix layout listados en pantalla pequeña (portátil)** *(→ merge)* — feedback Benjamin:
+  en Facturación el listado quedaba en una franja de ~1/3 con doble scroll. `tabLayout`
+  metía la tabla en un ScrollPane y la TableView mantenía su alto preferido (~400px).
+  Nuevo `tabLayoutFill` (cuerpo directo al centro → la tabla llena el alto y scrollea por
+  dentro). Enrutados Facturación>Facturas, Config>Propietarios, Config>Certificados.
+  **PENDIENTE: prueba visual en el portátil + barrido de otras pantallas si reaparece**
+  (SIF y Credenciales se dejaron con scroll por cuerpo mixto).
 - ✅ **Export PDF Mayor + Sumas y Saldos** *(→ merge)* — cierra "Export PDF de informes
   contables" (Balance + PyG ya estaban). `AccountingReportsPdfService.ledgerPdf` (saldo
   apertura + movimientos + saldo final) y `trialBalancePdf` (con fila de totales),
