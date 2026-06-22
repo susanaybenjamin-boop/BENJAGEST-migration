@@ -320,6 +320,25 @@ public class LaborApiClient {
         return out;
     }
 
+    /** JOR-4: comparacion planificado vs real por empleado y dia. */
+    public java.util.List<com.benjagest.ui.model.PlanVsRealEntry> listPlanVsReal(
+            LocalDate from, LocalDate to, String employeeId)
+            throws IOException, InterruptedException {
+        StringBuilder url = new StringBuilder(baseUrl + "/labor/plan-vs-real?from=" + from + "&to=" + to);
+        if (employeeId != null && !employeeId.isBlank()) url.append("&employeeId=").append(employeeId);
+        HttpResponse<String> r = send(req(url.toString()).GET());
+        java.util.List<com.benjagest.ui.model.PlanVsRealEntry> out = new ArrayList<>();
+        for (String o : splitTopLevelObjects(r.body())) {
+            out.add(new com.benjagest.ui.model.PlanVsRealEntry(
+                    textField(o, "employeeId"), textField(o, "employeeName"),
+                    parseDateStr(textField(o, "date")),
+                    (int) longField(o, "plannedMinutes"),
+                    (int) longField(o, "workedMinutes"),
+                    (int) longField(o, "diffMinutes")));
+        }
+        return out;
+    }
+
     // ===== JOR-2: plantillas de horario (planificacion) =====
 
     public java.util.List<com.benjagest.ui.model.ScheduleTemplateEntry> listScheduleTemplates()
