@@ -6759,7 +6759,7 @@ public class BenjagestUiApplication extends Application {
         VBox.setVgrow(certsTable, Priority.ALWAYS);
 
         reloadCertificates();
-        return tabLayout(header, body, actions);
+        return tabLayoutFill(header, body, actions);
     }
 
     private void reloadCertificates() {
@@ -8210,7 +8210,8 @@ public class BenjagestUiApplication extends Application {
         reloadOwners();
 
         VBox body = new VBox(12, section, hint, ownersTable);
-        return tabLayout(label(t("settings.owners.section_label"), "settings-section-title"), body, actions);
+        VBox.setVgrow(ownersTable, Priority.ALWAYS); // LAYOUT-FILL: la tabla llena el alto y scrollea por dentro.
+        return tabLayoutFill(label(t("settings.owners.section_label"), "settings-section-title"), body, actions);
     }
 
     private void reloadOwners() {
@@ -9129,6 +9130,9 @@ public class BenjagestUiApplication extends Application {
         // candidatos el banner se oculta solo.
         Node candidatesBanner = buildRecurringCandidatesBanner("SALES_INVOICE");
         VBox bottomBlock = new VBox(12, rowActions, candidatesBanner, billingTable);
+        // LAYOUT-FILL: la tabla crece para llenar el alto disponible y scrollea
+        // por dentro (un solo scroll), en vez de quedar fija en pantalla pequena.
+        VBox.setVgrow(billingTable, Priority.ALWAYS);
 
         // Auto-refresh cuando alguien emite SALES (crear/validar/anular/
         // borrar/cobrar factura). Auto-baja al desmontar la pantalla.
@@ -9136,7 +9140,7 @@ public class BenjagestUiApplication extends Application {
                 com.benjagest.ui.support.RefreshBus.TOPIC_SALES,
                 this::reloadInvoices, billingTable);
 
-        return tabLayout(topBlock, bottomBlock, new HBox());
+        return tabLayoutFill(topBlock, bottomBlock, new HBox());
     }
 
     private void validateInvoiceFromList(SalesInvoiceSummary sel) {
@@ -12252,10 +12256,14 @@ public class BenjagestUiApplication extends Application {
     }
 
     /**
-     * Patron compartido por los 4 tabs de Configuracion: cabecera arriba,
-     * cuerpo desplazable en el centro (scroll vertical si no entra), y
-     * acciones ancladas al pie siempre visibles aunque el portatil tenga
-     * pantalla pequena.
+     * Patron compartido por los tabs de FORMULARIO: cabecera arriba, cuerpo
+     * DESPLAZABLE en el centro (scroll vertical si no entra) y acciones ancladas
+     * al pie siempre visibles aunque el portatil tenga pantalla pequena.
+     *
+     * <p>Para tabs cuyo cuerpo es una TABLA/listado usa {@link #tabLayoutFill}:
+     * ahi la tabla debe LLENAR el alto y scrollear por dentro, no quedar fija a
+     * su alto preferido dentro de un ScrollPane (lo que en portatil dejaba el
+     * listado en una franja diminuta con doble scroll).
      */
     private Node tabLayout(Node header, Node body, Node footerActions) {
         ScrollPane scroll = new ScrollPane(body);
@@ -12270,6 +12278,27 @@ public class BenjagestUiApplication extends Application {
         layout.setBottom(bottom);
         layout.getStyleClass().add("settings-tab-body");
         BorderPane.setMargin(scroll, new Insets(12, 0, 12, 0));
+        return layout;
+    }
+
+    /**
+     * LAYOUT-FILL (fix pantalla portatil 2026-06-22) — variante de
+     * {@link #tabLayout} para tabs cuyo cuerpo es una TABLA/listado. El cuerpo va
+     * DIRECTO al centro del BorderPane (sin ScrollPane), de modo que el centro lo
+     * redimensiona al alto disponible y la tabla (con
+     * {@code VBox.setVgrow(tabla, ALWAYS)}) se ADAPTA a ese alto y scrollea por
+     * DENTRO (un solo scroll). Asi en portatil el listado ocupa todo el hueco en
+     * vez de quedar fijo a ~400px atrapado en un ScrollPane. Mismo enfoque que ya
+     * usan los listados sanos (p.ej. buildPurchasesListing).
+     */
+    private Node tabLayoutFill(Node header, Node body, Node footerActions) {
+        VBox bottom = new VBox(12, new Separator(), footerActions);
+        BorderPane layout = new BorderPane();
+        layout.setTop(header);
+        layout.setCenter(body);
+        layout.setBottom(bottom);
+        layout.getStyleClass().add("settings-tab-body");
+        BorderPane.setMargin(body, new Insets(12, 0, 12, 0));
         return layout;
     }
 
