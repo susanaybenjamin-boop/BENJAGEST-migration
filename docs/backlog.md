@@ -1,5 +1,13 @@
 # Backlog operativo BENJAGEST
 
+> **Última actualización:** 2026-06-22 (sesión autónoma — Benjamin trabajando.
+> Cerrado y mergeado a develop: **reparto guiado de pago parcial** en "Registrar pago
+> de varias facturas" (pregunta qué factura completar) · **export PDF de Mayor + Sumas
+> y Saldos** (cierra el bloque de informes contables en PDF) · **VIG-3 guard
+> server-side** (no mover fecha inicio/antigüedad con nóminas) · **limpieza técnica**
+> (gitignore del artefacto shade + borrado de código muerto AEAT filings). Ver sesión
+> 2026-06-22 justo debajo).
+> Histórico previo:
 > **Última actualización:** 2026-06-21 (GESTOR-NAVEGADOR en ventana aparte + login por
 > certificado Fase 2 (importa el .p12 del cliente al almacén de Windows) + rediseño del
 > módulo **Comunicación** + fixes cert .NET / 403 SSE / LOPD en logs; todo mergeado a
@@ -23,6 +31,52 @@
 
 ---
 
+## 📅 SESIÓN 2026-06-22 — Autónoma (Benjamin trabajando). Cobro parcial + informes PDF + limpieza
+
+> Benjamin se fue a trabajar y dejó: "completa todo lo que no necesites que yo esté
+> para responder y deja lo poquito que queda". Cerrados los ítems aditivos/decididos
+> sin bloqueos; lo legal-sensible (toca el motor de cálculo / necesita validar con
+> caso real) y lo que necesita decisión suya / infra se deja MARCADO abajo.
+
+**Cerrado y mergeado a develop hoy (compila backend+ui, exit 0):**
+- ✅ **Cobro parcial guiado (multi-allocation)** *(53dec1b → merge)* — partió de un
+  reporte de Benjamin: "tengo 2 facturas que suman 4537,50 y una transferencia de
+  4000, no me deja pagar salvo importe exacto". Decisión suya: **"preguntar cuál
+  completar"**. El diálogo "Registrar pago de varias facturas" ya no exige cuadre
+  exacto: si el importe no cubre el pendiente de todas las marcadas, pregunta **qué
+  factura completar** (se paga entera), reparte el resto de más antigua a más nueva y
+  lo que sobra queda PENDIENTE (PARTIAL). Si cubre el pendiente exacto, paga todas sin
+  preguntar. Columna "Repartir" pasa a SOLO LECTURA (la calcula el diálogo). Backend
+  `MultiAllocationPaymentService` ya soportaba el parcial → PARTIAL; no se tocó.
+  *(Antes, el "solo aparece una factura" era porque hay que seleccionar el cliente en
+  el combo — el diálogo agrupa por cliente; no era bug.)*
+- ✅ **Export PDF Mayor + Sumas y Saldos** *(→ merge)* — cierra "Export PDF de informes
+  contables" (Balance + PyG ya estaban). `AccountingReportsPdfService.ledgerPdf` (saldo
+  apertura + movimientos + saldo final) y `trialBalancePdf` (con fila de totales),
+  endpoints `/ledger/{id}/export.pdf` y `/balance/export.pdf`, botón "Exportar PDF" en
+  ambas pestañas (reusa `savePdf`).
+- ✅ **VIG-3 guard server-side** *(→ merge)* — `update()` rechaza con 409 cambiar
+  `start_date`/`seniority_date` de un contrato CON nóminas (la UI ya bloqueaba los
+  campos; esto cierra la defensa por API). **Cierra el pendiente menor de VIG-3.**
+- ✅ **Limpieza técnica** *(→ merge)* — `.gitignore` del `dependency-reduced-pom.xml`
+  (artefacto del shade) + `git rm --cached`; borrado código muerto
+  `buildClientTaxFilingsTab`/`loadClientFilings` (sin callers; verificado).
+
+**⬜ Dejado MARCADO para cuando esté Benjamin (necesita su validación/decisión/infra):**
+- **Nómina — incidencias** (horas extra, complementos variables por periodo, pagas
+  extra cotizadas con asiento): toca el **motor de cálculo** → legal-sensible, validar
+  con caso real (§11.2: no tocar cálculo sin él).
+- **Bloque D restante**: VIG-4 atrasos · CV-5 excedencias/suspensiones · CV-8 cese
+  empresa → tocan el motor; "construir + MARCAR" requiere su caso real.
+- **FORMATS-EXCHANGE** (xDiario + SUENLACE): es "por spec" pero conviene un **fichero
+  real** suyo para validar el layout exacto antes de darlo por bueno.
+- **FJ-5b** incidencia schedule-aware · **JOR-4** plan-vs-real · **Partes de día**:
+  features grandes / legal-sensibles.
+- **Push instantáneo PWA**: necesita túnel con nombre o WebSocket (cuenta Cloudflare).
+- **AEAT 180** (arrendamientos) editor: opcional, necesita modelo real para el mapeo.
+
+---
+
 ## 🧭 ESTADO Y PENDIENTE VERIFICADO (2026-06-21)
 
 > Snapshot reconciliado con el código a día de hoy. Es la foto rápida de "qué queda";
@@ -37,12 +91,12 @@
 - Modelos **AEAT 100 / 180 / 200 / 411**.
 
 **🟠 Funcional atacable (sin bloqueos):**
-- **Export PDF Mayor + Sumas y Saldos** (Balance + PyG ya exportan).
+- ~~Export PDF Mayor + Sumas y Saldos~~ ✅ **HECHO 2026-06-22** (cierra informes PDF).
 - **FORMATS-EXCHANGE**: export/import xDiario + SUENLACE (por spec; marcar para validar).
 - **Nómina — incidencias**: horas extra, complementos variables por periodo; **pagas extra
   cotizadas con asiento** (EXTRA_* hoy sin asiento). *(Topes de cotización: ya hechos.)*
-- **CONTRATO-VIGENCIAS (bloque D)**: VIG-3 (guard `hasPayslips`), VIG-4 atrasos,
-  CV-5 excedencias/suspensiones, CV-8 cese empresa (construir + MARCAR para validar).
+- **CONTRATO-VIGENCIAS (bloque D)**: ~~VIG-3 (guard `hasPayslips`)~~ ✅ **HECHO 2026-06-22**;
+  VIG-4 atrasos, CV-5 excedencias/suspensiones, CV-8 cese empresa (construir + MARCAR para validar).
 - **FJ-5b** incidencia "schedule-aware" (legal-sensible → validar con caso real).
 - **JOR-4** comparación planificado-vs-real + excepciones de calendario por fecha.
 - **Partes de día** (DRAFT→SUBMITTED→APPROVED→BILLED) + conversión work_log→línea factura
@@ -56,9 +110,8 @@
 
 **🟢 Baja:** Alertas de seguridad · Email personal OAuth · Google Calendar bidireccional.
 
-**🧹 Limpieza técnica menor:** `gestor-navegador/dependency-reduced-pom.xml` (artefacto del
-shade) está trackeado → llevar a `.gitignore`. · Código muerto `buildClientTaxFilingsTab`/
-`loadClientFilings` (sustituidos por el editor de Modelos AEAT en la ficha).
+**🧹 Limpieza técnica menor:** ~~`dependency-reduced-pom.xml` trackeado · código muerto
+`buildClientTaxFilingsTab`/`loadClientFilings`~~ ✅ **HECHO 2026-06-22**.
 
 ---
 
