@@ -15658,6 +15658,12 @@ public class BenjagestUiApplication extends Application {
             case "labor.workdays.col.worked" -> "Worked";
             case "labor.workdays.col.pause" -> "Breaks";
             case "labor.workdays.fail.title" -> "Could not load workdays";
+            case "labor.planreal.title" -> "Planned vs actual";
+            case "labor.planreal.hint" -> "Per employee and day it compares the planned work time (assigned schedule blocks) with what was actually clocked. Descriptive: green = worked more than planned, red = less. Days off / holidays are not yet excluded.";
+            case "labor.planreal.empty" -> "Nothing to compare in this range.";
+            case "labor.planreal.col.planned" -> "Planned";
+            case "labor.planreal.col.diff" -> "Difference";
+            case "labor.planreal.fail.title" -> "Could not load planned vs actual";
             case "labor.schedule.hint" -> "Work-schedule templates: one template = several time blocks per weekday, assignable to several employees with an effective date.";
             case "labor.schedule.empty" -> "No templates yet.";
             case "labor.schedule.col.name" -> "Name";
@@ -15832,6 +15838,12 @@ public class BenjagestUiApplication extends Application {
             case "labor.workdays.col.worked" -> "Trabajado";
             case "labor.workdays.col.pause" -> "Pausas";
             case "labor.workdays.fail.title" -> "No se pudieron cargar las jornadas";
+            case "labor.planreal.title" -> "Planificado vs Real";
+            case "labor.planreal.hint" -> "Por empleado y día compara el tiempo de trabajo planificado (bloques del horario asignado) con lo realmente fichado. Descriptivo: verde = trabajó más de lo previsto, rojo = menos. Los días libres / festivos aún no se descuentan.";
+            case "labor.planreal.empty" -> "No hay nada que comparar en este rango.";
+            case "labor.planreal.col.planned" -> "Planificado";
+            case "labor.planreal.col.diff" -> "Diferencia";
+            case "labor.planreal.fail.title" -> "No se pudo cargar planificado vs real";
             case "labor.schedule.hint" -> "Plantillas de horario: 1 plantilla = varios bloques horarios por día de la semana, asignable a varios empleados con fecha de efecto.";
             case "labor.schedule.empty" -> "Aún no hay plantillas.";
             case "labor.schedule.col.name" -> "Nombre";
@@ -36326,6 +36338,9 @@ public class BenjagestUiApplication extends Application {
         // JOR-1 — Jornadas fichadas: jornada REAL calculada desde los fichajes.
         Node plannedSection = buildWorkdaysSection(empById);
 
+        // JOR-4 — Planificado vs Real: cruza el horario asignado con lo fichado.
+        Node planVsRealSection = buildPlanVsRealSection(empById);
+
         // Sección histórico — partes ya en BD (sincronizados desde el
         // work_logs viejo o futuros llegando desde el móvil).
         Label historyTitle = label(t("labor.shifts.history.title"), "settings-section-title");
@@ -36412,6 +36427,8 @@ public class BenjagestUiApplication extends Application {
                 hint,
                 plannedSection,
                 new Separator(),
+                planVsRealSection,
+                new Separator(),
                 historyTitle, historyHint,
                 filters, table);
         return content;
@@ -36493,6 +36510,102 @@ public class BenjagestUiApplication extends Application {
 
         box.getChildren().addAll(title, hint, filters, table);
         return box;
+    }
+
+    /**
+     * JOR-4 — Planificado vs Real. Informe DESCRIPTIVO: por empleado y día cruza
+     * los minutos del horario asignado (bloques WORK, JOR-2) con lo realmente
+     * fichado (JOR-1) y muestra la diferencia (verde = trabajó más, rojo = menos).
+     * No opina de tolerancias ni festivos (eso es "excepciones de calendario").
+     */
+    private Node buildPlanVsRealSection(java.util.Map<String, String> empById) {
+        VBox box = new VBox(8);
+        box.getStyleClass().add("settings-section");
+        Label title = label(t("labor.planreal.title"), "settings-section-title");
+        Label hint = new Label(t("labor.planreal.hint"));
+        hint.setWrapText(true);
+        hint.getStyleClass().add("settings-hint");
+
+        java.time.LocalDate now = java.time.LocalDate.now();
+        DatePicker fromPick = new DatePicker(now.withDayOfMonth(1));
+        DatePicker toPick = new DatePicker(now);
+        com.benjagest.ui.support.EditableCells.installFlexibleConverter(fromPick);
+        com.benjagest.ui.support.EditableCells.installFlexibleConverter(toPick);
+        Button reloadBtn = new Button(t("labor.workdays.reload"));
+        reloadBtn.setGraphic(icon("fas-sync-alt"));
+        HBox filters = new HBox(8,
+                new Label(t("labor.shifts.from")), fromPick,
+                new Label(t("labor.shifts.to")), toPick, reloadBtn);
+        filters.setAlignment(Pos.CENTER_LEFT);
+
+        TableView<com.benjagest.ui.model.PlanVsRealEntry> table = new TableView<>();
+        table.getStyleClass().add("data-table");
+        table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+        table.setPlaceholder(new Label(t("labor.planreal.empty")));
+        table.setPrefHeight(220);
+
+        TableColumn<com.benjagest.ui.model.PlanVsRealEntry, String> cDate =
+                new TableColumn<>(t("labor.shifts.col.date"));
+        cDate.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().date()));
+        cDate.setPrefWidth(110);
+        cDate.setComparator(ISO_DATE_COMPARATOR);
+        TableColumn<com.benjagest.ui.model.PlanVsRealEntry, String> cEmp =
+                new TableColumn<>(t("labor.shifts.col.employee"));
+        cEmp.setCellValueFactory(c -> new SimpleStringProperty(
+                c.getValue().employeeName() != null && !c.getValue().employeeName().isBlank()
+                        ? c.getValue().employeeName()
+                        : empById.getOrDefault(c.getValue().employeeId(), shortId(c.getValue().employeeId()))));
+        TableColumn<com.benjagest.ui.model.PlanVsRealEntry, String> cPlanned =
+                new TableColumn<>(t("labor.planreal.col.planned"));
+        cPlanned.setCellValueFactory(c -> new SimpleStringProperty(fmtMinutes(c.getValue().plannedMinutes())));
+        cPlanned.setPrefWidth(100);
+        TableColumn<com.benjagest.ui.model.PlanVsRealEntry, String> cWorked =
+                new TableColumn<>(t("labor.workdays.col.worked"));
+        cWorked.setCellValueFactory(c -> new SimpleStringProperty(fmtMinutes(c.getValue().workedMinutes())));
+        cWorked.setPrefWidth(100);
+        TableColumn<com.benjagest.ui.model.PlanVsRealEntry, String> cDiff =
+                new TableColumn<>(t("labor.planreal.col.diff"));
+        cDiff.setCellValueFactory(c -> new SimpleStringProperty(fmtMinutesSigned(c.getValue().diffMinutes())));
+        cDiff.setPrefWidth(110);
+        cDiff.setCellFactory(col -> new javafx.scene.control.TableCell<>() {
+            @Override
+            protected void updateItem(String v, boolean empty) {
+                super.updateItem(v, empty);
+                if (empty || v == null) { setText(null); setStyle(""); return; }
+                setText(v);
+                if (v.startsWith("-")) setStyle("-fx-text-fill: #c0392b;");       // trabajó menos
+                else if (v.startsWith("+")) setStyle("-fx-text-fill: #1e7e34;");  // trabajó más
+                else setStyle("");
+            }
+        });
+        table.getColumns().addAll(java.util.List.of(cDate, cEmp, cPlanned, cWorked, cDiff));
+
+        Runnable reload = () -> {
+            java.time.LocalDate from = fromPick.getValue();
+            java.time.LocalDate to = toPick.getValue();
+            if (from == null || to == null) return;
+            Task<java.util.List<com.benjagest.ui.model.PlanVsRealEntry>> task = new Task<>() {
+                @Override protected java.util.List<com.benjagest.ui.model.PlanVsRealEntry> call() throws Exception {
+                    return laborApiClient.listPlanVsReal(from, to, null);
+                }
+            };
+            task.setOnSucceeded(ev -> table.setItems(FXCollections.observableArrayList(task.getValue())));
+            task.setOnFailed(ev -> showError(t("labor.planreal.fail.title"),
+                    task.getException() == null ? "" : task.getException().getMessage()));
+            start(task, "plan-vs-real-load");
+        };
+        reloadBtn.setOnAction(ev -> reload.run());
+        reload.run();
+
+        box.getChildren().addAll(title, hint, filters, table);
+        return box;
+    }
+
+    /** Diferencia de minutos con signo: "+1h 30m" / "-0h 45m" / "0h 00m". */
+    private String fmtMinutesSigned(int min) {
+        String sign = min > 0 ? "+" : (min < 0 ? "-" : "");
+        int a = Math.abs(min);
+        return sign + String.format("%dh %02dm", a / 60, a % 60);
     }
 
     private String fmtMinutes(int min) {
