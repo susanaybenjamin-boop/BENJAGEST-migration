@@ -1322,6 +1322,18 @@
     -fx-alignment: center-right;
 }
 
+/* DOBLE PANTALLA — botones de las barras de accion MAS COMPACTOS: al envolver en
+   pantalla pequena ocupan menos alto y el listado se ve mas grande (como en la
+   pantalla grande). Acotado: solo botones dentro de .settings-actions (no afecta
+   a "Nueva factura", el teclado del PIN ni los botones de los dialogos). */
+.settings-actions .button {
+    -fx-padding: 6 12;
+    -fx-font-size: 12px;
+}
+.settings-actions .button .font-icon {
+    -fx-icon-size: 14px;
+}
+
 .module-list {
     -fx-background-color: #ffffff;
     -fx-background-radius: 12;
