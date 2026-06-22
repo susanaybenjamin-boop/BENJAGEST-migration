@@ -79,6 +79,7 @@ public class PayslipService {
     private final EmployeeVacationService vacationService;
     private final com.benjagest.backend.realtime.RealtimeService realtime;
     private final org.springframework.security.crypto.password.PasswordEncoder passwordEncoder;
+    private final com.benjagest.backend.labor.incidencias.NominaIncidenciaService incidenciaService;
 
     public PayslipService(JdbcTemplate jdbcTemplate,
                            TenantContext tenantContext,
@@ -92,7 +93,8 @@ public class PayslipService {
                            com.benjagest.backend.settings.CompanyDataService companyDataService,
                            EmployeeVacationService vacationService,
                            com.benjagest.backend.realtime.RealtimeService realtime,
-                           org.springframework.security.crypto.password.PasswordEncoder passwordEncoder) {
+                           org.springframework.security.crypto.password.PasswordEncoder passwordEncoder,
+                           com.benjagest.backend.labor.incidencias.NominaIncidenciaService incidenciaService) {
         this.jdbcTemplate = jdbcTemplate;
         this.tenantContext = tenantContext;
         this.taxRulesService = taxRulesService;
@@ -106,6 +108,7 @@ public class PayslipService {
         this.vacationService = vacationService;
         this.realtime = realtime;
         this.passwordEncoder = passwordEncoder;
+        this.incidenciaService = incidenciaService;
     }
 
     public byte[] generatePdf(String id) {
@@ -367,6 +370,28 @@ public class PayslipService {
             }
         }
 
+        // INC-1 — Incidencias del periodo PERSISTIDAS (nomina_incidencias, V136).
+        // Solo en nómina MENSUAL (una paga extra/finiquito no lleva incidencias del
+        // mes). COMPLEMENT (complemento variable) -> extra del mes (cotiza/tributa
+        // según marca). DEDUCTION -> resta del líquido. OVERTIME (cotización
+        // adicional legal) llega en INC-2; ABSENCE (reducción de base) en INC-3.
+        BigDecimal incidenciaDeductions = BigDecimal.ZERO;
+        if ("MONTHLY".equals(type)) {
+            for (var inc : incidenciaService.list(req.employeeId(), req.year(), req.month())) {
+                BigDecimal amt = inc.amount() == null ? BigDecimal.ZERO : inc.amount();
+                if (amt.signum() == 0) continue;
+                switch (inc.kind()) {
+                    case "COMPLEMENT" -> {
+                        lines.add(new PayslipLine(inc.concept(), "COMPLEMENT", amt));
+                        if (inc.cotizes()) extraCotizable = extraCotizable.add(amt);
+                        if (inc.taxable()) extraTaxable = extraTaxable.add(amt);
+                    }
+                    case "DEDUCTION" -> incidenciaDeductions = incidenciaDeductions.add(amt);
+                    default -> { /* OVERTIME -> INC-2 ; ABSENCE -> INC-3 ; OTHER: sin efecto aún */ }
+                }
+            }
+        }
+
         BigDecimal gross = lines.stream().map(PayslipLine::amount)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
@@ -454,8 +479,8 @@ public class PayslipService {
         BigDecimal irpf = taxableDevengo.multiply(irpfPct)
                 .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
 
-        BigDecimal otherDeductions = req.otherDeductions() != null
-                ? req.otherDeductions() : BigDecimal.ZERO;
+        BigDecimal otherDeductions = (req.otherDeductions() != null
+                ? req.otherDeductions() : BigDecimal.ZERO).add(incidenciaDeductions);
 
         // 4) Líquido
         BigDecimal net = gross.subtract(ssEmployee).subtract(irpf).subtract(otherDeductions);

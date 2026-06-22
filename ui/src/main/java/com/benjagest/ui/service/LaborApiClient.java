@@ -340,6 +340,64 @@ public class LaborApiClient {
         return out;
     }
 
+    // ===== INC-1: incidencias de nomina por empleado y periodo =====
+
+    public java.util.List<com.benjagest.ui.model.IncidenciaEntry> listIncidencias(
+            String employeeId, int year, int month) throws IOException, InterruptedException {
+        String url = baseUrl + "/labor/incidencias?employeeId=" + employeeId
+                + "&year=" + year + "&month=" + month;
+        HttpResponse<String> r = send(req(url).GET());
+        java.util.List<com.benjagest.ui.model.IncidenciaEntry> out = new ArrayList<>();
+        for (String o : splitTopLevelObjects(r.body())) out.add(mapIncidencia(o));
+        return out;
+    }
+
+    public void createIncidencia(com.benjagest.ui.model.IncidenciaEntry e)
+            throws IOException, InterruptedException {
+        send(req(baseUrl + "/labor/incidencias")
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(incidenciaBody(e))));
+    }
+
+    public void updateIncidencia(String id, com.benjagest.ui.model.IncidenciaEntry e)
+            throws IOException, InterruptedException {
+        send(req(baseUrl + "/labor/incidencias/" + id)
+                .header("Content-Type", "application/json")
+                .PUT(HttpRequest.BodyPublishers.ofString(incidenciaBody(e))));
+    }
+
+    public void deleteIncidencia(String id) throws IOException, InterruptedException {
+        send(req(baseUrl + "/labor/incidencias/" + id).DELETE());
+    }
+
+    private String incidenciaBody(com.benjagest.ui.model.IncidenciaEntry e) {
+        return "{"
+                + field("employeeId", e.employeeId()) + ","
+                + intField("periodYear", e.periodYear()) + ","
+                + intField("periodMonth", e.periodMonth()) + ","
+                + field("kind", e.kind()) + ","
+                + field("subtype", e.subtype()) + ","
+                + field("concept", e.concept()) + ","
+                + decField("hours", e.hours()) + ","
+                + decField("unitPrice", e.unitPrice()) + ","
+                + decField("days", e.days()) + ","
+                + decField("amount", e.amount()) + ","
+                + "\"cotizes\":" + e.cotizes() + ","
+                + "\"taxable\":" + e.taxable() + ","
+                + field("notes", e.notes())
+                + "}";
+    }
+
+    private com.benjagest.ui.model.IncidenciaEntry mapIncidencia(String o) {
+        return new com.benjagest.ui.model.IncidenciaEntry(
+                textField(o, "id"), textField(o, "employeeId"),
+                intFieldOrZero(o, "periodYear"), intFieldOrZero(o, "periodMonth"),
+                textField(o, "kind"), textField(o, "subtype"), textField(o, "concept"),
+                bigDec(o, "hours"), bigDec(o, "unitPrice"), bigDec(o, "days"),
+                bigDec(o, "amount"), boolField(o, "cotizes"), boolField(o, "taxable"),
+                textField(o, "notes"), textField(o, "source"));
+    }
+
     // ===== JOR-2: plantillas de horario (planificacion) =====
 
     public java.util.List<com.benjagest.ui.model.ScheduleTemplateEntry> listScheduleTemplates()
