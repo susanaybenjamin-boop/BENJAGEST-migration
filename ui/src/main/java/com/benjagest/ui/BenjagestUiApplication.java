@@ -34670,46 +34670,6 @@ public class BenjagestUiApplication extends Application {
         start(task, "client-labor-full");
     }
 
-    /**
-     * Pestaña Modelos AEAT del cliente — listado de declaraciones
-     * (tax_filings) con su estado, modelo, periodo e importe. Para
-     * generar 347/390/190 el asesor entra en el módulo Modelos AEAT.
-     */
-    private Node buildClientTaxFilingsTab() {
-        javafx.scene.control.TableView<com.benjagest.ui.model.TaxFilingEntry> table =
-                new javafx.scene.control.TableView<>();
-        addCol(table, t("tax.col.model"), v -> v.taxModelCode() == null ? "" : v.taxModelCode(), 90);
-        addCol(table, t("tax.col.year"), v -> String.valueOf(v.periodYear()), 70);
-        addCol(table, t("tax.col.quarter"), v -> v.periodQuarter() == null ? "" : "T" + v.periodQuarter(), 90);
-        addCol(table, t("tax.col.month"), v -> v.periodMonth() == null ? "" : String.valueOf(v.periodMonth()), 60);
-        addCol(table, t("tax.col.status"),
-                v -> v.status() == null ? "" : t("tax.filing_status." + v.status()), 110);
-        addColSorted(table, t("tax.col.amount"), v -> v.totalAmount() == null ? "" : v.totalAmount().toString(), 120, NUMERIC_STRING_COMPARATOR);
-        addColSorted(table, t("tax.col.deadline"), v -> v.deadlineAt() == null ? "" : v.deadlineAt().toString(), 110, ISO_DATE_COMPARATOR);
-
-        Button refresh = new Button(t("accounting.action.refresh"));
-        refresh.setOnAction(e -> loadClientFilings(table));
-        HBox actions = new HBox(8, refresh);
-        VBox box = new VBox(8, actions, table);
-        VBox.setVgrow(table, Priority.ALWAYS);
-        box.setPadding(new Insets(12));
-        loadClientFilings(table);
-        return box;
-    }
-
-    private void loadClientFilings(javafx.scene.control.TableView<com.benjagest.ui.model.TaxFilingEntry> table) {
-        Task<java.util.List<com.benjagest.ui.model.TaxFilingEntry>> task = new Task<>() {
-            @Override protected java.util.List<com.benjagest.ui.model.TaxFilingEntry> call() throws Exception {
-                return altaApiClient.listFilings(null, null, null);
-            }
-        };
-        task.setOnSucceeded(ev -> table.setItems(
-                javafx.collections.FXCollections.observableArrayList(task.getValue())));
-        task.setOnFailed(ev -> System.err.println("[client-filings] "
-                + (task.getException() == null ? "?" : task.getException().getMessage())));
-        start(task, "client-filings");
-    }
-
     /** Helper genérico para añadir columnas con un getter String. */
     private <T> void addCol(javafx.scene.control.TableView<T> table, String header,
                               java.util.function.Function<T, String> getter, double width) {

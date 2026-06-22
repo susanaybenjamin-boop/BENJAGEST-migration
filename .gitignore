@@ -1,6 +1,8 @@
 # Java / Maven
 target/
 *.class
+# Artefacto del maven-shade-plugin (se regenera en cada build)
+dependency-reduced-pom.xml
 
 # IDEs
 .idea/
