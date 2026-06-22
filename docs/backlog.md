@@ -4,9 +4,12 @@
 > Cerrado y mergeado a develop: **reparto guiado de pago parcial** en "Registrar pago
 > de varias facturas" (pregunta qué factura completar) · **export PDF de Mayor + Sumas
 > y Saldos** (cierra el bloque de informes contables en PDF) · **VIG-3 guard
-> server-side** (no mover fecha inicio/antigüedad con nóminas) · **limpieza técnica**
-> (gitignore del artefacto shade + borrado de código muerto AEAT filings). Ver sesión
-> 2026-06-22 justo debajo).
+> server-side** (no mover fecha inicio/antigüedad con nóminas) · **JOR-4 Planificado vs
+> Real** (descriptivo + descuento de festivos) · **limpieza técnica** (gitignore del
+> artefacto shade + borrado de código muerto AEAT filings). Ver sesión 2026-06-22
+> justo debajo. Lo que queda necesita a Benjamin: motor de cálculo de nómina/contratos
+> (§11.2), ficheros de referencia (FORMATS-EXCHANGE/AEAT 180), infra (push PWA) o
+> decisiones de producto (partes de día, fichajes sospechosos)).
 > Histórico previo:
 > **Última actualización:** 2026-06-21 (GESTOR-NAVEGADOR en ventana aparte + login por
 > certificado Fase 2 (importa el .p12 del cliente al almacén de Windows) + rediseño del
@@ -61,6 +64,12 @@
 - ✅ **Limpieza técnica** *(→ merge)* — `.gitignore` del `dependency-reduced-pom.xml`
   (artefacto del shade) + `git rm --cached`; borrado código muerto
   `buildClientTaxFilingsTab`/`loadClientFilings` (sin callers; verificado).
+- ✅ **JOR-4 Planificado vs Real** *(2 commits → merge)* — sección nueva en Laboral >
+  Jornadas: por empleado-día cruza planificado (bloques WORK del horario asignado,
+  JOR-2) vs real fichado (JOR-1) con diferencia coloreada. **Descuenta festivos/cierres**
+  del calendario laboral activo (cuentan 0 planificado; un fichaje en festivo sale como
+  diferencia). Backend `PlanVsRealService` + `GET /api/labor/plan-vs-real` (reusa
+  servicios tenant-scoped, no toca el motor). Descriptivo a propósito (sin tolerancias).
 
 **⬜ Dejado MARCADO para cuando esté Benjamin (necesita su validación/decisión/infra):**
 - **Nómina — incidencias** (horas extra, complementos variables por periodo, pagas
@@ -98,7 +107,9 @@
 - **CONTRATO-VIGENCIAS (bloque D)**: ~~VIG-3 (guard `hasPayslips`)~~ ✅ **HECHO 2026-06-22**;
   VIG-4 atrasos, CV-5 excedencias/suspensiones, CV-8 cese empresa (construir + MARCAR para validar).
 - **FJ-5b** incidencia "schedule-aware" (legal-sensible → validar con caso real).
-- **JOR-4** comparación planificado-vs-real + excepciones de calendario por fecha.
+- ~~**JOR-4** comparación planificado-vs-real~~ ✅ **HECHO 2026-06-22** (descriptivo + descuento
+  de festivos/cierres). Queda el sub-ítem **excepciones de calendario por fecha** (AJUSTE de
+  horas, calendarios por centro de trabajo).
 - **Partes de día** (DRAFT→SUBMITTED→APPROVED→BILLED) + conversión work_log→línea factura
   + fichajes sospechosos.
 - **Push instantáneo PWA** (túnel con nombre o WebSocket; el quick-tunnel bufferiza SSE).
