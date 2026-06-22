@@ -232,44 +232,13 @@ public class BenjagestUiApplication extends Application {
         stage.setMinHeight(Math.min(640, vb.getHeight()));
         stage.setScene(scene);
         showLogin();
-        stage.show();
-        // Centrar en la pantalla y asegurar que cabe entera (al abrir).
+        // Centrar en la pantalla primaria ANTES de mostrar (el tamaño ya está acotado
+        // a sus límites visibles arriba). NO añadimos ningún listener dinámico: el
+        // usuario debe poder mover la ventana entre pantallas y maximizar libremente.
+        // El único objetivo es no ABRIR más grande que la pantalla.
         stage.setX(vb.getMinX() + Math.max(0, (vb.getWidth() - w) / 2));
         stage.setY(vb.getMinY() + Math.max(0, (vb.getHeight() - h) / 2));
-        clampStageToScreen(stage);
-        // Si el usuario arrastra la ventana a otra pantalla (p.ej. del monitor al
-        // portátil), reajustar el tamaño para que quepa en la nueva.
-        javafx.beans.value.ChangeListener<Number> reclamp = (o, ov, nv) -> clampStageToScreen(stage);
-        stage.xProperty().addListener(reclamp);
-        stage.yProperty().addListener(reclamp);
-    }
-
-    /**
-     * DOBLE PANTALLA — acota el Stage a los límites VISIBLES de la pantalla donde
-     * está (sin barra de tareas): si es más ancho/alto que la pantalla lo encoge, y
-     * si se sale por algún borde lo recoloca. Solo encoge (nunca agranda), así que
-     * no pelea con el redimensionado normal dentro de una misma pantalla. Idempotente.
-     */
-    private void clampStageToScreen(Stage st) {
-        // NO tocar la ventana cuando está maximizada / pantalla completa / minimizada:
-        // ahí el tamaño lo gobierna el SO (maximizar debe llenar la pantalla). Llamar a
-        // setX/setWidth en ese estado lo corrompe (la ventana no llenaba al maximizar).
-        if (st.isMaximized() || st.isFullScreen() || st.isIconified()) return;
-        var screens = javafx.stage.Screen.getScreensForRectangle(
-                st.getX(), st.getY(), Math.max(1, st.getWidth()), Math.max(1, st.getHeight()));
-        javafx.geometry.Rectangle2D vb = (screens.isEmpty()
-                ? javafx.stage.Screen.getPrimary() : screens.get(0)).getVisualBounds();
-        double w = st.getWidth(), h = st.getHeight(), x = st.getX(), y = st.getY();
-        boolean changed = false;
-        if (w > vb.getWidth())  { w = vb.getWidth();  changed = true; }
-        if (h > vb.getHeight()) { h = vb.getHeight(); changed = true; }
-        if (x < vb.getMinX())   { x = vb.getMinX();   changed = true; }
-        if (y < vb.getMinY())   { y = vb.getMinY();   changed = true; }
-        if (x + w > vb.getMaxX()) { x = Math.max(vb.getMinX(), vb.getMaxX() - w); changed = true; }
-        if (y + h > vb.getMaxY()) { y = Math.max(vb.getMinY(), vb.getMaxY() - h); changed = true; }
-        if (changed) {
-            st.setWidth(w); st.setHeight(h); st.setX(x); st.setY(y);
-        }
+        stage.show();
     }
 
     // ===================================================================
