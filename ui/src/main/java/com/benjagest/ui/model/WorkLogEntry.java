@@ -2,18 +2,21 @@ package com.benjagest.ui.model;
 
 import java.math.BigDecimal;
 
-/**
- * PORT-2 — Parte de día (work_log) leído desde /api/work-logs.
- */
+/** Módulo Trabajos — un trabajo (work_log) leído desde /api/work-logs. */
 public record WorkLogEntry(
         String id,
         String employeeId,
+        String employeeName,
         String logDate,
         int minutesWorked,
         String customerId,
+        String customerName,
         String description,
         boolean billable,
+        String billingUnit,     // HOURS | DAYS | MONTHS | FIXED
+        BigDecimal quantity,
+        BigDecimal unitPrice,
         BigDecimal billableAmount,
-        String status,
+        String status,          // DRAFT | APPROVED | BILLED
         String billedInvoiceLineId
 ) {}

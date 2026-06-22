@@ -36910,7 +36910,7 @@ public class BenjagestUiApplication extends Application {
             if (from == null || to == null) return;
             Task<java.util.List<com.benjagest.ui.model.WorkLogEntry>> task = new Task<>() {
                 @Override protected java.util.List<com.benjagest.ui.model.WorkLogEntry> call() throws Exception {
-                    return altaApiClient.listWorkLogs(from, to);
+                    return altaApiClient.listWorkLogs(from, to, null, null, false);
                 }
             };
             task.setOnSucceeded(ev -> table.setItems(FXCollections.observableArrayList(task.getValue())));
@@ -37660,11 +37660,11 @@ public class BenjagestUiApplication extends Application {
                 final int minsFinal = mins;
                 Task<Void> t = new Task<>() {
                     @Override protected Void call() throws Exception {
-                        altaApiClient.createWorkLog(
-                                empCombo.getValue().id(),
-                                dateP.getValue(), minsFinal,
-                                null, desc.getText(),
-                                billable.isSelected(), amtFinal);
+                        altaApiClient.createWorkLog(new com.benjagest.ui.model.WorkLogEntry(
+                                null, empCombo.getValue().id(), null,
+                                dateP.getValue().toString(), minsFinal,
+                                null, null, desc.getText(), billable.isSelected(),
+                                null, null, null, amtFinal, "DRAFT", null));
                         return null;
                     }
                 };
