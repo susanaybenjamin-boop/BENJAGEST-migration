@@ -30477,7 +30477,19 @@ public class BenjagestUiApplication extends Application {
 
         VBox body = new VBox(12, header, hint, tabs);
         body.setPadding(new Insets(20));
-        return body;
+        // DOBLE PANTALLA — la ficha de asesoría apila mucho chrome (cabecera de
+        // cliente + 2 filas de pestañas + filtros + acciones). En un portátil eso
+        // supera el alto y el listado quedaba INACCESIBLE (sin scroll). Envolvemos
+        // SOLO esta ficha en un scroll de página: si no cabe, se baja hasta el
+        // listado (la tabla mantiene su alto y scrollea por dentro = doble scroll).
+        // El empresario standalone NO pasa por aquí (su chrome es ligero y la tabla
+        // sigue rellenando con tabLayoutFill).
+        ScrollPane fichaScroll = new ScrollPane(body);
+        fichaScroll.setFitToWidth(true);
+        fichaScroll.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
+        fichaScroll.setVbarPolicy(ScrollPane.ScrollBarPolicy.AS_NEEDED);
+        fichaScroll.getStyleClass().add("content-scroll");
+        return fichaScroll;
     }
 
     private Node buildClientSummaryTab(com.benjagest.ui.model.ManagedClientEntry client) {
