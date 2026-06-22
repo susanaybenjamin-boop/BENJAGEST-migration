@@ -115,6 +115,23 @@ public class EmploymentContractService {
     @Transactional
     public ContractView update(String id, UpsertRequest req) {
         validate(req);
+        // VIG-3: si el contrato YA tiene nóminas, NO se puede mover la fecha de
+        // inicio ni la antigüedad (corrompe antigüedad e indemnización). La UI ya
+        // bloquea ambos campos; esto es la defensa server-side por si la petición
+        // llega por API. El cambio de condiciones se hace con promote() ("Ascender").
+        if (hasPayslips(id)) {
+            java.util.Map<String, Object> cur = jdbcTemplate.queryForMap(
+                    "SELECT start_date, seniority_date FROM employment_contracts WHERE id = ? AND company_id = ?",
+                    id, tenantContext.getCurrentCompanyId());
+            java.time.LocalDate curStart = toLocalDate(cur.get("start_date"));
+            java.time.LocalDate curSen = toLocalDate(cur.get("seniority_date"));
+            if (!java.util.Objects.equals(curStart, req.startDate())
+                    || !java.util.Objects.equals(curSen, req.seniorityDate())) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT,
+                        "No se puede cambiar la fecha de inicio ni la antigüedad de un contrato con "
+                        + "nóminas. Usa \"Ascender / cambiar condiciones\" para cambiar las condiciones.");
+            }
+        }
         int n = jdbcTemplate.update("""
                 UPDATE employment_contracts
                    SET contract_type = ?, sepe_contract_code = ?,
@@ -259,6 +276,14 @@ public class EmploymentContractService {
                 "SELECT COUNT(*) FROM payslips WHERE contract_id = ? AND company_id = ?",
                 Integer.class, id, tenantContext.getCurrentCompanyId());
         return n != null && n > 0;
+    }
+
+    /** Convierte el valor de una columna DATE (java.sql.Date) a LocalDate. */
+    private static java.time.LocalDate toLocalDate(Object o) {
+        if (o == null) return null;
+        if (o instanceof java.sql.Date d) return d.toLocalDate();
+        if (o instanceof java.time.LocalDate ld) return ld;
+        return java.time.LocalDate.parse(o.toString());
     }
 
     @Transactional
