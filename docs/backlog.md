@@ -62,6 +62,17 @@
   dentro). Enrutados Facturación>Facturas, Config>Propietarios, Config>Certificados.
   **PENDIENTE: prueba visual en el portátil + barrido de otras pantallas si reaparece**
   (SIF y Credenciales se dejaron con scroll por cuerpo mixto).
+- ⬜ **BUG DOBLE PANTALLA (reportado Benjamin 2026-06-22, atacar TRAS nómina)** — al abrir
+  el programa en la pantalla del portátil (con un 2º monitor conectado): (a) la ventana no
+  reconoce el tamaño de la pantalla y se abre más grande que el portátil → parte queda
+  fuera; (b) las **barras de acciones más anchas que la ventana** (p.ej. Facturas: Validar…
+  Cobrar varias…Guardar PDF) hacen overflow horizontal SIN scroll → botones atrapados
+  inaccesibles. Causa (b): el código fuerza `setMinWidth(USE_PREF_SIZE)` en los botones con
+  overflow a propósito "para no truncar", pero no hay scroll horizontal. Fix propuesto:
+  (a) **clamp del Stage** a los `visualBounds` de la pantalla donde abre (tamaño y posición);
+  (b) barras de acción que **envuelvan** (FlowPane) o tengan **scroll horizontal** en vez de
+  recortar. Barrido por todas las pantallas con barras anchas. **Orden acordado: nómina →
+  doble pantalla → módulo Trabajos.**
 - ✅ **Export PDF Mayor + Sumas y Saldos** *(→ merge)* — cierra "Export PDF de informes
   contables" (Balance + PyG ya estaban). `AccountingReportsPdfService.ledgerPdf` (saldo
   apertura + movimientos + saldo final) y `trialBalancePdf` (con fila de totales),
