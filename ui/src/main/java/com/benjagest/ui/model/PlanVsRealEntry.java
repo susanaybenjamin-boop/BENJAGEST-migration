@@ -7,5 +7,6 @@ public record PlanVsRealEntry(
         String date,
         int plannedMinutes,
         int workedMinutes,
-        int diffMinutes
+        int diffMinutes,
+        boolean holiday
 ) {}

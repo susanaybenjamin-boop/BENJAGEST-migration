@@ -15659,10 +15659,11 @@ public class BenjagestUiApplication extends Application {
             case "labor.workdays.col.pause" -> "Breaks";
             case "labor.workdays.fail.title" -> "Could not load workdays";
             case "labor.planreal.title" -> "Planned vs actual";
-            case "labor.planreal.hint" -> "Per employee and day it compares the planned work time (assigned schedule blocks) with what was actually clocked. Descriptive: green = worked more than planned, red = less. Days off / holidays are not yet excluded.";
+            case "labor.planreal.hint" -> "Per employee and day it compares the planned work time (assigned schedule blocks) with what was actually clocked. Descriptive: green = worked more than planned, red = less. Holidays/closures in the active work calendar count as 0 planned.";
             case "labor.planreal.empty" -> "Nothing to compare in this range.";
             case "labor.planreal.col.planned" -> "Planned";
             case "labor.planreal.col.diff" -> "Difference";
+            case "labor.planreal.holiday" -> "holiday";
             case "labor.planreal.fail.title" -> "Could not load planned vs actual";
             case "labor.schedule.hint" -> "Work-schedule templates: one template = several time blocks per weekday, assignable to several employees with an effective date.";
             case "labor.schedule.empty" -> "No templates yet.";
@@ -15839,10 +15840,11 @@ public class BenjagestUiApplication extends Application {
             case "labor.workdays.col.pause" -> "Pausas";
             case "labor.workdays.fail.title" -> "No se pudieron cargar las jornadas";
             case "labor.planreal.title" -> "Planificado vs Real";
-            case "labor.planreal.hint" -> "Por empleado y día compara el tiempo de trabajo planificado (bloques del horario asignado) con lo realmente fichado. Descriptivo: verde = trabajó más de lo previsto, rojo = menos. Los días libres / festivos aún no se descuentan.";
+            case "labor.planreal.hint" -> "Por empleado y día compara el tiempo de trabajo planificado (bloques del horario asignado) con lo realmente fichado. Descriptivo: verde = trabajó más de lo previsto, rojo = menos. Los festivos/cierres del calendario laboral activo cuentan como 0 planificado.";
             case "labor.planreal.empty" -> "No hay nada que comparar en este rango.";
             case "labor.planreal.col.planned" -> "Planificado";
             case "labor.planreal.col.diff" -> "Diferencia";
+            case "labor.planreal.holiday" -> "festivo";
             case "labor.planreal.fail.title" -> "No se pudo cargar planificado vs real";
             case "labor.schedule.hint" -> "Plantillas de horario: 1 plantilla = varios bloques horarios por día de la semana, asignable a varios empleados con fecha de efecto.";
             case "labor.schedule.empty" -> "Aún no hay plantillas.";
@@ -36546,8 +36548,11 @@ public class BenjagestUiApplication extends Application {
 
         TableColumn<com.benjagest.ui.model.PlanVsRealEntry, String> cDate =
                 new TableColumn<>(t("labor.shifts.col.date"));
-        cDate.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().date()));
-        cDate.setPrefWidth(110);
+        cDate.setCellValueFactory(c -> new SimpleStringProperty(
+                c.getValue().holiday()
+                        ? c.getValue().date() + "  · " + t("labor.planreal.holiday")
+                        : c.getValue().date()));
+        cDate.setPrefWidth(150);
         cDate.setComparator(ISO_DATE_COMPARATOR);
         TableColumn<com.benjagest.ui.model.PlanVsRealEntry, String> cEmp =
                 new TableColumn<>(t("labor.shifts.col.employee"));

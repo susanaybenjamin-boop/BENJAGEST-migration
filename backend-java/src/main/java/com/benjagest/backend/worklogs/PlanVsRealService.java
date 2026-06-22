@@ -60,6 +60,12 @@ public class PlanVsRealService {
             names.putIfAbsent(wd.employeeId(), wd.employeeName());
         }
 
+        // 1.bis) Festivos/cierres del calendario laboral activo de la empresa en el
+        // rango: esos días el planificado es 0 (no se programa trabajo). Evita
+        // falsos "trabajó de menos" en festivos. AJUSTE y matices por centro
+        // quedan para el sub-ítem "excepciones de calendario".
+        java.util.Set<LocalDate> holidays = loadHolidays(from, to);
+
         // 2) Empleados con horario asignado que solapa el rango (aunque no fichen:
         //    un día planificado sin fichaje es una ausencia que queremos ver).
         StringBuilder sql = new StringBuilder("""
@@ -87,10 +93,11 @@ public class PlanVsRealService {
         for (Map.Entry<String, String> emp : names.entrySet()) {
             String empId = emp.getKey();
             for (LocalDate d = from; !d.isAfter(to); d = d.plusDays(1)) {
-                long planned = plannedWorkMinutes(empId, d);
+                boolean holiday = holidays.contains(d);
+                long planned = holiday ? 0 : plannedWorkMinutes(empId, d);
                 long worked = workedByKey.getOrDefault(key(empId, d), 0L);
                 if (planned == 0 && worked == 0) continue;
-                out.add(new Row(empId, emp.getValue(), d, planned, worked, worked - planned));
+                out.add(new Row(empId, emp.getValue(), d, planned, worked, worked - planned, holiday));
             }
         }
         out.sort((a, b) -> {
@@ -116,13 +123,35 @@ public class PlanVsRealService {
         return total;
     }
 
+    /** Fechas festivo/cierre del calendario activo de la empresa en el rango. */
+    private java.util.Set<LocalDate> loadHolidays(LocalDate from, LocalDate to) {
+        java.util.Set<LocalDate> out = new java.util.HashSet<>();
+        jdbc.query("""
+                SELECT h.holiday_date
+                  FROM holidays h
+                  JOIN work_calendars c ON c.id = h.work_calendar_id
+                 WHERE c.company_id = ?
+                   AND c.active = TRUE
+                   AND c.year BETWEEN ? AND ?
+                   AND h.holiday_type IN ('FESTIVO', 'CIERRE')
+                   AND h.holiday_date BETWEEN ? AND ?
+                """, rs -> {
+                    LocalDate d = rs.getObject("holiday_date", LocalDate.class);
+                    if (d != null) out.add(d);
+                },
+                tenant.getCurrentCompanyId(), from.getYear(), to.getYear(),
+                java.sql.Date.valueOf(from), java.sql.Date.valueOf(to));
+        return out;
+    }
+
     private static String key(String employeeId, LocalDate date) {
         return employeeId + "|" + date;
     }
 
     public record Row(
             String employeeId, String employeeName, LocalDate date,
-            long plannedMinutes, long workedMinutes, long diffMinutes
+            long plannedMinutes, long workedMinutes, long diffMinutes,
+            boolean holiday
     ) {}
 
     @RestController
