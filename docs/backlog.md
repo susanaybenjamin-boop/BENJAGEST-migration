@@ -62,17 +62,16 @@
   dentro). Enrutados Facturación>Facturas, Config>Propietarios, Config>Certificados.
   **PENDIENTE: prueba visual en el portátil + barrido de otras pantallas si reaparece**
   (SIF y Credenciales se dejaron con scroll por cuerpo mixto).
-- ⬜ **BUG DOBLE PANTALLA (reportado Benjamin 2026-06-22, atacar TRAS nómina)** — al abrir
-  el programa en la pantalla del portátil (con un 2º monitor conectado): (a) la ventana no
-  reconoce el tamaño de la pantalla y se abre más grande que el portátil → parte queda
-  fuera; (b) las **barras de acciones más anchas que la ventana** (p.ej. Facturas: Validar…
-  Cobrar varias…Guardar PDF) hacen overflow horizontal SIN scroll → botones atrapados
-  inaccesibles. Causa (b): el código fuerza `setMinWidth(USE_PREF_SIZE)` en los botones con
-  overflow a propósito "para no truncar", pero no hay scroll horizontal. Fix propuesto:
-  (a) **clamp del Stage** a los `visualBounds` de la pantalla donde abre (tamaño y posición);
-  (b) barras de acción que **envuelvan** (FlowPane) o tengan **scroll horizontal** en vez de
-  recortar. Barrido por todas las pantallas con barras anchas. **Orden acordado: nómina →
-  doble pantalla → módulo Trabajos.**
+- ~~**BUG DOBLE PANTALLA**~~ ✅ **CERRADO 2026-06-22** (confirmado Benjamin): (1) ventana
+  acotada a la pantalla VISIBLE al abrir + centrada, **sin** listener dinámico (peleaba con
+  mover/maximizar); (2) barras de acción y filtros que **ENVUELVEN** (FlowPane `actionFlow` +
+  `filterGroup`); (3) botones de acción compactados (CSS acotado a `.settings-actions .button`)
+  y **cabecera de módulo** compactada; (4) en "Mi gestión" sin **doble hero card**
+  (`billingView(bundle, showHeader=false)` embebido); (5) **scroll de página en la ficha de
+  asesoría** (`buildClientDetailView` en ScrollPane) = el "doble scroll" para llegar al listado
+  en portátil. *Pendiente menor (si molesta): en pantalla grande la tabla queda a ~400px con
+  hueco debajo en la ficha de asesoría; se afinaría con fitToHeight + minHeight de tablas.
+  Extender el "sin doble hero card embebido" a otros módulos de Mi gestión si hace falta.*
 - ✅ **Export PDF Mayor + Sumas y Saldos** *(→ merge)* — cierra "Export PDF de informes
   contables" (Balance + PyG ya estaban). `AccountingReportsPdfService.ledgerPdf` (saldo
   apertura + movimientos + saldo final) y `trialBalancePdf` (con fila de totales),

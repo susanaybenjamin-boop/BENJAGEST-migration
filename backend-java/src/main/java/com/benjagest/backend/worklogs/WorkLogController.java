@@ -5,16 +5,20 @@ import com.benjagest.backend.modules.RequiresModule;
 import java.time.LocalDate;
 import java.util.List;
 import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * PORT-2 (skeleton 2026-06-10) — REST API base de partes de día.
- * UX completa pendiente de diseño Benjamin.
+ * MÓDULO TRABAJOS — REST API de trabajos/partes facturables. Bajo el módulo
+ * "shifts" (jornadas). Gestión por OWNER/ADMIN/ACCOUNTANT; el empleado solo
+ * consulta los suyos (PWA).
  */
 @RestController
 @RequestMapping("/api/work-logs")
@@ -28,16 +32,20 @@ public class WorkLogController {
         this.service = service;
     }
 
-    /** Listado para la empresa (OWNER/ADMIN). */
+    /** Listado para la empresa, con filtros opcionales (OWNER/ADMIN/ACCOUNTANT). */
     @GetMapping
     @RequiresRole({"OWNER", "ADMIN", "ACCOUNTANT"})
     public List<WorkLogService.WorkLog> list(
             @RequestParam("from") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
-            @RequestParam("to")   @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
-        return service.listForCompany(from, to);
+            @RequestParam("to")   @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
+            @RequestParam(value = "customerId", required = false) String customerId,
+            @RequestParam(value = "status", required = false) String status,
+            @RequestParam(value = "billableUnbilledOnly", required = false, defaultValue = "false")
+            boolean billableUnbilledOnly) {
+        return service.listForCompany(from, to, customerId, status, billableUnbilledOnly);
     }
 
-    /** Mis propios partes (EMPLOYEE). */
+    /** Mis propios trabajos (EMPLOYEE, PWA). */
     @GetMapping("/mine")
     public List<WorkLogService.WorkLog> listMine(
             @RequestParam("from") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
@@ -47,7 +55,27 @@ public class WorkLogController {
 
     @PostMapping
     @RequiresRole({"OWNER", "ADMIN", "ACCOUNTANT"})
-    public WorkLogService.WorkLog create(@RequestBody WorkLogService.CreateRequest req) {
+    public WorkLogService.WorkLog create(@RequestBody WorkLogService.UpsertRequest req) {
         return service.create(req);
+    }
+
+    @PutMapping("/{id}")
+    @RequiresRole({"OWNER", "ADMIN", "ACCOUNTANT"})
+    public WorkLogService.WorkLog update(@PathVariable("id") String id,
+                                         @RequestBody WorkLogService.UpsertRequest req) {
+        return service.update(id, req);
+    }
+
+    @DeleteMapping("/{id}")
+    @RequiresRole({"OWNER", "ADMIN", "ACCOUNTANT"})
+    public void delete(@PathVariable("id") String id) {
+        service.delete(id);
+    }
+
+    @PostMapping("/{id}/status")
+    @RequiresRole({"OWNER", "ADMIN", "ACCOUNTANT"})
+    public WorkLogService.WorkLog setStatus(@PathVariable("id") String id,
+                                            @RequestParam("status") String status) {
+        return service.setStatus(id, status);
     }
 }
