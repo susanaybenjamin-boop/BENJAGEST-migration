@@ -10511,15 +10511,20 @@ public class BenjagestUiApplication extends Application {
         colPending.setPrefWidth(120);
         colPending.setComparator(NUMERIC_STRING_COMPARATOR);
 
+        // Columna de reparto: SOLO LECTURA. El importe asignado a cada factura lo
+        // calcula el dialogo a partir del importe del pago + la factura elegida
+        // para completar (no se teclea a mano, evita cuadres manuales).
         TableColumn<MultiAllocRow, String> colAmount = new TableColumn<>(t("multi_alloc.col.allocate"));
         colAmount.setCellValueFactory(c -> c.getValue().amountTextProperty);
-        colAmount.setCellFactory(javafx.scene.control.cell.TextFieldTableCell.forTableColumn());
-        colAmount.setOnEditCommit(ev -> {
-            MultiAllocRow row = ev.getRowValue();
-            row.amountTextProperty.set(ev.getNewValue());
-            if (!row.selectedProperty.get()) row.selectedProperty.set(true);
+        colAmount.setCellFactory(col -> new javafx.scene.control.TableCell<>() {
+            @Override
+            protected void updateItem(String v, boolean empty) {
+                super.updateItem(v, empty);
+                if (empty || v == null) { setText(null); return; }
+                try { setText(money(new BigDecimal(v.replace(",", ".")).toPlainString())); }
+                catch (NumberFormatException e) { setText(v); }
+            }
         });
-        colAmount.setEditable(true);
         colAmount.setComparator(NUMERIC_STRING_COMPARATOR);
         colAmount.setPrefWidth(140);
 
@@ -10622,66 +10627,96 @@ public class BenjagestUiApplication extends Application {
         confirm.setGraphic(icon("fas-check"));
         confirm.getStyleClass().add("primary-button");
         confirm.setOnAction(ev -> {
-            BigDecimal total;
+            BigDecimal payment;
             try {
-                total = new BigDecimal(totalField.getText().replace(",", "."));
-                if (total.signum() <= 0) throw new NumberFormatException();
+                payment = new BigDecimal(totalField.getText().replace(",", "."));
+                if (payment.signum() <= 0) throw new NumberFormatException();
             } catch (Exception ex) {
                 showError(t("multi_alloc.error.title"), t("multi_alloc.error.total")); return;
             }
-            LocalDate date = datePicker.getValue();
+            final BigDecimal fPayment = payment.setScale(2, java.math.RoundingMode.HALF_UP);
+            final LocalDate date = datePicker.getValue();
             if (date == null) {
                 showError(t("multi_alloc.error.title"), t("multi_alloc.error.date")); return;
             }
-            List<com.benjagest.ui.service.BillingApiClient.AllocationDraft> allocs = new ArrayList<>();
-            BigDecimal sum = BigDecimal.ZERO;
+            // Facturas marcadas (las que entran en el pago).
+            List<MultiAllocRow> checked = new ArrayList<>();
             for (MultiAllocRow r : table.getItems()) {
-                if (!r.selectedProperty.get()) continue;
-                BigDecimal a;
-                try { a = new BigDecimal(r.amountTextProperty.get().replace(",", ".")); }
-                catch (NumberFormatException nx) {
-                    showError(t("multi_alloc.error.title"),
-                            t("multi_alloc.error.row") + " " + r.invoiceNumber); return;
-                }
-                if (a.signum() <= 0) continue;
-                if (a.compareTo(r.pending) > 0) {
-                    showError(t("multi_alloc.error.title"),
-                            t("multi_alloc.error.exceeds") + " " + r.invoiceNumber); return;
-                }
-                allocs.add(new com.benjagest.ui.service.BillingApiClient.AllocationDraft(
-                        r.invoiceId, a.setScale(2, java.math.RoundingMode.HALF_UP)));
-                sum = sum.add(a);
+                if (r.selectedProperty.get()) checked.add(r);
             }
-            if (allocs.isEmpty()) {
+            if (checked.isEmpty()) {
                 showError(t("multi_alloc.error.title"), t("multi_alloc.error.no_rows")); return;
             }
-            if (sum.setScale(2, java.math.RoundingMode.HALF_UP)
-                    .compareTo(total.setScale(2, java.math.RoundingMode.HALF_UP)) != 0) {
+            BigDecimal pendingSum = BigDecimal.ZERO;
+            for (MultiAllocRow r : checked) pendingSum = pendingSum.add(r.pending);
+            pendingSum = pendingSum.setScale(2, java.math.RoundingMode.HALF_UP);
+
+            // No se puede cobrar mas de lo que se debe.
+            if (fPayment.compareTo(pendingSum) > 0) {
                 showError(t("multi_alloc.error.title"),
-                        t("multi_alloc.error.sum_mismatch")
-                        + " (" + money(sum.toPlainString()) + " ≠ "
-                        + money(total.toPlainString()) + ")");
+                        t("multi_alloc.error.exceeds_selected")
+                        + " (" + money(fPayment.toPlainString()) + " > "
+                        + money(pendingSum.toPlainString()) + ")");
                 return;
             }
-            Task<String> save = new Task<>() {
-                @Override
-                protected String call() throws Exception {
-                    return billingApiClient.registerMultiAllocation(
-                            date.toString(), total,
-                            methodCombo.getValue(), refField.getText(), notesField.getText(),
-                            allocs);
+
+            // Helper: envia un reparto concreto al backend.
+            java.util.function.Consumer<List<com.benjagest.ui.service.BillingApiClient.AllocationDraft>> doSave = allocs -> {
+                if (allocs.isEmpty()) {
+                    showError(t("multi_alloc.error.title"), t("multi_alloc.error.no_rows")); return;
                 }
+                Task<String> save = new Task<>() {
+                    @Override
+                    protected String call() throws Exception {
+                        return billingApiClient.registerMultiAllocation(
+                                date.toString(), fPayment,
+                                methodCombo.getValue(), refField.getText(), notesField.getText(),
+                                allocs);
+                    }
+                };
+                save.setOnSucceeded(s -> {
+                    showInfo(t("multi_alloc.ok.title"),
+                            t("multi_alloc.ok.body") + " " + allocs.size());
+                    com.benjagest.ui.support.RefreshBus.emit(
+                            com.benjagest.ui.support.RefreshBus.TOPIC_SALES);
+                    dlg.close();
+                });
+                save.setOnFailed(s -> showError(t("multi_alloc.save.fail"),
+                        save.getException() == null ? "" : save.getException().getMessage()));
+                start(save, "multi-alloc-save");
             };
-            save.setOnSucceeded(s -> {
-                showInfo(t("multi_alloc.ok.title"),
-                        t("multi_alloc.ok.body") + " " + allocs.size());
-                com.benjagest.ui.support.RefreshBus.emit(
-                        com.benjagest.ui.support.RefreshBus.TOPIC_SALES);
-                dlg.close();
+
+            if (fPayment.compareTo(pendingSum) == 0) {
+                // El pago cubre exactamente el pendiente de TODAS: se pagan enteras.
+                List<com.benjagest.ui.service.BillingApiClient.AllocationDraft> allocs = new ArrayList<>();
+                for (MultiAllocRow r : checked) {
+                    allocs.add(new com.benjagest.ui.service.BillingApiClient.AllocationDraft(
+                            r.invoiceId, r.pending.setScale(2, java.math.RoundingMode.HALF_UP)));
+                }
+                doSave.accept(allocs);
+                return;
+            }
+
+            // payment < pendingSum -> el pago no llega a todas: preguntar cual completar.
+            askWhichInvoiceToComplete(checked, fPayment, chosen -> {
+                List<com.benjagest.ui.service.BillingApiClient.AllocationDraft> allocs =
+                        distributePayment(checked, chosen, fPayment);
+                // Reflejar el reparto en la tabla antes de enviar (transparencia).
+                java.util.Map<String, BigDecimal> byId = new java.util.HashMap<>();
+                for (var a : allocs) byId.put(a.invoiceId(), a.amount());
+                for (MultiAllocRow r : table.getItems()) {
+                    BigDecimal a = byId.get(r.invoiceId);
+                    if (a == null) {
+                        r.selectedProperty.set(false);
+                        r.amountTextProperty.set("0");
+                    } else {
+                        r.selectedProperty.set(true);
+                        r.amountTextProperty.set(a.toPlainString());
+                    }
+                }
+                recalcSum.run();
+                doSave.accept(allocs);
             });
-            save.setOnFailed(s -> showError(t("multi_alloc.save.fail"),
-                    save.getException() == null ? "" : save.getException().getMessage()));
-            start(save, "multi-alloc-save");
         });
 
         Button cancel = new Button(t("dialog.cancel"));
@@ -10708,6 +10743,103 @@ public class BenjagestUiApplication extends Application {
         com.benjagest.ui.support.EditableCells.enableDateMaskOnFocus(scene);
         dlg.setScene(scene);
         dlg.showAndWait();
+    }
+
+    /**
+     * MULTI-ALLOCATION — cuando el importe del pago no cubre el pendiente de
+     * todas las facturas marcadas, pregunta cual se quiere COMPLETAR (pagar
+     * entera). El resto del importe se reparte luego en {@link #distributePayment}
+     * de mas antigua a mas nueva, y lo que falte queda pendiente (PARTIAL).
+     */
+    private void askWhichInvoiceToComplete(
+            List<MultiAllocRow> checked,
+            BigDecimal payment,
+            java.util.function.Consumer<MultiAllocRow> onChosen) {
+        Stage dlg = new Stage();
+        dlg.setTitle(t("multi_alloc.complete.title"));
+        dlg.initModality(javafx.stage.Modality.APPLICATION_MODAL);
+
+        Label hint = new Label(t("multi_alloc.complete.hint"));
+        hint.setWrapText(true);
+        hint.getStyleClass().add("settings-hint");
+
+        javafx.scene.control.ToggleGroup group = new javafx.scene.control.ToggleGroup();
+        VBox options = new VBox(8);
+        // Mas antigua primero (lista estable y coherente con el reparto del resto).
+        List<MultiAllocRow> ordered = new ArrayList<>(checked);
+        ordered.sort(java.util.Comparator.comparing(r -> r.invoiceDate == null ? "" : r.invoiceDate));
+        javafx.scene.control.RadioButton firstCompletable = null;
+        for (MultiAllocRow r : ordered) {
+            boolean completable = r.pending.compareTo(payment) <= 0;
+            String tag = completable ? t("multi_alloc.complete.full") : t("multi_alloc.complete.partial");
+            javafx.scene.control.RadioButton rb = new javafx.scene.control.RadioButton(
+                    r.invoiceNumber + "   ·   " + t("multi_alloc.col.pending") + " "
+                    + money(r.pending.toPlainString()) + "   ·   " + tag);
+            rb.setToggleGroup(group);
+            rb.setUserData(r);
+            options.getChildren().add(rb);
+            if (completable && firstCompletable == null) firstCompletable = rb;
+        }
+        // Preseleccionar la primera completable; si ninguna lo es, la primera.
+        if (firstCompletable != null) firstCompletable.setSelected(true);
+        else if (!options.getChildren().isEmpty())
+            ((javafx.scene.control.RadioButton) options.getChildren().get(0)).setSelected(true);
+
+        Button ok = new Button(t("multi_alloc.complete.btn"));
+        ok.setGraphic(icon("fas-check"));
+        ok.getStyleClass().add("primary-button");
+        ok.setOnAction(e -> {
+            javafx.scene.control.Toggle sel = group.getSelectedToggle();
+            if (sel == null) return;
+            MultiAllocRow chosen = (MultiAllocRow) sel.getUserData();
+            dlg.close();
+            onChosen.accept(chosen);
+        });
+        Button cancel = new Button(t("dialog.cancel"));
+        cancel.setOnAction(e -> dlg.close());
+        HBox btns = new HBox(10, cancel, ok);
+        btns.setAlignment(Pos.CENTER_RIGHT);
+
+        VBox root = new VBox(12, hint, options, btns);
+        root.setPadding(new javafx.geometry.Insets(16));
+        root.setPrefWidth(540);
+        Scene scene = new Scene(root);
+        scene.getStylesheets().add(
+                getClass().getResource("/com/benjagest/ui/app.css").toExternalForm());
+        dlg.setScene(scene);
+        dlg.showAndWait();
+    }
+
+    /**
+     * Reparte {@code payment} entre las facturas marcadas: primero la elegida
+     * (entera si el importe da, si no todo el importe), luego el resto de mas
+     * antigua a mas nueva. Como solo se llama con payment &lt; suma de pendientes,
+     * al menos una factura queda con menos de su pendiente (PARTIAL) o sin pago.
+     */
+    private static List<com.benjagest.ui.service.BillingApiClient.AllocationDraft> distributePayment(
+            List<MultiAllocRow> checked, MultiAllocRow chosen, BigDecimal payment) {
+        List<com.benjagest.ui.service.BillingApiClient.AllocationDraft> allocs = new ArrayList<>();
+        BigDecimal remaining = payment;
+        // 1) La factura elegida primero.
+        BigDecimal first = chosen.pending.min(remaining);
+        if (first.signum() > 0) {
+            allocs.add(new com.benjagest.ui.service.BillingApiClient.AllocationDraft(
+                    chosen.invoiceId, first.setScale(2, java.math.RoundingMode.HALF_UP)));
+            remaining = remaining.subtract(first);
+        }
+        // 2) El resto, de mas antigua a mas nueva.
+        List<MultiAllocRow> others = new ArrayList<>();
+        for (MultiAllocRow r : checked) if (r != chosen) others.add(r);
+        others.sort(java.util.Comparator.comparing(r -> r.invoiceDate == null ? "" : r.invoiceDate));
+        for (MultiAllocRow r : others) {
+            if (remaining.signum() <= 0) break;
+            BigDecimal a = r.pending.min(remaining);
+            if (a.signum() <= 0) continue;
+            allocs.add(new com.benjagest.ui.service.BillingApiClient.AllocationDraft(
+                    r.invoiceId, a.setScale(2, java.math.RoundingMode.HALF_UP)));
+            remaining = remaining.subtract(a);
+        }
+        return allocs;
     }
 
     private static class MultiAllocRow {
@@ -18774,7 +18906,7 @@ public class BenjagestUiApplication extends Application {
             case "settings.backup.run.fail" -> "Backup failed";
             case "list.action.multi_allocation" -> "Pay multiple";
             case "multi_alloc.title" -> "Register multi-invoice payment";
-            case "multi_alloc.hint" -> "One real payment (bank transfer, etc.) is split across several validated invoices of the same customer. The sum of allocations must match the total amount.";
+            case "multi_alloc.hint" -> "One real payment (bank transfer, etc.) is split across several validated invoices of the same customer. If the amount does not cover everything, you choose which invoice to complete and the rest stays pending.";
             case "multi_alloc.field.client" -> "Customer:";
             case "multi_alloc.field.date" -> "Payment date:";
             case "multi_alloc.field.total" -> "Total amount (€):";
@@ -18799,6 +18931,12 @@ public class BenjagestUiApplication extends Application {
             case "multi_alloc.error.exceeds" -> "Amount exceeds pending on invoice";
             case "multi_alloc.error.no_rows" -> "Select at least one invoice.";
             case "multi_alloc.error.sum_mismatch" -> "Sum of allocations must equal total amount";
+            case "multi_alloc.error.exceeds_selected" -> "The payment amount is larger than the pending total of the selected invoices";
+            case "multi_alloc.complete.title" -> "Which invoice to complete?";
+            case "multi_alloc.complete.hint" -> "The payment does not cover all selected invoices. Choose which one to pay in full; the rest of the amount is applied to the others (oldest first) and whatever is left over stays pending.";
+            case "multi_alloc.complete.full" -> "fully paid";
+            case "multi_alloc.complete.partial" -> "will stay partial";
+            case "multi_alloc.complete.btn" -> "Distribute payment";
             case "multi_alloc.ok.title" -> "Payment registered";
             case "multi_alloc.ok.body" -> "Allocations:";
             case "dialog.cancel" -> "Cancel";
@@ -19930,7 +20068,7 @@ public class BenjagestUiApplication extends Application {
             case "settings.backup.run.fail" -> "Falló la copia";
             case "list.action.multi_allocation" -> "Cobrar varias";
             case "multi_alloc.title" -> "Registrar pago de varias facturas";
-            case "multi_alloc.hint" -> "Un pago real (transferencia, ingreso, etc.) se reparte entre varias facturas validadas del mismo cliente. La suma de los repartos debe coincidir con el importe total del pago.";
+            case "multi_alloc.hint" -> "Un pago real (transferencia, ingreso, etc.) se reparte entre varias facturas validadas del mismo cliente. Si el importe no cubre todo, eliges qué factura completar y el resto queda pendiente.";
             case "multi_alloc.field.client" -> "Cliente:";
             case "multi_alloc.field.date" -> "Fecha del pago:";
             case "multi_alloc.field.total" -> "Importe total (€):";
@@ -19955,6 +20093,12 @@ public class BenjagestUiApplication extends Application {
             case "multi_alloc.error.exceeds" -> "El importe excede el pendiente de la factura";
             case "multi_alloc.error.no_rows" -> "Selecciona al menos una factura.";
             case "multi_alloc.error.sum_mismatch" -> "La suma de los repartos debe coincidir con el importe total";
+            case "multi_alloc.error.exceeds_selected" -> "El importe del pago es mayor que el pendiente total de las facturas seleccionadas";
+            case "multi_alloc.complete.title" -> "¿Qué factura quieres completar?";
+            case "multi_alloc.complete.hint" -> "El pago no cubre todas las facturas seleccionadas. Elige cuál se paga entera; el resto del importe se aplica a las demás (de más antigua a más nueva) y lo que sobre quedará pendiente.";
+            case "multi_alloc.complete.full" -> "se completa";
+            case "multi_alloc.complete.partial" -> "quedará parcial";
+            case "multi_alloc.complete.btn" -> "Repartir pago";
             case "multi_alloc.ok.title" -> "Pago registrado";
             case "multi_alloc.ok.body" -> "Repartos:";
             case "dialog.cancel" -> "Cancelar";
