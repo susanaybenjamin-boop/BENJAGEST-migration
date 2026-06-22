@@ -212,7 +212,14 @@ public class BenjagestUiApplication extends Application {
         root = new BorderPane();
         root.getStyleClass().add("app-root");
 
-        Scene scene = new Scene(root, 1180, 760);
+        // DOBLE PANTALLA — no abrir más grande que la pantalla donde aparece (un
+        // portátil tras venir de un monitor grande): el tamaño de diseño se acota a
+        // los límites VISIBLES (sin barra de tareas) de la pantalla primaria.
+        javafx.geometry.Rectangle2D vb = javafx.stage.Screen.getPrimary().getVisualBounds();
+        double w = Math.min(1180, vb.getWidth());
+        double h = Math.min(760, vb.getHeight());
+
+        Scene scene = new Scene(root, w, h);
         scene.getStylesheets().add(getClass().getResource("/com/benjagest/ui/app.css").toExternalForm());
         setupGlobalShortcuts(scene);
         // Máscara de fecha (dd-MM-yyyy) en todos los DatePicker de la ventana.
@@ -220,11 +227,45 @@ public class BenjagestUiApplication extends Application {
 
         stage.setTitle("BENJAGEST");
         stage.getIcons().add(AppBrand.loadWindowIcon());
-        stage.setMinWidth(920);
-        stage.setMinHeight(640);
+        // El mínimo tampoco puede superar la pantalla (portátiles pequeños).
+        stage.setMinWidth(Math.min(920, vb.getWidth()));
+        stage.setMinHeight(Math.min(640, vb.getHeight()));
         stage.setScene(scene);
         showLogin();
         stage.show();
+        // Centrar en la pantalla y asegurar que cabe entera (al abrir).
+        stage.setX(vb.getMinX() + Math.max(0, (vb.getWidth() - w) / 2));
+        stage.setY(vb.getMinY() + Math.max(0, (vb.getHeight() - h) / 2));
+        clampStageToScreen(stage);
+        // Si el usuario arrastra la ventana a otra pantalla (p.ej. del monitor al
+        // portátil), reajustar el tamaño para que quepa en la nueva.
+        javafx.beans.value.ChangeListener<Number> reclamp = (o, ov, nv) -> clampStageToScreen(stage);
+        stage.xProperty().addListener(reclamp);
+        stage.yProperty().addListener(reclamp);
+    }
+
+    /**
+     * DOBLE PANTALLA — acota el Stage a los límites VISIBLES de la pantalla donde
+     * está (sin barra de tareas): si es más ancho/alto que la pantalla lo encoge, y
+     * si se sale por algún borde lo recoloca. Solo encoge (nunca agranda), así que
+     * no pelea con el redimensionado normal dentro de una misma pantalla. Idempotente.
+     */
+    private void clampStageToScreen(Stage st) {
+        var screens = javafx.stage.Screen.getScreensForRectangle(
+                st.getX(), st.getY(), Math.max(1, st.getWidth()), Math.max(1, st.getHeight()));
+        javafx.geometry.Rectangle2D vb = (screens.isEmpty()
+                ? javafx.stage.Screen.getPrimary() : screens.get(0)).getVisualBounds();
+        double w = st.getWidth(), h = st.getHeight(), x = st.getX(), y = st.getY();
+        boolean changed = false;
+        if (w > vb.getWidth())  { w = vb.getWidth();  changed = true; }
+        if (h > vb.getHeight()) { h = vb.getHeight(); changed = true; }
+        if (x < vb.getMinX())   { x = vb.getMinX();   changed = true; }
+        if (y < vb.getMinY())   { y = vb.getMinY();   changed = true; }
+        if (x + w > vb.getMaxX()) { x = Math.max(vb.getMinX(), vb.getMaxX() - w); changed = true; }
+        if (y + h > vb.getMaxY()) { y = Math.max(vb.getMinY(), vb.getMaxY() - h); changed = true; }
+        if (changed) {
+            st.setWidth(w); st.setHeight(h); st.setX(x); st.setY(y);
+        }
     }
 
     // ===================================================================
@@ -8828,14 +8869,14 @@ public class BenjagestUiApplication extends Application {
         importSalesPdfsBtn.setVisible(showImportSales);
         importSalesPdfsBtn.setManaged(showImportSales);
 
-        Region billingFiltersSpacer = new Region();
-        HBox.setHgrow(billingFiltersSpacer, Priority.ALWAYS);
-        HBox filters = new HBox(10,
-                label(t("list.filter.label.status"), "form-label"), billingStatusFilter,
-                label(t("list.filter.label.collection"), "form-label"), billingPaymentFilter,
-                label(t("list.filter.label.type"), "form-label"), billingTypeFilter,
-                apply, reset, billingFiltersSpacer, importSalesPdfsBtn);
-        filters.setAlignment(Pos.CENTER_LEFT);
+        // DOBLE PANTALLA — fila de filtros que ENVUELVE (FlowPane): cada etiqueta va
+        // pegada a su control en un grupo, y los grupos pasan de línea si no caben en
+        // el ancho de la ventana (portátil), en vez de cortarse a la derecha sin scroll.
+        javafx.scene.layout.FlowPane filters = actionFlow(
+                filterGroup(t("list.filter.label.status"), billingStatusFilter),
+                filterGroup(t("list.filter.label.collection"), billingPaymentFilter),
+                filterGroup(t("list.filter.label.type"), billingTypeFilter),
+                apply, reset, importSalesPdfsBtn);
 
         billingTable = new TableView<>();
         billingTable.getStyleClass().add("data-table");
@@ -9106,20 +9147,13 @@ public class BenjagestUiApplication extends Application {
         billingTable.getSelectionModel().selectedItemProperty().addListener((obs, oldV, newV) ->
                 dueDatesSalesBtn.setDisable(newV == null || !"VALIDATED".equals(newV.status())));
 
-        Region rowActionsSpacer = new Region();
-        HBox.setHgrow(rowActionsSpacer, Priority.ALWAYS);
-        HBox rowActions = new HBox(6, validateRowBtn, deleteDraftBtn, voidBtn,
-                toValidatedBtn, makeRecurringBtn, multiAllocBtn, bankReconcileBtn,
-                dueDatesSalesBtn,
-                rowActionsSpacer, emailBtn, pdfBtn);
-        rowActions.getStyleClass().add("settings-actions");
-        // Forzar a que los botones se vean enteros: si la barra no cabe
-        // hace overflow horizontal (preferible a truncar con "...").
-        for (Button b : new Button[]{ validateRowBtn, deleteDraftBtn, voidBtn,
-                toValidatedBtn, makeRecurringBtn, multiAllocBtn, bankReconcileBtn,
-                dueDatesSalesBtn, emailBtn, pdfBtn }) {
-            b.setMinWidth(Region.USE_PREF_SIZE);
-        }
+        // DOBLE PANTALLA — barra de acciones en FlowPane: si no cabe en el ancho de
+        // la ventana (portátil), los botones ENVUELVEN a la línea siguiente y se ven
+        // todos. Antes era un HBox con overflow horizontal SIN scroll -> botones
+        // atrapados fuera. La función `actionFlow` es reutilizable para otras barras.
+        javafx.scene.layout.FlowPane rowActions = actionFlow(
+                validateRowBtn, deleteDraftBtn, voidBtn, toValidatedBtn, makeRecurringBtn,
+                multiAllocBtn, bankReconcileBtn, dueDatesSalesBtn, emailBtn, pdfBtn);
 
         // Slice 3V — Acciones SOBRE la tabla, no debajo. Antes vivían
         // bajo el listado y el asesor tenía que hacer scroll para
@@ -12300,6 +12334,29 @@ public class BenjagestUiApplication extends Application {
         layout.getStyleClass().add("settings-tab-body");
         BorderPane.setMargin(body, new Insets(12, 0, 12, 0));
         return layout;
+    }
+
+    /**
+     * DOBLE PANTALLA — barra de acciones que ENVUELVE (FlowPane) en vez de hacer
+     * overflow horizontal sin scroll. Si los botones no caben en el ancho de la
+     * ventana (portátil), pasan a la línea siguiente y se ven todos. Mantiene el
+     * minWidth de cada botón (texto entero, sin "..."). Reutilizable en cualquier
+     * pantalla con muchos botones de acción.
+     */
+    private javafx.scene.layout.FlowPane actionFlow(javafx.scene.Node... children) {
+        javafx.scene.layout.FlowPane fp = new javafx.scene.layout.FlowPane(6, 6, children);
+        fp.getStyleClass().add("settings-actions");
+        for (javafx.scene.Node n : children) {
+            if (n instanceof Region r) r.setMinWidth(Region.USE_PREF_SIZE);
+        }
+        return fp;
+    }
+
+    /** Grupo etiqueta+control que se mantiene junto al envolver un {@link #actionFlow}. */
+    private HBox filterGroup(String labelText, javafx.scene.Node control) {
+        HBox g = new HBox(6, label(labelText, "form-label"), control);
+        g.setAlignment(Pos.CENTER_LEFT);
+        return g;
     }
 
     private void refreshSaveModulesButton() {
