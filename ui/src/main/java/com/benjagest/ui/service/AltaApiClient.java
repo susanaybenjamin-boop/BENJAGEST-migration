@@ -1756,67 +1756,91 @@ public class AltaApiClient {
     // ============================================================
 
     public List<com.benjagest.ui.model.WorkLogEntry> listWorkLogs(
-            java.time.LocalDate from, java.time.LocalDate to)
+            java.time.LocalDate from, java.time.LocalDate to,
+            String customerId, String status, boolean billableUnbilledOnly)
             throws IOException, InterruptedException {
-        HttpResponse<String> r = send(req(
-                baseUrl + "/work-logs?from=" + from + "&to=" + to).GET());
+        StringBuilder url = new StringBuilder(baseUrl + "/work-logs?from=" + from + "&to=" + to);
+        if (customerId != null && !customerId.isBlank()) {
+            url.append("&customerId=").append(java.net.URLEncoder.encode(customerId, java.nio.charset.StandardCharsets.UTF_8));
+        }
+        if (status != null && !status.isBlank()) url.append("&status=").append(status);
+        if (billableUnbilledOnly) url.append("&billableUnbilledOnly=true");
+        HttpResponse<String> r = send(req(url.toString()).GET());
         if (r.statusCode() < 200 || r.statusCode() >= 300) {
             throw new IOException("HTTP " + r.statusCode() + ": " + r.body());
         }
         java.util.List<com.benjagest.ui.model.WorkLogEntry> out = new java.util.ArrayList<>();
-        for (String obj : splitTopLevelObjects(r.body())) {
-            out.add(new com.benjagest.ui.model.WorkLogEntry(
-                    textField(obj, "id"),
-                    textField(obj, "employeeId"),
-                    textField(obj, "logDate"),
-                    intFieldOrZero(obj, "minutesWorked"),
-                    textField(obj, "customerId"),
-                    textField(obj, "description"),
-                    boolField(obj, "billable"),
-                    bigDecField(obj, "billableAmount"),
-                    textField(obj, "status"),
-                    textField(obj, "billedInvoiceLineId")));
-        }
+        for (String obj : splitTopLevelObjects(r.body())) out.add(parseWorkLog(obj));
         return out;
     }
 
     public com.benjagest.ui.model.WorkLogEntry createWorkLog(
-            String employeeId, java.time.LocalDate logDate, int minutesWorked,
-            String customerId, String description, boolean billable,
-            java.math.BigDecimal billableAmount)
-            throws IOException, InterruptedException {
-        StringBuilder b = new StringBuilder("{");
-        b.append("\"employeeId\":").append(jsonString(employeeId));
-        b.append(",\"logDate\":").append(jsonString(logDate.toString()));
-        b.append(",\"minutesWorked\":").append(minutesWorked);
-        if (customerId != null && !customerId.isBlank()) {
-            b.append(",\"customerId\":").append(jsonString(customerId));
-        }
-        if (description != null && !description.isBlank()) {
-            b.append(",\"description\":").append(jsonString(description));
-        }
-        b.append(",\"isBillable\":").append(billable);
-        if (billableAmount != null) {
-            b.append(",\"billableAmount\":").append(billableAmount.toPlainString());
-        }
-        b.append('}');
+            com.benjagest.ui.model.WorkLogEntry e) throws IOException, InterruptedException {
         HttpResponse<String> r = send(req(baseUrl + "/work-logs")
                 .header("Content-Type", "application/json")
-                .POST(java.net.http.HttpRequest.BodyPublishers.ofString(b.toString())));
+                .POST(java.net.http.HttpRequest.BodyPublishers.ofString(workLogBody(e))));
         if (r.statusCode() < 200 || r.statusCode() >= 300) {
             throw new IOException("HTTP " + r.statusCode() + ": " + r.body());
         }
-        String obj = r.body();
+        return parseWorkLog(r.body());
+    }
+
+    public com.benjagest.ui.model.WorkLogEntry updateWorkLog(
+            String id, com.benjagest.ui.model.WorkLogEntry e) throws IOException, InterruptedException {
+        HttpResponse<String> r = send(req(baseUrl + "/work-logs/" + id)
+                .header("Content-Type", "application/json")
+                .PUT(java.net.http.HttpRequest.BodyPublishers.ofString(workLogBody(e))));
+        if (r.statusCode() < 200 || r.statusCode() >= 300) {
+            throw new IOException("HTTP " + r.statusCode() + ": " + r.body());
+        }
+        return parseWorkLog(r.body());
+    }
+
+    public void deleteWorkLog(String id) throws IOException, InterruptedException {
+        HttpResponse<String> r = send(req(baseUrl + "/work-logs/" + id).DELETE());
+        if (r.statusCode() < 200 || r.statusCode() >= 300) {
+            throw new IOException("HTTP " + r.statusCode() + ": " + r.body());
+        }
+    }
+
+    public void setWorkLogStatus(String id, String status) throws IOException, InterruptedException {
+        HttpResponse<String> r = send(req(baseUrl + "/work-logs/" + id + "/status?status=" + status)
+                .POST(java.net.http.HttpRequest.BodyPublishers.noBody()));
+        if (r.statusCode() < 200 || r.statusCode() >= 300) {
+            throw new IOException("HTTP " + r.statusCode() + ": " + r.body());
+        }
+    }
+
+    private String workLogBody(com.benjagest.ui.model.WorkLogEntry e) {
+        StringBuilder b = new StringBuilder("{");
+        b.append("\"employeeId\":").append(jsonString(e.employeeId()));
+        b.append(",\"logDate\":").append(jsonString(e.logDate()));
+        b.append(",\"minutesWorked\":").append(e.minutesWorked());
+        if (e.customerId() != null && !e.customerId().isBlank()) {
+            b.append(",\"customerId\":").append(jsonString(e.customerId()));
+        }
+        if (e.description() != null && !e.description().isBlank()) {
+            b.append(",\"description\":").append(jsonString(e.description()));
+        }
+        b.append(",\"isBillable\":").append(e.billable());
+        if (e.billingUnit() != null && !e.billingUnit().isBlank()) {
+            b.append(",\"billingUnit\":").append(jsonString(e.billingUnit()));
+        }
+        if (e.quantity() != null) b.append(",\"quantity\":").append(e.quantity().toPlainString());
+        if (e.unitPrice() != null) b.append(",\"unitPrice\":").append(e.unitPrice().toPlainString());
+        if (e.billableAmount() != null) b.append(",\"billableAmount\":").append(e.billableAmount().toPlainString());
+        b.append('}');
+        return b.toString();
+    }
+
+    private com.benjagest.ui.model.WorkLogEntry parseWorkLog(String obj) {
         return new com.benjagest.ui.model.WorkLogEntry(
-                textField(obj, "id"),
-                textField(obj, "employeeId"),
-                textField(obj, "logDate"),
-                intFieldOrZero(obj, "minutesWorked"),
-                textField(obj, "customerId"),
-                textField(obj, "description"),
-                boolField(obj, "billable"),
-                bigDecField(obj, "billableAmount"),
-                textField(obj, "status"),
+                textField(obj, "id"), textField(obj, "employeeId"), textField(obj, "employeeName"),
+                textField(obj, "logDate"), intFieldOrZero(obj, "minutesWorked"),
+                textField(obj, "customerId"), textField(obj, "customerName"),
+                textField(obj, "description"), boolField(obj, "billable"),
+                textField(obj, "billingUnit"), bigDecField(obj, "quantity"), bigDecField(obj, "unitPrice"),
+                bigDecField(obj, "billableAmount"), textField(obj, "status"),
                 textField(obj, "billedInvoiceLineId"));
     }
 
