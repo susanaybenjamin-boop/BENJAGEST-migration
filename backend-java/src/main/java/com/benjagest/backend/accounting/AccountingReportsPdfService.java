@@ -39,13 +39,16 @@ public class AccountingReportsPdfService {
     private static final Color GREY = new Color(90, 90, 90);
 
     private final FinancialReportsService reports;
+    private final JournalQueryService journal;
     private final JdbcTemplate jdbcTemplate;
     private final TenantContext tenantContext;
 
     public AccountingReportsPdfService(FinancialReportsService reports,
+                                         JournalQueryService journal,
                                          JdbcTemplate jdbcTemplate,
                                          TenantContext tenantContext) {
         this.reports = reports;
+        this.journal = journal;
         this.jdbcTemplate = jdbcTemplate;
         this.tenantContext = tenantContext;
     }
@@ -90,7 +93,119 @@ public class AccountingReportsPdfService {
         return baos.toByteArray();
     }
 
+    public byte[] ledgerPdf(String accountId, LocalDate from, LocalDate to) {
+        JournalQueryService.LedgerView lv = journal.ledger(accountId, from, to);
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        Document doc = open(baos);
+        header(doc, "LIBRO MAYOR",
+                "Cuenta " + lv.accountCode() + " · " + lv.accountName()
+                + "  ·  Período: " + periodLine(from, to));
+
+        Font small = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 9, GREY);
+        doc.add(new Paragraph("Saldo de apertura: " + money(lv.openingBalance()), small));
+        doc.add(new Paragraph(" "));
+
+        PdfPTable t = new PdfPTable(new float[] { 1.1f, 0.9f, 3.2f, 1.4f, 1.4f, 1.6f });
+        t.setWidthPercentage(100);
+        Font hf = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 8, Color.WHITE);
+        headerCell(t, "Fecha", hf);
+        headerCell(t, "Asiento", hf);
+        headerCell(t, "Concepto", hf);
+        headerCell(t, "Debe", hf);
+        headerCell(t, "Haber", hf);
+        headerCell(t, "Saldo", hf);
+        Font cf = FontFactory.getFont(FontFactory.HELVETICA, 8, Color.BLACK);
+        for (JournalQueryService.LedgerLine l : lv.movements()) {
+            String concept = (l.lineDescription() != null && !l.lineDescription().isBlank())
+                    ? l.lineDescription() : l.concept();
+            cell(t, l.entryDate() == null ? "" : DATE.format(l.entryDate()), cf, Element.ALIGN_LEFT);
+            cell(t, String.valueOf(l.entryNumber()), cf, Element.ALIGN_LEFT);
+            cell(t, concept, cf, Element.ALIGN_LEFT);
+            cell(t, money(l.debit()), cf, Element.ALIGN_RIGHT);
+            cell(t, money(l.credit()), cf, Element.ALIGN_RIGHT);
+            cell(t, money(l.runningBalance()), cf, Element.ALIGN_RIGHT);
+        }
+        doc.add(t);
+        totalLine(doc, "SALDO FINAL", lv.closingBalance());
+
+        doc.close();
+        return baos.toByteArray();
+    }
+
+    public byte[] trialBalancePdf(LocalDate from, LocalDate to, String prefix) {
+        List<JournalQueryService.BalanceRow> rows = journal.balance(from, to, prefix);
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        Document doc = open(baos);
+        header(doc, "BALANCE DE SUMAS Y SALDOS",
+                "Período: " + periodLine(from, to)
+                + (prefix != null && !prefix.isBlank() ? "  ·  Grupo " + prefix : ""));
+
+        PdfPTable t = new PdfPTable(new float[] { 1.0f, 3.2f, 1.4f, 1.4f, 1.4f, 1.4f });
+        t.setWidthPercentage(100);
+        Font hf = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 8, Color.WHITE);
+        headerCell(t, "Cuenta", hf);
+        headerCell(t, "Descripción", hf);
+        headerCell(t, "Debe", hf);
+        headerCell(t, "Haber", hf);
+        headerCell(t, "S. Deudor", hf);
+        headerCell(t, "S. Acreedor", hf);
+        Font cf = FontFactory.getFont(FontFactory.HELVETICA, 8, Color.BLACK);
+        BigDecimal td = BigDecimal.ZERO, tc = BigDecimal.ZERO;
+        BigDecimal tsd = BigDecimal.ZERO, tsa = BigDecimal.ZERO;
+        for (JournalQueryService.BalanceRow r : rows) {
+            cell(t, r.code(), cf, Element.ALIGN_LEFT);
+            cell(t, r.name(), cf, Element.ALIGN_LEFT);
+            cell(t, money(r.totalDebit()), cf, Element.ALIGN_RIGHT);
+            cell(t, money(r.totalCredit()), cf, Element.ALIGN_RIGHT);
+            cell(t, money(r.saldoDeudor()), cf, Element.ALIGN_RIGHT);
+            cell(t, money(r.saldoAcreedor()), cf, Element.ALIGN_RIGHT);
+            td = td.add(nz(r.totalDebit()));
+            tc = tc.add(nz(r.totalCredit()));
+            tsd = tsd.add(nz(r.saldoDeudor()));
+            tsa = tsa.add(nz(r.saldoAcreedor()));
+        }
+        // Fila de totales.
+        Font bf = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 8, NAVY);
+        PdfPCell totLabel = new PdfPCell(new Phrase("TOTALES", bf));
+        totLabel.setColspan(2);
+        totLabel.setBorder(com.lowagie.text.Rectangle.TOP);
+        totLabel.setPadding(3);
+        t.addCell(totLabel);
+        totalCell(t, money(td), bf);
+        totalCell(t, money(tc), bf);
+        totalCell(t, money(tsd), bf);
+        totalCell(t, money(tsa), bf);
+        doc.add(t);
+
+        doc.close();
+        return baos.toByteArray();
+    }
+
     // ----- helpers -----
+
+    private String periodLine(LocalDate from, LocalDate to) {
+        return (from == null ? "—" : DATE.format(from)) + " a " + (to == null ? "—" : DATE.format(to));
+    }
+
+    private void headerCell(PdfPTable t, String text, Font f) {
+        PdfPCell c = new PdfPCell(new Phrase(text, f));
+        c.setBackgroundColor(NAVY);
+        c.setPadding(4);
+        c.setBorder(0);
+        t.addCell(c);
+    }
+
+    private void totalCell(PdfPTable t, String text, Font f) {
+        PdfPCell c = new PdfPCell(new Phrase(text, f));
+        c.setBorder(com.lowagie.text.Rectangle.TOP);
+        c.setPadding(3);
+        c.setHorizontalAlignment(Element.ALIGN_RIGHT);
+        t.addCell(c);
+    }
+
+    private static BigDecimal nz(BigDecimal v) {
+        return v == null ? BigDecimal.ZERO : v;
+    }
 
     private Document open(ByteArrayOutputStream baos) {
         Document doc = new Document(PageSize.A4, 40, 40, 48, 48);

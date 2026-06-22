@@ -1174,6 +1174,26 @@ public class AccountingApiClient {
         return out;
     }
 
+    /** Export PDF del Libro Mayor de una cuenta. */
+    public byte[] ledgerPdf(String accountId, LocalDate from, LocalDate to)
+            throws IOException, InterruptedException {
+        StringBuilder q = new StringBuilder();
+        if (from != null) append(q, "from", from.toString());
+        if (to != null)   append(q, "to", to.toString());
+        return getBytes("/accounting/ledger/"
+                + URLEncoder.encode(accountId, StandardCharsets.UTF_8) + "/export.pdf" + q);
+    }
+
+    /** Export PDF del Balance de Sumas y Saldos. */
+    public byte[] trialBalancePdf(LocalDate from, LocalDate to, String prefix)
+            throws IOException, InterruptedException {
+        StringBuilder q = new StringBuilder();
+        if (from != null) append(q, "from", from.toString());
+        if (to != null)   append(q, "to", to.toString());
+        if (prefix != null && !prefix.isBlank()) append(q, "prefix", prefix);
+        return getBytes("/accounting/balance/export.pdf" + q);
+    }
+
     /** Export PDF del Balance de Situación. */
     public byte[] balanceSheetPdf(LocalDate asOf) throws IOException, InterruptedException {
         return getBytes("/accounting/reports/balance-sheet/export.pdf?asOf=" + asOf);

@@ -2380,10 +2380,22 @@ public class AccountingScreen {
         };
         view.setOnAction(e -> run.run());
 
+        Button exportPdf = new Button(tt.apply("accounting.fin.export_pdf"));
+        exportPdf.setOnAction(e -> {
+            String label = accountCombo.getEditor().getText();
+            AccountSummary sel = accountsByLabel.get(label);
+            if (sel == null) sel = accountsByLabel.get(accountCombo.getValue());
+            if (sel == null) { showError(tt.apply("accounting.report.fail"), tt.apply("accounting.ledger.pick_account")); return; }
+            final String accId = sel.id();
+            final String code = sel.code();
+            savePdf(() -> api.ledgerPdf(accId, from.getValue(), to.getValue()),
+                    "mayor-" + code + ".pdf", view);
+        });
+
         HBox filters = new HBox(8,
                 new Label(tt.apply("accounting.ledger.account")), accountCombo,
                 new Label(tt.apply("accounting.filter.from")), from,
-                new Label(tt.apply("accounting.filter.to")), to, view);
+                new Label(tt.apply("accounting.filter.to")), to, view, exportPdf);
         filters.setAlignment(Pos.CENTER_LEFT);
         // Saldos de apertura/final ARRIBA de la tabla: siempre visibles sin
         // hacer scroll hasta el fondo (la tabla de movimientos puede ser larga).
@@ -2435,10 +2447,15 @@ public class AccountingScreen {
                     .replace("{debtor}", eur(sd)).replace("{creditor}", eur(sa)));
         }, err -> showError(tt.apply("accounting.report.fail"), err)));
 
+        Button exportPdf = new Button(tt.apply("accounting.fin.export_pdf"));
+        exportPdf.setOnAction(e -> savePdf(() -> api.trialBalancePdf(from.getValue(), to.getValue(),
+                prefix.getText() == null ? null : prefix.getText().trim()),
+                "sumas-y-saldos.pdf", view));
+
         HBox filters = new HBox(8,
                 new Label(tt.apply("accounting.filter.from")), from,
                 new Label(tt.apply("accounting.filter.to")), to,
-                new Label(tt.apply("accounting.trial.prefix")), prefix, view);
+                new Label(tt.apply("accounting.trial.prefix")), prefix, view, exportPdf);
         filters.setAlignment(Pos.CENTER_LEFT);
         // Totales ARRIBA de la tabla: siempre visibles sin scroll al fondo.
         VBox box = new VBox(10, filters, totals, table);
