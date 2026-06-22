@@ -131,8 +131,13 @@
 **🟠 Funcional atacable (sin bloqueos):**
 - ~~Export PDF Mayor + Sumas y Saldos~~ ✅ **HECHO 2026-06-22** (cierra informes PDF).
 - **FORMATS-EXCHANGE**: export/import xDiario + SUENLACE (por spec; marcar para validar).
-- **Nómina — incidencias**: horas extra, complementos variables por periodo; **pagas extra
-  cotizadas con asiento** (EXTRA_* hoy sin asiento). *(Topes de cotización: ya hechos.)*
+- ~~**Nómina — incidencias** (INC-1..4)~~ ✅ **HECHO 2026-06-22**: tabla `nomina_incidencias`
+  + gestión en el diálogo Calcular nómina; **horas extra con cotización adicional legal**
+  (V137 no-code, 14%/28,30%, no en base CC); **complementos variables**; **ausencias no
+  retribuidas** (descuentan devengo/base/IRPF); **pagas extra con asiento** (devengo 640→465
+  sin provisión). MARCADO para validar con caso real: proración del mínimo de base por mes
+  parcial · importe de ausencia por días×salario diario · auto-detección de ausencias desde
+  bajas/permisos (no hecha, opcional).
 - **CONTRATO-VIGENCIAS (bloque D)**: ~~VIG-3 (guard `hasPayslips`)~~ ✅ **HECHO 2026-06-22**;
   VIG-4 atrasos, CV-5 excedencias/suspensiones, CV-8 cese empresa (construir + MARCAR para validar).
 - **FJ-5b** incidencia "schedule-aware" (legal-sensible → validar con caso real).
