@@ -80,6 +80,7 @@ public class PayslipService {
     private final com.benjagest.backend.realtime.RealtimeService realtime;
     private final org.springframework.security.crypto.password.PasswordEncoder passwordEncoder;
     private final com.benjagest.backend.labor.incidencias.NominaIncidenciaService incidenciaService;
+    private final com.benjagest.backend.labor.ss.OvertimeRatesService overtimeRatesService;
 
     public PayslipService(JdbcTemplate jdbcTemplate,
                            TenantContext tenantContext,
@@ -94,7 +95,8 @@ public class PayslipService {
                            EmployeeVacationService vacationService,
                            com.benjagest.backend.realtime.RealtimeService realtime,
                            org.springframework.security.crypto.password.PasswordEncoder passwordEncoder,
-                           com.benjagest.backend.labor.incidencias.NominaIncidenciaService incidenciaService) {
+                           com.benjagest.backend.labor.incidencias.NominaIncidenciaService incidenciaService,
+                           com.benjagest.backend.labor.ss.OvertimeRatesService overtimeRatesService) {
         this.jdbcTemplate = jdbcTemplate;
         this.tenantContext = tenantContext;
         this.taxRulesService = taxRulesService;
@@ -109,6 +111,7 @@ public class PayslipService {
         this.realtime = realtime;
         this.passwordEncoder = passwordEncoder;
         this.incidenciaService = incidenciaService;
+        this.overtimeRatesService = overtimeRatesService;
     }
 
     public byte[] generatePdf(String id) {
@@ -370,13 +373,18 @@ public class PayslipService {
             }
         }
 
-        // INC-1 — Incidencias del periodo PERSISTIDAS (nomina_incidencias, V136).
+        // INC-1/INC-2 — Incidencias del periodo PERSISTIDAS (nomina_incidencias, V136).
         // Solo en nómina MENSUAL (una paga extra/finiquito no lleva incidencias del
         // mes). COMPLEMENT (complemento variable) -> extra del mes (cotiza/tributa
-        // según marca). DEDUCTION -> resta del líquido. OVERTIME (cotización
-        // adicional legal) llega en INC-2; ABSENCE (reducción de base) en INC-3.
+        // según marca). DEDUCTION -> resta del líquido. OVERTIME (INC-2) -> se ABONA
+        // (suma al bruto) y TRIBUTA al 100%, pero cotiza APARTE (cotización adicional
+        // legal, no en la base de CC). ABSENCE (reducción de base) llega en INC-3.
         BigDecimal incidenciaDeductions = BigDecimal.ZERO;
+        BigDecimal overtimeBase = BigDecimal.ZERO; // importe total de horas extra (base de su cotización)
+        BigDecimal overtimeEe = BigDecimal.ZERO; // cotización adicional trabajador (resta del líquido)
+        BigDecimal overtimeEr = BigDecimal.ZERO; // cotización adicional empresa (coste empresa)
         if ("MONTHLY".equals(type)) {
+            com.benjagest.backend.labor.ss.OvertimeRatesService.Rates otRates = null;
             for (var inc : incidenciaService.list(req.employeeId(), req.year(), req.month())) {
                 BigDecimal amt = inc.amount() == null ? BigDecimal.ZERO : inc.amount();
                 if (amt.signum() == 0) continue;
@@ -387,7 +395,16 @@ public class PayslipService {
                         if (inc.taxable()) extraTaxable = extraTaxable.add(amt);
                     }
                     case "DEDUCTION" -> incidenciaDeductions = incidenciaDeductions.add(amt);
-                    default -> { /* OVERTIME -> INC-2 ; ABSENCE -> INC-3 ; OTHER: sin efecto aún */ }
+                    case "OVERTIME" -> {
+                        lines.add(new PayslipLine(inc.concept(), "OVERTIME", amt));
+                        taxableDevengo = taxableDevengo.add(amt); // tributa IRPF al 100%
+                        if (otRates == null) otRates = overtimeRatesService.ratesForYear(req.year());
+                        String sub = "STRUCTURAL".equals(inc.subtype()) ? "STRUCTURAL" : "NORMAL";
+                        overtimeBase = overtimeBase.add(amt);
+                        overtimeEe = overtimeEe.add(pct(amt, otRates.employeePct(sub)));
+                        overtimeEr = overtimeEr.add(pct(amt, otRates.employerPct(sub)));
+                    }
+                    default -> { /* ABSENCE -> INC-3 ; OTHER: sin efecto aún */ }
                 }
             }
         }
@@ -435,7 +452,9 @@ public class PayslipService {
         BigDecimal atEp = contract.atEpPercent != null && contract.atEpPercent.signum() >= 0
                 ? contract.atEpPercent : rates.defaultAtEp();
         SsBreakdown ss = computeSs(cotizationBase, atEp, rates);
-        BigDecimal ssEmployee = ss.employeeTotal();
+        // La deducción de SS del trabajador incluye la cotización adicional de horas
+        // extra (INC-2), que NO va en la base de CC sino aparte sobre el importe extra.
+        BigDecimal ssEmployee = ss.employeeTotal().add(overtimeEe);
 
         // 3) IRPF. Si el empleado tiene datos del modelo 145, se calcula el
         //    tipo con el motor de retención (como A3); si no, el % fijo del
@@ -486,7 +505,7 @@ public class PayslipService {
         BigDecimal net = gross.subtract(ssEmployee).subtract(irpf).subtract(otherDeductions);
 
         return new Computed(contract.id, type, lines, gross, cotizationBase, ss,
-                ssEmployee, irpf, irpfPct, otherDeductions, net);
+                ssEmployee, irpf, irpfPct, otherDeductions, net, overtimeBase, overtimeEe, overtimeEr);
     }
 
     /** Vista previa de una nómina sin guardarla. */
@@ -495,7 +514,8 @@ public class PayslipService {
     }
 
     private PreviewResult toPreview(Computed c) {
-        BigDecimal employerTotal = c.ss().employerTotal();
+        // INC-2: el coste de empresa incluye la cotización adicional de horas extra.
+        BigDecimal employerTotal = c.ss().employerTotal().add(c.overtimeEr());
         List<LineView> dev = c.lines().stream()
                 .map(l -> new LineView(l.name(), l.amount())).toList();
         return new PreviewResult(c.gross(), c.cotizationBase(), c.ssEmployee(), c.irpf(),
@@ -792,6 +812,26 @@ public class PayslipService {
             // nómina como rollback-only y reventaría el cálculo).
             try {
                 upsertContributions(req.employeeId(), req.year(), req.month(), cotizationBase, ss);
+                // INC-2 — cotización adicional de horas extra (base = importe extra).
+                // El prefijo EMPLOYEE_/EMPLOYER_ hace que el asiento las recoja en 642/476.
+                // Se borran primero las DRAFT del periodo: así un recálculo SIN horas
+                // extra no deja cuotas obsoletas (las cuotas normales sí se sobrescriben
+                // en upsertContributions, pero las de horas extra no siempre existen).
+                jdbcTemplate.update("""
+                        DELETE FROM social_security_contributions
+                         WHERE company_id = ? AND employee_id = ?
+                           AND period_year = ? AND period_month = ?
+                           AND contribution_type IN ('EMPLOYEE_OVERTIME', 'EMPLOYER_OVERTIME')
+                           AND status = 'DRAFT'
+                        """, tenantContext.getCurrentCompanyId(), req.employeeId(), req.year(), req.month());
+                if (cmp.overtimeEe().signum() > 0) {
+                    upsertContribution(req.employeeId(), req.year(), req.month(),
+                            "EMPLOYEE_OVERTIME", cmp.overtimeBase(), cmp.overtimeEe());
+                }
+                if (cmp.overtimeEr().signum() > 0) {
+                    upsertContribution(req.employeeId(), req.year(), req.month(),
+                            "EMPLOYER_OVERTIME", cmp.overtimeBase(), cmp.overtimeEr());
+                }
                 String empName = employeeName(req.employeeId());
                 journalService.createAccrual(new PayslipJournalEntryService.PayslipAccrual(
                         id, req.employeeId(), empName, req.year(), req.month(), gross, irpf),
@@ -1110,7 +1150,9 @@ public class PayslipService {
             String contractId, String type, List<PayslipLine> lines,
             BigDecimal gross, BigDecimal cotizationBase, SsBreakdown ss,
             BigDecimal ssEmployee, BigDecimal irpf, BigDecimal irpfPct,
-            BigDecimal otherDeductions, BigDecimal net) {}
+            BigDecimal otherDeductions, BigDecimal net,
+            /** INC-2: base (importe horas extra) y cotización adicional trabajador/empresa. */
+            BigDecimal overtimeBase, BigDecimal overtimeEe, BigDecimal overtimeEr) {}
 
     /** Vista previa de una nómina (no se guarda). */
     public record PreviewResult(
