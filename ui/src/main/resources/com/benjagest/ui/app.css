@@ -477,16 +477,16 @@
 }
 
 .module-title-icon {
-    -fx-min-width: 54;
-    -fx-min-height: 54;
-    -fx-max-width: 54;
-    -fx-max-height: 54;
+    -fx-min-width: 44;
+    -fx-min-height: 44;
+    -fx-max-width: 44;
+    -fx-max-height: 44;
     -fx-background-color: linear-gradient(to bottom right, #0aa6a6, #2563eb);
     -fx-background-radius: 999;
 }
 
 .module-title-icon .font-icon {
-    -fx-icon-size: 24px;
+    -fx-icon-size: 20px;
 }
 
 .module-big-number {
@@ -1129,10 +1129,11 @@
 }
 
 .module-detail-header {
-    /* Padding asimetrico: vertical mas compacto para no dominar la pantalla,
-       horizontal generoso para que el icono respire a la derecha. */
-    -fx-padding: 20 26;
-    -fx-spacing: 18;
+    /* DOBLE PANTALLA — vertical mas compacto para no dominar la pantalla del
+       portatil (en modo asesoria hay DOS cabeceras apiladas: cliente + modulo).
+       Horizontal generoso para que el icono respire a la derecha. */
+    -fx-padding: 11 24;
+    -fx-spacing: 16;
     -fx-background-color: linear-gradient(to bottom right, #ffffff, #eef9f6);
     -fx-background-radius: 20;
     -fx-border-color: #dbe3ef;
@@ -1154,13 +1155,13 @@
 
 .module-detail-title {
     -fx-text-fill: #0f172a;
-    -fx-font-size: 30px;
+    -fx-font-size: 24px;
     -fx-font-weight: 900;
 }
 
 .module-detail-description {
     -fx-text-fill: #40516a;
-    -fx-font-size: 15px;
+    -fx-font-size: 13px;
 }
 
 .module-title {
