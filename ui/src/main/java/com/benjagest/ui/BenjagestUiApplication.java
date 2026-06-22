@@ -251,6 +251,10 @@ public class BenjagestUiApplication extends Application {
      * no pelea con el redimensionado normal dentro de una misma pantalla. Idempotente.
      */
     private void clampStageToScreen(Stage st) {
+        // NO tocar la ventana cuando está maximizada / pantalla completa / minimizada:
+        // ahí el tamaño lo gobierna el SO (maximizar debe llenar la pantalla). Llamar a
+        // setX/setWidth en ese estado lo corrompe (la ventana no llenaba al maximizar).
+        if (st.isMaximized() || st.isFullScreen() || st.isIconified()) return;
         var screens = javafx.stage.Screen.getScreensForRectangle(
                 st.getX(), st.getY(), Math.max(1, st.getWidth()), Math.max(1, st.getHeight()));
         javafx.geometry.Rectangle2D vb = (screens.isEmpty()
