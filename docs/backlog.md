@@ -107,6 +107,15 @@
   en sede + obligaciones de fabricante. *(Los editables 347/390/190 ya están.)*
 - Conectores reales **DEHú / SS RED / SILTRA** (envío real con certificado).
 - Modelos **AEAT 100 / 180 / 200 / 411**.
+- 🔭 **E-FACTURA-ESTRUCTURADA (prep 2027-2030)** — soporte de factura electrónica
+  estructurada **Facturae / EN 16931** + red **Peppol**, además del PDF. Cubre las tres
+  normas que convergen: VeriFactu obligatorio (ene 2027 empresas / jul 2027 autónomos),
+  factura electrónica B2B de la Ley Crea y Crece (oct 2027 grandes / oct 2028 resto) y
+  ViDA UE (1 jul 2030, intracomunitario + reporte casi en tiempo real). Prioridad ligada
+  al certificado FNMT (va de la mano del VeriFactu real). NO urge hoy; es la jugada para
+  no llegar tarde. *(Investigado con fuentes 2026-06-22; el "VeriFactu mandará la factura
+  en 2030" del vídeo es impreciso: VERI\*FACTU ya envía el registro hoy; lo nuevo es la
+  factura estructurada + reporte casi en tiempo real.)*
 
 **🟠 Funcional atacable (sin bloqueos):**
 - ~~Export PDF Mayor + Sumas y Saldos~~ ✅ **HECHO 2026-06-22** (cierra informes PDF).
