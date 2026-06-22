@@ -8649,6 +8649,16 @@ public class BenjagestUiApplication extends Application {
     }
 
     private VBox billingView(BillingBundle bundle) {
+        return billingView(bundle, true);
+    }
+
+    /**
+     * @param showHeader cabecera (hero card) del módulo. {@code false} cuando va
+     *   EMBEBIDO en una ficha (Mi gestión): la ficha ya tiene su cabecera de
+     *   cliente, así que la del módulo es redundante y se come alto en el portátil;
+     *   solo se deja una barra slim con "Nueva factura".
+     */
+    private VBox billingView(BillingBundle bundle, boolean showHeader) {
         VBox content = content();
 
         Label title = new Label(t("billing.shell.title"));
@@ -8703,7 +8713,17 @@ public class BenjagestUiApplication extends Application {
         tabs.getSelectionModel().select(landingTab);
         pendingBillingTab = null;
 
-        content.getChildren().addAll(header, tabs);
+        if (showHeader) {
+            content.getChildren().addAll(header, tabs);
+        } else {
+            // Embebido en ficha (Mi gestión): sin hero card del módulo (la ficha ya
+            // tiene la cabecera del cliente). Solo "Nueva factura" en una barra slim.
+            Region s2 = new Region();
+            HBox.setHgrow(s2, Priority.ALWAYS);
+            HBox slim = new HBox(s2, newInvoice);
+            slim.setAlignment(Pos.CENTER_RIGHT);
+            content.getChildren().addAll(slim, tabs);
+        }
         return content;
     }
 
@@ -34765,7 +34785,7 @@ public class BenjagestUiApplication extends Application {
                 return new BillingBundle(invoices, series, vfConfig, texts, certificates);
             }
         };
-        task.setOnSucceeded(ev -> holder.getChildren().setAll(billingView(task.getValue())));
+        task.setOnSucceeded(ev -> holder.getChildren().setAll(billingView(task.getValue(), false)));
         task.setOnFailed(ev -> holder.getChildren().setAll(errorPanel(t("billing.shell.load_failed"))));
         start(task, "own-billing-load");
     }
