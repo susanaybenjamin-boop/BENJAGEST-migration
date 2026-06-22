@@ -378,11 +378,13 @@ public class PayslipService {
         // mes). COMPLEMENT (complemento variable) -> extra del mes (cotiza/tributa
         // según marca). DEDUCTION -> resta del líquido. OVERTIME (INC-2) -> se ABONA
         // (suma al bruto) y TRIBUTA al 100%, pero cotiza APARTE (cotización adicional
-        // legal, no en la base de CC). ABSENCE (reducción de base) llega en INC-3.
+        // legal, no en la base de CC). ABSENCE (INC-3) -> ausencia NO retribuida:
+        // descuenta devengo, tributación y base de cotización.
         BigDecimal incidenciaDeductions = BigDecimal.ZERO;
         BigDecimal overtimeBase = BigDecimal.ZERO; // importe total de horas extra (base de su cotización)
         BigDecimal overtimeEe = BigDecimal.ZERO; // cotización adicional trabajador (resta del líquido)
         BigDecimal overtimeEr = BigDecimal.ZERO; // cotización adicional empresa (coste empresa)
+        BigDecimal absenceUnpaid = BigDecimal.ZERO; // importe de ausencias NO retribuidas (descuento)
         if ("MONTHLY".equals(type)) {
             com.benjagest.backend.labor.ss.OvertimeRatesService.Rates otRates = null;
             for (var inc : incidenciaService.list(req.employeeId(), req.year(), req.month())) {
@@ -404,7 +406,19 @@ public class PayslipService {
                         overtimeEe = overtimeEe.add(pct(amt, otRates.employeePct(sub)));
                         overtimeEr = overtimeEr.add(pct(amt, otRates.employerPct(sub)));
                     }
-                    default -> { /* ABSENCE -> INC-3 ; OTHER: sin efecto aún */ }
+                    case "ABSENCE" -> {
+                        // Solo descuenta si NO es retribuida (JUSTIFIED_PAID = retribuida,
+                        // sin efecto). El importe es lo no abonado por los días de ausencia;
+                        // descuenta del devengo (línea negativa), de la tributación y de la
+                        // base de cotización. NOTA: la proración del MÍNIMO de base por
+                        // mes parcial es un refinamiento a validar (igual que tiempo parcial).
+                        boolean paid = "JUSTIFIED_PAID".equals(inc.subtype());
+                        if (!paid) {
+                            absenceUnpaid = absenceUnpaid.add(amt);
+                            lines.add(new PayslipLine(inc.concept(), "ABSENCE", amt.negate()));
+                        }
+                    }
+                    default -> { /* OTHER: sin efecto aún */ }
                 }
             }
         }
@@ -416,8 +430,12 @@ public class PayslipService {
         //    art. 147 LGSS) + extras cotizables del mes. EXTRA_* no cotizan aparte.
         BigDecimal cotizationBase;
         if ("MONTHLY".equals(type)) {
+            // INC-3: las ausencias NO retribuidas reducen la base proporcionalmente
+            // (no se cotiza por los días no trabajados). El clamp de mín/máx se aplica
+            // después; la proración del mínimo por mes parcial queda a validar.
             cotizationBase = cotizableAnnual.divide(BigDecimal.valueOf(12), 2, RoundingMode.HALF_UP)
-                    .add(extraCotizable);
+                    .add(extraCotizable).subtract(absenceUnpaid);
+            if (cotizationBase.signum() < 0) cotizationBase = BigDecimal.ZERO;
         } else if ("EXTRA_SUMMER".equals(type) || "EXTRA_CHRISTMAS".equals(type) || isSettlement) {
             // Pagas extra y finiquito: solo cotizan los conceptos marcados como
             // cotizables (la prorrata de extras del finiquito ya cotizó mes a mes).
@@ -493,8 +511,10 @@ public class PayslipService {
             irpfPct = computeIrpfPercent(contract.grossSalary, req.year());
         }
         // taxableDevengo ya acumula el tributable de los conceptos de este periodo
-        // (base prorrateada + complementos/12); sumamos los extras del mes.
-        taxableDevengo = taxableDevengo.add(extraTaxable);
+        // (base prorrateada + complementos/12); sumamos los extras del mes y restamos
+        // las ausencias NO retribuidas (INC-3): el salario no percibido no tributa.
+        taxableDevengo = taxableDevengo.add(extraTaxable).subtract(absenceUnpaid);
+        if (taxableDevengo.signum() < 0) taxableDevengo = BigDecimal.ZERO;
         BigDecimal irpf = taxableDevengo.multiply(irpfPct)
                 .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
 
