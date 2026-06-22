@@ -15727,6 +15727,47 @@ public class BenjagestUiApplication extends Application {
             case "labor.planreal.col.diff" -> "Difference";
             case "labor.planreal.holiday" -> "holiday";
             case "labor.planreal.fail.title" -> "Could not load planned vs actual";
+            case "dialog.save" -> "Save";
+            case "inc.title" -> "Period incidents";
+            case "inc.btn.open" -> "Period incidents";
+            case "inc.hint" -> "Overtime, variable bonuses, absences and deductions for this month. They are saved and the engine applies them when calculating. Note: overtime (additional legal contribution) and absences (base reduction) apply fully in the next step; complements and deductions already count.";
+            case "inc.empty" -> "No incidents for this period.";
+            case "inc.col.kind" -> "Type";
+            case "inc.col.concept" -> "Concept";
+            case "inc.col.value" -> "Value";
+            case "inc.col.flags" -> "SS / Tax";
+            case "inc.flag.cotiza" -> "SS";
+            case "inc.flag.tributa" -> "Tax";
+            case "inc.action.add" -> "Add";
+            case "inc.action.edit" -> "Edit";
+            case "inc.action.delete" -> "Delete";
+            case "inc.delete.confirm" -> "Delete this incident?";
+            case "inc.kind.OVERTIME" -> "Overtime";
+            case "inc.kind.COMPLEMENT" -> "Variable bonus";
+            case "inc.kind.ABSENCE" -> "Absence";
+            case "inc.kind.DEDUCTION" -> "Deduction";
+            case "inc.kind.OTHER" -> "Other";
+            case "inc.subtype.STRUCTURAL" -> "Structural / force majeure (14%)";
+            case "inc.subtype.NORMAL" -> "Non-structural (28.30%)";
+            case "inc.subtype.JUSTIFIED_PAID" -> "Justified (paid)";
+            case "inc.subtype.JUSTIFIED_UNPAID" -> "Justified (unpaid)";
+            case "inc.subtype.UNJUSTIFIED" -> "Unjustified";
+            case "inc.field.kind" -> "Type:";
+            case "inc.field.subtype" -> "Subtype:";
+            case "inc.field.concept" -> "Concept:";
+            case "inc.field.hours" -> "Hours:";
+            case "inc.field.unit_price" -> "Price/hour (€):";
+            case "inc.field.days" -> "Days:";
+            case "inc.field.amount" -> "Amount (€):";
+            case "inc.field.cotizes" -> "Contributes to SS";
+            case "inc.field.taxable" -> "Taxable (IRPF)";
+            case "inc.field.notes" -> "Notes:";
+            case "inc.form.add" -> "Add incident";
+            case "inc.form.edit" -> "Edit incident";
+            case "inc.form.hint" -> "Fill what applies: hours × price/hour, or a direct amount, or days (absence). The engine derives the amount.";
+            case "inc.fail.title" -> "Could not save the incident";
+            case "inc.fail.concept" -> "Enter a concept.";
+            case "inc.unit.days" -> "days";
             case "labor.schedule.hint" -> "Work-schedule templates: one template = several time blocks per weekday, assignable to several employees with an effective date.";
             case "labor.schedule.empty" -> "No templates yet.";
             case "labor.schedule.col.name" -> "Name";
@@ -15908,6 +15949,47 @@ public class BenjagestUiApplication extends Application {
             case "labor.planreal.col.diff" -> "Diferencia";
             case "labor.planreal.holiday" -> "festivo";
             case "labor.planreal.fail.title" -> "No se pudo cargar planificado vs real";
+            case "dialog.save" -> "Guardar";
+            case "inc.title" -> "Incidencias del periodo";
+            case "inc.btn.open" -> "Incidencias del periodo";
+            case "inc.hint" -> "Horas extra, complementos variables, ausencias y deducciones de este mes. Se guardan y el motor las aplica al calcular. Nota: las horas extra (cotización adicional legal) y las ausencias (reducción de base) se aplican del todo en el siguiente paso; los complementos y deducciones ya cuentan.";
+            case "inc.empty" -> "No hay incidencias en este periodo.";
+            case "inc.col.kind" -> "Tipo";
+            case "inc.col.concept" -> "Concepto";
+            case "inc.col.value" -> "Valor";
+            case "inc.col.flags" -> "SS / IRPF";
+            case "inc.flag.cotiza" -> "Cotiza";
+            case "inc.flag.tributa" -> "Tributa";
+            case "inc.action.add" -> "Añadir";
+            case "inc.action.edit" -> "Editar";
+            case "inc.action.delete" -> "Borrar";
+            case "inc.delete.confirm" -> "¿Borrar esta incidencia?";
+            case "inc.kind.OVERTIME" -> "Horas extra";
+            case "inc.kind.COMPLEMENT" -> "Complemento variable";
+            case "inc.kind.ABSENCE" -> "Ausencia";
+            case "inc.kind.DEDUCTION" -> "Deducción";
+            case "inc.kind.OTHER" -> "Otro";
+            case "inc.subtype.STRUCTURAL" -> "Estructurales / fuerza mayor (14%)";
+            case "inc.subtype.NORMAL" -> "No estructurales (28,30%)";
+            case "inc.subtype.JUSTIFIED_PAID" -> "Justificada (retribuida)";
+            case "inc.subtype.JUSTIFIED_UNPAID" -> "Justificada (no retribuida)";
+            case "inc.subtype.UNJUSTIFIED" -> "Injustificada";
+            case "inc.field.kind" -> "Tipo:";
+            case "inc.field.subtype" -> "Subtipo:";
+            case "inc.field.concept" -> "Concepto:";
+            case "inc.field.hours" -> "Horas:";
+            case "inc.field.unit_price" -> "Precio/hora (€):";
+            case "inc.field.days" -> "Días:";
+            case "inc.field.amount" -> "Importe (€):";
+            case "inc.field.cotizes" -> "Cotiza a la SS";
+            case "inc.field.taxable" -> "Tributa (IRPF)";
+            case "inc.field.notes" -> "Notas:";
+            case "inc.form.add" -> "Añadir incidencia";
+            case "inc.form.edit" -> "Editar incidencia";
+            case "inc.form.hint" -> "Rellena lo que aplique: horas × precio/hora, o un importe directo, o días (ausencia). El motor calcula el importe.";
+            case "inc.fail.title" -> "No se pudo guardar la incidencia";
+            case "inc.fail.concept" -> "Introduce un concepto.";
+            case "inc.unit.days" -> "días";
             case "labor.schedule.hint" -> "Plantillas de horario: 1 plantilla = varios bloques horarios por día de la semana, asignable a varios empleados con fecha de efecto.";
             case "labor.schedule.empty" -> "Aún no hay plantillas.";
             case "labor.schedule.col.name" -> "Nombre";
@@ -23034,9 +23116,43 @@ public class BenjagestUiApplication extends Application {
             start(tk, "payslip-target");
         });
 
+        // INC-1 — Incidencias del periodo (horas extra, complementos variables,
+        // ausencias, deducciones) PERSISTIDAS por empleado+mes. Se gestionan aquí y
+        // el motor las aplica al calcular. Botón con contador de cuántas hay.
+        Button incidenciasBtn = new Button(t("inc.btn.open"));
+        incidenciasBtn.setGraphic(icon("fas-list-check"));
+        incidenciasBtn.getStyleClass().add("button-secondary");
+        Runnable refreshIncCount = () -> {
+            var emp = empCombo.getValue();
+            if (emp == null) { incidenciasBtn.setText(t("inc.btn.open")); return; }
+            Task<Integer> tk = new Task<>() {
+                @Override protected Integer call() throws Exception {
+                    return laborApiClient.listIncidencias(emp.id(),
+                            yearCombo.getValue(), monthCombo.getValue()).size();
+                }
+            };
+            tk.setOnSucceeded(ev -> incidenciasBtn.setText(
+                    t("inc.btn.open") + (tk.getValue() > 0 ? " (" + tk.getValue() + ")" : "")));
+            tk.setOnFailed(ev -> incidenciasBtn.setText(t("inc.btn.open")));
+            start(tk, "inc-count");
+        };
+        incidenciasBtn.setOnAction(e -> {
+            var emp = empCombo.getValue();
+            if (emp == null) { showError(t("labor.payslips.calc.fail.title"),
+                    t("labor.payslips.calc.fail.no_employee")); return; }
+            showIncidenciasDialog(emp.id(), emp.fullName(), yearCombo.getValue(), monthCombo.getValue(),
+                    () -> { refreshIncCount.run(); doPreview.run(); });
+        });
+        empCombo.valueProperty().addListener((o, ov, nv) -> refreshIncCount.run());
+        yearCombo.valueProperty().addListener((o, ov, nv) -> refreshIncCount.run());
+        monthCombo.valueProperty().addListener((o, ov, nv) -> refreshIncCount.run());
+        refreshIncCount.run();
+        HBox incBox = new HBox(8, incidenciasBtn);
+        incBox.setAlignment(Pos.CENTER_LEFT);
+
         VBox previewBox = new VBox(8, new Separator(), targetBox, previewBtn, summary);
         installDialog(dialog, new VBox(10, g, new Separator(), contractCompsInfo,
-                extras.node, previewBox));
+                extras.node, incBox, previewBox));
 
         // BUG-UX-2 — Validar sin empleado NO debe cerrar el diálogo ni
         // sacar un Alert: no es un error, es un campo que falta. El filtro
@@ -23080,6 +23196,259 @@ public class BenjagestUiApplication extends Application {
             });
             start(task, "payslip-calculate");
         });
+    }
+
+    /**
+     * INC-1 — Gestiona las incidencias de nómina de un (empleado, periodo): horas
+     * extra, complementos variables, ausencias y deducciones. Persisten en
+     * nomina_incidencias (V136). {@code onChanged} refresca el preview del diálogo
+     * de calcular. Hoy el motor aplica COMPLEMENT y DEDUCTION; las horas extra
+     * (cotización adicional legal) y ausencias (reducción de base) llegan en INC-2/3.
+     */
+    private void showIncidenciasDialog(String employeeId, String employeeName,
+                                       int year, int month, Runnable onChanged) {
+        Stage dlg = new Stage();
+        dlg.setTitle(t("inc.title") + " — " + employeeName
+                + "  " + String.format("%02d/%d", month, year));
+        dlg.initModality(javafx.stage.Modality.APPLICATION_MODAL);
+
+        Label hint = new Label(t("inc.hint"));
+        hint.setWrapText(true);
+        hint.getStyleClass().add("settings-hint");
+
+        TableView<com.benjagest.ui.model.IncidenciaEntry> table = new TableView<>();
+        table.getStyleClass().add("data-table");
+        table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+        table.setPlaceholder(new Label(t("inc.empty")));
+        VBox.setVgrow(table, Priority.ALWAYS);
+
+        TableColumn<com.benjagest.ui.model.IncidenciaEntry, String> cKind = new TableColumn<>(t("inc.col.kind"));
+        cKind.setCellValueFactory(c -> new SimpleStringProperty(incKindLabel(c.getValue())));
+        cKind.setPrefWidth(170);
+        TableColumn<com.benjagest.ui.model.IncidenciaEntry, String> cConcept = new TableColumn<>(t("inc.col.concept"));
+        cConcept.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().concept()));
+        cConcept.setPrefWidth(220);
+        TableColumn<com.benjagest.ui.model.IncidenciaEntry, String> cValue = new TableColumn<>(t("inc.col.value"));
+        cValue.setCellValueFactory(c -> new SimpleStringProperty(incValueLabel(c.getValue())));
+        cValue.setPrefWidth(180);
+        TableColumn<com.benjagest.ui.model.IncidenciaEntry, String> cFlags = new TableColumn<>(t("inc.col.flags"));
+        cFlags.setCellValueFactory(c -> new SimpleStringProperty(
+                (c.getValue().cotizes() ? t("inc.flag.cotiza") : "") +
+                (c.getValue().taxable() ? (c.getValue().cotizes() ? " · " : "") + t("inc.flag.tributa") : "")));
+        cFlags.setPrefWidth(150);
+        table.getColumns().addAll(java.util.List.of(cKind, cConcept, cValue, cFlags));
+
+        Runnable reload = () -> {
+            Task<java.util.List<com.benjagest.ui.model.IncidenciaEntry>> tk = new Task<>() {
+                @Override protected java.util.List<com.benjagest.ui.model.IncidenciaEntry> call() throws Exception {
+                    return laborApiClient.listIncidencias(employeeId, year, month);
+                }
+            };
+            tk.setOnSucceeded(ev -> table.setItems(FXCollections.observableArrayList(tk.getValue())));
+            tk.setOnFailed(ev -> showError(t("inc.fail.title"),
+                    tk.getException() == null ? "" : humanizeBackendError(tk.getException().getMessage())));
+            start(tk, "inc-list");
+        };
+
+        Button addBtn = new Button(t("inc.action.add"));
+        addBtn.setGraphic(icon("fas-plus"));
+        addBtn.getStyleClass().add("button-primary");
+        addBtn.setOnAction(e -> showIncidenciaForm(employeeId, year, month, null,
+                () -> { reload.run(); onChanged.run(); }));
+        Button editBtn = new Button(t("inc.action.edit"));
+        editBtn.setGraphic(icon("fas-edit"));
+        editBtn.setDisable(true);
+        editBtn.setOnAction(e -> {
+            var sel = table.getSelectionModel().getSelectedItem();
+            if (sel != null) showIncidenciaForm(employeeId, year, month, sel,
+                    () -> { reload.run(); onChanged.run(); });
+        });
+        Button delBtn = new Button(t("inc.action.delete"));
+        delBtn.setGraphic(icon("fas-trash"));
+        delBtn.setDisable(true);
+        delBtn.setOnAction(e -> {
+            var sel = table.getSelectionModel().getSelectedItem();
+            if (sel == null) return;
+            Alert c = new Alert(Alert.AlertType.CONFIRMATION,
+                    t("inc.delete.confirm") + " " + sel.concept(), ButtonType.OK, ButtonType.CANCEL);
+            c.setHeaderText(null);
+            c.showAndWait().ifPresent(bt -> {
+                if (bt != ButtonType.OK) return;
+                Task<Void> tk = new Task<>() {
+                    @Override protected Void call() throws Exception {
+                        laborApiClient.deleteIncidencia(sel.id()); return null;
+                    }
+                };
+                tk.setOnSucceeded(ev -> { reload.run(); onChanged.run(); });
+                tk.setOnFailed(ev -> showError(t("inc.fail.title"),
+                        tk.getException() == null ? "" : humanizeBackendError(tk.getException().getMessage())));
+                start(tk, "inc-delete");
+            });
+        });
+        table.getSelectionModel().selectedItemProperty().addListener((o, ov, nv) -> {
+            editBtn.setDisable(nv == null);
+            delBtn.setDisable(nv == null);
+        });
+        Button closeBtn = new Button(t("dialog.close"));
+        closeBtn.setOnAction(e -> dlg.close());
+
+        Region sp = new Region();
+        HBox.setHgrow(sp, Priority.ALWAYS);
+        HBox actions = new HBox(8, addBtn, editBtn, delBtn, sp, closeBtn);
+        actions.setAlignment(Pos.CENTER_LEFT);
+
+        VBox root = new VBox(12, hint, actions, table);
+        root.setPadding(new javafx.geometry.Insets(16));
+        root.setPrefSize(760, 460);
+        Scene scene = new Scene(root);
+        scene.getStylesheets().add(getClass().getResource("/com/benjagest/ui/app.css").toExternalForm());
+        dlg.setScene(scene);
+        reload.run();
+        dlg.showAndWait();
+    }
+
+    /** Etiqueta de tipo (+ subtipo) de una incidencia para la tabla. */
+    private String incKindLabel(com.benjagest.ui.model.IncidenciaEntry e) {
+        String k = t("inc.kind." + e.kind());
+        if (e.subtype() != null && !e.subtype().isBlank()) k += " · " + t("inc.subtype." + e.subtype());
+        return k;
+    }
+
+    /** Etiqueta de valor: importe + detalle (horas×precio o días). */
+    private String incValueLabel(com.benjagest.ui.model.IncidenciaEntry e) {
+        String v = e.amount() == null ? "—" : money(e.amount().toPlainString());
+        if (e.hours() != null && e.unitPrice() != null) {
+            v += "  (" + e.hours().toPlainString() + "h × " + money(e.unitPrice().toPlainString()) + ")";
+        } else if (e.days() != null) {
+            v += "  (" + e.days().toPlainString() + " " + t("inc.unit.days") + ")";
+        }
+        return v;
+    }
+
+    /** Formulario de alta/edición de una incidencia. */
+    private void showIncidenciaForm(String employeeId, int year, int month,
+                                    com.benjagest.ui.model.IncidenciaEntry existing, Runnable onSaved) {
+        Stage dlg = new Stage();
+        dlg.setTitle(existing == null ? t("inc.form.add") : t("inc.form.edit"));
+        dlg.initModality(javafx.stage.Modality.APPLICATION_MODAL);
+
+        ComboBox<String> kind = new ComboBox<>(FXCollections.observableArrayList(
+                "OVERTIME", "COMPLEMENT", "ABSENCE", "DEDUCTION", "OTHER"));
+        kind.setConverter(localizedConverter("inc.kind"));
+        ComboBox<String> subtype = new ComboBox<>();
+        subtype.setConverter(localizedConverter("inc.subtype"));
+        Label subtypeLbl = new Label(t("inc.field.subtype"));
+
+        TextField concept = new TextField();
+        TextField hours = new TextField(); hours.setPromptText("0");
+        TextField unitPrice = new TextField(); unitPrice.setPromptText("0,00");
+        TextField days = new TextField(); days.setPromptText("0");
+        TextField amount = new TextField(); amount.setPromptText("0,00");
+        CheckBox cotizes = new CheckBox(t("inc.field.cotizes"));
+        CheckBox taxable = new CheckBox(t("inc.field.taxable"));
+        TextArea notes = new TextArea(); notes.setPrefRowCount(2);
+
+        // Subtipos por tipo; defaults de cotiza/tributa.
+        Runnable onKind = () -> {
+            String k = kind.getValue();
+            if ("OVERTIME".equals(k)) {
+                subtype.setItems(FXCollections.observableArrayList("STRUCTURAL", "NORMAL"));
+                subtype.setVisible(true); subtypeLbl.setVisible(true);
+            } else if ("ABSENCE".equals(k)) {
+                subtype.setItems(FXCollections.observableArrayList(
+                        "JUSTIFIED_PAID", "JUSTIFIED_UNPAID", "UNJUSTIFIED"));
+                subtype.setVisible(true); subtypeLbl.setVisible(true);
+            } else {
+                subtype.getItems().clear(); subtype.setValue(null);
+                subtype.setVisible(false); subtypeLbl.setVisible(false);
+            }
+            boolean ded = "DEDUCTION".equals(k);
+            if (existing == null) { cotizes.setSelected(!ded); taxable.setSelected(!ded); }
+        };
+        kind.valueProperty().addListener((o, ov, nv) -> onKind.run());
+
+        if (existing != null) {
+            kind.setValue(existing.kind());
+            onKind.run();
+            subtype.setValue(existing.subtype());
+            concept.setText(existing.concept());
+            if (existing.hours() != null) hours.setText(existing.hours().toPlainString());
+            if (existing.unitPrice() != null) unitPrice.setText(existing.unitPrice().toPlainString());
+            if (existing.days() != null) days.setText(existing.days().toPlainString());
+            if (existing.amount() != null) amount.setText(existing.amount().toPlainString());
+            cotizes.setSelected(existing.cotizes());
+            taxable.setSelected(existing.taxable());
+            notes.setText(existing.notes() == null ? "" : existing.notes());
+        } else {
+            kind.setValue("OVERTIME");
+            onKind.run();
+        }
+
+        GridPane g = new GridPane();
+        g.setHgap(10); g.setVgap(8); g.setPadding(new javafx.geometry.Insets(12));
+        int r = 0;
+        g.add(new Label(t("inc.field.kind")), 0, r); g.add(kind, 1, r++);
+        g.add(subtypeLbl, 0, r); g.add(subtype, 1, r++);
+        g.add(new Label(t("inc.field.concept")), 0, r); g.add(concept, 1, r++);
+        g.add(new Label(t("inc.field.hours")), 0, r); g.add(hours, 1, r++);
+        g.add(new Label(t("inc.field.unit_price")), 0, r); g.add(unitPrice, 1, r++);
+        g.add(new Label(t("inc.field.days")), 0, r); g.add(days, 1, r++);
+        g.add(new Label(t("inc.field.amount")), 0, r); g.add(amount, 1, r++);
+        g.add(cotizes, 1, r++);
+        g.add(taxable, 1, r++);
+        g.add(new Label(t("inc.field.notes")), 0, r); g.add(notes, 1, r++);
+        Label formHint = new Label(t("inc.form.hint"));
+        formHint.setWrapText(true); formHint.getStyleClass().add("settings-hint");
+
+        Button save = new Button(t("dialog.save"));
+        save.setGraphic(icon("fas-check"));
+        save.getStyleClass().add("button-primary");
+        save.setOnAction(e -> {
+            if (concept.getText() == null || concept.getText().isBlank()) {
+                showError(t("inc.fail.title"), t("inc.fail.concept")); return;
+            }
+            com.benjagest.ui.model.IncidenciaEntry payload = new com.benjagest.ui.model.IncidenciaEntry(
+                    existing == null ? null : existing.id(), employeeId, year, month,
+                    kind.getValue(), subtype.getValue(), concept.getText().trim(),
+                    parseDecSafe(hours.getText()), parseDecSafe(unitPrice.getText()),
+                    parseDecSafe(days.getText()), parseDecSafe(amount.getText()),
+                    cotizes.isSelected(), taxable.isSelected(),
+                    blankToNullOrSelf(notes.getText()), "MANUAL");
+            Task<Void> tk = new Task<>() {
+                @Override protected Void call() throws Exception {
+                    if (existing == null) laborApiClient.createIncidencia(payload);
+                    else laborApiClient.updateIncidencia(existing.id(), payload);
+                    return null;
+                }
+            };
+            tk.setOnSucceeded(ev -> { dlg.close(); onSaved.run(); });
+            tk.setOnFailed(ev -> showError(t("inc.fail.title"),
+                    tk.getException() == null ? "" : humanizeBackendError(tk.getException().getMessage())));
+            start(tk, "inc-save");
+        });
+        Button cancel = new Button(t("dialog.cancel"));
+        cancel.setOnAction(e -> dlg.close());
+        HBox btns = new HBox(10, cancel, save);
+        btns.setAlignment(Pos.CENTER_RIGHT);
+
+        VBox root = new VBox(10, g, formHint, btns);
+        root.setPadding(new javafx.geometry.Insets(8));
+        root.setPrefWidth(460);
+        Scene scene = new Scene(root);
+        scene.getStylesheets().add(getClass().getResource("/com/benjagest/ui/app.css").toExternalForm());
+        com.benjagest.ui.support.EditableCells.enableDateMaskOnFocus(scene);
+        dlg.setScene(scene);
+        dlg.showAndWait();
+    }
+
+    /** StringConverter que traduce un código de enum con prefijo i18n ({@code prefix.CODE}). */
+    private javafx.util.StringConverter<String> localizedConverter(String prefix) {
+        return new javafx.util.StringConverter<>() {
+            @Override public String toString(String code) {
+                return code == null ? "" : t(prefix + "." + code);
+            }
+            @Override public String fromString(String s) { return s; }
+        };
     }
 
     /** Etiqueta de la columna "Entrega": firmada > entregada > pendiente. */
