@@ -325,6 +325,32 @@ public class AccountingFullController {
                 .body(body);
     }
 
+    @GetMapping(value = "/ledger/{accountId}/export.pdf", produces = "application/pdf")
+    public org.springframework.http.ResponseEntity<byte[]> ledgerPdf(
+            @PathVariable("accountId") String accountId,
+            @RequestParam(value = "from", required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam(value = "to", required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
+        byte[] body = reportsPdf.ledgerPdf(accountId, from, to);
+        return org.springframework.http.ResponseEntity.ok()
+                .header("Content-Disposition", "attachment; filename=\"mayor-" + accountId + ".pdf\"")
+                .body(body);
+    }
+
+    @GetMapping(value = "/balance/export.pdf", produces = "application/pdf")
+    public org.springframework.http.ResponseEntity<byte[]> trialBalancePdf(
+            @RequestParam(value = "from", required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam(value = "to", required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
+            @RequestParam(value = "prefix", required = false) String prefix) {
+        byte[] body = reportsPdf.trialBalancePdf(from, to, prefix);
+        return org.springframework.http.ResponseEntity.ok()
+                .header("Content-Disposition", "attachment; filename=\"sumas-y-saldos.pdf\"")
+                .body(body);
+    }
+
     @GetMapping("/reports/equity-changes")
     public List<FinancialReportsService.EquityMovementRow> equityChanges(
             @RequestParam(value = "from", required = false)
