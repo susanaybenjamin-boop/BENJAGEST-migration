@@ -48,19 +48,34 @@ public class TaxCalendarService {
         String companyId = tenant.getCurrentCompanyId();
         LocalDate from = LocalDate.now();
         LocalDate to = from.plusDays(Math.max(1, days));
+        // Excluimos el genérico (company_id IS NULL) si la empresa ya tiene su
+        // propia copia para ese mismo vencimiento (model+periodo+fecha+ejercicio):
+        // al marcar presentado un genérico se clona como SUBMITTED de la empresa,
+        // pero el genérico sigue PENDING → sin este NOT EXISTS la notificación no
+        // desaparecía nunca (bug Benjamin 2026-06-23).
         return jdbc.query("""
-                SELECT id, company_id, model_code, period_label, due_date,
-                       description, fiscal_year, status, submitted_at,
-                       submitted_by, notes, created_at
-                  FROM tax_calendar_events
-                 WHERE due_date BETWEEN ? AND ?
-                   AND (company_id IS NULL OR company_id = ?)
-                   AND status = 'PENDING'
-                 ORDER BY due_date ASC, model_code
+                SELECT e.id, e.company_id, e.model_code, e.period_label, e.due_date,
+                       e.description, e.fiscal_year, e.status, e.submitted_at,
+                       e.submitted_by, e.notes, e.created_at
+                  FROM tax_calendar_events e
+                 WHERE e.due_date BETWEEN ? AND ?
+                   AND e.status = 'PENDING'
+                   AND (
+                        e.company_id = ?
+                     OR (e.company_id IS NULL
+                         AND NOT EXISTS (
+                             SELECT 1 FROM tax_calendar_events c
+                              WHERE c.company_id = ?
+                                AND c.model_code = e.model_code
+                                AND c.due_date = e.due_date
+                                AND c.period_label <=> e.period_label
+                                AND c.fiscal_year <=> e.fiscal_year))
+                       )
+                 ORDER BY e.due_date ASC, e.model_code
                 """, MAPPER,
                 java.sql.Date.valueOf(from),
                 java.sql.Date.valueOf(to),
-                companyId);
+                companyId, companyId);
     }
 
     /** Todos los vencimientos del año (incluido SUBMITTED). */
