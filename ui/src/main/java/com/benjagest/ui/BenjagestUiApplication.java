@@ -1809,6 +1809,12 @@ public class BenjagestUiApplication extends Application {
                 button.setOnAction(event -> { exitClientMode(); showModule(link.id()); });
                 sidebar.getChildren().add(button);
             }
+            // MÓDULO TRABAJOS — entrada propia de la asesoría (su propia empresa).
+            if (hasShiftsModule(modules)) {
+                Button trabajos = navButton("work-logs", t("trabajos.title"), "fas-briefcase");
+                trabajos.setOnAction(event -> { exitClientMode(); showWorkLogsModule(); });
+                sidebar.getChildren().add(trabajos);
+            }
             // Sección "Mis clientes" con los módulos advisory_only.
             Label clientsSection = new Label(t("sidebar.section.my_clients"));
             clientsSection.getStyleClass().add("sidebar-section");
@@ -1838,6 +1844,12 @@ public class BenjagestUiApplication extends Application {
                 button.setOnAction(event -> { exitClientMode(); showModule(link.id()); });
                 sidebar.getChildren().add(button);
             }
+            // MÓDULO TRABAJOS — entrada propia (bajo el módulo de Fichajes/shifts).
+            if (hasShiftsModule(modules)) {
+                Button trabajos = navButton("work-logs", t("trabajos.title"), "fas-briefcase");
+                trabajos.setOnAction(event -> { exitClientMode(); showWorkLogsModule(); });
+                sidebar.getChildren().add(trabajos);
+            }
             // AVISOS — Tareas pendientes de la empresa.
             Button tareas = navButton("pending-tasks", t("pending.title"), "fas-clipboard-list");
             tareas.setOnAction(event -> showPendingTasksPanel());
@@ -1854,6 +1866,12 @@ public class BenjagestUiApplication extends Application {
         account.getStyleClass().add("sidebar-account");
         sidebar.getChildren().addAll(spacer, account);
         return sidebar;
+    }
+
+    /** ¿Está activo el módulo bajo el que vive Trabajos (Fichajes/shifts o Laboral)? */
+    private boolean hasShiftsModule(List<ModuleLink> modules) {
+        return modules.stream().anyMatch(m ->
+                "time-clock".equals(m.id()) || "shifts".equals(m.id()) || "labor".equals(m.id()));
     }
 
     private List<ModuleLink> activeModules() {
@@ -15818,6 +15836,57 @@ public class BenjagestUiApplication extends Application {
             case "inc.fail.title" -> "Could not save the incident";
             case "inc.fail.concept" -> "Enter a concept.";
             case "inc.unit.days" -> "days";
+            case "trabajos.title" -> "Jobs";
+            case "trabajos.subtitle" -> "Track jobs and turn them into invoices";
+            case "trabajos.hint" -> "Log jobs per customer (time or fixed price) and convert the selected ones into invoice lines. Collection is handled by the invoice.";
+            case "trabajos.empty" -> "No jobs in this range.";
+            case "trabajos.action.new" -> "New job";
+            case "trabajos.action.edit" -> "Edit";
+            case "trabajos.action.delete" -> "Delete";
+            case "trabajos.action.approve" -> "Approve";
+            case "trabajos.action.unapprove" -> "Back to draft";
+            case "trabajos.action.bill" -> "Invoice";
+            case "trabajos.filter.all_customers" -> "All customers";
+            case "trabajos.filter.all_status" -> "All statuses";
+            case "trabajos.filter.pending_only" -> "Only pending to invoice";
+            case "trabajos.col.date" -> "Date";
+            case "trabajos.col.employee" -> "Employee";
+            case "trabajos.col.customer" -> "Customer";
+            case "trabajos.col.description" -> "Description";
+            case "trabajos.col.valuation" -> "Valuation";
+            case "trabajos.col.amount" -> "Amount";
+            case "trabajos.col.status" -> "Status";
+            case "trabajos.unit.HOURS" -> "hours";
+            case "trabajos.unit.DAYS" -> "days";
+            case "trabajos.unit.MONTHS" -> "months";
+            case "trabajos.unit.FIXED" -> "Fixed price";
+            case "trabajos.field.employee" -> "Employee:";
+            case "trabajos.field.customer" -> "Customer:";
+            case "trabajos.field.date" -> "Date:";
+            case "trabajos.field.description" -> "Description:";
+            case "trabajos.field.billable" -> "Billable";
+            case "trabajos.field.unit" -> "Valuation:";
+            case "trabajos.field.quantity" -> "Quantity:";
+            case "trabajos.field.unit_price" -> "Price/unit (€):";
+            case "trabajos.field.fixed_amount" -> "Fixed price (€):";
+            case "trabajos.form.add" -> "New job";
+            case "trabajos.form.edit" -> "Edit job";
+            case "trabajos.fail.title" -> "Could not save the job";
+            case "trabajos.fail.employee" -> "Pick an employee.";
+            case "trabajos.fail.customer" -> "A billable job needs a customer.";
+            case "trabajos.delete.confirm" -> "Delete this job?";
+            case "trabajos.bill.title" -> "Invoice jobs";
+            case "trabajos.bill.summary" -> "{n} job(s) of {customer} · total {total}";
+            case "trabajos.bill.per_job" -> "One invoice line per job";
+            case "trabajos.bill.merge" -> "Merge into one line (edit the concept)";
+            case "trabajos.bill.merged_default" -> "Jobs";
+            case "trabajos.bill.create" -> "Create draft invoice";
+            case "trabajos.bill.invalid_selection" -> "Select billable, not-yet-invoiced jobs of the SAME customer.";
+            case "trabajos.bill.ok.title" -> "Invoice created";
+            case "trabajos.bill.ok.body" -> "A draft invoice was created with the selected jobs. Review it in Billing.";
+            case "worklog_status.DRAFT" -> "Draft";
+            case "worklog_status.APPROVED" -> "Approved";
+            case "worklog_status.BILLED" -> "Invoiced";
             case "labor.schedule.hint" -> "Work-schedule templates: one template = several time blocks per weekday, assignable to several employees with an effective date.";
             case "labor.schedule.empty" -> "No templates yet.";
             case "labor.schedule.col.name" -> "Name";
@@ -16040,6 +16109,57 @@ public class BenjagestUiApplication extends Application {
             case "inc.fail.title" -> "No se pudo guardar la incidencia";
             case "inc.fail.concept" -> "Introduce un concepto.";
             case "inc.unit.days" -> "días";
+            case "trabajos.title" -> "Trabajos";
+            case "trabajos.subtitle" -> "Controla los trabajos y conviértelos en facturas";
+            case "trabajos.hint" -> "Registra trabajos por cliente (por tiempo o precio cerrado) y convierte los seleccionados en líneas de factura. El cobro lo lleva la factura.";
+            case "trabajos.empty" -> "No hay trabajos en este rango.";
+            case "trabajos.action.new" -> "Nuevo trabajo";
+            case "trabajos.action.edit" -> "Editar";
+            case "trabajos.action.delete" -> "Borrar";
+            case "trabajos.action.approve" -> "Aprobar";
+            case "trabajos.action.unapprove" -> "A borrador";
+            case "trabajos.action.bill" -> "Facturar";
+            case "trabajos.filter.all_customers" -> "Todos los clientes";
+            case "trabajos.filter.all_status" -> "Todos los estados";
+            case "trabajos.filter.pending_only" -> "Solo pendientes de facturar";
+            case "trabajos.col.date" -> "Fecha";
+            case "trabajos.col.employee" -> "Empleado";
+            case "trabajos.col.customer" -> "Cliente";
+            case "trabajos.col.description" -> "Descripción";
+            case "trabajos.col.valuation" -> "Valoración";
+            case "trabajos.col.amount" -> "Importe";
+            case "trabajos.col.status" -> "Estado";
+            case "trabajos.unit.HOURS" -> "horas";
+            case "trabajos.unit.DAYS" -> "días";
+            case "trabajos.unit.MONTHS" -> "meses";
+            case "trabajos.unit.FIXED" -> "Precio cerrado";
+            case "trabajos.field.employee" -> "Empleado:";
+            case "trabajos.field.customer" -> "Cliente:";
+            case "trabajos.field.date" -> "Fecha:";
+            case "trabajos.field.description" -> "Descripción:";
+            case "trabajos.field.billable" -> "Facturable";
+            case "trabajos.field.unit" -> "Valoración:";
+            case "trabajos.field.quantity" -> "Cantidad:";
+            case "trabajos.field.unit_price" -> "Precio/unidad (€):";
+            case "trabajos.field.fixed_amount" -> "Precio cerrado (€):";
+            case "trabajos.form.add" -> "Nuevo trabajo";
+            case "trabajos.form.edit" -> "Editar trabajo";
+            case "trabajos.fail.title" -> "No se pudo guardar el trabajo";
+            case "trabajos.fail.employee" -> "Elige un empleado.";
+            case "trabajos.fail.customer" -> "Un trabajo facturable necesita un cliente.";
+            case "trabajos.delete.confirm" -> "¿Borrar este trabajo?";
+            case "trabajos.bill.title" -> "Facturar trabajos";
+            case "trabajos.bill.summary" -> "{n} trabajo(s) de {customer} · total {total}";
+            case "trabajos.bill.per_job" -> "Una línea de factura por trabajo";
+            case "trabajos.bill.merge" -> "Agrupar en una sola línea (edita el concepto)";
+            case "trabajos.bill.merged_default" -> "Trabajos";
+            case "trabajos.bill.create" -> "Crear factura borrador";
+            case "trabajos.bill.invalid_selection" -> "Selecciona trabajos facturables, sin facturar y del MISMO cliente.";
+            case "trabajos.bill.ok.title" -> "Factura creada";
+            case "trabajos.bill.ok.body" -> "Se creó una factura borrador con los trabajos seleccionados. Revísala en Facturación.";
+            case "worklog_status.DRAFT" -> "Borrador";
+            case "worklog_status.APPROVED" -> "Aprobado";
+            case "worklog_status.BILLED" -> "Facturado";
             case "labor.schedule.hint" -> "Plantillas de horario: 1 plantilla = varios bloques horarios por día de la semana, asignable a varios empleados con fecha de efecto.";
             case "labor.schedule.empty" -> "Aún no hay plantillas.";
             case "labor.schedule.col.name" -> "Nombre";
@@ -36931,6 +37051,410 @@ public class BenjagestUiApplication extends Application {
                 historyTitle, historyHint,
                 filters, table);
         return content;
+    }
+
+    // ===================================================================
+    //  MÓDULO TRABAJOS (TRB-2) — gestión de trabajos facturables
+    // ===================================================================
+
+    private void showWorkLogsModule() {
+        setCenterAnimated(buildWorkLogsModule());
+    }
+
+    private Node buildWorkLogsModule() {
+        VBox content = content();
+
+        Label title = new Label(t("trabajos.title"));
+        title.getStyleClass().add("module-detail-title");
+        Label subtitle = new Label(t("trabajos.subtitle"));
+        subtitle.getStyleClass().add("module-detail-description");
+        VBox titleBox = new VBox(4, title, subtitle);
+        StackPane moduleIcon = iconBubble("fas-briefcase", "module-title-icon");
+        Region hsp = new Region();
+        HBox.setHgrow(hsp, Priority.ALWAYS);
+        Button newBtn = new Button(t("trabajos.action.new"));
+        newBtn.setGraphic(icon("fas-plus"));
+        HBox header = new HBox(16, titleBox, moduleIcon, hsp, newBtn);
+        header.setAlignment(Pos.CENTER_LEFT);
+        header.getStyleClass().add("module-detail-header");
+
+        Label hint = new Label(t("trabajos.hint"));
+        hint.setWrapText(true);
+        hint.getStyleClass().add("settings-hint");
+
+        // Caches de nombres (empleado/cliente) y mapa nombre->id de clientes.
+        final java.util.Map<String, String> empById = new java.util.HashMap<>();
+        final java.util.LinkedHashMap<String, String> custIdByName = new java.util.LinkedHashMap<>();
+
+        java.time.LocalDate now = java.time.LocalDate.now();
+        DatePicker fromPick = new DatePicker(now.withDayOfMonth(1));
+        DatePicker toPick = new DatePicker(now.withDayOfMonth(1).plusMonths(1).minusDays(1));
+        com.benjagest.ui.support.EditableCells.installFlexibleConverter(fromPick);
+        com.benjagest.ui.support.EditableCells.installFlexibleConverter(toPick);
+
+        ComboBox<String> custFilter = new ComboBox<>();
+        custFilter.getItems().add(t("trabajos.filter.all_customers"));
+        custFilter.getSelectionModel().selectFirst();
+        ComboBox<String> statusFilter = new ComboBox<>(FXCollections.observableArrayList(
+                "", "DRAFT", "APPROVED", "BILLED"));
+        statusFilter.setValue("");
+        statusFilter.setConverter(new javafx.util.StringConverter<>() {
+            @Override public String toString(String s) {
+                return s == null || s.isBlank() ? t("trabajos.filter.all_status")
+                        : t("worklog_status." + s);
+            }
+            @Override public String fromString(String s) { return s; }
+        });
+        CheckBox pendingOnly = new CheckBox(t("trabajos.filter.pending_only"));
+        Button reloadBtn = new Button(t("accounting.action.refresh"));
+        reloadBtn.setGraphic(icon("fas-sync-alt"));
+
+        TableView<com.benjagest.ui.model.WorkLogEntry> table = new TableView<>();
+        table.getStyleClass().add("data-table");
+        table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+        table.setPlaceholder(new Label(t("trabajos.empty")));
+        VBox.setVgrow(table, Priority.ALWAYS);
+        table.getSelectionModel().setSelectionMode(javafx.scene.control.SelectionMode.MULTIPLE);
+
+        TableColumn<com.benjagest.ui.model.WorkLogEntry, String> cDate = new TableColumn<>(t("trabajos.col.date"));
+        cDate.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().logDate()));
+        cDate.setComparator(ISO_DATE_COMPARATOR);
+        cDate.setPrefWidth(100);
+        TableColumn<com.benjagest.ui.model.WorkLogEntry, String> cEmp = new TableColumn<>(t("trabajos.col.employee"));
+        cEmp.setCellValueFactory(c -> new SimpleStringProperty(
+                c.getValue().employeeName() != null && !c.getValue().employeeName().isBlank()
+                        ? c.getValue().employeeName()
+                        : empById.getOrDefault(c.getValue().employeeId(), shortId(c.getValue().employeeId()))));
+        cEmp.setPrefWidth(150);
+        TableColumn<com.benjagest.ui.model.WorkLogEntry, String> cCust = new TableColumn<>(t("trabajos.col.customer"));
+        cCust.setCellValueFactory(c -> new SimpleStringProperty(
+                c.getValue().customerName() == null ? "—" : c.getValue().customerName()));
+        cCust.setPrefWidth(160);
+        TableColumn<com.benjagest.ui.model.WorkLogEntry, String> cDesc = new TableColumn<>(t("trabajos.col.description"));
+        cDesc.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().description()));
+        TableColumn<com.benjagest.ui.model.WorkLogEntry, String> cUnit = new TableColumn<>(t("trabajos.col.valuation"));
+        cUnit.setCellValueFactory(c -> new SimpleStringProperty(workLogValuationLabel(c.getValue())));
+        cUnit.setPrefWidth(170);
+        TableColumn<com.benjagest.ui.model.WorkLogEntry, String> cAmount = new TableColumn<>(t("trabajos.col.amount"));
+        cAmount.setCellValueFactory(c -> new SimpleStringProperty(
+                c.getValue().billableAmount() == null ? "" : money(c.getValue().billableAmount().toPlainString())));
+        cAmount.setComparator(NUMERIC_STRING_COMPARATOR);
+        cAmount.setPrefWidth(100);
+        TableColumn<com.benjagest.ui.model.WorkLogEntry, String> cStatus = new TableColumn<>(t("trabajos.col.status"));
+        cStatus.setCellValueFactory(c -> new SimpleStringProperty(t("worklog_status." + c.getValue().status())));
+        cStatus.setPrefWidth(95);
+        table.getColumns().addAll(java.util.List.of(cDate, cEmp, cCust, cDesc, cUnit, cAmount, cStatus));
+
+        Runnable reload = () -> {
+            java.time.LocalDate from = fromPick.getValue(), to = toPick.getValue();
+            if (from == null || to == null) return;
+            String custId = custIdByName.get(custFilter.getValue());
+            String st = statusFilter.getValue();
+            boolean pend = pendingOnly.isSelected();
+            Task<java.util.List<com.benjagest.ui.model.WorkLogEntry>> task = new Task<>() {
+                @Override protected java.util.List<com.benjagest.ui.model.WorkLogEntry> call() throws Exception {
+                    return altaApiClient.listWorkLogs(from, to, custId, st, pend);
+                }
+            };
+            task.setOnSucceeded(ev -> table.setItems(FXCollections.observableArrayList(task.getValue())));
+            task.setOnFailed(ev -> showError(t("trabajos.fail.title"),
+                    task.getException() == null ? "" : humanizeBackendError(task.getException().getMessage())));
+            start(task, "worklogs-load");
+        };
+        reloadBtn.setOnAction(e -> reload.run());
+        custFilter.valueProperty().addListener((o, a, b) -> reload.run());
+        statusFilter.valueProperty().addListener((o, a, b) -> reload.run());
+        pendingOnly.selectedProperty().addListener((o, a, b) -> reload.run());
+
+        // Carga inicial de empleados + clientes (para combos), luego refresca.
+        Task<Void> meta = new Task<>() {
+            @Override protected Void call() throws Exception {
+                for (var emp : laborApiClient.listEmployees(true)) empById.put(emp.id(), emp.fullName());
+                for (var cust : customerApiClient.list()) custIdByName.put(cust.legalName(), cust.id());
+                return null;
+            }
+        };
+        meta.setOnSucceeded(ev -> {
+            custFilter.getItems().setAll(t("trabajos.filter.all_customers"));
+            custFilter.getItems().addAll(custIdByName.keySet());
+            custFilter.getSelectionModel().selectFirst();
+            reload.run();
+        });
+        meta.setOnFailed(ev -> reload.run());
+        start(meta, "worklogs-meta");
+
+        newBtn.setOnAction(e -> showWorkLogForm(null, empById, custIdByName, reload));
+
+        Button editBtn = new Button(t("trabajos.action.edit"));
+        editBtn.setGraphic(icon("fas-edit"));
+        editBtn.setDisable(true);
+        editBtn.setOnAction(e -> {
+            var sel = table.getSelectionModel().getSelectedItem();
+            if (sel != null) showWorkLogForm(sel, empById, custIdByName, reload);
+        });
+        Button delBtn = new Button(t("trabajos.action.delete"));
+        delBtn.setGraphic(icon("fas-trash"));
+        delBtn.setDisable(true);
+        delBtn.setOnAction(e -> {
+            var sel = table.getSelectionModel().getSelectedItem();
+            if (sel == null) return;
+            Alert c = new Alert(Alert.AlertType.CONFIRMATION, t("trabajos.delete.confirm"),
+                    ButtonType.OK, ButtonType.CANCEL);
+            c.setHeaderText(null);
+            c.showAndWait().ifPresent(bt -> {
+                if (bt != ButtonType.OK) return;
+                runWorkLogTask(() -> altaApiClient.deleteWorkLog(sel.id()), reload);
+            });
+        });
+        Button approveBtn = new Button(t("trabajos.action.approve"));
+        approveBtn.setGraphic(icon("fas-check"));
+        approveBtn.setDisable(true);
+        approveBtn.setOnAction(e -> {
+            var sel = table.getSelectionModel().getSelectedItem();
+            if (sel == null) return;
+            String next = "DRAFT".equals(sel.status()) ? "APPROVED" : "DRAFT";
+            runWorkLogTask(() -> altaApiClient.setWorkLogStatus(sel.id(), next), reload);
+        });
+        Button billBtn = new Button(t("trabajos.action.bill"));
+        billBtn.setGraphic(icon("fas-file-invoice-dollar"));
+        billBtn.getStyleClass().add("button-primary");
+        billBtn.setDisable(true);
+        billBtn.setOnAction(e -> showWorkLogBillingDialog(
+                new java.util.ArrayList<>(table.getSelectionModel().getSelectedItems()), reload));
+
+        table.getSelectionModel().selectedItemProperty().addListener((o, ov, nv) -> {
+            boolean one = nv != null;
+            boolean editable = one && !"BILLED".equals(nv.status()) && nv.billedInvoiceLineId() == null;
+            editBtn.setDisable(!editable);
+            delBtn.setDisable(!editable);
+            approveBtn.setDisable(!one || "BILLED".equals(nv.status()));
+            approveBtn.setText("APPROVED".equals(nv != null ? nv.status() : "")
+                    ? t("trabajos.action.unapprove") : t("trabajos.action.approve"));
+        });
+        // El botón Facturar se habilita si TODAS las seleccionadas son facturables,
+        // sin facturar y del MISMO cliente (se factura por cliente).
+        table.getSelectionModel().getSelectedItems().addListener(
+                (javafx.collections.ListChangeListener<com.benjagest.ui.model.WorkLogEntry>) ch ->
+                        billBtn.setDisable(!sameCustomerBillable(table.getSelectionModel().getSelectedItems())));
+
+        javafx.scene.layout.FlowPane actions = actionFlow(editBtn, approveBtn, delBtn, billBtn);
+        javafx.scene.layout.FlowPane filters = actionFlow(
+                filterGroup(t("accounting.filter.from"), fromPick),
+                filterGroup(t("accounting.filter.to"), toPick),
+                filterGroup(t("trabajos.col.customer"), custFilter),
+                filterGroup(t("trabajos.col.status"), statusFilter),
+                pendingOnly, reloadBtn);
+
+        content.getChildren().addAll(header, hint, filters, actions, table);
+        return content;
+    }
+
+    /** Etiqueta de valoración: "8 h × 30 €" o "Precio cerrado". */
+    private String workLogValuationLabel(com.benjagest.ui.model.WorkLogEntry e) {
+        if (!e.billable()) return "—";
+        if ("FIXED".equals(e.billingUnit())) return t("trabajos.unit.FIXED");
+        if (e.quantity() != null && e.unitPrice() != null) {
+            return e.quantity().toPlainString() + " " + t("trabajos.unit." + e.billingUnit())
+                    + " × " + money(e.unitPrice().toPlainString());
+        }
+        return "";
+    }
+
+    /** True si la selección es no vacía, toda facturable, sin facturar y del mismo cliente. */
+    private boolean sameCustomerBillable(java.util.List<com.benjagest.ui.model.WorkLogEntry> sel) {
+        if (sel == null || sel.isEmpty()) return false;
+        String cust = null;
+        for (var w : sel) {
+            if (!w.billable() || w.billedInvoiceLineId() != null || "BILLED".equals(w.status())) return false;
+            if (w.customerId() == null) return false;
+            if (cust == null) cust = w.customerId();
+            else if (!cust.equals(w.customerId())) return false;
+        }
+        return true;
+    }
+
+    private void runWorkLogTask(WorkLogAction action, Runnable onDone) {
+        Task<Void> t = new Task<>() {
+            @Override protected Void call() throws Exception { action.run(); return null; }
+        };
+        t.setOnSucceeded(s -> onDone.run());
+        t.setOnFailed(s -> showError(t("trabajos.fail.title"),
+                t.getException() == null ? "" : humanizeBackendError(t.getException().getMessage())));
+        start(t, "worklog-action");
+    }
+
+    @FunctionalInterface
+    private interface WorkLogAction { void run() throws Exception; }
+
+    /** Alta/edición de un trabajo. */
+    private void showWorkLogForm(com.benjagest.ui.model.WorkLogEntry existing,
+                                 java.util.Map<String, String> empById,
+                                 java.util.LinkedHashMap<String, String> custIdByName,
+                                 Runnable onSaved) {
+        Stage dlg = new Stage();
+        dlg.setTitle(existing == null ? t("trabajos.form.add") : t("trabajos.form.edit"));
+        dlg.initModality(javafx.stage.Modality.APPLICATION_MODAL);
+
+        java.util.LinkedHashMap<String, String> empIdByName = new java.util.LinkedHashMap<>();
+        empById.forEach((id, name) -> empIdByName.put(name, id));
+        ComboBox<String> empCombo = new ComboBox<>(FXCollections.observableArrayList(empIdByName.keySet()));
+        ComboBox<String> custCombo = new ComboBox<>();
+        custCombo.getItems().add("");
+        custCombo.getItems().addAll(custIdByName.keySet());
+        custCombo.setValue("");
+        DatePicker dateP = new DatePicker(java.time.LocalDate.now());
+        com.benjagest.ui.support.EditableCells.installFlexibleConverter(dateP);
+        TextField desc = new TextField();
+        CheckBox billable = new CheckBox(t("trabajos.field.billable"));
+        ComboBox<String> unitCombo = new ComboBox<>(FXCollections.observableArrayList(
+                "HOURS", "DAYS", "MONTHS", "FIXED"));
+        unitCombo.setConverter(localizedConverter("trabajos.unit"));
+        unitCombo.setValue("HOURS");
+        TextField qty = new TextField(); qty.setPromptText("0");
+        TextField price = new TextField(); price.setPromptText("0,00");
+        TextField fixedAmount = new TextField(); fixedAmount.setPromptText("0,00");
+        Label qtyLbl = new Label(t("trabajos.field.quantity"));
+        Label priceLbl = new Label(t("trabajos.field.unit_price"));
+        Label fixedLbl = new Label(t("trabajos.field.fixed_amount"));
+
+        Runnable refreshUnitFields = () -> {
+            boolean fixed = "FIXED".equals(unitCombo.getValue());
+            boolean bill = billable.isSelected();
+            qtyLbl.setVisible(bill && !fixed); qty.setVisible(bill && !fixed);
+            priceLbl.setVisible(bill && !fixed); price.setVisible(bill && !fixed);
+            fixedLbl.setVisible(bill && fixed); fixedAmount.setVisible(bill && fixed);
+            unitCombo.setDisable(!bill);
+        };
+        unitCombo.valueProperty().addListener((o, a, b) -> refreshUnitFields.run());
+        billable.selectedProperty().addListener((o, a, b) -> refreshUnitFields.run());
+
+        if (existing != null) {
+            empCombo.setValue(empById.get(existing.employeeId()));
+            if (existing.customerName() != null) custCombo.setValue(existing.customerName());
+            if (existing.logDate() != null) dateP.setValue(java.time.LocalDate.parse(existing.logDate()));
+            desc.setText(existing.description());
+            billable.setSelected(existing.billable());
+            unitCombo.setValue(existing.billingUnit() == null ? "HOURS" : existing.billingUnit());
+            if (existing.quantity() != null) qty.setText(existing.quantity().toPlainString());
+            if (existing.unitPrice() != null) price.setText(existing.unitPrice().toPlainString());
+            if ("FIXED".equals(existing.billingUnit()) && existing.billableAmount() != null) {
+                fixedAmount.setText(existing.billableAmount().toPlainString());
+            }
+        } else {
+            billable.setSelected(true);
+        }
+        refreshUnitFields.run();
+
+        GridPane g = new GridPane();
+        g.setHgap(10); g.setVgap(8); g.setPadding(new javafx.geometry.Insets(12));
+        int r = 0;
+        g.add(new Label(t("trabajos.field.employee")), 0, r); g.add(empCombo, 1, r++);
+        g.add(new Label(t("trabajos.field.customer")), 0, r); g.add(custCombo, 1, r++);
+        g.add(new Label(t("trabajos.field.date")), 0, r); g.add(dateP, 1, r++);
+        g.add(new Label(t("trabajos.field.description")), 0, r); g.add(desc, 1, r++);
+        g.add(billable, 1, r++);
+        g.add(new Label(t("trabajos.field.unit")), 0, r); g.add(unitCombo, 1, r++);
+        g.add(qtyLbl, 0, r); g.add(qty, 1, r++);
+        g.add(priceLbl, 0, r); g.add(price, 1, r++);
+        g.add(fixedLbl, 0, r); g.add(fixedAmount, 1, r++);
+
+        Button save = new Button(t("dialog.save"));
+        save.setGraphic(icon("fas-check"));
+        save.getStyleClass().add("button-primary");
+        save.setOnAction(e -> {
+            String empId = empIdByName.get(empCombo.getValue());
+            if (empId == null) { showError(t("trabajos.fail.title"), t("trabajos.fail.employee")); return; }
+            boolean bill = billable.isSelected();
+            String custId = custIdByName.get(custCombo.getValue());
+            if (bill && custId == null) { showError(t("trabajos.fail.title"), t("trabajos.fail.customer")); return; }
+            String unit = bill ? unitCombo.getValue() : null;
+            java.math.BigDecimal q = bill && !"FIXED".equals(unit) ? parseDecSafe(qty.getText()) : null;
+            java.math.BigDecimal p = bill && !"FIXED".equals(unit) ? parseDecSafe(price.getText()) : null;
+            java.math.BigDecimal fixed = bill && "FIXED".equals(unit) ? parseDecSafe(fixedAmount.getText()) : null;
+            com.benjagest.ui.model.WorkLogEntry payload = new com.benjagest.ui.model.WorkLogEntry(
+                    existing == null ? null : existing.id(), empId, null,
+                    dateP.getValue().toString(), 0, custId, null,
+                    desc.getText(), bill, unit, q, p, fixed,
+                    existing == null ? "DRAFT" : existing.status(), null);
+            runWorkLogTask(() -> {
+                if (existing == null) altaApiClient.createWorkLog(payload);
+                else altaApiClient.updateWorkLog(existing.id(), payload);
+            }, () -> { dlg.close(); onSaved.run(); });
+        });
+        Button cancel = new Button(t("dialog.cancel"));
+        cancel.setOnAction(e -> dlg.close());
+        HBox btns = new HBox(10, cancel, save);
+        btns.setAlignment(Pos.CENTER_RIGHT);
+
+        VBox root = new VBox(10, g, btns);
+        root.setPadding(new javafx.geometry.Insets(8));
+        root.setPrefWidth(460);
+        Scene scene = new Scene(root);
+        scene.getStylesheets().add(getClass().getResource("/com/benjagest/ui/app.css").toExternalForm());
+        com.benjagest.ui.support.EditableCells.enableDateMaskOnFocus(scene);
+        dlg.setScene(scene);
+        dlg.showAndWait();
+    }
+
+    /**
+     * TRB-3 — Facturar los trabajos seleccionados (mismo cliente, facturables, sin
+     * facturar). Pregunta: una LÍNEA por trabajo o AGRUPAR en una (concepto editable
+     * + suma). Crea una factura BORRADOR del cliente y marca los trabajos BILLED.
+     */
+    private void showWorkLogBillingDialog(java.util.List<com.benjagest.ui.model.WorkLogEntry> sel,
+                                          Runnable onDone) {
+        if (!sameCustomerBillable(sel)) {
+            showError(t("trabajos.fail.title"), t("trabajos.bill.invalid_selection"));
+            return;
+        }
+        Stage dlg = new Stage();
+        dlg.setTitle(t("trabajos.bill.title"));
+        dlg.initModality(javafx.stage.Modality.APPLICATION_MODAL);
+
+        java.math.BigDecimal total = sel.stream()
+                .map(w -> w.billableAmount() == null ? java.math.BigDecimal.ZERO : w.billableAmount())
+                .reduce(java.math.BigDecimal.ZERO, java.math.BigDecimal::add);
+        Label info = new Label(t("trabajos.bill.summary")
+                .replace("{n}", String.valueOf(sel.size()))
+                .replace("{customer}", sel.get(0).customerName() == null ? "" : sel.get(0).customerName())
+                .replace("{total}", money(total.toPlainString())));
+        info.setWrapText(true);
+
+        javafx.scene.control.ToggleGroup mode = new javafx.scene.control.ToggleGroup();
+        javafx.scene.control.RadioButton perJob = new javafx.scene.control.RadioButton(t("trabajos.bill.per_job"));
+        perJob.setToggleGroup(mode); perJob.setSelected(true);
+        javafx.scene.control.RadioButton merge = new javafx.scene.control.RadioButton(t("trabajos.bill.merge"));
+        merge.setToggleGroup(mode);
+        TextField mergedConcept = new TextField(t("trabajos.bill.merged_default"));
+        mergedConcept.disableProperty().bind(merge.selectedProperty().not());
+
+        Button create = new Button(t("trabajos.bill.create"));
+        create.setGraphic(icon("fas-file-invoice-dollar"));
+        create.getStyleClass().add("button-primary");
+        create.setOnAction(e -> {
+            boolean mergeMode = merge.isSelected();
+            java.util.List<String> ids = sel.stream().map(com.benjagest.ui.model.WorkLogEntry::id).toList();
+            String concept = mergeMode ? mergedConcept.getText() : null;
+            runWorkLogTask(() -> altaApiClient.billWorkLogs(ids, mergeMode, concept),
+                    () -> {
+                        dlg.close();
+                        showInfo(t("trabajos.bill.ok.title"), t("trabajos.bill.ok.body"));
+                        com.benjagest.ui.support.RefreshBus.emit(com.benjagest.ui.support.RefreshBus.TOPIC_SALES);
+                        onDone.run();
+                    });
+        });
+        Button cancel = new Button(t("dialog.cancel"));
+        cancel.setOnAction(e -> dlg.close());
+        HBox btns = new HBox(10, cancel, create);
+        btns.setAlignment(Pos.CENTER_RIGHT);
+
+        VBox root = new VBox(12, info, new Separator(), perJob, merge, mergedConcept, btns);
+        root.setPadding(new javafx.geometry.Insets(16));
+        root.setPrefWidth(520);
+        Scene scene = new Scene(root);
+        scene.getStylesheets().add(getClass().getResource("/com/benjagest/ui/app.css").toExternalForm());
+        dlg.setScene(scene);
+        dlg.showAndWait();
     }
 
     // ===== JOR-1: jornadas reales calculadas desde los fichajes =====

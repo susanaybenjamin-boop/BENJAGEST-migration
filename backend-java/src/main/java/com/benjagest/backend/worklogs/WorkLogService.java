@@ -33,13 +33,16 @@ public class WorkLogService {
     private final JdbcTemplate jdbcTemplate;
     private final CurrentUserService currentUserService;
     private final TenantContext tenantContext;
+    private final com.benjagest.backend.billing.invoices.SalesInvoiceService salesInvoiceService;
 
     public WorkLogService(JdbcTemplate jdbcTemplate,
                            CurrentUserService currentUserService,
-                           TenantContext tenantContext) {
+                           TenantContext tenantContext,
+                           com.benjagest.backend.billing.invoices.SalesInvoiceService salesInvoiceService) {
         this.jdbcTemplate = jdbcTemplate;
         this.currentUserService = currentUserService;
         this.tenantContext = tenantContext;
+        this.salesInvoiceService = salesInvoiceService;
     }
 
     private static final String SELECT = """
@@ -176,6 +179,64 @@ public class WorkLogService {
         jdbcTemplate.update("UPDATE work_logs SET status = ? WHERE id = ? AND company_id = ?",
                 status, id, tenantContext.getCurrentCompanyId());
         return findById(id);
+    }
+
+    /**
+     * TRB-3 — Factura los trabajos seleccionados (mismo cliente, facturables, sin
+     * facturar). {@code merge}=true agrupa todo en UNA línea con {@code mergedConcept}
+     * y la suma; si no, una línea por trabajo. Crea una factura BORRADOR del cliente
+     * (IVA 21% por defecto, editable en el borrador) y marca los trabajos BILLED.
+     * Devuelve el id de la factura creada.
+     */
+    @Transactional
+    public String billSelected(List<String> ids, boolean merge, String mergedConcept) {
+        if (ids == null || ids.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Selecciona al menos un trabajo");
+        }
+        List<WorkLog> works = new ArrayList<>();
+        String customerId = null;
+        for (String id : ids) {
+            WorkLog w = findById(id);
+            if (!w.billable() || "BILLED".equals(w.status()) || w.billedInvoiceLineId() != null) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT,
+                        "Hay trabajos no facturables o ya facturados en la selección.");
+            }
+            if (w.customerId() == null) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT, "Un trabajo no tiene cliente.");
+            }
+            if (customerId == null) customerId = w.customerId();
+            else if (!customerId.equals(w.customerId())) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT,
+                        "Los trabajos deben ser del mismo cliente para facturarse juntos.");
+            }
+            works.add(w);
+        }
+        BigDecimal vat = new BigDecimal("21");
+        List<com.benjagest.backend.billing.invoices.InvoiceLineInput> lines = new ArrayList<>();
+        if (merge) {
+            BigDecimal sum = works.stream()
+                    .map(w -> w.billableAmount() == null ? BigDecimal.ZERO : w.billableAmount())
+                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+            String concept = (mergedConcept == null || mergedConcept.isBlank()) ? "Trabajos" : mergedConcept.trim();
+            lines.add(new com.benjagest.backend.billing.invoices.InvoiceLineInput(
+                    concept, null, BigDecimal.ONE, sum, vat, BigDecimal.ZERO));
+        } else {
+            for (WorkLog w : works) {
+                String d = (w.description() == null || w.description().isBlank()) ? "Trabajo" : w.description();
+                BigDecimal amt = w.billableAmount() == null ? BigDecimal.ZERO : w.billableAmount();
+                lines.add(new com.benjagest.backend.billing.invoices.InvoiceLineInput(
+                        d, null, BigDecimal.ONE, amt, vat, BigDecimal.ZERO));
+            }
+        }
+        var req = new com.benjagest.backend.billing.invoices.InvoiceUpsertRequest(
+                customerId, null, "NORMAL", LocalDate.now(), null, null, null, null, lines);
+        var invoice = salesInvoiceService.createDraft(req);
+        for (WorkLog w : works) {
+            jdbcTemplate.update(
+                    "UPDATE work_logs SET status = 'BILLED', invoice_id = ? WHERE id = ? AND company_id = ?",
+                    invoice.id(), w.id(), tenantContext.getCurrentCompanyId());
+        }
+        return invoice.id();
     }
 
     WorkLog findById(String id) {

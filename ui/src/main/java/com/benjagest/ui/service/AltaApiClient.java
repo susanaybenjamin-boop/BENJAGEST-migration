@@ -1803,6 +1803,28 @@ public class AltaApiClient {
         }
     }
 
+    /** TRB-3 — factura los trabajos seleccionados; devuelve el id de la factura creada. */
+    public String billWorkLogs(java.util.List<String> ids, boolean merge, String mergedConcept)
+            throws IOException, InterruptedException {
+        StringBuilder b = new StringBuilder("{\"merge\":").append(merge);
+        if (mergedConcept != null && !mergedConcept.isBlank()) {
+            b.append(",\"mergedConcept\":").append(jsonString(mergedConcept));
+        }
+        b.append(",\"ids\":[");
+        for (int i = 0; i < ids.size(); i++) {
+            if (i > 0) b.append(',');
+            b.append(jsonString(ids.get(i)));
+        }
+        b.append("]}");
+        HttpResponse<String> r = send(req(baseUrl + "/work-logs/bill")
+                .header("Content-Type", "application/json")
+                .POST(java.net.http.HttpRequest.BodyPublishers.ofString(b.toString())));
+        if (r.statusCode() < 200 || r.statusCode() >= 300) {
+            throw new IOException("HTTP " + r.statusCode() + ": " + r.body());
+        }
+        return textField(r.body(), "invoiceId");
+    }
+
     public void setWorkLogStatus(String id, String status) throws IOException, InterruptedException {
         HttpResponse<String> r = send(req(baseUrl + "/work-logs/" + id + "/status?status=" + status)
                 .POST(java.net.http.HttpRequest.BodyPublishers.noBody()));
