@@ -34,6 +34,27 @@
 
 ---
 
+## 🔗 BLOQUE REFLEJO — factura emitida ⇒ gasto+asiento por validar en el cliente (decidido 2026-06-23)
+
+> Diseño completo en [`design-reflejo-factura-cliente.md`](design-reflejo-factura-cliente.md).
+> Cuando una factura **emitida** en la cartera tiene como cliente a otra empresa de la
+> cartera (match por NIF), se refleja en sus libros como **factura recibida (gasto) +
+> asiento, por validar** (misma tabla `purchase_invoices` que el import por PDF). El
+> asesor/empresario **solo valida**. Decisiones cerradas: cuenta **623**, estado **por
+> validar**, **pago al marcar cobrada**, alcance **gasto para cualquier par de la cartera**
+> (fabricar la emitida del otro lado queda fuera, muro TPB/SIF).
+
+- ✅ **REFLEJO-1 — Esquema** (V141): `purchase_invoices.source_sales_invoice_id` +
+  `source_company_id` + UNIQUE idempotente. *(aplica en el próximo arranque del backend)*.
+- ⏳ **REFLEJO-2** — `CrossInvoiceReflectionService` + hook en `SalesInvoiceService.validate()`
+  (best-effort, nunca rompe la validación/SIF). Crea gasto DRAFT + asiento 623/472/400 DRAFT.
+- ⏳ **REFLEJO-3** — cascada anulación/rectificación (revertir / contrasiento si validado).
+- ⏳ **REFLEJO-4** — reflejo del pago (400/572 por validar) al marcar la emitida cobrada.
+- ⏳ **REFLEJO-5** — avisos: bucket `DRAFT_PURCHASES` en `PendingTasksService` + i18n.
+- ⏳ **REFLEJO-6** — visibilidad UI (origen/destino del reflejo) + interruptor on/off.
+
+---
+
 ## 📅 SESIÓN 2026-06-22 — Autónoma (Benjamin trabajando). Cobro parcial + informes PDF + limpieza
 
 > Benjamin se fue a trabajar y dejó: "completa todo lo que no necesites que yo esté
