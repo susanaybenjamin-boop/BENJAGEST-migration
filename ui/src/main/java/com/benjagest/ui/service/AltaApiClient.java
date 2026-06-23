@@ -1825,6 +1825,23 @@ public class AltaApiClient {
         return textField(r.body(), "invoiceId");
     }
 
+    /** Marca trabajos como FACTURADOS enlazados a una factura ya creada (editor). */
+    public void markWorksBilled(java.util.List<String> ids, String invoiceId)
+            throws IOException, InterruptedException {
+        StringBuilder b = new StringBuilder("{\"invoiceId\":").append(jsonString(invoiceId)).append(",\"ids\":[");
+        for (int i = 0; i < ids.size(); i++) {
+            if (i > 0) b.append(',');
+            b.append(jsonString(ids.get(i)));
+        }
+        b.append("]}");
+        HttpResponse<String> r = send(req(baseUrl + "/work-logs/mark-billed")
+                .header("Content-Type", "application/json")
+                .POST(java.net.http.HttpRequest.BodyPublishers.ofString(b.toString())));
+        if (r.statusCode() < 200 || r.statusCode() >= 300) {
+            throw new IOException("HTTP " + r.statusCode() + ": " + r.body());
+        }
+    }
+
     public void setWorkLogStatus(String id, String status) throws IOException, InterruptedException {
         HttpResponse<String> r = send(req(baseUrl + "/work-logs/" + id + "/status?status=" + status)
                 .POST(java.net.http.HttpRequest.BodyPublishers.noBody()));
