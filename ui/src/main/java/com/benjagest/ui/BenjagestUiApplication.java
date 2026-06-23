@@ -37259,7 +37259,8 @@ public class BenjagestUiApplication extends Application {
 
         table.getSelectionModel().selectedItemProperty().addListener((o, ov, nv) -> {
             boolean one = nv != null;
-            boolean editable = one && !"BILLED".equals(nv.status()) && nv.billedInvoiceLineId() == null;
+            boolean editable = one && !"BILLED".equals(nv.status())
+                    && (nv.billedInvoiceLineId() == null || nv.billedInvoiceLineId().isBlank());
             editBtn.setDisable(!editable);
             delBtn.setDisable(!editable);
             approveBtn.setDisable(!one || "BILLED".equals(nv.status()));
@@ -37300,8 +37301,11 @@ public class BenjagestUiApplication extends Application {
         if (sel == null || sel.isEmpty()) return false;
         String cust = null;
         for (var w : sel) {
-            if (!w.billable() || w.billedInvoiceLineId() != null || "BILLED".equals(w.status())) return false;
-            if (w.customerId() == null) return false;
+            // OJO: el parser devuelve "" (no null) para campos null. Por eso se
+            // comprueba isBlank, no != null (bug: el boton Facturar no se activaba).
+            boolean billed = w.billedInvoiceLineId() != null && !w.billedInvoiceLineId().isBlank();
+            if (!w.billable() || billed || "BILLED".equals(w.status())) return false;
+            if (w.customerId() == null || w.customerId().isBlank()) return false;
             if (cust == null) cust = w.customerId();
             else if (!cust.equals(w.customerId())) return false;
         }
