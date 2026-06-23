@@ -37312,7 +37312,9 @@ public class BenjagestUiApplication extends Application {
         custCombo.setValue("");
         DatePicker dateP = new DatePicker(java.time.LocalDate.now());
         com.benjagest.ui.support.EditableCells.installFlexibleConverter(dateP);
-        TextField desc = new TextField();
+        TextArea desc = new TextArea();
+        desc.setWrapText(true);
+        desc.setPrefRowCount(4);
         CheckBox billable = new CheckBox(t("trabajos.field.billable"));
         ComboBox<String> unitCombo = new ComboBox<>(FXCollections.observableArrayList(
                 "HOURS", "DAYS", "MONTHS", "FIXED"));
@@ -37356,6 +37358,14 @@ public class BenjagestUiApplication extends Application {
 
         GridPane g = new GridPane();
         g.setHgap(10); g.setVgap(8); g.setPadding(new javafx.geometry.Insets(12));
+        // La columna de inputs crece para que la descripción (y los combos) sean anchos.
+        javafx.scene.layout.ColumnConstraints c0 = new javafx.scene.layout.ColumnConstraints();
+        javafx.scene.layout.ColumnConstraints c1 = new javafx.scene.layout.ColumnConstraints();
+        c1.setHgrow(Priority.ALWAYS); c1.setFillWidth(true);
+        g.getColumnConstraints().addAll(c0, c1);
+        empCombo.setMaxWidth(Double.MAX_VALUE);
+        custCombo.setMaxWidth(Double.MAX_VALUE);
+        unitCombo.setMaxWidth(Double.MAX_VALUE);
         int r = 0;
         g.add(new Label(t("trabajos.field.employee")), 0, r); g.add(empCombo, 1, r++);
         g.add(new Label(t("trabajos.field.customer")), 0, r); g.add(custCombo, 1, r++);
@@ -37397,11 +37407,12 @@ public class BenjagestUiApplication extends Application {
 
         VBox root = new VBox(10, g, btns);
         root.setPadding(new javafx.geometry.Insets(8));
-        root.setPrefWidth(460);
+        root.setPrefSize(640, 520);
         Scene scene = new Scene(root);
         scene.getStylesheets().add(getClass().getResource("/com/benjagest/ui/app.css").toExternalForm());
         com.benjagest.ui.support.EditableCells.enableDateMaskOnFocus(scene);
         dlg.setScene(scene);
+        dlg.setResizable(true);
         dlg.showAndWait();
     }
 
