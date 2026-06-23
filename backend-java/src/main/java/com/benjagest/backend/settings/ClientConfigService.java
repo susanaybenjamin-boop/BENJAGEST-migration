@@ -87,22 +87,26 @@ public class ClientConfigService {
         String companyId = tenant.getCurrentCompanyId();
         // legal_form (RETA-4) y provision_extra_pay (V126) viven en companies; el
         // resto en client_advisory_config.
-        Object[] comp = jdbc.query("SELECT legal_form, provision_extra_pay FROM companies WHERE id = ?",
-                rs -> rs.next() ? new Object[]{ rs.getString("legal_form"), rs.getBoolean("provision_extra_pay") }
+        Object[] comp = jdbc.query(
+                "SELECT legal_form, provision_extra_pay, reflejo_auto_enabled FROM companies WHERE id = ?",
+                rs -> rs.next() ? new Object[]{ rs.getString("legal_form"),
+                        rs.getBoolean("provision_extra_pay"), rs.getBoolean("reflejo_auto_enabled") }
                         : null, companyId);
         String legalForm = comp == null ? null : (String) comp[0];
         boolean provisionExtraPay = comp == null || (Boolean) comp[1];
+        boolean reflejoAutoEnabled = comp == null || (Boolean) comp[2];
         AdvisoryConfig base = jdbc.query("""
                 SELECT fiscal_period, tax_regime, contact_channel, contact_value, internal_notes
                   FROM client_advisory_config WHERE company_id = ?
                 """, rs -> rs.next()
                         ? new AdvisoryConfig(rs.getString("fiscal_period"), rs.getString("tax_regime"),
                                 rs.getString("contact_channel"), rs.getString("contact_value"),
-                                rs.getString("internal_notes"), null, true)
-                        : new AdvisoryConfig(null, null, null, null, null, null, true),
+                                rs.getString("internal_notes"), null, true, true)
+                        : new AdvisoryConfig(null, null, null, null, null, null, true, true),
                 companyId);
         return new AdvisoryConfig(base.fiscalPeriod(), base.taxRegime(), base.contactChannel(),
-                base.contactValue(), base.internalNotes(), legalForm, provisionExtraPay);
+                base.contactValue(), base.internalNotes(), legalForm, provisionExtraPay,
+                reflejoAutoEnabled);
     }
 
     @org.springframework.transaction.annotation.Transactional
@@ -119,9 +123,9 @@ public class ClientConfigService {
                 """,
                 companyId, blank(c.fiscalPeriod()), blank(c.taxRegime()),
                 blank(c.contactChannel()), blank(c.contactValue()), blank(c.internalNotes()));
-        // RETA-4: forma jurídica + V126: política de provisión de pagas extra (companies).
-        jdbc.update("UPDATE companies SET legal_form = ?, provision_extra_pay = ? WHERE id = ?",
-                blank(c.legalForm()), c.provisionExtraPay(), companyId);
+        // RETA-4: forma jurídica + V126: provisión pagas extra + V142: interruptor reflejo (companies).
+        jdbc.update("UPDATE companies SET legal_form = ?, provision_extra_pay = ?, reflejo_auto_enabled = ? WHERE id = ?",
+                blank(c.legalForm()), c.provisionExtraPay(), c.reflejoAutoEnabled(), companyId);
         return getConfig();
     }
 
@@ -139,7 +143,7 @@ public class ClientConfigService {
 
     public record AdvisoryConfig(String fiscalPeriod, String taxRegime,
             String contactChannel, String contactValue, String internalNotes, String legalForm,
-            boolean provisionExtraPay) {}
+            boolean provisionExtraPay, boolean reflejoAutoEnabled) {}
 
     @RestController
     @RequestMapping("/api/client-config")
