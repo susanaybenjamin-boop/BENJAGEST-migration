@@ -56,17 +56,22 @@
   en `SalesInvoiceService.validate()` (best-effort, nunca rompe validación/SIF). Crea gasto
   DRAFT + asiento 623/472/(4751)/400 DRAFT. **Verificado en vivo**: F-2026-0104 reflejada en
   Marcos Construcciones, asiento cuadrado (2420=2420).
-- ⏳ **REFLEJO-3** — cascada anulación/rectificación (revertir / contrasiento si validado).
-  Pendiente: también revertir el pago reflejado al hacer `unpay` de un vencimiento.
-- ✅ **REFLEJO-4 — Reflejo del pago** *(fbf80d6)* — al cobrar la emitida, asiento del pago
-  `400 / 572·570` POR VALIDAR en el cliente. Enganchado en los 3 cobros de VENTA
-  (multi-allocation, vencimiento manual, conciliación bancaria), best-effort, idempotente
-  por `REFLECTED_PAYMENT`+source. i18n ES+EN. *(pendiente de prueba de Benjamin)*.
-- ⏳ **REFLEJO-5** — avisos: bucket `DRAFT_PURCHASES` en `PendingTasksService` + i18n.
-- ⏳ **REFLEJO-6** — visibilidad UI (origen/destino del reflejo) + interruptor on/off.
+- ✅ **REFLEJO-3 — Cascada de reversión** *(776a88d)* — anular la emitida revierte el gasto
+  reflejado (borra DRAFT / contrasiento si POSTED); deshacer un cobro/pago (`unpay`) revierte
+  el pago/cobro reflejado. Helper `revertEntryBySource`.
+- ✅ **REFLEJO-4 — Reflejo del pago/cobro (bidireccional)** *(fbf80d6 + b04f585)* — al cobrar
+  la emitida → pago `400/572·570` por validar en el cliente (4a); al pagar el gasto reflejado
+  → cobro `572·570/430` por validar en el emisor + factura marcada cobrada (4b). Enganchado en
+  los 3 cobros (multi-allocation, vencimiento, conciliación), best-effort, idempotente.
+- ✅ **REFLEJO-5 — Avisos** *(776a88d)* — bucket `DRAFT_PURCHASES` (facturas recibidas por
+  validar) en los dos modos + i18n + navegación. El de asientos ya lo captaba `DRAFT_JOURNAL`.
+- ✅ **REFLEJO-6 — Interruptor on/off** *(d11e401)* — flag `companies.reflejo_auto_enabled`
+  (V142, default sí) con checkbox por empresa en su configuración; el servicio respeta el flag
+  de la empresa que recibe. Visibilidad vía concepto "Fra. X - emisor" + tipos "Pago/Cobro
+  reflejado" + avisos por validar.
 
-> Aparte (mismo día): **fix ruido SSE** *(a34df54)* — el heartbeat cierra el emisor caído
-> en vez de soltarlo; Tomcat deja de loguear "broken pipe" en cada latido.
+> **Bloque REFLEJO COMPLETO (1-6).** Aparte (mismo día): **fix ruido SSE** *(a34df54)* — el
+> heartbeat cierra el emisor caído en vez de soltarlo; Tomcat deja de loguear "broken pipe".
 
 ---
 
