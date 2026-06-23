@@ -271,7 +271,14 @@ public class PaymentScheduleService {
                        bank_movement_id = NULL
                  WHERE id = ? AND company_id = ?
                 """, dueDateId, companyId);
-        if ("SALES".equals(dd.invoiceKind())) syncSalesPaymentStatus(dd.invoiceId());
+        if ("SALES".equals(dd.invoiceKind())) {
+            syncSalesPaymentStatus(dd.invoiceId());
+            // REFLEJO-3b: deshacer el cobro de VENTA revierte el PAGO reflejado en el cliente.
+            reflectionService.reflectUnpayPayment(dd.invoiceId(), dueDateId, safeUserId());
+        } else if ("PURCHASE".equals(dd.invoiceKind())) {
+            // REFLEJO-3b: deshacer el pago de un gasto reflejado revierte el COBRO en el emisor.
+            reflectionService.reflectUnpayCollection(dd.invoiceId(), dd.amount(), dueDateId, safeUserId());
+        }
         return getOne(dueDateId);
     }
 
