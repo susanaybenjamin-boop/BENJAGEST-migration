@@ -15888,6 +15888,20 @@ public class BenjagestUiApplication extends Application {
             case "worklog_status.DRAFT" -> "Draft";
             case "worklog_status.APPROVED" -> "Approved";
             case "worklog_status.BILLED" -> "Invoiced";
+            case "trabajos.action.rates" -> "Rates";
+            case "trabajos.field.rate" -> "Rate:";
+            case "trabajos.rates.title" -> "Work rates";
+            case "trabajos.rates.general" -> "General (default)";
+            case "trabajos.rates.scope" -> "Scope:";
+            case "trabajos.rates.hint" -> "Define prices per customer (and general defaults). They auto-fill the price when creating a job. A customer can have several (different hourly rates, fixed-price services…).";
+            case "trabajos.rates.empty" -> "No rates in this scope.";
+            case "trabajos.rates.price" -> "Price (€)";
+            case "trabajos.rates.concept" -> "Concept:";
+            case "trabajos.rates.add" -> "New rate";
+            case "trabajos.rates.edit" -> "Edit rate";
+            case "trabajos.rates.fail" -> "Could not save the rate";
+            case "trabajos.rates.fail_concept" -> "Enter a concept.";
+            case "trabajos.rates.fail_price" -> "Enter a valid price.";
             case "labor.schedule.hint" -> "Work-schedule templates: one template = several time blocks per weekday, assignable to several employees with an effective date.";
             case "labor.schedule.empty" -> "No templates yet.";
             case "labor.schedule.col.name" -> "Name";
@@ -16162,6 +16176,20 @@ public class BenjagestUiApplication extends Application {
             case "worklog_status.DRAFT" -> "Borrador";
             case "worklog_status.APPROVED" -> "Aprobado";
             case "worklog_status.BILLED" -> "Facturado";
+            case "trabajos.action.rates" -> "Tarifas";
+            case "trabajos.field.rate" -> "Tarifa:";
+            case "trabajos.rates.title" -> "Tarifas de trabajo";
+            case "trabajos.rates.general" -> "General (por defecto)";
+            case "trabajos.rates.scope" -> "Ámbito:";
+            case "trabajos.rates.hint" -> "Define precios por cliente (y tarifas generales por defecto). Autorrellenan el precio al crear un trabajo. Un cliente puede tener varias (distintos precios/hora, servicios cerrados…).";
+            case "trabajos.rates.empty" -> "No hay tarifas en este ámbito.";
+            case "trabajos.rates.price" -> "Precio (€)";
+            case "trabajos.rates.concept" -> "Concepto:";
+            case "trabajos.rates.add" -> "Nueva tarifa";
+            case "trabajos.rates.edit" -> "Editar tarifa";
+            case "trabajos.rates.fail" -> "No se pudo guardar la tarifa";
+            case "trabajos.rates.fail_concept" -> "Introduce un concepto.";
+            case "trabajos.rates.fail_price" -> "Introduce un precio válido.";
             case "labor.schedule.hint" -> "Plantillas de horario: 1 plantilla = varios bloques horarios por día de la semana, asignable a varios empleados con fecha de efecto.";
             case "labor.schedule.empty" -> "Aún no hay plantillas.";
             case "labor.schedule.col.name" -> "Nombre";
@@ -37074,9 +37102,12 @@ public class BenjagestUiApplication extends Application {
         StackPane moduleIcon = iconBubble("fas-briefcase", "module-title-icon");
         Region hsp = new Region();
         HBox.setHgrow(hsp, Priority.ALWAYS);
+        Button ratesBtn = new Button(t("trabajos.action.rates"));
+        ratesBtn.setGraphic(icon("fas-tags"));
+        ratesBtn.getStyleClass().add("button-secondary");
         Button newBtn = new Button(t("trabajos.action.new"));
         newBtn.setGraphic(icon("fas-plus"));
-        HBox header = new HBox(16, titleBox, moduleIcon, hsp, newBtn);
+        HBox header = new HBox(16, titleBox, moduleIcon, hsp, ratesBtn, newBtn);
         header.setAlignment(Pos.CENTER_LEFT);
         header.getStyleClass().add("module-detail-header");
 
@@ -37187,6 +37218,7 @@ public class BenjagestUiApplication extends Application {
         start(meta, "worklogs-meta");
 
         newBtn.setOnAction(e -> showWorkLogForm(null, empById, custIdByName, reload));
+        ratesBtn.setOnAction(e -> showWorkRatesManager(custIdByName));
 
         Button editBtn = new Button(t("trabajos.action.edit"));
         editBtn.setGraphic(icon("fas-edit"));
@@ -37326,6 +37358,19 @@ public class BenjagestUiApplication extends Application {
         Label qtyLbl = new Label(t("trabajos.field.quantity"));
         Label priceLbl = new Label(t("trabajos.field.unit_price"));
         Label fixedLbl = new Label(t("trabajos.field.fixed_amount"));
+        // TRB-4 — Tarifa: desplegable con las tarifas del cliente (+ generales) para
+        // la unidad elegida; al elegir una, autorrellena el precio (y el concepto/
+        // importe si es cerrado).
+        Label rateLbl = new Label(t("trabajos.field.rate"));
+        ComboBox<com.benjagest.ui.model.WorkRateEntry> rateCombo = new ComboBox<>();
+        rateCombo.setMaxWidth(Double.MAX_VALUE);
+        rateCombo.setConverter(new javafx.util.StringConverter<>() {
+            @Override public String toString(com.benjagest.ui.model.WorkRateEntry rt) {
+                return rt == null ? "" : rt.concept() + "  ·  " + money(rt.price().toPlainString());
+            }
+            @Override public com.benjagest.ui.model.WorkRateEntry fromString(String s) { return null; }
+        });
+        final java.util.List<com.benjagest.ui.model.WorkRateEntry> rateCache = new java.util.ArrayList<>();
 
         Runnable refreshUnitFields = () -> {
             boolean fixed = "FIXED".equals(unitCombo.getValue());
@@ -37356,6 +37401,40 @@ public class BenjagestUiApplication extends Application {
         }
         refreshUnitFields.run();
 
+        // TRB-4 — carga de tarifas del cliente (+ generales) y autorrelleno.
+        Runnable refreshRateCombo = () -> {
+            String u = unitCombo.getValue();
+            java.util.List<com.benjagest.ui.model.WorkRateEntry> matching = rateCache.stream()
+                    .filter(rt -> u != null && u.equals(rt.unit())).toList();
+            rateCombo.setItems(FXCollections.observableArrayList(matching));
+            boolean show = billable.isSelected() && !matching.isEmpty();
+            rateLbl.setVisible(show); rateCombo.setVisible(show);
+        };
+        Runnable loadRates = () -> {
+            String cust = custIdByName.get(custCombo.getValue());
+            Task<java.util.List<com.benjagest.ui.model.WorkRateEntry>> tk = new Task<>() {
+                @Override protected java.util.List<com.benjagest.ui.model.WorkRateEntry> call() throws Exception {
+                    return altaApiClient.listWorkRates(cust, true);
+                }
+            };
+            tk.setOnSucceeded(ev -> { rateCache.clear(); rateCache.addAll(tk.getValue()); refreshRateCombo.run(); });
+            tk.setOnFailed(ev -> { rateCache.clear(); refreshRateCombo.run(); });
+            start(tk, "form-rates");
+        };
+        custCombo.valueProperty().addListener((o, a, b) -> loadRates.run());
+        unitCombo.valueProperty().addListener((o, a, b) -> refreshRateCombo.run());
+        billable.selectedProperty().addListener((o, a, b) -> refreshRateCombo.run());
+        rateCombo.valueProperty().addListener((o, ov, rt) -> {
+            if (rt == null) return;
+            if ("FIXED".equals(rt.unit())) {
+                fixedAmount.setText(rt.price().toPlainString());
+                if (desc.getText() == null || desc.getText().isBlank()) desc.setText(rt.concept());
+            } else {
+                price.setText(rt.price().toPlainString());
+            }
+        });
+        loadRates.run();
+
         GridPane g = new GridPane();
         g.setHgap(10); g.setVgap(8); g.setPadding(new javafx.geometry.Insets(12));
         // La columna de inputs crece para que la descripción (y los combos) sean anchos.
@@ -37373,6 +37452,7 @@ public class BenjagestUiApplication extends Application {
         g.add(new Label(t("trabajos.field.description")), 0, r); g.add(desc, 1, r++);
         g.add(billable, 1, r++);
         g.add(new Label(t("trabajos.field.unit")), 0, r); g.add(unitCombo, 1, r++);
+        g.add(rateLbl, 0, r); g.add(rateCombo, 1, r++);
         g.add(qtyLbl, 0, r); g.add(qty, 1, r++);
         g.add(priceLbl, 0, r); g.add(price, 1, r++);
         g.add(fixedLbl, 0, r); g.add(fixedAmount, 1, r++);
@@ -37471,6 +37551,138 @@ public class BenjagestUiApplication extends Application {
         VBox root = new VBox(12, info, new Separator(), perJob, merge, mergedConcept, btns);
         root.setPadding(new javafx.geometry.Insets(16));
         root.setPrefWidth(520);
+        Scene scene = new Scene(root);
+        scene.getStylesheets().add(getClass().getResource("/com/benjagest/ui/app.css").toExternalForm());
+        dlg.setScene(scene);
+        dlg.showAndWait();
+    }
+
+    /** TRB-4 — Gestor de tarifas: elige ámbito (General o un cliente) y gestiona sus tarifas. */
+    private void showWorkRatesManager(java.util.LinkedHashMap<String, String> custIdByName) {
+        Stage dlg = new Stage();
+        dlg.setTitle(t("trabajos.rates.title"));
+        dlg.initModality(javafx.stage.Modality.APPLICATION_MODAL);
+
+        final String generalLabel = t("trabajos.rates.general");
+        ComboBox<String> scope = new ComboBox<>();
+        scope.getItems().add(generalLabel);
+        scope.getItems().addAll(custIdByName.keySet());
+        scope.setValue(generalLabel);
+        java.util.function.Supplier<String> scopeCustomerId = () ->
+                generalLabel.equals(scope.getValue()) ? null : custIdByName.get(scope.getValue());
+
+        TableView<com.benjagest.ui.model.WorkRateEntry> table = new TableView<>();
+        table.getStyleClass().add("data-table");
+        table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+        table.setPlaceholder(new Label(t("trabajos.rates.empty")));
+        VBox.setVgrow(table, Priority.ALWAYS);
+        TableColumn<com.benjagest.ui.model.WorkRateEntry, String> rUnit = new TableColumn<>(t("trabajos.field.unit"));
+        rUnit.setCellValueFactory(c -> new SimpleStringProperty(t("trabajos.unit." + c.getValue().unit())));
+        rUnit.setPrefWidth(120);
+        TableColumn<com.benjagest.ui.model.WorkRateEntry, String> rConcept = new TableColumn<>(t("trabajos.col.description"));
+        rConcept.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().concept()));
+        TableColumn<com.benjagest.ui.model.WorkRateEntry, String> rPrice = new TableColumn<>(t("trabajos.rates.price"));
+        rPrice.setCellValueFactory(c -> new SimpleStringProperty(
+                c.getValue().price() == null ? "" : money(c.getValue().price().toPlainString())));
+        rPrice.setPrefWidth(110);
+        table.getColumns().addAll(java.util.List.of(rUnit, rConcept, rPrice));
+
+        Runnable reload = () -> {
+            String cust = scopeCustomerId.get();
+            Task<java.util.List<com.benjagest.ui.model.WorkRateEntry>> tk = new Task<>() {
+                @Override protected java.util.List<com.benjagest.ui.model.WorkRateEntry> call() throws Exception {
+                    return altaApiClient.listWorkRates(cust, false);
+                }
+            };
+            tk.setOnSucceeded(ev -> table.setItems(FXCollections.observableArrayList(tk.getValue())));
+            tk.setOnFailed(ev -> showError(t("trabajos.rates.fail"),
+                    tk.getException() == null ? "" : humanizeBackendError(tk.getException().getMessage())));
+            start(tk, "rates-load");
+        };
+        scope.valueProperty().addListener((o, a, b) -> reload.run());
+        reload.run();
+
+        Button add = new Button(t("trabajos.action.new"));
+        add.setGraphic(icon("fas-plus"));
+        add.getStyleClass().add("button-primary");
+        add.setOnAction(e -> showWorkRateForm(null, scopeCustomerId.get(), reload));
+        Button edit = new Button(t("trabajos.action.edit"));
+        edit.setGraphic(icon("fas-edit"));
+        edit.setDisable(true);
+        edit.setOnAction(e -> {
+            var s = table.getSelectionModel().getSelectedItem();
+            if (s != null) showWorkRateForm(s, scopeCustomerId.get(), reload);
+        });
+        Button del = new Button(t("trabajos.action.delete"));
+        del.setGraphic(icon("fas-trash"));
+        del.setDisable(true);
+        del.setOnAction(e -> {
+            var s = table.getSelectionModel().getSelectedItem();
+            if (s != null) runWorkLogTask(() -> altaApiClient.deleteWorkRate(s.id()), reload);
+        });
+        table.getSelectionModel().selectedItemProperty().addListener((o, a, b) -> {
+            edit.setDisable(b == null); del.setDisable(b == null);
+        });
+        Button close = new Button(t("dialog.close"));
+        close.setOnAction(e -> dlg.close());
+
+        javafx.scene.layout.FlowPane actions = actionFlow(add, edit, del);
+        Region sp = new Region(); HBox.setHgrow(sp, Priority.ALWAYS);
+        HBox top = new HBox(8, new Label(t("trabajos.rates.scope")), scope, sp, close);
+        top.setAlignment(Pos.CENTER_LEFT);
+        Label hint = new Label(t("trabajos.rates.hint"));
+        hint.setWrapText(true); hint.getStyleClass().add("settings-hint");
+
+        VBox root = new VBox(12, top, hint, actions, table);
+        root.setPadding(new javafx.geometry.Insets(16));
+        root.setPrefSize(620, 480);
+        Scene scene = new Scene(root);
+        scene.getStylesheets().add(getClass().getResource("/com/benjagest/ui/app.css").toExternalForm());
+        dlg.setScene(scene);
+        dlg.showAndWait();
+    }
+
+    /** Alta/edición de una tarifa de un ámbito (cliente o general). */
+    private void showWorkRateForm(com.benjagest.ui.model.WorkRateEntry existing,
+                                  String customerId, Runnable onSaved) {
+        Stage dlg = new Stage();
+        dlg.setTitle(existing == null ? t("trabajos.rates.add") : t("trabajos.rates.edit"));
+        dlg.initModality(javafx.stage.Modality.APPLICATION_MODAL);
+
+        ComboBox<String> unit = new ComboBox<>(FXCollections.observableArrayList("HOURS", "DAYS", "MONTHS", "FIXED"));
+        unit.setConverter(localizedConverter("trabajos.unit"));
+        unit.setValue(existing == null ? "HOURS" : existing.unit());
+        TextField concept = new TextField(existing == null ? "" : existing.concept());
+        TextField price = new TextField(existing == null || existing.price() == null ? "" : existing.price().toPlainString());
+        price.setPromptText("0,00");
+
+        GridPane g = new GridPane();
+        g.setHgap(10); g.setVgap(8); g.setPadding(new javafx.geometry.Insets(12));
+        g.add(new Label(t("trabajos.field.unit")), 0, 0); g.add(unit, 1, 0);
+        g.add(new Label(t("trabajos.rates.concept")), 0, 1); g.add(concept, 1, 1);
+        g.add(new Label(t("trabajos.rates.price")), 0, 2); g.add(price, 1, 2);
+
+        Button save = new Button(t("dialog.save"));
+        save.setGraphic(icon("fas-check")); save.getStyleClass().add("button-primary");
+        save.setOnAction(e -> {
+            if (concept.getText() == null || concept.getText().isBlank()) {
+                showError(t("trabajos.rates.fail"), t("trabajos.rates.fail_concept")); return;
+            }
+            java.math.BigDecimal p = parseDecSafe(price.getText());
+            if (p == null) { showError(t("trabajos.rates.fail"), t("trabajos.rates.fail_price")); return; }
+            runWorkLogTask(() -> {
+                if (existing == null) altaApiClient.createWorkRate(customerId, unit.getValue(), concept.getText().trim(), p);
+                else altaApiClient.updateWorkRate(existing.id(), customerId, unit.getValue(), concept.getText().trim(), p);
+            }, () -> { dlg.close(); onSaved.run(); });
+        });
+        Button cancel = new Button(t("dialog.cancel"));
+        cancel.setOnAction(e -> dlg.close());
+        HBox btns = new HBox(10, cancel, save);
+        btns.setAlignment(Pos.CENTER_RIGHT);
+
+        VBox root = new VBox(10, g, btns);
+        root.setPadding(new javafx.geometry.Insets(8));
+        root.setPrefWidth(420);
         Scene scene = new Scene(root);
         scene.getStylesheets().add(getClass().getResource("/com/benjagest/ui/app.css").toExternalForm());
         dlg.setScene(scene);

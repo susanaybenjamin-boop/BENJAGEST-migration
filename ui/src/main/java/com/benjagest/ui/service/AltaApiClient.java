@@ -1833,6 +1833,51 @@ public class AltaApiClient {
         }
     }
 
+    // ----- TRB-4: tarifas de trabajo -----
+
+    public java.util.List<com.benjagest.ui.model.WorkRateEntry> listWorkRates(
+            String customerId, boolean effective) throws IOException, InterruptedException {
+        StringBuilder url = new StringBuilder(baseUrl + "/work-rates?effective=" + effective);
+        if (customerId != null && !customerId.isBlank()) {
+            url.append("&customerId=").append(java.net.URLEncoder.encode(customerId, java.nio.charset.StandardCharsets.UTF_8));
+        }
+        HttpResponse<String> r = send(req(url.toString()).GET());
+        if (r.statusCode() < 200 || r.statusCode() >= 300) throw new IOException("HTTP " + r.statusCode() + ": " + r.body());
+        java.util.List<com.benjagest.ui.model.WorkRateEntry> out = new java.util.ArrayList<>();
+        for (String o : splitTopLevelObjects(r.body())) {
+            out.add(new com.benjagest.ui.model.WorkRateEntry(
+                    textField(o, "id"), textField(o, "customerId"), textField(o, "unit"),
+                    textField(o, "concept"), bigDecField(o, "price"), boolField(o, "active")));
+        }
+        return out;
+    }
+
+    public void createWorkRate(String customerId, String unit, String concept, java.math.BigDecimal price)
+            throws IOException, InterruptedException {
+        send(req(baseUrl + "/work-rates").header("Content-Type", "application/json")
+                .POST(java.net.http.HttpRequest.BodyPublishers.ofString(workRateBody(customerId, unit, concept, price))));
+    }
+
+    public void updateWorkRate(String id, String customerId, String unit, String concept, java.math.BigDecimal price)
+            throws IOException, InterruptedException {
+        send(req(baseUrl + "/work-rates/" + id).header("Content-Type", "application/json")
+                .PUT(java.net.http.HttpRequest.BodyPublishers.ofString(workRateBody(customerId, unit, concept, price))));
+    }
+
+    public void deleteWorkRate(String id) throws IOException, InterruptedException {
+        send(req(baseUrl + "/work-rates/" + id).DELETE());
+    }
+
+    private String workRateBody(String customerId, String unit, String concept, java.math.BigDecimal price) {
+        StringBuilder b = new StringBuilder("{");
+        if (customerId != null && !customerId.isBlank()) b.append("\"customerId\":").append(jsonString(customerId)).append(',');
+        b.append("\"unit\":").append(jsonString(unit));
+        b.append(",\"concept\":").append(jsonString(concept));
+        b.append(",\"price\":").append(price == null ? "0" : price.toPlainString());
+        b.append('}');
+        return b.toString();
+    }
+
     private String workLogBody(com.benjagest.ui.model.WorkLogEntry e) {
         StringBuilder b = new StringBuilder("{");
         b.append("\"employeeId\":").append(jsonString(e.employeeId()));
