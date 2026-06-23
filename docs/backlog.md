@@ -51,13 +51,22 @@
 > (fabricar la emitida del otro lado queda fuera, muro TPB/SIF).
 
 - ✅ **REFLEJO-1 — Esquema** (V141): `purchase_invoices.source_sales_invoice_id` +
-  `source_company_id` + UNIQUE idempotente. *(aplica en el próximo arranque del backend)*.
-- ⏳ **REFLEJO-2** — `CrossInvoiceReflectionService` + hook en `SalesInvoiceService.validate()`
-  (best-effort, nunca rompe la validación/SIF). Crea gasto DRAFT + asiento 623/472/400 DRAFT.
+  `source_company_id` + UNIQUE idempotente. Aplicada.
+- ✅ **REFLEJO-2 — Reflejo del gasto** *(c43b8cb)* — `CrossInvoiceReflectionService` + hook
+  en `SalesInvoiceService.validate()` (best-effort, nunca rompe validación/SIF). Crea gasto
+  DRAFT + asiento 623/472/(4751)/400 DRAFT. **Verificado en vivo**: F-2026-0104 reflejada en
+  Marcos Construcciones, asiento cuadrado (2420=2420).
 - ⏳ **REFLEJO-3** — cascada anulación/rectificación (revertir / contrasiento si validado).
-- ⏳ **REFLEJO-4** — reflejo del pago (400/572 por validar) al marcar la emitida cobrada.
+  Pendiente: también revertir el pago reflejado al hacer `unpay` de un vencimiento.
+- ✅ **REFLEJO-4 — Reflejo del pago** *(fbf80d6)* — al cobrar la emitida, asiento del pago
+  `400 / 572·570` POR VALIDAR en el cliente. Enganchado en los 3 cobros de VENTA
+  (multi-allocation, vencimiento manual, conciliación bancaria), best-effort, idempotente
+  por `REFLECTED_PAYMENT`+source. i18n ES+EN. *(pendiente de prueba de Benjamin)*.
 - ⏳ **REFLEJO-5** — avisos: bucket `DRAFT_PURCHASES` en `PendingTasksService` + i18n.
 - ⏳ **REFLEJO-6** — visibilidad UI (origen/destino del reflejo) + interruptor on/off.
+
+> Aparte (mismo día): **fix ruido SSE** *(a34df54)* — el heartbeat cierra el emisor caído
+> en vez de soltarlo; Tomcat deja de loguear "broken pipe" en cada latido.
 
 ---
 
