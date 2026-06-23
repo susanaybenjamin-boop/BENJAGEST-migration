@@ -10496,6 +10496,8 @@ public class BenjagestUiApplication extends Application {
     private CheckBox editorNoDueDateChk;
     private javafx.scene.control.TextArea editorNotesArea;
     private TableView<InvoiceLineDraft> editorLinesTable;
+    // TRB — ids de trabajos importados al editor; al guardar/validar se marcan FACTURADOS.
+    private final java.util.List<String> editorPendingWorkLogIds = new java.util.ArrayList<>();
     private Label editorSubtotalLabel;
     private Label editorVatLabel;
     private Label editorRetentionLabel;
@@ -11145,6 +11147,7 @@ public class BenjagestUiApplication extends Application {
 
     private VBox invoiceEditorView(EditorBundle bundle, String existingId) {
         VBox content = content();
+        editorPendingWorkLogIds.clear();
 
         // ----- Header -----
         // NAV-CLIENT-BACK: "Volver" vuelve al cliente si la asesoria
@@ -11476,7 +11479,17 @@ public class BenjagestUiApplication extends Application {
             }
         });
 
-        HBox lineasActions = new HBox(8, addLine, removeLine);
+        // TRB — Importar trabajos pendientes del cliente seleccionado como líneas.
+        Button importWorks = new Button(t("editor.line.import_works"));
+        importWorks.setGraphic(icon("fas-briefcase"));
+        importWorks.getStyleClass().add("button-secondary");
+        importWorks.setOnAction(event -> {
+            CustomerSummary cust = editorCustomerCombo.getValue();
+            if (cust == null) { showError(t("editor.error.no_customer.title"), t("editor.error.no_customer.body")); return; }
+            showImportWorkLogsToInvoice(cust);
+        });
+
+        HBox lineasActions = new HBox(8, importWorks, addLine, removeLine);
         lineasActions.setAlignment(Pos.CENTER_RIGHT);
         Node lineasCard = invoiceCardWithActions(t("editor.card.lines"), "fas-calculator",
                 lineasActions, editorLinesTable);
@@ -12077,6 +12090,16 @@ public class BenjagestUiApplication extends Application {
             Alert ok = new Alert(Alert.AlertType.INFORMATION, msg, ButtonType.OK);
             ok.setHeaderText(null);
             ok.showAndWait();
+            // TRB — si se importaron trabajos pendientes, marcarlos FACTURADOS
+            // enlazados a esta factura (best-effort, off-thread).
+            if (!editorPendingWorkLogIds.isEmpty()) {
+                java.util.List<String> wids = new java.util.ArrayList<>(editorPendingWorkLogIds);
+                editorPendingWorkLogIds.clear();
+                new Thread(() -> {
+                    try { altaApiClient.markWorksBilled(wids, result.id()); }
+                    catch (Exception ignored) { /* la factura ya se guardó */ }
+                }, "mark-works-billed").start();
+            }
             returnToClientOrBilling();
             // Crear/editar borrador o validar: emite SALES + JOURNAL si
             // se validó (con asiento). El listado de facturación se
@@ -12905,6 +12928,12 @@ public class BenjagestUiApplication extends Application {
                 case "editor.field.kind" -> "Type";
                 case "editor.card.header" -> "Invoice header";
                 case "editor.line.add" -> "Add line";
+                case "editor.line.import_works" -> "Pending jobs";
+                case "editor.import_works.title" -> "Import pending jobs";
+                case "editor.import_works.hint" -> "Pending jobs of {customer}. Select them to add as invoice lines (one per job, keeping quantity×price, or merged into one). When you save/validate, they are marked as invoiced.";
+                case "editor.import_works.empty" -> "This customer has no pending jobs.";
+                case "editor.import_works.add" -> "Add to invoice";
+                case "editor.import_works.none" -> "Select at least one job.";
                 case "editor.line.remove" -> "Remove line";
                 case "editor.card.lines" -> "Items / Lines";
                 case "editor.total.subtotal" -> "Net amount";
@@ -13880,6 +13909,12 @@ public class BenjagestUiApplication extends Application {
             case "editor.field.kind" -> "Tipo";
             case "editor.card.header" -> "Cabecera de la factura";
             case "editor.line.add" -> "Anadir linea";
+            case "editor.line.import_works" -> "Trabajos pendientes";
+            case "editor.import_works.title" -> "Importar trabajos pendientes";
+            case "editor.import_works.hint" -> "Trabajos pendientes de {customer}. Selecciónalos para añadirlos como líneas de la factura (una por trabajo, conservando cantidad×precio, o agrupadas en una). Al guardar/validar quedan marcados como facturados.";
+            case "editor.import_works.empty" -> "Este cliente no tiene trabajos pendientes.";
+            case "editor.import_works.add" -> "Añadir a la factura";
+            case "editor.import_works.none" -> "Selecciona al menos un trabajo.";
             case "editor.line.remove" -> "Quitar linea";
             case "editor.card.lines" -> "Conceptos / Lineas";
             case "editor.total.subtotal" -> "Base imponible";
@@ -37691,6 +37726,105 @@ public class BenjagestUiApplication extends Application {
         scene.getStylesheets().add(getClass().getResource("/com/benjagest/ui/app.css").toExternalForm());
         dlg.setScene(scene);
         dlg.showAndWait();
+    }
+
+    /**
+     * TRB — Importa trabajos pendientes del cliente como líneas de la factura en
+     * edición. Pregunta: una línea por trabajo (preservando cantidad×precio) o
+     * agrupar en una (concepto editable + suma). Al guardar/validar la factura, los
+     * trabajos importados se marcan FACTURADOS (persistDraft).
+     */
+    private void showImportWorkLogsToInvoice(CustomerSummary customer) {
+        Stage dlg = new Stage();
+        dlg.setTitle(t("editor.import_works.title"));
+        dlg.initModality(javafx.stage.Modality.APPLICATION_MODAL);
+
+        TableView<com.benjagest.ui.model.WorkLogEntry> table = new TableView<>();
+        table.getStyleClass().add("data-table");
+        table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+        table.getSelectionModel().setSelectionMode(javafx.scene.control.SelectionMode.MULTIPLE);
+        table.setPlaceholder(new Label(t("editor.import_works.empty")));
+        VBox.setVgrow(table, Priority.ALWAYS);
+        TableColumn<com.benjagest.ui.model.WorkLogEntry, String> cD = new TableColumn<>(t("trabajos.col.date"));
+        cD.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().logDate()));
+        cD.setComparator(ISO_DATE_COMPARATOR); cD.setPrefWidth(100);
+        TableColumn<com.benjagest.ui.model.WorkLogEntry, String> cDe = new TableColumn<>(t("trabajos.col.description"));
+        cDe.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().description()));
+        TableColumn<com.benjagest.ui.model.WorkLogEntry, String> cV = new TableColumn<>(t("trabajos.col.valuation"));
+        cV.setCellValueFactory(c -> new SimpleStringProperty(workLogValuationLabel(c.getValue())));
+        cV.setPrefWidth(160);
+        TableColumn<com.benjagest.ui.model.WorkLogEntry, String> cA = new TableColumn<>(t("trabajos.col.amount"));
+        cA.setCellValueFactory(c -> new SimpleStringProperty(
+                c.getValue().billableAmount() == null ? "" : money(c.getValue().billableAmount().toPlainString())));
+        cA.setComparator(NUMERIC_STRING_COMPARATOR); cA.setPrefWidth(100);
+        table.getColumns().addAll(java.util.List.of(cD, cDe, cV, cA));
+
+        Task<java.util.List<com.benjagest.ui.model.WorkLogEntry>> load = new Task<>() {
+            @Override protected java.util.List<com.benjagest.ui.model.WorkLogEntry> call() throws Exception {
+                return altaApiClient.listWorkLogs(java.time.LocalDate.now().minusYears(2),
+                        java.time.LocalDate.now(), customer.id(), null, true);
+            }
+        };
+        load.setOnSucceeded(ev -> table.setItems(FXCollections.observableArrayList(load.getValue())));
+        load.setOnFailed(ev -> showError(t("trabajos.fail.title"),
+                load.getException() == null ? "" : humanizeBackendError(load.getException().getMessage())));
+        start(load, "import-works-load");
+
+        Label hint = new Label(t("editor.import_works.hint").replace("{customer}",
+                customer.legalName() == null ? "" : customer.legalName()));
+        hint.setWrapText(true); hint.getStyleClass().add("settings-hint");
+        javafx.scene.control.ToggleGroup mode = new javafx.scene.control.ToggleGroup();
+        javafx.scene.control.RadioButton perLine = new javafx.scene.control.RadioButton(t("trabajos.bill.per_job"));
+        perLine.setToggleGroup(mode); perLine.setSelected(true);
+        javafx.scene.control.RadioButton merge = new javafx.scene.control.RadioButton(t("trabajos.bill.merge"));
+        merge.setToggleGroup(mode);
+        TextField mergedConcept = new TextField(t("trabajos.bill.merged_default"));
+        mergedConcept.disableProperty().bind(merge.selectedProperty().not());
+
+        Button add = new Button(t("editor.import_works.add"));
+        add.setGraphic(icon("fas-plus")); add.getStyleClass().add("button-primary");
+        add.setOnAction(e -> {
+            var sel = new java.util.ArrayList<>(table.getSelectionModel().getSelectedItems());
+            if (sel.isEmpty()) { showError(t("trabajos.fail.title"), t("editor.import_works.none")); return; }
+            if (merge.isSelected()) {
+                java.math.BigDecimal sum = sel.stream()
+                        .map(w -> w.billableAmount() == null ? java.math.BigDecimal.ZERO : w.billableAmount())
+                        .reduce(java.math.BigDecimal.ZERO, java.math.BigDecimal::add);
+                String concept = mergedConcept.getText() == null || mergedConcept.getText().isBlank()
+                        ? t("trabajos.bill.merged_default") : mergedConcept.getText().trim();
+                editorLinesTable.getItems().add(new InvoiceLineDraft(
+                        concept, java.math.BigDecimal.ONE, sum, new java.math.BigDecimal("21"), java.math.BigDecimal.ZERO));
+            } else {
+                for (var w : sel) editorLinesTable.getItems().add(lineFromWork(w));
+            }
+            for (var w : sel) editorPendingWorkLogIds.add(w.id());
+            recomputeEditorTotals();
+            dlg.close();
+        });
+        Button cancel = new Button(t("dialog.cancel"));
+        cancel.setOnAction(e -> dlg.close());
+        HBox btns = new HBox(10, cancel, add);
+        btns.setAlignment(Pos.CENTER_RIGHT);
+
+        VBox root = new VBox(12, hint, table, new Separator(), perLine, merge, mergedConcept, btns);
+        root.setPadding(new javafx.geometry.Insets(16));
+        root.setPrefSize(640, 520);
+        Scene scene = new Scene(root);
+        scene.getStylesheets().add(getClass().getResource("/com/benjagest/ui/app.css").toExternalForm());
+        dlg.setScene(scene);
+        dlg.showAndWait();
+    }
+
+    /** Línea de factura a partir de un trabajo (preserva cantidad×precio; cerrado = 1×importe). */
+    private InvoiceLineDraft lineFromWork(com.benjagest.ui.model.WorkLogEntry w) {
+        String d = (w.description() == null || w.description().isBlank()) ? t("trabajos.title") : w.description();
+        java.math.BigDecimal vat = new java.math.BigDecimal("21");
+        if (w.quantity() != null && w.unitPrice() != null && !"FIXED".equals(w.billingUnit())) {
+            return new InvoiceLineDraft(d, w.quantity(), w.unitPrice(), vat, java.math.BigDecimal.ZERO);
+        }
+        return new InvoiceLineDraft(d, java.math.BigDecimal.ONE,
+                w.billableAmount() == null ? java.math.BigDecimal.ZERO : w.billableAmount(),
+                vat, java.math.BigDecimal.ZERO);
     }
 
     // ===== JOR-1: jornadas reales calculadas desde los fichajes =====

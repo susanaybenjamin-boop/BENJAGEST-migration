@@ -88,4 +88,13 @@ public class WorkLogController {
     }
 
     public record BillRequest(List<String> ids, boolean merge, String mergedConcept) {}
+
+    /** Marca trabajos como facturados enlazados a una factura ya creada (editor). */
+    @PostMapping("/mark-billed")
+    @RequiresRole({"OWNER", "ADMIN", "ACCOUNTANT"})
+    public void markBilled(@RequestBody MarkBilledRequest req) {
+        service.markBilled(req.ids(), req.invoiceId());
+    }
+
+    public record MarkBilledRequest(List<String> ids, String invoiceId) {}
 }

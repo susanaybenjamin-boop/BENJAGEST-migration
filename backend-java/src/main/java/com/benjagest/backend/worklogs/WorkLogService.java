@@ -240,6 +240,22 @@ public class WorkLogService {
         return invoice.id();
     }
 
+    /**
+     * Marca trabajos como FACTURADOS enlazados a una factura ya creada (flujo del
+     * editor de facturas: el usuario importa trabajos pendientes como líneas y, al
+     * guardar/validar, se marcan). Best-effort: solo toca los que no estén ya BILLED.
+     */
+    @Transactional
+    public void markBilled(List<String> ids, String invoiceId) {
+        if (ids == null || ids.isEmpty() || invoiceId == null || invoiceId.isBlank()) return;
+        for (String id : ids) {
+            jdbcTemplate.update("""
+                    UPDATE work_logs SET status = 'BILLED', invoice_id = ?
+                     WHERE id = ? AND company_id = ? AND status <> 'BILLED'
+                    """, invoiceId, id, tenantContext.getCurrentCompanyId());
+        }
+    }
+
     WorkLog findById(String id) {
         List<WorkLog> rows = jdbcTemplate.query(SELECT + " WHERE w.id = ? AND w.company_id = ?",
                 mapper, id, tenantContext.getCurrentCompanyId());
