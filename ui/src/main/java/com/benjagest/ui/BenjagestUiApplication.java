@@ -37577,9 +37577,12 @@ public class BenjagestUiApplication extends Application {
             runWorkLogTask(() -> altaApiClient.billWorkLogs(ids, mergeMode, concept),
                     () -> {
                         dlg.close();
-                        showInfo(t("trabajos.bill.ok.title"), t("trabajos.bill.ok.body"));
                         com.benjagest.ui.support.RefreshBus.emit(com.benjagest.ui.support.RefreshBus.TOPIC_SALES);
                         onDone.run();
+                        // Aplazado: mostrar el aviso DESPUÉS de cerrar el modal evita que el
+                        // Alert salga en blanco/sin botón (carrera al cerrar el Stage modal).
+                        javafx.application.Platform.runLater(() ->
+                                showInfo(t("trabajos.bill.ok.title"), t("trabajos.bill.ok.body")));
                     });
         });
         Button cancel = new Button(t("dialog.cancel"));

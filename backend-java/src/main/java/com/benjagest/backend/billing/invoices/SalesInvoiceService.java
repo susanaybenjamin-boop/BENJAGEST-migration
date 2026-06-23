@@ -610,6 +610,17 @@ public class SalesInvoiceService {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "Solo se pueden borrar facturas en DRAFT o proformas. Para una factura validada hay que anular (RECTIFYING).");
         }
+        // MÓDULO TRABAJOS — si esta factura facturó trabajos (work_logs), revertirlos a
+        // pendientes (vuelven a estar disponibles para facturar). SQL directo para no
+        // acoplar billing -> worklogs como bean (evita ciclo: WorkLogService ya depende
+        // de SalesInvoiceService). El FK work_logs.invoice_id queda limpio.
+        try {
+            jdbcForTpb.update("""
+                    UPDATE work_logs
+                       SET status = 'APPROVED', invoice_id = NULL, billed_invoice_line_id = NULL
+                     WHERE invoice_id = ? AND company_id = ?
+                    """, id, tenantContext.getCurrentCompanyId());
+        } catch (Exception ignored) { /* tabla work_logs siempre existe; defensivo */ }
         repository.softCancelDraft(id);
     }
 

@@ -224,9 +224,17 @@ public class WorkLogService {
         } else {
             for (WorkLog w : works) {
                 String d = (w.description() == null || w.description().isBlank()) ? "Trabajo" : w.description();
-                BigDecimal amt = w.billableAmount() == null ? BigDecimal.ZERO : w.billableAmount();
+                BigDecimal q, p;
+                // Preservar cantidad × precio (8 h × 25 €), no 1 × total.
+                if (w.quantity() != null && w.unitPrice() != null && !"FIXED".equals(w.billingUnit())) {
+                    q = w.quantity();
+                    p = w.unitPrice();
+                } else {
+                    q = BigDecimal.ONE;
+                    p = w.billableAmount() == null ? BigDecimal.ZERO : w.billableAmount();
+                }
                 lines.add(new com.benjagest.backend.billing.invoices.InvoiceLineInput(
-                        d, null, BigDecimal.ONE, amt, vat, BigDecimal.ZERO));
+                        d, null, q, p, vat, BigDecimal.ZERO));
             }
         }
         var req = new com.benjagest.backend.billing.invoices.InvoiceUpsertRequest(
