@@ -262,6 +262,114 @@ public class CrossInvoiceReflectionService {
                 amt, salesInvoiceId, entryId, targetId);
     }
 
+    /**
+     * REFLEJO-4b (inverso) — Cuando el cliente PAGA un gasto que es una factura
+     * reflejada, refleja el COBRO en los libros del emisor (la asesoría): marca su
+     * factura de venta cobrada y crea el asiento de cobro POR VALIDAR.
+     *
+     * <p>En el emisor: {@code Debe 572 banco · 570 caja / Haber 430 (cliente)}.
+     * Idempotente por {@code source_type='REFLECTED_COLLECTION' + source_id}.
+     * Best-effort, nunca lanza.
+     *
+     * @param purchaseInvoiceId el gasto pagado (debe ser un reflejo con origen)
+     */
+    public void reflectCollection(String purchaseInvoiceId, BigDecimal amount, LocalDate payDate,
+                                  String paymentMethod, String sourceKey, String userId) {
+        try {
+            doReflectCollection(purchaseInvoiceId, amount, payDate, paymentMethod, sourceKey, userId);
+        } catch (Exception ex) {
+            log.warn("REFLEJO: no se pudo reflejar el cobro del gasto {}: {}",
+                    purchaseInvoiceId, ex.getMessage(), ex);
+        }
+    }
+
+    private void doReflectCollection(String purchaseInvoiceId, BigDecimal amount, LocalDate payDate,
+                                     String paymentMethod, String sourceKey, String userId) {
+        if (purchaseInvoiceId == null || amount == null || amount.signum() <= 0) return;
+        if (payDate == null) payDate = LocalDate.now();
+        if (sourceKey == null || sourceKey.isBlank()) return;
+
+        // 1) ¿El gasto es un reflejo? (tiene factura de venta + empresa de origen)
+        var ref = jdbc.query("""
+                SELECT source_sales_invoice_id, source_company_id FROM purchase_invoices
+                 WHERE id = ? AND source_sales_invoice_id IS NOT NULL
+                 LIMIT 1
+                """, rs -> rs.next()
+                        ? new String[]{rs.getString("source_sales_invoice_id"),
+                                rs.getString("source_company_id")}
+                        : null,
+                purchaseInvoiceId);
+        if (ref == null) return;
+        String salesInvoiceId = ref[0];
+        String issuerId = ref[1];
+        if (issuerId == null) return;
+
+        // 2) Idempotencia.
+        Integer dup = jdbc.queryForObject("""
+                SELECT COUNT(*) FROM journal_entries
+                 WHERE company_id = ? AND source_type = 'REFLECTED_COLLECTION' AND source_id = ?
+                """, Integer.class, issuerId, sourceKey);
+        if (dup != null && dup > 0) return;
+
+        // 3) Datos de la factura de venta en el emisor.
+        var inv = jdbc.query("""
+                SELECT total, paid_amount, customer_id FROM sales_invoices
+                 WHERE id = ? AND company_id = ?
+                 LIMIT 1
+                """, rs -> rs.next()
+                        ? new Object[]{rs.getBigDecimal("total"), rs.getBigDecimal("paid_amount"),
+                                rs.getString("customer_id")}
+                        : null,
+                salesInvoiceId, issuerId);
+        if (inv == null) return;
+        BigDecimal total = (BigDecimal) inv[0];
+        BigDecimal paid = (BigDecimal) inv[1];
+
+        // 4) Asiento de cobro DRAFT/auto_proposed en el emisor: Debe tesorería / Haber 430.
+        String fiscalYearId = jdbc.query("""
+                SELECT id FROM fiscal_years
+                 WHERE company_id = ? AND status = 'OPEN'
+                   AND ? BETWEEN start_date AND end_date
+                 LIMIT 1
+                """, rs -> rs.next() ? rs.getString(1) : null,
+                issuerId, Date.valueOf(payDate));
+        String acc430 = findAccountByPrefix(issuerId, "430");
+        boolean cash = isCash(paymentMethod);
+        String treasury = findAccountByPrefix(issuerId, cash ? "570" : "572");
+        if (treasury == null) treasury = findAccountByPrefix(issuerId, cash ? "572" : "570");
+        if (treasury == null) treasury = findAccountByPrefix(issuerId, "57");
+
+        BigDecimal amt = amount.setScale(2, RoundingMode.HALF_UP);
+        if (fiscalYearId != null && acc430 != null && treasury != null) {
+            String entryId = UUID.randomUUID().toString();
+            jdbc.update("""
+                    INSERT INTO journal_entries (
+                        id, company_id, fiscal_year_id, entry_number,
+                        entry_date, concept, source_type, source_id,
+                        status, reviewed, auto_proposed, proposed_confidence, created_by
+                    ) VALUES (?, ?, ?, NULL, ?, ?, 'REFLECTED_COLLECTION', ?, 'DRAFT', FALSE, TRUE, NULL, ?)
+                    """,
+                    entryId, issuerId, fiscalYearId, Date.valueOf(payDate),
+                    "Cobro factura", sourceKey, userId);
+            insertLine(entryId, treasury, cash ? "Cobro en efectivo" : "Cobro por banco",
+                    amt, BigDecimal.ZERO);
+            insertLine(entryId, acc430, "Cliente", BigDecimal.ZERO, amt);
+        }
+
+        // 5) Marcar la factura de venta cobrada (proyección comercial) para que la
+        //    asesoría la vea cobrada en sus listados/KPIs.
+        BigDecimal newPaid = (paid == null ? BigDecimal.ZERO : paid).add(amt);
+        String newStatus = newPaid.compareTo(total) >= 0 ? "PAID"
+                : (newPaid.signum() > 0 ? "PARTIAL" : "PENDING");
+        jdbc.update("""
+                UPDATE sales_invoices SET paid_amount = ?, payment_status = ?
+                 WHERE id = ? AND company_id = ?
+                """, newPaid, newStatus, salesInvoiceId, issuerId);
+
+        log.info("REFLEJO: pago {} del gasto {} reflejado como cobro en empresa {} (factura {})",
+                amt, purchaseInvoiceId, issuerId, salesInvoiceId);
+    }
+
     private boolean isCash(String method) {
         if (method == null) return false;
         String m = method.toUpperCase();

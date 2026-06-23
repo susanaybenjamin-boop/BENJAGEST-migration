@@ -160,15 +160,19 @@ public class PaymentScheduleService {
                  WHERE id = ? AND company_id = ?
                 """, Date.valueOf(payDate), blank(req.paymentMethod()),
                 req.treasuryAccountCode().trim(), entryId, dueDateId, companyId);
+        String method = "570".equals(req.treasuryAccountCode().trim()) ? "EFECTIVO"
+                : blank(req.paymentMethod());
         if ("SALES".equals(dd.invoiceKind())) {
             syncSalesPaymentStatus(dd.invoiceId());
-            // REFLEJO-4: el cobro del vencimiento se refleja como pago del gasto
-            // en el cliente (por validar). La tesorería del cliente se elige por
-            // el método; si es caja/efectivo → 570, si no → 572.
-            String method = "570".equals(req.treasuryAccountCode().trim()) ? "EFECTIVO"
-                    : blank(req.paymentMethod());
+            // REFLEJO-4a: el cobro del vencimiento de VENTA se refleja como pago del
+            // gasto en el cliente (por validar). Tesorería 570 si caja/efectivo, 572 resto.
             reflectionService.reflectPayment(dd.invoiceId(), dd.amount(), payDate,
-                    method, dueDateId, currentUser.require().userId());
+                    method, dueDateId, safeUserId());
+        } else if ("PURCHASE".equals(dd.invoiceKind())) {
+            // REFLEJO-4b (inverso): si el gasto pagado es un reflejo, reflejar el
+            // COBRO en los libros del emisor (la asesoría) — por validar.
+            reflectionService.reflectCollection(dd.invoiceId(), dd.amount(), payDate,
+                    method, dueDateId, safeUserId());
         }
         return getOne(dueDateId);
     }
@@ -235,10 +239,14 @@ public class PaymentScheduleService {
                     """, paidDate == null ? null : Date.valueOf(paidDate), journalEntryId,
                     bankMovementId, dd.id(), tenant.getCurrentCompanyId());
             remaining = remaining.subtract(dd.amount());
-            // REFLEJO-4: cobro por conciliación bancaria (siempre banco, 572) →
-            // reflejar el pago del gasto en el cliente, por validar. Best-effort.
+            // REFLEJO-4: conciliación bancaria (siempre banco, 572). Best-effort.
             if ("SALES".equals(invoiceKind)) {
+                // 4a: cobro de VENTA → pago del gasto en el cliente.
                 reflectionService.reflectPayment(invoiceId, dd.amount(), paidDate,
+                        "TRANSFER", dd.id(), safeUserId());
+            } else if ("PURCHASE".equals(invoiceKind)) {
+                // 4b: pago de un gasto reflejado → cobro en el emisor.
+                reflectionService.reflectCollection(invoiceId, dd.amount(), paidDate,
                         "TRANSFER", dd.id(), safeUserId());
             }
         }
