@@ -78,4 +78,14 @@ public class WorkLogController {
                                             @RequestParam("status") String status) {
         return service.setStatus(id, status);
     }
+
+    /** TRB-3 — Factura los trabajos seleccionados. Devuelve {invoiceId}. */
+    @PostMapping("/bill")
+    @RequiresRole({"OWNER", "ADMIN", "ACCOUNTANT"})
+    public java.util.Map<String, String> bill(@RequestBody BillRequest req) {
+        String invoiceId = service.billSelected(req.ids(), req.merge(), req.mergedConcept());
+        return java.util.Map.of("invoiceId", invoiceId);
+    }
+
+    public record BillRequest(List<String> ids, boolean merge, String mergedConcept) {}
 }
