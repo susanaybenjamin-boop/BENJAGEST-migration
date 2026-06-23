@@ -143,8 +143,16 @@
 - ~~**JOR-4** comparación planificado-vs-real~~ ✅ **HECHO 2026-06-22** (descriptivo + descuento
   de festivos/cierres). Queda el sub-ítem **excepciones de calendario por fecha** (AJUSTE de
   horas, calendarios por centro de trabajo).
-- **Partes de día** (DRAFT→SUBMITTED→APPROVED→BILLED) + conversión work_log→línea factura
-  + fichajes sospechosos.
+- ~~**Módulo TRABAJOS** (partes/work_logs facturables)~~ ✅ **HECHO 2026-06-23** (TRB-1..3):
+  entrada propia en el sidebar; alta/edición con valoración por unidad
+  (horas/días/meses × precio) o **precio cerrado** (como CONTENDO); estados
+  DRAFT→APPROVED→BILLED; bandeja "pendientes de facturar"; **facturar trabajos del mismo
+  cliente → factura borrador** (elegir 1 línea por trabajo o agrupar en una con concepto
+  editable + suma). V138 + `WorkLogService.billSelected` (createDraft, IVA 21% editable).
+  *Pendiente menor: pestaña Trabajos en la ficha de "Mi gestión" (hoy la entrada del sidebar
+  opera sobre la empresa propia); registro desde la PWA del empleado; "rentabilidad real"
+  (margen) si se quiere — el plan-vs-real ya está en JOR-4.* **fichajes sospechosos** sigue
+  pendiente (aparte).
 - **Push instantáneo PWA** (túnel con nombre o WebSocket; el quick-tunnel bufferiza SSE).
 
 **🟡 Media / decisión:**
