@@ -53,6 +53,7 @@ public class SalesInvoiceService {
     private final com.benjagest.backend.auth.CurrentUserService currentUserService;
     private final com.benjagest.backend.tenant.TenantContext tenantContext;
     private final org.springframework.jdbc.core.JdbcTemplate jdbcForTpb;
+    private final com.benjagest.backend.billing.reflection.CrossInvoiceReflectionService reflectionService;
 
     public SalesInvoiceService(SalesInvoiceRepository repository,
                                SeriesService seriesService,
@@ -67,7 +68,8 @@ public class SalesInvoiceService {
                                SalesJournalEntryService salesJournalService,
                                com.benjagest.backend.auth.CurrentUserService currentUserService,
                                com.benjagest.backend.tenant.TenantContext tenantContext,
-                               org.springframework.jdbc.core.JdbcTemplate jdbcForTpb) {
+                               org.springframework.jdbc.core.JdbcTemplate jdbcForTpb,
+                               com.benjagest.backend.billing.reflection.CrossInvoiceReflectionService reflectionService) {
         this.repository = repository;
         this.seriesService = seriesService;
         this.verifactuRegistryService = verifactuRegistryService;
@@ -82,6 +84,7 @@ public class SalesInvoiceService {
         this.currentUserService = currentUserService;
         this.tenantContext = tenantContext;
         this.jdbcForTpb = jdbcForTpb;
+        this.reflectionService = reflectionService;
     }
 
     public List<SalesInvoice> list(String statusFilter,
@@ -358,6 +361,20 @@ public class SalesInvoiceService {
             String voidPayload = "{\"originalInvoiceId\":\"" + validated.originalInvoiceId()
                     + "\",\"byRectifyingInvoiceId\":\"" + id + "\"}";
             sifEventService.record("INVOICE_VOIDED", voidPayload);
+        }
+
+        // BLOQUE REFLEJO (2026-06-23): si el cliente de esta factura es otra
+        // empresa de la cartera (match por NIF), reflejarla como gasto +
+        // asiento POR VALIDAR en sus libros. Best-effort y NUNCA lanza: un
+        // fallo del reflejo no afecta a la validación legal ni a la cadena SIF.
+        // Va al final, después de todo lo legal, para no dejar reflejos
+        // huérfanos si algo previo hubiera fallado.
+        try {
+            String reflectUserId = currentUserService.require().userId();
+            reflectionService.reflectSalesInvoice(validated, reflectUserId);
+        } catch (Exception ex) {
+            org.slf4j.LoggerFactory.getLogger(SalesInvoiceService.class)
+                    .warn("No se pudo reflejar la factura {} como gasto del cliente", id, ex);
         }
 
         return get(id);
