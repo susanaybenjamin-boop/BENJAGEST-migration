@@ -65,6 +65,8 @@ public class PendingTasksService {
                 "status = 'DRAFT' AND auto_proposed = TRUE", in, args));
         add(out, "DRAFT_PURCHASES", WARNING, count("purchase_invoices",
                 "status = 'DRAFT'", in, args));
+        add(out, "DRAFT_SALES", WARNING, count("sales_invoices",
+                "status = 'DRAFT'", in, args));
         add(out, "OVERDUE_INVOICES", URGENT, count("sales_invoices",
                 "status = 'VALIDATED' AND payment_status IN ('PENDING','PARTIAL') AND due_date < CURRENT_DATE", in, args));
         add(out, "DRAFT_PAYSLIPS", WARNING, count("payslips",

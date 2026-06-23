@@ -2129,22 +2129,29 @@ public class BenjagestUiApplication extends Application {
             }
         };
         task.setOnSucceeded(e -> {
-            int entries = 0, invoices = 0;
+            int journal = 0, expenses = 0, invoices = 0;
             for (var b : task.getValue()) {
-                if ("DRAFT_JOURNAL".equals(b.type())) entries = b.count();
-                else if ("DRAFT_PURCHASES".equals(b.type())) invoices = b.count();
+                switch (b.type()) {
+                    case "DRAFT_JOURNAL" -> journal = b.count();
+                    case "DRAFT_PURCHASES" -> expenses = b.count();
+                    case "DRAFT_SALES" -> invoices = b.count();
+                    default -> { }
+                }
             }
-            if (entries + invoices > 0) {
-                slot.getChildren().add(buildValidationBannerCard(entries, invoices));
+            // El empresario no lleva contabilidad → no ve "asientos por validar".
+            if (!bucketVisible("DRAFT_JOURNAL")) journal = 0;
+            if (journal + expenses + invoices > 0) {
+                slot.getChildren().add(buildValidationBannerCard(journal, expenses, invoices));
             }
         });
         // Si falla, el banner simplemente no aparece (es opcional).
         start(task, "validation-banner");
     }
 
-    private Node buildValidationBannerCard(int entries, int invoices) {
+    private Node buildValidationBannerCard(int journal, int expenses, int invoices) {
         java.util.List<String> parts = new java.util.ArrayList<>();
-        if (entries > 0) parts.add(t("dashboard.validate.entries").replace("{n}", String.valueOf(entries)));
+        if (journal > 0) parts.add(t("dashboard.validate.entries").replace("{n}", String.valueOf(journal)));
+        if (expenses > 0) parts.add(t("dashboard.validate.expenses").replace("{n}", String.valueOf(expenses)));
         if (invoices > 0) parts.add(t("dashboard.validate.invoices").replace("{n}", String.valueOf(invoices)));
         Label headline = new Label(t("dashboard.validate.title"));
         headline.setStyle("-fx-font-weight: bold; -fx-text-fill: #7c2d12;");
@@ -19118,7 +19125,8 @@ public class BenjagestUiApplication extends Application {
             case "pending.failed" -> "Could not load pending tasks";
             case "pending.go" -> "Open";
             case "pending.type.DRAFT_JOURNAL" -> "Journal entries to validate";
-            case "pending.type.DRAFT_PURCHASES" -> "Received invoices to validate";
+            case "pending.type.DRAFT_PURCHASES" -> "Expenses to validate";
+            case "pending.type.DRAFT_SALES" -> "Invoices to validate";
             case "pending.type.OVERDUE_INVOICES" -> "Overdue invoices to collect";
             case "pending.type.DRAFT_PAYSLIPS" -> "Payslips not finalised";
             case "pending.type.LEAVE_REQUESTS" -> "Leave requests to review";
@@ -19312,7 +19320,8 @@ public class BenjagestUiApplication extends Application {
             case "taxcal.banner.review" -> "Review";
             case "dashboard.validate.title" -> "Pending validation";
             case "dashboard.validate.entries" -> "{n} journal entries to validate";
-            case "dashboard.validate.invoices" -> "{n} received invoices to validate";
+            case "dashboard.validate.expenses" -> "{n} expenses to validate";
+            case "dashboard.validate.invoices" -> "{n} invoices to validate";
             case "taxcal.dialog.title" -> "AEAT tax calendar";
             case "taxcal.dialog.empty" -> "No upcoming filings.";
             case "taxcal.col.model" -> "Model";
@@ -20300,7 +20309,8 @@ public class BenjagestUiApplication extends Application {
             case "pending.failed" -> "No se pudieron cargar las tareas pendientes";
             case "pending.go" -> "Abrir";
             case "pending.type.DRAFT_JOURNAL" -> "Asientos por validar";
-            case "pending.type.DRAFT_PURCHASES" -> "Facturas recibidas por validar";
+            case "pending.type.DRAFT_PURCHASES" -> "Gastos por validar";
+            case "pending.type.DRAFT_SALES" -> "Facturas por validar";
             case "pending.type.OVERDUE_INVOICES" -> "Facturas vencidas por cobrar";
             case "pending.type.DRAFT_PAYSLIPS" -> "Nóminas sin finalizar";
             case "pending.type.LEAVE_REQUESTS" -> "Solicitudes de ausencia por revisar";
@@ -20484,7 +20494,8 @@ public class BenjagestUiApplication extends Application {
             case "taxcal.banner.review" -> "Revisar";
             case "dashboard.validate.title" -> "Pendiente de validar";
             case "dashboard.validate.entries" -> "{n} asientos por validar";
-            case "dashboard.validate.invoices" -> "{n} facturas recibidas por validar";
+            case "dashboard.validate.expenses" -> "{n} gastos por validar";
+            case "dashboard.validate.invoices" -> "{n} facturas por validar";
             case "taxcal.dialog.title" -> "Calendario fiscal AEAT";
             case "taxcal.dialog.empty" -> "No hay vencimientos próximos.";
             case "taxcal.col.model" -> "Modelo";
@@ -26576,7 +26587,8 @@ public class BenjagestUiApplication extends Application {
             }
         };
         task.setOnSucceeded(ev -> {
-            var buckets = task.getValue();
+            var buckets = task.getValue().stream()
+                    .filter(b -> bucketVisible(b.type())).toList();
             listBox.getChildren().clear();
             if (buckets.isEmpty()) {
                 Label ok = new Label(t("pending.empty"));
@@ -26625,11 +26637,22 @@ public class BenjagestUiApplication extends Application {
         return row;
     }
 
+    /**
+     * ¿Se muestra este tipo de aviso en el modo actual? El empresario NO lleva
+     * contabilidad, así que NO ve "asientos por validar" (DRAFT_JOURNAL) — eso es
+     * trabajo de la gestoría. La asesoría (cockpit o actuando como cliente) lo ve.
+     * El resto de avisos se muestran siempre.
+     */
+    private boolean bucketVisible(String type) {
+        if ("DRAFT_JOURNAL".equals(type) && appMode != AppMode.ADVISORY) return false;
+        return true;
+    }
+
     /** Mapea el tipo de aviso al módulo donde resolverlo (vista empresa actual). */
     private Runnable pendingNav(String type) {
         return switch (type) {
             case "DRAFT_JOURNAL", "UNRECONCILED_BANK" -> this::showAccountingModule;
-            case "OVERDUE_INVOICES", "VERIFACTU_ERROR" -> () -> showModule("billing");
+            case "OVERDUE_INVOICES", "VERIFACTU_ERROR", "DRAFT_SALES" -> () -> showModule("billing");
             case "SUPPLIERS_NO_NIF", "DRAFT_PURCHASES" -> () -> showModule("purchases");
             case "DRAFT_PAYSLIPS", "UNDELIVERED_PAYSLIPS", "LEAVE_REQUESTS" -> this::showLaborModule;
             case "OVERDUE_FILINGS" -> () -> showModule("tax");
