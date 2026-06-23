@@ -1,5 +1,11 @@
 # Backlog operativo BENJAGEST
 
+> **Última actualización:** 2026-06-23 (módulo **Trabajos** cerrado: TRB-4 tarifas por
+> cliente, trabajos del titular, formulario grande, importar trabajos desde Nueva factura,
+> fixes `work_date`/botón Facturar/**3 bugs al facturar**; **ocultar borradores cancelados**;
+> decisión legal **no "cobrar sin facturar"**; y **diseño + arranque del bloque REFLEJO**
+> (factura emitida ⇒ gasto+asiento por validar en el cliente). Ver sesión 2026-06-23 debajo).
+> Histórico previo:
 > **Última actualización:** 2026-06-22 (sesión autónoma — Benjamin trabajando.
 > Cerrado y mergeado a develop: **reparto guiado de pago parcial** en "Registrar pago
 > de varias facturas" (pregunta qué factura completar) · **export PDF de Mayor + Sumas
@@ -52,6 +58,54 @@
 - ⏳ **REFLEJO-4** — reflejo del pago (400/572 por validar) al marcar la emitida cobrada.
 - ⏳ **REFLEJO-5** — avisos: bucket `DRAFT_PURCHASES` en `PendingTasksService` + i18n.
 - ⏳ **REFLEJO-6** — visibilidad UI (origen/destino del reflejo) + interruptor on/off.
+
+---
+
+## 📅 SESIÓN 2026-06-23 — Módulo Trabajos (cierre + fixes) + facturación + diseño bloque REFLEJO
+
+> Día largo: por la mañana se cerró el **módulo Trabajos** completo (TRB-1..4 + varios
+> fixes), por la tarde fixes de facturación, una decisión legal de producto, y el
+> **diseño + arranque del bloque REFLEJO** (factura emitida ⇒ gasto del cliente).
+> Todo compila (backend+ui, exit 0) y está mergeado a `develop`.
+
+**Módulo Trabajos — cierre y arreglos (mañana):**
+- ✅ **TRB-4 tarifas por cliente** con autorrelleno *(d1d9fad)* — V140 `customer_work_rates`,
+  precios por unidad (hora/día/mes) por cliente, con defaults generales.
+- ✅ **Trabajos del TITULAR** *(9c4f856)* — un autónomo sin empleados puede crear sus
+  propios trabajos (V139 `work_logs.employee_id` NULLABLE).
+- ✅ **Formulario más grande + descripción multilínea** *(213f9bb)* como en Nueva factura.
+- ✅ **Importar trabajos pendientes desde Nueva factura** *(ba7fd03)* — al elegir un cliente
+  con trabajos sin facturar, se ofrecen para meter como líneas (estilo CONTENDO).
+- ✅ **Fix `work_date` legacy** *(500c36d)* — no se podía crear un trabajo (columna legacy
+  NOT NULL); se puebla `work_date = log_date` al guardar.
+- ✅ **Fix botón Facturar** *(5b02364)* — no se activaba porque el parser JSON devuelve `""`
+  (no null) para campos vacíos; cambiado a `isBlank()`.
+
+**Facturación / Trabajos — fixes de tarde:**
+- ✅ **3 bugs al facturar un trabajo (40h×25€)** *(f56664a)*:
+  - (A) la línea salía **1 × 1000€** en vez de **40 × 25€** → `billSelected` ahora preserva
+    cantidad × precio.
+  - (B) **diálogo de éxito en blanco** (carrera de JavaFX al cerrar el modal) → aviso con
+    `Platform.runLater`.
+  - (C) **borrar el borrador no revertía el trabajo** (FK `work_logs.invoice_id`; el borrado
+    es soft-cancel) → `SalesInvoiceService.deleteDraft` revierte los trabajos enlazados a
+    APROBADO.
+- ✅ **Reparación puntual en BD** del trabajo huérfano ("COLOCACIÓN DE LADRILLOS") que quedó
+  FACTURADO apuntando a un borrador cancelado *antes* del fix C → revertido a APROBADO,
+  facturable de nuevo con su valoración 40×25.
+- ✅ **Ocultar borradores cancelados del listado** *(cf1e1bc)* — el soft-cancel de un borrador
+  lo dejaba visible como CANCELLED; `findAll` ahora excluye `status=CANCELLED AND
+  invoice_number IS NULL` (las validadas anuladas van a VOIDED, no se afectan).
+
+**Decisión de producto (legal):**
+- ❌ **"Cobrar un trabajo sin facturar"** — DESCARTADO. Contradice el principio "no migrar lo
+  ilegal; crear por ley" y el diseño SIF/VeriFactu; los competidores (A3/Sage/Holded) atan el
+  cobro a la factura. Se usa el tipo **"cobro al contado"** sobre la factura para el cobro en
+  mano. No se añade nada.
+
+**Bloque REFLEJO (diseño + arranque) — ver bloque dedicado arriba:**
+- ✅ **REFLEJO-1** *(a5b16c3)* — esquema V141 + diseño completo + decisiones cerradas.
+- ⏳ REFLEJO-2..6 pendientes.
 
 ---
 
@@ -164,12 +218,18 @@
 - ~~**JOR-4** comparación planificado-vs-real~~ ✅ **HECHO 2026-06-22** (descriptivo + descuento
   de festivos/cierres). Queda el sub-ítem **excepciones de calendario por fecha** (AJUSTE de
   horas, calendarios por centro de trabajo).
-- ~~**Módulo TRABAJOS** (partes/work_logs facturables)~~ ✅ **HECHO 2026-06-23** (TRB-1..3):
+- ~~**Módulo TRABAJOS** (partes/work_logs facturables)~~ ✅ **HECHO 2026-06-23** (TRB-1..4 + fixes):
   entrada propia en el sidebar; alta/edición con valoración por unidad
   (horas/días/meses × precio) o **precio cerrado** (como CONTENDO); estados
   DRAFT→APPROVED→BILLED; bandeja "pendientes de facturar"; **facturar trabajos del mismo
   cliente → factura borrador** (elegir 1 línea por trabajo o agrupar en una con concepto
   editable + suma). V138 + `WorkLogService.billSelected` (createDraft, IVA 21% editable).
+  **TRB-4 tarifas por cliente** con autorrelleno (V140 `customer_work_rates`). **Trabajos del
+  TITULAR** (autónomo sin empleados). **Formulario grande + descripción multilínea** como en
+  factura. **Importar trabajos pendientes desde Nueva factura** (estilo CONTENDO). Fixes:
+  V139 `work_date` legacy (no se podía crear), botón Facturar (`isBlank` vs null), y los **3
+  bugs al facturar** (cantidad 40×25 no 1×1000, diálogo en blanco, revertir trabajo al borrar
+  borrador) — ver sesión 2026-06-23 abajo.
   *Pendiente menor: pestaña Trabajos en la ficha de "Mi gestión" (hoy la entrada del sidebar
   opera sobre la empresa propia); registro desde la PWA del empleado; "rentabilidad real"
   (margen) si se quiere — el plan-vs-real ya está en JOR-4.* **fichajes sospechosos** sigue
