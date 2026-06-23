@@ -370,6 +370,143 @@ public class CrossInvoiceReflectionService {
                 amt, purchaseInvoiceId, issuerId, salesInvoiceId);
     }
 
+    // ====================================================================
+    //  REFLEJO-3 — Reversión (anulación de la emitida / deshacer pago)
+    // ====================================================================
+
+    /**
+     * REFLEJO-3a — Al anular (VOID) la factura emitida, revierte el gasto + asiento
+     * reflejados en el cliente. Si el asiento del gasto sigue por validar (DRAFT) se
+     * borra limpio; si ya estaba validado (POSTED) se genera un contrasiento por
+     * validar (no se borra un asiento validado). La factura recibida reflejada se
+     * elimina (su origen ha desaparecido). Best-effort, nunca lanza.
+     */
+    public void reflectVoid(String salesInvoiceId, String userId) {
+        try {
+            if (salesInvoiceId == null) return;
+            List<String[]> rows = jdbc.query("""
+                    SELECT id, company_id FROM purchase_invoices
+                     WHERE source_sales_invoice_id = ?
+                    """, (rs, n) -> new String[]{rs.getString(1), rs.getString(2)}, salesInvoiceId);
+            for (String[] r : rows) {
+                String purchaseId = r[0], target = r[1];
+                revertEntryBySource(target, "PURCHASE_INVOICE", purchaseId, userId);
+                jdbc.update("DELETE FROM purchase_invoices WHERE id = ? AND source_sales_invoice_id IS NOT NULL",
+                        purchaseId);
+                log.info("REFLEJO: anulada la factura {} → revertido el gasto reflejado {} en {}",
+                        salesInvoiceId, purchaseId, target);
+            }
+        } catch (Exception ex) {
+            log.warn("REFLEJO: no se pudo revertir el reflejo al anular {}: {}",
+                    salesInvoiceId, ex.getMessage(), ex);
+        }
+    }
+
+    /** REFLEJO-3b — Deshacer un cobro de VENTA: revierte el PAGO reflejado en el cliente. */
+    public void reflectUnpayPayment(String salesInvoiceId, String sourceKey, String userId) {
+        try {
+            if (salesInvoiceId == null || sourceKey == null) return;
+            String target = jdbc.query("""
+                    SELECT company_id FROM purchase_invoices
+                     WHERE source_sales_invoice_id = ? LIMIT 1
+                    """, rs -> rs.next() ? rs.getString(1) : null, salesInvoiceId);
+            if (target == null) return;
+            if (revertEntryBySource(target, "REFLECTED_PAYMENT", sourceKey, userId)) {
+                log.info("REFLEJO: deshecho cobro de {} → revertido el pago reflejado en {}",
+                        salesInvoiceId, target);
+            }
+        } catch (Exception ex) {
+            log.warn("REFLEJO: no se pudo revertir el pago reflejado de {}: {}",
+                    salesInvoiceId, ex.getMessage(), ex);
+        }
+    }
+
+    /** REFLEJO-3b — Deshacer un pago de un gasto reflejado: revierte el COBRO en el emisor. */
+    public void reflectUnpayCollection(String purchaseInvoiceId, BigDecimal amount,
+                                       String sourceKey, String userId) {
+        try {
+            if (purchaseInvoiceId == null || sourceKey == null) return;
+            var ref = jdbc.query("""
+                    SELECT source_sales_invoice_id, source_company_id FROM purchase_invoices
+                     WHERE id = ? AND source_sales_invoice_id IS NOT NULL LIMIT 1
+                    """, rs -> rs.next()
+                            ? new String[]{rs.getString(1), rs.getString(2)} : null,
+                    purchaseInvoiceId);
+            if (ref == null || ref[1] == null) return;
+            String salesInvoiceId = ref[0], issuerId = ref[1];
+            boolean reverted = revertEntryBySource(issuerId, "REFLECTED_COLLECTION", sourceKey, userId);
+            if (!reverted) return;
+            // Reabrir el cobro de la factura de venta: restar lo deshecho de paid_amount.
+            var inv = jdbc.query("""
+                    SELECT total, paid_amount FROM sales_invoices WHERE id = ? AND company_id = ? LIMIT 1
+                    """, rs -> rs.next()
+                            ? new BigDecimal[]{rs.getBigDecimal(1), rs.getBigDecimal(2)} : null,
+                    salesInvoiceId, issuerId);
+            if (inv != null) {
+                BigDecimal total = inv[0];
+                BigDecimal paid = (inv[1] == null ? BigDecimal.ZERO : inv[1])
+                        .subtract(amount == null ? BigDecimal.ZERO : amount);
+                if (paid.signum() < 0) paid = BigDecimal.ZERO;
+                String st = paid.signum() <= 0 ? "PENDING"
+                        : (paid.compareTo(total) >= 0 ? "PAID" : "PARTIAL");
+                jdbc.update("UPDATE sales_invoices SET paid_amount = ?, payment_status = ? WHERE id = ? AND company_id = ?",
+                        paid, st, salesInvoiceId, issuerId);
+            }
+            log.info("REFLEJO: deshecho pago del gasto {} → revertido el cobro reflejado en {}",
+                    purchaseInvoiceId, issuerId);
+        } catch (Exception ex) {
+            log.warn("REFLEJO: no se pudo revertir el cobro reflejado de {}: {}",
+                    purchaseInvoiceId, ex.getMessage(), ex);
+        }
+    }
+
+    /**
+     * Revierte los asientos de un origen: si DRAFT los borra limpio; si POSTED crea
+     * un contrasiento DRAFT por validar (débitos/créditos invertidos). Devuelve true
+     * si había algún asiento.
+     */
+    private boolean revertEntryBySource(String companyId, String sourceType, String sourceId,
+                                        String userId) {
+        List<Object[]> entries = jdbc.query("""
+                SELECT id, status, fiscal_year_id, entry_date FROM journal_entries
+                 WHERE company_id = ? AND source_type = ? AND source_id = ?
+                """, (rs, n) -> new Object[]{rs.getString("id"), rs.getString("status"),
+                        rs.getString("fiscal_year_id"), rs.getDate("entry_date")},
+                companyId, sourceType, sourceId);
+        boolean any = false;
+        for (Object[] e : entries) {
+            any = true;
+            String entryId = (String) e[0];
+            String status = (String) e[1];
+            if (!"POSTED".equals(status)) {
+                jdbc.update("DELETE FROM accounting_learning_events WHERE journal_entry_id = ? AND company_id = ?",
+                        entryId, companyId);
+                jdbc.update("DELETE FROM journal_entry_lines WHERE journal_entry_id = ?", entryId);
+                jdbc.update("DELETE FROM journal_entries WHERE id = ? AND company_id = ?", entryId, companyId);
+            } else {
+                // Contrasiento por validar: no se borra un asiento validado.
+                String revId = UUID.randomUUID().toString();
+                jdbc.update("""
+                        INSERT INTO journal_entries (
+                            id, company_id, fiscal_year_id, entry_number, entry_date, concept,
+                            source_type, source_id, status, reviewed, auto_proposed, proposed_confidence, created_by
+                        ) VALUES (?, ?, ?, NULL, ?, ?, 'MANUAL_REVERSAL', ?, 'DRAFT', FALSE, TRUE, NULL, ?)
+                        """,
+                        revId, companyId, (String) e[2], (java.sql.Date) e[3],
+                        "Contraasiento reflejo", entryId, userId);
+                jdbc.query("""
+                        SELECT account_id, description, debit, credit FROM journal_entry_lines
+                         WHERE journal_entry_id = ?
+                        """, rs -> {
+                    insertLine(revId, rs.getString("account_id"), rs.getString("description"),
+                            rs.getBigDecimal("credit"), rs.getBigDecimal("debit"));
+                    return null;
+                }, entryId);
+            }
+        }
+        return any;
+    }
+
     private boolean isCash(String method) {
         if (method == null) return false;
         String m = method.toUpperCase();

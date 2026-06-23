@@ -63,6 +63,8 @@ public class PendingTasksService {
         List<Bucket> out = new ArrayList<>();
         add(out, "DRAFT_JOURNAL", WARNING, count("journal_entries",
                 "status = 'DRAFT' AND auto_proposed = TRUE", in, args));
+        add(out, "DRAFT_PURCHASES", WARNING, count("purchase_invoices",
+                "status = 'DRAFT'", in, args));
         add(out, "OVERDUE_INVOICES", URGENT, count("sales_invoices",
                 "status = 'VALIDATED' AND payment_status IN ('PENDING','PARTIAL') AND due_date < CURRENT_DATE", in, args));
         add(out, "DRAFT_PAYSLIPS", WARNING, count("payslips",

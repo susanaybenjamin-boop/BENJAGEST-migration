@@ -306,6 +306,16 @@ public class SalesInvoiceService {
             repository.markVoided(validated.originalInvoiceId());
             repository.setRectifyingInvoiceId(validated.originalInvoiceId(), id);
             cascadedVoid = true;
+            // REFLEJO-3a: si la original estaba reflejada como gasto en un cliente
+            // de la cartera, revertir ese gasto + asiento (best-effort).
+            try {
+                reflectionService.reflectVoid(validated.originalInvoiceId(),
+                        currentUserService.require().userId());
+            } catch (Exception ex) {
+                org.slf4j.LoggerFactory.getLogger(SalesInvoiceService.class)
+                        .warn("No se pudo revertir el reflejo al anular {}",
+                                validated.originalInvoiceId(), ex);
+            }
         }
 
         // Slice F-STORAGE: generar el PDF y guardarlo en disco aqui, no
