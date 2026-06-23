@@ -2087,12 +2087,15 @@ public class BenjagestUiApplication extends Application {
             VBox parentSlot) {
         Label headline = new Label(t("taxcal.banner.headline")
                 .replace("{n}", String.valueOf(list.size())));
-        headline.setStyle("-fx-font-weight: bold;");
+        // Color de texto explícito: el fondo del banner es azul claro fijo
+        // (#e0f2fe); sin -fx-text-fill el label hereda el color del tema, que
+        // en oscuro es blanco → texto invisible (bug Benjamin 2026-06-23).
+        headline.setStyle("-fx-font-weight: bold; -fx-text-fill: #0c4a6e;");
         var first = list.get(0);
         Label sub = new Label(t("taxcal.banner.body") + " "
                 + first.modelCode() + " · " + first.dueDate());
         sub.setWrapText(true);
-        sub.getStyleClass().add("settings-hint");
+        sub.setStyle("-fx-text-fill: #0c4a6e;");
         VBox copy = new VBox(2, headline, sub);
         Button review = new Button(t("taxcal.banner.review"));
         review.setGraphic(icon("fas-calendar-check"));
