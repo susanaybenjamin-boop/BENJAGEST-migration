@@ -2113,6 +2113,61 @@ public class BenjagestUiApplication extends Application {
         return card;
     }
 
+    /**
+     * Banner home "por validar": suma de asientos (DRAFT auto-propuestos) +
+     * facturas recibidas (DRAFT) pendientes de validar. Empresa actual en modo
+     * empresario; cartera completa en cockpit de asesoría. Botón → vista Avisos.
+     */
+    private void loadValidationBanner(VBox slot) {
+        slot.getChildren().clear();
+        boolean portfolio = appMode == AppMode.ADVISORY
+                && !com.benjagest.ui.service.AuthSession.get().isActingForClient();
+        Task<java.util.List<com.benjagest.ui.model.PendingTaskBucket>> task = new Task<>() {
+            @Override protected java.util.List<com.benjagest.ui.model.PendingTaskBucket> call()
+                    throws Exception {
+                return laborApiClient.pendingTasks(portfolio);
+            }
+        };
+        task.setOnSucceeded(e -> {
+            int entries = 0, invoices = 0;
+            for (var b : task.getValue()) {
+                if ("DRAFT_JOURNAL".equals(b.type())) entries = b.count();
+                else if ("DRAFT_PURCHASES".equals(b.type())) invoices = b.count();
+            }
+            if (entries + invoices > 0) {
+                slot.getChildren().add(buildValidationBannerCard(entries, invoices));
+            }
+        });
+        // Si falla, el banner simplemente no aparece (es opcional).
+        start(task, "validation-banner");
+    }
+
+    private Node buildValidationBannerCard(int entries, int invoices) {
+        java.util.List<String> parts = new java.util.ArrayList<>();
+        if (entries > 0) parts.add(t("dashboard.validate.entries").replace("{n}", String.valueOf(entries)));
+        if (invoices > 0) parts.add(t("dashboard.validate.invoices").replace("{n}", String.valueOf(invoices)));
+        Label headline = new Label(t("dashboard.validate.title"));
+        headline.setStyle("-fx-font-weight: bold; -fx-text-fill: #7c2d12;");
+        Label sub = new Label(String.join("   ·   ", parts));
+        sub.setWrapText(true);
+        sub.setStyle("-fx-text-fill: #7c2d12;");
+        VBox copy = new VBox(2, headline, sub);
+        Button review = new Button(t("taxcal.banner.review"));
+        review.setGraphic(icon("fas-clipboard-check"));
+        review.getStyleClass().add("button-primary");
+        review.setOnAction(e -> showPendingTasksPanel());
+        HBox card = new HBox(14, copy, new Region(), review);
+        HBox.setHgrow(copy, Priority.ALWAYS);
+        card.setAlignment(Pos.CENTER_LEFT);
+        card.setPadding(new Insets(14, 18, 14, 18));
+        card.setStyle("-fx-background-color: #fff7ed;"
+                + " -fx-background-radius: 10;"
+                + " -fx-border-color: #fb8c00;"
+                + " -fx-border-width: 1.5;"
+                + " -fx-border-radius: 10;");
+        return card;
+    }
+
     private void showTaxCalendarDialog(VBox bannerSlot) {
         javafx.scene.control.Dialog<Void> dlg = new javafx.scene.control.Dialog<>();
         dlg.setTitle(t("taxcal.dialog.title"));
@@ -2732,6 +2787,13 @@ public class BenjagestUiApplication extends Application {
             content.getChildren().add(taxCalendarSlot);
             loadTaxCalendarBanner(taxCalendarSlot);
         }
+
+        // REFLEJO-5/6 — banner "por validar" (asientos + facturas recibidas) en
+        // los DOS modos (empresario y asesoría). Surfacea en la home lo que antes
+        // solo se veía entrando a la vista Avisos.
+        VBox validationSlot = new VBox();
+        content.getChildren().add(validationSlot);
+        loadValidationBanner(validationSlot);
 
         content.getChildren().addAll(
                 label(t("mainIndicators"), "section-title"),
@@ -19248,6 +19310,9 @@ public class BenjagestUiApplication extends Application {
             case "taxcal.banner.headline" -> "{n} AEAT filings due in the next 30 days";
             case "taxcal.banner.body" -> "Next:";
             case "taxcal.banner.review" -> "Review";
+            case "dashboard.validate.title" -> "Pending validation";
+            case "dashboard.validate.entries" -> "{n} journal entries to validate";
+            case "dashboard.validate.invoices" -> "{n} received invoices to validate";
             case "taxcal.dialog.title" -> "AEAT tax calendar";
             case "taxcal.dialog.empty" -> "No upcoming filings.";
             case "taxcal.col.model" -> "Model";
@@ -20417,6 +20482,9 @@ public class BenjagestUiApplication extends Application {
             case "taxcal.banner.headline" -> "{n} declaraciones AEAT vencen en los próximos 30 días";
             case "taxcal.banner.body" -> "Próxima:";
             case "taxcal.banner.review" -> "Revisar";
+            case "dashboard.validate.title" -> "Pendiente de validar";
+            case "dashboard.validate.entries" -> "{n} asientos por validar";
+            case "dashboard.validate.invoices" -> "{n} facturas recibidas por validar";
             case "taxcal.dialog.title" -> "Calendario fiscal AEAT";
             case "taxcal.dialog.empty" -> "No hay vencimientos próximos.";
             case "taxcal.col.model" -> "Modelo";
