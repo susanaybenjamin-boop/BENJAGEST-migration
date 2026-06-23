@@ -15861,6 +15861,7 @@ public class BenjagestUiApplication extends Application {
             case "trabajos.unit.MONTHS" -> "months";
             case "trabajos.unit.FIXED" -> "Fixed price";
             case "trabajos.field.employee" -> "Employee:";
+            case "trabajos.field.owner" -> "Me / owner";
             case "trabajos.field.customer" -> "Customer:";
             case "trabajos.field.date" -> "Date:";
             case "trabajos.field.description" -> "Description:";
@@ -16134,6 +16135,7 @@ public class BenjagestUiApplication extends Application {
             case "trabajos.unit.MONTHS" -> "meses";
             case "trabajos.unit.FIXED" -> "Precio cerrado";
             case "trabajos.field.employee" -> "Empleado:";
+            case "trabajos.field.owner" -> "Yo / titular";
             case "trabajos.field.customer" -> "Cliente:";
             case "trabajos.field.date" -> "Fecha:";
             case "trabajos.field.description" -> "Descripción:";
@@ -37122,9 +37124,10 @@ public class BenjagestUiApplication extends Application {
         cDate.setPrefWidth(100);
         TableColumn<com.benjagest.ui.model.WorkLogEntry, String> cEmp = new TableColumn<>(t("trabajos.col.employee"));
         cEmp.setCellValueFactory(c -> new SimpleStringProperty(
-                c.getValue().employeeName() != null && !c.getValue().employeeName().isBlank()
-                        ? c.getValue().employeeName()
-                        : empById.getOrDefault(c.getValue().employeeId(), shortId(c.getValue().employeeId()))));
+                c.getValue().employeeId() == null ? t("trabajos.field.owner")
+                        : (c.getValue().employeeName() != null && !c.getValue().employeeName().isBlank()
+                                ? c.getValue().employeeName()
+                                : empById.getOrDefault(c.getValue().employeeId(), shortId(c.getValue().employeeId())))));
         cEmp.setPrefWidth(150);
         TableColumn<com.benjagest.ui.model.WorkLogEntry, String> cCust = new TableColumn<>(t("trabajos.col.customer"));
         cCust.setCellValueFactory(c -> new SimpleStringProperty(
@@ -37295,9 +37298,14 @@ public class BenjagestUiApplication extends Application {
         dlg.setTitle(existing == null ? t("trabajos.form.add") : t("trabajos.form.edit"));
         dlg.initModality(javafx.stage.Modality.APPLICATION_MODAL);
 
+        // "Yo / titular" = trabajo SIN empleado (autónomo que trabaja solo). Va el
+        // primero y es el valor por defecto si no hay empleados.
+        final String ownerLabel = t("trabajos.field.owner");
         java.util.LinkedHashMap<String, String> empIdByName = new java.util.LinkedHashMap<>();
+        empIdByName.put(ownerLabel, null);
         empById.forEach((id, name) -> empIdByName.put(name, id));
         ComboBox<String> empCombo = new ComboBox<>(FXCollections.observableArrayList(empIdByName.keySet()));
+        empCombo.setValue(ownerLabel);
         ComboBox<String> custCombo = new ComboBox<>();
         custCombo.getItems().add("");
         custCombo.getItems().addAll(custIdByName.keySet());
@@ -37329,7 +37337,8 @@ public class BenjagestUiApplication extends Application {
         billable.selectedProperty().addListener((o, a, b) -> refreshUnitFields.run());
 
         if (existing != null) {
-            empCombo.setValue(empById.get(existing.employeeId()));
+            empCombo.setValue(existing.employeeId() == null ? ownerLabel
+                    : empById.getOrDefault(existing.employeeId(), ownerLabel));
             if (existing.customerName() != null) custCombo.setValue(existing.customerName());
             if (existing.logDate() != null) dateP.setValue(java.time.LocalDate.parse(existing.logDate()));
             desc.setText(existing.description());
@@ -37362,8 +37371,8 @@ public class BenjagestUiApplication extends Application {
         save.setGraphic(icon("fas-check"));
         save.getStyleClass().add("button-primary");
         save.setOnAction(e -> {
+            // empId null = trabajo del titular (sin empleado): permitido.
             String empId = empIdByName.get(empCombo.getValue());
-            if (empId == null) { showError(t("trabajos.fail.title"), t("trabajos.fail.employee")); return; }
             boolean bill = billable.isSelected();
             String custId = custIdByName.get(custCombo.getValue());
             if (bill && custId == null) { showError(t("trabajos.fail.title"), t("trabajos.fail.customer")); return; }

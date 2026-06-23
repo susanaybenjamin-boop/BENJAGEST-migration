@@ -122,7 +122,7 @@ public class WorkLogService {
                                        quantity, unit_price, billable_amount, status)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'DRAFT')
                 """,
-                id, tenantContext.getCurrentCompanyId(), req.employeeId(), req.logDate(),
+                id, tenantContext.getCurrentCompanyId(), blank(req.employeeId()), req.logDate(),
                 req.minutesWorked() == null ? 0 : req.minutesWorked(),
                 blank(req.customerId()), req.description(),
                 req.isBillable() != null && req.isBillable(),
@@ -146,7 +146,7 @@ public class WorkLogService {
                        unit_price = ?, billable_amount = ?
                  WHERE id = ? AND company_id = ?
                 """,
-                req.employeeId(), req.logDate(),
+                blank(req.employeeId()), req.logDate(),
                 req.minutesWorked() == null ? 0 : req.minutesWorked(),
                 blank(req.customerId()), req.description(),
                 req.isBillable() != null && req.isBillable(),
@@ -251,9 +251,8 @@ public class WorkLogService {
     // ---- helpers ----
 
     private void validate(UpsertRequest req) {
-        if (req.employeeId() == null || req.employeeId().isBlank()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "employeeId obligatorio");
-        }
+        // employeeId es OPCIONAL: un trabajo sin empleado = el titular (autónomo
+        // que trabaja solo). Solo se exige fecha (y cliente si es facturable).
         if (req.logDate() == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "logDate obligatorio");
         }
