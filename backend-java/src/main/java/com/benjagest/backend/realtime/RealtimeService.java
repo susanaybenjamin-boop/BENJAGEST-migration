@@ -83,7 +83,7 @@ public class RealtimeService {
             try {
                 c.emitter().send(SseEmitter.event().name(type).data(json == null ? "{}" : json));
             } catch (Exception e) {
-                connections.remove(c);
+                drop(c);
             }
         }
     }
@@ -95,8 +95,24 @@ public class RealtimeService {
             try {
                 c.emitter().send(SseEmitter.event().comment("hb"));
             } catch (Exception e) {
-                connections.remove(c);
+                drop(c);
             }
+        }
+    }
+
+    /**
+     * Descarta una conexión caída de forma limpia: la quita de la lista y cierra
+     * el emisor. Si NO se cierra el emisor (solo se quita la referencia), Tomcat
+     * sigue viendo un request asíncrono con la tubería rota y registra el
+     * "broken pipe" ({@code IOException: Se ha anulado una conexión...}) en cada
+     * latido — ruido inofensivo pero alarmante. Cerrarlo aquí lo evita.
+     */
+    private void drop(Conn c) {
+        connections.remove(c);
+        try {
+            c.emitter().complete();
+        } catch (Exception ignored) {
+            // El emisor ya estaba roto/cerrado; nada que hacer.
         }
     }
 
