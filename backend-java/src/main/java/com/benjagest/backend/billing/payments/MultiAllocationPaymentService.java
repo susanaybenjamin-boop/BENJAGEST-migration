@@ -32,10 +32,16 @@ public class MultiAllocationPaymentService {
 
     private final JdbcTemplate jdbc;
     private final TenantContext tenant;
+    private final com.benjagest.backend.billing.reflection.CrossInvoiceReflectionService reflectionService;
+    private final com.benjagest.backend.auth.CurrentUserService currentUserService;
 
-    public MultiAllocationPaymentService(JdbcTemplate jdbc, TenantContext tenant) {
+    public MultiAllocationPaymentService(JdbcTemplate jdbc, TenantContext tenant,
+            com.benjagest.backend.billing.reflection.CrossInvoiceReflectionService reflectionService,
+            com.benjagest.backend.auth.CurrentUserService currentUserService) {
         this.jdbc = jdbc;
         this.tenant = tenant;
+        this.reflectionService = reflectionService;
+        this.currentUserService = currentUserService;
     }
 
     @Transactional
@@ -62,6 +68,7 @@ public class MultiAllocationPaymentService {
                             + req.totalAmount() + ")");
         }
         String companyId = tenant.getCurrentCompanyId();
+        String reflectUserId = currentUserService.require().userId();
         String paymentId = UUID.randomUUID().toString();
         for (Allocation alloc : req.allocations()) {
             if (alloc.invoiceId() == null || alloc.invoiceId().isBlank()) {
@@ -104,13 +111,14 @@ public class MultiAllocationPaymentService {
                                 + pending + " de la factura " + alloc.invoiceId());
             }
             // Insertar la allocation
+            String payRowId = UUID.randomUUID().toString();
             jdbc.update("""
                     INSERT INTO sales_invoice_payments
                            (id, invoice_id, payment_date, amount, payment_method,
                             reference, notes, payment_id)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                     """,
-                    UUID.randomUUID().toString(),
+                    payRowId,
                     alloc.invoiceId(),
                     java.sql.Date.valueOf(req.paymentDate()),
                     alloc.amount().setScale(2, RoundingMode.HALF_UP),
@@ -128,6 +136,11 @@ public class MultiAllocationPaymentService {
                        SET paid_amount = ?, payment_status = ?
                      WHERE id = ? AND company_id = ?
                     """, newPaid, newStatus, alloc.invoiceId(), companyId);
+
+            // REFLEJO-4: reflejar el cobro como pago del gasto en el cliente
+            // (por validar). Best-effort, nunca rompe el registro del cobro.
+            reflectionService.reflectPayment(alloc.invoiceId(), alloc.amount(),
+                    req.paymentDate(), req.paymentMethod(), payRowId, reflectUserId);
         }
         return new PaymentRegistrationResult(paymentId, req.allocations().size(),
                 req.totalAmount());

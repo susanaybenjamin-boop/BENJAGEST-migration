@@ -169,6 +169,106 @@ public class CrossInvoiceReflectionService {
                 entryId == null ? "—" : entryId, targetId);
     }
 
+    /**
+     * REFLEJO-4 — Refleja un COBRO de la factura emitida como PAGO del gasto en
+     * los libros del cliente que la recibió, POR VALIDAR. Best-effort, nunca lanza.
+     *
+     * <p>En el cliente: {@code Debe 400 (proveedor=emisor) / Haber 572 banco · 570
+     * caja}. La tesorería se elige por el método de pago (efectivo → 570, resto →
+     * 572). Idempotente por {@code source_type='REFLECTED_PAYMENT' + source_id =
+     * sourceKey}: si ese cobro ya se reflejó, no duplica.
+     *
+     * @param salesInvoiceId factura emitida cobrada (origen del reflejo del gasto)
+     * @param amount         importe cobrado en este evento
+     * @param payDate        fecha del cobro
+     * @param paymentMethod  método (para elegir 570/572)
+     * @param sourceKey      clave única del cobro de origen (id del pago/vencimiento)
+     * @param userId         usuario que registra
+     */
+    public void reflectPayment(String salesInvoiceId, BigDecimal amount, LocalDate payDate,
+                               String paymentMethod, String sourceKey, String userId) {
+        try {
+            doReflectPayment(salesInvoiceId, amount, payDate, paymentMethod, sourceKey, userId);
+        } catch (Exception ex) {
+            log.warn("REFLEJO: no se pudo reflejar el cobro de la factura {}: {}",
+                    salesInvoiceId, ex.getMessage(), ex);
+        }
+    }
+
+    private void doReflectPayment(String salesInvoiceId, BigDecimal amount, LocalDate payDate,
+                                  String paymentMethod, String sourceKey, String userId) {
+        if (salesInvoiceId == null || amount == null || amount.signum() <= 0) return;
+        if (payDate == null) payDate = LocalDate.now();
+        if (sourceKey == null || sourceKey.isBlank()) return;
+
+        // 1) ¿Esta factura se reflejó como gasto en algún cliente? Si no, nada.
+        var ref = jdbc.query("""
+                SELECT company_id, supplier_name FROM purchase_invoices
+                 WHERE source_sales_invoice_id = ?
+                 LIMIT 1
+                """, rs -> rs.next()
+                        ? new String[]{rs.getString("company_id"), rs.getString("supplier_name")}
+                        : null,
+                salesInvoiceId);
+        if (ref == null) return;
+        String targetId = ref[0];
+        String supplierName = ref[1];
+
+        // 2) Idempotencia: ¿ya reflejado este cobro concreto?
+        Integer dup = jdbc.queryForObject("""
+                SELECT COUNT(*) FROM journal_entries
+                 WHERE company_id = ? AND source_type = 'REFLECTED_PAYMENT' AND source_id = ?
+                """, Integer.class, targetId, sourceKey);
+        if (dup != null && dup > 0) return;
+
+        // 3) Ejercicio fiscal OPEN del cliente para la fecha del cobro.
+        String fiscalYearId = jdbc.query("""
+                SELECT id FROM fiscal_years
+                 WHERE company_id = ? AND status = 'OPEN'
+                   AND ? BETWEEN start_date AND end_date
+                 LIMIT 1
+                """, rs -> rs.next() ? rs.getString(1) : null,
+                targetId, Date.valueOf(payDate));
+        if (fiscalYearId == null) return;
+
+        // 4) Cuentas: proveedor 400 (Debe) y tesorería (Haber).
+        String acc400 = findAccountByPrefix(targetId, "400");
+        boolean cash = isCash(paymentMethod);
+        String treasury = findAccountByPrefix(targetId, cash ? "570" : "572");
+        if (treasury == null) treasury = findAccountByPrefix(targetId, cash ? "572" : "570");
+        if (treasury == null) treasury = findAccountByPrefix(targetId, "57");
+        if (acc400 == null || treasury == null) return;
+
+        // 5) Asiento DRAFT / auto_proposed (por validar).
+        String supplierDesc = supplierName == null || supplierName.isBlank()
+                ? "Proveedor" : supplierName;
+        String concept = "Pago Fra. — " + supplierDesc;
+        String entryId = UUID.randomUUID().toString();
+        jdbc.update("""
+                INSERT INTO journal_entries (
+                    id, company_id, fiscal_year_id, entry_number,
+                    entry_date, concept, source_type, source_id,
+                    status, reviewed, auto_proposed, proposed_confidence, created_by
+                ) VALUES (?, ?, ?, NULL, ?, ?, 'REFLECTED_PAYMENT', ?, 'DRAFT', FALSE, TRUE, NULL, ?)
+                """,
+                entryId, targetId, fiscalYearId, Date.valueOf(payDate), concept, sourceKey, userId);
+
+        BigDecimal amt = amount.setScale(2, RoundingMode.HALF_UP);
+        insertLine(entryId, acc400, supplierDesc, amt, BigDecimal.ZERO);
+        insertLine(entryId, treasury, cash ? "Pago en efectivo" : "Pago por banco",
+                BigDecimal.ZERO, amt);
+
+        log.info("REFLEJO: cobro {} de la factura {} reflejado como pago (asiento {}) en empresa {}",
+                amt, salesInvoiceId, entryId, targetId);
+    }
+
+    private boolean isCash(String method) {
+        if (method == null) return false;
+        String m = method.toUpperCase();
+        return m.contains("EFECT") || m.contains("CASH") || m.contains("CONTADO")
+                || m.contains("METAL") || m.contains("CAJA");
+    }
+
     /** Construye el asiento de compra espejo o devuelve null si no es posible. */
     private String tryBuildJournalEntry(String companyId, SalesInvoice invoice,
                                         String purchaseId, String concept,

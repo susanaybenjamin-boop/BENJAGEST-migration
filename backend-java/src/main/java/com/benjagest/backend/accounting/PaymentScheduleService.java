@@ -36,12 +36,15 @@ public class PaymentScheduleService {
     private final JdbcTemplate jdbc;
     private final TenantContext tenant;
     private final CurrentUserService currentUser;
+    private final com.benjagest.backend.billing.reflection.CrossInvoiceReflectionService reflectionService;
 
     public PaymentScheduleService(JdbcTemplate jdbc, TenantContext tenant,
-                                    CurrentUserService currentUser) {
+                                    CurrentUserService currentUser,
+                                    com.benjagest.backend.billing.reflection.CrossInvoiceReflectionService reflectionService) {
         this.jdbc = jdbc;
         this.tenant = tenant;
         this.currentUser = currentUser;
+        this.reflectionService = reflectionService;
     }
 
     // ====================================================================
@@ -157,7 +160,16 @@ public class PaymentScheduleService {
                  WHERE id = ? AND company_id = ?
                 """, Date.valueOf(payDate), blank(req.paymentMethod()),
                 req.treasuryAccountCode().trim(), entryId, dueDateId, companyId);
-        if ("SALES".equals(dd.invoiceKind())) syncSalesPaymentStatus(dd.invoiceId());
+        if ("SALES".equals(dd.invoiceKind())) {
+            syncSalesPaymentStatus(dd.invoiceId());
+            // REFLEJO-4: el cobro del vencimiento se refleja como pago del gasto
+            // en el cliente (por validar). La tesorería del cliente se elige por
+            // el método; si es caja/efectivo → 570, si no → 572.
+            String method = "570".equals(req.treasuryAccountCode().trim()) ? "EFECTIVO"
+                    : blank(req.paymentMethod());
+            reflectionService.reflectPayment(dd.invoiceId(), dd.amount(), payDate,
+                    method, dueDateId, currentUser.require().userId());
+        }
         return getOne(dueDateId);
     }
 
@@ -223,6 +235,12 @@ public class PaymentScheduleService {
                     """, paidDate == null ? null : Date.valueOf(paidDate), journalEntryId,
                     bankMovementId, dd.id(), tenant.getCurrentCompanyId());
             remaining = remaining.subtract(dd.amount());
+            // REFLEJO-4: cobro por conciliación bancaria (siempre banco, 572) →
+            // reflejar el pago del gasto en el cliente, por validar. Best-effort.
+            if ("SALES".equals(invoiceKind)) {
+                reflectionService.reflectPayment(invoiceId, dd.amount(), paidDate,
+                        "TRANSFER", dd.id(), safeUserId());
+            }
         }
         if ("SALES".equals(invoiceKind)) syncSalesPaymentStatus(invoiceId);
     }
