@@ -19017,6 +19017,8 @@ public class BenjagestUiApplication extends Application {
             case "clientcfg.internal_notes" -> "Internal notes";
             case "clientcfg.provision_extra_pay" -> "Provision extra pay monthly";
             case "clientcfg.provision_extra_pay.hint" -> "Accrual basis: each month books 1/12 of non-prorated extra pay (640→465). Uncheck to book the expense only when the extra pay is paid (simpler, but doesn't follow accrual).";
+            case "clientcfg.reflejo_auto" -> "Auto-reflect invoices as expenses";
+            case "clientcfg.reflejo_auto.hint" -> "When another company in the portfolio issues an invoice to this one, book it automatically as a received invoice (expense) + draft entry, ready to validate. Uncheck to disable for this company.";
             case "clientcfg.fiscalperiod.MONTHLY" -> "Monthly";
             case "clientcfg.fiscalperiod.QUARTERLY" -> "Quarterly";
             case "clientcfg.regime.ESTIMACION_DIRECTA" -> "Direct estimation";
@@ -20194,6 +20196,8 @@ public class BenjagestUiApplication extends Application {
             case "clientcfg.internal_notes" -> "Notas internas";
             case "clientcfg.provision_extra_pay" -> "Provisionar pagas extra mensualmente";
             case "clientcfg.provision_extra_pay.hint" -> "Criterio de devengo: cada mes contabiliza 1/12 de las pagas extra no prorrateadas (640→465). Desmárcalo para contabilizar el gasto solo al pagar la paga (más simple, pero no respeta el devengo).";
+            case "clientcfg.reflejo_auto" -> "Reflejar automáticamente las facturas como gasto";
+            case "clientcfg.reflejo_auto.hint" -> "Cuando otra empresa de la cartera le emite una factura a ésta, se contabiliza automáticamente como factura recibida (gasto) + asiento en borrador, lista para validar. Desmárcalo para desactivarlo en esta empresa.";
             case "clientcfg.fiscalperiod.MONTHLY" -> "Mensual";
             case "clientcfg.fiscalperiod.QUARTERLY" -> "Trimestral";
             case "clientcfg.regime.ESTIMACION_DIRECTA" -> "Estimación directa";
@@ -26719,7 +26723,8 @@ public class BenjagestUiApplication extends Application {
                             cfg == null ? null : cfg.contactValue(),
                             cfg == null ? null : cfg.internalNotes(),
                             "AUTONOMO",
-                            cfg == null || cfg.provisionExtraPay());
+                            cfg == null || cfg.provisionExtraPay(),
+                            cfg == null || cfg.reflejoAutoEnabled());
                     laborApiClient.saveClientAdvisoryConfig(upd);
                     laborApiClient.ensureRetaProfiles();
                     return null;
@@ -35060,7 +35065,7 @@ public class BenjagestUiApplication extends Application {
                 buildClientConfigContent(cfgTask.getValue())));
         cfgTask.setOnFailed(ev -> holder.getChildren().setAll(
                 buildClientConfigContent(new com.benjagest.ui.model.ClientConfigModels.AdvisoryConfigEntry(
-                        null, null, null, null, null, null, true))));
+                        null, null, null, null, null, null, true, true))));
         start(cfgTask, "client-config-load");
         return holder;
     }
@@ -35089,6 +35094,13 @@ public class BenjagestUiApplication extends Application {
         provisionHint.getStyleClass().add("settings-hint");
         provisionHint.setWrapText(true);
 
+        // REFLEJO-6 — interruptor del reflejo automático factura↔gasto.
+        CheckBox reflejoAuto = new CheckBox(t("clientcfg.reflejo_auto"));
+        reflejoAuto.setSelected(cfg.reflejoAutoEnabled());
+        Label reflejoHint = new Label(t("clientcfg.reflejo_auto.hint"));
+        reflejoHint.getStyleClass().add("settings-hint");
+        reflejoHint.setWrapText(true);
+
         ComboBox<String> fiscalPeriod = localizedConfigCombo("clientcfg.fiscalperiod.",
                 java.util.List.of("MONTHLY", "QUARTERLY"), cfg.fiscalPeriod());
         ComboBox<String> taxRegime = localizedConfigCombo("clientcfg.regime.",
@@ -35116,6 +35128,8 @@ public class BenjagestUiApplication extends Application {
         g.add(new Label(t("clientcfg.internal_notes")), 0, r); g.add(internalNotes, 1, r++);
         g.add(provisionExtra, 1, r++);
         g.add(provisionHint, 1, r++);
+        g.add(reflejoAuto, 1, r++);
+        g.add(reflejoHint, 1, r++);
 
         Button saveCfg = new Button(t("common.btn.save"));
         saveCfg.getStyleClass().add("button-primary");
@@ -35125,7 +35139,7 @@ public class BenjagestUiApplication extends Application {
             var payload = new com.benjagest.ui.model.ClientConfigModels.AdvisoryConfigEntry(
                     fiscalPeriod.getValue(), taxRegime.getValue(), contactChannel.getValue(),
                     blankToNullOrSelf(contactValue.getText()), blankToNullOrSelf(internalNotes.getText()),
-                    legalForm.getValue(), provisionExtra.isSelected());
+                    legalForm.getValue(), provisionExtra.isSelected(), reflejoAuto.isSelected());
             Task<Void> tk = new Task<>() {
                 @Override protected Void call() throws Exception { laborApiClient.saveClientAdvisoryConfig(payload); return null; }
             };

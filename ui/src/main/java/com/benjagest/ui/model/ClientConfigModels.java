@@ -15,5 +15,5 @@ public final class ClientConfigModels {
     public record AdvisoryConfigEntry(
             String fiscalPeriod, String taxRegime,
             String contactChannel, String contactValue, String internalNotes,
-            String legalForm, boolean provisionExtraPay) {}
+            String legalForm, boolean provisionExtraPay, boolean reflejoAutoEnabled) {}
 }

@@ -116,6 +116,7 @@ public class CrossInvoiceReflectionService {
                 """, rs -> rs.next() ? rs.getString(1) : null,
                 customerNif, issuerCompanyId, advisoryId, advisoryId);
         if (targetId == null) return; // el cliente no es una empresa de la cartera
+        if (!reflejoEnabled(targetId)) return; // interruptor REFLEJO-6 desactivado en el cliente
 
         // 4) Idempotencia: ¿ya reflejada?
         Integer dup = jdbc.queryForObject("""
@@ -213,6 +214,7 @@ public class CrossInvoiceReflectionService {
         if (ref == null) return;
         String targetId = ref[0];
         String supplierName = ref[1];
+        if (!reflejoEnabled(targetId)) return; // interruptor REFLEJO-6
 
         // 2) Idempotencia: ¿ya reflejado este cobro concreto?
         Integer dup = jdbc.queryForObject("""
@@ -303,6 +305,7 @@ public class CrossInvoiceReflectionService {
         String salesInvoiceId = ref[0];
         String issuerId = ref[1];
         if (issuerId == null) return;
+        if (!reflejoEnabled(issuerId)) return; // interruptor REFLEJO-6 (en el emisor)
 
         // 2) Idempotencia.
         Integer dup = jdbc.queryForObject("""
@@ -505,6 +508,15 @@ public class CrossInvoiceReflectionService {
             }
         }
         return any;
+    }
+
+    /** Interruptor REFLEJO-6: ¿la empresa que recibe el reflejo lo tiene activo? (default sí). */
+    private boolean reflejoEnabled(String companyId) {
+        if (companyId == null) return false;
+        Boolean on = jdbc.query(
+                "SELECT reflejo_auto_enabled FROM companies WHERE id = ? LIMIT 1",
+                rs -> rs.next() ? rs.getBoolean(1) : Boolean.TRUE, companyId);
+        return on == null || on;
     }
 
     private boolean isCash(String method) {
