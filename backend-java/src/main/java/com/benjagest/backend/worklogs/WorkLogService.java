@@ -117,12 +117,13 @@ public class WorkLogService {
         String id = UUID.randomUUID().toString();
         BigDecimal amount = effectiveAmount(req);
         jdbcTemplate.update("""
-                INSERT INTO work_logs (id, company_id, employee_id, log_date, minutes_worked,
+                INSERT INTO work_logs (id, company_id, employee_id, log_date, work_date, minutes_worked,
                                        customer_id, description, is_billable, billing_unit,
                                        quantity, unit_price, billable_amount, status)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'DRAFT')
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'DRAFT')
                 """,
-                id, tenantContext.getCurrentCompanyId(), blank(req.employeeId()), req.logDate(),
+                id, tenantContext.getCurrentCompanyId(), blank(req.employeeId()),
+                req.logDate(), req.logDate(),
                 req.minutesWorked() == null ? 0 : req.minutesWorked(),
                 blank(req.customerId()), req.description(),
                 req.isBillable() != null && req.isBillable(),
@@ -141,12 +142,12 @@ public class WorkLogService {
         BigDecimal amount = effectiveAmount(req);
         jdbcTemplate.update("""
                 UPDATE work_logs
-                   SET employee_id = ?, log_date = ?, minutes_worked = ?, customer_id = ?,
+                   SET employee_id = ?, log_date = ?, work_date = ?, minutes_worked = ?, customer_id = ?,
                        description = ?, is_billable = ?, billing_unit = ?, quantity = ?,
                        unit_price = ?, billable_amount = ?
                  WHERE id = ? AND company_id = ?
                 """,
-                blank(req.employeeId()), req.logDate(),
+                blank(req.employeeId()), req.logDate(), req.logDate(),
                 req.minutesWorked() == null ? 0 : req.minutesWorked(),
                 blank(req.customerId()), req.description(),
                 req.isBillable() != null && req.isBillable(),
