@@ -411,6 +411,15 @@ public class SalesInvoiceRepository {
             sql.append("   AND i.invoice_type = ?\n");
             args.add(invoiceTypeFilter.trim());
         }
+        // Ocultar borradores cancelados: el soft-cancel de un DRAFT lo deja
+        // en status CANCELLED sin numero fiscal, y el usuario espera que
+        // desaparezca al borrarlo (no es documento fiscal). Las facturas
+        // validadas que se anulan van a VOIDED (no CANCELLED) y se conservan
+        // para auditoria. Si se filtra explicitamente por CANCELLED, se
+        // muestran igualmente.
+        if (statusFilter == null || !"CANCELLED".equalsIgnoreCase(statusFilter.trim())) {
+            sql.append("   AND NOT (i.status = 'CANCELLED' AND i.invoice_number IS NULL)\n");
+        }
         sql.append(" ORDER BY i.invoice_date DESC, i.created_at DESC LIMIT ?");
         args.add(Math.min(Math.max(limit, 1), 500));
 
