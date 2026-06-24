@@ -1,5 +1,13 @@
 # Backlog operativo BENJAGEST
 
+> **Última actualización:** 2026-06-24 (**bloque REFLEJO COMPLETO 1-6** —reflejo
+> bidireccional factura↔gasto + pago↔cobro, cascada de reversión, avisos por validar,
+> interruptor on/off—; **mejoras de avisos** —banner "por validar" en la home (dos modos),
+> el empresario no ve "asientos por validar", cartera **desglosada por cliente** con "Abrir
+> cliente"—; y una **tanda de fixes de contraste** (texto blanco ilegible) que afectaban a
+> cabeceras de tabla de contabilidad, banner AEAT, y **valores de KPI + datos del cliente**
+> del resumen de actividad. Ver sesión 2026-06-24 debajo.
+> Histórico previo:
 > **Última actualización:** 2026-06-23 (módulo **Trabajos** cerrado: TRB-4 tarifas por
 > cliente, trabajos del titular, formulario grande, importar trabajos desde Nueva factura,
 > fixes `work_date`/botón Facturar/**3 bugs al facturar**; **ocultar borradores cancelados**;
@@ -72,6 +80,54 @@
 
 > **Bloque REFLEJO COMPLETO (1-6).** Aparte (mismo día): **fix ruido SSE** *(a34df54)* — el
 > heartbeat cierra el emisor caído en vez de soltarlo; Tomcat deja de loguear "broken pipe".
+
+---
+
+## 📅 SESIÓN 2026-06-24 — REFLEJO completo + avisos por cliente + tanda de fixes de contraste
+
+> Continuación de la noche del 23. Se cerró el **bloque REFLEJO (1-6)** entero y verificado en
+> vivo, se mejoraron los **avisos** (home + por cliente + regla empresario/gestoría) y se cazó
+> una **familia de bugs de contraste** (texto blanco ilegible del tema sobre fondos claros).
+> Todo compila (backend+ui, exit 0) y mergeado a `develop`.
+
+**Bloque REFLEJO — cerrado y verificado (ver bloque dedicado arriba):**
+- ✅ REFLEJO-2 gasto reflejado *(c43b8cb)* — **verificado en vivo** (Marcos F-2026-0104, asiento
+  cuadrado 2420=2420).
+- ✅ REFLEJO-4 pago/cobro **bidireccional** *(fbf80d6 + b04f585)* — asesoría cobra→pago en cliente
+  (4a) y cliente paga→cobro en emisor (4b), verificado en log.
+- ✅ REFLEJO-3 cascada de reversión *(776a88d)* · REFLEJO-5 aviso `DRAFT_PURCHASES` *(776a88d)* ·
+  REFLEJO-6 interruptor `reflejo_auto_enabled` V142 *(d11e401)*.
+
+**Avisos — mejoras:**
+- ✅ **Banner "por validar" en la home** *(dafd3bf)* — asientos+gastos+facturas por validar, en
+  empresario y asesoría, con botón Revisar → vista Avisos.
+- ✅ **Regla empresario/gestoría** *(87eba95)* — el empresario NO lleva contabilidad → no ve
+  "asientos por validar" (solo gastos y facturas); la gestoría lo ve todo. Bucket nuevo
+  `DRAFT_SALES` (facturas emitidas por validar).
+- ✅ **Cartera desglosada por cliente** *(b322329)* — la vista Avisos de la asesoría ya dice de
+  QUÉ cliente es cada aviso, con botón **"Abrir cliente"** que entra directo (antes había que ir
+  cliente por cliente). Endpoint `/pending-tasks/portfolio-detailed`.
+
+**Fixes de contraste (texto blanco ilegible del tema sobre fondo claro):**
+- ✅ **Cabeceras de tabla en Contabilidad** *(d908bd4)* — las tablas de `AccountingScreen` no
+  llevaban `.data-table`; marcado el TabPane raíz → todas las cabeceras legibles.
+- ✅ **Banner AEAT** *(856c0fb)* — texto blanco del titular + **no se quitaba al marcar
+  presentado** (genérico clonado a SUBMITTED pero el genérico seguía PENDING; arreglado con
+  `NOT EXISTS`).
+- ✅ **Valores de KPI + datos del cliente** del resumen de actividad *(956b669)* — el backend
+  servía los datos bien (verificado con log temporal); `kpiCardValue` y los labels de "Datos del
+  cliente" no fijaban color → invisibles. Color explícito añadido.
+
+**Pendientes detectados (anotados, no bloquean):**
+- ⏳ **Descuadre gastos** en KPI de la asesoría: el trimestre (16.083) sale mayor que el año hasta
+  hoy (6.342) — imposible; apunta a gastos con fecha futura (25-30 jun) o matiz en la query de
+  gastos 6xx. Investigar.
+- ⏳ **Enlace al asiento/factura EXACTO** desde el aviso de cartera (hoy "Abrir cliente" abre la
+  ficha del cliente, no salta a la fila concreta).
+- ⏳ **Verificar doble reflejo de cobro**: el log mostró F-2026-0104 reflejada como pago 2 veces
+  (¿se registró el cobro 2 veces, o falla la idempotencia de `reflectPayment`?).
+- ⏳ REFLEJO menores: banner de visibilidad "reflejada en {cliente}" en la propia factura;
+  dirección TPB inversa (fuera de alcance por ley).
 
 ---
 
