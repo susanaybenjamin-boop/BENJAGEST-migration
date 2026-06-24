@@ -81,6 +81,15 @@ public class SalesAndExpensesKpiService {
                  WHERE company_id = ? AND status = 'DRAFT'
                 """, Integer.class, companyId);
 
+        // DIAGNÓSTICO temporal (Benjamin 2026-06-24: "los KPIs no dan datos").
+        // Confirma si el backend calcula bien (→ problema UI/red) o devuelve ceros
+        // (→ problema de tenant/query). Quitar cuando se resuelva.
+        org.slf4j.LoggerFactory.getLogger(SalesAndExpensesKpiService.class).info(
+                "KPI sales-and-expenses: company={} {}..{} → ventas={} ({} fra) gastos={} ({} fra) "
+                        + "ivaRep={} ivaSop={} m303={} drafts={}",
+                companyId, from, to, salesTotal, salesCount, expensesTotal, expensesCount,
+                vatCharged, vatBorne, model303, drafts);
+
         return new Kpis(salesTotal, salesCount, expensesTotal, expensesCount,
                 vatCharged, vatBorne, model303,
                 drafts == null ? 0 : drafts);
