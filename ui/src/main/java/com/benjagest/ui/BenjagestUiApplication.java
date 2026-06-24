@@ -31380,22 +31380,35 @@ public class BenjagestUiApplication extends Application {
 
         GridPane g = new GridPane();
         g.setHgap(20); g.setVgap(8);
+        // Etiquetas con color explícito: sin -fx-text-fill heredarían el texto
+        // claro del tema sobre el fondo blanco → casi invisibles (bug Benjamin
+        // 2026-06-24). Campo en gris medio, valor en oscuro.
+        java.util.function.Function<String, Label> fld = s -> {
+            Label l = new Label(s);
+            l.setStyle("-fx-text-fill: #64748b;");
+            return l;
+        };
+        java.util.function.Function<String, Label> val = s -> {
+            Label l = new Label(s);
+            l.setStyle("-fx-text-fill: #1e293b; -fx-font-weight: bold;");
+            return l;
+        };
         int r = 0;
-        g.add(new Label(t("advisory.client.field.legal_name")), 0, r);
-        g.add(new Label(client.legalName() == null ? "—" : client.legalName()), 1, r++);
-        g.add(new Label(t("advisory.client.field.nif")), 0, r);
-        g.add(new Label(client.taxIdentifier() == null ? "—" : client.taxIdentifier()), 1, r++);
+        g.add(fld.apply(t("advisory.client.field.legal_name")), 0, r);
+        g.add(val.apply(client.legalName() == null ? "—" : client.legalName()), 1, r++);
+        g.add(fld.apply(t("advisory.client.field.nif")), 0, r);
+        g.add(val.apply(client.taxIdentifier() == null ? "—" : client.taxIdentifier()), 1, r++);
         if (client.companyType() != null) {
-            g.add(new Label(t("advisory.client.field.type")), 0, r);
-            g.add(new Label(localizedEnum("customer_type", client.companyType())), 1, r++);
+            g.add(fld.apply(t("advisory.client.field.type")), 0, r);
+            g.add(val.apply(localizedEnum("customer_type", client.companyType())), 1, r++);
         }
         if (client.email() != null) {
-            g.add(new Label(t("advisory.client.field.email")), 0, r);
-            g.add(new Label(client.email()), 1, r++);
+            g.add(fld.apply(t("advisory.client.field.email")), 0, r);
+            g.add(val.apply(client.email()), 1, r++);
         }
         if (client.city() != null && !client.city().isBlank()) {
-            g.add(new Label(t("advisory.client.field.city")), 0, r);
-            g.add(new Label(client.city()), 1, r++);
+            g.add(fld.apply(t("advisory.client.field.city")), 0, r);
+            g.add(val.apply(client.city()), 1, r++);
         }
 
         VBox body = new VBox(14, title, hint, g);
@@ -31703,7 +31716,10 @@ public class BenjagestUiApplication extends Application {
 
     private Label kpiCardValue() {
         Label l = new Label("—");
-        l.setStyle("-fx-font-size: 18px; -fx-font-weight: bold;");
+        // -fx-text-fill explícito: sin él, el valor hereda el texto claro del tema
+        // sobre el fondo blanco de la card → invisible (el dato estaba, pero en
+        // blanco; bug Benjamin 2026-06-24). El título/caption ya tenían color.
+        l.setStyle("-fx-font-size: 18px; -fx-font-weight: bold; -fx-text-fill: #1e293b;");
         return l;
     }
 
