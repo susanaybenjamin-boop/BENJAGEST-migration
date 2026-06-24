@@ -118,12 +118,16 @@
   servía los datos bien (verificado con log temporal); `kpiCardValue` y los labels de "Datos del
   cliente" no fijaban color → invisibles. Color explícito añadido.
 
-**Pendientes detectados (anotados, no bloquean):**
-- ⏳ **Descuadre gastos** en KPI de la asesoría: el trimestre (16.083) sale mayor que el año hasta
-  hoy (6.342) — imposible; apunta a gastos con fecha futura (25-30 jun) o matiz en la query de
-  gastos 6xx. Investigar.
-- ⏳ **Enlace al asiento/factura EXACTO** desde el aviso de cartera (hoy "Abrir cliente" abre la
-  ficha del cliente, no salta a la fila concreta).
+**Pendientes detectados:**
+- ✅ **Descuadre gastos en KPI — NO era bug** (investigado): el trimestre llega a 30 jun y el
+  "año hasta hoy" a 24 jun; la diferencia es exactamente la **nómina de junio devengada a 30/06**
+  (640/642, ~9.741) que cae en el hueco 25-30 jun. Ambos números correctos para su rango. *(Nota
+  menor: el contador "N facturas" del gasto cuenta también los asientos de nómina; afinar si
+  molesta.)*
+- ✅ **Enlace desde el aviso de cartera** *(0590cdf)* — "Abrir cliente" ya **salta a la pestaña**
+  que resuelve el aviso (asientos→Contabilidad/Por validar, gastos→Compras y Gastos,
+  facturas→Facturación, etc.) en vez de abrir el Resumen. (Falta solo resaltar la fila exacta —
+  mejora futura.)
 - ⏳ **Verificar doble reflejo de cobro**: el log mostró F-2026-0104 reflejada como pago 2 veces
   (¿se registró el cobro 2 veces, o falla la idempotencia de `reflectPayment`?).
 - ⏳ REFLEJO menores: banner de visibilidad "reflejada en {cliente}" en la propia factura;
