@@ -97,6 +97,14 @@ public class AccountingScreen {
     public Node buildView() {
         TabPane tabs = new TabPane();
         this.accountingTabs = tabs;
+        // Las tablas de esta pantalla no añadían la clase "data-table", así que
+        // sus cabeceras heredaban el texto claro del tema sobre fondo claro →
+        // ilegibles (bug Benjamin 2026-06-23). Marcando el contenedor con
+        // "data-table", los selectores descendentes `.data-table .column-header…`
+        // del app.css estilan TODAS las tablas de todos los tabs de una vez
+        // (cabecera azul oscuro + texto blanco), como el resto de la app. No
+        // afecta a las pestañas: esas reglas solo tocan internos de TableView.
+        tabs.getStyleClass().add("data-table");
         tabs.setTabClosingPolicy(TabPane.TabClosingPolicy.UNAVAILABLE);
         // Slice 3O — Eliminado el tab "Recurrentes" de Contabilidad.
         // Las plantillas recurrentes viven en su sitio natural:
