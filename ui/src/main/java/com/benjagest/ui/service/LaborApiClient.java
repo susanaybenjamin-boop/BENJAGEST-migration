@@ -1268,6 +1268,19 @@ public class LaborApiClient {
         return out;
     }
 
+    /** Avisos de la cartera DESGLOSADOS por empresa (de qué cliente es cada uno). */
+    public java.util.List<com.benjagest.ui.model.PendingCompanyBucket> pendingTasksDetailed()
+            throws IOException, InterruptedException {
+        HttpResponse<String> r = send(req(baseUrl + "/pending-tasks/portfolio-detailed").GET());
+        java.util.List<com.benjagest.ui.model.PendingCompanyBucket> out = new ArrayList<>();
+        for (String o : splitTopLevelObjects(r.body())) {
+            out.add(new com.benjagest.ui.model.PendingCompanyBucket(
+                    textField(o, "companyId"), textField(o, "companyName"),
+                    textField(o, "type"), intFieldOrZero(o, "count"), textField(o, "severity")));
+        }
+        return out;
+    }
+
     /** Crea los perfiles RETA que falten en la empresa actual (titulares RETA o,
      *  si la empresa es AUTONOMO, el perfil de la propia empresa). Idempotente. */
     public void ensureRetaProfiles() throws IOException, InterruptedException {
