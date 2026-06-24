@@ -19124,6 +19124,7 @@ public class BenjagestUiApplication extends Application {
             case "pending.empty" -> "Nothing pending. All caught up.";
             case "pending.failed" -> "Could not load pending tasks";
             case "pending.go" -> "Open";
+            case "pending.open_client" -> "Open client";
             case "pending.type.DRAFT_JOURNAL" -> "Journal entries to validate";
             case "pending.type.DRAFT_PURCHASES" -> "Expenses to validate";
             case "pending.type.DRAFT_SALES" -> "Invoices to validate";
@@ -20308,6 +20309,7 @@ public class BenjagestUiApplication extends Application {
             case "pending.empty" -> "Nada pendiente. Todo al día.";
             case "pending.failed" -> "No se pudieron cargar las tareas pendientes";
             case "pending.go" -> "Abrir";
+            case "pending.open_client" -> "Abrir cliente";
             case "pending.type.DRAFT_JOURNAL" -> "Asientos por validar";
             case "pending.type.DRAFT_PURCHASES" -> "Gastos por validar";
             case "pending.type.DRAFT_SALES" -> "Facturas por validar";
@@ -26581,6 +26583,10 @@ public class BenjagestUiApplication extends Application {
         Label scope = (Label) content.lookup("#pending-scope-label");
         if (scope != null) scope.setText(pendingScopeText());
         boolean portfolio = pendingPortfolioMode;
+        if (portfolio) {
+            loadPendingDetailedInto(listBox);
+            return;
+        }
         Task<java.util.List<com.benjagest.ui.model.PendingTaskBucket>> task = new Task<>() {
             @Override protected java.util.List<com.benjagest.ui.model.PendingTaskBucket> call() throws Exception {
                 return laborApiClient.pendingTasks(portfolio);
@@ -26603,6 +26609,86 @@ public class BenjagestUiApplication extends Application {
             listBox.getChildren().add(errorPanel(t("pending.failed")));
         });
         start(task, "pending-tasks-load");
+    }
+
+    /**
+     * Vista cartera DESGLOSADA por cliente: cada aviso dice de QUÉ empresa es y
+     * lleva botón "Abrir" que entra directo a ese cliente (antes había que ir
+     * cliente por cliente adivinando). Carga avisos + lista de clientes para
+     * resolver el {@link com.benjagest.ui.model.ManagedClientEntry} al navegar.
+     */
+    private void loadPendingDetailedInto(VBox listBox) {
+        Task<Object[]> task = new Task<>() {
+            @Override protected Object[] call() throws Exception {
+                var buckets = laborApiClient.pendingTasksDetailed();
+                var clients = altaApiClient.listManagedClients();
+                return new Object[]{buckets, clients};
+            }
+        };
+        task.setOnSucceeded(ev -> {
+            @SuppressWarnings("unchecked")
+            var buckets = (java.util.List<com.benjagest.ui.model.PendingCompanyBucket>) task.getValue()[0];
+            @SuppressWarnings("unchecked")
+            var clients = (java.util.List<com.benjagest.ui.model.ManagedClientEntry>) task.getValue()[1];
+            java.util.Map<String, com.benjagest.ui.model.ManagedClientEntry> byId = new java.util.HashMap<>();
+            for (var c : clients) byId.put(c.id(), c);
+            var visible = buckets.stream().filter(b -> bucketVisible(b.type())).toList();
+            listBox.getChildren().clear();
+            if (visible.isEmpty()) {
+                Label ok = new Label(t("pending.empty"));
+                ok.getStyleClass().add("settings-hint");
+                listBox.getChildren().add(ok);
+                return;
+            }
+            for (var b : visible) listBox.getChildren().add(pendingCompanyCard(b, byId));
+        });
+        task.setOnFailed(ev -> {
+            listBox.getChildren().clear();
+            listBox.getChildren().add(errorPanel(t("pending.failed")));
+        });
+        start(task, "pending-tasks-detailed");
+    }
+
+    /** Tarjeta de aviso de cartera: empresa + tipo + nº + botón "Abrir" que entra al cliente. */
+    private Node pendingCompanyCard(com.benjagest.ui.model.PendingCompanyBucket b,
+                                    java.util.Map<String, com.benjagest.ui.model.ManagedClientEntry> byId) {
+        String color = switch (b.severity() == null ? "INFO" : b.severity()) {
+            case "URGENT" -> "#e53935";
+            case "WARNING" -> "#fb8c00";
+            default -> "#90a4ae";
+        };
+        Label dot = new Label("●");
+        dot.setStyle("-fx-text-fill: " + color + "; -fx-font-size: 14px;");
+        Label count = new Label(String.valueOf(b.count()));
+        count.setStyle("-fx-font-weight: bold; -fx-font-size: 16px; -fx-text-fill: #1e293b;");
+        count.setMinWidth(40);
+        Label client = new Label(b.companyName() == null ? "" : b.companyName());
+        client.setStyle("-fx-font-weight: bold; -fx-text-fill: #1e293b;");
+        Label label = new Label(t("pending.type." + b.type()));
+        label.setStyle("-fx-text-fill: #475569;");
+        VBox texts = new VBox(1, client, label);
+        HBox.setHgrow(texts, Priority.ALWAYS);
+        HBox row = new HBox(12, dot, count, texts);
+        row.setAlignment(Pos.CENTER_LEFT);
+        row.setStyle("-fx-padding: 10 14; -fx-background-color: #ffffff; "
+                + "-fx-background-radius: 8; -fx-border-color: #e0e0e0; -fx-border-radius: 8;");
+        // Botón "Abrir": entra al cliente (o vuelve a Mi gestión si es la asesoría).
+        Button go = new Button(t("pending.open_client"));
+        go.getStyleClass().add("button-secondary");
+        go.setOnAction(e -> {
+            var entry = byId.get(b.companyId());
+            if (entry != null) {
+                boolean linked = "CLIENT".equalsIgnoreCase(entry.companyType());
+                switchToClient(entry, linked);
+            } else {
+                // Es la propia asesoría (no está en la lista de clientes): Mi gestión.
+                exitClientMode();
+                Runnable nav = pendingNav(b.type());
+                if (nav != null) nav.run();
+            }
+        });
+        row.getChildren().add(go);
+        return row;
     }
 
     private Node pendingTaskCard(com.benjagest.ui.model.PendingTaskBucket b, boolean portfolio) {

@@ -43,6 +43,10 @@ public class PendingTasksService {
 
     public record Bucket(String type, int count, String severity) {}
 
+    /** Bucket con la empresa a la que pertenece (vista cartera de la asesoría). */
+    public record CompanyBucket(String companyId, String companyName,
+                                String type, int count, String severity) {}
+
     public List<Bucket> forCurrent() {
         return forCompanies(List.of(tenant.getCurrentCompanyId()));
     }
@@ -54,6 +58,28 @@ public class PendingTasksService {
         ids.addAll(jdbc.queryForList(
                 "SELECT id FROM companies WHERE parent_company_id = ?", String.class, self));
         return forCompanies(ids);
+    }
+
+    /**
+     * Cartera DESGLOSADA por empresa: para que la asesoría vea de QUÉ cliente es
+     * cada aviso y pueda ir directa (antes el agregado no decía de quién era —
+     * había que ir cliente por cliente). La asesoría (self) va primera.
+     */
+    public List<CompanyBucket> forPortfolioDetailed() {
+        String self = tenant.getCurrentCompanyId();
+        List<String[]> companies = jdbc.query("""
+                SELECT id, legal_name FROM companies
+                 WHERE id = ? OR parent_company_id = ?
+                 ORDER BY (id = ?) DESC, legal_name
+                """, (rs, n) -> new String[]{rs.getString("id"), rs.getString("legal_name")},
+                self, self, self);
+        List<CompanyBucket> out = new ArrayList<>();
+        for (String[] c : companies) {
+            for (Bucket b : forCompanies(List.of(c[0]))) {
+                out.add(new CompanyBucket(c[0], c[1], b.type(), b.count(), b.severity()));
+            }
+        }
+        return out;
     }
 
     private List<Bucket> forCompanies(List<String> companyIds) {
@@ -139,5 +165,8 @@ public class PendingTasksService {
 
         @GetMapping("/portfolio")
         public List<Bucket> portfolio() { return service.forPortfolio(); }
+
+        @GetMapping("/portfolio-detailed")
+        public List<CompanyBucket> portfolioDetailed() { return service.forPortfolioDetailed(); }
     }
 }
