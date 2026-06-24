@@ -3939,6 +3939,9 @@ public class BenjagestUiApplication extends Application {
     // header con botón de salida, y el sidebar limpia este estado al
     // navegar para evitar que el asesor se quede atrapado.
     private String actingClientName;
+    /** Si venimos de "Abrir" en un aviso de cartera, el tipo de aviso a resolver:
+     *  buildClientDetailView selecciona la pestaña que lo resuelve y lo limpia. */
+    private String pendingClientBucketType;
     /**
      * Slice 3T — TRUE cuando la asesoría está actuando como un cliente
      * VINCULADO (factura desde BENJAGEST con VeriFactu). FALSE cuando
@@ -26679,6 +26682,8 @@ public class BenjagestUiApplication extends Application {
             var entry = byId.get(b.companyId());
             if (entry != null) {
                 boolean linked = "CLIENT".equalsIgnoreCase(entry.companyType());
+                // Salto directo a la pestaña que resuelve el aviso dentro de la ficha.
+                pendingClientBucketType = b.type();
                 switchToClient(entry, linked);
             } else {
                 // Es la propia asesoría (no está en la lista de clientes): Mi gestión.
@@ -26732,6 +26737,28 @@ public class BenjagestUiApplication extends Application {
     private boolean bucketVisible(String type) {
         if ("DRAFT_JOURNAL".equals(type) && appMode != AppMode.ADVISORY) return false;
         return true;
+    }
+
+    /**
+     * Mapea el tipo de aviso a la(s) pestaña(s) de la ficha del cliente donde se
+     * resuelve, en orden de preferencia (la primera que exista se selecciona).
+     * Usado por el salto directo desde un aviso de cartera (REFLEJO/avisos).
+     */
+    private java.util.List<String> clientTabKeysFor(String bucketType) {
+        return switch (bucketType == null ? "" : bucketType) {
+            case "DRAFT_JOURNAL", "UNRECONCILED_BANK" ->
+                    java.util.List.of("advisory.client.tab.accounting");
+            case "DRAFT_PURCHASES", "SUPPLIERS_NO_NIF" ->
+                    java.util.List.of("advisory.client.tab.purchases",
+                            "advisory.client.tab.sales_and_expenses");
+            case "DRAFT_SALES", "OVERDUE_INVOICES" ->
+                    java.util.List.of("advisory.client.tab.billing",
+                            "advisory.client.tab.sales_and_expenses");
+            case "DRAFT_PAYSLIPS", "UNDELIVERED_PAYSLIPS", "LEAVE_REQUESTS" ->
+                    java.util.List.of("advisory.client.tab.labor");
+            case "OVERDUE_FILINGS" -> java.util.List.of("advisory.client.tab.tax_models");
+            default -> java.util.List.of();
+        };
     }
 
     /** Mapea el tipo de aviso al módulo donde resolverlo (vista empresa actual). */
@@ -30849,6 +30876,25 @@ public class BenjagestUiApplication extends Application {
             });
             initialCheck.setOnFailed(ev -> { /* silencio */ });
             start(initialCheck, "tpb-initial-tab-check");
+        }
+
+        // Salto directo desde un aviso de cartera: si venimos de "Abrir" en un
+        // aviso, seleccionamos la pestaña que lo resuelve (asientos por validar →
+        // Contabilidad, que abre en "Por validar"; gastos → Compras y Gastos;
+        // facturas → Facturación; etc.). Antes el aviso solo abría la ficha.
+        if (pendingClientBucketType != null) {
+            java.util.List<String> candidates = clientTabKeysFor(pendingClientBucketType);
+            pendingClientBucketType = null;
+            outer:
+            for (String key : candidates) {
+                String label = t(key);
+                for (Tab tb : tabs.getTabs()) {
+                    if (label.equals(tb.getText())) {
+                        tabs.getSelectionModel().select(tb);
+                        break outer;
+                    }
+                }
+            }
         }
 
         VBox body = new VBox(12, header, hint, tabs);
