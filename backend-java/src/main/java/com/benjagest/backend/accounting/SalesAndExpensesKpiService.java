@@ -59,12 +59,14 @@ public class SalesAndExpensesKpiService {
         // rango. Cuenta = nº de asientos distintos (no de líneas).
         BigDecimal salesTotal = sumLineAmount(companyId, dFrom, dTo,
                 "7", /*credit=*/true);
-        int salesCount = countEntriesWithAccountPrefix(companyId, dFrom, dTo, "7");
+        int salesCount = countEntriesWithAccountPrefix(companyId, dFrom, dTo, "7", false);
 
-        // Gastos = suma del DEBE de cuentas 6xx en asientos POSTED.
+        // Gastos = suma del DEBE de cuentas 6xx en asientos POSTED. El TOTAL sí
+        // incluye nómina (640/642 son gasto real), pero el CONTADOR "N facturas"
+        // excluye los asientos de nómina (no son facturas) — petición Benjamin.
         BigDecimal expensesTotal = sumLineAmount(companyId, dFrom, dTo,
                 "6", /*credit=*/false);
-        int expensesCount = countEntriesWithAccountPrefix(companyId, dFrom, dTo, "6");
+        int expensesCount = countEntriesWithAccountPrefix(companyId, dFrom, dTo, "6", true);
 
         // IVA repercutido (477) en HABER. IVA soportado (472) en DEBE.
         BigDecimal vatCharged = sumLineAmount(companyId, dFrom, dTo,
@@ -107,9 +109,17 @@ public class SalesAndExpensesKpiService {
         return v == null ? BigDecimal.ZERO : v;
     }
 
-    /** Cuenta asientos DISTINTOS que tengan alguna línea con ese prefijo. */
+    /**
+     * Cuenta asientos DISTINTOS que tengan alguna línea con ese prefijo. Si
+     * {@code excludePayroll} es true, ignora los asientos de nómina
+     * (source_type PAYSLIP_*) — no son "facturas" y desvirtuaban el contador
+     * de gastos.
+     */
     private int countEntriesWithAccountPrefix(String companyId, Date from, Date to,
-                                               String accountPrefix) {
+                                               String accountPrefix, boolean excludePayroll) {
+        String payrollFilter = excludePayroll
+                ? " AND (e.source_type IS NULL OR e.source_type NOT LIKE 'PAYSLIP%')"
+                : "";
         Integer c = jdbcTemplate.queryForObject("""
                 SELECT COUNT(DISTINCT e.id)
                   FROM journal_entries e
@@ -119,7 +129,8 @@ public class SalesAndExpensesKpiService {
                    AND e.status = 'POSTED'
                    AND e.entry_date BETWEEN ? AND ?
                    AND a.code LIKE ?
-                """, Integer.class, companyId, from, to, accountPrefix + "%");
+                """ + payrollFilter,
+                Integer.class, companyId, from, to, accountPrefix + "%");
         return c == null ? 0 : c;
     }
 }
