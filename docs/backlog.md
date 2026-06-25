@@ -59,9 +59,10 @@
 - **Import del JSON canónico BENJAGEST** — cierra el round-trip (el export ya lo
   producía, el import estaba sin implementar). Backup/restore + migrar entre
   instalaciones. Reutiliza `createDraft` (mismas validaciones). Sin adivinar nada.
-- **xDiario (A3) / SUENLACE (ContaPlus)**: NO se implementan a ciegas — son
+- **xDiario (A3) / SUENLACE (ContaPlus)**: ⏸️ **APARCADOS hasta el final**
+  (Benjamin 2026-06-25: no tiene los ficheros ni quien se los dé). Son
   posicionales de fabricante; sin muestra real las posiciones se adivinan y el
-  fichero falla en silencio al importar. **Pendiente: muestra real de Benjamin.**
+  fichero falla en silencio al importar. Se retoman si aparece un fichero real.
 
 **2. Formativos — cuota fija (CM-6)** *(merge CM-6)* ✅
 - Formación en alternancia (421/521) cotiza por **cuota fija** (no porcentajes).
