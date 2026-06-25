@@ -59,6 +59,18 @@ public class RecurringCandidateService {
      */
     public boolean alreadyCovers(String kind, String partyName,
                                   java.math.BigDecimal amount) {
+        return alreadyCovers(kind, null, partyName, amount);
+    }
+
+    /**
+     * Igual que {@link #alreadyCovers(String, String, java.math.BigDecimal)} pero
+     * además devuelve true si el usuario YA descartó esta sugerencia (la silenció
+     * desde el prompt post-validación o el banner). Así "si ya dije que no" deja de
+     * preguntar para ese tercero+importe (petición Benjamin 2026-06-25).
+     */
+    public boolean alreadyCovers(String kind, String partyNif, String partyName,
+                                  java.math.BigDecimal amount) {
+        if (ignoredService.isIgnored(kind, partyNif, partyName, amount)) return true;
         String companyId = tenantContext.getCurrentCompanyId();
         if (companyId == null || amount == null) return false;
         if (partyName == null || partyName.isBlank()) return false;
