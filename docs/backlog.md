@@ -71,15 +71,19 @@
   ruidoso si el año no está configurado. Neto exacto. **Marcado para validar**:
   proración mes parcial, desglose por concepto TC/RED, UI para editar la cuota.
 
-**3. Ciclo laboral — CL-1** *(merge CL-1)* ✅ + diseño CL-2/CL-3
-- **Suspensión/excedencia** (art. 45 ET): V146 `contract_suspensions` + GUARDA en
-  la nómina (no genera recibo a quien está en excedencia sin sueldo) + CRUD API.
-  Default-seguro. **`docs/design-ciclo-laboral.md`** con el bloque completo.
-- **CL-2 atrasos retroactivos** y **CL-3 cese de empresa (extinción colectiva)**:
-  diseñados, **con Benjamin** (tocan dinero: IRPF 15% atrasos, indemnización 20
-  días/año). Decisiones enumeradas en el design doc.
-- **CL-4** (con Benjamin): UI registrar/cerrar suspensiones en la ficha del
-  contrato; proración meses parciales; efecto en antigüedad del finiquito.
+**3. Ciclo laboral (backend CL-1/2/3 completo)** ✅ **`docs/design-ciclo-laboral.md`**
+- **CL-1 suspensión/excedencia** (art. 45 ET) *(merge CL-1)*: V146
+  `contract_suspensions` + GUARDA en la nómina (no genera recibo a quien está en
+  excedencia sin sueldo) + CRUD API. Default-seguro.
+- **CL-2 atrasos retroactivos** *(merge CL-2)*: `BackPayService.preview` calcula
+  los atrasos desde las vigencias por LEY — 15% IRPF en tramos de ejercicios
+  anteriores, tipo del contrato en el año en curso, SS sobre la diferencia. Solo
+  cálculo (sin efectos). Falta con Benjamin: recibo+asiento+L13, atrasos de extras.
+- **CL-3 cese de empresa** *(merge CL-3)*: `TerminationService.{preview,execute}
+  CompanyClosure` — extinción colectiva en lote (20 días/año, reutiliza el cese
+  individual validado). Preview sin efectos + ejecución all-or-nothing.
+- **CL-4** (con Benjamin): UI (registrar/cerrar suspensiones en la ficha; cese de
+  empresa; atrasos); proración meses parciales; efecto en antigüedad del finiquito.
 
 ---
 

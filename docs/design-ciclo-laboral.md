@@ -85,8 +85,14 @@ documento único de comunicación colectiva además de los finiquitos individual
 ## 4. Slices
 
 - **CL-1** ✅ — modelo `contract_suspensions` + guarda en la nómina (no genera
-  nómina en excedencia/suspensión sin sueldo). Backend, aditivo, default-off.
-- **CL-2** — atrasos retroactivos (con Benjamin: IRPF 15%, cotización L13).
-- **CL-3** — cese de empresa en lote (reutiliza `TerminationService`).
-- **CL-4** — UI: registrar/cerrar suspensiones en la ficha del contrato;
+  nómina en excedencia/suspensión sin sueldo) + CRUD API. Backend, aditivo.
+- **CL-2** ✅ (cálculo) — `BackPayService.preview`: atrasos desde las vigencias,
+  con IRPF 15% en tramos de ejercicios anteriores y SS sobre la diferencia.
+  Solo cálculo (sin efectos). **Pendiente con Benjamin**: generar recibo de
+  atrasos + asiento + liquidación L13; diferencia sobre pagas extra.
+- **CL-3** ✅ (backend) — `TerminationService.{preview,execute}CompanyClosure`:
+  cese de empresa en lote (20 días/año, reutiliza el cese individual validado).
+  Preview sin efectos + ejecución all-or-nothing.
+- **CL-4** (con Benjamin) — UI: registrar/cerrar suspensiones en la ficha;
+  pantalla de cese de empresa (confirmación + listado); pantalla de atrasos;
   proración de meses parciales; efecto en antigüedad del finiquito.
