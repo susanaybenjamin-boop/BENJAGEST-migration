@@ -3,6 +3,21 @@
     -fx-font-family: "Segoe UI", "Inter", "Arial";
 }
 
+/*
+ * DEFAULT DE TEXTO LEGIBLE (fix de contraste a nivel de proyecto, 2026-06-25).
+ * Modena fija .label { -fx-text-fill } con un color que en este montaje queda
+ * casi blanco sobre los fondos claros de la app → labels "pelados" (informes
+ * Balance/P&L, KPIs, datos del cliente, etc.) ilegibles. Esta regla da un
+ * oscuro legible POR DEFECTO a todo Label sin color propio. Va ARRIBA a
+ * propósito: las clases de color específicas (sidebar .nav-item/.account-title,
+ * cabeceras .data-table, etc.) están más abajo en el archivo y, a misma
+ * especificidad, la regla POSTERIOR gana → conservan su color (blanco sobre
+ * fondo oscuro). Los estilos inline (banners, etc.) también ganan.
+ */
+.label {
+    -fx-text-fill: #1e293b;
+}
+
 .app-menu {
     -fx-background-color: #ffffff;
     -fx-border-color: transparent transparent #dbe3ef transparent;
