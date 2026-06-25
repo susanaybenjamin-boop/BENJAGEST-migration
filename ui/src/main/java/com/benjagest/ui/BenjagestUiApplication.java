@@ -18017,6 +18017,7 @@ public class BenjagestUiApplication extends Application {
             case "labor.term.docs.title" -> "Termination done — documents";
             case "labor.term.docs.hint" -> "The contract is closed and the settlement generated. Download the documents:";
             case "labor.term.docs.letter" -> "Dismissal letter";
+            case "labor.term.docs.receipt" -> "Settlement receipt";
             case "labor.term.docs.cert" -> "Company certificate";
             case "labor.employee.editor.title_new" -> "New employee";
             case "labor.employee.editor.title_edit" -> "Edit employee";
@@ -18756,6 +18757,7 @@ public class BenjagestUiApplication extends Application {
             case "labor.term.docs.title" -> "Baja realizada — documentos";
             case "labor.term.docs.hint" -> "El contrato queda cerrado y el finiquito generado. Descarga los documentos:";
             case "labor.term.docs.letter" -> "Carta de despido";
+            case "labor.term.docs.receipt" -> "Recibo de finiquito";
             case "labor.term.docs.cert" -> "Certificado de empresa";
             case "labor.employee.editor.title_new" -> "Nuevo empleado";
             case "labor.employee.editor.title_edit" -> "Editar empleado";
@@ -22227,6 +22229,12 @@ public class BenjagestUiApplication extends Application {
         d.setTitle(t("labor.term.docs.title"));
         d.getDialogPane().getButtonTypes().add(ButtonType.CLOSE);
         String safeName = employee.fullName() == null ? employee.id() : employee.fullName().replace(" ", "_");
+        // Recibo de finiquito — el documento legal que firma el trabajador.
+        Button receipt = new Button(t("labor.term.docs.receipt"));
+        receipt.setGraphic(icon("fas-file-signature"));
+        receipt.getStyleClass().add("button-primary");
+        receipt.setOnAction(e -> downloadTermDoc("settlement-receipt", employee.id(), ceseDate, type,
+                "recibo-finiquito-" + safeName + ".pdf"));
         Button letter = new Button(t("labor.term.docs.letter"));
         letter.setGraphic(icon("fas-file-pdf"));
         letter.setOnAction(e -> downloadTermDoc("dismissal-letter", employee.id(), ceseDate, type,
@@ -22238,7 +22246,7 @@ public class BenjagestUiApplication extends Application {
         Label hint = new Label(t("labor.term.docs.hint"));
         hint.setWrapText(true);
         hint.getStyleClass().add("settings-hint");
-        VBox box = new VBox(12, hint, new HBox(8, letter, cert));
+        VBox box = new VBox(12, hint, new HBox(8, receipt, letter, cert));
         box.setPadding(new Insets(12));
         installDialog(d, box);
         d.showAndWait();
