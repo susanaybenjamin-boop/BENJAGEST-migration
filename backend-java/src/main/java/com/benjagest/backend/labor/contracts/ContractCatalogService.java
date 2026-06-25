@@ -74,6 +74,24 @@ public class ContractCatalogService {
         return !schemes.isEmpty() && "TEMPORAL".equalsIgnoreCase(schemes.get(0));
     }
 
+    /**
+     * CM-6 — ¿el código SEPE es un contrato de FORMACIÓN EN ALTERNANCIA (familia
+     * FORMATIVO, códigos 421/521)? Estos cotizan por CUOTA FIJA mensual, no por
+     * porcentajes sobre base. La PRÁCTICA PROFESIONAL (401/501, familia PRACTICAS)
+     * NO entra aquí: cotiza normal por porcentajes.
+     *
+     * <p>Default DEFENSIVO: código nulo/desconocido → {@code false} → cálculo
+     * por porcentajes como hasta ahora (no cambia el comportamiento previo).
+     */
+    public boolean isFormativoAlternancia(String sepeCode) {
+        if (sepeCode == null || sepeCode.isBlank()) return false;
+        List<String> families = jdbcTemplate.query("""
+                SELECT family FROM sepe_contract_types
+                 WHERE code = ? LIMIT 1
+                """, (rs, i) -> rs.getString(1), sepeCode.trim());
+        return !families.isEmpty() && "FORMATIVO".equalsIgnoreCase(families.get(0));
+    }
+
     // ============================================================
     //  Convenios + categorías profesionales
     // ============================================================

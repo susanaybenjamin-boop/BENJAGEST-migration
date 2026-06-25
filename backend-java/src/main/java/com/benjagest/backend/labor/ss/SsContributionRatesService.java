@@ -75,6 +75,31 @@ public class SsContributionRatesService {
         return rows.get(0);
     }
 
+    /**
+     * Cuota FIJA mensual de los contratos de FORMACIÓN EN ALTERNANCIA (V145).
+     * Devuelve {@code [employee, employer]} en €/mes. A diferencia del resto de
+     * tipos, NO hay fallback silencioso: si el año no está configurado se lanza
+     * 422 — un formativo NO se calcula con porcentajes (sería incorrecto). V145
+     * siembra 2026.
+     */
+    public BigDecimal[] formativoAlternanciaMonthlyQuotas(int year) {
+        List<BigDecimal[]> rows = jdbc.query("""
+                SELECT employee_monthly, employer_monthly
+                  FROM formacion_alternancia_quotas
+                 WHERE year <= ?
+                 ORDER BY year DESC LIMIT 1
+                """, (rs, n) -> new BigDecimal[]{
+                        rs.getBigDecimal("employee_monthly"),
+                        rs.getBigDecimal("employer_monthly")},
+                year);
+        if (rows.isEmpty() || rows.get(0)[0] == null || rows.get(0)[1] == null) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                    "No hay cuota fija de formación en alternancia configurada para " + year
+                    + ". Configúrala en Laboral → Tipos de cotización (cuota formativos).");
+        }
+        return rows.get(0);
+    }
+
     public List<Rates> listAll() {
         return jdbc.query("""
                 SELECT year, ee_common, ee_unemployment, ee_training, ee_mei,
