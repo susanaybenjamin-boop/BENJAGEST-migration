@@ -73,6 +73,26 @@ public class BillingApiClient {
         return parseInvoices(response.body());
     }
 
+    /** REFLEJO — facturas emitidas reflejadas como gasto: [{salesInvoiceId, companyName}]. */
+    public List<java.util.Map<String, String>> listInvoiceReflections()
+            throws IOException, InterruptedException {
+        HttpResponse<String> response = sendAuthorized(
+                HttpRequest.newBuilder(URI.create(baseUrl + "/billing/invoices/reflections"))
+                        .timeout(Duration.ofSeconds(8)).GET());
+        ensureOk(response);
+        List<java.util.Map<String, String>> out = new java.util.ArrayList<>();
+        // Objetos planos (sin anidar) → regex simple es suficiente.
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile("\\{[^{}]*\\}")
+                .matcher(response.body() == null ? "" : response.body());
+        while (m.find()) {
+            String obj = m.group();
+            out.add(java.util.Map.of(
+                    "salesInvoiceId", textField(obj, "salesInvoiceId"),
+                    "companyName", textField(obj, "companyName")));
+        }
+        return out;
+    }
+
     public SalesInvoiceSummary getInvoiceById(String id) throws IOException, InterruptedException {
         HttpResponse<String> response = sendAuthorized(HttpRequest.newBuilder(URI.create(baseUrl + "/billing/invoices/" + id))
                 .timeout(Duration.ofSeconds(8))

@@ -100,6 +100,12 @@ public class SalesInvoiceController {
         return service.get(id);
     }
 
+    /** REFLEJO — facturas emitidas que se reflejaron como gasto, con el cliente destino. */
+    @GetMapping("/reflections")
+    public List<java.util.Map<String, String>> reflections() {
+        return service.reflectionsForIssuer();
+    }
+
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public SalesInvoice create(@Valid @RequestBody InvoiceUpsertRequest request) {
