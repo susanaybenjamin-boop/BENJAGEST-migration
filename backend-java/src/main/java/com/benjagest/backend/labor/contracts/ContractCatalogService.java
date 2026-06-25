@@ -54,6 +54,26 @@ public class ContractCatalogService {
         ));
     }
 
+    /**
+     * CONTRATO-MODALIDADES — ¿el código SEPE cotiza DESEMPLEO por el esquema
+     * TEMPORAL (8,30 %: 1,60 trabajador / 6,70 empresa)? Si no, cotiza por el
+     * INDEFINIDO (7,05 %: 1,55 / 5,50). El esquema lo dicta la columna
+     * {@code unemployment_scheme} de {@code sepe_contract_types} (V144), que
+     * respeta los matices de la Orden de cotización (la sustitución y los
+     * formativos cotizan al esquema INDEFINIDO aunque sean temporales).
+     *
+     * <p>Default DEFENSIVO: código nulo/desconocido → {@code false} (esquema
+     * indefinido) → no cambia el cálculo previo de los contratos antiguos.
+     */
+    public boolean isTemporalUnemployment(String sepeCode) {
+        if (sepeCode == null || sepeCode.isBlank()) return false;
+        List<String> schemes = jdbcTemplate.query("""
+                SELECT unemployment_scheme FROM sepe_contract_types
+                 WHERE code = ? LIMIT 1
+                """, (rs, i) -> rs.getString(1), sepeCode.trim());
+        return !schemes.isEmpty() && "TEMPORAL".equalsIgnoreCase(schemes.get(0));
+    }
+
     // ============================================================
     //  Convenios + categorías profesionales
     // ============================================================
