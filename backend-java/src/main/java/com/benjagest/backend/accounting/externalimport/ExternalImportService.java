@@ -59,14 +59,17 @@ public class ExternalImportService {
     private final TenantContext tenantContext;
     private final CurrentUserService currentUserService;
     private final ManualJournalEntryService manualEntries;
+    private final com.fasterxml.jackson.databind.ObjectMapper objectMapper;
 
     public ExternalImportService(JdbcTemplate jdbcTemplate, TenantContext tenantContext,
                                    CurrentUserService currentUserService,
-                                   ManualJournalEntryService manualEntries) {
+                                   ManualJournalEntryService manualEntries,
+                                   com.fasterxml.jackson.databind.ObjectMapper objectMapper) {
         this.jdbcTemplate = jdbcTemplate;
         this.tenantContext = tenantContext;
         this.currentUserService = currentUserService;
         this.manualEntries = manualEntries;
+        this.objectMapper = objectMapper;
     }
 
     @Transactional
@@ -359,11 +362,130 @@ public class ExternalImportService {
     //  JSON BENJAGEST (formato propio canónico)
     // ====================================================================
 
+    /**
+     * Importa el JSON canónico BENJAGEST que produce {@code AccountingExportService}.
+     * Cierra el ciclo bidireccional (backup/restore y migración entre instalaciones
+     * BenjaGest). La forma del JSON la define el exportador, así que NO se adivina
+     * nada: cada {@code targetKind} lee su array correspondiente.
+     *
+     * <p>Soporta los targets re-importables con seguridad: ACCOUNTS, JOURNAL_ENTRIES,
+     * CUSTOMERS, SUPPLIERS. Las facturas/activos/préstamos se exportan para análisis,
+     * pero su re-importación tiene side-effects contables propios (asientos, cuadros de
+     * amortización) y se hará en un slice dedicado, no aquí.
+     */
     private ImportTally importJsonBenjagest(ImportRequest req, StringBuilder errors) {
-        // Sub-slice: el formato JSON canónico se define junto con
-        // EXPORT-CONTABLE. Por ahora dejamos el esqueleto para que el
-        // endpoint exista y la UI pueda enseñarlo "próximamente".
-        throw bad("JSON_BENJAGEST se habilita junto con EXPORT-CONTABLE. Esqueleto listo.");
+        com.fasterxml.jackson.databind.JsonNode root;
+        try {
+            root = objectMapper.readTree(req.content());
+        } catch (Exception ex) {
+            throw bad("JSON no válido: " + ex.getMessage());
+        }
+        return switch (req.targetKind().toUpperCase()) {
+            case "ACCOUNTS" -> importJsonAccounts(root.path("accounts"), errors);
+            case "JOURNAL_ENTRIES" -> importJsonJournal(root.path("entries"), errors);
+            case "CUSTOMERS" -> importJsonParties(root.path("customers"), errors, false);
+            case "SUPPLIERS" -> importJsonParties(root.path("suppliers"), errors, true);
+            default -> throw bad("JSON_BENJAGEST: target " + req.targetKind()
+                    + " no re-importable por ahora (sí: ACCOUNTS, JOURNAL_ENTRIES, CUSTOMERS, SUPPLIERS).");
+        };
+    }
+
+    private ImportTally importJsonAccounts(com.fasterxml.jackson.databind.JsonNode arr, StringBuilder errors) {
+        ImportTally t = new ImportTally();
+        if (!arr.isArray()) throw bad("JSON sin array 'accounts'.");
+        String companyId = tenantContext.getCurrentCompanyId();
+        for (com.fasterxml.jackson.databind.JsonNode n : arr) {
+            t.total++;
+            String code = jsonText(n, "code");
+            String name = jsonText(n, "name");
+            String type = jsonText(n, "accountType");
+            if (code == null || name == null) { t.errors++; appendErr(errors, "Cuenta sin code/name: " + n); continue; }
+            try {
+                int updated = jdbcTemplate.update("""
+                        INSERT IGNORE INTO accounting_accounts (
+                            id, company_id, code, name, account_type, active
+                        ) VALUES (?, ?, ?, ?, ?, TRUE)
+                        """,
+                        UUID.randomUUID().toString(), companyId, code, name,
+                        type == null ? "OTHER" : type);
+                if (updated > 0) t.imported++; else t.skipped++;
+            } catch (DataAccessException ex) {
+                t.errors++; appendErr(errors, "Cuenta " + code + ": " + ex.getMessage());
+            }
+        }
+        return t;
+    }
+
+    private ImportTally importJsonJournal(com.fasterxml.jackson.databind.JsonNode arr, StringBuilder errors) {
+        ImportTally t = new ImportTally();
+        if (!arr.isArray()) throw bad("JSON sin array 'entries'.");
+        for (com.fasterxml.jackson.databind.JsonNode entry : arr) {
+            t.total++;
+            try {
+                LocalDate entryDate = parseDate(jsonText(entry, "entryDate"));
+                String concept = jsonText(entry, "concept");
+                com.fasterxml.jackson.databind.JsonNode lineNodes = entry.path("lines");
+                if (!lineNodes.isArray() || lineNodes.size() < 2) {
+                    throw new IllegalStateException("Asiento con menos de 2 apuntes");
+                }
+                List<ManualJournalEntryService.LineRequest> lines = new ArrayList<>();
+                for (com.fasterxml.jackson.databind.JsonNode ln : lineNodes) {
+                    String code = jsonText(ln, "accountCode");
+                    String accountId = resolveAccount(code);
+                    if (accountId == null) throw new IllegalStateException("Cuenta no encontrada: " + code);
+                    lines.add(new ManualJournalEntryService.LineRequest(
+                            accountId, jsonText(ln, "description"),
+                            parseAmount(jsonText(ln, "debit")), parseAmount(jsonText(ln, "credit"))));
+                }
+                manualEntries.createDraft(new ManualJournalEntryService.ManualEntryRequest(
+                        entryDate, concept == null ? "Importado" : concept, lines, false));
+                t.imported++;
+            } catch (Exception ex) {
+                t.errors++; appendErr(errors, "Asiento " + jsonText(entry, "entryNumber") + ": " + ex.getMessage());
+            }
+        }
+        return t;
+    }
+
+    private ImportTally importJsonParties(com.fasterxml.jackson.databind.JsonNode arr, StringBuilder errors, boolean supplier) {
+        ImportTally t = new ImportTally();
+        if (!arr.isArray()) throw bad("JSON sin array de " + (supplier ? "'suppliers'" : "'customers'") + ".");
+        String companyId = tenantContext.getCurrentCompanyId();
+        for (com.fasterxml.jackson.databind.JsonNode n : arr) {
+            t.total++;
+            String nif = jsonText(n, "nif");
+            String name = jsonText(n, "name");
+            if (nif == null || name == null) { t.errors++; appendErr(errors, "Falta nif/name: " + n); continue; }
+            try {
+                int updated = supplier
+                        ? jdbcTemplate.update("""
+                                INSERT IGNORE INTO suppliers (
+                                    id, company_id, nif, name, email, phone, address, active
+                                ) VALUES (?, ?, ?, ?, ?, ?, ?, TRUE)
+                                """,
+                                UUID.randomUUID().toString(), companyId, nif.toUpperCase(),
+                                name, jsonText(n, "email"), jsonText(n, "phone"), jsonText(n, "address"))
+                        : jdbcTemplate.update("""
+                                INSERT IGNORE INTO customers (
+                                    id, company_id, nif, legal_name, email, phone, address, active
+                                ) VALUES (?, ?, ?, ?, ?, ?, ?, TRUE)
+                                """,
+                                UUID.randomUUID().toString(), companyId, nif.toUpperCase(),
+                                name, jsonText(n, "email"), jsonText(n, "phone"), jsonText(n, "address"));
+                if (updated > 0) t.imported++; else t.skipped++;
+            } catch (DataAccessException ex) {
+                t.errors++; appendErr(errors, "NIF " + nif + ": " + ex.getMessage());
+            }
+        }
+        return t;
+    }
+
+    /** Texto de un campo JSON, null si ausente/null/blank (homogéneo con trim()). */
+    private static String jsonText(com.fasterxml.jackson.databind.JsonNode node, String field) {
+        com.fasterxml.jackson.databind.JsonNode v = node.path(field);
+        if (v.isMissingNode() || v.isNull()) return null;
+        String s = v.asText();
+        return s == null || s.trim().isEmpty() ? null : s.trim();
     }
 
     // ====================================================================
