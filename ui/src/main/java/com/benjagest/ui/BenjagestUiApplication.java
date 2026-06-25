@@ -26679,17 +26679,21 @@ public class BenjagestUiApplication extends Application {
         Button go = new Button(t("pending.open_client"));
         go.getStyleClass().add("button-secondary");
         go.setOnAction(e -> {
+            // Salto directo a la pestaña que resuelve el aviso dentro de la ficha.
+            pendingClientBucketType = b.type();
+            String ownId = com.benjagest.ui.service.AuthSession.get().activeCompanyId();
             var entry = byId.get(b.companyId());
-            if (entry != null) {
+            if (b.companyId() != null && b.companyId().equals(ownId)) {
+                // La propia asesoría → abrir "Mi gestión" como FICHA (mismo estilo
+                // que los clientes), no el módulo standalone. Antes abría la pantalla
+                // de Contabilidad suelta, con estilo distinto (bug Benjamin 2026-06-25).
+                goToMyCompany();
+            } else if (entry != null) {
                 boolean linked = "CLIENT".equalsIgnoreCase(entry.companyType());
-                // Salto directo a la pestaña que resuelve el aviso dentro de la ficha.
-                pendingClientBucketType = b.type();
                 switchToClient(entry, linked);
             } else {
-                // Es la propia asesoría (no está en la lista de clientes): Mi gestión.
-                exitClientMode();
-                Runnable nav = pendingNav(b.type());
-                if (nav != null) nav.run();
+                // No debería ocurrir; por seguridad abrimos Mi gestión.
+                goToMyCompany();
             }
         });
         row.getChildren().add(go);
