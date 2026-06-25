@@ -48,6 +48,48 @@
 
 ---
 
+## 📅 SESIÓN 2026-06-25 (autónoma, Benjamin fuera) — items aditivos + revisión de código
+
+> Benjamin se fue dejando 4 items + "revisa el código completo con tu equipo" +
+> "mira el registro". Trabajo aditivo y seguro; lo de auth/dinero/seeds NO se tocó
+> (§11.2). Todo compila y mergeado a `develop`.
+
+**Cerrado:**
+- ✅ **Doble reflejo de cobro — NO era bug** (investigado en BD): F-2026-0104 se cobró
+  por DOS vías (multi-allocation `4e95f13d` + vencimiento `c9361536`), cada una reflejó
+  una vez (correcto). La idempotencia de REFLEJO está bien. *(Gap pre-existente, NO de
+  REFLEJO: se puede pagar la misma factura por dos mecanismos → doble pago. Anotado; no
+  se toca el flujo de pagos en autónomo.)*
+- ✅ **Contador de gastos sin nómina** *(dd54c04)* — el KPI "GASTOS · N facturas" ya no
+  cuenta los asientos de nómina (640/642 son 6xx); el TOTAL sí los incluye (gasto real).
+- ✅ **Pestaña Trabajos en la ficha** *(a12f6af)* — Mi gestión y clientes con módulo
+  `shifts`; opera sobre la empresa activa. Reusa `buildWorkLogsModule()`.
+- ✅ **Registro/alta — DISEÑO escrito** *(712f065)* — `docs/design-registro-alta.md`. NO
+  existe auto-registro hoy; el esquema (`user_accounts`+`company_memberships`) ya lo
+  soporta sin migración. 5 decisiones abiertas. **Se construye con Benjamin** (auth).
+
+**Revisión de código (2 agentes Explore en paralelo, backend+frontend) — TRIADA:**
+- Los agentes **sobre-reportaron** (lo habitual). Verificado uno a uno:
+  - Frontend **#1 "500+ claves ES huérfanas" = FALSO** (muestreé 4, todas tienen gemela
+    ES; el agente miró el método equivocado — `tEs()` está aparte). El español NO está roto.
+  - Backend **#4 (MultiAlloc no valida estado)** y **#8 (method null)** = falsos.
+  - Backend **#2 (`work_logs.billed_invoice_line_id` no se rellena)** = no funcional: el
+    filtro lleva `AND status <> 'BILLED'`, que ya excluye los facturados.
+- **Reales pero menores / a decidir (NO tocados):**
+  - Backend: comparación con tolerancia 0.01 en `PaymentScheduleService` (PAID vs break de
+    conciliación) — debatible, toca dinero → con Benjamin.
+  - Frontend: ~4 literales en español hardcodeados (login subtitle/Google, placeholder de
+    líneas, "X cambios sin guardar") — i18n pendiente; los de **login no se tocan** (§11.2).
+
+**Pendiente documentado (no hecho, por riesgo/scope):**
+- ⏳ **Banner "reflejada en {cliente}"** en la factura emitida. Bloqueo: NO hay vista de
+  detalle de factura (se ve como PDF), así que iría como **indicador en el listado de
+  facturación** + dato de reflejo por factura (endpoint `purchase_invoices WHERE
+  source_sales_invoice_id=?` → company_name). Cirugía moderada en el listado; no se hizo
+  en autónomo sobre la base del cambio CSS global aún sin probar. Listo para cablear.
+
+---
+
 ## 🔗 BLOQUE REFLEJO — factura emitida ⇒ gasto+asiento por validar en el cliente (decidido 2026-06-23)
 
 > Diseño completo en [`design-reflejo-factura-cliente.md`](design-reflejo-factura-cliente.md).
