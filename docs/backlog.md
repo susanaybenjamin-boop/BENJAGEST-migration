@@ -48,6 +48,42 @@
 
 ---
 
+## 📅 SESIÓN 2026-06-25 (autónoma, Benjamin fuera) — finiquito + reflejo + nómina + revisión
+
+> Benjamin se fue dejando items + "revisa el código con tu equipo" + registro, y luego
+> (con PDFs reales de nómina/finiquito de CONTENDO) autorizó: montar el recibo de finiquito,
+> cablear el banner de reflejo, y validar/arreglar el cálculo si la diferencia es clara.
+> Todo compila y mergeado a `develop`.
+
+**Bloque NÓMINA / FINIQUITO (con datos reales):**
+- ✅ **Recibo / carta de finiquito** *(c1f061b)* — faltaba el documento legal (existían carta de
+  despido + certificado + el cálculo del finiquito). Nuevo `TerminationDocsService.settlementReceipt`
+  + endpoint `/labor/terminations/docs/settlement-receipt` + botón en el diálogo de baja. Formato
+  fiel a CONTENDO. Robusto post-baja (carga el finiquito guardado; recalcula solo pre-baja). NO
+  toca el motor de cálculo.
+- ✅ **Validación del cálculo vs PDF real** (solo lectura): tipos trabajador **CC+MEI 4,85%**
+  (4,70+0,15) ✓, **FP 0,10%** ✓ — CORRECTOS (tabla no-code `ss_contribution_rates` 2026).
+- ⚠️ **HALLAZGO (no arreglado, necesita Benjamin)**: **desempleo por tipo de contrato**.
+  BENJAGEST usa **1,55% trabajador / 5,50% empresa** para TODOS los contratos; el legal es
+  1,55%/5,50% **indefinido** y **1,60%/6,70% temporal**. El PDF real (trabajador temporal) muestra
+  **1,60%** → para temporales BENJAGEST infra-cotiza. NO se arregló porque el modelo de datos es
+  ambiguo: `employment_contracts.contract_type` (varchar) tiene "Indefinido" pero la UI usa familias
+  INDEFINIDO/TEMPORAL y **no hay columna de familia** → identificar "temporal" con fiabilidad
+  necesita que Benjamin confirme la taxonomía. **Fix propuesto**: añadir `ee_unemployment_temporal`
+  (1,60) + `er_unemployment_temporal` (6,70) a `ss_contribution_rates` (no-code) y usarlas cuando el
+  contrato sea temporal. *(No urgente: hoy no hay contratos temporales en BD.)*
+
+**Otros items:**
+- ✅ **Indicador "reflejada como gasto en {cliente}"** *(25d10e7)* — columna en el listado de
+  Facturación (no hay vista de detalle) + endpoint `/api/billing/invoices/reflections`.
+
+**Pendiente / decisiones de Benjamin:**
+- Confirmar la taxonomía de contrato temporal para cerrar el desempleo-por-tipo (arriba).
+- Registro: las 5 decisiones de `docs/design-registro-alta.md` (se construye con él, auth).
+- Double-pay / tolerancia 0,01 en pagos (toca dinero, con él).
+
+---
+
 ## 📅 SESIÓN 2026-06-25 (autónoma, Benjamin fuera) — items aditivos + revisión de código
 
 > Benjamin se fue dejando 4 items + "revisa el código completo con tu equipo" +
