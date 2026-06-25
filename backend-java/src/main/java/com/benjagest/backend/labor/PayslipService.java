@@ -484,7 +484,23 @@ public class PayslipService {
             eeUnemp = temp[0];
             erUnemp = temp[1];
         }
-        SsBreakdown ss = computeSs(cotizationBase, atEp, rates, eeUnemp, erUnemp);
+        // CM-6 — FORMACIÓN EN ALTERNANCIA (421/521): cotiza por CUOTA FIJA mensual,
+        // no por porcentajes. Se aplica solo en la nómina ordinaria (no en pagas
+        // extra/finiquito, donde no hay cuota fija aparte). El total trabajador/
+        // empresa queda EXACTO; el desglose por concepto para el TC/RED es un
+        // refinamiento (solo se dispone del agregado oficial). Default-off para el
+        // resto de contratos. La proración por mes parcial queda a validar, igual
+        // que el resto del motor.
+        SsBreakdown ss;
+        if ("MONTHLY".equals(type) && contractCatalog.isFormativoAlternancia(contract.sepeContractCode)) {
+            BigDecimal[] q = ssRatesService.formativoAlternanciaMonthlyQuotas(req.year());
+            ss = new SsBreakdown(
+                    q[0], BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+                    q[1], BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+                    BigDecimal.ZERO, BigDecimal.ZERO);
+        } else {
+            ss = computeSs(cotizationBase, atEp, rates, eeUnemp, erUnemp);
+        }
         // La deducción de SS del trabajador incluye la cotización adicional de horas
         // extra (INC-2), que NO va en la base de CC sino aparte sobre el importe extra.
         BigDecimal ssEmployee = ss.employeeTotal().add(overtimeEe);
