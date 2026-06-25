@@ -99,10 +99,11 @@ public class RecurringTaskController {
     @GetMapping("/already-covers")
     public Map<String, Object> alreadyCovers(
             @RequestParam("kind") String kind,
+            @RequestParam(value = "nif", required = false) String nif,
             @RequestParam("partyName") String partyName,
             @RequestParam("amount") java.math.BigDecimal amount) {
         return Map.of("covered",
-                candidateService.alreadyCovers(kind, partyName, amount));
+                candidateService.alreadyCovers(kind, nif, partyName, amount));
     }
 
     /**

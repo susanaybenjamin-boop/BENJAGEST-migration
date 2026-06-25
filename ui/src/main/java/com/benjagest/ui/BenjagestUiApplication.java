@@ -4372,12 +4372,31 @@ public class BenjagestUiApplication extends Application {
                             .filter(it -> it != null && ids.get(0).equals(it.id()))
                             .findFirst().orElse(null);
                     if (row != null) {
-                        promptMakeRecurringAfterValidation(
-                                "PURCHASE",
-                                row.supplierNif(),
-                                row.supplierName(),
-                                row.baseAmount() != null ? row.baseAmount() : row.totalAmount(),
-                                row.invoiceDate());
+                        final String pid = ids.get(0);
+                        final String fnif = row.supplierNif();
+                        final String fname = row.supplierName();
+                        final java.math.BigDecimal famount =
+                                row.baseAmount() != null ? row.baseAmount() : row.totalAmount();
+                        final LocalDate fdate = row.invoiceDate();
+                        // Mismo doble chequeo que ventas: NO preguntar si el gasto lo
+                        // generó una recurrente (determinista) o si ya está cubierto/
+                        // silenciado (heurístico + ignore). Antes gastos preguntaba
+                        // siempre (bug Benjamin 2026-06-25).
+                        new Thread(() -> {
+                            boolean fromRecurring;
+                            try { fromRecurring = accountingApiClient.isFromRecurring("PURCHASE", pid); }
+                            catch (Exception ex) { fromRecurring = false; }
+                            if (fromRecurring) return;
+                            boolean covered;
+                            try {
+                                covered = accountingApiClient.recurringAlreadyCovers(
+                                        "PURCHASE", fnif, fname, famount);
+                            } catch (Exception ex) { covered = false; }
+                            if (covered) return;
+                            javafx.application.Platform.runLater(() ->
+                                    promptMakeRecurringAfterValidation(
+                                            "PURCHASE", fnif, fname, famount, fdate));
+                        }, "recurring-already-covers-purchase").start();
                     }
                 }
             });
@@ -34006,7 +34025,21 @@ public class BenjagestUiApplication extends Application {
                 ButtonType.NO, ButtonType.YES);
         ask.setHeaderText(t("recurring.post_validate.title"));
         Optional<ButtonType> ans = ask.showAndWait();
-        if (ans.isEmpty() || ans.get() != ButtonType.YES) return;
+        if (ans.isEmpty() || ans.get() != ButtonType.YES) {
+            // Si dijo NO explícitamente, silenciar este tercero+importe para no
+            // volver a preguntar (petición Benjamin 2026-06-25). Best-effort,
+            // off-thread; ignoreUntil=null = indefinido.
+            if (ans.isPresent() && ans.get() == ButtonType.NO) {
+                new Thread(() -> {
+                    try {
+                        accountingApiClient.ignoreRecurringCandidate(
+                                kind, partyNif, partyName, totalAmount, null,
+                                "Descartado al validar");
+                    } catch (Exception ignored) { /* no bloquea la validación */ }
+                }, "recurring-ignore-dismiss").start();
+            }
+            return;
+        }
         openRecurringEditorFromInvoice(kind, partyNif, partyName, totalAmount, invoiceDate);
     }
 

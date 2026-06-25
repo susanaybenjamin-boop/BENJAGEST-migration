@@ -466,9 +466,20 @@ public class AccountingApiClient {
     public boolean recurringAlreadyCovers(String kind, String partyName,
                                            java.math.BigDecimal amount)
             throws IOException, InterruptedException {
+        return recurringAlreadyCovers(kind, null, partyName, amount);
+    }
+
+    /** Variante con NIF: "covered" incluye ahora también los candidatos SILENCIADOS
+     *  (el usuario ya dijo "no" para ese tercero+importe). */
+    public boolean recurringAlreadyCovers(String kind, String partyNif, String partyName,
+                                           java.math.BigDecimal amount)
+            throws IOException, InterruptedException {
         if (partyName == null || partyName.isBlank() || amount == null) return false;
         String path = "/accounting/recurring/already-covers"
                 + "?kind=" + kind
+                + (partyNif == null || partyNif.isBlank() ? ""
+                        : "&nif=" + java.net.URLEncoder.encode(partyNif,
+                                java.nio.charset.StandardCharsets.UTF_8))
                 + "&partyName=" + java.net.URLEncoder.encode(partyName,
                         java.nio.charset.StandardCharsets.UTF_8)
                 + "&amount=" + amount.toPlainString();
