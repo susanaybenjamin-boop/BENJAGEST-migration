@@ -42,20 +42,26 @@ Tras la **reforma laboral 2022 (RDL 32/2021)** — el contrato "de obra y servic
 
 ## 3. Diseño no-code
 
-### 3.1. Tabla `contract_modality_catalog` (V143, editable por el asesor)
-```
-code (PK)            -- INDEFINIDO_ORDINARIO, TEMPORAL_PRODUCCION, ...
-label                -- "Indefinido ordinario"
-family               -- INDEFINIDO | TEMPORAL | FORMATIVO
-unemployment_scheme  -- INDEFINIDO | TEMPORAL  (qué tipo de desempleo aplica)
-special_cotization   -- BOOLEAN (formativos: cotización especial pendiente)
-legal_reference      -- "RDL 32/2021; Orden PJC/297/2026"
-active               -- BOOLEAN
-display_order
-```
-Seed con las 7 filas de arriba. El asesor puede activar/desactivar o añadir.
+> **DECISIÓN DE IMPLEMENTACIÓN (2026-06-25):** NO se crea un catálogo nuevo.
+> El catálogo legal de modalidades **ya existe**: `sepe_contract_types` (V74),
+> con TODOS los códigos SEPE oficiales y su `family`. Crear otra tabla lo
+> duplicaría. En su lugar **extendemos** esa tabla con el único dato que le
+> faltaba para la nómina: el esquema de desempleo por código.
 
-### 3.2. Tipos de desempleo por año (ampliar `ss_contribution_rates`, V144)
+### 3.1. Extender `sepe_contract_types` con el esquema de desempleo (V144)
+```
+ALTER TABLE sepe_contract_types
+    ADD COLUMN unemployment_scheme VARCHAR(20) DEFAULT 'INDEFINIDO';  -- INDEFINIDO | TEMPORAL
+```
+El **MATIZ** clave (Orden PJC/297/2026): el esquema NO se deriva de la familia.
+La familia TEMPORAL contiene la **sustitución/interinidad** (411/511), que
+cotiza desempleo al esquema **INDEFINIDO** (7,05 %), igual que los formativos
+(421/521) y prácticas (401/501). Solo cotizan TEMPORAL (8,30 %): producción
+(300/410/510/420), inserción (405/505) y Fondos Europeos (406/506). Por eso se
+marca **código a código** (UPDATE en V144). Editable no-code: si la ley cambia,
+se ajusta la columna del código afectado.
+
+### 3.2. Tipos de desempleo por año (ampliar `ss_contribution_rates`, V143)
 La tabla ya tiene `ee_unemployment`/`er_unemployment` (= indefinido). Añadir:
 ```
 ee_unemployment_temporal  DEFAULT 1.60
@@ -64,23 +70,26 @@ er_unemployment_temporal  DEFAULT 6.70
 (year-dependiente, no-code, como el resto.)
 
 ### 3.3. Motor (`PayslipService`)
-Al calcular el desempleo: leer la modalidad del contrato → su `unemployment_scheme`
-en el catálogo → usar el par de tipos (indefinido o temporal) del año. Hoy usa
-siempre el indefinido; el cambio es escoger el par según el esquema.
+Al calcular el desempleo: leer el `sepe_contract_code` del contrato →
+`ContractCatalogService.isTemporalUnemployment(code)` (consulta
+`sepe_contract_types.unemployment_scheme`) → si TEMPORAL usa el par temporal del
+año (`ss_contribution_rates.ee/er_unemployment_temporal`), si no el indefinido.
+Default DEFENSIVO indefinido: código nulo/desconocido → como antes.
 
 ### 3.4. UI
-- **Formulario de contrato**: el campo "tipo" pasa a ser un **desplegable del
-  catálogo** (no texto libre). Migrar el valor actual "Indefinido" → `INDEFINIDO_ORDINARIO`.
-- **Pantalla de catálogo** (config asesoría): ver/editar las modalidades y sus
-  esquemas, con la referencia legal — "expuesto a los asesores" como pides.
+- **Formulario de contrato**: el wizard YA tiene `familyCombo` + `sepeCombo` que
+  guardan `sepe_contract_code` (verificado: contratos existentes con code=100).
+  El esquema de desempleo queda determinado por ese código → no requiere campo nuevo.
+- **Pantalla de catálogo** (config asesoría): ver/editar `sepe_contract_types` y
+  su `unemployment_scheme`, con la referencia legal — "expuesto a los asesores".
 
 ## 4. Slices
 
-- **CM-1** — V143 `contract_modality_catalog` + seed (7 filas).
-- **CM-2** — V144 tipos desempleo temporal en `ss_contribution_rates`.
-- **CM-3** — `PayslipService`: desempleo según esquema de la modalidad. *(motor → con Benjamin)*.
-- **CM-4** — Formulario de contrato: desplegable de modalidad + migración del valor actual.
-- **CM-5** — Pantalla de catálogo de modalidades (config asesoría) con referencia legal.
+- **CM-1** ✅ — V143: columnas `ee/er_unemployment_temporal` en `ss_contribution_rates`.
+- **CM-2** ✅ — V144: columna `unemployment_scheme` en `sepe_contract_types` + UPDATE por código.
+- **CM-3** ✅ — `PayslipService`: desempleo según el código SEPE del contrato.
+- **CM-4** ✅ — (ya cubierto) el wizard guarda `sepe_contract_code`; no hay campo nuevo.
+- **CM-5** — (pendiente, opcional) pantalla de catálogo para ver/editar el esquema por código.
 - **CM-6** — (futuro) cotización especial de formativos (cuota fija alternancia).
 
 ## 5. Decisiones / validación de Benjamin

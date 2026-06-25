@@ -54,6 +54,27 @@ public class SsContributionRatesService {
                 + year + " ni años anteriores. Configúralos en Laboral → Tipos de cotización.");
     }
 
+    /**
+     * Tipos de DESEMPLEO del esquema TEMPORAL para el año (columnas V143).
+     * Devuelve {@code [ee, er]} (trabajador, empresa). Fallback DEFENSIVO a los
+     * valores legales 2026 (1,60 / 6,70) si no hay fila — nunca rompe el cálculo.
+     */
+    public BigDecimal[] unemploymentTemporalRates(int year) {
+        List<BigDecimal[]> rows = jdbc.query("""
+                SELECT ee_unemployment_temporal, er_unemployment_temporal
+                  FROM ss_contribution_rates
+                 WHERE year <= ?
+                 ORDER BY year DESC LIMIT 1
+                """, (rs, n) -> new BigDecimal[]{
+                        rs.getBigDecimal("ee_unemployment_temporal"),
+                        rs.getBigDecimal("er_unemployment_temporal")},
+                year);
+        if (rows.isEmpty() || rows.get(0)[0] == null || rows.get(0)[1] == null) {
+            return new BigDecimal[]{new BigDecimal("1.60"), new BigDecimal("6.70")};
+        }
+        return rows.get(0);
+    }
+
     public List<Rates> listAll() {
         return jdbc.query("""
                 SELECT year, ee_common, ee_unemployment, ee_training, ee_mei,

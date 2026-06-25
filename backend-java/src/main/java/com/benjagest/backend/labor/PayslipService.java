@@ -81,6 +81,7 @@ public class PayslipService {
     private final org.springframework.security.crypto.password.PasswordEncoder passwordEncoder;
     private final com.benjagest.backend.labor.incidencias.NominaIncidenciaService incidenciaService;
     private final com.benjagest.backend.labor.ss.OvertimeRatesService overtimeRatesService;
+    private final com.benjagest.backend.labor.contracts.ContractCatalogService contractCatalog;
 
     public PayslipService(JdbcTemplate jdbcTemplate,
                            TenantContext tenantContext,
@@ -96,7 +97,8 @@ public class PayslipService {
                            com.benjagest.backend.realtime.RealtimeService realtime,
                            org.springframework.security.crypto.password.PasswordEncoder passwordEncoder,
                            com.benjagest.backend.labor.incidencias.NominaIncidenciaService incidenciaService,
-                           com.benjagest.backend.labor.ss.OvertimeRatesService overtimeRatesService) {
+                           com.benjagest.backend.labor.ss.OvertimeRatesService overtimeRatesService,
+                           com.benjagest.backend.labor.contracts.ContractCatalogService contractCatalog) {
         this.jdbcTemplate = jdbcTemplate;
         this.tenantContext = tenantContext;
         this.taxRulesService = taxRulesService;
@@ -112,6 +114,7 @@ public class PayslipService {
         this.passwordEncoder = passwordEncoder;
         this.incidenciaService = incidenciaService;
         this.overtimeRatesService = overtimeRatesService;
+        this.contractCatalog = contractCatalog;
     }
 
     public byte[] generatePdf(String id) {
@@ -469,7 +472,19 @@ public class PayslipService {
         }
         BigDecimal atEp = contract.atEpPercent != null && contract.atEpPercent.signum() >= 0
                 ? contract.atEpPercent : rates.defaultAtEp();
-        SsBreakdown ss = computeSs(cotizationBase, atEp, rates);
+        // CONTRATO-MODALIDADES — el DESEMPLEO varía por modalidad: indefinido
+        // (1,55/5,50) vs temporal (1,60/6,70). El esquema lo dicta el CÓDIGO SEPE
+        // del contrato (sepe_contract_types.unemployment_scheme, V144), que respeta
+        // los matices de la Orden (sustitución/formativos cotizan al INDEFINIDO).
+        // Default DEFENSIVO indefinido (código desconocido/antiguo → como antes).
+        BigDecimal eeUnemp = rates.eeUnemployment();
+        BigDecimal erUnemp = rates.erUnemployment();
+        if (contractCatalog.isTemporalUnemployment(contract.sepeContractCode)) {
+            BigDecimal[] temp = ssRatesService.unemploymentTemporalRates(req.year());
+            eeUnemp = temp[0];
+            erUnemp = temp[1];
+        }
+        SsBreakdown ss = computeSs(cotizationBase, atEp, rates, eeUnemp, erUnemp);
         // La deducción de SS del trabajador incluye la cotización adicional de horas
         // extra (INC-2), que NO va en la base de CC sino aparte sobre el importe extra.
         BigDecimal ssEmployee = ss.employeeTotal().add(overtimeEe);
@@ -1088,7 +1103,7 @@ public class PayslipService {
         // Fallback al valor del contrato si no hubiera vigencia (no debería tras
         // el backfill V125). Así las nóminas pasadas no cambian al ascender.
         return jdbcTemplate.query("""
-                SELECT c.id, c.contract_type, c.start_date, c.end_date,
+                SELECT c.id, c.contract_type, c.sepe_contract_code, c.start_date, c.end_date,
                        COALESCE(v.gross_salary, c.gross_salary) AS gross_salary,
                        COALESCE(v.annual_bonuses, c.annual_bonuses) AS annual_bonuses,
                        COALESCE(v.extras_prorated, c.extras_prorated) AS extras_prorated,
@@ -1112,6 +1127,7 @@ public class PayslipService {
                     ContractData d = new ContractData();
                     d.id = rs.getString("id");
                     d.contractType = rs.getString("contract_type");
+                    d.sepeContractCode = rs.getString("sepe_contract_code");
                     java.sql.Date s = rs.getDate("start_date");
                     java.sql.Date e = rs.getDate("end_date");
                     d.startDate = s == null ? null : s.toLocalDate();
@@ -1263,12 +1279,17 @@ public class PayslipService {
         return pagasAnual.divide(BigDecimal.valueOf(12), 2, RoundingMode.HALF_UP);
     }
 
+    /**
+     * @param eeUnemp/erUnemp tipos de DESEMPLEO ya resueltos por modalidad
+     *        (indefinido o temporal). El resto de tipos no varían por contrato.
+     */
     private SsBreakdown computeSs(BigDecimal base, BigDecimal atEpPercent,
-                                  SsContributionRatesService.Rates r) {
+                                  SsContributionRatesService.Rates r,
+                                  BigDecimal eeUnemp, BigDecimal erUnemp) {
         return new SsBreakdown(
-                pct(base, r.eeCommon()), pct(base, r.eeUnemployment()),
+                pct(base, r.eeCommon()), pct(base, eeUnemp),
                 pct(base, r.eeTraining()), pct(base, r.eeMei()),
-                pct(base, r.erCommon()), pct(base, r.erUnemployment()),
+                pct(base, r.erCommon()), pct(base, erUnemp),
                 pct(base, r.erFogasa()), pct(base, r.erTraining()),
                 pct(base, r.erMei()), pct(base, atEpPercent));
     }
@@ -1369,6 +1390,7 @@ public class PayslipService {
     private static class ContractData {
         String id;
         String contractType;
+        String sepeContractCode;
         LocalDate startDate;
         LocalDate endDate;
         BigDecimal grossSalary;
