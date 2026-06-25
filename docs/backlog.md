@@ -48,6 +48,40 @@
 
 ---
 
+## 📅 SESIÓN 2026-06-25 (tarde, autónoma) — "haz los tres" bloques
+
+> Benjamin: "haz los tres" (intercambio contable + formativos + ciclo laboral).
+> Todo compila y mergeado a `develop`, slice a slice. Criterio: construir lo que
+> la ley dicta y es seguro; estructura + guardas + marcar lo que necesita su
+> validación (§11.2). NO se inventan números ni formatos de fabricante.
+
+**1. Intercambio contable** *(merge import JSON)* ✅
+- **Import del JSON canónico BENJAGEST** — cierra el round-trip (el export ya lo
+  producía, el import estaba sin implementar). Backup/restore + migrar entre
+  instalaciones. Reutiliza `createDraft` (mismas validaciones). Sin adivinar nada.
+- **xDiario (A3) / SUENLACE (ContaPlus)**: NO se implementan a ciegas — son
+  posicionales de fabricante; sin muestra real las posiciones se adivinan y el
+  fichero falla en silencio al importar. **Pendiente: muestra real de Benjamin.**
+
+**2. Formativos — cuota fija (CM-6)** *(merge CM-6)* ✅
+- Formación en alternancia (421/521) cotiza por **cuota fija** (no porcentajes).
+  V145 no-code, seed 2026 (trab. 36,01 + empresa 161,23 = 197,24 €/mes, Orden
+  PJC/297/2026). Branch en `PayslipService` solo para esos contratos; fallo
+  ruidoso si el año no está configurado. Neto exacto. **Marcado para validar**:
+  proración mes parcial, desglose por concepto TC/RED, UI para editar la cuota.
+
+**3. Ciclo laboral — CL-1** *(merge CL-1)* ✅ + diseño CL-2/CL-3
+- **Suspensión/excedencia** (art. 45 ET): V146 `contract_suspensions` + GUARDA en
+  la nómina (no genera recibo a quien está en excedencia sin sueldo) + CRUD API.
+  Default-seguro. **`docs/design-ciclo-laboral.md`** con el bloque completo.
+- **CL-2 atrasos retroactivos** y **CL-3 cese de empresa (extinción colectiva)**:
+  diseñados, **con Benjamin** (tocan dinero: IRPF 15% atrasos, indemnización 20
+  días/año). Decisiones enumeradas en el design doc.
+- **CL-4** (con Benjamin): UI registrar/cerrar suspensiones en la ficha del
+  contrato; proración meses parciales; efecto en antigüedad del finiquito.
+
+---
+
 ## 📅 SESIÓN 2026-06-25 (autónoma, Benjamin fuera) — finiquito + reflejo + nómina + revisión
 
 > Benjamin se fue dejando items + "revisa el código con tu equipo" + registro, y luego
