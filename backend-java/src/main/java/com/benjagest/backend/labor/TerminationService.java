@@ -193,6 +193,99 @@ public class TerminationService {
         return new TerminationResult(settlement, sev);
     }
 
+    // ====================================================================
+    //  CL-3 — Cese de empresa (extinción colectiva)
+    // ====================================================================
+
+    /**
+     * CL-3 — Cierre de la empresa: extinción de TODOS los contratos activos en
+     * una fecha común. La indemnización es la objetiva/colectiva (20 días/año,
+     * tope 12 mensualidades, exenta de IRPF) — art. 51/52 ET — que ya calcula
+     * {@link #computeSeverance} con el tipo {@code DISMISSAL_OBJECTIVE} (también
+     * vale fuerza mayor, mismo cómputo). Reutiliza el cese individual validado.
+     */
+    private List<EmployeeRef> activeEmployeesAt(LocalDate ceseDate) {
+        return jdbc.query("""
+                SELECT DISTINCT e.id, e.full_name
+                  FROM employees e
+                  JOIN employment_contracts c
+                    ON c.employee_id = e.id AND c.company_id = e.company_id
+                 WHERE e.company_id = ?
+                   AND c.status IN ('ACTIVE', 'SUSPENDED')
+                   AND c.start_date <= ?
+                   AND (c.end_date IS NULL OR c.end_date >= ?)
+                 ORDER BY e.full_name
+                """,
+                (rs, n) -> new EmployeeRef(rs.getString("id"), rs.getString("full_name")),
+                tenant.getCurrentCompanyId(), ceseDate, ceseDate);
+    }
+
+    private String closureType(String type) {
+        // Por defecto, cese de empresa = extinción objetiva/colectiva (20 días/año).
+        return StringUtils.hasText(type) ? type : "DISMISSAL_OBJECTIVE";
+    }
+
+    /** Vista previa SIN efectos: a quién afecta y la indemnización total. */
+    public ClosureResult previewCompanyClosure(ClosureRequest r) {
+        if (r.ceseDate() == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Fecha de cese requerida");
+        }
+        String type = closureType(r.type());
+        List<EmployeeRef> emps = activeEmployeesAt(r.ceseDate());
+        java.util.List<ClosureLine> lines = new java.util.ArrayList<>();
+        BigDecimal totalSev = BigDecimal.ZERO;
+        for (EmployeeRef e : emps) {
+            ActiveContract c = loadActiveContract(e.id(), r.ceseDate());
+            if (c == null) {
+                lines.add(new ClosureLine(e.id(), e.name(), BigDecimal.ZERO, "Sin contrato activo a la fecha"));
+                continue;
+            }
+            Severance sev = computeSeverance(type, c.grossSalary(), c.antiquityFrom(), r.ceseDate());
+            totalSev = totalSev.add(sev.gross());
+            lines.add(new ClosureLine(e.id(), e.name(), sev.gross(), null));
+        }
+        long failed = lines.stream().filter(l -> l.error() != null).count();
+        return new ClosureResult(lines.size(), (int) (lines.size() - failed), (int) failed,
+                totalSev.setScale(2, RoundingMode.HALF_UP), lines);
+    }
+
+    /**
+     * Ejecuta el cese de empresa: termina TODOS los contratos activos a la fecha,
+     * generando el finiquito + indemnización de cada uno. Todo en UNA transacción
+     * (all-or-nothing): si un empleado falla, no se cierra a medias la empresa.
+     */
+    @Transactional
+    public ClosureResult executeCompanyClosure(ClosureRequest r) {
+        if (r.ceseDate() == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Fecha de cese requerida");
+        }
+        String type = closureType(r.type());
+        List<EmployeeRef> emps = activeEmployeesAt(r.ceseDate());
+        if (emps.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "No hay empleados con contrato activo a la fecha de cese.");
+        }
+        java.util.List<ClosureLine> lines = new java.util.ArrayList<>();
+        BigDecimal totalSev = BigDecimal.ZERO;
+        for (EmployeeRef e : emps) {
+            TerminationResult res = execute(new TerminationRequest(
+                    e.id(), r.ceseDate(), type, null, null,
+                    StringUtils.hasText(r.notes()) ? r.notes() : "Cese de empresa"));
+            BigDecimal sev = res.severance().gross();
+            totalSev = totalSev.add(sev);
+            lines.add(new ClosureLine(e.id(), e.name(), sev, null));
+        }
+        return new ClosureResult(lines.size(), lines.size(), 0,
+                totalSev.setScale(2, RoundingMode.HALF_UP), lines);
+    }
+
+    public record EmployeeRef(String id, String name) {}
+    public record ClosureRequest(LocalDate ceseDate, String type, String notes) {}
+    public record ClosureLine(String employeeId, String employeeName,
+                              BigDecimal severanceGross, String error) {}
+    public record ClosureResult(int total, int ok, int failed,
+                                BigDecimal totalSeverance, List<ClosureLine> lines) {}
+
     private void validate(TerminationRequest r) {
         if (!StringUtils.hasText(r.employeeId())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "employeeId requerido");
@@ -219,5 +312,15 @@ public class TerminationService {
 
         @PostMapping("/execute")
         public TerminationResult execute(@RequestBody TerminationRequest req) { return service.execute(req); }
+
+        @PostMapping("/company-closure/preview")
+        public ClosureResult previewClosure(@RequestBody ClosureRequest req) {
+            return service.previewCompanyClosure(req);
+        }
+
+        @PostMapping("/company-closure/execute")
+        public ClosureResult executeClosure(@RequestBody ClosureRequest req) {
+            return service.executeCompanyClosure(req);
+        }
     }
 }
