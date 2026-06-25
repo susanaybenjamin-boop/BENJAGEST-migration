@@ -63,22 +63,29 @@
   toca el motor de cálculo.
 - ✅ **Validación del cálculo vs PDF real** (solo lectura): tipos trabajador **CC+MEI 4,85%**
   (4,70+0,15) ✓, **FP 0,10%** ✓ — CORRECTOS (tabla no-code `ss_contribution_rates` 2026).
-- ⚠️ **HALLAZGO (no arreglado, necesita Benjamin)**: **desempleo por tipo de contrato**.
-  BENJAGEST usa **1,55% trabajador / 5,50% empresa** para TODOS los contratos; el legal es
-  1,55%/5,50% **indefinido** y **1,60%/6,70% temporal**. El PDF real (trabajador temporal) muestra
-  **1,60%** → para temporales BENJAGEST infra-cotiza. NO se arregló porque el modelo de datos es
-  ambiguo: `employment_contracts.contract_type` (varchar) tiene "Indefinido" pero la UI usa familias
-  INDEFINIDO/TEMPORAL y **no hay columna de familia** → identificar "temporal" con fiabilidad
-  necesita que Benjamin confirme la taxonomía. **Fix propuesto**: añadir `ee_unemployment_temporal`
-  (1,60) + `er_unemployment_temporal` (6,70) a `ss_contribution_rates` (no-code) y usarlas cuando el
-  contrato sea temporal. *(No urgente: hoy no hay contratos temporales en BD.)*
+- ✅ **Desempleo por tipo de contrato — RESUELTO** *(bloque CONTRATO-MODALIDADES, 9080f00)*.
+  El desempleo no es igual: indefinido 1,55/5,50 (7,05%) vs temporal 1,60/6,70 (8,30%), Orden
+  PJC/297/2026. **Sin duplicar**: el catálogo legal ya existía (`sepe_contract_types`, V74, todos
+  los códigos SEPE) → se **extiende** con `unemployment_scheme` (V144), y el par temporal por año
+  va en `ss_contribution_rates` (V143, no-code). La nómina deriva el esquema del `sepe_contract_code`
+  del contrato (`ContractCatalogService.isTemporalUnemployment`), default DEFENSIVO indefinido.
+  **MATIZ legal respetado**: sustitución/interinidad (411/511), formativos (421/521) y prácticas
+  (401/501) cotizan desempleo al esquema INDEFINIDO aunque sean temporales → por eso se marca
+  código a código, no por familia. Solo TEMPORAL: producción (300/410/510/420), inserción
+  (405/505), Fondos Europeos (406/506).
 
 **Otros items:**
 - ✅ **Indicador "reflejada como gasto en {cliente}"** *(25d10e7)* — columna en el listado de
   Facturación (no hay vista de detalle) + endpoint `/api/billing/invoices/reflections`.
 
 **Pendiente / decisiones de Benjamin:**
-- Confirmar la taxonomía de contrato temporal para cerrar el desempleo-por-tipo (arriba).
+- **Su trabajador de construcción**: hoy su contrato tiene `sepe_contract_code=100` (Indefinido
+  ordinario) → cotiza desempleo INDEFINIDO (1,55/5,50). Él lo describió como "hasta terminación de
+  obra". Post-Reforma 2022 el "obra o servicio" está derogado: en construcción lo correcto es
+  **indefinido adscrito a obra** (fijo de obra = INDEFINIDO, 1,55/5,50) — coincide con el código
+  actual. Si la gestoría lo registró como temporal de verdad, basta cambiar el código SEPE en el
+  wizard (200 fijo-discontinuo o 410 producción). **Pregunta**: ¿qué código SEPE es el real?
+- (Opcional) CM-5: pantalla en config asesoría para ver/editar `unemployment_scheme` por código.
 - Registro: las 5 decisiones de `docs/design-registro-alta.md` (se construye con él, auth).
 - Double-pay / tolerancia 0,01 en pagos (toca dinero, con él).
 
