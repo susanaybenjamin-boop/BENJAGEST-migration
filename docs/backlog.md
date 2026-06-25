@@ -71,7 +71,7 @@
   ruidoso si el año no está configurado. Neto exacto. **Marcado para validar**:
   proración mes parcial, desglose por concepto TC/RED, UI para editar la cuota.
 
-**3. Ciclo laboral (backend CL-1/2/3 completo)** ✅ **`docs/design-ciclo-laboral.md`**
+**3. Ciclo laboral (CL-1/2/3 + UI CL-4 completo)** ✅ **`docs/design-ciclo-laboral.md`**
 - **CL-1 suspensión/excedencia** (art. 45 ET) *(merge CL-1)*: V146
   `contract_suspensions` + GUARDA en la nómina (no genera recibo a quien está en
   excedencia sin sueldo) + CRUD API. Default-seguro.
@@ -82,8 +82,12 @@
 - **CL-3 cese de empresa** *(merge CL-3)*: `TerminationService.{preview,execute}
   CompanyClosure` — extinción colectiva en lote (20 días/año, reutiliza el cese
   individual validado). Preview sin efectos + ejecución all-or-nothing.
-- **CL-4** (con Benjamin): UI (registrar/cerrar suspensiones en la ficha; cese de
-  empresa; atrasos); proración meses parciales; efecto en antigüedad del finiquito.
+- **CL-4 UI** *(merge CL-4)* ✅: botones en la barra de Empleados — Suspensión
+  (listar/registrar/cerrar/borrar), Atrasos (cálculo + desglose), Cese de empresa
+  (preview + **doble confirmación**, acción irreversible). i18n ES+EN.
+- **CL-5** (con Benjamin): generar RECIBO de atrasos + asiento + liquidación L13;
+  proración de meses parciales; efecto fino en antigüedad del finiquito; atrasos
+  sobre pagas extra.
 
 ---
 

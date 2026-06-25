@@ -93,6 +93,9 @@ documento único de comunicación colectiva además de los finiquitos individual
 - **CL-3** ✅ (backend) — `TerminationService.{preview,execute}CompanyClosure`:
   cese de empresa en lote (20 días/año, reutiliza el cese individual validado).
   Preview sin efectos + ejecución all-or-nothing.
-- **CL-4** (con Benjamin) — UI: registrar/cerrar suspensiones en la ficha;
-  pantalla de cese de empresa (confirmación + listado); pantalla de atrasos;
-  proración de meses parciales; efecto en antigüedad del finiquito.
+- **CL-4** ✅ (UI) — botones en la barra de Empleados: Suspensión (listar/
+  registrar/cerrar/borrar), Atrasos (cálculo + desglose), Cese de empresa
+  (preview + doble confirmación). i18n ES+EN.
+- **CL-5** (con Benjamin) — pendiente: generar el RECIBO de atrasos + asiento +
+  liquidación L13 (escritura); proración de meses parciales en suspensión y en
+  atrasos; efecto fino en la antigüedad del finiquito; atrasos sobre pagas extra.
