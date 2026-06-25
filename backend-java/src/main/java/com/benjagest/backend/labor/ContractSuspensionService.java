@@ -51,8 +51,20 @@ public class ContractSuspensionService {
     @Transactional
     public SuspensionView register(CreateRequest r) {
         if (r.employeeId() == null || r.employeeId().isBlank()) throw bad("Empleado requerido");
-        if (r.contractId() == null || r.contractId().isBlank()) throw bad("Contrato requerido");
         if (r.startDate() == null) throw bad("Fecha de inicio requerida");
+        // Si no se indica contrato, se resuelve el activo del empleado.
+        String contractId = r.contractId();
+        if (contractId == null || contractId.isBlank()) {
+            contractId = jdbc.query("""
+                    SELECT id FROM employment_contracts
+                     WHERE company_id = ? AND employee_id = ? AND status IN ('ACTIVE', 'SUSPENDED')
+                     ORDER BY start_date DESC LIMIT 1
+                    """, (rs, n) -> rs.getString("id"),
+                    tenant.getCurrentCompanyId(), r.employeeId())
+                    .stream().findFirst().orElse(null);
+            if (contractId == null) throw bad("El empleado no tiene un contrato activo");
+        }
+        final String resolvedContractId = contractId;
         String type = r.type() == null ? "OTRA" : r.type().toUpperCase();
         if (!TYPES.contains(type)) throw bad("Tipo de suspensión no válido: " + r.type());
         if (r.endDate() != null && r.endDate().isBefore(r.startDate())) {
@@ -65,7 +77,7 @@ public class ContractSuspensionService {
                         start_date, end_date, reserva_puesto, reason)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
-                id, tenant.getCurrentCompanyId(), r.contractId(), r.employeeId(), type,
+                id, tenant.getCurrentCompanyId(), resolvedContractId, r.employeeId(), type,
                 java.sql.Date.valueOf(r.startDate()),
                 r.endDate() == null ? null : java.sql.Date.valueOf(r.endDate()),
                 Boolean.TRUE.equals(r.reservaPuesto()), blank(r.reason()));
