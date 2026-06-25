@@ -19535,6 +19535,7 @@ public class BenjagestUiApplication extends Application {
             case "advisory.client.tab.assets" -> "Fixed assets";
             case "advisory.client.tab.labor" -> "HR / Labor";
             case "advisory.client.tab.reta" -> "Self-employed (RETA)";
+            case "advisory.client.tab.trabajos" -> "Jobs";
             case "advisory.client.tab.tax_models" -> "AEAT models";
             case "advisory.client.tab.certificate" -> "Certificate";
             // ============ Accounting module (AccountingScreen) ============
@@ -20720,6 +20721,7 @@ public class BenjagestUiApplication extends Application {
             case "advisory.client.tab.assets" -> "Inmovilizado";
             case "advisory.client.tab.labor" -> "RR.HH. / Laboral";
             case "advisory.client.tab.reta" -> "Autónomos (RETA)";
+            case "advisory.client.tab.trabajos" -> "Trabajos";
             case "advisory.client.tab.tax_models" -> "Modelos AEAT";
             case "advisory.client.tab.certificate" -> "Certificado";
             // ============ Módulo Contabilidad (AccountingScreen) ============
@@ -30790,6 +30792,14 @@ public class BenjagestUiApplication extends Application {
             Tab retaTab = new Tab(t("advisory.client.tab.reta"), buildClientRetaTab());
             retaTab.setGraphic(icon("fas-user-tie"));
             tabs.getTabs().add(retaTab);
+        }
+        // Módulo Trabajos dentro de la ficha (Mi gestión y clientes con "shifts"):
+        // opera sobre la empresa activa (X-Company-Id). Antes solo estaba en el
+        // sidebar — petición Benjamin de tenerlo también como pestaña.
+        if (canSee.test("shifts")) {
+            Tab trabajosTab = new Tab(t("advisory.client.tab.trabajos"), buildWorkLogsModule());
+            trabajosTab.setGraphic(icon("fas-briefcase"));
+            tabs.getTabs().add(trabajosTab);
         }
         if (canSee.test("tax")) tabs.getTabs().add(taxTab);
         // Certificado: identidad fiscal del cliente. Lo mantenemos siempre
