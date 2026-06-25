@@ -283,6 +283,19 @@ public class PayslipService {
         // SÍ se acumulan para calcular el tipo de IRPF (rate anual normal).
         boolean isSettlement = "SETTLEMENT".equals(type);
 
+        // CL-1 — GUARDA de excedencia/suspensión: si la nómina ORDINARIA cae
+        // íntegramente dentro de un periodo de suspensión SIN remuneración
+        // (excedencia, suspensión de empleo y sueldo), no se genera un recibo
+        // incorrecto: se niega con mensaje claro. La IT/maternidad NO entra aquí
+        // (va por medical_leaves). Meses parciales por reingreso: a validar.
+        if ("MONTHLY".equals(type) && isMonthFullySuspended(req.employeeId(), req.year(), req.month())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "El empleado está en excedencia/suspensión sin sueldo durante "
+                    + req.year() + "/" + String.format("%02d", req.month())
+                    + ": no se genera nómina ese mes (art. 45 ET). Cierra la suspensión"
+                    + " si ya se ha reincorporado.");
+        }
+
         // Prorrateo de pagas extras (art. 31 ET): 12 pagas -> anual/12; 14 pagas
         // (default legal) -> anual/(12+extras) y las extras como nóminas EXTRA_*.
         // Una nómina EXTRA es UNA mensualidad = anual/(12+nº pagas), siempre.
@@ -1109,6 +1122,27 @@ public class PayslipService {
         if ("EXTRA_SUMMER".equals(type)) return "Paga extra de verano";
         if ("EXTRA_CHRISTMAS".equals(type)) return "Paga extra de Navidad";
         return "Salario base";
+    }
+
+    /**
+     * CL-1 — ¿el mes completo cae dentro de un periodo de suspensión/excedencia
+     * SIN remuneración (tabla {@code contract_suspensions})? Una suspensión cubre
+     * el mes si empezó en/antes del día 1 y no terminó antes del último día (o
+     * sigue abierta). Solo afecta a la nómina ordinaria; default-seguro: sin
+     * filas o tabla vacía → false (comportamiento previo intacto).
+     */
+    private boolean isMonthFullySuspended(String employeeId, int year, int month) {
+        LocalDate first = LocalDate.of(year, month, 1);
+        LocalDate last = first.withDayOfMonth(first.lengthOfMonth());
+        Integer n = jdbcTemplate.queryForObject("""
+                SELECT COUNT(*) FROM contract_suspensions
+                 WHERE company_id = ? AND employee_id = ?
+                   AND start_date <= ?
+                   AND (end_date IS NULL OR end_date >= ?)
+                """, Integer.class,
+                tenantContext.getCurrentCompanyId(), employeeId,
+                java.sql.Date.valueOf(first), java.sql.Date.valueOf(last));
+        return n != null && n > 0;
     }
 
     private ContractData resolveActiveContract(String employeeId, int year, int month) {
