@@ -96,6 +96,28 @@ public class SalesInvoiceService {
                 invoiceTypeFilter, limit);
     }
 
+    /**
+     * BLOQUE REFLEJO — facturas emitidas por la empresa actual que se reflejaron
+     * como gasto en otra empresa de la cartera. Devuelve [salesInvoiceId →
+     * nombre de la empresa donde se reflejó], para que el listado de Facturación
+     * marque "↪ reflejada en {cliente}".
+     */
+    public List<java.util.Map<String, String>> reflectionsForIssuer() {
+        String companyId = tenantContext.getCurrentCompanyId();
+        if (companyId == null) return java.util.List.of();
+        return jdbcForTpb.query("""
+                SELECT pi.source_sales_invoice_id AS sid, c.legal_name AS cname
+                  FROM purchase_invoices pi
+                  JOIN companies c ON c.id = pi.company_id
+                 WHERE pi.source_company_id = ?
+                   AND pi.source_sales_invoice_id IS NOT NULL
+                """,
+                (rs, n) -> java.util.Map.of(
+                        "salesInvoiceId", rs.getString("sid") == null ? "" : rs.getString("sid"),
+                        "companyName", rs.getString("cname") == null ? "" : rs.getString("cname")),
+                companyId);
+    }
+
     public SalesInvoice get(String id) {
         return repository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Factura no encontrada"));

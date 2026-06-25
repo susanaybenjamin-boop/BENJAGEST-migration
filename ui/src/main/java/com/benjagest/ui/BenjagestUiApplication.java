@@ -9027,8 +9027,33 @@ public class BenjagestUiApplication extends Application {
         // número y compara como BigDecimal.
         colTotal.setComparator(NUMERIC_STRING_COMPARATOR);
 
-        billingTable.getColumns().addAll(List.of(colNumber, colCustomer, colDate, colDue, colStatus, colPayment, colTotal));
+        // REFLEJO — columna que marca "↪ reflejada como gasto en {cliente}". El
+        // mapa se rellena async tras cargar el listado (no hay vista de detalle).
+        final java.util.Map<String, String> reflMap = new java.util.HashMap<>();
+        TableColumn<SalesInvoiceSummary, String> colReflejo = new TableColumn<>(t("list.column.reflected"));
+        colReflejo.setCellValueFactory(c -> {
+            String name = c.getValue().id() == null ? null : reflMap.get(c.getValue().id());
+            return new SimpleStringProperty(name == null || name.isBlank() ? "" : "↪ " + name);
+        });
+        colReflejo.setPrefWidth(170);
+
+        billingTable.getColumns().addAll(List.of(colNumber, colCustomer, colDate, colDue, colStatus, colPayment, colTotal, colReflejo));
         billingTable.setItems(FXCollections.observableArrayList(initialList));
+        // Cargar las facturas reflejadas y refrescar la columna.
+        Task<java.util.List<java.util.Map<String, String>>> reflTask = new Task<>() {
+            @Override protected java.util.List<java.util.Map<String, String>> call() throws Exception {
+                return billingApiClient.listInvoiceReflections();
+            }
+        };
+        reflTask.setOnSucceeded(ev -> {
+            reflMap.clear();
+            for (var m : reflTask.getValue()) {
+                String sid = m.get("salesInvoiceId");
+                if (sid != null && !sid.isBlank()) reflMap.put(sid, m.get("companyName"));
+            }
+            billingTable.refresh();
+        });
+        start(reflTask, "billing-reflections");
         // Doble click sobre fila editable -> abrir editor. Editable =
         // cualquier DRAFT, o una PROFORMA aunque ya esté VALIDATED
         // (las proformas no son documentos fiscales y siguen siendo
@@ -13084,6 +13109,7 @@ public class BenjagestUiApplication extends Application {
                 case "list.column.status" -> "Status";
                 case "list.column.collection" -> "Collection";
                 case "list.column.total" -> "Total";
+                case "list.column.reflected" -> "Reflected as expense";
                 case "list.placeholder.empty" -> "No invoices match the current filters.";
                 case "list.draft_label" -> "(draft)";
                 case "list.action.delete_draft" -> "Delete";
@@ -14065,6 +14091,7 @@ public class BenjagestUiApplication extends Application {
             case "list.column.status" -> "Estado";
             case "list.column.collection" -> "Cobro";
             case "list.column.total" -> "Total";
+            case "list.column.reflected" -> "Reflejada como gasto";
             case "list.placeholder.empty" -> "Sin facturas para los filtros actuales.";
             case "list.draft_label" -> "(borrador)";
             case "list.action.delete_draft" -> "Eliminar";
