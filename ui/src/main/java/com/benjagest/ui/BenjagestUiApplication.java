@@ -18028,6 +18028,52 @@ public class BenjagestUiApplication extends Application {
             case "labor.employees.action.contracts" -> "Contracts…";
             case "labor.employees.action.delete" -> "Deactivate";
             case "labor.employees.action.terminate" -> "Dismissal / settlement";
+            // CL-4 — ciclo laboral (EN)
+            case "labor.employees.action.suspend" -> "Suspension / leave";
+            case "labor.employees.action.backpay" -> "Back pay";
+            case "labor.employees.action.closure" -> "Company closure";
+            case "common.yes" -> "Yes";
+            case "common.no" -> "No";
+            case "labor.susp.title" -> "Suspension / leave of absence";
+            case "labor.susp.empty" -> "No suspensions recorded.";
+            case "labor.susp.open" -> "Open (ongoing)";
+            case "labor.susp.hint" -> "During an unpaid suspension (art. 45 ET) no ordinary payslip is generated. Sick leave / maternity are NOT recorded here (they have their own flow).";
+            case "labor.susp.add" -> "Add suspension";
+            case "labor.susp.close_btn" -> "Close (re-entry)";
+            case "labor.susp.delete_btn" -> "Delete";
+            case "labor.susp.need_dates" -> "Type and start date are required.";
+            case "labor.susp.reason" -> "Reason";
+            case "labor.susp.reason.prompt" -> "Reason (optional)";
+            case "labor.susp.reentry_date" -> "Re-entry date";
+            case "labor.susp.col.type" -> "Type";
+            case "labor.susp.col.from" -> "From";
+            case "labor.susp.col.to" -> "To";
+            case "labor.susp.col.reserva" -> "Job reserved";
+            case "labor.susp.type.EXCEDENCIA_VOLUNTARIA" -> "Voluntary leave";
+            case "labor.susp.type.EXCEDENCIA_FORZOSA" -> "Statutory leave";
+            case "labor.susp.type.EXCEDENCIA_CUIDADO" -> "Childcare / family leave";
+            case "labor.susp.type.SUSPENSION_EMPLEO_SUELDO" -> "Suspension of work and pay";
+            case "labor.susp.type.OTRA" -> "Other";
+            case "labor.backpay.title" -> "Back pay (retroactive raise)";
+            case "labor.backpay.empty" -> "Press Calculate to see the back pay.";
+            case "labor.backpay.none" -> "No back pay for this employee.";
+            case "labor.backpay.hint" -> "Back pay from a collective-agreement raise with past effect, computed from the contract's pay periods (vigencias). Prior-year amounts withhold IRPF at 15% (art. 101 RIRPF); the current year at the contract rate.";
+            case "labor.backpay.calc" -> "Calculate";
+            case "labor.backpay.through" -> "Up to month";
+            case "labor.backpay.result" -> "Old salary: {old} → new: {new} (effective {from})\nMonthly difference: {mdiff} × {months} months\nPrior years: {gprior} ({pmonths} m) · current year: {gcurr} ({cmonths} m)\nGross total: {gtotal}\nIRPF: {irpf} (prior {irpfprior} + current {irpfcurr})\nEmployee SS: {ss}\nNet back pay: {net}";
+            case "labor.closure.title" -> "Company closure (collective termination)";
+            case "labor.closure.empty" -> "Run the preview to see affected employees.";
+            case "labor.closure.hint" -> "Terminates ALL active contracts on the given date with the collective/objective severance (20 days/year, art. 51/52 ET). IRREVERSIBLE: review the preview and confirm twice.";
+            case "labor.closure.execute" -> "Execute closure";
+            case "labor.closure.need_preview" -> "Run the preview first.";
+            case "labor.closure.preview.empty" -> "No preview yet.";
+            case "labor.closure.preview.text" -> "{n} employees affected · total severance: {total}";
+            case "labor.closure.col.employee" -> "Employee";
+            case "labor.closure.col.severance" -> "Severance";
+            case "labor.closure.confirm1" -> "You are about to terminate {n} employees on {date}. Total severance: {total}. This is irreversible. Continue?";
+            case "labor.closure.confirm2" -> "FINAL confirmation: {n} contracts will be closed and their settlements generated. Proceed?";
+            case "labor.closure.confirm2_header" -> "Final confirmation";
+            case "labor.closure.done" -> "Closure complete: {n} employees terminated, total severance {total}.";
             case "labor.term.title" -> "Termination / dismissal";
             case "labor.term.reason" -> "Reason for leaving";
             case "labor.term.confirm" -> "Confirm termination";
@@ -18768,6 +18814,52 @@ public class BenjagestUiApplication extends Application {
             case "labor.employees.action.contracts" -> "Contratos…";
             case "labor.employees.action.delete" -> "Dar de baja";
             case "labor.employees.action.terminate" -> "Despedir / finiquito";
+            // CL-4 — ciclo laboral (ES)
+            case "labor.employees.action.suspend" -> "Suspensión / excedencia";
+            case "labor.employees.action.backpay" -> "Atrasos";
+            case "labor.employees.action.closure" -> "Cese de empresa";
+            case "common.yes" -> "Sí";
+            case "common.no" -> "No";
+            case "labor.susp.title" -> "Suspensión / excedencia";
+            case "labor.susp.empty" -> "Sin suspensiones registradas.";
+            case "labor.susp.open" -> "Abierta (en curso)";
+            case "labor.susp.hint" -> "Durante una suspensión sin sueldo (art. 45 ET) no se genera nómina ordinaria. La baja médica / maternidad NO van aquí (tienen su propio flujo).";
+            case "labor.susp.add" -> "Añadir suspensión";
+            case "labor.susp.close_btn" -> "Cerrar (reingreso)";
+            case "labor.susp.delete_btn" -> "Borrar";
+            case "labor.susp.need_dates" -> "El tipo y la fecha de inicio son obligatorios.";
+            case "labor.susp.reason" -> "Motivo";
+            case "labor.susp.reason.prompt" -> "Motivo (opcional)";
+            case "labor.susp.reentry_date" -> "Fecha de reingreso";
+            case "labor.susp.col.type" -> "Tipo";
+            case "labor.susp.col.from" -> "Desde";
+            case "labor.susp.col.to" -> "Hasta";
+            case "labor.susp.col.reserva" -> "Reserva de puesto";
+            case "labor.susp.type.EXCEDENCIA_VOLUNTARIA" -> "Excedencia voluntaria";
+            case "labor.susp.type.EXCEDENCIA_FORZOSA" -> "Excedencia forzosa";
+            case "labor.susp.type.EXCEDENCIA_CUIDADO" -> "Excedencia por cuidado de hijo/familiar";
+            case "labor.susp.type.SUSPENSION_EMPLEO_SUELDO" -> "Suspensión de empleo y sueldo";
+            case "labor.susp.type.OTRA" -> "Otra";
+            case "labor.backpay.title" -> "Atrasos (subida retroactiva)";
+            case "labor.backpay.empty" -> "Pulsa Calcular para ver los atrasos.";
+            case "labor.backpay.none" -> "No hay atrasos para este empleado.";
+            case "labor.backpay.hint" -> "Atrasos de una subida de convenio con efecto pasado, calculados desde las vigencias del contrato. Los tramos de ejercicios anteriores retienen IRPF al 15% (art. 101 RIRPF); el año en curso, al tipo del contrato.";
+            case "labor.backpay.calc" -> "Calcular";
+            case "labor.backpay.through" -> "Hasta el mes";
+            case "labor.backpay.result" -> "Salario antiguo: {old} → nuevo: {new} (efecto {from})\nDiferencia mensual: {mdiff} × {months} meses\nEjercicios anteriores: {gprior} ({pmonths} m) · año en curso: {gcurr} ({cmonths} m)\nBruto total: {gtotal}\nIRPF: {irpf} (anteriores {irpfprior} + curso {irpfcurr})\nSS trabajador: {ss}\nNeto a pagar: {net}";
+            case "labor.closure.title" -> "Cese de empresa (extinción colectiva)";
+            case "labor.closure.empty" -> "Ejecuta la vista previa para ver a quién afecta.";
+            case "labor.closure.hint" -> "Extingue TODOS los contratos activos a la fecha indicada con la indemnización colectiva/objetiva (20 días/año, art. 51/52 ET). IRREVERSIBLE: revisa la vista previa y confirma dos veces.";
+            case "labor.closure.execute" -> "Ejecutar cese";
+            case "labor.closure.need_preview" -> "Ejecuta primero la vista previa.";
+            case "labor.closure.preview.empty" -> "Aún sin vista previa.";
+            case "labor.closure.preview.text" -> "{n} empleados afectados · indemnización total: {total}";
+            case "labor.closure.col.employee" -> "Empleado";
+            case "labor.closure.col.severance" -> "Indemnización";
+            case "labor.closure.confirm1" -> "Vas a dar de baja a {n} empleados con fecha {date}. Indemnización total: {total}. Es irreversible. ¿Continuar?";
+            case "labor.closure.confirm2" -> "Confirmación FINAL: se cerrarán {n} contratos y se generarán sus finiquitos. ¿Proceder?";
+            case "labor.closure.confirm2_header" -> "Confirmación final";
+            case "labor.closure.done" -> "Cese completado: {n} empleados dados de baja, indemnización total {total}.";
             case "labor.term.title" -> "Baja / despido";
             case "labor.term.reason" -> "Motivo de baja";
             case "labor.term.confirm" -> "Confirmar baja";
@@ -22495,6 +22587,20 @@ public class BenjagestUiApplication extends Application {
             var sel = employeesTable.getSelectionModel().getSelectedItem();
             if (sel != null) showTerminationDialog(sel);
         });
+        Button suspendBtn = new Button(t("labor.employees.action.suspend"));
+        suspendBtn.setGraphic(icon("fas-user-clock"));
+        suspendBtn.setDisable(true);
+        suspendBtn.setOnAction(ev -> {
+            var sel = employeesTable.getSelectionModel().getSelectedItem();
+            if (sel != null) showSuspensionsDialog(sel);
+        });
+        Button backPayBtn = new Button(t("labor.employees.action.backpay"));
+        backPayBtn.setGraphic(icon("fas-coins"));
+        backPayBtn.setDisable(true);
+        backPayBtn.setOnAction(ev -> {
+            var sel = employeesTable.getSelectionModel().getSelectedItem();
+            if (sel != null) showBackPayDialog(sel);
+        });
         Button deleteBtn = new Button(t("labor.employees.action.delete"));
         deleteBtn.setGraphic(icon("fas-user-slash"));
         deleteBtn.setDisable(true);
@@ -22502,16 +22608,24 @@ public class BenjagestUiApplication extends Application {
             var sel = employeesTable.getSelectionModel().getSelectedItem();
             if (sel != null) deleteEmployee(sel);
         });
+        // Cese de empresa — nivel empresa (no requiere empleado seleccionado).
+        Button closureBtn = new Button(t("labor.employees.action.closure"));
+        closureBtn.setGraphic(icon("fas-times-circle"));
+        closureBtn.getStyleClass().add("button-danger-outline");
+        closureBtn.setOnAction(ev -> showCompanyClosureDialog());
 
         employeesTable.getSelectionModel().selectedItemProperty().addListener((o, ov, nv) -> {
             editBtn.setDisable(nv == null);
             contractsBtn.setDisable(nv == null);
             irpfBtn.setDisable(nv == null);
             terminateBtn.setDisable(nv == null || !nv.active());
+            suspendBtn.setDisable(nv == null || !nv.active());
+            backPayBtn.setDisable(nv == null || !nv.active());
             deleteBtn.setDisable(nv == null || !nv.active());
         });
 
-        HBox actions = new HBox(8, newEmployee, editBtn, contractsBtn, irpfBtn, terminateBtn, deleteBtn);
+        HBox actions = new HBox(8, newEmployee, editBtn, contractsBtn, irpfBtn, terminateBtn,
+                suspendBtn, backPayBtn, deleteBtn, closureBtn);
         actions.setAlignment(Pos.CENTER_LEFT);
         actions.setPadding(new Insets(0, 0, 8, 0));
 
@@ -22519,6 +22633,315 @@ public class BenjagestUiApplication extends Application {
         VBox.setVgrow(employeesTable, Priority.ALWAYS);
         body.setPadding(new Insets(12));
         return screenScroll(body);
+    }
+
+    // ----- CL-4a: Suspensión / excedencia -----
+
+    /**
+     * CL-1/CL-4 — Suspensiones/excedencias del contrato (art. 45 ET). Lista las
+     * del empleado y permite registrar una nueva o cerrar/borrar las existentes.
+     * Durante una suspensión sin sueldo la nómina no genera recibo (guarda backend).
+     */
+    private void showSuspensionsDialog(com.benjagest.ui.model.EmployeeEntry employee) {
+        Dialog<ButtonType> d = new Dialog<>();
+        d.setTitle(t("labor.susp.title") + " — " + employee.fullName());
+        d.getDialogPane().getButtonTypes().add(ButtonType.CLOSE);
+
+        TableView<LaborApiClient.SuspensionEntry> table = new TableView<>();
+        table.getStyleClass().add("data-table");
+        table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+        table.setPlaceholder(new Label(t("labor.susp.empty")));
+        TableColumn<LaborApiClient.SuspensionEntry, String> cType = new TableColumn<>(t("labor.susp.col.type"));
+        cType.setCellValueFactory(c -> new SimpleStringProperty(t("labor.susp.type." + c.getValue().type())));
+        TableColumn<LaborApiClient.SuspensionEntry, String> cFrom = new TableColumn<>(t("labor.susp.col.from"));
+        cFrom.setCellValueFactory(c -> new SimpleStringProperty(
+                c.getValue().startDate() == null ? "" : c.getValue().startDate().toString()));
+        TableColumn<LaborApiClient.SuspensionEntry, String> cTo = new TableColumn<>(t("labor.susp.col.to"));
+        cTo.setCellValueFactory(c -> new SimpleStringProperty(
+                c.getValue().endDate() == null ? t("labor.susp.open") : c.getValue().endDate().toString()));
+        TableColumn<LaborApiClient.SuspensionEntry, String> cRes = new TableColumn<>(t("labor.susp.col.reserva"));
+        cRes.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().reservaPuesto() ? t("common.yes") : t("common.no")));
+        table.getColumns().addAll(java.util.List.of(cType, cFrom, cTo, cRes));
+
+        Runnable reload = () -> {
+            Task<java.util.List<LaborApiClient.SuspensionEntry>> tk = new Task<>() {
+                @Override protected java.util.List<LaborApiClient.SuspensionEntry> call() throws Exception {
+                    return laborApiClient.listSuspensions(employee.id());
+                }
+            };
+            tk.setOnSucceeded(ev -> table.getItems().setAll(tk.getValue()));
+            tk.setOnFailed(ev -> showError(t("labor.susp.title"),
+                    humanizeBackendError(tk.getException() == null ? "" : tk.getException().getMessage())));
+            start(tk, "susp-list");
+        };
+
+        // Formulario de alta.
+        ComboBox<String> typeCombo = new ComboBox<>();
+        typeCombo.getItems().addAll("EXCEDENCIA_VOLUNTARIA", "EXCEDENCIA_FORZOSA", "EXCEDENCIA_CUIDADO",
+                "SUSPENSION_EMPLEO_SUELDO", "OTRA");
+        typeCombo.setConverter(new javafx.util.StringConverter<>() {
+            @Override public String toString(String s) { return s == null ? "" : t("labor.susp.type." + s); }
+            @Override public String fromString(String s) { return null; }
+        });
+        typeCombo.getSelectionModel().select("EXCEDENCIA_VOLUNTARIA");
+        DatePicker fromDate = new DatePicker(java.time.LocalDate.now());
+        DatePicker toDate = new DatePicker();
+        toDate.setPromptText(t("labor.susp.open"));
+        javafx.scene.control.CheckBox reserva = new javafx.scene.control.CheckBox(t("labor.susp.col.reserva"));
+        TextField reason = new TextField();
+        reason.setPromptText(t("labor.susp.reason.prompt"));
+        Button addBtn = new Button(t("labor.susp.add"));
+        addBtn.getStyleClass().add("button-primary");
+        addBtn.setOnAction(e -> {
+            if (fromDate.getValue() == null || typeCombo.getValue() == null) {
+                showError(t("labor.susp.title"), t("labor.susp.need_dates")); return;
+            }
+            Task<Void> tk = new Task<>() {
+                @Override protected Void call() throws Exception {
+                    laborApiClient.registerSuspension(employee.id(), typeCombo.getValue(),
+                            fromDate.getValue(), toDate.getValue(), reserva.isSelected(),
+                            blankToNullOrSelf(reason.getText()));
+                    return null;
+                }
+            };
+            tk.setOnSucceeded(ev -> { reason.clear(); reload.run(); });
+            tk.setOnFailed(ev -> showError(t("labor.susp.title"),
+                    humanizeBackendError(tk.getException() == null ? "" : tk.getException().getMessage())));
+            start(tk, "susp-add");
+        });
+
+        Button closeBtn = new Button(t("labor.susp.close_btn"));
+        closeBtn.setDisable(true);
+        closeBtn.setOnAction(e -> {
+            var sel = table.getSelectionModel().getSelectedItem();
+            if (sel == null) return;
+            DatePicker dp = new DatePicker(java.time.LocalDate.now());
+            Dialog<ButtonType> cd = new Dialog<>();
+            cd.setTitle(t("labor.susp.close_btn"));
+            cd.getDialogPane().getButtonTypes().addAll(ButtonType.OK, ButtonType.CANCEL);
+            installDialog(cd, new VBox(8, new Label(t("labor.susp.reentry_date")), dp));
+            cd.showAndWait().ifPresent(bt -> {
+                if (bt != ButtonType.OK || dp.getValue() == null) return;
+                Task<Void> tk = new Task<>() {
+                    @Override protected Void call() throws Exception {
+                        laborApiClient.closeSuspension(sel.id(), dp.getValue());
+                        return null;
+                    }
+                };
+                tk.setOnSucceeded(ev -> reload.run());
+                tk.setOnFailed(ev -> showError(t("labor.susp.title"),
+                        humanizeBackendError(tk.getException() == null ? "" : tk.getException().getMessage())));
+                start(tk, "susp-close");
+            });
+        });
+        Button delBtn = new Button(t("labor.susp.delete_btn"));
+        delBtn.setDisable(true);
+        delBtn.setOnAction(e -> {
+            var sel = table.getSelectionModel().getSelectedItem();
+            if (sel == null) return;
+            Task<Void> tk = new Task<>() {
+                @Override protected Void call() throws Exception { laborApiClient.deleteSuspension(sel.id()); return null; }
+            };
+            tk.setOnSucceeded(ev -> reload.run());
+            tk.setOnFailed(ev -> showError(t("labor.susp.title"),
+                    humanizeBackendError(tk.getException() == null ? "" : tk.getException().getMessage())));
+            start(tk, "susp-del");
+        });
+        table.getSelectionModel().selectedItemProperty().addListener((o, ov, nv) -> {
+            closeBtn.setDisable(nv == null || nv.endDate() != null);
+            delBtn.setDisable(nv == null);
+        });
+
+        Label hint = new Label(t("labor.susp.hint"));
+        hint.getStyleClass().add("settings-hint"); hint.setWrapText(true);
+        GridPane g = new GridPane(); g.setHgap(10); g.setVgap(8);
+        int r = 0;
+        g.add(new Label(t("labor.susp.col.type")), 0, r); g.add(typeCombo, 1, r++);
+        g.add(new Label(t("labor.susp.col.from")), 0, r); g.add(fromDate, 1, r++);
+        g.add(new Label(t("labor.susp.col.to")), 0, r); g.add(toDate, 1, r++);
+        g.add(reserva, 1, r++);
+        g.add(new Label(t("labor.susp.reason")), 0, r); g.add(reason, 1, r++);
+        HBox tableActions = new HBox(8, closeBtn, delBtn);
+        VBox box = new VBox(10, hint, new HBox(8, addBtn), g, new Separator(),
+                tableActions, table);
+        VBox.setVgrow(table, Priority.ALWAYS);
+        box.setPrefSize(620, 540);
+        installDialog(d, box);
+        javafx.application.Platform.runLater(reload);
+        d.showAndWait();
+    }
+
+    // ----- CL-4b: Atrasos -----
+
+    /** CL-2/CL-4 — Calcula los atrasos del empleado (subida con efecto pasado). */
+    private void showBackPayDialog(com.benjagest.ui.model.EmployeeEntry employee) {
+        Dialog<ButtonType> d = new Dialog<>();
+        d.setTitle(t("labor.backpay.title") + " — " + employee.fullName());
+        d.getDialogPane().getButtonTypes().add(ButtonType.CLOSE);
+
+        DatePicker through = new DatePicker(java.time.LocalDate.now());
+        Label out = new Label(t("labor.backpay.empty"));
+        out.getStyleClass().add("settings-hint"); out.setWrapText(true);
+        Button calc = new Button(t("labor.backpay.calc"));
+        calc.getStyleClass().add("button-primary");
+        Runnable doCalc = () -> {
+            java.time.LocalDate th = through.getValue() == null ? java.time.LocalDate.now() : through.getValue();
+            Task<LaborApiClient.BackPayEntry> tk = new Task<>() {
+                @Override protected LaborApiClient.BackPayEntry call() throws Exception {
+                    return laborApiClient.previewBackPay(employee.id(), th.getYear(), th.getMonthValue());
+                }
+            };
+            tk.setOnSucceeded(ev -> {
+                var p = tk.getValue();
+                if (p == null || !p.hasBackPay()) {
+                    out.setText(p == null || p.message() == null ? t("labor.backpay.none") : p.message());
+                    return;
+                }
+                out.setText(t("labor.backpay.result")
+                        .replace("{old}", money(p.oldAnnual()))
+                        .replace("{new}", money(p.newAnnual()))
+                        .replace("{from}", p.effectiveFrom() == null ? "" : p.effectiveFrom().toString())
+                        .replace("{months}", String.valueOf(p.totalMonths()))
+                        .replace("{mdiff}", money(p.monthlyDiff()))
+                        .replace("{gprior}", money(p.grossPriorYears()))
+                        .replace("{pmonths}", String.valueOf(p.priorYearMonths()))
+                        .replace("{gcurr}", money(p.grossCurrentYear()))
+                        .replace("{cmonths}", String.valueOf(p.currentYearMonths()))
+                        .replace("{gtotal}", money(p.grossTotal()))
+                        .replace("{irpfprior}", money(p.irpfPriorYears()))
+                        .replace("{irpfcurr}", money(p.irpfCurrentYear()))
+                        .replace("{irpf}", money(p.irpfTotal()))
+                        .replace("{ss}", money(p.employeeSs()))
+                        .replace("{net}", money(p.net())));
+            });
+            tk.setOnFailed(ev -> out.setText(humanizeBackendError(
+                    tk.getException() == null ? "" : tk.getException().getMessage())));
+            start(tk, "backpay");
+        };
+        calc.setOnAction(e -> doCalc.run());
+        through.valueProperty().addListener((o, ov, nv) -> doCalc.run());
+
+        Label hint = new Label(t("labor.backpay.hint"));
+        hint.getStyleClass().add("settings-hint"); hint.setWrapText(true);
+        GridPane g = new GridPane(); g.setHgap(10); g.setVgap(8);
+        g.add(new Label(t("labor.backpay.through")), 0, 0); g.add(through, 1, 0);
+        VBox box = new VBox(10, hint, g, new HBox(8, calc), new Separator(), out);
+        box.setPrefSize(560, 420);
+        installDialog(d, box);
+        javafx.application.Platform.runLater(doCalc);
+        d.showAndWait();
+    }
+
+    // ----- CL-4c: Cese de empresa (extinción colectiva) -----
+
+    /**
+     * CL-3/CL-4 — Cese de empresa: extingue TODOS los contratos activos a una
+     * fecha. Acción IRREVERSIBLE → preview obligatorio + DOBLE confirmación.
+     */
+    private void showCompanyClosureDialog() {
+        Dialog<ButtonType> d = new Dialog<>();
+        d.setTitle(t("labor.closure.title"));
+        d.getDialogPane().getButtonTypes().add(ButtonType.CLOSE);
+
+        DatePicker ceseDate = new DatePicker(java.time.LocalDate.now());
+        ComboBox<String> typeCombo = new ComboBox<>();
+        typeCombo.getItems().addAll("DISMISSAL_OBJECTIVE", "DISMISSAL_UNFAIR");
+        typeCombo.setConverter(new javafx.util.StringConverter<>() {
+            @Override public String toString(String s) { return s == null ? "" : t("labor.term.type." + s); }
+            @Override public String fromString(String s) { return null; }
+        });
+        typeCombo.getSelectionModel().select("DISMISSAL_OBJECTIVE");
+
+        TableView<LaborApiClient.ClosureLineEntry> table = new TableView<>();
+        table.getStyleClass().add("data-table");
+        table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+        table.setPlaceholder(new Label(t("labor.closure.empty")));
+        TableColumn<LaborApiClient.ClosureLineEntry, String> cName = new TableColumn<>(t("labor.closure.col.employee"));
+        cName.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().employeeName()));
+        TableColumn<LaborApiClient.ClosureLineEntry, String> cSev = new TableColumn<>(t("labor.closure.col.severance"));
+        cSev.setCellValueFactory(c -> new SimpleStringProperty(money(c.getValue().severanceGross())));
+        table.getColumns().addAll(java.util.List.of(cName, cSev));
+
+        Label summary = new Label(t("labor.closure.preview.empty"));
+        summary.getStyleClass().add("settings-hint"); summary.setWrapText(true);
+        Button previewBtn = new Button(t("labor.payslips.calc.preview_btn"));
+        previewBtn.getStyleClass().add("button-secondary");
+        final LaborApiClient.ClosureEntry[] lastPreview = {null};
+        Runnable doPreview = () -> {
+            java.time.LocalDate ce = ceseDate.getValue();
+            if (ce == null) return;
+            Task<LaborApiClient.ClosureEntry> tk = new Task<>() {
+                @Override protected LaborApiClient.ClosureEntry call() throws Exception {
+                    return laborApiClient.previewCompanyClosure(ce, typeCombo.getValue());
+                }
+            };
+            tk.setOnSucceeded(ev -> {
+                var p = tk.getValue();
+                lastPreview[0] = p;
+                table.getItems().setAll(p.lines());
+                summary.setText(t("labor.closure.preview.text")
+                        .replace("{n}", String.valueOf(p.total()))
+                        .replace("{total}", money(p.totalSeverance())));
+            });
+            tk.setOnFailed(ev -> summary.setText(humanizeBackendError(
+                    tk.getException() == null ? "" : tk.getException().getMessage())));
+            start(tk, "closure-preview");
+        };
+        previewBtn.setOnAction(e -> doPreview.run());
+        ceseDate.valueProperty().addListener((o, ov, nv) -> doPreview.run());
+        typeCombo.valueProperty().addListener((o, ov, nv) -> doPreview.run());
+
+        Button executeBtn = new Button(t("labor.closure.execute"));
+        executeBtn.getStyleClass().add("button-danger-outline");
+        executeBtn.setOnAction(e -> {
+            java.time.LocalDate ce = ceseDate.getValue();
+            if (ce == null || lastPreview[0] == null || lastPreview[0].total() == 0) {
+                showError(t("labor.closure.title"), t("labor.closure.need_preview")); return;
+            }
+            int n = lastPreview[0].total();
+            // DOBLE confirmación — acción irreversible.
+            Alert c1 = new Alert(Alert.AlertType.WARNING,
+                    t("labor.closure.confirm1").replace("{n}", String.valueOf(n))
+                            .replace("{date}", ce.toString()).replace("{total}", money(lastPreview[0].totalSeverance())),
+                    ButtonType.OK, ButtonType.CANCEL);
+            c1.setHeaderText(t("labor.closure.execute"));
+            c1.showAndWait().ifPresent(b1 -> {
+                if (b1 != ButtonType.OK) return;
+                Alert c2 = new Alert(Alert.AlertType.WARNING,
+                        t("labor.closure.confirm2").replace("{n}", String.valueOf(n)),
+                        ButtonType.OK, ButtonType.CANCEL);
+                c2.setHeaderText(t("labor.closure.confirm2_header"));
+                c2.showAndWait().ifPresent(b2 -> {
+                    if (b2 != ButtonType.OK) return;
+                    Task<LaborApiClient.ClosureEntry> tk = new Task<>() {
+                        @Override protected LaborApiClient.ClosureEntry call() throws Exception {
+                            return laborApiClient.executeCompanyClosure(ce, typeCombo.getValue(), null);
+                        }
+                    };
+                    tk.setOnSucceeded(ev -> {
+                        refreshLaborAndJournal();
+                        showInfo(t("labor.closure.title"), t("labor.closure.done")
+                                .replace("{n}", String.valueOf(tk.getValue().ok()))
+                                .replace("{total}", money(tk.getValue().totalSeverance())));
+                        d.setResult(ButtonType.CLOSE); d.close();
+                    });
+                    tk.setOnFailed(ev -> showError(t("labor.closure.title"),
+                            humanizeBackendError(tk.getException() == null ? "" : tk.getException().getMessage())));
+                    start(tk, "closure-execute");
+                });
+            });
+        });
+
+        Label hint = new Label(t("labor.closure.hint"));
+        hint.getStyleClass().add("settings-hint"); hint.setWrapText(true);
+        GridPane g = new GridPane(); g.setHgap(10); g.setVgap(8);
+        g.add(new Label(t("labor.settlement.cese_date")), 0, 0); g.add(ceseDate, 1, 0);
+        g.add(new Label(t("labor.term.reason")), 0, 1); g.add(typeCombo, 1, 1);
+        VBox box = new VBox(10, hint, g, new HBox(8, previewBtn, executeBtn), summary, table);
+        VBox.setVgrow(table, Priority.ALWAYS);
+        box.setPrefSize(640, 560);
+        installDialog(d, box);
+        d.showAndWait();
     }
 
     // ----- Sub-tab Contratos globales -----

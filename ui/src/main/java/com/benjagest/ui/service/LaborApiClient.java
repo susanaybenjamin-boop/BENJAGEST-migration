@@ -2018,6 +2018,112 @@ public class LaborApiClient {
     //  Infra
     // ====================================================================
 
+    // ==== CL-1 Suspensiones / excedencias ====
+
+    public record SuspensionEntry(String id, String type, LocalDate startDate, LocalDate endDate,
+                                  boolean reservaPuesto, String reason) {}
+
+    public List<SuspensionEntry> listSuspensions(String employeeId) throws IOException, InterruptedException {
+        HttpResponse<String> r = send(req(baseUrl + "/labor/contract-suspensions?employeeId=" + url(employeeId)).GET());
+        List<SuspensionEntry> out = new ArrayList<>();
+        for (String o : splitTopLevelObjects(r.body())) {
+            out.add(new SuspensionEntry(textField(o, "id"), textField(o, "type"),
+                    parseDate(textField(o, "startDate")), parseDate(textField(o, "endDate")),
+                    boolField(o, "reservaPuesto"), textField(o, "reason")));
+        }
+        return out;
+    }
+
+    public void registerSuspension(String employeeId, String type, LocalDate start, LocalDate end,
+                                   boolean reserva, String reason) throws IOException, InterruptedException {
+        String body = "{" + field("employeeId", employeeId) + "," + field("type", type) + ","
+                + field("startDate", start == null ? null : start.toString()) + ","
+                + field("endDate", end == null ? null : end.toString()) + ","
+                + "\"reservaPuesto\":" + reserva + "," + field("reason", reason) + "}";
+        send(req(baseUrl + "/labor/contract-suspensions").header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(body)));
+    }
+
+    public void closeSuspension(String id, LocalDate endDate) throws IOException, InterruptedException {
+        String body = "{" + field("endDate", endDate == null ? null : endDate.toString()) + "}";
+        send(req(baseUrl + "/labor/contract-suspensions/" + url(id) + "/close")
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(body)));
+    }
+
+    public void deleteSuspension(String id) throws IOException, InterruptedException {
+        send(req(baseUrl + "/labor/contract-suspensions/" + url(id)).DELETE());
+    }
+
+    // ==== CL-2 Atrasos ====
+
+    public record BackPayEntry(boolean hasBackPay, String message,
+                               BigDecimal oldAnnual, BigDecimal newAnnual, LocalDate effectiveFrom,
+                               BigDecimal monthlyDiff, int totalMonths, int priorYearMonths, int currentYearMonths,
+                               BigDecimal grossPriorYears, BigDecimal grossCurrentYear, BigDecimal grossTotal,
+                               BigDecimal irpfPriorYears, BigDecimal irpfCurrentYear, BigDecimal irpfTotal,
+                               BigDecimal employeeSs, BigDecimal net) {}
+
+    public BackPayEntry previewBackPay(String employeeId, Integer ty, Integer tm)
+            throws IOException, InterruptedException {
+        StringBuilder u = new StringBuilder(baseUrl + "/labor/back-pay/preview?employeeId=" + url(employeeId));
+        if (ty != null) u.append("&throughYear=").append(ty);
+        if (tm != null) u.append("&throughMonth=").append(tm);
+        HttpResponse<String> r = send(req(u.toString()).GET());
+        String b = r.body();
+        return new BackPayEntry(boolField(b, "hasBackPay"), textField(b, "message"),
+                bigDec(b, "oldAnnual"), bigDec(b, "newAnnual"), parseDate(textField(b, "effectiveFrom")),
+                bigDec(b, "monthlyDiff"), intFieldOrZero(b, "totalMonths"),
+                intFieldOrZero(b, "priorYearMonths"), intFieldOrZero(b, "currentYearMonths"),
+                bigDec(b, "grossPriorYears"), bigDec(b, "grossCurrentYear"), bigDec(b, "grossTotal"),
+                bigDec(b, "irpfPriorYears"), bigDec(b, "irpfCurrentYear"), bigDec(b, "irpfTotal"),
+                bigDec(b, "employeeSs"), bigDec(b, "net"));
+    }
+
+    // ==== CL-3 Cese de empresa ====
+
+    public record ClosureLineEntry(String employeeId, String employeeName,
+                                   BigDecimal severanceGross, String error) {}
+
+    public record ClosureEntry(int total, int ok, int failed, BigDecimal totalSeverance,
+                               List<ClosureLineEntry> lines) {}
+
+    public ClosureEntry previewCompanyClosure(LocalDate ceseDate, String type)
+            throws IOException, InterruptedException {
+        return companyClosure("preview", ceseDate, type, null);
+    }
+
+    public ClosureEntry executeCompanyClosure(LocalDate ceseDate, String type, String notes)
+            throws IOException, InterruptedException {
+        return companyClosure("execute", ceseDate, type, notes);
+    }
+
+    private ClosureEntry companyClosure(String action, LocalDate ceseDate, String type, String notes)
+            throws IOException, InterruptedException {
+        String body = "{" + field("ceseDate", ceseDate == null ? null : ceseDate.toString()) + ","
+                + field("type", type) + "," + field("notes", notes) + "}";
+        // El execute genera un finiquito por empleado: timeout largo (lote).
+        HttpRequest.Builder reqB = HttpRequest.newBuilder(
+                        URI.create(baseUrl + "/labor/terminations/company-closure/" + action))
+                .timeout(Duration.ofSeconds(120))
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(body));
+        HttpResponse<String> r = send(reqB);
+        String b = r.body();
+        List<ClosureLineEntry> lines = new ArrayList<>();
+        String arr = extractArray(b, "lines");
+        for (String o : splitTopLevelObjects(arr)) {
+            lines.add(new ClosureLineEntry(textField(o, "employeeId"), textField(o, "employeeName"),
+                    bigDec(o, "severanceGross"), textField(o, "error")));
+        }
+        return new ClosureEntry(intFieldOrZero(b, "total"), intFieldOrZero(b, "ok"),
+                intFieldOrZero(b, "failed"), bigDec(b, "totalSeverance"), lines);
+    }
+
+    private static String url(String s) {
+        return java.net.URLEncoder.encode(s == null ? "" : s, java.nio.charset.StandardCharsets.UTF_8);
+    }
+
     private HttpRequest.Builder req(String url) {
         return HttpRequest.newBuilder(URI.create(url)).timeout(Duration.ofSeconds(10));
     }
