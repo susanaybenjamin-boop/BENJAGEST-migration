@@ -1263,6 +1263,13 @@ public class BenjagestUiApplication extends Application {
             this.screensaverStyle = s.screensaverStyle() == null || s.screensaverStyle().isBlank()
                     ? "clock" : s.screensaverStyle();
             refreshLockTimeout(s.pinTimeoutMin());
+            // Medida de seguridad: si hay PIN de sesión definido, se ENTRA bloqueado
+            // (hay que meter el PIN para empezar). Diferido para no chocar con el
+            // render del shell.
+            if (s.pinConfigured() && !lockShowing) {
+                lockShowing = true;
+                javafx.application.Platform.runLater(this::showLockStage);
+            }
         });
         // Si falla (sin red, etc.) no se arma el bloqueo; no es bloqueante.
         start(task, "session-lock-arm");
@@ -17088,6 +17095,8 @@ public class BenjagestUiApplication extends Application {
             case "lock.title" -> "Session locked";
             case "lock.subtitle" -> "Enter your PIN to continue. Use Logout if you want to switch user.";
             case "lock.btn.unlock" -> "Unlock";
+            case "lock.keypad.show" -> "On-screen keypad";
+            case "lock.keypad.hide" -> "Hide keypad";
             case "lock.btn.logout" -> "Logout";
             case "lock.fail" -> "Incorrect PIN.";
             case "lock.no_device" -> "This computer is not paired. Use Logout and pair it again.";
@@ -17121,6 +17130,8 @@ public class BenjagestUiApplication extends Application {
             case "lock.title" -> "Sesión bloqueada";
             case "lock.subtitle" -> "Introduce tu PIN para continuar. Pulsa Salir si quieres cambiar de usuario.";
             case "lock.btn.unlock" -> "Desbloquear";
+            case "lock.keypad.show" -> "Teclado en pantalla";
+            case "lock.keypad.hide" -> "Ocultar teclado";
             case "lock.btn.logout" -> "Salir";
             case "lock.fail" -> "PIN incorrecto.";
             case "lock.no_device" -> "Este equipo no está emparejado. Sal y empárejalo de nuevo.";
@@ -29363,7 +29374,36 @@ public class BenjagestUiApplication extends Application {
             default -> { /* tipo desconocido → liso */ }
         }
 
-        VBox pinBox = new VBox(14, title, sub, pin, err, unlock, logoutBtn);
+        // Teclado numérico OCULTO (por si falla el teclado físico). Se muestra con
+        // el enlace "Teclado" y escribe en el campo del PIN.
+        GridPane keypad = new GridPane();
+        keypad.setHgap(8); keypad.setVgap(8); keypad.setAlignment(Pos.CENTER);
+        keypad.setVisible(false); keypad.setManaged(false);
+        String[] keys = {"1", "2", "3", "4", "5", "6", "7", "8", "9", "C", "0", "⌫"};
+        for (int i = 0; i < keys.length; i++) {
+            String k = keys[i];
+            Button kb = new Button(k);
+            kb.setMinSize(58, 48);
+            kb.setFocusTraversable(false);
+            kb.setStyle("-fx-font-size: 18px; -fx-background-radius: 8;"
+                    + " -fx-background-color: rgba(255,255,255,0.10); -fx-text-fill: white;");
+            kb.setOnAction(ev -> {
+                String cur = pin.getText() == null ? "" : pin.getText();
+                if ("C".equals(k)) pin.setText("");
+                else if ("⌫".equals(k)) pin.setText(cur.isEmpty() ? "" : cur.substring(0, cur.length() - 1));
+                else pin.setText(cur + k);
+            });
+            keypad.add(kb, i % 3, i / 3);
+        }
+        javafx.scene.control.Hyperlink toggleKeypad = new javafx.scene.control.Hyperlink(t("lock.keypad.show"));
+        toggleKeypad.setStyle("-fx-text-fill: #93c5fd;");
+        toggleKeypad.setOnAction(ev -> {
+            boolean show = !keypad.isVisible();
+            keypad.setVisible(show); keypad.setManaged(show);
+            toggleKeypad.setText(show ? t("lock.keypad.hide") : t("lock.keypad.show"));
+        });
+
+        VBox pinBox = new VBox(14, title, sub, pin, err, toggleKeypad, keypad, unlock, logoutBtn);
         pinBox.setAlignment(Pos.CENTER);
         pinBox.setMaxWidth(360);
         pinBox.setStyle("-fx-background-color: rgba(15, 27, 45, 0.85);"
