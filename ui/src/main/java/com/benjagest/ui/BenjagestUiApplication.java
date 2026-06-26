@@ -3041,10 +3041,15 @@ public class BenjagestUiApplication extends Application {
             VBox tpbInvoicesSlot = new VBox();
             content.getChildren().add(tpbInvoicesSlot);
             loadTpbPendingInvoicesBanner(tpbInvoicesSlot);
-            // CAL-FISCAL banner — vencimientos AEAT próximos en 30 días.
-            VBox taxCalendarSlot = new VBox();
-            content.getChildren().add(taxCalendarSlot);
-            loadTaxCalendarBanner(taxCalendarSlot);
+            // CAL-FISCAL banner — vencimientos AEAT próximos en 30 días. Solo
+            // ASESORÍA: las declaraciones/Modelos AEAT son cosa de la asesoría, no
+            // del empresario (decisión Benjamin 2026-06-26, coherente con ocultarle
+            // el módulo Modelos AEAT).
+            if (appMode == AppMode.ADVISORY) {
+                VBox taxCalendarSlot = new VBox();
+                content.getChildren().add(taxCalendarSlot);
+                loadTaxCalendarBanner(taxCalendarSlot);
+            }
         }
 
         // REFLEJO-5/6 — banner "por validar" (asientos + facturas recibidas) en
@@ -29203,7 +29208,13 @@ public class BenjagestUiApplication extends Application {
     private void checkLock() {
         if (lockShowing || lockTimeoutMin <= 0) return;
         long elapsedMin = (System.currentTimeMillis() - lastInputAt) / 60000L;
-        if (elapsedMin >= lockTimeoutMin) showLockStage();
+        if (elapsedMin >= lockTimeoutMin) {
+            // El checker corre dentro del pulso del Timeline; showAndWait() NO se
+            // permite durante animación/layout → se difiere con runLater. Marcamos
+            // lockShowing ya para no reentrar en el siguiente tick.
+            lockShowing = true;
+            javafx.application.Platform.runLater(this::showLockStage);
+        }
     }
 
     /** Muestra una Stage UNDECORATED modal pidiendo el PIN.

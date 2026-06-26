@@ -477,7 +477,9 @@
 }
 
 .module-insights {
-    -fx-alignment: stretch;
+    /* el ancho de los paneles se controla por código (Hgrow); "stretch" no es
+       un valor válido de -fx-alignment (Pos) y disparaba un warning en consola. */
+    -fx-alignment: center;
 }
 
 .insight-panel {
