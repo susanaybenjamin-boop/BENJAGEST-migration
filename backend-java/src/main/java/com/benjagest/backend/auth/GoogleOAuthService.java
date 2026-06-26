@@ -45,6 +45,15 @@ public class GoogleOAuthService {
     private final RegisterService registerService;
     private final HttpClient http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build();
 
+    // Credenciales CENTRALES embebidas de BENJAGEST (modelo híbrido): por defecto
+    // el usuario no configura nada. Una instalación puede sobreescribirlas con las
+    // suyas en Configuración → Integraciones (opción avanzada). Vienen de la config
+    // de la app (no las teclea el usuario); vacías hasta que se publique la app.
+    @org.springframework.beans.factory.annotation.Value("${benjagest.google.client-id:}")
+    private String centralClientId;
+    @org.springframework.beans.factory.annotation.Value("${benjagest.google.client-secret:}")
+    private String centralClientSecret;
+
     public GoogleOAuthService(JdbcTemplate jdbc, StringEncryptor encryptor, ObjectMapper objectMapper,
                               AuthService authService, RegisterService registerService) {
         this.jdbc = jdbc;
@@ -59,11 +68,27 @@ public class GoogleOAuthService {
     public record ConfigView(String clientId, boolean enabled) {}
 
     public ConfigView config() {
-        return jdbc.query("SELECT client_id, enabled FROM google_oauth_config WHERE id = 1",
-                rs -> rs.next()
-                        ? new ConfigView(rs.getString("client_id"), rs.getBoolean("enabled"))
-                        : new ConfigView(null, false));
+        // Per-instalación (override) o, si no, la app CENTRAL embebida.
+        PerInstall p = perInstall();
+        if (p != null && p.enabled && p.clientId != null) return new ConfigView(p.clientId, true);
+        if (centralPresent()) return new ConfigView(centralClientId, true);
+        return new ConfigView(p == null ? null : p.clientId, false);
     }
+
+    private boolean centralPresent() {
+        return centralClientId != null && !centralClientId.isBlank()
+                && centralClientSecret != null && !centralClientSecret.isBlank();
+    }
+
+    private PerInstall perInstall() {
+        return jdbc.query("""
+                SELECT client_id, client_secret_encrypted, enabled FROM google_oauth_config WHERE id = 1
+                """, rs -> rs.next()
+                ? new PerInstall(rs.getString("client_id"), rs.getString("client_secret_encrypted"), rs.getBoolean("enabled"))
+                : null);
+    }
+
+    private record PerInstall(String clientId, String secretCipher, boolean enabled) {}
 
     public void save(String clientId, String clientSecret) {
         if (clientId == null || clientId.isBlank()) throw bad("Client ID requerido");
@@ -88,21 +113,20 @@ public class GoogleOAuthService {
                 rs -> rs.next() ? rs.getString(1) : null);
     }
 
+    /** Credenciales efectivas (secreto en CLARO): per-instalación o, si no, central. */
     private Creds creds() {
-        Creds c = jdbc.query("""
-                SELECT client_id, client_secret_encrypted, enabled
-                  FROM google_oauth_config WHERE id = 1
-                """, rs -> rs.next()
-                ? new Creds(rs.getString("client_id"), rs.getString("client_secret_encrypted"), rs.getBoolean("enabled"))
-                : null);
-        if (c == null || !c.enabled || c.clientId == null || c.secretCipher == null) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT,
-                    "El acceso con Google no está configurado en esta instalación.");
+        PerInstall p = perInstall();
+        if (p != null && p.enabled && p.clientId != null && p.secretCipher != null) {
+            return new Creds(p.clientId, encryptor.decrypt(p.secretCipher));
         }
-        return c;
+        if (centralPresent()) {
+            return new Creds(centralClientId, centralClientSecret);
+        }
+        throw new ResponseStatusException(HttpStatus.CONFLICT,
+                "El acceso con Google no está disponible (ni central ni configurado en esta instalación).");
     }
 
-    private record Creds(String clientId, String secretCipher, boolean enabled) {}
+    private record Creds(String clientId, String secret) {}
 
     // ---- Intercambio del code + identidad --------------------------------
 
@@ -112,7 +136,7 @@ public class GoogleOAuthService {
     public GoogleUser exchange(String code, String codeVerifier, String redirectUri) {
         if (code == null || code.isBlank()) throw bad("Falta el código de Google");
         Creds c = creds();
-        String secret = encryptor.decrypt(c.secretCipher);
+        String secret = c.secret;
         String form = "code=" + enc(code)
                 + "&client_id=" + enc(c.clientId)
                 + "&client_secret=" + enc(secret)
@@ -205,7 +229,7 @@ public class GoogleOAuthService {
      */
     public void connectApi(String companyId, GoogleAuthRequest req, boolean gmail, boolean calendar) {
         Creds c = creds();
-        String secret = encryptor.decrypt(c.secretCipher);
+        String secret = c.secret;
         String form = "code=" + enc(req.code()) + "&client_id=" + enc(c.clientId)
                 + "&client_secret=" + enc(secret) + "&redirect_uri=" + enc(req.redirectUri())
                 + "&grant_type=authorization_code"
@@ -235,7 +259,7 @@ public class GoogleOAuthService {
                 rs -> rs.next() ? rs.getString(1) : null, companyId);
         if (cipher == null) throw new ResponseStatusException(HttpStatus.CONFLICT, "La empresa no tiene Google conectado.");
         Creds c = creds();
-        String form = "client_id=" + enc(c.clientId) + "&client_secret=" + enc(encryptor.decrypt(c.secretCipher))
+        String form = "client_id=" + enc(c.clientId) + "&client_secret=" + enc(c.secret)
                 + "&refresh_token=" + enc(encryptor.decrypt(cipher)) + "&grant_type=refresh_token";
         return tokenPost(form).path("access_token").asText(null);
     }
