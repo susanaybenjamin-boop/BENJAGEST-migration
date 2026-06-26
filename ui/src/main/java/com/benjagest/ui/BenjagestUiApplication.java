@@ -666,7 +666,7 @@ public class BenjagestUiApplication extends Application {
         Button createBtn = new Button(t("register.submit"));
         createBtn.getStyleClass().add("button-primary");
         createBtn.setMaxWidth(Double.MAX_VALUE);
-        createBtn.setOnAction(ev -> doRegister(typeCombo.getValue(), legalName.getText(), taxId.getText(),
+        createBtn.setOnAction(ev -> doRegister(createBtn, typeCombo.getValue(), legalName.getText(), taxId.getText(),
                 addressLine.getText(), city.getText(), province.getText(), postalCode.getText(),
                 displayName.getText(), email.getText(), password.getText(), password2.getText()));
 
@@ -699,7 +699,7 @@ public class BenjagestUiApplication extends Application {
         return f;
     }
 
-    private void doRegister(String type, String legalName, String taxId, String address,
+    private void doRegister(Button submitBtn, String type, String legalName, String taxId, String address,
                             String city, String province, String postalCode, String displayName,
                             String email, String password, String password2) {
         if (blankAny(type, legalName, taxId, address, city, displayName, email, password)) {
@@ -714,6 +714,8 @@ public class BenjagestUiApplication extends Application {
             showError(t("register.title"), t("register.err.password_short"));
             return;
         }
+        // Anti doble-clic: el botón se bloquea hasta que la llamada termina.
+        submitBtn.setDisable(true);
         Task<Void> task = new Task<>() {
             @Override protected Void call() throws Exception {
                 authApiClient.register(type, legalName.trim(), taxId.trim(), address.trim(),
@@ -724,8 +726,11 @@ public class BenjagestUiApplication extends Application {
             }
         };
         task.setOnSucceeded(ev -> handleLoginSuccess());
-        task.setOnFailed(ev -> showError(t("register.err.title"),
-                task.getException() == null ? t("register.err.generic") : task.getException().getMessage()));
+        task.setOnFailed(ev -> {
+            submitBtn.setDisable(false);
+            showError(t("register.err.title"),
+                    task.getException() == null ? t("register.err.generic") : task.getException().getMessage());
+        });
         start(task, "register");
     }
 
@@ -2035,21 +2040,34 @@ public class BenjagestUiApplication extends Application {
             base = base.stream()
                     .filter(m -> !ownOperativa.contains(m.id()))
                     .toList();
+        } else if (appMode == AppMode.BUSINESS) {
+            // Empresario (decisión Benjamin 2026-06-26): RETA (self-employed),
+            // buzón DEHú (notifications) y Modelos AEAT (tax) son de la ASESORÍA
+            // → no se muestran. El resto de módulos van activos; el empresario
+            // desactiva los que no quiera desde Configuración.
+            java.util.Set<String> advisoryOnly = java.util.Set.of(
+                    "self-employed", "notifications", "tax");
+            base = base.stream()
+                    .filter(m -> !advisoryOnly.contains(m.id()))
+                    .toList();
         }
-        // Slice 3L — "Mi gestión" es un acceso virtual al modo cliente
-        // de la propia asesoría. NO es un módulo de BD (no está en
-        // company_modules), así que mapToModuleLinks() lo filtra por
-        // KNOWN_VIEWS. Lo añadimos manualmente al principio cuando
-        // estamos en modo ADVISORY y no actuando como cliente.
+        // Slice 3L — "Mi gestión" es un acceso virtual al modo cliente de la
+        // propia asesoría (no es un módulo de BD). Se añade al principio en modo
+        // ADVISORY y no actuando como cliente.
+        List<ModuleLink> result = new java.util.ArrayList<>(base);
         if (appMode == AppMode.ADVISORY
                 && !AuthSession.get().isActingForClient()
-                && base.stream().noneMatch(m -> "myCompany".equals(m.id()))) {
-            List<ModuleLink> withMyCompany = new java.util.ArrayList<>();
-            withMyCompany.add(new ModuleLink("myCompany", "Mi gestión", "fas-briefcase"));
-            withMyCompany.addAll(base);
-            return withMyCompany;
+                && result.stream().noneMatch(m -> "myCompany".equals(m.id()))) {
+            result.add(0, new ModuleLink("myCompany", "Mi gestión", "fas-briefcase"));
         }
-        return base;
+        // Configuración SIEMPRE la última del sidebar (decisión Benjamin 2026-06-26).
+        ModuleLink settings = result.stream()
+                .filter(m -> "settings".equals(m.id())).findFirst().orElse(null);
+        if (settings != null) {
+            result.removeIf(m -> "settings".equals(m.id()));
+            result.add(settings);
+        }
+        return result;
     }
 
     /**
