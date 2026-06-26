@@ -60,6 +60,52 @@ public class AuthApiClient {
     }
 
     /**
+     * Bloque REGISTRO — alta de cuenta (asesoría o empresa) + auto-login.
+     * Tras un alta OK el backend devuelve un LoginResponse igual que /login,
+     * así que reutilizamos {@link #storeResponse} y el usuario entra directo.
+     */
+    public void register(String accountType, String legalName, String taxId,
+                         String addressLine, String city, String province, String postalCode,
+                         String displayName, String email, String password)
+            throws IOException, InterruptedException {
+        String body = "{"
+                + "\"accountType\":\"" + escape(accountType) + "\","
+                + "\"legalName\":\"" + escape(legalName) + "\","
+                + "\"taxIdentifier\":\"" + escape(taxId) + "\","
+                + "\"addressLine\":\"" + escape(addressLine) + "\","
+                + "\"city\":\"" + escape(city) + "\","
+                + "\"province\":\"" + escape(province == null ? "" : province) + "\","
+                + "\"postalCode\":\"" + escape(postalCode == null ? "" : postalCode) + "\","
+                + "\"displayName\":\"" + escape(displayName) + "\","
+                + "\"email\":\"" + escape(email) + "\","
+                + "\"password\":\"" + escape(password) + "\""
+                + "}";
+        HttpRequest request = HttpRequest.newBuilder(URI.create(baseUrl + "/auth/register"))
+                .timeout(Duration.ofSeconds(20))
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(body))
+                .build();
+        HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+        if (response.statusCode() < 200 || response.statusCode() >= 300) {
+            throw new IOException(extractError(response.body(),
+                    "El registro falló (HTTP " + response.statusCode() + ")"));
+        }
+        storeResponse(response.body());
+    }
+
+    /** Saca el "message" del JSON de error de Spring; si no, usa el por defecto. */
+    private String extractError(String body, String fallback) {
+        if (body == null) return fallback;
+        java.util.regex.Matcher m = java.util.regex.Pattern
+                .compile("\"message\"\\s*:\\s*\"((?:\\\\.|[^\"])*)\"").matcher(body);
+        if (m.find()) {
+            String msg = m.group(1).replace("\\\"", "\"").replace("\\\\", "\\");
+            if (!msg.isBlank() && !"No message available".equals(msg)) return msg;
+        }
+        return fallback;
+    }
+
+    /**
      * Revoca el refresh token actual en el backend (denylist). Si la
      * llamada falla (sin red, backend caido, etc.) la tragamos: el
      * cleanup local del cliente (clear()) se hace de todos modos para

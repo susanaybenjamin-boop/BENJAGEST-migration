@@ -570,9 +570,13 @@ public class BenjagestUiApplication extends Application {
         VBox demoBox = new VBox(4, demoTitle, demoAdmin, demoEmpresario, demoPassword);
         demoBox.setAlignment(Pos.CENTER_LEFT);
 
+        javafx.scene.control.Hyperlink createAccount = new javafx.scene.control.Hyperlink(t("register.link"));
+        createAccount.setOnAction(ev -> showRegister());
+
         panel.getChildren().addAll(
                 AppBrand.createLogoMark(), title, subtitle,
                 emailField, passwordField, loginButton,
+                createAccount,
                 new Separator(),
                 googleButton,
                 demoBox
@@ -595,6 +599,139 @@ public class BenjagestUiApplication extends Application {
         root.setLeft(null);
         root.setCenter(wrapper);
         root.setBottom(null);
+    }
+
+    /**
+     * REG-2 — Pantalla "Crear cuenta" (alta de asesoría o empresa). Llama a
+     * {@code /api/auth/register} y, al volver OK, entra directo (auto-login).
+     * El alta con Google se activa cuando la instalación configure sus propias
+     * credenciales (Configuración → Integraciones); aquí queda el botón listo.
+     */
+    private void showRegister() {
+        VBox panel = new VBox(12);
+        panel.setAlignment(Pos.CENTER_LEFT);
+        panel.setPadding(new Insets(36));
+        panel.setMaxWidth(480);
+        panel.getStyleClass().add("summary-card");
+
+        Label title = new Label(t("register.title"));
+        title.getStyleClass().add("hero-title");
+        Label subtitle = new Label(t("register.subtitle"));
+        subtitle.getStyleClass().add("hero-body");
+        subtitle.setWrapText(true);
+
+        ComboBox<String> typeCombo = new ComboBox<>();
+        typeCombo.getItems().addAll("ADVISORY", "BUSINESS");
+        typeCombo.setConverter(new javafx.util.StringConverter<>() {
+            @Override public String toString(String s) { return s == null ? "" : t("register.type." + s); }
+            @Override public String fromString(String s) { return null; }
+        });
+        typeCombo.getSelectionModel().select("ADVISORY");
+        typeCombo.setMaxWidth(Double.MAX_VALUE);
+
+        TextField legalName = field(t("register.legal_name"));
+        TextField taxId = field(t("register.tax_id"));
+        TextField addressLine = field(t("register.address"));
+        TextField city = field(t("register.city"));
+        TextField province = field(t("register.province"));
+        TextField postalCode = field(t("register.postal_code"));
+        TextField displayName = field(t("register.owner_name"));
+        TextField email = field(t("register.email"));
+        PasswordField password = new PasswordField();
+        password.setPromptText(t("register.password"));
+        password.setMaxWidth(Double.MAX_VALUE);
+        PasswordField password2 = new PasswordField();
+        password2.setPromptText(t("register.password2"));
+        password2.setMaxWidth(Double.MAX_VALUE);
+
+        GridPane g = new GridPane();
+        g.setHgap(10); g.setVgap(8);
+        int r = 0;
+        g.add(new Label(t("register.type")), 0, r); g.add(typeCombo, 1, r++);
+        g.add(new Label(t("register.legal_name")), 0, r); g.add(legalName, 1, r++);
+        g.add(new Label(t("register.tax_id")), 0, r); g.add(taxId, 1, r++);
+        g.add(new Label(t("register.address")), 0, r); g.add(addressLine, 1, r++);
+        g.add(new Label(t("register.city")), 0, r); g.add(city, 1, r++);
+        g.add(new Label(t("register.province")), 0, r); g.add(province, 1, r++);
+        g.add(new Label(t("register.postal_code")), 0, r); g.add(postalCode, 1, r++);
+        g.add(new Label(t("register.owner_name")), 0, r); g.add(displayName, 1, r++);
+        g.add(new Label(t("register.email")), 0, r); g.add(email, 1, r++);
+        g.add(new Label(t("register.password")), 0, r); g.add(password, 1, r++);
+        g.add(new Label(t("register.password2")), 0, r); g.add(password2, 1, r++);
+        javafx.scene.layout.ColumnConstraints c0 = new javafx.scene.layout.ColumnConstraints();
+        javafx.scene.layout.ColumnConstraints c1 = new javafx.scene.layout.ColumnConstraints();
+        c1.setHgrow(Priority.ALWAYS); c1.setFillWidth(true);
+        g.getColumnConstraints().addAll(c0, c1);
+
+        Button createBtn = new Button(t("register.submit"));
+        createBtn.getStyleClass().add("button-primary");
+        createBtn.setMaxWidth(Double.MAX_VALUE);
+        createBtn.setOnAction(ev -> doRegister(typeCombo.getValue(), legalName.getText(), taxId.getText(),
+                addressLine.getText(), city.getText(), province.getText(), postalCode.getText(),
+                displayName.getText(), email.getText(), password.getText(), password2.getText()));
+
+        Button googleBtn = new Button(t("register.with_google"));
+        googleBtn.setGraphic(icon("fab-google"));
+        googleBtn.setMaxWidth(Double.MAX_VALUE);
+        googleBtn.setDisable(true);
+        googleBtn.setTooltip(new javafx.scene.control.Tooltip(t("register.google.pending")));
+
+        javafx.scene.control.Hyperlink back = new javafx.scene.control.Hyperlink(t("register.back"));
+        back.setOnAction(ev -> showEmailLogin());
+
+        panel.getChildren().addAll(title, subtitle, g, createBtn,
+                new Separator(), googleBtn, back);
+
+        javafx.scene.control.ScrollPane sp = new javafx.scene.control.ScrollPane(panel);
+        sp.setFitToWidth(true);
+        sp.getStyleClass().add("edge-to-edge");
+        BorderPane wrapper = new BorderPane(sp);
+        wrapper.setPadding(new Insets(40));
+        BorderPane.setAlignment(sp, Pos.CENTER);
+        root.setTop(null); root.setLeft(null); root.setBottom(null);
+        root.setCenter(wrapper);
+    }
+
+    private TextField field(String prompt) {
+        TextField f = new TextField();
+        f.setPromptText(prompt);
+        f.setMaxWidth(Double.MAX_VALUE);
+        return f;
+    }
+
+    private void doRegister(String type, String legalName, String taxId, String address,
+                            String city, String province, String postalCode, String displayName,
+                            String email, String password, String password2) {
+        if (blankAny(type, legalName, taxId, address, city, displayName, email, password)) {
+            showError(t("register.title"), t("register.err.required"));
+            return;
+        }
+        if (!password.equals(password2)) {
+            showError(t("register.title"), t("register.err.password_mismatch"));
+            return;
+        }
+        if (password.length() < 8) {
+            showError(t("register.title"), t("register.err.password_short"));
+            return;
+        }
+        Task<Void> task = new Task<>() {
+            @Override protected Void call() throws Exception {
+                authApiClient.register(type, legalName.trim(), taxId.trim(), address.trim(),
+                        city.trim(), province == null ? "" : province.trim(),
+                        postalCode == null ? "" : postalCode.trim(),
+                        displayName.trim(), email.trim(), password);
+                return null;
+            }
+        };
+        task.setOnSucceeded(ev -> handleLoginSuccess());
+        task.setOnFailed(ev -> showError(t("register.err.title"),
+                task.getException() == null ? t("register.err.generic") : task.getException().getMessage()));
+        start(task, "register");
+    }
+
+    private boolean blankAny(String... vs) {
+        for (String v : vs) if (v == null || v.isBlank()) return true;
+        return false;
     }
 
     private void login(String email, String password) {
@@ -12891,6 +13028,32 @@ public class BenjagestUiApplication extends Application {
             return switch (key) {
                 case "pinIdentification" -> "Employee PIN identification";
                 case "login" -> "Sign in";
+                // REG-2 — registro (EN)
+                case "register.link" -> "Create an account";
+                case "register.title" -> "Create your account";
+                case "register.subtitle" -> "Set up your firm or company. You'll be able to invoice from minute one.";
+                case "register.type" -> "Account type";
+                case "register.type.ADVISORY" -> "Accounting firm (I manage clients)";
+                case "register.type.BUSINESS" -> "Company / self-employed (my own management)";
+                case "register.legal_name" -> "Legal name";
+                case "register.tax_id" -> "Tax ID (NIF/CIF)";
+                case "register.address" -> "Registered address";
+                case "register.city" -> "City";
+                case "register.province" -> "Province";
+                case "register.postal_code" -> "Postal code";
+                case "register.owner_name" -> "Your name";
+                case "register.email" -> "Email";
+                case "register.password" -> "Password (min. 8)";
+                case "register.password2" -> "Repeat password";
+                case "register.submit" -> "Create account";
+                case "register.with_google" -> "Sign up with Google";
+                case "register.google.pending" -> "Configure your Google credentials in Settings → Integrations to enable this.";
+                case "register.back" -> "Back to sign in";
+                case "register.err.title" -> "Could not create the account";
+                case "register.err.generic" -> "The registration failed. Please try again.";
+                case "register.err.required" -> "Fill in all required fields (type, legal name, NIF, address, city, name, email and password).";
+                case "register.err.password_mismatch" -> "The passwords do not match.";
+                case "register.err.password_short" -> "The password must be at least 8 characters.";
                 case "demoPin" -> "Demo PIN: 1234, 5678 or 2468";
                 case "pinRequired" -> "PIN required";
                 case "pinRequiredDetail" -> "Enter the employee PIN.";
@@ -13914,6 +14077,32 @@ public class BenjagestUiApplication extends Application {
         return switch (key) {
             case "pinIdentification" -> "Identificacion por PIN de empleado";
             case "login" -> "Entrar";
+            // REG-2 — registro (ES)
+            case "register.link" -> "Crear una cuenta";
+            case "register.title" -> "Crea tu cuenta";
+            case "register.subtitle" -> "Da de alta tu asesoría o empresa. Podrás facturar desde el primer minuto.";
+            case "register.type" -> "Tipo de cuenta";
+            case "register.type.ADVISORY" -> "Asesoría (gestiono clientes)";
+            case "register.type.BUSINESS" -> "Empresa / autónomo (mi propia gestión)";
+            case "register.legal_name" -> "Razón social";
+            case "register.tax_id" -> "NIF / CIF";
+            case "register.address" -> "Domicilio fiscal";
+            case "register.city" -> "Localidad";
+            case "register.province" -> "Provincia";
+            case "register.postal_code" -> "Código postal";
+            case "register.owner_name" -> "Tu nombre";
+            case "register.email" -> "Email";
+            case "register.password" -> "Contraseña (mín. 8)";
+            case "register.password2" -> "Repite la contraseña";
+            case "register.submit" -> "Crear cuenta";
+            case "register.with_google" -> "Registrarse con Google";
+            case "register.google.pending" -> "Configura tus credenciales de Google en Configuración → Integraciones para activarlo.";
+            case "register.back" -> "Volver a iniciar sesión";
+            case "register.err.title" -> "No se pudo crear la cuenta";
+            case "register.err.generic" -> "El registro falló. Inténtalo de nuevo.";
+            case "register.err.required" -> "Rellena los campos obligatorios (tipo, razón social, NIF, domicilio, localidad, nombre, email y contraseña).";
+            case "register.err.password_mismatch" -> "Las contraseñas no coinciden.";
+            case "register.err.password_short" -> "La contraseña debe tener al menos 8 caracteres.";
             case "demoPin" -> "Datos demo: PIN 1234, 5678 o 2468";
             case "pinRequired" -> "PIN requerido";
             case "pinRequiredDetail" -> "Introduce el PIN de empleado.";
