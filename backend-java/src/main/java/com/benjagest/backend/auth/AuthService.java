@@ -42,6 +42,11 @@ public class AuthService {
         this.revokedTokens = revokedTokens;
     }
 
+    /** ¿Hay alguna cuenta en el sistema? (arranque: registro vs login). */
+    public boolean hasAnyAccount() {
+        return repository.hasAnyAccount();
+    }
+
     public LoginResponse login(LoginRequest request) {
         AuthRepository.UserRecord user = repository.findUserByEmail(request.email()).orElse(null);
         if (user == null) {

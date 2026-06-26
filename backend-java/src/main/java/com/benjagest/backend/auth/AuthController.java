@@ -53,6 +53,15 @@ public class AuthController {
         return registerService.register(request);
     }
 
+    /**
+     * Estado de arranque (público): {@code hasAccounts=false} en una instalación
+     * nueva → la app muestra el REGISTRO en vez del login.
+     */
+    @GetMapping("/bootstrap-status")
+    public java.util.Map<String, Boolean> bootstrapStatus() {
+        return java.util.Map.of("hasAccounts", authService.hasAnyAccount());
+    }
+
     @PostMapping("/refresh")
     public LoginResponse refresh(@Valid @RequestBody RefreshRequest request) {
         return authService.refresh(request.refreshToken());

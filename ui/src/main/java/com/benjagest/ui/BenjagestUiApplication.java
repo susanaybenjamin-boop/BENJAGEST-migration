@@ -231,7 +231,7 @@ public class BenjagestUiApplication extends Application {
         stage.setMinWidth(Math.min(920, vb.getWidth()));
         stage.setMinHeight(Math.min(640, vb.getHeight()));
         stage.setScene(scene);
-        showLogin();
+        showInitialScreen();
         // Centrar en la pantalla primaria ANTES de mostrar (el tamaño ya está acotado
         // a sus límites visibles arriba). NO añadimos ningún listener dinámico: el
         // usuario debe poder mover la ventana entre pantallas y maximizar libremente.
@@ -481,6 +481,23 @@ public class BenjagestUiApplication extends Application {
      * desde botón "Entrar como administrador" o auto-llamado tras
      * emparejar para el OWNER.
      */
+    /**
+     * Arranque: si NO hay ninguna cuenta (instalación nueva), muestra el
+     * REGISTRO; si ya hay cuentas, el flujo normal de login (PIN / emparejar).
+     * El check es asíncrono; ante fallo de red cae al login (defensivo).
+     */
+    private void showInitialScreen() {
+        Task<Boolean> task = new Task<>() {
+            @Override protected Boolean call() { return authApiClient.hasAccounts(); }
+        };
+        task.setOnSucceeded(e -> {
+            if (Boolean.FALSE.equals(task.getValue())) showRegister();
+            else showLogin();
+        });
+        task.setOnFailed(e -> showLogin());
+        start(task, "bootstrap-status");
+    }
+
     private void showLogin() {
         java.util.Optional<com.benjagest.ui.service.DeviceConfig> dc =
                 com.benjagest.ui.service.DeviceConfig.load();
@@ -529,47 +546,6 @@ public class BenjagestUiApplication extends Application {
         googleButton.setDisable(true);
         googleButton.setTooltip(new javafx.scene.control.Tooltip("Pendiente de configurar (Slice C2)"));
 
-        // Credenciales demo seleccionables para copiar/pegar (CTRL+C).
-        // Usamos TextField readonly en lugar de Label porque Label no
-        // permite selección de texto en JavaFX.
-        Label demoTitle = new Label("Datos demo (selecciona y copia con Ctrl+C):");
-        demoTitle.getStyleClass().add("status-detail");
-
-        TextField demoAdmin = new TextField("admin@benjagest.local");
-        demoAdmin.setEditable(false);
-        demoAdmin.setFocusTraversable(false);
-        demoAdmin.getStyleClass().add("status-detail");
-
-        TextField demoEmpresario = new TextField("empresario@benjagest.local");
-        demoEmpresario.setEditable(false);
-        demoEmpresario.setFocusTraversable(false);
-        demoEmpresario.getStyleClass().add("status-detail");
-
-        TextField demoPassword = new TextField("Benjamin123456$");
-        demoPassword.setEditable(false);
-        demoPassword.setFocusTraversable(false);
-        demoPassword.getStyleClass().add("status-detail");
-
-        // Doble-click sobre cualquiera de los tres → pre-rellena los
-        // campos de login. Atajo para no tener que copiar dos veces.
-        demoAdmin.setOnMouseClicked(ev -> {
-            if (ev.getClickCount() == 2) {
-                emailField.setText(demoAdmin.getText());
-                passwordField.setText(demoPassword.getText());
-                passwordField.requestFocus();
-            }
-        });
-        demoEmpresario.setOnMouseClicked(ev -> {
-            if (ev.getClickCount() == 2) {
-                emailField.setText(demoEmpresario.getText());
-                passwordField.setText(demoPassword.getText());
-                passwordField.requestFocus();
-            }
-        });
-
-        VBox demoBox = new VBox(4, demoTitle, demoAdmin, demoEmpresario, demoPassword);
-        demoBox.setAlignment(Pos.CENTER_LEFT);
-
         javafx.scene.control.Hyperlink createAccount = new javafx.scene.control.Hyperlink(t("register.link"));
         createAccount.setOnAction(ev -> showRegister());
 
@@ -578,8 +554,7 @@ public class BenjagestUiApplication extends Application {
                 emailField, passwordField, loginButton,
                 createAccount,
                 new Separator(),
-                googleButton,
-                demoBox
+                googleButton
         );
 
         // L4-3 — Si el PC ya está emparejado, ofrece volver al teclado PIN.
@@ -782,7 +757,7 @@ public class BenjagestUiApplication extends Application {
         passwordField.setPromptText(t("pin.pair.password_prompt"));
         passwordField.setMaxWidth(Double.MAX_VALUE);
 
-        TextField deviceNameField = new TextField(defaultDeviceName());
+        TextField deviceNameField = new TextField(); // en blanco (antes el hostname del PC)
         deviceNameField.setPromptText(t("pin.pair.device_name_prompt"));
         deviceNameField.setMaxWidth(Double.MAX_VALUE);
 
