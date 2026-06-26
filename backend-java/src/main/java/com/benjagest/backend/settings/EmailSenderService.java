@@ -94,7 +94,11 @@ public class EmailSenderService {
         if (row.authRequired() && StringUtils.hasText(row.smtpUser())) {
             sender.setUsername(row.smtpUser());
             if (StringUtils.hasText(row.passwordCiphertext())) {
-                sender.setPassword(encryptor.decrypt(row.passwordCiphertext()));
+                // Gmail/Outlook muestran las "contraseñas de aplicación" en grupos
+                // separados por ESPACIOS (xxxx xxxx xxxx xxxx); el valor real son
+                // 16 caracteres sin espacios. Si el usuario las pega con espacios,
+                // la auth SMTP falla → los quitamos al usar la contraseña.
+                sender.setPassword(encryptor.decrypt(row.passwordCiphertext()).replaceAll("\\s", ""));
             }
         }
         Properties props = sender.getJavaMailProperties();

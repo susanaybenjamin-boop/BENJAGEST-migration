@@ -54,7 +54,9 @@ public class EmailConfigService {
     public EmailConfigResponse update(EmailConfigUpdateRequest request) {
         String newCiphertext = null;
         if (StringUtils.hasText(request.smtpPassword())) {
-            newCiphertext = encryptor.encrypt(request.smtpPassword());
+            // Normaliza la contraseña de aplicación (Gmail/Outlook la muestran con
+            // espacios xxxx xxxx xxxx xxxx; el valor real va sin ellos).
+            newCiphertext = encryptor.encrypt(request.smtpPassword().replaceAll("\\s", ""));
         }
         EmailConfigRow row = new EmailConfigRow(
                 blankToNull(request.smtpHost()),
@@ -86,7 +88,9 @@ public class EmailConfigService {
         if (row.authRequired() && StringUtils.hasText(row.smtpUser())) {
             sender.setUsername(row.smtpUser());
             if (StringUtils.hasText(row.passwordCiphertext())) {
-                sender.setPassword(encryptor.decrypt(row.passwordCiphertext()));
+                // Contraseñas de aplicación de Gmail/Outlook: se muestran con
+                // espacios (xxxx xxxx xxxx xxxx) pero el valor real no los lleva.
+                sender.setPassword(encryptor.decrypt(row.passwordCiphertext()).replaceAll("\\s", ""));
             }
         }
         Properties props = sender.getJavaMailProperties();
