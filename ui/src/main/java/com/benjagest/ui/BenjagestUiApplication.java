@@ -548,11 +548,10 @@ public class BenjagestUiApplication extends Application {
         loginButton.setOnAction(event -> login(emailField.getText(), passwordField.getText()));
         passwordField.setOnAction(event -> login(emailField.getText(), passwordField.getText()));
 
-        Button googleButton = new Button("Iniciar sesion con Google");
+        Button googleButton = new Button(t("login.with_google"));
         googleButton.setGraphic(icon("fab-google"));
         googleButton.setMaxWidth(Double.MAX_VALUE);
-        googleButton.setDisable(true);
-        googleButton.setTooltip(new javafx.scene.control.Tooltip("Pendiente de configurar (Slice C2)"));
+        googleButton.setOnAction(ev -> startGoogleLogin(googleButton));
 
         javafx.scene.control.Hyperlink createAccount = new javafx.scene.control.Hyperlink(t("register.link"));
         createAccount.setOnAction(ev -> showRegister());
@@ -656,8 +655,9 @@ public class BenjagestUiApplication extends Application {
         Button googleBtn = new Button(t("register.with_google"));
         googleBtn.setGraphic(icon("fab-google"));
         googleBtn.setMaxWidth(Double.MAX_VALUE);
-        googleBtn.setDisable(true);
-        googleBtn.setTooltip(new javafx.scene.control.Tooltip(t("register.google.pending")));
+        googleBtn.setOnAction(ev -> startGoogleRegister(googleBtn, typeCombo.getValue(),
+                legalName.getText(), taxId.getText(), addressLine.getText(), city.getText(),
+                province.getText(), postalCode.getText(), displayName.getText()));
 
         javafx.scene.control.Hyperlink back = new javafx.scene.control.Hyperlink(t("register.back"));
         back.setOnAction(ev -> showEmailLogin());
@@ -752,6 +752,50 @@ public class BenjagestUiApplication extends Application {
     private boolean blankAny(String... vs) {
         for (String v : vs) if (v == null || v.isBlank()) return true;
         return false;
+    }
+
+    /** REG-3 — Login con Google: abre el navegador, intercambia en backend, entra. */
+    private void startGoogleLogin(Button btn) {
+        btn.setDisable(true);
+        Task<Void> task = new Task<>() {
+            @Override protected Void call() throws Exception {
+                com.benjagest.ui.service.AuthApiClient.GoogleConfig cfg = authApiClient.googleConfig();
+                if (!cfg.enabled() || cfg.clientId() == null) throw new IllegalStateException(t("google.not_configured"));
+                authApiClient.googleLogin(com.benjagest.ui.service.GoogleDesktopOAuth.authorize(cfg.clientId()));
+                return null;
+            }
+        };
+        task.setOnSucceeded(e -> handleLoginSuccess());
+        task.setOnFailed(e -> { btn.setDisable(false); showError(t("google.title"),
+                task.getException() == null ? t("google.failed") : task.getException().getMessage()); });
+        start(task, "google-login");
+    }
+
+    /** REG-3 — Alta con Google: valida los datos de empresa, abre el navegador y crea la cuenta. */
+    private void startGoogleRegister(Button btn, String type, String legalName, String taxId, String address,
+                                     String city, String province, String postalCode, String displayName) {
+        if (blankAny(type, legalName, taxId, address, city)) {
+            showError(t("register.title"), t("register.err.required"));
+            return;
+        }
+        btn.setDisable(true);
+        Task<Void> task = new Task<>() {
+            @Override protected Void call() throws Exception {
+                com.benjagest.ui.service.AuthApiClient.GoogleConfig cfg = authApiClient.googleConfig();
+                if (!cfg.enabled() || cfg.clientId() == null) throw new IllegalStateException(t("google.not_configured"));
+                com.benjagest.ui.service.GoogleDesktopOAuth.Result oauth =
+                        com.benjagest.ui.service.GoogleDesktopOAuth.authorize(cfg.clientId());
+                authApiClient.googleRegister(oauth, type, legalName.trim(), taxId.trim(), address.trim(),
+                        city.trim(), province == null ? "" : province.trim(),
+                        postalCode == null ? "" : postalCode.trim(),
+                        displayName == null ? "" : displayName.trim());
+                return null;
+            }
+        };
+        task.setOnSucceeded(e -> handleLoginSuccess());
+        task.setOnFailed(e -> { btn.setDisable(false); showError(t("register.err.title"),
+                task.getException() == null ? t("google.failed") : task.getException().getMessage()); });
+        start(task, "google-register");
     }
 
     private void login(String email, String password) {
@@ -13065,6 +13109,10 @@ public class BenjagestUiApplication extends Application {
                 case "login" -> "Sign in";
                 // REG-2 — registro (EN)
                 case "password.toggle" -> "Show / hide password";
+                case "login.with_google" -> "Sign in with Google";
+                case "google.title" -> "Sign in with Google";
+                case "google.failed" -> "Google sign-in failed.";
+                case "google.not_configured" -> "Google sign-in is not configured on this installation (Settings → Integrations → Google).";
                 case "register.link" -> "Create an account";
                 case "register.title" -> "Create your account";
                 case "register.subtitle" -> "Set up your firm or company. You'll be able to invoice from minute one.";
@@ -14115,6 +14163,10 @@ public class BenjagestUiApplication extends Application {
             case "login" -> "Entrar";
             // REG-2 — registro (ES)
             case "password.toggle" -> "Ver / ocultar contraseña";
+            case "login.with_google" -> "Iniciar sesión con Google";
+            case "google.title" -> "Acceso con Google";
+            case "google.failed" -> "El acceso con Google falló.";
+            case "google.not_configured" -> "El acceso con Google no está configurado en esta instalación (Configuración → Integraciones → Google).";
             case "register.link" -> "Crear una cuenta";
             case "register.title" -> "Crea tu cuenta";
             case "register.subtitle" -> "Da de alta tu asesoría o empresa. Podrás facturar desde el primer minuto.";
