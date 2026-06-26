@@ -36,10 +36,30 @@ public class RegisterService {
         this.authService = authService;
     }
 
+    /** Alta con email + contraseña. */
     @Transactional
     public LoginResponse register(RegisterRequest r) {
-        String email = norm(r.email());
-        // ADVISORY = asesoría (ve cartera); cualquier otro valor = empresa/autónomo.
+        if (r.password() == null || r.password().length() < 8) {
+            throw bad("La contraseña debe tener al menos 8 caracteres");
+        }
+        return createAccount(r, norm(r.email()), r.password(), null);
+    }
+
+    /**
+     * Alta vía Google (REG-3): el email viene VERIFICADO por Google y se guarda el
+     * {@code google_id}; sin contraseña. Los datos de empresa (tipo, razón social,
+     * NIF, domicilio) los aporta el formulario igual que en el alta normal.
+     */
+    @Transactional
+    public LoginResponse registerWithGoogle(RegisterRequest companyData, String googleEmail, String googleId) {
+        if (googleEmail == null || googleEmail.isBlank()) throw bad("Google no devolvió email");
+        if (googleId == null || googleId.isBlank()) throw bad("Google no devolvió identidad");
+        return createAccount(companyData, norm(googleEmail), null, googleId);
+    }
+
+    /** Núcleo común: crea empresa + OWNER + siembra. Sesión por contraseña o, si
+     *  es Google (sin contraseña), emitida directamente para el email. */
+    private LoginResponse createAccount(RegisterRequest r, String email, String rawPassword, String googleId) {
         boolean advisory = "ADVISORY".equalsIgnoreCase(trim(r.accountType()));
         String companyType = advisory ? "ADVISORY" : "CLIENT";
 
@@ -47,17 +67,12 @@ public class RegisterService {
         if (blank(r.legalName())) throw bad("La razón social es obligatoria");
         if (blank(r.taxIdentifier())) throw bad("El NIF/CIF es obligatorio");
         if (blank(r.addressLine()) || blank(r.city())) throw bad("El domicilio fiscal es obligatorio");
-        if (r.password() == null || r.password().length() < 8) {
-            throw bad("La contraseña debe tener al menos 8 caracteres");
-        }
-        // Email único (mensaje claro, no el 500 del UNIQUE).
+
         Integer exists = jdbc.queryForObject(
                 "SELECT COUNT(*) FROM user_accounts WHERE email = ?", Integer.class, email);
         if (exists != null && exists > 0) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Ya existe una cuenta con ese email");
         }
-        // NIF: validación básica de formato (no bloqueante de más; el detalle por
-        // tipo se afina en Configuración). Debe tener letra/dígitos plausibles.
         String nif = trim(r.taxIdentifier()).toUpperCase();
         if (!nif.matches("[A-Z0-9]{8,10}")) {
             throw bad("El NIF/CIF no tiene un formato válido");
@@ -79,7 +94,6 @@ public class RegisterService {
                     blank(r.province()) ? null : trim(r.province()),
                     blank(r.postalCode()) ? null : trim(r.postalCode()));
         } catch (org.springframework.dao.DataIntegrityViolationException ex) {
-            // tax_identifier es UNIQUE: NIF ya registrado.
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "Ya existe una empresa con ese NIF/CIF");
         }
@@ -87,11 +101,12 @@ public class RegisterService {
         String userId = UUID.randomUUID().toString();
         jdbc.update("""
                 INSERT INTO user_accounts (
-                    id, email, password_hash, display_name, global_role,
+                    id, email, password_hash, google_id, display_name, global_role,
                     forced_password_change, active
-                ) VALUES (?, ?, ?, ?, 'USER', FALSE, TRUE)
+                ) VALUES (?, ?, ?, ?, ?, 'USER', FALSE, TRUE)
                 """,
-                userId, email, passwordEncoder.encode(r.password()), trim(r.displayName()));
+                userId, email, rawPassword == null ? null : passwordEncoder.encode(rawPassword),
+                googleId, trim(r.displayName()));
 
         jdbc.update("""
                 INSERT INTO company_memberships (id, company_id, user_id, role_name, active)
@@ -99,13 +114,13 @@ public class RegisterService {
                 """,
                 UUID.randomUUID().toString(), companyId, userId);
 
-        // Sembrado mínimo para operar desde el primer minuto.
         activateEssentialModules(companyId, advisory);
         seedFiscalYearOpen(companyId);
         seedAccountsFromTemplate(companyId);
 
-        // Auto-login: mismos tokens y respuesta que /login.
-        return authService.login(new LoginRequest(email, r.password()));
+        return rawPassword != null
+                ? authService.login(new LoginRequest(email, rawPassword))
+                : authService.issueSession(email);
     }
 
     // ---- Sembrado (mismo criterio que AdvisoryService, pero desde la plantilla) ----

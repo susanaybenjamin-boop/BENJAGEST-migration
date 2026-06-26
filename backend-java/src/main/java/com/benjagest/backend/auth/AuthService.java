@@ -52,6 +52,29 @@ public class AuthService {
         return repository.hasAdvisoryCompany();
     }
 
+    /**
+     * Emite una sesión para un usuario por EMAIL, sin contraseña. Lo usa el alta/
+     * login con Google (la identidad ya la verificó Google). Misma respuesta que
+     * {@link #login}.
+     */
+    public LoginResponse issueSession(String email) {
+        AuthRepository.UserRecord user = repository.findUserByEmail(email)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Usuario no encontrado"));
+        List<AuthRepository.MembershipRecord> memberships = repository.findMembershipsForUser(user.id());
+        if (memberships.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "El usuario no está vinculado a ninguna empresa");
+        }
+        AuthRepository.MembershipRecord primary = memberships.get(0);
+        AuthenticatedUser authenticated = new AuthenticatedUser(
+                user.id(), user.email(), user.displayName(), user.globalRole(),
+                primary.companyId(), primary.roleName());
+        auditService.recordLoginOk(user.id(), primary.companyId());
+        return new LoginResponse(
+                jwtService.createAccessToken(authenticated), jwtService.createRefreshToken(user.id()),
+                jwtService.accessTtlSeconds(), user.id(), user.email(), user.displayName(),
+                user.globalRole(), primary.companyId(), primary.roleName(), toMembershipDtos(memberships));
+    }
+
     public LoginResponse login(LoginRequest request) {
         AuthRepository.UserRecord user = repository.findUserByEmail(request.email()).orElse(null);
         if (user == null) {
