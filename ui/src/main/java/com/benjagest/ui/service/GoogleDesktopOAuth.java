@@ -45,11 +45,24 @@ public final class GoogleDesktopOAuth {
             String query = exchange.getRequestURI().getQuery();
             String code = paramOf(query, "code");
             String error = paramOf(query, "error");
+            // La pestaña intenta cerrarse sola (best-effort: algunos navegadores lo
+            // permiten con el truco window.open('','_self')). Si no, queda un mensaje
+            // limpio. No se puede forzar el cierre del navegador del sistema.
+            String closeScript = "<script>setTimeout(function(){"
+                    + "try{window.open('','_self');window.close();}catch(e){}},600);</script>";
             String html = code != null
-                    ? "<html><body style='font-family:sans-serif;text-align:center;margin-top:60px'>"
-                      + "<h2>✓ Listo</h2><p>Ya puedes volver a BENJAGEST.</p></body></html>"
-                    : "<html><body style='font-family:sans-serif;text-align:center;margin-top:60px'>"
-                      + "<h2>No se pudo completar el acceso con Google</h2></body></html>";
+                    ? "<!doctype html><html><head><meta charset='utf-8'><title>BENJAGEST</title></head>"
+                      + "<body style='font-family:system-ui,sans-serif;text-align:center;margin:0;"
+                      + "background:#f1f5f9;color:#1e293b'>"
+                      + "<div style='margin-top:18vh'><div style='font-size:42px'>✓</div>"
+                      + "<h2>Has entrado en la aplicación</h2>"
+                      + "<p style='color:#475569'>Ya puedes cerrar esta pestaña y volver a la aplicación.</p>"
+                      + "</div>" + closeScript + "</body></html>"
+                    : "<!doctype html><html><head><meta charset='utf-8'><title>Error</title></head>"
+                      + "<body style='font-family:system-ui,sans-serif;text-align:center;margin:0;"
+                      + "background:#f1f5f9;color:#1e293b'>"
+                      + "<div style='margin-top:18vh'><h2>No se pudo completar el acceso</h2>"
+                      + "<p style='color:#475569'>Vuelve a la aplicación e inténtalo de nuevo.</p></div></body></html>";
             byte[] body = html.getBytes(StandardCharsets.UTF_8);
             exchange.getResponseHeaders().add("Content-Type", "text/html; charset=utf-8");
             exchange.sendResponseHeaders(200, body.length);
