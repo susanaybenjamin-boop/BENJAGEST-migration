@@ -29302,29 +29302,29 @@ public class BenjagestUiApplication extends Application {
         Scene scene = new Scene(background);
         stage.setScene(scene);
         stage.setOnCloseRequest(ev -> ev.consume());  // no se cierra por X
-        // Salvapantallas a PANTALLA COMPLETA (cubre todo, incl. barra de tareas).
-        // Sin pista de salida y ESC desactivado: solo se sale con el PIN o "Salir".
         stage.setFullScreenExitHint("");
         stage.setFullScreenExitKeyCombination(javafx.scene.input.KeyCombination.NO_MATCH);
-        // Multi-monitor: posicionar el bloqueo en la PANTALLA donde está la app
-        // antes de ir a pantalla completa, para que no se renderice en la otra.
+        // Salvapantallas cubriendo la PANTALLA donde está la app (multi-monitor).
+        // Se detecta por el CENTRO de la ventana de la app y se fija el tamaño a
+        // los bounds de ESA pantalla + always-on-top. (No usamos setFullScreen
+        // porque, antes de mostrar la ventana, salta a la pantalla primaria.)
+        javafx.geometry.Rectangle2D area = javafx.stage.Screen.getPrimary().getBounds();
         try {
             javafx.stage.Window owner = (root != null && root.getScene() != null)
                     ? root.getScene().getWindow() : null;
-            javafx.geometry.Rectangle2D area = null;
             if (owner != null && owner.getWidth() > 0 && owner.getHeight() > 0) {
-                var screens = javafx.stage.Screen.getScreensForRectangle(
-                        owner.getX(), owner.getY(), owner.getWidth(), owner.getHeight());
+                double cx = owner.getX() + owner.getWidth() / 2;
+                double cy = owner.getY() + owner.getHeight() / 2;
+                var screens = javafx.stage.Screen.getScreensForRectangle(cx, cy, 1, 1);
                 if (!screens.isEmpty()) area = screens.get(0).getBounds();
             }
-            if (area == null) area = javafx.stage.Screen.getPrimary().getBounds();
-            stage.setX(area.getMinX());
-            stage.setY(area.getMinY());
-            stage.setWidth(area.getWidth());
-            stage.setHeight(area.getHeight());
         } catch (Exception ignored) {
         }
-        stage.setFullScreen(true);
+        stage.setX(area.getMinX());
+        stage.setY(area.getMinY());
+        stage.setWidth(area.getWidth());
+        stage.setHeight(area.getHeight());
+        stage.setAlwaysOnTop(true);
         javafx.application.Platform.runLater(pin::requestFocus);
         stage.showAndWait();
     }
