@@ -100,7 +100,7 @@ public class RegisterService {
                 UUID.randomUUID().toString(), companyId, userId);
 
         // Sembrado mínimo para operar desde el primer minuto.
-        activateEssentialModules(companyId);
+        activateEssentialModules(companyId, advisory);
         seedFiscalYearOpen(companyId);
         seedAccountsFromTemplate(companyId);
 
@@ -110,15 +110,24 @@ public class RegisterService {
 
     // ---- Sembrado (mismo criterio que AdvisoryService, pero desde la plantilla) ----
 
-    private void activateEssentialModules(String companyId) {
+    /**
+     * Activa los módulos con los que arranca la cuenta. La ASESORÍA lleva los
+     * fiscales/DEHú (Modelos AEAT = tax, buzón = notifications); el EMPRESARIO
+     * NO (decisión Benjamin 2026-06-26: esos son de la asesoría) pero empieza con
+     * el resto activo y desactiva lo que no use desde Configuración.
+     */
+    private void activateEssentialModules(String companyId, boolean advisory) {
+        String slugs = advisory
+                ? "'core','billing','purchases','accounting','tax','calendar',"
+                  + "'notifications','labor','reports','settings'"
+                : "'core','billing','purchases','accounting','calendar',"
+                  + "'labor','reports','settings','time-clock'";
         jdbc.update("""
                 INSERT IGNORE INTO company_modules (id, company_id, module_id, active)
                 SELECT UUID(), ?, m.id, TRUE
                   FROM module_catalog m
-                 WHERE m.slug IN ('core', 'billing', 'purchases', 'accounting',
-                                  'tax', 'calendar', 'notifications', 'labor',
-                                  'reports', 'settings')
-                   AND m.active_in_catalog = TRUE
+                 WHERE m.slug IN (""" + slugs + """
+                 ) AND m.active_in_catalog = TRUE
                 """, companyId);
     }
 
