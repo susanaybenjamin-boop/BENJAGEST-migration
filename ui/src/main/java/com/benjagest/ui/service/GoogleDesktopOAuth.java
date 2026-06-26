@@ -28,8 +28,17 @@ public final class GoogleDesktopOAuth {
 
     public record Result(String code, String codeVerifier, String redirectUri) {}
 
-    /** Lanza el flujo y bloquea hasta recibir el code (timeout 3 min). */
+    /** Login básico (openid/email/profile, sin refresh token). */
     public static Result authorize(String clientId) throws Exception {
+        return authorize(clientId, "openid email profile", false);
+    }
+
+    /**
+     * Lanza el flujo con los SCOPES indicados. Si {@code offline} es true pide
+     * acceso sin conexión (access_type=offline + prompt=consent) para que Google
+     * devuelva un REFRESH TOKEN — necesario para enviar por Gmail / Calendar.
+     */
+    public static Result authorize(String clientId, String scopes, boolean offline) throws Exception {
         if (clientId == null || clientId.isBlank()) {
             throw new IllegalStateException("Falta el Client ID de Google de esta instalación.");
         }
@@ -77,10 +86,10 @@ public final class GoogleDesktopOAuth {
                 + "?client_id=" + enc(clientId)
                 + "&redirect_uri=" + enc(redirectUri)
                 + "&response_type=code"
-                + "&scope=" + enc("openid email profile")
+                + "&scope=" + enc(scopes == null || scopes.isBlank() ? "openid email profile" : scopes)
                 + "&code_challenge=" + challenge
                 + "&code_challenge_method=S256"
-                + "&prompt=select_account";
+                + (offline ? "&access_type=offline&prompt=consent" : "&prompt=select_account");
         try {
             openBrowser(authUrl);
             String code = codeFuture.get(180, TimeUnit.SECONDS);
