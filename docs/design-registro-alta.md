@@ -76,13 +76,24 @@ Pantalla "Crear cuenta" enlazada desde el login:
   user_account con `google_id`, `password_hash` NULL. Encaja, pero es un slice
   aparte (REG-2). Va en el plan de "login real + Google OAuth" de la memoria.
 
-## 5. Slices propuestos
+## 5. Slices
 
-- **REG-1** — Backend `/api/auth/register` (alta asesoría) + seeding mínimo +
-  auditoría + tests. **Con Benjamin** (toca auth).
-- **REG-2** — UI: pantalla "Crear cuenta" enlazada desde login (i18n ES+EN).
-- **REG-3** — (opcional) verificación de email antes de activar.
-- **REG-4** — (opcional) Google OAuth (REG-2 de la memoria "login real + OAuth").
+- **REG-1** ✅ — Backend `/api/auth/register` (alta asesoría O empresa) +
+  seeding (módulos + ejercicio fiscal + PGC desde `pgc_template` permanente V147)
+  + auto-login. `company_type`: ADVISORY (cartera) / CLIENT (negocio), parent NULL.
+  Email y NIF únicos (409). Público en SecurityConfig.
+- **REG-2** ✅ — UI "Crear cuenta" desde login: selector tipo, campos de facturar
+  obligatorios, auto-login. Botón Google presente (deshabilitado hasta configurar).
+  i18n ES+EN.
+- **REG-3** (pendiente) — **Google OAuth POR INSTALACIÓN**: decisión Benjamin
+  (2026-06-26) — NO hay credenciales centrales ni "cuenta pasarela". Cada
+  instalación mete SUS credenciales (Client ID/Secret de tipo "Aplicación de
+  escritorio", redirect loopback `127.0.0.1`) en **Configuración → Integraciones
+  → Google**. El backend verifica el ID token de Google con ese Client ID; alta =
+  crea user_account con `google_id`, password NULL. Email ya verificado por Google.
+- **REG-4** (pendiente, opcional) — verificación de email para el alta
+  email+contraseña vía **SMTP propio de la instalación** (no cuenta BENJAGEST).
+  Hoy ese camino entra directo.
 
 ## 6. Decisiones abiertas (Benjamin)
 
