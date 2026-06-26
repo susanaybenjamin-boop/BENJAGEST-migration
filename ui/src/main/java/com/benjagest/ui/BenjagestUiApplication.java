@@ -754,6 +754,20 @@ public class BenjagestUiApplication extends Application {
         return false;
     }
 
+    /** Trae la ventana de la app al frente (tras entrar con Google, que deja el
+     *  foco en el navegador del sistema). */
+    private void bringToFront() {
+        try {
+            if (root != null && root.getScene() != null
+                    && root.getScene().getWindow() instanceof javafx.stage.Stage st) {
+                st.setIconified(false);
+                st.toFront();
+                st.requestFocus();
+            }
+        } catch (Exception ignored) {
+        }
+    }
+
     /** REG-3 — Login con Google: abre el navegador, intercambia en backend, entra. */
     private void startGoogleLogin(Button btn) {
         btn.setDisable(true);
@@ -765,7 +779,7 @@ public class BenjagestUiApplication extends Application {
                 return null;
             }
         };
-        task.setOnSucceeded(e -> handleLoginSuccess());
+        task.setOnSucceeded(e -> { handleLoginSuccess(); bringToFront(); });
         task.setOnFailed(e -> { btn.setDisable(false); showError(t("google.title"),
                 task.getException() == null ? t("google.failed") : task.getException().getMessage()); });
         start(task, "google-login");
@@ -792,7 +806,7 @@ public class BenjagestUiApplication extends Application {
                 return null;
             }
         };
-        task.setOnSucceeded(e -> handleLoginSuccess());
+        task.setOnSucceeded(e -> { handleLoginSuccess(); bringToFront(); });
         task.setOnFailed(e -> { btn.setDisable(false); showError(t("register.err.title"),
                 task.getException() == null ? t("google.failed") : task.getException().getMessage()); });
         start(task, "google-register");
@@ -7014,8 +7028,13 @@ public class BenjagestUiApplication extends Application {
             ok.setHeaderText(null);
             ok.showAndWait();
         });
-        task.setOnFailed(event -> showError(t("settings.email.test.fail.title"),
-                t("settings.email.test.fail.body")));
+        task.setOnFailed(event -> {
+            String detail = task.getException() == null ? null
+                    : humanizeBackendError(task.getException().getMessage());
+            showError(t("settings.email.test.fail.title"),
+                    detail == null || detail.isBlank() ? t("settings.email.test.fail.body")
+                            : t("settings.email.test.fail.body") + "\n\n" + detail);
+        });
         start(task, "settings-email-test");
     }
 
