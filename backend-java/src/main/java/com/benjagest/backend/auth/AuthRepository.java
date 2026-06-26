@@ -21,6 +21,12 @@ public class AuthRepository {
         this.jdbcTemplate = jdbcTemplate;
     }
 
+    /** ¿Existe alguna cuenta? Si no, el arranque muestra el REGISTRO (primer uso). */
+    public boolean hasAnyAccount() {
+        Integer n = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM user_accounts", Integer.class);
+        return n != null && n > 0;
+    }
+
     public Optional<UserRecord> findUserByEmail(String email) {
         List<UserRecord> matches = jdbcTemplate.query("""
                 SELECT id, email, password_hash, display_name, global_role, active

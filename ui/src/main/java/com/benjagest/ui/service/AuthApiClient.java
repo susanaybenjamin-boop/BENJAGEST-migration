@@ -106,6 +106,23 @@ public class AuthApiClient {
     }
 
     /**
+     * ¿Hay alguna cuenta en el sistema? Si no (instalación nueva), la UI muestra
+     * el REGISTRO en vez del login. Defensivo: ante cualquier fallo devuelve
+     * {@code true} (mostrar login), nunca fuerza el registro por error de red.
+     */
+    public boolean hasAccounts() {
+        try {
+            HttpRequest request = HttpRequest.newBuilder(URI.create(baseUrl + "/auth/bootstrap-status"))
+                    .timeout(Duration.ofSeconds(8)).GET().build();
+            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            if (response.statusCode() < 200 || response.statusCode() >= 300) return true;
+            return response.body() == null || !response.body().contains("\"hasAccounts\":false");
+        } catch (Exception ex) {
+            return true;
+        }
+    }
+
+    /**
      * Revoca el refresh token actual en el backend (denylist). Si la
      * llamada falla (sin red, backend caido, etc.) la tragamos: el
      * cleanup local del cliente (clear()) se hace de todos modos para
