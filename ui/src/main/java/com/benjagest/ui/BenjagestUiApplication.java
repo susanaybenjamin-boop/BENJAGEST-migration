@@ -6084,6 +6084,82 @@ public class BenjagestUiApplication extends Application {
         start(task, "settings-load");
     }
 
+    /**
+     * REG-3 — Configuración → Integraciones → Google. El admin pega el Client ID
+     * y el Client Secret de SU proyecto Google (tipo "Aplicación de escritorio").
+     * El secreto se guarda cifrado en el backend y nunca se vuelve a mostrar.
+     */
+    private Node settingsIntegrationsTab() {
+        Label title = new Label(t("settings.integrations.google.title"));
+        title.getStyleClass().add("settings-section-title");
+        Label hint = new Label(t("settings.integrations.google.hint"));
+        hint.getStyleClass().add("settings-hint"); hint.setWrapText(true); hint.setMaxWidth(620);
+        Label steps = new Label(t("settings.integrations.google.steps"));
+        steps.getStyleClass().add("settings-hint"); steps.setWrapText(true); steps.setMaxWidth(620);
+
+        TextField clientId = new TextField();
+        clientId.setPromptText("Client ID (…apps.googleusercontent.com)");
+        clientId.setMaxWidth(Double.MAX_VALUE);
+        PasswordField clientSecret = new PasswordField();
+        clientSecret.setPromptText(t("settings.integrations.google.secret_prompt"));
+        Label status = new Label();
+        status.getStyleClass().add("settings-hint");
+
+        Button save = new Button(t("settings.integrations.google.save"));
+        save.getStyleClass().add("button-primary");
+
+        Runnable loadStatus = () -> {
+            Task<com.benjagest.ui.service.AuthApiClient.GoogleConfig> tk = new Task<>() {
+                @Override protected com.benjagest.ui.service.AuthApiClient.GoogleConfig call() {
+                    return authApiClient.googleConfig();
+                }
+            };
+            tk.setOnSucceeded(e -> {
+                var c = tk.getValue();
+                if (c.clientId() != null) clientId.setText(c.clientId());
+                status.setText(c.enabled()
+                        ? t("settings.integrations.google.status.enabled")
+                        : t("settings.integrations.google.status.disabled"));
+            });
+            start(tk, "google-cfg-load");
+        };
+
+        save.setOnAction(e -> {
+            if (clientId.getText() == null || clientId.getText().isBlank()) {
+                showError(t("settings.integrations.google.title"), t("settings.integrations.google.need_client_id"));
+                return;
+            }
+            save.setDisable(true);
+            Task<Void> tk = new Task<>() {
+                @Override protected Void call() throws Exception {
+                    authApiClient.saveGoogleConfig(clientId.getText().trim(), clientSecret.getText());
+                    return null;
+                }
+            };
+            tk.setOnSucceeded(ev -> {
+                save.setDisable(false); clientSecret.clear(); loadStatus.run();
+                showInfo(t("settings.integrations.google.title"), t("settings.integrations.google.saved"));
+            });
+            tk.setOnFailed(ev -> { save.setDisable(false); showError(t("settings.integrations.google.title"),
+                    humanizeBackendError(tk.getException() == null ? "" : tk.getException().getMessage())); });
+            start(tk, "google-cfg-save");
+        });
+
+        GridPane g = new GridPane();
+        g.setHgap(10); g.setVgap(8);
+        g.add(new Label(t("settings.integrations.google.client_id")), 0, 0); g.add(clientId, 1, 0);
+        g.add(new Label(t("settings.integrations.google.secret")), 0, 1); g.add(passwordWithToggle(clientSecret), 1, 1);
+        javafx.scene.layout.ColumnConstraints c1 = new javafx.scene.layout.ColumnConstraints();
+        c1.setHgrow(Priority.ALWAYS); c1.setFillWidth(true);
+        g.getColumnConstraints().addAll(new javafx.scene.layout.ColumnConstraints(), c1);
+
+        VBox box = new VBox(12, title, hint, steps, g, new HBox(8, save), status);
+        box.setPadding(new Insets(16));
+        box.setMaxWidth(680);
+        javafx.application.Platform.runLater(loadStatus);
+        return scroll(box);
+    }
+
     private VBox settingsView(SettingsBundle bundle) {
         VBox content = content();
 
@@ -6112,6 +6188,8 @@ public class BenjagestUiApplication extends Application {
         modulesTab.setGraphic(icon("fas-cubes"));
         Tab credentialsTab = new Tab(t("settings.tab.credentials"), settingsCredentialsTab());
         credentialsTab.setGraphic(icon("fas-key"));
+        Tab integrationsTab = new Tab(t("settings.tab.integrations"), settingsIntegrationsTab());
+        integrationsTab.setGraphic(icon("fab-google"));
         Tab certificateTab = new Tab(t("settings.tab.certificate"), settingsCertificateTab());
         certificateTab.setGraphic(icon("fas-certificate"));
         Tab auditTab = new Tab(t("settings.tab.audit"), settingsAuditTab());
@@ -6124,7 +6202,7 @@ public class BenjagestUiApplication extends Application {
         // "Mi asesoría" solo tiene sentido para empresas CLIENT — una
         // asesoría no necesita otra asesoría que la asesore.
         tabs.getTabs().addAll(companyTab, ownersTab, emailTab, modulesTab,
-                credentialsTab, certificateTab, sessionTab);
+                credentialsTab, integrationsTab, certificateTab, sessionTab);
         if (appMode != AppMode.ADVISORY) {
             Tab advisoryTab = new Tab(t("settings.tab.my_advisory"), settingsMyAdvisoryTab());
             advisoryTab.setGraphic(icon("fas-handshake"));
@@ -13723,6 +13801,18 @@ public class BenjagestUiApplication extends Application {
                 case "settings.tab.email" -> "SMTP Email";
                 case "settings.tab.modules" -> "Modules";
                 case "settings.tab.credentials" -> "Credentials";
+                case "settings.tab.integrations" -> "Integrations";
+                case "settings.integrations.google.title" -> "Sign in with Google";
+                case "settings.integrations.google.hint" -> "Each installation uses its OWN Google credentials (there is no central gateway). Create a free OAuth project in Google Cloud and paste the Client ID and Secret here. The secret is stored encrypted and never shown again.";
+                case "settings.integrations.google.steps" -> "Steps: Google Cloud Console → APIs & Services → OAuth consent screen (External, scopes openid/email/profile) → Credentials → Create OAuth client ID → type \"Desktop app\" → copy the Client ID and Client Secret.";
+                case "settings.integrations.google.client_id" -> "Client ID";
+                case "settings.integrations.google.secret" -> "Client Secret";
+                case "settings.integrations.google.secret_prompt" -> "Client Secret (leave blank to keep the saved one)";
+                case "settings.integrations.google.save" -> "Save and enable";
+                case "settings.integrations.google.saved" -> "Google credentials saved. Sign-in with Google is now enabled.";
+                case "settings.integrations.google.need_client_id" -> "Enter the Client ID.";
+                case "settings.integrations.google.status.enabled" -> "✓ Configured and enabled.";
+                case "settings.integrations.google.status.disabled" -> "Not configured yet.";
                 case "settings.tab.certificate" -> "Certificate";
                 case "settings.tab.audit" -> "Audit";
                 case "settings.cert.section" -> "Digital certificate (.p12 / .pfx)";
@@ -14736,6 +14826,18 @@ public class BenjagestUiApplication extends Application {
             case "settings.tab.email" -> "Email SMTP";
             case "settings.tab.modules" -> "Modulos";
             case "settings.tab.credentials" -> "Credenciales";
+            case "settings.tab.integrations" -> "Integraciones";
+            case "settings.integrations.google.title" -> "Acceso con Google";
+            case "settings.integrations.google.hint" -> "Cada instalación usa SUS PROPIAS credenciales de Google (no hay pasarela central). Crea un proyecto OAuth gratuito en Google Cloud y pega aquí el Client ID y el Secret. El secreto se guarda cifrado y no se vuelve a mostrar.";
+            case "settings.integrations.google.steps" -> "Pasos: Google Cloud Console → APIs y servicios → Pantalla de consentimiento OAuth (Externo, scopes openid/email/profile) → Credenciales → Crear ID de cliente OAuth → tipo \"Aplicación de escritorio\" → copia el Client ID y el Client Secret.";
+            case "settings.integrations.google.client_id" -> "Client ID";
+            case "settings.integrations.google.secret" -> "Client Secret";
+            case "settings.integrations.google.secret_prompt" -> "Client Secret (en blanco = conservar el guardado)";
+            case "settings.integrations.google.save" -> "Guardar y activar";
+            case "settings.integrations.google.saved" -> "Credenciales de Google guardadas. El acceso con Google ya está activo.";
+            case "settings.integrations.google.need_client_id" -> "Introduce el Client ID.";
+            case "settings.integrations.google.status.enabled" -> "✓ Configurado y activo.";
+            case "settings.integrations.google.status.disabled" -> "Aún sin configurar.";
             case "settings.tab.certificate" -> "Certificado";
             case "settings.tab.audit" -> "Auditoria";
             case "settings.cert.section" -> "Certificado digital (.p12 / .pfx)";
