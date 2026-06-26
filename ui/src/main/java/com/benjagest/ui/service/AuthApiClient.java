@@ -111,14 +111,26 @@ public class AuthApiClient {
      * {@code true} (mostrar login), nunca fuerza el registro por error de red.
      */
     public boolean hasAccounts() {
+        return bootstrapStatus().hasAccounts();
+    }
+
+    /** Estado de arranque: si hay cuentas y si hay asesoría (multi-puesto). */
+    public record BootstrapStatus(boolean hasAccounts, boolean hasAdvisory) {}
+
+    public BootstrapStatus bootstrapStatus() {
         try {
             HttpRequest request = HttpRequest.newBuilder(URI.create(baseUrl + "/auth/bootstrap-status"))
                     .timeout(Duration.ofSeconds(8)).GET().build();
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
-            if (response.statusCode() < 200 || response.statusCode() >= 300) return true;
-            return response.body() == null || !response.body().contains("\"hasAccounts\":false");
+            if (response.statusCode() < 200 || response.statusCode() >= 300) {
+                return new BootstrapStatus(true, true);
+            }
+            String b = response.body() == null ? "" : response.body();
+            boolean hasAccounts = !b.contains("\"hasAccounts\":false");
+            boolean hasAdvisory = !b.contains("\"hasAdvisory\":false");
+            return new BootstrapStatus(hasAccounts, hasAdvisory);
         } catch (Exception ex) {
-            return true;
+            return new BootstrapStatus(true, true);
         }
     }
 

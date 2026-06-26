@@ -47,6 +47,11 @@ public class AuthService {
         return repository.hasAnyAccount();
     }
 
+    /** ¿Hay alguna asesoría? (multi-puesto solo para asesoría). */
+    public boolean hasAdvisory() {
+        return repository.hasAdvisoryCompany();
+    }
+
     public LoginResponse login(LoginRequest request) {
         AuthRepository.UserRecord user = repository.findUserByEmail(request.email()).orElse(null);
         if (user == null) {

@@ -59,7 +59,9 @@ public class AuthController {
      */
     @GetMapping("/bootstrap-status")
     public java.util.Map<String, Boolean> bootstrapStatus() {
-        return java.util.Map.of("hasAccounts", authService.hasAnyAccount());
+        return java.util.Map.of(
+                "hasAccounts", authService.hasAnyAccount(),
+                "hasAdvisory", authService.hasAdvisory());
     }
 
     @PostMapping("/refresh")
