@@ -36,10 +36,36 @@ public class EmailSenderService {
 
     private final EmailConfigRepository repository;
     private final StringEncryptor encryptor;
+    private final com.benjagest.backend.tenant.TenantContext tenantContext;
+    private final com.benjagest.backend.auth.GmailApiService gmailApiService;
+    private final com.benjagest.backend.auth.GoogleOAuthService googleOAuthService;
 
-    public EmailSenderService(EmailConfigRepository repository, StringEncryptor encryptor) {
+    public EmailSenderService(EmailConfigRepository repository, StringEncryptor encryptor,
+                              com.benjagest.backend.tenant.TenantContext tenantContext,
+                              com.benjagest.backend.auth.GmailApiService gmailApiService,
+                              com.benjagest.backend.auth.GoogleOAuthService googleOAuthService) {
         this.repository = repository;
         this.encryptor = encryptor;
+        this.tenantContext = tenantContext;
+        this.gmailApiService = gmailApiService;
+        this.googleOAuthService = googleOAuthService;
+    }
+
+    /**
+     * Si la empresa tiene Gmail conectado por OAuth, envía por la API de Gmail y
+     * devuelve true. Si no, devuelve false para que el llamante use SMTP. Así
+     * facturas/nóminas/TPB usan Gmail automáticamente sin tocar cada sitio.
+     */
+    private boolean sentViaGmail(String companyId, String to, String subject, String body,
+                                 byte[] attachmentBytes, String attachmentName) {
+        if (companyId == null || !gmailApiService.enabledFor(companyId)) return false;
+        var conn = googleOAuthService.apiConnection(companyId);
+        gmailApiService.send(companyId, conn.email(), null, to, subject, body, attachmentBytes, attachmentName);
+        return true;
+    }
+
+    private String currentCompanyIdSafe() {
+        try { return tenantContext.getCurrentCompanyId(); } catch (Exception ex) { return null; }
     }
 
     /**
@@ -57,6 +83,7 @@ public class EmailSenderService {
      */
     public void send(String to, String subject, String body,
                      byte[] attachmentBytes, String attachmentName) {
+        if (sentViaGmail(currentCompanyIdSafe(), to, subject, body, attachmentBytes, attachmentName)) return;
         EmailConfigRow row = repository.findCurrent().orElseThrow(() ->
                 new ResponseStatusException(HttpStatus.BAD_REQUEST,
                         "La empresa no tiene configurado el SMTP. Configuralo en Configuracion -> Email."));
@@ -72,6 +99,7 @@ public class EmailSenderService {
      */
     public void sendAs(String companyId, String to, String subject, String body,
                          byte[] attachmentBytes, String attachmentName) {
+        if (sentViaGmail(companyId, to, subject, body, attachmentBytes, attachmentName)) return;
         EmailConfigRow row = repository.findForCompany(companyId).orElseThrow(() ->
                 new ResponseStatusException(HttpStatus.BAD_REQUEST,
                         "La asesoria no tiene SMTP configurado. Configuralo en Configuracion -> Email."));
