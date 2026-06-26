@@ -29280,8 +29280,7 @@ public class BenjagestUiApplication extends Application {
 
         // ---- Fondo según salvapantallas ----
         StackPane background = new StackPane();
-        background.setStyle("-fx-background-color: #0a0f1a;"
-                + " -fx-min-width: 520; -fx-min-height: 520;");
+        background.setStyle("-fx-background-color: linear-gradient(to bottom right, #0a0f1a, #0e1830);");
         String style = screensaverStyle == null ? "clock" : screensaverStyle;
         switch (style) {
             case "logo" -> background.getChildren().add(buildScreensaverLogo(stage));
@@ -29299,15 +29298,8 @@ public class BenjagestUiApplication extends Application {
         background.getChildren().add(pinBox);
         StackPane.setAlignment(pinBox, Pos.CENTER);
 
-        Scene scene = new Scene(background);
-        stage.setScene(scene);
-        stage.setOnCloseRequest(ev -> ev.consume());  // no se cierra por X
-        stage.setFullScreenExitHint("");
-        stage.setFullScreenExitKeyCombination(javafx.scene.input.KeyCombination.NO_MATCH);
-        // Salvapantallas cubriendo la PANTALLA donde está la app (multi-monitor).
-        // Se detecta por el CENTRO de la ventana de la app y se fija el tamaño a
-        // los bounds de ESA pantalla + always-on-top. (No usamos setFullScreen
-        // porque, antes de mostrar la ventana, salta a la pantalla primaria.)
+        // Pantalla donde está la app (multi-monitor): detectada por el CENTRO de la
+        // ventana de la app. El salvapantallas cubre ESA pantalla entera.
         javafx.geometry.Rectangle2D area = javafx.stage.Screen.getPrimary().getBounds();
         try {
             javafx.stage.Window owner = (root != null && root.getScene() != null)
@@ -29320,6 +29312,15 @@ public class BenjagestUiApplication extends Application {
             }
         } catch (Exception ignored) {
         }
+        // La Scene se crea CON el tamaño de la pantalla y el StackPane raíz la
+        // rellena entera (antes, sin tamaño, quedaba del ancho del contenido → la
+        // franja central que se veía).
+        background.setPrefSize(area.getWidth(), area.getHeight());
+        Scene scene = new Scene(background, area.getWidth(), area.getHeight());
+        stage.setScene(scene);
+        stage.setOnCloseRequest(ev -> ev.consume());  // no se cierra por X
+        stage.setFullScreenExitHint("");
+        stage.setFullScreenExitKeyCombination(javafx.scene.input.KeyCombination.NO_MATCH);
         stage.setX(area.getMinX());
         stage.setY(area.getMinY());
         stage.setWidth(area.getWidth());
