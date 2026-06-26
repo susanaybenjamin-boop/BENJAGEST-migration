@@ -1245,6 +1245,27 @@ public class BenjagestUiApplication extends Application {
         // de esta empresa. Si falla (sin red, sin permiso, etc.), el
         // sidebar usa la lista hardcodeada como fallback.
         refreshActiveModulesAndRender();
+        // PORT-4 SESSION — arma el bloqueo por inactividad desde los ajustes
+        // guardados al ENTRAR (antes solo se armaba al abrir Configuración →
+        // Sesión, por lo que en cada arranque quedaba apagado).
+        armSessionLockFromSettings();
+    }
+
+    /** Carga el timeout/PIN/salvapantallas guardados y arma el checker de bloqueo. */
+    private void armSessionLockFromSettings() {
+        Task<com.benjagest.ui.model.SessionStatusEntry> task = new Task<>() {
+            @Override protected com.benjagest.ui.model.SessionStatusEntry call() throws Exception {
+                return altaApiClient.getSessionStatus();
+            }
+        };
+        task.setOnSucceeded(e -> {
+            var s = task.getValue();
+            this.screensaverStyle = s.screensaverStyle() == null || s.screensaverStyle().isBlank()
+                    ? "clock" : s.screensaverStyle();
+            refreshLockTimeout(s.pinTimeoutMin());
+        });
+        // Si falla (sin red, etc.) no se arma el bloqueo; no es bloqueante.
+        start(task, "session-lock-arm");
     }
 
     private void refreshActiveModulesAndRender() {
@@ -1974,6 +1995,7 @@ public class BenjagestUiApplication extends Application {
             session = null;
             activeModulesCache = List.of();
             AuthSession.get().clear();
+            refreshLockTimeout(0); // desarma el bloqueo por inactividad al salir
             // Vuelve a la pantalla inicial correcta según el tipo de cuenta:
             // asesoría → multi-puesto (emparejar/PIN); empresario → email directo.
             showInitialScreen();
