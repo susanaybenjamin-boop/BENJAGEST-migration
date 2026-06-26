@@ -27,6 +27,18 @@ public class AuthRepository {
         return n != null && n > 0;
     }
 
+    /**
+     * ¿Hay alguna empresa de ASESORÍA (ADVISORY/INTERNAL)? El multi-puesto
+     * (emparejar equipo + PIN) es exclusivo de asesoría; un empresario entra
+     * siempre con email/contraseña. La UI usa esto para elegir la pantalla.
+     */
+    public boolean hasAdvisoryCompany() {
+        Integer n = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM companies WHERE company_type IN ('ADVISORY','INTERNAL')",
+                Integer.class);
+        return n != null && n > 0;
+    }
+
     public Optional<UserRecord> findUserByEmail(String email) {
         List<UserRecord> matches = jdbcTemplate.query("""
                 SELECT id, email, password_hash, display_name, global_role, active

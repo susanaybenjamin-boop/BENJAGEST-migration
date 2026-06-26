@@ -487,12 +487,20 @@ public class BenjagestUiApplication extends Application {
      * El check es asíncrono; ante fallo de red cae al login (defensivo).
      */
     private void showInitialScreen() {
-        Task<Boolean> task = new Task<>() {
-            @Override protected Boolean call() { return authApiClient.hasAccounts(); }
+        Task<com.benjagest.ui.service.AuthApiClient.BootstrapStatus> task = new Task<>() {
+            @Override protected com.benjagest.ui.service.AuthApiClient.BootstrapStatus call() {
+                return authApiClient.bootstrapStatus();
+            }
         };
         task.setOnSucceeded(e -> {
-            if (Boolean.FALSE.equals(task.getValue())) showRegister();
-            else showLogin();
+            var s = task.getValue();
+            if (!s.hasAccounts()) {
+                showRegister();                 // instalación nueva → registro
+            } else if (s.hasAdvisory()) {
+                showLogin();                    // asesoría → multi-puesto (emparejar/PIN)
+            } else {
+                showEmailLogin();               // empresario → email/contraseña, sin multi-puesto
+            }
         });
         task.setOnFailed(e -> showLogin());
         start(task, "bootstrap-status");
@@ -1876,7 +1884,9 @@ public class BenjagestUiApplication extends Application {
             session = null;
             activeModulesCache = List.of();
             AuthSession.get().clear();
-            showLogin();
+            // Vuelve a la pantalla inicial correcta según el tipo de cuenta:
+            // asesoría → multi-puesto (emparejar/PIN); empresario → email directo.
+            showInitialScreen();
         });
 
         HBox header = new HBox(14, AppBrand.createLogoMark(), titleBlock, spacer);
