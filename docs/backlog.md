@@ -1,5 +1,15 @@
 # Backlog operativo BENJAGEST
 
+> **Última actualización:** 2026-06-25/26 (**tres bloques "haz los tres"**:
+> **CONTRATO-MODALIDADES** —desempleo según código SEPE del contrato (V143/V144,
+> no-code); **formativos cuota fija CM-6** (V145); **intercambio contable**
+> —round-trip import del JSON canónico—; **CICLO LABORAL completo CL-1→CL-4**
+> —suspensión/excedencia + guarda en nómina (V146), atrasos retroactivos (15%
+> IRPF tramos anteriores), cese de empresa en lote, y su **UI** (botones en
+> Empleados: Suspensión, Atrasos, Cese de empresa con doble confirmación)—.
+> **Aparcado**: xDiario/SUENLACE (sin fichero real). **Con Benjamin**: CL-5
+> (recibo/asiento/L13 de atrasos). Ver sesiones 2026-06-25 debajo.
+> Histórico previo:
 > **Última actualización:** 2026-06-24 (**bloque REFLEJO COMPLETO 1-6** —reflejo
 > bidireccional factura↔gasto + pago↔cobro, cascada de reversión, avisos por validar,
 > interruptor on/off—; **mejoras de avisos** —banner "por validar" en la home (dos modos),
@@ -371,10 +381,11 @@
 - **Nómina — incidencias** (horas extra, complementos variables por periodo, pagas
   extra cotizadas con asiento): toca el **motor de cálculo** → legal-sensible, validar
   con caso real (§11.2: no tocar cálculo sin él).
-- **Bloque D restante**: VIG-4 atrasos · CV-5 excedencias/suspensiones · CV-8 cese
-  empresa → tocan el motor; "construir + MARCAR" requiere su caso real.
-- **FORMATS-EXCHANGE** (xDiario + SUENLACE): es "por spec" pero conviene un **fichero
-  real** suyo para validar el layout exacto antes de darlo por bueno.
+- ~~**Bloque D restante**: VIG-4 atrasos · CV-5 excedencias/suspensiones · CV-8 cese
+  empresa~~ ✅ **HECHO 2026-06-25 (CL-1→CL-4)**. Falta **CL-5** (con Benjamin):
+  recibo/asiento/L13 de atrasos; proración de meses parciales.
+- **FORMATS-EXCHANGE** (xDiario + SUENLACE): ⏸️ **APARCADO** — Benjamin no tiene
+  fichero real ni quien se lo dé. El round-trip JSON ya está. Se retoma si aparece.
 - **FJ-5b** incidencia schedule-aware · **JOR-4** plan-vs-real · **Partes de día**:
   features grandes / legal-sensibles.
 - **Push instantáneo PWA**: necesita túnel con nombre o WebSocket (cuenta Cloudflare).
@@ -406,7 +417,8 @@
 
 **🟠 Funcional atacable (sin bloqueos):**
 - ~~Export PDF Mayor + Sumas y Saldos~~ ✅ **HECHO 2026-06-22** (cierra informes PDF).
-- **FORMATS-EXCHANGE**: export/import xDiario + SUENLACE (por spec; marcar para validar).
+- **FORMATS-EXCHANGE**: ✅ **round-trip JSON canónico HECHO 2026-06-25** (import del
+  JSON que produce el export). ⏸️ **xDiario/SUENLACE APARCADOS** (sin fichero real).
 - ~~**Nómina — incidencias** (INC-1..4)~~ ✅ **HECHO 2026-06-22**: tabla `nomina_incidencias`
   + gestión en el diálogo Calcular nómina; **horas extra con cotización adicional legal**
   (V137 no-code, 14%/28,30%, no en base CC); **complementos variables**; **ausencias no
@@ -414,8 +426,10 @@
   sin provisión). MARCADO para validar con caso real: proración del mínimo de base por mes
   parcial · importe de ausencia por días×salario diario · auto-detección de ausencias desde
   bajas/permisos (no hecha, opcional).
-- **CONTRATO-VIGENCIAS (bloque D)**: ~~VIG-3 (guard `hasPayslips`)~~ ✅ **HECHO 2026-06-22**;
-  VIG-4 atrasos, CV-5 excedencias/suspensiones, CV-8 cese empresa (construir + MARCAR para validar).
+- **CONTRATO-VIGENCIAS (bloque D)**: ~~VIG-3 (guard `hasPayslips`)~~ ✅ **2026-06-22**;
+  ~~VIG-4 atrasos~~ ✅ **CL-2 2026-06-25** (cálculo); ~~CV-5 excedencias/suspensiones~~
+  ✅ **CL-1 2026-06-25**; ~~CV-8 cese empresa~~ ✅ **CL-3 2026-06-25**. **Falta CL-5**
+  (con Benjamin): recibo/asiento/L13 de atrasos; proración meses parciales.
 - **FJ-5b** incidencia "schedule-aware" (legal-sensible → validar con caso real).
 - ~~**JOR-4** comparación planificado-vs-real~~ ✅ **HECHO 2026-06-22** (descriptivo + descuento
   de festivos/cierres). Queda el sub-ítem **excepciones de calendario por fecha** (AJUSTE de
