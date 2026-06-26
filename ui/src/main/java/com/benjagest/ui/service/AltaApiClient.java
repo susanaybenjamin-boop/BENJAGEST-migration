@@ -1997,7 +1997,9 @@ public class AltaApiClient {
         if (r.statusCode() < 200 || r.statusCode() >= 300) {
             throw new IOException("HTTP " + r.statusCode() + ": " + r.body());
         }
-        return Boolean.parseBoolean(textField(r.body(), "valid"));
+        // La respuesta es {"valid":true} (booleano, sin comillas); textField solo
+        // matchea strings entrecomillados -> daba siempre false ("PIN incorrecto").
+        return boolField(r.body(), "valid");
     }
 
     // ============================================================
