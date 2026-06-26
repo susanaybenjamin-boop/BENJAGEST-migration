@@ -559,7 +559,7 @@ public class BenjagestUiApplication extends Application {
 
         panel.getChildren().addAll(
                 AppBrand.createLogoMark(), title, subtitle,
-                emailField, passwordField, loginButton,
+                emailField, passwordWithToggle(passwordField), loginButton,
                 createAccount,
                 new Separator(),
                 googleButton
@@ -639,8 +639,8 @@ public class BenjagestUiApplication extends Application {
         g.add(new Label(t("register.postal_code")), 0, r); g.add(postalCode, 1, r++);
         g.add(new Label(t("register.owner_name")), 0, r); g.add(displayName, 1, r++);
         g.add(new Label(t("register.email")), 0, r); g.add(email, 1, r++);
-        g.add(new Label(t("register.password")), 0, r); g.add(password, 1, r++);
-        g.add(new Label(t("register.password2")), 0, r); g.add(password2, 1, r++);
+        g.add(new Label(t("register.password")), 0, r); g.add(passwordWithToggle(password), 1, r++);
+        g.add(new Label(t("register.password2")), 0, r); g.add(passwordWithToggle(password2), 1, r++);
         javafx.scene.layout.ColumnConstraints c0 = new javafx.scene.layout.ColumnConstraints();
         javafx.scene.layout.ColumnConstraints c1 = new javafx.scene.layout.ColumnConstraints();
         c1.setHgrow(Priority.ALWAYS); c1.setFillWidth(true);
@@ -680,6 +680,38 @@ public class BenjagestUiApplication extends Application {
         f.setPromptText(prompt);
         f.setMaxWidth(Double.MAX_VALUE);
         return f;
+    }
+
+    /**
+     * Envuelve un {@link PasswordField} con un botón "ojo" para ver/ocultar la
+     * contraseña. Se mantiene el mismo {@code PasswordField} (su {@code getText()}
+     * sigue valiendo) y se superpone un TextField visible sincronizado por
+     * binding bidireccional. Devuelve el contenedor a colocar en el layout.
+     */
+    private Node passwordWithToggle(PasswordField pf) {
+        TextField visible = new TextField();
+        visible.setPromptText(pf.getPromptText());
+        visible.setManaged(false);
+        visible.setVisible(false);
+        visible.textProperty().bindBidirectional(pf.textProperty());
+        javafx.scene.layout.StackPane stack = new javafx.scene.layout.StackPane(pf, visible);
+        HBox.setHgrow(stack, Priority.ALWAYS);
+
+        javafx.scene.control.ToggleButton eye = new javafx.scene.control.ToggleButton();
+        eye.setGraphic(icon("fas-eye"));
+        eye.setFocusTraversable(false);
+        eye.setTooltip(new javafx.scene.control.Tooltip(t("password.toggle")));
+        eye.setOnAction(e -> {
+            boolean show = eye.isSelected();
+            pf.setVisible(!show); pf.setManaged(!show);
+            visible.setVisible(show); visible.setManaged(show);
+            eye.setGraphic(icon(show ? "fas-eye-slash" : "fas-eye"));
+        });
+
+        HBox box = new HBox(4, stack, eye);
+        box.setAlignment(Pos.CENTER_LEFT);
+        box.setMaxWidth(Double.MAX_VALUE);
+        return box;
     }
 
     private void doRegister(Button submitBtn, String type, String legalName, String taxId, String address,
@@ -13032,6 +13064,7 @@ public class BenjagestUiApplication extends Application {
                 case "pinIdentification" -> "Employee PIN identification";
                 case "login" -> "Sign in";
                 // REG-2 — registro (EN)
+                case "password.toggle" -> "Show / hide password";
                 case "register.link" -> "Create an account";
                 case "register.title" -> "Create your account";
                 case "register.subtitle" -> "Set up your firm or company. You'll be able to invoice from minute one.";
@@ -14081,6 +14114,7 @@ public class BenjagestUiApplication extends Application {
             case "pinIdentification" -> "Identificacion por PIN de empleado";
             case "login" -> "Entrar";
             // REG-2 — registro (ES)
+            case "password.toggle" -> "Ver / ocultar contraseña";
             case "register.link" -> "Crear una cuenta";
             case "register.title" -> "Crea tu cuenta";
             case "register.subtitle" -> "Da de alta tu asesoría o empresa. Podrás facturar desde el primer minuto.";
