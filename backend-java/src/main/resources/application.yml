@@ -69,3 +69,11 @@ benjagest:
     # Master key para Jasypt. PRODUCCION: poner BENJAGEST_ENCRYPTION_PASSWORD
     # en env. Si cambia esta clave, los datos cifrados pasan a ser ilegibles.
     password: ${BENJAGEST_ENCRYPTION_PASSWORD:devEncryptionKeyBenjagestNotForProduction_2026}
+  google:
+    # Credenciales CENTRALES de la app BENJAGEST (modelo HIBRIDO, decision Benjamin
+    # 2026-06-26): por defecto el usuario NO configura nada (login + Calendar a un
+    # clic). Se rellenan cuando se publique/verifique el proyecto Google de
+    # BENJAGEST. Mientras esten vacias, cada instalacion puede usar las SUYAS desde
+    # Configuracion -> Integraciones (opcion avanzada). NO las teclea el usuario.
+    client-id: ${BENJAGEST_GOOGLE_CLIENT_ID:}
+    client-secret: ${BENJAGEST_GOOGLE_CLIENT_SECRET:}
