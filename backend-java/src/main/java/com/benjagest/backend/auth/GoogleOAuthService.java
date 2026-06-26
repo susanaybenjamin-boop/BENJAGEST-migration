@@ -159,6 +159,108 @@ public class GoogleOAuthService {
         }
     }
 
+    // ---- Conexión de APIs por empresa (Gmail / Calendar) -----------------
+
+    /** POST genérico al token endpoint; devuelve el JSON de respuesta. */
+    private JsonNode tokenPost(String form) {
+        HttpResponse<String> resp;
+        try {
+            resp = http.send(HttpRequest.newBuilder(URI.create(TOKEN_ENDPOINT))
+                    .timeout(Duration.ofSeconds(15))
+                    .header("Content-Type", "application/x-www-form-urlencoded")
+                    .POST(HttpRequest.BodyPublishers.ofString(form))
+                    .build(), HttpResponse.BodyHandlers.ofString());
+        } catch (Exception ex) {
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "No se pudo contactar con Google: " + ex.getMessage());
+        }
+        if (resp.statusCode() < 200 || resp.statusCode() >= 300) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED,
+                    "Google rechazó la petición (revisa credenciales/scopes/redirect).");
+        }
+        try {
+            return objectMapper.readTree(resp.body());
+        } catch (Exception ex) {
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Respuesta de Google ilegible: " + ex.getMessage());
+        }
+    }
+
+    /** Decodifica el email del id_token (viene directo de Google → de confianza). */
+    private String emailFromIdToken(JsonNode tokenResponse) {
+        String idToken = tokenResponse.path("id_token").asText(null);
+        if (idToken == null) return null;
+        String[] parts = idToken.split("\\.");
+        if (parts.length < 2) return null;
+        try {
+            JsonNode p = objectMapper.readTree(new String(Base64.getUrlDecoder().decode(parts[1]), StandardCharsets.UTF_8));
+            String email = p.path("email").asText(null);
+            return email == null ? null : email.toLowerCase();
+        } catch (Exception ex) {
+            return null;
+        }
+    }
+
+    /**
+     * Conecta Gmail (y/o Calendar) para una EMPRESA: intercambia el code con
+     * acceso offline, guarda el REFRESH TOKEN cifrado para poder enviar/leer luego.
+     */
+    public void connectApi(String companyId, GoogleAuthRequest req, boolean gmail, boolean calendar) {
+        Creds c = creds();
+        String secret = encryptor.decrypt(c.secretCipher);
+        String form = "code=" + enc(req.code()) + "&client_id=" + enc(c.clientId)
+                + "&client_secret=" + enc(secret) + "&redirect_uri=" + enc(req.redirectUri())
+                + "&grant_type=authorization_code"
+                + (req.codeVerifier() == null || req.codeVerifier().isBlank() ? "" : "&code_verifier=" + enc(req.codeVerifier()));
+        JsonNode root = tokenPost(form);
+        String refresh = root.path("refresh_token").asText(null);
+        if (refresh == null || refresh.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Google no devolvió refresh token. Asegúrate de aceptar los permisos (y quitar el acceso previo en tu cuenta para forzar el consentimiento).");
+        }
+        String email = emailFromIdToken(root);
+        jdbc.update("""
+                INSERT INTO google_api_connections
+                    (company_id, google_email, refresh_token_encrypted, gmail_enabled, calendar_enabled)
+                VALUES (?, ?, ?, ?, ?)
+                ON DUPLICATE KEY UPDATE
+                    google_email = VALUES(google_email),
+                    refresh_token_encrypted = VALUES(refresh_token_encrypted),
+                    gmail_enabled = gmail_enabled OR VALUES(gmail_enabled),
+                    calendar_enabled = calendar_enabled OR VALUES(calendar_enabled)
+                """, companyId, email, encryptor.encrypt(refresh), gmail, calendar);
+    }
+
+    /** Access token fresco para una empresa (refresh_token → access_token). */
+    public String freshAccessToken(String companyId) {
+        String cipher = jdbc.query("SELECT refresh_token_encrypted FROM google_api_connections WHERE company_id = ?",
+                rs -> rs.next() ? rs.getString(1) : null, companyId);
+        if (cipher == null) throw new ResponseStatusException(HttpStatus.CONFLICT, "La empresa no tiene Google conectado.");
+        Creds c = creds();
+        String form = "client_id=" + enc(c.clientId) + "&client_secret=" + enc(encryptor.decrypt(c.secretCipher))
+                + "&refresh_token=" + enc(encryptor.decrypt(cipher)) + "&grant_type=refresh_token";
+        return tokenPost(form).path("access_token").asText(null);
+    }
+
+    public ApiConnection apiConnection(String companyId) {
+        return jdbc.query("""
+                SELECT google_email, gmail_enabled, calendar_enabled FROM google_api_connections WHERE company_id = ?
+                """, rs -> rs.next()
+                ? new ApiConnection(true, rs.getString("google_email"),
+                        rs.getBoolean("gmail_enabled"), rs.getBoolean("calendar_enabled"))
+                : new ApiConnection(false, null, false, false), companyId);
+    }
+
+    public boolean gmailEnabled(String companyId) {
+        Boolean b = jdbc.query("SELECT gmail_enabled FROM google_api_connections WHERE company_id = ?",
+                rs -> rs.next() && rs.getBoolean(1), companyId);
+        return Boolean.TRUE.equals(b);
+    }
+
+    public void disconnectApi(String companyId) {
+        jdbc.update("DELETE FROM google_api_connections WHERE company_id = ?", companyId);
+    }
+
+    public record ApiConnection(boolean connected, String email, boolean gmail, boolean calendar) {}
+
     // ---- Login / Alta ----------------------------------------------------
 
     /** Login con Google: la cuenta debe existir (si no, 404 → que se registre). */
@@ -228,7 +330,12 @@ public class GoogleOAuthService {
     @com.benjagest.backend.auth.RequiresRole({"OWNER", "ADMIN"})
     public static class SettingsController {
         private final GoogleOAuthService service;
-        public SettingsController(GoogleOAuthService service) { this.service = service; }
+        private final com.benjagest.backend.tenant.TenantContext tenant;
+        public SettingsController(GoogleOAuthService service,
+                                  com.benjagest.backend.tenant.TenantContext tenant) {
+            this.service = service;
+            this.tenant = tenant;
+        }
 
         @GetMapping
         public ConfigView get() { return service.config(); }
@@ -241,5 +348,24 @@ public class GoogleOAuthService {
 
         @PostMapping("/disable")
         public ConfigView disable() { service.disable(); return service.config(); }
+
+        // ---- Conexión Gmail/Calendar de la empresa actual ----
+
+        @GetMapping("/gmail-status")
+        public ApiConnection gmailStatus() {
+            return service.apiConnection(tenant.getCurrentCompanyId());
+        }
+
+        @PostMapping("/connect-gmail")
+        public ApiConnection connectGmail(@RequestBody GoogleAuthRequest req) {
+            service.connectApi(tenant.getCurrentCompanyId(), req, true, false);
+            return service.apiConnection(tenant.getCurrentCompanyId());
+        }
+
+        @PostMapping("/disconnect-gmail")
+        public ApiConnection disconnectGmail() {
+            service.disconnectApi(tenant.getCurrentCompanyId());
+            return service.apiConnection(tenant.getCurrentCompanyId());
+        }
     }
 }
