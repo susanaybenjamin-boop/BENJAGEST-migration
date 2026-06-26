@@ -29306,6 +29306,24 @@ public class BenjagestUiApplication extends Application {
         // Sin pista de salida y ESC desactivado: solo se sale con el PIN o "Salir".
         stage.setFullScreenExitHint("");
         stage.setFullScreenExitKeyCombination(javafx.scene.input.KeyCombination.NO_MATCH);
+        // Multi-monitor: posicionar el bloqueo en la PANTALLA donde está la app
+        // antes de ir a pantalla completa, para que no se renderice en la otra.
+        try {
+            javafx.stage.Window owner = (root != null && root.getScene() != null)
+                    ? root.getScene().getWindow() : null;
+            javafx.geometry.Rectangle2D area = null;
+            if (owner != null && owner.getWidth() > 0 && owner.getHeight() > 0) {
+                var screens = javafx.stage.Screen.getScreensForRectangle(
+                        owner.getX(), owner.getY(), owner.getWidth(), owner.getHeight());
+                if (!screens.isEmpty()) area = screens.get(0).getBounds();
+            }
+            if (area == null) area = javafx.stage.Screen.getPrimary().getBounds();
+            stage.setX(area.getMinX());
+            stage.setY(area.getMinY());
+            stage.setWidth(area.getWidth());
+            stage.setHeight(area.getHeight());
+        } catch (Exception ignored) {
+        }
         stage.setFullScreen(true);
         javafx.application.Platform.runLater(pin::requestFocus);
         stage.showAndWait();
