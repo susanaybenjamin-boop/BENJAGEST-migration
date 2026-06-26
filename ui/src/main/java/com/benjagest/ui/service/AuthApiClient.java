@@ -197,6 +197,35 @@ public class AuthApiClient {
         httpClient.send(b.build(), HttpResponse.BodyHandlers.ofString());
     }
 
+    /** Conecta Google Calendar con el code OAuth (scope calendar + offline). Admin. */
+    public void connectCalendar(GoogleDesktopOAuth.Result oauth) throws IOException, InterruptedException {
+        String body = "{" + field("code", oauth.code()) + "," + field("codeVerifier", oauth.codeVerifier())
+                + "," + field("redirectUri", oauth.redirectUri()) + "}";
+        HttpRequest.Builder b = HttpRequest.newBuilder(URI.create(baseUrl + "/settings/google-oauth/connect-calendar"))
+                .timeout(Duration.ofSeconds(25)).header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(body));
+        AuthSession.get().authorize(b);
+        HttpResponse<String> r = httpClient.send(b.build(), HttpResponse.BodyHandlers.ofString());
+        if (r.statusCode() < 200 || r.statusCode() >= 300) {
+            throw new IOException(extractError(r.body(), "No se pudo conectar Google Calendar (HTTP " + r.statusCode() + ")"));
+        }
+    }
+
+    public record CalendarSync(int pushed, int pulled) {}
+
+    /** Sincronización BIDIRECCIONAL Agenda ↔ Google Calendar (a demanda). */
+    public CalendarSync calendarSync() throws IOException, InterruptedException {
+        HttpRequest.Builder b = HttpRequest.newBuilder(URI.create(baseUrl + "/settings/google-oauth/calendar-sync"))
+                .timeout(Duration.ofSeconds(60)).POST(HttpRequest.BodyPublishers.noBody());
+        AuthSession.get().authorize(b);
+        HttpResponse<String> r = httpClient.send(b.build(), HttpResponse.BodyHandlers.ofString());
+        if (r.statusCode() < 200 || r.statusCode() >= 300) {
+            throw new IOException(extractError(r.body(), "No se pudo sincronizar con Google Calendar (HTTP " + r.statusCode() + ")"));
+        }
+        String body = r.body() == null ? "" : r.body();
+        return new CalendarSync(intField(body, "pushed"), intField(body, "pulled"));
+    }
+
     private String field(String name, String value) {
         return "\"" + name + "\":" + (value == null ? "null" : "\"" + escape(value) + "\"");
     }
@@ -205,6 +234,12 @@ public class AuthApiClient {
         java.util.regex.Matcher m = java.util.regex.Pattern
                 .compile("\"" + name + "\"\\s*:\\s*\"((?:\\\\.|[^\"])*)\"").matcher(json == null ? "" : json);
         return m.find() ? m.group(1).replace("\\\"", "\"") : null;
+    }
+
+    private int intField(String json, String name) {
+        java.util.regex.Matcher m = java.util.regex.Pattern
+                .compile("\"" + name + "\"\\s*:\\s*(-?\\d+)").matcher(json == null ? "" : json);
+        return m.find() ? Integer.parseInt(m.group(1)) : 0;
     }
 
     /** Saca el "message" del JSON de error de Spring; si no, usa el por defecto. */

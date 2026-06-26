@@ -3456,6 +3456,12 @@ public class BenjagestUiApplication extends Application {
         VBox content = content();
         LocalDate today = LocalDate.now();
 
+        // Auto-refresh: tras sincronizar con Google Calendar (pull de eventos),
+        // la agenda se recarga sola. La suscripción se quita al desmontar.
+        com.benjagest.ui.support.RefreshBus.subscribe(
+                com.benjagest.ui.support.RefreshBus.TOPIC_CALENDAR,
+                () -> showModule("calendar"), content);
+
         Label title = new Label(data.title());
         title.getStyleClass().add("module-detail-title");
         Label count = new Label(pluralEvents(data.records().size()));
@@ -6257,13 +6263,85 @@ public class BenjagestUiApplication extends Application {
             start(tk, "gmail-disconnect");
         });
 
+        // --- Conectar Google Calendar y sincronizar con la Agenda ---
+        Label calTitle = new Label(t("settings.integrations.calendar.title"));
+        calTitle.getStyleClass().add("settings-section-title");
+        Label calHint = new Label(t("settings.integrations.calendar.hint"));
+        calHint.getStyleClass().add("settings-hint"); calHint.setWrapText(true); calHint.setMaxWidth(620);
+        Label calStatusLbl = new Label();
+        calStatusLbl.getStyleClass().add("settings-hint");
+        Button connectCalBtn = new Button(t("settings.integrations.calendar.connect"));
+        connectCalBtn.getStyleClass().add("button-primary");
+        connectCalBtn.setGraphic(icon("fab-google"));
+        Button syncCalBtn = new Button(t("settings.integrations.calendar.sync"));
+        syncCalBtn.getStyleClass().add("button-secondary");
+        syncCalBtn.setGraphic(icon("fas-sync-alt"));
+
+        Runnable loadCalendar = () -> {
+            Task<com.benjagest.ui.service.AuthApiClient.GmailStatus> tk = new Task<>() {
+                @Override protected com.benjagest.ui.service.AuthApiClient.GmailStatus call() throws Exception {
+                    return authApiClient.gmailStatus();
+                }
+            };
+            tk.setOnSucceeded(e -> {
+                var s = tk.getValue();
+                calStatusLbl.setText(s.calendar()
+                        ? t("settings.integrations.calendar.connected").replace("{email}", s.email() == null ? "" : s.email())
+                        : t("settings.integrations.calendar.not_connected"));
+                syncCalBtn.setDisable(!s.calendar());
+            });
+            start(tk, "calendar-status");
+        };
+
+        connectCalBtn.setOnAction(e -> {
+            connectCalBtn.setDisable(true);
+            Task<Void> tk = new Task<>() {
+                @Override protected Void call() throws Exception {
+                    com.benjagest.ui.service.AuthApiClient.GoogleConfig cfg = authApiClient.googleConfig();
+                    if (!cfg.enabled() || cfg.clientId() == null) throw new IllegalStateException(t("google.not_configured"));
+                    var oauth = com.benjagest.ui.service.GoogleDesktopOAuth.authorize(cfg.clientId(),
+                            "openid email profile https://www.googleapis.com/auth/calendar", true);
+                    authApiClient.connectCalendar(oauth);
+                    return null;
+                }
+            };
+            tk.setOnSucceeded(ev -> { connectCalBtn.setDisable(false); bringToFront(); loadCalendar.run();
+                    showInfo(t("settings.integrations.calendar.title"), t("settings.integrations.calendar.connected_ok")); });
+            tk.setOnFailed(ev -> { connectCalBtn.setDisable(false); bringToFront();
+                    showError(t("settings.integrations.calendar.title"),
+                            tk.getException() == null ? t("google.failed") : tk.getException().getMessage()); });
+            start(tk, "calendar-connect");
+        });
+        syncCalBtn.setOnAction(e -> {
+            syncCalBtn.setDisable(true);
+            Task<com.benjagest.ui.service.AuthApiClient.CalendarSync> tk = new Task<>() {
+                @Override protected com.benjagest.ui.service.AuthApiClient.CalendarSync call() throws Exception {
+                    return authApiClient.calendarSync();
+                }
+            };
+            tk.setOnSucceeded(ev -> { syncCalBtn.setDisable(false);
+                    var r = tk.getValue();
+                    com.benjagest.ui.support.RefreshBus.emit(com.benjagest.ui.support.RefreshBus.TOPIC_CALENDAR);
+                    showInfo(t("settings.integrations.calendar.title"),
+                            t("settings.integrations.calendar.sync_done")
+                                    .replace("{pushed}", String.valueOf(r.pushed()))
+                                    .replace("{pulled}", String.valueOf(r.pulled()))); });
+            tk.setOnFailed(ev -> { syncCalBtn.setDisable(false);
+                    showError(t("settings.integrations.calendar.title"),
+                            tk.getException() == null ? t("google.failed") : tk.getException().getMessage()); });
+            start(tk, "calendar-sync");
+        });
+
         VBox box = new VBox(12, title, hint, steps, g, new HBox(8, save), status,
                 new Separator(), gmailTitle, gmailHint,
-                new HBox(8, connectGmailBtn, disconnectGmailBtn), gmailStatusLbl);
+                new HBox(8, connectGmailBtn, disconnectGmailBtn), gmailStatusLbl,
+                new Separator(), calTitle, calHint,
+                new HBox(8, connectCalBtn, syncCalBtn), calStatusLbl);
         box.setPadding(new Insets(16));
         box.setMaxWidth(680);
         javafx.application.Platform.runLater(loadStatus);
         javafx.application.Platform.runLater(loadGmail);
+        javafx.application.Platform.runLater(loadCalendar);
         return scroll(box);
     }
 
@@ -13932,6 +14010,14 @@ public class BenjagestUiApplication extends Application {
                 case "settings.integrations.gmail.connected" -> "✓ Connected: {email} — email is sent through Gmail.";
                 case "settings.integrations.gmail.not_connected" -> "Not connected (email uses SMTP).";
                 case "settings.integrations.gmail.connected_ok" -> "Gmail connected. Email will now be sent through Gmail.";
+                case "settings.integrations.calendar.title" -> "Google Calendar ↔ Agenda";
+                case "settings.integrations.calendar.hint" -> "Connect your Google Calendar once and sync both ways: your BENJAGEST agenda events are pushed to Google and your Google events are pulled into the agenda. Requires the calendar scope in your Google project.";
+                case "settings.integrations.calendar.connect" -> "Connect Google Calendar";
+                case "settings.integrations.calendar.sync" -> "Sync now";
+                case "settings.integrations.calendar.connected" -> "✓ Connected: {email} — two-way sync available.";
+                case "settings.integrations.calendar.not_connected" -> "Not connected.";
+                case "settings.integrations.calendar.connected_ok" -> "Google Calendar connected. Use \"Sync now\" to mirror events both ways.";
+                case "settings.integrations.calendar.sync_done" -> "Sync complete: {pushed} sent to Google, {pulled} brought into the agenda.";
                 case "settings.tab.certificate" -> "Certificate";
                 case "settings.tab.audit" -> "Audit";
                 case "settings.cert.section" -> "Digital certificate (.p12 / .pfx)";
@@ -14964,6 +15050,14 @@ public class BenjagestUiApplication extends Application {
             case "settings.integrations.gmail.connected" -> "✓ Conectado: {email} — el correo sale por Gmail.";
             case "settings.integrations.gmail.not_connected" -> "Sin conectar (el correo usa SMTP).";
             case "settings.integrations.gmail.connected_ok" -> "Gmail conectado. El correo se enviará por Gmail.";
+            case "settings.integrations.calendar.title" -> "Google Calendar ↔ Agenda";
+            case "settings.integrations.calendar.hint" -> "Conecta tu Google Calendar una vez y sincroniza en los dos sentidos: los eventos de tu agenda BENJAGEST se suben a Google y los de Google se traen a la agenda. Necesita el scope calendar en tu proyecto Google.";
+            case "settings.integrations.calendar.connect" -> "Conectar Google Calendar";
+            case "settings.integrations.calendar.sync" -> "Sincronizar ahora";
+            case "settings.integrations.calendar.connected" -> "✓ Conectado: {email} — sincronización en dos sentidos disponible.";
+            case "settings.integrations.calendar.not_connected" -> "Sin conectar.";
+            case "settings.integrations.calendar.connected_ok" -> "Google Calendar conectado. Usa \"Sincronizar ahora\" para reflejar los eventos en ambos sentidos.";
+            case "settings.integrations.calendar.sync_done" -> "Sincronización completa: {pushed} enviados a Google, {pulled} traídos a la agenda.";
             case "settings.tab.certificate" -> "Certificado";
             case "settings.tab.audit" -> "Auditoria";
             case "settings.cert.section" -> "Certificado digital (.p12 / .pfx)";

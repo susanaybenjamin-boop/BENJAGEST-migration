@@ -89,6 +89,9 @@ public final class GoogleDesktopOAuth {
                 + "&scope=" + enc(scopes == null || scopes.isBlank() ? "openid email profile" : scopes)
                 + "&code_challenge=" + challenge
                 + "&code_challenge_method=S256"
+                // Autorización incremental: el nuevo token conserva los scopes ya
+                // concedidos antes (p.ej. Gmail) al conectar uno nuevo (Calendar).
+                + (offline ? "&include_granted_scopes=true" : "")
                 + (offline ? "&access_type=offline&prompt=consent" : "&prompt=select_account");
         try {
             openBrowser(authUrl);
