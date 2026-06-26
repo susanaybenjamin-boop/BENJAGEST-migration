@@ -1,5 +1,7 @@
 module com.benjagest.ui {
     requires java.net.http;
+    // jdk.httpserver expone com.sun.net.httpserver para el loopback de Google OAuth (REG-3).
+    requires jdk.httpserver;
     // java.desktop expone java.awt.Desktop para abrir el PDF generado
     // con el visor del sistema tras descargarlo (F4b).
     requires java.desktop;

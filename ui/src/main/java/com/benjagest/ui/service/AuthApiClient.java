@@ -93,6 +93,85 @@ public class AuthApiClient {
         storeResponse(response.body());
     }
 
+    // ---- REG-3: Google OAuth ----
+
+    public record GoogleConfig(boolean enabled, String clientId) {}
+
+    /** ¿Está configurado el acceso con Google en esta instalación? + Client ID. */
+    public GoogleConfig googleConfig() {
+        try {
+            HttpResponse<String> r = httpClient.send(
+                    HttpRequest.newBuilder(URI.create(baseUrl + "/auth/google/config"))
+                            .timeout(Duration.ofSeconds(8)).GET().build(),
+                    HttpResponse.BodyHandlers.ofString());
+            if (r.statusCode() < 200 || r.statusCode() >= 300) return new GoogleConfig(false, null);
+            String b = r.body() == null ? "" : r.body();
+            return new GoogleConfig(b.contains("\"enabled\":true"), strField(b, "clientId"));
+        } catch (Exception ex) {
+            return new GoogleConfig(false, null);
+        }
+    }
+
+    /** Login con Google (la cuenta debe existir). Auto-login al volver OK. */
+    public void googleLogin(GoogleDesktopOAuth.Result oauth) throws IOException, InterruptedException {
+        String body = "{" + field("code", oauth.code()) + ","
+                + field("codeVerifier", oauth.codeVerifier()) + ","
+                + field("redirectUri", oauth.redirectUri()) + "}";
+        postGoogle("/auth/google/login", body);
+    }
+
+    /** Alta con Google: datos de empresa + identidad de Google. Auto-login. */
+    public void googleRegister(GoogleDesktopOAuth.Result oauth, String accountType, String legalName,
+            String taxId, String addressLine, String city, String province, String postalCode,
+            String displayName) throws IOException, InterruptedException {
+        String body = "{" + field("code", oauth.code()) + ","
+                + field("codeVerifier", oauth.codeVerifier()) + ","
+                + field("redirectUri", oauth.redirectUri()) + ","
+                + field("accountType", accountType) + "," + field("legalName", legalName) + ","
+                + field("taxIdentifier", taxId) + "," + field("addressLine", addressLine) + ","
+                + field("city", city) + "," + field("province", province == null ? "" : province) + ","
+                + field("postalCode", postalCode == null ? "" : postalCode) + ","
+                + field("displayName", displayName == null ? "" : displayName) + "}";
+        postGoogle("/auth/google/register", body);
+    }
+
+    private void postGoogle(String path, String body) throws IOException, InterruptedException {
+        HttpResponse<String> r = httpClient.send(
+                HttpRequest.newBuilder(URI.create(baseUrl + path))
+                        .timeout(Duration.ofSeconds(25))
+                        .header("Content-Type", "application/json")
+                        .POST(HttpRequest.BodyPublishers.ofString(body)).build(),
+                HttpResponse.BodyHandlers.ofString());
+        if (r.statusCode() < 200 || r.statusCode() >= 300) {
+            throw new IOException(extractError(r.body(), "Acceso con Google fallido (HTTP " + r.statusCode() + ")"));
+        }
+        storeResponse(r.body());
+    }
+
+    /** ADMIN: guardar las credenciales Google de la instalación (requiere sesión). */
+    public void saveGoogleConfig(String clientId, String clientSecret) throws IOException, InterruptedException {
+        String body = "{" + field("clientId", clientId) + "," + field("clientSecret", clientSecret) + "}";
+        HttpRequest.Builder b = HttpRequest.newBuilder(URI.create(baseUrl + "/settings/google-oauth"))
+                .timeout(Duration.ofSeconds(10))
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(body));
+        AuthSession.get().authorize(b);
+        HttpResponse<String> r = httpClient.send(b.build(), HttpResponse.BodyHandlers.ofString());
+        if (r.statusCode() < 200 || r.statusCode() >= 300) {
+            throw new IOException(extractError(r.body(), "No se pudo guardar (HTTP " + r.statusCode() + ")"));
+        }
+    }
+
+    private String field(String name, String value) {
+        return "\"" + name + "\":" + (value == null ? "null" : "\"" + escape(value) + "\"");
+    }
+
+    private String strField(String json, String name) {
+        java.util.regex.Matcher m = java.util.regex.Pattern
+                .compile("\"" + name + "\"\\s*:\\s*\"((?:\\\\.|[^\"])*)\"").matcher(json == null ? "" : json);
+        return m.find() ? m.group(1).replace("\\\"", "\"") : null;
+    }
+
     /** Saca el "message" del JSON de error de Spring; si no, usa el por defecto. */
     private String extractError(String body, String fallback) {
         if (body == null) return fallback;
