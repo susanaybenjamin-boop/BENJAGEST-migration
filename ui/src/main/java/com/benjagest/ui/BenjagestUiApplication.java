@@ -29302,6 +29302,12 @@ public class BenjagestUiApplication extends Application {
         Scene scene = new Scene(background);
         stage.setScene(scene);
         stage.setOnCloseRequest(ev -> ev.consume());  // no se cierra por X
+        // Salvapantallas a PANTALLA COMPLETA (cubre todo, incl. barra de tareas).
+        // Sin pista de salida y ESC desactivado: solo se sale con el PIN o "Salir".
+        stage.setFullScreenExitHint("");
+        stage.setFullScreenExitKeyCombination(javafx.scene.input.KeyCombination.NO_MATCH);
+        stage.setFullScreen(true);
+        javafx.application.Platform.runLater(pin::requestFocus);
         stage.showAndWait();
     }
 
