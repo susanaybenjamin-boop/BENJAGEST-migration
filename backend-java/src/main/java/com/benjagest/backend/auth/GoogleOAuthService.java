@@ -355,10 +355,13 @@ public class GoogleOAuthService {
     public static class SettingsController {
         private final GoogleOAuthService service;
         private final com.benjagest.backend.tenant.TenantContext tenant;
+        private final GoogleCalendarService calendar;
         public SettingsController(GoogleOAuthService service,
-                                  com.benjagest.backend.tenant.TenantContext tenant) {
+                                  com.benjagest.backend.tenant.TenantContext tenant,
+                                  GoogleCalendarService calendar) {
             this.service = service;
             this.tenant = tenant;
+            this.calendar = calendar;
         }
 
         @GetMapping
@@ -390,6 +393,25 @@ public class GoogleOAuthService {
         public ApiConnection disconnectGmail() {
             service.disconnectApi(tenant.getCurrentCompanyId());
             return service.apiConnection(tenant.getCurrentCompanyId());
+        }
+
+        // ---- Conexión Google Calendar de la empresa actual ----
+
+        @GetMapping("/calendar-status")
+        public ApiConnection calendarStatus() {
+            return service.apiConnection(tenant.getCurrentCompanyId());
+        }
+
+        @PostMapping("/connect-calendar")
+        public ApiConnection connectCalendar(@RequestBody GoogleAuthRequest req) {
+            service.connectApi(tenant.getCurrentCompanyId(), req, false, true);
+            return service.apiConnection(tenant.getCurrentCompanyId());
+        }
+
+        /** Sincronización BIDIRECCIONAL Agenda ↔ Google Calendar (a demanda). */
+        @PostMapping("/calendar-sync")
+        public GoogleCalendarService.SyncResult calendarSync() {
+            return calendar.sync(tenant.getCurrentCompanyId());
         }
     }
 }
