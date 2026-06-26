@@ -162,6 +162,41 @@ public class AuthApiClient {
         }
     }
 
+    public record GmailStatus(boolean connected, String email, boolean gmail, boolean calendar) {}
+
+    /** Estado de la conexión Gmail/Calendar de la empresa (admin). */
+    public GmailStatus gmailStatus() throws IOException, InterruptedException {
+        HttpRequest.Builder b = HttpRequest.newBuilder(URI.create(baseUrl + "/settings/google-oauth/gmail-status"))
+                .timeout(Duration.ofSeconds(8)).GET();
+        AuthSession.get().authorize(b);
+        HttpResponse<String> r = httpClient.send(b.build(), HttpResponse.BodyHandlers.ofString());
+        if (r.statusCode() < 200 || r.statusCode() >= 300) return new GmailStatus(false, null, false, false);
+        String body = r.body() == null ? "" : r.body();
+        return new GmailStatus(body.contains("\"connected\":true"), strField(body, "email"),
+                body.contains("\"gmail\":true"), body.contains("\"calendar\":true"));
+    }
+
+    /** Conecta Gmail con el code OAuth (scope gmail.send + offline). Admin. */
+    public void connectGmail(GoogleDesktopOAuth.Result oauth) throws IOException, InterruptedException {
+        String body = "{" + field("code", oauth.code()) + "," + field("codeVerifier", oauth.codeVerifier())
+                + "," + field("redirectUri", oauth.redirectUri()) + "}";
+        HttpRequest.Builder b = HttpRequest.newBuilder(URI.create(baseUrl + "/settings/google-oauth/connect-gmail"))
+                .timeout(Duration.ofSeconds(25)).header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(body));
+        AuthSession.get().authorize(b);
+        HttpResponse<String> r = httpClient.send(b.build(), HttpResponse.BodyHandlers.ofString());
+        if (r.statusCode() < 200 || r.statusCode() >= 300) {
+            throw new IOException(extractError(r.body(), "No se pudo conectar Gmail (HTTP " + r.statusCode() + ")"));
+        }
+    }
+
+    public void disconnectGmail() throws IOException, InterruptedException {
+        HttpRequest.Builder b = HttpRequest.newBuilder(URI.create(baseUrl + "/settings/google-oauth/disconnect-gmail"))
+                .timeout(Duration.ofSeconds(10)).POST(HttpRequest.BodyPublishers.noBody());
+        AuthSession.get().authorize(b);
+        httpClient.send(b.build(), HttpResponse.BodyHandlers.ofString());
+    }
+
     private String field(String name, String value) {
         return "\"" + name + "\":" + (value == null ? "null" : "\"" + escape(value) + "\"");
     }
