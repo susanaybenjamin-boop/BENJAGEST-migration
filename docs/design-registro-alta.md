@@ -14,16 +14,18 @@
 - **Login** = email + password (BCrypt, `PasswordEncoder`).
 
 ### Modelo de datos (ya existe, no hay que migrar para el caso base)
+
 - `user_accounts`: `id, email (UNI), password_hash, display_name, global_role
-  (default USER), google_id, avatar_url, forced_password_change, active,
-  session_pin_hash`.
+(default USER), google_id, avatar_url, forced_password_change, active,
+session_pin_hash`.
 - `company_memberships`: `id, company_id, user_id, role_name, active`. Un usuario
   puede pertenecer a varias empresas con un rol en cada una.
 - `companies`: `legal_name, tax_identifier, company_type (INTERNAL | CLIENT |
-  MANAGED_CLIENT), parent_company_id, …`.
+MANAGED_CLIENT), parent_company_id, …`.
 
 > El esquema **ya soporta** el registro sin migración: alta = crear `user_account`
-> + `company` + `company_membership` (rol OWNER) en una transacción.
+>
+> - `company` + `company_membership` (rol OWNER) en una transacción.
 
 ## 2. ¿Quién se registra? (decisión clave)
 
@@ -86,11 +88,12 @@ Pantalla "Crear cuenta" enlazada desde el login:
 
 1. **¿Auto-registro solo para asesorías** (recomendado) o también empresarios
    sueltos sin asesoría?
-2. **¿Una asesoría = una empresa INTERNAL + OWNER** al registrarse (recomendado)?
-   ¿O permitir registrar empresa sin ser asesoría?
+   También Empresarios sueltos sin asesoria.
+2. **¿Una asesoría = una empresa INTERNAL + OWNER** al registrarse (recomendado)? Si.
+   ¿O permitir registrar empresa sin ser asesoría? Si, tambien con su Owner.
 3. **¿Verificación de email** obligatoria antes de poder operar, o entrada
    directa tras el alta? (Recomendado: directa al principio; verificación como
-   REG-3 cuando haya envío de correo fiable.)
-4. **Google OAuth**: ¿en el primer corte o lo dejamos para REG-4?
-5. **NIF**: ¿obligatorio en el alta, o se puede completar luego en Configuración?
+   REG-3 cuando haya envío de correo fiable.) Verificación de email, por supuesto.
+4. **Google OAuth**: ¿en el primer corte o lo dejamos para REG-4? En el primer corte.
+5. **NIF**: ¿obligatorio en el alta, o se puede completar luego en Configuración? Obligatorios los campos para facturar, y se autorrellenan los datos en config.
    (Recomendado: obligatorio — hace falta para facturar.)

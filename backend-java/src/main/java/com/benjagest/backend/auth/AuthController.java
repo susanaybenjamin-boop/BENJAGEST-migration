@@ -32,16 +32,25 @@ import org.springframework.web.bind.annotation.RestController;
 public class AuthController {
 
     private final AuthService authService;
+    private final RegisterService registerService;
     private final CurrentUserService currentUserService;
 
-    public AuthController(AuthService authService, CurrentUserService currentUserService) {
+    public AuthController(AuthService authService, RegisterService registerService,
+                          CurrentUserService currentUserService) {
         this.authService = authService;
+        this.registerService = registerService;
         this.currentUserService = currentUserService;
     }
 
     @PostMapping("/login")
     public LoginResponse login(@Valid @RequestBody LoginRequest request) {
         return authService.login(request);
+    }
+
+    /** Bloque REGISTRO — alta de cuenta (asesoría o empresa) + auto-login. */
+    @PostMapping("/register")
+    public LoginResponse register(@Valid @RequestBody com.benjagest.backend.auth.dto.RegisterRequest request) {
+        return registerService.register(request);
     }
 
     @PostMapping("/refresh")
