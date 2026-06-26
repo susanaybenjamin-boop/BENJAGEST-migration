@@ -6194,10 +6194,69 @@ public class BenjagestUiApplication extends Application {
         c1.setHgrow(Priority.ALWAYS); c1.setFillWidth(true);
         g.getColumnConstraints().addAll(new javafx.scene.layout.ColumnConstraints(), c1);
 
-        VBox box = new VBox(12, title, hint, steps, g, new HBox(8, save), status);
+        // --- Conectar Gmail para enviar correo (sin contraseña de aplicación) ---
+        Label gmailTitle = new Label(t("settings.integrations.gmail.title"));
+        gmailTitle.getStyleClass().add("settings-section-title");
+        Label gmailHint = new Label(t("settings.integrations.gmail.hint"));
+        gmailHint.getStyleClass().add("settings-hint"); gmailHint.setWrapText(true); gmailHint.setMaxWidth(620);
+        Label gmailStatusLbl = new Label();
+        gmailStatusLbl.getStyleClass().add("settings-hint");
+        Button connectGmailBtn = new Button(t("settings.integrations.gmail.connect"));
+        connectGmailBtn.getStyleClass().add("button-primary");
+        connectGmailBtn.setGraphic(icon("fab-google"));
+        Button disconnectGmailBtn = new Button(t("settings.integrations.gmail.disconnect"));
+        disconnectGmailBtn.getStyleClass().add("button-danger-outline");
+
+        Runnable loadGmail = () -> {
+            Task<com.benjagest.ui.service.AuthApiClient.GmailStatus> tk = new Task<>() {
+                @Override protected com.benjagest.ui.service.AuthApiClient.GmailStatus call() throws Exception {
+                    return authApiClient.gmailStatus();
+                }
+            };
+            tk.setOnSucceeded(e -> {
+                var s = tk.getValue();
+                gmailStatusLbl.setText(s.gmail()
+                        ? t("settings.integrations.gmail.connected").replace("{email}", s.email() == null ? "" : s.email())
+                        : t("settings.integrations.gmail.not_connected"));
+                disconnectGmailBtn.setDisable(!s.gmail());
+            });
+            start(tk, "gmail-status");
+        };
+
+        connectGmailBtn.setOnAction(e -> {
+            connectGmailBtn.setDisable(true);
+            Task<Void> tk = new Task<>() {
+                @Override protected Void call() throws Exception {
+                    com.benjagest.ui.service.AuthApiClient.GoogleConfig cfg = authApiClient.googleConfig();
+                    if (!cfg.enabled() || cfg.clientId() == null) throw new IllegalStateException(t("google.not_configured"));
+                    var oauth = com.benjagest.ui.service.GoogleDesktopOAuth.authorize(cfg.clientId(),
+                            "openid email profile https://www.googleapis.com/auth/gmail.send", true);
+                    authApiClient.connectGmail(oauth);
+                    return null;
+                }
+            };
+            tk.setOnSucceeded(ev -> { connectGmailBtn.setDisable(false); bringToFront(); loadGmail.run();
+                    showInfo(t("settings.integrations.gmail.title"), t("settings.integrations.gmail.connected_ok")); });
+            tk.setOnFailed(ev -> { connectGmailBtn.setDisable(false); bringToFront();
+                    showError(t("settings.integrations.gmail.title"),
+                            tk.getException() == null ? t("google.failed") : tk.getException().getMessage()); });
+            start(tk, "gmail-connect");
+        });
+        disconnectGmailBtn.setOnAction(e -> {
+            Task<Void> tk = new Task<>() {
+                @Override protected Void call() throws Exception { authApiClient.disconnectGmail(); return null; }
+            };
+            tk.setOnSucceeded(ev -> loadGmail.run());
+            start(tk, "gmail-disconnect");
+        });
+
+        VBox box = new VBox(12, title, hint, steps, g, new HBox(8, save), status,
+                new Separator(), gmailTitle, gmailHint,
+                new HBox(8, connectGmailBtn, disconnectGmailBtn), gmailStatusLbl);
         box.setPadding(new Insets(16));
         box.setMaxWidth(680);
         javafx.application.Platform.runLater(loadStatus);
+        javafx.application.Platform.runLater(loadGmail);
         return scroll(box);
     }
 
@@ -13859,6 +13918,13 @@ public class BenjagestUiApplication extends Application {
                 case "settings.integrations.google.need_client_id" -> "Enter the Client ID.";
                 case "settings.integrations.google.status.enabled" -> "✓ Configured and enabled.";
                 case "settings.integrations.google.status.disabled" -> "Not configured yet.";
+                case "settings.integrations.gmail.title" -> "Send email with Gmail (instead of SMTP)";
+                case "settings.integrations.gmail.hint" -> "Connect your Gmail once and BENJAGEST will send invoices, payslips and links through it — no app password needed. Requires the gmail.send scope in your Google project.";
+                case "settings.integrations.gmail.connect" -> "Connect Gmail";
+                case "settings.integrations.gmail.disconnect" -> "Disconnect";
+                case "settings.integrations.gmail.connected" -> "✓ Connected: {email} — email is sent through Gmail.";
+                case "settings.integrations.gmail.not_connected" -> "Not connected (email uses SMTP).";
+                case "settings.integrations.gmail.connected_ok" -> "Gmail connected. Email will now be sent through Gmail.";
                 case "settings.tab.certificate" -> "Certificate";
                 case "settings.tab.audit" -> "Audit";
                 case "settings.cert.section" -> "Digital certificate (.p12 / .pfx)";
@@ -14884,6 +14950,13 @@ public class BenjagestUiApplication extends Application {
             case "settings.integrations.google.need_client_id" -> "Introduce el Client ID.";
             case "settings.integrations.google.status.enabled" -> "✓ Configurado y activo.";
             case "settings.integrations.google.status.disabled" -> "Aún sin configurar.";
+            case "settings.integrations.gmail.title" -> "Enviar correo con Gmail (en vez de SMTP)";
+            case "settings.integrations.gmail.hint" -> "Conecta tu Gmail una vez y BENJAGEST enviará facturas, nóminas y enlaces por ahí — sin contraseña de aplicación. Necesita el scope gmail.send en tu proyecto Google.";
+            case "settings.integrations.gmail.connect" -> "Conectar Gmail";
+            case "settings.integrations.gmail.disconnect" -> "Desconectar";
+            case "settings.integrations.gmail.connected" -> "✓ Conectado: {email} — el correo sale por Gmail.";
+            case "settings.integrations.gmail.not_connected" -> "Sin conectar (el correo usa SMTP).";
+            case "settings.integrations.gmail.connected_ok" -> "Gmail conectado. El correo se enviará por Gmail.";
             case "settings.tab.certificate" -> "Certificado";
             case "settings.tab.audit" -> "Auditoria";
             case "settings.cert.section" -> "Certificado digital (.p12 / .pfx)";
