@@ -6579,28 +6579,9 @@ public class BenjagestUiApplication extends Application {
         pinSection.getStyleClass().add("settings-section");
 
         // --- Sección 3: Salvapantallas ---
-        Label saverTitle = label(t("settings.session.saver.title"), "settings-section-title");
-        Label saverHint = new Label(t("settings.session.saver.hint"));
-        saverHint.setWrapText(true);
-        saverHint.getStyleClass().add("settings-hint");
-        ComboBox<String> saverCombo = new ComboBox<>(FXCollections.observableArrayList(
-                "clock", "logo", "dark", "carousel"));
-        saverCombo.setConverter(new javafx.util.StringConverter<>() {
-            @Override public String toString(String s) {
-                if (s == null) return "";
-                return switch (s) {
-                    case "clock" -> t("settings.session.saver.clock");
-                    case "logo" -> t("settings.session.saver.logo");
-                    case "dark" -> t("settings.session.saver.dark");
-                    case "carousel" -> t("settings.session.saver.carousel");
-                    default -> s;
-                };
-            }
-            @Override public String fromString(String s) { return s; }
-        });
-        saverCombo.setValue("clock");
-        VBox saverSection = new VBox(8, saverTitle, saverHint, saverCombo);
-        saverSection.getStyleClass().add("settings-section");
+        // SALVAPANTALLAS: único estilo = reloj sobre fondo azul (decisión Benjamin
+        // 2026-06-27 — el logo/carrusel provocaba crash nativo D3D en Windows).
+        // Se queda fijo por defecto; sin selector.
 
         // --- Footer guardar ---
         Button saveBtn = new Button(t("settings.session.save"));
@@ -6609,7 +6590,7 @@ public class BenjagestUiApplication extends Application {
         HBox footer = new HBox(saveBtn);
         footer.setAlignment(Pos.CENTER_RIGHT);
 
-        body.getChildren().addAll(lockSection, pinSection, saverSection, footer);
+        body.getChildren().addAll(lockSection, pinSection, footer);
 
         // --- Carga + handlers ---
         Runnable reload = () -> {
@@ -6621,9 +6602,6 @@ public class BenjagestUiApplication extends Application {
             task.setOnSucceeded(ev -> {
                 var s = task.getValue();
                 timeoutSpin.getValueFactory().setValue(s.pinTimeoutMin());
-                saverCombo.setValue(
-                        s.screensaverStyle() == null || s.screensaverStyle().isBlank()
-                                ? "clock" : s.screensaverStyle());
                 if (s.pinConfigured()) {
                     pinStatus.setText(t("settings.session.pin.status.configured"));
                     definePinBtn.setDisable(true);
@@ -6637,7 +6615,7 @@ public class BenjagestUiApplication extends Application {
                 }
                 // Aplicar el timeout al checker LOCK en caliente.
                 refreshLockTimeout(s.pinTimeoutMin());
-                this.screensaverStyle = s.screensaverStyle();
+                this.screensaverStyle = "clock";
             });
             task.setOnFailed(ev -> showError(t("settings.session.fail.title"),
                     task.getException() == null ? "" : task.getException().getMessage()));
@@ -6648,12 +6626,12 @@ public class BenjagestUiApplication extends Application {
             Task<com.benjagest.ui.model.SessionStatusEntry> save = new Task<>() {
                 @Override protected com.benjagest.ui.model.SessionStatusEntry call() throws Exception {
                     return altaApiClient.saveSessionSettings(
-                            timeoutSpin.getValue(), saverCombo.getValue());
+                            timeoutSpin.getValue(), "clock");
                 }
             };
             save.setOnSucceeded(s -> {
                 refreshLockTimeout(save.getValue().pinTimeoutMin());
-                this.screensaverStyle = save.getValue().screensaverStyle();
+                this.screensaverStyle = "clock";
                 Alert ok = new Alert(Alert.AlertType.INFORMATION);
                 ok.setTitle(t("settings.session.save.ok.title"));
                 ok.setHeaderText(t("settings.session.save.ok.body"));
@@ -30005,14 +29983,9 @@ public class BenjagestUiApplication extends Application {
         // ---- Fondo según salvapantallas ----
         StackPane background = new StackPane();
         background.setStyle("-fx-background-color: linear-gradient(to bottom right, #0a0f1a, #0e1830);");
-        String style = screensaverStyle == null ? "clock" : screensaverStyle;
-        switch (style) {
-            case "logo" -> background.getChildren().add(buildScreensaverLogo(area.getWidth(), area.getHeight()));
-            case "carousel" -> background.getChildren().add(buildScreensaverCarousel(stage, area.getWidth(), area.getHeight()));
-            case "clock" -> background.getChildren().add(buildScreensaverClock(stage));
-            case "dark" -> { /* fondo oscuro liso, nada más */ }
-            default -> { /* tipo desconocido → liso */ }
-        }
+        // Único salvapantallas: reloj sobre el fondo azul (el logo/carrusel se
+        // retiró por crash nativo D3D en Windows).
+        background.getChildren().add(buildScreensaverClock(stage));
 
         // Teclado numérico OCULTO (por si falla el teclado físico). Se muestra con
         // el enlace "Teclado" y escribe en el campo del PIN.
@@ -30096,71 +30069,6 @@ public class BenjagestUiApplication extends Application {
         tl.play();
         owner.setOnHidden(ev -> tl.stop());
         return box;
-    }
-
-    /**
-     * Logo GRANDE centrado (≈ mitad de la pantalla de alto), sobre un panel
-     * del tamaño completo de la pantalla para que el salvapantallas llene de
-     * verdad. fitHeight/fitWidth fijos: cuando la imagen carga (async) NO
-     * cambia el layout → sin saltos.
-     */
-    private Node buildScreensaverLogo(double w, double h) {
-        javafx.scene.image.ImageView iv = new javafx.scene.image.ImageView();
-        iv.setPreserveRatio(true);
-        iv.setSmooth(true);
-        iv.setFitHeight(Math.max(220, h * 0.5));
-        iv.setFitWidth(Math.max(220, w * 0.6));
-        iv.setOpacity(0.9);
-        Task<byte[]> load = new Task<>() {
-            @Override protected byte[] call() throws Exception {
-                return altaApiClient.getCompanyLogoBytes();
-            }
-        };
-        load.setOnSucceeded(s -> {
-            byte[] b = load.getValue();
-            if (b != null && b.length > 0) iv.setImage(new javafx.scene.image.Image(
-                    new java.io.ByteArrayInputStream(b)));
-        });
-        start(load, "lock-saver-logo");
-        StackPane p = new StackPane(iv);
-        p.setMinSize(w, h);
-        p.setPrefSize(w, h);
-        StackPane.setAlignment(iv, Pos.CENTER);
-        return p;
-    }
-
-    /**
-     * Carrusel = logo grande con un zoom lento y una deriva horizontal suave
-     * (efecto "flotar"), ambos con Interpolator.EASE_BOTH para que sea fluido
-     * (sin los saltitos del escalado lineal anterior).
-     */
-    private Node buildScreensaverCarousel(javafx.stage.Stage owner, double w, double h) {
-        Node base = buildScreensaverLogo(w, h);
-        // Animar SOLO el logo (ImageView), NO el panel a pantalla completa:
-        // escalar/mover continuamente un nodo del tamaño de la pantalla puede
-        // reventar el pipeline D3D en Windows (crash nativo 0xC0000409). El logo
-        // es pequeño y la animación se ve igual de fluida.
-        Node anim = base;
-        if (base instanceof StackPane sp && !sp.getChildren().isEmpty()) {
-            anim = sp.getChildren().get(0);
-        }
-        javafx.animation.ScaleTransition st = new javafx.animation.ScaleTransition(
-                javafx.util.Duration.seconds(9), anim);
-        st.setFromX(1.0); st.setFromY(1.0);
-        st.setToX(1.10); st.setToY(1.10);
-        st.setInterpolator(javafx.animation.Interpolator.EASE_BOTH);
-        st.setAutoReverse(true);
-        st.setCycleCount(javafx.animation.Animation.INDEFINITE);
-        javafx.animation.TranslateTransition tt = new javafx.animation.TranslateTransition(
-                javafx.util.Duration.seconds(13), anim);
-        tt.setFromX(-w * 0.03); tt.setToX(w * 0.03);
-        tt.setInterpolator(javafx.animation.Interpolator.EASE_BOTH);
-        tt.setAutoReverse(true);
-        tt.setCycleCount(javafx.animation.Animation.INDEFINITE);
-        st.play();
-        tt.play();
-        owner.setOnHidden(ev -> { st.stop(); tt.stop(); });
-        return base;
     }
 
     // ============================================================
