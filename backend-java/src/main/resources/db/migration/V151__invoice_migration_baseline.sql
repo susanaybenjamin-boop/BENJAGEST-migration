@@ -28,6 +28,11 @@ CREATE TABLE invoice_migration_baseline (
     CONSTRAINT pk_invoice_migration_baseline PRIMARY KEY (id),
     CONSTRAINT fk_imb_company FOREIGN KEY (company_id) REFERENCES companies (id),
     CONSTRAINT fk_imb_series  FOREIGN KEY (series_id)  REFERENCES invoice_series (id)
-);
+)
+-- IMPORTANTE: las tablas referenciadas (companies, invoice_series) usan
+-- utf8mb4_unicode_ci, pero el DEFAULT de la BD en MariaDB 11.4 es
+-- utf8mb4_uca1400_ai_ci. Sin fijar el COLLATE, las columnas FK no coinciden
+-- con las referenciadas y MariaDB da errno 150 (FK mal formada).
+DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
 
 CREATE INDEX idx_imb_company ON invoice_migration_baseline (company_id);
