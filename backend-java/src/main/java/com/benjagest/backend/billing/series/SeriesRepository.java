@@ -84,6 +84,26 @@ public class SeriesRepository {
     }
 
     /**
+     * MIG-1 — Fija el próximo número (y el año si la serie numera por año)
+     * al migrar desde otro programa: next_number = último emitido + 1, para
+     * continuar la correlatividad sin huecos.
+     */
+    public int setNextNumber(String id, int nextNumber, Integer currentYear) {
+        return jdbcTemplate.update("""
+                UPDATE invoice_series
+                   SET next_number = ?,
+                       current_year = COALESCE(?, current_year)
+                 WHERE id = ?
+                   AND company_id = ?
+                """,
+                nextNumber,
+                currentYear,
+                id,
+                tenantContext.getCurrentCompanyId()
+        );
+    }
+
+    /**
      * Busca una serie con el codigo dado en la empresa actual que este
      * soft-deleted. Permite "reactivarla" en lugar de fallar con 1062
      * cuando el usuario hace un ciclo borrar+crear con el mismo codigo
