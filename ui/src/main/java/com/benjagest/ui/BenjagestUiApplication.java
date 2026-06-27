@@ -6143,7 +6143,14 @@ public class BenjagestUiApplication extends Application {
      * y el Client Secret de SU proyecto Google (tipo "Aplicación de escritorio").
      * El secreto se guarda cifrado en el backend y nunca se vuelve a mostrar.
      */
-    private Node settingsIntegrationsTab() {
+    /**
+     * Panel de conexión con Google (Gmail + Calendar) reutilizable. Vive
+     * dentro del tab Correo, visible solo cuando el proveedor elegido es
+     * Google. La configuración de "mi propio proyecto Google" (client-id/
+     * secret per-instalación) queda plegada como avanzado: por defecto se
+     * usan las credenciales centrales de BENJAGEST.
+     */
+    private VBox googleIntegrationPanel() {
         Label title = new Label(t("settings.integrations.google.title"));
         title.getStyleClass().add("settings-section-title");
         Label hint = new Label(t("settings.integrations.google.hint"));
@@ -6332,17 +6339,26 @@ public class BenjagestUiApplication extends Application {
             start(tk, "calendar-sync");
         });
 
-        VBox box = new VBox(12, title, hint, steps, g, new HBox(8, save), status,
-                new Separator(), gmailTitle, gmailHint,
+        // Config per-instalación (client-id/secret propio): AVANZADO y plegado.
+        // Por defecto se usan las credenciales centrales de BENJAGEST.
+        VBox advancedContent = new VBox(8, hint, steps, g, new HBox(8, save), status);
+        advancedContent.setPadding(new Insets(8, 0, 0, 0));
+        javafx.scene.control.TitledPane advanced = new javafx.scene.control.TitledPane(
+                t("settings.integrations.google.advanced"), advancedContent);
+        advanced.setExpanded(false);
+        advanced.setMaxWidth(680);
+
+        VBox box = new VBox(12, title,
+                gmailTitle, gmailHint,
                 new HBox(8, connectGmailBtn, disconnectGmailBtn), gmailStatusLbl,
                 new Separator(), calTitle, calHint,
-                new HBox(8, connectCalBtn, syncCalBtn), calStatusLbl);
-        box.setPadding(new Insets(16));
+                new HBox(8, connectCalBtn, syncCalBtn), calStatusLbl,
+                new Separator(), advanced);
         box.setMaxWidth(680);
         javafx.application.Platform.runLater(loadStatus);
         javafx.application.Platform.runLater(loadGmail);
         javafx.application.Platform.runLater(loadCalendar);
-        return scroll(box);
+        return box;
     }
 
     private VBox settingsView(SettingsBundle bundle) {
@@ -6373,8 +6389,8 @@ public class BenjagestUiApplication extends Application {
         modulesTab.setGraphic(icon("fas-cubes"));
         Tab credentialsTab = new Tab(t("settings.tab.credentials"), settingsCredentialsTab());
         credentialsTab.setGraphic(icon("fas-key"));
-        Tab integrationsTab = new Tab(t("settings.tab.integrations"), settingsIntegrationsTab());
-        integrationsTab.setGraphic(icon("fab-google"));
+        // El antiguo tab "Integraciones" (Google) se fusionó en el tab Correo:
+        // el panel Google aparece al elegir el proveedor Google.
         Tab certificateTab = new Tab(t("settings.tab.certificate"), settingsCertificateTab());
         certificateTab.setGraphic(icon("fas-certificate"));
         Tab auditTab = new Tab(t("settings.tab.audit"), settingsAuditTab());
@@ -6387,7 +6403,7 @@ public class BenjagestUiApplication extends Application {
         // "Mi asesoría" solo tiene sentido para empresas CLIENT — una
         // asesoría no necesita otra asesoría que la asesore.
         tabs.getTabs().addAll(companyTab, ownersTab, emailTab, modulesTab,
-                credentialsTab, integrationsTab, certificateTab, sessionTab);
+                credentialsTab, certificateTab, sessionTab);
         if (appMode != AppMode.ADVISORY) {
             Tab advisoryTab = new Tab(t("settings.tab.my_advisory"), settingsMyAdvisoryTab());
             advisoryTab.setGraphic(icon("fas-handshake"));
@@ -7022,10 +7038,28 @@ public class BenjagestUiApplication extends Application {
         HBox actions = new HBox(test, save);
         actions.getStyleClass().add("settings-actions");
 
+        // Panel de conexión con Google (Gmail + Calendar): visible solo cuando
+        // el proveedor elegido es Google. Sustituye al antiguo tab Integraciones.
+        // Con Google conectado el correo sale por Gmail (OAuth) sin contraseña
+        // de aplicación; si el proveedor no es Google, se usa SMTP.
+        VBox googleBox = googleIntegrationPanel();
+        Label googleNote = label(t("settings.email.google.note"), "settings-hint");
+        googleNote.setWrapText(true); googleNote.setMaxWidth(620);
+        VBox googleSection = new VBox(8, new Separator(), googleNote, googleBox);
+        Runnable toggleGoogle = () -> {
+            String p = providerCombo.getValue();
+            boolean isGoogle = p != null && p.startsWith("Gmail");
+            googleSection.setVisible(isGoogle);
+            googleSection.setManaged(isGoogle);
+        };
+        providerCombo.valueProperty().addListener((o, ov, nv) -> toggleGoogle.run());
+        toggleGoogle.run();
+
         VBox center = new VBox(16,
                 grid,
                 flags,
                 helpBox,
+                googleSection,
                 new Separator(),
                 label(t("settings.email.section.test"), "settings-section-title"),
                 label(t("settings.email.section.test.hint"), "settings-hint"),
@@ -14018,6 +14052,8 @@ public class BenjagestUiApplication extends Application {
                 case "settings.integrations.calendar.not_connected" -> "Not connected.";
                 case "settings.integrations.calendar.connected_ok" -> "Google Calendar connected. Use \"Sync now\" to mirror events both ways.";
                 case "settings.integrations.calendar.sync_done" -> "Sync complete: {pushed} sent to Google, {pulled} brought into the agenda.";
+                case "settings.integrations.google.advanced" -> "Use my own Google project (advanced)";
+                case "settings.email.google.note" -> "Recommended: connect with Google and BENJAGEST will send email through Gmail and sync the agenda — no app password needed. By default it uses BENJAGEST's central Google app, so there's nothing to configure.";
                 case "settings.tab.certificate" -> "Certificate";
                 case "settings.tab.audit" -> "Audit";
                 case "settings.cert.section" -> "Digital certificate (.p12 / .pfx)";
@@ -15058,6 +15094,8 @@ public class BenjagestUiApplication extends Application {
             case "settings.integrations.calendar.not_connected" -> "Sin conectar.";
             case "settings.integrations.calendar.connected_ok" -> "Google Calendar conectado. Usa \"Sincronizar ahora\" para reflejar los eventos en ambos sentidos.";
             case "settings.integrations.calendar.sync_done" -> "Sincronización completa: {pushed} enviados a Google, {pulled} traídos a la agenda.";
+            case "settings.integrations.google.advanced" -> "Usar mi propio proyecto Google (avanzado)";
+            case "settings.email.google.note" -> "Recomendado: conéctate con Google y BENJAGEST enviará el correo por Gmail y sincronizará la agenda — sin contraseña de aplicación. Por defecto usa la app Google central de BENJAGEST, así que no hay nada que configurar.";
             case "settings.tab.certificate" -> "Certificado";
             case "settings.tab.audit" -> "Auditoria";
             case "settings.cert.section" -> "Certificado digital (.p12 / .pfx)";
