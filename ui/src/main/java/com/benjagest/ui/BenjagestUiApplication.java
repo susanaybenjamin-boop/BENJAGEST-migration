@@ -10219,7 +10219,6 @@ public class BenjagestUiApplication extends Application {
     private ComboBox<String> verifactuModalityCombo;
     private ComboBox<String> verifactuModeCombo;
     private ComboBox<CertificateOption> verifactuCertCombo;
-    private TextField verifactuFooterField;
     private TextField verifactuStorageRootField;
     private ComboBox<SeriesEntry> migrationSeriesCombo;
     private TextField migrationNextNumberField;
@@ -10301,8 +10300,9 @@ public class BenjagestUiApplication extends Application {
         verifactuCertCombo.getStyleClass().add("form-input");
         verifactuCertCombo.setDisable(certificates.isEmpty());
 
-        verifactuFooterField = textInput(config.invoiceFooterTemplate(), t("billing.config.verifactu.footer.prompt"));
-        verifactuFooterField.setPrefColumnCount(60);
+        // El "pie de factura" se gestiona UNA sola vez en la sección "Textos
+        // legales" (campo Pie general → companies.invoice_footer_template, que es
+        // lo que pinta el PDF). El campo duplicado que había aquí se quitó.
 
         // Slice F-STORAGE: ruta local donde se almacenan los PDFs al
         // validar. Vacio = usar el default del backend
@@ -10329,8 +10329,7 @@ public class BenjagestUiApplication extends Application {
         addFormRow(grid, 0, t("billing.config.field.modality"), verifactuModalityCombo);
         addFormRow(grid, 1, t("billing.config.field.mode"), verifactuModeCombo);
         addFormRow(grid, 2, t("billing.config.field.cert"), verifactuCertCombo);
-        addFormRow(grid, 3, t("billing.config.field.footer"), verifactuFooterField);
-        addFormRow(grid, 4, t("billing.config.field.storage_root"), storageRow);
+        addFormRow(grid, 3, t("billing.config.field.storage_root"), storageRow);
 
         Label certHint = new Label(certificates.isEmpty()
                 ? t("billing.config.cert.hint.empty")
@@ -10522,14 +10521,23 @@ public class BenjagestUiApplication extends Application {
         addFormRow(textsGrid, 4, t("billing.config.texts.field.rectifying"), textRectifyingArea);
         addFormRow(textsGrid, 5, t("billing.config.texts.field.legal_terms"), textLegalTermsArea);
 
+        Button loadStdTexts = new Button(t("billing.config.texts.load_standard"));
+        loadStdTexts.setGraphic(icon("fas-shield-alt"));
+        loadStdTexts.setOnAction(event -> loadStandardLegalTexts());
+
         Button saveTexts = new Button(t("billing.config.texts.save"));
         saveTexts.setGraphic(icon("fas-save"));
         saveTexts.setOnAction(event -> saveInvoiceTexts());
 
+        Label loadStdHint = new Label(t("billing.config.texts.load_standard.hint"));
+        loadStdHint.getStyleClass().add("settings-hint");
+        loadStdHint.setWrapText(true);
+
         VBox textsBlock = new VBox(8,
                 textsHeader, textsHint,
                 textsGrid, showIbanCheck,
-                new HBox(saveTexts)
+                loadStdHint,
+                new HBox(8, loadStdTexts, saveTexts)
         );
 
         Button save = new Button(t("billing.config.verifactu.save"));
@@ -11405,6 +11413,40 @@ public class BenjagestUiApplication extends Application {
                 existing == null ? t("billing.series.editor.fail.create.title") : t("billing.series.editor.fail.save.title"),
                 t("billing.series.editor.fail.body")));
         start(task, "billing-series-save");
+    }
+
+    /**
+     * Rellena los textos legales VACÍOS con redacciones estándar que citan la
+     * ley aplicable (editables después). No machaca lo que el usuario ya haya
+     * escrito. Contenido en español (la factura española es en español).
+     */
+    private void loadStandardLegalTexts() {
+        fillIfBlank(textExemptArea,
+                "Operación exenta del IVA conforme al artículo 20 de la Ley 37/1992, de 28 de "
+                + "diciembre, del Impuesto sobre el Valor Añadido.");
+        fillIfBlank(textReverseChargeArea,
+                "Operación con inversión del sujeto pasivo (artículo 84.Uno.2º de la Ley 37/1992 "
+                + "del IVA). Esta factura no incluye IVA; su autoliquidación corresponde al destinatario.");
+        fillIfBlank(textReducedVatArea,
+                "Tipo impositivo reducido aplicado conforme al artículo 91 de la Ley 37/1992 del IVA.");
+        fillIfBlank(textRectifyingArea,
+                "Factura rectificativa expedida conforme al artículo 15 del Real Decreto 1619/2012, "
+                + "por el que se aprueba el Reglamento que regula las obligaciones de facturación.");
+        fillIfBlank(textLegalTermsArea,
+                "El impago a su vencimiento devengará intereses de demora conforme a la Ley 3/2004, "
+                + "de 29 de diciembre, de lucha contra la morosidad en las operaciones comerciales.");
+        fillIfBlank(textPieArea,
+                "En cumplimiento del Reglamento (UE) 2016/679 (RGPD) y la Ley Orgánica 3/2018 "
+                + "(LOPDGDD), los datos personales se tratan para la gestión de la relación comercial. "
+                + "Puede ejercer sus derechos dirigiéndose a la dirección de la empresa.");
+        toast(root == null || root.getScene() == null ? null : root.getScene().getWindow(),
+                t("billing.config.texts.load_standard.done"));
+    }
+
+    private void fillIfBlank(javafx.scene.control.TextArea area, String standard) {
+        if (area != null && (area.getText() == null || area.getText().isBlank())) {
+            area.setText(standard);
+        }
     }
 
     private void saveInvoiceTexts() {
@@ -13083,7 +13125,10 @@ public class BenjagestUiApplication extends Application {
         String mode = verifactuModeCombo.getValue();
         CertificateOption cert = verifactuCertCombo.getValue();
         String certId = cert == null ? null : cert.id();
-        String footer = verifactuFooterField.getText();
+        // El pie ahora vive solo en "Textos legales" (textPieArea). Al guardar
+        // VeriFactu reenviamos ese mismo valor para no machacar la columna
+        // (ambos guardan companies.invoice_footer_template).
+        String footer = textPieArea == null ? null : textPieArea.getText();
         String storageRoot = verifactuStorageRootField == null ? null : verifactuStorageRootField.getText();
 
         Task<VerifactuConfig> task = new Task<>() {
@@ -14318,6 +14363,9 @@ public class BenjagestUiApplication extends Application {
                 case "billing.config.texts.field.rectifying" -> "Correctives";
                 case "billing.config.texts.field.legal_terms" -> "Legal terms";
                 case "billing.config.texts.save" -> "Save texts";
+                case "billing.config.texts.load_standard" -> "Load standard legal texts";
+                case "billing.config.texts.load_standard.hint" -> "Fills the empty fields above with standard wording citing the applicable law (editable). It won't overwrite what you've already written.";
+                case "billing.config.texts.load_standard.done" -> "Standard legal texts loaded into the empty fields. Review and Save.";
                 case "billing.texts.save.success" -> "Legal texts saved.";
                 case "billing.texts.save.fail.title" -> "Could not save the texts";
                 case "billing.texts.save.fail.body" -> "Try again in a few seconds.";
@@ -15375,6 +15423,9 @@ public class BenjagestUiApplication extends Application {
             case "billing.config.texts.field.rectifying" -> "Rectificativas";
             case "billing.config.texts.field.legal_terms" -> "Terminos legales";
             case "billing.config.texts.save" -> "Guardar textos";
+            case "billing.config.texts.load_standard" -> "Cargar textos legales estándar";
+            case "billing.config.texts.load_standard.hint" -> "Rellena los campos vacíos de arriba con redacciones estándar que citan la ley aplicable (editables). No machaca lo que ya hayas escrito.";
+            case "billing.config.texts.load_standard.done" -> "Textos legales estándar cargados en los campos vacíos. Revísalos y pulsa Guardar.";
             case "billing.texts.save.success" -> "Textos legales guardados.";
             case "billing.texts.save.fail.title" -> "No se pudieron guardar los textos";
             case "billing.texts.save.fail.body" -> "Vuelve a intentarlo en unos segundos.";
