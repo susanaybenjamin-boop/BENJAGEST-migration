@@ -114,15 +114,19 @@
   de prueba" (endpoint `/migration-baseline/{id}/evidence` + visor interno). *(Match de cliente
   contra la cartera = mejora futura menor.)*
 - ⬜ ❓ **OCR Tesseract** para PDFs escaneados — **necesita decisión** (instalar binario nativo).
-- ⬜ ❓ **CENTROS-MAP** (mapa Leaflet para lat/lng) — **necesita** lib de mapa en WebView.
+- 🟡 **CENTROS-MAP** — geocode "Buscar coordenadas" (Nominatim) **YA hecho** (CENTROS-GEOCODE);
+  **falta solo el mapa visual** (WebView + Leaflet para clicar lat/lng). Construible.
 - ⬜ ❓ **Régimen especial IVA/prorrata/criterio caja** (UI) — modelar **tras un caso real**.
-- ⬜ **Workflow trabajos** (partes de día DRAFT→APPROVED→BILLED, work_log→línea de factura) —
-  **mini-bloque** aparte (no es un cierre rápido).
+- ✅ **Workflow trabajos** — **prácticamente hecho** (verificado 2026-06-27): `WorkLogService` ya
+  tiene DRAFT→APPROVED→BILLED + conversión work_log→línea de factura (`billed_invoice_line_id`).
+  Refinamiento opcional: estado **SUBMITTED** intermedio (empleado envía → admin aprueba).
 - ⬜ **Dashboard widgets personalizables** — **mini-bloque** aparte.
 
-> **Resumen Fase 4:** los dos cierres "de verdad" (REFLEJO) ya estaban hechos. Lo que queda son
-> mini-bloques (MIG-3, Workflow, Dashboard) o ítems que **necesitan una decisión tuya** (OCR
-> binario, mapa, régimen especial) — no son cierres rápidos. Elegir uno cuando se retome.
+> **Resumen Fase 4 (verificado 2026-06-27):** ✅ ya hechos — REFLEJO (banner + idempotencia),
+> **MIG-3**, y **Workflow trabajos** (DRAFT→APPROVED→BILLED + work_log→factura). 🟡 medio hecho —
+> **CENTROS-MAP** (geocode sí, falta el mapa visual). ⬜ pendientes que **necesitan decisión/caso
+> real** — OCR Tesseract (binario nativo), Régimen especial IVA, Dashboard widgets, y el estado
+> SUBMITTED de trabajos (refinamiento). Lo "cerrable rápido" está cerrado.
 
 ### Fase 5 — Empaquetado y despliegue 📦
 - **DEPLOY-PKG**: instalable Windows autocontenido (UI + backend + MariaDB embebida).
