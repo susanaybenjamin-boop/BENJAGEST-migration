@@ -3065,7 +3065,12 @@ public class BenjagestUiApplication extends Application {
 
         VBox heroCopy = new VBox(8, eyebrow, title, body, user);
         heroCopy.getStyleClass().add("hero-copy");
-        HBox hero = new HBox(24, heroCopy);
+        Button customizeBtn = new Button(t("home.customize"));
+        customizeBtn.setGraphic(icon("fas-cog"));
+        customizeBtn.setOnAction(e -> showHomeCustomizeDialog());
+        Region heroSpacer = new Region();
+        HBox.setHgrow(heroSpacer, Priority.ALWAYS);
+        HBox hero = new HBox(24, heroCopy, heroSpacer, customizeBtn);
         hero.getStyleClass().add("hero-panel");
         HBox.setHgrow(heroCopy, Priority.ALWAYS);
 
@@ -3120,24 +3125,90 @@ public class BenjagestUiApplication extends Application {
         content.getChildren().add(validationSlot);
         loadValidationBanner(validationSlot);
 
-        content.getChildren().addAll(
-                label(t("mainIndicators"), "section-title"),
-                metrics);
+        // DASH-CUSTOM — secciones del inicio que el usuario puede ocultar/mostrar
+        // (preferencia local por usuario). Los banners ya se auto-ocultan vacíos.
+        java.util.Set<String> hidden = hiddenHomeSections();
+        if (!hidden.contains("kpis")) {
+            content.getChildren().addAll(
+                    label(t("mainIndicators"), "section-title"),
+                    metrics);
+        }
         // PANORAMA-ASESORIA — bloque KPIs cartera solo en modo asesoría.
-        if (appMode == AppMode.ADVISORY) {
+        if (appMode == AppMode.ADVISORY && !hidden.contains("panorama")) {
             VBox panoramaSlot = new VBox();
             content.getChildren().addAll(
                     sectionHeader(t("panorama.title"), t("panorama.subtitle")),
                     panoramaSlot);
             loadPortfolioFinancials(panoramaSlot);
         }
-        content.getChildren().addAll(
-                sectionHeader(t("quickAccess"), t("quickAccessDetail")),
-                launchers,
-                sectionHeader(t("recentActivity"), t("recentActivityDetail")),
-                activity
-        );
+        if (!hidden.contains("quick")) {
+            content.getChildren().addAll(
+                    sectionHeader(t("quickAccess"), t("quickAccessDetail")),
+                    launchers);
+        }
+        if (!hidden.contains("activity")) {
+            content.getChildren().addAll(
+                    sectionHeader(t("recentActivity"), t("recentActivityDetail")),
+                    activity);
+        }
         return content;
+    }
+
+    /** DASH-CUSTOM — secciones del inicio ocultas para el usuario actual (prefs locales). */
+    private java.util.Set<String> hiddenHomeSections() {
+        java.util.Set<String> s = new java.util.HashSet<>();
+        try {
+            java.util.prefs.Preferences p = java.util.prefs.Preferences.userRoot().node("benjagest/home");
+            String uid = AuthSession.get() == null ? "x" : AuthSession.get().userId();
+            for (String x : p.get("hidden." + uid, "").split(",")) {
+                if (!x.isBlank()) s.add(x.trim());
+            }
+        } catch (Exception ignored) { }
+        return s;
+    }
+
+    private void saveHiddenHomeSections(java.util.Set<String> hidden) {
+        try {
+            java.util.prefs.Preferences p = java.util.prefs.Preferences.userRoot().node("benjagest/home");
+            String uid = AuthSession.get() == null ? "x" : AuthSession.get().userId();
+            p.put("hidden." + uid, String.join(",", hidden));
+        } catch (Exception ignored) { }
+    }
+
+    /** Diálogo "Personalizar inicio": casillas para mostrar/ocultar secciones. */
+    private void showHomeCustomizeDialog() {
+        java.util.Set<String> hidden = hiddenHomeSections();
+        CheckBox kpis = new CheckBox(t("mainIndicators"));
+        kpis.setSelected(!hidden.contains("kpis"));
+        CheckBox quick = new CheckBox(t("quickAccess"));
+        quick.setSelected(!hidden.contains("quick"));
+        CheckBox activity = new CheckBox(t("recentActivity"));
+        activity.setSelected(!hidden.contains("activity"));
+        CheckBox panorama = new CheckBox(t("panorama.title"));
+        panorama.setSelected(!hidden.contains("panorama"));
+        panorama.setManaged(appMode == AppMode.ADVISORY);
+        panorama.setVisible(appMode == AppMode.ADVISORY);
+
+        Dialog<Void> dialog = new Dialog<>();
+        dialog.setTitle(t("home.customize"));
+        dialog.setHeaderText(t("home.customize.hint"));
+        VBox box = new VBox(8, kpis, quick, activity, panorama);
+        box.setPadding(new Insets(10));
+        dialog.getDialogPane().setContent(box);
+        ButtonType saveType = new ButtonType(t("settings.session.save"),
+                javafx.scene.control.ButtonBar.ButtonData.OK_DONE);
+        dialog.getDialogPane().getButtonTypes().addAll(saveType, ButtonType.CANCEL);
+        Button sb = (Button) dialog.getDialogPane().lookupButton(saveType);
+        sb.addEventFilter(javafx.event.ActionEvent.ACTION, ev -> {
+            java.util.Set<String> h = new java.util.HashSet<>();
+            if (!kpis.isSelected()) h.add("kpis");
+            if (!quick.isSelected()) h.add("quick");
+            if (!activity.isSelected()) h.add("activity");
+            if (appMode == AppMode.ADVISORY && !panorama.isSelected()) h.add("panorama");
+            saveHiddenHomeSections(h);
+            showDashboard(); // refrescar el inicio con la nueva configuración
+        });
+        dialog.showAndWait();
     }
 
     /** PANORAMA-ASESORIA — Carga KPIs cartera y los pinta como tiles. */
@@ -14089,6 +14160,8 @@ public class BenjagestUiApplication extends Application {
                 case "alerts" -> "Alerts";
                 case "agenda" -> "Calendar";
                 case "mainIndicators" -> "Main indicators";
+                case "home.customize" -> "Customize";
+                case "home.customize.hint" -> "Choose which sections to show on your home screen:";
                 case "quickAccess" -> "Quick access";
                 case "quickAccessDetail" -> "Main modules without going through menus";
                 case "recentActivity" -> "Recent activity";
@@ -15214,6 +15287,8 @@ public class BenjagestUiApplication extends Application {
             case "alerts" -> "Avisos";
             case "agenda" -> "Agenda";
             case "mainIndicators" -> "Indicadores principales";
+            case "home.customize" -> "Personalizar";
+            case "home.customize.hint" -> "Elige qué secciones se muestran en tu inicio:";
             case "quickAccess" -> "Accesos rapidos";
             case "quickAccessDetail" -> "Modulos principales para trabajar sin pasar por menus";
             case "recentActivity" -> "Actividad reciente";
