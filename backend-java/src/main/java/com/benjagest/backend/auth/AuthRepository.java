@@ -21,6 +21,23 @@ public class AuthRepository {
         this.jdbcTemplate = jdbcTemplate;
     }
 
+    /**
+     * PIN-OWNER — (userId, session_pin_hash) de los OWNER de una empresa que
+     * tengan PIN de sesión. Permite que el admin entre por PIN en un equipo
+     * emparejado con SU PIN de sesión (mismo PIN que el del bloqueo).
+     */
+    public List<String[]> ownerSessionPins(String companyId) {
+        return jdbcTemplate.query("""
+                SELECT ua.id, ua.session_pin_hash
+                  FROM company_memberships m
+                  JOIN user_accounts ua ON ua.id = m.user_id
+                 WHERE m.company_id = ? AND m.active = TRUE AND m.role_name = 'OWNER'
+                   AND ua.active = TRUE AND ua.session_pin_hash IS NOT NULL
+                """,
+                (rs, n) -> new String[]{rs.getString(1), rs.getString(2)},
+                companyId);
+    }
+
     /** REG-VERIFY — ¿la cuenta tiene el email verificado? (gate del login). */
     public boolean isEmailVerified(String userId) {
         Boolean v = jdbcTemplate.query(

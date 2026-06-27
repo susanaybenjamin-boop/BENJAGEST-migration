@@ -86,16 +86,33 @@ public class PinAuthService {
         }
 
         List<EmployeeAppRow> candidates = listAppAccessEmployees(device.companyId());
-        EmployeeAppRow match = null;
+        String resolvedUserId = null;
         for (EmployeeAppRow e : candidates) {
             if (e.pinHash() == null) continue;
             if (passwordEncoder.matches(req.pin(), e.pinHash())) {
-                match = e;
+                if (e.userId() == null || e.userId().isBlank()) {
+                    // Inconsistencia: empleado con app_access pero sin user_account.
+                    throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
+                            "El empleado no tiene cuenta de usuario vinculada — contacta con el OWNER.");
+                }
+                resolvedUserId = e.userId();
                 break;
             }
         }
 
-        if (match == null) {
+        // PIN-OWNER: si ningún empleado casa, probamos el PIN de SESIÓN de los
+        // OWNER del equipo → el admin entra por PIN con su propio PIN de sesión
+        // (mismo que el del bloqueo) y con acceso completo de OWNER.
+        if (resolvedUserId == null) {
+            for (String[] owner : authRepository.ownerSessionPins(device.companyId())) {
+                if (owner[1] != null && passwordEncoder.matches(req.pin(), owner[1])) {
+                    resolvedUserId = owner[0];
+                    break;
+                }
+            }
+        }
+
+        if (resolvedUserId == null) {
             registerFailure(device.id());
             auditService.recordGeneric(device.companyId(), null,
                     "PIN_LOGIN_FAIL", "device_token", device.id(), "FAIL", null);
@@ -105,15 +122,7 @@ public class PinAuthService {
         // Login OK — limpia el contador del device.
         failByDevice.remove(device.id());
 
-        if (match.userId() == null || match.userId().isBlank()) {
-            // Inconsistencia: empleado con app_access=TRUE pero sin
-            // user_account asociado. L4-4 garantiza que no debería ocurrir,
-            // pero si pasa avisamos en lugar de petar.
-            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
-                    "El empleado no tiene cuenta de usuario vinculada — contacta con el OWNER.");
-        }
-
-        AuthRepository.UserRecord user = authRepository.findUserById(match.userId())
+        AuthRepository.UserRecord user = authRepository.findUserById(resolvedUserId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED,
                         "Usuario no encontrado"));
         List<AuthRepository.MembershipRecord> memberships =
