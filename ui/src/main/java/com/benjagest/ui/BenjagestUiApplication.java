@@ -30074,16 +30074,24 @@ public class BenjagestUiApplication extends Application {
      */
     private Node buildScreensaverCarousel(javafx.stage.Stage owner, double w, double h) {
         Node base = buildScreensaverLogo(w, h);
+        // Animar SOLO el logo (ImageView), NO el panel a pantalla completa:
+        // escalar/mover continuamente un nodo del tamaño de la pantalla puede
+        // reventar el pipeline D3D en Windows (crash nativo 0xC0000409). El logo
+        // es pequeño y la animación se ve igual de fluida.
+        Node anim = base;
+        if (base instanceof StackPane sp && !sp.getChildren().isEmpty()) {
+            anim = sp.getChildren().get(0);
+        }
         javafx.animation.ScaleTransition st = new javafx.animation.ScaleTransition(
-                javafx.util.Duration.seconds(9), base);
+                javafx.util.Duration.seconds(9), anim);
         st.setFromX(1.0); st.setFromY(1.0);
-        st.setToX(1.14); st.setToY(1.14);
+        st.setToX(1.10); st.setToY(1.10);
         st.setInterpolator(javafx.animation.Interpolator.EASE_BOTH);
         st.setAutoReverse(true);
         st.setCycleCount(javafx.animation.Animation.INDEFINITE);
         javafx.animation.TranslateTransition tt = new javafx.animation.TranslateTransition(
-                javafx.util.Duration.seconds(13), base);
-        tt.setFromX(-w * 0.04); tt.setToX(w * 0.04);
+                javafx.util.Duration.seconds(13), anim);
+        tt.setFromX(-w * 0.03); tt.setToX(w * 0.03);
         tt.setInterpolator(javafx.animation.Interpolator.EASE_BOTH);
         tt.setAutoReverse(true);
         tt.setCycleCount(javafx.animation.Animation.INDEFINITE);
