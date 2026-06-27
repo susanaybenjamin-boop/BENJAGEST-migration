@@ -73,7 +73,7 @@ public class EmailVerificationService {
     /** Reenvía un PIN nuevo a una cuenta que sigue sin verificar. */
     public void resend(String email) {
         Map<String, Object> row = loadByEmail(email);
-        if (((Number) row.get("ev")).intValue() == 1) {
+        if (asBool(row.get("ev"))) {
             return; // ya verificada → nada que reenviar
         }
         start((String) row.get("id"), (String) row.get("email"), (String) row.get("display_name"));
@@ -82,12 +82,12 @@ public class EmailVerificationService {
     /** Verifica el PIN. Devuelve true si la cuenta queda verificada. */
     public boolean verify(String email, String pin) {
         Map<String, Object> row = loadByEmail(email);
-        if (((Number) row.get("ev")).intValue() == 1) {
+        if (asBool(row.get("ev"))) {
             return true; // idempotente: ya estaba verificada
         }
         Object expObj = row.get("exp");
         String hash = (String) row.get("hash");
-        int attempts = ((Number) row.get("attempts")).intValue();
+        int attempts = asInt(row.get("attempts"));
         if (hash == null || expObj == null) {
             throw bad("No hay una verificación pendiente. Pide un código nuevo.");
         }
@@ -126,6 +126,19 @@ public class EmailVerificationService {
         } catch (org.springframework.dao.EmptyResultDataAccessException ex) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "No existe una cuenta con ese email.");
         }
+    }
+
+    /** TINYINT(1) puede llegar como Boolean (driver MariaDB) o como Number. */
+    private static boolean asBool(Object v) {
+        if (v instanceof Boolean b) return b;
+        if (v instanceof Number n) return n.intValue() != 0;
+        return false;
+    }
+
+    private static int asInt(Object v) {
+        if (v instanceof Number n) return n.intValue();
+        if (v instanceof Boolean b) return b ? 1 : 0;
+        return 0;
     }
 
     private static ResponseStatusException bad(String m) {
