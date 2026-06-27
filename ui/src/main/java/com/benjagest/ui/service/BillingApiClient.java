@@ -93,6 +93,43 @@ public class BillingApiClient {
         return out;
     }
 
+    // MIG-3 — baselines de migración guardadas + PDF de prueba.
+    public record BaselineEntry(String id, String seriesCode, String fullNumber, String number,
+                                String date, String customerName, String total, boolean hasEvidence,
+                                String createdAt) {}
+
+    public List<BaselineEntry> listMigrationBaselines() throws IOException, InterruptedException {
+        HttpResponse<String> response = sendAuthorized(HttpRequest.newBuilder(
+                URI.create(baseUrl + "/billing/migration-baseline"))
+                .timeout(Duration.ofSeconds(10)).GET());
+        ensureOk(response);
+        List<BaselineEntry> out = new java.util.ArrayList<>();
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile("\\{[^{}]*\\}")
+                .matcher(response.body() == null ? "" : response.body());
+        while (m.find()) {
+            String o = m.group();
+            out.add(new BaselineEntry(
+                    textField(o, "id"), textField(o, "declaredSeriesCode"),
+                    textField(o, "declaredFullNumber"), numField(o, "declaredNumber"),
+                    textField(o, "declaredDate"), textField(o, "customerName"),
+                    numField(o, "totalAmount"),
+                    o.contains("\"hasEvidence\":true"), textField(o, "createdAt")));
+        }
+        return out;
+    }
+
+    public byte[] getMigrationEvidence(String id) throws IOException, InterruptedException {
+        HttpRequest.Builder b = HttpRequest.newBuilder(URI.create(
+                baseUrl + "/billing/migration-baseline/" + id + "/evidence"))
+                .timeout(Duration.ofSeconds(20)).GET();
+        AuthSession.get().authorize(b);
+        HttpResponse<byte[]> r = httpClient.send(b.build(), HttpResponse.BodyHandlers.ofByteArray());
+        if (r.statusCode() < 200 || r.statusCode() >= 300) {
+            throw new IOException("HTTP " + r.statusCode() + " al descargar el PDF de prueba");
+        }
+        return r.body();
+    }
+
     public SalesInvoiceSummary getInvoiceById(String id) throws IOException, InterruptedException {
         HttpResponse<String> response = sendAuthorized(HttpRequest.newBuilder(URI.create(baseUrl + "/billing/invoices/" + id))
                 .timeout(Duration.ofSeconds(8))
