@@ -167,19 +167,95 @@ public class WorkLogService {
                 id, tenantContext.getCurrentCompanyId());
     }
 
-    /** DRAFT → APPROVED (o vuelve a DRAFT). No toca los facturados. */
+    /** DRAFT ↔ SUBMITTED → APPROVED (admin). APPROVED graba quién y cuándo.
+     *  No toca los facturados (BILLED). */
     @Transactional
     public WorkLog setStatus(String id, String status) {
-        if (!"DRAFT".equals(status) && !"APPROVED".equals(status)) {
+        if (!"DRAFT".equals(status) && !"SUBMITTED".equals(status) && !"APPROVED".equals(status)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Estado inválido: " + status);
         }
         WorkLog cur = findById(id);
         if ("BILLED".equals(cur.status())) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "El trabajo ya está facturado.");
         }
-        jdbcTemplate.update("UPDATE work_logs SET status = ? WHERE id = ? AND company_id = ?",
-                status, id, tenantContext.getCurrentCompanyId());
+        if ("APPROVED".equals(status)) {
+            jdbcTemplate.update("""
+                    UPDATE work_logs
+                       SET status = 'APPROVED', approved_by_user_id = ?, approved_at = CURRENT_TIMESTAMP
+                     WHERE id = ? AND company_id = ?
+                    """, currentUserService.require().userId(), id, tenantContext.getCurrentCompanyId());
+        } else {
+            jdbcTemplate.update("""
+                    UPDATE work_logs
+                       SET status = ?, approved_by_user_id = NULL, approved_at = NULL
+                     WHERE id = ? AND company_id = ?
+                    """, status, id, tenantContext.getCurrentCompanyId());
+        }
         return findById(id);
+    }
+
+    // ---- PORTAL DEL EMPLEADO — el empleado crea/envía sus propios partes ----
+
+    private String myEmployeeId() {
+        AuthenticatedUser user = currentUserService.require();
+        List<String> empIds = jdbcTemplate.queryForList(
+                "SELECT id FROM employees WHERE user_id = ? AND company_id = ? AND active = TRUE",
+                String.class, user.userId(), tenantContext.getCurrentCompanyId());
+        if (empIds.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "Tu usuario no está vinculado a un empleado de esta empresa.");
+        }
+        return empIds.get(0);
+    }
+
+    /** El empleado crea un parte de trabajo (queda DRAFT hasta que lo envía). */
+    @Transactional
+    public WorkLog createMine(LocalDate logDate, Integer minutes, String description, String customerId) {
+        String empId = myEmployeeId();
+        LocalDate d = logDate == null ? LocalDate.now() : logDate;
+        String id = UUID.randomUUID().toString();
+        jdbcTemplate.update("""
+                INSERT INTO work_logs (id, company_id, employee_id, log_date, work_date,
+                                       minutes_worked, customer_id, description, is_billable, status)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, FALSE, 'DRAFT')
+                """,
+                id, tenantContext.getCurrentCompanyId(), empId, d, d,
+                minutes == null ? 0 : minutes, blank(customerId), description);
+        return findById(id);
+    }
+
+    /** El empleado ENVÍA su parte (DRAFT → SUBMITTED) para que el admin lo apruebe. */
+    @Transactional
+    public WorkLog submitMine(String id) {
+        String empId = myEmployeeId();
+        WorkLog cur = findById(id);
+        if (!empId.equals(cur.employeeId())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Ese parte no es tuyo.");
+        }
+        if (!"DRAFT".equals(cur.status())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Solo se pueden enviar borradores.");
+        }
+        jdbcTemplate.update(
+                "UPDATE work_logs SET status = 'SUBMITTED' WHERE id = ? AND company_id = ? AND employee_id = ?",
+                id, tenantContext.getCurrentCompanyId(), empId);
+        return findById(id);
+    }
+
+    /** El empleado borra un parte SUYO mientras no esté aprobado/facturado. */
+    @Transactional
+    public void deleteMine(String id) {
+        String empId = myEmployeeId();
+        WorkLog cur = findById(id);
+        if (!empId.equals(cur.employeeId())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Ese parte no es tuyo.");
+        }
+        if ("APPROVED".equals(cur.status()) || "BILLED".equals(cur.status())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "No puedes borrar un parte ya aprobado o facturado.");
+        }
+        jdbcTemplate.update(
+                "DELETE FROM work_logs WHERE id = ? AND company_id = ? AND employee_id = ?",
+                id, tenantContext.getCurrentCompanyId(), empId);
     }
 
     /**
