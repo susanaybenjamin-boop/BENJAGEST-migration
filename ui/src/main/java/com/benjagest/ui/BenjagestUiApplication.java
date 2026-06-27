@@ -10662,10 +10662,66 @@ public class BenjagestUiApplication extends Application {
             deleteBtn.setDisable(newV == null || newV.isDefault());
         });
 
-        HBox btnRow = new HBox(8, addBtn, editBtn, deleteBtn);
+        Button loadStdBtn = new Button(t("billing.config.vat.action.load_standard"));
+        loadStdBtn.setGraphic(icon("fas-layer-group"));
+        loadStdBtn.setOnAction(ev -> loadStandardVatRates());
+
+        HBox btnRow = new HBox(8, addBtn, editBtn, deleteBtn, loadStdBtn);
         btnRow.setAlignment(javafx.geometry.Pos.CENTER_LEFT);
         reloadVatRates();
         return new VBox(8, header, hint, vatRatesTable, btnRow);
+    }
+
+    /**
+     * Crea los tipos de IVA/IRPF estándar que falten (por código), idempotente.
+     * Conecta con los textos legales: 21/10/4 % + Exento (art. 20) + Inversión
+     * del sujeto pasivo (art. 84.Uno.2º) y retenciones IRPF 15/7/19 %. El
+     * usuario puede añadir/editar/borrar otros. Quedan elegibles en Nueva factura.
+     */
+    private void loadStandardVatRates() {
+        java.util.Set<String> have = new java.util.HashSet<>();
+        boolean hasVatDefault = false;
+        for (var r : vatRatesTable.getItems()) {
+            if (r.code() != null) have.add(r.code().toUpperCase());
+            if ("VAT".equals(r.kind()) && r.isDefault()) hasVatDefault = true;
+        }
+        record Std(String kind, String code, String label, String pct, boolean def) {}
+        final boolean genDefault = !hasVatDefault;
+        java.util.List<Std> std = java.util.List.of(
+                new Std("VAT", "GEN21", "IVA general (21%)", "21", genDefault),
+                new Std("VAT", "RED10", "IVA reducido (10%)", "10", false),
+                new Std("VAT", "SUP4", "IVA superreducido (4%)", "4", false),
+                new Std("VAT", "EXE0", "Exento de IVA (art. 20 Ley 37/1992)", "0", false),
+                new Std("VAT", "ISP0", "Inversión del sujeto pasivo (art. 84.Uno.2º)", "0", false),
+                new Std("WITHHOLDING", "IRPF15", "Retención profesionales (15%)", "15", false),
+                new Std("WITHHOLDING", "IRPF7", "Retención profesionales reducida (7%)", "7", false),
+                new Std("WITHHOLDING", "IRPF19", "Retención arrendamientos (19%)", "19", false));
+        java.util.List<Std> toCreate = new java.util.ArrayList<>();
+        for (Std s : std) if (!have.contains(s.code())) toCreate.add(s);
+        javafx.stage.Window win = root == null || root.getScene() == null ? null : root.getScene().getWindow();
+        if (toCreate.isEmpty()) {
+            toast(win, t("billing.config.vat.load_standard.exists"));
+            return;
+        }
+        Task<Integer> task = new Task<>() {
+            @Override protected Integer call() throws Exception {
+                int n = 0;
+                for (Std s : toCreate) {
+                    billingApiClient.createVatRate(s.kind(), s.code(), s.label(),
+                            new java.math.BigDecimal(s.pct()), s.def());
+                    n++;
+                }
+                return n;
+            }
+        };
+        task.setOnSucceeded(ev -> {
+            reloadVatRates();
+            toast(win, t("billing.config.vat.load_standard.done")
+                    .replace("{n}", String.valueOf(task.getValue())));
+        });
+        task.setOnFailed(ev -> showError(t("billing.config.vat.section"),
+                task.getException() == null ? "" : task.getException().getMessage()));
+        start(task, "vat-load-standard");
     }
 
     private void reloadVatRates() {
@@ -14135,6 +14191,9 @@ public class BenjagestUiApplication extends Application {
                 case "billing.config.vat.kind.withholding" -> "Withholding";
                 case "billing.config.vat.inactive" -> "inactive";
                 case "billing.config.vat.action.add" -> "Add rate";
+                case "billing.config.vat.action.load_standard" -> "Load standard rates";
+                case "billing.config.vat.load_standard.done" -> "{n} standard rate(s) added. You can edit or add more.";
+                case "billing.config.vat.load_standard.exists" -> "The standard rates already exist.";
                 case "billing.config.vat.action.edit" -> "Edit";
                 case "billing.config.vat.action.delete" -> "Delete";
                 case "billing.config.vat.editor.title_new" -> "New tax rate";
@@ -15195,6 +15254,9 @@ public class BenjagestUiApplication extends Application {
             case "billing.config.vat.kind.withholding" -> "Retencion";
             case "billing.config.vat.inactive" -> "inactivo";
             case "billing.config.vat.action.add" -> "Añadir tipo";
+            case "billing.config.vat.action.load_standard" -> "Cargar tipos estándar";
+            case "billing.config.vat.load_standard.done" -> "{n} tipo(s) estándar añadido(s). Puedes editar o añadir más.";
+            case "billing.config.vat.load_standard.exists" -> "Los tipos estándar ya existen.";
             case "billing.config.vat.action.edit" -> "Editar";
             case "billing.config.vat.action.delete" -> "Borrar";
             case "billing.config.vat.editor.title_new" -> "Nuevo tipo impositivo";
