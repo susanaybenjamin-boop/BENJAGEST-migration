@@ -15675,8 +15675,33 @@ public class BenjagestUiApplication extends Application {
         return value;
     }
 
+    /**
+     * Tareas en vuelo, por clave. ANTI DOBLE-EJECUCIÓN: si el usuario pulsa
+     * "Guardar" (u otra acción) dos veces seguidas, se lanzaban dos tareas
+     * concurrentes que chocaban entre sí (p. ej. Lock wait timeout en la
+     * cadena de auditoría). Como TODAS las tareas pasan por {@link #start},
+     * con cada clave única por acción (355 call-sites, prácticamente todas
+     * distintas), basta con ignorar aquí una segunda tarea con la misma clave
+     * mientras la primera siga viva. Cubre todos los botones de una vez.
+     */
+    private final java.util.Set<String> inFlightTasks =
+            java.util.concurrent.ConcurrentHashMap.newKeySet();
+
     private void start(Task<?> task, String name) {
-        Thread thread = new Thread(task, name);
+        if (name != null && !inFlightTasks.add(name)) {
+            // Ya hay una tarea con esta clave en curso → ignoramos el doble clic.
+            return;
+        }
+        if (name != null) {
+            task.stateProperty().addListener((obs, old, st) -> {
+                if (st == javafx.concurrent.Worker.State.SUCCEEDED
+                        || st == javafx.concurrent.Worker.State.FAILED
+                        || st == javafx.concurrent.Worker.State.CANCELLED) {
+                    inFlightTasks.remove(name);
+                }
+            });
+        }
+        Thread thread = new Thread(task, name == null ? "task" : name);
         thread.setDaemon(true);
         thread.start();
     }
