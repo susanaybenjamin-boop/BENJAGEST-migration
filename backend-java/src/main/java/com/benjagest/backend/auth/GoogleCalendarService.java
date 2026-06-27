@@ -99,14 +99,21 @@ public class GoogleCalendarService {
 
     /** Google → Agenda: trae los eventos próximos que no están ya enlazados. */
     private int pull(String companyId, String accessToken) {
-        String timeMin = LocalDate.now().minusDays(7).atStartOfDay()
-                .atZone(java.time.ZoneId.systemDefault()).toOffsetDateTime().toString();
+        // RFC3339 en UTC SIEMPRE con segundos. OffsetDateTime.toString() los
+        // omite a medianoche (2026-06-20T00:00+02:00) y Google devuelve 400;
+        // Instant.toString() siempre incluye segundos y sufijo Z.
+        String timeMin = java.time.Instant.now()
+                .minus(7, java.time.temporal.ChronoUnit.DAYS)
+                .truncatedTo(java.time.temporal.ChronoUnit.SECONDS)
+                .toString();
         String url = CAL_BASE + "?singleEvents=true&orderBy=startTime&maxResults=250"
                 + "&timeMin=" + enc(timeMin);
         HttpResponse<String> r = get(url, accessToken);
         if (r.statusCode() < 200 || r.statusCode() >= 300) {
+            String detail = r.body() == null ? "" : r.body().replaceAll("\\s+", " ").trim();
+            if (detail.length() > 300) detail = detail.substring(0, 300);
             throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
-                    "Google Calendar rechazó la lectura (HTTP " + r.statusCode() + ").");
+                    "Google Calendar rechazó la lectura (HTTP " + r.statusCode() + "). " + detail);
         }
         int pulled = 0;
         try {
