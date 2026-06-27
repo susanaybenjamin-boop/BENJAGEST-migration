@@ -193,23 +193,45 @@ public class AuditService {
     void write(String companyId, String userId, String eventType,
                        String entityType, String entityId, String result, String detailsJson) {
         try {
+            // El IP/User-Agent se capturan AHORA (dentro del request), aunque el
+            // INSERT se difiera al after-commit.
             HttpServletRequest request = currentRequest();
             String ip = request == null ? null : extractClientIp(request);
             String ua = request == null ? null : truncate(request.getHeader("User-Agent"), 500);
 
-            repository.insert(new AuditEvent(
-                    UUID.randomUUID().toString(),
-                    companyId,
-                    userId,
-                    eventType,
-                    entityType,
-                    entityId,
-                    result,
-                    ip,
-                    ua,
-                    detailsJson,
-                    null
-            ));
+            Runnable insert = () -> {
+                try {
+                    repository.insert(new AuditEvent(
+                            UUID.randomUUID().toString(),
+                            companyId, userId, eventType, entityType, entityId,
+                            result, ip, ua, detailsJson, null));
+                } catch (Exception ex) {
+                    System.err.println("[audit] no se pudo escribir evento "
+                            + eventType + ": " + ex.getMessage());
+                }
+            };
+
+            // AUDIT-LOCK-FIX (2026-06-27): si hay una transacción en curso (p. ej.
+            // el UPDATE companies del guardado), DIFERIR el INSERT al after-commit.
+            // Motivo: audit_events tiene FK a companies; el INSERT (REQUIRES_NEW,
+            // transacción aparte) pedía un lock compartido sobre la fila de la
+            // empresa que la transacción principal tenía bloqueada en exclusiva ->
+            // se esperaban mutuamente -> "Lock wait timeout" aun con un solo clic,
+            // y se perdía el evento (hueco en la cadena). Tras el commit, la fila
+            // ya está liberada: el INSERT entra sin contención y SIEMPRE se graba.
+            // Si la transacción hace rollback, no se audita -> correcto: no se
+            // registra como hecho algo que no se llegó a guardar. Fuera de
+            // transacción (login), se escribe en el acto.
+            if (org.springframework.transaction.support.TransactionSynchronizationManager
+                    .isSynchronizationActive()) {
+                org.springframework.transaction.support.TransactionSynchronizationManager
+                        .registerSynchronization(
+                        new org.springframework.transaction.support.TransactionSynchronization() {
+                            @Override public void afterCommit() { insert.run(); }
+                        });
+            } else {
+                insert.run();
+            }
         } catch (Exception ex) {
             // Tragamos: si auditoria falla no tiramos el login del usuario.
             // En produccion conviene wirearlo a un logger central; por
