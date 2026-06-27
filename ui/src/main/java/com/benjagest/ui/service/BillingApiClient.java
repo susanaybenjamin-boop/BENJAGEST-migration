@@ -891,7 +891,7 @@ public class BillingApiClient {
 
     public record MigrationExtracted(String emitterNif, String customerNif, String customerName,
                                      String invoiceNumber, String invoiceDateIso,
-                                     String totalAmount, String confidence) {}
+                                     String totalAmount, String confidence, String seriesCodeGuess) {}
 
     /** Sube el PDF y devuelve los campos detectados por OCR para confirmar. */
     public MigrationExtracted extractMigrationBaseline(byte[] pdf) throws IOException, InterruptedException {
@@ -907,7 +907,7 @@ public class BillingApiClient {
         return new MigrationExtracted(
                 textField(j, "emitterNif"), textField(j, "customerNif"), textField(j, "customerName"),
                 textField(j, "invoiceNumber"), textField(j, "invoiceDateIso"),
-                numField(j, "totalAmount"), textField(j, "confidence"));
+                numField(j, "totalAmount"), textField(j, "confidence"), textField(j, "seriesCodeGuess"));
     }
 
     /** Confirma: fija next_number + guarda el PDF como prueba y la declaración firmada. */
