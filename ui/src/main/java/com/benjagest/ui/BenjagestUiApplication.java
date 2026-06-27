@@ -8485,7 +8485,29 @@ public class BenjagestUiApplication extends Application {
         table.getSelectionModel().selectedItemProperty().addListener((obs, o, n) ->
                 openFolder.setDisable(n == null));
 
-        HBox row = new HBox(10, runNow, refresh, openFolder);
+        Button purgeOrphans = new Button(t("settings.backup.btn.purge_orphans"));
+        purgeOrphans.setGraphic(icon("fas-broom"));
+        purgeOrphans.setOnAction(ev -> {
+            Alert confirm = new Alert(Alert.AlertType.CONFIRMATION);
+            confirm.setTitle(t("settings.backup.purge.title"));
+            confirm.setHeaderText(t("settings.backup.purge.confirm"));
+            confirm.showAndWait().ifPresent(rsp -> {
+                if (rsp != javafx.scene.control.ButtonType.OK) return;
+                purgeOrphans.setDisable(true);
+                Task<Integer> task = new Task<>() {
+                    @Override protected Integer call() throws Exception { return altaApiClient.purgeOrphanFiles(); }
+                };
+                task.setOnSucceeded(s -> { purgeOrphans.setDisable(false);
+                        showInfo(t("settings.backup.purge.title"),
+                                t("settings.backup.purge.done").replace("{n}", String.valueOf(task.getValue()))); });
+                task.setOnFailed(s -> { purgeOrphans.setDisable(false);
+                        showError(t("settings.backup.purge.title"),
+                                task.getException() == null ? "" : task.getException().getMessage()); });
+                start(task, "backup-purge-orphans");
+            });
+        });
+
+        HBox row = new HBox(10, runNow, refresh, openFolder, purgeOrphans);
         row.setAlignment(Pos.CENTER_LEFT);
 
         load.run();
@@ -20158,6 +20180,10 @@ public class BenjagestUiApplication extends Application {
             case "settings.backup.btn.refresh" -> "Refresh";
             case "settings.backup.btn.run_now" -> "Run now";
             case "settings.backup.btn.open_folder" -> "Open folder";
+            case "settings.backup.btn.purge_orphans" -> "Purge orphan files";
+            case "settings.backup.purge.title" -> "Purge orphan files";
+            case "settings.backup.purge.confirm" -> "Delete on-disk file folders of companies that no longer exist in the database? Real companies are never touched. This cannot be undone.";
+            case "settings.backup.purge.done" -> "Done: {n} orphan folder(s) deleted.";
             case "settings.backup.open.fail" -> "Could not open folder";
             case "settings.backup.load.fail" -> "Could not list backups";
             case "settings.backup.run.ok" -> "Backup created";
@@ -21334,6 +21360,10 @@ public class BenjagestUiApplication extends Application {
             case "settings.backup.btn.refresh" -> "Recargar";
             case "settings.backup.btn.run_now" -> "Hacer ahora";
             case "settings.backup.btn.open_folder" -> "Abrir carpeta";
+            case "settings.backup.btn.purge_orphans" -> "Purgar ficheros huérfanos";
+            case "settings.backup.purge.title" -> "Purgar ficheros huérfanos";
+            case "settings.backup.purge.confirm" -> "¿Borrar del disco las carpetas de ficheros de empresas que ya no existen en la base de datos? Las empresas reales no se tocan nunca. No se puede deshacer.";
+            case "settings.backup.purge.done" -> "Hecho: {n} carpeta(s) huérfana(s) borrada(s).";
             case "settings.backup.open.fail" -> "No se pudo abrir la carpeta";
             case "settings.backup.load.fail" -> "No se pudieron listar las copias";
             case "settings.backup.run.ok" -> "Copia creada";
@@ -29494,13 +29524,29 @@ public class BenjagestUiApplication extends Application {
             showLogin();
         });
 
+        // Pantalla donde está la app (multi-monitor): detectada por el CENTRO de la
+        // ventana de la app. El salvapantallas cubre ESA pantalla entera. Se calcula
+        // ANTES del fondo para poder dimensionar el logo respecto a la pantalla.
+        javafx.geometry.Rectangle2D area = javafx.stage.Screen.getPrimary().getBounds();
+        try {
+            javafx.stage.Window owner = (root != null && root.getScene() != null)
+                    ? root.getScene().getWindow() : null;
+            if (owner != null && owner.getWidth() > 0 && owner.getHeight() > 0) {
+                double cx = owner.getX() + owner.getWidth() / 2;
+                double cy = owner.getY() + owner.getHeight() / 2;
+                var screens = javafx.stage.Screen.getScreensForRectangle(cx, cy, 1, 1);
+                if (!screens.isEmpty()) area = screens.get(0).getBounds();
+            }
+        } catch (Exception ignored) {
+        }
+
         // ---- Fondo según salvapantallas ----
         StackPane background = new StackPane();
         background.setStyle("-fx-background-color: linear-gradient(to bottom right, #0a0f1a, #0e1830);");
         String style = screensaverStyle == null ? "clock" : screensaverStyle;
         switch (style) {
-            case "logo" -> background.getChildren().add(buildScreensaverLogo(stage));
-            case "carousel" -> background.getChildren().add(buildScreensaverCarousel(stage));
+            case "logo" -> background.getChildren().add(buildScreensaverLogo(area.getWidth(), area.getHeight()));
+            case "carousel" -> background.getChildren().add(buildScreensaverCarousel(stage, area.getWidth(), area.getHeight()));
             case "clock" -> background.getChildren().add(buildScreensaverClock(stage));
             case "dark" -> { /* fondo oscuro liso, nada más */ }
             default -> { /* tipo desconocido → liso */ }
@@ -29543,25 +29589,13 @@ public class BenjagestUiApplication extends Application {
         background.getChildren().add(pinBox);
         StackPane.setAlignment(pinBox, Pos.CENTER);
 
-        // Pantalla donde está la app (multi-monitor): detectada por el CENTRO de la
-        // ventana de la app. El salvapantallas cubre ESA pantalla entera.
-        javafx.geometry.Rectangle2D area = javafx.stage.Screen.getPrimary().getBounds();
-        try {
-            javafx.stage.Window owner = (root != null && root.getScene() != null)
-                    ? root.getScene().getWindow() : null;
-            if (owner != null && owner.getWidth() > 0 && owner.getHeight() > 0) {
-                double cx = owner.getX() + owner.getWidth() / 2;
-                double cy = owner.getY() + owner.getHeight() / 2;
-                var screens = javafx.stage.Screen.getScreensForRectangle(cx, cy, 1, 1);
-                if (!screens.isEmpty()) area = screens.get(0).getBounds();
-            }
-        } catch (Exception ignored) {
-        }
         // La Scene se crea CON el tamaño de la pantalla y el StackPane raíz la
         // rellena entera (antes, sin tamaño, quedaba del ancho del contenido → la
-        // franja central que se veía).
+        // franja central que se veía). setFill oscuro como red de seguridad.
+        background.setMinSize(area.getWidth(), area.getHeight());
         background.setPrefSize(area.getWidth(), area.getHeight());
         Scene scene = new Scene(background, area.getWidth(), area.getHeight());
+        scene.setFill(javafx.scene.paint.Color.web("#0a0f1a"));
         stage.setScene(scene);
         stage.setOnCloseRequest(ev -> ev.consume());  // no se cierra por X
         stage.setFullScreenExitHint("");
@@ -29602,12 +29636,19 @@ public class BenjagestUiApplication extends Application {
         return box;
     }
 
-    private Node buildScreensaverLogo(javafx.stage.Stage owner) {
+    /**
+     * Logo GRANDE centrado (≈ mitad de la pantalla de alto), sobre un panel
+     * del tamaño completo de la pantalla para que el salvapantallas llene de
+     * verdad. fitHeight/fitWidth fijos: cuando la imagen carga (async) NO
+     * cambia el layout → sin saltos.
+     */
+    private Node buildScreensaverLogo(double w, double h) {
         javafx.scene.image.ImageView iv = new javafx.scene.image.ImageView();
-        iv.setFitWidth(300);
         iv.setPreserveRatio(true);
         iv.setSmooth(true);
-        iv.setOpacity(0.85);
+        iv.setFitHeight(Math.max(220, h * 0.5));
+        iv.setFitWidth(Math.max(220, w * 0.6));
+        iv.setOpacity(0.9);
         Task<byte[]> load = new Task<>() {
             @Override protected byte[] call() throws Exception {
                 return altaApiClient.getCompanyLogoBytes();
@@ -29615,24 +29656,40 @@ public class BenjagestUiApplication extends Application {
         };
         load.setOnSucceeded(s -> {
             byte[] b = load.getValue();
-            if (b != null) iv.setImage(new javafx.scene.image.Image(
+            if (b != null && b.length > 0) iv.setImage(new javafx.scene.image.Image(
                     new java.io.ByteArrayInputStream(b)));
         });
         start(load, "lock-saver-logo");
         StackPane p = new StackPane(iv);
+        p.setMinSize(w, h);
+        p.setPrefSize(w, h);
+        StackPane.setAlignment(iv, Pos.CENTER);
         return p;
     }
 
-    private Node buildScreensaverCarousel(javafx.stage.Stage owner) {
-        Node base = buildScreensaverLogo(owner);
+    /**
+     * Carrusel = logo grande con un zoom lento y una deriva horizontal suave
+     * (efecto "flotar"), ambos con Interpolator.EASE_BOTH para que sea fluido
+     * (sin los saltitos del escalado lineal anterior).
+     */
+    private Node buildScreensaverCarousel(javafx.stage.Stage owner, double w, double h) {
+        Node base = buildScreensaverLogo(w, h);
         javafx.animation.ScaleTransition st = new javafx.animation.ScaleTransition(
-                javafx.util.Duration.seconds(6), base);
-        st.setFromX(0.95); st.setFromY(0.95);
-        st.setToX(1.08); st.setToY(1.08);
+                javafx.util.Duration.seconds(9), base);
+        st.setFromX(1.0); st.setFromY(1.0);
+        st.setToX(1.14); st.setToY(1.14);
+        st.setInterpolator(javafx.animation.Interpolator.EASE_BOTH);
         st.setAutoReverse(true);
         st.setCycleCount(javafx.animation.Animation.INDEFINITE);
+        javafx.animation.TranslateTransition tt = new javafx.animation.TranslateTransition(
+                javafx.util.Duration.seconds(13), base);
+        tt.setFromX(-w * 0.04); tt.setToX(w * 0.04);
+        tt.setInterpolator(javafx.animation.Interpolator.EASE_BOTH);
+        tt.setAutoReverse(true);
+        tt.setCycleCount(javafx.animation.Animation.INDEFINITE);
         st.play();
-        owner.setOnHidden(ev -> st.stop());
+        tt.play();
+        owner.setOnHidden(ev -> { st.stop(); tt.stop(); });
         return base;
     }
 

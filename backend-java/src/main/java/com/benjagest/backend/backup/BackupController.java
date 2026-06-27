@@ -45,4 +45,16 @@ public class BackupController {
                     "No se pudo listar: " + ex.getMessage());
         }
     }
+
+    /** Purga carpetas de ficheros de empresas que ya no existen en la BD. */
+    @PostMapping("/purge-orphans")
+    public Map<String, Object> purgeOrphans() {
+        try {
+            int deleted = service.purgeOrphanedCompanyFiles();
+            return Map.of("ok", true, "deleted", deleted);
+        } catch (IOException ex) {
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
+                    "Purga falló: " + ex.getMessage());
+        }
+    }
 }

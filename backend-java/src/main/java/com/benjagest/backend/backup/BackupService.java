@@ -105,6 +105,63 @@ public class BackupService {
         return zip;
     }
 
+    /**
+     * Borra TODOS los ficheros en disco de una empresa ({root}/{companyId}).
+     * Primitivo reutilizable para cuando se elimine/purgue una empresa: así
+     * sus PDFs/logos no quedan huérfanos (causa de basura en los backups).
+     * Seguridad: solo acepta un UUID y verifica que la ruta resuelta cae
+     * DENTRO de la carpeta de ficheros (no traversal con ..).
+     */
+    public void deleteCompanyFiles(String companyId) throws IOException {
+        if (companyId == null || !companyId.matches("[0-9a-fA-F-]{36}")) return;
+        Path dir = facturasDir.resolve(companyId).normalize();
+        if (!dir.startsWith(facturasDir.normalize())) return;
+        if (Files.isDirectory(dir)) {
+            deleteRecursively(dir);
+            log.info("BACKUP-LOCAL: borrados ficheros de empresa {}", companyId);
+        }
+    }
+
+    /**
+     * Purga las carpetas de empresa en disco cuyo id ya NO existe en la BD
+     * (huérfanas, p. ej. empresas de prueba purgadas). Seguro: nunca toca una
+     * empresa que siga en la tabla {@code companies}. Devuelve cuántas borró.
+     */
+    public int purgeOrphanedCompanyFiles() throws IOException {
+        if (!Files.isDirectory(facturasDir)) return 0;
+        java.util.Set<String> alive = new java.util.HashSet<>();
+        try (var conn = dataSource.getConnection();
+             Statement st = conn.createStatement();
+             ResultSet rs = st.executeQuery("SELECT id FROM companies")) {
+            while (rs.next()) alive.add(rs.getString(1));
+        } catch (java.sql.SQLException ex) {
+            throw new IOException("No se pudieron leer las empresas vivas", ex);
+        }
+        int deleted = 0;
+        try (var stream = Files.list(facturasDir)) {
+            for (Path dir : (Iterable<Path>) stream::iterator) {
+                if (!Files.isDirectory(dir)) continue;
+                String name = dir.getFileName().toString();
+                if (!alive.contains(name)) {
+                    deleteRecursively(dir);
+                    deleted++;
+                    log.info("BACKUP-LOCAL: purgada carpeta huerfana {}", name);
+                }
+            }
+        }
+        return deleted;
+    }
+
+    private void deleteRecursively(Path dir) throws IOException {
+        try (var walk = Files.walk(dir)) {
+            walk.sorted(Comparator.reverseOrder())
+                    .forEach(p -> {
+                        try { Files.deleteIfExists(p); }
+                        catch (IOException ex) { log.warn("BACKUP-LOCAL: no se pudo borrar {}", p); }
+                    });
+        }
+    }
+
     /** Lista los backups existentes ordenados de más reciente a más antiguo. */
     public List<BackupInfo> list() throws IOException {
         if (!Files.isDirectory(backupDir)) return List.of();
