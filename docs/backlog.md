@@ -123,17 +123,20 @@
   `prorrata_percent`; bloque "Régimen de IVA" (General/Prorrata/Criterio de caja) en Config →
   Facturación. *(Efecto fino en el cálculo = afinar con caso real.)*
 - ✅ **Workflow trabajos** — ya hecho (DRAFT→APPROVED→BILLED + work_log→línea de factura).
-- ⬜ **Workflow SUBMITTED** (refinamiento) — **necesita un slice del PORTAL DEL EMPLEADO** (MEMP):
-  que el empleado cree/envíe sus partes de día desde la PWA y el admin los apruebe. El portal hoy
-  ficha pero no gestiona partes de trabajo. Mini-proyecto aparte; un estado hueco no aporta.
+- ✅ **Workflow SUBMITTED** (TRB-SUBMIT) — cerrado 2026-06-27: estado SUBMITTED
+  (DRAFT→SUBMITTED→APPROVED→BILLED). **Portal empleado**: tile "Mis partes" + pantalla para
+  anotar/listar/enviar/borrar (PWA, `/api/work-logs/mine`). **Admin** (Trabajos): filtro "Enviado"
+  + botón Aprobar arreglado (DRAFT|SUBMITTED→APPROVED). Ciclo completo: empleado envía → admin
+  aprueba → facturable.
 - ✅ **Dashboard widgets personalizables (base)** — cerrado 2026-06-27 (DASH-CUSTOM): botón
   "Personalizar" en el inicio → mostrar/ocultar Indicadores/Accesos rápidos/Actividad/Panorama.
   Preferencia local por usuario. *(Reordenar = mejora futura.)*
 
-> **Resumen Fase 4 (cerrada 2026-06-27):** ✅ REFLEJO, MIG-3, Workflow trabajos, **OCR Tesseract**,
-> **Régimen IVA base**, **Dashboard personalizable**; **CENTROS-MAP** cerrado por decisión (solo
-> geocode). Único pendiente real: **Workflow SUBMITTED**, que requiere un slice del portal del
-> empleado (mini-proyecto, no cierre rápido). **Fase 4 cerrada salvo ese refinamiento.**
+> **Resumen Fase 4 (CERRADA AL 100% — 2026-06-27):** ✅ REFLEJO, MIG-3, Workflow trabajos +
+> **SUBMITTED** (portal empleado), **OCR Tesseract**, **Régimen IVA base**, **Dashboard
+> personalizable**; **CENTROS-MAP** cerrado por decisión (solo geocode). **Fase 4 completa.**
+> *(Histórico: hasta esta sesión el SUBMITTED se consideraba pendiente porque requería un slice
+> del portal del empleado; se construyó hoy.)*
 
 ### Fase 5 — Empaquetado y despliegue 📦
 - **DEPLOY-PKG**: instalable Windows autocontenido (UI + backend + MariaDB embebida).
