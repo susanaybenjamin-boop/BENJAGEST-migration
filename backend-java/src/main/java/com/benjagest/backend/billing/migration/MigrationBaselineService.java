@@ -82,6 +82,16 @@ public class MigrationBaselineService {
         try {
             LayoutDocument layout = textExtractor.extractLayout(pdf);
             InvoiceFieldsExtractor.ExtractionResult r = fieldsExtractor.extractFromLayout(layout, pdf);
+            // OCR-TESSERACT: si por layout no salió nada (PDF escaneado), reintentamos
+            // con texto plano, que cae a OCR si el PDF no tenía texto seleccionable.
+            if (r.invoiceNumber() == null && r.invoiceDate() == null
+                    && r.emitterNif() == null && r.receiverNif() == null) {
+                String plain = textExtractor.extract(pdf);
+                if (plain != null && !plain.isBlank()) {
+                    InvoiceFieldsExtractor.ExtractionResult r2 = fieldsExtractor.extract(plain);
+                    if (r2 != null) r = r2;
+                }
+            }
             return new Extracted(r.emitterNif(), r.receiverNif(), r.receiverName(),
                     r.invoiceNumber(), r.invoiceDateIso(), r.totalAmount(),
                     r.confidence() == null ? null : r.confidence().name(),
