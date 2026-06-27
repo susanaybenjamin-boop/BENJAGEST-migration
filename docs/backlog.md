@@ -79,7 +79,8 @@
 > 1-2 dependen de **material/decisiones externas** (FNMT, alta AEAT, dominio, credenciales
 > reales); las Fases 3-5 se pueden cerrar con el código actual.
 
-### Fase 1 — Legal/fiscal para PRODUCIR (bloqueante antes de vender) ⚖️
+### Fase 1 — Legal/fiscal para PRODUCIR (bloqueante antes de vender) ⚖️  ⏸️ APARCADA
+> **APARCADA 2026-06-27** hasta que Benjamin hable con **Pablo** y le dé un repaso al proyecto.
 - **VeriFactu real con AEAT**: XAdES-EPES estricto (`VF-SIGN-XADES-AEAT`) + parseo real de la
   respuesta SOAP (`VF3-SOAP`). Requiere **certificado FNMT real + alta SIF en sede AEAT**.
 - **Obligaciones de fabricante VeriFactu**: registro como SIF + declaración responsable + página
@@ -101,14 +102,25 @@
 - **JOR-4**: excepciones por fecha + comparación planificado-vs-real (refinamiento).
 - **Sincronización offline de fichajes** (kioskos sin red).
 
-### Fase 4 — Cierres menores y pulido 🧹
-- **REFLEJO**: banner "reflejada en {cliente}" en el listado de facturación (listo para cablear)
-  + **verificar el doble reflejo de cobro** (idempotencia de `reflectPayment`).
-- **MIG-3** (opcional): listar baselines guardadas + visor del PDF de prueba + match de cliente.
-- **OCR Tesseract** para PDFs escaneados (decisión: instalar binario nativo).
-- **CENTROS-MAP** (mapa Leaflet para lat/lng) · **Régimen especial IVA/prorrata/criterio caja**
-  (UI) · **Workflow trabajos** (partes de día DRAFT→APPROVED→BILLED, work_log→línea de factura) ·
-  **Dashboard widgets personalizables**.
+### Fase 4 — Cierres menores y pulido 🧹  (revisión 2026-06-27)
+- ✅ **REFLEJO banner "reflejada en {cliente}"** — **YA estaba hecho** (verificado 2026-06-27):
+  columna `colReflejo` en el listado de facturación (`billingInvoicesTab`) con carga async de
+  `/billing/invoices/reflections` → muestra "↪ {cliente}". El backlog estaba desactualizado.
+- ✅ **Doble reflejo de cobro** — **idempotencia confirmada**: `reflectPayment` (paso 2) ignora
+  si ya existe asiento `REFLECTED_PAYMENT` con el mismo `source_id`. El doble del log antiguo era
+  un cobro registrado dos veces en pruebas (dos eventos = dos reflejos, correcto), no un fallo.
+- ⬜ **MIG-3** (mini-bloque, opcional): listar las baselines guardadas (`GET
+  /api/billing/migration-baseline` ya existe) + visor del PDF de prueba + match de cliente.
+- ⬜ ❓ **OCR Tesseract** para PDFs escaneados — **necesita decisión** (instalar binario nativo).
+- ⬜ ❓ **CENTROS-MAP** (mapa Leaflet para lat/lng) — **necesita** lib de mapa en WebView.
+- ⬜ ❓ **Régimen especial IVA/prorrata/criterio caja** (UI) — modelar **tras un caso real**.
+- ⬜ **Workflow trabajos** (partes de día DRAFT→APPROVED→BILLED, work_log→línea de factura) —
+  **mini-bloque** aparte (no es un cierre rápido).
+- ⬜ **Dashboard widgets personalizables** — **mini-bloque** aparte.
+
+> **Resumen Fase 4:** los dos cierres "de verdad" (REFLEJO) ya estaban hechos. Lo que queda son
+> mini-bloques (MIG-3, Workflow, Dashboard) o ítems que **necesitan una decisión tuya** (OCR
+> binario, mapa, régimen especial) — no son cierres rápidos. Elegir uno cuando se retome.
 
 ### Fase 5 — Empaquetado y despliegue 📦
 - **DEPLOY-PKG**: instalable Windows autocontenido (UI + backend + MariaDB embebida).
