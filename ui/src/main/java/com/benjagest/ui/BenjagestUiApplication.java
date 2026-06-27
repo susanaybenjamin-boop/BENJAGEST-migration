@@ -731,22 +731,67 @@ public class BenjagestUiApplication extends Application {
         }
         // Anti doble-clic: el botón se bloquea hasta que la llamada termina.
         submitBtn.setDisable(true);
-        Task<Void> task = new Task<>() {
-            @Override protected Void call() throws Exception {
-                authApiClient.register(type, legalName.trim(), taxId.trim(), address.trim(),
+        Task<String> task = new Task<>() {
+            @Override protected String call() throws Exception {
+                return authApiClient.register(type, legalName.trim(), taxId.trim(), address.trim(),
                         city.trim(), province == null ? "" : province.trim(),
                         postalCode == null ? "" : postalCode.trim(),
                         displayName.trim(), email.trim(), password);
-                return null;
             }
         };
-        task.setOnSucceeded(ev -> handleLoginSuccess());
+        // REG-VERIFY: el alta NO entra directo; pide el PIN enviado al email.
+        task.setOnSucceeded(ev -> { submitBtn.setDisable(false); showEmailVerification(task.getValue()); });
         task.setOnFailed(ev -> {
             submitBtn.setDisable(false);
             showError(t("register.err.title"),
                     task.getException() == null ? t("register.err.generic") : task.getException().getMessage());
         });
         start(task, "register");
+    }
+
+    /** REG-VERIFY — Diálogo del PIN de verificación enviado al email tras el alta. */
+    private void showEmailVerification(String email) {
+        Dialog<Void> dialog = new Dialog<>();
+        dialog.setTitle(t("verify.title"));
+        dialog.setHeaderText(t("verify.header").replace("{email}", email == null ? "" : email));
+        TextField pinField = new TextField();
+        pinField.setPromptText(t("verify.pin.prompt"));
+        pinField.setMaxWidth(160);
+        javafx.scene.control.Hyperlink resend = new javafx.scene.control.Hyperlink(t("verify.resend"));
+        Label status = new Label();
+        status.getStyleClass().add("settings-hint");
+        status.setWrapText(true);
+        resend.setOnAction(e -> {
+            Task<Void> rt = new Task<>() {
+                @Override protected Void call() throws Exception { authApiClient.resendVerification(email); return null; }
+            };
+            rt.setOnSucceeded(ev -> status.setText(t("verify.resent")));
+            rt.setOnFailed(ev -> status.setText(rt.getException() == null ? "" : rt.getException().getMessage()));
+            start(rt, "verify-resend");
+        });
+        VBox box = new VBox(10, new Label(t("verify.body")), pinField, resend, status);
+        box.setPadding(new Insets(10));
+        dialog.getDialogPane().setContent(box);
+        ButtonType verifyType = new ButtonType(t("verify.btn"), javafx.scene.control.ButtonBar.ButtonData.OK_DONE);
+        dialog.getDialogPane().getButtonTypes().addAll(verifyType, ButtonType.CANCEL);
+        Button vb = (Button) dialog.getDialogPane().lookupButton(verifyType);
+        vb.addEventFilter(javafx.event.ActionEvent.ACTION, ev -> {
+            ev.consume(); // no cerrar hasta validar el PIN
+            String pin = pinField.getText();
+            if (pin == null || pin.isBlank()) { status.setText(t("verify.pin.prompt")); return; }
+            vb.setDisable(true);
+            Task<Void> vt = new Task<>() {
+                @Override protected Void call() throws Exception { authApiClient.verifyEmail(email, pin.trim()); return null; }
+            };
+            vt.setOnSucceeded(e -> { dialog.setResult(null); dialog.close(); handleLoginSuccess(); });
+            vt.setOnFailed(e -> {
+                vb.setDisable(false);
+                status.setText(vt.getException() == null ? t("verify.fail") : vt.getException().getMessage());
+                pinField.clear();
+            });
+            start(vt, "verify-pin");
+        });
+        dialog.showAndWait();
     }
 
     private boolean blankAny(String... vs) {
@@ -825,7 +870,16 @@ public class BenjagestUiApplication extends Application {
             }
         };
         task.setOnSucceeded(event -> handleLoginSuccess());
-        task.setOnFailed(event -> showError(t("loginFailed"), t("loginFailedDetail")));
+        task.setOnFailed(event -> {
+            Throwable ex = task.getException();
+            String msg = ex == null || ex.getMessage() == null ? "" : ex.getMessage();
+            // REG-VERIFY: si el email no está verificado, abrir el diálogo del PIN.
+            if (msg.contains("EMAIL_NOT_VERIFIED")) {
+                showEmailVerification(email.trim());
+            } else {
+                showError(t("loginFailed"), t("loginFailedDetail"));
+            }
+        });
         start(task, "auth-login");
     }
 
@@ -13832,6 +13886,14 @@ public class BenjagestUiApplication extends Application {
                 case "register.back" -> "Back to sign in";
                 case "register.err.title" -> "Could not create the account";
                 case "register.err.generic" -> "The registration failed. Please try again.";
+                case "verify.title" -> "Verify your email";
+                case "verify.header" -> "We sent a 6-digit code to {email}";
+                case "verify.body" -> "Enter the code to activate your account:";
+                case "verify.pin.prompt" -> "6-digit code";
+                case "verify.resend" -> "Resend code";
+                case "verify.resent" -> "New code sent. Check your inbox.";
+                case "verify.btn" -> "Verify";
+                case "verify.fail" -> "Incorrect code.";
                 case "register.err.required" -> "Fill in all required fields (type, legal name, NIF, address, city, name, email and password).";
                 case "register.err.password_mismatch" -> "The passwords do not match.";
                 case "register.err.password_short" -> "The password must be at least 8 characters.";
@@ -14936,6 +14998,14 @@ public class BenjagestUiApplication extends Application {
             case "register.back" -> "Volver a iniciar sesión";
             case "register.err.title" -> "No se pudo crear la cuenta";
             case "register.err.generic" -> "El registro falló. Inténtalo de nuevo.";
+            case "verify.title" -> "Verifica tu email";
+            case "verify.header" -> "Hemos enviado un código de 6 dígitos a {email}";
+            case "verify.body" -> "Introduce el código para activar tu cuenta:";
+            case "verify.pin.prompt" -> "Código de 6 dígitos";
+            case "verify.resend" -> "Reenviar código";
+            case "verify.resent" -> "Código nuevo enviado. Revisa tu correo.";
+            case "verify.btn" -> "Verificar";
+            case "verify.fail" -> "Código incorrecto.";
             case "register.err.required" -> "Rellena los campos obligatorios (tipo, razón social, NIF, domicilio, localidad, nombre, email y contraseña).";
             case "register.err.password_mismatch" -> "Las contraseñas no coinciden.";
             case "register.err.password_short" -> "La contraseña debe tener al menos 8 caracteres.";
