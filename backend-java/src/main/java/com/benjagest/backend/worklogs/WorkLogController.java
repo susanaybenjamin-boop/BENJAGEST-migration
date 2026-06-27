@@ -53,6 +53,28 @@ public class WorkLogController {
         return service.listMine(from, to);
     }
 
+    public record MineCreateRequest(String logDate, Integer minutes, String description, String customerId) {}
+
+    /** El empleado crea un parte propio (queda DRAFT). */
+    @PostMapping("/mine")
+    public WorkLogService.WorkLog createMine(@RequestBody MineCreateRequest req) {
+        LocalDate d = req.logDate() == null || req.logDate().isBlank()
+                ? null : LocalDate.parse(req.logDate().substring(0, 10));
+        return service.createMine(d, req.minutes(), req.description(), req.customerId());
+    }
+
+    /** El empleado ENVÍA su parte (DRAFT → SUBMITTED) para que el admin lo apruebe. */
+    @PostMapping("/mine/{id}/submit")
+    public WorkLogService.WorkLog submitMine(@PathVariable("id") String id) {
+        return service.submitMine(id);
+    }
+
+    /** El empleado borra un parte propio no aprobado/facturado. */
+    @DeleteMapping("/mine/{id}")
+    public void deleteMine(@PathVariable("id") String id) {
+        service.deleteMine(id);
+    }
+
     @PostMapping
     @RequiresRole({"OWNER", "ADMIN", "ACCOUNTANT"})
     public WorkLogService.WorkLog create(@RequestBody WorkLogService.UpsertRequest req) {

@@ -17462,6 +17462,7 @@ public class BenjagestUiApplication extends Application {
             case "trabajos.bill.ok.title" -> "Invoice created";
             case "trabajos.bill.ok.body" -> "A draft invoice was created with the selected jobs. Review it in Billing.";
             case "worklog_status.DRAFT" -> "Draft";
+            case "worklog_status.SUBMITTED" -> "Submitted";
             case "worklog_status.APPROVED" -> "Approved";
             case "worklog_status.BILLED" -> "Invoiced";
             case "trabajos.action.rates" -> "Rates";
@@ -17750,6 +17751,7 @@ public class BenjagestUiApplication extends Application {
             case "trabajos.bill.ok.title" -> "Factura creada";
             case "trabajos.bill.ok.body" -> "Se creó una factura borrador con los trabajos seleccionados. Revísala en Facturación.";
             case "worklog_status.DRAFT" -> "Borrador";
+            case "worklog_status.SUBMITTED" -> "Enviado";
             case "worklog_status.APPROVED" -> "Aprobado";
             case "worklog_status.BILLED" -> "Facturado";
             case "trabajos.action.rates" -> "Tarifas";
@@ -39388,7 +39390,7 @@ public class BenjagestUiApplication extends Application {
         custFilter.getItems().add(t("trabajos.filter.all_customers"));
         custFilter.getSelectionModel().selectFirst();
         ComboBox<String> statusFilter = new ComboBox<>(FXCollections.observableArrayList(
-                "", "DRAFT", "APPROVED", "BILLED"));
+                "", "DRAFT", "SUBMITTED", "APPROVED", "BILLED"));
         statusFilter.setValue("");
         statusFilter.setConverter(new javafx.util.StringConverter<>() {
             @Override public String toString(String s) {
@@ -39506,7 +39508,8 @@ public class BenjagestUiApplication extends Application {
         approveBtn.setOnAction(e -> {
             var sel = table.getSelectionModel().getSelectedItem();
             if (sel == null) return;
-            String next = "DRAFT".equals(sel.status()) ? "APPROVED" : "DRAFT";
+            // APPROVED → DRAFT (desaprobar); DRAFT o SUBMITTED → APPROVED (aprobar).
+            String next = "APPROVED".equals(sel.status()) ? "DRAFT" : "APPROVED";
             runWorkLogTask(() -> altaApiClient.setWorkLogStatus(sel.id(), next), reload);
         });
         Button billBtn = new Button(t("trabajos.action.bill"));

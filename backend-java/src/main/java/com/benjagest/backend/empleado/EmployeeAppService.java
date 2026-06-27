@@ -433,6 +433,7 @@ public class EmployeeAppService {
                     <div class="tile" style="cursor:pointer" onclick="gotoAusencias()"><span class="tbadge hidden" id="badge-ausencias"></span><div class="ic">&#127958;</div><div class="lbl">Vacaciones y bajas</div></div>
                     <div class="tile" style="cursor:pointer" onclick="gotoNominas()"><span class="tbadge hidden" id="badge-nominas"></span><div class="ic">&#128196;</div><div class="lbl">Nominas</div></div>
                     <div class="tile" style="cursor:pointer" onclick="gotoJornada()"><div class="ic">&#128197;</div><div class="lbl">Mi jornada</div></div>
+                    <div class="tile" style="cursor:pointer" onclick="gotoTrabajos()"><div class="ic">&#128221;</div><div class="lbl">Mis partes</div></div>
                   </div>
                   <button class="secondary" id="logoutBtn">Cerrar sesion</button>
                 </div>
@@ -459,6 +460,23 @@ public class EmployeeAppService {
                   <p class="sub" id="jornadaDate">&nbsp;</p>
                   <div id="jornadaBody"></div>
                   <div id="jornadaMsg"></div>
+                  <button class="secondary" onclick="gotoHome()">Volver</button>
+                </div>
+
+                <div id="screen-trabajos" class="hidden">
+                  <h1>Mis partes de trabajo</h1>
+                  <p class="sub">Anota lo que has trabajado y envialo para que el admin lo apruebe.</p>
+                  <div class="card">
+                    <label>Fecha</label>
+                    <input type="date" id="trabFecha" style="width:100%;padding:14px;font-size:16px;border-radius:12px;border:1px solid #334155;background:#0f172a;color:#e2e8f0">
+                    <label style="margin-top:8px;display:block">Minutos</label>
+                    <input type="number" id="trabMin" min="0" placeholder="p. ej. 120" style="width:100%;padding:14px;font-size:16px;border-radius:12px;border:1px solid #334155;background:#0f172a;color:#e2e8f0">
+                    <label style="margin-top:8px;display:block">Descripcion</label>
+                    <input type="text" id="trabDesc" placeholder="Que hiciste" style="width:100%;padding:14px;font-size:16px;border-radius:12px;border:1px solid #334155;background:#0f172a;color:#e2e8f0">
+                    <button onclick="crearParte()" style="margin-top:12px">Anadir parte</button>
+                  </div>
+                  <div id="trabMsg"></div>
+                  <div id="trabLista"></div>
                   <button class="secondary" onclick="gotoHome()">Volver</button>
                 </div>
 
@@ -520,7 +538,7 @@ public class EmployeeAppService {
                 const LS_TOKEN = 'benjagest_emp_token';
 
                 function show(id) {
-                  ['screen-invite','screen-pin','screen-home','screen-fichar','screen-jornada','screen-ausencias','screen-nominas'].forEach(s => {
+                  ['screen-invite','screen-pin','screen-home','screen-fichar','screen-jornada','screen-trabajos','screen-ausencias','screen-nominas'].forEach(s => {
                     document.getElementById(s).classList.toggle('hidden', s !== id);
                   });
                 }
@@ -755,6 +773,76 @@ public class EmployeeAppService {
                     html += '</div>';
                     document.getElementById('jornadaBody').innerHTML = html;
                   } catch (e) { msg('jornadaMsg', e.message); }
+                }
+
+                // ---- TRB-SUBMIT: partes de trabajo (DRAFT -> enviar -> aprueba el admin) ----
+                function gotoTrabajos() {
+                  show('screen-trabajos');
+                  document.getElementById('trabMsg').textContent = '';
+                  var f = document.getElementById('trabFecha');
+                  if (!f.value) f.value = new Date().toISOString().slice(0, 10);
+                  loadTrabajos();
+                }
+                async function loadTrabajos() {
+                  try {
+                    var to = new Date().toISOString().slice(0, 10);
+                    var fd = new Date(); fd.setDate(fd.getDate() - 60);
+                    var from = fd.toISOString().slice(0, 10);
+                    const r = await fetch(API + '/work-logs/mine?from=' + from + '&to=' + to, { headers: authHeaders() });
+                    if (r.status === 401 || r.status === 403) { localStorage.removeItem(LS_TOKEN); gotoPin(); return; }
+                    if (!r.ok) throw new Error('No se pudieron cargar tus partes');
+                    const list = await r.json();
+                    const cont = document.getElementById('trabLista');
+                    cont.innerHTML = '';
+                    if (!list.length) { cont.innerHTML = '<p style="color:#94a3b8">Aun no has anotado partes.</p>'; return; }
+                    list.forEach(function (w) {
+                      var st = w.status;
+                      var col = st === 'APPROVED' ? '#22c55e' : (st === 'SUBMITTED' ? '#facc15' : (st === 'BILLED' ? '#38bdf8' : '#94a3b8'));
+                      var lbl = st === 'DRAFT' ? 'Borrador' : (st === 'SUBMITTED' ? 'Enviado' : (st === 'APPROVED' ? 'Aprobado' : (st === 'BILLED' ? 'Facturado' : st)));
+                      const div = document.createElement('div'); div.className = 'card';
+                      const head = document.createElement('div'); head.style.cssText = 'display:flex;justify-content:space-between';
+                      const dt = document.createElement('b'); dt.textContent = w.logDate || '';
+                      const sp = document.createElement('span'); sp.style.cssText = 'color:' + col + ';font-weight:600'; sp.textContent = lbl;
+                      head.appendChild(dt); head.appendChild(sp); div.appendChild(head);
+                      const desc = document.createElement('div'); desc.style.cssText = 'color:#cbd5e1;font-size:14px;margin-top:4px';
+                      desc.textContent = (w.description || '') + ' · ' + fmtMins(w.minutesWorked); div.appendChild(desc);
+                      if (st === 'DRAFT') {
+                        const row = document.createElement('div'); row.style.marginTop = '8px';
+                        const send = document.createElement('button'); send.textContent = 'Enviar'; send.onclick = () => enviarParte(w.id);
+                        const del = document.createElement('button'); del.className = 'secondary'; del.textContent = 'Borrar';
+                        del.style.marginLeft = '6px'; del.onclick = () => borrarParte(w.id);
+                        row.appendChild(send); row.appendChild(del); div.appendChild(row);
+                      }
+                      cont.appendChild(div);
+                    });
+                  } catch (e) { msg('trabMsg', e.message); }
+                }
+                async function crearParte() {
+                  var fecha = document.getElementById('trabFecha').value;
+                  var min = parseInt(document.getElementById('trabMin').value || '0', 10);
+                  var desc = document.getElementById('trabDesc').value;
+                  if (!desc) { msg('trabMsg', 'Pon una descripcion'); return; }
+                  try {
+                    const r = await fetch(API + '/work-logs/mine', { method: 'POST', headers: authHeaders(),
+                      body: JSON.stringify({ logDate: fecha, minutes: min, description: desc }) });
+                    if (!r.ok) throw new Error('No se pudo anadir el parte');
+                    document.getElementById('trabDesc').value = ''; document.getElementById('trabMin').value = '';
+                    msg('trabMsg', 'Parte anadido', true); loadTrabajos();
+                  } catch (e) { msg('trabMsg', e.message); }
+                }
+                async function enviarParte(id) {
+                  try {
+                    const r = await fetch(API + '/work-logs/mine/' + id + '/submit', { method: 'POST', headers: authHeaders() });
+                    if (!r.ok) throw new Error('No se pudo enviar');
+                    loadTrabajos();
+                  } catch (e) { msg('trabMsg', e.message); }
+                }
+                async function borrarParte(id) {
+                  try {
+                    const r = await fetch(API + '/work-logs/mine/' + id, { method: 'DELETE', headers: authHeaders() });
+                    if (!r.ok) throw new Error('No se pudo borrar');
+                    loadTrabajos();
+                  } catch (e) { msg('trabMsg', e.message); }
                 }
 
                 // ---- MEMP-4: vacaciones y bajas ----
