@@ -5,6 +5,8 @@ module com.benjagest.ui {
     // java.desktop expone java.awt.Desktop para abrir el PDF generado
     // con el visor del sistema tras descargarlo (F4b).
     requires java.desktop;
+    // java.prefs — preferencias locales por usuario (personalizar el inicio).
+    requires java.prefs;
     requires javafx.controls;
     requires javafx.graphics;
     requires org.kordamp.ikonli.fontawesome6;
