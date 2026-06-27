@@ -8,6 +8,13 @@ server:
     include-binding-errors: always
 
 spring:
+  # Credenciales Google CENTRALES (secreto): se cargan desde un fichero
+  # google-secrets.yml IGNORADO por git (no entra al repo; lo bloquea la
+  # proteccion de secretos de GitHub y ademas no debe versionarse). El
+  # instalador lo empaqueta. Si no existe, cada instalacion usa las SUYAS
+  # desde Configuracion -> Integraciones (modelo hibrido).
+  config:
+    import: optional:classpath:google-secrets.yml
   application:
     name: benjagest-backend
   datasource:
@@ -69,11 +76,12 @@ benjagest:
     # Master key para Jasypt. PRODUCCION: poner BENJAGEST_ENCRYPTION_PASSWORD
     # en env. Si cambia esta clave, los datos cifrados pasan a ser ilegibles.
     password: ${BENJAGEST_ENCRYPTION_PASSWORD:devEncryptionKeyBenjagestNotForProduction_2026}
-  google:
-    # Credenciales CENTRALES de la app BENJAGEST (modelo HIBRIDO, decision Benjamin
-    # 2026-06-26): por defecto el usuario NO configura nada (login + Calendar a un
-    # clic). Se rellenan cuando se publique/verifique el proyecto Google de
-    # BENJAGEST. Mientras esten vacias, cada instalacion puede usar las SUYAS desde
-    # Configuracion -> Integraciones (opcion avanzada). NO las teclea el usuario.
-    client-id: ${BENJAGEST_GOOGLE_CLIENT_ID:}
-    client-secret: ${BENJAGEST_GOOGLE_CLIENT_SECRET:}
+  # google.client-id / google.client-secret (modelo HIBRIDO, decision Benjamin
+  # 2026-06-26): NO se definen aqui A PROPOSITO. Las credenciales CENTRALES del
+  # proyecto Google de BENJAGEST (cuenta benjagest2026@gmail.com, cliente OAuth
+  # de escritorio) las aporta el fichero externo google-secrets.yml (cargado
+  # arriba via spring.config.import), que esta IGNORADO por git. En su defecto,
+  # las variables de entorno BENJAGEST_GOOGLE_CLIENT_ID / _SECRET. Si faltan, el
+  # @Value usa "" y cada instalacion configura las SUYAS en Configuracion ->
+  # Integraciones. NUNCA versionar el client-secret aqui (GitHub lo bloquea).
+  # Pendiente: VERIFICACION del proyecto para quitar el aviso "app no verificada".
