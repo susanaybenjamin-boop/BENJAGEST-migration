@@ -19,6 +19,10 @@ dependency-reduced-pom.xml
 *.pem
 *.key
 *.p12
+# Credenciales Google centrales de BENJAGEST (NO versionar; el instalador
+# las empaqueta). La app las carga via spring.config.import optional.
+google-secrets.yml
+**/google-secrets.yml
 
 # OS / logs
 .DS_Store
