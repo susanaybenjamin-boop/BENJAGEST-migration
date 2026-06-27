@@ -64,7 +64,9 @@ public class AuthApiClient {
      * Tras un alta OK el backend devuelve un LoginResponse igual que /login,
      * así que reutilizamos {@link #storeResponse} y el usuario entra directo.
      */
-    public void register(String accountType, String legalName, String taxId,
+    /** Alta email+contraseña. Ya NO inicia sesión: devuelve el email PENDIENTE de
+     *  verificar por PIN (REG-VERIFY). La sesión llega tras {@link #verifyEmail}. */
+    public String register(String accountType, String legalName, String taxId,
                          String addressLine, String city, String province, String postalCode,
                          String displayName, String email, String password)
             throws IOException, InterruptedException {
@@ -90,7 +92,36 @@ public class AuthApiClient {
             throw new IOException(extractError(response.body(),
                     "El registro falló (HTTP " + response.statusCode() + ")"));
         }
-        storeResponse(response.body());
+        // Respuesta {verificationRequired:true, email:...} — sin sesión todavía.
+        String pending = strField(response.body(), "email");
+        return pending == null ? email : pending;
+    }
+
+    /** REG-VERIFY — verifica el PIN; si es correcto, almacena la sesión (entra). */
+    public void verifyEmail(String email, String pin) throws IOException, InterruptedException {
+        String body = "{" + field("email", email) + "," + field("pin", pin) + "}";
+        HttpResponse<String> r = httpClient.send(HttpRequest.newBuilder(
+                URI.create(baseUrl + "/auth/verify-email"))
+                .timeout(Duration.ofSeconds(20)).header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(body)).build(),
+                HttpResponse.BodyHandlers.ofString());
+        if (r.statusCode() < 200 || r.statusCode() >= 300) {
+            throw new IOException(extractError(r.body(), "Código incorrecto"));
+        }
+        storeResponse(r.body());
+    }
+
+    /** REG-VERIFY — reenvía un PIN nuevo. */
+    public void resendVerification(String email) throws IOException, InterruptedException {
+        String body = "{" + field("email", email) + "}";
+        HttpResponse<String> r = httpClient.send(HttpRequest.newBuilder(
+                URI.create(baseUrl + "/auth/resend-verification"))
+                .timeout(Duration.ofSeconds(20)).header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(body)).build(),
+                HttpResponse.BodyHandlers.ofString());
+        if (r.statusCode() < 200 || r.statusCode() >= 300) {
+            throw new IOException(extractError(r.body(), "No se pudo reenviar el código"));
+        }
     }
 
     // ---- REG-3: Google OAuth ----
