@@ -72,7 +72,7 @@ public class MigrationBaselineService {
     /** Campos autorellenados del PDF para que el usuario los confirme. */
     public record Extracted(String emitterNif, String customerNif, String customerName,
                             String invoiceNumber, String invoiceDateIso,
-                            BigDecimal totalAmount, String confidence) {}
+                            BigDecimal totalAmount, String confidence, String seriesCodeGuess) {}
 
     /** Extrae (OCR) sin persistir nada. */
     public Extracted extract(byte[] pdf) {
@@ -84,11 +84,26 @@ public class MigrationBaselineService {
             InvoiceFieldsExtractor.ExtractionResult r = fieldsExtractor.extractFromLayout(layout, pdf);
             return new Extracted(r.emitterNif(), r.receiverNif(), r.receiverName(),
                     r.invoiceNumber(), r.invoiceDateIso(), r.totalAmount(),
-                    r.confidence() == null ? null : r.confidence().name());
+                    r.confidence() == null ? null : r.confidence().name(),
+                    guessSeriesCode(r.invoiceNumber()));
         } catch (IOException ex) {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
                     "No se pudo leer el PDF: " + ex.getMessage());
         }
+    }
+
+    /**
+     * Sugerencia SIMPLE de código de serie = letras iniciales del número
+     * (p. ej. "FRA-2026-0007" → "FRA"). NO intenta adivinar todos los
+     * formatos posibles a propósito: la serie la confirma/edita el usuario,
+     * que es quien conoce su numeración. Si el número no empieza por letras,
+     * devuelve null y el usuario la escribe.
+     */
+    private static String guessSeriesCode(String invoiceNumber) {
+        if (invoiceNumber == null) return null;
+        java.util.regex.Matcher m = java.util.regex.Pattern
+                .compile("^\\s*([A-Za-z]{1,10})").matcher(invoiceNumber);
+        return m.find() ? m.group(1).toUpperCase() : null;
     }
 
     public record ConfirmRequest(String seriesId, String declaredSeriesCode, String declaredFullNumber,

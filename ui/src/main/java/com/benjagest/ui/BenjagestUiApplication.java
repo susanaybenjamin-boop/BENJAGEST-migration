@@ -10425,6 +10425,14 @@ public class BenjagestUiApplication extends Application {
                 setText(empty || item == null ? "" : item.code() + t("billing.config.migration.combo.suffix_prefix") + item.nextNumber());
             }
         });
+        // MIG-2b — Serie EDITABLE: el usuario elige una existente o escribe el
+        // código (p. ej. "FRA"). Si no existe, se crea al aplicar. No adivinamos
+        // el formato de numeración: la serie la confirma quien la conoce.
+        migrationSeriesCombo.setEditable(true);
+        migrationSeriesCombo.setConverter(new javafx.util.StringConverter<>() {
+            @Override public String toString(SeriesEntry s) { return s == null ? "" : s.code(); }
+            @Override public SeriesEntry fromString(String code) { return resolveMigrationSeries(code); }
+        });
 
         migrationNextNumberField = new TextField();
         migrationNextNumberField.setPromptText(t("billing.config.migration.next.prompt"));
@@ -10968,8 +10976,16 @@ public class BenjagestUiApplication extends Application {
     }
 
     private void applyMigration() {
+        // Resolver la serie del combo EDITABLE: el valor elegido de la lista o
+        // el código tecleado (que puede no existir aún → se creará).
         SeriesEntry serie = migrationSeriesCombo.getValue();
-        if (serie == null) {
+        String typed = migrationSeriesCombo.getEditor() == null ? null
+                : migrationSeriesCombo.getEditor().getText();
+        if (typed != null && !typed.isBlank()
+                && (serie == null || !typed.trim().equalsIgnoreCase(serie.code()))) {
+            serie = resolveMigrationSeries(typed);
+        }
+        if (serie == null || serie.code() == null || serie.code().isBlank()) {
             showError(t("billing.config.migration.error.no_series.title"),
                     t("billing.config.migration.error.no_series.body"));
             return;
@@ -10992,10 +11008,15 @@ public class BenjagestUiApplication extends Application {
                     t("billing.config.migration.error.bad_number.body_low"));
             return;
         }
-        int nextNumber = next;
+        final SeriesEntry serieF = serie;
+        final int nextNumber = next;
+        final byte[] pdf = migrationImportedPdf;
+        final com.benjagest.ui.service.BillingApiClient.MigrationExtracted ext = migrationExtracted;
+        final String declarationText = t("billing.config.migration.ack");
+
         Runnable onOk = () -> {
             Alert ok = new Alert(Alert.AlertType.INFORMATION,
-                    t("billing.config.migration.success_prefix") + serie.code()
+                    t("billing.config.migration.success_prefix") + serieF.code()
                             + t("billing.config.migration.success.middle") + nextNumber + ".",
                     ButtonType.OK);
             ok.setHeaderText(null);
@@ -11006,17 +11027,23 @@ public class BenjagestUiApplication extends Application {
             billingRefresh.run();
         };
 
-        // MIG-2 — si se importó el PDF de la última factura, usamos el endpoint
-        // que ADEMÁS guarda el PDF como prueba + la declaración firmada. Si no,
-        // se mantiene la migración manual (solo fija el próximo número).
-        if (migrationImportedPdf != null) {
-            byte[] pdf = migrationImportedPdf;
-            com.benjagest.ui.service.BillingApiClient.MigrationExtracted ext = migrationExtracted;
-            String declarationText = t("billing.config.migration.ack");
-            Task<Void> task = new Task<>() {
-                @Override protected Void call() throws Exception {
+        Task<Void> task = new Task<>() {
+            @Override protected Void call() throws Exception {
+                // Si la serie NO existe (id null), se crea ahora con el próximo
+                // número ya fijado. Si existe, se ajusta su número.
+                String seriesId = serieF.id();
+                boolean created = false;
+                if (seriesId == null) {
+                    SeriesEntry s = billingApiClient.createSeries(
+                            serieF.code(), "STANDARD", "BY_YEAR", null, nextNumber, false);
+                    seriesId = s.id();
+                    created = true;
+                }
+                if (pdf != null) {
+                    // Guarda PDF de prueba + declaración firmada (fijar el número
+                    // de nuevo es inocuo: mismo valor).
                     billingApiClient.confirmMigrationBaseline(
-                            serie.id(), serie.code(),
+                            seriesId, serieF.code(),
                             ext == null ? null : ext.invoiceNumber(),
                             nextNumber - 1,
                             ext == null ? null : ext.invoiceDateIso(),
@@ -11026,27 +11053,18 @@ public class BenjagestUiApplication extends Application {
                             ext == null ? null : ext.totalAmount(),
                             ext == null ? null : ext.confidence(),
                             true, declarationText, pdf);
-                    return null;
+                } else if (!created) {
+                    // Serie existente, sin PDF: solo ajustar el próximo número.
+                    billingApiClient.migrateSeries(seriesId, nextNumber, true);
                 }
-            };
-            task.setOnSucceeded(event -> onOk.run());
-            task.setOnFailed(event -> showError(t("billing.config.migration.fail.title"),
-                    task.getException() == null ? t("billing.config.migration.fail.body")
-                            : task.getException().getMessage()));
-            start(task, "migration-confirm");
-            return;
-        }
-
-        Task<SeriesEntry> task = new Task<>() {
-            @Override
-            protected SeriesEntry call() throws Exception {
-                return billingApiClient.migrateSeries(serie.id(), nextNumber, true);
+                return null;
             }
         };
         task.setOnSucceeded(event -> onOk.run());
         task.setOnFailed(event -> showError(t("billing.config.migration.fail.title"),
-                t("billing.config.migration.fail.body")));
-        start(task, "billing-series-migrate");
+                task.getException() == null ? t("billing.config.migration.fail.body")
+                        : task.getException().getMessage()));
+        start(task, "migration-apply");
     }
 
     /** MIG-2 — Importa el PDF de la última factura y autorellena por OCR. */
@@ -11075,8 +11093,19 @@ public class BenjagestUiApplication extends Application {
             migrationExtracted = ext;
             Integer last = lastDigits(ext.invoiceNumber());
             if (last != null) migrationNextNumberField.setText(String.valueOf(last + 1));
+            // Serie SUGERIDA (letras iniciales): se preselecciona si existe; si no,
+            // se escribe en el campo editable para que el usuario la confirme/cree.
+            if (ext.seriesCodeGuess() != null && !ext.seriesCodeGuess().isBlank()) {
+                SeriesEntry m = resolveMigrationSeries(ext.seriesCodeGuess());
+                if (m != null && m.id() != null) {
+                    migrationSeriesCombo.setValue(m);
+                } else if (migrationSeriesCombo.getEditor() != null) {
+                    migrationSeriesCombo.getEditor().setText(ext.seriesCodeGuess());
+                }
+            }
             String sb = t("billing.config.migration.detected.header")
                     + "\n• " + t("billing.config.migration.detected.number") + ": " + nzDash(ext.invoiceNumber())
+                    + "\n• " + t("billing.config.migration.detected.series") + ": " + nzDash(ext.seriesCodeGuess())
                     + "\n• " + t("billing.config.migration.detected.date") + ": " + nzDash(ext.invoiceDateIso())
                     + "\n• " + t("billing.config.migration.detected.customer") + ": "
                             + nzDash(ext.customerName()) + "  " + nzDash(ext.customerNif())
@@ -11103,6 +11132,22 @@ public class BenjagestUiApplication extends Application {
     }
 
     private static String nzDash(String s) { return s == null || s.isBlank() ? "—" : s; }
+
+    /**
+     * Resuelve el código de serie tecleado/elegido en la migración: si coincide
+     * (sin distinguir mayúsculas) con una serie existente, la devuelve; si no,
+     * devuelve una serie sintética con id=null (señal de "crear al aplicar").
+     */
+    private SeriesEntry resolveMigrationSeries(String code) {
+        if (code == null || code.isBlank()) return null;
+        String c = code.trim();
+        if (migrationSeriesCombo != null) {
+            for (SeriesEntry s : migrationSeriesCombo.getItems()) {
+                if (s != null && c.equalsIgnoreCase(s.code())) return s;
+            }
+        }
+        return new SeriesEntry(null, c, "STANDARD", "BY_YEAR", null, 0, null, false, true);
+    }
 
     // ----- Editor de series (crear/editar) -----
 
@@ -14096,13 +14141,14 @@ public class BenjagestUiApplication extends Application {
                 case "billing.config.series.btn.define" -> "Define my invoice series";
                 case "billing.config.series.btn.edit" -> "Edit my series";
                 case "billing.config.migration.section" -> "Migrate from another program";
-                case "billing.config.migration.hint" -> "If your company already issued invoices with other software, indicate here the number to continue from. Once the first invoice is validated in BENJAGEST, the series code and format remain locked until year-end.";
+                case "billing.config.migration.hint" -> "If your company already issued invoices with other software, import the last invoice PDF (auto-fill) or enter the data manually. Pick an existing series or type a new code (e.g. FRA) — it will be created if it doesn't exist. Once the first invoice is validated in BENJAGEST, the series code and format remain locked until year-end.";
                 case "billing.config.migration.next.prompt" -> "E.g. 43 (if your last invoice was F-...-0042)";
                 case "billing.config.migration.ack" -> "I confirm the number matches my previous bookkeeping and release BENJAGEST from any liability for series gaps.";
                 case "billing.config.migration.apply" -> "Apply migration";
                 case "billing.config.migration.import_pdf" -> "Import last invoice PDF (auto-fill)";
                 case "billing.config.migration.detected.header" -> "Detected on the PDF (please verify):";
                 case "billing.config.migration.detected.number" -> "Invoice number";
+                case "billing.config.migration.detected.series" -> "Series (suggested, verify)";
                 case "billing.config.migration.detected.date" -> "Date";
                 case "billing.config.migration.detected.customer" -> "Customer";
                 case "billing.config.migration.detected.total" -> "Total";
@@ -15145,13 +15191,14 @@ public class BenjagestUiApplication extends Application {
             case "billing.config.series.btn.define" -> "Definir mi serie de facturas";
             case "billing.config.series.btn.edit" -> "Editar mi serie";
             case "billing.config.migration.section" -> "Migracion desde otro programa";
-            case "billing.config.migration.hint" -> "Si tu empresa ya emitia facturas con otro software, indica aqui el numero por el que continuar. Una vez emitida la primera factura validada en BENJAGEST, el codigo y formato de la serie quedan bloqueados hasta cerrar el ano.";
+            case "billing.config.migration.hint" -> "Si tu empresa ya emitia facturas con otro software, importa el PDF de la ultima factura (autorellena) o introduce los datos a mano. Elige una serie existente o escribe un codigo nuevo (p. ej. FRA) — se creara si no existe. Una vez emitida la primera factura validada en BENJAGEST, el codigo y formato de la serie quedan bloqueados hasta cerrar el ano.";
             case "billing.config.migration.next.prompt" -> "Ej. 43 (si tu ultima factura fue F-...-0042)";
             case "billing.config.migration.ack" -> "Confirmo que el numero indicado coincide con mi contabilidad previa y eximo a BENJAGEST de cualquier responsabilidad por saltos en la serie.";
             case "billing.config.migration.apply" -> "Aplicar migracion";
             case "billing.config.migration.import_pdf" -> "Importar PDF de la última factura (autorellenar)";
             case "billing.config.migration.detected.header" -> "Detectado en el PDF (verifícalo):";
             case "billing.config.migration.detected.number" -> "Número de factura";
+            case "billing.config.migration.detected.series" -> "Serie (sugerida, verifícala)";
             case "billing.config.migration.detected.date" -> "Fecha";
             case "billing.config.migration.detected.customer" -> "Cliente";
             case "billing.config.migration.detected.total" -> "Total";
