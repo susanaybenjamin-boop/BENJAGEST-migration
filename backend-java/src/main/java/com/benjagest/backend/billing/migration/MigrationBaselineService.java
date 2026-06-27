@@ -107,10 +107,10 @@ public class MigrationBaselineService {
     }
 
     public record ConfirmRequest(String seriesId, String declaredSeriesCode, String declaredFullNumber,
-                                 Integer declaredNumber, String declaredDate, String emitterNif,
-                                 String customerNif, String customerName, BigDecimal totalAmount,
-                                 String ocrConfidence, boolean declarationSigned, String declarationText,
-                                 byte[] pdfBytes) {}
+                                 Integer declaredNumber, String declaredDate, Integer declaredYear,
+                                 String emitterNif, String customerNif, String customerName,
+                                 BigDecimal totalAmount, String ocrConfidence, boolean declarationSigned,
+                                 String declarationText, byte[] pdfBytes) {}
 
     @Transactional
     public String confirm(ConfirmRequest req) {
@@ -121,10 +121,12 @@ public class MigrationBaselineService {
         String companyId = tenant.getCurrentCompanyId();
         String userId = currentUser.require().userId();
 
-        // 1) Continuar la numeración de la serie (si se indicó).
+        // 1) Continuar la numeración de la serie (si se indicó). El AÑO confirmado
+        //    por el usuario manda (numeración por año); si no, el de la fecha.
         LocalDate declaredDate = parseDate(req.declaredDate());
         if (req.seriesId() != null && !req.seriesId().isBlank() && req.declaredNumber() != null) {
-            Integer year = declaredDate == null ? null : declaredDate.getYear();
+            Integer year = req.declaredYear() != null ? req.declaredYear()
+                    : (declaredDate == null ? null : declaredDate.getYear());
             seriesRepository.setNextNumber(req.seriesId(), req.declaredNumber() + 1, year);
         }
 

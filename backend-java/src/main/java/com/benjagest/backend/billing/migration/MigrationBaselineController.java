@@ -40,10 +40,10 @@ public class MigrationBaselineController {
     }
 
     public record ConfirmPayload(String seriesId, String declaredSeriesCode, String declaredFullNumber,
-                                 Integer declaredNumber, String declaredDate, String emitterNif,
-                                 String customerNif, String customerName, BigDecimal totalAmount,
-                                 String ocrConfidence, boolean declarationSigned, String declarationText,
-                                 String pdfBase64) {}
+                                 Integer declaredNumber, String declaredDate, Integer declaredYear,
+                                 String emitterNif, String customerNif, String customerName,
+                                 BigDecimal totalAmount, String ocrConfidence, boolean declarationSigned,
+                                 String declarationText, String pdfBase64) {}
 
     @PostMapping("/confirm")
     public Map<String, Object> confirm(@RequestBody ConfirmPayload p) {
@@ -51,8 +51,8 @@ public class MigrationBaselineController {
                 ? null : Base64.getDecoder().decode(p.pdfBase64());
         String id = service.confirm(new MigrationBaselineService.ConfirmRequest(
                 p.seriesId(), p.declaredSeriesCode(), p.declaredFullNumber(), p.declaredNumber(),
-                p.declaredDate(), p.emitterNif(), p.customerNif(), p.customerName(), p.totalAmount(),
-                p.ocrConfidence(), p.declarationSigned(), p.declarationText(), pdf));
+                p.declaredDate(), p.declaredYear(), p.emitterNif(), p.customerNif(), p.customerName(),
+                p.totalAmount(), p.ocrConfidence(), p.declarationSigned(), p.declarationText(), pdf));
         return Map.of("ok", true, "id", id);
     }
 

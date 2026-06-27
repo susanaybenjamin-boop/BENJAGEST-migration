@@ -10223,7 +10223,15 @@ public class BenjagestUiApplication extends Application {
     private TextField verifactuStorageRootField;
     private ComboBox<SeriesEntry> migrationSeriesCombo;
     private TextField migrationNextNumberField;
+    private TextField migrationYearField;
     private CheckBox migrationAcknowledgeCheck;
+    // MIG-2c — troceador del número detectado: el usuario etiqueta cada parte
+    // (Serie/Año/Número/Fijo) y de ahí salen código, año, nº y format_template.
+    private javafx.scene.layout.FlowPane migrationTokenBox;
+    private java.util.List<String> migrationSegTexts;
+    private java.util.List<Boolean> migrationSegIsToken;
+    private java.util.List<ComboBox<String>> migrationRoleCombos;
+    private String migrationFormatTemplate;
     // MIG-2 — PDF de la última factura importada (prueba) + datos OCR detectados.
     private byte[] migrationImportedPdf;
     private com.benjagest.ui.service.BillingApiClient.MigrationExtracted migrationExtracted;
@@ -10438,6 +10446,12 @@ public class BenjagestUiApplication extends Application {
         migrationNextNumberField.setPromptText(t("billing.config.migration.next.prompt"));
         migrationNextNumberField.getStyleClass().add("form-input");
 
+        // MIG-2c — Año a confirmar (numeración por año): se autorrellena de la
+        // fecha detectada y fija el current_year de la serie.
+        migrationYearField = new TextField();
+        migrationYearField.setPromptText(t("billing.config.migration.year.prompt"));
+        migrationYearField.getStyleClass().add("form-input");
+
         migrationAcknowledgeCheck = new CheckBox(t("billing.config.migration.ack"));
         migrationAcknowledgeCheck.setWrapText(true);
 
@@ -10450,6 +10464,16 @@ public class BenjagestUiApplication extends Application {
         migrationDetectedLabel.setVisible(false);
         migrationDetectedLabel.setManaged(false);
 
+        Label migrationTokenHint = new Label(t("billing.config.migration.tokens.hint"));
+        migrationTokenHint.getStyleClass().add("settings-hint");
+        migrationTokenHint.setWrapText(true);
+        migrationTokenBox = new javafx.scene.layout.FlowPane(8, 8);
+        VBox migrationTokenSection = new VBox(6, migrationTokenHint, migrationTokenBox);
+        migrationTokenSection.visibleProperty().bind(migrationTokenBox.visibleProperty());
+        migrationTokenSection.managedProperty().bind(migrationTokenBox.managedProperty());
+        migrationTokenBox.setVisible(false);
+        migrationTokenBox.setManaged(false);
+
         Button importPdfBtn = new Button(t("billing.config.migration.import_pdf"));
         importPdfBtn.setGraphic(icon("fas-file-pdf"));
         importPdfBtn.setOnAction(event -> importMigrationPdf());
@@ -10461,12 +10485,14 @@ public class BenjagestUiApplication extends Application {
         GridPane migrationGrid = formGrid();
         addFormRow(migrationGrid, 0, t("billing.config.migration.field.series"), migrationSeriesCombo);
         addFormRow(migrationGrid, 1, t("billing.config.migration.field.next"), migrationNextNumberField);
+        addFormRow(migrationGrid, 2, t("billing.config.migration.field.year"), migrationYearField);
 
         VBox migrationBlock = new VBox(8,
                 migrationHeader,
                 migrationHint,
                 new HBox(importPdfBtn),
                 migrationDetectedLabel,
+                migrationTokenSection,
                 migrationGrid,
                 migrationAcknowledgeCheck,
                 new HBox(applyMigration)
@@ -11008,8 +11034,17 @@ public class BenjagestUiApplication extends Application {
                     t("billing.config.migration.error.bad_number.body_low"));
             return;
         }
+        Integer yr = null;
+        try {
+            String y = migrationYearField == null ? null : migrationYearField.getText();
+            if (y != null && !y.isBlank()) yr = Integer.parseInt(y.trim());
+        } catch (NumberFormatException ignored) { /* año vacío/erróneo → null */ }
+
         final SeriesEntry serieF = serie;
         final int nextNumber = next;
+        final Integer declaredYear = yr;
+        final String fmt = migrationFormatTemplate == null || migrationFormatTemplate.isBlank()
+                ? null : migrationFormatTemplate;
         final byte[] pdf = migrationImportedPdf;
         final com.benjagest.ui.service.BillingApiClient.MigrationExtracted ext = migrationExtracted;
         final String declarationText = t("billing.config.migration.ack");
@@ -11035,7 +11070,7 @@ public class BenjagestUiApplication extends Application {
                 boolean created = false;
                 if (seriesId == null) {
                     SeriesEntry s = billingApiClient.createSeries(
-                            serieF.code(), "STANDARD", "BY_YEAR", null, nextNumber, false);
+                            serieF.code(), "STANDARD", "BY_YEAR", fmt, nextNumber, false);
                     seriesId = s.id();
                     created = true;
                 }
@@ -11047,6 +11082,7 @@ public class BenjagestUiApplication extends Application {
                             ext == null ? null : ext.invoiceNumber(),
                             nextNumber - 1,
                             ext == null ? null : ext.invoiceDateIso(),
+                            declaredYear,
                             ext == null ? null : ext.emitterNif(),
                             ext == null ? null : ext.customerNif(),
                             ext == null ? null : ext.customerName(),
@@ -11091,18 +11127,11 @@ public class BenjagestUiApplication extends Application {
             var ext = task.getValue();
             migrationImportedPdf = bytes;
             migrationExtracted = ext;
-            Integer last = lastDigits(ext.invoiceNumber());
-            if (last != null) migrationNextNumberField.setText(String.valueOf(last + 1));
-            // Serie SUGERIDA (letras iniciales): se preselecciona si existe; si no,
-            // se escribe en el campo editable para que el usuario la confirme/cree.
-            if (ext.seriesCodeGuess() != null && !ext.seriesCodeGuess().isBlank()) {
-                SeriesEntry m = resolveMigrationSeries(ext.seriesCodeGuess());
-                if (m != null && m.id() != null) {
-                    migrationSeriesCombo.setValue(m);
-                } else if (migrationSeriesCombo.getEditor() != null) {
-                    migrationSeriesCombo.getEditor().setText(ext.seriesCodeGuess());
-                }
-            }
+            // Troceador: el usuario etiqueta cada parte del número. De ahí salen
+            // serie, año, próximo número y la plantilla de formato.
+            String yearHint = ext.invoiceDateIso() != null && ext.invoiceDateIso().length() >= 4
+                    ? ext.invoiceDateIso().substring(0, 4) : null;
+            buildMigrationTokenTagger(ext.invoiceNumber(), yearHint);
             String sb = t("billing.config.migration.detected.header")
                     + "\n• " + t("billing.config.migration.detected.number") + ": " + nzDash(ext.invoiceNumber())
                     + "\n• " + t("billing.config.migration.detected.series") + ": " + nzDash(ext.seriesCodeGuess())
@@ -11121,15 +11150,6 @@ public class BenjagestUiApplication extends Application {
         start(task, "migration-extract");
     }
 
-    /** Último grupo de dígitos de un número de factura (para calcular el siguiente). */
-    private static Integer lastDigits(String s) {
-        if (s == null) return null;
-        java.util.regex.Matcher m = java.util.regex.Pattern.compile("(\\d+)(?!.*\\d)").matcher(s);
-        if (m.find()) {
-            try { return Integer.parseInt(m.group(1)); } catch (NumberFormatException ignored) { }
-        }
-        return null;
-    }
 
     private static String nzDash(String s) { return s == null || s.isBlank() ? "—" : s; }
 
@@ -11147,6 +11167,114 @@ public class BenjagestUiApplication extends Application {
             }
         }
         return new SeriesEntry(null, c, "STANDARD", "BY_YEAR", null, 0, null, false, true);
+    }
+
+    /**
+     * MIG-2c — Trocea el número detectado (p. ej. "FRA-2026-0007") en sus
+     * partes y deja que el usuario etiquete cada una: Serie / Año / Número /
+     * Texto fijo. De ahí salen el código, el año, el próximo número y la
+     * plantilla de formato ({CODE}-{YYYY}-{0000}) para que las próximas
+     * facturas salgan idénticas. Auto-sugiere roles, pero manda el usuario.
+     */
+    private void buildMigrationTokenTagger(String fullNumber, String yearHint) {
+        migrationTokenBox.getChildren().clear();
+        migrationSegTexts = new java.util.ArrayList<>();
+        migrationSegIsToken = new java.util.ArrayList<>();
+        migrationRoleCombos = new java.util.ArrayList<>();
+        migrationFormatTemplate = null;
+        if (fullNumber == null || fullNumber.isBlank()) {
+            migrationTokenBox.setVisible(false);
+            migrationTokenBox.setManaged(false);
+            return;
+        }
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile("[A-Za-z0-9]+").matcher(fullNumber);
+        int idx = 0;
+        while (m.find()) {
+            if (m.start() > idx) {
+                migrationSegTexts.add(fullNumber.substring(idx, m.start()));
+                migrationSegIsToken.add(false);
+            }
+            migrationSegTexts.add(m.group());
+            migrationSegIsToken.add(true);
+            idx = m.end();
+        }
+        if (idx < fullNumber.length()) {
+            migrationSegTexts.add(fullNumber.substring(idx));
+            migrationSegIsToken.add(false);
+        }
+        int lastTokenSeg = -1;
+        for (int i = 0; i < migrationSegIsToken.size(); i++) {
+            if (migrationSegIsToken.get(i)) lastTokenSeg = i;
+        }
+        String roleSerie = t("billing.config.migration.role.series");
+        String roleYear = t("billing.config.migration.role.year");
+        String roleNumber = t("billing.config.migration.role.number");
+        String roleFixed = t("billing.config.migration.role.fixed");
+        for (int i = 0; i < migrationSegTexts.size(); i++) {
+            String text = migrationSegTexts.get(i);
+            if (!migrationSegIsToken.get(i)) {
+                migrationRoleCombos.add(null);
+                Label sep = new Label(text);
+                sep.setStyle("-fx-font-size: 18px; -fx-padding: 20 2 0 2;");
+                migrationTokenBox.getChildren().add(sep);
+                continue;
+            }
+            ComboBox<String> role = new ComboBox<>();
+            role.getItems().addAll(roleSerie, roleYear, roleNumber, roleFixed);
+            String suggested;
+            if (i == lastTokenSeg && text.matches("\\d+")) suggested = roleNumber;
+            else if (text.matches("\\d{4}") && (yearHint == null || text.equals(yearHint))) suggested = roleYear;
+            else if (text.matches(".*[A-Za-z].*")) suggested = roleSerie;
+            else suggested = roleFixed;
+            role.setValue(suggested);
+            role.valueProperty().addListener((o, a, b) -> recomputeMigrationFromTokens());
+            migrationRoleCombos.add(role);
+            Label tokLbl = new Label(text);
+            tokLbl.setStyle("-fx-font-weight: 700;");
+            VBox cell = new VBox(2, tokLbl, role);
+            cell.setAlignment(Pos.CENTER_LEFT);
+            migrationTokenBox.getChildren().add(cell);
+        }
+        migrationTokenBox.setVisible(true);
+        migrationTokenBox.setManaged(true);
+        recomputeMigrationFromTokens();
+    }
+
+    /** Recalcula código/año/nº/plantilla a partir de las etiquetas del troceador. */
+    private void recomputeMigrationFromTokens() {
+        if (migrationSegTexts == null) return;
+        String roleSerie = t("billing.config.migration.role.series");
+        String roleYear = t("billing.config.migration.role.year");
+        String roleNumber = t("billing.config.migration.role.number");
+        StringBuilder tpl = new StringBuilder();
+        String code = null;
+        String year = null;
+        Integer number = null;
+        boolean codeUsed = false;
+        for (int i = 0; i < migrationSegTexts.size(); i++) {
+            String text = migrationSegTexts.get(i);
+            if (!migrationSegIsToken.get(i)) { tpl.append(text); continue; }
+            ComboBox<String> role = migrationRoleCombos.get(i);
+            String r = role == null ? null : role.getValue();
+            if (roleSerie.equals(r)) {
+                if (!codeUsed) { tpl.append("{CODE}"); code = text; codeUsed = true; }
+                else tpl.append(text);
+            } else if (roleYear.equals(r)) {
+                tpl.append("{YYYY}");
+                year = text;
+            } else if (roleNumber.equals(r)) {
+                tpl.append("{").append("0".repeat(Math.max(1, text.length()))).append("}");
+                try { number = Integer.parseInt(text); } catch (NumberFormatException ignored) { }
+            } else {
+                tpl.append(text);
+            }
+        }
+        migrationFormatTemplate = tpl.toString();
+        if (code != null && migrationSeriesCombo.getEditor() != null) {
+            migrationSeriesCombo.getEditor().setText(code);
+        }
+        if (year != null) migrationYearField.setText(year);
+        if (number != null) migrationNextNumberField.setText(String.valueOf(number + 1));
     }
 
     // ----- Editor de series (crear/editar) -----
@@ -14155,6 +14283,13 @@ public class BenjagestUiApplication extends Application {
                 case "billing.config.migration.detected.confidence" -> "confidence";
                 case "billing.config.migration.field.series" -> "Series";
                 case "billing.config.migration.field.next" -> "Next number";
+                case "billing.config.migration.field.year" -> "Year";
+                case "billing.config.migration.year.prompt" -> "e.g. 2026";
+                case "billing.config.migration.tokens.hint" -> "Tag each part of your invoice number (so future invoices look identical):";
+                case "billing.config.migration.role.series" -> "Series";
+                case "billing.config.migration.role.year" -> "Year (YYYY)";
+                case "billing.config.migration.role.number" -> "Number";
+                case "billing.config.migration.role.fixed" -> "Fixed text";
                 case "billing.config.migration.combo.suffix_prefix" -> " — next ";
                 case "billing.config.migration.error.no_series.title" -> "Missing series";
                 case "billing.config.migration.error.no_series.body" -> "Select the series whose counter you want to migrate.";
@@ -15205,6 +15340,13 @@ public class BenjagestUiApplication extends Application {
             case "billing.config.migration.detected.confidence" -> "confianza";
             case "billing.config.migration.field.series" -> "Serie";
             case "billing.config.migration.field.next" -> "Proximo numero";
+            case "billing.config.migration.field.year" -> "Año";
+            case "billing.config.migration.year.prompt" -> "p. ej. 2026";
+            case "billing.config.migration.tokens.hint" -> "Marca qué es cada parte de tu número de factura (para que las próximas salgan idénticas):";
+            case "billing.config.migration.role.series" -> "Serie";
+            case "billing.config.migration.role.year" -> "Año (AAAA)";
+            case "billing.config.migration.role.number" -> "Número";
+            case "billing.config.migration.role.fixed" -> "Texto fijo";
             case "billing.config.migration.combo.suffix_prefix" -> " — proximo ";
             case "billing.config.migration.error.no_series.title" -> "Falta serie";
             case "billing.config.migration.error.no_series.body" -> "Selecciona la serie cuyo correlativo quieres migrar.";
