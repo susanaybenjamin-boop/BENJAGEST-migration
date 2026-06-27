@@ -187,6 +187,23 @@ public class MigrationBaselineService {
                 tenant.getCurrentCompanyId());
     }
 
+    /** MIG-3 — Bytes del PDF de prueba guardado para una baseline de la empresa. */
+    public byte[] evidence(String id) {
+        String companyId = tenant.getCurrentCompanyId();
+        String path = jdbc.query(
+                "SELECT evidence_pdf_path FROM invoice_migration_baseline WHERE id = ? AND company_id = ?",
+                rs -> rs.next() ? rs.getString(1) : null, id, companyId);
+        if (path == null || path.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Esa migración no tiene PDF de prueba.");
+        }
+        try {
+            return Files.readAllBytes(Paths.get(path));
+        } catch (IOException ex) {
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
+                    "No se pudo leer el PDF de prueba: " + ex.getMessage());
+        }
+    }
+
     private static LocalDate parseDate(String iso) {
         if (iso == null || iso.isBlank()) return null;
         try { return LocalDate.parse(iso.substring(0, 10)); }

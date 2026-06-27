@@ -60,4 +60,13 @@ public class MigrationBaselineController {
     public List<MigrationBaselineService.BaselineRow> list() {
         return service.list();
     }
+
+    /** MIG-3 — PDF de prueba de una baseline. */
+    @GetMapping(value = "/{id}/evidence", produces = org.springframework.http.MediaType.APPLICATION_PDF_VALUE)
+    public org.springframework.http.ResponseEntity<byte[]> evidence(
+            @org.springframework.web.bind.annotation.PathVariable("id") String id) {
+        return org.springframework.http.ResponseEntity.ok()
+                .contentType(org.springframework.http.MediaType.APPLICATION_PDF)
+                .body(service.evidence(id));
+    }
 }

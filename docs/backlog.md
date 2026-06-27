@@ -109,8 +109,10 @@
 - ✅ **Doble reflejo de cobro** — **idempotencia confirmada**: `reflectPayment` (paso 2) ignora
   si ya existe asiento `REFLECTED_PAYMENT` con el mismo `source_id`. El doble del log antiguo era
   un cobro registrado dos veces en pruebas (dos eventos = dos reflejos, correcto), no un fallo.
-- ⬜ **MIG-3** (mini-bloque, opcional): listar las baselines guardadas (`GET
-  /api/billing/migration-baseline` ya existe) + visor del PDF de prueba + match de cliente.
+- ✅ **MIG-3** — cerrado 2026-06-27: botón "Ver migraciones guardadas" en Config → Facturación
+  → diálogo con la tabla de baselines (serie/número/fecha/cliente/total/registrada) + "Ver PDF
+  de prueba" (endpoint `/migration-baseline/{id}/evidence` + visor interno). *(Match de cliente
+  contra la cartera = mejora futura menor.)*
 - ⬜ ❓ **OCR Tesseract** para PDFs escaneados — **necesita decisión** (instalar binario nativo).
 - ⬜ ❓ **CENTROS-MAP** (mapa Leaflet para lat/lng) — **necesita** lib de mapa en WebView.
 - ⬜ ❓ **Régimen especial IVA/prorrata/criterio caja** (UI) — modelar **tras un caso real**.
