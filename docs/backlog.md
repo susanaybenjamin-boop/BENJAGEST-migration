@@ -1,5 +1,19 @@
 # Backlog operativo BENJAGEST
 
+> **Última actualización:** 2026-06-26/27 (**bloque GOOGLE-UNIFICADO** —login con Google +
+> envío de correo por Gmail (OAuth) + **Google Calendar ↔ Agenda bidireccional**; modelo
+> **híbrido** con credenciales **centrales** de la cuenta `benjagest2026` en
+> `google-secrets.yml` (gitignored) + override per-instalación; tab **Integraciones fusionado
+> en Correo**—; **bloque MIG** —migración: importar la última factura emitida, **OCR**
+> autorellena, **troceador** del número (etiquetar Serie/Año/Número → plantilla
+> `{CODE}-{YYYY}-{0000}`), crear la serie si no existe, guardar PDF de prueba + **declaración
+> firmada**; V151—; y una **tanda de fixes** —salvapantallas a pantalla completa (logo grande +
+> animación suave), **guard central anti doble-ejecución** en `start()`, **hora UTC→local** en
+> tablas, **Lock wait timeout de auditoría** (escribir el evento *after-commit*), **purga de
+> ficheros huérfanos** en Backups + `deleteCompanyFiles`—. Ver **🎯 RUTA DE CIERRE** y la sesión
+> 2026-06-26/27 justo debajo. **Pendiente Benjamin (una vez):** verificar el proyecto Google
+> central (quita el aviso "app no verificada"; necesita nombre de producto + dominio + web).
+> Histórico previo:
 > **Última actualización:** 2026-06-25/26 (**tres bloques "haz los tres"**:
 > **CONTRATO-MODALIDADES** —desempleo según código SEPE del contrato (V143/V144,
 > no-code); **formativos cuota fija CM-6** (V145); **intercambio contable**
@@ -55,6 +69,97 @@
 > **Forma de trabajo (junio 2026):** Benjamin lidera y decide. Pablo solo entra de uvas a peras desde 05-30. Todo el trabajo va por `feat/Benjamin` → prueba local → commit → merge `--no-ff` a `develop`. Cada item cerrado lleva commit hash + fecha. **Regla 10.bis de CLAUDE.md aplica siempre: verificar código antes de tocar.**
 >
 > **Fuentes complementarias:** [`gap-analysis-contendo.md`](gap-analysis-contendo.md), [`gap-analysis-config-ui.md`](gap-analysis-config-ui.md), [`migration-roadmap.md`](migration-roadmap.md), [`vf-chain-fix.md`](vf-chain-fix.md), [`agents-debug-pattern.md`](agents-debug-pattern.md).
+
+---
+
+## 🎯 RUTA DE CIERRE — qué queda para cerrar el producto (2026-06-27)
+
+> Esquema de lo que falta para dejar BENJAGEST listo para usar/vender. El detalle por ítem está
+> en las secciones 🔴/🟠/🟡/🟢 del final. Orden = lo que bloquea producción primero. Las Fases
+> 1-2 dependen de **material/decisiones externas** (FNMT, alta AEAT, dominio, credenciales
+> reales); las Fases 3-5 se pueden cerrar con el código actual.
+
+### Fase 1 — Legal/fiscal para PRODUCIR (bloqueante antes de vender) ⚖️
+- **VeriFactu real con AEAT**: XAdES-EPES estricto (`VF-SIGN-XADES-AEAT`) + parseo real de la
+  respuesta SOAP (`VF3-SOAP`). Requiere **certificado FNMT real + alta SIF en sede AEAT**.
+- **Obligaciones de fabricante VeriFactu**: registro como SIF + declaración responsable + página
+  pública de cumplimiento (RD 1007/2023).
+- **Verificación del proyecto Google** (PARTE B): quita el aviso "app no verificada" en
+  login/Calendar. Requiere **nombre definitivo del producto + dominio + web** (privacidad +
+  términos) → tarea de Benjamin; Claude redacta los textos legales.
+- **Modelos AEAT 100/180/200/411**: investigación legal + patrones de casillas + mapeo.
+
+### Fase 2 — Conectores externos reales 🔌
+- **DEHú real**: job de descarga SOAP/REST con certificado.
+- **SS RED / SILTRA real**: envío real (AFI/CRA/DELT@/CRETA) — las credenciales ya se guardan.
+
+### Fase 3 — Afinado laboral/nómina ⚖️💰
+- **Incidencias de nómina** (horas extra, complementos variables por periodo).
+- **Pagas extra cotizadas con asiento** (EXTRA_* hoy sin asiento).
+- **Revisión completa de contratos + flujo de alta del empleado**.
+- **CL-5** (recibo/asiento/L13 de atrasos) — con Benjamin.
+- **JOR-4**: excepciones por fecha + comparación planificado-vs-real (refinamiento).
+- **Sincronización offline de fichajes** (kioskos sin red).
+
+### Fase 4 — Cierres menores y pulido 🧹
+- **REFLEJO**: banner "reflejada en {cliente}" en el listado de facturación (listo para cablear)
+  + **verificar el doble reflejo de cobro** (idempotencia de `reflectPayment`).
+- **MIG-3** (opcional): listar baselines guardadas + visor del PDF de prueba + match de cliente.
+- **OCR Tesseract** para PDFs escaneados (decisión: instalar binario nativo).
+- **CENTROS-MAP** (mapa Leaflet para lat/lng) · **Régimen especial IVA/prorrata/criterio caja**
+  (UI) · **Workflow trabajos** (partes de día DRAFT→APPROVED→BILLED, work_log→línea de factura) ·
+  **Dashboard widgets personalizables**.
+
+### Fase 5 — Empaquetado y despliegue 📦
+- **DEPLOY-PKG**: instalable Windows autocontenido (UI + backend + MariaDB embebida).
+- **Cloudflare Tunnel** para el portal del empleado (acceso externo).
+- Rellenar credenciales Google centrales tras la verificación (Fase 1).
+
+---
+
+## 📅 SESIÓN 2026-06-26/27 — GOOGLE-UNIFICADO + MIG (migración facturación) + tanda de fixes
+
+> Continuación tras el bloque REGISTRO. Todo compila (backend+ui) y mergeado a `develop`.
+
+**Bloque GOOGLE-UNIFICADO** (modelo híbrido, decisión Benjamin 2026-06-26):
+- ✅ **Login + envío de correo (Gmail) por OAuth** + **Google Calendar ↔ Agenda bidireccional**
+  (`GoogleCalendarService.sync`: push de los eventos de la agenda → Google y pull → agenda;
+  auto-refresh de la agenda al sincronizar).
+- ✅ **Credenciales CENTRALES** (cuenta `benjagest2026`, cliente OAuth de escritorio) en
+  `google-secrets.yml` **gitignored** (cargado por `spring.config.import`), con override
+  per-instalación en Integraciones. `config()` devuelve enabled con las centrales → cero config.
+- ✅ **Integraciones fusionado en el tab Correo**: el panel Google aparece al elegir proveedor
+  Google; la config "mi propio proyecto Google" queda plegada como avanzado.
+- ✅ Fix **HTTP 400** de Calendar (timeMin sin segundos → `Instant` UTC con segundos).
+- ⏳ **PARTE B (Benjamin):** verificar el proyecto Google para quitar el aviso "app no verificada".
+
+**Bloque MIG — migración de facturación (importar la última factura emitida):**
+- ✅ **MIG-1** (V151 `invoice_migration_baseline`) — guarda la última factura como
+  REFERENCIA+PRUEBA (no se contabiliza, no genera cadena SIF) + declaración firmada; fija
+  `next_number` de la serie. `MigrationBaselineService` + controller + `setNextNumber`.
+- ✅ **MIG-2** UI: importar PDF → **OCR** (reusa `PdfTextExtractor`+`InvoiceFieldsExtractor`)
+  autorellena serie/número/fecha/cliente/total; serie **editable** (se crea si no existe).
+- ✅ **MIG-2c troceador**: el usuario etiqueta cada parte del número (Serie/Año/Número/Fijo) →
+  plantilla `{CODE}-{YYYY}-{0000}` → las próximas facturas salen idénticas (FRA-2026-0008). +
+  campo Año confirmable (`current_year`).
+- ⏳ **MIG-3** (opcional): listar baselines + visor PDF + match de cliente.
+
+**Tanda de fixes:**
+- ✅ **Salvapantallas** a pantalla completa real: logo grande (≈50% alto) + animación suave
+  (EASE_BOTH + deriva), sin saltitos; cálculo del área de la pantalla del usuario antes del fondo.
+- ✅ **Guard central anti doble-ejecución** en `start(task,name)` — ignora la 2ª tarea con la
+  misma clave en vuelo (el doble clic en Guardar). Cubre ~348 botones de una vez.
+- ✅ **Lock wait timeout de auditoría** (causa raíz real, no el doble clic): `audit_events` tiene
+  FK a `companies`; el INSERT (REQUIRES_NEW, transacción aparte) pedía lock compartido sobre la
+  fila que el `UPDATE companies` del guardado tenía en exclusiva → se esperaban 50 s. Fix:
+  escribir el evento **after-commit** (`TransactionSynchronizationManager`) → sin contención y el
+  evento se graba SIEMPRE (antes se perdía → hueco en la cadena).
+- ✅ **Hora UTC→local** en tablas (`shortIso` convierte instantes con zona Z/offset) — los
+  backups salían 2 h por debajo.
+- ✅ **Purga de ficheros huérfanos** en Backups + `BackupService.deleteCompanyFiles` (al purgar
+  empresas de prueba quedaban sus PDFs en disco → aparecían en los backups).
+- ✅ Fix **V151 errno 150** (collation FK): las tablas referenciadas usan `utf8mb4_unicode_ci`,
+  pero el default de MariaDB 11.4 es `utf8mb4_uca1400_ai_ci` → fijado `COLLATE` en la tabla.
 
 ---
 
@@ -1987,7 +2092,10 @@ Nóminas; afinar topes de cotización; pagas extra.
 ## Calendario
 
 - ⬜ Calendario laboral por empresa completo.
-- ⬜ ❓ Integración Google Calendar bidireccional — necesito credenciales OAuth Google Cloud Console.
+- ✅ ❓ **Integración Google Calendar bidireccional** — cerrado 2026-06-27 (GOOGLE-UNIFICADO):
+  `GoogleCalendarService.sync` push agenda→Google + pull Google→agenda, a demanda, con
+  credenciales centrales (`benjagest2026`) o per-instalación. *(Quitar el aviso "app no
+  verificada" = PARTE B, Fase 1 de la ruta de cierre.)*
 - ⬜ Importación masiva calendarios.
 
 ## Asesoría / multi-cliente
@@ -2002,7 +2110,9 @@ Nóminas; afinar topes de cotización; pagas extra.
 - ⬜ Alertas de seguridad (`security_alerts_180`) — intentos login, accesos sospechosos.
 - ✅ Análisis / Alertas BOE — cerrado (BOE-RSS diario + pantalla dedicada con apertura de PDF oficial).
 - ⬜ Acceso PWA / móvil *(posiblemente cubierto por MOBILE-EMPLEADO)*.
-- ⬜ Email personal via Google OAuth2 — a nivel usuario.
+- ✅ **Envío de correo por Gmail (OAuth2)** — cerrado 2026-06-27 (GOOGLE-UNIFICADO): la empresa
+  conecta su Gmail y BENJAGEST envía facturas/nóminas/enlaces por ahí (sin contraseña de
+  aplicación). Per-empresa, no a nivel usuario. El correo normal sigue por SMTP.
 
 ---
 
