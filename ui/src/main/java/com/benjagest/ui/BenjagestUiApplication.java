@@ -10224,6 +10224,10 @@ public class BenjagestUiApplication extends Application {
     private ComboBox<SeriesEntry> migrationSeriesCombo;
     private TextField migrationNextNumberField;
     private CheckBox migrationAcknowledgeCheck;
+    // MIG-2 — PDF de la última factura importada (prueba) + datos OCR detectados.
+    private byte[] migrationImportedPdf;
+    private com.benjagest.ui.service.BillingApiClient.MigrationExtracted migrationExtracted;
+    private Label migrationDetectedLabel;
     private javafx.scene.control.TextArea textPieArea;
     private javafx.scene.control.TextArea textExemptArea;
     private javafx.scene.control.TextArea textReverseChargeArea;
@@ -10429,6 +10433,19 @@ public class BenjagestUiApplication extends Application {
         migrationAcknowledgeCheck = new CheckBox(t("billing.config.migration.ack"));
         migrationAcknowledgeCheck.setWrapText(true);
 
+        // MIG-2 — reset del estado de PDF importado al (re)construir la pestaña.
+        migrationImportedPdf = null;
+        migrationExtracted = null;
+        migrationDetectedLabel = new Label();
+        migrationDetectedLabel.getStyleClass().add("settings-hint");
+        migrationDetectedLabel.setWrapText(true);
+        migrationDetectedLabel.setVisible(false);
+        migrationDetectedLabel.setManaged(false);
+
+        Button importPdfBtn = new Button(t("billing.config.migration.import_pdf"));
+        importPdfBtn.setGraphic(icon("fas-file-pdf"));
+        importPdfBtn.setOnAction(event -> importMigrationPdf());
+
         Button applyMigration = new Button(t("billing.config.migration.apply"));
         applyMigration.setGraphic(icon("fas-file-import"));
         applyMigration.setOnAction(event -> applyMigration());
@@ -10440,6 +10457,8 @@ public class BenjagestUiApplication extends Application {
         VBox migrationBlock = new VBox(8,
                 migrationHeader,
                 migrationHint,
+                new HBox(importPdfBtn),
+                migrationDetectedLabel,
                 migrationGrid,
                 migrationAcknowledgeCheck,
                 new HBox(applyMigration)
@@ -10974,26 +10993,116 @@ public class BenjagestUiApplication extends Application {
             return;
         }
         int nextNumber = next;
-        Task<SeriesEntry> task = new Task<>() {
-            @Override
-            protected SeriesEntry call() throws Exception {
-                return billingApiClient.migrateSeries(serie.id(), nextNumber, true);
-            }
-        };
-        task.setOnSucceeded(event -> {
+        Runnable onOk = () -> {
             Alert ok = new Alert(Alert.AlertType.INFORMATION,
                     t("billing.config.migration.success_prefix") + serie.code()
                             + t("billing.config.migration.success.middle") + nextNumber + ".",
                     ButtonType.OK);
             ok.setHeaderText(null);
             ok.showAndWait();
+            migrationImportedPdf = null;
+            migrationExtracted = null;
             pendingBillingTab = "config";
             billingRefresh.run();
-        });
+        };
+
+        // MIG-2 — si se importó el PDF de la última factura, usamos el endpoint
+        // que ADEMÁS guarda el PDF como prueba + la declaración firmada. Si no,
+        // se mantiene la migración manual (solo fija el próximo número).
+        if (migrationImportedPdf != null) {
+            byte[] pdf = migrationImportedPdf;
+            com.benjagest.ui.service.BillingApiClient.MigrationExtracted ext = migrationExtracted;
+            String declarationText = t("billing.config.migration.ack");
+            Task<Void> task = new Task<>() {
+                @Override protected Void call() throws Exception {
+                    billingApiClient.confirmMigrationBaseline(
+                            serie.id(), serie.code(),
+                            ext == null ? null : ext.invoiceNumber(),
+                            nextNumber - 1,
+                            ext == null ? null : ext.invoiceDateIso(),
+                            ext == null ? null : ext.emitterNif(),
+                            ext == null ? null : ext.customerNif(),
+                            ext == null ? null : ext.customerName(),
+                            ext == null ? null : ext.totalAmount(),
+                            ext == null ? null : ext.confidence(),
+                            true, declarationText, pdf);
+                    return null;
+                }
+            };
+            task.setOnSucceeded(event -> onOk.run());
+            task.setOnFailed(event -> showError(t("billing.config.migration.fail.title"),
+                    task.getException() == null ? t("billing.config.migration.fail.body")
+                            : task.getException().getMessage()));
+            start(task, "migration-confirm");
+            return;
+        }
+
+        Task<SeriesEntry> task = new Task<>() {
+            @Override
+            protected SeriesEntry call() throws Exception {
+                return billingApiClient.migrateSeries(serie.id(), nextNumber, true);
+            }
+        };
+        task.setOnSucceeded(event -> onOk.run());
         task.setOnFailed(event -> showError(t("billing.config.migration.fail.title"),
                 t("billing.config.migration.fail.body")));
         start(task, "billing-series-migrate");
     }
+
+    /** MIG-2 — Importa el PDF de la última factura y autorellena por OCR. */
+    private void importMigrationPdf() {
+        javafx.stage.FileChooser fc = new javafx.stage.FileChooser();
+        fc.setTitle(t("billing.config.migration.import_pdf"));
+        fc.getExtensionFilters().add(new javafx.stage.FileChooser.ExtensionFilter("PDF", "*.pdf"));
+        java.io.File file = fc.showOpenDialog(root == null || root.getScene() == null
+                ? null : root.getScene().getWindow());
+        if (file == null) return;
+        final byte[] bytes;
+        try {
+            bytes = java.nio.file.Files.readAllBytes(file.toPath());
+        } catch (Exception ex) {
+            showError(t("billing.config.migration.import_pdf"), ex.getMessage());
+            return;
+        }
+        Task<com.benjagest.ui.service.BillingApiClient.MigrationExtracted> task = new Task<>() {
+            @Override protected com.benjagest.ui.service.BillingApiClient.MigrationExtracted call() throws Exception {
+                return billingApiClient.extractMigrationBaseline(bytes);
+            }
+        };
+        task.setOnSucceeded(ev -> {
+            var ext = task.getValue();
+            migrationImportedPdf = bytes;
+            migrationExtracted = ext;
+            Integer last = lastDigits(ext.invoiceNumber());
+            if (last != null) migrationNextNumberField.setText(String.valueOf(last + 1));
+            String sb = t("billing.config.migration.detected.header")
+                    + "\n• " + t("billing.config.migration.detected.number") + ": " + nzDash(ext.invoiceNumber())
+                    + "\n• " + t("billing.config.migration.detected.date") + ": " + nzDash(ext.invoiceDateIso())
+                    + "\n• " + t("billing.config.migration.detected.customer") + ": "
+                            + nzDash(ext.customerName()) + "  " + nzDash(ext.customerNif())
+                    + "\n• " + t("billing.config.migration.detected.total") + ": " + nzDash(ext.totalAmount())
+                    + (ext.confidence() == null ? ""
+                            : "   (" + t("billing.config.migration.detected.confidence") + ": " + ext.confidence() + ")");
+            migrationDetectedLabel.setText(sb);
+            migrationDetectedLabel.setVisible(true);
+            migrationDetectedLabel.setManaged(true);
+        });
+        task.setOnFailed(ev -> showError(t("billing.config.migration.import_pdf"),
+                task.getException() == null ? "" : task.getException().getMessage()));
+        start(task, "migration-extract");
+    }
+
+    /** Último grupo de dígitos de un número de factura (para calcular el siguiente). */
+    private static Integer lastDigits(String s) {
+        if (s == null) return null;
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile("(\\d+)(?!.*\\d)").matcher(s);
+        if (m.find()) {
+            try { return Integer.parseInt(m.group(1)); } catch (NumberFormatException ignored) { }
+        }
+        return null;
+    }
+
+    private static String nzDash(String s) { return s == null || s.isBlank() ? "—" : s; }
 
     // ----- Editor de series (crear/editar) -----
 
@@ -13991,6 +14100,13 @@ public class BenjagestUiApplication extends Application {
                 case "billing.config.migration.next.prompt" -> "E.g. 43 (if your last invoice was F-...-0042)";
                 case "billing.config.migration.ack" -> "I confirm the number matches my previous bookkeeping and release BENJAGEST from any liability for series gaps.";
                 case "billing.config.migration.apply" -> "Apply migration";
+                case "billing.config.migration.import_pdf" -> "Import last invoice PDF (auto-fill)";
+                case "billing.config.migration.detected.header" -> "Detected on the PDF (please verify):";
+                case "billing.config.migration.detected.number" -> "Invoice number";
+                case "billing.config.migration.detected.date" -> "Date";
+                case "billing.config.migration.detected.customer" -> "Customer";
+                case "billing.config.migration.detected.total" -> "Total";
+                case "billing.config.migration.detected.confidence" -> "confidence";
                 case "billing.config.migration.field.series" -> "Series";
                 case "billing.config.migration.field.next" -> "Next number";
                 case "billing.config.migration.combo.suffix_prefix" -> " — next ";
@@ -15033,6 +15149,13 @@ public class BenjagestUiApplication extends Application {
             case "billing.config.migration.next.prompt" -> "Ej. 43 (si tu ultima factura fue F-...-0042)";
             case "billing.config.migration.ack" -> "Confirmo que el numero indicado coincide con mi contabilidad previa y eximo a BENJAGEST de cualquier responsabilidad por saltos en la serie.";
             case "billing.config.migration.apply" -> "Aplicar migracion";
+            case "billing.config.migration.import_pdf" -> "Importar PDF de la última factura (autorellenar)";
+            case "billing.config.migration.detected.header" -> "Detectado en el PDF (verifícalo):";
+            case "billing.config.migration.detected.number" -> "Número de factura";
+            case "billing.config.migration.detected.date" -> "Fecha";
+            case "billing.config.migration.detected.customer" -> "Cliente";
+            case "billing.config.migration.detected.total" -> "Total";
+            case "billing.config.migration.detected.confidence" -> "confianza";
             case "billing.config.migration.field.series" -> "Serie";
             case "billing.config.migration.field.next" -> "Proximo numero";
             case "billing.config.migration.combo.suffix_prefix" -> " — proximo ";

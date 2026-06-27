@@ -887,6 +887,65 @@ public class BillingApiClient {
         );
     }
 
+    // -------- MIG — migración: importar última factura emitida --------
+
+    public record MigrationExtracted(String emitterNif, String customerNif, String customerName,
+                                     String invoiceNumber, String invoiceDateIso,
+                                     String totalAmount, String confidence) {}
+
+    /** Sube el PDF y devuelve los campos detectados por OCR para confirmar. */
+    public MigrationExtracted extractMigrationBaseline(byte[] pdf) throws IOException, InterruptedException {
+        String b64 = java.util.Base64.getEncoder().encodeToString(pdf);
+        String body = "{\"pdfBase64\":\"" + b64 + "\"}";
+        HttpResponse<String> response = sendAuthorized(HttpRequest.newBuilder(
+                URI.create(baseUrl + "/billing/migration-baseline/extract"))
+                .timeout(Duration.ofSeconds(40))
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(body)));
+        ensureOk(response);
+        String j = response.body();
+        return new MigrationExtracted(
+                textField(j, "emitterNif"), textField(j, "customerNif"), textField(j, "customerName"),
+                textField(j, "invoiceNumber"), textField(j, "invoiceDateIso"),
+                numField(j, "totalAmount"), textField(j, "confidence"));
+    }
+
+    /** Confirma: fija next_number + guarda el PDF como prueba y la declaración firmada. */
+    public void confirmMigrationBaseline(String seriesId, String declaredSeriesCode, String declaredFullNumber,
+                                         Integer declaredNumber, String declaredDate, String emitterNif,
+                                         String customerNif, String customerName, String totalAmount,
+                                         String ocrConfidence, boolean signed, String declarationText, byte[] pdf)
+            throws IOException, InterruptedException {
+        StringBuilder b = new StringBuilder("{");
+        b.append(field("seriesId", seriesId)).append(',');
+        b.append(field("declaredSeriesCode", declaredSeriesCode)).append(',');
+        b.append(field("declaredFullNumber", declaredFullNumber)).append(',');
+        b.append("\"declaredNumber\":").append(declaredNumber == null ? "null" : declaredNumber).append(',');
+        b.append(field("declaredDate", declaredDate)).append(',');
+        b.append(field("emitterNif", emitterNif)).append(',');
+        b.append(field("customerNif", customerNif)).append(',');
+        b.append(field("customerName", customerName)).append(',');
+        b.append("\"totalAmount\":").append(totalAmount == null || totalAmount.isBlank() ? "null" : totalAmount).append(',');
+        b.append(field("ocrConfidence", ocrConfidence)).append(',');
+        b.append("\"declarationSigned\":").append(signed).append(',');
+        b.append(field("declarationText", declarationText)).append(',');
+        b.append("\"pdfBase64\":").append(pdf == null ? "null"
+                : "\"" + java.util.Base64.getEncoder().encodeToString(pdf) + "\"");
+        b.append('}');
+        HttpResponse<String> response = sendAuthorized(HttpRequest.newBuilder(
+                URI.create(baseUrl + "/billing/migration-baseline/confirm"))
+                .timeout(Duration.ofSeconds(40))
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(b.toString())));
+        ensureOk(response);
+    }
+
+    private String numField(String json, String name) {
+        java.util.regex.Matcher m = java.util.regex.Pattern
+                .compile("\"" + name + "\"\\s*:\\s*(-?\\d+(?:\\.\\d+)?)").matcher(json == null ? "" : json);
+        return m.find() ? m.group(1) : null;
+    }
+
     // -------- certificados (para selector) --------
 
     public List<CertificateOption> listCertificateOptions() throws IOException, InterruptedException {

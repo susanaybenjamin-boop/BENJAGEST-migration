@@ -1,7 +1,6 @@
 package com.benjagest.backend.billing.migration;
 
 import com.benjagest.backend.auth.RequiresRole;
-import java.io.IOException;
 import java.math.BigDecimal;
 import java.util.Base64;
 import java.util.List;
@@ -11,9 +10,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
-import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
 
 /**
@@ -31,14 +28,15 @@ public class MigrationBaselineController {
         this.service = service;
     }
 
+    public record ExtractPayload(String pdfBase64) {}
+
     /** Sube el PDF de la última factura y devuelve los campos autorellenados (OCR). */
     @PostMapping("/extract")
-    public MigrationBaselineService.Extracted extract(@RequestParam("file") MultipartFile file) {
-        try {
-            return service.extract(file.getBytes());
-        } catch (IOException ex) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "No se pudo leer el archivo.");
+    public MigrationBaselineService.Extracted extract(@RequestBody ExtractPayload p) {
+        if (p == null || p.pdfBase64() == null || p.pdfBase64().isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Falta el PDF.");
         }
+        return service.extract(Base64.getDecoder().decode(p.pdfBase64()));
     }
 
     public record ConfirmPayload(String seriesId, String declaredSeriesCode, String declaredFullNumber,
