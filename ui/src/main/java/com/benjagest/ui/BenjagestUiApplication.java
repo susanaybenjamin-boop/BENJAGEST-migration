@@ -8779,7 +8779,19 @@ public class BenjagestUiApplication extends Application {
         if (iso == null || iso.length() < 19) {
             return iso == null ? "" : iso;
         }
-        // "2026-06-01T19:30:00..." -> "2026-06-01 19:30:00"
+        // Si la fecha trae ZONA (sufijo Z u offset +02:00), es un instante
+        // UTC/zonado -> convertir a la hora LOCAL antes de mostrar. Sin esto
+        // los backups salían 2h por debajo en España (se mostraba el UTC).
+        try {
+            if (iso.endsWith("Z") || iso.matches(".*[+-]\\d\\d:?\\d\\d$")) {
+                return java.time.OffsetDateTime.parse(iso)
+                        .atZoneSameInstant(java.time.ZoneId.systemDefault())
+                        .format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
+            }
+        } catch (Exception ignored) {
+            // formato inesperado -> caemos al recorte simple de abajo
+        }
+        // "2026-06-01T19:30:00..." (sin zona) -> "2026-06-01 19:30:00"
         return iso.substring(0, 10) + " " + iso.substring(11, 19);
     }
 
