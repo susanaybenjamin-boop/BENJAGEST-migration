@@ -29494,13 +29494,29 @@ public class BenjagestUiApplication extends Application {
             showLogin();
         });
 
+        // Pantalla donde está la app (multi-monitor): detectada por el CENTRO de la
+        // ventana de la app. El salvapantallas cubre ESA pantalla entera. Se calcula
+        // ANTES del fondo para poder dimensionar el logo respecto a la pantalla.
+        javafx.geometry.Rectangle2D area = javafx.stage.Screen.getPrimary().getBounds();
+        try {
+            javafx.stage.Window owner = (root != null && root.getScene() != null)
+                    ? root.getScene().getWindow() : null;
+            if (owner != null && owner.getWidth() > 0 && owner.getHeight() > 0) {
+                double cx = owner.getX() + owner.getWidth() / 2;
+                double cy = owner.getY() + owner.getHeight() / 2;
+                var screens = javafx.stage.Screen.getScreensForRectangle(cx, cy, 1, 1);
+                if (!screens.isEmpty()) area = screens.get(0).getBounds();
+            }
+        } catch (Exception ignored) {
+        }
+
         // ---- Fondo según salvapantallas ----
         StackPane background = new StackPane();
         background.setStyle("-fx-background-color: linear-gradient(to bottom right, #0a0f1a, #0e1830);");
         String style = screensaverStyle == null ? "clock" : screensaverStyle;
         switch (style) {
-            case "logo" -> background.getChildren().add(buildScreensaverLogo(stage));
-            case "carousel" -> background.getChildren().add(buildScreensaverCarousel(stage));
+            case "logo" -> background.getChildren().add(buildScreensaverLogo(area.getWidth(), area.getHeight()));
+            case "carousel" -> background.getChildren().add(buildScreensaverCarousel(stage, area.getWidth(), area.getHeight()));
             case "clock" -> background.getChildren().add(buildScreensaverClock(stage));
             case "dark" -> { /* fondo oscuro liso, nada más */ }
             default -> { /* tipo desconocido → liso */ }
@@ -29543,25 +29559,13 @@ public class BenjagestUiApplication extends Application {
         background.getChildren().add(pinBox);
         StackPane.setAlignment(pinBox, Pos.CENTER);
 
-        // Pantalla donde está la app (multi-monitor): detectada por el CENTRO de la
-        // ventana de la app. El salvapantallas cubre ESA pantalla entera.
-        javafx.geometry.Rectangle2D area = javafx.stage.Screen.getPrimary().getBounds();
-        try {
-            javafx.stage.Window owner = (root != null && root.getScene() != null)
-                    ? root.getScene().getWindow() : null;
-            if (owner != null && owner.getWidth() > 0 && owner.getHeight() > 0) {
-                double cx = owner.getX() + owner.getWidth() / 2;
-                double cy = owner.getY() + owner.getHeight() / 2;
-                var screens = javafx.stage.Screen.getScreensForRectangle(cx, cy, 1, 1);
-                if (!screens.isEmpty()) area = screens.get(0).getBounds();
-            }
-        } catch (Exception ignored) {
-        }
         // La Scene se crea CON el tamaño de la pantalla y el StackPane raíz la
         // rellena entera (antes, sin tamaño, quedaba del ancho del contenido → la
-        // franja central que se veía).
+        // franja central que se veía). setFill oscuro como red de seguridad.
+        background.setMinSize(area.getWidth(), area.getHeight());
         background.setPrefSize(area.getWidth(), area.getHeight());
         Scene scene = new Scene(background, area.getWidth(), area.getHeight());
+        scene.setFill(javafx.scene.paint.Color.web("#0a0f1a"));
         stage.setScene(scene);
         stage.setOnCloseRequest(ev -> ev.consume());  // no se cierra por X
         stage.setFullScreenExitHint("");
@@ -29602,12 +29606,19 @@ public class BenjagestUiApplication extends Application {
         return box;
     }
 
-    private Node buildScreensaverLogo(javafx.stage.Stage owner) {
+    /**
+     * Logo GRANDE centrado (≈ mitad de la pantalla de alto), sobre un panel
+     * del tamaño completo de la pantalla para que el salvapantallas llene de
+     * verdad. fitHeight/fitWidth fijos: cuando la imagen carga (async) NO
+     * cambia el layout → sin saltos.
+     */
+    private Node buildScreensaverLogo(double w, double h) {
         javafx.scene.image.ImageView iv = new javafx.scene.image.ImageView();
-        iv.setFitWidth(300);
         iv.setPreserveRatio(true);
         iv.setSmooth(true);
-        iv.setOpacity(0.85);
+        iv.setFitHeight(Math.max(220, h * 0.5));
+        iv.setFitWidth(Math.max(220, w * 0.6));
+        iv.setOpacity(0.9);
         Task<byte[]> load = new Task<>() {
             @Override protected byte[] call() throws Exception {
                 return altaApiClient.getCompanyLogoBytes();
@@ -29615,24 +29626,40 @@ public class BenjagestUiApplication extends Application {
         };
         load.setOnSucceeded(s -> {
             byte[] b = load.getValue();
-            if (b != null) iv.setImage(new javafx.scene.image.Image(
+            if (b != null && b.length > 0) iv.setImage(new javafx.scene.image.Image(
                     new java.io.ByteArrayInputStream(b)));
         });
         start(load, "lock-saver-logo");
         StackPane p = new StackPane(iv);
+        p.setMinSize(w, h);
+        p.setPrefSize(w, h);
+        StackPane.setAlignment(iv, Pos.CENTER);
         return p;
     }
 
-    private Node buildScreensaverCarousel(javafx.stage.Stage owner) {
-        Node base = buildScreensaverLogo(owner);
+    /**
+     * Carrusel = logo grande con un zoom lento y una deriva horizontal suave
+     * (efecto "flotar"), ambos con Interpolator.EASE_BOTH para que sea fluido
+     * (sin los saltitos del escalado lineal anterior).
+     */
+    private Node buildScreensaverCarousel(javafx.stage.Stage owner, double w, double h) {
+        Node base = buildScreensaverLogo(w, h);
         javafx.animation.ScaleTransition st = new javafx.animation.ScaleTransition(
-                javafx.util.Duration.seconds(6), base);
-        st.setFromX(0.95); st.setFromY(0.95);
-        st.setToX(1.08); st.setToY(1.08);
+                javafx.util.Duration.seconds(9), base);
+        st.setFromX(1.0); st.setFromY(1.0);
+        st.setToX(1.14); st.setToY(1.14);
+        st.setInterpolator(javafx.animation.Interpolator.EASE_BOTH);
         st.setAutoReverse(true);
         st.setCycleCount(javafx.animation.Animation.INDEFINITE);
+        javafx.animation.TranslateTransition tt = new javafx.animation.TranslateTransition(
+                javafx.util.Duration.seconds(13), base);
+        tt.setFromX(-w * 0.04); tt.setToX(w * 0.04);
+        tt.setInterpolator(javafx.animation.Interpolator.EASE_BOTH);
+        tt.setAutoReverse(true);
+        tt.setCycleCount(javafx.animation.Animation.INDEFINITE);
         st.play();
-        owner.setOnHidden(ev -> st.stop());
+        tt.play();
+        owner.setOnHidden(ev -> { st.stop(); tt.stop(); });
         return base;
     }
 
