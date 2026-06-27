@@ -10609,6 +10609,7 @@ public class BenjagestUiApplication extends Application {
         actions.getStyleClass().add("settings-actions");
 
         Node vatRatesBlock = vatRatesAuditBlock();
+        Node vatRegimeBlock = vatRegimeBlock();
 
         VBox body = new VBox(16,
                 section, hint, grid, certHint,
@@ -10618,6 +10619,8 @@ public class BenjagestUiApplication extends Application {
                 migrationBlock,
                 new Separator(),
                 textsBlock,
+                new Separator(),
+                vatRegimeBlock,
                 new Separator(),
                 vatRatesBlock,
                 new Separator(),
@@ -10633,6 +10636,80 @@ public class BenjagestUiApplication extends Application {
      * es por empresa.
      */
     private TableView<com.benjagest.ui.model.VatRateEntry> vatRatesTable;
+
+    /** VAT-REGIME — bloque del régimen de IVA (General / Prorrata / Criterio de caja). */
+    private Node vatRegimeBlock() {
+        Label header = label(t("billing.config.regime.section"), "settings-section-title");
+        Label hint = new Label(t("billing.config.regime.hint"));
+        hint.setWrapText(true);
+        hint.getStyleClass().add("settings-hint");
+
+        ComboBox<String> combo = new ComboBox<>(FXCollections.observableArrayList(
+                "GENERAL", "PRORRATA", "CASH_CRITERION"));
+        combo.getStyleClass().add("form-input");
+        combo.setConverter(new javafx.util.StringConverter<>() {
+            @Override public String toString(String c) {
+                if (c == null) return "";
+                return switch (c) {
+                    case "GENERAL" -> t("billing.config.regime.general");
+                    case "PRORRATA" -> t("billing.config.regime.prorrata");
+                    case "CASH_CRITERION" -> t("billing.config.regime.cash");
+                    default -> c;
+                };
+            }
+            @Override public String fromString(String s) { return s; }
+        });
+        combo.setValue("GENERAL");
+
+        TextField prorrata = new TextField();
+        prorrata.setPromptText("%");
+        prorrata.setMaxWidth(120);
+        HBox prorrataRow = new HBox(8, new Label(t("billing.config.regime.prorrata_pct")), prorrata);
+        prorrataRow.setAlignment(Pos.CENTER_LEFT);
+        Runnable toggleProrrata = () -> {
+            boolean show = "PRORRATA".equals(combo.getValue());
+            prorrataRow.setVisible(show);
+            prorrataRow.setManaged(show);
+        };
+        combo.valueProperty().addListener((o, a, b) -> toggleProrrata.run());
+        toggleProrrata.run();
+
+        Button save = new Button(t("billing.config.regime.save"));
+        save.setGraphic(icon("fas-save"));
+        save.setOnAction(e -> {
+            save.setDisable(true);
+            String regime = combo.getValue();
+            String pct = "PRORRATA".equals(regime) ? prorrata.getText() : null;
+            Task<com.benjagest.ui.service.BillingApiClient.VatRegime> tk = new Task<>() {
+                @Override protected com.benjagest.ui.service.BillingApiClient.VatRegime call() throws Exception {
+                    return billingApiClient.saveVatRegime(regime, pct);
+                }
+            };
+            tk.setOnSucceeded(ev -> { save.setDisable(false);
+                    showInfo(t("billing.config.regime.section"), t("billing.config.regime.saved")); });
+            tk.setOnFailed(ev -> { save.setDisable(false);
+                    showError(t("billing.config.regime.section"),
+                            tk.getException() == null ? "" : tk.getException().getMessage()); });
+            start(tk, "vat-regime-save");
+        });
+
+        Task<com.benjagest.ui.service.BillingApiClient.VatRegime> load = new Task<>() {
+            @Override protected com.benjagest.ui.service.BillingApiClient.VatRegime call() throws Exception {
+                return billingApiClient.getVatRegime();
+            }
+        };
+        load.setOnSucceeded(ev -> {
+            var v = load.getValue();
+            if (v.regime() != null && !v.regime().isBlank()) combo.setValue(v.regime());
+            if (v.prorrataPercent() != null) prorrata.setText(v.prorrataPercent());
+            toggleProrrata.run();
+        });
+        javafx.application.Platform.runLater(() -> start(load, "vat-regime-load"));
+
+        GridPane g = formGrid();
+        addFormRow(g, 0, t("billing.config.regime.field"), combo);
+        return new VBox(8, header, hint, g, prorrataRow, new HBox(save));
+    }
 
     private Node vatRatesAuditBlock() {
         Label header = label(t("billing.config.vat.section"), "settings-section-title");
@@ -14304,6 +14381,15 @@ public class BenjagestUiApplication extends Application {
                 case "billing.config.vat.inactive" -> "inactive";
                 case "billing.config.vat.action.add" -> "Add rate";
                 case "billing.config.vat.action.load_standard" -> "Load standard rates";
+                case "billing.config.regime.section" -> "VAT regime";
+                case "billing.config.regime.hint" -> "Special VAT regime of the company. Cash-basis invoices must state it; prorrata limits deductible input VAT. (Base version: it's recorded and shown; fine-tuning the calculation comes with a real case.)";
+                case "billing.config.regime.field" -> "Regime";
+                case "billing.config.regime.general" -> "General";
+                case "billing.config.regime.prorrata" -> "Prorrata (limited deduction)";
+                case "billing.config.regime.cash" -> "Cash-basis criterion";
+                case "billing.config.regime.prorrata_pct" -> "Prorrata %";
+                case "billing.config.regime.save" -> "Save regime";
+                case "billing.config.regime.saved" -> "VAT regime saved.";
                 case "billing.config.vat.load_standard.done" -> "{n} standard rate(s) added. You can edit or add more.";
                 case "billing.config.vat.load_standard.exists" -> "The standard rates already exist.";
                 case "billing.config.vat.action.edit" -> "Edit";
@@ -15379,6 +15465,15 @@ public class BenjagestUiApplication extends Application {
             case "billing.config.vat.inactive" -> "inactivo";
             case "billing.config.vat.action.add" -> "Añadir tipo";
             case "billing.config.vat.action.load_standard" -> "Cargar tipos estándar";
+            case "billing.config.regime.section" -> "Régimen de IVA";
+            case "billing.config.regime.hint" -> "Régimen especial de IVA de la empresa. El criterio de caja debe mencionarse en la factura; la prorrata limita el IVA soportado deducible. (Versión base: se registra y se muestra; el ajuste fino del cálculo se afina con un caso real.)";
+            case "billing.config.regime.field" -> "Régimen";
+            case "billing.config.regime.general" -> "General";
+            case "billing.config.regime.prorrata" -> "Prorrata (deducción limitada)";
+            case "billing.config.regime.cash" -> "Criterio de caja";
+            case "billing.config.regime.prorrata_pct" -> "Prorrata %";
+            case "billing.config.regime.save" -> "Guardar régimen";
+            case "billing.config.regime.saved" -> "Régimen de IVA guardado.";
             case "billing.config.vat.load_standard.done" -> "{n} tipo(s) estándar añadido(s). Puedes editar o añadir más.";
             case "billing.config.vat.load_standard.exists" -> "Los tipos estándar ya existen.";
             case "billing.config.vat.action.edit" -> "Editar";

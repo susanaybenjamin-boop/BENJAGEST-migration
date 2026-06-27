@@ -38,12 +38,49 @@ public class PdfTextExtractor {
     /** Máximo de páginas que procesamos para no bloquear con PDFs gigantes. */
     private static final int MAX_PAGES = 20;
 
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(PdfTextExtractor.class);
+
     public String extract(byte[] pdfBytes) throws IOException {
         try (PDDocument doc = Loader.loadPDF(pdfBytes)) {
             PDFTextStripper stripper = new PDFTextStripper();
             stripper.setSortByPosition(true);
             String text = stripper.getText(doc);
+            // OCR-TESSERACT: si el PDF no trae texto seleccionable (escaneado),
+            // caemos a OCR sobre las páginas renderizadas.
+            if (text == null || text.replaceAll("\\s", "").length() < 15) {
+                String ocr = ocr(pdfBytes);
+                if (ocr != null && !ocr.isBlank()) return ocr;
+            }
             return text == null ? "" : text;
+        }
+    }
+
+    /**
+     * OCR-TESSERACT — texto de un PDF escaneado renderizando cada página a
+     * imagen (300 DPI) y pasándola por Tesseract (idiomas spa+eng). El binario
+     * nativo + tessdata deben estar en el sistema (TESSDATA_PREFIX). Si no, NO
+     * rompe: devuelve "" y el caller sigue como antes.
+     */
+    private String ocr(byte[] pdfBytes) {
+        try (PDDocument doc = Loader.loadPDF(pdfBytes)) {
+            net.sourceforge.tess4j.Tesseract tess = new net.sourceforge.tess4j.Tesseract();
+            String dp = System.getenv("TESSDATA_PREFIX");
+            if (dp != null && !dp.isBlank()) tess.setDatapath(dp);
+            tess.setLanguage("spa+eng");
+            org.apache.pdfbox.rendering.PDFRenderer renderer =
+                    new org.apache.pdfbox.rendering.PDFRenderer(doc);
+            int pages = Math.min(doc.getNumberOfPages(), MAX_PAGES);
+            StringBuilder sb = new StringBuilder();
+            for (int i = 0; i < pages; i++) {
+                java.awt.image.BufferedImage img = renderer.renderImageWithDPI(i, 300);
+                sb.append(tess.doOCR(img)).append("\n");
+            }
+            return sb.toString();
+        } catch (Throwable ex) {
+            // UnsatisfiedLinkError / TesseractException / falta tessdata → degradar.
+            log.warn("OCR-TESSERACT no disponible o falló ({}). Se ignora el escaneado.",
+                    ex.getMessage());
+            return "";
         }
     }
 

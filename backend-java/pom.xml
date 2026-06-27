@@ -130,6 +130,16 @@
             <version>3.0.3</version>
         </dependency>
 
+        <!-- OCR-TESSERACT — OCR de PDFs escaneados (decision Benjamin 2026-06-27).
+             Necesita el binario nativo de Tesseract + datos de idioma (tessdata)
+             en el sistema/instalador. Si no estan, el extractor degrada con
+             gracia al texto vacio (no rompe). -->
+        <dependency>
+            <groupId>net.sourceforge.tess4j</groupId>
+            <artifactId>tess4j</artifactId>
+            <version>5.11.0</version>
+        </dependency>
+
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>

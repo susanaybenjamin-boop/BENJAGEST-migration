@@ -473,6 +473,30 @@ public class BillingApiClient {
         );
     }
 
+    // VAT-REGIME — régimen de IVA de la empresa.
+    public record VatRegime(String regime, String prorrataPercent) {}
+
+    public VatRegime getVatRegime() throws IOException, InterruptedException {
+        HttpResponse<String> r = sendAuthorized(HttpRequest.newBuilder(
+                URI.create(baseUrl + "/billing/vat-regime")).timeout(Duration.ofSeconds(8)).GET());
+        ensureOk(r);
+        return new VatRegime(textField(r.body(), "regime"), numField(r.body(), "prorrataPercent"));
+    }
+
+    public VatRegime saveVatRegime(String regime, String prorrataPercent)
+            throws IOException, InterruptedException {
+        String body = "{" + field("regime", regime) + ","
+                + "\"prorrataPercent\":"
+                + (prorrataPercent == null || prorrataPercent.isBlank() ? "null" : prorrataPercent)
+                + "}";
+        HttpResponse<String> r = sendAuthorized(HttpRequest.newBuilder(
+                URI.create(baseUrl + "/billing/vat-regime")).timeout(Duration.ofSeconds(8))
+                .header("Content-Type", "application/json")
+                .PUT(HttpRequest.BodyPublishers.ofString(body)));
+        ensureOk(r);
+        return new VatRegime(textField(r.body(), "regime"), numField(r.body(), "prorrataPercent"));
+    }
+
     /**
      * Declaración responsable del fabricante del SIF (RD 1007/2023).
      * Endpoint informativo — devuelve el JSON con los datos del
