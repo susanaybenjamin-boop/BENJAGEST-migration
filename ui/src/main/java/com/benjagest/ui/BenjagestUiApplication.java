@@ -8485,7 +8485,29 @@ public class BenjagestUiApplication extends Application {
         table.getSelectionModel().selectedItemProperty().addListener((obs, o, n) ->
                 openFolder.setDisable(n == null));
 
-        HBox row = new HBox(10, runNow, refresh, openFolder);
+        Button purgeOrphans = new Button(t("settings.backup.btn.purge_orphans"));
+        purgeOrphans.setGraphic(icon("fas-broom"));
+        purgeOrphans.setOnAction(ev -> {
+            Alert confirm = new Alert(Alert.AlertType.CONFIRMATION);
+            confirm.setTitle(t("settings.backup.purge.title"));
+            confirm.setHeaderText(t("settings.backup.purge.confirm"));
+            confirm.showAndWait().ifPresent(rsp -> {
+                if (rsp != javafx.scene.control.ButtonType.OK) return;
+                purgeOrphans.setDisable(true);
+                Task<Integer> task = new Task<>() {
+                    @Override protected Integer call() throws Exception { return altaApiClient.purgeOrphanFiles(); }
+                };
+                task.setOnSucceeded(s -> { purgeOrphans.setDisable(false);
+                        showInfo(t("settings.backup.purge.title"),
+                                t("settings.backup.purge.done").replace("{n}", String.valueOf(task.getValue()))); });
+                task.setOnFailed(s -> { purgeOrphans.setDisable(false);
+                        showError(t("settings.backup.purge.title"),
+                                task.getException() == null ? "" : task.getException().getMessage()); });
+                start(task, "backup-purge-orphans");
+            });
+        });
+
+        HBox row = new HBox(10, runNow, refresh, openFolder, purgeOrphans);
         row.setAlignment(Pos.CENTER_LEFT);
 
         load.run();
@@ -20158,6 +20180,10 @@ public class BenjagestUiApplication extends Application {
             case "settings.backup.btn.refresh" -> "Refresh";
             case "settings.backup.btn.run_now" -> "Run now";
             case "settings.backup.btn.open_folder" -> "Open folder";
+            case "settings.backup.btn.purge_orphans" -> "Purge orphan files";
+            case "settings.backup.purge.title" -> "Purge orphan files";
+            case "settings.backup.purge.confirm" -> "Delete on-disk file folders of companies that no longer exist in the database? Real companies are never touched. This cannot be undone.";
+            case "settings.backup.purge.done" -> "Done: {n} orphan folder(s) deleted.";
             case "settings.backup.open.fail" -> "Could not open folder";
             case "settings.backup.load.fail" -> "Could not list backups";
             case "settings.backup.run.ok" -> "Backup created";
@@ -21334,6 +21360,10 @@ public class BenjagestUiApplication extends Application {
             case "settings.backup.btn.refresh" -> "Recargar";
             case "settings.backup.btn.run_now" -> "Hacer ahora";
             case "settings.backup.btn.open_folder" -> "Abrir carpeta";
+            case "settings.backup.btn.purge_orphans" -> "Purgar ficheros huérfanos";
+            case "settings.backup.purge.title" -> "Purgar ficheros huérfanos";
+            case "settings.backup.purge.confirm" -> "¿Borrar del disco las carpetas de ficheros de empresas que ya no existen en la base de datos? Las empresas reales no se tocan nunca. No se puede deshacer.";
+            case "settings.backup.purge.done" -> "Hecho: {n} carpeta(s) huérfana(s) borrada(s).";
             case "settings.backup.open.fail" -> "No se pudo abrir la carpeta";
             case "settings.backup.load.fail" -> "No se pudieron listar las copias";
             case "settings.backup.run.ok" -> "Copia creada";

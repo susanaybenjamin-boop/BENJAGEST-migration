@@ -2764,6 +2764,16 @@ public class AltaApiClient {
         return textField(r.body(), "file");
     }
 
+    /** Purga carpetas de ficheros de empresas que ya no están en la BD. Devuelve cuántas borró. */
+    public int purgeOrphanFiles() throws IOException, InterruptedException {
+        HttpResponse<String> r = send(req(baseUrl + "/system/backup/purge-orphans")
+                .POST(java.net.http.HttpRequest.BodyPublishers.noBody()));
+        if (r.statusCode() < 200 || r.statusCode() >= 300) {
+            throw new IOException("HTTP " + r.statusCode() + ": " + r.body());
+        }
+        return intField(r.body(), "deleted");
+    }
+
     // ============================================================
     //  BOE-RSS — Alertas BOE /api/boe-alerts
     // ============================================================
