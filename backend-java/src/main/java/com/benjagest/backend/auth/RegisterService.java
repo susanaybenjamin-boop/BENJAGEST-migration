@@ -29,37 +29,52 @@ public class RegisterService {
     private final JdbcTemplate jdbc;
     private final PasswordEncoder passwordEncoder;
     private final AuthService authService;
+    private final EmailVerificationService emailVerification;
 
-    public RegisterService(JdbcTemplate jdbc, PasswordEncoder passwordEncoder, AuthService authService) {
+    public RegisterService(JdbcTemplate jdbc, PasswordEncoder passwordEncoder, AuthService authService,
+                           EmailVerificationService emailVerification) {
         this.jdbc = jdbc;
         this.passwordEncoder = passwordEncoder;
         this.authService = authService;
+        this.emailVerification = emailVerification;
     }
 
-    /** Alta con email + contraseña. */
+    /**
+     * Alta con email + contraseña. NO hace auto-login: la cuenta queda PENDIENTE
+     * de verificar y se envía un PIN al email (REG-VERIFY). Devuelve
+     * {@code {verificationRequired:true, email}} para que la UI pida el PIN.
+     */
     @Transactional
-    public LoginResponse register(RegisterRequest r) {
+    public java.util.Map<String, Object> register(RegisterRequest r) {
         if (r.password() == null || r.password().length() < 8) {
             throw bad("La contraseña debe tener al menos 8 caracteres");
         }
-        return createAccount(r, norm(r.email()), r.password(), null);
+        String email = norm(r.email());
+        String userId = createAccount(r, email, r.password(), null);
+        // start() guarda el PIN en esta transacción y envía el correo AFTER-COMMIT
+        // (si el correo falla no se cae el registro; el usuario reenvía).
+        emailVerification.start(userId, email, trim(r.displayName()));
+        return java.util.Map.of("verificationRequired", true, "email", email);
     }
 
     /**
      * Alta vía Google (REG-3): el email viene VERIFICADO por Google y se guarda el
-     * {@code google_id}; sin contraseña. Los datos de empresa (tipo, razón social,
-     * NIF, domicilio) los aporta el formulario igual que en el alta normal.
+     * {@code google_id}; sin contraseña. Entra directo (sin PIN).
      */
     @Transactional
     public LoginResponse registerWithGoogle(RegisterRequest companyData, String googleEmail, String googleId) {
         if (googleEmail == null || googleEmail.isBlank()) throw bad("Google no devolvió email");
         if (googleId == null || googleId.isBlank()) throw bad("Google no devolvió identidad");
-        return createAccount(companyData, norm(googleEmail), null, googleId);
+        String email = norm(googleEmail);
+        createAccount(companyData, email, null, googleId);
+        return authService.issueSession(email);
     }
 
-    /** Núcleo común: crea empresa + OWNER + siembra. Sesión por contraseña o, si
-     *  es Google (sin contraseña), emitida directamente para el email. */
-    private LoginResponse createAccount(RegisterRequest r, String email, String rawPassword, String googleId) {
+    /** Núcleo común: crea empresa + OWNER + siembra. Devuelve el userId. La
+     *  transacción la aporta el caller (register/registerWithGoogle).
+     *  email_verified queda en su default 1 (Google = verificado); el alta por
+     *  contraseña lo pone a 0 en {@link EmailVerificationService#start}. */
+    private String createAccount(RegisterRequest r, String email, String rawPassword, String googleId) {
         boolean advisory = "ADVISORY".equalsIgnoreCase(trim(r.accountType()));
         String companyType = advisory ? "ADVISORY" : "CLIENT";
 
@@ -118,9 +133,7 @@ public class RegisterService {
         seedFiscalYearOpen(companyId);
         seedAccountsFromTemplate(companyId);
 
-        return rawPassword != null
-                ? authService.login(new LoginRequest(email, rawPassword))
-                : authService.issueSession(email);
+        return userId;
     }
 
     // ---- Sembrado (mismo criterio que AdvisoryService, pero desde la plantilla) ----

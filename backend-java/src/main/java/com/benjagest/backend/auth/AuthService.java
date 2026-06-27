@@ -87,6 +87,13 @@ public class AuthService {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Credenciales no validas");
         }
 
+        // REG-VERIFY — gate: email sin verificar no entra. El código EMAIL_NOT_VERIFIED
+        // lo reconoce la UI para mostrar la pantalla del PIN + reenvío.
+        if (!repository.isEmailVerified(user.id())) {
+            auditService.recordLoginFail(request.email(), "EMAIL_NOT_VERIFIED");
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "EMAIL_NOT_VERIFIED");
+        }
+
         List<AuthRepository.MembershipRecord> memberships = repository.findMembershipsForUser(user.id());
         if (memberships.isEmpty()) {
             auditService.recordLoginFail(request.email(), "NO_MEMBERSHIPS");

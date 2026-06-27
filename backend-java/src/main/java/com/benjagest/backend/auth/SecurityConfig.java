@@ -44,6 +44,8 @@ public class SecurityConfig {
                         .requestMatchers(
                                 "/api/auth/login",
                                 "/api/auth/register",
+                                "/api/auth/verify-email",
+                                "/api/auth/resend-verification",
                                 "/api/auth/bootstrap-status",
                                 "/api/auth/google/config",
                                 "/api/auth/google/login",

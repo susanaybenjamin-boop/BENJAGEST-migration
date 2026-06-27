@@ -7,6 +7,7 @@ import com.benjagest.backend.auth.dto.MeResponse;
 import com.benjagest.backend.auth.dto.RefreshRequest;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
+import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -34,12 +35,15 @@ public class AuthController {
     private final AuthService authService;
     private final RegisterService registerService;
     private final CurrentUserService currentUserService;
+    private final EmailVerificationService emailVerification;
 
     public AuthController(AuthService authService, RegisterService registerService,
-                          CurrentUserService currentUserService) {
+                          CurrentUserService currentUserService,
+                          EmailVerificationService emailVerification) {
         this.authService = authService;
         this.registerService = registerService;
         this.currentUserService = currentUserService;
+        this.emailVerification = emailVerification;
     }
 
     @PostMapping("/login")
@@ -47,10 +51,32 @@ public class AuthController {
         return authService.login(request);
     }
 
-    /** Bloque REGISTRO — alta de cuenta (asesoría o empresa) + auto-login. */
+    /** Bloque REGISTRO — alta de cuenta (asesoría o empresa). Email+contraseña NO
+     *  hace auto-login: devuelve {verificationRequired:true, email} y envía un PIN. */
     @PostMapping("/register")
-    public LoginResponse register(@Valid @RequestBody com.benjagest.backend.auth.dto.RegisterRequest request) {
+    public java.util.Map<String, Object> register(
+            @Valid @RequestBody com.benjagest.backend.auth.dto.RegisterRequest request) {
         return registerService.register(request);
+    }
+
+    public record VerifyEmailRequest(String email, String pin) {}
+    public record ResendRequest(String email) {}
+
+    /** REG-VERIFY — comprueba el PIN; si es correcto, deja entrar (devuelve sesión). */
+    @PostMapping("/verify-email")
+    public LoginResponse verifyEmail(@RequestBody VerifyEmailRequest req) {
+        boolean ok = emailVerification.verify(req.email(), req.pin());
+        if (!ok) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Código incorrecto.");
+        }
+        return authService.issueSession(req.email() == null ? null : req.email().trim().toLowerCase());
+    }
+
+    /** REG-VERIFY — reenvía un PIN nuevo a una cuenta sin verificar. */
+    @PostMapping("/resend-verification")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void resendVerification(@RequestBody ResendRequest req) {
+        emailVerification.resend(req.email());
     }
 
     /**

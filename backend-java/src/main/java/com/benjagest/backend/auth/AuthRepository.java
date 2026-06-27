@@ -21,6 +21,14 @@ public class AuthRepository {
         this.jdbcTemplate = jdbcTemplate;
     }
 
+    /** REG-VERIFY — ¿la cuenta tiene el email verificado? (gate del login). */
+    public boolean isEmailVerified(String userId) {
+        Boolean v = jdbcTemplate.query(
+                "SELECT email_verified FROM user_accounts WHERE id = ?",
+                rs -> rs.next() && rs.getBoolean(1), userId);
+        return Boolean.TRUE.equals(v);
+    }
+
     /** ¿Existe alguna cuenta? Si no, el arranque muestra el REGISTRO (primer uso). */
     public boolean hasAnyAccount() {
         Integer n = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM user_accounts", Integer.class);
