@@ -912,9 +912,10 @@ public class BillingApiClient {
 
     /** Confirma: fija next_number + guarda el PDF como prueba y la declaración firmada. */
     public void confirmMigrationBaseline(String seriesId, String declaredSeriesCode, String declaredFullNumber,
-                                         Integer declaredNumber, String declaredDate, String emitterNif,
-                                         String customerNif, String customerName, String totalAmount,
-                                         String ocrConfidence, boolean signed, String declarationText, byte[] pdf)
+                                         Integer declaredNumber, String declaredDate, Integer declaredYear,
+                                         String emitterNif, String customerNif, String customerName,
+                                         String totalAmount, String ocrConfidence, boolean signed,
+                                         String declarationText, byte[] pdf)
             throws IOException, InterruptedException {
         StringBuilder b = new StringBuilder("{");
         b.append(field("seriesId", seriesId)).append(',');
@@ -922,6 +923,7 @@ public class BillingApiClient {
         b.append(field("declaredFullNumber", declaredFullNumber)).append(',');
         b.append("\"declaredNumber\":").append(declaredNumber == null ? "null" : declaredNumber).append(',');
         b.append(field("declaredDate", declaredDate)).append(',');
+        b.append("\"declaredYear\":").append(declaredYear == null ? "null" : declaredYear).append(',');
         b.append(field("emitterNif", emitterNif)).append(',');
         b.append(field("customerNif", customerNif)).append(',');
         b.append(field("customerName", customerName)).append(',');
