@@ -113,20 +113,27 @@
   → diálogo con la tabla de baselines (serie/número/fecha/cliente/total/registrada) + "Ver PDF
   de prueba" (endpoint `/migration-baseline/{id}/evidence` + visor interno). *(Match de cliente
   contra la cartera = mejora futura menor.)*
-- ⬜ ❓ **OCR Tesseract** para PDFs escaneados — **necesita decisión** (instalar binario nativo).
-- 🟡 **CENTROS-MAP** — geocode "Buscar coordenadas" (Nominatim) **YA hecho** (CENTROS-GEOCODE);
-  **falta solo el mapa visual** (WebView + Leaflet para clicar lat/lng). Construible.
-- ⬜ ❓ **Régimen especial IVA/prorrata/criterio caja** (UI) — modelar **tras un caso real**.
-- ✅ **Workflow trabajos** — **prácticamente hecho** (verificado 2026-06-27): `WorkLogService` ya
-  tiene DRAFT→APPROVED→BILLED + conversión work_log→línea de factura (`billed_invoice_line_id`).
-  Refinamiento opcional: estado **SUBMITTED** intermedio (empleado envía → admin aprueba).
-- ⬜ **Dashboard widgets personalizables** — **mini-bloque** aparte.
+- ✅ **OCR Tesseract** — cerrado 2026-06-27 (Benjamin OK al binario): tess4j + fallback en
+  `PdfTextExtractor` (renderiza páginas + Tesseract spa+eng) cuando el PDF no trae texto.
+  Degrada con gracia. **DESPLIEGUE**: el instalador debe incluir el binario de Tesseract +
+  tessdata (spa/eng) y apuntar `TESSDATA_PREFIX`.
+- ✅ **CENTROS-MAP** — cerrado por decisión 2026-06-27: el **geocode "Buscar coordenadas"** es el
+  cierre. El **mapa visual descartado** (Benjamin: no meter WebKit/javafx-web en el instalador).
+- ✅ **Régimen especial IVA (base)** — cerrado 2026-06-27: V153 `companies.vat_regime` +
+  `prorrata_percent`; bloque "Régimen de IVA" (General/Prorrata/Criterio de caja) en Config →
+  Facturación. *(Efecto fino en el cálculo = afinar con caso real.)*
+- ✅ **Workflow trabajos** — ya hecho (DRAFT→APPROVED→BILLED + work_log→línea de factura).
+- ⬜ **Workflow SUBMITTED** (refinamiento) — **necesita un slice del PORTAL DEL EMPLEADO** (MEMP):
+  que el empleado cree/envíe sus partes de día desde la PWA y el admin los apruebe. El portal hoy
+  ficha pero no gestiona partes de trabajo. Mini-proyecto aparte; un estado hueco no aporta.
+- ✅ **Dashboard widgets personalizables (base)** — cerrado 2026-06-27 (DASH-CUSTOM): botón
+  "Personalizar" en el inicio → mostrar/ocultar Indicadores/Accesos rápidos/Actividad/Panorama.
+  Preferencia local por usuario. *(Reordenar = mejora futura.)*
 
-> **Resumen Fase 4 (verificado 2026-06-27):** ✅ ya hechos — REFLEJO (banner + idempotencia),
-> **MIG-3**, y **Workflow trabajos** (DRAFT→APPROVED→BILLED + work_log→factura). 🟡 medio hecho —
-> **CENTROS-MAP** (geocode sí, falta el mapa visual). ⬜ pendientes que **necesitan decisión/caso
-> real** — OCR Tesseract (binario nativo), Régimen especial IVA, Dashboard widgets, y el estado
-> SUBMITTED de trabajos (refinamiento). Lo "cerrable rápido" está cerrado.
+> **Resumen Fase 4 (cerrada 2026-06-27):** ✅ REFLEJO, MIG-3, Workflow trabajos, **OCR Tesseract**,
+> **Régimen IVA base**, **Dashboard personalizable**; **CENTROS-MAP** cerrado por decisión (solo
+> geocode). Único pendiente real: **Workflow SUBMITTED**, que requiere un slice del portal del
+> empleado (mini-proyecto, no cierre rápido). **Fase 4 cerrada salvo ese refinamiento.**
 
 ### Fase 5 — Empaquetado y despliegue 📦
 - **DEPLOY-PKG**: instalable Windows autocontenido (UI + backend + MariaDB embebida).
