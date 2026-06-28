@@ -56,6 +56,7 @@ Write-Host "==> 4/5  Generando app-image con jpackage..." -ForegroundColor Cyan
     --type app-image `
     --name BENJAGEST `
     --app-version $version `
+    --icon "packaging\benjagest.ico" `
     --input $input `
     --main-jar $uiJarName `
     --main-class com.benjagest.ui.Launcher `

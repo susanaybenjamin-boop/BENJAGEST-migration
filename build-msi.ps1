@@ -63,6 +63,7 @@ Write-Host "==> 3/4  Generando .msi con jpackage (necesita WiX)..." -ForegroundC
     --type msi `
     --name BENJAGEST `
     --app-version $version `
+    --icon "packaging\benjagest.ico" `
     --vendor "BENJAGEST" `
     --description "Gestion de asesoria fiscal y laboral" `
     --input $input `
