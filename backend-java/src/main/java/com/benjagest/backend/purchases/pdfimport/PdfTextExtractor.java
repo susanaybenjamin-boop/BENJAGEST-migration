@@ -64,9 +64,9 @@ public class PdfTextExtractor {
     private String ocr(byte[] pdfBytes) {
         try (PDDocument doc = Loader.loadPDF(pdfBytes)) {
             net.sourceforge.tess4j.Tesseract tess = new net.sourceforge.tess4j.Tesseract();
-            String dp = System.getenv("TESSDATA_PREFIX");
-            if (dp != null && !dp.isBlank()) tess.setDatapath(dp);
-            tess.setLanguage("spa+eng");
+            java.nio.file.Path dataDir = resolveTessdataDir();
+            if (dataDir != null) tess.setDatapath(dataDir.toString());
+            tess.setLanguage(resolveLanguages(dataDir));
             org.apache.pdfbox.rendering.PDFRenderer renderer =
                     new org.apache.pdfbox.rendering.PDFRenderer(doc);
             int pages = Math.min(doc.getNumberOfPages(), MAX_PAGES);
@@ -82,6 +82,45 @@ public class PdfTextExtractor {
                     ex.getMessage());
             return "";
         }
+    }
+
+    /**
+     * Localiza el directorio con los {@code *.traineddata}. Prioridad:
+     *   1) propiedad {@code -Dbenjagest.tessdata=...} (la pone el instalable),
+     *   2) variable de entorno {@code TESSDATA_PREFIX},
+     *   3) Tesseract instalado en el sistema (Program Files).
+     * Devuelve {@code null} si no encuentra ninguno (Tess4J usará su tessdata
+     * embebido, que solo trae los configs, no idiomas → OCR degradará a "").
+     */
+    private static java.nio.file.Path resolveTessdataDir() {
+        String prop = System.getProperty("benjagest.tessdata");
+        String env = System.getenv("TESSDATA_PREFIX");
+        java.util.List<String> candidates = new ArrayList<>();
+        if (prop != null && !prop.isBlank()) candidates.add(prop);
+        if (env != null && !env.isBlank()) candidates.add(env);
+        candidates.add("C:\\Program Files\\Tesseract-OCR\\tessdata");
+        candidates.add("C:\\Program Files (x86)\\Tesseract-OCR\\tessdata");
+        candidates.add("/usr/share/tesseract-ocr/4.00/tessdata");
+        candidates.add("/usr/share/tessdata");
+        for (String c : candidates) {
+            java.nio.file.Path p = java.nio.file.Paths.get(c);
+            if (java.nio.file.Files.isDirectory(p)) return p;
+        }
+        return null;
+    }
+
+    /**
+     * Elige los idiomas presentes en el datapath para no romper si falta alguno
+     * (Tesseract aborta si pides un idioma sin su {@code .traineddata}).
+     * Preferencia spa+eng; si solo hay uno, ese; si no hay datapath, "eng".
+     */
+    private static String resolveLanguages(java.nio.file.Path dataDir) {
+        if (dataDir == null) return "eng";
+        java.util.List<String> langs = new ArrayList<>();
+        for (String l : new String[] {"spa", "eng"}) {
+            if (java.nio.file.Files.exists(dataDir.resolve(l + ".traineddata"))) langs.add(l);
+        }
+        return langs.isEmpty() ? "eng" : String.join("+", langs);
     }
 
     /**

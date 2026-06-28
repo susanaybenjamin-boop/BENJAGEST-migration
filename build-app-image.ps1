@@ -62,7 +62,7 @@ Write-Host "==> 4/5  Generando app-image con jpackage..." -ForegroundColor Cyan
     --java-options "-Dbenjagest.launch.backend=true" `
     --add-modules ALL-MODULE-PATH `
     --jlink-options "--strip-debug --no-man-pages --no-header-files" `
-    --app-content "$dist\backend.jar" `
+    --app-content "$dist\backend.jar,packaging\tessdata" `
     --dest $out
 if ($LASTEXITCODE -ne 0) { throw "jpackage fallo." }
 

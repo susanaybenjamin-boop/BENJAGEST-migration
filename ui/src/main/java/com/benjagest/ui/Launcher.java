@@ -61,8 +61,17 @@ public final class Launcher {
         Path logFile = home.resolve("backend.log");
 
         System.out.println("[Launcher] Arrancando backend embebido: " + backendJar);
-        ProcessBuilder pb = new ProcessBuilder(
-                javaCmd, "-Dbenjagest.db.embedded=true", "-jar", backendJar.toString());
+        java.util.List<String> cmd = new java.util.ArrayList<>();
+        cmd.add(javaCmd);
+        cmd.add("-Dbenjagest.db.embedded=true");
+        // tessdata empaquetado (idiomas del OCR del bloque MIG), si viene en el instalable.
+        Path tessdata = root.resolve("tessdata");
+        if (Files.isDirectory(tessdata)) {
+            cmd.add("-Dbenjagest.tessdata=" + tessdata);
+        }
+        cmd.add("-jar");
+        cmd.add(backendJar.toString());
+        ProcessBuilder pb = new ProcessBuilder(cmd);
         pb.redirectErrorStream(true);
         pb.redirectOutput(logFile.toFile());
         backend = pb.start();
