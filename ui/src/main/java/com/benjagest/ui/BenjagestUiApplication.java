@@ -20546,6 +20546,8 @@ public class BenjagestUiApplication extends Application {
             case "settings.my_advisory.fail.unlink.title" -> "Could not unlink";
             case "settings.my_advisory.fail.unlink.body" -> "Try again or check the connection.";
             case "advisory.action.invite" -> "Invite client";
+            case "advisory.action.new_client" -> "New client";
+            case "advisory.action.new_client.tip" -> "Add a client you manage directly (no invitation needed). You can keep their books straight away; invite them later if they want their own access.";
             case "advisory.invitations.section" -> "Invitations";
             case "advisory.invitations.hint" -> "Invitations you have issued (active and history). Copy the token of a PENDING one and send it to the client through your usual channel — the client must paste it from their 'My advisory' tab or accept the banner that appears on their Home.";
             case "advisory.invitations.placeholder.empty" -> "No invitations issued yet.";
@@ -21736,6 +21738,8 @@ public class BenjagestUiApplication extends Application {
             case "settings.my_advisory.fail.unlink.title" -> "No se pudo desvincular";
             case "settings.my_advisory.fail.unlink.body" -> "Intentalo de nuevo o revisa la conexion.";
             case "advisory.action.invite" -> "Invitar cliente";
+            case "advisory.action.new_client" -> "Nuevo cliente";
+            case "advisory.action.new_client.tip" -> "Da de alta directamente un cliente que gestionas tú (sin invitación). Puedes llevarle la contabilidad ya mismo; si más adelante quiere su propio acceso, lo invitas.";
             case "advisory.invitations.section" -> "Invitaciones";
             case "advisory.invitations.hint" -> "Invitaciones que has emitido (activas e historico). Copia el token de una PENDIENTE y enviaselo al cliente por tu canal habitual — el cliente debe pegarlo desde su pestaña 'Mi asesoria' o aceptar el banner que aparece en su Home.";
             case "advisory.invitations.placeholder.empty" -> "Aun no has emitido invitaciones.";
@@ -31837,7 +31841,17 @@ public class BenjagestUiApplication extends Application {
         inviteBtn.getStyleClass().add("button-primary");
         inviteBtn.setOnAction(ev -> showCreateInvitationDialog());
 
-        HBox actions = new HBox(8, openClientBtn, inviteSelectedBtn, inviteBtn);
+        // Alta directa de ficha de cliente (cliente gestionado sin necesidad de
+        // invitarlo). Crea un customer en la cartera de la asesoría; al hacer
+        // doble click luego se inicia su gestión (shadow company). Es lo que
+        // faltaba: dar de alta un cliente sin obligarle a registrarse.
+        Button newClientBtn = new Button(t("advisory.action.new_client"));
+        newClientBtn.setGraphic(icon("fas-user-plus"));
+        newClientBtn.getStyleClass().add("button-primary");
+        Tooltip.install(newClientBtn, new Tooltip(t("advisory.action.new_client.tip")));
+        newClientBtn.setOnAction(ev -> openNewCustomerDialog(this::showAdvisoryClients));
+
+        HBox actions = new HBox(8, newClientBtn, openClientBtn, inviteSelectedBtn, inviteBtn);
         actions.getStyleClass().add("settings-actions");
 
         // Bloque de invitaciones — listado bajo la tabla de clientes
