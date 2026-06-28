@@ -173,13 +173,41 @@ Configuración (`companies.verifactu_modality`):
 
 ---
 
-## 9. Pendiente para un "producto instalable" (no bloqueante hoy)
+## 9. Puesto autocontenido con MariaDB EMBEBIDA (DEPLOY-PKG)
 
-- **`jpackage`** para generar un `.exe`/`.msi` de la UI (evita tener Java en
-  cada puesto).
+Para el instalable "todo es un puesto" **no hace falta Docker ni MariaDB
+externa**: el backend puede arrancar una **MariaDB embebida** (MariaDB4j) con
+sus datos en `~/.benjagest/mariadb-data`. Se activa con la propiedad
+`benjagest.db.embedded=true` (en desarrollo NO se activa, así se sigue usando la
+MariaDB del 3307 de `application.yml`).
+
+### Probarlo ya (test del stack embebido)
+
+```powershell
+.\run-embedded.ps1            # reusa el fat jar; lo construye si falta
+.\run-embedded.ps1 -Rebuild   # fuerza reconstruir el fat jar
+```
+
+Hace 4 pasos: (1) construye el **fat jar** del backend si falta, (2) lo arranca
+con `-Dbenjagest.db.embedded=true` (MariaDB embebida en 13307 + API en 8080),
+(3) espera a que la API responda, (4) lanza la UI apuntando a `localhost:8080`.
+Al cerrar la UI, para backend y MariaDB embebida. Los datos **persisten** entre
+arranques (la primera vez instala la BD y migra; las siguientes reutilizan los
+datos).
+
+> El **fat jar** se genera con `mvn -pl backend-java package -DskipTests`
+> (239 MB, incluye el binario de MariaDB) y es **autocontenido**: arranca con
+> `java -Dbenjagest.db.embedded=true -jar backend-java-0.1.0-SNAPSHOT.jar`, sin
+> Maven ni BD externa.
+
+## 10. Pendiente para un "producto instalable" (no bloqueante hoy)
+
+- **`jpackage`** para generar un `.exe`/`.msi` que empaquete UI + backend
+  embebido + JRE (necesita **WiX 3.x** instalado para `.msi`/`.exe`; el formato
+  `app-image` no lo necesita y ya es testeable).
 - Empaquetar el backend como **servicio de Windows** (arranque automático).
-- Instalador único que orqueste Docker/MariaDB + backend + accesos directos.
+- Bundle de **Tesseract** (binario + tessdata) para el OCR del bloque MIG.
 
 Estas tareas son de **empaquetado/operación**, no de arquitectura: el código ya
-es local-ready (sin acoplamiento a la nube). Están anotadas en el backlog
-(bloque **DEPLOY-LOCAL**).
+es local-ready (sin acoplamiento a la nube) y el backend ya es autocontenido con
+BD embebida. Están anotadas en el backlog (bloque **DEPLOY-PKG**).
