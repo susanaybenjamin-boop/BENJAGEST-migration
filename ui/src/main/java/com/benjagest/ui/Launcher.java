@@ -113,16 +113,23 @@ public final class Launcher {
     }
 
     private static void stopBackend() {
-        if (backend != null && backend.isAlive()) {
-            backend.destroy();
-            try {
-                if (!backend.waitFor(10, java.util.concurrent.TimeUnit.SECONDS)) {
-                    backend.destroyForcibly();
-                }
-            } catch (InterruptedException ie) {
-                Thread.currentThread().interrupt();
-                backend.destroyForcibly();
-            }
+        if (backend == null) return;
+        // Capturar los hijos (mariadbd embebido) ANTES de matar el backend para
+        // cerrarlos también. En Windows Process.destroy() es forzoso: mata el
+        // backend sin que corra su @PreDestroy, y mariadbd quedaría huérfano
+        // reteniendo el data dir -> el siguiente arranque falla ("ibdata1 must
+        // be writable"). Matando los descendientes evitamos el huérfano.
+        java.util.List<ProcessHandle> children =
+                backend.descendants().collect(java.util.stream.Collectors.toList());
+        backend.destroy();
+        try {
+            backend.waitFor(8, java.util.concurrent.TimeUnit.SECONDS);
+        } catch (InterruptedException ie) {
+            Thread.currentThread().interrupt();
+        }
+        if (backend.isAlive()) backend.destroyForcibly();
+        for (ProcessHandle child : children) {
+            if (child.isAlive()) child.destroyForcibly();
         }
     }
 

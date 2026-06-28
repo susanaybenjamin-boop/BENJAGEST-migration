@@ -40,6 +40,10 @@ public class EmbeddedMariaDbConfig {
         DBConfigurationBuilder cfg = DBConfigurationBuilder.newBuilder();
         cfg.setPort(PORT);
         cfg.setDataDir(dataDir.toString());
+        // Auto-sanación: si un cierre anterior dejó un mariadbd huérfano vivo,
+        // retiene el lock del data dir ("ibdata1 must be writable") y este
+        // arranque fallaría. Lo cerramos antes de empezar.
+        killStaleEmbeddedMariadb(dataDir);
         // PersistentEmbeddedDB en vez de DB.newEmbeddedDB: salta mariadb-install-db
         // si el data dir ya está inicializado (MariaDB 11.4 lo rechaza si no está
         // vacío). Sin esto el instalable moriría en el 2º arranque.
@@ -58,6 +62,38 @@ public class EmbeddedMariaDbConfig {
         ds.setConnectionTestQuery("SELECT 1");
         ds.setInitializationFailTimeout(0);
         return ds;
+    }
+
+    /**
+     * Cierra cualquier {@code mariadbd} embebido huérfano que quedara de un
+     * arranque anterior reteniendo el lock de NUESTRO data dir. En Windows
+     * {@code Process.destroy()} es forzoso, así que el {@link #stop()} que para
+     * MariaDB puede no ejecutarse al cerrar la app y dejar el proceso vivo.
+     *
+     * <p>Filtra por nuestro data dir o por el puerto {@value #PORT} para NO tocar
+     * la MariaDB del proyecto (3307) ni ninguna otra instancia del equipo.
+     */
+    private void killStaleEmbeddedMariadb(Path dataDir) {
+        String marker = dataDir.toString().toLowerCase();
+        String portArg = "--port=" + PORT;
+        ProcessHandle.allProcesses()
+                .filter(ph -> ph.info().command()
+                        .map(c -> c.toLowerCase().endsWith("mariadbd.exe")
+                                || c.toLowerCase().endsWith("mariadbd"))
+                        .orElse(false))
+                .filter(ph -> ph.info().commandLine()
+                        .map(cl -> cl.toLowerCase().contains(marker) || cl.contains(portArg))
+                        .orElse(false))
+                .forEach(ph -> {
+                    log.warn("DEPLOY-PKG: mariadbd embebido huérfano (PID {}) reteniendo el data dir; "
+                            + "lo cierro antes de arrancar.", ph.pid());
+                    ph.destroyForcibly();
+                    try {
+                        ph.onExit().get(10, java.util.concurrent.TimeUnit.SECONDS);
+                    } catch (Exception ignored) {
+                        // si no confirma la salida, seguimos: el start hará el diagnóstico real
+                    }
+                });
     }
 
     @PreDestroy
