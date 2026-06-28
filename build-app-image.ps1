@@ -28,8 +28,9 @@ $out       = "$dist\out"
 # jpackage de la JDK (Temurin). Usa JAVA_HOME si esta, si no el PATH.
 $jpackage = if ($env:JAVA_HOME) { Join-Path $env:JAVA_HOME "bin\jpackage.exe" } else { "jpackage" }
 
-# --- 1/5  Limpieza ----------------------------------------------------------
-if (Test-Path $dist) { Remove-Item -Recurse -Force $dist }
+# --- 1/5  Limpieza (SOLO la salida propia: input + out; NO toca dist\msi) ----
+if (Test-Path $input) { Remove-Item -Recurse -Force $input }
+if (Test-Path $out)   { Remove-Item -Recurse -Force $out }
 New-Item -ItemType Directory -Force -Path $input | Out-Null
 
 # --- 2/5  Backend fat jar (con MariaDB embebida) ----------------------------
