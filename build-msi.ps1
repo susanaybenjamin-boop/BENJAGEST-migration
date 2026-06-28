@@ -71,7 +71,7 @@ Write-Host "==> 3/4  Generando .msi con jpackage (necesita WiX)..." -ForegroundC
     --java-options "-Dbenjagest.launch.backend=true" `
     --add-modules ALL-MODULE-PATH `
     --jlink-options "--strip-debug --no-man-pages --no-header-files" `
-    --app-content "$dist\backend.jar" `
+    --app-content "$dist\backend.jar,packaging\tessdata" `
     --win-menu `
     --win-menu-group "BENJAGEST" `
     --win-shortcut `
