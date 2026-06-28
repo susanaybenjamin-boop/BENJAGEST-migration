@@ -2143,6 +2143,16 @@ public class BenjagestUiApplication extends Application {
                 Button button = navButton(link.id(), moduleTitle(link.id()), link.icon());
                 button.setOnAction(event -> { exitClientMode(); showModule(link.id()); });
                 sidebar.getChildren().add(button);
+                // CLIENTES — justo bajo Facturación: directorio de clientes
+                // (destinatarios de factura) con alta/edición. El tercero
+                // contable (subcuenta 430) se crea al FACTURAR, no aquí, con la
+                // numeración que configura la asesoría: el alta no toca el plan
+                // contable. Acceso directo sin tener que abrir "Nueva factura".
+                if ("billing".equals(link.id())) {
+                    Button clientes = navButton("customers", t("customers.sidebar"), "fas-users");
+                    clientes.setOnAction(event -> { exitClientMode(); showCustomersModule(); });
+                    sidebar.getChildren().add(clientes);
+                }
             }
             // MÓDULO TRABAJOS — entrada propia (bajo el módulo de Fichajes/shifts).
             if (hasShiftsModule(modules)) {
@@ -20713,6 +20723,9 @@ public class BenjagestUiApplication extends Application {
             case "advisory.client.tab.billing_config" -> "Billing config";
             case "client.customers.empty" -> "This client has no billing recipients yet.";
             case "client.customers.hint" -> "Customers this client invoices. The advisor manages them here so they can be selected when issuing invoices on the client's behalf.";
+            case "customers.sidebar" -> "Clients";
+            case "customers.module.title" -> "Clients";
+            case "customers.module.subtitle" -> "The clients you invoice. Adding one here only saves the contact card — its accounting third-party account (430) is created automatically the first time you invoice them, with the numbering your advisory configures.";
             case "client.customers.new" -> "New customer";
             case "client.customers.edit" -> "Edit";
             case "client.customers.load.fail" -> "Could not load customers";
@@ -22206,6 +22219,9 @@ public class BenjagestUiApplication extends Application {
             case "advisory.client.tab.billing_config" -> "Config. facturación";
             case "client.customers.empty" -> "Este cliente todavía no tiene destinatarios de factura.";
             case "client.customers.hint" -> "Clientes a los que este cliente factura. La asesoría los gestiona aquí para poder seleccionarlos al emitir facturas en su nombre.";
+            case "customers.sidebar" -> "Clientes";
+            case "customers.module.title" -> "Clientes";
+            case "customers.module.subtitle" -> "Los clientes a los que facturas. Darlos de alta aquí solo guarda la ficha de contacto — su subcuenta de tercero (430) se crea sola la primera vez que les facturas, con la numeración que configura tu asesoría.";
             case "client.customers.new" -> "Nuevo cliente";
             case "client.customers.edit" -> "Editar";
             case "client.customers.load.fail" -> "No se pudieron cargar los clientes";
@@ -36879,6 +36895,39 @@ public class BenjagestUiApplication extends Application {
      * editar. Las llamadas heredan el actingForCompanyId, asi que los
      * customers son los de la shadow company del titular.
      */
+    /**
+     * CLIENTES (empresario) — pantalla de módulo del directorio de clientes
+     * (destinatarios de factura). Reusa {@link #buildClientCustomersTab()}
+     * (lista + alta + edición). El tercero contable (subcuenta 430) NO se crea
+     * aquí: se crea solo al facturar ({@code TerceroAccountResolverService}),
+     * con la numeración que configura la asesoría. Así el alta del cliente no
+     * ensucia el plan contable "a la ligera" y la asesoría ve los mismos
+     * clientes (mismo plan de la empresa) al actuar como ella.
+     */
+    private void showCustomersModule() {
+        recordNav(this::showCustomersModule);
+        currentModule = "customers";
+        select("customers");
+
+        VBox content = content();
+        Label title = new Label(t("customers.module.title"));
+        title.getStyleClass().add("module-detail-title");
+        Label subtitle = new Label(t("customers.module.subtitle"));
+        subtitle.getStyleClass().add("module-detail-description");
+        VBox titleBox = new VBox(4, title, subtitle);
+        StackPane moduleIcon = iconBubble("fas-users", "module-title-icon");
+        Region spacer = new Region();
+        HBox.setHgrow(spacer, Priority.ALWAYS);
+        HBox header = new HBox(16, titleBox, moduleIcon, spacer);
+        header.setAlignment(Pos.CENTER_LEFT);
+        header.getStyleClass().add("module-detail-header");
+
+        Node customers = buildClientCustomersTab();
+        VBox.setVgrow(customers, Priority.ALWAYS);
+        content.getChildren().addAll(header, customers);
+        setCenterAnimated(content);
+    }
+
     private Node buildClientCustomersTab() {
         javafx.scene.control.TableView<com.benjagest.ui.model.CustomerSummary> table =
                 new javafx.scene.control.TableView<>();
@@ -36940,6 +36989,7 @@ public class BenjagestUiApplication extends Application {
 
         HBox actions = new HBox(8, newBtn, editBtn, refresh);
         actions.setAlignment(Pos.CENTER_LEFT);
+        VBox.setVgrow(table, Priority.ALWAYS);
         VBox box = new VBox(10, hint, actions, table);
         box.setPadding(new Insets(12));
         reload.run();
