@@ -130,6 +130,15 @@
             <version>3.0.3</version>
         </dependency>
 
+        <!-- DEPLOY-PKG — MariaDB EMBEBIDA para el instalable autocontenido
+             (decision Benjamin 2026-06-27). Solo se activa con
+             benjagest.db.embedded=true; en dev sigue la MariaDB externa 3307. -->
+        <dependency>
+            <groupId>ch.vorburger.mariaDB4j</groupId>
+            <artifactId>mariaDB4j</artifactId>
+            <version>3.1.0</version>
+        </dependency>
+
         <!-- OCR-TESSERACT — OCR de PDFs escaneados (decision Benjamin 2026-06-27).
              Necesita el binario nativo de Tesseract + datos de idioma (tessdata)
              en el sistema/instalador. Si no estan, el extractor degrada con
@@ -152,6 +161,17 @@
             <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
+                <!-- DEPLOY-PKG: el parent no es spring-boot-starter-parent, asi que
+                     el repackage NO se auto-vincula. Lo bindeamos a 'package' para
+                     producir un fat jar ejecutable (backend autocontenido). -->
+                <executions>
+                    <execution>
+                        <id>repackage</id>
+                        <goals>
+                            <goal>repackage</goal>
+                        </goals>
+                    </execution>
+                </executions>
             </plugin>
         </plugins>
     </build>
