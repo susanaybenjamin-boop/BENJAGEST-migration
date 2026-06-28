@@ -43,7 +43,7 @@ public class EmbeddedMariaDbConfig {
         // Auto-sanación: si un cierre anterior dejó un mariadbd huérfano vivo,
         // retiene el lock del data dir ("ibdata1 must be writable") y este
         // arranque fallaría. Lo cerramos antes de empezar.
-        killStaleEmbeddedMariadb(dataDir);
+        killStaleEmbeddedMariadb();
         // PersistentEmbeddedDB en vez de DB.newEmbeddedDB: salta mariadb-install-db
         // si el data dir ya está inicializado (MariaDB 11.4 lo rechaza si no está
         // vacío). Sin esto el instalable moriría en el 2º arranque.
@@ -70,19 +70,20 @@ public class EmbeddedMariaDbConfig {
      * {@code Process.destroy()} es forzoso, así que el {@link #stop()} que para
      * MariaDB puede no ejecutarse al cerrar la app y dejar el proceso vivo.
      *
-     * <p>Filtra por nuestro data dir o por el puerto {@value #PORT} para NO tocar
-     * la MariaDB del proyecto (3307) ni ninguna otra instancia del equipo.
+     * <p>Discrimina por la RUTA del ejecutable ({@code ProcessHandle.command()},
+     * que SÍ está disponible en Windows, al contrario que {@code commandLine()}
+     * que viene vacío): nuestro mariadbd embebido corre desde el base dir de
+     * MariaDB4j ({@code ...\Temp\MariaDB4j\base\bin\mariadbd.exe}), ruta que NO
+     * comparte la MariaDB del proyecto (3307) ni ninguna otra instalación.
      */
-    private void killStaleEmbeddedMariadb(Path dataDir) {
-        String marker = dataDir.toString().toLowerCase();
-        String portArg = "--port=" + PORT;
+    private void killStaleEmbeddedMariadb() {
         ProcessHandle.allProcesses()
                 .filter(ph -> ph.info().command()
-                        .map(c -> c.toLowerCase().endsWith("mariadbd.exe")
-                                || c.toLowerCase().endsWith("mariadbd"))
-                        .orElse(false))
-                .filter(ph -> ph.info().commandLine()
-                        .map(cl -> cl.toLowerCase().contains(marker) || cl.contains(portArg))
+                        .map(c -> {
+                            String lc = c.toLowerCase();
+                            return (lc.endsWith("mariadbd.exe") || lc.endsWith("mariadbd"))
+                                    && lc.contains("mariadb4j");
+                        })
                         .orElse(false))
                 .forEach(ph -> {
                     log.warn("DEPLOY-PKG: mariadbd embebido huérfano (PID {}) reteniendo el data dir; "
