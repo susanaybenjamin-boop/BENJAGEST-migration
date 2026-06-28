@@ -34,3 +34,6 @@ build/
 out/
 # Stray Maven output captures (e.g. `mvn ... > BUILD`)
 /BUILD
+
+# DEPLOY-PKG: salida de jpackage / app-image (no versionar)
+/dist/
