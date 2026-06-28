@@ -40,7 +40,10 @@ public class EmbeddedMariaDbConfig {
         DBConfigurationBuilder cfg = DBConfigurationBuilder.newBuilder();
         cfg.setPort(PORT);
         cfg.setDataDir(dataDir.toString());
-        db = DB.newEmbeddedDB(cfg.build());
+        // PersistentEmbeddedDB en vez de DB.newEmbeddedDB: salta mariadb-install-db
+        // si el data dir ya está inicializado (MariaDB 11.4 lo rechaza si no está
+        // vacío). Sin esto el instalable moriría en el 2º arranque.
+        db = PersistentEmbeddedDB.create(cfg.build());
         db.start();
         db.createDB("benjagest");
         String url = cfg.getURL("benjagest")

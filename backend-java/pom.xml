@@ -161,6 +161,17 @@
             <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
+                <!-- DEPLOY-PKG: el parent no es spring-boot-starter-parent, asi que
+                     el repackage NO se auto-vincula. Lo bindeamos a 'package' para
+                     producir un fat jar ejecutable (backend autocontenido). -->
+                <executions>
+                    <execution>
+                        <id>repackage</id>
+                        <goals>
+                            <goal>repackage</goal>
+                        </goals>
+                    </execution>
+                </executions>
             </plugin>
         </plugins>
     </build>
