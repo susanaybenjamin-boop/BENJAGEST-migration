@@ -191,7 +191,24 @@ Repaso punto por punto de lo que Benjamin reportó con el check en blanco. Estad
   con icono propio. **HECHO y verificado 2026-06-29** (`.msi` por jpackage, arranca/reabre solo).
 - ✅ **AUTO-UPDATE**: comprobación + actualización in-app vía GitHub Releases. **HECHO y probado en
   real 2026-06-29** (0.1.0→0.1.1→0.1.2). `gh release create` + bump `UpdateService.APP_VERSION`.
-- **Cloudflare Tunnel** para el portal del empleado (acceso externo). ← pendiente (Benjamin crea cuenta/túnel).
+- **Cloudflare Tunnel** para el portal del empleado (acceso externo). ← pendiente. **Estado y plan
+  (verificado en código 2026-06-29):**
+  - **Benjamin ya registró la cuenta `benjagest2026` en cloudflare.com** (2026-06-29). Falta montar el túnel.
+  - ⚠️ **NO confundir con el cliente OAuth de Google** (eso es login/Calendar, `google-secrets.yml`,
+    Fase 1). El túnel **no usa cliente OAuth**: usa un `cloudflared` + token de túnel en el PC servidor.
+    Lo único "OAuth-like" es `cloudflared tunnel login` (autoriza la cuenta, baja un cert al servidor).
+  - ✅ **BENJAGEST ya está preparado**: propiedad `benjagest.public-base-url` (Spring `@Value`) que usan
+    `EmployeeAppService` (QR/enlaces del portal del empleado) y `TpbMagicLinkService`. El código ya
+    contempla el buffering SSE de Cloudflare (fallback por sondeo en EmployeeAppService). → Cuando el
+    túnel esté en marcha, solo hay que poner `benjagest.public-base-url=https://<hostname>`.
+  - **Pasos:** (1) instalar `cloudflared` en el servidor + `cloudflared tunnel login`; (2) crear túnel
+    + rutar un **hostname** → `http://localhost:8080`; (3) correr `cloudflared` como servicio Windows;
+    (4) fijar `benjagest.public-base-url`.
+  - **DECISIÓN PENDIENTE — dominio**: para una **URL fija** del empleado hace falta un **dominio** en
+    Cloudflare (el `quick tunnel` da URL `*.trycloudflare.com` EFÍMERA, cambia cada arranque → no sirve).
+    **Ese mismo dominio sirve para la verificación de Google (Fase 1)** → un dominio cierra los dos.
+  - **Pendiente de Claude cuando Benjamin diga**: doc con comandos exactos + script de `cloudflared`
+    como servicio + (opcional) campo en Configuración para la URL pública sin tocar ficheros.
 - Rellenar credenciales Google centrales tras la verificación (Fase 1).
 
 ---
