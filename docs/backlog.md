@@ -173,9 +173,9 @@ Repaso punto por punto de lo que Benjamin reportó con el check en blanco. Estad
   incidencias (⚠) + "Dar por bueno"/"Quitar revisado" (no toca fichajes, RD 8/2019). Verificado.
 
 ### 🧩 BLOQUE CONSOL — Consolidación contable intragrupo (real, NOFCAC). Multi-slice.
-- **CONSOL-1** *(en curso)* — **Grupo empresarial**: tabla `company_groups` + `company_group_members`
-  (lo crea el OWNER/asesoría, asigna empresas). CRUD backend + UI para crear grupo y asignar
-  miembros. *Cimiento de todo lo demás.*
+- ✅ **CONSOL-1** *(2026-06-29)* — **Grupo empresarial**: V155 `company_groups` +
+  `company_group_members` (dueño = activeCompanyId). `CompanyGroupService` + UI (entrada "Grupos"
+  en el sidebar para OWNER/ADMIN: crear/eliminar grupo, añadir/quitar empresas). Verificado.
 - **CONSOL-2** — **Agregación**: sumar el balance de comprobación (saldos por cuenta) de cada
   empresa del grupo en un periodo → balance + PyG agregados (sin eliminar todavía).
 - **CONSOL-3** — **Eliminaciones intragrupo**: detectar operaciones entre empresas del grupo
