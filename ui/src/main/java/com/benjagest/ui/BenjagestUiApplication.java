@@ -20855,6 +20855,7 @@ public class BenjagestUiApplication extends Application {
             case "consol.consolidated.summary" -> "{n} companies · Consolidated result {result} · Eliminated: receivables {recv} / payables {pay} · {cuadre}";
             case "consol.consolidated.match_ok" -> "reciprocal balances match ✓";
             case "consol.consolidated.match_ko" -> "⚠ reciprocal balances don't match (review pending invoices between the companies)";
+            case "consol.action.pdf" -> "PDF";
             case "customers.sidebar" -> "Clients";
             case "customers.module.title" -> "Clients";
             case "customers.module.subtitle" -> "The clients you invoice. Adding one here only saves the contact card — its accounting third-party account (430) is created automatically the first time you invoice them, with the numbering your advisory configures.";
@@ -22390,6 +22391,7 @@ public class BenjagestUiApplication extends Application {
             case "consol.consolidated.summary" -> "{n} empresas · Resultado consolidado {result} · Eliminado: clientes {recv} / proveedores {pay} · {cuadre}";
             case "consol.consolidated.match_ok" -> "los saldos recíprocos cuadran ✓";
             case "consol.consolidated.match_ko" -> "⚠ los saldos recíprocos no cuadran (revisa facturas pendientes entre las empresas)";
+            case "consol.action.pdf" -> "PDF";
             case "customers.sidebar" -> "Clientes";
             case "customers.module.title" -> "Clientes";
             case "customers.module.subtitle" -> "Los clientes a los que facturas. Darlos de alta aquí solo guarda la ficha de contacto — su subcuenta de tercero (430) se crea sola la primera vez que les facturas, con la numeración que configura tu asesoría.";
@@ -37473,7 +37475,23 @@ public class BenjagestUiApplication extends Application {
         com.benjagest.ui.support.EditableCells.installFlexibleConverter(asOf);
         Button reloadBtn = new Button(t("labor.workdays.reload"));
         reloadBtn.setGraphic(icon("fas-sync-alt"));
-        HBox filters = new HBox(8, new Label(t("consol.balance.asof")), asOf, reloadBtn);
+        Button pdfBtn = new Button(t("consol.action.pdf"));
+        pdfBtn.setGraphic(icon("fas-file-pdf"));
+        pdfBtn.getStyleClass().add("button-secondary");
+        pdfBtn.setOnAction(e -> {
+            java.time.LocalDate d = asOf.getValue();
+            Task<byte[]> task = new Task<>() {
+                @Override protected byte[] call() throws Exception {
+                    return consolidationApiClient.consolidatedPdf(groupId, d == null ? null : d.toString());
+                }
+            };
+            task.setOnSucceeded(ev -> showInternalPdfViewer(task.getValue(),
+                    java.nio.file.Paths.get("consolidado.pdf")));
+            task.setOnFailed(ev -> showError(t("consol.fail.title"),
+                    task.getException() == null ? "" : task.getException().getMessage()));
+            start(task, "consol-pdf");
+        });
+        HBox filters = new HBox(8, new Label(t("consol.balance.asof")), asOf, reloadBtn, pdfBtn);
         filters.setAlignment(Pos.CENTER_LEFT);
 
         TableView<com.benjagest.ui.model.ConsolidatedBalance.TrialLine> table = new TableView<>();
