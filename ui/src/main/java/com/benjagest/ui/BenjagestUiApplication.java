@@ -20846,6 +20846,15 @@ public class BenjagestUiApplication extends Application {
             case "consol.balance.col.credit" -> "Credit";
             case "consol.balance.col.balance" -> "Balance";
             case "consol.balance.summary" -> "{n} companies · Total debit {debit} · Total credit {credit} · Aggregated result {result}  (intragroup eliminations: CONSOL-3)";
+            case "consol.action.consolidated" -> "Consolidated";
+            case "consol.consolidated.title" -> "Consolidated balance";
+            case "consol.consolidated.eliminations" -> "Intragroup eliminations (reciprocal balances)";
+            case "consol.consolidated.no_elim" -> "No intragroup balances detected (no debts between the group's companies).";
+            case "consol.consolidated.col.company" -> "Company";
+            case "consol.consolidated.col.nif" -> "Counterparty tax ID";
+            case "consol.consolidated.summary" -> "{n} companies · Consolidated result {result} · Eliminated: receivables {recv} / payables {pay} · {cuadre}";
+            case "consol.consolidated.match_ok" -> "reciprocal balances match ✓";
+            case "consol.consolidated.match_ko" -> "⚠ reciprocal balances don't match (review pending invoices between the companies)";
             case "customers.sidebar" -> "Clients";
             case "customers.module.title" -> "Clients";
             case "customers.module.subtitle" -> "The clients you invoice. Adding one here only saves the contact card — its accounting third-party account (430) is created automatically the first time you invoice them, with the numbering your advisory configures.";
@@ -22372,6 +22381,15 @@ public class BenjagestUiApplication extends Application {
             case "consol.balance.col.credit" -> "Haber";
             case "consol.balance.col.balance" -> "Saldo";
             case "consol.balance.summary" -> "{n} empresas · Total debe {debit} · Total haber {credit} · Resultado agregado {result}  (eliminaciones intragrupo: CONSOL-3)";
+            case "consol.action.consolidated" -> "Consolidado";
+            case "consol.consolidated.title" -> "Balance consolidado";
+            case "consol.consolidated.eliminations" -> "Eliminaciones intragrupo (saldos recíprocos)";
+            case "consol.consolidated.no_elim" -> "No se detectan saldos intragrupo (no hay deudas entre las empresas del grupo).";
+            case "consol.consolidated.col.company" -> "Empresa";
+            case "consol.consolidated.col.nif" -> "NIF del tercero";
+            case "consol.consolidated.summary" -> "{n} empresas · Resultado consolidado {result} · Eliminado: clientes {recv} / proveedores {pay} · {cuadre}";
+            case "consol.consolidated.match_ok" -> "los saldos recíprocos cuadran ✓";
+            case "consol.consolidated.match_ko" -> "⚠ los saldos recíprocos no cuadran (revisa facturas pendientes entre las empresas)";
             case "customers.sidebar" -> "Clientes";
             case "customers.module.title" -> "Clientes";
             case "customers.module.subtitle" -> "Los clientes a los que facturas. Darlos de alta aquí solo guarda la ficha de contacto — su subcuenta de tercero (430) se crea sola la primera vez que les facturas, con la numeración que configura tu asesoría.";
@@ -37253,12 +37271,22 @@ public class BenjagestUiApplication extends Application {
             var grp = groupsTable.getSelectionModel().getSelectedItem();
             if (grp != null) showGroupTrialBalance(grp.id(), grp.name());
         });
-        HBox memberActions = new HBox(8, addMember, delMember, balanceBtn);
+        // CONSOL-3 — balance consolidado (agregado con eliminaciones intragrupo).
+        Button consolidatedBtn = new Button(t("consol.action.consolidated"));
+        consolidatedBtn.setGraphic(icon("fas-layer-group"));
+        consolidatedBtn.getStyleClass().add("button-primary");
+        consolidatedBtn.setDisable(true);
+        consolidatedBtn.setOnAction(e -> {
+            var grp = groupsTable.getSelectionModel().getSelectedItem();
+            if (grp != null) showGroupConsolidated(grp.id(), grp.name());
+        });
+        HBox memberActions = new HBox(8, addMember, delMember, balanceBtn, consolidatedBtn);
 
         groupsTable.getSelectionModel().selectedItemProperty().addListener((o, ov, nv) -> {
             delGroup.setDisable(nv == null);
             addMember.setDisable(nv == null);
             balanceBtn.setDisable(nv == null);
+            consolidatedBtn.setDisable(nv == null);
         });
         membersTable.getSelectionModel().selectedItemProperty().addListener(
                 (o, ov, nv) -> delMember.setDisable(nv == null));
@@ -37415,6 +37443,101 @@ public class BenjagestUiApplication extends Application {
         reload.run();
 
         content.getChildren().addAll(header, filters, table, summary);
+        setCenterAnimated(content);
+    }
+
+    /**
+     * CONSOL-3 — Balance CONSOLIDADO del grupo: el agregado pero eliminando los
+     * saldos recíprocos intragrupo (subcuentas 430/400 cuyo tercero es otra
+     * empresa del grupo). Muestra el balance consolidado + la lista de
+     * eliminaciones aplicadas + el cuadre (clientes eliminados ≈ proveedores).
+     */
+    private void showGroupConsolidated(String groupId, String groupName) {
+        recordNav(() -> showGroupConsolidated(groupId, groupName));
+        currentModule = "consolidation";
+        select("consolidation");
+
+        VBox content = content();
+        Button back = new Button(t("consol.back"));
+        back.setGraphic(icon("fas-arrow-left"));
+        back.setOnAction(e -> showConsolidationModule());
+        Label title = new Label(t("consol.consolidated.title") + " — " + (groupName == null ? "" : groupName));
+        title.getStyleClass().add("module-detail-title");
+        Region sp = new Region();
+        HBox.setHgrow(sp, Priority.ALWAYS);
+        HBox header = new HBox(12, back, title, sp, iconBubble("fas-layer-group", "module-title-icon"));
+        header.setAlignment(Pos.CENTER_LEFT);
+        header.getStyleClass().add("module-detail-header");
+
+        DatePicker asOf = new DatePicker(java.time.LocalDate.now());
+        com.benjagest.ui.support.EditableCells.installFlexibleConverter(asOf);
+        Button reloadBtn = new Button(t("labor.workdays.reload"));
+        reloadBtn.setGraphic(icon("fas-sync-alt"));
+        HBox filters = new HBox(8, new Label(t("consol.balance.asof")), asOf, reloadBtn);
+        filters.setAlignment(Pos.CENTER_LEFT);
+
+        TableView<com.benjagest.ui.model.ConsolidatedBalance.TrialLine> table = new TableView<>();
+        table.getStyleClass().add("data-table");
+        table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+        table.setPlaceholder(new Label(t("consol.balance.empty")));
+        addCol(table, t("consol.balance.col.code"), l -> l.code() == null ? "" : l.code(), 90);
+        addCol(table, t("consol.balance.col.account"), l -> l.name() == null ? "" : l.name(), 260);
+        addCol(table, t("consol.balance.col.debit"), l -> money(l.debit()), 120);
+        addCol(table, t("consol.balance.col.credit"), l -> money(l.credit()), 120);
+        TableColumn<com.benjagest.ui.model.ConsolidatedBalance.TrialLine, String> cSaldo =
+                new TableColumn<>(t("consol.balance.col.balance"));
+        cSaldo.setCellValueFactory(c -> new SimpleStringProperty(money(c.getValue().saldo())));
+        cSaldo.setPrefWidth(120);
+        table.getColumns().add(cSaldo);
+        VBox.setVgrow(table, Priority.ALWAYS);
+
+        Label elimLbl = label(t("consol.consolidated.eliminations"), "settings-section-title");
+        TableView<com.benjagest.ui.model.ConsolidatedResult.EliminationRow> elimTable = new TableView<>();
+        elimTable.getStyleClass().add("data-table");
+        elimTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+        elimTable.setPlaceholder(new Label(t("consol.consolidated.no_elim")));
+        elimTable.setPrefHeight(150);
+        addCol(elimTable, t("consol.consolidated.col.company"), e -> e.companyName() == null ? "" : e.companyName(), 180);
+        addCol(elimTable, t("consol.balance.col.code"), e -> e.code() == null ? "" : e.code(), 90);
+        addCol(elimTable, t("consol.balance.col.account"), e -> e.name() == null ? "" : e.name(), 200);
+        addCol(elimTable, t("consol.consolidated.col.nif"), e -> e.terceroNif() == null ? "" : e.terceroNif(), 110);
+        addCol(elimTable, t("consol.balance.col.balance"), e -> money(e.balance()), 120);
+
+        Label summary = new Label();
+        summary.setWrapText(true);
+        summary.getStyleClass().add("settings-hint");
+
+        Runnable reload = () -> {
+            java.time.LocalDate d = asOf.getValue();
+            Task<com.benjagest.ui.model.ConsolidatedResult> task = new Task<>() {
+                @Override protected com.benjagest.ui.model.ConsolidatedResult call() throws Exception {
+                    return consolidationApiClient.consolidated(groupId, d == null ? null : d.toString());
+                }
+            };
+            task.setOnSucceeded(e -> {
+                var r = task.getValue();
+                table.setItems(FXCollections.observableArrayList(r.lines()));
+                elimTable.setItems(FXCollections.observableArrayList(r.eliminations()));
+                boolean cuadra = r.receivablesEliminated() != null && r.payablesEliminated() != null
+                        && r.receivablesEliminated().add(r.payablesEliminated()).abs()
+                                .compareTo(new java.math.BigDecimal("0.05")) <= 0;
+                summary.setText(t("consol.consolidated.summary")
+                        .replace("{n}", String.valueOf(r.companyCount()))
+                        .replace("{result}", money(r.resultado()))
+                        .replace("{recv}", money(r.receivablesEliminated()))
+                        .replace("{pay}", money(r.payablesEliminated()))
+                        .replace("{cuadre}", cuadra ? t("consol.consolidated.match_ok")
+                                : t("consol.consolidated.match_ko")));
+            });
+            task.setOnFailed(e -> showError(t("consol.fail.title"),
+                    task.getException() == null ? "" : task.getException().getMessage()));
+            start(task, "consol-consolidated");
+        };
+        reloadBtn.setOnAction(e -> reload.run());
+        asOf.valueProperty().addListener((o, ov, nv) -> reload.run());
+        reload.run();
+
+        content.getChildren().addAll(header, filters, table, elimLbl, elimTable, summary);
         setCenterAnimated(content);
     }
 
