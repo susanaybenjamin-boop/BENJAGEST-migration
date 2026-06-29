@@ -59,6 +59,29 @@ public class ConsolidationApiClient {
         send(delete(base + "/" + groupId + "/members/" + companyId));
     }
 
+    /** CONSOL-2 — balance de comprobación agregado del grupo a una fecha. */
+    public com.benjagest.ui.model.ConsolidatedBalance trialBalance(String groupId, String asOf)
+            throws IOException, InterruptedException {
+        String url = base + "/" + groupId + "/trial-balance" + (asOf == null ? "" : "?asOf=" + asOf);
+        String body = send(get(url));
+        java.util.List<com.benjagest.ui.model.ConsolidatedBalance.TrialLine> lines = new ArrayList<>();
+        for (String o : objects(body)) {
+            lines.add(new com.benjagest.ui.model.ConsolidatedBalance.TrialLine(
+                    textField(o, "code"), textField(o, "name"),
+                    decimalField(o, "debit"), decimalField(o, "credit")));
+        }
+        return new com.benjagest.ui.model.ConsolidatedBalance(
+                textField(body, "asOf"), lines,
+                decimalField(body, "totalDebit"), decimalField(body, "totalCredit"),
+                decimalField(body, "resultado"), (int) longField(body, "companyCount"));
+    }
+
+    private java.math.BigDecimal decimalField(String json, String field) {
+        Matcher m = Pattern.compile("\"" + field + "\"\\s*:\\s*(null|-?[0-9]+(?:\\.[0-9]+)?)").matcher(json);
+        if (!m.find() || "null".equals(m.group(1))) return java.math.BigDecimal.ZERO;
+        try { return new java.math.BigDecimal(m.group(1)); } catch (NumberFormatException e) { return java.math.BigDecimal.ZERO; }
+    }
+
     // ---- helpers HTTP ----
     private HttpRequest.Builder get(String url) { return auth(HttpRequest.newBuilder(URI.create(url)).GET()); }
     private HttpRequest.Builder delete(String url) { return auth(HttpRequest.newBuilder(URI.create(url)).DELETE()); }
