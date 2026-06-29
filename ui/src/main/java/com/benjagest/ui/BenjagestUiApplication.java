@@ -19415,7 +19415,9 @@ public class BenjagestUiApplication extends Application {
             case "labor.cfg_timeclock.editor.code" -> "Code (UPPERCASE)";
             case "labor.cfg_timeclock.editor.label_es" -> "Label (Spanish)";
             case "labor.cfg_timeclock.editor.label_en" -> "Label (English)";
-            case "labor.cfg_timeclock.editor.icon" -> "Icon (FontAwesome)";
+            case "labor.cfg_timeclock.editor.icon" -> "Icon";
+            case "labor.cfg_timeclock.editor.pick_icon" -> "Choose icon";
+            case "labor.cfg_timeclock.editor.code.auto" -> "Generated from the name (you can change it)";
             case "labor.cfg_timeclock.editor.order" -> "Display order";
             case "labor.cfg_timeclock.editor.is_work_time" -> "Opens work time (▶)";
             case "labor.cfg_timeclock.editor.is_pause" -> "Is a pause (⏸)";
@@ -20204,7 +20206,9 @@ public class BenjagestUiApplication extends Application {
             case "labor.cfg_timeclock.editor.code" -> "Codigo (MAYUSCULAS)";
             case "labor.cfg_timeclock.editor.label_es" -> "Etiqueta (espanol)";
             case "labor.cfg_timeclock.editor.label_en" -> "Etiqueta (ingles)";
-            case "labor.cfg_timeclock.editor.icon" -> "Icono (FontAwesome)";
+            case "labor.cfg_timeclock.editor.icon" -> "Icono";
+            case "labor.cfg_timeclock.editor.pick_icon" -> "Elegir icono";
+            case "labor.cfg_timeclock.editor.code.auto" -> "Se genera del nombre (puedes cambiarlo)";
             case "labor.cfg_timeclock.editor.order" -> "Orden de visualizacion";
             case "labor.cfg_timeclock.editor.is_work_time" -> "Abre tiempo de trabajo (▶)";
             case "labor.cfg_timeclock.editor.is_pause" -> "Es una pausa (⏸)";
@@ -26702,11 +26706,18 @@ public class BenjagestUiApplication extends Application {
 
         TextField codeField = new TextField(existing == null ? "" : existing.code());
         codeField.setDisable(existing != null);
-        codeField.setPromptText("EJ. COMIDA, REUNION_CLIENTE…");
+        codeField.setPromptText(t("labor.cfg_timeclock.editor.code.auto"));
         TextField esField = new TextField(existing == null ? "" : existing.labelEs());
         TextField enField = new TextField(existing == null ? "" : existing.labelEn());
-        TextField iconField = new TextField(existing == null ? "fas-clock" : existing.icon());
-        iconField.setPromptText("fas-clock, fas-coffee, fas-users…");
+        // Selector VISUAL de icono (en vez de teclear "fas-coffee").
+        final String[] selectedIcon = { existing == null || existing.icon() == null
+                || existing.icon().isBlank() ? "fas-clock" : existing.icon() };
+        Button iconBtn = new Button("  " + t("labor.cfg_timeclock.editor.pick_icon"));
+        iconBtn.setGraphic(icon(selectedIcon[0]));
+        iconBtn.setOnAction(e -> showIconChooser(selectedIcon[0], chosen -> {
+            selectedIcon[0] = chosen;
+            iconBtn.setGraphic(icon(chosen));
+        }));
         TextField orderField = new TextField(existing == null ? "" : String.valueOf(existing.displayOrder()));
         CheckBox isWork = new CheckBox(t("labor.cfg_timeclock.editor.is_work_time"));
         isWork.setSelected(existing == null || existing.isWorkTime());
@@ -26715,12 +26726,27 @@ public class BenjagestUiApplication extends Application {
         CheckBox active = new CheckBox(t("labor.cfg_timeclock.editor.active"));
         active.setSelected(existing == null || existing.active());
 
+        // Intuitivo: una PAUSA no cuenta como trabajada (y viceversa). Al marcar
+        // una, se desmarca la otra → "Comida"/"Pausa laboral" se reconocen como pausa.
+        isPause.selectedProperty().addListener((o, ov, nv) -> { if (nv) isWork.setSelected(false); });
+        isWork.selectedProperty().addListener((o, ov, nv) -> { if (nv) isPause.setSelected(false); });
+
+        // Intuitivo: el CÓDIGO (técnico) se genera solo del nombre al crear, salvo
+        // que el usuario lo edite a mano.
+        if (existing == null) {
+            final boolean[] codeTouched = { false };
+            codeField.setOnKeyTyped(ev -> codeTouched[0] = true);
+            esField.textProperty().addListener((o, ov, nv) -> {
+                if (!codeTouched[0]) codeField.setText(deriveEventTypeCode(nv));
+            });
+        }
+
         GridPane g = new GridPane();
         g.setHgap(10); g.setVgap(8); g.setPadding(new Insets(10));
         g.add(new Label(t("labor.cfg_timeclock.editor.code")), 0, 0); g.add(codeField, 1, 0);
         g.add(new Label(t("labor.cfg_timeclock.editor.label_es")), 0, 1); g.add(esField, 1, 1);
         g.add(new Label(t("labor.cfg_timeclock.editor.label_en")), 0, 2); g.add(enField, 1, 2);
-        g.add(new Label(t("labor.cfg_timeclock.editor.icon")), 0, 3); g.add(iconField, 1, 3);
+        g.add(new Label(t("labor.cfg_timeclock.editor.icon")), 0, 3); g.add(iconBtn, 1, 3);
         g.add(new Label(t("labor.cfg_timeclock.editor.order")), 0, 4); g.add(orderField, 1, 4);
         g.add(isWork, 1, 5);
         g.add(isPause, 1, 6);
@@ -26741,7 +26767,7 @@ public class BenjagestUiApplication extends Application {
                                 codeField.getText().trim().toUpperCase(),
                                 esField.getText().trim(),
                                 enField.getText().trim(),
-                                blankToNullOrSelf(iconField.getText()),
+                                selectedIcon[0],
                                 order, isWork.isSelected(), isPause.isSelected(), active.isSelected());
                     }
                     return laborApiClient.updateEventType(
@@ -26749,7 +26775,7 @@ public class BenjagestUiApplication extends Application {
                             existing.code(),
                             esField.getText().trim(),
                             enField.getText().trim(),
-                            blankToNullOrSelf(iconField.getText()),
+                            selectedIcon[0],
                             order, isWork.isSelected(), isPause.isSelected(), active.isSelected());
                 }
             };
@@ -26758,6 +26784,49 @@ public class BenjagestUiApplication extends Application {
                     t("labor.cfg_timeclock.editor.fail.body")));
             start(task, "tc-cfg-save");
         });
+    }
+
+    /** Deriva un código técnico del nombre: "Pausa laboral" → "PAUSA_LABORAL". */
+    private String deriveEventTypeCode(String name) {
+        if (name == null) return "";
+        String s = java.text.Normalizer.normalize(name.trim().toUpperCase(),
+                        java.text.Normalizer.Form.NFD)
+                .replaceAll("\\p{InCombiningDiacriticalMarks}+", "");
+        return s.replaceAll("[^A-Z0-9]+", "_").replaceAll("^_+|_+$", "");
+    }
+
+    /** Selector VISUAL de icono: rejilla de iconos (imágenes) para fichajes. */
+    private void showIconChooser(String current, java.util.function.Consumer<String> onPick) {
+        String[] icons = {
+            "fas-clock", "fas-sign-in-alt", "fas-sign-out-alt", "fas-coffee", "fas-utensils",
+            "fas-mug-hot", "fas-users", "fas-user", "fas-briefcase", "fas-business-time",
+            "fas-calendar-day", "fas-calendar-week", "fas-hourglass-half", "fas-car", "fas-truck",
+            "fas-walking", "fas-home", "fas-building", "fas-map-marker-alt", "fas-phone",
+            "fas-laptop", "fas-tools", "fas-hard-hat", "fas-box", "fas-warehouse",
+            "fas-clipboard-list", "fas-user-injured", "fas-umbrella-beach", "fas-graduation-cap",
+            "fas-stethoscope", "fas-plane", "fas-handshake", "fas-bolt", "fas-bed",
+            "fas-smoking", "fas-phone-volume"
+        };
+        Dialog<ButtonType> dialog = new Dialog<>();
+        dialog.setTitle(t("labor.cfg_timeclock.editor.pick_icon"));
+        javafx.scene.layout.FlowPane grid = new javafx.scene.layout.FlowPane(8, 8);
+        grid.setPrefWrapLength(380);
+        grid.setPadding(new Insets(10));
+        for (String code : icons) {
+            Button b = new Button();
+            b.setGraphic(icon(code));
+            b.setPrefSize(46, 46);
+            if (code.equals(current)) b.getStyleClass().add("nav-item-selected");
+            b.setOnAction(e -> {
+                onPick.accept(code);
+                dialog.setResult(ButtonType.CLOSE);
+                dialog.close();
+            });
+            grid.getChildren().add(b);
+        }
+        dialog.getDialogPane().getButtonTypes().add(ButtonType.CLOSE);
+        installDialog(dialog, grid);
+        dialog.showAndWait();
     }
 
     private void deleteEventType(com.benjagest.ui.model.TimeClockEventTypeEntry type) {
