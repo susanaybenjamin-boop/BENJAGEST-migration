@@ -17440,6 +17440,12 @@ public class BenjagestUiApplication extends Application {
             case "labor.planreal.col.planned" -> "Planned";
             case "labor.planreal.col.diff" -> "Difference";
             case "labor.planreal.holiday" -> "holiday";
+            case "labor.planreal.col.state" -> "Status";
+            case "labor.planreal.state.reviewed" -> "Reviewed";
+            case "labor.planreal.state.incidence" -> "Issue";
+            case "labor.planreal.state.ok" -> "OK";
+            case "labor.planreal.action.approve" -> "Mark as fine";
+            case "labor.planreal.action.unapprove" -> "Undo review";
             case "labor.planreal.fail.title" -> "Could not load planned vs actual";
             case "dialog.save" -> "Save";
             case "inc.title" -> "Period incidents";
@@ -17729,6 +17735,12 @@ public class BenjagestUiApplication extends Application {
             case "labor.planreal.col.planned" -> "Planificado";
             case "labor.planreal.col.diff" -> "Diferencia";
             case "labor.planreal.holiday" -> "festivo";
+            case "labor.planreal.col.state" -> "Estado";
+            case "labor.planreal.state.reviewed" -> "Revisado";
+            case "labor.planreal.state.incidence" -> "Incidencia";
+            case "labor.planreal.state.ok" -> "OK";
+            case "labor.planreal.action.approve" -> "Dar por bueno";
+            case "labor.planreal.action.unapprove" -> "Quitar revisado";
             case "labor.planreal.fail.title" -> "No se pudo cargar planificado vs real";
             case "dialog.save" -> "Guardar";
             case "inc.title" -> "Incidencias del periodo";
@@ -40380,7 +40392,23 @@ public class BenjagestUiApplication extends Application {
                 else setStyle("");
             }
         });
-        table.getColumns().addAll(java.util.List.of(cDate, cEmp, cPlanned, cWorked, cDiff));
+        // FICHA-REVIEW — Estado: Festivo / ✓ Revisado / ⚠ Incidencia / OK.
+        TableColumn<com.benjagest.ui.model.PlanVsRealEntry, String> cState =
+                new TableColumn<>(t("labor.planreal.col.state"));
+        cState.setCellValueFactory(c -> new SimpleStringProperty(planRealState(c.getValue())));
+        cState.setPrefWidth(130);
+        cState.setCellFactory(col -> new javafx.scene.control.TableCell<>() {
+            @Override
+            protected void updateItem(String v, boolean empty) {
+                super.updateItem(v, empty);
+                if (empty || v == null) { setText(null); setStyle(""); return; }
+                setText(v);
+                if (v.startsWith("✓")) setStyle("-fx-text-fill: #1e7e34; -fx-font-weight: bold;");
+                else if (v.startsWith("⚠")) setStyle("-fx-text-fill: #c0392b; -fx-font-weight: bold;");
+                else setStyle("-fx-text-fill: #6b7280;");
+            }
+        });
+        table.getColumns().addAll(java.util.List.of(cDate, cEmp, cPlanned, cWorked, cDiff, cState));
 
         Runnable reload = () -> {
             java.time.LocalDate from = fromPick.getValue();
@@ -40397,10 +40425,53 @@ public class BenjagestUiApplication extends Application {
             start(task, "plan-vs-real-load");
         };
         reloadBtn.setOnAction(ev -> reload.run());
+
+        // FICHA-REVIEW — "Dar por bueno" / "Quitar revisado" del día seleccionado.
+        Button approveBtn = new Button(t("labor.planreal.action.approve"));
+        approveBtn.setGraphic(icon("fas-check"));
+        approveBtn.getStyleClass().add("button-secondary");
+        approveBtn.setDisable(true);
+        Button unapproveBtn = new Button(t("labor.planreal.action.unapprove"));
+        unapproveBtn.setGraphic(icon("fas-undo"));
+        unapproveBtn.setDisable(true);
+        table.getSelectionModel().selectedItemProperty().addListener((o, ov, nv) -> {
+            approveBtn.setDisable(nv == null || nv.holiday() || nv.reviewed());
+            unapproveBtn.setDisable(nv == null || !nv.reviewed());
+        });
+        approveBtn.setOnAction(ev -> doReviewPlanReal(table, true, reload));
+        unapproveBtn.setOnAction(ev -> doReviewPlanReal(table, false, reload));
+        HBox reviewActions = new HBox(8, approveBtn, unapproveBtn);
+        reviewActions.setAlignment(Pos.CENTER_LEFT);
+
         reload.run();
 
-        box.getChildren().addAll(title, hint, filters, table);
+        VBox.setVgrow(table, Priority.ALWAYS);
+        box.getChildren().addAll(title, hint, filters, reviewActions, table);
         return box;
+    }
+
+    /** Estado de un día en Planificado-vs-Real (FICHA-REVIEW). */
+    private String planRealState(com.benjagest.ui.model.PlanVsRealEntry e) {
+        if (e.holiday()) return t("labor.planreal.holiday");
+        if (e.reviewed()) return "✓ " + t("labor.planreal.state.reviewed");
+        if (e.diffMinutes() < 0) return "⚠ " + t("labor.planreal.state.incidence");
+        return t("labor.planreal.state.ok");
+    }
+
+    private void doReviewPlanReal(TableView<com.benjagest.ui.model.PlanVsRealEntry> table,
+                                   boolean reviewed, Runnable reload) {
+        var sel = table.getSelectionModel().getSelectedItem();
+        if (sel == null) return;
+        Task<Void> task = new Task<>() {
+            @Override protected Void call() throws Exception {
+                laborApiClient.reviewPlanVsReal(sel.employeeId(), sel.date(), reviewed, null);
+                return null;
+            }
+        };
+        task.setOnSucceeded(e -> reload.run());
+        task.setOnFailed(e -> showError(t("labor.planreal.fail.title"),
+                task.getException() == null ? "" : task.getException().getMessage()));
+        start(task, "plan-vs-real-review");
     }
 
     /** Diferencia de minutos con signo: "+1h 30m" / "-0h 45m" / "0h 00m". */
