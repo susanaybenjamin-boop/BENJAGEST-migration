@@ -76,6 +76,16 @@ public class ConsolidationApiClient {
                 decimalField(body, "resultado"), (int) longField(body, "companyCount"));
     }
 
+    /** CONSOL-4 — PDF del balance consolidado. */
+    public byte[] consolidatedPdf(String groupId, String asOf) throws IOException, InterruptedException {
+        String url = base + "/" + groupId + "/consolidated.pdf" + (asOf == null ? "" : "?asOf=" + asOf);
+        HttpResponse<byte[]> r = httpClient.send(get(url).build(), HttpResponse.BodyHandlers.ofByteArray());
+        if (r.statusCode() < 200 || r.statusCode() >= 300) {
+            throw new IOException("HTTP " + r.statusCode());
+        }
+        return r.body();
+    }
+
     private java.math.BigDecimal decimalField(String json, String field) {
         Matcher m = Pattern.compile("\"" + field + "\"\\s*:\\s*(null|-?[0-9]+(?:\\.[0-9]+)?)").matcher(json);
         if (!m.find() || "null".equals(m.group(1))) return java.math.BigDecimal.ZERO;
