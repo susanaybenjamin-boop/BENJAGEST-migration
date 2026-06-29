@@ -91,6 +91,12 @@ public class CompanyGroupService {
         if (companyId == null || companyId.isBlank()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Falta la empresa");
         }
+        // Seguridad: solo empresas que el usuario controla (la consolidación lee
+        // sus libros directamente por company_id). Evita añadir un company_id ajeno.
+        if (!isAccessible(companyId)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "No tienes acceso a esa empresa.");
+        }
         // Idempotente: si ya está, no duplica (UK group_id+company_id).
         jdbc.update("""
                 INSERT IGNORE INTO company_group_members (id, group_id, company_id)
@@ -105,18 +111,43 @@ public class CompanyGroupService {
                 groupId, companyId);
     }
 
-    /** Empresas que el dueño puede meter en un grupo: la propia + sus gestionadas. */
+    /**
+     * Empresas que el usuario controla y puede meter en un grupo: la empresa
+     * activa + las gestionadas por la asesoría ({@code parent_company_id}) + las
+     * sociedades donde el usuario es miembro OWNER/ADMIN/ACCOUNTANT/ADVISOR (caso
+     * empresario con varias sociedades). Así "Grupos" sirve en los dos modos.
+     */
     public List<MemberView> candidates() {
         String owner = ownerId();
+        String userId = currentUser.require().userId();
         return jdbc.query("""
                 SELECT c.id, c.legal_name, c.tax_identifier
                   FROM companies c
                  WHERE c.active = TRUE
-                   AND (c.id = ? OR c.parent_company_id = ?)
+                   AND (c.id = ?
+                     OR c.parent_company_id = ?
+                     OR c.id IN (SELECT m.company_id FROM company_memberships m
+                                  WHERE m.user_id = ? AND m.active = TRUE
+                                    AND m.role_name IN ('OWNER','ADMIN','ACCOUNTANT','ADVISOR')))
                  ORDER BY c.legal_name
                 """, (rs, n) -> new MemberView(
                         rs.getString("id"), rs.getString("legal_name"),
-                        rs.getString("tax_identifier")), owner, owner);
+                        rs.getString("tax_identifier")), owner, owner, userId);
+    }
+
+    /** ¿El usuario controla esa empresa? (mismo criterio que {@link #candidates()}). */
+    private boolean isAccessible(String companyId) {
+        Integer n = jdbc.queryForObject("""
+                SELECT COUNT(*) FROM companies c
+                 WHERE c.id = ? AND c.active = TRUE
+                   AND (c.id = ?
+                     OR c.parent_company_id = ?
+                     OR c.id IN (SELECT m.company_id FROM company_memberships m
+                                  WHERE m.user_id = ? AND m.active = TRUE
+                                    AND m.role_name IN ('OWNER','ADMIN','ACCOUNTANT','ADVISOR')))
+                """, Integer.class, companyId, ownerId(), ownerId(),
+                currentUser.require().userId());
+        return n != null && n > 0;
     }
 
     private void assertOwned(String groupId) {
