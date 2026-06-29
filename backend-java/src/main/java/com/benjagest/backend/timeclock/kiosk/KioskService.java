@@ -312,6 +312,45 @@ public class KioskService {
         return new FichajeResult(pr.csv(), req.eventType(), geo);
     }
 
+    /**
+     * OFF-2 — Sincronización por lotes de fichajes capturados OFFLINE en el
+     * kiosco. Cada fichaje trae {@code employeeId}, {@code clientUuid} (dedup) y
+     * {@code eventTime} (sello real del momento). Idempotente: reenviar el lote no
+     * duplica. NO es @Transactional: cada syncPunch va en su propia transacción,
+     * así un fichaje que falle no tumba los demás del lote.
+     */
+    public SyncFichajeResult syncFichaje(String deviceId, SyncFichajeRequest req) {
+        int accepted = 0, duplicates = 0, failed = 0;
+        if (req != null && req.punches() != null) {
+            for (SyncFichajePunch p : req.punches()) {
+                try {
+                    assertAssigned(deviceId, p.employeeId());
+                    String actor = jdbc.query(
+                            "SELECT user_id FROM employees WHERE id = ? AND company_id = ?",
+                            (rs, n) -> rs.getString("user_id"), p.employeeId(),
+                            tenant.getCurrentCompanyId()).stream().findFirst().orElse(null);
+                    if (actor == null || actor.isBlank()) actor = p.employeeId();
+                    java.time.Instant when = (p.eventTime() == null || p.eventTime().isBlank())
+                            ? java.time.Instant.now() : java.time.Instant.parse(p.eventTime());
+                    TimeClockService.PunchResult res = timeClock.syncPunch(
+                            p.employeeId(), p.eventType(), null, "KIOSK_OFFLINE",
+                            p.lat(), p.lng(), when, p.clientUuid(), actor);
+                    if (res == null) duplicates++; else accepted++;
+                } catch (Exception ex) {
+                    failed++;
+                }
+            }
+        }
+        try { jdbc.update("UPDATE kiosk_devices SET last_seen_at = NOW() WHERE id = ?", deviceId); }
+        catch (Exception ignored) {}
+        return new SyncFichajeResult(accepted, duplicates, failed);
+    }
+
+    public record SyncFichajePunch(String clientUuid, String employeeId, String eventType,
+                                   String eventTime, java.math.BigDecimal lat, java.math.BigDecimal lng) {}
+    public record SyncFichajeRequest(java.util.List<SyncFichajePunch> punches) {}
+    public record SyncFichajeResult(int accepted, int duplicates, int failed) {}
+
     // ====================================================================
     //  Helpers
     // ====================================================================
@@ -466,6 +505,13 @@ public class KioskService {
             return service.fichaje(deviceId(request), req);
         }
 
+        /** OFF-2 — sincroniza un lote de fichajes capturados offline en el kiosco. */
+        @PostMapping("/fichaje/sync")
+        public SyncFichajeResult syncFichaje(HttpServletRequest request,
+                                             @RequestBody SyncFichajeRequest req) {
+            return service.syncFichaje(deviceId(request), req);
+        }
+
         private String deviceId(HttpServletRequest request) {
             Object id = request.getAttribute(KioskTokenInterceptor.ATTR_DEVICE_ID);
             if (id == null) throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Sesión de kiosco no válida.");
@@ -569,6 +615,7 @@ public class KioskService {
                     (c.employees||[]).forEach(function(e){var b=document.createElement('button');
                       b.className='emp';b.textContent=e.fullName;b.onclick=function(){openPin(e);};g.appendChild(b);});
                     if(!c.employees||!c.employees.length){g.innerHTML='<p class="muted">No hay empleados asignados a este kiosco.</p>';}
+                    kFlushQueue();
                     go('home');
                   }).catch(function(e){
                     if((e.message||'').indexOf('401')>=0||(e.message||'').indexOf('no v')>=0){
@@ -605,13 +652,33 @@ public class KioskService {
                 function snapshot(){if(!stream)return null;var v=document.getElementById('cam');
                   var c=document.createElement('canvas');c.width=v.videoWidth||320;c.height=v.videoHeight||240;
                   c.getContext('2d').drawImage(v,0,0,c.width,c.height);return c.toDataURL('image/jpeg',0.6);}
+                // OFF-2: cola offline del kiosco (fichar sin red + sync al volver).
+                function kGenUuid(){if(window.crypto&&crypto.randomUUID)return crypto.randomUUID();
+                  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g,function(c){
+                    var r=Math.random()*16|0,v=c==='x'?r:(r&0x3|0x8);return v.toString(16);});}
+                function kGetQueue(){try{return JSON.parse(localStorage.getItem('kiosk_fichaje_queue')||'[]');}catch(e){return [];}}
+                function kSetQueue(q){localStorage.setItem('kiosk_fichaje_queue',JSON.stringify(q));}
+                function kQueue(p){var q=kGetQueue();q.push(p);kSetQueue(q);}
+                function kFlushQueue(){var q=kGetQueue();if(!q.length||!navigator.onLine||!token)return;
+                  api('/fichaje/sync','POST',{punches:q}).then(function(){
+                    localStorage.removeItem('kiosk_fichaje_queue');}).catch(function(){});}
+                window.addEventListener('online',kFlushQueue);
                 function doFichaje(code){var photo=cfg&&cfg.requirePhoto?snapshot():null;
                   document.getElementById('actErr2').textContent='Registrando...';
-                  function send(lat,lng){api('/fichaje','POST',{employeeId:curEmp.id,eventType:code,
-                    lat:lat,lng:lng,photoBase64:photo}).then(function(r){stopCam();
-                    document.getElementById('doneCsv').textContent=r&&r.csv?('CSV: '+r.csv):'';
-                    go('done');setTimeout(function(){go('home');},4000);})
-                    .catch(function(e){document.getElementById('actErr2').textContent=e.message;});}
+                  function send(lat,lng){
+                    var punch={clientUuid:kGenUuid(),employeeId:curEmp.id,eventType:code,
+                      eventTime:new Date().toISOString(),lat:lat,lng:lng};
+                    api('/fichaje','POST',{employeeId:curEmp.id,eventType:code,
+                      lat:lat,lng:lng,photoBase64:photo}).then(function(r){stopCam();
+                      document.getElementById('doneCsv').textContent=r&&r.csv?('CSV: '+r.csv):'';
+                      go('done');kFlushQueue();setTimeout(function(){go('home');},4000);})
+                      .catch(function(e){
+                        var off=!navigator.onLine||(e.message||'').indexOf('Failed to fetch')>=0
+                          ||(e.message||'').indexOf('NetworkError')>=0;
+                        if(off){kQueue(punch);stopCam();
+                          document.getElementById('doneCsv').textContent='Guardado SIN conexion. Se sincronizara solo.';
+                          go('done');setTimeout(function(){go('home');},4000);}
+                        else {document.getElementById('actErr2').textContent=e.message;}});}
                   if(navigator.geolocation){navigator.geolocation.getCurrentPosition(
                     function(p){send(p.coords.latitude,p.coords.longitude);},
                     function(){send(null,null);},{timeout:4000});} else {send(null,null);}}
