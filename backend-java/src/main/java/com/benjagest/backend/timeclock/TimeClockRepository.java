@@ -117,6 +117,45 @@ public class TimeClockRepository {
         );
     }
 
+    /**
+     * OFF-1 — inserta un fichaje SINCRONIZADO offline (con su {@code client_uuid}
+     * para dedup). Igual que {@link #insertEvent} pero añade el uuid; respeta el
+     * {@code event_time} del evento (el sello del momento offline, no el de ahora).
+     */
+    public void insertEventWithUuid(TimeClockEvent event,
+                                     java.math.BigDecimal lat,
+                                     java.math.BigDecimal lng,
+                                     Integer geoWarningMeters,
+                                     String clientUuid) {
+        jdbcTemplate.update("""
+                INSERT INTO time_clock_events (
+                    id, company_id, employee_id, customer_id,
+                    event_type, event_time, origin, status,
+                    lat, lng, geo_warning_meters, client_uuid
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                event.id(),
+                tenantContext.getCurrentCompanyId(),
+                event.employeeId(),
+                event.customerId(),
+                event.eventType(),
+                Timestamp.from(event.eventTime()),
+                event.origin(),
+                event.status() == null ? "VALID" : event.status(),
+                lat, lng, geoWarningMeters, clientUuid
+        );
+    }
+
+    /** OFF-1 — ¿ya existe un fichaje con ese client_uuid en la empresa? (dedup). */
+    public boolean existsClientUuid(String clientUuid) {
+        if (clientUuid == null || clientUuid.isBlank()) return false;
+        Integer n = jdbcTemplate.queryForObject("""
+                SELECT COUNT(*) FROM time_clock_events
+                 WHERE company_id = ? AND client_uuid = ?
+                """, Integer.class, tenantContext.getCurrentCompanyId(), clientUuid);
+        return n != null && n > 0;
+    }
+
     /** GEO-FICHAR — datos geo del centro asignado al empleado. */
     public java.util.Optional<EmployeeWorkCenterGeo> findEmployeeWorkCenterGeo(String employeeId) {
         java.util.List<EmployeeWorkCenterGeo> matches = jdbcTemplate.query("""
