@@ -8,5 +8,6 @@ public record PlanVsRealEntry(
         int plannedMinutes,
         int workedMinutes,
         int diffMinutes,
-        boolean holiday
+        boolean holiday,
+        boolean reviewed
 ) {}

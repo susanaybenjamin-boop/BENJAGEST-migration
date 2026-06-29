@@ -335,9 +335,22 @@ public class LaborApiClient {
                     (int) longField(o, "plannedMinutes"),
                     (int) longField(o, "workedMinutes"),
                     (int) longField(o, "diffMinutes"),
-                    boolField(o, "holiday")));
+                    boolField(o, "holiday"),
+                    boolField(o, "reviewed")));
         }
         return out;
+    }
+
+    /** FICHA-REVIEW: dar por bueno (reviewed=true) o quitar (false) un día de fichaje. */
+    public void reviewPlanVsReal(String employeeId, String date, boolean reviewed, String note)
+            throws IOException, InterruptedException {
+        String body = "{\"employeeId\":\"" + employeeId + "\",\"date\":\"" + date
+                + "\",\"reviewed\":" + reviewed
+                + ",\"note\":" + (note == null || note.isBlank() ? "null"
+                        : "\"" + note.replace("\\", "\\\\").replace("\"", "\\\"") + "\"") + "}";
+        send(req(baseUrl + "/labor/plan-vs-real/review")
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(body)));
     }
 
     // ===== INC-1: incidencias de nomina por empleado y periodo =====
