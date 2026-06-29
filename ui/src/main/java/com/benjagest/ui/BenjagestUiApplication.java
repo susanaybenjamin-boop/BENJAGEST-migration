@@ -1292,16 +1292,33 @@ public class BenjagestUiApplication extends Application {
                                 com.benjagest.ui.service.UpdateService.APP_VERSION));
                 return;
             }
-            Alert a = new Alert(Alert.AlertType.CONFIRMATION,
-                    t("update.available.body").replace("{v}", info.latestVersion()),
-                    ButtonType.OK, ButtonType.CANCEL);
-            a.setHeaderText(t("update.available.title"));
-            if (a.showAndWait().orElse(ButtonType.CANCEL) == ButtonType.OK) {
-                downloadAndInstall(info);
+            // Si la app está BLOQUEADA (pantalla de PIN always-on-top), el diálogo
+            // quedaría tapado y no se podría pulsar. Guardamos la actualización y la
+            // mostramos al desbloquear (ver showLockStage). El botón manual solo se
+            // pulsa estando desbloqueado, así que ese caso siempre muestra.
+            if (!manual && lockShowing) {
+                pendingUpdateInfo = info;
+                return;
             }
+            promptUpdate(info);
         });
         task.setOnFailed(e -> { if (manual) showError(t("update.fail.title"), ""); });
         start(task, "update-check");
+    }
+
+    /** Actualización detectada pero pendiente de mostrar (la app estaba bloqueada). */
+    private com.benjagest.ui.service.UpdateService.UpdateInfo pendingUpdateInfo;
+
+    /** Muestra el diálogo de "hay actualización" y, si acepta, descarga e instala. */
+    private void promptUpdate(com.benjagest.ui.service.UpdateService.UpdateInfo info) {
+        if (info == null) return;
+        Alert a = new Alert(Alert.AlertType.CONFIRMATION,
+                t("update.available.body").replace("{v}", info.latestVersion()),
+                ButtonType.OK, ButtonType.CANCEL);
+        a.setHeaderText(t("update.available.title"));
+        if (a.showAndWait().orElse(ButtonType.CANCEL) == ButtonType.OK) {
+            downloadAndInstall(info);
+        }
     }
 
     private void downloadAndInstall(com.benjagest.ui.service.UpdateService.UpdateInfo info) {
@@ -30676,6 +30693,13 @@ public class BenjagestUiApplication extends Application {
                     lastInputAt = System.currentTimeMillis();
                     lockShowing = false;
                     stage.close();
+                    // Si había una actualización detectada mientras estaba bloqueado,
+                    // ahora (ya desbloqueado) sí se puede mostrar el diálogo.
+                    if (pendingUpdateInfo != null) {
+                        var info = pendingUpdateInfo;
+                        pendingUpdateInfo = null;
+                        javafx.application.Platform.runLater(() -> promptUpdate(info));
+                    }
                 } else {
                     err.setText(t("lock.fail"));
                     pin.clear();
