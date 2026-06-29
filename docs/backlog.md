@@ -79,6 +79,33 @@
 > 1-2 dependen de **material/decisiones externas** (FNMT, alta AEAT, dominio, credenciales
 > reales); las Fases 3-5 se pueden cerrar con el código actual.
 
+### 🟢 ESTADO REAL AL CERRAR LA SESIÓN (2026-06-29 noche)
+
+Tras la tanda larga del 29-jun, lo que **antes estaba pendiente y AHORA está HECHO**:
+
+- ✅ **CONSOL (consolidación contable intragrupo, 1-4)** — grupos de empresas + balance agregado +
+  eliminaciones intragrupo (430/400 recíprocos) + informe PDF. Útil en modo asesoría y empresario.
+- ✅ **OFFLINE (fichaje sin red, OFF-1..4)** — sync idempotente (`client_uuid`, sello offline) en
+  **kiosco** y **PWA del empleado**; origen visible en Auditoría. *(OFF-3b Service Worker app-shell = refinamiento futuro.)*
+- ✅ **AUTO-UPDATE** — `UpdateService` consulta GitHub Releases (repo público), descarga e instala
+  el `.msi` encima (major-upgrade). **Probado en real 0.1.0→0.1.1→0.1.2.** Botón en Config + chequeo al arrancar.
+- ✅ **Instalable .msi** autocontenido (UI+backend+MariaDB embebida+OCR) con **icono propio redondo**.
+- ✅ **Fichajes sospechosos (FICHA-REVIEW)** — Plan-vs-Real marca incidencias + "Dar por bueno"/"Quitar revisado".
+- ✅ **Calendario laboral** subido a 1ª de "Tiempo" (visible) + **mejoras de agenda** (flechas ◀▶/Hoy, nombres de evento en celda, máscara de fecha en el import).
+- ✅ **tipo_iva por cliente** aplicado en Nueva factura · **"Clientes"** y **"Grupos"** en el sidebar.
+
+**⏳ LO QUE QUEDA DE VERDAD** (Benjamin: "túnel + VeriFactu y poco más" → casi exacto):
+1. **VeriFactu real ante la AEAT** (Fase 1, ⏸️ aparcada esperando a Pablo) — el grande legal: certificado FNMT + alta SIF + XAdES estricto.
+2. **Cloudflare Tunnel** del portal del empleado (Fase 5) — para fichar desde fuera de la oficina; Benjamin crea la cuenta/túnel.
+3. **Verificación del proyecto Google** (Fase 1) — quita el aviso "app no verificada"; necesita dominio + web (privacidad/términos).
+4. **Conectores reales** (Fase 2): DEHú real + SS RED/SILTRA real — envío con certificado; necesitan credenciales reales.
+5. **Modelos AEAT 100/180/200/411** (Fase 1) — investigación legal + mapeo de casillas.
+6. **Afinado menor** (con Benjamin, no bloqueante): asiento de pagas extra `EXTRA_*`, CL-5 atrasos, revisión de contratos, JOR-4 refinos, CONSOL-3b (P&G intragrupo), CONSOL-5 (NOFCAC minoritarios).
+
+> En una frase: **el producto está funcionalmente completo y desplegable/auto-actualizable**. Lo que
+> queda es **legal (VeriFactu, modelos AEAT, Google) + operativo externo (túnel, conectores con
+> credenciales reales) + afinado**. Nada de eso bloquea usarlo en NO_VERIFACTU on-premise hoy.
+
 ### ✅ RECONCILIACIÓN VERIFICADA EN CÓDIGO (2026-06-29) — revisión que pidió Benjamin
 
 Repaso punto por punto de lo que Benjamin reportó con el check en blanco. Estado **comprobado leyendo el código**, no de memoria:
@@ -86,10 +113,12 @@ Repaso punto por punto de lo que Benjamin reportó con el check en blanco. Estad
 - **Calendario laboral (importar PDF) — ✅ HECHO y disponible para el empresario.** `buildWorkCalendarTab()` tiene el botón **"Importar PDF"** (`workcal.btn.import_pdf`, primario) → `HolidayPdfExtractor` + `POST /api/labor/work-calendars/{id}/holidays/replace`. Backend `WorkCalendarController` con `@RequiresModule("labor")` + OWNER/ADMIN. **El problema era de NAVEGACIÓN, no de función**: está enterrado en **Personal → categoría "Tiempo" → sub-pestaña "Calendario laboral"** (5ª). *Mejora propuesta: subirlo de nivel o un acceso directo.*
 - **Nómina incidencias (horas extra, ausencias, etc.) — ✅ BASE HECHA** (INC-1..4, 2026-06-22): `labor/incidencias/NominaIncidenciaService` + `V136__nomina_incidencias.sql`; afectan el cálculo de nómina (`PayslipService`, `OvertimeRatesService`). **Pendiente real (Fase 3):** asiento de **pagas extra cotizadas** (`EXTRA_*` hoy sin asiento) y afinado de algún tipo. → La línea de Fase 3 "Incidencias de nómina" estaba mal como totalmente pendiente; lo correcto es "base hecha, falta asiento EXTRA_*".
 - **Bajas (IT) / vacaciones — ✅ en la UI** (`buildMedicalLeavesTab`, `buildVacationsTab`, `buildLeaveRequestsTab` en Personal → Ausencias). Backend IT cerrado 2026-06-09.
-- **Fichajes sospechosos — 🟠 PARCIAL.** Hay **Auditoría de fichajes** (`buildTimeClockAuditTab`) que marca incidencias (días sin entrada/salida) + acción **"Corregir"** (TIME_ADJUST/TYPE_CHANGE/VOID, sin alterar el original, RD 8/2019). **NO existe** un "validar / dar por bueno" del fichaje sospechoso, y **FJ-5b** (schedule-aware: esperado-vs-fichado por jornada) sigue **pendiente**. → Decisión Benjamin: definir si queremos un botón "revisado/OK".
+- **Fichajes sospechosos — ✅ HECHO DESPUÉS (FICHA-REVIEW, ver ESTADO arriba).** Auditoría + el
+  informe Plan-vs-Real marca incidencias y ya tiene **"Dar por bueno"/"Quitar revisado"**.
 - **Widgets personalizables — ❌ DESCARTADO (Benjamin 2026-06-29: "no lo vamos a hacer").** La **base** ya existía (DASH-CUSTOM: mostrar/ocultar secciones del inicio). **No se ampliará** (nada de reordenar). Se quita de pendientes. *(El código base se queda; es inocuo. Si quieres quitarlo del todo, dilo.)*
-- **Consolidación intragrupo (empresas asociadas) — ❌ NO hecho.** No hay servicio/controlador de consolidación; solo aparece "consolidación" como texto suelto en datos de empresa. Sigue **pendiente** (no estaba empezado).
-- **Sincronización offline (VeriFactu y RR.HH./fichajes) — ❌ NO hecho.** No hay cola/sync offline. VeriFactu offline va con la Fase 1 (aparcada, espera a Pablo). Fichajes offline de kioscos = **Fase 3 pendiente**. *(Recordatorio: el PDF offline de TPB está BLOQUEADO por decisión — solo PIN_SESSION.)*
+- **Consolidación intragrupo (empresas asociadas) — ✅ HECHO DESPUÉS (bloque CONSOL 1-4, ver ESTADO arriba).**
+- **Sincronización offline de fichajes — ✅ HECHO DESPUÉS (bloque OFFLINE, ver ESTADO arriba).** El de
+  **VeriFactu** offline NO (va con la Fase 1 aparcada). *(Recordatorio: PDF offline de TPB sigue BLOQUEADO — solo PIN_SESSION.)*
 
 > **Resumen:** de lo que reportaste, **calendario laboral, incidencias base y bajas/vacaciones YA están** (el calendario solo estaba escondido). **Fichajes sospechosos** está a medias (auditoría sí, "validar" no). **Widgets** se descarta. **Consolidación intragrupo** y **offline** siguen pendientes de verdad.
 
@@ -115,8 +144,10 @@ Repaso punto por punto de lo que Benjamin reportó con el check en blanco. Estad
   "incidencias", no las incidencias en sí.*
 - **Revisión completa de contratos + flujo de alta del empleado**.
 - **CL-5** (recibo/asiento/L13 de atrasos) — con Benjamin.
-- **JOR-4**: excepciones por fecha + comparación planificado-vs-real (refinamiento).
-- **Sincronización offline de fichajes** (kioskos sin red).
+- **JOR-4**: excepciones por fecha + comparación planificado-vs-real (refinamiento). *(El plan-vs-real
+  ya está + FICHA-REVIEW "dar por bueno"; queda solo el afinado de excepciones por fecha.)*
+- ✅ **Sincronización offline de fichajes** (kioscos sin red) — **HECHO 2026-06-29** (bloque OFFLINE,
+  kiosco + PWA).
 
 ### Fase 4 — Cierres menores y pulido 🧹  (revisión 2026-06-27)
 - ✅ **REFLEJO banner "reflejada en {cliente}"** — **YA estaba hecho** (verificado 2026-06-27):
@@ -156,8 +187,11 @@ Repaso punto por punto de lo que Benjamin reportó con el check en blanco. Estad
 > del portal del empleado; se construyó hoy.)*
 
 ### Fase 5 — Empaquetado y despliegue 📦
-- **DEPLOY-PKG**: instalable Windows autocontenido (UI + backend + MariaDB embebida).
-- **Cloudflare Tunnel** para el portal del empleado (acceso externo).
+- ✅ **DEPLOY-PKG**: instalable Windows autocontenido (UI + backend + MariaDB embebida + OCR Tesseract)
+  con icono propio. **HECHO y verificado 2026-06-29** (`.msi` por jpackage, arranca/reabre solo).
+- ✅ **AUTO-UPDATE**: comprobación + actualización in-app vía GitHub Releases. **HECHO y probado en
+  real 2026-06-29** (0.1.0→0.1.1→0.1.2). `gh release create` + bump `UpdateService.APP_VERSION`.
+- **Cloudflare Tunnel** para el portal del empleado (acceso externo). ← pendiente (Benjamin crea cuenta/túnel).
 - Rellenar credenciales Google centrales tras la verificación (Fase 1).
 
 ---
