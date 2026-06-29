@@ -17,6 +17,10 @@ public record CustomerSummary(
         String city,
         String province,
         String postalCode,
-        String country
+        String country,
+        // IVA y retención por defecto del cliente (null = no fijado). El editor
+        // de factura los aplica al elegir cliente.
+        java.math.BigDecimal defaultVatPercent,
+        java.math.BigDecimal defaultRetentionPercent
 ) {
 }

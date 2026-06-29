@@ -1,5 +1,6 @@
 package com.benjagest.backend.customer;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 
 /**
@@ -27,6 +28,11 @@ public record CustomerResponse(
         String province,
         String postalCode,
         String country,
+        // IVA y retención por defecto del cliente (NULL = no fijado). El editor
+        // de factura los usa al elegir cliente: si vienen, las líneas adoptan
+        // ese tipo; si NULL, el por defecto (21 IVA / 0 retención).
+        BigDecimal defaultVatPercent,
+        BigDecimal defaultRetentionPercent,
         Instant createdAt
 ) {
 }
