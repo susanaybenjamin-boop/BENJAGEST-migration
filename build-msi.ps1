@@ -13,13 +13,14 @@
 #        .\build-msi.ps1 -Rebuild   (limpia y reconstruye todo)
 # ============================================================================
 param(
-    [switch]$Rebuild
+    [switch]$Rebuild,
+    [string]$Version = "0.1.0"
 )
 
 $ErrorActionPreference = "Stop"
 Set-Location -Path $PSScriptRoot
 
-$version    = "0.1.0"
+$version    = $Version
 $uiJarName  = "ui-0.1.0-SNAPSHOT.jar"
 $backendJar = "backend-java\target\backend-java-0.1.0-SNAPSHOT.jar"
 $dist       = "dist"
