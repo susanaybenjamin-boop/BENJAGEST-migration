@@ -150,6 +150,9 @@ public class BenjagestUiApplication extends Application {
     private final CustomerApiClient customerApiClient = new CustomerApiClient();
     private final com.benjagest.ui.service.ConsolidationApiClient consolidationApiClient =
             new com.benjagest.ui.service.ConsolidationApiClient();
+    private final com.benjagest.ui.service.UpdateService updateService =
+            new com.benjagest.ui.service.UpdateService();
+    private boolean updateCheckDone = false;
     private final com.benjagest.ui.service.AccountingApiClient accountingApiClient =
             new com.benjagest.ui.service.AccountingApiClient();
     private final Map<String, Button> navigationButtons = new LinkedHashMap<>();
@@ -1274,6 +1277,55 @@ public class BenjagestUiApplication extends Application {
         }
     }
 
+    /** Comprueba si hay actualización. {@code manual}=true avisa también si ya está al día. */
+    private void checkForUpdates(boolean manual) {
+        Task<com.benjagest.ui.service.UpdateService.UpdateInfo> task = new Task<>() {
+            @Override protected com.benjagest.ui.service.UpdateService.UpdateInfo call() {
+                return updateService.checkForUpdate();
+            }
+        };
+        task.setOnSucceeded(e -> {
+            var info = task.getValue();
+            if (info == null) {
+                if (manual) showInfo(t("update.none.title"),
+                        t("update.none.body").replace("{v}",
+                                com.benjagest.ui.service.UpdateService.APP_VERSION));
+                return;
+            }
+            Alert a = new Alert(Alert.AlertType.CONFIRMATION,
+                    t("update.available.body").replace("{v}", info.latestVersion()),
+                    ButtonType.OK, ButtonType.CANCEL);
+            a.setHeaderText(t("update.available.title"));
+            if (a.showAndWait().orElse(ButtonType.CANCEL) == ButtonType.OK) {
+                downloadAndInstall(info);
+            }
+        });
+        task.setOnFailed(e -> { if (manual) showError(t("update.fail.title"), ""); });
+        start(task, "update-check");
+    }
+
+    private void downloadAndInstall(com.benjagest.ui.service.UpdateService.UpdateInfo info) {
+        showInfo(t("update.downloading.title"), t("update.downloading.body"));
+        Task<java.nio.file.Path> dl = new Task<>() {
+            @Override protected java.nio.file.Path call() throws Exception {
+                return updateService.download(info.downloadUrl());
+            }
+        };
+        dl.setOnSucceeded(e -> {
+            try {
+                updateService.launchInstaller(dl.getValue());
+                // Cerrar para que el instalador pueda reemplazar los archivos.
+                javafx.application.Platform.exit();
+                System.exit(0);
+            } catch (Exception ex) {
+                showError(t("update.fail.title"), ex.getMessage());
+            }
+        });
+        dl.setOnFailed(e -> showError(t("update.fail.title"),
+                dl.getException() == null ? "" : dl.getException().getMessage()));
+        start(dl, "update-download");
+    }
+
     private void handleLoginSuccess() {
         AuthSession auth = AuthSession.get();
         if (auth.memberships().size() > 1) {
@@ -1284,6 +1336,12 @@ public class BenjagestUiApplication extends Application {
     }
 
     private void enterApp() {
+        // Auto-actualización: comprobación silenciosa al arrancar, solo en el
+        // instalable (no en desarrollo con mvn) y una vez por sesión.
+        if (!updateCheckDone && Boolean.getBoolean("benjagest.launch.backend")) {
+            updateCheckDone = true;
+            checkForUpdates(false);
+        }
         AuthSession auth = AuthSession.get();
         session = new SessionInfo(
                 auth.userId(),
@@ -6509,6 +6567,24 @@ public class BenjagestUiApplication extends Application {
         return box;
     }
 
+    /** Configuración → Acerca de: versión instalada + buscar actualización. */
+    private Node settingsAboutTab() {
+        VBox box = new VBox(12);
+        box.setPadding(new Insets(16));
+        Label section = label(t("settings.about.section"), "settings-section-title");
+        Label ver = new Label(t("settings.about.version")
+                .replace("{v}", com.benjagest.ui.service.UpdateService.APP_VERSION));
+        Label hint = new Label(t("settings.about.hint"));
+        hint.setWrapText(true);
+        hint.getStyleClass().add("settings-hint");
+        Button check = new Button(t("settings.about.check"));
+        check.setGraphic(icon("fas-cloud-download-alt"));
+        check.getStyleClass().add("primary-button");
+        check.setOnAction(e -> checkForUpdates(true));
+        box.getChildren().addAll(section, ver, hint, check);
+        return box;
+    }
+
     private VBox settingsView(SettingsBundle bundle) {
         VBox content = content();
 
@@ -6547,11 +6623,14 @@ public class BenjagestUiApplication extends Application {
         // de inactividad, PIN de sesión y salvapantallas.
         Tab sessionTab = new Tab(t("settings.tab.session"), settingsSessionTab());
         sessionTab.setGraphic(icon("fas-user-clock"));
+        // Acerca de / Actualizaciones (versión + buscar actualización).
+        Tab aboutTab = new Tab(t("settings.tab.about"), settingsAboutTab());
+        aboutTab.setGraphic(icon("fas-sync-alt"));
 
         // "Mi asesoría" solo tiene sentido para empresas CLIENT — una
         // asesoría no necesita otra asesoría que la asesore.
         tabs.getTabs().addAll(companyTab, ownersTab, emailTab, modulesTab,
-                credentialsTab, certificateTab, sessionTab);
+                credentialsTab, certificateTab, sessionTab, aboutTab);
         if (appMode != AppMode.ADVISORY) {
             Tab advisoryTab = new Tab(t("settings.tab.my_advisory"), settingsMyAdvisoryTab());
             advisoryTab.setGraphic(icon("fas-handshake"));
@@ -17370,6 +17449,18 @@ public class BenjagestUiApplication extends Application {
     private String tSessionEn(String key) {
         return switch (key) {
             case "settings.tab.session" -> "Session";
+            case "settings.tab.about" -> "About / Updates";
+            case "settings.about.section" -> "Version and updates";
+            case "settings.about.version" -> "Installed version: {v}";
+            case "settings.about.hint" -> "BENJAGEST checks for updates on startup. You can also check now. If there is a newer version, it downloads and installs over the current one (no need to uninstall).";
+            case "settings.about.check" -> "Check for updates";
+            case "update.none.title" -> "You are up to date";
+            case "update.none.body" -> "You already have the latest version ({v}).";
+            case "update.available.title" -> "Update available";
+            case "update.available.body" -> "Version {v} is available. Download and install it now? BENJAGEST will close to apply the update.";
+            case "update.downloading.title" -> "Downloading update";
+            case "update.downloading.body" -> "Downloading the installer… BENJAGEST will close and run it when it finishes.";
+            case "update.fail.title" -> "Could not update";
             case "settings.session.save" -> "Save session settings";
             case "settings.session.save.ok.title" -> "Saved";
             case "settings.session.save.ok.body" -> "Your session preferences have been updated.";
@@ -17668,6 +17759,18 @@ public class BenjagestUiApplication extends Application {
     private String tSessionEs(String key) {
         return switch (key) {
             case "settings.tab.session" -> "Sesión";
+            case "settings.tab.about" -> "Acerca de / Actualizaciones";
+            case "settings.about.section" -> "Versión y actualizaciones";
+            case "settings.about.version" -> "Versión instalada: {v}";
+            case "settings.about.hint" -> "BENJAGEST busca actualizaciones al arrancar. También puedes buscar ahora. Si hay una versión más nueva, se descarga y se instala encima de la actual (sin desinstalar).";
+            case "settings.about.check" -> "Buscar actualizaciones";
+            case "update.none.title" -> "Estás al día";
+            case "update.none.body" -> "Ya tienes la última versión ({v}).";
+            case "update.available.title" -> "Actualización disponible";
+            case "update.available.body" -> "Hay una versión {v} disponible. ¿Descargarla e instalarla ahora? BENJAGEST se cerrará para aplicar la actualización.";
+            case "update.downloading.title" -> "Descargando actualización";
+            case "update.downloading.body" -> "Descargando el instalador… BENJAGEST se cerrará y lo ejecutará al terminar.";
+            case "update.fail.title" -> "No se pudo actualizar";
             case "settings.session.save" -> "Guardar configuración de sesión";
             case "settings.session.save.ok.title" -> "Guardado";
             case "settings.session.save.ok.body" -> "Tus preferencias de sesión se han actualizado.";
