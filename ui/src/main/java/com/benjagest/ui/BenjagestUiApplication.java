@@ -23220,7 +23220,9 @@ public class BenjagestUiApplication extends Application {
         // separada de las tablas de parámetros legales (set-and-forget).
         TabPane personalPane = laborSubPane(empTab, contractsTab, templatesTab, clausesTab);
         TabPane payrollPane = laborSubPane(payslipsTab, costTab, ssTab);
-        TabPane timePane = laborSubPane(clockTab, auditTab, shiftsTab, scheduleTab, calendarTab, centersTab, kioskTab, cfgTab);
+        // Calendario laboral PRIMERO en "Tiempo": es lo que se configura antes de
+        // fichar (define festivos/jornada) y Benjamin no lo encontraba enterrado.
+        TabPane timePane = laborSubPane(calendarTab, clockTab, auditTab, shiftsTab, scheduleTab, centersTab, kioskTab, cfgTab);
         TabPane absencePane = laborSubPane(leaveReqTab, leavesTab, vacationsTab);
         TabPane paramsPane = laborSubPane(ratesTab, groupBasesTab, irpfParamsTab, severanceTab);
         final TabPane[] panes = {personalPane, payrollPane, timePane, absencePane, paramsPane};
