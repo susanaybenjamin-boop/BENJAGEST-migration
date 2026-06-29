@@ -152,6 +152,54 @@ public class TimeClockService {
         return new PunchResult(event, csv, warning, geoWarning);
     }
 
+    /**
+     * OFF-1 — registra un fichaje SINCRONIZADO desde un dispositivo offline
+     * (kiosco / PWA del empleado). Diferencias con {@link #punch}:
+     * <ol>
+     *   <li>usa el sello horario REAL del momento offline ({@code eventTime}), no
+     *       {@code now()};</li>
+     *   <li>idempotente por {@code clientUuid}: si ese fichaje ya se sincronizó,
+     *       devuelve {@code null} y no duplica;</li>
+     *   <li>NO bloquea por geo (el fichaje ya ocurrió; solo registra la distancia
+     *       si viene).</li>
+     * </ol>
+     * El verificador del CSV es el usuario autenticado (empleado por PIN).
+     */
+    @Transactional
+    public PunchResult syncPunch(String employeeId, String eventType, String customerId,
+                                 String origin, java.math.BigDecimal lat, java.math.BigDecimal lng,
+                                 Instant eventTime, String clientUuid) {
+        if (employeeId == null || employeeId.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "employeeId requerido");
+        }
+        if (eventType == null || !eventTypeService.isValidCode(eventType)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "eventType no valido.");
+        }
+        // Idempotencia: si este fichaje ya se sincronizó, no se duplica.
+        if (clientUuid != null && !clientUuid.isBlank() && repository.existsClientUuid(clientUuid)) {
+            return null;
+        }
+        GeoCheckResult geo = checkGeo(employeeId, lat, lng); // registra distancia, NO bloquea
+        String eventId = UUID.randomUUID().toString();
+        TimeClockEvent event = new TimeClockEvent(
+                eventId, null, employeeId, customerId,
+                eventType, eventTime == null ? Instant.now() : eventTime,
+                origin == null ? "OFFLINE" : origin,
+                "VALID", null);
+        repository.insertEventWithUuid(event, lat, lng,
+                geo != null && geo.hasWarning() ? geo.distanceMeters() : null, clientUuid);
+        String csv = generateCsv();
+        repository.insertVerification(UUID.randomUUID().toString(), eventId, csv,
+                currentUserService.require().userId());
+        try {
+            realtime.publishToCompany(tenantContext.getCurrentCompanyId(), "timeclock",
+                    "{\"employeeId\":\"" + employeeId + "\",\"eventType\":\"" + eventType + "\"}");
+        } catch (Exception ignored) {
+            // sin tenant o fallo del bus: se ignora (no rompe la sincronización).
+        }
+        return new PunchResult(event, csv, null, null);
+    }
+
     /** GEO-FICHAR — pivote único de chequeo geo. */
     private GeoCheckResult checkGeo(String employeeId,
                                        java.math.BigDecimal lat,

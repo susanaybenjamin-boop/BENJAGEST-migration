@@ -81,6 +81,39 @@ public class EmployeeFichajeController {
         return scheduleService.suggestNextPunch(me.employeeId(), LocalDateTime.now());
     }
 
+    /**
+     * OFF-1 — Sincronización por lotes de fichajes capturados OFFLINE. Cada
+     * fichaje trae su {@code clientUuid} (dedup) y su {@code eventTime} (sello del
+     * momento real). Idempotente: reenviar el lote no duplica. Devuelve cuántos se
+     * aceptaron, cuántos eran duplicados (ya sincronizados) y cuántos fallaron.
+     */
+    @PostMapping("/sync")
+    public SyncResult sync(@RequestBody SyncIn req) {
+        TimeClockController.MyEmployeeInfo me = service.resolveCurrentEmployee();
+        int accepted = 0, duplicates = 0, failed = 0;
+        if (req.punches() != null) {
+            for (SyncPunch p : req.punches()) {
+                try {
+                    Instant when = (p.eventTime() == null || p.eventTime().isBlank())
+                            ? Instant.now() : Instant.parse(p.eventTime());
+                    var res = service.syncPunch(me.employeeId(), p.eventType(), null,
+                            "OFFLINE", p.lat(), p.lng(), when, p.clientUuid());
+                    if (res == null) duplicates++; else accepted++;
+                } catch (Exception ex) {
+                    failed++;
+                }
+            }
+        }
+        return new SyncResult(accepted, duplicates, failed);
+    }
+
+    public record SyncPunch(String clientUuid, String eventType, String eventTime,
+                            BigDecimal lat, BigDecimal lng) {}
+
+    public record SyncIn(List<SyncPunch> punches) {}
+
+    public record SyncResult(int accepted, int duplicates, int failed) {}
+
     public record PunchIn(String eventType, BigDecimal lat, BigDecimal lng) {}
 
     public record PunchOut(String eventType, Instant eventTime, String csv, String warning) {}
