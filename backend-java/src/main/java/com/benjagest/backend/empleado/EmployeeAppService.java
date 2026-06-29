@@ -450,6 +450,7 @@ public class EmployeeAppService {
                   </div>
                   <button class="secondary hidden" id="ficharOverride" onclick="ficharOverride()" style="margin-top:8px">Fichar otra cosa</button>
                   <div id="ficharMsg"></div>
+                  <div id="ficharPending" style="color:#fbbf24;font-size:13px;margin-top:6px"></div>
                   <p class="sub" style="margin-top:18px">Ultimos fichajes</p>
                   <ul id="ficharRecent" style="list-style:none;padding:0;margin:0;color:#cbd5e1;font-size:14px"></ul>
                   <button class="secondary" onclick="gotoHome()">Volver</button>
@@ -610,7 +611,7 @@ public class EmployeeAppService {
                       { timeout: 6000, enableHighAccuracy: true });
                   });
                 }
-                function gotoFichar() { show('screen-fichar'); document.getElementById('ficharMsg').textContent=''; loadEstado(); loadSugerencia(); }
+                function gotoFichar() { show('screen-fichar'); document.getElementById('ficharMsg').textContent=''; updatePendingBadge(); flushQueue(); loadEstado(); loadSugerencia(); }
                 // FJ-4: resalta el boton que toca segun la jornada asignada (+/-15 min). No bloquea.
                 function clearSuggestion() {
                   ['IN','OUT','BREAK_START','BREAK_END'].forEach(a => {
@@ -685,15 +686,58 @@ public class EmployeeAppService {
                     });
                   } catch (e) { msg('ficharMsg', e.message); }
                 }
+                // ---- OFF-3: fichaje offline (cola local + sync al volver la red) ----
+                function genUuid() {
+                  if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
+                  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+                    var r = Math.random() * 16 | 0, v = c === 'x' ? r : (r & 0x3 | 0x8);
+                    return v.toString(16);
+                  });
+                }
+                function getQueue() {
+                  try { return JSON.parse(localStorage.getItem('fichaje_queue') || '[]'); }
+                  catch (e) { return []; }
+                }
+                function setQueue(q) {
+                  localStorage.setItem('fichaje_queue', JSON.stringify(q));
+                  updatePendingBadge();
+                }
+                function updatePendingBadge() {
+                  var n = getQueue().length;
+                  var el = document.getElementById('ficharPending');
+                  if (el) el.textContent = n > 0
+                    ? (n + ' fichaje' + (n > 1 ? 's' : '') + ' sin conexion, pendiente'
+                       + (n > 1 ? 's' : '') + ' de sincronizar')
+                    : '';
+                }
+                async function flushQueue() {
+                  var q = getQueue();
+                  if (q.length === 0 || !navigator.onLine || !localStorage.getItem(LS_TOKEN)) return;
+                  try {
+                    var r = await fetch(API + '/empleado/fichaje/sync', {
+                      method: 'POST', headers: authHeaders(),
+                      body: JSON.stringify({ punches: q })
+                    });
+                    if (r.ok) {
+                      localStorage.removeItem('fichaje_queue');
+                      updatePendingBadge();
+                      if (currentScreen() === 'screen-fichar') loadEstado();
+                    }
+                  } catch (e) { /* sigue sin red: se reintenta luego */ }
+                }
+                window.addEventListener('online', flushQueue);
+
                 async function doPunch(type) {
                   msg('ficharMsg', 'Fichando...', true);
                   const geo = await getGeo();
+                  const punch = { clientUuid: genUuid(), eventType: type,
+                    eventTime: new Date().toISOString(),
+                    lat: (geo.lat == null ? null : geo.lat),
+                    lng: (geo.lng == null ? null : geo.lng) };
                   try {
                     const r = await fetch(API + '/empleado/fichaje', {
                       method: 'POST', headers: authHeaders(),
-                      body: JSON.stringify({ eventType: type,
-                        lat: (geo.lat == null ? null : geo.lat),
-                        lng: (geo.lng == null ? null : geo.lng) })
+                      body: JSON.stringify({ eventType: type, lat: punch.lat, lng: punch.lng })
                     });
                     if (r.status === 401 || r.status === 403) { localStorage.removeItem(LS_TOKEN); gotoPin(); return; }
                     if (!r.ok) {
@@ -706,7 +750,18 @@ public class EmployeeAppService {
                       + (d.warning ? '. ' + d.warning : ''), true);
                     loadEstado();
                     loadSugerencia();
-                  } catch (e) { msg('ficharMsg', e.message); }
+                    flushQueue();
+                  } catch (e) {
+                    // Sin red (fetch lanza TypeError) o navegador offline: encolar.
+                    if (!navigator.onLine || e instanceof TypeError) {
+                      var q = getQueue(); q.push(punch); setQueue(q);
+                      msg('ficharMsg', typeLabel(type) + ' guardada SIN conexion. '
+                        + 'Se sincronizara sola al volver la red.', true);
+                      loadEstado();
+                    } else {
+                      msg('ficharMsg', e.message);
+                    }
+                  }
                 }
 
                 // ---- MEMP-3: mi jornada (horario + jornada real + festivo) ----

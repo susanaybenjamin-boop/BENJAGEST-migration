@@ -165,10 +165,18 @@ public class TimeClockService {
      * </ol>
      * El verificador del CSV es el usuario autenticado (empleado por PIN).
      */
-    @Transactional
     public PunchResult syncPunch(String employeeId, String eventType, String customerId,
                                  String origin, java.math.BigDecimal lat, java.math.BigDecimal lng,
                                  Instant eventTime, String clientUuid) {
+        return syncPunch(employeeId, eventType, customerId, origin, lat, lng, eventTime, clientUuid,
+                currentUserService.require().userId());
+    }
+
+    /** Variante con actor EXPLÍCITO (kiosco: sin JWT de usuario, se pasa el user_id). */
+    @Transactional
+    public PunchResult syncPunch(String employeeId, String eventType, String customerId,
+                                 String origin, java.math.BigDecimal lat, java.math.BigDecimal lng,
+                                 Instant eventTime, String clientUuid, String actorUserId) {
         if (employeeId == null || employeeId.isBlank()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "employeeId requerido");
         }
@@ -189,8 +197,7 @@ public class TimeClockService {
         repository.insertEventWithUuid(event, lat, lng,
                 geo != null && geo.hasWarning() ? geo.distanceMeters() : null, clientUuid);
         String csv = generateCsv();
-        repository.insertVerification(UUID.randomUUID().toString(), eventId, csv,
-                currentUserService.require().userId());
+        repository.insertVerification(UUID.randomUUID().toString(), eventId, csv, actorUserId);
         try {
             realtime.publishToCompany(tenantContext.getCurrentCompanyId(), "timeclock",
                     "{\"employeeId\":\"" + employeeId + "\",\"eventType\":\"" + eventType + "\"}");
