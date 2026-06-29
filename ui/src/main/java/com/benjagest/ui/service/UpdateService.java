@@ -29,8 +29,12 @@ public class UpdateService {
     private static final String DEFAULT_URL =
             "https://api.github.com/repos/susanaybenjamin-boop/BENJAGEST-migration/releases/latest";
 
+    // followRedirects: las descargas de assets de GitHub responden 302 hacia un
+    // CDN; sin esto la descarga del .msi fallaría.
     private final HttpClient http = HttpClient.newBuilder()
-            .connectTimeout(Duration.ofSeconds(5)).build();
+            .connectTimeout(Duration.ofSeconds(5))
+            .followRedirects(HttpClient.Redirect.NORMAL)
+            .build();
 
     public record UpdateInfo(String latestVersion, String downloadUrl) {}
 
