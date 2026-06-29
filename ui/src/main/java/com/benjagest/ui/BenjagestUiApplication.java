@@ -148,6 +148,8 @@ public class BenjagestUiApplication extends Application {
     private final SettingsApiClient settingsApiClient = new SettingsApiClient();
     private final BillingApiClient billingApiClient = new BillingApiClient();
     private final CustomerApiClient customerApiClient = new CustomerApiClient();
+    private final com.benjagest.ui.service.ConsolidationApiClient consolidationApiClient =
+            new com.benjagest.ui.service.ConsolidationApiClient();
     private final com.benjagest.ui.service.AccountingApiClient accountingApiClient =
             new com.benjagest.ui.service.AccountingApiClient();
     private final Map<String, Button> navigationButtons = new LinkedHashMap<>();
@@ -2132,6 +2134,7 @@ public class BenjagestUiApplication extends Application {
             Button tareas = navButton("pending-tasks", t("pending.title"), "fas-clipboard-list");
             tareas.setOnAction(event -> { exitClientMode(); showPendingTasksPanel(); });
             sidebar.getChildren().add(tareas);
+            addConsolidationNav(sidebar);
         } else {
             // Empresario, o asesoría operando dentro de un cliente:
             // sidebar plano con una sola sección "Módulos".
@@ -2164,6 +2167,7 @@ public class BenjagestUiApplication extends Application {
             Button tareas = navButton("pending-tasks", t("pending.title"), "fas-clipboard-list");
             tareas.setOnAction(event -> showPendingTasksPanel());
             sidebar.getChildren().add(tareas);
+            addConsolidationNav(sidebar);
         }
 
         Region spacer = new Region();
@@ -2360,6 +2364,15 @@ public class BenjagestUiApplication extends Application {
         if (button != null) {
             button.getStyleClass().add("nav-item-selected");
         }
+    }
+
+    /** CONSOL-1 — entrada al módulo Grupos/Consolidación en el sidebar (solo OWNER/ADMIN). */
+    private void addConsolidationNav(VBox sidebar) {
+        String role = session == null ? null : session.role();
+        if (!"OWNER".equals(role) && !"ADMIN".equals(role)) return;
+        Button g = navButton("consolidation", t("consol.sidebar"), "fas-sitemap");
+        g.setOnAction(event -> { exitClientMode(); showConsolidationModule(); });
+        sidebar.getChildren().add(g);
     }
 
     private void showDashboard() {
@@ -20803,6 +20816,25 @@ public class BenjagestUiApplication extends Application {
             case "advisory.client.tab.billing_config" -> "Billing config";
             case "client.customers.empty" -> "This client has no billing recipients yet.";
             case "client.customers.hint" -> "Customers this client invoices. The advisor manages them here so they can be selected when issuing invoices on the client's behalf.";
+            case "consol.sidebar" -> "Groups";
+            case "consol.title" -> "Company groups";
+            case "consol.subtitle" -> "Define business groups to consolidate their books (aggregate + intragroup eliminations come next).";
+            case "consol.hint" -> "Create a group and assign the companies that make it up. The consolidated balance sheet and P&L will be built on these groups.";
+            case "consol.section.groups" -> "Groups";
+            case "consol.section.members" -> "Companies in the group";
+            case "consol.col.group" -> "Group";
+            case "consol.col.members" -> "Companies";
+            case "consol.groups.empty" -> "No groups yet — create one with \"New group\".";
+            case "consol.members.empty" -> "Select a group, then add its companies.";
+            case "consol.action.new_group" -> "New group";
+            case "consol.action.del_group" -> "Delete group";
+            case "consol.action.add_member" -> "Add company";
+            case "consol.action.del_member" -> "Remove";
+            case "consol.dialog.group_name" -> "Group name:";
+            case "consol.dialog.pick_company" -> "Company to add:";
+            case "consol.confirm.del_group" -> "Delete this group? Its company list is removed (the companies and their data are NOT deleted).";
+            case "consol.add.none" -> "No more companies available to add to this group.";
+            case "consol.fail.title" -> "Group operation failed";
             case "customers.sidebar" -> "Clients";
             case "customers.module.title" -> "Clients";
             case "customers.module.subtitle" -> "The clients you invoice. Adding one here only saves the contact card — its accounting third-party account (430) is created automatically the first time you invoice them, with the numbering your advisory configures.";
@@ -22299,6 +22331,25 @@ public class BenjagestUiApplication extends Application {
             case "advisory.client.tab.billing_config" -> "Config. facturación";
             case "client.customers.empty" -> "Este cliente todavía no tiene destinatarios de factura.";
             case "client.customers.hint" -> "Clientes a los que este cliente factura. La asesoría los gestiona aquí para poder seleccionarlos al emitir facturas en su nombre.";
+            case "consol.sidebar" -> "Grupos";
+            case "consol.title" -> "Grupos de empresas";
+            case "consol.subtitle" -> "Define grupos de empresas para consolidar sus libros (la agregación y las eliminaciones intragrupo vienen después).";
+            case "consol.hint" -> "Crea un grupo y asigna las empresas que lo componen. El balance y la cuenta de pérdidas y ganancias consolidados se construirán sobre estos grupos.";
+            case "consol.section.groups" -> "Grupos";
+            case "consol.section.members" -> "Empresas del grupo";
+            case "consol.col.group" -> "Grupo";
+            case "consol.col.members" -> "Empresas";
+            case "consol.groups.empty" -> "Aún no hay grupos — crea uno con \"Nuevo grupo\".";
+            case "consol.members.empty" -> "Selecciona un grupo y añade sus empresas.";
+            case "consol.action.new_group" -> "Nuevo grupo";
+            case "consol.action.del_group" -> "Eliminar grupo";
+            case "consol.action.add_member" -> "Añadir empresa";
+            case "consol.action.del_member" -> "Quitar";
+            case "consol.dialog.group_name" -> "Nombre del grupo:";
+            case "consol.dialog.pick_company" -> "Empresa a añadir:";
+            case "consol.confirm.del_group" -> "¿Eliminar este grupo? Se borra su lista de empresas (las empresas y sus datos NO se borran).";
+            case "consol.add.none" -> "No quedan empresas disponibles para añadir a este grupo.";
+            case "consol.fail.title" -> "Falló la operación del grupo";
             case "customers.sidebar" -> "Clientes";
             case "customers.module.title" -> "Clientes";
             case "customers.module.subtitle" -> "Los clientes a los que facturas. Darlos de alta aquí solo guarda la ficha de contacto — su subcuenta de tercero (430) se crea sola la primera vez que les facturas, con la numeración que configura tu asesoría.";
@@ -37049,6 +37100,216 @@ public class BenjagestUiApplication extends Application {
         content.getChildren().addAll(header, customers);
         setCenterAnimated(content);
     }
+
+    /**
+     * CONSOL-1 — Grupos de empresas (cimiento de la consolidación intragrupo).
+     * Izquierda: grupos (crear/eliminar). Derecha: empresas del grupo
+     * seleccionado (añadir desde candidatos / quitar). Los slices CONSOL-2..
+     * añadirán el balance/PyG agregado y consolidado sobre estos grupos.
+     */
+    private void showConsolidationModule() {
+        recordNav(this::showConsolidationModule);
+        currentModule = "consolidation";
+        select("consolidation");
+
+        VBox content = content();
+        Label title = new Label(t("consol.title"));
+        title.getStyleClass().add("module-detail-title");
+        Label subtitle = new Label(t("consol.subtitle"));
+        subtitle.getStyleClass().add("module-detail-description");
+        VBox titleBox = new VBox(4, title, subtitle);
+        StackPane moduleIcon = iconBubble("fas-sitemap", "module-title-icon");
+        Region spacer = new Region();
+        HBox.setHgrow(spacer, Priority.ALWAYS);
+        HBox header = new HBox(16, titleBox, moduleIcon, spacer);
+        header.setAlignment(Pos.CENTER_LEFT);
+        header.getStyleClass().add("module-detail-header");
+
+        TableView<com.benjagest.ui.model.CompanyGroupEntry> groupsTable = new TableView<>();
+        groupsTable.getStyleClass().add("data-table");
+        groupsTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+        groupsTable.setPlaceholder(new Label(t("consol.groups.empty")));
+        addCol(groupsTable, t("consol.col.group"), g -> g.name() == null ? "" : g.name(), 220);
+        addCol(groupsTable, t("consol.col.members"), g -> String.valueOf(g.memberCount()), 90);
+        VBox.setVgrow(groupsTable, Priority.ALWAYS);
+
+        TableView<com.benjagest.ui.model.CompanyRef> membersTable = new TableView<>();
+        membersTable.getStyleClass().add("data-table");
+        membersTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+        membersTable.setPlaceholder(new Label(t("consol.members.empty")));
+        addCol(membersTable, t("cli.field.legalName"), m -> m.legalName() == null ? "" : m.legalName(), 240);
+        addCol(membersTable, t("cli.field.taxId"), m -> m.taxIdentifier() == null ? "" : m.taxIdentifier(), 120);
+        VBox.setVgrow(membersTable, Priority.ALWAYS);
+
+        Runnable loadMembers = () -> {
+            var sel = groupsTable.getSelectionModel().getSelectedItem();
+            if (sel == null) { membersTable.getItems().clear(); return; }
+            Task<java.util.List<com.benjagest.ui.model.CompanyRef>> task = new Task<>() {
+                @Override protected java.util.List<com.benjagest.ui.model.CompanyRef> call() throws Exception {
+                    return consolidationApiClient.listMembers(sel.id());
+                }
+            };
+            task.setOnSucceeded(e -> membersTable.setItems(FXCollections.observableArrayList(task.getValue())));
+            start(task, "consol-members");
+        };
+        Runnable loadGroups = () -> {
+            Task<java.util.List<com.benjagest.ui.model.CompanyGroupEntry>> task = new Task<>() {
+                @Override protected java.util.List<com.benjagest.ui.model.CompanyGroupEntry> call() throws Exception {
+                    return consolidationApiClient.listGroups();
+                }
+            };
+            task.setOnSucceeded(e -> groupsTable.setItems(FXCollections.observableArrayList(task.getValue())));
+            task.setOnFailed(e -> showError(t("consol.fail.title"),
+                    task.getException() == null ? "" : task.getException().getMessage()));
+            start(task, "consol-groups");
+        };
+        groupsTable.getSelectionModel().selectedItemProperty().addListener((o, ov, nv) -> loadMembers.run());
+
+        // --- Acciones de grupo (arriba de la tabla) ---
+        Button newGroup = new Button(t("consol.action.new_group"));
+        newGroup.setGraphic(icon("fas-plus"));
+        newGroup.getStyleClass().add("button-primary");
+        newGroup.setOnAction(e -> {
+            javafx.scene.control.TextInputDialog d = new javafx.scene.control.TextInputDialog();
+            d.setTitle(t("consol.action.new_group"));
+            d.setHeaderText(null);
+            d.setContentText(t("consol.dialog.group_name"));
+            d.showAndWait().ifPresent(name -> {
+                if (name == null || name.isBlank()) return;
+                runConsolAction(() -> consolidationApiClient.createGroup(name.trim()), loadGroups, "consol-create");
+            });
+        });
+        Button delGroup = new Button(t("consol.action.del_group"));
+        delGroup.setGraphic(icon("fas-trash-alt"));
+        delGroup.getStyleClass().add("button-danger-outline");
+        delGroup.setDisable(true);
+        delGroup.setOnAction(e -> {
+            var sel = groupsTable.getSelectionModel().getSelectedItem();
+            if (sel == null) return;
+            Alert a = new Alert(Alert.AlertType.CONFIRMATION, t("consol.confirm.del_group"),
+                    ButtonType.OK, ButtonType.CANCEL);
+            a.setHeaderText(null);
+            if (a.showAndWait().orElse(ButtonType.CANCEL) != ButtonType.OK) return;
+            runConsolAction(() -> consolidationApiClient.deleteGroup(sel.id()), () -> {
+                loadGroups.run();
+                membersTable.getItems().clear();
+            }, "consol-del");
+        });
+        HBox groupActions = new HBox(8, newGroup, delGroup);
+
+        // --- Acciones de miembro ---
+        Button addMember = new Button(t("consol.action.add_member"));
+        addMember.setGraphic(icon("fas-building"));
+        addMember.getStyleClass().add("button-secondary");
+        addMember.setDisable(true);
+        addMember.setOnAction(e -> {
+            var sel = groupsTable.getSelectionModel().getSelectedItem();
+            if (sel == null) return;
+            openAddGroupMemberDialog(sel.id(), membersTable.getItems(), () -> {
+                loadGroups.run();
+                loadMembers.run();
+            });
+        });
+        Button delMember = new Button(t("consol.action.del_member"));
+        delMember.setGraphic(icon("fas-times"));
+        delMember.setDisable(true);
+        delMember.setOnAction(e -> {
+            var grp = groupsTable.getSelectionModel().getSelectedItem();
+            var mem = membersTable.getSelectionModel().getSelectedItem();
+            if (grp == null || mem == null) return;
+            runConsolAction(() -> consolidationApiClient.removeMember(grp.id(), mem.companyId()), () -> {
+                loadGroups.run();
+                loadMembers.run();
+            }, "consol-delmember");
+        });
+        HBox memberActions = new HBox(8, addMember, delMember);
+
+        groupsTable.getSelectionModel().selectedItemProperty().addListener((o, ov, nv) -> {
+            delGroup.setDisable(nv == null);
+            addMember.setDisable(nv == null);
+        });
+        membersTable.getSelectionModel().selectedItemProperty().addListener(
+                (o, ov, nv) -> delMember.setDisable(nv == null));
+
+        Label groupsLbl = label(t("consol.section.groups"), "settings-section-title");
+        Label membersLbl = label(t("consol.section.members"), "settings-section-title");
+        VBox left = new VBox(8, groupsLbl, groupActions, groupsTable);
+        VBox right = new VBox(8, membersLbl, memberActions, membersTable);
+        left.setPrefWidth(380);
+        HBox.setHgrow(right, Priority.ALWAYS);
+        HBox body = new HBox(16, left, right);
+        VBox.setVgrow(body, Priority.ALWAYS);
+
+        Label hint = new Label(t("consol.hint"));
+        hint.setWrapText(true);
+        hint.getStyleClass().add("settings-hint");
+
+        loadGroups.run();
+        content.getChildren().addAll(header, hint, body);
+        setCenterAnimated(content);
+    }
+
+    /** Diálogo para añadir una empresa (candidata, no ya miembro) al grupo. */
+    private void openAddGroupMemberDialog(String groupId,
+            java.util.List<com.benjagest.ui.model.CompanyRef> current, Runnable onSaved) {
+        Task<java.util.List<com.benjagest.ui.model.CompanyRef>> task = new Task<>() {
+            @Override protected java.util.List<com.benjagest.ui.model.CompanyRef> call() throws Exception {
+                return consolidationApiClient.listCandidates();
+            }
+        };
+        task.setOnSucceeded(e -> {
+            java.util.Set<String> have = new java.util.HashSet<>();
+            for (var m : current) have.add(m.companyId());
+            java.util.List<com.benjagest.ui.model.CompanyRef> options = task.getValue().stream()
+                    .filter(c -> !have.contains(c.companyId())).toList();
+            if (options.isEmpty()) {
+                showInfo(t("consol.action.add_member"), t("consol.add.none"));
+                return;
+            }
+            Dialog<ButtonType> dialog = new Dialog<>();
+            dialog.setTitle(t("consol.action.add_member"));
+            ComboBox<com.benjagest.ui.model.CompanyRef> combo =
+                    new ComboBox<>(FXCollections.observableArrayList(options));
+            combo.setConverter(new javafx.util.StringConverter<>() {
+                @Override public String toString(com.benjagest.ui.model.CompanyRef c) {
+                    if (c == null) return "";
+                    return c.legalName() + (c.taxIdentifier() == null || c.taxIdentifier().isBlank()
+                            ? "" : " (" + c.taxIdentifier() + ")");
+                }
+                @Override public com.benjagest.ui.model.CompanyRef fromString(String s) { return null; }
+            });
+            combo.getSelectionModel().selectFirst();
+            combo.setPrefWidth(360);
+            VBox box = new VBox(8, new Label(t("consol.dialog.pick_company")), combo);
+            box.setPadding(new Insets(8));
+            installDialog(dialog, box);
+            dialog.getDialogPane().getButtonTypes().addAll(ButtonType.OK, ButtonType.CANCEL);
+            if (dialog.showAndWait().orElse(ButtonType.CANCEL) == ButtonType.OK) {
+                var picked = combo.getValue();
+                if (picked != null) {
+                    runConsolAction(() -> consolidationApiClient.addMember(groupId, picked.companyId()),
+                            onSaved, "consol-addmember");
+                }
+            }
+        });
+        task.setOnFailed(e -> showError(t("consol.fail.title"),
+                task.getException() == null ? "" : task.getException().getMessage()));
+        start(task, "consol-candidates");
+    }
+
+    /** Ejecuta una acción de consolidación en background y refresca al terminar. */
+    private void runConsolAction(ConsolAction action, Runnable onOk, String taskName) {
+        Task<Void> task = new Task<>() {
+            @Override protected Void call() throws Exception { action.run(); return null; }
+        };
+        task.setOnSucceeded(e -> onOk.run());
+        task.setOnFailed(e -> showError(t("consol.fail.title"),
+                task.getException() == null ? "" : task.getException().getMessage()));
+        start(task, taskName);
+    }
+
+    @FunctionalInterface
+    private interface ConsolAction { void run() throws Exception; }
 
     private Node buildClientCustomersTab() {
         javafx.scene.control.TableView<com.benjagest.ui.model.CustomerSummary> table =
