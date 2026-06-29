@@ -39,16 +39,23 @@ public class CompanyGroupService {
     }
 
     public List<GroupView> list() {
-        String owner = ownerId();
-        List<GroupView> groups = jdbc.query("""
-                SELECT id, name FROM company_groups
-                 WHERE owner_company_id = ? AND active = TRUE
-                 ORDER BY name
-                """, (rs, n) -> new GroupView(rs.getString("id"), rs.getString("name"), null), owner);
-        return groups.stream().map(g -> new GroupView(g.id(), g.name(), membersOf(g.id()))).toList();
+        return jdbc.query("""
+                SELECT g.id, g.name,
+                       (SELECT COUNT(*) FROM company_group_members m WHERE m.group_id = g.id) AS member_count
+                  FROM company_groups g
+                 WHERE g.owner_company_id = ? AND g.active = TRUE
+                 ORDER BY g.name
+                """, (rs, n) -> new GroupView(
+                        rs.getString("id"), rs.getString("name"), rs.getInt("member_count")),
+                ownerId());
     }
 
-    private List<MemberView> membersOf(String groupId) {
+    public List<MemberView> membersOf(String groupId) {
+        assertOwned(groupId);
+        return membersOfInternal(groupId);
+    }
+
+    private List<MemberView> membersOfInternal(String groupId) {
         return jdbc.query("""
                 SELECT m.company_id, c.legal_name, c.tax_identifier
                   FROM company_group_members m
@@ -68,7 +75,7 @@ public class CompanyGroupService {
         String id = UUID.randomUUID().toString();
         jdbc.update("INSERT INTO company_groups (id, owner_company_id, name) VALUES (?, ?, ?)",
                 id, ownerId(), name.trim());
-        return new GroupView(id, name.trim(), List.of());
+        return new GroupView(id, name.trim(), 0);
     }
 
     @Transactional
@@ -121,7 +128,7 @@ public class CompanyGroupService {
         }
     }
 
-    public record GroupView(String id, String name, List<MemberView> members) {}
+    public record GroupView(String id, String name, int memberCount) {}
     public record MemberView(String companyId, String legalName, String taxIdentifier) {}
     public record CreateRequest(String name) {}
     public record MemberRequest(String companyId) {}
@@ -139,6 +146,9 @@ public class CompanyGroupService {
 
         @GetMapping("/candidates")
         public List<MemberView> candidates() { return service.candidates(); }
+
+        @GetMapping("/{id}/members")
+        public List<MemberView> members(@PathVariable("id") String id) { return service.membersOf(id); }
 
         @PostMapping
         public GroupView create(@RequestBody CreateRequest req) { return service.create(req.name()); }
