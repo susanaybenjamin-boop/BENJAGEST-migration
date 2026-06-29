@@ -11809,6 +11809,11 @@ public class BenjagestUiApplication extends Application {
     private CheckBox editorNoDueDateChk;
     private javafx.scene.control.TextArea editorNotesArea;
     private TableView<InvoiceLineDraft> editorLinesTable;
+    // TIPO-IVA-CLIENTE: IVA/retención por defecto del editor de factura. Arrancan
+    // en 21/0 y se ajustan al IVA/retención del cliente cuando se elige uno; las
+    // líneas nuevas los usan.
+    private java.math.BigDecimal editorDefaultVat = new java.math.BigDecimal("21");
+    private java.math.BigDecimal editorDefaultRetention = java.math.BigDecimal.ZERO;
     // TRB — ids de trabajos importados al editor; al guardar/validar se marcan FACTURADOS.
     private final java.util.List<String> editorPendingWorkLogIds = new java.util.ArrayList<>();
     private Label editorSubtotalLabel;
@@ -12406,6 +12411,10 @@ public class BenjagestUiApplication extends Application {
 
     private void showInvoiceEditor(String existingInvoiceId) {
         recordNav(() -> showInvoiceEditor(existingInvoiceId));
+        // TIPO-IVA-CLIENTE: cada apertura del editor parte de 21/0 hasta que se
+        // elija cliente (si no, conservaríamos el tipo del cliente anterior).
+        editorDefaultVat = new java.math.BigDecimal("21");
+        editorDefaultRetention = java.math.BigDecimal.ZERO;
         Task<EditorBundle> task = new Task<>() {
             @Override
             protected EditorBundle call() throws Exception {
@@ -12619,7 +12628,13 @@ public class BenjagestUiApplication extends Application {
                 clientDetail.getChildren().add(tel);
             }
         };
-        editorCustomerCombo.valueProperty().addListener((obs, oldV, newV) -> refreshClientDetail.run());
+        editorCustomerCombo.valueProperty().addListener((obs, oldV, newV) -> {
+            // TIPO-IVA-CLIENTE: al elegir cliente, las líneas adoptan su IVA/retención.
+            // Solo se "voltean" las líneas no tocadas y solo en factura NUEVA (editar
+            // una factura existente no debe alterar sus tipos ya guardados).
+            applyCustomerVatDefaults(newV, existingId == null);
+            refreshClientDetail.run();
+        });
         refreshClientDetail.run();
 
         // Tipo de factura. Si es RECTIFYING (borrador creado via "Anular"),
@@ -12771,14 +12786,23 @@ public class BenjagestUiApplication extends Application {
         // sensacion de "pantalla rota" sin filas y replica el patron de
         // CONTENDO al abrir Nueva Factura.
         if (existingId == null && editorLinesTable.getItems().isEmpty()) {
-            editorLinesTable.getItems().add(new InvoiceLineDraft());
+            // TIPO-IVA-CLIENTE: la línea inicial nace con el IVA/retención del
+            // cliente preseleccionado (selectFirst de arriba, anterior al listener).
+            CustomerSummary preCust = editorCustomerCombo.getValue();
+            if (preCust != null) {
+                editorDefaultVat = preCust.defaultVatPercent() != null
+                        ? preCust.defaultVatPercent() : new java.math.BigDecimal("21");
+                editorDefaultRetention = preCust.defaultRetentionPercent() != null
+                        ? preCust.defaultRetentionPercent() : java.math.BigDecimal.ZERO;
+            }
+            editorLinesTable.getItems().add(newEditorLine());
         }
 
         Button addLine = new Button(t("editor.line.add"));
         addLine.setGraphic(icon("fas-plus"));
         addLine.getStyleClass().add("invoice-primary-action");
         addLine.setOnAction(event -> {
-            editorLinesTable.getItems().add(new InvoiceLineDraft());
+            editorLinesTable.getItems().add(newEditorLine());
             recomputeEditorTotals();
         });
 
@@ -13316,6 +13340,42 @@ public class BenjagestUiApplication extends Application {
 
     private java.math.BigDecimal lineTotal(InvoiceLineDraft line) {
         return lineSubtotal(line).add(lineVat(line)).subtract(lineRetention(line));
+    }
+
+    /** Línea nueva del editor con el IVA/retención por defecto actual (del cliente). */
+    private InvoiceLineDraft newEditorLine() {
+        InvoiceLineDraft line = new InvoiceLineDraft();
+        line.setVatPercent(editorDefaultVat);
+        line.setRetentionPercent(editorDefaultRetention);
+        return line;
+    }
+
+    /**
+     * TIPO-IVA-CLIENTE: ajusta el IVA/retención por defecto del editor al del
+     * cliente elegido (si no tiene, 21/0). Si {@code flipUntouchedLines}, las
+     * líneas que aún tenían el default anterior (no tocadas a mano) adoptan el
+     * nuevo tipo; las que el usuario cambió se respetan.
+     */
+    private void applyCustomerVatDefaults(CustomerSummary cust, boolean flipUntouchedLines) {
+        java.math.BigDecimal oldVat = editorDefaultVat;
+        java.math.BigDecimal oldRet = editorDefaultRetention;
+        editorDefaultVat = (cust != null && cust.defaultVatPercent() != null)
+                ? cust.defaultVatPercent() : new java.math.BigDecimal("21");
+        editorDefaultRetention = (cust != null && cust.defaultRetentionPercent() != null)
+                ? cust.defaultRetentionPercent() : java.math.BigDecimal.ZERO;
+        if (!flipUntouchedLines || editorLinesTable == null) {
+            return;
+        }
+        for (InvoiceLineDraft line : editorLinesTable.getItems()) {
+            if (line.getVatPercent().compareTo(oldVat) == 0) {
+                line.setVatPercent(editorDefaultVat);
+            }
+            if (line.getRetentionPercent().compareTo(oldRet) == 0) {
+                line.setRetentionPercent(editorDefaultRetention);
+            }
+        }
+        editorLinesTable.refresh();
+        recomputeEditorTotals();
     }
 
     private void recomputeEditorTotals() {
@@ -17938,6 +17998,10 @@ public class BenjagestUiApplication extends Application {
             case "cli.field.billingPhone" -> "Billing phone";
             case "cli.field.defaultVat" -> "Default VAT %";
             case "cli.field.defaultRetention" -> "Default retention %";
+            case "cli.section.billing" -> "Invoicing";
+            case "cli.section.billing.hint" -> "Default VAT and withholding for this client. When you pick them in a new invoice, the lines adopt these rates (leave blank to use the general 21% / 0%).";
+            case "cli.col.vat" -> "VAT";
+            case "cli.col.retention" -> "Withhold.";
             case "cli.field.vatExempt" -> "VAT exempt";
             case "cli.field.payment" -> "Payment method";
             case "cli.field.iban" -> "IBAN";
@@ -17987,6 +18051,10 @@ public class BenjagestUiApplication extends Application {
             case "cli.field.billingPhone" -> "Teléfono de facturación";
             case "cli.field.defaultVat" -> "IVA por defecto %";
             case "cli.field.defaultRetention" -> "Retención por defecto %";
+            case "cli.section.billing" -> "Facturación";
+            case "cli.section.billing.hint" -> "IVA y retención por defecto de este cliente. Al elegirlo en una factura nueva, las líneas adoptan estos tipos (déjalo en blanco para usar el general 21% / 0%).";
+            case "cli.col.vat" -> "IVA";
+            case "cli.col.retention" -> "Retención";
             case "cli.field.vatExempt" -> "Exento de IVA";
             case "cli.field.payment" -> "Forma de pago";
             case "cli.field.iban" -> "IBAN";
@@ -29848,6 +29916,23 @@ public class BenjagestUiApplication extends Application {
      * cliente-receptor nuevo bajo el tenant actual. onSaved se ejecuta
      * tras crear (p.ej. recargar el combo del editor de factura).
      */
+    /** Formatea un % para tabla: "21%" o "—" si no está fijado. */
+    private static String pctOrDash(java.math.BigDecimal v) {
+        return v == null ? "—" : v.stripTrailingZeros().toPlainString() + "%";
+    }
+
+    /** Parsea un % escrito por el usuario (admite coma y "%"). Vacío/ inválido → null. */
+    private static java.math.BigDecimal parsePercentOrNull(String s) {
+        if (s == null) return null;
+        String v = s.trim().replace("%", "").replace(',', '.').trim();
+        if (v.isEmpty()) return null;
+        try {
+            return new java.math.BigDecimal(v);
+        } catch (NumberFormatException ex) {
+            return null;
+        }
+    }
+
     private void openNewCustomerDialog(Runnable onSaved) {
         com.benjagest.ui.model.CustomerExtendedEntry empty =
                 new com.benjagest.ui.model.CustomerExtendedEntry(
@@ -29905,6 +29990,16 @@ public class BenjagestUiApplication extends Application {
         fNotes.setPrefRowCount(3);
         fNotes.setWrapText(true);
 
+        // TIPO-IVA-CLIENTE: IVA y retención por defecto del cliente. El editor de
+        // factura los aplica al elegir cliente (líneas nuevas + las no tocadas).
+        // Vacío = no fijado → la factura usa el general (21 IVA / 0 retención).
+        ComboBox<String> fVat = new ComboBox<>(FXCollections.observableArrayList("21", "10", "4", "0"));
+        fVat.setEditable(true);
+        fVat.setValue(c.defaultVatPercent() == null ? "" : c.defaultVatPercent().stripTrailingZeros().toPlainString());
+        ComboBox<String> fRetention = new ComboBox<>(FXCollections.observableArrayList("0", "7", "15", "19"));
+        fRetention.setEditable(true);
+        fRetention.setValue(c.defaultRetentionPercent() == null ? "" : c.defaultRetentionPercent().stripTrailingZeros().toPlainString());
+
         VBox root = new VBox(16);
         root.setPadding(new Insets(8));
 
@@ -29924,6 +30019,18 @@ public class BenjagestUiApplication extends Application {
                 t("cli.field.email"), fEmail,
                 t("cli.field.website"), fWebsite);
         sectionBasic.getChildren().addAll(basicTitle, basicHint, basicGrid);
+
+        VBox sectionBilling = new VBox(8);
+        sectionBilling.getStyleClass().add("settings-section");
+        Label billTitle = new Label(t("cli.section.billing"));
+        billTitle.getStyleClass().add("settings-section-title");
+        Label billHint = new Label(t("cli.section.billing.hint"));
+        billHint.getStyleClass().add("settings-hint");
+        billHint.setWrapText(true);
+        GridPane billGrid = formGrid(
+                t("cli.field.defaultVat"), fVat,
+                t("cli.field.defaultRetention"), fRetention);
+        sectionBilling.getChildren().addAll(billTitle, billHint, billGrid);
 
         VBox sectionAddr = new VBox(8);
         sectionAddr.getStyleClass().add("settings-section");
@@ -29946,7 +30053,7 @@ public class BenjagestUiApplication extends Application {
         notesTitle.getStyleClass().add("settings-section-title");
         sectionNotes.getChildren().addAll(notesTitle, fNotes);
 
-        root.getChildren().addAll(sectionBasic, sectionAddr, sectionNotes);
+        root.getChildren().addAll(sectionBasic, sectionBilling, sectionAddr, sectionNotes);
         root.setPrefWidth(620);
 
         ScrollPane scroll = new ScrollPane(root);
@@ -29974,7 +30081,8 @@ public class BenjagestUiApplication extends Application {
                                 fType.getValue(),
                                 c.fiscalType(),
                                 c.billingEmail(), c.billingPhone(),
-                                c.defaultVatPercent(), c.defaultRetentionPercent(),
+                                parsePercentOrNull(fVat.getValue()),
+                                parsePercentOrNull(fRetention.getValue()),
                                 c.vatExempt(),
                                 c.paymentMethod(), c.iban(),
                                 fAddress.getText(), fCity.getText(), fProvince.getText(),
@@ -36936,6 +37044,8 @@ public class BenjagestUiApplication extends Application {
         table.setPlaceholder(new Label(t("client.customers.empty")));
         addCol(table, t("cli.field.legalName"), v -> v.legalName() == null ? "" : v.legalName(), 240);
         addCol(table, t("cli.field.taxId"), v -> v.taxIdentifier() == null ? "" : v.taxIdentifier(), 120);
+        addCol(table, t("cli.col.vat"), v -> pctOrDash(v.defaultVatPercent()), 80);
+        addCol(table, t("cli.col.retention"), v -> pctOrDash(v.defaultRetentionPercent()), 90);
         addCol(table, t("cli.field.city"), v -> v.city() == null ? "" : v.city(), 140);
         addCol(table, t("cli.field.email"), v -> v.email() == null ? "" : v.email(), 220);
         addCol(table, t("cli.field.phone"), v -> v.phone() == null ? "" : v.phone(), 120);

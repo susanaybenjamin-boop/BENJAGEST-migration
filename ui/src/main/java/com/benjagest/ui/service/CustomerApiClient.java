@@ -108,8 +108,24 @@ public class CustomerApiClient {
                 textField(json, "city"),
                 textField(json, "province"),
                 textField(json, "postalCode"),
-                textField(json, "country")
+                textField(json, "country"),
+                decimalField(json, "defaultVatPercent"),
+                decimalField(json, "defaultRetentionPercent")
         );
+    }
+
+    /** Lee un campo numérico (no entrecomillado). Devuelve null si es null/ausente. */
+    private java.math.BigDecimal decimalField(String json, String field) {
+        Pattern pattern = Pattern.compile("\"" + field + "\"\\s*:\\s*(null|-?[0-9]+(?:\\.[0-9]+)?)");
+        Matcher matcher = pattern.matcher(json);
+        if (!matcher.find() || "null".equals(matcher.group(1))) {
+            return null;
+        }
+        try {
+            return new java.math.BigDecimal(matcher.group(1));
+        } catch (NumberFormatException ex) {
+            return null;
+        }
     }
 
     private String textField(String json, String field) {

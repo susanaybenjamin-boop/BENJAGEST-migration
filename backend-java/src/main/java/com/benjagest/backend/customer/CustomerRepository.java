@@ -66,6 +66,8 @@ public class CustomerRepository {
                        COALESCE(c.province, '')    AS province,
                        COALESCE(c.postal_code, '') AS postal_code,
                        COALESCE(c.country, '')     AS country,
+                       c.default_vat_percent,
+                       c.default_retention_percent,
                        c.created_at
                 FROM customers c
                 LEFT JOIN customer_contacts pc
@@ -93,6 +95,8 @@ public class CustomerRepository {
                        COALESCE(c.province, '')    AS province,
                        COALESCE(c.postal_code, '') AS postal_code,
                        COALESCE(c.country, '')     AS country,
+                       c.default_vat_percent,
+                       c.default_retention_percent,
                        c.created_at
                 FROM customers c
                 LEFT JOIN customer_contacts pc
@@ -121,6 +125,8 @@ public class CustomerRepository {
                 rs.getString("province"),
                 rs.getString("postal_code"),
                 rs.getString("country"),
+                rs.getBigDecimal("default_vat_percent"),
+                rs.getBigDecimal("default_retention_percent"),
                 createdAt == null ? null : createdAt.toInstant()
         );
     }
