@@ -79,6 +79,20 @@
 > 1-2 dependen de **material/decisiones externas** (FNMT, alta AEAT, dominio, credenciales
 > reales); las Fases 3-5 se pueden cerrar con el código actual.
 
+### ✅ RECONCILIACIÓN VERIFICADA EN CÓDIGO (2026-06-29) — revisión que pidió Benjamin
+
+Repaso punto por punto de lo que Benjamin reportó con el check en blanco. Estado **comprobado leyendo el código**, no de memoria:
+
+- **Calendario laboral (importar PDF) — ✅ HECHO y disponible para el empresario.** `buildWorkCalendarTab()` tiene el botón **"Importar PDF"** (`workcal.btn.import_pdf`, primario) → `HolidayPdfExtractor` + `POST /api/labor/work-calendars/{id}/holidays/replace`. Backend `WorkCalendarController` con `@RequiresModule("labor")` + OWNER/ADMIN. **El problema era de NAVEGACIÓN, no de función**: está enterrado en **Personal → categoría "Tiempo" → sub-pestaña "Calendario laboral"** (5ª). *Mejora propuesta: subirlo de nivel o un acceso directo.*
+- **Nómina incidencias (horas extra, ausencias, etc.) — ✅ BASE HECHA** (INC-1..4, 2026-06-22): `labor/incidencias/NominaIncidenciaService` + `V136__nomina_incidencias.sql`; afectan el cálculo de nómina (`PayslipService`, `OvertimeRatesService`). **Pendiente real (Fase 3):** asiento de **pagas extra cotizadas** (`EXTRA_*` hoy sin asiento) y afinado de algún tipo. → La línea de Fase 3 "Incidencias de nómina" estaba mal como totalmente pendiente; lo correcto es "base hecha, falta asiento EXTRA_*".
+- **Bajas (IT) / vacaciones — ✅ en la UI** (`buildMedicalLeavesTab`, `buildVacationsTab`, `buildLeaveRequestsTab` en Personal → Ausencias). Backend IT cerrado 2026-06-09.
+- **Fichajes sospechosos — 🟠 PARCIAL.** Hay **Auditoría de fichajes** (`buildTimeClockAuditTab`) que marca incidencias (días sin entrada/salida) + acción **"Corregir"** (TIME_ADJUST/TYPE_CHANGE/VOID, sin alterar el original, RD 8/2019). **NO existe** un "validar / dar por bueno" del fichaje sospechoso, y **FJ-5b** (schedule-aware: esperado-vs-fichado por jornada) sigue **pendiente**. → Decisión Benjamin: definir si queremos un botón "revisado/OK".
+- **Widgets personalizables — ❌ DESCARTADO (Benjamin 2026-06-29: "no lo vamos a hacer").** La **base** ya existía (DASH-CUSTOM: mostrar/ocultar secciones del inicio). **No se ampliará** (nada de reordenar). Se quita de pendientes. *(El código base se queda; es inocuo. Si quieres quitarlo del todo, dilo.)*
+- **Consolidación intragrupo (empresas asociadas) — ❌ NO hecho.** No hay servicio/controlador de consolidación; solo aparece "consolidación" como texto suelto en datos de empresa. Sigue **pendiente** (no estaba empezado).
+- **Sincronización offline (VeriFactu y RR.HH./fichajes) — ❌ NO hecho.** No hay cola/sync offline. VeriFactu offline va con la Fase 1 (aparcada, espera a Pablo). Fichajes offline de kioscos = **Fase 3 pendiente**. *(Recordatorio: el PDF offline de TPB está BLOQUEADO por decisión — solo PIN_SESSION.)*
+
+> **Resumen:** de lo que reportaste, **calendario laboral, incidencias base y bajas/vacaciones YA están** (el calendario solo estaba escondido). **Fichajes sospechosos** está a medias (auditoría sí, "validar" no). **Widgets** se descarta. **Consolidación intragrupo** y **offline** siguen pendientes de verdad.
+
 ### Fase 1 — Legal/fiscal para PRODUCIR (bloqueante antes de vender) ⚖️  ⏸️ APARCADA
 > **APARCADA 2026-06-27** hasta que Benjamin hable con **Pablo** y le dé un repaso al proyecto.
 - **VeriFactu real con AEAT**: XAdES-EPES estricto (`VF-SIGN-XADES-AEAT`) + parseo real de la
@@ -95,8 +109,10 @@
 - **SS RED / SILTRA real**: envío real (AFI/CRA/DELT@/CRETA) — las credenciales ya se guardan.
 
 ### Fase 3 — Afinado laboral/nómina ⚖️💰
-- **Incidencias de nómina** (horas extra, complementos variables por periodo).
-- **Pagas extra cotizadas con asiento** (EXTRA_* hoy sin asiento).
+- ✅ **Incidencias de nómina** (horas extra, complementos variables) — **BASE HECHA** (INC-1..4,
+  2026-06-22; `NominaIncidenciaService` + V136). Queda solo el afinado de abajo.
+- **Pagas extra cotizadas con asiento** (EXTRA_* hoy sin asiento). ← *esto es lo que falta de
+  "incidencias", no las incidencias en sí.*
 - **Revisión completa de contratos + flujo de alta del empleado**.
 - **CL-5** (recibo/asiento/L13 de atrasos) — con Benjamin.
 - **JOR-4**: excepciones por fecha + comparación planificado-vs-real (refinamiento).
@@ -130,7 +146,8 @@
   aprueba → facturable.
 - ✅ **Dashboard widgets personalizables (base)** — cerrado 2026-06-27 (DASH-CUSTOM): botón
   "Personalizar" en el inicio → mostrar/ocultar Indicadores/Accesos rápidos/Actividad/Panorama.
-  Preferencia local por usuario. *(Reordenar = mejora futura.)*
+  Preferencia local por usuario. ❌ **NO se amplía** (Benjamin 2026-06-29: "no lo vamos a hacer").
+  Lo de "reordenar" queda DESCARTADO, no pendiente.
 
 > **Resumen Fase 4 (CERRADA AL 100% — 2026-06-27):** ✅ REFLEJO, MIG-3, Workflow trabajos +
 > **SUBMITTED** (portal empleado), **OCR Tesseract**, **Régimen IVA base**, **Dashboard
