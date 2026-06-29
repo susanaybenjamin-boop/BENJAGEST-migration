@@ -78,6 +78,7 @@ Write-Host "==> 3/4  Generando .msi con jpackage (necesita WiX)..." -ForegroundC
     --win-menu-group "BENJAGEST" `
     --win-shortcut `
     --win-dir-chooser `
+    --win-upgrade-uuid "172b518f-5b60-37cd-869c-e3df5dc99806" `
     --dest $out
 if ($LASTEXITCODE -ne 0) { throw "jpackage fallo (revisa que WiX 3.x este instalado)." }
 
