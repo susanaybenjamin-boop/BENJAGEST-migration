@@ -20835,6 +20835,17 @@ public class BenjagestUiApplication extends Application {
             case "consol.confirm.del_group" -> "Delete this group? Its company list is removed (the companies and their data are NOT deleted).";
             case "consol.add.none" -> "No more companies available to add to this group.";
             case "consol.fail.title" -> "Group operation failed";
+            case "consol.action.trial_balance" -> "Aggregated balance";
+            case "consol.back" -> "Back to groups";
+            case "consol.balance.title" -> "Aggregated trial balance";
+            case "consol.balance.asof" -> "As of:";
+            case "consol.balance.empty" -> "No movements in the group's companies up to this date.";
+            case "consol.balance.col.code" -> "Account";
+            case "consol.balance.col.account" -> "Name";
+            case "consol.balance.col.debit" -> "Debit";
+            case "consol.balance.col.credit" -> "Credit";
+            case "consol.balance.col.balance" -> "Balance";
+            case "consol.balance.summary" -> "{n} companies · Total debit {debit} · Total credit {credit} · Aggregated result {result}  (intragroup eliminations: CONSOL-3)";
             case "customers.sidebar" -> "Clients";
             case "customers.module.title" -> "Clients";
             case "customers.module.subtitle" -> "The clients you invoice. Adding one here only saves the contact card — its accounting third-party account (430) is created automatically the first time you invoice them, with the numbering your advisory configures.";
@@ -22350,6 +22361,17 @@ public class BenjagestUiApplication extends Application {
             case "consol.confirm.del_group" -> "¿Eliminar este grupo? Se borra su lista de empresas (las empresas y sus datos NO se borran).";
             case "consol.add.none" -> "No quedan empresas disponibles para añadir a este grupo.";
             case "consol.fail.title" -> "Falló la operación del grupo";
+            case "consol.action.trial_balance" -> "Balance agregado";
+            case "consol.back" -> "Volver a grupos";
+            case "consol.balance.title" -> "Balance de comprobación agregado";
+            case "consol.balance.asof" -> "A fecha:";
+            case "consol.balance.empty" -> "Sin movimientos en las empresas del grupo hasta esta fecha.";
+            case "consol.balance.col.code" -> "Cuenta";
+            case "consol.balance.col.account" -> "Nombre";
+            case "consol.balance.col.debit" -> "Debe";
+            case "consol.balance.col.credit" -> "Haber";
+            case "consol.balance.col.balance" -> "Saldo";
+            case "consol.balance.summary" -> "{n} empresas · Total debe {debit} · Total haber {credit} · Resultado agregado {result}  (eliminaciones intragrupo: CONSOL-3)";
             case "customers.sidebar" -> "Clientes";
             case "customers.module.title" -> "Clientes";
             case "customers.module.subtitle" -> "Los clientes a los que facturas. Darlos de alta aquí solo guarda la ficha de contacto — su subcuenta de tercero (430) se crea sola la primera vez que les facturas, con la numeración que configura tu asesoría.";
@@ -37222,11 +37244,21 @@ public class BenjagestUiApplication extends Application {
                 loadMembers.run();
             }, "consol-delmember");
         });
-        HBox memberActions = new HBox(8, addMember, delMember);
+        // CONSOL-2 — balance de comprobación agregado del grupo.
+        Button balanceBtn = new Button(t("consol.action.trial_balance"));
+        balanceBtn.setGraphic(icon("fas-scale-balanced"));
+        balanceBtn.getStyleClass().add("button-primary");
+        balanceBtn.setDisable(true);
+        balanceBtn.setOnAction(e -> {
+            var grp = groupsTable.getSelectionModel().getSelectedItem();
+            if (grp != null) showGroupTrialBalance(grp.id(), grp.name());
+        });
+        HBox memberActions = new HBox(8, addMember, delMember, balanceBtn);
 
         groupsTable.getSelectionModel().selectedItemProperty().addListener((o, ov, nv) -> {
             delGroup.setDisable(nv == null);
             addMember.setDisable(nv == null);
+            balanceBtn.setDisable(nv == null);
         });
         membersTable.getSelectionModel().selectedItemProperty().addListener(
                 (o, ov, nv) -> delMember.setDisable(nv == null));
@@ -37310,6 +37342,81 @@ public class BenjagestUiApplication extends Application {
 
     @FunctionalInterface
     private interface ConsolAction { void run() throws Exception; }
+
+    /**
+     * CONSOL-2 — Balance de comprobación AGREGADO del grupo a una fecha (suma de
+     * los libros de todas las empresas del grupo por código de cuenta). Todavía
+     * sin eliminaciones intragrupo (CONSOL-3).
+     */
+    private void showGroupTrialBalance(String groupId, String groupName) {
+        recordNav(() -> showGroupTrialBalance(groupId, groupName));
+        currentModule = "consolidation";
+        select("consolidation");
+
+        VBox content = content();
+        Button back = new Button(t("consol.back"));
+        back.setGraphic(icon("fas-arrow-left"));
+        back.setOnAction(e -> showConsolidationModule());
+        Label title = new Label(t("consol.balance.title") + " — " + (groupName == null ? "" : groupName));
+        title.getStyleClass().add("module-detail-title");
+        Region sp = new Region();
+        HBox.setHgrow(sp, Priority.ALWAYS);
+        HBox header = new HBox(12, back, title, sp, iconBubble("fas-scale-balanced", "module-title-icon"));
+        header.setAlignment(Pos.CENTER_LEFT);
+        header.getStyleClass().add("module-detail-header");
+
+        DatePicker asOf = new DatePicker(java.time.LocalDate.now());
+        com.benjagest.ui.support.EditableCells.installFlexibleConverter(asOf);
+        Button reloadBtn = new Button(t("labor.workdays.reload"));
+        reloadBtn.setGraphic(icon("fas-sync-alt"));
+        HBox filters = new HBox(8, new Label(t("consol.balance.asof")), asOf, reloadBtn);
+        filters.setAlignment(Pos.CENTER_LEFT);
+
+        TableView<com.benjagest.ui.model.ConsolidatedBalance.TrialLine> table = new TableView<>();
+        table.getStyleClass().add("data-table");
+        table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+        table.setPlaceholder(new Label(t("consol.balance.empty")));
+        addCol(table, t("consol.balance.col.code"), l -> l.code() == null ? "" : l.code(), 90);
+        addCol(table, t("consol.balance.col.account"), l -> l.name() == null ? "" : l.name(), 260);
+        addCol(table, t("consol.balance.col.debit"), l -> money(l.debit()), 130);
+        addCol(table, t("consol.balance.col.credit"), l -> money(l.credit()), 130);
+        TableColumn<com.benjagest.ui.model.ConsolidatedBalance.TrialLine, String> cSaldo =
+                new TableColumn<>(t("consol.balance.col.balance"));
+        cSaldo.setCellValueFactory(c -> new SimpleStringProperty(money(c.getValue().saldo())));
+        cSaldo.setPrefWidth(130);
+        table.getColumns().add(cSaldo);
+        VBox.setVgrow(table, Priority.ALWAYS);
+
+        Label summary = new Label();
+        summary.getStyleClass().add("settings-hint");
+
+        Runnable reload = () -> {
+            java.time.LocalDate d = asOf.getValue();
+            Task<com.benjagest.ui.model.ConsolidatedBalance> task = new Task<>() {
+                @Override protected com.benjagest.ui.model.ConsolidatedBalance call() throws Exception {
+                    return consolidationApiClient.trialBalance(groupId, d == null ? null : d.toString());
+                }
+            };
+            task.setOnSucceeded(e -> {
+                var b = task.getValue();
+                table.setItems(FXCollections.observableArrayList(b.lines()));
+                summary.setText(t("consol.balance.summary")
+                        .replace("{n}", String.valueOf(b.companyCount()))
+                        .replace("{debit}", money(b.totalDebit()))
+                        .replace("{credit}", money(b.totalCredit()))
+                        .replace("{result}", money(b.resultado())));
+            });
+            task.setOnFailed(e -> showError(t("consol.fail.title"),
+                    task.getException() == null ? "" : task.getException().getMessage()));
+            start(task, "consol-trial-balance");
+        };
+        reloadBtn.setOnAction(e -> reload.run());
+        asOf.valueProperty().addListener((o, ov, nv) -> reload.run());
+        reload.run();
+
+        content.getChildren().addAll(header, filters, table, summary);
+        setCenterAnimated(content);
+    }
 
     private Node buildClientCustomersTab() {
         javafx.scene.control.TableView<com.benjagest.ui.model.CustomerSummary> table =
