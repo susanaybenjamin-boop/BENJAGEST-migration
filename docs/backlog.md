@@ -162,6 +162,40 @@ Repaso punto por punto de lo que Benjamin reportó con el check en blanco. Estad
 
 ---
 
+## 📅 SESIÓN 2026-06-29 — Visibilidad calendario + FICHA-REVIEW + plan CONSOL/OFFLINE
+
+> Tras la reconciliación del backlog, Benjamin eligió atacar 3 frentes. Decisiones:
+> consolidación **contable real** (NOFCAC), grupo **definido por el usuario**, offline en
+> **kiosco + PWA del empleado**.
+
+- ✅ **Calendario laboral 1ª en "Tiempo"** (visibilidad; estaba enterrado).
+- ✅ **FICHA-REVIEW** (fichajes sospechosos): V154 `time_clock_day_reviews`; Plan-vs-Real marca
+  incidencias (⚠) + "Dar por bueno"/"Quitar revisado" (no toca fichajes, RD 8/2019). Verificado.
+
+### 🧩 BLOQUE CONSOL — Consolidación contable intragrupo (real, NOFCAC). Multi-slice.
+- **CONSOL-1** *(en curso)* — **Grupo empresarial**: tabla `company_groups` + `company_group_members`
+  (lo crea el OWNER/asesoría, asigna empresas). CRUD backend + UI para crear grupo y asignar
+  miembros. *Cimiento de todo lo demás.*
+- **CONSOL-2** — **Agregación**: sumar el balance de comprobación (saldos por cuenta) de cada
+  empresa del grupo en un periodo → balance + PyG agregados (sin eliminar todavía).
+- **CONSOL-3** — **Eliminaciones intragrupo**: detectar operaciones entre empresas del grupo
+  (reusar match por NIF del bloque REFLEJO: ventas A→B, créditos/débitos recíprocos 430/400) y
+  eliminarlas del agregado → balance + PyG **consolidados**.
+- **CONSOL-4** — **Informe consolidado** (PDF) + ajustes manuales de consolidación (partidas que
+  el agregado automático no cubre: dividendos internos, resultados por operaciones internas).
+- **CONSOL-5** — Refinos NOFCAC (participaciones, socios externos/minoritarios) — con Benjamin.
+
+### 📴 BLOQUE OFFLINE-FICHAJE — Fichaje sin red (kiosco + PWA), cola + sync idempotente. Multi-slice.
+- **OFF-1** — **Endpoint de sync por lotes** idempotente: `POST /fichaje/sync` que acepta N
+  fichajes con un `client_uuid` por evento; dedup por uuid (no duplica si se reenvía). Base común.
+- **OFF-2** — **Kiosco offline** (gestor-navegador/PDA): guarda fichajes en local si no hay red y
+  los sube en lote al volver; indicador "N pendientes de sincronizar".
+- **OFF-3** — **PWA empleado offline**: Service Worker + IndexedDB; fichar sin conexión, cola
+  local, sync al reconectar. (Caso obra/almacén sin cobertura.)
+- **OFF-4** — Conflictos/orden (fichajes fuera de orden tras sync) + auditoría del origen offline.
+
+---
+
 ## 📅 SESIÓN 2026-06-26/27 — GOOGLE-UNIFICADO + MIG (migración facturación) + tanda de fixes
 
 > Continuación tras el bloque REGISTRO. Todo compila (backend+ui) y mergeado a `develop`.
