@@ -3715,18 +3715,51 @@ public class BenjagestUiApplication extends Application {
         Button yearButton = viewMode("year", false);
         modeButtons.addAll(List.of(dayButton, weekButton, monthButton, yearButton));
 
-        dayButton.setOnAction(event -> showCalendarMode("day", data, today, modeButtons, viewHost));
-        weekButton.setOnAction(event -> showCalendarMode("week", data, today, modeButtons, viewHost));
-        monthButton.setOnAction(event -> showCalendarMode("month", data, today, modeButtons, viewHost));
-        yearButton.setOnAction(event -> showCalendarMode("year", data, today, modeButtons, viewHost));
+        // Navegación: la fecha mostrada (anchor) y el modo viven en holders locales
+        // para que las flechas / "Hoy" cambien el periodo y se repinte. Al re-entrar
+        // al módulo se reinicia al mes actual.
+        final java.time.LocalDate[] anchor = { today };
+        final String[] mode = { "month" };
+        Runnable render = () -> showCalendarMode(mode[0], data, anchor[0], modeButtons, viewHost);
 
-        HBox modes = new HBox(8, dayButton, weekButton, monthButton, yearButton);
+        dayButton.setOnAction(event -> { mode[0] = "day"; render.run(); });
+        weekButton.setOnAction(event -> { mode[0] = "week"; render.run(); });
+        monthButton.setOnAction(event -> { mode[0] = "month"; render.run(); });
+        yearButton.setOnAction(event -> { mode[0] = "year"; render.run(); });
+
+        Button prev = new Button();
+        prev.setGraphic(icon("fas-chevron-left"));
+        prev.getStyleClass().add("calendar-mode");
+        prev.setOnAction(event -> { anchor[0] = shiftCalendar(anchor[0], mode[0], -1); render.run(); });
+        Button todayBtn = new Button(t("calendar.btn.today"));
+        todayBtn.getStyleClass().add("calendar-mode");
+        todayBtn.setOnAction(event -> { anchor[0] = java.time.LocalDate.now(); render.run(); });
+        Button next = new Button();
+        next.setGraphic(icon("fas-chevron-right"));
+        next.getStyleClass().add("calendar-mode");
+        next.setOnAction(event -> { anchor[0] = shiftCalendar(anchor[0], mode[0], 1); render.run(); });
+
+        Region modeSpacer = new Region();
+        HBox.setHgrow(modeSpacer, Priority.ALWAYS);
+        HBox modes = new HBox(8, prev, todayBtn, next, modeSpacer,
+                dayButton, weekButton, monthButton, yearButton);
         modes.getStyleClass().add("calendar-modes");
+        modes.setAlignment(Pos.CENTER_LEFT);
 
-        showCalendarMode("month", data, today, modeButtons, viewHost);
+        render.run();
 
         content.getChildren().addAll(header, modes, viewHost);
         return content;
+    }
+
+    /** Desplaza la fecha ancla del calendario según el modo (día/semana/mes/año). */
+    private java.time.LocalDate shiftCalendar(java.time.LocalDate d, String mode, int delta) {
+        return switch (mode) {
+            case "day" -> d.plusDays(delta);
+            case "week" -> d.plusWeeks(delta);
+            case "year" -> d.plusYears(delta);
+            default -> d.plusMonths(delta);
+        };
     }
 
     private void showCalendarMode(String modeKey, ModuleData data, LocalDate today, List<Button> buttons, StackPane viewHost) {
@@ -3926,7 +3959,7 @@ public class BenjagestUiApplication extends Application {
         int column = startColumn;
         for (int day = 1; day <= length; day++) {
             LocalDate date = baseDate.withDayOfMonth(day);
-            grid.add(calendarDay(date, eventsByDay.getOrDefault(day, List.of()), day == baseDate.getDayOfMonth()), column, row);
+            grid.add(calendarDay(date, eventsByDay.getOrDefault(day, List.of()), date.equals(LocalDate.now())), column, row);
             column++;
             if (column == 7) {
                 column = 0;
@@ -3940,14 +3973,24 @@ public class BenjagestUiApplication extends Application {
 
     private VBox calendarDay(LocalDate date, List<ModuleRow> events, boolean today) {
         Label number = label(String.valueOf(date.getDayOfMonth()), "calendar-day-number");
-        VBox box = new VBox(5, number);
+        VBox box = new VBox(4, number);
         box.getStyleClass().add("calendar-day");
         if (today) {
             box.getStyleClass().add("calendar-day-today");
         }
-        if (!events.isEmpty()) {
-            Label badge = label(pluralEvents(events.size()), "calendar-event-badge");
-            box.getChildren().add(badge);
+        // Mostrar el NOMBRE de los eventos en la propia celda (hasta 3), sin tener
+        // que abrir el día. Si hay más, "+N".
+        int show = Math.min(events.size(), 3);
+        for (int i = 0; i < show; i++) {
+            String name = events.get(i).fields().getOrDefault("evento", t("calendar.event.default_title"));
+            Label ev = label(name, "calendar-event-badge");
+            ev.setMaxWidth(Double.MAX_VALUE);
+            ev.setTextOverrun(javafx.scene.control.OverrunStyle.ELLIPSIS);
+            ev.setWrapText(false);
+            box.getChildren().add(ev);
+        }
+        if (events.size() > show) {
+            box.getChildren().add(label("+" + (events.size() - show), "calendar-event-badge"));
         }
         box.setOnMouseClicked(event -> showDayDialog(date, events));
         return box;
@@ -17274,6 +17317,7 @@ public class BenjagestUiApplication extends Application {
             case "calendar.mode.month" -> "Month";
             case "calendar.mode.year" -> "Year";
             case "calendar.btn.new_event" -> "New event";
+            case "calendar.btn.today" -> "Today";
             case "calendar.day.empty" -> "No events for this day. You can create one from New event.";
             case "calendar.day.scheduled_one" -> "1 event scheduled";
             case "calendar.day.scheduled_many_suffix" -> " events scheduled";
@@ -17324,6 +17368,7 @@ public class BenjagestUiApplication extends Application {
             case "calendar.mode.month" -> "Mes";
             case "calendar.mode.year" -> "Año";
             case "calendar.btn.new_event" -> "Nuevo evento";
+            case "calendar.btn.today" -> "Hoy";
             case "calendar.day.empty" -> "No hay eventos para este dia. Puedes crear uno desde Nuevo evento.";
             case "calendar.day.scheduled_one" -> "1 evento programado";
             case "calendar.day.scheduled_many_suffix" -> " eventos programados";

@@ -560,6 +560,10 @@ public final class EditableCells {
 
         private void buildField() {
             field = new TextField();
+            // Máscara dd/MM/yyyy: al teclear dígitos las barras aparecen solas
+            // (misma "división" que el DatePicker). Antes era un TextField pelado
+            // y había que escribir las barras a mano (feedback Benjamin).
+            field.setTextFormatter(new TextFormatter<>(c -> maskChange(c, new int[]{2, 4}, '/', 8)));
             // Commit-on-blur: pierde foco → intenta commitear.
             field.focusedProperty().addListener((obs, was, isNow) -> {
                 if (was && !isNow && isEditing()) {
