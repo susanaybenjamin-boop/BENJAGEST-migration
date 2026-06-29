@@ -176,18 +176,29 @@ Repaso punto por punto de lo que Benjamin reportó con el check en blanco. Estad
 - ✅ **CONSOL-1** *(2026-06-29)* — **Grupo empresarial**: V155 `company_groups` +
   `company_group_members` (dueño = activeCompanyId). `CompanyGroupService` + UI (entrada "Grupos"
   en el sidebar para OWNER/ADMIN: crear/eliminar grupo, añadir/quitar empresas). Verificado.
-- **CONSOL-2** — **Agregación**: sumar el balance de comprobación (saldos por cuenta) de cada
-  empresa del grupo en un periodo → balance + PyG agregados (sin eliminar todavía).
-- **CONSOL-3** — **Eliminaciones intragrupo**: detectar operaciones entre empresas del grupo
-  (reusar match por NIF del bloque REFLEJO: ventas A→B, créditos/débitos recíprocos 430/400) y
-  eliminarlas del agregado → balance + PyG **consolidados**.
-- **CONSOL-4** — **Informe consolidado** (PDF) + ajustes manuales de consolidación (partidas que
-  el agregado automático no cubre: dividendos internos, resultados por operaciones internas).
+- ✅ **CONSOL-2** *(2026-06-29)* — **Agregación**: `ConsolidationReportService.aggregatedTrialBalance`
+  suma el balance de comprobación (saldos por cuenta) de las empresas del grupo a una fecha +
+  resultado agregado. Endpoint `/trial-balance`. UI "Balance agregado".
+- ✅ **CONSOL-3** *(2026-06-29)* — **Eliminaciones intragrupo**: subcuentas 430/400 cuyo
+  `tercero_nif` es otra empresa del grupo → excluidas del consolidado y listadas como
+  eliminaciones (con cuadre clientes≈proveedores). Endpoint `/consolidated`. UI "Consolidado".
+  *Pendiente fino CONSOL-3b: eliminación de P&G intragrupo (ventas 70 vs compras 60, requiere
+  trazar facturas REFLEJO).*
+- ✅ **CONSOL-4** *(2026-06-29)* — **Informe PDF** del consolidado (`ConsolidationPdfService`,
+  endpoint `/consolidated.pdf`, visor interno). *Ajustes manuales de consolidación = futuro.*
 - **CONSOL-5** — Refinos NOFCAC (participaciones, socios externos/minoritarios) — con Benjamin.
 
+> **CONSOL contable cerrado (1-4) el 2026-06-29.** Falta solo el refino P&G (3b) y NOFCAC (5).
+
 ### 📴 BLOQUE OFFLINE-FICHAJE — Fichaje sin red (kiosco + PWA), cola + sync idempotente. Multi-slice.
+> ⚠️ **CAUTELA (2026-06-29):** OFF-1 toca el **núcleo legal del fichaje** (`TimeClockService.punch`
+> + `insertEvent`, cadena hash RD 8/2019) porque hay que **preservar el sello horario del momento
+> offline** (no `now()` al sincronizar) y añadir `client_uuid` (dedup). Es un refactor
+> behavior-preserving del core compartido → hacerlo con FOCO, no al final de una sesión larga.
+> No empezado: se aborda en sesión dedicada.
 - **OFF-1** — **Endpoint de sync por lotes** idempotente: `POST /fichaje/sync` que acepta N
   fichajes con un `client_uuid` por evento; dedup por uuid (no duplica si se reenvía). Base común.
+  Requiere parametrizar `eventTime` (offline) + columna `client_uuid` en `time_clock_events`.
 - **OFF-2** — **Kiosco offline** (gestor-navegador/PDA): guarda fichajes en local si no hay red y
   los sube en lote al volver; indicador "N pendientes de sincronizar".
 - **OFF-3** — **PWA empleado offline**: Service Worker + IndexedDB; fichar sin conexión, cola
