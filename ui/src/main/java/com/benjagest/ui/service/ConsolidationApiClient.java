@@ -82,6 +82,40 @@ public class ConsolidationApiClient {
         try { return new java.math.BigDecimal(m.group(1)); } catch (NumberFormatException e) { return java.math.BigDecimal.ZERO; }
     }
 
+    /** Devuelve el contenido de un array JSON de nivel superior: ...,"field":[ AQUÍ ],... */
+    private String arraySlice(String json, String field) {
+        int i = json.indexOf("\"" + field + "\"");
+        if (i < 0) return "";
+        int open = json.indexOf('[', i);
+        if (open < 0) return "";
+        int close = json.indexOf(']', open);
+        return close < 0 ? "" : json.substring(open + 1, close);
+    }
+
+    /** CONSOL-3 — balance consolidado (agregado con eliminaciones intragrupo). */
+    public com.benjagest.ui.model.ConsolidatedResult consolidated(String groupId, String asOf)
+            throws IOException, InterruptedException {
+        String url = base + "/" + groupId + "/consolidated" + (asOf == null ? "" : "?asOf=" + asOf);
+        String body = send(get(url));
+        java.util.List<com.benjagest.ui.model.ConsolidatedBalance.TrialLine> lines = new ArrayList<>();
+        for (String o : objects(arraySlice(body, "lines"))) {
+            lines.add(new com.benjagest.ui.model.ConsolidatedBalance.TrialLine(
+                    textField(o, "code"), textField(o, "name"),
+                    decimalField(o, "debit"), decimalField(o, "credit")));
+        }
+        java.util.List<com.benjagest.ui.model.ConsolidatedResult.EliminationRow> elims = new ArrayList<>();
+        for (String o : objects(arraySlice(body, "eliminations"))) {
+            elims.add(new com.benjagest.ui.model.ConsolidatedResult.EliminationRow(
+                    textField(o, "companyName"), textField(o, "code"), textField(o, "name"),
+                    textField(o, "terceroNif"), textField(o, "terceroType"), decimalField(o, "balance")));
+        }
+        return new com.benjagest.ui.model.ConsolidatedResult(
+                textField(body, "asOf"), lines,
+                decimalField(body, "totalDebit"), decimalField(body, "totalCredit"),
+                decimalField(body, "resultado"), (int) longField(body, "companyCount"),
+                elims, decimalField(body, "receivablesEliminated"), decimalField(body, "payablesEliminated"));
+    }
+
     // ---- helpers HTTP ----
     private HttpRequest.Builder get(String url) { return auth(HttpRequest.newBuilder(URI.create(url)).GET()); }
     private HttpRequest.Builder delete(String url) { return auth(HttpRequest.newBuilder(URI.create(url)).DELETE()); }
