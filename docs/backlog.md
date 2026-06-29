@@ -190,20 +190,20 @@ Repaso punto por punto de lo que Benjamin reportó con el check en blanco. Estad
 
 > **CONSOL contable cerrado (1-4) el 2026-06-29.** Falta solo el refino P&G (3b) y NOFCAC (5).
 
-### 📴 BLOQUE OFFLINE-FICHAJE — Fichaje sin red (kiosco + PWA), cola + sync idempotente. Multi-slice.
-> ⚠️ **CAUTELA (2026-06-29):** OFF-1 toca el **núcleo legal del fichaje** (`TimeClockService.punch`
-> + `insertEvent`, cadena hash RD 8/2019) porque hay que **preservar el sello horario del momento
-> offline** (no `now()` al sincronizar) y añadir `client_uuid` (dedup). Es un refactor
-> behavior-preserving del core compartido → hacerlo con FOCO, no al final de una sesión larga.
-> No empezado: se aborda en sesión dedicada.
-- **OFF-1** — **Endpoint de sync por lotes** idempotente: `POST /fichaje/sync` que acepta N
-  fichajes con un `client_uuid` por evento; dedup por uuid (no duplica si se reenvía). Base común.
-  Requiere parametrizar `eventTime` (offline) + columna `client_uuid` en `time_clock_events`.
-- **OFF-2** — **Kiosco offline** (gestor-navegador/PDA): guarda fichajes en local si no hay red y
-  los sube en lote al volver; indicador "N pendientes de sincronizar".
-- **OFF-3** — **PWA empleado offline**: Service Worker + IndexedDB; fichar sin conexión, cola
-  local, sync al reconectar. (Caso obra/almacén sin cobertura.)
-- **OFF-4** — Conflictos/orden (fichajes fuera de orden tras sync) + auditoría del origen offline.
+### 📴 BLOQUE OFFLINE-FICHAJE — Fichaje sin red (kiosco + PWA). ✅ CERRADO 2026-06-29.
+> Hecho SIN tocar `punch()` (núcleo legal intacto): camino aparte `syncPunch` que preserva el
+> sello horario del momento offline + `client_uuid` para dedup. No había cadena hash por evento.
+- ✅ **OFF-1** — `POST /…/fichaje/sync` idempotente: V156 `client_uuid` + índice único;
+  `TimeClockService.syncPunch` (sello offline, dedup, no bloquea geo) + `insertEventWithUuid`/
+  `existsClientUuid`. Verificado.
+- ✅ **OFF-2** — **Kiosco offline** (SPA del kiosco): cola en localStorage + sync al arrancar y al
+  volver la red; endpoint `/api/kiosk/fichaje/sync` (actor explícito, sin JWT).
+- ✅ **OFF-3** — **PWA empleado offline**: `doPunch` encola si no hay red (client_uuid + eventTime),
+  `flushQueue` sube el lote a `/empleado/fichaje/sync` al reconectar; indicador "N pendientes".
+  *(Cola con localStorage; Service Worker para cachear el app-shell = refinamiento OFF-3b futuro.)*
+- ✅ **OFF-4** — Orden y auditoría: el `event_time` real se preserva (el orden sale correcto en
+  jornada/auditoría); origen `OFFLINE`/`KIOSK_OFFLINE` visible en la Auditoría (i18n ES+EN). Los
+  conflictos (OUT sin IN) los marca la incidencia de auditoría + FICHA-REVIEW ("dar por bueno").
 
 ---
 

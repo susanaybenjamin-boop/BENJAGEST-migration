@@ -20959,6 +20959,8 @@ public class BenjagestUiApplication extends Application {
             case "enum.timeclock_origin.WEB" -> "Web";
             case "enum.timeclock_origin.MOBILE" -> "Mobile";
             case "enum.timeclock_origin.KIOSK" -> "Kiosk";
+            case "enum.timeclock_origin.OFFLINE" -> "Offline (synced)";
+            case "enum.timeclock_origin.KIOSK_OFFLINE" -> "Kiosk offline (synced)";
             case "enum.timeclock_status.VALID" -> "Valid";
             case "enum.timeclock_status.PENDING" -> "Pending";
             case "enum.timeclock_status.CORRECTED" -> "Corrected";
@@ -22141,6 +22143,8 @@ public class BenjagestUiApplication extends Application {
             case "enum.timeclock_origin.WEB" -> "Web";
             case "enum.timeclock_origin.MOBILE" -> "Móvil";
             case "enum.timeclock_origin.KIOSK" -> "Kiosco";
+            case "enum.timeclock_origin.OFFLINE" -> "Offline (sincronizado)";
+            case "enum.timeclock_origin.KIOSK_OFFLINE" -> "Kiosco offline (sincronizado)";
             case "enum.timeclock_status.VALID" -> "Válido";
             case "enum.timeclock_status.PENDING" -> "Pendiente";
             case "enum.timeclock_status.CORRECTED" -> "Corregido";
