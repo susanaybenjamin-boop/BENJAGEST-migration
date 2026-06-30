@@ -31,18 +31,21 @@ Cada pantalla = una clase en `ui/screens/`:
 - **UIR-2** — Sacar los 24 records/enums/interfaces anidados a ficheros propios
   (`model/`, `support/nav/`). Incluye `Language`, `AppMode`, `ModuleLink`, los
   `*Bundle`, `*Row`, interfaces funcionales. Hojas sin dependencias.
-- **UIR-3** — `AppContext` (root, ~10 ApiClients, `session`, `language`, `appMode`,
-  `navigationButtons`, historial nav) + helpers: `Dialogs` (showError/showInfo/toast),
-  `Formatters` (money/fechas), `AsyncRunner` (start(Task)), `Icons` (icon),
-  `UiBuilders` (sectionHeader/scroll/navButton/select).
-
-> Tras la Fase 1 el archivo baja de ~44k a ~33k y existe la pieza (`AppContext`)
-> que toda pantalla extraída recibirá.
+- **UIR-3** — Helpers **stateless** compartidos en `support/`: `Icons` (icon),
+  `Formatters` (money/displayValue + DISPLAY_DATE/CURRENCY_FORMAT), `Dialogs`
+  (error/info/toast). El monolito conserva métodos delegados (call-sites intactos).
+  > **Decisión 2026-06-30:** se DESCARTA el `AppContext` god-object. El patrón ya
+  > usado en el proyecto (`AccountingScreen(apiClient, this::t)`) inyecta dependencias
+  > **concretas** por pantalla — es mejor diseño que un contexto-dios. Las pantallas
+  > extraídas reciben su(s) ApiClient(s) + la función `t`, e **importan** los helpers
+  > stateless directamente. Lo stateful que faltaba (navegación) se resuelve en UIR-4
+  > (Router); el async (`start(Task)`) cada pantalla lo gestiona como ya hace
+  > `AccountingScreen`.
 
 ### 🟡 FASE 2 — Router (cortar llamadas cruzadas)
-- **UIR-4** — `Router` en `AppContext` (`navigateTo(module)`, `setCenter(node)`).
-  Las pantallas extraídas llaman al router en vez de `this.showY()`. El monolito
-  implementa el `Router` durante la transición.
+- **UIR-4** — Interfaz `Router` (`navigateTo(module)`, `setCenter(node)`) que las
+  pantallas extraídas reciben (junto a su ApiClient + `t`) para navegar en vez de
+  `this.showY()`. El monolito implementa el `Router` durante la transición.
 
 ### 🔴 FASE 3 — Pantalla por pantalla (orden de menor a mayor acoplamiento)
 - **UIR-5** — Login / Registro / Onboarding (M)
@@ -75,4 +78,5 @@ vez, cuando TODO el bloque (hasta UIR-15) esté terminado**, para que llegue com
 
 ## Estado
 - [x] UIR-1 (i18n→I18n, −8.684 líneas) · [x] UIR-2 (tipos transversales; bundles diferidos a Fase 3)
-  · [ ] UIR-3 · [ ] UIR-4 · [ ] UIR-5 … UIR-15
+  · [x] UIR-3 (helpers stateless Icons/Formatters/Dialogs; AppContext god-object descartado)
+  · [ ] UIR-4 · [ ] UIR-5 … UIR-15
