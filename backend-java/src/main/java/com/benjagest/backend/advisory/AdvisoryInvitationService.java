@@ -208,7 +208,7 @@ public class AdvisoryInvitationService {
         if (StringUtils.hasText(currentParent)) {
             if (currentParent.equals(inv.advisoryCompanyId())) {
                 // ya vinculada con esa misma asesoría → idempotente
-                repository.updateStatusAccepted(inv.id(), user.userId(), tenant);
+                repository.updateStatusAccepted(inv.id(), user.userId(), tenant, tenantNif);
                 return repository.findById(inv.id()).orElseThrow();
             }
             throw new ResponseStatusException(HttpStatus.CONFLICT,
@@ -221,7 +221,7 @@ public class AdvisoryInvitationService {
                    SET parent_company_id = ?
                  WHERE id = ?
                 """, inv.advisoryCompanyId(), tenant);
-        repository.updateStatusAccepted(inv.id(), user.userId(), tenant);
+        repository.updateStatusAccepted(inv.id(), user.userId(), tenant, tenantNif);
 
         // Auto-sync a la cartera de clientes de la asesoría: el cliente
         // acaba de vincularse, así que se añade a `customers` para que

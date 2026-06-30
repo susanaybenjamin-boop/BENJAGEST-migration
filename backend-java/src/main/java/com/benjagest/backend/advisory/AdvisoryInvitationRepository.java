@@ -99,15 +99,21 @@ public class AdvisoryInvitationRepository {
     }
 
     public int updateStatusAccepted(String id, String acceptedByUserId,
-                                      String invitedCompanyId) {
+                                      String invitedCompanyId, String invitedNif) {
+        // Anclamos invited_nif al NIF de la empresa que acepta. Así una
+        // invitación ACEPTADA queda identificada por NIF estable (no solo por
+        // email), y el portfolio no la cruza por email — evitando que cambiar el
+        // email de un cliente lo "vincule" por error a otra empresa que comparte
+        // correo (bug 2026-06-30). COALESCE: si no llega NIF, conserva el actual.
         return jdbcTemplate.update("""
                 UPDATE advisory_invitations
                    SET status = 'ACCEPTED',
                        accepted_at = CURRENT_TIMESTAMP,
                        accepted_by_user_id = ?,
-                       invited_company_id = ?
+                       invited_company_id = ?,
+                       invited_nif = COALESCE(NULLIF(?, ''), invited_nif)
                  WHERE id = ?
-                """, acceptedByUserId, invitedCompanyId, id);
+                """, acceptedByUserId, invitedCompanyId, invitedNif, id);
     }
 
     public int updateStatus(String id, String newStatus) {
