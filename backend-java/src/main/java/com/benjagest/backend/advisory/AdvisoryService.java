@@ -152,7 +152,10 @@ public class AdvisoryService {
                 SELECT UUID(), c.id, NULL, c.tax_identifier,
                        COALESCE(c.trade_name, 'Mi empresa'), c.id,
                        CONCAT('SELF:', c.id), 'ACCEPTED',
-                       '2999-12-31 23:59:59',
+                       -- expires_at es TIMESTAMP (máx 2038-01-19 en MariaDB);
+                       -- el self-link es ACCEPTED y nunca evalúa caducidad, así
+                       -- que usamos una fecha lejana DENTRO de rango (no 2999).
+                       '2038-01-01 00:00:00',
                        'Auto-vinculación silenciosa (ensureSelfLink). NO BORRAR.',
                        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
                   FROM companies c
