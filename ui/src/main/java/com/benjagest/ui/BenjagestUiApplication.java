@@ -7533,8 +7533,14 @@ public class BenjagestUiApplication extends Application
             ok.showAndWait();
         });
         task.setOnFailed(event -> {
-            String detail = task.getException() == null ? null
-                    : humanizeBackendError(task.getException().getMessage());
+            // Mostrar SIEMPRE la causa real (el backend incluye el error SMTP:
+            // "No se pudo enviar el email: 535 ... auth disabled", etc.). Si
+            // humanize no logra extraer un "message" limpio (timeout, JSON sin
+            // ese campo), caemos al mensaje crudo en vez de dejar solo el
+            // genérico — el usuario necesita ver por qué rechaza el SMTP.
+            String raw = task.getException() == null ? null : task.getException().getMessage();
+            String detail = humanizeBackendError(raw);
+            if (detail == null || detail.isBlank()) detail = raw;
             showError(t("settings.email.test.fail.title"),
                     detail == null || detail.isBlank() ? t("settings.email.test.fail.body")
                             : t("settings.email.test.fail.body") + "\n\n" + detail);
