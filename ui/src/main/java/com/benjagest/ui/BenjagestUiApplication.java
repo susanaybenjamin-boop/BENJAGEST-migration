@@ -14081,10 +14081,7 @@ public class BenjagestUiApplication extends Application implements com.benjagest
     }
 
     private ScrollPane scroll(VBox content) {
-        ScrollPane scroll = new ScrollPane(content);
-        scroll.getStyleClass().add("content-scroll");
-        scroll.setFitToWidth(true);
-        return scroll;
+        return com.benjagest.ui.support.UiBuilders.scroll(content);
     }
 
     /**
@@ -14296,9 +14293,7 @@ public class BenjagestUiApplication extends Application implements com.benjagest
     }
 
     private Label label(String text, String styleClass) {
-        Label label = new Label(text);
-        label.getStyleClass().add(styleClass);
-        return label;
+        return com.benjagest.ui.support.UiBuilders.label(text, styleClass);
     }
 
     /**
@@ -14459,38 +14454,7 @@ public class BenjagestUiApplication extends Application implements com.benjagest
      * </ul>
      */
     private static String humanizeBackendError(String raw) {
-        if (raw == null || raw.isBlank()) return "";
-        // Localiza "message":"..." sin importar lo que tenga delante.
-        int idx = raw.indexOf("\"message\"");
-        if (idx < 0) return raw;
-        int colon = raw.indexOf(':', idx);
-        if (colon < 0) return raw;
-        int firstQuote = raw.indexOf('"', colon);
-        if (firstQuote < 0) return raw;
-        StringBuilder sb = new StringBuilder();
-        boolean escape = false;
-        for (int i = firstQuote + 1; i < raw.length(); i++) {
-            char c = raw.charAt(i);
-            if (escape) {
-                switch (c) {
-                    case 'n' -> sb.append('\n');
-                    case 't' -> sb.append('\t');
-                    case 'r' -> { /* drop */ }
-                    case '"' -> sb.append('"');
-                    case '\\' -> sb.append('\\');
-                    default -> sb.append(c);
-                }
-                escape = false;
-            } else if (c == '\\') {
-                escape = true;
-            } else if (c == '"') {
-                String out = sb.toString().trim();
-                return out.isBlank() ? raw : out;
-            } else {
-                sb.append(c);
-            }
-        }
-        return raw;
+        return com.benjagest.ui.support.BackendErrors.humanize(raw);
     }
 
     public static void main(String[] args) {
@@ -22099,208 +22063,8 @@ public class BenjagestUiApplication extends Application implements com.benjagest
         currentModule = "suggestions";
         recordNav(() -> showSuggestionsModule());
         select("suggestions");
-
-        VBox root = new VBox(16);
-        root.getStyleClass().add("content");
-
-        Label header = label(t("suggestions.title"), "settings-section-title");
-        Label hint = new Label(t("suggestions.hint"));
-        hint.setWrapText(true);
-        hint.getStyleClass().add("settings-hint");
-
-        Button newBtn = new Button(t("suggestions.btn.new"));
-        newBtn.setGraphic(icon("fas-plus"));
-        newBtn.getStyleClass().add("button-primary");
-
-        TableView<com.benjagest.ui.model.SuggestionEntry> table = new TableView<>();
-        table.getStyleClass().add("data-table");
-        table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
-        table.setPlaceholder(new Label(t("suggestions.empty")));
-        com.benjagest.ui.support.TableSelectionHelper.install(table);
-
-        TableColumn<com.benjagest.ui.model.SuggestionEntry, String> cDate =
-                new TableColumn<>(t("suggestions.col.date"));
-        cDate.setCellValueFactory(c -> new SimpleStringProperty(
-                c.getValue().createdAt() == null || c.getValue().createdAt().length() < 10
-                        ? c.getValue().createdAt()
-                        : c.getValue().createdAt().substring(0, 10)));
-        cDate.setPrefWidth(110);
-        TableColumn<com.benjagest.ui.model.SuggestionEntry, String> cTitle =
-                new TableColumn<>(t("suggestions.col.title"));
-        cTitle.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().title()));
-        TableColumn<com.benjagest.ui.model.SuggestionEntry, String> cCat =
-                new TableColumn<>(t("suggestions.col.category"));
-        cCat.setCellValueFactory(c -> new SimpleStringProperty(
-                humanizeSuggestionCategory(c.getValue().category())));
-        cCat.setPrefWidth(120);
-        TableColumn<com.benjagest.ui.model.SuggestionEntry, String> cStatus =
-                new TableColumn<>(t("suggestions.col.status"));
-        cStatus.setCellValueFactory(c -> new SimpleStringProperty(
-                humanizeSuggestionStatus(c.getValue().status())));
-        cStatus.setPrefWidth(120);
-        TableColumn<com.benjagest.ui.model.SuggestionEntry, String> cAnswer =
-                new TableColumn<>(t("suggestions.col.answer"));
-        cAnswer.setCellValueFactory(c -> new SimpleStringProperty(
-                c.getValue().answer() == null || c.getValue().answer().isBlank()
-                        ? t("suggestions.no_answer") : c.getValue().answer()));
-
-        table.getColumns().addAll(java.util.List.of(cDate, cTitle, cCat, cStatus, cAnswer));
-
-        Button closeBtn = new Button(t("suggestions.btn.close"));
-        closeBtn.setGraphic(icon("fas-check"));
-        closeBtn.setDisable(true);
-        Button delBtn = new Button(t("suggestions.btn.delete"));
-        delBtn.setGraphic(icon("fas-trash"));
-        delBtn.setDisable(true);
-
-        table.getSelectionModel().selectedItemProperty().addListener((o, ov, nv) -> {
-            boolean sel = nv != null;
-            closeBtn.setDisable(!sel || "closed".equals(nv == null ? "" : nv.status()));
-            delBtn.setDisable(!sel);
-        });
-
-        HBox actionBar = new HBox(8, newBtn, closeBtn, delBtn);
-        actionBar.setAlignment(Pos.CENTER_LEFT);
-
-        Runnable reload = () -> {
-            Task<java.util.List<com.benjagest.ui.model.SuggestionEntry>> task = new Task<>() {
-                @Override protected java.util.List<com.benjagest.ui.model.SuggestionEntry> call() throws Exception {
-                    return altaApiClient.listSuggestions();
-                }
-            };
-            task.setOnSucceeded(ev -> table.setItems(FXCollections.observableArrayList(task.getValue())));
-            task.setOnFailed(ev -> showError(t("suggestions.fail.title"),
-                    task.getException() == null ? "" : task.getException().getMessage()));
-            start(task, "suggestions-load");
-        };
-
-        newBtn.setOnAction(ev -> showSuggestionForm(reload));
-        closeBtn.setOnAction(ev -> {
-            var sel = table.getSelectionModel().getSelectedItem();
-            if (sel == null) return;
-            Task<Void> t = new Task<>() {
-                @Override protected Void call() throws Exception {
-                    altaApiClient.updateSuggestionStatus(sel.id(), "closed");
-                    return null;
-                }
-            };
-            t.setOnSucceeded(s -> reload.run());
-            t.setOnFailed(s -> showError(t("suggestions.fail.title"),
-                    t.getException() == null ? "" : t.getException().getMessage()));
-            start(t, "suggestions-close");
-        });
-        delBtn.setOnAction(ev -> {
-            var sel = table.getSelectionModel().getSelectedItem();
-            if (sel == null) return;
-            Alert confirm = new Alert(Alert.AlertType.CONFIRMATION);
-            confirm.setTitle(t("suggestions.confirm.delete.title"));
-            confirm.setHeaderText(t("suggestions.confirm.delete.body"));
-            confirm.showAndWait().ifPresent(rsp -> {
-                if (rsp == javafx.scene.control.ButtonType.OK) {
-                    Task<Void> t = new Task<>() {
-                        @Override protected Void call() throws Exception {
-                            altaApiClient.deleteSuggestion(sel.id());
-                            return null;
-                        }
-                    };
-                    t.setOnSucceeded(s -> reload.run());
-                    t.setOnFailed(s -> showError(t("suggestions.fail.title"),
-                            t.getException() == null ? "" : t.getException().getMessage()));
-                    start(t, "suggestions-delete");
-                }
-            });
-        });
-
-        reload.run();
-
-        VBox.setVgrow(table, Priority.ALWAYS);
-        root.getChildren().addAll(header, hint, actionBar, table);
-        setCenterAnimated(scroll(root));
-    }
-
-    private void showSuggestionForm(Runnable onSaved) {
-        Dialog<Void> dialog = new Dialog<>();
-        dialog.setTitle(t("suggestions.form.title"));
-        dialog.setHeaderText(t("suggestions.form.header"));
-
-        TextField titleField = new TextField();
-        titleField.setPromptText(t("suggestions.form.title_prompt"));
-        TextArea descField = new TextArea();
-        descField.setPromptText(t("suggestions.form.desc_prompt"));
-        descField.setPrefRowCount(6);
-        descField.setWrapText(true);
-        ComboBox<String> catCombo = new ComboBox<>(FXCollections.observableArrayList(
-                "general", "improvement", "module", "bug", "other"));
-        catCombo.setValue("general");
-        catCombo.setConverter(new javafx.util.StringConverter<>() {
-            @Override public String toString(String s) {
-                return s == null ? "" : humanizeSuggestionCategory(s);
-            }
-            @Override public String fromString(String s) { return s; }
-        });
-
-        VBox form = new VBox(10,
-                new Label(t("suggestions.form.field.title")), titleField,
-                new Label(t("suggestions.form.field.category")), catCombo,
-                new Label(t("suggestions.form.field.description")), descField);
-        form.setPadding(new Insets(16));
-        form.setPrefWidth(520);
-
-        dialog.getDialogPane().setContent(form);
-        dialog.getDialogPane().getButtonTypes().addAll(
-                javafx.scene.control.ButtonType.CANCEL, javafx.scene.control.ButtonType.OK);
-        javafx.scene.control.Button okBtn = (javafx.scene.control.Button)
-                dialog.getDialogPane().lookupButton(javafx.scene.control.ButtonType.OK);
-        okBtn.setText(t("suggestions.form.btn.send"));
-
-        dialog.setResultConverter(bt -> {
-            if (bt == javafx.scene.control.ButtonType.OK) {
-                if (titleField.getText() == null || titleField.getText().isBlank()
-                        || descField.getText() == null || descField.getText().isBlank()) {
-                    showError(t("suggestions.form.missing.title"),
-                            t("suggestions.form.missing.body"));
-                    return null;
-                }
-                Task<Void> t = new Task<>() {
-                    @Override protected Void call() throws Exception {
-                        altaApiClient.createSuggestion(
-                                titleField.getText().trim(),
-                                descField.getText().trim(),
-                                catCombo.getValue());
-                        return null;
-                    }
-                };
-                t.setOnSucceeded(s -> onSaved.run());
-                t.setOnFailed(s -> showError(t("suggestions.fail.title"),
-                        t.getException() == null ? "" : t.getException().getMessage()));
-                start(t, "suggestions-create");
-            }
-            return null;
-        });
-        dialog.showAndWait();
-    }
-
-    private String humanizeSuggestionCategory(String raw) {
-        if (raw == null || raw.isBlank()) return "";
-        return switch (raw.trim().toLowerCase()) {
-            case "general" -> t("suggestions.cat.general");
-            case "improvement" -> t("suggestions.cat.improvement");
-            case "module" -> t("suggestions.cat.module");
-            case "bug" -> t("suggestions.cat.bug");
-            case "other" -> t("suggestions.cat.other");
-            default -> raw;
-        };
-    }
-
-    private String humanizeSuggestionStatus(String raw) {
-        if (raw == null || raw.isBlank()) return "";
-        return switch (raw.trim().toLowerCase()) {
-            case "new" -> t("suggestions.status.new");
-            case "read" -> t("suggestions.status.read");
-            case "answered" -> t("suggestions.status.answered");
-            case "closed" -> t("suggestions.status.closed");
-            default -> raw;
-        };
+        setCenterAnimated(new com.benjagest.ui.screens.SuggestionsScreen(
+                altaApiClient, this::t, this).buildView());
     }
 
     private void showTeamModule() {
