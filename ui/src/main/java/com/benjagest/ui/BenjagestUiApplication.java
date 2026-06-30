@@ -5071,7 +5071,9 @@ public class BenjagestUiApplication extends Application
                 }
             };
             tk.setOnSucceeded(e -> { reload.run(); com.benjagest.ui.support.RefreshBus.emit(
-                    com.benjagest.ui.support.RefreshBus.TOPIC_JOURNAL); });
+                    com.benjagest.ui.support.RefreshBus.TOPIC_JOURNAL,
+                    com.benjagest.ui.support.RefreshBus.TOPIC_SALES,
+                    com.benjagest.ui.support.RefreshBus.TOPIC_PURCHASES); });
             tk.setOnFailed(e -> showError(t("duedates.fail"), msgOf(tk.getException())));
             start(tk, "due-dates-unpay");
         });
@@ -5153,7 +5155,9 @@ public class BenjagestUiApplication extends Application
             }
         };
         tk.setOnSucceeded(e -> { after.run(); com.benjagest.ui.support.RefreshBus.emit(
-                com.benjagest.ui.support.RefreshBus.TOPIC_JOURNAL); });
+                com.benjagest.ui.support.RefreshBus.TOPIC_JOURNAL,
+                com.benjagest.ui.support.RefreshBus.TOPIC_SALES,
+                com.benjagest.ui.support.RefreshBus.TOPIC_PURCHASES); });
         tk.setOnFailed(e -> showError(t("duedates.fail"), msgOf(tk.getException())));
         start(tk, "due-dates-pay");
     }
@@ -23757,7 +23761,7 @@ public class BenjagestUiApplication extends Application
             } catch (Exception ignored) {}
             openRecurringEditorFromInvoice(
                     "SALES_INVOICE",
-                    null, // no tenemos NIF en SalesInvoiceSummary
+                    sel.customerTaxId(), // NIF del cliente (JOIN customers.tax_identifier)
                     sel.customerLegalName(),
                     sel.total(),
                     invDate);
