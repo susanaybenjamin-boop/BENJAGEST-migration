@@ -74,4 +74,5 @@ vez, cuando TODO el bloque (hasta UIR-15) esté terminado**, para que llegue com
 única actualización vía auto-update. Hasta entonces, cada slice solo va a `develop`.
 
 ## Estado
-- [x] UIR-1 (i18n→I18n, −8.684 líneas) · [ ] UIR-2 · [ ] UIR-3 · [ ] UIR-4 · [ ] UIR-5 … UIR-15
+- [x] UIR-1 (i18n→I18n, −8.684 líneas) · [x] UIR-2 (tipos transversales; bundles diferidos a Fase 3)
+  · [ ] UIR-3 · [ ] UIR-4 · [ ] UIR-5 … UIR-15
