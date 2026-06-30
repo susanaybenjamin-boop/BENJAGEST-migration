@@ -170,49 +170,12 @@ public class AeatExtraModelsService {
     public Model390View generate390(int year, boolean persist) {
         String companyId = tenantContext.getCurrentCompanyId();
 
-        // IVA REPERCUTIDO desde sales_invoices.
-        VatBreakdown rep = jdbcTemplate.queryForObject("""
-                SELECT
-                  COALESCE(SUM(CASE WHEN vat_total > 0 AND total > 0
-                                    AND ABS((vat_total / NULLIF(subtotal, 0)) * 100 - 4) < 1
-                                    THEN subtotal ELSE 0 END), 0) AS base04,
-                  COALESCE(SUM(CASE WHEN vat_total > 0 AND total > 0
-                                    AND ABS((vat_total / NULLIF(subtotal, 0)) * 100 - 10) < 1
-                                    THEN subtotal ELSE 0 END), 0) AS base10,
-                  COALESCE(SUM(CASE WHEN vat_total > 0 AND total > 0
-                                    AND ABS((vat_total / NULLIF(subtotal, 0)) * 100 - 21) < 1
-                                    THEN subtotal ELSE 0 END), 0) AS base21,
-                  COALESCE(SUM(vat_total), 0) AS iva_total
-                  FROM sales_invoices
-                 WHERE company_id = ?
-                   AND YEAR(invoice_date) = ?
-                   AND status = 'VALIDATED'
-                """, (rs, n) -> new VatBreakdown(
-                        rs.getBigDecimal("base04"),
-                        rs.getBigDecimal("base10"),
-                        rs.getBigDecimal("base21"),
-                        rs.getBigDecimal("iva_total")),
-                companyId, year);
-
-        // IVA SOPORTADO desde purchase_invoices.
-        VatBreakdown sop = jdbcTemplate.queryForObject("""
-                SELECT
-                  COALESCE(SUM(CASE WHEN ABS(vat_percent - 4) < 1
-                                    THEN base_amount ELSE 0 END), 0) AS base04,
-                  COALESCE(SUM(CASE WHEN ABS(vat_percent - 10) < 1
-                                    THEN base_amount ELSE 0 END), 0) AS base10,
-                  COALESCE(SUM(CASE WHEN ABS(vat_percent - 21) < 1
-                                    THEN base_amount ELSE 0 END), 0) AS base21,
-                  COALESCE(SUM(vat_amount), 0) AS iva_total
-                  FROM purchase_invoices
-                 WHERE company_id = ?
-                   AND YEAR(invoice_date) = ?
-                """, (rs, n) -> new VatBreakdown(
-                        rs.getBigDecimal("base04"),
-                        rs.getBigDecimal("base10"),
-                        rs.getBigDecimal("base21"),
-                        rs.getBigDecimal("iva_total")),
-                companyId, year);
+        // IVA repercutido y soportado del año desde los asientos POSTED
+        // (misma fuente que el 303, sin filtro de trimestre).
+        VatBreakdown rep = jdbcTemplate.queryForObject(SALES_VAT_BY_RATE_SQL,
+                AeatExtraModelsService::mapRepercutido, companyId, year);
+        VatBreakdown sop = jdbcTemplate.queryForObject(PURCHASE_VAT_BY_RATE_SQL,
+                AeatExtraModelsService::mapSoportado, companyId, year);
 
         BigDecimal resultadoLiquidacion = rep.totalIva.subtract(sop.totalIva)
                 .setScale(2, RoundingMode.HALF_UP);
@@ -313,6 +276,150 @@ public class AeatExtraModelsService {
         Model190View view = new Model190View(year, rows.size(),
                 totalBase, totalRetenciones, rows);
         if (persist) persistFiling("190", year, null, view, totalRetenciones);
+        return view;
+    }
+
+    // ====================================================================
+    //  IVA desde la contabilidad (asientos POSTED), por tipo (vat_rate)
+    // ====================================================================
+
+    /** Bases de IVA REPERCUTIDO por tipo = haber de las líneas 7xx etiquetadas.
+     *  Termina en YEAR(...)=? ; quien lo use añade el filtro de periodo. */
+    private static final String SALES_VAT_BY_RATE_SQL = """
+            SELECT
+              COALESCE(SUM(CASE WHEN ABS(l.vat_rate - 4) < 1 THEN l.credit ELSE 0 END), 0) AS base04,
+              COALESCE(SUM(CASE WHEN ABS(l.vat_rate - 10) < 1 THEN l.credit ELSE 0 END), 0) AS base10,
+              COALESCE(SUM(CASE WHEN ABS(l.vat_rate - 21) < 1 THEN l.credit ELSE 0 END), 0) AS base21
+              FROM journal_entry_lines l
+              JOIN journal_entries e ON e.id = l.journal_entry_id
+              JOIN accounting_accounts a ON a.id = l.account_id
+             WHERE e.company_id = ? AND e.status = 'POSTED'
+               AND l.vat_rate IS NOT NULL AND a.code LIKE '7%'
+               AND YEAR(e.entry_date) = ?""";
+
+    /** Bases de IVA SOPORTADO por tipo (debe 6xx) + cuota total (debe 472). */
+    private static final String PURCHASE_VAT_BY_RATE_SQL = """
+            SELECT
+              COALESCE(SUM(CASE WHEN ABS(l.vat_rate - 4) < 1 AND a.code LIKE '6%' THEN l.debit ELSE 0 END), 0) AS base04,
+              COALESCE(SUM(CASE WHEN ABS(l.vat_rate - 10) < 1 AND a.code LIKE '6%' THEN l.debit ELSE 0 END), 0) AS base10,
+              COALESCE(SUM(CASE WHEN ABS(l.vat_rate - 21) < 1 AND a.code LIKE '6%' THEN l.debit ELSE 0 END), 0) AS base21,
+              COALESCE(SUM(CASE WHEN a.code LIKE '472%' THEN l.debit ELSE 0 END), 0) AS iva_total
+              FROM journal_entry_lines l
+              JOIN journal_entries e ON e.id = l.journal_entry_id
+              JOIN accounting_accounts a ON a.id = l.account_id
+             WHERE e.company_id = ? AND e.status = 'POSTED'
+               AND l.vat_rate IS NOT NULL
+               AND YEAR(e.entry_date) = ?""";
+
+    private static BigDecimal nz(BigDecimal v) { return v == null ? BigDecimal.ZERO : v; }
+
+    /** Repercutido: bases por tipo desde 7xx; la cuota se deriva (base × tipo). */
+    private static VatBreakdown mapRepercutido(java.sql.ResultSet rs, int n) throws java.sql.SQLException {
+        BigDecimal b4 = nz(rs.getBigDecimal("base04"));
+        BigDecimal b10 = nz(rs.getBigDecimal("base10"));
+        BigDecimal b21 = nz(rs.getBigDecimal("base21"));
+        BigDecimal iva = b4.multiply(new BigDecimal("0.04"))
+                .add(b10.multiply(new BigDecimal("0.10")))
+                .add(b21.multiply(new BigDecimal("0.21")))
+                .setScale(2, RoundingMode.HALF_UP);
+        return new VatBreakdown(b4, b10, b21, iva);
+    }
+
+    /** Soportado: bases por tipo desde 6xx; cuota total real desde 472. */
+    private static VatBreakdown mapSoportado(java.sql.ResultSet rs, int n) throws java.sql.SQLException {
+        return new VatBreakdown(nz(rs.getBigDecimal("base04")), nz(rs.getBigDecimal("base10")),
+                nz(rs.getBigDecimal("base21")), nz(rs.getBigDecimal("iva_total")));
+    }
+
+    // ====================================================================
+    //  Modelo 303 (IVA trimestral) — prefill desde facturas del trimestre
+    // ====================================================================
+
+    @Transactional
+    public Model303View generate303(int year, int quarter, boolean persist) {
+        String companyId = tenantContext.getCurrentCompanyId();
+        int mFrom = (quarter - 1) * 3 + 1;
+        int mTo = quarter * 3;
+
+        // IVA REPERCUTIDO desde los ASIENTOS CONTABILIZADOS (POSTED) del
+        // trimestre: bases por tipo = haber de las líneas 7xx etiquetadas con
+        // su vat_rate. Así el 303 sale de la contabilidad (como en gestoría) y
+        // las facturas con varios tipos quedan desglosadas.
+        VatBreakdown rep = jdbcTemplate.queryForObject(SALES_VAT_BY_RATE_SQL
+                + " AND MONTH(e.entry_date) BETWEEN ? AND ?",
+                AeatExtraModelsService::mapRepercutido,
+                companyId, year, mFrom, mTo);
+
+        // IVA SOPORTADO desde los asientos POSTED del trimestre: bases por tipo
+        // = debe de las líneas 6xx; cuota total = debe de las 472.
+        VatBreakdown sop = jdbcTemplate.queryForObject(PURCHASE_VAT_BY_RATE_SQL
+                + " AND MONTH(e.entry_date) BETWEEN ? AND ?",
+                AeatExtraModelsService::mapSoportado,
+                companyId, year, mFrom, mTo);
+
+        BigDecimal baseSoportada = sop.base04.add(sop.base10).add(sop.base21);
+        BigDecimal resultado = rep.totalIva.subtract(sop.totalIva)
+                .setScale(2, RoundingMode.HALF_UP);
+
+        Map<String, Object> casillas = new LinkedHashMap<>();
+        casillas.put("base_4", rep.base04);
+        casillas.put("base_10", rep.base10);
+        casillas.put("base_21", rep.base21);
+        casillas.put("06_iva_repercutido_total", rep.totalIva);
+        casillas.put("base_soportado", baseSoportada);
+        casillas.put("cuota_soportada", sop.totalIva);
+        casillas.put("71_resultado", resultado);
+
+        Model303View view = new Model303View(year, quarter, rep, sop,
+                baseSoportada, resultado, casillas);
+        if (persist) persistFiling("303", year, quarter, view, resultado);
+        return view;
+    }
+
+    // ====================================================================
+    //  Modelo 130 (IRPF pago fraccionado, estimación directa) — acumulado
+    //  del año hasta el trimestre. Pagos previos = suma de los 130
+    //  anteriores del año (si no hay, 0 y el asesor lo edita a mano).
+    // ====================================================================
+
+    @Transactional
+    public Model130View generate130(int year, int quarter, boolean persist) {
+        String companyId = tenantContext.getCurrentCompanyId();
+        int mTo = quarter * 3; // acumulado: de enero al fin del trimestre
+
+        BigDecimal ingresos = jdbcTemplate.queryForObject("""
+                SELECT COALESCE(SUM(subtotal), 0) FROM sales_invoices
+                 WHERE company_id = ? AND YEAR(invoice_date) = ?
+                   AND MONTH(invoice_date) <= ? AND status = 'VALIDATED'
+                """, BigDecimal.class, companyId, year, mTo);
+        BigDecimal gastos = jdbcTemplate.queryForObject("""
+                SELECT COALESCE(SUM(base_amount), 0) FROM purchase_invoices
+                 WHERE company_id = ? AND YEAR(invoice_date) = ?
+                   AND MONTH(invoice_date) <= ?
+                """, BigDecimal.class, companyId, year, mTo);
+        // Retenciones IRPF que los clientes practicaron al autónomo en sus
+        // facturas emitidas (acumulado del año).
+        BigDecimal retenciones = jdbcTemplate.queryForObject("""
+                SELECT COALESCE(SUM(retention_total), 0) FROM sales_invoices
+                 WHERE company_id = ? AND YEAR(invoice_date) = ?
+                   AND MONTH(invoice_date) <= ? AND status = 'VALIDATED'
+                """, BigDecimal.class, companyId, year, mTo);
+        // Pagos fraccionados previos = resultado de los 130 de trimestres
+        // anteriores del mismo año ya guardados.
+        BigDecimal pagosPrevios = jdbcTemplate.queryForObject("""
+                SELECT COALESCE(SUM(total_amount), 0) FROM tax_filings
+                 WHERE company_id = ? AND tax_model_code = '130'
+                   AND period_year = ? AND period_quarter < ?
+                """, BigDecimal.class, companyId, year, quarter);
+
+        BigDecimal beneficio = ingresos.subtract(gastos);
+        BigDecimal pago = beneficio.multiply(new BigDecimal("0.20"))
+                .subtract(retenciones).subtract(pagosPrevios)
+                .setScale(2, RoundingMode.HALF_UP);
+
+        Model130View view = new Model130View(year, quarter,
+                ingresos, gastos, retenciones, pagosPrevios, pago);
+        if (persist) persistFiling("130", year, quarter, view, pago);
         return view;
     }
 
@@ -445,5 +552,19 @@ public class AeatExtraModelsService {
             int year, int perceptoresCount,
             BigDecimal totalBase, BigDecimal totalRetenciones,
             List<Model190Row> rows
+    ) {}
+
+    public record Model303View(
+            int year, int quarter,
+            VatBreakdown repercutido, VatBreakdown soportado,
+            BigDecimal baseSoportada, BigDecimal resultado,
+            Map<String, Object> casillas
+    ) {}
+
+    public record Model130View(
+            int year, int quarter,
+            BigDecimal ingresos, BigDecimal gastos,
+            BigDecimal retenciones, BigDecimal pagosPrevios,
+            BigDecimal pago
     ) {}
 }

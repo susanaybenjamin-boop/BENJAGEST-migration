@@ -124,6 +124,16 @@ public class SalesInvoiceController {
     }
 
     /**
+     * Regenera el asiento contable de una factura ya validada para aplicar el
+     * desglose de IVA por tipo, sin cambiar el estado ni el número del asiento.
+     */
+    @PostMapping("/{id}/regenerate-journal")
+    public java.util.Map<String, Object> regenerateJournal(@PathVariable("id") String id) {
+        service.regenerateJournal(id);
+        return java.util.Map.of("ok", true);
+    }
+
+    /**
      * TPB-3 — El cliente aprueba una factura emitida por su asesoría
      * por tercero. Solo accesible desde el tenant del cliente.
      */
