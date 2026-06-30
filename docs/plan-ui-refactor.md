@@ -144,8 +144,11 @@ una clase con `mountStandalone()`/`buildHolder()` o factoría en el shell; estad
     showManualFinancialEditor) → `ClientConfigScreen` (Host: `reloadRetaProfiles`). HECHO 2026-06-30.
   - `[x]` **AS-3** `buildClientSummaryTab` → `ClientSummaryScreen` (Host funcional: `buildClientKpisBlock`,
     compartido con AS-4). HECHO 2026-06-30.
-  - `[ ]` **AS-4** `buildClientSalesAndExpensesTab` (+`buildClientSalesArchivedTab`) → `ClientSalesExpensesScreen`
-    (no vinculado; reusa el KPIs block compartido).
+  - `[x]` **AS-4** `buildClientSalesArchivedTab` + sus 4 diálogos (duplicados/sin nº/descuadres/editar
+    concepto) + `isLikelyRectifying` + `loadClientSalesArchived` → `ClientSalesArchivedScreen` (Host:
+    `importSalesPdfsMulti`/`importPdfsAuto`/`openRecurringEditorFromInvoice`). HECHO 2026-06-30. NOTA: el
+    orquestador `buildClientSalesAndExpensesTab` se quedó en el shell (embebe purchases/recurrentes/KPIs
+    aún sin extraer); se extraerá cuando estén AS-6 y el KPIs block.
   - `[ ]` **AS-5** `buildClientTpbAgreementTab` → `ClientTpbAgreementScreen` (TPB + magic-link, caliente legal).
   - `[ ]` **AS-6** `buildClientBillingTab`/`buildClientPurchasesTab` → screens (operativa per-cliente).
   - `[ ]` **AS-7 (último)** `buildClientDetailView` composite → `ClientDetailScreen` con Host (TPB add/remove
