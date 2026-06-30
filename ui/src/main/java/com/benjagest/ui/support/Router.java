@@ -24,4 +24,7 @@ public interface Router {
 
     /** Lanza una tarea en segundo plano con guarda anti doble-ejecucion por clave. */
     void runTask(Task<?> task, String name);
+
+    /** Slug del modulo activo (para gating de polling, etc.). */
+    String currentModule();
 }
