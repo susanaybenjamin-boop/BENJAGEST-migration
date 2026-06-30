@@ -38,25 +38,14 @@ import javafx.scene.layout.VBox;
  * funcion de traduccion + el {@link Router} del shell, y expone {@link #buildView()}.
  * El shell solo hace currentModule/recordNav/select y monta el nodo.
  */
-public class SuggestionsScreen {
+public class SuggestionsScreen extends ScreenBase {
 
     private final AltaApiClient api;
-    private final Function<String, String> tt;
-    private final Router router;
 
     public SuggestionsScreen(AltaApiClient api, Function<String, String> tt, Router router) {
+        super(tt, router);
         this.api = api;
-        this.tt = tt;
-        this.router = router;
     }
-
-    // ---- delegados a los helpers compartidos (UIR-1..5) ----
-    private String t(String key) { return tt.apply(key); }
-    private Node icon(String literal) { return Icons.icon(literal); }
-    private Label label(String text, String styleClass) { return UiBuilders.label(text, styleClass); }
-    private ScrollPane scroll(VBox content) { return UiBuilders.scroll(content); }
-    private void showError(String title, String message) { Dialogs.error(title, BackendErrors.humanize(message)); }
-    private void start(Task<?> task, String name) { router.runTask(task, name); }
 
     public Node buildView() {
         VBox root = new VBox(16);
