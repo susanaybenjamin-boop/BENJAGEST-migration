@@ -267,6 +267,23 @@ Repaso punto por punto de lo que Benjamin reportó con el check en blanco. Estad
   arranque ligada a la cuenta, gating del combo ADVISORY, y el contrato del futuro servidor
   central). **Verificar antes de tocar auth/registro** (zona caliente, CLAUDE.md §11.2).
 
+- 🧹 **UIR — Troceado de la UI (refactor estructural, EN CURSO desde 2026-06-30).**
+  Desmontar el God Object `BenjagestUiApplication.java` (~44.125 líneas, ~145 métodos de
+  pantalla) en clases de pantalla independientes (`ui/screens/`), replicando el patrón ya
+  probado (`AccountingScreen`, `ClientFinancialsScreen`). **Plan completo en**
+  [`plan-ui-refactor.md`](plan-ui-refactor.md). Movimientos puros, sin cambiar comportamiento
+  (no tocar CSS ni claves i18n). Un dominio por commit; compilar + arrancar + merge develop
+  por slice. **La versión se sube una sola vez al terminar UIR-15** (actualización de seguridad
+  única vía auto-update), no por slice.
+  - **FASE 1 (andamiaje):** `[ ]` UIR-1 i18n→`I18n` (~8.200 líneas) · `[ ]` UIR-2 tipos anidados
+    (24) · `[ ]` UIR-3 `AppContext` + helpers.
+  - **FASE 2:** `[ ]` UIR-4 Router (cortar llamadas `showX()→showY()`).
+  - **FASE 3 (pantalla por pantalla, menor→mayor acoplamiento):** `[ ]` UIR-5 Login/Registro ·
+    `[ ]` UIR-6 RETA/DEHú · `[ ]` UIR-7 Portal empleado · `[ ]` UIR-8 Sugerencias/Perfil/Equipo ·
+    `[ ]` UIR-9 Fiscal · `[ ]` UIR-10 Calendario · `[ ]` UIR-11 Facturación/Compras/VeriFactu ·
+    `[ ]` UIR-12 Configuración/Certificados · `[ ]` UIR-13 Asesoría/Consolidación/TPB ·
+    `[ ]` UIR-14 Trabajos/Calendario laboral/Tablas año · `[ ]` UIR-15 Laboral/Nómina (el último).
+
 ---
 
 ## 📅 SESIÓN 2026-06-29 — Visibilidad calendario + FICHA-REVIEW + plan CONSOL/OFFLINE
