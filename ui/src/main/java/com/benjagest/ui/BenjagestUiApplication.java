@@ -23528,74 +23528,22 @@ public class BenjagestUiApplication extends Application
         setCenterAnimated(content);
     }
 
+    /**
+     * AS-1 — La pestaña "Clientes" se extrajo a
+     * {@link com.benjagest.ui.screens.ClientCustomersScreen}. El shell conserva este
+     * wrapper (3 call sites) y provee el Host con los diálogos de cliente compartidos.
+     */
     private Node buildClientCustomersTab() {
-        javafx.scene.control.TableView<com.benjagest.ui.model.CustomerSummary> table =
-                new javafx.scene.control.TableView<>();
-        table.getStyleClass().add("data-table");
-        table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
-        table.setPlaceholder(new Label(t("client.customers.empty")));
-        addCol(table, t("cli.field.legalName"), v -> v.legalName() == null ? "" : v.legalName(), 240);
-        addCol(table, t("cli.field.taxId"), v -> v.taxIdentifier() == null ? "" : v.taxIdentifier(), 120);
-        addCol(table, t("cli.col.vat"), v -> pctOrDash(v.defaultVatPercent()), 80);
-        addCol(table, t("cli.col.retention"), v -> pctOrDash(v.defaultRetentionPercent()), 90);
-        addCol(table, t("cli.field.city"), v -> v.city() == null ? "" : v.city(), 140);
-        addCol(table, t("cli.field.email"), v -> v.email() == null ? "" : v.email(), 220);
-        addCol(table, t("cli.field.phone"), v -> v.phone() == null ? "" : v.phone(), 120);
-        VBox.setVgrow(table, Priority.ALWAYS);
-
-        Runnable reload = () -> {
-            Task<List<com.benjagest.ui.model.CustomerSummary>> task = new Task<>() {
-                @Override
-                protected List<com.benjagest.ui.model.CustomerSummary> call() throws Exception {
-                    return customerApiClient.list();
-                }
-            };
-            task.setOnSucceeded(ev -> table.setItems(FXCollections.observableArrayList(task.getValue())));
-            task.setOnFailed(ev -> showError(t("client.customers.load.fail"),
-                    task.getException() == null ? "" : task.getException().getMessage()));
-            start(task, "client-customers-load");
-        };
-
-        Button newBtn = new Button(t("client.customers.new"));
-        newBtn.setGraphic(icon("fas-user-plus"));
-        newBtn.getStyleClass().add("primary-button");
-        newBtn.setOnAction(e -> openNewCustomerDialog(reload));
-
-        Button editBtn = new Button(t("client.customers.edit"));
-        editBtn.setGraphic(icon("fas-pen"));
-        editBtn.setDisable(true);
-        editBtn.setOnAction(e -> {
-            var sel = table.getSelectionModel().getSelectedItem();
-            if (sel != null) showCustomerDetailDialog(sel.id(), reload);
-        });
-        table.getSelectionModel().selectedItemProperty().addListener((o, ov, nv) ->
-                editBtn.setDisable(nv == null));
-        table.setRowFactory(tv -> {
-            javafx.scene.control.TableRow<com.benjagest.ui.model.CustomerSummary> row =
-                    new javafx.scene.control.TableRow<>();
-            row.setOnMouseClicked(ev -> {
-                if (ev.getClickCount() == 2 && !row.isEmpty()) {
-                    showCustomerDetailDialog(row.getItem().id(), reload);
-                }
-            });
-            return row;
-        });
-
-        Button refresh = new Button(t("accounting.action.refresh"));
-        refresh.setGraphic(icon("fas-sync-alt"));
-        refresh.setOnAction(e -> reload.run());
-
-        Label hint = new Label(t("client.customers.hint"));
-        hint.setWrapText(true);
-        hint.getStyleClass().add("settings-hint");
-
-        HBox actions = new HBox(8, newBtn, editBtn, refresh);
-        actions.setAlignment(Pos.CENTER_LEFT);
-        VBox.setVgrow(table, Priority.ALWAYS);
-        VBox box = new VBox(10, hint, actions, table);
-        box.setPadding(new Insets(12));
-        reload.run();
-        return box;
+        return new com.benjagest.ui.screens.ClientCustomersScreen(
+                customerApiClient, this::t, this,
+                new com.benjagest.ui.screens.ClientCustomersScreen.Host() {
+                    @Override public void openNewCustomerDialog(Runnable onSaved) {
+                        BenjagestUiApplication.this.openNewCustomerDialog(onSaved);
+                    }
+                    @Override public void showCustomerDetailDialog(String customerId, Runnable onSaved) {
+                        BenjagestUiApplication.this.showCustomerDetailDialog(customerId, onSaved);
+                    }
+                }).buildTab();
     }
 
     private Node buildClientBillingTab() {
