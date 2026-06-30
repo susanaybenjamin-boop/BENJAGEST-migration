@@ -19,6 +19,9 @@ public interface Router {
     /** Monta un nodo en el centro del shell, con la animacion estandar. */
     void setCenter(Node node);
 
+    /** Monta un nodo en el centro SIN animacion (para refrescos de polling). */
+    void setCenterSilent(Node node);
+
     /** Lanza una tarea en segundo plano con guarda anti doble-ejecucion por clave. */
     void runTask(Task<?> task, String name);
 }

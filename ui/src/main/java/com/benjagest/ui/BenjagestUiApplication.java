@@ -14150,7 +14150,7 @@ public class BenjagestUiApplication extends Application implements com.benjagest
      * pantalla cada N segundos — usar la versión animada haría
      * parpadear toda la vista en cada tick.
      */
-    private void setCenterSilent(Node node) {
+    @Override public void setCenterSilent(Node node) {
         Node centerNode = (node instanceof ScrollPane) ? node
                 : com.benjagest.ui.layout.ResponsiveLayout.screen(node);
         root.setCenter(centerNode);

@@ -42,4 +42,24 @@ public final class Formatters {
         }
         return value;
     }
+
+    /**
+     * Instante ISO -> "yyyy-MM-dd HH:mm:ss" en hora LOCAL. Si trae zona
+     * (sufijo Z u offset) lo convierte a la zona del sistema; si no, recorta.
+     */
+    public static String shortIso(String iso) {
+        if (iso == null || iso.length() < 19) {
+            return iso == null ? "" : iso;
+        }
+        try {
+            if (iso.endsWith("Z") || iso.matches(".*[+-]\\d\\d:?\\d\\d$")) {
+                return java.time.OffsetDateTime.parse(iso)
+                        .atZoneSameInstant(java.time.ZoneId.systemDefault())
+                        .format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
+            }
+        } catch (Exception ignored) {
+            // formato inesperado -> recorte simple de abajo
+        }
+        return iso.substring(0, 10) + " " + iso.substring(11, 19);
+    }
 }
