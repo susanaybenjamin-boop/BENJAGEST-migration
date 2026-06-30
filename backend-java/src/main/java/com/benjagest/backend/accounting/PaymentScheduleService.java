@@ -37,14 +37,17 @@ public class PaymentScheduleService {
     private final TenantContext tenant;
     private final CurrentUserService currentUser;
     private final com.benjagest.backend.billing.reflection.CrossInvoiceReflectionService reflectionService;
+    private final com.benjagest.backend.billing.tpb.BillingAgreementGuard billingAgreementGuard;
 
     public PaymentScheduleService(JdbcTemplate jdbc, TenantContext tenant,
                                     CurrentUserService currentUser,
-                                    com.benjagest.backend.billing.reflection.CrossInvoiceReflectionService reflectionService) {
+                                    com.benjagest.backend.billing.reflection.CrossInvoiceReflectionService reflectionService,
+                                    com.benjagest.backend.billing.tpb.BillingAgreementGuard billingAgreementGuard) {
         this.jdbc = jdbc;
         this.tenant = tenant;
         this.currentUser = currentUser;
         this.reflectionService = reflectionService;
+        this.billingAgreementGuard = billingAgreementGuard;
     }
 
     // ====================================================================
@@ -90,6 +93,7 @@ public class PaymentScheduleService {
     public List<DueDate> replaceSchedule(String invoiceKind, String invoiceId,
                                            List<DueDateRequest> rows) {
         kindCheck(invoiceKind);
+        billingAgreementGuard.requireAgreementOrOwnForInvoiceKind(invoiceKind);
         if (rows == null || rows.isEmpty()) throw bad("Indica al menos un vencimiento.");
         InvoiceInfo info = loadInvoice(invoiceKind, invoiceId);
 
@@ -133,6 +137,7 @@ public class PaymentScheduleService {
     public DueDate pay(String dueDateId, PayRequest req) {
         String companyId = tenant.getCurrentCompanyId();
         DueDate dd = getOne(dueDateId);
+        billingAgreementGuard.requireAgreementOrOwnForInvoiceKind(dd.invoiceKind());
         if ("PAID".equals(dd.status())) throw bad("Este vencimiento ya está pagado.");
         if (req.treasuryAccountCode() == null || req.treasuryAccountCode().isBlank()) {
             throw bad("Indica la cuenta de tesorería (Banco 572 / Caja 570).");
@@ -258,6 +263,7 @@ public class PaymentScheduleService {
     public DueDate unpay(String dueDateId) {
         String companyId = tenant.getCurrentCompanyId();
         DueDate dd = getOne(dueDateId);
+        billingAgreementGuard.requireAgreementOrOwnForInvoiceKind(dd.invoiceKind());
         if (!"PAID".equals(dd.status())) throw bad("Este vencimiento no está pagado.");
         if (dd.journalEntryId() != null) {
             jdbc.update("DELETE FROM journal_entry_lines WHERE journal_entry_id = ?", dd.journalEntryId());

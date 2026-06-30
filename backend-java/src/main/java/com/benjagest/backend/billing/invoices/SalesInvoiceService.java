@@ -54,6 +54,7 @@ public class SalesInvoiceService {
     private final com.benjagest.backend.tenant.TenantContext tenantContext;
     private final org.springframework.jdbc.core.JdbcTemplate jdbcForTpb;
     private final com.benjagest.backend.billing.reflection.CrossInvoiceReflectionService reflectionService;
+    private final com.benjagest.backend.billing.tpb.BillingAgreementGuard billingAgreementGuard;
 
     public SalesInvoiceService(SalesInvoiceRepository repository,
                                SeriesService seriesService,
@@ -69,7 +70,8 @@ public class SalesInvoiceService {
                                com.benjagest.backend.auth.CurrentUserService currentUserService,
                                com.benjagest.backend.tenant.TenantContext tenantContext,
                                org.springframework.jdbc.core.JdbcTemplate jdbcForTpb,
-                               com.benjagest.backend.billing.reflection.CrossInvoiceReflectionService reflectionService) {
+                               com.benjagest.backend.billing.reflection.CrossInvoiceReflectionService reflectionService,
+                               com.benjagest.backend.billing.tpb.BillingAgreementGuard billingAgreementGuard) {
         this.repository = repository;
         this.seriesService = seriesService;
         this.verifactuRegistryService = verifactuRegistryService;
@@ -85,6 +87,7 @@ public class SalesInvoiceService {
         this.tenantContext = tenantContext;
         this.jdbcForTpb = jdbcForTpb;
         this.reflectionService = reflectionService;
+        this.billingAgreementGuard = billingAgreementGuard;
     }
 
     public List<SalesInvoice> list(String statusFilter,
@@ -125,6 +128,8 @@ public class SalesInvoiceService {
 
     @Transactional
     public SalesInvoice createDraft(InvoiceUpsertRequest request) {
+        billingAgreementGuard.requireAgreementOrOwn(
+                com.benjagest.backend.billing.tpb.BillingAgreementGuard.Scope.SALES);
         String id = UUID.randomUUID().toString();
         LocalDate invoiceDate = request.invoiceDate() == null ? LocalDate.now() : request.invoiceDate();
         LocalDate dueDate = request.dueDate() == null ? invoiceDate.plusDays(30) : request.dueDate();
@@ -177,6 +182,8 @@ public class SalesInvoiceService {
 
     @Transactional
     public SalesInvoice updateDraft(String id, InvoiceUpsertRequest request) {
+        billingAgreementGuard.requireAgreementOrOwn(
+                com.benjagest.backend.billing.tpb.BillingAgreementGuard.Scope.SALES);
         SalesInvoice existing = get(id);
         // Editable: DRAFT (cualquier tipo) o PROFORMA VALIDATED (la
         // proforma no es documento fiscal y sigue siendo borrador
@@ -236,7 +243,25 @@ public class SalesInvoiceService {
 
     @Transactional
     public SalesInvoice validate(String id) {
+        billingAgreementGuard.requireAgreementOrOwn(
+                com.benjagest.backend.billing.tpb.BillingAgreementGuard.Scope.SALES);
         return validateInternal(id);
+    }
+
+    /**
+     * Regenera el asiento contable de una factura (desglose de IVA por tipo)
+     * sin alterar su estado/numeración. Útil para actualizar facturas ya
+     * validadas cuyo asiento se creó antes del desglose.
+     */
+    @Transactional
+    public void regenerateJournal(String id) {
+        billingAgreementGuard.requireAgreementOrOwn(
+                com.benjagest.backend.billing.tpb.BillingAgreementGuard.Scope.SALES);
+        SalesInvoice invoice = get(id);
+        String userId;
+        try { userId = currentUserService.require().userId(); }
+        catch (Exception ex) { userId = null; }
+        salesJournalService.regenerateForSales(invoice, userId);
     }
 
     /**
@@ -433,6 +458,8 @@ public class SalesInvoiceService {
      */
     @Transactional
     public SalesInvoice voidValidated(String validatedId) {
+        billingAgreementGuard.requireAgreementOrOwn(
+                com.benjagest.backend.billing.tpb.BillingAgreementGuard.Scope.SALES);
         SalesInvoice original = get(validatedId);
         if (!"VALIDATED".equals(original.status())) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
@@ -652,6 +679,8 @@ public class SalesInvoiceService {
 
     @Transactional
     public void deleteDraft(String id) {
+        billingAgreementGuard.requireAgreementOrOwn(
+                com.benjagest.backend.billing.tpb.BillingAgreementGuard.Scope.SALES);
         SalesInvoice existing = get(id);
         boolean isDraft = "DRAFT".equals(existing.status());
         boolean isProforma = "PROFORMA".equals(existing.invoiceType());
