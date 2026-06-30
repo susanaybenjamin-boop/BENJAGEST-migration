@@ -204,6 +204,14 @@ Repaso punto por punto de lo que Benjamin reportó con el check en blanco. Estad
 ### Fase 5 — Empaquetado y despliegue 📦
 - ✅ **DEPLOY-PKG**: instalable Windows autocontenido (UI + backend + MariaDB embebida + OCR Tesseract)
   con icono propio. **HECHO y verificado 2026-06-29** (`.msi` por jpackage, arranca/reabre solo).
+  - ⚠️ **PENDIENTE empaquetado (anotado 2026-06-30): incluir `gestor-navegador.jar` en el instalable.**
+    La UI lanza el gestor-navegador como **proceso aparte** desde
+    `gestor-navegador/target/gestor-navegador.jar` (fat-jar shade, `mvn -pl gestor-navegador package`).
+    Hoy `build-msi.ps1`/`build-app-image.ps1` **NO lo copian** → en una instalación el botón "Gestor
+    navegador" muestra "no está compilado". **Antes de la próxima subida de versión**: empaquetar ese
+    jar dentro del `.msi` y que `gestorNavegadorJar()` (UI) lo localice también en la ruta instalada
+    (hoy busca rutas relativas al repo + `-Dgestor.navegador.jar`). Bloquea que el gestor funcione en
+    la app instalada, no en desarrollo.
 - ✅ **AUTO-UPDATE**: comprobación + actualización in-app vía GitHub Releases. **HECHO y probado en
   real 2026-06-29** (0.1.0→0.1.1→0.1.2). `gh release create` + bump `UpdateService.APP_VERSION`.
 - **Cloudflare Tunnel** para el portal del empleado (acceso externo). ← pendiente. **Estado y plan
