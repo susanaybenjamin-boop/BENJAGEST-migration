@@ -107,13 +107,19 @@ public class InvoiceEmailService {
 
     private String lookupCustomerEmail(String customerId) {
         if (!StringUtils.hasText(customerId)) return null;
+        // El email del cliente lo escribe la ficha en customers.email (editor
+        // PORT-4); customer_contacts es legacy. Resolvemos IGUAL que el read del
+        // cliente (CustomerRepository): prioridad customers.email, fallback al
+        // contacto principal. Antes leía solo customer_contacts → no encontraba
+        // el email tecleado en la ficha y daba "el cliente no tiene email".
         return jdbcTemplate.query("""
-                SELECT email
-                  FROM customer_contacts
-                 WHERE customer_id = ?
-                   AND primary_contact = TRUE
-                   AND active = TRUE
-                 LIMIT 1
+                SELECT NULLIF(COALESCE(NULLIF(c.email, ''), pc.email), '') AS email
+                  FROM customers c
+                  LEFT JOIN customer_contacts pc
+                         ON pc.customer_id = c.id
+                        AND pc.primary_contact = TRUE
+                        AND pc.active = TRUE
+                 WHERE c.id = ?
                 """,
                 rs -> rs.next() ? rs.getString("email") : null,
                 customerId);
