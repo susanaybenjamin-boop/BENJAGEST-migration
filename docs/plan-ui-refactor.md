@@ -149,7 +149,10 @@ una clase con `mountStandalone()`/`buildHolder()` o factoría en el shell; estad
     `importSalesPdfsMulti`/`importPdfsAuto`/`openRecurringEditorFromInvoice`). HECHO 2026-06-30. NOTA: el
     orquestador `buildClientSalesAndExpensesTab` se quedó en el shell (embebe purchases/recurrentes/KPIs
     aún sin extraer); se extraerá cuando estén AS-6 y el KPIs block.
-  - `[ ]` **AS-5** `buildClientTpbAgreementTab` → `ClientTpbAgreementScreen` (TPB + magic-link, caliente legal).
+  - `[x]` **AS-5** `buildClientTpbAgreementTab` + `renderTpbState` + 7 `tpb*Action` + `showTpbProposeDialog`
+    → `ClientTpbAgreementScreen` (TPB RD 1619/2012, magic-link+OTP/PIN, polling 5s). Sin Host (callbacks
+    onActivated/onRevoked como params). `tpbDownloadSignedPdfAction`/`tpbRevokeAction` + `humanizeTpb*`
+    se quedan/copian en shell (los usa también la vista TPB del cliente). HECHO 2026-06-30.
   - `[ ]` **AS-6** `buildClientBillingTab`/`buildClientPurchasesTab` → screens (operativa per-cliente).
   - `[ ]` **AS-7 (último)** `buildClientDetailView` composite → `ClientDetailScreen` con Host (TPB add/remove
     de tabs en caliente, polling, salto por aviso de cartera).
