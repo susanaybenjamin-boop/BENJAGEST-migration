@@ -61,19 +61,31 @@ Cada pantalla = una clase en `ui/screens/`:
 > `Formatters`, `BackendErrors`. Pendiente del kit: content/errorPanel/iconBubble/
 > shortIso/blankToNullOrSelf/installDialog/comparadores/setCenterSilent.
 
-### 🔴 FASE 3 — Pantalla por pantalla (orden de menor a mayor acoplamiento)
-- **UIR-5** — ✅ Sugerencias (plantilla; runtime-validada por Benjamin). Login/Registro
-  queda para más adelante (camino crítico).
-- **UIR-6** — RETA / DEHú (M)
-- **UIR-7** — Portal empleado (MEMP) (S)
-- **UIR-8** — Sugerencias / Perfil / Bloqueo / Equipo (M)
-- **UIR-9** — Fiscal (Modelos AEAT 303/130/347/390/190) (L)
-- **UIR-10** — Calendario (S)
-- **UIR-11** — Facturación / Compras / Ventas / VeriFactu (XL)
-- **UIR-12** — Configuración / Settings / Certificados / Credenciales (L)
-- **UIR-13** — Asesoría / Clientes gestionados / Consolidación / TPB (XL)
-- **UIR-14** — Trabajos / Calendario laboral / Centros / Tablas año-dependientes (L)
-- **UIR-15** — Laboral / Nómina (NOM) (XXL) — **el último**, cuando el patrón ya esté rodado
+### 🔴 FASE 3 — Pantalla por pantalla (estado real 2026-06-30)
+**Hechos y validados en runtime:** ✅ UIR-5 Sugerencias · ✅ UIR-6 Equipo · ✅ UIR-7 Portal
+empleado · ✅ UIR-8 DEHú (polling fiel) · ✅ UIR-9 **Fiscal** (reutilizable standalone+ficha)
+· ✅ UIR-10 **RETA** (reutilizable + cross-tab reload). Monolito 44.126 → ~32.000 (−27,5%).
+
+**Patrón "Screen reutilizable" establecido** para operativos incrustados en fichas de cliente:
+una clase con `mountStandalone()`/`buildHolder()` o factoría en el shell; estado compartido
+(year/refresh) encapsulado; cross-tab reload vía instancia guardada en el shell.
+
+**Pendiente — son MEGA-BLOQUES entrelazados, no pantallas sueltas:**
+- **🧾 BLOQUE FACTURACIÓN (XL)** — Facturación + Trabajos + Compras giran TODOS alrededor del
+  **editor de factura** (campos `editor*`: `editorLinesTable`, `editorCustomerCombo`,
+  `editor*Label`, `editorPendingWorkLogIds` + `recomputeEditorTotals`). Secuencia segura:
+  1. **FAC-1**: diálogos auto-contenidos (Migración baselines, Declaración fabricante) →
+     `BillingDialogsScreen`. 0 acoplamiento al editor. (Series/IVA: con callback de recarga.)
+  2. **FAC-2**: el **editor de factura** (`showInvoiceEditor` + campos `editor*` +
+     `recomputeEditorTotals` + edición de líneas) → `InvoiceEditorScreen`. El corazón.
+  3. **FAC-3**: reunir **Trabajos** (`showWorkLogBillingDialog`, `showImportWorkLogsToInvoice`)
+     para que usen `InvoiceEditorScreen` (eran el motivo del acoplamiento, ver revert UIR-11 trabajos).
+  4. **FAC-4**: `showBilling` (listado/módulo) → `BillingScreen`, usando InvoiceEditorScreen.
+- **🏢 BLOQUE ASESORÍA (XL)** — el composite que incrusta TODOS los operativos en las fichas
+  de cliente (`buildClientDetailView` + tabs). Va después de tener los operativos extraídos.
+- **💰 BLOQUE NÓMINA (XXL)** — el último.
+- **Sueltos menores:** Perfil (lock/screensaver Timeline), Calendario (helpers de dashboard),
+  Configuración/Settings, Login/Registro (crítico).
 
 ## Reglas de seguridad (no negociables)
 1. **Un dominio por commit** (revertible).
