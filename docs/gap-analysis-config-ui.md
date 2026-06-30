@@ -1,5 +1,15 @@
 # Análisis Profundo: Configuración de Usuario e Interfaces (CONTENDO vs BENJAGEST)
 
+> ## ⚠️ DOCUMENTO HISTÓRICO — análisis de 2026-05-31, mayormente cerrado
+>
+> La mayoría de las "faltas accionables" de este análisis **ya se construyeron**
+> (separación user/company settings vía `V84__user_settings.sql`, catálogo de IVA
+> `V23`/`V31`, gestión de certificado `.p12` en el paquete `certificates/`, bloqueo
+> por inactividad + salvapantallas). Solo siguen abiertos **por decisión**: Command
+> Palette y AI Copilot flotante (no priorizados) y el dashboard reordenable
+> (DESCARTADO por Benjamin 2026-06-29). Para el estado real, ver
+> **[`backlog.md`](backlog.md)**.
+
 > Análisis específico de la configuración de usuario, preferencias y comparativa de interfaces entre la versión original en Next.js (CONTENDO GESTIONES) y la migración a JavaFX (BENJAGEST).
 > Fecha: 2026-05-31
 

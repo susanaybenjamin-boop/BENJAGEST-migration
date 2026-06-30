@@ -1,11 +1,25 @@
 # Roadmap de migración BENJAGEST
 
-> Documento de seguimiento. Aquí se va marcando lo que ya está hecho
-> según se completa, para no perder de vista lo que falta y no
-> saltarnos nada.
+> ## ⚠️ DOCUMENTO HISTÓRICO — congelado en 2026-05-30
 >
-> Documento vivo: lo actualizamos en cada commit que cierre uno de
-> los items. Si descubrimos algo nuevo que falta, se añade aquí.
+> **Este roadmap NO refleja el estado actual del proyecto.** Se quedó congelado
+> el 2026-05-30, cuando casi todo el backend/UI estaba aún por hacer. Desde
+> entonces el proyecto avanzó enormemente (facturación, contabilidad, nóminas,
+> fichajes, RETA, asesoría, portal del empleado, kiosko, calendario/Google,
+> consolidación, offline, instalable `.msi`… todo cerrado), así que las columnas
+> `⏳ pendiente` de las tablas de abajo son **obsoletas**.
+>
+> 👉 **El tracker vivo y fiable es [`backlog.md`](backlog.md)** (con su sección
+> **🎯 RUTA DE CIERRE**). Para saber qué queda de verdad, mira ahí, no aquí.
+>
+> Se conserva este fichero como **registro histórico** del plan inicial de
+> migración. No se mantiene en paralelo (evitamos dos trackers que se contradicen).
+
+---
+
+> Documento de seguimiento _(histórico)_. Aquí se iba marcando lo que estaba hecho
+> según se completaba, para no perder de vista lo que faltaba y no
+> saltarnos nada.
 >
 > Fuente del alcance: [`gap-analysis-contendo.md`](gap-analysis-contendo.md)
 > (apartados 3 y 4) y [`migration-plan.md`](migration-plan.md) de Pablo.

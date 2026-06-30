@@ -1,5 +1,12 @@
 # Análisis de faltas: CONTENDO GESTIONES vs BENJAGEST migración
 
+> ## ⚠️ DOCUMENTO HISTÓRICO — inventario de 2026-05-27/31
+>
+> Es un **análisis puntual** (no un tracker vivo). La mayoría de las "faltas" que
+> lista **ya están implementadas** a fecha 2026-06-30. Se conserva como registro
+> del inventario inicial frente a CONTENDO. Para el estado real de hoy, mira
+> **[`backlog.md`](backlog.md)** (sección 🎯 RUTA DE CIERRE), que es el tracker vivo.
+
 > **Documento de Benjamin para Pablo.** Recoge, módulo a módulo, qué tiene hoy `CONTENDO GESTIONES` (la aplicación original, en Next.js + Supabase) que todavía no está contemplado, o solo parcialmente contemplado, en la migración a Java/MariaDB.
 >
 > Este documento **NO** propone implementaciones ni decide alcance. Solo lista lo detectado para que Pablo pueda planificar.
