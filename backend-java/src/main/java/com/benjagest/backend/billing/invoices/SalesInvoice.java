@@ -29,6 +29,7 @@ public record SalesInvoice(
         String companyId,
         String customerId,
         String customerLegalName,
+        String customerTaxId,
         String seriesId,
         String invoiceNumber,
         LocalDate invoiceDate,

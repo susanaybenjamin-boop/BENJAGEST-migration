@@ -423,7 +423,7 @@ public class BillingInvoicesScreen extends ScreenBase {
                 }
             } catch (Exception ignored) { /* fecha en formato inesperado */ }
             host.openRecurringEditorFromInvoice(
-                    "SALES_INVOICE", null, sel.customerLegalName(),
+                    "SALES_INVOICE", sel.customerTaxId(), sel.customerLegalName(),
                     sel.total(), invDate);
         });
 

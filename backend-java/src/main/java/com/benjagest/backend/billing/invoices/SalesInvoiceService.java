@@ -150,6 +150,7 @@ public class SalesInvoiceService {
                 null,
                 request.customerId(),
                 null,
+                null,
                 resolvedSeriesId,
                 null,
                 invoiceDate,
@@ -210,7 +211,7 @@ public class SalesInvoiceService {
         String resolvedSeriesId = seriesService.findActiveByKind(preservedType).id();
 
         SalesInvoice header = new SalesInvoice(
-                id, null, request.customerId(), null,
+                id, null, request.customerId(), null, null,
                 resolvedSeriesId, existing.invoiceNumber(),
                 invoiceDate, dueDate,
                 preservedType,
@@ -516,6 +517,7 @@ public class SalesInvoiceService {
                 null,
                 original.customerId(),
                 null,
+                null,
                 rectSeriesId,
                 null,
                 today,
@@ -640,7 +642,7 @@ public class SalesInvoiceService {
         // siguiente STANDARD (FRA-XXXX) en lugar de mantener el PROF-XXXX.
         String newSeriesId = seriesService.findActiveByKind("NORMAL").id();
         SalesInvoice mutated = new SalesInvoice(
-                existing.id(), null, existing.customerId(), null,
+                existing.id(), null, existing.customerId(), null, null,
                 newSeriesId,
                 fromValidated ? null : existing.invoiceNumber(),
                 existing.invoiceDate(), existing.dueDate(),
