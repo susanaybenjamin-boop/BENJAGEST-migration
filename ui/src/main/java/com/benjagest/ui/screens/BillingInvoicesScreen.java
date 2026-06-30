@@ -601,8 +601,19 @@ public class BillingInvoicesScreen extends ScreenBase {
             ok.setHeaderText(null);
             ok.showAndWait();
         });
-        task.setOnFailed(ev -> showError(t("list.dialog.email.fail.title"),
-                t("list.dialog.email.fail.body")));
+        task.setOnFailed(ev -> {
+            // Mostrar la causa REAL del backend (humanizada) en vez del genérico
+            // de "comprueba SMTP", que ocultaba el motivo real: cliente sin email,
+            // fallo de envío Gmail, SMTP mal configurado, etc. (mismo patrón que
+            // validateInvoiceFromList). showError ya humaniza; el guard evita
+            // mostrar el "HTTP 400: {json}" crudo si no se pudo extraer el message.
+            String raw = task.getException() == null ? null : task.getException().getMessage();
+            String real = com.benjagest.ui.support.BackendErrors.humanize(raw);
+            String body = (real == null || real.isBlank() || real.equals(raw))
+                    ? t("list.dialog.email.fail.body")
+                    : real;
+            showError(t("list.dialog.email.fail.title"), body);
+        });
         start(task, "billing-invoice-email");
     }
 
