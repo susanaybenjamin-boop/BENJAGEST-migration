@@ -276,14 +276,21 @@ Repaso punto por punto de lo que Benjamin reportó con el check en blanco. Estad
   central). **Verificar antes de tocar auth/registro** (zona caliente, CLAUDE.md §11.2).
 
 - 🧹 **UIR — Troceado de la UI (refactor estructural, EN CURSO desde 2026-06-30).**
-  > ▶️ **REANUDAR AQUÍ (próxima sesión):** ejecutar **FAC-2 = editor de factura → `InvoiceEditorScreen`**.
-  > Mapa línea-a-línea ya hecho en [`plan-ui-refactor.md`](plan-ui-refactor.md) (sección BLOQUE FACTURACIÓN,
-  > FAC-2). Es todo-o-nada (~1.200 líneas, 4 regiones, 4 ApiClients, 8 callers; shell mantiene wrapper
-  > `showInvoiceEditor` → callers no cambian). Receta: script 4 regiones → `mvn -pl ui clean compile` →
-  > arreglar helpers compartidos → **Benjamin prueba facturación (propia + ficha cliente + importar
-  > trabajos)** → seguir FAC-3 (reunir Trabajos) y FAC-4 (`showBilling`→`BillingScreen`).
-  > **Estado al pausar 2026-06-30:** monolito 31.971 líneas (−27,5%); extraídos y validados Sugerencias,
-  > Equipo, Portal, DEHú, Fiscal, RETA; clean compile OK; nada a medias; versión SIN subir.
+  > ▶️ **REANUDAR AQUÍ (sesión 2026-07-01):** ejecutar **FAC-4a = config tab de facturación →
+  > `BillingConfigScreen`**. Mapa línea-a-línea en [`plan-ui-refactor.md`](plan-ui-refactor.md)
+  > (BLOQUE FACTURACIÓN, FAC-4, sub-bullet "Resto FAC-4a"). Mover `billingConfigTab` + `showSeriesEditor`
+  > + `saveVerifactuConfig` + `saveVatRegime` + `saveInvoiceTexts` + `vatRegimeBlock` + migración
+  > (`applyMigration`/`resolveMigrationSeries`/`buildMigrationTokenTagger`) a `BillingConfigScreen` con
+  > Host (patrón ya usado en `InvoiceEditorScreen`/`BillingDialogsScreen`). **Zona caliente legal**
+  > (series RD 1619/2012 + VeriFactu) → mover, no reescribir; `mvn -pl ui compile` + Benjamin prueba
+  > config. Luego FAC-4b (invoices tab → `BillingInvoicesScreen`), después BLOQUE ASESORÍA (XL) y
+  > BLOQUE NÓMINA (XXL).
+  > **Estado al pausar 2026-06-30 (sesión maratón):** monolito 30.447 líneas. HECHO y en `develop`:
+  > FAC-2 (editor→`InvoiceEditorScreen`), FAC-1 (`BillingDialogsScreen`), FAC-3 (resuelto por FAC-2),
+  > FAC-4 parcial (`VatRatesScreen` + `SifAuditScreen`). Además, fuera del troceado: V157 (fix validar
+  > VeriFactu), bloque AGR (gate de acuerdo de facturación por tercero, backend+UI), desglose de IVA por
+  > tipo en asientos + 303/390 desde la contabilidad (V158/V159), prefill 303/130, fix texto vencimiento
+  > PDF, dedup declaraciones AEAT. Todo compila; nada a medias; versión SIN subir.
 
   Desmontar el God Object `BenjagestUiApplication.java` (~44.125 líneas, ~145 métodos de
   pantalla) en clases de pantalla independientes (`ui/screens/`), replicando el patrón ya
