@@ -83,8 +83,18 @@ public class EmailSenderService {
      */
     public void send(String to, String subject, String body,
                      byte[] attachmentBytes, String attachmentName) {
-        if (sentViaGmail(currentCompanyIdSafe(), to, subject, body, attachmentBytes, attachmentName)) return;
-        EmailConfigRow row = repository.findCurrent().orElseThrow(() ->
+        Optional<EmailConfigRow> smtp = repository.findCurrent();
+        try {
+            if (sentViaGmail(currentCompanyIdSafe(), to, subject, body, attachmentBytes, attachmentName)) return;
+        } catch (RuntimeException gmailEx) {
+            // Gmail esta habilitado para la empresa pero el envio fallo (p.ej. la
+            // Gmail API no esta habilitada en el proyecto de Google Cloud, o el
+            // token/scope caduco). Si hay SMTP configurado, lo usamos de respaldo
+            // para que el correo salga igualmente; si no, propagamos el error REAL
+            // de Gmail (no el generico de SMTP, que despistaria).
+            if (smtp.isEmpty() || !StringUtils.hasText(smtp.get().smtpHost())) throw gmailEx;
+        }
+        EmailConfigRow row = smtp.orElseThrow(() ->
                 new ResponseStatusException(HttpStatus.BAD_REQUEST,
                         "La empresa no tiene configurado el SMTP. Configuralo en Configuracion -> Email."));
         sendWith(row, to, subject, body, attachmentBytes, attachmentName);
