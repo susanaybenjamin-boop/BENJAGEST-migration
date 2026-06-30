@@ -102,7 +102,7 @@ import javafx.scene.layout.VBox;
 import javafx.stage.Stage;
 import javafx.util.Duration;
 
-public class BenjagestUiApplication extends Application {
+public class BenjagestUiApplication extends Application implements com.benjagest.ui.support.Router {
 
     private static final List<ModuleLink> ADVISORY_MODULES = List.of(
             // Slice 3G-2 — Acceso directo a la propia gestión de la
@@ -3357,6 +3357,11 @@ public class BenjagestUiApplication extends Application {
         });
         start(task, "portfolio-financials");
     }
+
+    // ---- Router (UIR-4): adaptadores del shell para las pantallas extraídas ----
+    @Override public void navigateTo(String module) { showModule(module); }
+    @Override public void setCenter(Node node) { setCenterAnimated(node); }
+    @Override public void runTask(Task<?> task, String name) { start(task, name); }
 
     private void showModule(String module) {
         recordNav(() -> showModule(module));

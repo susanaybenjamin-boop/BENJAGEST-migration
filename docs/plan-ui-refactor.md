@@ -79,4 +79,4 @@ vez, cuando TODO el bloque (hasta UIR-15) esté terminado**, para que llegue com
 ## Estado
 - [x] UIR-1 (i18n→I18n, −8.684 líneas) · [x] UIR-2 (tipos transversales; bundles diferidos a Fase 3)
   · [x] UIR-3 (helpers stateless Icons/Formatters/Dialogs; AppContext god-object descartado)
-  · [ ] UIR-4 · [ ] UIR-5 … UIR-15
+  · [x] UIR-4 (Router: navigateTo/setCenter/runTask) · [ ] UIR-5 … UIR-15
