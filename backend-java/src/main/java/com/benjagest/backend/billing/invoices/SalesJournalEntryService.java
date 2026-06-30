@@ -169,15 +169,6 @@ public class SalesJournalEntryService {
                 && !invoice.customerLegalName().isBlank()
                 ? invoice.customerLegalName() : "Cliente";
         String incomeDesc = buildIncomeLineDescription(invoice, acc7xx, companyId);
-        BigDecimal vatRate = invoice.vatTotal() != null && invoice.subtotal() != null
-                && invoice.subtotal().signum() > 0
-                ? invoice.vatTotal()
-                        .multiply(java.math.BigDecimal.valueOf(100))
-                        .divide(invoice.subtotal(), 0, java.math.RoundingMode.HALF_UP)
-                : null;
-        String vatDesc = "IVA repercutido"
-                + (vatRate != null ? " " + vatRate + "%" : "")
-                + " — " + clientDesc;
         String retentionDesc = "Retención IRPF — " + clientDesc;
 
         // Debe 430: cliente cobra total menos retención
@@ -189,12 +180,11 @@ public class SalesJournalEntryService {
             insertLine(entryId, acc473, retentionDesc, retention, BigDecimal.ZERO);
         }
 
-        // Haber 7xx: ventas (base imponible) — cuenta propuesta por el
-        // aprendizaje o fallback 700.
-        insertLine(entryId, acc7xx, incomeDesc, BigDecimal.ZERO, invoice.subtotal());
-
-        // Haber 477: IVA repercutido
-        insertLine(entryId, acc477, vatDesc, BigDecimal.ZERO, invoice.vatTotal());
+        // Haber 7xx (base) + Haber 477 (IVA) DESGLOSADOS por tipo de IVA, a
+        // partir de las líneas de la factura. Así una factura con 10% y 21%
+        // genera una base y una cuota por cada tipo, y el 303/390 puede leer
+        // las bases por tipo desde la contabilidad.
+        insertSalesVatLines(entryId, invoice, acc7xx, acc477, incomeDesc, clientDesc);
 
         // Si la cuenta 7xx vino de regla aprendida, registramos la
         // propuesta para que el flujo de aceptación pueda reforzarla.
@@ -240,6 +230,78 @@ public class SalesJournalEntryService {
                      WHERE id = ? AND company_id = ?
                     """, entryId, companyId);
         }
+    }
+
+    /**
+     * Regenera el asiento de una factura ya validada para aplicar el desglose
+     * de IVA por tipo, SIN cambiar el estado (POSTED) ni el número del asiento:
+     * reescribe solo sus líneas en su sitio. Reutiliza las cuentas que ya
+     * usaba el asiento (preserva la cuenta de ingreso elegida en su día). Si la
+     * factura no tenía asiento, lo crea de cero.
+     */
+    @Transactional
+    public String regenerateForSales(SalesInvoice invoice, String userId) {
+        String companyId = tenantContext.getCurrentCompanyId();
+        List<String> entryIds = jdbcTemplate.query("""
+                SELECT id FROM journal_entries
+                 WHERE source_type = ? AND source_id = ? AND company_id = ?
+                 ORDER BY created_at LIMIT 1
+                """, (rs, n) -> rs.getString("id"), SRC_TYPE, invoice.id(), companyId);
+        if (entryIds.isEmpty()) {
+            return createForSales(invoice, userId);
+        }
+        String entryId = entryIds.get(0);
+
+        // Reutilizar las cuentas ya presentes en el asiento (conserva la 7xx).
+        String acc430 = findLineAccountByPrefix(entryId, "430");
+        String acc7xx = findLineAccountByPrefix(entryId, "7");
+        String acc477 = findLineAccountByPrefix(entryId, "477");
+        String acc473 = findLineAccountByPrefix(entryId, "473");
+        if (acc430 == null) acc430 = findAccountByPrefix(companyId, "430");
+        if (acc7xx == null) acc7xx = findAccountByPrefix(companyId, "700");
+        if (acc477 == null) acc477 = findAccountByPrefix(companyId, "477");
+        if (acc430 == null || acc7xx == null || acc477 == null) {
+            // sin PGC suficiente no tocamos nada.
+            return entryId;
+        }
+        BigDecimal retention = invoice.retentionTotal() == null
+                ? BigDecimal.ZERO : invoice.retentionTotal();
+        if (retention.signum() > 0 && acc473 == null) {
+            acc473 = findAccountByPrefix(companyId, "473");
+        }
+
+        // Borrar líneas existentes (conservamos la cabecera: estado, número, fecha).
+        jdbcTemplate.update("""
+                DELETE FROM accounting_learning_events
+                 WHERE journal_entry_id = ? AND company_id = ?
+                """, entryId, companyId);
+        jdbcTemplate.update("DELETE FROM journal_entry_lines WHERE journal_entry_id = ?", entryId);
+
+        String clientDesc = invoice.customerLegalName() != null
+                && !invoice.customerLegalName().isBlank()
+                ? invoice.customerLegalName() : "Cliente";
+        String incomeDesc = buildIncomeLineDescription(invoice, acc7xx, companyId);
+        String retentionDesc = "Retención IRPF — " + clientDesc;
+
+        insertLine(entryId, acc430, clientDesc, invoice.total().subtract(retention), BigDecimal.ZERO);
+        if (acc473 != null && retention.signum() > 0) {
+            insertLine(entryId, acc473, retentionDesc, retention, BigDecimal.ZERO);
+        }
+        insertSalesVatLines(entryId, invoice, acc7xx, acc477, incomeDesc, clientDesc);
+        return entryId;
+    }
+
+    /** Id de la primera cuenta de una línea del asiento cuyo código empieza por {@code prefix}. */
+    private String findLineAccountByPrefix(String entryId, String prefix) {
+        List<String> ids = jdbcTemplate.query("""
+                SELECT l.account_id
+                  FROM journal_entry_lines l
+                  JOIN accounting_accounts a ON a.id = l.account_id
+                 WHERE l.journal_entry_id = ? AND a.code LIKE ?
+                 ORDER BY LENGTH(a.code), a.code
+                 LIMIT 1
+                """, (rs, n) -> rs.getString("account_id"), entryId, prefix + "%");
+        return ids.isEmpty() ? null : ids.get(0);
     }
 
     private String findOpenFiscalYearId(String companyId, LocalDate date) {
@@ -296,14 +358,80 @@ public class SalesJournalEntryService {
 
     private void insertLine(String entryId, String accountId, String description,
                               BigDecimal debit, BigDecimal credit) {
+        insertLine(entryId, accountId, description, debit, credit, null);
+    }
+
+    private void insertLine(String entryId, String accountId, String description,
+                              BigDecimal debit, BigDecimal credit, BigDecimal vatRate) {
         jdbcTemplate.update("""
                 INSERT INTO journal_entry_lines (
                     id, journal_entry_id, account_id, description,
-                    debit, credit
-                ) VALUES (?, ?, ?, ?, ?, ?)
+                    debit, credit, vat_rate
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
                 """,
                 UUID.randomUUID().toString(), entryId, accountId,
-                description, debit, credit);
+                description, debit, credit, vatRate);
+    }
+
+    /**
+     * Inserta las líneas de base (7xx) e IVA repercutido (477) DESGLOSADAS por
+     * tipo, a partir de las líneas de la factura. Cada par (base, cuota) lleva
+     * su {@code vat_rate}. Ajusta el redondeo del último tramo para que la suma
+     * de bases cuadre con {@code subtotal} y la de cuotas con {@code vatTotal}
+     * de la cabecera (el asiento debe cuadrar al céntimo).
+     */
+    private void insertSalesVatLines(String entryId, SalesInvoice invoice,
+                                     String acc7xx, String acc477,
+                                     String incomeDesc, String clientDesc) {
+        // Agrupar bases y cuotas por tipo (orden ascendente por tipo).
+        java.util.TreeMap<BigDecimal, BigDecimal[]> byRate = new java.util.TreeMap<>();
+        if (invoice.lines() != null) {
+            for (InvoiceLine l : invoice.lines()) {
+                BigDecimal rate = l.vatPercent() == null ? BigDecimal.ZERO : l.vatPercent();
+                BigDecimal base = l.lineSubtotal() == null ? BigDecimal.ZERO : l.lineSubtotal();
+                BigDecimal cuota = base.multiply(rate)
+                        .divide(BigDecimal.valueOf(100), 2, java.math.RoundingMode.HALF_UP);
+                byRate.merge(rate, new BigDecimal[]{base, cuota},
+                        (a, b) -> new BigDecimal[]{a[0].add(b[0]), a[1].add(b[1])});
+            }
+        }
+        // Si la factura no tuviera líneas (caso defensivo), un solo tramo con
+        // los totales de cabecera para no perder el asiento.
+        if (byRate.isEmpty()) {
+            insertLine(entryId, acc7xx, incomeDesc, BigDecimal.ZERO, invoice.subtotal(), null);
+            insertLine(entryId, acc477, "IVA repercutido — " + clientDesc,
+                    BigDecimal.ZERO, invoice.vatTotal(), null);
+            return;
+        }
+        // Ajuste de cuadre: la base/cuota del tramo de mayor base absorbe la
+        // diferencia de redondeo frente a la cabecera.
+        BigDecimal sumBase = BigDecimal.ZERO, sumCuota = BigDecimal.ZERO;
+        BigDecimal topRate = byRate.firstKey();
+        for (var e : byRate.entrySet()) {
+            sumBase = sumBase.add(e.getValue()[0]);
+            sumCuota = sumCuota.add(e.getValue()[1]);
+            if (e.getValue()[0].compareTo(byRate.get(topRate)[0]) > 0) topRate = e.getKey();
+        }
+        BigDecimal diffBase = (invoice.subtotal() == null ? sumBase : invoice.subtotal()).subtract(sumBase);
+        BigDecimal diffCuota = (invoice.vatTotal() == null ? sumCuota : invoice.vatTotal()).subtract(sumCuota);
+        byRate.get(topRate)[0] = byRate.get(topRate)[0].add(diffBase);
+        byRate.get(topRate)[1] = byRate.get(topRate)[1].add(diffCuota);
+
+        for (var e : byRate.entrySet()) {
+            BigDecimal rate = e.getKey();
+            BigDecimal base = e.getValue()[0];
+            BigDecimal cuota = e.getValue()[1];
+            String rateLabel = rate.stripTrailingZeros().toPlainString();
+            insertLine(entryId, acc7xx,
+                    incomeDesc + (rate.signum() > 0 ? " (" + rateLabel + "% IVA)" : ""),
+                    BigDecimal.ZERO, base, rate);
+            // 477 solo si hay tipo (>0); las líneas exentas (0%) no generan IVA.
+            if (rate.signum() > 0) {
+                insertLine(entryId, acc477,
+                        "IVA repercutido " + rateLabel + "% — " + clientDesc,
+                        BigDecimal.ZERO, cuota, rate);
+            }
+        }
     }
 
     /**

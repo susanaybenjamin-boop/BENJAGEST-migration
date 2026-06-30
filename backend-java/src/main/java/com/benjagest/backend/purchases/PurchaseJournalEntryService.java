@@ -188,10 +188,13 @@ public class PurchaseJournalEntryService {
                 ? purchase.supplierName()
                 : (purchase.supplierNif() != null ? purchase.supplierNif() : "Proveedor");
 
+        // Base (6xx) e IVA soportado (472) etiquetados con el tipo de IVA de la
+        // compra, para que el 303/390 derive el IVA soportado por tipo desde la
+        // contabilidad.
         insertLine(entryId, acc6xx, expenseDesc,
-                purchase.baseAmount(), java.math.BigDecimal.ZERO);
+                purchase.baseAmount(), java.math.BigDecimal.ZERO, purchase.vatPercent());
         insertLine(entryId, acc472, vatDesc,
-                purchase.vatAmount(), java.math.BigDecimal.ZERO);
+                purchase.vatAmount(), java.math.BigDecimal.ZERO, purchase.vatPercent());
         insertLine(entryId, acc400, supplierDesc,
                 java.math.BigDecimal.ZERO, purchase.totalAmount());
 
@@ -295,15 +298,21 @@ public class PurchaseJournalEntryService {
 
     private void insertLine(String entryId, String accountId, String description,
                               java.math.BigDecimal debit, java.math.BigDecimal credit) {
+        insertLine(entryId, accountId, description, debit, credit, null);
+    }
+
+    private void insertLine(String entryId, String accountId, String description,
+                              java.math.BigDecimal debit, java.math.BigDecimal credit,
+                              java.math.BigDecimal vatRate) {
         jdbcTemplate.update("""
                 INSERT INTO journal_entry_lines (
-                    id, journal_entry_id, account_id, description, debit, credit
-                ) VALUES (?, ?, ?, ?, ?, ?)
+                    id, journal_entry_id, account_id, description, debit, credit, vat_rate
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
                 """,
                 UUID.randomUUID().toString(), entryId, accountId,
                 description == null ? null
                         : (description.length() > 240 ? description.substring(0, 240) : description),
-                debit, credit);
+                debit, credit, vatRate);
     }
 
     /**

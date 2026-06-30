@@ -217,6 +217,16 @@ public class BillingApiClient {
         return parseInvoiceHeader(response.body());
     }
 
+    /** Regenera el asiento contable de una factura (desglose de IVA por tipo). */
+    public void regenerateInvoiceJournal(String id) throws IOException, InterruptedException {
+        HttpRequest.Builder builder = HttpRequest.newBuilder(URI.create(baseUrl + "/billing/invoices/" + id + "/regenerate-journal"))
+                .timeout(Duration.ofSeconds(15))
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.noBody());
+        HttpResponse<String> response = sendAuthorized(builder);
+        ensureOk(response);
+    }
+
     // ============================================================
     //  MULTI-ALLOCATION — un pago salda varias facturas (V102)
     // ============================================================

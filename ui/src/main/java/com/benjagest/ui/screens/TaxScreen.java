@@ -462,8 +462,37 @@ public class TaxScreen extends ScreenBase {
         }
         recompute.run();
 
-        grid.add(new Label(t("tax.editor.status")), 0, 9); grid.add(statusCombo, 1, 9);
-        grid.add(new Label(t("tax.editor.csv")), 2, 9); grid.add(csvField, 3, 9);
+        // MOD-PREFILL: rellenar las casillas desde las facturas VALIDADAS del
+        // trimestre. Las cuotas repercutidas se derivan (base × tipo).
+        java.util.function.Consumer<com.benjagest.ui.model.Aeat303Data> apply303 = d -> {
+            b4.setText(d.base4); b10.setText(d.base10); b21.setText(d.base21);
+            c4.setText(mulStr(d.base4, "0.04"));
+            c10.setText(mulStr(d.base10, "0.10"));
+            c21.setText(mulStr(d.base21, "0.21"));
+            bs.setText(d.baseSoportada); cs.setText(d.cuotaSoportada);
+            recompute.run();
+        };
+        Runnable recalc303 = () -> {
+            Integer q = existing.periodQuarter();
+            if (q == null) return;
+            Task<com.benjagest.ui.model.Aeat303Data> tk = new Task<>() {
+                @Override protected com.benjagest.ui.model.Aeat303Data call() throws Exception {
+                    return altaApiClient.preview303(existing.periodYear(), q);
+                }
+            };
+            tk.setOnSucceeded(ev -> apply303.accept(tk.getValue()));
+            tk.setOnFailed(ev -> showError(t("tax.editor.fail.title"), t("tax.editor.fail.body")));
+            start(tk, "aeat303-recalc");
+        };
+        Button recalc303Btn = new Button(t("aeat347.recalc"));
+        recalc303Btn.setGraphic(icon("fas-sync"));
+        recalc303Btn.setOnAction(e -> recalc303.run());
+        // Automático al abrir si el filing está vacío (no pisa ajustes guardados).
+        if (parsed.isEmpty()) recalc303.run();
+
+        grid.add(recalc303Btn, 0, 9, 4, 1);
+        grid.add(new Label(t("tax.editor.status")), 0, 10); grid.add(statusCombo, 1, 10);
+        grid.add(new Label(t("tax.editor.csv")), 2, 10); grid.add(csvField, 3, 10);
 
         installDialog(dialog, grid);
 
@@ -528,6 +557,30 @@ public class TaxScreen extends ScreenBase {
         }
         recompute.run();
 
+        // MOD-PREFILL: ingresos/gastos/retenciones (acumulado del año) y pagos
+        // previos (de los 130 anteriores) desde las facturas del cliente.
+        Runnable recalc130 = () -> {
+            Integer q = existing.periodQuarter();
+            if (q == null) return;
+            Task<com.benjagest.ui.model.Aeat130Data> tk = new Task<>() {
+                @Override protected com.benjagest.ui.model.Aeat130Data call() throws Exception {
+                    return altaApiClient.preview130(existing.periodYear(), q);
+                }
+            };
+            tk.setOnSucceeded(ev -> {
+                var d = tk.getValue();
+                ingresos.setText(d.ingresos); gastos.setText(d.gastos);
+                retencionesPrev.setText(d.retenciones); pagosPrev.setText(d.pagosPrevios);
+                recompute.run();
+            });
+            tk.setOnFailed(ev -> showError(t("tax.editor.fail.title"), t("tax.editor.fail.body")));
+            start(tk, "aeat130-recalc");
+        };
+        Button recalc130Btn = new Button(t("aeat347.recalc"));
+        recalc130Btn.setGraphic(icon("fas-sync"));
+        recalc130Btn.setOnAction(e -> recalc130.run());
+        if (parsed.isEmpty()) recalc130.run();
+
         GridPane grid = new GridPane();
         grid.setHgap(10); grid.setVgap(8); grid.setPadding(new Insets(12));
         grid.add(new Label("Ingresos acumulados"), 0, 0); grid.add(ingresos, 1, 0);
@@ -539,6 +592,7 @@ public class TaxScreen extends ScreenBase {
         grid.add(new Separator(), 0, 6, 2, 1);
         grid.add(new Label(t("tax.editor.status")), 0, 7); grid.add(statusCombo, 1, 7);
         grid.add(new Label(t("tax.editor.csv")), 0, 8); grid.add(csvField, 1, 8);
+        grid.add(recalc130Btn, 0, 9, 2, 1);
         installDialog(dialog, grid);
 
         dialog.showAndWait().ifPresent(bt -> {
@@ -644,6 +698,8 @@ public class TaxScreen extends ScreenBase {
             tk.setOnFailed(ev -> showError(t("tax.editor.fail.title"), t("tax.editor.fail.body")));
             start(tk, "aeat347-recalc");
         });
+        // MOD-PREFILL: auto-rellenar al abrir si el filing está vacío.
+        if (existing.dataJson() == null || existing.dataJson().isBlank()) recalcBtn.fire();
 
         ComboBox<String> statusCombo = new ComboBox<>();
         statusCombo.getItems().addAll("DRAFT", "READY", "PRESENTED", "PAID", "REJECTED");
@@ -802,6 +858,8 @@ public class TaxScreen extends ScreenBase {
             tk.setOnFailed(ev -> showError(t("tax.editor.fail.title"), t("tax.editor.fail.body")));
             start(tk, "aeat390-recalc");
         });
+        // MOD-PREFILL: auto-rellenar al abrir si el filing está vacío.
+        if (existing.dataJson() == null || existing.dataJson().isBlank()) recalcBtn.fire();
 
         GridPane g = new GridPane();
         g.setHgap(12); g.setVgap(8); g.setPadding(new Insets(12));
@@ -944,6 +1002,8 @@ public class TaxScreen extends ScreenBase {
             tk.setOnFailed(ev -> showError(t("tax.editor.fail.title"), t("tax.editor.fail.body")));
             start(tk, "aeat190-recalc");
         });
+        // MOD-PREFILL: auto-rellenar al abrir si el filing está vacío.
+        if (existing.dataJson() == null || existing.dataJson().isBlank()) recalcBtn.fire();
 
         ComboBox<String> statusCombo = new ComboBox<>();
         statusCombo.getItems().addAll("DRAFT", "READY", "PRESENTED", "PAID", "REJECTED");
@@ -1035,6 +1095,14 @@ public class TaxScreen extends ScreenBase {
             if (d != null) acc = acc.add(d);
         }
         return acc;
+    }
+
+    /** base × tipo, redondeado a 2 decimales (cuota de IVA). "0" si la base no parsea. */
+    private String mulStr(String base, String rate) {
+        java.math.BigDecimal b = parseDec(base);
+        if (b == null) return "0";
+        return b.multiply(new java.math.BigDecimal(rate))
+                .setScale(2, java.math.RoundingMode.HALF_UP).toPlainString();
     }
 
     /**

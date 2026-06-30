@@ -87,6 +87,22 @@ public class TaxFilingService {
     @Transactional
     public FilingView create(UpsertRequest req) {
         validate(req);
+        // Dedup: una declaración por empresa+modelo+periodo. Si ya existe (de
+        // cualquier estado), la devolvemos en vez de crear un duplicado — evita
+        // que "Nueva declaración" del mismo 303/130/… apile borradores repetidos.
+        List<String> existing = jdbcTemplate.query("""
+                SELECT id FROM tax_filings
+                 WHERE company_id = ? AND tax_model_code = ? AND period_year = ?
+                   AND ((period_quarter IS NULL AND ? IS NULL) OR period_quarter = ?)
+                   AND ((period_month IS NULL AND ? IS NULL) OR period_month = ?)
+                 LIMIT 1
+                """, (rs, n) -> rs.getString("id"),
+                tenantContext.getCurrentCompanyId(), req.taxModelCode(), req.periodYear(),
+                req.periodQuarter(), req.periodQuarter(),
+                req.periodMonth(), req.periodMonth());
+        if (!existing.isEmpty()) {
+            return findById(existing.get(0));
+        }
         String id = UUID.randomUUID().toString();
         LocalDate deadline = computeDeadline(req.taxModelCode(), req.periodYear(),
                 req.periodQuarter(), req.periodMonth());

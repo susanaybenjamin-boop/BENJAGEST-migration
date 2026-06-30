@@ -34,18 +34,24 @@ public class MultiAllocationPaymentService {
     private final TenantContext tenant;
     private final com.benjagest.backend.billing.reflection.CrossInvoiceReflectionService reflectionService;
     private final com.benjagest.backend.auth.CurrentUserService currentUserService;
+    private final com.benjagest.backend.billing.tpb.BillingAgreementGuard billingAgreementGuard;
 
     public MultiAllocationPaymentService(JdbcTemplate jdbc, TenantContext tenant,
             com.benjagest.backend.billing.reflection.CrossInvoiceReflectionService reflectionService,
-            com.benjagest.backend.auth.CurrentUserService currentUserService) {
+            com.benjagest.backend.auth.CurrentUserService currentUserService,
+            com.benjagest.backend.billing.tpb.BillingAgreementGuard billingAgreementGuard) {
         this.jdbc = jdbc;
         this.tenant = tenant;
         this.reflectionService = reflectionService;
         this.currentUserService = currentUserService;
+        this.billingAgreementGuard = billingAgreementGuard;
     }
 
     @Transactional
     public PaymentRegistrationResult registerMultiAllocation(MultiAllocationRequest req) {
+        // AGR-1: cobro de facturas de venta → exige acuerdo de facturación.
+        billingAgreementGuard.requireAgreementOrOwn(
+                com.benjagest.backend.billing.tpb.BillingAgreementGuard.Scope.SALES);
         if (req.allocations() == null || req.allocations().isEmpty()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "allocations no puede estar vacío");

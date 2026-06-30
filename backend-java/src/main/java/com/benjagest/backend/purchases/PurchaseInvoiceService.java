@@ -36,6 +36,7 @@ public class PurchaseInvoiceService {
     private final AuditService auditService;
     private final com.benjagest.backend.accounting.FiscalYearGuardService fiscalGuard;
     private final org.springframework.jdbc.core.JdbcTemplate jdbcTemplate;
+    private final com.benjagest.backend.billing.tpb.BillingAgreementGuard billingAgreementGuard;
 
     public PurchaseInvoiceService(PurchaseInvoiceRepository repository,
                                     PurchaseJournalEntryService journalService,
@@ -43,7 +44,8 @@ public class PurchaseInvoiceService {
                                     TenantContext tenantContext,
                                     AuditService auditService,
                                     com.benjagest.backend.accounting.FiscalYearGuardService fiscalGuard,
-                                    org.springframework.jdbc.core.JdbcTemplate jdbcTemplate) {
+                                    org.springframework.jdbc.core.JdbcTemplate jdbcTemplate,
+                                    com.benjagest.backend.billing.tpb.BillingAgreementGuard billingAgreementGuard) {
         this.repository = repository;
         this.journalService = journalService;
         this.currentUserService = currentUserService;
@@ -51,10 +53,13 @@ public class PurchaseInvoiceService {
         this.auditService = auditService;
         this.fiscalGuard = fiscalGuard;
         this.jdbcTemplate = jdbcTemplate;
+        this.billingAgreementGuard = billingAgreementGuard;
     }
 
     @Transactional
     public SaveResult save(SaveRequest req) {
+        billingAgreementGuard.requireAgreementOrOwn(
+                com.benjagest.backend.billing.tpb.BillingAgreementGuard.Scope.PURCHASES);
         // 1) Dedup por (company, sha, index).
         if (req.documentSha256() != null && !req.documentSha256().isBlank()) {
             var existing = repository.findByShaAndIndex(
@@ -163,6 +168,8 @@ public class PurchaseInvoiceService {
      */
     @Transactional
     public BatchValidateResult validateBatch(List<String> ids) {
+        billingAgreementGuard.requireAgreementOrOwn(
+                com.benjagest.backend.billing.tpb.BillingAgreementGuard.Scope.PURCHASES);
         if (ids == null || ids.isEmpty()) {
             return new BatchValidateResult(0, 0, 0, java.util.List.of());
         }
@@ -225,6 +232,8 @@ public class PurchaseInvoiceService {
 
     @Transactional
     public void deleteInvoice(String id) {
+        billingAgreementGuard.requireAgreementOrOwn(
+                com.benjagest.backend.billing.tpb.BillingAgreementGuard.Scope.PURCHASES);
         PurchaseInvoice existing = get(id);
         // PURCHASES-CIERRE-FISCAL: si la factura cae en un ejercicio
         // LOCKED/CLOSED, no se puede borrar. La AEAT considera

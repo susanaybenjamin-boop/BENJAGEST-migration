@@ -67,4 +67,30 @@ public class AeatExtraModelsController {
     public AeatExtraModelsService.Model190View generate190(@PathVariable("year") int year) {
         return service.generate190(year, true);
     }
+
+    // ---- Modelo 303 (IVA trimestral) ----
+    @GetMapping("/303/{year}/{quarter}/preview")
+    public AeatExtraModelsService.Model303View preview303(
+            @PathVariable("year") int year, @PathVariable("quarter") int quarter) {
+        return service.generate303(year, quarter, false);
+    }
+
+    @PostMapping("/303/{year}/{quarter}/generate")
+    public AeatExtraModelsService.Model303View generate303(
+            @PathVariable("year") int year, @PathVariable("quarter") int quarter) {
+        return service.generate303(year, quarter, true);
+    }
+
+    // ---- Modelo 130 (IRPF pago fraccionado) ----
+    @GetMapping("/130/{year}/{quarter}/preview")
+    public AeatExtraModelsService.Model130View preview130(
+            @PathVariable("year") int year, @PathVariable("quarter") int quarter) {
+        return service.generate130(year, quarter, false);
+    }
+
+    @PostMapping("/130/{year}/{quarter}/generate")
+    public AeatExtraModelsService.Model130View generate130(
+            @PathVariable("year") int year, @PathVariable("quarter") int quarter) {
+        return service.generate130(year, quarter, true);
+    }
 }
