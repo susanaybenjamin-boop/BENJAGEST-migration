@@ -1118,6 +1118,39 @@ public class AltaApiClient {
         return d;
     }
 
+    /** MOD-PREFILL — prefill del 303 desde las facturas del trimestre. */
+    public com.benjagest.ui.model.Aeat303Data preview303(int year, int quarter)
+            throws IOException, InterruptedException {
+        HttpResponse<String> r = send(req(baseUrl + "/aeat/extras/303/" + year + "/" + quarter + "/preview").GET());
+        if (r.statusCode() < 200 || r.statusCode() >= 300) {
+            throw new IOException("HTTP " + r.statusCode() + ": " + r.body());
+        }
+        String j = r.body();
+        com.benjagest.ui.model.Aeat303Data d = new com.benjagest.ui.model.Aeat303Data();
+        d.base4 = numberField(j, "base_4");
+        d.base10 = numberField(j, "base_10");
+        d.base21 = numberField(j, "base_21");
+        d.baseSoportada = numberField(j, "base_soportado");
+        d.cuotaSoportada = numberField(j, "cuota_soportada");
+        return d;
+    }
+
+    /** MOD-PREFILL — prefill del 130 (acumulado del año hasta el trimestre). */
+    public com.benjagest.ui.model.Aeat130Data preview130(int year, int quarter)
+            throws IOException, InterruptedException {
+        HttpResponse<String> r = send(req(baseUrl + "/aeat/extras/130/" + year + "/" + quarter + "/preview").GET());
+        if (r.statusCode() < 200 || r.statusCode() >= 300) {
+            throw new IOException("HTTP " + r.statusCode() + ": " + r.body());
+        }
+        String j = r.body();
+        com.benjagest.ui.model.Aeat130Data d = new com.benjagest.ui.model.Aeat130Data();
+        d.ingresos = numberField(j, "ingresos");
+        d.gastos = numberField(j, "gastos");
+        d.retenciones = numberField(j, "retenciones");
+        d.pagosPrevios = numberField(j, "pagosPrevios");
+        return d;
+    }
+
     /** Lee el 390 del JSON guardado (mis claves planas) o, si es uno ya generado,
      *  de las casillas del backend. */
     public com.benjagest.ui.model.Aeat390Data parse390(String json) {

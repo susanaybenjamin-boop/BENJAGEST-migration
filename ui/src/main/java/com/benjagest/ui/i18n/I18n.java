@@ -6540,6 +6540,10 @@ public final class I18n {
             case "tpb.repair.fail.title" -> "Could not create TPB series";
             case "tpb.banner.body" -> "They want to issue invoices on your behalf for the operations marked in the agreement. Read and sign with your session PIN.";
             case "tpb.banner.sign" -> "Read and sign";
+            case "tpb.gate.title" -> "Billing agreement required";
+            case "tpb.gate.body" -> "There is no signed third-party billing agreement with this client. Create and sign the agreement before creating, validating, voiding or charging/paying invoices on their behalf. Bookkeeping (journal entries) is still available.";
+            case "tpb.gate.banner" -> "No signed billing agreement with this client: issuing invoices and charging/paying are disabled until it is signed (bookkeeping stays available).";
+            case "tpb.gate.banner.cta" -> "Go to agreement";
             case "tpb.sign.dialog.title" -> "Sign third-party billing agreement";
             case "tpb.sign.dialog.intro" -> "By signing this agreement you authorize the advisor to materially issue invoices on your behalf for the operations below.";
             case "tpb.sign.dialog.legal" -> "Tax responsibility remains yours (RD 1619/2012 art. 5.2). The signature uses your session PIN as electronic evidence (eIDAS art. 25).";
@@ -6628,6 +6632,10 @@ public final class I18n {
             case "settings.backup.run.ok.body" -> "Saved at:";
             case "settings.backup.run.fail" -> "Backup failed";
             case "list.action.multi_allocation" -> "Pay multiple";
+            case "list.action.regen_journal" -> "Rebuild journal entry";
+            case "list.regen_journal.ok.title" -> "Journal entry rebuilt";
+            case "list.regen_journal.ok.body" -> "The journal entry was rebuilt with the VAT split by rate.";
+            case "list.regen_journal.fail.title" -> "Could not rebuild the journal entry";
             case "multi_alloc.title" -> "Register multi-invoice payment";
             case "multi_alloc.hint" -> "One real payment (bank transfer, etc.) is split across several validated invoices of the same customer. If the amount does not cover everything, you choose which invoice to complete and the rest stays pending.";
             case "multi_alloc.field.client" -> "Customer:";
@@ -7724,6 +7732,10 @@ public final class I18n {
             case "tpb.repair.fail.title" -> "No se pudo crear la serie TPB";
             case "tpb.banner.body" -> "Quiere emitir facturas en tu nombre para las operaciones marcadas en el acuerdo. Léelo y fírmalo con tu PIN de sesión.";
             case "tpb.banner.sign" -> "Leer y firmar";
+            case "tpb.gate.title" -> "Falta el acuerdo de facturación";
+            case "tpb.gate.body" -> "No hay un acuerdo de facturación por tercero firmado con este cliente. Crea y firma el acuerdo antes de crear, validar, anular o cobrar/pagar facturas en su nombre. La contabilidad (asientos) sí está disponible.";
+            case "tpb.gate.banner" -> "Sin acuerdo de facturación firmado con este cliente: facturar y cobrar/pagar está deshabilitado hasta firmarlo (la contabilidad sigue disponible).";
+            case "tpb.gate.banner.cta" -> "Ir al acuerdo";
             case "tpb.sign.dialog.title" -> "Firmar acuerdo de facturación por tercero";
             case "tpb.sign.dialog.intro" -> "Al firmar autorizas a la asesoría a emitir materialmente facturas en tu nombre para las operaciones de abajo.";
             case "tpb.sign.dialog.legal" -> "La responsabilidad tributaria sigue siendo tuya (RD 1619/2012 art. 5.2). La firma usa tu PIN de sesión como evidencia electrónica (eIDAS art. 25).";
@@ -7812,6 +7824,10 @@ public final class I18n {
             case "settings.backup.run.ok.body" -> "Guardada en:";
             case "settings.backup.run.fail" -> "Falló la copia";
             case "list.action.multi_allocation" -> "Cobrar varias";
+            case "list.action.regen_journal" -> "Regenerar asiento";
+            case "list.regen_journal.ok.title" -> "Asiento regenerado";
+            case "list.regen_journal.ok.body" -> "El asiento se ha regenerado con el IVA desglosado por tipo.";
+            case "list.regen_journal.fail.title" -> "No se pudo regenerar el asiento";
             case "multi_alloc.title" -> "Registrar pago de varias facturas";
             case "multi_alloc.hint" -> "Un pago real (transferencia, ingreso, etc.) se reparte entre varias facturas validadas del mismo cliente. Si el importe no cubre todo, eliges qué factura completar y el resto queda pendiente.";
             case "multi_alloc.field.client" -> "Cliente:";
