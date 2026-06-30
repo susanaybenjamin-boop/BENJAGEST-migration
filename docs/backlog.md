@@ -275,7 +275,8 @@ Repaso punto por punto de lo que Benjamin reportó con el check en blanco. Estad
   (no tocar CSS ni claves i18n). Un dominio por commit; compilar + arrancar + merge develop
   por slice. **La versión se sube una sola vez al terminar UIR-15** (actualización de seguridad
   única vía auto-update), no por slice.
-  - **FASE 1 (andamiaje):** `[ ]` UIR-1 i18n→`I18n` (~8.200 líneas) · `[ ]` UIR-2 tipos anidados
+  - **FASE 1 (andamiaje):** `[x]` UIR-1 i18n→`I18n` (HECHO 2026-06-30: −8.684 líneas del monolito;
+    `i18n/I18n.java` + `model/Language.java`; 8.445=8.445 `case`, sin pérdida) · `[ ]` UIR-2 tipos anidados
     (24) · `[ ]` UIR-3 `AppContext` + helpers.
   - **FASE 2:** `[ ]` UIR-4 Router (cortar llamadas `showX()→showY()`).
   - **FASE 3 (pantalla por pantalla, menor→mayor acoplamiento):** `[ ]` UIR-5 Login/Registro ·
