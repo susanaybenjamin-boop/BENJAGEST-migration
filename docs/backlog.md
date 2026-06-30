@@ -276,17 +276,16 @@ Repaso punto por punto de lo que Benjamin reportó con el check en blanco. Estad
   central). **Verificar antes de tocar auth/registro** (zona caliente, CLAUDE.md §11.2).
 
 - 🧹 **UIR — Troceado de la UI (refactor estructural, EN CURSO desde 2026-06-30).**
-  > ▶️ **REANUDAR AQUÍ (sesión 2026-07-01):** **BLOQUE ASESORÍA EN CURSO** — leaf-first, mapa de
-  > slices AS-1..AS-7 en [`plan-ui-refactor.md`](plan-ui-refactor.md). HECHO 2026-06-30: **AS-1**
-  > `ClientCustomersScreen`, **AS-2** `ClientConfigScreen`, **AS-3** `ClientSummaryScreen`, **AS-4**
-  > `ClientSalesArchivedScreen`, **AS-5** `ClientTpbAgreementScreen` (TPB RD 1619/2012, magic-link, polling).
-  > Todas compilan, en `develop`. Siguiente: **AS-6** `buildClientBillingTab`/`buildClientPurchasesTab` →
-  > screens (operativa per-cliente). Luego **AS-7** (composite `buildClientDetailView`, el último; nota:
-  > el loader ya captura `activeClientModuleSlugs` y la pestaña Trabajos se gatea por módulo 'shifts'
-  > activo — fix 2026-06-30). Después de ASESORÍA: **BLOQUE NÓMINA (XXL)**.
-  > **Bugs cerrados 2026-06-30** (post-pruebas Benjamin): Forma jurídica deriva del Tipo + Tipo del Resumen
-  > deriva de la Forma jurídica; pestaña Trabajos gateada por módulo activo (adiós errores 'shifts').
-  > (FAC-1..4 cerrado; 2º caller de `validateInvoiceFromList` en la ficha ~línea 24382, no movido.)
+  > ▶️ **REANUDAR AQUÍ (sesión 2026-07-01):** **BLOQUE NÓMINA (XXL)** — el último del troceado UIR.
+  > Empezar mapeando antes de tocar (patrón Host ya probado en FAC-4 y AS-1..6).
+  > **BLOQUE ASESORÍA CERRADO 2026-06-30**: AS-1 `ClientCustomersScreen`, AS-2 `ClientConfigScreen`,
+  > AS-3 `ClientSummaryScreen`, AS-4 `ClientSalesArchivedScreen`, AS-5 `ClientTpbAgreementScreen`,
+  > AS-6 `ClientBillingScreen`. **AS-7 DESCARTADO** (decisión Benjamin): `buildClientDetailView` es el
+  > orquestador (~15 tabs + TPB dinámico), se queda en el shell como `showBilling` — extraerlo sería un
+  > Host de ~25 métodos de puro reenvío. Todo compila, en `develop`; versión SIN subir (UIR sube una vez
+  > al terminar todo). **Bugs cerrados** (post-pruebas): Tipo↔Forma jurídica, shifts (módulo a operativa),
+  > NIF en Mi gestión, TPB sin parpadeo, email visible, y **seguridad: vínculo por NIF no email** (V160).
+  > Email resuelto vía Gmail (hotmail SMTP muerto por Microsoft). FAC-1..4 cerrado.
   > **FAC-4b HECHO (2026-06-30):** invoices tab → `BillingInvoicesScreen` con Host (clase anónima,
   > sin tocar visibilidad); −678 líneas; commit `2f7ce2b`, merged a `develop`. Wrapper
   > `billingInvoicesTab(list)` conservado (1 call site). `validateInvoiceFromList` NO se movió (compartido

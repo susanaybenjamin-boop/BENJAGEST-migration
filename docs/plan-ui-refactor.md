@@ -153,9 +153,14 @@ una clase con `mountStandalone()`/`buildHolder()` o factoría en el shell; estad
     → `ClientTpbAgreementScreen` (TPB RD 1619/2012, magic-link+OTP/PIN, polling 5s). Sin Host (callbacks
     onActivated/onRevoked como params). `tpbDownloadSignedPdfAction`/`tpbRevokeAction` + `humanizeTpb*`
     se quedan/copian en shell (los usa también la vista TPB del cliente). HECHO 2026-06-30.
-  - `[ ]` **AS-6** `buildClientBillingTab`/`buildClientPurchasesTab` → screens (operativa per-cliente).
-  - `[ ]` **AS-7 (último)** `buildClientDetailView` composite → `ClientDetailScreen` con Host (TPB add/remove
-    de tabs en caliente, polling, salto por aviso de cartera).
+  - `[x]` **AS-6** `buildClientBillingTab` (+`loadClientBilling`/`isSalesInvoiceRectifying`) →
+    `ClientBillingScreen` (Host: editor/validar/importar/recurrente/gate). `buildClientPurchasesTab` NO
+    se extrajo: solo delega en `buildPurchasesListing` (módulo Compras compartido). HECHO 2026-06-30.
+  - `[~]` **AS-7 — DESCARTADO (decisión Benjamin 2026-06-30):** `buildClientDetailView` es el
+    ORQUESTADOR (cablea ~15 tabs + TPB dinámico + polling); sus ~25 dependencias son métodos del shell.
+    Extraerlo = Host de ~25 métodos de puro reenvío (boilerplate, net-negativo, riesgo en la manipulación
+    dinámica de tabs TPB). Igual que `showBilling` se quedó en el shell en FACTURACIÓN, el orquestador se
+    queda. **BLOQUE ASESORÍA CERRADO** con AS-1..AS-6 (todo el contenido extraído a screens).
 - **💰 BLOQUE NÓMINA (XXL)** — el último.
 - **Sueltos menores:** Perfil (lock/screensaver Timeline), Calendario (helpers de dashboard),
   Configuración/Settings, Login/Registro (crítico).
