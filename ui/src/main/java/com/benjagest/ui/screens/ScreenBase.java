@@ -66,6 +66,42 @@ public abstract class ScreenBase {
     protected static final Comparator<String> ISO_DATE_COMPARATOR = Comparators.ISO_DATE_COMPARATOR;
     protected static final Comparator<String> NUMERIC_STRING_COMPARATOR = Comparators.NUMERIC_STRING_COMPARATOR;
 
+    /** Traduce un enum por convencion "enum.{prefix}.{code}". */
+    protected String localizedEnum(String prefix, String code) {
+        if (code == null || code.isBlank()) return "";
+        return t("enum." + prefix + "." + code);
+    }
+
+    protected static String stripDiacritics(String s) {
+        if (s == null) return null;
+        return java.text.Normalizer.normalize(s, java.text.Normalizer.Form.NFD)
+                .replaceAll("\\p{InCombiningDiacriticalMarks}+", "");
+    }
+
+    /** Etiqueta humana del tipo de evento de calendario (con matching tolerante). */
+    protected String humanizeCalendarEventType(String raw) {
+        if (raw == null || raw.isBlank()) return "";
+        String up = raw.trim().toUpperCase(java.util.Locale.ROOT);
+        switch (up) {
+            case "HOLIDAY":         return t("calendar.event.type.holiday");
+            case "WORK_ADJUSTMENT": return t("calendar.event.type.work_adjustment");
+            case "WORK_CLOSURE":    return t("calendar.event.type.work_closure");
+            case "GENERAL":         return t("calendar.event.type.general");
+            default: /* matching tolerante abajo */
+        }
+        String norm = stripDiacritics(up);
+        if (norm.contains("FESTIV") || norm.contains("FESTIVIDAD")) {
+            return t("calendar.event.type.holiday");
+        }
+        if (norm.contains("AJUST")) {
+            return t("calendar.event.type.work_adjustment");
+        }
+        if (norm.contains("CIERRE") || norm.contains("CERRAD")) {
+            return t("calendar.event.type.work_closure");
+        }
+        return raw;
+    }
+
     /** Panel de error con boton "reintentar" que vuelve al panel inicial. */
     protected VBox errorPanel(String message) {
         VBox panel = content();
