@@ -19584,68 +19584,15 @@ public class BenjagestUiApplication extends Application
      * vinculado los KPIs viven en la pestaña "Ventas y Gastos" para
      * estar junto a los listados, así que no se duplican aquí.
      */
+    /**
+     * AS-3 — El "Resumen" del cliente se extrajo a
+     * {@link com.benjagest.ui.screens.ClientSummaryScreen}. El shell conserva este
+     * wrapper y provee el bloque de KPIs (compartido) vía {@code this::buildClientKpisBlock}.
+     */
     private Node buildClientSummaryTab(com.benjagest.ui.model.ManagedClientEntry client,
                                          boolean showKpis) {
-        Label title = label(t("advisory.client.summary.title"), "settings-section-title");
-        Label hint = new Label(t("advisory.client.summary.hint"));
-        hint.setWrapText(true);
-        hint.getStyleClass().add("settings-hint");
-
-        GridPane g = new GridPane();
-        g.setHgap(20); g.setVgap(8);
-        // Etiquetas con color explícito: sin -fx-text-fill heredarían el texto
-        // claro del tema sobre el fondo blanco → casi invisibles (bug Benjamin
-        // 2026-06-24). Campo en gris medio, valor en oscuro.
-        java.util.function.Function<String, Label> fld = s -> {
-            Label l = new Label(s);
-            l.setStyle("-fx-text-fill: #64748b;");
-            return l;
-        };
-        java.util.function.Function<String, Label> val = s -> {
-            Label l = new Label(s);
-            l.setStyle("-fx-text-fill: #1e293b; -fx-font-weight: bold;");
-            return l;
-        };
-        int r = 0;
-        g.add(fld.apply(t("advisory.client.field.legal_name")), 0, r);
-        g.add(val.apply(client.legalName() == null ? "—" : client.legalName()), 1, r++);
-        g.add(fld.apply(t("advisory.client.field.nif")), 0, r);
-        g.add(val.apply(client.taxIdentifier() == null ? "—" : client.taxIdentifier()), 1, r++);
-        if (client.companyType() != null) {
-            g.add(fld.apply(t("advisory.client.field.type")), 0, r);
-            g.add(val.apply(localizedEnum("customer_type", client.companyType())), 1, r++);
-        }
-        if (client.email() != null) {
-            g.add(fld.apply(t("advisory.client.field.email")), 0, r);
-            g.add(val.apply(client.email()), 1, r++);
-        }
-        if (client.city() != null && !client.city().isBlank()) {
-            g.add(fld.apply(t("advisory.client.field.city")), 0, r);
-            g.add(val.apply(client.city()), 1, r++);
-        }
-
-        VBox body = new VBox(14, title, hint, g);
-        // KPIs reales (Slice 2A). Solo los pintamos aquí si el cliente
-        // está vinculado — en el NO vinculado los KPIs ya viven en la
-        // pestaña "Ventas y Gastos" para estar junto a los listados,
-        // y duplicarlos en el Resumen confundiría.
-        if (showKpis) {
-            Label kpisTitle = label(t("advisory.client.kpis.title"),
-                    "settings-section-title");
-            LocalDate todaySum = LocalDate.now();
-            int currentQuarterSum = (todaySum.getMonthValue() - 1) / 3 + 1;
-            LocalDate initFromSum = LocalDate.of(todaySum.getYear(),
-                    (currentQuarterSum - 1) * 3 + 1, 1);
-            LocalDate initToSum = initFromSum.plusMonths(3).minusDays(1);
-            javafx.beans.property.ObjectProperty<LocalDate> fromPropSum =
-                    new javafx.beans.property.SimpleObjectProperty<>(initFromSum);
-            javafx.beans.property.ObjectProperty<LocalDate> toPropSum =
-                    new javafx.beans.property.SimpleObjectProperty<>(initToSum);
-            Node kpisBlock = buildClientKpisBlock(fromPropSum, toPropSum);
-            body.getChildren().addAll(new Separator(), kpisTitle, kpisBlock);
-        }
-        body.setPadding(new Insets(20));
-        return body;
+        return new com.benjagest.ui.screens.ClientSummaryScreen(
+                this::t, this, this::buildClientKpisBlock).buildTab(client, showKpis);
     }
 
     /**
