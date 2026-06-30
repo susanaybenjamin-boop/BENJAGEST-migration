@@ -55,7 +55,13 @@ public class CompanyModulesService {
      * "módulo no activo"). La asesoría gestiona toda la operativa del cliente.
      */
     private static final List<String> OPERATIVA_SLUGS = List.of(
-            "billing", "purchases", "accounting", "labor", "tax", "self-employed");
+            "billing", "purchases", "accounting", "labor", "tax", "self-employed",
+            // 'shifts' (partes de trabajo) es operativa laboral: varias vistas la
+            // cargan (pestaña Trabajos de la ficha, sub-pestaña Partes de Laboral)
+            // y daban "módulo 'shifts' no activo" al entrar en un cliente que no lo
+            // tenía activado. Se auto-activa como el resto de la operativa que la
+            // asesoría gestiona del cliente (fix 2026-06-30).
+            "shifts");
 
     private final ModuleRepository moduleRepository;
     private final ModuleAccessService moduleAccessService;
