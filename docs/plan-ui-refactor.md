@@ -79,4 +79,8 @@ vez, cuando TODO el bloque (hasta UIR-15) esté terminado**, para que llegue com
 ## Estado
 - [x] UIR-1 (i18n→I18n, −8.684 líneas) · [x] UIR-2 (tipos transversales; bundles diferidos a Fase 3)
   · [x] UIR-3 (helpers stateless Icons/Formatters/Dialogs; AppContext god-object descartado)
-  · [x] UIR-4 (Router: navigateTo/setCenter/runTask) · [ ] UIR-5 … UIR-15
+  · [x] UIR-4 (Router: navigateTo/setCenter/runTask)
+- FASE 3: [x] UIR-5 **plantilla** (SuggestionsScreen; + kit `UiBuilders`/`BackendErrors`) ·
+  [ ] UIR-6 RETA/DEHú · [ ] UIR-7 Portal empleado · [ ] UIR-8 Sugerencias/Perfil/Equipo ·
+  [ ] UIR-9 Fiscal · [ ] UIR-10 Calendario · [ ] UIR-11 Facturación · [ ] UIR-12 Config ·
+  [ ] UIR-13 Asesoría · [ ] UIR-14 Trabajos · [ ] UIR-15 Laboral/Nómina
