@@ -18874,7 +18874,7 @@ public class BenjagestUiApplication extends Application
         // CLIENT-CONFIG (2026-06-15) — "Configuración" en 2º lugar, para TODOS los
         // clientes (vinculados o no): datos fiscales, cifras manuales sin
         // contabilidad, contacto y notas internas.
-        Tab clientConfigTab = new Tab(t("advisory.client.tab.config"), buildClientConfigTab());
+        Tab clientConfigTab = new Tab(t("advisory.client.tab.config"), buildClientConfigTab(client.companyType()));
         clientConfigTab.setGraphic(icon("fas-sliders-h"));
         tabs.getTabs().add(clientConfigTab);
         if (isLinked) {
@@ -23066,14 +23066,14 @@ public class BenjagestUiApplication extends Application
      * {@link com.benjagest.ui.screens.ClientConfigScreen}. El shell conserva este
      * wrapper y provee el Host (refresco cruzado de perfiles RETA).
      */
-    private Node buildClientConfigTab() {
+    private Node buildClientConfigTab(String companyType) {
         return new com.benjagest.ui.screens.ClientConfigScreen(
                 laborApiClient, this::t, this,
                 new com.benjagest.ui.screens.ClientConfigScreen.Host() {
                     @Override public void reloadRetaProfiles() {
                         BenjagestUiApplication.this.reloadRetaProfiles();
                     }
-                }).buildTab();
+                }).buildTab(companyType);
     }
 
     /**

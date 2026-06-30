@@ -41,7 +41,7 @@ public class ClientConfigScreen extends ScreenBase {
         this.host = host;
     }
 
-    public Node buildTab() {
+    public Node buildTab(String companyType) {
         VBox holder = new VBox(14);
         holder.setPadding(new Insets(16));
         Label loading = new Label(t("panorama.loading"));
@@ -54,22 +54,29 @@ public class ClientConfigScreen extends ScreenBase {
             }
         };
         cfgTask.setOnSucceeded(ev -> holder.getChildren().setAll(
-                buildClientConfigContent(cfgTask.getValue())));
+                buildClientConfigContent(cfgTask.getValue(), companyType)));
         cfgTask.setOnFailed(ev -> holder.getChildren().setAll(
                 buildClientConfigContent(new com.benjagest.ui.model.ClientConfigModels.AdvisoryConfigEntry(
-                        null, null, null, null, null, null, true, true))));
+                        null, null, null, null, null, null, true, true), companyType)));
         start(cfgTask, "client-config-load");
         return holder;
     }
 
-    private VBox buildClientConfigContent(com.benjagest.ui.model.ClientConfigModels.AdvisoryConfigEntry cfg) {
+    private VBox buildClientConfigContent(com.benjagest.ui.model.ClientConfigModels.AdvisoryConfigEntry cfg,
+                                          String companyType) {
         // --- Sección 1: datos de gestión ---
         Label t1 = new Label(t("clientcfg.section.management"));
         t1.getStyleClass().add("settings-section-title");
 
+        // Si no hay forma jurídica guardada aún, la derivamos del "Tipo" del
+        // cliente (customer_type/company_type): un cliente dado de alta como
+        // Autónomo (SELF_EMPLOYED) pre-selecciona AUTONOMO aquí, en vez de
+        // aparecer vacío y obligar a re-elegir lo que ya dijo al crearlo.
+        String legalFormInitial = cfg.legalForm() != null && !cfg.legalForm().isBlank()
+                ? cfg.legalForm() : deriveLegalForm(companyType);
         ComboBox<String> legalForm = localizedConfigCombo("clientcfg.legalform.",
                 java.util.List.of("AUTONOMO", "SL", "SA", "SLU", "SC", "CB", "COOPERATIVA", "OTRO"),
-                cfg.legalForm());
+                legalFormInitial);
         Label legalFormHint = new Label("");
         legalFormHint.getStyleClass().add("settings-hint");
         legalFormHint.setWrapText(true);
@@ -223,6 +230,20 @@ public class ClientConfigScreen extends ScreenBase {
         VBox box = new VBox(12, t1, g, saveRow, new Separator(), t2, t2hint, finActions, table);
         VBox.setVgrow(table, Priority.ALWAYS);
         return box;
+    }
+
+    /**
+     * Deriva la forma jurídica por defecto del "Tipo" del cliente cuando aún no
+     * se ha guardado una explícita. Solo el caso inequívoco: SELF_EMPLOYED
+     * (Autónomo) → AUTONOMO. El resto (COMPANY/sociedades) se deja sin elegir
+     * porque podría ser SL/SA/SLU… y no se debe presumir.
+     */
+    private String deriveLegalForm(String companyType) {
+        if (companyType == null) return null;
+        return switch (companyType.trim().toUpperCase(java.util.Locale.ROOT)) {
+            case "SELF_EMPLOYED", "AUTONOMO" -> "AUTONOMO";
+            default -> null;
+        };
     }
 
     private java.math.BigDecimal manualResult(com.benjagest.ui.model.ClientConfigModels.ManualFinancialEntry f) {
