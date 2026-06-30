@@ -1,10 +1,12 @@
 package com.benjagest.ui.screens;
 
 import com.benjagest.ui.model.ManagedClientEntry;
+import com.benjagest.ui.service.LaborApiClient;
 import com.benjagest.ui.support.Router;
 import java.time.LocalDate;
 import java.util.function.Function;
 import javafx.beans.property.ObjectProperty;
+import javafx.concurrent.Task;
 import javafx.geometry.Insets;
 import javafx.scene.Node;
 import javafx.scene.control.Label;
@@ -29,10 +31,13 @@ public class ClientSummaryScreen extends ScreenBase {
         Node buildClientKpisBlock(ObjectProperty<LocalDate> fromProp, ObjectProperty<LocalDate> toProp);
     }
 
+    private final LaborApiClient laborApiClient;
     private final Host host;
 
-    public ClientSummaryScreen(Function<String, String> tt, Router router, Host host) {
+    public ClientSummaryScreen(LaborApiClient laborApiClient,
+                               Function<String, String> tt, Router router, Host host) {
         super(tt, router);
+        this.laborApiClient = laborApiClient;
         this.host = host;
     }
 
@@ -64,7 +69,24 @@ public class ClientSummaryScreen extends ScreenBase {
         g.add(val.apply(client.taxIdentifier() == null ? "—" : client.taxIdentifier()), 1, r++);
         if (client.companyType() != null) {
             g.add(fld.apply(t("advisory.client.field.type")), 0, r);
-            g.add(val.apply(localizedEnum("customer_type", client.companyType())), 1, r++);
+            Label typeVal = val.apply(localizedEnum("customer_type", client.companyType()));
+            g.add(typeVal, 1, r++);
+            // El "Tipo" se afina con la Forma jurídica (advisory_config.legal_form)
+            // si está fijada: una empresa vinculada cuyo titular es autónomo debe
+            // verse como Autónomo, no como Empresa (decisión Benjamin 2026-06-30).
+            // Si no hay forma jurídica, se queda el companyType/customer_type.
+            Task<com.benjagest.ui.model.ClientConfigModels.AdvisoryConfigEntry> typeTask = new Task<>() {
+                @Override protected com.benjagest.ui.model.ClientConfigModels.AdvisoryConfigEntry call() throws Exception {
+                    return laborApiClient.getClientAdvisoryConfig();
+                }
+            };
+            typeTask.setOnSucceeded(ev -> {
+                var cfg = typeTask.getValue();
+                String derived = typeFromLegalForm(cfg == null ? null : cfg.legalForm());
+                if (derived != null) typeVal.setText(derived);
+            });
+            typeTask.setOnFailed(ev -> { /* silencio: se queda el tipo base */ });
+            start(typeTask, "client-summary-type");
         }
         if (client.email() != null) {
             g.add(fld.apply(t("advisory.client.field.email")), 0, r);
@@ -97,5 +119,20 @@ public class ClientSummaryScreen extends ScreenBase {
         }
         body.setPadding(new Insets(20));
         return body;
+    }
+
+    /**
+     * Traduce la forma jurídica a la etiqueta de "Tipo" (Autónomo/Empresa).
+     * AUTONOMO → Autónomo; sociedades (SL/SA/SLU/SC/CB/COOPERATIVA) → Empresa.
+     * Devuelve null si no hay forma jurídica o es OTRO → se mantiene el
+     * customer_type/company_type base.
+     */
+    private String typeFromLegalForm(String legalForm) {
+        if (legalForm == null || legalForm.isBlank()) return null;
+        return switch (legalForm.trim().toUpperCase(java.util.Locale.ROOT)) {
+            case "AUTONOMO" -> t("enum.customer_type.SELF_EMPLOYED");
+            case "SL", "SA", "SLU", "SC", "CB", "COOPERATIVA" -> t("enum.customer_type.COMPANY");
+            default -> null;
+        };
     }
 }

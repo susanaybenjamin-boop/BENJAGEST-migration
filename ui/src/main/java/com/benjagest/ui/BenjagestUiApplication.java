@@ -19592,7 +19592,7 @@ public class BenjagestUiApplication extends Application
     private Node buildClientSummaryTab(com.benjagest.ui.model.ManagedClientEntry client,
                                          boolean showKpis) {
         return new com.benjagest.ui.screens.ClientSummaryScreen(
-                this::t, this, this::buildClientKpisBlock).buildTab(client, showKpis);
+                laborApiClient, this::t, this, this::buildClientKpisBlock).buildTab(client, showKpis);
     }
 
     /**
