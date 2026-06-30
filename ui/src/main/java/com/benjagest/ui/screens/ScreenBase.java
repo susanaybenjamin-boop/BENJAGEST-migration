@@ -14,6 +14,7 @@ import java.util.function.Function;
 import javafx.concurrent.Task;
 import javafx.scene.Node;
 import javafx.scene.control.Button;
+import javafx.scene.control.ComboBox;
 import javafx.scene.control.Dialog;
 import javafx.scene.control.Label;
 import javafx.scene.control.ScrollPane;
@@ -100,6 +101,27 @@ public abstract class ScreenBase {
             return t("calendar.event.type.work_closure");
         }
         return raw;
+    }
+
+    /** Envuelve un nodo en el scroll reactivo de pantalla (ResponsiveLayout). */
+    protected Node screenScroll(Node content) {
+        return com.benjagest.ui.layout.ResponsiveLayout.screen(content);
+    }
+
+    /** Localiza los items de un combo de enum via "enum.{prefix}.{code}". */
+    protected void localizeEnumCombo(ComboBox<String> combo, String prefix) {
+        combo.setCellFactory(lv -> new javafx.scene.control.ListCell<>() {
+            @Override protected void updateItem(String item, boolean empty) {
+                super.updateItem(item, empty);
+                setText(empty || item == null ? "" : localizedEnum(prefix, item));
+            }
+        });
+        combo.setButtonCell(new javafx.scene.control.ListCell<>() {
+            @Override protected void updateItem(String item, boolean empty) {
+                super.updateItem(item, empty);
+                setText(empty || item == null ? "" : localizedEnum(prefix, item));
+            }
+        });
     }
 
     /** Panel de error con boton "reintentar" que vuelve al panel inicial. */
