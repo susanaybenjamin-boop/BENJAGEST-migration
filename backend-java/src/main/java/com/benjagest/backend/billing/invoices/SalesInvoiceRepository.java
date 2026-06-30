@@ -350,6 +350,7 @@ public class SalesInvoiceRepository {
     public Optional<SalesInvoice> findById(String id) {
         List<SalesInvoice> matches = jdbcTemplate.query("""
                 SELECT i.id, i.company_id, i.customer_id, c.legal_name AS customer_legal_name,
+                       c.tax_identifier AS customer_tax_id,
                        i.series_id, i.invoice_number, i.invoice_date, i.due_date,
                        i.invoice_type, i.status, i.payment_status,
                        i.subtotal, i.vat_total, i.retention_total, i.total, i.paid_amount,
@@ -383,6 +384,7 @@ public class SalesInvoiceRepository {
                                       int limit) {
         StringBuilder sql = new StringBuilder("""
                 SELECT i.id, i.company_id, i.customer_id, c.legal_name AS customer_legal_name,
+                       c.tax_identifier AS customer_tax_id,
                        i.series_id, i.invoice_number, i.invoice_date, i.due_date,
                        i.invoice_type, i.status, i.payment_status,
                        i.subtotal, i.vat_total, i.retention_total, i.total, i.paid_amount,
@@ -440,6 +442,7 @@ public class SalesInvoiceRepository {
         );
         return new SalesInvoice(
                 header.id(), header.companyId(), header.customerId(), header.customerLegalName(),
+                header.customerTaxId(),
                 header.seriesId(), header.invoiceNumber(), header.invoiceDate(), header.dueDate(),
                 header.invoiceType(), header.status(), header.paymentStatus(),
                 header.subtotal(), header.vatTotal(), header.retentionTotal(),
@@ -463,6 +466,7 @@ public class SalesInvoiceRepository {
                 rs.getString("company_id"),
                 rs.getString("customer_id"),
                 rs.getString("customer_legal_name"),
+                rs.getString("customer_tax_id"),
                 rs.getString("series_id"),
                 rs.getString("invoice_number"),
                 invDate == null ? null : invDate.toLocalDate(),

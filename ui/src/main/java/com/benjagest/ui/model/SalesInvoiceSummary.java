@@ -16,6 +16,9 @@ public record SalesInvoiceSummary(
         String id,
         String invoiceNumber,
         String customerLegalName,
+        // NIF del cliente (de customers.tax_identifier vía JOIN). Solo viene en el
+        // listado/header; sirve para prefijar el NIF al "Hacer recurrente".
+        String customerTaxId,
         String invoiceDate,
         String dueDate,
         String status,
@@ -32,7 +35,7 @@ public record SalesInvoiceSummary(
     public SalesInvoiceSummary(String id, String invoiceNumber, String customerLegalName,
                                 String invoiceDate, String dueDate, String status,
                                 String paymentStatus, BigDecimal total, BigDecimal paidAmount) {
-        this(id, invoiceNumber, customerLegalName, invoiceDate, dueDate, status,
+        this(id, invoiceNumber, customerLegalName, null, invoiceDate, dueDate, status,
                 paymentStatus, total, paidAmount, null, null, Boolean.FALSE);
     }
 }
