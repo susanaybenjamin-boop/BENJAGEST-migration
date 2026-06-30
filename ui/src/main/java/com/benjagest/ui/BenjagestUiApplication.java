@@ -1,6 +1,12 @@
 package com.benjagest.ui;
 
+import com.benjagest.ui.model.AppMode;
 import com.benjagest.ui.model.Language;
+import com.benjagest.ui.model.ModuleLink;
+import com.benjagest.ui.model.PaletteAction;
+import com.benjagest.ui.support.ConsolAction;
+import com.benjagest.ui.support.ThrowingRunnable;
+import com.benjagest.ui.support.WorkLogAction;
 
 import java.math.BigDecimal;
 import java.text.NumberFormat;
@@ -370,9 +376,6 @@ public class BenjagestUiApplication extends Application {
      * Tab fija un orden estable y lo mantiene a la hora de filtrar por
      * texto (substring case-insensitive).
      */
-    private record PaletteAction(String label, String icon, Runnable action) {
-    }
-
     private List<PaletteAction> commandPaletteActions() {
         List<PaletteAction> all = new java.util.ArrayList<>();
         all.add(new PaletteAction(t("palette.action.home"), "fas-home", this::showDashboard));
@@ -14550,59 +14553,6 @@ public class BenjagestUiApplication extends Application {
         launch(args);
     }
 
-    private record ModuleLink(String id, String title, String icon, boolean advisoryOnly) {
-        public ModuleLink(String id, String title, String icon) { this(id, title, icon, false); }
-    }
-
-    private enum AppMode {
-        ADVISORY("ADVISORY", "mode.advisory", "mode.advisory.eyebrow", "mode.advisory.description", "fas-briefcase"),
-        BUSINESS("BUSINESS", "mode.business", "mode.business.eyebrow", "mode.business.description", "fas-building");
-
-        private final String apiValue;
-        private final String labelKey;
-        private final String eyebrowKey;
-        private final String descriptionKey;
-        private final String icon;
-
-        AppMode(String apiValue, String labelKey, String eyebrowKey, String descriptionKey, String icon) {
-            this.apiValue = apiValue;
-            this.labelKey = labelKey;
-            this.eyebrowKey = eyebrowKey;
-            this.descriptionKey = descriptionKey;
-            this.icon = icon;
-        }
-
-        private String apiValue() {
-            return apiValue;
-        }
-
-        private String labelKey() {
-            return labelKey;
-        }
-
-        private String eyebrowKey() {
-            return eyebrowKey;
-        }
-
-        private String descriptionKey() {
-            return descriptionKey;
-        }
-
-        private static AppMode from(String value) {
-            if ("BUSINESS".equalsIgnoreCase(value)) {
-                return BUSINESS;
-            }
-            return ADVISORY;
-        }
-    }
-
-    /**
-     * Bloque i18n extraído del método t() principal para no rebasar el
-     * límite JVM de 64KB por método. Devuelve null si la key no
-     * pertenece a estos módulos — entonces el caller cae al default.
-     */
-
-
     // ===================================================================
     //  L1 — Modulo Laboral: empleados + contratos
     // ===================================================================
@@ -23155,12 +23105,6 @@ public class BenjagestUiApplication extends Application {
         start(task, "collab-action");
     }
 
-    /** Equivalente a Runnable que puede lanzar checked exceptions. */
-    @FunctionalInterface
-    private interface ThrowingRunnable {
-        void run() throws Exception;
-    }
-
     private String humanizeCollabStatus(String code) {
         if (code == null || code.isBlank()) return "";
         String key = "team.collab.status." + code;
@@ -28936,9 +28880,6 @@ public class BenjagestUiApplication extends Application {
         start(task, taskName);
     }
 
-    @FunctionalInterface
-    private interface ConsolAction { void run() throws Exception; }
-
     /**
      * CONSOL-2 — Balance de comprobación AGREGADO del grupo a una fecha (suma de
      * los libros de todas las empresas del grupo por código de cuenta). Todavía
@@ -31846,9 +31787,6 @@ public class BenjagestUiApplication extends Application {
                 t.getException() == null ? "" : humanizeBackendError(t.getException().getMessage())));
         start(t, "worklog-action");
     }
-
-    @FunctionalInterface
-    private interface WorkLogAction { void run() throws Exception; }
 
     /** Alta/edición de un trabajo. */
     private void showWorkLogForm(com.benjagest.ui.model.WorkLogEntry existing,
