@@ -54,10 +54,15 @@ public class ClientTpbAgreementScreen extends ScreenBase {
         // Sin esto el polling sobreescribiria el UI cada 5s aunque nada
         // hubiera cambiado.
         final String[] lastStatus = new String[]{ null };
+        // ¿Ya pintamos el panel al menos una vez? El polling de 5s NO debe
+        // re-renderizar (parpadeo) salvo que el estado HAYA CAMBIADO. Sin esto
+        // la pantalla se recargaba entera cada 5s — incómodo (feedback Benjamin
+        // 2026-06-30). La primera carga sí pinta; los polls posteriores solo
+        // repintan en una transición de estado (PROPOSED→ACTIVE→REVOKED).
+        final boolean[] rendered = new boolean[]{ false };
 
         Runnable[] reloadHolder = new Runnable[1];
         Runnable realReload = () -> {
-            stateSlot.getChildren().clear();
             Task<com.benjagest.ui.model.TpbAgreementEntry> task = new Task<>() {
                 @Override
                 protected com.benjagest.ui.model.TpbAgreementEntry call() throws Exception {
@@ -66,9 +71,14 @@ public class ClientTpbAgreementScreen extends ScreenBase {
             };
             task.setOnSucceeded(ev -> {
                 var a = task.getValue();
-                renderTpbState(stateSlot, a, client, isLinked, reloadHolder[0]);
                 String newStatus = a == null ? null : a.status();
                 String prev = lastStatus[0];
+                // Repintar SOLO si es la primera carga o cambió el estado.
+                if (!rendered[0] || !java.util.Objects.equals(newStatus, prev)) {
+                    stateSlot.getChildren().clear();
+                    renderTpbState(stateSlot, a, client, isLinked, reloadHolder[0]);
+                    rendered[0] = true;
+                }
                 lastStatus[0] = newStatus;
                 // Transicion a ACTIVE: notificar al parent para que pueda
                 // anadir el tab Facturacion en caliente.
@@ -83,6 +93,11 @@ public class ClientTpbAgreementScreen extends ScreenBase {
                 }
             });
             task.setOnFailed(ev -> {
+                // Fallo de un poll transitorio: mantener el último estado bueno
+                // (no machacar el panel con un error cada 5s). Solo mostramos el
+                // error si aún no habíamos pintado nada.
+                if (rendered[0]) return;
+                stateSlot.getChildren().clear();
                 Label err = new Label(t("tpb.fail.load") + " "
                         + (task.getException() == null ? "" : task.getException().getMessage()));
                 err.setWrapText(true);
