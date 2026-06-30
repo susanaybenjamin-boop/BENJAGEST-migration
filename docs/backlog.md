@@ -276,14 +276,14 @@ Repaso punto por punto de lo que Benjamin reportó con el check en blanco. Estad
   central). **Verificar antes de tocar auth/registro** (zona caliente, CLAUDE.md §11.2).
 
 - 🧹 **UIR — Troceado de la UI (refactor estructural, EN CURSO desde 2026-06-30).**
-  > ▶️ **REANUDAR AQUÍ (sesión 2026-07-01):** ejecutar **FAC-4b = invoices tab de facturación →
-  > `BillingInvoicesScreen`**. Mapa en [`plan-ui-refactor.md`](plan-ui-refactor.md) (BLOQUE
-  > FACTURACIÓN, FAC-4, sub-bullet "FAC-4b"). Mover `billingInvoicesTab` (~820 líneas) con Host para
-  > las ~12 acciones (`validateInvoiceFromList`, `voidInvoiceFromList`, `deleteDraftFromList`,
-  > `showMultiAllocationDialog`, `showBankReconciliationDialog`, `openDueDatesDialog`,
-  > `showInvoiceEditor`, `openRecurringEditorFromInvoice`, gate AGR-2 `applyBillingGate`/
-  > `ensureBillingAllowed`, email/pdf). Mismo patrón Host que FAC-4a (`BillingConfigScreen`).
-  > `mvn -pl ui compile` + Benjamin prueba el listado. Luego BLOQUE ASESORÍA (XL) y BLOQUE NÓMINA (XXL).
+  > ▶️ **REANUDAR AQUÍ (sesión 2026-07-01):** **BLOQUE FACTURACIÓN cerrado** (FAC-1..4). Siguiente:
+  > **BLOQUE ASESORÍA (XL)** — el composite `buildClientDetailView` + tabs que incrusta los operativos
+  > en la ficha de cliente (ahí está el 2º caller de `validateInvoiceFromList`, ~línea 24382). O bien
+  > **BLOQUE NÓMINA (XXL)**. Empezar mapeando antes de tocar (patrón Host ya probado en FAC-4a/4b).
+  > **FAC-4b HECHO (2026-06-30):** invoices tab → `BillingInvoicesScreen` con Host (clase anónima,
+  > sin tocar visibilidad); −678 líneas; commit `2f7ce2b`, merged a `develop`. Wrapper
+  > `billingInvoicesTab(list)` conservado (1 call site). `validateInvoiceFromList` NO se movió (compartido
+  > con la ficha de cliente). Auto-refresh vía TOPIC_SALES intacto. Compila.
   > **FAC-4a HECHO (2026-06-30):** config tab → `BillingConfigScreen` con Host
   > (`refreshBillingConfig`/`showMigrationBaselines`/`showManufacturerDeclaration`); −1.060 líneas del
   > monolito; commit `ac24450`, merged a `develop`. Wrapper `billingConfigTab(...)` conservado (2 call
