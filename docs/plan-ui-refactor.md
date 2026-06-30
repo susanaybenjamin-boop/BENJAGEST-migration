@@ -111,6 +111,16 @@ una clase con `mountStandalone()`/`buildHolder()` o factoría en el shell; estad
        (ya en BillingDialogsScreen), `verifyVerifactuChain`. Candidato a `BillingConfigScreen` aparte.
      - `buildRecurringTab` (22176) es COMPARTIDO con compras → se queda o va a un helper común.
      Sugerencia de troceo: FAC-4a config tab → `BillingConfigScreen`; FAC-4b invoices tab → `BillingScreen`.
+     - ✅ **Hecho 2026-06-30:** `VatRatesScreen` (tipos IVA/IRPF) + `SifAuditScreen` (auditoría SIF,
+       solo lectura) extraídos del config tab vía `buildSection()`. Eran los 2 bloques "dedicados".
+     - ⬜ **Resto FAC-4a (config core, interleaved):** mover `billingConfigTab` + `showSeriesEditor` +
+       `saveVerifactuConfig` + `saveVatRegime` + `saveInvoiceTexts` + `vatRegimeBlock` + métodos de
+       migración (`applyMigration`/`resolveMigrationSeries`/`buildMigrationTokenTagger`) →
+       `BillingConfigScreen`. VeriFactu config + series son zona caliente (legal).
+     - ⬜ **FAC-4b (invoices tab):** `billingInvoicesTab` (~820 líneas) → `BillingInvoicesScreen` con
+       Host para las ~12 acciones (`validateInvoiceFromList`, `voidInvoiceFromList`,
+       `deleteDraftFromList`, `showMultiAllocationDialog`, `showBankReconciliationDialog`,
+       `openDueDatesDialog`, `showInvoiceEditor`, `openRecurringEditorFromInvoice`, gate AGR-2, email/pdf).
 - **🏢 BLOQUE ASESORÍA (XL)** — el composite que incrusta TODOS los operativos en las fichas
   de cliente (`buildClientDetailView` + tabs). Va después de tener los operativos extraídos.
 - **💰 BLOQUE NÓMINA (XXL)** — el último.
