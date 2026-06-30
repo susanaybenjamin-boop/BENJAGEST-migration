@@ -4509,6 +4509,12 @@ public class BenjagestUiApplication extends Application
     // no se esta en modo cliente.
     private com.benjagest.ui.model.ManagedClientEntry activeClientEntry;
     private List<String> activeClientModules = List.of("*");
+    // Slugs de módulos ACTIVADOS para el cliente actual (no la visibilidad por
+    // asignación, que para OWNER es "*"). Lo rellena el loader de la ficha.
+    // Se usa para pestañas que solo deben aparecer si el módulo está activo
+    // (p.ej. Trabajos/'shifts': solo clientes que lo gestionan), evitando el
+    // "módulo no activo" al cargar la pestaña.
+    private java.util.Set<String> activeClientModuleSlugs = java.util.Set.of();
     private VBox topContainer;
 
     // Live polling de invitaciones — evita tener que refrescar la pantalla.
@@ -18535,6 +18541,15 @@ public class BenjagestUiApplication extends Application
                 // del cliente ANTES de cargar las pestañas (evita "módulo no
                 // activo" en no vinculados). Best-effort: si falla, seguimos.
                 try { altaApiClient.ensureOperativaModules(); } catch (Exception ignored) { }
+                // Slugs ACTIVOS del cliente (best-effort): pestañas como Trabajos
+                // ('shifts', que NO está en la operativa auto-activada) solo deben
+                // mostrarse si el módulo está activo, para no dar "módulo no activo".
+                try {
+                    activeClientModuleSlugs = settingsApiClient.listActiveCatalog().stream()
+                            .filter(com.benjagest.ui.model.CompanyModuleEntry::active)
+                            .map(com.benjagest.ui.model.CompanyModuleEntry::slug)
+                            .collect(java.util.stream.Collectors.toSet());
+                } catch (Exception ignored) { activeClientModuleSlugs = java.util.Set.of(); }
                 return altaApiClient.myModulesInClient(client.id());
             }
         };
@@ -18930,7 +18945,11 @@ public class BenjagestUiApplication extends Application
         // Módulo Trabajos dentro de la ficha (Mi gestión y clientes con "shifts"):
         // opera sobre la empresa activa (X-Company-Id). Antes solo estaba en el
         // sidebar — petición Benjamin de tenerlo también como pestaña.
-        if (canSee.test("shifts")) {
+        // 'shifts' NO está en la operativa auto-activada, así que solo mostramos
+        // la pestaña si el módulo está ACTIVO para el cliente — si no, al cargarla
+        // el backend daría "módulo 'shifts' no activo" (bug 2026-06-30). Visible
+        // por asignación (canSee) no basta: para OWNER es siempre "*".
+        if (canSee.test("shifts") && activeClientModuleSlugs.contains("shifts")) {
             Tab trabajosTab = new Tab(t("advisory.client.tab.trabajos"), buildWorkLogsModule());
             trabajosTab.setGraphic(icon("fas-briefcase"));
             tabs.getTabs().add(trabajosTab);
