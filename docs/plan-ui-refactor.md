@@ -134,8 +134,22 @@ una clase con `mountStandalone()`/`buildHolder()` o factoría en el shell; estad
      - **FAC-4 COMPLETO**: dashboard se queda en el shell (trivial); `showBilling`/`billingView` son el shell
        que orquesta las 4 tabs (dashboard + facturas + recurrente + config) — no se extrae como `BillingScreen`
        aparte (el shell ES la pantalla). `buildRecurringTab` sigue compartido con compras.
-- **🏢 BLOQUE ASESORÍA (XL)** — el composite que incrusta TODOS los operativos en las fichas
-  de cliente (`buildClientDetailView` + tabs). Va después de tener los operativos extraídos.
+- **🏢 BLOQUE ASESORÍA (XL, EN CURSO)** — el composite que incrusta TODOS los operativos en las
+  fichas de cliente (`buildClientDetailView` + ~15 tabs). Estrategia leaf-first: extraer las pestañas
+  auto-contenidas a screens con Host para lo compartido; `buildClientDetailView` se queda de
+  orquestador y se extrae el último. Slices (prefijo AS):
+  - `[x]` **AS-1** `buildClientCustomersTab` → `ClientCustomersScreen` (Host: diálogos de cliente
+    `openNewCustomerDialog`/`showCustomerDetailDialog`). HECHO 2026-06-30.
+  - `[x]` **AS-2** `buildClientConfigTab` (+content/manualResult/localizedConfigCombo/
+    showManualFinancialEditor) → `ClientConfigScreen` (Host: `reloadRetaProfiles`). HECHO 2026-06-30.
+  - `[x]` **AS-3** `buildClientSummaryTab` → `ClientSummaryScreen` (Host funcional: `buildClientKpisBlock`,
+    compartido con AS-4). HECHO 2026-06-30.
+  - `[ ]` **AS-4** `buildClientSalesAndExpensesTab` (+`buildClientSalesArchivedTab`) → `ClientSalesExpensesScreen`
+    (no vinculado; reusa el KPIs block compartido).
+  - `[ ]` **AS-5** `buildClientTpbAgreementTab` → `ClientTpbAgreementScreen` (TPB + magic-link, caliente legal).
+  - `[ ]` **AS-6** `buildClientBillingTab`/`buildClientPurchasesTab` → screens (operativa per-cliente).
+  - `[ ]` **AS-7 (último)** `buildClientDetailView` composite → `ClientDetailScreen` con Host (TPB add/remove
+    de tabs en caliente, polling, salto por aviso de cartera).
 - **💰 BLOQUE NÓMINA (XXL)** — el último.
 - **Sueltos menores:** Perfil (lock/screensaver Timeline), Calendario (helpers de dashboard),
   Configuración/Settings, Login/Registro (crítico).
