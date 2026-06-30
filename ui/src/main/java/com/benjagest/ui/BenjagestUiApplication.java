@@ -18494,9 +18494,6 @@ public class BenjagestUiApplication extends Application
         if (id == null || id.isBlank()) return;
         String legalName = session.activeCompanyLegalName() == null
                 ? t("sidebar.my_company") : session.activeCompanyLegalName();
-        var synthetic = new com.benjagest.ui.model.ManagedClientEntry(
-                id, legalName, null, null,
-                "ADVISORY", null, null, null, null);
         // Slice 3H-6 — Garantiza la self-link de la asesoría ANTES de
         // entrar. Si la migración V64 no se aplicó o la asesoría es
         // anterior a esa migración, el backend creará la fila en
@@ -18508,6 +18505,22 @@ public class BenjagestUiApplication extends Application
             try {
                 altaApiClient.ensureAdvisorySelfLink();
             } catch (Exception ignored) { /* defensivo */ }
+            // "Mi gestión" mostraba NIF/email/ciudad vacíos porque el entry
+            // sintético solo llevaba id+legalName de la sesión. Traemos los datos
+            // de la propia empresa (Configuración) para que el Resumen los pinte
+            // (fix 2026-06-30). Best-effort: si falla, entramos igual.
+            String taxId = null, email = null, city = null, province = null;
+            try {
+                var company = settingsApiClient.getCompany();
+                if (company != null) {
+                    taxId = company.taxIdentifier();
+                    email = company.email();
+                    city = company.city();
+                    province = company.province();
+                }
+            } catch (Exception ignored) { /* defensivo */ }
+            final var synthetic = new com.benjagest.ui.model.ManagedClientEntry(
+                    id, legalName, null, taxId, "ADVISORY", email, null, city, province);
             javafx.application.Platform.runLater(() ->
                     switchToClient(synthetic, true));
         }, "ensure-self-link").start();
