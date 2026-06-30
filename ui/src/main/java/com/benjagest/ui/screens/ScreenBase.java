@@ -124,6 +124,24 @@ public abstract class ScreenBase {
         });
     }
 
+    protected java.time.LocalDate parseDateSafe(String s) {
+        if (s == null || s.isBlank()) return null;
+        try { return java.time.LocalDate.parse(s.trim()); }
+        catch (Exception ex) { return null; }
+    }
+
+    protected java.math.BigDecimal parseDecSafe(String s) {
+        if (s == null || s.isBlank()) return null;
+        try { return new java.math.BigDecimal(s.trim().replace(",", ".")); }
+        catch (NumberFormatException ex) { return null; }
+    }
+
+    protected Integer parseIntSafe(String s) {
+        if (s == null || s.isBlank()) return null;
+        try { return Integer.parseInt(s.trim()); }
+        catch (NumberFormatException ex) { return null; }
+    }
+
     /** Panel de error con boton "reintentar" que vuelve al panel inicial. */
     protected VBox errorPanel(String message) {
         VBox panel = content();
