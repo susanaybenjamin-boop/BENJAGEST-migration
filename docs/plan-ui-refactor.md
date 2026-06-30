@@ -121,10 +121,19 @@ una clase con `mountStandalone()`/`buildHolder()` o factoría en el shell; estad
        `localizedModality` + `verifyVerifactuChain` + `textArea`/`fillIfBlank`/`nzDash` + 23 campos. El
        shell conserva `billingConfigTab(...)` como wrapper (2 call sites intactos). −1.060 líneas del
        monolito. Helpers form copiados local. mvn -pl ui compile OK; merged a develop.
-     - ⬜ **FAC-4b (invoices tab):** `billingInvoicesTab` (~820 líneas) → `BillingInvoicesScreen` con
-       Host para las ~12 acciones (`validateInvoiceFromList`, `voidInvoiceFromList`,
-       `deleteDraftFromList`, `showMultiAllocationDialog`, `showBankReconciliationDialog`,
-       `openDueDatesDialog`, `showInvoiceEditor`, `openRecurringEditorFromInvoice`, gate AGR-2, email/pdf).
+     - ✅ **FAC-4b HECHO (2026-06-30):** `BillingInvoicesScreen` con `Host` (clase anónima en el shell,
+       sin cambiar visibilidad de nada). Movido tal cual `billingInvoicesTab`→`buildTab` + 4 campos
+       filtros/tabla + `reloadInvoices` + acciones EXCLUSIVAS (`voidInvoiceFromList`/`deleteDraftFromList`/
+       `sendInvoiceByEmail`/`convertProforma`/`openInvoicePdf`/`storeInvoicePdf`) + `localizedInvoiceStatus`/
+       `localizedPaymentStatus`/`localizedInvoiceTypeLabel`/`mapAllOrValue`. Quedan en shell vía Host (compartidos
+       o diálogos grandes): `showInvoiceEditor`, `validateInvoiceFromList` (lo usa también la ficha de cliente),
+       `ensureBillingAllowed` (gate AGR-2), `showMultiAllocationDialog`, `showBankReconciliationDialog`,
+       `openDueDatesDialog`, `openRecurringEditorFromInvoice`, `buildRecurringCandidatesBanner`,
+       `importSalesPdfsMulti`, `showImportSalesButton`. Auto-refresh intacto (acciones emiten TOPIC_SALES →
+       screen suscrito). −678 líneas. Helpers form copiados local. mvn -pl ui compile OK; merged a develop.
+     - **FAC-4 COMPLETO**: dashboard se queda en el shell (trivial); `showBilling`/`billingView` son el shell
+       que orquesta las 4 tabs (dashboard + facturas + recurrente + config) — no se extrae como `BillingScreen`
+       aparte (el shell ES la pantalla). `buildRecurringTab` sigue compartido con compras.
 - **🏢 BLOQUE ASESORÍA (XL)** — el composite que incrusta TODOS los operativos en las fichas
   de cliente (`buildClientDetailView` + tabs). Va después de tener los operativos extraídos.
 - **💰 BLOQUE NÓMINA (XXL)** — el último.
