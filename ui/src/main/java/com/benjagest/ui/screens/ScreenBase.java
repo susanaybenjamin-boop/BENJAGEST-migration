@@ -6,12 +6,19 @@ import com.benjagest.ui.support.Icons;
 import com.benjagest.ui.support.Formatters;
 import com.benjagest.ui.support.Router;
 import com.benjagest.ui.support.UiBuilders;
+import com.benjagest.ui.support.Comparators;
+import com.benjagest.ui.support.Texts;
 import java.math.BigDecimal;
+import java.util.Comparator;
 import java.util.function.Function;
 import javafx.concurrent.Task;
 import javafx.scene.Node;
+import javafx.scene.control.Button;
+import javafx.scene.control.Dialog;
 import javafx.scene.control.Label;
 import javafx.scene.control.ScrollPane;
+import javafx.scene.layout.HBox;
+import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
 
 /**
@@ -43,4 +50,31 @@ public abstract class ScreenBase {
     protected void toast(javafx.stage.Window owner, String message) { Dialogs.toast(owner, message); }
     protected void start(Task<?> task, String name) { router.runTask(task, name); }
     protected void setCenterAnimated(Node node) { router.setCenter(node); }
+    protected void setCenterSilent(Node node) { router.setCenterSilent(node); }
+    protected void showModule(String module) { router.navigateTo(module); }
+
+    protected VBox content() { return UiBuilders.content(); }
+    protected StackPane iconBubble(String literal, String... styleClasses) { return UiBuilders.iconBubble(literal, styleClasses); }
+    protected HBox sectionHeader(String title, String subtitle) { return UiBuilders.sectionHeader(title, subtitle); }
+    protected String shortIso(String iso) { return Formatters.shortIso(iso); }
+    protected String blankToNullOrSelf(String v) { return Texts.blankToNullOrSelf(v); }
+    protected String shortId(String id) { return Texts.shortId(id); }
+    protected void installDialog(Dialog<?> dialog, Node content) {
+        com.benjagest.ui.layout.ResponsiveLayout.installDialog(dialog, content);
+    }
+
+    protected static final Comparator<String> ISO_DATE_COMPARATOR = Comparators.ISO_DATE_COMPARATOR;
+    protected static final Comparator<String> NUMERIC_STRING_COMPARATOR = Comparators.NUMERIC_STRING_COMPARATOR;
+
+    /** Panel de error con boton "reintentar" que vuelve al panel inicial. */
+    protected VBox errorPanel(String message) {
+        VBox panel = content();
+        Label title = new Label(message);
+        title.getStyleClass().add("section-title");
+        Button retry = new Button(t("common.btn.retry"));
+        retry.setGraphic(icon("fas-sync-alt"));
+        retry.setOnAction(event -> router.navigateTo("dashboard"));
+        panel.getChildren().addAll(title, retry);
+        return panel;
+    }
 }
