@@ -211,6 +211,47 @@ Repaso punto por punto de lo que Benjamin reportó con el check en blanco. Estad
     como servicio + (opcional) campo en Configuración para la URL pública sin tocar ficheros.
 - Rellenar credenciales Google centrales tras la verificación (Fase 1).
 
+- 🔒 **LICENCIA / ANTI-COPIA (LIC-1..N) — PENDIENTE, sin código aún (decidido 2026-06-30).**
+  **Problema verificado en código (2026-06-30):** hoy NO existe ningún control de licencia
+  ni de instalación única. Cada instalación lleva su **propia MariaDB embebida** y arranca
+  mirando solo `hasAccounts` ([AuthController.java:86] `/auth/bootstrap-status`); no hay
+  servidor central que sepa que un usuario ya tiene instalación → **se puede instalar en
+  N ordenadores** sin límite. Además el **tipo de cuenta (ADVISORY/BUSINESS) lo elige libre
+  el usuario** en el combo de registro (`BenjagestUiApplication.showRegister`, ~línea 610) y
+  el backend se fía sin validar (`RegisterService.createAccount`: `boolean advisory =
+  "ADVISORY".equalsIgnoreCase(...)`) → **un empresario puede instalarse en modo asesoría**.
+  Lo único restringido hoy es el **multi-puesto** (máx. 5 dispositivos, solo OWNER de
+  asesoría — `DeviceTokenService.MAX_ACTIVE_DEVICES_PER_COMPANY=5`), pero es un límite
+  *dentro de una instalación*, NO una licencia.
+
+  **Modelo decidido (Benjamin 2026-06-30) — preparar estructura para DOS piezas que conviven:**
+  1. **Fichero de licencia firmado, local y oculto.** Al activar, el programa guarda un
+     **fichero de licencia firmado** en una **carpeta segura y oculta de Windows** (p. ej.
+     `%ProgramData%\BENJAGEST\license\` o `%LOCALAPPDATA%` con atributo oculto/ACL
+     restringida). El fichero lleva: **tipo** (ASESORÍA/EMPRESA), **nº de puestos/sublicencias**,
+     **NIF/titular**, **fecha de emisión/caducidad** y va **firmado** (clave privada nuestra;
+     el programa valida con la pública embebida → no se puede falsificar ni editar a mano).
+  2. **Código ligado a la cuenta de acceso, leído en CADA arranque.** El fichero contiene un
+     **código ligado a la cuenta del usuario** (no solo a la máquina). En cada arranque el
+     programa **lee y valida** ese código contra la cuenta con la que se entra. Así
+     **no se puede usar la instalación en otro ordenador a no ser que se pague** (el código
+     de otro PC no casa con la cuenta / la licencia es de un puesto).
+  3. **Estructura para servidor central (futuro).** Dejar el enganche para que, cuando haya
+     conexión, un **servidor de licencias** pueda emitir/renovar/revocar y rellenar el fichero
+     firmado. Mientras no exista el servidor, la activación es por fichero (offline-friendly);
+     el servidor es la evolución natural para emitir y revocar de verdad.
+
+  **Reglas de producto que esto debe imponer (hoy NO se imponen):**
+  - **Una licencia por cuenta**; instalar en otro PC exige nueva licencia (pago).
+  - **Solo ASESORÍA puede tener sublicencias de empleados/puestos**; EMPRESA no crea sublicencias.
+  - **El modo ASESORÍA debe quedar bloqueado** tras una licencia de tipo ASESORÍA (no elegible
+    libre en el combo de registro).
+
+  **Pendiente Claude cuando Benjamin lo arranque:** diseñar el bloque LIC (formato del fichero
+  firmado + algoritmo de firma/validación, ubicación+ocultación de la carpeta, lectura en
+  arranque ligada a la cuenta, gating del combo ADVISORY, y el contrato del futuro servidor
+  central). **Verificar antes de tocar auth/registro** (zona caliente, CLAUDE.md §11.2).
+
 ---
 
 ## 📅 SESIÓN 2026-06-29 — Visibilidad calendario + FICHA-REVIEW + plan CONSOL/OFFLINE
