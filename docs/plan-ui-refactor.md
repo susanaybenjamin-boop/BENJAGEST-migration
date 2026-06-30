@@ -93,9 +93,24 @@ una clase con `mountStandalone()`/`buildHolder()` o factoría en el shell; estad
      mantiene `showInvoiceEditor(id)` wrapper (`recordNav` + `new InvoiceEditorScreen(...).show(id)`),
      así los **8 callers no cambian**; `showWorkLogBillingDialog` pasa a público y Trabajos lo llama por
      la instancia. **Helper compartido:** `localizedInvoiceTypeLabel` (2 usos fuera) → ScreenBase + copia.
-  3. **FAC-3**: reunir **Trabajos** (`showWorkLogBillingDialog`, `showImportWorkLogsToInvoice`)
-     para que usen `InvoiceEditorScreen` (eran el motivo del acoplamiento, ver revert UIR-11 trabajos).
-  4. **FAC-4**: `showBilling` (listado/módulo) → `BillingScreen`, usando InvoiceEditorScreen.
+  3. **FAC-3 ✅ RESUELTO POR FAC-2 (2026-06-30).** El acoplamiento Trabajos↔editor desapareció al
+     mover `showImportWorkLogsToInvoice` dentro de `InvoiceEditorScreen`. `showWorkLogBillingDialog`
+     (shell ~27581) NO toca el editor (solo `billWorkLogs` server-side) → pertenece a la futura
+     extracción del módulo Trabajos, no a FAC. Sin trabajo standalone.
+  ✅ **FAC-1 HECHO (2026-06-30):** `BillingDialogsScreen` (migración baselines + declaración
+     fabricante); shell mantiene wrappers + Host del visor PDF.
+  4. **FAC-4 (XL, ~1.800 líneas — SESIÓN DEDICADA, mapa abajo):** `showBilling`→`BillingScreen`.
+     - `showBilling` (shell 9570) + `billingView` (9613).
+     - `billingInvoicesTab` (9733-10553, ~820 líneas): listado + acciones. Acopla a (vía Host):
+       `validateInvoiceFromList`, `voidInvoiceFromList`, `deleteDraftFromList`,
+       `showMultiAllocationDialog`, `showBankReconciliationDialog`, `openDueDatesDialog`,
+       `showInvoiceEditor`, `openRecurringEditorFromInvoice`, gate AGR-2 (`applyBillingGate`/
+       `ensureBillingAllowed`), email/pdf.
+     - `billingConfigTab` (10554-~11600, ~1.000 líneas): series CRUD, VeriFactu config,
+       certificados, textos legales, `showMigrationBaselines`/`showManufacturerDeclaration`
+       (ya en BillingDialogsScreen), `verifyVerifactuChain`. Candidato a `BillingConfigScreen` aparte.
+     - `buildRecurringTab` (22176) es COMPARTIDO con compras → se queda o va a un helper común.
+     Sugerencia de troceo: FAC-4a config tab → `BillingConfigScreen`; FAC-4b invoices tab → `BillingScreen`.
 - **🏢 BLOQUE ASESORÍA (XL)** — el composite que incrusta TODOS los operativos en las fichas
   de cliente (`buildClientDetailView` + tabs). Va después de tener los operativos extraídos.
 - **💰 BLOQUE NÓMINA (XXL)** — el último.
