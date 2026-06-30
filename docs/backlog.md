@@ -280,7 +280,9 @@ Repaso punto por punto de lo que Benjamin reportó con el check en blanco. Estad
     **transversales** (HECHO 2026-06-30: `model/AppMode`, `model/ModuleLink`, `model/PaletteAction`,
     `support/ThrowingRunnable|ConsolAction|WorkLogAction`; los *bundles* por pantalla —`BillingBundle`,
     `LaborBundle`, `TaxBundle`, `*Row`, `SalaryComplementsEditor`…— se difieren a Fase 3 para viajar
-    con su pantalla) · `[ ]` UIR-3 `AppContext` + helpers.
+    con su pantalla) · `[x]` UIR-3 helpers **stateless** (HECHO 2026-06-30: `support/Icons`,
+    `support/Formatters`, `support/Dialogs`; monolito delega; −63 líneas netas. **AppContext god-object
+    DESCARTADO**: se mantiene el patrón de inyectar dependencias concretas por pantalla, mejor diseño).
   - **FASE 2:** `[ ]` UIR-4 Router (cortar llamadas `showX()→showY()`).
   - **FASE 3 (pantalla por pantalla, menor→mayor acoplamiento):** `[ ]` UIR-5 Login/Registro ·
     `[ ]` UIR-6 RETA/DEHú · `[ ]` UIR-7 Portal empleado · `[ ]` UIR-8 Sugerencias/Perfil/Equipo ·

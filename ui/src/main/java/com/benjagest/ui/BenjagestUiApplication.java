@@ -14249,20 +14249,7 @@ public class BenjagestUiApplication extends Application {
     }
 
     private Node icon(String literal) {
-        FontIcon icon = new FontIcon();
-        try {
-            icon.setIconLiteral(literal);
-        } catch (RuntimeException ignored) {
-            try {
-                icon.setIconLiteral("fas-circle");
-            } catch (RuntimeException ignoredAgain) {
-                Label fallback = new Label("");
-                fallback.getStyleClass().add("font-icon");
-                return fallback;
-            }
-        }
-        icon.getStyleClass().add("font-icon");
-        return icon;
+        return com.benjagest.ui.support.Icons.icon(literal);
     }
 
     private String moduleIcon(String module) {
@@ -14357,31 +14344,15 @@ public class BenjagestUiApplication extends Application {
     }
 
     private String money(BigDecimal value) {
-        return CURRENCY_FORMAT.format(value == null ? BigDecimal.ZERO : value);
+        return com.benjagest.ui.support.Formatters.money(value);
     }
 
     private String money(String value) {
-        if (value == null || value.isBlank()) {
-            return CURRENCY_FORMAT.format(BigDecimal.ZERO);
-        }
-        try {
-            return CURRENCY_FORMAT.format(new BigDecimal(value.replace(",", "")));
-        } catch (NumberFormatException exception) {
-            return value + " €";
-        }
+        return com.benjagest.ui.support.Formatters.money(value);
     }
 
     private String displayValue(String value) {
-        if (value == null || value.isBlank()) {
-            return "";
-        }
-        if (value.endsWith(" EUR")) {
-            return money(value.substring(0, value.length() - 4));
-        }
-        if (value.matches("\\d{4}-\\d{2}-\\d{2}")) {
-            return LocalDate.parse(value).format(DISPLAY_DATE);
-        }
-        return value;
+        return com.benjagest.ui.support.Formatters.displayValue(value);
     }
 
     /**
@@ -14420,13 +14391,7 @@ public class BenjagestUiApplication extends Application {
         // se limpie automáticamente — no hay que recordar llamar al
         // helper en cada call-site. Es la frontera natural entre
         // "mensajes técnicos del backend" y "mensajes para el usuario".
-        String clean = humanizeBackendError(message);
-        Platform.runLater(() -> {
-            Alert alert = new Alert(Alert.AlertType.ERROR, clean, ButtonType.OK);
-            alert.setTitle("BENJAGEST");
-            alert.setHeaderText(title);
-            alert.showAndWait();
-        });
+        com.benjagest.ui.support.Dialogs.error(title, humanizeBackendError(message));
     }
 
     /**
@@ -14438,38 +14403,12 @@ public class BenjagestUiApplication extends Application {
      * cualquier diálogo (empezamos por el de calcular nómina).
      */
     private void toast(javafx.stage.Window owner, String message) {
-        if (owner == null || message == null) return;
-        Label label = new Label(message);
-        label.getStyleClass().add("toast");
-        label.setWrapText(true);
-        label.setMaxWidth(360);
-
-        javafx.stage.Popup popup = new javafx.stage.Popup();
-        popup.setAutoFix(true);
-        popup.getContent().add(label);
-        popup.show(owner);
-        // Centrar arriba una vez conocido el ancho real tras el layout.
-        Platform.runLater(() -> {
-            popup.setX(owner.getX() + (owner.getWidth() - label.getWidth()) / 2);
-            popup.setY(owner.getY() + 72);
-        });
-
-        javafx.animation.FadeTransition fade = new javafx.animation.FadeTransition(
-                javafx.util.Duration.millis(450), label);
-        fade.setDelay(javafx.util.Duration.seconds(2.4));
-        fade.setFromValue(1.0);
-        fade.setToValue(0.0);
-        fade.setOnFinished(e -> popup.hide());
-        fade.play();
+        com.benjagest.ui.support.Dialogs.toast(owner, message);
     }
 
     /** Toast sobre la ventana activa (sin tener que pasarla explícitamente). */
     private void toast(String message) {
-        javafx.stage.Window w = javafx.stage.Window.getWindows().stream()
-                .filter(javafx.stage.Window::isFocused).findFirst()
-                .orElseGet(() -> javafx.stage.Window.getWindows().stream()
-                        .filter(javafx.stage.Window::isShowing).findFirst().orElse(null));
-        toast(w, message);
+        com.benjagest.ui.support.Dialogs.toast(message);
     }
 
     /**
@@ -17509,9 +17448,7 @@ public class BenjagestUiApplication extends Application {
     }
 
     private void showInfo(String title, String body) {
-        Alert a = new Alert(Alert.AlertType.INFORMATION, body);
-        a.setHeaderText(title);
-        a.showAndWait();
+        com.benjagest.ui.support.Dialogs.info(title, body);
     }
 
     // ----- Sub-tab Auditoría fichajes (TC-AUDIT) -----
