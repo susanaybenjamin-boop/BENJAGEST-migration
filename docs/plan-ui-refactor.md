@@ -76,8 +76,12 @@ una clase con `mountStandalone()`/`buildHolder()` o factoría en el shell; estad
   `editor*Label`, `editorPendingWorkLogIds` + `recomputeEditorTotals`). Secuencia segura:
   1. **FAC-1**: diálogos auto-contenidos (Migración baselines, Declaración fabricante) →
      `BillingDialogsScreen`. 0 acoplamiento al editor. (Series/IVA: con callback de recarga.)
-  2. **FAC-2**: el **editor de factura** → `InvoiceEditorScreen`. El corazón. **MAPA COMPLETO
-     (2026-06-30) — listo para ejecutar en sesión dedicada.** Es todo-o-nada (~1.200 líneas, sin
+  2. **FAC-2 ✅ HECHO (2026-06-30, en develop).** Editor extraído a `InvoiceEditorScreen` (shell
+     mantiene wrapper `showInvoiceEditor` + interfaz `Host`). Se movió `showImportWorkLogsToInvoice`;
+     `showWorkLogBillingDialog` se quedó en el shell para FAC-3 (no tocaba el editor). En la misma
+     sesión: bloque AGR (gate de acuerdo TPB para facturar/cobrar) + desglose de IVA por tipo en los
+     asientos con 303/390 leídos desde la contabilidad (ver [[memoria facturación]]). Mapa histórico:
+  2bis. (mapa original FAC-2) Es todo-o-nada (~1.200 líneas, sin
      sub-paso pequeño seguro; sus helpers son 90% exclusivos). **4 regiones a mover:**
      (a) campos `editor*` (11965-11982: `editorCustomerCombo/InvoiceTypeCombo/InvoiceDate/DueDate/
      NoDueDateChk/NotesArea/LinesTable/Subtotal/Vat/Retention/TotalLabel`, `editorDefaultVat/Retention`,
