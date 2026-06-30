@@ -90,6 +90,9 @@ public final class BrowserLauncher {
         //    nativo de Chromium (~150-200 MB) en installDir; luego reutiliza.
         CefAppBuilder builder = new CefAppBuilder();
         builder.getCefSettings().windowless_rendering_enabled = false; // modo ventana (no OSR)
+        // Silencia el log interno de Chromium (INFO:CONSOLE de las webs cargadas,
+        // browser_info.cc, CSP/preload warnings...). Solo errores reales.
+        builder.getCefSettings().log_severity = org.cef.CefSettings.LogSeverity.LOGSEVERITY_ERROR;
         builder.setInstallDir(new File(System.getProperty("user.home"), ".benjagest/jcef-bundle"));
         // Cache persistente (cookies/sesión) + silencia el aviso/singleton del cache por defecto.
         File cacheDir = new File(System.getProperty("user.home"), ".benjagest/jcef-cache");
