@@ -76,8 +76,19 @@ una clase con `mountStandalone()`/`buildHolder()` o factoría en el shell; estad
   `editor*Label`, `editorPendingWorkLogIds` + `recomputeEditorTotals`). Secuencia segura:
   1. **FAC-1**: diálogos auto-contenidos (Migración baselines, Declaración fabricante) →
      `BillingDialogsScreen`. 0 acoplamiento al editor. (Series/IVA: con callback de recarga.)
-  2. **FAC-2**: el **editor de factura** (`showInvoiceEditor` + campos `editor*` +
-     `recomputeEditorTotals` + edición de líneas) → `InvoiceEditorScreen`. El corazón.
+  2. **FAC-2**: el **editor de factura** → `InvoiceEditorScreen`. El corazón. **MAPA COMPLETO
+     (2026-06-30) — listo para ejecutar en sesión dedicada.** Es todo-o-nada (~1.200 líneas, sin
+     sub-paso pequeño seguro; sus helpers son 90% exclusivos). **4 regiones a mover:**
+     (a) campos `editor*` (11965-11982: `editorCustomerCombo/InvoiceTypeCombo/InvoiceDate/DueDate/
+     NoDueDateChk/NotesArea/LinesTable/Subtotal/Vat/Retention/TotalLabel`, `editorDefaultVat/Retention`,
+     `editorPendingWorkLogIds`); (b) núcleo `showInvoiceEditor`→`persistDraft` (12572-13649:
+     invoiceEditorView, invoiceCard/CardWithActions/TotalsRow, configureCustomerCombo, previewNextNumber,
+     formatDecimalForCell, decimalColumn, applyCustomerVatDefaults, recomputeEditorTotals, persistDraft);
+     (c) `showWorkLogBillingDialog` (28558, puente Trabajos→editor); (d) `showImportWorkLogsToInvoice`
+     (28755, interno del editor). **ApiClients:** billing+customer+labor+alta. **Contrato:** el shell
+     mantiene `showInvoiceEditor(id)` wrapper (`recordNav` + `new InvoiceEditorScreen(...).show(id)`),
+     así los **8 callers no cambian**; `showWorkLogBillingDialog` pasa a público y Trabajos lo llama por
+     la instancia. **Helper compartido:** `localizedInvoiceTypeLabel` (2 usos fuera) → ScreenBase + copia.
   3. **FAC-3**: reunir **Trabajos** (`showWorkLogBillingDialog`, `showImportWorkLogsToInvoice`)
      para que usen `InvoiceEditorScreen` (eran el motivo del acoplamiento, ver revert UIR-11 trabajos).
   4. **FAC-4**: `showBilling` (listado/módulo) → `BillingScreen`, usando InvoiceEditorScreen.
