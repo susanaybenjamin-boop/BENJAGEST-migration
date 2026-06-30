@@ -276,10 +276,14 @@ Repaso punto por punto de lo que Benjamin reportó con el check en blanco. Estad
   central). **Verificar antes de tocar auth/registro** (zona caliente, CLAUDE.md §11.2).
 
 - 🧹 **UIR — Troceado de la UI (refactor estructural, EN CURSO desde 2026-06-30).**
-  > ▶️ **REANUDAR AQUÍ (sesión 2026-07-01):** **BLOQUE FACTURACIÓN cerrado** (FAC-1..4). Siguiente:
-  > **BLOQUE ASESORÍA (XL)** — el composite `buildClientDetailView` + tabs que incrusta los operativos
-  > en la ficha de cliente (ahí está el 2º caller de `validateInvoiceFromList`, ~línea 24382). O bien
-  > **BLOQUE NÓMINA (XXL)**. Empezar mapeando antes de tocar (patrón Host ya probado en FAC-4a/4b).
+  > ▶️ **REANUDAR AQUÍ (sesión 2026-07-01):** **BLOQUE ASESORÍA EN CURSO** — leaf-first, mapa de
+  > slices AS-1..AS-7 en [`plan-ui-refactor.md`](plan-ui-refactor.md). HECHO 2026-06-30: **AS-1**
+  > `ClientCustomersScreen`, **AS-2** `ClientConfigScreen`, **AS-3** `ClientSummaryScreen` (todas con
+  > Host, compilan, en `develop`). Siguiente: **AS-4** `buildClientSalesAndExpensesTab`+archivado →
+  > `ClientSalesExpensesScreen` (reusa el KPIs block compartido vía Host). Luego AS-5 (TPB, caliente),
+  > AS-6 (billing/purchases per-cliente), AS-7 (composite `buildClientDetailView`, el último). Después
+  > de ASESORÍA: **BLOQUE NÓMINA (XXL)**. (FAC-1..4 cerrado; 2º caller de `validateInvoiceFromList` en
+  > la ficha ~línea 24382, no movido.)
   > **FAC-4b HECHO (2026-06-30):** invoices tab → `BillingInvoicesScreen` con Host (clase anónima,
   > sin tocar visibilidad); −678 líneas; commit `2f7ce2b`, merged a `develop`. Wrapper
   > `billingInvoicesTab(list)` conservado (1 call site). `validateInvoiceFromList` NO se movió (compartido
