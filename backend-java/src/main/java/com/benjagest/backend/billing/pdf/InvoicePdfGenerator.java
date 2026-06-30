@@ -578,7 +578,10 @@ public class InvoicePdfGenerator {
             if (hasReduced && nonBlank(texts.reducedVat())) {
                 ct.addElement(legalParagraph(texts.reducedVat(), fText));
             }
-            if (nonBlank(texts.legalTerms())) {
+            // Los términos legales (vencimiento, mora, jurisdicción) solo
+            // tienen sentido si la factura tiene fecha de vencimiento. Si se
+            // emitió "sin vencimiento" (cobrada al contado), no se imprimen.
+            if (nonBlank(texts.legalTerms()) && invoice.dueDate() != null) {
                 ct.addElement(legalParagraph(texts.legalTerms(), fText));
             }
             ct.go();
