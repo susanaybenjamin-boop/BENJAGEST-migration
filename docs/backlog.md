@@ -276,6 +276,15 @@ Repaso punto por punto de lo que Benjamin reportó con el check en blanco. Estad
   central). **Verificar antes de tocar auth/registro** (zona caliente, CLAUDE.md §11.2).
 
 - 🧹 **UIR — Troceado de la UI (refactor estructural, EN CURSO desde 2026-06-30).**
+  > ▶️ **REANUDAR AQUÍ (próxima sesión):** ejecutar **FAC-2 = editor de factura → `InvoiceEditorScreen`**.
+  > Mapa línea-a-línea ya hecho en [`plan-ui-refactor.md`](plan-ui-refactor.md) (sección BLOQUE FACTURACIÓN,
+  > FAC-2). Es todo-o-nada (~1.200 líneas, 4 regiones, 4 ApiClients, 8 callers; shell mantiene wrapper
+  > `showInvoiceEditor` → callers no cambian). Receta: script 4 regiones → `mvn -pl ui clean compile` →
+  > arreglar helpers compartidos → **Benjamin prueba facturación (propia + ficha cliente + importar
+  > trabajos)** → seguir FAC-3 (reunir Trabajos) y FAC-4 (`showBilling`→`BillingScreen`).
+  > **Estado al pausar 2026-06-30:** monolito 31.971 líneas (−27,5%); extraídos y validados Sugerencias,
+  > Equipo, Portal, DEHú, Fiscal, RETA; clean compile OK; nada a medias; versión SIN subir.
+
   Desmontar el God Object `BenjagestUiApplication.java` (~44.125 líneas, ~145 métodos de
   pantalla) en clases de pantalla independientes (`ui/screens/`), replicando el patrón ya
   probado (`AccountingScreen`, `ClientFinancialsScreen`). **Plan completo en**
