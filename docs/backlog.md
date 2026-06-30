@@ -276,15 +276,18 @@ Repaso punto por punto de lo que Benjamin reportó con el check en blanco. Estad
   central). **Verificar antes de tocar auth/registro** (zona caliente, CLAUDE.md §11.2).
 
 - 🧹 **UIR — Troceado de la UI (refactor estructural, EN CURSO desde 2026-06-30).**
-  > ▶️ **REANUDAR AQUÍ (sesión 2026-07-01):** ejecutar **FAC-4a = config tab de facturación →
-  > `BillingConfigScreen`**. Mapa línea-a-línea en [`plan-ui-refactor.md`](plan-ui-refactor.md)
-  > (BLOQUE FACTURACIÓN, FAC-4, sub-bullet "Resto FAC-4a"). Mover `billingConfigTab` + `showSeriesEditor`
-  > + `saveVerifactuConfig` + `saveVatRegime` + `saveInvoiceTexts` + `vatRegimeBlock` + migración
-  > (`applyMigration`/`resolveMigrationSeries`/`buildMigrationTokenTagger`) a `BillingConfigScreen` con
-  > Host (patrón ya usado en `InvoiceEditorScreen`/`BillingDialogsScreen`). **Zona caliente legal**
-  > (series RD 1619/2012 + VeriFactu) → mover, no reescribir; `mvn -pl ui compile` + Benjamin prueba
-  > config. Luego FAC-4b (invoices tab → `BillingInvoicesScreen`), después BLOQUE ASESORÍA (XL) y
-  > BLOQUE NÓMINA (XXL).
+  > ▶️ **REANUDAR AQUÍ (sesión 2026-07-01):** ejecutar **FAC-4b = invoices tab de facturación →
+  > `BillingInvoicesScreen`**. Mapa en [`plan-ui-refactor.md`](plan-ui-refactor.md) (BLOQUE
+  > FACTURACIÓN, FAC-4, sub-bullet "FAC-4b"). Mover `billingInvoicesTab` (~820 líneas) con Host para
+  > las ~12 acciones (`validateInvoiceFromList`, `voidInvoiceFromList`, `deleteDraftFromList`,
+  > `showMultiAllocationDialog`, `showBankReconciliationDialog`, `openDueDatesDialog`,
+  > `showInvoiceEditor`, `openRecurringEditorFromInvoice`, gate AGR-2 `applyBillingGate`/
+  > `ensureBillingAllowed`, email/pdf). Mismo patrón Host que FAC-4a (`BillingConfigScreen`).
+  > `mvn -pl ui compile` + Benjamin prueba el listado. Luego BLOQUE ASESORÍA (XL) y BLOQUE NÓMINA (XXL).
+  > **FAC-4a HECHO (2026-06-30):** config tab → `BillingConfigScreen` con Host
+  > (`refreshBillingConfig`/`showMigrationBaselines`/`showManufacturerDeclaration`); −1.060 líneas del
+  > monolito; commit `ac24450`, merged a `develop`. Wrapper `billingConfigTab(...)` conservado (2 call
+  > sites intactos). Compila; versión SIN subir (UIR sube una sola vez al final).
   > **Estado al pausar 2026-06-30 (sesión maratón):** monolito 30.447 líneas. HECHO y en `develop`:
   > FAC-2 (editor→`InvoiceEditorScreen`), FAC-1 (`BillingDialogsScreen`), FAC-3 (resuelto por FAC-2),
   > FAC-4 parcial (`VatRatesScreen` + `SifAuditScreen`). Además, fuera del troceado: V157 (fix validar

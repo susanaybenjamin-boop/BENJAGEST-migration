@@ -113,10 +113,14 @@ una clase con `mountStandalone()`/`buildHolder()` o factoría en el shell; estad
      Sugerencia de troceo: FAC-4a config tab → `BillingConfigScreen`; FAC-4b invoices tab → `BillingScreen`.
      - ✅ **Hecho 2026-06-30:** `VatRatesScreen` (tipos IVA/IRPF) + `SifAuditScreen` (auditoría SIF,
        solo lectura) extraídos del config tab vía `buildSection()`. Eran los 2 bloques "dedicados".
-     - ⬜ **Resto FAC-4a (config core, interleaved):** mover `billingConfigTab` + `showSeriesEditor` +
-       `saveVerifactuConfig` + `saveVatRegime` + `saveInvoiceTexts` + `vatRegimeBlock` + métodos de
-       migración (`applyMigration`/`resolveMigrationSeries`/`buildMigrationTokenTagger`) →
-       `BillingConfigScreen`. VeriFactu config + series son zona caliente (legal).
+     - ✅ **Resto FAC-4a HECHO (2026-06-30):** `BillingConfigScreen` con interfaz `Host`
+       (`refreshBillingConfig`/`showMigrationBaselines`/`showManufacturerDeclaration`). Movido tal cual
+       `billingConfigTab`→`buildTab` + `showSeriesEditor` + `saveVerifactuConfig`(x2) + `vatRegimeBlock`
+       + `saveInvoiceTexts` + migración (`applyMigration`/`importMigrationPdf`/`resolveMigrationSeries`/
+       `buildMigrationTokenTagger`/`recomputeMigrationFromTokens`) + `chooseInvoiceStorageDir` +
+       `localizedModality` + `verifyVerifactuChain` + `textArea`/`fillIfBlank`/`nzDash` + 23 campos. El
+       shell conserva `billingConfigTab(...)` como wrapper (2 call sites intactos). −1.060 líneas del
+       monolito. Helpers form copiados local. mvn -pl ui compile OK; merged a develop.
      - ⬜ **FAC-4b (invoices tab):** `billingInvoicesTab` (~820 líneas) → `BillingInvoicesScreen` con
        Host para las ~12 acciones (`validateInvoiceFromList`, `voidInvoiceFromList`,
        `deleteDraftFromList`, `showMultiAllocationDialog`, `showBankReconciliationDialog`,
