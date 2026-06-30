@@ -1,5 +1,11 @@
 # Plan — PAGO-PROVEEDOR con modelo de VENCIMIENTOS (decidido Benjamin 2026-06-19)
 
+> ## ✅ IMPLEMENTADO (verificado en código 2026-06-30)
+> PV-1..6 cerrados: migración `V133__invoice_due_dates.sql` +
+> `accounting/PaymentScheduleService.java` + `DueDateController.java` (vencimientos por
+> factura, saldo contra tesorería 400→572/570). Plan cerrado; se conserva como diseño
+> de referencia.
+
 > **Decisión Benjamin:** registrar el pago de compras (y simétricamente el cobro de
 > ventas) con un **modelo de vencimientos completo** estilo A3/Sage: cada factura puede
 > tener N vencimientos (fechas), y cada uno se **salda** contra una cuenta de

@@ -85,14 +85,16 @@ Pantalla "Crear cuenta" enlazada desde el login:
 - **REG-2** ✅ — UI "Crear cuenta" desde login: selector tipo, campos de facturar
   obligatorios, auto-login. Botón Google presente (deshabilitado hasta configurar).
   i18n ES+EN.
-- **REG-3** (pendiente) — **Google OAuth POR INSTALACIÓN**: decisión Benjamin
-  (2026-06-26) — NO hay credenciales centrales ni "cuenta pasarela". Cada
-  instalación mete SUS credenciales (Client ID/Secret de tipo "Aplicación de
-  escritorio", redirect loopback `127.0.0.1`) en **Configuración → Integraciones
-  → Google**. El backend verifica el ID token de Google con ese Client ID; alta =
-  crea user_account con `google_id`, password NULL. Email ya verificado por Google.
-- **REG-4** (pendiente, opcional) — verificación de email para el alta
-  email+contraseña vía **SMTP propio de la instalación** (no cuenta BENJAGEST).
+- **REG-3** ✅ **HECHO** (bloque GOOGLE-UNIFICADO, 2026-06-26) — **Google OAuth**:
+  `auth/GoogleOAuthService.java` + V149/V150 (`google_oauth_config`,
+  `google_api_connections`); modelo **híbrido** (credenciales centrales `benjagest2026`
+  en `google-secrets.yml` + override per-instalación en Configuración → Correo →
+  Integraciones). Alta/login con Google operativos. **Lo único que queda** es la
+  **verificación del proyecto Google** ante Google (quitar el aviso "app no verificada":
+  necesita nombre de producto + dominio + web) — eso es la PARTE B, pendiente de Benjamin.
+- **REG-4** ✅ **HECHO** — verificación de email para el alta email+contraseña: el
+  alta queda PENDIENTE de verificar y se envía un PIN al correo (`EmailVerificationService`
+  + `V152__email_verification.sql`; ver `RegisterService.register()`).
   Hoy ese camino entra directo.
 
 ## 6. Decisiones abiertas (Benjamin)

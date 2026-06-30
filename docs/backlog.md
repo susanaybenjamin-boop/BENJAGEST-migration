@@ -86,7 +86,9 @@ Tras la tanda larga del 29-jun, lo que **antes estaba pendiente y AHORA está HE
 - ✅ **CONSOL (consolidación contable intragrupo, 1-4)** — grupos de empresas + balance agregado +
   eliminaciones intragrupo (430/400 recíprocos) + informe PDF. Útil en modo asesoría y empresario.
 - ✅ **OFFLINE (fichaje sin red, OFF-1..4)** — sync idempotente (`client_uuid`, sello offline) en
-  **kiosco** y **PWA del empleado**; origen visible en Auditoría. *(OFF-3b Service Worker app-shell = refinamiento futuro.)*
+  **kiosco** y **PWA del empleado**; origen visible en Auditoría. *(OFF-3b Service Worker app-shell:
+  **HECHO en la PWA del empleado** — `EmployeeAppService` sirve `/sw.js`, cache `benjagest-empleado-v5`;
+  corrección 2026-06-30. Solo queda como refinamiento en la SPA del kiosco, que usa cola en localStorage.)*
 - ✅ **AUTO-UPDATE** — `UpdateService` consulta GitHub Releases (repo público), descarga e instala
   el `.msi` encima (major-upgrade). **Probado en real 0.1.0→0.1.1→0.1.2.** Botón en Config + chequeo al arrancar.
 - ✅ **Instalable .msi** autocontenido (UI+backend+MariaDB embebida+OCR) con **icono propio redondo**.
@@ -100,7 +102,7 @@ Tras la tanda larga del 29-jun, lo que **antes estaba pendiente y AHORA está HE
 3. **Verificación del proyecto Google** (Fase 1) — quita el aviso "app no verificada"; necesita dominio + web (privacidad/términos).
 4. **Conectores reales** (Fase 2): DEHú real + SS RED/SILTRA real — envío con certificado; necesitan credenciales reales.
 5. **Modelos AEAT 100/180/200/411** (Fase 1) — investigación legal + mapeo de casillas.
-6. **Afinado menor** (con Benjamin, no bloqueante): asiento de pagas extra `EXTRA_*`, CL-5 atrasos, revisión de contratos, JOR-4 refinos, CONSOL-3b (P&G intragrupo), CONSOL-5 (NOFCAC minoritarios).
+6. **Afinado menor** (con Benjamin, no bloqueante): CL-5 atrasos (recibo/asiento/L13), versionar complementos salariales en vigencias, JOR-4 refinos, CONSOL-3b (P&G intragrupo), CONSOL-5 (NOFCAC minoritarios). *(El asiento de pagas extra `EXTRA_*` y el modelo de VIGENCIAS/ascenso YA están hechos — ver corrección 2026-06-30 en Fase 3.)*
 
 > En una frase: **el producto está funcionalmente completo y desplegable/auto-actualizable**. Lo que
 > queda es **legal (VeriFactu, modelos AEAT, Google) + operativo externo (túnel, conectores con
@@ -111,7 +113,7 @@ Tras la tanda larga del 29-jun, lo que **antes estaba pendiente y AHORA está HE
 Repaso punto por punto de lo que Benjamin reportó con el check en blanco. Estado **comprobado leyendo el código**, no de memoria:
 
 - **Calendario laboral (importar PDF) — ✅ HECHO y disponible para el empresario.** `buildWorkCalendarTab()` tiene el botón **"Importar PDF"** (`workcal.btn.import_pdf`, primario) → `HolidayPdfExtractor` + `POST /api/labor/work-calendars/{id}/holidays/replace`. Backend `WorkCalendarController` con `@RequiresModule("labor")` + OWNER/ADMIN. **El problema era de NAVEGACIÓN, no de función**: está enterrado en **Personal → categoría "Tiempo" → sub-pestaña "Calendario laboral"** (5ª). *Mejora propuesta: subirlo de nivel o un acceso directo.*
-- **Nómina incidencias (horas extra, ausencias, etc.) — ✅ BASE HECHA** (INC-1..4, 2026-06-22): `labor/incidencias/NominaIncidenciaService` + `V136__nomina_incidencias.sql`; afectan el cálculo de nómina (`PayslipService`, `OvertimeRatesService`). **Pendiente real (Fase 3):** asiento de **pagas extra cotizadas** (`EXTRA_*` hoy sin asiento) y afinado de algún tipo. → La línea de Fase 3 "Incidencias de nómina" estaba mal como totalmente pendiente; lo correcto es "base hecha, falta asiento EXTRA_*".
+- **Nómina incidencias (horas extra, ausencias, etc.) — ✅ BASE HECHA** (INC-1..4, 2026-06-22): `labor/incidencias/NominaIncidenciaService` + `V136__nomina_incidencias.sql`; afectan el cálculo de nómina (`PayslipService`, `OvertimeRatesService`). **Corrección 2026-06-30:** el asiento de **pagas extra `EXTRA_*` YA está hecho** (`createExtraProvision/Accrual/Payment`, cableados); este punto ya no es pendiente.
 - **Bajas (IT) / vacaciones — ✅ en la UI** (`buildMedicalLeavesTab`, `buildVacationsTab`, `buildLeaveRequestsTab` en Personal → Ausencias). Backend IT cerrado 2026-06-09.
 - **Fichajes sospechosos — ✅ HECHO DESPUÉS (FICHA-REVIEW, ver ESTADO arriba).** Auditoría + el
   informe Plan-vs-Real marca incidencias y ya tiene **"Dar por bueno"/"Quitar revisado"**.
@@ -138,12 +140,25 @@ Repaso punto por punto de lo que Benjamin reportó con el check en blanco. Estad
 - **SS RED / SILTRA real**: envío real (AFI/CRA/DELT@/CRETA) — las credenciales ya se guardan.
 
 ### Fase 3 — Afinado laboral/nómina ⚖️💰
+> **CORRECCIÓN 2026-06-30 (reconciliación con código, 4 agentes):** dos ítems que
+> figuraban aquí como pendientes **ya estaban implementados**. Se marcan ✅ abajo.
 - ✅ **Incidencias de nómina** (horas extra, complementos variables) — **BASE HECHA** (INC-1..4,
-  2026-06-22; `NominaIncidenciaService` + V136). Queda solo el afinado de abajo.
-- **Pagas extra cotizadas con asiento** (EXTRA_* hoy sin asiento). ← *esto es lo que falta de
-  "incidencias", no las incidencias en sí.*
-- **Revisión completa de contratos + flujo de alta del empleado**.
-- **CL-5** (recibo/asiento/L13 de atrasos) — con Benjamin.
+  2026-06-22; `NominaIncidenciaService` + V136). Cableada al motor (`PayslipService` aplica
+  COMPLEMENT/OVERTIME/ABSENCE/DEDUCTION).
+- ✅ **Pagas extra con asiento (EXTRA_*)** — **HECHO** (verificado 2026-06-30):
+  `PayslipJournalEntryService.createExtraProvision/createExtraAccrual/createExtraPayment`
+  invocados desde `PayslipService.calculate()` y `markPaid()`, con flag de empresa
+  `provision_extra_pay` (V126). *(Matiz cierto: las extra no cotizan aparte; su SS va
+  prorrateada mes a mes. Eso es correcto, no un pendiente.)*
+- ✅ **CONTRATO-VIGENCIAS / ascenso (novación)** — **HECHO** (verificado 2026-06-30):
+  `V125__contract_vigencias.sql` + `EmploymentContractService.promote()` + endpoint
+  `POST /api/labor/contracts/{id}/promote` + `resolveActiveContract` (deriva salario/grupo/
+  categoría/IRPF por vigencia vigente a la fecha, sin tocar antigüedad) + UI "Ascender".
+  **Queda solo** versionar `contract_salary_items` (complementos) — refinamiento menor.
+- **Revisión de contratos + flujo de alta del empleado** — repaso pendiente con Benjamin
+  (el modelo de vigencias ya está; falta versionar complementos salariales y revisar el alta).
+- **CL-5** (recibo/asiento/L13 de atrasos) — con Benjamin. *(Hoy solo existe el `preview`
+  de `BackPayService`; faltan recibo, asiento, liquidación complementaria L13 y atrasos sobre extras.)*
 - **JOR-4**: excepciones por fecha + comparación planificado-vs-real (refinamiento). *(El plan-vs-real
   ya está + FICHA-REVIEW "dar por bueno"; queda solo el afinado de excepciones por fecha.)*
 - ✅ **Sincronización offline de fichajes** (kioscos sin red) — **HECHO 2026-06-29** (bloque OFFLINE,
@@ -2214,11 +2229,14 @@ Nóminas; afinar topes de cotización; pagas extra.
 - ✅ ⚖️ **Payrolls — ciclo mensual** — cerrado en bloque NOM (calcular/pagar/PDF/email + asientos devengo/pago + SS empresa vía cuotas TC).
 - ✅ 💰 **Reporte coste empresa por empleado** — cerrado (NOM-6, `aa61627`): pestaña "Coste empresa" en Labor con bruto anual + SS empresa + coste total por empleado y totales al pie.
 - ✅ **Entrega de nóminas con firma trabajador** *(PAY-DELIVERY, 2026-06-15)* — V116 (delivered_at, delivery_method, acknowledged_at). Pestaña Nóminas: columna "Entrega" (Pendiente/Entregada/Firmada) + botón "Entrega / acuse" (fecha + vía HAND/EMAIL/PORTAL/POSTAL + acuse del trabajador). ET art. 29.
-- ⬜ **Incidencias de nómina** — horas extra, bajas, complementos variables por periodo.
+- ✅ **Incidencias de nómina** — horas extra, complementos, ausencias, deducciones por periodo
+  (INC-1..4, `NominaIncidenciaService` + V136, cableadas a `PayslipService`). *(Corrección 2026-06-30.)*
 - ✅ **Topes de cotización TGSS por grupo** — cerrado (V109 `ss_contribution_base_caps` +
   V121 `ss_contribution_group_bases`, aplicados en `PayslipService`, cifras 2026).
-- ⬜ **Pagas extra cotizadas con asiento** — EXTRA_* hoy sin asiento (resto del afinado NOM).
-- ⬜ Revisión completa contratos + flujo alta del empleado.
+- ✅ **Pagas extra con asiento (EXTRA_*)** — HECHO (`createExtraProvision/Accrual/Payment` +
+  flag `provision_extra_pay` V126). *(Corrección 2026-06-30; las extra cotizan prorrateadas, sin cuota propia.)*
+- 🟡 Revisión completa contratos + flujo alta del empleado — el modelo de **VIGENCIAS/ascenso ya está**
+  (V125 + `promote()`); queda versionar complementos salariales y revisar el alta del empleado.
 
 ## ⚖️ RD 8/2019 fichajes extensión
 

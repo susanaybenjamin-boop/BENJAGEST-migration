@@ -1,5 +1,11 @@
 # Plan — FICHAJE POR JORNADA (botones según el horario asignado, estilo CONTENDO)
 
+> ## ✅ IMPLEMENTADO (verificado en código 2026-06-30)
+> FJ-1..5 cerrados: `timeclock/ScheduleFichajeService.java` (`suggestNextPunch`) +
+> endpoints `EmployeeFichajeController` (`/sugerencia`) y `EmployeeJornadaController`,
+> con comparación planificado-vs-real (`PlanVsRealService`). Plan cerrado; se conserva
+> como diseño de referencia.
+
 > **Pedido Benjamin 2026-06-19:** que el fichaje se comporte según la **jornada
 > asignada** al empleado (modelo CONTENDO). Ejemplo: jornada 8-18 con bloques
 > 8:00-10:00 (trabajo), 10:00-10:30 (pausa), …:

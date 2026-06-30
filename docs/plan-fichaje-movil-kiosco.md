@@ -99,10 +99,13 @@ Todas con `company_id` (multi-tenant) e índices por (company_id, …).
   y se muestra en la pestaña Jornadas ("Jornadas fichadas"). No duplica eventos ni
   cadena hash; los agrega. PORT-2 (planificación de horarios) cerrado el mismo día
   (JOR-2/JOR-3). Ver `docs/backlog.md` (sección PORT-2 JORNADAS).
-- ⬜ **offline / deshacer-60s — PENDIENTE, fuera del módulo de fichaje:**
-  - **Cola offline** (kiosco sin red): fase 2 (decidido).
-  - **Deshacer 60 s**: vía `requestCorrection` (mecanismo RD 8/2019 ya existe);
-    su UI/endpoint de kiosco queda como mejora (no se anula el original — corrección).
+- ✅ **Cola offline (kiosco sin red) — HECHO 2026-06-29** (bloque OFFLINE-FICHAJE,
+  `V156__timeclock_client_uuid.sql`): `KioskService.syncFichaje` + endpoint
+  `POST /fichaje/sync`, cola en `localStorage` con flush al reconectar; origen
+  `KIOSK_OFFLINE` visible en Auditoría. (La PWA del empleado también, con Service Worker.)
+- ⬜ **Deshacer 60 s — PENDIENTE (mejora menor):** vía `requestCorrection` (mecanismo
+  RD 8/2019 ya existe); su UI/endpoint de kiosco queda como mejora (no se anula el
+  original — corrección).
 
 ## 6. DECISIONES CERRADAS (Benjamin 2026-06-17)
 

@@ -1,5 +1,11 @@
 # Plan — Asiento manual más intuitivo (pedido Benjamin 2026-06-19)
 
+> ## ✅ IMPLEMENTADO (verificado en código 2026-06-30)
+> ME-1/2/3 cerrados: traversal de TAB por columnas en `AccountingScreen` (`table.edit`
+> por celda) + `accounting/ManualEntryAssistController.java` con `/assist/open-invoices`
+> y `/assist/suggest` (`ManualEntryAssistService`). Plan cerrado; se conserva como
+> diseño de referencia.
+
 > Filosofía (Benjamin): **el usuario manda**. Todo son ayudas/sugerencias; el
 > asesor sigue pudiendo **añadir/quitar línea** y teclear lo que quiera. Editor
 > afectado: `AccountingScreen.buildEntryDialog` (tabla editable `EditableLine`
