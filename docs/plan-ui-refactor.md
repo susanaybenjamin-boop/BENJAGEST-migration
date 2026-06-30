@@ -47,8 +47,23 @@ Cada pantalla = una clase en `ui/screens/`:
   pantallas extraídas reciben (junto a su ApiClient + `t`) para navegar en vez de
   `this.showY()`. El monolito implementa el `Router` durante la transición.
 
+### 🟠 PRERREQUISITO descubierto (2026-06-30) — kit de soporte de pantallas
+> Al empezar la Fase 3 se confirmó que **casi toda pantalla arrastra una red de
+> helpers compartidos del shell** (`content()`, `errorPanel()`, `iconBubble()`,
+> `shortIso()`, `blankToNullOrSelf()`, `installDialog()`, `sectionHeader()`,
+> `formLabel()`, los comparadores `ISO_DATE_COMPARATOR`/`NUMERIC_STRING_COMPARATOR`)
+> y, en algunas, **estado del shell** (`currentModule`, polling con Timeline,
+> `setCenterSilent`). Antes de mover las pantallas medianas/grandes hay que
+> extraer ese kit a `support/` + `ScreenBase` y exponer en el `Router` lo que
+> falte (`setCenterSilent`, `currentModule()`/`isActive`). Es trabajo mecánico
+> pero real: la Fase 3 es **multi-sesión**, no un repetir-y-listo. Hecho ya:
+> `ScreenBase` (UIR-5b), `UiBuilders` (label/scroll), `Dialogs`, `Icons`,
+> `Formatters`, `BackendErrors`. Pendiente del kit: content/errorPanel/iconBubble/
+> shortIso/blankToNullOrSelf/installDialog/comparadores/setCenterSilent.
+
 ### 🔴 FASE 3 — Pantalla por pantalla (orden de menor a mayor acoplamiento)
-- **UIR-5** — Login / Registro / Onboarding (M)
+- **UIR-5** — ✅ Sugerencias (plantilla; runtime-validada por Benjamin). Login/Registro
+  queda para más adelante (camino crítico).
 - **UIR-6** — RETA / DEHú (M)
 - **UIR-7** — Portal empleado (MEMP) (S)
 - **UIR-8** — Sugerencias / Perfil / Bloqueo / Equipo (M)
