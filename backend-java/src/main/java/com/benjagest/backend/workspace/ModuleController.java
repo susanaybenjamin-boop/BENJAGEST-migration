@@ -19,7 +19,7 @@ import org.springframework.web.server.ResponseStatusException;
 public class ModuleController {
 
     private static final Set<String> SUPPORTED_MODULES = Set.of(
-            "customers", "billing", "purchases", "labor", "tax", "reports", "settings", "calendar"
+            "customers", "billing", "purchases", "labor", "tax", "settings", "calendar"
     );
 
     private final WorkspaceRepository repository;
