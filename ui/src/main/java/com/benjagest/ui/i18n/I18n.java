@@ -22,6 +22,9 @@ public final class I18n {
                 case "login" -> "Sign in";
                 // REG-2 — registro (EN)
                 case "password.toggle" -> "Show / hide password";
+                case "login.email.subtitle" -> "Sign in with your email and password";
+                case "login.email.missing.title" -> "Missing data";
+                case "login.email.missing.body" -> "Enter your email and password to continue.";
                 case "login.with_google" -> "Sign in with Google";
                 case "google.title" -> "Sign in with Google";
                 case "google.failed" -> "Google sign-in failed.";
@@ -1001,6 +1004,7 @@ public final class I18n {
                 case "settings.company.save.fail.title" -> "Could not save";
                 case "settings.company.save.fail.body" -> "Check the data and try again.";
                 case "settings.email.section" -> "SMTP server";
+                case "settings.email.prompt.host" -> "smtp.your-domain.com";
                 case "settings.email.prompt.port" -> "587";
                 case "settings.email.prompt.user" -> "user@domain";
                 case "settings.email.prompt.password.saved" -> "(password saved - leave blank to keep)";
@@ -1148,6 +1152,9 @@ public final class I18n {
             case "login" -> "Entrar";
             // REG-2 — registro (ES)
             case "password.toggle" -> "Ver / ocultar contraseña";
+            case "login.email.subtitle" -> "Inicia sesion con tu email y contrasena";
+            case "login.email.missing.title" -> "Faltan datos";
+            case "login.email.missing.body" -> "Introduce email y contrasena para continuar.";
             case "login.with_google" -> "Iniciar sesión con Google";
             case "google.title" -> "Acceso con Google";
             case "google.failed" -> "El acceso con Google falló.";
@@ -2086,6 +2093,7 @@ public final class I18n {
             case "settings.company.save.fail.title" -> "No se pudo guardar";
             case "settings.company.save.fail.body" -> "Comprueba los datos y vuelve a intentarlo.";
             case "settings.email.section" -> "Servidor SMTP";
+            case "settings.email.prompt.host" -> "smtp.tu-dominio.com";
             case "settings.email.prompt.port" -> "587";
             case "settings.email.prompt.user" -> "usuario@dominio";
             case "settings.email.prompt.password.saved" -> "(password guardada - deja vacio para no cambiar)";

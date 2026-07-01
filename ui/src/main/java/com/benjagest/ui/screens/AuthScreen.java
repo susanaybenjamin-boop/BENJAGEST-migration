@@ -104,7 +104,7 @@ public class AuthScreen extends ScreenBase {
 
         Label title = new Label("BENJAGEST");
         title.getStyleClass().add("hero-title");
-        Label subtitle = new Label("Inicia sesion con tu email y contrasena");
+        Label subtitle = new Label(t("login.email.subtitle"));
         subtitle.getStyleClass().add("hero-body");
 
         TextField emailField = new TextField();
@@ -413,7 +413,7 @@ public class AuthScreen extends ScreenBase {
 
     private void login(String email, String password) {
         if (email == null || email.isBlank() || password == null || password.isBlank()) {
-            showError("Faltan datos", "Introduce email y contrasena para continuar.");
+            showError(t("login.email.missing.title"), t("login.email.missing.body"));
             return;
         }
         Task<Void> task = new Task<>() {
