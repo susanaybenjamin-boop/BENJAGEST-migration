@@ -276,34 +276,45 @@ Repaso punto por punto de lo que Benjamin reportó con el check en blanco. Estad
   central). **Verificar antes de tocar auth/registro** (zona caliente, CLAUDE.md §11.2).
 
 - 🧹 **UIR — Troceado de la UI (refactor estructural, EN CURSO desde 2026-06-30).**
-  > ▶️ **REANUDAR AQUÍ (2026-07-01, sesión larga autónoma):** quedan **SÓLO 2 slices** del UIR +
-  > el bump de versión. El app COMPILA y está COMPLETO en `develop` (nada de versión subida).
-  > **HECHO hoy y en develop:** NOM-1..11 (bloque Nómina entero → screens), **SM-PKG** (gestor-navegador
-  > dentro del .msi + `locateGestorJar` ruta instalada), **SM-1** `CalendarScreen`, **SM-2a**
-  > `SettingsScreen` núcleo (empresa/correo+Google/módulos/certificados/sesión/about; Host puentea estado
-  > del shell + las 7 tabs pesadas), **SM-3** `ProfileScreen`. Monolito ~16.768 líneas.
-  > **PENDIENTE — hacer CON Benjamin (probar en runtime):**
-  >  - **SM-4 AuthScreen** (login/registro/emparejado/PIN, ~700 líneas, shell 524-1288 aprox). NO se hizo
-  >    en autónomo a propósito: es la puerta de entrada (§11.2) y un fallo bloquea TODA prueba. Mover
-  >    verbatim showLogin/showEmailLogin/showRegister/showPairingScreen/showPinKeypad/showEmailVerification
-  >    + handlers (login/doRegister/startGoogleLogin/startGoogleRegister/confirmForgetDevice) + helpers
-  >    (field/pinKey/defaultDeviceName). Compartidos que se quedan en shell (los usa Settings/otros):
-  >    `passwordWithToggle`,`bringToFront`,`blankAny`. NO tocar `AuthService`/JWT/`AuthSession`/`handleLoginSuccess`
-  >    (callback). Probar: PIN, email, Google, registro, verificación, olvidar-equipo.
-  >  - **SM-2b Settings tabs pesadas — 6/7 HECHO (owners/credenciales/auditoria/backup/BOE/mi-TPB en develop f8e4d40; myTpb inyecta invitationsApi + 6 helpers TPB por Host). QUEDA SOLO settingsMyAdvisoryTab (7/7): ENTRELAZADA con el modulo Comunicacion — comparte buildCommMessagesPane/buildCommDocumentsPane (definidos dentro del rango de myAdvisory pero usados tambien por showCommModule) + pollPendingInvitations/refreshActiveModulesAndRender/humanizeDocStatus. Para moverla hay que PRIMERO separar esos helpers Comm (dejarlos en shell) y luego Host-bridge/inyectar; o extraer Comunicacion a su propia Screen antes. Tarea aparte, mejor fresca)** [old 5/7 note]  (owners/credenciales/auditoria/backup/BOE en develop 58d6cbe); QUEDAN settingsMyTpbTab+renderMyTpbState y settingsMyAdvisoryTab (acoplados: helpers TPB compartidos showTpbSignWithPinDialog/tpbDownloadSignedPdfAction/tpbRevokeAction/humanizeTpb*, invitationsApi, root; el modulo Comunicacion queda entre medias). Inyectar invitationsApi + quitar del Host myTpbTab/myAdvisoryTab)** → mover a `SettingsScreen` los 7 tabs (settingsOwnersTab/
-  >    settingsCredentialsTab/settingsAuditTab/settingsBackupTab/settingsMyAdvisoryTab/settingsMyTpbTab/
-  >    settingsBoeAlertsTab) + helpers (reloadOwners/showOwnerEditor/deleteOwner/reloadCredentials/
-  >    reloadCertUsage/showCredentialEditor/deleteCredential/renderMyTpbState/loadBoeAlerts/runBoeNow/
-  >    loadBackups/runBackupNow/verifyAuditChain/verifySifChainNow/loadAuditEvents) + campos
-  >    ownersTable/credentialsTable/certUsageTable + `AUDIT_EVENT_TYPES` (hoy re-añadido al shell) +
-  >    inyectar `invitationsApi`. **OJO interleaving:** el módulo Comunicación (`CommRecipient`/`showCommModule`/
-  >    `humanizeDocStatus`/`humanSize`) está EN MEDIO (entre MyAdvisory y MyTpb) → NO mover; y
-  >    `shortIso`/`shortId`/`blankToNullOrSelf` ya están en ScreenBase (no duplicar). Al terminar SM-2b:
-  >    quitar del Host de SettingsScreen los 7 métodos `ownersTab()`..`boeAlertsTab()` y volver settingsView
-  >    a llamadas directas. Copiar a la Screen `actionFlow`/`filterGroup`/`humanizeMemberRole`/`humanizeFromKey`
-  >    si el compilador los pide. Las tabs pesadas HOY funcionan vía Host (app completa).
-  >  - **BUMP ÚNICO UIR:** `UpdateService.APP_VERSION` 0.1.2→0.1.3 + `build-msi.ps1 -Version 0.1.3` +
-  >    `gh release create` — SÓLO tras SM-4+SM-2b y prueba runtime OK con Benjamin.
+  > ▶️ **REANUDAR AQUÍ (2026-07-01):** el app COMPILA y está COMPLETO en `develop` (versión SIN subir).
+  > Quedan **3 cosas** para cerrar el UIR y publicar. Hacerlas SIN parar hasta terminar; **commit por slice**
+  > (`mvn -pl ui clean compile` OK) + push `feat/Benjamin` + merge `--no-ff` a `develop`.
+  > **HECHO y en develop:** NOM-1..11 (bloque Nómina entero → screens), **SM-PKG** (gestor-navegador dentro del
+  > `.msi` + `locateGestorJar` ruta instalada), **SM-1** `CalendarScreen`, **SM-2a** `SettingsScreen` núcleo,
+  > **SM-3** `ProfileScreen`, **SM-2b 6/7** (owners/credenciales/auditoría/backup/BOE/mi-TPB). 2 bugs cerrados:
+  > resaltado sidebar (work-logs/pending-tasks no fijaban `select(key)`) + título Calendario i18n
+  > (`data.title()`→`moduleTitle(data.module())` vía Host). Monolito ~16,5k líneas.
+  >
+  > **1) COMUNICACIÓN → `CommScreen` + SM-2b 7/7 (Mi Asesoría).** Es el enredo que bloquea SM-2b. Estructura real
+  >   (líneas aprox, VERIFICAR con grep antes de cortar): `settingsMyAdvisoryTab` ~5901-6050; `buildCommMessagesPane`
+  >   ~6051; `buildCommDocumentsPane` ~6178 — **estos 2 paneles están DENTRO del rango de myAdvisory y los usa TAMBIÉN
+  >   `showCommModule`**; `CommRecipient` record ~6365; `showCommModule` ~6375 (llamado en ~3461); `humanizeDocStatus`
+  >   ~6452; `humanSize` (ya copiado en SettingsScreen). **Plan:** (a) crear `CommScreen` con showCommModule +
+  >   CommRecipient + humanizeDocStatus + buildCommMessagesPane + buildCommDocumentsPane (**públicos los 2 panes**);
+  >   shell deja wrapper `showCommModule()`→`commScreen().showCommModule()`. (b) Mover `settingsMyAdvisoryTab` a
+  >   SettingsScreen; que llame a `commScreen().buildComm*Pane(...)` para los paneles, y por Host:
+  >   `pollPendingInvitations()`/`refreshActiveModulesAndRender()`. `invitationsApi` YA está inyectado en SettingsScreen.
+  >   Quitar del Host de SettingsScreen `myAdvisoryTab()`; `settingsView` llamada directa. **OJO:** 2 intentos hoy
+  >   cascaron (audit-batch y myAdvisory) y se revirtieron limpios → ir cluster a cluster y compilar tras cada uno.
+  >
+  > **2) SM-4 `AuthScreen` — CON Benjamin (probar cada flujo en runtime).** ~700 líneas (shell 524-1288 aprox). Mover
+  >   verbatim showLogin/showEmailLogin/showRegister/showPairingScreen/showPinKeypad/showEmailVerification + handlers
+  >   (login/doRegister/startGoogleLogin/startGoogleRegister/confirmForgetDevice) + helpers (field/pinKey/defaultDeviceName).
+  >   Compartidos que se QUEDAN en shell (los usa Settings/otros): `passwordWithToggle`, `bringToFront`, `blankAny`.
+  >   **NO tocar** `AuthService`/JWT/`AuthSession`; `handleLoginSuccess` por callback. Probar: PIN, email, Google,
+  >   registro, verificación email, olvidar-equipo.
+  >
+  > **3) BUMP ÚNICO + RELEASE (al final, con Benjamin).** `UpdateService.APP_VERSION` 0.1.2→0.1.3 +
+  >   `build-msi.ps1 -Version 0.1.3` + `gh release create v0.1.3` con el `.msi`. El gestor ya va dentro (SM-PKG).
+  >
+  > **Patrón SM-2b probado (para el 7/7 y para Comm):** localizar rango del cluster (grep firmas) → PowerShell splice
+  >   moviendo del shell a la Screen, **saltando utils compartidos que ya están en ScreenBase** (shortIso/shortId/
+  >   blankToNullOrSelf/stripDiacritics/humanizeCalendarEventType) → hacer `public` la tab, quitar su método del Host,
+  >   `settingsView` llamada directa, quitar impl del accessor → compilar e iterar imports/helpers (copiar los puros:
+  >   textInput/settingsSection/passwordWithToggle/formGrid/addFormRow/tabLayout/humanSize/humanizeCode; Host-bridge
+  >   los que tocan estado del shell). Reglas duras: fichero es **CRLF** (respetarlo al reescribir con PowerShell);
+  >   el sandbox de PowerShell **bloquea literales con `//` o doble-asterisco inline** → esos textos van a un FICHERO
+  >   y PowerShell lo lee, nunca en el comando. El bump NO se hace hasta el final (una sola actualización).
   > **BLOQUE ASESORÍA CERRADO 2026-06-30**: AS-1 `ClientCustomersScreen`, AS-2 `ClientConfigScreen`,
   > AS-3 `ClientSummaryScreen`, AS-4 `ClientSalesArchivedScreen`, AS-5 `ClientTpbAgreementScreen`,
   > AS-6 `ClientBillingScreen`. **AS-7 DESCARTADO** (decisión Benjamin): `buildClientDetailView` es el
