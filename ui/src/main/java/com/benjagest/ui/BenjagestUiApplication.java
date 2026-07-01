@@ -14008,6 +14008,16 @@ public class BenjagestUiApplication extends Application
 
         GridPane g = new GridPane();
         g.setHgap(10); g.setVgap(8); g.setPadding(new javafx.geometry.Insets(12));
+        // La columna de etiquetas debe conservar su ancho preferido (si no, los
+        // Label se truncan a "..."); la columna de campos crece con el diálogo.
+        javafx.scene.layout.ColumnConstraints labelCol = new javafx.scene.layout.ColumnConstraints();
+        labelCol.setMinWidth(javafx.scene.layout.Region.USE_PREF_SIZE);
+        javafx.scene.layout.ColumnConstraints fieldCol = new javafx.scene.layout.ColumnConstraints();
+        fieldCol.setHgrow(Priority.ALWAYS);
+        fieldCol.setFillWidth(true);
+        g.getColumnConstraints().addAll(labelCol, fieldCol);
+        kind.setMaxWidth(Double.MAX_VALUE);
+        subtype.setMaxWidth(Double.MAX_VALUE);
         int r = 0;
         g.add(new Label(t("inc.field.kind")), 0, r); g.add(kind, 1, r++);
         g.add(subtypeLbl, 0, r); g.add(subtype, 1, r++);
