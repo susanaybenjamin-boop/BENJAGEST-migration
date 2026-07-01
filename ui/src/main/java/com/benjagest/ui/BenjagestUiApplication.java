@@ -5866,7 +5866,7 @@ public class BenjagestUiApplication extends Application
     private com.benjagest.ui.screens.SettingsScreen settingsScreen() {
         return new com.benjagest.ui.screens.SettingsScreen(
                 settingsApiClient, authApiClient, certificateApi, altaApiClient,
-                appMode, language, this::t, this,
+                appMode, language, this::t, this, invitationsApi,
                 new com.benjagest.ui.screens.SettingsScreen.Host() {
                     @Override public void bringToFront() { BenjagestUiApplication.this.bringToFront(); }
                     @Override public javafx.stage.Window ownerWindow() { return root.getScene().getWindow(); }
@@ -5886,7 +5886,12 @@ public class BenjagestUiApplication extends Application
                         select("settings");
                     }
                     @Override public javafx.scene.Node myAdvisoryTab() { return settingsMyAdvisoryTab(); }
-                    @Override public javafx.scene.Node myTpbTab() { return settingsMyTpbTab(); }
+                    @Override public void showTpbSignWithPinDialog(com.benjagest.ui.model.TpbAgreementEntry a, javafx.scene.layout.VBox parentSlot) { BenjagestUiApplication.this.showTpbSignWithPinDialog(a, parentSlot); }
+                    @Override public void tpbDownloadSignedPdfAction(String id) { BenjagestUiApplication.this.tpbDownloadSignedPdfAction(id); }
+                    @Override public void tpbRevokeAction(String id, Runnable onDone) { BenjagestUiApplication.this.tpbRevokeAction(id, onDone); }
+                    @Override public String humanizeTpbStatus(String s) { return BenjagestUiApplication.this.humanizeTpbStatus(s); }
+                    @Override public String humanizeTpbMethod(String m) { return BenjagestUiApplication.this.humanizeTpbMethod(m); }
+                    @Override public String humanizeTpbScope(com.benjagest.ui.model.TpbAgreementEntry a) { return BenjagestUiApplication.this.humanizeTpbScope(a); }
                 });
     }
 
@@ -6467,134 +6472,6 @@ public class BenjagestUiApplication extends Application
      * vinculada, permite descargar el PDF firmado, firmar (si
      * pendiente) y revocar.
      */
-    private Node settingsMyTpbTab() {
-        Label title = label(t("settings.my_tpb.section"), "settings-section-title");
-        Label hint = new Label(t("settings.my_tpb.hint"));
-        hint.setWrapText(true);
-        hint.getStyleClass().add("settings-hint");
-
-        VBox stateSlot = new VBox(10);
-        stateSlot.setPadding(new Insets(8, 0, 0, 0));
-
-        Runnable[] reloadHolder = new Runnable[1];
-        Runnable reload = () -> {
-            stateSlot.getChildren().clear();
-            Label loading = new Label(t("settings.my_tpb.loading"));
-            loading.getStyleClass().add("settings-hint");
-            stateSlot.getChildren().add(loading);
-            Task<Object[]> task = new Task<>() {
-                @Override
-                protected Object[] call() throws Exception {
-                    var linked = invitationsApi.getLinkedAdvisory();
-                    if (linked == null || linked.id() == null) return null;
-                    var a = altaApiClient.tpbFindCurrent(linked.id());
-                    return new Object[]{ a, linked };
-                }
-            };
-            task.setOnSucceeded(ev -> renderMyTpbState(stateSlot, task.getValue(),
-                    reloadHolder[0]));
-            task.setOnFailed(ev -> {
-                stateSlot.getChildren().clear();
-                Label err = new Label(t("settings.my_tpb.fail") + " "
-                        + (task.getException() == null ? "" : task.getException().getMessage()));
-                err.setWrapText(true);
-                err.setStyle("-fx-text-fill: #b91c1c;");
-                stateSlot.getChildren().add(err);
-            });
-            start(task, "my-tpb-load");
-        };
-        reloadHolder[0] = reload;
-        reload.run();
-
-        Button reloadBtn = new Button(t("tpb.action.reload"));
-        reloadBtn.setGraphic(icon("fas-sync-alt"));
-        reloadBtn.setOnAction(e -> reload.run());
-
-        Region sp = new Region();
-        HBox.setHgrow(sp, Priority.ALWAYS);
-        HBox titleRow = new HBox(12, title, sp, reloadBtn);
-        titleRow.setAlignment(Pos.CENTER_LEFT);
-
-        VBox layout = new VBox(12, titleRow, hint, stateSlot);
-        layout.getStyleClass().add("settings-tab-body");
-        return layout;
-    }
-
-    private void renderMyTpbState(VBox slot, Object[] res, Runnable reload) {
-        slot.getChildren().clear();
-        if (res == null) {
-            Label none = new Label(t("settings.my_tpb.no_linked"));
-            none.setWrapText(true);
-            slot.getChildren().add(none);
-            return;
-        }
-        var a = (com.benjagest.ui.model.TpbAgreementEntry) res[0];
-        var linked = (com.benjagest.ui.service.AdvisoryInvitationApiClient.LinkedAdvisory) res[1];
-        String advisoryName = linked.tradeName() != null && !linked.tradeName().isBlank()
-                ? linked.tradeName() : linked.legalName();
-        Label advisoryLbl = new Label(t("settings.my_tpb.advisor") + " " + advisoryName);
-        advisoryLbl.setStyle("-fx-font-weight: bold;");
-        slot.getChildren().add(advisoryLbl);
-        if (a == null) {
-            Label none = new Label(t("settings.my_tpb.empty"));
-            none.setWrapText(true);
-            slot.getChildren().add(none);
-            return;
-        }
-        GridPane g = new GridPane();
-        g.setHgap(20); g.setVgap(6);
-        int r = 0;
-        g.add(new Label(t("tpb.field.status")), 0, r);
-        Label st = new Label(humanizeTpbStatus(a.status()));
-        st.setStyle("-fx-font-weight: bold; -fx-text-fill: "
-                + (a.isActive() ? "#16a34a" : a.isPending() ? "#d97706" : "#64748b") + ";");
-        g.add(st, 1, r++);
-        g.add(new Label(t("tpb.field.scope")), 0, r);
-        g.add(new Label(humanizeTpbScope(a)), 1, r++);
-        if (a.signedAt() != null && !a.signedAt().isBlank()) {
-            g.add(new Label(t("tpb.field.signed_at")), 0, r);
-            g.add(new Label(a.signedAt()), 1, r++);
-            g.add(new Label(t("tpb.field.signed_method")), 0, r);
-            g.add(new Label(humanizeTpbMethod(a.signedMethod())), 1, r++);
-        }
-        slot.getChildren().add(g);
-
-        HBox actions = new HBox(8);
-        actions.setAlignment(Pos.CENTER_LEFT);
-        if (a.isPending()) {
-            Button sign = new Button(t("tpb.banner.sign"));
-            sign.setGraphic(icon("fas-signature"));
-            sign.getStyleClass().add("button-primary");
-            sign.setOnAction(e -> {
-                // Reusamos el mismo dialogo del banner. Tras firmar
-                // recargamos este panel para reflejar ACTIVE.
-                VBox holder = new VBox();
-                showTpbSignWithPinDialog(a, holder);
-                reload.run();
-            });
-            actions.getChildren().add(sign);
-        }
-        if (a.isActive()) {
-            Button dl = new Button(t("tpb.signed.download"));
-            dl.setGraphic(icon("fas-file-pdf"));
-            dl.setOnAction(e -> tpbDownloadSignedPdfAction(a.id()));
-            actions.getChildren().add(dl);
-        }
-        if (a.isActive() || a.isPending()) {
-            Button revoke = new Button(t("tpb.revoke"));
-            revoke.setGraphic(icon("fas-ban"));
-            revoke.setOnAction(e -> tpbRevokeAction(a.id(), reload));
-            actions.getChildren().add(revoke);
-        }
-        slot.getChildren().add(actions);
-    }
-
-    /**
-     * BOE-RSS — Pestaña de alertas BOE para la asesoría.
-     * Lista alertas históricas (últimos N días, default 30) y permite
-     * forzar el barrido del día actual (botón "Buscar ahora").
-     */
-
     private String shortIso(String iso) {
         if (iso == null || iso.length() < 19) {
             return iso == null ? "" : iso;
