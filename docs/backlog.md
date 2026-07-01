@@ -276,10 +276,34 @@ Repaso punto por punto de lo que Benjamin reportó con el check en blanco. Estad
   central). **Verificar antes de tocar auth/registro** (zona caliente, CLAUDE.md §11.2).
 
 - 🧹 **UIR — Troceado de la UI (refactor estructural, EN CURSO desde 2026-06-30).**
-  > ▶️ **REANUDAR AQUÍ:** **BLOQUE NÓMINA (XXL)** — el último del troceado UIR. Mapeado 2026-07-01
-  > (ver plan-ui-refactor.md: NOM-1..11; el orquestador `laborView` se queda en shell como AS-7).
-  > **NOM-1 HECHO 2026-07-01**: categoría Params → `LaborParamsScreen` (−598 líneas, merge develop).
-  > **Siguiente: NOM-2** `buildWorkCalendarTab` → `WorkCalendarScreen`. Un Screen por tab, leaf-first.
+  > ▶️ **REANUDAR AQUÍ (2026-07-01, sesión larga autónoma):** quedan **SÓLO 2 slices** del UIR +
+  > el bump de versión. El app COMPILA y está COMPLETO en `develop` (nada de versión subida).
+  > **HECHO hoy y en develop:** NOM-1..11 (bloque Nómina entero → screens), **SM-PKG** (gestor-navegador
+  > dentro del .msi + `locateGestorJar` ruta instalada), **SM-1** `CalendarScreen`, **SM-2a**
+  > `SettingsScreen` núcleo (empresa/correo+Google/módulos/certificados/sesión/about; Host puentea estado
+  > del shell + las 7 tabs pesadas), **SM-3** `ProfileScreen`. Monolito ~16.768 líneas.
+  > **PENDIENTE — hacer CON Benjamin (probar en runtime):**
+  >  - **SM-4 AuthScreen** (login/registro/emparejado/PIN, ~700 líneas, shell 524-1288 aprox). NO se hizo
+  >    en autónomo a propósito: es la puerta de entrada (§11.2) y un fallo bloquea TODA prueba. Mover
+  >    verbatim showLogin/showEmailLogin/showRegister/showPairingScreen/showPinKeypad/showEmailVerification
+  >    + handlers (login/doRegister/startGoogleLogin/startGoogleRegister/confirmForgetDevice) + helpers
+  >    (field/pinKey/defaultDeviceName). Compartidos que se quedan en shell (los usa Settings/otros):
+  >    `passwordWithToggle`,`bringToFront`,`blankAny`. NO tocar `AuthService`/JWT/`AuthSession`/`handleLoginSuccess`
+  >    (callback). Probar: PIN, email, Google, registro, verificación, olvidar-equipo.
+  >  - **SM-2b Settings tabs pesadas** → mover a `SettingsScreen` los 7 tabs (settingsOwnersTab/
+  >    settingsCredentialsTab/settingsAuditTab/settingsBackupTab/settingsMyAdvisoryTab/settingsMyTpbTab/
+  >    settingsBoeAlertsTab) + helpers (reloadOwners/showOwnerEditor/deleteOwner/reloadCredentials/
+  >    reloadCertUsage/showCredentialEditor/deleteCredential/renderMyTpbState/loadBoeAlerts/runBoeNow/
+  >    loadBackups/runBackupNow/verifyAuditChain/verifySifChainNow/loadAuditEvents) + campos
+  >    ownersTable/credentialsTable/certUsageTable + `AUDIT_EVENT_TYPES` (hoy re-añadido al shell) +
+  >    inyectar `invitationsApi`. **OJO interleaving:** el módulo Comunicación (`CommRecipient`/`showCommModule`/
+  >    `humanizeDocStatus`/`humanSize`) está EN MEDIO (entre MyAdvisory y MyTpb) → NO mover; y
+  >    `shortIso`/`shortId`/`blankToNullOrSelf` ya están en ScreenBase (no duplicar). Al terminar SM-2b:
+  >    quitar del Host de SettingsScreen los 7 métodos `ownersTab()`..`boeAlertsTab()` y volver settingsView
+  >    a llamadas directas. Copiar a la Screen `actionFlow`/`filterGroup`/`humanizeMemberRole`/`humanizeFromKey`
+  >    si el compilador los pide. Las tabs pesadas HOY funcionan vía Host (app completa).
+  >  - **BUMP ÚNICO UIR:** `UpdateService.APP_VERSION` 0.1.2→0.1.3 + `build-msi.ps1 -Version 0.1.3` +
+  >    `gh release create` — SÓLO tras SM-4+SM-2b y prueba runtime OK con Benjamin.
   > **BLOQUE ASESORÍA CERRADO 2026-06-30**: AS-1 `ClientCustomersScreen`, AS-2 `ClientConfigScreen`,
   > AS-3 `ClientSummaryScreen`, AS-4 `ClientSalesArchivedScreen`, AS-5 `ClientTpbAgreementScreen`,
   > AS-6 `ClientBillingScreen`. **AS-7 DESCARTADO** (decisión Benjamin): `buildClientDetailView` es el
