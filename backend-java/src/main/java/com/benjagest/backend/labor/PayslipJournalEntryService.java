@@ -87,6 +87,20 @@ public class PayslipJournalEntryService {
      * reventaría aunque la nómina fuese correcta.
      */
     public String createAccrual(PayslipAccrual p, String userId) {
+        return createAccrual(p, BigDecimal.ZERO, userId);
+    }
+
+    /**
+     * Variante para el FINIQUITO: cancela la provisión de pagas extra ya
+     * acumulada (465) en vez de volver a gastarla en 640. La parte de paga extra
+     * del finiquito se reconoció como gasto mes a mes ({@link #createExtraProvision}
+     * 640→465); aquí se liquida esa provisión (465 Debe) y el 640 solo recoge lo
+     * NO provisionado (días trabajados + vacaciones + diferencia de prorrata).
+     * Así no se duplica el gasto ni queda la provisión colgada.
+     * {@code extraProvisionToCancel} = saldo de provisión pendiente del empleado
+     * (ver {@link #outstandingExtraProvision}); 0 = comportamiento normal.
+     */
+    public String createAccrual(PayslipAccrual p, BigDecimal extraProvisionToCancel, String userId) {
         if (p.gross() == null) return null;
         String companyId = tenantContext.getCurrentCompanyId();
 
@@ -138,7 +152,23 @@ public class PayslipJournalEntryService {
                 entryId, companyId, fiscalYearId,
                 Date.valueOf(entryDate), concept, SRC_ACCRUAL, p.payslipId(), userId);
 
-        insertLine(entryId, acc640, "Sueldos y salarios — " + name, p.gross(), BigDecimal.ZERO);
+        // Finiquito con provisión de pagas extra acumulada: la parte ya
+        // provisionada se cancela (465 Debe) en vez de re-gastarla en 640, para
+        // no duplicar el gasto ni dejar la provisión colgada (descuadre). El 640
+        // solo recoge lo no provisionado; si se sobre-provisionó, se regulariza
+        // abonando gasto (640 Haber). El asiento cuadra siempre.
+        BigDecimal cancel = extraProvisionToCancel == null ? BigDecimal.ZERO : extraProvisionToCancel;
+        BigDecimal net640 = p.gross().subtract(cancel);
+        if (net640.signum() >= 0) {
+            insertLine(entryId, acc640, "Sueldos y salarios — " + name, net640, BigDecimal.ZERO);
+        } else {
+            insertLine(entryId, acc640, "Regularización provisión pagas extra — " + name,
+                    BigDecimal.ZERO, net640.negate());
+        }
+        if (cancel.signum() > 0) {
+            insertLine(entryId, acc465, "Cancelación provisión pagas extra — " + name,
+                    cancel, BigDecimal.ZERO);
+        }
         if (employerSs.signum() > 0) {
             insertLine(entryId, acc642, "SS a cargo de la empresa — " + name, employerSs, BigDecimal.ZERO);
         }
@@ -356,6 +386,36 @@ public class PayslipJournalEntryService {
      * Suma las cuotas TC del periodo cuyo {@code contribution_type}
      * empieza por el prefijo dado ({@code EMPLOYER} o {@code EMPLOYEE}).
      */
+    /**
+     * Saldo de provisión de pagas extra pendiente de un empleado: abonos a 465
+     * por provisiones/devengos de extra ({@code PAYSLIP_EXTRA_PROVISION}/
+     * {@code _ACCRUAL}) menos cargos por sus pagos ({@code PAYSLIP_EXTRA_PAYMENT}).
+     * Es lo que el finiquito debe cancelar para no duplicar gasto ni dejar la
+     * provisión colgada. Cero si no hay cuenta 465, sin provisiones o si (por
+     * datos raros) el neto es negativo.
+     */
+    public BigDecimal outstandingExtraProvision(String employeeId) {
+        String companyId = tenantContext.getCurrentCompanyId();
+        String acc465 = findAccountByPrefix(companyId, "465");
+        if (acc465 == null) return BigDecimal.ZERO;
+        BigDecimal p = jdbcTemplate.queryForObject("""
+                SELECT COALESCE(SUM(
+                    CASE WHEN je.source_type IN (?, ?) THEN jl.credit
+                         WHEN je.source_type = ? THEN -jl.debit
+                         ELSE 0 END), 0)
+                  FROM journal_entry_lines jl
+                  JOIN journal_entries je ON je.id = jl.journal_entry_id
+                  JOIN payslips ps ON ps.id = je.source_id
+                 WHERE je.company_id = ? AND ps.employee_id = ?
+                   AND jl.account_id = ?
+                   AND je.source_type IN (?, ?, ?)
+                """, BigDecimal.class,
+                SRC_EXTRA_PROVISION, SRC_EXTRA_ACCRUAL, SRC_EXTRA_PAYMENT,
+                companyId, employeeId, acc465,
+                SRC_EXTRA_PROVISION, SRC_EXTRA_ACCRUAL, SRC_EXTRA_PAYMENT);
+        return (p == null || p.signum() < 0) ? BigDecimal.ZERO : p;
+    }
+
     private BigDecimal sumContributions(String companyId, String employeeId,
                                          int year, int month, String typePrefix) {
         BigDecimal sum = jdbcTemplate.queryForObject("""
