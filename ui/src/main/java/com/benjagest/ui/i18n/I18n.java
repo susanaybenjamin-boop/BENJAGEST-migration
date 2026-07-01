@@ -4995,6 +4995,7 @@ public final class I18n {
             case "labor.settlement.generate" -> "Generate settlement";
             case "labor.settlement.cese_date" -> "Termination date";
             case "labor.settlement.vacation_days" -> "Unused holiday days";
+            case "labor.settlement.vacation_days.auto" -> "empty = auto (accrued − taken)";
             case "labor.settlement.accrual" -> "Extra-pay accrual";
             case "labor.settlement.accrual.semi" -> "Half-yearly (summer Jan–Jun / Christmas Jul–Dec)";
             case "labor.settlement.accrual.annual" -> "Yearly (12 months)";
@@ -5783,6 +5784,7 @@ public final class I18n {
             case "labor.settlement.generate" -> "Generar finiquito";
             case "labor.settlement.cese_date" -> "Fecha de cese";
             case "labor.settlement.vacation_days" -> "Días de vacaciones no disfrutadas";
+            case "labor.settlement.vacation_days.auto" -> "vacío = automático (devengadas − disfrutadas)";
             case "labor.settlement.accrual" -> "Devengo pagas extra";
             case "labor.settlement.accrual.semi" -> "Semestral (verano ene–jun / Navidad jul–dic)";
             case "labor.settlement.accrual.annual" -> "Anual (12 meses)";
