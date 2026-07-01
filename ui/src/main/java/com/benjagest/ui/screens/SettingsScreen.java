@@ -51,7 +51,6 @@ public class SettingsScreen extends ScreenBase {
         void onCompanyRenamed(String legalName);
         void onModulesSaved(List<CompanyModuleEntry> catalog);
         // Pestañas pesadas (SM-2b las moverá a esta clase y estos métodos desaparecerán).
-        Node credentialsTab();
         Node auditTab();
         Node backupTab();
         Node myAdvisoryTab();
@@ -480,7 +479,7 @@ public class SettingsScreen extends ScreenBase {
         emailTab.setGraphic(icon("fas-envelope"));
         Tab modulesTab = new Tab(t("settings.tab.modules"), settingsModulesTab(bundle.modules()));
         modulesTab.setGraphic(icon("fas-cubes"));
-        Tab credentialsTab = new Tab(t("settings.tab.credentials"), host.credentialsTab());
+        Tab credentialsTab = new Tab(t("settings.tab.credentials"), settingsCredentialsTab());
         credentialsTab.setGraphic(icon("fas-key"));
         // El antiguo tab "Integraciones" (Google) se fusionó en el tab Correo:
         // el panel Google aparece al elegir el proveedor Google.
@@ -1918,6 +1917,258 @@ public class SettingsScreen extends ScreenBase {
             task.setOnFailed(ev -> showError(t("settings.owners.editor.fail.title"),
                     t("settings.owners.editor.fail.body")));
             start(task, "settings-owners-delete");
+        });
+    }
+
+    private TableView<com.benjagest.ui.model.ExternalCredentialEntry> credentialsTable;
+    private TableView<com.benjagest.ui.model.CertificateUsageEntry> certUsageTable;
+
+    // ===================================================================
+    //  ALTA — Pestana Credenciales externas + Log uso certificados
+    // ===================================================================
+
+    public Node settingsCredentialsTab() {
+        Label section = label(t("settings.credentials.section"), "settings-section-title");
+        Label hint = new Label(t("settings.credentials.hint"));
+        hint.setWrapText(true);
+        hint.getStyleClass().add("settings-hint");
+
+        credentialsTable = new TableView<>();
+        credentialsTable.getStyleClass().add("data-table");
+        credentialsTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+        credentialsTable.setPlaceholder(new Label(t("settings.credentials.placeholder.empty")));
+        credentialsTable.setPrefHeight(240);
+
+        TableColumn<com.benjagest.ui.model.ExternalCredentialEntry, String> colSys =
+                new TableColumn<>(t("settings.credentials.col.system"));
+        colSys.setCellValueFactory(c -> new SimpleStringProperty(
+                t("settings.credentials.system." + c.getValue().systemCode())));
+        colSys.setPrefWidth(140);
+        TableColumn<com.benjagest.ui.model.ExternalCredentialEntry, String> colLabel =
+                new TableColumn<>(t("settings.credentials.col.label"));
+        colLabel.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().label()));
+        TableColumn<com.benjagest.ui.model.ExternalCredentialEntry, String> colUser =
+                new TableColumn<>(t("settings.credentials.col.user"));
+        colUser.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().username()));
+        colUser.setPrefWidth(140);
+        TableColumn<com.benjagest.ui.model.ExternalCredentialEntry, String> colPwd =
+                new TableColumn<>(t("settings.credentials.col.password"));
+        colPwd.setCellValueFactory(c -> new SimpleStringProperty(
+                c.getValue().passwordConfigured() ? "***" : t("settings.credentials.empty")));
+        colPwd.setPrefWidth(80);
+        TableColumn<com.benjagest.ui.model.ExternalCredentialEntry, String> colFlags =
+                new TableColumn<>(t("settings.credentials.col.flags"));
+        colFlags.setCellValueFactory(c -> new SimpleStringProperty(
+                c.getValue().active() ? "" : t("settings.credentials.inactive")));
+        colFlags.setPrefWidth(80);
+        credentialsTable.getColumns().addAll(java.util.List.of(colSys, colLabel, colUser, colPwd, colFlags));
+
+        Button addBtn = new Button(t("settings.credentials.action.add"));
+        addBtn.setGraphic(icon("fas-plus"));
+        addBtn.setOnAction(ev -> showCredentialEditor(null));
+
+        Button editBtn = new Button(t("settings.credentials.action.edit"));
+        editBtn.setGraphic(icon("fas-edit"));
+        editBtn.setDisable(true);
+        editBtn.setOnAction(ev -> {
+            var sel = credentialsTable.getSelectionModel().getSelectedItem();
+            if (sel != null) showCredentialEditor(sel);
+        });
+
+        Button deleteBtn = new Button(t("settings.credentials.action.delete"));
+        deleteBtn.setGraphic(icon("fas-trash"));
+        deleteBtn.setDisable(true);
+        deleteBtn.setOnAction(ev -> {
+            var sel = credentialsTable.getSelectionModel().getSelectedItem();
+            if (sel != null) deleteCredential(sel);
+        });
+
+        credentialsTable.getSelectionModel().selectedItemProperty().addListener((obs, oldV, newV) -> {
+            editBtn.setDisable(newV == null);
+            deleteBtn.setDisable(newV == null);
+        });
+
+        HBox credActions = new HBox(8, addBtn, editBtn, deleteBtn);
+        credActions.setAlignment(Pos.CENTER_LEFT);
+
+        reloadCredentials();
+
+        // ---- Log de uso de certificados ----
+        Label logSection = label(t("settings.credentials.log.section"), "settings-section-title");
+        Label logHint = new Label(t("settings.credentials.log.hint"));
+        logHint.setWrapText(true);
+        logHint.getStyleClass().add("settings-hint");
+
+        certUsageTable = new TableView<>();
+        certUsageTable.getStyleClass().add("data-table");
+        certUsageTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+        certUsageTable.setPlaceholder(new Label(t("settings.credentials.log.placeholder.empty")));
+        certUsageTable.setPrefHeight(220);
+
+        TableColumn<com.benjagest.ui.model.CertificateUsageEntry, String> colWhen =
+                new TableColumn<>(t("settings.credentials.log.col.when"));
+        colWhen.setCellValueFactory(c -> new SimpleStringProperty(shortIso(c.getValue().usedAt())));
+        colWhen.setPrefWidth(160);
+        colWhen.setComparator(ISO_DATE_COMPARATOR);
+        TableColumn<com.benjagest.ui.model.CertificateUsageEntry, String> colCert =
+                new TableColumn<>(t("settings.credentials.log.col.cert"));
+        colCert.setCellValueFactory(c -> new SimpleStringProperty(shortId(c.getValue().certificateId())));
+        colCert.setPrefWidth(110);
+        TableColumn<com.benjagest.ui.model.CertificateUsageEntry, String> colPurpose =
+                new TableColumn<>(t("settings.credentials.log.col.purpose"));
+        colPurpose.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().purpose()));
+        colPurpose.setPrefWidth(140);
+        TableColumn<com.benjagest.ui.model.CertificateUsageEntry, String> colOk =
+                new TableColumn<>(t("settings.credentials.log.col.result"));
+        colOk.setCellValueFactory(c -> new SimpleStringProperty(
+                c.getValue().success() ? "OK" : "ERR"));
+        colOk.setPrefWidth(60);
+        TableColumn<com.benjagest.ui.model.CertificateUsageEntry, String> colUserCert =
+                new TableColumn<>(t("settings.credentials.log.col.user"));
+        colUserCert.setCellValueFactory(c -> new SimpleStringProperty(shortId(c.getValue().userId())));
+        colUserCert.setPrefWidth(110);
+        TableColumn<com.benjagest.ui.model.CertificateUsageEntry, String> colIp =
+                new TableColumn<>(t("settings.credentials.log.col.ip"));
+        colIp.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().ipAddress()));
+        colIp.setPrefWidth(120);
+        TableColumn<com.benjagest.ui.model.CertificateUsageEntry, String> colMsg =
+                new TableColumn<>(t("settings.credentials.log.col.message"));
+        colMsg.setCellValueFactory(c -> new SimpleStringProperty(
+                c.getValue().errorMessage() == null ? c.getValue().targetUrl() : c.getValue().errorMessage()));
+        certUsageTable.getColumns().addAll(java.util.List.of(colWhen, colCert, colPurpose, colOk, colUserCert, colIp, colMsg));
+
+        Button refreshLog = new Button(t("settings.credentials.log.refresh"));
+        refreshLog.setGraphic(icon("fas-sync-alt"));
+        refreshLog.setOnAction(ev -> reloadCertUsage());
+
+        HBox logActions = new HBox(8, refreshLog);
+        logActions.setAlignment(Pos.CENTER_LEFT);
+
+        reloadCertUsage();
+
+        VBox body = new VBox(16,
+                section, hint, credentialsTable, credActions,
+                new Separator(),
+                logSection, logHint, certUsageTable, logActions);
+        return tabLayout(label(t("settings.credentials.section_label"), "settings-section-title"), body,
+                new HBox());
+    }
+
+    private void reloadCredentials() {
+        if (credentialsTable == null) return;
+        Task<java.util.List<com.benjagest.ui.model.ExternalCredentialEntry>> task = new Task<>() {
+            @Override
+            protected java.util.List<com.benjagest.ui.model.ExternalCredentialEntry> call() throws Exception {
+                return altaApiClient.listCredentials();
+            }
+        };
+        task.setOnSucceeded(ev -> credentialsTable.setItems(FXCollections.observableArrayList(task.getValue())));
+        task.setOnFailed(ev -> credentialsTable.getItems().clear());
+        start(task, "settings-credentials-reload");
+    }
+
+    private void reloadCertUsage() {
+        if (certUsageTable == null) return;
+        Task<java.util.List<com.benjagest.ui.model.CertificateUsageEntry>> task = new Task<>() {
+            @Override
+            protected java.util.List<com.benjagest.ui.model.CertificateUsageEntry> call() throws Exception {
+                return altaApiClient.listCertUsage(null, 200);
+            }
+        };
+        task.setOnSucceeded(ev -> certUsageTable.setItems(FXCollections.observableArrayList(task.getValue())));
+        task.setOnFailed(ev -> certUsageTable.getItems().clear());
+        start(task, "settings-cert-usage-reload");
+    }
+
+    private void showCredentialEditor(com.benjagest.ui.model.ExternalCredentialEntry existing) {
+        Dialog<ButtonType> dialog = new Dialog<>();
+        dialog.setTitle(existing == null ? t("settings.credentials.editor.title_new")
+                : t("settings.credentials.editor.title_edit"));
+        ButtonType saveBt = new ButtonType(t("settings.credentials.editor.save"), ButtonBar.ButtonData.OK_DONE);
+        dialog.getDialogPane().getButtonTypes().addAll(saveBt, ButtonType.CANCEL);
+
+        ComboBox<String> sysCombo = new ComboBox<>();
+        sysCombo.getItems().addAll("DEHU", "SS_RED", "SILTRA", "AEAT_CLAVE",
+                "NOTIFICA_GOB", "SEDE_AEAT", "BANCO_ESPANA", "OTHER");
+        localizeEnumCombo(sysCombo, "credential_system");
+        sysCombo.getSelectionModel().select(existing == null ? "DEHU" : existing.systemCode());
+        sysCombo.setDisable(existing != null);
+
+        TextField labelField = new TextField(existing == null ? "" : existing.label());
+        TextField userField = new TextField(existing == null ? "" : existing.username());
+        PasswordField pwdField = new PasswordField();
+        pwdField.setPromptText(existing != null && existing.passwordConfigured()
+                ? t("settings.credentials.editor.password.keep")
+                : t("settings.credentials.editor.password.new"));
+        TextField authUrlField = new TextField(existing == null ? "" : existing.authUrl());
+        TextArea notesField = new TextArea(existing == null ? "" : existing.notes());
+        notesField.setPrefRowCount(2);
+        CheckBox activeCb = new CheckBox(t("settings.credentials.editor.active"));
+        activeCb.setSelected(existing == null || existing.active());
+
+        GridPane grid = new GridPane();
+        grid.setHgap(10); grid.setVgap(8); grid.setPadding(new Insets(10));
+        grid.add(new Label(t("settings.credentials.editor.system")), 0, 0); grid.add(sysCombo, 1, 0);
+        grid.add(new Label(t("settings.credentials.editor.label")), 0, 1); grid.add(labelField, 1, 1);
+        grid.add(new Label(t("settings.credentials.editor.username")), 0, 2); grid.add(userField, 1, 2);
+        grid.add(new Label(t("settings.credentials.editor.password")), 0, 3); grid.add(pwdField, 1, 3);
+        grid.add(new Label(t("settings.credentials.editor.auth_url")), 0, 4); grid.add(authUrlField, 1, 4);
+        grid.add(new Label(t("settings.credentials.editor.notes")), 0, 5); grid.add(notesField, 1, 5);
+        grid.add(activeCb, 1, 6);
+        installDialog(dialog, grid);
+
+        dialog.showAndWait().ifPresent(bt -> {
+            if (bt != saveBt) return;
+            String pwd = pwdField.getText();
+            Task<com.benjagest.ui.model.ExternalCredentialEntry> task = new Task<>() {
+                @Override
+                protected com.benjagest.ui.model.ExternalCredentialEntry call() throws Exception {
+                    if (existing == null) {
+                        return altaApiClient.createCredential(
+                                sysCombo.getValue(),
+                                labelField.getText().trim(),
+                                userField.getText().trim(),
+                                pwd,
+                                authUrlField.getText().trim(),
+                                notesField.getText().trim(),
+                                activeCb.isSelected());
+                    }
+                    return altaApiClient.updateCredential(
+                            existing.id(),
+                            existing.systemCode(),
+                            labelField.getText().trim(),
+                            userField.getText().trim(),
+                            pwd,  // si vacio, el cliente no envia el campo
+                            authUrlField.getText().trim(),
+                            notesField.getText().trim(),
+                            activeCb.isSelected());
+                }
+            };
+            task.setOnSucceeded(ev -> reloadCredentials());
+            task.setOnFailed(ev -> showError(t("settings.credentials.editor.fail.title"),
+                    t("settings.credentials.editor.fail.body")));
+            start(task, "settings-credentials-save");
+        });
+    }
+
+    private void deleteCredential(com.benjagest.ui.model.ExternalCredentialEntry entry) {
+        Alert confirm = new Alert(Alert.AlertType.CONFIRMATION,
+                t("settings.credentials.delete.body") + " " + entry.label(),
+                ButtonType.OK, ButtonType.CANCEL);
+        confirm.setHeaderText(t("settings.credentials.delete.title"));
+        confirm.showAndWait().ifPresent(bt -> {
+            if (bt != ButtonType.OK) return;
+            Task<Void> task = new Task<>() {
+                @Override
+                protected Void call() throws Exception {
+                    altaApiClient.deleteCredential(entry.id());
+                    return null;
+                }
+            };
+            task.setOnSucceeded(ev -> reloadCredentials());
+            task.setOnFailed(ev -> showError(t("settings.credentials.editor.fail.title"),
+                    t("settings.credentials.editor.fail.body")));
+            start(task, "settings-credentials-delete");
         });
     }
 }
