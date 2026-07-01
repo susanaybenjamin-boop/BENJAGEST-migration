@@ -276,8 +276,10 @@ Repaso punto por punto de lo que Benjamin reportó con el check en blanco. Estad
   central). **Verificar antes de tocar auth/registro** (zona caliente, CLAUDE.md §11.2).
 
 - 🧹 **UIR — Troceado de la UI (refactor estructural, EN CURSO desde 2026-06-30).**
-  > ▶️ **REANUDAR AQUÍ (sesión 2026-07-01):** **BLOQUE NÓMINA (XXL)** — el último del troceado UIR.
-  > Empezar mapeando antes de tocar (patrón Host ya probado en FAC-4 y AS-1..6).
+  > ▶️ **REANUDAR AQUÍ:** **BLOQUE NÓMINA (XXL)** — el último del troceado UIR. Mapeado 2026-07-01
+  > (ver plan-ui-refactor.md: NOM-1..11; el orquestador `laborView` se queda en shell como AS-7).
+  > **NOM-1 HECHO 2026-07-01**: categoría Params → `LaborParamsScreen` (−598 líneas, merge develop).
+  > **Siguiente: NOM-2** `buildWorkCalendarTab` → `WorkCalendarScreen`. Un Screen por tab, leaf-first.
   > **BLOQUE ASESORÍA CERRADO 2026-06-30**: AS-1 `ClientCustomersScreen`, AS-2 `ClientConfigScreen`,
   > AS-3 `ClientSummaryScreen`, AS-4 `ClientSalesArchivedScreen`, AS-5 `ClientTpbAgreementScreen`,
   > AS-6 `ClientBillingScreen`. **AS-7 DESCARTADO** (decisión Benjamin): `buildClientDetailView` es el

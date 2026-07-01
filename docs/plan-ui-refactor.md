@@ -161,7 +161,25 @@ una clase con `mountStandalone()`/`buildHolder()` o factoría en el shell; estad
     Extraerlo = Host de ~25 métodos de puro reenvío (boilerplate, net-negativo, riesgo en la manipulación
     dinámica de tabs TPB). Igual que `showBilling` se quedó en el shell en FACTURACIÓN, el orquestador se
     queda. **BLOQUE ASESORÍA CERRADO** con AS-1..AS-6 (todo el contenido extraído a screens).
-- **💰 BLOQUE NÓMINA (XXL)** — el último.
+- **💰 BLOQUE NÓMINA/LABORAL (XXL)** — el último. Mapeado 2026-07-01. El orquestador
+  `laborView(bundle)` (5 categorías × 24 sub-tabs, reusado standalone `showLaborModule` +
+  embebido `buildClientLaborTab`/`loadLaborIntoHolder`) **se queda en el shell** (igual que
+  AS-7/`showBilling`: extraerlo = Host de ~24 reenvíos, net-negativo). Leaf-first, prefijo NOM,
+  un Screen por tab (decisión Benjamin 2026-07-01), un commit por slice, `mvn -pl ui compile`:
+  - `[x]` **NOM-1** categoría Params (SS rates + bases grupo + IRPF + severance) →
+    `LaborParamsScreen`. 4 tablas no-code, cero acoplamiento. Wrappers `buildXxxTab()` en shell;
+    `addCol`/`addColSorted` copiados local. −598 líneas (27.109→26.511). HECHO 2026-07-01.
+  - `[ ]` **NOM-2** `buildWorkCalendarTab` → `WorkCalendarScreen`.
+  - `[ ]` **NOM-3** `buildWorkCentersTab`+editor → `WorkCentersScreen`.
+  - `[ ]` **NOM-4** categoría Ausencias (leave requests + bajas IT + vacaciones) → `AbsencesScreen`.
+  - `[ ]` **NOM-5** fichajes admin (`buildTimeClockTab`+audit+corrección+config tipos) → `TimeClockAdminScreen`.
+  - `[ ]` **NOM-6** partes/jornadas + planificación + kioscos → `ShiftsScheduleScreen`.
+  - `[ ]` **NOM-7** nómina core (`buildPayslipsTab`+calcular+entrega/pagar/pdf/email/borrar) →
+    `PayslipsScreen`. Host: `refreshLabor` (asientos cross-módulo TOPIC_JOURNAL).
+  - `[ ]` **NOM-8** coste empresa + cotizaciones SS → `EmployerCostScreen`.
+  - `[ ]` **NOM-9** plantillas de contrato + cláusulas → `ContractTemplatesScreen`.
+  - `[ ]` **NOM-10** contratos globales + wizard + editor + docs → `ContractsScreen` (mega, ~2.500 líneas).
+  - `[ ]` **NOM-11** empleados + editor + finiquito/despido + suspensiones → `EmployeesScreen` (mega, ~2.000 líneas).
 - **Sueltos menores:** Perfil (lock/screensaver Timeline), Calendario (helpers de dashboard),
   Configuración/Settings, Login/Registro (crítico).
 
@@ -188,4 +206,4 @@ vez, cuando TODO el bloque (hasta UIR-15) esté terminado**, para que llegue com
 - FASE 3: [x] UIR-5 **plantilla** (SuggestionsScreen; + kit `UiBuilders`/`BackendErrors`) ·
   [ ] UIR-6 RETA/DEHú · [ ] UIR-7 Portal empleado · [ ] UIR-8 Sugerencias/Perfil/Equipo ·
   [ ] UIR-9 Fiscal · [ ] UIR-10 Calendario · [ ] UIR-11 Facturación · [ ] UIR-12 Config ·
-  [ ] UIR-13 Asesoría · [ ] UIR-14 Trabajos · [ ] UIR-15 Laboral/Nómina
+  [ ] UIR-13 Asesoría · [ ] UIR-14 Trabajos · [ ] UIR-15 Laboral/Nómina (bloque NOM: [x] NOM-1 · NOM-2..11 pend.)
