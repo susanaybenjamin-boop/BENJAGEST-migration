@@ -169,9 +169,10 @@ una clase con `mountStandalone()`/`buildHolder()` o factoría en el shell; estad
   - `[x]` **NOM-1** categoría Params (SS rates + bases grupo + IRPF + severance) →
     `LaborParamsScreen`. 4 tablas no-code, cero acoplamiento. Wrappers `buildXxxTab()` en shell;
     `addCol`/`addColSorted` copiados local. −598 líneas (27.109→26.511). HECHO 2026-07-01.
-  - `[ ]` **NOM-2** `buildWorkCalendarTab` → `WorkCalendarScreen`.
-  - `[ ]` **NOM-3** `buildWorkCentersTab`+editor → `WorkCentersScreen`.
-  - `[ ]` **NOM-4** categoría Ausencias (leave requests + bajas IT + vacaciones) → `AbsencesScreen`.
+  - `[x]` **NOM-2** `buildWorkCalendarTab`+3 diálogos+modal import PDF → `WorkCalendarScreen` (−811). HECHO 2026-07-01.
+  - `[x]` **NOM-3** `buildWorkCentersTab`+editor+geocode → `WorkCentersScreen` (−243). HECHO 2026-07-01.
+  - `[x]` **NOM-4** categoría Ausencias (leave requests + bajas IT + vacaciones) → `AbsencesScreen`
+    (inyecta laborApiClient+altaApiClient; `root`→viewRoot) (−565). HECHO 2026-07-01.
   - `[ ]` **NOM-5** fichajes admin (`buildTimeClockTab`+audit+corrección+config tipos) → `TimeClockAdminScreen`.
   - `[ ]` **NOM-6** partes/jornadas + planificación + kioscos → `ShiftsScheduleScreen`.
   - `[ ]` **NOM-7** nómina core (`buildPayslipsTab`+calcular+entrega/pagar/pdf/email/borrar) →
