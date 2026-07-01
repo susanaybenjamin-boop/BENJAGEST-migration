@@ -359,11 +359,56 @@ public class PayslipJournalEntryService {
      */
     public void reverseAll(String payslipId) {
         String companyId = tenantContext.getCurrentCompanyId();
-        reverseBySource(companyId, payslipId, SRC_ACCRUAL);
-        reverseBySource(companyId, payslipId, SRC_PAYMENT);
-        reverseBySource(companyId, payslipId, SRC_EXTRA_PROVISION);
-        reverseBySource(companyId, payslipId, SRC_EXTRA_ACCRUAL);
-        reverseBySource(companyId, payslipId, SRC_EXTRA_PAYMENT);
+        reverseOrContraBySource(companyId, payslipId, SRC_ACCRUAL);
+        reverseOrContraBySource(companyId, payslipId, SRC_PAYMENT);
+        reverseOrContraBySource(companyId, payslipId, SRC_EXTRA_PROVISION);
+        reverseOrContraBySource(companyId, payslipId, SRC_EXTRA_ACCRUAL);
+        reverseOrContraBySource(companyId, payslipId, SRC_EXTRA_PAYMENT);
+    }
+
+    /**
+     * Borrar la nómina revierte sus asientos: si están por validar (DRAFT) se
+     * borran limpio; si ya están VALIDADOS (POSTED) NO se borran (RD 1007/2023 /
+     * integridad del Diario) — se genera un CONTRASIENTO por validar (débitos y
+     * créditos invertidos). Mismo patrón que REFLEJO. Así, tras borrar y
+     * regenerar, no quedan asientos validados huérfanos ni se duplica el gasto.
+     */
+    private void reverseOrContraBySource(String companyId, String payslipId, String sourceType) {
+        List<Object[]> entries = jdbcTemplate.query("""
+                SELECT id, status, fiscal_year_id, entry_date FROM journal_entries
+                 WHERE company_id = ? AND source_type = ? AND source_id = ?
+                """, (rs, n) -> new Object[]{rs.getString("id"), rs.getString("status"),
+                        rs.getString("fiscal_year_id"), rs.getDate("entry_date")},
+                companyId, sourceType, payslipId);
+        for (Object[] e : entries) {
+            String entryId = (String) e[0];
+            String status = (String) e[1];
+            if (!"POSTED".equals(status)) {
+                jdbcTemplate.update("DELETE FROM accounting_learning_events WHERE journal_entry_id = ? AND company_id = ?",
+                        entryId, companyId);
+                jdbcTemplate.update("DELETE FROM journal_entry_lines WHERE journal_entry_id = ?", entryId);
+                jdbcTemplate.update("DELETE FROM journal_entries WHERE id = ? AND company_id = ?", entryId, companyId);
+            } else {
+                // Contrasiento por validar: no se borra un asiento validado.
+                String revId = UUID.randomUUID().toString();
+                jdbcTemplate.update("""
+                        INSERT INTO journal_entries (
+                            id, company_id, fiscal_year_id, entry_number, entry_date, concept,
+                            source_type, source_id, status, reviewed, auto_proposed, proposed_confidence, created_by
+                        ) VALUES (?, ?, ?, NULL, ?, ?, 'MANUAL_REVERSAL', ?, 'DRAFT', FALSE, TRUE, NULL, NULL)
+                        """,
+                        revId, companyId, (String) e[2], (java.sql.Date) e[3],
+                        "Contraasiento nómina", entryId);
+                jdbcTemplate.query("""
+                        SELECT account_id, description, debit, credit FROM journal_entry_lines
+                         WHERE journal_entry_id = ?
+                        """, rs -> {
+                    insertLine(revId, rs.getString("account_id"), rs.getString("description"),
+                            rs.getBigDecimal("credit"), rs.getBigDecimal("debit"));
+                    return null;
+                }, entryId);
+            }
+        }
     }
 
     // ---- helpers ----------------------------------------------------------
