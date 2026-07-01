@@ -346,8 +346,12 @@ public class PayslipsScreen extends ScreenBase {
         empCombo.setPromptText(t("labor.payslips.calc.employee.prompt"));
 
         DatePicker ceseDate = new DatePicker(java.time.LocalDate.now());
-        TextField vacationField = new TextField("0");
-        vacationField.setPrefWidth(80);
+        // Vacío por defecto → el backend calcula las vacaciones no disfrutadas
+        // (devengadas proporcional − disfrutadas). Un valor manual (incl. 0) lo
+        // respeta. Antes venía "0" y suprimía el auto-cálculo (bug reportado).
+        TextField vacationField = new TextField();
+        vacationField.setPromptText(t("labor.settlement.vacation_days.auto"));
+        vacationField.setPrefWidth(120);
         ComboBox<String> accrualCombo = new ComboBox<>();
         accrualCombo.getItems().addAll("SEMIANNUAL", "ANNUAL");
         accrualCombo.setConverter(new javafx.util.StringConverter<>() {
