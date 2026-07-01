@@ -10553,125 +10553,21 @@ public class BenjagestUiApplication extends Application
         recordNav(() -> showProfileModule());
         select("profile");
 
-        VBox root = new VBox(16);
-        root.getStyleClass().add("content");
+        profileScreen().show();
+    }
 
-        Label header = label(t("profile.title"), "settings-section-title");
-        Label hint = new Label(t("profile.hint"));
-        hint.setWrapText(true);
-        hint.getStyleClass().add("settings-hint");
-
-        VBox sections = new VBox(18);
-
-        // --- Seccion: Idioma ---
-        VBox sLang = settingsSection(t("profile.section.language"),
-                t("profile.section.language.hint"));
-        ComboBox<String> langCombo = new ComboBox<>(FXCollections.observableArrayList("es", "en"));
-        langCombo.setConverter(new javafx.util.StringConverter<>() {
-            @Override public String toString(String s) {
-                return "es".equals(s) ? "Español"
-                        : ("en".equals(s) ? "English" : (s == null ? "" : s));
-            }
-            @Override public String fromString(String s) { return s; }
-        });
-        sLang.getChildren().add(langCombo);
-
-        // --- Seccion: Bloqueo por inactividad (PORT-3 LOCK) ---
-        VBox sLock = settingsSection(t("profile.section.lock"),
-                t("profile.section.lock.hint"));
-        javafx.scene.control.Spinner<Integer> timeoutSpin =
-                new javafx.scene.control.Spinner<>(0, 120, 0, 1);
-        timeoutSpin.setEditable(true);
-        Label timeoutHint = new Label(t("profile.lock.zero_hint"));
-        timeoutHint.getStyleClass().add("settings-hint");
-        timeoutHint.setWrapText(true);
-        sLock.getChildren().addAll(
-                new Label(t("profile.lock.timeout_label")), timeoutSpin, timeoutHint);
-
-        // --- Seccion: IA Copilot (reservado) ---
-        VBox sAi = settingsSection(t("profile.section.ai"),
-                t("profile.section.ai.hint"));
-        CheckBox aiBox = new CheckBox(t("profile.ai.enable"));
-        sAi.getChildren().add(aiBox);
-
-        // --- Seccion: Avatar (ruta local) ---
-        VBox sAvatar = settingsSection(t("profile.section.avatar"),
-                t("profile.section.avatar.hint"));
-        TextField avatarField = new TextField();
-        avatarField.setPromptText(t("profile.avatar.path_prompt"));
-        Button browseBtn = new Button(t("profile.avatar.browse"));
-        browseBtn.setOnAction(ev -> {
-            javafx.stage.FileChooser fc = new javafx.stage.FileChooser();
-            fc.setTitle(t("profile.avatar.browse"));
-            fc.getExtensionFilters().add(new javafx.stage.FileChooser.ExtensionFilter(
-                    "PNG / JPG", "*.png", "*.jpg", "*.jpeg"));
-            java.io.File f = fc.showOpenDialog(root.getScene().getWindow());
-            if (f != null) avatarField.setText(f.getAbsolutePath());
-        });
-        HBox avatarRow = new HBox(8, avatarField, browseBtn);
-        HBox.setHgrow(avatarField, Priority.ALWAYS);
-        sAvatar.getChildren().add(avatarRow);
-
-        // Footer
-        Button saveBtn = new Button(t("profile.btn.save"));
-        saveBtn.setGraphic(icon("fas-save"));
-        saveBtn.getStyleClass().add("button-primary");
-        HBox footer = new HBox(8, saveBtn);
-        footer.setAlignment(Pos.CENTER_RIGHT);
-
-        sections.getChildren().addAll(sLang, sLock, sAi, sAvatar);
-        root.getChildren().addAll(header, hint, sections, footer);
-
-        // Carga inicial
-        Task<com.benjagest.ui.model.UserSettingsEntry> load = new Task<>() {
-            @Override protected com.benjagest.ui.model.UserSettingsEntry call() throws Exception {
-                return altaApiClient.getUserSettings();
-            }
-        };
-        load.setOnSucceeded(ev -> {
-            var s = load.getValue();
-            langCombo.setValue(s.language() == null || s.language().isBlank() ? "es" : s.language());
-            timeoutSpin.getValueFactory().setValue(s.pinTimeoutMin());
-            aiBox.setSelected(s.aiEnabled());
-            avatarField.setText(s.avatarPath() == null ? "" : s.avatarPath());
-        });
-        load.setOnFailed(ev -> showError(t("profile.fail.title"),
-                load.getException() == null ? "" : load.getException().getMessage()));
-        start(load, "profile-load");
-
-        saveBtn.setOnAction(ev -> {
-            Task<com.benjagest.ui.model.UserSettingsEntry> save = new Task<>() {
-                @Override protected com.benjagest.ui.model.UserSettingsEntry call() throws Exception {
-                    return altaApiClient.saveUserSettings(
-                            langCombo.getValue(),
-                            timeoutSpin.getValue(),
-                            "clock",
-                            aiBox.isSelected(),
-                            avatarField.getText(),
-                            "");
-                }
-            };
-            save.setOnSucceeded(s -> {
-                // Aplicar inmediatamente cambio de idioma
-                String newLang = save.getValue().language();
-                if ("en".equalsIgnoreCase(newLang) && language != Language.EN) {
-                    language = Language.EN;
-                } else if ("es".equalsIgnoreCase(newLang) && language != Language.ES) {
-                    language = Language.ES;
-                }
-                // Aplicar nuevo timeout LOCK
-                refreshLockTimeout(save.getValue().pinTimeoutMin());
-                Alert ok = new Alert(Alert.AlertType.INFORMATION);
-                ok.setTitle(t("profile.save.success.title"));
-                ok.setHeaderText(t("profile.save.success.body"));
-                ok.showAndWait();
-            });
-            save.setOnFailed(s -> showError(t("profile.fail.title"),
-                    save.getException() == null ? "" : save.getException().getMessage()));
-            start(save, "profile-save");
-        });
-
-        setCenterAnimated(scroll(root));
+    private com.benjagest.ui.screens.ProfileScreen profileScreen() {
+        return new com.benjagest.ui.screens.ProfileScreen(altaApiClient, this::t, this,
+                new com.benjagest.ui.screens.ProfileScreen.Host() {
+                    @Override public void applyLanguage(String lang) {
+                        if ("en".equalsIgnoreCase(lang) && language != Language.EN) {
+                            language = Language.EN;
+                        } else if ("es".equalsIgnoreCase(lang) && language != Language.ES) {
+                            language = Language.ES;
+                        }
+                    }
+                    @Override public void refreshLockTimeout(int min) { BenjagestUiApplication.this.refreshLockTimeout(min); }
+                });
     }
 
     private VBox settingsSection(String title, String hint) {
