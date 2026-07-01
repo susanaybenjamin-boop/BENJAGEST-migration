@@ -219,9 +219,12 @@ una clase con `mountStandalone()`/`buildHolder()` o factoría en el shell; estad
     Host puentea estado del shell (bringToFront/ownerWindow/checkForUpdates/refreshLockTimeout/
     setScreensaverStyle/sessionCompanyName/onCompanyRenamed/onModulesSaved) + las 7 tabs pesadas.
   - `[x]` **SM-3** `ProfileScreen` (idioma global + lock + IA + avatar).
-  - `[~]` **SM-2b** tabs pesadas de Settings → **6/7 HECHO** (owners, credenciales, auditoría, backup,
-    BOE, mi-TPB). **Falta 7/7 = Mi Asesoría**, ENTRELAZADA con el módulo Comunicación (comparte
-    `buildCommMessagesPane`/`buildCommDocumentsPane`) → hay que extraer **Comunicación a `CommScreen`** primero.
+  - `[x]` **SM-2b** tabs pesadas de Settings → **7/7 HECHO** (owners, credenciales, auditoría, backup,
+    BOE, mi-TPB, **mi-asesoría** 2026-07-01). Mi Asesoría NO dependía de `buildCommMessagesPane`/
+    `buildCommDocumentsPane` (solo compartía rango de líneas en el God Object, no llamadas) — se
+    verificó leyendo el código antes de mover (§10.bis). `CommScreen` extraído aparte (módulo
+    Comunicación completo: showCommModule + los 2 paneles + CommRecipient + humanizeDocStatus +
+    humanSize).
   - `[ ]` **SM-4** `AuthScreen` (login/registro/emparejado/PIN) — **CON Benjamin**, probar cada flujo; UI puro,
     NO tocar `AuthService`/JWT (§11.2).
   - **Detalle completo y plan de arranque en `docs/backlog.md` → "REANUDAR AQUÍ (2026-07-01)".**
