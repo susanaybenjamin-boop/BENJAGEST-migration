@@ -901,7 +901,7 @@ public class PayslipService {
                 // provisión acumulada (465) en el asiento en vez de re-gastar la
                 // prorrata extra en 640 (si no, doble gasto + provisión colgada).
                 java.math.BigDecimal extraProvToCancel = java.math.BigDecimal.ZERO;
-                if (isSettlement && isExtraPayProvisionEnabled()) {
+                if ("SETTLEMENT".equals(type) && isExtraPayProvisionEnabled()) {
                     extraProvToCancel = journalService.outstandingExtraProvision(req.employeeId());
                 }
                 journalService.createAccrual(new PayslipJournalEntryService.PayslipAccrual(
