@@ -3694,6 +3694,9 @@ public class BenjagestUiApplication extends Application
                     @Override public String moduleIcon(String module) {
                         return BenjagestUiApplication.this.moduleIcon(module);
                     }
+                    @Override public String moduleTitle(String module) {
+                        return BenjagestUiApplication.this.moduleTitle(module);
+                    }
                 });
     }
 
@@ -9944,6 +9947,9 @@ public class BenjagestUiApplication extends Application
     /** Panel de tareas pendientes. En la asesoría (cockpit propio) ofrece toggle
      *  "Esta empresa / Cartera"; en empresario o dentro de un cliente, su empresa. */
     private void showPendingTasksPanel() {
+        recordNav(this::showPendingTasksPanel);
+        currentModule = "pending-tasks";
+        select("pending-tasks");
         boolean advisoryCockpit = appMode == AppMode.ADVISORY
                 && !com.benjagest.ui.service.AuthSession.get().isActingForClient();
         // Por defecto: cartera para la asesoría, empresa para el resto.
@@ -15707,6 +15713,9 @@ public class BenjagestUiApplication extends Application
     // ===================================================================
 
     private void showWorkLogsModule() {
+        recordNav(this::showWorkLogsModule);
+        currentModule = "work-logs";
+        select("work-logs");
         setCenterAnimated(buildWorkLogsModule());
     }
 
