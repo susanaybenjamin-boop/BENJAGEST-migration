@@ -285,6 +285,19 @@ Repaso punto por punto de lo que Benjamin reportó con el check en blanco. Estad
   > 0 mismatches columna/tabla en 161 migraciones Flyway, Host interfaces y wrappers del troceado intactos.
   > Único hallazgo real (deuda previa, no introducida hoy): 3 strings de login sin `t()` + una clave i18n
   > `settings.email.prompt.host` faltante — ambos corregidos (commit `8c3eb80`).
+  >
+  > **v0.1.4 (2026-07-01, mismo día) — icono nuevo + limpieza de 2 módulos fantasma.** Icono de la app
+  > sustituido: emblema oscuro/bronce → diseño plano en la paleta real de BENJAGEST (azul `#2357f6` →
+  > turquesa `#0aa6a6`, blanco, dorado `#f8d348`), gráfico de barras + flecha con volumen, más grande y
+  > legible a 16-32px. Generador en `packaging/GenerateAppIcon.java`. **Módulo Sugerencias eliminado**
+  > (per-tenant, sin consumidor real, campo "respuesta" nunca escribible). **Módulo Informes (`reports`)
+  > eliminado** — nunca fue un módulo de informes: era el hueco genérico de `WorkspaceRepository` sin
+  > pantalla propia, mostrando una tabla `notifications` de avisos manuales sin ninguna vía de escritura
+  > real fuera de sí mismo (etiqueta interna `module.unit.alerts`). Los informes contables reales (Balance,
+  > PyG, Libro Mayor, Sumas y Saldos) siguen intactos en Contabilidad; no dependían de esto. Tabla
+  > `notifications` NO se borró (la sigue leyendo el dashboard de inicio, aunque quedará vacía al no existir
+  > ya ninguna vía de escritura). V163 desactiva/borra `reports` de `module_catalog`/`company_modules`.
+  > Commit `a92d9c3`, release [v0.1.4](https://github.com/susanaybenjamin-boop/BENJAGEST-migration/releases/tag/v0.1.4).
   > **HECHO y en develop:** NOM-1..11 (bloque Nómina entero → screens), **SM-PKG** (gestor-navegador dentro del
   > `.msi` + `locateGestorJar` ruta instalada), **SM-1** `CalendarScreen`, **SM-2a** `SettingsScreen` núcleo,
   > **SM-3** `ProfileScreen`, **SM-2b 7/7 COMPLETO** (owners/credenciales/auditoría/backup/BOE/mi-TPB/mi-asesoría),
