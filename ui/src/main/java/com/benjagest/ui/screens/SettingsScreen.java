@@ -15,6 +15,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
 import javafx.beans.property.SimpleStringProperty;
+import javafx.collections.FXCollections;
 import javafx.concurrent.Task;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
@@ -50,7 +51,6 @@ public class SettingsScreen extends ScreenBase {
         void onCompanyRenamed(String legalName);
         void onModulesSaved(List<CompanyModuleEntry> catalog);
         // Pestañas pesadas (SM-2b las moverá a esta clase y estos métodos desaparecerán).
-        Node ownersTab();
         Node credentialsTab();
         Node auditTab();
         Node backupTab();
@@ -474,7 +474,7 @@ public class SettingsScreen extends ScreenBase {
         tabs.setTabClosingPolicy(TabPane.TabClosingPolicy.UNAVAILABLE);
         Tab companyTab = new Tab(t("settings.tab.company"), settingsCompanyTab(bundle.company()));
         companyTab.setGraphic(icon("fas-building"));
-        Tab ownersTab = new Tab(t("settings.tab.owners"), host.ownersTab());
+        Tab ownersTab = new Tab(t("settings.tab.owners"), settingsOwnersTab());
         ownersTab.setGraphic(icon("fas-users"));
         Tab emailTab = new Tab(t("settings.tab.email"), settingsEmailTab(bundle.email()));
         emailTab.setGraphic(icon("fas-envelope"));
@@ -1722,5 +1722,202 @@ public class SettingsScreen extends ScreenBase {
             refreshSaveModulesButton();
         });
         start(task, "settings-modules-save-batch");
+    }
+
+    private TableView<com.benjagest.ui.model.CompanyOwnerEntry> ownersTable;
+
+    public Node settingsOwnersTab() {
+        Label section = label(t("settings.owners.section"), "settings-section-title");
+        Label hint = new Label(t("settings.owners.hint"));
+        hint.setWrapText(true);
+        hint.getStyleClass().add("settings-hint");
+
+        ownersTable = new TableView<>();
+        ownersTable.getStyleClass().add("data-table");
+        ownersTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+        ownersTable.setPlaceholder(new Label(t("settings.owners.placeholder.empty")));
+
+        TableColumn<com.benjagest.ui.model.CompanyOwnerEntry, String> colName =
+                new TableColumn<>(t("settings.owners.col.name"));
+        colName.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().fullName()));
+        colName.setPrefWidth(200);
+        TableColumn<com.benjagest.ui.model.CompanyOwnerEntry, String> colNif =
+                new TableColumn<>(t("settings.owners.col.nif"));
+        colNif.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().taxIdentifier()));
+        colNif.setPrefWidth(110);
+        TableColumn<com.benjagest.ui.model.CompanyOwnerEntry, String> colRole =
+                new TableColumn<>(t("settings.owners.col.role"));
+        colRole.setCellValueFactory(c -> new SimpleStringProperty(t("settings.owners.role." + c.getValue().role())));
+        colRole.setPrefWidth(140);
+        TableColumn<com.benjagest.ui.model.CompanyOwnerEntry, String> colSs =
+                new TableColumn<>(t("settings.owners.col.ss_regime"));
+        colSs.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().ssRegime() == null
+                ? "" : t("settings.owners.ss_regime." + c.getValue().ssRegime())));
+        colSs.setPrefWidth(160);
+        TableColumn<com.benjagest.ui.model.CompanyOwnerEntry, String> colPct =
+                new TableColumn<>(t("settings.owners.col.pct"));
+        colPct.setCellValueFactory(c -> new SimpleStringProperty(
+                c.getValue().ownershipPercent() == null ? "" : c.getValue().ownershipPercent().toPlainString() + " %"));
+        colPct.setPrefWidth(80);
+        colPct.setComparator(NUMERIC_STRING_COMPARATOR);
+        TableColumn<com.benjagest.ui.model.CompanyOwnerEntry, String> colFlags =
+                new TableColumn<>(t("settings.owners.col.flags"));
+        colFlags.setCellValueFactory(c -> new SimpleStringProperty(
+                c.getValue().active() ? "" : t("settings.owners.inactive")));
+        colFlags.setPrefWidth(100);
+        ownersTable.getColumns().addAll(java.util.List.of(colName, colNif, colRole, colSs, colPct, colFlags));
+
+        Button addBtn = new Button(t("settings.owners.action.add"));
+        addBtn.setGraphic(icon("fas-plus"));
+        addBtn.setOnAction(ev -> showOwnerEditor(null));
+
+        Button editBtn = new Button(t("settings.owners.action.edit"));
+        editBtn.setGraphic(icon("fas-edit"));
+        editBtn.setDisable(true);
+        editBtn.setOnAction(ev -> {
+            var sel = ownersTable.getSelectionModel().getSelectedItem();
+            if (sel != null) showOwnerEditor(sel);
+        });
+
+        Button deleteBtn = new Button(t("settings.owners.action.delete"));
+        deleteBtn.setGraphic(icon("fas-trash"));
+        deleteBtn.setDisable(true);
+        deleteBtn.setOnAction(ev -> {
+            var sel = ownersTable.getSelectionModel().getSelectedItem();
+            if (sel != null) deleteOwner(sel);
+        });
+
+        ownersTable.getSelectionModel().selectedItemProperty().addListener((obs, oldV, newV) -> {
+            editBtn.setDisable(newV == null);
+            deleteBtn.setDisable(newV == null);
+        });
+
+        HBox actions = new HBox(8, addBtn, editBtn, deleteBtn);
+        actions.getStyleClass().add("settings-actions");
+
+        reloadOwners();
+
+        VBox body = new VBox(12, section, hint, ownersTable);
+        VBox.setVgrow(ownersTable, Priority.ALWAYS); // LAYOUT-FILL: la tabla llena el alto y scrollea por dentro.
+        return tabLayoutFill(label(t("settings.owners.section_label"), "settings-section-title"), body, actions);
+    }
+
+    private void reloadOwners() {
+        if (ownersTable == null) return;
+        Task<java.util.List<com.benjagest.ui.model.CompanyOwnerEntry>> task = new Task<>() {
+            @Override
+            protected java.util.List<com.benjagest.ui.model.CompanyOwnerEntry> call() throws Exception {
+                return altaApiClient.listOwners();
+            }
+        };
+        task.setOnSucceeded(ev -> ownersTable.setItems(FXCollections.observableArrayList(task.getValue())));
+        task.setOnFailed(ev -> ownersTable.getItems().clear());
+        start(task, "settings-owners-reload");
+    }
+
+    private void showOwnerEditor(com.benjagest.ui.model.CompanyOwnerEntry existing) {
+        Dialog<ButtonType> dialog = new Dialog<>();
+        dialog.setTitle(existing == null ? t("settings.owners.editor.title_new") : t("settings.owners.editor.title_edit"));
+        ButtonType saveBt = new ButtonType(t("settings.owners.editor.save"), ButtonBar.ButtonData.OK_DONE);
+        dialog.getDialogPane().getButtonTypes().addAll(saveBt, ButtonType.CANCEL);
+
+        TextField nameField = new TextField(existing == null ? "" : existing.fullName());
+        TextField nifField = new TextField(existing == null ? "" : existing.taxIdentifier());
+        ComboBox<String> roleCombo = new ComboBox<>();
+        roleCombo.getItems().addAll("ADMINISTRATOR", "JOINT", "SOLE", "BOARD_MEMBER", "PARTNER", "AUTONOMOUS");
+        localizeEnumCombo(roleCombo, "owner_role");
+        roleCombo.getSelectionModel().select(existing == null ? "ADMINISTRATOR" : existing.role());
+        ComboBox<String> ssCombo = new ComboBox<>();
+        ssCombo.getItems().addAll("RETA", "GENERAL", "AUTONOMO_SOCIETARIO", "NO_COTIZA", "OTHER");
+        localizeEnumCombo(ssCombo, "ss_regime");
+        ssCombo.getSelectionModel().select(existing == null || existing.ssRegime() == null || existing.ssRegime().isBlank()
+                ? "RETA" : existing.ssRegime());
+        TextField pctField = new TextField(existing == null || existing.ownershipPercent() == null
+                ? "" : existing.ownershipPercent().toPlainString());
+        TextField apptField = new TextField(existing == null ? "" : existing.appointmentDate());
+        apptField.setPromptText("AAAA-MM-DD");
+        com.benjagest.ui.support.EditableCells.installIsoDateMask(apptField);
+        TextField termField = new TextField(existing == null ? "" : existing.terminationDate());
+        termField.setPromptText("AAAA-MM-DD");
+        com.benjagest.ui.support.EditableCells.installIsoDateMask(termField);
+        TextField emailField = new TextField(existing == null ? "" : existing.email());
+        TextField phoneField = new TextField(existing == null ? "" : existing.phone());
+        TextArea notesField = new TextArea(existing == null ? "" : existing.notes());
+        notesField.setPrefRowCount(2);
+        CheckBox activeCb = new CheckBox(t("settings.owners.editor.active"));
+        activeCb.setSelected(existing == null || existing.active());
+
+        GridPane grid = new GridPane();
+        grid.setHgap(10); grid.setVgap(8); grid.setPadding(new Insets(10));
+        grid.add(new Label(t("settings.owners.editor.name")), 0, 0); grid.add(nameField, 1, 0);
+        grid.add(new Label(t("settings.owners.editor.nif")), 0, 1); grid.add(nifField, 1, 1);
+        grid.add(new Label(t("settings.owners.editor.role")), 0, 2); grid.add(roleCombo, 1, 2);
+        grid.add(new Label(t("settings.owners.editor.ss_regime")), 0, 3); grid.add(ssCombo, 1, 3);
+        grid.add(new Label(t("settings.owners.editor.pct")), 0, 4); grid.add(pctField, 1, 4);
+        grid.add(new Label(t("settings.owners.editor.appointment")), 0, 5); grid.add(apptField, 1, 5);
+        grid.add(new Label(t("settings.owners.editor.termination")), 0, 6); grid.add(termField, 1, 6);
+        grid.add(new Label(t("settings.owners.editor.email")), 0, 7); grid.add(emailField, 1, 7);
+        grid.add(new Label(t("settings.owners.editor.phone")), 0, 8); grid.add(phoneField, 1, 8);
+        grid.add(new Label(t("settings.owners.editor.notes")), 0, 9); grid.add(notesField, 1, 9);
+        grid.add(activeCb, 1, 10);
+        installDialog(dialog, grid);
+
+        dialog.showAndWait().ifPresent(bt -> {
+            if (bt != saveBt) return;
+            java.math.BigDecimal pct;
+            try {
+                pct = pctField.getText().isBlank() ? null
+                        : new java.math.BigDecimal(pctField.getText().trim().replace(",", "."));
+            } catch (NumberFormatException ex) {
+                showError(t("settings.owners.editor.fail.title"), t("settings.owners.editor.invalid_pct"));
+                return;
+            }
+            com.benjagest.ui.model.CompanyOwnerEntry payload = new com.benjagest.ui.model.CompanyOwnerEntry(
+                    existing == null ? null : existing.id(),
+                    nameField.getText().trim(),
+                    nifField.getText().trim(),
+                    roleCombo.getValue(),
+                    ssCombo.getValue(),
+                    pct,
+                    blankToNullOrSelf(apptField.getText()),
+                    blankToNullOrSelf(termField.getText()),
+                    blankToNullOrSelf(emailField.getText()),
+                    blankToNullOrSelf(phoneField.getText()),
+                    blankToNullOrSelf(notesField.getText()),
+                    activeCb.isSelected());
+            Task<com.benjagest.ui.model.CompanyOwnerEntry> task = new Task<>() {
+                @Override
+                protected com.benjagest.ui.model.CompanyOwnerEntry call() throws Exception {
+                    return existing == null
+                            ? altaApiClient.createOwner(payload)
+                            : altaApiClient.updateOwner(existing.id(), payload);
+                }
+            };
+            task.setOnSucceeded(ev -> reloadOwners());
+            task.setOnFailed(ev -> showError(t("settings.owners.editor.fail.title"),
+                    t("settings.owners.editor.fail.body")));
+            start(task, "settings-owners-save");
+        });
+    }
+
+    private void deleteOwner(com.benjagest.ui.model.CompanyOwnerEntry entry) {
+        Alert confirm = new Alert(Alert.AlertType.CONFIRMATION,
+                t("settings.owners.delete.body") + " " + entry.fullName(),
+                ButtonType.OK, ButtonType.CANCEL);
+        confirm.setHeaderText(t("settings.owners.delete.title"));
+        confirm.showAndWait().ifPresent(bt -> {
+            if (bt != ButtonType.OK) return;
+            Task<Void> task = new Task<>() {
+                @Override
+                protected Void call() throws Exception {
+                    altaApiClient.deleteOwner(entry.id());
+                    return null;
+                }
+            };
+            task.setOnSucceeded(ev -> reloadOwners());
+            task.setOnFailed(ev -> showError(t("settings.owners.editor.fail.title"),
+                    t("settings.owners.editor.fail.body")));
+            start(task, "settings-owners-delete");
+        });
     }
 }
