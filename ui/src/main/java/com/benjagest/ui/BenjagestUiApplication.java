@@ -127,7 +127,6 @@ public class BenjagestUiApplication extends Application
             // gestión", donde ahora se muestran las pantallas COMPLETAS
             // (no versiones reducidas). Por eso ya NO se listan aquí Fiscal,
             // Laboral, Facturación ni Compras como módulos sueltos.
-            new ModuleLink("reports", "Informes", "fas-chart-line"),
             new ModuleLink("calendar", "Agenda", "fas-calendar-alt"),
             // Slice 5C — Módulo EQUIPO solo visible para asesorías.
             // El OWNER reparte aquí sus clientes entre sus empleados y
@@ -148,7 +147,6 @@ public class BenjagestUiApplication extends Application
             new ModuleLink("purchases", "Compras", "fas-receipt"),
             new ModuleLink("labor", "Laboral", "fas-hard-hat"),
             new ModuleLink("tax", "Fiscal", "fas-percentage"),
-            new ModuleLink("reports", "Informes", "fas-chart-line"),
             new ModuleLink("calendar", "Agenda", "fas-calendar-alt"),
             new ModuleLink("settings", "Configuracion", "fas-cog")
     );
@@ -196,7 +194,7 @@ public class BenjagestUiApplication extends Application
     // que no esta aqui, se ignora en el sidebar (no hay vista para el).
     private static final java.util.Set<String> KNOWN_VIEWS = java.util.Set.of(
             "customers", "billing", "purchases", "labor",
-            "tax", "reports", "calendar", "settings",
+            "tax", "calendar", "settings",
             "advisory", "self-employed", "notifications", "time-clock",
             // Slice 5C — Módulo EQUIPO / Reparto de clientes (advisory_only).
             "team",
@@ -379,7 +377,6 @@ public class BenjagestUiApplication extends Application
         all.add(new PaletteAction(t("palette.action.purchases"), "fas-receipt", () -> showModule("purchases")));
         all.add(new PaletteAction(t("palette.action.tax"), "fas-percentage", () -> showModule("tax")));
         all.add(new PaletteAction(t("palette.action.labor"), "fas-hard-hat", () -> showModule("labor")));
-        all.add(new PaletteAction(t("palette.action.reports"), "fas-chart-line", () -> showModule("reports")));
         return all;
     }
 
@@ -2793,7 +2790,6 @@ public class BenjagestUiApplication extends Application
             case "purchases" -> t("module.unit.expenses");
             case "labor" -> t("module.unit.work_logs");
             case "tax" -> t("module.unit.tax_models");
-            case "reports" -> t("module.unit.alerts");
             case "settings" -> t("module.unit.users_employees");
             default -> t("module.unit.records");
         };
@@ -2872,7 +2868,7 @@ public class BenjagestUiApplication extends Application
 
     private String barField(String module) {
         return switch (module) {
-            case "billing", "purchases", "labor", "reports" -> "fecha";
+            case "billing", "purchases", "labor" -> "fecha";
             case "tax" -> "periodo";
             case "settings" -> "tipo";
             default -> "nif";
@@ -2883,7 +2879,7 @@ public class BenjagestUiApplication extends Application
         return switch (module) {
             case "billing" -> "cobro";
             case "purchases" -> "pago";
-            case "labor", "tax", "reports" -> "estado";
+            case "labor", "tax" -> "estado";
             case "settings" -> "acceso";
             default -> "contacto";
         };
@@ -2891,7 +2887,7 @@ public class BenjagestUiApplication extends Application
 
     private String barTitle(String module) {
         return switch (module) {
-            case "billing", "purchases", "labor", "reports" -> t("module.section.activity_by_date");
+            case "billing", "purchases", "labor" -> t("module.section.activity_by_date");
             case "tax" -> t("module.section.models_by_period");
             case "settings" -> t("module.section.team_by_type");
             default -> t("module.section.main_distribution");
@@ -2902,7 +2898,7 @@ public class BenjagestUiApplication extends Application
         return switch (module) {
             case "billing" -> t("module.section.collection_status");
             case "purchases" -> t("module.section.payment_status");
-            case "labor", "tax", "reports" -> t("module.section.status");
+            case "labor", "tax" -> t("module.section.status");
             case "settings" -> t("module.section.pin_access");
             default -> t("module.section.contacts");
         };

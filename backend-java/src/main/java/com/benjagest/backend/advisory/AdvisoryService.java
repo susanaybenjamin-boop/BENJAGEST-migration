@@ -422,7 +422,7 @@ public class AdvisoryService {
                   FROM module_catalog m
                  WHERE m.slug IN ('core', 'billing', 'purchases', 'accounting',
                                   'tax', 'calendar', 'notifications', 'labor',
-                                  'reports', 'settings')
+                                  'settings')
                    AND m.active_in_catalog = TRUE
                 """, companyId);
         jdbcTemplate.update("""
@@ -434,7 +434,7 @@ public class AdvisoryService {
                  WHERE cm.company_id = ?
                    AND m.slug IN ('core', 'billing', 'purchases', 'accounting',
                                   'tax', 'calendar', 'notifications', 'labor',
-                                  'reports', 'settings')
+                                  'settings')
                    AND cm.active = FALSE
                 """, companyId);
     }

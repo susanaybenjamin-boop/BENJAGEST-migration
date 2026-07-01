@@ -133,7 +133,6 @@ public final class I18n {
                 case "module.purchases" -> "Purchases & Expenses";
                 case "module.labor" -> "HR";
                 case "module.tax" -> "Tax (AEAT)";
-                case "module.reports" -> "Reports";
                 case "module.calendar" -> "Calendar";
                 case "module.settings" -> "Settings";
                 case "module.advisory" -> "My clients";
@@ -153,7 +152,6 @@ public final class I18n {
                 // no de los clientes. "Client labor" era engañoso.
                 case "module.advisory.labor" -> "HR";
                 case "module.advisory.tax" -> "Client tax";
-                case "module.advisory.reports" -> "Advisory reports";
                 case "module.advisory.calendar" -> "Advisory calendar";
                 case "module.advisory.settings" -> "Settings";
                 case "field.name" -> "Name";
@@ -346,7 +344,6 @@ public final class I18n {
                 case "palette.action.purchases" -> "Purchases";
                 case "palette.action.tax" -> "Tax";
                 case "palette.action.labor" -> "Labor";
-                case "palette.action.reports" -> "Reports";
                 // ---- Billing configuration (F5+) ----
                 case "billing.config.tab_title" -> "Billing configuration";
                 case "billing.config.verifactu.section" -> "VeriFactu";
@@ -1085,7 +1082,6 @@ public final class I18n {
                 case "module.unit.records" -> "records";
                 case "module.unit.active_customers" -> "active customers";
                 case "module.unit.work_logs" -> "work logs";
-                case "module.unit.alerts" -> "alerts";
                 case "module.unit.users_employees" -> "users/employees";
                 case "module.section.team_by_type" -> "Team by type";
                 case "module.section.main_distribution" -> "Main distribution";
@@ -1262,7 +1258,6 @@ public final class I18n {
             case "module.purchases" -> "Compras y Gastos";
             case "module.labor" -> "Personal";
             case "module.tax" -> "Modelos AEAT";
-            case "module.reports" -> "Informes";
             case "module.calendar" -> "Agenda";
             case "module.settings" -> "Configuracion";
             case "module.advisory" -> "Mis clientes";
@@ -1282,7 +1277,6 @@ public final class I18n {
             // no de los clientes. "Laboral clientes" era engañoso.
             case "module.advisory.labor" -> "Laboral";
             case "module.advisory.tax" -> "Fiscal clientes";
-            case "module.advisory.reports" -> "Informes asesoria";
             case "module.advisory.calendar" -> "Agenda asesoria";
             case "module.advisory.settings" -> "Configuracion";
             // ---- Editor de facturas (Slice F4) ----
@@ -1434,7 +1428,6 @@ public final class I18n {
             case "palette.action.purchases" -> "Compras";
             case "palette.action.tax" -> "Fiscal";
             case "palette.action.labor" -> "Laboral";
-            case "palette.action.reports" -> "Informes";
             // ---- Billing configuration (F5+) ----
             case "billing.config.tab_title" -> "Configuracion de facturacion";
             case "billing.config.verifactu.section" -> "VeriFactu";
@@ -2173,7 +2166,6 @@ public final class I18n {
             case "module.unit.records" -> "registros";
             case "module.unit.active_customers" -> "clientes activos";
             case "module.unit.work_logs" -> "partes de trabajo";
-            case "module.unit.alerts" -> "avisos";
             case "module.unit.users_employees" -> "usuarios/empleados";
             case "module.section.team_by_type" -> "Equipo por tipo";
             case "module.section.main_distribution" -> "Distribucion principal";

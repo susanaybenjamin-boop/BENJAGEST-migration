@@ -147,9 +147,9 @@ public class RegisterService {
     private void activateEssentialModules(String companyId, boolean advisory) {
         String slugs = advisory
                 ? "'core','billing','purchases','accounting','tax','calendar',"
-                  + "'notifications','labor','reports','settings'"
+                  + "'notifications','labor','settings'"
                 : "'core','billing','purchases','accounting','calendar',"
-                  + "'labor','reports','settings','time-clock'";
+                  + "'labor','settings','time-clock'";
         jdbc.update("""
                 INSERT IGNORE INTO company_modules (id, company_id, module_id, active)
                 SELECT UUID(), ?, m.id, TRUE

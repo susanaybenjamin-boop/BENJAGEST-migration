@@ -134,7 +134,6 @@ public class WorkspaceRepository {
             case "purchases" -> new ModuleSummary(module, moduleTitle(module, mode), purchases());
             case "labor" -> new ModuleSummary(module, moduleTitle(module, mode), labor());
             case "tax" -> new ModuleSummary(module, moduleTitle(module, mode), tax());
-            case "reports" -> new ModuleSummary(module, moduleTitle(module, mode), reports());
             case "settings" -> new ModuleSummary(module, moduleTitle(module, mode), settings());
             case "calendar" -> new ModuleSummary(module, moduleTitle(module, mode), calendar());
             default -> new ModuleSummary(module, module, List.of());
@@ -149,7 +148,6 @@ public class WorkspaceRepository {
             case "purchases" -> advisory ? "Compras y gastos revisados" : "Compras y gastos";
             case "labor" -> advisory ? "Laboral clientes" : "Laboral y fichajes";
             case "tax" -> advisory ? "Fiscal clientes" : "Fiscal";
-            case "reports" -> advisory ? "Informes de asesoria" : "Informes";
             case "settings" -> advisory ? "Equipo de asesoria" : "Configuracion";
             case "calendar" -> advisory ? "Agenda de asesoria" : "Agenda";
             default -> module;
@@ -168,7 +166,6 @@ public class WorkspaceRepository {
             case "tax" -> createTaxFiling(request);
             case "settings" -> createEmployee(request);
             case "calendar" -> createCalendarEvent(request);
-            case "reports" -> createNotification(request);
             default -> throw new IllegalArgumentException("Modulo no soportado");
         };
     }
@@ -183,7 +180,6 @@ public class WorkspaceRepository {
             case "tax" -> updateTaxFiling(recordId, request);
             case "settings" -> updateEmployee(recordId, request);
             case "calendar" -> updateCalendarEvent(recordId, request);
-            case "reports" -> updateNotification(recordId, request);
             default -> throw new IllegalArgumentException("Modulo no soportado");
         };
     }
@@ -193,11 +189,6 @@ public class WorkspaceRepository {
         switch (module) {
             case "calendar" -> jdbcTemplate.update(
                     "DELETE FROM calendar_events WHERE id = ? AND company_id = ?",
-                    recordId,
-                    currentCompanyId()
-            );
-            case "reports" -> jdbcTemplate.update(
-                    "UPDATE notifications SET status = 'READ' WHERE id = ? AND company_id = ?",
                     recordId,
                     currentCompanyId()
             );
@@ -289,21 +280,6 @@ public class WorkspaceRepository {
                 JOIN tax_models m ON m.id = f.tax_model_id
                 WHERE f.company_id = ?
                 ORDER BY f.period_year DESC, f.period_code DESC
-                LIMIT 50
-                """);
-    }
-
-    private List<ModuleRecord> reports() {
-        return rows("""
-                SELECT n.id,
-                       n.title AS aviso,
-                       COALESCE(n.body, '') AS detalle,
-                       n.severity AS prioridad,
-                       n.status AS estado,
-                       CAST(n.created_at AS CHAR) AS fecha
-                FROM notifications n
-                WHERE n.company_id = ?
-                ORDER BY n.created_at DESC
                 LIMIT 50
                 """);
     }
@@ -501,21 +477,6 @@ public class WorkspaceRepository {
         return findRecord("calendar", eventId);
     }
 
-    private ModuleRecord createNotification(ModuleCreateRequest request) {
-        String notificationId = id();
-        jdbcTemplate.update("""
-                INSERT INTO notifications (id, company_id, notification_type, title, body, severity, status)
-                VALUES (?, ?, 'MANUAL', ?, ?, ?, 'UNREAD')
-                """,
-                notificationId,
-                currentCompanyId(),
-                text(request.title(), "Aviso"),
-                blankToNull(request.description()),
-                text(request.category(), "INFO")
-        );
-        return findRecord("reports", notificationId);
-    }
-
     private ModuleRecord updateCustomer(String recordId, ModuleCreateRequest request) {
         jdbcTemplate.update("""
                 UPDATE customers
@@ -664,25 +625,6 @@ public class WorkspaceRepository {
                 currentCompanyId()
         );
         return findRecord("calendar", recordId);
-    }
-
-    private ModuleRecord updateNotification(String recordId, ModuleCreateRequest request) {
-        jdbcTemplate.update("""
-                UPDATE notifications
-                SET title = ?,
-                    body = ?,
-                    severity = ?,
-                    status = ?
-                WHERE id = ? AND company_id = ?
-                """,
-                text(request.title(), "Aviso"),
-                blankToNull(request.description()),
-                text(request.category(), "INFO"),
-                text(request.status(), "UNREAD"),
-                recordId,
-                currentCompanyId()
-        );
-        return findRecord("reports", recordId);
     }
 
     private ModuleRecord findRecord(String module, String id) {
