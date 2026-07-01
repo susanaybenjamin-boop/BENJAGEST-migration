@@ -212,8 +212,19 @@ una clase con `mountStandalone()`/`buildHolder()` o factoría en el shell; estad
     Deps: laborApiClient+altaApiClient + callbacks (refreshLabor, refreshLaborAndJournal, openEmployeeContracts→
     ContractsScreen); `root`→viewRoot; copia humanizeBackendError/humanizeFromKey/humanizeMemberRole. El
     orquestador `laborView` se queda en shell. **CIERRA la extracción del bloque Nómina/Laboral (NOM-1..11).**
-- **Sueltos menores:** Perfil (lock/screensaver Timeline), Calendario (helpers de dashboard),
-  Configuración/Settings, Login/Registro (crítico).
+- **Sueltos menores (bloque SM, 2026-07-01):**
+  - `[x]` **SM-PKG** gestor-navegador dentro del `.msi`/app-image + `locateGestorJar()` ruta instalada.
+  - `[x]` **SM-1** `CalendarScreen` (vistas día/semana/mes/año + agenda + diálogos).
+  - `[x]` **SM-2a** `SettingsScreen` núcleo (empresa/correo+Google/módulos/certificados/sesión-PIN/about);
+    Host puentea estado del shell (bringToFront/ownerWindow/checkForUpdates/refreshLockTimeout/
+    setScreensaverStyle/sessionCompanyName/onCompanyRenamed/onModulesSaved) + las 7 tabs pesadas.
+  - `[x]` **SM-3** `ProfileScreen` (idioma global + lock + IA + avatar).
+  - `[~]` **SM-2b** tabs pesadas de Settings → **6/7 HECHO** (owners, credenciales, auditoría, backup,
+    BOE, mi-TPB). **Falta 7/7 = Mi Asesoría**, ENTRELAZADA con el módulo Comunicación (comparte
+    `buildCommMessagesPane`/`buildCommDocumentsPane`) → hay que extraer **Comunicación a `CommScreen`** primero.
+  - `[ ]` **SM-4** `AuthScreen` (login/registro/emparejado/PIN) — **CON Benjamin**, probar cada flujo; UI puro,
+    NO tocar `AuthService`/JWT (§11.2).
+  - **Detalle completo y plan de arranque en `docs/backlog.md` → "REANUDAR AQUÍ (2026-07-01)".**
 
 ## Reglas de seguridad (no negociables)
 1. **Un dominio por commit** (revertible).
