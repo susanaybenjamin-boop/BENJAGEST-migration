@@ -227,7 +227,9 @@ una clase con `mountStandalone()`/`buildHolder()` o factoría en el shell; estad
     humanSize).
   - `[x]` **SM-4** `AuthScreen` (login/registro/emparejado/PIN) — HECHO 2026-07-01, probado por Benjamin
     (PIN/email/Google/registro/verificación/olvidar-equipo OK). UI puro, NO se tocó `AuthService`/JWT (§11.2).
-  - **Solo queda el BUMP ÚNICO + release** (punto 3 de `docs/backlog.md` → "REANUDAR AQUÍ").
+  - `[x]` **BUMP + RELEASE** — HECHO 2026-07-01: auditoría estática pre-release (0 hallazgos bloqueantes,
+    2 fixes i18n menores) + `APP_VERSION` 0.1.2→0.1.3 + `.msi` + `v0.1.3` publicado en GitHub Releases.
+  - **BLOQUE UIR CERRADO.**
 
 ## Reglas de seguridad (no negociables)
 1. **Un dominio por commit** (revertible).
