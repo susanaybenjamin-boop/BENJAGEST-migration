@@ -897,9 +897,16 @@ public class PayslipService {
                             "EMPLOYER_OVERTIME", cmp.overtimeBase(), cmp.overtimeEr());
                 }
                 String empName = employeeName(req.employeeId());
+                // Finiquito con provisión de pagas extra activada: cancelar la
+                // provisión acumulada (465) en el asiento en vez de re-gastar la
+                // prorrata extra en 640 (si no, doble gasto + provisión colgada).
+                java.math.BigDecimal extraProvToCancel = java.math.BigDecimal.ZERO;
+                if (isSettlement && isExtraPayProvisionEnabled()) {
+                    extraProvToCancel = journalService.outstandingExtraProvision(req.employeeId());
+                }
                 journalService.createAccrual(new PayslipJournalEntryService.PayslipAccrual(
                         id, req.employeeId(), empName, req.year(), req.month(), gross, irpf),
-                        null);
+                        extraProvToCancel, null);
                 // Provisión MENSUAL de pagas extra NO prorrateadas (devengo art. 38
                 // CdC): reconoce cada mes 1/12 de las pagas que se pagarán aparte.
                 if ("MONTHLY".equals(type) && isExtraPayProvisionEnabled()) {
