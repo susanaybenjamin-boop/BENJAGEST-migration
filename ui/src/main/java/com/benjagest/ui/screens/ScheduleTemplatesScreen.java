@@ -440,7 +440,7 @@ public class ScheduleTemplatesScreen extends ScreenBase {
             }
             @Override public com.benjagest.ui.model.EmployeeEntry fromString(String s) { return null; }
         });
-        empCombo.setPrefWidth(190);
+        empCombo.setPrefWidth(280);  // nombres largos (apellidos + nombre) se truncaban a "..."
         DatePicker fromP = new DatePicker(java.time.LocalDate.now());
         DatePicker toP = new DatePicker();
         fromP.setPrefWidth(130);
