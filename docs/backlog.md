@@ -281,21 +281,20 @@ Repaso punto por punto de lo que Benjamin reportó con el check en blanco. Estad
   > (`mvn -pl ui clean compile` OK) + push `feat/Benjamin` + merge `--no-ff` a `develop`.
   > **HECHO y en develop:** NOM-1..11 (bloque Nómina entero → screens), **SM-PKG** (gestor-navegador dentro del
   > `.msi` + `locateGestorJar` ruta instalada), **SM-1** `CalendarScreen`, **SM-2a** `SettingsScreen` núcleo,
-  > **SM-3** `ProfileScreen`, **SM-2b 6/7** (owners/credenciales/auditoría/backup/BOE/mi-TPB). 2 bugs cerrados:
-  > resaltado sidebar (work-logs/pending-tasks no fijaban `select(key)`) + título Calendario i18n
-  > (`data.title()`→`moduleTitle(data.module())` vía Host). Monolito ~16,5k líneas.
+  > **SM-3** `ProfileScreen`, **SM-2b 7/7 COMPLETO** (owners/credenciales/auditoría/backup/BOE/mi-TPB/mi-asesoría),
+  > **CommScreen** (módulo Comunicación completo). 2 bugs cerrados: resaltado sidebar (work-logs/pending-tasks no
+  > fijaban `select(key)`) + título Calendario i18n (`data.title()`→`moduleTitle(data.module())` vía Host).
+  > Monolito ~15.170 líneas.
   >
-  > **1) COMUNICACIÓN → `CommScreen` + SM-2b 7/7 (Mi Asesoría).** Es el enredo que bloquea SM-2b. Estructura real
-  >   (líneas aprox, VERIFICAR con grep antes de cortar): `settingsMyAdvisoryTab` ~5901-6050; `buildCommMessagesPane`
-  >   ~6051; `buildCommDocumentsPane` ~6178 — **estos 2 paneles están DENTRO del rango de myAdvisory y los usa TAMBIÉN
-  >   `showCommModule`**; `CommRecipient` record ~6365; `showCommModule` ~6375 (llamado en ~3461); `humanizeDocStatus`
-  >   ~6452; `humanSize` (ya copiado en SettingsScreen). **Plan:** (a) crear `CommScreen` con showCommModule +
-  >   CommRecipient + humanizeDocStatus + buildCommMessagesPane + buildCommDocumentsPane (**públicos los 2 panes**);
-  >   shell deja wrapper `showCommModule()`→`commScreen().showCommModule()`. (b) Mover `settingsMyAdvisoryTab` a
-  >   SettingsScreen; que llame a `commScreen().buildComm*Pane(...)` para los paneles, y por Host:
-  >   `pollPendingInvitations()`/`refreshActiveModulesAndRender()`. `invitationsApi` YA está inyectado en SettingsScreen.
-  >   Quitar del Host de SettingsScreen `myAdvisoryTab()`; `settingsView` llamada directa. **OJO:** 2 intentos hoy
-  >   cascaron (audit-batch y myAdvisory) y se revirtieron limpios → ir cluster a cluster y compilar tras cada uno.
+  > **1) COMUNICACIÓN → `CommScreen` + SM-2b 7/7 (Mi Asesoría) — ✅ CERRADO 2026-07-01.** Verificado en código
+  >   (§10.bis) que `settingsMyAdvisoryTab` NO llamaba a `buildCommMessagesPane`/`buildCommDocumentsPane` — solo
+  >   compartía rango de líneas en el God Object (los sub-tabs Mensajes/Documentos se habían movido al módulo
+  >   Comunicación en 2026-06-11, comentario explícito en el propio código). `CommScreen` nuevo con
+  >   showCommModule + CommRecipient + humanizeDocStatus + humanSize + buildCommMessagesPane/buildCommDocumentsPane
+  >   (públicos). Shell wrapper `showCommModule()`→`commScreen().showCommModule()` (commit `b4fd3ca`).
+  >   `settingsMyAdvisoryTab` movido a `SettingsScreen` (llamada directa desde `settingsView`); Host puentea
+  >   `pollPendingInvitations()`/`refreshActiveModulesAndRender()`; se quitó `myAdvisoryTab()` del Host
+  >   (commit `bc38bd1`). Compila, mergeado a `develop`.
   >
   > **2) SM-4 `AuthScreen` — CON Benjamin (probar cada flujo en runtime).** ~700 líneas (shell 524-1288 aprox). Mover
   >   verbatim showLogin/showEmailLogin/showRegister/showPairingScreen/showPinKeypad/showEmailVerification + handlers

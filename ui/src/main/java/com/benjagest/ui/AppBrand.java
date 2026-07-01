@@ -11,14 +11,14 @@ import javafx.scene.shape.Circle;
 import javafx.scene.shape.Line;
 import javafx.scene.shape.Rectangle;
 
-final class AppBrand {
+public final class AppBrand {
 
     private static final String CUSTOM_ICON_RESOURCE = "/com/benjagest/ui/app-icon.png";
 
     private AppBrand() {
     }
 
-    static StackPane createLogoMark() {
+    public static StackPane createLogoMark() {
         Circle background = new Circle(25);
         background.getStyleClass().add("logo-background");
 
