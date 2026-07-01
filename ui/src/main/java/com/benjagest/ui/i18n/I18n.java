@@ -1134,7 +1134,6 @@ public final class I18n {
                     if (v == null) v = tPinLoginEn(key);
                     if (v == null) v = tCalendarEn(key);
                     if (v == null) v = tEmployeePortalEn(key);
-                    if (v == null) v = tSuggestionsEn(key);
                     if (v == null) v = tProfileLockEn(key);
                     if (v == null) v = tCliEditorEn(key);
                     if (v == null) v = tTcCalEn(key);
@@ -2223,7 +2222,6 @@ public final class I18n {
                 if (v == null) v = tPinLoginEs(key);
                 if (v == null) v = tCalendarEs(key);
                 if (v == null) v = tEmployeePortalEs(key);
-                if (v == null) v = tSuggestionsEs(key);
                 if (v == null) v = tProfileLockEs(key);
                 if (v == null) v = tCliEditorEs(key);
                 if (v == null) v = tTcCalEs(key);
@@ -3698,88 +3696,6 @@ public final class I18n {
             case "lock.btn.logout" -> "Salir";
             case "lock.fail" -> "PIN incorrecto.";
             case "lock.no_device" -> "Este equipo no está emparejado. Sal y empárejalo de nuevo.";
-            default -> null;
-        };
-    }
-
-    static String tSuggestionsEn(String key) {
-        return switch (key) {
-            case "module.suggestions" -> "Suggestions";
-            case "suggestions.title" -> "Suggestions and feedback";
-            case "suggestions.hint" -> "Send improvement ideas, bug reports or feature requests to the BENJAGEST team. The product team picks them up from the manufacturer console.";
-            case "suggestions.btn.new" -> "New suggestion";
-            case "suggestions.btn.close" -> "Mark as closed";
-            case "suggestions.btn.delete" -> "Delete";
-            case "suggestions.empty" -> "No suggestions yet. Send your first one with New suggestion.";
-            case "suggestions.no_answer" -> "—";
-            case "suggestions.col.date" -> "Sent";
-            case "suggestions.col.title" -> "Title";
-            case "suggestions.col.category" -> "Category";
-            case "suggestions.col.status" -> "Status";
-            case "suggestions.col.answer" -> "Answer";
-            case "suggestions.cat.general" -> "General";
-            case "suggestions.cat.improvement" -> "Improvement";
-            case "suggestions.cat.module" -> "Module";
-            case "suggestions.cat.bug" -> "Bug / error";
-            case "suggestions.cat.other" -> "Other";
-            case "suggestions.status.new" -> "Sent";
-            case "suggestions.status.read" -> "Read";
-            case "suggestions.status.answered" -> "Answered";
-            case "suggestions.status.closed" -> "Closed";
-            case "suggestions.fail.title" -> "Could not finish the operation";
-            case "suggestions.confirm.delete.title" -> "Delete suggestion";
-            case "suggestions.confirm.delete.body" -> "Delete this suggestion permanently?";
-            case "suggestions.form.title" -> "New suggestion";
-            case "suggestions.form.header" -> "Tell us what you would change or improve.";
-            case "suggestions.form.title_prompt" -> "Short summary";
-            case "suggestions.form.desc_prompt" -> "Describe in detail. Include reproduction steps if it is a bug.";
-            case "suggestions.form.field.title" -> "Title";
-            case "suggestions.form.field.category" -> "Category";
-            case "suggestions.form.field.description" -> "Description";
-            case "suggestions.form.btn.send" -> "Send";
-            case "suggestions.form.missing.title" -> "Missing data";
-            case "suggestions.form.missing.body" -> "Title and description are required.";
-            default -> null;
-        };
-    }
-
-    static String tSuggestionsEs(String key) {
-        return switch (key) {
-            case "module.suggestions" -> "Sugerencias";
-            case "suggestions.title" -> "Sugerencias y feedback";
-            case "suggestions.hint" -> "Envía ideas de mejora, reportes de bugs o nuevas funciones al equipo de BENJAGEST. El equipo de producto las recoge desde la consola del fabricante.";
-            case "suggestions.btn.new" -> "Nueva sugerencia";
-            case "suggestions.btn.close" -> "Marcar cerrada";
-            case "suggestions.btn.delete" -> "Eliminar";
-            case "suggestions.empty" -> "Aún no hay sugerencias. Envía la primera con Nueva sugerencia.";
-            case "suggestions.no_answer" -> "—";
-            case "suggestions.col.date" -> "Enviada";
-            case "suggestions.col.title" -> "Título";
-            case "suggestions.col.category" -> "Categoría";
-            case "suggestions.col.status" -> "Estado";
-            case "suggestions.col.answer" -> "Respuesta";
-            case "suggestions.cat.general" -> "General";
-            case "suggestions.cat.improvement" -> "Mejora";
-            case "suggestions.cat.module" -> "Módulo";
-            case "suggestions.cat.bug" -> "Bug / error";
-            case "suggestions.cat.other" -> "Otra";
-            case "suggestions.status.new" -> "Enviada";
-            case "suggestions.status.read" -> "Leída";
-            case "suggestions.status.answered" -> "Respondida";
-            case "suggestions.status.closed" -> "Cerrada";
-            case "suggestions.fail.title" -> "No se pudo completar la operación";
-            case "suggestions.confirm.delete.title" -> "Eliminar sugerencia";
-            case "suggestions.confirm.delete.body" -> "¿Eliminar esta sugerencia de forma permanente?";
-            case "suggestions.form.title" -> "Nueva sugerencia";
-            case "suggestions.form.header" -> "Cuéntanos qué cambiarías o mejorarías.";
-            case "suggestions.form.title_prompt" -> "Resumen corto";
-            case "suggestions.form.desc_prompt" -> "Describe en detalle. Incluye pasos de reproducción si es un bug.";
-            case "suggestions.form.field.title" -> "Título";
-            case "suggestions.form.field.category" -> "Categoría";
-            case "suggestions.form.field.description" -> "Descripción";
-            case "suggestions.form.btn.send" -> "Enviar";
-            case "suggestions.form.missing.title" -> "Faltan datos";
-            case "suggestions.form.missing.body" -> "Título y descripción son obligatorios.";
             default -> null;
         };
     }

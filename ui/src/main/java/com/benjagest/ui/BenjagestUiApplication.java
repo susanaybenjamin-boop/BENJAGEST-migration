@@ -200,9 +200,6 @@ public class BenjagestUiApplication extends Application
             "advisory", "self-employed", "notifications", "time-clock",
             // Slice 5C — Módulo EQUIPO / Reparto de clientes (advisory_only).
             "team",
-            // PORT-3 SUG — Buzon de sugerencias/mejoras/bugs hacia el
-            // fabricante. Per-tenant, cualquier rol puede sugerir.
-            "suggestions",
             // COMM-MOD 2026-06-11 — Comunicación asesoría↔cliente
             // (mensajes + documentos compartidos). Mismo nombre en
             // ambos modos.
@@ -2695,11 +2692,6 @@ public class BenjagestUiApplication extends Application
             // Solo OWNER de asesoría puede gestionar (control real
             // en backend ClientAssignmentService).
             showTeamModule();
-            return;
-        }
-        if ("suggestions".equals(module)) {
-            // PORT-3 SUG — Buzon de sugerencias hacia el fabricante.
-            showSuggestionsModule();
             return;
         }
         if ("comm".equals(module)) {
@@ -8460,23 +8452,6 @@ public class BenjagestUiApplication extends Application
         tl.play();
         owner.setOnHidden(ev -> tl.stop());
         return box;
-    }
-
-    // ============================================================
-    //  PORT-3 SUG — Modulo Sugerencias
-    //  ----------------------------------------------------------
-    //  Buzon de mejoras, bugs y peticiones que el usuario envia al
-    //  fabricante de BENJAGEST. Per-tenant. Cualquier rol puede crear
-    //  y consultar; OWNER/ADMIN pueden cerrar/borrar.
-    //
-    //  CONTENDO equivalente: app/admin/sugerencias/page.tsx (230 lineas).
-    // ============================================================
-    private void showSuggestionsModule() {
-        currentModule = "suggestions";
-        recordNav(() -> showSuggestionsModule());
-        select("suggestions");
-        setCenterAnimated(new com.benjagest.ui.screens.SuggestionsScreen(
-                altaApiClient, this::t, this).buildView());
     }
 
     private void showTeamModule() {
