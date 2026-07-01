@@ -275,10 +275,16 @@ Repaso punto por punto de lo que Benjamin reportó con el check en blanco. Estad
   arranque ligada a la cuenta, gating del combo ADVISORY, y el contrato del futuro servidor
   central). **Verificar antes de tocar auth/registro** (zona caliente, CLAUDE.md §11.2).
 
-- 🧹 **UIR — Troceado de la UI (refactor estructural, EN CURSO desde 2026-06-30).**
-  > ▶️ **REANUDAR AQUÍ (2026-07-01):** el app COMPILA y está COMPLETO en `develop` (versión SIN subir).
-  > Quedan **3 cosas** para cerrar el UIR y publicar. Hacerlas SIN parar hasta terminar; **commit por slice**
-  > (`mvn -pl ui clean compile` OK) + push `feat/Benjamin` + merge `--no-ff` a `develop`.
+- ✅ **UIR — Troceado de la UI (refactor estructural) — CERRADO 2026-07-01.**
+  > **Release `v0.1.3` publicado** (https://github.com/susanaybenjamin-boop/BENJAGEST-migration/releases/tag/v0.1.3)
+  > con el `.msi` autocontenido (jpackage+WiX, backend+UI+MariaDB embebida+gestor-navegador+Tesseract).
+  > `UpdateService.APP_VERSION` 0.1.2→0.1.3 (commit `123814b`); las instalaciones existentes lo reciben
+  > vía auto-update. Antes del bump se corrió una **auditoría estática pre-release** (3 agentes en
+  > paralelo: UI↔backend, backend↔BD/Flyway, integridad estructural del troceado) pedida por Benjamin
+  > para no subir versión con nada roto — resultado: 0 llamadas UI→backend rotas en los 15 `*ApiClient.java`,
+  > 0 mismatches columna/tabla en 161 migraciones Flyway, Host interfaces y wrappers del troceado intactos.
+  > Único hallazgo real (deuda previa, no introducida hoy): 3 strings de login sin `t()` + una clave i18n
+  > `settings.email.prompt.host` faltante — ambos corregidos (commit `8c3eb80`).
   > **HECHO y en develop:** NOM-1..11 (bloque Nómina entero → screens), **SM-PKG** (gestor-navegador dentro del
   > `.msi` + `locateGestorJar` ruta instalada), **SM-1** `CalendarScreen`, **SM-2a** `SettingsScreen` núcleo,
   > **SM-3** `ProfileScreen`, **SM-2b 7/7 COMPLETO** (owners/credenciales/auditoría/backup/BOE/mi-TPB/mi-asesoría),
