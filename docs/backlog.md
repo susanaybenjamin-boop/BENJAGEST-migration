@@ -296,15 +296,21 @@ Repaso punto por punto de lo que Benjamin reportó con el check en blanco. Estad
   >   `pollPendingInvitations()`/`refreshActiveModulesAndRender()`; se quitó `myAdvisoryTab()` del Host
   >   (commit `bc38bd1`). Compila, mergeado a `develop`.
   >
-  > **2) SM-4 `AuthScreen` — CON Benjamin (probar cada flujo en runtime).** ~700 líneas (shell 524-1288 aprox). Mover
-  >   verbatim showLogin/showEmailLogin/showRegister/showPairingScreen/showPinKeypad/showEmailVerification + handlers
-  >   (login/doRegister/startGoogleLogin/startGoogleRegister/confirmForgetDevice) + helpers (field/pinKey/defaultDeviceName).
-  >   Compartidos que se QUEDAN en shell (los usa Settings/otros): `passwordWithToggle`, `bringToFront`, `blankAny`.
-  >   **NO tocar** `AuthService`/JWT/`AuthSession`; `handleLoginSuccess` por callback. Probar: PIN, email, Google,
-  >   registro, verificación email, olvidar-equipo.
+  > **2) SM-4 `AuthScreen` — ✅ CERRADO 2026-07-01, probado por Benjamin (PIN, email, Google, registro,
+  >   verificación email, olvidar-equipo — todo OK).** Movido verbatim: showInitialScreen/showLogin/
+  >   showEmailLogin/showRegister/showPairingScreen/showPinKeypad/showEmailVerification + handlers
+  >   (login/doRegister/startGoogleLogin/startGoogleRegister/confirmForgetDevice) + helpers (field/
+  >   pinKey/defaultDeviceName) a `AuthScreen.java`. **Corrección sobre el plan original** (verificado
+  >   en código, sin otro caller): `passwordWithToggle` y `blankAny` se movieron TAMBIÉN a AuthScreen
+  >   (no se quedaron puenteados en shell). `bringToFront` sí se quedó en el shell (lo usa también
+  >   Configuración) y llega por `Host`. `AppBrand`/`createLogoMark()` pasaron a `public` para que
+  >   AuthScreen pinte el logo. `handleLoginSuccess` sigue en el shell, por callback. NO se tocó
+  >   `AuthService`/JWT/`AuthSession`. Commit `cca7a62`, merge `0ecbeec` a `develop`.
   >
   > **3) BUMP ÚNICO + RELEASE (al final, con Benjamin).** `UpdateService.APP_VERSION` 0.1.2→0.1.3 +
-  >   `build-msi.ps1 -Version 0.1.3` + `gh release create v0.1.3` con el `.msi`. El gestor ya va dentro (SM-PKG).
+  >   `build-msi.ps1 -Version 0.1.3` + `gh release create v0.1.3` con el `.msi`. El gestor ya va dentro
+  >   (SM-PKG). **Antes de compilar el `.msi`: auditoría estática backend-ui-BD** (pidió Benjamin
+  >   2026-07-01) — verificar que no quede nada roto tras el troceado UIR completo antes de subir versión.
   >
   > **Patrón SM-2b probado (para el 7/7 y para Comm):** localizar rango del cluster (grep firmas) → PowerShell splice
   >   moviendo del shell a la Screen, **saltando utils compartidos que ya están en ScreenBase** (shortIso/shortId/

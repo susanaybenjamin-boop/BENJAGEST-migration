@@ -225,9 +225,9 @@ una clase con `mountStandalone()`/`buildHolder()` o factoría en el shell; estad
     verificó leyendo el código antes de mover (§10.bis). `CommScreen` extraído aparte (módulo
     Comunicación completo: showCommModule + los 2 paneles + CommRecipient + humanizeDocStatus +
     humanSize).
-  - `[ ]` **SM-4** `AuthScreen` (login/registro/emparejado/PIN) — **CON Benjamin**, probar cada flujo; UI puro,
-    NO tocar `AuthService`/JWT (§11.2).
-  - **Detalle completo y plan de arranque en `docs/backlog.md` → "REANUDAR AQUÍ (2026-07-01)".**
+  - `[x]` **SM-4** `AuthScreen` (login/registro/emparejado/PIN) — HECHO 2026-07-01, probado por Benjamin
+    (PIN/email/Google/registro/verificación/olvidar-equipo OK). UI puro, NO se tocó `AuthService`/JWT (§11.2).
+  - **Solo queda el BUMP ÚNICO + release** (punto 3 de `docs/backlog.md` → "REANUDAR AQUÍ").
 
 ## Reglas de seguridad (no negociables)
 1. **Un dominio por commit** (revertible).
