@@ -49,6 +49,7 @@ public class CalendarScreen extends ScreenBase {
         void showFormDialog(String module, ModuleRow record);
         void showFormDialog(String module, ModuleRow record, Map<String, String> defaults);
         String moduleIcon(String module);
+        String moduleTitle(String module);
     }
 
     private static final DateTimeFormatter DISPLAY_DATE = DateTimeFormatter.ofPattern("dd/MM/yyyy");
@@ -69,6 +70,7 @@ public class CalendarScreen extends ScreenBase {
     private void showFormDialog(String module, ModuleRow record) { host.showFormDialog(module, record); }
     private void showFormDialog(String module, ModuleRow record, Map<String, String> defaults) { host.showFormDialog(module, record, defaults); }
     private String moduleIcon(String module) { return host.moduleIcon(module); }
+    private String moduleTitle(String module) { return host.moduleTitle(module); }
 
     // ==== cuerpo movido del monolito (SM-1) ====
 
@@ -82,7 +84,7 @@ public class CalendarScreen extends ScreenBase {
                 com.benjagest.ui.support.RefreshBus.TOPIC_CALENDAR,
                 () -> showModule("calendar"), content);
 
-        Label title = new Label(data.title());
+        Label title = new Label(moduleTitle(data.module()));
         title.getStyleClass().add("module-detail-title");
         Label count = new Label(pluralEvents(data.records().size()));
         count.getStyleClass().add("module-detail-description");
