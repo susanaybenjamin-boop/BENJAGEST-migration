@@ -177,7 +177,10 @@ una clase con `mountStandalone()`/`buildHolder()` o factoría en el shell; estad
     callback refreshLabor; `root`→viewRoot; copia localizedPunchType/humanizeFromKey). **`buildTimeClockTab`
     (fichar) NO se extrae**: reusa la maquinaria del fichaje personal (punch/reloadTimeClock/timeClockTable),
     zona RD 8/2019 → se queda en shell. (−567). HECHO 2026-07-01.
-  - `[ ]` **NOM-6** partes/jornadas + planificación + kioscos → `ShiftsScheduleScreen`.
+  - `[x]` **NOM-6** partes/jornadas + planificación + kioscos — troceado en 3 sub-slices (tabs independientes):
+    `[x]` **6a** Kioscos → `KioskDevicesScreen` (−198); `[x]` **6b** Planificación jornada →
+    `ScheduleTemplatesScreen` (−466); `[x]` **6c** Partes/Jornadas → `ShiftsScreen` (JOR-1/JOR-4/FICHA-REVIEW,
+    inyecta labor+alta; −351). `openShiftCreateDialog` era código muerto → se queda en shell. HECHO 2026-07-01.
   - `[ ]` **NOM-7** nómina core (`buildPayslipsTab`+calcular+entrega/pagar/pdf/email/borrar) →
     `PayslipsScreen`. Host: `refreshLabor` (asientos cross-módulo TOPIC_JOURNAL).
   - `[ ]` **NOM-8** coste empresa + cotizaciones SS → `EmployerCostScreen`.
