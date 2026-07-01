@@ -187,8 +187,9 @@ una clase con `mountStandalone()`/`buildHolder()` o factoría en el shell; estad
     finiquito) + incidencias + genmonth/batch/extra/settlement + entrega/pagar/pdf/email/borrar. LaborBundle→
     record PayrollData; 2 callbacks (refreshLaborAndJournal + refreshLabor); `root`→viewRoot; copia
     localizedConverter/highlightMissing/clearMissingOnChange. −1.275. HECHO 2026-07-01.
-  - `[ ]` **NOM-8** coste empresa + cotizaciones SS → `EmployerCostScreen`.
-  - `[ ]` **NOM-9** plantillas de contrato + cláusulas → `ContractTemplatesScreen`.
+  - `[x]` **NOM-8** coste empresa + cotizaciones SS → `EmployerCostScreen` (labor+alta; −255). HECHO 2026-07-01.
+  - `[x]` **NOM-9** plantillas de contrato + cláusulas → `ContractTemplatesScreen` (alta; copia humanizeFromKey;
+    mueve helper js; −366). HECHO 2026-07-01.
   - `[ ]` **NOM-10** contratos globales + wizard + editor + docs → `ContractsScreen` (mega, ~2.500 líneas).
   - `[ ]` **NOM-11** empleados + editor + finiquito/despido + suspensiones → `EmployeesScreen` (mega, ~2.000 líneas).
 - **Sueltos menores:** Perfil (lock/screensaver Timeline), Calendario (helpers de dashboard),
