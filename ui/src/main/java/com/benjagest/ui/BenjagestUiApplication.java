@@ -13791,12 +13791,27 @@ public class BenjagestUiApplication extends Application
         start(task, "gestor-navegador-launch");
     }
 
-    /** Localiza el fat-jar del gestor-navegador (dev: relativo al repo; override por -D). */
+    /** Localiza el fat-jar del gestor-navegador (instalable: raíz del app-image; dev: relativo al repo; override por -D). */
     private java.io.File locateGestorJar() {
         String override = System.getProperty("benjagest.gestor.jar");
         if (override != null && !override.isBlank()) {
             java.io.File f = new java.io.File(override);
             if (f.isFile()) return f;
+        }
+        // Instalable (jpackage): el .jar viaja por --app-content y queda en la
+        // raíz del app-image, junto a backend.jar. Se resuelve por la ubicación
+        // del propio código (igual que Launcher localiza backend.jar), no por
+        // user.dir, que en una instalación no apunta al directorio de la app.
+        try {
+            java.nio.file.Path appDir = java.nio.file.Paths.get(
+                    BenjagestUiApplication.class.getProtectionDomain()
+                            .getCodeSource().getLocation().toURI()).getParent();
+            if (appDir != null && appDir.getParent() != null) {
+                java.io.File f = appDir.getParent().resolve("gestor-navegador.jar").toFile();
+                if (f.isFile()) return f;
+            }
+        } catch (Exception ignored) {
+            // codeSource no resoluble (dev desde classes) — caemos a las rutas de repo.
         }
         String[] candidates = {
                 "gestor-navegador/target/gestor-navegador.jar",

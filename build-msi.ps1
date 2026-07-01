@@ -50,6 +50,19 @@ if ($Rebuild -or -not (Test-Path $backendJar)) {
 }
 Copy-Item $backendJar "$dist\backend.jar" -Force
 
+# --- 1b/4  Gestor-navegador fat jar (navegador embebido JCEF) ----------------
+# Va por --app-content junto a backend.jar; locateGestorJar() (UI) lo busca en
+# la raiz del instalable. Sin esto, el boton "Gestor navegador" falla en instalacion.
+$gestorJar = "gestor-navegador\target\gestor-navegador.jar"
+if ($Rebuild -or -not (Test-Path $gestorJar)) {
+    Write-Host "==> 1b/4  Empaquetando gestor-navegador (fat jar)..." -ForegroundColor Cyan
+    mvn -q -pl gestor-navegador package -DskipTests
+    if ($LASTEXITCODE -ne 0) { throw "Fallo el package del gestor-navegador." }
+} else {
+    Write-Host "==> 1b/4  Reusando gestor-navegador fat jar." -ForegroundColor Green
+}
+Copy-Item $gestorJar "$dist\gestor-navegador.jar" -Force
+
 # --- 2/4  UI jar + dependencias ---------------------------------------------
 Write-Host "==> 2/4  Empaquetando UI y copiando dependencias..." -ForegroundColor Cyan
 mvn -q -pl ui package -DskipTests
@@ -73,7 +86,7 @@ Write-Host "==> 3/4  Generando .msi con jpackage (necesita WiX)..." -ForegroundC
     --java-options "-Dbenjagest.launch.backend=true" `
     --add-modules ALL-MODULE-PATH `
     --jlink-options "--strip-debug --no-man-pages --no-header-files" `
-    --app-content "$dist\backend.jar,packaging\tessdata" `
+    --app-content "$dist\backend.jar,$dist\gestor-navegador.jar,packaging\tessdata" `
     --win-menu `
     --win-menu-group "BENJAGEST" `
     --win-shortcut `
