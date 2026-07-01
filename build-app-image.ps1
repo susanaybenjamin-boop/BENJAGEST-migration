@@ -43,6 +43,19 @@ if ($Rebuild -or -not (Test-Path $backendJar)) {
 }
 Copy-Item $backendJar "$dist\backend.jar" -Force
 
+# --- 2b/5  Gestor-navegador fat jar (navegador embebido JCEF) ----------------
+# Va por --app-content junto a backend.jar; locateGestorJar() (UI) lo busca en
+# la raiz del app-image. Sin esto, el boton "Gestor navegador" falla en instalacion.
+$gestorJar = "gestor-navegador\target\gestor-navegador.jar"
+if ($Rebuild -or -not (Test-Path $gestorJar)) {
+    Write-Host "==> 2b/5  Empaquetando gestor-navegador (fat jar)..." -ForegroundColor Cyan
+    mvn -q -pl gestor-navegador package -DskipTests
+    if ($LASTEXITCODE -ne 0) { throw "Fallo el package del gestor-navegador." }
+} else {
+    Write-Host "==> 2b/5  Reusando gestor-navegador fat jar." -ForegroundColor Green
+}
+Copy-Item $gestorJar "$dist\gestor-navegador.jar" -Force
+
 # --- 3/5  UI jar + dependencias de runtime en el dir de entrada -------------
 Write-Host "==> 3/5  Empaquetando UI y copiando dependencias..." -ForegroundColor Cyan
 mvn -q -pl ui package -DskipTests
@@ -64,7 +77,7 @@ Write-Host "==> 4/5  Generando app-image con jpackage..." -ForegroundColor Cyan
     --java-options "-Dbenjagest.launch.backend=true" `
     --add-modules ALL-MODULE-PATH `
     --jlink-options "--strip-debug --no-man-pages --no-header-files" `
-    --app-content "$dist\backend.jar,packaging\tessdata" `
+    --app-content "$dist\backend.jar,$dist\gestor-navegador.jar,packaging\tessdata" `
     --dest $out
 if ($LASTEXITCODE -ne 0) { throw "jpackage fallo." }
 
