@@ -173,7 +173,10 @@ una clase con `mountStandalone()`/`buildHolder()` o factoría en el shell; estad
   - `[x]` **NOM-3** `buildWorkCentersTab`+editor+geocode → `WorkCentersScreen` (−243). HECHO 2026-07-01.
   - `[x]` **NOM-4** categoría Ausencias (leave requests + bajas IT + vacaciones) → `AbsencesScreen`
     (inyecta laborApiClient+altaApiClient; `root`→viewRoot) (−565). HECHO 2026-07-01.
-  - `[ ]` **NOM-5** fichajes admin (`buildTimeClockTab`+audit+corrección+config tipos) → `TimeClockAdminScreen`.
+  - `[x]` **NOM-5** Auditoría fichajes + Config tipos → `TimeClockAdminScreen` (recibe language +
+    callback refreshLabor; `root`→viewRoot; copia localizedPunchType/humanizeFromKey). **`buildTimeClockTab`
+    (fichar) NO se extrae**: reusa la maquinaria del fichaje personal (punch/reloadTimeClock/timeClockTable),
+    zona RD 8/2019 → se queda en shell. (−567). HECHO 2026-07-01.
   - `[ ]` **NOM-6** partes/jornadas + planificación + kioscos → `ShiftsScheduleScreen`.
   - `[ ]` **NOM-7** nómina core (`buildPayslipsTab`+calcular+entrega/pagar/pdf/email/borrar) →
     `PayslipsScreen`. Host: `refreshLabor` (asientos cross-módulo TOPIC_JOURNAL).
