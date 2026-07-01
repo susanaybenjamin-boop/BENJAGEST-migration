@@ -181,8 +181,12 @@ una clase con `mountStandalone()`/`buildHolder()` o factoría en el shell; estad
     `[x]` **6a** Kioscos → `KioskDevicesScreen` (−198); `[x]` **6b** Planificación jornada →
     `ScheduleTemplatesScreen` (−466); `[x]` **6c** Partes/Jornadas → `ShiftsScreen` (JOR-1/JOR-4/FICHA-REVIEW,
     inyecta labor+alta; −351). `openShiftCreateDialog` era código muerto → se queda en shell. HECHO 2026-07-01.
-  - `[ ]` **NOM-7** nómina core (`buildPayslipsTab`+calcular+entrega/pagar/pdf/email/borrar) →
-    `PayslipsScreen`. Host: `refreshLabor` (asientos cross-módulo TOPIC_JOURNAL).
+  - `[x]` **NOM-7** nómina core → `PayslipsScreen` + prerrequisito `SalaryComplementsEditor`:
+    `[x]` **7a** `SalaryComplementsEditor` (inner class compartida con contratos) → `ui/support/` reutilizable
+    (recibe `t`). `[x]` **7b** `PayslipsScreen`: listado + 10 acciones + calcular (mensual/extra/bonus/
+    finiquito) + incidencias + genmonth/batch/extra/settlement + entrega/pagar/pdf/email/borrar. LaborBundle→
+    record PayrollData; 2 callbacks (refreshLaborAndJournal + refreshLabor); `root`→viewRoot; copia
+    localizedConverter/highlightMissing/clearMissingOnChange. −1.275. HECHO 2026-07-01.
   - `[ ]` **NOM-8** coste empresa + cotizaciones SS → `EmployerCostScreen`.
   - `[ ]` **NOM-9** plantillas de contrato + cláusulas → `ContractTemplatesScreen`.
   - `[ ]` **NOM-10** contratos globales + wizard + editor + docs → `ContractsScreen` (mega, ~2.500 líneas).
