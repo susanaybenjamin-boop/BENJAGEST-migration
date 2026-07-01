@@ -190,8 +190,25 @@ una clase con `mountStandalone()`/`buildHolder()` o factoría en el shell; estad
   - `[x]` **NOM-8** coste empresa + cotizaciones SS → `EmployerCostScreen` (labor+alta; −255). HECHO 2026-07-01.
   - `[x]` **NOM-9** plantillas de contrato + cláusulas → `ContractTemplatesScreen` (alta; copia humanizeFromKey;
     mueve helper js; −366). HECHO 2026-07-01.
-  - `[ ]` **NOM-10** contratos globales + wizard + editor + docs → `ContractsScreen` (mega, ~2.500 líneas).
-  - `[ ]` **NOM-11** empleados + editor + finiquito/despido + suspensiones → `EmployeesScreen` (mega, ~2.000 líneas).
+  - `[ ]` **NOM-10** → `ContractsScreen` (mega ~1.350 líneas, MAPEADO 2026-07-01). Bloque **contiguo 13034-~14300**
+    (tras `buildTimeClockTab`, que se queda en shell) + `buildContractsGlobalTab` (12394-12450, tab read-only,
+    usa LaborBundle→pasar employees+contracts) + campo `contractsTable` (11300, exclusivo, 13 usos). Métodos:
+    `showEmployeeContracts` (**hacer public**: lo llama buildEmployeesTab de NOM-11 en 12019 + onSaved del editor),
+    `showContractsDialog`, `showContractWizard`, `openContractWizardDialog`, `renderWizardStep1-4`, `validateStep`,
+    `showLoadTemplatePicker`, `applyTemplateToState`, `saveWizardStateAsTemplate`, `saveContractFromWizard`,
+    `offerContractDocumentDownloads`, `downloadContractDocument`, `savePdfAs`, `printPdf`, `showXmlSavedDialog`,
+    `baseSalaryOf`, `complementsOf`, `showContractEditor`(x2, el 2º ~250 líneas). Records nested `WizardState`
+    (13162) + `WizardCatalogs` (13185). **OJO:** `showInternalPdfViewer` (13900) es `@Override public` (impl. de
+    interfaz del shell) — verificar si es método del Router (entonces `router.showInternalPdfViewer`) o mover la
+    interfaz. Deps/callbacks: laborApiClient+altaApiClient, `laborRefresh` (callback), `root`→viewRoot,
+    copiar `humanizeFromKey`+`highlightMissing`, usa `com.benjagest.ui.support.SalaryComplementsEditor` (NOM-7a).
+    Wrappers en shell: `buildContractsGlobalTab`, `showEmployeeContracts`. **HACER EN SESIÓN DEDICADA FRESCA**
+    (código de contratos alimenta el motor de nómina/finiquito).
+  - `[ ]` **NOM-11** empleados + editor + finiquito/despido + suspensiones → `EmployeesScreen` (mega ~2.000 líneas).
+    `buildEmployeesTab` (12323 aprox) + `showEmployeeEditor` + `deleteEmployee` + `showEmployeeAppInvite`/`copyToClipboard`
+    + `showTerminationDialog`/`showTerminationDocsDialog` + `showSuspensionsDialog`. Llama a `contractsScreen()`
+    (NOM-10) para `showEmployeeContracts`. Campo `employeesTable`. El orquestador `laborView` se queda en shell.
+    Hacer DESPUÉS de NOM-10.
 - **Sueltos menores:** Perfil (lock/screensaver Timeline), Calendario (helpers de dashboard),
   Configuración/Settings, Login/Registro (crítico).
 
