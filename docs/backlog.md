@@ -290,7 +290,7 @@ Repaso punto por punto de lo que Benjamin reportó con el check en blanco. Estad
   >    (field/pinKey/defaultDeviceName). Compartidos que se quedan en shell (los usa Settings/otros):
   >    `passwordWithToggle`,`bringToFront`,`blankAny`. NO tocar `AuthService`/JWT/`AuthSession`/`handleLoginSuccess`
   >    (callback). Probar: PIN, email, Google, registro, verificación, olvidar-equipo.
-  >  - **SM-2b Settings tabs pesadas** → mover a `SettingsScreen` los 7 tabs (settingsOwnersTab/
+  >  - **SM-2b Settings tabs pesadas — 5/7 HECHO (owners/credenciales/auditoria/backup/BOE en develop 58d6cbe); QUEDAN settingsMyTpbTab+renderMyTpbState y settingsMyAdvisoryTab (acoplados: helpers TPB compartidos showTpbSignWithPinDialog/tpbDownloadSignedPdfAction/tpbRevokeAction/humanizeTpb*, invitationsApi, root; el modulo Comunicacion queda entre medias). Inyectar invitationsApi + quitar del Host myTpbTab/myAdvisoryTab)** → mover a `SettingsScreen` los 7 tabs (settingsOwnersTab/
   >    settingsCredentialsTab/settingsAuditTab/settingsBackupTab/settingsMyAdvisoryTab/settingsMyTpbTab/
   >    settingsBoeAlertsTab) + helpers (reloadOwners/showOwnerEditor/deleteOwner/reloadCredentials/
   >    reloadCertUsage/showCredentialEditor/deleteCredential/renderMyTpbState/loadBoeAlerts/runBoeNow/
