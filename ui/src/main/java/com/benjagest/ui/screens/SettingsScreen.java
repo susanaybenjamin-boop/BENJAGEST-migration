@@ -51,8 +51,9 @@ public class SettingsScreen extends ScreenBase {
         String sessionCompanyName();
         void onCompanyRenamed(String legalName);
         void onModulesSaved(List<CompanyModuleEntry> catalog);
-        // Pestañas pesadas (SM-2b las moverá a esta clase y estos métodos desaparecerán).
-        Node myAdvisoryTab();
+        // Puentes de "Mi asesoría" hacia estado global del shell (invitaciones + sidebar).
+        void pollPendingInvitations();
+        void refreshActiveModulesAndRender();
         void showTpbSignWithPinDialog(com.benjagest.ui.model.TpbAgreementEntry a, javafx.scene.layout.VBox parentSlot);
         void tpbDownloadSignedPdfAction(String agreementId);
         void tpbRevokeAction(String agreementId, Runnable onDone);
@@ -101,6 +102,8 @@ public class SettingsScreen extends ScreenBase {
     private String humanizeTpbStatus(String s) { return host.humanizeTpbStatus(s); }
     private String humanizeTpbMethod(String m) { return host.humanizeTpbMethod(m); }
     private String humanizeTpbScope(com.benjagest.ui.model.TpbAgreementEntry a) { return host.humanizeTpbScope(a); }
+    private void pollPendingInvitations() { host.pollPendingInvitations(); }
+    private void refreshActiveModulesAndRender() { host.refreshActiveModulesAndRender(); }
 
     // ---- factories puros copiados del shell (se comparten con login/perfil) ----
     private TextField textInput(String value, String prompt) {
@@ -523,7 +526,7 @@ public class SettingsScreen extends ScreenBase {
         tabs.getTabs().addAll(companyTab, ownersTab, emailTab, modulesTab,
                 credentialsTab, certificateTab, sessionTab, aboutTab);
         if (appMode != AppMode.ADVISORY) {
-            Tab advisoryTab = new Tab(t("settings.tab.my_advisory"), host.myAdvisoryTab());
+            Tab advisoryTab = new Tab(t("settings.tab.my_advisory"), settingsMyAdvisoryTab());
             advisoryTab.setGraphic(icon("fas-handshake"));
             tabs.getTabs().add(advisoryTab);
             // Acuerdo TPB con la asesoria — solo cliente. Aqui el
@@ -2797,5 +2800,153 @@ public class SettingsScreen extends ScreenBase {
      * Lista alertas históricas (últimos N días, default 30) y permite
      * forzar el barrido del día actual (botón "Buscar ahora").
      */
+
+    /**
+     * Pestaña "Mi asesoría" del empresario: muestra la asesoría a la
+     * que está vinculado (si la hay) + botón Desvincular. Si no hay
+     * vínculo, muestra hint explicando cómo aceptar una invitación
+     * y ofrece un campo para pegar el token directamente (útil
+     * cuando la invitación llegó pero el banner del Home no la
+     * recogió, o cuando el empresario quiere re-vincularse).
+     */
+    private Node settingsMyAdvisoryTab() {
+        Label sectionTitle = label(t("settings.my_advisory.section"), "settings-section-title");
+        Label hint = new Label(t("settings.my_advisory.hint"));
+        hint.setWrapText(true);
+        hint.getStyleClass().add("settings-hint");
+
+        VBox infoSlot = new VBox(8);
+        infoSlot.setPadding(new Insets(8, 0, 0, 0));
+
+        // Bloque "Pegar token" — siempre visible para que el empresario
+        // pueda vincularse manualmente con cualquier token que le
+        // pasen, independientemente de si tiene una asesoría vinculada
+        // (en ese caso, debe desvincularse primero, claro).
+        Label tokenTitle = label(t("settings.my_advisory.paste_token.title"), "settings-section-title");
+        Label tokenHint = new Label(t("settings.my_advisory.paste_token.hint"));
+        tokenHint.setWrapText(true);
+        tokenHint.getStyleClass().add("settings-hint");
+        TextField tokenField = new TextField();
+        tokenField.setPromptText(t("settings.my_advisory.paste_token.prompt"));
+        tokenField.setPrefColumnCount(40);
+        Button acceptTokenBtn = new Button(t("settings.my_advisory.paste_token.accept"));
+        acceptTokenBtn.setGraphic(icon("fas-link"));
+        acceptTokenBtn.getStyleClass().add("button-primary");
+        HBox tokenRow = new HBox(8, tokenField, acceptTokenBtn);
+        tokenRow.setAlignment(Pos.CENTER_LEFT);
+        VBox tokenBlock = new VBox(8, tokenTitle, tokenHint, tokenRow);
+        tokenBlock.setPadding(new Insets(12, 0, 0, 0));
+
+        Button unlinkBtn = new Button(t("settings.my_advisory.action.unlink"));
+        unlinkBtn.setGraphic(icon("fas-unlink"));
+        unlinkBtn.getStyleClass().add("button-danger-outline");
+        unlinkBtn.setDisable(true);
+
+        Runnable reload = () -> {
+            infoSlot.getChildren().clear();
+            unlinkBtn.setDisable(true);
+            Task<com.benjagest.ui.service.AdvisoryInvitationApiClient.LinkedAdvisory> task = new Task<>() {
+                @Override
+                protected com.benjagest.ui.service.AdvisoryInvitationApiClient.LinkedAdvisory
+                        call() throws Exception {
+                    return invitationsApi.getLinkedAdvisory();
+                }
+            };
+            task.setOnSucceeded(e -> {
+                var link = task.getValue();
+                if (link == null) {
+                    Label empty = new Label(t("settings.my_advisory.empty"));
+                    empty.setWrapText(true);
+                    empty.getStyleClass().add("settings-hint");
+                    infoSlot.getChildren().add(empty);
+                    unlinkBtn.setDisable(true);
+                    return;
+                }
+                GridPane g = new GridPane();
+                g.setHgap(12); g.setVgap(6);
+                int r = 0;
+                g.add(new Label(t("settings.my_advisory.field.legal_name")), 0, r);
+                g.add(new Label(link.legalName() == null ? "—" : link.legalName()), 1, r++);
+                if (link.tradeName() != null && !link.tradeName().isBlank()) {
+                    g.add(new Label(t("settings.my_advisory.field.trade_name")), 0, r);
+                    g.add(new Label(link.tradeName()), 1, r++);
+                }
+                g.add(new Label(t("settings.my_advisory.field.nif")), 0, r);
+                g.add(new Label(link.taxIdentifier() == null ? "—" : link.taxIdentifier()), 1, r++);
+                g.add(new Label(t("settings.my_advisory.field.email")), 0, r);
+                g.add(new Label(link.email() == null ? "—" : link.email()), 1, r++);
+                infoSlot.getChildren().add(g);
+                unlinkBtn.setDisable(false);
+            });
+            task.setOnFailed(e -> showError(t("settings.my_advisory.fail.load.title"),
+                    t("settings.my_advisory.fail.load.body")));
+            start(task, "my-advisory-load");
+        };
+
+        unlinkBtn.setOnAction(ev -> {
+            Alert confirm = new Alert(Alert.AlertType.CONFIRMATION,
+                    t("settings.my_advisory.confirm.unlink.body"),
+                    ButtonType.OK, ButtonType.CANCEL);
+            confirm.setHeaderText(t("settings.my_advisory.confirm.unlink.title"));
+            confirm.showAndWait().filter(b -> b == ButtonType.OK).ifPresent(b -> {
+                Task<Void> task = new Task<>() {
+                    @Override
+                    protected Void call() throws Exception {
+                        invitationsApi.unlink();
+                        return null;
+                    }
+                };
+                task.setOnSucceeded(e -> {
+                    // Refresco local inmediato: la pestaña "Mi asesoría"
+                    // tiene que mostrar YA que el vínculo desapareció,
+                    // sin esperar al tick de 5s.
+                    reload.run();
+                    pollPendingInvitations();
+                    // COMM-LINK 2026-06-11: el módulo Comunicación
+                    // desaparece del sidebar al perder el vínculo.
+                    refreshActiveModulesAndRender();
+                });
+                task.setOnFailed(e -> showError(t("settings.my_advisory.fail.unlink.title"),
+                        t("settings.my_advisory.fail.unlink.body")));
+                start(task, "my-advisory-unlink");
+            });
+        });
+
+        acceptTokenBtn.setOnAction(ev -> {
+            String token = tokenField.getText();
+            if (token == null || token.isBlank()) {
+                showError(t("settings.my_advisory.paste_token.fail.empty.title"),
+                        t("settings.my_advisory.paste_token.fail.empty.body"));
+                return;
+            }
+            Task<com.benjagest.ui.model.AdvisoryInvitationEntry> task = new Task<>() {
+                @Override
+                protected com.benjagest.ui.model.AdvisoryInvitationEntry call() throws Exception {
+                    return invitationsApi.accept(token.trim());
+                }
+            };
+            task.setOnSucceeded(e -> {
+                showInfo(t("advisory.invitation.accept.ok.title"),
+                        t("advisory.invitation.accept.ok.body"));
+                tokenField.clear();
+                reload.run();
+                pollPendingInvitations();
+            });
+            task.setOnFailed(e -> showError(t("advisory.invitation.accept.fail.title"),
+                    t("advisory.invitation.accept.fail.body")));
+            start(task, "advisory-invitation-accept-by-token");
+        });
+
+        HBox actions = new HBox(8, unlinkBtn);
+        VBox header = new VBox(8, sectionTitle, hint);
+        VBox body = new VBox(12, infoSlot, new Separator(), tokenBlock);
+
+        reload.run();
+        // 2026-06-11 — los sub-tabs Mensajes y Documentos se han movido
+        // al nuevo módulo "Comunicación" del sidebar (showCommModule).
+        // "Mi asesoría" de Configuración mantiene solo el panel de
+        // Vínculo (token de emparejado + datos asesoría + desvincular).
+        return tabLayout(header, body, actions);
+    }
 
 }
