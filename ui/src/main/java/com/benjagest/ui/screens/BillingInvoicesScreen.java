@@ -110,11 +110,12 @@ public class BillingInvoicesScreen extends ScreenBase {
             }
         });
 
-        // Filtro por tipo de factura: NORMAL / PROFORMA / RECTIFYING.
+        // Filtro por tipo de factura: NORMAL / PROFORMA / RECTIFYING / HISTORICAL.
         // Misma técnica que los demás filtros: items=códigos técnicos,
         // visualización vía localizedInvoiceTypeLabel en cell/buttonCell.
         billingTypeFilter = new ComboBox<>();
-        billingTypeFilter.getItems().addAll(t("list.filter.all"), "NORMAL", "PROFORMA", "RECTIFYING");
+        billingTypeFilter.getItems().addAll(
+                t("list.filter.all"), "NORMAL", "PROFORMA", "RECTIFYING", "HISTORICAL");
         billingTypeFilter.getSelectionModel().selectFirst();
         billingTypeFilter.getStyleClass().add("form-input");
         billingTypeFilter.setCellFactory(lv -> new javafx.scene.control.ListCell<>() {
@@ -367,6 +368,10 @@ public class BillingInvoicesScreen extends ScreenBase {
             boolean isValidated = newV != null && "VALIDATED".equals(newV.status());
             boolean isRectifying = newV != null && "RECTIFYING".equals(newV.invoiceType());
             boolean isProforma = newV != null && "PROFORMA".equals(newV.invoiceType());
+            // IMP-H: una factura historica importada (CONTENDO) es de solo
+            // lectura. No se anula (no esta en VeriFactu), no genera PDF
+            // oficial y no se envia por email desde aqui.
+            boolean isHistorical = newV != null && "HISTORICAL".equals(newV.invoiceType());
             // Validar y eliminar borrador: solo DRAFT que NO sea proforma
             // (la proforma se valida en su flujo propio: "Convertir y
             // validar", y se elimina con su propio botón aunque esté
@@ -377,8 +382,8 @@ public class BillingInvoicesScreen extends ScreenBase {
             // Anular: solo facturas legales (NORMAL VALIDATED, no
             // rectificativas ni proformas). Una proforma no tiene valor
             // fiscal: no hay nada legal que anular.
-            voidBtn.setDisable(!isValidated || isRectifying || isProforma);
-            pdfBtn.setDisable(newV == null || isDraft);
+            voidBtn.setDisable(!isValidated || isRectifying || isProforma || isHistorical);
+            pdfBtn.setDisable(newV == null || isDraft || isHistorical);
             // "Convertir y validar": cualquier proforma en DRAFT o
             // VALIDATED. Editarla sigue siendo posible hasta que se
             // convierte (entra al editor con doble click).
@@ -392,7 +397,7 @@ public class BillingInvoicesScreen extends ScreenBase {
             pdfBtn.setUserData(stored);
             pdfBtn.setText(stored ? t("list.action.open_pdf") : t("list.action.save_pdf"));
             pdfBtn.setGraphic(icon(stored ? "fas-file-pdf" : "fas-save"));
-            emailBtn.setDisable(!isValidated);
+            emailBtn.setDisable(!isValidated || isHistorical);
         });
 
         pdfBtn.setOnAction(ev -> {
@@ -784,6 +789,7 @@ public class BillingInvoicesScreen extends ScreenBase {
             case "NORMAL" -> t("editor.kind.normal");
             case "PROFORMA" -> t("editor.kind.proforma");
             case "RECTIFYING" -> t("editor.kind.rectifying");
+            case "HISTORICAL" -> t("editor.kind.historical");
             default -> code;
         };
     }
