@@ -30,15 +30,28 @@ import org.springframework.web.bind.annotation.RestController;
 public class ExternalImportController {
 
     private final ExternalImportService service;
+    private final ContendoImportService contendoService;
 
-    public ExternalImportController(ExternalImportService service) {
+    public ExternalImportController(ExternalImportService service,
+                                    ContendoImportService contendoService) {
         this.service = service;
+        this.contendoService = contendoService;
     }
 
     @PostMapping
     public ExternalImportService.BatchResult upload(
             @RequestBody ExternalImportService.ImportRequest req) {
         return service.importData(req);
+    }
+
+    /**
+     * IMP-H — Importacion del diario historico CONTENDO (un unico fichero
+     * reconstruye asientos + facturas de venta/gasto + terceros + cobros/pagos).
+     */
+    @PostMapping("/contendo")
+    public ContendoImportService.Summary uploadContendo(
+            @RequestBody ContendoImportService.ImportRequest req) {
+        return contendoService.importDiario(req.fileName(), req.content());
     }
 
     @GetMapping

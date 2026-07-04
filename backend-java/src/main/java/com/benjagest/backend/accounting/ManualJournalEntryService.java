@@ -178,8 +178,14 @@ public class ManualJournalEntryService {
      * aparecer en el sub-tab "Por validar"). El {@code req.postNow()} debe ser
      * {@code true}; asi el asiento recibe entry_number correlativo POSTED al
      * insertarse, como cualquier asiento contabilizado.
+     *
+     * <p>Sin {@code @Transactional} a proposito: se invoca SIEMPRE dentro de la
+     * transaccion de {@code ContendoImportService.importDiario}, que procesa
+     * asiento por asiento con try/catch. Un boundary transaccional anidado
+     * marcaria la transaccion como rollback-only ante el primer asiento que
+     * fallara — aunque el import lo capturase — tirando el lote entero. Igual
+     * que {@link #createDraft}.
      */
-    @Transactional
     public ManualEntryView createImportedPosted(ManualEntryRequest req,
                                                  String sourceTypeTag,
                                                  String sourceId) {
