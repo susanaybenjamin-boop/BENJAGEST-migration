@@ -169,6 +169,23 @@ public class ManualJournalEntryService {
         return createDraftInternal(req, false, null, null);
     }
 
+    /**
+     * IMP-H — asiento importado del diario historico CONTENDO. Entra ya como
+     * POSTED (los datos historicos vienen cuadrados y revisados, no requieren
+     * validacion manual) con una marca de origen ({@code sourceTypeTag}:
+     * SALES_INVOICE / PURCHASE_INVOICE / DUE_DATE_PAYMENT / HISTORICAL_IMPORT)
+     * y {@code auto_proposed=FALSE} (no es una propuesta automatica: no debe
+     * aparecer en el sub-tab "Por validar"). El {@code req.postNow()} debe ser
+     * {@code true}; asi el asiento recibe entry_number correlativo POSTED al
+     * insertarse, como cualquier asiento contabilizado.
+     */
+    @Transactional
+    public ManualEntryView createImportedPosted(ManualEntryRequest req,
+                                                 String sourceTypeTag,
+                                                 String sourceId) {
+        return createDraftInternal(req, false, sourceTypeTag, sourceId);
+    }
+
     private ManualEntryView createDraftInternal(ManualEntryRequest req,
                                                   boolean autoProposed,
                                                   String sourceTypeTag,
