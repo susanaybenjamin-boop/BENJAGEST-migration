@@ -466,6 +466,16 @@ public class SalesInvoiceService {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "Solo se puede anular una factura VALIDATED. Para borrar borradores usa DELETE.");
         }
+        // IMP-H: las facturas historicas importadas de CONTENDO no se anulan
+        // desde aqui. Pertenecen a la contabilidad del sistema anterior y no
+        // estan en la cadena VeriFactu/SIF; anularlas emitiria una
+        // rectificativa real (con numero de serie y registro VeriFactu) sobre
+        // un documento que nunca entro en esa cadena.
+        if ("HISTORICAL".equals(original.invoiceType())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Las facturas historicas importadas no se anulan desde aqui: "
+                    + "pertenecen a la contabilidad del sistema anterior.");
+        }
         if (original.rectifyingInvoiceId() != null && !original.rectifyingInvoiceId().isBlank()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "Esta factura ya tiene una rectificativa creada: " + original.rectifyingInvoiceId());
@@ -570,6 +580,15 @@ public class SalesInvoiceService {
         if (!"VALIDATED".equals(invoice.status())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "Solo se guardan PDFs de facturas VALIDATED. Estado actual: " + invoice.status());
+        }
+        // IMP-H: una factura historica importada no tiene datos de emisor/QR
+        // VeriFactu propios (se emitio en el sistema anterior); no generamos
+        // PDF oficial. Si el usuario necesita el documento, tiene el original
+        // escaneado del sistema de origen.
+        if ("HISTORICAL".equals(invoice.invoiceType())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Las facturas historicas importadas no generan PDF: "
+                    + "usa el documento original del sistema anterior.");
         }
         try {
             return generateAndStorePdf(invoice);

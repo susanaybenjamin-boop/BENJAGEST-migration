@@ -211,6 +211,7 @@ public final class I18n {
                 case "editor.kind.normal" -> "Standard invoice";
                 case "editor.kind.proforma" -> "Proforma";
                 case "editor.kind.rectifying" -> "Corrective";
+                case "editor.kind.historical" -> "Historical (imported)";
                 case "editor.field.customer" -> "Customer *";
                 case "editor.field.invoice_date" -> "Issue date *";
                 case "editor.field.due_date" -> "Due date";
@@ -1295,6 +1296,7 @@ public final class I18n {
             case "editor.kind.normal" -> "Factura normal";
             case "editor.kind.proforma" -> "Proforma";
             case "editor.kind.rectifying" -> "Rectificativa";
+            case "editor.kind.historical" -> "Historica (importada)";
             case "editor.field.customer" -> "Cliente *";
             case "editor.field.invoice_date" -> "Fecha de emision *";
             case "editor.field.due_date" -> "Fecha de vencimiento";
