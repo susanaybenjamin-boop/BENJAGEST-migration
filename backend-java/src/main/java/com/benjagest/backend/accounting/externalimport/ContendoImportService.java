@@ -75,9 +75,12 @@ public class ContendoImportService {
 
     /** Movimiento de tesoreria (cobro/pago) pendiente de enlazar en la pasada 2. */
     record PaymentLink(String dueDateId, ContendoCsvParser.Kind kind,
-                       String invoiceNumber, String partyAccountCode,
+                       String invoiceNumber, String partyName, String partyAccountCode,
                        BigDecimal amount, LocalDate date, String treasuryCode,
                        String journalEntryId) {}
+
+    /** Rectificativa pendiente de enlazar con su original en la pasada 2. */
+    record RectLink(String rectInvoiceId, String originalInvoiceNumber) {}
 
     private static final BigDecimal CENT = new BigDecimal("0.01");
 
@@ -110,19 +113,20 @@ public class ContendoImportService {
         List<String> avisos = new ArrayList<>(pf.errors());
         c.errores += pf.errors().size();
         List<PaymentLink> payments = new ArrayList<>();
+        List<RectLink> rects = new ArrayList<>();
 
         for (Asiento a : pf.asientos()) {
             c.total++;
             try {
-                importOne(a, sha, c, payments, avisos);
+                importOne(a, sha, c, payments, rects, avisos);
             } catch (Exception ex) {
                 c.errores++;
                 avisos.add("Asiento " + a.number() + ": " + msg(ex));
             }
         }
 
-        // 5. Pasada 2 (IMP-H4): enlazar cobros/pagos y rectificativas.
-        linkPayments(payments, c, avisos);
+        // 5. Pasada 2: enlazar cobros/pagos y rectificativas.
+        linkPayments(payments, rects, c, avisos);
 
         // 6. Registrar el lote.
         String batchId = insertBatch(companyId, fileName, content, sha, c, avisos);
@@ -138,16 +142,16 @@ public class ContendoImportService {
     // ====================================================================
 
     private void importOne(Asiento a, String batchSha, Counters c,
-                           List<PaymentLink> payments, List<String> avisos) {
+                           List<PaymentLink> payments, List<RectLink> rects, List<String> avisos) {
         switch (a.kind()) {
-            case VENTA, RECTIFICATIVA -> importSale(a, c);
+            case VENTA, RECTIFICATIVA -> importSale(a, c, rects);
             case GASTO -> importPurchase(a, batchSha, c);
             case COBRO, PAGO -> importPayment(a, c, payments);
             case OTRO -> importOther(a, c);
         }
     }
 
-    private void importSale(Asiento a, Counters c) {
+    private void importSale(Asiento a, Counters c, List<RectLink> rects) {
         boolean rect = a.kind() == ContendoCsvParser.Kind.RECTIFICATIVA;
         String invNumber = a.invoiceNumber();
         if (invNumber == null) {
@@ -170,8 +174,8 @@ public class ContendoImportService {
         BigDecimal vatPercent = base.signum() == 0 ? BigDecimal.ZERO
                 : vat.multiply(new BigDecimal("100")).divide(base, 2, RoundingMode.HALF_UP);
 
-        insertSalesInvoice(invoiceId, customerId, invNumber, a.date(), rect,
-                a.originalInvoiceNumber(), base, vat, total, a.concept());
+        insertSalesInvoice(invoiceId, customerId, invNumber, a.date(),
+                base, vat, total, a.concept());
         insertSalesLine(invoiceId, a.concept(), base, vat, vatPercent, total);
 
         // El asiento del CSV es el asiento de la factura (source_type SALES_INVOICE).
@@ -179,7 +183,14 @@ public class ContendoImportService {
         // asiento se crea salvo que uno equivalente existiera de una importacion
         // parcial previa.
         createEntry(a, "SALES_INVOICE", invoiceId, c);
-        if (rect) c.rectificativas++; else c.ventas++;
+        if (rect) {
+            c.rectificativas++;
+            if (a.originalInvoiceNumber() != null) {
+                rects.add(new RectLink(invoiceId, a.originalInvoiceNumber()));
+            }
+        } else {
+            c.ventas++;
+        }
     }
 
     private void importPurchase(Asiento a, String batchSha, Counters c) {
@@ -222,7 +233,8 @@ public class ContendoImportService {
         String entryId = createEntry(a, "DUE_DATE_PAYMENT", dueDateId, c);
         if (entryId == null) return; // asiento duplicado -> ya estaba
         payments.add(new PaymentLink(dueDateId, a.kind(), a.invoiceNumber(),
-                a.partyAccountCode(), nz(a.total()), a.date(), a.treasuryCode(), entryId));
+                a.partyName(), a.partyAccountCode(), nz(a.total()), a.date(),
+                a.treasuryCode(), entryId));
     }
 
     private void importOther(Asiento a, Counters c) {
@@ -233,12 +245,163 @@ public class ContendoImportService {
     //  Pasada 2 — se completa en IMP-H4
     // ====================================================================
 
-    /** IMP-H4: enlaza cobros->facturas, pagos->gastos y rectificativas. */
-    private void linkPayments(List<PaymentLink> payments, Counters c, List<String> avisos) {
-        // Pendiente IMP-H4. Por ahora los asientos de cobro/pago quedan
-        // creados y contabilizados; el marcado de facturas como cobradas/
-        // pagadas y el enlace de rectificativas se implementa en el
-        // siguiente slice.
+    /**
+     * Enlaza cobros con facturas de venta y pagos con facturas de compra
+     * (insertando UNA fila invoice_due_dates PAID por movimiento — sin generar
+     * asiento nuevo, ya lo trae el CSV) y vincula rectificativas con su
+     * original (marcandola VOIDED). El orden importa: primero cobros/pagos
+     * (para que una original ya cobrada conserve su estado), luego anulaciones.
+     */
+    private void linkPayments(List<PaymentLink> payments, List<RectLink> rects,
+                              Counters c, List<String> avisos) {
+        for (PaymentLink p : payments) {
+            try {
+                if (p.kind() == ContendoCsvParser.Kind.COBRO) {
+                    if (linkCobro(p)) c.cobros++;
+                    else avisos.add("Cobro sin factura de venta identificable: "
+                            + (p.invoiceNumber() != null ? p.invoiceNumber() : p.partyName())
+                            + " (" + p.amount().toPlainString() + " EUR, " + p.date() + ")");
+                } else {
+                    if (linkPago(p)) c.pagos++;
+                    else avisos.add("Pago sin gasto identificable: "
+                            + (p.partyName() != null ? p.partyName() : p.partyAccountCode())
+                            + " (" + p.amount().toPlainString() + " EUR, " + p.date() + ")");
+                }
+            } catch (Exception ex) {
+                avisos.add("Error enlazando movimiento " + p.date() + " "
+                        + p.amount().toPlainString() + ": " + msg(ex));
+            }
+        }
+        for (RectLink r : rects) {
+            try {
+                linkRectificativa(r, avisos);
+            } catch (Exception ex) {
+                avisos.add("Error enlazando rectificativa " + r.originalInvoiceNumber()
+                        + ": " + msg(ex));
+            }
+        }
+    }
+
+    private boolean linkCobro(PaymentLink p) {
+        String companyId = tenantContext.getCurrentCompanyId();
+        String invoiceId = null;
+        BigDecimal invoiceTotal = null;
+        // (a) Por numero de factura del concepto.
+        if (p.invoiceNumber() != null) {
+            List<Map<String, Object>> rows = jdbcTemplate.queryForList("""
+                    SELECT id, total FROM sales_invoices
+                     WHERE company_id = ? AND invoice_number = ? LIMIT 1
+                    """, companyId, p.invoiceNumber());
+            if (!rows.isEmpty()) {
+                invoiceId = (String) rows.get(0).get("id");
+                invoiceTotal = (BigDecimal) rows.get(0).get("total");
+            }
+        }
+        // (b) Fallback: factura del mismo cliente, mismo total, aun PENDING.
+        if (invoiceId == null && p.partyName() != null) {
+            List<Map<String, Object>> rows = jdbcTemplate.queryForList("""
+                    SELECT si.id, si.total FROM sales_invoices si
+                      JOIN customers cu ON cu.id = si.customer_id
+                     WHERE si.company_id = ? AND cu.legal_name = ?
+                       AND ABS(si.total - ?) < 0.01
+                       AND si.payment_status = 'PENDING'
+                       AND si.invoice_date <= ?
+                     ORDER BY si.invoice_date ASC LIMIT 1
+                    """, companyId, p.partyName(), p.amount(),
+                    java.sql.Date.valueOf(p.date()));
+            if (!rows.isEmpty()) {
+                invoiceId = (String) rows.get(0).get("id");
+                invoiceTotal = (BigDecimal) rows.get(0).get("total");
+            }
+        }
+        if (invoiceId == null) return false;
+        insertPaidDueDate("SALES", invoiceId, p);
+        projectSalesPaymentStatus(invoiceId, invoiceTotal);
+        return true;
+    }
+
+    private boolean linkPago(PaymentLink p) {
+        String companyId = tenantContext.getCurrentCompanyId();
+        // Gasto del mismo proveedor, mismo total, sin vencimiento aun, mas antiguo.
+        List<String> ids = jdbcTemplate.query("""
+                SELECT pi.id FROM purchase_invoices pi
+                 WHERE pi.company_id = ? AND pi.supplier_name = ?
+                   AND ABS(pi.total_amount - ?) < 0.01
+                   AND pi.invoice_date <= ?
+                   AND NOT EXISTS (SELECT 1 FROM invoice_due_dates dd
+                                    WHERE dd.invoice_kind = 'PURCHASE' AND dd.invoice_id = pi.id)
+                 ORDER BY pi.invoice_date ASC LIMIT 1
+                """, (rs, n) -> rs.getString("id"),
+                companyId, p.partyName(), p.amount(), java.sql.Date.valueOf(p.date()));
+        if (ids.isEmpty()) return false;
+        insertPaidDueDate("PURCHASE", ids.get(0), p);
+        return true;
+    }
+
+    private void insertPaidDueDate(String kind, String invoiceId, PaymentLink p) {
+        String companyId = tenantContext.getCurrentCompanyId();
+        Integer maxSeq = jdbcTemplate.queryForObject("""
+                SELECT COALESCE(MAX(seq), 0) FROM invoice_due_dates
+                 WHERE invoice_kind = ? AND invoice_id = ?
+                """, Integer.class, kind, invoiceId);
+        int seq = (maxSeq == null ? 0 : maxSeq) + 1;
+        boolean cash = p.treasuryCode() != null && p.treasuryCode().startsWith("570");
+        jdbcTemplate.update("""
+                INSERT INTO invoice_due_dates (
+                    id, company_id, invoice_id, invoice_kind, seq, due_date, amount,
+                    status, paid_date, payment_method, treasury_account_code, journal_entry_id, notes
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, 'PAID', ?, ?, ?, ?, 'Importado del diario historico CONTENDO')
+                """,
+                p.dueDateId(), companyId, invoiceId, kind, seq,
+                java.sql.Date.valueOf(p.date()), p.amount(),
+                java.sql.Date.valueOf(p.date()),
+                cash ? "CASH" : "TRANSFER",
+                p.treasuryCode(), p.journalEntryId());
+    }
+
+    /** Proyecta payment_status/paid_amount de una venta (misma formula que
+     *  PaymentScheduleService.syncSalesPaymentStatus). */
+    private void projectSalesPaymentStatus(String invoiceId, BigDecimal total) {
+        String companyId = tenantContext.getCurrentCompanyId();
+        BigDecimal paid = jdbcTemplate.queryForObject("""
+                SELECT COALESCE(SUM(amount), 0) FROM invoice_due_dates
+                 WHERE company_id = ? AND invoice_kind = 'SALES'
+                   AND invoice_id = ? AND status = 'PAID'
+                """, BigDecimal.class, companyId, invoiceId);
+        BigDecimal p = paid == null ? BigDecimal.ZERO : paid;
+        BigDecimal t = total == null ? BigDecimal.ZERO : total;
+        String st = p.signum() <= 0 ? "PENDING"
+                : (p.add(CENT).compareTo(t) >= 0 ? "PAID" : "PARTIAL");
+        jdbcTemplate.update("""
+                UPDATE sales_invoices SET payment_status = ?, paid_amount = ?
+                 WHERE id = ? AND company_id = ?
+                """, st, p, invoiceId, companyId);
+    }
+
+    private void linkRectificativa(RectLink r, List<String> avisos) {
+        String companyId = tenantContext.getCurrentCompanyId();
+        List<String> ids = jdbcTemplate.query("""
+                SELECT id FROM sales_invoices
+                 WHERE company_id = ? AND invoice_number = ? LIMIT 1
+                """, (rs, n) -> rs.getString("id"), companyId, r.originalInvoiceNumber());
+        if (ids.isEmpty()) {
+            avisos.add("Rectificativa sin factura original: " + r.originalInvoiceNumber());
+            return;
+        }
+        String originalId = ids.get(0);
+        // Enlace bidireccional + anulacion de la original (solo si VALIDATED).
+        jdbcTemplate.update("""
+                UPDATE sales_invoices SET original_invoice_id = ?
+                 WHERE id = ? AND company_id = ?
+                """, originalId, r.rectInvoiceId(), companyId);
+        jdbcTemplate.update("""
+                UPDATE sales_invoices SET rectifying_invoice_id = ?
+                 WHERE id = ? AND company_id = ?
+                """, r.rectInvoiceId(), originalId, companyId);
+        jdbcTemplate.update("""
+                UPDATE sales_invoices SET status = 'VOIDED'
+                 WHERE id = ? AND company_id = ? AND status = 'VALIDATED'
+                """, originalId, companyId);
     }
 
     // ====================================================================
@@ -375,17 +538,10 @@ public class ContendoImportService {
     // ====================================================================
 
     private void insertSalesInvoice(String invoiceId, String customerId, String invoiceNumber,
-                                    LocalDate date, boolean rect, String originalNumber,
-                                    BigDecimal base, BigDecimal vat, BigDecimal total, String concept) {
-        String originalId = null;
-        if (rect && originalNumber != null) {
-            List<String> ids = jdbcTemplate.query("""
-                    SELECT id FROM sales_invoices
-                     WHERE company_id = ? AND invoice_number = ? LIMIT 1
-                    """, (rs, n) -> rs.getString("id"),
-                    tenantContext.getCurrentCompanyId(), originalNumber);
-            if (!ids.isEmpty()) originalId = ids.get(0);
-        }
+                                    LocalDate date, BigDecimal base, BigDecimal vat,
+                                    BigDecimal total, String concept) {
+        // original_invoice_id / rectifying_invoice_id se enlazan en la pasada 2
+        // (linkRectificativas), cuando ya existen ambas facturas.
         jdbcTemplate.update("""
                 INSERT INTO sales_invoices (
                     id, company_id, customer_id, series_id, invoice_number,
@@ -393,12 +549,12 @@ public class ContendoImportService {
                     subtotal, vat_total, retention_total, total, paid_amount,
                     currency, original_invoice_id, concept, validated_at
                 ) VALUES (?, ?, ?, NULL, ?, ?, ?, 'HISTORICAL', 'VALIDATED', 'PENDING',
-                          ?, ?, 0, ?, 0, 'EUR', ?, ?, CURRENT_TIMESTAMP)
+                          ?, ?, 0, ?, 0, 'EUR', NULL, ?, CURRENT_TIMESTAMP)
                 """,
                 invoiceId, tenantContext.getCurrentCompanyId(), customerId, invoiceNumber,
                 date == null ? null : java.sql.Date.valueOf(date),
                 date == null ? null : java.sql.Date.valueOf(date),
-                base, vat, total, originalId, truncate(concept, 240));
+                base, vat, total, truncate(concept, 240));
     }
 
     private void insertSalesLine(String invoiceId, String concept, BigDecimal base,
