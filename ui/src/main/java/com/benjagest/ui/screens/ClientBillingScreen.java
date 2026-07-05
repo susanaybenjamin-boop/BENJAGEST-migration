@@ -56,7 +56,8 @@ public class ClientBillingScreen extends ScreenBase {
         addCol(table, t("billing.col.status"),
                 v -> v.status() == null ? "" : t("accounting.status." + v.status()), 110);
         addCol(table, t("billing.col.payment_status"),
-                v -> v.paymentStatus() == null ? "" : t("billing.payment_status." + v.paymentStatus()), 100);
+                v -> v.collectionNotApplicable() ? "—"
+                        : (v.paymentStatus() == null ? "" : t("billing.payment_status." + v.paymentStatus())), 100);
 
         // Cache cliente-side para filtrar sin ir al backend.
         final java.util.List<com.benjagest.ui.model.SalesInvoiceSummary> cache =

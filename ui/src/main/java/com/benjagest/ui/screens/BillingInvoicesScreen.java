@@ -202,7 +202,9 @@ public class BillingInvoicesScreen extends ScreenBase {
         colStatus.setPrefWidth(110);
 
         TableColumn<SalesInvoiceSummary, String> colPayment = new TableColumn<>(t("list.column.collection"));
-        colPayment.setCellValueFactory(c -> new SimpleStringProperty(localizedPaymentStatus(c.getValue().paymentStatus())));
+        colPayment.setCellValueFactory(c -> new SimpleStringProperty(
+                c.getValue().collectionNotApplicable()
+                        ? "—" : localizedPaymentStatus(c.getValue().paymentStatus())));
         colPayment.setPrefWidth(100);
 
         TableColumn<SalesInvoiceSummary, String> colTotal = new TableColumn<>(t("list.column.total"));
