@@ -2303,8 +2303,9 @@ public class AccountingScreen {
      * TODAS las opciones; al escribir filtra por subcadena (código o nombre). Es
      * la versión local del helper de la app (AccountingScreen es clase aparte).
      */
-    private void installAccountFilter(ComboBox<String> combo, List<String> all) {
-        final List<String> master = new ArrayList<>(all);
+    private void installAccountFilter(ComboBox<String> combo, List<String> master) {
+        // 'master' es la lista VIVA del llamador: al recargar cuentas (import) basta
+        // con mutarla y hacer setAll; el listener del filtro se instala una sola vez.
         combo.getItems().setAll(master);
         final boolean[] guard = {false};
         combo.getEditor().textProperty().addListener((obs, ov, nv) -> {
@@ -2336,15 +2337,17 @@ public class AccountingScreen {
         accountCombo.setEditable(true);
         accountCombo.setPrefWidth(360);
         final java.util.Map<String, AccountSummary> accountsByLabel = new java.util.LinkedHashMap<>();
-        async(() -> api.listAccounts(null), accts -> {
+        final List<String> accountLabels = new ArrayList<>();
+        installAccountFilter(accountCombo, accountLabels); // filtro una sola vez, sobre la lista viva
+        Runnable loadAccounts = () -> async(() -> api.listAccounts(null), accts -> {
             accountsByLabel.clear();
-            List<String> labels = new ArrayList<>();
+            accountLabels.clear();
             for (AccountSummary a : accts) {
                 String label = a.code() + " — " + a.name();
                 accountsByLabel.put(label, a);
-                labels.add(label);
+                accountLabels.add(label);
             }
-            installAccountFilter(accountCombo, labels);
+            accountCombo.getItems().setAll(accountLabels);
         }, err -> logSilent("ledger-accounts", err));
 
         DatePicker from = new DatePicker(LocalDate.now().withDayOfYear(1));
@@ -2412,6 +2415,22 @@ public class AccountingScreen {
         VBox box = new VBox(10, filters, totals, table);
         box.setPadding(new Insets(8));
         VBox.setVgrow(box, Priority.ALWAYS);
+
+        // Auto-refresh (CLAUDE.md §4). La pestaña se cachea en el TabPane; sin esto,
+        // las subcuentas de tercero creadas al importar el diario (p.ej. proveedores
+        // 40xx) no aparecían en el combo del Mayor hasta reiniciar. Recarga las
+        // cuentas cada vez que la pestaña se muestra y, mientras está visible, se
+        // suscribe a TOPIC_ACCOUNTS_CATALOG (que emite la importación al crear cuentas).
+        box.sceneProperty().addListener((obs, oldScene, newScene) -> {
+            if (newScene != null) {
+                loadAccounts.run();
+                com.benjagest.ui.support.RefreshBus.subscribe(
+                        com.benjagest.ui.support.RefreshBus.TOPIC_ACCOUNTS_CATALOG, loadAccounts);
+            } else {
+                com.benjagest.ui.support.RefreshBus.unsubscribe(
+                        com.benjagest.ui.support.RefreshBus.TOPIC_ACCOUNTS_CATALOG, loadAccounts);
+            }
+        });
         return box;
     }
 
@@ -2625,18 +2644,17 @@ public class AccountingScreen {
         // ----- Importar -----
         Label impTitle = new Label(tt.apply("accounting.exchange.import_title"));
         impTitle.getStyleClass().add("settings-section-title");
+        // Sin opción CONTENDO: el diario histórico se detecta solo por su cabecera
+        // (isContendoDiarioHeader) y se enruta al importador histórico, aunque el
+        // formato elegido sea CSV. Ya no hay que seleccionarlo a mano.
         ComboBox<String> impFormat = new ComboBox<>(FXCollections.observableArrayList(
-                "CSV", "CONTASOL", "JSON_BENJAGEST", "CSV_CONTENDO"));
+                "CSV", "CONTASOL", "JSON_BENJAGEST"));
         localizeCombo(impFormat, "accounting.exchange.fmt.");
         impFormat.setValue("CSV");
         ComboBox<String> impTarget = new ComboBox<>(FXCollections.observableArrayList(
                 "JOURNAL_ENTRIES", "ACCOUNTS", "CUSTOMERS", "SUPPLIERS"));
         localizeCombo(impTarget, "accounting.exchange.target.");
         impTarget.setValue("JOURNAL_ENTRIES");
-        // CSV_CONTENDO reconstruye TODO (asientos + facturas + terceros) de un
-        // solo fichero: el target no aplica, se deshabilita.
-        impFormat.valueProperty().addListener((o, a, b) ->
-                impTarget.setDisable("CSV_CONTENDO".equals(b)));
         Label impFile = new Label(tt.apply("bank.import.no_file"));
         impFile.setStyle("-fx-text-fill: #6e6e6e;");
         final java.io.File[] impChosen = {null};
@@ -2665,7 +2683,7 @@ public class AccountingScreen {
                         ex.getMessage() == null ? ex.toString() : ex.getMessage());
                 return;
             }
-            if ("CSV_CONTENDO".equals(impFormat.getValue()) || isContendoDiarioHeader(firstLine)) {
+            if (isContendoDiarioHeader(firstLine)) {
                 async(() -> {
                     String content = java.nio.file.Files.readString(f.toPath());
                     return api.importContendo(f.getName(), content);

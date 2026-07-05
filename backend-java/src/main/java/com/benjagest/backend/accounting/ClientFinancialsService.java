@@ -225,6 +225,16 @@ public class ClientFinancialsService {
         return v == null ? BigDecimal.ZERO : v;
     }
 
+    /**
+     * Pendiente de cobro = suma de (total − cobrado) de facturas VALIDATED aún
+     * PENDING/PARTIAL. Se excluyen las rectificativas que anulan una original
+     * ya VOIDED: la original excluida y su rectificativa (importe negativo)
+     * netean a cero, así que dejar viva solo la negativa restaba de más
+     * (bug: una anulada + su rectificativa hacían 968 − 701,80 = 266,20 y
+     * contaban como 2 vencidas, cuando lo pendiente real era solo la de 968).
+     * Las rectificativas parciales de una factura AÚN abierta (original no
+     * VOIDED) sí siguen restando, que es lo correcto.
+     */
     private BigDecimal pendingCollections(String companyId) {
         BigDecimal v = jdbc.queryForObject("""
                 SELECT COALESCE(SUM(si.total - COALESCE(si.paid_amount, 0)), 0)
@@ -232,6 +242,9 @@ public class ClientFinancialsService {
                  WHERE si.company_id = ?
                    AND si.status = 'VALIDATED'
                    AND si.payment_status IN ('PENDING', 'PARTIAL')
+                   AND NOT (si.original_invoice_id IS NOT NULL AND EXISTS (
+                            SELECT 1 FROM sales_invoices o
+                             WHERE o.id = si.original_invoice_id AND o.status = 'VOIDED'))
                 """, BigDecimal.class, companyId);
         return v == null ? BigDecimal.ZERO : v;
     }
@@ -245,6 +258,9 @@ public class ClientFinancialsService {
                    AND si.payment_status IN ('PENDING', 'PARTIAL')
                    AND si.due_date IS NOT NULL
                    AND si.due_date < CURRENT_DATE
+                   AND NOT (si.original_invoice_id IS NOT NULL AND EXISTS (
+                            SELECT 1 FROM sales_invoices o
+                             WHERE o.id = si.original_invoice_id AND o.status = 'VOIDED'))
                 """, Integer.class, companyId);
         return c == null ? 0 : c;
     }

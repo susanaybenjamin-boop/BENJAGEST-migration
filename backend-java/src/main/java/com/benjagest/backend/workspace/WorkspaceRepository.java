@@ -89,7 +89,14 @@ public class WorkspaceRepository {
                 count("employees", "company_id = ? AND active = TRUE"),
                 count("notifications", "company_id = ? AND status <> 'READ'"),
                 amount("SELECT COALESCE(SUM(total), 0) FROM sales_invoices WHERE company_id = ?", currentCompanyId()),
-                amount("SELECT COALESCE(SUM(total - paid_amount), 0) FROM sales_invoices WHERE company_id = ? AND payment_status <> 'PAID'", currentCompanyId()),
+                amount("SELECT COALESCE(SUM(si.total - COALESCE(si.paid_amount, 0)), 0) FROM sales_invoices si"
+                        + " WHERE si.company_id = ? AND si.status = 'VALIDATED'"
+                        + " AND si.payment_status IN ('PENDING','PARTIAL')"
+                        // Excluir rectificativas que anulan una original ya VOIDED (netean
+                        // a cero). Mismo criterio que ClientFinancialsService.
+                        + " AND NOT (si.original_invoice_id IS NOT NULL AND EXISTS ("
+                        + " SELECT 1 FROM sales_invoices o WHERE o.id = si.original_invoice_id AND o.status = 'VOIDED'))",
+                        currentCompanyId()),
                 amount("SELECT COALESCE(SUM(total_amount), 0) FROM purchase_invoices WHERE company_id = ?", currentCompanyId()),
                 amount("SELECT COALESCE(SUM(net_amount), 0) FROM payrolls WHERE company_id = ?", currentCompanyId()),
                 dashboardItems("""
