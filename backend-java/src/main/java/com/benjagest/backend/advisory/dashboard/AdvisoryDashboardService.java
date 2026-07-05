@@ -72,7 +72,10 @@ public class AdvisoryDashboardService {
                    AND si.status = 'VALIDATED'
                    AND si.invoice_date >= DATE_FORMAT(CURRENT_DATE, '%Y-%m-01')
                 """, advisoryId);
-        // Pendiente cobro: total - paid_amount donde payment_status != PAID
+        // Pendiente cobro: total - paid_amount donde payment_status != PAID.
+        // Se excluyen rectificativas que anulan una original ya VOIDED (el par
+        // netea a cero; dejar solo la negativa restaba de mas). Ver
+        // ClientFinancialsService.pendingCollections para el detalle del bug.
         java.math.BigDecimal pending = bigDecimalOrZero("""
                 SELECT COALESCE(SUM(si.total - COALESCE(si.paid_amount, 0)), 0)
                   FROM sales_invoices si
@@ -80,6 +83,9 @@ public class AdvisoryDashboardService {
                  WHERE c.parent_company_id = ?
                    AND si.status = 'VALIDATED'
                    AND si.payment_status IN ('PENDING', 'PARTIAL')
+                   AND NOT (si.original_invoice_id IS NOT NULL AND EXISTS (
+                            SELECT 1 FROM sales_invoices o
+                             WHERE o.id = si.original_invoice_id AND o.status = 'VOIDED'))
                 """, advisoryId);
         // Facturas vencidas (due_date < today, no pagadas).
         Integer overdueCount = countOrZero("""
@@ -91,6 +97,9 @@ public class AdvisoryDashboardService {
                    AND si.payment_status IN ('PENDING', 'PARTIAL')
                    AND si.due_date IS NOT NULL
                    AND si.due_date < CURRENT_DATE
+                   AND NOT (si.original_invoice_id IS NOT NULL AND EXISTS (
+                            SELECT 1 FROM sales_invoices o
+                             WHERE o.id = si.original_invoice_id AND o.status = 'VOIDED'))
                 """, advisoryId);
         // Clientes activos con al menos 1 factura este mes.
         Integer activeClients = countOrZero("""
