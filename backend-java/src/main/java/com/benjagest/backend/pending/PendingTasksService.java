@@ -94,7 +94,12 @@ public class PendingTasksService {
         add(out, "DRAFT_SALES", WARNING, count("sales_invoices",
                 "status = 'DRAFT'", in, args));
         add(out, "OVERDUE_INVOICES", URGENT, count("sales_invoices",
-                "status = 'VALIDATED' AND payment_status IN ('PENDING','PARTIAL') AND due_date < CURRENT_DATE", in, args));
+                "status = 'VALIDATED' AND payment_status IN ('PENDING','PARTIAL') AND due_date < CURRENT_DATE"
+                // Excluir rectificativas que anulan una original ya VOIDED (netean a
+                // cero con ella). Mismo criterio que ClientFinancialsService.
+                + " AND NOT (sales_invoices.original_invoice_id IS NOT NULL AND EXISTS ("
+                + " SELECT 1 FROM sales_invoices o WHERE o.id = sales_invoices.original_invoice_id AND o.status = 'VOIDED'))",
+                in, args));
         add(out, "DRAFT_PAYSLIPS", WARNING, count("payslips",
                 "status IN ('DRAFT','CALCULATED')", in, args));
         add(out, "LEAVE_REQUESTS", WARNING, count("employee_leave_requests",
