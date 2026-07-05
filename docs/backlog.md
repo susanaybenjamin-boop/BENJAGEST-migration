@@ -386,6 +386,48 @@ Repaso punto por punto de lo que Benjamin reportó con el check en blanco. Estad
 
 ---
 
+## 📅 SESIÓN 2026-07-04/05 — IMP-H (importación histórica CONTENDO)
+
+> **Problema de Benjamin:** dado de alta como asesoría, importó el diario CSV de CONTENDO
+> desde la gestión del cliente; decía "válido" pero no listaba nada. **Causa doble
+> confirmada:** (1) el importador CSV esperaba cabeceras en inglés y `parseAmount` rompía
+> los decimales con punto (`12.55`→`1255`), así que cada asiento iba al error_log; (2) los
+> asientos se creaban DRAFT y el Diario filtra POSTED por defecto.
+
+**Solución (bloque IMP-H, 5 slices, todos en `develop`):** importador dedicado "CONTENDO –
+Diario histórico" que reconstruye asientos (POSTED), facturas de venta/gasto reales,
+terceros (sin NIF) y cobros/pagos, con auto-refresco.
+- **IMP-H1**: V164 (customers NIF opcional + unique por empresa), V165 (invoice_type
+  HISTORICAL + formato CSV_CONTENDO + content_sha256). Blindaje solo-lectura de facturas
+  HISTORICAL (no void, no PDF, no email).
+- **IMP-H2**: `ContendoCsvParser` (clasifica venta/rectificativa/cobro/gasto/pago/otro) +
+  `ManualJournalEntryService.createImportedPosted`. Test verde.
+- **IMP-H3**: `ContendoImportService` pasada 1 (cuentas/terceros/asientos/facturas) +
+  endpoint. **Línea roja:** nunca pasa por `SalesInvoiceService.validate()` ni toca
+  VeriFactu/SIF/series/PDF.
+- **IMP-H4**: pasada 2 (cobros→ventas, pagos→gastos vía `invoice_due_dates` PAID,
+  rectificativa anula original).
+- **IMP-H5**: UI (formato + diálogo resumen + RefreshBus + filtro Origen + i18n).
+
+**Decisiones cerradas con Benjamin:** gastos sin IVA (SS/autónomo) → solo asiento, no
+factura; rectificativa 0006R → original 0006 queda ANULADA + enlazada.
+
+**Pendiente Benjamin (verificar):** reimportar su fichero real con el nuevo formato
+(los intentos previos no guardaron nada → sin duplicados). Comprobar: 91 asientos POSTED,
+8 facturas venta (1 rectificativa), cobros/gastos, y que `verifactu_registry`/`sif_events`
+NO cambian.
+
+**Deferidos (follow-up, no bloquean):**
+- Deshacer/borrar un lote de importación (borrado físico con año OPEN).
+- **Bug latente hallado de paso:** `ExternalImportService.importCsvParties`/`importJsonParties`
+  INSERTan en columnas inexistentes (`customers(nif,email,...)` / `suppliers(nif,name,...)`)
+  → todo import CSV/JSON de clientes/proveedores falla hoy en silencio. Arreglar aparte.
+- UI para enriquecer NIF de terceros importados; cobros parciales múltiples; pagos a
+  proveedor sin factura (TGSS 4000003) quedan como aviso (source_id colgante, cosmético).
+- Variantes A3/SAGE del mismo pipeline; integrar con `invoice_migration_baseline` (V151).
+
+---
+
 ## 📅 SESIÓN 2026-06-29 — Visibilidad calendario + FICHA-REVIEW + plan CONSOL/OFFLINE
 
 > Tras la reconciliación del backlog, Benjamin eligió atacar 3 frentes. Decisiones:
