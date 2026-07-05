@@ -2653,7 +2653,19 @@ public class AccountingScreen {
         impBtn.setOnAction(e -> {
             if (impChosen[0] == null) { showInfo(tt.apply("accounting.exchange.import_title"), tt.apply("bank.import.missing")); return; }
             final java.io.File f = impChosen[0];
-            if ("CSV_CONTENDO".equals(impFormat.getValue())) {
+            // Autodeteccion: un diario CONTENDO se reconoce por su cabecera y se
+            // enruta SIEMPRE al importador historico, aunque el formato elegido
+            // sea otro. Asi el usuario no tiene que acertar "CSV_CONTENDO" a mano
+            // (elegir CSV/JOURNAL_ENTRIES sobre un diario daba cientos de errores).
+            String firstLine;
+            try (java.io.BufferedReader br = java.nio.file.Files.newBufferedReader(f.toPath())) {
+                firstLine = br.readLine();
+            } catch (Exception ex) {
+                showError(tt.apply("accounting.exchange.import_fail"),
+                        ex.getMessage() == null ? ex.toString() : ex.getMessage());
+                return;
+            }
+            if ("CSV_CONTENDO".equals(impFormat.getValue()) || isContendoDiarioHeader(firstLine)) {
                 async(() -> {
                     String content = java.nio.file.Files.readString(f.toPath());
                     return api.importContendo(f.getName(), content);
@@ -2691,6 +2703,26 @@ public class AccountingScreen {
                 impTitle, impG, new javafx.scene.control.Separator(), hint);
         box.setPadding(new Insets(12));
         return box;
+    }
+
+    /**
+     * ¿La primera línea es la cabecera de un diario contable CONTENDO
+     * ({@code Asiento;Fecha;Cuenta;Nombre Cuenta;Debe;Haber;Concepto})? Se usa
+     * para autodetectar el formato al importar y enrutar al importador histórico
+     * sin que el usuario elija "CSV_CONTENDO" a mano. Espejo (otro módulo) de
+     * {@code ContendoCsvParser.headerMatches}; tolera BOM y mayúsculas.
+     */
+    private static boolean isContendoDiarioHeader(String firstLine) {
+        if (firstLine == null || firstLine.isBlank()) return false;
+        String s = firstLine;
+        if (!s.isEmpty() && s.charAt(0) == '﻿') s = s.substring(1); // BOM
+        String[] cols = s.replace("\r", "").trim().toLowerCase().split(";", -1);
+        String[] expected = {"asiento", "fecha", "cuenta", "nombre cuenta", "debe", "haber", "concepto"};
+        if (cols.length < expected.length) return false;
+        for (int i = 0; i < expected.length; i++) {
+            if (!cols[i].trim().equals(expected[i])) return false;
+        }
+        return true;
     }
 
     /** Diálogo de resumen del import histórico CONTENDO + refresco de vistas. */

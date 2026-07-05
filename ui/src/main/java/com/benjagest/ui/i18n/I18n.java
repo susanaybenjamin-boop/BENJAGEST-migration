@@ -6885,7 +6885,7 @@ public final class I18n {
             case "accounting.exchange.import_done" -> "Import finished";
             case "accounting.exchange.import_done_body" -> "{total} rows: {imported} imported, {skipped} skipped, {errors} errors.";
             case "accounting.exchange.import_fail" -> "Could not import";
-            case "accounting.exchange.hint" -> "Formats available: CSV, Contasol and BENJAGEST JSON. A3/Sage are pending in the backend. Exports respect the date range and the drafts checkbox.";
+            case "accounting.exchange.hint" -> "Formats available: CSV, Contasol and BENJAGEST JSON. If you import a CONTENDO historical journal it is auto-detected by its header and everything is rebuilt (entries, invoices and parties): no need to pick the format. A3/Sage are pending in the backend. Exports respect the date range and the drafts checkbox.";
             case "accounting.exchange.target.JOURNAL_ENTRIES" -> "Journal entries";
             case "accounting.exchange.target.ACCOUNTS" -> "Chart of accounts";
             case "accounting.exchange.target.CUSTOMERS" -> "Customers";
@@ -8145,7 +8145,7 @@ public final class I18n {
             case "accounting.exchange.import_done" -> "Importación terminada";
             case "accounting.exchange.import_done_body" -> "{total} filas: {imported} importadas, {skipped} saltadas, {errors} errores.";
             case "accounting.exchange.import_fail" -> "No se pudo importar";
-            case "accounting.exchange.hint" -> "Formatos disponibles: CSV, Contasol y JSON BENJAGEST. A3/Sage están pendientes en el backend. La exportación respeta el rango de fechas y la casilla de borradores.";
+            case "accounting.exchange.hint" -> "Formatos disponibles: CSV, Contasol y JSON BENJAGEST. Si importas un diario histórico de CONTENDO se detecta automáticamente por su cabecera y se reconstruye todo (asientos, facturas y terceros): no hace falta elegir el formato. A3/Sage están pendientes en el backend. La exportación respeta el rango de fechas y la casilla de borradores.";
             case "accounting.exchange.target.JOURNAL_ENTRIES" -> "Asientos del diario";
             case "accounting.exchange.target.ACCOUNTS" -> "Plan de cuentas";
             case "accounting.exchange.target.CUSTOMERS" -> "Clientes";
