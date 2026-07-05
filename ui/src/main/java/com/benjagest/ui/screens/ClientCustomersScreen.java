@@ -2,6 +2,7 @@ package com.benjagest.ui.screens;
 
 import com.benjagest.ui.model.CustomerSummary;
 import com.benjagest.ui.service.CustomerApiClient;
+import com.benjagest.ui.support.RefreshBus;
 import com.benjagest.ui.support.Router;
 import java.util.List;
 import java.util.function.Function;
@@ -109,7 +110,23 @@ public class ClientCustomersScreen extends ScreenBase {
         VBox.setVgrow(table, Priority.ALWAYS);
         VBox box = new VBox(10, hint, actions, table);
         box.setPadding(new Insets(12));
-        reload.run();
+
+        // Auto-refresh (CLAUDE.md §4). El shell construye esta pestaña UNA vez y
+        // la cachea dentro del TabPane de la ficha, así que un único reload al
+        // construir mostraba datos obsoletos tras un alta o importación hecha en
+        // otra pantalla (p.ej. importar el diario CONTENDO, que crea clientes:
+        // se creaban en BD pero la lista no se enteraba ni entrando/saliendo).
+        // Solución: recargar cada vez que la pestaña entra en la escena (se
+        // muestra) y, mientras está visible, suscribirse a TOPIC_CUSTOMERS para
+        // refrescarse en vivo si otro flujo emite. Al ocultarse se da de baja.
+        box.sceneProperty().addListener((obs, oldScene, newScene) -> {
+            if (newScene != null) {
+                reload.run();
+                RefreshBus.subscribe(RefreshBus.TOPIC_CUSTOMERS, reload);
+            } else {
+                RefreshBus.unsubscribe(RefreshBus.TOPIC_CUSTOMERS, reload);
+            }
+        });
         return box;
     }
 
