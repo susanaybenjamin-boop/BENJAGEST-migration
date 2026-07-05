@@ -404,6 +404,10 @@ public class SalesInvoiceRepository {
         if (paymentStatusFilter != null && !paymentStatusFilter.isBlank()) {
             sql.append("   AND i.payment_status = ?\n");
             args.add(paymentStatusFilter.trim());
+            // Anuladas (VOIDED) y abonos/rectificativas (total < 0) no tienen
+            // estado de cobro real (la UI los muestra como "—"); no deben salir
+            // bajo ningun filtro de cobro (Pendiente/Parcial/Pagada/Vencida).
+            sql.append("   AND NOT (i.status = 'VOIDED' OR i.total < 0)\n");
         }
         if (customerIdFilter != null && !customerIdFilter.isBlank()) {
             sql.append("   AND i.customer_id = ?\n");
