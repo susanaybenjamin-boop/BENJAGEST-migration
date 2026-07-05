@@ -249,6 +249,15 @@ public final class AccountingModels {
             int rowsTotal, int rowsImported, int rowsSkipped, int rowsAutoMatched
     ) {}
 
+    /** Resultado del import del diario historico CONTENDO (IMP-H). */
+    public record ContendoImportResult(
+            int asientosTotal, int asientosImportados, int asientosSaltados,
+            int facturasVenta, int rectificativas, int gastos,
+            int clientesCreados, int proveedoresCreados, int cuentasCreadas,
+            int cobrosVinculados, int pagosVinculados, int errores,
+            List<String> avisos
+    ) {}
+
     /** Cuenta de Pérdidas y Ganancias de un periodo. */
     public record ProfitAndLossView(
             LocalDate from, LocalDate to,

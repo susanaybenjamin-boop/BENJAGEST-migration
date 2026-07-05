@@ -397,7 +397,7 @@ public class AccountingScreen {
                 "LOAN_INSTALLMENT",
                 "ASSET_ACQUISITION", "ASSET_DEPRECIATION", "ASSET_DISPOSAL",
                 "YEAR_CLOSE_REGULARIZATION", "YEAR_CLOSE_CLOSING",
-                "RECURRING_TASK", "RECURRING_ACCOUNTING"));
+                "RECURRING_TASK", "RECURRING_ACCOUNTING", "HISTORICAL_IMPORT"));
         installSourceCellFactory(sourceFilter);
 
         // Búsqueda libre — filtra por texto que aparezca en concepto, nº
@@ -2625,13 +2625,18 @@ public class AccountingScreen {
         // ----- Importar -----
         Label impTitle = new Label(tt.apply("accounting.exchange.import_title"));
         impTitle.getStyleClass().add("settings-section-title");
-        ComboBox<String> impFormat = new ComboBox<>(FXCollections.observableArrayList("CSV", "CONTASOL", "JSON_BENJAGEST"));
+        ComboBox<String> impFormat = new ComboBox<>(FXCollections.observableArrayList(
+                "CSV", "CONTASOL", "JSON_BENJAGEST", "CSV_CONTENDO"));
         localizeCombo(impFormat, "accounting.exchange.fmt.");
         impFormat.setValue("CSV");
         ComboBox<String> impTarget = new ComboBox<>(FXCollections.observableArrayList(
                 "JOURNAL_ENTRIES", "ACCOUNTS", "CUSTOMERS", "SUPPLIERS"));
         localizeCombo(impTarget, "accounting.exchange.target.");
         impTarget.setValue("JOURNAL_ENTRIES");
+        // CSV_CONTENDO reconstruye TODO (asientos + facturas + terceros) de un
+        // solo fichero: el target no aplica, se deshabilita.
+        impFormat.valueProperty().addListener((o, a, b) ->
+                impTarget.setDisable("CSV_CONTENDO".equals(b)));
         Label impFile = new Label(tt.apply("bank.import.no_file"));
         impFile.setStyle("-fx-text-fill: #6e6e6e;");
         final java.io.File[] impChosen = {null};
@@ -2648,6 +2653,14 @@ public class AccountingScreen {
         impBtn.setOnAction(e -> {
             if (impChosen[0] == null) { showInfo(tt.apply("accounting.exchange.import_title"), tt.apply("bank.import.missing")); return; }
             final java.io.File f = impChosen[0];
+            if ("CSV_CONTENDO".equals(impFormat.getValue())) {
+                async(() -> {
+                    String content = java.nio.file.Files.readString(f.toPath());
+                    return api.importContendo(f.getName(), content);
+                }, this::showContendoSummary,
+                   err -> showError(tt.apply("accounting.exchange.import_fail"), err));
+                return;
+            }
             async(() -> {
                 String content = java.nio.file.Files.readString(f.toPath());
                 return api.importExternal(impFormat.getValue(), impTarget.getValue(), f.getName(), content);
@@ -2678,6 +2691,63 @@ public class AccountingScreen {
                 impTitle, impG, new javafx.scene.control.Separator(), hint);
         box.setPadding(new Insets(12));
         return box;
+    }
+
+    /** Diálogo de resumen del import histórico CONTENDO + refresco de vistas. */
+    private void showContendoSummary(AccountingModels.ContendoImportResult r) {
+        Dialog<ButtonType> dlg = new Dialog<>();
+        dlg.setResizable(true);
+        dlg.setTitle(tt.apply("accounting.contendo.summary.title"));
+        dlg.getDialogPane().getButtonTypes().add(ButtonType.CLOSE);
+
+        GridPane g = new GridPane();
+        g.setHgap(14); g.setVgap(6);
+        int row = 0;
+        row = summaryRow(g, row, "accounting.contendo.summary.asientos", r.asientosImportados());
+        row = summaryRow(g, row, "accounting.contendo.summary.ventas", r.facturasVenta());
+        row = summaryRow(g, row, "accounting.contendo.summary.rectificativas", r.rectificativas());
+        row = summaryRow(g, row, "accounting.contendo.summary.gastos", r.gastos());
+        row = summaryRow(g, row, "accounting.contendo.summary.cobros", r.cobrosVinculados());
+        row = summaryRow(g, row, "accounting.contendo.summary.pagos", r.pagosVinculados());
+        row = summaryRow(g, row, "accounting.contendo.summary.clientes", r.clientesCreados());
+        row = summaryRow(g, row, "accounting.contendo.summary.proveedores", r.proveedoresCreados());
+        row = summaryRow(g, row, "accounting.contendo.summary.cuentas", r.cuentasCreadas());
+        row = summaryRow(g, row, "accounting.contendo.summary.saltados", r.asientosSaltados());
+        row = summaryRow(g, row, "accounting.contendo.summary.errores", r.errores());
+
+        VBox content = new VBox(10, g);
+        content.setPadding(new Insets(6));
+        if (r.avisos() != null && !r.avisos().isEmpty()) {
+            Label avisosTitle = new Label(tt.apply("accounting.contendo.summary.avisos"));
+            avisosTitle.getStyleClass().add("settings-section-title");
+            TextArea ta = new TextArea(String.join("\n", r.avisos()));
+            ta.setEditable(false);
+            ta.setWrapText(true);
+            ta.setPrefRowCount(8);
+            VBox.setVgrow(ta, Priority.ALWAYS);
+            content.getChildren().addAll(avisosTitle, ta);
+        }
+        dlg.getDialogPane().setContent(content);
+        dlg.getDialogPane().setPrefSize(560, 460);
+
+        // Refresco automático de todas las vistas afectadas por el import.
+        com.benjagest.ui.support.RefreshBus.emit(
+                com.benjagest.ui.support.RefreshBus.TOPIC_JOURNAL,
+                com.benjagest.ui.support.RefreshBus.TOPIC_SALES,
+                com.benjagest.ui.support.RefreshBus.TOPIC_PURCHASES,
+                com.benjagest.ui.support.RefreshBus.TOPIC_CUSTOMERS,
+                com.benjagest.ui.support.RefreshBus.TOPIC_SUPPLIERS,
+                com.benjagest.ui.support.RefreshBus.TOPIC_ACCOUNTS_CATALOG);
+
+        dlg.showAndWait();
+    }
+
+    private int summaryRow(GridPane g, int row, String key, int value) {
+        g.add(new Label(tt.apply(key)), 0, row);
+        Label v = new Label(String.valueOf(value));
+        v.setStyle("-fx-font-weight: bold;");
+        g.add(v, 1, row);
+        return row + 1;
     }
 
     /** Renderiza un grupo (Activo/Pasivo/Ingresos/Gastos) con sus masas, líneas y total. */

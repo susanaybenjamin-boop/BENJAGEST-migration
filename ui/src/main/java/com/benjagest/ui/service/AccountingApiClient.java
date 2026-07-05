@@ -877,6 +877,59 @@ public class AccountingApiClient {
                 intField(json, "skipped"), intField(json, "errors"));
     }
 
+    /** IMP-H — Importación del diario histórico CONTENDO (reconstruye asientos,
+     *  facturas de venta/gasto, terceros y cobros/pagos de un único fichero). */
+    public AccountingModels.ContendoImportResult importContendo(
+            String fileName, String content)
+            throws IOException, InterruptedException {
+        StringBuilder b = new StringBuilder("{");
+        appendKV(b, "fileName", fileName, true);
+        appendKV(b, "content", content, false);
+        b.append("}");
+        String json = postRaw("/accounting/external-imports/contendo", b.toString());
+        return new AccountingModels.ContendoImportResult(
+                intField(json, "asientosTotal"), intField(json, "asientosImportados"),
+                intField(json, "asientosSaltados"), intField(json, "facturasVenta"),
+                intField(json, "rectificativas"), intField(json, "gastos"),
+                intField(json, "clientesCreados"), intField(json, "proveedoresCreados"),
+                intField(json, "cuentasCreadas"), intField(json, "cobrosVinculados"),
+                intField(json, "pagosVinculados"), intField(json, "errores"),
+                parseStringArray(extractArrayField(json, "avisos")));
+    }
+
+    /** Parsea un array JSON de strings simples (["a","b"]) respetando escapes. */
+    private List<String> parseStringArray(String arr) {
+        List<String> out = new ArrayList<>();
+        if (arr == null) return out;
+        boolean inString = false, escape = false;
+        StringBuilder cur = new StringBuilder();
+        for (int i = 0; i < arr.length(); i++) {
+            char c = arr.charAt(i);
+            if (inString) {
+                if (escape) {
+                    switch (c) {
+                        case 'n' -> cur.append('\n');
+                        case 'r' -> cur.append('\r');
+                        case 't' -> cur.append('\t');
+                        default -> cur.append(c);
+                    }
+                    escape = false;
+                } else if (c == '\\') {
+                    escape = true;
+                } else if (c == '"') {
+                    out.add(cur.toString());
+                    cur.setLength(0);
+                    inString = false;
+                } else {
+                    cur.append(c);
+                }
+            } else if (c == '"') {
+                inString = true;
+            }
+        }
+        return out;
+    }
+
     /** Exportación contable: devuelve el contenido (CSV/texto) del export. */
     public String exportAccounting(String format, String targetKind,
             LocalDate from, LocalDate to, boolean includeDrafts)
