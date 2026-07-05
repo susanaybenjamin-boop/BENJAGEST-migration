@@ -230,14 +230,14 @@ public class ExternalImportService {
                 int updated = supplier
                         ? jdbcTemplate.update("""
                                 INSERT IGNORE INTO suppliers (
-                                    id, company_id, nif, name, email, phone, address, active
+                                    id, company_id, tax_identifier, legal_name, email, phone, address_line, active
                                 ) VALUES (?, ?, ?, ?, ?, ?, ?, TRUE)
                                 """,
                                 UUID.randomUUID().toString(), companyId, nif.toUpperCase(),
                                 name, trim(row.get("email")), trim(row.get("phone")), trim(row.get("address")))
                         : jdbcTemplate.update("""
                                 INSERT IGNORE INTO customers (
-                                    id, company_id, nif, legal_name, email, phone, address, active
+                                    id, company_id, tax_identifier, legal_name, email, phone, address, active
                                 ) VALUES (?, ?, ?, ?, ?, ?, ?, TRUE)
                                 """,
                                 UUID.randomUUID().toString(), companyId, nif.toUpperCase(),
@@ -460,14 +460,14 @@ public class ExternalImportService {
                 int updated = supplier
                         ? jdbcTemplate.update("""
                                 INSERT IGNORE INTO suppliers (
-                                    id, company_id, nif, name, email, phone, address, active
+                                    id, company_id, tax_identifier, legal_name, email, phone, address_line, active
                                 ) VALUES (?, ?, ?, ?, ?, ?, ?, TRUE)
                                 """,
                                 UUID.randomUUID().toString(), companyId, nif.toUpperCase(),
                                 name, jsonText(n, "email"), jsonText(n, "phone"), jsonText(n, "address"))
                         : jdbcTemplate.update("""
                                 INSERT IGNORE INTO customers (
-                                    id, company_id, nif, legal_name, email, phone, address, active
+                                    id, company_id, tax_identifier, legal_name, email, phone, address, active
                                 ) VALUES (?, ?, ?, ?, ?, ?, ?, TRUE)
                                 """,
                                 UUID.randomUUID().toString(), companyId, nif.toUpperCase(),
