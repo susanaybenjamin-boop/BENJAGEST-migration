@@ -46,17 +46,20 @@ public class PurchaseJournalEntryService {
     private final AccountingLearningService learning;
     private final TerceroAccountResolverService terceroResolver;
     private final ExpenseAccountClassifierService classifier;
+    private final com.benjagest.backend.accounting.FiscalYearGuardService fiscalGuard;
 
     public PurchaseJournalEntryService(JdbcTemplate jdbcTemplate,
                                          TenantContext tenantContext,
                                          AccountingLearningService learning,
                                          TerceroAccountResolverService terceroResolver,
-                                         ExpenseAccountClassifierService classifier) {
+                                         ExpenseAccountClassifierService classifier,
+                                         com.benjagest.backend.accounting.FiscalYearGuardService fiscalGuard) {
         this.jdbcTemplate = jdbcTemplate;
         this.tenantContext = tenantContext;
         this.learning = learning;
         this.terceroResolver = terceroResolver;
         this.classifier = classifier;
+        this.fiscalGuard = fiscalGuard;
     }
 
     /**
@@ -347,20 +350,42 @@ public class PurchaseJournalEntryService {
     @Transactional
     public void reverseForPurchase(PurchaseInvoice purchase) {
         String companyId = tenantContext.getCurrentCompanyId();
-        // 1) Asiento de devengo (vinculado por journal_entry_id).
-        if (purchase.journalEntryId() != null) {
-            deleteEntry(companyId, purchase.journalEntryId());
-        }
-        // 2) Asiento(s) de PAGO (GAS-2). No están vinculados por
-        //    journal_entry_id (ese apunta al devengo); se localizan por
-        //    source_type/source_id.
+        // Asiento(s) de PAGO (GAS-2). No están vinculados por
+        // journal_entry_id (ese apunta al devengo); se localizan por
+        // source_type/source_id.
         List<String> paymentEntries = jdbcTemplate.query("""
                 SELECT id FROM journal_entries
                  WHERE company_id = ? AND source_type = ? AND source_id = ?
                 """, (rs, n) -> rs.getString("id"),
                 companyId, SRC_TYPE_PAYMENT, purchase.id());
+        // LOCK (2026-07-07): ningún asiento de un ejercicio LOCKED/CLOSED
+        // se borra. Se comprueban TODOS (devengo + pagos, que pueden caer
+        // en años distintos) ANTES de borrar nada — todo-o-nada.
+        if (purchase.journalEntryId() != null) {
+            requireEntryOpen(companyId, purchase.journalEntryId());
+        }
+        for (String pe : paymentEntries) {
+            requireEntryOpen(companyId, pe);
+        }
+        // 1) Asiento de devengo (vinculado por journal_entry_id).
+        if (purchase.journalEntryId() != null) {
+            deleteEntry(companyId, purchase.journalEntryId());
+        }
+        // 2) Asientos de pago.
         for (String pe : paymentEntries) {
             deleteEntry(companyId, pe);
+        }
+    }
+
+    /** LOCK: 409 si el asiento existe y su fecha cae en ejercicio no OPEN. */
+    private void requireEntryOpen(String companyId, String entryId) {
+        List<java.time.LocalDate> dates = jdbcTemplate.query("""
+                SELECT entry_date FROM journal_entries
+                 WHERE id = ? AND company_id = ?
+                """, (rs, n) -> rs.getDate("entry_date").toLocalDate(),
+                entryId, companyId);
+        for (java.time.LocalDate d : dates) {
+            fiscalGuard.requireOpenForDate(companyId, d, "borrar el asiento de este gasto");
         }
     }
 
