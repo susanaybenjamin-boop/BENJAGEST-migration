@@ -1,5 +1,14 @@
 # Backlog operativo BENJAGEST
 
+> **Última actualización:** 2026-07-07 (**bloque GAS** —Compras y Gastos: alta de
+> gastos/recibos **SIN factura** (recibo de autónomo / cuota RETA) **eligiendo cuenta** (642),
+> con o sin IVA; **registrar pago** (2º asiento, como CONTENDO); los recibos manuales entran
+> **validados directos**; **sincronización asiento→gasto** al validar en "Por validar"
+> (arregla un **descuadre latente**: asiento POSTED / gasto DRAFT); **recurrentes con cuenta
+> fija** que aparecen en Compras y Gastos (casilla "Repetir cada mes" + selector de cuenta en
+> "Hacer recurrente"). V166/V167. **Release v0.1.9**. Ver sesión 2026-07-07 debajo.
+> **Pendiente Benjamin:** actualizar la instalada (botón Actualizar) y meter los 6 recibos RETA
+> reales. Histórico previo:
 > **Última actualización:** 2026-06-26/27 (**bloque GOOGLE-UNIFICADO** —login con Google +
 > envío de correo por Gmail (OAuth) + **Google Calendar ↔ Agenda bidireccional**; modelo
 > **híbrido** con credenciales **centrales** de la cuenta `benjagest2026` en
@@ -383,6 +392,62 @@ Repaso punto por punto de lo que Benjamin reportó con el check en blanco. Estad
     `[ ]` UIR-9 Fiscal · `[ ]` UIR-10 Calendario · `[ ]` UIR-11 Facturación/Compras/VeriFactu ·
     `[ ]` UIR-12 Configuración/Certificados · `[ ]` UIR-13 Asesoría/Consolidación/TPB ·
     `[ ]` UIR-14 Trabajos/Calendario laboral/Tablas año · `[ ]` UIR-15 Laboral/Nómina (el último).
+
+---
+
+## 📅 SESIÓN 2026-07-07 — bloque GAS (Compras y Gastos: recibo de autónomo / gastos manuales + recurrentes)
+
+> **Origen (duda de Benjamin):** el titular RETA dado de alta en la asesoría no aparecía en
+> modo empresario. **Diagnóstico (sin bug):** una sola BD y una sola empresa (Benjamín,
+> `AUTONOMO`, `company_id` único); RETA es solo-asesoría por decisión previa (26-jun);
+> "Titulares y administradores" (`company_owners`) ≠ perfil RETA (`reta_profiles`). De ahí
+> salió el bloque de gastos/recibos, para que el empresario vea el RETA entre sus gastos.
+
+**Bloque GAS (9 slices, en `develop`, release v0.1.9):** alta de gastos/recibos **SIN factura**
+(p.ej. recibo de autónomo / cuota RETA) en Compras y Gastos, eligiendo cuenta, con pago manual
+y opción recurrente.
+- **GAS-1** (V166): `purchase_invoices.expense_account_code`. Si el gasto trae cuenta fija
+  (642), el asiento la usa exacta y **salta la cascada**; sin IVA **no** crea línea 472.
+- **GAS-2** (V167): `paid`/`paid_date`/`payment_account_code` + `createPaymentForPurchase`
+  (asiento de pago Debe 400 proveedor / Haber 572 banco) + `POST /purchases/invoices/{id}/pay`.
+- **GAS-3/4/5** (UI, `BenjagestUiApplication` + `PurchaseInvoiceApiClient`): botones **Nuevo
+  gasto/recibo** (elige cuenta 6xx, con/sin IVA), **Recibo de autónomo** (642 + TGSS
+  prefijados) y **Registrar pago** (fecha + banco 572).
+- **GAS-6**: los gastos/recibos **manuales entran VALIDADOS directos** (POSTED con número);
+  el flujo automático (PDF/cascada) sigue en "Por validar". Fix i18n `accounting.source_type.
+  PURCHASE_PAYMENT` (salía la clave cruda en el Diario). `buildConcept` sin "Fra. -" en recibos
+  sin nº de factura.
+- **GAS-7**: **sincronización asiento→gasto** — al validar en "Por validar" un asiento
+  `PURCHASE_INVOICE`, `ManualJournalEntryService.post` marca también el gasto POSTED (arregla
+  **descuadre latente**). "Validado directo" pasa a depender de flag explícito
+  `postJournalDirectly` (solo alta manual), no de tener cuenta fija. El recurrente PURCHASE
+  **ya no anula** su asiento → aparece en "Por validar" con la cuenta fija.
+- **GAS-8**: casilla **"Repetir cada mes"** en el diálogo de recibo → crea plantilla recurrente
+  PURCHASE (payload con `expenseAccountCode`); genera un **GASTO** en Compras y Gastos cada mes.
+- **GAS-9**: selector **"Cuenta gasto"** en el editor de **"Hacer recurrente"** (`showRecurringEditor`);
+  antes no tenía → el recurrente salía sin cuenta (`expense_account_code=null` → cascada).
+
+**Decisiones cerradas con Benjamin:**
+- El recibo de autónomo se hace como **GASTO** (dos asientos: devengo 642→proveedor TGSS, pago
+  proveedor→572), no como asiento suelto, para que el empresario lo vea en Compras y Gastos.
+- Recurrente **sigue en borrador** (revisar el importe, que en RETA cambia con la base).
+- **KPIs de gastos y modelos** (130/303/P&G) salen de la **contabilidad** (`SUM(debit)` de 6xx
+  en POSTED, ver `SalesAndExpensesKpiService`), **no** de la lista de Compras → el recurrente
+  cuenta aunque no sea fila en Compras. Confirmado con búsqueda: cuota RETA = gasto deducible
+  100% (modelo 130, **por devengo**, sin factura; proveedor TGSS).
+- El editor de asiento recurrente (`JOURNAL_ENTRY`) NO se usa para RETA: genera asiento suelto
+  que no sale en Compras (esa lista lee `purchase_invoices`, no el Diario).
+
+**Release:** bump `APP_VERSION` 0.1.8→0.1.9, merge `--no-ff` a develop (`d652f02`), `.msi`
+(301 MB) y **`v0.1.9`** publicada como *latest* (auto-update). Push a develop funcionó directo
+esta vez (histórico decía que lo bloqueaba el clasificador — parece intermitente).
+
+**Pendiente Benjamin:** actualizar la instalada (botón Actualizar) y meter los **6 recibos RETA
+reales** (ene–abr 299,57; may–jun 328,11). **CONTENDO:** exportar/backup y cancelar
+Supabase+Render (~60 €/mes) — decidido retirarlo; su sistema oficial es Excel + PDFs en iCloud.
+
+**Ruido inofensivo (no tocado, decidido dejarlo):** `RealtimeService.heartbeat` loguea
+`IOException: broken pipe` cuando un cliente SSE se desconecta — cosmético, solo al probar.
 
 ---
 
