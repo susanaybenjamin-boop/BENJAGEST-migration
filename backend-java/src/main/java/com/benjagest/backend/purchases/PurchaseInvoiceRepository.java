@@ -36,9 +36,9 @@ public class PurchaseInvoiceRepository {
                     invoice_number, invoice_date,
                     base_amount, vat_percent, vat_amount, total_amount,
                     document_sha256, invoice_index_in_pdf,
-                    status, journal_entry_id, concept, notes,
+                    status, journal_entry_id, expense_account_code, concept, notes,
                     uploaded_by_user_id, uploaded_by_company_id
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 inv.id(),
                 tenantContext.getCurrentCompanyId(),
@@ -54,6 +54,7 @@ public class PurchaseInvoiceRepository {
                 inv.invoiceIndexInPdf(),
                 inv.status() == null ? PurchaseInvoice.STATUS_POSTED : inv.status(),
                 inv.journalEntryId(),
+                inv.expenseAccountCode(),
                 inv.concept(),
                 inv.notes(),
                 inv.uploadedByUserId(),
@@ -68,7 +69,7 @@ public class PurchaseInvoiceRepository {
                            invoice_number, invoice_date,
                            base_amount, vat_percent, vat_amount, total_amount,
                            document_sha256, invoice_index_in_pdf,
-                           status, journal_entry_id, concept, notes,
+                           status, journal_entry_id, expense_account_code, concept, notes,
                            uploaded_by_user_id, uploaded_by_company_id,
                            created_at, updated_at
                       FROM purchase_invoices
@@ -92,7 +93,7 @@ public class PurchaseInvoiceRepository {
                        invoice_number, invoice_date,
                        base_amount, vat_percent, vat_amount, total_amount,
                        document_sha256, invoice_index_in_pdf,
-                       status, journal_entry_id, concept, notes,
+                       status, journal_entry_id, expense_account_code, concept, notes,
                        uploaded_by_user_id, uploaded_by_company_id,
                        created_at, updated_at
                   FROM purchase_invoices
@@ -115,7 +116,7 @@ public class PurchaseInvoiceRepository {
                        invoice_number, invoice_date,
                        base_amount, vat_percent, vat_amount, total_amount,
                        document_sha256, invoice_index_in_pdf,
-                       status, journal_entry_id, concept, notes,
+                       status, journal_entry_id, expense_account_code, concept, notes,
                        uploaded_by_user_id, uploaded_by_company_id,
                        created_at, updated_at
                   FROM purchase_invoices
@@ -188,6 +189,7 @@ public class PurchaseInvoiceRepository {
                 rs.getInt("invoice_index_in_pdf"),
                 rs.getString("status"),
                 rs.getString("journal_entry_id"),
+                rs.getString("expense_account_code"),
                 rs.getString("concept"),
                 rs.getString("notes"),
                 rs.getString("uploaded_by_user_id"),

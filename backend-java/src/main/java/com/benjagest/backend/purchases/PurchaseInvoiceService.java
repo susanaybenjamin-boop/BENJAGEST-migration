@@ -96,6 +96,7 @@ public class PurchaseInvoiceService {
                 req.invoiceIndexInPdf(),
                 PurchaseInvoice.STATUS_POSTED,
                 null,
+                blankToNull(req.expenseAccountCode()),
                 blankToNull(req.concept()),
                 blankToNull(req.notes()),
                 user.userId(),
@@ -320,9 +321,13 @@ public class PurchaseInvoiceService {
             String documentSha256,
             int invoiceIndexInPdf,
             String concept,
-            String notes
+            String notes,
+            // GAS-1: cuenta de gasto (6xx) fijada por el usuario. Si es NULL,
+            // el asiento la resuelve por la cascada automática habitual.
+            String expenseAccountCode
     ) {
-        // Constructor compacto retro-compatible: callers viejos sin concept.
+        // Constructor compacto retro-compatible: callers viejos sin concept
+        // ni expenseAccountCode.
         public SaveRequest(String supplierNif, String supplierName,
                             String invoiceNumber, LocalDate invoiceDate,
                             BigDecimal baseAmount, BigDecimal vatPercent,
@@ -331,7 +336,7 @@ public class PurchaseInvoiceService {
                             String notes) {
             this(supplierNif, supplierName, invoiceNumber, invoiceDate,
                     baseAmount, vatPercent, vatAmount, totalAmount,
-                    documentSha256, invoiceIndexInPdf, null, notes);
+                    documentSha256, invoiceIndexInPdf, null, notes, null);
         }
     }
 

@@ -91,42 +91,59 @@ public class PurchaseJournalEntryService {
         //    c) cuenta 472 — IVA soportado: prefijo genérico (no se
         //       analítica por tercero todavía).
 
-        // (a) Gasto 6xx
-        Optional<AccountingLearningService.AccountProposal> proposal =
-                learning.proposeExpenseAccount(
-                        purchase.supplierNif(), purchase.supplierName(),
-                        purchase.invoiceNumber(), purchase.totalAmount());
-        String acc6xx = proposal.map(AccountingLearningService.AccountProposal::accountId)
-                .orElse(null);
-        String proposedRuleId = proposal.map(AccountingLearningService.AccountProposal::ruleId)
-                .orElse(null);
-        java.math.BigDecimal proposedConfidence =
-                proposal.map(AccountingLearningService.AccountProposal::confidence).orElse(null);
+        // (a) Gasto 6xx.
+        //   GAS-1: si el gasto trae una cuenta fijada por el usuario
+        //   (p.ej. 642 en un recibo de autónomo), se usa esa cuenta EXACTA
+        //   y NO se ejecuta la cascada — el asesor la eligió, no adivinamos
+        //   (auto_proposed = FALSE).
+        String acc6xx;
+        String proposedRuleId = null;
+        java.math.BigDecimal proposedConfidence = null;
+        boolean autoProposed;
+        String fixedCode = purchase.expenseAccountCode();
+        if (fixedCode != null && !fixedCode.isBlank()) {
+            acc6xx = findAccountByCode(companyId, fixedCode.trim());
+            autoProposed = false;
+        } else {
+            autoProposed = true;
+            // Cascada automática (port de CONTENDO):
+            //   1. regla aprendida (NIF proveedor o keyword) → más fuerte
+            Optional<AccountingLearningService.AccountProposal> proposal =
+                    learning.proposeExpenseAccount(
+                            purchase.supplierNif(), purchase.supplierName(),
+                            purchase.invoiceNumber(), purchase.totalAmount());
+            acc6xx = proposal.map(AccountingLearningService.AccountProposal::accountId)
+                    .orElse(null);
+            proposedRuleId = proposal.map(AccountingLearningService.AccountProposal::ruleId)
+                    .orElse(null);
+            proposedConfidence =
+                    proposal.map(AccountingLearningService.AccountProposal::confidence).orElse(null);
 
-        // 2. histórico del proveedor (si no hay regla)
-        if (acc6xx == null) {
-            Optional<AccountingLearningService.HistoricMatch> historic =
-                    learning.findHistoricExpenseAccountForSupplier(
-                            purchase.supplierNif(), purchase.supplierName());
-            if (historic.isPresent()) {
-                acc6xx = historic.get().accountId();
+            // 2. histórico del proveedor (si no hay regla)
+            if (acc6xx == null) {
+                Optional<AccountingLearningService.HistoricMatch> historic =
+                        learning.findHistoricExpenseAccountForSupplier(
+                                purchase.supplierNif(), purchase.supplierName());
+                if (historic.isPresent()) {
+                    acc6xx = historic.get().accountId();
+                }
             }
-        }
 
-        // 3. classifier por regex (keywords PGC español)
-        if (acc6xx == null) {
-            String descForClassifier = safe(purchase.notes())
-                    + " " + safe(purchase.invoiceNumber());
-            Optional<String> code = classifier.classify(descForClassifier, purchase.supplierName());
-            if (code.isPresent()) {
-                String id = findAccountByCode(companyId, code.get());
-                if (id != null) acc6xx = id;
+            // 3. classifier por regex (keywords PGC español)
+            if (acc6xx == null) {
+                String descForClassifier = safe(purchase.notes())
+                        + " " + safe(purchase.invoiceNumber());
+                Optional<String> code = classifier.classify(descForClassifier, purchase.supplierName());
+                if (code.isPresent()) {
+                    String id = findAccountByCode(companyId, code.get());
+                    if (id != null) acc6xx = id;
+                }
             }
-        }
 
-        // 4. fallback 600 genérico
-        if (acc6xx == null) {
-            acc6xx = findAccountByPrefix(companyId, "600");
+            // 4. fallback 600 genérico
+            if (acc6xx == null) {
+                acc6xx = findAccountByPrefix(companyId, "600");
+            }
         }
 
         // (b) Proveedor 400 → sub-cuenta de tercero
@@ -135,10 +152,14 @@ public class PurchaseJournalEntryService {
                         purchase.supplierNif(), purchase.supplierName());
         String acc400 = supplierAcc.accountId();
 
-        // (c) IVA soportado 472 genérico
-        String acc472 = findAccountByPrefix(companyId, "472");
+        // (c) IVA soportado 472 — SOLO si el gasto tiene IVA. Un recibo sin
+        //     IVA (p.ej. la cuota de autónomo de la TGSS) no lleva línea de
+        //     472: el asiento es solo Debe 6xx / Haber 400 proveedor.
+        boolean hasVat = purchase.vatAmount() != null
+                && purchase.vatAmount().signum() != 0;
+        String acc472 = hasVat ? findAccountByPrefix(companyId, "472") : null;
 
-        if (acc6xx == null || acc472 == null || acc400 == null) {
+        if (acc6xx == null || acc400 == null || (hasVat && acc472 == null)) {
             return null;
         }
 
@@ -161,12 +182,12 @@ public class PurchaseJournalEntryService {
                     entry_date, concept, source_type, source_id,
                     status, reviewed, auto_proposed, proposed_confidence,
                     created_by
-                ) VALUES (?, ?, ?, NULL, ?, ?, ?, ?, 'DRAFT', FALSE, TRUE, ?, ?)
+                ) VALUES (?, ?, ?, NULL, ?, ?, ?, ?, 'DRAFT', FALSE, ?, ?, ?)
                 """,
                 entryId, companyId, fiscalYearId,
                 Date.valueOf(purchase.invoiceDate()),
                 concept, SRC_TYPE, purchase.id(),
-                proposedConfidence, userId);
+                autoProposed, proposedConfidence, userId);
 
         // 5) Líneas con descripción específica por tipo de cuenta — el
         //    asesor lee el Libro Mayor de cada cuenta sin tener que abrir
@@ -193,8 +214,10 @@ public class PurchaseJournalEntryService {
         // contabilidad.
         insertLine(entryId, acc6xx, expenseDesc,
                 purchase.baseAmount(), java.math.BigDecimal.ZERO, purchase.vatPercent());
-        insertLine(entryId, acc472, vatDesc,
-                purchase.vatAmount(), java.math.BigDecimal.ZERO, purchase.vatPercent());
+        if (hasVat) {
+            insertLine(entryId, acc472, vatDesc,
+                    purchase.vatAmount(), java.math.BigDecimal.ZERO, purchase.vatPercent());
+        }
         insertLine(entryId, acc400, supplierDesc,
                 java.math.BigDecimal.ZERO, purchase.totalAmount());
 

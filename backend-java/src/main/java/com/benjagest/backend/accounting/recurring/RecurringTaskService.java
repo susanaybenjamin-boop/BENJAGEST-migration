@@ -442,7 +442,8 @@ public class RecurringTaskService {
                 bd(p.get("totalAmount")),
                 null, 0,
                 concept,
-                "Generado por recurrencia '" + task.name() + "' — revisar y validar");
+                "Generado por recurrencia '" + task.name() + "' — revisar y validar",
+                null);
         // PurchaseInvoiceService.save crea POSTED por defecto. Para
         // recurrentes queremos DRAFT (el usuario revisa precio, añade
         // líneas y luego valida en multiselección).
@@ -762,6 +763,7 @@ public class RecurringTaskService {
                     0,
                     PurchaseInvoice.STATUS_POSTED,
                     v.id(), // vincular al asiento
+                    null, // sin cuenta de gasto fija (cascada automática)
                     concept,
                     "Generado por recurrencia '" + task.name() + "'",
                     safeUserId(),

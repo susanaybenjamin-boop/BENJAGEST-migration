@@ -34,6 +34,7 @@ public record PurchaseInvoice(
         int invoiceIndexInPdf,
         String status,
         String journalEntryId,
+        String expenseAccountCode,
         String concept,
         String notes,
         String uploadedByUserId,
