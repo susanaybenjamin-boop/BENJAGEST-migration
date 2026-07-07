@@ -6,7 +6,8 @@
 > **validados directos**; **sincronización asiento→gasto** al validar en "Por validar"
 > (arregla un **descuadre latente**: asiento POSTED / gasto DRAFT); **recurrentes con cuenta
 > fija** que aparecen en Compras y Gastos (casilla "Repetir cada mes" + selector de cuenta en
-> "Hacer recurrente"). V166/V167. **Release v0.1.9**. Ver sesión 2026-07-07 debajo.
+> "Hacer recurrente"). V166/V167. **Release v0.1.9** (+ **GAS-10** fix: el concepto del gasto
+> recurrente expande comodines `{MES}`/`{YYYY}` → **v0.1.10**). Ver sesión 2026-07-07 debajo.
 > **Pendiente Benjamin:** actualizar la instalada (botón Actualizar) y meter los 6 recibos RETA
 > reales. Histórico previo:
 > **Última actualización:** 2026-06-26/27 (**bloque GOOGLE-UNIFICADO** —login con Google +
@@ -441,6 +442,10 @@ y opción recurrente.
 **Release:** bump `APP_VERSION` 0.1.8→0.1.9, merge `--no-ff` a develop (`d652f02`), `.msi`
 (301 MB) y **`v0.1.9`** publicada como *latest* (auto-update). Push a develop funcionó directo
 esta vez (histórico decía que lo bloqueaba el clasificador — parece intermitente).
+- **GAS-10** (fix, tras probar): `runPurchase` expandía comodines en `invoiceNumber` pero **no
+  en el concepto** → el gasto recurrente salía con `{MES} {YYYY}` literal. Ahora el concepto
+  pasa por `expandPlaceholders`. Bump 0.1.9→**0.1.10**, merge a develop (`c62275d`), **`v0.1.10`**
+  publicada como *latest*.
 
 **Pendiente Benjamin:** actualizar la instalada (botón Actualizar) y meter los **6 recibos RETA
 reales** (ene–abr 299,57; may–jun 328,11). **CONTENDO:** exportar/backup y cancelar
