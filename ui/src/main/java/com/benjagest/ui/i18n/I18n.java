@@ -499,6 +499,9 @@ public final class I18n {
                 case "expense.err.amount" -> "Enter a valid amount.";
                 case "expense.saved.title" -> "Expense saved";
                 case "expense.saved.body" -> "The expense and its accounting entry were created.";
+                case "expense.recurring" -> "Repeat every month (recurring)";
+                case "expense.saved_recurring.body" -> "Expense saved and the monthly recurrence was created.";
+                case "expense.recurring_fail.body" -> "The expense was saved, but the recurrence could not be created.";
                 case "expense.save_fail.title" -> "Could not save the expense";
                 case "expense.save_fail.body" -> "The expense could not be saved.";
                 case "common.save" -> "Save";
@@ -1621,6 +1624,9 @@ public final class I18n {
             case "expense.err.amount" -> "Indica un importe válido.";
             case "expense.saved.title" -> "Gasto guardado";
             case "expense.saved.body" -> "Se ha creado el gasto y su asiento contable.";
+            case "expense.recurring" -> "Repetir cada mes (recurrente)";
+            case "expense.saved_recurring.body" -> "Gasto guardado y recurrente mensual creado.";
+            case "expense.recurring_fail.body" -> "El gasto se guardó, pero no se pudo crear el recurrente.";
             case "expense.save_fail.title" -> "No se pudo guardar el gasto";
             case "expense.save_fail.body" -> "No se pudo guardar el gasto.";
             case "common.save" -> "Guardar";

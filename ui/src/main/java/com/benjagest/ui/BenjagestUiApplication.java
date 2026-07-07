@@ -3568,6 +3568,42 @@ public class BenjagestUiApplication extends Application
         try { return Integer.parseInt(text); } catch (Exception ex) { return null; }
     }
 
+    /**
+     * GAS-8 — Arma el JSON de una plantilla recurrente PURCHASE mensual a
+     * partir de los datos de un gasto/recibo. El recurrente genera cada mes
+     * un gasto en Compras y Gastos con la misma cuenta fija (payload
+     * expenseAccountCode). Empieza el mes siguiente a la fecha del gasto para
+     * no duplicar el de este mes.
+     */
+    private String buildMonthlyExpenseRecurringJson(
+            String nif, String name, String concept,
+            java.math.BigDecimal base, java.math.BigDecimal vatPct,
+            java.math.BigDecimal vat, java.math.BigDecimal total,
+            String accountCode, java.time.LocalDate date) {
+        java.time.LocalDate first = (date == null ? java.time.LocalDate.now() : date).plusMonths(1);
+        String tName = (concept != null && !concept.isBlank()) ? concept
+                : (name != null && !name.isBlank() ? name : t("expense.dialog.title"));
+        StringBuilder b = new StringBuilder();
+        b.append('{');
+        b.append("\"kind\":\"PURCHASE\"");
+        b.append(",\"name\":").append(jsonString(tName));
+        b.append(",\"frequency\":\"MONTHLY\"");
+        b.append(",\"dayOfMonth\":").append(first.getDayOfMonth());
+        b.append(",\"firstRunDate\":\"").append(first).append('"');
+        b.append(",\"payload\":{");
+        b.append("\"supplierNif\":").append(jsonString(nif));
+        b.append(",\"supplierName\":").append(jsonString(name == null ? "" : name));
+        if (concept != null && !concept.isBlank())
+            b.append(",\"concept\":").append(jsonString(concept));
+        b.append(",\"baseAmount\":").append(base.toPlainString());
+        b.append(",\"vatPercent\":").append(vatPct.toPlainString());
+        b.append(",\"vatAmount\":").append(vat.toPlainString());
+        b.append(",\"totalAmount\":").append(total.toPlainString());
+        b.append(",\"expenseAccountCode\":").append(jsonString(accountCode));
+        b.append("}}");
+        return b.toString();
+    }
+
     /** Parsea un importe tecleado por el usuario (admite coma decimal y "€"). */
     private java.math.BigDecimal parseUserAmount(String text) {
         if (text == null) return null;
@@ -3598,6 +3634,9 @@ public class BenjagestUiApplication extends Application
         CheckBox noVat = new CheckBox(t("expense.field.no_vat"));
         TextField vatPctField = new TextField("21");
         vatPctField.setPrefColumnCount(4);
+        // GAS-8: repetir el gasto cada mes (crea plantilla recurrente que lo
+        // regenera en Compras y Gastos). Util para la cuota RETA mensual.
+        CheckBox recurringChk = new CheckBox(t("expense.recurring"));
         ComboBox<AccountSummary> accountCombo = new ComboBox<>();
         accountCombo.setConverter(new javafx.util.StringConverter<>() {
             @Override public String toString(AccountSummary a) {
@@ -3650,6 +3689,7 @@ public class BenjagestUiApplication extends Application
         HBox vatRow = new HBox(8, noVat, new Label(t("expense.field.vat_percent")), vatPctField);
         vatRow.setAlignment(Pos.CENTER_LEFT);
         grid.add(new Label(t("expense.field.vat")), 0, row); grid.add(vatRow, 1, row++);
+        grid.add(recurringChk, 1, row++);
         javafx.scene.layout.GridPane.setHgrow(nifField, Priority.ALWAYS);
         javafx.scene.layout.GridPane.setHgrow(accountCombo, Priority.ALWAYS);
 
@@ -3708,8 +3748,33 @@ public class BenjagestUiApplication extends Application
                 com.benjagest.ui.support.RefreshBus.emit(
                         com.benjagest.ui.support.RefreshBus.TOPIC_PURCHASES,
                         com.benjagest.ui.support.RefreshBus.TOPIC_JOURNAL);
-                dlg.close();
-                showInfo(t("expense.saved.title"), t("expense.saved.body"));
+                if (recurringChk.isSelected()) {
+                    // GAS-8: además del gasto de este mes, crear la plantilla
+                    // recurrente mensual que lo regenerará en Compras y Gastos.
+                    String recJson = buildMonthlyExpenseRecurringJson(
+                            nif, p.supplierName, p.concept, amount, pct, vat, total,
+                            acct.code(), dateField.getValue());
+                    Task<Void> recTask = new Task<>() {
+                        @Override protected Void call() throws Exception {
+                            accountingApiClient.createRecurring(recJson);
+                            return null;
+                        }
+                    };
+                    recTask.setOnSucceeded(ev2 -> {
+                        com.benjagest.ui.support.RefreshBus.emit(
+                                com.benjagest.ui.support.RefreshBus.TOPIC_RECURRING);
+                        dlg.close();
+                        showInfo(t("expense.saved.title"), t("expense.saved_recurring.body"));
+                    });
+                    recTask.setOnFailed(ev2 -> {
+                        dlg.close();
+                        showInfo(t("expense.saved.title"), t("expense.recurring_fail.body"));
+                    });
+                    start(recTask, "expense-recurring");
+                } else {
+                    dlg.close();
+                    showInfo(t("expense.saved.title"), t("expense.saved.body"));
+                }
             });
             saveTask.setOnFailed(e -> {
                 saveBtn.setDisable(false);
