@@ -55,6 +55,7 @@ public class SalesInvoiceService {
     private final org.springframework.jdbc.core.JdbcTemplate jdbcForTpb;
     private final com.benjagest.backend.billing.reflection.CrossInvoiceReflectionService reflectionService;
     private final com.benjagest.backend.billing.tpb.BillingAgreementGuard billingAgreementGuard;
+    private final com.benjagest.backend.accounting.FiscalYearGuardService fiscalGuard;
 
     public SalesInvoiceService(SalesInvoiceRepository repository,
                                SeriesService seriesService,
@@ -71,7 +72,8 @@ public class SalesInvoiceService {
                                com.benjagest.backend.tenant.TenantContext tenantContext,
                                org.springframework.jdbc.core.JdbcTemplate jdbcForTpb,
                                com.benjagest.backend.billing.reflection.CrossInvoiceReflectionService reflectionService,
-                               com.benjagest.backend.billing.tpb.BillingAgreementGuard billingAgreementGuard) {
+                               com.benjagest.backend.billing.tpb.BillingAgreementGuard billingAgreementGuard,
+                               com.benjagest.backend.accounting.FiscalYearGuardService fiscalGuard) {
         this.repository = repository;
         this.seriesService = seriesService;
         this.verifactuRegistryService = verifactuRegistryService;
@@ -88,6 +90,7 @@ public class SalesInvoiceService {
         this.jdbcForTpb = jdbcForTpb;
         this.reflectionService = reflectionService;
         this.billingAgreementGuard = billingAgreementGuard;
+        this.fiscalGuard = fiscalGuard;
     }
 
     public List<SalesInvoice> list(String statusFilter,
@@ -132,6 +135,10 @@ public class SalesInvoiceService {
                 com.benjagest.backend.billing.tpb.BillingAgreementGuard.Scope.SALES);
         String id = UUID.randomUUID().toString();
         LocalDate invoiceDate = request.invoiceDate() == null ? LocalDate.now() : request.invoiceDate();
+        // LOCK (2026-07-07): fallo temprano — un borrador fechado en un
+        // ejercicio LOCKED/CLOSED nunca podria validarse; mejor avisar al
+        // crear que al final del flujo.
+        fiscalGuard.requireOpenForDate(invoiceDate, "crear una factura con esa fecha");
         LocalDate dueDate = request.dueDate() == null ? invoiceDate.plusDays(30) : request.dueDate();
 
         List<InvoiceLine> lines = computeLines(id, request.lines());
@@ -197,6 +204,9 @@ public class SalesInvoiceService {
         }
 
         LocalDate invoiceDate = request.invoiceDate() == null ? existing.invoiceDate() : request.invoiceDate();
+        // LOCK (2026-07-07): no dejar mover un borrador a una fecha de
+        // ejercicio LOCKED/CLOSED (fallo temprano, como en createDraft).
+        fiscalGuard.requireOpenForDate(invoiceDate, "poner esa fecha a la factura");
         LocalDate dueDate = request.dueDate() == null ? existing.dueDate() : request.dueDate();
         List<InvoiceLine> lines = computeLines(id, request.lines());
         Totals totals = aggregateTotals(lines);
@@ -279,6 +289,12 @@ public class SalesInvoiceService {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "Solo se valida una factura en DRAFT");
         }
+        // LOCK (2026-07-07): validar emite numero fiscal + hash VeriFactu +
+        // asiento. Nada de eso puede nacer dentro de un ejercicio
+        // LOCKED/CLOSED (RD 1007/2023 — inalterabilidad del periodo).
+        // La rectificativa de voidValidated pasa por aqui con fecha de HOY,
+        // asi que el flujo legal de anulacion sigue funcionando.
+        fiscalGuard.requireOpenForDate(existing.invoiceDate(), "validar esta factura");
         if (existing.seriesId() == null || existing.seriesId().isBlank()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "Falta serie de numeracion: asigna una serie antes de validar");
@@ -481,16 +497,25 @@ public class SalesInvoiceService {
                     "Esta factura ya tiene una rectificativa creada: " + original.rectifyingInvoiceId());
         }
 
-        // SALES-JOURNAL: marca el asiento de la factura original como
-        // VOIDED. La rectificativa que creamos a continuación generará
-        // su propio asiento espejo (con cantidades negativas → totales
-        // negativos → asiento de signo invertido) cuando pase por
-        // validateInternal.
+        // SALES-JOURNAL: borra fisicamente el asiento de la factura
+        // original (hueco en el Diario, mismo trato que compras). La
+        // rectificativa que creamos a continuación generará su propio
+        // asiento espejo (con cantidades negativas → totales negativos →
+        // asiento de signo invertido) cuando pase por validateInternal.
+        //
+        // LOCK (2026-07-07): si la original es de un ejercicio
+        // LOCKED/CLOSED, reverseForSales lanza 409 y este catch lo
+        // ABSORBE a propósito: el asiento del ejercicio cerrado se
+        // CONSERVA intacto (la venta ocurrió y sus libros están
+        // cerrados) y la anulación sigue el único camino legal — la
+        // rectificativa negativa con fecha de HOY que contrarresta en
+        // el ejercicio corriente.
         try {
             salesJournalService.reverseForSales(validatedId);
         } catch (Exception ex) {
             org.slf4j.LoggerFactory.getLogger(SalesInvoiceService.class)
-                    .warn("No se pudo marcar VOIDED el asiento de la factura {}", validatedId, ex);
+                    .warn("No se borró el asiento de la factura {} (se conserva): {}",
+                            validatedId, ex.getMessage());
         }
 
         // Resolvemos la serie RECTIFYING del cliente activo. La V16

@@ -53,17 +53,20 @@ public class SalesJournalEntryService {
     private final AccountingLearningService learning;
     private final TerceroAccountResolverService terceroResolver;
     private final IncomeAccountClassifierService classifier;
+    private final com.benjagest.backend.accounting.FiscalYearGuardService fiscalGuard;
 
     public SalesJournalEntryService(JdbcTemplate jdbcTemplate,
                                       TenantContext tenantContext,
                                       AccountingLearningService learning,
                                       TerceroAccountResolverService terceroResolver,
-                                      IncomeAccountClassifierService classifier) {
+                                      IncomeAccountClassifierService classifier,
+                                      com.benjagest.backend.accounting.FiscalYearGuardService fiscalGuard) {
         this.jdbcTemplate = jdbcTemplate;
         this.tenantContext = tenantContext;
         this.learning = learning;
         this.terceroResolver = terceroResolver;
         this.classifier = classifier;
+        this.fiscalGuard = fiscalGuard;
     }
 
     /**
@@ -216,6 +219,18 @@ public class SalesJournalEntryService {
                  WHERE source_type = ? AND source_id = ? AND company_id = ?
                 """, (rs, n) -> rs.getString("id"),
                 SRC_TYPE, invoiceId, companyId);
+        // LOCK (2026-07-07): un asiento de un ejercicio LOCKED/CLOSED no
+        // se borra — sus libros están cerrados. Se comprueba ANTES de
+        // tocar nada para que la operación sea todo-o-nada. El caller
+        // voidValidated absorbe este 409 y conserva el asiento (la
+        // rectificativa de hoy contrarresta en el ejercicio corriente).
+        for (String entryId : entryIds) {
+            java.time.LocalDate entryDate = jdbcTemplate.queryForObject("""
+                    SELECT entry_date FROM journal_entries WHERE id = ?
+                    """, java.time.LocalDate.class, entryId);
+            fiscalGuard.requireOpenForDate(companyId, entryDate,
+                    "borrar el asiento de esta factura");
+        }
         for (String entryId : entryIds) {
             jdbcTemplate.update("""
                     DELETE FROM accounting_learning_events
@@ -242,6 +257,10 @@ public class SalesJournalEntryService {
     @Transactional
     public String regenerateForSales(SalesInvoice invoice, String userId) {
         String companyId = tenantContext.getCurrentCompanyId();
+        // LOCK (2026-07-07): reescribir las líneas de un asiento de un
+        // ejercicio LOCKED/CLOSED altera libros cerrados.
+        fiscalGuard.requireOpenForDate(companyId, invoice.invoiceDate(),
+                "regenerar el asiento de esta factura");
         List<String> entryIds = jdbcTemplate.query("""
                 SELECT id FROM journal_entries
                  WHERE source_type = ? AND source_id = ? AND company_id = ?

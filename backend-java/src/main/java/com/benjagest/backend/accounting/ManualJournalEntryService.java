@@ -384,15 +384,24 @@ public class ManualJournalEntryService {
         for (String id : ids) {
             if (id == null || id.isBlank()) continue;
             // Solo borramos si es de origen importado.
-            List<String> srcs = jdbcTemplate.query("""
-                    SELECT source_type FROM journal_entries
+            List<Object[]> srcs = jdbcTemplate.query("""
+                    SELECT source_type, entry_date FROM journal_entries
                      WHERE id = ? AND company_id = ?
                      LIMIT 1
-                    """, (rs, n) -> rs.getString("source_type"), id, companyId);
+                    """, (rs, n) -> new Object[]{rs.getString("source_type"),
+                            rs.getDate("entry_date")}, id, companyId);
             if (srcs.isEmpty()) continue;
-            String src = srcs.get(0);
+            String src = (String) srcs.get(0)[0];
             if (!"SALES_PDF_IMPORT".equals(src)
                     && !"PURCHASE_INVOICE".equals(src)) continue;
+            // LOCK (2026-07-07): tampoco los importados se borran si su
+            // fecha cae en un ejercicio LOCKED/CLOSED. Antes este era el
+            // único camino de borrado de asientos SIN comprobar el cierre.
+            java.sql.Date entryDate = (java.sql.Date) srcs.get(0)[1];
+            if (entryDate != null) {
+                fiscalGuard.requireOpenForDate(entryDate.toLocalDate(),
+                        "borrar este asiento importado");
+            }
             // Borrar líneas + asiento (CASCADE manual por seguridad).
             jdbcTemplate.update(
                     "DELETE FROM journal_entry_lines WHERE journal_entry_id = ?", id);

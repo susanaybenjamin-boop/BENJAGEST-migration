@@ -46,15 +46,18 @@ public class FiscalYearCloseService {
     private final TenantContext tenantContext;
     private final CurrentUserService currentUserService;
     private final ClosingEntriesService closingEntries;
+    private final com.benjagest.backend.audit.AuditService auditService;
 
     public FiscalYearCloseService(JdbcTemplate jdbcTemplate,
                                    TenantContext tenantContext,
                                    CurrentUserService currentUserService,
-                                   ClosingEntriesService closingEntries) {
+                                   ClosingEntriesService closingEntries,
+                                   com.benjagest.backend.audit.AuditService auditService) {
         this.jdbcTemplate = jdbcTemplate;
         this.tenantContext = tenantContext;
         this.currentUserService = currentUserService;
         this.closingEntries = closingEntries;
+        this.auditService = auditService;
     }
 
     public List<CloseView> list() {
@@ -194,6 +197,10 @@ public class FiscalYearCloseService {
                  WHERE company_id = ? AND year_number = ?
                 """, tenantContext.getCurrentCompanyId(), year);
 
+        // LOCK (2026-07-07): quién y cuándo cerró, en la auditoría.
+        auditService.recordFiscalYearClosed(userId,
+                tenantContext.getCurrentCompanyId(), year);
+
         return get(year);
     }
 
@@ -215,6 +222,21 @@ public class FiscalYearCloseService {
                        notes = ?
                  WHERE company_id = ? AND period_year = ?
                 """, userId, newNotes, tenantContext.getCurrentCompanyId(), year);
+
+        // LOCK (2026-07-07): reabrir de verdad. close() marca
+        // fiscal_years.status='CLOSED' (que es lo que mira
+        // FiscalYearGuardService), pero reopen no lo devolvía a OPEN →
+        // tras reabrir, TODO seguía bloqueado con 409. Estado
+        // inconsistente detectado en la auditoría integral 2026-07-07.
+        jdbcTemplate.update("""
+                UPDATE fiscal_years
+                   SET status = 'OPEN'
+                 WHERE company_id = ? AND year_number = ?
+                """, tenantContext.getCurrentCompanyId(), year);
+
+        auditService.recordFiscalYearReopened(userId,
+                tenantContext.getCurrentCompanyId(), year, reason);
+
         return get(year);
     }
 
@@ -315,12 +337,20 @@ public class FiscalYearCloseService {
             return service.precalculate(year);
         }
 
+        // LOCK (2026-07-07): cerrar/reabrir un ejercicio cambia qué puede
+        // tocarse en la contabilidad de todo un año — no es operativa
+        // diaria. Cerrar queda para quien lleva los libros; reabrir un
+        // cierre definitivo, SOLO el OWNER (mismo criterio que el javadoc
+        // de FiscalYearGuardService). Antes cualquier EMPLOYEE podía
+        // reabrir, tocar y volver a cerrar sin dejar rastro.
         @PutMapping("/{year}/close")
+        @RequiresRole({"OWNER", "ADMIN", "ACCOUNTANT"})
         public CloseView close(@PathVariable("year") int year, @RequestBody CloseRequest req) {
             return service.close(year, req);
         }
 
         @PutMapping("/{year}/reopen")
+        @RequiresRole({"OWNER"})
         public CloseView reopen(@PathVariable("year") int year, @RequestBody ReopenRequest req) {
             return service.reopen(year, req == null ? null : req.reason());
         }

@@ -70,6 +70,23 @@ public class AuditService {
                 "digital_certificate", certificateId, "OK", null);
     }
 
+    /**
+     * LOCK (2026-07-07): cerrar/reabrir un ejercicio fiscal cambia qué se
+     * puede tocar en la contabilidad de todo un año — queda siempre en la
+     * auditoría con quién y cuándo (reabrir además con el motivo).
+     */
+    public void recordFiscalYearClosed(String userId, String companyId, int year) {
+        write(companyId, userId, "FISCAL_YEAR_CLOSED",
+                "fiscal_year", String.valueOf(year), "OK", null);
+    }
+
+    public void recordFiscalYearReopened(String userId, String companyId, int year, String reason) {
+        String details = reason == null || reason.isBlank() ? null
+                : "{\"reason\":\"" + reason.replace("\"", "'") + "\"}";
+        write(companyId, userId, "FISCAL_YEAR_REOPENED",
+                "fiscal_year", String.valueOf(year), "OK", details);
+    }
+
     public void recordPurchaseInvoicePosted(String userId, String companyId,
                                               String purchaseInvoiceId,
                                               java.math.BigDecimal totalAmount,

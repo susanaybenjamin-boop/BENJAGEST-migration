@@ -61,11 +61,14 @@ public class PayslipJournalEntryService {
 
     private final JdbcTemplate jdbcTemplate;
     private final TenantContext tenantContext;
+    private final com.benjagest.backend.accounting.FiscalYearGuardService fiscalGuard;
 
     public PayslipJournalEntryService(JdbcTemplate jdbcTemplate,
-                                       TenantContext tenantContext) {
+                                       TenantContext tenantContext,
+                                       com.benjagest.backend.accounting.FiscalYearGuardService fiscalGuard) {
         this.jdbcTemplate = jdbcTemplate;
         this.tenantContext = tenantContext;
+        this.fiscalGuard = fiscalGuard;
     }
 
     /** Datos mínimos de la nómina que necesita el asiento. */
@@ -383,6 +386,16 @@ public class PayslipJournalEntryService {
         for (Object[] e : entries) {
             String entryId = (String) e[0];
             String status = (String) e[1];
+            // LOCK (2026-07-07): un asiento POSTED de un ejercicio
+            // LOCKED/CLOSED ni se borra ni se contrarresta con un
+            // contraasiento fechado dentro de ese ejercicio (jamás podría
+            // validarse). Borrar una nómina de un ejercicio cerrado se
+            // bloquea entero con 409.
+            if ("POSTED".equals(status) && e[3] != null) {
+                fiscalGuard.requireOpenForDate(companyId,
+                        ((java.sql.Date) e[3]).toLocalDate(),
+                        "revertir el asiento de esta nómina");
+            }
             if (!"POSTED".equals(status)) {
                 jdbcTemplate.update("DELETE FROM accounting_learning_events WHERE journal_entry_id = ? AND company_id = ?",
                         entryId, companyId);

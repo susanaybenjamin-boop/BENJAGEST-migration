@@ -1,5 +1,14 @@
 # Backlog operativo BENJAGEST
 
+> **Última actualización:** 2026-07-07 noche (**bloque LOCK** — **cierre fiscal blindado**:
+> guards `FiscalYearGuardService` en los 8 caminos de mutación que faltaban (crear/editar/
+> validar factura de venta, registrar gasto, borrar asientos de ventas/compras/nómina/
+> importados, regenerar asiento) + **3 fixes del cierre**: `reopen()` ahora sí devuelve
+> `fiscal_years` a OPEN (antes reabrías y todo seguía bloqueado), cerrar = OWNER/ADMIN/
+> ACCOUNTANT y reabrir = **solo OWNER** (antes cualquier EMPLOYEE), y auditoría
+> FISCAL_YEAR_CLOSED/REOPENED con motivo. Verificado en vivo con ejercicio 2025 CLOSED
+> temporal: 409 en todo lo fechado 2025, 201 con fecha de hoy, 403 reopen de empleado.
+> Ver sesión 2026-07-07 noche debajo. Histórico previo:
 > **Última actualización:** 2026-07-07 tarde (**bloque DR** — **Declaración responsable del
 > fabricante** del SIF, RD 1007/2023 + Orden HAC/1177/2024 art. 15: datos **reales** del
 > productor (Benjamín Recio López, NIF 74668351R — decisión de Benjamin en sesión), **versión
@@ -404,6 +413,45 @@ Repaso punto por punto de lo que Benjamin reportó con el check en blanco. Estad
     `[ ]` UIR-9 Fiscal · `[ ]` UIR-10 Calendario · `[ ]` UIR-11 Facturación/Compras/VeriFactu ·
     `[ ]` UIR-12 Configuración/Certificados · `[ ]` UIR-13 Asesoría/Consolidación/TPB ·
     `[ ]` UIR-14 Trabajos/Calendario laboral/Tablas año · `[ ]` UIR-15 Laboral/Nómina (el último).
+
+---
+
+## 📅 SESIÓN 2026-07-07 (noche) — bloque LOCK (bloqueo tras cierre fiscal)
+
+> **Origen:** paso 2 del plan de la auditoría integral (tras el bloque DR). Un agente
+> inventarió TODOS los caminos de mutación contable: el guard existía y estaba conectado
+> en asientos manuales, pagar/validar/eliminar gastos, banco, inmovilizado y préstamos —
+> pero ventas entera, crear gastos y los 4 caminos de borrado de asientos estaban sin
+> proteger, y el cierre tenía 3 fallos propios.
+
+- `[x]` **LOCK-1 ventas** — guard en `createDraft`/`updateDraft` (fallo temprano) y
+  `validateInternal` (número fiscal + hash + asiento no nacen en año cerrado);
+  `reverseForSales` comprueba cada asiento por `entry_date` antes de borrar (todo-o-nada);
+  `regenerateForSales` bloqueado. Anulación de factura de año cerrado: el asiento del año
+  cerrado SE CONSERVA (el guard 409 se absorbe a propósito) y la rectificativa con fecha
+  de hoy contrarresta en el ejercicio corriente — el único camino legal.
+- `[x]` **LOCK-2 compras/nómina/importados** — `save` de gasto con fecha en año cerrado →
+  409; `reverseForPurchase` comprueba devengo + pagos; reversión de nómina con asiento
+  POSTED en año cerrado → 409 (ni borrar ni contraasiento imposible de validar);
+  `deleteImportedByIds` (único borrado sin check) ahora comprueba.
+- `[x]` **LOCK-3 cierre robusto** — `reopen()` sincroniza `fiscal_years`→OPEN (bug: antes
+  reabrías y todo seguía 409); roles por método (cerrar OWNER/ADMIN/ACCOUNTANT, reabrir
+  SOLO OWNER — antes cualquier EMPLOYEE); auditoría `FISCAL_YEAR_CLOSED`/`REOPENED` con
+  motivo.
+- **Verificación en vivo** (ejercicio 2025 CLOSED temporal insertado y retirado; BD real
+  intacta): venta 2025 → 409 · gasto 2025 → 409 · asiento manual 2025 → 409 (regresión
+  guard previo) · reopen EMPLOYEE → 403 · reopen OWNER → 200 + fiscal_years OPEN + evento
+  auditado · borrador fecha hoy → 201 y borrado limpio.
+- **Notas para Benjamin (decisiones/pendientes):**
+  1. ⚠️ **Duda contable en anulación (año ABIERTO)**: `voidValidated` BORRA el asiento de
+     la original Y la rectificativa genera su asiento negativo → el Diario queda en -X en
+     vez de 0. ¿Es lo querido (¿CONTENDO hacía esto?) o debería conservarse el asiento
+     original + negativo (neto 0)? Revisar juntos con un caso real antes de tocar.
+  2. Estado `LOCKED` (bloqueo provisional del asesor tras presentar el 303): el guard lo
+     soporta, pero **no hay UI/endpoint que lo ponga**. Slice futuro pequeño.
+  3. Test preexistente en rojo (sin relación con LOCK, verificado con stash):
+     `InvoiceFieldsExtractorTotalsTest.losLlanos` — el OCR extrae `GR/10606` y el test
+     espera `263274`. Arreglar parser o fixture.
 
 ---
 

@@ -60,6 +60,13 @@ public class PurchaseInvoiceService {
     public SaveResult save(SaveRequest req) {
         billingAgreementGuard.requireAgreementOrOwn(
                 com.benjagest.backend.billing.tpb.BillingAgreementGuard.Scope.PURCHASES);
+        // LOCK (2026-07-07): no se registra un gasto fechado en un
+        // ejercicio LOCKED/CLOSED (sus libros y su 303 ya están
+        // presentados). El gasto que aparece tarde se contabiliza en el
+        // periodo corriente, no reabriendo el cerrado.
+        if (req.invoiceDate() != null) {
+            fiscalGuard.requireOpenForDate(req.invoiceDate(), "registrar un gasto con esa fecha");
+        }
         // 1) Dedup por (company, sha, index).
         if (req.documentSha256() != null && !req.documentSha256().isBlank()) {
             var existing = repository.findByShaAndIndex(
