@@ -46,6 +46,8 @@ public class SettingsScreen extends ScreenBase {
         void bringToFront();
         javafx.stage.Window ownerWindow();
         void checkForUpdates(boolean manual);
+        // DR-2 — visor PDF interno del shell (mismo que contratos/facturas).
+        void showInternalPdfViewer(byte[] bytes, java.nio.file.Path tempPath);
         void refreshLockTimeout(int newTimeoutMin);
         void setScreensaverStyle(String style);
         String sessionCompanyName();
@@ -475,7 +477,63 @@ public class SettingsScreen extends ScreenBase {
         check.setGraphic(icon("fas-cloud-download-alt"));
         check.getStyleClass().add("primary-button");
         check.setOnAction(e -> checkForUpdates(true));
-        box.getChildren().addAll(section, ver, hint, check);
+
+        // DR-2 — Declaración responsable del fabricante (RD 1007/2023 +
+        // Orden HAC/1177/2024): debe constar "por escrito y de modo
+        // visible en el propio sistema informático en cada una de sus
+        // versiones". Por eso vive aquí (Acerca de es accesible siempre,
+        // tenga o no la empresa el módulo de facturación activo) y se
+        // pide con la versión instalada real.
+        Label drSection = label(t("settings.about.dr.section"), "settings-section-title");
+        Label drHint = new Label(t("settings.about.dr.hint"));
+        drHint.setWrapText(true);
+        drHint.getStyleClass().add("settings-hint");
+        TextArea drText = new TextArea();
+        drText.setEditable(false);
+        drText.setWrapText(true);
+        drText.setPrefRowCount(12);
+        Button drPdf = new Button(t("settings.about.dr.pdf"));
+        drPdf.setGraphic(icon("fas-file-pdf"));
+        drPdf.getStyleClass().add("primary-button");
+        drPdf.setOnAction(e -> {
+            drPdf.setDisable(true);
+            Task<byte[]> dl = new Task<>() {
+                @Override protected byte[] call() throws Exception {
+                    return altaApiClient.downloadManufacturerDeclarationPdf(
+                            com.benjagest.ui.service.UpdateService.APP_VERSION);
+                }
+            };
+            dl.setOnSucceeded(ev -> {
+                drPdf.setDisable(false);
+                try {
+                    java.nio.file.Path tmp = java.nio.file.Files.createTempFile(
+                            "declaracion-responsable-", ".pdf");
+                    java.nio.file.Files.write(tmp, dl.getValue());
+                    host.showInternalPdfViewer(dl.getValue(), tmp);
+                } catch (Exception ex) {
+                    showError(t("settings.about.dr.fail.title"), ex.getMessage());
+                }
+            });
+            dl.setOnFailed(ev -> {
+                drPdf.setDisable(false);
+                showError(t("settings.about.dr.fail.title"),
+                        humanizeBackendError(dl.getException() == null ? ""
+                                : dl.getException().getMessage()));
+            });
+            start(dl, "dr-pdf");
+        });
+        Task<String> loadDr = new Task<>() {
+            @Override protected String call() throws Exception {
+                return altaApiClient.getManufacturerDeclarationText(
+                        com.benjagest.ui.service.UpdateService.APP_VERSION);
+            }
+        };
+        loadDr.setOnSucceeded(ev -> drText.setText(loadDr.getValue()));
+        loadDr.setOnFailed(ev -> drText.setText(t("settings.about.dr.load_fail")));
+        start(loadDr, "dr-text");
+
+        box.getChildren().addAll(section, ver, hint, check,
+                new Separator(), drSection, drHint, drText, drPdf);
         return box;
     }
 

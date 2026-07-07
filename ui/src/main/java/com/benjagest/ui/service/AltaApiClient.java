@@ -1408,6 +1408,35 @@ public class AltaApiClient {
     }
 
     // ============================================================
+    // DR-2 — Declaración responsable del fabricante (RD 1007/2023)
+    //   GET /api/billing/manufacturer-declaration/text
+    //   GET /api/billing/manufacturer-declaration/pdf
+    // Visible en Configuración → Acerca de (la Orden HAC/1177/2024
+    // exige que conste en el propio sistema en cada versión).
+    // ============================================================
+
+    public String getManufacturerDeclarationText(String version)
+            throws IOException, InterruptedException {
+        HttpResponse<String> r = send(req(baseUrl + "/billing/manufacturer-declaration/text"
+                + versionParam(version)).GET());
+        if (r.statusCode() < 200 || r.statusCode() >= 300) {
+            throw new IOException("HTTP " + r.statusCode() + ": " + r.body());
+        }
+        return r.body();
+    }
+
+    public byte[] downloadManufacturerDeclarationPdf(String version)
+            throws IOException, InterruptedException {
+        return sendBytes(req(baseUrl + "/billing/manufacturer-declaration/pdf"
+                + versionParam(version)).GET()).body();
+    }
+
+    private static String versionParam(String version) {
+        return version == null || version.isBlank() ? ""
+                : "?version=" + java.net.URLEncoder.encode(version, java.nio.charset.StandardCharsets.UTF_8);
+    }
+
+    // ============================================================
     // EMP-SCOPED-UI — Scope del usuario en la asesoría
     //   GET /api/team/me/scope
     // ============================================================

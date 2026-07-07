@@ -2974,6 +2974,11 @@ public final class I18n {
             case "settings.about.version" -> "Installed version: {v}";
             case "settings.about.hint" -> "BENJAGEST checks for updates on startup. You can also check now. If there is a newer version, it downloads and installs over the current one (no need to uninstall).";
             case "settings.about.check" -> "Check for updates";
+            case "settings.about.dr.section" -> "Manufacturer's responsible declaration";
+            case "settings.about.dr.hint" -> "Declaration required by Spanish Royal Decree 1007/2023 and Order HAC/1177/2024 for invoicing software (SIF). It must be visibly stated within the software itself, for each version. You can also download it as a PDF. The declaration text is in Spanish because it is a Spanish legal document.";
+            case "settings.about.dr.pdf" -> "Download PDF";
+            case "settings.about.dr.load_fail" -> "Could not load the declaration (is the backend running?).";
+            case "settings.about.dr.fail.title" -> "Responsible declaration";
             case "update.none.title" -> "You are up to date";
             case "update.none.body" -> "You already have the latest version ({v}).";
             case "update.available.title" -> "Update available";
@@ -3283,6 +3288,11 @@ public final class I18n {
             case "settings.about.version" -> "Versión instalada: {v}";
             case "settings.about.hint" -> "BENJAGEST busca actualizaciones al arrancar. También puedes buscar ahora. Si hay una versión más nueva, se descarga y se instala encima de la actual (sin desinstalar).";
             case "settings.about.check" -> "Buscar actualizaciones";
+            case "settings.about.dr.section" -> "Declaración responsable del fabricante";
+            case "settings.about.dr.hint" -> "Declaración exigida por el Real Decreto 1007/2023 y la Orden HAC/1177/2024 a los sistemas informáticos de facturación (SIF). Debe constar de modo visible en el propio programa, en cada versión. También puedes descargarla en PDF.";
+            case "settings.about.dr.pdf" -> "Descargar PDF";
+            case "settings.about.dr.load_fail" -> "No se pudo cargar la declaración (¿está arrancado el backend?).";
+            case "settings.about.dr.fail.title" -> "Declaración responsable";
             case "update.none.title" -> "Estás al día";
             case "update.none.body" -> "Ya tienes la última versión ({v}).";
             case "update.available.title" -> "Actualización disponible";

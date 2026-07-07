@@ -104,7 +104,8 @@ public class BillingDialogsScreen extends ScreenBase {
         Task<String> task = new Task<>() {
             @Override
             protected String call() throws Exception {
-                return billingApiClient.fetchManufacturerDeclaration();
+                return billingApiClient.fetchManufacturerDeclaration(
+                        com.benjagest.ui.service.UpdateService.APP_VERSION);
             }
         };
         task.setOnSucceeded(ev -> {
