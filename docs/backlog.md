@@ -1,5 +1,16 @@
 # Backlog operativo BENJAGEST
 
+> **Última actualización:** 2026-07-07 tarde (**bloque DR** — **Declaración responsable del
+> fabricante** del SIF, RD 1007/2023 + Orden HAC/1177/2024 art. 15: datos **reales** del
+> productor (Benjamín Recio López, NIF 74668351R — decisión de Benjamin en sesión), **versión
+> dinámica** (la UI pasa `UpdateService.APP_VERSION`, se acabó el "0.1.0-SNAPSHOT" congelado),
+> endpoints nuevos `/text` y `/pdf`, y **visible en Configuración → Acerca de** con el texto
+> completo + botón "Descargar PDF" (sin exigir el módulo billing — la Orden pide que conste
+> "de modo visible en el propio sistema en cada versión"). El diálogo previo de Facturación →
+> Configuración ahora también muestra la versión real. **4 tests unitarios** fijan el
+> contenido legal obligatorio (NIF, versión, citas normativas, compromiso). Verificado en
+> vivo contra backend arrancado (texto + PDF 200 OK). Ver sesión 2026-07-07 tarde debajo.
+> Histórico previo:
 > **Última actualización:** 2026-07-07 (**bloque GAS** —Compras y Gastos: alta de
 > gastos/recibos **SIN factura** (recibo de autónomo / cuota RETA) **eligiendo cuenta** (642),
 > con o sin IVA; **registrar pago** (2º asiento, como CONTENDO); los recibos manuales entran
@@ -393,6 +404,42 @@ Repaso punto por punto de lo que Benjamin reportó con el check en blanco. Estad
     `[ ]` UIR-9 Fiscal · `[ ]` UIR-10 Calendario · `[ ]` UIR-11 Facturación/Compras/VeriFactu ·
     `[ ]` UIR-12 Configuración/Certificados · `[ ]` UIR-13 Asesoría/Consolidación/TPB ·
     `[ ]` UIR-14 Trabajos/Calendario laboral/Tablas año · `[ ]` UIR-15 Laboral/Nómina (el último).
+
+---
+
+## 📅 SESIÓN 2026-07-07 (tarde) — bloque DR (Declaración responsable del fabricante)
+
+> **Origen:** auditoría integral del proyecto (4 agentes: backend / legal / UI+BD / docs)
+> con veredicto y plan por fases para que BENJAGEST sea vendible como competidor legal de
+> Sage/A3. Primer paso elegido: la declaración responsable, porque es obligación del
+> **fabricante** ya vigente (multas de hasta 150.000 €/producto/ejercicio por software no
+> conforme) y no depende de trámites externos. Contexto normativo verificado: plazos
+> Verifactu prorrogados a 2027 (sociedades 1-ene, autónomos 1-jul), pero las obligaciones
+> del fabricante aplican ya. Benjamin aclaró su rol: es albañil, no asesor — el módulo de
+> presentación de modelos/colaborador social queda para cuando haya una asesoría cliente.
+
+- `[x]` **DR-1 backend** — `ManufacturerDeclaration.current(version)`: datos reales del
+  productor (decisión Benjamin: nombre + NIF en claro), versión dinámica pasada por la UI,
+  texto de compromiso preciso (cumplimiento en modalidad NO VERI*FACTU; envío VERI*FACTU
+  declarado como hoja de ruta). Nuevo `ManufacturerDeclarationPdfService` (texto plano y
+  PDF salen del MISMO texto — no pueden divergir). Controller sin `@RequiresModule`
+  (visible aunque billing esté desactivado) y con EMPLOYEE en roles; endpoints `/text`
+  (pantalla) y `/pdf` (descarga con filename versionado).
+- `[x]` **DR-1 tests** — `ManufacturerDeclarationPdfServiceTest` (4 tests): versión
+  dinámica, fallback sin versión, contenido legal mínimo (NIF, producto, versión, citas
+  RD/Orden, compromiso, fecha/lugar) y PDF real (`%PDF-`). Primer test de la capa legal.
+- `[x]` **DR-2 UI** — Configuración → **Acerca de**: sección "Declaración responsable del
+  fabricante" con el texto completo (TextArea solo-lectura, carga async) + botón
+  "Descargar PDF" (visor interno vía nuevo puente `Host.showInternalPdfViewer`). i18n
+  ES+EN completo (5 claves `settings.about.dr.*`). El diálogo existente de Facturación →
+  Configuración ahora pasa `APP_VERSION` (antes mostraba el 0.1.0-SNAPSHOT congelado).
+- `[x]` **DR-3 docs** — `docs/declaracion-responsable.md` (base legal, dónde vive en
+  código, qué actualizar en cada release) + este backlog.
+- **Verificación:** `mvn compile` OK · tests OK · backend arrancado y endpoints probados
+  en vivo con JWT (texto completo correcto, PDF 2.150 bytes `%PDF-1.5`) · backend apagado.
+- **Pendiente (siguiente sesión sugerida):** bloqueo de asientos/gastos tras cierre
+  fiscal (paso 2 del plan de la auditoría — convierte otro rojo legal en verde sin
+  dependencias externas).
 
 ---
 
