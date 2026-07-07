@@ -3697,6 +3697,7 @@ public class BenjagestUiApplication extends Application
                     ? null : conceptField.getText().trim();
             p.notes = null;
             p.expenseAccountCode = acct.code();
+            p.postJournalDirectly = true; // GAS-7: alta manual -> validado directo
             saveBtn.setDisable(true);
             Task<PurchaseInvoiceApiClient.SaveOutcome> saveTask = new Task<>() {
                 @Override protected PurchaseInvoiceApiClient.SaveOutcome call() throws Exception {

@@ -54,6 +54,7 @@ public class PurchaseInvoiceApiClient {
         appendStr(json, "concept", p.concept, false);
         appendStr(json, "notes", p.notes, false);
         appendStr(json, "expenseAccountCode", p.expenseAccountCode, false);
+        json.append(",\"postJournalDirectly\":").append(p.postJournalDirectly);
         json.append("}");
 
         HttpRequest.Builder b = HttpRequest.newBuilder(URI.create(baseUrl + "/purchases/invoices"))
@@ -268,6 +269,8 @@ public class PurchaseInvoiceApiClient {
         public String notes;
         // GAS-1: cuenta de gasto (6xx) fijada por el usuario; null = cascada.
         public String expenseAccountCode;
+        // GAS-7: TRUE en el alta manual -> asiento validado directo.
+        public boolean postJournalDirectly;
     }
 
     public record SaveOutcome(PurchaseInvoiceEntry invoice, boolean duplicate) {}

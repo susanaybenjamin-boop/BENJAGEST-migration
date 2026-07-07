@@ -339,6 +339,20 @@ public class ManualJournalEntryService {
                    SET status = 'POSTED', reviewed = TRUE, entry_number = ?
                  WHERE id = ? AND company_id = ?
                 """, newNumber, entryId, companyId);
+        // GAS-7: sincronizar el gasto enlazado. Al validar en "Por validar" el
+        // asiento de una factura recibida, marcar tambien el gasto (purchase_
+        // invoices) como POSTED — antes quedaban descuadrados (asiento POSTED,
+        // gasto DRAFT). Solo aplica a asientos con source_type=PURCHASE_INVOICE.
+        jdbcTemplate.update("""
+                UPDATE purchase_invoices pi
+                  JOIN journal_entries je ON je.source_id = pi.id
+                   SET pi.status = 'POSTED'
+                 WHERE je.id = ?
+                   AND je.company_id = ?
+                   AND je.source_type = 'PURCHASE_INVOICE'
+                   AND pi.company_id = ?
+                   AND pi.status <> 'POSTED'
+                """, entryId, companyId, companyId);
         return get(entryId);
     }
 

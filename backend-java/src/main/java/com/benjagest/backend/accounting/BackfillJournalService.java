@@ -88,7 +88,7 @@ public class BackfillJournalService {
             PurchaseInvoice p = purchaseRepo.findById(id).orElse(null);
             if (p == null) { purchasesSkipped++; continue; }
             try {
-                String entryId = purchaseJournal.createForPurchase(p, userId);
+                String entryId = purchaseJournal.createForPurchase(p, userId, false);
                 if (entryId != null) {
                     purchaseRepo.updateJournalEntryFk(id, entryId);
                     purchasesPosted++;

@@ -111,7 +111,8 @@ public class PurchaseInvoiceService {
         // 3) Intentar asiento (best effort).
         String journalEntryId = null;
         try {
-            journalEntryId = journalService.createForPurchase(draft, user.userId());
+            journalEntryId = journalService.createForPurchase(
+                    draft, user.userId(), req.postJournalDirectly());
         } catch (Exception ex) {
             // Tragamos: la factura ya está persistida; el asiento se
             // generará en sub-slice contable. Loguear sin romper.
@@ -229,7 +230,9 @@ public class PurchaseInvoiceService {
                 String entryId = existing.journalEntryId();
                 if (entryId == null) {
                     try {
-                        entryId = journalService.createForPurchase(existing, user.userId());
+                        // Validación desde la lista de Compras: el asiento
+                        // entra en "Por validar" (no directo), como el resto.
+                        entryId = journalService.createForPurchase(existing, user.userId(), false);
                     } catch (Exception ex) {
                         errors++;
                         items.add(new BatchValidateItem(id, "ERROR",
@@ -346,10 +349,14 @@ public class PurchaseInvoiceService {
             String notes,
             // GAS-1: cuenta de gasto (6xx) fijada por el usuario. Si es NULL,
             // el asiento la resuelve por la cascada automática habitual.
-            String expenseAccountCode
+            String expenseAccountCode,
+            // GAS-7: TRUE solo en el alta MANUAL (gasto/recibo), para que el
+            // asiento entre validado directo. PDF/cascada y recurrente lo
+            // dejan en FALSE -> el asiento entra en "Por validar".
+            boolean postJournalDirectly
     ) {
-        // Constructor compacto retro-compatible: callers viejos sin concept
-        // ni expenseAccountCode.
+        // Constructor compacto retro-compatible: callers viejos sin concept,
+        // ni expenseAccountCode, ni postJournalDirectly.
         public SaveRequest(String supplierNif, String supplierName,
                             String invoiceNumber, LocalDate invoiceDate,
                             BigDecimal baseAmount, BigDecimal vatPercent,
@@ -358,7 +365,7 @@ public class PurchaseInvoiceService {
                             String notes) {
             this(supplierNif, supplierName, invoiceNumber, invoiceDate,
                     baseAmount, vatPercent, vatAmount, totalAmount,
-                    documentSha256, invoiceIndexInPdf, null, notes, null);
+                    documentSha256, invoiceIndexInPdf, null, notes, null, false);
         }
     }
 

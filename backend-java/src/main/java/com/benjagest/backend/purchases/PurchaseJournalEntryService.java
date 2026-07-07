@@ -67,7 +67,7 @@ public class PurchaseJournalEntryService {
      * sin journal_entry_id).
      */
     @Transactional
-    public String createForPurchase(PurchaseInvoice purchase, String userId) {
+    public String createForPurchase(PurchaseInvoice purchase, String userId, boolean postDirectly) {
         if (purchase.invoiceDate() == null
                 || purchase.baseAmount() == null
                 || purchase.vatAmount() == null
@@ -100,13 +100,10 @@ public class PurchaseJournalEntryService {
         String acc6xx;
         String proposedRuleId = null;
         java.math.BigDecimal proposedConfidence = null;
-        boolean autoProposed;
         String fixedCode = purchase.expenseAccountCode();
         if (fixedCode != null && !fixedCode.isBlank()) {
             acc6xx = findAccountByCode(companyId, fixedCode.trim());
-            autoProposed = false;
         } else {
-            autoProposed = true;
             // Cascada automática (port de CONTENDO):
             //   1. regla aprendida (NIF proveedor o keyword) → más fuerte
             Optional<AccountingLearningService.AccountProposal> proposal =
@@ -177,12 +174,12 @@ public class PurchaseJournalEntryService {
         //    de confianza al asesor.
         String entryId = UUID.randomUUID().toString();
         String concept = buildConcept(purchase);
-        // GAS-6: cuando la cuenta la eligió el usuario (gasto/recibo manual),
-        // el asiento entra VALIDADO directo (POSTED con número correlativo),
-        // como en CONTENDO — no hay nada que revisar en "Por validar". El
-        // flujo automático (PDF/cascada) sigue en DRAFT para que el asesor lo
-        // valide.
-        boolean postNow = fixedCode != null && !fixedCode.isBlank();
+        // GAS-6/7: "validado directo" (POSTED con número) es SOLO del alta
+        // MANUAL (postDirectly). El flujo automático (PDF/cascada) y el
+        // recurrente con cuenta fija entran DRAFT + auto_proposed=TRUE para
+        // que aparezcan en "Por validar" y el asesor los valide.
+        boolean postNow = postDirectly;
+        boolean autoProposed = !postNow;
         Integer entryNumber = postNow ? nextPostedEntryNumber(companyId, fiscalYearId) : null;
         jdbcTemplate.update("""
                 INSERT INTO journal_entries (

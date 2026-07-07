@@ -443,26 +443,21 @@ public class RecurringTaskService {
                 null, 0,
                 concept,
                 "Generado por recurrencia '" + task.name() + "' — revisar y validar",
-                null);
+                (String) p.get("expenseAccountCode"),
+                false);
         // PurchaseInvoiceService.save crea POSTED por defecto. Para
         // recurrentes queremos DRAFT (el usuario revisa precio, añade
         // líneas y luego valida en multiselección).
         var result = purchaseService.save(req);
         String invoiceId = result.invoice().id();
-        // Forzar status DRAFT y borrar asiento auto si lo creó.
+        // GAS-7: el gasto recurrente nace en DRAFT (revisar el importe antes
+        // de validar, que en RETA cambia con la base). El asiento que generó
+        // save() queda en DRAFT + auto_proposed=TRUE con la cuenta fija de la
+        // plantilla, así que aparece en "Por validar". Al validarlo ahí, la
+        // sincronización de GAS-7 marca también el gasto como POSTED. Ya NO se
+        // anula el asiento (antes se hacía y el recurrente quedaba sin asiento).
         jdbcTemplate.update(
                 "UPDATE purchase_invoices SET status = 'DRAFT' WHERE id = ?", invoiceId);
-        // Si el save generó asiento automático, anularlo: el asiento se
-        // creará cuando el usuario valide.
-        String prevEntryId = jdbcTemplate.query(
-                "SELECT journal_entry_id FROM purchase_invoices WHERE id = ?",
-                (rs, n) -> rs.getString(1), invoiceId).stream().findFirst().orElse(null);
-        if (prevEntryId != null) {
-            jdbcTemplate.update(
-                    "UPDATE journal_entries SET status = 'VOIDED' WHERE id = ?", prevEntryId);
-            jdbcTemplate.update(
-                    "UPDATE purchase_invoices SET journal_entry_id = NULL WHERE id = ?", invoiceId);
-        }
         return invoiceId;
     }
 
