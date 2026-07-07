@@ -7233,6 +7233,7 @@ public final class I18n {
             case "accounting.source_type.SALES_INVOICE" -> "Sale";
             case "accounting.source_type.SALES_PDF_IMPORT" -> "Sales PDF import";
             case "accounting.source_type.PURCHASE_INVOICE" -> "Expense";
+            case "accounting.source_type.PURCHASE_PAYMENT" -> "Payment";
             case "accounting.source_type.MANUAL" -> "Manual";
             case "accounting.source_type.BANK_MOVEMENT" -> "Bank movement";
             case "accounting.source_type.YEAR_CLOSE_REGULARIZATION" -> "Year-close regularization";
@@ -8496,6 +8497,7 @@ public final class I18n {
             case "accounting.source_type.SALES_INVOICE" -> "Venta";
             case "accounting.source_type.SALES_PDF_IMPORT" -> "Venta importada por PDF";
             case "accounting.source_type.PURCHASE_INVOICE" -> "Gasto";
+            case "accounting.source_type.PURCHASE_PAYMENT" -> "Pago";
             case "accounting.source_type.MANUAL" -> "Manual";
             case "accounting.source_type.BANK_MOVEMENT" -> "Movimiento bancario";
             case "accounting.source_type.YEAR_CLOSE_REGULARIZATION" -> "Regularización cierre";

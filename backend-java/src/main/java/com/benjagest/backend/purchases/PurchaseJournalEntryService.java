@@ -177,17 +177,25 @@ public class PurchaseJournalEntryService {
         //    de confianza al asesor.
         String entryId = UUID.randomUUID().toString();
         String concept = buildConcept(purchase);
+        // GAS-6: cuando la cuenta la eligió el usuario (gasto/recibo manual),
+        // el asiento entra VALIDADO directo (POSTED con número correlativo),
+        // como en CONTENDO — no hay nada que revisar en "Por validar". El
+        // flujo automático (PDF/cascada) sigue en DRAFT para que el asesor lo
+        // valide.
+        boolean postNow = fixedCode != null && !fixedCode.isBlank();
+        Integer entryNumber = postNow ? nextPostedEntryNumber(companyId, fiscalYearId) : null;
         jdbcTemplate.update("""
                 INSERT INTO journal_entries (
                     id, company_id, fiscal_year_id, entry_number,
                     entry_date, concept, source_type, source_id,
                     status, reviewed, auto_proposed, proposed_confidence,
                     created_by
-                ) VALUES (?, ?, ?, NULL, ?, ?, ?, ?, 'DRAFT', FALSE, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
-                entryId, companyId, fiscalYearId,
+                entryId, companyId, fiscalYearId, entryNumber,
                 Date.valueOf(purchase.invoiceDate()),
                 concept, SRC_TYPE, purchase.id(),
+                postNow ? "POSTED" : "DRAFT", false,
                 autoProposed, proposedConfidence, userId);
 
         // 5) Líneas con descripción específica por tipo de cuenta — el
@@ -302,15 +310,17 @@ public class PurchaseJournalEntryService {
                 + (purchase.invoiceNumber() != null ? " Fra. " + purchase.invoiceNumber() : "")
                 + " - " + supplierName;
         if (concept.length() > 240) concept = concept.substring(0, 240);
+        // GAS-6: el pago manual entra VALIDADO directo (POSTED con número).
+        int entryNumber = nextPostedEntryNumber(companyId, fiscalYearId);
         jdbcTemplate.update("""
                 INSERT INTO journal_entries (
                     id, company_id, fiscal_year_id, entry_number,
                     entry_date, concept, source_type, source_id,
                     status, reviewed, auto_proposed, proposed_confidence,
                     created_by
-                ) VALUES (?, ?, ?, NULL, ?, ?, ?, ?, 'DRAFT', FALSE, FALSE, NULL, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'POSTED', FALSE, FALSE, NULL, ?)
                 """,
-                entryId, companyId, fiscalYearId,
+                entryId, companyId, fiscalYearId, entryNumber,
                 Date.valueOf(paymentDate),
                 concept, SRC_TYPE_PAYMENT, purchase.id(),
                 userId);
@@ -473,11 +483,31 @@ public class PurchaseJournalEntryService {
     }
 
     private String buildConcept(PurchaseInvoice p) {
+        // Recibo sin nº de factura (p.ej. cuota de autónomo): no tiene sentido
+        // "Fra. - ..."; usamos el concepto tecleado o, si no, el proveedor.
+        if (p.invoiceNumber() == null || p.invoiceNumber().isBlank()) {
+            String base = (p.concept() != null && !p.concept().isBlank())
+                    ? p.concept()
+                    : (p.supplierName() != null ? p.supplierName() : "Gasto");
+            return base.length() > 240 ? base.substring(0, 240) : base;
+        }
         StringBuilder sb = new StringBuilder("Fra. ");
-        if (p.invoiceNumber() != null) sb.append(p.invoiceNumber()).append(' ');
+        sb.append(p.invoiceNumber()).append(' ');
         if (p.supplierName() != null) sb.append("- ").append(p.supplierName());
         String s = sb.toString();
         return s.length() > 240 ? s.substring(0, 240) : s;
+    }
+
+    /** Siguiente entry_number correlativo entre los POSTED del ejercicio. */
+    private int nextPostedEntryNumber(String companyId, String fiscalYearId) {
+        Integer max = jdbcTemplate.queryForObject("""
+                SELECT COALESCE(MAX(entry_number), 0)
+                  FROM journal_entries
+                 WHERE company_id = ? AND fiscal_year_id = ?
+                   AND status = 'POSTED'
+                   AND entry_number IS NOT NULL
+                """, Integer.class, companyId, fiscalYearId);
+        return (max == null ? 0 : max) + 1;
     }
 
     private String safe(Object v) {
