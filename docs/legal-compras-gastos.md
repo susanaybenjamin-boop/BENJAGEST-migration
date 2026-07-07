@@ -1,6 +1,7 @@
 # Compras y gastos — marco legal y decisiones de diseño
 
-> Última revisión: 2026-06-05. Si la normativa AEAT cambia, actualizar
+> Última revisión: 2026-07-07 (añadido: gastos/recibos sin factura — recibo de
+> autónomo / cuota RETA, bloque GAS). Si la normativa AEAT cambia, actualizar
 > aquí antes de modificar el módulo.
 
 ## Marco normativo
@@ -66,6 +67,33 @@ no de las recibidas.
   "Purchases & Expenses" (no solo "Compras") para alinear con la
   nomenclatura habitual de A3/Sage. El botón se llama "Eliminar"
   (no "Anular") con confirmación reforzada.
+
+### Gastos y recibos SIN factura — recibo de autónomo / cuota RETA (bloque GAS, 2026-07-07)
+
+Hay gastos deducibles que **no llevan factura** (basta el extracto/recibo): el más frecuente es
+la **cuota de autónomo (RETA)** que la Tesorería General de la Seguridad Social (NIF
+`Q2827003A`) domicilia cada mes. Fiscalmente:
+- **Deducible al 100 %** en IRPF, apartado "gastos fiscalmente deducibles" del **modelo 130**,
+  **por devengo** (la cuota del trimestre, no necesariamente la pagada).
+- **No necesita factura**: basta el extracto bancario / recibo.
+- (Fuentes: AEAT manual IRPF — gastos del titular; Infoautónomos; Holded.)
+
+**Modelo en BENJAGEST:** se registra como **GASTO** (`purchase_invoices`) **sin IVA**, eligiendo
+la cuenta de gasto (típicamente **642** "Seguridad Social a cargo de la empresa"), con proveedor
+TGSS. **Dos asientos**, como CONTENDO:
+1. **Devengo** (al crear el gasto): Debe `642` / Haber `400x` (proveedor TGSS).
+2. **Pago** (botón "Registrar pago"): Debe `400x` / Haber `572` (banco).
+
+Diseño (ver sesión 2026-07-07 en `backlog.md`):
+- Alta manual → asiento **validado directo** (POSTED); el flujo automático (PDF/cascada) va a
+  "Por validar". Al validar ahí un asiento `PURCHASE_INVOICE` se **sincroniza** el estado del
+  gasto (no quedan descuadrados: asiento POSTED ↔ gasto POSTED).
+- **Sin IVA** ⇒ no se genera línea `472`.
+- **Recurrente**: casilla "Repetir cada mes" (o "Hacer recurrente" con selector de cuenta) →
+  genera el gasto en Compras y Gastos cada mes con la cuenta fija; el pago se registra manual.
+- Un gasto que viva solo como **asiento** (no como fila de Compras) **suma igual** en los KPIs
+  de gastos y en los modelos (130/303/P&G): estos leen de la **contabilidad** (`SUM` del debe de
+  las cuentas 6xx en asientos POSTED, `SalesAndExpensesKpiService`), no de la lista de Compras.
 
 ### Pendiente — cuando se cierre el slice de cierre fiscal
 
