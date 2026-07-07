@@ -36,9 +36,10 @@ public class PurchaseInvoiceRepository {
                     invoice_number, invoice_date,
                     base_amount, vat_percent, vat_amount, total_amount,
                     document_sha256, invoice_index_in_pdf,
-                    status, journal_entry_id, expense_account_code, concept, notes,
+                    status, journal_entry_id, expense_account_code,
+                    paid, paid_date, payment_account_code, concept, notes,
                     uploaded_by_user_id, uploaded_by_company_id
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 inv.id(),
                 tenantContext.getCurrentCompanyId(),
@@ -55,6 +56,9 @@ public class PurchaseInvoiceRepository {
                 inv.status() == null ? PurchaseInvoice.STATUS_POSTED : inv.status(),
                 inv.journalEntryId(),
                 inv.expenseAccountCode(),
+                inv.paid(),
+                inv.paidDate() == null ? null : Date.valueOf(inv.paidDate()),
+                inv.paymentAccountCode(),
                 inv.concept(),
                 inv.notes(),
                 inv.uploadedByUserId(),
@@ -69,7 +73,8 @@ public class PurchaseInvoiceRepository {
                            invoice_number, invoice_date,
                            base_amount, vat_percent, vat_amount, total_amount,
                            document_sha256, invoice_index_in_pdf,
-                           status, journal_entry_id, expense_account_code, concept, notes,
+                           status, journal_entry_id, expense_account_code,
+                       paid, paid_date, payment_account_code, concept, notes,
                            uploaded_by_user_id, uploaded_by_company_id,
                            created_at, updated_at
                       FROM purchase_invoices
@@ -93,7 +98,8 @@ public class PurchaseInvoiceRepository {
                        invoice_number, invoice_date,
                        base_amount, vat_percent, vat_amount, total_amount,
                        document_sha256, invoice_index_in_pdf,
-                       status, journal_entry_id, expense_account_code, concept, notes,
+                       status, journal_entry_id, expense_account_code,
+                       paid, paid_date, payment_account_code, concept, notes,
                        uploaded_by_user_id, uploaded_by_company_id,
                        created_at, updated_at
                   FROM purchase_invoices
@@ -116,7 +122,8 @@ public class PurchaseInvoiceRepository {
                        invoice_number, invoice_date,
                        base_amount, vat_percent, vat_amount, total_amount,
                        document_sha256, invoice_index_in_pdf,
-                       status, journal_entry_id, expense_account_code, concept, notes,
+                       status, journal_entry_id, expense_account_code,
+                       paid, paid_date, payment_account_code, concept, notes,
                        uploaded_by_user_id, uploaded_by_company_id,
                        created_at, updated_at
                   FROM purchase_invoices
@@ -148,6 +155,17 @@ public class PurchaseInvoiceRepository {
                 """, status, id, tenantContext.getCurrentCompanyId());
     }
 
+    /** GAS-2 — Marca el gasto como pagado (fecha + cuenta de banco usada). */
+    public int markPaid(String id, java.time.LocalDate paidDate, String paymentAccountCode) {
+        return jdbcTemplate.update("""
+                UPDATE purchase_invoices
+                   SET paid = TRUE, paid_date = ?, payment_account_code = ?
+                 WHERE id = ? AND company_id = ?
+                """,
+                paidDate == null ? null : Date.valueOf(paidDate),
+                paymentAccountCode, id, tenantContext.getCurrentCompanyId());
+    }
+
     public int updateJournalEntryFk(String id, String journalEntryId) {
         return jdbcTemplate.update("""
                 UPDATE purchase_invoices
@@ -172,6 +190,7 @@ public class PurchaseInvoiceRepository {
 
     private PurchaseInvoice map(ResultSet rs, int rowNum) throws SQLException {
         Date d = rs.getDate("invoice_date");
+        Date pd = rs.getDate("paid_date");
         Timestamp ca = rs.getTimestamp("created_at");
         Timestamp ua = rs.getTimestamp("updated_at");
         return new PurchaseInvoice(
@@ -190,6 +209,9 @@ public class PurchaseInvoiceRepository {
                 rs.getString("status"),
                 rs.getString("journal_entry_id"),
                 rs.getString("expense_account_code"),
+                rs.getBoolean("paid"),
+                pd == null ? null : pd.toLocalDate(),
+                rs.getString("payment_account_code"),
                 rs.getString("concept"),
                 rs.getString("notes"),
                 rs.getString("uploaded_by_user_id"),

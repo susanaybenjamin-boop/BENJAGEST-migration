@@ -71,6 +71,16 @@ public class PurchaseInvoiceController {
     }
 
     /**
+     * GAS-2 — Registra el pago del gasto (segundo asiento: Debe 400 proveedor
+     * / Haber 572 banco) y lo marca como pagado.
+     */
+    @PostMapping("/{id}/pay")
+    public PurchaseInvoice pay(@PathVariable("id") String id,
+                               @RequestBody PurchaseInvoiceService.PayRequest body) {
+        return service.registerPayment(id, body.paymentDate(), body.bankAccountCode());
+    }
+
+    /**
      * Valida un lote de facturas DRAFT (multiselección).
      * Devuelve resumen por id: POSTED/SKIPPED/ERROR + journalEntryId si
      * se generó asiento contable. La UI presenta el resultado.

@@ -764,6 +764,7 @@ public class RecurringTaskService {
                     PurchaseInvoice.STATUS_POSTED,
                     v.id(), // vincular al asiento
                     null, // sin cuenta de gasto fija (cascada automática)
+                    false, null, null, // GAS-2: pago se gestiona aparte
                     concept,
                     "Generado por recurrencia '" + task.name() + "'",
                     safeUserId(),

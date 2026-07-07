@@ -97,6 +97,7 @@ public class PurchaseInvoiceService {
                 PurchaseInvoice.STATUS_POSTED,
                 null,
                 blankToNull(req.expenseAccountCode()),
+                false, null, null, // GAS-2: nace pendiente de pago
                 blankToNull(req.concept()),
                 blankToNull(req.notes()),
                 user.userId(),
@@ -136,6 +137,27 @@ public class PurchaseInvoiceService {
 
     public List<PurchaseInvoice> list(Integer year, String status, String supplierNif) {
         return repository.list(year, status, supplierNif);
+    }
+
+    /**
+     * GAS-2 — Registra el PAGO de un gasto (segundo paso, como CONTENDO):
+     * genera el asiento Debe 400 proveedor / Haber 572 banco y marca el
+     * gasto como pagado. Idempotencia mínima: si ya está pagado, 409.
+     */
+    @Transactional
+    public PurchaseInvoice registerPayment(String id, LocalDate paymentDate, String bankAccountCode) {
+        billingAgreementGuard.requireAgreementOrOwn(
+                com.benjagest.backend.billing.tpb.BillingAgreementGuard.Scope.PURCHASES);
+        PurchaseInvoice existing = get(id);
+        if (existing.paid()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "El gasto ya esta pagado");
+        }
+        // El pago debe caer en un ejercicio abierto (mismo criterio que el devengo).
+        fiscalGuard.requireOpenForDate(paymentDate, "registrar el pago");
+        AuthenticatedUser user = currentUserService.require();
+        journalService.createPaymentForPurchase(existing, paymentDate, bankAccountCode, user.userId());
+        repository.markPaid(id, paymentDate, bankAccountCode);
+        return repository.findById(id).orElseThrow();
     }
 
     /**
@@ -345,6 +367,9 @@ public class PurchaseInvoiceService {
             boolean duplicate,
             String message
     ) {}
+
+    /** GAS-2 — Petición de pago de un gasto (fecha + cuenta de banco 572). */
+    public record PayRequest(LocalDate paymentDate, String bankAccountCode) {}
 
     public record BatchValidateRequest(java.util.List<String> ids) {}
 

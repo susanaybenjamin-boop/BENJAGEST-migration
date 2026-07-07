@@ -39,6 +39,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class PurchaseJournalEntryService {
 
     private static final String SRC_TYPE = "PURCHASE_INVOICE";
+    private static final String SRC_TYPE_PAYMENT = "PURCHASE_PAYMENT";
 
     private final JdbcTemplate jdbcTemplate;
     private final TenantContext tenantContext;
@@ -241,6 +242,86 @@ public class PurchaseJournalEntryService {
     }
 
     /**
+     * GAS-2 — Crea el asiento de PAGO de una factura recibida / recibo:
+     *
+     *   Debe  400x (Proveedor)   = total
+     *                Haber  572x (Banco)  = total
+     *
+     * Segundo asiento del gasto (el devengo se creó al guardar), igual que
+     * en CONTENDO. Lanza excepción con mensaje legible si falta el ejercicio
+     * abierto, la cuenta de banco o la del proveedor — el usuario pidió pagar
+     * explícitamente, así que no fallamos en silencio.
+     */
+    @Transactional
+    public String createPaymentForPurchase(PurchaseInvoice purchase,
+                                           LocalDate paymentDate,
+                                           String bankAccountCode,
+                                           String userId) {
+        String companyId = tenantContext.getCurrentCompanyId();
+        if (paymentDate == null) {
+            throw new org.springframework.web.server.ResponseStatusException(
+                    org.springframework.http.HttpStatus.BAD_REQUEST, "Falta la fecha de pago");
+        }
+        if (bankAccountCode == null || bankAccountCode.isBlank()) {
+            throw new org.springframework.web.server.ResponseStatusException(
+                    org.springframework.http.HttpStatus.BAD_REQUEST, "Falta la cuenta de banco");
+        }
+        java.math.BigDecimal amount = purchase.totalAmount();
+        if (amount == null || amount.signum() == 0) {
+            throw new org.springframework.web.server.ResponseStatusException(
+                    org.springframework.http.HttpStatus.BAD_REQUEST,
+                    "El gasto no tiene importe a pagar");
+        }
+        String fiscalYearId = findOpenFiscalYearId(companyId, paymentDate);
+        if (fiscalYearId == null) {
+            throw new org.springframework.web.server.ResponseStatusException(
+                    org.springframework.http.HttpStatus.CONFLICT,
+                    "No hay ejercicio contable abierto para la fecha de pago");
+        }
+        String acc572 = findAccountByCode(companyId, bankAccountCode.trim());
+        if (acc572 == null) {
+            throw new org.springframework.web.server.ResponseStatusException(
+                    org.springframework.http.HttpStatus.CONFLICT,
+                    "No existe la cuenta de banco " + bankAccountCode);
+        }
+        TerceroAccountResolverService.ResolvedAccount supplierAcc =
+                terceroResolver.getOrCreateForSupplier(
+                        purchase.supplierNif(), purchase.supplierName());
+        String acc400 = supplierAcc.accountId();
+        if (acc400 == null) {
+            throw new org.springframework.web.server.ResponseStatusException(
+                    org.springframework.http.HttpStatus.CONFLICT,
+                    "No se pudo resolver la cuenta del proveedor");
+        }
+
+        String entryId = UUID.randomUUID().toString();
+        String supplierName = purchase.supplierName() != null && !purchase.supplierName().isBlank()
+                ? purchase.supplierName()
+                : (purchase.supplierNif() != null ? purchase.supplierNif() : "Proveedor");
+        String concept = "Pago"
+                + (purchase.invoiceNumber() != null ? " Fra. " + purchase.invoiceNumber() : "")
+                + " - " + supplierName;
+        if (concept.length() > 240) concept = concept.substring(0, 240);
+        jdbcTemplate.update("""
+                INSERT INTO journal_entries (
+                    id, company_id, fiscal_year_id, entry_number,
+                    entry_date, concept, source_type, source_id,
+                    status, reviewed, auto_proposed, proposed_confidence,
+                    created_by
+                ) VALUES (?, ?, ?, NULL, ?, ?, ?, ?, 'DRAFT', FALSE, FALSE, NULL, ?)
+                """,
+                entryId, companyId, fiscalYearId,
+                Date.valueOf(paymentDate),
+                concept, SRC_TYPE_PAYMENT, purchase.id(),
+                userId);
+
+        // Debe 400 proveedor / Haber 572 banco.
+        insertLine(entryId, acc400, supplierName, amount, java.math.BigDecimal.ZERO);
+        insertLine(entryId, acc572, concept, java.math.BigDecimal.ZERO, amount);
+        return entryId;
+    }
+
+    /**
      * Borra físicamente el asiento de una factura de compra que se
      * elimina. Acordado con el asesor: si el gasto desaparece, su asiento
      * desaparece también — queda un "hueco" en la numeración del Diario
@@ -258,9 +339,26 @@ public class PurchaseJournalEntryService {
      */
     @Transactional
     public void reverseForPurchase(PurchaseInvoice purchase) {
-        if (purchase.journalEntryId() == null) return;
         String companyId = tenantContext.getCurrentCompanyId();
-        String entryId = purchase.journalEntryId();
+        // 1) Asiento de devengo (vinculado por journal_entry_id).
+        if (purchase.journalEntryId() != null) {
+            deleteEntry(companyId, purchase.journalEntryId());
+        }
+        // 2) Asiento(s) de PAGO (GAS-2). No están vinculados por
+        //    journal_entry_id (ese apunta al devengo); se localizan por
+        //    source_type/source_id.
+        List<String> paymentEntries = jdbcTemplate.query("""
+                SELECT id FROM journal_entries
+                 WHERE company_id = ? AND source_type = ? AND source_id = ?
+                """, (rs, n) -> rs.getString("id"),
+                companyId, SRC_TYPE_PAYMENT, purchase.id());
+        for (String pe : paymentEntries) {
+            deleteEntry(companyId, pe);
+        }
+    }
+
+    /** Borra un asiento y sus dependencias (eventos de aprendizaje + líneas). */
+    private void deleteEntry(String companyId, String entryId) {
         jdbcTemplate.update("""
                 DELETE FROM accounting_learning_events
                  WHERE journal_entry_id = ? AND company_id = ?
