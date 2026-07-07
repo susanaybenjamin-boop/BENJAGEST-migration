@@ -17,9 +17,11 @@ package com.benjagest.backend.billing.manufacturer;
  * Es un MODELO DE AUTOCERTIFICACION — no requiere intervencion de
  * tercero. La responsabilidad recae integramente en el fabricante.
  *
- * Aqui los datos son los del proyecto BENJAGEST. Cuando el proyecto
- * tenga forma juridica (autonomo, S.L., etc), se actualizan estos
- * valores y la fecha de la declaracion.
+ * DR-1 (2026-07-07): datos reales del productor (decision de Benjamin
+ * en sesion 2026-07-07) y version del producto dinamica — la Orden
+ * exige que la declaracion conste "en cada una de sus versiones", y la
+ * version instalada la conoce la UI (UpdateService.APP_VERSION), que
+ * la pasa como parametro al pedir la declaracion.
  */
 public record ManufacturerDeclaration(
         // Identificacion del fabricante
@@ -39,32 +41,46 @@ public record ManufacturerDeclaration(
         String complianceCommitment
 ) {
 
-    /** Declaracion oficial del producto BENJAGEST. */
-    public static ManufacturerDeclaration current() {
+    /**
+     * Declaracion oficial del producto BENJAGEST para la version
+     * instalada. La version viene de la UI (unica fuente de verdad del
+     * versionado del producto: se bumpea en cada release); si no llega,
+     * se indica donde consultarla en lugar de inventar un numero.
+     */
+    public static ManufacturerDeclaration current(String productVersion) {
+        String version = (productVersion == null || productVersion.isBlank())
+                ? "(version instalada: ver Configuracion > Acerca de)"
+                : productVersion.trim();
         return new ManufacturerDeclaration(
-                "BENJAGEST (proyecto personal — pendiente forma juridica)",
-                "PENDIENTE",
+                "Benjamín Recio López",
+                "74668351R",
                 "susanaybenjamin@gmail.com",
-                "Espana",
+                "España",
                 "BENJAGEST",
-                "0.1.0-SNAPSHOT",
-                "Sistema Informatico de Facturacion (SIF) modular — facturacion + gestoria",
-                "Facturacion emitida, series de numeracion, hash encadenado VeriFactu/NO VeriFactu, "
-                        + "registro de eventos del SIF, firma XML-DSig (XAdES-EPES en hoja de ruta), "
-                        + "envio a AEAT VeriFactu (en hoja de ruta), almacenamiento documental, "
-                        + "envio email cliente, anulacion por rectificativa con vinculo, "
-                        + "proformas convertibles, deteccion de anomalias en cadenas, "
-                        + "verificacion de integridad bajo demanda y periodica (12h).",
-                "2026-06-04",
-                "Espana (online)",
-                "El fabricante declara bajo su responsabilidad que este SIF cumple los requisitos "
-                        + "establecidos por el Real Decreto 1007/2023, de 5 de diciembre, y la Orden "
-                        + "HAC/1177/2024, de 17 de octubre, en su mejor entendimiento y a su mejor "
-                        + "esfuerzo, con las puntualizaciones documentadas en docs/backlog.md "
-                        + "(VF-SIGN-XADES-AEAT, VF3-SOAP afinado, VF-EVENTS export real, OCR "
-                        + "importacion). El cumplimiento estricto del envio a AEAT VeriFactu requiere "
-                        + "completar el slice VF-SIGN-XADES-AEAT y la prueba contra entorno AEAT real "
-                        + "con certificado FNMT representante."
+                version,
+                "Sistema Informático de Facturación (SIF) modular — facturación, "
+                        + "contabilidad y gestión de asesoría, instalación local (on-premise)",
+                "Facturación emitida con series de numeración; registro de facturación "
+                        + "con huella (hash) SHA-256 encadenada en las modalidades «VERI*FACTU» y "
+                        + "«NO VERI*FACTU»; registro de eventos del SIF con cadena propia; código QR "
+                        + "de verificación y leyenda legal en la factura; anulación mediante factura "
+                        + "rectificativa con vínculo a la original; proformas convertibles; firma "
+                        + "electrónica XML-DSig de los registros (XAdES-EPES en hoja de ruta); "
+                        + "detección periódica de anomalías en las cadenas (cada 12 h) y verificación "
+                        + "de integridad bajo demanda; conservación sin purga automática; exportación "
+                        + "de registros y eventos; generación de PDF y envío por correo al cliente.",
+                "2026-07-07",
+                "España",
+                "El productor arriba identificado declara bajo su responsabilidad que este "
+                        + "sistema informático de facturación cumple, en la modalidad de emisión "
+                        + "«NO VERI*FACTU» (registro local de facturación con huella encadenada, "
+                        + "registro de eventos, firma electrónica, conservación, integridad, "
+                        + "trazabilidad e inalterabilidad de los registros), los requisitos del "
+                        + "artículo 29.2.j) de la Ley 58/2003, General Tributaria, del Real Decreto "
+                        + "1007/2023, de 5 de diciembre, y de la Orden HAC/1177/2024, de 17 de "
+                        + "octubre. La modalidad de remisión voluntaria «VERI*FACTU» (envío de los "
+                        + "registros de facturación a la sede electrónica de la AEAT) figura en la "
+                        + "hoja de ruta del producto y no se ofrece operativa en esta versión."
         );
     }
 }

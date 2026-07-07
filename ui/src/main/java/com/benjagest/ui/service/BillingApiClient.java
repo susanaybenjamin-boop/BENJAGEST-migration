@@ -510,11 +510,15 @@ public class BillingApiClient {
     /**
      * Declaración responsable del fabricante del SIF (RD 1007/2023).
      * Endpoint informativo — devuelve el JSON con los datos del
-     * productor + producto + fecha + compromiso.
+     * productor + producto + fecha + compromiso. DR-1: la versión
+     * instalada la conoce la UI (UpdateService.APP_VERSION) y se pasa
+     * como query param para que la declaración sea "de esta versión".
      */
-    public String fetchManufacturerDeclaration() throws IOException, InterruptedException {
+    public String fetchManufacturerDeclaration(String version) throws IOException, InterruptedException {
+        String q = version == null || version.isBlank() ? ""
+                : "?version=" + java.net.URLEncoder.encode(version, java.nio.charset.StandardCharsets.UTF_8);
         HttpResponse<String> response = sendAuthorized(HttpRequest.newBuilder(
-                URI.create(baseUrl + "/billing/manufacturer-declaration"))
+                URI.create(baseUrl + "/billing/manufacturer-declaration" + q))
                 .timeout(Duration.ofSeconds(10))
                 .GET());
         ensureOk(response);

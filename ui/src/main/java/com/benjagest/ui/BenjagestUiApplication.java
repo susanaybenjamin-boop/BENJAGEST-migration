@@ -5448,6 +5448,7 @@ public class BenjagestUiApplication extends Application
                     @Override public void bringToFront() { BenjagestUiApplication.this.bringToFront(); }
                     @Override public javafx.stage.Window ownerWindow() { return root.getScene().getWindow(); }
                     @Override public void checkForUpdates(boolean manual) { BenjagestUiApplication.this.checkForUpdates(manual); }
+                    @Override public void showInternalPdfViewer(byte[] bytes, java.nio.file.Path tempPath) { BenjagestUiApplication.this.showInternalPdfViewer(bytes, tempPath); }
                     @Override public void refreshLockTimeout(int min) { BenjagestUiApplication.this.refreshLockTimeout(min); }
                     @Override public void setScreensaverStyle(String style) { screensaverStyle = style; }
                     @Override public String sessionCompanyName() { return session.companyName(); }
