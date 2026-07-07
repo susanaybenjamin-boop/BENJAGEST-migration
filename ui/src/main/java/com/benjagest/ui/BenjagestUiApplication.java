@@ -11288,6 +11288,18 @@ public class BenjagestUiApplication extends Application
         baseSpinner.setEditable(true);
         javafx.scene.control.Spinner<Double> vatPctSpinner = new javafx.scene.control.Spinner<>(0.0, 21.0, 21.0, 0.5);
         vatPctSpinner.setEditable(true);
+        // GAS-9: cuenta de gasto (6xx) del recurrente PURCHASE (p.ej. 642 para
+        // la cuota RETA). Vacío = cascada automática. Se rellena tras cargar el
+        // plan; prefillExpCode guarda la cuenta al editar una plantilla.
+        ComboBox<AccountSummary> recExpenseAccount = new ComboBox<>();
+        recExpenseAccount.setConverter(new javafx.util.StringConverter<>() {
+            @Override public String toString(AccountSummary a) {
+                return a == null ? "" : a.code() + " — " + a.name();
+            }
+            @Override public AccountSummary fromString(String s) { return null; }
+        });
+        recExpenseAccount.setMaxWidth(Double.MAX_VALUE);
+        final String[] prefillExpCode = { null };
 
         // Si estamos editando, prellenar desde payloadJson
         if (existing != null && existing.payloadJson() != null) {
@@ -11320,11 +11332,38 @@ public class BenjagestUiApplication extends Application
                     if (b != null) baseSpinner.getValueFactory().setValue(b);
                     Double vp = extractDoubleField(pj, "vatPercent");
                     if (vp != null) vatPctSpinner.getValueFactory().setValue(vp);
+                    prefillExpCode[0] = extractStringField(pj, "expenseAccountCode");
                 }
             } catch (Exception ignored) {
                 // si el JSON viene raro, dejamos campos vacíos — el asesor
                 // los rellena de cero
             }
+        }
+
+        // GAS-9: cargar cuentas 6xx para el selector (solo PURCHASE) y
+        // seleccionar la de la plantilla si estamos editando.
+        if (!isSales) {
+            Task<java.util.List<AccountSummary>> recAccTask = new Task<>() {
+                @Override protected java.util.List<AccountSummary> call() throws Exception {
+                    return accountingApiClient.listAccounts(null);
+                }
+            };
+            recAccTask.setOnSucceeded(ev -> {
+                java.util.List<AccountSummary> sixxx = new java.util.ArrayList<>();
+                for (var acc : recAccTask.getValue()) {
+                    if (acc.code() != null && acc.code().startsWith("6")) sixxx.add(acc);
+                }
+                recExpenseAccount.getItems().setAll(sixxx);
+                if (prefillExpCode[0] != null && !prefillExpCode[0].isBlank()) {
+                    for (var acc : sixxx) {
+                        if (prefillExpCode[0].equals(acc.code())) {
+                            recExpenseAccount.getSelectionModel().select(acc);
+                            break;
+                        }
+                    }
+                }
+            });
+            start(recAccTask, "recurring-expense-accounts");
         }
 
         // ------------ Layout ------------
@@ -11412,6 +11451,8 @@ public class BenjagestUiApplication extends Application
         } else {
             grid.add(new Label(t("recurring.field.invoice_number")), 0, r);
             grid.add(invoiceNumberField, 1, r++, 3, 1);
+            grid.add(new Label(t("recurring.field.expense_account")), 0, r);
+            grid.add(recExpenseAccount, 1, r++, 3, 1);
             grid.add(new Label(t("recurring.field.base_amount")), 0, r);
             grid.add(baseSpinner, 1, r);
             grid.add(new Label(t("recurring.field.vat_percent")), 2, r);
@@ -11525,6 +11566,8 @@ public class BenjagestUiApplication extends Application
             body.append(",\"vatPercent\":").append(vatPct);
             body.append(",\"vatAmount\":").append(vatAmt);
             body.append(",\"totalAmount\":").append(total);
+            AccountSummary recAcc = recExpenseAccount.getSelectionModel().getSelectedItem();
+            if (recAcc != null) appendJsonField(body, "expenseAccountCode", recAcc.code(), false);
         }
         body.append("}}");
 
