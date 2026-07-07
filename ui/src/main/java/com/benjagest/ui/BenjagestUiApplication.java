@@ -1,5 +1,6 @@
 package com.benjagest.ui;
 
+import com.benjagest.ui.model.AccountingModels.AccountSummary;
 import com.benjagest.ui.model.AppMode;
 import com.benjagest.ui.model.Language;
 import com.benjagest.ui.model.ModuleLink;
@@ -47,6 +48,7 @@ import com.benjagest.ui.service.AuthApiClient;
 import com.benjagest.ui.service.AuthSession;
 import com.benjagest.ui.service.BillingApiClient;
 import com.benjagest.ui.service.CustomerApiClient;
+import com.benjagest.ui.service.PurchaseInvoiceApiClient;
 import com.benjagest.ui.service.SettingsApiClient;
 import com.benjagest.ui.service.WorkspaceApiClient;
 
@@ -3434,6 +3436,26 @@ public class BenjagestUiApplication extends Application
                     sel.supplierName(), sel.totalAmount());
         });
 
+        // GAS-3/4 — Alta manual de gasto/recibo (sin PDF): gasto genérico
+        // eligiendo la cuenta, y recibo de autónomo con 642/TGSS prefijados.
+        Button newExpenseBtn = new Button(t("purchases.action.new_expense"));
+        newExpenseBtn.setGraphic(icon("fas-plus"));
+        newExpenseBtn.getStyleClass().add("button-primary");
+        newExpenseBtn.setOnAction(ev -> openManualExpenseDialog(false));
+
+        Button newAutonomoBtn = new Button(t("purchases.action.new_autonomo"));
+        newAutonomoBtn.setGraphic(icon("fas-user-tie"));
+        newAutonomoBtn.setOnAction(ev -> openManualExpenseDialog(true));
+
+        // GAS-5 — Registrar el pago del gasto seleccionado (segundo asiento).
+        Button registerPaymentBtn = new Button(t("purchases.action.register_payment"));
+        registerPaymentBtn.setGraphic(icon("fas-money-check"));
+        registerPaymentBtn.setDisable(true);
+        registerPaymentBtn.setOnAction(ev -> {
+            var sel = purchaseInvoicesTable.getSelectionModel().getSelectedItem();
+            if (sel != null) openRegisterPaymentDialog(sel);
+        });
+
         purchaseInvoicesTable.getSelectionModel().getSelectedItems()
                 .addListener((javafx.collections.ListChangeListener<com.benjagest.ui.model.PurchaseInvoiceEntry>)
                         ch -> {
@@ -3448,13 +3470,16 @@ public class BenjagestUiApplication extends Application
                     makeRecurringPurchaseBtn.setDisable(!onePosted);
                     // Vencimientos: solo selección única.
                     dueDatesBtn.setDisable(sel.size() != 1);
+                    // GAS-5: registrar pago solo con una fila seleccionada.
+                    registerPaymentBtn.setDisable(sel.size() != 1);
                 });
 
         // Slice 3V — Acciones SOBRE la tabla, no debajo. Antes vivían
         // bajo el listado y Benjamin tenía que hacer scroll para verlos
         // cuando el listado era largo. Ahora van encima, junto a los
         // filtros, en su propia fila para no recargar la primera.
-        HBox actions = new HBox(10, validateBatchBtn, makeRecurringPurchaseBtn, dueDatesBtn, deleteBtn);
+        HBox actions = new HBox(10, newExpenseBtn, newAutonomoBtn, validateBatchBtn,
+                makeRecurringPurchaseBtn, dueDatesBtn, registerPaymentBtn, deleteBtn);
         actions.setAlignment(javafx.geometry.Pos.CENTER_LEFT);
 
         VBox body = new VBox(12);
@@ -3541,6 +3566,322 @@ public class BenjagestUiApplication extends Application
     private Integer parseYearFilter(String text) {
         if (text == null || text.equals(t("list.filter.all"))) return null;
         try { return Integer.parseInt(text); } catch (Exception ex) { return null; }
+    }
+
+    /**
+     * GAS-8 — Arma el JSON de una plantilla recurrente PURCHASE mensual a
+     * partir de los datos de un gasto/recibo. El recurrente genera cada mes
+     * un gasto en Compras y Gastos con la misma cuenta fija (payload
+     * expenseAccountCode). Empieza el mes siguiente a la fecha del gasto para
+     * no duplicar el de este mes.
+     */
+    private String buildMonthlyExpenseRecurringJson(
+            String nif, String name, String concept,
+            java.math.BigDecimal base, java.math.BigDecimal vatPct,
+            java.math.BigDecimal vat, java.math.BigDecimal total,
+            String accountCode, java.time.LocalDate date) {
+        java.time.LocalDate first = (date == null ? java.time.LocalDate.now() : date).plusMonths(1);
+        String tName = (concept != null && !concept.isBlank()) ? concept
+                : (name != null && !name.isBlank() ? name : t("expense.dialog.title"));
+        StringBuilder b = new StringBuilder();
+        b.append('{');
+        b.append("\"kind\":\"PURCHASE\"");
+        b.append(",\"name\":").append(jsonString(tName));
+        b.append(",\"frequency\":\"MONTHLY\"");
+        b.append(",\"dayOfMonth\":").append(first.getDayOfMonth());
+        b.append(",\"firstRunDate\":\"").append(first).append('"');
+        b.append(",\"payload\":{");
+        b.append("\"supplierNif\":").append(jsonString(nif));
+        b.append(",\"supplierName\":").append(jsonString(name == null ? "" : name));
+        if (concept != null && !concept.isBlank())
+            b.append(",\"concept\":").append(jsonString(concept));
+        b.append(",\"baseAmount\":").append(base.toPlainString());
+        b.append(",\"vatPercent\":").append(vatPct.toPlainString());
+        b.append(",\"vatAmount\":").append(vat.toPlainString());
+        b.append(",\"totalAmount\":").append(total.toPlainString());
+        b.append(",\"expenseAccountCode\":").append(jsonString(accountCode));
+        b.append("}}");
+        return b.toString();
+    }
+
+    /** Parsea un importe tecleado por el usuario (admite coma decimal y "€"). */
+    private java.math.BigDecimal parseUserAmount(String text) {
+        if (text == null) return null;
+        String s = text.trim().replace("€", "").replace(" ", "").replace(",", ".");
+        if (s.isEmpty()) return null;
+        try { return new java.math.BigDecimal(s); } catch (Exception ex) { return null; }
+    }
+
+    /**
+     * GAS-3/4 — Diálogo de alta manual de un gasto/recibo SIN PDF. Con
+     * {@code autonomo=true} viene pre-configurado como recibo de autónomo
+     * (cuenta 642, proveedor TGSS, sin IVA). Genera el asiento de devengo
+     * (Debe cuenta de gasto / Haber proveedor); el pago se registra luego
+     * con "Registrar pago".
+     */
+    private void openManualExpenseDialog(boolean autonomo) {
+        if (!ensureBillingAllowed(false)) return; // AGR-2: compras
+        javafx.stage.Stage dlg = new javafx.stage.Stage();
+        dlg.initModality(javafx.stage.Modality.APPLICATION_MODAL);
+        dlg.setTitle(autonomo ? t("expense.autonomo.title") : t("expense.dialog.title"));
+
+        TextField nifField = new TextField();
+        TextField nameField = new TextField();
+        DatePicker dateField = new DatePicker(java.time.LocalDate.now());
+        TextField conceptField = new TextField();
+        TextField amountField = new TextField();
+        amountField.setPromptText("0,00");
+        CheckBox noVat = new CheckBox(t("expense.field.no_vat"));
+        TextField vatPctField = new TextField("21");
+        vatPctField.setPrefColumnCount(4);
+        // GAS-8: repetir el gasto cada mes (crea plantilla recurrente que lo
+        // regenera en Compras y Gastos). Util para la cuota RETA mensual.
+        CheckBox recurringChk = new CheckBox(t("expense.recurring"));
+        ComboBox<AccountSummary> accountCombo = new ComboBox<>();
+        accountCombo.setConverter(new javafx.util.StringConverter<>() {
+            @Override public String toString(AccountSummary a) {
+                return a == null ? "" : a.code() + " — " + a.name();
+            }
+            @Override public AccountSummary fromString(String s) { return null; }
+        });
+        accountCombo.setMaxWidth(Double.MAX_VALUE);
+
+        noVat.selectedProperty().addListener((o, ov, nv) -> vatPctField.setDisable(nv));
+        if (autonomo) {
+            nameField.setText("Tesorería General de la Seguridad Social");
+            conceptField.setText(t("expense.autonomo.concept"));
+            noVat.setSelected(true);
+            vatPctField.setDisable(true);
+        }
+
+        // Cuentas de gasto: cargar el plan y filtrar por prefijo "6".
+        Task<java.util.List<AccountSummary>> loadTask = new Task<>() {
+            @Override protected java.util.List<AccountSummary> call() throws Exception {
+                return accountingApiClient.listAccounts(null);
+            }
+        };
+        loadTask.setOnSucceeded(e -> {
+            java.util.List<AccountSummary> sixxx = new java.util.ArrayList<>();
+            for (var a : loadTask.getValue()) {
+                if (a.code() != null && a.code().startsWith("6")) sixxx.add(a);
+            }
+            accountCombo.getItems().setAll(sixxx);
+            if (autonomo) {
+                for (var a : sixxx) {
+                    if (a.code() != null && a.code().startsWith("642")) {
+                        accountCombo.getSelectionModel().select(a);
+                        break;
+                    }
+                }
+            }
+        });
+        start(loadTask, "expense-accounts");
+
+        javafx.scene.layout.GridPane grid = new javafx.scene.layout.GridPane();
+        grid.setHgap(10); grid.setVgap(10);
+        int row = 0;
+        grid.add(new Label(t("expense.field.supplier_nif")), 0, row); grid.add(nifField, 1, row++);
+        grid.add(new Label(t("expense.field.supplier_name")), 0, row); grid.add(nameField, 1, row++);
+        grid.add(new Label(t("expense.field.date")), 0, row); grid.add(dateField, 1, row++);
+        grid.add(new Label(t("expense.field.concept")), 0, row); grid.add(conceptField, 1, row++);
+        grid.add(new Label(t("expense.field.account")), 0, row); grid.add(accountCombo, 1, row++);
+        grid.add(new Label(t("expense.field.amount")), 0, row); grid.add(amountField, 1, row++);
+        HBox vatRow = new HBox(8, noVat, new Label(t("expense.field.vat_percent")), vatPctField);
+        vatRow.setAlignment(Pos.CENTER_LEFT);
+        grid.add(new Label(t("expense.field.vat")), 0, row); grid.add(vatRow, 1, row++);
+        grid.add(recurringChk, 1, row++);
+        javafx.scene.layout.GridPane.setHgrow(nifField, Priority.ALWAYS);
+        javafx.scene.layout.GridPane.setHgrow(accountCombo, Priority.ALWAYS);
+
+        Button saveBtn = new Button(t("common.save"));
+        saveBtn.getStyleClass().add("button-primary");
+        Button cancelBtn = new Button(t("common.cancel"));
+        cancelBtn.setOnAction(ev -> dlg.close());
+        HBox buttons = new HBox(10, cancelBtn, saveBtn);
+        buttons.setAlignment(Pos.CENTER_RIGHT);
+
+        saveBtn.setOnAction(ev -> {
+            String nif = nifField.getText() == null ? "" : nifField.getText().trim();
+            if (nif.isEmpty()) { showError(t("expense.err.title"), t("expense.err.supplier")); return; }
+            AccountSummary acct = accountCombo.getSelectionModel().getSelectedItem();
+            if (acct == null) { showError(t("expense.err.title"), t("expense.err.account")); return; }
+            java.math.BigDecimal amount = parseUserAmount(amountField.getText());
+            if (amount == null || amount.signum() <= 0) {
+                showError(t("expense.err.title"), t("expense.err.amount")); return;
+            }
+            java.math.BigDecimal pct;
+            java.math.BigDecimal vat;
+            java.math.BigDecimal total;
+            if (noVat.isSelected()) {
+                pct = java.math.BigDecimal.ZERO; vat = java.math.BigDecimal.ZERO; total = amount;
+            } else {
+                java.math.BigDecimal parsed = parseUserAmount(vatPctField.getText());
+                pct = parsed == null ? java.math.BigDecimal.ZERO : parsed;
+                vat = amount.multiply(pct).divide(new java.math.BigDecimal("100"))
+                        .setScale(2, java.math.RoundingMode.HALF_UP);
+                total = amount.add(vat);
+            }
+            PurchaseInvoiceApiClient.SavePayload p = new PurchaseInvoiceApiClient.SavePayload();
+            p.supplierNif = nif;
+            p.supplierName = nameField.getText() == null || nameField.getText().isBlank()
+                    ? null : nameField.getText().trim();
+            p.invoiceNumber = null;
+            p.invoiceDate = dateField.getValue();
+            p.baseAmount = amount;
+            p.vatPercent = pct;
+            p.vatAmount = vat;
+            p.totalAmount = total;
+            p.documentSha256 = null;
+            p.invoiceIndexInPdf = 0;
+            p.concept = conceptField.getText() == null || conceptField.getText().isBlank()
+                    ? null : conceptField.getText().trim();
+            p.notes = null;
+            p.expenseAccountCode = acct.code();
+            p.postJournalDirectly = true; // GAS-7: alta manual -> validado directo
+            saveBtn.setDisable(true);
+            Task<PurchaseInvoiceApiClient.SaveOutcome> saveTask = new Task<>() {
+                @Override protected PurchaseInvoiceApiClient.SaveOutcome call() throws Exception {
+                    return purchasesApi.save(p);
+                }
+            };
+            saveTask.setOnSucceeded(e -> {
+                com.benjagest.ui.support.RefreshBus.emit(
+                        com.benjagest.ui.support.RefreshBus.TOPIC_PURCHASES,
+                        com.benjagest.ui.support.RefreshBus.TOPIC_JOURNAL);
+                if (recurringChk.isSelected()) {
+                    // GAS-8: además del gasto de este mes, crear la plantilla
+                    // recurrente mensual que lo regenerará en Compras y Gastos.
+                    String recJson = buildMonthlyExpenseRecurringJson(
+                            nif, p.supplierName, p.concept, amount, pct, vat, total,
+                            acct.code(), dateField.getValue());
+                    Task<Void> recTask = new Task<>() {
+                        @Override protected Void call() throws Exception {
+                            accountingApiClient.createRecurring(recJson);
+                            return null;
+                        }
+                    };
+                    recTask.setOnSucceeded(ev2 -> {
+                        com.benjagest.ui.support.RefreshBus.emit(
+                                com.benjagest.ui.support.RefreshBus.TOPIC_RECURRING);
+                        dlg.close();
+                        showInfo(t("expense.saved.title"), t("expense.saved_recurring.body"));
+                    });
+                    recTask.setOnFailed(ev2 -> {
+                        dlg.close();
+                        showInfo(t("expense.saved.title"), t("expense.recurring_fail.body"));
+                    });
+                    start(recTask, "expense-recurring");
+                } else {
+                    dlg.close();
+                    showInfo(t("expense.saved.title"), t("expense.saved.body"));
+                }
+            });
+            saveTask.setOnFailed(e -> {
+                saveBtn.setDisable(false);
+                Throwable ex = saveTask.getException();
+                showError(t("expense.save_fail.title"),
+                        ex == null ? t("expense.save_fail.body") : ex.getMessage());
+            });
+            start(saveTask, "expense-save");
+        });
+
+        VBox root = new VBox(14, grid, buttons);
+        root.setPadding(new Insets(18));
+        dlg.setScene(new javafx.scene.Scene(root));
+        dlg.setResizable(true);
+        dlg.setWidth(480);
+        dlg.show();
+    }
+
+    /**
+     * GAS-5 — Diálogo para registrar el PAGO de un gasto (segundo asiento:
+     * Debe 400 proveedor / Haber 572 banco). Elige fecha y cuenta de banco.
+     */
+    private void openRegisterPaymentDialog(com.benjagest.ui.model.PurchaseInvoiceEntry sel) {
+        if (!ensureBillingAllowed(false)) return; // AGR-2: compras
+        javafx.stage.Stage dlg = new javafx.stage.Stage();
+        dlg.initModality(javafx.stage.Modality.APPLICATION_MODAL);
+        dlg.setTitle(t("pay.dialog.title"));
+
+        Label info = new Label(t("pay.dialog.info") + "  "
+                + (sel.supplierName() == null ? "" : sel.supplierName())
+                + (sel.totalAmount() == null ? "" : "  ·  " + sel.totalAmount().toPlainString() + " €"));
+        info.setWrapText(true);
+        info.getStyleClass().add("settings-hint");
+
+        DatePicker dateField = new DatePicker(java.time.LocalDate.now());
+        ComboBox<AccountSummary> bankCombo = new ComboBox<>();
+        bankCombo.setConverter(new javafx.util.StringConverter<>() {
+            @Override public String toString(AccountSummary a) {
+                return a == null ? "" : a.code() + " — " + a.name();
+            }
+            @Override public AccountSummary fromString(String s) { return null; }
+        });
+        bankCombo.setMaxWidth(Double.MAX_VALUE);
+
+        Task<java.util.List<AccountSummary>> loadTask = new Task<>() {
+            @Override protected java.util.List<AccountSummary> call() throws Exception {
+                return accountingApiClient.listAccounts(null);
+            }
+        };
+        loadTask.setOnSucceeded(e -> {
+            java.util.List<AccountSummary> banks = new java.util.ArrayList<>();
+            for (var a : loadTask.getValue()) {
+                if (a.code() != null && a.code().startsWith("572")) banks.add(a);
+            }
+            bankCombo.getItems().setAll(banks);
+            if (!banks.isEmpty()) bankCombo.getSelectionModel().selectFirst();
+        });
+        start(loadTask, "pay-accounts");
+
+        javafx.scene.layout.GridPane grid = new javafx.scene.layout.GridPane();
+        grid.setHgap(10); grid.setVgap(10);
+        int row = 0;
+        grid.add(new Label(t("pay.field.date")), 0, row); grid.add(dateField, 1, row++);
+        grid.add(new Label(t("pay.field.bank")), 0, row); grid.add(bankCombo, 1, row++);
+        javafx.scene.layout.GridPane.setHgrow(bankCombo, Priority.ALWAYS);
+
+        Button payBtn = new Button(t("pay.action.confirm"));
+        payBtn.getStyleClass().add("button-primary");
+        Button cancelBtn = new Button(t("common.cancel"));
+        cancelBtn.setOnAction(ev -> dlg.close());
+        HBox buttons = new HBox(10, cancelBtn, payBtn);
+        buttons.setAlignment(Pos.CENTER_RIGHT);
+
+        payBtn.setOnAction(ev -> {
+            AccountSummary bank = bankCombo.getSelectionModel().getSelectedItem();
+            if (bank == null) { showError(t("pay.err.title"), t("pay.err.bank")); return; }
+            java.time.LocalDate date = dateField.getValue();
+            if (date == null) { showError(t("pay.err.title"), t("pay.err.date")); return; }
+            payBtn.setDisable(true);
+            Task<Void> payTask = new Task<>() {
+                @Override protected Void call() throws Exception {
+                    purchasesApi.pay(sel.id(), date, bank.code());
+                    return null;
+                }
+            };
+            payTask.setOnSucceeded(e -> {
+                com.benjagest.ui.support.RefreshBus.emit(
+                        com.benjagest.ui.support.RefreshBus.TOPIC_PURCHASES,
+                        com.benjagest.ui.support.RefreshBus.TOPIC_JOURNAL);
+                dlg.close();
+                showInfo(t("pay.done.title"), t("pay.done.body"));
+            });
+            payTask.setOnFailed(e -> {
+                payBtn.setDisable(false);
+                Throwable ex = payTask.getException();
+                showError(t("pay.fail.title"),
+                        ex == null ? t("pay.fail.body") : ex.getMessage());
+            });
+            start(payTask, "purchase-pay");
+        });
+
+        VBox root = new VBox(14, info, grid, buttons);
+        root.setPadding(new Insets(18));
+        dlg.setScene(new javafx.scene.Scene(root));
+        dlg.setResizable(true);
+        dlg.setWidth(440);
+        dlg.show();
     }
 
     /**
@@ -10947,6 +11288,18 @@ public class BenjagestUiApplication extends Application
         baseSpinner.setEditable(true);
         javafx.scene.control.Spinner<Double> vatPctSpinner = new javafx.scene.control.Spinner<>(0.0, 21.0, 21.0, 0.5);
         vatPctSpinner.setEditable(true);
+        // GAS-9: cuenta de gasto (6xx) del recurrente PURCHASE (p.ej. 642 para
+        // la cuota RETA). Vacío = cascada automática. Se rellena tras cargar el
+        // plan; prefillExpCode guarda la cuenta al editar una plantilla.
+        ComboBox<AccountSummary> recExpenseAccount = new ComboBox<>();
+        recExpenseAccount.setConverter(new javafx.util.StringConverter<>() {
+            @Override public String toString(AccountSummary a) {
+                return a == null ? "" : a.code() + " — " + a.name();
+            }
+            @Override public AccountSummary fromString(String s) { return null; }
+        });
+        recExpenseAccount.setMaxWidth(Double.MAX_VALUE);
+        final String[] prefillExpCode = { null };
 
         // Si estamos editando, prellenar desde payloadJson
         if (existing != null && existing.payloadJson() != null) {
@@ -10979,11 +11332,38 @@ public class BenjagestUiApplication extends Application
                     if (b != null) baseSpinner.getValueFactory().setValue(b);
                     Double vp = extractDoubleField(pj, "vatPercent");
                     if (vp != null) vatPctSpinner.getValueFactory().setValue(vp);
+                    prefillExpCode[0] = extractStringField(pj, "expenseAccountCode");
                 }
             } catch (Exception ignored) {
                 // si el JSON viene raro, dejamos campos vacíos — el asesor
                 // los rellena de cero
             }
+        }
+
+        // GAS-9: cargar cuentas 6xx para el selector (solo PURCHASE) y
+        // seleccionar la de la plantilla si estamos editando.
+        if (!isSales) {
+            Task<java.util.List<AccountSummary>> recAccTask = new Task<>() {
+                @Override protected java.util.List<AccountSummary> call() throws Exception {
+                    return accountingApiClient.listAccounts(null);
+                }
+            };
+            recAccTask.setOnSucceeded(ev -> {
+                java.util.List<AccountSummary> sixxx = new java.util.ArrayList<>();
+                for (var acc : recAccTask.getValue()) {
+                    if (acc.code() != null && acc.code().startsWith("6")) sixxx.add(acc);
+                }
+                recExpenseAccount.getItems().setAll(sixxx);
+                if (prefillExpCode[0] != null && !prefillExpCode[0].isBlank()) {
+                    for (var acc : sixxx) {
+                        if (prefillExpCode[0].equals(acc.code())) {
+                            recExpenseAccount.getSelectionModel().select(acc);
+                            break;
+                        }
+                    }
+                }
+            });
+            start(recAccTask, "recurring-expense-accounts");
         }
 
         // ------------ Layout ------------
@@ -11071,6 +11451,8 @@ public class BenjagestUiApplication extends Application
         } else {
             grid.add(new Label(t("recurring.field.invoice_number")), 0, r);
             grid.add(invoiceNumberField, 1, r++, 3, 1);
+            grid.add(new Label(t("recurring.field.expense_account")), 0, r);
+            grid.add(recExpenseAccount, 1, r++, 3, 1);
             grid.add(new Label(t("recurring.field.base_amount")), 0, r);
             grid.add(baseSpinner, 1, r);
             grid.add(new Label(t("recurring.field.vat_percent")), 2, r);
@@ -11184,6 +11566,8 @@ public class BenjagestUiApplication extends Application
             body.append(",\"vatPercent\":").append(vatPct);
             body.append(",\"vatAmount\":").append(vatAmt);
             body.append(",\"totalAmount\":").append(total);
+            AccountSummary recAcc = recExpenseAccount.getSelectionModel().getSelectedItem();
+            if (recAcc != null) appendJsonField(body, "expenseAccountCode", recAcc.code(), false);
         }
         body.append("}}");
 

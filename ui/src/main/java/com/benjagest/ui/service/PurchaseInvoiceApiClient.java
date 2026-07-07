@@ -53,6 +53,8 @@ public class PurchaseInvoiceApiClient {
         json.append(",\"invoiceIndexInPdf\":").append(p.invoiceIndexInPdf);
         appendStr(json, "concept", p.concept, false);
         appendStr(json, "notes", p.notes, false);
+        appendStr(json, "expenseAccountCode", p.expenseAccountCode, false);
+        json.append(",\"postJournalDirectly\":").append(p.postJournalDirectly);
         json.append("}");
 
         HttpRequest.Builder b = HttpRequest.newBuilder(URI.create(baseUrl + "/purchases/invoices"))
@@ -68,6 +70,31 @@ public class PurchaseInvoiceApiClient {
             return new SaveOutcome(parseOne(r.body()), true);
         }
         throw new IOException("HTTP " + r.statusCode() + ": " + r.body());
+    }
+
+    /**
+     * GAS-2 — Registra el pago de un gasto (segundo asiento). Un 409 del
+     * backend (ya pagado) llega como IOException con el mensaje en el body;
+     * la UI lo muestra tal cual.
+     */
+    public void pay(String id, LocalDate paymentDate, String bankAccountCode)
+            throws IOException, InterruptedException {
+        StringBuilder json = new StringBuilder("{");
+        json.append("\"paymentDate\":")
+                .append(paymentDate == null ? "null" : "\"" + paymentDate + "\"");
+        json.append(",\"bankAccountCode\":")
+                .append(bankAccountCode == null ? "null" : "\"" + escape(bankAccountCode) + "\"");
+        json.append("}");
+        HttpRequest.Builder b = HttpRequest.newBuilder(
+                        URI.create(baseUrl + "/purchases/invoices/" + id + "/pay"))
+                .timeout(Duration.ofSeconds(15))
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(json.toString()));
+        AuthSession.get().authorize(b);
+        HttpResponse<String> r = httpClient.send(b.build(), HttpResponse.BodyHandlers.ofString());
+        if (r.statusCode() < 200 || r.statusCode() >= 300) {
+            throw new IOException(r.body());
+        }
     }
 
     public List<PurchaseInvoiceEntry> list(Integer year, String status, String supplierNif)
@@ -240,6 +267,10 @@ public class PurchaseInvoiceApiClient {
         public int invoiceIndexInPdf;
         public String concept;
         public String notes;
+        // GAS-1: cuenta de gasto (6xx) fijada por el usuario; null = cascada.
+        public String expenseAccountCode;
+        // GAS-7: TRUE en el alta manual -> asiento validado directo.
+        public boolean postJournalDirectly;
     }
 
     public record SaveOutcome(PurchaseInvoiceEntry invoice, boolean duplicate) {}

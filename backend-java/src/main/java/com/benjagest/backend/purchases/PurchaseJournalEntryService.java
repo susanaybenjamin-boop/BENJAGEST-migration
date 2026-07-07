@@ -39,6 +39,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class PurchaseJournalEntryService {
 
     private static final String SRC_TYPE = "PURCHASE_INVOICE";
+    private static final String SRC_TYPE_PAYMENT = "PURCHASE_PAYMENT";
 
     private final JdbcTemplate jdbcTemplate;
     private final TenantContext tenantContext;
@@ -66,7 +67,7 @@ public class PurchaseJournalEntryService {
      * sin journal_entry_id).
      */
     @Transactional
-    public String createForPurchase(PurchaseInvoice purchase, String userId) {
+    public String createForPurchase(PurchaseInvoice purchase, String userId, boolean postDirectly) {
         if (purchase.invoiceDate() == null
                 || purchase.baseAmount() == null
                 || purchase.vatAmount() == null
@@ -91,42 +92,56 @@ public class PurchaseJournalEntryService {
         //    c) cuenta 472 — IVA soportado: prefijo genérico (no se
         //       analítica por tercero todavía).
 
-        // (a) Gasto 6xx
-        Optional<AccountingLearningService.AccountProposal> proposal =
-                learning.proposeExpenseAccount(
-                        purchase.supplierNif(), purchase.supplierName(),
-                        purchase.invoiceNumber(), purchase.totalAmount());
-        String acc6xx = proposal.map(AccountingLearningService.AccountProposal::accountId)
-                .orElse(null);
-        String proposedRuleId = proposal.map(AccountingLearningService.AccountProposal::ruleId)
-                .orElse(null);
-        java.math.BigDecimal proposedConfidence =
-                proposal.map(AccountingLearningService.AccountProposal::confidence).orElse(null);
+        // (a) Gasto 6xx.
+        //   GAS-1: si el gasto trae una cuenta fijada por el usuario
+        //   (p.ej. 642 en un recibo de autónomo), se usa esa cuenta EXACTA
+        //   y NO se ejecuta la cascada — el asesor la eligió, no adivinamos
+        //   (auto_proposed = FALSE).
+        String acc6xx;
+        String proposedRuleId = null;
+        java.math.BigDecimal proposedConfidence = null;
+        String fixedCode = purchase.expenseAccountCode();
+        if (fixedCode != null && !fixedCode.isBlank()) {
+            acc6xx = findAccountByCode(companyId, fixedCode.trim());
+        } else {
+            // Cascada automática (port de CONTENDO):
+            //   1. regla aprendida (NIF proveedor o keyword) → más fuerte
+            Optional<AccountingLearningService.AccountProposal> proposal =
+                    learning.proposeExpenseAccount(
+                            purchase.supplierNif(), purchase.supplierName(),
+                            purchase.invoiceNumber(), purchase.totalAmount());
+            acc6xx = proposal.map(AccountingLearningService.AccountProposal::accountId)
+                    .orElse(null);
+            proposedRuleId = proposal.map(AccountingLearningService.AccountProposal::ruleId)
+                    .orElse(null);
+            proposedConfidence =
+                    proposal.map(AccountingLearningService.AccountProposal::confidence).orElse(null);
 
-        // 2. histórico del proveedor (si no hay regla)
-        if (acc6xx == null) {
-            Optional<AccountingLearningService.HistoricMatch> historic =
-                    learning.findHistoricExpenseAccountForSupplier(
-                            purchase.supplierNif(), purchase.supplierName());
-            if (historic.isPresent()) {
-                acc6xx = historic.get().accountId();
+            // 2. histórico del proveedor (si no hay regla)
+            if (acc6xx == null) {
+                Optional<AccountingLearningService.HistoricMatch> historic =
+                        learning.findHistoricExpenseAccountForSupplier(
+                                purchase.supplierNif(), purchase.supplierName());
+                if (historic.isPresent()) {
+                    acc6xx = historic.get().accountId();
+                }
             }
-        }
 
-        // 3. classifier por regex (keywords PGC español)
-        if (acc6xx == null) {
-            String descForClassifier = safe(purchase.notes())
-                    + " " + safe(purchase.invoiceNumber());
-            Optional<String> code = classifier.classify(descForClassifier, purchase.supplierName());
-            if (code.isPresent()) {
-                String id = findAccountByCode(companyId, code.get());
-                if (id != null) acc6xx = id;
+            // 3. classifier por regex (keywords PGC español)
+            if (acc6xx == null) {
+                String descForClassifier = safe(purchase.notes())
+                        + " " + safe(purchase.invoiceNumber());
+                Optional<String> code = classifier.classify(descForClassifier, purchase.supplierName());
+                if (code.isPresent()) {
+                    String id = findAccountByCode(companyId, code.get());
+                    if (id != null) acc6xx = id;
+                }
             }
-        }
 
-        // 4. fallback 600 genérico
-        if (acc6xx == null) {
-            acc6xx = findAccountByPrefix(companyId, "600");
+            // 4. fallback 600 genérico
+            if (acc6xx == null) {
+                acc6xx = findAccountByPrefix(companyId, "600");
+            }
         }
 
         // (b) Proveedor 400 → sub-cuenta de tercero
@@ -135,10 +150,14 @@ public class PurchaseJournalEntryService {
                         purchase.supplierNif(), purchase.supplierName());
         String acc400 = supplierAcc.accountId();
 
-        // (c) IVA soportado 472 genérico
-        String acc472 = findAccountByPrefix(companyId, "472");
+        // (c) IVA soportado 472 — SOLO si el gasto tiene IVA. Un recibo sin
+        //     IVA (p.ej. la cuota de autónomo de la TGSS) no lleva línea de
+        //     472: el asiento es solo Debe 6xx / Haber 400 proveedor.
+        boolean hasVat = purchase.vatAmount() != null
+                && purchase.vatAmount().signum() != 0;
+        String acc472 = hasVat ? findAccountByPrefix(companyId, "472") : null;
 
-        if (acc6xx == null || acc472 == null || acc400 == null) {
+        if (acc6xx == null || acc400 == null || (hasVat && acc472 == null)) {
             return null;
         }
 
@@ -155,18 +174,26 @@ public class PurchaseJournalEntryService {
         //    de confianza al asesor.
         String entryId = UUID.randomUUID().toString();
         String concept = buildConcept(purchase);
+        // GAS-6/7: "validado directo" (POSTED con número) es SOLO del alta
+        // MANUAL (postDirectly). El flujo automático (PDF/cascada) y el
+        // recurrente con cuenta fija entran DRAFT + auto_proposed=TRUE para
+        // que aparezcan en "Por validar" y el asesor los valide.
+        boolean postNow = postDirectly;
+        boolean autoProposed = !postNow;
+        Integer entryNumber = postNow ? nextPostedEntryNumber(companyId, fiscalYearId) : null;
         jdbcTemplate.update("""
                 INSERT INTO journal_entries (
                     id, company_id, fiscal_year_id, entry_number,
                     entry_date, concept, source_type, source_id,
                     status, reviewed, auto_proposed, proposed_confidence,
                     created_by
-                ) VALUES (?, ?, ?, NULL, ?, ?, ?, ?, 'DRAFT', FALSE, TRUE, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
-                entryId, companyId, fiscalYearId,
+                entryId, companyId, fiscalYearId, entryNumber,
                 Date.valueOf(purchase.invoiceDate()),
                 concept, SRC_TYPE, purchase.id(),
-                proposedConfidence, userId);
+                postNow ? "POSTED" : "DRAFT", false,
+                autoProposed, proposedConfidence, userId);
 
         // 5) Líneas con descripción específica por tipo de cuenta — el
         //    asesor lee el Libro Mayor de cada cuenta sin tener que abrir
@@ -193,8 +220,10 @@ public class PurchaseJournalEntryService {
         // contabilidad.
         insertLine(entryId, acc6xx, expenseDesc,
                 purchase.baseAmount(), java.math.BigDecimal.ZERO, purchase.vatPercent());
-        insertLine(entryId, acc472, vatDesc,
-                purchase.vatAmount(), java.math.BigDecimal.ZERO, purchase.vatPercent());
+        if (hasVat) {
+            insertLine(entryId, acc472, vatDesc,
+                    purchase.vatAmount(), java.math.BigDecimal.ZERO, purchase.vatPercent());
+        }
         insertLine(entryId, acc400, supplierDesc,
                 java.math.BigDecimal.ZERO, purchase.totalAmount());
 
@@ -218,6 +247,88 @@ public class PurchaseJournalEntryService {
     }
 
     /**
+     * GAS-2 — Crea el asiento de PAGO de una factura recibida / recibo:
+     *
+     *   Debe  400x (Proveedor)   = total
+     *                Haber  572x (Banco)  = total
+     *
+     * Segundo asiento del gasto (el devengo se creó al guardar), igual que
+     * en CONTENDO. Lanza excepción con mensaje legible si falta el ejercicio
+     * abierto, la cuenta de banco o la del proveedor — el usuario pidió pagar
+     * explícitamente, así que no fallamos en silencio.
+     */
+    @Transactional
+    public String createPaymentForPurchase(PurchaseInvoice purchase,
+                                           LocalDate paymentDate,
+                                           String bankAccountCode,
+                                           String userId) {
+        String companyId = tenantContext.getCurrentCompanyId();
+        if (paymentDate == null) {
+            throw new org.springframework.web.server.ResponseStatusException(
+                    org.springframework.http.HttpStatus.BAD_REQUEST, "Falta la fecha de pago");
+        }
+        if (bankAccountCode == null || bankAccountCode.isBlank()) {
+            throw new org.springframework.web.server.ResponseStatusException(
+                    org.springframework.http.HttpStatus.BAD_REQUEST, "Falta la cuenta de banco");
+        }
+        java.math.BigDecimal amount = purchase.totalAmount();
+        if (amount == null || amount.signum() == 0) {
+            throw new org.springframework.web.server.ResponseStatusException(
+                    org.springframework.http.HttpStatus.BAD_REQUEST,
+                    "El gasto no tiene importe a pagar");
+        }
+        String fiscalYearId = findOpenFiscalYearId(companyId, paymentDate);
+        if (fiscalYearId == null) {
+            throw new org.springframework.web.server.ResponseStatusException(
+                    org.springframework.http.HttpStatus.CONFLICT,
+                    "No hay ejercicio contable abierto para la fecha de pago");
+        }
+        String acc572 = findAccountByCode(companyId, bankAccountCode.trim());
+        if (acc572 == null) {
+            throw new org.springframework.web.server.ResponseStatusException(
+                    org.springframework.http.HttpStatus.CONFLICT,
+                    "No existe la cuenta de banco " + bankAccountCode);
+        }
+        TerceroAccountResolverService.ResolvedAccount supplierAcc =
+                terceroResolver.getOrCreateForSupplier(
+                        purchase.supplierNif(), purchase.supplierName());
+        String acc400 = supplierAcc.accountId();
+        if (acc400 == null) {
+            throw new org.springframework.web.server.ResponseStatusException(
+                    org.springframework.http.HttpStatus.CONFLICT,
+                    "No se pudo resolver la cuenta del proveedor");
+        }
+
+        String entryId = UUID.randomUUID().toString();
+        String supplierName = purchase.supplierName() != null && !purchase.supplierName().isBlank()
+                ? purchase.supplierName()
+                : (purchase.supplierNif() != null ? purchase.supplierNif() : "Proveedor");
+        String concept = "Pago"
+                + (purchase.invoiceNumber() != null ? " Fra. " + purchase.invoiceNumber() : "")
+                + " - " + supplierName;
+        if (concept.length() > 240) concept = concept.substring(0, 240);
+        // GAS-6: el pago manual entra VALIDADO directo (POSTED con número).
+        int entryNumber = nextPostedEntryNumber(companyId, fiscalYearId);
+        jdbcTemplate.update("""
+                INSERT INTO journal_entries (
+                    id, company_id, fiscal_year_id, entry_number,
+                    entry_date, concept, source_type, source_id,
+                    status, reviewed, auto_proposed, proposed_confidence,
+                    created_by
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'POSTED', FALSE, FALSE, NULL, ?)
+                """,
+                entryId, companyId, fiscalYearId, entryNumber,
+                Date.valueOf(paymentDate),
+                concept, SRC_TYPE_PAYMENT, purchase.id(),
+                userId);
+
+        // Debe 400 proveedor / Haber 572 banco.
+        insertLine(entryId, acc400, supplierName, amount, java.math.BigDecimal.ZERO);
+        insertLine(entryId, acc572, concept, java.math.BigDecimal.ZERO, amount);
+        return entryId;
+    }
+
+    /**
      * Borra físicamente el asiento de una factura de compra que se
      * elimina. Acordado con el asesor: si el gasto desaparece, su asiento
      * desaparece también — queda un "hueco" en la numeración del Diario
@@ -235,9 +346,26 @@ public class PurchaseJournalEntryService {
      */
     @Transactional
     public void reverseForPurchase(PurchaseInvoice purchase) {
-        if (purchase.journalEntryId() == null) return;
         String companyId = tenantContext.getCurrentCompanyId();
-        String entryId = purchase.journalEntryId();
+        // 1) Asiento de devengo (vinculado por journal_entry_id).
+        if (purchase.journalEntryId() != null) {
+            deleteEntry(companyId, purchase.journalEntryId());
+        }
+        // 2) Asiento(s) de PAGO (GAS-2). No están vinculados por
+        //    journal_entry_id (ese apunta al devengo); se localizan por
+        //    source_type/source_id.
+        List<String> paymentEntries = jdbcTemplate.query("""
+                SELECT id FROM journal_entries
+                 WHERE company_id = ? AND source_type = ? AND source_id = ?
+                """, (rs, n) -> rs.getString("id"),
+                companyId, SRC_TYPE_PAYMENT, purchase.id());
+        for (String pe : paymentEntries) {
+            deleteEntry(companyId, pe);
+        }
+    }
+
+    /** Borra un asiento y sus dependencias (eventos de aprendizaje + líneas). */
+    private void deleteEntry(String companyId, String entryId) {
         jdbcTemplate.update("""
                 DELETE FROM accounting_learning_events
                  WHERE journal_entry_id = ? AND company_id = ?
@@ -352,11 +480,31 @@ public class PurchaseJournalEntryService {
     }
 
     private String buildConcept(PurchaseInvoice p) {
+        // Recibo sin nº de factura (p.ej. cuota de autónomo): no tiene sentido
+        // "Fra. - ..."; usamos el concepto tecleado o, si no, el proveedor.
+        if (p.invoiceNumber() == null || p.invoiceNumber().isBlank()) {
+            String base = (p.concept() != null && !p.concept().isBlank())
+                    ? p.concept()
+                    : (p.supplierName() != null ? p.supplierName() : "Gasto");
+            return base.length() > 240 ? base.substring(0, 240) : base;
+        }
         StringBuilder sb = new StringBuilder("Fra. ");
-        if (p.invoiceNumber() != null) sb.append(p.invoiceNumber()).append(' ');
+        sb.append(p.invoiceNumber()).append(' ');
         if (p.supplierName() != null) sb.append("- ").append(p.supplierName());
         String s = sb.toString();
         return s.length() > 240 ? s.substring(0, 240) : s;
+    }
+
+    /** Siguiente entry_number correlativo entre los POSTED del ejercicio. */
+    private int nextPostedEntryNumber(String companyId, String fiscalYearId) {
+        Integer max = jdbcTemplate.queryForObject("""
+                SELECT COALESCE(MAX(entry_number), 0)
+                  FROM journal_entries
+                 WHERE company_id = ? AND fiscal_year_id = ?
+                   AND status = 'POSTED'
+                   AND entry_number IS NOT NULL
+                """, Integer.class, companyId, fiscalYearId);
+        return (max == null ? 0 : max) + 1;
     }
 
     private String safe(Object v) {

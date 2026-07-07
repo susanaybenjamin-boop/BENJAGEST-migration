@@ -96,6 +96,8 @@ public class PurchaseInvoiceService {
                 req.invoiceIndexInPdf(),
                 PurchaseInvoice.STATUS_POSTED,
                 null,
+                blankToNull(req.expenseAccountCode()),
+                false, null, null, // GAS-2: nace pendiente de pago
                 blankToNull(req.concept()),
                 blankToNull(req.notes()),
                 user.userId(),
@@ -109,7 +111,8 @@ public class PurchaseInvoiceService {
         // 3) Intentar asiento (best effort).
         String journalEntryId = null;
         try {
-            journalEntryId = journalService.createForPurchase(draft, user.userId());
+            journalEntryId = journalService.createForPurchase(
+                    draft, user.userId(), req.postJournalDirectly());
         } catch (Exception ex) {
             // Tragamos: la factura ya está persistida; el asiento se
             // generará en sub-slice contable. Loguear sin romper.
@@ -135,6 +138,27 @@ public class PurchaseInvoiceService {
 
     public List<PurchaseInvoice> list(Integer year, String status, String supplierNif) {
         return repository.list(year, status, supplierNif);
+    }
+
+    /**
+     * GAS-2 — Registra el PAGO de un gasto (segundo paso, como CONTENDO):
+     * genera el asiento Debe 400 proveedor / Haber 572 banco y marca el
+     * gasto como pagado. Idempotencia mínima: si ya está pagado, 409.
+     */
+    @Transactional
+    public PurchaseInvoice registerPayment(String id, LocalDate paymentDate, String bankAccountCode) {
+        billingAgreementGuard.requireAgreementOrOwn(
+                com.benjagest.backend.billing.tpb.BillingAgreementGuard.Scope.PURCHASES);
+        PurchaseInvoice existing = get(id);
+        if (existing.paid()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "El gasto ya esta pagado");
+        }
+        // El pago debe caer en un ejercicio abierto (mismo criterio que el devengo).
+        fiscalGuard.requireOpenForDate(paymentDate, "registrar el pago");
+        AuthenticatedUser user = currentUserService.require();
+        journalService.createPaymentForPurchase(existing, paymentDate, bankAccountCode, user.userId());
+        repository.markPaid(id, paymentDate, bankAccountCode);
+        return repository.findById(id).orElseThrow();
     }
 
     /**
@@ -206,7 +230,9 @@ public class PurchaseInvoiceService {
                 String entryId = existing.journalEntryId();
                 if (entryId == null) {
                     try {
-                        entryId = journalService.createForPurchase(existing, user.userId());
+                        // Validación desde la lista de Compras: el asiento
+                        // entra en "Por validar" (no directo), como el resto.
+                        entryId = journalService.createForPurchase(existing, user.userId(), false);
                     } catch (Exception ex) {
                         errors++;
                         items.add(new BatchValidateItem(id, "ERROR",
@@ -320,9 +346,17 @@ public class PurchaseInvoiceService {
             String documentSha256,
             int invoiceIndexInPdf,
             String concept,
-            String notes
+            String notes,
+            // GAS-1: cuenta de gasto (6xx) fijada por el usuario. Si es NULL,
+            // el asiento la resuelve por la cascada automática habitual.
+            String expenseAccountCode,
+            // GAS-7: TRUE solo en el alta MANUAL (gasto/recibo), para que el
+            // asiento entre validado directo. PDF/cascada y recurrente lo
+            // dejan en FALSE -> el asiento entra en "Por validar".
+            boolean postJournalDirectly
     ) {
-        // Constructor compacto retro-compatible: callers viejos sin concept.
+        // Constructor compacto retro-compatible: callers viejos sin concept,
+        // ni expenseAccountCode, ni postJournalDirectly.
         public SaveRequest(String supplierNif, String supplierName,
                             String invoiceNumber, LocalDate invoiceDate,
                             BigDecimal baseAmount, BigDecimal vatPercent,
@@ -331,7 +365,7 @@ public class PurchaseInvoiceService {
                             String notes) {
             this(supplierNif, supplierName, invoiceNumber, invoiceDate,
                     baseAmount, vatPercent, vatAmount, totalAmount,
-                    documentSha256, invoiceIndexInPdf, null, notes);
+                    documentSha256, invoiceIndexInPdf, null, notes, null, false);
         }
     }
 
@@ -340,6 +374,9 @@ public class PurchaseInvoiceService {
             boolean duplicate,
             String message
     ) {}
+
+    /** GAS-2 — Petición de pago de un gasto (fecha + cuenta de banco 572). */
+    public record PayRequest(LocalDate paymentDate, String bankAccountCode) {}
 
     public record BatchValidateRequest(java.util.List<String> ids) {}
 
