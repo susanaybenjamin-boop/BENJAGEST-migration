@@ -71,7 +71,16 @@ public class FiscalYearGuardService {
      * borrar/modificar.
      */
     public void requireOpenForDate(LocalDate date, String operation) {
-        String status = statusForDate(date);
+        requireOpenForDate(tenantContext.getCurrentCompanyId(), date, operation);
+    }
+
+    /**
+     * Variante con companyId explicito para callers que ya lo tienen
+     * resuelto (LOCK 2026-07-07: reversiones de asientos por source_id
+     * y borrado de importados, que operan por-entry con su entry_date).
+     */
+    public void requireOpenForDate(String companyId, LocalDate date, String operation) {
+        String status = statusForDate(companyId, date);
         if ("LOCKED".equals(status)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "El ejercicio fiscal del " + date + " está BLOQUEADO. "
