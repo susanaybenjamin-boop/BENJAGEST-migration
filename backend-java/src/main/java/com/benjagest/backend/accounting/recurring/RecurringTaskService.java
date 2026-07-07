@@ -428,9 +428,14 @@ public class RecurringTaskService {
         // Concept: payload lleva "concept" opcional; si no, usa el nombre
         // de la recurrente como descripción genérica del gasto.
         String payloadConcept = (String) p.get("concept");
-        String concept = payloadConcept != null && !payloadConcept.isBlank()
-                ? payloadConcept
-                : task.name();
+        // GAS-10: expandir los comodines del concepto ({MES}, {YYYY}...) igual
+        // que se hace con invoiceNumber y con los conceptos de los demás kinds.
+        // Antes el gasto recurrente salía con "{MES} {YYYY}" literal.
+        String concept = expandPlaceholders(
+                payloadConcept != null && !payloadConcept.isBlank()
+                        ? payloadConcept
+                        : task.name(),
+                scheduledDate);
         PurchaseInvoiceService.SaveRequest req = new PurchaseInvoiceService.SaveRequest(
                 (String) p.get("supplierNif"),
                 (String) p.get("supplierName"),
