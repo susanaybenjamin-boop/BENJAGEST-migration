@@ -1,5 +1,12 @@
 # Backlog operativo BENJAGEST
 
+> **Última actualización:** 2026-07-09 noche (**RELEASE v0.1.12** — empaqueta el fix del
+> modelo 130 (5% gastos difícil justificación), el bloque IVA-COMP (arrastre de cuotas a
+> compensar en el 303, casilla 110/78/87 + saldo inicial editable) y los tests fiscales
+> validados con declaraciones reales (130/303 de 2025 y 2026). MSI 302 MB publicado en
+> GitHub Releases como `latest` (draft:false, prerelease:false); tag apunta a develop
+> `371cdb4`. Auto-update lo detecta. **Pendiente Benjamin:** actualizar la instalada y
+> probar el 130 y el 303. Histórico previo:
 > **Última actualización:** 2026-07-09 tarde (**MOD-FISCAL-FIXTURES** — Benjamin aportó los
 > PDF oficiales del 130 (1T+2T 2025) y del 303 (1T 2025, presentados por su asesoría). **4
 > fixtures reales nuevos**: el 130 2025 (322,72 / 714,65) reconfirma el fix del 5%, y el 303
