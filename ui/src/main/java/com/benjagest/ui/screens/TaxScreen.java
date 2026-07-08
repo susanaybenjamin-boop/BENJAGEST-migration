@@ -509,8 +509,15 @@ public class TaxScreen extends ScreenBase {
         Button recalc303Btn = new Button(t("aeat347.recalc"));
         recalc303Btn.setGraphic(icon("fas-sync"));
         recalc303Btn.setOnAction(e -> recalc303.run());
-        // Automático al abrir si el filing está vacío (no pisa ajustes guardados).
-        if (parsed.isEmpty()) recalc303.run();
+        // Auto-rellenar desde la contabilidad al abrir si NO hay bases con
+        // valor (filing vacío o guardado en cero). Antes solo se hacía con
+        // el filing totalmente vacío, así que un T2 recién creado por
+        // "Nueva declaración" salía a cero hasta pulsar "Recalcular". No
+        // pisa bases ya tecleadas/guardadas: si hay algún importe, respeta.
+        boolean sinBases = isBlankOrZero(b21.getText()) && isBlankOrZero(b10.getText())
+                && isBlankOrZero(b4.getText()) && isBlankOrZero(bs.getText())
+                && isBlankOrZero(cs.getText());
+        if (sinBases) recalc303.run();
 
         grid.add(recalc303Btn, 0, 11, 4, 1);
         grid.add(new Label(t("tax.editor.status")), 0, 12); grid.add(statusCombo, 1, 12);
@@ -1203,6 +1210,12 @@ public class TaxScreen extends ScreenBase {
         if (s == null || s.isBlank()) return null;
         try { return new java.math.BigDecimal(s.trim().replace(",", ".")); }
         catch (NumberFormatException ex) { return null; }
+    }
+
+    /** Vacío, no numérico, o numéricamente cero. */
+    private boolean isBlankOrZero(String s) {
+        java.math.BigDecimal d = parseDec(s);
+        return d == null || d.signum() == 0;
     }
 
     private java.math.BigDecimal sum(String... values) {
