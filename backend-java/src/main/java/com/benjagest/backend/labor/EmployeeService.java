@@ -51,14 +51,20 @@ public class EmployeeService {
     private final CurrentUserService currentUserService;
     private final SecureRandom secureRandom = new SecureRandom();
 
+    // RGPD (2026-07-08): el IBAN del empleado (cuenta personal de un
+    // tercero) se guarda cifrado (ENC:). No participa en filtros SQL.
+    private final com.benjagest.backend.config.FieldCipher fieldCipher;
+
     public EmployeeService(JdbcTemplate jdbcTemplate, TenantContext tenantContext,
                             PasswordEncoder passwordEncoder, AuditService auditService,
-                            CurrentUserService currentUserService) {
+                            CurrentUserService currentUserService,
+                            com.benjagest.backend.config.FieldCipher fieldCipher) {
         this.jdbcTemplate = jdbcTemplate;
         this.tenantContext = tenantContext;
         this.passwordEncoder = passwordEncoder;
         this.auditService = auditService;
         this.currentUserService = currentUserService;
+        this.fieldCipher = fieldCipher;
     }
 
     public List<EmployeeView> list(boolean includeInactive) {
@@ -108,7 +114,7 @@ public class EmployeeService {
                 req.dependentChildren(), req.dependentDisabled(),
                 blank(req.addressLine()), blank(req.city()), blank(req.province()),
                 blank(req.postalCode()), blank(req.country()),
-                blank(req.iban()), blank(req.workType()), blank(req.ssRegime()),
+                fieldCipher.encrypt(blank(req.iban())), blank(req.workType()), blank(req.ssRegime()),
                 blank(req.workCalendarId()),
                 req.hireDate(), req.terminationDate(), blank(req.terminationReason()),
                 req.geolocationEnabled() != null && req.geolocationEnabled(),
@@ -148,7 +154,7 @@ public class EmployeeService {
                 req.dependentChildren(), req.dependentDisabled(),
                 blank(req.addressLine()), blank(req.city()), blank(req.province()),
                 blank(req.postalCode()), blank(req.country()),
-                blank(req.iban()), blank(req.workType()), blank(req.ssRegime()),
+                fieldCipher.encrypt(blank(req.iban())), blank(req.workType()), blank(req.ssRegime()),
                 blank(req.workCalendarId()),
                 req.hireDate(), req.terminationDate(), blank(req.terminationReason()),
                 req.geolocationEnabled() != null && req.geolocationEnabled(),
@@ -472,7 +478,7 @@ public class EmployeeService {
                 rs.getString("province"),
                 rs.getString("postal_code"),
                 rs.getString("country"),
-                rs.getString("iban"),
+                fieldCipher.decrypt(rs.getString("iban")),
                 rs.getString("work_type"),
                 rs.getString("ss_regime"),
                 rs.getString("work_calendar_id"),
