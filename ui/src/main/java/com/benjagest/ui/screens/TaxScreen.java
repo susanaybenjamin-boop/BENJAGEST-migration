@@ -477,8 +477,8 @@ public class TaxScreen extends ScreenBase {
         section.accept("IVA deducible", new Separator());
         baseCol.accept("Op. interiores base (28)", bs); cuotaCol.accept("Cuota (29)", cs);
         baseCol.accept("Bienes inversión base (30)", b30); cuotaCol.accept("Cuota (31)", c31);
-        baseCol.accept("Adq. intracom. base (32)", b32); cuotaCol.accept("Cuota (33)", c33);
-        baseCol.accept("Importaciones base (36)", b36); cuotaCol.accept("Cuota (37)", c37);
+        baseCol.accept("Importaciones base (32)", b36); cuotaCol.accept("Cuota (33)", c37);
+        baseCol.accept("Adq. intracom. base (36)", b32); cuotaCol.accept("Cuota (37)", c33);
         baseCol.accept("Rectif. deducciones base (40)", b40); cuotaCol.accept("Cuota (41)", c41);
 
         section.accept("Compensación y resultado", new Separator());
@@ -531,6 +531,12 @@ public class TaxScreen extends ScreenBase {
             c21.setText(mulStr(d.base21, "0.21"));
             bs.setText(d.baseSoportada); cs.setText(d.cuotaSoportada);
             b14m.setText(d.modBase); c15m.setText(d.modCuota);
+            // OPTYPE-2: casillas ruteadas desde la clasificación fiscal de compras.
+            b30.setText(d.baseInv); c31.setText(d.cuotaInv);            // 30/31 inversión
+            b36.setText(d.baseImport); c37.setText(d.cuotaImport);      // 32/33 importaciones
+            b32.setText(d.baseIntraDed); c33.setText(d.cuotaIntraDed);  // 36/37 intracom deducible
+            b10i.setText(d.baseIntra); c11i.setText(d.cuotaIntra);      // 10/11 intracom devengado
+            b12s.setText(d.baseIsp); c13s.setText(d.cuotaIsp);          // 12/13 ISP devengado
             comp110.setText(d.compensacionPrevia);
             recompute.run();
         };

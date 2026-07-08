@@ -1137,6 +1137,17 @@ public class AltaApiClient {
         // 303-FULL: modificación de bases y cuotas (14/15) desde rectificativas.
         d.modBase = numberField(j, "14_mod_base");
         d.modCuota = numberField(j, "15_mod_cuota");
+        // OPTYPE-2: casillas ruteadas por tipo de operación de cada compra.
+        d.baseInv = numberField(j, "base_inv");
+        d.cuotaInv = numberField(j, "cuota_inv");
+        d.baseImport = numberField(j, "base_import");
+        d.cuotaImport = numberField(j, "cuota_import");
+        d.baseIntraDed = numberField(j, "base_intra_ded");
+        d.cuotaIntraDed = numberField(j, "cuota_intra_ded");
+        d.baseIntra = numberField(j, "base_intra");
+        d.cuotaIntra = numberField(j, "cuota_intra");
+        d.baseIsp = numberField(j, "base_isp");
+        d.cuotaIsp = numberField(j, "cuota_isp");
         return d;
     }
 
