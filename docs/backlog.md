@@ -1,6 +1,6 @@
 # Backlog operativo BENJAGEST
 
-> **Última actualización:** 2026-07-10 (**303 con datos MIGRADOS** — Benjamin probó el 303
+> **Última actualización:** 2026-07-10 noche (**RELEASE v0.1.13** — empaqueta el etiquetado de IVA en asientos migrados (VatRateTaggingService + V171), la compensación que arrastra desde la declaración anterior y el auto-recalcular-solo-si-vacío del 303. MSI publicado como `latest`, tag develop `035dfa6`. Pendiente Benjamin: actualizar y probar recalcular T2 → presentado → pagado, con Docker/DBeaver apagados.) Histórico: **303 con datos MIGRADOS** — Benjamin probó el 303
 > con datos importados de CONTENDO y salía a cero + al cambiar el estado del T1 se borraban
 > los datos. Raíz (diagnosticada en su BD embebida real, 13307): el import contabiliza las
 > facturas SIN etiquetar el `vat_rate` en las líneas, y el 303 saca las bases del IVA de las
