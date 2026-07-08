@@ -55,14 +55,17 @@ public class ContendoImportService {
     private final TenantContext tenantContext;
     private final CurrentUserService currentUserService;
     private final ManualJournalEntryService manualEntries;
+    private final VatRateTaggingService vatTagging;
 
     public ContendoImportService(JdbcTemplate jdbcTemplate, TenantContext tenantContext,
                                  CurrentUserService currentUserService,
-                                 ManualJournalEntryService manualEntries) {
+                                 ManualJournalEntryService manualEntries,
+                                 VatRateTaggingService vatTagging) {
         this.jdbcTemplate = jdbcTemplate;
         this.tenantContext = tenantContext;
         this.currentUserService = currentUserService;
         this.manualEntries = manualEntries;
+        this.vatTagging = vatTagging;
     }
 
     public record Summary(
@@ -127,6 +130,16 @@ public class ContendoImportService {
 
         // 5. Pasada 2: enlazar cobros/pagos y rectificativas.
         linkPayments(payments, rects, c, avisos);
+
+        // 5b. IVA-COMP: etiquetar el vat_rate de las líneas de venta/compra
+        //     recién importadas desde la factura, para que el 303 vea el IVA
+        //     (el CSV no trae el tipo por línea). Best-effort: un fallo aquí
+        //     no invalida la importación ya hecha.
+        try {
+            vatTagging.tagFromInvoices(companyId);
+        } catch (Exception ex) {
+            avisos.add("No se pudo etiquetar el IVA de los asientos importados: " + msg(ex));
+        }
 
         // 6. Registrar el lote.
         String batchId = insertBatch(companyId, fileName, content, sha, c, avisos);
