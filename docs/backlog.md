@@ -1,5 +1,16 @@
 # Backlog operativo BENJAGEST
 
+> **Última actualización:** 2026-07-08 tarde (**bloque RGPD** — **datos sensibles**, Fase B
+> del plan de la auditoría: **clave maestra por instalación** (fichero protegido en
+> %ProgramData%\BENJAGEST\secret con ACL; la de desarrollo queda solo como fallback de
+> descifrado → lo cifrado antes sigue legible, verificado con el certificado FNMT real);
+> **cifrado de columna** de datos de salud (notas de bajas médicas, motivo de ausencias) e
+> **IBAN** de empleados y clientes (prefijo ENC:, rotación perezosa, sin migración big-bang;
+> V169 ensancha las columnas); **control de acceso** (el rol EMPLOYEE ya NO puede listar
+> nóminas ni bajas de terceros por los endpoints admin → 403; el empleado ve lo suyo por la
+> PWA); **auditoría de lecturas** (SENSITIVE_DATA_READ). NO se cifran importes de nómina
+> (se suman en SQL); se protegen con acceso+auditoría. Ver sesión 2026-07-08 tarde debajo.
+> Histórico previo:
 > **Última actualización:** 2026-07-08 (**bloque RECT** — **rectificativas R1-R5 + factura
 > simplificada F2**, paso 3 del plan de la auditoría. Anular pide **causa legal** con
 > selector (R1-R4, R5 automática en simplificadas); nuevo botón **Rectificar** (parcial:
@@ -424,6 +435,39 @@ Repaso punto por punto de lo que Benjamin reportó con el check en blanco. Estad
     `[ ]` UIR-9 Fiscal · `[ ]` UIR-10 Calendario · `[ ]` UIR-11 Facturación/Compras/VeriFactu ·
     `[ ]` UIR-12 Configuración/Certificados · `[ ]` UIR-13 Asesoría/Consolidación/TPB ·
     `[ ]` UIR-14 Trabajos/Calendario laboral/Tablas año · `[ ]` UIR-15 Laboral/Nómina (el último).
+
+---
+
+## 📅 SESIÓN 2026-07-08 (tarde) — bloque RGPD (datos sensibles)
+
+> **Origen:** Fase B del plan de la auditoría (el último rojo legal grande que es puro
+> código). Un agente inventarió qué datos personales estaban en claro y cuáles NO se pueden
+> cifrar por participar en agregaciones SQL.
+
+- `[x]` **RGPD-1 infra cripto** — `MasterKeyResolver` (clave por instalación en
+  %ProgramData%\BENJAGEST\secret\master.key + ACL icacls), `FallbackStringEncryptor`
+  (rotación: cifra con la nueva, descifra con nueva→legacy), `FieldCipher` (cifrado de
+  campo con prefijo ENC:, legacy en claro passthrough → sin migración big-bang). 4 tests.
+- `[x]` **RGPD-2 cifrado columna** — `medical_leaves.notes` (salud, art. 9),
+  `employee_leave_requests.reason`, `employees.iban`, `customers.iban`. V169 ensancha
+  (iban VARCHAR(255), reason TEXT) porque el cifrado no cabía en VARCHAR(34). `leave_type`,
+  fechas e importes quedan en claro (los usa nómina/calendario/SQL).
+- `[x]` **RGPD-3 acceso + auditoría** — rol de clase de PayslipController y MedicalLeave
+  Controller: EMPLOYEE fuera (veía nóminas/bajas de todos). El empleado ve lo suyo por la
+  PWA. `SENSITIVE_DATA_READ` en list+PDF de nóminas y list+detalle de bajas.
+- **Verificación en vivo** (datos de prueba borrados; BD real intacta): clave generada +
+  ACL correcto · certificado FNMT real legible tras rotación · IBAN de empleado y nota
+  clínica quedan ENC:… en BD y la API los descifra · round-trip OK tras V169 · EMPLOYEE →
+  403 en payslips y medical-leaves · SENSITIVE_DATA_READ registrado.
+- **Notas/pendientes RGPD (no bloqueantes, para cuando toque):**
+  1. `issuers.iban`, `bank_accounts.iban` y `companies.iban` (cuentas PROPIAS de la
+     empresa, no de terceros) siguen en claro — menor prioridad; el foco fue dato de
+     tercero. `employee_leave_attachments.content` (partes médicos, LONGBLOB) tampoco se
+     cifró aún.
+  2. Importes de nómina cifrados = imposible sin refactor (SUM en cierre/reportes). Si se
+     quisiera, tabla de agregados precalculados. Hoy: acceso+auditoría, suficiente.
+  3. Falta lo NO-código de RGPD (Fase B del plan): política de privacidad, registro de
+     actividades de tratamiento, procedimiento de derechos. Es papel, no toca a Claude.
 
 ---
 
