@@ -155,4 +155,23 @@ class AeatModel303CalcTest {
                 + "\"casillas\":{\"87_remanente_compensar\":1092.63}}";
         assertAmount("1092.63", AeatExtraModelsService.extractRemanente303(backend));
     }
+
+    @Test
+    void remanente_usaElResultadoDelRegimenGuardado_conModificacion() {
+        // 303-FULL: la UI guarda 46_resultado_regimen (ya incluye la
+        // modificacion 14/15). El arrastre lo usa directo: regimen 500,
+        // previa 700 -> remanente 200.
+        String ui = "{\"46_resultado_regimen\":\"500.00\",\"compensar_anteriores\":\"700\"}";
+        assertAmount("200.00", AeatExtraModelsService.extractRemanente303(ui));
+    }
+
+    @Test
+    void modificacion_restaEnElResultado_casoBenjamin() {
+        // T2 de Benjamin: regimen general 1452,41 con una rectificativa que
+        // modifica la cuota en -121,80 -> total devengado neto y resultado
+        // bajan en 121,80. (arit. del total: 27 = repercutido + mod15).
+        var devengado = bd("2287.77").add(bd("-121.80")); // 06 + 15
+        var resultado = AeatExtraModelsService.computeResultadoIva(devengado, bd("835.36"));
+        assertAmount("1330.61", resultado);
+    }
 }

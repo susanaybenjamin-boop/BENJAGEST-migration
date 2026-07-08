@@ -413,16 +413,33 @@ public class TaxScreen extends ScreenBase {
 
         java.util.Map<String, String> parsed = parseDataMap(existing.dataJson());
 
-        // IVA repercutido (devengado)
+        // --- Devengado: régimen general por tipo ---
         TextField b21 = new TextField(parsed.getOrDefault("base_21", ""));
         TextField c21 = new TextField(parsed.getOrDefault("cuota_21", ""));
         TextField b10 = new TextField(parsed.getOrDefault("base_10", ""));
         TextField c10 = new TextField(parsed.getOrDefault("cuota_10", ""));
         TextField b4 = new TextField(parsed.getOrDefault("base_4", ""));
         TextField c4 = new TextField(parsed.getOrDefault("cuota_4", ""));
-        // IVA soportado (deducible)
-        TextField bs = new TextField(parsed.getOrDefault("base_soportado", ""));
-        TextField cs = new TextField(parsed.getOrDefault("cuota_soportada", ""));
+        // --- Devengado: otras operaciones ---
+        TextField b10i = new TextField(parsed.getOrDefault("base_intra", ""));   // 10
+        TextField c11i = new TextField(parsed.getOrDefault("cuota_intra", ""));  // 11
+        TextField b12s = new TextField(parsed.getOrDefault("base_isp", ""));     // 12
+        TextField c13s = new TextField(parsed.getOrDefault("cuota_isp", ""));    // 13
+        TextField b14m = new TextField(parsed.getOrDefault("mod_base", ""));     // 14
+        TextField c15m = new TextField(parsed.getOrDefault("mod_cuota", ""));    // 15
+        TextField b16r = new TextField(parsed.getOrDefault("base_recargo", "")); // recargo
+        TextField c17r = new TextField(parsed.getOrDefault("cuota_recargo", ""));
+        // --- Deducible ---
+        TextField bs = new TextField(parsed.getOrDefault("base_soportado", ""));  // 28
+        TextField cs = new TextField(parsed.getOrDefault("cuota_soportada", "")); // 29
+        TextField b30 = new TextField(parsed.getOrDefault("base_inv", ""));       // 30 bienes inversión
+        TextField c31 = new TextField(parsed.getOrDefault("cuota_inv", ""));      // 31
+        TextField b32 = new TextField(parsed.getOrDefault("base_intra_ded", "")); // 32 intracom deducible
+        TextField c33 = new TextField(parsed.getOrDefault("cuota_intra_ded", "")); // 33
+        TextField b36 = new TextField(parsed.getOrDefault("base_import", ""));    // 36 importaciones
+        TextField c37 = new TextField(parsed.getOrDefault("cuota_import", ""));   // 37
+        TextField b40 = new TextField(parsed.getOrDefault("base_rectif_ded", "")); // 40 rectif. deducciones
+        TextField c41 = new TextField(parsed.getOrDefault("cuota_rectif_ded", "")); // 41
         // IVA-COMP: cuotas a compensar de periodos anteriores (casilla 110).
         TextField comp110 = new TextField(parsed.getOrDefault("compensar_anteriores", ""));
 
@@ -434,63 +451,86 @@ public class TaxScreen extends ScreenBase {
 
         GridPane grid = new GridPane();
         grid.setHgap(10); grid.setVgap(6); grid.setPadding(new Insets(12));
-        grid.add(label("IVA repercutido (devengado)", "settings-section-title"), 0, 0, 4, 1);
-        grid.add(new Label("Base 21 %"), 0, 1); grid.add(b21, 1, 1);
-        grid.add(new Label("Cuota 21 %"), 2, 1); grid.add(c21, 3, 1);
-        grid.add(new Label("Base 10 %"), 0, 2); grid.add(b10, 1, 2);
-        grid.add(new Label("Cuota 10 %"), 2, 2); grid.add(c10, 3, 2);
-        grid.add(new Label("Base 4 %"), 0, 3); grid.add(b4, 1, 3);
-        grid.add(new Label("Cuota 4 %"), 2, 3); grid.add(c4, 3, 3);
+        int[] row = {0};
+        java.util.function.BiConsumer<String, javafx.scene.Node> section = (txt, sep) -> {
+            if (sep != null) grid.add(sep, 0, row[0]++, 4, 1);
+            grid.add(label(txt, "settings-section-title"), 0, row[0]++, 4, 1);
+        };
+        java.util.function.BiConsumer<String, TextField> baseCol = (lbl, f) -> {
+            grid.add(new Label(lbl), 0, row[0]); grid.add(f, 1, row[0]);
+        };
+        java.util.function.BiConsumer<String, TextField> cuotaCol = (lbl, f) -> {
+            grid.add(new Label(lbl), 2, row[0]); grid.add(f, 3, row[0]++);
+        };
 
-        grid.add(new Separator(), 0, 4, 4, 1);
-        grid.add(label("IVA soportado (deducible)", "settings-section-title"), 0, 5, 4, 1);
-        grid.add(new Label("Base soportada"), 0, 6); grid.add(bs, 1, 6);
-        grid.add(new Label("Cuota soportada"), 2, 6); grid.add(cs, 3, 6);
+        section.accept("IVA devengado — régimen general", null);
+        baseCol.accept("Base 21 % (01)", b21); cuotaCol.accept("Cuota 21 % (03)", c21);
+        baseCol.accept("Base 10 % (04)", b10); cuotaCol.accept("Cuota 10 % (06)", c10);
+        baseCol.accept("Base 4 % (07)", b4);   cuotaCol.accept("Cuota 4 % (09)", c4);
 
-        grid.add(new Separator(), 0, 7, 4, 1);
-        // IVA-COMP: casilla 110 (arrastrada) + botón para el saldo inicial.
-        grid.add(new Label("Cuotas a compensar anteriores (110)"), 0, 8); grid.add(comp110, 1, 8);
+        section.accept("IVA devengado — otras operaciones", new Separator());
+        baseCol.accept("Adq. intracom. base (10)", b10i); cuotaCol.accept("Cuota (11)", c11i);
+        baseCol.accept("Inv. sujeto pasivo base (12)", b12s); cuotaCol.accept("Cuota (13)", c13s);
+        baseCol.accept("Modif. bases (14)", b14m); cuotaCol.accept("Modif. cuotas (15)", c15m);
+        baseCol.accept("Recargo equiv. base (16)", b16r); cuotaCol.accept("Recargo cuota (18)", c17r);
+
+        section.accept("IVA deducible", new Separator());
+        baseCol.accept("Op. interiores base (28)", bs); cuotaCol.accept("Cuota (29)", cs);
+        baseCol.accept("Bienes inversión base (30)", b30); cuotaCol.accept("Cuota (31)", c31);
+        baseCol.accept("Adq. intracom. base (32)", b32); cuotaCol.accept("Cuota (33)", c33);
+        baseCol.accept("Importaciones base (36)", b36); cuotaCol.accept("Cuota (37)", c37);
+        baseCol.accept("Rectif. deducciones base (40)", b40); cuotaCol.accept("Cuota (41)", c41);
+
+        section.accept("Compensación y resultado", new Separator());
+        grid.add(new Label("Cuotas a compensar anteriores (110)"), 0, row[0]); grid.add(comp110, 1, row[0]);
         Button baselineBtn = new Button("Saldo inicial…");
         baselineBtn.setGraphic(icon("fas-sliders-h"));
         baselineBtn.setOnAction(e -> showVatCompensationBaselineDialog(existing.periodYear()));
-        grid.add(baselineBtn, 2, 8, 2, 1);
+        grid.add(baselineBtn, 2, row[0]++, 2, 1);
 
-        grid.add(new Separator(), 0, 9, 4, 1);
         Label resultLabel = new Label();
         resultLabel.getStyleClass().add("settings-section-title");
-        grid.add(resultLabel, 0, 10, 4, 1);
+        resultLabel.setWrapText(true);
+        grid.add(resultLabel, 0, row[0]++, 4, 1);
 
+        // Todas las cuotas devengadas (casilla 27) y deducibles (45).
+        java.util.List<TextField> devengado = java.util.List.of(c21, c10, c4, c11i, c13s, c15m, c17r);
+        java.util.List<TextField> deducible = java.util.List.of(cs, c31, c33, c37, c41);
         Runnable recompute = () -> {
-            java.math.BigDecimal repercutido = sum(c21.getText(), c10.getText(), c4.getText());
-            java.math.BigDecimal soportado = parseDec(cs.getText());
-            if (soportado == null) soportado = java.math.BigDecimal.ZERO;
-            java.math.BigDecimal regimen = repercutido.subtract(soportado);
-            // IVA-COMP: aplicar las cuotas a compensar de periodos anteriores.
+            java.math.BigDecimal cuota27 = java.math.BigDecimal.ZERO;
+            for (TextField f : devengado) { var d = parseDec(f.getText()); if (d != null) cuota27 = cuota27.add(d); }
+            java.math.BigDecimal cuota45 = java.math.BigDecimal.ZERO;
+            for (TextField f : deducible) { var d = parseDec(f.getText()); if (d != null) cuota45 = cuota45.add(d); }
+            java.math.BigDecimal regimen = cuota27.subtract(cuota45).setScale(2, java.math.RoundingMode.HALF_UP);
             java.math.BigDecimal previa = parseDec(comp110.getText());
             if (previa == null || previa.signum() < 0) previa = java.math.BigDecimal.ZERO;
             java.math.BigDecimal aplicada = regimen.signum() > 0 ? previa.min(regimen) : java.math.BigDecimal.ZERO;
             java.math.BigDecimal result = regimen.subtract(aplicada).setScale(2, java.math.RoundingMode.HALF_UP);
-            java.math.BigDecimal remanente = previa.subtract(aplicada);
-            if (regimen.signum() < 0) remanente = previa.add(regimen.abs());
+            java.math.BigDecimal remanente = regimen.signum() < 0 ? previa.add(regimen.abs()) : previa.subtract(aplicada);
             resultLabel.setText(
-                    "Resultado régimen (46): " + regimen.setScale(2, java.math.RoundingMode.HALF_UP).toPlainString()
+                    "Total devengado (27): " + cuota27.setScale(2, java.math.RoundingMode.HALF_UP).toPlainString()
+                    + " €   ·   Total a deducir (45): " + cuota45.setScale(2, java.math.RoundingMode.HALF_UP).toPlainString() + " €\n"
+                    + "Resultado régimen (46): " + regimen.toPlainString()
                     + " €   ·   A compensar aplicado (78): " + aplicada.toPlainString() + " €\n"
-                    + "Resultado (casilla 71): " + result.toPlainString() + " €"
-                    + "   ·   Remanente futuro (87): " + remanente.toPlainString() + " €");
+                    + "Resultado (casilla 71): " + result.toPlainString()
+                    + " €   ·   Remanente futuro (87): " + remanente.toPlainString() + " €");
         };
-        for (TextField f : new TextField[]{c21, c10, c4, cs, comp110}) {
-            f.textProperty().addListener((o, ov, nv) -> recompute.run());
-        }
+        java.util.List<TextField> allCuotas = new java.util.ArrayList<>();
+        allCuotas.addAll(devengado); allCuotas.addAll(deducible); allCuotas.add(comp110);
+        for (TextField f : allCuotas) f.textProperty().addListener((o, ov, nv) -> recompute.run());
         recompute.run();
 
-        // MOD-PREFILL: rellenar las casillas desde las facturas VALIDADAS del
-        // trimestre. Las cuotas repercutidas se derivan (base × tipo).
+        // Recalcular desde la contabilidad. Auto-rellena régimen general por
+        // tipo, soportado interior y la modificación (14/15) de rectificativas.
+        // Las demás casillas (intracom, inversión, importaciones…) se teclean:
+        // clasificarlas requiere marcar el tipo de operación en la factura.
         java.util.function.Consumer<com.benjagest.ui.model.Aeat303Data> apply303 = d -> {
             b4.setText(d.base4); b10.setText(d.base10); b21.setText(d.base21);
             c4.setText(mulStr(d.base4, "0.04"));
             c10.setText(mulStr(d.base10, "0.10"));
             c21.setText(mulStr(d.base21, "0.21"));
             bs.setText(d.baseSoportada); cs.setText(d.cuotaSoportada);
+            b14m.setText(d.modBase); c15m.setText(d.modCuota);
             comp110.setText(d.compensacionPrevia);
             recompute.run();
         };
@@ -509,37 +549,49 @@ public class TaxScreen extends ScreenBase {
         Button recalc303Btn = new Button(t("aeat347.recalc"));
         recalc303Btn.setGraphic(icon("fas-sync"));
         recalc303Btn.setOnAction(e -> recalc303.run());
-        // Auto-rellenar desde la contabilidad al abrir si NO hay bases con
-        // valor (filing vacío o guardado en cero). Antes solo se hacía con
-        // el filing totalmente vacío, así que un T2 recién creado por
-        // "Nueva declaración" salía a cero hasta pulsar "Recalcular". No
-        // pisa bases ya tecleadas/guardadas: si hay algún importe, respeta.
         boolean sinBases = isBlankOrZero(b21.getText()) && isBlankOrZero(b10.getText())
                 && isBlankOrZero(b4.getText()) && isBlankOrZero(bs.getText())
                 && isBlankOrZero(cs.getText());
         if (sinBases) recalc303.run();
 
-        grid.add(recalc303Btn, 0, 11, 4, 1);
-        grid.add(new Label(t("tax.editor.status")), 0, 12); grid.add(statusCombo, 1, 12);
-        grid.add(new Label(t("tax.editor.csv")), 2, 12); grid.add(csvField, 3, 12);
+        grid.add(recalc303Btn, 0, row[0]++, 4, 1);
+        grid.add(new Label(t("tax.editor.status")), 0, row[0]); grid.add(statusCombo, 1, row[0]);
+        grid.add(new Label(t("tax.editor.csv")), 2, row[0]); grid.add(csvField, 3, row[0]++);
 
-        installDialog(dialog, grid);
+        javafx.scene.control.ScrollPane scroll = new javafx.scene.control.ScrollPane(grid);
+        scroll.setFitToWidth(true);
+        scroll.setPrefViewportHeight(520);
+        installDialog(dialog, scroll);
 
         dialog.showAndWait().ifPresent(bt -> {
             if (bt != saveBt) return;
             java.util.Map<String, String> data = new java.util.LinkedHashMap<>();
-            data.put("base_21", b21.getText().trim());
-            data.put("cuota_21", c21.getText().trim());
-            data.put("base_10", b10.getText().trim());
-            data.put("cuota_10", c10.getText().trim());
-            data.put("base_4", b4.getText().trim());
-            data.put("cuota_4", c4.getText().trim());
-            data.put("base_soportado", bs.getText().trim());
-            data.put("cuota_soportada", cs.getText().trim());
+            // Devengado régimen general + otras operaciones.
+            data.put("base_21", b21.getText().trim());  data.put("cuota_21", c21.getText().trim());
+            data.put("base_10", b10.getText().trim());   data.put("cuota_10", c10.getText().trim());
+            data.put("base_4", b4.getText().trim());     data.put("cuota_4", c4.getText().trim());
+            data.put("base_intra", b10i.getText().trim()); data.put("cuota_intra", c11i.getText().trim());
+            data.put("base_isp", b12s.getText().trim());   data.put("cuota_isp", c13s.getText().trim());
+            data.put("mod_base", b14m.getText().trim());   data.put("mod_cuota", c15m.getText().trim());
+            data.put("base_recargo", b16r.getText().trim()); data.put("cuota_recargo", c17r.getText().trim());
+            // Deducible.
+            data.put("base_soportado", bs.getText().trim()); data.put("cuota_soportada", cs.getText().trim());
+            data.put("base_inv", b30.getText().trim());   data.put("cuota_inv", c31.getText().trim());
+            data.put("base_intra_ded", b32.getText().trim()); data.put("cuota_intra_ded", c33.getText().trim());
+            data.put("base_import", b36.getText().trim()); data.put("cuota_import", c37.getText().trim());
+            data.put("base_rectif_ded", b40.getText().trim()); data.put("cuota_rectif_ded", c41.getText().trim());
             data.put("compensar_anteriores", comp110.getText().trim());
-            // IVA-COMP: total = resultado con la compensacion aplicada (casilla 71).
-            java.math.BigDecimal regimen = sum(c21.getText(), c10.getText(), c4.getText())
-                    .subtract(parseDec(cs.getText()) == null ? java.math.BigDecimal.ZERO : parseDec(cs.getText()));
+            // Totales calculados: devengado (27), deducible (45) y resultado del
+            // régimen (46) — los guardamos para que la compensación del trimestre
+            // siguiente arrastre el remanente correcto.
+            java.math.BigDecimal cuota27 = sum(c21.getText(), c10.getText(), c4.getText(),
+                    c11i.getText(), c13s.getText(), c15m.getText(), c17r.getText());
+            java.math.BigDecimal cuota45 = sum(cs.getText(), c31.getText(), c33.getText(),
+                    c37.getText(), c41.getText());
+            java.math.BigDecimal regimen = cuota27.subtract(cuota45).setScale(2, java.math.RoundingMode.HALF_UP);
+            data.put("27_total_devengado", cuota27.setScale(2, java.math.RoundingMode.HALF_UP).toPlainString());
+            data.put("45_total_deducible", cuota45.setScale(2, java.math.RoundingMode.HALF_UP).toPlainString());
+            data.put("46_resultado_regimen", regimen.toPlainString());
             java.math.BigDecimal previa = parseDec(comp110.getText());
             if (previa == null || previa.signum() < 0) previa = java.math.BigDecimal.ZERO;
             java.math.BigDecimal aplicada = regimen.signum() > 0 ? previa.min(regimen) : java.math.BigDecimal.ZERO;

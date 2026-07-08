@@ -1,6 +1,15 @@
 # Backlog operativo BENJAGEST
 
-> **Última actualización:** 2026-07-10 (**303 con datos MIGRADOS** — Benjamin probó el 303
+> **Última actualización:** 2026-07-11 (**303-FULL** — el editor del 303 pasa de básico a
+> **régimen general completo**: devengado (régimen general por tipo + intracom 10/11 +
+> inversión sujeto pasivo 12/13 + **modificación bases/cuotas 14/15** + recargo) y deducible
+> (interiores + bienes inversión + intracom + importaciones + rectificación), con totales
+> 27/45/46 + compensación + resultado 71. Las **rectificativas van solas a la casilla 14/15**
+> (auto), excluidas del régimen general — resuelve el descuadre de Benjamin (su abono
+> −580/−121,80). El resto de casillas se teclean (clasificar intracom/importaciones auto
+> necesita marcar el tipo de operación en la factura → **pendiente OPTYPE**, ver abajo).
+> Tests con el caso real. En develop, sin liberar. Histórico previo:
+> **Última actualización:** 2026-07-10 noche (**RELEASE v0.1.13** — empaqueta el etiquetado de IVA en asientos migrados (VatRateTaggingService + V171), la compensación que arrastra desde la declaración anterior y el auto-recalcular-solo-si-vacío del 303. MSI publicado como `latest`, tag develop `035dfa6`. Pendiente Benjamin: actualizar y probar recalcular T2 → presentado → pagado, con Docker/DBeaver apagados.) Histórico: **303 con datos MIGRADOS** — Benjamin probó el 303
 > con datos importados de CONTENDO y salía a cero + al cambiar el estado del T1 se borraban
 > los datos. Raíz (diagnosticada en su BD embebida real, 13307): el import contabiliza las
 > facturas SIN etiquetar el `vat_rate` en las líneas, y el 303 saca las bases del IVA de las
@@ -479,6 +488,37 @@ Repaso punto por punto de lo que Benjamin reportó con el check en blanco. Estad
     `[ ]` UIR-9 Fiscal · `[ ]` UIR-10 Calendario · `[ ]` UIR-11 Facturación/Compras/VeriFactu ·
     `[ ]` UIR-12 Configuración/Certificados · `[ ]` UIR-13 Asesoría/Consolidación/TPB ·
     `[ ]` UIR-14 Trabajos/Calendario laboral/Tablas año · `[ ]` UIR-15 Laboral/Nómina (el último).
+
+---
+
+## 📋 PLAN — casillas que faltan en los otros modelos AEAT (repaso 2026-07-11)
+
+> Benjamin: "según qué modelo tiene más datos para rellenar que no estamos contemplando".
+> Repaso de qué le falta a cada editor respecto al modelo oficial. Prioridad por uso real.
+
+- **303** — ✅ régimen general completo (bloque 303-FULL). Falta: régimen simplificado
+  (casillas 42-58, agrario/módulos IVA — raro en PYME), regularización prorrata anual, y la
+  **auto-clasificación** de intracom/inversión/importaciones (ver OPTYPE).
+- `[ ]` **OPTYPE (habilitador de auto-clasificación)** — para que el 303/349/390 clasifiquen
+  solas las operaciones intracomunitarias, inversión del sujeto pasivo e importaciones, hace
+  falta un **tipo de operación** por factura/tercero (nacional / intracom / extracom / ISP).
+  Hoy no existe fiable. Al añadirlo: país/NIF del cliente-proveedor → clasificación
+  automática. Desbloquea también el modelo 349 (recapitulativa de intracom).
+- `[ ]` **130** — completo para estimación directa (ingresos/gastos/5%/pagos/retenciones).
+  Falta: casilla 05 (positivos de trim. anteriores) y minoración art. 110.3.c (casilla 13,
+  la deducción de 100€ por rendimientos del trabajo) — hoy se teclea.
+- `[ ]` **390** (resumen anual IVA) — hoy agrega bases/cuotas por tipo. Le faltan las mismas
+  categorías que al 303 (intracom, inversión, importaciones, prorrata) + datos identificativos
+  y de actividad. Se beneficia de OPTYPE.
+- `[ ]` **347** (operaciones con terceros) — tiene NIF/nombre/trimestres/umbral 3.005,06. Falta:
+  desglose de operaciones de seguros/arrendamientos, metálico >6.000€, y el criterio de
+  cobro/devengo. Menor prioridad.
+- `[ ]` **190** (retenciones IRPF) — hoy suma retenciones por perceptor (clave G). Faltan las
+  claves/subclaves completas (A empleados, otras), percepciones dinerarias vs especie, y
+  ejercicios de devengo. Depende de tener bien la nómina (retenciones a empleados).
+- `[ ]` **111** (retenciones trimestral) — NO existe editor propio; se necesita para quien
+  retiene a empleados/profesionales. Va con el bloque de nómina.
+- `[ ]` **349** (recapitulativa intracom) — NO existe. Depende de OPTYPE.
 
 ---
 

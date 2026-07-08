@@ -399,37 +399,63 @@ public class AeatExtraModelsService {
         int mFrom = (quarter - 1) * 3 + 1;
         int mTo = quarter * 3;
 
-        // IVA REPERCUTIDO desde los ASIENTOS CONTABILIZADOS (POSTED) del
-        // trimestre: bases por tipo = haber de las líneas 7xx etiquetadas con
-        // su vat_rate. Así el 303 sale de la contabilidad (como en gestoría) y
-        // las facturas con varios tipos quedan desglosadas.
+        // IVA REPERCUTIDO del régimen general (casillas 01-09) desde los
+        // asientos POSTED del trimestre, EXCLUYENDO las rectificativas (van
+        // aparte en la casilla 14/15, modificación de bases y cuotas — como
+        // en el 303 oficial, no se netean en el régimen general).
         VatBreakdown rep = jdbcTemplate.queryForObject(SALES_VAT_BY_RATE_SQL
-                + " AND MONTH(e.entry_date) BETWEEN ? AND ?",
+                + " AND MONTH(e.entry_date) BETWEEN ? AND ?"
+                + " AND NOT EXISTS (SELECT 1 FROM sales_invoices si"
+                + "   WHERE si.id = e.source_id AND si.invoice_type = 'RECTIFYING')",
                 AeatExtraModelsService::mapRepercutido,
                 companyId, year, mFrom, mTo);
 
-        // IVA SOPORTADO desde los asientos POSTED del trimestre: bases por tipo
-        // = debe de las líneas 6xx; cuota total = debe de las 472.
+        // Modificación de bases y cuotas (casillas 14/15): rectificativas del
+        // trimestre (base y cuota, con su signo). Es el caso de un abono.
+        BigDecimal[] mod = jdbcTemplate.queryForObject("""
+                SELECT COALESCE(SUM(subtotal),0), COALESCE(SUM(vat_total),0)
+                  FROM sales_invoices
+                 WHERE company_id = ? AND status = 'VALIDATED'
+                   AND invoice_type = 'RECTIFYING'
+                   AND YEAR(invoice_date) = ? AND MONTH(invoice_date) BETWEEN ? AND ?
+                """, (rs, n) -> new BigDecimal[]{nz(rs.getBigDecimal(1)), nz(rs.getBigDecimal(2))},
+                companyId, year, mFrom, mTo);
+        BigDecimal modBase = mod[0], modCuota = mod[1];
+
+        // IVA SOPORTADO (casillas 28/29) desde los asientos POSTED del trimestre.
         VatBreakdown sop = jdbcTemplate.queryForObject(PURCHASE_VAT_BY_RATE_SQL
                 + " AND MONTH(e.entry_date) BETWEEN ? AND ?",
                 AeatExtraModelsService::mapSoportado,
                 companyId, year, mFrom, mTo);
 
         BigDecimal baseSoportada = sop.base04.add(sop.base10).add(sop.base21);
-        // Resultado del régimen general del trimestre (casilla 46/64).
-        BigDecimal resultadoRegimen = computeResultadoIva(rep.totalIva, sop.totalIva);
-        // IVA-COMP: cuotas a compensar de periodos anteriores (casilla 110)
-        // = arrastre desde el saldo inicial + trimestres previos de BENJAGEST.
+        // Total cuota devengada (casilla 27) = régimen general + modificación.
+        // Las demás casillas del devengado (intracom 11, inversión 13, recargo…)
+        // se editan en la UI y se suman ahí; aquí salen 0 desde la contabilidad.
+        BigDecimal totalDevengado = rep.totalIva.add(modCuota).setScale(2, RoundingMode.HALF_UP);
+        // Total a deducir (casilla 45). Igual: bienes de inversión, intracom,
+        // importaciones… se añaden en la UI.
+        BigDecimal totalDeducible = sop.totalIva.setScale(2, RoundingMode.HALF_UP);
+        // Resultado del régimen general (casilla 46/64) = 27 - 45.
+        BigDecimal resultadoRegimen = totalDevengado.subtract(totalDeducible);
+        // IVA-COMP: cuotas a compensar de periodos anteriores (casilla 110).
         BigDecimal compensacionPrevia = resolveCompensacionPrevia(companyId, year, quarter);
         Compensacion303 comp = aplicarCompensacion(resultadoRegimen, compensacionPrevia);
 
         Map<String, Object> casillas = new LinkedHashMap<>();
+        // Devengado — régimen general (bases por tipo) + modificación (14/15).
         casillas.put("base_4", rep.base04);
         casillas.put("base_10", rep.base10);
         casillas.put("base_21", rep.base21);
+        casillas.put("14_mod_base", modBase);
+        casillas.put("15_mod_cuota", modCuota);
         casillas.put("06_iva_repercutido_total", rep.totalIva);
+        casillas.put("27_total_devengado", totalDevengado);
+        // Deducible.
         casillas.put("base_soportado", baseSoportada);
         casillas.put("cuota_soportada", sop.totalIva);
+        casillas.put("45_total_deducible", totalDeducible);
+        // Resultado + compensación.
         casillas.put("46_resultado_regimen", resultadoRegimen);
         casillas.put("110_compensar_anteriores", comp.compensacionPrevia());
         casillas.put("78_compensacion_aplicada", comp.aplicada());
@@ -499,13 +525,19 @@ public class AeatExtraModelsService {
         BigDecimal direct = jsonNum(json, "remanenteCompensar", "87_remanente_compensar");
         if (direct != null) return direct;
         BigDecimal previa = nz(jsonNum(json, "110_compensar_anteriores", "compensar_anteriores"));
-        BigDecimal repercutido = jsonNum(json, "06_iva_repercutido_total");
-        if (repercutido == null) {
-            repercutido = nz(jsonNum(json, "cuota_21")).add(nz(jsonNum(json, "cuota_10")))
-                    .add(nz(jsonNum(json, "cuota_4")));
+        // Resultado del régimen (casilla 46): preferir el guardado, que ya
+        // incluye modificación de bases/cuotas y demás casillas. Si no está
+        // (declaraciones antiguas), derivarlo del repercutido − soportado.
+        BigDecimal regimen = jsonNum(json, "46_resultado_regimen", "resultadoRegimen", "resultado_regimen");
+        if (regimen == null) {
+            BigDecimal repercutido = jsonNum(json, "27_total_devengado", "06_iva_repercutido_total");
+            if (repercutido == null) {
+                repercutido = nz(jsonNum(json, "cuota_21")).add(nz(jsonNum(json, "cuota_10")))
+                        .add(nz(jsonNum(json, "cuota_4")));
+            }
+            BigDecimal soportado = nz(jsonNum(json, "cuota_soportada"));
+            regimen = repercutido.subtract(soportado);
         }
-        BigDecimal soportado = nz(jsonNum(json, "cuota_soportada"));
-        BigDecimal regimen = repercutido.subtract(soportado);
         return aplicarCompensacion(regimen, previa).remanente();
     }
 

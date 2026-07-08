@@ -1134,6 +1134,9 @@ public class AltaApiClient {
         d.cuotaSoportada = numberField(j, "cuota_soportada");
         // IVA-COMP: casilla 110 arrastrada por el backend.
         d.compensacionPrevia = numberField(j, "110_compensar_anteriores");
+        // 303-FULL: modificación de bases y cuotas (14/15) desde rectificativas.
+        d.modBase = numberField(j, "14_mod_base");
+        d.modCuota = numberField(j, "15_mod_cuota");
         return d;
     }
 
