@@ -1,5 +1,13 @@
 # Backlog operativo BENJAGEST
 
+> **Última actualización:** 2026-07-08 noche (**RELEASE v0.1.11** — empaqueta los cuatro
+> bloques legales de la auditoría en un `.msi`: **DR** (declaración responsable) + **LOCK**
+> (bloqueo tras cierre fiscal) + **RECT** (rectificativas R1-R5, parcial, simplificada F2) +
+> **RGPD** (cifrado datos sensibles, clave por instalación, control de acceso, auditoría de
+> lecturas). MSI 302 MB, publicado en GitHub Releases como `latest` (draft:false,
+> prerelease:false); tag apunta a develop `fc43c77`. Auto-update lo detecta.
+> **Pendiente Benjamin:** actualizar la instalada (botón Buscar actualizaciones) y probar
+> los 4 bloques. Histórico previo:
 > **Última actualización:** 2026-07-08 tarde (**bloque RGPD** — **datos sensibles**, Fase B
 > del plan de la auditoría: **clave maestra por instalación** (fichero protegido en
 > %ProgramData%\BENJAGEST\secret con ACL; la de desarrollo queda solo como fallback de
