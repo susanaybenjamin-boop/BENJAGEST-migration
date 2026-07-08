@@ -193,10 +193,30 @@ public class SalesInvoiceController {
                 "items", items);
     }
 
+    /**
+     * RECT: la anulación lleva causa legal (R1-R4; R5 automática si la
+     * original es simplificada). Body opcional {"rectificationCode":"R3"}
+     * — sin body sale R4 (resto de causas), compatible con clientes
+     * antiguos que llamaban sin cuerpo.
+     */
     @PostMapping("/{id}/void")
-    public SalesInvoice voidValidated(@PathVariable("id") String id) {
-        return service.voidValidated(id);
+    public SalesInvoice voidValidated(@PathVariable("id") String id,
+                                      @RequestBody(required = false) RectifyRequest body) {
+        return service.voidValidated(id, body == null ? null : body.rectificationCode());
     }
+
+    /**
+     * RECT — rectificativa PARCIAL: crea un borrador RECTIFYING (scope
+     * PARTIAL) con las líneas de la original en negativo para que el
+     * usuario las ajuste en el editor y valide. La original NO se anula.
+     */
+    @PostMapping("/{id}/rectify")
+    public SalesInvoice rectifyPartial(@PathVariable("id") String id,
+                                       @RequestBody(required = false) RectifyRequest body) {
+        return service.rectifyPartial(id, body == null ? null : body.rectificationCode());
+    }
+
+    public record RectifyRequest(String rectificationCode) {}
 
     @DeleteMapping("/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
