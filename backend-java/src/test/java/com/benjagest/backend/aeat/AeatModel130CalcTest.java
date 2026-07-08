@@ -59,6 +59,30 @@ class AeatModel130CalcTest {
     }
 
     @Test
+    void ejercicio2025_primerTrimestre_declaracionReal() {
+        // 130 1T 2025 presentado (SH Asesores). Gasto RAW 1.663,47 ->
+        // deducible [02] = 1.748,40 (con el 5%); rendimiento neto [03]
+        // 1.613,60; cuota [04]/[07]/[19] = 322,72.
+        var c = AeatExtraModelsService.compute130(
+                bd("3362.00"), bd("1663.47"), BigDecimal.ZERO, BigDecimal.ZERO);
+        assertAmount("1613.60", c.rendimientoNeto());
+        assertAmount("322.72", c.cuota());
+        assertAmount("322.72", c.pago());
+    }
+
+    @Test
+    void ejercicio2025_segundoTrimestre_acumulado_declaracionReal() {
+        // 130 2T 2025: ingresos acum. 8.614, gasto RAW 3.154,14 ->
+        // rendimiento neto [03] 5.186,87, cuota [04] 1.037,37; menos el
+        // pago del 1T (322,72) -> [07]/[19] = 714,65.
+        var c = AeatExtraModelsService.compute130(
+                bd("8614.00"), bd("3154.14"), BigDecimal.ZERO, bd("322.72"));
+        assertAmount("5186.87", c.rendimientoNeto());
+        assertAmount("1037.37", c.cuota());
+        assertAmount("714.65", c.pago());
+    }
+
+    @Test
     void topeDe2000EurosSeAplicaSobreElAcumulado() {
         // Rendimiento previo 50.000 -> 5% = 2.500, pero el tope anual es 2.000.
         var c = AeatExtraModelsService.compute130(
