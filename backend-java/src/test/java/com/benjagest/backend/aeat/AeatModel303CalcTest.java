@@ -61,6 +61,28 @@ class AeatModel303CalcTest {
     }
 
     @Test
+    void ejercicio2026_primerTrimestre_declaracionReal_conCompensacion() {
+        // 303 1T 2026 presentado. Devengado [27] 1.183,00 - deducible
+        // [45] 214,95 = resultado regimen [46] 968,05.
+        assertAmount("968.05",
+                AeatExtraModelsService.computeResultadoIva(bd("1183.00"), bd("214.95")));
+        // Resultado REAL [71] fue 713,14 = 968,05 - 254,91 de cuotas a
+        // compensar de periodos anteriores (casilla 110/78). BENJAGEST
+        // daria 968,05 (gap IVA-COMP: afecta a las declaraciones REALES
+        // de 2026 de Benjamin, no solo a 2025).
+        assertAmount("713.14", bd("968.05").subtract(bd("254.91")));
+    }
+
+    @Test
+    void ejercicio2026_segundoTrimestre_declaracionReal() {
+        // 303 2T 2026: devengado 2.165,97 - deducible 840,17 = 1.325,80.
+        // Sin compensacion pendiente (la del 1T se agoto) -> resultado
+        // final = resultado del trimestre.
+        assertAmount("1325.80",
+                AeatExtraModelsService.computeResultadoIva(bd("2165.97"), bd("840.17")));
+    }
+
+    @Test
     void resultadoNegativoSeConserva_aCompensar() {
         // Mas soportado que repercutido -> negativo (a compensar/devolver).
         assertAmount("-100.00",
