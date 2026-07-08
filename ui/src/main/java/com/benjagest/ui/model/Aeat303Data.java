@@ -16,4 +16,9 @@ public class Aeat303Data {
     // IVA-COMP: cuotas a compensar de periodos anteriores (casilla 110),
     // que el backend arrastra desde el saldo inicial + trimestres previos.
     public String compensacionPrevia = "0";
+    // 303-FULL: modificación de bases y cuotas (casillas 14/15) — las
+    // rectificativas del trimestre, con su signo. El backend las clasifica
+    // aquí (no en el régimen general 01-09), como el 303 oficial.
+    public String modBase = "0";
+    public String modCuota = "0";
 }
