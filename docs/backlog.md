@@ -1,5 +1,6 @@
 # Backlog operativo BENJAGEST
 
+> **Última actualización:** 2026-07-11 tarde (**RELEASE v0.1.14** — 303 régimen general completo + la modificación 14/15 pilla rectificativas y abonos importados. Verificado EN VIVO contra las declaraciones reales de Benjamin: el IVA **devengado** del 303 T1/T2 cuadra al céntimo (1.183,00 y 2.165,97). Diferencias en soportado/gastos = datos (IVA no deducible que la asesoría excluyó, importación parcial), no cálculo → afinado fino depende de OPTYPE (marcar deducibilidad/tipo de operación por factura). MSI `latest`, tag `6e205f3`. Histórico previo:
 > **Última actualización:** 2026-07-11 (**303-FULL** — el editor del 303 pasa de básico a
 > **régimen general completo**: devengado (régimen general por tipo + intracom 10/11 +
 > inversión sujeto pasivo 12/13 + **modificación bases/cuotas 14/15** + recargo) y deducible
