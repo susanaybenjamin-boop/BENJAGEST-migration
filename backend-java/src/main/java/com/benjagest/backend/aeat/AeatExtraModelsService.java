@@ -345,6 +345,44 @@ public class AeatExtraModelsService {
         return nz(ivaRepercutido).subtract(nz(ivaSoportado)).setScale(2, RoundingMode.HALF_UP);
     }
 
+    /**
+     * PURO (IVA-COMP) — aplica las cuotas de IVA a compensar de periodos
+     * anteriores (casilla 110) sobre el resultado del régimen general del
+     * trimestre (casilla 46/64). Reproduce el modelo 303:
+     *
+     * <pre>
+     *   resultado régimen >= 0 (a ingresar):
+     *       aplicada (78)  = min(compensación previa, resultado régimen)
+     *       resultado (71) = resultado régimen - aplicada
+     *       remanente (87) = compensación previa - aplicada
+     *   resultado régimen < 0 (a compensar):
+     *       aplicada (78)  = 0
+     *       resultado (71) = resultado régimen  (negativo, se declara a compensar)
+     *       remanente (87) = compensación previa + |resultado régimen|
+     * </pre>
+     *
+     * Validado con declaraciones REALES de Benjamin: 1T 2026 (régimen
+     * 968,05 + previa 254,91 → resultado 713,14) y 1T 2025 (régimen
+     * 114,62 + previa 1.207,25 → resultado 0,00, remanente 1.092,63).
+     */
+    public static Compensacion303 aplicarCompensacion(BigDecimal resultadoRegimen,
+                                                       BigDecimal compensacionPrevia) {
+        BigDecimal previa = nz(compensacionPrevia).max(BigDecimal.ZERO).setScale(2, RoundingMode.HALF_UP);
+        BigDecimal reg = nz(resultadoRegimen).setScale(2, RoundingMode.HALF_UP);
+        if (reg.signum() >= 0) {
+            BigDecimal aplicada = previa.min(reg);
+            return new Compensacion303(previa, aplicada, reg.subtract(aplicada), previa.subtract(aplicada));
+        }
+        return new Compensacion303(previa, BigDecimal.ZERO, reg, previa.add(reg.negate()));
+    }
+
+    public record Compensacion303(
+            BigDecimal compensacionPrevia, // casilla 110
+            BigDecimal aplicada,           // casilla 78
+            BigDecimal resultado,          // casilla 71 (final)
+            BigDecimal remanente           // casilla 87 (para el trimestre siguiente)
+    ) {}
+
     /** Soportado: bases por tipo desde 6xx; cuota total real desde 472. */
     private static VatBreakdown mapSoportado(java.sql.ResultSet rs, int n) throws java.sql.SQLException {
         return new VatBreakdown(nz(rs.getBigDecimal("base04")), nz(rs.getBigDecimal("base10")),
@@ -378,7 +416,12 @@ public class AeatExtraModelsService {
                 companyId, year, mFrom, mTo);
 
         BigDecimal baseSoportada = sop.base04.add(sop.base10).add(sop.base21);
-        BigDecimal resultado = computeResultadoIva(rep.totalIva, sop.totalIva);
+        // Resultado del régimen general del trimestre (casilla 46/64).
+        BigDecimal resultadoRegimen = computeResultadoIva(rep.totalIva, sop.totalIva);
+        // IVA-COMP: cuotas a compensar de periodos anteriores (casilla 110)
+        // = arrastre desde el saldo inicial + trimestres previos de BENJAGEST.
+        BigDecimal compensacionPrevia = resolveCompensacionPrevia(companyId, year, quarter);
+        Compensacion303 comp = aplicarCompensacion(resultadoRegimen, compensacionPrevia);
 
         Map<String, Object> casillas = new LinkedHashMap<>();
         casillas.put("base_4", rep.base04);
@@ -387,12 +430,70 @@ public class AeatExtraModelsService {
         casillas.put("06_iva_repercutido_total", rep.totalIva);
         casillas.put("base_soportado", baseSoportada);
         casillas.put("cuota_soportada", sop.totalIva);
-        casillas.put("71_resultado", resultado);
+        casillas.put("46_resultado_regimen", resultadoRegimen);
+        casillas.put("110_compensar_anteriores", comp.compensacionPrevia());
+        casillas.put("78_compensacion_aplicada", comp.aplicada());
+        casillas.put("71_resultado", comp.resultado());
+        casillas.put("87_remanente_compensar", comp.remanente());
 
         Model303View view = new Model303View(year, quarter, rep, sop,
-                baseSoportada, resultado, casillas);
-        if (persist) persistFiling("303", year, quarter, view, resultado);
+                baseSoportada, resultadoRegimen, comp.compensacionPrevia(),
+                comp.aplicada(), comp.resultado(), comp.remanente(), casillas);
+        if (persist) persistFiling("303", year, quarter, view, comp.resultado());
         return view;
+    }
+
+    /**
+     * IVA-COMP — cuotas de IVA a compensar disponibles AL INICIO del
+     * trimestre (year, quarter) = casilla 110. Parte del saldo inicial
+     * (vat_compensation_baseline) y arrastra trimestre a trimestre
+     * recalculando el resultado del régimen de cada uno desde la
+     * contabilidad. Si no hay saldo inicial, empieza en 0 en el 1T del
+     * año pedido (asume sin arrastre previo — el caso común).
+     */
+    private BigDecimal resolveCompensacionPrevia(String companyId, int year, int quarter) {
+        int startYear = year, startQuarter = 1;
+        BigDecimal balance = BigDecimal.ZERO;
+        List<BigDecimal[]> base = jdbcTemplate.query("""
+                SELECT opening_balance, as_of_year, as_of_quarter
+                  FROM vat_compensation_baseline WHERE company_id = ?
+                """, (rs, n) -> new BigDecimal[]{
+                        rs.getBigDecimal("opening_balance"),
+                        BigDecimal.valueOf(rs.getInt("as_of_year")),
+                        BigDecimal.valueOf(rs.getInt("as_of_quarter"))}, companyId);
+        if (!base.isEmpty()) {
+            balance = nz(base.get(0)[0]);
+            startYear = base.get(0)[1].intValue();
+            startQuarter = base.get(0)[2].intValue();
+        }
+        // Si el corte del saldo inicial es POSTERIOR al trimestre pedido,
+        // no hay información antes de él: compensación previa 0.
+        if (startYear > year || (startYear == year && startQuarter > quarter)) {
+            return BigDecimal.ZERO;
+        }
+        // Arrastrar desde (startYear, startQuarter) hasta el trimestre
+        // ANTERIOR al pedido, aplicando el resultado del régimen de cada uno.
+        int cy = startYear, cq = startQuarter;
+        while (cy < year || (cy == year && cq < quarter)) {
+            BigDecimal regimen = computeResultadoRegimen303(companyId, cy, cq);
+            balance = aplicarCompensacion(regimen, balance).remanente();
+            cq++;
+            if (cq > 4) { cq = 1; cy++; }
+        }
+        return balance;
+    }
+
+    /** Resultado del régimen general (repercutido - soportado) de un trimestre. */
+    private BigDecimal computeResultadoRegimen303(String companyId, int year, int quarter) {
+        int mFrom = (quarter - 1) * 3 + 1;
+        int mTo = quarter * 3;
+        VatBreakdown rep = jdbcTemplate.queryForObject(SALES_VAT_BY_RATE_SQL
+                + " AND MONTH(e.entry_date) BETWEEN ? AND ?",
+                AeatExtraModelsService::mapRepercutido, companyId, year, mFrom, mTo);
+        VatBreakdown sop = jdbcTemplate.queryForObject(PURCHASE_VAT_BY_RATE_SQL
+                + " AND MONTH(e.entry_date) BETWEEN ? AND ?",
+                AeatExtraModelsService::mapSoportado, companyId, year, mFrom, mTo);
+        return computeResultadoIva(rep.totalIva, sop.totalIva);
     }
 
     // ====================================================================
@@ -627,7 +728,12 @@ public class AeatExtraModelsService {
     public record Model303View(
             int year, int quarter,
             VatBreakdown repercutido, VatBreakdown soportado,
-            BigDecimal baseSoportada, BigDecimal resultado,
+            BigDecimal baseSoportada,
+            // IVA-COMP: resultado del régimen (46) + compensación (110/78) +
+            // resultado final (71) + remanente para el siguiente trimestre (87).
+            BigDecimal resultadoRegimen,
+            BigDecimal compensacionPrevia, BigDecimal compensacionAplicada,
+            BigDecimal resultado, BigDecimal remanenteCompensar,
             Map<String, Object> casillas
     ) {}
 

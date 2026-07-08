@@ -423,6 +423,8 @@ public class TaxScreen extends ScreenBase {
         // IVA soportado (deducible)
         TextField bs = new TextField(parsed.getOrDefault("base_soportado", ""));
         TextField cs = new TextField(parsed.getOrDefault("cuota_soportada", ""));
+        // IVA-COMP: cuotas a compensar de periodos anteriores (casilla 110).
+        TextField comp110 = new TextField(parsed.getOrDefault("compensar_anteriores", ""));
 
         ComboBox<String> statusCombo = new ComboBox<>();
         statusCombo.getItems().addAll("DRAFT", "READY", "PRESENTED", "PAID", "REJECTED");
@@ -446,18 +448,37 @@ public class TaxScreen extends ScreenBase {
         grid.add(new Label("Cuota soportada"), 2, 6); grid.add(cs, 3, 6);
 
         grid.add(new Separator(), 0, 7, 4, 1);
+        // IVA-COMP: casilla 110 (arrastrada) + botón para el saldo inicial.
+        grid.add(new Label("Cuotas a compensar anteriores (110)"), 0, 8); grid.add(comp110, 1, 8);
+        Button baselineBtn = new Button("Saldo inicial…");
+        baselineBtn.setGraphic(icon("fas-sliders-h"));
+        baselineBtn.setOnAction(e -> showVatCompensationBaselineDialog(existing.periodYear()));
+        grid.add(baselineBtn, 2, 8, 2, 1);
+
+        grid.add(new Separator(), 0, 9, 4, 1);
         Label resultLabel = new Label();
         resultLabel.getStyleClass().add("settings-section-title");
-        grid.add(resultLabel, 0, 8, 4, 1);
+        grid.add(resultLabel, 0, 10, 4, 1);
 
         Runnable recompute = () -> {
             java.math.BigDecimal repercutido = sum(c21.getText(), c10.getText(), c4.getText());
             java.math.BigDecimal soportado = parseDec(cs.getText());
             if (soportado == null) soportado = java.math.BigDecimal.ZERO;
-            java.math.BigDecimal result = repercutido.subtract(soportado);
-            resultLabel.setText("Resultado (casilla 71): " + result.toPlainString() + " €");
+            java.math.BigDecimal regimen = repercutido.subtract(soportado);
+            // IVA-COMP: aplicar las cuotas a compensar de periodos anteriores.
+            java.math.BigDecimal previa = parseDec(comp110.getText());
+            if (previa == null || previa.signum() < 0) previa = java.math.BigDecimal.ZERO;
+            java.math.BigDecimal aplicada = regimen.signum() > 0 ? previa.min(regimen) : java.math.BigDecimal.ZERO;
+            java.math.BigDecimal result = regimen.subtract(aplicada).setScale(2, java.math.RoundingMode.HALF_UP);
+            java.math.BigDecimal remanente = previa.subtract(aplicada);
+            if (regimen.signum() < 0) remanente = previa.add(regimen.abs());
+            resultLabel.setText(
+                    "Resultado régimen (46): " + regimen.setScale(2, java.math.RoundingMode.HALF_UP).toPlainString()
+                    + " €   ·   A compensar aplicado (78): " + aplicada.toPlainString() + " €\n"
+                    + "Resultado (casilla 71): " + result.toPlainString() + " €"
+                    + "   ·   Remanente futuro (87): " + remanente.toPlainString() + " €");
         };
-        for (TextField f : new TextField[]{c21, c10, c4, cs}) {
+        for (TextField f : new TextField[]{c21, c10, c4, cs, comp110}) {
             f.textProperty().addListener((o, ov, nv) -> recompute.run());
         }
         recompute.run();
@@ -470,6 +491,7 @@ public class TaxScreen extends ScreenBase {
             c10.setText(mulStr(d.base10, "0.10"));
             c21.setText(mulStr(d.base21, "0.21"));
             bs.setText(d.baseSoportada); cs.setText(d.cuotaSoportada);
+            comp110.setText(d.compensacionPrevia);
             recompute.run();
         };
         Runnable recalc303 = () -> {
@@ -490,9 +512,9 @@ public class TaxScreen extends ScreenBase {
         // Automático al abrir si el filing está vacío (no pisa ajustes guardados).
         if (parsed.isEmpty()) recalc303.run();
 
-        grid.add(recalc303Btn, 0, 9, 4, 1);
-        grid.add(new Label(t("tax.editor.status")), 0, 10); grid.add(statusCombo, 1, 10);
-        grid.add(new Label(t("tax.editor.csv")), 2, 10); grid.add(csvField, 3, 10);
+        grid.add(recalc303Btn, 0, 11, 4, 1);
+        grid.add(new Label(t("tax.editor.status")), 0, 12); grid.add(statusCombo, 1, 12);
+        grid.add(new Label(t("tax.editor.csv")), 2, 12); grid.add(csvField, 3, 12);
 
         installDialog(dialog, grid);
 
@@ -507,10 +529,76 @@ public class TaxScreen extends ScreenBase {
             data.put("cuota_4", c4.getText().trim());
             data.put("base_soportado", bs.getText().trim());
             data.put("cuota_soportada", cs.getText().trim());
-            java.math.BigDecimal total = sum(c21.getText(), c10.getText(), c4.getText())
+            data.put("compensar_anteriores", comp110.getText().trim());
+            // IVA-COMP: total = resultado con la compensacion aplicada (casilla 71).
+            java.math.BigDecimal regimen = sum(c21.getText(), c10.getText(), c4.getText())
                     .subtract(parseDec(cs.getText()) == null ? java.math.BigDecimal.ZERO : parseDec(cs.getText()));
+            java.math.BigDecimal previa = parseDec(comp110.getText());
+            if (previa == null || previa.signum() < 0) previa = java.math.BigDecimal.ZERO;
+            java.math.BigDecimal aplicada = regimen.signum() > 0 ? previa.min(regimen) : java.math.BigDecimal.ZERO;
+            java.math.BigDecimal total = regimen.subtract(aplicada).setScale(2, java.math.RoundingMode.HALF_UP);
             saveFiling(existing, statusCombo.getValue(), encodeDataMap(data), total,
                     csvField.getText(), existing.notes(), java.util.List.of());
+        });
+    }
+
+    /**
+     * IVA-COMP — diálogo del saldo INICIAL de cuotas de IVA a compensar
+     * (casilla 110 de partida). La asesoría lo teclea una vez al migrar;
+     * de ahí en adelante el 303 lo arrastra solo. Al guardar, refresca el
+     * editor para que el prefill recoja el saldo nuevo.
+     */
+    private void showVatCompensationBaselineDialog(int defaultYear) {
+        Dialog<ButtonType> dialog = new Dialog<>();
+        dialog.setTitle("Saldo inicial de IVA a compensar");
+        ButtonType saveBt = new ButtonType(t("tax.editor.save"), ButtonBar.ButtonData.OK_DONE);
+        dialog.getDialogPane().getButtonTypes().addAll(saveBt, ButtonType.CANCEL);
+
+        TextField balance = new TextField();
+        TextField yearF = new TextField(String.valueOf(defaultYear));
+        ComboBox<String> quarter = new ComboBox<>();
+        quarter.getItems().addAll("1", "2", "3", "4");
+        quarter.getSelectionModel().selectFirst();
+
+        Task<String[]> load = new Task<>() {
+            @Override protected String[] call() throws Exception {
+                return altaApiClient.getVatCompensationBaseline();
+            }
+        };
+        load.setOnSucceeded(ev -> {
+            String[] b = load.getValue();
+            if (b != null) {
+                balance.setText(b[0]); yearF.setText(b[1]);
+                quarter.getSelectionModel().select(b[2] == null ? "1" : b[2].replace(".0", ""));
+            }
+        });
+        start(load, "vat-baseline-load");
+
+        Label hint = new Label("El IVA a compensar pendiente de trimestres anteriores a usar "
+                + "BENJAGEST, y desde qué trimestre empieza el arrastre. Se teclea una vez.");
+        hint.setWrapText(true); hint.getStyleClass().add("settings-hint");
+        GridPane g = new GridPane();
+        g.setHgap(10); g.setVgap(8); g.setPadding(new Insets(12));
+        g.add(hint, 0, 0, 2, 1);
+        g.add(new Label("Saldo a compensar (€)"), 0, 1); g.add(balance, 1, 1);
+        g.add(new Label("Desde el año"), 0, 2); g.add(yearF, 1, 2);
+        g.add(new Label("Desde el trimestre"), 0, 3); g.add(quarter, 1, 3);
+        installDialog(dialog, g);
+
+        dialog.showAndWait().ifPresent(bt -> {
+            if (bt != saveBt) return;
+            int y; try { y = Integer.parseInt(yearF.getText().trim()); }
+            catch (Exception ex) { showError("Saldo inicial", "Año inválido."); return; }
+            int q = Integer.parseInt(quarter.getValue());
+            Task<Void> save = new Task<>() {
+                @Override protected Void call() throws Exception {
+                    altaApiClient.setVatCompensationBaseline(balance.getText().trim(), y, q);
+                    return null;
+                }
+            };
+            save.setOnFailed(ev -> showError("Saldo inicial",
+                    save.getException() == null ? "" : save.getException().getMessage()));
+            start(save, "vat-baseline-save");
         });
     }
 

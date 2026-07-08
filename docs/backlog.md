@@ -475,17 +475,13 @@ Repaso punto por punto de lo que Benjamin reportó con el check en blanco. Estad
 - `[x]` **303 2025 como fixture** — bases 1.095@10% + 792@21% → devengado 275,82; deducible
   161,20 → resultado régimen general 114,62. Valida deriveRepercutido + computeResultadoIva
   con datos reales.
-- `[ ]` **GAP IVA-COMP (sin implementar, PRIORIDAD ALTA)** — el 303 no arrastra las **cuotas
-  a compensar de periodos anteriores** (casilla 110→78→87). Confirmado con datos reales en
-  DOS ejercicios: 1T 2025 resultado real **0,00** (no 114,62; 1.207,25 a compensar, se
-  aplicaron 114,62, quedaron 1.092,63) y **1T 2026 resultado real 713,14** (no 968,05; se
-  aplicaron 254,91). CORRECCIÓN respecto a la nota anterior: **afecta las declaraciones
-  REALES de 2026** de Benjamin, no solo 2025 (antes lo di por no-bloqueante mirando solo la
-  pestaña de Presentación de las capturas, que ocultaba la compensación). BENJAGEST calcula
-  bien el resultado del TRIMESTRE (repercutido − soportado) pero da de más siempre que hay
-  IVA negativo acumulado. Implica: saldo de compensación que cruza AÑOS + casillas 110/78/87
-  + campo editable para el saldo de apertura (empresa que migra a BENJAGEST a media vida,
-  como el baseline de migración de facturas). Bloque propio: IVA-COMP.
+- `[x]` **IVA-COMP RESUELTO (2026-07-09 tarde)** — el 303 ya arrastra las **cuotas a
+  compensar de periodos anteriores** (casilla 110→78→87). `aplicarCompensacion` puro (4 tests
+  con cifras reales: 1T 2026→713,14, 1T 2025→0,00 con remanente 1.092,63); `generate303`
+  resuelve el saldo previo desde el **saldo inicial editable** (V170 `vat_compensation_baseline`,
+  patrón del baseline de migración) + arrastre de cada trimestre anterior. UI: editor 303
+  muestra régimen/110/78/71/87 y botón "Saldo inicial…". Verificado en vivo (saldo 254,91 →
+  casilla 110; arrastre a T2; corte posterior → 0). **NO liberado** (en develop).
 
 ---
 

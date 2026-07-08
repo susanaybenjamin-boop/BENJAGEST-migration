@@ -13,4 +13,7 @@ public class Aeat303Data {
     public String base21 = "0";
     public String baseSoportada = "0";
     public String cuotaSoportada = "0";
+    // IVA-COMP: cuotas a compensar de periodos anteriores (casilla 110),
+    // que el backend arrastra desde el saldo inicial + trimestres previos.
+    public String compensacionPrevia = "0";
 }
