@@ -127,4 +127,32 @@ class AeatModel303CalcTest {
         assertAmount("500.00", c.resultado());
         assertAmount("0", c.remanente());
     }
+
+    // ---- Arrastre desde la declaración anterior (casilla 87 -> 110) ----
+
+    @Test
+    void remanente_delT1_tecleadoEnLaUI_seConsumeEntero() {
+        // Caso real de Benjamin: T1 tecleado a mano (repercutido 968,05,
+        // sin IVA soportado) con 254,91 a compensar previos. Consume los
+        // 254,91 -> remanente 0. El T2 debe partir de 0, no de 254,91.
+        String t1Ui = "{\"cuota_21\":\"968.05\",\"cuota_10\":\"0\",\"cuota_4\":\"0\","
+                + "\"cuota_soportada\":\"0\",\"compensar_anteriores\":\"254.91\"}";
+        assertAmount("0", AeatExtraModelsService.extractRemanente303(t1Ui));
+    }
+
+    @Test
+    void remanente_trimestreNegativo_creceElSaldo() {
+        // 303 tecleado con más soportado que repercutido: régimen -100,
+        // previa 200 -> remanente 300.
+        String ui = "{\"cuota_21\":\"100\",\"cuota_soportada\":\"200\",\"compensar_anteriores\":\"200\"}";
+        assertAmount("300.00", AeatExtraModelsService.extractRemanente303(ui));
+    }
+
+    @Test
+    void remanente_leeElValorAlmacenadoSiEstaPresente() {
+        // Vista del backend: si viene el remanente ya calculado, se usa tal cual.
+        String backend = "{\"resultado\":0.00,\"remanenteCompensar\":1092.63,"
+                + "\"casillas\":{\"87_remanente_compensar\":1092.63}}";
+        assertAmount("1092.63", AeatExtraModelsService.extractRemanente303(backend));
+    }
 }
