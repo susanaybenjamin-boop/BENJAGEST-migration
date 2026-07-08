@@ -39,8 +39,9 @@ public class SalesInvoiceRepository {
                     id, company_id, customer_id, series_id, invoice_number,
                     invoice_date, due_date, invoice_type, status, payment_status,
                     subtotal, vat_total, retention_total, total, paid_amount,
-                    currency, original_invoice_id, concept, notes
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    currency, original_invoice_id, rectification_code,
+                    rectification_scope, concept, notes
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 invoice.id(),
                 tenantContext.getCurrentCompanyId(),
@@ -59,6 +60,8 @@ public class SalesInvoiceRepository {
                 invoice.paidAmount() == null ? BigDecimal.ZERO : invoice.paidAmount(),
                 invoice.currency() == null ? "EUR" : invoice.currency(),
                 invoice.originalInvoiceId(),
+                invoice.rectificationCode(),
+                invoice.rectificationScope(),
                 invoice.concept(),
                 invoice.notes()
         );
@@ -355,6 +358,7 @@ public class SalesInvoiceRepository {
                        i.invoice_type, i.status, i.payment_status,
                        i.subtotal, i.vat_total, i.retention_total, i.total, i.paid_amount,
                        i.currency, i.original_invoice_id, i.rectifying_invoice_id,
+                       i.rectification_code, i.rectification_scope,
                        i.concept, i.notes, i.pdf_path, i.validated_at, i.created_at, i.updated_at
                   FROM sales_invoices i
                   LEFT JOIN customers c ON c.id = i.customer_id
@@ -389,6 +393,7 @@ public class SalesInvoiceRepository {
                        i.invoice_type, i.status, i.payment_status,
                        i.subtotal, i.vat_total, i.retention_total, i.total, i.paid_amount,
                        i.currency, i.original_invoice_id, i.rectifying_invoice_id,
+                       i.rectification_code, i.rectification_scope,
                        i.concept, i.notes, i.pdf_path, i.validated_at, i.created_at, i.updated_at
                   FROM sales_invoices i
                   LEFT JOIN customers c ON c.id = i.customer_id
@@ -452,6 +457,7 @@ public class SalesInvoiceRepository {
                 header.subtotal(), header.vatTotal(), header.retentionTotal(),
                 header.total(), header.paidAmount(), header.currency(),
                 header.originalInvoiceId(), header.rectifyingInvoiceId(),
+                header.rectificationCode(), header.rectificationScope(),
                 header.concept(), header.notes(), header.pdfPath(),
                 header.validatedAt(),
                 header.createdAt(), header.updatedAt(),
@@ -486,6 +492,8 @@ public class SalesInvoiceRepository {
                 rs.getString("currency"),
                 rs.getString("original_invoice_id"),
                 rs.getString("rectifying_invoice_id"),
+                rs.getString("rectification_code"),
+                rs.getString("rectification_scope"),
                 rs.getString("concept"),
                 rs.getString("notes"),
                 rs.getString("pdf_path"),

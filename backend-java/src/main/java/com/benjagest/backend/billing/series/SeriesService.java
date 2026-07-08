@@ -86,13 +86,41 @@ public class SeriesService {
                 return ensureTpbSeries(clientId, advisoryId);
             }
         }
+        java.util.Optional<Series> found = repository.findActiveByKind(kind);
+        if (found.isPresent()) return found.get();
+        // RECT (2026-07-08): las series RESERVADAS (PROF/RECT/SIMP) las
+        // sembraban V16/V168 para las empresas que existian ENTONCES —
+        // toda empresa creada despues se quedaba sin ellas y anular una
+        // factura fallaba con 428 (bug latente detectado en la empresa
+        // real de Benjamin). Fallback defensivo, mismo patron que
+        // ensureTpbSeries: crearla al vuelo si falta. STANDARD se queda
+        // fuera: esa la define el usuario (su numeracion propia).
+        Series reserved = ensureReservedSeries(kind);
+        if (reserved != null) return reserved;
+        throw new ResponseStatusException(HttpStatus.PRECONDITION_REQUIRED,
+                "No hay serie activa de tipo " + kind + " para esta empresa. "
+                        + "Configura tu serie de facturacion en Facturacion > Configuracion.");
+    }
+
+    /**
+     * Crea al vuelo la serie reservada del kind si es uno de los
+     * gestionados por el sistema (PROFORMA→PROF, RECTIFYING→RECT,
+     * SIMPLIFIED→SIMP). Devuelve null para kinds de usuario (STANDARD).
+     */
+    private Series ensureReservedSeries(String kind) {
+        String code = switch (kind) {
+            case "PROFORMA" -> "PROF";
+            case "RECTIFYING" -> "RECT";
+            case "SIMPLIFIED" -> "SIMP";
+            default -> null;
+        };
+        if (code == null) return null;
+        String id = java.util.UUID.randomUUID().toString();
+        repository.insert(id, code, kind, "BY_YEAR",
+                "{CODE}-{YYYY}-{0000}", 1, java.time.Year.now().getValue());
         return repository.findActiveByKind(kind)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.PRECONDITION_REQUIRED,
-                        "No hay serie activa de tipo " + kind + " para esta empresa. "
-                                + (kind.equals("STANDARD")
-                                        ? "Configura tu serie de facturacion en Facturacion > Configuracion."
-                                        : "La migracion V16 deberia haberla creado automaticamente; "
-                                                + "revisa que se ejecuto.")));
+                        "No se pudo crear la serie reservada " + code));
     }
 
     /**
