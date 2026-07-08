@@ -3227,6 +3227,70 @@ public class BenjagestUiApplication extends Application
     }
 
     /**
+     * OPTYPE — diálogo de clasificación fiscal de un gasto. Por defecto los
+     * gastos son INTERIOR, 100% de IVA deducible y gasto deducible en IRPF;
+     * aquí se afinan las excepciones (IVA no deducible, intracom, bien de
+     * inversión…) para que el 303 y el 130 no cuenten lo que no toca.
+     */
+    private void showPurchaseClassificationDialog(String purchaseId) {
+        javafx.scene.control.Dialog<javafx.scene.control.ButtonType> dialog = new javafx.scene.control.Dialog<>();
+        dialog.setTitle("Clasificación fiscal del gasto");
+        javafx.scene.control.ButtonType saveBt = new javafx.scene.control.ButtonType(
+                "Guardar", javafx.scene.control.ButtonBar.ButtonData.OK_DONE);
+        dialog.getDialogPane().getButtonTypes().addAll(saveBt, javafx.scene.control.ButtonType.CANCEL);
+
+        ComboBox<String> opType = new ComboBox<>();
+        opType.getItems().addAll("INTERIOR", "INTRACOM", "IMPORT", "ISP");
+        opType.getSelectionModel().selectFirst();
+        TextField dedPct = new TextField("100");
+        CheckBox expDed = new CheckBox("El gasto es deducible en IRPF (modelo 130)");
+        expDed.setSelected(true);
+        CheckBox invGood = new CheckBox("Es un bien de inversión (303 casillas 30/31)");
+
+        javafx.concurrent.Task<String[]> load = new javafx.concurrent.Task<>() {
+            @Override protected String[] call() throws Exception { return purchasesApi.getClassification(purchaseId); }
+        };
+        load.setOnSucceeded(ev -> {
+            String[] c = load.getValue();
+            if (c != null) {
+                if (c[0] != null && !c[0].isBlank()) opType.getSelectionModel().select(c[0]);
+                dedPct.setText(c[1]);
+                expDed.setSelected("true".equals(c[2]));
+                invGood.setSelected("true".equals(c[3]));
+            }
+        });
+        new Thread(load, "purchase-classification-load").start();
+
+        Label hint = new Label("Tipo de operación a efectos de IVA y qué parte es deducible. "
+                + "Ejemplo: una comida de negocios suele ser gasto deducible pero con IVA no deducible (0 %).");
+        hint.setWrapText(true); hint.getStyleClass().add("settings-hint");
+        GridPane g = new GridPane();
+        g.setHgap(10); g.setVgap(10); g.setPadding(new javafx.geometry.Insets(12));
+        g.add(hint, 0, 0, 2, 1);
+        g.add(new Label("Tipo de operación"), 0, 1); g.add(opType, 1, 1);
+        g.add(new Label("IVA deducible (%)"), 0, 2); g.add(dedPct, 1, 2);
+        g.add(expDed, 0, 3, 2, 1);
+        g.add(invGood, 0, 4, 2, 1);
+        dialog.getDialogPane().setContent(g);
+        dialog.initOwner(root.getScene().getWindow());
+
+        dialog.showAndWait().ifPresent(bt -> {
+            if (bt != saveBt) return;
+            javafx.concurrent.Task<Void> save = new javafx.concurrent.Task<>() {
+                @Override protected Void call() throws Exception {
+                    purchasesApi.setClassification(purchaseId, opType.getValue(),
+                            dedPct.getText().trim(), expDed.isSelected(), invGood.isSelected());
+                    return null;
+                }
+            };
+            save.setOnSucceeded(ev -> reloadPurchaseInvoices());
+            save.setOnFailed(ev -> showError("Clasificación fiscal",
+                    save.getException() == null ? "" : save.getException().getMessage()));
+            new Thread(save, "purchase-classification-save").start();
+        });
+    }
+
+    /**
      * Pantalla completa de Compras (listado con importar PDF + sub-tab
      * Recurrentes). Devuelve el nodo para poder reutilizarla tanto en el
      * centro (módulo del sidebar) como embebida en "Mi gestión".
@@ -3478,8 +3542,17 @@ public class BenjagestUiApplication extends Application
         // bajo el listado y Benjamin tenía que hacer scroll para verlos
         // cuando el listado era largo. Ahora van encima, junto a los
         // filtros, en su propia fila para no recargar la primera.
+        // OPTYPE: clasificación fiscal del gasto (tipo de operación + IVA
+        // deducible % + gasto deducible IRPF + bien de inversión).
+        Button classifyBtn = new Button("Clasificación fiscal");
+        classifyBtn.setGraphic(icon("fas-tags"));
+        classifyBtn.setOnAction(ev -> {
+            var sel = purchaseInvoicesTable.getSelectionModel().getSelectedItem();
+            if (sel != null) showPurchaseClassificationDialog(sel.id());
+        });
+
         HBox actions = new HBox(10, newExpenseBtn, newAutonomoBtn, validateBatchBtn,
-                makeRecurringPurchaseBtn, dueDatesBtn, registerPaymentBtn, deleteBtn);
+                makeRecurringPurchaseBtn, dueDatesBtn, registerPaymentBtn, classifyBtn, deleteBtn);
         actions.setAlignment(javafx.geometry.Pos.CENTER_LEFT);
 
         VBox body = new VBox(12);
