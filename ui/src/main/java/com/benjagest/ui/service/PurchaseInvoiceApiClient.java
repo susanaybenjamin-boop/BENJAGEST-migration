@@ -97,6 +97,42 @@ public class PurchaseInvoiceApiClient {
         }
     }
 
+    /**
+     * OPTYPE — clasificación fiscal de un gasto: [operationType,
+     * vatDeductiblePercent, expenseDeductible("true"/"false"),
+     * investmentGood("true"/"false")].
+     */
+    public String[] getClassification(String id) throws IOException, InterruptedException {
+        HttpRequest.Builder b = HttpRequest.newBuilder(
+                        URI.create(baseUrl + "/purchases/invoices/" + id + "/classification"))
+                .timeout(Duration.ofSeconds(10)).GET();
+        AuthSession.get().authorize(b);
+        HttpResponse<String> r = httpClient.send(b.build(), HttpResponse.BodyHandlers.ofString());
+        if (r.statusCode() < 200 || r.statusCode() >= 300) throw new IOException(r.body());
+        String j = r.body();
+        java.math.BigDecimal pct = bdField(j, "vatDeductiblePercent");
+        return new String[]{ strField(j, "operationType"),
+                pct == null ? "100" : pct.toPlainString(),
+                j.contains("\"expenseDeductible\":true") ? "true" : "false",
+                j.contains("\"investmentGood\":true") ? "true" : "false" };
+    }
+
+    public void setClassification(String id, String operationType, String vatDeductiblePercent,
+                                  boolean expenseDeductible, boolean investmentGood)
+            throws IOException, InterruptedException {
+        String body = "{\"operationType\":\"" + operationType + "\",\"vatDeductiblePercent\":"
+                + (vatDeductiblePercent == null || vatDeductiblePercent.isBlank() ? "100" : vatDeductiblePercent)
+                + ",\"expenseDeductible\":" + expenseDeductible
+                + ",\"investmentGood\":" + investmentGood + "}";
+        HttpRequest.Builder b = HttpRequest.newBuilder(
+                        URI.create(baseUrl + "/purchases/invoices/" + id + "/classification"))
+                .timeout(Duration.ofSeconds(10)).header("Content-Type", "application/json")
+                .PUT(HttpRequest.BodyPublishers.ofString(body));
+        AuthSession.get().authorize(b);
+        HttpResponse<String> r = httpClient.send(b.build(), HttpResponse.BodyHandlers.ofString());
+        if (r.statusCode() < 200 || r.statusCode() >= 300) throw new IOException(r.body());
+    }
+
     public List<PurchaseInvoiceEntry> list(Integer year, String status, String supplierNif)
             throws IOException, InterruptedException {
         StringBuilder q = new StringBuilder();

@@ -317,7 +317,11 @@ public class AeatExtraModelsService {
               JOIN accounting_accounts a ON a.id = l.account_id
              WHERE e.company_id = ? AND e.status = 'POSTED'
                AND l.vat_rate IS NOT NULL
-               AND YEAR(e.entry_date) = ?""";
+               AND YEAR(e.entry_date) = ?
+               -- OPTYPE: el IVA soportado NO deducible (vat_deductible_percent=0)
+               -- no entra en el 303 (gastos con IVA no deducible).
+               AND NOT EXISTS (SELECT 1 FROM purchase_invoices p
+                   WHERE p.id = e.source_id AND p.vat_deductible_percent = 0)""";
 
     private static BigDecimal nz(BigDecimal v) { return v == null ? BigDecimal.ZERO : v; }
 
@@ -577,10 +581,13 @@ public class AeatExtraModelsService {
                  WHERE company_id = ? AND YEAR(invoice_date) = ?
                    AND MONTH(invoice_date) <= ? AND status = 'VALIDATED'
                 """, BigDecimal.class, companyId, year, mTo);
+        // OPTYPE: solo los gastos DEDUCIBLES en IRPF (expense_deductible)
+        // cuentan en el 130. Un gasto marcado como no deducible no resta.
         BigDecimal gastos = jdbcTemplate.queryForObject("""
                 SELECT COALESCE(SUM(base_amount), 0) FROM purchase_invoices
                  WHERE company_id = ? AND YEAR(invoice_date) = ?
                    AND MONTH(invoice_date) <= ?
+                   AND expense_deductible = 1
                 """, BigDecimal.class, companyId, year, mTo);
         // Retenciones IRPF que los clientes practicaron al autónomo en sus
         // facturas emitidas (acumulado del año).
