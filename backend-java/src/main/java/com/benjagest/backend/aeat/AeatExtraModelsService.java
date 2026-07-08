@@ -52,6 +52,15 @@ public class AeatExtraModelsService {
     /** Umbral del modelo 347 — operaciones que individualmente superan 3.005,06€ anuales. */
     public static final BigDecimal THRESHOLD_347 = new BigDecimal("3005.06");
 
+    // Modelo 130 — parametros legales (art. 30 Reglamento IRPF + modelo 130).
+    // Estimacion directa SIMPLIFICADA: 5% de gastos de dificil justificacion
+    // sobre el rendimiento neto positivo, con tope de 2.000 EUR anuales.
+    // El pago fraccionado es el 20% del rendimiento neto. Son constantes
+    // legales estables; si cambian, es una edicion de una linea.
+    private static final BigDecimal GASTOS_DIFICIL_JUSTIFICACION_PCT = new BigDecimal("0.05");
+    private static final BigDecimal GASTOS_DIFICIL_JUSTIFICACION_TOPE = new BigDecimal("2000");
+    private static final BigDecimal MODELO_130_TIPO = new BigDecimal("0.20");
+
     private final JdbcTemplate jdbcTemplate;
     private final TenantContext tenantContext;
     private final ObjectMapper objectMapper;
@@ -177,8 +186,7 @@ public class AeatExtraModelsService {
         VatBreakdown sop = jdbcTemplate.queryForObject(PURCHASE_VAT_BY_RATE_SQL,
                 AeatExtraModelsService::mapSoportado, companyId, year);
 
-        BigDecimal resultadoLiquidacion = rep.totalIva.subtract(sop.totalIva)
-                .setScale(2, RoundingMode.HALF_UP);
+        BigDecimal resultadoLiquidacion = computeResultadoIva(rep.totalIva, sop.totalIva);
 
         Map<String, Object> casillas = new LinkedHashMap<>();
         casillas.put("01_base04", rep.base04);
@@ -315,14 +323,26 @@ public class AeatExtraModelsService {
 
     /** Repercutido: bases por tipo desde 7xx; la cuota se deriva (base × tipo). */
     private static VatBreakdown mapRepercutido(java.sql.ResultSet rs, int n) throws java.sql.SQLException {
-        BigDecimal b4 = nz(rs.getBigDecimal("base04"));
-        BigDecimal b10 = nz(rs.getBigDecimal("base10"));
-        BigDecimal b21 = nz(rs.getBigDecimal("base21"));
+        return deriveRepercutido(nz(rs.getBigDecimal("base04")),
+                nz(rs.getBigDecimal("base10")), nz(rs.getBigDecimal("base21")));
+    }
+
+    /**
+     * PURO — cuota de IVA repercutido derivada de las bases por tipo
+     * (4/10/21%). Separado del ResultSet para poder testear la aritmetica.
+     */
+    public static VatBreakdown deriveRepercutido(BigDecimal base04, BigDecimal base10, BigDecimal base21) {
+        BigDecimal b4 = nz(base04), b10 = nz(base10), b21 = nz(base21);
         BigDecimal iva = b4.multiply(new BigDecimal("0.04"))
                 .add(b10.multiply(new BigDecimal("0.10")))
                 .add(b21.multiply(new BigDecimal("0.21")))
                 .setScale(2, RoundingMode.HALF_UP);
         return new VatBreakdown(b4, b10, b21, iva);
+    }
+
+    /** PURO — resultado del 303/390 = IVA repercutido - IVA soportado. */
+    public static BigDecimal computeResultadoIva(BigDecimal ivaRepercutido, BigDecimal ivaSoportado) {
+        return nz(ivaRepercutido).subtract(nz(ivaSoportado)).setScale(2, RoundingMode.HALF_UP);
     }
 
     /** Soportado: bases por tipo desde 6xx; cuota total real desde 472. */
@@ -358,8 +378,7 @@ public class AeatExtraModelsService {
                 companyId, year, mFrom, mTo);
 
         BigDecimal baseSoportada = sop.base04.add(sop.base10).add(sop.base21);
-        BigDecimal resultado = rep.totalIva.subtract(sop.totalIva)
-                .setScale(2, RoundingMode.HALF_UP);
+        BigDecimal resultado = computeResultadoIva(rep.totalIva, sop.totalIva);
 
         Map<String, Object> casillas = new LinkedHashMap<>();
         casillas.put("base_4", rep.base04);
@@ -412,16 +431,67 @@ public class AeatExtraModelsService {
                    AND period_year = ? AND period_quarter < ?
                 """, BigDecimal.class, companyId, year, quarter);
 
-        BigDecimal beneficio = ingresos.subtract(gastos);
-        BigDecimal pago = beneficio.multiply(new BigDecimal("0.20"))
-                .subtract(retenciones).subtract(pagosPrevios)
-                .setScale(2, RoundingMode.HALF_UP);
+        Model130Calc calc = compute130(ingresos, gastos, retenciones, pagosPrevios);
 
         Model130View view = new Model130View(year, quarter,
-                ingresos, gastos, retenciones, pagosPrevios, pago);
-        if (persist) persistFiling("130", year, quarter, view, pago);
+                ingresos, gastos,
+                calc.gastosDificilJustificacion(), calc.rendimientoNeto(), calc.cuota(),
+                retenciones, pagosPrevios, calc.pago());
+        if (persist) persistFiling("130", year, quarter, view, calc.pago());
         return view;
     }
+
+    /**
+     * Calculo PURO del modelo 130 (IRPF pago fraccionado, estimacion
+     * directa simplificada). Separado del acceso a BD para poder testear
+     * con datos reales. Reproduce el modelo oficial:
+     *
+     * <pre>
+     *   rendimiento previo   = ingresos - gastos
+     *   gastos dificil just. = 5% del rendimiento previo POSITIVO, tope 2.000 EUR
+     *   rendimiento neto     = rendimiento previo - gastos dificil just.
+     *   cuota                = 20% del rendimiento neto POSITIVO
+     *   pago                 = cuota - retenciones - pagos fraccionados previos
+     *   resultado            = max(pago, 0)   (un trimestre negativo se
+     *                          declara 0; lo negativo se arrastra por la
+     *                          casilla 15 en trimestres siguientes)
+     * </pre>
+     *
+     * Los importes de entrada son ACUMULADOS del año hasta el trimestre;
+     * el tope de 2.000 EUR es anual y se aplica sobre el acumulado.
+     */
+    public static Model130Calc compute130(BigDecimal ingresos, BigDecimal gastos,
+                                          BigDecimal retenciones, BigDecimal pagosPrevios) {
+        BigDecimal ing = nz(ingresos);
+        BigDecimal gas = nz(gastos);
+        BigDecimal ret = nz(retenciones);
+        BigDecimal prev = nz(pagosPrevios);
+
+        BigDecimal rendimientoPrevio = ing.subtract(gas);
+        BigDecimal gastosDificil = BigDecimal.ZERO;
+        if (rendimientoPrevio.signum() > 0) {
+            gastosDificil = rendimientoPrevio.multiply(GASTOS_DIFICIL_JUSTIFICACION_PCT)
+                    .setScale(2, RoundingMode.HALF_UP);
+            if (gastosDificil.compareTo(GASTOS_DIFICIL_JUSTIFICACION_TOPE) > 0) {
+                gastosDificil = GASTOS_DIFICIL_JUSTIFICACION_TOPE;
+            }
+        }
+        BigDecimal rendimientoNeto = rendimientoPrevio.subtract(gastosDificil);
+        BigDecimal cuota = rendimientoNeto.signum() > 0
+                ? rendimientoNeto.multiply(MODELO_130_TIPO).setScale(2, RoundingMode.HALF_UP)
+                : BigDecimal.ZERO;
+        BigDecimal pago = cuota.subtract(ret).subtract(prev).setScale(2, RoundingMode.HALF_UP);
+        if (pago.signum() < 0) pago = BigDecimal.ZERO;
+        return new Model130Calc(rendimientoPrevio, gastosDificil, rendimientoNeto, cuota, pago);
+    }
+
+    public record Model130Calc(
+            BigDecimal rendimientoPrevio,
+            BigDecimal gastosDificilJustificacion,
+            BigDecimal rendimientoNeto,
+            BigDecimal cuota,
+            BigDecimal pago
+    ) {}
 
     // ====================================================================
     //  Persistencia en tax_filings
@@ -564,6 +634,11 @@ public class AeatExtraModelsService {
     public record Model130View(
             int year, int quarter,
             BigDecimal ingresos, BigDecimal gastos,
+            // MOD-130-FIX (2026-07-08): campos derivados del calculo — el 5%
+            // de gastos de dificil justificacion, el rendimiento neto y la
+            // cuota, para casar con las casillas del modelo 130 de la AEAT.
+            BigDecimal gastosDificilJustificacion,
+            BigDecimal rendimientoNeto, BigDecimal cuota,
             BigDecimal retenciones, BigDecimal pagosPrevios,
             BigDecimal pago
     ) {}

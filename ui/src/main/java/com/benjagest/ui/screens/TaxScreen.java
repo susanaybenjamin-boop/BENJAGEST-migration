@@ -514,6 +514,41 @@ public class TaxScreen extends ScreenBase {
         });
     }
 
+    /**
+     * MOD-130-FIX (2026-07-08) — cálculo del modelo 130 en el cliente,
+     * espejo de {@code AeatExtraModelsService.compute130}: 5% de gastos de
+     * difícil justificación (tope 2.000 € anuales) + cuota 20% + resultado
+     * a cero si es negativo. Validado contra las declaraciones reales de
+     * Benjamin (1T 827,04 / 2T 522,84).
+     */
+    private record Model130Local(java.math.BigDecimal gastosDificil,
+                                  java.math.BigDecimal rendimientoNeto,
+                                  java.math.BigDecimal cuota,
+                                  java.math.BigDecimal pago) {}
+
+    private Model130Local computeModel130(java.math.BigDecimal ingresos, java.math.BigDecimal gastos,
+                                          java.math.BigDecimal retenciones, java.math.BigDecimal pagosPrevios) {
+        java.math.RoundingMode HU = java.math.RoundingMode.HALF_UP;
+        java.math.BigDecimal ing = ingresos == null ? java.math.BigDecimal.ZERO : ingresos;
+        java.math.BigDecimal gas = gastos == null ? java.math.BigDecimal.ZERO : gastos;
+        java.math.BigDecimal ret = retenciones == null ? java.math.BigDecimal.ZERO : retenciones;
+        java.math.BigDecimal prev = pagosPrevios == null ? java.math.BigDecimal.ZERO : pagosPrevios;
+        java.math.BigDecimal rendimientoPrevio = ing.subtract(gas);
+        java.math.BigDecimal gastosDificil = java.math.BigDecimal.ZERO;
+        if (rendimientoPrevio.signum() > 0) {
+            gastosDificil = rendimientoPrevio.multiply(new java.math.BigDecimal("0.05")).setScale(2, HU);
+            java.math.BigDecimal tope = new java.math.BigDecimal("2000");
+            if (gastosDificil.compareTo(tope) > 0) gastosDificil = tope;
+        }
+        java.math.BigDecimal rendimientoNeto = rendimientoPrevio.subtract(gastosDificil);
+        java.math.BigDecimal cuota = rendimientoNeto.signum() > 0
+                ? rendimientoNeto.multiply(new java.math.BigDecimal("0.20")).setScale(2, HU)
+                : java.math.BigDecimal.ZERO.setScale(2);
+        java.math.BigDecimal pago = cuota.subtract(ret).subtract(prev).setScale(2, HU);
+        if (pago.signum() < 0) pago = java.math.BigDecimal.ZERO.setScale(2);
+        return new Model130Local(gastosDificil, rendimientoNeto, cuota, pago);
+    }
+
     /** Editor 130 — IRPF pago fraccionado estimación directa. */
     private void show130Editor(com.benjagest.ui.model.TaxFilingEntry existing) {
         Dialog<ButtonType> dialog = new Dialog<>();
@@ -542,15 +577,14 @@ public class TaxScreen extends ScreenBase {
             java.math.BigDecimal gas = parseDec(gastos.getText());
             java.math.BigDecimal ret = parseDec(retencionesPrev.getText());
             java.math.BigDecimal pag = parseDec(pagosPrev.getText());
-            if (ing == null) ing = java.math.BigDecimal.ZERO;
-            if (gas == null) gas = java.math.BigDecimal.ZERO;
-            if (ret == null) ret = java.math.BigDecimal.ZERO;
-            if (pag == null) pag = java.math.BigDecimal.ZERO;
-            java.math.BigDecimal beneficio = ing.subtract(gas);
-            // 20% del beneficio acumulado, menos retenciones y pagos anteriores
-            java.math.BigDecimal pago = beneficio.multiply(new java.math.BigDecimal("0.20"))
-                    .subtract(ret).subtract(pag).setScale(2, java.math.RoundingMode.HALF_UP);
-            resultLabel.setText("Pago fraccionado a ingresar: " + pago.toPlainString() + " €");
+            // MOD-130-FIX (2026-07-08): mismo calculo que el backend
+            // (incluye el 5% de gastos de dificil justificacion). Muestra
+            // el rendimiento neto y la cuota para casar con el modelo AEAT.
+            Model130Local c = computeModel130(ing, gas, ret, pag);
+            resultLabel.setText(
+                    "Rendimiento neto: " + c.rendimientoNeto.toPlainString() + " €   ·   "
+                    + "Cuota (20%): " + c.cuota.toPlainString() + " €\n"
+                    + "Pago fraccionado a ingresar: " + c.pago.toPlainString() + " €");
         };
         for (TextField f : new TextField[]{ingresos, gastos, retencionesPrev, pagosPrev}) {
             f.textProperty().addListener((o, ov, nv) -> recompute.run());
@@ -602,16 +636,11 @@ public class TaxScreen extends ScreenBase {
             data.put("gastos", gastos.getText().trim());
             data.put("retenciones", retencionesPrev.getText().trim());
             data.put("pagos_previos", pagosPrev.getText().trim());
-            java.math.BigDecimal ing = parseDec(ingresos.getText());
-            java.math.BigDecimal gas = parseDec(gastos.getText());
-            java.math.BigDecimal ret = parseDec(retencionesPrev.getText());
-            java.math.BigDecimal pag = parseDec(pagosPrev.getText());
-            if (ing == null) ing = java.math.BigDecimal.ZERO;
-            if (gas == null) gas = java.math.BigDecimal.ZERO;
-            if (ret == null) ret = java.math.BigDecimal.ZERO;
-            if (pag == null) pag = java.math.BigDecimal.ZERO;
-            java.math.BigDecimal total = ing.subtract(gas).multiply(new java.math.BigDecimal("0.20"))
-                    .subtract(ret).subtract(pag).setScale(2, java.math.RoundingMode.HALF_UP);
+            // MOD-130-FIX: guardar el pago con el 5% de gastos de dificil
+            // justificacion aplicado (mismo calculo que backend y display).
+            java.math.BigDecimal total = computeModel130(
+                    parseDec(ingresos.getText()), parseDec(gastos.getText()),
+                    parseDec(retencionesPrev.getText()), parseDec(pagosPrev.getText())).pago;
             saveFiling(existing, statusCombo.getValue(), encodeDataMap(data), total,
                     csvField.getText(), existing.notes(), java.util.List.of());
         });

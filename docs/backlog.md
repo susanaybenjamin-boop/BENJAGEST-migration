@@ -1,5 +1,22 @@
 # Backlog operativo BENJAGEST
 
+> **Última actualización:** 2026-07-09 (**MOD-130-FIX** — **bug fiscal real**: el modelo 130
+> omitía el **5% de gastos de difícil justificación** (art. 30 Reglamento IRPF, tope 2.000€),
+> cobrando de más a TODOS los autónomos. Detectado comparando con DOS declaraciones REALES
+> de Benjamin (2026, 1T 827,04 y 2T 522,84); antes daba 870,57 / ~910. Arreglado en backend
+> (`compute130` puro y testeable) y en la UI (display + guardado). **9 tests fiscales** (5
+> del 130 con las cifras reales + 4 de la aritmética del IVA 303/390). Verificado en vivo:
+> el endpoint aplica el 5%. Model130View enriquecido (rendimiento neto, cuota, 5%). Ver
+> sesión 2026-07-09 debajo. **NO liberado aún** (queda en develop; próximo release lo
+> incluye). Histórico previo:
+> **Última actualización:** 2026-07-08 noche (**RELEASE v0.1.11** — empaqueta los cuatro
+> bloques legales de la auditoría en un `.msi`: **DR** (declaración responsable) + **LOCK**
+> (bloqueo tras cierre fiscal) + **RECT** (rectificativas R1-R5, parcial, simplificada F2) +
+> **RGPD** (cifrado datos sensibles, clave por instalación, control de acceso, auditoría de
+> lecturas). MSI 302 MB, publicado en GitHub Releases como `latest` (draft:false,
+> prerelease:false); tag apunta a develop `fc43c77`. Auto-update lo detecta.
+> **Pendiente Benjamin:** actualizar la instalada (botón Buscar actualizaciones) y probar
+> los 4 bloques. Histórico previo:
 > **Última actualización:** 2026-07-08 tarde (**bloque RGPD** — **datos sensibles**, Fase B
 > del plan de la auditoría: **clave maestra por instalación** (fichero protegido en
 > %ProgramData%\BENJAGEST\secret con ACL; la de desarrollo queda solo como fallback de
@@ -435,6 +452,35 @@ Repaso punto por punto de lo que Benjamin reportó con el check en blanco. Estad
     `[ ]` UIR-9 Fiscal · `[ ]` UIR-10 Calendario · `[ ]` UIR-11 Facturación/Compras/VeriFactu ·
     `[ ]` UIR-12 Configuración/Certificados · `[ ]` UIR-13 Asesoría/Consolidación/TPB ·
     `[ ]` UIR-14 Trabajos/Calendario laboral/Tablas año · `[ ]` UIR-15 Laboral/Nómina (el último).
+
+---
+
+## 📅 SESIÓN 2026-07-09 — MOD-130-FIX (bug del 5% en el modelo 130) + tests fiscales
+
+> **Origen:** Benjamin aportó DOS declaraciones REALES suyas (modelo 130, 2026, 1T y 2T,
+> estimación directa simplificada) como fixture. Al comparar con el cálculo de BENJAGEST
+> salió un bug legal de bulto.
+
+- `[x]` **El bug** — `AeatExtraModelsService.generate130` hacía `pago = (ingresos-gastos) ×
+  20%`, saltándose el **5% de gastos de difícil justificación** (art. 30 Reglamento IRPF,
+  tope 2.000€/año). Cobraba de más a todos los autónomos: en el 1T de Benjamin, 870,57 en
+  vez de 827,04.
+- `[x]` **Fix backend** — `compute130` extraído como método PURO (rendimiento previo → 5%
+  con tope → rendimiento neto → cuota 20% → pago, 0 si negativo). Reproduce EXACTO las dos
+  declaraciones (827,04 / 522,84). Constantes legales nombradas. `Model130View` enriquecido
+  con gastosDificilJustificacion, rendimientoNeto y cuota.
+- `[x]` **Fix UI** — el editor 130 recalculaba en 2 sitios (display + guardar) con la misma
+  fórmula incompleta; nuevo `computeModel130` espejo del backend. El display muestra ahora
+  rendimiento neto + cuota + pago.
+- `[x]` **Tests** — 5 del 130 (2 con las cifras reales de Benjamin + tope 2.000 + trimestre
+  negativo + retenciones) + 4 de la aritmética del IVA (deriveRepercutido / computeResultadoIva
+  extraídos como puros). El 303 NO tiene fixture casilla-a-casilla: las capturas de Benjamin
+  solo mostraban el resultado final (713,14 / 1.325,80) sin las bases.
+- **Verificado en vivo:** el endpoint `/aeat/extras/130/2026/1/preview` aplica el 5% y
+  devuelve rendimiento neto, cuota y pago.
+- **Nota:** el 5% es de estimación directa SIMPLIFICADA (la de la mayoría de autónomos y la
+  de Benjamin). La estimación directa NORMAL no lo lleva — si algún cliente estuviera en
+  normal, sería un refinamiento futuro (hoy se asume simplificada).
 
 ---
 
