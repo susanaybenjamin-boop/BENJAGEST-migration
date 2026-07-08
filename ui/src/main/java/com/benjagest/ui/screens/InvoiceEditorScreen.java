@@ -334,7 +334,9 @@ public class InvoiceEditorScreen extends ScreenBase {
             editorInvoiceTypeCombo = null;
         } else {
             editorInvoiceTypeCombo = new ComboBox<>();
-            editorInvoiceTypeCombo.getItems().addAll("NORMAL", "PROFORMA");
+            // RECT-F2: SIMPLIFIED = factura simplificada (sin identificar
+            // cliente, tope legal 400 EUR — lo valida el backend).
+            editorInvoiceTypeCombo.getItems().addAll("NORMAL", "SIMPLIFIED", "PROFORMA");
             // Texto traducido en items y selected; valor interno = código.
             editorInvoiceTypeCombo.setCellFactory(lv -> new javafx.scene.control.ListCell<>() {
                 @Override protected void updateItem(String item, boolean empty) {
@@ -644,6 +646,7 @@ public class InvoiceEditorScreen extends ScreenBase {
         if (code == null) return "";
         return switch (code) {
             case "NORMAL" -> t("editor.kind.normal");
+            case "SIMPLIFIED" -> t("editor.kind.simplified");
             case "PROFORMA" -> t("editor.kind.proforma");
             case "RECTIFYING" -> t("editor.kind.rectifying");
             default -> code;
@@ -1020,7 +1023,11 @@ public class InvoiceEditorScreen extends ScreenBase {
 
     private void persistDraft(String existingId, boolean validateAfter) {
         CustomerSummary customer = editorCustomerCombo.getValue();
-        if (customer == null) {
+        // RECT-F2: la simplificada no identifica al destinatario — el
+        // cliente es OPCIONAL solo en ese tipo (el backend lo re-valida).
+        boolean simplifiedSelected = editorInvoiceTypeCombo != null
+                && "SIMPLIFIED".equals(editorInvoiceTypeCombo.getValue());
+        if (customer == null && !simplifiedSelected) {
             showError(t("editor.error.no_customer.title"), t("editor.error.no_customer.body"));
             return;
         }
@@ -1063,11 +1070,12 @@ public class InvoiceEditorScreen extends ScreenBase {
             @Override
             protected SalesInvoiceSummary call() throws Exception {
                 SalesInvoiceSummary saved;
+                String customerIdOrNull = customer == null ? null : customer.id();
                 if (existingId == null) {
-                    saved = billingApiClient.createInvoice(customer.id(), null, selectedInvoiceType,
+                    saved = billingApiClient.createInvoice(customerIdOrNull, null, selectedInvoiceType,
                             invoiceDateIso, dueDateIso, notes, lines);
                 } else {
-                    saved = billingApiClient.updateInvoice(existingId, customer.id(), null, selectedInvoiceType,
+                    saved = billingApiClient.updateInvoice(existingId, customerIdOrNull, null, selectedInvoiceType,
                             invoiceDateIso, dueDateIso, notes, lines);
                 }
                 if (validateAfter) {

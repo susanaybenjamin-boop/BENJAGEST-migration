@@ -115,7 +115,7 @@ public class BillingInvoicesScreen extends ScreenBase {
         // visualización vía localizedInvoiceTypeLabel en cell/buttonCell.
         billingTypeFilter = new ComboBox<>();
         billingTypeFilter.getItems().addAll(
-                t("list.filter.all"), "NORMAL", "PROFORMA", "RECTIFYING", "HISTORICAL");
+                t("list.filter.all"), "NORMAL", "SIMPLIFIED", "PROFORMA", "RECTIFYING", "HISTORICAL");
         billingTypeFilter.getSelectionModel().selectFirst();
         billingTypeFilter.getStyleClass().add("form-input");
         billingTypeFilter.setCellFactory(lv -> new javafx.scene.control.ListCell<>() {
@@ -311,6 +311,17 @@ public class BillingInvoicesScreen extends ScreenBase {
             if (sel != null) voidInvoiceFromList(sel);
         });
 
+        // RECT — rectificativa PARCIAL: corrige importes sin anular. Crea
+        // el borrador con las líneas en negativo y abre el editor para
+        // que el usuario deje solo la diferencia y valide.
+        Button rectifyBtn = new Button(t("list.action.rectify"));
+        rectifyBtn.setGraphic(icon("fas-edit"));
+        rectifyBtn.setDisable(true);
+        rectifyBtn.setOnAction(ev -> {
+            SalesInvoiceSummary sel = billingTable.getSelectionModel().getSelectedItem();
+            if (sel != null) rectifyInvoiceFromList(sel);
+        });
+
         // Botón "mutante" según si el PDF ya está guardado en la ruta
         // configurada (F-STORAGE) o no:
         //   - pdfStored=true  → "Abrir PDF" (lo lanza con el visor del SO).
@@ -385,6 +396,9 @@ public class BillingInvoicesScreen extends ScreenBase {
             // rectificativas ni proformas). Una proforma no tiene valor
             // fiscal: no hay nada legal que anular.
             voidBtn.setDisable(!isValidated || isRectifying || isProforma || isHistorical);
+            // Rectificar (parcial): mismas condiciones que Anular — solo
+            // documentos fiscales validados (NORMAL o SIMPLIFIED).
+            rectifyBtn.setDisable(!isValidated || isRectifying || isProforma || isHistorical);
             pdfBtn.setDisable(newV == null || isDraft || isHistorical);
             // "Convertir y validar": cualquier proforma en DRAFT o
             // VALIDATED. Editarla sigue siendo posible hasta que se
@@ -475,7 +489,7 @@ public class BillingInvoicesScreen extends ScreenBase {
         // todos. Antes era un HBox con overflow horizontal SIN scroll -> botones
         // atrapados fuera. La función `actionFlow` es reutilizable para otras barras.
         javafx.scene.layout.FlowPane rowActions = actionFlow(
-                validateRowBtn, deleteDraftBtn, voidBtn, toValidatedBtn, makeRecurringBtn,
+                validateRowBtn, deleteDraftBtn, voidBtn, rectifyBtn, toValidatedBtn, makeRecurringBtn,
                 multiAllocBtn, bankReconcileBtn, dueDatesSalesBtn, emailBtn, pdfBtn);
 
         // Slice 3V — Acciones SOBRE la tabla, no debajo. Antes vivían
@@ -673,19 +687,54 @@ public class BillingInvoicesScreen extends ScreenBase {
         start(task, "billing-invoice-convert-proforma");
     }
 
+    /**
+     * RECT — selector de causa legal R1-R4 compartido por Anular y
+     * Rectificar. Si la factura es SIMPLIFIED no hay elección: la ley
+     * fija R5 (el backend la aplica solo) y se muestra un aviso fijo.
+     * Devuelve la causa elegida, o null si el usuario cancela.
+     */
+    private String askRectificationCause(SalesInvoiceSummary sel, String titleKey, String bodyKey) {
+        Dialog<ButtonType> dialog = new Dialog<>();
+        dialog.setTitle(t(titleKey));
+        dialog.setHeaderText(t(titleKey));
+        Label body = new Label(t(bodyKey));
+        body.setWrapText(true);
+        VBox content = new VBox(10, body);
+        content.setPrefWidth(560);
+        ComboBox<String> causeCombo = new ComboBox<>();
+        boolean simplified = "SIMPLIFIED".equals(sel.invoiceType());
+        if (simplified) {
+            Label r5 = new Label(t("rect.cause.r5_auto"));
+            r5.setWrapText(true);
+            content.getChildren().add(r5);
+        } else {
+            causeCombo.getItems().addAll("R1", "R2", "R3", "R4");
+            causeCombo.setConverter(new javafx.util.StringConverter<>() {
+                @Override public String toString(String c) {
+                    return c == null ? "" : c + " — " + t("rect.cause." + c);
+                }
+                @Override public String fromString(String s) { return s; }
+            });
+            causeCombo.getSelectionModel().select("R4");
+            causeCombo.setMaxWidth(Double.MAX_VALUE);
+            content.getChildren().addAll(new Label(t("rect.cause.label")), causeCombo);
+        }
+        dialog.getDialogPane().setContent(content);
+        dialog.getDialogPane().getButtonTypes().addAll(ButtonType.OK, ButtonType.CANCEL);
+        Optional<ButtonType> ans = dialog.showAndWait();
+        if (ans.isEmpty() || ans.get() != ButtonType.OK) return null;
+        return simplified ? "R5" : causeCombo.getValue();
+    }
+
     private void voidInvoiceFromList(SalesInvoiceSummary sel) {
         if (!host.ensureBillingAllowed(true)) return; // AGR-2
-        Alert confirm = new Alert(Alert.AlertType.CONFIRMATION,
-                t("list.dialog.void.body"),
-                ButtonType.OK, ButtonType.CANCEL);
-        confirm.setHeaderText(t("list.dialog.void.title"));
-        Optional<ButtonType> ans = confirm.showAndWait();
-        if (ans.isEmpty() || ans.get() != ButtonType.OK) return;
+        String cause = askRectificationCause(sel, "list.dialog.void.title", "list.dialog.void.body");
+        if (cause == null) return;
 
         Task<SalesInvoiceSummary> task = new Task<>() {
             @Override
             protected SalesInvoiceSummary call() throws Exception {
-                return billingApiClient.voidInvoice(sel.id());
+                return billingApiClient.voidInvoice(sel.id(), cause);
             }
         };
         task.setOnSucceeded(ev -> {
@@ -710,6 +759,35 @@ public class BillingInvoicesScreen extends ScreenBase {
         task.setOnFailed(ev -> showError(t("list.dialog.void.failure.title"),
                 t("list.dialog.void.failure.body")));
         start(task, "billing-invoice-void");
+    }
+
+    /**
+     * RECT — rectificativa PARCIAL. El backend crea el borrador con las
+     * líneas de la original en NEGATIVO; abrimos el editor sobre él para
+     * que el usuario deje solo la corrección y valide. La original no
+     * se anula (sigue VALIDATED, con vínculo).
+     */
+    private void rectifyInvoiceFromList(SalesInvoiceSummary sel) {
+        if (!host.ensureBillingAllowed(true)) return; // AGR-2
+        String cause = askRectificationCause(sel, "list.dialog.rectify.title", "list.dialog.rectify.body");
+        if (cause == null) return;
+
+        Task<SalesInvoiceSummary> task = new Task<>() {
+            @Override
+            protected SalesInvoiceSummary call() throws Exception {
+                return billingApiClient.rectifyInvoice(sel.id(), cause);
+            }
+        };
+        task.setOnSucceeded(ev -> {
+            SalesInvoiceSummary draft = task.getValue();
+            com.benjagest.ui.support.RefreshBus.emit(
+                    com.benjagest.ui.support.RefreshBus.TOPIC_SALES);
+            host.showInvoiceEditor(draft.id());
+        });
+        // showError ya humaniza el mensaje del backend (BackendErrors.humanize).
+        task.setOnFailed(ev -> showError(t("list.dialog.rectify.failure.title"),
+                task.getException() == null ? "" : task.getException().getMessage()));
+        start(task, "billing-invoice-rectify");
     }
 
     private void deleteDraftFromList(SalesInvoiceSummary sel) {
@@ -789,6 +867,7 @@ public class BillingInvoicesScreen extends ScreenBase {
         if (code == null) return "";
         return switch (code) {
             case "NORMAL" -> t("editor.kind.normal");
+            case "SIMPLIFIED" -> t("editor.kind.simplified");
             case "PROFORMA" -> t("editor.kind.proforma");
             case "RECTIFYING" -> t("editor.kind.rectifying");
             case "HISTORICAL" -> t("editor.kind.historical");
