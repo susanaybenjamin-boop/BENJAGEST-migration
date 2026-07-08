@@ -33,11 +33,16 @@ public class CustomerExtendedController {
 
     private final JdbcTemplate jdbcTemplate;
     private final TenantContext tenantContext;
+    // RGPD (2026-07-08): el IBAN del cliente (cuenta de un tercero,
+    // para domiciliar) se guarda cifrado (ENC:). Sin filtros SQL sobre él.
+    private final com.benjagest.backend.config.FieldCipher fieldCipher;
 
     public CustomerExtendedController(JdbcTemplate jdbcTemplate,
-                                       TenantContext tenantContext) {
+                                       TenantContext tenantContext,
+                                       com.benjagest.backend.config.FieldCipher fieldCipher) {
         this.jdbcTemplate = jdbcTemplate;
         this.tenantContext = tenantContext;
+        this.fieldCipher = fieldCipher;
     }
 
     @GetMapping("/{id}")
@@ -80,7 +85,7 @@ public class CustomerExtendedController {
                         rs.getBigDecimal("default_retention_percent"),
                         rs.getBoolean("vat_exempt"),
                         rs.getString("payment_method"),
-                        rs.getString("iban"),
+                        fieldCipher.decrypt(rs.getString("iban")),
                         rs.getString("address"),
                         rs.getString("city"),
                         rs.getString("province"),
@@ -141,7 +146,7 @@ public class CustomerExtendedController {
                 req.defaultRetentionPercent(),
                 req.vatExempt(),
                 blank(req.paymentMethod()),
-                blank(req.iban()),
+                fieldCipher.encrypt(blank(req.iban())),
                 blank(req.address()),
                 blank(req.city()),
                 blank(req.province()),
@@ -183,7 +188,7 @@ public class CustomerExtendedController {
                 req.defaultRetentionPercent(),
                 req.vatExempt(),
                 blank(req.paymentMethod()),
-                blank(req.iban()),
+                fieldCipher.encrypt(blank(req.iban())),
                 blank(req.address()),
                 blank(req.city()),
                 blank(req.province()),

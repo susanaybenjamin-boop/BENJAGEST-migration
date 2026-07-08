@@ -54,16 +54,21 @@ public class EmployeeLeaveService {
     private final CurrentUserService currentUser;
     private final EmployeeVacationService vacationService;
     private final com.benjagest.backend.realtime.RealtimeService realtime;
+    // RGPD (2026-07-08): el motivo de la ausencia puede contener
+    // informacion medica (SICK_LEAVE) — se guarda cifrado (ENC:).
+    private final com.benjagest.backend.config.FieldCipher fieldCipher;
 
     public EmployeeLeaveService(JdbcTemplate jdbc, TenantContext tenant,
                                 CurrentUserService currentUser,
                                 EmployeeVacationService vacationService,
-                                com.benjagest.backend.realtime.RealtimeService realtime) {
+                                com.benjagest.backend.realtime.RealtimeService realtime,
+                                com.benjagest.backend.config.FieldCipher fieldCipher) {
         this.jdbc = jdbc;
         this.tenant = tenant;
         this.currentUser = currentUser;
         this.vacationService = vacationService;
         this.realtime = realtime;
+        this.fieldCipher = fieldCipher;
     }
 
     private void emitSafe(Runnable r) { try { r.run(); } catch (Exception ignored) {} }
@@ -99,7 +104,7 @@ public class EmployeeLeaveService {
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'REQUESTED')
                 """,
                 id, companyId, employeeId, kind, r.startDate(), r.endDate(),
-                r.days(), blank(r.reason()));
+                r.days(), fieldCipher.encrypt(blank(r.reason())));
 
         for (AttachmentInput a : atts) {
             byte[] bytes = decode(a.base64());
@@ -272,7 +277,7 @@ public class EmployeeLeaveService {
                 rs.getString("id"), rs.getString("employee_id"), rs.getString("employee_name"),
                 rs.getString("kind"),
                 s == null ? null : s.toLocalDate(), e == null ? null : e.toLocalDate(),
-                rs.getBigDecimal("days"), rs.getString("reason"), rs.getString("status"),
+                rs.getBigDecimal("days"), fieldCipher.decrypt(rs.getString("reason")), rs.getString("status"),
                 rev == null ? null : rev.toInstant(), rs.getString("review_notes"),
                 new ArrayList<>());
     }

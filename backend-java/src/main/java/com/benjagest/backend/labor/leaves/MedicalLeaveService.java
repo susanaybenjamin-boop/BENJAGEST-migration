@@ -37,17 +37,29 @@ public class MedicalLeaveService {
 
     private final MedicalLeaveRepository repository;
     private final TenantContext tenant;
+    private final com.benjagest.backend.audit.AuditService auditService;
+    private final com.benjagest.backend.auth.CurrentUserService currentUserService;
 
-    public MedicalLeaveService(MedicalLeaveRepository repository, TenantContext tenant) {
+    public MedicalLeaveService(MedicalLeaveRepository repository, TenantContext tenant,
+                               com.benjagest.backend.audit.AuditService auditService,
+                               com.benjagest.backend.auth.CurrentUserService currentUserService) {
         this.repository = repository;
         this.tenant = tenant;
+        this.auditService = auditService;
+        this.currentUserService = currentUserService;
     }
 
     public List<MedicalLeave> list(String employeeId) {
         String companyId = tenant.getCurrentCompanyId();
-        return employeeId == null || employeeId.isBlank()
+        List<MedicalLeave> result = employeeId == null || employeeId.isBlank()
                 ? repository.listByCompany(companyId)
                 : repository.listByEmployee(companyId, employeeId);
+        // RGPD: quien consulto bajas medicas (dato de salud, art. 9) —
+        // un evento por consulta administrativa, con el filtro y cuantas.
+        auditSensitiveRead("medical_leave",
+                employeeId == null || employeeId.isBlank() ? "ALL" : employeeId,
+                "{\"count\":" + result.size() + "}");
+        return result;
     }
 
     public MedicalLeave getById(String id) {
@@ -56,7 +68,19 @@ public class MedicalLeaveService {
         if (!m.companyId().equals(tenant.getCurrentCompanyId())) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Baja no encontrada en tu empresa");
         }
+        auditSensitiveRead("medical_leave", id, null);
         return m;
+    }
+
+    /** RGPD — best effort: un fallo del audit no rompe la consulta. */
+    private void auditSensitiveRead(String entityType, String entityId, String details) {
+        try {
+            auditService.recordSensitiveRead(
+                    currentUserService.require().userId(),
+                    tenant.getCurrentCompanyId(), entityType, entityId, details);
+        } catch (Exception ignored) {
+            // sin usuario en contexto (job interno) — no hay a quien imputar.
+        }
     }
 
     @Transactional
@@ -152,10 +176,16 @@ public class MedicalLeaveService {
      * Controller embebido para no fragmentar el paquete. Sigue el
      * mismo patrón que {@code ContractTemplateService}.
      */
+    // RGPD (2026-07-08): las bajas medicas son dato de SALUD (categoria
+    // especial, art. 9 RGPD). Antes el rol EMPLOYEE entraba a nivel de
+    // clase y cualquier empleado podia listar las bajas de sus
+    // companeros por este endpoint administrativo. Fuera: el empleado
+    // ve SUS bajas por el portal (EmployeePortalService.listCalendar,
+    // filtrado por su employee_id); esto queda para quien lleva RRHH.
     @RestController
     @RequestMapping("/api/labor/medical-leaves")
     @RequiresModule("labor")
-    @RequiresRole({"OWNER", "ADMIN", "ACCOUNTANT", "EMPLOYEE"})
+    @RequiresRole({"OWNER", "ADMIN", "ACCOUNTANT"})
     public static class Controller {
         private final MedicalLeaveService service;
 

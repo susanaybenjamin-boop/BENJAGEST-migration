@@ -80,6 +80,19 @@ public class AuditService {
                 "fiscal_year", String.valueOf(year), "OK", null);
     }
 
+    /**
+     * RGPD (2026-07-08) — lectura de datos personales sensibles (nominas
+     * de terceros, bajas medicas). El RGPD (art. 5.2 y 32) pide poder
+     * responder "quien consulto los datos de X y cuando" — hasta ahora
+     * solo se auditaban escrituras. Se registra el ACCESO administrativo
+     * (un evento por consulta, no por fila); el acceso del empleado a lo
+     * SUYO por el portal no se audita (seria ruido sin valor).
+     */
+    public void recordSensitiveRead(String userId, String companyId,
+                                    String entityType, String entityId, String detailsJson) {
+        write(companyId, userId, "SENSITIVE_DATA_READ", entityType, entityId, "OK", detailsJson);
+    }
+
     public void recordFiscalYearReopened(String userId, String companyId, int year, String reason) {
         String details = reason == null || reason.isBlank() ? null
                 : "{\"reason\":\"" + reason.replace("\"", "'") + "\"}";
