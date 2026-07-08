@@ -43,6 +43,24 @@ class AeatModel303CalcTest {
     }
 
     @Test
+    void ejercicio2025_primerTrimestre_declaracionReal() {
+        // 303 1T 2025 presentado (SH Asesores). Bases devengadas:
+        // 1.095,00 al 10% + 792,00 al 21%. IVA deducible 161,20.
+        var rep = AeatExtraModelsService.deriveRepercutido(
+                BigDecimal.ZERO, bd("1095.00"), bd("792.00"));
+        // [27] Total cuota devengada = 109,50 + 166,32 = 275,82.
+        assertAmount("275.82", rep.totalIva());
+        // [46] Resultado régimen general = 275,82 - 161,20 = 114,62.
+        assertAmount("114.62",
+                AeatExtraModelsService.computeResultadoIva(rep.totalIva(), bd("161.20")));
+        // NOTA: el resultado REAL de la declaración [71] fue 0,00, no
+        // 114,62, porque habia 1.207,25 de cuotas a compensar de
+        // periodos anteriores (casilla 110/78). BENJAGEST calcula bien el
+        // resultado del trimestre pero AUN NO arrastra el IVA negativo
+        // acumulado — gap anotado en el backlog (bloque IVA-COMP).
+    }
+
+    @Test
     void resultadoNegativoSeConserva_aCompensar() {
         // Mas soportado que repercutido -> negativo (a compensar/devolver).
         assertAmount("-100.00",

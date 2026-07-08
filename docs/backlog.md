@@ -1,5 +1,13 @@
 # Backlog operativo BENJAGEST
 
+> **Última actualización:** 2026-07-09 tarde (**MOD-FISCAL-FIXTURES** — Benjamin aportó los
+> PDF oficiales del 130 (1T+2T 2025) y del 303 (1T 2025, presentados por su asesoría). **4
+> fixtures reales nuevos**: el 130 2025 (322,72 / 714,65) reconfirma el fix del 5%, y el 303
+> 2025 valida la aritmética del IVA (devengado 275,82 − deducible 161,20 = 114,62). **Gap
+> nuevo detectado (IVA-COMP):** el 303 no arrastra las **cuotas a compensar de periodos
+> anteriores** (casilla 110/78/87) — en el 1T 2025 el resultado real fue 0,00, no 114,62,
+> porque había 1.207,25 de IVA negativo previo. Anotado, no implementado. 13 tests fiscales.
+> Histórico previo:
 > **Última actualización:** 2026-07-09 (**MOD-130-FIX** — **bug fiscal real**: el modelo 130
 > omitía el **5% de gastos de difícil justificación** (art. 30 Reglamento IRPF, tope 2.000€),
 > cobrando de más a TODOS los autónomos. Detectado comparando con DOS declaraciones REALES
@@ -452,6 +460,29 @@ Repaso punto por punto de lo que Benjamin reportó con el check en blanco. Estad
     `[ ]` UIR-9 Fiscal · `[ ]` UIR-10 Calendario · `[ ]` UIR-11 Facturación/Compras/VeriFactu ·
     `[ ]` UIR-12 Configuración/Certificados · `[ ]` UIR-13 Asesoría/Consolidación/TPB ·
     `[ ]` UIR-14 Trabajos/Calendario laboral/Tablas año · `[ ]` UIR-15 Laboral/Nómina (el último).
+
+---
+
+## 📅 SESIÓN 2026-07-09 (tarde) — MOD-FISCAL-FIXTURES (declaraciones reales 2025) + gap IVA-COMP
+
+> Benjamin aportó los PDF OFICIALES presentados: 130 1T+2T 2025 y 303 1T 2025 (su asesoría
+> SH Asesores Vergeles SL como colaboradora). Extraídos con fitz por coordenadas de casilla.
+
+- `[x]` **130 2025 como fixtures** — 1T: ingresos 3.362 / gasto raw 1.663,47 → rendimiento
+  neto 1.613,60 / cuota 322,72. 2T: ingresos acum. 8.614 / raw 3.154,14 → 5.186,87 /
+  1.037,37, menos pago 1T (322,72) = 714,65. Reproducen EXACTO. Reconfirman el 5% (el [02]
+  deducible de ambos = gasto + 5%) y el encadenado de pagos previos.
+- `[x]` **303 2025 como fixture** — bases 1.095@10% + 792@21% → devengado 275,82; deducible
+  161,20 → resultado régimen general 114,62. Valida deriveRepercutido + computeResultadoIva
+  con datos reales.
+- `[ ]` **GAP IVA-COMP (nuevo, sin implementar)** — el 303 real 1T 2025 dio resultado [71] =
+  **0,00**, no 114,62, porque había **1.207,25 de cuotas a compensar de periodos anteriores**
+  (casilla 110), de las que se aplicaron 114,62 (casilla 78) y quedaron 1.092,63 para el
+  futuro (casilla 87). BENJAGEST calcula bien el resultado del TRIMESTRE (repercutido −
+  soportado) pero NO arrastra el IVA negativo acumulado. A diferencia del 130 (pagos previos
+  dentro del año), la compensación de IVA cruza AÑOS (el saldo venía de 2024). Implica: saldo
+  acumulado de compensación + casillas 110/78/87 + UI editable. Los 2026 de Benjamin salían
+  positivos sin compensación, así que no bloquea su uso. Candidato a bloque propio.
 
 ---
 
