@@ -5825,7 +5825,59 @@ public class BenjagestUiApplication extends Application
                     @Override public boolean showImportSalesButton() {
                         return appMode == AppMode.ADVISORY && AuthSession.get().isActingForClient();
                     }
+                    @Override public void showSalesClassificationDialog(String invoiceId) {
+                        BenjagestUiApplication.this.showSalesClassificationDialog(invoiceId);
+                    }
                 }).buildTab(initialList);
+    }
+
+    /**
+     * OPTYPE-3 — clasifica el tipo de operación de una factura EMITIDA (para
+     * marcar una entrega intracomunitaria → clave E del modelo 349). Espejo del
+     * de compras, sin deducibilidad (las ventas repercuten, no soportan).
+     */
+    private void showSalesClassificationDialog(String invoiceId) {
+        javafx.scene.control.Dialog<javafx.scene.control.ButtonType> dialog = new javafx.scene.control.Dialog<>();
+        dialog.setTitle(t("list.action.classify"));
+        javafx.scene.control.ButtonType saveBt = new javafx.scene.control.ButtonType(
+                "Guardar", javafx.scene.control.ButtonBar.ButtonData.OK_DONE);
+        dialog.getDialogPane().getButtonTypes().addAll(saveBt, javafx.scene.control.ButtonType.CANCEL);
+
+        ComboBox<String> opType = new ComboBox<>();
+        opType.getItems().addAll("INTERIOR", "INTRACOM", "IMPORT", "ISP");
+        opType.getSelectionModel().selectFirst();
+
+        javafx.concurrent.Task<String> load = new javafx.concurrent.Task<>() {
+            @Override protected String call() throws Exception { return billingApiClient.getSalesClassification(invoiceId); }
+        };
+        load.setOnSucceeded(ev -> {
+            String c = load.getValue();
+            if (c != null && !c.isBlank()) opType.getSelectionModel().select(c);
+        });
+        new Thread(load, "sales-classification-load").start();
+
+        Label hint = new Label("Tipo de operación a efectos de IVA. Marca INTRACOM en una "
+                + "entrega intracomunitaria (cliente de otro país de la UE) para que entre en el modelo 349.");
+        hint.setWrapText(true); hint.getStyleClass().add("settings-hint");
+        GridPane g = new GridPane();
+        g.setHgap(10); g.setVgap(10); g.setPadding(new javafx.geometry.Insets(12));
+        g.add(hint, 0, 0, 2, 1);
+        g.add(new Label("Tipo de operación"), 0, 1); g.add(opType, 1, 1);
+        dialog.getDialogPane().setContent(g);
+        dialog.initOwner(root.getScene().getWindow());
+
+        dialog.showAndWait().ifPresent(bt -> {
+            if (bt != saveBt) return;
+            javafx.concurrent.Task<Void> save = new javafx.concurrent.Task<>() {
+                @Override protected Void call() throws Exception {
+                    billingApiClient.setSalesClassification(invoiceId, opType.getValue());
+                    return null;
+                }
+            };
+            save.setOnFailed(ev -> showError(t("list.action.classify"),
+                    save.getException() == null ? "" : save.getException().getMessage()));
+            new Thread(save, "sales-classification-save").start();
+        });
     }
 
     private void validateInvoiceFromList(SalesInvoiceSummary sel) {

@@ -513,15 +513,20 @@ Repaso punto por punto de lo que Benjamin reportó con el check en blanco. Estad
   las casillas ruteadas (antes a mano) y corregidas las etiquetas invertidas (32=import,
   36=intracom). 22 tests verdes. `routePurchases303` es PURO/testeable.
 - `[x]` **OPTYPE-3 (2026-07-08)** — auto-detección + modelo 349.
-  - **3a**: al alta de un gasto se detecta INTRACOM por el prefijo VIES del NIF del proveedor
-    (`OperationTypeDetector`, 10 tests). La asesoría reclasifica el resto (importaciones no se
-    detectan por NIF). El 303 lo rutea solo (OPTYPE-2).
+  - **3a**: al alta de un gasto se detecta INTRACOM por el NIF del proveedor **y el IVA**
+    (`OperationTypeDetector`, 14 tests). Clave: INTRACOM solo si NIF UE≠ES **y la factura NO
+    lleva IVA** (inversión del sujeto pasivo). Si lleva IVA español es INTERIOR aunque el NIF sea
+    de fuera — caso real de Amazon EU (NIF Luxemburgo) y de vendedores de terceros países (China)
+    que facturan con IVA español vía ventanilla única. Importaciones no se detectan por NIF →
+    quedan INTERIOR para reclasificar.
   - **3b**: modelo **349** (recapitulativa intracom) — adquisiciones (clave A) desde compras
     INTRACOM y entregas (clave E) desde ventas INTRACOM, por NIF-IVA, base imponible, sin
     umbral. Endpoint + editor UI con prefill (mirror del 347).
-  - Pendiente menor: clasificación de VENTAS como INTRACOM aún no tiene UI (el 349 de entregas
-    queda vacío hasta que exista); bienes de inversión importados (34/35) e intracom (38/39) se
-    pliegan en su casilla corriente (32/36).
+  - **3c**: clasificación de VENTAS (`SalesClassificationController` + botón "Clasificación
+    fiscal" en facturas emitidas VALIDATED) → el 349 de entregas ya funciona.
+  - Pendiente menor: mismo botón en `ClientBillingScreen` (asesoría actuando-como-cliente, otra
+    Host); bienes de inversión importados (34/35) e intracom (38/39) se pliegan en su casilla
+    corriente (32/36).
 - `[ ]` **130** — completo para estimación directa (ingresos/gastos/5%/pagos/retenciones).
   Falta: casilla 05 (positivos de trim. anteriores) y minoración art. 110.3.c (casilla 13,
   la deducción de 100€ por rendimientos del trabajo) — hoy se teclea.
