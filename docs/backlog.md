@@ -512,11 +512,16 @@ Repaso punto por punto de lo que Benjamin reportó con el check en blanco. Estad
   autorrepercusión (11+13); el 45 suma 29+31+33+37. Catch de asientos 472 manuales. UI prefilla
   las casillas ruteadas (antes a mano) y corregidas las etiquetas invertidas (32=import,
   36=intracom). 22 tests verdes. `routePurchases303` es PURO/testeable.
-- `[ ]` **OPTYPE-3 (pendiente)** — auto-detección del `operation_type` desde país/NIF del
-  proveedor (NIF UE → INTRACOM, extracom → IMPORT) al crear el gasto, para no clasificar a mano.
-  Bienes de inversión importados (34/35) e intracom (38/39) hoy se pliegan en su casilla
-  corriente (32/36). Desbloquea el modelo **349** (recapitulativa de intracom, ya con los datos
-  ruteados disponibles).
+- `[x]` **OPTYPE-3 (2026-07-08)** — auto-detección + modelo 349.
+  - **3a**: al alta de un gasto se detecta INTRACOM por el prefijo VIES del NIF del proveedor
+    (`OperationTypeDetector`, 10 tests). La asesoría reclasifica el resto (importaciones no se
+    detectan por NIF). El 303 lo rutea solo (OPTYPE-2).
+  - **3b**: modelo **349** (recapitulativa intracom) — adquisiciones (clave A) desde compras
+    INTRACOM y entregas (clave E) desde ventas INTRACOM, por NIF-IVA, base imponible, sin
+    umbral. Endpoint + editor UI con prefill (mirror del 347).
+  - Pendiente menor: clasificación de VENTAS como INTRACOM aún no tiene UI (el 349 de entregas
+    queda vacío hasta que exista); bienes de inversión importados (34/35) e intracom (38/39) se
+    pliegan en su casilla corriente (32/36).
 - `[ ]` **130** — completo para estimación directa (ingresos/gastos/5%/pagos/retenciones).
   Falta: casilla 05 (positivos de trim. anteriores) y minoración art. 110.3.c (casilla 13,
   la deducción de 100€ por rendimientos del trabajo) — hoy se teclea.
