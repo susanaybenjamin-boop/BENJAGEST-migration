@@ -1132,7 +1132,35 @@ public class AltaApiClient {
         d.base21 = numberField(j, "base_21");
         d.baseSoportada = numberField(j, "base_soportado");
         d.cuotaSoportada = numberField(j, "cuota_soportada");
+        // IVA-COMP: casilla 110 arrastrada por el backend.
+        d.compensacionPrevia = numberField(j, "110_compensar_anteriores");
         return d;
+    }
+
+    // ---- IVA-COMP: saldo inicial de cuotas de IVA a compensar (303) ----
+
+    /** Devuelve [openingBalance, asOfYear, asOfQuarter] o null si no hay saldo configurado. */
+    public String[] getVatCompensationBaseline() throws IOException, InterruptedException {
+        HttpResponse<String> r = send(req(baseUrl + "/aeat/extras/303/compensation-baseline").GET());
+        if (r.statusCode() < 200 || r.statusCode() >= 300) {
+            throw new IOException("HTTP " + r.statusCode() + ": " + r.body());
+        }
+        String j = r.body();
+        if (j == null || j.isBlank() || "null".equals(j.trim())) return null;
+        return new String[]{ numberField(j, "openingBalance"),
+                numberField(j, "asOfYear"), numberField(j, "asOfQuarter") };
+    }
+
+    public void setVatCompensationBaseline(String openingBalance, int asOfYear, int asOfQuarter)
+            throws IOException, InterruptedException {
+        String body = "{\"openingBalance\":" + (openingBalance == null || openingBalance.isBlank() ? "0" : openingBalance)
+                + ",\"asOfYear\":" + asOfYear + ",\"asOfQuarter\":" + asOfQuarter + "}";
+        HttpResponse<String> r = send(req(baseUrl + "/aeat/extras/303/compensation-baseline")
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(body)));
+        if (r.statusCode() < 200 || r.statusCode() >= 300) {
+            throw new IOException("HTTP " + r.statusCode() + ": " + r.body());
+        }
     }
 
     /** MOD-PREFILL — prefill del 130 (acumulado del año hasta el trimestre). */
