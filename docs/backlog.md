@@ -500,11 +500,16 @@ Repaso punto por punto de lo que Benjamin reportó con el check en blanco. Estad
 - **303** — ✅ régimen general completo (bloque 303-FULL). Falta: régimen simplificado
   (casillas 42-58, agrario/módulos IVA — raro en PYME), regularización prorrata anual, y la
   **auto-clasificación** de intracom/inversión/importaciones (ver OPTYPE).
-- `[ ]` **OPTYPE (habilitador de auto-clasificación)** — para que el 303/349/390 clasifiquen
-  solas las operaciones intracomunitarias, inversión del sujeto pasivo e importaciones, hace
-  falta un **tipo de operación** por factura/tercero (nacional / intracom / extracom / ISP).
-  Hoy no existe fiable. Al añadirlo: país/NIF del cliente-proveedor → clasificación
-  automática. Desbloquea también el modelo 349 (recapitulativa de intracom).
+- `[x]` **OPTYPE-1 (2026-07-11)** — modelo de datos + deducibilidad. V172: `operation_type`
+  (INTERIOR/INTRACOM/IMPORT/ISP) en compras y ventas; `vat_deductible_percent`,
+  `expense_deductible`, `investment_good` en compras. Endpoint de clasificación + UI (botón
+  "Clasificación fiscal" en Compras y Gastos). El 130 solo cuenta gastos deducibles; el 303
+  soportado excluye el IVA no deducible (pct=0). Defaults preservan comportamiento.
+- `[ ]` **OPTYPE-2 (pendiente)** — routing por tipo de operación a las casillas: intracom
+  adquisiciones (10/11 devengado autorrepercusión + 32/33 deducible), inversión sujeto pasivo
+  (12/13), importaciones (36/37), bienes de inversión (30/31 desde investment_good);
+  deducibilidad PARCIAL (0<pct<100, hoy solo se maneja 0 y 100). Auto-detección del tipo desde
+  país/NIF del tercero. Desbloquea el modelo 349 (recapitulativa intracom).
 - `[ ]` **130** — completo para estimación directa (ingresos/gastos/5%/pagos/retenciones).
   Falta: casilla 05 (positivos de trim. anteriores) y minoración art. 110.3.c (casilla 13,
   la deducción de 100€ por rendimientos del trabajo) — hoy se teclea.
