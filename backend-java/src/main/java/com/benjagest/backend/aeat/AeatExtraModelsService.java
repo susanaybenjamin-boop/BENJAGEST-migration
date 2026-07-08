@@ -445,15 +445,33 @@ public class AeatExtraModelsService {
 
     /**
      * IVA-COMP — cuotas de IVA a compensar disponibles AL INICIO del
-     * trimestre (year, quarter) = casilla 110. Parte del saldo inicial
-     * (vat_compensation_baseline) y arrastra trimestre a trimestre
-     * recalculando el resultado del régimen de cada uno desde la
-     * contabilidad. Si no hay saldo inicial, empieza en 0 en el 1T del
-     * año pedido (asume sin arrastre previo — el caso común).
+     * trimestre (year, quarter) = casilla 110.
+     *
+     * <p>Se arrastra desde la DECLARACIÓN ANTERIOR presentada, no
+     * recalculando la contabilidad: la casilla 110 de un trimestre es el
+     * remanente (casilla 87) del 303 anterior. Es lo correcto porque lo
+     * que se compensa es lo que se DECLARÓ (el asesor puede haber tecleado
+     * el 303 a mano si la contabilidad no está completa), y evita el bug
+     * en el que un régimen recalculado a 0 nunca consumía el saldo.
+     *
+     * <p>Si no hay 303 anterior, se usa el saldo inicial
+     * (vat_compensation_baseline) cuando su corte cubre el trimestre.
      */
     private BigDecimal resolveCompensacionPrevia(String companyId, int year, int quarter) {
-        int startYear = year, startQuarter = 1;
-        BigDecimal balance = BigDecimal.ZERO;
+        // 1) Remanente (casilla 87) del 303 inmediatamente anterior.
+        List<String> prior = jdbcTemplate.query("""
+                SELECT data FROM tax_filings
+                 WHERE company_id = ? AND tax_model_code = '303'
+                   AND period_quarter IS NOT NULL
+                   AND (period_year < ? OR (period_year = ? AND period_quarter < ?))
+                 ORDER BY period_year DESC, period_quarter DESC
+                 LIMIT 1
+                """, (rs, n) -> rs.getString("data"), companyId, year, year, quarter);
+        if (!prior.isEmpty() && prior.get(0) != null) {
+            BigDecimal rem = extractRemanente303(prior.get(0));
+            if (rem != null) return rem;
+        }
+        // 2) Saldo inicial de partida, si su corte cubre este trimestre.
         List<BigDecimal[]> base = jdbcTemplate.query("""
                 SELECT opening_balance, as_of_year, as_of_quarter
                   FROM vat_compensation_baseline WHERE company_id = ?
@@ -462,38 +480,48 @@ public class AeatExtraModelsService {
                         BigDecimal.valueOf(rs.getInt("as_of_year")),
                         BigDecimal.valueOf(rs.getInt("as_of_quarter"))}, companyId);
         if (!base.isEmpty()) {
-            balance = nz(base.get(0)[0]);
-            startYear = base.get(0)[1].intValue();
-            startQuarter = base.get(0)[2].intValue();
+            int by = base.get(0)[1].intValue(), bq = base.get(0)[2].intValue();
+            if (by < year || (by == year && bq <= quarter)) {
+                return nz(base.get(0)[0]);
+            }
         }
-        // Si el corte del saldo inicial es POSTERIOR al trimestre pedido,
-        // no hay información antes de él: compensación previa 0.
-        if (startYear > year || (startYear == year && startQuarter > quarter)) {
-            return BigDecimal.ZERO;
-        }
-        // Arrastrar desde (startYear, startQuarter) hasta el trimestre
-        // ANTERIOR al pedido, aplicando el resultado del régimen de cada uno.
-        int cy = startYear, cq = startQuarter;
-        while (cy < year || (cy == year && cq < quarter)) {
-            BigDecimal regimen = computeResultadoRegimen303(companyId, cy, cq);
-            balance = aplicarCompensacion(regimen, balance).remanente();
-            cq++;
-            if (cq > 4) { cq = 1; cy++; }
-        }
-        return balance;
+        return BigDecimal.ZERO;
     }
 
-    /** Resultado del régimen general (repercutido - soportado) de un trimestre. */
-    private BigDecimal computeResultadoRegimen303(String companyId, int year, int quarter) {
-        int mFrom = (quarter - 1) * 3 + 1;
-        int mTo = quarter * 3;
-        VatBreakdown rep = jdbcTemplate.queryForObject(SALES_VAT_BY_RATE_SQL
-                + " AND MONTH(e.entry_date) BETWEEN ? AND ?",
-                AeatExtraModelsService::mapRepercutido, companyId, year, mFrom, mTo);
-        VatBreakdown sop = jdbcTemplate.queryForObject(PURCHASE_VAT_BY_RATE_SQL
-                + " AND MONTH(e.entry_date) BETWEEN ? AND ?",
-                AeatExtraModelsService::mapSoportado, companyId, year, mFrom, mTo);
-        return computeResultadoIva(rep.totalIva, sop.totalIva);
+    /**
+     * Remanente a compensar (casilla 87) que dejó una declaración 303
+     * guardada. Prefiere el valor almacenado; si no está (declaración
+     * tecleada por la UI, que guarda las cuotas), lo deriva del régimen
+     * (repercutido − soportado) y la compensación previa que declaró.
+     * Robusto a las dos formas del JSON (vista del backend y mapa de la UI).
+     */
+    static BigDecimal extractRemanente303(String json) {
+        BigDecimal direct = jsonNum(json, "remanenteCompensar", "87_remanente_compensar");
+        if (direct != null) return direct;
+        BigDecimal previa = nz(jsonNum(json, "110_compensar_anteriores", "compensar_anteriores"));
+        BigDecimal repercutido = jsonNum(json, "06_iva_repercutido_total");
+        if (repercutido == null) {
+            repercutido = nz(jsonNum(json, "cuota_21")).add(nz(jsonNum(json, "cuota_10")))
+                    .add(nz(jsonNum(json, "cuota_4")));
+        }
+        BigDecimal soportado = nz(jsonNum(json, "cuota_soportada"));
+        BigDecimal regimen = repercutido.subtract(soportado);
+        return aplicarCompensacion(regimen, previa).remanente();
+    }
+
+    /** Primer valor numérico de las claves dadas en un JSON (con o sin comillas). */
+    private static BigDecimal jsonNum(String json, String... keys) {
+        if (json == null) return null;
+        for (String k : keys) {
+            java.util.regex.Matcher m = java.util.regex.Pattern
+                    .compile("\"" + java.util.regex.Pattern.quote(k) + "\"\\s*:\\s*\"?(-?[0-9]+(?:[.,][0-9]+)?)\"?")
+                    .matcher(json);
+            if (m.find()) {
+                try { return new BigDecimal(m.group(1).replace(",", ".")); }
+                catch (NumberFormatException ignored) { /* siguiente clave */ }
+            }
+        }
+        return null;
     }
 
     // ====================================================================
