@@ -403,20 +403,25 @@ public class AeatExtraModelsService {
         // asientos POSTED del trimestre, EXCLUYENDO las rectificativas (van
         // aparte en la casilla 14/15, modificación de bases y cuotas — como
         // en el 303 oficial, no se netean en el régimen general).
+        // Excluye del régimen general las rectificativas y los abonos (van a
+        // la casilla 14/15). Un abono importado como HISTORICAL no conserva el
+        // tipo RECTIFYING, así que lo detectamos también por subtotal < 0.
         VatBreakdown rep = jdbcTemplate.queryForObject(SALES_VAT_BY_RATE_SQL
                 + " AND MONTH(e.entry_date) BETWEEN ? AND ?"
                 + " AND NOT EXISTS (SELECT 1 FROM sales_invoices si"
-                + "   WHERE si.id = e.source_id AND si.invoice_type = 'RECTIFYING')",
+                + "   WHERE si.id = e.source_id AND (si.invoice_type = 'RECTIFYING' OR si.subtotal < 0))",
                 AeatExtraModelsService::mapRepercutido,
                 companyId, year, mFrom, mTo);
 
-        // Modificación de bases y cuotas (casillas 14/15): rectificativas del
-        // trimestre (base y cuota, con su signo). Es el caso de un abono.
+        // Modificación de bases y cuotas (casillas 14/15): rectificativas y
+        // abonos del trimestre (base y cuota, con su signo). Cubre tanto las
+        // rectificativas nativas (RECTIFYING) como los abonos importados
+        // (subtotal negativo, que la migración no marca como RECTIFYING).
         BigDecimal[] mod = jdbcTemplate.queryForObject("""
                 SELECT COALESCE(SUM(subtotal),0), COALESCE(SUM(vat_total),0)
                   FROM sales_invoices
                  WHERE company_id = ? AND status = 'VALIDATED'
-                   AND invoice_type = 'RECTIFYING'
+                   AND (invoice_type = 'RECTIFYING' OR subtotal < 0)
                    AND YEAR(invoice_date) = ? AND MONTH(invoice_date) BETWEEN ? AND ?
                 """, (rs, n) -> new BigDecimal[]{nz(rs.getBigDecimal(1)), nz(rs.getBigDecimal(2))},
                 companyId, year, mFrom, mTo);
