@@ -24,7 +24,7 @@ import java.util.regex.Pattern;
 public class UpdateService {
 
     /** Versión instalada. BUMP en cada release (debe coincidir con --app-version). */
-    public static final String APP_VERSION = "0.1.10";
+    public static final String APP_VERSION = "0.1.11";
 
     private static final String DEFAULT_URL =
             "https://api.github.com/repos/susanaybenjamin-boop/BENJAGEST-migration/releases/latest";
