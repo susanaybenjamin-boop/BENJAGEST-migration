@@ -32,9 +32,10 @@ import org.springframework.stereotype.Service;
  *     vacia se incluye en el hash; quitarla cambia el resultado).
  *   - Los importes se formatean con `toFixed(2)` JS (HALF_UP a 2
  *     decimales).
- *   - TipoFactura "F1" = factura completa. Otros valores (F2 simplifi-
- *     cada, R1-R5 rectificativas) requieren ramas extra que NO estan
- *     implementadas todavia (slice VF4).
+ *   - TipoFactura: F1 completa (default), F2 simplificada, R1-R5
+ *     rectificativas (bloque RECT 2026-07-07). El tipo usado se guarda
+ *     en verifactu_registry.invoice_type_code al emitir; NULL historico
+ *     equivale a F1 y el canonical antiguo no cambia ni un byte.
  *   - Los offsets horarios deben seguir hora oficial de Espana
  *     (+01:00 invierno, +02:00 verano). Aqui usamos la zona del
  *     servidor; en produccion conviene forzar Europe/Madrid.
@@ -66,16 +67,10 @@ public class VerifactuHashService {
                               String previousHash,
                               OffsetDateTime generationTime) {
         return computeHash(nifEmisor, invoiceNumber, invoiceDate, vatTotal, total,
-                previousHash, generationTime, null, null);
+                previousHash, generationTime, null, null, null);
     }
 
-    /**
-     * TPB-4 — Sobrecarga con datos del tercero expedidor. Si
-     * {@code thirdPartyNif} viene non-null, extiende el canonical con
-     * &EmitidaPorTercero=T&TerceroNif&TerceroNombre. Cuando es null o
-     * vacío, devuelve el canonical clásico — las cadenas históricas
-     * de facturas no-TPB siguen verificables sin cambios.
-     */
+    /** Sobrecarga TPB-4 previa al bloque RECT — delega con tipo F1. */
     public String computeHash(String nifEmisor,
                               String invoiceNumber,
                               LocalDate invoiceDate,
@@ -85,6 +80,32 @@ public class VerifactuHashService {
                               OffsetDateTime generationTime,
                               String thirdPartyNif,
                               String thirdPartyName) {
+        return computeHash(nifEmisor, invoiceNumber, invoiceDate, vatTotal, total,
+                previousHash, generationTime, thirdPartyNif, thirdPartyName, null);
+    }
+
+    /**
+     * TPB-4 — datos del tercero expedidor: si {@code thirdPartyNif}
+     * viene non-null, extiende el canonical con
+     * &EmitidaPorTercero=T&TerceroNif&TerceroNombre.
+     *
+     * RECT — {@code invoiceTypeCode}: TipoFactura del registro (F1
+     * completa, F2 simplificada, R1-R5 rectificativas). Cuando es null o
+     * vacío se emite F1 — así la verificación de cadenas históricas
+     * (verifactu_registry.invoice_type_code NULL) recalcula EXACTAMENTE
+     * el mismo canonical de siempre. El tipo usado se persiste al emitir
+     * y la verificación usa el valor guardado, nunca lo re-deriva.
+     */
+    public String computeHash(String nifEmisor,
+                              String invoiceNumber,
+                              LocalDate invoiceDate,
+                              BigDecimal vatTotal,
+                              BigDecimal total,
+                              String previousHash,
+                              OffsetDateTime generationTime,
+                              String thirdPartyNif,
+                              String thirdPartyName,
+                              String invoiceTypeCode) {
         if (nifEmisor == null || nifEmisor.isBlank()) {
             throw new IllegalArgumentException("nifEmisor requerido");
         }
@@ -106,11 +127,13 @@ public class VerifactuHashService {
                 .toPlainString();
         String previous = previousHash == null ? "" : previousHash.toUpperCase();
 
+        String tipoFactura = (invoiceTypeCode == null || invoiceTypeCode.isBlank())
+                ? "F1" : invoiceTypeCode.trim().toUpperCase();
         String chain = String.join("&",
                 "IDEmisorFactura=" + nifEmisor.trim().toUpperCase(),
                 "NumSerieFactura=" + invoiceNumber.trim(),
                 "FechaExpedicionFactura=" + invoiceDate.format(FECHA_EXPEDICION),
-                "TipoFactura=F1",
+                "TipoFactura=" + tipoFactura,
                 "CuotaTotal=" + cuotaTotal,
                 "ImporteTotal=" + importeTotal,
                 "Huella=" + previous,

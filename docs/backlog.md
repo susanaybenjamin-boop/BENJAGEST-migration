@@ -1,5 +1,16 @@
 # Backlog operativo BENJAGEST
 
+> **Última actualización:** 2026-07-08 (**bloque RECT** — **rectificativas R1-R5 + factura
+> simplificada F2**, paso 3 del plan de la auditoría. Anular pide **causa legal** con
+> selector (R1-R4, R5 automática en simplificadas); nuevo botón **Rectificar** (parcial:
+> borrador con líneas en negativo → editor → validar, la original NO se anula); **factura
+> simplificada** sin cliente con tope 400 € (art. 4.1 RD 1619/2012); el **TipoFactura de la
+> huella VeriFactu** deja de ser F1 fijo (F1/F2/R1-R5, guardado al emitir en
+> `verifactu_registry.invoice_type_code`, NULL histórico = F1 → cadenas antiguas intactas,
+> verificado en vivo). V168 + serie SIMP + CHECKs de la auditoría. **Bonus**: fix de bug
+> latente — empresas post-V16 (¡incluida la de Benjamin!) no tenían serie RECT y anular
+> fallaba con 428; ahora las series reservadas PROF/RECT/SIMP se crean al vuelo.
+> Ver sesión 2026-07-08 debajo. Histórico previo:
 > **Última actualización:** 2026-07-07 noche (**bloque LOCK** — **cierre fiscal blindado**:
 > guards `FiscalYearGuardService` en los 8 caminos de mutación que faltaban (crear/editar/
 > validar factura de venta, registrar gasto, borrar asientos de ventas/compras/nómina/
@@ -413,6 +424,41 @@ Repaso punto por punto de lo que Benjamin reportó con el check en blanco. Estad
     `[ ]` UIR-9 Fiscal · `[ ]` UIR-10 Calendario · `[ ]` UIR-11 Facturación/Compras/VeriFactu ·
     `[ ]` UIR-12 Configuración/Certificados · `[ ]` UIR-13 Asesoría/Consolidación/TPB ·
     `[ ]` UIR-14 Trabajos/Calendario laboral/Tablas año · `[ ]` UIR-15 Laboral/Nómina (el último).
+
+---
+
+## 📅 SESIÓN 2026-07-08 — bloque RECT (rectificativas R1-R5 + simplificada F2)
+
+> **Origen:** paso 3 del plan de la auditoría. Decisiones de Benjamin: alcance completo
+> (R1-R5 **y** F2 de una), y la anulación **pregunta siempre** la causa con selector.
+
+- `[x]` **RECT-1 schema** — V168: `rectification_code`/`rectification_scope` en
+  sales_invoices; `customer_id` NULL-able (F2); CHECKs (RECTIFYING⇒original,
+  no-SIMPLIFIED⇒cliente); `invoice_type_code` en verifactu_registry; CHECK de series
+  ampliado + semilla SIMP. **Gotcha**: la semilla chocó con `ck_invoice_series_kind` (V2)
+  en el primer arranque; DDL MariaDB no transaccional → revertir parcial a mano y re-run.
+- `[x]` **RECT-1b series al vuelo** — bug latente: empresas creadas tras V16 sin
+  PROF/RECT (la de Benjamin misma: solo tenía FRA+TPB) → anular daba 428. Fallback
+  `ensureReservedSeries` en `findActiveByKind` (patrón ensureTpbSeries).
+- `[x]` **RECT-2 backend** — void con causa (R4 default, R5 auto en simplificadas);
+  `rectifyPartial` + POST /rectify (borrador PARTIAL, líneas en negativo, original
+  intacta, se admiten varias parciales); validate exige causa en RECTIFYING y aplica tope
+  400 € en SIMPLIFIED; cascada VOIDED solo si scope≠PARTIAL (null=histórico=anulación).
+- `[x]` **RECT-3 huella** — TipoFactura real (F1/F2/R1-R5) en el canonical; se persiste
+  al emitir y la verificación usa el GUARDADO (patrón TPB-4). 3 tests de compatibilidad
+  (tipo null == hash histórico byte a byte). `/verifactu-registry/verify` OK en vivo
+  sobre la cadena real antes y después.
+- `[x]` **RECT-4 UI** — diálogo de causa en Anular; botón Rectificar → editor; tipo
+  simplificada en editor (cliente opcional) y filtro; i18n ES+EN completo.
+- **Verificación en vivo** (borradores de prueba borrados; 0 documentos reales emitidos):
+  simplificada 500 € → 400 · NORMAL sin cliente → 400 · simplificada 121 € sin cliente →
+  201 · rectify sobre factura real → borrador R1/PARTIAL vinculado, original VALIDATED ·
+  void de DRAFT → 409 · cadena VeriFactu íntegra tras todo.
+- **Pendiente/nota:** el asiento de una rectificativa parcial validada sale por
+  `createForSales` con importes en negativo (igual que la anulación) — revisar junto a la
+  duda contable del bloque LOCK (nota 1 de la sesión 2026-07-07 noche) cuando Benjamin
+  quiera sentarse con un caso real. El supuesto F2 de 3.000 € (art. 4.2) queda fuera
+  adrede, con mensaje que lo explica.
 
 ---
 

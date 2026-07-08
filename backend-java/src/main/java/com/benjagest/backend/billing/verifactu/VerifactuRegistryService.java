@@ -131,6 +131,12 @@ public class VerifactuRegistryService {
         // no-TPB tpInfo está vacío y el hash se calcula como siempre.
         ThirdPartyInfo tpInfo = loadThirdPartyInfoFromSeries(invoice.seriesId());
 
+        // RECT: TipoFactura del registro — F2 simplificada, R1-R5 según la
+        // causa de la rectificativa, F1 el resto. Se deriva UNA vez aquí y
+        // se persiste junto al hash: la verificación de la cadena usa el
+        // valor guardado (null histórico = F1), nunca lo re-deriva.
+        String invoiceTypeCode = deriveInvoiceTypeCode(invoice);
+
         String hashCurrent = hashService.computeHash(
                 company.taxIdentifier(),
                 invoice.invoiceNumber(),
@@ -140,7 +146,8 @@ public class VerifactuRegistryService {
                 previousHash,
                 generationTime,
                 tpInfo.nif(),
-                tpInfo.name()
+                tpInfo.name(),
+                invoiceTypeCode
         );
 
         registryRepository.insertWithGenerationTime(
@@ -149,7 +156,8 @@ public class VerifactuRegistryService {
                 mode,
                 hashCurrent,
                 previousHash,
-                generationTime
+                generationTime,
+                invoiceTypeCode
         );
         if (tpInfo.isPresent()) {
             jdbcForTpb.update("""
@@ -258,7 +266,9 @@ public class VerifactuRegistryService {
                     expectedPrev,
                     gen,
                     row.thirdPartyNif(),
-                    row.thirdPartyName()
+                    row.thirdPartyName(),
+                    // RECT: el tipo GUARDADO al emitir (null histórico → F1).
+                    row.invoiceTypeCode()
             );
             if (!recomputed.equalsIgnoreCase(row.hashCurrent())) {
                 return new IntegrityReport(false, checked, row.invoiceId(), row.invoiceNumber(),
@@ -271,6 +281,25 @@ public class VerifactuRegistryService {
             expectedPrev = row.hashCurrent();
         }
         return new IntegrityReport(true, checked, null, null, null);
+    }
+
+    /**
+     * RECT — TipoFactura del registro VeriFactu para una factura que se
+     * está emitiendo AHORA: F2 si es simplificada, la causa R1-R5 si es
+     * rectificativa (validateInternal garantiza que la trae), F1 el
+     * resto. Solo se usa al EMITIR; la verificación lee el valor
+     * persistido en verifactu_registry.invoice_type_code.
+     */
+    private String deriveInvoiceTypeCode(
+            com.benjagest.backend.billing.invoices.SalesInvoice invoice) {
+        if ("SIMPLIFIED".equals(invoice.invoiceType())) {
+            return "F2";
+        }
+        if ("RECTIFYING".equals(invoice.invoiceType())) {
+            String code = invoice.rectificationCode();
+            return (code == null || code.isBlank()) ? "F1" : code.trim().toUpperCase();
+        }
+        return "F1";
     }
 
     /**

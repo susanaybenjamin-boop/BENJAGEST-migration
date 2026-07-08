@@ -360,11 +360,36 @@ public class BillingApiClient {
      * a la factura original (que sigue VALIDATED). Devolvemos el header del
      * borrador para que la UI lo pueda abrir o mostrar su id.
      */
-    public SalesInvoiceSummary voidInvoice(String id) throws IOException, InterruptedException {
+    /**
+     * RECT: la anulación lleva causa legal R1-R4 (R5 la fija el backend
+     * si la original es simplificada). null → R4 en el servidor.
+     */
+    public SalesInvoiceSummary voidInvoice(String id, String rectificationCode)
+            throws IOException, InterruptedException {
+        String body = rectificationCode == null || rectificationCode.isBlank()
+                ? "{}" : "{\"rectificationCode\":\"" + rectificationCode + "\"}";
         HttpRequest.Builder builder = HttpRequest.newBuilder(URI.create(baseUrl + "/billing/invoices/" + id + "/void"))
                 .timeout(Duration.ofSeconds(10))
                 .header("Content-Type", "application/json")
-                .POST(HttpRequest.BodyPublishers.noBody());
+                .POST(HttpRequest.BodyPublishers.ofString(body));
+        HttpResponse<String> response = sendAuthorized(builder);
+        ensureOk(response);
+        return parseInvoiceHeader(response.body());
+    }
+
+    /**
+     * RECT — rectificativa PARCIAL: el backend crea un borrador
+     * RECTIFYING (líneas de la original en negativo) SIN anular la
+     * original. La UI abre el editor sobre el borrador devuelto.
+     */
+    public SalesInvoiceSummary rectifyInvoice(String id, String rectificationCode)
+            throws IOException, InterruptedException {
+        String body = rectificationCode == null || rectificationCode.isBlank()
+                ? "{}" : "{\"rectificationCode\":\"" + rectificationCode + "\"}";
+        HttpRequest.Builder builder = HttpRequest.newBuilder(URI.create(baseUrl + "/billing/invoices/" + id + "/rectify"))
+                .timeout(Duration.ofSeconds(10))
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(body));
         HttpResponse<String> response = sendAuthorized(builder);
         ensureOk(response);
         return parseInvoiceHeader(response.body());

@@ -45,6 +45,12 @@ public record SalesInvoice(
         String currency,
         String originalInvoiceId,
         String rectifyingInvoiceId,
+        // RECT (2026-07-07): causa legal R1..R5 de la rectificativa (null
+        // en no-rectificativas y en rectificativas historicas pre-bloque)
+        // y alcance ANNULMENT (anula todo, original -> VOIDED) o PARTIAL
+        // (corrige importes, la original sigue VALIDATED). null = ANNULMENT.
+        String rectificationCode,
+        String rectificationScope,
         String concept,
         String notes,
         String pdfPath,

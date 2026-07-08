@@ -143,13 +143,14 @@ public class VerifactuRegistryRepository {
      */
     public void insertWithGenerationTime(String id, String invoiceId, String mode,
                                           String hashCurrent, String hashPrevious,
-                                          OffsetDateTime generationTime) {
+                                          OffsetDateTime generationTime,
+                                          String invoiceTypeCode) {
         jdbcTemplate.update("""
                 INSERT INTO verifactu_registry (
                     id, company_id, invoice_id, mode,
                     hash_current, hash_previous,
-                    generated_at, status, retry_count
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, 'PENDING', 0)
+                    generated_at, status, retry_count, invoice_type_code
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, 'PENDING', 0, ?)
                 """,
                 id,
                 tenantContext.getCurrentCompanyId(),
@@ -160,7 +161,11 @@ public class VerifactuRegistryRepository {
                 // Convertimos a UTC porque MariaDB TIMESTAMP almacena en
                 // UTC y aplica session zone al leer. Usamos Timestamp para
                 // mantener consistencia con cualquier zona del servidor.
-                Timestamp.from(generationTime.toInstant())
+                Timestamp.from(generationTime.toInstant()),
+                // RECT: TipoFactura usado en la huella (F1/F2/R1-R5). Se
+                // persiste para que la verificacion recalcule con el MISMO
+                // tipo — nunca se re-deriva del invoice_type actual.
+                invoiceTypeCode
         );
     }
 
@@ -182,7 +187,8 @@ public class VerifactuRegistryRepository {
                 SELECT r.invoice_id, i.invoice_number, i.invoice_date,
                        i.vat_total, i.total,
                        r.hash_current, r.hash_previous, r.generated_at,
-                       r.third_party_nif, r.third_party_name
+                       r.third_party_nif, r.third_party_name,
+                       r.invoice_type_code
                   FROM verifactu_registry r
                   JOIN sales_invoices i ON i.id = r.invoice_id
                  WHERE r.company_id = ?
@@ -381,7 +387,8 @@ public class VerifactuRegistryRepository {
                 // Europe/Madrid y el formato del hash coincida.
                 gen == null ? null : OffsetDateTime.ofInstant(gen.toInstant(), ZoneOffset.UTC),
                 hasColumn(rs, "third_party_nif") ? rs.getString("third_party_nif") : null,
-                hasColumn(rs, "third_party_name") ? rs.getString("third_party_name") : null
+                hasColumn(rs, "third_party_name") ? rs.getString("third_party_name") : null,
+                hasColumn(rs, "invoice_type_code") ? rs.getString("invoice_type_code") : null
         );
     }
 
@@ -402,7 +409,9 @@ public class VerifactuRegistryRepository {
             /** TPB-4 — NIF del tercero expedidor o null si no aplica. */
             String thirdPartyNif,
             /** TPB-4 — Nombre del tercero expedidor o null si no aplica. */
-            String thirdPartyName
+            String thirdPartyName,
+            /** RECT — TipoFactura usado en la huella (F1/F2/R1-R5); null historico = F1. */
+            String invoiceTypeCode
     ) {
     }
 

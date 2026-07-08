@@ -209,6 +209,7 @@ public final class I18n {
                 case "editor.client.phone_prefix" -> "Phone: ";
                 case "editor.kind.pill" -> "Standard invoice · automatic series";
                 case "editor.kind.normal" -> "Standard invoice";
+                case "editor.kind.simplified" -> "Simplified invoice";
                 case "editor.kind.proforma" -> "Proforma";
                 case "editor.kind.rectifying" -> "Corrective";
                 case "editor.kind.historical" -> "Historical (imported)";
@@ -1140,6 +1141,17 @@ public final class I18n {
                 case "list.dialog.void.failure.title" -> "Could not void";
                 case "list.dialog.void.failure.body" -> "Check that the invoice is VALIDATED and does not already have a linked corrective.";
                 case "editor.rectifying.pill_prefix" -> "Corrective for ";
+                // ---- RECT: legal cause R1-R5 + partial rectification ----
+                case "rect.cause.label" -> "Legal cause of the corrective invoice:";
+                case "rect.cause.R1" -> "Error founded in law / taxable base (art. 80.One, Two and Six Spanish VAT Act)";
+                case "rect.cause.R2" -> "Debtor in insolvency proceedings (art. 80.Three)";
+                case "rect.cause.R3" -> "Uncollectible debt (art. 80.Four)";
+                case "rect.cause.R4" -> "Other causes (default)";
+                case "rect.cause.r5_auto" -> "Cause R5 (corrective of a simplified invoice) — applied automatically by law.";
+                case "list.action.rectify" -> "Rectify";
+                case "list.dialog.rectify.title" -> "Partial corrective invoice";
+                case "list.dialog.rectify.body" -> "A DRAFT corrective will be created with the original lines negated. The editor will open so you keep only the correction and validate it. The original invoice is NOT voided.";
+                case "list.dialog.rectify.failure.title" -> "Could not create the corrective";
                 // ---- F4b PDF download ----
                 case "list.dialog.pdf.save_title" -> "Save invoice PDF";
                 case "list.dialog.pdf.filter" -> "PDF documents";
@@ -1334,6 +1346,7 @@ public final class I18n {
             case "editor.client.phone_prefix" -> "Tel.: ";
             case "editor.kind.pill" -> "Factura normal · serie automatica";
             case "editor.kind.normal" -> "Factura normal";
+            case "editor.kind.simplified" -> "Factura simplificada";
             case "editor.kind.proforma" -> "Proforma";
             case "editor.kind.rectifying" -> "Rectificativa";
             case "editor.kind.historical" -> "Historica (importada)";
@@ -2265,6 +2278,17 @@ public final class I18n {
             case "list.dialog.void.failure.title" -> "No se pudo anular";
             case "list.dialog.void.failure.body" -> "Comprueba que la factura este VALIDATED y que aun no tenga rectificativa enlazada.";
             case "editor.rectifying.pill_prefix" -> "Rectificativa de ";
+            // ---- RECT: causa legal R1-R5 + rectificativa parcial ----
+            case "rect.cause.label" -> "Causa legal de la rectificativa:";
+            case "rect.cause.R1" -> "Error fundado en derecho / base imponible (art. 80.Uno, Dos y Seis LIVA)";
+            case "rect.cause.R2" -> "Deudor en concurso de acreedores (art. 80.Tres)";
+            case "rect.cause.R3" -> "Crédito incobrable (art. 80.Cuatro)";
+            case "rect.cause.R4" -> "Resto de causas (por defecto)";
+            case "rect.cause.r5_auto" -> "Causa R5 (rectificativa de factura simplificada) — se aplica automáticamente por ley.";
+            case "list.action.rectify" -> "Rectificar";
+            case "list.dialog.rectify.title" -> "Rectificativa parcial";
+            case "list.dialog.rectify.body" -> "Se creará un BORRADOR de rectificativa con las líneas de la original en negativo. Se abrirá el editor para que dejes solo la corrección y la valides. La factura original NO se anula.";
+            case "list.dialog.rectify.failure.title" -> "No se pudo crear la rectificativa";
             // ---- F4b PDF download ----
             case "list.dialog.pdf.save_title" -> "Guardar PDF de la factura";
             case "list.dialog.pdf.filter" -> "Documentos PDF";
@@ -6490,6 +6514,7 @@ public final class I18n {
             case "enum.payment_method.DIRECT_DEBIT" -> "Direct debit";
             case "enum.payment_method.OTHER" -> "Other";
             case "enum.invoice_type.NORMAL" -> "Standard";
+            case "enum.invoice_type.SIMPLIFIED" -> "Simplified";
             case "enum.invoice_type.RECTIFYING" -> "Rectifying";
             case "enum.invoice_type.PROFORMA" -> "Proforma";
             case "enum.timeclock_origin.WEB" -> "Web";
@@ -7698,6 +7723,7 @@ public final class I18n {
             case "enum.payment_method.DIRECT_DEBIT" -> "Domiciliación";
             case "enum.payment_method.OTHER" -> "Otro";
             case "enum.invoice_type.NORMAL" -> "Estándar";
+            case "enum.invoice_type.SIMPLIFIED" -> "Simplificada";
             case "enum.invoice_type.RECTIFYING" -> "Rectificativa";
             case "enum.invoice_type.PROFORMA" -> "Proforma";
             case "enum.timeclock_origin.WEB" -> "Web";

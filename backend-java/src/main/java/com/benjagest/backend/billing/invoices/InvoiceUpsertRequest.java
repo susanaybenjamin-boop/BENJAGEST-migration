@@ -10,7 +10,9 @@ import java.util.List;
 /**
  * Payload de POST (crear) y PUT (editar) de factura en estado DRAFT.
  *
- * - customerId: obligatorio.
+ * - customerId: obligatorio SALVO factura simplificada (RECT-F2, art. 7
+ *               RD 1619/2012 — no identifica al destinatario). La
+ *               obligatoriedad condicional vive en SalesInvoiceService.
  * - seriesId: opcional al crear; obligatorio al validar (sin serie no
  *             hay numero). Hoy lo aceptamos en draft para que el
  *             usuario pueda decidir despues.
@@ -19,7 +21,7 @@ import java.util.List;
  *          ni legal ni fiscalmente).
  */
 public record InvoiceUpsertRequest(
-        @NotBlank String customerId,
+        String customerId,
         String seriesId,
         @NotBlank @Size(max = 30) String invoiceType,
         LocalDate invoiceDate,

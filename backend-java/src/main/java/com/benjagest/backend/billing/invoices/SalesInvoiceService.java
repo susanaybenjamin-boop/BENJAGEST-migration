@@ -133,6 +133,14 @@ public class SalesInvoiceService {
     public SalesInvoice createDraft(InvoiceUpsertRequest request) {
         billingAgreementGuard.requireAgreementOrOwn(
                 com.benjagest.backend.billing.tpb.BillingAgreementGuard.Scope.SALES);
+        // RECT-F2: la simplificada no identifica al destinatario (art. 7
+        // RD 1619/2012) — cliente opcional SOLO en ese tipo. El @NotBlank
+        // del request se relajó; la obligatoriedad para el resto vive aquí.
+        boolean simplified = "SIMPLIFIED".equals(request.invoiceType());
+        if (!simplified && (request.customerId() == null || request.customerId().isBlank())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "El cliente es obligatorio (solo la factura simplificada puede ir sin cliente)");
+        }
         String id = UUID.randomUUID().toString();
         LocalDate invoiceDate = request.invoiceDate() == null ? LocalDate.now() : request.invoiceDate();
         // LOCK (2026-07-07): fallo temprano — un borrador fechado en un
@@ -143,6 +151,9 @@ public class SalesInvoiceService {
 
         List<InvoiceLine> lines = computeLines(id, request.lines());
         Totals totals = aggregateTotals(lines);
+        if (simplified) {
+            requireSimplifiedWithinLegalLimit(totals.total());
+        }
 
         // Resolvemos la serie en el servidor por el invoice_type
         // (NORMAL → STANDARD, RECTIFYING → RECT, etc). Ignoramos lo que
@@ -173,6 +184,8 @@ public class SalesInvoiceService {
                 "EUR",
                 blankToNull(request.originalInvoiceId()),
                 null,
+                null,            // rectificationCode — solo lo fijan void/rectify.
+                null,            // rectificationScope — idem.
                 blankToNull(request.concept()),
                 blankToNull(request.notes()),
                 null,            // pdfPath — solo se rellena al validar.
@@ -211,6 +224,17 @@ public class SalesInvoiceService {
         List<InvoiceLine> lines = computeLines(id, request.lines());
         Totals totals = aggregateTotals(lines);
 
+        // RECT-F2: mismo criterio que createDraft — cliente obligatorio
+        // salvo simplificada, y tope legal si es simplificada.
+        boolean simplifiedDraft = "SIMPLIFIED".equals(existing.invoiceType());
+        if (!simplifiedDraft && (request.customerId() == null || request.customerId().isBlank())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "El cliente es obligatorio (solo la factura simplificada puede ir sin cliente)");
+        }
+        if (simplifiedDraft) {
+            requireSimplifiedWithinLegalLimit(totals.total());
+        }
+
         // El invoice_type se PRESERVA del borrador existente. Si el cliente
         // intenta cambiar el tipo (p.ej. "NORMAL" en una rectificativa
         // creada via /void), lo ignoramos. Solo createDraft fija el tipo;
@@ -232,6 +256,7 @@ public class SalesInvoiceService {
                 // edita desde aqui — solo lo fija voidValidated() al crear
                 // el borrador rectificativa.
                 existing.originalInvoiceId(), existing.rectifyingInvoiceId(),
+                existing.rectificationCode(), existing.rectificationScope(),
                 blankToNull(request.concept()),
                 blankToNull(request.notes()),
                 existing.pdfPath(),       // pdfPath se preserva (borrador siempre null).
@@ -303,6 +328,20 @@ public class SalesInvoiceService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "Una factura sin lineas no se puede validar");
         }
+        // RECT: una rectificativa sin causa legal (R1..R5) no es valida —
+        // el TipoFactura de la huella VeriFactu sale de ahi. Solo afecta a
+        // borradores nuevos: las rectificativas historicas ya estan
+        // VALIDATED y nunca vuelven a pasar por aqui.
+        if ("RECTIFYING".equals(existing.invoiceType())
+                && (existing.rectificationCode() == null || existing.rectificationCode().isBlank())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Falta la causa de rectificacion (R1-R5). Crea la rectificativa "
+                            + "desde Anular o Rectificar para que quede fijada.");
+        }
+        // RECT-F2: tope legal de la simplificada sobre los totales FINALES.
+        if ("SIMPLIFIED".equals(existing.invoiceType())) {
+            requireSimplifiedWithinLegalLimit(aggregateTotals(existing.lines()).total());
+        }
 
         Totals totals = aggregateTotals(existing.lines());
         // Emite el numero. Como SeriesService.claimNextNumber es
@@ -364,7 +403,11 @@ public class SalesInvoiceService {
         // "anulada con vinculo" — ni antes ni despues, ni con cancelar
         // sueltos.
         boolean cascadedVoid = false;
+        // RECT: la cascada de anulacion SOLO aplica a rectificativas de
+        // anulacion total. Una rectificativa PARCIAL corrige importes y la
+        // original sigue VALIDATED (scope null = historico = anulacion).
         if ("RECTIFYING".equals(validated.invoiceType())
+                && !"PARTIAL".equals(validated.rectificationScope())
                 && validated.originalInvoiceId() != null
                 && !validated.originalInvoiceId().isBlank()) {
             repository.markVoided(validated.originalInvoiceId());
@@ -474,10 +517,14 @@ public class SalesInvoiceService {
      * apuntando a la nueva.
      */
     @Transactional
-    public SalesInvoice voidValidated(String validatedId) {
+    public SalesInvoice voidValidated(String validatedId, String rectificationCode) {
         billingAgreementGuard.requireAgreementOrOwn(
                 com.benjagest.backend.billing.tpb.BillingAgreementGuard.Scope.SALES);
         SalesInvoice original = get(validatedId);
+        // RECT: causa legal de la anulacion. La UI la pide con selector
+        // (default R4 "resto de causas"); si la API no la manda, R4. Si la
+        // original es una simplificada, la ley obliga a R5.
+        String code = normalizeRectificationCode(rectificationCode, original);
         if (!"VALIDATED".equals(original.status())) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "Solo se puede anular una factura VALIDATED. Para borrar borradores usa DELETE.");
@@ -565,8 +612,10 @@ public class SalesInvoiceService {
                 "EUR",
                 original.id(),
                 null,
+                code,
+                "ANNULMENT",
                 original.concept(),
-                "Rectificativa por anulacion de "
+                "Rectificativa (" + code + ") por anulacion de "
                         + (original.invoiceNumber() == null ? original.id() : original.invoiceNumber()),
                 null,            // pdfPath — se rellena al validar.
                 null,
@@ -585,6 +634,119 @@ public class SalesInvoiceService {
         // Llamamos a validateInternal (sin proxy) para evitar el problema
         // de self-invocation con @Transactional.
         return validateInternal(newId);
+    }
+
+    /**
+     * RECT — Rectificativa PARCIAL: corrige importes de una factura
+     * validada SIN anularla. Crea un borrador RECTIFYING (scope PARTIAL)
+     * con las líneas de la original en negativo como punto de partida;
+     * el usuario las edita en el editor (deja solo la diferencia) y
+     * valida por el flujo normal. Al validar NO hay cascada de anulación:
+     * la original sigue VALIDATED con el vínculo original_invoice_id.
+     *
+     * A diferencia de la anulación (una sola rectificativa por factura,
+     * controlado por rectifying_invoice_id), una factura puede tener
+     * varias rectificativas parciales — la ley no lo impide y pasa en la
+     * práctica (dos correcciones en meses distintos).
+     */
+    @Transactional
+    public SalesInvoice rectifyPartial(String originalId, String rectificationCode) {
+        billingAgreementGuard.requireAgreementOrOwn(
+                com.benjagest.backend.billing.tpb.BillingAgreementGuard.Scope.SALES);
+        SalesInvoice original = get(originalId);
+        if (!"VALIDATED".equals(original.status())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Solo se rectifica una factura VALIDATED.");
+        }
+        if ("PROFORMA".equals(original.invoiceType())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Una proforma no es documento fiscal: edítala directamente.");
+        }
+        if ("HISTORICAL".equals(original.invoiceType())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Las facturas historicas importadas no se rectifican desde aqui: "
+                            + "pertenecen a la contabilidad del sistema anterior.");
+        }
+        String code = normalizeRectificationCode(rectificationCode, original);
+
+        String rectSeriesId = seriesService.findActiveByKind("RECTIFYING").id();
+        String newId = UUID.randomUUID().toString();
+        LocalDate today = LocalDate.now();
+        List<InvoiceLineInput> negatedInputs = new ArrayList<>();
+        for (InvoiceLine line : original.lines()) {
+            negatedInputs.add(new InvoiceLineInput(
+                    line.description(),
+                    line.catalogItemId(),
+                    line.quantity() == null ? null : line.quantity().negate(),
+                    line.unitPrice(),
+                    line.vatPercent(),
+                    line.retentionPercent()
+            ));
+        }
+        List<InvoiceLine> lines = computeLines(newId, negatedInputs);
+        Totals totals = aggregateTotals(lines);
+
+        SalesInvoice draft = new SalesInvoice(
+                newId, null,
+                original.customerId(), null, null,
+                rectSeriesId, null,
+                today, today.plusDays(30),
+                "RECTIFYING", "DRAFT", "PENDING",
+                totals.subtotal(), totals.vatTotal(), totals.retentionTotal(), totals.total(),
+                BigDecimal.ZERO, "EUR",
+                original.id(), null,
+                code, "PARTIAL",
+                original.concept(),
+                "Rectificativa parcial (" + code + ") de "
+                        + (original.invoiceNumber() == null ? original.id() : original.invoiceNumber())
+                        + " — ajusta las lineas a la diferencia antes de validar",
+                null, null, null, null,
+                lines
+        );
+        repository.insertHeader(draft);
+        for (InvoiceLine line : lines) {
+            repository.insertLine(line);
+        }
+        // Se devuelve el BORRADOR (no se valida): el usuario debe dejar en
+        // las líneas solo la corrección. La UI abre el editor sobre él.
+        return get(newId);
+    }
+
+    /**
+     * RECT — normaliza/valida la causa legal de rectificacion.
+     * R1 error fundado en derecho (art. 80.Uno/Dos/Seis LIVA), R2 concurso
+     * (80.Tres), R3 credito incobrable (80.Cuatro), R4 resto de causas,
+     * R5 rectificativa de factura simplificada (obligada si la original
+     * es SIMPLIFIED). Sin causa → R4 (default de la UI).
+     */
+    private String normalizeRectificationCode(String code, SalesInvoice original) {
+        if ("SIMPLIFIED".equals(original.invoiceType())) {
+            return "R5";
+        }
+        String c = code == null ? "" : code.trim().toUpperCase();
+        if (c.isEmpty()) return "R4";
+        if (!c.matches("R[1-4]")) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Causa de rectificacion invalida: " + code
+                            + " (validas: R1-R4; R5 se aplica sola si la original es simplificada)");
+        }
+        return c;
+    }
+
+    /**
+     * RECT-F2 — tope legal de la factura simplificada: 400 EUR IVA
+     * incluido (art. 4.1 RD 1619/2012). El supuesto de 3.000 EUR del
+     * art. 4.2 (comercio minorista, hosteleria, transporte...) no esta
+     * soportado todavia — se dice en el mensaje para no confundir.
+     */
+    private void requireSimplifiedWithinLegalLimit(BigDecimal total) {
+        if (total != null && total.abs().compareTo(new BigDecimal("400")) > 0) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Una factura simplificada no puede superar 400 EUR (IVA incluido), "
+                            + "art. 4.1 RD 1619/2012. El supuesto de hasta 3.000 EUR para comercio "
+                            + "minorista y similares (art. 4.2) no esta soportado aun: usa una "
+                            + "factura completa con el cliente identificado.");
+        }
     }
 
     /**
@@ -696,6 +858,7 @@ public class SalesInvoiceService {
                 existing.subtotal(), existing.vatTotal(), existing.retentionTotal(), existing.total(),
                 existing.paidAmount(), existing.currency(),
                 existing.originalInvoiceId(), existing.rectifyingInvoiceId(),
+                existing.rectificationCode(), existing.rectificationScope(),
                 existing.concept(), existing.notes(), existing.pdfPath(),
                 fromValidated ? null : existing.validatedAt(),
                 existing.createdAt(), existing.updatedAt(),
