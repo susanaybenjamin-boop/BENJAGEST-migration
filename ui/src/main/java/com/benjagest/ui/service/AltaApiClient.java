@@ -1052,6 +1052,36 @@ public class AltaApiClient {
         return out;
     }
 
+    // ---- OPTYPE-3: modelo 349 (recapitulativa intracom). Reutiliza Aeat347Row
+    //      (misma forma clave/NIF/nombre/T1-T4); la clave es A/E, no A/B. ----
+
+    public java.util.List<com.benjagest.ui.model.Aeat347Row> preview349(int year)
+            throws IOException, InterruptedException {
+        HttpResponse<String> r = send(req(baseUrl + "/aeat/extras/349/" + year + "/preview").GET());
+        return parse349Rows(r.body());
+    }
+
+    public java.util.List<com.benjagest.ui.model.Aeat347Row> parse349(String json) {
+        return parse349Rows(json);
+    }
+
+    private java.util.List<com.benjagest.ui.model.Aeat347Row> parse349Rows(String json) {
+        java.util.List<com.benjagest.ui.model.Aeat347Row> out = new ArrayList<>();
+        if (json == null || json.isBlank()) return out;
+        int idx = json.indexOf("\"rows\"");
+        String region = idx >= 0 ? json.substring(idx) : json;
+        for (String obj : splitTopLevelObjects(region)) {
+            if (!obj.contains("\"clave\"") && !obj.contains("\"nif\"")) continue;
+            out.add(new com.benjagest.ui.model.Aeat347Row(
+                    textField(obj, "clave"),
+                    textField(obj, "nif"),
+                    textField(obj, "name"),
+                    numberField(obj, "q1"), numberField(obj, "q2"),
+                    numberField(obj, "q3"), numberField(obj, "q4")));
+        }
+        return out;
+    }
+
     // ---- AEAT-ED-3: modelo 190 (retenciones IRPF) ----
 
     public java.util.List<com.benjagest.ui.model.Aeat190Row> preview190(int year)

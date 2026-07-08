@@ -175,6 +175,16 @@ public class PurchaseInvoiceRepository {
                 """, journalEntryId, id, tenantContext.getCurrentCompanyId());
     }
 
+    /** OPTYPE-3 — fija el tipo de operación (auto-detectado por NIF al alta). */
+    public int updateOperationType(String id, String operationType) {
+        return jdbcTemplate.update("""
+                UPDATE purchase_invoices
+                   SET operation_type = ?
+                 WHERE id = ?
+                   AND company_id = ?
+                """, operationType, id, tenantContext.getCurrentCompanyId());
+    }
+
     /**
      * Borrado físico. Antes de invocar, el Service revierte el asiento
      * contable y registra el audit_event correspondiente para que la

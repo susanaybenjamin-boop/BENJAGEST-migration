@@ -115,6 +115,15 @@ public class PurchaseInvoiceService {
         // 2) Insertar.
         repository.insert(draft);
 
+        // OPTYPE-3: auto-detectar el tipo de operación por el NIF del proveedor
+        // (un NIF de operador UE ≠ ES → adquisición intracomunitaria). Solo
+        // escribe si difiere del INTERIOR por defecto; la asesoría puede
+        // afinarlo luego con "Clasificación fiscal".
+        String tipoOp = OperationTypeDetector.detect(req.supplierNif());
+        if (!"INTERIOR".equals(tipoOp)) {
+            repository.updateOperationType(id, tipoOp);
+        }
+
         // 3) Intentar asiento (best effort).
         String journalEntryId = null;
         try {

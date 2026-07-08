@@ -172,6 +172,78 @@ public class AeatExtraModelsService {
     }
 
     // ====================================================================
+    //  Modelo 349 — declaración recapitulativa de operaciones intracom
+    //  (OPTYPE-3). Agrega por NIF del operador UE las adquisiciones (compras
+    //  con operation_type='INTRACOM', clave A) y las entregas (ventas
+    //  clasificadas como INTRACOM, clave E). Sin umbral: todo se declara. Se
+    //  declara la BASE imponible, no el total con IVA.
+    // ====================================================================
+
+    @Transactional
+    public Model349View generate349(int year, boolean persist) {
+        String companyId = tenantContext.getCurrentCompanyId();
+        Map<String, NifTotals> bySupplier = new LinkedHashMap<>();
+        Map<String, NifTotals> byCustomer = new LinkedHashMap<>();
+
+        // Adquisiciones intracomunitarias (clave A) — compras INTRACOM.
+        List<Object[]> compras = jdbcTemplate.query("""
+                SELECT supplier_nif, supplier_name, invoice_date, base_amount
+                  FROM purchase_invoices
+                 WHERE company_id = ? AND operation_type = 'INTRACOM'
+                   AND YEAR(invoice_date) = ?
+                """, (rs, n) -> new Object[]{
+                        rs.getString("supplier_nif"), rs.getString("supplier_name"),
+                        rs.getDate("invoice_date").toLocalDate(), rs.getBigDecimal("base_amount")},
+                companyId, year);
+        for (Object[] r : compras) {
+            String nif = (String) r[0], name = (String) r[1];
+            if ((nif == null || nif.isBlank()) && (name == null || name.isBlank())) continue;
+            boolean hasNif = nif != null && !nif.isBlank();
+            String key = hasNif ? "NIF:" + nif.toUpperCase().trim()
+                    : "NAME:" + (name == null ? "" : name.toUpperCase().trim());
+            bySupplier.computeIfAbsent(key, k -> new NifTotals(name, hasNif ? nif.toUpperCase().trim() : ""))
+                    .add((LocalDate) r[2], (BigDecimal) r[3]);
+        }
+
+        // Entregas intracomunitarias (clave E) — ventas INTRACOM.
+        List<Object[]> ventas = jdbcTemplate.query("""
+                SELECT c.legal_name AS name, COALESCE(c.tax_identifier,'') AS nif,
+                       s.invoice_date, s.subtotal AS base
+                  FROM sales_invoices s
+                  JOIN customers c ON c.id = s.customer_id
+                 WHERE s.company_id = ? AND s.operation_type = 'INTRACOM'
+                   AND s.status = 'VALIDATED' AND YEAR(s.invoice_date) = ?
+                """, (rs, n) -> new Object[]{
+                        rs.getString("name"), rs.getString("nif"),
+                        rs.getDate("invoice_date").toLocalDate(), rs.getBigDecimal("base")},
+                companyId, year);
+        for (Object[] r : ventas) {
+            String name = (String) r[0], nif = (String) r[1];
+            if (name == null || name.isBlank()) continue;
+            boolean hasNif = nif != null && !nif.isBlank();
+            String key = hasNif ? "NIF:" + nif.toUpperCase().trim() : "NAME:" + name.toUpperCase().trim();
+            byCustomer.computeIfAbsent(key, k -> new NifTotals(name, hasNif ? nif.toUpperCase().trim() : ""))
+                    .add((LocalDate) r[2], (BigDecimal) r[3]);
+        }
+
+        List<Model349Row> rows = new ArrayList<>();
+        for (NifTotals t : bySupplier.values()) {
+            rows.add(new Model349Row("A", t.nif, t.name, t.q1, t.q2, t.q3, t.q4, t.total));
+        }
+        for (NifTotals t : byCustomer.values()) {
+            rows.add(new Model349Row("E", t.nif, t.name, t.q1, t.q2, t.q3, t.q4, t.total));
+        }
+        BigDecimal totalAdq = bySupplier.values().stream()
+                .map(t -> t.total).reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal totalEnt = byCustomer.values().stream()
+                .map(t -> t.total).reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        Model349View view = new Model349View(year, rows.size(), totalAdq, totalEnt, rows);
+        if (persist) persistFiling("349", year, null, view, totalAdq.add(totalEnt));
+        return view;
+    }
+
+    // ====================================================================
     //  Modelo 390
     // ====================================================================
 
@@ -884,6 +956,20 @@ public class AeatExtraModelsService {
             int year, int rowsCount,
             BigDecimal totalAdquisiciones, BigDecimal totalEntregas,
             List<Model347Row> rows
+    ) {}
+
+    /** OPTYPE-3 — una línea del modelo 349 (recapitulativa de intracom).
+     *  clave A = adquisiciones, E = entregas intracomunitarias. */
+    public record Model349Row(
+            String clave, String nif, String name,
+            BigDecimal q1, BigDecimal q2, BigDecimal q3, BigDecimal q4,
+            BigDecimal yearTotal
+    ) {}
+
+    public record Model349View(
+            int year, int rowsCount,
+            BigDecimal totalAdquisiciones, BigDecimal totalEntregas,
+            List<Model349Row> rows
     ) {}
 
     public record Model390View(

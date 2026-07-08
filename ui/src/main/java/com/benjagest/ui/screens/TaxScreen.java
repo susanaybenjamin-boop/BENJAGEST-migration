@@ -297,6 +297,8 @@ public class TaxScreen extends ScreenBase {
             show130Editor(existing);
         } else if ("347".equals(modelCode)) {
             show347Editor(existing);
+        } else if ("349".equals(modelCode)) {
+            show349Editor(existing);
         } else if ("390".equals(modelCode)) {
             show390Editor(existing);
         } else if ("190".equals(modelCode)) {
@@ -930,6 +932,143 @@ public class TaxScreen extends ScreenBase {
                     + ",\"totalEntregas\":" + totB.toPlainString()
                     + ",\"rows\":" + rowsJson + "}";
             saveFiling(existing, statusCombo.getValue(), json, totA.add(totB),
+                    csvField.getText(), existing.notes(), java.util.List.of());
+        });
+    }
+
+    /**
+     * OPTYPE-3 — Editor del modelo 349 (recapitulativa intracom). Reutiliza la
+     * fila del 347 (misma forma) y sus helpers; la clave es A (adquisiciones) /
+     * E (entregas), y prefilla desde las facturas clasificadas como INTRACOM.
+     */
+    private void show349Editor(com.benjagest.ui.model.TaxFilingEntry existing) {
+        Dialog<ButtonType> dialog = new Dialog<>();
+        dialog.setTitle("Modelo 349 — " + formatPeriod(existing));
+        ButtonType saveBt = new ButtonType(t("tax.editor.save"), ButtonBar.ButtonData.OK_DONE);
+        dialog.getDialogPane().getButtonTypes().addAll(saveBt, ButtonType.CANCEL);
+
+        javafx.collections.ObservableList<com.benjagest.ui.model.Aeat347Row> rows =
+                FXCollections.observableArrayList(altaApiClient.parse349(existing.dataJson()));
+
+        TableView<com.benjagest.ui.model.Aeat347Row> table = new TableView<>(rows);
+        table.setEditable(true);
+        table.getStyleClass().add("data-table");
+        table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+        table.setPlaceholder(new Label(t("aeat349.placeholder")));
+        table.setPrefHeight(320);
+
+        Label totalsLabel = new Label();
+        totalsLabel.getStyleClass().add("settings-section-title");
+        Runnable recompute = () -> {
+            java.math.BigDecimal a = java.math.BigDecimal.ZERO, e = java.math.BigDecimal.ZERO;
+            for (var r : rows) {
+                java.math.BigDecimal tot = row347Total(r);
+                if ("A".equalsIgnoreCase(r.clave)) a = a.add(tot); else e = e.add(tot);
+            }
+            totalsLabel.setText(t("aeat349.totals")
+                    .replace("{a}", a.setScale(2, java.math.RoundingMode.HALF_UP).toPlainString())
+                    .replace("{b}", e.setScale(2, java.math.RoundingMode.HALF_UP).toPlainString())
+                    .replace("{n}", String.valueOf(rows.size())));
+        };
+
+        TableColumn<com.benjagest.ui.model.Aeat347Row, String> cClave = new TableColumn<>(t("aeat347.col.key"));
+        cClave.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().clave));
+        cClave.setCellFactory(javafx.scene.control.cell.ChoiceBoxTableCell.forTableColumn("A", "E"));
+        cClave.setOnEditCommit(e -> { e.getRowValue().clave = e.getNewValue(); recompute.run(); });
+        cClave.setPrefWidth(70);
+        TableColumn<com.benjagest.ui.model.Aeat347Row, String> cNif = new TableColumn<>(t("aeat347.col.nif"));
+        cNif.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().nif));
+        cNif.setCellFactory(javafx.scene.control.cell.TextFieldTableCell.forTableColumn());
+        cNif.setOnEditCommit(e -> e.getRowValue().nif = e.getNewValue());
+        cNif.setPrefWidth(120);
+        TableColumn<com.benjagest.ui.model.Aeat347Row, String> cName = new TableColumn<>(t("aeat347.col.name"));
+        cName.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().name));
+        cName.setCellFactory(javafx.scene.control.cell.TextFieldTableCell.forTableColumn());
+        cName.setOnEditCommit(e -> e.getRowValue().name = e.getNewValue());
+        cName.setPrefWidth(200);
+        TableColumn<com.benjagest.ui.model.Aeat347Row, String> cT1 = quarterCol347(t("aeat347.col.t1"), 1, recompute);
+        TableColumn<com.benjagest.ui.model.Aeat347Row, String> cT2 = quarterCol347(t("aeat347.col.t2"), 2, recompute);
+        TableColumn<com.benjagest.ui.model.Aeat347Row, String> cT3 = quarterCol347(t("aeat347.col.t3"), 3, recompute);
+        TableColumn<com.benjagest.ui.model.Aeat347Row, String> cT4 = quarterCol347(t("aeat347.col.t4"), 4, recompute);
+        TableColumn<com.benjagest.ui.model.Aeat347Row, String> cTot = new TableColumn<>(t("aeat347.col.total"));
+        cTot.setCellValueFactory(c -> new SimpleStringProperty(
+                row347Total(c.getValue()).setScale(2, java.math.RoundingMode.HALF_UP).toPlainString()));
+        cTot.setEditable(false);
+        cTot.setPrefWidth(100);
+        table.getColumns().addAll(java.util.List.of(cClave, cNif, cName, cT1, cT2, cT3, cT4, cTot));
+
+        Button addBtn = new Button(t("aeat347.add"));
+        addBtn.setOnAction(e -> {
+            var nueva = new com.benjagest.ui.model.Aeat347Row();
+            nueva.clave = "A";
+            rows.add(nueva); recompute.run();
+        });
+        Button delBtn = new Button(t("aeat347.remove"));
+        delBtn.setOnAction(e -> {
+            var sel = table.getSelectionModel().getSelectedItem();
+            if (sel != null) { rows.remove(sel); recompute.run(); }
+        });
+        Button recalcBtn = new Button(t("aeat347.recalc"));
+        recalcBtn.setGraphic(icon("fas-sync"));
+        recalcBtn.setOnAction(e -> {
+            Task<java.util.List<com.benjagest.ui.model.Aeat347Row>> tk = new Task<>() {
+                @Override protected java.util.List<com.benjagest.ui.model.Aeat347Row> call() throws Exception {
+                    return altaApiClient.preview349(existing.periodYear());
+                }
+            };
+            tk.setOnSucceeded(ev -> { rows.setAll(tk.getValue()); recompute.run(); });
+            tk.setOnFailed(ev -> showError(t("tax.editor.fail.title"), t("tax.editor.fail.body")));
+            start(tk, "aeat349-recalc");
+        });
+        if (existing.dataJson() == null || existing.dataJson().isBlank()) recalcBtn.fire();
+
+        ComboBox<String> statusCombo = new ComboBox<>();
+        statusCombo.getItems().addAll("DRAFT", "READY", "PRESENTED", "PAID", "REJECTED");
+        applyFilingStatusLabels(statusCombo);
+        statusCombo.getSelectionModel().select(existing.status());
+        TextField csvField = new TextField(existing.csvAeat());
+
+        recompute.run();
+        Label hint = new Label(t("aeat349.hint"));
+        hint.setWrapText(true);
+        hint.getStyleClass().add("settings-hint");
+        HBox tools = new HBox(8, recalcBtn, addBtn, delBtn);
+        tools.setAlignment(Pos.CENTER_LEFT);
+        HBox foot = new HBox(8, new Label(t("tax.editor.status")), statusCombo,
+                new Label(t("tax.editor.csv")), csvField);
+        foot.setAlignment(Pos.CENTER_LEFT);
+        VBox box = new VBox(10, hint, tools, totalsLabel, table, new Separator(), foot);
+        VBox.setVgrow(table, Priority.ALWAYS);
+        box.setPrefWidth(760);
+        installDialog(dialog, box);
+        dialog.setResizable(true);
+
+        dialog.showAndWait().ifPresent(bt -> {
+            if (bt != saveBt) return;
+            java.math.BigDecimal totA = java.math.BigDecimal.ZERO, totE = java.math.BigDecimal.ZERO;
+            StringBuilder rowsJson = new StringBuilder("[");
+            for (int i = 0; i < rows.size(); i++) {
+                var r = rows.get(i);
+                java.math.BigDecimal tot = row347Total(r);
+                if ("A".equalsIgnoreCase(r.clave)) totA = totA.add(tot); else totE = totE.add(tot);
+                if (i > 0) rowsJson.append(",");
+                rowsJson.append("{\"clave\":\"").append("A".equalsIgnoreCase(r.clave) ? "A" : "E")
+                        .append("\",\"nif\":\"").append(jsonEsc(r.nif))
+                        .append("\",\"name\":\"").append(jsonEsc(r.name))
+                        .append("\",\"q1\":").append(dec347(r.q1))
+                        .append(",\"q2\":").append(dec347(r.q2))
+                        .append(",\"q3\":").append(dec347(r.q3))
+                        .append(",\"q4\":").append(dec347(r.q4))
+                        .append(",\"yearTotal\":").append(tot.toPlainString())
+                        .append("}");
+            }
+            rowsJson.append("]");
+            String json = "{\"year\":" + existing.periodYear()
+                    + ",\"rowsCount\":" + rows.size()
+                    + ",\"totalAdquisiciones\":" + totA.toPlainString()
+                    + ",\"totalEntregas\":" + totE.toPlainString()
+                    + ",\"rows\":" + rowsJson + "}";
+            saveFiling(existing, statusCombo.getValue(), json, totA.add(totE),
                     csvField.getText(), existing.notes(), java.util.List.of());
         });
     }
