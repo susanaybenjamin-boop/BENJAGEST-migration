@@ -475,14 +475,17 @@ Repaso punto por punto de lo que Benjamin reportó con el check en blanco. Estad
 - `[x]` **303 2025 como fixture** — bases 1.095@10% + 792@21% → devengado 275,82; deducible
   161,20 → resultado régimen general 114,62. Valida deriveRepercutido + computeResultadoIva
   con datos reales.
-- `[ ]` **GAP IVA-COMP (nuevo, sin implementar)** — el 303 real 1T 2025 dio resultado [71] =
-  **0,00**, no 114,62, porque había **1.207,25 de cuotas a compensar de periodos anteriores**
-  (casilla 110), de las que se aplicaron 114,62 (casilla 78) y quedaron 1.092,63 para el
-  futuro (casilla 87). BENJAGEST calcula bien el resultado del TRIMESTRE (repercutido −
-  soportado) pero NO arrastra el IVA negativo acumulado. A diferencia del 130 (pagos previos
-  dentro del año), la compensación de IVA cruza AÑOS (el saldo venía de 2024). Implica: saldo
-  acumulado de compensación + casillas 110/78/87 + UI editable. Los 2026 de Benjamin salían
-  positivos sin compensación, así que no bloquea su uso. Candidato a bloque propio.
+- `[ ]` **GAP IVA-COMP (sin implementar, PRIORIDAD ALTA)** — el 303 no arrastra las **cuotas
+  a compensar de periodos anteriores** (casilla 110→78→87). Confirmado con datos reales en
+  DOS ejercicios: 1T 2025 resultado real **0,00** (no 114,62; 1.207,25 a compensar, se
+  aplicaron 114,62, quedaron 1.092,63) y **1T 2026 resultado real 713,14** (no 968,05; se
+  aplicaron 254,91). CORRECCIÓN respecto a la nota anterior: **afecta las declaraciones
+  REALES de 2026** de Benjamin, no solo 2025 (antes lo di por no-bloqueante mirando solo la
+  pestaña de Presentación de las capturas, que ocultaba la compensación). BENJAGEST calcula
+  bien el resultado del TRIMESTRE (repercutido − soportado) pero da de más siempre que hay
+  IVA negativo acumulado. Implica: saldo de compensación que cruza AÑOS + casillas 110/78/87
+  + campo editable para el saldo de apertura (empresa que migra a BENJAGEST a media vida,
+  como el baseline de migración de facturas). Bloque propio: IVA-COMP.
 
 ---
 
