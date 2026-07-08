@@ -82,6 +82,8 @@ public class PayslipService {
     private final com.benjagest.backend.labor.incidencias.NominaIncidenciaService incidenciaService;
     private final com.benjagest.backend.labor.ss.OvertimeRatesService overtimeRatesService;
     private final com.benjagest.backend.labor.contracts.ContractCatalogService contractCatalog;
+    private final com.benjagest.backend.audit.AuditService auditService;
+    private final com.benjagest.backend.auth.CurrentUserService currentUserService;
 
     public PayslipService(JdbcTemplate jdbcTemplate,
                            TenantContext tenantContext,
@@ -98,7 +100,9 @@ public class PayslipService {
                            org.springframework.security.crypto.password.PasswordEncoder passwordEncoder,
                            com.benjagest.backend.labor.incidencias.NominaIncidenciaService incidenciaService,
                            com.benjagest.backend.labor.ss.OvertimeRatesService overtimeRatesService,
-                           com.benjagest.backend.labor.contracts.ContractCatalogService contractCatalog) {
+                           com.benjagest.backend.labor.contracts.ContractCatalogService contractCatalog,
+                           com.benjagest.backend.audit.AuditService auditService,
+                           com.benjagest.backend.auth.CurrentUserService currentUserService) {
         this.jdbcTemplate = jdbcTemplate;
         this.tenantContext = tenantContext;
         this.taxRulesService = taxRulesService;
@@ -115,11 +119,27 @@ public class PayslipService {
         this.incidenciaService = incidenciaService;
         this.overtimeRatesService = overtimeRatesService;
         this.contractCatalog = contractCatalog;
+        this.auditService = auditService;
+        this.currentUserService = currentUserService;
     }
 
     public byte[] generatePdf(String id) {
         findById(id); // valida que existe y pertenece al tenant
+        // RGPD: acceso administrativo al PDF de una nomina (datos
+        // personales de un tercero) — queda quien y cuando.
+        auditSensitiveRead("payslip_pdf", id, null);
         return pdfGenerator.generate(id);
+    }
+
+    /** RGPD — best effort: un fallo del audit no rompe la consulta. */
+    private void auditSensitiveRead(String entityType, String entityId, String details) {
+        try {
+            auditService.recordSensitiveRead(
+                    currentUserService.require().userId(),
+                    tenantContext.getCurrentCompanyId(), entityType, entityId, details);
+        } catch (Exception ignored) {
+            // sin usuario en contexto (job interno) — no hay a quien imputar.
+        }
     }
 
     /**
@@ -243,7 +263,13 @@ public class PayslipService {
         if (StringUtils.hasText(status)) { sql.append(" AND p.status = ?"); args.add(status); }
         if (StringUtils.hasText(employeeId)) { sql.append(" AND p.employee_id = ?"); args.add(employeeId); }
         sql.append(" ORDER BY p.period_year DESC, p.period_month DESC, e.full_name");
-        return jdbcTemplate.query(sql.toString(), this::mapView, args.toArray());
+        List<PayslipView> result = jdbcTemplate.query(sql.toString(), this::mapView, args.toArray());
+        // RGPD: consulta administrativa de nominas (salarios de terceros).
+        // El portal del empleado NO pasa por aqui (listForEmployeeApp).
+        auditSensitiveRead("payslip",
+                StringUtils.hasText(employeeId) ? employeeId : "ALL",
+                "{\"year\":" + year + ",\"count\":" + result.size() + "}");
+        return result;
     }
 
     /**
@@ -1527,10 +1553,17 @@ public class PayslipService {
 
     public record MarkAcknowledgedRequest(LocalDate acknowledgedAt) {}
 
+    // RGPD (2026-07-08): este es el controller ADMINISTRATIVO de
+    // nominas — lista/calcula/PDF de TODOS los empleados. Antes el rol
+    // EMPLOYEE entraba a nivel de clase y cualquier empleado podia
+    // listar y descargar las nominas de todos (sin filtrado interno).
+    // Fuera: el empleado tiene su propia nomina en el portal
+    // (/api/empleado/nominas, filtrado por su employee_id). Solo
+    // resolve-self conserva EMPLOYEE (ver su @RequiresRole de metodo).
     @RestController
     @RequestMapping("/api/labor/payslips")
     @RequiresModule("labor")
-    @RequiresRole({"OWNER", "ADMIN", "ACCOUNTANT", "EMPLOYEE"})
+    @RequiresRole({"OWNER", "ADMIN", "ACCOUNTANT"})
     public static class PayslipController {
         private final PayslipService service;
 
@@ -1624,6 +1657,9 @@ public class PayslipService {
         }
 
         @GetMapping("/resolve-self")
+        // Mapea usuario→employeeId (lo usa el preseleccionado del combo
+        // de fichajes). No expone datos de nomina; EMPLOYEE puede.
+        @RequiresRole({"OWNER", "ADMIN", "ACCOUNTANT", "EMPLOYEE"})
         public java.util.Map<String, String> resolveSelf(
                 @RequestParam(value = "userId") String userId) {
             String employeeId = service.resolveEmployeeIdForUser(userId);
