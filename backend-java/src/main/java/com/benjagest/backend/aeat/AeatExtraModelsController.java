@@ -30,9 +30,12 @@ import org.springframework.web.bind.annotation.RestController;
 public class AeatExtraModelsController {
 
     private final AeatExtraModelsService service;
+    private final VatCompensationBaselineService vatBaselineService;
 
-    public AeatExtraModelsController(AeatExtraModelsService service) {
+    public AeatExtraModelsController(AeatExtraModelsService service,
+                                     VatCompensationBaselineService vatBaselineService) {
         this.service = service;
+        this.vatBaselineService = vatBaselineService;
     }
 
     // -- 347 --
@@ -92,5 +95,18 @@ public class AeatExtraModelsController {
     public AeatExtraModelsService.Model130View generate130(
             @PathVariable("year") int year, @PathVariable("quarter") int quarter) {
         return service.generate130(year, quarter, true);
+    }
+
+    // ---- IVA-COMP: saldo inicial de cuotas de IVA a compensar (303) ----
+    @GetMapping("/303/compensation-baseline")
+    public VatCompensationBaselineService.Baseline getVatBaseline() {
+        return vatBaselineService.get();
+    }
+
+    @PostMapping("/303/compensation-baseline")
+    public VatCompensationBaselineService.Baseline setVatBaseline(
+            @org.springframework.web.bind.annotation.RequestBody
+            VatCompensationBaselineService.Baseline body) {
+        return vatBaselineService.upsert(body);
     }
 }

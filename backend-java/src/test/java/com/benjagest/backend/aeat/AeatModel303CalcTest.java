@@ -88,4 +88,43 @@ class AeatModel303CalcTest {
         assertAmount("-100.00",
                 AeatExtraModelsService.computeResultadoIva(bd("200"), bd("300")));
     }
+
+    // ---- IVA-COMP: compensación de cuotas de periodos anteriores ----
+
+    @Test
+    void compensacion_1T2026_real() {
+        // Régimen 968,05 + previa 254,91 -> aplica 254,91, resultado 713,14.
+        var c = AeatExtraModelsService.aplicarCompensacion(bd("968.05"), bd("254.91"));
+        assertAmount("254.91", c.aplicada());
+        assertAmount("713.14", c.resultado());
+        assertAmount("0", c.remanente());
+    }
+
+    @Test
+    void compensacion_1T2025_real_resultadoCero_conRemanente() {
+        // Régimen 114,62 + previa 1.207,25 -> aplica 114,62, resultado 0,00,
+        // remanente 1.092,63 para el trimestre siguiente.
+        var c = AeatExtraModelsService.aplicarCompensacion(bd("114.62"), bd("1207.25"));
+        assertAmount("114.62", c.aplicada());
+        assertAmount("0", c.resultado());
+        assertAmount("1092.63", c.remanente());
+    }
+
+    @Test
+    void compensacion_trimestreNegativo_sumaAlRemanente() {
+        // Régimen negativo (-300): no se aplica nada, el saldo a compensar
+        // CRECE en 300 sobre la previa.
+        var c = AeatExtraModelsService.aplicarCompensacion(bd("-300"), bd("500"));
+        assertAmount("0", c.aplicada());
+        assertAmount("-300.00", c.resultado());
+        assertAmount("800.00", c.remanente());
+    }
+
+    @Test
+    void compensacion_sinSaldoPrevio_resultadoIntacto() {
+        var c = AeatExtraModelsService.aplicarCompensacion(bd("500"), BigDecimal.ZERO);
+        assertAmount("0", c.aplicada());
+        assertAmount("500.00", c.resultado());
+        assertAmount("0", c.remanente());
+    }
 }
