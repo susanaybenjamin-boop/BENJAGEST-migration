@@ -1152,6 +1152,7 @@ public final class I18n {
                 case "rect.cause.R4" -> "Other causes (default)";
                 case "rect.cause.r5_auto" -> "Cause R5 (corrective of a simplified invoice) — applied automatically by law.";
                 case "list.action.rectify" -> "Rectify";
+                case "list.action.classify" -> "Tax classification";
                 case "list.dialog.rectify.title" -> "Partial corrective invoice";
                 case "list.dialog.rectify.body" -> "A DRAFT corrective will be created with the original lines negated. The editor will open so you keep only the correction and validate it. The original invoice is NOT voided.";
                 case "list.dialog.rectify.failure.title" -> "Could not create the corrective";
@@ -2292,6 +2293,7 @@ public final class I18n {
             case "rect.cause.R4" -> "Resto de causas (por defecto)";
             case "rect.cause.r5_auto" -> "Causa R5 (rectificativa de factura simplificada) — se aplica automáticamente por ley.";
             case "list.action.rectify" -> "Rectificar";
+            case "list.action.classify" -> "Clasificación fiscal";
             case "list.dialog.rectify.title" -> "Rectificativa parcial";
             case "list.dialog.rectify.body" -> "Se creará un BORRADOR de rectificativa con las líneas de la original en negativo. Se abrirá el editor para que dejes solo la corrección y la valides. La factura original NO se anula.";
             case "list.dialog.rectify.failure.title" -> "No se pudo crear la rectificativa";

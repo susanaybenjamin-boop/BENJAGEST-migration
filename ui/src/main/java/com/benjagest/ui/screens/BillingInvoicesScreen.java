@@ -53,6 +53,8 @@ public class BillingInvoicesScreen extends ScreenBase {
         void importSalesPdfsMulti();
         /** ¿Mostrar el botón "Importar PDFs"? (solo asesoría actuando-como cliente). */
         boolean showImportSalesButton();
+        /** OPTYPE-3 — clasificar el tipo de operación de una factura (intracom → modelo 349). */
+        void showSalesClassificationDialog(String invoiceId);
     }
 
     private final BillingApiClient billingApiClient;
@@ -484,13 +486,26 @@ public class BillingInvoicesScreen extends ScreenBase {
         billingTable.getSelectionModel().selectedItemProperty().addListener((obs, oldV, newV) ->
                 dueDatesSalesBtn.setDisable(newV == null || !"VALIDATED".equals(newV.status())));
 
+        // OPTYPE-3 — clasificación fiscal del tipo de operación (para marcar una
+        // entrega intracomunitaria → clave E del modelo 349). Solo tiene sentido
+        // en facturas VALIDATED (las que declara el 349).
+        Button classifySalesBtn = new Button(t("list.action.classify"));
+        classifySalesBtn.setGraphic(icon("fas-tags"));
+        classifySalesBtn.setDisable(true);
+        classifySalesBtn.setOnAction(ev -> {
+            SalesInvoiceSummary sel = billingTable.getSelectionModel().getSelectedItem();
+            if (sel != null) host.showSalesClassificationDialog(sel.id());
+        });
+        billingTable.getSelectionModel().selectedItemProperty().addListener((obs, oldV, newV) ->
+                classifySalesBtn.setDisable(newV == null || !"VALIDATED".equals(newV.status())));
+
         // DOBLE PANTALLA — barra de acciones en FlowPane: si no cabe en el ancho de
         // la ventana (portátil), los botones ENVUELVEN a la línea siguiente y se ven
         // todos. Antes era un HBox con overflow horizontal SIN scroll -> botones
         // atrapados fuera. La función `actionFlow` es reutilizable para otras barras.
         javafx.scene.layout.FlowPane rowActions = actionFlow(
                 validateRowBtn, deleteDraftBtn, voidBtn, rectifyBtn, toValidatedBtn, makeRecurringBtn,
-                multiAllocBtn, bankReconcileBtn, dueDatesSalesBtn, emailBtn, pdfBtn);
+                multiAllocBtn, bankReconcileBtn, dueDatesSalesBtn, emailBtn, pdfBtn, classifySalesBtn);
 
         // Slice 3V — Acciones SOBRE la tabla, no debajo. Antes vivían
         // bajo el listado y el asesor tenía que hacer scroll para

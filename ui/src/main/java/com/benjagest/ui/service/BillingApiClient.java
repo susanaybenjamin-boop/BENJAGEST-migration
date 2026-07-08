@@ -217,6 +217,29 @@ public class BillingApiClient {
         return parseInvoiceHeader(response.body());
     }
 
+    /** OPTYPE-3 — tipo de operación (a efectos de IVA/349) de una factura emitida. */
+    public String getSalesClassification(String id) throws IOException, InterruptedException {
+        HttpResponse<String> response = sendAuthorized(
+                HttpRequest.newBuilder(URI.create(baseUrl + "/billing/invoices/" + id + "/classification"))
+                        .timeout(Duration.ofSeconds(10)).GET());
+        ensureOk(response);
+        String j = response.body();
+        int i = j.indexOf("\"operationType\"");
+        if (i < 0) return "INTERIOR";
+        int c = j.indexOf(':', i), q1 = j.indexOf('"', c + 1), q2 = j.indexOf('"', q1 + 1);
+        return (q1 < 0 || q2 < 0) ? "INTERIOR" : j.substring(q1 + 1, q2);
+    }
+
+    public void setSalesClassification(String id, String operationType) throws IOException, InterruptedException {
+        String body = "{\"operationType\":\"" + operationType + "\"}";
+        HttpResponse<String> response = sendAuthorized(
+                HttpRequest.newBuilder(URI.create(baseUrl + "/billing/invoices/" + id + "/classification"))
+                        .timeout(Duration.ofSeconds(10))
+                        .header("Content-Type", "application/json")
+                        .PUT(HttpRequest.BodyPublishers.ofString(body)));
+        ensureOk(response);
+    }
+
     /** Regenera el asiento contable de una factura (desglose de IVA por tipo). */
     public void regenerateInvoiceJournal(String id) throws IOException, InterruptedException {
         HttpRequest.Builder builder = HttpRequest.newBuilder(URI.create(baseUrl + "/billing/invoices/" + id + "/regenerate-journal"))
