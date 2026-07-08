@@ -49,6 +49,17 @@ public class AeatExtraModelsController {
         return service.generate347(year, true);
     }
 
+    // -- 349 (recapitulativa de operaciones intracomunitarias) --
+    @GetMapping("/349/{year}/preview")
+    public AeatExtraModelsService.Model349View preview349(@PathVariable("year") int year) {
+        return service.generate349(year, false);
+    }
+
+    @PostMapping("/349/{year}/generate")
+    public AeatExtraModelsService.Model349View generate349(@PathVariable("year") int year) {
+        return service.generate349(year, true);
+    }
+
     // -- 390 --
     @GetMapping("/390/{year}/preview")
     public AeatExtraModelsService.Model390View preview390(@PathVariable("year") int year) {

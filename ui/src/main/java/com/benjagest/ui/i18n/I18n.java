@@ -965,6 +965,9 @@ public final class I18n {
                 case "aeat347.remove" -> "Remove row";
                 case "aeat347.recalc" -> "Recalculate from invoices";
                 case "aeat347.hint" -> "Third parties with operations over 3,005.06 € per year. Key A = purchases (supplier), B = sales (customer). Edit, recalculate from invoices, or add rows; the annual total is the sum of the quarters.";
+                case "aeat349.hint" -> "Recapitulative statement of intra-community operations. Key A = acquisitions (EU supplier), E = supplies (EU customer). The taxable base is declared, grouped by operator VAT number; recalculated from invoices classified as intra-community.";
+                case "aeat349.totals" -> "Acquisitions (A): {a} €   ·   Supplies (E): {b} €   ·   Operators: {n}";
+                case "aeat349.placeholder" -> "No intra-community operations this year.";
                 case "aeat390.devengado" -> "Output VAT (sales) by rate";
                 case "aeat390.deducible" -> "Deductible VAT (purchases) by rate";
                 case "aeat390.other" -> "Other operations";
@@ -2102,6 +2105,9 @@ public final class I18n {
             case "aeat347.remove" -> "Quitar fila";
             case "aeat347.recalc" -> "Recalcular desde facturas";
             case "aeat347.hint" -> "Terceros con operaciones superiores a 3.005,06 € al año. Clave A = compras (proveedor), B = ventas (cliente). Edita, recalcula desde facturas o añade filas; el total anual es la suma de los trimestres.";
+            case "aeat349.hint" -> "Declaración recapitulativa de operaciones intracomunitarias. Clave A = adquisiciones (proveedor UE), E = entregas (cliente UE). Se declara la base imponible, agrupada por el NIF-IVA del operador; se recalcula desde las facturas clasificadas como intracomunitarias.";
+            case "aeat349.totals" -> "Adquisiciones (A): {a} €   ·   Entregas (E): {b} €   ·   Operadores: {n}";
+            case "aeat349.placeholder" -> "Sin operaciones intracomunitarias este año.";
             case "aeat390.devengado" -> "IVA devengado (ventas) por tipo";
             case "aeat390.deducible" -> "IVA deducible (compras) por tipo";
             case "aeat390.other" -> "Otras operaciones";
