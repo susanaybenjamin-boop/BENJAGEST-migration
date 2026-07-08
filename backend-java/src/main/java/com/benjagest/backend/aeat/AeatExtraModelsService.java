@@ -349,6 +349,77 @@ public class AeatExtraModelsService {
         return nz(ivaRepercutido).subtract(nz(ivaSoportado)).setScale(2, RoundingMode.HALF_UP);
     }
 
+    // ====================================================================
+    //  OPTYPE-2 — routing del IVA soportado a las casillas del 303 según el
+    //  tipo de operación de cada factura de compra (interior / intracom /
+    //  importación / inversión del sujeto pasivo) y su deducibilidad.
+    // ====================================================================
+
+    /** Una compra agregada por (tipo de operación, bien de inversión). `cuota`
+     *  es el IVA total de la factura; `cuotaDeducible` = IVA × %deducible. */
+    public record PurchaseRow(String operationType, boolean investmentGood,
+                              BigDecimal base, BigDecimal cuota, BigDecimal cuotaDeducible) {}
+
+    /**
+     * PURO — reparte las compras en las casillas del 303. Devuelve el mapa de
+     * casillas (claves compatibles con el editor de la UI) más el total a
+     * deducir (casilla 45) y la cuota devengada por autorrepercusión (11+13).
+     *
+     * <p>Reglas (modelo 303 oficial):
+     * <ul>
+     *   <li>INTERIOR corriente → deducible 28/29.</li>
+     *   <li>INTERIOR bien de inversión → deducible 30/31.</li>
+     *   <li>IMPORT (importaciones, IVA del DUA) → deducible 32/33.</li>
+     *   <li>INTRACOM → devengado autorrepercusión 10/11 (IVA íntegro) +
+     *       deducible 36/37 (IVA deducible). Se neutraliza si es 100% deducible.</li>
+     *   <li>ISP (inversión del sujeto pasivo, nacional) → devengado 12/13 +
+     *       deducible en interiores 28/29.</li>
+     * </ul>
+     * Los bienes de inversión importados (34/35) e intracom (38/39) se pliegan
+     * en su casilla corriente (32/36) — casos raros y sin campo propio en la UI;
+     * el total a deducir es igualmente correcto.
+     */
+    public static Map<String, BigDecimal> routePurchases303(List<PurchaseRow> rows) {
+        BigDecimal b28 = ZERO, c29 = ZERO, b30 = ZERO, c31 = ZERO, b32 = ZERO, c33 = ZERO,
+                   b36 = ZERO, c37 = ZERO, b10 = ZERO, c11 = ZERO, b12 = ZERO, c13 = ZERO;
+        for (PurchaseRow r : rows) {
+            String op = r.operationType() == null ? "INTERIOR" : r.operationType().trim().toUpperCase();
+            BigDecimal base = nz(r.base()), cuota = nz(r.cuota()), ded = nz(r.cuotaDeducible());
+            switch (op) {
+                case "INTRACOM" -> {
+                    b10 = b10.add(base); c11 = c11.add(cuota);   // devengado (íntegro)
+                    b36 = b36.add(base); c37 = c37.add(ded);     // deducible 36/37
+                }
+                case "IMPORT" -> {
+                    b32 = b32.add(base); c33 = c33.add(ded);     // deducible 32/33
+                }
+                case "ISP" -> {
+                    b12 = b12.add(base); c13 = c13.add(cuota);   // devengado (íntegro)
+                    b28 = b28.add(base); c29 = c29.add(ded);     // deducible interiores
+                }
+                default -> {                                     // INTERIOR
+                    if (r.investmentGood()) { b30 = b30.add(base); c31 = c31.add(ded); }
+                    else { b28 = b28.add(base); c29 = c29.add(ded); }
+                }
+            }
+        }
+        BigDecimal totalDeducible = c29.add(c31).add(c33).add(c37).setScale(2, RoundingMode.HALF_UP);
+        BigDecimal devengadoAutorrep = c11.add(c13).setScale(2, RoundingMode.HALF_UP);
+        Map<String, BigDecimal> m = new LinkedHashMap<>();
+        m.put("base_soportado", s2(b28));   m.put("cuota_soportada", s2(c29));   // 28/29
+        m.put("base_inv", s2(b30));         m.put("cuota_inv", s2(c31));         // 30/31
+        m.put("base_import", s2(b32));      m.put("cuota_import", s2(c33));      // 32/33
+        m.put("base_intra_ded", s2(b36));   m.put("cuota_intra_ded", s2(c37));   // 36/37
+        m.put("base_intra", s2(b10));       m.put("cuota_intra", s2(c11));       // 10/11
+        m.put("base_isp", s2(b12));         m.put("cuota_isp", s2(c13));         // 12/13
+        m.put("_total_deducible", totalDeducible);           // casilla 45
+        m.put("_devengado_autorrep", devengadoAutorrep);     // 11+13 → suma a la 27
+        return m;
+    }
+
+    private static final BigDecimal ZERO = BigDecimal.ZERO;
+    private static BigDecimal s2(BigDecimal v) { return nz(v).setScale(2, RoundingMode.HALF_UP); }
+
     /**
      * PURO (IVA-COMP) — aplica las cuotas de IVA a compensar de periodos
      * anteriores (casilla 110) sobre el resultado del régimen general del
@@ -431,20 +502,50 @@ public class AeatExtraModelsService {
                 companyId, year, mFrom, mTo);
         BigDecimal modBase = mod[0], modCuota = mod[1];
 
-        // IVA SOPORTADO (casillas 28/29) desde los asientos POSTED del trimestre.
-        VatBreakdown sop = jdbcTemplate.queryForObject(PURCHASE_VAT_BY_RATE_SQL
-                + " AND MONTH(e.entry_date) BETWEEN ? AND ?",
-                AeatExtraModelsService::mapSoportado,
+        // IVA SOPORTADO — OPTYPE-2: se lee de las FACTURAS de compra del
+        // trimestre y se reparte por casilla según su tipo de operación
+        // (interior/intracom/importación/ISP) y su % deducible. Así el IVA NO
+        // deducible (pct 0) no resta, y el parcial resta a prorrata.
+        List<PurchaseRow> compras = jdbcTemplate.query("""
+                SELECT operation_type, investment_good,
+                       COALESCE(SUM(base_amount),0)                            AS base,
+                       COALESCE(SUM(vat_amount),0)                             AS cuota,
+                       COALESCE(SUM(vat_amount * vat_deductible_percent / 100),0) AS ded
+                  FROM purchase_invoices
+                 WHERE company_id = ? AND status = 'POSTED'
+                   AND YEAR(invoice_date) = ? AND MONTH(invoice_date) BETWEEN ? AND ?
+                 GROUP BY operation_type, investment_good
+                """, (rs, n) -> new PurchaseRow(
+                        rs.getString("operation_type"), rs.getBoolean("investment_good"),
+                        rs.getBigDecimal("base"), rs.getBigDecimal("cuota"), rs.getBigDecimal("ded")),
                 companyId, year, mFrom, mTo);
+        // Robustez: asientos 472 introducidos a MANO (sin factura de compra
+        // detrás) también deben deducir — se tratan como interior 100 %.
+        BigDecimal[] manual = jdbcTemplate.queryForObject("""
+                SELECT COALESCE(SUM(CASE WHEN a.code LIKE '6%'   THEN l.debit END),0),
+                       COALESCE(SUM(CASE WHEN a.code LIKE '472%' THEN l.debit END),0)
+                  FROM journal_entry_lines l
+                  JOIN journal_entries e ON e.id = l.journal_entry_id
+                  JOIN accounting_accounts a ON a.id = l.account_id
+                 WHERE e.company_id = ? AND e.status = 'POSTED' AND l.vat_rate IS NOT NULL
+                   AND YEAR(e.entry_date) = ? AND MONTH(e.entry_date) BETWEEN ? AND ?
+                   AND NOT EXISTS (SELECT 1 FROM purchase_invoices p WHERE p.id = e.source_id)
+                """, (rs, n) -> new BigDecimal[]{nz(rs.getBigDecimal(1)), nz(rs.getBigDecimal(2))},
+                companyId, year, mFrom, mTo);
+        List<PurchaseRow> filas = new java.util.ArrayList<>(compras);
+        if (manual[0].signum() != 0 || manual[1].signum() != 0) {
+            filas.add(new PurchaseRow("INTERIOR", false, manual[0], manual[1], manual[1]));
+        }
+        Map<String, BigDecimal> ded = routePurchases303(filas);
 
-        BigDecimal baseSoportada = sop.base04.add(sop.base10).add(sop.base21);
-        // Total cuota devengada (casilla 27) = régimen general + modificación.
-        // Las demás casillas del devengado (intracom 11, inversión 13, recargo…)
-        // se editan en la UI y se suman ahí; aquí salen 0 desde la contabilidad.
-        BigDecimal totalDevengado = rep.totalIva.add(modCuota).setScale(2, RoundingMode.HALF_UP);
-        // Total a deducir (casilla 45). Igual: bienes de inversión, intracom,
-        // importaciones… se añaden en la UI.
-        BigDecimal totalDeducible = sop.totalIva.setScale(2, RoundingMode.HALF_UP);
+        BigDecimal baseSoportada = nz(ded.get("base_soportado"));
+        VatBreakdown sop = new VatBreakdown(ZERO, ZERO, baseSoportada, nz(ded.get("cuota_soportada")));
+        // Total a deducir (casilla 45) = 29 + 31 + 33 + 37 (ya ruteado).
+        BigDecimal totalDeducible = nz(ded.get("_total_deducible"));
+        // Total cuota devengada (casilla 27) = régimen general + modificación +
+        // autorrepercusión de intracom/ISP (casillas 11 + 13).
+        BigDecimal totalDevengado = rep.totalIva.add(modCuota)
+                .add(nz(ded.get("_devengado_autorrep"))).setScale(2, RoundingMode.HALF_UP);
         // Resultado del régimen general (casilla 46/64) = 27 - 45.
         BigDecimal resultadoRegimen = totalDevengado.subtract(totalDeducible);
         // IVA-COMP: cuotas a compensar de periodos anteriores (casilla 110).
@@ -460,10 +561,21 @@ public class AeatExtraModelsService {
         casillas.put("15_mod_cuota", modCuota);
         casillas.put("06_iva_repercutido_total", rep.totalIva);
         casillas.put("27_total_devengado", totalDevengado);
-        // Deducible.
-        casillas.put("base_soportado", baseSoportada);
-        casillas.put("cuota_soportada", sop.totalIva);
+        // Deducible — ruteado por tipo de operación (OPTYPE-2).
+        casillas.put("base_soportado", baseSoportada);                       // 28
+        casillas.put("cuota_soportada", nz(ded.get("cuota_soportada")));     // 29
+        casillas.put("base_inv", nz(ded.get("base_inv")));                   // 30
+        casillas.put("cuota_inv", nz(ded.get("cuota_inv")));                 // 31
+        casillas.put("base_import", nz(ded.get("base_import")));             // 32
+        casillas.put("cuota_import", nz(ded.get("cuota_import")));           // 33
+        casillas.put("base_intra_ded", nz(ded.get("base_intra_ded")));       // 36
+        casillas.put("cuota_intra_ded", nz(ded.get("cuota_intra_ded")));     // 37
         casillas.put("45_total_deducible", totalDeducible);
+        // Devengado por autorrepercusión — intracom (10/11) e ISP (12/13).
+        casillas.put("base_intra", nz(ded.get("base_intra")));               // 10
+        casillas.put("cuota_intra", nz(ded.get("cuota_intra")));             // 11
+        casillas.put("base_isp", nz(ded.get("base_isp")));                   // 12
+        casillas.put("cuota_isp", nz(ded.get("cuota_isp")));                 // 13
         // Resultado + compensación.
         casillas.put("46_resultado_regimen", resultadoRegimen);
         casillas.put("110_compensar_anteriores", comp.compensacionPrevia());

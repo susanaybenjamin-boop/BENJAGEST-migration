@@ -505,11 +505,18 @@ Repaso punto por punto de lo que Benjamin reportó con el check en blanco. Estad
   `expense_deductible`, `investment_good` en compras. Endpoint de clasificación + UI (botón
   "Clasificación fiscal" en Compras y Gastos). El 130 solo cuenta gastos deducibles; el 303
   soportado excluye el IVA no deducible (pct=0). Defaults preservan comportamiento.
-- `[ ]` **OPTYPE-2 (pendiente)** — routing por tipo de operación a las casillas: intracom
-  adquisiciones (10/11 devengado autorrepercusión + 32/33 deducible), inversión sujeto pasivo
-  (12/13), importaciones (36/37), bienes de inversión (30/31 desde investment_good);
-  deducibilidad PARCIAL (0<pct<100, hoy solo se maneja 0 y 100). Auto-detección del tipo desde
-  país/NIF del tercero. Desbloquea el modelo 349 (recapitulativa intracom).
+- `[x]` **OPTYPE-2 (2026-07-08)** — routing del IVA soportado a las casillas del 303 por tipo
+  de operación. El 303 lee el soportado de las FACTURAS de compra y lo reparte: interior 28/29
+  (inversión 30/31), importaciones 32/33, intracom devengado 10/11 + deducible 36/37, ISP 12/13
+  + deducible 28/29. Deducibilidad PARCIAL a prorrata (0<pct<100). El 27 suma la
+  autorrepercusión (11+13); el 45 suma 29+31+33+37. Catch de asientos 472 manuales. UI prefilla
+  las casillas ruteadas (antes a mano) y corregidas las etiquetas invertidas (32=import,
+  36=intracom). 22 tests verdes. `routePurchases303` es PURO/testeable.
+- `[ ]` **OPTYPE-3 (pendiente)** — auto-detección del `operation_type` desde país/NIF del
+  proveedor (NIF UE → INTRACOM, extracom → IMPORT) al crear el gasto, para no clasificar a mano.
+  Bienes de inversión importados (34/35) e intracom (38/39) hoy se pliegan en su casilla
+  corriente (32/36). Desbloquea el modelo **349** (recapitulativa de intracom, ya con los datos
+  ruteados disponibles).
 - `[ ]` **130** — completo para estimación directa (ingresos/gastos/5%/pagos/retenciones).
   Falta: casilla 05 (positivos de trim. anteriores) y minoración art. 110.3.c (casilla 13,
   la deducción de 100€ por rendimientos del trabajo) — hoy se teclea.

@@ -174,4 +174,75 @@ class AeatModel303CalcTest {
         var resultado = AeatExtraModelsService.computeResultadoIva(devengado, bd("835.36"));
         assertAmount("1330.61", resultado);
     }
+
+    // ---- OPTYPE-2: routing del soportado a casillas por tipo de operacion ----
+
+    private static java.util.List<AeatExtraModelsService.PurchaseRow> rows(
+            AeatExtraModelsService.PurchaseRow... r) { return java.util.List.of(r); }
+    private static AeatExtraModelsService.PurchaseRow row(String op, boolean inv,
+            String base, String cuota, String ded) {
+        return new AeatExtraModelsService.PurchaseRow(op, inv, bd(base), bd(cuota), bd(ded));
+    }
+
+    @Test
+    void routing_interior100_soportadoIntacto_casoBenjamin() {
+        // Todo interior 100% deducible -> el soportado del T2 no cambia.
+        var m = AeatExtraModelsService.routePurchases303(
+                rows(row("INTERIOR", false, "6337.64", "835.36", "835.36")));
+        assertAmount("835.36", m.get("cuota_soportada"));
+        assertAmount("835.36", m.get("_total_deducible"));
+        assertAmount("0", m.get("_devengado_autorrep"));
+    }
+
+    @Test
+    void routing_intracom100_autorrepercusionNeutra() {
+        // Adq. intracom 100% deducible: devengado (11)=210 y deducible (37)=210
+        // -> impacto NETO cero en el resultado (27 y 45 suben lo mismo).
+        var m = AeatExtraModelsService.routePurchases303(
+                rows(row("INTRACOM", false, "1000", "210", "210")));
+        assertAmount("210.00", m.get("cuota_intra"));      // 11 (devengado)
+        assertAmount("210.00", m.get("cuota_intra_ded"));  // 37 (deducible)
+        assertAmount("210.00", m.get("_devengado_autorrep"));
+        assertAmount("210.00", m.get("_total_deducible"));
+    }
+
+    @Test
+    void routing_isp_devengadoIgualDeducible() {
+        // Inversion del sujeto pasivo: 13 (devengado) == 29 (deducible) -> neutro.
+        var m = AeatExtraModelsService.routePurchases303(
+                rows(row("ISP", false, "500", "105", "105")));
+        assertAmount("105.00", m.get("cuota_isp"));        // 13
+        assertAmount("105.00", m.get("cuota_soportada"));  // 29
+        assertAmount("105.00", m.get("_devengado_autorrep"));
+    }
+
+    @Test
+    void routing_deducibilidadParcial_prorrata() {
+        // IVA 100 al 50% deducible -> solo deduce 50.
+        var m = AeatExtraModelsService.routePurchases303(
+                rows(row("INTERIOR", false, "476.19", "100", "50")));
+        assertAmount("50.00", m.get("cuota_soportada"));
+        assertAmount("50.00", m.get("_total_deducible"));
+    }
+
+    @Test
+    void routing_ivaNoDeducible_noResta() {
+        // IVA no deducible (0%) -> cuota deducible 0, no baja el resultado.
+        var m = AeatExtraModelsService.routePurchases303(
+                rows(row("INTERIOR", false, "476.19", "100", "0")));
+        assertAmount("0", m.get("cuota_soportada"));
+        assertAmount("0", m.get("_total_deducible"));
+    }
+
+    @Test
+    void routing_importacionYbienInversion_aSusCasillas() {
+        var imp = AeatExtraModelsService.routePurchases303(
+                rows(row("IMPORT", false, "2000", "420", "420")));
+        assertAmount("420.00", imp.get("cuota_import"));   // 33
+        assertAmount("0", imp.get("_devengado_autorrep")); // importaciones no autorrepercuten
+        var inv = AeatExtraModelsService.routePurchases303(
+                rows(row("INTERIOR", true, "30000", "6300", "6300")));
+        assertAmount("6300.00", inv.get("cuota_inv"));     // 31
+        assertAmount("0", inv.get("cuota_soportada"));     // no en interiores corrientes
+    }
 }

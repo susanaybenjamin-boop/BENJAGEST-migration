@@ -21,4 +21,18 @@ public class Aeat303Data {
     // aquí (no en el régimen general 01-09), como el 303 oficial.
     public String modBase = "0";
     public String modCuota = "0";
+    // OPTYPE-2: soportado ruteado por tipo de operación desde la clasificación
+    // fiscal de cada compra. Bienes de inversión (30/31), importaciones (32/33),
+    // adq. intracom deducible (36/37) y su autorrepercusión en el devengado:
+    // intracom (10/11) e inversión del sujeto pasivo (12/13).
+    public String baseInv = "0";       // 30
+    public String cuotaInv = "0";      // 31
+    public String baseImport = "0";    // 32
+    public String cuotaImport = "0";   // 33
+    public String baseIntraDed = "0";  // 36
+    public String cuotaIntraDed = "0"; // 37
+    public String baseIntra = "0";     // 10 (devengado)
+    public String cuotaIntra = "0";    // 11
+    public String baseIsp = "0";       // 12 (devengado)
+    public String cuotaIsp = "0";      // 13
 }
