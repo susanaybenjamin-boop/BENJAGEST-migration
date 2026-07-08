@@ -73,8 +73,12 @@ benjagest:
     access-ttl-minutes: ${BENJAGEST_JWT_ACCESS_TTL:480}
     refresh-ttl-minutes: ${BENJAGEST_JWT_REFRESH_TTL:43200}
   encryption:
-    # Master key para Jasypt. PRODUCCION: poner BENJAGEST_ENCRYPTION_PASSWORD
-    # en env. Si cambia esta clave, los datos cifrados pasan a ser ilegibles.
+    # Master key para Jasypt. RGPD (2026-07-08): si nadie define
+    # BENJAGEST_ENCRYPTION_PASSWORD, MasterKeyResolver genera una clave
+    # POR INSTALACION en %ProgramData%\BENJAGEST\secret\master.key (ACL
+    # restringido) y la de desarrollo queda solo como fallback de
+    # DESCIFRADO para lo cifrado antes de la rotacion. NO cambiar el
+    # sentinel: MasterKeyResolver.DEV_SENTINEL debe coincidir con el.
     password: ${BENJAGEST_ENCRYPTION_PASSWORD:devEncryptionKeyBenjagestNotForProduction_2026}
   # google.client-id / google.client-secret (modelo HIBRIDO, decision Benjamin
   # 2026-06-26): NO se definen aqui A PROPOSITO. Las credenciales CENTRALES del
