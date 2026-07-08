@@ -1,5 +1,17 @@
 # Backlog operativo BENJAGEST
 
+> **Última actualización:** 2026-07-10 (**303 con datos MIGRADOS** — Benjamin probó el 303
+> con datos importados de CONTENDO y salía a cero + al cambiar el estado del T1 se borraban
+> los datos. Raíz (diagnosticada en su BD embebida real, 13307): el import contabiliza las
+> facturas SIN etiquetar el `vat_rate` en las líneas, y el 303 saca las bases del IVA de las
+> líneas 7xx/6xx etiquetadas. Fixes: `VatRateTaggingService` (copia el tipo desde la factura;
+> lo llama el import al terminar → futuras importaciones etiquetadas) + V171 (backfill del
+> histórico) + auto-recalcular-solo-si-vacío (no pisa lo tecleado) + **fix de la compensación**
+> (arrastra desde la declaración ANTERIOR, no recalculando contabilidad → ya no repite el
+> saldo consumido). Verificado en la BD real de Benjamin: 303 T2 pasa de 0 a base21 10.894,16.
+> **Todo en develop, sin liberar (pendiente v0.1.13).** Aclaración clave: la app instalada usa
+> su BD embebida (13307), separada del 3307 de desarrollo — no mezclar Docker/DBeaver con la
+> instalada. Histórico previo:
 > **Última actualización:** 2026-07-09 noche (**RELEASE v0.1.12** — empaqueta el fix del
 > modelo 130 (5% gastos difícil justificación), el bloque IVA-COMP (arrastre de cuotas a
 > compensar en el 303, casilla 110/78/87 + saldo inicial editable) y los tests fiscales
