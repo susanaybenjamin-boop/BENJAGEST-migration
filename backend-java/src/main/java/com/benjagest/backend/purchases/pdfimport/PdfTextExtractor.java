@@ -73,7 +73,11 @@ public class PdfTextExtractor {
             StringBuilder sb = new StringBuilder();
             for (int i = 0; i < pages; i++) {
                 java.awt.image.BufferedImage img = renderer.renderImageWithDPI(i, 300);
-                sb.append(tess.doOCR(img)).append("\n");
+                // PDF-EXTRACT-1: los escaneos llegan a veces GIRADOS (la
+                // furgoneta de Benjamin venía boca abajo y el OCR devolvía
+                // basura). Probamos 0/180/90/270 y nos quedamos con la
+                // orientación cuyo texto puntúe más palabras españolas.
+                sb.append(ocrBestOrientation(tess, img)).append("\n");
             }
             return sb.toString();
         } catch (Throwable ex) {
@@ -82,6 +86,52 @@ public class PdfTextExtractor {
                     ex.getMessage());
             return "";
         }
+    }
+
+    /** OCR probando orientaciones; devuelve el texto con mejor puntuación. */
+    private static String ocrBestOrientation(net.sourceforge.tess4j.Tesseract tess,
+                                              java.awt.image.BufferedImage img) throws Exception {
+        String best = "";
+        int bestScore = -1;
+        for (int deg : new int[]{0, 180, 90, 270}) {
+            String txt = tess.doOCR(deg == 0 ? img : rotate(img, deg));
+            int score = spanishScore(txt);
+            if (score > bestScore) { bestScore = score; best = txt; }
+            // 0º con buena puntuación: no quemamos 3 OCR extra por página.
+            if (deg == 0 && score >= 12) break;
+        }
+        return best;
+    }
+
+    /** Nº de apariciones de palabras frecuentes de una factura española. */
+    static int spanishScore(String text) {
+        if (text == null || text.isBlank()) return 0;
+        String t = " " + text.toLowerCase() + " ";
+        int score = 0;
+        for (String w : new String[]{" de ", " la ", " el ", " total", "factura", "fecha",
+                "importe", " iva", " nif", " cif", "base", "cliente", "euros", "pago",
+                "s.l", "s.a", "n.º", "nº", "cuota"}) {
+            int idx = 0;
+            while ((idx = t.indexOf(w, idx)) >= 0) { score++; idx += w.length(); }
+        }
+        return score;
+    }
+
+    private static java.awt.image.BufferedImage rotate(java.awt.image.BufferedImage img, int deg) {
+        int w = img.getWidth(), h = img.getHeight();
+        boolean quarter = deg == 90 || deg == 270;
+        java.awt.image.BufferedImage out = new java.awt.image.BufferedImage(
+                quarter ? h : w, quarter ? w : h, java.awt.image.BufferedImage.TYPE_INT_RGB);
+        java.awt.Graphics2D g = out.createGraphics();
+        g.setColor(java.awt.Color.WHITE);
+        g.fillRect(0, 0, out.getWidth(), out.getHeight());
+        g.rotate(Math.toRadians(deg), out.getWidth() / 2.0, out.getHeight() / 2.0);
+        if (quarter) {
+            g.translate((out.getWidth() - w) / 2.0, (out.getHeight() - h) / 2.0);
+        }
+        g.drawImage(img, 0, 0, null);
+        g.dispose();
+        return out;
     }
 
     /**
@@ -146,7 +196,90 @@ public class PdfTextExtractor {
                 out.addPage(collector.toPage());
             }
         }
+        // PDF-EXTRACT-1 (2026-07-09): fallback OCR también en el camino con
+        // layout (el import real usa extractLayout, no extract, y hasta hoy
+        // un escaneado devolvía vacío → 422). Dos disparadores:
+        //   a) sin texto (PDF escaneado — la furgoneta de Benjamin);
+        //   b) texto ENTRELAZADO: PDFs cuyo text-layer mezcla dos columnas
+        //      carácter a carácter ("CGA LAESETOSRORREE SD E VLEORSGELES" en
+        //      las facturas de SH Asesores) — inservible para regex. El
+        //      render visual es correcto, así que el OCR lo lee bien.
+        String plain = out.toPlainText();
+        if (needsOcrFallback(plain)) {
+            String viaOcr = ocr(pdfBytes);
+            if (viaOcr != null && !viaOcr.isBlank()) {
+                log.info("PDF-EXTRACT: texto {} — usando OCR como fuente del layout",
+                        plain.replaceAll("\\s", "").length() < 15 ? "vacío (escaneado)" : "entrelazado/corrupto");
+                return syntheticLayoutFromText(viaOcr);
+            }
+        }
         return out;
+    }
+
+    /** NIF/CIF etiquetado y BIEN FORMADO — señal de text-layer sano. */
+    private static final java.util.regex.Pattern CLEAN_LABELED_NIF =
+            java.util.regex.Pattern.compile(
+                    "(?i)\\b(?:nif|c\\.?i\\.?f\\.?)\\s*:?\\s*(?:ES)?"
+                    + "([A-Z]\\d{8}|\\d{8}[A-Z]|[A-Z]\\d{7}[A-Z0-9])(?![0-9A-Za-z])");
+
+    /** Sin texto utilizable: vacío (escaneado) o entrelazado (columnas mezcladas). */
+    static boolean needsOcrFallback(String plain) {
+        if (plain == null) return true;
+        if (plain.replaceAll("\\s", "").length() < 15) return true;
+        // Entrelazado + ningún NIF etiquetado sano = text-layer inservible.
+        // (Un PDF con referencias raras pero NIF limpio — Amazon — se queda
+        // con su texto nativo, que siempre es más fiel que el OCR.)
+        return looksScrambled(plain) && !CLEAN_LABELED_NIF.matcher(plain).find();
+    }
+
+    /**
+     * Detecta el text-layer ENTRELAZADO: tokens largos con muchas
+     * alternancias dígito↔letra ("8A0B0E8NCEGRRRAANJAEDSA", "8P2a-g6o1")
+     * que solo aparecen cuando dos textos se imprimen intercalados. Los
+     * códigos legítimos (referencias Amazon, IBAN) rara vez pasan de 2-3
+     * tokens así; el umbral pide ≥3 para no dar falsos positivos.
+     */
+    static boolean looksScrambled(String plain) {
+        // DISTINTOS, no ocurrencias: una referencia legítima (nº de pedido
+        // Amazon) se repite varias veces pero es UN solo token; el texto
+        // entrelazado genera muchos tokens raros DIFERENTES.
+        java.util.Set<String> weird = new java.util.HashSet<>();
+        for (String tok : plain.split("\\s+")) {
+            if (tok.length() < 8) continue;
+            int transitions = 0;
+            Boolean prevDigit = null;
+            for (int i = 0; i < tok.length(); i++) {
+                char c = tok.charAt(i);
+                if (!Character.isLetterOrDigit(c)) continue;
+                boolean d = Character.isDigit(c);
+                if (prevDigit != null && d != prevDigit) transitions++;
+                prevDigit = d;
+            }
+            if (transitions >= 4) weird.add(tok);
+            if (weird.size() >= 3) return true;
+        }
+        return false;
+    }
+
+    /**
+     * LayoutDocument sintético desde texto OCR plano (una página A4, una
+     * línea por renglón). Sin coordenadas reales: las heurísticas por
+     * columna degradan con gracia y las textuales funcionan igual.
+     */
+    private static LayoutDocument syntheticLayoutFromText(String text) {
+        LayoutDocument doc = new LayoutDocument();
+        LayoutDocument.LayoutPage page = new LayoutDocument.LayoutPage(1, 595f, 842f);
+        float y = 20f;
+        for (String line : text.split("\\r?\\n")) {
+            String t = line.strip();
+            if (t.isEmpty()) { y += 12f; continue; }
+            java.util.List<LayoutDocument.LayoutSpan> spans = new java.util.ArrayList<>();
+            spans.add(new LayoutDocument.LayoutSpan(t, 20f, y, Math.min(t.length() * 5.5f, 555f), 10f));
+            page.addLine(new LayoutDocument.LayoutLine(y, spans));
+            y += 12f;
+        }
+        doc.addPage(page);
+        return doc;
     }
 
     /**

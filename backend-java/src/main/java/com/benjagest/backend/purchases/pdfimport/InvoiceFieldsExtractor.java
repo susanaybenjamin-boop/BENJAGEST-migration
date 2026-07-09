@@ -339,18 +339,99 @@ public class InvoiceFieldsExtractor {
     //  API pública
     // ====================================================================
 
+    /**
+     * PDF-EXTRACT-1 (2026-07-09) — identidad de la PROPIA empresa (el
+     * comprador que importa el gasto). En una factura recibida su NIF y su
+     * nombre son el RECEPTOR: se excluyen como candidatos a emisor/proveedor.
+     * Era el fallo nº1 reportado por Benjamin: "el NIF del proveedor pone el
+     * mío". El match de NIF es difuso por dígitos (el text-layer/OCR muta la
+     * letra o pierde un dígito: 74668351R → 74668351N / 7466835N).
+     */
+    public record OwnParty(String nif, String name) {}
+
+    /**
+     * ¿El NIF candidato es el de la propia empresa? Difuso por dígitos:
+     * se comparan las secuencias de dígitos (≥6) por contención, para
+     * cazar mutaciones del text-layer/OCR (74668351R → 74668351N,
+     * 7466835N) sin falsos positivos con otros NIFs.
+     */
+    static boolean isOwnNif(String candidate, OwnParty own) {
+        if (candidate == null || own == null || own.nif() == null || own.nif().isBlank()) return false;
+        String cd = candidate.replaceAll("\\D", "");
+        String od = own.nif().replaceAll("\\D", "");
+        if (cd.length() < 6 || od.length() < 6) {
+            return candidate.replaceAll("[\\s.\\-]", "").equalsIgnoreCase(own.nif().replaceAll("[\\s.\\-]", ""));
+        }
+        return cd.contains(od) || od.contains(cd);
+    }
+
+    /** Cabeceras de tabla y otras líneas que jamás son una razón social. */
+    private static final Pattern JUNK_SUPPLIER_NAME = Pattern.compile(
+            "(?i)(art[íi]?culo\\s+cantidad|n[úu]m\\.?\\s*de\\s*cuenta|qr\\s+tribu|"
+            + "p[áa]gina\\s*:|c[óo]digo\\s+concepto|base\\s+imponible|"
+            + "identificaci[óo]n\\s+cliente|cantidad\\s+precio|fecha\\s+vto)");
+
+    /** true si el nombre es nulo, basura de tabla o la PROPIA empresa. */
+    static boolean isJunkSupplierName(String name, OwnParty own) {
+        if (name == null || name.isBlank()) return true;
+        if (JUNK_SUPPLIER_NAME.matcher(name).find()) return true;
+        // Una razón social no es mayormente números ("A26- 628 24-mar.-2026").
+        long alnum = name.chars().filter(Character::isLetterOrDigit).count();
+        long digits = name.chars().filter(Character::isDigit).count();
+        if (alnum > 0 && digits * 100 / alnum > 35) return true;
+        if (own != null && own.name() != null && !own.name().isBlank()) {
+            String n = stripAccents(name).toUpperCase();
+            String o = stripAccents(own.name()).toUpperCase();
+            // contiene el nombre propio completo, o comparte >=2 tokens largos
+            // (apellidos) — "Núm. de Cuenta 4600.. RECIO LOPEZ BENJAMIN".
+            if (n.contains(o)) return true;
+            int shared = 0;
+            for (String tok : o.split("\\s+")) {
+                if (tok.length() >= 4 && n.contains(tok)) shared++;
+            }
+            if (shared >= 2) return true;
+        }
+        return false;
+    }
+
+    /** Quita diacríticos para comparar nombres con/sin tildes u OCR sucio. */
+    private static String stripAccents(String s) {
+        return java.text.Normalizer.normalize(s, java.text.Normalizer.Form.NFD)
+                .replaceAll("\\p{InCombiningDiacriticalMarks}+", "");
+    }
+
+    /** Sufijos societarios para el rescate de razón social. */
+    private static final Pattern CORPORATE_NAME_PATTERN = Pattern.compile(
+            "([A-ZÁÉÍÓÚÜÑ][A-Za-zÁÉÍÓÚÜÑáéíóúüñ0-9&.'\\- ]{2,55}?,?\\s+"
+            + "(?:S\\.? ?L\\.? ?U?\\.?|S\\.? ?A\\.? ?U?\\.?|S\\.? ?C(?:OOP)?\\.?|"
+            + "S\\.? ?L\\.? ?L\\.?|GmbH|Sp\\.? ?z ?o\\.? ?o\\.?))(?![A-Za-z])");
+
+    /**
+     * Primer nombre con sufijo societario del documento que no sea la propia
+     * empresa ni basura de tabla. Última red: en facturas como Forjados La
+     * Azucena la razón social solo aparece en el párrafo LOPD del pie.
+     */
+    static String findCorporateNameFallback(String text, OwnParty own) {
+        Matcher m = CORPORATE_NAME_PATTERN.matcher(text);
+        while (m.find()) {
+            String candidate = m.group(1).trim();
+            if (!isJunkSupplierName(candidate, own)) return candidate;
+        }
+        return null;
+    }
+
     public ExtractionResult extract(String plainText) {
-        return extract(plainText, null, null);
+        return extract(plainText, null, null, null);
     }
 
     public ExtractionResult extractFromLayout(LayoutDocument document) {
-        if (document == null) return extract("", null, null);
-        return extract(document.toPlainText(), document, null);
+        if (document == null) return extract("", null, null, null);
+        return extract(document.toPlainText(), document, null, null);
     }
 
     public ExtractionResult extractFromLayout(LayoutDocument document, byte[] originalBytes) {
-        if (document == null) return extract("", null, originalBytes);
-        return extract(document.toPlainText(), document, originalBytes);
+        if (document == null) return extract("", null, originalBytes, null);
+        return extract(document.toPlainText(), document, originalBytes, null);
     }
 
     /**
@@ -371,8 +452,12 @@ public class InvoiceFieldsExtractor {
      * persistir.
      */
     public List<ExtractionResult> extractAll(LayoutDocument document, byte[] originalBytes) {
+        return extractAll(document, originalBytes, null);
+    }
+
+    public List<ExtractionResult> extractAll(LayoutDocument document, byte[] originalBytes, OwnParty own) {
         if (document == null || document.pages().isEmpty()) {
-            return List.of(extract("", null, originalBytes));
+            return List.of(extract("", null, originalBytes, own));
         }
         // 1) Calcular marcador "Página X de Y" por página.
         Pattern marker = Pattern.compile(
@@ -396,7 +481,7 @@ public class InvoiceFieldsExtractor {
         boolean anyMarker = false;
         for (int[] mk : pageMarkers) if (mk[1] > 0 && mk[2] > 0) { anyMarker = true; break; }
         if (!anyMarker) {
-            return List.of(extract(document.toPlainText(), document, originalBytes));
+            return List.of(extract(document.toPlainText(), document, originalBytes, own));
         }
         // 2) Agrupar páginas por marcador "Página 1 de N".
         List<List<Integer>> groups = new ArrayList<>();
@@ -415,12 +500,12 @@ public class InvoiceFieldsExtractor {
         for (List<Integer> g : groups) {
             LayoutDocument sub = new LayoutDocument();
             for (int idx : g) sub.addPage(document.pages().get(idx));
-            results.add(extract(sub.toPlainText(), sub, originalBytes));
+            results.add(extract(sub.toPlainText(), sub, originalBytes, own));
         }
         return results;
     }
 
-    private ExtractionResult extract(String rawText, LayoutDocument layout, byte[] originalBytes) {
+    private ExtractionResult extract(String rawText, LayoutDocument layout, byte[] originalBytes, OwnParty own) {
         String text = normalize(rawText);
         if (text.isBlank()) {
             return new ExtractionResult(List.of(),
@@ -436,6 +521,9 @@ public class InvoiceFieldsExtractor {
         //    S.à r.l. y similares no tienen NIF AEAT pero sí "IVA LU…".
         List<String> allNifs = findAll(NIF_PATTERN, text);
         List<String> allEuVat = findAll(EU_VAT_PATTERN, text);
+        // PDF-EXTRACT-1: el NIF de la PROPIA empresa nunca es el emisor.
+        List<String> emitterCandidateNifs = new ArrayList<>(allNifs);
+        emitterCandidateNifs.removeIf(n -> isOwnNif(n, own));
 
         // 2. Emisor:
         //    a) RD 1619/2012 art. 6: emisor en la mitad IZQUIERDA del
@@ -448,15 +536,28 @@ public class InvoiceFieldsExtractor {
         //    b) Si no hay layout o no encuentra → cascada textual
         //       antigua (CIF labeled, primer NIF, etc.).
         String emitterNif = guessEmitterByLayout(layout);
+        // PDF-EXTRACT-1: si el layout eligió el NIF PROPIO (facturas donde el
+        // único NIF impreso es el del cliente — p.ej. Forjados La Azucena),
+        // se descarta y se cae a la cascada textual sin él.
+        if (isOwnNif(emitterNif, own)) emitterNif = null;
         if (emitterNif == null) {
-            emitterNif = guessEmitterNif(text, allNifs, allEuVat);
+            emitterNif = guessEmitterNif(text, emitterCandidateNifs, allEuVat);
         }
+        if (isOwnNif(emitterNif, own)) emitterNif = null;
         // Normalizar: quitar espacios internos para que las
         // comparaciones funcionen consistentemente con el receptor.
         if (emitterNif != null) emitterNif = cleanNif(emitterNif);
 
         // 3. Razón social del emisor — prioridad al bloque "Vendido por".
         String supplierName = guessSupplierName(text, head, emitterNif);
+        // PDF-EXTRACT-1: descartar nombres basura (cabeceras de tabla, línea
+        // del QR tributario, "Núm. de Cuenta..." del cliente) y sobre todo el
+        // nombre de la PROPIA empresa. Red de seguridad: primer nombre con
+        // sufijo societario (S.L., S.A., GmbH...) que no sea el propio —
+        // cubre facturas donde la razón social solo está en el pie legal.
+        if (isJunkSupplierName(supplierName, own)) {
+            supplierName = findCorporateNameFallback(text, own);
+        }
 
         // 4. Número de factura. Triple estrategia:
         //    a) Regex clásico "Factura nº XYZ" / "Número de la factura".
@@ -465,9 +566,14 @@ public class InvoiceFieldsExtractor {
         // la mitad DERECHA con el número a la derecha. Esto es muy
         // fiable cuando la regex textual falla por carácter "º" raro
         // o saltos de línea entre etiqueta y valor.
+        // PDF-EXTRACT-1: el pie "Inscrita en el Registro Mercantil..., hoja
+        // nº GR/10606" dispara los patrones de "nº" — se elimina esa línea
+        // SOLO para la búsqueda del número (test real de Bloques Los Llanos).
+        String textForNumber = text.replaceAll(
+                "(?i)inscrita en el registro mercantil[^\\n]*", "");
         String invoiceNumber = guessInvoiceNumberByLayout(layout);
         if (invoiceNumber == null) {
-            invoiceNumber = findFirstGroup(INVOICE_NUMBER_PATTERN, text, 1);
+            invoiceNumber = findFirstGroup(INVOICE_NUMBER_PATTERN, textForNumber, 1);
         }
         if (invoiceNumber != null) invoiceNumber = invoiceNumber.trim();
         // Filtro de falsos positivos: la regex puede capturar palabras tras
@@ -478,13 +584,13 @@ public class InvoiceFieldsExtractor {
             invoiceNumber = null;
         }
         if (invoiceNumber == null || invoiceNumber.isBlank()) {
-            invoiceNumber = findInvoiceNumberInTable(text);
+            invoiceNumber = findInvoiceNumberInTable(textForNumber);
         }
         // Si seguimos sin nada, intentamos un segundo pase de la regex
         // saltándonos cualquier match que sea noise (la palabra FACTURA
         // captura, pero el verdadero nº puede estar 2 líneas después).
         if (invoiceNumber == null || invoiceNumber.isBlank()) {
-            Matcher mNum = INVOICE_NUMBER_PATTERN.matcher(text);
+            Matcher mNum = INVOICE_NUMBER_PATTERN.matcher(textForNumber);
             while (mNum.find()) {
                 String candidate = mNum.group(1).trim();
                 if (!isInvoiceNumberNoise(candidate)) {
@@ -515,6 +621,11 @@ public class InvoiceFieldsExtractor {
         }
         if (totals == null) {
             totals = findSolredTotalsRow(text);
+        }
+        if (totals == null) {
+            // PDF-EXTRACT-1: última red — línea cuyos números cumplen la
+            // aritmética base(+pct|+cuota[−ret]) = total.
+            totals = findArithmeticTotalsRow(text);
         }
         BigDecimal base, vatPct, vatAmount, total;
         if (totals != null && totals.total != null) {
@@ -1198,6 +1309,74 @@ public class InvoiceFieldsExtractor {
         row.vatAmount = parseAmount(m.group(2));
         row.total = parseAmount(m.group(3));
         return row;
+    }
+
+    /**
+     * PDF-EXTRACT-1 — detector ARITMÉTICO de totales (último de la cascada
+     * de tablas). No depende de etiquetas: busca la línea cuyos números
+     * cumplen la aritmética de una factura. Cubre PDFs/OCR donde la fila de
+     * etiquetas y la de valores se separan o se pierden:
+     *   "42,31 21.00 51,20"          → base × (1+21/100) = total (SH Asesores)
+     *   "588,84 123,66 0,00 712,50€" → base + cuota − ret = total (Forjados)
+     * Recorre de ABAJO arriba (los totales viven al pie) y exige tolerancia
+     * ±0,02. Un pct plausible es 0<pct≤30 (tipos de IVA españoles).
+     */
+    private TotalsRow findArithmeticTotalsRow(String text) {
+        Pattern num = Pattern.compile("-?\\d{1,3}(?:\\.\\d{3})*(?:[,.]\\d{1,2})?");
+        String[] lines = text.split("\\r?\\n");
+        for (int i = lines.length - 1; i >= 0; i--) {
+            String line = lines[i];
+            // sin fechas (dd/mm/yyyy o dd-mm-yyyy) que parecerían números
+            if (line.matches(".*\\d{1,2}[/-]\\d{1,2}[/-]\\d{2,4}.*")) continue;
+            List<BigDecimal> nums = new ArrayList<>();
+            Matcher m = num.matcher(line);
+            while (m.find()) {
+                BigDecimal v = parseAmount(m.group());
+                if (v != null) nums.add(v);
+            }
+            if (nums.size() < 3 || nums.size() > 5) continue;
+            // [base, pct, total] — base×(1+pct/100)≈total
+            for (int a = 0; a + 2 < nums.size() + 1 && nums.size() == 3; a++) {
+                BigDecimal base = nums.get(0), pct = nums.get(1), total = nums.get(2);
+                if (pct.signum() > 0 && pct.compareTo(BigDecimal.valueOf(30)) <= 0
+                        && base.signum() != 0
+                        && approx(base.multiply(BigDecimal.ONE.add(
+                                pct.divide(BigDecimal.valueOf(100), 6, java.math.RoundingMode.HALF_UP))), total)) {
+                    TotalsRow row = new TotalsRow();
+                    row.base = base; row.vatPercent = pct;
+                    row.vatAmount = total.subtract(base); row.total = total;
+                    return row;
+                }
+                break;
+            }
+            // [base, cuota, total] — base+cuota≈total (cuota < base)
+            if (nums.size() == 3) {
+                BigDecimal base = nums.get(0), cuota = nums.get(1), total = nums.get(2);
+                if (base.signum() != 0 && cuota.abs().compareTo(base.abs()) < 0
+                        && approx(base.add(cuota), total)) {
+                    TotalsRow row = new TotalsRow();
+                    row.base = base; row.vatAmount = cuota; row.total = total;
+                    return row;
+                }
+            }
+            // [base, cuota, ret, total] — base+cuota−ret≈total
+            if (nums.size() == 4) {
+                BigDecimal base = nums.get(0), cuota = nums.get(1),
+                        ret = nums.get(2), total = nums.get(3);
+                if (base.signum() != 0 && cuota.abs().compareTo(base.abs()) < 0
+                        && ret.signum() >= 0
+                        && approx(base.add(cuota).subtract(ret), total)) {
+                    TotalsRow row = new TotalsRow();
+                    row.base = base; row.vatAmount = cuota; row.total = total;
+                    return row;
+                }
+            }
+        }
+        return null;
+    }
+
+    private static boolean approx(BigDecimal a, BigDecimal b) {
+        return a.subtract(b).abs().compareTo(new BigDecimal("0.02")) <= 0;
     }
 
     /**
