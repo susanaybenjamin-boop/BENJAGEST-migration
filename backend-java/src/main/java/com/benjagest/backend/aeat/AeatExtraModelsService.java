@@ -287,7 +287,12 @@ public class AeatExtraModelsService {
                   JOIN accounting_accounts a ON a.id = l.account_id
                  WHERE e.company_id = ? AND e.status = 'POSTED' AND l.vat_rate IS NOT NULL
                    AND YEAR(e.entry_date) = ?
-                   AND NOT EXISTS (SELECT 1 FROM purchase_invoices p WHERE p.id = e.source_id)
+                   -- AUDIT resto (2026-07-09): un asiento puede pertenecer a una
+                   -- factura sin llevar source_id (migrados/regenerados). La
+                   -- factura guarda el vínculo inverso journal_entry_id — sin
+                   -- esta 2ª condición su IVA deducía DOS veces (factura + "manual").
+                   AND NOT EXISTS (SELECT 1 FROM purchase_invoices p
+                       WHERE p.id = e.source_id OR p.journal_entry_id = e.id)
                 """, (rs, n) -> new BigDecimal[]{nz(rs.getBigDecimal(1)), nz(rs.getBigDecimal(2))},
                 companyId, year);
         List<PurchaseRow> filasAnno = new ArrayList<>(comprasAnno);
@@ -299,7 +304,8 @@ public class AeatExtraModelsService {
         // Devengado por autorrepercusión (intracom/ISP) anual — igual que el 303.
         BigDecimal devengadoAutorrepAnno = nz(dedAnno.get("_devengado_autorrep"));
         VatBreakdown sop = new VatBreakdown(sopBases.base04(), sopBases.base10(),
-                sopBases.base21(), totalDeducibleAnno);
+                sopBases.base21(), sopBases.baseOtros(), BigDecimal.ZERO,
+                totalDeducibleAnno);
 
         BigDecimal resultadoLiquidacion = computeResultadoIva(
                 rep.totalIva.add(devengadoAutorrepAnno), totalDeducibleAnno);
@@ -308,6 +314,8 @@ public class AeatExtraModelsService {
         casillas.put("01_base04", rep.base04);
         casillas.put("02_base10", rep.base10);
         casillas.put("03_base21", rep.base21);
+        casillas.put("base_otros_tipos", rep.baseOtros);
+        casillas.put("cuota_otros_tipos", rep.cuotaOtros);
         casillas.put("06_iva_repercutido_total", rep.totalIva);
         casillas.put("22_base_soportada_04", sop.base04);
         casillas.put("24_base_soportada_10", sop.base10);
@@ -417,7 +425,13 @@ public class AeatExtraModelsService {
             SELECT
               COALESCE(SUM(CASE WHEN ABS(l.vat_rate - 4) < 1 THEN l.credit ELSE 0 END), 0) AS base04,
               COALESCE(SUM(CASE WHEN ABS(l.vat_rate - 10) < 1 THEN l.credit ELSE 0 END), 0) AS base10,
-              COALESCE(SUM(CASE WHEN ABS(l.vat_rate - 21) < 1 THEN l.credit ELSE 0 END), 0) AS base21
+              COALESCE(SUM(CASE WHEN ABS(l.vat_rate - 21) < 1 THEN l.credit ELSE 0 END), 0) AS base21,
+              COALESCE(SUM(CASE WHEN ABS(l.vat_rate - 4) >= 1 AND ABS(l.vat_rate - 10) >= 1
+                                 AND ABS(l.vat_rate - 21) >= 1 AND l.vat_rate > 0
+                            THEN l.credit ELSE 0 END), 0) AS base_otros,
+              COALESCE(SUM(CASE WHEN ABS(l.vat_rate - 4) >= 1 AND ABS(l.vat_rate - 10) >= 1
+                                 AND ABS(l.vat_rate - 21) >= 1 AND l.vat_rate > 0
+                            THEN l.credit * l.vat_rate / 100 ELSE 0 END), 0) AS cuota_otros
               FROM journal_entry_lines l
               JOIN journal_entries e ON e.id = l.journal_entry_id
               JOIN accounting_accounts a ON a.id = l.account_id
@@ -433,6 +447,9 @@ public class AeatExtraModelsService {
               COALESCE(SUM(CASE WHEN ABS(l.vat_rate - 4) < 1 AND a.code LIKE '6%' THEN l.debit ELSE 0 END), 0) AS base04,
               COALESCE(SUM(CASE WHEN ABS(l.vat_rate - 10) < 1 AND a.code LIKE '6%' THEN l.debit ELSE 0 END), 0) AS base10,
               COALESCE(SUM(CASE WHEN ABS(l.vat_rate - 21) < 1 AND a.code LIKE '6%' THEN l.debit ELSE 0 END), 0) AS base21,
+              COALESCE(SUM(CASE WHEN ABS(l.vat_rate - 4) >= 1 AND ABS(l.vat_rate - 10) >= 1
+                                 AND ABS(l.vat_rate - 21) >= 1 AND l.vat_rate > 0
+                                 AND a.code LIKE '6%' THEN l.debit ELSE 0 END), 0) AS base_otros,
               COALESCE(SUM(CASE WHEN a.code LIKE '472%' THEN l.debit ELSE 0 END), 0) AS iva_total
               FROM journal_entry_lines l
               JOIN journal_entries e ON e.id = l.journal_entry_id
@@ -450,7 +467,8 @@ public class AeatExtraModelsService {
     /** Repercutido: bases por tipo desde 7xx; la cuota se deriva (base × tipo). */
     private static VatBreakdown mapRepercutido(java.sql.ResultSet rs, int n) throws java.sql.SQLException {
         return deriveRepercutido(nz(rs.getBigDecimal("base04")),
-                nz(rs.getBigDecimal("base10")), nz(rs.getBigDecimal("base21")));
+                nz(rs.getBigDecimal("base10")), nz(rs.getBigDecimal("base21")),
+                nz(rs.getBigDecimal("base_otros")), nz(rs.getBigDecimal("cuota_otros")));
     }
 
     /**
@@ -458,12 +476,27 @@ public class AeatExtraModelsService {
      * (4/10/21%). Separado del ResultSet para poder testear la aritmetica.
      */
     public static VatBreakdown deriveRepercutido(BigDecimal base04, BigDecimal base10, BigDecimal base21) {
+        return deriveRepercutido(base04, base10, base21, BigDecimal.ZERO, BigDecimal.ZERO);
+    }
+
+    /**
+     * AUDIT resto (2026-07-09) — variante con "otros tipos": las bases a
+     * tipos ≠4/10/21 (el 5% de alimentos 2022-2024, 2%, 7,5%…) antes caían
+     * FUERA de los buckets y su cuota desaparecía del total devengado
+     * (infra-declaración silenciosa). La cuota de esos tipos viene ya
+     * calculada línea a línea (base × tipo real) y se suma al total.
+     */
+    public static VatBreakdown deriveRepercutido(BigDecimal base04, BigDecimal base10,
+                                                  BigDecimal base21, BigDecimal baseOtros,
+                                                  BigDecimal cuotaOtros) {
         BigDecimal b4 = nz(base04), b10 = nz(base10), b21 = nz(base21);
+        BigDecimal bOtros = nz(baseOtros), cOtros = nz(cuotaOtros).setScale(2, RoundingMode.HALF_UP);
         BigDecimal iva = b4.multiply(new BigDecimal("0.04"))
                 .add(b10.multiply(new BigDecimal("0.10")))
                 .add(b21.multiply(new BigDecimal("0.21")))
+                .add(cOtros)
                 .setScale(2, RoundingMode.HALF_UP);
-        return new VatBreakdown(b4, b10, b21, iva);
+        return new VatBreakdown(b4, b10, b21, bOtros, cOtros, iva);
     }
 
     /** PURO — resultado del 303/390 = IVA repercutido - IVA soportado. */
@@ -580,10 +613,12 @@ public class AeatExtraModelsService {
             BigDecimal remanente           // casilla 87 (para el trimestre siguiente)
     ) {}
 
-    /** Soportado: bases por tipo desde 6xx; cuota total real desde 472. */
+    /** Soportado: bases por tipo desde 6xx; cuota total real desde 472
+     *  (la cuota de "otros tipos" ya viene dentro del total 472). */
     private static VatBreakdown mapSoportado(java.sql.ResultSet rs, int n) throws java.sql.SQLException {
         return new VatBreakdown(nz(rs.getBigDecimal("base04")), nz(rs.getBigDecimal("base10")),
-                nz(rs.getBigDecimal("base21")), nz(rs.getBigDecimal("iva_total")));
+                nz(rs.getBigDecimal("base21")), nz(rs.getBigDecimal("base_otros")),
+                BigDecimal.ZERO, nz(rs.getBigDecimal("iva_total")));
     }
 
     // ====================================================================
@@ -651,7 +686,12 @@ public class AeatExtraModelsService {
                   JOIN accounting_accounts a ON a.id = l.account_id
                  WHERE e.company_id = ? AND e.status = 'POSTED' AND l.vat_rate IS NOT NULL
                    AND YEAR(e.entry_date) = ? AND MONTH(e.entry_date) BETWEEN ? AND ?
-                   AND NOT EXISTS (SELECT 1 FROM purchase_invoices p WHERE p.id = e.source_id)
+                   -- AUDIT resto (2026-07-09): un asiento puede pertenecer a una
+                   -- factura sin llevar source_id (migrados/regenerados). La
+                   -- factura guarda el vínculo inverso journal_entry_id — sin
+                   -- esta 2ª condición su IVA deducía DOS veces (factura + "manual").
+                   AND NOT EXISTS (SELECT 1 FROM purchase_invoices p
+                       WHERE p.id = e.source_id OR p.journal_entry_id = e.id)
                 """, (rs, n) -> new BigDecimal[]{nz(rs.getBigDecimal(1)), nz(rs.getBigDecimal(2))},
                 companyId, year, mFrom, mTo);
         List<PurchaseRow> filas = new java.util.ArrayList<>(compras);
@@ -679,6 +719,11 @@ public class AeatExtraModelsService {
         casillas.put("base_4", rep.base04);
         casillas.put("base_10", rep.base10);
         casillas.put("base_21", rep.base21);
+        // AUDIT resto: tipos ≠4/10/21 (5%, 2%…). Su cuota ya está en el
+        // total devengado; estas casillas informativas evitan que "falten"
+        // bases al cuadrar el editor con la contabilidad.
+        casillas.put("base_otros_tipos", rep.baseOtros);
+        casillas.put("cuota_otros_tipos", rep.cuotaOtros);
         casillas.put("14_mod_base", modBase);
         casillas.put("15_mod_cuota", modCuota);
         casillas.put("06_iva_repercutido_total", rep.totalIva);
@@ -1040,7 +1085,18 @@ public class AeatExtraModelsService {
     }
 
     public record VatBreakdown(BigDecimal base04, BigDecimal base10,
-                                  BigDecimal base21, BigDecimal totalIva) {}
+                                  BigDecimal base21,
+                                  /** AUDIT resto (2026-07-09): bases a tipos ≠4/10/21 (5%, 2%, 7,5%…). */
+                                  BigDecimal baseOtros,
+                                  /** Cuota derivada de esos otros tipos (base × tipo real de la línea). */
+                                  BigDecimal cuotaOtros,
+                                  BigDecimal totalIva) {
+        /** Compat: la mayoría de caminos no tienen "otros tipos". */
+        public VatBreakdown(BigDecimal base04, BigDecimal base10,
+                              BigDecimal base21, BigDecimal totalIva) {
+            this(base04, base10, base21, BigDecimal.ZERO, BigDecimal.ZERO, totalIva);
+        }
+    }
 
     // ====================================================================
     //  DTOs públicos

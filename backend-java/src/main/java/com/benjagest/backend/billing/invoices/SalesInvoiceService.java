@@ -294,10 +294,40 @@ public class SalesInvoiceService {
         billingAgreementGuard.requireAgreementOrOwn(
                 com.benjagest.backend.billing.tpb.BillingAgreementGuard.Scope.SALES);
         SalesInvoice invoice = get(id);
+        // AUDIT-T3 resto (2026-07-09): regenerar reescribe las líneas del
+        // asiento (etiquetado vat_rate incluido) — si el trimestre de la
+        // factura ya está declarado (303/130 PRESENTED/PAID), cambiaría la
+        // base de una declaración presentada. Mismo guard que en compras.
+        requirePeriodNotPresented(invoice.invoiceDate(), "regenerar el asiento de esta factura");
         String userId;
         try { userId = currentUserService.require().userId(); }
         catch (Exception ex) { userId = null; }
         salesJournalService.regenerateForSales(invoice, userId);
+    }
+
+    /**
+     * AUDIT-T3 (2026-07-09) — espejo de
+     * {@code PurchaseInvoiceService.requirePeriodNotPresented}: 409 si la
+     * fecha cae en un periodo cuyo 303/130 (o un modelo anual 390/347/349)
+     * ya está PRESENTADO/PAID. El 130 es acumulado: bloquea también si hay
+     * presentación del año con trimestre &gt;= al de la fecha, o una anual.
+     */
+    private void requirePeriodNotPresented(java.time.LocalDate date, String action) {
+        if (date == null) return;
+        int q = (date.getMonthValue() - 1) / 3 + 1;
+        Integer hits = jdbcForTpb.queryForObject("""
+                SELECT COUNT(*) FROM tax_filings
+                 WHERE company_id = ? AND status IN ('PRESENTED', 'PAID')
+                   AND period_year = ?
+                   AND (period_quarter IS NULL OR period_quarter >= ?)
+                """, Integer.class, tenantContext.getCurrentCompanyId(),
+                date.getYear(), q);
+        if (hits != null && hits > 0) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "No se puede " + action + ": su periodo (" + q + "T " + date.getYear()
+                    + ") ya está incluido en una declaración presentada. Registra la "
+                    + "corrección/rectificación en el periodo corriente.");
+        }
     }
 
     /**

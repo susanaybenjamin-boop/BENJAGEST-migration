@@ -36,6 +36,30 @@ class AeatModel303CalcTest {
     }
 
     @Test
+    void tiposDistintosDe4_10_21_noSePierden() {
+        // AUDIT resto (2026-07-09): una venta al 5% (alimentos 2022-2024)
+        // caía fuera de los buckets y su cuota desaparecía del total
+        // devengado. Ahora entra como "otros tipos" con su cuota real.
+        var vb = AeatExtraModelsService.deriveRepercutido(
+                BigDecimal.ZERO, BigDecimal.ZERO, bd("1000"),
+                bd("200"), bd("10.00")); // 200 al 5% -> cuota 10
+        assertAmount("200.00", vb.baseOtros());
+        assertAmount("10.00", vb.cuotaOtros());
+        // 1000*21% + 10 = 220,00.
+        assertAmount("220.00", vb.totalIva());
+    }
+
+    @Test
+    void sinOtrosTipos_laDerivacionNoCambia() {
+        var vb3 = AeatExtraModelsService.deriveRepercutido(
+                bd("1000"), bd("2000"), bd("3000"));
+        var vb5 = AeatExtraModelsService.deriveRepercutido(
+                bd("1000"), bd("2000"), bd("3000"), BigDecimal.ZERO, BigDecimal.ZERO);
+        assertAmount("870.00", vb3.totalIva());
+        assertAmount("870.00", vb5.totalIva());
+    }
+
+    @Test
     void resultadoEsRepercutidoMenosSoportado() {
         // Repercutido 1.317,75 - soportado 604,61 = 713,14 (forma del 303).
         assertAmount("713.14",
