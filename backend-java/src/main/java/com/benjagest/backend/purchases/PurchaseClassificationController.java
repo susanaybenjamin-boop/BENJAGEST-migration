@@ -139,4 +139,117 @@ public class PurchaseClassificationController {
         }
         return get(id);
     }
+
+    /**
+     * DEDUC fase 2 — gestión de las reglas de deducibilidad por proveedor y
+     * export del libro registro de facturas recibidas con las TRES columnas
+     * que exige la AEAT (FAQ del libro registro + Orden HAC/773/2019):
+     * cuota SOPORTADA, cuota DEDUCIBLE (IVA) e importe deducible (IRPF).
+     */
+    @RestController
+    @RequestMapping("/api/purchases/deductibility")
+    @RequiresModule("purchases")
+    @RequiresRole({"OWNER", "ADMIN", "ACCOUNTANT"})
+    public static class DeductibilityController {
+        private final JdbcTemplate jdbc;
+        private final TenantContext tenant;
+
+        public DeductibilityController(JdbcTemplate jdbc, TenantContext tenant) {
+            this.jdbc = jdbc;
+            this.tenant = tenant;
+        }
+
+        public record Rule(String id, String supplierNif, String supplierName,
+                           BigDecimal vatPct, BigDecimal irpfPct, String createdAt) {}
+
+        @GetMapping("/rules")
+        public List<Rule> rules() {
+            return jdbc.query("""
+                    SELECT r.id, r.supplier_nif, r.vat_deductible_percent,
+                           r.irpf_deductible_percent, r.created_at,
+                           (SELECT s.legal_name FROM suppliers s
+                             WHERE s.company_id = r.company_id
+                               AND s.tax_identifier = r.supplier_nif LIMIT 1) AS supplier_name
+                      FROM supplier_deductibility_rules r
+                     WHERE r.company_id = ?
+                     ORDER BY r.supplier_nif
+                    """, (rs, n) -> new Rule(
+                            rs.getString("id"), rs.getString("supplier_nif"),
+                            rs.getString("supplier_name"),
+                            rs.getBigDecimal("vat_deductible_percent"),
+                            rs.getBigDecimal("irpf_deductible_percent"),
+                            String.valueOf(rs.getTimestamp("created_at"))),
+                    tenant.getCurrentCompanyId());
+        }
+
+        @org.springframework.web.bind.annotation.DeleteMapping("/rules/{ruleId}")
+        @org.springframework.web.bind.annotation.ResponseStatus(HttpStatus.NO_CONTENT)
+        public void delete(@PathVariable("ruleId") String ruleId) {
+            int n = jdbc.update("""
+                    DELETE FROM supplier_deductibility_rules
+                     WHERE id = ? AND company_id = ?
+                    """, ruleId, tenant.getCurrentCompanyId());
+            if (n == 0) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Regla no encontrada");
+        }
+
+        /**
+         * Libro registro de facturas RECIBIDAS del año en CSV (separador ';',
+         * decimales con coma — abre directo en Excel ES). Columnas alineadas
+         * con el formato normalizado AEAT: la cuota deducible y el gasto IRPF
+         * salen de los % de deducibilidad de cada factura.
+         */
+        @GetMapping(value = "/libro-recibidas.csv", produces = "text/csv;charset=UTF-8")
+        public String libroRecibidas(@org.springframework.web.bind.annotation.RequestParam("year") int year) {
+            StringBuilder sb = new StringBuilder();
+            sb.append("Fecha;Numero;NIF proveedor;Proveedor;Concepto;")
+              .append("Base imponible;Tipo IVA %;Cuota soportada;% IVA deducible;")
+              .append("Cuota deducible;% IRPF deducible;Gasto deducible IRPF;Total\n");
+            jdbc.query("""
+                    SELECT invoice_date, invoice_number, supplier_nif, supplier_name,
+                           concept, base_amount, vat_percent, vat_amount, total_amount,
+                           COALESCE(vat_deductible_percent, 100) AS vat_pct,
+                           COALESCE(irpf_deductible_percent, expense_deductible * 100) AS irpf_pct
+                      FROM purchase_invoices
+                     WHERE company_id = ? AND status = 'POSTED'
+                       AND YEAR(invoice_date) = ?
+                     ORDER BY invoice_date, invoice_number
+                    """, rs -> {
+                        BigDecimal base = nzd(rs.getBigDecimal("base_amount"));
+                        BigDecimal vat = nzd(rs.getBigDecimal("vat_amount"));
+                        BigDecimal vatPct = nzd(rs.getBigDecimal("vat_pct"));
+                        BigDecimal irpfPct = nzd(rs.getBigDecimal("irpf_pct"));
+                        BigDecimal cuotaDeducible = vat.multiply(vatPct)
+                                .divide(new BigDecimal("100"), 2, java.math.RoundingMode.HALF_UP);
+                        BigDecimal gastoIrpf = base.add(vat.subtract(cuotaDeducible))
+                                .multiply(irpfPct)
+                                .divide(new BigDecimal("100"), 2, java.math.RoundingMode.HALF_UP);
+                        sb.append(csv(rs.getDate("invoice_date"))).append(';')
+                          .append(csv(rs.getString("invoice_number"))).append(';')
+                          .append(csv(rs.getString("supplier_nif"))).append(';')
+                          .append(csv(rs.getString("supplier_name"))).append(';')
+                          .append(csv(rs.getString("concept"))).append(';')
+                          .append(dec(base)).append(';')
+                          .append(dec(rs.getBigDecimal("vat_percent"))).append(';')
+                          .append(dec(vat)).append(';')
+                          .append(dec(vatPct)).append(';')
+                          .append(dec(cuotaDeducible)).append(';')
+                          .append(dec(irpfPct)).append(';')
+                          .append(dec(gastoIrpf)).append(';')
+                          .append(dec(rs.getBigDecimal("total_amount"))).append('\n');
+                    }, tenant.getCurrentCompanyId(), year);
+            return sb.toString();
+        }
+
+        private static BigDecimal nzd(BigDecimal v) { return v == null ? BigDecimal.ZERO : v; }
+        private static String dec(BigDecimal v) {
+            return v == null ? "" : v.setScale(2, java.math.RoundingMode.HALF_UP)
+                    .toPlainString().replace('.', ',');
+        }
+        private static String csv(Object v) {
+            if (v == null) return "";
+            String s = String.valueOf(v).replace('\n', ' ').replace('\r', ' ');
+            return s.contains(";") || s.contains("\"")
+                    ? "\"" + s.replace("\"", "\"\"") + "\"" : s;
+        }
+    }
 }
