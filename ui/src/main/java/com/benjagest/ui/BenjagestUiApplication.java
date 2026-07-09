@@ -3243,9 +3243,11 @@ public class BenjagestUiApplication extends Application
         opType.getItems().addAll("INTERIOR", "INTRACOM", "IMPORT", "ISP");
         opType.getSelectionModel().selectFirst();
         TextField dedPct = new TextField("100");
-        CheckBox expDed = new CheckBox("El gasto es deducible en IRPF (modelo 130)");
-        expDed.setSelected(true);
         CheckBox invGood = new CheckBox("Es un bien de inversión (303 casillas 30/31)");
+        // IRPF-DED: la deducibilidad en IRPF (130) ya NO se marca aquí a mano —
+        // la lleva la CUENTA del gasto (subcuenta de vehículo = no deducible).
+        // Conservamos el valor actual para no alterarlo al guardar la parte IVA.
+        final boolean[] keepExpDed = {true};
 
         javafx.concurrent.Task<String[]> load = new javafx.concurrent.Task<>() {
             @Override protected String[] call() throws Exception { return purchasesApi.getClassification(purchaseId); }
@@ -3255,7 +3257,7 @@ public class BenjagestUiApplication extends Application
             if (c != null) {
                 if (c[0] != null && !c[0].isBlank()) opType.getSelectionModel().select(c[0]);
                 dedPct.setText(c[1]);
-                expDed.setSelected("true".equals(c[2]));
+                keepExpDed[0] = "true".equals(c[2]);
                 invGood.setSelected("true".equals(c[3]));
             }
         });
@@ -3264,13 +3266,16 @@ public class BenjagestUiApplication extends Application
         Label hint = new Label("Tipo de operación a efectos de IVA y qué parte es deducible. "
                 + "Ejemplo: una comida de negocios suele ser gasto deducible pero con IVA no deducible (0 %).");
         hint.setWrapText(true); hint.getStyleClass().add("settings-hint");
+        Label irpfHint = new Label("La deducibilidad en IRPF (modelo 130) se decide por la cuenta contable "
+                + "del gasto: llévalo a una subcuenta de vehículo (no deducible) con «Crear regla».");
+        irpfHint.setWrapText(true); irpfHint.getStyleClass().add("settings-hint");
         GridPane g = new GridPane();
         g.setHgap(10); g.setVgap(10); g.setPadding(new javafx.geometry.Insets(12));
         g.add(hint, 0, 0, 2, 1);
         g.add(new Label("Tipo de operación"), 0, 1); g.add(opType, 1, 1);
         g.add(new Label("IVA deducible (%)"), 0, 2); g.add(dedPct, 1, 2);
-        g.add(expDed, 0, 3, 2, 1);
-        g.add(invGood, 0, 4, 2, 1);
+        g.add(invGood, 0, 3, 2, 1);
+        g.add(irpfHint, 0, 4, 2, 1);
         dialog.getDialogPane().setContent(g);
         dialog.initOwner(root.getScene().getWindow());
 
@@ -3279,7 +3284,7 @@ public class BenjagestUiApplication extends Application
             javafx.concurrent.Task<Void> save = new javafx.concurrent.Task<>() {
                 @Override protected Void call() throws Exception {
                     purchasesApi.setClassification(purchaseId, opType.getValue(),
-                            dedPct.getText().trim(), expDed.isSelected(), invGood.isSelected());
+                            dedPct.getText().trim(), keepExpDed[0], invGood.isSelected());
                     return null;
                 }
             };
@@ -3287,6 +3292,73 @@ public class BenjagestUiApplication extends Application
             save.setOnFailed(ev -> showError("Clasificación fiscal",
                     save.getException() == null ? "" : save.getException().getMessage()));
             new Thread(save, "purchase-classification-save").start();
+        });
+    }
+
+    /**
+     * IRPF-DED — "Crear regla" desde un gasto: manda TODAS las facturas del
+     * proveedor a la cuenta elegida (reclasifica este asiento + aprende la
+     * regla proveedor→cuenta). Si es una subcuenta de vehículo, dejan de ser
+     * deducibles en IRPF. Una factura concreta se rescata luego a la genérica.
+     */
+    private void showCreateExpenseRuleDialog(String purchaseId, String supplierName) {
+        javafx.scene.control.Dialog<javafx.scene.control.ButtonType> dialog = new javafx.scene.control.Dialog<>();
+        dialog.setTitle("Crear regla de cuenta");
+        javafx.scene.control.ButtonType saveBt = new javafx.scene.control.ButtonType(
+                "Crear regla", javafx.scene.control.ButtonBar.ButtonData.OK_DONE);
+        dialog.getDialogPane().getButtonTypes().addAll(saveBt, javafx.scene.control.ButtonType.CANCEL);
+
+        ComboBox<com.benjagest.ui.model.AccountingModels.AccountSummary> accounts = new ComboBox<>();
+        accounts.setMaxWidth(Double.MAX_VALUE);
+        accounts.setConverter(new javafx.util.StringConverter<>() {
+            @Override public String toString(com.benjagest.ui.model.AccountingModels.AccountSummary a) {
+                return a == null ? "" : a.code() + " — " + a.name();
+            }
+            @Override public com.benjagest.ui.model.AccountingModels.AccountSummary fromString(String s) { return null; }
+        });
+
+        javafx.concurrent.Task<java.util.List<com.benjagest.ui.model.AccountingModels.AccountSummary>> load =
+                new javafx.concurrent.Task<>() {
+                    @Override protected java.util.List<com.benjagest.ui.model.AccountingModels.AccountSummary> call()
+                            throws Exception { return accountingApiClient.listAccounts(null); }
+                };
+        load.setOnSucceeded(ev -> {
+            for (var a : load.getValue()) {
+                if (a.code() != null && a.code().startsWith("6")) accounts.getItems().add(a);
+            }
+        });
+        new Thread(load, "expense-rule-accounts-load").start();
+
+        Label hint = new Label("Todas las facturas de «"
+                + (supplierName == null || supplierName.isBlank() ? "este proveedor" : supplierName)
+                + "» irán a esta cuenta. Si eliges una subcuenta de vehículo, dejarán de ser deducibles "
+                + "en IRPF (modelo 130). Esta factura se reclasifica ahora; para rescatar una concreta, "
+                + "llévala luego a la cuenta genérica.");
+        hint.setWrapText(true); hint.getStyleClass().add("settings-hint");
+
+        VBox box = new VBox(10, hint, new Label("Cuenta de gasto"), accounts);
+        box.setPadding(new javafx.geometry.Insets(12));
+        box.setPrefWidth(480);
+        dialog.getDialogPane().setContent(box);
+        dialog.initOwner(root.getScene().getWindow());
+
+        dialog.showAndWait().ifPresent(bt -> {
+            if (bt != saveBt) return;
+            var sel = accounts.getValue();
+            if (sel == null) { showError("Crear regla", "Elige una cuenta de destino."); return; }
+            javafx.concurrent.Task<Void> save = new javafx.concurrent.Task<>() {
+                @Override protected Void call() throws Exception {
+                    purchasesApi.createExpenseRule(purchaseId, sel.code());
+                    return null;
+                }
+            };
+            save.setOnSucceeded(ev -> {
+                reloadPurchaseInvoices();
+                com.benjagest.ui.support.RefreshBus.emit(com.benjagest.ui.support.RefreshBus.TOPIC_JOURNAL);
+            });
+            save.setOnFailed(ev -> showError("Crear regla",
+                    save.getException() == null ? "" : save.getException().getMessage()));
+            new Thread(save, "expense-rule-save").start();
         });
     }
 
@@ -3551,8 +3623,18 @@ public class BenjagestUiApplication extends Application
             if (sel != null) showPurchaseClassificationDialog(sel.id());
         });
 
+        // IRPF-DED: manda todas las facturas del proveedor a una cuenta
+        // (p.ej. subcuenta de vehículo no deducible) con una regla aprendida.
+        Button createRuleBtn = new Button("Crear regla");
+        createRuleBtn.setGraphic(icon("fas-tags"));
+        createRuleBtn.setOnAction(ev -> {
+            var sel = purchaseInvoicesTable.getSelectionModel().getSelectedItem();
+            if (sel != null) showCreateExpenseRuleDialog(sel.id(), sel.supplierName());
+        });
+
         HBox actions = new HBox(10, newExpenseBtn, newAutonomoBtn, validateBatchBtn,
-                makeRecurringPurchaseBtn, dueDatesBtn, registerPaymentBtn, classifyBtn, deleteBtn);
+                makeRecurringPurchaseBtn, dueDatesBtn, registerPaymentBtn, classifyBtn,
+                createRuleBtn, deleteBtn);
         actions.setAlignment(javafx.geometry.Pos.CENTER_LEFT);
 
         VBox body = new VBox(12);

@@ -37,6 +37,7 @@ public class PurchaseInvoiceService {
     private final com.benjagest.backend.accounting.FiscalYearGuardService fiscalGuard;
     private final org.springframework.jdbc.core.JdbcTemplate jdbcTemplate;
     private final com.benjagest.backend.billing.tpb.BillingAgreementGuard billingAgreementGuard;
+    private final com.benjagest.backend.accounting.AccountingLearningService learningService;
 
     public PurchaseInvoiceService(PurchaseInvoiceRepository repository,
                                     PurchaseJournalEntryService journalService,
@@ -45,7 +46,8 @@ public class PurchaseInvoiceService {
                                     AuditService auditService,
                                     com.benjagest.backend.accounting.FiscalYearGuardService fiscalGuard,
                                     org.springframework.jdbc.core.JdbcTemplate jdbcTemplate,
-                                    com.benjagest.backend.billing.tpb.BillingAgreementGuard billingAgreementGuard) {
+                                    com.benjagest.backend.billing.tpb.BillingAgreementGuard billingAgreementGuard,
+                                    com.benjagest.backend.accounting.AccountingLearningService learningService) {
         this.repository = repository;
         this.journalService = journalService;
         this.currentUserService = currentUserService;
@@ -54,6 +56,7 @@ public class PurchaseInvoiceService {
         this.fiscalGuard = fiscalGuard;
         this.jdbcTemplate = jdbcTemplate;
         this.billingAgreementGuard = billingAgreementGuard;
+        this.learningService = learningService;
     }
 
     @Transactional
@@ -306,6 +309,75 @@ public class PurchaseInvoiceService {
         // (la transacción revierte, incluido el enlace anterior).
         journalService.reverseForPurchase(existing);
         repository.deletePhysical(id);
+    }
+
+    /**
+     * IRPF-DED (2026-07-09) — "Crear regla" desde un gasto: manda TODAS las
+     * facturas de este proveedor a la cuenta indicada (p.ej. una subcuenta de
+     * vehículo no deducible). Hace tres cosas de una:
+     *   1) Reclasifica la línea de gasto 6xx de ESTE asiento a la cuenta destino.
+     *   2) Aprende la regla proveedor NIF → cuenta (idempotente) para que las
+     *      importaciones futuras de ese proveedor caigan solas ahí.
+     *   3) Sincroniza la factura: fija su cuenta y hereda la deducibilidad IRPF
+     *      de la cuenta destino.
+     * Una factura concreta se "rescata" luego llevándola a la cuenta genérica.
+     */
+    @Transactional
+    public void createExpenseRuleFromInvoice(String id, String targetAccountCode) {
+        if (targetAccountCode == null || targetAccountCode.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Falta la cuenta destino.");
+        }
+        String code = targetAccountCode.trim();
+        String companyId = tenantContext.getCurrentCompanyId();
+        PurchaseInvoice inv = get(id); // 404 si no existe
+        fiscalGuard.requireOpenForDate(inv.invoiceDate(), "reclasificar este gasto");
+
+        List<Object[]> acc = jdbcTemplate.query("""
+                SELECT id, irpf_deductible_default FROM accounting_accounts
+                 WHERE company_id = ? AND code = ? AND active = TRUE LIMIT 1
+                """, (rs, n) -> new Object[]{rs.getString("id"), rs.getInt("irpf_deductible_default")},
+                companyId, code);
+        if (acc.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "La cuenta " + code + " no existe.");
+        }
+        String toAccountId = (String) acc.get(0)[0];
+        int irpfDed = (Integer) acc.get(0)[1];
+
+        // Línea 6xx (Debe) del asiento de devengo — la que se reclasifica.
+        String entryId = inv.journalEntryId();
+        String lineId = null, fromAccountId = null;
+        if (entryId != null) {
+            List<String[]> lines = jdbcTemplate.query("""
+                    SELECT l.id, l.account_id FROM journal_entry_lines l
+                      JOIN accounting_accounts a ON a.id = l.account_id
+                     WHERE l.journal_entry_id = ? AND a.code LIKE '6%' AND l.debit > 0
+                     LIMIT 1
+                    """, (rs, n) -> new String[]{rs.getString("id"), rs.getString("account_id")}, entryId);
+            if (!lines.isEmpty()) {
+                lineId = lines.get(0)[0];
+                fromAccountId = lines.get(0)[1];
+                jdbcTemplate.update("UPDATE journal_entry_lines SET account_id = ? WHERE id = ?",
+                        toAccountId, lineId);
+            }
+        }
+
+        // Aprender la regla proveedor NIF → cuenta destino (idempotente).
+        if (inv.supplierNif() != null && !inv.supplierNif().isBlank()) {
+            String userId;
+            try { userId = currentUserService.require().userId(); } catch (Exception ex) { userId = null; }
+            learningService.recordCorrection(
+                    new com.benjagest.backend.accounting.AccountingLearningService.CorrectionRequest(
+                            entryId, lineId, fromAccountId, toAccountId, code,
+                            inv.supplierNif(), null, null, null, "Regla creada desde el gasto"),
+                    userId);
+        }
+
+        // Sincronizar la factura con la cuenta destino.
+        jdbcTemplate.update("""
+                UPDATE purchase_invoices
+                   SET expense_account_code = ?, expense_deductible = ?
+                 WHERE id = ? AND company_id = ?
+                """, code, irpfDed, id, companyId);
     }
 
     private String blankToNull(String v) {
