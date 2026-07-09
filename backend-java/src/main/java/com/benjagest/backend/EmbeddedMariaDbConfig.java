@@ -45,6 +45,11 @@ public class EmbeddedMariaDbConfig {
         // podía conectarse.
         cfg.addArg("--bind-address=127.0.0.1");
         cfg.addArg("--skip-name-resolve");
+        // CRÍTICO: MariaDB4j arranca por defecto con --skip-grant-tables
+        // (seguridad DESACTIVADA: cualquier usuario/contraseña entra y los
+        // comandos de cuentas fallan — el blindaje de 0.1.19 moría aquí).
+        // Con securityDisabled=false el servidor exige credenciales de verdad.
+        cfg.setSecurityDisabled(false);
         // Auto-sanación: si un cierre anterior dejó un mariadbd huérfano vivo,
         // retiene el lock del data dir ("ibdata1 must be writable") y este
         // arranque fallaría. Lo cerramos antes de empezar.
