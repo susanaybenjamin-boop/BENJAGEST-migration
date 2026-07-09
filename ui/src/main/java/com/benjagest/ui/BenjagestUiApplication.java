@@ -8916,26 +8916,51 @@ public class BenjagestUiApplication extends Application
         background.getChildren().add(buildScreensaverClock(stage));
 
         // Teclado numérico OCULTO (por si falla el teclado físico). Se muestra con
-        // el enlace "Teclado" y escribe en el campo del PIN.
+        // el enlace "Teclado" y escribe en el campo del PIN. Mismo estilo 3D que
+        // el teclado del login (.pin-key de app.css) — pedido de Benjamin
+        // 2026-07-09: "el mismo estilo al teclado oculto que el del login".
         GridPane keypad = new GridPane();
         keypad.setHgap(8); keypad.setVgap(8); keypad.setAlignment(Pos.CENTER);
         keypad.setVisible(false); keypad.setManaged(false);
+        java.util.Map<String, Button> lockKeys = new java.util.HashMap<>();
         String[] keys = {"1", "2", "3", "4", "5", "6", "7", "8", "9", "C", "0", "⌫"};
         for (int i = 0; i < keys.length; i++) {
             String k = keys[i];
             Button kb = new Button(k);
-            kb.setMinSize(58, 48);
+            kb.setMinSize(70, 60);
+            kb.setPrefSize(70, 60);
             kb.setFocusTraversable(false);
-            kb.setStyle("-fx-font-size: 18px; -fx-background-radius: 8;"
-                    + " -fx-background-color: rgba(255,255,255,0.10); -fx-text-fill: white;");
+            kb.getStyleClass().add("pin-key"); // relieve 3D + :pressed (app.css)
             kb.setOnAction(ev -> {
                 String cur = pin.getText() == null ? "" : pin.getText();
                 if ("C".equals(k)) pin.setText("");
                 else if ("⌫".equals(k)) pin.setText(cur.isEmpty() ? "" : cur.substring(0, cur.length() - 1));
                 else pin.setText(cur + k);
             });
+            lockKeys.put(k, kb);
             keypad.add(kb, i % 3, i / 3);
         }
+        // Feedback vivo con el teclado FÍSICO: si el teclado en pantalla está
+        // visible, la tecla virtual correspondiente se "hunde" ~120ms al teclear
+        // (solo visual — el PasswordField sigue recibiendo la tecla normal).
+        pin.addEventFilter(javafx.scene.input.KeyEvent.KEY_PRESSED, ke -> {
+            if (!keypad.isVisible()) return;
+            String txt = ke.getText();
+            Button target = null;
+            if (txt != null && txt.length() == 1 && txt.charAt(0) >= '0' && txt.charAt(0) <= '9') {
+                target = lockKeys.get(txt);
+            } else if (ke.getCode() == javafx.scene.input.KeyCode.BACK_SPACE) {
+                target = lockKeys.get("⌫");
+            }
+            if (target != null && !target.getStyleClass().contains("pin-key-flash")) {
+                final Button b = target;
+                b.getStyleClass().add("pin-key-flash");
+                javafx.animation.PauseTransition p =
+                        new javafx.animation.PauseTransition(javafx.util.Duration.millis(120));
+                p.setOnFinished(e2 -> b.getStyleClass().remove("pin-key-flash"));
+                p.play();
+            }
+        });
         javafx.scene.control.Hyperlink toggleKeypad = new javafx.scene.control.Hyperlink(t("lock.keypad.show"));
         toggleKeypad.setStyle("-fx-text-fill: #93c5fd;");
         toggleKeypad.setOnAction(ev -> {
