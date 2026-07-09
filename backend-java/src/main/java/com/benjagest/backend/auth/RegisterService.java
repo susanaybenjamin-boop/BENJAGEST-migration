@@ -175,8 +175,10 @@ public class RegisterService {
     private void seedAccountsFromTemplate(String companyId) {
         jdbc.update("""
                 INSERT IGNORE INTO accounting_accounts
-                    (id, company_id, code, name, account_type, active, is_standard)
-                SELECT UUID(), ?, t.code, t.name, t.account_type, TRUE, TRUE
+                    (id, company_id, code, name, account_type, active, is_standard,
+                     irpf_deductible_default)
+                SELECT UUID(), ?, t.code, t.name, t.account_type, TRUE, TRUE,
+                       t.irpf_deductible_default
                   FROM pgc_template t
                 """, companyId);
     }

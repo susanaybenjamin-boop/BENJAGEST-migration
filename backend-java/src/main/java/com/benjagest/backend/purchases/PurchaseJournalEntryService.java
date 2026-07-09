@@ -246,6 +246,20 @@ public class PurchaseJournalEntryService {
                     acc6xx, proposedRuleId, userId);
         }
 
+        // IRPF-DED (2026-07-09): la factura hereda la deducibilidad IRPF de su
+        // cuenta de gasto 6xx (subcuenta de vehículo = no deducible; genérica =
+        // deducible). Así, si una regla de proveedor enruta el gasto a una
+        // subcuenta de vehículo, la factura importada ya nace como no deducible
+        // en el 130 sin tener que tocarla a mano.
+        List<Integer> irpfDed = jdbcTemplate.query(
+                "SELECT irpf_deductible_default FROM accounting_accounts WHERE id = ?",
+                (rs, n) -> rs.getInt(1), acc6xx);
+        if (!irpfDed.isEmpty()) {
+            jdbcTemplate.update(
+                    "UPDATE purchase_invoices SET expense_deductible = ? WHERE id = ? AND company_id = ?",
+                    irpfDed.get(0), purchase.id(), companyId);
+        }
+
         return entryId;
     }
 
