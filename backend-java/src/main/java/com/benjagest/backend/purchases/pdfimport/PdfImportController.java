@@ -34,13 +34,39 @@ public class PdfImportController {
     private final PdfTextExtractor textExtractor;
     private final InvoiceFieldsExtractor fieldsExtractor;
     private final SupplierTemplateService templateService;
+    private final org.springframework.jdbc.core.JdbcTemplate jdbcTemplate;
+    private final com.benjagest.backend.tenant.TenantContext tenantContext;
 
     public PdfImportController(PdfTextExtractor textExtractor,
                                 InvoiceFieldsExtractor fieldsExtractor,
-                                SupplierTemplateService templateService) {
+                                SupplierTemplateService templateService,
+                                org.springframework.jdbc.core.JdbcTemplate jdbcTemplate,
+                                com.benjagest.backend.tenant.TenantContext tenantContext) {
         this.textExtractor = textExtractor;
         this.fieldsExtractor = fieldsExtractor;
         this.templateService = templateService;
+        this.jdbcTemplate = jdbcTemplate;
+        this.tenantContext = tenantContext;
+    }
+
+    /**
+     * PDF-EXTRACT-1 — identidad (NIF + razón social) de la empresa activa,
+     * para que el extractor no la confunda con el emisor de la factura.
+     */
+    private InvoiceFieldsExtractor.OwnParty ownParty() {
+        try {
+            var rows = jdbcTemplate.queryForList("""
+                    SELECT tax_identifier, legal_name FROM companies WHERE id = ?
+                    """, tenantContext.getCurrentCompanyId());
+            if (!rows.isEmpty()) {
+                return new InvoiceFieldsExtractor.OwnParty(
+                        (String) rows.get(0).get("tax_identifier"),
+                        (String) rows.get(0).get("legal_name"));
+            }
+        } catch (Exception ignored) {
+            // sin identidad propia el extractor funciona igual (sin exclusión)
+        }
+        return null;
     }
 
     /**
@@ -68,16 +94,18 @@ public class PdfImportController {
             // facturas son tablas — sin posiciones se mezclan etiqueta
             // y valor de columnas distintas.
             LayoutDocument layout = textExtractor.extractLayout(bytes);
+            // PDF-EXTRACT-1: extractLayout ya cae a OCR con escaneados y con
+            // text-layer entrelazado. Si aun así no hay líneas, no hay nada
+            // que leer (imagen ilegible o OCR no disponible).
             if (layout.pages().isEmpty()
                     || layout.allLines().isEmpty()) {
                 throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
-                        "El PDF no contiene texto extraible (puede ser una imagen escaneada). "
-                                + "El soporte OCR para PDFs escaneados se anyadira en un slice futuro.");
+                        "No se pudo extraer texto del PDF (imagen ilegible u OCR no disponible).");
             }
             // Multi-factura: Amazon puede empaquetar varias facturas en
             // un único PDF (cada una con su "Página 1 de N"). El
             // extractor devuelve una lista; la UI procesa una por una.
-            var rawResults = fieldsExtractor.extractAll(layout, bytes);
+            var rawResults = fieldsExtractor.extractAll(layout, bytes, ownParty());
             List<InvoiceFieldsExtractor.ExtractionResult> out = new ArrayList<>();
             for (var r : rawResults) {
                 var template = templateService.findByNif(r.emitterNif());
