@@ -150,6 +150,10 @@ public class SupplierTemplateService {
         // emitterNif, lo sobrescribimos para mostrar el correcto.
         String emitterNif = StringUtils.hasText(rules.get("emitterNif"))
                 ? rules.get("emitterNif") : base.emitterNif();
+        // PDF-EXTRACT-2: concepto fijo por proveedor ("Asesoría fiscal
+        // mensual") si la plantilla lo define; si no, el extraído del PDF.
+        String concept = StringUtils.hasText(rules.get("concept"))
+                ? rules.get("concept") : base.concept();
 
         // Incrementar uso de forma asíncrona — fire and forget
         try {
@@ -176,7 +180,8 @@ public class SupplierTemplateService {
                 base.receiverNif(),
                 base.receiverName(),
                 base.rectifying(),
-                base.rectifiedInvoiceNumber()
+                base.rectifiedInvoiceNumber(),
+                concept
         );
     }
 

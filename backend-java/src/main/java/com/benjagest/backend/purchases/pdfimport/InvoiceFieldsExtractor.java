@@ -66,7 +66,10 @@ public class InvoiceFieldsExtractor {
      */
     private static final Pattern NIF_PATTERN = Pattern.compile(
             "\\b([XYZxyz]?\\d{7,8}\\s?[A-HJ-NP-TV-Za-hj-np-tv-z]|" +
-            "[A-HJ-NP-SUVWa-hj-np-suvw]\\d{7}\\s?[0-9A-Ja-j])\\b"
+            "[A-HJ-NP-SUVWa-hj-np-suvw]\\d{7}\\s?[0-9A-Ja-j]|" +
+            // PDF-EXTRACT-2: DNI con dígitos AGRUPADOS por espacio o punto —
+            // "24 259 998 N" (factura artesanal), "24.239.576-Z" (taller).
+            "\\d{2}[. ]\\d{3}[. ]\\d{3}[. \\-]{0,2}\\s?[A-HJ-NP-TV-Za-hj-np-tv-z])\\b"
     );
 
     /**
@@ -130,6 +133,26 @@ public class InvoiceFieldsExtractor {
     private static final Pattern DATE_SPANISH_NAMED_PATTERN = Pattern.compile(
             "(?i)\\b(\\d{1,2})\\s+(?:de\\s+)?" + MONTH_NAMES_REGEX +
             "\\s+(?:de\\s+)?(\\d{4})\\b"
+    );
+
+    /**
+     * PDF-EXTRACT-2: fecha con mes ABREVIADO y separadores de guion/punto,
+     * formato típico de ERPs viejos: "24-mar.-2026", "24 mar 2026",
+     * "24-MAR-26". Forjados La Azucena la imprime así.
+     */
+    private static final Pattern DATE_SPANISH_ABBREV_PATTERN = Pattern.compile(
+            "(?i)\\b(\\d{1,2})[\\s\\-]+(ene|feb|mar|abr|may|jun|jul|ago|sep|set|oct|nov|dic)" +
+            "[a-z]*\\.?[\\s\\-]+(?:de\\s+)?(\\d{2,4})\\b"
+    );
+
+    private static final java.util.Map<String, Integer> SPANISH_MONTH_ABBREVS = java.util.Map.ofEntries(
+            java.util.Map.entry("ene", 1), java.util.Map.entry("feb", 2),
+            java.util.Map.entry("mar", 3), java.util.Map.entry("abr", 4),
+            java.util.Map.entry("may", 5), java.util.Map.entry("jun", 6),
+            java.util.Map.entry("jul", 7), java.util.Map.entry("ago", 8),
+            java.util.Map.entry("sep", 9), java.util.Map.entry("set", 9),
+            java.util.Map.entry("oct", 10), java.util.Map.entry("nov", 11),
+            java.util.Map.entry("dic", 12)
     );
 
     private static final java.util.Map<String, Integer> SPANISH_MONTHS = java.util.Map.ofEntries(
@@ -253,6 +276,12 @@ public class InvoiceFieldsExtractor {
     private static final Pattern INVOICE_NUMBER_TABLE_HEADER = Pattern.compile(
             "(?i)\\bn[\\u00fa\\u00fa\\u00famero]*\\b[\\s\\S]{0,40}?\\bserie\\b[\\s\\S]{0,40}?\\bfecha\\b"
     );
+
+    // NOTA PDF-EXTRACT-2: se intentó leer el nº de SH Asesores de la tabla
+    // OCR "NUDE FACTURA | IDENTIFICACIÓN CLIENTE / 229 RECIO LOPEZ..." pero
+    // el 229 es el CÓDIGO DE CLIENTE (idéntico en enero/febrero/marzo); el
+    // nº real lo tapa el QR y no es recuperable. Mejor null que un nº falso
+    // repetido que dispararía la detección de duplicados.
 
     /**
      * CIF explícito en pie de factura / mercantil:
@@ -541,7 +570,7 @@ public class InvoiceFieldsExtractor {
         // se descarta y se cae a la cascada textual sin él.
         if (isOwnNif(emitterNif, own)) emitterNif = null;
         if (emitterNif == null) {
-            emitterNif = guessEmitterNif(text, emitterCandidateNifs, allEuVat);
+            emitterNif = guessEmitterNif(text, emitterCandidateNifs, allEuVat, own);
         }
         if (isOwnNif(emitterNif, own)) emitterNif = null;
         // Normalizar: quitar espacios internos para que las
@@ -558,6 +587,17 @@ public class InvoiceFieldsExtractor {
         if (isJunkSupplierName(supplierName, own)) {
             supplierName = findCorporateNameFallback(text, own);
         }
+        // PDF-EXTRACT-2: última red — proveedor SIN sufijo societario
+        // (persona física, factura artesanal tipo A-024). El nombre vive
+        // pegado al NIF del emisor: misma línea o 1-3 líneas antes.
+        if (isJunkSupplierName(supplierName, own) && emitterNif != null) {
+            supplierName = findSupplierNameNearNif(text, emitterNif, own);
+        }
+        // PDF-EXTRACT-2: cortar la columna de dirección/contacto que el
+        // layout pega al nombre ("Miguel Martin Palomo  C/ Ermita 52").
+        if (supplierName != null) {
+            supplierName = cleanupNameCandidate(supplierName);
+        }
 
         // 4. Número de factura. Triple estrategia:
         //    a) Regex clásico "Factura nº XYZ" / "Número de la factura".
@@ -571,6 +611,14 @@ public class InvoiceFieldsExtractor {
         // SOLO para la búsqueda del número (test real de Bloques Los Llanos).
         String textForNumber = text.replaceAll(
                 "(?i)inscrita en el registro mercantil[^\\n]*", "");
+        // PDF-EXTRACT-2: otros "nº" que NO son el de la factura y que los
+        // patrones capturaban: "Albarán nº: 2740", "Nº Cliente: 1391",
+        // "Nº CUENTA: ES21...", "Nº Pedido". Se eliminan la etiqueta y su
+        // valor SOLO para la búsqueda del número.
+        textForNumber = textForNumber
+                .replaceAll("(?iu)albar[\\u00e1a]n\\s+n[\\u00ba\\u00b0\\u00aa]?\\.?\\s*:?\\s*\\d+", "")
+                .replaceAll("(?iu)(?<!\\p{L})n[\\u00ba\\u00b0\\u00aa]?\\.?\\s*(?:de\\s+)?" +
+                        "(?:cliente|cuenta|pedido|colegiado|operaci[\\u00f3o]n)\\s*:?\\s*[A-Z0-9 /.\\-]*", "");
         String invoiceNumber = guessInvoiceNumberByLayout(layout);
         if (invoiceNumber == null) {
             invoiceNumber = findFirstGroup(INVOICE_NUMBER_PATTERN, textForNumber, 1);
@@ -603,10 +651,17 @@ public class InvoiceFieldsExtractor {
         // 5. Fecha — cascada:
         //    a) Cerca de "Fecha de la factura" / "Invoice date" → prioritaria.
         //    b) Primer formato numérico DD/MM/YYYY o YYYY-MM-DD.
-        //    c) Primer formato nombre "11 abril 2026".
-        LocalDate invoiceDate = findInvoiceDateLabeled(text);
-        if (invoiceDate == null) invoiceDate = findFirstDate(text);
-        if (invoiceDate == null) invoiceDate = findFirstNamedDate(text);
+        //    c) Primer formato nombre "11 abril 2026" o abreviado "24-mar.-2026".
+        //    d) Mes+año sueltos "(enero 2026)" → día 1 (SH: el QR pisa la fecha
+        //       en OCR; al menos cae en el mes/trimestre correcto).
+        // PDF-EXTRACT-2: las líneas de ALBARÁN se excluyen de la búsqueda —
+        // "Albarán nº: 2740 Fecha: 20/03/2026" (Forjados) ganaba a la fecha
+        // real de la factura ("24-mar.-2026").
+        String textForDate = text.replaceAll("(?iu)[^\\n]*albar[\\u00e1a]n[^\\n]*", "");
+        LocalDate invoiceDate = findInvoiceDateLabeled(textForDate);
+        if (invoiceDate == null) invoiceDate = findFirstDate(textForDate);
+        if (invoiceDate == null) invoiceDate = findFirstNamedDate(textForDate);
+        if (invoiceDate == null) invoiceDate = findMonthYearFallback(textForDate);
 
         // 6. Importes — cascada:
         //    a) Tabla "BASE IMPONIBLE | %IVA | CUOTA | TOTAL" (facturas
@@ -621,6 +676,12 @@ public class InvoiceFieldsExtractor {
         }
         if (totals == null) {
             totals = findSolredTotalsRow(text);
+        }
+        if (totals == null) {
+            // PDF-EXTRACT-2: "Desglose de Impuestos: Impuesto 6,21 € al 21%
+            // sobre 29,59 €" (Hermanos Arenas) — la frase trae cuota, % y
+            // base explícitos aunque la tabla de totales salga corrupta.
+            totals = findDesgloseTotals(text);
         }
         if (totals == null) {
             // PDF-EXTRACT-1: última red — línea cuyos números cumplen la
@@ -638,6 +699,22 @@ public class InvoiceFieldsExtractor {
             base = findAmountForLabel(layout, text, BASE_LABEL, true);
             vatAmount = findAmountForLabel(layout, text, VAT_AMOUNT_LABEL, false);
             vatPct = findVatPercent(text);
+            // PDF-EXTRACT-2: totales en VERTICAL sin etiqueta de base
+            // (presupuesto/factura artesanal tipo A-024: "TOTAL ... 2.511,15" /
+            // "10 % I.V.A ... 251,11" / "2.762,26" en líneas separadas). Con la
+            // cuota y el % localizados, buscamos el par (base, total) del
+            // documento que cumpla base×pct≈cuota y base+cuota≈total.
+            TotalsRow vertical = findVerticalTotals(text, vatAmount, vatPct);
+            if (vertical != null) {
+                boolean incoherent = base == null || total == null
+                        || base.add(vatAmount == null ? BigDecimal.ZERO : vatAmount)
+                                .subtract(total).abs()
+                                .compareTo(new BigDecimal("0.02")) > 0;
+                if (incoherent) {
+                    base = vertical.base;
+                    total = vertical.total;
+                }
+            }
         }
         BigDecimal retentionAmount = findAmountForLabel(layout, text, RETENTION_LABEL, false);
 
@@ -720,11 +797,14 @@ public class InvoiceFieldsExtractor {
             if (rm.find()) rectifiedNumber = rm.group(1).trim();
         }
 
+        // 10. PDF-EXTRACT-2: concepto — primer concepto del detalle de líneas.
+        String concept = findConcept(text, own);
+
         return new ExtractionResult(
                 allNifs, emitterNif, supplierName, invoiceNumber, invoiceDate,
                 base, vatPct, vatAmount, total,
                 hashOf(originalBytes), confidence, head,
-                receiverNif, receiverName, rectifying, rectifiedNumber
+                receiverNif, receiverName, rectifying, rectifiedNumber, concept
         );
     }
 
@@ -829,14 +909,37 @@ public class InvoiceFieldsExtractor {
         Pattern datePat = Pattern.compile(
                 "^(\\d{1,4}[\\-/\\.]\\d{1,2}[\\-/\\.]\\d{1,4})$");
 
+        // PDF-EXTRACT-2: etiquetas "Nº <cosa>" que NO son el nº de factura.
+        // "Nº Cliente: 1391" (Forjados) devolvía 1391 como nº de factura.
+        Pattern notInvoiceAfterLabel = Pattern.compile(
+                "(?iu)^\\s*:?\\s*(?:de\\s+)?(?:cliente|cuenta|pedido|proveedor|" +
+                "colegiado|operaci[\\u00f3o]n|o\\.?\\s*r\\.?)\\b");
+        Pattern albaranBefore = Pattern.compile("(?iu)albar[\\u00e1a]n\\s*$");
+
         for (int i = 0; i < headLines; i++) {
             LayoutDocument.LayoutLine line = page.lines().get(i);
             String text = line.text();
             Matcher lm = labelPat.matcher(text);
-            if (!lm.find()) continue;
+            int labelEnd = -1;
+            while (lm.find()) {
+                // Saltar "Albarán nº ..." y "Nº Cliente/Cuenta/Pedido...".
+                if (albaranBefore.matcher(text.substring(0, lm.start())).find()) continue;
+                if (notInvoiceAfterLabel.matcher(text.substring(lm.end())).find()) continue;
+                labelEnd = lm.end();
+                break;
+            }
+            // PDF-EXTRACT-2: cabecera "FACTURA <col>" a INICIO de línea (sin
+            // "nº"): "FACTURA  Fecha" / "FACTURA: A-024". El valor va en la
+            // misma línea o en la(s) siguiente(s). Anclado a inicio para no
+            // disparar con "TOTAL FACTURA".
+            if (labelEnd < 0) {
+                Matcher bare = Pattern.compile("(?i)^\\s*factura\\b[:\\s]*").matcher(text);
+                if (bare.find()) labelEnd = bare.end();
+            }
+            if (labelEnd < 0) continue;
             // 1) Tras la etiqueta, intenta matchear un token en la
             //    misma línea.
-            String afterLabel = text.substring(lm.end());
+            String afterLabel = text.substring(labelEnd);
             String candidate = pickInvoiceNumberToken(afterLabel,
                     tokenPat, datePat);
             if (candidate != null) return candidate;
@@ -854,15 +957,23 @@ public class InvoiceFieldsExtractor {
     /** Selecciona el primer token de la línea que parezca nº de factura. */
     private String pickInvoiceNumberToken(String text, Pattern tokenPat,
                                             Pattern datePat) {
-        Matcher tm = tokenPat.matcher(text.toUpperCase());
+        String up = text.toUpperCase();
+        Matcher tm = tokenPat.matcher(up);
         while (tm.find()) {
             String cand = tm.group(1).trim();
             if (cand.length() < 3) continue;
             if (!cand.matches(".*\\d.*")) continue; // sin dígitos
             if (datePat.matcher(cand).matches()) continue; // fecha
             if (isInvoiceNumberNoise(cand)) continue; // palabra suelta
-            // No empezar con un mes/día solo: rechazar tokens que
-            // parezcan parte de la fecha sin más estructura.
+            // PDF-EXTRACT-2: nº partido por espacio tras el guion —
+            // "A26- 628" (Forjados) tokeniza como "A26"; pegamos el resto
+            // si lo que sigue es "- <dígitos>".
+            Matcher glue = Pattern.compile("^\\s?-\\s?(\\d{2,8})(?!\\d)")
+                    .matcher(up.substring(tm.end()));
+            if (glue.find()) {
+                String glued = cand + "-" + glue.group(1);
+                if (!datePat.matcher(glued).matches()) return glued;
+            }
             return cand;
         }
         return null;
@@ -1013,10 +1124,10 @@ public class InvoiceFieldsExtractor {
         return t.length() > 120 ? t.substring(0, 120) : t;
     }
 
-    /** Quita espacios internos del NIF ("24259998 N" → "24259998N"). */
+    /** Normaliza el NIF: quita espacios, puntos y guiones ("24.259.998-N" → "24259998N"). */
     private String cleanNif(String s) {
         if (s == null) return null;
-        return s.replaceAll("\\s+", "").toUpperCase();
+        return s.replaceAll("[\\s.\\-]+", "").toUpperCase();
     }
 
     /**
@@ -1171,10 +1282,70 @@ public class InvoiceFieldsExtractor {
         if (digits > s.length() / 3) return false;
         // Etiquetas frecuentes a descartar.
         if (s.matches("(?i).*\\b(direccion|address|c\\.?\\s*p\\.?|telef|tel\\.?|" +
-                "email|@|nif|cif|iban|cuenta|web|http|www\\.)\\b.*")) return false;
+                "email|@|nif|cif|d\\.?n\\.?i\\.?|iban|cuenta|web|http|www\\.)\\b.*")) return false;
         // Al menos una letra.
         if (!s.matches(".*[A-Za-z\\u00c0-\\u017f].*")) return false;
         return true;
+    }
+
+    /** Marcadores de dirección/contacto donde CORTAR un nombre que arrastra columnas. */
+    private static final Pattern NAME_TRAILING_ADDRESS = Pattern.compile(
+            "(?i)\\s+(C/|C\\.\\s|CALLE\\b|AVDA\\.?\\b|AVENIDA\\b|PLAZA\\b|PLZA\\.?\\b|" +
+            "PASEO\\b|CTRA\\.?\\b|CARRETERA\\b|CMNO\\.?\\b|CAMINO\\b|POL[IÍ]G\\.?\\b|" +
+            "TLF\\.?\\b|TEL[EÉ]?F?\\.?\\b|FAX\\b|EMAIL\\b|D\\.?N\\.?I\\.?\\b|NIF\\b|CIF\\b).*$");
+
+    /**
+     * PDF-EXTRACT-2 — nombre del proveedor buscándolo alrededor del NIF del
+     * EMISOR. El NIF puede estar impreso con separadores ("24 259 998 N"),
+     * así que se localiza con una regex flexible construida desde el NIF
+     * limpio. El nombre es el prefijo de la misma línea o la primera línea
+     * anterior que parezca nombre; se corta lo que sea dirección/contacto.
+     */
+    String findSupplierNameNearNif(String text, String emitterNif, OwnParty own) {
+        if (text == null || emitterNif == null) return null;
+        String clean = cleanNif(emitterNif);
+        StringBuilder flex = new StringBuilder();
+        for (int i = 0; i < clean.length(); i++) {
+            if (i > 0) flex.append("[\\s.\\-]{0,2}");
+            flex.append(Pattern.quote(String.valueOf(clean.charAt(i))));
+        }
+        Matcher m = Pattern.compile("(?i)" + flex).matcher(text);
+        if (!m.find()) return null;
+        int idx = m.start();
+        int lineStart = Math.max(0, text.lastIndexOf('\n', idx - 1) + 1);
+        // 1) Prefijo de la misma línea ("MIGUEL MARTIN D.N.I. 24 259 998 N").
+        String sameLine = cleanupNameCandidate(text.substring(lineStart, idx));
+        if (sameLine != null && looksLikeName(sameLine) && !isJunkSupplierName(sameLine, own)) {
+            return sameLine;
+        }
+        // 2) 1-3 líneas anteriores.
+        String head = text.substring(0, lineStart);
+        String[] prev = head.split("\\r?\\n");
+        for (int i = prev.length - 1; i >= 0 && i >= prev.length - 3; i--) {
+            String cand = cleanupNameCandidate(prev[i]);
+            if (cand != null && looksLikeName(cand) && !isJunkSupplierName(cand, own)) {
+                return cand;
+            }
+        }
+        return null;
+    }
+
+    /** Recorta dirección/contacto arrastrados por columnas y limita longitud. */
+    private String cleanupNameCandidate(String s) {
+        if (s == null) return null;
+        String t = NAME_TRAILING_ADDRESS.matcher(s.trim()).replaceAll("");
+        t = t.trim();
+        if (t.length() < 4) return null;
+        // Boilerplate mercantil o texto GLUEADO sin espacios (pie de Solred:
+        // "SolredSA,inscritaenelReg.Merc.deMadrid...") — no es un nombre.
+        if (t.matches("(?iu).*(inscrita|registro\\s+merc|reg\\.\\s*merc).*")) return null;
+        // 40: deja pasar razones sociales largas legítimas (el vendedor chino
+        // de Amazon "shenzhenshimoankejiyouxiangongsi", 32 chars) y sigue
+        // tirando las líneas glueadas de verdad (>100 chars sin espacios).
+        for (String tok : t.split("\\s+")) {
+            if (tok.length() > 40) return null;
+        }
+        return t.length() > 120 ? t.substring(0, 120) : t;
     }
 
     /**
@@ -1318,25 +1489,33 @@ public class InvoiceFieldsExtractor {
      * etiquetas y la de valores se separan o se pierden:
      *   "42,31 21.00 51,20"          → base × (1+21/100) = total (SH Asesores)
      *   "588,84 123,66 0,00 712,50€" → base + cuota − ret = total (Forjados)
+     *   "402.85 21.00 0.00 84.60 487.45" → base %iva dto cuota total (taller)
      * Recorre de ABAJO arriba (los totales viven al pie) y exige tolerancia
      * ±0,02. Un pct plausible es 0<pct≤30 (tipos de IVA españoles).
+     *
+     * <p>PDF-EXTRACT-2: los números deben llevar DECIMALES (",dd"/".dd") y
+     * no ser fragmento de otro número. Sin eso, "18140, LAZUBIA ... 18140 LA
+     * ZUBIA" (código postal, factura del taller) se troceaba en 181+40−181=40
+     * y colaba como fila de totales.
      */
+    private static final Pattern ARITHMETIC_NUM = Pattern.compile(
+            "(?<![\\d.,])(-?\\d{1,3}(?:\\.\\d{3})*[,.]\\d{2})(?!\\d)");
+
     private TotalsRow findArithmeticTotalsRow(String text) {
-        Pattern num = Pattern.compile("-?\\d{1,3}(?:\\.\\d{3})*(?:[,.]\\d{1,2})?");
         String[] lines = text.split("\\r?\\n");
         for (int i = lines.length - 1; i >= 0; i--) {
             String line = lines[i];
             // sin fechas (dd/mm/yyyy o dd-mm-yyyy) que parecerían números
             if (line.matches(".*\\d{1,2}[/-]\\d{1,2}[/-]\\d{2,4}.*")) continue;
             List<BigDecimal> nums = new ArrayList<>();
-            Matcher m = num.matcher(line);
+            Matcher m = ARITHMETIC_NUM.matcher(line);
             while (m.find()) {
-                BigDecimal v = parseAmount(m.group());
+                BigDecimal v = parseAmount(m.group(1));
                 if (v != null) nums.add(v);
             }
             if (nums.size() < 3 || nums.size() > 5) continue;
             // [base, pct, total] — base×(1+pct/100)≈total
-            for (int a = 0; a + 2 < nums.size() + 1 && nums.size() == 3; a++) {
+            if (nums.size() == 3) {
                 BigDecimal base = nums.get(0), pct = nums.get(1), total = nums.get(2);
                 if (pct.signum() > 0 && pct.compareTo(BigDecimal.valueOf(30)) <= 0
                         && base.signum() != 0
@@ -1347,7 +1526,6 @@ public class InvoiceFieldsExtractor {
                     row.vatAmount = total.subtract(base); row.total = total;
                     return row;
                 }
-                break;
             }
             // [base, cuota, total] — base+cuota≈total (cuota < base)
             if (nums.size() == 3) {
@@ -1368,6 +1546,92 @@ public class InvoiceFieldsExtractor {
                         && approx(base.add(cuota).subtract(ret), total)) {
                     TotalsRow row = new TotalsRow();
                     row.base = base; row.vatAmount = cuota; row.total = total;
+                    return row;
+                }
+            }
+            // [base, %iva, dto, cuota, total] — fila completa de taller:
+            //   base×pct/100≈cuota  Y  base+cuota−dto≈total
+            if (nums.size() == 5) {
+                BigDecimal base = nums.get(0), pct = nums.get(1), dto = nums.get(2),
+                        cuota = nums.get(3), total = nums.get(4);
+                if (pct.signum() > 0 && pct.compareTo(BigDecimal.valueOf(30)) <= 0
+                        && base.signum() != 0 && dto.signum() >= 0
+                        && approx(base.multiply(pct)
+                                .divide(BigDecimal.valueOf(100), 2, java.math.RoundingMode.HALF_UP), cuota)
+                        && approx(base.add(cuota).subtract(dto), total)) {
+                    TotalsRow row = new TotalsRow();
+                    row.base = base; row.vatPercent = pct;
+                    row.vatAmount = cuota; row.total = total;
+                    return row;
+                }
+            }
+        }
+        return null;
+    }
+
+    /**
+     * PDF-EXTRACT-2 — frase "Desglose de Impuestos: Impuesto 6,21 € al 21%
+     * sobre 29,59 €" (Hermanos Arenas). El OCR corrompe la tabla de totales
+     * ("s1€") pero esta frase trae cuota, % y base legibles. total = base+cuota.
+     */
+    private TotalsRow findDesgloseTotals(String text) {
+        Pattern p = Pattern.compile(
+                "(?i)impuestos?\\s+(-?\\d{1,3}(?:\\.\\d{3})*[,.]\\d{2})\\s*\\u20ac?" +
+                "\\s+al\\s+(\\d{1,2}(?:[,.]\\d{1,2})?)\\s*%\\s*" +
+                "sobre\\s+(-?\\d{1,3}(?:\\.\\d{3})*[,.]\\d{2})");
+        Matcher m = p.matcher(text);
+        if (!m.find()) return null;
+        BigDecimal cuota = parseAmount(m.group(1));
+        BigDecimal pct = parseAmount(m.group(2));
+        BigDecimal base = parseAmount(m.group(3));
+        if (cuota == null || base == null || base.signum() == 0) return null;
+        // Sanidad: cuota ≈ base×pct/100 (±0,05 — el OCR redondea raro).
+        if (pct != null && base.multiply(pct)
+                .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP)
+                .subtract(cuota).abs().compareTo(new BigDecimal("0.05")) > 0) {
+            return null;
+        }
+        TotalsRow row = new TotalsRow();
+        row.base = base; row.vatPercent = pct; row.vatAmount = cuota;
+        row.total = base.add(cuota);
+        return row;
+    }
+
+    /**
+     * PDF-EXTRACT-2 — totales en VERTICAL sin etiqueta de base (factura
+     * artesanal tipo presupuesto: "TOTAL PRESUPUESTO ... 2.511,15 €" /
+     * "10 % I.V.A ... 251,11 €" / "2.762,26 €" cada uno en su línea). Con la
+     * CUOTA (por etiqueta) y opcionalmente el %, busca entre todos los
+     * importes del documento un par (base, total) que cumpla:
+     *   base × pct/100 ≈ cuota (si hay pct)   y   base + cuota ≈ total.
+     */
+    private TotalsRow findVerticalTotals(String text, BigDecimal vatAmount, BigDecimal vatPct) {
+        // Sin cuota Y % conocidos no hay ancla fiable — cualquier par b+x=t
+        // casual colaría. Con ambos, la doble condición es casi inequívoca.
+        if (vatAmount == null || vatAmount.signum() == 0) return null;
+        if (vatPct == null || vatPct.signum() <= 0) return null;
+        List<BigDecimal> amounts = new ArrayList<>();
+        Matcher m = ARITHMETIC_NUM.matcher(text);
+        while (m.find()) {
+            BigDecimal v = parseAmount(m.group(1));
+            if (v != null && !amounts.contains(v)) amounts.add(v);
+        }
+        for (BigDecimal b : amounts) {
+            if (b.signum() == 0 || b.abs().compareTo(vatAmount.abs()) <= 0) continue;
+            if (vatPct != null && vatPct.signum() > 0) {
+                BigDecimal expectedVat = b.multiply(vatPct)
+                        .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
+                if (expectedVat.subtract(vatAmount).abs()
+                        .compareTo(new BigDecimal("0.02")) > 0) continue;
+            }
+            BigDecimal expectedTotal = b.add(vatAmount);
+            for (BigDecimal t : amounts) {
+                if (t == b) continue;
+                if (expectedTotal.subtract(t).abs()
+                        .compareTo(new BigDecimal("0.02")) <= 0) {
+                    TotalsRow row = new TotalsRow();
+                    row.base = b; row.vatPercent = vatPct;
+                    row.vatAmount = vatAmount; row.total = t;
                     return row;
                 }
             }
@@ -1524,9 +1788,9 @@ public class InvoiceFieldsExtractor {
         Matcher m = p.matcher(text);
         while (m.find()) {
             String v = m.group(1) != null ? m.group(1) : m.group();
-            // Normalizamos quitando espacios internos para que "24259998 N"
-            // y "24259998N" se traten como el mismo NIF en comparaciones.
-            seen.add(v.replaceAll("\\s+", "").toUpperCase());
+            // Normalizamos quitando espacios/puntos/guiones internos para que
+            // "24 259 998 N" y "24259998N" sean el mismo NIF en comparaciones.
+            seen.add(v.replaceAll("[\\s.\\-]+", "").toUpperCase());
         }
         return new ArrayList<>(seen);
     }
@@ -1547,6 +1811,11 @@ public class InvoiceFieldsExtractor {
         if (up.isBlank()) return true;
         // Sin dígitos = palabra, no número.
         if (!up.matches(".*\\d.*")) return true;
+        // PDF-EXTRACT-2: una FECHA no es un número de factura. Caso real
+        // Solred marzo: "Núm. Factura 01/03/2026 AL 31/03/2026" (el periodo
+        // facturado) capturaba "01/03/2026"; el nº real va en la línea
+        // siguiente ("Núm. Factura SMP260057590") y lo pilla el 2º pase.
+        if (up.matches("\\d{1,4}[\\-/.]\\d{1,2}[\\-/.]\\d{1,4}")) return true;
         // Listas de palabras puramente alfabéticas que la regex puede
         // capturar por estar pegadas a "Nº" o a "Factura nº".
         switch (up) {
@@ -1559,7 +1828,8 @@ public class InvoiceFieldsExtractor {
         return false;
     }
 
-    private String guessEmitterNif(String text, List<String> allNifs, List<String> allEuVat) {
+    private String guessEmitterNif(String text, List<String> allNifs, List<String> allEuVat,
+                                     OwnParty own) {
         // Determinar dónde aparece la etiqueta de receptor para descartar
         // NIFs que estén por debajo (esos son del cliente, no del emisor).
         Matcher recv = RECEIVER_LABEL.matcher(text);
@@ -1597,11 +1867,15 @@ public class InvoiceFieldsExtractor {
             return eu.group(1).toUpperCase();
         }
         // PRIORIDAD 4: el primer NIF nacional antes del receptor.
+        // PDF-EXTRACT-2: saltando el NIF PROPIO — en facturas artesanales
+        // (A-024) el NIF del comprador va impreso ANTES que el del emisor
+        // y este bucle lo devolvía (extract() lo anulaba sin reintentar).
         Matcher nifMatcher = NIF_PATTERN.matcher(text);
         while (nifMatcher.find()) {
-            if (nifMatcher.start() < receiverPos) {
-                return nifMatcher.group(1).toUpperCase();
-            }
+            if (nifMatcher.start() >= receiverPos) break;
+            String cand = nifMatcher.group(1).toUpperCase();
+            if (isOwnNif(cleanNif(cand), own)) continue;
+            return cand;
         }
         // PRIORIDAD 5: el primer VAT EU sin etiqueta.
         if (!allEuVat.isEmpty()) return allEuVat.get(0);
@@ -1690,6 +1964,8 @@ public class InvoiceFieldsExtractor {
         Pattern labels = Pattern.compile(
                 "(?i)(?:fecha\\s+(?:de\\s+)?(?:la\\s+)?factura\\b|" +
                 "fecha\\s+de\\s+emisi[\\u00f3o]n|" +
+                // PDF-EXTRACT-2: "Lugar y Fecha  MADRID - 31/03/2026" (Solred).
+                "lugar\\s+y\\s+fecha|" +
                 "invoice\\s+date|date\\s+of\\s+invoice)\\s*:?"
         );
         Matcher l = labels.matcher(text);
@@ -1716,6 +1992,43 @@ public class InvoiceFieldsExtractor {
                     return LocalDate.of(y, mo, d);
                 }
             } catch (Exception ignored) {}
+        }
+        return parseFirstAbbrevDate(text);
+    }
+
+    /** PDF-EXTRACT-2: "24-mar.-2026" / "24 mar 26" → LocalDate. */
+    private LocalDate parseFirstAbbrevDate(String text) {
+        Matcher m = DATE_SPANISH_ABBREV_PATTERN.matcher(text);
+        while (m.find()) {
+            try {
+                int d = Integer.parseInt(m.group(1));
+                Integer mo = SPANISH_MONTH_ABBREVS.get(m.group(2).toLowerCase());
+                int y = Integer.parseInt(m.group(3));
+                if (y < 100) y += 2000;
+                if (mo == null || d < 1 || d > 31) continue;
+                return LocalDate.of(y, mo, d);
+            } catch (Exception ignored) { /* siguiente */ }
+        }
+        return null;
+    }
+
+    /**
+     * PDF-EXTRACT-2 — último recurso: mes+año sueltos ("ASESORIA FISCAL Y
+     * CONTABLE (enero 2026)"). Devuelve el día 1 de ese mes: no es la fecha
+     * exacta de la factura, pero la sitúa en el mes (y trimestre) correcto y
+     * el usuario la ajusta en el formulario. Solo se usa si NO hay ninguna
+     * fecha completa en el documento.
+     */
+    private LocalDate findMonthYearFallback(String text) {
+        Pattern p = Pattern.compile(
+                "(?i)\\b" + MONTH_NAMES_REGEX + "\\s+(?:de\\s+)?(20\\d{2})\\b");
+        Matcher m = p.matcher(text);
+        while (m.find()) {
+            Integer mo = SPANISH_MONTHS.get(m.group(1).toLowerCase());
+            if (mo == null) continue;
+            try {
+                return LocalDate.of(Integer.parseInt(m.group(2)), mo, 1);
+            } catch (Exception ignored) { /* siguiente */ }
         }
         return null;
     }
@@ -1756,7 +2069,7 @@ public class InvoiceFieldsExtractor {
                 return LocalDate.of(y, mo, d);
             } catch (Exception ignored) { /* siguiente */ }
         }
-        return null;
+        return parseFirstAbbrevDate(text);
     }
 
     private LocalDate findFirstDate(String text) {
@@ -1909,6 +2222,177 @@ public class InvoiceFieldsExtractor {
         return null;
     }
 
+    // ====================================================================
+    //  PDF-EXTRACT-2 — CONCEPTO (primer concepto del detalle de líneas)
+    // ====================================================================
+
+    /** Longitud máxima del concepto extraído; el resto se recorta con "…". */
+    private static final int CONCEPT_MAX_LEN = 80;
+
+    /** Cabeceras de sección de detalle sin tabla ("Mano Obra", "Repuestos"). */
+    private static final Pattern CONCEPT_SECTION_HEADER = Pattern.compile(
+            "(?i)^\\s*(mano\\s+(?:de\\s+)?obra|repuestos|materiales|servicios|conceptos?)\\s*:?\\s*$");
+
+    /** Run de números/importes al FINAL de una línea de detalle (cant/precio/importe). */
+    private static final Pattern CONCEPT_TRAILING_NUMBERS = Pattern.compile(
+            "(?:\\s+-?\\d[\\d.,]*\\s*(?:%|\\u20ac|EUR)?)+\\s*$");
+
+    /** Código de artículo / nº de orden al INICIO ("12 ", "00470596 ", "1.1 "). */
+    private static final Pattern CONCEPT_LEADING_CODE = Pattern.compile(
+            "^\\s*\\d{1,10}(?:[.,]\\d{1,3})?\\s+");
+
+    /** Líneas que jamás son un concepto aunque estén en la zona de detalle. */
+    private static final Pattern CONCEPT_JUNK = Pattern.compile(
+            "(?iu)\\b(qr|tributari[oa]|verif?actu|albar[\\u00e1a]n|p[\\u00e1a]gina|" +
+            "identificaci[\\u00f3o]n|tel[\\u00e9e]fono|tlf|fax|email|iban|" +
+            "n[\\u00ba\\u00b0]?\\.?\\s*(?:de\\s+)?(?:cliente|cuenta|pedido)|" +
+            "forma\\s+de\\s+pago|vencimiento|domicilio|registro\\s+mercantil)\\b");
+
+    /** Palabras de etiqueta fiscal: una línea compuesta SOLO por ellas no es concepto. */
+    private static final java.util.Set<String> CONCEPT_LABEL_WORDS = java.util.Set.of(
+            "BASE", "IMPONIBLE", "IVA", "I.V.A", "I.V.A.", "CUOTA", "TIPO", "TOTAL",
+            "DTO", "DTO.", "RET", "RET.", "RETENCION", "IRPF", "IMPORTE", "IMPORTES",
+            "CANTIDAD", "UNIDADES", "PRECIO", "CONCEPTO", "DESCRIPCION", "ARTICULO",
+            "RESUMEN", "CODIGO", "FECHA", "FACTURA", "SERIE", "REF", "REF.", "DETALLE",
+            "EUROS", "SUMA", "A", "DE", "DEL", "Y", "EN", "%", "PAGAR",
+            // Sub-cabecera de la tabla Amazon: "(IVA excluido) (IVA incluido)".
+            "EXCLUIDO", "INCLUIDO", "UNITARIO", "P", "P.", "CANT", "CANT.");
+
+    /** ¿La línea es la cabecera de la tabla de detalle? (≥2 palabras de columna). */
+    static boolean isConceptTableHeader(String line) {
+        if (line == null || line.length() < 6) return false;
+        String up = stripAccents(line).toUpperCase();
+        int hits = 0;
+        for (String k : new String[]{"CONCEPTO", "DESCRIPCION", "ARTICULO", "RESUMEN",
+                "PRODUCTO", "CANTIDAD", "UNIDADES", "PRECIO", "IMPORTE", "DETALLE"}) {
+            if (up.contains(k)) hits++;
+        }
+        if (up.matches(".*\\bREF\\.?\\b.*")) hits++;
+        return hits >= 2;
+    }
+
+    /**
+     * PDF-EXTRACT-2 — extrae el PRIMER concepto del detalle de líneas.
+     *
+     * Estrategia:
+     *   1) Localizar la zona de detalle: cabecera de tabla ("Concepto |
+     *      Cantidad | Importe", "Artículo ... Precio ... Importe", "CODIGO
+     *      RESUMEN ...") o cabecera de sección ("Mano Obra", "Repuestos").
+     *   2) Desde ahí, la primera línea que parezca descripción: se le quita
+     *      el run de números del final (cant/precio/importe/%) y el código
+     *      de artículo del principio, y debe conservar texto "humano".
+     *   3) Sin cabecera reconocible (OCR sucio tipo SH), fallback: primera
+     *      línea del documento con forma de línea de detalle (texto + ≥2
+     *      importes con decimales al final).
+     *   4) Si hay varios conceptos se toma el primero; >80 chars → "…".
+     *
+     * Robusto a OCR/escaneado/rotado porque trabaja sobre el texto ya
+     * reconstruido (el mismo que el resto de heurísticas).
+     */
+    static String findConcept(String text, OwnParty own) {
+        if (text == null || text.isBlank()) return null;
+        String[] lines = text.split("\\r?\\n");
+        // 1-2) Cabecera de tabla o sección + ventana de búsqueda.
+        int budget = 0;
+        boolean inZone = false;
+        for (String raw : lines) {
+            String line = raw.trim();
+            if (line.isEmpty()) continue;
+            if (isConceptTableHeader(line) || CONCEPT_SECTION_HEADER.matcher(line).matches()) {
+                inZone = true;
+                budget = 12; // ventana; otra cabecera la renueva
+                continue;
+            }
+            if (!inZone) continue;
+            if (budget-- <= 0) break;
+            String concept = conceptCandidate(line, own);
+            if (concept != null) return truncateConcept(concept);
+        }
+        // 3) Fallback sin cabecera: línea con forma de detalle (≥2 importes
+        //    decimales al final + texto delante).
+        for (String raw : lines) {
+            String line = raw.trim();
+            if (line.isEmpty()) continue;
+            Matcher tail = CONCEPT_TRAILING_NUMBERS.matcher(line);
+            if (!tail.find()) continue;
+            long decimals = Pattern.compile("-?\\d[\\d.]*[,.]\\d{2}")
+                    .matcher(tail.group()).results().count();
+            if (decimals < 2) continue;
+            String concept = conceptCandidate(line, own);
+            if (concept != null) return truncateConcept(concept);
+        }
+        return null;
+    }
+
+    /** Limpia una línea de la zona de detalle; null si no es un concepto. */
+    private static String conceptCandidate(String line, OwnParty own) {
+        if (CONCEPT_JUNK.matcher(line).find()) return null;
+        // Quitar números del final y código del principio. El run del final
+        // solo cuenta como "línea de detalle" si trae al menos UN importe con
+        // decimales — un entero suelto ("HERRERIA, 59") es una dirección.
+        Matcher tail = CONCEPT_TRAILING_NUMBERS.matcher(line);
+        String t = line;
+        boolean strippedNumbers = false;
+        if (tail.find()) {
+            // Sin lookahead de cierre: el OCR pega decimales de más
+            // ("10,9917" en Hermanos Arenas) y sigue siendo un importe.
+            boolean hasDecimalAmount = Pattern.compile("\\d[,.]\\d{2}")
+                    .matcher(tail.group()).find();
+            if (hasDecimalAmount) {
+                t = line.substring(0, tail.start());
+                strippedNumbers = true;
+            }
+        }
+        // El código de artículo inicial solo se quita en líneas de DETALLE
+        // (con importes al final). Sin importes, "18140 - LA ZUBIA (GRANADA)"
+        // es un código postal y quitarle el 18140 lo convertía en "concepto".
+        if (strippedNumbers) {
+            t = CONCEPT_LEADING_CODE.matcher(t).replaceFirst("");
+        }
+        // Puntuación inicial arrastrada por un wrap de línea (", PROGRAMAR…").
+        t = t.replaceFirst("^[\\s,;:.\\-]+", "");
+        // Paréntesis abierto colgando al final ("(solo" — la cantidad y los
+        // importes se comieron el cierre).
+        t = t.replaceFirst("\\s*\\([^)]*$", "");
+        t = t.trim();
+        if (t.length() < 6) return null;
+        // Solo etiquetas fiscales ("Imponible I.V.A. I.V.A.") → no es concepto.
+        boolean allLabels = true;
+        int letterWords = 0;
+        for (String w : t.split("[\\s|\\[\\]():]+")) {
+            if (w.isBlank()) continue;
+            String wUp = stripAccents(w).toUpperCase().replaceAll("[^A-Z0-9.%]", "");
+            if (wUp.isBlank()) continue;
+            if (!CONCEPT_LABEL_WORDS.contains(wUp)) allLabels = false;
+            if (wUp.matches(".*[A-Z].*")) letterWords++;
+        }
+        if (allLabels) return null;
+        // Texto humano mínimo: ≥4 letras y ratio de dígitos contenido.
+        long letters = t.chars().filter(Character::isLetter).count();
+        if (letters < 4) return null;
+        long digits = t.chars().filter(Character::isDigit).count();
+        if (digits > letters) return null;
+        // Dirección/valor suelto: sin importes recortados, con dígitos y
+        // ≤3 palabras ("HERRERIA, 59") → no es concepto.
+        if (!strippedNumbers && digits > 0 && letterWords <= 3) return null;
+        // Código postal / línea que empieza por número largo.
+        if (t.matches("^\\d{4,}.*")) return null;
+        // Fechas sueltas.
+        if (t.matches(".*\\d{1,2}[/.\\-]\\d{1,2}[/.\\-]\\d{2,4}.*")) return null;
+        // El nombre de la propia empresa o basura de tabla.
+        if (isJunkSupplierName(t, own)) return null;
+        return t;
+    }
+
+    /** Recorta el concepto a {@link #CONCEPT_MAX_LEN} con "…" en límite de palabra. */
+    private static String truncateConcept(String s) {
+        if (s.length() <= CONCEPT_MAX_LEN) return s;
+        String cut = s.substring(0, CONCEPT_MAX_LEN - 1);
+        int lastSpace = cut.lastIndexOf(' ');
+        if (lastSpace > 40) cut = cut.substring(0, lastSpace);
+        return cut + "…";
+    }
+
     /**
      * Compara base + iva (- retención) ≈ total con tolerancia de 0,02 €.
      * Si encaja, confianza HIGH; si los 3 existen pero no encajan, LOW;
@@ -1995,7 +2479,15 @@ public class InvoiceFieldsExtractor {
             /** TRUE si el PDF contiene marcadores de "RECTIFICATIVA". */
             boolean rectifying,
             /** Si es rectificativa, nº de la factura que rectifica (si se detecta). */
-            String rectifiedInvoiceNumber
+            String rectifiedInvoiceNumber,
+            /**
+             * PDF-EXTRACT-2: primer concepto de la tabla de líneas del
+             * documento ("DIESEL E+ NEOTECH (L)", "Reforma de cocina en…").
+             * Si hay varios se toma el primero; si es muy largo se recorta
+             * con "…". Puede ser null si el documento no tiene detalle
+             * reconocible.
+             */
+            String concept
     ) {
         public String invoiceDateIso() {
             return invoiceDate == null ? null : invoiceDate.format(DateTimeFormatter.ISO_LOCAL_DATE);
@@ -2010,7 +2502,7 @@ public class InvoiceFieldsExtractor {
             this(allDetectedNifs, emitterNif, supplierName, invoiceNumber,
                     invoiceDate, baseAmount, vatPercent, vatAmount, totalAmount,
                     documentSha256, confidence, rawTextHead,
-                    null, null, false, null);
+                    null, null, false, null, null);
         }
     }
 }
