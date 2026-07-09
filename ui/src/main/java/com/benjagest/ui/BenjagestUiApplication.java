@@ -4944,8 +4944,12 @@ public class BenjagestUiApplication extends Application
         // Concepto del gasto — el asesor escribe qué fue ese gasto
         // (p. ej. "Material de oficina") y eso aparece en la línea 6xx
         // del asiento contable. Si lo deja vacío, se genera un fallback.
+        // PDF-EXTRACT-2: se precarga con el primer concepto del detalle
+        // que el extractor haya leído del PDF (editable).
         TextField conceptField = new TextField();
         conceptField.setPromptText(t("purchases.import.field.concept_prompt"));
+        String extractedConcept = extractField(json, "concept");
+        if (!isBlankOrDash(extractedConcept)) conceptField.setText(extractedConcept);
         for (TextField tf : new TextField[]{
                 supplierField, emitterField, numberField, dateField,
                 baseField, vatPctField, vatAmtField, totalField,

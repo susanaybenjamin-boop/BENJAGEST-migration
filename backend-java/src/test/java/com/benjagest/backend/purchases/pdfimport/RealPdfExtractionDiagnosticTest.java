@@ -64,11 +64,11 @@ class RealPdfExtractionDiagnosticTest {
                     }
                     int i = 0;
                     for (var r : results) {
-                        System.out.printf("  [%d] proveedor=%s | nifEmisor=%s | nifReceptor=%s | num=%s | fecha=%s | base=%s | iva%%=%s | cuota=%s | total=%s | nifsVistos=%s%n",
+                        System.out.printf("  [%d] proveedor=%s | nifEmisor=%s | nifReceptor=%s | num=%s | fecha=%s | base=%s | iva%%=%s | cuota=%s | total=%s | concepto=%s | nifsVistos=%s%n",
                                 i++, r.supplierName(), r.emitterNif(), r.receiverNif(),
                                 r.invoiceNumber(), r.invoiceDate(), r.baseAmount(),
                                 r.vatPercent(), r.vatAmount(), r.totalAmount(),
-                                r.allDetectedNifs());
+                                r.concept(), r.allDetectedNifs());
                     }
                 } catch (Exception ex) {
                     System.out.println("  ERROR: " + ex.getClass().getSimpleName() + ": " + ex.getMessage());
