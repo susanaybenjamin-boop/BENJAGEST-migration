@@ -100,7 +100,8 @@ public class PurchaseInvoiceApiClient {
     /**
      * OPTYPE — clasificación fiscal de un gasto: [operationType,
      * vatDeductiblePercent, expenseDeductible("true"/"false"),
-     * investmentGood("true"/"false")].
+     * investmentGood("true"/"false"), irpfDeductiblePercent("" = hereda de
+     * la cuenta)].
      */
     public String[] getClassification(String id) throws IOException, InterruptedException {
         HttpRequest.Builder b = HttpRequest.newBuilder(
@@ -111,19 +112,36 @@ public class PurchaseInvoiceApiClient {
         if (r.statusCode() < 200 || r.statusCode() >= 300) throw new IOException(r.body());
         String j = r.body();
         java.math.BigDecimal pct = bdField(j, "vatDeductiblePercent");
+        java.math.BigDecimal irpf = bdField(j, "irpfDeductiblePercent");
         return new String[]{ strField(j, "operationType"),
                 pct == null ? "100" : pct.toPlainString(),
                 j.contains("\"expenseDeductible\":true") ? "true" : "false",
-                j.contains("\"investmentGood\":true") ? "true" : "false" };
+                j.contains("\"investmentGood\":true") ? "true" : "false",
+                irpf == null ? "" : irpf.toPlainString() };
     }
 
     public void setClassification(String id, String operationType, String vatDeductiblePercent,
                                   boolean expenseDeductible, boolean investmentGood)
             throws IOException, InterruptedException {
+        setClassification(id, operationType, vatDeductiblePercent, expenseDeductible,
+                investmentGood, null, false);
+    }
+
+    /**
+     * DEDUC — variante con % de IRPF deducible ("" o null = hereda de la
+     * cuenta) y guardado opcional como regla del proveedor.
+     */
+    public void setClassification(String id, String operationType, String vatDeductiblePercent,
+                                  boolean expenseDeductible, boolean investmentGood,
+                                  String irpfDeductiblePercent, boolean saveAsSupplierRule)
+            throws IOException, InterruptedException {
         String body = "{\"operationType\":\"" + operationType + "\",\"vatDeductiblePercent\":"
                 + (vatDeductiblePercent == null || vatDeductiblePercent.isBlank() ? "100" : vatDeductiblePercent)
                 + ",\"expenseDeductible\":" + expenseDeductible
-                + ",\"investmentGood\":" + investmentGood + "}";
+                + ",\"investmentGood\":" + investmentGood
+                + (irpfDeductiblePercent == null || irpfDeductiblePercent.isBlank()
+                        ? "" : ",\"irpfDeductiblePercent\":" + irpfDeductiblePercent)
+                + ",\"saveAsSupplierRule\":" + saveAsSupplierRule + "}";
         HttpRequest.Builder b = HttpRequest.newBuilder(
                         URI.create(baseUrl + "/purchases/invoices/" + id + "/classification"))
                 .timeout(Duration.ofSeconds(10)).header("Content-Type", "application/json")

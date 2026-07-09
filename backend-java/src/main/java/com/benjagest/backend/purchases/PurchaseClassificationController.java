@@ -38,27 +38,43 @@ public class PurchaseClassificationController {
     private final JdbcTemplate jdbc;
     private final TenantContext tenant;
     private final PurchaseInvoiceService invoiceService;
+    private final PurchaseJournalEntryService journalService;
+    private final com.benjagest.backend.auth.CurrentUserService currentUserService;
 
     public PurchaseClassificationController(JdbcTemplate jdbc, TenantContext tenant,
-                                              PurchaseInvoiceService invoiceService) {
+                                              PurchaseInvoiceService invoiceService,
+                                              PurchaseJournalEntryService journalService,
+                                              com.benjagest.backend.auth.CurrentUserService currentUserService) {
         this.jdbc = jdbc;
         this.tenant = tenant;
         this.invoiceService = invoiceService;
+        this.journalService = journalService;
+        this.currentUserService = currentUserService;
     }
 
+    /**
+     * DEDUC (2026-07-09): {@code irpfDeductiblePercent} NULL = hereda de la
+     * CUENTA del gasto (modelo IRPF-DED); 0-100 = decisión explícita para esta
+     * factura. {@code saveAsSupplierRule} TRUE al actualizar guarda/actualiza
+     * la regla del proveedor (precarga de futuros gastos de ese NIF).
+     */
     public record Classification(String operationType, BigDecimal vatDeductiblePercent,
-                                 boolean expenseDeductible, boolean investmentGood) {}
+                                 boolean expenseDeductible, boolean investmentGood,
+                                 BigDecimal irpfDeductiblePercent, Boolean saveAsSupplierRule) {}
 
     @GetMapping
     public Classification get(@PathVariable("id") String id) {
         List<Classification> rows = jdbc.query("""
-                SELECT operation_type, vat_deductible_percent, expense_deductible, investment_good
+                SELECT operation_type, vat_deductible_percent, expense_deductible,
+                       investment_good, irpf_deductible_percent
                   FROM purchase_invoices WHERE id = ? AND company_id = ?
                 """, (rs, n) -> new Classification(
                         rs.getString("operation_type"),
                         rs.getBigDecimal("vat_deductible_percent"),
                         rs.getBoolean("expense_deductible"),
-                        rs.getBoolean("investment_good")),
+                        rs.getBoolean("investment_good"),
+                        rs.getBigDecimal("irpf_deductible_percent"),
+                        null),
                 id, tenant.getCurrentCompanyId());
         if (rows.isEmpty()) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Gasto no encontrado");
         return rows.get(0);
@@ -80,14 +96,47 @@ public class PurchaseClassificationController {
         if (pct.signum() < 0 || pct.compareTo(new BigDecimal("100")) > 0) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "% de IVA deducible fuera de 0-100.");
         }
+        BigDecimal irpfPct = req.irpfDeductiblePercent();
+        if (irpfPct != null && (irpfPct.signum() < 0 || irpfPct.compareTo(new BigDecimal("100")) > 0)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "% de IRPF deducible fuera de 0-100.");
+        }
         int n = jdbc.update("""
                 UPDATE purchase_invoices
                    SET operation_type = ?, vat_deductible_percent = ?,
-                       expense_deductible = ?, investment_good = ?
+                       expense_deductible = ?, investment_good = ?,
+                       irpf_deductible_percent = ?
                  WHERE id = ? AND company_id = ?
-                """, op, pct, req.expenseDeductible(), req.investmentGood(),
+                """, op, pct, req.expenseDeductible(), req.investmentGood(), irpfPct,
                 id, tenant.getCurrentCompanyId());
         if (n == 0) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Gasto no encontrado");
+
+        // DEDUC: reflejar el % de IVA deducible en el ASIENTO (criterio PGC:
+        // la parte no deducible es mayor gasto en la misma 6xx, el 472 queda
+        // solo con la deducible). Total del asiento intacto.
+        journalService.applyVatDeductibilitySplit(invoiceService.get(id));
+
+        // DEDUC: aprender la regla del proveedor si el asesor lo pidió.
+        if (Boolean.TRUE.equals(req.saveAsSupplierRule())) {
+            var inv = invoiceService.get(id);
+            if (inv.supplierNif() != null && !inv.supplierNif().isBlank()) {
+                String userId;
+                try { userId = currentUserService.require().userId(); }
+                catch (Exception ex) { userId = null; }
+                // Con IRPF NULL (hereda de la cuenta), la regla guarda 100 —
+                // la herencia por cuenta ya la cubre la regla NIF→cuenta.
+                jdbc.update("""
+                        INSERT INTO supplier_deductibility_rules
+                            (id, company_id, supplier_nif, vat_deductible_percent,
+                             irpf_deductible_percent, created_by_user_id)
+                        VALUES (UUID(), ?, ?, ?, ?, ?)
+                        ON DUPLICATE KEY UPDATE
+                            vat_deductible_percent = VALUES(vat_deductible_percent),
+                            irpf_deductible_percent = VALUES(irpf_deductible_percent)
+                        """, tenant.getCurrentCompanyId(),
+                        inv.supplierNif().trim().toUpperCase(), pct,
+                        irpfPct == null ? new BigDecimal("100") : irpfPct, userId);
+            }
+        }
         return get(id);
     }
 }

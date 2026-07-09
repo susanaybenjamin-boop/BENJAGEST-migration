@@ -128,6 +128,12 @@ public class PurchaseInvoiceService {
             repository.updateOperationType(id, tipoOp);
         }
 
+        // DEDUC (2026-07-09): si la asesoría tiene una REGLA de deducibilidad
+        // para este proveedor ("Repsol = IVA 50% / IRPF 0%"), se PRECARGA en
+        // la factura ANTES de generar el asiento (el reparto 6xx/472 la usa).
+        // Solo precarga: la clasificación fiscal de la factura sigue editable.
+        applySupplierDeductibilityRule(id, normalize(req.supplierNif()));
+
         // 3) Intentar asiento (best effort).
         String journalEntryId = null;
         try {
@@ -408,6 +414,30 @@ public class PurchaseInvoiceService {
                     "No se puede " + action + ": su periodo (" + q + "T " + date.getYear()
                     + ") ya está incluido en una declaración presentada. Registra la "
                     + "corrección/rectificación en el periodo corriente.");
+        }
+    }
+
+    /**
+     * DEDUC (2026-07-09) — aplica la regla de deducibilidad del proveedor
+     * (si existe) a una factura recién creada: precarga los % de IVA e IRPF
+     * deducibles. No pisa nada más; el asesor puede corregirlos después en
+     * "Clasificación fiscal".
+     */
+    private void applySupplierDeductibilityRule(String invoiceId, String supplierNif) {
+        if (supplierNif == null || supplierNif.isBlank()) return;
+        try {
+            jdbcTemplate.update("""
+                    UPDATE purchase_invoices p
+                      JOIN supplier_deductibility_rules r
+                        ON r.company_id = p.company_id AND r.supplier_nif = ?
+                       SET p.vat_deductible_percent = r.vat_deductible_percent,
+                           p.irpf_deductible_percent = r.irpf_deductible_percent
+                     WHERE p.id = ? AND p.company_id = ?
+                    """, supplierNif.toUpperCase(), invoiceId,
+                    tenantContext.getCurrentCompanyId());
+        } catch (Exception ex) {
+            // best effort: sin regla (o tabla aún no migrada) la factura queda
+            // con los defaults (100/hereda de cuenta).
         }
     }
 
