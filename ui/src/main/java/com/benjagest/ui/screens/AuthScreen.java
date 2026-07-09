@@ -622,6 +622,7 @@ public class AuthScreen extends ScreenBase {
             if (pinBuffer.length() >= 8) return; // tope superior 8 dígitos
             pinBuffer.append(digit);
             refreshDots.run();
+            popDots(dots); // feedback vivo: el display "late" al teclear
             errorLabel.setText("");
             enterBtn.setDisable(pinBuffer.length() < 4);
         };
@@ -643,12 +644,16 @@ public class AuthScreen extends ScreenBase {
                 {4, 5, 6},
                 {7, 8, 9}
         };
+        // Mapa dígito -> tecla, para que el teclado FÍSICO también "hunda"
+        // la tecla virtual correspondiente (flashKey).
+        java.util.Map<Integer, Button> keyByDigit = new java.util.HashMap<>();
         for (int r = 0; r < 3; r++) {
             for (int c = 0; c < 3; c++) {
                 final int digit = layout[r][c];
                 Button b = pinKey(String.valueOf(digit));
                 b.setFocusTraversable(false); // que no roben Enter al panel
                 b.setOnAction(ev -> appendDigit.accept(digit));
+                keyByDigit.put(digit, b);
                 keypad.add(b, c, r);
             }
         }
@@ -658,6 +663,7 @@ public class AuthScreen extends ScreenBase {
         Button zero = pinKey("0");
         zero.setFocusTraversable(false);
         zero.setOnAction(ev -> appendDigit.accept(0));
+        keyByDigit.put(0, zero);
         Button okMini = pinKey("OK");
         okMini.setFocusTraversable(false);
         okMini.setOnAction(ev -> trySubmit.run());
@@ -679,12 +685,14 @@ public class AuthScreen extends ScreenBase {
             String text = ev.getText();
             if (text != null && text.length() == 1
                     && text.charAt(0) >= '0' && text.charAt(0) <= '9') {
-                appendDigit.accept(text.charAt(0) - '0');
+                int d = text.charAt(0) - '0';
+                appendDigit.accept(d);
+                flashKey(keyByDigit.get(d)); // la tecla virtual se hunde también
                 ev.consume();
                 return;
             }
             switch (ev.getCode()) {
-                case BACK_SPACE, DELETE -> { backspace.run(); ev.consume(); }
+                case BACK_SPACE, DELETE -> { backspace.run(); flashKey(del); ev.consume(); }
                 case ENTER -> { trySubmit.run(); ev.consume(); }
                 case ESCAPE -> {
                     pinBuffer.setLength(0);
@@ -733,8 +741,33 @@ public class AuthScreen extends ScreenBase {
         Button b = new Button(label);
         b.setMinSize(70, 60);
         b.setPrefSize(70, 60);
-        b.setStyle("-fx-font-size: 18px;");
+        b.getStyleClass().add("pin-key"); // relieve 3D + :pressed (app.css)
         return b;
+    }
+
+    /**
+     * Feedback "vivo" para el teclado FÍSICO: replica el estado :pressed de
+     * la tecla virtual durante ~120ms (la tecla se hunde y vuelve). Con el
+     * ratón no hace falta — el :pressed de CSS ya lo hace solo.
+     */
+    private void flashKey(Button key) {
+        if (key == null || key.getStyleClass().contains("pin-key-flash")) return;
+        key.getStyleClass().add("pin-key-flash");
+        javafx.animation.PauseTransition p =
+                new javafx.animation.PauseTransition(javafx.util.Duration.millis(120));
+        p.setOnFinished(e -> key.getStyleClass().remove("pin-key-flash"));
+        p.play();
+    }
+
+    /** Pop sutil del display de puntos al añadir un dígito (feedback vivo). */
+    private void popDots(javafx.scene.control.Label dots) {
+        javafx.animation.ScaleTransition st =
+                new javafx.animation.ScaleTransition(javafx.util.Duration.millis(90), dots);
+        st.setFromX(1.0); st.setFromY(1.0);
+        st.setToX(1.18); st.setToY(1.18);
+        st.setAutoReverse(true);
+        st.setCycleCount(2);
+        st.play();
     }
 
     /**

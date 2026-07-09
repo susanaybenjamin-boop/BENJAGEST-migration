@@ -139,12 +139,20 @@ public class TaxFilingService {
         }
         String curStatus = (String) rows.get(0).get("status");
         if ("PRESENTED".equals(curStatus) || "PAID".equals(curStatus)) {
+            // Transiciones permitidas desde presentada: mismo estado (adjuntar
+            // CSV/notas), PRESENTED->PAID, y ANULAR (CANCELLED) — la vía de
+            // escape para un registro marcado por error. La anulación conserva
+            // las casillas tal cual (traza); tras anular se puede crear/editar
+            // el registro correcto.
             boolean statusOk = curStatus.equals(req.status())
-                    || ("PRESENTED".equals(curStatus) && "PAID".equals(req.status()));
+                    || ("PRESENTED".equals(curStatus) && "PAID".equals(req.status()))
+                    || "CANCELLED".equals(req.status());
             if (!statusOk) {
                 throw new ResponseStatusException(HttpStatus.CONFLICT,
                         "La declaración ya está presentada; su estado no puede volver atrás. "
-                        + "Si hay que corregirla, presenta una complementaria/sustitutiva.");
+                        + "Si se marcó por error, anúlala (Cancelada) y crea el registro "
+                        + "correcto; si hay que corregir ante la AEAT, presenta una "
+                        + "complementaria/sustitutiva.");
             }
             String curData = (String) rows.get(0).get("data");
             java.math.BigDecimal curTotal = (java.math.BigDecimal) rows.get(0).get("total_amount");

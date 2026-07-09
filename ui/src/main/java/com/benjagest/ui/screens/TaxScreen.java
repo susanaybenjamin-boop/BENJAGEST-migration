@@ -446,7 +446,7 @@ public class TaxScreen extends ScreenBase {
         TextField comp110 = new TextField(parsed.getOrDefault("compensar_anteriores", ""));
 
         ComboBox<String> statusCombo = new ComboBox<>();
-        statusCombo.getItems().addAll("DRAFT", "READY", "PRESENTED", "PAID", "REJECTED");
+        statusCombo.getItems().addAll("DRAFT", "READY", "PRESENTED", "PAID", "REJECTED", "CANCELLED");
         applyFilingStatusLabels(statusCombo);
         statusCombo.getSelectionModel().select(existing.status());
         TextField csvField = new TextField(existing.csvAeat());
@@ -719,7 +719,7 @@ public class TaxScreen extends ScreenBase {
         TextField pagosPrev = new TextField(parsed.getOrDefault("pagos_previos", ""));
 
         ComboBox<String> statusCombo = new ComboBox<>();
-        statusCombo.getItems().addAll("DRAFT", "READY", "PRESENTED", "PAID", "REJECTED");
+        statusCombo.getItems().addAll("DRAFT", "READY", "PRESENTED", "PAID", "REJECTED", "CANCELLED");
         applyFilingStatusLabels(statusCombo);
         statusCombo.getSelectionModel().select(existing.status());
         TextField csvField = new TextField(existing.csvAeat());
@@ -886,7 +886,7 @@ public class TaxScreen extends ScreenBase {
         if (existing.dataJson() == null || existing.dataJson().isBlank()) recalcBtn.fire();
 
         ComboBox<String> statusCombo = new ComboBox<>();
-        statusCombo.getItems().addAll("DRAFT", "READY", "PRESENTED", "PAID", "REJECTED");
+        statusCombo.getItems().addAll("DRAFT", "READY", "PRESENTED", "PAID", "REJECTED", "CANCELLED");
         applyFilingStatusLabels(statusCombo);
         statusCombo.getSelectionModel().select(existing.status());
         TextField csvField = new TextField(existing.csvAeat());
@@ -1023,7 +1023,7 @@ public class TaxScreen extends ScreenBase {
         if (existing.dataJson() == null || existing.dataJson().isBlank()) recalcBtn.fire();
 
         ComboBox<String> statusCombo = new ComboBox<>();
-        statusCombo.getItems().addAll("DRAFT", "READY", "PRESENTED", "PAID", "REJECTED");
+        statusCombo.getItems().addAll("DRAFT", "READY", "PRESENTED", "PAID", "REJECTED", "CANCELLED");
         applyFilingStatusLabels(statusCombo);
         statusCombo.getSelectionModel().select(existing.status());
         TextField csvField = new TextField(existing.csvAeat());
@@ -1157,7 +1157,7 @@ public class TaxScreen extends ScreenBase {
         }
 
         ComboBox<String> statusCombo = new ComboBox<>();
-        statusCombo.getItems().addAll("DRAFT", "READY", "PRESENTED", "PAID", "REJECTED");
+        statusCombo.getItems().addAll("DRAFT", "READY", "PRESENTED", "PAID", "REJECTED", "CANCELLED");
         applyFilingStatusLabels(statusCombo);
         statusCombo.getSelectionModel().select(existing.status());
         TextField csvField = new TextField(existing.csvAeat());
@@ -1327,7 +1327,7 @@ public class TaxScreen extends ScreenBase {
         if (existing.dataJson() == null || existing.dataJson().isBlank()) recalcBtn.fire();
 
         ComboBox<String> statusCombo = new ComboBox<>();
-        statusCombo.getItems().addAll("DRAFT", "READY", "PRESENTED", "PAID", "REJECTED");
+        statusCombo.getItems().addAll("DRAFT", "READY", "PRESENTED", "PAID", "REJECTED", "CANCELLED");
         applyFilingStatusLabels(statusCombo);
         statusCombo.getSelectionModel().select(existing.status());
         TextField csvField = new TextField(existing.csvAeat());
