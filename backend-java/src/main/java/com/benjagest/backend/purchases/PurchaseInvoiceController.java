@@ -70,6 +70,23 @@ public class PurchaseInvoiceController {
         service.deleteInvoice(id);
     }
 
+    /** Cuerpo de "Crear regla": la cuenta destino a la que mandar el proveedor. */
+    public record ExpenseRuleRequest(String accountCode) {}
+
+    /**
+     * IRPF-DED — "Crear regla" desde un gasto: manda TODAS las facturas de este
+     * proveedor a la cuenta indicada (reclasifica este asiento + aprende la
+     * regla + sincroniza la deducibilidad IRPF). Solo asesoría (sin EMPLOYEE):
+     * es una decisión de clasificación fiscal, no del empresario.
+     */
+    @PostMapping("/{id}/expense-rule")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    @RequiresRole({"OWNER", "ADMIN", "ACCOUNTANT"})
+    public void createExpenseRule(@PathVariable("id") String id,
+                                    @RequestBody ExpenseRuleRequest req) {
+        service.createExpenseRuleFromInvoice(id, req.accountCode());
+    }
+
     /**
      * GAS-2 — Registra el pago del gasto (segundo asiento: Debe 400 proveedor
      * / Haber 572 banco) y lo marca como pagado.

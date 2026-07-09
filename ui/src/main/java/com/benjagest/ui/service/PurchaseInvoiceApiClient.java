@@ -133,6 +133,23 @@ public class PurchaseInvoiceApiClient {
         if (r.statusCode() < 200 || r.statusCode() >= 300) throw new IOException(r.body());
     }
 
+    /**
+     * IRPF-DED — "Crear regla" desde un gasto: manda el proveedor de esta
+     * factura a {@code accountCode} (reclasifica este asiento + aprende la
+     * regla + sincroniza la deducibilidad IRPF).
+     */
+    public void createExpenseRule(String id, String accountCode)
+            throws IOException, InterruptedException {
+        String body = "{\"accountCode\":\"" + accountCode + "\"}";
+        HttpRequest.Builder b = HttpRequest.newBuilder(
+                        URI.create(baseUrl + "/purchases/invoices/" + id + "/expense-rule"))
+                .timeout(Duration.ofSeconds(10)).header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(body));
+        AuthSession.get().authorize(b);
+        HttpResponse<String> r = httpClient.send(b.build(), HttpResponse.BodyHandlers.ofString());
+        if (r.statusCode() < 200 || r.statusCode() >= 300) throw new IOException(r.body());
+    }
+
     public List<PurchaseInvoiceEntry> list(Integer year, String status, String supplierNif)
             throws IOException, InterruptedException {
         StringBuilder q = new StringBuilder();
