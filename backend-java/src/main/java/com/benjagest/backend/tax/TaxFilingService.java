@@ -125,6 +125,49 @@ public class TaxFilingService {
     @Transactional
     public FilingView update(String id, UpsertRequest req) {
         validate(req);
+        // AUDIT-T2 (2026-07-09, RD 1007/2023): una declaración PRESENTED/PAID
+        // es un hecho tributario consumado. No se reabren sus casillas ni su
+        // estado retrocede a borrador (el camino legal es una complementaria/
+        // sustitutiva = filing NUEVO). Solo se permite: adjuntar CSV/notas y
+        // el paso PRESENTED -> PAID.
+        java.util.List<java.util.Map<String, Object>> rows = jdbcTemplate.queryForList("""
+                SELECT status, data, total_amount FROM tax_filings
+                 WHERE id = ? AND company_id = ?
+                """, id, tenantContext.getCurrentCompanyId());
+        if (rows.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Declaracion no encontrada");
+        }
+        String curStatus = (String) rows.get(0).get("status");
+        if ("PRESENTED".equals(curStatus) || "PAID".equals(curStatus)) {
+            boolean statusOk = curStatus.equals(req.status())
+                    || ("PRESENTED".equals(curStatus) && "PAID".equals(req.status()));
+            if (!statusOk) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT,
+                        "La declaración ya está presentada; su estado no puede volver atrás. "
+                        + "Si hay que corregirla, presenta una complementaria/sustitutiva.");
+            }
+            String curData = (String) rows.get(0).get("data");
+            java.math.BigDecimal curTotal = (java.math.BigDecimal) rows.get(0).get("total_amount");
+            boolean dataChanged = req.data() != null && !req.data().equals(curData);
+            boolean totalChanged = req.totalAmount() != null && curTotal != null
+                    && req.totalAmount().compareTo(curTotal) != 0;
+            if (dataChanged || totalChanged) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT,
+                        "Las casillas de una declaración presentada no se modifican. "
+                        + "Presenta una complementaria/sustitutiva.");
+            }
+            int n = jdbcTemplate.update("""
+                    UPDATE tax_filings
+                       SET status = ?, csv_aeat = ?, notes = ?
+                     WHERE id = ? AND company_id = ?
+                    """,
+                    req.status(), blankToNull(req.csvAeat()), blankToNull(req.notes()),
+                    id, tenantContext.getCurrentCompanyId());
+            if (n == 0) {
+                throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Declaracion no encontrada");
+            }
+            return findById(id);
+        }
         int n = jdbcTemplate.update("""
                 UPDATE tax_filings
                    SET status = ?, data = ?, total_amount = ?,
