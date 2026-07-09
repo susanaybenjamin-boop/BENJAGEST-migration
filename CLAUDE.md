@@ -7,6 +7,32 @@ salvo que él pida lo contrario.
 
 ---
 
+## ⛔ AVISO PREVIO — VERIFICAR EN EJECUCIÓN (leer ANTES de trabajar)
+
+> **Regla de Benjamin (2026-07-09, tras las releases rotas 0.1.19 y el
+> gestor-navegador):** *"antes de crear algo que has dado por hecho que
+> está correcto, lo vuelves a revisar."*
+
+**"Compila" y "los tests pasan" NO significa "funciona".** Las dos
+averías de hoy pasaron ambas puertas y aun así rompieron la app en
+producción (login imposible). La pregunta obligatoria antes de
+commitear y SIEMPRE antes de publicar una release es:
+
+> **¿He VISTO esto funcionar, o solo creo que funciona?**
+
+Detalle completo y checklist por tipo de cambio: **sección 10.ter**.
+Dos reglas que no se saltan NUNCA:
+
+1. **Ningún `gh release create` sin smoke test del camino tocado.**
+   Si algo no se pudo verificar en ejecución, se le dice a Benjamin
+   ANTES de publicar y él decide.
+2. **Toda suposición sobre un componente de terceros se comprueba**
+   (leyendo su código/docs o ejecutándolo). La 0.1.19 murió por asumir
+   que la MariaDB embebida exigía credenciales; arrancaba con
+   `--skip-grant-tables` (seguridad apagada de fábrica).
+
+---
+
 ## 1. Contexto del proyecto
 
 - **BENJAGEST**: migración de CONTENDO (legacy) a stack moderno.
@@ -232,6 +258,9 @@ Al cerrar un bloque (3+ slices completados):
 ## 10. No olvides
 
 - Antes de un fix complejo: **agentes paralelos** (sección 2).
+- Antes de commitear/release: **VERIFICAR EN EJECUCIÓN** (sección 10.ter) —
+  ¿he VISTO esto funcionar, o solo creo que funciona? Sin smoke test del
+  camino tocado NO hay release.
 - Antes de tocar UI: **CSS reusable + i18n + diálogo dimensionado + no emoji**.
 - **i18n en CADA slice**: ¿algún **valor nuevo** (source_type/estado/enum/
   método) llega a la UI? → añade su clave `t(...)` en **ES y EN** (sección 4,
@@ -362,6 +391,59 @@ un endpoint roto en producción, y la confianza de Benjamin.
 
 > **No tenemos que hacer las cosas rápido, tenemos que hacer las
 > cosas bien.**
+
+---
+
+## 10.ter. VERIFICAR EN EJECUCIÓN antes de commitear/release (lección dura 2026-07-09)
+
+Dos averías el mismo día, ambas con "compila OK" y "tests OK":
+
+1. **v0.1.19 — DB-LOCK rompió el arranque del backend.** Asumí que la
+   MariaDB embebida exigía credenciales. FALSO: MariaDB4j arranca con
+   `--skip-grant-tables` (seguridad apagada; por eso "funcionaba"
+   cualquier usuario/contraseña). Mi blindaje chocó con ese modo, el
+   backend murió al arrancar y Benjamin se quedó SIN PODER ENTRAR en
+   la app. Ni un solo arranque embebido de prueba antes de publicar.
+2. **Gestor-navegador roto desde el 30-jun** (commit 577a21f): se
+   añadió `log_severity` sin `log_file` y se publicó sin abrir el
+   navegador ni una vez. En CEF 127 eso aborta los subprocesos y la
+   ventana se cierra sola.
+
+El patrón común: **dar por hecho** en vez de **ver funcionar**.
+
+### La regla
+
+Toda pieza nueva o tocada se **ejercita por su camino real de
+ejecución** antes de commitear, y OBLIGATORIAMENTE antes de una
+release. Si no se pudo (falta entorno, credencial, hardware), se dice
+explícitamente a Benjamin ANTES de publicar — decide él.
+
+### Checklist por tipo de cambio (mínimos, no exhaustivo)
+
+| Si el cambio toca... | Verificación mínima en ejecución |
+|---|---|
+| **Arranque / BD embebida / MariaDB4j** | Boot embebido COMPLETO con `-Duser.home=<dir de prueba>` **FUERA de Temp** (MariaDB4j borra data dirs bajo Temp) + `-Dbenjagest.db.embedded=true`. Esperar `Started BenjagestBackendApplication` en el log. Probar TAMBIÉN el segundo arranque (reinicio). |
+| **Migración Flyway** | Arrancar el backend y ver la migración aplicada en el log (no solo que el SQL parsee). |
+| **Endpoint nuevo/modificado** | `curl` real contra el backend levantado (mínimo el happy path + un caso de rechazo si es un guard). |
+| **Login / auth / tenant / interceptores** | Probar los TRES caminos: login asesoría, actuar-como-cliente (X-Company-Id), portal empleado (PWA). Un fallo aquí bloquea la app entera. |
+| **UI JavaFX** | Abrir la pantalla afectada y ejecutar la acción (no solo que compile el binding). |
+| **Gestor-navegador / JCEF** | Lanzarlo y cargar una página real; verificar que NO se cierra solo. |
+| **Config de terceros (MariaDB4j, CEF, jpackage, Flyway...)** | Leer el comportamiento REAL del componente (código fuente/docs) o probarlo aislado. Nunca asumir defaults "razonables". |
+
+### Antes de `gh release create` (gate duro)
+
+1. Lista escrita de los caminos tocados por la versión.
+2. Para cada uno: **cómo se verificó en ejecución** (comando/log/captura).
+3. Lo no verificado → contárselo a Benjamin ANTES de publicar.
+4. Con el MSI: si el cambio afecta al arranque, instalar/arrancar al
+   menos una vez en local (o el boot embebido de prueba de arriba)
+   antes de subir la release.
+
+### El reflejo correcto
+
+Cuando estés a punto de commitear y pienses *"esto es trivial, no hace
+falta probarlo"* — esa frase exacta es la señal de PARAR y probarlo.
+Las dos averías de arriba eran "triviales".
 
 ---
 
