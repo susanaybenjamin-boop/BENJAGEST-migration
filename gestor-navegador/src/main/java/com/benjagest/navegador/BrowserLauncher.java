@@ -93,6 +93,12 @@ public final class BrowserLauncher {
         // Silencia el log interno de Chromium (INFO:CONSOLE de las webs cargadas,
         // browser_info.cc, CSP/preload warnings...). Solo errores reales.
         builder.getCefSettings().log_severity = org.cef.CefSettings.LogSeverity.LOGSEVERITY_ERROR;
+        // CRÍTICO (CEF 127): al fijar log_severity, Chromium activa LOG_TO_FILE y
+        // EXIGE una ruta de log; sin ella, los subprocesos (red/GPU/render) abortan
+        // con FATAL ("LOG_TO_FILE set but no log_file_path!"), las páginas no cargan
+        // y CefApp pasa a TERMINATED -> System.exit(0) (la ventana se cerraba sola).
+        File logFile = new File(System.getProperty("user.home"), ".benjagest/gestor-navegador.log");
+        builder.getCefSettings().log_file = logFile.getAbsolutePath();
         builder.setInstallDir(new File(System.getProperty("user.home"), ".benjagest/jcef-bundle"));
         // Cache persistente (cookies/sesión) + silencia el aviso/singleton del cache por defecto.
         File cacheDir = new File(System.getProperty("user.home"), ".benjagest/jcef-cache");
