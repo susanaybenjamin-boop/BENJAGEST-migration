@@ -1755,7 +1755,7 @@ public final class I18n {
             case "billing.config.sif.verify.fail.title" -> "No se pudo verificar la cadena SIF";
             case "billing.config.sif.verify.fail.body" -> "El servidor no respondio. Comprueba la conexion y vuelve a intentarlo.";
             case "billing.config.series.section" -> "Series de numeracion";
-            case "billing.config.series.hint" -> "Solo defines la serie de tus facturas normales. Las series para PROFORMA y RECTIFICATIVAS son del sistema (RD 1619/2012 Art.13). Tu serie STANDARD se autobloquea automaticamente en cuanto emites la primera factura validada del ano (continuidad legal — solo se desbloquea al cerrar el ano).";
+            case "billing.config.series.hint" -> "Solo defines la serie de tus facturas normales. Las series para PROFORMA y RECTIFICATIVAS son del sistema (RD 1619/2012 Art.13). Tu serie STANDARD se autobloquea automaticamente en cuanto emites la primera factura validada del año (continuidad legal — solo se desbloquea al cerrar el año).";
             case "billing.config.series.placeholder.empty" -> "Sin series. Pulsa 'Definir mi serie de facturas' para crear la STANDARD.";
             case "billing.config.series.col.code" -> "Codigo";
             case "billing.config.series.col.kind" -> "Tipo";
@@ -1769,7 +1769,7 @@ public final class I18n {
             case "billing.config.series.btn.define" -> "Definir mi serie de facturas";
             case "billing.config.series.btn.edit" -> "Editar mi serie";
             case "billing.config.migration.section" -> "Migracion desde otro programa";
-            case "billing.config.migration.hint" -> "Si tu empresa ya emitia facturas con otro software, importa el PDF de la ultima factura (autorellena) o introduce los datos a mano. Elige una serie existente o escribe un codigo nuevo (p. ej. FRA) — se creara si no existe. Una vez emitida la primera factura validada en BENJAGEST, el codigo y formato de la serie quedan bloqueados hasta cerrar el ano.";
+            case "billing.config.migration.hint" -> "Si tu empresa ya emitia facturas con otro software, importa el PDF de la ultima factura (autorellena) o introduce los datos a mano. Elige una serie existente o escribe un codigo nuevo (p. ej. FRA) — se creara si no existe. Una vez emitida la primera factura validada en BENJAGEST, el codigo y formato de la serie quedan bloqueados hasta cerrar el año.";
             case "billing.config.migration.next.prompt" -> "Ej. 43 (si tu ultima factura fue F-...-0042)";
             case "billing.config.migration.ack" -> "Confirmo que el numero indicado coincide con mi contabilidad previa y eximo a BENJAGEST de cualquier responsabilidad por saltos en la serie.";
             case "billing.config.migration.apply" -> "Aplicar migracion";
@@ -1841,7 +1841,7 @@ public final class I18n {
             case "billing.series.editor.field.next" -> "Proximo nº";
             case "billing.series.editor.next.hint.create" -> "Numero por el que arrancara la serie (normalmente 1; si vienes de otro programa, usa Migracion).";
             case "billing.series.editor.next.hint.edit" -> "El correlativo no se cambia desde aqui. Usa 'Migracion desde otro programa' si vienes de otro software.";
-            case "billing.series.editor.autolock.hint" -> "La serie se autobloquea para edicion en cuanto emites la primera factura validada del ano (continuidad legal). No hay checkbox: es automatico.";
+            case "billing.series.editor.autolock.hint" -> "La serie se autobloquea para edicion en cuanto emites la primera factura validada del año (continuidad legal). No hay checkbox: es automatico.";
             case "billing.series.editor.btn.create" -> "Crear";
             case "billing.series.editor.btn.save" -> "Guardar";
             case "billing.series.editor.error.no_code.title" -> "Falta codigo";
@@ -1850,7 +1850,7 @@ public final class I18n {
             case "billing.series.editor.error.bad_number.body" -> "El proximo numero debe ser un entero >= 1.";
             case "billing.series.editor.fail.create.title" -> "No se pudo crear la serie";
             case "billing.series.editor.fail.save.title" -> "No se pudo guardar";
-            case "billing.series.editor.fail.body" -> "Comprueba que el codigo no este duplicado. Si la serie tiene facturas validadas este ano no se puede cambiar codigo/formato/tipo (continuidad legal — usa migracion).";
+            case "billing.series.editor.fail.body" -> "Comprueba que el codigo no este duplicado. Si la serie tiene facturas validadas este año no se puede cambiar codigo/formato/tipo (continuidad legal — usa migracion).";
             case "billing.series.delete.confirm_prefix" -> "Vas a eliminar la serie ";
             case "billing.series.delete.confirm_suffix" -> ". Si ya tiene facturas asociadas, el backend rechazara la operacion. ¿Continuar?";
             case "billing.series.delete.fail.title" -> "No se pudo eliminar";
@@ -2052,11 +2052,11 @@ public final class I18n {
             case "tax.title" -> "Modelos AEAT";
             case "tax.subtitle" -> "Declaraciones trimestrales y anuales: 303, 130, 200, 347, 390 y otros.";
             case "tax.load_failed" -> "No se pudieron cargar los modelos.";
-            case "tax.year" -> "Ano";
+            case "tax.year" -> "Año";
             case "tax.action.new" -> "Nueva declaracion";
             case "tax.tab.filings" -> "Declaraciones";
             case "tax.tab.calendar" -> "Calendario";
-            case "tax.filings.placeholder.empty" -> "No hay declaraciones para este ano.";
+            case "tax.filings.placeholder.empty" -> "No hay declaraciones para este año.";
             case "tax.filings.col.model" -> "Modelo";
             case "tax.filings.col.period" -> "Periodo";
             case "tax.filings.col.status" -> "Estado";
@@ -2069,8 +2069,8 @@ public final class I18n {
             case "tax.filings.delete.body" -> "Vas a borrar";
             case "tax.filings.delete.fail.title" -> "No se pudo borrar";
             case "tax.filings.delete.fail.body" -> "Solo se pueden borrar borradores o canceladas.";
-            case "tax.calendar.hint" -> "Plazos estandar AEAT del ano seleccionado. No se consideran festivos — comprueba el calendario oficial.";
-            case "tax.calendar.placeholder.empty" -> "No hay vencimientos para este ano.";
+            case "tax.calendar.hint" -> "Plazos estandar AEAT del año seleccionado. No se consideran festivos — comprueba el calendario oficial.";
+            case "tax.calendar.placeholder.empty" -> "No hay vencimientos para este año.";
             case "tax.calendar.col.deadline" -> "Limite";
             case "tax.calendar.col.model" -> "Modelo";
             case "tax.calendar.col.name" -> "Nombre";
@@ -2086,10 +2086,10 @@ public final class I18n {
             case "tax.new.title" -> "Nueva declaracion";
             case "tax.new.next" -> "Continuar";
             case "tax.new.model" -> "Modelo";
-            case "tax.new.year" -> "Ano";
+            case "tax.new.year" -> "Año";
             case "tax.new.period" -> "Periodo";
             case "tax.new.fail.title" -> "No se pudo crear";
-            case "tax.new.fail.body" -> "Revisa modelo, periodo y ano.";
+            case "tax.new.fail.body" -> "Revisa modelo, periodo y año.";
             case "tax.editor.generic.title" -> "Editar declaracion";
             case "tax.editor.save" -> "Guardar";
             case "aeat347.placeholder" -> "Sin terceros. Usa \"Recalcular desde facturas\" o añade filas.";
@@ -5791,7 +5791,7 @@ public final class I18n {
             case "timeclock.employee.label" -> "Fichando como";
             case "timeclock.error.no_employee.title" -> "Sin empleado seleccionado";
             case "timeclock.error.no_employee.body" -> "Elige un empleado de la lista antes de fichar.";
-            case "labor.payslips.placeholder.empty" -> "No hay nominas para este ano.";
+            case "labor.payslips.placeholder.empty" -> "No hay nominas para este año.";
             case "labor.payslips.hint" -> "Calcula, guarda y envia nominas. SS empleado = 6,35% del bruto; % IRPF del contrato o estimado por tramos anuales.";
             case "labor.payslips.col.period" -> "Periodo";
             case "labor.payslips.col.employee" -> "Empleado";
@@ -5877,7 +5877,7 @@ public final class I18n {
             case "labor.payslips.calc.target.propose" -> "Proponer complemento";
             case "labor.payslips.calc.target.concept" -> "Mejora voluntaria";
             case "labor.payslips.calc.target.confirm" -> "Se añadirá al contrato de {name} un complemento mensual \"Mejora voluntaria\" de {amount} (se cobra todos los meses y cuenta para la base de cotización y de IRPF). ¿Continuar?";
-            case "labor.payslips.calc.year" -> "Ano";
+            case "labor.payslips.calc.year" -> "Año";
             case "labor.payslips.calc.month" -> "Mes";
             case "labor.payslips.calc.type" -> "Tipo";
             case "labor.payslips.calc.extra_prorated" -> "Prorratear pagas extras";

@@ -102,6 +102,33 @@
     -fx-opacity: 0.75;
 }
 
+/* Teclado PIN del login — teclas con relieve 3D (borde inferior oscuro que
+   "se hunde" al pulsar) + feedback vivo. Paleta de .button (#1d4ed8). La
+   clase .pin-key-flash replica el estado :pressed para el teclado FÍSICO
+   (se aplica ~120ms desde AuthScreen al teclear un dígito). */
+.pin-key {
+    -fx-background-color: #16368f, linear-gradient(to bottom, #3b6ef0, #1d4ed8);
+    -fx-background-insets: 0, 0 0 5 0;
+    -fx-background-radius: 12, 12;
+    -fx-text-fill: white;
+    -fx-font-size: 18px;
+    -fx-font-weight: 700;
+    -fx-cursor: hand;
+    -fx-border-color: transparent;
+    -fx-effect: dropshadow(gaussian, rgba(29,78,216,0.35), 8, 0, 0, 3);
+}
+
+.pin-key:hover {
+    -fx-background-color: #16368f, linear-gradient(to bottom, #4f83f1, #2563eb);
+}
+
+.pin-key:pressed, .pin-key-flash {
+    /* la cara de la tecla baja 4px y el canto casi desaparece */
+    -fx-background-insets: 4 0 1 0, 4 0 1 0;
+    -fx-background-color: #16368f, linear-gradient(to bottom, #1e40af, #1d4ed8);
+    -fx-effect: dropshadow(gaussian, rgba(29,78,216,0.20), 3, 0, 0, 1);
+}
+
 .mode-switch {
     -fx-background-color: #eef3f8;
     -fx-background-radius: 999;
