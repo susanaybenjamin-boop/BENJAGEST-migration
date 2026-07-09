@@ -758,6 +758,12 @@ public class AeatExtraModelsService {
     @Transactional
     public Model130View generate130(int year, int quarter, boolean persist) {
         String companyId = tenantContext.getCurrentCompanyId();
+        // IRPF-DED (2026-07-09): la deducibilidad IRPF la lleva la CUENTA. Antes
+        // de sumar, sincronizamos expense_deductible de cada factura desde su
+        // cuenta 6xx (subcuenta de vehículo = no deducible; genérica = deducible).
+        // Así, cambie el asesor la cuenta como la cambie (regla de proveedor,
+        // reclasificación del asiento, rescate a la genérica), el 130 lo refleja.
+        syncExpenseDeductibilityFromAccounts(companyId);
         int mTo = quarter * 3; // acumulado: de enero al fin del trimestre
 
         BigDecimal ingresos = jdbcTemplate.queryForObject("""
@@ -796,6 +802,32 @@ public class AeatExtraModelsService {
                 retenciones, pagosPrevios, calc.pago());
         if (persist) persistFiling("130", year, quarter, view, calc.pago());
         return view;
+    }
+
+    /**
+     * IRPF-DED (2026-07-09) — sincroniza {@code expense_deductible} de cada
+     * factura de compra desde el flag {@code irpf_deductible_default} de su
+     * cuenta de gasto 6xx. La cuenta es la fuente de verdad de la
+     * deducibilidad IRPF: subcuenta de vehículo (62x1) = no deducible;
+     * cuenta genérica = deducible. Se ejecuta antes de sumar los gastos del
+     * 130 para que refleje la clasificación de cuentas vigente.
+     *
+     * <p>Solo toca facturas con asiento (la línea de gasto 6xx del Debe); las
+     * que no tengan asiento conservan su valor. Si una factura tuviera varias
+     * líneas 6xx (raro), toma una de ellas — el caso normal es una sola.
+     */
+    private void syncExpenseDeductibilityFromAccounts(String companyId) {
+        jdbcTemplate.update("""
+                UPDATE purchase_invoices p
+                  JOIN journal_entries je ON je.source_type = 'PURCHASE_INVOICE'
+                                          AND je.source_id = p.id
+                  JOIN journal_entry_lines l ON l.journal_entry_id = je.id
+                  JOIN accounting_accounts a ON a.id = l.account_id
+                   SET p.expense_deductible = a.irpf_deductible_default
+                 WHERE p.company_id = ?
+                   AND a.code LIKE '6%'
+                   AND l.debit > 0
+                """, companyId);
     }
 
     /**
