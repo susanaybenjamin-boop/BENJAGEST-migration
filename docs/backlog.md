@@ -1,5 +1,21 @@
 # Backlog operativo BENJAGEST
 
+> **Última actualización: 2026-07-09 (sesión maratón — releases v0.1.16→v0.1.22 + repaso COMPLETO del backlog).**
+>
+> **POLÍTICA NUEVA (Benjamin): no sacar release por cada cambio pequeño — acumular y publicar por LOTES.** Excepción: hotfix que bloquea el uso.
+>
+> **Hecho hoy:** bloque **IRPF-DED** (deducibilidad IRPF por CUENTA: subcuentas de vehículo 6221/6281/6251 + V173 + regla por proveedor "Crear regla" + sin check manual) · fix borrado de gasto con asiento (FK) · **AUDITORÍA con 2 agentes** de modelos AEAT + multi-tenant (17 hallazgos; los graves corregidos: filtros de estado en 130/347/349, pagos previos y casilla 110 solo de PRESENTED/PAID, 390 prorrateado como el 303, X-Company-Id validado, tax_filings presentadas inmutables + **anulación CANCELLED** como vía de escape, guard de periodo presentado en mutaciones de gastos) · **DB-LOCK** (BD embebida blindada: seguridad real activada `setSecurityDisabled(false)`, clave aleatoria por instalación en `~/.benjagest/.dbkey` — **incluirla en backups** —, bind localhost; verificado: benjagest/benjagest y root sin clave DENEGADOS) · fix gestor-navegador (CEF exigía log_file; roto desde 30-jun) · teclado PIN 3D con feedback vivo (login + bloqueo de pantalla) · "Ano"→"Año" i18n · **regla 10.ter VERIFICAR EN EJECUCIÓN** en CLAUDE.md (tras 0.1.19 rota: sin smoke test no hay release).
+>
+> **ACUMULADO SIN RELEASE (para el próximo lote):** teclado del bloqueo en tamaño compacto 58×48 con estilo 3D.
+>
+> **PENDIENTES NUEVOS (prioridad Benjamin):**
+> - ⬜ **PDF-EXTRACT mejora integral del extractor de PDFs** — "extrae datos regular" (Benjamin). Primer sub-item: número de factura de Bloques Los Llanos (test roto `losLlanos_extractsAllFieldsCorrectly`: espera 263274, extrae GR/10606 — el número es la defensa contra duplicados al importar).
+> - ⬜ **Restos de la auditoría 2026-07-09** (menores): doble conteo de IVA si un asiento manual duplica una factura sin `source_id` · tipos de IVA ≠4/10/21 (p.ej. 5%) caen fuera de los buckets del 303/390 · IVA no deducible como mayor gasto en IRPF (130) · guard de periodo presentado también en `regenerate-journal` de ventas.
+> - ⬜ **IVA de vehículo al 50%** (art. 95 LIVA, presunción) — decisión pendiente con la asesoría; hoy las subcuentas de vehículo dejan el IVA al 100%.
+> - ⬜ **Seguimiento externo**: posible gasto DUPLICADO en la contabilidad de la asesoría (Bloques Los Llanos 31-05, base 1.205,68/total 1.458,87) — el gasto nuevo del 2T de la asesoría (7.562,36) supera TODAS las facturas de abr-jun en BENJAGEST (6.337,64). Si se confirma → complementaria del 2T (la suya).
+> - ⬜ Ocultar/retirar el check de IRPF también donde quede en modo empresario y valorar guard backend para dates_locked de contratos.
+>
+> Histórico previo:
 > **Última actualización:** 2026-07-11 tarde (**RELEASE v0.1.14** — 303 régimen general completo + la modificación 14/15 pilla rectificativas y abonos importados. Verificado EN VIVO contra las declaraciones reales de Benjamin: el IVA **devengado** del 303 T1/T2 cuadra al céntimo (1.183,00 y 2.165,97). Diferencias en soportado/gastos = datos (IVA no deducible que la asesoría excluyó, importación parcial), no cálculo → afinado fino depende de OPTYPE (marcar deducibilidad/tipo de operación por factura). MSI `latest`, tag `6e205f3`. Histórico previo:
 > **Última actualización:** 2026-07-11 (**303-FULL** — el editor del 303 pasa de básico a
 > **régimen general completo**: devengado (régimen general por tipo + intracom 10/11 +
@@ -1453,7 +1469,7 @@ títulos duplicados *(1e0909a, 9757765)*.
 - ⬜ **Push instantáneo en PWA** — el quick-tunnel bufferiza SSE; aparcado (Benjamin no tiene
   cuenta Cloudflare). Para instantáneo en móvil: **túnel con nombre** o **WebSocket**.
   Mientras: fallback de sondeo 18s en la PWA.
-- ⬜ **Merge a develop** del trabajo post-pruebas (de-flicker + AEAT editores) cuando se valide.
+- ✅ **Merge a develop** del trabajo post-pruebas (de-flicker + AEAT editores) *(confirmado HECHO en repaso 2026-07-09: develop se mergea slice a slice desde entonces)*.
 - Mejoras menores: email al jefe con el PDF al firmar; encadenar sugerencias FJ; calendario
   semanal en "Mi jornada"; AEAT 180 (arrendamientos) editor si se quiere.
 
@@ -1561,14 +1577,14 @@ aparte — context Spring + Flyway OK):**
   asignado (estilo CONTENDO: ±15 min, "solo el botón que toca"). Plan slice a slice (FJ-1..5,
   incluye la incidencia schedule-aware + acción de revisar/corregir = punto 2) en
   [`plan-fichaje-por-jornada.md`](plan-fichaje-por-jornada.md). **Feature grande → contexto fresco.**
-- ⬜ **A restante**: Export PDF de **Mayor + Sumas y Saldos** (Balance+PyG ya hechos) ·
+- ✅ **A restante**: Export PDF de **Mayor + Sumas y Saldos** *(confirmado HECHO en repaso 2026-07-09: `api.ledgerPdf` + `api.trialBalancePdf` en AccountingScreen)* ·
   **FORMATS-EXCHANGE** (xDiario + SUENLACE export/import, por spec, marcar para validar).
 - ⬜ **PV-5/6/7** (enhancements de pago proveedor, ver arriba).
-- ⬜ **C resto**: MEMP-3 (calendario/jornada) · MEMP-4 (vacaciones/bajas) · MEMP-5 (nóminas) ·
+- ⬜ **C resto**: MEMP-3 (calendario/jornada) PENDIENTE (no está en la PWA) · ✅ MEMP-4 (vacaciones/bajas) y ✅ MEMP-5 (nóminas) *(confirmados HECHOS en repaso 2026-07-09: pantallas en EmployeeAppService)* ·
   JOR-4 · partes de día · fichajes sospechosos.
 - ⬜ **D entero** (decisión Benjamin: construir + MARCAR para validar): VIG-3 menor
   (guard `hasPayslips`) · VIG-4 atrasos · CV-5 excedencias/suspensiones · CV-8 cese empresa.
-- ⬜ **GESTOR-NAVEGADOR (JCEF)** Fase 1 — integración pesada (binarios nativos Chromium);
+- ✅ **GESTOR-NAVEGADOR (JCEF)** Fase 1 *(confirmado HECHO en repaso 2026-07-09: módulo gestor-navegador en el MSI; fix log_file CEF en v0.1.20)*;
   pendiente entera. Aviso: posible muro de entorno (descarga libs nativas).
 - **Nota puertos:** dejé 8080 y 8090 libres tras validar; al probar a las 19:00 se
   arranca backend fresco con el código nuevo. MariaDB 3307 intacta.
@@ -1742,7 +1758,7 @@ CSV + xDiario + SUENLACE.**
   masas. `AccountingApiClient.balanceSheet`.
 - ✅ **Pérdidas y Ganancias (PyG)** — rango → Ingresos / Gastos por masas +
   resultado. `AccountingApiClient.profitAndLoss`.
-- ⬜ **ECPN** (`/reports/equity-changes`) — backend listo, UI no añadida (opcional).
+- ✅ **ECPN** (`/reports/equity-changes`) *(confirmado HECHO en repaso 2026-07-09: tab ECPN en AccountingScreen — buildEcpnTab)*.
 - ⬜ **Export PDF** de estos informes — pendiente (mejora).
 - Parseo JSON anidado (Balance/PyG) con `extractArrayField` + `splitJsonArray`
   (sin Jackson en UI). NOTA: ACC-BOOKS / REPORTS-CONTABLES estaban marcados ✅
@@ -1865,7 +1881,7 @@ CSV + xDiario + SUENLACE.**
   cambiar condiciones" en el diálogo de contratos del empleado → editor en modo
   ascenso (fecha de efecto + motivo, bloquea tipo/SEPE/fechas/antigüedad/estado,
   valida la fecha con toast). `LaborApiClient.promoteContract`.
-  ⬜ **Pendiente menor**: bloquear edición destructiva de start_date/antigüedad en
+  ✅ **Pendiente menor**: bloquear edición destructiva de start_date/antigüedad *(confirmado HECHO en repaso 2026-07-09: el editor bloquea con aviso `labor.contract.editor.dates_locked` cuando hay nóminas; guard backend adicional sería mejora)* en
   contratos CON nóminas en el editor normal (requiere check backend hasPayslips).
   Distinguir cambio de categoría (variación SS) vs cambio de tipo de contrato
   (novación SEPE 100/200/300). + e2e real al ascender.
@@ -1974,7 +1990,7 @@ certificado es el punto crítico:
     SIEMPRE hay perfil RETA. (Extiende RETA-2.) Migración nueva (companies.legal_form).
 12. 🔵 **FICHA-TABS — agrupar pestañas de la ficha** *(parcial 2026-06-15)*.
     ✅ **Contabilidad** agrupada en sub-tabs {Diario/Validar, Bancos, Préstamos,
-    Inmovilizado}. ⬜ **Facturación** {Ventas, Clientes, Config, TPB} PENDIENTE:
+    Inmovilizado}. ✅ **Facturación** {Ventas, Clientes, Config, TPB} *(confirmado HECHO en repaso 2026-07-09: tabs Facturación/Clientes/Config. facturación/Acuerdo en la ficha del cliente)*:
     el TPB se añade/quita dinámicamente a la barra principal (onTpbActivated/
     onTpbRevoked insertan por índice y quitan por etiqueta); agruparla exige
     reescribir esa lógica para apuntar al sub-TabPane. Hacerlo con cuidado.
@@ -2012,7 +2028,7 @@ conectores DEHú y SS RED/SILTRA reales. **Para el final:** DEPLOY-PKG, CV-4..8.
     oficiales. Endpoint `/api/reta/activity-catalog?type=`. Editor RETA: combos
     CNAE/IAE **filtrables al teclear** (código+descripción) + custom; al elegir
     CNAE autocompleta la descripción. Reutilizable para el resto de la ficha.
-- ⬜ **Cotización RETA del titular (manual)**: rendimiento neto previsto + base +
+- ✅ **Cotización RETA del titular (manual)** *(confirmado HECHO en repaso 2026-07-09: RetaService + tab Autónomos (RETA) + tabla de tramos editable)*: rendimiento neto previsto + base +
   cuota → alimenta la Revisión RETA en no vinculados (ya soportado vía
   `reta_profiles.expected_net_income`; aquí un acceso directo).
 - ⬜ **Datos para extraer/estimar sin contabilidad**: cifras manuales de
@@ -2061,13 +2077,13 @@ reusar patrón `AdvisoryDashboardService`). Todas las tablas ya tienen índice
   banner), BOE (ya tiene pantalla).
 
 **Plan de construcción (incremental, por riesgo):**
-- ⬜ **AVISOS-1** — `PendingTasksService` **por empresa** (tenant actual) con las
+- ✅ **AVISOS-1** — `PendingTasksService` **por empresa** *(confirmado HECHO en repaso 2026-07-09: backend/pending/PendingTasksService)* con las
   queries v1 + panel "Tareas pendientes" + badge. Resuelve la pain directamente
   (en Mi gestión / empresario / dentro de un cliente). Bajo riesgo (sin cross-tenant).
-- ⬜ **AVISOS-2** — roll-up **cross-cliente** para la asesoría (recorre cartera).
+- ✅ **AVISOS-2** — roll-up **cross-cliente** para la asesoría *(confirmado HECHO en repaso 2026-07-09: PendingTasksService.forPortfolio())*.
   Reusar el patrón de aislamiento de `AdvisoryDashboardService` (¡cuidado
   multi-tenant!). Incluye RETA-3 con P&L real por cliente.
-- ⬜ **AVISOS-3** — replicar en modo empresario (su propia empresa) — en parte
+- ✅ **AVISOS-3** — replicar en modo empresario *(confirmado HECHO en repaso 2026-07-09: el service es por tenant y el cuadro de mando del empresario lo consume)* — en parte
   sale gratis de AVISOS-1 si se hace agnóstico del modo.
 - Inventario completo (35 fuentes) documentado para ampliar después.
 
@@ -2184,11 +2200,11 @@ salida puntual a internet.
   `module-info.java`).
 
 **Pendientes DEPLOY-PKG (al terminar la app, no arquitectura):**
-- ⬜ **jpackage** del puesto (UI) + backend embebido + MariaDB portable → un
+- ✅ **jpackage** del puesto (UI) + backend embebido + MariaDB portable *(confirmado HECHO en repaso 2026-07-09: es el MSI que se distribuye desde v0.1.x)* → un
   instalable que arranque todo automático en una máquina ("todo es un puesto").
 - ⬜ Backend (+ MariaDB) como **servicio de Windows** con auto-arranque (necesario
   sobre todo en el rol servidor/OWNER; en puesto único puede arrancar al abrir la app).
-- ⬜ Instalar **WiX Toolset v3** en la máquina de build para generar `.msi`/`.exe`
+- ✅ Instalar **WiX Toolset v3** *(confirmado HECHO en repaso 2026-07-09: los MSI se generan; sigue sin estar en PATH — el aviso del build es cosmético)*
   nativo (servicio + accesos directos + desinstalador). Sin WiX solo "app-image".
 - ⬜ Variante de instalador/branding por **versión (Asesoría / Empleado)**.
 - ⬜ Revisar/abrir puerto 8080 en firewall solo en el rol servidor (LAN).
@@ -2330,13 +2346,13 @@ Sobre el bloque NOM, construido el flujo completo estilo A3/Nomio:
   resultado); `purchases` + banco (compras, conciliación).
 
 **Plan por slices (orden por valor/dependencia):**
-- ⬜ **FIN-1 Cuadro de mando del cliente (KPIs nivel 1)** — servicio
+- ✅ **FIN-1 Cuadro de mando del cliente (KPIs nivel 1)** *(confirmado HECHO en repaso 2026-07-09: ClientFinancialsService + ClientFinancialsScreen + tab dashboard)* — servicio
   `ClientFinancialsService(companyId, periodo)` que reúne: ingresos, gastos,
   **margen y beneficio**; coste de personal y su % sobre ingresos; carga fiscal
   (303 estimado ya está + IRPF/retenciones); tesorería (cobros/pagos
   pendientes desde `sales_invoices`/`purchases`); ratios (margen %, gasto/ingreso,
   ticket medio, DSO morosidad). UI: pantalla por cliente con tarjetas KPI.
-- ⬜ **FIN-2 Evolución y comparativa** — serie mensual ingresos/gastos/beneficio
+- ✅ **FIN-2 Evolución y comparativa** *(confirmado HECHO en repaso 2026-07-09: ClientFinancialsService.monthlySeries)* — serie mensual ingresos/gastos/beneficio
   del año + comparativa interanual (gráfica).
 - ⬜ **FIN-3 Proyección de cierre** — extrapola tendencia + estima beneficio e
   IS de fin de año (reusa `year-close precalculate`). Aviso de tesorería futura.
@@ -2345,7 +2361,7 @@ Sobre el bloque NOM, construido el flujo completo estilo A3/Nomio:
   IRPF del autónomo / pagos fraccionados, morosos a reclamar. Presentadas como
   "sugerencias a revisar por el asesor". Opcional: narrativa con IA (el cálculo
   va sobre datos reales, no inventado).
-- ⬜ **FIN-5 Informe PDF** del cuadro de mando + recomendaciones.
+- ✅ **FIN-5 Informe PDF** del cuadro de mando *(confirmado HECHO en repaso 2026-07-09: downloadFinancialsPdf; las recomendaciones son FIN-4, que sigue pendiente)*.
 
 **Límites honestos:** la proyección es tan buena como el histórico; sin
 benchmarks de sector no se puede comparar "con empresas similares"; las
@@ -2842,7 +2858,7 @@ Nóminas; afinar topes de cotización; pagas extra.
 - ✅ ⚖️ **Calendario fiscal con vencimientos** — cerrado (CAL-FISCAL, seed 303/130/111/190/347/390/200 + tabla próximos vencimientos).
 - ⬜ ⚖️ **Régimen especial IVA, prorrata, criterio caja** — catálogo cuentas lo soporta pero no hay UI.
 - ✅ **CONS-CIERRE** *(2026-06-15)* — nueva pestaña **"Cierre de ejercicio"** en el módulo Contabilidad (`AccountingScreen`): precalcular (ingresos/gastos/resultado + IS 25%), **previsualizar el asiento de regularización** (6x/7x→129) sin crear asiento, **cerrar** con aplicación del resultado (reservas/dividendos/pérdidas, cuadre en vivo + confirmación) y **reabrir**. Resuelve el hallazgo previo: el backend del cierre existía pero la UI no lo invocaba (los métodos year-close estaban muertos en `LaborApiClient`; movidos a `AccountingApiClient`). *Nota: "previsualizar regularización" requiere fila en `fiscal_years` (si falta, 404 manejado); precalcular/cerrar no.* Compila limpio.
-- ⬜ **Consolidación empresas asociadas** — eliminación operaciones intragrupo. No urgente.
+- ✅ **Consolidación empresas asociadas** *(confirmado HECHO en repaso 2026-07-09: ConsolidationReportService elimina recíprocos intragrupo)*.
 
 ## UI/UX
 
@@ -2853,17 +2869,17 @@ Nóminas; afinar topes de cotización; pagas extra.
 - ✅ Editor calendario event card "Editar"/"Eliminar" *(ya implementado — verificado 2026-06-15: `dayEventCard` tiene botones Editar (`showFormDialog("calendar", …)`) y Eliminar (`deleteCalendarEvent` → DELETE `/calendar/{id}`); backlog estaba desactualizado).
 - ⬜ Auditar otros módulos viejos (customers detail, dashboard CRUDs).
 - ✅ **VG-FULL-SCAN restante** *(2026-06-15)* — auditado con agente Explore (294 columnas). Añadido comparador a las 7 columnas numéricas/fecha que faltaban (TPB total, validez cert., multi-asignación fecha+importe, recurrentes importe+fecha). Las de tamaño de archivo (humanSize, unidades mezcladas KB/MB) se excluyen a propósito.
-- ⬜ ❓ **OCR para PDFs escaneados** (Tess4J + Tesseract) — necesito decisión: instalar binario nativo.
+- ✅ **OCR para PDFs escaneados** (Tess4J + Tesseract) *(confirmado HECHO en repaso 2026-07-09: tess4j en pom, PdfTextExtractor lo usa y el MSI empaqueta tessdata)*.
 
 ## Workflow trabajos / Derivados PORT-2
 
-- ⬜ **Partes de día con validación admin** — DRAFT → SUBMITTED → APPROVED → BILLED.
-- ⬜ 💰 **Conversión work_log → línea sales_invoice** automática al cobrar. Setar `billed_invoice_line_id`.
+- ✅ **Partes de día con validación admin** — DRAFT → SUBMITTED → APPROVED → BILLED *(confirmado HECHO en repaso 2026-07-09: WorkLogService con los 4 estados)*.
+- ✅ 💰 **Conversión work_log → línea sales_invoice** *(confirmado HECHO en repaso 2026-07-09: billed_invoice_line_id en WorkLogService + SalesInvoiceService)*.
 - ⬜ **Fichajes sospechosos** — detección patrones anómalos.
 
 ## Calendario
 
-- ⬜ Calendario laboral por empresa completo.
+- ✅ Calendario laboral por empresa *(confirmado HECHO en repaso 2026-07-09: paquete labor/workcal con WorkCalendarController + HolidayPdfExtractor)*.
 - ✅ ❓ **Integración Google Calendar bidireccional** — cerrado 2026-06-27 (GOOGLE-UNIFICADO):
   `GoogleCalendarService.sync` push agenda→Google + pull Google→agenda, a demanda, con
   credenciales centrales (`benjagest2026`) o per-instalación. *(Quitar el aviso "app no
@@ -2881,7 +2897,7 @@ Nóminas; afinar topes de cotización; pagas extra.
 
 - ⬜ Alertas de seguridad (`security_alerts_180`) — intentos login, accesos sospechosos.
 - ✅ Análisis / Alertas BOE — cerrado (BOE-RSS diario + pantalla dedicada con apertura de PDF oficial).
-- ⬜ Acceso PWA / móvil *(posiblemente cubierto por MOBILE-EMPLEADO)*.
+- ✅ Acceso PWA / móvil *(confirmado HECHO en repaso 2026-07-09: PWA del empleado servida por EmployeeAppService)*.
 - ✅ **Envío de correo por Gmail (OAuth2)** — cerrado 2026-06-27 (GOOGLE-UNIFICADO): la empresa
   conecta su Gmail y BENJAGEST envía facturas/nóminas/enlaces por ahí (sin contraseña de
   aplicación). Per-empresa, no a nivel usuario. El correo normal sigue por SMTP.
@@ -2902,7 +2918,7 @@ Nóminas; afinar topes de cotización; pagas extra.
 
 | Decisión | Bloquea | Mi recomendación si decido yo |
 |---|---|---|
-| 🟡 OCR Tesseract | ⬜ OCR PDFs escaneados | Sí, instalar binario nativo. Hoy PDFs imagen rechazan con 422. |
+| 🟢 OCR Tesseract | ✅ OCR PDFs escaneados | HECHO — tess4j + tessdata van dentro del MSI. |
 | 🟡 CENTROS-MAP | ⬜ Mapa lat/lng | WebView + Leaflet + Nominatim (offline-friendly) |
 | 🟡 Régimen especial IVA / prorrata / criterio caja | UI fiscal afinado | Modelar tras un caso real de cliente que lo necesite |
 | ✅ Hechas | — | — |

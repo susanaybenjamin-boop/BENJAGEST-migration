@@ -8927,8 +8927,10 @@ public class BenjagestUiApplication extends Application
         for (int i = 0; i < keys.length; i++) {
             String k = keys[i];
             Button kb = new Button(k);
-            kb.setMinSize(70, 60);
-            kb.setPrefSize(70, 60);
+            // Tamaño compacto original (58x48) — el panel del bloqueo es más
+            // pequeño que el del login; el estilo 3D es el mismo (.pin-key).
+            kb.setMinSize(58, 48);
+            kb.setPrefSize(58, 48);
             kb.setFocusTraversable(false);
             kb.getStyleClass().add("pin-key"); // relieve 3D + :pressed (app.css)
             kb.setOnAction(ev -> {
