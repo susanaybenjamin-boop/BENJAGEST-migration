@@ -152,6 +152,53 @@ public class PurchaseInvoiceApiClient {
     }
 
     /**
+     * DEDUC-2 — reglas de deducibilidad por proveedor:
+     * [id, supplierNif, supplierName, vatPct, irpfPct] por fila.
+     */
+    public java.util.List<String[]> listDeductibilityRules() throws IOException, InterruptedException {
+        HttpRequest.Builder b = HttpRequest.newBuilder(
+                        URI.create(baseUrl + "/purchases/deductibility/rules"))
+                .timeout(Duration.ofSeconds(10)).GET();
+        AuthSession.get().authorize(b);
+        HttpResponse<String> r = httpClient.send(b.build(), HttpResponse.BodyHandlers.ofString());
+        if (r.statusCode() < 200 || r.statusCode() >= 300) throw new IOException(r.body());
+        java.util.List<String[]> out = new java.util.ArrayList<>();
+        // Objetos PLANOS → el regex simple es seguro aquí.
+        java.util.regex.Matcher m = java.util.regex.Pattern
+                .compile("\\{[^{}]*\\}").matcher(r.body());
+        while (m.find()) {
+            String j = m.group();
+            java.math.BigDecimal vat = bdField(j, "vatPct");
+            java.math.BigDecimal irpf = bdField(j, "irpfPct");
+            out.add(new String[]{ strField(j, "id"), strField(j, "supplierNif"),
+                    strField(j, "supplierName"),
+                    vat == null ? "" : vat.toPlainString(),
+                    irpf == null ? "" : irpf.toPlainString() });
+        }
+        return out;
+    }
+
+    public void deleteDeductibilityRule(String ruleId) throws IOException, InterruptedException {
+        HttpRequest.Builder b = HttpRequest.newBuilder(
+                        URI.create(baseUrl + "/purchases/deductibility/rules/" + ruleId))
+                .timeout(Duration.ofSeconds(10)).DELETE();
+        AuthSession.get().authorize(b);
+        HttpResponse<String> r = httpClient.send(b.build(), HttpResponse.BodyHandlers.ofString());
+        if (r.statusCode() < 200 || r.statusCode() >= 300) throw new IOException(r.body());
+    }
+
+    /** DEDUC-2 — libro de recibidas del año en CSV (3 columnas AEAT). */
+    public String getLibroRecibidasCsv(int year) throws IOException, InterruptedException {
+        HttpRequest.Builder b = HttpRequest.newBuilder(
+                        URI.create(baseUrl + "/purchases/deductibility/libro-recibidas.csv?year=" + year))
+                .timeout(Duration.ofSeconds(30)).GET();
+        AuthSession.get().authorize(b);
+        HttpResponse<String> r = httpClient.send(b.build(), HttpResponse.BodyHandlers.ofString());
+        if (r.statusCode() < 200 || r.statusCode() >= 300) throw new IOException(r.body());
+        return r.body();
+    }
+
+    /**
      * IRPF-DED — "Crear regla" desde un gasto: manda el proveedor de esta
      * factura a {@code accountCode} (reclasifica este asiento + aprende la
      * regla + sincroniza la deducibilidad IRPF).

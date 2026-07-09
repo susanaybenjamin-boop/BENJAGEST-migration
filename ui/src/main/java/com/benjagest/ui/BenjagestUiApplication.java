@@ -82,6 +82,8 @@ import javafx.scene.control.Dialog;
 import javafx.scene.control.Label;
 import javafx.scene.control.CheckBox;
 import javafx.scene.control.ComboBox;
+import javafx.scene.control.MenuButton;
+import javafx.scene.control.MenuItem;
 import javafx.scene.control.PasswordField;
 import javafx.scene.control.ScrollPane;
 import javafx.scene.control.SplitPane;
@@ -3318,6 +3320,113 @@ public class BenjagestUiApplication extends Application
     }
 
     /**
+     * DEDUC-2 — diálogo de gestión de las reglas de deducibilidad por
+     * proveedor (% IVA / % IRPF que se precargan al crear gastos del NIF).
+     * Se crean desde "Clasificación fiscal" (checkbox); aquí se ven y borran.
+     */
+    private void showDeductibilityRulesDialog() {
+        Dialog<ButtonType> dialog = new Dialog<>();
+        dialog.setTitle(t("purchases.deduc.rules"));
+        dialog.getDialogPane().getButtonTypes().add(
+                new ButtonType(t("dialog.close"), ButtonBar.ButtonData.CANCEL_CLOSE));
+
+        TableView<String[]> table = new TableView<>();
+        table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
+        TableColumn<String[], String> cNif = new TableColumn<>(t("purchases.deduc.col.nif"));
+        cNif.setCellValueFactory(c -> new SimpleStringProperty(c.getValue()[1]));
+        TableColumn<String[], String> cName = new TableColumn<>(t("purchases.deduc.col.supplier"));
+        cName.setCellValueFactory(c -> new SimpleStringProperty(
+                c.getValue()[2] == null || c.getValue()[2].isBlank() ? "—" : c.getValue()[2]));
+        TableColumn<String[], String> cVat = new TableColumn<>(t("purchases.deduc.col.vat"));
+        cVat.setCellValueFactory(c -> new SimpleStringProperty(c.getValue()[3] + " %"));
+        TableColumn<String[], String> cIrpf = new TableColumn<>(t("purchases.deduc.col.irpf"));
+        cIrpf.setCellValueFactory(c -> new SimpleStringProperty(c.getValue()[4] + " %"));
+        table.getColumns().addAll(java.util.List.of(cNif, cName, cVat, cIrpf));
+
+        Runnable reload = () -> new Thread(() -> {
+            try {
+                var rows = purchasesApi.listDeductibilityRules();
+                javafx.application.Platform.runLater(() ->
+                        table.getItems().setAll(rows));
+            } catch (Exception ex) {
+                javafx.application.Platform.runLater(() ->
+                        showError(t("purchases.deduc.rules"), ex.getMessage()));
+            }
+        }, "deduc-rules-load").start();
+
+        Button deleteRuleBtn = new Button(t("common.delete"));
+        deleteRuleBtn.setOnAction(ev -> {
+            var sel = table.getSelectionModel().getSelectedItem();
+            if (sel == null) return;
+            new Thread(() -> {
+                try {
+                    purchasesApi.deleteDeductibilityRule(sel[0]);
+                    reload.run();
+                } catch (Exception ex) {
+                    javafx.application.Platform.runLater(() ->
+                            showError(t("purchases.deduc.rules"), ex.getMessage()));
+                }
+            }, "deduc-rule-delete").start();
+        });
+        Label hint = new Label(t("purchases.deduc.rules_hint"));
+        hint.setWrapText(true); hint.getStyleClass().add("settings-hint");
+
+        VBox box = new VBox(10, hint, new HBox(10, deleteRuleBtn), table);
+        VBox.setVgrow(table, Priority.ALWAYS);
+        box.setPadding(new javafx.geometry.Insets(12));
+        dialog.getDialogPane().setContent(box);
+        dialog.getDialogPane().setPrefSize(720, 460);
+        dialog.setResizable(true);
+        dialog.initOwner(root.getScene().getWindow());
+        reload.run();
+        dialog.showAndWait();
+    }
+
+    /**
+     * DEDUC-2 — exporta el libro registro de facturas RECIBIDAS del año a
+     * CSV con las tres columnas AEAT (cuota soportada / cuota deducible IVA /
+     * gasto deducible IRPF). Pide el año y dónde guardarlo.
+     */
+    private void exportLibroRecibidasCsv() {
+        TextInputDialog yearDlg = new TextInputDialog(
+                String.valueOf(java.time.LocalDate.now().getYear()));
+        yearDlg.setTitle(t("purchases.deduc.libro"));
+        yearDlg.setHeaderText(null);
+        yearDlg.setContentText(t("purchases.deduc.libro_year"));
+        yearDlg.initOwner(root.getScene().getWindow());
+        var res = yearDlg.showAndWait();
+        if (res.isEmpty()) return;
+        int year;
+        try { year = Integer.parseInt(res.get().trim()); }
+        catch (NumberFormatException ex) { return; }
+
+        javafx.stage.FileChooser chooser = new javafx.stage.FileChooser();
+        chooser.setInitialFileName("libro-recibidas-" + year + ".csv");
+        chooser.getExtensionFilters().add(
+                new javafx.stage.FileChooser.ExtensionFilter("CSV", "*.csv"));
+        java.io.File file = chooser.showSaveDialog(root.getScene().getWindow());
+        if (file == null) return;
+        new Thread(() -> {
+            try {
+                String csv = purchasesApi.getLibroRecibidasCsv(year);
+                // BOM UTF-8 para que Excel ES abra las tildes bien.
+                java.nio.file.Files.write(file.toPath(),
+                        ("﻿" + csv).getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                javafx.application.Platform.runLater(() -> {
+                    Alert ok = new Alert(Alert.AlertType.INFORMATION,
+                            t("purchases.deduc.libro_done") + "\n" + file.getAbsolutePath(),
+                            ButtonType.OK);
+                    ok.initOwner(root.getScene().getWindow());
+                    ok.showAndWait();
+                });
+            } catch (Exception ex) {
+                javafx.application.Platform.runLater(() ->
+                        showError(t("purchases.deduc.libro"), ex.getMessage()));
+            }
+        }, "deduc-libro-export").start();
+    }
+
+    /**
      * IRPF-DED — "Crear regla" desde un gasto: manda TODAS las facturas del
      * proveedor a la cuenta elegida (reclasifica este asiento + aprende la
      * regla proveedor→cuenta). Si es una subcuenta de vehículo, dejan de ser
@@ -3654,9 +3763,19 @@ public class BenjagestUiApplication extends Application
             if (sel != null) showCreateExpenseRuleDialog(sel.id(), sel.supplierName());
         });
 
+        // DEDUC-2: gestión de las reglas de deducibilidad por proveedor y
+        // export del libro registro de recibidas (3 columnas AEAT).
+        MenuButton deducBtn = new MenuButton(t("purchases.deduc.menu"));
+        deducBtn.setGraphic(icon("fas-percent"));
+        MenuItem rulesItem = new MenuItem(t("purchases.deduc.rules"));
+        rulesItem.setOnAction(ev -> showDeductibilityRulesDialog());
+        MenuItem libroItem = new MenuItem(t("purchases.deduc.libro"));
+        libroItem.setOnAction(ev -> exportLibroRecibidasCsv());
+        deducBtn.getItems().addAll(rulesItem, libroItem);
+
         HBox actions = new HBox(10, newExpenseBtn, newAutonomoBtn, validateBatchBtn,
                 makeRecurringPurchaseBtn, dueDatesBtn, registerPaymentBtn, classifyBtn,
-                createRuleBtn, deleteBtn);
+                createRuleBtn, deducBtn, deleteBtn);
         actions.setAlignment(javafx.geometry.Pos.CENTER_LEFT);
 
         VBox body = new VBox(12);
