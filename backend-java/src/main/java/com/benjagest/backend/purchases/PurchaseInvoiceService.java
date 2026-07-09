@@ -287,6 +287,10 @@ public class PurchaseInvoiceService {
         // (factura con signo negativo en el ejercicio actual). El
         // guard lanza 409 con mensaje legible que la UI muestra.
         fiscalGuard.requireOpenForDate(existing.invoiceDate(), "eliminar esta factura");
+        // AUDIT-T3 (2026-07-09): el ejercicio anual puede seguir OPEN pero el
+        // TRIMESTRE de la factura puede estar ya declarado (303/130
+        // presentados). Borrar entonces descuadra una declaración presentada.
+        requirePeriodNotPresented(existing.invoiceDate(), "eliminar esta factura");
         AuthenticatedUser user = currentUserService.require();
         String tenant = tenantContext.getCurrentCompanyId();
         // Auditoría primero: necesitamos la traza aunque luego el
@@ -331,6 +335,8 @@ public class PurchaseInvoiceService {
         String companyId = tenantContext.getCurrentCompanyId();
         PurchaseInvoice inv = get(id); // 404 si no existe
         fiscalGuard.requireOpenForDate(inv.invoiceDate(), "reclasificar este gasto");
+        // AUDIT-T3: no reclasificar un gasto cuyo trimestre ya está declarado.
+        requirePeriodNotPresented(inv.invoiceDate(), "reclasificar este gasto");
 
         List<Object[]> acc = jdbcTemplate.query("""
                 SELECT id, irpf_deductible_default FROM accounting_accounts
@@ -378,6 +384,31 @@ public class PurchaseInvoiceService {
                    SET expense_account_code = ?, expense_deductible = ?
                  WHERE id = ? AND company_id = ?
                 """, code, irpfDed, id, companyId);
+    }
+
+    /**
+     * AUDIT-T3 (2026-07-09) — 409 si la fecha cae en un periodo cuyo 303/130
+     * (o un modelo anual: 390/347/349) ya está PRESENTADO/PAID. El 130 es
+     * acumulado, así que un gasto del 1T también alimenta el 2T-4T: se bloquea
+     * si hay CUALQUIER presentación del año con trimestre &gt;= al de la fecha,
+     * o una anual. El camino legal es la rectificación en el periodo corriente.
+     */
+    public void requirePeriodNotPresented(LocalDate date, String action) {
+        if (date == null) return;
+        int q = (date.getMonthValue() - 1) / 3 + 1;
+        Integer hits = jdbcTemplate.queryForObject("""
+                SELECT COUNT(*) FROM tax_filings
+                 WHERE company_id = ? AND status IN ('PRESENTED', 'PAID')
+                   AND period_year = ?
+                   AND (period_quarter IS NULL OR period_quarter >= ?)
+                """, Integer.class, tenantContext.getCurrentCompanyId(),
+                date.getYear(), q);
+        if (hits != null && hits > 0) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "No se puede " + action + ": su periodo (" + q + "T " + date.getYear()
+                    + ") ya está incluido en una declaración presentada. Registra la "
+                    + "corrección/rectificación en el periodo corriente.");
+        }
     }
 
     private String blankToNull(String v) {

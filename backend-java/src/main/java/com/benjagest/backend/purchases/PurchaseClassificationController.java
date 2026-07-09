@@ -37,10 +37,13 @@ public class PurchaseClassificationController {
 
     private final JdbcTemplate jdbc;
     private final TenantContext tenant;
+    private final PurchaseInvoiceService invoiceService;
 
-    public PurchaseClassificationController(JdbcTemplate jdbc, TenantContext tenant) {
+    public PurchaseClassificationController(JdbcTemplate jdbc, TenantContext tenant,
+                                              PurchaseInvoiceService invoiceService) {
         this.jdbc = jdbc;
         this.tenant = tenant;
+        this.invoiceService = invoiceService;
     }
 
     public record Classification(String operationType, BigDecimal vatDeductiblePercent,
@@ -63,6 +66,11 @@ public class PurchaseClassificationController {
 
     @PutMapping
     public Classification update(@PathVariable("id") String id, @RequestBody Classification req) {
+        // AUDIT-T3: la clasificación (deducibilidad IVA/IRPF) de un gasto cuyo
+        // trimestre ya está declarado no se cambia — descuadraría el 303/130
+        // presentados. Rectificación en el periodo corriente.
+        invoiceService.requirePeriodNotPresented(invoiceService.get(id).invoiceDate(),
+                "cambiar la clasificación fiscal de este gasto");
         String op = req.operationType() == null ? "INTERIOR" : req.operationType().trim().toUpperCase();
         if (!OPERATION_TYPES.contains(op)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,

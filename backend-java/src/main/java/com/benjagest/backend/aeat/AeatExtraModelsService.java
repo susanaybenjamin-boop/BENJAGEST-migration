@@ -91,6 +91,7 @@ public class AeatExtraModelsService {
                   FROM purchase_invoices
                  WHERE company_id = ?
                    AND YEAR(invoice_date) = ?
+                   AND status = 'POSTED'
                 """, (rs, n) -> new Object[]{
                         rs.getString("supplier_nif"),
                         rs.getString("supplier_name"),
@@ -191,6 +192,7 @@ public class AeatExtraModelsService {
                   FROM purchase_invoices
                  WHERE company_id = ? AND operation_type = 'INTRACOM'
                    AND YEAR(invoice_date) = ?
+                   AND status = 'POSTED'
                 """, (rs, n) -> new Object[]{
                         rs.getString("supplier_nif"), rs.getString("supplier_name"),
                         rs.getDate("invoice_date").toLocalDate(), rs.getBigDecimal("base_amount")},
@@ -251,14 +253,56 @@ public class AeatExtraModelsService {
     public Model390View generate390(int year, boolean persist) {
         String companyId = tenantContext.getCurrentCompanyId();
 
-        // IVA repercutido y soportado del año desde los asientos POSTED
-        // (misma fuente que el 303, sin filtro de trimestre).
+        // IVA repercutido del año desde los asientos POSTED (misma fuente que
+        // el 303, sin filtro de trimestre).
         VatBreakdown rep = jdbcTemplate.queryForObject(SALES_VAT_BY_RATE_SQL,
                 AeatExtraModelsService::mapRepercutido, companyId, year);
-        VatBreakdown sop = jdbcTemplate.queryForObject(PURCHASE_VAT_BY_RATE_SQL,
+        // Bases soportadas por tipo (para las casillas 22/24/28) desde asientos.
+        VatBreakdown sopBases = jdbcTemplate.queryForObject(PURCHASE_VAT_BY_RATE_SQL,
                 AeatExtraModelsService::mapSoportado, companyId, year);
 
-        BigDecimal resultadoLiquidacion = computeResultadoIva(rep.totalIva, sop.totalIva);
+        // AUDIT-2 (2026-07-09): la CUOTA deducible del 390 se calcula como en
+        // el 303 — prorrateada por vat_deductible_percent y ruteada por tipo de
+        // operación — para que el resumen anual cuadre con la suma de los
+        // cuatro trimestres. Antes deducía el 472 íntegro de los asientos: una
+        // factura con IVA deducible al 50% deducía el 100% en el 390.
+        List<PurchaseRow> comprasAnno = jdbcTemplate.query("""
+                SELECT operation_type, investment_good,
+                       COALESCE(SUM(base_amount),0)                            AS base,
+                       COALESCE(SUM(vat_amount),0)                             AS cuota,
+                       COALESCE(SUM(vat_amount * vat_deductible_percent / 100),0) AS ded
+                  FROM purchase_invoices
+                 WHERE company_id = ? AND status = 'POSTED'
+                   AND YEAR(invoice_date) = ?
+                 GROUP BY operation_type, investment_good
+                """, (rs, n) -> new PurchaseRow(
+                        rs.getString("operation_type"), rs.getBoolean("investment_good"),
+                        rs.getBigDecimal("base"), rs.getBigDecimal("cuota"), rs.getBigDecimal("ded")),
+                companyId, year);
+        BigDecimal[] manualAnno = jdbcTemplate.queryForObject("""
+                SELECT COALESCE(SUM(CASE WHEN a.code LIKE '6%'   THEN l.debit END),0),
+                       COALESCE(SUM(CASE WHEN a.code LIKE '472%' THEN l.debit END),0)
+                  FROM journal_entry_lines l
+                  JOIN journal_entries e ON e.id = l.journal_entry_id
+                  JOIN accounting_accounts a ON a.id = l.account_id
+                 WHERE e.company_id = ? AND e.status = 'POSTED' AND l.vat_rate IS NOT NULL
+                   AND YEAR(e.entry_date) = ?
+                   AND NOT EXISTS (SELECT 1 FROM purchase_invoices p WHERE p.id = e.source_id)
+                """, (rs, n) -> new BigDecimal[]{nz(rs.getBigDecimal(1)), nz(rs.getBigDecimal(2))},
+                companyId, year);
+        List<PurchaseRow> filasAnno = new ArrayList<>(comprasAnno);
+        if (manualAnno[0].signum() != 0 || manualAnno[1].signum() != 0) {
+            filasAnno.add(new PurchaseRow("INTERIOR", false, manualAnno[0], manualAnno[1], manualAnno[1]));
+        }
+        Map<String, BigDecimal> dedAnno = routePurchases303(filasAnno);
+        BigDecimal totalDeducibleAnno = nz(dedAnno.get("_total_deducible"));
+        // Devengado por autorrepercusión (intracom/ISP) anual — igual que el 303.
+        BigDecimal devengadoAutorrepAnno = nz(dedAnno.get("_devengado_autorrep"));
+        VatBreakdown sop = new VatBreakdown(sopBases.base04(), sopBases.base10(),
+                sopBases.base21(), totalDeducibleAnno);
+
+        BigDecimal resultadoLiquidacion = computeResultadoIva(
+                rep.totalIva.add(devengadoAutorrepAnno), totalDeducibleAnno);
 
         Map<String, Object> casillas = new LinkedHashMap<>();
         casillas.put("01_base04", rep.base04);
@@ -364,7 +408,11 @@ public class AeatExtraModelsService {
     // ====================================================================
 
     /** Bases de IVA REPERCUTIDO por tipo = haber de las líneas 7xx etiquetadas.
-     *  Termina en YEAR(...)=? ; quien lo use añade el filtro de periodo. */
+     *  Termina en YEAR(...)=? ; quien lo use añade el filtro de periodo.
+     *  AUDIT-3 (2026-07-09): si el asiento viene de una factura de venta, esta
+     *  debe seguir VALIDATED — una venta anulada (VOIDED/CANCELLED) cuyo
+     *  asiento quedara POSTED no puede seguir repercutiendo IVA. Los asientos
+     *  manuales (sin factura detrás) siguen contando. */
     private static final String SALES_VAT_BY_RATE_SQL = """
             SELECT
               COALESCE(SUM(CASE WHEN ABS(l.vat_rate - 4) < 1 THEN l.credit ELSE 0 END), 0) AS base04,
@@ -375,6 +423,8 @@ public class AeatExtraModelsService {
               JOIN accounting_accounts a ON a.id = l.account_id
              WHERE e.company_id = ? AND e.status = 'POSTED'
                AND l.vat_rate IS NOT NULL AND a.code LIKE '7%'
+               AND NOT EXISTS (SELECT 1 FROM sales_invoices sv
+                   WHERE sv.id = e.source_id AND sv.status <> 'VALIDATED')
                AND YEAR(e.entry_date) = ?""";
 
     /** Bases de IVA SOPORTADO por tipo (debe 6xx) + cuota total (debe 472). */
@@ -678,10 +728,14 @@ public class AeatExtraModelsService {
      */
     private BigDecimal resolveCompensacionPrevia(String companyId, int year, int quarter) {
         // 1) Remanente (casilla 87) del 303 inmediatamente anterior.
+        // AUDIT-6 (2026-07-09): solo un 303 PRESENTADO deja saldo a compensar;
+        // el remanente de un borrador que luego se corrige no puede alimentar
+        // la casilla 110 del trimestre siguiente.
         List<String> prior = jdbcTemplate.query("""
                 SELECT data FROM tax_filings
                  WHERE company_id = ? AND tax_model_code = '303'
                    AND period_quarter IS NOT NULL
+                   AND status IN ('PRESENTED', 'PAID')
                    AND (period_year < ? OR (period_year = ? AND period_quarter < ?))
                  ORDER BY period_year DESC, period_quarter DESC
                  LIMIT 1
@@ -773,11 +827,14 @@ public class AeatExtraModelsService {
                 """, BigDecimal.class, companyId, year, mTo);
         // OPTYPE: solo los gastos DEDUCIBLES en IRPF (expense_deductible)
         // cuentan en el 130. Un gasto marcado como no deducible no resta.
+        // AUDIT-1 (2026-07-09): status='POSTED' — un gasto en borrador o
+        // anulado (VOID) no puede deducir en el 130 (mismo criterio que el 303).
         BigDecimal gastos = jdbcTemplate.queryForObject("""
                 SELECT COALESCE(SUM(base_amount), 0) FROM purchase_invoices
                  WHERE company_id = ? AND YEAR(invoice_date) = ?
                    AND MONTH(invoice_date) <= ?
                    AND expense_deductible = 1
+                   AND status = 'POSTED'
                 """, BigDecimal.class, companyId, year, mTo);
         // Retenciones IRPF que los clientes practicaron al autónomo en sus
         // facturas emitidas (acumulado del año).
@@ -787,11 +844,14 @@ public class AeatExtraModelsService {
                    AND MONTH(invoice_date) <= ? AND status = 'VALIDATED'
                 """, BigDecimal.class, companyId, year, mTo);
         // Pagos fraccionados previos = resultado de los 130 de trimestres
-        // anteriores del mismo año ya guardados.
+        // anteriores del mismo año YA PRESENTADOS. AUDIT-5 (2026-07-09): un
+        // borrador no presentado no es un pago; descontarlo infla el descuento
+        // (casilla 15 = pagos fraccionados INGRESADOS).
         BigDecimal pagosPrevios = jdbcTemplate.queryForObject("""
                 SELECT COALESCE(SUM(total_amount), 0) FROM tax_filings
                  WHERE company_id = ? AND tax_model_code = '130'
                    AND period_year = ? AND period_quarter < ?
+                   AND status IN ('PRESENTED', 'PAID')
                 """, BigDecimal.class, companyId, year, quarter);
 
         Model130Calc calc = compute130(ingresos, gastos, retenciones, pagosPrevios);
@@ -913,6 +973,14 @@ public class AeatExtraModelsService {
                     throw new ResponseStatusException(HttpStatus.CONFLICT,
                             "Ya hay una declaración " + modelCode + "/" + year
                                     + " presentada. No se puede regenerar.");
+                }
+                // AUDIT-9 (2026-07-09): READY = revisada a mano por el asesor.
+                // Regenerar la machacaría en silencio; que vuelva a DRAFT antes.
+                if ("READY".equals(status)) {
+                    throw new ResponseStatusException(HttpStatus.CONFLICT,
+                            "La declaración " + modelCode + "/" + year
+                                    + " está marcada como lista (READY). Pásala a borrador "
+                                    + "antes de regenerarla para no perder los ajustes.");
                 }
                 jdbcTemplate.update("""
                         UPDATE tax_filings SET data = ?, total_amount = ?,
