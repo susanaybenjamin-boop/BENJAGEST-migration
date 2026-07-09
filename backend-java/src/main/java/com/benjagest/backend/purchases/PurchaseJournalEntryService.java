@@ -403,11 +403,19 @@ public class PurchaseJournalEntryService {
         }
     }
 
-    /** Borra un asiento y sus dependencias (eventos de aprendizaje + líneas). */
+    /** Borra un asiento y sus dependencias (eventos + reglas aprendidas + líneas). */
     private void deleteEntry(String companyId, String entryId) {
         jdbcTemplate.update("""
                 DELETE FROM accounting_learning_events
                  WHERE journal_entry_id = ? AND company_id = ?
+                """, entryId, companyId);
+        // Una regla aprendida puede referenciar este asiento como su origen
+        // (learned_from_entry_id, FK fk_alr_entry). Se anula la referencia —la
+        // regla sobrevive— para que el DELETE del asiento no choque con la FK.
+        jdbcTemplate.update("""
+                UPDATE accounting_learning_rules
+                   SET learned_from_entry_id = NULL
+                 WHERE learned_from_entry_id = ? AND company_id = ?
                 """, entryId, companyId);
         jdbcTemplate.update("""
                 DELETE FROM journal_entry_lines
