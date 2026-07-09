@@ -198,6 +198,21 @@ public class PurchaseInvoiceRepository {
                 """, id, tenantContext.getCurrentCompanyId());
     }
 
+    /**
+     * Rompe el enlace factura → asiento de devengo (journal_entry_id = NULL).
+     * Necesario ANTES de borrar el asiento: la FK
+     * {@code fk_purchase_invoices_journal_v40} impide borrar un asiento al que
+     * aún apunta una factura (error 1451), lo que tumbaría toda la transacción.
+     */
+    public int clearJournalEntryLink(String id) {
+        return jdbcTemplate.update("""
+                UPDATE purchase_invoices
+                   SET journal_entry_id = NULL
+                 WHERE id = ?
+                   AND company_id = ?
+                """, id, tenantContext.getCurrentCompanyId());
+    }
+
     private PurchaseInvoice map(ResultSet rs, int rowNum) throws SQLException {
         Date d = rs.getDate("invoice_date");
         Date pd = rs.getDate("paid_date");

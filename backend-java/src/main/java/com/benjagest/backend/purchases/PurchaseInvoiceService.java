@@ -291,14 +291,20 @@ public class PurchaseInvoiceService {
         auditService.recordPurchaseInvoiceDeleted(user.userId(), tenant,
                 id, existing.totalAmount(), existing.supplierName(),
                 existing.invoiceNumber());
+        // La factura referencia su asiento de devengo por journal_entry_id
+        // (FK fk_purchase_invoices_journal_v40). Hay que romper esa referencia
+        // ANTES de borrar el asiento: si no, el DELETE del asiento choca con la
+        // FK (error 1451), marca la transacción como rollback-only y el
+        // deletePhysical posterior revienta con UnexpectedRollbackException
+        // (el usuario veía "No se pudo eliminar").
         if (existing.journalEntryId() != null) {
-            try {
-                journalService.reverseForPurchase(existing);
-            } catch (Exception ex) {
-                System.err.println("[purchases] no se pudo revertir asiento "
-                        + ex.getMessage());
-            }
+            repository.clearJournalEntryLink(id);
         }
+        // Borra el/los asiento(s) del gasto (devengo + pagos, todo-o-nada). NO
+        // se traga la excepción: si un asiento cae en un ejercicio cerrado,
+        // reverseForPurchase lanza 409 con mensaje legible y no se borra nada
+        // (la transacción revierte, incluido el enlace anterior).
+        journalService.reverseForPurchase(existing);
         repository.deletePhysical(id);
     }
 
