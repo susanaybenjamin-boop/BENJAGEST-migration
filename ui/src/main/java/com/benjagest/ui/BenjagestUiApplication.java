@@ -3248,6 +3248,24 @@ public class BenjagestUiApplication extends Application
         // la lleva la CUENTA del gasto (subcuenta de vehículo = no deducible).
         // Conservamos el valor actual para no alterarlo al guardar la parte IVA.
         final boolean[] keepExpDed = {true};
+        // DEDUC: % de IRPF deducible explícito de ESTA factura. Vacío =
+        // hereda de la cuenta (comportamiento IRPF-DED de siempre).
+        TextField irpfPct = new TextField("");
+        irpfPct.setPromptText(t("purchases.classification.irpf_inherit"));
+        CheckBox saveRule = new CheckBox(t("purchases.classification.save_rule"));
+        // DEDUC: plantillas legales que precargan los dos %.
+        ComboBox<String> template = new ComboBox<>();
+        String tplNone = t("purchases.classification.template.none");
+        String tplVehicle = t("purchases.classification.template.vehicle");
+        String tplVehicleFull = t("purchases.classification.template.vehicle_exclusive");
+        String tplEntertain = t("purchases.classification.template.entertainment");
+        template.getItems().addAll(tplNone, tplVehicle, tplVehicleFull, tplEntertain);
+        template.getSelectionModel().selectFirst();
+        template.valueProperty().addListener((obs, old, val) -> {
+            if (tplVehicle.equals(val)) { dedPct.setText("50"); irpfPct.setText("0"); }
+            else if (tplVehicleFull.equals(val)) { dedPct.setText("100"); irpfPct.setText("100"); }
+            else if (tplEntertain.equals(val)) { dedPct.setText("0"); irpfPct.setText("100"); }
+        });
 
         javafx.concurrent.Task<String[]> load = new javafx.concurrent.Task<>() {
             @Override protected String[] call() throws Exception { return purchasesApi.getClassification(purchaseId); }
@@ -3259,6 +3277,7 @@ public class BenjagestUiApplication extends Application
                 dedPct.setText(c[1]);
                 keepExpDed[0] = "true".equals(c[2]);
                 invGood.setSelected("true".equals(c[3]));
+                if (c.length > 4 && c[4] != null) irpfPct.setText(c[4]);
             }
         });
         new Thread(load, "purchase-classification-load").start();
@@ -3266,16 +3285,18 @@ public class BenjagestUiApplication extends Application
         Label hint = new Label("Tipo de operación a efectos de IVA y qué parte es deducible. "
                 + "Ejemplo: una comida de negocios suele ser gasto deducible pero con IVA no deducible (0 %).");
         hint.setWrapText(true); hint.getStyleClass().add("settings-hint");
-        Label irpfHint = new Label("La deducibilidad en IRPF (modelo 130) se decide por la cuenta contable "
-                + "del gasto: llévalo a una subcuenta de vehículo (no deducible) con «Crear regla».");
+        Label irpfHint = new Label(t("purchases.classification.irpf_hint"));
         irpfHint.setWrapText(true); irpfHint.getStyleClass().add("settings-hint");
         GridPane g = new GridPane();
         g.setHgap(10); g.setVgap(10); g.setPadding(new javafx.geometry.Insets(12));
         g.add(hint, 0, 0, 2, 1);
-        g.add(new Label("Tipo de operación"), 0, 1); g.add(opType, 1, 1);
-        g.add(new Label("IVA deducible (%)"), 0, 2); g.add(dedPct, 1, 2);
-        g.add(invGood, 0, 3, 2, 1);
-        g.add(irpfHint, 0, 4, 2, 1);
+        g.add(new Label(t("purchases.classification.template")), 0, 1); g.add(template, 1, 1);
+        g.add(new Label("Tipo de operación"), 0, 2); g.add(opType, 1, 2);
+        g.add(new Label("IVA deducible (%)"), 0, 3); g.add(dedPct, 1, 3);
+        g.add(new Label(t("purchases.classification.irpf_pct")), 0, 4); g.add(irpfPct, 1, 4);
+        g.add(invGood, 0, 5, 2, 1);
+        g.add(saveRule, 0, 6, 2, 1);
+        g.add(irpfHint, 0, 7, 2, 1);
         dialog.getDialogPane().setContent(g);
         dialog.initOwner(root.getScene().getWindow());
 
@@ -3284,7 +3305,8 @@ public class BenjagestUiApplication extends Application
             javafx.concurrent.Task<Void> save = new javafx.concurrent.Task<>() {
                 @Override protected Void call() throws Exception {
                     purchasesApi.setClassification(purchaseId, opType.getValue(),
-                            dedPct.getText().trim(), keepExpDed[0], invGood.isSelected());
+                            dedPct.getText().trim(), keepExpDed[0], invGood.isSelected(),
+                            irpfPct.getText().trim(), saveRule.isSelected());
                     return null;
                 }
             };

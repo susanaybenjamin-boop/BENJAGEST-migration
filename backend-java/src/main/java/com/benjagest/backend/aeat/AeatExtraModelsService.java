@@ -870,17 +870,27 @@ public class AeatExtraModelsService {
                  WHERE company_id = ? AND YEAR(invoice_date) = ?
                    AND MONTH(invoice_date) <= ? AND status = 'VALIDATED'
                 """, BigDecimal.class, companyId, year, mTo);
-        // OPTYPE: solo los gastos DEDUCIBLES en IRPF (expense_deductible)
-        // cuentan en el 130. Un gasto marcado como no deducible no resta.
+        // OPTYPE + DEDUC (2026-07-09): el gasto del 130 de cada factura es
+        //   (base + IVA NO deducible) × % deducible IRPF
+        // donde el % IRPF es el explícito de la factura (irpf_deductible_percent)
+        // o, si es NULL, hereda de la cuenta vía expense_deductible (0/100 —
+        // modelo IRPF-DED). El IVA no deducible es MAYOR GASTO (criterio
+        // PGC/ICAC y FAQ AEAT del libro registro) — resto de auditoría cerrado.
         // AUDIT-1 (2026-07-09): status='POSTED' — un gasto en borrador o
         // anulado (VOID) no puede deducir en el 130 (mismo criterio que el 303).
         BigDecimal gastos = jdbcTemplate.queryForObject("""
-                SELECT COALESCE(SUM(base_amount), 0) FROM purchase_invoices
+                SELECT COALESCE(SUM(
+                        (base_amount
+                         + COALESCE(vat_amount, 0)
+                           * (100 - COALESCE(vat_deductible_percent, 100)) / 100)
+                        * COALESCE(irpf_deductible_percent, expense_deductible * 100) / 100
+                       ), 0)
+                  FROM purchase_invoices
                  WHERE company_id = ? AND YEAR(invoice_date) = ?
                    AND MONTH(invoice_date) <= ?
-                   AND expense_deductible = 1
                    AND status = 'POSTED'
                 """, BigDecimal.class, companyId, year, mTo);
+        gastos = gastos.setScale(2, RoundingMode.HALF_UP);
         // Retenciones IRPF que los clientes practicaron al autónomo en sus
         // facturas emitidas (acumulado del año).
         BigDecimal retenciones = jdbcTemplate.queryForObject("""

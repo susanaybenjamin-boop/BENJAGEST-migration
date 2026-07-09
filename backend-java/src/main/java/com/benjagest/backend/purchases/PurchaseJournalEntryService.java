@@ -221,11 +221,21 @@ public class PurchaseJournalEntryService {
         // Base (6xx) e IVA soportado (472) etiquetados con el tipo de IVA de la
         // compra, para que el 303/390 derive el IVA soportado por tipo desde la
         // contabilidad.
+        //
+        // DEDUC (2026-07-09): si el IVA es solo PARCIALMENTE deducible
+        // (vat_deductible_percent < 100 — vehículo 50%, atenciones 0%...),
+        // el criterio PGC/ICAC es que la parte NO deducible es MAYOR GASTO:
+        //   Debe 6xx = base + IVA no deducible   ·   Debe 472 = solo el deducible.
+        // Con 0% no hay línea 472. El asiento sigue cuadrando (suma = total).
+        java.math.BigDecimal[] vatSplit = splitVatByDeductibility(
+                purchase.id(), companyId, purchase.vatAmount());
+        java.math.BigDecimal vatDeducible = vatSplit[0], vatNoDeducible = vatSplit[1];
         insertLine(entryId, acc6xx, expenseDesc,
-                purchase.baseAmount(), java.math.BigDecimal.ZERO, purchase.vatPercent());
-        if (hasVat) {
+                purchase.baseAmount().add(vatNoDeducible),
+                java.math.BigDecimal.ZERO, purchase.vatPercent());
+        if (hasVat && vatDeducible.signum() != 0) {
             insertLine(entryId, acc472, vatDesc,
-                    purchase.vatAmount(), java.math.BigDecimal.ZERO, purchase.vatPercent());
+                    vatDeducible, java.math.BigDecimal.ZERO, purchase.vatPercent());
         }
         insertLine(entryId, acc400, supplierDesc,
                 java.math.BigDecimal.ZERO, purchase.totalAmount());
@@ -469,6 +479,93 @@ public class PurchaseJournalEntryService {
                  LIMIT 1
                 """, (rs, n) -> rs.getString("id"), companyId, prefix + "%");
         return ids.isEmpty() ? null : ids.get(0);
+    }
+
+    /**
+     * DEDUC (2026-07-09) — reparte la cuota de IVA de una compra según su
+     * {@code vat_deductible_percent}: {deducible, noDeducible}. El % vive en
+     * la factura (no en el record) porque se fija después del alta con la
+     * clasificación fiscal o con la regla del proveedor.
+     */
+    java.math.BigDecimal[] splitVatByDeductibility(String purchaseId, String companyId,
+                                                    java.math.BigDecimal vatAmount) {
+        java.math.BigDecimal vat = vatAmount == null ? java.math.BigDecimal.ZERO : vatAmount;
+        if (vat.signum() == 0) {
+            return new java.math.BigDecimal[]{java.math.BigDecimal.ZERO, java.math.BigDecimal.ZERO};
+        }
+        java.math.BigDecimal pct;
+        try {
+            pct = jdbcTemplate.queryForObject("""
+                    SELECT COALESCE(vat_deductible_percent, 100)
+                      FROM purchase_invoices WHERE id = ? AND company_id = ?
+                    """, java.math.BigDecimal.class, purchaseId, companyId);
+        } catch (Exception ex) {
+            pct = null; // factura aún no persistida (flujo raro) → 100%
+        }
+        if (pct == null) pct = new java.math.BigDecimal("100");
+        java.math.BigDecimal deducible = vat.multiply(pct)
+                .divide(new java.math.BigDecimal("100"), 2, java.math.RoundingMode.HALF_UP);
+        return new java.math.BigDecimal[]{deducible, vat.subtract(deducible)};
+    }
+
+    /**
+     * DEDUC (2026-07-09) — reescribe el reparto 6xx/472 del asiento de DEVENGO
+     * de una compra tras cambiar su % de IVA deducible. La parte no deducible
+     * pasa a mayor gasto (misma cuenta 6xx, criterio PGC); el 472 queda solo
+     * con la parte deducible (con 0% la línea 472 se elimina; si no existía y
+     * ahora hace falta, se crea). El total del asiento no cambia.
+     * Los guards de ejercicio cerrado/periodo presentado los aplica el caller.
+     */
+    @org.springframework.transaction.annotation.Transactional
+    public void applyVatDeductibilitySplit(PurchaseInvoice purchase) {
+        String companyId = tenantContext.getCurrentCompanyId();
+        List<String> entryIds = jdbcTemplate.query("""
+                SELECT id FROM journal_entries
+                 WHERE company_id = ? AND source_type = ? AND source_id = ?
+                 ORDER BY created_at LIMIT 1
+                """, (rs, n) -> rs.getString("id"), companyId, SRC_TYPE, purchase.id());
+        if (entryIds.isEmpty()) return; // sin asiento (borrador sin contabilizar)
+        String entryId = entryIds.get(0);
+
+        java.math.BigDecimal[] split = splitVatByDeductibility(
+                purchase.id(), companyId, purchase.vatAmount());
+        java.math.BigDecimal deducible = split[0], noDeducible = split[1];
+
+        // Línea de gasto 6xx (Debe) y línea 472 del devengo.
+        List<String[]> lines = jdbcTemplate.query("""
+                SELECT l.id, a.code, l.description FROM journal_entry_lines l
+                  JOIN accounting_accounts a ON a.id = l.account_id
+                 WHERE l.journal_entry_id = ? AND l.debit > 0
+                   AND (a.code LIKE '6%' OR a.code LIKE '472%')
+                 ORDER BY a.code
+                """, (rs, n) -> new String[]{
+                        rs.getString("id"), rs.getString("code"), rs.getString("description")},
+                entryId);
+        String line6xxId = null, line472Id = null;
+        for (String[] l : lines) {
+            if (l[1].startsWith("472")) { if (line472Id == null) line472Id = l[0]; }
+            else if (line6xxId == null) { line6xxId = l[0]; }
+        }
+        if (line6xxId == null) return; // asiento no estándar: no tocamos nada
+
+        jdbcTemplate.update("UPDATE journal_entry_lines SET debit = ? WHERE id = ?",
+                purchase.baseAmount().add(noDeducible), line6xxId);
+        boolean needs472 = purchase.vatAmount() != null && deducible.signum() != 0;
+        if (line472Id != null && needs472) {
+            jdbcTemplate.update("UPDATE journal_entry_lines SET debit = ? WHERE id = ?",
+                    deducible, line472Id);
+        } else if (line472Id != null) {
+            jdbcTemplate.update("DELETE FROM journal_entry_lines WHERE id = ?", line472Id);
+        } else if (needs472) {
+            String acc472 = findAccountByPrefix(companyId, "472");
+            if (acc472 != null) {
+                insertLine(entryId, acc472,
+                        "IVA soportado " + safe(purchase.vatPercent()) + "%"
+                                + (purchase.supplierName() == null || purchase.supplierName().isBlank()
+                                        ? "" : " — " + purchase.supplierName()),
+                        deducible, java.math.BigDecimal.ZERO, purchase.vatPercent());
+            }
+        }
     }
 
     private void insertLine(String entryId, String accountId, String description,
