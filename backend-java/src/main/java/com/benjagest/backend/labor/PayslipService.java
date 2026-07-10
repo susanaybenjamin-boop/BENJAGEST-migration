@@ -1458,7 +1458,9 @@ public class PayslipService {
      * @param eeUnemp/erUnemp tipos de DESEMPLEO ya resueltos por modalidad
      *        (indefinido o temporal). El resto de tipos no varían por contrato.
      */
-    private static SsBreakdown computeSs(BigDecimal base, BigDecimal atEpPercent,
+    // F1-NOMTEST-REAL: package — la aritmética de cuotas se fija en tests
+    // contra nóminas REALES de dos softwares oficiales de asesoría.
+    static SsBreakdown computeSs(BigDecimal base, BigDecimal atEpPercent,
                                   SsContributionRatesService.Rates r,
                                   BigDecimal eeUnemp, BigDecimal erUnemp) {
         return new SsBreakdown(
