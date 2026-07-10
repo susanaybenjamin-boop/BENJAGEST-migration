@@ -37,3 +37,4 @@ out/
 
 # DEPLOY-PKG: salida de jpackage / app-image (no versionar)
 /dist/
+mariadb-data/
