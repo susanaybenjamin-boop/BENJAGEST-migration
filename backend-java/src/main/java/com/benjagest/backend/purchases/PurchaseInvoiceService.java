@@ -319,9 +319,11 @@ public class PurchaseInvoiceService {
         Integer twins = jdbcTemplate.queryForObject("""
                 SELECT COUNT(*) FROM purchase_invoices
                  WHERE company_id = ? AND id <> ? AND status = 'POSTED'
-                   AND supplier_nif = ? AND base_amount = ? AND total_amount = ?
-                """, Integer.class, companyId, id, existing.supplierNif(),
-                existing.baseAmount(), existing.totalAmount());
+                   AND total_amount = ?
+                   AND (supplier_nif IS NULL OR ? IS NULL OR supplier_nif = ?)
+                   AND invoice_date = ?
+                """, Integer.class, companyId, id, existing.totalAmount(),
+                existing.supplierNif(), existing.supplierNif(), existing.invoiceDate());
         if (twins == null || twins == 0) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "No hay otro gasto idéntico: esto no es un duplicado. Usa el borrado normal.");

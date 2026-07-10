@@ -399,24 +399,25 @@ public class ManualJournalEntryService {
                 """, entryId, companyId);
         if (src.isEmpty()) return; // no es asiento de gasto
         var mine = src.get(0);
-        if (mine.get("supplier_nif") == null) return;
-        // Condiciones REFORZADAS (Benjamin 2026-07-10): dos compras al mismo
-        // proveedor con misma base y total pueden ser legítimas (dos tickets
-        // iguales). Solo es sospecha de ERROR DE IMPORTACIÓN si ADEMÁS
-        // coincide el nº de factura o la fecha. Si no, se valida sin avisar.
+        // Condiciones AJUSTADAS al caso real de Benjamin (2026-07-10): el
+        // duplicado viejo venía de un alta manual con el IVA mal tecleado —
+        // NIF vacío y BASE distinta, pero MISMO TOTAL y MISMA FECHA. Regla:
+        //   mismo TOTAL  +  (misma fecha O mismo nº)  +  NIF igual o AUSENTE
+        // La base/IVA pueden diferir (es justo el error de importación). Dos
+        // compras legítimas con nº y fecha distintos siguen sin avisar.
         List<java.util.Map<String, Object>> dups = jdbcTemplate.queryForList("""
                 SELECT p.id, p.invoice_number, p.vat_amount, p.invoice_date, p.created_at
                   FROM purchase_invoices p
                  WHERE p.company_id = ? AND p.id <> ?
                    AND p.status = 'POSTED'
-                   AND p.supplier_nif = ?
-                   AND p.base_amount = ? AND p.total_amount = ?
+                   AND p.total_amount = ?
+                   AND (p.supplier_nif IS NULL OR ? IS NULL OR p.supplier_nif = ?)
                    AND ((p.invoice_number IS NOT NULL AND p.invoice_number <> ''
                          AND UPPER(p.invoice_number) = UPPER(COALESCE(?, '')))
                         OR p.invoice_date = ?)
                  ORDER BY p.created_at LIMIT 1
-                """, companyId, mine.get("id"), mine.get("supplier_nif"),
-                mine.get("base_amount"), mine.get("total_amount"),
+                """, companyId, mine.get("id"), mine.get("total_amount"),
+                mine.get("supplier_nif"), mine.get("supplier_nif"),
                 mine.get("invoice_number"), mine.get("invoice_date"));
         if (dups.isEmpty()) return;
         var other = dups.get(0);
@@ -462,8 +463,8 @@ public class ManualJournalEntryService {
                   JOIN purchase_invoices b
                     ON b.company_id = a.company_id AND b.id > a.id
                    AND b.status = 'POSTED' AND a.status = 'POSTED'
-                   AND b.supplier_nif = a.supplier_nif
-                   AND b.base_amount = a.base_amount
+                   AND (b.supplier_nif = a.supplier_nif
+                        OR a.supplier_nif IS NULL OR b.supplier_nif IS NULL)
                    AND b.total_amount = a.total_amount
                    AND (UPPER(COALESCE(b.invoice_number,'')) = UPPER(COALESCE(a.invoice_number,'!'))
                         OR b.invoice_date = a.invoice_date)

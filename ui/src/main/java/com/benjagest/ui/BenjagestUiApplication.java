@@ -1358,7 +1358,20 @@ public class BenjagestUiApplication extends Application
 
         Button refresh = new Button(t("refresh"));
         refresh.setGraphic(icon("fas-sync-alt"));
-        refresh.setOnAction(event -> showDashboard());
+        // FIX Benjamin 2026-07-10: "Actualizar" hacía showDashboard() a
+        // secas — dentro de un cliente te sacaba al inicio de la asesoría
+        // PERO con el X-Company-Id del cliente aún activo, así que la
+        // cartera/KPIs se pedían al tenant equivocado y salían vacíos.
+        // Ahora: dentro de un cliente refresca LA FICHA DE ESE CLIENTE;
+        // fuera, limpia el contexto y refresca el inicio.
+        refresh.setOnAction(event -> {
+            if (AuthSession.get().isActingForClient() && activeClientEntry != null) {
+                switchToClient(activeClientEntry);
+            } else {
+                exitClientMode();
+                showDashboard();
+            }
+        });
 
         Button languageButton = new Button(language == Language.ES ? "EN" : "ES");
         languageButton.setGraphic(icon("fas-globe-europe"));
