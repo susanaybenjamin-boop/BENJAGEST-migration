@@ -14,10 +14,19 @@
   (claves presentes) + arranque UI dev sin errores. Visual queda para la
   próxima release por lotes (flujo de Benjamin: prueba sobre la instalada).
 
-**F1-NOMTEST — tests fiscales de nómina**
+**F1-NOMTEST — tests fiscales de nómina** ✅ HECHO 2026-07-10 (fixture real pendiente)
 - `backend-java/.../labor/PayslipService` → extraer cálculo puro
   `computePayslip(...)` (patrón compute130) + test con una nómina real de
   Benjamin como fixture.
+- Cerrado: compute() = orquestador (carga BD) + computePayslip(EngineInputs)
+  PURO. GOLDEN SNAPSHOT: 5 escenarios capturados del motor en ejecución
+  ANTES del refactor (contrato 21k, 2 pagas, grupo 5, tipos 2026) y fijados
+  en PayslipComputeTest — el motor extraído los reproduce al céntimo,
+  incluido el solve-target. Suite completa verde (107 tests).
+- ⚠️ Pendiente Benjamin: (1) aportar una nómina REAL de software oficial
+  como fixture (como MOD-130-FIX); (2) al actualizar la release, smoke de
+  Personal → Nóminas → Vista previa (el curl autenticado del endpoint
+  refactorizado no fue posible en sesión autónoma).
 
 **F1-SSTOPES — topes de cotización por grupo** ✅ HECHO 2026-07-10
 - `PayslipService`: integrar tabla `ss_group_bases` (ya existe, V123) en el
