@@ -70,6 +70,19 @@ public class PurchaseInvoiceController {
         service.deleteInvoice(id);
     }
 
+    /**
+     * DUP-VALIDAR — elimina un gasto DUPLICADO confirmado por el usuario.
+     * Solo procede si existe OTRO gasto POSTED con mismo proveedor, base y
+     * total, y este NO está incluido en una declaración presentada (nació
+     * después de la última presentación de su periodo). Ese matiz permite
+     * limpiar el duplicado aunque su FECHA caiga en un trimestre declarado.
+     */
+    @org.springframework.web.bind.annotation.PostMapping("/{id}/delete-duplicate")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void deleteDuplicate(@PathVariable("id") String id) {
+        service.deleteDuplicate(id);
+    }
+
     /** Cuerpo de "Crear regla": la cuenta destino a la que mandar el proveedor. */
     public record ExpenseRuleRequest(String accountCode) {}
 

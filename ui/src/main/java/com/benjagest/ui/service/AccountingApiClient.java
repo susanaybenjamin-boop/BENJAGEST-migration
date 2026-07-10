@@ -177,8 +177,19 @@ public class AccountingApiClient {
     }
 
     public JournalEntryDetail postEntry(String id) throws IOException, InterruptedException {
-        String resp = postRaw("/accounting/journal-entries/" + id + "/post", "{}");
+        return postEntry(id, false);
+    }
+
+    /** DUP-VALIDAR: force=true valida aunque el backend detecte un posible duplicado. */
+    public JournalEntryDetail postEntry(String id, boolean force) throws IOException, InterruptedException {
+        String resp = postRaw("/accounting/journal-entries/" + id + "/post"
+                + (force ? "?force=true" : ""), "{}");
         return parseEntryDetail(resp);
+    }
+
+    /** DUP-VALIDAR: elimina un gasto duplicado confirmado por el usuario. */
+    public void deleteDuplicateExpense(String purchaseInvoiceId) throws IOException, InterruptedException {
+        postRaw("/purchases/invoices/" + purchaseInvoiceId + "/delete-duplicate", "{}");
     }
 
     /**

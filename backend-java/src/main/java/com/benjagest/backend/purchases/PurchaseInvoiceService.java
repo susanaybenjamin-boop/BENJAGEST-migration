@@ -297,6 +297,57 @@ public class PurchaseInvoiceService {
         // TRIMESTRE de la factura puede estar ya declarado (303/130
         // presentados). Borrar entonces descuadra una declaración presentada.
         requirePeriodNotPresented(existing.invoiceDate(), "eliminar esta factura");
+        deleteInternal(existing);
+    }
+
+    /**
+     * DUP-VALIDAR (2026-07-10) — borrado de un gasto DUPLICADO confirmado por
+     * el usuario. A diferencia de deleteInvoice, NO aplica el guard por FECHA
+     * del periodo presentado: exige en su lugar que (a) exista OTRO gasto
+     * POSTED idéntico (mismo NIF + base + total) que se conserva, y (b) este
+     * gasto NO estuviera incluido en la declaración (creado DESPUÉS de la
+     * última presentación de su periodo). Así se limpia el duplicado recién
+     * importado aunque su fecha caiga en un trimestre ya declarado.
+     */
+    @Transactional
+    public void deleteDuplicate(String id) {
+        billingAgreementGuard.requireAgreementOrOwn(
+                com.benjagest.backend.billing.tpb.BillingAgreementGuard.Scope.PURCHASES);
+        PurchaseInvoice existing = get(id);
+        fiscalGuard.requireOpenForDate(existing.invoiceDate(), "eliminar este gasto duplicado");
+        String companyId = tenantContext.getCurrentCompanyId();
+        Integer twins = jdbcTemplate.queryForObject("""
+                SELECT COUNT(*) FROM purchase_invoices
+                 WHERE company_id = ? AND id <> ? AND status = 'POSTED'
+                   AND supplier_nif = ? AND base_amount = ? AND total_amount = ?
+                """, Integer.class, companyId, id, existing.supplierNif(),
+                existing.baseAmount(), existing.totalAmount());
+        if (twins == null || twins == 0) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "No hay otro gasto idéntico: esto no es un duplicado. Usa el borrado normal.");
+        }
+        // ¿Incluido en una declaración presentada? (existía antes de la última
+        // presentación de su periodo) → entonces NO se puede eliminar.
+        java.time.LocalDate d = existing.invoiceDate();
+        int q = (d.getMonthValue() - 1) / 3 + 1;
+        java.sql.Timestamp lastPresented = jdbcTemplate.query("""
+                SELECT MAX(updated_at) FROM tax_filings
+                 WHERE company_id = ? AND status IN ('PRESENTED', 'PAID')
+                   AND period_year = ? AND (period_quarter IS NULL OR period_quarter >= ?)
+                """, rs -> rs.next() ? rs.getTimestamp(1) : null,
+                companyId, d.getYear(), q);
+        if (lastPresented != null && existing.createdAt() != null
+                && existing.createdAt().isBefore(lastPresented.toInstant())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Este gasto está incluido en una declaración presentada: se conserva. "
+                    + "Elimina el otro duplicado o rectifica en el periodo corriente.");
+        }
+        deleteInternal(existing);
+    }
+
+    /** Cuerpo común del borrado físico (auditoría + asientos + factura). */
+    private void deleteInternal(PurchaseInvoice existing) {
+        String id = existing.id();
         AuthenticatedUser user = currentUserService.require();
         String tenant = tenantContext.getCurrentCompanyId();
         // Auditoría primero: necesitamos la traza aunque luego el

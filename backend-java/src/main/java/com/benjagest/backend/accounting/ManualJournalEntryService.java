@@ -321,6 +321,20 @@ public class ManualJournalEntryService {
     /** Pasa el asiento de DRAFT a POSTED. */
     @Transactional
     public ManualEntryView post(String entryId) {
+        return post(entryId, false);
+    }
+
+    /**
+     * DUP-VALIDAR (2026-07-10, pedido Benjamin tras duplicar Talleres Loren):
+     * al validar el asiento de un gasto, comprobar que NO exista otro gasto
+     * POSTED del mismo proveedor con la MISMA base y el MISMO total (el IVA
+     * puede diferir — el caso real venía de un IVA mal tecleado). Si lo hay,
+     * 409 con marcador estructurado "DUPLICADO|deleteId=<id>|<detalle>": la
+     * UI pregunta al usuario y puede eliminar el que NO esté incluido en una
+     * declaración presentada, o validar igualmente con {@code force}.
+     */
+    @Transactional
+    public ManualEntryView post(String entryId, boolean force) {
         ManualEntryView current = get(entryId);
         if ("POSTED".equals(current.status())) return current;
         if ("VOIDED".equals(current.status())) {
@@ -329,6 +343,9 @@ public class ManualJournalEntryService {
         }
         fiscalGuard.requireOpenForDate(current.entryDate(), "validar asiento contable");
         String companyId = tenantContext.getCurrentCompanyId();
+        if (!force) {
+            checkDuplicateExpense(entryId, companyId);
+        }
 
         // Asignar entry_number AHORA — el siguiente correlativo entre los
         // POSTED del fiscal year. Así el Diario queda en orden de
@@ -354,6 +371,89 @@ public class ManualJournalEntryService {
                    AND pi.status <> 'POSTED'
                 """, entryId, companyId, companyId);
         return get(entryId);
+    }
+
+    /**
+     * DUP-VALIDAR — busca otro gasto POSTED del mismo proveedor con misma
+     * base y total que el gasto del asiento a validar. Determina cuál de los
+     * dos está "incluido en una declaración presentada" (existía ANTES de la
+     * última presentación PRESENTED/PAID de su periodo): ese se conserva; el
+     * otro es el candidato a eliminar. Lanza 409 con marcador parseable.
+     */
+    private void checkDuplicateExpense(String entryId, String companyId) {
+        List<java.util.Map<String, Object>> src = jdbcTemplate.queryForList("""
+                SELECT p.id, p.supplier_nif, p.supplier_name, p.invoice_number,
+                       p.base_amount, p.vat_amount, p.total_amount,
+                       p.invoice_date, p.created_at
+                  FROM journal_entries je
+                  JOIN purchase_invoices p ON p.id = je.source_id
+                 WHERE je.id = ? AND je.company_id = ?
+                   AND je.source_type = 'PURCHASE_INVOICE'
+                """, entryId, companyId);
+        if (src.isEmpty()) return; // no es asiento de gasto
+        var mine = src.get(0);
+        if (mine.get("supplier_nif") == null) return;
+        // Condiciones REFORZADAS (Benjamin 2026-07-10): dos compras al mismo
+        // proveedor con misma base y total pueden ser legítimas (dos tickets
+        // iguales). Solo es sospecha de ERROR DE IMPORTACIÓN si ADEMÁS
+        // coincide el nº de factura o la fecha. Si no, se valida sin avisar.
+        List<java.util.Map<String, Object>> dups = jdbcTemplate.queryForList("""
+                SELECT p.id, p.invoice_number, p.vat_amount, p.invoice_date, p.created_at
+                  FROM purchase_invoices p
+                 WHERE p.company_id = ? AND p.id <> ?
+                   AND p.status = 'POSTED'
+                   AND p.supplier_nif = ?
+                   AND p.base_amount = ? AND p.total_amount = ?
+                   AND ((p.invoice_number IS NOT NULL AND p.invoice_number <> ''
+                         AND UPPER(p.invoice_number) = UPPER(COALESCE(?, '')))
+                        OR p.invoice_date = ?)
+                 ORDER BY p.created_at LIMIT 1
+                """, companyId, mine.get("id"), mine.get("supplier_nif"),
+                mine.get("base_amount"), mine.get("total_amount"),
+                mine.get("invoice_number"), mine.get("invoice_date"));
+        if (dups.isEmpty()) return;
+        var other = dups.get(0);
+        boolean mineIncluded = includedInPresentedFiling(companyId,
+                (java.sql.Date) mine.get("invoice_date"), (java.sql.Timestamp) mine.get("created_at"));
+        boolean otherIncluded = includedInPresentedFiling(companyId,
+                (java.sql.Date) other.get("invoice_date"), (java.sql.Timestamp) other.get("created_at"));
+        // Se elimina el que NO esté en modelos; si ninguno lo está, el que se
+        // está validando ahora (el recién llegado); si ambos lo están, ninguno.
+        String deleteId;
+        if (otherIncluded && !mineIncluded) deleteId = String.valueOf(mine.get("id"));
+        else if (mineIncluded && !otherIncluded) deleteId = String.valueOf(other.get("id"));
+        else if (!mineIncluded) deleteId = String.valueOf(mine.get("id"));
+        else deleteId = "";
+        String detalle = String.format(
+                "Posible gasto DUPLICADO de %s (fra. %s): base %s y total %s idénticos a otro gasto "
+                + "ya validado (IVA de este: %s · IVA del existente: %s). %s",
+                mine.get("supplier_name") == null ? mine.get("supplier_nif") : mine.get("supplier_name"),
+                mine.get("invoice_number") == null ? "s/n" : mine.get("invoice_number"),
+                mine.get("base_amount"), mine.get("total_amount"),
+                mine.get("vat_amount"), other.get("vat_amount"),
+                deleteId.isEmpty()
+                        ? "Ambos están incluidos en declaraciones presentadas: revisa a mano."
+                        : "Se propone eliminar el que NO está en una declaración presentada.");
+        throw new ResponseStatusException(HttpStatus.CONFLICT,
+                "DUPLICADO|deleteId=" + deleteId + "|" + detalle);
+    }
+
+    /** ¿El gasto existía ANTES de la última presentación de su periodo? */
+    private boolean includedInPresentedFiling(String companyId,
+                                               java.sql.Date invoiceDate,
+                                               java.sql.Timestamp createdAt) {
+        if (invoiceDate == null) return false;
+        java.time.LocalDate d = invoiceDate.toLocalDate();
+        int q = (d.getMonthValue() - 1) / 3 + 1;
+        java.sql.Timestamp lastPresented = jdbcTemplate.query("""
+                SELECT MAX(updated_at) FROM tax_filings
+                 WHERE company_id = ? AND status IN ('PRESENTED', 'PAID')
+                   AND period_year = ?
+                   AND (period_quarter IS NULL OR period_quarter >= ?)
+                """, rs -> rs.next() ? rs.getTimestamp(1) : null,
+                companyId, d.getYear(), q);
+        if (lastPresented == null) return false;
+        return createdAt == null || createdAt.before(lastPresented);
     }
 
     /**

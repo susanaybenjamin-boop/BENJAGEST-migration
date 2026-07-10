@@ -203,7 +203,14 @@ public class AccountingScreen {
                 return null;
             }, ok -> com.benjagest.ui.support.RefreshBus.emit(
                     com.benjagest.ui.support.RefreshBus.TOPIC_JOURNAL),
-               err -> showError(tt.apply("accounting.error.accept"), err));
+               err -> {
+                   // DUP-VALIDAR: el backend detectó un posible gasto duplicado
+                   // (mismo proveedor + nº/fecha + base + total). El usuario
+                   // decide: eliminar el duplicado o validar igualmente.
+                   if (!handleDuplicateExpense(err, sel.id())) {
+                       showError(tt.apply("accounting.error.accept"), err);
+                   }
+               });
         });
 
         // Botón "Regenerar asientos faltantes" — recorre facturas guardadas
@@ -2921,6 +2928,49 @@ public class AccountingScreen {
         Comparator<String> byLen = Comparator.comparingInt(String::length).reversed();
         java.util.Arrays.sort(words, byLen);
         return words[0].length() < 4 ? null : words[0];
+    }
+
+    /**
+     * DUP-VALIDAR (2026-07-10) — si el error de validar es el 409 de gasto
+     * duplicado ("DUPLICADO|deleteId=…|detalle"), pregunta al usuario:
+     * eliminar el duplicado propuesto (el que NO está en una declaración
+     * presentada), validar igualmente (no era un error de importación), o
+     * cancelar. Devuelve true si el error era de duplicado y ya se gestionó.
+     */
+    private boolean handleDuplicateExpense(Throwable err, String entryId) {
+        String msg = err == null || err.getMessage() == null ? "" : err.getMessage();
+        java.util.regex.Matcher m = java.util.regex.Pattern
+                .compile("DUPLICADO\\|deleteId=([^|\"\\\\]*)\\|([^\"\\\\]*)").matcher(msg);
+        if (!m.find()) return false;
+        String deleteId = m.group(1).trim();
+        String detalle = m.group(2).trim();
+
+        ButtonType deleteBt = new ButtonType(tt.apply("accounting.dup.delete"),
+                javafx.scene.control.ButtonBar.ButtonData.OK_DONE);
+        ButtonType forceBt = new ButtonType(tt.apply("accounting.dup.force"),
+                javafx.scene.control.ButtonBar.ButtonData.OTHER);
+        ButtonType cancelBt = new ButtonType(tt.apply("accounting.dup.cancel"),
+                javafx.scene.control.ButtonBar.ButtonData.CANCEL_CLOSE);
+        Alert alert = new Alert(AlertType.WARNING, detalle + "\n\n"
+                + tt.apply("accounting.dup.question"));
+        alert.setHeaderText(tt.apply("accounting.dup.title"));
+        alert.getButtonTypes().setAll(deleteId.isEmpty()
+                ? new ButtonType[]{forceBt, cancelBt}
+                : new ButtonType[]{deleteBt, forceBt, cancelBt});
+        alert.getDialogPane().setPrefWidth(560);
+        var choice = alert.showAndWait().orElse(cancelBt);
+        if (choice == deleteBt && !deleteId.isEmpty()) {
+            async(() -> { api.deleteDuplicateExpense(deleteId); return null; },
+                    ok -> com.benjagest.ui.support.RefreshBus.emit(
+                            com.benjagest.ui.support.RefreshBus.TOPIC_JOURNAL),
+                    e2 -> showError(tt.apply("accounting.dup.title"), e2));
+        } else if (choice == forceBt) {
+            async(() -> { api.postEntry(entryId, true); return null; },
+                    ok -> com.benjagest.ui.support.RefreshBus.emit(
+                            com.benjagest.ui.support.RefreshBus.TOPIC_JOURNAL),
+                    e2 -> showError(tt.apply("accounting.error.accept"), e2));
+        }
+        return true;
     }
 
     private <T> void async(ApiCall<T> call, Consumer<T> ok, Consumer<Throwable> err) {
