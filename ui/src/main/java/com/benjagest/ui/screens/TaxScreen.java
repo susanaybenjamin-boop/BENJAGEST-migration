@@ -422,6 +422,11 @@ public class TaxScreen extends ScreenBase {
         TextField c10 = new TextField(parsed.getOrDefault("cuota_10", ""));
         TextField b4 = new TextField(parsed.getOrDefault("base_4", ""));
         TextField c4 = new TextField(parsed.getOrDefault("cuota_4", ""));
+        // F1-303UI: tipos distintos de 4/10/21 (5 %, 2 %, 7,5 %…). Sin casilla
+        // oficial propia; informativas para cuadrar el editor con la
+        // contabilidad. Su cuota suma al total devengado (27), como el backend.
+        TextField bOt = new TextField(parsed.getOrDefault("base_otros_tipos", ""));
+        TextField cOt = new TextField(parsed.getOrDefault("cuota_otros_tipos", ""));
         // --- Devengado: otras operaciones ---
         TextField b10i = new TextField(parsed.getOrDefault("base_intra", ""));   // 10
         TextField c11i = new TextField(parsed.getOrDefault("cuota_intra", ""));  // 11
@@ -469,6 +474,7 @@ public class TaxScreen extends ScreenBase {
         baseCol.accept("Base 21 % (01)", b21); cuotaCol.accept("Cuota 21 % (03)", c21);
         baseCol.accept("Base 10 % (04)", b10); cuotaCol.accept("Cuota 10 % (06)", c10);
         baseCol.accept("Base 4 % (07)", b4);   cuotaCol.accept("Cuota 4 % (09)", c4);
+        baseCol.accept(t("aeat303.base_otros"), bOt); cuotaCol.accept(t("aeat303.cuota_otros"), cOt);
 
         section.accept("IVA devengado — otras operaciones", new Separator());
         baseCol.accept("Adq. intracom. base (10)", b10i); cuotaCol.accept("Cuota (11)", c11i);
@@ -496,7 +502,7 @@ public class TaxScreen extends ScreenBase {
         grid.add(resultLabel, 0, row[0]++, 4, 1);
 
         // Todas las cuotas devengadas (casilla 27) y deducibles (45).
-        java.util.List<TextField> devengado = java.util.List.of(c21, c10, c4, c11i, c13s, c15m, c17r);
+        java.util.List<TextField> devengado = java.util.List.of(c21, c10, c4, cOt, c11i, c13s, c15m, c17r);
         java.util.List<TextField> deducible = java.util.List.of(cs, c31, c33, c37, c41);
         Runnable recompute = () -> {
             java.math.BigDecimal cuota27 = java.math.BigDecimal.ZERO;
@@ -531,6 +537,9 @@ public class TaxScreen extends ScreenBase {
             c4.setText(mulStr(d.base4, "0.04"));
             c10.setText(mulStr(d.base10, "0.10"));
             c21.setText(mulStr(d.base21, "0.21"));
+            // Otros tipos: la cuota viene calculada del backend (no hay un
+            // único % que aplicar a la base agregada).
+            bOt.setText(d.baseOtros); cOt.setText(d.cuotaOtros);
             bs.setText(d.baseSoportada); cs.setText(d.cuotaSoportada);
             b14m.setText(d.modBase); c15m.setText(d.modCuota);
             // OPTYPE-2: casillas ruteadas desde la clasificación fiscal de compras.
@@ -558,8 +567,8 @@ public class TaxScreen extends ScreenBase {
         recalc303Btn.setGraphic(icon("fas-sync"));
         recalc303Btn.setOnAction(e -> recalc303.run());
         boolean sinBases = isBlankOrZero(b21.getText()) && isBlankOrZero(b10.getText())
-                && isBlankOrZero(b4.getText()) && isBlankOrZero(bs.getText())
-                && isBlankOrZero(cs.getText());
+                && isBlankOrZero(b4.getText()) && isBlankOrZero(bOt.getText())
+                && isBlankOrZero(bs.getText()) && isBlankOrZero(cs.getText());
         if (sinBases) recalc303.run();
 
         grid.add(recalc303Btn, 0, row[0]++, 4, 1);
@@ -578,6 +587,7 @@ public class TaxScreen extends ScreenBase {
             data.put("base_21", b21.getText().trim());  data.put("cuota_21", c21.getText().trim());
             data.put("base_10", b10.getText().trim());   data.put("cuota_10", c10.getText().trim());
             data.put("base_4", b4.getText().trim());     data.put("cuota_4", c4.getText().trim());
+            data.put("base_otros_tipos", bOt.getText().trim()); data.put("cuota_otros_tipos", cOt.getText().trim());
             data.put("base_intra", b10i.getText().trim()); data.put("cuota_intra", c11i.getText().trim());
             data.put("base_isp", b12s.getText().trim());   data.put("cuota_isp", c13s.getText().trim());
             data.put("mod_base", b14m.getText().trim());   data.put("mod_cuota", c15m.getText().trim());
@@ -593,7 +603,7 @@ public class TaxScreen extends ScreenBase {
             // régimen (46) — los guardamos para que la compensación del trimestre
             // siguiente arrastre el remanente correcto.
             java.math.BigDecimal cuota27 = sum(c21.getText(), c10.getText(), c4.getText(),
-                    c11i.getText(), c13s.getText(), c15m.getText(), c17r.getText());
+                    cOt.getText(), c11i.getText(), c13s.getText(), c15m.getText(), c17r.getText());
             java.math.BigDecimal cuota45 = sum(cs.getText(), c31.getText(), c33.getText(),
                     c37.getText(), c41.getText());
             java.math.BigDecimal regimen = cuota27.subtract(cuota45).setScale(2, java.math.RoundingMode.HALF_UP);

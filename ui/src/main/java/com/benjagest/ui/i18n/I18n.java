@@ -1003,6 +1003,8 @@ public final class I18n {
                 case "aeat390.result_final" -> "Final result (after offset):";
                 case "aeat390.volume" -> "Volume of operations:";
                 case "aeat390.hint" -> "Enter the VAT bases by rate; the amounts (base × rate), totals and result are calculated. \"Recalculate from invoices\" fills the bases from the year's sales/purchases.";
+                case "aeat303.base_otros" -> "Base other rates (5%, 2%…)";
+                case "aeat303.cuota_otros" -> "VAT amount other rates";
                 case "aeat190.placeholder" -> "No recipients. Use \"Recalculate\" or add rows.";
                 case "aeat190.totals" -> "Earnings: {base} €   ·   Withholdings: {ret} €   ·   {n} recipients";
                 case "aeat190.col.key" -> "Key";
@@ -2167,6 +2169,8 @@ public final class I18n {
             case "aeat390.result_final" -> "Resultado final (tras compensar):";
             case "aeat390.volume" -> "Volumen de operaciones:";
             case "aeat390.hint" -> "Introduce las bases de IVA por tipo; las cuotas (base × tipo), totales y resultado se calculan. \"Recalcular desde facturas\" rellena las bases con las ventas/compras del año.";
+            case "aeat303.base_otros" -> "Base otros tipos (5 %, 2 %…)";
+            case "aeat303.cuota_otros" -> "Cuota otros tipos";
             case "aeat190.placeholder" -> "Sin perceptores. Usa \"Recalcular\" o añade filas.";
             case "aeat190.totals" -> "Retribuciones: {base} €   ·   Retenciones: {ret} €   ·   {n} perceptores";
             case "aeat190.col.key" -> "Clave";

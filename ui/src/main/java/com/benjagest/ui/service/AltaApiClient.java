@@ -1178,6 +1178,9 @@ public class AltaApiClient {
         d.cuotaIntra = numberField(j, "cuota_intra");
         d.baseIsp = numberField(j, "base_isp");
         d.cuotaIsp = numberField(j, "cuota_isp");
+        // F1-303UI: bases a tipos distintos de 4/10/21 (5 %, 2 %…).
+        d.baseOtros = numberField(j, "base_otros_tipos");
+        d.cuotaOtros = numberField(j, "cuota_otros_tipos");
         return d;
     }
 
