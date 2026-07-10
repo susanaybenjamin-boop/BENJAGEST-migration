@@ -1,5 +1,16 @@
 # Backlog operativo BENJAGEST
 
+> **Última actualización: 2026-07-10 (tarde) — FASE 1 del plan estructural: 4 slices cerrados + RELEASE v0.1.30 por lotes.**
+>
+> **Hecho hoy (sesión con Benjamin al inicio, autónoma después):**
+> - ✅ **F1-303UI** (`fb79f1c8`) — el editor del 303 pinta la fila "otros tipos" (5 %, 2 %…): base+cuota informativas, la cuota suma a la casilla 27 (como el backend desde la auditoría), prefill con Recalcular, se persiste. i18n aeat303.* ES+EN. Verificado: curl real preview T1/T2 (claves presentes; con solo IVA 10/21 salen a 0 → tus 303 no cambian).
+> - ✅ **F1-SSTOPES** (`c8f57e22`) — el mínimo diario de los grupos de cotización 8-11 ahora SE APLICA mensualizado ×30 (47,48/día → 1.424,40/mes; antes devolvía 0). Lógica extraída a `groupCapsMonthly` PURA + 5 tests con cifras oficiales 2026 (V122).
+> - ✅ **F1-NOMTEST** (`cd7bf811`) — `compute()` de nómina partido en ORQUESTADOR (carga BD) + `computePayslip(EngineInputs)` PURO (patrón compute130). **GOLDEN SNAPSHOT**: 5 escenarios capturados del motor en ejecución ANTES del refactor (mensual, +extras del mes, prorrateada, EXTRA_SUMMER, solve-target) → `PayslipComputeTest` los fija y el motor extraído los reproduce AL CÉNTIMO. ⚠️ Pendiente Benjamin: nómina REAL de software oficial como fixture (como MOD-130-FIX) + smoke de Vista previa al actualizar.
+> - ✅ **F1-N43** (`25f0e765`) — el plan estructural listaba N43 como "nuevo", pero REC-BANCARIA ya lo había construido (BankImportService N43+CSV + matching + pestaña Bancos, accesible desde ficha de cliente y Mi gestión). Lo REAL que faltaba: **3 bugs del parser contra la norma AEB** (0 tests, 0 usos): importe cortado a 12 dígitos → **÷100 y sin céntimos** (1.234,56 → 12,34), registro 23 sin el 1er carácter, ref externa con restos del importe. Corregidos + validación de cuadre contra el registro 33 (fichero descuadrado → 400) + 6 tests con fichero sintético fiel a la norma. Pendiente: probar con un N43 real del banco.
+> - 📦 **RELEASE v0.1.30** (lote de los 4 slices): smoke 10.ter hecho — doble arranque embebido desde cero (174 migraciones) + rearranque tras kill abrupto, ambos Started + endpoint OK. Suite backend 113 tests verde. **Pendiente Benjamin: actualizar la instalada y probar** (sobre todo: editor 303 → fila "otros tipos" + Recalcular; Personal → Nóminas → Vista previa de una nómina).
+> - 🧹 El empleado/contrato de prueba creado para el golden en la BD de la app instalada se eliminó (verificado 0/0). El backend de la instalada quedó APAGADO (regla de fin de sesión); tu app lo relanza al abrirla.
+>
+> Histórico previo:
 > **Última actualización: 2026-07-09 (sesión maratón — releases v0.1.16→v0.1.22 + repaso COMPLETO del backlog).**
 >
 > **POLÍTICA NUEVA (Benjamin): no sacar release por cada cambio pequeño — acumular y publicar por LOTES.** Excepción: hotfix que bloquea el uso.
