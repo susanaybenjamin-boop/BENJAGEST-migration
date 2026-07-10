@@ -129,7 +129,17 @@
 - CONV-1 adaptación al estándar UE (transposición española pendiente).
 - AUD-2034 auditoría externa completa.
 
-## Orden de ataque propuesto (próximas sesiones)
-1. F1-303UI (corto) → 2. F1-NOMTEST + F1-SSTOPES → 3. F1-WINSVC +
-   F1-INSTVAR → 4. F1-N43 → 5. F1-XDIARIO → 6. VF3 completo (cuando
-   Benjamin tenga el certificado FNMT — pedirlo YA, tarda).
+## Orden de ataque (actualizado 2026-07-10 noche)
+HECHOS: F1-303UI · F1-SSTOPES · F1-NOMTEST (+ fixture con 2 nóminas
+REALES) · F1-N43 (parser corregido + contrastado con OCA) · F1-BANCO
+(import XLSX BBVA, verificado con extracto real). Releases v0.1.30/31/32.
+
+Quedan, en orden:
+1. **Cuadre 130 2T con la asesoría** (operativa, no código): BENJAGEST
+   693,36 con la nómina de Rubén dentro; a la asesoría le sobran +580 de
+   ingresos y ~1.477 de gastos por justificar.
+2. **F1-WINSVC + F1-INSTVAR** — CON Benjamin (reinicio + instalación).
+3. **VF3 completo** — DESBLOQUEADO: el certificado FNMT de Benjamin ya
+   está localizado (ver memoria/backlog). Cuando él quiera.
+4. F1-XDIARIO — aparcado sin fichero de referencia real.
+5. F1-GOOGLE — necesita dominio/web (fase D).

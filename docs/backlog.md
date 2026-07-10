@@ -1,6 +1,15 @@
 # Backlog operativo BENJAGEST
 
-> **Última actualización: 2026-07-10 (tarde) — FASE 1 del plan estructural: 4 slices cerrados + RELEASE v0.1.30 por lotes.**
+> **Última actualización: 2026-07-10 (cierre de noche) — día completo: 6 slices + nómina real contabilizada + releases v0.1.30/31/32.**
+>
+> ## 🚀 PROMPT PARA LA PRÓXIMA SESIÓN (copiar y pegar)
+>
+> *"Lee la cabecera de docs/backlog.md y docs/plan-estructural-fases.md. Estamos en la FASE 1 del plan estructural (v0.1.32 publicada). Pendientes en orden: (1) **cuadre 130 2T con la asesoría** — BENJAGEST da pago 693,36 con la nómina de Rubén ya dentro; a la asesoría le sobran +580 de ingresos (¿abono no restado?) y ~1.477 de gastos (¿duplicado Los Llanos suyo, IVA no deducible, RETA?); (2) **probar el import XLSX de BBVA** en Mi gestión → Bancos con el Excel de Descargas (v0.1.32); (3) **F1-WINSVC + F1-INSTVAR** conmigo delante (servicio Windows + 2 instaladores); (4) **VF3-CERT** cuando quiera Benjamin — su certificado FNMT ya está localizado; (5) F1-XDIARIO sigue aparcado sin fichero de referencia. Gotchas: pin-login entra como la ASESORÍA — para la empresa de Benjamin usar X-Company-Id ad9cb9e6-51bd-4556-8c54-a6f1ecc028d5; no tocar 8080/13307 con su app abierta; smokes con user.home FUERA del repo y de Temp."*
+>
+> **Sesión 2026-07-10 cierre (con Benjamin):**
+> - ✅ **N43-SPEC** (`4f700c4b`) — parser N43 contrastado con el importador OCA l10n-spain (posiciones 22/23/33 CONFIRMADAS idénticas) + 3 endurecimientos de su experiencia con bancos reales: BOM UTF-8, Ctrl-Z final (DOS), y validación del nº de registros del registro 88 (pos. 21-26, tolerancia ±1). 8 tests. Listo para el día que un banco dé N43/API.
+> - ✅ **F1-BANCO** (`e49c1f64`) — la pestaña Bancos importa el **Excel de BBVA** (que no da N43): `XlsxLite` (lector .xlsx con zip+DOM del JDK, sin Apache POI), cabecera por NOMBRE de columna (vale para otros bancos), dedup por saldo posterior (2 pagos idénticos el mismo día no colapsan), NIF con puntos normalizado, binario en Base64. **Verificado con el export real de Benjamin: 178 movimientos, 100 % con fecha y saldo, 14 NIFs.** Suite 122 verde.
+> - 📦 **RELEASE v0.1.32** publicada (lote N43-SPEC + F1-BANCO). Pendiente Benjamin: actualizar y probar el import en Mi gestión → Bancos → Importar con su Excel de Descargas.
 >
 > **Hecho hoy (sesión con Benjamin al inicio, autónoma después):**
 > - ✅ **F1-303UI** (`fb79f1c8`) — el editor del 303 pinta la fila "otros tipos" (5 %, 2 %…): base+cuota informativas, la cuota suma a la casilla 27 (como el backend desde la auditoría), prefill con Recalcular, se persiste. i18n aeat303.* ES+EN. Verificado: curl real preview T1/T2 (claves presentes; con solo IVA 10/21 salen a 0 → tus 303 no cambian).
