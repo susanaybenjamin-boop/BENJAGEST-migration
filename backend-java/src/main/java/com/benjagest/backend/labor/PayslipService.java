@@ -1299,20 +1299,36 @@ public class PayslipService {
     }
 
     /**
-     * Devuelve {@code [baseMin, baseMax]} del grupo de cotización para el año,
-     * leídos de la tabla editable {@code ss_contribution_group_bases} (no-code,
-     * V121/V122). Devuelve {@code null} si no procede aplicar el tope por grupo
-     * (sin tabla para el año, contrato sin grupo, o grupo no encontrado), en cuyo
-     * caso el llamador usa el tope global de {@code ss_contribution_rates}.
-     * Para grupos de base diaria (8-11) se devuelve solo el tope máximo (mínimo 0)
-     * porque el cálculo diario es un refinamiento pendiente (paso 4).
+     * Devuelve {@code [baseMin, baseMax]} MENSUALES del grupo de cotización para
+     * el año, leídos de la tabla editable {@code ss_contribution_group_bases}
+     * (no-code, V121/V122). Devuelve {@code null} si no procede aplicar el tope
+     * por grupo (sin tabla para el año, contrato sin grupo, o grupo no
+     * encontrado), en cuyo caso el llamador usa el tope global de
+     * {@code ss_contribution_rates}.
      */
     private BigDecimal[] resolveGroupCaps(int year, Integer group) {
         if (group == null) return null;
-        var rows = ssGroupBasesService.listByYear(year);
+        return groupCapsMonthly(ssGroupBasesService.listByYear(year), group);
+    }
+
+    /**
+     * F1-SSTOPES — lógica PURA y testeable de los topes mensuales por grupo
+     * (patrón compute130). Para grupos de base DIARIA (8-11) se mensualiza a
+     * ×30: los trabajadores con retribución mensual cotizan por 30 días
+     * (art. 147 LGSS y Orden de cotización anual), así que el mínimo mensual
+     * equivalente es {@code base_min_diaria × 30} y el máximo
+     * {@code base_max_diaria × 30} (con las cifras 2026: 47,48×30 = 1.424,40 y
+     * 170,04×30 = 5.101,20, este último igual al tope máximo común). Antes el
+     * mínimo diario NO se aplicaba (devolvía 0) — "paso 4" pendiente.
+     */
+    static BigDecimal[] groupCapsMonthly(
+            java.util.List<com.benjagest.backend.labor.ss.SsGroupBasesService.GroupBase> rows,
+            int group) {
         if (rows == null || rows.isEmpty()) return null;
+        final BigDecimal THIRTY = BigDecimal.valueOf(30);
         BigDecimal maxMonthly = null;
         BigDecimal groupMin = null;
+        BigDecimal groupMax = null;
         boolean groupIsDaily = false;
         boolean found = false;
         for (var g : rows) {
@@ -1322,12 +1338,19 @@ public class PayslipService {
             }
             if (g.cotizGroup() == group) {
                 groupMin = g.baseMin();
+                groupMax = g.baseMax();
                 groupIsDaily = g.daily();
                 found = true;
             }
         }
         if (!found) return null;
-        if (groupIsDaily) return new BigDecimal[]{ BigDecimal.ZERO, maxMonthly };
+        if (groupIsDaily) {
+            BigDecimal min = groupMin != null && groupMin.signum() > 0
+                    ? groupMin.multiply(THIRTY) : BigDecimal.ZERO;
+            BigDecimal max = groupMax != null && groupMax.signum() > 0
+                    ? groupMax.multiply(THIRTY) : maxMonthly;
+            return new BigDecimal[]{ min, max };
+        }
         return new BigDecimal[]{ groupMin, maxMonthly };
     }
 

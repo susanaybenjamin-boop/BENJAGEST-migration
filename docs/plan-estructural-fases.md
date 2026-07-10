@@ -19,9 +19,14 @@
   `computePayslip(...)` (patrón compute130) + test con una nómina real de
   Benjamin como fixture.
 
-**F1-SSTOPES — topes de cotización por grupo**
+**F1-SSTOPES — topes de cotización por grupo** ✅ HECHO 2026-07-10
 - `PayslipService`: integrar tabla `ss_group_bases` (ya existe, V123) en el
   clamp de bases. Test con grupo 8 (base diaria) y grupo 1.
+- Cerrado: el clamp por grupo YA existía (resolveGroupCaps, 2026-06-16); lo
+  que faltaba era el "paso 4" — grupos DIARIOS 8-11 mensualizados ×30 (el
+  mínimo 47,48/día → 1.424,40/mes antes no se aplicaba, devolvía 0). Lógica
+  extraída a `groupCapsMonthly` PURA (patrón compute130) + 5 tests con las
+  cifras oficiales 2026 (V122). Suite backend completa verde.
 
 **F1-WINSVC — backend como servicio de Windows**
 - `build-msi.ps1` + WiX: instalar servicio (winsw o jpackage service) con
