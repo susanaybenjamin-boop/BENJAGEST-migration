@@ -74,6 +74,9 @@ public class BankImportService {
         List<ParsedRow> parsed = switch (req.format().toUpperCase()) {
             case "N43" -> parseN43(req.content());
             case "CSV" -> parseCsv(req.content());
+            // F1-BANCO: extracto Excel (BBVA no da N43). El binario viaja en
+            // Base64 dentro de content.
+            case "XLSX" -> parseXlsxBank(decodeBase64(req.content()));
             default -> throw bad("Formato no soportado: " + req.format());
         };
 
@@ -315,6 +318,125 @@ public class BankImportService {
     }
 
     // ====================================================================
+    //  Parser XLSX (extracto Excel — layout BBVA y compatibles)
+    // ====================================================================
+
+    /**
+     * F1-BANCO (2026-07-10) — Extracto .xlsx de banca online. Contrastado con
+     * el export REAL de BBVA ("Últimos movimientos"): filas de título antes de
+     * la cabecera, cabecera con columnas
+     * {@code F.Valor | Fecha | Concepto | Movimiento | Importe | Divisa |
+     * Disponible | Divisa | Observaciones}, fechas dd/MM/yyyy como texto e
+     * importes como número con punto decimal. El parser localiza la cabecera
+     * por NOMBRE de columna (tolera columnas movidas o extra) y por eso vale
+     * también para otros bancos con export equivalente.
+     *
+     * <p>Idempotencia: sin nº de documento, dos movimientos idénticos el mismo
+     * día son legítimos (p.ej. dos pagos iguales de tarjeta) — la referencia
+     * externa se construye con el SALDO POSTERIOR ("SALDO:…"), que los
+     * distingue y es estable si se reimporta el mismo fichero.
+     */
+    static List<ParsedRow> parseXlsxBank(byte[] xlsx) {
+        List<String[]> rows;
+        try {
+            rows = XlsxLite.rows(xlsx);
+        } catch (Exception ex) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "No se pudo leer el .xlsx: " + ex.getMessage());
+        }
+        // Cabecera: primera fila con una columna "importe" y alguna de fecha.
+        int headerIdx = -1;
+        java.util.Map<String, Integer> col = new java.util.HashMap<>();
+        for (int i = 0; i < rows.size() && headerIdx < 0; i++) {
+            java.util.Map<String, Integer> m = new java.util.HashMap<>();
+            String[] r = rows.get(i);
+            for (int j = 0; j < r.length; j++) {
+                String k = normalizeHeader(r[j]);
+                if (!k.isEmpty()) m.putIfAbsent(k, j);
+            }
+            if (m.containsKey("importe") && (m.containsKey("fecha") || m.containsKey("fvalor"))) {
+                headerIdx = i;
+                col = m;
+            }
+        }
+        if (headerIdx < 0) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "El .xlsx no tiene una cabecera reconocible (se esperan columnas "
+                    + "tipo F.Valor/Fecha/Concepto/Importe/Disponible, como el export de BBVA).");
+        }
+        Integer cFecha = col.getOrDefault("fecha", col.get("fvalor"));
+        Integer cValor = col.getOrDefault("fvalor", cFecha);
+        Integer cImporte = col.get("importe");
+        Integer cConcepto = col.get("concepto");
+        Integer cMovimiento = col.get("movimiento");
+        Integer cDisponible = col.get("disponible");
+        Integer cObs = col.get("observaciones");
+
+        List<ParsedRow> out = new ArrayList<>();
+        for (int i = headerIdx + 1; i < rows.size(); i++) {
+            String[] r = rows.get(i);
+            String importe = at(r, cImporte);
+            String fecha = at(r, cFecha);
+            if (importe.isBlank() || fecha.isBlank()) continue;
+            ParsedRow p = new ParsedRow();
+            try {
+                p.operationDate = parseDate(fecha);
+            } catch (RuntimeException ex) { continue; /* fila de pie/resumen */ }
+            try {
+                p.valueDate = parseDate(at(r, cValor));
+            } catch (RuntimeException ex) { p.valueDate = p.operationDate; }
+            try {
+                p.amount = parseCellNumber(importe);
+            } catch (RuntimeException ex) { continue; }
+            String disponible = at(r, cDisponible);
+            try {
+                if (!disponible.isBlank()) p.balanceAfter = parseCellNumber(disponible);
+            } catch (RuntimeException ex) { /* opcional */ }
+            String concepto = at(r, cConcepto).trim();
+            String movimiento = at(r, cMovimiento).trim();
+            String obs = at(r, cObs).trim();
+            String desc = (concepto + (movimiento.isEmpty() ? "" : " · " + movimiento)).trim();
+            p.description = desc.isEmpty() ? obs : desc;
+            p.counterpartyName = extractCounterparty(
+                    (concepto + " " + movimiento).trim().isEmpty() ? obs : concepto + " " + movimiento);
+            p.counterpartyNif = extractSpanishNif(obs.isEmpty() ? desc : obs);
+            p.externalRef = p.balanceAfter != null
+                    ? "SALDO:" + p.balanceAfter.toPlainString() : "";
+            out.add(p);
+        }
+        return out;
+    }
+
+    /** "F.Valor " → "fvalor", "Observaciones" → "observaciones". */
+    private static String normalizeHeader(String s) {
+        if (s == null) return "";
+        return s.toLowerCase().replaceAll("[^a-záéíóúñ]", "")
+                .replace("á", "a").replace("é", "e").replace("í", "i")
+                .replace("ó", "o").replace("ú", "u");
+    }
+
+    private static String at(String[] row, Integer idx) {
+        return idx == null || idx >= row.length || row[idx] == null ? "" : row[idx];
+    }
+
+    /** Número de celda xlsx: nativo con punto decimal ("-60.47") o texto en
+     *  formato español ("1.234,56"). */
+    private static BigDecimal parseCellNumber(String s) {
+        s = s.strip();
+        if (s.matches("-?\\d+(\\.\\d+)?([eE]-?\\d+)?")) return new BigDecimal(s);
+        return parseNumber(s);
+    }
+
+    private static byte[] decodeBase64(String content) {
+        try {
+            return java.util.Base64.getDecoder().decode(
+                    content.replaceAll("\\s", ""));
+        } catch (IllegalArgumentException ex) {
+            throw bad("El contenido XLSX debe venir en Base64.");
+        }
+    }
+
+    // ====================================================================
     //  Parser CSV (formato homogéneo: fecha;valor;concepto;importe;saldo)
     // ====================================================================
 
@@ -371,10 +493,19 @@ public class BankImportService {
     private static final java.util.regex.Pattern NIF_PATTERN = java.util.regex.Pattern.compile(
             "\\b([A-HJNP-SUVW]\\d{8}|\\d{8}[A-Z]|[XYZ]\\d{7}[A-Z])\\b");
 
+    // F1-BANCO: los extractos bancarios formatean el DNI con puntos y guion
+    // ("74.668.351-R"); se normaliza a 8 dígitos + letra.
+    private static final java.util.regex.Pattern NIF_FORMATTED_PATTERN = java.util.regex.Pattern.compile(
+            "\\b(\\d{2})\\.(\\d{3})\\.(\\d{3})-?([A-Z])\\b");
+
     private static String extractSpanishNif(String text) {
         if (text == null) return null;
-        java.util.regex.Matcher m = NIF_PATTERN.matcher(text.toUpperCase());
-        return m.find() ? m.group(1) : null;
+        String upper = text.toUpperCase();
+        java.util.regex.Matcher m = NIF_PATTERN.matcher(upper);
+        if (m.find()) return m.group(1);
+        java.util.regex.Matcher f = NIF_FORMATTED_PATTERN.matcher(upper);
+        if (f.find()) return f.group(1) + f.group(2) + f.group(3) + f.group(4);
+        return null;
     }
 
     private static String extractCounterparty(String description) {

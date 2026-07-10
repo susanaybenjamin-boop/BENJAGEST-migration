@@ -62,6 +62,16 @@
   a la norma. Suite 113 verde. Pendiente Benjamin: probar con un N43 real
   de su banco cuando tenga uno.
 
+**F1-BANCO — import de extracto Excel (BBVA)** ✅ HECHO 2026-07-10 noche
+- BBVA no ofrece N43 → formato XLSX en BankImportService: `XlsxLite` (lector
+  .xlsx mínimo con zip+DOM del JDK, sin Apache POI), cabecera localizada por
+  NOMBRE de columna (vale para otros bancos), dedup por saldo posterior
+  (permite 2 pagos idénticos el mismo día), NIF con puntos normalizado.
+  UI: formato XLSX + Base64 en el diálogo de la pestaña Bancos. Verificado
+  contra el export REAL de Benjamin: 178 movimientos, 100 % con fecha y
+  saldo. 4 tests. El parser N43 queda contrastado con el importador OCA
+  (posiciones confirmadas + BOM/CtrlZ/registro 88 con tolerancia ±1).
+
 **F1-XDIARIO — export xDiario/SUENLACE** (ya especificado en backlog líneas
   1731-1733): `accounting/export/XDiarioExportService` + combo en informes.
 
