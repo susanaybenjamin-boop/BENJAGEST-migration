@@ -7111,6 +7111,11 @@ public final class I18n {
             case "accounting.action.refresh" -> "Refresh";
             case "accounting.action.validate" -> "Validate";
             case "accounting.action.accept" -> "Accept as-is";
+            case "accounting.dup.title" -> "Possible duplicate expense";
+            case "accounting.dup.question" -> "What do you want to do?";
+            case "accounting.dup.delete" -> "Delete proposed duplicate";
+            case "accounting.dup.force" -> "Validate anyway (it is not a duplicate)";
+            case "accounting.dup.cancel" -> "Cancel";
             case "accounting.action.new_entry" -> "New entry";
             case "accounting.action.save_draft" -> "Save draft";
             case "accounting.action.close" -> "Close";
@@ -8373,6 +8378,11 @@ public final class I18n {
             case "accounting.action.refresh" -> "Refrescar";
             case "accounting.action.validate" -> "Validar";
             case "accounting.action.accept" -> "Aceptar tal cual";
+            case "accounting.dup.title" -> "Posible gasto duplicado";
+            case "accounting.dup.question" -> "¿Qué quieres hacer?";
+            case "accounting.dup.delete" -> "Eliminar duplicado propuesto";
+            case "accounting.dup.force" -> "Validar igualmente (no es un duplicado)";
+            case "accounting.dup.cancel" -> "Cancelar";
             case "accounting.action.new_entry" -> "Nuevo asiento";
             case "accounting.action.save_draft" -> "Guardar borrador";
             case "accounting.action.close" -> "Cerrar";

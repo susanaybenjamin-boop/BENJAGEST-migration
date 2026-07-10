@@ -159,8 +159,13 @@ public class AccountingJournalController {
     }
 
     @PostMapping("/journal-entries/{id}/post")
-    public ManualJournalEntryService.ManualEntryView post(@PathVariable("id") String id) {
-        return manualService.post(id);
+    public ManualJournalEntryService.ManualEntryView post(
+            @PathVariable("id") String id,
+            // DUP-VALIDAR: force=true valida aunque haya un posible gasto
+            // duplicado (decisión del usuario tras el aviso 409).
+            @org.springframework.web.bind.annotation.RequestParam(
+                    value = "force", defaultValue = "false") boolean force) {
+        return manualService.post(id, force);
     }
 
     /**
