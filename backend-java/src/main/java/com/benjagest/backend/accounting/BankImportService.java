@@ -184,17 +184,31 @@ public class BankImportService {
      * valida que la suma de movimientos cuadre con los totales declarados
      * (nº de apuntes e importes al debe y al haber). Si no cuadra → 400,
      * mejor rechazar que importar cifras malas.
+     *
+     * <p>N43-SPEC (2026-07-10, contrastado con el importador OCA l10n-spain,
+     * referencia en producción): posiciones de los registros 22/23/33
+     * CONFIRMADAS idénticas. Endurecimientos añadidos de su experiencia real:
+     * (1) BOM UTF-8 al inicio (desplaza todas las posiciones de la 1ª línea);
+     * (2) carácter EOF 0x1A (Ctrl-Z, convención DOS) al final; (3) registro 88
+     * — nº total de registros en posiciones 21-26 (tras 18 nueves), validado
+     * con tolerancia ±1 (hay bancos que cuentan el propio 88 y otros no).
      */
     static List<ParsedRow> parseN43(String content) {
         List<ParsedRow> out = new ArrayList<>();
         int count33Debe = 0, count33Haber = 0;
         BigDecimal total33Debe = BigDecimal.ZERO, total33Haber = BigDecimal.ZERO;
         boolean saw33 = false;
+        int recordCount = 0;
+        Integer declared88 = null;
+        // BOM UTF-8: algunos bancos lo emiten y desplaza las posiciones fijas.
+        if (content.startsWith("﻿")) content = content.substring(1);
         try (BufferedReader br = new BufferedReader(new StringReader(content))) {
             String line;
             ParsedRow current = null;
             while ((line = br.readLine()) != null) {
+                if (line.isEmpty() || line.charAt(0) == 0x1A) continue; // EOF DOS (^Z)
                 if (line.length() < 2) continue;
+                recordCount++;
                 String code = line.substring(0, 2);
                 switch (code) {
                     case "22" -> {
@@ -251,8 +265,17 @@ public class BankImportService {
                             saw33 = true;
                         } catch (NumberFormatException ex) { /* 33 malformado: sin validación */ }
                     }
+                    case "88" -> {
+                        // Fin de fichero: 3-20 nueves (18) · 21-26 nº total de
+                        // registros. Se valida al final con tolerancia ±1.
+                        if (line.length() >= 26) {
+                            try {
+                                declared88 = Integer.parseInt(line.substring(20, 26).trim());
+                            } catch (NumberFormatException ex) { /* sin validación */ }
+                        }
+                    }
                     default -> {
-                        /* 11, 24, 88, 00 → no mov */
+                        /* 11, 24, 00 → no mov */
                     }
                 }
             }
@@ -280,6 +303,13 @@ public class BankImportService {
                         + " vs declarados " + count33Debe + "D/" + count33Haber + "H = "
                         + total33Debe + "/" + total33Haber + ". Fichero rechazado.");
             }
+        }
+        // Registro 88: nº total de registros con tolerancia ±1 (algunos bancos
+        // cuentan el propio 88 y otros no — criterio del importador OCA).
+        if (declared88 != null && Math.abs(declared88 - recordCount) > 1) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "El fichero N43 declara " + declared88 + " registros (registro 88) pero contiene "
+                    + recordCount + ". Fichero rechazado.");
         }
         return out;
     }

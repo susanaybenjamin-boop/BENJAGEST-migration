@@ -56,7 +56,9 @@ class BankImportParserTest {
                 + "00001" + "00000000008990"    // 1 apunte al debe, 89,90
                 + "00001" + "00000000123456"    // 1 apunte al haber, 1.234,56
                 + "2" + "00000010114466" + "978" + pad("", 4);
-        String r88 = "88" + "9".repeat(20) + "000006" + pad("", 52);
+        // Registro 88: 3-20 = 18 nueves · 21-26 = nº total de registros
+        // (aquí 6, contando el propio 88 — la validación tolera ±1).
+        String r88 = "88" + "9".repeat(18) + "000006" + pad("", 54);
         return String.join("\n", r11, r22a, r23a, r22b, r33, r88);
     }
 
@@ -108,6 +110,30 @@ class BankImportParserTest {
         String sin33 = n43File().lines().filter(l -> !l.startsWith("33"))
                 .reduce((a, b) -> a + "\n" + b).orElseThrow();
         assertEquals(2, BankImportService.parseN43(sin33).size());
+    }
+
+    @Test
+    void n43_conBomYCtrlZ_parseaIgual_convencionesRealesDeBancos() {
+        // N43-SPEC (criterios del importador OCA): BOM UTF-8 al inicio
+        // (desplazaría todas las posiciones) y Ctrl-Z (0x1A) final estilo DOS.
+        String conBom = "﻿" + n43File() + "\n" + (char) 0x1A;
+        List<BankImportService.ParsedRow> rows = BankImportService.parseN43(conBom);
+        assertEquals(2, rows.size());
+        assertAmount("1234.56", rows.get(0).amount);
+    }
+
+    @Test
+    void n43_registro88ConContadorMuyDesviado_seRechaza() {
+        // 6 registros reales pero el 88 declara 900 → rechazo. (±1 se tolera:
+        // hay bancos que cuentan el propio 88 y otros que no.)
+        String malo = n43File().replace("88" + "9".repeat(18) + "000006",
+                "88" + "9".repeat(18) + "000900");
+        ResponseStatusException ex = assertThrows(ResponseStatusException.class,
+                () -> BankImportService.parseN43(malo));
+        assertTrue(String.valueOf(ex.getReason()).contains("declara 900"));
+        // Y con 5 (sin contar el 88) pasa por la tolerancia ±1.
+        String cincoOk = n43File().replace("000006", "000005");
+        assertEquals(2, BankImportService.parseN43(cincoOk).size());
     }
 
     @Test
