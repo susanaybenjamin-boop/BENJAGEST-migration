@@ -169,8 +169,27 @@ public class BankImportService {
     //  Parser N43
     // ====================================================================
 
-    private List<ParsedRow> parseN43(String content) {
+    /**
+     * F1-N43 (2026-07-10) — parser del Cuaderno 43 AEB, ESTÁTICO y testeable.
+     * Corregido contra la norma (registro 22, posiciones 1-based):
+     * 11-16 fecha operación · 17-22 fecha valor · 23-24 concepto común ·
+     * 25-27 concepto propio · 28 clave debe(1)/haber(2) · <b>29-42 importe
+     * (14 dígitos, 2 decimales)</b> · 43-52 nº documento · 53-64 referencia 1 ·
+     * 65-80 referencia 2. El parser anterior cortaba el importe en 12 dígitos
+     * (substring 28,40): perdía los CÉNTIMOS y dividía el importe entre 100.
+     * En el registro 23 el concepto empieza en la posición 5 (índice 4); antes
+     * se comía el primer carácter.
+     *
+     * <p>Integridad: si el fichero trae registros 33 (final de cuenta), se
+     * valida que la suma de movimientos cuadre con los totales declarados
+     * (nº de apuntes e importes al debe y al haber). Si no cuadra → 400,
+     * mejor rechazar que importar cifras malas.
+     */
+    static List<ParsedRow> parseN43(String content) {
         List<ParsedRow> out = new ArrayList<>();
+        int count33Debe = 0, count33Haber = 0;
+        BigDecimal total33Debe = BigDecimal.ZERO, total33Haber = BigDecimal.ZERO;
+        boolean saw33 = false;
         try (BufferedReader br = new BufferedReader(new StringReader(content))) {
             String line;
             ParsedRow current = null;
@@ -181,12 +200,6 @@ public class BankImportService {
                     case "22" -> {
                         if (line.length() < 80) continue;
                         current = new ParsedRow();
-                        // bytes 11-16: fecha operación (yyMMdd)
-                        // bytes 17-22: fecha valor (yyMMdd)
-                        // bytes 23-25: clave operación
-                        // bytes 28-40: importe (sin punto, dos decimales)
-                        // bytes 41-50: ref propia
-                        // bytes 51-62: ref entidad
                         try {
                             current.operationDate = LocalDate.parse(line.substring(10, 16), N43_DATE);
                         } catch (Exception ex) { current.operationDate = LocalDate.now(); }
@@ -194,20 +207,28 @@ public class BankImportService {
                             current.valueDate = LocalDate.parse(line.substring(16, 22), N43_DATE);
                         } catch (Exception ex) { /* opcional */ }
                         String signChar = line.substring(27, 28);
-                        String amountStr = line.substring(28, 40).trim();
+                        String amountStr = line.substring(28, 42).trim();
                         BigDecimal amt;
                         try {
                             amt = new BigDecimal(amountStr).movePointLeft(2);
                         } catch (Exception ex) { continue; }
                         if ("1".equals(signChar)) amt = amt.negate();
                         current.amount = amt;
-                        current.externalRef = line.length() >= 62
-                                ? line.substring(40, 62).trim() : "";
+                        // nº documento (43-52) + referencia 1 (53-64) como ref
+                        // externa para la idempotencia del import.
+                        current.externalRef = line.substring(42, Math.min(64, line.length())).trim();
+                        // Referencia 2 (65-80): muchos bancos ponen ahí el texto
+                        // del ordenante; sirve de descripción si no llegan 23s.
+                        if (line.length() > 64) {
+                            String ref2 = line.substring(64).trim();
+                            if (!ref2.isEmpty()) current.description = ref2;
+                        }
                         out.add(current);
                     }
                     case "23" -> {
-                        if (current != null && line.length() > 5) {
-                            String extra = line.substring(5).trim();
+                        // 3-4 código de dato; el concepto empieza en la pos. 5.
+                        if (current != null && line.length() > 4) {
+                            String extra = line.substring(4).trim();
                             current.description = (current.description == null ? "" : current.description + " ") + extra;
                             // Heurística: si hay NIF español al final, lo extraemos.
                             String maybeNif = extractSpanishNif(extra);
@@ -216,14 +237,49 @@ public class BankImportService {
                             }
                         }
                     }
+                    case "33" -> {
+                        // 21-25 nº apuntes debe · 26-39 total debe ·
+                        // 40-44 nº apuntes haber · 45-58 total haber.
+                        if (line.length() < 58) continue;
+                        try {
+                            count33Debe += Integer.parseInt(line.substring(20, 25).trim());
+                            total33Debe = total33Debe.add(
+                                    new BigDecimal(line.substring(25, 39).trim()).movePointLeft(2));
+                            count33Haber += Integer.parseInt(line.substring(39, 44).trim());
+                            total33Haber = total33Haber.add(
+                                    new BigDecimal(line.substring(44, 58).trim()).movePointLeft(2));
+                            saw33 = true;
+                        } catch (NumberFormatException ex) { /* 33 malformado: sin validación */ }
+                    }
                     default -> {
-                        /* 11, 33, 88, 00 → no mov */
+                        /* 11, 24, 88, 00 → no mov */
                     }
                 }
             }
+        } catch (ResponseStatusException ex) {
+            throw ex;
         } catch (Exception ex) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "Error al parsear N43: " + ex.getMessage());
+        }
+        for (ParsedRow r : out) {
+            if (r.counterpartyName == null) r.counterpartyName = extractCounterparty(r.description);
+        }
+        if (saw33) {
+            long debe = out.stream().filter(r -> r.amount.signum() < 0).count();
+            long haber = out.size() - debe;
+            BigDecimal sumDebe = out.stream().map(r -> r.amount).filter(a -> a.signum() < 0)
+                    .map(BigDecimal::negate).reduce(BigDecimal.ZERO, BigDecimal::add);
+            BigDecimal sumHaber = out.stream().map(r -> r.amount).filter(a -> a.signum() >= 0)
+                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+            if (debe != count33Debe || haber != count33Haber
+                    || sumDebe.compareTo(total33Debe) != 0 || sumHaber.compareTo(total33Haber) != 0) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "El fichero N43 no cuadra con sus totales (registro 33): "
+                        + "movimientos " + debe + "D/" + haber + "H = " + sumDebe + "/" + sumHaber
+                        + " vs declarados " + count33Debe + "D/" + count33Haber + "H = "
+                        + total33Debe + "/" + total33Haber + ". Fichero rechazado.");
+            }
         }
         return out;
     }
@@ -232,7 +288,7 @@ public class BankImportService {
     //  Parser CSV (formato homogéneo: fecha;valor;concepto;importe;saldo)
     // ====================================================================
 
-    private List<ParsedRow> parseCsv(String content) {
+    static List<ParsedRow> parseCsv(String content) {
         List<ParsedRow> out = new ArrayList<>();
         boolean firstLine = true;
         try (BufferedReader br = new BufferedReader(new StringReader(content))) {
@@ -269,7 +325,7 @@ public class BankImportService {
         return out;
     }
 
-    private LocalDate parseDate(String s) {
+    private static LocalDate parseDate(String s) {
         s = s.strip();
         try { return LocalDate.parse(s, ISO); } catch (Exception ignored) {}
         try { return LocalDate.parse(s, ES); } catch (Exception ignored) {}
@@ -277,7 +333,7 @@ public class BankImportService {
         throw new IllegalArgumentException("Fecha no parseable: " + s);
     }
 
-    private BigDecimal parseNumber(String s) {
+    private static BigDecimal parseNumber(String s) {
         s = s.strip().replace(".", "").replace(",", ".").replace("€", "").replace(" ", "");
         return new BigDecimal(s);
     }
@@ -285,13 +341,13 @@ public class BankImportService {
     private static final java.util.regex.Pattern NIF_PATTERN = java.util.regex.Pattern.compile(
             "\\b([A-HJNP-SUVW]\\d{8}|\\d{8}[A-Z]|[XYZ]\\d{7}[A-Z])\\b");
 
-    private String extractSpanishNif(String text) {
+    private static String extractSpanishNif(String text) {
         if (text == null) return null;
         java.util.regex.Matcher m = NIF_PATTERN.matcher(text.toUpperCase());
         return m.find() ? m.group(1) : null;
     }
 
-    private String extractCounterparty(String description) {
+    private static String extractCounterparty(String description) {
         if (description == null) return null;
         String s = description.replaceAll("(?i)(transf|recibo|tarjeta|nomina|impuesto|comision|cobro|pago|de:|para:)\\s*", "")
                 .trim();
@@ -326,7 +382,8 @@ public class BankImportService {
             int rowsSkipped, int rowsAutoMatched
     ) {}
 
-    private static class ParsedRow {
+    // F1-N43: visibilidad de package para poder fijar el parser en tests.
+    static class ParsedRow {
         LocalDate operationDate; LocalDate valueDate;
         String description; String counterpartyName; String counterpartyNif;
         BigDecimal amount; BigDecimal balanceAfter;
