@@ -328,21 +328,25 @@ public class PurchaseInvoiceService {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "No hay otro gasto idéntico: esto no es un duplicado. Usa el borrado normal.");
         }
-        // ¿Incluido en una declaración presentada? (existía antes de la última
-        // presentación de su periodo) → entonces NO se puede eliminar.
-        java.time.LocalDate d = existing.invoiceDate();
-        int q = (d.getMonthValue() - 1) / 3 + 1;
-        java.sql.Timestamp lastPresented = jdbcTemplate.query("""
-                SELECT MAX(updated_at) FROM tax_filings
-                 WHERE company_id = ? AND status IN ('PRESENTED', 'PAID')
-                   AND period_year = ? AND (period_quarter IS NULL OR period_quarter >= ?)
+        // Solo se elimina la copia MÁS NUEVA de la pareja: la más antigua es
+        // la única que pudo entrar en la declaración presentada y se conserva.
+        // (La heurística anterior por updated_at del modelo fallaba si el
+        // trimestre se marcaba como PAGADO después de reimportar — el
+        // timestamp se renovaba y ambos parecían "incluidos".)
+        java.sql.Timestamp oldestTwin = jdbcTemplate.query("""
+                SELECT MIN(created_at) FROM purchase_invoices
+                 WHERE company_id = ? AND id <> ? AND status = 'POSTED'
+                   AND total_amount = ?
+                   AND (supplier_nif IS NULL OR ? IS NULL OR supplier_nif = ?)
+                   AND invoice_date = ?
                 """, rs -> rs.next() ? rs.getTimestamp(1) : null,
-                companyId, d.getYear(), q);
-        if (lastPresented != null && existing.createdAt() != null
-                && existing.createdAt().isBefore(lastPresented.toInstant())) {
+                companyId, id, existing.totalAmount(),
+                existing.supplierNif(), existing.supplierNif(), existing.invoiceDate());
+        if (oldestTwin != null && existing.createdAt() != null
+                && existing.createdAt().isBefore(oldestTwin.toInstant())) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
-                    "Este gasto está incluido en una declaración presentada: se conserva. "
-                    + "Elimina el otro duplicado o rectifica en el periodo corriente.");
+                    "Este gasto es la copia MÁS ANTIGUA (la que entró en la declaración): se conserva. "
+                    + "Elimina el duplicado más reciente o rectifica en el periodo corriente.");
         }
         deleteInternal(existing);
     }

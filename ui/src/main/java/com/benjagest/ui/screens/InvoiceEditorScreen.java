@@ -717,7 +717,10 @@ public class InvoiceEditorScreen extends ScreenBase {
         // la línea guarda QUÉ tipo se eligió (vatRateId) y el PDF imprime el
         // texto legal de ESE tipo, no el genérico.
         TableColumn<InvoiceLineDraft, String> colVat = vatComboColumn(t("editor.lines.col.vat"));
-        TableColumn<InvoiceLineDraft, String> colRet = decimalColumn(t("editor.lines.col.retention"), InvoiceLineDraft::getRetentionPercent, InvoiceLineDraft::setRetentionPercent);
+        // FAC-IVA: la retención también con combo del catálogo (kind
+        // WITHHOLDING). Solo fija el %, no necesita identidad (la retención
+        // no imprime texto legal por tipo en el PDF).
+        TableColumn<InvoiceLineDraft, String> colRet = retentionComboColumn(t("editor.lines.col.retention"));
 
         // Limpiamos los mapas al construir la tabla — la instancia anterior
         // ya no existe y sus labels son basura.
@@ -742,8 +745,10 @@ public class InvoiceEditorScreen extends ScreenBase {
             try {
                 var all = billingApiClient.listVatRates(false);
                 var vats = all.stream().filter(r -> "VAT".equals(r.kind())).toList();
+                var rets = all.stream().filter(r -> "WITHHOLDING".equals(r.kind())).toList();
                 Platform.runLater(() -> {
                     editorVatRates = vats;
+                    editorRetentionRates = rets;
                     table.refresh();
                 });
             } catch (Exception ignored) { /* combo vacío, sin romper el editor */ }
@@ -801,6 +806,18 @@ public class InvoiceEditorScreen extends ScreenBase {
 
     /** FAC-IVA: catálogo de tipos de IVA activos (se carga al abrir el editor). */
     private java.util.List<com.benjagest.ui.model.VatRateEntry> editorVatRates = java.util.List.of();
+    /** FAC-IVA: catálogo de retenciones (kind WITHHOLDING) activas. */
+    private java.util.List<com.benjagest.ui.model.VatRateEntry> editorRetentionRates = java.util.List.of();
+
+    /**
+     * Opción sintética "0% · Sin retención": el catálogo seed solo trae
+     * 15%/7% — sin esta entrada no se podría volver a 0 desde el combo.
+     */
+    private com.benjagest.ui.model.VatRateEntry noRetentionOption() {
+        return new com.benjagest.ui.model.VatRateEntry(
+                "", "WITHHOLDING", "NONE", t("editor.lines.retention.none"),
+                java.math.BigDecimal.ZERO, false, true, null);
+    }
 
     /**
      * FAC-IVA — columna de IVA con COMBO de los tipos configurados en
@@ -865,6 +882,78 @@ public class InvoiceEditorScreen extends ScreenBase {
                         for (var e : editorVatRates) {
                             if (e.percent() != null
                                     && e.percent().compareTo(row.getVatPercent()) == 0) {
+                                match = e;
+                                break;
+                            }
+                        }
+                    }
+                    combo.setValue(match);
+                } finally {
+                    syncing = false;
+                }
+                setGraphic(combo);
+            }
+        });
+        return col;
+    }
+
+    /**
+     * FAC-IVA — columna de RETENCIÓN con combo del catálogo (WITHHOLDING).
+     * Fija solo el % de la línea; preselección por % coincidente.
+     */
+    private TableColumn<InvoiceLineDraft, String> retentionComboColumn(String header) {
+        TableColumn<InvoiceLineDraft, String> col = new TableColumn<>(header);
+        col.setCellValueFactory(c -> new SimpleStringProperty(
+                formatDecimalForCell(c.getValue().getRetentionPercent())));
+        col.setCellFactory(cv -> new javafx.scene.control.TableCell<InvoiceLineDraft, String>() {
+            private final ComboBox<com.benjagest.ui.model.VatRateEntry> combo = new ComboBox<>();
+            private boolean syncing = false;
+            {
+                combo.setMaxWidth(Double.MAX_VALUE);
+                combo.setConverter(new javafx.util.StringConverter<>() {
+                    @Override public String toString(com.benjagest.ui.model.VatRateEntry e) {
+                        if (e == null) return "";
+                        String pct = formatDecimalForCell(e.percent());
+                        return e.label() == null || e.label().isBlank()
+                                ? pct + "%" : pct + "% · " + e.label();
+                    }
+                    @Override public com.benjagest.ui.model.VatRateEntry fromString(String s) { return null; }
+                });
+                combo.setOnAction(ev -> {
+                    if (syncing) return;
+                    if (getTableRow() == null) return;
+                    InvoiceLineDraft row = getTableRow().getItem();
+                    com.benjagest.ui.model.VatRateEntry sel = combo.getValue();
+                    if (row == null || sel == null) return;
+                    row.setRetentionPercent(sel.percent());
+                    recomputeEditorTotals();
+                    Label subLabel = rowSubtotalLabels.get(row);
+                    if (subLabel != null) subLabel.setText(money(lineSubtotal(row).toPlainString()));
+                    Label totLabel = rowLineTotalLabels.get(row);
+                    if (totLabel != null) totLabel.setText(money(lineTotal(row).toPlainString()));
+                });
+            }
+
+            @Override
+            protected void updateItem(String item, boolean empty) {
+                super.updateItem(item, empty);
+                if (empty || getTableRow() == null || getTableRow().getItem() == null) {
+                    setGraphic(null);
+                    return;
+                }
+                InvoiceLineDraft row = getTableRow().getItem();
+                syncing = true;
+                try {
+                    java.util.List<com.benjagest.ui.model.VatRateEntry> options =
+                            new java.util.ArrayList<>();
+                    options.add(noRetentionOption());
+                    options.addAll(editorRetentionRates);
+                    combo.getItems().setAll(options);
+                    com.benjagest.ui.model.VatRateEntry match = null;
+                    if (row.getRetentionPercent() != null) {
+                        for (var e : options) {
+                            if (e.percent() != null
+                                    && e.percent().compareTo(row.getRetentionPercent()) == 0) {
                                 match = e;
                                 break;
                             }
