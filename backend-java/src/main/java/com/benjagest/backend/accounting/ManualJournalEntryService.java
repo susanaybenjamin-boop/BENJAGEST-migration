@@ -425,13 +425,18 @@ public class ManualJournalEntryService {
                 (java.sql.Date) mine.get("invoice_date"), (java.sql.Timestamp) mine.get("created_at"));
         boolean otherIncluded = includedInPresentedFiling(companyId,
                 (java.sql.Date) other.get("invoice_date"), (java.sql.Timestamp) other.get("created_at"));
-        // Se elimina el que NO esté en modelos; si ninguno lo está, el que se
-        // está validando ahora (el recién llegado); si ambos lo están, ninguno.
+        // Se elimina el que NO esté en modelos. Si AMBOS parecen incluidos
+        // (caso real Benjamin 2026-07-10: marcar el trimestre como PAGADO
+        // renueva updated_at del modelo y la heurística temporal ve a los
+        // dos como "anteriores a la presentación"), gana la regla simple:
+        // se CONSERVA la copia MÁS ANTIGUA (la única que pudo entrar en la
+        // declaración) y se propone eliminar la más nueva. Siempre con
+        // confirmación del usuario.
         String deleteId;
         if (otherIncluded && !mineIncluded) deleteId = String.valueOf(mine.get("id"));
         else if (mineIncluded && !otherIncluded) deleteId = String.valueOf(other.get("id"));
-        else if (!mineIncluded) deleteId = String.valueOf(mine.get("id"));
-        else deleteId = "";
+        else deleteId = newerOf(mine.get("id"), (java.sql.Timestamp) mine.get("created_at"),
+                other.get("id"), (java.sql.Timestamp) other.get("created_at"));
         String detalle = String.format(
                 "Posible gasto DUPLICADO de %s (fra. %s): base %s y total %s idénticos a otro gasto "
                 + "ya validado (IVA de este: %s · IVA del existente: %s). %s",
@@ -480,8 +485,8 @@ public class ManualJournalEntryService {
             String deleteId;
             if (aInc && !bInc) deleteId = String.valueOf(p.get("id_b"));
             else if (bInc && !aInc) deleteId = String.valueOf(p.get("id_a"));
-            else if (!aInc) deleteId = String.valueOf(p.get("id_b"));
-            else deleteId = "";
+            else deleteId = newerOf(p.get("id_a"), (java.sql.Timestamp) p.get("ca"),
+                    p.get("id_b"), (java.sql.Timestamp) p.get("cb"));
             out.add(java.util.Map.of(
                     "deleteId", deleteId,
                     "detail", String.format(
@@ -491,6 +496,14 @@ public class ManualJournalEntryService {
                             p.get("vat_a"), p.get("vat_b"))));
         }
         return out;
+    }
+
+    /** De una pareja de duplicados, el id de la copia MÁS NUEVA (la que se propone eliminar). */
+    private static String newerOf(Object idA, java.sql.Timestamp ca,
+                                   Object idB, java.sql.Timestamp cb) {
+        if (ca == null) return String.valueOf(idA);
+        if (cb == null) return String.valueOf(idB);
+        return ca.after(cb) ? String.valueOf(idA) : String.valueOf(idB);
     }
 
     /** ¿El gasto existía ANTES de la última presentación de su periodo? */
