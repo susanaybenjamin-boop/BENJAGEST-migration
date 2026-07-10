@@ -96,6 +96,12 @@ public class AccountingJournalController {
      * — los asientos manuales o de venta validada no se tocan aunque
      * el caller pase su id. Idempotente.
      */
+    /** DUP-SCAN — barrido de gastos duplicados POSTED (aviso al entrar al Diario). */
+    @org.springframework.web.bind.annotation.GetMapping("/duplicates/expenses")
+    public List<Map<String, Object>> expenseDuplicates() {
+        return manualService.findExpenseDuplicates();
+    }
+
     @PostMapping("/duplicates/delete")
     public Map<String, Object> deleteDuplicates(@RequestBody DeleteIdsBody body) {
         int n = manualService.deleteImportedByIds(

@@ -192,6 +192,24 @@ public class AccountingApiClient {
         postRaw("/purchases/invoices/" + purchaseInvoiceId + "/delete-duplicate", "{}");
     }
 
+    /** DUP-SCAN: duplicados POSTED pendientes de revisar — [deleteId, detalle]. */
+    public java.util.List<String[]> getExpenseDuplicates() throws IOException, InterruptedException {
+        String json = get("/accounting/duplicates/expenses");
+        java.util.List<String[]> out = new java.util.ArrayList<>();
+        java.util.regex.Matcher m = java.util.regex.Pattern
+                .compile("\\{[^{}]*\\}").matcher(json == null ? "" : json);
+        while (m.find()) {
+            String obj = m.group();
+            java.util.regex.Matcher del = java.util.regex.Pattern
+                    .compile("\"deleteId\"\\s*:\\s*\"([^\"]*)\"").matcher(obj);
+            java.util.regex.Matcher det = java.util.regex.Pattern
+                    .compile("\"detail\"\\s*:\\s*\"((?:\\\\.|[^\"])*)\"").matcher(obj);
+            out.add(new String[]{ del.find() ? del.group(1) : "",
+                    det.find() ? det.group(1).replace("\\\"", "\"") : "" });
+        }
+        return out;
+    }
+
     /**
      * Valida un lote de asientos DRAFT. El usuario hace Ctrl+click /
      * Shift+click para seleccionar varios en el tab "Por validar" y

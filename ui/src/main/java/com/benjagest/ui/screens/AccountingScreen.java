@@ -97,6 +97,11 @@ public class AccountingScreen {
     public Node buildView() {
         TabPane tabs = new TabPane();
         this.accountingTabs = tabs;
+        // DUP-SCAN (Benjamin 2026-07-10): al entrar en Contabilidad, barrido
+        // de gastos duplicados YA validados (red por si alguno se coló antes
+        // del chequeo al validar). Aviso con opción de eliminar el que no
+        // esté en una declaración presentada.
+        scanForDuplicateExpenses();
         // Las tablas de esta pantalla no añadían la clase "data-table", así que
         // sus cabeceras heredaban el texto claro del tema sobre fondo claro →
         // ilegibles (bug Benjamin 2026-06-23). Marcando el contenedor con
@@ -2937,6 +2942,33 @@ public class AccountingScreen {
      * presentada), validar igualmente (no era un error de importación), o
      * cancelar. Devuelve true si el error era de duplicado y ya se gestionó.
      */
+    /** DUP-SCAN — pide al backend los duplicados POSTED y avisa uno a uno. */
+    private void scanForDuplicateExpenses() {
+        async(() -> api.getExpenseDuplicates(), list -> {
+            for (String[] dup : list) {
+                String deleteId = dup[0], detail = dup[1];
+                ButtonType deleteBt = new ButtonType(tt.apply("accounting.dup.delete"),
+                        javafx.scene.control.ButtonBar.ButtonData.OK_DONE);
+                ButtonType cancelBt = new ButtonType(tt.apply("accounting.dup.cancel"),
+                        javafx.scene.control.ButtonBar.ButtonData.CANCEL_CLOSE);
+                Alert alert = new Alert(AlertType.WARNING, detail + "\n\n"
+                        + tt.apply("accounting.dup.question"));
+                alert.setHeaderText(tt.apply("accounting.dup.title"));
+                alert.getButtonTypes().setAll(deleteId.isEmpty()
+                        ? new ButtonType[]{cancelBt}
+                        : new ButtonType[]{deleteBt, cancelBt});
+                alert.getDialogPane().setPrefWidth(560);
+                var choice = alert.showAndWait().orElse(cancelBt);
+                if (choice == deleteBt && !deleteId.isEmpty()) {
+                    async(() -> { api.deleteDuplicateExpense(deleteId); return null; },
+                            ok -> com.benjagest.ui.support.RefreshBus.emit(
+                                    com.benjagest.ui.support.RefreshBus.TOPIC_JOURNAL),
+                            e2 -> showError(tt.apply("accounting.dup.title"), e2));
+                }
+            }
+        }, err -> { /* silencioso: el barrido no debe molestar si falla */ });
+    }
+
     private boolean handleDuplicateExpense(Throwable err, String entryId) {
         String msg = err == null || err.getMessage() == null ? "" : err.getMessage();
         java.util.regex.Matcher m = java.util.regex.Pattern

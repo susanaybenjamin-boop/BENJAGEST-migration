@@ -246,6 +246,13 @@ public class ManualJournalEntryService {
         fiscalGuard.requireOpenForDate(req.entryDate(), "modificar asiento contable");
 
         String companyId = tenantContext.getCurrentCompanyId();
+        // DUP-VALIDAR fix (2026-07-10): el modal del editor valida por ESTE
+        // camino (postNow=true pone POSTED directo y el post() posterior ya
+        // no comprueba nada) — Benjamin validó el duplicado de Loren sin
+        // aviso. El chequeo de duplicados corre en TODOS los caminos a POSTED.
+        if (req.postNow()) {
+            checkDuplicateExpense(entryId, companyId);
+        }
         String newFiscalYearId = resolveFiscalYearId(companyId, req.entryDate());
 
         jdbcTemplate.update("""
@@ -436,6 +443,53 @@ public class ManualJournalEntryService {
                         : "Se propone eliminar el que NO está en una declaración presentada.");
         throw new ResponseStatusException(HttpStatus.CONFLICT,
                 "DUPLICADO|deleteId=" + deleteId + "|" + detalle);
+    }
+
+    /**
+     * DUP-SCAN (2026-07-10, Benjamin) — barrido de gastos DUPLICADOS ya
+     * POSTED (por si alguno se coló antes del chequeo al validar). Mismas
+     * condiciones que checkDuplicateExpense; devuelve por cada pareja el
+     * candidato a eliminar (el NO incluido en declaración presentada).
+     */
+    public List<java.util.Map<String, Object>> findExpenseDuplicates() {
+        String companyId = tenantContext.getCurrentCompanyId();
+        List<java.util.Map<String, Object>> pairs = jdbcTemplate.queryForList("""
+                SELECT a.id AS id_a, a.created_at AS ca, a.invoice_date AS da,
+                       b.id AS id_b, b.created_at AS cb, b.invoice_date AS db,
+                       a.supplier_name, a.invoice_number, a.base_amount,
+                       a.total_amount, a.vat_amount AS vat_a, b.vat_amount AS vat_b
+                  FROM purchase_invoices a
+                  JOIN purchase_invoices b
+                    ON b.company_id = a.company_id AND b.id > a.id
+                   AND b.status = 'POSTED' AND a.status = 'POSTED'
+                   AND b.supplier_nif = a.supplier_nif
+                   AND b.base_amount = a.base_amount
+                   AND b.total_amount = a.total_amount
+                   AND (UPPER(COALESCE(b.invoice_number,'')) = UPPER(COALESCE(a.invoice_number,'!'))
+                        OR b.invoice_date = a.invoice_date)
+                 WHERE a.company_id = ?
+                 LIMIT 20
+                """, companyId);
+        List<java.util.Map<String, Object>> out = new java.util.ArrayList<>();
+        for (var p : pairs) {
+            boolean aInc = includedInPresentedFiling(companyId,
+                    (java.sql.Date) p.get("da"), (java.sql.Timestamp) p.get("ca"));
+            boolean bInc = includedInPresentedFiling(companyId,
+                    (java.sql.Date) p.get("db"), (java.sql.Timestamp) p.get("cb"));
+            String deleteId;
+            if (aInc && !bInc) deleteId = String.valueOf(p.get("id_b"));
+            else if (bInc && !aInc) deleteId = String.valueOf(p.get("id_a"));
+            else if (!aInc) deleteId = String.valueOf(p.get("id_b"));
+            else deleteId = "";
+            out.add(java.util.Map.of(
+                    "deleteId", deleteId,
+                    "detail", String.format(
+                            "Gasto duplicado de %s (fra. %s): base %s, total %s (IVA %s vs %s).",
+                            p.get("supplier_name"), p.get("invoice_number") == null ? "s/n" : p.get("invoice_number"),
+                            p.get("base_amount"), p.get("total_amount"),
+                            p.get("vat_a"), p.get("vat_b"))));
+        }
+        return out;
     }
 
     /** ¿El gasto existía ANTES de la última presentación de su periodo? */

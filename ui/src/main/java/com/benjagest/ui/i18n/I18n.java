@@ -583,6 +583,7 @@ public final class I18n {
                 case "purchases.classification.template.vehicle_exclusive" -> "Vehicle fully allocated / transport (100% · 100%)";
                 case "purchases.classification.template.entertainment" -> "Client entertainment (VAT 0% · expense deductible)";
                 case "purchases.classification.save_rule" -> "Save as supplier rule (preloads future expenses from this NIF)";
+                case "purchases.delete.try_duplicate" -> "It could not be deleted (its quarter is already filed). If it is a recently imported DUPLICATE (a twin expense exists and this one was created AFTER filing), it can still be removed. Try deleting it as a duplicate?";
                 case "purchases.deduc.menu" -> "Deductibility";
                 case "purchases.deduc.rules" -> "Supplier rules…";
                 case "purchases.deduc.rules_hint" -> "Rules preload the VAT/IRPF deductible % on new expenses from that supplier. They are created from \"Tax classification\" on any expense.";
@@ -1743,6 +1744,7 @@ public final class I18n {
             case "purchases.classification.template.vehicle_exclusive" -> "Vehículo afecto exclusivo / transporte (100% · 100%)";
             case "purchases.classification.template.entertainment" -> "Atenciones a clientes (IVA 0% · gasto deducible)";
             case "purchases.classification.save_rule" -> "Guardar como regla del proveedor (precarga futuros gastos de este NIF)";
+            case "purchases.delete.try_duplicate" -> "No se pudo eliminar (su trimestre ya está declarado). Si es un DUPLICADO reciente (existe un gasto gemelo y este se creó DESPUÉS de presentar), aún puede eliminarse. ¿Intentar eliminarlo como duplicado?";
             case "purchases.deduc.menu" -> "Deducibilidad";
             case "purchases.deduc.rules" -> "Reglas del proveedor…";
             case "purchases.deduc.rules_hint" -> "Las reglas precargan el % de IVA/IRPF deducible en los gastos nuevos de ese proveedor. Se crean desde «Clasificación fiscal» de cualquier gasto.";
