@@ -156,7 +156,7 @@ public class ClientFinancialsScreen {
         accCombo.setValue(selAcc != null ? selAcc : accountsTable.getItems().get(0));
 
         javafx.scene.control.ComboBox<String> formatCombo = new javafx.scene.control.ComboBox<>(
-                FXCollections.observableArrayList("N43", "CSV"));
+                FXCollections.observableArrayList("N43", "CSV", "XLSX"));
         formatCombo.setValue("N43");
 
         Label fileLabel = new Label(tt.apply("bank.import.no_file"));
@@ -167,7 +167,7 @@ public class ClientFinancialsScreen {
             javafx.stage.FileChooser fc = new javafx.stage.FileChooser();
             fc.setTitle(tt.apply("bank.import.pick_file"));
             fc.getExtensionFilters().addAll(
-                    new javafx.stage.FileChooser.ExtensionFilter("N43 / CSV / TXT", "*.n43", "*.csv", "*.txt"),
+                    new javafx.stage.FileChooser.ExtensionFilter("N43 / CSV / TXT / XLSX", "*.n43", "*.csv", "*.txt", "*.xlsx"),
                     new javafx.stage.FileChooser.ExtensionFilter("Todos", "*.*"));
             java.io.File f = fc.showOpenDialog(accountsTable.getScene().getWindow());
             if (f != null) {
@@ -176,6 +176,7 @@ public class ClientFinancialsScreen {
                 String n = f.getName().toLowerCase();
                 if (n.endsWith(".csv")) formatCombo.setValue("CSV");
                 else if (n.endsWith(".n43")) formatCombo.setValue("N43");
+                else if (n.endsWith(".xlsx")) formatCombo.setValue("XLSX");
             }
         });
 
@@ -196,7 +197,11 @@ public class ClientFinancialsScreen {
             final String fmt = formatCombo.getValue();
             final java.io.File file = chosen[0];
             async(() -> {
-                String content = java.nio.file.Files.readString(file.toPath());
+                // F1-BANCO: el .xlsx es binario — viaja en Base64; el resto en texto.
+                String content = "XLSX".equals(fmt)
+                        ? java.util.Base64.getEncoder().encodeToString(
+                                java.nio.file.Files.readAllBytes(file.toPath()))
+                        : java.nio.file.Files.readString(file.toPath());
                 return api.importBankExtract(acc.id(), fmt, file.getName(), content);
             }, res -> {
                 showInfo(tt.apply("bank.import.done_title"), tt.apply("bank.import.done_body")
