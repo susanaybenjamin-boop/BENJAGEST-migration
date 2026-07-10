@@ -9057,11 +9057,16 @@ public class BenjagestUiApplication extends Application
         unlock.setOnAction(ev -> tryUnlock.run());
         pin.setOnAction(ev -> tryUnlock.run());
         logoutBtn.setOnAction(ev -> {
+            // FIX Benjamin 2026-07-10 (mismo caso que el Salir de cabecera):
+            // volver al login desde el bloqueo dejaba la pantalla de acceso
+            // con la BD embebida apagándose → ni contraseña ni PIN entraban.
+            // Salir desde el bloqueo = CERRAR BENJAGEST por completo.
             lockShowing = false;
             stage.close();
             try { authApiClient.logout(); } catch (Exception ignore) {}
             AuthSession.get().clear();
-            showLogin();
+            javafx.application.Platform.exit();
+            System.exit(0);
         });
 
         // Pantalla donde está la app (multi-monitor): detectada por el CENTRO de la

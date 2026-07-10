@@ -3819,7 +3819,7 @@ public final class I18n {
             case "lock.btn.unlock" -> "Unlock";
             case "lock.keypad.show" -> "On-screen keypad";
             case "lock.keypad.hide" -> "Hide keypad";
-            case "lock.btn.logout" -> "Logout";
+            case "lock.btn.logout" -> "Close BENJAGEST";
             case "lock.fail" -> "Incorrect PIN.";
             case "lock.no_device" -> "This computer is not paired. Use Logout and pair it again.";
             default -> null;
@@ -3853,7 +3853,7 @@ public final class I18n {
             case "lock.btn.unlock" -> "Desbloquear";
             case "lock.keypad.show" -> "Teclado en pantalla";
             case "lock.keypad.hide" -> "Ocultar teclado";
-            case "lock.btn.logout" -> "Salir";
+            case "lock.btn.logout" -> "Cerrar BENJAGEST";
             case "lock.fail" -> "PIN incorrecto.";
             case "lock.no_device" -> "Este equipo no está emparejado. Sal y empárejalo de nuevo.";
             default -> null;
