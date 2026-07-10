@@ -302,12 +302,6 @@ public class PayslipService {
         }
 
         String type = StringUtils.hasText(req.payslipType()) ? req.payslipType() : "MONTHLY";
-        boolean isExtra = "EXTRA_SUMMER".equals(type) || "EXTRA_CHRISTMAS".equals(type);
-        // Finiquito: los conceptos vienen calculados como extraConcepts (salario
-        // de días trabajados, vacaciones no disfrutadas, prorrata de pagas extra).
-        // No se añaden los conceptos del contrato como líneas; los totales anuales
-        // SÍ se acumulan para calcular el tipo de IRPF (rate anual normal).
-        boolean isSettlement = "SETTLEMENT".equals(type);
 
         // CL-1 — GUARDA de excedencia/suspensión: si la nómina ORDINARIA cae
         // íntegramente dentro de un periodo de suspensión SIN remuneración
@@ -322,18 +316,94 @@ public class PayslipService {
                     + " si ya se ha reincorporado.");
         }
 
+        // === F1-NOMTEST (2026-07-10): compute() queda como ORQUESTADOR ===
+        // Aquí se resuelve TODO lo que viene de BD/servicios; la aritmética
+        // vive en computePayslip(), PURA y testeable (patrón compute130).
+        boolean prorated = req.includeExtraProrated() != null
+                ? req.includeExtraProrated() : contract.extrasProrated;
+        List<com.benjagest.backend.labor.incidencias.NominaIncidenciaService.IncidenciaView> incidencias =
+                "MONTHLY".equals(type)
+                        ? incidenciaService.list(req.employeeId(), req.year(), req.month())
+                        : java.util.List.of();
+        SsContributionRatesService.Rates ssRates = ssRatesService.ratesForYear(req.year());
+        BigDecimal[] groupCaps = resolveGroupCaps(req.year(), contract.ssContributionGroup);
+        boolean temporalUnemp = contractCatalog.isTemporalUnemployment(contract.sepeContractCode);
+        BigDecimal[] unempTemporal = temporalUnemp
+                ? ssRatesService.unemploymentTemporalRates(req.year()) : null;
+        boolean formativo = contractCatalog.isFormativoAlternancia(contract.sepeContractCode);
+        BigDecimal[] formativoQuotas = formativo && "MONTHLY".equals(type)
+                ? ssRatesService.formativoAlternanciaMonthlyQuotas(req.year()) : null;
+        com.benjagest.backend.labor.irpf.IrpfRetentionService.Modelo145 m145 =
+                irpfService.findForEmployee(req.employeeId());
+        java.util.function.BiFunction<BigDecimal, BigDecimal, BigDecimal> irpfLegalMinFn =
+                m145 == null ? null
+                        : (taxableAnnual, annualSs) -> irpfService.computeRate(
+                                req.year(), taxableAnnual, annualSs, m145);
+        java.util.function.Supplier<BigDecimal> irpfFallbackPct =
+                () -> computeIrpfPercent(contract.grossSalary, req.year());
+        java.util.function.Supplier<com.benjagest.backend.labor.ss.OvertimeRatesService.Rates> overtimeRates =
+                () -> overtimeRatesService.ratesForYear(req.year());
+
+        return computePayslip(new EngineInputs(type, contract,
+                loadSalaryConcepts(contract.id), req.extraConcepts(),
+                req.recurringConcepts(), prorated, req.otherDeductions(),
+                incidencias, ssRates, groupCaps, temporalUnemp, unempTemporal,
+                formativo, formativoQuotas, overtimeRates, irpfLegalMinFn,
+                irpfFallbackPct));
+    }
+
+    /**
+     * F1-NOMTEST — entradas del cálculo puro de nómina: todo resuelto de
+     * antemano (contrato, conceptos, incidencias, tipos SS, topes por grupo),
+     * sin acceso a BD. Los tres funcionales permiten inyectar el motor de IRPF
+     * (modelo 145), el % IRPF de respaldo por tramos y los tipos de horas
+     * extra sin arrastrar sus servicios (los tests pasan lambdas fijas).
+     */
+    record EngineInputs(
+            String type,
+            ContractData contract,
+            List<SalaryConcept> concepts,
+            List<ExtraConcept> extraConcepts,
+            List<ExtraConcept> recurringConcepts,
+            boolean prorated,
+            BigDecimal otherDeductions,
+            List<com.benjagest.backend.labor.incidencias.NominaIncidenciaService.IncidenciaView> incidencias,
+            SsContributionRatesService.Rates rates,
+            BigDecimal[] groupCaps,
+            boolean temporalUnemployment,
+            BigDecimal[] unemploymentTemporalRates,
+            boolean formativoAlternancia,
+            BigDecimal[] formativoQuotas,
+            java.util.function.Supplier<com.benjagest.backend.labor.ss.OvertimeRatesService.Rates> overtimeRates,
+            java.util.function.BiFunction<BigDecimal, BigDecimal, BigDecimal> irpfLegalMinFn,
+            java.util.function.Supplier<BigDecimal> irpfFallbackPct) {}
+
+    /**
+     * F1-NOMTEST — cálculo PURO de la nómina (patrón compute130): misma
+     * aritmética que siempre, extraída verbatim de compute() para poder
+     * fijarla con tests de nómina completa. No toca BD ni servicios.
+     */
+    static Computed computePayslip(EngineInputs in) {
+        ContractData contract = in.contract();
+        String type = in.type();
+        boolean isExtra = "EXTRA_SUMMER".equals(type) || "EXTRA_CHRISTMAS".equals(type);
+        // Finiquito: los conceptos vienen calculados como extraConcepts (salario
+        // de días trabajados, vacaciones no disfrutadas, prorrata de pagas extra).
+        // No se añaden los conceptos del contrato como líneas; los totales anuales
+        // SÍ se acumulan para calcular el tipo de IRPF (rate anual normal).
+        boolean isSettlement = "SETTLEMENT".equals(type);
+
         // Prorrateo de pagas extras (art. 31 ET): 12 pagas -> anual/12; 14 pagas
         // (default legal) -> anual/(12+extras) y las extras como nóminas EXTRA_*.
         // Una nómina EXTRA es UNA mensualidad = anual/(12+nº pagas), siempre.
         // Prorrateo: lo manda el request (casilla) y si no, el del contrato.
-        boolean prorated = req.includeExtraProrated() != null
-                ? req.includeExtraProrated() : contract.extrasProrated;
+        boolean prorated = in.prorated();
         int divisor = isExtra
                 ? (12 + contract.annualBonuses)
                 : (prorated ? 12 : (12 + contract.annualBonuses));
 
         // 1) Devengos: una línea por concepto salarial del contrato.
-        List<SalaryConcept> concepts = loadSalaryConcepts(contract.id);
+        List<SalaryConcept> concepts = in.concepts() == null ? List.of() : in.concepts();
         java.util.List<PayslipLine> lines = new java.util.ArrayList<>();
         BigDecimal cotizableAnnual = BigDecimal.ZERO; // base SS + tipo IRPF (anual completo)
         BigDecimal taxableAnnual = BigDecimal.ZERO;   // tipo IRPF (anual completo)
@@ -343,8 +413,8 @@ public class PayslipService {
         // solver de objetivo no cuente dos veces la "Mejora voluntaria" ya
         // guardada en el contrato.
         java.util.Set<String> recurringNames = new java.util.HashSet<>();
-        if (req.recurringConcepts() != null) {
-            for (ExtraConcept rc : req.recurringConcepts()) {
+        if (in.recurringConcepts() != null) {
+            for (ExtraConcept rc : in.recurringConcepts()) {
                 if (rc.name() != null && !rc.name().isBlank()) recurringNames.add(rc.name().trim());
             }
         }
@@ -387,8 +457,8 @@ public class PayslipService {
         // Complementos recurrentes simulados (solver de objetivo): se tratan
         // como un complemento mensual del contrato -> anualizan en la base de
         // cotización y en el tipo IRPF (importe anual = mensual x 12).
-        if (req.recurringConcepts() != null && !isExtra) {
-            for (ExtraConcept rc : req.recurringConcepts()) {
+        if (in.recurringConcepts() != null && !isExtra) {
+            for (ExtraConcept rc : in.recurringConcepts()) {
                 if (rc.name() == null || rc.name().isBlank()) continue;
                 BigDecimal amt = rc.amount() == null ? BigDecimal.ZERO : rc.amount();
                 BigDecimal annual = amt.multiply(BigDecimal.valueOf(12));
@@ -405,8 +475,8 @@ public class PayslipService {
         // importe del mes (no anual). Solo suman a la base SS/IRPF si cotizan/tributan.
         BigDecimal extraCotizable = BigDecimal.ZERO;
         BigDecimal extraTaxable = BigDecimal.ZERO;
-        if (req.extraConcepts() != null) {
-            for (ExtraConcept ec : req.extraConcepts()) {
+        if (in.extraConcepts() != null) {
+            for (ExtraConcept ec : in.extraConcepts()) {
                 if (ec.name() == null || ec.name().isBlank()) continue;
                 BigDecimal amt = ec.amount() == null ? BigDecimal.ZERO : ec.amount();
                 lines.add(new PayslipLine(ec.name().trim(), "COMPLEMENT", amt));
@@ -429,7 +499,7 @@ public class PayslipService {
         BigDecimal absenceUnpaid = BigDecimal.ZERO; // importe de ausencias NO retribuidas (descuento)
         if ("MONTHLY".equals(type)) {
             com.benjagest.backend.labor.ss.OvertimeRatesService.Rates otRates = null;
-            for (var inc : incidenciaService.list(req.employeeId(), req.year(), req.month())) {
+            for (var inc : in.incidencias()) {
                 BigDecimal amt = inc.amount() == null ? BigDecimal.ZERO : inc.amount();
                 if (amt.signum() == 0) continue;
                 switch (inc.kind()) {
@@ -442,7 +512,7 @@ public class PayslipService {
                     case "OVERTIME" -> {
                         lines.add(new PayslipLine(inc.concept(), "OVERTIME", amt));
                         taxableDevengo = taxableDevengo.add(amt); // tributa IRPF al 100%
-                        if (otRates == null) otRates = overtimeRatesService.ratesForYear(req.year());
+                        if (otRates == null) otRates = in.overtimeRates().get();
                         String sub = "STRUCTURAL".equals(inc.subtype()) ? "STRUCTURAL" : "NORMAL";
                         overtimeBase = overtimeBase.add(amt);
                         overtimeEe = overtimeEe.add(pct(amt, otRates.employeePct(sub)));
@@ -485,7 +555,7 @@ public class PayslipService {
         } else {
             cotizationBase = gross;
         }
-        SsContributionRatesService.Rates rates = ssRatesService.ratesForYear(req.year());
+        SsContributionRatesService.Rates rates = in.rates();
         // Topes de cotización por GRUPO de cotización (V121/V122), leídos de la
         // tabla editable por año (no-code): base mínima del grupo del contrato
         // (default grupo 7) + tope máximo común. Si no hay tabla de grupos o el
@@ -497,7 +567,7 @@ public class PayslipService {
         // y los grupos 8-11 (base diaria) + el tiempo parcial requieren cálculo
         // específico. Aquí se aplica base única [mín grupo, máx común], correcta
         // para la práctica totalidad de los casos a jornada completa.
-        BigDecimal[] caps = resolveGroupCaps(req.year(), contract.ssContributionGroup);
+        BigDecimal[] caps = in.groupCaps();
         BigDecimal minCap = caps != null ? caps[0] : rates.baseMinMonthly();
         BigDecimal maxCap = caps != null ? caps[1] : rates.baseMaxMonthly();
         if (maxCap != null && maxCap.signum() > 0
@@ -518,8 +588,8 @@ public class PayslipService {
         // Default DEFENSIVO indefinido (código desconocido/antiguo → como antes).
         BigDecimal eeUnemp = rates.eeUnemployment();
         BigDecimal erUnemp = rates.erUnemployment();
-        if (contractCatalog.isTemporalUnemployment(contract.sepeContractCode)) {
-            BigDecimal[] temp = ssRatesService.unemploymentTemporalRates(req.year());
+        if (in.temporalUnemployment()) {
+            BigDecimal[] temp = in.unemploymentTemporalRates();
             eeUnemp = temp[0];
             erUnemp = temp[1];
         }
@@ -531,8 +601,8 @@ public class PayslipService {
         // resto de contratos. La proración por mes parcial queda a validar, igual
         // que el resto del motor.
         SsBreakdown ss;
-        if ("MONTHLY".equals(type) && contractCatalog.isFormativoAlternancia(contract.sepeContractCode)) {
-            BigDecimal[] q = ssRatesService.formativoAlternanciaMonthlyQuotas(req.year());
+        if ("MONTHLY".equals(type) && in.formativoAlternancia()) {
+            BigDecimal[] q = in.formativoQuotas();
             ss = new SsBreakdown(
                     q[0], BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
                     q[1], BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
@@ -548,9 +618,7 @@ public class PayslipService {
         //    tipo con el motor de retención (como A3); si no, el % fijo del
         //    contrato; en último término, estimación por tramos.
         BigDecimal irpfPct;
-        com.benjagest.backend.labor.irpf.IrpfRetentionService.Modelo145 m145 =
-                irpfService.findForEmployee(req.employeeId());
-        if (m145 != null) {
+        if (in.irpfLegalMinFn() != null) {
             BigDecimal eeRate = rates.eeCommon().add(rates.eeUnemployment())
                     .add(rates.eeTraining()).add(rates.eeMei());
             // La SS anual para el motor de IRPF debe calcularse sobre la base ANUAL
@@ -569,7 +637,7 @@ public class PayslipService {
             }
             BigDecimal annualSs = annualBaseForSs.multiply(eeRate)
                     .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
-            BigDecimal legalMin = irpfService.computeRate(req.year(), taxableAnnual, annualSs, m145);
+            BigDecimal legalMin = in.irpfLegalMinFn().apply(taxableAnnual, annualSs);
             // IRPF-VOL — Retención VOLUNTARIA del contrato: solo se aplica si
             // SUPERA el mínimo legal calculado (art. 88.5 RIRPF). Nunca por
             // debajo (el tipo calculado es el mínimo de obligado cumplimiento).
@@ -578,7 +646,7 @@ public class PayslipService {
         } else if (contract.irpfPercent != null && contract.irpfPercent.signum() > 0) {
             irpfPct = contract.irpfPercent;
         } else {
-            irpfPct = computeIrpfPercent(contract.grossSalary, req.year());
+            irpfPct = in.irpfFallbackPct().get();
         }
         // taxableDevengo ya acumula el tributable de los conceptos de este periodo
         // (base prorrateada + complementos/12); sumamos los extras del mes y restamos
@@ -588,8 +656,8 @@ public class PayslipService {
         BigDecimal irpf = taxableDevengo.multiply(irpfPct)
                 .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
 
-        BigDecimal otherDeductions = (req.otherDeductions() != null
-                ? req.otherDeductions() : BigDecimal.ZERO).add(incidenciaDeductions);
+        BigDecimal otherDeductions = (in.otherDeductions() != null
+                ? in.otherDeductions() : BigDecimal.ZERO).add(incidenciaDeductions);
 
         // 4) Líquido
         BigDecimal net = gross.subtract(ssEmployee).subtract(irpf).subtract(otherDeductions);
@@ -1264,7 +1332,8 @@ public class PayslipService {
      * resultado de aplicar el tipo correspondiente sobre la base (= bruto
      * del periodo, simplificación sin topes).
      */
-    private record SsBreakdown(
+    // F1-NOMTEST: visibilidad de package para poder fijar el cálculo en tests.
+    record SsBreakdown(
             BigDecimal eeCommon, BigDecimal eeUnemployment, BigDecimal eeTraining, BigDecimal eeMei,
             BigDecimal erCommon, BigDecimal erUnemployment, BigDecimal erFogasa,
             BigDecimal erTraining, BigDecimal erMei, BigDecimal erAtEp) {
@@ -1277,7 +1346,7 @@ public class PayslipService {
     }
 
     /** Resultado del cálculo puro (sin persistir). */
-    private record Computed(
+    record Computed(
             String contractId, String type, List<PayslipLine> lines,
             BigDecimal gross, BigDecimal cotizationBase, SsBreakdown ss,
             BigDecimal ssEmployee, BigDecimal irpf, BigDecimal irpfPct,
@@ -1389,7 +1458,7 @@ public class PayslipService {
      * @param eeUnemp/erUnemp tipos de DESEMPLEO ya resueltos por modalidad
      *        (indefinido o temporal). El resto de tipos no varían por contrato.
      */
-    private SsBreakdown computeSs(BigDecimal base, BigDecimal atEpPercent,
+    private static SsBreakdown computeSs(BigDecimal base, BigDecimal atEpPercent,
                                   SsContributionRatesService.Rates r,
                                   BigDecimal eeUnemp, BigDecimal erUnemp) {
         return new SsBreakdown(
@@ -1459,11 +1528,11 @@ public class PayslipService {
     }
 
     /** Concepto salarial del contrato (leído de contract_salary_items). */
-    private record SalaryConcept(String name, String kind, BigDecimal annual,
+    record SalaryConcept(String name, String kind, BigDecimal annual,
                                   boolean cotizes, boolean taxable) {}
 
     /** Línea de devengo calculada para una nómina. */
-    private record PayslipLine(String name, String kind, BigDecimal amount) {}
+    record PayslipLine(String name, String kind, BigDecimal amount) {}
 
     private List<SalaryConcept> loadSalaryConcepts(String contractId) {
         return jdbcTemplate.query("""
@@ -1493,7 +1562,7 @@ public class PayslipService {
         }
     }
 
-    private static class ContractData {
+    static class ContractData {
         String id;
         String contractType;
         String sepeContractCode;
