@@ -4291,8 +4291,32 @@ public class BenjagestUiApplication extends Application
             task.setOnSucceeded(e -> com.benjagest.ui.support.RefreshBus.emit(
                     com.benjagest.ui.support.RefreshBus.TOPIC_PURCHASES,
                     com.benjagest.ui.support.RefreshBus.TOPIC_JOURNAL));
-            task.setOnFailed(e -> showError(t("purchases.delete.fail.title"),
-                    t("purchases.delete.fail.body")));
+            // DUP-VALIDAR: si el borrado normal lo bloquea el guard del
+            // periodo presentado, puede ser un DUPLICADO reciente (creado
+            // DESPUÉS de presentar) — se ofrece el borrado de duplicado, que
+            // el backend solo acepta si existe un gemelo POSTED y este gasto
+            // no estaba incluido en la declaración.
+            task.setOnFailed(e -> {
+                Alert ask = new Alert(Alert.AlertType.CONFIRMATION,
+                        t("purchases.delete.try_duplicate"), ButtonType.YES, ButtonType.NO);
+                ask.setHeaderText(t("purchases.delete.fail.title"));
+                ask.showAndWait().filter(bb -> bb == ButtonType.YES).ifPresentOrElse(bb -> {
+                    Task<Void> dupTask = new Task<>() {
+                        @Override protected Void call() throws Exception {
+                            purchasesApi.deleteDuplicateInvoice(row.id());
+                            return null;
+                        }
+                    };
+                    dupTask.setOnSucceeded(e2 -> com.benjagest.ui.support.RefreshBus.emit(
+                            com.benjagest.ui.support.RefreshBus.TOPIC_PURCHASES,
+                            com.benjagest.ui.support.RefreshBus.TOPIC_JOURNAL));
+                    dupTask.setOnFailed(e2 -> showError(t("purchases.delete.fail.title"),
+                            dupTask.getException() == null ? t("purchases.delete.fail.body")
+                                    : dupTask.getException().getMessage()));
+                    start(dupTask, "purchase-invoice-delete-dup");
+                }, () -> showError(t("purchases.delete.fail.title"),
+                        t("purchases.delete.fail.body")));
+            });
             start(task, "purchase-invoice-delete");
         });
     }

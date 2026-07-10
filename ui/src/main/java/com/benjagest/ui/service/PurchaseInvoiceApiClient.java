@@ -187,6 +187,17 @@ public class PurchaseInvoiceApiClient {
         if (r.statusCode() < 200 || r.statusCode() >= 300) throw new IOException(r.body());
     }
 
+    /** DUP-VALIDAR — borra un gasto duplicado (el backend valida que lo sea). */
+    public void deleteDuplicateInvoice(String id) throws IOException, InterruptedException {
+        HttpRequest.Builder b = HttpRequest.newBuilder(
+                        URI.create(baseUrl + "/purchases/invoices/" + id + "/delete-duplicate"))
+                .timeout(Duration.ofSeconds(15)).header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString("{}"));
+        AuthSession.get().authorize(b);
+        HttpResponse<String> r = httpClient.send(b.build(), HttpResponse.BodyHandlers.ofString());
+        if (r.statusCode() < 200 || r.statusCode() >= 300) throw new IOException(r.body());
+    }
+
     /** DEDUC-2 — libro de recibidas del año en CSV (3 columnas AEAT). */
     public String getLibroRecibidasCsv(int year) throws IOException, InterruptedException {
         HttpRequest.Builder b = HttpRequest.newBuilder(
