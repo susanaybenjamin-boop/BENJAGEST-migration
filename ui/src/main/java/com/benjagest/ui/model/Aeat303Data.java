@@ -35,4 +35,9 @@ public class Aeat303Data {
     public String cuotaIntra = "0";    // 11
     public String baseIsp = "0";       // 12 (devengado)
     public String cuotaIsp = "0";      // 13
+    // F1-303UI: bases devengadas a tipos distintos de 4/10/21 (5 %, 2 %,
+    // 7,5 %…). Sin casilla oficial propia en el editor; su cuota SÍ suma
+    // al total devengado (27), igual que hace el backend.
+    public String baseOtros = "0";
+    public String cuotaOtros = "0";
 }

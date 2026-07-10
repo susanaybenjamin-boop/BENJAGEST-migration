@@ -16,7 +16,7 @@ bloqueo de cierre, rectificativas R1-R5, RGPD técnico).
       Los Llanos 263274, gasoil 6281→628, IVA gasto viejo Loren) + decisión
       vehículo 50% → regla DEDUC.
 - [ ] Tests fiscales de nómina + fixture 303 casilla a casilla.
-- [ ] UI editor 303: pintar base/cuota_otros_tipos.
+- [x] UI editor 303: pintar base/cuota_otros_tipos (F1-303UI, 2026-07-10).
 - [ ] Producto (fase C auditoría): backend como servicio de Windows,
       instalador Asesoría/Empleado, verificación Google + Gmail API,
       topes SS en nómina, conciliación N43, export xDiario/SUENLACE.

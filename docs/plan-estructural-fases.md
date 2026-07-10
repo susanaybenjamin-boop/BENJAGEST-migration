@@ -6,9 +6,13 @@
 
 ## FASE 1 — 2026 (consolidación)
 
-**F1-303UI — casillas "otros tipos" en el editor del 303** (corto)
+**F1-303UI — casillas "otros tipos" en el editor del 303** ✅ HECHO 2026-07-10
 - `ui/screens/TaxScreen.java`: pintar `base_otros_tipos`/`cuota_otros_tipos`
   (el backend ya las manda desde AeatExtraModelsService). i18n aeat303.*
+- Cerrado: fila nueva en devengado (suma a casilla 27), prefill con Recalcular,
+  se persiste en el JSON. Verificado: compila + curl real preview 303 T1/T2
+  (claves presentes) + arranque UI dev sin errores. Visual queda para la
+  próxima release por lotes (flujo de Benjamin: prueba sobre la instalada).
 
 **F1-NOMTEST — tests fiscales de nómina**
 - `backend-java/.../labor/PayslipService` → extraer cálculo puro
