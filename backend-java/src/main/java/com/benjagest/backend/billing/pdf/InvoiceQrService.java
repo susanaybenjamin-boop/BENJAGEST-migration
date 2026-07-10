@@ -89,18 +89,22 @@ public class InvoiceQrService {
     }
 
     /**
-     * Etiqueta de cumplimiento que va JUSTO debajo del QR. La Orden
-     * HAC/1177/2024 art. 20 obliga a:
-     *   - "VERI*FACTU" si la factura se envia en tiempo real a AEAT.
-     *   - "Factura verificable en la sede electronica de la AEAT" si
-     *     es NO VeriFactu (no hay envio pero el QR sigue siendo valido
-     *     para validar la huella si AEAT lo solicita).
+     * Etiqueta de cumplimiento que va JUSTO debajo del QR.
+     *
+     * QR-LEY (2026-07-10, verificado contra el BOE consolidado): el art.
+     * 6.5 del RD 1619/2012 (añadido por el RD 1007/2023) dice que la
+     * leyenda «Factura verificable en la sede electrónica de la AEAT» o
+     * «VERI*FACTU» se incorpora ÚNICAMENTE cuando el SIF realiza la
+     * remisión de todos los registros a la AEAT. En modalidad NO
+     * VERI*FACTU la factura lleva QR (arts. 20-21 Orden HAC/1177/2024)
+     * pero SIN leyenda — imprimirla afirmaría una remisión que no existe.
+     * (Antes devolvíamos la leyenda también en NO VERI*FACTU: incorrecto.)
      */
     public String complianceLabel(VerifactuConfig config) {
         if (config != null && "VERIFACTU".equals(config.modality())) {
             return "VERI*FACTU";
         }
-        return "Factura verificable en la sede electronica de la AEAT";
+        return null;
     }
 
     private String urlEncode(String value) {
