@@ -16,6 +16,8 @@ public class InvoiceLineDraft {
     private BigDecimal unitPrice;
     private BigDecimal vatPercent;
     private BigDecimal retentionPercent;
+    /** FAC-IVA: id del tipo del catálogo elegido en el combo (opcional). */
+    private String vatRateId;
 
     public InvoiceLineDraft() {
         this("", BigDecimal.ONE, BigDecimal.ZERO, new BigDecimal("21"), BigDecimal.ZERO);
@@ -41,6 +43,9 @@ public class InvoiceLineDraft {
 
     public BigDecimal getVatPercent() { return vatPercent; }
     public void setVatPercent(BigDecimal value) { this.vatPercent = value == null ? BigDecimal.ZERO : value; }
+
+    public String getVatRateId() { return vatRateId; }
+    public void setVatRateId(String value) { this.vatRateId = value; }
 
     public BigDecimal getRetentionPercent() { return retentionPercent; }
     public void setRetentionPercent(BigDecimal value) { this.retentionPercent = value == null ? BigDecimal.ZERO : value; }

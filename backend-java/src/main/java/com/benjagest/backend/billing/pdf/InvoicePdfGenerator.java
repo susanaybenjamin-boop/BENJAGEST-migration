@@ -150,7 +150,12 @@ public class InvoicePdfGenerator {
             // para reservar la zona del footer fijo con totales+legales.
             Document document = new Document(PageSize.A4, 36, 36, 30, FOOTER_HEIGHT + 30);
             PdfWriter writer = PdfWriter.getInstance(document, bos);
-            writer.setPageEvent(new FooterEvent(invoice, company, texts));
+            // FAC-IVA (2026-07-10): textos legales PROPIOS de los tipos de
+            // IVA usados por las líneas (vat_rate_id). Con dos tipos al
+            // mismo % (dos 0% distintos), el texto que se imprime es el del
+            // tipo ELEGIDO, no el genérico de la empresa.
+            writer.setPageEvent(new FooterEvent(invoice, company, texts,
+                    loadVatLegalTexts(invoice)));
             document.open();
 
             // PROFORMA: documento comercial sin valor fiscal. No lleva QR
@@ -435,18 +440,50 @@ public class InvoicePdfGenerator {
 
     // ----- Footer fijo (totales + legales + pie) por página -----
 
+    /**
+     * FAC-IVA — mapa id → legal_text de los tipos de IVA que usan las líneas
+     * de la factura (solo los que tienen texto). Vacío si ninguna línea
+     * lleva vat_rate_id (histórico/imports).
+     */
+    private java.util.Map<String, String> loadVatLegalTexts(SalesInvoice invoice) {
+        java.util.Set<String> ids = new java.util.LinkedHashSet<>();
+        if (invoice.lines() != null) {
+            for (var l : invoice.lines()) {
+                if (l.vatRateId() != null && !l.vatRateId().isBlank()) ids.add(l.vatRateId());
+            }
+        }
+        if (ids.isEmpty()) return java.util.Map.of();
+        String placeholders = String.join(",", java.util.Collections.nCopies(ids.size(), "?"));
+        java.util.Map<String, String> out = new java.util.LinkedHashMap<>();
+        try {
+            jdbcTemplate.query(
+                    "SELECT id, legal_text FROM vat_rates WHERE id IN (" + placeholders + ")",
+                    rs -> {
+                        String txt = rs.getString("legal_text");
+                        if (txt != null && !txt.isBlank()) out.put(rs.getString("id"), txt.trim());
+                    }, ids.toArray());
+        } catch (Exception ignored) {
+            // sin catálogo accesible el PDF sale con los textos genéricos
+        }
+        return out;
+    }
+
     private class FooterEvent extends PdfPageEventHelper {
         private final SalesInvoice invoice;
         private final CompanyDataResponse company;
         private final InvoiceTexts texts;
+        /** FAC-IVA: id de tipo → texto legal propio (solo tipos con texto). */
+        private final java.util.Map<String, String> vatLegalTexts;
         // Template para escribir el total de páginas en la numeración.
         // Se rellena en onCloseDocument cuando ya sabemos cuántas hubo.
         private PdfTemplate totalPagesTpl;
 
-        FooterEvent(SalesInvoice invoice, CompanyDataResponse company, InvoiceTexts texts) {
+        FooterEvent(SalesInvoice invoice, CompanyDataResponse company, InvoiceTexts texts,
+                    java.util.Map<String, String> vatLegalTexts) {
             this.invoice = invoice;
             this.company = company;
             this.texts = texts;
+            this.vatLegalTexts = vatLegalTexts == null ? java.util.Map.of() : vatLegalTexts;
         }
 
         @Override
@@ -566,8 +603,26 @@ public class InvoicePdfGenerator {
             if ("RECTIFYING".equals(invoice.invoiceType()) && nonBlank(texts.rectifying())) {
                 ct.addElement(legalParagraph(texts.rectifying(), fText));
             }
+            // FAC-IVA: primero, los textos legales PROPIOS de los tipos de
+            // IVA elegidos en las líneas (deduplicados, en orden de uso).
+            java.util.LinkedHashSet<String> typeTexts = new java.util.LinkedHashSet<>();
+            for (var l : invoice.lines()) {
+                if (l.vatRateId() != null) {
+                    String txt = vatLegalTexts.get(l.vatRateId());
+                    if (txt != null) typeTexts.add(txt);
+                }
+            }
+            for (String txt : typeTexts) {
+                ct.addElement(legalParagraph(txt, fText));
+            }
+            // El texto GENÉRICO de exención solo cubre las líneas al 0% que
+            // NO llevan un tipo con texto propio (histórico o tipos sin
+            // legal_text). Así no se imprime "el que quiera BENJAGEST" cuando
+            // el usuario eligió un 0% concreto con su propio texto.
             boolean hasExempt = invoice.lines().stream()
-                    .anyMatch(l -> l.vatPercent() != null && l.vatPercent().compareTo(BigDecimal.ZERO) == 0);
+                    .anyMatch(l -> l.vatPercent() != null
+                            && l.vatPercent().compareTo(BigDecimal.ZERO) == 0
+                            && (l.vatRateId() == null || vatLegalTexts.get(l.vatRateId()) == null));
             if (hasExempt && nonBlank(texts.exempt())) {
                 ct.addElement(legalParagraph(texts.exempt(), fText));
             }

@@ -711,7 +711,12 @@ public class InvoiceEditorScreen extends ScreenBase {
 
         TableColumn<InvoiceLineDraft, String> colQty = decimalColumn(t("editor.lines.col.qty"), InvoiceLineDraft::getQuantity, InvoiceLineDraft::setQuantity);
         TableColumn<InvoiceLineDraft, String> colPrice = decimalColumn(t("editor.lines.col.price"), InvoiceLineDraft::getUnitPrice, InvoiceLineDraft::setUnitPrice);
-        TableColumn<InvoiceLineDraft, String> colVat = decimalColumn(t("editor.lines.col.vat"), InvoiceLineDraft::getVatPercent, InvoiceLineDraft::setVatPercent);
+        // FAC-IVA (2026-07-10): el IVA de la línea deja de ser texto libre —
+        // combo con los tipos CONFIGURADOS (Configuración → Facturación).
+        // Con dos tipos al mismo % (dos 0% con conceptos legales distintos),
+        // la línea guarda QUÉ tipo se eligió (vatRateId) y el PDF imprime el
+        // texto legal de ESE tipo, no el genérico.
+        TableColumn<InvoiceLineDraft, String> colVat = vatComboColumn(t("editor.lines.col.vat"));
         TableColumn<InvoiceLineDraft, String> colRet = decimalColumn(t("editor.lines.col.retention"), InvoiceLineDraft::getRetentionPercent, InvoiceLineDraft::setRetentionPercent);
 
         // Limpiamos los mapas al construir la tabla — la instancia anterior
@@ -729,6 +734,20 @@ public class InvoiceEditorScreen extends ScreenBase {
         table.getColumns().addAll(java.util.List.of(colDesc, colQty, colPrice, colVat, colRet, colSubtotal, colLineTotal));
         table.setItems(FXCollections.observableArrayList(initial));
         table.setPrefHeight(280);
+        // FAC-IVA: cargar el catálogo de tipos de IVA (kind VAT, activos)
+        // para el combo de la columna. Un refresh() re-pinta los combos
+        // cuando llega; si falla, la columna queda sin opciones y el % de
+        // las líneas existentes se conserva igualmente.
+        new Thread(() -> {
+            try {
+                var all = billingApiClient.listVatRates(false);
+                var vats = all.stream().filter(r -> "VAT".equals(r.kind())).toList();
+                Platform.runLater(() -> {
+                    editorVatRates = vats;
+                    table.refresh();
+                });
+            } catch (Exception ignored) { /* combo vacío, sin romper el editor */ }
+        }, "invoice-editor-vat-rates").start();
         return table;
     }
 
@@ -775,6 +794,87 @@ public class InvoiceEditorScreen extends ScreenBase {
                 // posteriores las hace el listener via el mapa.
                 label.setText(compute.apply(row));
                 setGraphic(label);
+            }
+        });
+        return col;
+    }
+
+    /** FAC-IVA: catálogo de tipos de IVA activos (se carga al abrir el editor). */
+    private java.util.List<com.benjagest.ui.model.VatRateEntry> editorVatRates = java.util.List.of();
+
+    /**
+     * FAC-IVA — columna de IVA con COMBO de los tipos configurados en
+     * Configuración → Facturación (kind VAT, activos). Al elegir un tipo la
+     * línea guarda su % Y su identidad (vatRateId) para que el PDF imprima
+     * el texto legal del tipo elegido. Las líneas históricas sin tipo se
+     * preseleccionan por % (primer tipo que coincida) sin mutar el modelo.
+     */
+    private TableColumn<InvoiceLineDraft, String> vatComboColumn(String header) {
+        TableColumn<InvoiceLineDraft, String> col = new TableColumn<>(header);
+        col.setCellValueFactory(c -> new SimpleStringProperty(
+                formatDecimalForCell(c.getValue().getVatPercent())));
+        col.setCellFactory(cv -> new javafx.scene.control.TableCell<InvoiceLineDraft, String>() {
+            private final ComboBox<com.benjagest.ui.model.VatRateEntry> combo = new ComboBox<>();
+            private boolean syncing = false;
+            {
+                combo.setMaxWidth(Double.MAX_VALUE);
+                combo.setConverter(new javafx.util.StringConverter<>() {
+                    @Override public String toString(com.benjagest.ui.model.VatRateEntry e) {
+                        if (e == null) return "";
+                        String pct = formatDecimalForCell(e.percent());
+                        return e.label() == null || e.label().isBlank()
+                                ? pct + "%" : pct + "% · " + e.label();
+                    }
+                    @Override public com.benjagest.ui.model.VatRateEntry fromString(String s) { return null; }
+                });
+                combo.setOnAction(ev -> {
+                    if (syncing) return;
+                    if (getTableRow() == null) return;
+                    InvoiceLineDraft row = getTableRow().getItem();
+                    com.benjagest.ui.model.VatRateEntry sel = combo.getValue();
+                    if (row == null || sel == null) return;
+                    row.setVatPercent(sel.percent());
+                    row.setVatRateId(sel.id());
+                    recomputeEditorTotals();
+                    Label subLabel = rowSubtotalLabels.get(row);
+                    if (subLabel != null) subLabel.setText(money(lineSubtotal(row).toPlainString()));
+                    Label totLabel = rowLineTotalLabels.get(row);
+                    if (totLabel != null) totLabel.setText(money(lineTotal(row).toPlainString()));
+                });
+            }
+
+            @Override
+            protected void updateItem(String item, boolean empty) {
+                super.updateItem(item, empty);
+                if (empty || getTableRow() == null || getTableRow().getItem() == null) {
+                    setGraphic(null);
+                    return;
+                }
+                InvoiceLineDraft row = getTableRow().getItem();
+                syncing = true;
+                try {
+                    combo.getItems().setAll(editorVatRates);
+                    com.benjagest.ui.model.VatRateEntry match = null;
+                    for (var e : editorVatRates) {
+                        if (row.getVatRateId() != null && row.getVatRateId().equals(e.id())) {
+                            match = e;
+                            break;
+                        }
+                    }
+                    if (match == null && row.getVatPercent() != null) {
+                        for (var e : editorVatRates) {
+                            if (e.percent() != null
+                                    && e.percent().compareTo(row.getVatPercent()) == 0) {
+                                match = e;
+                                break;
+                            }
+                        }
+                    }
+                    combo.setValue(match);
+                } finally {
+                    syncing = false;
+                }
+                setGraphic(combo);
             }
         });
         return col;

@@ -30,6 +30,19 @@ public record VatRate(
         boolean active,
         String notes,
         Instant createdAt,
-        Instant updatedAt
+        Instant updatedAt,
+        /**
+         * FAC-IVA (2026-07-10): texto legal PROPIO del tipo, impreso en el
+         * PDF de la factura cuando alguna línea lo usa. Clave con dos tipos
+         * al mismo % (dos 0% con conceptos legales distintos).
+         */
+        String legalText
 ) {
+    /** Backwards-compat sin texto legal. */
+    public VatRate(String id, String companyId, String kind, String code,
+                    String label, BigDecimal percent, boolean isDefault,
+                    boolean active, String notes, Instant createdAt, Instant updatedAt) {
+        this(id, companyId, kind, code, label, percent, isDefault, active,
+                notes, createdAt, updatedAt, null);
+    }
 }

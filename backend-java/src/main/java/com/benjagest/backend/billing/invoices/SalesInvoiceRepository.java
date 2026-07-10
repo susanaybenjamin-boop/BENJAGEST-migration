@@ -332,8 +332,9 @@ public class SalesInvoiceRepository {
                 INSERT INTO sales_invoice_lines (
                     id, invoice_id, catalog_item_id, description,
                     quantity, unit_price, vat_percent, retention_percent,
-                    line_subtotal, line_vat, line_retention, line_total
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    line_subtotal, line_vat, line_retention, line_total,
+                    vat_rate_id
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 line.id(),
                 line.invoiceId(),
@@ -346,7 +347,8 @@ public class SalesInvoiceRepository {
                 line.lineSubtotal(),
                 line.lineVat(),
                 line.lineRetention(),
-                line.lineTotal()
+                line.lineTotal(),
+                line.vatRateId()
         );
     }
 
@@ -441,7 +443,8 @@ public class SalesInvoiceRepository {
         List<InvoiceLine> lines = jdbcTemplate.query("""
                 SELECT id, invoice_id, catalog_item_id, description,
                        quantity, unit_price, vat_percent, retention_percent,
-                       line_subtotal, line_vat, line_retention, line_total
+                       line_subtotal, line_vat, line_retention, line_total,
+                       vat_rate_id
                   FROM sales_invoice_lines
                  WHERE invoice_id = ?
                  ORDER BY created_at
@@ -517,7 +520,8 @@ public class SalesInvoiceRepository {
                 rs.getBigDecimal("line_subtotal"),
                 rs.getBigDecimal("line_vat"),
                 rs.getBigDecimal("line_retention"),
-                rs.getBigDecimal("line_total")
+                rs.getBigDecimal("line_total"),
+                rs.getString("vat_rate_id")
         );
     }
 

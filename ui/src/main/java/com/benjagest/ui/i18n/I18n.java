@@ -420,6 +420,8 @@ public final class I18n {
                 case "billing.config.vat.editor.percent" -> "Percent:";
                 case "billing.config.vat.editor.is_default" -> "Default for its kind";
                 case "billing.config.vat.editor.active" -> "Active (visible in invoice combo)";
+                case "billing.config.vat.editor.legal" -> "Legal text (PDF)";
+                case "billing.config.vat.editor.legal_prompt" -> "e.g. VAT-exempt transaction under art. 20 of Law 37/1992";
                 case "billing.config.vat.editor.fail.title" -> "Could not save";
                 case "billing.config.vat.editor.fail.body" -> "Check the percent is a number 0-100 and the code is unique.";
                 case "billing.config.vat.editor.invalid_percent" -> "The percent must be a number between 0 and 100.";
@@ -1581,6 +1583,8 @@ public final class I18n {
             case "billing.config.vat.editor.percent" -> "Porcentaje:";
             case "billing.config.vat.editor.is_default" -> "Por defecto en su categoria";
             case "billing.config.vat.editor.active" -> "Activo (visible en el combo del editor)";
+            case "billing.config.vat.editor.legal" -> "Texto legal (PDF)";
+            case "billing.config.vat.editor.legal_prompt" -> "p. ej. Operación exenta de IVA en virtud del art. 20 de la Ley 37/1992";
             case "billing.config.vat.editor.fail.title" -> "No se pudo guardar";
             case "billing.config.vat.editor.fail.body" -> "Comprueba que el porcentaje es un numero 0-100 y que el codigo es unico.";
             case "billing.config.vat.editor.invalid_percent" -> "El porcentaje debe ser un numero entre 0 y 100.";
