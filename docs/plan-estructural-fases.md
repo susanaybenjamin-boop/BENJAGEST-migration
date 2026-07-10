@@ -46,10 +46,21 @@
 - `build-msi.ps1 -Variant advisory|employee`: dos MSI (el de empleado solo
   UI apuntando a servidor LAN); `UpdateService.APP_VERSION` compartido.
 
-**F1-N43 — conciliación bancaria Norma 43**
-- Nuevo `backend/.../accounting/bank/N43ImportService` (+ parser AEB43 puro
-  y testeable) + endpoint import + matching contra `journal_entries`/pagos.
-  UI: pestaña en Contabilidad → "Banco" (patrón de tabla existente).
+**F1-N43 — conciliación bancaria Norma 43** ✅ HECHO 2026-07-10
+- ~~Nuevo N43ImportService~~ — el plan estaba DESACTUALIZADO: REC-BANCARIA ya
+  había construido BankImportService (N43+CSV), BankMovementService (matching
+  factura por importe+fecha+tercero), BankReconciliationService y la pestaña
+  Bancos (ClientFinancialsScreen.buildBanksTab, accesible desde la ficha del
+  cliente Y desde "Mi gestión"). Endpoint POST /api/accounting/bank-imports.
+- Lo que SÍ faltaba (hecho hoy): el parser N43 tenía 3 BUGS contra la norma
+  AEB nunca detectados (0 tests, 0 usos): (1) importe cortado a 12 dígitos →
+  ÷100 y sin céntimos; (2) registro 23 perdía el 1er carácter del concepto;
+  (3) la ref externa mezclaba restos del importe con el nº de documento.
+  Corregidos + parser estático testeable + VALIDACIÓN de cuadre contra el
+  registro 33 (fichero que no cuadra → 400) + descripción de respaldo desde
+  la referencia 2. BankImportParserTest: 6 tests con fichero sintético fiel
+  a la norma. Suite 113 verde. Pendiente Benjamin: probar con un N43 real
+  de su banco cuando tenga uno.
 
 **F1-XDIARIO — export xDiario/SUENLACE** (ya especificado en backlog líneas
   1731-1733): `accounting/export/XDiarioExportService` + combo en informes.
