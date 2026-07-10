@@ -1380,9 +1380,12 @@ public class BenjagestUiApplication extends Application
             activeModulesCache = List.of();
             AuthSession.get().clear();
             refreshLockTimeout(0); // desarma el bloqueo por inactividad al salir
-            // Vuelve a la pantalla inicial correcta según el tipo de cuenta:
-            // asesoría → multi-puesto (emparejar/PIN); empresario → email directo.
-            showInitialScreen();
+            // FIX Benjamin 2026-07-10: "Salir" volvía a la pantalla de login
+            // con la BD embebida ya apagada → ni contraseña ni PIN funcionaban.
+            // Salir = CERRAR el programa entero (mismo camino ordenado que el
+            // cierre de ventana); para reentrar se vuelve a abrir la app.
+            javafx.application.Platform.exit();
+            System.exit(0);
         });
 
         HBox header = new HBox(14, AppBrand.createLogoMark(), titleBlock, spacer);
