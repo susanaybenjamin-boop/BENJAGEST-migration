@@ -192,6 +192,13 @@ public class VatRatesScreen extends ScreenBase {
         defaultCb.setSelected(existing != null && existing.isDefault());
         CheckBox activeCb = new CheckBox(t("billing.config.vat.editor.active"));
         activeCb.setSelected(existing == null || existing.active());
+        // FAC-IVA: texto legal PROPIO del tipo — se imprime en el PDF cuando
+        // una línea de la factura usa este tipo (clave con dos 0% distintos).
+        javafx.scene.control.TextArea legalArea = new javafx.scene.control.TextArea(
+                existing == null || existing.legalText() == null ? "" : existing.legalText());
+        legalArea.setPrefRowCount(3);
+        legalArea.setWrapText(true);
+        legalArea.setPromptText(t("billing.config.vat.editor.legal_prompt"));
 
         GridPane grid = new GridPane();
         grid.setHgap(10); grid.setVgap(8); grid.setPadding(new Insets(10));
@@ -201,6 +208,8 @@ public class VatRatesScreen extends ScreenBase {
         grid.add(new Label(t("billing.config.vat.editor.percent")), 0, 3); grid.add(pctField, 1, 3);
         grid.add(defaultCb, 1, 4);
         grid.add(activeCb, 1, 5);
+        grid.add(new Label(t("billing.config.vat.editor.legal")), 0, 6);
+        grid.add(legalArea, 1, 6);
         installDialog(dialog, grid);
 
         dialog.showAndWait().ifPresent(bt -> {
@@ -216,7 +225,8 @@ public class VatRatesScreen extends ScreenBase {
                                     codeField.getText().trim().toUpperCase(),
                                     labelField.getText().trim(),
                                     pct,
-                                    defaultCb.isSelected());
+                                    defaultCb.isSelected(),
+                                    legalArea.getText().trim());
                         }
                         return billingApiClient.updateVatRate(
                                 existing.id(),
@@ -225,7 +235,8 @@ public class VatRatesScreen extends ScreenBase {
                                 labelField.getText().trim(),
                                 pct,
                                 defaultCb.isSelected(),
-                                activeCb.isSelected());
+                                activeCb.isSelected(),
+                                legalArea.getText().trim());
                     }
                 };
                 task.setOnSucceeded(ev -> reloadVatRates());

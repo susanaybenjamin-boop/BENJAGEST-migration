@@ -28,7 +28,7 @@ public class VatRateRepository {
     public List<VatRate> findActiveForCurrentCompany(String kindFilter) {
         StringBuilder sql = new StringBuilder("""
                 SELECT id, company_id, kind, code, label, percent,
-                       is_default, active, notes, created_at, updated_at
+                       is_default, active, notes, legal_text, created_at, updated_at
                   FROM vat_rates
                  WHERE company_id = ?
                 """);
@@ -49,7 +49,7 @@ public class VatRateRepository {
     public List<VatRate> findAllForCurrentCompany() {
         return jdbcTemplate.query("""
                 SELECT id, company_id, kind, code, label, percent,
-                       is_default, active, notes, created_at, updated_at
+                       is_default, active, notes, legal_text, created_at, updated_at
                   FROM vat_rates
                  WHERE company_id = ?
                  ORDER BY kind, active DESC, percent DESC
@@ -62,35 +62,37 @@ public class VatRateRepository {
     public Optional<VatRate> findById(String id) {
         return jdbcTemplate.query("""
                 SELECT id, company_id, kind, code, label, percent,
-                       is_default, active, notes, created_at, updated_at
+                       is_default, active, notes, legal_text, created_at, updated_at
                   FROM vat_rates
                  WHERE id = ? AND company_id = ?
                 """, this::mapRate, id, tenantContext.getCurrentCompanyId()).stream().findFirst();
     }
 
     public void insert(String id, String kind, String code, String label,
-                       BigDecimal percent, boolean isDefault, String notes) {
+                       BigDecimal percent, boolean isDefault, String notes,
+                       String legalText) {
         jdbcTemplate.update("""
                 INSERT INTO vat_rates (
                     id, company_id, kind, code, label, percent,
-                    is_default, active, notes
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, TRUE, ?)
+                    is_default, active, notes, legal_text
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, TRUE, ?, ?)
                 """,
                 id,
                 tenantContext.getCurrentCompanyId(),
-                kind, code, label, percent, isDefault, notes
+                kind, code, label, percent, isDefault, notes, legalText
         );
     }
 
     public int update(String id, String label, BigDecimal percent,
-                       boolean isDefault, boolean active, String notes) {
+                       boolean isDefault, boolean active, String notes,
+                       String legalText) {
         return jdbcTemplate.update("""
                 UPDATE vat_rates
                    SET label = ?, percent = ?, is_default = ?,
-                       active = ?, notes = ?
+                       active = ?, notes = ?, legal_text = ?
                  WHERE id = ? AND company_id = ?
                 """,
-                label, percent, isDefault, active, notes,
+                label, percent, isDefault, active, notes, legalText,
                 id, tenantContext.getCurrentCompanyId()
         );
     }
@@ -133,7 +135,8 @@ public class VatRateRepository {
                 rs.getBoolean("active"),
                 rs.getString("notes"),
                 c == null ? null : c.toInstant(),
-                u == null ? null : u.toInstant()
+                u == null ? null : u.toInstant(),
+                rs.getString("legal_text")
         );
     }
 }

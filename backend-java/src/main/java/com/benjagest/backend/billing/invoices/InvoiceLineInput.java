@@ -14,6 +14,15 @@ public record InvoiceLineInput(
         @DecimalMin("0") BigDecimal quantity,
         @DecimalMin("0") BigDecimal unitPrice,
         @DecimalMin("0") BigDecimal vatPercent,
-        @DecimalMin("0") BigDecimal retentionPercent
+        @DecimalMin("0") BigDecimal retentionPercent,
+        /** FAC-IVA: id del tipo del catálogo vat_rates elegido (opcional). */
+        String vatRateId
 ) {
+    /** Backwards-compat para callers sin tipo del catálogo. */
+    public InvoiceLineInput(String description, String catalogItemId,
+                             BigDecimal quantity, BigDecimal unitPrice,
+                             BigDecimal vatPercent, BigDecimal retentionPercent) {
+        this(description, catalogItemId, quantity, unitPrice,
+                vatPercent, retentionPercent, null);
+    }
 }

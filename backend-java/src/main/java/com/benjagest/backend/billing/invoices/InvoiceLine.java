@@ -23,6 +23,23 @@ public record InvoiceLine(
         BigDecimal lineSubtotal,
         BigDecimal lineVat,
         BigDecimal lineRetention,
-        BigDecimal lineTotal
+        BigDecimal lineTotal,
+        /**
+         * FAC-IVA (2026-07-10): QUÉ tipo del catálogo vat_rates eligió la
+         * línea. Con dos tipos al mismo % (dos 0% con conceptos distintos)
+         * el % no basta para saber qué texto legal imprime el PDF. NULL en
+         * histórico/imports: se cae al comportamiento por porcentaje.
+         */
+        String vatRateId
 ) {
+    /** Backwards-compat para callers sin tipo de IVA del catálogo. */
+    public InvoiceLine(String id, String invoiceId, String catalogItemId,
+                        String description, BigDecimal quantity, BigDecimal unitPrice,
+                        BigDecimal vatPercent, BigDecimal retentionPercent,
+                        BigDecimal lineSubtotal, BigDecimal lineVat,
+                        BigDecimal lineRetention, BigDecimal lineTotal) {
+        this(id, invoiceId, catalogItemId, description, quantity, unitPrice,
+                vatPercent, retentionPercent, lineSubtotal, lineVat,
+                lineRetention, lineTotal, null);
+    }
 }

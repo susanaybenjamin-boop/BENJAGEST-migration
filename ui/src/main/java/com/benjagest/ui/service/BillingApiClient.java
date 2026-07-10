@@ -186,8 +186,12 @@ public class BillingApiClient {
                     .append("\"quantity\":").append(line.getQuantity().toPlainString()).append(",")
                     .append("\"unitPrice\":").append(line.getUnitPrice().toPlainString()).append(",")
                     .append("\"vatPercent\":").append(line.getVatPercent().toPlainString()).append(",")
-                    .append("\"retentionPercent\":").append(line.getRetentionPercent().toPlainString())
-                    .append("}");
+                    .append("\"retentionPercent\":").append(line.getRetentionPercent().toPlainString());
+            // FAC-IVA: identidad del tipo elegido en el combo (opcional).
+            if (line.getVatRateId() != null && !line.getVatRateId().isBlank()) {
+                body.append(",\"vatRateId\":\"").append(line.getVatRateId()).append("\"");
+            }
+            body.append("}");
         }
         body.append("]}");
 
@@ -464,7 +468,8 @@ public class BillingApiClient {
                     decimalField(obj, "percent"),
                     boolField(obj, "isDefault"),
                     boolField(obj, "active"),
-                    textField(obj, "notes")
+                    textField(obj, "notes"),
+                    textField(obj, "legalText")
             ));
         }
         return list;
@@ -473,12 +478,21 @@ public class BillingApiClient {
     public com.benjagest.ui.model.VatRateEntry createVatRate(String kind, String code, String label,
                                                               java.math.BigDecimal percent,
                                                               boolean isDefault) throws IOException, InterruptedException {
+        return createVatRate(kind, code, label, percent, isDefault, null);
+    }
+
+    /** FAC-IVA: variante con texto legal propio del tipo (impreso en el PDF). */
+    public com.benjagest.ui.model.VatRateEntry createVatRate(String kind, String code, String label,
+                                                              java.math.BigDecimal percent,
+                                                              boolean isDefault, String legalText)
+            throws IOException, InterruptedException {
         String body = "{"
                 + field("kind", kind) + ","
                 + field("code", code) + ","
                 + field("label", label) + ","
                 + "\"percent\":" + percent.toPlainString() + ","
                 + "\"isDefault\":" + isDefault + ","
+                + (legalText == null || legalText.isBlank() ? "" : field("legalText", legalText) + ",")
                 + "\"active\":true"
                 + "}";
         HttpResponse<String> response = sendAuthorized(HttpRequest.newBuilder(
@@ -493,12 +507,21 @@ public class BillingApiClient {
     public com.benjagest.ui.model.VatRateEntry updateVatRate(String id, String kind, String code,
                                                               String label, java.math.BigDecimal percent,
                                                               boolean isDefault, boolean active) throws IOException, InterruptedException {
+        return updateVatRate(id, kind, code, label, percent, isDefault, active, null);
+    }
+
+    /** FAC-IVA: variante con texto legal propio del tipo (impreso en el PDF). */
+    public com.benjagest.ui.model.VatRateEntry updateVatRate(String id, String kind, String code,
+                                                              String label, java.math.BigDecimal percent,
+                                                              boolean isDefault, boolean active,
+                                                              String legalText) throws IOException, InterruptedException {
         String body = "{"
                 + field("kind", kind) + ","
                 + field("code", code) + ","
                 + field("label", label) + ","
                 + "\"percent\":" + percent.toPlainString() + ","
                 + "\"isDefault\":" + isDefault + ","
+                + (legalText == null ? "" : field("legalText", legalText) + ",")
                 + "\"active\":" + active
                 + "}";
         HttpResponse<String> response = sendAuthorized(HttpRequest.newBuilder(
@@ -527,7 +550,8 @@ public class BillingApiClient {
                 decimalField(json, "percent"),
                 boolField(json, "isDefault"),
                 boolField(json, "active"),
-                textField(json, "notes")
+                textField(json, "notes"),
+                textField(json, "legalText")
         );
     }
 
@@ -657,13 +681,15 @@ public class BillingApiClient {
         String slice = extractJsonArraySlice(json, arrStart);
         for (String obj : splitJsonObjects(slice)) {
             if (!obj.contains("\"description\"")) continue;
-            result.add(new InvoiceLineDraft(
+            InvoiceLineDraft draft = new InvoiceLineDraft(
                     textField(obj, "description"),
                     decimalField(obj, "quantity"),
                     decimalField(obj, "unitPrice"),
                     decimalField(obj, "vatPercent"),
                     decimalField(obj, "retentionPercent")
-            ));
+            );
+            draft.setVatRateId(textField(obj, "vatRateId"));
+            result.add(draft);
         }
         return result;
     }

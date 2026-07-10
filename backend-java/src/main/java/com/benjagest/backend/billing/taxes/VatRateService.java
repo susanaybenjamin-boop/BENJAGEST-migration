@@ -31,7 +31,7 @@ public class VatRateService {
         validateUpsert(req);
         String id = UUID.randomUUID().toString();
         repository.insert(id, req.kind(), req.code(), req.label(),
-                req.percent(), req.isDefault(), req.notes());
+                req.percent(), req.isDefault(), req.notes(), req.legalText());
         if (req.isDefault()) {
             repository.clearDefaultsExcept(req.kind(), id);
         }
@@ -46,7 +46,7 @@ public class VatRateService {
         // Code y kind no se editan (la combinacion es UNIQUE; si quieres
         // otra, crea un tipo nuevo y desactiva este).
         repository.update(id, req.label(), req.percent(),
-                req.isDefault(), req.active(), req.notes());
+                req.isDefault(), req.active(), req.notes(), req.legalText());
         if (req.isDefault()) {
             repository.clearDefaultsExcept(existing.kind(), id);
         }
@@ -99,6 +99,8 @@ public class VatRateService {
             BigDecimal percent,
             boolean isDefault,
             boolean active,
-            String notes
+            String notes,
+            /** FAC-IVA: texto legal propio impreso en el PDF cuando se usa el tipo. */
+            String legalText
     ) {}
 }

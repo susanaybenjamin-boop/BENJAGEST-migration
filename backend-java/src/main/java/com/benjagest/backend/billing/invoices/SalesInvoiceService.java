@@ -614,7 +614,10 @@ public class SalesInvoiceService {
                     line.quantity() == null ? null : line.quantity().negate(),
                     line.unitPrice(),
                     line.vatPercent(),
-                    line.retentionPercent()
+                    line.retentionPercent(),
+                    // FAC-IVA: la rectificativa conserva el TIPO de IVA de la
+                    // línea original (su texto legal sale igual en el PDF).
+                    line.vatRateId()
             ));
         }
         List<InvoiceLine> lines = computeLines(newId, negatedInputs);
@@ -710,7 +713,10 @@ public class SalesInvoiceService {
                     line.quantity() == null ? null : line.quantity().negate(),
                     line.unitPrice(),
                     line.vatPercent(),
-                    line.retentionPercent()
+                    line.retentionPercent(),
+                    // FAC-IVA: la rectificativa conserva el TIPO de IVA de la
+                    // línea original (su texto legal sale igual en el PDF).
+                    line.vatRateId()
             ));
         }
         List<InvoiceLine> lines = computeLines(newId, negatedInputs);
@@ -972,7 +978,9 @@ public class SalesInvoiceService {
                     subtotal,
                     vat,
                     retention,
-                    total
+                    total,
+                    // FAC-IVA: identidad del tipo elegido en el combo (opcional).
+                    blankToNull(input.vatRateId())
             ));
         }
         return result;

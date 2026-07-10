@@ -20,6 +20,14 @@ public record VatRateEntry(
         BigDecimal percent,
         boolean isDefault,
         boolean active,
-        String notes
+        String notes,
+        /** FAC-IVA: texto legal propio del tipo (se imprime en el PDF). */
+        String legalText
 ) {
+    /** Backwards-compat sin texto legal. */
+    public VatRateEntry(String id, String kind, String code, String label,
+                         BigDecimal percent, boolean isDefault, boolean active,
+                         String notes) {
+        this(id, kind, code, label, percent, isDefault, active, notes, null);
+    }
 }
