@@ -249,6 +249,26 @@ public final class AccountingModels {
             int rowsTotal, int rowsImported, int rowsSkipped, int rowsAutoMatched
     ) {}
 
+    // ==== F1-BANCO-REVIEW — conciliación con revisión (checkbox + estado) ====
+
+    /** Pago ya contabilizado de una factura (prueba mostrada debajo del movimiento). */
+    public record ExistingPayment(
+            String paySource, LocalDate payDate, BigDecimal payAmount,
+            String payMethod, Integer payEntryNumber, String payReference
+    ) {}
+
+    /** Fila de revisión: un movimiento del banco con su candidata, estado y pagos. */
+    public record BankReconcileRow(
+            String movementId, LocalDate operationDate, String description,
+            String counterpartyName, BigDecimal amount,
+            String invoiceKind, String invoiceId, String invoiceNumber,
+            String invoiceCounterparty, BigDecimal invoiceAmount, LocalDate invoiceDate,
+            String state, boolean suggested, List<ExistingPayment> existingPayments
+    ) {}
+
+    /** Resultado de conciliar los seleccionados (éxito parcial). */
+    public record ReconcileResult(int reconciled, int failed) {}
+
     /** Resultado del import del diario historico CONTENDO (IMP-H). */
     public record ContendoImportResult(
             int asientosTotal, int asientosImportados, int asientosSaltados,

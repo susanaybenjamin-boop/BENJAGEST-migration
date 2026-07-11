@@ -127,8 +127,12 @@ public class BankImportService {
                 periodTo == null ? null : Date.valueOf(periodTo),
                 userId);
 
-        // Auto-conciliación: best-effort sobre los nuevos movimientos.
-        int autoMatched = autoReconcileBatch(batchId);
+        // Auto-conciliación: solo si se pide explícitamente. Por defecto los
+        // movimientos quedan UNRECONCILED y se concilian desde la pantalla de
+        // revisión (F1-BANCO-REVIEW), donde el usuario ve el estado de cada
+        // factura y su pago existente antes de generar ningún asiento.
+        int autoMatched = Boolean.TRUE.equals(req.autoReconcile())
+                ? autoReconcileBatch(batchId) : 0;
         if (autoMatched > 0) {
             jdbcTemplate.update("""
                     UPDATE bank_import_batches SET rows_auto_matched = ?
@@ -535,7 +539,12 @@ public class BankImportService {
     // ====================================================================
 
     public record ImportRequest(
-            String bankAccountId, String format, String fileName, String content
+            String bankAccountId, String format, String fileName, String content,
+            // F1-BANCO-REVIEW: por defecto NO se auto-postea al importar. La
+            // conciliación pasa por la pantalla de revisión (checkbox + estado),
+            // que evita duplicar pagos ya contabilizados. true = comportamiento
+            // antiguo (auto-conciliar match único) para compatibilidad/API.
+            Boolean autoReconcile
     ) {}
 
     public record BatchResult(

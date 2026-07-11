@@ -251,6 +251,192 @@ public class BankMovementService {
     }
 
     // ====================================================================
+    //  F1-BANCO-REVIEW — revisión de conciliación (checkbox + estado + pago existente)
+    // ====================================================================
+
+    /**
+     * Para cada movimiento UNRECONCILED de la cuenta, calcula la factura
+     * candidata (por importe ±1€ y fecha ±15 días, según el signo), su ESTADO
+     * (sin cobrar/pagar, ya cobrada/pagada, borrador, sin candidata) y, si ya
+     * está saldada, los PAGOS EXISTENTES de esa factura (para enseñarlos debajo
+     * como prueba y NO duplicar). Solo se auto-marcan (suggested=true) los que
+     * están pendientes y son conciliables.
+     */
+    public List<ReconcileRow> reconcileReview(String bankAccountId) {
+        String companyId = tenantContext.getCurrentCompanyId();
+        List<BankMovementView> movs = list(bankAccountId, "UNRECONCILED", null, null);
+        List<ReconcileRow> out = new ArrayList<>();
+        for (BankMovementView m : movs) {
+            Candidate c = findBestCandidate(companyId, m);
+            if (c == null) {
+                out.add(new ReconcileRow(m.id(), m.operationDate(), m.description(),
+                        m.counterpartyName(), m.amount(),
+                        null, null, null, null, null, null,
+                        "NONE", false, List.of()));
+                continue;
+            }
+            List<ExistingPayment> pays = existingPaymentsFor(companyId, c.kind, c.invoiceId);
+            boolean settled = !pays.isEmpty()
+                    || "PAID".equals(c.paymentStatus)
+                    || (c.paidAmount != null && c.amount != null
+                        && c.amount.signum() > 0 && c.paidAmount.compareTo(c.amount) >= 0);
+            String state;
+            boolean suggested;
+            if ("SALES".equals(c.kind) && "DRAFT".equals(c.status)) {
+                state = "DRAFT";
+                suggested = false;
+            } else if (settled) {
+                state = "SALES".equals(c.kind) ? "SETTLED_SALES" : "SETTLED_PURCHASE";
+                suggested = false;
+            } else {
+                state = "SALES".equals(c.kind) ? "PENDING_SALES" : "PENDING_PURCHASE";
+                suggested = true;
+            }
+            out.add(new ReconcileRow(m.id(), m.operationDate(), m.description(),
+                    m.counterpartyName(), m.amount(),
+                    c.kind, c.invoiceId, c.invoiceNumber, c.counterparty,
+                    c.amount, c.invoiceDate,
+                    state, suggested, pays));
+        }
+        return out;
+    }
+
+    /** Mejor factura candidata para un movimiento (por signo, importe y fecha). */
+    private Candidate findBestCandidate(String companyId, BankMovementView m) {
+        BigDecimal abs = m.amount().abs();
+        BigDecimal lower = abs.subtract(new BigDecimal("1.00"));
+        BigDecimal upper = abs.add(new BigDecimal("1.00"));
+        Date from = Date.valueOf(m.operationDate().minusDays(15));
+        Date to = Date.valueOf(m.operationDate().plusDays(15));
+        Date op = Date.valueOf(m.operationDate());
+        List<Candidate> found;
+        if (m.amount().signum() > 0) {
+            found = jdbcTemplate.query("""
+                    SELECT i.id, i.invoice_number, c.legal_name AS counterparty,
+                           i.total AS amount, i.invoice_date, i.status, i.payment_status,
+                           i.paid_amount
+                      FROM sales_invoices i
+                      LEFT JOIN customers c ON c.id = i.customer_id
+                     WHERE i.company_id = ? AND i.status <> 'VOIDED'
+                       AND i.total BETWEEN ? AND ?
+                       AND i.invoice_date BETWEEN ? AND ?
+                     ORDER BY ABS(i.total - ?) ASC, ABS(DATEDIFF(i.invoice_date, ?)) ASC
+                     LIMIT 1
+                    """, (rs, n) -> new Candidate("SALES",
+                            rs.getString("id"), rs.getString("invoice_number"),
+                            rs.getString("counterparty"), rs.getBigDecimal("amount"),
+                            rs.getDate("invoice_date").toLocalDate(),
+                            rs.getString("status"), rs.getString("payment_status"),
+                            rs.getBigDecimal("paid_amount")),
+                    companyId, lower, upper, from, to, abs, op);
+        } else {
+            found = jdbcTemplate.query("""
+                    SELECT id, invoice_number, COALESCE(supplier_name, supplier_nif) AS counterparty,
+                           total_amount AS amount, invoice_date, status, payment_status
+                      FROM purchase_invoices
+                     WHERE company_id = ? AND status <> 'VOID'
+                       AND total_amount BETWEEN ? AND ?
+                       AND invoice_date BETWEEN ? AND ?
+                     ORDER BY ABS(total_amount - ?) ASC, ABS(DATEDIFF(invoice_date, ?)) ASC
+                     LIMIT 1
+                    """, (rs, n) -> new Candidate("PURCHASE",
+                            rs.getString("id"), rs.getString("invoice_number"),
+                            rs.getString("counterparty"), rs.getBigDecimal("amount"),
+                            rs.getDate("invoice_date").toLocalDate(),
+                            rs.getString("status"), rs.getString("payment_status"),
+                            null),
+                    companyId, lower, upper, from, to, abs, op);
+        }
+        return found.isEmpty() ? null : found.get(0);
+    }
+
+    /**
+     * Pagos ya contabilizados de una factura, unificando las tres vías del
+     * sistema: vencimientos saldados, cobros de venta (pago múltiple) y
+     * movimientos bancarios ya conciliados. Deduplicado por fecha+importe.
+     */
+    private List<ExistingPayment> existingPaymentsFor(String companyId, String kind, String invoiceId) {
+        java.util.LinkedHashMap<String, ExistingPayment> byKey = new java.util.LinkedHashMap<>();
+        java.util.function.BiConsumer<String, ExistingPayment> put = (k, p) -> byKey.putIfAbsent(k, p);
+
+        // 1) Vencimientos saldados (compras y ventas).
+        for (ExistingPayment p : jdbcTemplate.query("""
+                SELECT dd.paid_date, dd.amount, dd.payment_method,
+                       je.entry_number, je.concept
+                  FROM invoice_due_dates dd
+                  LEFT JOIN journal_entries je ON je.id = dd.journal_entry_id
+                 WHERE dd.company_id = ? AND dd.invoice_kind = ? AND dd.invoice_id = ?
+                   AND dd.status = 'PAID'
+                 ORDER BY dd.paid_date
+                """, (rs, n) -> new ExistingPayment("Vencimiento",
+                        rs.getDate("paid_date") == null ? null : rs.getDate("paid_date").toLocalDate(),
+                        rs.getBigDecimal("amount"), rs.getString("payment_method"),
+                        (Integer) rs.getObject("entry_number"), rs.getString("concept")),
+                companyId, kind, invoiceId)) {
+            put.accept(key(p), p);
+        }
+
+        // 2) Cobros de venta registrados (pago múltiple / manual).
+        if ("SALES".equals(kind)) {
+            for (ExistingPayment p : jdbcTemplate.query("""
+                    SELECT payment_date, amount, payment_method, reference
+                      FROM sales_invoice_payments
+                     WHERE invoice_id = ?
+                     ORDER BY payment_date
+                    """, (rs, n) -> new ExistingPayment("Cobro",
+                            rs.getDate("payment_date") == null ? null : rs.getDate("payment_date").toLocalDate(),
+                            rs.getBigDecimal("amount"), rs.getString("payment_method"),
+                            null, rs.getString("reference")),
+                    invoiceId)) {
+                put.accept(key(p), p);
+            }
+        }
+
+        // 3) Movimientos bancarios ya conciliados contra esta factura.
+        for (ExistingPayment p : jdbcTemplate.query("""
+                SELECT bm.operation_date, bm.amount, bm.description, je.entry_number
+                  FROM bank_movements bm
+                  LEFT JOIN journal_entries je ON je.id = bm.journal_entry_id
+                 WHERE bm.company_id = ? AND bm.linked_invoice_kind = ?
+                   AND bm.linked_invoice_id = ?
+                 ORDER BY bm.operation_date
+                """, (rs, n) -> new ExistingPayment("Banco",
+                        rs.getDate("operation_date") == null ? null : rs.getDate("operation_date").toLocalDate(),
+                        rs.getBigDecimal("amount") == null ? null : rs.getBigDecimal("amount").abs(),
+                        null, (Integer) rs.getObject("entry_number"), rs.getString("description")),
+                companyId, kind, invoiceId)) {
+            put.accept(key(p), p);
+        }
+        return new ArrayList<>(byKey.values());
+    }
+
+    private static String key(ExistingPayment p) {
+        return (p.payDate() == null ? "?" : p.payDate().toString()) + "|"
+                + (p.payAmount() == null ? "?" : p.payAmount().stripTrailingZeros().toPlainString());
+    }
+
+    private record Candidate(
+            String kind, String invoiceId, String invoiceNumber, String counterparty,
+            BigDecimal amount, LocalDate invoiceDate, String status, String paymentStatus,
+            BigDecimal paidAmount) {}
+
+    public record ExistingPayment(
+            String paySource, LocalDate payDate, BigDecimal payAmount,
+            String payMethod, Integer payEntryNumber, String payReference) {}
+
+    public record ReconcileRow(
+            String movementId, LocalDate operationDate, String description,
+            String counterpartyName, BigDecimal amount,
+            String invoiceKind, String invoiceId, String invoiceNumber,
+            String invoiceCounterparty, BigDecimal invoiceAmount, LocalDate invoiceDate,
+            String state, boolean suggested, List<ExistingPayment> existingPayments) {}
+
+    public record ReconcileSelection(
+            String movementId, String invoiceKind, String invoiceId) {}
+
+    public record ReconcileResult(int reconciled, int failed, List<String> errors) {}
+
+    // ====================================================================
     //  Auto-asiento de cobro/pago
     // ====================================================================
 

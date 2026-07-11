@@ -142,6 +142,40 @@ public class AccountingFullController {
         return bankMovements.suggestMatches(id);
     }
 
+    // F1-BANCO-REVIEW — filas de revisión: cada movimiento pendiente con su
+    // factura candidata, estado y pagos existentes (para marcar con checkbox).
+    @GetMapping("/bank-movements/reconcile-review")
+    public List<BankMovementService.ReconcileRow> reconcileReview(
+            @RequestParam("bankAccountId") String bankAccountId) {
+        return bankMovements.reconcileReview(bankAccountId);
+    }
+
+    // F1-BANCO-REVIEW — concilia solo los movimientos marcados. Cada enlace es
+    // su propia transacción: un fallo puntual no tumba los demás (éxito parcial).
+    @PostMapping("/bank-movements/reconcile")
+    public BankMovementService.ReconcileResult reconcile(
+            @RequestBody List<BankMovementService.ReconcileSelection> selections) {
+        int ok = 0;
+        int fail = 0;
+        List<String> errors = new java.util.ArrayList<>();
+        if (selections != null) {
+            for (BankMovementService.ReconcileSelection s : selections) {
+                try {
+                    // Llamada DIRECTA al método @Transactional (vía proxy): cada
+                    // enlace es su propia transacción atómica.
+                    bankMovements.linkToInvoice(s.movementId(),
+                            new BankMovementService.LinkRequest(
+                                    s.invoiceKind(), s.invoiceId(), null));
+                    ok++;
+                } catch (Exception ex) {
+                    fail++;
+                    errors.add(ex.getMessage() == null ? ex.toString() : ex.getMessage());
+                }
+            }
+        }
+        return new BankMovementService.ReconcileResult(ok, fail, errors);
+    }
+
     @PostMapping("/bank-imports")
     public BankImportService.BatchResult importExtract(
             @RequestBody BankImportService.ImportRequest req) {

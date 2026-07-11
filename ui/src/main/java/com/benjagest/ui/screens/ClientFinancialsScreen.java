@@ -2,6 +2,8 @@ package com.benjagest.ui.screens;
 
 import com.benjagest.ui.model.AccountingModels.BankAccountView;
 import com.benjagest.ui.model.AccountingModels.BankMovementRow;
+import com.benjagest.ui.model.AccountingModels.BankReconcileRow;
+import com.benjagest.ui.model.AccountingModels.ExistingPayment;
 import com.benjagest.ui.model.AccountingModels.FixedAssetRow;
 import com.benjagest.ui.model.AccountingModels.InstallmentView;
 import com.benjagest.ui.model.AccountingModels.LoanView;
@@ -79,6 +81,10 @@ public class ClientFinancialsScreen {
                         ? "" : v.linkedInvoiceKind() + ":" + (v.linkedInvoiceId() == null ? "" : v.linkedInvoiceId().substring(0, 8)), 130)
         ));
 
+        Button newAccount = new Button(tt.apply("bank.account.new"));
+        newAccount.getStyleClass().add("primary-button");
+        newAccount.setOnAction(e -> showBankAccountDialog(accountsTable));
+
         Button refreshAccounts = new Button(tt.apply("accounting.action.refresh"));
         refreshAccounts.setOnAction(e -> loadBankAccounts(accountsTable));
 
@@ -104,7 +110,7 @@ public class ClientFinancialsScreen {
 
         Label accLabel = new Label("Cuentas bancarias");
         accLabel.getStyleClass().add("settings-section-title");
-        HBox accActions = new HBox(8, refreshAccounts, loadMovs, importBtn);
+        HBox accActions = new HBox(8, newAccount, refreshAccounts, loadMovs, importBtn);
         VBox accountsBox = new VBox(8, accLabel, accActions, accountsTable);
         VBox.setVgrow(accountsTable, Priority.ALWAYS);
         accountsBox.setPadding(new Insets(8));
@@ -129,6 +135,56 @@ public class ClientFinancialsScreen {
         async(() -> api.listBankAccounts(null),
                 rows -> table.setItems(FXCollections.observableArrayList(rows)),
                 err -> logSilent("bank-accounts", err));
+    }
+
+    /**
+     * F1-BANCO-CUENTA — alta de cuenta bancaria (alias + IBAN + banco). Es el
+     * requisito previo para importar un extracto. El 572 lo resuelve el backend.
+     */
+    private void showBankAccountDialog(TableView<BankAccountView> accountsTable) {
+        javafx.scene.control.Dialog<javafx.scene.control.ButtonType> d = new javafx.scene.control.Dialog<>();
+        d.setTitle(tt.apply("bank.account.new.title"));
+        javafx.scene.control.ButtonType ok = new javafx.scene.control.ButtonType(
+                tt.apply("bank.account.save"), javafx.scene.control.ButtonBar.ButtonData.OK_DONE);
+        d.getDialogPane().getButtonTypes().addAll(ok, javafx.scene.control.ButtonType.CANCEL);
+
+        javafx.scene.control.TextField alias = new javafx.scene.control.TextField();
+        alias.setPromptText(tt.apply("bank.account.alias.hint"));
+        javafx.scene.control.TextField iban = new javafx.scene.control.TextField();
+        iban.setPromptText("ES00 0000 0000 0000 0000 0000");
+        javafx.scene.control.TextField bank = new javafx.scene.control.TextField();
+        bank.setPromptText("BBVA, CaixaBank…");
+
+        javafx.scene.layout.GridPane g = new javafx.scene.layout.GridPane();
+        g.setHgap(10); g.setVgap(8); g.setPadding(new Insets(12));
+        g.add(new Label(tt.apply("bank.account.alias")), 0, 0); g.add(alias, 1, 0);
+        g.add(new Label(tt.apply("bank.account.iban")), 0, 1); g.add(iban, 1, 1);
+        g.add(new Label(tt.apply("bank.account.bank")), 0, 2); g.add(bank, 1, 2);
+        Label hint = new Label(tt.apply("bank.account.hint"));
+        hint.setWrapText(true);
+        hint.setStyle("-fx-text-fill: #6e6e6e;");
+        g.add(hint, 0, 3, 2, 1);
+        d.getDialogPane().setContent(g);
+        d.getDialogPane().setPrefSize(460, 240);
+        d.setResizable(true);
+
+        d.showAndWait().ifPresent(bt -> {
+            if (bt != ok) return;
+            if (alias.getText() == null || alias.getText().isBlank()) {
+                showInfo(tt.apply("bank.account.new.title"), tt.apply("bank.account.alias_required"));
+                return;
+            }
+            async(() -> api.createBankAccount(alias.getText().trim(),
+                            iban.getText() == null ? null : iban.getText().trim(),
+                            bank.getText() == null ? null : bank.getText().trim()),
+                    v -> {
+                        loadBankAccounts(accountsTable);
+                        showInfo(tt.apply("bank.account.new.title"), tt.apply("bank.account.saved"));
+                        com.benjagest.ui.support.RefreshBus.emit(
+                                com.benjagest.ui.support.RefreshBus.TOPIC_BANK_ACCOUNTS);
+                    },
+                    err -> showError(tt.apply("bank.account.fail"), err));
+        });
     }
 
     /** BANK-IMPORT — diálogo: cuenta + formato (N43/CSV) + fichero → importar. */
@@ -204,20 +260,216 @@ public class ClientFinancialsScreen {
                         : java.nio.file.Files.readString(file.toPath());
                 return api.importBankExtract(acc.id(), fmt, file.getName(), content);
             }, res -> {
+                reloadMovements(acc.id(), movementsTable);
                 showInfo(tt.apply("bank.import.done_title"), tt.apply("bank.import.done_body")
                         .replace("{total}", String.valueOf(res.rowsTotal()))
                         .replace("{imported}", String.valueOf(res.rowsImported()))
-                        .replace("{skipped}", String.valueOf(res.rowsSkipped()))
-                        .replace("{matched}", String.valueOf(res.rowsAutoMatched())));
-                async(() -> api.listBankMovements(acc.id(), null, null, null),
-                        rows -> movementsTable.setItems(FXCollections.observableArrayList(rows)),
-                        err -> { /* silencioso */ });
-                // La auto-conciliación pudo crear asientos: avisar a Contabilidad.
+                        .replace("{skipped}", String.valueOf(res.rowsSkipped())));
+                // F1-BANCO-REVIEW: tras importar, abrir la revisión de
+                // conciliación (checkbox + estado + pago existente) en vez de
+                // auto-postear a ciegas.
+                openReconcileReview(acc.id(), accountsTable, movementsTable);
                 com.benjagest.ui.support.RefreshBus.emit(
                         com.benjagest.ui.support.RefreshBus.TOPIC_BANK_ACCOUNTS,
                         com.benjagest.ui.support.RefreshBus.TOPIC_JOURNAL);
             }, err -> showError(tt.apply("bank.import.fail"), err));
         });
+    }
+
+    private void reloadMovements(String bankAccountId, TableView<BankMovementRow> movementsTable) {
+        async(() -> api.listBankMovements(bankAccountId, null, null, null),
+                rows -> movementsTable.setItems(FXCollections.observableArrayList(rows)),
+                err -> { /* silencioso */ });
+    }
+
+    /**
+     * F1-BANCO-REVIEW — carga las filas de conciliación de la cuenta y abre la
+     * pantalla de revisión. Si no hay nada pendiente, avisa y no molesta.
+     */
+    private void openReconcileReview(String bankAccountId,
+                                     TableView<BankAccountView> accountsTable,
+                                     TableView<BankMovementRow> movementsTable) {
+        async(() -> api.reconcileReview(bankAccountId),
+                rows -> {
+                    if (rows.isEmpty()) {
+                        showInfo(tt.apply("bank.reconcile.none.title"), tt.apply("bank.reconcile.none"));
+                        return;
+                    }
+                    showReconcileDialog(bankAccountId, rows, movementsTable);
+                },
+                err -> showError(tt.apply("bank.reconcile.load_fail"), err));
+    }
+
+    /**
+     * Árbol de revisión: cada movimiento es una fila con checkbox; los que ya
+     * están cobrados/pagados vienen desmarcados y con su pago existente colgando
+     * DEBAJO (para asegurarse de que está, sin abrir otra ventana). Solo se
+     * concilian los marcados.
+     */
+    private void showReconcileDialog(String bankAccountId, List<BankReconcileRow> rows,
+                                     TableView<BankMovementRow> movementsTable) {
+        javafx.scene.control.TreeItem<ReconNode> root = new javafx.scene.control.TreeItem<>();
+        root.setExpanded(true);
+        List<ReconNode> movementNodes = new ArrayList<>();
+        for (BankReconcileRow r : rows) {
+            boolean selectable = "PENDING_SALES".equals(r.state()) || "PENDING_PURCHASE".equals(r.state());
+            ReconNode mn = new ReconNode(r, selectable);
+            movementNodes.add(mn);
+            javafx.scene.control.TreeItem<ReconNode> ti = new javafx.scene.control.TreeItem<>(mn);
+            if (r.existingPayments() != null && !r.existingPayments().isEmpty()) {
+                for (ExistingPayment p : r.existingPayments()) {
+                    ti.getChildren().add(new javafx.scene.control.TreeItem<>(new ReconNode(p)));
+                }
+                ti.setExpanded(true);
+            }
+            root.getChildren().add(ti);
+        }
+
+        javafx.scene.control.TreeTableColumn<ReconNode, Boolean> selCol =
+                new javafx.scene.control.TreeTableColumn<>(tt.apply("bank.reconcile.col.sel"));
+        selCol.setPrefWidth(90);
+        selCol.setSortable(false);
+        selCol.setCellFactory(c -> new javafx.scene.control.TreeTableCell<>() {
+            private final javafx.scene.control.CheckBox cb = new javafx.scene.control.CheckBox();
+            @Override protected void updateItem(Boolean v, boolean empty) {
+                super.updateItem(v, empty);
+                ReconNode node = (getTableRow() == null || getTableRow().getTreeItem() == null)
+                        ? null : getTableRow().getTreeItem().getValue();
+                if (empty || node == null || !node.selectable) { setGraphic(null); return; }
+                cb.setOnAction(null);
+                cb.setSelected(node.selected.get());
+                cb.setOnAction(e -> node.selected.set(cb.isSelected()));
+                setGraphic(cb);
+            }
+        });
+
+        javafx.scene.control.TreeTableView<ReconNode> tree = new javafx.scene.control.TreeTableView<>(root);
+        tree.setShowRoot(false);
+        tree.getColumns().add(selCol);
+        tree.getColumns().add(treeCol(tt.apply("bank.col.date"), this::nodeDate, 100));
+        tree.getColumns().add(treeCol(tt.apply("bank.col.description"), this::nodeDescription, 300));
+        tree.getColumns().add(treeCol(tt.apply("bank.col.amount"), this::nodeAmount, 110));
+        tree.getColumns().add(treeCol(tt.apply("bank.reconcile.col.candidate"), this::nodeCandidate, 220));
+        tree.getColumns().add(treeCol(tt.apply("bank.reconcile.col.state"), this::nodeState, 150));
+        tree.setColumnResizePolicy(javafx.scene.control.TreeTableView.CONSTRAINED_RESIZE_POLICY);
+
+        javafx.scene.control.Dialog<javafx.scene.control.ButtonType> d = new javafx.scene.control.Dialog<>();
+        d.setTitle(tt.apply("bank.reconcile.title"));
+        javafx.scene.control.ButtonType ok = new javafx.scene.control.ButtonType(
+                tt.apply("bank.reconcile.do"), javafx.scene.control.ButtonBar.ButtonData.OK_DONE);
+        d.getDialogPane().getButtonTypes().addAll(ok, javafx.scene.control.ButtonType.CANCEL);
+        Label intro = new Label(tt.apply("bank.reconcile.intro"));
+        intro.setWrapText(true);
+        intro.setStyle("-fx-text-fill: #6e6e6e;");
+        VBox content = new VBox(8, intro, tree);
+        VBox.setVgrow(tree, Priority.ALWAYS);
+        content.setPadding(new Insets(10));
+        d.getDialogPane().setContent(content);
+        d.getDialogPane().setPrefSize(940, 540);
+        d.setResizable(true);
+
+        d.showAndWait().ifPresent(bt -> {
+            if (bt != ok) { reloadMovements(bankAccountId, movementsTable); return; }
+            List<BankReconcileRow> chosen = new ArrayList<>();
+            for (ReconNode mn : movementNodes) {
+                if (mn.selectable && mn.selected.get()) chosen.add(mn.row);
+            }
+            if (chosen.isEmpty()) { reloadMovements(bankAccountId, movementsTable); return; }
+            async(() -> api.reconcileSelected(chosen),
+                    res -> {
+                        showInfo(tt.apply("bank.reconcile.done.title"),
+                                tt.apply("bank.reconcile.done")
+                                        .replace("{ok}", String.valueOf(res.reconciled()))
+                                        .replace("{fail}", String.valueOf(res.failed())));
+                        reloadMovements(bankAccountId, movementsTable);
+                        // La conciliación crea asientos de cobro/pago: avisar.
+                        com.benjagest.ui.support.RefreshBus.emit(
+                                com.benjagest.ui.support.RefreshBus.TOPIC_BANK_ACCOUNTS,
+                                com.benjagest.ui.support.RefreshBus.TOPIC_JOURNAL,
+                                com.benjagest.ui.support.RefreshBus.TOPIC_SALES,
+                                com.benjagest.ui.support.RefreshBus.TOPIC_PURCHASES);
+                    },
+                    err -> showError(tt.apply("bank.reconcile.fail"), err));
+        });
+    }
+
+    private javafx.scene.control.TreeTableColumn<ReconNode, String> treeCol(
+            String header, java.util.function.Function<ReconNode, String> getter, double width) {
+        javafx.scene.control.TreeTableColumn<ReconNode, String> c =
+                new javafx.scene.control.TreeTableColumn<>(header);
+        c.setPrefWidth(width);
+        c.setSortable(false);
+        c.setCellValueFactory(cd -> new SimpleStringProperty(getter.apply(cd.getValue().getValue())));
+        return c;
+    }
+
+    private String nodeDate(ReconNode n) {
+        if (n.isPayment()) return n.payment.payDate() == null ? "" : n.payment.payDate().toString();
+        return n.row.operationDate() == null ? "" : n.row.operationDate().toString();
+    }
+
+    private String nodeDescription(ReconNode n) {
+        if (n.isPayment()) {
+            ExistingPayment p = n.payment;
+            StringBuilder b = new StringBuilder("    ↳ ")
+                    .append(tt.apply("bank.reconcile.payment")).append(": ")
+                    .append(p.paySource() == null ? "" : p.paySource());
+            if (p.payEntryNumber() != null) b.append(" · nº ").append(p.payEntryNumber());
+            if (p.payReference() != null && !p.payReference().isBlank()) b.append(" · ").append(p.payReference());
+            if (p.payMethod() != null && !p.payMethod().isBlank()) b.append(" · ").append(p.payMethod());
+            return b.toString();
+        }
+        String d = n.row.description() == null ? "" : n.row.description();
+        if (n.row.counterpartyName() != null && !n.row.counterpartyName().isBlank()) {
+            d = d + " · " + n.row.counterpartyName();
+        }
+        return d;
+    }
+
+    private String nodeAmount(ReconNode n) {
+        java.math.BigDecimal a = n.isPayment() ? n.payment.payAmount() : n.row.amount();
+        return a == null ? "" : a.toPlainString();
+    }
+
+    private String nodeCandidate(ReconNode n) {
+        if (n.isPayment()) return "";
+        if (n.row.invoiceNumber() == null && n.row.invoiceCounterparty() == null) return "";
+        StringBuilder b = new StringBuilder();
+        if (n.row.invoiceNumber() != null) b.append(n.row.invoiceNumber());
+        if (n.row.invoiceCounterparty() != null && !n.row.invoiceCounterparty().isBlank()) {
+            if (b.length() > 0) b.append(" · ");
+            b.append(n.row.invoiceCounterparty());
+        }
+        return b.toString();
+    }
+
+    private String nodeState(ReconNode n) {
+        if (n.isPayment() || n.row.state() == null) return "";
+        return tt.apply("bank.reconcile.state." + n.row.state());
+    }
+
+    /** Nodo del árbol de conciliación: o un movimiento (con checkbox) o un pago existente. */
+    private static final class ReconNode {
+        final BankReconcileRow row;
+        final ExistingPayment payment;
+        final boolean selectable;
+        final javafx.beans.property.BooleanProperty selected =
+                new javafx.beans.property.SimpleBooleanProperty(false);
+
+        ReconNode(BankReconcileRow row, boolean selectable) {
+            this.row = row;
+            this.payment = null;
+            this.selectable = selectable;
+            this.selected.set(selectable && row.suggested());
+        }
+
+        ReconNode(ExistingPayment payment) {
+            this.row = null;
+            this.payment = payment;
+            this.selectable = false;
+        }
+
+        boolean isPayment() { return payment != null; }
     }
 
     // ====================================================================

@@ -681,6 +681,27 @@ public class AccountingApiClient {
         return out;
     }
 
+    /**
+     * F1-BANCO-CUENTA — crea una cuenta bancaria (alias + IBAN + banco). El
+     * resto de campos (572, divisa, saldo) los resuelve/deja el backend por
+     * defecto: si no se asigna un 572 explícito, usa la 572 genérica de la
+     * empresa al conciliar.
+     */
+    public AccountingModels.BankAccountView createBankAccount(
+            String alias, String iban, String bankName)
+            throws IOException, InterruptedException {
+        StringBuilder b = new StringBuilder("{");
+        appendKV(b, "alias", alias, true);
+        appendKV(b, "iban", iban, false);
+        appendKV(b, "bankName", bankName, false);
+        b.append("}");
+        String json = postRaw("/accounting/bank-accounts", b.toString());
+        return new AccountingModels.BankAccountView(
+                strField(json, "id"), strField(json, "alias"), strField(json, "iban"),
+                strField(json, "bankName"), strField(json, "currency"),
+                bdField(json, "openingBalance"), boolField(json, "active"));
+    }
+
     public List<AccountingModels.BankMovementRow> listBankMovements(
             String bankAccountId, String status, LocalDate from, LocalDate to)
             throws IOException, InterruptedException {
@@ -886,6 +907,58 @@ public class AccountingApiClient {
         return new AccountingModels.ImportResult(
                 intField(json, "rowsTotal"), intField(json, "rowsImported"),
                 intField(json, "rowsSkipped"), intField(json, "rowsAutoMatched"));
+    }
+
+    /**
+     * F1-BANCO-REVIEW — filas de revisión de conciliación de una cuenta: cada
+     * movimiento pendiente con su factura candidata, estado y pagos existentes.
+     */
+    public List<AccountingModels.BankReconcileRow> reconcileReview(String bankAccountId)
+            throws IOException, InterruptedException {
+        String json = get("/accounting/bank-movements/reconcile-review?bankAccountId="
+                + URLEncoder.encode(bankAccountId, StandardCharsets.UTF_8));
+        List<AccountingModels.BankReconcileRow> out = new ArrayList<>();
+        for (String obj : splitJsonArray(json)) {
+            List<AccountingModels.ExistingPayment> pays = new ArrayList<>();
+            String arr = extractArrayField(obj, "existingPayments");
+            if (arr != null) {
+                for (String p : splitJsonArray(arr)) {
+                    pays.add(new AccountingModels.ExistingPayment(
+                            strField(p, "paySource"), localDateField(p, "payDate"),
+                            bdField(p, "payAmount"), strField(p, "payMethod"),
+                            intFieldOrNull(p, "payEntryNumber"), strField(p, "payReference")));
+                }
+            }
+            out.add(new AccountingModels.BankReconcileRow(
+                    strField(obj, "movementId"), localDateField(obj, "operationDate"),
+                    strField(obj, "description"), strField(obj, "counterpartyName"),
+                    bdField(obj, "amount"), strField(obj, "invoiceKind"),
+                    strField(obj, "invoiceId"), strField(obj, "invoiceNumber"),
+                    strField(obj, "invoiceCounterparty"), bdField(obj, "invoiceAmount"),
+                    localDateField(obj, "invoiceDate"), strField(obj, "state"),
+                    boolField(obj, "suggested"), pays));
+        }
+        return out;
+    }
+
+    /** F1-BANCO-REVIEW — concilia solo los movimientos marcados (éxito parcial). */
+    public AccountingModels.ReconcileResult reconcileSelected(
+            List<AccountingModels.BankReconcileRow> selected)
+            throws IOException, InterruptedException {
+        StringBuilder b = new StringBuilder("[");
+        for (int i = 0; i < selected.size(); i++) {
+            AccountingModels.BankReconcileRow r = selected.get(i);
+            if (i > 0) b.append(',');
+            b.append("{");
+            appendKV(b, "movementId", r.movementId(), true);
+            appendKV(b, "invoiceKind", r.invoiceKind(), false);
+            appendKV(b, "invoiceId", r.invoiceId(), false);
+            b.append("}");
+        }
+        b.append("]");
+        String json = postRaw("/accounting/bank-movements/reconcile", b.toString());
+        return new AccountingModels.ReconcileResult(
+                intField(json, "reconciled"), intField(json, "failed"));
     }
 
     /** Importación contable inversa (Contasol/A3/Sage/CSV) hacia un targetKind. */
