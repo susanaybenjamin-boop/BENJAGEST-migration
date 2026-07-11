@@ -330,9 +330,12 @@ public class BankMovementService {
                             rs.getBigDecimal("paid_amount")),
                     companyId, lower, upper, from, to, abs, op);
         } else {
+            // purchase_invoices (V39/V40) NO tiene payment_status ni paid_amount:
+            // el "ya pagada" de una compra se deriva de sus pagos existentes
+            // (vencimientos saldados / banco conciliado), no de un estado propio.
             found = jdbcTemplate.query("""
                     SELECT id, invoice_number, COALESCE(supplier_name, supplier_nif) AS counterparty,
-                           total_amount AS amount, invoice_date, status, payment_status
+                           total_amount AS amount, invoice_date, status
                       FROM purchase_invoices
                      WHERE company_id = ? AND status <> 'VOID'
                        AND total_amount BETWEEN ? AND ?
@@ -343,8 +346,7 @@ public class BankMovementService {
                             rs.getString("id"), rs.getString("invoice_number"),
                             rs.getString("counterparty"), rs.getBigDecimal("amount"),
                             rs.getDate("invoice_date").toLocalDate(),
-                            rs.getString("status"), rs.getString("payment_status"),
-                            null),
+                            rs.getString("status"), null, null),
                     companyId, lower, upper, from, to, abs, op);
         }
         return found.isEmpty() ? null : found.get(0);
