@@ -54,11 +54,11 @@ public class BackupService {
         this.dataSource = dataSource;
         this.backupDir = Paths.get(
                 backupDirCfg == null || backupDirCfg.isBlank()
-                        ? Paths.get(System.getProperty("user.home"), "BENJAGEST-backup").toString()
+                        ? com.benjagest.backend.config.BenjagestHome.resolve("backup").toString()
                         : backupDirCfg);
         this.facturasDir = Paths.get(
                 facturasCfg == null || facturasCfg.isBlank()
-                        ? Paths.get(System.getProperty("user.home"), "benjagest-facturas").toString()
+                        ? com.benjagest.backend.config.BenjagestHome.resolve("facturas").toString()
                         : facturasCfg);
     }
 

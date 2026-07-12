@@ -50,7 +50,7 @@ public class InvoiceStorageService {
             @Value("${benjagest.invoices.storage-root:}") String defaultRoot) {
         this.fallbackRoot = StringUtils.hasText(defaultRoot)
                 ? defaultRoot
-                : Paths.get(System.getProperty("user.home"), "benjagest-facturas").toString();
+                : com.benjagest.backend.config.BenjagestHome.resolve("facturas").toString();
     }
 
     /**

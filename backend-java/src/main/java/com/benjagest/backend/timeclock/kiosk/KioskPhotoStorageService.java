@@ -27,7 +27,7 @@ public class KioskPhotoStorageService {
             @Value("${benjagest.kiosk.photo-root:}") String defaultRoot) {
         this.fallbackRoot = StringUtils.hasText(defaultRoot)
                 ? defaultRoot
-                : Paths.get(System.getProperty("user.home"), "benjagest-fichaje-fotos").toString();
+                : com.benjagest.backend.config.BenjagestHome.resolve("fichaje-fotos").toString();
     }
 
     /**

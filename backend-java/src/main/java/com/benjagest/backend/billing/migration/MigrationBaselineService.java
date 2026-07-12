@@ -65,7 +65,7 @@ public class MigrationBaselineService {
         this.tenant = tenant;
         this.currentUser = currentUser;
         this.storageRoot = Paths.get(storageRootCfg == null || storageRootCfg.isBlank()
-                ? Paths.get(System.getProperty("user.home"), "benjagest-facturas").toString()
+                ? com.benjagest.backend.config.BenjagestHome.resolve("facturas").toString()
                 : storageRootCfg);
     }
 

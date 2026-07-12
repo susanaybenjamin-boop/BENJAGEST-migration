@@ -3,10 +3,10 @@ package com.benjagest.backend;
 import ch.vorburger.exec.ManagedProcessException;
 import ch.vorburger.mariadb4j.DB;
 import ch.vorburger.mariadb4j.DBConfigurationBuilder;
+import com.benjagest.backend.config.BenjagestHome;
 import com.zaxxer.hikari.HikariDataSource;
 import jakarta.annotation.PreDestroy;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import javax.sql.DataSource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -21,7 +21,8 @@ import org.springframework.context.annotation.Configuration;
  * que Spring usa la MariaDB externa del 3307 de application.yml como hasta ahora.
  *
  * <p>Al crear el {@code DataSource}, arranca una MariaDB embebida (MariaDB4j) con
- * su data dir persistente en {@code ~/.benjagest/mariadb-data}, crea la BD y
+ * su data dir persistente bajo la raíz machine-wide de {@link BenjagestHome}
+ * ({@code %ProgramData%\BENJAGEST\mariadb-data}), crea la BD y
  * apunta Hikari ahí. Flyway corre sobre este DataSource (migra V1→Vn en el primer
  * arranque). Se para con la app.
  */
@@ -36,7 +37,7 @@ public class EmbeddedMariaDbConfig {
 
     @Bean
     public DataSource dataSource() throws ManagedProcessException {
-        Path dataDir = Paths.get(System.getProperty("user.home"), ".benjagest", "mariadb-data");
+        Path dataDir = BenjagestHome.resolve("mariadb-data");
         DBConfigurationBuilder cfg = DBConfigurationBuilder.newBuilder();
         cfg.setPort(PORT);
         cfg.setDataDir(dataDir.toString());
@@ -98,7 +99,7 @@ public class EmbeddedMariaDbConfig {
      * exactamente lo que este slice elimina).
      */
     private String ensureDbLocked(DBConfigurationBuilder cfg) {
-        Path keyFile = Paths.get(System.getProperty("user.home"), ".benjagest", ".dbkey");
+        Path keyFile = BenjagestHome.resolve(".dbkey");
         try {
             // 1) Clave de esta instalación: la existente, o una nueva que se
             //    persiste ANTES de aplicar el blindaje (si la app muriera a
@@ -181,12 +182,22 @@ public class EmbeddedMariaDbConfig {
         return sb.toString();
     }
 
-    /** Oculta el fichero de la clave y restringe su ACL al usuario actual (best-effort). */
+    /**
+     * Oculta el fichero de la clave y restringe su ACL a SYSTEM, Administradores
+     * y el usuario actual (best-effort). Incluir SYSTEM es CRÍTICO para WINSVC:
+     * el backend puede correr como servicio (LocalSystem) y debe poder leer la
+     * clave; sin ese ACE, con la herencia cortada, el servicio quedaría sin
+     * acceso. Mismo criterio que {@code MasterKeyResolver} para la master.key.
+     */
     private void restrictKeyFile(Path keyFile) {
+        if (!System.getProperty("os.name", "").toLowerCase().contains("win")) return;
         String user = System.getProperty("user.name");
         try {
             new ProcessBuilder("icacls", keyFile.toString(), "/inheritance:r",
-                    "/grant:r", user + ":F").start().waitFor();
+                    "/grant:r", "*S-1-5-18:F",          // SYSTEM (servicio de Windows)
+                    "/grant:r", "*S-1-5-32-544:F",      // Administradores
+                    "/grant:r", (user == null ? "%USERNAME%" : user) + ":F")
+                    .start().waitFor();
             new ProcessBuilder("attrib", "+h", keyFile.toString()).start().waitFor();
         } catch (Exception ex) {
             log.warn("DB-LOCK: no se pudo restringir la ACL de {} ({}). La clave sigue "

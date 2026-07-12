@@ -34,13 +34,40 @@ public final class Launcher {
 
     public static void main(String[] args) {
         if (Boolean.getBoolean("benjagest.launch.backend")) {
-            try {
-                startEmbeddedBackend();
-            } catch (Exception ex) {
-                System.err.println("[Launcher] No se pudo arrancar el backend embebido: " + ex);
+            // WINSVC (2026-07-12): en la instalación de Asesoría el backend corre
+            // como SERVICIO de Windows (arranca en el boot, antes del login). Si ya
+            // está sirviendo en 8080, la UI NO debe lanzar otro: sería un segundo
+            // proceso peleando por el puerto 13307 y el lock del data dir. Solo se
+            // auto-arranca si NADIE responde (instalación sin servicio, o servicio
+            // aún no levantado).
+            if (isBackendUp()) {
+                System.out.println("[Launcher] Backend ya en marcha (servicio) en http://localhost:8080; no lo lanzo.");
+            } else {
+                try {
+                    startEmbeddedBackend();
+                } catch (Exception ex) {
+                    System.err.println("[Launcher] No se pudo arrancar el backend embebido: " + ex);
+                }
             }
         }
         BenjagestUiApplication.main(args);
+    }
+
+    /** Sonda rápida: ¿responde ya algo en el 8080? (el servicio de Windows). */
+    private static boolean isBackendUp() {
+        HttpClient client = HttpClient.newBuilder()
+                .connectTimeout(Duration.ofSeconds(1)).build();
+        HttpRequest req = HttpRequest.newBuilder(URI.create(HEALTH_URL))
+                .timeout(Duration.ofSeconds(1)).GET().build();
+        try {
+            client.send(req, HttpResponse.BodyHandlers.discarding());
+            return true; // cualquier respuesta HTTP = Tomcat sirviendo
+        } catch (IOException connecting) {
+            return false;
+        } catch (InterruptedException ie) {
+            Thread.currentThread().interrupt();
+            return false;
+        }
     }
 
     private static void startEmbeddedBackend() throws Exception {
