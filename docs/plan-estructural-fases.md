@@ -37,14 +37,24 @@
   extraída a `groupCapsMonthly` PURA (patrón compute130) + 5 tests con las
   cifras oficiales 2026 (V122). Suite backend completa verde.
 
-**F1-WINSVC — backend como servicio de Windows**
-- `build-msi.ps1` + WiX: instalar servicio (winsw o jpackage service) con
-  auto-arranque; `EmbeddedMariaDbConfig` ya tolera reinicios. Smoke:
-  reiniciar Windows → app conecta sin lanzar backend a mano.
+**F1-WINSVC — backend como servicio de Windows** ✅ HECHO 2026-07-12 (v0.1.35)
+- Servicio con **winsw** (WinSW.NET4) en `packaging/service/`; registro con
+  `install-service.ps1` (auto-eleva UAC + abre firewall 8080). Auto-arranque.
+- Requisito nuevo: los datos dejan el perfil del usuario y viven en
+  `%ProgramData%\BENJAGEST` (`BenjagestHome`, machine-wide) porque el servicio
+  corre como LocalSystem. Migración de la BD de Benjamin hecha a mano una vez.
+- **Smoke real (verificado): reiniciar Windows → backend RUNNING solo, health
+  200, lee la BD en %ProgramData%, sin lanzar nada a mano.**
 
-**F1-INSTVAR — instalador Asesoría/Empleado**
-- `build-msi.ps1 -Variant advisory|employee`: dos MSI (el de empleado solo
-  UI apuntando a servidor LAN); `UpdateService.APP_VERSION` compartido.
+**F1-INSTVAR — instalador Asesoría/Puesto** ✅ HECHO 2026-07-12 (v0.1.35)
+- `build-msi.ps1 -Variant advisory|puesto`: dos MSI. **advisory** = servidor
+  completo (UI+backend+BD+servicio). **puesto** = 2º PC de escritorio LAN,
+  solo UI apuntando al servidor por `BENJAGEST_API_BASE_URL` (`set-server.ps1`).
+  `UpdateService.APP_VERSION` compartido.
+- OJO nomenclatura: "puesto" = 2º escritorio de la asesoría; el EMPLEADO FINAL
+  (fichar/nóminas) es la **PWA móvil** del bloque MEMP, sin instalador.
+- Pendiente: probar la conexión del MSI puesto en un 2º PC real (aceptado red
+  estándar como suficiente: binding 0.0.0.0 + regla de firewall).
 
 **F1-N43 — conciliación bancaria Norma 43** ✅ HECHO 2026-07-10
 - ~~Nuevo N43ImportService~~ — el plan estaba DESACTUALIZADO: REC-BANCARIA ya
