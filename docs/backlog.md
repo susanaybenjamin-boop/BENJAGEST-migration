@@ -1,6 +1,6 @@
 # Backlog operativo BENJAGEST
 
-> **Última actualización: 2026-07-12 — v0.1.35 PUBLICADA. v0.1.36 CODE-COMPLETE Y VERIFICADA (smoke end-to-end VERDE), aún SIN publicar: lleva FAC-CLIVAL + VF3-XML + Tema 2 (factura PDF emitida en Facturación) + Tema 1 (bloque COMP- compensación de facturas, 5 slices). Smoke real pasado (import PDF venta cuenta 1 vez en 303; compensación 400/430 + reversión). Bug de binding Spring (@RequestParam/@PathVariable sin nombre) cazado y corregido en el smoke. FALTA SOLO: bump APP_VERSION + build MSI + gh release (lo dispara Benjamin). El MSI en dist/msi es el ANTIGUO (sin Tema 1/2), hay que reconstruir. Cuadre 130 RESUELTO.**
+> **Última actualización: 2026-07-12 — ✅ v0.1.36 PUBLICADA (tag v0.1.36, target develop d6e8735b): FAC-CLIVAL + VF3-XML + Tema 2 (factura PDF emitida en Facturación) + Tema 1 (bloque COMP- compensación, 5 slices). Smoke end-to-end VERDE (import PDF venta cuenta 1 vez en 303; compensación 400/430 + reversión). Bug de binding Spring (@RequestParam/@PathVariable sin nombre) cazado+corregido en el smoke. MSI advisory (302 MB) + puesto (71 MB) reconstruidos y adjuntos a la release. Mergeado a develop. PENDIENTE: Benjamin actualiza su app instalada a 0.1.36 (UpdateService detecta la release) → reinstalar/reiniciar el servicio; smoke VISUAL de FAC-CLIVAL y de la pestaña Compensación. Cuadre 130 RESUELTO.**
 >
 > ## 🚀 PROMPT PARA LA PRÓXIMA SESIÓN (copiar y pegar)
 >
