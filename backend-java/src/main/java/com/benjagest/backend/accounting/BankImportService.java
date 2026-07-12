@@ -71,14 +71,34 @@ public class BankImportService {
         String batchId = UUID.randomUUID().toString();
         String userId = safeUserId();
 
-        List<ParsedRow> parsed = switch (req.format().toUpperCase()) {
-            case "N43" -> parseN43(req.content());
-            case "CSV" -> parseCsv(req.content());
-            // F1-BANCO: extracto Excel (BBVA no da N43). El binario viaja en
-            // Base64 dentro de content.
-            case "XLSX" -> parseXlsxBank(decodeBase64(req.content()));
-            default -> throw bad("Formato no soportado: " + req.format());
-        };
+        // F1-BANCO-AUTO: formato genérico. La UI manda "AUTO" y el fichero SIEMPRE
+        // en Base64 (vale para el .xlsx binario y para el csv/n43 de texto); aquí
+        // se detecta el tipo REAL por el contenido, no por la extensión (que el
+        // usuario puede no ver en Windows). Se conservan los formatos explícitos
+        // por compatibilidad de API/tests.
+        String reqFmt = req.format() == null ? "AUTO" : req.format().trim().toUpperCase();
+        String detectedFormat;
+        List<ParsedRow> parsed;
+        if ("AUTO".equals(reqFmt)) {
+            byte[] bytes = decodeBase64(req.content());
+            if (isXlsx(bytes)) {
+                detectedFormat = "XLSX";
+                parsed = parseXlsxBank(bytes);
+            } else {
+                String text = new String(bytes, java.nio.charset.StandardCharsets.UTF_8);
+                detectedFormat = looksLikeN43(text) ? "N43" : "CSV";
+                parsed = "N43".equals(detectedFormat) ? parseN43(text) : parseCsv(text);
+            }
+        } else {
+            detectedFormat = reqFmt;
+            parsed = switch (reqFmt) {
+                case "N43" -> parseN43(req.content());
+                case "CSV" -> parseCsv(req.content());
+                // El binario viaja en Base64 dentro de content.
+                case "XLSX" -> parseXlsxBank(decodeBase64(req.content()));
+                default -> throw bad("Formato no soportado: " + req.format());
+            };
+        }
 
         int imported = 0;
         int skipped = 0;
@@ -121,7 +141,7 @@ public class BankImportService {
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)
                 """,
                 batchId, companyId, req.bankAccountId(),
-                req.format().toUpperCase(), truncate(req.fileName(), 240),
+                detectedFormat, truncate(req.fileName(), 240),
                 parsed.size(), imported, skipped,
                 periodFrom == null ? null : Date.valueOf(periodFrom),
                 periodTo == null ? null : Date.valueOf(periodTo),
@@ -409,6 +429,32 @@ public class BankImportService {
             out.add(p);
         }
         return out;
+    }
+
+    // ====================================================================
+    //  Detección de formato (F1-BANCO-AUTO)
+    // ====================================================================
+
+    /** Un .xlsx es un ZIP: empieza por la firma "PK" (0x50 0x4B). Ningún
+     *  extracto en texto (CSV/N43) empieza así. */
+    private static boolean isXlsx(byte[] b) {
+        return b != null && b.length >= 2 && b[0] == 0x50 && b[1] == 0x4B;
+    }
+
+    /**
+     * Heurística N43 vs CSV sobre texto: el Cuaderno 43 AEB son registros de
+     * longitud fija; el fichero abre con el registro de cabecera de cuenta "11"
+     * (largo, sin separadores). Un CSV trae una cabecera con ';' o ',' o fechas.
+     */
+    private static boolean looksLikeN43(String text) {
+        if (text == null) return false;
+        for (String line : text.split("\r\n|\r|\n")) {
+            String t = line.strip();
+            if (t.isEmpty()) continue;
+            return t.startsWith("11") && t.length() >= 78
+                    && !t.contains(";") && !t.contains(",");
+        }
+        return false;
     }
 
     /** "F.Valor " → "fvalor", "Observaciones" → "observaciones". */
