@@ -203,6 +203,31 @@ public class InvoiceCompensationService {
         return s.toUpperCase(Locale.ROOT).replaceAll("[^A-Z0-9]", "");
     }
 
+    /**
+     * Resumen plano por tercero (sin arrays anidados) para la UI: el cliente
+     * usa parser regex y no debe lidiar con JSON anidado (CLAUDE.md §6).
+     */
+    public List<ProposalSummary> proposalSummaries() {
+        List<ProposalSummary> out = new ArrayList<>();
+        for (CompensationProposal p : findProposals()) {
+            out.add(new ProposalSummary(p.nif(), p.counterpartyName(),
+                    p.salesPending(), p.purchasePending(), p.compensable()));
+        }
+        return out;
+    }
+
+    /** Líneas (ventas + compras) pendientes de un tercero por NIF, planas. */
+    public List<FlatLine> invoicesForNif(String nif) {
+        String key = normNif(nif);
+        List<FlatLine> out = new ArrayList<>();
+        for (CompensationProposal p : findProposals()) {
+            if (!key.equals(normNif(p.nif()))) continue;
+            for (Line l : p.sales()) out.add(FlatLine.of("SALES", l));
+            for (Line l : p.purchases()) out.add(FlatLine.of("PURCHASE", l));
+        }
+        return out;
+    }
+
     // ====================================================================
     //  COMP-2 — Ejecución (asiento 400/430 + saldado)
     // ====================================================================
@@ -726,6 +751,21 @@ public class InvoiceCompensationService {
                                        BigDecimal compensable,
                                        List<Line> sales, List<Line> purchases) {}
 
+    /** Resumen plano por tercero (sin arrays) para la UI. */
+    public record ProposalSummary(String nif, String counterpartyName,
+                                  BigDecimal salesPending, BigDecimal purchasePending,
+                                  BigDecimal compensable) {}
+
+    /** Línea plana de factura pendiente (venta o compra) para la UI. */
+    public record FlatLine(String invoiceKind, String invoiceId, String invoiceNumber,
+                           LocalDate invoiceDate, BigDecimal total, BigDecimal pending,
+                           boolean due) {
+        static FlatLine of(String kind, Line l) {
+            return new FlatLine(kind, l.invoiceId(), l.invoiceNumber(), l.invoiceDate(),
+                    l.total(), l.pending(), l.due());
+        }
+    }
+
     /** Línea cruda con su NIF/nombre de tercero antes de agrupar (paquete-visible para test). */
     record RawLine(String nif, String name, Line line) {}
 
@@ -768,10 +808,16 @@ public class InvoiceCompensationService {
             this.pdfGenerator = pdfGenerator;
         }
 
-        /** COMP-1 — propuestas de compensación de la empresa activa. */
+        /** COMP-1 — propuestas de compensación (resumen plano por tercero). */
         @GetMapping("/suggestions")
-        public List<CompensationProposal> suggestions() {
-            return service.findProposals();
+        public List<ProposalSummary> suggestions() {
+            return service.proposalSummaries();
+        }
+
+        /** COMP-1 — facturas pendientes (ventas+compras) de un tercero por NIF. */
+        @GetMapping("/invoices")
+        public List<FlatLine> invoices(@org.springframework.web.bind.annotation.RequestParam("nif") String nif) {
+            return service.invoicesForNif(nif);
         }
 
         /** COMP-2 — ejecuta una compensación (asiento 400/430 + saldado). */
@@ -788,13 +834,13 @@ public class InvoiceCompensationService {
 
         /** COMP-4 — detalle de una compensación. */
         @GetMapping("/{id}")
-        public CompensationDetail detail(@PathVariable String id) {
+        public CompensationDetail detail(@PathVariable("id") String id) {
             return service.getDetail(id);
         }
 
         /** COMP-4 — justificante PDF (acuerdo de compensación). */
         @GetMapping("/{id}/pdf")
-        public org.springframework.http.ResponseEntity<byte[]> pdf(@PathVariable String id) {
+        public org.springframework.http.ResponseEntity<byte[]> pdf(@PathVariable("id") String id) {
             byte[] bytes = pdfGenerator.generate(service.getDetail(id));
             return org.springframework.http.ResponseEntity.ok()
                     .header(org.springframework.http.HttpHeaders.CONTENT_TYPE, "application/pdf")
@@ -805,7 +851,7 @@ public class InvoiceCompensationService {
 
         /** COMP-5 — revierte una compensación (contraasiento + facturas a pendiente). */
         @PostMapping("/{id}/reverse")
-        public CompensationResult reverse(@PathVariable String id) {
+        public CompensationResult reverse(@PathVariable("id") String id) {
             return service.reverse(id);
         }
     }
