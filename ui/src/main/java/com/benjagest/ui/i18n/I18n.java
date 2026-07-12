@@ -7442,6 +7442,10 @@ public final class I18n {
             case "bank.import.done_title" -> "Statement imported";
             case "bank.import.done_body" -> "{total} rows: {imported} imported, {skipped} already existed. Review the reconciliation next.";
             case "bank.import.fail" -> "Could not import the statement";
+            case "bank.import.filter_extract" -> "Bank statement (Excel / CSV / N43)";
+            case "bank.import.filter_all" -> "All files";
+            case "bank.import.auto_hint" -> "Pick the file your bank gives you (Excel .xlsx, CSV or N43). The format is detected automatically — you don't need to know which one it is.";
+            case "accounting.error.server" -> "Internal server error. Please try again; if it persists, let me know.";
             case "bank.col.active" -> "Active";
             case "bank.col.date" -> "Date";
             case "bank.col.description" -> "Description";
@@ -7487,6 +7491,14 @@ public final class I18n {
             case "bank.reconcile.done" -> "{ok} reconciled, {fail} could not be reconciled.";
             case "bank.reconcile.fail" -> "Could not reconcile the movements";
             case "bank.reconcile.load_fail" -> "Could not load the reconciliation";
+            case "bank.reconcile.open" -> "Reconcile";
+            // F1-BANCO-IGNORE
+            case "bank.ignore.btn" -> "Ignore movement";
+            case "bank.ignore.pick" -> "Select a movement first.";
+            case "bank.ignore.only_pending" -> "Only pending (unreconciled) movements can be ignored.";
+            case "bank.ignore.header" -> "Mark this movement as ignored (bank fee, etc.). It leaves the pending list.";
+            case "bank.ignore.reason" -> "Reason (optional):";
+            case "bank.ignore.fail" -> "Could not ignore the movement";
             case "loans.col.code" -> "Code";
             case "loans.col.description" -> "Description";
             case "loans.col.lender" -> "Lender";
@@ -8744,6 +8756,10 @@ public final class I18n {
             case "bank.import.done_title" -> "Extracto importado";
             case "bank.import.done_body" -> "{total} filas: {imported} importadas, {skipped} ya existían. Revisa la conciliación a continuación.";
             case "bank.import.fail" -> "No se pudo importar el extracto";
+            case "bank.import.filter_extract" -> "Extracto bancario (Excel / CSV / N43)";
+            case "bank.import.filter_all" -> "Todos los archivos";
+            case "bank.import.auto_hint" -> "Elige el fichero que te da tu banco (Excel .xlsx, CSV o N43). El formato se detecta solo — no necesitas saber cuál es.";
+            case "accounting.error.server" -> "Error interno del servidor. Vuelve a intentarlo; si persiste, avísame.";
             case "bank.col.active" -> "Activa";
             case "bank.col.date" -> "Fecha";
             case "bank.col.description" -> "Descripción";
@@ -8789,6 +8805,14 @@ public final class I18n {
             case "bank.reconcile.done" -> "{ok} conciliados, {fail} no se pudieron conciliar.";
             case "bank.reconcile.fail" -> "No se pudieron conciliar los movimientos";
             case "bank.reconcile.load_fail" -> "No se pudo cargar la conciliación";
+            case "bank.reconcile.open" -> "Conciliar";
+            // F1-BANCO-IGNORE
+            case "bank.ignore.btn" -> "Ignorar movimiento";
+            case "bank.ignore.pick" -> "Selecciona antes un movimiento.";
+            case "bank.ignore.only_pending" -> "Solo se pueden ignorar los movimientos pendientes (sin conciliar).";
+            case "bank.ignore.header" -> "Marcar este movimiento como ignorado (comisión, etc.). Sale de la lista de pendientes.";
+            case "bank.ignore.reason" -> "Motivo (opcional):";
+            case "bank.ignore.fail" -> "No se pudo ignorar el movimiento";
             case "loans.col.code" -> "Código";
             case "loans.col.description" -> "Descripción";
             case "loans.col.lender" -> "Acreedor";

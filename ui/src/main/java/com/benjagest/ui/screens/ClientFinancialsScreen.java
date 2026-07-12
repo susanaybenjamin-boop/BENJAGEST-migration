@@ -97,9 +97,24 @@ public class ClientFinancialsScreen {
                     err -> showError("No se cargaron movimientos", err));
         });
 
-        // BANK-IMPORT — importar extracto bancario (Norma 43 / CSV).
+        // BANK-IMPORT — importar extracto bancario (autodetecta Excel/CSV/N43).
         Button importBtn = new Button(tt.apply("bank.import.btn"));
         importBtn.setOnAction(e -> showBankImportDialog(accountsTable, movementsTable));
+
+        // F1-BANCO-REVIEW — reabrir la revisión de conciliación en cualquier
+        // momento (no solo justo tras importar).
+        Button reconcileBtn = new Button(tt.apply("bank.reconcile.open"));
+        reconcileBtn.setOnAction(e -> {
+            BankAccountView sel = accountsTable.getSelectionModel().getSelectedItem();
+            if (sel == null) sel = accountsTable.getItems().isEmpty() ? null : accountsTable.getItems().get(0);
+            if (sel == null) { showInfo(tt.apply("bank.reconcile.open"), tt.apply("bank.import.no_accounts")); return; }
+            openReconcileReview(sel.id(), accountsTable, movementsTable);
+        });
+
+        // F1-BANCO-IGNORE — sacar de pendientes un movimiento sin factura
+        // (comisión, etc.) para que no quede colgado.
+        Button ignoreBtn = new Button(tt.apply("bank.ignore.btn"));
+        ignoreBtn.setOnAction(e -> ignoreSelectedMovement(accountsTable, movementsTable));
 
         accountsTable.getSelectionModel().selectedItemProperty().addListener((obs, oldV, newV) -> {
             if (newV == null) { movementsTable.getItems().clear(); return; }
@@ -110,7 +125,7 @@ public class ClientFinancialsScreen {
 
         Label accLabel = new Label("Cuentas bancarias");
         accLabel.getStyleClass().add("settings-section-title");
-        HBox accActions = new HBox(8, newAccount, refreshAccounts, loadMovs, importBtn);
+        HBox accActions = new HBox(8, newAccount, refreshAccounts, loadMovs, importBtn, reconcileBtn);
         VBox accountsBox = new VBox(8, accLabel, accActions, accountsTable);
         VBox.setVgrow(accountsTable, Priority.ALWAYS);
         accountsBox.setPadding(new Insets(8));
@@ -120,7 +135,8 @@ public class ClientFinancialsScreen {
         Label hint = new Label("Selecciona una cuenta para ver sus movimientos. "
                 + "Los enlazados a factura aparecen con etiqueta SALES/PURCHASE.");
         hint.setStyle("-fx-text-fill: #6e6e6e;");
-        VBox movBox = new VBox(8, movLabel, hint, movementsTable);
+        HBox movActions = new HBox(8, ignoreBtn);
+        VBox movBox = new VBox(8, movLabel, hint, movActions, movementsTable);
         VBox.setVgrow(movementsTable, Priority.ALWAYS);
         movBox.setPadding(new Insets(8));
 
@@ -211,10 +227,6 @@ public class ClientFinancialsScreen {
         BankAccountView selAcc = accountsTable.getSelectionModel().getSelectedItem();
         accCombo.setValue(selAcc != null ? selAcc : accountsTable.getItems().get(0));
 
-        javafx.scene.control.ComboBox<String> formatCombo = new javafx.scene.control.ComboBox<>(
-                FXCollections.observableArrayList("N43", "CSV", "XLSX"));
-        formatCombo.setValue("N43");
-
         Label fileLabel = new Label(tt.apply("bank.import.no_file"));
         fileLabel.setStyle("-fx-text-fill: #6e6e6e;");
         final java.io.File[] chosen = {null};
@@ -223,24 +235,25 @@ public class ClientFinancialsScreen {
             javafx.stage.FileChooser fc = new javafx.stage.FileChooser();
             fc.setTitle(tt.apply("bank.import.pick_file"));
             fc.getExtensionFilters().addAll(
-                    new javafx.stage.FileChooser.ExtensionFilter("N43 / CSV / TXT / XLSX", "*.n43", "*.csv", "*.txt", "*.xlsx"),
-                    new javafx.stage.FileChooser.ExtensionFilter("Todos", "*.*"));
+                    new javafx.stage.FileChooser.ExtensionFilter(
+                            tt.apply("bank.import.filter_extract"),
+                            "*.xlsx", "*.csv", "*.n43", "*.txt"),
+                    new javafx.stage.FileChooser.ExtensionFilter(tt.apply("bank.import.filter_all"), "*.*"));
             java.io.File f = fc.showOpenDialog(accountsTable.getScene().getWindow());
             if (f != null) {
                 chosen[0] = f;
                 fileLabel.setText(f.getName());
-                String n = f.getName().toLowerCase();
-                if (n.endsWith(".csv")) formatCombo.setValue("CSV");
-                else if (n.endsWith(".n43")) formatCombo.setValue("N43");
-                else if (n.endsWith(".xlsx")) formatCombo.setValue("XLSX");
             }
         });
 
         javafx.scene.layout.GridPane g = new javafx.scene.layout.GridPane();
         g.setHgap(10); g.setVgap(8); g.setPadding(new Insets(12));
         g.add(new Label(tt.apply("bank.import.account")), 0, 0); g.add(accCombo, 1, 0);
-        g.add(new Label(tt.apply("bank.import.format")), 0, 1); g.add(formatCombo, 1, 1);
-        g.add(new Label(tt.apply("bank.import.file")), 0, 2); g.add(new HBox(8, pick, fileLabel), 1, 2);
+        g.add(new Label(tt.apply("bank.import.file")), 0, 1); g.add(new HBox(8, pick, fileLabel), 1, 1);
+        Label fmtHint = new Label(tt.apply("bank.import.auto_hint"));
+        fmtHint.setWrapText(true);
+        fmtHint.setStyle("-fx-text-fill: #6e6e6e;");
+        g.add(fmtHint, 0, 2, 2, 1);
         d.getDialogPane().setContent(g);
 
         d.showAndWait().ifPresent(bt -> {
@@ -250,15 +263,14 @@ public class ClientFinancialsScreen {
                 showInfo(tt.apply("bank.import.title"), tt.apply("bank.import.missing"));
                 return;
             }
-            final String fmt = formatCombo.getValue();
             final java.io.File file = chosen[0];
             async(() -> {
-                // F1-BANCO: el .xlsx es binario — viaja en Base64; el resto en texto.
-                String content = "XLSX".equals(fmt)
-                        ? java.util.Base64.getEncoder().encodeToString(
-                                java.nio.file.Files.readAllBytes(file.toPath()))
-                        : java.nio.file.Files.readString(file.toPath());
-                return api.importBankExtract(acc.id(), fmt, file.getName(), content);
+                // F1-BANCO-AUTO: el fichero SIEMPRE viaja en Base64 (vale para el
+                // .xlsx binario y para csv/n43 de texto); el backend detecta el
+                // formato REAL por el contenido, no por la extensión.
+                String content = java.util.Base64.getEncoder().encodeToString(
+                        java.nio.file.Files.readAllBytes(file.toPath()));
+                return api.importBankExtract(acc.id(), "AUTO", file.getName(), content);
             }, res -> {
                 reloadMovements(acc.id(), movementsTable);
                 showInfo(tt.apply("bank.import.done_title"), tt.apply("bank.import.done_body")
@@ -280,6 +292,32 @@ public class ClientFinancialsScreen {
         async(() -> api.listBankMovements(bankAccountId, null, null, null),
                 rows -> movementsTable.setItems(FXCollections.observableArrayList(rows)),
                 err -> { /* silencioso */ });
+    }
+
+    /**
+     * F1-BANCO-IGNORE — marca IGNORED el movimiento seleccionado (comisión u
+     * otro cargo sin factura) para que salga de "pendientes de conciliar".
+     */
+    private void ignoreSelectedMovement(TableView<BankAccountView> accountsTable,
+                                        TableView<BankMovementRow> movementsTable) {
+        BankMovementRow m = movementsTable.getSelectionModel().getSelectedItem();
+        if (m == null) { showInfo(tt.apply("bank.ignore.btn"), tt.apply("bank.ignore.pick")); return; }
+        if (!"UNRECONCILED".equals(m.status())) {
+            showInfo(tt.apply("bank.ignore.btn"), tt.apply("bank.ignore.only_pending"));
+            return;
+        }
+        javafx.scene.control.TextInputDialog dlg = new javafx.scene.control.TextInputDialog();
+        dlg.setTitle(tt.apply("bank.ignore.btn"));
+        dlg.setHeaderText(tt.apply("bank.ignore.header"));
+        dlg.setContentText(tt.apply("bank.ignore.reason"));
+        dlg.showAndWait().ifPresent(reason -> async(
+                () -> { api.ignoreMovement(m.id(), reason); return null; },
+                v -> {
+                    reloadMovements(m.bankAccountId(), movementsTable);
+                    com.benjagest.ui.support.RefreshBus.emit(
+                            com.benjagest.ui.support.RefreshBus.TOPIC_BANK_ACCOUNTS);
+                },
+                err -> showError(tt.apply("bank.ignore.fail"), err)));
     }
 
     /**
@@ -660,9 +698,29 @@ public class ClientFinancialsScreen {
             a.showAndWait();
             return;
         }
-        Alert a = new Alert(AlertType.ERROR, title + "\n\n"
-                + (err.getMessage() == null ? err.toString() : err.getMessage()));
+        Alert a = new Alert(AlertType.ERROR, title + "\n\n" + humanize(err));
         a.showAndWait();
+    }
+
+    /**
+     * Convierte el error técnico del backend en algo legible. El cliente lanza
+     * "HTTP {code}: {cuerpo JSON}"; aquí se saca el mensaje del servidor y, para
+     * un 5xx, se muestra un texto genérico en vez de filtrar SQL/stacktrace.
+     */
+    private String humanize(Throwable err) {
+        String raw = err.getMessage() == null ? err.toString() : err.getMessage();
+        if (raw == null) return "";
+        java.util.regex.Matcher st = java.util.regex.Pattern
+                .compile("\"status\"\\s*:\\s*(\\d{3})").matcher(raw);
+        if (st.find() && st.group(1).startsWith("5")) {
+            return tt.apply("accounting.error.server");
+        }
+        java.util.regex.Matcher m = java.util.regex.Pattern
+                .compile("\"message\"\\s*:\\s*\"((?:\\\\.|[^\"])*)\"").matcher(raw);
+        if (m.find()) {
+            return m.group(1).replace("\\\"", "\"").replace("\\n", " ").replace("\\r", "").trim();
+        }
+        return raw;
     }
 
     private void logSilent(String where, Throwable err) {
