@@ -23,6 +23,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -311,6 +312,155 @@ public class InvoiceCompensationService {
                 date, compensable, salesPending, purchasePending,
                 salesAllocs, purchaseAllocs);
     }
+
+    // ====================================================================
+    //  COMP-5 — Reversión (contraasiento + facturas a pendiente)
+    // ====================================================================
+
+    /**
+     * Revierte una compensación ACTIVE: crea un contraasiento POSTED (Debe 430
+     * / Haber 400, invirtiendo el original — no se borra un asiento POSTED) y
+     * devuelve las facturas a pendiente (los vencimientos saldados por esta
+     * compensación vuelven a PENDING). Transaccional.
+     */
+    @Transactional
+    public CompensationResult reverse(String compensationId) {
+        String companyId = tenant.getCurrentCompanyId();
+        LocalDate date = LocalDate.now();
+
+        Comp comp = jdbc.query("""
+                SELECT id, counterparty_nif, counterparty_name, compensation_date,
+                       amount, journal_entry_id, status
+                  FROM invoice_compensations
+                 WHERE id = ? AND company_id = ?
+                """, rs -> rs.next() ? new Comp(rs.getString("id"),
+                        rs.getString("counterparty_nif"), rs.getString("counterparty_name"),
+                        rs.getBigDecimal("amount"), rs.getString("journal_entry_id"),
+                        rs.getString("status")) : null,
+                compensationId, companyId);
+        if (comp == null) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Compensación no encontrada.");
+        if (!"ACTIVE".equals(comp.status())) throw bad("Esta compensación ya está revertida.");
+
+        // 1) Contraasiento POSTED invirtiendo las líneas del original.
+        if (comp.journalEntryId() != null) {
+            List<LineRequest> reversed = jdbc.query("""
+                    SELECT account_id, description, debit, credit
+                      FROM journal_entry_lines WHERE journal_entry_id = ?
+                    """, (rs, n) -> new LineRequest(rs.getString("account_id"), null,
+                            "Reversión — " + nz(rs.getString("description")),
+                            rs.getBigDecimal("credit"), rs.getBigDecimal("debit")),
+                    comp.journalEntryId());
+            if (!reversed.isEmpty()) {
+                manualEntry.createImportedPosted(
+                        new ManualEntryRequest(date,
+                                "Reversión compensación " + nz(comp.counterpartyName()),
+                                reversed, true),
+                        "COMPENSATION_REVERSAL", compensationId);
+            }
+        }
+
+        // 2) Devolver a PENDING los vencimientos saldados por esta compensación.
+        List<Object[]> lines = jdbc.query("""
+                SELECT invoice_kind, invoice_id FROM invoice_compensation_lines
+                 WHERE compensation_id = ?
+                """, (rs, n) -> new Object[]{rs.getString("invoice_kind"), rs.getString("invoice_id")},
+                compensationId);
+        jdbc.update("""
+                UPDATE invoice_due_dates
+                   SET status = 'PENDING', paid_date = NULL, payment_method = NULL,
+                       journal_entry_id = NULL
+                 WHERE company_id = ? AND journal_entry_id = ? AND payment_method = 'COMPENSATION'
+                """, companyId, comp.journalEntryId());
+        for (Object[] l : lines) {
+            String kind = (String) l[0];
+            String invoiceId = (String) l[1];
+            if ("SALES".equals(kind)) {
+                BigDecimal paid = jdbc.queryForObject("""
+                        SELECT COALESCE(SUM(amount), 0) FROM invoice_due_dates
+                         WHERE company_id = ? AND invoice_kind = 'SALES'
+                           AND invoice_id = ? AND status = 'PAID'
+                        """, BigDecimal.class, companyId, invoiceId);
+                BigDecimal total = jdbc.queryForObject(
+                        "SELECT total FROM sales_invoices WHERE id = ? AND company_id = ?",
+                        BigDecimal.class, invoiceId, companyId);
+                BigDecimal p = paid == null ? BigDecimal.ZERO : paid;
+                String st = p.signum() <= 0 ? "PENDING"
+                        : (total != null && p.add(new BigDecimal("0.01")).compareTo(total) >= 0
+                                ? "PAID" : "PARTIAL");
+                jdbc.update("UPDATE sales_invoices SET payment_status = ?, paid_amount = ? WHERE id = ? AND company_id = ?",
+                        st, p, invoiceId, companyId);
+            } else {
+                jdbc.update("UPDATE purchase_invoices SET paid = FALSE, paid_date = NULL WHERE id = ? AND company_id = ?",
+                        invoiceId, companyId);
+            }
+        }
+
+        // 3) Marcar la compensación como revertida.
+        jdbc.update("""
+                UPDATE invoice_compensations SET status = 'REVERSED', reversed_at = CURRENT_TIMESTAMP
+                 WHERE id = ? AND company_id = ?
+                """, compensationId, companyId);
+
+        return new CompensationResult(compensationId, comp.journalEntryId(), 0,
+                comp.nif(), comp.counterpartyName(), date, comp.amount(),
+                null, null, List.of(), List.of());
+    }
+
+    private record Comp(String id, String nif, String counterpartyName, BigDecimal amount,
+                        String journalEntryId, String status) {}
+
+    // ====================================================================
+    //  COMP-4 — Listado + detalle (justificante)
+    // ====================================================================
+
+    /** Compensaciones ejecutadas por la empresa activa (recientes primero). */
+    public List<CompRow> listCompensations() {
+        String companyId = tenant.getCurrentCompanyId();
+        return jdbc.query("""
+                SELECT ic.id, ic.counterparty_nif, ic.counterparty_name,
+                       ic.compensation_date, ic.amount, ic.status, je.entry_number
+                  FROM invoice_compensations ic
+                  LEFT JOIN journal_entries je ON je.id = ic.journal_entry_id
+                 WHERE ic.company_id = ?
+                 ORDER BY ic.created_at DESC
+                """, (rs, n) -> new CompRow(rs.getString("id"),
+                        rs.getString("counterparty_nif"), rs.getString("counterparty_name"),
+                        rs.getDate("compensation_date").toLocalDate(),
+                        rs.getBigDecimal("amount"), rs.getString("status"),
+                        rs.getObject("entry_number") == null ? 0 : rs.getInt("entry_number")),
+                companyId);
+    }
+
+    /** Detalle de una compensación para el justificante. */
+    public CompensationDetail getDetail(String id) {
+        String companyId = tenant.getCurrentCompanyId();
+        CompRow head = jdbc.query("""
+                SELECT ic.id, ic.counterparty_nif, ic.counterparty_name,
+                       ic.compensation_date, ic.amount, ic.status, je.entry_number
+                  FROM invoice_compensations ic
+                  LEFT JOIN journal_entries je ON je.id = ic.journal_entry_id
+                 WHERE ic.id = ? AND ic.company_id = ?
+                """, rs -> rs.next() ? new CompRow(rs.getString("id"),
+                        rs.getString("counterparty_nif"), rs.getString("counterparty_name"),
+                        rs.getDate("compensation_date").toLocalDate(),
+                        rs.getBigDecimal("amount"), rs.getString("status"),
+                        rs.getObject("entry_number") == null ? 0 : rs.getInt("entry_number")) : null,
+                id, companyId);
+        if (head == null) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Compensación no encontrada.");
+        List<DetailLine> lines = jdbc.query("""
+                SELECT invoice_kind, invoice_number, amount FROM invoice_compensation_lines
+                 WHERE compensation_id = ? ORDER BY invoice_kind, invoice_number
+                """, (rs, n) -> new DetailLine(rs.getString("invoice_kind"),
+                        rs.getString("invoice_number"), rs.getBigDecimal("amount")), id);
+        return new CompensationDetail(head, lines);
+    }
+
+    public record CompRow(String id, String nif, String counterpartyName, LocalDate date,
+                          BigDecimal amount, String status, int entryNumber) {}
+
+    public record DetailLine(String invoiceKind, String invoiceNumber, BigDecimal amount) {}
+
+    public record CompensationDetail(CompRow header, List<DetailLine> lines) {}
 
     // ---- carga de facturas seleccionadas --------------------------------
 
@@ -610,9 +760,12 @@ public class InvoiceCompensationService {
     @RequiresRole({"OWNER", "ADMIN", "ACCOUNTANT"})
     public static class Controller {
         private final InvoiceCompensationService service;
+        private final InvoiceCompensationPdfGenerator pdfGenerator;
 
-        public Controller(InvoiceCompensationService service) {
+        public Controller(InvoiceCompensationService service,
+                          InvoiceCompensationPdfGenerator pdfGenerator) {
             this.service = service;
+            this.pdfGenerator = pdfGenerator;
         }
 
         /** COMP-1 — propuestas de compensación de la empresa activa. */
@@ -625,6 +778,35 @@ public class InvoiceCompensationService {
         @PostMapping("/execute")
         public CompensationResult execute(@RequestBody ExecuteRequest req) {
             return service.execute(req);
+        }
+
+        /** COMP-4 — compensaciones ejecutadas (para listado). */
+        @GetMapping("/list")
+        public List<CompRow> list() {
+            return service.listCompensations();
+        }
+
+        /** COMP-4 — detalle de una compensación. */
+        @GetMapping("/{id}")
+        public CompensationDetail detail(@PathVariable String id) {
+            return service.getDetail(id);
+        }
+
+        /** COMP-4 — justificante PDF (acuerdo de compensación). */
+        @GetMapping("/{id}/pdf")
+        public org.springframework.http.ResponseEntity<byte[]> pdf(@PathVariable String id) {
+            byte[] bytes = pdfGenerator.generate(service.getDetail(id));
+            return org.springframework.http.ResponseEntity.ok()
+                    .header(org.springframework.http.HttpHeaders.CONTENT_TYPE, "application/pdf")
+                    .header(org.springframework.http.HttpHeaders.CONTENT_DISPOSITION,
+                            "inline; filename=\"compensacion-" + id + ".pdf\"")
+                    .body(bytes);
+        }
+
+        /** COMP-5 — revierte una compensación (contraasiento + facturas a pendiente). */
+        @PostMapping("/{id}/reverse")
+        public CompensationResult reverse(@PathVariable String id) {
+            return service.reverse(id);
         }
     }
 }
