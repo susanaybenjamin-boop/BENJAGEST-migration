@@ -6,6 +6,33 @@
 
 ## FASE 1 — 2026 (consolidación)
 
+**COMP- — compensación (netting) de facturas** 🟡 CONSTRUIDO 2026-07-12 (smoke pendiente)
+- Saldar una venta (430, me deben) contra una compra (400, yo debo) del mismo
+  tercero (mismo NIF), hasta la cantidad concurrente (CC arts. 1195-1202).
+  Marco legal+contable en `docs/compensacion-legal.md`.
+- COMP-1 detección (RO): `InvoiceCompensationService` +
+  GET /api/accounting/compensation/suggestions (+ /invoices?nif=). crossMatch PURO.
+- COMP-2 ejecución: POST /execute → asiento POSTED Debe 400/Haber 430
+  (ManualJournalEntryService.createImportedPosted, source_type='COMPENSATION',
+  cuentas por NIF con TerceroAccountResolverService); saldado por
+  invoice_due_dates PENDING FIFO (medio de pago compensación, sin tesorería,
+  parte el parcial). NO toca SIF, NO dispara REFLEJO. V177 registra la
+  compensación (invoice_compensations + _lines).
+- COMP-3 UI: sub-pestaña "Compensación" en el grupo Contabilidad; propuestas +
+  multi-selección de facturas + Compensar + listado con justificante PDF y
+  revertir. i18n ES+EN, auto-refresh, source_type en el filtro Origen.
+- COMP-4 justificante: InvoiceCompensationPdfGenerator (acuerdo de compensación,
+  CC 1195-1202) + GET /{id}/pdf, /list, /{id}.
+- COMP-5 reversión: POST /{id}/reverse → contraasiento POSTED (no borra el
+  original) + facturas a pendiente.
+- Decisiones Benjamin 2026-07-12: hacerlo por ley (investigado); disparo por
+  propuesta automática; escenario bancario "por la diferencia" (un movimiento
+  neto concilia el residual); alcance mismo NIF con varias facturas por lado.
+- Verificado: compila (backend+UI); 136 tests backend verdes (10 nuevos puros:
+  cruce + reparto FIFO que garantiza el cuadre). PENDIENTE smoke end-to-end en
+  ejecución (asiento/303/saldado/reversión/PDF) — el servicio Windows ocupa
+  8080/13307 y el puerto embebido está hardcodeado.
+
 **F1-303UI — casillas "otros tipos" en el editor del 303** ✅ HECHO 2026-07-10
 - `ui/screens/TaxScreen.java`: pintar `base_otros_tipos`/`cuota_otros_tipos`
   (el backend ya las manda desde AeatExtraModelsService). i18n aeat303.*
