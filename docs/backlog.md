@@ -1,6 +1,6 @@
 # Backlog operativo BENJAGEST
 
-> **Última actualización: 2026-07-12 — arreglo import Excel (autodetección) + bloque bancario completo (Conciliar/Ignorar). EN DEVELOP, SIN RELEASE (Benjamin acumula para probar Excel + lo nuevo juntos en la próxima).**
+> **Última actualización: 2026-07-12 — arreglo import Excel (autodetección) + bloque bancario completo (Conciliar/Ignorar). RELEASE v0.1.34 (tag develop `e9ee3486`).**
 >
 > ## 🚀 PROMPT PARA LA PRÓXIMA SESIÓN (copiar y pegar)
 >
@@ -12,7 +12,8 @@
 > - ✅ **F1-BANCO-AUTO** (`52c33880`) — a petición de Benjamin (sin extensiones visibles no sabes el tipo): se quita el selector de formato. UN SOLO "Importar extracto" que manda el fichero en Base64 y el backend **autodetecta** por contenido (xlsx = firma ZIP 'PK'; texto = N43 si abre con registro '11' de 80+ chars, si no CSV). El batch guarda el formato detectado.
 > - ✅ **Error legible** (`52c33880`) — showError deja de volcar el JSON/SQL crudo (queja de Benjamin: "está en lenguaje código puro"); saca el `message` del backend y en 5xx muestra texto genérico.
 > - ✅ **Bloque bancario completo** (`52c33880`) — botón **"Conciliar"** (reabre la revisión de pendientes cuando quieras) + botón **"Ignorar movimiento"** (saca de pendientes una comisión sin factura).
-> - 🎯 **2º bug cazado por el smoke** (`c2dc17a9`): `ignore()` usaba `||` (OR en MariaDB, no concat) → 500 "Truncated incorrect DOUBLE value". Bug latente de REC-BANCARIA que el botón nuevo destapó. Fix `CONCAT`. **Smoke end-to-end verde**: import XLSX por AUTO 200 (source_format=XLSX), CSV por AUTO 200 (detectado CSV), Ignorar 200 (sale de pendientes), reconcile-review 200. **Todo en develop, SIN release** (Benjamin la monta cuando quiera probar todo junto).
+> - 🎯 **2º bug cazado por el smoke** (`c2dc17a9`): `ignore()` usaba `||` (OR en MariaDB, no concat) → 500 "Truncated incorrect DOUBLE value". Bug latente de REC-BANCARIA que el botón nuevo destapó. Fix `CONCAT`. **Smoke end-to-end verde**: import XLSX por AUTO 200 (source_format=XLSX), CSV por AUTO 200 (detectado CSV), Ignorar 200 (sale de pendientes), reconcile-review 200.
+> - 📦 **RELEASE v0.1.34** publicada (tag develop `e9ee3486`). **Pendiente Benjamin: actualizar y probar en la app**: Nueva cuenta → Importar Excel BBVA (autodetecta) → revisión (marcar, ver pago existente, Conciliar) → Ignorar una comisión. Es el smoke VISUAL, lo único no verificable en headless.
 >
 > **Sesión 2026-07-11 mañana (con Benjamin):**
 >
