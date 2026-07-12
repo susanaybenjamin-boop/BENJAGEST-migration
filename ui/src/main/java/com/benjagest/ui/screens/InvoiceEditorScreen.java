@@ -34,6 +34,10 @@ public class InvoiceEditorScreen extends ScreenBase {
         void onEditorClose();
         /** Abre el diálogo de nuevo cliente; al guardar ejecuta {@code onSaved}. */
         void openNewCustomer(Runnable onSaved);
+        /** Abre el editor de un cliente EXISTENTE (prerelleno) para completar sus
+         *  datos; al guardar ejecuta {@code onSaved}. Usado por FAC-CLIVAL cuando
+         *  faltan datos fiscales para facturar. */
+        void openCustomerEditor(String customerId, Runnable onSaved);
         /** Reabre el editor pasando por el wrapper del shell (recordNav incluido). */
         void reopenEditor(String existingInvoiceId);
         /** Panel "blocker" de precondición (solo botón volver). */
@@ -1210,6 +1214,63 @@ public class InvoiceEditorScreen extends ScreenBase {
         if (editorTotalLabel != null) editorTotalLabel.setText(money(total.toPlainString()));
     }
 
+    /** FAC-CLIVAL — campos fiscales que le faltan al cliente para emitir una
+     *  factura completa (NIF, nombre, dirección postal). Lista vacía = completo. */
+    private java.util.List<String> missingInvoiceFields(CustomerSummary c) {
+        java.util.List<String> missing = new java.util.ArrayList<>();
+        if (c.taxIdentifier() == null || c.taxIdentifier().isBlank()) missing.add(t("editor.error.customer_incomplete.field.nif"));
+        if (c.legalName() == null || c.legalName().isBlank())         missing.add(t("editor.error.customer_incomplete.field.name"));
+        if (c.address() == null || c.address().isBlank())             missing.add(t("editor.error.customer_incomplete.field.address"));
+        if (c.city() == null || c.city().isBlank())                   missing.add(t("editor.error.customer_incomplete.field.city"));
+        if (c.province() == null || c.province().isBlank())           missing.add(t("editor.error.customer_incomplete.field.province"));
+        if (c.postalCode() == null || c.postalCode().isBlank())       missing.add(t("editor.error.customer_incomplete.field.postal"));
+        return missing;
+    }
+
+    /** Aviso "faltan datos del cliente" con opción de completarlos (modal) y
+     *  reintentar la emisión automáticamente al guardar. */
+    private void promptCompleteCustomer(CustomerSummary customer, String existingId,
+                                         boolean validateAfter, java.util.List<String> missing) {
+        Alert alert = new Alert(Alert.AlertType.WARNING);
+        alert.setTitle(t("editor.error.customer_incomplete.title"));
+        alert.setHeaderText(t("editor.error.customer_incomplete.header"));
+        alert.setContentText(t("editor.error.customer_incomplete.body")
+                + "\n\n• " + String.join("\n• ", missing));
+        ButtonType complete = new ButtonType(t("editor.error.customer_incomplete.complete"),
+                javafx.scene.control.ButtonBar.ButtonData.OK_DONE);
+        ButtonType cancel = new ButtonType(t("editor.error.customer_incomplete.cancel"),
+                javafx.scene.control.ButtonBar.ButtonData.CANCEL_CLOSE);
+        alert.getButtonTypes().setAll(complete, cancel);
+        java.util.Optional<ButtonType> res = alert.showAndWait();
+        if (res.isPresent() && res.get() == complete) {
+            String customerId = customer.id();
+            host.openCustomerEditor(customerId,
+                    () -> reloadCustomerAndRetry(customerId, existingId, validateAfter));
+        }
+    }
+
+    /** Tras completar los datos: recarga la lista de clientes, re-selecciona el
+     *  mismo cliente y reintenta la emisión (ahora con los datos completos). */
+    private void reloadCustomerAndRetry(String customerId, String existingId, boolean validateAfter) {
+        Task<List<CustomerSummary>> reload = new Task<>() {
+            @Override protected List<CustomerSummary> call() throws Exception {
+                return customerApiClient.list();
+            }
+        };
+        reload.setOnSucceeded(e -> {
+            List<CustomerSummary> fresh = reload.getValue();
+            editorCustomerCombo.getItems().setAll(fresh);
+            for (CustomerSummary c : fresh) {
+                if (c.id() != null && c.id().equals(customerId)) {
+                    editorCustomerCombo.getSelectionModel().select(c);
+                    break;
+                }
+            }
+            persistDraft(existingId, validateAfter);
+        });
+        new Thread(reload, "reload-customer-retry").start();
+    }
+
     private void persistDraft(String existingId, boolean validateAfter) {
         CustomerSummary customer = editorCustomerCombo.getValue();
         // RECT-F2: la simplificada no identifica al destinatario — el
@@ -1219,6 +1280,17 @@ public class InvoiceEditorScreen extends ScreenBase {
         if (customer == null && !simplifiedSelected) {
             showError(t("editor.error.no_customer.title"), t("editor.error.no_customer.body"));
             return;
+        }
+        // FAC-CLIVAL: una factura completa (no simplificada) exige NIF + nombre +
+        // dirección del destinatario (art. 6 RD 1619/2012). Si faltan, NO se emite:
+        // se avisa y se ofrece completar los datos del cliente en el modal, y al
+        // guardar se reintenta la emisión con el cliente ya completo.
+        if (customer != null && !simplifiedSelected) {
+            java.util.List<String> missing = missingInvoiceFields(customer);
+            if (!missing.isEmpty()) {
+                promptCompleteCustomer(customer, existingId, validateAfter, missing);
+                return;
+            }
         }
         if (editorLinesTable.getItems().isEmpty()) {
             showError(t("editor.error.no_lines.title"), t("editor.error.no_lines.body"));
