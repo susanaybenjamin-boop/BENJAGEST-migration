@@ -14,6 +14,24 @@ public final class AccountingModels {
 
     private AccountingModels() {}
 
+    // ---- COMP- Compensación (netting) de facturas ----
+
+    /** Propuesta de compensación por tercero (resumen plano). */
+    public record CompensationProposal(String nif, String counterpartyName,
+            BigDecimal salesPending, BigDecimal purchasePending, BigDecimal compensable) {}
+
+    /** Factura pendiente (venta o compra) candidata a compensar. */
+    public record CompensationInvoice(String invoiceKind, String invoiceId, String invoiceNumber,
+            LocalDate invoiceDate, BigDecimal total, BigDecimal pending, boolean due) {}
+
+    /** Compensación ya ejecutada (para el listado). */
+    public record CompensationRow(String id, String nif, String counterpartyName, LocalDate date,
+            BigDecimal amount, String status, int entryNumber) {}
+
+    /** Resultado de ejecutar una compensación. */
+    public record CompensationExecResult(String compensationId, int entryNumber,
+            BigDecimal compensated) {}
+
     /** Fila del Libro Diario (lista). */
     public record DiaryEntry(
             String id,

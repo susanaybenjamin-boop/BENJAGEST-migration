@@ -3,11 +3,16 @@ package com.benjagest.ui.screens;
 import com.benjagest.ui.model.AccountingModels.BankAccountView;
 import com.benjagest.ui.model.AccountingModels.BankMovementRow;
 import com.benjagest.ui.model.AccountingModels.BankReconcileRow;
+import com.benjagest.ui.model.AccountingModels.CompensationInvoice;
+import com.benjagest.ui.model.AccountingModels.CompensationProposal;
+import com.benjagest.ui.model.AccountingModels.CompensationRow;
 import com.benjagest.ui.model.AccountingModels.ExistingPayment;
 import com.benjagest.ui.model.AccountingModels.FixedAssetRow;
 import com.benjagest.ui.model.AccountingModels.InstallmentView;
 import com.benjagest.ui.model.AccountingModels.LoanView;
 import com.benjagest.ui.service.AccountingApiClient;
+import com.benjagest.ui.support.RefreshBus;
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
@@ -22,6 +27,8 @@ import javafx.scene.control.Alert;
 import javafx.scene.control.Alert.AlertType;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
+import javafx.scene.control.ButtonType;
+import javafx.scene.control.SelectionMode;
 import javafx.scene.control.SplitPane;
 import javafx.scene.control.TableColumn;
 import javafx.scene.control.TableView;
@@ -668,6 +675,232 @@ public class ClientFinancialsScreen {
     // ====================================================================
     //  Helpers
     // ====================================================================
+
+    // ====================================================================
+    //  COMP- Compensación (netting) de facturas
+    // ====================================================================
+
+    /**
+     * Pestaña de compensación: propuestas por tercero (ventas 430 vs compras
+     * 400 del mismo NIF), selección de facturas (multi-selección), ejecución
+     * (asiento 400/430) y listado de compensaciones con justificante PDF y
+     * reversión. Controles/datos arriba (patrón Slice 3V), auto-refresh por
+     * RefreshBus.
+     */
+    public Node buildCompensationsTab() {
+        TableView<CompensationProposal> proposals = new TableView<>();
+        proposals.setPrefHeight(170);
+        proposals.getColumns().addAll(List.of(
+                col(tt.apply("comp.col.counterparty"),
+                        p -> p.counterpartyName() == null || p.counterpartyName().isBlank()
+                                ? p.nif() : p.counterpartyName(), 220),
+                col(tt.apply("comp.col.nif"), CompensationProposal::nif, 110),
+                col(tt.apply("comp.col.sales_pending"), p -> compMoney(p.salesPending()), 150),
+                col(tt.apply("comp.col.purchase_pending"), p -> compMoney(p.purchasePending()), 150),
+                col(tt.apply("comp.col.compensable"), p -> compMoney(p.compensable()), 130)));
+
+        TableView<CompensationInvoice> sales = invoiceTable();
+        TableView<CompensationInvoice> purchases = invoiceTable();
+
+        Label compensableLbl = new Label();
+        compensableLbl.getStyleClass().add("settings-section-title");
+
+        Button compensar = new Button(tt.apply("comp.action.execute"));
+        compensar.getStyleClass().add("primary-button");
+        compensar.setDisable(true);
+
+        TableView<CompensationRow> executed = new TableView<>();
+        executed.setPrefHeight(150);
+        executed.getColumns().addAll(List.of(
+                col(tt.apply("comp.col.date"), r -> r.date() == null ? "" : r.date().toString(), 100),
+                col(tt.apply("comp.col.counterparty"),
+                        r -> r.counterpartyName() == null ? r.nif() : r.counterpartyName(), 200),
+                col(tt.apply("comp.col.amount"), r -> compMoney(r.amount()), 120),
+                col(tt.apply("comp.col.entry"), r -> r.entryNumber() > 0 ? "#" + r.entryNumber() : "", 80),
+                col(tt.apply("comp.col.status"),
+                        r -> tt.apply("comp.status." + (r.status() == null ? "ACTIVE" : r.status())), 110)));
+
+        Runnable recompute = () -> compensableLbl.setText(
+                tt.apply("comp.label.compensable") + " " + compMoney(minSelected(sales, purchases)) + " €");
+
+        proposals.getSelectionModel().selectedItemProperty().addListener((o, ov, nv) -> {
+            sales.getItems().clear();
+            purchases.getItems().clear();
+            compensar.setDisable(nv == null);
+            if (nv == null) { recompute.run(); return; }
+            async(() -> api.listCompensationInvoices(nv.nif()), lines -> {
+                for (CompensationInvoice l : lines) {
+                    if ("SALES".equals(l.invoiceKind())) sales.getItems().add(l);
+                    else purchases.getItems().add(l);
+                }
+                sales.getSelectionModel().selectAll();
+                purchases.getSelectionModel().selectAll();
+                recompute.run();
+            }, err -> showError(tt.apply("comp.error.load"), err));
+        });
+        sales.getSelectionModel().getSelectedItems().addListener(
+                (javafx.collections.ListChangeListener<CompensationInvoice>) c -> recompute.run());
+        purchases.getSelectionModel().getSelectedItems().addListener(
+                (javafx.collections.ListChangeListener<CompensationInvoice>) c -> recompute.run());
+
+        compensar.setOnAction(e -> {
+            List<String> sIds = new ArrayList<>();
+            for (CompensationInvoice i : sales.getSelectionModel().getSelectedItems()) sIds.add(i.invoiceId());
+            List<String> pIds = new ArrayList<>();
+            for (CompensationInvoice i : purchases.getSelectionModel().getSelectedItems()) pIds.add(i.invoiceId());
+            if (sIds.isEmpty() || pIds.isEmpty()) {
+                showInfo(tt.apply("comp.action.execute"), tt.apply("comp.msg.pick_both"));
+                return;
+            }
+            Alert confirm = new Alert(AlertType.CONFIRMATION,
+                    tt.apply("comp.confirm.body") + " " + compMoney(minSelected(sales, purchases)) + " €");
+            confirm.setHeaderText(tt.apply("comp.confirm.title"));
+            if (confirm.showAndWait().orElse(ButtonType.CANCEL) != ButtonType.OK) return;
+            async(() -> api.executeCompensation(sIds, pIds), res -> {
+                RefreshBus.emit(RefreshBus.TOPIC_JOURNAL, RefreshBus.TOPIC_SALES, RefreshBus.TOPIC_PURCHASES);
+                showInfo(tt.apply("comp.done.title"),
+                        tt.apply("comp.done.body") + " " + compMoney(res.compensated()) + " €"
+                                + (res.entryNumber() > 0 ? " (#" + res.entryNumber() + ")" : ""));
+                loadProposals(proposals);
+                loadExecuted(executed);
+                sales.getItems().clear();
+                purchases.getItems().clear();
+                recompute.run();
+            }, err -> showError(tt.apply("comp.error.execute"), err));
+        });
+
+        Button pdfBtn = new Button(tt.apply("comp.action.pdf"));
+        pdfBtn.setOnAction(e -> {
+            CompensationRow sel = executed.getSelectionModel().getSelectedItem();
+            if (sel == null) return;
+            async(() -> api.compensationPdf(sel.id()),
+                    bytes -> openPdfViewer(bytes, tt.apply("comp.pdf.title")),
+                    err -> showError(tt.apply("comp.action.pdf"), err));
+        });
+        Button reverseBtn = new Button(tt.apply("comp.action.reverse"));
+        reverseBtn.setOnAction(e -> {
+            CompensationRow sel = executed.getSelectionModel().getSelectedItem();
+            if (sel == null) return;
+            if (!"ACTIVE".equals(sel.status())) {
+                showInfo(tt.apply("comp.action.reverse"), tt.apply("comp.msg.already_reversed"));
+                return;
+            }
+            Alert confirm = new Alert(AlertType.CONFIRMATION, tt.apply("comp.confirm.reverse_body"));
+            confirm.setHeaderText(tt.apply("comp.action.reverse"));
+            if (confirm.showAndWait().orElse(ButtonType.CANCEL) != ButtonType.OK) return;
+            async(() -> { api.reverseCompensation(sel.id()); return Boolean.TRUE; }, ok -> {
+                RefreshBus.emit(RefreshBus.TOPIC_JOURNAL, RefreshBus.TOPIC_SALES, RefreshBus.TOPIC_PURCHASES);
+                loadProposals(proposals);
+                loadExecuted(executed);
+            }, err -> showError(tt.apply("comp.action.reverse"), err));
+        });
+
+        Button refresh = new Button(tt.apply("accounting.action.refresh"));
+        refresh.setOnAction(e -> { loadProposals(proposals); loadExecuted(executed); });
+
+        Label propTitle = sectionTitle("comp.section.proposals");
+        Label salesTitle = sectionTitle("comp.section.sales");
+        Label purchTitle = sectionTitle("comp.section.purchases");
+        Label execTitle = sectionTitle("comp.section.executed");
+
+        VBox salesBox = new VBox(4, salesTitle, sales);
+        VBox purchBox = new VBox(4, purchTitle, purchases);
+        VBox.setVgrow(sales, Priority.ALWAYS);
+        VBox.setVgrow(purchases, Priority.ALWAYS);
+        SplitPane split = new SplitPane(salesBox, purchBox);
+
+        HBox actions = new HBox(10, compensar, compensableLbl);
+        actions.setAlignment(javafx.geometry.Pos.CENTER_LEFT);
+
+        Label hint = new Label(tt.apply("comp.hint.multiselect"));
+        hint.getStyleClass().add("settings-hint");
+
+        HBox execActions = new HBox(8, pdfBtn, reverseBtn, refresh);
+
+        VBox root = new VBox(10, propTitle, proposals, hint, split, actions,
+                execTitle, executed, execActions);
+        root.setPadding(new Insets(12));
+        VBox.setVgrow(split, Priority.ALWAYS);
+
+        RefreshBus.subscribe(RefreshBus.TOPIC_JOURNAL, () -> {
+            loadProposals(proposals);
+            loadExecuted(executed);
+        }, root);
+
+        loadProposals(proposals);
+        loadExecuted(executed);
+        return root;
+    }
+
+    private TableView<CompensationInvoice> invoiceTable() {
+        TableView<CompensationInvoice> t = new TableView<>();
+        t.getSelectionModel().setSelectionMode(SelectionMode.MULTIPLE);
+        t.getColumns().addAll(List.of(
+                col(tt.apply("comp.col.invoice"), i -> i.invoiceNumber() == null ? "—" : i.invoiceNumber(), 140),
+                col(tt.apply("comp.col.date"), i -> i.invoiceDate() == null ? "" : i.invoiceDate().toString(), 100),
+                col(tt.apply("comp.col.total"), i -> compMoney(i.total()), 110),
+                col(tt.apply("comp.col.pending"), i -> compMoney(i.pending()), 110),
+                col(tt.apply("comp.col.due"), i -> i.due() ? "✓" : "", 60)));
+        return t;
+    }
+
+    private BigDecimal minSelected(TableView<CompensationInvoice> sales,
+                                   TableView<CompensationInvoice> purchases) {
+        BigDecimal s = BigDecimal.ZERO;
+        for (CompensationInvoice i : sales.getSelectionModel().getSelectedItems()) {
+            if (i.pending() != null) s = s.add(i.pending());
+        }
+        BigDecimal p = BigDecimal.ZERO;
+        for (CompensationInvoice i : purchases.getSelectionModel().getSelectedItems()) {
+            if (i.pending() != null) p = p.add(i.pending());
+        }
+        return s.min(p);
+    }
+
+    private void loadProposals(TableView<CompensationProposal> table) {
+        async(() -> api.listCompensationSuggestions(),
+                rows -> table.setItems(FXCollections.observableArrayList(rows)),
+                err -> logSilent("comp-proposals", err));
+    }
+
+    private void loadExecuted(TableView<CompensationRow> table) {
+        async(() -> api.listCompensations(),
+                rows -> table.setItems(FXCollections.observableArrayList(rows)),
+                err -> logSilent("comp-executed", err));
+    }
+
+    private void openPdfViewer(byte[] bytes, String title) {
+        try {
+            com.benjagest.ui.support.PdfViewer viewer = new com.benjagest.ui.support.PdfViewer();
+            viewer.loadFromBytes(bytes);
+            javafx.stage.Stage st = new javafx.stage.Stage();
+            st.setTitle(title);
+            Button close = new Button(tt.apply("comp.pdf.close"));
+            close.setOnAction(e -> st.close());
+            HBox bar = new HBox(8, close);
+            bar.setPadding(new Insets(8));
+            VBox box = new VBox(bar, viewer);
+            VBox.setVgrow(viewer, Priority.ALWAYS);
+            javafx.scene.Scene sc = new javafx.scene.Scene(box, 900, 720);
+            try {
+                sc.getStylesheets().add(getClass().getResource("/styles/app.css").toExternalForm());
+            } catch (Exception ignore) {}
+            st.setScene(sc);
+            st.show();
+        } catch (Exception ex) {
+            showError(title, ex);
+        }
+    }
+
+    private Label sectionTitle(String key) {
+        Label l = new Label(tt.apply(key));
+        l.getStyleClass().add("settings-section-title");
+        return l;
+    }
+
+    private static String compMoney(BigDecimal v) {
+        return v == null ? "0,00" : String.format(java.util.Locale.GERMANY, "%,.2f", v);
+    }
 
     private <T> TableColumn<T, String> col(String header, java.util.function.Function<T, String> getter, double width) {
         TableColumn<T, String> c = new TableColumn<>(header);

@@ -1386,6 +1386,89 @@ public class AccountingApiClient {
     //  HTTP helpers
     // ====================================================================
 
+    // ====================================================================
+    //  COMP- Compensación (netting) de facturas
+    // ====================================================================
+
+    /** Propuestas de compensación (terceros con ventas y compras pendientes). */
+    public List<AccountingModels.CompensationProposal> listCompensationSuggestions()
+            throws IOException, InterruptedException {
+        String json = get("/accounting/compensation/suggestions");
+        List<AccountingModels.CompensationProposal> out = new ArrayList<>();
+        for (String o : splitJsonArray(json)) {
+            out.add(new AccountingModels.CompensationProposal(
+                    strField(o, "nif"), strField(o, "counterpartyName"),
+                    bdField(o, "salesPending"), bdField(o, "purchasePending"),
+                    bdField(o, "compensable")));
+        }
+        return out;
+    }
+
+    /** Facturas pendientes (ventas + compras) de un tercero por NIF. */
+    public List<AccountingModels.CompensationInvoice> listCompensationInvoices(String nif)
+            throws IOException, InterruptedException {
+        String json = get("/accounting/compensation/invoices?nif="
+                + URLEncoder.encode(nif == null ? "" : nif, StandardCharsets.UTF_8));
+        List<AccountingModels.CompensationInvoice> out = new ArrayList<>();
+        for (String o : splitJsonArray(json)) {
+            out.add(new AccountingModels.CompensationInvoice(
+                    strField(o, "invoiceKind"), strField(o, "invoiceId"),
+                    strField(o, "invoiceNumber"), localDateField(o, "invoiceDate"),
+                    bdField(o, "total"), bdField(o, "pending"), boolField(o, "due")));
+        }
+        return out;
+    }
+
+    /** Ejecuta una compensación (asiento 400/430 + saldado). */
+    public AccountingModels.CompensationExecResult executeCompensation(
+            List<String> salesIds, List<String> purchaseIds)
+            throws IOException, InterruptedException {
+        StringBuilder b = new StringBuilder("{\"salesInvoiceIds\":");
+        appendIdArray(b, salesIds);
+        b.append(",\"purchaseInvoiceIds\":");
+        appendIdArray(b, purchaseIds);
+        b.append("}");
+        String json = postRaw("/accounting/compensation/execute", b.toString());
+        return new AccountingModels.CompensationExecResult(
+                strField(json, "compensationId"), intField(json, "entryNumber"),
+                bdField(json, "compensated"));
+    }
+
+    /** Compensaciones ya ejecutadas. */
+    public List<AccountingModels.CompensationRow> listCompensations()
+            throws IOException, InterruptedException {
+        String json = get("/accounting/compensation/list");
+        List<AccountingModels.CompensationRow> out = new ArrayList<>();
+        for (String o : splitJsonArray(json)) {
+            out.add(new AccountingModels.CompensationRow(
+                    strField(o, "id"), strField(o, "nif"), strField(o, "counterpartyName"),
+                    localDateField(o, "date"), bdField(o, "amount"), strField(o, "status"),
+                    intField(o, "entryNumber")));
+        }
+        return out;
+    }
+
+    /** Revierte una compensación (contraasiento + facturas a pendiente). */
+    public void reverseCompensation(String id) throws IOException, InterruptedException {
+        postRaw("/accounting/compensation/" + id + "/reverse", "");
+    }
+
+    /** Justificante PDF (acuerdo de compensación). */
+    public byte[] compensationPdf(String id) throws IOException, InterruptedException {
+        return getBytes("/accounting/compensation/" + id + "/pdf");
+    }
+
+    private static void appendIdArray(StringBuilder b, List<String> ids) {
+        b.append('[');
+        if (ids != null) {
+            for (int i = 0; i < ids.size(); i++) {
+                if (i > 0) b.append(',');
+                b.append('"').append(ids.get(i)).append('"');
+            }
+        }
+        b.append(']');
+    }
+
     private String get(String path) throws IOException, InterruptedException {
         return executeWithRetry(() -> {
             HttpRequest.Builder b = HttpRequest.newBuilder(URI.create(baseUrl + path))

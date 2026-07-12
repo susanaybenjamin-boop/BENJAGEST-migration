@@ -10322,7 +10322,10 @@ public class BenjagestUiApplication extends Application
             subLoans.setGraphic(icon("fas-hand-holding-usd"));
             Tab subAssets = new Tab(t("advisory.client.tab.assets"), financials.buildAssetsTab());
             subAssets.setGraphic(icon("fas-cubes"));
-            accSub.getTabs().addAll(subDiary, subBanks, subLoans, subAssets);
+            Tab subCompensations = new Tab(t("advisory.client.tab.compensations"),
+                    financials.buildCompensationsTab());
+            subCompensations.setGraphic(icon("fas-balance-scale"));
+            accSub.getTabs().addAll(subDiary, subBanks, subLoans, subAssets, subCompensations);
             Tab contabGroup = new Tab(t("advisory.client.tab.accounting"), accSub);
             contabGroup.setGraphic(icon("fas-book"));
             tabs.getTabs().add(contabGroup);
