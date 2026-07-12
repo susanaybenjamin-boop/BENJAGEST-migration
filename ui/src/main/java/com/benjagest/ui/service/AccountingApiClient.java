@@ -702,6 +702,17 @@ public class AccountingApiClient {
                 bdField(json, "openingBalance"), boolField(json, "active"));
     }
 
+    /** F1-BANCO-IGNORE — marca un movimiento como IGNORED (comisión sin factura). */
+    public void ignoreMovement(String movementId, String reason)
+            throws IOException, InterruptedException {
+        String path = "/accounting/bank-movements/"
+                + URLEncoder.encode(movementId, StandardCharsets.UTF_8) + "/ignore";
+        if (reason != null && !reason.isBlank()) {
+            path += "?reason=" + URLEncoder.encode(reason, StandardCharsets.UTF_8);
+        }
+        postRaw(path, "{}");
+    }
+
     public List<AccountingModels.BankMovementRow> listBankMovements(
             String bankAccountId, String status, LocalDate from, LocalDate to)
             throws IOException, InterruptedException {
