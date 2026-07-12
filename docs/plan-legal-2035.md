@@ -24,14 +24,27 @@ bloqueo de cierre, rectificativas R1-R5, RGPD técnico).
 
 ## FASE 2 — ene→dic 2026/27 (duro: antes del 1-ene-2027): VERI*FACTU real (VF3-FINAL)
 Las SOCIEDADES de la cartera quedan obligadas el 1-ene-2027.
-- [ ] Certificado FNMT + alta como SIF en sede AEAT (entorno de pruebas).
-- [ ] XML según XSD oficial AEAT + firma XAdES-EPES estricta
-      (SignaturePolicyIdentifier, SigningCertificate).
-- [ ] Cliente SOAP real: envío, parseo Aceptado/AceptadoConErrores/
-      Rechazado, reintentos, flujo de subsanación.
+
+**Hallazgos 2026-07-12 (contra el XSD oficial SuministroInformacion.xsd):**
+la HUELLA ya es correcta (`VerifactuHashService` = canónico oficial, validado
+contra AEAT vía CONTENDO); y el **XAdES NO hace falta para VeriFactu** — en el
+XSD `ds:Signature` es opcional (0..1), solo el modo NO-VeriFactu (offline) exige
+firma. Esto reduce el trabajo real. Slices:
+- [x] **VF3-XML** — `AeatRegistroAltaXmlBuilder` (RegistroAlta al XSD oficial) +
+      4 tests golden. HECHO (`5c7cc332`).
+- [ ] **VF3-SIF** — identidad del SIF (NombreSistemaInformatico, IdSistemaInformatico
+      [2 chars], Versión, NºInstalación, NombreRazon/NIF del PRODUCTOR = Benjamin).
+      **Requiere que Benjamin decida darse de alta como productor de software SIF
+      en sede AEAT.**
+- [ ] **VF3-CHAIN** — persistir nº+fecha del registro anterior (hoy solo la huella)
+      para el bloque `RegistroAnterior` del Encadenamiento.
+- [ ] **VF3-SEND** — embeber el RegistroAlta real en el SOAP de `AeatVerifactuClient`,
+      TrustManager real (CAs del sistema, no permisivo), parseo
+      Aceptado/AceptadoConErrores/Rechazado + reintentos/subsanación.
+- [ ] **VF3-CERT** — cargar el .p12 FNMT (sesión conjunta, contraseña de Benjamin)
+      + alta como SIF → validar en PREPRODUCCIÓN AEAT (mode=TEST, `prewww1.aeat.es`).
 - [ ] Selector de modalidad por empresa + migración asistida
       NO VERIFACTU → VERIFACTU (cadenas intactas).
-- [ ] Validación en el entorno de pruebas AEAT con facturas reales.
 
 ## FASE 3 — 1-jul-2027: autónomos obligados (Benjamin incluido)
 - [ ] Onboarding de la cartera: activar modalidad elegida por cliente,

@@ -121,6 +121,16 @@
 - Smoke end-to-end verde (BD embebida + import real XLSX y CSV + Ignorar +
   reconcile-review). **BLOQUE BANCARIO CERRADO.**
 
+**FAC-CLIVAL — no emitir factura a cliente incompleto** ✅ HECHO 2026-07-12 (v0.1.36, `343c0940`)
+- Bug real (Benjamin): se podía emitir factura ordinaria a un cliente sin
+  NIF/dirección sin aviso; el PDF salía con campos en blanco. Ni UI ni backend
+  ni VeriFactu validaban al destinatario.
+- `InvoiceEditorScreen.persistDraft`: factura NO simplificada + falta NIF, nombre,
+  dirección, población, provincia o CP → aviso "Faltan datos del cliente" + botón
+  "Completar datos" (modal de cliente reutilizado vía nuevo `Host.openCustomerEditor`)
+  → al guardar recarga, re-selecciona y REINTENTA la emisión. Bloquea hasta
+  completar (art. 6 RD 1619/2012). i18n ES+EN. **Pendiente smoke visual de Benjamin.**
+
 **F1-XDIARIO — export xDiario/SUENLACE** (ya especificado en backlog líneas
   1731-1733): `accounting/export/XDiarioExportService` + combo en informes.
 
@@ -134,20 +144,27 @@
 - `backend/.../billing/verifactu/VerifactuConfig*`: campos keystore path/pin
   por empresa (cifrados con FieldCipher, patrón RGPD).
 
-**VF3-XSD — XML oficial**
-- `AeatVerifactuClient.java` (TODOs líneas ~134/172/206): sustituir el XML
-  artesanal por JAXB generado desde los XSD oficiales AEAT (SuministroLR).
-  Test: validar contra XSD en build.
+**VF3-XSD (=VF3-XML) — XML oficial** ✅ HECHO 2026-07-12 (`5c7cc332`)
+- `AeatRegistroAltaXmlBuilder` (clase PURA, patrón `VerifactuHashService`):
+  construye el `<RegistroAlta>` según `SuministroInformacion.xsd` (orden del
+  XSD: IDVersion, IDFactura, TipoFactura, DescripcionOperacion, Destinatarios,
+  Desglose por tipo de IVA, CuotaTotal/ImporteTotal, Encadenamiento, Sistema-
+  Informatico, FechaHoraHusoGenRegistro, TipoHuella=01, Huella). 4 tests golden.
+- **Hallazgo**: la HUELLA de `VerifactuHashService` YA es el canónico oficial
+  (portado de CONTENDO validado contra AEAT) → no se rehace.
+- Pendiente dentro de VF3: VF3-SIF (identidad del SIF, decide Benjamin al darse
+  de alta como productor) · VF3-CHAIN (persistir nº+fecha del registro anterior).
 
-**VF3-XADES — firma estricta**
-- `XmlSignerService`: XAdES-EPES con SignaturePolicyIdentifier +
-  SigningCertificate (librería xades4j). Test de estructura de firma.
+**VF3-XADES — NO aplica a VeriFactu** ~~firma estricta~~
+- **Corregido 2026-07-12**: en el XSD `ds:Signature` es 0..1; el modo VeriFactu
+  (con remisión) NO exige firma XAdES (la cadena de huella + el cert del TLS
+  bastan). El XAdES solo lo exige el modo NO-VeriFactu (offline). Queda para el
+  día que se implemente NO-VeriFactu offline; VF3-FINAL no lo necesita.
 
-**VF3-SOAP — envío real**
-- `AeatVerifactuClient`: quitar TrustManager permisivo; SOAP real con
-  parseo Aceptado/AceptadoConErrores/Rechazado; cola de reintento
-  (tabla `verifactu_outbox` V17x) + reenvío programado; estados visibles
-  en la UI de facturación (badge por factura).
+**VF3-SOAP (=VF3-SEND) — envío real**
+- `AeatVerifactuClient`: embeber el RegistroAlta de `AeatRegistroAltaXmlBuilder`
+  en el SOAP; quitar TrustManager permisivo (CAs del sistema); parseo
+  Aceptado/AceptadoConErrores/Rechazado; cola de reintento + estados en la UI.
 
 **VF3-SWITCH — cambio de modalidad**
 - `VerifactuConfig` + UI Configuración→Facturación: selector NO VERIFACTU ↔
