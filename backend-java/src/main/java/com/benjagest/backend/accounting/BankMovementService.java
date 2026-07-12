@@ -150,9 +150,11 @@ public class BankMovementService {
 
     @Transactional
     public BankMovementView ignore(String movementId, String reason) {
+        // CONCAT, no '||': en MariaDB '||' es OR lógico (salvo PIPES_AS_CONCAT) y
+        // en modo estricto revienta con "Truncated incorrect DOUBLE value".
         jdbcTemplate.update("""
                 UPDATE bank_movements
-                   SET status = 'IGNORED', notes = COALESCE(notes, '') || ?
+                   SET status = 'IGNORED', notes = CONCAT(COALESCE(notes, ''), ?)
                  WHERE id = ? AND company_id = ? AND status = 'UNRECONCILED'
                 """, "\n[IGNORADO] " + (reason == null ? "" : reason),
                 movementId, tenantContext.getCurrentCompanyId());
