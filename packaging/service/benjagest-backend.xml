@@ -1,0 +1,39 @@
+<!--
+  WINSVC (2026-07-12). Configuracion del SERVICIO de Windows del backend BENJAGEST.
+
+  winsw (WinSW.NET4) lee este XML (mismo nombre base que el .exe). El servicio
+  arranca el backend Spring Boot con la BD embebida usando la JRE empaquetada.
+
+  %BASE%        = carpeta donde vive benjagest-backend.exe = raiz de la instalacion
+                  (ahi jpackage deja runtime\, backend.jar y tessdata como app-content).
+  %ProgramData% = C:\ProgramData (machine-wide). La BD, .dbkey y ficheros los
+                  resuelve el propio backend por BenjagestHome (%ProgramData%\BENJAGEST),
+                  independiente de la cuenta (el servicio corre como LocalSystem).
+
+  Se registra con:   benjagest-backend.exe install   (y  start, stop, uninstall)
+-->
+<service>
+  <id>BenjagestBackend</id>
+  <name>BENJAGEST Backend</name>
+  <description>Servidor BENJAGEST: backend REST + base de datos embebida. Arranca con Windows para que la aplicacion de la oficina (y los equipos de empleado en la LAN) se conecten sin lanzarlo a mano.</description>
+
+  <executable>%BASE%\runtime\bin\java.exe</executable>
+  <arguments>-Dbenjagest.db.embedded=true -Dbenjagest.tessdata="%BASE%\tessdata" -jar "%BASE%\backend.jar"</arguments>
+  <workingdirectory>%BASE%</workingdirectory>
+
+  <!-- Log del servicio (rota por tamano, conserva historico). -->
+  <logpath>%ProgramData%\BENJAGEST\logs</logpath>
+  <log mode="roll-by-size">
+    <sizeThreshold>10240</sizeThreshold>
+    <keepFiles>8</keepFiles>
+  </log>
+
+  <!-- Si el backend cae, reintentar en 10s (dos veces) y luego cada minuto. -->
+  <onfailure action="restart" delay="10 sec"/>
+  <onfailure action="restart" delay="10 sec"/>
+  <onfailure action="restart" delay="60 sec"/>
+  <resetfailure>1 hour</resetfailure>
+
+  <!-- Arranque automatico al iniciar Windows (antes del login). -->
+  <startmode>Automatic</startmode>
+</service>
