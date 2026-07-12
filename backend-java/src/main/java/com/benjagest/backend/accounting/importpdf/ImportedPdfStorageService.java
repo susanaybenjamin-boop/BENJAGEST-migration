@@ -38,8 +38,7 @@ public class ImportedPdfStorageService {
             @Value("${benjagest.imported-pdfs.root:}") String configuredRoot) {
         this.root = StringUtils.hasText(configuredRoot)
                 ? configuredRoot
-                : Paths.get(System.getProperty("user.home"),
-                        "benjagest-pdfs-importados").toString();
+                : com.benjagest.backend.config.BenjagestHome.resolve("pdfs-importados").toString();
     }
 
     /** Calcula el SHA-256 hex del contenido. */

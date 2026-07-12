@@ -65,7 +65,7 @@ public class ThirdPartyBillingAgreementService {
         this.pdfGenerator = pdfGenerator;
         this.seriesService = seriesService;
         this.storageRoot = defaultRoot == null || defaultRoot.isBlank()
-                ? Paths.get(System.getProperty("user.home"), "benjagest-facturas").toString()
+                ? com.benjagest.backend.config.BenjagestHome.resolve("facturas").toString()
                 : defaultRoot;
     }
 

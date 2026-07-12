@@ -65,7 +65,7 @@ public class CompanyLogoService {
         this.tenantContext = tenantContext;
         this.fallbackRoot = StringUtils.hasText(defaultRoot)
                 ? defaultRoot
-                : Paths.get(System.getProperty("user.home"), "benjagest-facturas").toString();
+                : com.benjagest.backend.config.BenjagestHome.resolve("facturas").toString();
     }
 
     /**
