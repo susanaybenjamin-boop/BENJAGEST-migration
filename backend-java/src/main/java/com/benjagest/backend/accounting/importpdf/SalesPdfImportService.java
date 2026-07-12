@@ -1,6 +1,10 @@
 package com.benjagest.backend.accounting.importpdf;
 
 import com.benjagest.backend.accounting.IncomeAccountClassifierService;
+import com.benjagest.backend.accounting.ManualJournalEntryService;
+import com.benjagest.backend.accounting.ManualJournalEntryService.LineRequest;
+import com.benjagest.backend.accounting.ManualJournalEntryService.ManualEntryRequest;
+import com.benjagest.backend.accounting.ManualJournalEntryService.ManualEntryView;
 import com.benjagest.backend.accounting.TerceroAccountResolverService;
 import com.benjagest.backend.auth.CurrentUserService;
 import com.benjagest.backend.tenant.TenantContext;
@@ -8,6 +12,7 @@ import java.io.IOException;
 import java.math.BigDecimal;
 import java.sql.Date;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
@@ -35,13 +40,17 @@ import org.springframework.web.server.ResponseStatusException;
  *                Haber  477 (IVA repercutido) = cuota IVA
  * </pre>
  *
- * <p>El asiento queda en DRAFT con {@code source_pdf_path} apuntando al
- * fichero archivado para que el asesor pueda revisarlo antes de validar.
+ * <p>TEMA 2 (2026-07-12): antes solo se creaba un asiento DRAFT y la factura
+ * NO aparecía en Facturación (el listado lee de {@code sales_invoices}). Ahora,
+ * como el import del diario CONTENDO, se crea también la factura como
+ * <b>HISTORICAL/VALIDATED</b> en {@code sales_invoices} + su línea, y el asiento
+ * entra <b>POSTED enlazado</b> ({@code source_type=SALES_INVOICE} +
+ * {@code source_id}) para que el 303 la cuente <b>una sola vez</b> (igual que el
+ * diario; NUNCA vía {@code SalesInvoiceService} — línea roja SIF). El
+ * {@code source_pdf_path} se conserva en el asiento para el visor.
  */
 @Service
 public class SalesPdfImportService {
-
-    private static final String SRC_TYPE = "SALES_PDF_IMPORT";
 
     private final JdbcTemplate jdbcTemplate;
     private final TenantContext tenantContext;
@@ -49,19 +58,22 @@ public class SalesPdfImportService {
     private final TerceroAccountResolverService terceroResolver;
     private final IncomeAccountClassifierService classifier;
     private final ImportedPdfStorageService storage;
+    private final ManualJournalEntryService manualEntries;
 
     public SalesPdfImportService(JdbcTemplate jdbcTemplate,
                                    TenantContext tenantContext,
                                    CurrentUserService currentUserService,
                                    TerceroAccountResolverService terceroResolver,
                                    IncomeAccountClassifierService classifier,
-                                   ImportedPdfStorageService storage) {
+                                   ImportedPdfStorageService storage,
+                                   ManualJournalEntryService manualEntries) {
         this.jdbcTemplate = jdbcTemplate;
         this.tenantContext = tenantContext;
         this.currentUserService = currentUserService;
         this.terceroResolver = terceroResolver;
         this.classifier = classifier;
         this.storage = storage;
+        this.manualEntries = manualEntries;
     }
 
     public record Request(
@@ -108,7 +120,7 @@ public class SalesPdfImportService {
                     "Faltan campos obligatorios (fecha, base, IVA, total).");
         }
         String companyId = tenantContext.getCurrentCompanyId();
-        String userId = currentUserService.require().userId();
+        currentUserService.require(); // valida sesión (el created_by lo pone createImportedPosted)
 
         // 1) Resolver fiscal year OPEN.
         String fiscalYearId = findOpenFiscalYearId(companyId, req.invoiceDate());
@@ -150,26 +162,19 @@ public class SalesPdfImportService {
                 ? null
                 : storage.store(companyId, req.invoiceDate().getYear(), req.pdfBytes());
 
-        // 4) Crear journal_entry en DRAFT (entry_number=NULL — se asigna
-        //    al validar, según V58).
-        String entryId = UUID.randomUUID().toString();
-        String concept = buildConcept(req);
-        jdbcTemplate.update("""
-                INSERT INTO journal_entries (
-                    id, company_id, fiscal_year_id, entry_number,
-                    entry_date, concept, source_type, source_id,
-                    status, reviewed, auto_proposed, created_by,
-                    source_pdf_path, source_pdf_sha256
-                ) VALUES (?, ?, ?, NULL, ?, ?, ?, NULL, 'DRAFT', FALSE, TRUE, ?, ?, ?)
-                """,
-                entryId, companyId, fiscalYearId,
-                Date.valueOf(req.invoiceDate()),
-                concept, SRC_TYPE, userId,
-                stored == null ? null : stored.absolutePath(),
-                stored == null ? null : stored.sha256());
+        // 4) Cliente (por NIF) + dedup por nº+cliente. La factura importada se
+        //    guarda como HISTORICAL/VALIDATED (igual que el diario CONTENDO):
+        //    NO se emite (línea roja SIF), solo se refleja para que aparezca en
+        //    Facturación y cuente en el 303 vía el asiento POSTED enlazado.
+        String customerId = ensureCustomer(companyId, req.customerNif(), req.customerName());
+        String invNumber = req.invoiceNumber() == null ? null : req.invoiceNumber().trim();
+        if (invNumber != null && !invNumber.isBlank()
+                && salesInvoiceExists(companyId, invNumber, customerId)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Esta factura ya está importada (nº " + invNumber + ").");
+        }
 
-        // 5) Líneas con descripciones específicas por línea (mismo patrón
-        //    que SalesJournalEntryService.createForSales).
+        // 5) Construir las líneas del asiento (mismo patrón que antes).
         String clientDesc = req.customerName() != null && !req.customerName().isBlank()
                 ? req.customerName() : "Cliente";
         String incomeDesc = req.concept() != null && !req.concept().isBlank()
@@ -186,15 +191,42 @@ public class SalesPdfImportService {
                 + " — " + clientDesc;
         BigDecimal clientDebit = req.totalAmount().subtract(retention);
 
-        insertLine(entryId, clientAcc.accountId(), clientDesc, clientDebit, BigDecimal.ZERO);
+        List<LineRequest> lines = new ArrayList<>();
+        lines.add(new LineRequest(clientAcc.accountId(), null, clientDesc, clientDebit, BigDecimal.ZERO));
         if (acc473 != null) {
-            insertLine(entryId, acc473, "Retención IRPF — " + clientDesc,
-                    retention, BigDecimal.ZERO);
+            lines.add(new LineRequest(acc473, null, "Retención IRPF — " + clientDesc,
+                    retention, BigDecimal.ZERO));
         }
-        insertLine(entryId, acc7xx, incomeDesc, BigDecimal.ZERO, req.baseAmount());
-        insertLine(entryId, acc477, vatDesc, BigDecimal.ZERO, req.vatAmount());
+        lines.add(new LineRequest(acc7xx, null, incomeDesc, BigDecimal.ZERO, req.baseAmount()));
+        lines.add(new LineRequest(acc477, null, vatDesc, BigDecimal.ZERO, req.vatAmount()));
 
-        return new Result(entryId, 0, stored == null ? null : stored.sha256());
+        // 6) Asiento POSTED ENLAZADO a la factura (source_type SALES_INVOICE +
+        //    source_id) — EXACTAMENTE como el diario, para que el 303 cuente 1
+        //    sola vez. NUNCA vía SalesInvoiceService (línea roja SIF).
+        String invoiceId = UUID.randomUUID().toString();
+        String concept = buildConcept(req);
+        ManualEntryView entry = manualEntries.createImportedPosted(
+                new ManualEntryRequest(req.invoiceDate(), concept, lines, true),
+                "SALES_INVOICE", invoiceId);
+        String entryId = entry.id();
+
+        // 7) Conservar el PDF en el asiento (para el visor "ver PDF").
+        if (stored != null) {
+            jdbcTemplate.update("""
+                    UPDATE journal_entries SET source_pdf_path = ?, source_pdf_sha256 = ?
+                     WHERE id = ? AND company_id = ?
+                    """, stored.absolutePath(), stored.sha256(), entryId, companyId);
+        }
+
+        // 8) Factura HISTORICAL en sales_invoices (para que aparezca en
+        //    Facturación) + su línea + ruta del PDF.
+        insertSalesInvoice(invoiceId, companyId, customerId, invNumber, req.invoiceDate(),
+                req.baseAmount(), req.vatAmount(), retention, req.totalAmount(),
+                concept, stored == null ? null : stored.absolutePath());
+        insertSalesLine(invoiceId, incomeDesc, req.baseAmount(), req.vatAmount(),
+                vatRate == null ? BigDecimal.ZERO : vatRate, req.totalAmount());
+
+        return new Result(entryId, entry.entryNumber(), stored == null ? null : stored.sha256());
     }
 
     // ---- helpers --------------------------------------------------------
@@ -226,17 +258,82 @@ public class SalesPdfImportService {
         return ids.isEmpty() ? null : ids.get(0);
     }
 
-    private void insertLine(String entryId, String accountId, String description,
-                              BigDecimal debit, BigDecimal credit) {
+    /** Cliente por NIF (estable) y, si no, por nombre. Lo crea si no existe. */
+    private String ensureCustomer(String companyId, String nif, String name) {
+        String normNif = nif == null ? "" : nif.trim();
+        String legal = name == null || name.isBlank() ? "Cliente" : name.trim();
+        if (!normNif.isBlank()) {
+            List<String> byNif = jdbcTemplate.query("""
+                    SELECT id FROM customers
+                     WHERE company_id = ? AND tax_identifier = ? LIMIT 1
+                    """, (rs, n) -> rs.getString("id"), companyId, normNif);
+            if (!byNif.isEmpty()) return byNif.get(0);
+        }
+        List<String> byName = jdbcTemplate.query("""
+                SELECT id FROM customers
+                 WHERE company_id = ? AND legal_name = ? LIMIT 1
+                """, (rs, n) -> rs.getString("id"), companyId, legal);
+        if (!byName.isEmpty()) return byName.get(0);
+        String id = UUID.randomUUID().toString();
         jdbcTemplate.update("""
-                INSERT INTO journal_entry_lines (
-                    id, journal_entry_id, account_id, description, debit, credit
-                ) VALUES (?, ?, ?, ?, ?, ?)
+                INSERT INTO customers (id, company_id, legal_name, tax_identifier,
+                                        customer_type, notes, active)
+                VALUES (?, ?, ?, ?, 'COMPANY', 'Importado de factura PDF', TRUE)
+                """, id, companyId, truncate(legal, 180), normNif.isBlank() ? null : normNif);
+        return id;
+    }
+
+    /** Dedup: ya existe esa factura (nº) para ese cliente en la empresa. */
+    private boolean salesInvoiceExists(String companyId, String invoiceNumber, String customerId) {
+        Integer n = jdbcTemplate.queryForObject("""
+                SELECT COUNT(*) FROM sales_invoices
+                 WHERE company_id = ? AND invoice_number = ? AND customer_id = ?
+                """, Integer.class, companyId, invoiceNumber, customerId);
+        return n != null && n > 0;
+    }
+
+    /**
+     * Inserta la factura como HISTORICAL/VALIDATED por SQL directo (NUNCA vía
+     * SalesInvoiceService: línea roja VeriFactu/SIF), igual que el import del
+     * diario. Aparece en Facturación; el 303 la cuenta por el asiento POSTED
+     * enlazado, no por esta fila.
+     */
+    private void insertSalesInvoice(String invoiceId, String companyId, String customerId,
+                                    String invoiceNumber, LocalDate date, BigDecimal base,
+                                    BigDecimal vat, BigDecimal retention, BigDecimal total,
+                                    String concept, String pdfPath) {
+        jdbcTemplate.update("""
+                INSERT INTO sales_invoices (
+                    id, company_id, customer_id, series_id, invoice_number,
+                    invoice_date, due_date, invoice_type, status, payment_status,
+                    subtotal, vat_total, retention_total, total, paid_amount,
+                    currency, original_invoice_id, concept, pdf_path, validated_at
+                ) VALUES (?, ?, ?, NULL, ?, ?, ?, 'HISTORICAL', 'VALIDATED', 'PENDING',
+                          ?, ?, ?, ?, 0, 'EUR', NULL, ?, ?, CURRENT_TIMESTAMP)
                 """,
-                UUID.randomUUID().toString(), entryId, accountId,
-                description == null || description.length() <= 240 ? description
-                        : description.substring(0, 240),
-                debit, credit);
+                invoiceId, companyId, customerId, invoiceNumber,
+                date == null ? null : Date.valueOf(date),
+                date == null ? null : Date.valueOf(date),
+                base, vat, retention == null ? BigDecimal.ZERO : retention, total,
+                truncate(concept, 240), pdfPath);
+    }
+
+    private void insertSalesLine(String invoiceId, String concept, BigDecimal base,
+                                 BigDecimal vat, BigDecimal vatPercent, BigDecimal total) {
+        jdbcTemplate.update("""
+                INSERT INTO sales_invoice_lines (
+                    id, invoice_id, catalog_item_id, description,
+                    quantity, unit_price, vat_percent, retention_percent,
+                    line_subtotal, line_vat, line_retention, line_total
+                ) VALUES (?, ?, NULL, ?, 1, ?, ?, 0, ?, ?, 0, ?)
+                """,
+                UUID.randomUUID().toString(), invoiceId, truncate(concept, 500),
+                base, vatPercent, base, vat, total);
+    }
+
+    private static String truncate(String s, int max) {
+        if (s == null) return null;
+        return s.length() <= max ? s : s.substring(0, max);
     }
 
     private String buildConcept(Request req) {

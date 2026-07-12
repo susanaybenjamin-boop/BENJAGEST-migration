@@ -409,7 +409,8 @@ public class AccountingScreen {
                 "LOAN_INSTALLMENT",
                 "ASSET_ACQUISITION", "ASSET_DEPRECIATION", "ASSET_DISPOSAL",
                 "YEAR_CLOSE_REGULARIZATION", "YEAR_CLOSE_CLOSING",
-                "RECURRING_TASK", "RECURRING_ACCOUNTING", "HISTORICAL_IMPORT"));
+                "RECURRING_TASK", "RECURRING_ACCOUNTING", "HISTORICAL_IMPORT",
+                "COMPENSATION", "COMPENSATION_REVERSAL"));
         installSourceCellFactory(sourceFilter);
 
         // Búsqueda libre — filtra por texto que aparezca en concepto, nº
