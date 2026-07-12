@@ -71,6 +71,45 @@
   contra el export REAL de Benjamin: 178 movimientos, 100 % con fecha y
   saldo. 4 tests. El parser N43 queda contrastado con el importador OCA
   (posiciones confirmadas + BOM/CtrlZ/registro 88 con tolerancia ±1).
+- ⚠️ **Matiz (2026-07-12)**: aquella verificación fue del PARSER (aislado), NO
+  del import end-to-end. Al probarlo Benjamin de verdad saltaron 2 bugs (ver
+  F1-BANCO-CUENTA/REVIEW/AUTO abajo): la restricción `ck_bib_format` no admitía
+  XLSX y `ignore()` usaba `||`. Lección: parser verde ≠ camino real verde.
+
+**F1-BANCO-CUENTA — alta de cuenta bancaria (UI)** ✅ HECHO 2026-07-11 (v0.1.33)
+- Había endpoint POST /accounting/bank-accounts pero NINGUNA UI para crear la
+  cuenta → el import quedaba bloqueado en "Crea primero una cuenta bancaria".
+- Botón "Nueva cuenta" en la pestaña Bancos (alias + IBAN + banco; el 572 lo
+  resuelve el backend con la 572 genérica si no se enlaza una). **Confirmado en
+  producción por Benjamin.**
+
+**F1-BANCO-REVIEW — conciliación por REVISIÓN (no auto-posteo)** ✅ HECHO 2026-07-11 (v0.1.33)
+- La importación deja de auto-postear a ciegas. GET /bank-movements/
+  reconcile-review: por cada movimiento pendiente → factura candidata + ESTADO
+  (sin cobrar/pagar · ya cobrada/pagada · borrador · sin candidata) + PAGOS
+  EXISTENTES (unifica vencimientos saldados + cobros de venta + banco ya
+  conciliado). UI = TreeTableView tras importar: checkbox (automarcado solo los
+  pendientes) y los YA cobrados/pagados desmarcados con su **pago existente
+  colgando debajo** (BENJAGEST no es multiventana). POST /bank-movements/
+  reconcile concilia solo los marcados, cada linkToInvoice su transacción
+  (éxito parcial). Cierra 2 agujeros del auto-match viejo: ventas roto
+  (total_amount/customer_legal_name inexistentes) + compras podía duplicar.
+- Bug cazado por smoke: candidata de compras usaba `purchase_invoices.
+  payment_status` (columna inexistente en V39/V40) → 500. Corregido.
+
+**F1-BANCO-AUTO — un solo import, autodetectado + Conciliar/Ignorar** ✅ HECHO 2026-07-12 (v0.1.34)
+- Petición de Benjamin (sin extensiones visibles no sabe el tipo): se quita el
+  selector de formato. UN SOLO "Importar extracto" que manda el fichero en
+  Base64 y el backend AUTODETECTA por contenido (xlsx = firma ZIP 'PK'; texto =
+  N43 si abre con registro '11' de 80+ chars, si no CSV). El batch guarda el
+  formato DETECTADO.
+- **V176**: `ck_bib_format` no permitía 'XLSX' → import de Excel daba 500. Fix.
+- Errores del backend legibles en la UI (no JSON/SQL crudo; 5xx → texto genérico).
+- Bloque bancario completo: botón "Conciliar" (reabre la revisión cuando
+  quieras) + botón "Ignorar movimiento" (comisiones sin factura). Bug cazado:
+  `ignore()` usaba `||` (OR en MariaDB) → 500; fix `CONCAT`.
+- Smoke end-to-end verde (BD embebida + import real XLSX y CSV + Ignorar +
+  reconcile-review). **BLOQUE BANCARIO CERRADO.**
 
 **F1-XDIARIO — export xDiario/SUENLACE** (ya especificado en backlog líneas
   1731-1733): `accounting/export/XDiarioExportService` + combo en informes.
