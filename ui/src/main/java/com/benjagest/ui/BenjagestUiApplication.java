@@ -6965,6 +6965,13 @@ public class BenjagestUiApplication extends Application
     }
 
     @Override
+    public void openCustomerEditor(String customerId, Runnable onSaved) {
+        // FAC-CLIVAL: reutiliza el modal existente (carga el cliente por id y lo
+        // abre prerelleno; al guardar dispara onSaved).
+        showCustomerDetailDialog(customerId, onSaved);
+    }
+
+    @Override
     public void reopenEditor(String existingInvoiceId) {
         showInvoiceEditor(existingInvoiceId);
     }
