@@ -4890,10 +4890,22 @@ public class BenjagestUiApplication extends Application
         // el campo vacío y que el usuario rellene a mano.
         // extractField devuelve "—" cuando el campo no existe en el JSON;
         // por eso isBlankOrDash() y no isBlank().
-        String customerNif = extractField(json, "receiverNif");
-        String customerName = extractField(json, "receiverName");
+        // VENTAS: el cliente es la CONTRAPARTE (no-propia). El extractor de
+        // compras EXCLUYE el NIF propio de ser "emisor" (isOwnNif→null), así que
+        // en una factura EMITIDA el emitterNif detectado ES el NIF del CLIENTE.
+        // (Antes se usaba receiverNif, que el extractor reserva para el
+        // comprador/propio → en ventas salía vacío: bug del NIF sin rellenar,
+        // reportado por Benjamin 2026-07-12.)
+        String customerNif = extractField(json, "emitterNif");
+        String customerName = extractField(json, "supplierName");
+        if (isBlankOrDash(customerNif)) customerNif = extractField(json, "receiverNif");
+        if (isBlankOrDash(customerName)) customerName = extractField(json, "receiverName");
         if (isBlankOrDash(customerNif)) customerNif = "";
         if (isBlankOrDash(customerName)) customerName = "";
+        // Concepto extraído del detalle de líneas de la factura (PDF-EXTRACT-2).
+        // Antes el campo se creaba vacío; ahora se pre-rellena.
+        String conceptExtracted = extractField(json, "concept");
+        if (isBlankOrDash(conceptExtracted)) conceptExtracted = "";
         String number = extractField(json, "invoiceNumber");
         String date = extractField(json, "invoiceDate");
         String base = extractNumber(json, "baseAmount");
@@ -4932,7 +4944,7 @@ public class BenjagestUiApplication extends Application
         TextField vatPctField = new TextField(vatPct);
         TextField vatAmtField = new TextField(vatAmt);
         TextField totalField = new TextField(total);
-        TextField conceptField = new TextField();
+        TextField conceptField = new TextField(conceptExtracted);
         conceptField.setPromptText(t("purchases.import.field.concept_prompt"));
 
         // Controles de rectificativa:

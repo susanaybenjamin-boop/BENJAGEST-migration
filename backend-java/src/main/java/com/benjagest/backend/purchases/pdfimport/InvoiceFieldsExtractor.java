@@ -2295,8 +2295,8 @@ public class InvoiceFieldsExtractor {
         // 1-2) Cabecera de tabla o sección + ventana de búsqueda.
         int budget = 0;
         boolean inZone = false;
-        for (String raw : lines) {
-            String line = raw.trim();
+        for (int i = 0; i < lines.length; i++) {
+            String line = lines[i].trim();
             if (line.isEmpty()) continue;
             if (isConceptTableHeader(line) || CONCEPT_SECTION_HEADER.matcher(line).matches()) {
                 inZone = true;
@@ -2306,12 +2306,12 @@ public class InvoiceFieldsExtractor {
             if (!inZone) continue;
             if (budget-- <= 0) break;
             String concept = conceptCandidate(line, own);
-            if (concept != null) return truncateConcept(concept);
+            if (concept != null) return truncateConcept(appendContinuation(concept, lines, i, own));
         }
         // 3) Fallback sin cabecera: línea con forma de detalle (≥2 importes
         //    decimales al final + texto delante).
-        for (String raw : lines) {
-            String line = raw.trim();
+        for (int i = 0; i < lines.length; i++) {
+            String line = lines[i].trim();
             if (line.isEmpty()) continue;
             Matcher tail = CONCEPT_TRAILING_NUMBERS.matcher(line);
             if (!tail.find()) continue;
@@ -2319,9 +2319,43 @@ public class InvoiceFieldsExtractor {
                     .matcher(tail.group()).results().count();
             if (decimals < 2) continue;
             String concept = conceptCandidate(line, own);
-            if (concept != null) return truncateConcept(concept);
+            if (concept != null) return truncateConcept(appendContinuation(concept, lines, i, own));
         }
         return null;
+    }
+
+    /** Marcadores de FIN de la descripción: totales y pie de factura. */
+    private static final Pattern CONCEPT_STOP = Pattern.compile(
+            "(?iu)^\\s*(subtotal|base\\s+imponible|iva\\b|i\\.v\\.a|total\\b|cuota|" +
+            "descuento|dto\\b|suma|importe\\s+total|gracias)\\b");
+
+    /**
+     * PDF-EXTRACT-2b — añade las líneas de CONTINUACIÓN de la descripción
+     * (facturas con concepto multilínea, p.ej. "COLOCACION… / TERRAZA, CERCA… /
+     * EN C/IBIZA…") a partir de la línea del concepto, hasta un marcador de fin
+     * (totales, forma de pago, junk) o hasta {@link #CONCEPT_MAX_LEN}. Una
+     * continuación es texto humano SIN importes al final. El truncado final lo
+     * hace {@link #truncateConcept}.
+     */
+    private static String appendContinuation(String first, String[] lines, int idx, OwnParty own) {
+        StringBuilder sb = new StringBuilder(first);
+        for (int j = idx + 1; j < lines.length && sb.length() < CONCEPT_MAX_LEN; j++) {
+            String line = lines[j].trim();
+            if (line.isEmpty()) continue;
+            // Fin de la descripción: totales / junk / cabecera de tabla.
+            if (CONCEPT_STOP.matcher(line).find()) break;
+            if (CONCEPT_JUNK.matcher(line).find()) break;
+            if (isConceptTableHeader(line)) break;
+            // Otra línea de detalle (importe con decimales al final) → parar.
+            Matcher tail = CONCEPT_TRAILING_NUMBERS.matcher(line);
+            if (tail.find() && Pattern.compile("\\d[,.]\\d{2}").matcher(tail.group()).find()) break;
+            // Validar como concepto (rechaza líneas de SOLO etiquetas fiscales
+            // como "Base Cuota IVA Retención IRPF TOTAL FACTURA" → null → parar).
+            String cand = conceptCandidate(line, own);
+            if (cand == null || cand.isBlank()) break;
+            sb.append(' ').append(cand);
+        }
+        return sb.toString();
     }
 
     /** Limpia una línea de la zona de detalle; null si no es un concepto. */
