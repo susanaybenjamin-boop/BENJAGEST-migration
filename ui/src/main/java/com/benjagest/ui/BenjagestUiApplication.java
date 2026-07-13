@@ -4873,6 +4873,54 @@ public class BenjagestUiApplication extends Application
     }
 
     /**
+     * Muestra el texto (capa de texto) del PDF en una ventana con un TextArea
+     * SELECCIONABLE, para que el usuario copie a mano lo que necesite
+     * (descripción, nombre del cliente…) a los campos del formulario cuando la
+     * extracción automática no acierte (petición de Benjamin 2026-07-13). NO es
+     * OCR: lee la capa de texto del PDF con PDFBox; si el PDF es una imagen
+     * escaneada sin texto, avisa.
+     */
+    private void showPdfTextPopup(byte[] pdfBytes) {
+        String text;
+        try {
+            text = extractPdfText(pdfBytes);
+        } catch (Exception ex) {
+            text = null;
+        }
+        if (text == null || text.isBlank()) {
+            showInfo(t("sales.import.copy_text"), t("sales.import.copy_text.empty"));
+            return;
+        }
+        javafx.scene.control.TextArea ta = new javafx.scene.control.TextArea(text);
+        ta.setEditable(false);
+        ta.setWrapText(true);
+        javafx.scene.control.Label hint = new javafx.scene.control.Label(t("sales.import.copy_text.hint"));
+        hint.setWrapText(true);
+        Button close = new Button(t("comp.pdf.close"));
+        javafx.stage.Stage st = new javafx.stage.Stage();
+        close.setOnAction(ev -> st.close());
+        VBox box = new VBox(8, hint, ta, close);
+        box.setPadding(new Insets(10));
+        VBox.setVgrow(ta, Priority.ALWAYS);
+        st.setTitle(t("sales.import.copy_text"));
+        javafx.scene.Scene sc = new javafx.scene.Scene(box, 620, 720);
+        try {
+            sc.getStylesheets().add(getClass().getResource("/styles/app.css").toExternalForm());
+        } catch (Exception ignore) {}
+        st.setScene(sc);
+        st.show();
+    }
+
+    /** Extrae el texto (capa de texto) de un PDF con PDFBox. Vacío si es escaneado. */
+    private static String extractPdfText(byte[] pdfBytes) throws java.io.IOException {
+        if (pdfBytes == null || pdfBytes.length == 0) return null;
+        try (org.apache.pdfbox.pdmodel.PDDocument doc =
+                     org.apache.pdfbox.Loader.loadPDF(pdfBytes)) {
+            return new org.apache.pdfbox.text.PDFTextStripper().getText(doc);
+        }
+    }
+
+    /**
      * Diálogo de revisión para importar 1 PDF de venta → asiento DRAFT.
      * Layout: PdfViewer a la izquierda + formulario a la derecha con
      * NIF cliente, fecha, base, IVA%, IVA, total, concepto. Botón
@@ -4959,21 +5007,26 @@ public class BenjagestUiApplication extends Application
         rectifyingChk.selectedProperty().addListener(
                 (obs, old, val) -> rectifiedField.setDisable(!val));
 
-        // Pre-rellenar concepto con un texto razonable.
-        //   Normal:        "Fra. {nº} a {cliente}"
+        // Pre-rellenar concepto: la DESCRIPCIÓN extraída del PDF tiene prioridad
+        // (ya está en conceptField). Solo si NO se extrajo concepto se usa un
+        // genérico "Fra. {nº} a {cliente}". Antes este bloque SOBRESCRIBÍA
+        // siempre el concepto extraído (bug reportado por Benjamin 2026-07-13:
+        // salía "Fra. FRA-2026-0009 a C/ HERRERÍA 59" en vez de la descripción).
         //   Rectificativa: "Fra. rectificativa {nº} a {cliente} (anula {original})"
-        StringBuilder pre = new StringBuilder();
-        if (rectifying) pre.append("Fra. rectificativa ");
-        else pre.append("Fra. ");
-        if (!number.isBlank()) pre.append(number);
-        if (!customerName.isBlank()) {
-            if (pre.length() > "Fra. ".length()) pre.append(" ");
-            pre.append("a ").append(customerName);
+        if (conceptExtracted.isBlank()) {
+            StringBuilder pre = new StringBuilder();
+            if (rectifying) pre.append("Fra. rectificativa ");
+            else pre.append("Fra. ");
+            if (!number.isBlank()) pre.append(number);
+            if (!customerName.isBlank()) {
+                if (pre.length() > "Fra. ".length()) pre.append(" ");
+                pre.append("a ").append(customerName);
+            }
+            if (rectifying && !rectifiedNumber.isBlank()) {
+                pre.append(" (anula ").append(rectifiedNumber).append(")");
+            }
+            if (pre.length() > "Fra. ".length()) conceptField.setText(pre.toString());
         }
-        if (rectifying && !rectifiedNumber.isBlank()) {
-            pre.append(" (anula ").append(rectifiedNumber).append(")");
-        }
-        if (pre.length() > "Fra. ".length()) conceptField.setText(pre.toString());
 
         for (TextField tf : new TextField[]{
                 nifField, nameField, numberField, dateField, baseField,
@@ -5005,8 +5058,17 @@ public class BenjagestUiApplication extends Application
                 new javafx.scene.control.ScrollPane(g);
         formScroll.setFitToWidth(true);
         formScroll.setStyle("-fx-background-color: transparent;");
+        // "Copiar texto del PDF": muestra el texto del PDF (capa de texto, vía
+        // PDFBox) seleccionable, para copiar a mano la descripción o el nombre
+        // del cliente a los campos cuando la extracción no acierte (petición de
+        // Benjamin 2026-07-13). Controles arriba (patrón Slice 3V).
+        Button copyTextBtn = new Button(t("sales.import.copy_text"));
+        copyTextBtn.setOnAction(e -> showPdfTextPopup(pdfBytes));
+        VBox formSide = new VBox(8, copyTextBtn, formScroll);
+        formSide.setPadding(new Insets(6));
+        VBox.setVgrow(formScroll, Priority.ALWAYS);
         javafx.scene.control.SplitPane split =
-                new javafx.scene.control.SplitPane(viewer, formScroll);
+                new javafx.scene.control.SplitPane(viewer, formSide);
         split.setDividerPositions(0.55);
         // Sin wrap externo: el visor PDF ya tiene su propio ScrollPane y
         // el formulario tiene formScroll. installDialog estándar añadía
