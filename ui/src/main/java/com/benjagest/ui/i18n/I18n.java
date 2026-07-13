@@ -133,6 +133,15 @@ public final class I18n {
                 case "module.purchases" -> "Purchases & Expenses";
                 case "module.labor" -> "HR";
                 case "module.tax" -> "Tax (AEAT)";
+                case "module.absences" -> "Absences";
+                case "module.contracts" -> "Contracts";
+                case "module.employees" -> "Employees";
+                case "module.payrolls" -> "Payroll";
+                case "module.reports" -> "Reports";
+                case "module.sii" -> "SII (immediate supply)";
+                case "module.suppliers" -> "Suppliers";
+                case "module.users" -> "Users & roles";
+                case "module.verifactu" -> "VeriFactu (AEAT)";
                 case "module.calendar" -> "Calendar";
                 case "module.settings" -> "Settings";
                 case "module.advisory" -> "My clients";
@@ -1354,6 +1363,15 @@ public final class I18n {
             case "module.purchases" -> "Compras y Gastos";
             case "module.labor" -> "Personal";
             case "module.tax" -> "Modelos AEAT";
+            case "module.absences" -> "Ausencias";
+            case "module.contracts" -> "Contratos";
+            case "module.employees" -> "Empleados";
+            case "module.payrolls" -> "Nóminas";
+            case "module.reports" -> "Informes";
+            case "module.sii" -> "SII (suministro inmediato)";
+            case "module.suppliers" -> "Proveedores";
+            case "module.users" -> "Usuarios y roles";
+            case "module.verifactu" -> "VeriFactu (AEAT)";
             case "module.calendar" -> "Agenda";
             case "module.settings" -> "Configuracion";
             case "module.advisory" -> "Mis clientes";
@@ -6539,6 +6557,8 @@ public final class I18n {
             case "enum.customer_type.OTHER" -> "Other";
             case "enum.customer_type.ADVISORY" -> "Accounting firm";
             case "enum.customer_type.CLIENT" -> "Client";
+            case "enum.customer_type.MANAGED_CLIENT" -> "Managed client";
+            case "enum.customer_type.INTERNAL" -> "Internal";
             case "enum.verifactu_mode.TEST" -> "Test";
             case "enum.verifactu_mode.PROD" -> "Production";
             case "enum.credential_system.DEHU" -> "DEHú";
@@ -6555,6 +6575,9 @@ public final class I18n {
             case "enum.ss_regime.GENERAL" -> "General regime";
             case "enum.ss_regime.AUTONOMO_SOCIETARIO" -> "RETA (corporate)";
             case "enum.ss_regime.NO_COTIZA" -> "Not contributing";
+            case "enum.ss_regime.ARTISTAS" -> "Artists regime";
+            case "enum.ss_regime.MAR" -> "Sea workers regime";
+            case "enum.ss_regime.AGRARIO" -> "Agricultural regime";
             case "enum.ss_regime.OTHER" -> "Other";
             case "enum.owner_role.ADMINISTRATOR" -> "Administrator";
             case "enum.owner_role.JOINT_ADMINISTRATOR" -> "Joint administrator";
@@ -6618,6 +6641,7 @@ public final class I18n {
             case "enum.vat_kind.WITHHOLDING" -> "Withholding";
             case "enum.worklog_status.DRAFT" -> "Draft";
             case "enum.worklog_status.APPROVED" -> "Approved";
+            case "enum.worklog_status.SUBMITTED" -> "Submitted";
             case "enum.worklog_status.BILLED" -> "Billed";
             case "tpb.pending.waiting_client" -> "Waiting for the client to sign from their session.";
             case "tpb.pending.offline_blocked" -> "This client is NOT linked to BENJAGEST. The offline-PDF signature flow has been disabled for legal safety (RD 1619/2012 art. 5: the holder must expressly consent, and an unverified signature was activating agreements without their knowledge). The client must register in BENJAGEST and sign with their session PIN. Invite them from Communication → Messages.";
@@ -7837,6 +7861,8 @@ public final class I18n {
             case "enum.customer_type.OTHER" -> "Otro";
             case "enum.customer_type.ADVISORY" -> "Asesoría";
             case "enum.customer_type.CLIENT" -> "Cliente";
+            case "enum.customer_type.MANAGED_CLIENT" -> "Cliente gestionado";
+            case "enum.customer_type.INTERNAL" -> "Interna";
             case "enum.verifactu_mode.TEST" -> "Pruebas";
             case "enum.verifactu_mode.PROD" -> "Producción";
             case "enum.credential_system.DEHU" -> "DEHú";
@@ -7853,6 +7879,9 @@ public final class I18n {
             case "enum.ss_regime.GENERAL" -> "Régimen general";
             case "enum.ss_regime.AUTONOMO_SOCIETARIO" -> "RETA societario";
             case "enum.ss_regime.NO_COTIZA" -> "No cotiza";
+            case "enum.ss_regime.ARTISTAS" -> "Régimen de artistas";
+            case "enum.ss_regime.MAR" -> "Régimen especial del Mar";
+            case "enum.ss_regime.AGRARIO" -> "Régimen especial agrario";
             case "enum.ss_regime.OTHER" -> "Otro";
             case "enum.owner_role.ADMINISTRATOR" -> "Administrador";
             case "enum.owner_role.JOINT_ADMINISTRATOR" -> "Administrador mancomunado";
@@ -7916,6 +7945,7 @@ public final class I18n {
             case "enum.vat_kind.WITHHOLDING" -> "Retención";
             case "enum.worklog_status.DRAFT" -> "Borrador";
             case "enum.worklog_status.APPROVED" -> "Aprobado";
+            case "enum.worklog_status.SUBMITTED" -> "Enviado";
             case "enum.worklog_status.BILLED" -> "Facturado";
             case "tpb.pending.waiting_client" -> "Esperando que el cliente firme desde su sesión.";
             case "tpb.pending.offline_blocked" -> "Este cliente NO está vinculado a BENJAGEST. El flujo de firma offline-PDF está deshabilitado por seguridad jurídica (RD 1619/2012 art. 5: el titular debe consentir expresamente, y una firma sin verificar activaba acuerdos sin que el cliente se enterara). El cliente debe registrarse en BENJAGEST y firmar con su PIN de sesión. Invítale desde Comunicación → Mensajes.";
