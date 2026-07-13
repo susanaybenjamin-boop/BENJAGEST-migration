@@ -477,6 +477,9 @@ public final class I18n {
                 case "sales.action.import_pdfs" -> "Import PDFs";
                 case "sales.import.title_prefix" -> "Review sale: ";
                 case "sales.import.action.create_entry" -> "Create entry";
+                case "sales.import.copy_text" -> "Copy text from PDF";
+                case "sales.import.copy_text.hint" -> "Select the text you need (description, client name…) and copy it (Ctrl+C) into the form fields.";
+                case "sales.import.copy_text.empty" -> "This PDF has no text layer (scanned image). Type the data in by hand.";
                 case "sales.import.field.customer_nif" -> "Customer tax ID:";
                 case "sales.import.field.customer_name" -> "Customer name:";
                 case "sales.import.field.rectifying" -> "Rectifying invoice (cancels another)";
@@ -1654,6 +1657,9 @@ public final class I18n {
             case "sales.action.import_pdfs" -> "Importar PDFs";
             case "sales.import.title_prefix" -> "Revisar venta: ";
             case "sales.import.action.create_entry" -> "Crear asiento";
+            case "sales.import.copy_text" -> "Copiar texto del PDF";
+            case "sales.import.copy_text.hint" -> "Selecciona el texto que necesites (descripción, nombre del cliente…) y cópialo (Ctrl+C) a los campos del formulario.";
+            case "sales.import.copy_text.empty" -> "Este PDF no tiene capa de texto (imagen escaneada). Escribe los datos a mano.";
             case "sales.import.field.customer_nif" -> "NIF cliente:";
             case "sales.import.field.customer_name" -> "Nombre cliente:";
             case "sales.import.field.rectifying" -> "Factura rectificativa (anula otra)";
