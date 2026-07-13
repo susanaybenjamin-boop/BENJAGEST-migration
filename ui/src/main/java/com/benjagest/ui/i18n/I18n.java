@@ -6597,6 +6597,8 @@ public final class I18n {
             case "enum.invoice_type.SIMPLIFIED" -> "Simplified";
             case "enum.invoice_type.RECTIFYING" -> "Rectifying";
             case "enum.invoice_type.PROFORMA" -> "Proforma";
+            case "enum.invoice_type.HISTORICAL" -> "Historical";
+            case "enum.invoice_type.TEST" -> "Test";
             case "enum.timeclock_origin.WEB" -> "Web";
             case "enum.timeclock_origin.MOBILE" -> "Mobile";
             case "enum.timeclock_origin.KIOSK" -> "Kiosk";
@@ -7893,6 +7895,8 @@ public final class I18n {
             case "enum.invoice_type.SIMPLIFIED" -> "Simplificada";
             case "enum.invoice_type.RECTIFYING" -> "Rectificativa";
             case "enum.invoice_type.PROFORMA" -> "Proforma";
+            case "enum.invoice_type.HISTORICAL" -> "Histórica";
+            case "enum.invoice_type.TEST" -> "Prueba";
             case "enum.timeclock_origin.WEB" -> "Web";
             case "enum.timeclock_origin.MOBILE" -> "Móvil";
             case "enum.timeclock_origin.KIOSK" -> "Kiosco";

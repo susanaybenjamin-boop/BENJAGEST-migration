@@ -24,7 +24,7 @@ import java.util.regex.Pattern;
 public class UpdateService {
 
     /** Versión instalada. BUMP en cada release (debe coincidir con --app-version). */
-    public static final String APP_VERSION = "0.1.36";
+    public static final String APP_VERSION = "0.1.37";
 
     private static final String DEFAULT_URL =
             "https://api.github.com/repos/susanaybenjamin-boop/BENJAGEST-migration/releases/latest";
@@ -76,9 +76,32 @@ public class UpdateService {
         return r.body();
     }
 
-    /** Lanza el instalador (msiexec). El caller debe cerrar la app a continuación. */
+    /**
+     * Lanza el instalador. El caller debe cerrar la app a continuación.
+     *
+     * <p><b>Para el servicio BenjagestBackend ANTES de instalar</b> (y lo arranca
+     * después). Motivo (incidente 0.1.36, 2026-07-12): si el MSI corre con el
+     * servicio en marcha, el {@code java.exe} tiene bloqueado
+     * {@code runtime\lib\modules} (~125 MB) → el MSI no puede reemplazarlo en
+     * caliente y lo aplaza al reinicio ("a reboot will be required"); esa
+     * operación diferida puede quedar a medias y dejar el JRE roto ("Failed
+     * setting boot class path"). Con el servicio parado los ficheros están libres:
+     * el MSI reemplaza todo sin reinicio y sin riesgo.
+     *
+     * <p>Todo en un único proceso elevado (una sola UAC) vía un .cmd temporal.
+     * Tolerante: si el servicio no existe (variante Puesto, o instalación sin
+     * servicio) los {@code net stop/start} fallan y el batch continúa igual.
+     */
     public void launchInstaller(Path msi) throws IOException {
-        new ProcessBuilder("msiexec", "/i", msi.toString()).start();
+        Path bat = java.nio.file.Files.createTempFile("benjagest-update", ".cmd");
+        String script = "@echo off\r\n"
+                + "net stop BenjagestBackend\r\n"
+                + "msiexec /i \"" + msi.toString() + "\"\r\n"
+                + "net start BenjagestBackend\r\n";
+        java.nio.file.Files.writeString(bat, script);
+        new ProcessBuilder("powershell", "-NoProfile", "-Command",
+                "Start-Process cmd -Verb RunAs -ArgumentList '/c','\"" + bat.toString() + "\"'")
+                .start();
     }
 
     // ---- versión: compara "0.1.10" vs "0.1.2" numéricamente por tramos ----
