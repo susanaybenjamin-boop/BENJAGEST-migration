@@ -162,6 +162,16 @@ public class SalesPdfImportService {
                 ? null
                 : storage.store(companyId, req.invoiceDate().getYear(), req.pdfBytes());
 
+        // 3b) DEDUP POR SHA DEL PDF: si ESTE MISMO PDF ya generó un asiento (por
+        //     este flujo o por el antiguo SALES_PDF_IMPORT que NO creaba factura),
+        //     no volver a importarlo. Sin esto, reimportar el mismo PDF duplicaba
+        //     el asiento y contaba el IVA DOS veces en el 303 (bug 2026-07-12).
+        if (stored != null && stored.sha256() != null
+                && journalEntryWithPdfExists(companyId, stored.sha256())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Esta factura ya está importada (mismo PDF).");
+        }
+
         // 4) Cliente (por NIF) + dedup por nº+cliente. La factura importada se
         //    guarda como HISTORICAL/VALIDATED (igual que el diario CONTENDO):
         //    NO se emite (línea roja SIF), solo se refleja para que aparezca en
@@ -281,6 +291,15 @@ public class SalesPdfImportService {
                 VALUES (?, ?, ?, ?, 'COMPANY', 'Importado de factura PDF', TRUE)
                 """, id, companyId, truncate(legal, 180), normNif.isBlank() ? null : normNif);
         return id;
+    }
+
+    /** Dedup: ya existe un asiento importado de ESE MISMO PDF (por su SHA-256). */
+    private boolean journalEntryWithPdfExists(String companyId, String sha256) {
+        Integer n = jdbcTemplate.queryForObject("""
+                SELECT COUNT(*) FROM journal_entries
+                 WHERE company_id = ? AND source_pdf_sha256 = ?
+                """, Integer.class, companyId, sha256);
+        return n != null && n > 0;
     }
 
     /** Dedup: ya existe esa factura (nº) para ese cliente en la empresa. */
