@@ -120,7 +120,15 @@ public class SalesJournalEntryService {
             if (historic.isPresent()) acc7xx = historic.get().accountId();
         }
         if (acc7xx == null) {
-            String descForClassifier = safe(invoice.notes())
+            // ASI-3 (2026-07-15) — el `concept` va PRIMERO y antes no iba en
+            // absoluto: es el campo donde el usuario escribe qué ha vendido
+            // ("Prestación de servicios de ..."). Sin él, una factura de
+            // servicios no matcheaba ninguna regla y caía al fallback 700
+            // (Ventas de mercaderías) — mientras la descripción de la línea
+            // sí usaba el concepto (buildIncomeLineDescription), dejando el
+            // asiento en 700 rotulado "Prestación de servicios".
+            String descForClassifier = safe(invoice.concept())
+                    + " " + safe(invoice.notes())
                     + " " + safe(invoice.invoiceNumber());
             Optional<String> code = classifier.classify(descForClassifier, invoice.customerLegalName());
             if (code.isPresent()) {

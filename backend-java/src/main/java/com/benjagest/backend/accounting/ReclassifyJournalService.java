@@ -197,7 +197,7 @@ public class ReclassifyJournalService {
         Map<String, Object> s;
         try {
             s = jdbcTemplate.queryForMap("""
-                    SELECT customer_id, invoice_number, notes
+                    SELECT customer_id, invoice_number, notes, concept
                       FROM sales_invoices
                      WHERE id = ? AND company_id = ?
                     """, invoiceId, companyId);
@@ -231,7 +231,8 @@ public class ReclassifyJournalService {
             String newAccountId = chooseIncomeAccount(companyId,
                     customerNif, customerName,
                     (String) s.get("invoice_number"),
-                    (String) s.get("notes"));
+                    (String) s.get("notes"),
+                    (String) s.get("concept"));
             if (newAccountId == null) continue;
             String lineId = (String) ln.get("line_id");
             String oldId = (String) ln.get("account_id");
@@ -262,13 +263,22 @@ public class ReclassifyJournalService {
         return null;
     }
 
+    /**
+     * ASI-3 (2026-07-15) — {@code concept} entra en la mezcla que ve el
+     * classifier (y va primero). Antes solo se le pasaba notes+número, con
+     * lo que una factura de servicios no matcheaba la regla 705 y se
+     * quedaba en la 700 genérica. Mismo arreglo que en
+     * {@code SalesJournalEntryService.createForSales}.
+     */
     private String chooseIncomeAccount(String companyId, String nif, String name,
-                                         String invoiceNumber, String notes) {
+                                         String invoiceNumber, String notes, String concept) {
         Optional<AccountingLearningService.HistoricMatch> hist =
                 learning.findHistoricIncomeAccountForCustomer(nif, name);
         if (hist.isPresent()) return hist.get().accountId();
         Optional<String> code = incomeClassifier.classify(
-                (notes == null ? "" : notes) + " " + (invoiceNumber == null ? "" : invoiceNumber), name);
+                (concept == null ? "" : concept)
+                        + " " + (notes == null ? "" : notes)
+                        + " " + (invoiceNumber == null ? "" : invoiceNumber), name);
         if (code.isPresent()) {
             String id = findByCode(companyId, code.get());
             if (id != null) return id;
