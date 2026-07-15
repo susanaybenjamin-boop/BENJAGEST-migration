@@ -185,13 +185,143 @@ public class TaxScreen extends ScreenBase {
                     || !("DRAFT".equals(nv.status()) || "CANCELLED".equals(nv.status())));
         });
 
-        HBox actions = new HBox(8, editBtn, deleteBtn);
+        // LIQ-UI (2026-07-15) — Regularizar los trimestres que no tienen asiento.
+        // Hasta hoy el módulo fiscal no escribía NUNCA en la contabilidad, así que
+        // los 303 ya presentados se quedaron sin su asiento de liquidación y la
+        // 477 no se vaciaba nunca (bug que encontró Benjamin mirando la cuenta).
+        // Los nuevos ya lo generan solos; esto es para ponerse al día.
+        Button regularizeBtn = new Button(t("tax.liq.action.regularize"));
+        regularizeBtn.setGraphic(icon("fas-scale-balanced"));
+        regularizeBtn.setOnAction(ev -> showRegularizeDialog(bundle));
+
+        HBox actions = new HBox(8, editBtn, deleteBtn, regularizeBtn);
         actions.getStyleClass().add("settings-actions");
 
+        // Slice 3V: las acciones van ENCIMA del listado, no debajo — si no, con
+        // muchas declaraciones hay que hacer scroll para llegar a los botones.
         VBox body = new VBox(12, taxFilingsTable);
         VBox.setVgrow(taxFilingsTable, Priority.ALWAYS);
-        return screenScroll(new VBox(8, body, actions));
+        return screenScroll(new VBox(8, actions, body));
     }
+
+    /**
+     * LIQ-UI — Vista previa + confirmación de la regularización.
+     *
+     * <p>Decisión de Benjamin (2026-07-15): esto NO se hace con un script que se
+     * ejecute solo al actualizar. Son sus libros; los ve antes y decide. Por eso
+     * el diálogo enseña, por cada trimestre, los saldos reales y el asiento que
+     * nacería, y no toca nada hasta que pulsa Regularizar.
+     */
+    private void showRegularizeDialog(TaxBundle bundle) {
+        int year = bundle.filings().stream()
+                .map(com.benjagest.ui.model.TaxFilingEntry::periodYear)
+                .max(Integer::compareTo).orElse(java.time.LocalDate.now().getYear());
+
+        Task<java.util.List<com.benjagest.ui.model.PendingLiquidationEntry>> load = new Task<>() {
+            @Override protected java.util.List<com.benjagest.ui.model.PendingLiquidationEntry> call()
+                    throws Exception {
+                return altaApiClient.pendingLiquidations(year);
+            }
+        };
+        load.setOnSucceeded(ev -> {
+            var pending = load.getValue();
+            if (pending == null || pending.isEmpty()) {
+                showInfo(t("tax.liq.title"), t("tax.liq.none").replace("{y}", String.valueOf(year)));
+                return;
+            }
+            renderRegularizeDialog(year, pending);
+        });
+        load.setOnFailed(ev -> showError(t("tax.liq.fail.title"),
+                load.getException() == null ? "" : load.getException().getMessage()));
+        start(load, "tax-liq-preview");
+    }
+
+    private void renderRegularizeDialog(int year,
+            java.util.List<com.benjagest.ui.model.PendingLiquidationEntry> pending) {
+        Dialog<ButtonType> dlg = new Dialog<>();
+        dlg.setTitle(t("tax.liq.title"));
+        dlg.setHeaderText(t("tax.liq.header").replace("{y}", String.valueOf(year)));
+        dlg.getDialogPane().setPrefSize(820, 460);
+        dlg.setResizable(true);
+
+        Label note = new Label(t("tax.liq.note"));
+        note.setWrapText(true);
+        note.setStyle("-fx-background-color: #e7f1ff; -fx-padding: 8 12; "
+                + "-fx-background-radius: 4; -fx-text-fill: #084298;");
+
+        TableView<com.benjagest.ui.model.PendingLiquidationEntry> table = new TableView<>();
+        table.getStyleClass().add("data-table");
+        table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+        table.setItems(FXCollections.observableArrayList(pending));
+        table.setPrefHeight(260);
+
+        TableColumn<com.benjagest.ui.model.PendingLiquidationEntry, String> cPer =
+                new TableColumn<>(t("tax.liq.col.period"));
+        cPer.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().periodLabel()));
+        cPer.setPrefWidth(90);
+        TableColumn<com.benjagest.ui.model.PendingLiquidationEntry, String> c477 =
+                new TableColumn<>(t("tax.liq.col.repercutido"));
+        c477.setCellValueFactory(c -> new SimpleStringProperty(money(c.getValue().saldo477())));
+        c477.setPrefWidth(110);
+        TableColumn<com.benjagest.ui.model.PendingLiquidationEntry, String> c472 =
+                new TableColumn<>(t("tax.liq.col.soportado"));
+        c472.setCellValueFactory(c -> new SimpleStringProperty(money(c.getValue().saldo472())));
+        c472.setPrefWidth(110);
+        TableColumn<com.benjagest.ui.model.PendingLiquidationEntry, String> cRes =
+                new TableColumn<>(t("tax.liq.col.result"));
+        cRes.setCellValueFactory(c -> new SimpleStringProperty(money(c.getValue().resultado())));
+        cRes.setPrefWidth(110);
+        TableColumn<com.benjagest.ui.model.PendingLiquidationEntry, String> cAcc =
+                new TableColumn<>(t("tax.liq.col.account"));
+        cAcc.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().cuentaHacienda()));
+        cAcc.setPrefWidth(70);
+        TableColumn<com.benjagest.ui.model.PendingLiquidationEntry, String> cState =
+                new TableColumn<>(t("tax.liq.col.state"));
+        cState.setCellValueFactory(c -> new SimpleStringProperty(
+                c.getValue().puedeAplicarse() ? t("tax.liq.state.ok")
+                        : (c.getValue().motivo() == null ? t("tax.liq.state.ko") : c.getValue().motivo())));
+        table.getColumns().addAll(java.util.List.of(cPer, c477, c472, cRes, cAcc, cState));
+
+        long aplicables = pending.stream()
+                .filter(com.benjagest.ui.model.PendingLiquidationEntry::puedeAplicarse).count();
+        Label resumen = new Label(t("tax.liq.summary")
+                .replace("{n}", String.valueOf(aplicables))
+                .replace("{t}", String.valueOf(pending.size())));
+        resumen.getStyleClass().add("settings-hint");
+
+        VBox box = new VBox(10, note, table, resumen);
+        box.setPadding(new Insets(12));
+        dlg.getDialogPane().setContent(box);
+        ButtonType okBt = new ButtonType(t("tax.liq.action.regularize"), ButtonBar.ButtonData.OK_DONE);
+        dlg.getDialogPane().getButtonTypes().addAll(okBt, ButtonType.CANCEL);
+        dlg.getDialogPane().lookupButton(okBt).setDisable(aplicables == 0);
+
+        dlg.showAndWait().ifPresent(bt -> {
+            if (bt != okBt) return;
+            java.util.List<String> ids = pending.stream()
+                    .filter(com.benjagest.ui.model.PendingLiquidationEntry::puedeAplicarse)
+                    .map(com.benjagest.ui.model.PendingLiquidationEntry::filingId)
+                    .collect(java.util.stream.Collectors.toList());
+            if (ids.isEmpty()) return;
+            Task<Integer> apply = new Task<>() {
+                @Override protected Integer call() throws Exception {
+                    return altaApiClient.backfillLiquidations(ids);
+                }
+            };
+            apply.setOnSucceeded(ev -> {
+                showInfo(t("tax.liq.title"),
+                        t("tax.liq.done").replace("{n}", String.valueOf(apply.getValue())));
+                // El Diario y el cuadro de mando tienen que verlo sin refrescar a mano.
+                com.benjagest.ui.support.RefreshBus.emit(
+                        com.benjagest.ui.support.RefreshBus.TOPIC_JOURNAL);
+                onReload.run();
+            });
+            apply.setOnFailed(ev -> showError(t("tax.liq.fail.title"),
+                    apply.getException() == null ? "" : apply.getException().getMessage()));
+            start(apply, "tax-liq-backfill");
+        });
+    }
+
 
     private Node buildCalendarTab(TaxBundle bundle) {
         Label hint = new Label(t("tax.calendar.hint"));
