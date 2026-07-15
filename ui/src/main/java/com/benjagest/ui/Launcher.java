@@ -37,11 +37,35 @@ public final class Launcher {
             // WINSVC (2026-07-12): en la instalación de Asesoría el backend corre
             // como SERVICIO de Windows (arranca en el boot, antes del login). Si ya
             // está sirviendo en 8080, la UI NO debe lanzar otro: sería un segundo
-            // proceso peleando por el puerto 13307 y el lock del data dir. Solo se
-            // auto-arranca si NADIE responde (instalación sin servicio, o servicio
-            // aún no levantado).
-            if (isBackendUp()) {
-                System.out.println("[Launcher] Backend ya en marcha (servicio) en http://localhost:8080; no lo lanzo.");
+            // proceso peleando por el puerto 13307 y el lock del data dir.
+            //
+            // LAUNCH-1 (2026-07-15) — Bug de Benjamin al reinstalar la 0.1.39: "levanta
+            // el backend pero no levanta la bd"; a la segunda entraba. Aquí había UNA
+            // sonda de 1 segundo, y el servicio tarda ~6 s en responder (arranca su
+            // MariaDB embebida primero). Si abrías la app dentro de esa ventana, la
+            // sonda fallaba y se lanzaba un backend HIJO con el usuario de escritorio.
+            // Ese hijo NO PUEDE FUNCIONAR NUNCA en una instalación con servicio: el
+            // data dir (%ProgramData%\BENJAGEST\mariadb-data) es de LocalSystem y su
+            // MariaDB moría con "Can't create/write to file '.\ddl_recovery.log'
+            // (Errcode: 13 Permission denied)" -> DataSource -> Application run failed.
+            //
+            // Por eso: si el servicio ESTÁ INSTALADO, jamás lanzamos backend propio.
+            // Esperamos a que responda. Solo se auto-arranca el backend cuando no hay
+            // servicio (instalación sin servicio / desarrollo).
+            if (windowsServiceInstalled()) {
+                System.out.println("[Launcher] Servicio BenjagestBackend instalado: "
+                        + "espero a que responda (no lanzo backend propio).");
+                if (waitForApi(SERVICE_WAIT_SECONDS)) {
+                    System.out.println("[Launcher] Backend del servicio listo en " + HEALTH_URL);
+                } else {
+                    System.err.println("[Launcher] El servicio BenjagestBackend no respondió en "
+                            + SERVICE_WAIT_SECONDS + " s. Abro la UI igualmente; si no puedes entrar, "
+                            + "arranca el servicio (services.msc -> BenjagestBackend) y reabre. "
+                            + "NO lanzo un backend propio: no podría abrir la base de datos del "
+                            + "servicio y moriría con 'Permission denied'.");
+                }
+            } else if (isBackendUp()) {
+                System.out.println("[Launcher] Backend ya en marcha en " + HEALTH_URL + "; no lo lanzo.");
             } else {
                 try {
                     startEmbeddedBackend();
@@ -53,7 +77,37 @@ public final class Launcher {
         BenjagestUiApplication.main(args);
     }
 
-    /** Sonda rápida: ¿responde ya algo en el 8080? (el servicio de Windows). */
+    /** Cuánto esperamos al servicio antes de abrir la UI igualmente. */
+    private static final int SERVICE_WAIT_SECONDS = 90;
+
+    /**
+     * ¿Está instalado el servicio de Windows del backend? Se pregunta a Windows
+     * ({@code sc query}) en vez de mirar si existe {@code benjagest-backend.exe}
+     * junto a la app: ese fichero lo trae el instalable de Asesoría SIEMPRE, pero
+     * el servicio solo existe si se llegó a ejecutar install-service.
+     *
+     * <p>Cualquier estado vale (RUNNING, START_PENDING, STOPPED): si el servicio
+     * existe, el data dir es suyo y un backend nuestro no podría abrirlo.
+     * Ante la duda devolvemos false (comportamiento anterior).
+     */
+    private static boolean windowsServiceInstalled() {
+        if (!System.getProperty("os.name", "").toLowerCase().contains("win")) return false;
+        try {
+            Process p = new ProcessBuilder("sc", "query", "BenjagestBackend")
+                    .redirectErrorStream(true).start();
+            boolean done = p.waitFor(10, java.util.concurrent.TimeUnit.SECONDS);
+            if (!done) { p.destroyForcibly(); return false; }
+            // exit 0 = el servicio existe; 1060 = no existe.
+            return p.exitValue() == 0;
+        } catch (IOException | InterruptedException ex) {
+            if (ex instanceof InterruptedException) Thread.currentThread().interrupt();
+            System.err.println("[Launcher] No pude consultar el servicio (" + ex + "); "
+                    + "sigo por el camino sin servicio.");
+            return false;
+        }
+    }
+
+    /** Sonda rápida: ¿responde ya algo en el 8080? */
     private static boolean isBackendUp() {
         HttpClient client = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(1)).build();
@@ -105,38 +159,52 @@ public final class Launcher {
 
         Runtime.getRuntime().addShutdownHook(new Thread(Launcher::stopBackend));
 
-        waitForApi();
+        if (waitForApi(180)) {
+            System.out.println("[Launcher] Backend listo en " + HEALTH_URL);
+        } else {
+            System.err.println("[Launcher] El backend no respondió a tiempo; abro la UI igualmente.");
+        }
     }
 
-    private static void waitForApi() {
+    /**
+     * Espera hasta {@code seconds} a que el 8080 responda, sondeando cada 2 s.
+     *
+     * <p>LAUNCH-1: lo usan los DOS caminos — esperar al servicio de Windows (que
+     * puede tardar ~6 s en levantar su MariaDB embebida, y bastante más si el
+     * equipo acaba de arrancar) y esperar al backend hijo que lanzamos nosotros.
+     * Si tenemos hijo y muere, se corta antes: no tiene sentido seguir sondeando.
+     *
+     * @return true si el backend respondió.
+     */
+    private static boolean waitForApi(int seconds) {
         HttpClient client = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(2)).build();
         HttpRequest req = HttpRequest.newBuilder(URI.create(HEALTH_URL))
                 .timeout(Duration.ofSeconds(2)).GET().build();
-        for (int i = 0; i < 90; i++) {
+        int attempts = Math.max(1, seconds / 2);
+        for (int i = 0; i < attempts; i++) {
             if (backend != null && !backend.isAlive()) {
                 System.err.println("[Launcher] El backend terminó inesperadamente (código "
                         + backend.exitValue() + "). Revisa ~/.benjagest/backend.log");
-                return;
+                return false;
             }
             try {
                 client.send(req, HttpResponse.BodyHandlers.discarding());
-                System.out.println("[Launcher] Backend listo en http://localhost:8080");
-                return; // cualquier respuesta HTTP (incl. 404) = Tomcat sirviendo
+                return true; // cualquier respuesta HTTP (incl. 404) = Tomcat sirviendo
             } catch (IOException connecting) {
                 // aún no escucha: esperar y reintentar
             } catch (InterruptedException ie) {
                 Thread.currentThread().interrupt();
-                return;
+                return false;
             }
             try {
                 Thread.sleep(2000);
             } catch (InterruptedException ie) {
                 Thread.currentThread().interrupt();
-                return;
+                return false;
             }
         }
-        System.err.println("[Launcher] El backend no respondió a tiempo; abro la UI igualmente.");
+        return false;
     }
 
     private static void stopBackend() {
