@@ -519,10 +519,16 @@ public class PurchaseJournalEntryService {
     @org.springframework.transaction.annotation.Transactional
     public void applyVatDeductibilitySplit(PurchaseInvoice purchase) {
         String companyId = tenantContext.getCurrentCompanyId();
+        // ASI-4 (2026-07-15): "AND status <> 'VOIDED'" + DESC, espejo del mismo
+        // arreglo en SalesJournalEntryService.regenerateForSales. Resuelve "EL
+        // asiento de esta factura" y cogía el más antiguo sin mirar el estado:
+        // en cuanto una compra tenga un asiento anulado + uno vivo (p.ej. al
+        // reclasificar), cambiar el % de IVA deducible reescribiría el muerto.
         List<String> entryIds = jdbcTemplate.query("""
                 SELECT id FROM journal_entries
                  WHERE company_id = ? AND source_type = ? AND source_id = ?
-                 ORDER BY created_at LIMIT 1
+                   AND status <> 'VOIDED'
+                 ORDER BY created_at DESC LIMIT 1
                 """, (rs, n) -> rs.getString("id"), companyId, SRC_TYPE, purchase.id());
         if (entryIds.isEmpty()) return; // sin asiento (borrador sin contabilizar)
         String entryId = entryIds.get(0);
