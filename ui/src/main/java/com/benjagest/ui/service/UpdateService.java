@@ -129,8 +129,12 @@ public class UpdateService {
      * Construye el PowerShell del actualizador. Extraído de
      * {@link #launchInstaller} para poder verificarlo sin actualizar de verdad:
      * un error de sintaxis aquí significa que la actualización no haría nada y
-     * la app se cerraría igualmente. Lo cubre {@code UpdateScriptTest}, que
-     * además lo pasa por el parser real de PowerShell.
+     * la app se cerraría igualmente, dejando al usuario sin app y sin pista.
+     *
+     * <p>El módulo ui no tiene junit configurado, así que en la 0.1.40 esto se
+     * validó a mano: volcando el script y pasándolo por el parser real de
+     * PowerShell ({@code [Parser]::ParseFile}). Si algún día se añaden tests al
+     * ui, este método es el primer candidato.
      */
     static String buildUpdateScript(Path msi, Path installDir) {
         String dir = installDir == null ? "" : installDir.toString();
