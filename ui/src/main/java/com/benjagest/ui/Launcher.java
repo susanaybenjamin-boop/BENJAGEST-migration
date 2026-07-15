@@ -81,6 +81,25 @@ public final class Launcher {
     private static final int SERVICE_WAIT_SECONDS = 90;
 
     /**
+     * Carpeta de instalación (la que contiene BENJAGEST.exe, runtime\ y backend.jar),
+     * o null si no se puede resolver (p.ej. corriendo desde el IDE).
+     *
+     * <p>UPD-1: la usa {@code UpdateService.launchInstaller} para esperar a que nadie
+     * esté ejecutando nada desde ahí antes de dejar entrar al MSI. Misma resolución
+     * que {@link #startEmbeddedBackend()}: el jar vive en {@code <root>\app\}.
+     */
+    public static java.nio.file.Path installDir() {
+        try {
+            Path appDir = Paths.get(Launcher.class.getProtectionDomain()
+                    .getCodeSource().getLocation().toURI()).getParent();
+            return appDir == null ? null : appDir.getParent();
+        } catch (Exception ex) {
+            System.err.println("[Launcher] No pude resolver la carpeta de instalación: " + ex);
+            return null;
+        }
+    }
+
+    /**
      * ¿Está instalado el servicio de Windows del backend? Se pregunta a Windows
      * ({@code sc query}) en vez de mirar si existe {@code benjagest-backend.exe}
      * junto a la app: ese fichero lo trae el instalable de Asesoría SIEMPRE, pero

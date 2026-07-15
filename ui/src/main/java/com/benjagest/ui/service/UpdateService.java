@@ -85,23 +85,140 @@ public class UpdateService {
      * {@code runtime\lib\modules} (~125 MB) → el MSI no puede reemplazarlo en
      * caliente y lo aplaza al reinicio ("a reboot will be required"); esa
      * operación diferida puede quedar a medias y dejar el JRE roto ("Failed
-     * setting boot class path"). Con el servicio parado los ficheros están libres:
-     * el MSI reemplaza todo sin reinicio y sin riesgo.
+     * setting boot class path").
      *
-     * <p>Todo en un único proceso elevado (una sola UAC) vía un .cmd temporal.
-     * Tolerante: si el servicio no existe (variante Puesto, o instalación sin
-     * servicio) los {@code net stop/start} fallan y el batch continúa igual.
+     * <p><b>UPD-1 (2026-07-15) — parar el servicio NO bastaba.</b> La actualización
+     * 0.1.38→0.1.39 volvió a romper el JRE de Benjamin. Evidencia del visor de
+     * eventos (no deducción): la transacción de {@code Temp\BENJAGEST-update.msi}
+     * acabó en <i>Product: BENJAGEST -- Installation failed</i> (evento 11708) y
+     * en <i>"Windows Installer requiere un reinicio del sistema … Motivo del
+     * reinicio: 1"</i> (evento 1038) = <b>ficheros en uso</b>. Tras el reinicio el
+     * runtime quedó sin {@code lib\modules} y la app no arrancaba ni como admin.
+     *
+     * <p>Por qué no bastaba: el servicio corre con <b>el propio JRE que el MSI
+     * reemplaza</b> ({@code <executable>%BASE%\runtime\bin\java.exe</executable>}
+     * en benjagest-backend.xml), y aquí no había NINGUNA espera entre el
+     * {@code net stop} y el {@code msiexec}. {@code net stop} vuelve cuando el SCM
+     * marca el servicio como parado, pero el {@code java.exe} tarda un instante más
+     * en morir y en que el kernel desmapee {@code modules}. msiexec llegaba a
+     * tiempo de encontrarlo en uso. Y hay un segundo tenedor que {@code net stop}
+     * NO toca: el backend hijo que la UI podía lanzar (ver LAUNCH-1 en
+     * {@code Launcher}), que corre con ese mismo java.exe.
+     *
+     * <p>Ahora el script ESPERA a que no quede ningún proceso corriendo desde la
+     * carpeta de instalación, y VERIFICA el resultado en vez de darlo por bueno:
+     * detecta el 3010 de msiexec (= "reboot requerido" = la trampa) y comprueba que
+     * {@code runtime\lib\modules} exista al terminar. Si algo va mal, deja el aviso
+     * en pantalla en vez de dejar una app que no arranca sin explicación.
+     *
+     * <p>Todo en un único proceso elevado (una sola UAC). Tolerante: si el servicio
+     * no existe (variante Puesto) los stop/start se saltan y el resto sigue igual.
+     *
+     * @param installDir carpeta de instalación (la que el MSI va a reemplazar).
      */
-    public void launchInstaller(Path msi) throws IOException {
-        Path bat = java.nio.file.Files.createTempFile("benjagest-update", ".cmd");
-        String script = "@echo off\r\n"
-                + "net stop BenjagestBackend\r\n"
-                + "msiexec /i \"" + msi.toString() + "\"\r\n"
-                + "net start BenjagestBackend\r\n";
-        java.nio.file.Files.writeString(bat, script);
+    public void launchInstaller(Path msi, Path installDir) throws IOException {
+        Path ps1 = java.nio.file.Files.createTempFile("benjagest-update", ".ps1");
+        java.nio.file.Files.writeString(ps1, buildUpdateScript(msi, installDir));
         new ProcessBuilder("powershell", "-NoProfile", "-Command",
-                "Start-Process cmd -Verb RunAs -ArgumentList '/c','\"" + bat.toString() + "\"'")
+                "Start-Process powershell -Verb RunAs -ArgumentList "
+                        + "'-NoProfile','-ExecutionPolicy','Bypass','-File','\"" + ps1 + "\"'")
                 .start();
+    }
+
+    /**
+     * Construye el PowerShell del actualizador. Extraído de
+     * {@link #launchInstaller} para poder verificarlo sin actualizar de verdad:
+     * un error de sintaxis aquí significa que la actualización no haría nada y
+     * la app se cerraría igualmente. Lo cubre {@code UpdateScriptTest}, que
+     * además lo pasa por el parser real de PowerShell.
+     */
+    static String buildUpdateScript(Path msi, Path installDir) {
+        String dir = installDir == null ? "" : installDir.toString();
+        return String.join("\r\n",
+                "$ErrorActionPreference = 'Continue'",
+                "$msi = '" + psQuote(msi.toString()) + "'",
+                "$dir = '" + psQuote(dir) + "'",
+                "Write-Host 'BENJAGEST — actualizando. NO cierres esta ventana.'",
+                "",
+                "# 1) Parar el servicio (si existe). Pedimos su PID ANTES: es el java.exe",
+                "#    que tiene mapeado runtime\\lib\\modules y hay que verlo MORIR.",
+                "$svc = Get-Service -Name BenjagestBackend -ErrorAction SilentlyContinue",
+                "$svcPid = 0",
+                "if ($svc) {",
+                "  try { $svcPid = (Get-CimInstance Win32_Service -Filter \"Name='BenjagestBackend'\").ProcessId } catch { $svcPid = 0 }",
+                "  Write-Host 'Parando el servicio...'",
+                "  Stop-Service -Name BenjagestBackend -Force -ErrorAction SilentlyContinue",
+                "  try { (Get-Service BenjagestBackend).WaitForStatus('Stopped', [TimeSpan]::FromSeconds(60)) } catch {}",
+                "}",
+                "",
+                "# 2) UPD-1: esperar a que el proceso MUERA de verdad. Esto es lo que",
+                "#    faltaba y lo que rompio el JRE en la 0.1.39: 'net stop' vuelve cuando",
+                "#    el SCM marca el servicio parado, pero java.exe tarda un instante mas en",
+                "#    salir y en que el kernel desmapee modules -> msiexec lo encontraba en",
+                "#    uso -> aplazaba a reinicio -> runtime a medias.",
+                "if ($svcPid -gt 0) {",
+                "  Write-Host \"Esperando a que termine el proceso del servicio (PID $svcPid)...\"",
+                "  try { Wait-Process -Id $svcPid -Timeout 60 -ErrorAction SilentlyContinue } catch {}",
+                "}",
+                "",
+                "# 3) Y a que no quede NADA corriendo desde la carpeta de instalacion (p.ej.",
+                "#    un backend hijo lanzado por la UI, que el servicio no controla).",
+                "#    Best-effort: si no podemos leer la ruta de un proceso, no lo sabremos;",
+                "#    por eso ademas hay una espera fija abajo, que no depende de esto.",
+                "function Holders {",
+                "  if (-not $dir) { return @() }",
+                "  Get-Process -ErrorAction SilentlyContinue | Where-Object {",
+                "    try { $_.Path -and $_.Path.StartsWith($dir, 'OrdinalIgnoreCase') } catch { $false } }",
+                "}",
+                "for ($i = 0; $i -lt 60; $i++) {",
+                "  $h = @(Holders)",
+                "  if ($h.Count -eq 0) { break }",
+                "  Write-Host \"Esperando a que se cierren: $(($h | ForEach-Object { $_.ProcessName }) -join ', ')\"",
+                "  Start-Sleep -Seconds 1",
+                "}",
+                "$h = @(Holders)",
+                "if ($h.Count -gt 0) {",
+                "  Write-Host 'Siguen abiertos; los cierro para que el instalador pueda reemplazar el JRE.'",
+                "  $h | ForEach-Object { try { $_.Kill() } catch {} }",
+                "  Start-Sleep -Seconds 3",
+                "}",
+                "",
+                "# 4) Colchon fijo: aunque creamos que no queda nadie, dar tiempo a que",
+                "#    Windows suelte los ficheros mapeados. Barato comparado con dejar el",
+                "#    JRE roto.",
+                "Start-Sleep -Seconds 3",
+                "",
+                "# 3) Instalar. /norestart: NUNCA reiniciar por nuestra cuenta; si hiciera",
+                "#    falta reiniciar es que algo sigue en uso -> preferimos enterarnos.",
+                "Write-Host 'Instalando...'",
+                "$p = Start-Process msiexec -ArgumentList '/i', \"`\"$msi`\"\", '/qb', '/norestart' -Wait -PassThru",
+                "$code = $p.ExitCode",
+                "",
+                "# 4) Verificar en vez de suponer.",
+                "$modules = Join-Path $dir 'runtime\\lib\\modules'",
+                "$ok = (Test-Path $modules)",
+                "if ($code -eq 3010) { Write-Host ''; Write-Host 'AVISO: el instalador pide reinicio (habia ficheros en uso).' -ForegroundColor Yellow }",
+                "if (-not $ok) {",
+                "  Write-Host ''",
+                "  Write-Host 'LA ACTUALIZACION NO SE COMPLETO BIEN: falta runtime\\lib\\modules.' -ForegroundColor Red",
+                "  Write-Host 'La app NO arrancara. Vuelve a ejecutar el instalador a mano:' -ForegroundColor Red",
+                "  Write-Host \"   $msi\" -ForegroundColor Red",
+                "  Write-Host '(codigo msiexec: ' $code ')'",
+                "  Read-Host 'Pulsa Intro para cerrar'",
+                "} else {",
+                "  Write-Host 'Actualizacion correcta.' -ForegroundColor Green",
+                "}",
+                "",
+                "# 5) Arrancar el servicio y volver a abrir la app.",
+                "if ($svc) { Start-Service -Name BenjagestBackend -ErrorAction SilentlyContinue }",
+                "$exe = Join-Path $dir 'BENJAGEST.exe'",
+                "if ($ok -and (Test-Path $exe)) { Start-Process $exe }",
+                "");
+    }
+
+    /** Escapa comillas simples para incrustar una ruta en un literal de PowerShell. */
+    private static String psQuote(String s) {
+        return s.replace("'", "''");
     }
 
     // ---- versión: compara "0.1.10" vs "0.1.2" numéricamente por tramos ----

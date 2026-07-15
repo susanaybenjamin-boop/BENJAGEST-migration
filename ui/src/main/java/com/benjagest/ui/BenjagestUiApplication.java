@@ -576,7 +576,10 @@ public class BenjagestUiApplication extends Application
         };
         dl.setOnSucceeded(e -> {
             try {
-                updateService.launchInstaller(dl.getValue());
+                // UPD-1: el instalador necesita saber QUÉ carpeta va a reemplazar para
+                // poder esperar a que nadie la esté usando (era lo que faltaba: el
+                // java.exe del servicio vive ahí y bloqueaba runtime\lib\modules).
+                updateService.launchInstaller(dl.getValue(), com.benjagest.ui.Launcher.installDir());
                 // Cerrar para que el instalador pueda reemplazar los archivos.
                 javafx.application.Platform.exit();
                 System.exit(0);
