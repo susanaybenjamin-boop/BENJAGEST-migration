@@ -45,6 +45,7 @@ import javafx.scene.control.TabPane;
 import javafx.scene.control.TableColumn;
 import javafx.scene.control.TableView;
 import javafx.scene.control.TextArea;
+import javafx.scene.control.TextInputDialog;
 import javafx.scene.control.TextField;
 import javafx.scene.control.cell.ComboBoxTableCell;
 import javafx.scene.control.cell.TextFieldTableCell;
@@ -432,6 +433,31 @@ public class AccountingScreen {
                 reload);
         filters.setAlignment(Pos.CENTER_LEFT);
 
+        // ASI-2 (2026-07-15) — "Anular" en el Diario. El backend ya sabía
+        // hacerlo (voidEntry: VOID del original + contraasiento) y el cliente
+        // AccountingApiClient.voidEntry existía, pero NO tenía ningún caller:
+        // era código muerto. Sin este botón un asiento POSTED equivocado (p.ej.
+        // un manual duplicado) era imposible de corregir desde la app. Bug
+        // reportado por Benjamin 2026-07-15.
+        //
+        // Se llama "Anular" y no "Eliminar" a propósito: un asiento validado NO
+        // se borra nunca (RD 1007/2023 + criterio contable). Se anula con un
+        // asiento de signo opuesto y ambos quedan visibles en el Diario.
+        Button voidBtn = new Button(tt.apply("accounting.action.void"));
+        voidBtn.setOnAction(e -> voidSelectedDiaryEntry());
+        voidBtn.setDisable(true);
+
+        Label voidHint = new Label(tt.apply("accounting.diary.void_hint"));
+        voidHint.setStyle("-fx-text-fill: #6e6e6e;");
+
+        // Solo se anula UN asiento POSTED a la vez. Un DRAFT no se anula (se
+        // edita o se borra) y un VOIDED ya lo está.
+        diaryTable.getSelectionModel().selectedItemProperty().addListener((o, a, b) ->
+                voidBtn.setDisable(b == null || !"POSTED".equalsIgnoreCase(b.status())));
+
+        HBox actions = new HBox(8, voidBtn, voidHint);
+        actions.setAlignment(Pos.CENTER_LEFT);
+
         diaryTable.setRowFactory(tv -> {
             javafx.scene.control.TableRow<DiaryEntry> row = new javafx.scene.control.TableRow<>();
             row.setOnMouseClicked(e -> {
@@ -442,11 +468,58 @@ public class AccountingScreen {
             return row;
         });
 
-        VBox box = new VBox(8, filters, diaryTable);
+        // Slice 3V — acciones ENCIMA del listado, nunca debajo.
+        VBox box = new VBox(8, filters, actions, diaryTable);
         VBox.setVgrow(diaryTable, Priority.ALWAYS);
         box.setPadding(new Insets(8));
+
+        // Auto-refresh: el Diario se repinta solo cuando alguien valida,
+        // anula o reclasifica un asiento (aquí o desde otra pantalla).
+        com.benjagest.ui.support.RefreshBus.subscribe(
+                com.benjagest.ui.support.RefreshBus.TOPIC_JOURNAL,
+                this::loadDiary, diaryTable);
+
         loadDiary();
         return box;
+    }
+
+    /**
+     * ASI-2 — Anula el asiento POSTED seleccionado con un contraasiento.
+     *
+     * <p>El motivo es obligatorio: acaba en el concepto del contraasiento
+     * ("Anulación asiento 12 — duplicado") y es lo único que le explica a un
+     * inspector, o a Benjamin dentro de seis meses, por qué existe ese par de
+     * asientos. El backend lo acepta vacío; aquí no.
+     */
+    private void voidSelectedDiaryEntry() {
+        DiaryEntry sel = diaryTable.getSelectionModel().getSelectedItem();
+        if (sel == null || !"POSTED".equalsIgnoreCase(sel.status())) return;
+
+        TextInputDialog dlg = new TextInputDialog();
+        dlg.setTitle(tt.apply("accounting.action.void"));
+        dlg.setHeaderText(tt.apply("accounting.void.header")
+                .replace("{n}", String.valueOf(sel.entryNumber()))
+                .replace("{c}", sel.concept() == null ? "" : sel.concept()));
+        dlg.setContentText(tt.apply("accounting.void.reason"));
+        dlg.getDialogPane().setPrefWidth(560);
+
+        // Sin motivo no se puede aceptar.
+        Node okBtn = dlg.getDialogPane().lookupButton(ButtonType.OK);
+        okBtn.setDisable(true);
+        dlg.getEditor().textProperty().addListener((o, a, b) ->
+                okBtn.setDisable(b == null || b.isBlank()));
+
+        dlg.showAndWait().ifPresent(reason -> {
+            if (reason == null || reason.isBlank()) return;
+            async(() -> { api.voidEntry(sel.id(), reason.trim()); return null; },
+                    ok -> {
+                        showInfo(tt.apply("accounting.action.void"),
+                                tt.apply("accounting.void.done"));
+                        com.benjagest.ui.support.RefreshBus.emit(
+                                com.benjagest.ui.support.RefreshBus.TOPIC_JOURNAL);
+                    },
+                    err -> showError(tt.apply("accounting.error.void"), err));
+        });
     }
 
     private void loadDiary() {
@@ -2018,6 +2091,26 @@ public class AccountingScreen {
         VBox header = new VBox(4,
                 row(tt.apply("accounting.field.date"), datePicker),
                 row(tt.apply("accounting.field.concept"), conceptArea));
+
+        // ASI-2 — un asiento ya validado NO se edita. El backend siempre lo
+        // rechazó (409 "Solo se pueden editar asientos en DRAFT"), pero el
+        // diálogo se abría con todo habilitado y el usuario solo lo descubría
+        // al chocar. Ahora se ve de entrada: campos bloqueados, botones de
+        // guardar/validar fuera, y un aviso que explica el camino correcto
+        // (Anular con contraasiento). Solo se puede leer y cerrar.
+        boolean readOnly = detail != null && !"DRAFT".equalsIgnoreCase(detail.status());
+        if (readOnly) {
+            datePicker.setDisable(true);
+            conceptArea.setEditable(false);
+            linesTable.setEditable(false);
+            actions.getChildren().setAll(cancel);
+
+            Label lockBadge = new Label(tt.apply("accounting.entry.read_only"));
+            lockBadge.setWrapText(true);
+            lockBadge.setStyle("-fx-background-color: #e7f1ff; -fx-padding: 6 10; "
+                    + "-fx-background-radius: 4; -fx-text-fill: #084298;");
+            header.getChildren().add(0, lockBadge);
+        }
 
         if (detail != null && detail.autoProposed()) {
             Label propBadge = new Label(tt.apply("accounting.badge.auto_proposed")

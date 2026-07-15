@@ -7409,6 +7409,14 @@ public final class I18n {
             case "accounting.confirm.validate_batch" -> "Validate {n} selected entries (draft)? Already POSTED ones will be skipped, errors (closed period, etc.) will stay as they are.";
             case "accounting.validate_batch.result" -> "Validated: {p}\nSkipped: {s}\nErrors: {e}\n\nThe pending tab and the journal have been refreshed.";
             case "accounting.error.validate_batch" -> "Could not validate batch";
+            // ---- ASI-2 (2026-07-15) — Void a posted entry with a reversal ----
+            case "accounting.action.void" -> "Void";
+            case "accounting.diary.void_hint" -> "A posted entry is never deleted: it is voided with an opposite-sign entry, and both stay in the journal.";
+            case "accounting.void.header" -> "Void entry #{n} — {c}\n\nThe entry will be marked as VOIDED (it stops counting towards balances but stays visible) and a reversal with the opposite sign will be created. Nothing is deleted.";
+            case "accounting.void.reason" -> "Reason (required):";
+            case "accounting.void.done" -> "Entry voided. The reversal has been posted; you will find both in the journal.";
+            case "accounting.error.void" -> "Could not void the entry";
+            case "accounting.entry.read_only" -> "Posted entry — read only. A posted entry cannot be edited. To correct it, close this window and use \"Void\" in the journal: the entry is cancelled with a reversal and you then record the correct one.";
             case "accounting.error.session_expired_title" -> "Session expired";
             case "accounting.error.session_expired_body" -> "Your session has expired (tokens last 8 hours for security).\n\nClose the app and log in again to continue.\n\nNothing you saved has been lost.";
             // ============ Enum values translated (EN) ============
@@ -8769,6 +8777,14 @@ public final class I18n {
             case "accounting.confirm.validate_batch" -> "¿Validar {n} asientos seleccionados (en borrador)? Los que ya estén POSTED se saltarán y los que tengan errores (fecha en periodo cerrado, etc.) quedarán como están.";
             case "accounting.validate_batch.result" -> "Validados: {p}\nSaltados: {s}\nErrores: {e}\n\nLa pestaña por validar y el diario se han actualizado.";
             case "accounting.error.validate_batch" -> "No se pudo validar el lote";
+            // ---- ASI-2 (2026-07-15) — Anular un asiento validado con contraasiento ----
+            case "accounting.action.void" -> "Anular";
+            case "accounting.diary.void_hint" -> "Un asiento validado no se borra nunca: se anula con un asiento de signo contrario, y los dos quedan en el diario.";
+            case "accounting.void.header" -> "Anular el asiento #{n} — {c}\n\nEl asiento se marcará como ANULADO (deja de contar en los saldos pero sigue visible) y se creará un contraasiento de signo contrario. No se borra nada.";
+            case "accounting.void.reason" -> "Motivo (obligatorio):";
+            case "accounting.void.done" -> "Asiento anulado. El contraasiento ya está validado; los verás a los dos en el diario.";
+            case "accounting.error.void" -> "No se pudo anular el asiento";
+            case "accounting.entry.read_only" -> "Asiento validado — solo lectura. Un asiento validado no se puede editar. Para corregirlo, cierra esta ventana y usa \"Anular\" en el diario: el asiento se cancela con un contraasiento y después registras el correcto.";
             case "accounting.error.session_expired_title" -> "Sesión expirada";
             case "accounting.error.session_expired_body" -> "Tu sesión ha caducado (los tokens duran 8 horas por seguridad).\n\nCierra la aplicación y vuelve a iniciar sesión para continuar trabajando.\n\nNo se ha perdido nada de lo que tenías guardado.";
             // ============ Valores enum traducidos (ES) ============
