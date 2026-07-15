@@ -29,6 +29,35 @@ public class UpdateService {
     private static final String DEFAULT_URL =
             "https://api.github.com/repos/susanaybenjamin-boop/BENJAGEST-migration/releases/latest";
 
+    /** UPD-3: la misma resolución que usan los ApiClient del UI. */
+    public static String apiBaseUrl() {
+        return System.getenv().getOrDefault("BENJAGEST_API_BASE_URL", "http://localhost:8080/api");
+    }
+
+    /**
+     * UPD-3 — El marcador que crea el helper del servicio al terminar; lo vigila
+     * el relanzador para reabrir la app.
+     *
+     * <p>Tiene que ser LA MISMA ruta que usa {@code SystemUpdateService} en el
+     * backend ({@code BenjagestHome.resolve("updates")}). Se repite aquí porque
+     * el UI no depende del backend, y {@code BenjagestHome} vive allí. Si algún
+     * día cambia la raíz de datos, hay que tocar los dos sitios — por eso lo
+     * dice este comentario.
+     */
+    public static Path doneMarkerPath() {
+        String override = System.getProperty("benjagest.home");
+        Path root;
+        if (override != null && !override.isBlank()) {
+            root = Paths.get(override);
+        } else {
+            String programData = System.getenv("ProgramData");
+            root = (programData == null || programData.isBlank())
+                    ? Paths.get(System.getProperty("user.home"), ".benjagest")
+                    : Paths.get(programData, "BENJAGEST");
+        }
+        return root.resolve("updates").resolve("update-done.marker");
+    }
+
     // followRedirects: las descargas de assets de GitHub responden 302 hacia un
     // CDN; sin esto la descarga del .msi fallaría.
     private final HttpClient http = HttpClient.newBuilder()
@@ -68,6 +97,58 @@ public class UpdateService {
     @FunctionalInterface
     public interface ProgressListener {
         void onProgress(long bytesDone, long bytesTotal);
+    }
+
+    // ---- UPD-3: la actualización la hace el SERVICIO ------------------------
+
+    /** Estado de la actualización que lleva el servicio. */
+    public record ServiceUpdateStatus(String state, long bytesDone, long bytesTotal, String message) {}
+
+    /**
+     * Le pide al SERVICIO que se actualice él (descarga + instala). Sin UAC: ya
+     * corre como LocalSystem. No acepta rutas a propósito — el servicio se baja
+     * el MSI de la release oficial; si aceptara un path, cualquiera con acceso al
+     * 8080 (que escucha en toda la LAN) podría hacerle ejecutar un instalador
+     * arbitrario como SYSTEM.
+     *
+     * @return true si el servicio cogió el encargo.
+     */
+    public boolean startServiceUpdate(String apiBaseUrl, String bearer) {
+        try {
+            HttpRequest req = HttpRequest.newBuilder(URI.create(apiBaseUrl + "/system/update"))
+                    .timeout(Duration.ofSeconds(15))
+                    .header("Authorization", "Bearer " + bearer)
+                    .header("Content-Type", "application/json")
+                    .POST(HttpRequest.BodyPublishers.ofString("{}"))
+                    .build();
+            HttpResponse<String> r = http.send(req, HttpResponse.BodyHandlers.ofString());
+            return r.statusCode() >= 200 && r.statusCode() < 300;
+        } catch (Exception ex) {
+            System.err.println("[UpdateService] el servicio no cogió la actualización: " + ex);
+            return false;
+        }
+    }
+
+    /** Progreso que reporta el servicio, para la barra. */
+    public ServiceUpdateStatus serviceUpdateStatus(String apiBaseUrl, String bearer) {
+        try {
+            HttpRequest req = HttpRequest.newBuilder(URI.create(apiBaseUrl + "/system/update/status"))
+                    .timeout(Duration.ofSeconds(10))
+                    .header("Authorization", "Bearer " + bearer)
+                    .GET().build();
+            HttpResponse<String> r = http.send(req, HttpResponse.BodyHandlers.ofString());
+            if (r.statusCode() != 200) return null;
+            String b = r.body();
+            return new ServiceUpdateStatus(field(b, "state"),
+                    longField(b, "bytesDone"), longField(b, "bytesTotal"), field(b, "message"));
+        } catch (Exception ex) {
+            return null;
+        }
+    }
+
+    private static long longField(String json, String name) {
+        Matcher m = Pattern.compile("\"" + name + "\"\\s*:\\s*(-?\\d+)").matcher(json);
+        return m.find() ? Long.parseLong(m.group(1)) : 0L;
     }
 
     /**
@@ -149,6 +230,44 @@ public class UpdateService {
      *
      * @param installDir carpeta de instalación (la que el MSI va a reemplazar).
      */
+    /**
+     * UPD-3 (2026-07-15) — Deja un VIGÍA corriendo en la sesión del usuario que
+     * reabrirá la app cuando el servicio termine de actualizar.
+     *
+     * <p>Hace falta porque lo que lanza un servicio corre en la <b>sesión 0</b>,
+     * que no tiene escritorio: el helper del servicio no puede abrir ventanas ni
+     * relanzar la app de forma visible. Este vigía sí — lo lanza la app, así que
+     * hereda la sesión del usuario. Es un PowerShell suelto que no toca nada de
+     * la carpeta de instalación, así que no bloquea ningún fichero (que es el
+     * pecado original de todo este lío).
+     *
+     * @param marker fichero que el helper del servicio crea al terminar.
+     */
+    public void spawnRelauncher(Path installDir, Path marker) throws IOException {
+        if (installDir == null) return;
+        Path exe = installDir.resolve("BENJAGEST.exe");
+        String cmd = "$m='" + psQuote(marker.toString()) + "';"
+                // 20 min de margen: la descarga ya la hizo el servicio, pero la
+                // instalación de 300 MB en un disco lento no es instantánea.
+                + "for($i=0;$i -lt 600;$i++){ if(Test-Path -LiteralPath $m){break}; Start-Sleep -Seconds 2 };"
+                + "if(Test-Path -LiteralPath $m){ Start-Sleep -Seconds 2; "
+                + "Start-Process '" + psQuote(exe.toString()) + "' }";
+        new ProcessBuilder("powershell", "-NoProfile", "-WindowStyle", "Hidden",
+                "-ExecutionPolicy", "Bypass", "-Command", cmd)
+                .start();
+    }
+
+    /**
+     * @deprecated UPD-3 — La actualización la hace ahora el SERVICIO
+     *     ({@code POST /api/system/update}), que ya es LocalSystem: sin UAC y,
+     *     sobre todo, con la app muerta antes de que empiece la copia.
+     *     Este camino elevaba un PowerShell desde la app y falló TRES veces el
+     *     2026-07-15 — no por el servicio (que sí paraba), sino porque
+     *     <b>la propia app</b> mantenía abiertos sus 39 jar de {@code app/} y el
+     *     runtime; msiexec aplazaba el reemplazo al reinicio y dejaba el JRE a
+     *     medias. Se conserva como plan B para instalaciones SIN servicio.
+     */
+    @Deprecated
     public void launchInstaller(Path msi, Path installDir) throws IOException {
         Path ps1 = java.nio.file.Files.createTempFile("benjagest-update", ".ps1");
         java.nio.file.Files.writeString(ps1, buildUpdateScript(msi, installDir));

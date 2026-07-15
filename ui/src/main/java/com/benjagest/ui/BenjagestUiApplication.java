@@ -600,16 +600,41 @@ public class BenjagestUiApplication extends Application
         dlg.getDialogPane().setPrefWidth(500);
         dlg.getDialogPane().getButtonTypes().add(ButtonType.CANCEL);
 
+        // UPD-3 (2026-07-15) — Ya NO descarga la app: se lo encarga al SERVICIO.
+        //
+        // El actualizador rompió esta instalación TRES veces el mismo día. La
+        // causa, probada mirando PendingFileRenameOperations: cuando msiexec iba
+        // a copiar, quedaban 41 ficheros en uso — 39 jar de app\ y el
+        // runtime\lib\modules. Los tenía abiertos LA PROPIA APP, no el servicio
+        // (donde estaba puesto todo el arreglo anterior). Windows aplazaba el
+        // reemplazo al reinicio y dejaba el JRE a medias.
+        //
+        // Ahora manda el servicio, que ya es LocalSystem: no hay UAC (lo pidió
+        // Benjamin) y, sobre todo, el helper ESPERA a que esta app muera antes
+        // de tocar nada. Aquí solo seguimos su progreso y nos quitamos de en
+        // medio.
+        String api = com.benjagest.ui.service.UpdateService.apiBaseUrl();
+        String bearer = com.benjagest.ui.service.AuthSession.get().accessToken();
         Task<java.nio.file.Path> dl = new Task<>() {
             @Override protected java.nio.file.Path call() throws Exception {
-                return updateService.download(info.downloadUrl(), (done, total) -> {
-                    if (total > 0) {
-                        updateProgress(done, total);
-                        updateMessage(mb(done) + " / " + mb(total) + " MB");
-                    } else {
-                        updateMessage(mb(done) + " MB");
+                if (!updateService.startServiceUpdate(api, bearer)) {
+                    throw new IllegalStateException(t("update.service.unavailable"));
+                }
+                // Sondeo hasta que el servicio pase a instalar (o falle).
+                for (int i = 0; i < 1200; i++) { // 20 min de techo
+                    var st = updateService.serviceUpdateStatus(api, bearer);
+                    if (st == null) { Thread.sleep(1000); continue; }
+                    if ("FAILED".equals(st.state())) {
+                        throw new IllegalStateException(st.message() == null ? "" : st.message());
                     }
-                });
+                    if ("INSTALLING".equals(st.state())) return null; // toca cerrarse
+                    if (st.bytesTotal() > 0) {
+                        updateProgress(st.bytesDone(), st.bytesTotal());
+                        updateMessage(mb(st.bytesDone()) + " / " + mb(st.bytesTotal()) + " MB");
+                    }
+                    Thread.sleep(1000);
+                }
+                throw new IllegalStateException(t("update.service.timeout"));
             }
         };
         bar.progressProperty().bind(dl.progressProperty());
@@ -625,17 +650,21 @@ public class BenjagestUiApplication extends Application
             detail.textProperty().unbind();
             detail.setText(t("update.progress.installing"));
             try {
-                // UPD-1: el instalador necesita saber QUÉ carpeta va a reemplazar para
-                // poder esperar a que nadie la esté usando (era lo que faltaba: el
-                // java.exe del servicio vive ahí y bloqueaba runtime\lib\modules).
-                updateService.launchInstaller(dl.getValue(), com.benjagest.ui.Launcher.installDir());
-                // Cerrar para que el instalador pueda reemplazar los archivos.
-                javafx.application.Platform.exit();
-                System.exit(0);
+                // UPD-3: el servicio ya está instalando. Dejamos un vigía en NUESTRA
+                // sesión para reabrir la app al terminar — el servicio no puede
+                // hacerlo: lo que él lanza corre en la sesión 0, sin escritorio.
+                java.nio.file.Path marker = com.benjagest.ui.service.UpdateService
+                        .doneMarkerPath();
+                updateService.spawnRelauncher(com.benjagest.ui.Launcher.installDir(), marker);
             } catch (Exception ex) {
-                dlg.close();
-                showError(t("update.fail.title"), ex.getMessage());
+                // Sin vigía la actualización sigue igual; solo habrá que abrir la
+                // app a mano. No es motivo para abortar.
+                System.err.println("[update] no pude dejar el vigía: " + ex);
             }
+            // Cerrarse YA: mientras esta app viva, sus jar están bloqueados y
+            // msiexec aplazaría el reemplazo al reinicio (el bug de hoy).
+            javafx.application.Platform.exit();
+            System.exit(0);
         });
         dl.setOnFailed(e -> {
             bar.progressProperty().unbind();
