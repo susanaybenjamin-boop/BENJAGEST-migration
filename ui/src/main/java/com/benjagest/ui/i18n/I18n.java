@@ -3113,6 +3113,10 @@ public final class I18n {
             case "update.available.body" -> "Version {v} is available. Download and install it now? BENJAGEST will close to apply the update.";
             case "update.downloading.title" -> "Downloading update";
             case "update.downloading.body" -> "Downloading the installer… BENJAGEST will close and run it when it finishes.";
+            // ---- UPD-2 (2026-07-15) — progress window during the download ----
+            case "update.progress.header" -> "Updating to version {v}";
+            case "update.progress.body" -> "Downloading the installer (about 300 MB). BENJAGEST stays locked meanwhile and will close on its own to install; it reopens when it finishes. Don't turn off the computer.";
+            case "update.progress.installing" -> "Download finished. Installing — BENJAGEST will close now and reopen on its own.";
             case "update.fail.title" -> "Could not update";
             case "settings.session.save" -> "Save session settings";
             case "settings.session.save.ok.title" -> "Saved";
@@ -3427,6 +3431,10 @@ public final class I18n {
             case "update.available.body" -> "Hay una versión {v} disponible. ¿Descargarla e instalarla ahora? BENJAGEST se cerrará para aplicar la actualización.";
             case "update.downloading.title" -> "Descargando actualización";
             case "update.downloading.body" -> "Descargando el instalador… BENJAGEST se cerrará y lo ejecutará al terminar.";
+            // ---- UPD-2 (2026-07-15) — ventana de progreso durante la descarga ----
+            case "update.progress.header" -> "Actualizando a la versión {v}";
+            case "update.progress.body" -> "Descargando el instalador (unos 300 MB). BENJAGEST se queda bloqueado mientras tanto y se cerrará solo para instalar; se vuelve a abrir al terminar. No apagues el equipo.";
+            case "update.progress.installing" -> "Descarga terminada. Instalando — BENJAGEST se cerrará ahora y se reabrirá solo.";
             case "update.fail.title" -> "No se pudo actualizar";
             case "settings.session.save" -> "Guardar configuración de sesión";
             case "settings.session.save.ok.title" -> "Guardado";

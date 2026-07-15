@@ -555,6 +555,11 @@ public class BenjagestUiApplication extends Application
     /** Actualización detectada pero pendiente de mostrar (la app estaba bloqueada). */
     private com.benjagest.ui.service.UpdateService.UpdateInfo pendingUpdateInfo;
 
+    /** Bytes → MB con un decimal, para la barra de progreso de la actualización. */
+    private static String mb(long bytes) {
+        return String.format(java.util.Locale.ROOT, "%.1f", bytes / 1048576.0);
+    }
+
     /** Muestra el diálogo de "hay actualización" y, si acepta, descarga e instala. */
     private void promptUpdate(com.benjagest.ui.service.UpdateService.UpdateInfo info) {
         if (info == null) return;
@@ -567,14 +572,58 @@ public class BenjagestUiApplication extends Application
         }
     }
 
+    /**
+     * UPD-2 (2026-07-15, pedido de Benjamin) — Descarga con ventana de progreso
+     * que BLOQUEA la app.
+     *
+     * <p>Antes esto era un {@code showInfo("descargando…")} y a continuación un
+     * Task mudo: aceptabas el aviso y te quedabas varios minutos sin ver nada
+     * mientras bajaban 302 MB, con la app entera usable (invitando a ponerte a
+     * trabajar justo antes de que se cerrara sola). Ahora: diálogo modal, barra
+     * de progreso real y MB descargados. No se puede cerrar con la X — sí con
+     * Cancelar, que aborta la descarga y te deja la app como estaba.
+     */
     private void downloadAndInstall(com.benjagest.ui.service.UpdateService.UpdateInfo info) {
-        showInfo(t("update.downloading.title"), t("update.downloading.body"));
+        Dialog<ButtonType> dlg = new Dialog<>();
+        dlg.setTitle(t("update.downloading.title"));
+        dlg.setHeaderText(t("update.progress.header").replace("{v}", info.latestVersion()));
+        dlg.initModality(javafx.stage.Modality.APPLICATION_MODAL);
+
+        javafx.scene.control.ProgressBar bar = new javafx.scene.control.ProgressBar(0);
+        bar.setPrefWidth(430);
+        Label detail = new Label();
+        Label warn = new Label(t("update.progress.body"));
+        warn.setWrapText(true);
+        VBox box = new VBox(10, warn, bar, detail);
+        box.setPadding(new Insets(12));
+        dlg.getDialogPane().setContent(box);
+        dlg.getDialogPane().setPrefWidth(500);
+        dlg.getDialogPane().getButtonTypes().add(ButtonType.CANCEL);
+
         Task<java.nio.file.Path> dl = new Task<>() {
             @Override protected java.nio.file.Path call() throws Exception {
-                return updateService.download(info.downloadUrl());
+                return updateService.download(info.downloadUrl(), (done, total) -> {
+                    if (total > 0) {
+                        updateProgress(done, total);
+                        updateMessage(mb(done) + " / " + mb(total) + " MB");
+                    } else {
+                        updateMessage(mb(done) + " MB");
+                    }
+                });
             }
         };
+        bar.progressProperty().bind(dl.progressProperty());
+        detail.textProperty().bind(dl.messageProperty());
+
+        // La X no cierra: cerrar a medias dejaría la descarga huérfana y al
+        // usuario sin saber si se actualizó o no. Para salir, Cancelar.
+        javafx.stage.Window w = dlg.getDialogPane().getScene().getWindow();
+        w.setOnCloseRequest(javafx.event.Event::consume);
+
         dl.setOnSucceeded(e -> {
+            bar.progressProperty().unbind();
+            detail.textProperty().unbind();
+            detail.setText(t("update.progress.installing"));
             try {
                 // UPD-1: el instalador necesita saber QUÉ carpeta va a reemplazar para
                 // poder esperar a que nadie la esté usando (era lo que faltaba: el
@@ -584,11 +633,29 @@ public class BenjagestUiApplication extends Application
                 javafx.application.Platform.exit();
                 System.exit(0);
             } catch (Exception ex) {
+                dlg.close();
                 showError(t("update.fail.title"), ex.getMessage());
             }
         });
-        dl.setOnFailed(e -> showError(t("update.fail.title"),
-                dl.getException() == null ? "" : dl.getException().getMessage()));
+        dl.setOnFailed(e -> {
+            bar.progressProperty().unbind();
+            detail.textProperty().unbind();
+            dlg.close();
+            showError(t("update.fail.title"),
+                    dl.getException() == null ? "" : dl.getException().getMessage());
+        });
+        dl.setOnCancelled(e -> {
+            bar.progressProperty().unbind();
+            detail.textProperty().unbind();
+            dlg.close();
+        });
+        // Cancelar aborta la descarga (el diálogo se cierra en setOnCancelled).
+        dlg.setResultConverter(bt -> {
+            if (bt == ButtonType.CANCEL) dl.cancel();
+            return bt;
+        });
+
+        dlg.show();
         start(dl, "update-download");
     }
 
