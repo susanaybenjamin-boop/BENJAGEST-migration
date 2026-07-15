@@ -574,26 +574,28 @@ public class SalesInvoiceService {
                     "Esta factura ya tiene una rectificativa creada: " + original.rectifyingInvoiceId());
         }
 
-        // SALES-JOURNAL: borra fisicamente el asiento de la factura
-        // original (hueco en el Diario, mismo trato que compras). La
-        // rectificativa que creamos a continuación generará su propio
-        // asiento espejo (con cantidades negativas → totales negativos →
-        // asiento de signo invertido) cuando pase por validateInternal.
+        // ANUL-1 (2026-07-15, decisión Benjamin) — El asiento de la factura
+        // original SE CONSERVA. Antes se borraba físicamente aquí
+        // (reverseForSales), y ese era el origen de la nota #1 del backlog:
         //
-        // LOCK (2026-07-07): si la original es de un ejercicio
-        // LOCKED/CLOSED, reverseForSales lanza 409 y este catch lo
-        // ABSORBE a propósito: el asiento del ejercicio cerrado se
-        // CONSERVA intacto (la venta ocurrió y sus libros están
-        // cerrados) y la anulación sigue el único camino legal — la
-        // rectificativa negativa con fecha de HOY que contrarresta en
-        // el ejercicio corriente.
-        try {
-            salesJournalService.reverseForSales(validatedId);
-        } catch (Exception ex) {
-            org.slf4j.LoggerFactory.getLogger(SalesInvoiceService.class)
-                    .warn("No se borró el asiento de la factura {} (se conserva): {}",
-                            validatedId, ex.getMessage());
-        }
+        //   venta validada  -> asiento +X
+        //   se anula        -> la rectificativa genera su asiento -X
+        //   pero el +X se había BORRADO  -> el Diario quedaba en -X, no en 0.
+        //
+        // La rectificativa YA ES el contraasiento: no hay que añadir nada, hay
+        // que dejar de borrar. Con el +X y el -X ambos en los libros, la
+        // anulación netea a 0 y las dos caras quedan trazables — que es como
+        // se anula una venta en contabilidad española (y lo que ya hacían
+        // A3/Sage). Borrar un asiento POSTED contradecía además la regla de
+        // inalterabilidad del propio proyecto.
+        //
+        // Curiosidad: para un ejercicio LOCKED/CLOSED esto ya se hacía BIEN por
+        // accidente — reverseForSales lanzaba 409 y el catch lo absorbía,
+        // conservando el asiento. El comentario de aquí lo llamaba "el único
+        // camino legal". Lo era también para el ejercicio abierto.
+        //
+        // Ganancia extra: se mantiene el invariante "1 factura = 1 asiento", del
+        // que dependen los resolvers por source_id (ver ASI-4).
 
         // Resolvemos la serie RECTIFYING del cliente activo. La V16
         // garantiza que existe; si no, el server responde 428 (claro)

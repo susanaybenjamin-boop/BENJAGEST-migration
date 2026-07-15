@@ -6092,25 +6092,59 @@ public class BenjagestUiApplication extends Application
         hint.setWrapText(true);
         hint.getStyleClass().add("settings-hint");
 
-        long total = bundle.invoices().size();
-        long drafts = bundle.invoices().stream().filter(i -> "DRAFT".equals(i.status())).count();
-        long validated = bundle.invoices().stream().filter(i -> "VALIDATED".equals(i.status())).count();
-        long pending = bundle.invoices().stream().filter(i -> "PENDING".equals(i.paymentStatus())).count();
-
         TilePane metrics = new TilePane();
         metrics.setHgap(12);
         metrics.setVgap(12);
         metrics.setPrefTileWidth(218);
         metrics.setPrefTileHeight(132);
-        metrics.getChildren().addAll(
+        renderBillingMetrics(metrics, bundle.invoices());
+
+        // DASH-2 — los KPIs se recalculan solos cuando alguien emite SALES
+        // (cobrar, validar, anular, borrar). Antes solo cambiaban al
+        // reconstruir la vista entera con "Actualizar" de la cabecera.
+        com.benjagest.ui.support.RefreshBus.subscribe(
+                com.benjagest.ui.support.RefreshBus.TOPIC_SALES,
+                () -> reloadBillingMetrics(metrics), metrics);
+
+        VBox body = new VBox(16, section, hint, metrics);
+        return tabLayout(label(t("billing.dash.tab_title"), "settings-section-title"), body, new HBox());
+    }
+
+    /** Pinta las 4 tarjetas del resumen sobre la lista de facturas dada. */
+    private void renderBillingMetrics(TilePane metrics, List<SalesInvoiceSummary> invoices) {
+        long total = invoices.size();
+        long drafts = invoices.stream().filter(i -> "DRAFT".equals(i.status())).count();
+        long validated = invoices.stream().filter(i -> "VALIDATED".equals(i.status())).count();
+        // DASH-1 — anuladas y rectificativas no se cobran: mismo criterio que la
+        // columna Cobro del listado (BillingInvoicesScreen), que las pinta "—".
+        // Antes se contaba el payment_status en crudo y sumaban las dos.
+        long pending = invoices.stream()
+                .filter(i -> !i.collectionNotApplicable())
+                .filter(i -> "PENDING".equals(i.paymentStatus()))
+                .count();
+
+        metrics.getChildren().setAll(
                 metric(t("billing.dash.metric.total"), String.valueOf(total), t("billing.dash.metric.total.detail"), "fas-file-invoice", "module-blue"),
                 metric(t("billing.dash.metric.drafts"), String.valueOf(drafts), t("billing.dash.metric.drafts.detail"), "fas-edit", "metric-amber"),
                 metric(t("billing.dash.metric.validated"), String.valueOf(validated), t("billing.dash.metric.validated.detail"), "fas-check", "metric-green"),
                 metric(t("billing.dash.metric.pending"), String.valueOf(pending), t("billing.dash.metric.pending.detail"), "fas-hourglass-half", "metric-rose")
         );
+    }
 
-        VBox body = new VBox(16, section, hint, metrics);
-        return tabLayout(label(t("billing.dash.tab_title"), "settings-section-title"), body, new HBox());
+    /**
+     * Recarga las cifras del resumen sin reconstruir la pestaña. Si la
+     * llamada falla dejamos los números anteriores: mejor un dato viejo
+     * que un panel roto (el error ya se ve en el listado de Facturas).
+     */
+    private void reloadBillingMetrics(TilePane metrics) {
+        Task<List<SalesInvoiceSummary>> task = new Task<>() {
+            @Override
+            protected List<SalesInvoiceSummary> call() throws Exception {
+                return billingApiClient.listInvoices(null, null, null, 200);
+            }
+        };
+        task.setOnSucceeded(ev -> renderBillingMetrics(metrics, task.getValue()));
+        start(task, "billing-dash-refresh");
     }
 
     // ----- Sub-tab Facturas (listado con filtros) -----

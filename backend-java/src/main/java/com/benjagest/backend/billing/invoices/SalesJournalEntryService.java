@@ -120,7 +120,15 @@ public class SalesJournalEntryService {
             if (historic.isPresent()) acc7xx = historic.get().accountId();
         }
         if (acc7xx == null) {
-            String descForClassifier = safe(invoice.notes())
+            // ASI-3 (2026-07-15) — el `concept` va PRIMERO y antes no iba en
+            // absoluto: es el campo donde el usuario escribe qué ha vendido
+            // ("Prestación de servicios de ..."). Sin él, una factura de
+            // servicios no matcheaba ninguna regla y caía al fallback 700
+            // (Ventas de mercaderías) — mientras la descripción de la línea
+            // sí usaba el concepto (buildIncomeLineDescription), dejando el
+            // asiento en 700 rotulado "Prestación de servicios".
+            String descForClassifier = safe(invoice.concept())
+                    + " " + safe(invoice.notes())
                     + " " + safe(invoice.invoiceNumber());
             Optional<String> code = classifier.classify(descForClassifier, invoice.customerLegalName());
             if (code.isPresent()) {
@@ -206,46 +214,13 @@ public class SalesJournalEntryService {
     }
 
     /**
-     * Borra físicamente el asiento de una factura de venta cuando esta se
-     * elimina. Mismo trato que purchases: hueco en la numeración del
-     * Diario en lugar de VOIDED. Borra cascada (eventos → líneas → asiento).
+     * ANUL-1 (2026-07-15) — Aquí vivía {@code reverseForSales}, que BORRABA
+     * físicamente el asiento de una factura al anularla. Se eliminó: era la
+     * causa de que el Diario quedara en -X en vez de 0 (nota #1 del backlog),
+     * porque la rectificativa aporta su propio asiento negativo y el positivo
+     * desaparecía. La factura anulada CONSERVA su asiento; ver el comentario
+     * en {@code SalesInvoiceService.voidValidated}, su único caller.
      */
-    @Transactional
-    public void reverseForSales(String invoiceId) {
-        String companyId = tenantContext.getCurrentCompanyId();
-        // 1) recoger los ids de los asientos vinculados a esta factura.
-        List<String> entryIds = jdbcTemplate.query("""
-                SELECT id FROM journal_entries
-                 WHERE source_type = ? AND source_id = ? AND company_id = ?
-                """, (rs, n) -> rs.getString("id"),
-                SRC_TYPE, invoiceId, companyId);
-        // LOCK (2026-07-07): un asiento de un ejercicio LOCKED/CLOSED no
-        // se borra — sus libros están cerrados. Se comprueba ANTES de
-        // tocar nada para que la operación sea todo-o-nada. El caller
-        // voidValidated absorbe este 409 y conserva el asiento (la
-        // rectificativa de hoy contrarresta en el ejercicio corriente).
-        for (String entryId : entryIds) {
-            java.time.LocalDate entryDate = jdbcTemplate.queryForObject("""
-                    SELECT entry_date FROM journal_entries WHERE id = ?
-                    """, java.time.LocalDate.class, entryId);
-            fiscalGuard.requireOpenForDate(companyId, entryDate,
-                    "borrar el asiento de esta factura");
-        }
-        for (String entryId : entryIds) {
-            jdbcTemplate.update("""
-                    DELETE FROM accounting_learning_events
-                     WHERE journal_entry_id = ? AND company_id = ?
-                    """, entryId, companyId);
-            jdbcTemplate.update("""
-                    DELETE FROM journal_entry_lines
-                     WHERE journal_entry_id = ?
-                    """, entryId);
-            jdbcTemplate.update("""
-                    DELETE FROM journal_entries
-                     WHERE id = ? AND company_id = ?
-                    """, entryId, companyId);
-        }
-    }
 
     /**
      * Regenera el asiento de una factura ya validada para aplicar el desglose
@@ -261,10 +236,17 @@ public class SalesJournalEntryService {
         // ejercicio LOCKED/CLOSED altera libros cerrados.
         fiscalGuard.requireOpenForDate(companyId, invoice.invoiceDate(),
                 "regenerar el asiento de esta factura");
+        // ASI-4 (2026-07-15): "AND status <> 'VOIDED'" + DESC. Esta query
+        // resuelve "EL asiento de esta factura" y antes cogía el MÁS ANTIGUO
+        // sin mirar el estado. Funcionaba solo porque una factura no podía
+        // tener más de un asiento. Al reclasificar (original VOIDED + nuevo
+        // POSTED) ese invariante se rompe, y sin este filtro regeneraríamos el
+        // asiento MUERTO dejando el vivo intacto — en silencio, sin error.
         List<String> entryIds = jdbcTemplate.query("""
                 SELECT id FROM journal_entries
                  WHERE source_type = ? AND source_id = ? AND company_id = ?
-                 ORDER BY created_at LIMIT 1
+                   AND status <> 'VOIDED'
+                 ORDER BY created_at DESC LIMIT 1
                 """, (rs, n) -> rs.getString("id"), SRC_TYPE, invoice.id(), companyId);
         if (entryIds.isEmpty()) {
             return createForSales(invoice, userId);

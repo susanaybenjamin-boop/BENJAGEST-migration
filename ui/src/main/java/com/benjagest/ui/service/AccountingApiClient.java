@@ -357,6 +357,21 @@ public class AccountingApiClient {
         else b.append(v.toPlainString());
     }
 
+    /**
+     * ASI-4 — Reclasifica la cuenta de una línea de un asiento VALIDADO: el
+     * original se anula y nace el asiento correcto. Con {@code saveRule} además
+     * aprende la cuenta para ese tercero.
+     */
+    public void reclassifyAccount(String entryId, String lineId, String newAccountId,
+                                    String reason, boolean saveRule)
+            throws IOException, InterruptedException {
+        String body = "{\"lineId\":\"" + escape(lineId) + "\""
+                + ",\"newAccountId\":\"" + escape(newAccountId) + "\""
+                + ",\"reason\":\"" + escape(reason) + "\""
+                + ",\"saveRule\":" + saveRule + "}";
+        postRaw("/accounting/journal-entries/" + entryId + "/reclassify-account", body);
+    }
+
     public void voidEntry(String id, String reason) throws IOException, InterruptedException {
         String path = "/accounting/journal-entries/" + id;
         if (reason != null && !reason.isBlank()) {

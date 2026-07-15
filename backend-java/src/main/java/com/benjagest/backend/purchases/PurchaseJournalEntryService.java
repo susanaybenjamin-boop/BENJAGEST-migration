@@ -519,10 +519,16 @@ public class PurchaseJournalEntryService {
     @org.springframework.transaction.annotation.Transactional
     public void applyVatDeductibilitySplit(PurchaseInvoice purchase) {
         String companyId = tenantContext.getCurrentCompanyId();
+        // ASI-4 (2026-07-15): "AND status <> 'VOIDED'" + DESC, espejo del mismo
+        // arreglo en SalesJournalEntryService.regenerateForSales. Resuelve "EL
+        // asiento de esta factura" y cogía el más antiguo sin mirar el estado:
+        // en cuanto una compra tenga un asiento anulado + uno vivo (p.ej. al
+        // reclasificar), cambiar el % de IVA deducible reescribiría el muerto.
         List<String> entryIds = jdbcTemplate.query("""
                 SELECT id FROM journal_entries
                  WHERE company_id = ? AND source_type = ? AND source_id = ?
-                 ORDER BY created_at LIMIT 1
+                   AND status <> 'VOIDED'
+                 ORDER BY created_at DESC LIMIT 1
                 """, (rs, n) -> rs.getString("id"), companyId, SRC_TYPE, purchase.id());
         if (entryIds.isEmpty()) return; // sin asiento (borrador sin contabilizar)
         String entryId = entryIds.get(0);
@@ -639,13 +645,25 @@ public class PurchaseJournalEntryService {
         return s.length() > 240 ? s.substring(0, 240) : s;
     }
 
-    /** Siguiente entry_number correlativo entre los POSTED del ejercicio. */
+    /**
+     * Siguiente entry_number correlativo del ejercicio. Cuenta TODOS los
+     * números ya asignados, sin mirar el estado; los DRAFT no consumen número
+     * porque desde la V58 lo tienen NULL, y MAX ignora los NULL.
+     *
+     * <p><b>ANUL-2 (2026-07-15).</b> Filtraba {@code status = 'POSTED'} y por
+     * tanto ignoraba los asientos ANULADOS, que CONSERVAN su entry_number:
+     * devolvía un número ya ocupado y la UK (company_id, fiscal_year_id,
+     * entry_number) reventaba con "Duplicate entry". Mismo arreglo que en
+     * {@code ManualJournalEntryService.nextPostedEntryNumber}, donde el e2e lo
+     * cazó. Los otros seis numeradores del backend (bancos, cierre, activos,
+     * préstamos, vencimientos, manual) ya hacían MAX sobre todos los estados y
+     * no estaban afectados — verificado con grep de MAX(entry_number).
+     */
     private int nextPostedEntryNumber(String companyId, String fiscalYearId) {
         Integer max = jdbcTemplate.queryForObject("""
                 SELECT COALESCE(MAX(entry_number), 0)
                   FROM journal_entries
                  WHERE company_id = ? AND fiscal_year_id = ?
-                   AND status = 'POSTED'
                    AND entry_number IS NOT NULL
                 """, Integer.class, companyId, fiscalYearId);
         return (max == null ? 0 : max) + 1;

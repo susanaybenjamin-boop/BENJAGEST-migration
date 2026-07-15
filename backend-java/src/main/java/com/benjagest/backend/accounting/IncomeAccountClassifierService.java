@@ -46,8 +46,12 @@ public class IncomeAccountClassifierService {
         new Rule("DESCUENTO\\s*(POR\\s*)?(PRONTO\\s*PAGO|PAGO\\s*ANTICIPADO)\\s*(VENTA|CLIENTE)?", "706"),
         // Rappels (709)
         new Rule("RAPPEL(S)?\\s*(SOBRE\\s*)?VENTA(S)?|BONIFICACION\\s*(SOBRE\\s*)?VENTA", "709"),
-        // Prestaciones de servicios (705) — explícito
-        new Rule("PRESTACION\\s*(DE\\s*)?SERVICIO|SERVICIO\\s*(DE\\s*)?(REPARACION|MANTENIMIENTO|INSTALACION|MONTAJE|ASESORIA|CONSULTOR|FORMACION|DISENO|DESARROLLO|PROGRAMACION|FOTOGRAF)|HONORARIO(S)?\\s*(POR|DE)?", "705"),
+        // Prestaciones de servicios (705) — explícito.
+        // ASI-3 (2026-07-15): el "(S)?" tras SERVICIO faltaba, así que
+        // "SERVICIOS DE REPARACION" (plural, la forma natural) NO matcheaba y
+        // la factura acababa en la 700. Salió al pasarle el `concept` al
+        // classifier, que antes ni le llegaba.
+        new Rule("PRESTACION\\s*(DE\\s*)?SERVICIO|SERVICIO(S)?\\s*(DE\\s*)?(REPARACION|MANTENIMIENTO|INSTALACION|MONTAJE|ASESORIA|CONSULTOR|FORMACION|DISENO|DESARROLLO|PROGRAMACION|FOTOGRAF)|HONORARIO(S)?\\s*(POR|DE)?", "705"),
         // Arrendamiento de inmuebles propios (752)
         new Rule("ALQUILER\\s*(LOCAL|OFICINA|NAVE|VIVIENDA|INMUEBLE)|ARRENDAMIENTO\\s*(LOCAL|OFICINA|NAVE|VIVIENDA|INMUEBLE)|RENTA\\s*(MENSUAL|LOCAL|OFICINA|NAVE)", "752"),
         // Envases y embalajes (704)
