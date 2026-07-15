@@ -64,16 +64,49 @@ public class UpdateService {
         }
     }
 
-    /** Descarga el instalador a un temporal y devuelve la ruta. */
-    public Path download(String url) throws IOException, InterruptedException {
+    /** Avisa del avance de la descarga. {@code total} es -1 si el servidor no lo dice. */
+    @FunctionalInterface
+    public interface ProgressListener {
+        void onProgress(long bytesDone, long bytesTotal);
+    }
+
+    /**
+     * Descarga el instalador a un temporal y devuelve la ruta.
+     *
+     * <p>UPD-2 (2026-07-15, pedido de Benjamin): informa del avance. Antes usaba
+     * {@code BodyHandlers.ofFile}, que no da progreso: el usuario aceptaba
+     * "descargando…" y se quedaba varios minutos sin ver NADA mientras bajaban
+     * 302 MB, con la app usable, hasta que se cerraba sola de golpe. Ahora se
+     * copia el stream a mano contando bytes para poder pintar una barra.
+     */
+    public Path download(String url, ProgressListener listener)
+            throws IOException, InterruptedException {
         Path out = Paths.get(System.getProperty("java.io.tmpdir"), "BENJAGEST-update.msi");
         HttpRequest req = HttpRequest.newBuilder(URI.create(url))
                 .timeout(Duration.ofMinutes(15)).GET().build();
-        HttpResponse<Path> r = http.send(req, HttpResponse.BodyHandlers.ofFile(out));
+        HttpResponse<java.io.InputStream> r =
+                http.send(req, HttpResponse.BodyHandlers.ofInputStream());
         if (r.statusCode() < 200 || r.statusCode() >= 300) {
             throw new IOException("HTTP " + r.statusCode());
         }
-        return r.body();
+        long total = r.headers().firstValueAsLong("content-length").orElse(-1L);
+        try (java.io.InputStream in = r.body();
+             java.io.OutputStream os = java.nio.file.Files.newOutputStream(out)) {
+            byte[] buf = new byte[1 << 16];
+            long done = 0;
+            int n;
+            while ((n = in.read(buf)) > 0) {
+                os.write(buf, 0, n);
+                done += n;
+                if (listener != null) listener.onProgress(done, total);
+            }
+        }
+        return out;
+    }
+
+    /** Atajo sin progreso. */
+    public Path download(String url) throws IOException, InterruptedException {
+        return download(url, null);
     }
 
     /**
@@ -119,9 +152,19 @@ public class UpdateService {
     public void launchInstaller(Path msi, Path installDir) throws IOException {
         Path ps1 = java.nio.file.Files.createTempFile("benjagest-update", ".ps1");
         java.nio.file.Files.writeString(ps1, buildUpdateScript(msi, installDir));
-        new ProcessBuilder("powershell", "-NoProfile", "-Command",
-                "Start-Process powershell -Verb RunAs -ArgumentList "
-                        + "'-NoProfile','-ExecutionPolicy','Bypass','-File','\"" + ps1 + "\"'")
+        // UPD-2 (pedido de Benjamin): la ventana del actualizador va OCULTA y en
+        // segundo plano. Antes salía al frente y era una consola normal: cerrarla
+        // sin querer a mitad deja el servicio parado, el JRE sin verificar y la
+        // app sin reabrir. Ahora no hay ventana que cerrar.
+        //
+        // Oculta NO significa mudo: msiexec /qb enseña su propia barra de progreso,
+        // y si algo falla el script saca un MessageBox (que sí se ve aunque la
+        // consola esté oculta — por eso se cambió el Read-Host, que en una consola
+        // oculta habría esperado para siempre sin que nadie lo viera).
+        new ProcessBuilder("powershell", "-NoProfile", "-WindowStyle", "Hidden", "-Command",
+                "Start-Process powershell -Verb RunAs -WindowStyle Hidden -ArgumentList "
+                        + "'-NoProfile','-WindowStyle','Hidden','-ExecutionPolicy','Bypass','-File','\""
+                        + ps1 + "\"'")
                 .start();
     }
 
@@ -142,7 +185,11 @@ public class UpdateService {
                 "$ErrorActionPreference = 'Continue'",
                 "$msi = '" + psQuote(msi.toString()) + "'",
                 "$dir = '" + psQuote(dir) + "'",
-                "Write-Host 'BENJAGEST — actualizando. NO cierres esta ventana.'",
+                "Add-Type -AssemblyName System.Windows.Forms -ErrorAction SilentlyContinue",
+                "function Aviso($texto, $icono) {",
+                "  try { [System.Windows.Forms.MessageBox]::Show($texto, 'BENJAGEST', 'OK', $icono) | Out-Null }",
+                "  catch { Write-Host $texto }",
+                "}",
                 "",
                 "# 1) Parar el servicio (si existe). Pedimos su PID ANTES: es el java.exe",
                 "#    que tiene mapeado runtime\\lib\\modules y hay que verlo MORIR.",
@@ -192,28 +239,25 @@ public class UpdateService {
                 "#    JRE roto.",
                 "Start-Sleep -Seconds 3",
                 "",
-                "# 3) Instalar. /norestart: NUNCA reiniciar por nuestra cuenta; si hiciera",
+                "# 5) Instalar. /norestart: NUNCA reiniciar por nuestra cuenta; si hiciera",
                 "#    falta reiniciar es que algo sigue en uso -> preferimos enterarnos.",
+                "#    /qb: el instalador enseña su propia barra (la consola va oculta).",
                 "Write-Host 'Instalando...'",
                 "$p = Start-Process msiexec -ArgumentList '/i', \"`\"$msi`\"\", '/qb', '/norestart' -Wait -PassThru",
                 "$code = $p.ExitCode",
                 "",
-                "# 4) Verificar en vez de suponer.",
+                "# 6) Verificar en vez de suponer.",
                 "$modules = Join-Path $dir 'runtime\\lib\\modules'",
                 "$ok = (Test-Path $modules)",
-                "if ($code -eq 3010) { Write-Host ''; Write-Host 'AVISO: el instalador pide reinicio (habia ficheros en uso).' -ForegroundColor Yellow }",
+                "# La consola va OCULTA (UPD-2), asi que los avisos van por MessageBox:",
+                "# un Read-Host aqui esperaria para siempre sin que nadie lo viera.",
                 "if (-not $ok) {",
-                "  Write-Host ''",
-                "  Write-Host 'LA ACTUALIZACION NO SE COMPLETO BIEN: falta runtime\\lib\\modules.' -ForegroundColor Red",
-                "  Write-Host 'La app NO arrancara. Vuelve a ejecutar el instalador a mano:' -ForegroundColor Red",
-                "  Write-Host \"   $msi\" -ForegroundColor Red",
-                "  Write-Host '(codigo msiexec: ' $code ')'",
-                "  Read-Host 'Pulsa Intro para cerrar'",
-                "} else {",
-                "  Write-Host 'Actualizacion correcta.' -ForegroundColor Green",
+                "  Aviso \"La actualizacion no se completo bien: falta el runtime de Java.`n`nBENJAGEST no arrancara. Ejecuta el instalador a mano:`n$msi`n`n(codigo del instalador: $code)\" 'Error'",
+                "} elseif ($code -eq 3010) {",
+                "  Aviso 'La actualizacion se aplico, pero Windows pide reiniciar porque habia ficheros en uso. Si BENJAGEST no arranca, reinicia el equipo.' 'Warning'",
                 "}",
                 "",
-                "# 5) Arrancar el servicio y volver a abrir la app.",
+                "# 7) Arrancar el servicio y volver a abrir la app.",
                 "if ($svc) { Start-Service -Name BenjagestBackend -ErrorAction SilentlyContinue }",
                 "$exe = Join-Path $dir 'BENJAGEST.exe'",
                 "if ($ok -and (Test-Path $exe)) { Start-Process $exe }",
