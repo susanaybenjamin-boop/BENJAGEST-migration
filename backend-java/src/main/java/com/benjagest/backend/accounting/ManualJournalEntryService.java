@@ -58,11 +58,15 @@ import org.springframework.web.server.ResponseStatusException;
 @Service
 public class ManualJournalEntryService {
 
+    private static final org.slf4j.Logger log =
+            org.slf4j.LoggerFactory.getLogger(ManualJournalEntryService.class);
+
     private final JdbcTemplate jdbcTemplate;
     private final TenantContext tenantContext;
     private final CurrentUserService currentUserService;
     private final FiscalYearGuardService fiscalGuard;
     private final TerceroAccountResolverService terceroResolver;
+    private final AccountingLearningService learning;
     private final com.benjagest.backend.accounting.importpdf.ImportedPdfStorageService pdfStorage;
     private final com.benjagest.backend.purchases.pdfimport.PdfTextExtractor pdfTextExtractor;
     private final com.benjagest.backend.purchases.pdfimport.InvoiceFieldsExtractor invoiceExtractor;
@@ -72,6 +76,7 @@ public class ManualJournalEntryService {
                                        CurrentUserService currentUserService,
                                        FiscalYearGuardService fiscalGuard,
                                        TerceroAccountResolverService terceroResolver,
+                                       AccountingLearningService learning,
                                        com.benjagest.backend.accounting.importpdf.ImportedPdfStorageService pdfStorage,
                                        com.benjagest.backend.purchases.pdfimport.PdfTextExtractor pdfTextExtractor,
                                        com.benjagest.backend.purchases.pdfimport.InvoiceFieldsExtractor invoiceExtractor) {
@@ -80,6 +85,7 @@ public class ManualJournalEntryService {
         this.currentUserService = currentUserService;
         this.fiscalGuard = fiscalGuard;
         this.terceroResolver = terceroResolver;
+        this.learning = learning;
         this.pdfStorage = pdfStorage;
         this.pdfTextExtractor = pdfTextExtractor;
         this.invoiceExtractor = invoiceExtractor;
@@ -587,20 +593,31 @@ public class ManualJournalEntryService {
      * Anula un asiento POSTED creando un asiento espejo de signo opuesto
      * (contraasiento). El asiento original se marca como VOIDED para que
      * no compute en saldos, pero queda visible en el Libro Diario por
-     * trazabilidad legal.
+     * trazabilidad legal. El asiento NUNCA se borra.
      *
-     * <p><b>ASI-1 (2026-07-15).</b> Este método corría SIN transacción: la
-     * anotación estaba mal colocada (entre este javadoc y el de
-     * {@code deleteImportedByIds}), por lo que anotaba a ese otro método.
-     * Los 3 pasos de abajo iban en autocommit y un fallo a mitad dejaba el
-     * original VOIDED SIN contraasiento — es decir, fuera de los saldos y
-     * sin nada que lo compensara. Es todo-o-nada.
+     * <p><b>ANUL-2 (2026-07-15, decisión Benjamin) — se quitó el contraasiento.</b>
+     * Este método marcaba el original VOIDED <i>y además</i> creaba un
+     * contraasiento POSTED de signo opuesto. Las dos cosas a la vez restan DOS
+     * veces: todos los informes y saldos filtran {@code status = 'POSTED'}
+     * (AEAT 303/190/347, libros...), así que un asiento VOIDED ya deja de
+     * computar por sí solo; el contraasiento volvía a restar lo mismo.
      *
-     * <p>El número del contraasiento sale de {@code nextEntryNumber}
-     * (MAX sobre TODOS los estados) y no de {@code nextPostedEntryNumber}:
-     * el original acaba de pasar a VOIDED pero conserva su entry_number, y
-     * la UK (company_id, fiscal_year_id, entry_number) chocaría si
-     * reutilizásemos su hueco.
+     * <p>Medido en ejecución antes del arreglo (BD sandbox, 2026-07-15): anular
+     * un gasto duplicado de 500 € dejaba <b>600 Compras con saldo -500</b> y
+     * <b>400 Proveedores con +500</b>, cuando lo correcto es 0 y 0. Era la nota
+     * #1 del backlog (el Diario en -X) manifestándose en la vía de los asientos
+     * manuales. Llevaba ahí desde siempre y no saltó nunca porque ningún botón
+     * llamaba a este método — ASI-2 fue el primero (y por eso se probó).
+     *
+     * <p>Modelo elegido: <b>VOIDED = anulado, visible, no computa</b>, que es lo
+     * que el resto del código ya asumía. Nada se borra y el asiento sigue en el
+     * Libro Diario con todas sus líneas y su marca. Ojo con la tentación de
+     * "devolver" el contraasiento: sin quitar antes el VOIDED, vuelve el -X.
+     *
+     * <p>No confundir con {@code SalesInvoiceService.voidValidated} (ANUL-1):
+     * allí SÍ hay dos asientos vivos, porque la rectificativa es un documento
+     * real con su propio asiento negativo. Aquí no hay segundo documento: el
+     * asiento simplemente no debió existir.
      */
     @Transactional
     public ManualEntryView voidEntry(String entryId, String reason) {
@@ -609,43 +626,173 @@ public class ManualJournalEntryService {
         fiscalGuard.requireOpenForDate(original.entryDate(), "anular asiento contable");
 
         String companyId = tenantContext.getCurrentCompanyId();
-        String userId = safeUserId();
 
-        // 1) Marcar el original como VOIDED.
+        // El motivo se guarda en el propio concepto: es lo único que explica,
+        // a un inspector o a nosotros dentro de seis meses, por qué se anuló.
+        String newConcept = truncate(safe(original.concept())
+                + " [ANULADO" + (reason == null || reason.isBlank() ? "" : " — " + reason) + "]", 240);
+
         jdbcTemplate.update("""
                 UPDATE journal_entries
-                   SET status = 'VOIDED'
+                   SET status = 'VOIDED', concept = ?
                  WHERE id = ? AND company_id = ?
-                """, entryId, companyId);
+                """, newConcept, entryId, companyId);
 
-        // 2) Crear contraasiento con líneas invertidas.
-        String reverseId = UUID.randomUUID().toString();
-        int reverseNumber = nextEntryNumber(companyId, original.fiscalYearId());
+        return get(entryId);
+    }
+
+    /**
+     * ASI-4 (2026-07-15, decisión Benjamin) — Reclasifica la cuenta de UNA
+     * línea de un asiento ya validado, por la vía legal: anular + reasentar.
+     * Es lo que hacen A3/Sage/ContaPlus y lo único compatible con la
+     * inalterabilidad de un asiento POSTED, que no se edita ni se borra.
+     *
+     * <p>Caso que lo motiva: una venta contabilizada en "700 Ventas de
+     * mercaderías" cuando en realidad era "705 Prestaciones de servicios".
+     * ASI-3 impide que vuelva a pasar en facturas nuevas, pero no arregla las
+     * ya contabilizadas — para esas está esto.
+     *
+     * <p>Resultado (2 asientos, ninguno borrado):
+     * <ol>
+     *   <li>el original pasa a VOIDED (deja de contar, sigue visible entero);</li>
+     *   <li>nace el asiento CORRECTO, POSTED, idéntico salvo la cuenta.</li>
+     * </ol>
+     * Neto en los libros: el importe queda donde debía estar desde el principio,
+     * una sola vez. Verificado en ejecución (ver ANUL-2 en {@link #voidEntry}:
+     * añadir aquí un contraasiento haría que el importe se restara dos veces).
+     *
+     * <p>El asiento nuevo conserva {@code source_type}/{@code source_id}, así
+     * que la factura sigue enlazada con su asiento vivo. Eso deja DOS asientos
+     * con el mismo source_id (el VOIDED y el nuevo): los resolvers que hacen
+     * "el asiento de esta factura" filtran {@code status <> 'VOIDED'} desde
+     * este mismo bloque de cambios — sin eso reescribirían el muerto.
+     *
+     * @param saveRule si true, aprende "para este tercero, esta cuenta" y las
+     *                 próximas facturas suyas nacen ya bien.
+     */
+    @Transactional
+    public ManualEntryView reclassifyPostedAccount(String entryId, String lineId,
+                                                     String newAccountId, String reason,
+                                                     boolean saveRule) {
+        ManualEntryView original = get(entryId);
+        if (!"POSTED".equals(original.status())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Solo se reclasifica un asiento VALIDADO. Este está en "
+                    + original.status() + ": si es un borrador, edítalo directamente.");
+        }
+        if (reason == null || reason.isBlank()) {
+            throw bad("El motivo es obligatorio: queda en el concepto del "
+                    + "contraasiento y es lo que explica por qué existen los dos asientos.");
+        }
+        fiscalGuard.requireOpenForDate(original.entryDate(), "reclasificar este asiento");
+
+        String companyId = tenantContext.getCurrentCompanyId();
+        String userId = safeUserId();
+
+        // La línea a reclasificar tiene que ser de ESTE asiento (si no, un id
+        // de otro asiento colaría un cambio silencioso en un tercero).
+        ManualEntryLine target = original.lines().stream()
+                .filter(l -> l.id().equals(lineId))
+                .findFirst()
+                .orElseThrow(() -> bad("La línea " + lineId + " no es de este asiento."));
+
+        // La cuenta destino tiene que existir, estar activa y ser de la empresa.
+        Integer ok = jdbcTemplate.queryForObject("""
+                SELECT COUNT(*) FROM accounting_accounts
+                 WHERE id = ? AND company_id = ? AND active = TRUE
+                """, Integer.class, newAccountId, companyId);
+        if (ok == null || ok == 0) {
+            throw bad("La cuenta destino no existe o no está activa en esta empresa.");
+        }
+        if (newAccountId.equals(target.accountId())) {
+            throw bad("La línea ya está en esa cuenta: no hay nada que reclasificar.");
+        }
+
+        // 1) Anular el original. Reutilizamos voidEntry: la misma vía que el
+        // botón "Anular" del Diario, un solo sitio que sepa anular. Estamos ya
+        // dentro de la transacción de este método, así que el todo-o-nada
+        // cubre los dos asientos.
+        voidEntry(entryId, "reclasificación de cuenta — " + reason);
+
+        // 2) El asiento correcto: mismo contenido, misma fecha, misma factura
+        // de origen; solo cambia la cuenta de la línea reclasificada.
+        String newId = UUID.randomUUID().toString();
+        int newNumber = nextEntryNumber(companyId, original.fiscalYearId());
         jdbcTemplate.update("""
                 INSERT INTO journal_entries (
                     id, company_id, fiscal_year_id, entry_number,
                     entry_date, concept, source_type, source_id,
                     status, reviewed, auto_proposed, created_by
-                ) VALUES (?, ?, ?, ?, ?, ?, 'MANUAL_REVERSAL', ?, 'POSTED', TRUE, FALSE, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'POSTED', TRUE, FALSE, ?)
                 """,
-                reverseId, companyId, original.fiscalYearId(), reverseNumber,
-                Date.valueOf(LocalDate.now()),
-                truncate("Anulación asiento " + original.entryNumber()
-                        + (reason == null || reason.isBlank() ? "" : " — " + reason), 240),
-                entryId, userId);
+                newId, companyId, original.fiscalYearId(), newNumber,
+                Date.valueOf(original.entryDate()),
+                truncate(safe(original.concept()) + " (reclasificado — " + reason + ")", 240),
+                original.sourceType(), original.sourceId(), userId);
 
         for (ManualEntryLine ln : original.lines()) {
+            String accountId = ln.id().equals(lineId) ? newAccountId : ln.accountId();
             jdbcTemplate.update("""
                     INSERT INTO journal_entry_lines (
                         id, journal_entry_id, account_id, description, debit, credit
                     ) VALUES (?, ?, ?, ?, ?, ?)
                     """,
-                    UUID.randomUUID().toString(), reverseId, ln.accountId(),
-                    truncate("Anulación " + safe(ln.description()), 240),
-                    // Inversión: lo que era Debe pasa a Haber y viceversa.
-                    ln.credit(), ln.debit());
+                    UUID.randomUUID().toString(), newId, accountId,
+                    ln.description(), ln.debit(), ln.credit());
         }
-        return get(entryId);
+
+        if (saveRule) {
+            learnFromReclassify(original, target, newAccountId, userId);
+        }
+        return get(newId);
+    }
+
+    /**
+     * Registra la corrección para que el chain de cuenta (regla aprendida →
+     * histórico → classifier) proponga la cuenta buena la próxima vez.
+     *
+     * <p>Reutiliza {@code AccountingLearningService.recordCorrection}, el mismo
+     * camino que ya usa el botón "Crear regla" de gastos: registra el evento
+     * ACCOUNT_CORRECTED y, si hay NIF del tercero, crea la regla
+     * INCOME_ACCOUNT_BY_CUSTOMER_NIF. Es idempotente (no duplica reglas).
+     *
+     * <p>Best-effort: si no se puede aprender (el asiento no viene de una
+     * factura, o esta ya no está), la reclasificación NO se cae por eso — el
+     * asiento corregido vale por sí solo y es lo que el usuario pidió.
+     */
+    private void learnFromReclassify(ManualEntryView original, ManualEntryLine oldLine,
+                                       String newAccountId, String userId) {
+        try {
+            String newCode = jdbcTemplate.query("""
+                    SELECT code FROM accounting_accounts WHERE id = ? LIMIT 1
+                    """, (rs, n) -> rs.getString("code"), newAccountId)
+                    .stream().findFirst().orElse(null);
+
+            // NIF del tercero: sin él, recordCorrection registra la corrección
+            // pero no crea regla (no tiene criterio con el que matchear).
+            String customerNif = null;
+            if ("SALES_INVOICE".equals(original.sourceType()) && original.sourceId() != null) {
+                customerNif = jdbcTemplate.query("""
+                        SELECT c.tax_identifier
+                          FROM sales_invoices si
+                          JOIN customers c ON c.id = si.customer_id
+                         WHERE si.id = ? AND si.company_id = ?
+                         LIMIT 1
+                        """, (rs, n) -> rs.getString("tax_identifier"),
+                        original.sourceId(), original.companyId())
+                        .stream().findFirst().orElse(null);
+            }
+
+            learning.recordCorrection(new AccountingLearningService.CorrectionRequest(
+                    original.id(), oldLine.id(),
+                    oldLine.accountId(), newAccountId, newCode,
+                    null, customerNif, null, null,
+                    "Reclasificación ASI-4 del asiento " + original.entryNumber()), userId);
+        } catch (Exception ex) {
+            log.warn("ASI-4: no se pudo registrar el aprendizaje de la reclasificación "
+                    + "del asiento {} (la reclasificación SÍ se aplicó): {}",
+                    original.id(), ex.getMessage());
+        }
     }
 
     // ====================================================================

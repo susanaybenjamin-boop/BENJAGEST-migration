@@ -87,6 +87,34 @@ public class AccountingJournalController {
     }
 
     /**
+     * ASI-4 — Reclasifica la cuenta de una línea de un asiento ya VALIDADO,
+     * por la vía legal: el original pasa a anulado, nace su contraasiento y
+     * nace el asiento correcto. No se borra nada.
+     *
+     * <p>Es el hermano de {@code /reclassify} para asientos POSTED: aquel solo
+     * toca DRAFTs (que se pueden reescribir sin más) y solo cuentas genéricas.
+     *
+     * <p>{@code saveRule=true} además aprende "este tercero va a esta cuenta"
+     * para que las próximas facturas nazcan bien.
+     *
+     * @return el asiento NUEVO (el corregido).
+     */
+    @PostMapping("/journal-entries/{id}/reclassify-account")
+    public ManualJournalEntryService.ManualEntryView reclassifyPostedAccount(
+            @PathVariable("id") String id,
+            @RequestBody ReclassifyAccountBody body) {
+        if (body == null) {
+            throw new org.springframework.web.server.ResponseStatusException(
+                    org.springframework.http.HttpStatus.BAD_REQUEST, "Falta el cuerpo de la petición.");
+        }
+        return manualService.reclassifyPostedAccount(
+                id, body.lineId(), body.newAccountId(), body.reason(), body.saveRule());
+    }
+
+    public record ReclassifyAccountBody(String lineId, String newAccountId,
+                                          String reason, boolean saveRule) {}
+
+    /**
      * Borra físicamente una lista de asientos importados (con
      * source_pdf_sha256). Pensado para resolver duplicados desde la
      * UI: el asesor elige qué copias eliminar y el resto sobrevive.
