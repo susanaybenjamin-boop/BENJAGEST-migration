@@ -390,15 +390,41 @@ public class TaxFilingService {
     @RequiresRole({"OWNER", "ADMIN", "ACCOUNTANT", "EMPLOYEE"})
     public static class TaxController {
         private final TaxFilingService service;
+        private final TaxLedgerService ledger;
 
-        public TaxController(TaxFilingService service) {
+        public TaxController(TaxFilingService service, TaxLedgerService ledger) {
             this.service = service;
+            this.ledger = ledger;
         }
 
         @GetMapping("/models")
         public List<TaxModelCatalog> models() {
             return service.listCatalog();
         }
+
+        /**
+         * LIQ-BACKFILL — qué liquidaciones del 303 faltan por contabilizar.
+         *
+         * <p>Solo MIRA: no escribe nada. Decisión de Benjamin (2026-07-15): la
+         * regularización de sus trimestres anteriores se hace con vista previa y
+         * confirmación suya, NUNCA con una migración que se ejecute sola en la
+         * release — son sus libros, y la BD está blindada (no se puede auditar
+         * antes lo que se va a tocar).
+         */
+        @GetMapping("/ledger/pending-liquidations")
+        public List<TaxLedgerService.PendingLiquidation> pendingLiquidations(
+                @RequestParam("year") int year) {
+            return ledger.previewPendingLiquidations(year);
+        }
+
+        /** LIQ-BACKFILL — crea las liquidaciones confirmadas (en orden cronológico). */
+        @PostMapping("/ledger/backfill")
+        public java.util.Map<String, Object> backfill(@RequestBody BackfillRequest req) {
+            int n = ledger.applyBackfill(req == null ? List.of() : req.filingIds());
+            return java.util.Map.of("created", n);
+        }
+
+        public record BackfillRequest(List<String> filingIds) {}
 
         @GetMapping("/filings")
         public List<FilingView> filings(

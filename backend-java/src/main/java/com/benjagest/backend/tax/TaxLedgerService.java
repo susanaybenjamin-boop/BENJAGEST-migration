@@ -214,6 +214,127 @@ public class TaxLedgerService {
     }
 
     // ====================================================================
+    //  LIQ-BACKFILL — regularizar trimestres anteriores (decisión Benjamin
+    //  2026-07-15: con vista previa y confirmación, NUNCA por migración
+    //  silenciosa: son sus libros y yo no puedo ver su BD, que está blindada)
+    // ====================================================================
+
+    /** Una liquidación que falta, tal y como se le enseña al usuario ANTES de crearla. */
+    public record PendingLiquidation(
+            String filingId, String periodLabel, int year, int quarter,
+            BigDecimal saldo477, BigDecimal saldo472, BigDecimal resultado,
+            String cuentaHacienda, boolean puedeAplicarse, String motivo) {}
+
+    /**
+     * Qué liquidaciones del 303 faltan, en ORDEN cronológico.
+     *
+     * <p>Ojo con el orden: los importes que se muestran son los movimientos
+     * PROPIOS de cada trimestre. Coinciden con lo que creará
+     * {@link #createLiquidation303} <b>siempre que se apliquen en orden</b>,
+     * porque cada liquidación deja la 477/472 a cero y la siguiente solo ve lo
+     * suyo. Aplicarlas desordenadas daría importes distintos — por eso
+     * {@link #applyBackfill} las ordena.
+     */
+    public List<PendingLiquidation> previewPendingLiquidations(int year) {
+        String companyId = tenantContext.getCurrentCompanyId();
+        List<Map<String, Object>> filings = jdbcTemplate.queryForList("""
+                SELECT id, period_year, period_quarter
+                  FROM tax_filings
+                 WHERE company_id = ? AND tax_model_code = '303'
+                   AND period_year = ?
+                   AND status IN ('PRESENTED', 'PAID')
+                   AND period_quarter IS NOT NULL
+                 ORDER BY period_quarter
+                """, companyId, year);
+
+        List<PendingLiquidation> out = new java.util.ArrayList<>();
+        for (Map<String, Object> f : filings) {
+            String filingId = (String) f.get("id");
+            if (existingEntry(SRC_LIQUIDATION, filingId) != null) continue; // ya lo tiene
+            int q = ((Number) f.get("period_quarter")).intValue();
+            LocalDate from = LocalDate.of(year, (q - 1) * 3 + 1, 1);
+            LocalDate to = periodEnd(f);
+
+            BigDecimal s477 = rangeBalance(companyId, "477", from, to);
+            BigDecimal s472 = rangeBalance(companyId, "472", from, to).negate();
+            BigDecimal resultado = s477.subtract(s472);
+            String cuenta = resultado.signum() >= 0 ? "4750" : "4700";
+
+            String motivo = null;
+            if (s477.signum() == 0 && s472.signum() == 0) {
+                motivo = "El trimestre no tiene movimientos de IVA: no hay nada que liquidar.";
+            } else if (accountByCode(companyId, cuenta) == null) {
+                motivo = "Falta la cuenta " + cuenta + " en el plan contable (la crea la V178).";
+            } else if (!"OPEN".equals(fiscalYearStatus(companyId, to))) {
+                motivo = "El ejercicio de " + to + " no está abierto.";
+            }
+            out.add(new PendingLiquidation(filingId, q + "T " + year, year, q,
+                    s477, s472, resultado, cuenta, motivo == null, motivo));
+        }
+        return out;
+    }
+
+    /**
+     * Crea las liquidaciones que faltan. SIEMPRE en orden cronológico: la del 2T
+     * depende de que exista la del 1T (ver {@link #previewPendingLiquidations}).
+     *
+     * @return cuántas se crearon.
+     */
+    @Transactional
+    public int applyBackfill(List<String> filingIds) {
+        if (filingIds == null || filingIds.isEmpty()) return 0;
+        // Reordenar por (año, trimestre) pase lo que pase: si el caller los manda
+        // desordenados, los importes saldrían mal.
+        List<Map<String, Object>> ordered = jdbcTemplate.queryForList("""
+                SELECT id FROM tax_filings
+                 WHERE company_id = ? AND tax_model_code = '303'
+                   AND id IN (%s)
+                 ORDER BY period_year, period_quarter
+                """.formatted(filingIds.stream().map(x -> "?").collect(java.util.stream.Collectors.joining(","))),
+                concat(tenantContext.getCurrentCompanyId(), filingIds));
+
+        int n = 0;
+        for (Map<String, Object> row : ordered) {
+            Map<String, Object> f = loadFiling((String) row.get("id"));
+            if (f == null) continue;
+            String entryId = safely("liquidación (backfill)", (String) row.get("id"),
+                    () -> createLiquidation303(f));
+            if (entryId != null) n++;
+        }
+        return n;
+    }
+
+    private static Object[] concat(String first, List<String> rest) {
+        Object[] args = new Object[rest.size() + 1];
+        args[0] = first;
+        for (int i = 0; i < rest.size(); i++) args[i + 1] = rest.get(i);
+        return args;
+    }
+
+    private String fiscalYearStatus(String companyId, LocalDate date) {
+        return jdbcTemplate.query("""
+                SELECT status FROM fiscal_years
+                 WHERE company_id = ? AND year_number = ? LIMIT 1
+                """, (rs, x) -> rs.getString("status"), companyId, date.getYear())
+                .stream().findFirst().orElse("OPEN"); // sin fila = permisivo (igual que FiscalYearGuardService)
+    }
+
+    /** Saldo acreedor (haber - debe) de una cuenta por prefijo en un rango concreto. */
+    private BigDecimal rangeBalance(String companyId, String prefix, LocalDate from, LocalDate to) {
+        BigDecimal v = jdbcTemplate.queryForObject("""
+                SELECT COALESCE(SUM(l.credit) - SUM(l.debit), 0)
+                  FROM journal_entry_lines l
+                  JOIN journal_entries je ON je.id = l.journal_entry_id
+                  JOIN accounting_accounts a ON a.id = l.account_id
+                 WHERE je.company_id = ?
+                   AND je.status = 'POSTED'
+                   AND je.entry_date BETWEEN ? AND ?
+                   AND a.code LIKE ?
+                """, BigDecimal.class, companyId, Date.valueOf(from), Date.valueOf(to), prefix + "%");
+        return v == null ? BigDecimal.ZERO : v;
+    }
+
+    // ====================================================================
     //  Helpers
     // ====================================================================
 
