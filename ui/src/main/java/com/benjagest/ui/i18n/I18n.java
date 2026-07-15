@@ -7461,6 +7461,9 @@ public final class I18n {
             case "accounting.source_type.BANK_MOVEMENT" -> "Bank movement";
             case "accounting.source_type.YEAR_CLOSE_REGULARIZATION" -> "Year-close regularization";
             case "accounting.source_type.YEAR_CLOSE_CLOSING" -> "Year-close entry";
+            // ---- LIQ-303 (2026-07-15) — entries of the AEAT tax filings ----
+            case "accounting.source_type.TAX_LIQUIDATION" -> "VAT settlement (303)";
+            case "accounting.source_type.TAX_PAYMENT" -> "Tax filing payment";
             case "accounting.source_type.LOAN_INSTALLMENT" -> "Loan installment";
             case "accounting.source_type.ASSET_DEPRECIATION" -> "Depreciation";
             case "accounting.source_type.ASSET_ACQUISITION" -> "Asset acquisition";
@@ -8840,6 +8843,9 @@ public final class I18n {
             case "accounting.source_type.BANK_MOVEMENT" -> "Movimiento bancario";
             case "accounting.source_type.YEAR_CLOSE_REGULARIZATION" -> "Regularización cierre";
             case "accounting.source_type.YEAR_CLOSE_CLOSING" -> "Cierre ejercicio";
+            // ---- LIQ-303 (2026-07-15) — asientos de los modelos AEAT ----
+            case "accounting.source_type.TAX_LIQUIDATION" -> "Liquidación IVA (303)";
+            case "accounting.source_type.TAX_PAYMENT" -> "Pago de modelo";
             case "accounting.source_type.LOAN_INSTALLMENT" -> "Cuota préstamo";
             case "accounting.source_type.ASSET_DEPRECIATION" -> "Amortización";
             case "accounting.source_type.ASSET_ACQUISITION" -> "Alta inmovilizado";

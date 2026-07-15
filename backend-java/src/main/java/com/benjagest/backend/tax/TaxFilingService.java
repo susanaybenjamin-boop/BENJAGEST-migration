@@ -46,10 +46,14 @@ public class TaxFilingService {
 
     private final JdbcTemplate jdbcTemplate;
     private final TenantContext tenantContext;
+    /** LIQ-303: los asientos de los modelos. Antes este service no conocía la contabilidad. */
+    private final TaxLedgerService taxLedger;
 
-    public TaxFilingService(JdbcTemplate jdbcTemplate, TenantContext tenantContext) {
+    public TaxFilingService(JdbcTemplate jdbcTemplate, TenantContext tenantContext,
+                              TaxLedgerService taxLedger) {
         this.jdbcTemplate = jdbcTemplate;
         this.tenantContext = tenantContext;
+        this.taxLedger = taxLedger;
     }
 
     public List<TaxModelCatalog> listCatalog() {
@@ -174,6 +178,10 @@ public class TaxFilingService {
             if (n == 0) {
                 throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Declaracion no encontrada");
             }
+            // LIQ-303 (2026-07-15): PRESENTED -> PAID contabiliza el pago.
+            if ("PRESENTED".equals(curStatus) && "PAID".equals(req.status())) {
+                taxLedger.onPaid(id);
+            }
             return findById(id);
         }
         int n = jdbcTemplate.update("""
@@ -190,6 +198,20 @@ public class TaxFilingService {
                 id, tenantContext.getCurrentCompanyId());
         if (n == 0) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Declaracion no encontrada");
+        }
+        // LIQ-303 (2026-07-15) — Aquí faltaba TODO el puente entre lo fiscal y lo
+        // contable: este service leía la contabilidad para calcular casillas pero
+        // no le escribía nunca. Por eso la 477 de Benjamin no se vaciaba jamás.
+        //   • Al PRESENTAR un 303 -> asiento de liquidación (477/472/4750).
+        //   • Al PAGAR (aquí, si se salta el paso PRESENTED) -> asiento de pago.
+        // Los dos son best-effort: ver TaxLedgerService.onPresented — que la
+        // contabilidad falle NO puede impedir marcar la declaración, porque el
+        // hecho fiscal ya ocurrió.
+        if ("PRESENTED".equals(req.status())) {
+            taxLedger.onPresented(id);
+        } else if ("PAID".equals(req.status())) {
+            taxLedger.onPresented(id);
+            taxLedger.onPaid(id);
         }
         return findById(id);
     }
