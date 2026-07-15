@@ -563,8 +563,16 @@ public class SettingsScreen extends ScreenBase {
         emailTab.setGraphic(icon("fas-envelope"));
         Tab modulesTab = new Tab(t("settings.tab.modules"), settingsModulesTab(bundle.modules()));
         modulesTab.setGraphic(icon("fas-cubes"));
-        Tab credentialsTab = new Tab(t("settings.tab.credentials"), settingsCredentialsTab());
-        credentialsTab.setGraphic(icon("fas-key"));
+        // CRED-OUT (2026-07-15): fuera la pestaña "Credenciales". Guardaba claves de
+        // sistemas externos (DEHú, SS RED, SILTRA) que NADIE leía nunca — un almacén
+        // pasivo sin consumidores. Los conectores que la justificaban no se harán:
+        // el acceso automatizado del DEHú exige ser "Gran destinatario" (persona
+        // jurídica con volumen importante) y Benjamin es autónomo. Él entra a esos
+        // sistemas con el gestor-navegador y su certificado.
+        // El log de uso de certificados que vivía en esa pestaña SÍ está vivo
+        // (lo escribe BrowserCertSessionService) y se movió a Certificados.
+        // El backend y la tabla external_credentials se conservan intactos.
+        //
         // El antiguo tab "Integraciones" (Google) se fusionó en el tab Correo:
         // el panel Google aparece al elegir el proveedor Google.
         Tab certificateTab = new Tab(t("settings.tab.certificate"), settingsCertificateTab());
@@ -582,7 +590,7 @@ public class SettingsScreen extends ScreenBase {
         // "Mi asesoría" solo tiene sentido para empresas CLIENT — una
         // asesoría no necesita otra asesoría que la asesore.
         tabs.getTabs().addAll(companyTab, ownersTab, emailTab, modulesTab,
-                credentialsTab, certificateTab, sessionTab, aboutTab);
+                certificateTab, sessionTab, aboutTab);
         if (appMode != AppMode.ADVISORY) {
             Tab advisoryTab = new Tab(t("settings.tab.my_advisory"), settingsMyAdvisoryTab());
             advisoryTab.setGraphic(icon("fas-handshake"));
@@ -1547,7 +1555,11 @@ public class SettingsScreen extends ScreenBase {
         // este patron los botones del pie quedan fuera de pantalla en
         // portatil. Mismo enfoque que las otras pestanas de Configuracion.
         VBox header = new VBox(8, sectionTitle, hint);
-        VBox body = new VBox(12, certsTable);
+        // CRED-OUT (2026-07-15): el log de uso de certificados vivía en la pestaña
+        // Credenciales, que se retiró. Su sitio natural es este: audita cuándo se
+        // usó cada certificado (lo escribe el gestor-navegador), así que se lee
+        // justo debajo del listado de certificados.
+        VBox body = new VBox(12, certsTable, new Separator(), settingsCertUsageLogSection());
         VBox.setVgrow(certsTable, Priority.ALWAYS);
 
         reloadCertificates();
@@ -2004,80 +2016,36 @@ public class SettingsScreen extends ScreenBase {
         });
     }
 
-    private TableView<com.benjagest.ui.model.ExternalCredentialEntry> credentialsTable;
     private TableView<com.benjagest.ui.model.CertificateUsageEntry> certUsageTable;
 
     // ===================================================================
-    //  ALTA — Pestana Credenciales externas + Log uso certificados
+    //  Log de uso de certificados (vive en la pestana Certificados desde
+    //  CRED-OUT; antes estaba en la pestana Credenciales, ya retirada)
     // ===================================================================
 
-    public Node settingsCredentialsTab() {
-        Label section = label(t("settings.credentials.section"), "settings-section-title");
-        Label hint = new Label(t("settings.credentials.hint"));
-        hint.setWrapText(true);
-        hint.getStyleClass().add("settings-hint");
-
-        credentialsTable = new TableView<>();
-        credentialsTable.getStyleClass().add("data-table");
-        credentialsTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
-        credentialsTable.setPlaceholder(new Label(t("settings.credentials.placeholder.empty")));
-        credentialsTable.setPrefHeight(240);
-
-        TableColumn<com.benjagest.ui.model.ExternalCredentialEntry, String> colSys =
-                new TableColumn<>(t("settings.credentials.col.system"));
-        colSys.setCellValueFactory(c -> new SimpleStringProperty(
-                t("settings.credentials.system." + c.getValue().systemCode())));
-        colSys.setPrefWidth(140);
-        TableColumn<com.benjagest.ui.model.ExternalCredentialEntry, String> colLabel =
-                new TableColumn<>(t("settings.credentials.col.label"));
-        colLabel.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().label()));
-        TableColumn<com.benjagest.ui.model.ExternalCredentialEntry, String> colUser =
-                new TableColumn<>(t("settings.credentials.col.user"));
-        colUser.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().username()));
-        colUser.setPrefWidth(140);
-        TableColumn<com.benjagest.ui.model.ExternalCredentialEntry, String> colPwd =
-                new TableColumn<>(t("settings.credentials.col.password"));
-        colPwd.setCellValueFactory(c -> new SimpleStringProperty(
-                c.getValue().passwordConfigured() ? "***" : t("settings.credentials.empty")));
-        colPwd.setPrefWidth(80);
-        TableColumn<com.benjagest.ui.model.ExternalCredentialEntry, String> colFlags =
-                new TableColumn<>(t("settings.credentials.col.flags"));
-        colFlags.setCellValueFactory(c -> new SimpleStringProperty(
-                c.getValue().active() ? "" : t("settings.credentials.inactive")));
-        colFlags.setPrefWidth(80);
-        credentialsTable.getColumns().addAll(java.util.List.of(colSys, colLabel, colUser, colPwd, colFlags));
-
-        Button addBtn = new Button(t("settings.credentials.action.add"));
-        addBtn.setGraphic(icon("fas-plus"));
-        addBtn.setOnAction(ev -> showCredentialEditor(null));
-
-        Button editBtn = new Button(t("settings.credentials.action.edit"));
-        editBtn.setGraphic(icon("fas-edit"));
-        editBtn.setDisable(true);
-        editBtn.setOnAction(ev -> {
-            var sel = credentialsTable.getSelectionModel().getSelectedItem();
-            if (sel != null) showCredentialEditor(sel);
-        });
-
-        Button deleteBtn = new Button(t("settings.credentials.action.delete"));
-        deleteBtn.setGraphic(icon("fas-trash"));
-        deleteBtn.setDisable(true);
-        deleteBtn.setOnAction(ev -> {
-            var sel = credentialsTable.getSelectionModel().getSelectedItem();
-            if (sel != null) deleteCredential(sel);
-        });
-
-        credentialsTable.getSelectionModel().selectedItemProperty().addListener((obs, oldV, newV) -> {
-            editBtn.setDisable(newV == null);
-            deleteBtn.setDisable(newV == null);
-        });
-
-        HBox credActions = new HBox(8, addBtn, editBtn, deleteBtn);
-        credActions.setAlignment(Pos.CENTER_LEFT);
-
-        reloadCredentials();
-
-        // ---- Log de uso de certificados ----
+    /**
+     * CRED-OUT (2026-07-15, decisión Benjamin) — La pestaña "Credenciales" se
+     * retiró de Configuración; aquí sobrevive SOLO el log de uso de certificados,
+     * que ahora cuelga de la pestaña Certificados (su sitio natural).
+     *
+     * <p>Por qué se quitó: {@code external_credentials} era un <b>almacén pasivo
+     * con CERO consumidores</b> — se cifraba al guardar y no se descifraba nunca.
+     * Nació en ALTA-5 como la pieza 1 de 2 (almacén + conectores DEHú/SS RED/
+     * SILTRA); la pieza 2 no se hará: el acceso automatizado del DEHú exige
+     * registrarse como "Gran destinatario", reservado a <b>personas jurídicas</b>
+     * con volumen importante de notificaciones, y Benjamin es autónomo (persona
+     * física). La puerta está cerrada por fuera, no por falta de código.
+     * Benjamin accede a esos sistemas con el gestor-navegador y su certificado,
+     * que es justo lo que este log audita.
+     *
+     * <p>NO se borra nada del backend ni de la BD: la tabla, el service y los
+     * endpoints siguen ahí. Solo desaparece la UI.
+     *
+     * <p><b>Ojo</b>: {@code certificate_usage_log} SÍ está vivo — lo escribe
+     * {@code BrowserCertSessionService.recordUsage} cada vez que el gestor-navegador
+     * usa un certificado (LOPD). Por eso se conserva.
+     */
+    public Node settingsCertUsageLogSection() {
         Label logSection = label(t("settings.credentials.log.section"), "settings-section-title");
         Label logHint = new Label(t("settings.credentials.log.hint"));
         logHint.setWrapText(true);
@@ -2130,25 +2098,7 @@ public class SettingsScreen extends ScreenBase {
 
         reloadCertUsage();
 
-        VBox body = new VBox(16,
-                section, hint, credentialsTable, credActions,
-                new Separator(),
-                logSection, logHint, certUsageTable, logActions);
-        return tabLayout(label(t("settings.credentials.section_label"), "settings-section-title"), body,
-                new HBox());
-    }
-
-    private void reloadCredentials() {
-        if (credentialsTable == null) return;
-        Task<java.util.List<com.benjagest.ui.model.ExternalCredentialEntry>> task = new Task<>() {
-            @Override
-            protected java.util.List<com.benjagest.ui.model.ExternalCredentialEntry> call() throws Exception {
-                return altaApiClient.listCredentials();
-            }
-        };
-        task.setOnSucceeded(ev -> credentialsTable.setItems(FXCollections.observableArrayList(task.getValue())));
-        task.setOnFailed(ev -> credentialsTable.getItems().clear());
-        start(task, "settings-credentials-reload");
+        return new VBox(16, logSection, logHint, certUsageTable, logActions);
     }
 
     private void reloadCertUsage() {
@@ -2164,97 +2114,11 @@ public class SettingsScreen extends ScreenBase {
         start(task, "settings-cert-usage-reload");
     }
 
-    private void showCredentialEditor(com.benjagest.ui.model.ExternalCredentialEntry existing) {
-        Dialog<ButtonType> dialog = new Dialog<>();
-        dialog.setTitle(existing == null ? t("settings.credentials.editor.title_new")
-                : t("settings.credentials.editor.title_edit"));
-        ButtonType saveBt = new ButtonType(t("settings.credentials.editor.save"), ButtonBar.ButtonData.OK_DONE);
-        dialog.getDialogPane().getButtonTypes().addAll(saveBt, ButtonType.CANCEL);
-
-        ComboBox<String> sysCombo = new ComboBox<>();
-        sysCombo.getItems().addAll("DEHU", "SS_RED", "SILTRA", "AEAT_CLAVE",
-                "NOTIFICA_GOB", "SEDE_AEAT", "BANCO_ESPANA", "OTHER");
-        localizeEnumCombo(sysCombo, "credential_system");
-        sysCombo.getSelectionModel().select(existing == null ? "DEHU" : existing.systemCode());
-        sysCombo.setDisable(existing != null);
-
-        TextField labelField = new TextField(existing == null ? "" : existing.label());
-        TextField userField = new TextField(existing == null ? "" : existing.username());
-        PasswordField pwdField = new PasswordField();
-        pwdField.setPromptText(existing != null && existing.passwordConfigured()
-                ? t("settings.credentials.editor.password.keep")
-                : t("settings.credentials.editor.password.new"));
-        TextField authUrlField = new TextField(existing == null ? "" : existing.authUrl());
-        TextArea notesField = new TextArea(existing == null ? "" : existing.notes());
-        notesField.setPrefRowCount(2);
-        CheckBox activeCb = new CheckBox(t("settings.credentials.editor.active"));
-        activeCb.setSelected(existing == null || existing.active());
-
-        GridPane grid = new GridPane();
-        grid.setHgap(10); grid.setVgap(8); grid.setPadding(new Insets(10));
-        grid.add(new Label(t("settings.credentials.editor.system")), 0, 0); grid.add(sysCombo, 1, 0);
-        grid.add(new Label(t("settings.credentials.editor.label")), 0, 1); grid.add(labelField, 1, 1);
-        grid.add(new Label(t("settings.credentials.editor.username")), 0, 2); grid.add(userField, 1, 2);
-        grid.add(new Label(t("settings.credentials.editor.password")), 0, 3); grid.add(pwdField, 1, 3);
-        grid.add(new Label(t("settings.credentials.editor.auth_url")), 0, 4); grid.add(authUrlField, 1, 4);
-        grid.add(new Label(t("settings.credentials.editor.notes")), 0, 5); grid.add(notesField, 1, 5);
-        grid.add(activeCb, 1, 6);
-        installDialog(dialog, grid);
-
-        dialog.showAndWait().ifPresent(bt -> {
-            if (bt != saveBt) return;
-            String pwd = pwdField.getText();
-            Task<com.benjagest.ui.model.ExternalCredentialEntry> task = new Task<>() {
-                @Override
-                protected com.benjagest.ui.model.ExternalCredentialEntry call() throws Exception {
-                    if (existing == null) {
-                        return altaApiClient.createCredential(
-                                sysCombo.getValue(),
-                                labelField.getText().trim(),
-                                userField.getText().trim(),
-                                pwd,
-                                authUrlField.getText().trim(),
-                                notesField.getText().trim(),
-                                activeCb.isSelected());
-                    }
-                    return altaApiClient.updateCredential(
-                            existing.id(),
-                            existing.systemCode(),
-                            labelField.getText().trim(),
-                            userField.getText().trim(),
-                            pwd,  // si vacio, el cliente no envia el campo
-                            authUrlField.getText().trim(),
-                            notesField.getText().trim(),
-                            activeCb.isSelected());
-                }
-            };
-            task.setOnSucceeded(ev -> reloadCredentials());
-            task.setOnFailed(ev -> showError(t("settings.credentials.editor.fail.title"),
-                    t("settings.credentials.editor.fail.body")));
-            start(task, "settings-credentials-save");
-        });
-    }
-
-    private void deleteCredential(com.benjagest.ui.model.ExternalCredentialEntry entry) {
-        Alert confirm = new Alert(Alert.AlertType.CONFIRMATION,
-                t("settings.credentials.delete.body") + " " + entry.label(),
-                ButtonType.OK, ButtonType.CANCEL);
-        confirm.setHeaderText(t("settings.credentials.delete.title"));
-        confirm.showAndWait().ifPresent(bt -> {
-            if (bt != ButtonType.OK) return;
-            Task<Void> task = new Task<>() {
-                @Override
-                protected Void call() throws Exception {
-                    altaApiClient.deleteCredential(entry.id());
-                    return null;
-                }
-            };
-            task.setOnSucceeded(ev -> reloadCredentials());
-            task.setOnFailed(ev -> showError(t("settings.credentials.editor.fail.title"),
-                    t("settings.credentials.editor.fail.body")));
-            start(task, "settings-credentials-delete");
-        });
-    }
+    // CRED-OUT (2026-07-15): aqui vivian showCredentialEditor() y
+    // deleteCredential(). Se retiraron con la pestana Credenciales — ver la nota
+    // en settingsCertUsageLogSection(). El backend (ExternalCredentialService) y
+    // la tabla external_credentials siguen intactos: si algun dia hay conector,
+    // la UI se vuelve a montar sobre lo que ya existe.
 
     /** Tipos de evento del filtro de Auditoria (lo usa settingsAuditTab, aun en el shell hasta SM-2b). */
     private static final java.util.List<String> AUDIT_EVENT_TYPES = java.util.List.of(
