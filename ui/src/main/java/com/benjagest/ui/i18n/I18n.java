@@ -7416,6 +7416,17 @@ public final class I18n {
             case "accounting.void.reason" -> "Reason (required):";
             case "accounting.void.done" -> "Entry voided. It no longer counts towards balances; you will still see it in the journal marked as Voided.";
             case "accounting.error.void" -> "Could not void the entry";
+            // ---- ASI-4 (2026-07-15) — Reclassify the account of a posted entry ----
+            case "accounting.action.reclassify_account" -> "Reclassify account";
+            case "accounting.reclassify.header" -> "Reclassify an account of entry #{n}";
+            case "accounting.reclassify.note" -> "A posted entry cannot be edited. When you reclassify, this entry is marked as VOIDED (it stays visible in the journal) and the correct entry is created — identical to this one but with the account you choose. Nothing is deleted.";
+            case "accounting.reclassify.line" -> "Line that is wrong:";
+            case "accounting.reclassify.new_account" -> "Correct account:";
+            case "accounting.reclassify.save_rule" -> "Remember this account for this customer";
+            case "accounting.reclassify.save_rule_hint" -> "If you tick this, future invoices for this customer will be posted straight to the correct account. It only works when the entry comes from a sales invoice.";
+            case "accounting.reclassify.account_done" -> "Entry reclassified to {a}. The previous one stays in the journal marked as Voided and no longer counts towards balances.";
+            case "accounting.reclassify.no_lines" -> "This entry has no lines to reclassify.";
+            case "accounting.error.reclassify_account" -> "Could not reclassify the account";
             case "accounting.entry.read_only" -> "Posted entry — read only. A posted entry cannot be edited. To correct it, close this window and use \"Void\" in the journal, then record the correct entry. If the only thing wrong is the account, use \"Reclassify account\": it does both at once.";
             case "accounting.error.session_expired_title" -> "Session expired";
             case "accounting.error.session_expired_body" -> "Your session has expired (tokens last 8 hours for security).\n\nClose the app and log in again to continue.\n\nNothing you saved has been lost.";
@@ -8784,6 +8795,17 @@ public final class I18n {
             case "accounting.void.reason" -> "Motivo (obligatorio):";
             case "accounting.void.done" -> "Asiento anulado. Ya no cuenta en los saldos; lo seguirás viendo en el diario marcado como Anulado.";
             case "accounting.error.void" -> "No se pudo anular el asiento";
+            // ---- ASI-4 (2026-07-15) — Reclasificar la cuenta de un asiento validado ----
+            case "accounting.action.reclassify_account" -> "Reclasificar cuenta";
+            case "accounting.reclassify.header" -> "Reclasificar una cuenta del asiento #{n}";
+            case "accounting.reclassify.note" -> "Un asiento validado no se puede editar. Al reclasificar, este asiento se marcará como ANULADO (seguirá visible en el diario) y se creará el asiento correcto, igual que este pero con la cuenta que elijas. No se borra nada.";
+            case "accounting.reclassify.line" -> "Línea que está mal:";
+            case "accounting.reclassify.new_account" -> "Cuenta correcta:";
+            case "accounting.reclassify.save_rule" -> "Recordar esta cuenta para este cliente";
+            case "accounting.reclassify.save_rule_hint" -> "Si lo marcas, las próximas facturas de este cliente se contabilizarán directamente en la cuenta correcta. Solo funciona si el asiento viene de una factura de venta.";
+            case "accounting.reclassify.account_done" -> "Asiento reclasificado a {a}. El anterior queda en el diario marcado como Anulado y ya no cuenta en los saldos.";
+            case "accounting.reclassify.no_lines" -> "Este asiento no tiene líneas que reclasificar.";
+            case "accounting.error.reclassify_account" -> "No se pudo reclasificar la cuenta";
             case "accounting.entry.read_only" -> "Asiento validado — solo lectura. Un asiento validado no se puede editar. Para corregirlo, cierra esta ventana y usa \"Anular\" en el diario, y después registra el asiento correcto. Si lo único que está mal es la cuenta, usa \"Reclasificar cuenta\": lo hace de una vez.";
             case "accounting.error.session_expired_title" -> "Sesión expirada";
             case "accounting.error.session_expired_body" -> "Tu sesión ha caducado (los tokens duran 8 horas por seguridad).\n\nCierra la aplicación y vuelve a iniciar sesión para continuar trabajando.\n\nNo se ha perdido nada de lo que tenías guardado.";

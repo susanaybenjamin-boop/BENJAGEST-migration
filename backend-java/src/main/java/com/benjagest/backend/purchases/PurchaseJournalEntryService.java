@@ -645,13 +645,25 @@ public class PurchaseJournalEntryService {
         return s.length() > 240 ? s.substring(0, 240) : s;
     }
 
-    /** Siguiente entry_number correlativo entre los POSTED del ejercicio. */
+    /**
+     * Siguiente entry_number correlativo del ejercicio. Cuenta TODOS los
+     * números ya asignados, sin mirar el estado; los DRAFT no consumen número
+     * porque desde la V58 lo tienen NULL, y MAX ignora los NULL.
+     *
+     * <p><b>ANUL-2 (2026-07-15).</b> Filtraba {@code status = 'POSTED'} y por
+     * tanto ignoraba los asientos ANULADOS, que CONSERVAN su entry_number:
+     * devolvía un número ya ocupado y la UK (company_id, fiscal_year_id,
+     * entry_number) reventaba con "Duplicate entry". Mismo arreglo que en
+     * {@code ManualJournalEntryService.nextPostedEntryNumber}, donde el e2e lo
+     * cazó. Los otros seis numeradores del backend (bancos, cierre, activos,
+     * préstamos, vencimientos, manual) ya hacían MAX sobre todos los estados y
+     * no estaban afectados — verificado con grep de MAX(entry_number).
+     */
     private int nextPostedEntryNumber(String companyId, String fiscalYearId) {
         Integer max = jdbcTemplate.queryForObject("""
                 SELECT COALESCE(MAX(entry_number), 0)
                   FROM journal_entries
                  WHERE company_id = ? AND fiscal_year_id = ?
-                   AND status = 'POSTED'
                    AND entry_number IS NOT NULL
                 """, Integer.class, companyId, fiscalYearId);
         return (max == null ? 0 : max) + 1;

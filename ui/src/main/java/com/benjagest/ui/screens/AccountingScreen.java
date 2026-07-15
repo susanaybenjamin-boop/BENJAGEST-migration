@@ -447,15 +447,25 @@ public class AccountingScreen {
         voidBtn.setOnAction(e -> voidSelectedDiaryEntry());
         voidBtn.setDisable(true);
 
+        // ASI-4 — corregir SOLO la cuenta sin tener que anular y reescribir el
+        // asiento entero a mano. Caso de Benjamin: venta en la 700 que era 705.
+        Button reclassBtn = new Button(tt.apply("accounting.action.reclassify_account"));
+        reclassBtn.setOnAction(e -> reclassifySelectedDiaryEntry());
+        reclassBtn.setDisable(true);
+
         Label voidHint = new Label(tt.apply("accounting.diary.void_hint"));
         voidHint.setStyle("-fx-text-fill: #6e6e6e;");
+        voidHint.setWrapText(true);
 
-        // Solo se anula UN asiento POSTED a la vez. Un DRAFT no se anula (se
-        // edita o se borra) y un VOIDED ya lo está.
-        diaryTable.getSelectionModel().selectedItemProperty().addListener((o, a, b) ->
-                voidBtn.setDisable(b == null || !"POSTED".equalsIgnoreCase(b.status())));
+        // Ambas acciones: UN asiento POSTED. Un DRAFT no se anula (se edita o se
+        // borra) y un VOIDED ya lo está.
+        diaryTable.getSelectionModel().selectedItemProperty().addListener((o, a, b) -> {
+            boolean posted = b != null && "POSTED".equalsIgnoreCase(b.status());
+            voidBtn.setDisable(!posted);
+            reclassBtn.setDisable(!posted);
+        });
 
-        HBox actions = new HBox(8, voidBtn, voidHint);
+        HBox actions = new HBox(8, voidBtn, reclassBtn, voidHint);
         actions.setAlignment(Pos.CENTER_LEFT);
 
         diaryTable.setRowFactory(tv -> {
@@ -519,6 +529,117 @@ public class AccountingScreen {
                                 com.benjagest.ui.support.RefreshBus.TOPIC_JOURNAL);
                     },
                     err -> showError(tt.apply("accounting.error.void"), err));
+        });
+    }
+
+    /**
+     * ASI-4 — Reclasifica la cuenta de una línea de un asiento validado.
+     *
+     * <p>Carga el detalle (necesitamos las líneas) y el catálogo de cuentas en
+     * paralelo, y pinta un diálogo: elige línea → elige cuenta nueva → motivo →
+     * opcionalmente "recordar para este cliente". El backend anula el original
+     * y crea el correcto; aquí no se decide nada de eso.
+     */
+    private void reclassifySelectedDiaryEntry() {
+        DiaryEntry sel = diaryTable.getSelectionModel().getSelectedItem();
+        if (sel == null || !"POSTED".equalsIgnoreCase(sel.status())) return;
+
+        async(() -> api.getEntry(sel.id()), detail -> {
+            if (detail == null || detail.lines() == null || detail.lines().isEmpty()) {
+                showError(tt.apply("accounting.error.reclassify_account"),
+                        tt.apply("accounting.reclassify.no_lines"));
+                return;
+            }
+            async(() -> api.listAccounts(null),
+                    accounts -> showReclassifyDialog(detail, accounts),
+                    err -> showError(tt.apply("accounting.error.reclassify_account"), err));
+        }, err -> showError(tt.apply("accounting.error.reclassify_account"), err));
+    }
+
+    private void showReclassifyDialog(JournalEntryDetail detail, List<AccountSummary> accounts) {
+        Dialog<ButtonType> dlg = new Dialog<>();
+        dlg.setTitle(tt.apply("accounting.action.reclassify_account"));
+        dlg.setHeaderText(tt.apply("accounting.reclassify.header")
+                .replace("{n}", String.valueOf(detail.entryNumber())));
+        dlg.getDialogPane().setPrefSize(660, 380);
+        dlg.setResizable(true);
+
+        ComboBox<JournalLine> lineBox = new ComboBox<>(
+                FXCollections.observableArrayList(detail.lines()));
+        lineBox.setPrefWidth(600);
+        javafx.util.StringConverter<JournalLine> lineFmt = new javafx.util.StringConverter<>() {
+            @Override public String toString(JournalLine l) {
+                if (l == null) return "";
+                String importe = (l.debit() != null && l.debit().signum() > 0)
+                        ? tt.apply("accounting.col.debit") + " " + l.debit()
+                        : tt.apply("accounting.col.credit") + " " + l.credit();
+                return l.accountCode() + " " + l.accountName() + "  —  " + importe;
+            }
+            @Override public JournalLine fromString(String s) { return null; }
+        };
+        lineBox.setConverter(lineFmt);
+        lineBox.getSelectionModel().selectFirst();
+
+        ComboBox<AccountSummary> accountBox = new ComboBox<>(
+                FXCollections.observableArrayList(accounts));
+        accountBox.setPrefWidth(600);
+        javafx.util.StringConverter<AccountSummary> accFmt = new javafx.util.StringConverter<>() {
+            @Override public String toString(AccountSummary a) {
+                return a == null ? "" : a.code() + " " + a.name();
+            }
+            @Override public AccountSummary fromString(String s) { return null; }
+        };
+        accountBox.setConverter(accFmt);
+
+        TextField reason = new TextField();
+        reason.setPromptText(tt.apply("accounting.void.reason"));
+
+        CheckBox saveRule = new CheckBox(tt.apply("accounting.reclassify.save_rule"));
+        Label saveRuleHint = new Label(tt.apply("accounting.reclassify.save_rule_hint"));
+        saveRuleHint.setStyle("-fx-text-fill: #6e6e6e;");
+        saveRuleHint.setWrapText(true);
+
+        Label note = new Label(tt.apply("accounting.reclassify.note"));
+        note.setWrapText(true);
+        note.setStyle("-fx-background-color: #e7f1ff; -fx-padding: 6 10; "
+                + "-fx-background-radius: 4; -fx-text-fill: #084298;");
+
+        VBox box = new VBox(8, note,
+                new Label(tt.apply("accounting.reclassify.line")), lineBox,
+                new Label(tt.apply("accounting.reclassify.new_account")), accountBox,
+                new Label(tt.apply("accounting.void.reason")), reason,
+                saveRule, saveRuleHint);
+        box.setPadding(new Insets(10));
+        dlg.getDialogPane().setContent(box);
+        dlg.getDialogPane().getButtonTypes().addAll(ButtonType.OK, ButtonType.CANCEL);
+
+        // Sin línea, sin cuenta destino o sin motivo no se puede aceptar.
+        Node okBtn = dlg.getDialogPane().lookupButton(ButtonType.OK);
+        Runnable validate = () -> okBtn.setDisable(
+                lineBox.getValue() == null
+                || accountBox.getValue() == null
+                || reason.getText() == null || reason.getText().isBlank());
+        validate.run();
+        lineBox.valueProperty().addListener((o, a, b) -> validate.run());
+        accountBox.valueProperty().addListener((o, a, b) -> validate.run());
+        reason.textProperty().addListener((o, a, b) -> validate.run());
+
+        dlg.showAndWait().ifPresent(bt -> {
+            if (bt != ButtonType.OK) return;
+            JournalLine line = lineBox.getValue();
+            AccountSummary acc = accountBox.getValue();
+            if (line == null || acc == null) return;
+            async(() -> {
+                api.reclassifyAccount(detail.id(), line.id(), acc.id(),
+                        reason.getText().trim(), saveRule.isSelected());
+                return null;
+            }, ok -> {
+                showInfo(tt.apply("accounting.action.reclassify_account"),
+                        tt.apply("accounting.reclassify.account_done")
+                                .replace("{a}", acc.code() + " " + acc.name()));
+                com.benjagest.ui.support.RefreshBus.emit(
+                        com.benjagest.ui.support.RefreshBus.TOPIC_JOURNAL);
+            }, err -> showError(tt.apply("accounting.error.reclassify_account"), err));
         });
     }
 

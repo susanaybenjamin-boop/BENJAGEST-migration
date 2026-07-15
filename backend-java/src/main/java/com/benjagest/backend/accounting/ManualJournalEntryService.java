@@ -1022,16 +1022,29 @@ public class ManualJournalEntryService {
     }
 
     /**
-     * Siguiente entry_number considerando SOLO los asientos POSTED. Usado
-     * al validar un DRAFT — así el Diario sale en orden de validación y
-     * los DRAFTs intermedios no "consumen" números.
+     * Siguiente entry_number para un asiento que se está validando. Cuenta
+     * TODOS los números ya asignados, sin mirar el estado; los DRAFT no
+     * consumen número porque desde la V58 lo tienen NULL (se les asigna justo
+     * al validar), y MAX ignora los NULL.
+     *
+     * <p><b>ANUL-2 (2026-07-15).</b> Antes filtraba {@code status = 'POSTED'},
+     * y eso rompía en cuanto existía un asiento ANULADO: un VOIDED CONSERVA su
+     * entry_number, pero al no contarlo el MAX devolvía un número ya ocupado y
+     * la UK (company_id, fiscal_year_id, entry_number) reventaba con
+     * "Duplicate entry". No saltaba nunca porque los asientos anulados no
+     * existían en la práctica — ningún botón llamaba a voidEntry. Al arreglar
+     * ANUL-2 pasaron a ser normales y el e2e lo cazó: validar una factura tras
+     * anular un asiento daba HTTP 500.
+     *
+     * <p>Los huecos en la numeración son normales y NO se renumera (ver la nota
+     * de {@code deleteImportedByIds}): el nº 5 anulado deja constancia de que
+     * existió.
      */
     private int nextPostedEntryNumber(String companyId, String fiscalYearId) {
         Integer max = jdbcTemplate.queryForObject("""
                 SELECT COALESCE(MAX(entry_number), 0)
                   FROM journal_entries
                  WHERE company_id = ? AND fiscal_year_id = ?
-                   AND status = 'POSTED'
                    AND entry_number IS NOT NULL
                 """, Integer.class, companyId, fiscalYearId);
         return (max == null ? 0 : max) + 1;
