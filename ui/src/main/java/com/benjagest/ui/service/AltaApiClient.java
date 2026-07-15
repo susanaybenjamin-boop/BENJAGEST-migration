@@ -836,6 +836,41 @@ public class AltaApiClient {
         return parseObjects(r.body(), "taxModelCode", this::mapFiling);
     }
 
+    /**
+     * LIQ-BACKFILL — qué liquidaciones del 303 faltan por contabilizar. Solo MIRA:
+     * no escribe nada. Lo que el usuario ve antes de decidir.
+     */
+    public List<com.benjagest.ui.model.PendingLiquidationEntry> pendingLiquidations(int year)
+            throws IOException, InterruptedException {
+        HttpResponse<String> r = send(req(baseUrl + "/tax/ledger/pending-liquidations?year=" + year).GET());
+        // parseObjects vale aquí: PendingLiquidation es PLANO (sin sub-objetos).
+        // Ver la nota de deuda técnica del CLAUDE.md sección 6.
+        return parseObjects(r.body(), "filingId", obj ->
+                new com.benjagest.ui.model.PendingLiquidationEntry(
+                        textField(obj, "filingId"),
+                        textField(obj, "periodLabel"),
+                        intFieldOrZero(obj, "year"),
+                        intFieldOrZero(obj, "quarter"),
+                        decFieldOrZero(obj, "saldo477"),
+                        decFieldOrZero(obj, "saldo472"),
+                        decFieldOrZero(obj, "resultado"),
+                        textField(obj, "cuentaHacienda"),
+                        boolField(obj, "puedeAplicarse"),
+                        textField(obj, "motivo")));
+    }
+
+    /** LIQ-BACKFILL — crea las liquidaciones confirmadas. Devuelve cuántas nacieron. */
+    public int backfillLiquidations(List<String> filingIds)
+            throws IOException, InterruptedException {
+        String ids = filingIds.stream()
+                .map(x -> "\"" + escape(x) + "\"")
+                .collect(java.util.stream.Collectors.joining(","));
+        HttpResponse<String> r = send(req(baseUrl + "/tax/ledger/backfill")
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString("{\"filingIds\":[" + ids + "]}")));
+        return intFieldOrZero(r.body(), "created");
+    }
+
     public TaxFilingEntry createFiling(String modelCode, int year, Integer quarter, Integer month,
                                         String status, String dataJson, BigDecimal totalAmount,
                                         String csvAeat, String notes)
