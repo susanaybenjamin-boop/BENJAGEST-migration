@@ -525,13 +525,6 @@ public class ManualJournalEntryService {
     }
 
     /**
-     * Anula un asiento POSTED creando un asiento espejo de signo opuesto
-     * (contraasiento). El asiento original se marca como VOIDED para que
-     * no compute en saldos, pero queda visible en el Libro Diario por
-     * trazabilidad legal.
-     */
-    @Transactional
-    /**
      * Borra FÍSICAMENTE asientos importados de PDF (duplicados). Solo
      * acepta ids cuyo {@code source_type IN ('SALES_PDF_IMPORT',
      * 'PURCHASE_INVOICE')} y cuyo periodo fiscal NO está cerrado.
@@ -545,6 +538,7 @@ public class ManualJournalEntryService {
      *
      * @return número de asientos efectivamente borrados.
      */
+    @Transactional
     public int deleteImportedByIds(List<String> ids) {
         if (ids == null || ids.isEmpty()) return 0;
         String companyId = tenantContext.getCurrentCompanyId();
@@ -589,6 +583,26 @@ public class ManualJournalEntryService {
         return deleted;
     }
 
+    /**
+     * Anula un asiento POSTED creando un asiento espejo de signo opuesto
+     * (contraasiento). El asiento original se marca como VOIDED para que
+     * no compute en saldos, pero queda visible en el Libro Diario por
+     * trazabilidad legal.
+     *
+     * <p><b>ASI-1 (2026-07-15).</b> Este método corría SIN transacción: la
+     * anotación estaba mal colocada (entre este javadoc y el de
+     * {@code deleteImportedByIds}), por lo que anotaba a ese otro método.
+     * Los 3 pasos de abajo iban en autocommit y un fallo a mitad dejaba el
+     * original VOIDED SIN contraasiento — es decir, fuera de los saldos y
+     * sin nada que lo compensara. Es todo-o-nada.
+     *
+     * <p>El número del contraasiento sale de {@code nextEntryNumber}
+     * (MAX sobre TODOS los estados) y no de {@code nextPostedEntryNumber}:
+     * el original acaba de pasar a VOIDED pero conserva su entry_number, y
+     * la UK (company_id, fiscal_year_id, entry_number) chocaría si
+     * reutilizásemos su hueco.
+     */
+    @Transactional
     public ManualEntryView voidEntry(String entryId, String reason) {
         ManualEntryView original = get(entryId);
         if ("VOIDED".equals(original.status())) return original;
