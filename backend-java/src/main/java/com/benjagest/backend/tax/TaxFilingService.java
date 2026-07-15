@@ -46,10 +46,14 @@ public class TaxFilingService {
 
     private final JdbcTemplate jdbcTemplate;
     private final TenantContext tenantContext;
+    /** LIQ-303: los asientos de los modelos. Antes este service no conocía la contabilidad. */
+    private final TaxLedgerService taxLedger;
 
-    public TaxFilingService(JdbcTemplate jdbcTemplate, TenantContext tenantContext) {
+    public TaxFilingService(JdbcTemplate jdbcTemplate, TenantContext tenantContext,
+                              TaxLedgerService taxLedger) {
         this.jdbcTemplate = jdbcTemplate;
         this.tenantContext = tenantContext;
+        this.taxLedger = taxLedger;
     }
 
     public List<TaxModelCatalog> listCatalog() {
@@ -174,6 +178,10 @@ public class TaxFilingService {
             if (n == 0) {
                 throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Declaracion no encontrada");
             }
+            // LIQ-303 (2026-07-15): PRESENTED -> PAID contabiliza el pago.
+            if ("PRESENTED".equals(curStatus) && "PAID".equals(req.status())) {
+                taxLedger.onPaid(id);
+            }
             return findById(id);
         }
         int n = jdbcTemplate.update("""
@@ -190,6 +198,20 @@ public class TaxFilingService {
                 id, tenantContext.getCurrentCompanyId());
         if (n == 0) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Declaracion no encontrada");
+        }
+        // LIQ-303 (2026-07-15) — Aquí faltaba TODO el puente entre lo fiscal y lo
+        // contable: este service leía la contabilidad para calcular casillas pero
+        // no le escribía nunca. Por eso la 477 de Benjamin no se vaciaba jamás.
+        //   • Al PRESENTAR un 303 -> asiento de liquidación (477/472/4750).
+        //   • Al PAGAR (aquí, si se salta el paso PRESENTED) -> asiento de pago.
+        // Los dos son best-effort: ver TaxLedgerService.onPresented — que la
+        // contabilidad falle NO puede impedir marcar la declaración, porque el
+        // hecho fiscal ya ocurrió.
+        if ("PRESENTED".equals(req.status())) {
+            taxLedger.onPresented(id);
+        } else if ("PAID".equals(req.status())) {
+            taxLedger.onPresented(id);
+            taxLedger.onPaid(id);
         }
         return findById(id);
     }
@@ -368,15 +390,41 @@ public class TaxFilingService {
     @RequiresRole({"OWNER", "ADMIN", "ACCOUNTANT", "EMPLOYEE"})
     public static class TaxController {
         private final TaxFilingService service;
+        private final TaxLedgerService ledger;
 
-        public TaxController(TaxFilingService service) {
+        public TaxController(TaxFilingService service, TaxLedgerService ledger) {
             this.service = service;
+            this.ledger = ledger;
         }
 
         @GetMapping("/models")
         public List<TaxModelCatalog> models() {
             return service.listCatalog();
         }
+
+        /**
+         * LIQ-BACKFILL — qué liquidaciones del 303 faltan por contabilizar.
+         *
+         * <p>Solo MIRA: no escribe nada. Decisión de Benjamin (2026-07-15): la
+         * regularización de sus trimestres anteriores se hace con vista previa y
+         * confirmación suya, NUNCA con una migración que se ejecute sola en la
+         * release — son sus libros, y la BD está blindada (no se puede auditar
+         * antes lo que se va a tocar).
+         */
+        @GetMapping("/ledger/pending-liquidations")
+        public List<TaxLedgerService.PendingLiquidation> pendingLiquidations(
+                @RequestParam("year") int year) {
+            return ledger.previewPendingLiquidations(year);
+        }
+
+        /** LIQ-BACKFILL — crea las liquidaciones confirmadas (en orden cronológico). */
+        @PostMapping("/ledger/backfill")
+        public java.util.Map<String, Object> backfill(@RequestBody BackfillRequest req) {
+            int n = ledger.applyBackfill(req == null ? List.of() : req.filingIds());
+            return java.util.Map.of("created", n);
+        }
+
+        public record BackfillRequest(List<String> filingIds) {}
 
         @GetMapping("/filings")
         public List<FilingView> filings(
