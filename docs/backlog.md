@@ -1,6 +1,32 @@
 # Backlog operativo BENJAGEST
 
-> **Última actualización: 2026-07-16 (noche) — ⚠️ EL AUTO-ACTUALIZADOR FALLÓ EN SU PRIMER INTENTO REAL (0.1.43→0.1.44): el GUARD `runningAsService()` daba FALSO NEGATIVO en producción (getCodeSource peta en el fat jar de Spring Boot). ARREGLADO (UPD-3c, verificado en ejecución con el fat jar real). MSI **0.1.45** construido con TODO (BANK-DUP + LIQ-130-BF + UPD-CLEAN + UPD-3c) — **hay que instalarlo A MANO** (la 0.1.43 instalada tiene el guard roto y no puede auto-actualizarse). Release 0.1.44 BORRADA de GitHub (rota, nadie la instaló); latest vuelve a 0.1.42 para que la app de Benjamin no le ofrezca updates que fallan. Suite 155 verde. Detalle abajo.**
+> **Última actualización: 2026-07-16 (noche, 2) — 🔐 BROWSER-CERT-STORE-FIX: el gestor-navegador no detectaba el certificado porque el backend-SERVICIO (LocalSystem) lo importaba a SU almacén, no al de Benjamin (el navegador corre como Benjamin). Fix: la UI importa el cert a `CurrentUser\My` del usuario; el backend le da el material por endpoint solo-localhost. MSI **0.1.46** construido y verificado (los 3 cambios + JRE dentro). Falta instalar + prueba VISUAL de Benjamin. Suite 155 verde. Detalle abajo. Histórico 0.1.45 debajo.**
+>
+> ## 🚀 PROMPT PARA LA PRÓXIMA SESIÓN (copiar y pegar)
+>
+> *"Lee la cabecera de docs/backlog.md y la sección SESIÓN 2026-07-16 (noche, 2). MSI **0.1.46** en `dist\msi\BENJAGEST-0.1.46.msi`, verificado (JRE 119,3 MB + WindowsCertImporter en el UI + endpoint /browser/material en el backend + flag anti-sandbox en el gestor).*
+>
+> ***LO PRIMERO: ¿instaló la 0.1.46?** Se puede de DOS formas: (a) a mano, o (b) por el AUTO-ACTUALIZADOR — la 0.1.45 instalada de Benjamin ya tiene el guard UPD-3c arreglado, así que 0.1.45→0.1.46 sería la PRIMERA prueba real del actualizador automático con el guard bueno. Si se publica la 0.1.46, su app la trae sola. Preguntarle qué prefiere (ver la pregunta pendiente al final de la sesión).*
+>
+> ***PRUEBA CLAVE de Benjamin (VISUAL, no automatizable):** abrir el gestor-navegador de un cliente → entrar en AEAT/DEHú/SS → que Chromium OFREZCA el certificado y el login funcione. Es lo único que no se pudo verificar sin la app real. Si sigue sin detectar: mirar (1) que la cadena FNMT (raíz AC RAIZ FNMT-RCM + intermedia AC FNMT Usuarios) esté en el almacén de Benjamin — sí estaba el 16-jul; (2) el flag NetworkServiceSandbox ya va puesto; (3) que el cert de la app esté vigente.*
+>
+> ***OJO — el cert de Susana en el almacén está CADUCADO** (17/06/2026), pero NO es la causa del problema del gestor (la app usa su propio cert de la BD, no el del almacén). Es un dato aparte: si lo usan para algo, renovarlo con la FNMT.*
+>
+> ***PENDIENTE viejo**: 130 saldar 473 contra 550 en el cierre; duplicados de banco anteriores a BANK-DUP; publicar 0.1.45 YA está hecho (latest en GitHub).*
+>
+> ***Entorno e2e**: Docker `benjagest-mariadb` (3307) → `benjagest_v8test` → backend 8081. Usuario `e2e-asi4@example.test` / `PruebaE2E2026$`."*
+>
+> **Sesión 2026-07-16 (noche, 2) — BROWSER-CERT-STORE-FIX: el certificado del navegador.**
+>
+> Benjamin: al abrir el gestor-navegador, "no se detecta el certificado digital, error de identificación" en las tres sedes, con el cert configurado y vigente.
+>
+> - `[x]` **Diagnóstico (2 agentes Explore en paralelo + verificación en la máquina)** — **primera lectura MÍA equivocada** (creí que era el cert caducado de Susana en el almacén; corregido). CAUSA REAL confirmada por el log del backend (`[browser-cert] Certificado ... importado al almacen`) + `StartName=LocalSystem`: el backend-servicio importa el .p12 del cliente a `Cert:\CurrentUser\My` de **LocalSystem**, no de Benjamin. El gestor (Chromium) corre como Benjamin y mira SU almacén → no ve el cert. **Dos armarios.** Regresión de WINSVC (iba el 21-jun con backend embebido = mismo usuario). Ver [[project_benjagest_localsystem_vs_usuario]].
+> - `[x]` **Investigación JCEF (fuentes primarias)** — JCEF 127 NO expone `onSelectClientCertificate` (no se puede inyectar por código; el almacén de Windows es la única vía). Chromium poda el selector a la cadena de CA que el servidor acepta, y aísla el network service en sandbox.
+> - `[x]` **Fix** (`d7b479b2`): (1) `WindowsCertImporter` en el UI importa el cert a `CurrentUser\My` **del usuario** (la UI corre como Benjamin) — copia de la lógica del backend; (2) backend: endpoint `POST /certificates/browser/material` que entrega el .p12 descifrado + contraseña, **SOLO LOCALHOST** (isLoopback; el material lleva la clave privada y el backend escucha en 0.0.0.0); (3) `launchGestorNavegador` usa el flujo nuevo (pide material → importa local → lanza → quita al cerrar); (4) gestor: `--disable-features=NetworkServiceSandbox`.
+> - `[x]` **VERIFICADO EN EJECUCIÓN**: helper del UI con un .p12 self-signed real (contraseña con `$`) → importa a `CurrentUser\My` del usuario con su thumbprint y clave privada, y `removeFromUserStore` lo quita. Endpoint: 204 desde localhost, **403 desde la IP LAN** (192.168.0.18) con el mensaje correcto (el material no sale de la máquina). Suite **155 verde**. **PENDIENTE**: prueba VISUAL de Benjamin (Chromium ofrece el cert) — no automatizable.
+> - `[x]` **MSI 0.1.46** (`bump`) construido y verificado: JRE 119,3 MB, APP_VERSION 0.1.46, y los 3 cambios dentro (WindowsCertImporter, /browser/material, NetworkServiceSandbox).
+>
+> **[HIST cerrado] 2026-07-16 (noche) — EL AUTO-ACTUALIZADOR FALLÓ EN SU PRIMER INTENTO REAL (0.1.43→0.1.44): el GUARD `runningAsService()` daba FALSO NEGATIVO en producción (getCodeSource peta en el fat jar de Spring Boot). ARREGLADO (UPD-3c, verificado en ejecución con el fat jar real). MSI **0.1.45** construido con TODO (BANK-DUP + LIQ-130-BF + UPD-CLEAN + UPD-3c) — **hay que instalarlo A MANO** (la 0.1.43 instalada tiene el guard roto y no puede auto-actualizarse). Release 0.1.44 BORRADA de GitHub (rota, nadie la instaló); latest vuelve a 0.1.42 para que la app de Benjamin no le ofrezca updates que fallan. Suite 155 verde. Detalle abajo.**
 >
 > ## 🚀 PROMPT PARA LA PRÓXIMA SESIÓN (copiar y pegar)
 >
