@@ -1,20 +1,25 @@
 # Backlog operativo BENJAGEST
 
-> **Última actualización: 2026-07-16 (noche, 2) — 🔐 BROWSER-CERT-STORE-FIX: el gestor-navegador no detectaba el certificado porque el backend-SERVICIO (LocalSystem) lo importaba a SU almacén, no al de Benjamin (el navegador corre como Benjamin). Fix: la UI importa el cert a `CurrentUser\My` del usuario; el backend le da el material por endpoint solo-localhost. MSI **0.1.46** construido y verificado (los 3 cambios + JRE dentro). Falta instalar + prueba VISUAL de Benjamin. Suite 155 verde. Detalle abajo. Histórico 0.1.45 debajo.**
+> **Última actualización: 2026-07-16 (noche, 3) — ✅ GESTOR-NAVEGADOR FUNCIONA DE PUNTA A PUNTA: abre y entra con el certificado en las sedes (Benjamin: "ya abre y entra con el certificado"). El AUTO-ACTUALIZADOR también quedó probado y funciona ("de lujo, todo en silencio"). Últimos fixes del día: v0.1.47 (parser base64 del cert, el navegador no abría en modo cliente) PUBLICADA; GESTOR-CLOSE (cerrar el navegador al salir del cliente) MERGEADO a develop **SIN release** por decisión de Benjamin — entra en la próxima release cuando haya más cambios. Suite 155 verde. Detalle abajo.**
 >
 > ## 🚀 PROMPT PARA LA PRÓXIMA SESIÓN (copiar y pegar)
 >
-> *"Lee la cabecera de docs/backlog.md y la sección SESIÓN 2026-07-16 (noche, 2). MSI **0.1.46** en `dist\msi\BENJAGEST-0.1.46.msi`, verificado (JRE 119,3 MB + WindowsCertImporter en el UI + endpoint /browser/material en el backend + flag anti-sandbox en el gestor).*
+> *"Lee la cabecera de docs/backlog.md y la sección SESIÓN 2026-07-16 (noche, 3). Última release PUBLICADA: **v0.1.47** (latest en GitHub). En develop hay **GESTOR-CLOSE SIN RELEASE** (cierra el navegador al salir del cliente) — se publicará junto con lo siguiente que hagamos.*
 >
-> ***LO PRIMERO: ¿instaló la 0.1.46?** Se puede de DOS formas: (a) a mano, o (b) por el AUTO-ACTUALIZADOR — la 0.1.45 instalada de Benjamin ya tiene el guard UPD-3c arreglado, así que 0.1.45→0.1.46 sería la PRIMERA prueba real del actualizador automático con el guard bueno. Si se publica la 0.1.46, su app la trae sola. Preguntarle qué prefiere (ver la pregunta pendiente al final de la sesión).*
+> ***EL AUTO-ACTUALIZADOR YA FUNCIONA**: publicar una release nueva → la app de Benjamin la trae sola, en silencio, sin UAC. Así que el ciclo normal ahora es: cambios → bump + build-msi.ps1 + `gh release create v0.X --target <SHA completo de develop> ... dist\msi\BENJAGEST-0.X.msi` → Benjamin cierra y abre la app y se actualiza sola.*
 >
-> ***PRUEBA CLAVE de Benjamin (VISUAL, no automatizable):** abrir el gestor-navegador de un cliente → entrar en AEAT/DEHú/SS → que Chromium OFREZCA el certificado y el login funcione. Es lo único que no se pudo verificar sin la app real. Si sigue sin detectar: mirar (1) que la cadena FNMT (raíz AC RAIZ FNMT-RCM + intermedia AC FNMT Usuarios) esté en el almacén de Benjamin — sí estaba el 16-jul; (2) el flag NetworkServiceSandbox ya va puesto; (3) que el cert de la app esté vigente.*
+> ***LO PRIMERO probable: dar de ALTA el programa en Hacienda** (la "declaración responsable del fabricante", RD 1007/2023 + Orden HAC/1177/2024). El código de la declaración YA EXISTE (ManufacturerDeclaration*, buscar en backend/billing/manufacturer). Falta: (1) revisar que el texto/datos de la declaración estén completos y correctos; (2) el trámite real ante la AEAT (presentar la declaración responsable) — es un paso administrativo de Benjamin, no solo código. Ligar con [[project_benjagest_auditoria_2026_07]] (declaración responsable era un bloqueante) y el plan legal VF3-FINAL antes del 1-ene-2027.*
 >
-> ***OJO — el cert de Susana en el almacén está CADUCADO** (17/06/2026), pero NO es la causa del problema del gestor (la app usa su propio cert de la BD, no el del almacén). Es un dato aparte: si lo usan para algo, renovarlo con la FNMT.*
+> ***PRUEBA VISUAL PENDIENTE de Benjamin** (cuando salga la próxima release con GESTOR-CLOSE): abrir el gestor de un cliente → salir del cliente → que la ventana del navegador se CIERRE sola. El mecanismo (matar el árbol de procesos) está verificado en ejecución; falta verlo en la app.*
 >
-> ***PENDIENTE viejo**: 130 saldar 473 contra 550 en el cierre; duplicados de banco anteriores a BANK-DUP; publicar 0.1.45 YA está hecho (latest en GitHub).*
+> ***PENDIENTE viejo (no urgente)**: 130 saldar 473 contra 550 en el cierre; duplicados de banco ANTERIORES a BANK-DUP (BANK-DUP impide los nuevos, no limpia los viejos); cert de Susana CADUCADO en el almacén (17/06/2026) — no afecta al gestor (la app usa su propio cert de la BD), pero si lo usan para algo hay que renovarlo con la FNMT.*
 >
-> ***Entorno e2e**: Docker `benjagest-mariadb` (3307) → `benjagest_v8test` → backend 8081. Usuario `e2e-asi4@example.test` / `PruebaE2E2026$`."*
+> ***Entorno e2e**: Docker `benjagest-mariadb` (3307) → `benjagest_v8test` → backend 8081 con `BENJAGEST_DB_URL`+`BENJAGEST_BACKEND_PORT`. Usuario `e2e-asi4@example.test` / `PruebaE2E2026$`."*
+>
+> **Sesión 2026-07-16 (noche, 3) — GESTOR-NAVEGADOR completo: cert OK + fix parser (0.1.47) + GESTOR-CLOSE (sin release).**
+>
+> - `[x]` **✅ EL CERTIFICADO FUNCIONA** — Benjamin, tras 0.1.47: *"ya abre y entra con el certificado"*. Todo el trabajo del bloque (BROWSER-CERT-STORE-FIX + el fix del parser) verificado de punta a punta en la app real: el navegador abre en la ficha del cliente Y ofrece el certificado en las sedes.
+> - `[x]` **GESTOR-CLOSE** (`merge a develop, SIN release`) — al salir del cliente vinculado, la ventana del gestor se quedaba abierta con la sesión de ESE cliente. Fix: campo `gestorProcess` + `exitClientMode()` → `closeGestorNavegador()` mata el proceso y sus descendientes (subprocesos de Chromium). `exitClientMode` es el punto central de salida (atrás/dashboard/módulos). Al morir el proceso, el Task despierta y quita la huella del almacén (el cert del cliente tampoco queda residente). **Verificado**: el mecanismo `descendants().forEach(destroy)+destroy()` mata un proceso con 3 subprocesos, 0 huérfanos. Prueba visual en la app: pendiente de Benjamin cuando salga release. **Decisión de Benjamin: NO se publica release ahora; entra en la próxima.**
 >
 > **Sesión 2026-07-16 (noche, 2) — BROWSER-CERT-STORE-FIX: el certificado del navegador.**
 >
