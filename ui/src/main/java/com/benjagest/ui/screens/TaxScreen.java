@@ -241,7 +241,8 @@ public class TaxScreen extends ScreenBase {
         Dialog<ButtonType> dlg = new Dialog<>();
         dlg.setTitle(t("tax.liq.title"));
         dlg.setHeaderText(t("tax.liq.header").replace("{y}", String.valueOf(year)));
-        dlg.getDialogPane().setPrefSize(820, 460);
+        // 980: LIQ-130-BF añadió Modelo/Asiento/Fecha y con 820 se cortaban.
+        dlg.getDialogPane().setPrefSize(980, 460);
         dlg.setResizable(true);
 
         Label note = new Label(t("tax.liq.note"));
@@ -258,15 +259,35 @@ public class TaxScreen extends ScreenBase {
         TableColumn<com.benjagest.ui.model.PendingLiquidationEntry, String> cPer =
                 new TableColumn<>(t("tax.liq.col.period"));
         cPer.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().periodLabel()));
-        cPer.setPrefWidth(90);
+        cPer.setPrefWidth(80);
+        // LIQ-130-BF: qué modelo y qué asiento. Sin esto, un trimestre con
+        // liquidación Y pago salían como dos filas idénticas e indistinguibles.
+        TableColumn<com.benjagest.ui.model.PendingLiquidationEntry, String> cMod =
+                new TableColumn<>(t("tax.liq.col.model"));
+        cMod.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().modelCode()));
+        cMod.setPrefWidth(70);
+        TableColumn<com.benjagest.ui.model.PendingLiquidationEntry, String> cKind =
+                new TableColumn<>(t("tax.liq.col.kind"));
+        cKind.setCellValueFactory(c -> new SimpleStringProperty(
+                t("tax.liq.kind." + c.getValue().kind())));
+        cKind.setPrefWidth(110);
+        // En un pago no hay saldos de IVA que enseñar: "—" antes que un 0,00
+        // que se leería como "el IVA de ese trimestre fue cero".
         TableColumn<com.benjagest.ui.model.PendingLiquidationEntry, String> c477 =
                 new TableColumn<>(t("tax.liq.col.repercutido"));
-        c477.setCellValueFactory(c -> new SimpleStringProperty(money(c.getValue().saldo477())));
-        c477.setPrefWidth(110);
+        c477.setCellValueFactory(c -> new SimpleStringProperty(
+                c.getValue().saldo477() == null ? "—" : money(c.getValue().saldo477())));
+        c477.setPrefWidth(105);
         TableColumn<com.benjagest.ui.model.PendingLiquidationEntry, String> c472 =
                 new TableColumn<>(t("tax.liq.col.soportado"));
-        c472.setCellValueFactory(c -> new SimpleStringProperty(money(c.getValue().saldo472())));
-        c472.setPrefWidth(110);
+        c472.setCellValueFactory(c -> new SimpleStringProperty(
+                c.getValue().saldo472() == null ? "—" : money(c.getValue().saldo472())));
+        c472.setPrefWidth(105);
+        TableColumn<com.benjagest.ui.model.PendingLiquidationEntry, String> cFec =
+                new TableColumn<>(t("tax.liq.col.date"));
+        cFec.setCellValueFactory(c -> new SimpleStringProperty(
+                c.getValue().fechaAsiento() == null ? "" : c.getValue().fechaAsiento().toString()));
+        cFec.setPrefWidth(95);
         TableColumn<com.benjagest.ui.model.PendingLiquidationEntry, String> cRes =
                 new TableColumn<>(t("tax.liq.col.result"));
         cRes.setCellValueFactory(c -> new SimpleStringProperty(money(c.getValue().resultado())));
@@ -280,7 +301,8 @@ public class TaxScreen extends ScreenBase {
         cState.setCellValueFactory(c -> new SimpleStringProperty(
                 c.getValue().puedeAplicarse() ? t("tax.liq.state.ok")
                         : (c.getValue().motivo() == null ? t("tax.liq.state.ko") : c.getValue().motivo())));
-        table.getColumns().addAll(java.util.List.of(cPer, c477, c472, cRes, cAcc, cState));
+        table.getColumns().addAll(java.util.List.of(
+                cPer, cMod, cKind, c477, c472, cRes, cAcc, cFec, cState));
 
         long aplicables = pending.stream()
                 .filter(com.benjagest.ui.model.PendingLiquidationEntry::puedeAplicarse).count();

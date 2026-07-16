@@ -845,16 +845,22 @@ public class AltaApiClient {
         HttpResponse<String> r = send(req(baseUrl + "/tax/ledger/pending-liquidations?year=" + year).GET());
         // parseObjects vale aquí: PendingLiquidation es PLANO (sin sub-objetos).
         // Ver la nota de deuda técnica del CLAUDE.md sección 6.
+        // LIQ-130-BF: ahora puede haber DOS filas con el mismo filingId (la
+        // liquidación del trimestre y su pago). El discriminador sigue valiendo
+        // porque parseObjects recorta objetos, no deduplica por él.
         return parseObjects(r.body(), "filingId", obj ->
                 new com.benjagest.ui.model.PendingLiquidationEntry(
                         textField(obj, "filingId"),
                         textField(obj, "periodLabel"),
                         intFieldOrZero(obj, "year"),
                         intFieldOrZero(obj, "quarter"),
+                        textField(obj, "modelCode"),
+                        textField(obj, "kind"),
                         decFieldOrZero(obj, "saldo477"),
                         decFieldOrZero(obj, "saldo472"),
                         decFieldOrZero(obj, "resultado"),
                         textField(obj, "cuentaHacienda"),
+                        parseLocalDate(textField(obj, "fechaAsiento")),
                         boolField(obj, "puedeAplicarse"),
                         textField(obj, "motivo")));
     }

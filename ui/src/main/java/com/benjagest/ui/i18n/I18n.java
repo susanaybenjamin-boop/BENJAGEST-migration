@@ -972,9 +972,15 @@ public final class I18n {
                 // ---- LIQ-UI (2026-07-15) — regularizar trimestres sin asiento ----
             case "tax.liq.action.regularize" -> "Regularise quarters";
             case "tax.liq.title" -> "Regularise previous quarters";
-            case "tax.liq.header" -> "VAT settlements of {y} with no accounting entry";
-            case "tax.liq.note" -> "These quarters were filed but never got their settlement entry, so account 477 was never cleared. Below is what would be created for each one. They are applied IN ORDER: the 2nd quarter only works out right if the 1st already exists. Nothing is written until you press Regularise, and any entry can be voided afterwards from the journal.";
+            case "tax.liq.header" -> "{y} filings (303 and 130) with entries missing";
+            case "tax.liq.note" -> "These filings never got their accounting entries: the 303 settlement (which is what clears account 477) and/or the payment entry (which is what clears the debt to the tax office and takes the money out of the bank). Below is exactly what would be created for each one. Payments are dated on the form's DEADLINE — when the tax office charges direct debits — not today, so they land in the right quarter. They are applied IN ORDER: the 2nd quarter only works out right if the 1st already exists. Nothing is written until you press Regularise, and any entry can be voided afterwards from the journal.";
             case "tax.liq.col.period" -> "Quarter";
+            // LIQ-130-BF: un trimestre puede necesitar la liquidación y su pago.
+            case "tax.liq.col.model" -> "Form";
+            case "tax.liq.col.kind" -> "Entry";
+            case "tax.liq.col.date" -> "Entry date";
+            case "tax.liq.kind.LIQUIDATION" -> "VAT settlement";
+            case "tax.liq.kind.PAYMENT" -> "Payment";
             case "tax.liq.col.repercutido" -> "Output VAT (477)";
             case "tax.liq.col.soportado" -> "Input VAT (472)";
             case "tax.liq.col.result" -> "Result";
@@ -982,7 +988,7 @@ public final class I18n {
             case "tax.liq.col.state" -> "Status";
             case "tax.liq.state.ok" -> "Ready";
             case "tax.liq.state.ko" -> "Cannot be applied";
-            case "tax.liq.summary" -> "{n} of {t} quarters can be regularised.";
+            case "tax.liq.summary" -> "{n} of {t} entries can be created.";
             case "tax.liq.none" -> "All the {y} filings already have their entry. Nothing to regularise.";
             case "tax.liq.done" -> "{n} settlement entries created. You will find them in the journal.";
             case "tax.liq.fail.title" -> "Could not regularise";
@@ -2178,9 +2184,15 @@ public final class I18n {
             // ---- LIQ-UI (2026-07-15) — regularizar trimestres sin asiento ----
             case "tax.liq.action.regularize" -> "Regularizar trimestres";
             case "tax.liq.title" -> "Regularizar trimestres anteriores";
-            case "tax.liq.header" -> "Liquidaciones de IVA de {y} que no tienen asiento";
-            case "tax.liq.note" -> "Estos trimestres se presentaron pero nunca se les hizo el asiento de liquidación, y por eso la cuenta 477 no se ha vaciado nunca. Abajo tienes lo que se crearía en cada uno. Se aplican EN ORDEN: el 2T solo sale bien si el 1T ya existe. No se escribe nada hasta que pulses Regularizar, y después puedes anular cualquier asiento desde el diario.";
+            case "tax.liq.header" -> "Declaraciones de {y} (303 y 130) a las que les falta algún asiento";
+            case "tax.liq.note" -> "A estas declaraciones nunca se les hizo su asiento: el de liquidación del 303 (que es el que vacía la cuenta 477) y/o el del pago (que es el que cancela la deuda con Hacienda y saca el dinero del banco). Abajo tienes exactamente lo que se crearía en cada una. Los pagos se fechan en el PLAZO del modelo — que es cuando Hacienda carga los domiciliados — y no hoy, para que caigan en el trimestre correcto. Se aplican EN ORDEN: el 2T solo sale bien si el 1T ya existe. No se escribe nada hasta que pulses Regularizar, y después puedes anular cualquier asiento desde el diario.";
             case "tax.liq.col.period" -> "Trimestre";
+            // LIQ-130-BF: un trimestre puede necesitar la liquidación y su pago.
+            case "tax.liq.col.model" -> "Modelo";
+            case "tax.liq.col.kind" -> "Asiento";
+            case "tax.liq.col.date" -> "Fecha asiento";
+            case "tax.liq.kind.LIQUIDATION" -> "Liquidación IVA";
+            case "tax.liq.kind.PAYMENT" -> "Pago";
             case "tax.liq.col.repercutido" -> "IVA repercutido (477)";
             case "tax.liq.col.soportado" -> "IVA soportado (472)";
             case "tax.liq.col.result" -> "Resultado";
@@ -2188,7 +2200,7 @@ public final class I18n {
             case "tax.liq.col.state" -> "Estado";
             case "tax.liq.state.ok" -> "Listo";
             case "tax.liq.state.ko" -> "No se puede aplicar";
-            case "tax.liq.summary" -> "Se pueden regularizar {n} de {t} trimestres.";
+            case "tax.liq.summary" -> "Se pueden crear {n} de {t} asientos.";
             case "tax.liq.none" -> "Todas las declaraciones de {y} ya tienen su asiento. No hay nada que regularizar.";
             case "tax.liq.done" -> "Creados {n} asientos de liquidación. Los tienes en el diario.";
             case "tax.liq.fail.title" -> "No se pudo regularizar";
