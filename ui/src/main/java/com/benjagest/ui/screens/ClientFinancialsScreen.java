@@ -458,7 +458,11 @@ public class ClientFinancialsScreen {
             ExistingPayment p = n.payment;
             StringBuilder b = new StringBuilder("    ↳ ")
                     .append(tt.apply("bank.reconcile.payment")).append(": ")
-                    .append(p.paySource() == null ? "" : p.paySource());
+                    // paySource es una CLAVE (DUE_DATE/SALES_PAYMENT/REGISTERED/
+                    // BANK), no un texto: antes el backend mandaba español y se
+                    // pintaba crudo. Ver ExistingPayment en BankMovementService.
+                    .append(p.paySource() == null ? ""
+                            : tt.apply("bank.reconcile.paysource." + p.paySource()));
             if (p.payEntryNumber() != null) b.append(" · nº ").append(p.payEntryNumber());
             if (p.payReference() != null && !p.payReference().isBlank()) b.append(" · ").append(p.payReference());
             if (p.payMethod() != null && !p.payMethod().isBlank()) b.append(" · ").append(p.payMethod());

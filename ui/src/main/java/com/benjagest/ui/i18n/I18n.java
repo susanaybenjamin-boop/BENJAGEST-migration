@@ -7649,6 +7649,12 @@ public final class I18n {
             case "bank.reconcile.state.DRAFT" -> "Draft invoice (validate first)";
             case "bank.reconcile.state.NONE" -> "No matching invoice";
             case "bank.reconcile.payment" -> "Existing payment";
+            // BANK-DUP-3: de dónde sale un pago ya registrado. REGISTERED es
+            // "Registrar pago" (GAS-2), la vía que la conciliación no veía.
+            case "bank.reconcile.paysource.DUE_DATE" -> "Due date";
+            case "bank.reconcile.paysource.SALES_PAYMENT" -> "Collection";
+            case "bank.reconcile.paysource.REGISTERED" -> "Payment recorded";
+            case "bank.reconcile.paysource.BANK" -> "Bank";
             case "bank.reconcile.done.title" -> "Reconciliation done";
             case "bank.reconcile.done" -> "{ok} reconciled, {fail} could not be reconciled.";
             case "bank.reconcile.fail" -> "Could not reconcile the movements";
@@ -9031,6 +9037,12 @@ public final class I18n {
             case "bank.reconcile.state.DRAFT" -> "Factura en borrador (validar antes)";
             case "bank.reconcile.state.NONE" -> "Sin factura que cuadre";
             case "bank.reconcile.payment" -> "Pago existente";
+            // BANK-DUP-3: de dónde sale un pago ya registrado. REGISTERED es
+            // "Registrar pago" (GAS-2), la vía que la conciliación no veía.
+            case "bank.reconcile.paysource.DUE_DATE" -> "Vencimiento";
+            case "bank.reconcile.paysource.SALES_PAYMENT" -> "Cobro";
+            case "bank.reconcile.paysource.REGISTERED" -> "Pago registrado";
+            case "bank.reconcile.paysource.BANK" -> "Banco";
             case "bank.reconcile.done.title" -> "Conciliación hecha";
             case "bank.reconcile.done" -> "{ok} conciliados, {fail} no se pudieron conciliar.";
             case "bank.reconcile.fail" -> "No se pudieron conciliar los movimientos";
