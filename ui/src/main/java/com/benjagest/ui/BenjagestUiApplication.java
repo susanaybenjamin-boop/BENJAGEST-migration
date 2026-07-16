@@ -10208,9 +10208,14 @@ public class BenjagestUiApplication extends Application
                         thumbprint = com.benjagest.ui.service.WindowsCertImporter
                                 .importToUserStore(p12, mat.password());
                     }
-                } catch (Exception ex) {
+                } catch (Throwable ex) {
+                    // Throwable, no Exception: preparar el certificado es
+                    // best-effort y NADA (ni un Error tipo StackOverflowError del
+                    // parser) puede impedir que el navegador abra. El bug que
+                    // esto cierra: en modo cliente el .p12 en base64 reventaba el
+                    // parser y el gestor no abria.
                     System.err.println("[gestor] No se pudo preparar el certificado del cliente: "
-                            + ex.getMessage());
+                            + ex);
                 }
                 Process proc = new ProcessBuilder(cmd).inheritIO().start();
                 // Esperar al cierre del gestor para luego quitar la huella del
