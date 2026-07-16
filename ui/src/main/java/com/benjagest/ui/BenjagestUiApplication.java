@@ -915,12 +915,31 @@ public class BenjagestUiApplication extends Application
      */
     private void exitClientMode() {
         if (!AuthSession.get().isActingForClient()) return;
+        closeGestorNavegador(); // GESTOR-CLOSE: la ventana lleva el cert de ESTE cliente
         AuthSession.get().setActingForCompanyId(null);
         actingClientName = null;
         actingForClientLinked = true; // Slice 3T — reset al default
         activeClientEntry = null;     // NAV-CLIENT-BACK — limpiar ref
         activeClientModules = List.of("*");
         refreshClientModeBanner();
+    }
+
+    /**
+     * GESTOR-CLOSE (2026-07-16) — cierra el gestor-navegador del cliente si
+     * sigue abierto. Se llama al salir del cliente: su ventana lleva el
+     * certificado de ese cliente en el almacen, así que no debe sobrevivir al
+     * cambio de contexto. Al morir el proceso, el Task que lo lanzó despierta de
+     * su {@code waitFor()} y quita la huella del almacen (limpieza normal).
+     */
+    private void closeGestorNavegador() {
+        Process p = gestorProcess;
+        gestorProcess = null;
+        if (p != null && p.isAlive()) {
+            // Matar tambien los subprocesos de Chromium (render/gpu/network) que
+            // JCEF lanza; si solo se mata el java principal quedarian huerfanos.
+            p.descendants().forEach(ProcessHandle::destroy);
+            p.destroy();
+        }
     }
 
     /**
@@ -3287,6 +3306,12 @@ public class BenjagestUiApplication extends Application
     // no se esta en modo cliente.
     private com.benjagest.ui.model.ManagedClientEntry activeClientEntry;
     private List<String> activeClientModules = List.of("*");
+    // GESTOR-CLOSE (2026-07-16) — el gestor-navegador abierto del cliente activo.
+    // Lleva EN EL ALMACEN el certificado de ESE cliente, asi que al salir del
+    // cliente (exitClientMode) hay que cerrarlo: ni deja la sesion del cliente
+    // abierta ni el cert residente. volatile: lo escribe el hilo del Task que
+    // lanza el gestor y lo lee/cierra el hilo de UI.
+    private volatile Process gestorProcess;
     // Slugs de módulos ACTIVADOS para el cliente actual (no la visibilidad por
     // asignación, que para OWNER es "*"). Lo rellena el loader de la ficha.
     // Se usa para pestañas que solo deben aparecer si el módulo está activo
@@ -10218,9 +10243,14 @@ public class BenjagestUiApplication extends Application
                             + ex);
                 }
                 Process proc = new ProcessBuilder(cmd).inheritIO().start();
-                // Esperar al cierre del gestor para luego quitar la huella del
-                // almacen — no dejamos la clave del cliente residente.
+                gestorProcess = proc; // GESTOR-CLOSE: para poder cerrarlo al salir del cliente
+                // Esperar al cierre del gestor (lo cierre el usuario o lo mate
+                // exitClientMode) para luego quitar la huella del almacen — no
+                // dejamos la clave del cliente residente.
                 proc.waitFor();
+                if (gestorProcess == proc) {
+                    gestorProcess = null;
+                }
                 if (thumbprint != null) {
                     com.benjagest.ui.service.WindowsCertImporter.removeFromUserStore(thumbprint);
                 }
