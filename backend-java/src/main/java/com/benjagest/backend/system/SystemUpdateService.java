@@ -1,6 +1,7 @@
 package com.benjagest.backend.system;
 
 import com.benjagest.backend.config.BenjagestHome;
+import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -298,47 +299,79 @@ public class SystemUpdateService {
     }
 
     /**
-     * Carpeta de instalación: la del backend.jar que estamos ejecutando. El
-     * servicio arranca con {@code -jar "%BASE%\backend.jar"}, así que el
-     * code source apunta ahí.
+     * Ruta del fat jar que estamos ejecutando, vía {@code java.class.path} — NO
+     * {@code getCodeSource()}.
+     *
+     * <p><b>UPD-3c (2026-07-16) — por qué NO getCodeSource.</b>
+     * {@code getCodeSource().getLocation().toURI()} PETABA dentro del fat jar de
+     * Spring Boot (su launcher usa un classloader anidado y la location no es un
+     * {@code file:} normal) → excepción con mensaje null → tanto
+     * {@link #runningAsService} como {@link #installDir} caían al catch.
+     * runningAsService devolvía false SIEMPRE en la instalación real, así que el
+     * actualizador automático se negaba con "este backend no es el servicio
+     * instalado". Confirmado en el log del servicio de Benjamin: <i>"no pude
+     * saber si soy el servicio (null)"</i>. El error clásico y el que avisaba el
+     * backlog: el guard se probó RECHAZANDO un backend de desarrollo, nunca
+     * ACEPTANDO el servicio real. Un jar SIMPLE sí funciona con getCodeSource;
+     * el fat jar de Spring Boot NO — por eso no saltó hasta producción.
+     *
+     * <p>Con {@code java -jar X.jar}, {@code java.class.path} es exactamente
+     * {@code "X.jar"} (verificado en ejecución). En desarrollo
+     * ({@code mvn spring-boot:run} o classpath expandido) tiene varios elementos
+     * separados por {@link File#pathSeparator} o apunta a {@code target/classes}
+     * → no es un fat jar suelto y devolvemos null.
+     *
+     * @return la ruta absoluta al jar, o null si no corremos desde un único jar.
      */
+    static Path jarLocation() {
+        return jarLocation(System.getProperty("java.class.path", ""),
+                System.getProperty("user.dir", ""));
+    }
+
+    /** Núcleo puro y testeable de {@link #jarLocation()}. */
+    static Path jarLocation(String classpath, String userDir) {
+        if (classpath == null || classpath.isBlank()) return null;
+        if (classpath.contains(File.pathSeparator)) return null;      // dev: classpath múltiple
+        if (!classpath.toLowerCase().endsWith(".jar")) return null;   // dev: target/classes
+        Path jar = Path.of(classpath);
+        if (!jar.isAbsolute() && userDir != null && !userDir.isBlank()) {
+            jar = Path.of(userDir).resolve(jar);
+        }
+        return jar.toAbsolutePath().normalize();
+    }
+
     /**
      * ¿Somos el backend del SERVICIO instalado, o un backend de desarrollo?
      *
-     * <p>Se mira que estemos corriendo desde un {@code backend.jar} que viva
-     * junto a un {@code BENJAGEST.exe} — es decir, dentro de una instalación de
-     * verdad. En desarrollo el código sale de {@code target/classes} o de un jar
-     * en {@code target/}, y ahí no hay ningún BENJAGEST.exe al lado.
+     * <p>Corremos desde un jar suelto ({@link #jarLocation}) que vive junto a un
+     * {@code BENJAGEST.exe} = una instalación de verdad. En desarrollo el
+     * classpath es múltiple o el jar de {@code target/} no tiene BENJAGEST.exe al
+     * lado.
      *
      * <p>Ante la duda, NO. Negarse de más solo obliga a instalar a mano; decir
      * que sí de más te reinstala la app por debajo mientras programas.
      */
     static boolean runningAsService() {
-        try {
-            Path src = Path.of(SystemUpdateService.class.getProtectionDomain()
-                    .getCodeSource().getLocation().toURI());
-            if (!src.toString().toLowerCase().endsWith(".jar")) return false; // target/classes
-            Path dir = src.getParent();
-            return dir != null && Files.exists(dir.resolve("BENJAGEST.exe"));
-        } catch (Exception ex) {
-            log.warn("UPD-3: no pude saber si soy el servicio ({}); me niego por si acaso.",
-                    ex.getMessage());
+        Path jar = jarLocation();
+        if (jar == null) {
+            log.warn("UPD-3: no corro desde un jar suelto (classpath múltiple o dev); "
+                    + "no soy el servicio.");
             return false;
         }
+        Path dir = jar.getParent();
+        boolean yes = dir != null && Files.exists(dir.resolve("BENJAGEST.exe"));
+        if (!yes) {
+            log.warn("UPD-3: corro desde {} pero no hay BENJAGEST.exe al lado; no soy el servicio.", jar);
+        }
+        return yes;
     }
 
     static Path installDir() {
-        try {
-            Path jar = Path.of(SystemUpdateService.class.getProtectionDomain()
-                    .getCodeSource().getLocation().toURI());
-            // Spring Boot fat jar: .../BENJAGEST/backend.jar -> el padre.
-            Path p = jar.getParent();
-            return p == null ? Path.of("C:\\Program Files\\BENJAGEST") : p;
-        } catch (Exception ex) {
-            log.warn("UPD-3: no pude resolver la carpeta de instalación ({}); uso la de por defecto.",
-                    ex.getMessage());
-            return Path.of("C:\\Program Files\\BENJAGEST");
-        }
+        Path jar = jarLocation();
+        Path dir = jar == null ? null : jar.getParent();
+        if (dir != null) return dir;
+        log.warn("UPD-3: no pude resolver la carpeta de instalación; uso la de por defecto.");
+        return Path.of("C:\\Program Files\\BENJAGEST");
     }
 
     /**

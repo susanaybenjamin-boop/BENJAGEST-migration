@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.io.File;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -48,6 +49,42 @@ class SystemUpdateServiceTest {
     void compareVersions_sinVersionEsLaMenor() {
         assertTrue(SystemUpdateService.compareVersions(null, "0.1.1") < 0);
         assertTrue(SystemUpdateService.compareVersions("0.1.1", null) > 0);
+    }
+
+    // --- jarLocation (UPD-3c: el guard roto en producción) ------------------
+
+    @Test
+    void jarLocation_servicioReal_rutaAbsolutaDelFatJar() {
+        // Como arranca el servicio: java -jar "C:\Program Files\BENJAGEST\backend.jar"
+        Path r = SystemUpdateService.jarLocation(
+                "C:\\Program Files\\BENJAGEST\\backend.jar", "C:\\Program Files\\BENJAGEST");
+        assertEquals(Path.of("C:\\Program Files\\BENJAGEST\\backend.jar"), r);
+    }
+
+    @Test
+    void jarLocation_classpathMultiple_esDesarrollo_null() {
+        // mvn spring-boot:run / classpath expandido -> varios jars con el separador.
+        String cp = "a.jar" + File.pathSeparator + "b.jar" + File.pathSeparator + "c.jar";
+        assertNull(SystemUpdateService.jarLocation(cp, "C:\\dev\\proj"));
+    }
+
+    @Test
+    void jarLocation_targetClasses_esDesarrollo_null() {
+        // Ejecución desde clases sueltas, no un jar.
+        assertNull(SystemUpdateService.jarLocation(
+                "C:\\dev\\proj\\backend-java\\target\\classes", "C:\\dev\\proj"));
+    }
+
+    @Test
+    void jarLocation_relativo_seResuelveContraUserDir() {
+        Path r = SystemUpdateService.jarLocation("backend.jar", "C:\\Program Files\\BENJAGEST");
+        assertEquals(Path.of("C:\\Program Files\\BENJAGEST\\backend.jar"), r);
+    }
+
+    @Test
+    void jarLocation_vacio_null() {
+        assertNull(SystemUpdateService.jarLocation("", "x"));
+        assertNull(SystemUpdateService.jarLocation(null, "x"));
     }
 
     // --- pruneOldInstallers -------------------------------------------------
