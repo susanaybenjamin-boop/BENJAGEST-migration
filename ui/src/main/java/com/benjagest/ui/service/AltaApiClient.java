@@ -309,7 +309,12 @@ public class AltaApiClient {
         if (r.statusCode() < 200 || r.statusCode() >= 300) {
             throw new IOException("HTTP " + r.statusCode() + ": " + r.body());
         }
-        String p12 = textField(r.body(), "p12Base64");
+        // El .p12 en base64 son ~9 KB. textField (regex del parser de la UI, §6
+        // del CLAUDE.md) hace catastrophic backtracking sobre una cadena tan
+        // larga y lanza StackOverflowError — un ERROR, no Exception, asi que ni
+        // el catch de quien llama lo pilla, y el gestor no abria en modo cliente.
+        // Se extrae con indexOf (sin regex): el base64 no tiene comillas.
+        String p12 = rawStringField(r.body(), "p12Base64");
         if (p12 == null || p12.isBlank()) {
             return null;
         }
@@ -1323,6 +1328,27 @@ public class AltaApiClient {
         Matcher m = p.matcher(json);
         if (!m.find() || "null".equals(m.group(1))) return "";
         return m.group(2).replace("\\\"", "\"").replace("\\n", "\n").replace("\\\\", "\\");
+    }
+
+    /**
+     * Extrae un campo string por indexOf, SIN regex. Para valores LARGOS (el
+     * base64 de un .p12 son ~9 KB): {@link #textField} usa una regex con
+     * backtracking que sobre cadenas asi lanza StackOverflowError (un Error, no
+     * Exception -> ni el catch del caller lo pilla). Asume que el valor no lleva
+     * comillas ni comillas escapadas: valido para base64 (solo A-Za-z0-9+/=),
+     * NO para texto libre. Ver §6 del CLAUDE.md (deuda del parser JSON de la UI).
+     */
+    private static String rawStringField(String json, String field) {
+        String key = "\"" + field + "\"";
+        int k = json.indexOf(key);
+        if (k < 0) return "";
+        int colon = json.indexOf(':', k + key.length());
+        if (colon < 0) return "";
+        int q1 = json.indexOf('"', colon + 1);
+        if (q1 < 0) return "";
+        int q2 = json.indexOf('"', q1 + 1);
+        if (q2 < 0) return "";
+        return json.substring(q1 + 1, q2);
     }
 
     private boolean boolField(String json, String field) {
