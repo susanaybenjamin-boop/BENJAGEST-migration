@@ -75,6 +75,51 @@ public class BrowserCertSessionService {
         }
     }
 
+    /**
+     * BROWSER-CERT-STORE-FIX (2026-07-16) — Devuelve el material descifrado del
+     * cert activo para que LO IMPORTE LA UI, no este proceso.
+     *
+     * <p><b>Por qué.</b> {@link #open()} importa el .p12 al almacen de Windows de
+     * ESTE proceso. Cuando el backend corre como SERVICIO (LocalSystem, el
+     * instalable), ese almacen es el de la cuenta del servicio — NO el del
+     * usuario interactivo. El gestor-navegador (Chromium) corre como el usuario,
+     * mira SU almacen, y no encuentra el certificado: "no se detecta" en las tres
+     * sedes. Funcionaba con backend embebido (mismo usuario) y se rompio al pasar
+     * a servicio (WINSVC). La solucion: que la importacion la haga la UI, que si
+     * corre como el usuario. Este metodo le entrega el material.
+     *
+     * <p>Registra el uso LOPD igual que {@link #open()}: entregar el material es
+     * el momento en que el certificado se pone en juego para el navegador.
+     */
+    public Optional<BrowserCertMaterial> material() {
+        Certificate cert = pickActiveWithData();
+        if (cert == null) {
+            return Optional.empty();
+        }
+        AuthenticatedUser user = currentUserService.require();
+        usageLog.recordUsage(cert.id(), user.userId(), PURPOSE, null, true, null, null);
+        // Solo el id opaco en el log de aplicacion; el .p12/contrasena NUNCA se
+        // loguean (van en la respuesta HTTP, restringida a localhost por el
+        // controller).
+        log.info("[browser-cert] Material del certificado {} entregado a la UI para importar en el almacen del usuario",
+                cert.id());
+        return Optional.of(new BrowserCertMaterial(
+                cert.id(), cert.alias(), cert.subjectName(),
+                cert.certificateDataBase64(), cert.passwordPlaintext()));
+    }
+
+    /**
+     * .p12 descifrado + contrasena para que la UI lo importe a SU almacen.
+     * Solo viaja por localhost (ver el guard del controller). No se loguea.
+     */
+    public record BrowserCertMaterial(
+            String certificateId,
+            String alias,
+            String subjectName,
+            String p12Base64,
+            String password) {
+    }
+
     /** Quita la huella del almacen de Windows al cerrar el gestor (best-effort). */
     public void close(String thumbprint) {
         if (StringUtils.hasText(thumbprint)) {

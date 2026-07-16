@@ -89,6 +89,14 @@ public final class BrowserLauncher {
         // 1) Bootstrap de CEF. En el PRIMER arranque descarga e instala el bundle
         //    nativo de Chromium (~150-200 MB) en installDir; luego reutiliza.
         CefAppBuilder builder = new CefAppBuilder();
+        // BROWSER-CERT-STORE-FIX (2026-07-16) — Chromium aisla su proceso de red
+        // en un sandbox que en Windows puede impedirle leer el almacen de
+        // certificados (CryptoAPI). Si el almacen ya tiene el cert del usuario y
+        // aun asi el selector de cliente sale vacio ("no se detecta"), suele ser
+        // esto. Desactivar el sandbox del network service devuelve al proceso de
+        // red el acceso directo al almacen. Aceptable en app de escritorio
+        // on-premise (no navegamos web arbitraria, solo sedes de confianza).
+        builder.addJcefArgs("--disable-features=NetworkServiceSandbox");
         builder.getCefSettings().windowless_rendering_enabled = false; // modo ventana (no OSR)
         // Silencia el log interno de Chromium (INFO:CONSOLE de las webs cargadas,
         // browser_info.cc, CSP/preload warnings...). Solo errores reales.

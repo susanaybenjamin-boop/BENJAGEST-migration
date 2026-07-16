@@ -293,6 +293,40 @@ public class AltaApiClient {
         return textField(r.body(), "thumbprint");
     }
 
+    /**
+     * BROWSER-CERT-STORE-FIX (2026-07-16): pide el .p12 descifrado del cliente
+     * activo para que LA UI lo importe a SU almacen (ver {@link WindowsCertImporter}).
+     * El endpoint es solo-localhost. Devuelve null (204) si el cliente no tiene
+     * certificado. El base64 va sin caracteres especiales (parseo seguro); la
+     * contrasena la escapa Jackson en el backend y textField la revierte.
+     */
+    public BrowserCertMaterial fetchBrowserCertMaterial() throws IOException, InterruptedException {
+        HttpResponse<String> r = send(req(baseUrl + "/certificates/browser/material")
+                .POST(java.net.http.HttpRequest.BodyPublishers.noBody()));
+        if (r.statusCode() == 204) {
+            return null;
+        }
+        if (r.statusCode() < 200 || r.statusCode() >= 300) {
+            throw new IOException("HTTP " + r.statusCode() + ": " + r.body());
+        }
+        String p12 = textField(r.body(), "p12Base64");
+        if (p12 == null || p12.isBlank()) {
+            return null;
+        }
+        return new BrowserCertMaterial(
+                textField(r.body(), "certificateId"),
+                textField(r.body(), "alias"),
+                textField(r.body(), "subjectName"),
+                p12,
+                textField(r.body(), "password"));
+    }
+
+    /** Material del certificado para importar en el almacen del usuario. No se loguea. */
+    public record BrowserCertMaterial(
+            String certificateId, String alias, String subjectName,
+            String p12Base64, String password) {
+    }
+
     /** Quita la huella del almacen de Windows al cerrar el gestor. */
     public void closeBrowserCertSession(String thumbprint)
             throws IOException, InterruptedException {
