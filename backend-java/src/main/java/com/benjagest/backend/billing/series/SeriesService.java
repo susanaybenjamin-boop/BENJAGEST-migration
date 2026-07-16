@@ -197,6 +197,7 @@ public class SeriesService {
         // configuracion del usuario pueda saltarselo. Si llega un POST
         // con esos kinds, 422.
         requireUserManagedKind(request.invoiceKind());
+        requireValidTemplate(request.formatTemplate()); // FAC-1
 
         String code = request.code().trim();
         int initial = request.initialNextNumber() == null ? 1 : request.initialNextNumber();
@@ -252,6 +253,7 @@ public class SeriesService {
         // emisiones.
         requireUserManagedKind(existing.invoiceKind());
         requireUserManagedKind(request.invoiceKind());
+        requireValidTemplate(request.formatTemplate()); // FAC-1
         int currentYear = LocalDate.now().getYear();
         boolean lockedByEmission = repository.countValidatedInYear(id, currentYear) > 0;
         if (lockedByEmission) {
@@ -350,6 +352,43 @@ public class SeriesService {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
                     "Las series de tipo " + invoiceKind + " las gestiona el sistema. "
                             + "Solo puedes definir la serie de tus facturas normales (STANDARD).");
+        }
+    }
+
+    /** Cualquier marcador {...} de la plantilla. */
+    private static final Pattern ANY_PLACEHOLDER = Pattern.compile("\\{([^}]*)\\}");
+
+    /**
+     * FAC-1 (2026-07-16) — valida la plantilla de numeración ANTES de guardarla.
+     *
+     * <p>Sin esto, una plantilla con un marcador inventado (p.ej. {@code {NNNN}})
+     * se guardaba literal: {@link #formatNumber} solo sustituye {CODE}, {YYYY} y
+     * {@code {0000}} (huecos de ceros), así que {@code {NNNN}} quedaba tal cual y
+     * TODAS las facturas salían con el MISMO número → la segunda choca la UK de
+     * invoice_number y no se puede validar. Sobre una BD que no se corrige, eso
+     * es un problema serio. Se valida al crear/editar, no al facturar.
+     *
+     * <p>Plantilla vacía = OK: {@code formatNumber} cae a "{code}-{número}", que
+     * siempre lleva el número.
+     */
+    private void requireValidTemplate(String template) {
+        if (template == null || template.isBlank()) {
+            return; // fallback seguro en formatNumber
+        }
+        Matcher m = ANY_PLACEHOLDER.matcher(template);
+        while (m.find()) {
+            String ph = m.group(1);
+            boolean known = "CODE".equals(ph) || "YYYY".equals(ph) || ph.matches("0+");
+            if (!known) {
+                throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                        "El marcador {" + ph + "} no existe en la plantilla de numeración. "
+                        + "Solo puedes usar {CODE}, {YYYY} y el hueco de ceros {0000}.");
+            }
+        }
+        if (!PADDING_PATTERN.matcher(template).find()) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                    "La plantilla debe incluir el hueco del número con ceros, p.ej. {0000}. "
+                    + "Sin él, todas las facturas saldrían con el mismo número.");
         }
     }
 

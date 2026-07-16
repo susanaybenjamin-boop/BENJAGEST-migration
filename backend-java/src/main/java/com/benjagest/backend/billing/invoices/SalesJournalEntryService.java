@@ -76,8 +76,26 @@ public class SalesJournalEntryService {
      * hacer cuando devuelve null — típicamente loguea y continúa,
      * porque la validación legal de la factura es independiente de la
      * generación del asiento.
+     *
+     * <p><b>FAC-3 (2026-07-16) — REQUIRES_NEW: el asiento va en su PROPIA
+     * transacción.</b> Antes era {@code @Transactional} REQUIRED, es decir, se
+     * unía a la transacción de {@code validateInternal}. Su Javadoc promete
+     * "nunca lanza", pero eso solo cubre los {@code return null} controlados: un
+     * error REAL de infraestructura (violación de constraint, deadlock, cuenta
+     * irresoluble) SÍ se lanza. Y cuando una {@code @Transactional} REQUIRED
+     * lanza, Spring marca la transacción COMPARTIDA como rollback-only — el
+     * {@code catch} del caller ya no puede rescatarla. Resultado antiguo: un
+     * fallo del asiento (corregible) reventaba la validación entera y, peor,
+     * dejaba el evento SIF (que se confirma en su propia tx) HUÉRFANO en una
+     * cadena inmutable que no se puede borrar. Aislándolo en REQUIRES_NEW, un
+     * fallo del asiento revierte SOLO su transacción: la factura se valida, la
+     * huella VeriFactu y el evento SIF quedan consistentes, y el asiento —que es
+     * DRAFT y regenerable con {@code /regenerate-journal}— simplemente no se crea.
+     * El frágil ya no puede tumbar al intocable. Es seguro porque este método usa
+     * el objeto {@code invoice} que recibe (no re-lee la factura aún sin
+     * confirmar) y solo lee datos ya confirmados (PGC, ejercicio, terceros).
      */
-    @Transactional
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.REQUIRES_NEW)
     public String createForSales(SalesInvoice invoice, String userId) {
         if (invoice.invoiceDate() == null
                 || invoice.subtotal() == null

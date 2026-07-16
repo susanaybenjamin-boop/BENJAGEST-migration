@@ -372,6 +372,17 @@ public class SalesInvoiceService {
         if ("SIMPLIFIED".equals(existing.invoiceType())) {
             requireSimplifiedWithinLegalLimit(aggregateTotals(existing.lines()).total());
         }
+        // FAC-2 (2026-07-16): el NIF del EMISOR se exige más adentro (en la
+        // huella VeriFactu y en el evento SIF). Sin este pre-check, validar sin
+        // NIF reventaba a mitad con un 500 genérico. Se comprueba AQUÍ, antes de
+        // escribir nada (número, huella, asiento), con un mensaje claro y sin
+        // dejar rastro. Rollback limpio garantizado porque aún no se ha tocado
+        // nada; esto solo mejora el mensaje y el momento.
+        if (!org.springframework.util.StringUtils.hasText(companyDataService.getCurrent().taxIdentifier())) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                    "Tu empresa no tiene NIF/CIF configurado. Ponlo en Configuración → Empresa "
+                    + "antes de validar la primera factura (la ley lo exige en el registro).");
+        }
 
         Totals totals = aggregateTotals(existing.lines());
         // Emite el numero. Como SeriesService.claimNextNumber es
