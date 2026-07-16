@@ -3151,6 +3151,9 @@ public final class I18n {
             case "update.progress.header" -> "Updating to version {v}";
             case "update.progress.body" -> "Downloading the installer (about 300 MB). BENJAGEST stays locked meanwhile and will close on its own to install; it reopens when it finishes. Don't turn off the computer.";
             case "update.progress.installing" -> "Download finished. Installing — BENJAGEST will close now and reopen on its own.";
+            // ---- UPD-3 (2026-07-15) — la actualizacion la hace el SERVICIO ----
+            case "update.service.unavailable" -> "The BENJAGEST service did not take the update. Check that it is running (services.msc), or install the .msi by hand.";
+            case "update.service.timeout" -> "The service is taking too long to download. Try again later, or install the .msi by hand.";
             case "update.fail.title" -> "Could not update";
             case "settings.session.save" -> "Save session settings";
             case "settings.session.save.ok.title" -> "Saved";
@@ -3469,6 +3472,9 @@ public final class I18n {
             case "update.progress.header" -> "Actualizando a la versión {v}";
             case "update.progress.body" -> "Descargando el instalador (unos 300 MB). BENJAGEST se queda bloqueado mientras tanto y se cerrará solo para instalar; se vuelve a abrir al terminar. No apagues el equipo.";
             case "update.progress.installing" -> "Descarga terminada. Instalando — BENJAGEST se cerrará ahora y se reabrirá solo.";
+            // ---- UPD-3 (2026-07-15) — la actualizacion la hace el SERVICIO ----
+            case "update.service.unavailable" -> "El servicio de BENJAGEST no ha cogido la actualización. Comprueba que está arrancado (services.msc) o instala el .msi a mano.";
+            case "update.service.timeout" -> "El servicio tarda demasiado en descargar. Vuelve a intentarlo más tarde o instala el .msi a mano.";
             case "update.fail.title" -> "No se pudo actualizar";
             case "settings.session.save" -> "Guardar configuración de sesión";
             case "settings.session.save.ok.title" -> "Guardado";
