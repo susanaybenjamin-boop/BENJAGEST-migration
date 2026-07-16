@@ -8,6 +8,62 @@
 > prorrogado ya DOS veces y la orden de la solución pública B2B está
 > pendiente — ninguna fecha de este plan es inmutable).
 
+> ## ⚠️ RE-ENCUADRE 2026-07-16 — BENJAGEST de USO PROPIO (posible)
+>
+> Benjamin está pensando en **dejar BENJAGEST solo para él y NO sacarla a
+> la venta**. Y ha confirmado su perfil: **factura a particulares Y a
+> empresas/autónomos; NO hace operaciones intracomunitarias.** Esto cambia
+> el alcance legal de raíz — de "fabricante de software comercial" a
+> "autónomo con su propia herramienta de uso propio":
+>
+> - **FASE 5 (ViDA/DRR intracomunitario, 2030): NO LE APLICA.** Sin
+>   operaciones intracomunitarias, no hay DRR ni e-factura intracomunitaria.
+>   El hito 2030 se cae para Benjamin.
+> - **FASE 4 (e-factura B2B, 2028): aplica SOLO a la parte a empresas/
+>   autónomos** (no a particulares). Depende de la orden de la solución
+>   pública, aún sin publicar → no se construye hasta que salga.
+> - **FASE 2/3 (VERI*FACTU): sigue aplicando**, como AUTÓNOMO → **1-jul-2027**
+>   (no 1-ene-2027; no tiene clientes sociedad). Software de uso propio: el
+>   propio Benjamin es productor+usuario y suscribe la declaración
+>   responsable para su sistema (ya está en el programa). *Ojo: los detalles
+>   finos del régimen "uso propio" del RD 1007/2023 NO están verificados —
+>   confirmar en fuente antes de dar pasos.*
+>
+> **Toda la carga regulatoria futura vive en UN sitio: la emisión de
+> facturas** (VERI*FACTU + e-factura B2B). El resto de BENJAGEST
+> (contabilidad, 303/130, nóminas, conciliación, gestión) NO tiene estas
+> obligaciones. La emisión es a la vez lo más arriesgado de construir bien
+> (ver auditoría 2026-07-16: el envío a AEAT está a medias, piezas
+> desconectadas, nunca probado contra AEAT) y lo de menor valor diferencial.
+>
+> **DECISIÓN PENDIENTE (no urge — tomarla a principios de 2027):**
+> - **(A) DELEGAR la emisión** en un programa ya certificado (los hay
+>   gratuitos) e importar a BENJAGEST para la contabilidad (ya sabe importar
+>   PDF). Elimina de golpe el único bloque arriesgado (VERI*FACTU real) y el
+>   B2B de 2028. **Recomendada** salvo que el objetivo sea aprender.
+> - **(B) CONSTRUIR VERI*FACTU real** en BENJAGEST. Legítima solo si el
+>   objetivo es aprendizaje/autonomía total. Trabajo grande + riesgo de no
+>   pasar la validación AEAT, para emitir facturas de un solo autónomo.
+>
+> Hoy BENJAGEST es LEGAL en NO_VERIFACTU. Lo sensato: no construir nada de
+> esto todavía; decidir A/B a principios de 2027 con la norma más asentada.
+>
+> ### Auditoría de estado del código VERI*FACTU (2026-07-16)
+> Verificado leyendo el código: **HECHO** = huella canónica
+> (`VerifactuHashService`, heredada de CONTENDO, NO reverificada contra caso
+> oficial AEAT en este repo), cadena encadenada por huella (detección, NO
+> prevención — sin triggers BD), XML `RegistroAlta` al XSD
+> (`AeatRegistroAltaXmlBuilder` + 4 golden tests) **pero HUÉRFANO** (no
+> cableado al envío), QR + leyenda condicional (bien, verificado BOE),
+> modalidad VERIFACTU/NO_VERIFACTU (hoy NO_VERIFACTU). **A MEDIAS / NO
+> probado**: cliente SOAP `AeatVerifactuClient` (envía el XML INTERNO, no el
+> XSD → AEAT lo rechazaría; TrustManager permisivo inseguro; respuesta no
+> parseada; NUNCA probado contra AEAT). **NO EXISTE**: `RegistroAnulacion`
+> XSD, XAdES (solo XML-DSig; opcional para VERIFACTU), e-factura B2B
+> (Facturae/EN16931/UBL), DRR. **Bloqueante externo real**: alta/identidad
+> del SIF + validación en PREPRODUCCIÓN AEAT — sin eso, ningún código lo
+> desbloquea.
+
 ## FASE 1 — 2026 (ahora → dic-2026): consolidar el producto en NO VERI*FACTU
 **Ya conforme hoy** (SIF con huella encadenada, eventos, QR en ambas
 modalidades, leyenda solo en VERIFACTU [QR-LEY], declaración responsable,
@@ -65,6 +121,8 @@ obligatoria >8M€; +24 meses el resto (≈2028, incluye autónomos).
       intercambio): una emisión alimenta ambos.
 
 ## FASE 5 — 2029-2030: ViDA / DRR intracomunitario (1-jul-2030)
+> **⚠️ NO APLICA A BENJAMIN** (uso propio, sin operaciones intracomunitarias
+> — re-encuadre 2026-07-16). Se conserva por si cambia la actividad.
 - [ ] E-factura EN 16931 obligatoria en B2B intracomunitario, emisión ≤10
       días desde el devengo.
 - [ ] Módulo DRR: reporte digital transaccional casi en tiempo real de
