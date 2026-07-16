@@ -10192,28 +10192,32 @@ public class BenjagestUiApplication extends Application
         cmd.add("Import@ss=https://portal.seg-social.gob.es/");
         Task<Void> task = new Task<>() {
             @Override protected Void call() throws Exception {
-                // Fase 2: importar el .p12 del cliente activo (X-Company-Id) al
-                // almacen de Windows para que Chromium lo ofrezca en su dialogo
-                // nativo de certificado. Best-effort: si falla, el navegador abre
-                // igual y el usuario usa su almacen del sistema.
+                // Fase 2 + BROWSER-CERT-STORE-FIX (2026-07-16): importar el .p12 del
+                // cliente activo al almacen de Windows para que Chromium lo ofrezca
+                // en su dialogo nativo. La importacion la hace ESTA UI (que corre
+                // como el usuario interactivo), NO el backend: como servicio corre
+                // como LocalSystem y metia el cert en un almacen que el navegador —
+                // que tambien corre como el usuario— no ve. Best-effort: si falla,
+                // el navegador abre igual.
                 String thumbprint = null;
                 try {
-                    thumbprint = altaApiClient.openBrowserCertSession();
+                    com.benjagest.ui.service.AltaApiClient.BrowserCertMaterial mat =
+                            altaApiClient.fetchBrowserCertMaterial();
+                    if (mat != null) {
+                        byte[] p12 = java.util.Base64.getDecoder().decode(mat.p12Base64());
+                        thumbprint = com.benjagest.ui.service.WindowsCertImporter
+                                .importToUserStore(p12, mat.password());
+                    }
                 } catch (Exception ex) {
                     System.err.println("[gestor] No se pudo preparar el certificado del cliente: "
                             + ex.getMessage());
                 }
                 Process proc = new ProcessBuilder(cmd).inheritIO().start();
-                // Esperar al cierre del gestor (hilo dedicado) para luego quitar la
-                // huella del almacen — no dejamos la clave del cliente residente.
+                // Esperar al cierre del gestor para luego quitar la huella del
+                // almacen — no dejamos la clave del cliente residente.
                 proc.waitFor();
                 if (thumbprint != null) {
-                    try {
-                        altaApiClient.closeBrowserCertSession(thumbprint);
-                    } catch (Exception ex) {
-                        System.err.println("[gestor] No se pudo quitar el certificado del almacen: "
-                                + ex.getMessage());
-                    }
+                    com.benjagest.ui.service.WindowsCertImporter.removeFromUserStore(thumbprint);
                 }
                 return null;
             }

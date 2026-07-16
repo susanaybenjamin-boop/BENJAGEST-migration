@@ -85,6 +85,39 @@ public class CertificateController {
                 .orElseGet(() -> ResponseEntity.noContent().build());
     }
 
+    /**
+     * BROWSER-CERT-STORE-FIX (2026-07-16): entrega el .p12 descifrado del cliente
+     * activo para que LO IMPORTE LA UI (que corre como el usuario), no el backend
+     * (que como servicio corre como LocalSystem y lo metia en un almacen que el
+     * navegador no ve). Ver {@link BrowserCertSessionService#material()}.
+     *
+     * <p><b>SOLO LOCALHOST.</b> El cuerpo lleva la clave privada descifrada y su
+     * contrasena; el backend escucha en 0.0.0.0 (toda la LAN), asi que sin este
+     * guard cualquiera en la red con un token podria llevarse el certificado del
+     * cliente. La UI que consume esto corre en la MISMA maquina que el servicio
+     * (modelo "todo es un puesto").
+     */
+    @PostMapping("/browser/material")
+    public ResponseEntity<BrowserCertSessionService.BrowserCertMaterial> browserMaterial(
+            jakarta.servlet.http.HttpServletRequest request) {
+        if (!isLoopback(request)) {
+            throw new org.springframework.web.server.ResponseStatusException(
+                    HttpStatus.FORBIDDEN,
+                    "El material del certificado solo se entrega en local");
+        }
+        return browserSession.material()
+                .map(ResponseEntity::ok)
+                .orElseGet(() -> ResponseEntity.noContent().build());
+    }
+
+    private static boolean isLoopback(jakarta.servlet.http.HttpServletRequest request) {
+        try {
+            return java.net.InetAddress.getByName(request.getRemoteAddr()).isLoopbackAddress();
+        } catch (Exception ex) {
+            return false; // ante la duda, NO entregar el material
+        }
+    }
+
     /** Quita la huella del almacen al cerrar el gestor. */
     @PostMapping("/browser/close")
     @ResponseStatus(HttpStatus.NO_CONTENT)
