@@ -271,7 +271,15 @@ public class TaxFilingService {
      * de trimestre (T4 hasta 30 de enero). 303 mensual: 30 dia mes
      * siguiente. 347/390: 28-feb del ano siguiente.
      */
-    private LocalDate computeDeadline(String modelCode, int year,
+    /**
+     * Plazo de presentación del modelo. Es PURO (no toca estado ni BD).
+     *
+     * <p>{@code static} y visible en el paquete desde LIQ-130-BF: el backfill de
+     * {@link TaxLedgerService} necesita esta MISMA fecha para datar el asiento de
+     * pago de un trimestre viejo, y duplicar los plazos en dos sitios es pedir
+     * que se separen.
+     */
+    static LocalDate computeDeadline(String modelCode, int year,
                                        Integer quarter, Integer month) {
         if (modelCode == null) return null;
         // Modelos anuales con plazo enero/febrero ano siguiente

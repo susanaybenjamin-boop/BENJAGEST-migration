@@ -148,10 +148,35 @@ if (Test-Path $targetMsi) { Remove-Item -Force $targetMsi }
 & $jpackage @jpArgs
 if ($LASTEXITCODE -ne 0) { throw "jpackage fallo (revisa que WiX 3.x este instalado)." }
 
+# --- UPD-CLEAN (2026-07-16, pedido de Benjamin) -----------------------------
+# Deja en dist\msi solo los 2 instaladores mas nuevos DE ESTA VARIANTE (el
+# recien construido + 1 anterior) y borra el resto. dist\msi acumulaba 2,9 GB
+# de instaladores viejos. Solo toca los de la variante actual: advisory
+# ("BENJAGEST-x.y.z.msi") y puesto ("BENJAGEST Puesto-x.y.z.msi") conviven.
+# La regex ancla el prefijo EXACTO para que "BENJAGEST-" no se coma los de
+# "BENJAGEST Puesto-".
+$KeepMsi = 2
+$verPattern = if ($Variant -eq "advisory") { '^BENJAGEST-\d' } else { '^BENJAGEST Puesto-\d' }
+$mine = Get-ChildItem "$out\*.msi" -ErrorAction SilentlyContinue |
+    Where-Object { $_.Name -match $verPattern } |
+    Sort-Object {
+        # Ordena por version NUMERICA (0.1.9 < 0.1.10), no por texto ni fecha.
+        if ($_.Name -match '-(\d+(?:\.\d+)*)\.msi$') {
+            [version]($matches[1] + '.0' * (4 - ($matches[1].Split('.').Count)))
+        } else { [version]'0.0.0.0' }
+    } -Descending
+$mine | Select-Object -Skip $KeepMsi | ForEach-Object {
+    Write-Host "    UPD-CLEAN: borrando instalador viejo $($_.Name)" -ForegroundColor DarkGray
+    Remove-Item -Force $_.FullName
+}
+
 # --- 4/4  Listo -------------------------------------------------------------
-$msi = Get-ChildItem "$out\*.msi" -ErrorAction SilentlyContinue | Select-Object -First 1
+# El MSI recien construido, por NOMBRE (no "el primero que haya": ese mensaje
+# mentia y decia otra version). Es exactamente lo que se instala.
+$msi = Join-Path $out "$appName-$version.msi"
 Write-Host "==> 4/4  Listo ($Variant)." -ForegroundColor Green
-if ($msi) { Write-Host "    Instalador: $($msi.FullName)" -ForegroundColor Green }
+if (Test-Path $msi) { Write-Host "    Instalador: $msi" -ForegroundColor Green }
+else { Write-Host "    OJO: no encuentro $msi" -ForegroundColor Yellow }
 if ($Variant -eq "advisory") {
     Write-Host "    Tras instalar: ejecutar (Admin) install-service.ps1 de la carpeta de instalacion." -ForegroundColor Green
 } else {

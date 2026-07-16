@@ -110,7 +110,8 @@ public class TaxLedgerService {
         if (f == null) return null;
         String model = String.valueOf(f.get("tax_model_code"));
         if (!"303".equals(model) && !"130".equals(model)) return null;
-        return safely("pago", filingId, () -> createPayment(f));
+        // Flujo normal: se marca PAGADO ahora -> el dinero sale hoy.
+        return safely("pago", filingId, () -> createPayment(f, LocalDate.now()));
     }
 
     // ====================================================================
@@ -176,7 +177,17 @@ public class TaxLedgerService {
         return entryId;
     }
 
-    private String createPayment(Map<String, Object> f) {
+    /**
+     * Asiento de pago del modelo.
+     *
+     * @param date fecha de caja. En el flujo normal (marcar PAGADO ahora) es
+     *     HOY: el dinero sale del banco hoy. Regularizando hacia atrás
+     *     (LIQ-130-BF) es el PLAZO del modelo — ver {@link #backfillPaymentDate}.
+     *     Se pasa por parámetro a propósito: cuando estaba clavado a
+     *     {@code LocalDate.now()} dentro, el backfill de un 1T habría fechado el
+     *     pago en el trimestre en que se pulsó el botón.
+     */
+    private String createPayment(Map<String, Object> f, LocalDate date) {
         String companyId = tenantContext.getCurrentCompanyId();
         if (existingEntry(SRC_PAYMENT, (String) f.get("id")) != null) {
             log.info("LIQ-303: el filing {} ya tiene asiento de pago; no creo otro.", f.get("id"));
@@ -188,9 +199,6 @@ public class TaxLedgerService {
                     f.get("id"), importe);
             return null;
         }
-        // El pago se fecha HOY: es cuando sale el dinero del banco. La liquidación
-        // lleva la fecha del periodo, el pago la de caja.
-        LocalDate date = LocalDate.now();
         fiscalGuard.requireOpenForDate(date, "contabilizar el pago del modelo");
 
         String model = String.valueOf(f.get("tax_model_code"));
@@ -219,11 +227,35 @@ public class TaxLedgerService {
     //  silenciosa: son sus libros y yo no puedo ver su BD, que está blindada)
     // ====================================================================
 
-    /** Una liquidación que falta, tal y como se le enseña al usuario ANTES de crearla. */
+    /**
+     * Un asiento fiscal que falta, tal y como se le enseña al usuario ANTES de
+     * crearlo.
+     *
+     * <p>LIQ-130-BF (2026-07-16): antes esto solo sabía de LIQUIDACIONES del
+     * 303 y por eso Benjamin veía que "el 130 no responde al regularizar". Un
+     * mismo trimestre puede generar DOS filas (la liquidación y su pago), así
+     * que la clave de una fila es (filingId, kind), no filingId.
+     *
+     * @param modelCode "303" o "130".
+     * @param kind {@link #KIND_LIQUIDATION} o {@link #KIND_PAYMENT}. Clave, no
+     *     texto: la UI lo traduce (par ES+EN).
+     * @param saldo477 solo tiene sentido en la liquidación; null en un pago.
+     * @param saldo472 idem.
+     * @param resultado en la liquidación, 477-472; en el pago, lo que se paga.
+     * @param cuentaHacienda 4750/4700 en la liquidación; 4750 (303) o 473 (130)
+     *     en el pago.
+     * @param fechaAsiento con qué fecha nacerá. En un pago regularizado es el
+     *     PLAZO del modelo, no hoy.
+     */
     public record PendingLiquidation(
             String filingId, String periodLabel, int year, int quarter,
+            String modelCode, String kind,
             BigDecimal saldo477, BigDecimal saldo472, BigDecimal resultado,
-            String cuentaHacienda, boolean puedeAplicarse, String motivo) {}
+            String cuentaHacienda, LocalDate fechaAsiento,
+            boolean puedeAplicarse, String motivo) {}
+
+    public static final String KIND_LIQUIDATION = "LIQUIDATION";
+    public static final String KIND_PAYMENT = "PAYMENT";
 
     /**
      * Qué liquidaciones del 303 faltan, en ORDEN cronológico.
@@ -237,41 +269,85 @@ public class TaxLedgerService {
      */
     public List<PendingLiquidation> previewPendingLiquidations(int year) {
         String companyId = tenantContext.getCurrentCompanyId();
+        // LIQ-130-BF (2026-07-16): esta consulta llevaba '303' CLAVADO y solo
+        // buscaba liquidaciones. Dos agujeros:
+        //   1) El 130 no aparecía JAMÁS -> "el 130 no responde al regularizar".
+        //   2) Ni siquiera para el 303 se creaba el asiento de PAGO: un 303 ya
+        //      PAGADO de antes se regularizaba, nacía su liquidación (Haber
+        //      4750) y nadie cancelaba esa deuda -> la 4750 se quedaba debiendo
+        //      para siempre dinero YA pagado, y el banco nunca reflejaba la
+        //      salida. Mismo agujero que el de la 477, una capa más abajo.
+        // Nota: el 130 no tiene liquidación, solo pago (no acumula nada que
+        // cancelar; su 473 se salda contra el titular en el cierre).
         List<Map<String, Object>> filings = jdbcTemplate.queryForList("""
-                SELECT id, period_year, period_quarter
+                SELECT id, tax_model_code, period_year, period_quarter, period_month,
+                       total_amount, status, deadline_at
                   FROM tax_filings
-                 WHERE company_id = ? AND tax_model_code = '303'
+                 WHERE company_id = ? AND tax_model_code IN ('303', '130')
                    AND period_year = ?
                    AND status IN ('PRESENTED', 'PAID')
                    AND period_quarter IS NOT NULL
-                 ORDER BY period_quarter
+                 ORDER BY period_quarter, tax_model_code
                 """, companyId, year);
 
         List<PendingLiquidation> out = new java.util.ArrayList<>();
         for (Map<String, Object> f : filings) {
             String filingId = (String) f.get("id");
-            if (existingEntry(SRC_LIQUIDATION, filingId) != null) continue; // ya lo tiene
+            String model = String.valueOf(f.get("tax_model_code"));
             int q = ((Number) f.get("period_quarter")).intValue();
-            LocalDate from = LocalDate.of(year, (q - 1) * 3 + 1, 1);
-            LocalDate to = periodEnd(f);
+            String label = q + "T " + year;
 
-            BigDecimal s477 = rangeBalance(companyId, "477", from, to);
-            BigDecimal s472 = rangeBalance(companyId, "472", from, to).negate();
-            BigDecimal resultado = s477.subtract(s472);
-            String cuenta = resultado.signum() >= 0 ? "4750" : "4700";
+            if ("303".equals(model) && existingEntry(SRC_LIQUIDATION, filingId) == null) {
+                LocalDate from = LocalDate.of(year, (q - 1) * 3 + 1, 1);
+                LocalDate to = periodEnd(f);
+                BigDecimal s477 = rangeBalance(companyId, "477", from, to);
+                BigDecimal s472 = rangeBalance(companyId, "472", from, to).negate();
+                BigDecimal resultado = s477.subtract(s472);
+                String cuenta = resultado.signum() >= 0 ? "4750" : "4700";
 
-            String motivo = null;
-            if (s477.signum() == 0 && s472.signum() == 0) {
-                motivo = "El trimestre no tiene movimientos de IVA: no hay nada que liquidar.";
-            } else if (accountByCode(companyId, cuenta) == null) {
-                motivo = "Falta la cuenta " + cuenta + " en el plan contable (la crea la V178).";
-            } else if (!"OPEN".equals(fiscalYearStatus(companyId, to))) {
-                motivo = "El ejercicio de " + to + " no está abierto.";
+                String motivo = null;
+                if (s477.signum() == 0 && s472.signum() == 0) {
+                    motivo = "El trimestre no tiene movimientos de IVA: no hay nada que liquidar.";
+                } else if (accountByCode(companyId, cuenta) == null) {
+                    motivo = "Falta la cuenta " + cuenta + " en el plan contable (la crea la V178).";
+                } else if (!"OPEN".equals(fiscalYearStatus(companyId, to))) {
+                    motivo = "El ejercicio de " + to + " no está abierto.";
+                }
+                out.add(new PendingLiquidation(filingId, label, year, q, model,
+                        KIND_LIQUIDATION, s477, s472, resultado, cuenta, to,
+                        motivo == null, motivo));
             }
-            out.add(new PendingLiquidation(filingId, q + "T " + year, year, q,
-                    s477, s472, resultado, cuenta, motivo == null, motivo));
+
+            // El pago: solo si está PAGADA y aún no tiene su asiento.
+            if ("PAID".equals(String.valueOf(f.get("status")))
+                    && existingEntry(SRC_PAYMENT, filingId) == null) {
+                BigDecimal importe = (BigDecimal) f.get("total_amount");
+                LocalDate fecha = backfillPaymentDate(f);
+                String cuenta = "303".equals(model) ? "4750" : "473";
+
+                String motivo = null;
+                if (importe == null || importe.signum() <= 0) {
+                    motivo = "La declaración no sale a pagar: no hay pago que contabilizar.";
+                } else if (accountFor(companyId, cuenta) == null) {
+                    motivo = "Falta la cuenta " + cuenta + " en el plan contable.";
+                } else if (accountByPrefix(companyId, "572") == null) {
+                    motivo = "Falta la cuenta 572 (bancos) en el plan contable.";
+                } else if (!"OPEN".equals(fiscalYearStatus(companyId, fecha))) {
+                    motivo = "El ejercicio de " + fecha + " no está abierto.";
+                }
+                out.add(new PendingLiquidation(filingId, label, year, q, model,
+                        KIND_PAYMENT, null, null, importe, cuenta, fecha,
+                        motivo == null, motivo));
+            }
         }
         return out;
+    }
+
+    /** La 4750 va por código exacto; la 473 por prefijo (ver createPayment). */
+    private String accountFor(String companyId, String code) {
+        return "4750".equals(code) || "4700".equals(code)
+                ? accountByCode(companyId, code)
+                : accountByPrefix(companyId, code);
     }
 
     /**
@@ -285,21 +361,45 @@ public class TaxLedgerService {
         if (filingIds == null || filingIds.isEmpty()) return 0;
         // Reordenar por (año, trimestre) pase lo que pase: si el caller los manda
         // desordenados, los importes saldrían mal.
+        // LIQ-130-BF: antes esto filtraba tax_model_code='303' (el 130 se caía
+        // aquí aunque llegara su id) y solo llamaba a createLiquidation303 — el
+        // asiento de PAGO no lo creaba NUNCA, ni para el 303.
+        //
+        // La lista puede traer el mismo id dos veces (un trimestre con
+        // liquidación Y pago pendientes son dos filas en la vista previa). Se
+        // deduplica: por cada declaración se crea TODO lo que le falte, en el
+        // orden correcto — primero la liquidación (deja la 4750 debiendo) y
+        // luego el pago (la cancela). Al revés el pago cancelaría una deuda que
+        // aún no existe.
+        List<String> distinct = filingIds.stream().distinct().toList();
         List<Map<String, Object>> ordered = jdbcTemplate.queryForList("""
                 SELECT id FROM tax_filings
-                 WHERE company_id = ? AND tax_model_code = '303'
+                 WHERE company_id = ? AND tax_model_code IN ('303', '130')
                    AND id IN (%s)
-                 ORDER BY period_year, period_quarter
-                """.formatted(filingIds.stream().map(x -> "?").collect(java.util.stream.Collectors.joining(","))),
-                concat(tenantContext.getCurrentCompanyId(), filingIds));
+                 ORDER BY period_year, period_quarter, tax_model_code
+                """.formatted(distinct.stream().map(x -> "?").collect(java.util.stream.Collectors.joining(","))),
+                concat(tenantContext.getCurrentCompanyId(), distinct));
 
         int n = 0;
         for (Map<String, Object> row : ordered) {
-            Map<String, Object> f = loadFiling((String) row.get("id"));
+            String filingId = (String) row.get("id");
+            Map<String, Object> f = loadFiling(filingId);
             if (f == null) continue;
-            String entryId = safely("liquidación (backfill)", (String) row.get("id"),
-                    () -> createLiquidation303(f));
-            if (entryId != null) n++;
+            String model = String.valueOf(f.get("tax_model_code"));
+
+            if ("303".equals(model)) {
+                String liq = safely("liquidación (backfill)", filingId,
+                        () -> createLiquidation303(f));
+                if (liq != null) n++;
+            }
+            if ("PAID".equals(String.valueOf(f.get("status")))) {
+                // Con la fecha del PLAZO, no la de hoy: hoy metería el pago del
+                // 1T en el trimestre en que se pulsa el botón.
+                LocalDate fecha = backfillPaymentDate(f);
+                String pago = safely("pago (backfill)", filingId,
+                        () -> createPayment(f, fecha));
+                if (pago != null) n++;
+            }
         }
         return n;
     }
@@ -362,12 +462,45 @@ public class TaxLedgerService {
     }
 
     private Map<String, Object> loadFiling(String filingId) {
+        // status y deadline_at los añadió LIQ-130-BF: el backfill necesita saber
+        // si la declaración está PAGADA (para crear su asiento de pago) y con qué
+        // fecha (la de su plazo, NO hoy).
         List<Map<String, Object>> rows = jdbcTemplate.queryForList("""
-                SELECT id, tax_model_code, period_year, period_quarter, period_month, total_amount
+                SELECT id, tax_model_code, period_year, period_quarter, period_month,
+                       total_amount, status, deadline_at
                   FROM tax_filings
                  WHERE id = ? AND company_id = ?
                 """, filingId, tenantContext.getCurrentCompanyId());
         return rows.isEmpty() ? null : rows.get(0);
+    }
+
+    /**
+     * Fecha del asiento de pago cuando se regulariza HACIA ATRÁS (LIQ-130-BF).
+     *
+     * <p>Hoy NO vale: metería el pago del 1T en el trimestre en que se pulsa el
+     * botón y descuadraría el banco contra el extracto. Se usa el
+     * <b>plazo del modelo</b> (1T 20-abr, 2T 20-jul, 3T 20-oct, 4T 30-ene),
+     * que es cuando la AEAT carga los domiciliados y por tanto lo que
+     * normalmente coincide con el apunte real del banco. Decisión de Benjamin
+     * (2026-07-16).
+     *
+     * <p>Se prefiere el {@code deadline_at} que la declaración ya tiene
+     * guardado; si falta (declaraciones viejas o creadas a mano) se calcula con
+     * {@link TaxFilingService#computeDeadline} — el MISMO método que usa el
+     * módulo al crearlas, para no tener dos verdades sobre los plazos.
+     */
+    private LocalDate backfillPaymentDate(Map<String, Object> f) {
+        java.sql.Date stored = (java.sql.Date) f.get("deadline_at");
+        if (stored != null) return stored.toLocalDate();
+        Number q = (Number) f.get("period_quarter");
+        Number m = (Number) f.get("period_month");
+        LocalDate computed = TaxFilingService.computeDeadline(
+                String.valueOf(f.get("tax_model_code")),
+                ((Number) f.get("period_year")).intValue(),
+                q == null ? null : q.intValue(),
+                m == null ? null : m.intValue());
+        // Último recurso: el fin del periodo. Nunca hoy.
+        return computed != null ? computed : periodEnd(f);
     }
 
     private String existingEntry(String sourceType, String filingId) {

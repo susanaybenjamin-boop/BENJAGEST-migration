@@ -35,6 +35,9 @@ import org.springframework.web.server.ResponseStatusException;
 @Service
 public class BankMovementService {
 
+    private static final org.slf4j.Logger log =
+            org.slf4j.LoggerFactory.getLogger(BankMovementService.class);
+
     private final JdbcTemplate jdbcTemplate;
     private final TenantContext tenantContext;
     private final BankAccountService bankAccounts;
@@ -92,6 +95,23 @@ public class BankMovementService {
         }
         if (!"SALES".equals(req.invoiceKind()) && !"PURCHASE".equals(req.invoiceKind())) {
             throw bad("invoiceKind debe ser SALES o PURCHASE.");
+        }
+        // BANK-DUP-4 (2026-07-16) — cinturón: un movimiento YA contabilizado no
+        // genera un segundo asiento. Esto no iba a ningún sitio: no había NADA
+        // entre la entrada y el INSERT (ni un if, ni un SELECT), y la BD tampoco
+        // avisa porque no existe UNIQUE sobre (source_type, source_id). Con que
+        // el usuario pulse "Conciliar" dos veces, o autoReconcileBatch pase dos
+        // veces por el mismo movimiento, ya hay duplicado.
+        //
+        // Es idempotencia, no una validación "por si acaso": el hecho económico
+        // (un apunte del extracto) ya está contabilizado; volver a pedirlo
+        // devuelve lo que hay, no fabrica otro. Compras ya lo hace así
+        // (PurchaseJournalEntryService busca por source_type+source_id antes de
+        // insertar); este camino se quedó sin ello.
+        if (m.journalEntryId() != null && !m.journalEntryId().isBlank()) {
+            log.info("BANK-DUP-4: el movimiento {} ya tiene el asiento {}; no creo otro.",
+                    movementId, m.journalEntryId());
+            return m;
         }
         fiscalGuard.requireOpenForDate(m.operationDate(), "contabilizar este cobro/pago");
 
@@ -234,7 +254,24 @@ public class BankMovementService {
                     """, this::mapCandidate,
                     companyId, lower, upper, Date.valueOf(from), Date.valueOf(to)));
         } else {
-            // Cargo → buscar facturas recibidas pendientes de pago.
+            // Cargo → buscar facturas recibidas PENDIENTES DE PAGO.
+            //
+            // BANK-DUP-1 (2026-07-16): el comentario decía "pendientes de pago"
+            // y la consulta NO filtraba por pago — devolvía también las YA
+            // PAGADAS. Y como autoReconcileBatch (BankImportService) concilia
+            // SOLO cuando hay exactamente 1 candidato, un gasto ya pagado con
+            // su cargo en el extracto se contabilizaba OTRA VEZ, sin que nadie
+            // tocara nada. Ese es el "el gasto del autónomo me lo duplica".
+            //
+            // La columna `paid` la añadió la V167 LITERALMENTE "para impedir
+            // pagar dos veces el mismo gasto" y aquí no se leía. Ojo: `paid` la
+            // escribe "Registrar pago" (GAS-2), que NO deja rastro en
+            // invoice_due_dates ni en bank_movements — por eso no basta con
+            // mirar los pagos existentes (ver existingPaymentsFor).
+            //
+            // Se añade también status <> 'VOID': la rama de ventas de aquí al
+            // lado sí filtra por estado y ésta no, así que una factura ANULADA
+            // podía auto-conciliarse.
             out.addAll(jdbcTemplate.query("""
                     SELECT id AS invoice_id, invoice_number,
                            COALESCE(supplier_name, supplier_nif) AS counterparty,
@@ -242,6 +279,8 @@ public class BankMovementService {
                            'PURCHASE' AS kind
                       FROM purchase_invoices
                      WHERE company_id = ?
+                       AND status <> 'VOID'
+                       AND paid = FALSE
                        AND total_amount BETWEEN ? AND ?
                        AND invoice_date BETWEEN ? AND ?
                      ORDER BY invoice_date DESC
@@ -332,12 +371,23 @@ public class BankMovementService {
                             rs.getBigDecimal("paid_amount")),
                     companyId, lower, upper, from, to, abs, op);
         } else {
-            // purchase_invoices (V39/V40) NO tiene payment_status ni paid_amount:
-            // el "ya pagada" de una compra se deriva de sus pagos existentes
-            // (vencimientos saldados / banco conciliado), no de un estado propio.
+            // BANK-DUP-2 (2026-07-16). El comentario que había aquí decía:
+            //   "purchase_invoices (V39/V40) NO tiene payment_status ni
+            //    paid_amount: el ya pagada de una compra se deriva de sus
+            //    pagos existentes".
+            // Era FALSO desde la V167, MUY posterior a la V39/V40: añadió
+            // `paid`/`paid_date`/`payment_account_code` y su propio comentario
+            // dice que es "para impedir pagar dos veces el mismo gasto". Quien
+            // escribió esto miró el CREATE TABLE y no la última migración que
+            // toca la tabla — el caso exacto de la §10.bis del CLAUDE.md.
+            //
+            // Consecuencia: se pasaba `null` como paymentStatus, así que las
+            // TRES condiciones de `settled` (arriba) salían false para toda
+            // compra → estado PENDING_PURCHASE → suggested=true → checkbox
+            // PREMARCADO sobre un gasto ya pagado → pago duplicado al conciliar.
             found = jdbcTemplate.query("""
                     SELECT id, invoice_number, COALESCE(supplier_name, supplier_nif) AS counterparty,
-                           total_amount AS amount, invoice_date, status
+                           total_amount AS amount, invoice_date, status, paid
                       FROM purchase_invoices
                      WHERE company_id = ? AND status <> 'VOID'
                        AND total_amount BETWEEN ? AND ?
@@ -348,7 +398,9 @@ public class BankMovementService {
                             rs.getString("id"), rs.getString("invoice_number"),
                             rs.getString("counterparty"), rs.getBigDecimal("amount"),
                             rs.getDate("invoice_date").toLocalDate(),
-                            rs.getString("status"), null, null),
+                            rs.getString("status"),
+                            // Reusa el "PAID" que `settled` ya sabe interpretar.
+                            rs.getBoolean("paid") ? "PAID" : null, null),
                     companyId, lower, upper, from, to, abs, op);
         }
         return found.isEmpty() ? null : found.get(0);
@@ -372,7 +424,7 @@ public class BankMovementService {
                  WHERE dd.company_id = ? AND dd.invoice_kind = ? AND dd.invoice_id = ?
                    AND dd.status = 'PAID'
                  ORDER BY dd.paid_date
-                """, (rs, n) -> new ExistingPayment("Vencimiento",
+                """, (rs, n) -> new ExistingPayment("DUE_DATE",
                         rs.getDate("paid_date") == null ? null : rs.getDate("paid_date").toLocalDate(),
                         rs.getBigDecimal("amount"), rs.getString("payment_method"),
                         (Integer) rs.getObject("entry_number"), rs.getString("concept")),
@@ -387,11 +439,39 @@ public class BankMovementService {
                       FROM sales_invoice_payments
                      WHERE invoice_id = ?
                      ORDER BY payment_date
-                    """, (rs, n) -> new ExistingPayment("Cobro",
+                    """, (rs, n) -> new ExistingPayment("SALES_PAYMENT",
                             rs.getDate("payment_date") == null ? null : rs.getDate("payment_date").toLocalDate(),
                             rs.getBigDecimal("amount"), rs.getString("payment_method"),
                             null, rs.getString("reference")),
                     invoiceId)) {
+                put.accept(key(p), p);
+            }
+        }
+
+        // 2.bis) BANK-DUP-3 (2026-07-16) — el pago de "Registrar pago" (GAS-2).
+        //
+        // Faltaba la CUARTA vía de pago del sistema. GAS-2 no escribe en
+        // invoice_due_dates ni en bank_movements: solo hace
+        //   UPDATE purchase_invoices SET paid, paid_date, payment_account_code
+        // (ver PurchaseInvoiceRepository.markPaid). Así que un gasto pagado por
+        // ahí salía aquí con CERO pagos y la pantalla decía "pendiente".
+        //
+        // No es hipotético: el script fix-duplicate-ss-autonomo.sql (9-jul)
+        // mandaba textualmente "MARCAR PAGADAS las 6 facturas recurrentes de SS
+        // desde la app (Registrar pago → banco → fecha fin de mes)". Esos 6
+        // pagos son invisibles para las 3 consultas de arriba, y al importar el
+        // extracto se contabilizaron otra vez: los 6 duplicados que Benjamin
+        // estaba anulando a mano.
+        if ("PURCHASE".equals(kind)) {
+            for (ExistingPayment p : jdbcTemplate.query("""
+                    SELECT paid_date, total_amount, payment_account_code
+                      FROM purchase_invoices
+                     WHERE company_id = ? AND id = ? AND paid = TRUE
+                    """, (rs, n) -> new ExistingPayment("REGISTERED",
+                            rs.getDate("paid_date") == null ? null : rs.getDate("paid_date").toLocalDate(),
+                            rs.getBigDecimal("total_amount"),
+                            rs.getString("payment_account_code"), null, null),
+                    companyId, invoiceId)) {
                 put.accept(key(p), p);
             }
         }
@@ -404,7 +484,7 @@ public class BankMovementService {
                  WHERE bm.company_id = ? AND bm.linked_invoice_kind = ?
                    AND bm.linked_invoice_id = ?
                  ORDER BY bm.operation_date
-                """, (rs, n) -> new ExistingPayment("Banco",
+                """, (rs, n) -> new ExistingPayment("BANK",
                         rs.getDate("operation_date") == null ? null : rs.getDate("operation_date").toLocalDate(),
                         rs.getBigDecimal("amount") == null ? null : rs.getBigDecimal("amount").abs(),
                         null, (Integer) rs.getObject("entry_number"), rs.getString("description")),
@@ -424,6 +504,20 @@ public class BankMovementService {
             BigDecimal amount, LocalDate invoiceDate, String status, String paymentStatus,
             BigDecimal paidAmount) {}
 
+    /**
+     * Un pago ya registrado de la factura candidata, sea cual sea la vía.
+     *
+     * <p><b>{@code paySource} es una CLAVE, no un texto.</b> Valores:
+     * {@code DUE_DATE} (vencimiento saldado), {@code SALES_PAYMENT} (cobro de
+     * venta), {@code REGISTERED} ("Registrar pago" / GAS-2) y {@code BANK}
+     * (movimiento ya conciliado). La UI los traduce con
+     * {@code bank.reconcile.paysource.*}.
+     *
+     * <p>Antes venían en español desde aquí ("Vencimiento", "Cobro", "Banco") y
+     * la UI los pintaba crudos: en inglés se leía "Vencimiento". Al añadir
+     * REGISTERED (BANK-DUP-3) se pasan los cuatro a clave, que es lo que manda
+     * la §4 del CLAUDE.md. Si añades un valor aquí, añade su par ES+EN.
+     */
     public record ExistingPayment(
             String paySource, LocalDate payDate, BigDecimal payAmount,
             String payMethod, Integer payEntryNumber, String payReference) {}

@@ -11,6 +11,7 @@ import java.net.http.HttpResponse;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -130,8 +131,16 @@ public class SystemUpdateService {
                 fail("No encuentro el .msi en la última release.");
                 return;
             }
-            Path msi = dir.resolve("BENJAGEST-update.msi");
+            // UPD-CLEAN (2026-07-16): el MSI se guarda con su VERSIÓN en el
+            // nombre (antes todos eran "BENJAGEST-update.msi" y se pisaban).
+            // Así se conserva un pequeño histórico para poder reinstalar la
+            // anterior a mano si una actualización sale mal — que es justo lo
+            // que hubo que hacer tres veces el 15-jul.
+            String version = versionFromUrl(msiUrl);
+            Path msi = dir.resolve(version != null
+                    ? "BENJAGEST-" + version + ".msi" : "BENJAGEST-update.msi");
             download(msiUrl, msi);
+            pruneOldInstallers(dir, msi);
 
             status.set(new Status(State.INSTALLING, 0, 0, null));
             launchHelper(msi, dir);
@@ -161,6 +170,93 @@ public class SystemUpdateService {
                 "\"browser_download_url\"\\s*:\\s*\"([^\"]*/BENJAGEST-[0-9][^\"/]*\\.msi)\"")
                 .matcher(r.body());
         return m.find() ? m.group(1) : null;
+    }
+
+    /** UPD-CLEAN — cuántos instaladores se conservan: el nuevo + 2 anteriores. */
+    static final int KEEP_INSTALLERS = 3;
+
+    private static final Pattern MSI_VERSION =
+            Pattern.compile("BENJAGEST-(\\d+(?:\\.\\d+)*)\\.msi$");
+
+    /** La versión que hay dentro del nombre de un MSI de asesoría, o null. */
+    static String versionFromUrl(String url) {
+        if (url == null) return null;
+        Matcher m = MSI_VERSION.matcher(url);
+        return m.find() ? m.group(1) : null;
+    }
+
+    /**
+     * UPD-CLEAN (2026-07-16, pedido de Benjamin) — deja en {@code updates/} solo
+     * los {@link #KEEP_INSTALLERS} instaladores más nuevos (el recién bajado +
+     * 2 anteriores) y borra el resto.
+     *
+     * <p>El recién descargado se conserva SIEMPRE, pase lo que pase con el
+     * parseo de versiones: es el que se va a instalar ahora mismo. Además se
+     * barre la basura del actualizador VIEJO (los {@code BENJAGEST-update.msi}
+     * sin versión que dejaba el flujo anterior); no se toca nada que no sea un
+     * .msi de esta carpeta.
+     *
+     * <p>Ordena por versión NUMÉRICA, no alfabética: "0.1.9" es anterior a
+     * "0.1.10", y un sort de texto lo pondría al revés y borraría la buena.
+     */
+    static void pruneOldInstallers(Path dir, Path justDownloaded) {
+        try (java.util.stream.Stream<Path> files = Files.list(dir)) {
+            List<Path> installers = files
+                    .filter(p -> p.getFileName().toString().toLowerCase().endsWith(".msi"))
+                    .collect(java.util.stream.Collectors.toCollection(java.util.ArrayList::new));
+
+            // Más nuevo primero.
+            installers.sort((a, b) -> compareVersions(
+                    versionFromUrl(b.getFileName().toString()),
+                    versionFromUrl(a.getFileName().toString())));
+
+            // El que se está instalando SIEMPRE se conserva y cuenta dentro del
+            // cupo: "el nuevo + 2 anteriores" son 3 en total, no 4.
+            boolean hasCurrent = justDownloaded != null && installers.stream()
+                    .anyMatch(p -> p.getFileName().equals(justDownloaded.getFileName()));
+            int budgetOthers = KEEP_INSTALLERS - (hasCurrent ? 1 : 0);
+
+            int keptOthers = 0;
+            for (Path p : installers) {
+                String name = p.getFileName().toString();
+                if (hasCurrent && p.getFileName().equals(justDownloaded.getFileName())) {
+                    continue; // el que se instala, intocable
+                }
+                boolean sinVersion = versionFromUrl(name) == null;
+                boolean cabe = !sinVersion && keptOthers < budgetOthers;
+                if (cabe) { keptOthers++; continue; }
+                // Se borra: o es basura sin versión (el update.msi del flujo
+                // viejo), o ya sobra respecto a los que conservamos.
+                try {
+                    Files.deleteIfExists(p);
+                    log.info("UPD-CLEAN: borrado instalador antiguo {}", name);
+                } catch (IOException ex) {
+                    log.warn("UPD-CLEAN: no pude borrar {} ({}); sigo.", name, ex.getMessage());
+                }
+            }
+        } catch (IOException ex) {
+            // La limpieza NUNCA puede tumbar la actualización: es cosmética.
+            log.warn("UPD-CLEAN: no pude listar {} para limpiar ({}); sigo.", dir, ex.getMessage());
+        }
+    }
+
+    /** Compara "0.1.10" vs "0.1.9" numéricamente. null (sin versión) es el menor. */
+    static int compareVersions(String a, String b) {
+        if (a == null && b == null) return 0;
+        if (a == null) return -1;
+        if (b == null) return 1;
+        String[] pa = a.split("\\.");
+        String[] pb = b.split("\\.");
+        for (int i = 0; i < Math.max(pa.length, pb.length); i++) {
+            int va = i < pa.length ? parseIntSafe(pa[i]) : 0;
+            int vb = i < pb.length ? parseIntSafe(pb[i]) : 0;
+            if (va != vb) return Integer.compare(va, vb);
+        }
+        return 0;
+    }
+
+    private static int parseIntSafe(String s) {
+        try { return Integer.parseInt(s.trim()); } catch (NumberFormatException e) { return 0; }
     }
 
     private void download(String url, Path out) throws IOException, InterruptedException {
