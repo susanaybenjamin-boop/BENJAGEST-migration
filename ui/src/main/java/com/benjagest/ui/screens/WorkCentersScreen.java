@@ -128,8 +128,7 @@ public class WorkCentersScreen extends ScreenBase {
         });
         reload.run();
 
-        HBox actions = new HBox(8, reloadBtn, addBtn, editBtn, delBtn);
-        actions.setAlignment(Pos.CENTER_LEFT);
+        javafx.scene.layout.FlowPane actions = actionFlow(reloadBtn, addBtn, editBtn, delBtn);
         VBox.setVgrow(table, Priority.ALWAYS);
         content.getChildren().addAll(hint, actions, table);
         return content;

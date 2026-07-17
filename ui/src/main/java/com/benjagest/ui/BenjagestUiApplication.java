@@ -3887,7 +3887,7 @@ public class BenjagestUiApplication extends Application
         // filtros, en su propia fila para no recargar la primera.
         // OPTYPE: clasificación fiscal del gasto (tipo de operación + IVA
         // deducible % + gasto deducible IRPF + bien de inversión).
-        Button classifyBtn = new Button("Clasificación fiscal");
+        Button classifyBtn = new Button(t("purchases.action.classify"));
         classifyBtn.setGraphic(icon("fas-tags"));
         classifyBtn.setOnAction(ev -> {
             var sel = purchaseInvoicesTable.getSelectionModel().getSelectedItem();
@@ -3896,7 +3896,7 @@ public class BenjagestUiApplication extends Application
 
         // IRPF-DED: manda todas las facturas del proveedor a una cuenta
         // (p.ej. subcuenta de vehículo no deducible) con una regla aprendida.
-        Button createRuleBtn = new Button("Crear regla");
+        Button createRuleBtn = new Button(t("purchases.action.create_rule"));
         createRuleBtn.setGraphic(icon("fas-tags"));
         createRuleBtn.setOnAction(ev -> {
             var sel = purchaseInvoicesTable.getSelectionModel().getSelectedItem();
@@ -3913,10 +3913,15 @@ public class BenjagestUiApplication extends Application
         libroItem.setOnAction(ev -> exportLibroRecibidasCsv());
         deducBtn.getItems().addAll(rulesItem, libroItem);
 
-        HBox actions = new HBox(10, newExpenseBtn, newAutonomoBtn, validateBatchBtn,
+        // Fila de acciones con ENVOLTURA (FlowPane vía actionFlow): 10 botones no
+        // caben en el ancho de un portátil y el HBox los encogía cortando el texto
+        // con "..." ("Validar selecci…", "Clasificaci…", "Deduc…"). actionFlow fija
+        // minWidth=USE_PREF_SIZE (texto entero) y pasa a la línea siguiente lo que
+        // no quepa (petición de Benjamin 2026-07-17; mismo patrón que ventas).
+        javafx.scene.layout.FlowPane actions = actionFlow(
+                newExpenseBtn, newAutonomoBtn, validateBatchBtn,
                 makeRecurringPurchaseBtn, dueDatesBtn, registerPaymentBtn, classifyBtn,
                 createRuleBtn, deducBtn, deleteBtn);
-        actions.setAlignment(javafx.geometry.Pos.CENTER_LEFT);
 
         VBox body = new VBox(12);
         if (showWithHeader) {
@@ -4558,8 +4563,7 @@ public class BenjagestUiApplication extends Application
 
         Label info = new Label(t("duedates.total") + " " + eur(total));
         info.setStyle("-fx-font-weight: bold;");
-        HBox actions = new HBox(8, payBtn, cashBtn, unpayBtn, editBtn, refreshBtn);
-        actions.setAlignment(javafx.geometry.Pos.CENTER_LEFT);
+        javafx.scene.layout.FlowPane actions = actionFlow(payBtn, cashBtn, unpayBtn, editBtn, refreshBtn);
         Label hint = new Label(t("duedates.hint"));
         hint.setWrapText(true);
         hint.getStyleClass().add("settings-hint");
@@ -5377,8 +5381,20 @@ public class BenjagestUiApplication extends Application
                     new javafx.scene.control.ScrollPane(g);
             formScroll.setFitToWidth(true);
             formScroll.setStyle("-fx-background-color: transparent;");
+            // "Copiar texto del PDF": igual que en el modal de ventas
+            // (showSalesExtractionDialog). Muestra la capa de texto del PDF
+            // seleccionable para copiar a mano lo que la extracción no acertó
+            // (proveedor, concepto, NIF…). Faltaba en compras: el flujo de
+            // "Importar PDFs" lo tenía para facturas emitidas pero no para las
+            // recibidas (petición de Benjamin 2026-07-17). Reutiliza la misma
+            // clave i18n y el mismo popup.
+            Button copyTextBtn = new Button(t("sales.import.copy_text"));
+            copyTextBtn.setOnAction(e -> showPdfTextPopup(currentExtractionPdfBytes));
+            VBox formSide = new VBox(8, copyTextBtn, formScroll);
+            formSide.setPadding(new Insets(6));
+            VBox.setVgrow(formScroll, Priority.ALWAYS);
             javafx.scene.control.SplitPane split =
-                    new javafx.scene.control.SplitPane(viewer, formScroll);
+                    new javafx.scene.control.SplitPane(viewer, formSide);
             split.setDividerPositions(0.55);
             // Sin wrap externo (mismo motivo que en ventas): evita el
             // doble scroll del visor PDF + formulario dentro de otro
@@ -9657,7 +9673,7 @@ public class BenjagestUiApplication extends Application
         Tooltip.install(newClientBtn, new Tooltip(t("advisory.action.new_client.tip")));
         newClientBtn.setOnAction(ev -> openNewCustomerDialog(this::showAdvisoryClients));
 
-        HBox actions = new HBox(8, newClientBtn, openClientBtn, inviteSelectedBtn, inviteBtn);
+        javafx.scene.layout.FlowPane actions = actionFlow(newClientBtn, openClientBtn, inviteSelectedBtn, inviteBtn);
         actions.getStyleClass().add("settings-actions");
 
         // Bloque de invitaciones — listado bajo la tabla de clientes
@@ -13296,7 +13312,10 @@ public class BenjagestUiApplication extends Application
                 new javafx.scene.control.TableColumn<>(t("recurring.ignored.col.action"));
         cBtn.setCellFactory(c -> new javafx.scene.control.TableCell<com.benjagest.ui.model.RecurringCandidateIgnoredEntry, Void>() {
             private final Button rehab = new Button(t("recurring.ignored.rehabilitate"));
-            { rehab.setGraphic(icon("fas-undo")); }
+            { rehab.setGraphic(icon("fas-undo"));
+              // No encoger por debajo del texto: en una columna de 140px el botón
+              // podría cortar "Rehabilitar" con "..." si la fuente/idioma ensancha.
+              rehab.setMinWidth(javafx.scene.layout.Region.USE_PREF_SIZE); }
             @Override protected void updateItem(Void v, boolean empty) {
                 super.updateItem(v, empty);
                 if (empty || getIndex() < 0 || getIndex() >= getTableView().getItems().size()) {
@@ -13322,7 +13341,8 @@ public class BenjagestUiApplication extends Application
                 setGraphic(rehab);
             }
         });
-        cBtn.setPrefWidth(140);
+        cBtn.setPrefWidth(150);
+        cBtn.setMinWidth(150);
 
         table.getColumns().add(cKind);
         table.getColumns().add(cParty);
@@ -13815,7 +13835,7 @@ public class BenjagestUiApplication extends Application
             var grp = groupsTable.getSelectionModel().getSelectedItem();
             if (grp != null) showGroupConsolidated(grp.id(), grp.name());
         });
-        HBox memberActions = new HBox(8, addMember, delMember, balanceBtn, consolidatedBtn);
+        javafx.scene.layout.FlowPane memberActions = actionFlow(addMember, delMember, balanceBtn, consolidatedBtn);
 
         groupsTable.getSelectionModel().selectedItemProperty().addListener((o, ov, nv) -> {
             delGroup.setDisable(nv == null);

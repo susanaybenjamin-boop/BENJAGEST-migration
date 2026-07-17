@@ -507,6 +507,8 @@ public final class I18n {
                 case "purchases.action.new_expense" -> "New expense / receipt";
                 case "purchases.action.new_autonomo" -> "Self-employed receipt";
                 case "purchases.action.register_payment" -> "Register payment";
+                case "purchases.action.classify" -> "Tax classification";
+                case "purchases.action.create_rule" -> "Create rule";
                 case "expense.dialog.title" -> "New expense / receipt";
                 case "expense.autonomo.title" -> "Self-employed receipt (RETA contribution)";
                 case "expense.autonomo.concept" -> "Self-employed RETA contribution";
@@ -1719,6 +1721,8 @@ public final class I18n {
             case "purchases.action.new_expense" -> "Nuevo gasto / recibo";
             case "purchases.action.new_autonomo" -> "Recibo de autónomo";
             case "purchases.action.register_payment" -> "Registrar pago";
+            case "purchases.action.classify" -> "Clasificación fiscal";
+            case "purchases.action.create_rule" -> "Crear regla";
             case "expense.dialog.title" -> "Nuevo gasto / recibo";
             case "expense.autonomo.title" -> "Recibo de autónomo (cuota RETA)";
             case "expense.autonomo.concept" -> "Cuota de autónomo RETA";

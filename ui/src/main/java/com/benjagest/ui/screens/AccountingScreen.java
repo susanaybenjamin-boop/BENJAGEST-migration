@@ -283,10 +283,11 @@ public class AccountingScreen {
         Label hint = new Label(tt.apply("accounting.pending.hint"));
         hint.setStyle("-fx-text-fill: #6e6e6e;");
 
-        HBox actions = new HBox(8, refresh, validate, accept, validateBatch,
-                new javafx.scene.layout.Region(), reclassify, backfill);
-        actions.setAlignment(Pos.CENTER_LEFT);
-        HBox.setHgrow(actions.getChildren().get(4), Priority.ALWAYS);
+        // 6 botones: el HBox los encogía cortando el texto. actionFlow (FlowPane)
+        // los envuelve manteniendo el texto entero (se pierde el espaciador que
+        // empujaba reclasificar/backfill a la derecha; el envoltorio lo compensa).
+        javafx.scene.layout.FlowPane actions = com.benjagest.ui.support.UiBuilders.actionFlow(
+                refresh, validate, accept, validateBatch, reclassify, backfill);
 
         // validate y accept solo cuando hay 1; validateBatch cuando hay >=1
         // DRAFT seleccionado.
@@ -981,9 +982,9 @@ public class AccountingScreen {
         hint.setStyle("-fx-text-fill: #6e6e6e;");
         hint.setWrapText(true);
 
-        HBox actions = new HBox(8, create, edit, apply, archive, refresh,
+        javafx.scene.layout.FlowPane actions = com.benjagest.ui.support.UiBuilders.actionFlow(
+                create, edit, apply, archive, refresh,
                 new Separator(javafx.geometry.Orientation.VERTICAL), templatesShowArchived);
-        actions.setAlignment(Pos.CENTER_LEFT);
 
         VBox box = new VBox(10, hint, actions, templatesTable);
         VBox.setVgrow(templatesTable, Priority.ALWAYS);
@@ -2207,8 +2208,8 @@ public class AccountingScreen {
                 conceptArea.getText(), lines, accounts, true, dialog));
         cancel.setOnAction(e -> dialog.close());
 
-        HBox actions = new HBox(8, save, post, cancel, addLine, removeLine);
-        actions.setAlignment(Pos.CENTER_LEFT);
+        javafx.scene.layout.FlowPane actions = com.benjagest.ui.support.UiBuilders.actionFlow(
+                save, post, cancel, addLine, removeLine);
 
         VBox header = new VBox(4,
                 row(tt.apply("accounting.field.date"), datePicker),

@@ -132,7 +132,8 @@ public class ClientFinancialsScreen {
 
         Label accLabel = new Label("Cuentas bancarias");
         accLabel.getStyleClass().add("settings-section-title");
-        HBox accActions = new HBox(8, newAccount, refreshAccounts, loadMovs, importBtn, reconcileBtn);
+        javafx.scene.layout.FlowPane accActions = com.benjagest.ui.support.UiBuilders.actionFlow(
+                newAccount, refreshAccounts, loadMovs, importBtn, reconcileBtn);
         VBox accountsBox = new VBox(8, accLabel, accActions, accountsTable);
         VBox.setVgrow(accountsTable, Priority.ALWAYS);
         accountsBox.setPadding(new Insets(8));

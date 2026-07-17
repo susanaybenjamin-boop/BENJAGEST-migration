@@ -88,9 +88,10 @@ public class WorkCalendarScreen extends ScreenBase {
         Button loadNationalBtn = new Button(t("workcal.btn.load_national"));
         loadNationalBtn.setGraphic(icon("fas-flag"));
         loadNationalBtn.setDisable(true);
-        HBox topBar = new HBox(8, newCalBtn, importPdfBtn, delCalBtn,
+        // 6 botones con etiquetas largas: el HBox los cortaba. actionFlow los
+        // envuelve manteniendo el texto entero.
+        javafx.scene.layout.FlowPane topBar = actionFlow(newCalBtn, importPdfBtn, delCalBtn,
                 dumpAgendaBtn, removeAgendaBtn, loadNationalBtn);
-        topBar.setAlignment(Pos.CENTER_LEFT);
 
         // Tabla calendarios.
         TableView<com.benjagest.ui.model.WorkCalendarEntry> calTable = new TableView<>();
@@ -634,10 +635,9 @@ public class WorkCalendarScreen extends ScreenBase {
         rightTable.getSelectionModel().getSelectedItems().addListener(
                 (javafx.collections.ListChangeListener<EditableHolidayRow>) c ->
                         delRowBtn.setDisable(rightTable.getSelectionModel().getSelectedItems().isEmpty()));
-        HBox rightActions = new HBox(8, copyAllBtn, copySelBtn, new Region(),
-                addRowBtn, delRowBtn);
-        HBox.setHgrow(rightActions.getChildren().get(2), Priority.ALWAYS);
-        rightActions.setAlignment(Pos.CENTER_LEFT);
+        // actionFlow: si las 4 acciones no caben, envuelven en vez de cortarse.
+        javafx.scene.layout.FlowPane rightActions = actionFlow(
+                copyAllBtn, copySelBtn, addRowBtn, delRowBtn);
 
         copyAllBtn.setOnAction(ev -> {
             rightRows.clear();

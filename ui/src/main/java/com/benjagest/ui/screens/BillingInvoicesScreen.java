@@ -903,21 +903,8 @@ public class BillingInvoicesScreen extends ScreenBase {
 
     // ----- helpers locales (copias stateless del shell) -----
 
-    /**
-     * DOBLE PANTALLA — barra de acciones que ENVUELVE (FlowPane) en vez de hacer
-     * overflow horizontal sin scroll. Si los botones no caben en el ancho de la
-     * ventana (portátil), pasan a la línea siguiente y se ven todos. Mantiene el
-     * minWidth de cada botón (texto entero, sin "..."). Reutilizable en cualquier
-     * pantalla con muchos botones de acción.
-     */
-    private javafx.scene.layout.FlowPane actionFlow(javafx.scene.Node... children) {
-        javafx.scene.layout.FlowPane fp = new javafx.scene.layout.FlowPane(6, 6, children);
-        fp.getStyleClass().add("settings-actions");
-        for (javafx.scene.Node n : children) {
-            if (n instanceof Region r) r.setMinWidth(Region.USE_PREF_SIZE);
-        }
-        return fp;
-    }
+    // actionFlow se hereda de ScreenBase (antes había una copia privada aquí;
+    // extraída a UiBuilders.actionFlow en el arreglo de botones cortados 2026-07-17).
 
     /** Grupo etiqueta+control que se mantiene junto al envolver un {@link #actionFlow}. */
     private HBox filterGroup(String labelText, javafx.scene.Node control) {

@@ -329,8 +329,7 @@ public class CommScreen extends ScreenBase {
         rejectBtn.setGraphic(icon("fas-times"));
         rejectBtn.setDisable(true);
 
-        HBox actions = new HBox(8, uploadBtn, downloadBtn, acceptBtn, rejectBtn);
-        actions.setAlignment(Pos.CENTER_LEFT);
+        javafx.scene.layout.FlowPane actions = actionFlow(uploadBtn, downloadBtn, acceptBtn, rejectBtn);
 
         Runnable reloadDocs = () -> {
             String other = otherIdObs.getValue();

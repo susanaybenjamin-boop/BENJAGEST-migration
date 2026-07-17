@@ -501,9 +501,11 @@ public class EmployeesScreen extends ScreenBase {
             deleteBtn.setDisable(nv == null || !nv.active());
         });
 
-        HBox actions = new HBox(8, newEmployee, editBtn, contractsBtn, irpfBtn, terminateBtn,
+        // 9 botones: el HBox los encogía cortando el texto. actionFlow (FlowPane)
+        // los envuelve manteniendo el texto entero.
+        javafx.scene.layout.FlowPane actions = actionFlow(
+                newEmployee, editBtn, contractsBtn, irpfBtn, terminateBtn,
                 suspendBtn, backPayBtn, deleteBtn, closureBtn);
-        actions.setAlignment(Pos.CENTER_LEFT);
         actions.setPadding(new Insets(0, 0, 8, 0));
 
         VBox body = new VBox(12, actions, employeesTable);
