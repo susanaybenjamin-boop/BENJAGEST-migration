@@ -214,14 +214,18 @@ public class ClientBillingScreen extends ScreenBase {
                     invDate);
         });
 
-        Region clientBillingSpacer = new Region();
-        HBox.setHgrow(clientBillingSpacer, Priority.ALWAYS);
-        HBox actions = new HBox(8,
-                new Label(t("client.filter.search")), search,
-                new Label(t("client.filter.status")), statusFilter,
-                new Label(t("client.filter.type")), typeFilter,
-                clientBillingSpacer, validateBtn, makeRecurringBtnBilling, refresh, importSalesPdfsBtn, newInvoiceBtn);
-        actions.setAlignment(Pos.CENTER_LEFT);
+        // Fila muy cargada (3 filtros etiqueta+control + 5 botones): en un HBox
+        // los botones se encogían y cortaban el texto. actionFlow envuelve; cada
+        // filtro va en su propio grupo para que la etiqueta no se separe del control.
+        HBox searchGroup = new HBox(6, new Label(t("client.filter.search")), search);
+        searchGroup.setAlignment(Pos.CENTER_LEFT);
+        HBox statusGroup = new HBox(6, new Label(t("client.filter.status")), statusFilter);
+        statusGroup.setAlignment(Pos.CENTER_LEFT);
+        HBox typeGroup = new HBox(6, new Label(t("client.filter.type")), typeFilter);
+        typeGroup.setAlignment(Pos.CENTER_LEFT);
+        javafx.scene.layout.FlowPane actions = actionFlow(
+                searchGroup, statusGroup, typeGroup,
+                validateBtn, makeRecurringBtnBilling, refresh, importSalesPdfsBtn, newInvoiceBtn);
 
         com.benjagest.ui.support.RefreshBus.subscribe(
                 com.benjagest.ui.support.RefreshBus.TOPIC_SALES,

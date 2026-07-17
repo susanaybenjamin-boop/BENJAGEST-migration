@@ -1,8 +1,10 @@
 package com.benjagest.ui.support;
 
 import javafx.geometry.Pos;
+import javafx.scene.Node;
 import javafx.scene.control.Label;
 import javafx.scene.control.ScrollPane;
+import javafx.scene.layout.FlowPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
@@ -41,6 +43,23 @@ public final class UiBuilders {
         StackPane bubble = new StackPane(Icons.icon(iconLiteral));
         bubble.getStyleClass().addAll(styleClasses);
         return bubble;
+    }
+
+    /**
+     * Barra de acciones que ENVUELVE (FlowPane) en vez de hacer overflow
+     * horizontal sin scroll. Si los botones no caben en el ancho de la ventana
+     * (portatil), pasan a la linea siguiente y se ven todos. Fija
+     * minWidth=USE_PREF_SIZE en cada control para que el texto salga entero (sin
+     * "..."). Reutilizable en cualquier pantalla con muchos botones de accion.
+     * Espejo del helper homonimo de BenjagestUiApplication / BillingInvoicesScreen.
+     */
+    public static FlowPane actionFlow(Node... children) {
+        FlowPane fp = new FlowPane(6, 6, children);
+        fp.getStyleClass().add("settings-actions");
+        for (Node n : children) {
+            if (n instanceof Region r) r.setMinWidth(Region.USE_PREF_SIZE);
+        }
+        return fp;
     }
 
     /** Cabecera de seccion: titulo + subtitulo a la izquierda, con spacer. */

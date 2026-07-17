@@ -138,10 +138,11 @@ public class AbsencesScreen extends ScreenBase {
         rejectBtn.setOnAction(ev -> reviewLeaveRequest(table.getSelectionModel().getSelectedItem(), false, reload));
         attBtn.setOnAction(ev -> viewLeaveAttachments(table.getSelectionModel().getSelectedItem()));
 
-        HBox controls = new HBox(8,
-                new Label(t("labor.leavereq.filter.status")), statusFilter,
-                reloadBtn, approveBtn, rejectBtn, attBtn);
-        controls.setAlignment(Pos.CENTER_LEFT);
+        // El filtro (etiqueta+combo) se agrupa para que no se separe al envolver.
+        HBox statusGroup = new HBox(6, new Label(t("labor.leavereq.filter.status")), statusFilter);
+        statusGroup.setAlignment(Pos.CENTER_LEFT);
+        javafx.scene.layout.FlowPane controls = actionFlow(
+                statusGroup, reloadBtn, approveBtn, rejectBtn, attBtn);
 
         VBox body = new VBox(10, hint, controls, table);
         VBox.setVgrow(table, Priority.ALWAYS);

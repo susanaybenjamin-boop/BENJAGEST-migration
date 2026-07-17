@@ -270,7 +270,7 @@ public class ContractsScreen extends ScreenBase {
             pdfBtn.setDisable(nv == null);
             xmlBtn.setDisable(nv == null);
         });
-        HBox actions = new HBox(8, newC, editC, promoteC, pdfBtn, xmlBtn);
+        javafx.scene.layout.FlowPane actions = actionFlow(newC, editC, promoteC, pdfBtn, xmlBtn);
         VBox body = new VBox(12, contractsTable, actions);
         body.setPadding(new Insets(10));
         installDialog(dialog, body);

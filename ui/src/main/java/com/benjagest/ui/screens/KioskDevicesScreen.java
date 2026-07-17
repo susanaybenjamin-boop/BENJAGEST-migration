@@ -123,7 +123,7 @@ public class KioskDevicesScreen extends ScreenBase {
         });
 
         reload.run();
-        HBox actions = new HBox(8, newBtn, activationBtn, empBtn, delBtn);
+        javafx.scene.layout.FlowPane actions = actionFlow(newBtn, activationBtn, empBtn, delBtn);
         VBox box = new VBox(12, hint, actions, table);
         box.setPadding(new Insets(16));
         VBox.setVgrow(table, Priority.ALWAYS);

@@ -243,9 +243,12 @@ public class PayslipsScreen extends ScreenBase {
             delBtn.setDisable(none || "PAID".equals(nv == null ? "" : nv.status()));
         });
 
-        HBox actions = new HBox(8, calcBtn, genMonthBtn, batchBtn, extraBtn, settlementBtn,
+        // 10 botones: en un HBox se encogían y cortaban el texto ("...") en
+        // pantallas estrechas. actionFlow (FlowPane) los envuelve a la línea
+        // siguiente y mantiene el texto entero.
+        javafx.scene.layout.FlowPane actions = actionFlow(
+                calcBtn, genMonthBtn, batchBtn, extraBtn, settlementBtn,
                 payBtn, deliverBtn, pdfBtn, emailBtn, delBtn);
-        actions.setAlignment(Pos.CENTER_LEFT);
 
         Label hint = new Label(t("labor.payslips.hint"));
         hint.setWrapText(true);

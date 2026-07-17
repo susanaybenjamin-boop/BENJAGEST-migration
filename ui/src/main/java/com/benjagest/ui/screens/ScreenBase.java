@@ -55,6 +55,8 @@ public abstract class ScreenBase {
     protected void showModule(String module) { router.navigateTo(module); }
 
     protected VBox content() { return UiBuilders.content(); }
+    /** Barra de acciones que envuelve (FlowPane): los botones no se cortan ni desbordan. */
+    protected javafx.scene.layout.FlowPane actionFlow(Node... children) { return UiBuilders.actionFlow(children); }
     protected StackPane iconBubble(String literal, String... styleClasses) { return UiBuilders.iconBubble(literal, styleClasses); }
     protected HBox sectionHeader(String title, String subtitle) { return UiBuilders.sectionHeader(title, subtitle); }
     protected String shortIso(String iso) { return Formatters.shortIso(iso); }

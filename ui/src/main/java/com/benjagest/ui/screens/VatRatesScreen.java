@@ -96,8 +96,7 @@ public class VatRatesScreen extends ScreenBase {
         loadStdBtn.setGraphic(icon("fas-layer-group"));
         loadStdBtn.setOnAction(ev -> loadStandardVatRates());
 
-        HBox btnRow = new HBox(8, addBtn, editBtn, deleteBtn, loadStdBtn);
-        btnRow.setAlignment(javafx.geometry.Pos.CENTER_LEFT);
+        javafx.scene.layout.FlowPane btnRow = actionFlow(addBtn, editBtn, deleteBtn, loadStdBtn);
         reloadVatRates();
         return new VBox(8, header, hint, vatRatesTable, btnRow);
     }

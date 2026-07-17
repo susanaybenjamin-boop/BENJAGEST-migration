@@ -131,8 +131,7 @@ public class ScheduleTemplatesScreen extends ScreenBase {
             });
         });
 
-        HBox actions = new HBox(8, newBtn, editBtn, blocksBtn, assignBtn, delBtn);
-        actions.setAlignment(Pos.CENTER_LEFT);
+        javafx.scene.layout.FlowPane actions = actionFlow(newBtn, editBtn, blocksBtn, assignBtn, delBtn);
 
         reload.run();
         content.getChildren().addAll(hint, actions, table);
