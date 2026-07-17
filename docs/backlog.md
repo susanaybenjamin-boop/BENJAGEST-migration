@@ -1,6 +1,27 @@
 # Backlog operativo BENJAGEST
 
-> **Última actualización: 2026-07-16 (noche, 5, CIERRE) — ✅ v0.1.48 PUBLICADA e INSTALADA por Benjamin (auto-actualizador, ya rutina; jar 0.1.48 en disco, JRE 119,3 MB, servicio Running, health 200). Lleva GESTOR-CLOSE + FAC-1/2/3. ✅ GESTOR-CLOSE VERIFICADO por Benjamin ("la pantalla navegador va ok"). Módulo facturación revisado a fondo + 3 redes de seguridad; flujo feliz verificado en ejecución. Benjamin probará su 1ª factura real cuando toque; si va bien, EMPIEZA A FACTURAR con BENJAGEST, y solo queda VERI\*FACTU para más adelante. Suite 155 verde. SESIÓN CERRADA.**
+> **Última actualización: 2026-07-17 (CIERRE) — ✅ v0.1.49 PUBLICADA (Latest en GitHub, MSI 302 MB, target = SHA develop `df5c08ca`). Auto-actualizador la traerá solo. Sesión de PULIDO de UI: (1) botón "Copiar texto del PDF" en el modal de importación de COMPRAS (recibidas) — faltaba, sí estaba en Ventas; (2) ~20 filas de botones que se cortaban con "..." en pantallas estrechas → convertidas a `actionFlow` (FlowPane que ENVUELVE) en 14 pantallas; helper extraído a `UiBuilders.actionFlow` + expuesto en `ScreenBase` + dedup de la copia de `BillingInvoicesScreen`; (3) i18n de 2 strings de Compras. VERIFICADO EN EJECUCIÓN por Benjamin en la UI real (botones sin cortar + botón copiar-texto OK). SESIÓN CERRADA.**
+>
+> ## 🚀 PROMPT PARA LA PRÓXIMA SESIÓN (copiar y pegar)
+>
+> *"Lee la cabecera de docs/backlog.md. Última release e (auto)instalada: **v0.1.49** (pulido de UI: copiar-texto en Compras + botones que ya no se cortan). Nada a medias. Antes de esta versión, todo lo del 16-jul cerrado en v0.1.48 (facturación FAC-1/2/3 + GESTOR-CLOSE). Ciclo de release (rutina): bump `APP_VERSION` en `UpdateService.java` + `build-msi.ps1 -Version 0.X.Y` (SIN -Rebuild si solo cambió UI; WiX no está en PATH, añadir `C:\Program Files (x86)\WiX Toolset v3.14\bin`) + `gh release create v0.X.Y --target <SHA completo de develop> ... dist\msi\BENJAGEST-0.X.Y.msi`.*
+>
+> ***ESTADO**: Benjamin FACTURA con BENJAGEST (autónomo, uso propio). Único legal pendiente = VERI\*FACTU (1-jul-2027); antes releer el re-encuadre de plan-legal-2035.md y decidir DELEGAR vs CONSTRUIR la emisión.*
+>
+> ***CABOS SUELTOS de UI (no urgen, del 17-jul)**: (a) 3 strings hardcodeadas en Financiero cliente — `"Cuentas bancarias"`, `"Movimientos"`, `"Ver movimientos"` (ClientFinancialsScreen ~l.133/135/140) — pendientes de pasar por `t(...)`; (b) 3 filas de botones dejadas SIN envolver a propósito (Calendario nav/modos, asistente de Contratos, diálogo de incidencias de Nómina) por tener espaciador intencionado + etiquetas cortas — envolver solo si Benjamin lo pide.*
+>
+> ***PENDIENTES menores heredados (no urgen)**: 130 saldar 473 contra 550 en el cierre; duplicados de banco ANTERIORES a BANK-DUP (impide los nuevos, no limpia los viejos); cert de Susana CADUCADO en el almacén de Windows (no afecta al gestor).*
+>
+> **Sesión 2026-07-17 — PULIDO UI: copiar-texto en Compras + botones cortados (v0.1.49).**
+>
+> Benjamin (modo empresario): en Compras y Gastos los botones de acción salían cortados ("Validar selecci…", "Clasificaci…", "Deduc…") y faltaba el "Copiar texto del PDF" que sí tenía el modal de importación de Ventas.
+>
+> - `[x]` **Copiar-texto en Compras** (`bb3646bd`) — el flujo "Importar PDFs" mandaba las facturas EMITIDAS a `showSalesExtractionDialog` (que SÍ tenía el botón) y las RECIBIDAS a `showExtractionResult` (que NO). Añadido el botón "Copiar texto del PDF" al modal de compras, reutilizando la misma clave i18n (`sales.import.copy_text`) y el mismo popup (`showPdfTextPopup`) con `currentExtractionPdfBytes`. Solo aparece cuando hay visor (bytes del PDF).
+> - `[x]` **Botones cortados → `actionFlow`** (`bb3646bd`) — causa: filas `HBox` con muchos botones que, al no caber, encogían los botones por debajo de su ancho preferido y truncaban el texto con "...". Fix con el patrón que ya usaba Ventas: `FlowPane` que ENVUELVE + `minWidth=USE_PREF_SIZE`. Convertidas ~20 filas en 14 pantallas (Compras 10 btns, Nóminas 10, Empleados 9, Calendario laboral 6, Contabilidad 6/5/5, Facturación/Financiero cliente, Vencimientos, Contratos, Ausencias, Centros, Kiosko, Comunicaciones, Plantillas horario, Tipos IVA, cartera clientes, consolidación) + botón "Rehabilitar" de celda protegido con `minWidth`. Helper extraído a `UiBuilders.actionFlow` (antes duplicado en `BenjagestUiApplication` y `BillingInvoicesScreen`), expuesto en `ScreenBase`. Diagnóstico con 3 agentes Explore en paralelo (archivo principal + pantallas A-M + N-Z).
+> - `[x]` **i18n Compras** (`bb3646bd`) — `"Clasificación fiscal"` y `"Crear regla"` estaban hardcodeadas → `t("purchases.action.classify")` / `t("purchases.action.create_rule")` con par ES+EN.
+> - `[x]` **Release v0.1.49** (`593ab0c7` bump) — commit + push `feat/Benjamin` → merge `--no-ff` develop → MSI 0.1.49 (reusó backend+gestor, solo recompiló UI) → `gh release create` Latest. **VERIFICADO en ejecución por Benjamin** (UI real).
+>
+> **[HIST cerrado] Sesión 2026-07-16 (noche, 5, CIERRE) — ✅ v0.1.48 PUBLICADA e INSTALADA por Benjamin (auto-actualizador, ya rutina; jar 0.1.48 en disco, JRE 119,3 MB, servicio Running, health 200). Lleva GESTOR-CLOSE + FAC-1/2/3. ✅ GESTOR-CLOSE VERIFICADO por Benjamin ("la pantalla navegador va ok"). Módulo facturación revisado a fondo + 3 redes de seguridad; flujo feliz verificado en ejecución. Benjamin probará su 1ª factura real cuando toque; si va bien, EMPIEZA A FACTURAR con BENJAGEST, y solo queda VERI\*FACTU para más adelante. Suite 155 verde. SESIÓN CERRADA.**
 >
 > ## 🚀 PROMPT PARA LA PRÓXIMA SESIÓN (copiar y pegar)
 >
