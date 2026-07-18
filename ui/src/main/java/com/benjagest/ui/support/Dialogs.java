@@ -98,6 +98,14 @@ public final class Dialogs {
                     if (stage == primary) continue;                          // no la ventana principal
                     stage.addEventHandler(javafx.stage.WindowEvent.WINDOW_SHOWN,
                             ev -> rescueToAppScreen(stage));
+                    // Red de seguridad: si WINDOW_SHOWN ya se disparó ANTES de que
+                    // registráramos el handler (p.ej. el showAndWait del bloqueo/
+                    // salvapantallas, que muestra la ventana en el acto), el evento
+                    // no nos llega. Reintentamos en el próximo pulso, cuando la
+                    // ventana ya está mostrada y posicionada.
+                    Platform.runLater(() -> {
+                        if (stage.isShowing()) rescueToAppScreen(stage);
+                    });
                 }
             }
         });
