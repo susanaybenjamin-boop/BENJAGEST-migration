@@ -7277,6 +7277,9 @@ public final class I18n {
             case "accounting.action.refresh" -> "Refresh";
             case "accounting.action.validate" -> "Validate";
             case "accounting.action.accept" -> "Accept as-is";
+            case "accounting.action.discard" -> "Discard";
+            case "accounting.confirm.discard" -> "Discard this draft? It will be marked as voided and leave \"To validate\". If it is a duplicated purchase invoice, delete it in Purchases too.";
+            case "accounting.discard.reason" -> "Discarded from To validate";
             case "accounting.dup.title" -> "Possible duplicate expense";
             case "accounting.dup.question" -> "What do you want to do?";
             case "accounting.dup.delete" -> "Delete proposed duplicate";
@@ -8662,6 +8665,9 @@ public final class I18n {
             case "accounting.action.refresh" -> "Refrescar";
             case "accounting.action.validate" -> "Validar";
             case "accounting.action.accept" -> "Aceptar tal cual";
+            case "accounting.action.discard" -> "Descartar";
+            case "accounting.confirm.discard" -> "¿Descartar este borrador? Se marcará como anulado y saldrá de «Por validar». Si es una factura de compra duplicada, elimínala también en Compras.";
+            case "accounting.discard.reason" -> "Descartado desde Por validar";
             case "accounting.dup.title" -> "Posible gasto duplicado";
             case "accounting.dup.question" -> "¿Qué quieres hacer?";
             case "accounting.dup.delete" -> "Eliminar duplicado propuesto";
