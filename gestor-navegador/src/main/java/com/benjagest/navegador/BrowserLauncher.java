@@ -195,6 +195,12 @@ public final class BrowserLauncher {
         frame.getContentPane().add(pane, BorderLayout.CENTER);
         frame.setSize(1280, 860);
         positionOnAnchorScreen(frame, anchorX, anchorY);
+        // GESTOR-MAX (2026-07-18) — Abrir MAXIMIZADO en ese monitor. Con monitores
+        // de distinta posición/escala, la ventana flotante dejaba la barra de título
+        // (y sus botones) FUERA del borde superior visible. Maximizada, Windows pone
+        // la barra en el borde superior del área de trabajo del monitor -> siempre
+        // visible, y además aprovecha toda la pantalla.
+        frame.setExtendedState(frame.getExtendedState() | JFrame.MAXIMIZED_BOTH);
         frame.setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
         frame.addWindowListener(new WindowAdapter() {
             @Override
