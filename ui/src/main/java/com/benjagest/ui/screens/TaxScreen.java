@@ -1550,12 +1550,24 @@ public class TaxScreen extends ScreenBase {
     private void saveFiling(com.benjagest.ui.model.TaxFilingEntry existing, String status,
                              String dataJson, java.math.BigDecimal total, String csv, String notes,
                              java.util.List<com.benjagest.ui.model.TaxModelEntry> catalog) {
+        // CASILLAS-CONGELADAS (2026-07-18) — Una declaración ya PRESENTED/PAID tiene
+        // las casillas CONGELADAS por ley (RD 1007/2023): el backend rechaza cualquier
+        // cambio en 'data'/'total'. Pero los editores, al guardar, RECONSTRUYEN el JSON
+        // de casillas desde los campos, y ese re-encode difiere en formato/redondeo del
+        // guardado (el 303 recalcula 27/45/46 con HALF_UP). El backend comparaba el JSON
+        // como TEXTO y lo tomaba por "casillas modificadas" → CONFLICT → la UI mostraba
+        // "revisa los datos". Por eso el 303 no pasaba de PRESENTADO a PAGADO (el 130
+        // coincidía por suerte). Si ya está congelada, mandamos SOLO el cambio de estado
+        // (+ csv/notas): sin data/total no se dispara el guard y la transición pasa.
+        boolean frozen = "PRESENTED".equals(existing.status()) || "PAID".equals(existing.status());
+        final String dataToSend = frozen ? null : dataJson;
+        final java.math.BigDecimal totalToSend = frozen ? null : total;
         Task<com.benjagest.ui.model.TaxFilingEntry> task = new Task<>() {
             @Override
             protected com.benjagest.ui.model.TaxFilingEntry call() throws Exception {
                 return altaApiClient.updateFiling(existing.id(), existing.taxModelCode(),
                         existing.periodYear(), existing.periodQuarter(), existing.periodMonth(),
-                        status, dataJson, total,
+                        status, dataToSend, totalToSend,
                         blankToNullOrSelf(csv),
                         blankToNullOrSelf(notes));
             }

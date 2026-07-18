@@ -210,7 +210,10 @@ public class AltaApiClient {
     }
 
     public List<ManagedClientEntry> listManagedClients() throws IOException, InterruptedException {
-        HttpResponse<String> r = send(req(baseUrl + "/advisory/clients").GET());
+        // NOTIF-OWNER (2026-07-18) — La cartera de clientes es SIEMPRE de la
+        // asesoría; sendAsOwner para que funcione también cuando la UI está
+        // actuando por un cliente (si no, /advisory/clients daría 403).
+        HttpResponse<String> r = sendAsOwner(req(baseUrl + "/advisory/clients").GET());
         return parseObjects(r.body(), "legalName", obj -> new ManagedClientEntry(
                 textField(obj, "id"),
                 textField(obj, "legalName"),
@@ -941,6 +944,46 @@ public class AltaApiClient {
     public void deleteFiling(String id) throws IOException, InterruptedException {
         send(req(baseUrl + "/tax/filings/" + id).DELETE());
     }
+
+    /**
+     * SYS-INFO — Entorno de BD del backend al que está conectada la UI, para
+     * mostrar en el título PRUEBA (3307) vs PRODUCCIÓN (embebida 13307) y no
+     * operar por error sobre datos reales.
+     */
+    // ============================================================
+    //  Equipos vinculados por PIN (multi-puesto) — /api/auth/devices
+    // ============================================================
+
+    /** Lista los equipos emparejados de la asesoría (para Configuración → Sesión). */
+    public List<com.benjagest.ui.model.PairedDeviceEntry> listPairedDevices()
+            throws IOException, InterruptedException {
+        HttpResponse<String> r = sendAsOwner(req(baseUrl + "/auth/devices").GET());
+        List<com.benjagest.ui.model.PairedDeviceEntry> out = new ArrayList<>();
+        for (String obj : splitTopLevelObjects(r.body())) {
+            out.add(new com.benjagest.ui.model.PairedDeviceEntry(
+                    textField(obj, "id"),
+                    textField(obj, "name"),
+                    textField(obj, "tokenPrefix"),
+                    textField(obj, "pairedAt"),
+                    textField(obj, "lastSeenAt")));
+        }
+        return out;
+    }
+
+    /** Revoca (desvincula) un equipo. Solo el OWNER de la asesoría. Irreversible. */
+    public void revokePairedDevice(String deviceId) throws IOException, InterruptedException {
+        sendAsOwner(req(baseUrl + "/auth/devices/" + deviceId).DELETE());
+    }
+
+    public SystemInfo fetchSystemInfo() throws IOException, InterruptedException {
+        HttpResponse<String> r = sendAsOwner(req(baseUrl + "/system/info").GET());
+        String db = textField(r.body(), "database");
+        boolean embedded = java.util.regex.Pattern
+                .compile("\"embedded\"\\s*:\\s*true").matcher(r.body()).find();
+        return new SystemInfo(db, embedded);
+    }
+
+    public record SystemInfo(String database, boolean embedded) {}
 
     public List<TaxDueDateEntry> calendar(int year) throws IOException, InterruptedException {
         HttpResponse<String> r = send(req(baseUrl + "/tax/calendar?year=" + year).GET());
@@ -2451,7 +2494,12 @@ public class AltaApiClient {
     // ============================================================
 
     public int countUnreadAdvisoryNotifications() throws IOException, InterruptedException {
-        HttpResponse<String> r = send(req(
+        // NOTIF-OWNER (2026-07-18) — La bandeja del asesor es SIEMPRE de la
+        // asesoría, aunque la UI esté actuando por un cliente. Usamos sendAsOwner
+        // (manda el X-Company-Id de la asesoría, no el del cliente): si no, el
+        // endpoint /api/advisory/... daba 403 "el modulo advisory no esta activo
+        // para la empresa <cliente>" y cargaba las del cliente equivocado.
+        HttpResponse<String> r = sendAsOwner(req(
                 baseUrl + "/advisory/notifications/count-unread").GET());
         if (r.statusCode() < 200 || r.statusCode() >= 300) {
             throw new IOException("HTTP " + r.statusCode() + ": " + r.body());
@@ -2464,7 +2512,7 @@ public class AltaApiClient {
     public List<com.benjagest.ui.model.AdvisoryNotificationEntry>
             listAdvisoryNotifications(boolean onlyUnread)
             throws IOException, InterruptedException {
-        HttpResponse<String> r = send(req(
+        HttpResponse<String> r = sendAsOwner(req(  // NOTIF-OWNER: siempre la asesoría
                 baseUrl + "/advisory/notifications?onlyUnread=" + onlyUnread).GET());
         if (r.statusCode() < 200 || r.statusCode() >= 300) {
             throw new IOException("HTTP " + r.statusCode() + ": " + r.body());
@@ -2487,7 +2535,7 @@ public class AltaApiClient {
 
     public void markAdvisoryNotificationRead(String id)
             throws IOException, InterruptedException {
-        HttpResponse<String> r = send(req(
+        HttpResponse<String> r = sendAsOwner(req(  // NOTIF-OWNER: siempre la asesoría
                 baseUrl + "/advisory/notifications/" + id + "/read")
                 .POST(java.net.http.HttpRequest.BodyPublishers.noBody()));
         if (r.statusCode() < 200 || r.statusCode() >= 300) {
@@ -2497,7 +2545,7 @@ public class AltaApiClient {
 
     public void dismissAdvisoryNotification(String id)
             throws IOException, InterruptedException {
-        HttpResponse<String> r = send(req(
+        HttpResponse<String> r = sendAsOwner(req(  // NOTIF-OWNER: siempre la asesoría
                 baseUrl + "/advisory/notifications/" + id + "/dismiss")
                 .POST(java.net.http.HttpRequest.BodyPublishers.noBody()));
         if (r.statusCode() < 200 || r.statusCode() >= 300) {
@@ -2506,7 +2554,7 @@ public class AltaApiClient {
     }
 
     public int markAllAdvisoryNotificationsRead() throws IOException, InterruptedException {
-        HttpResponse<String> r = send(req(
+        HttpResponse<String> r = sendAsOwner(req(  // NOTIF-OWNER: siempre la asesoría
                 baseUrl + "/advisory/notifications/mark-all-read")
                 .POST(java.net.http.HttpRequest.BodyPublishers.noBody()));
         if (r.statusCode() < 200 || r.statusCode() >= 300) {

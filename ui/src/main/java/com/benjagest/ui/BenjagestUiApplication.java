@@ -214,6 +214,9 @@ public class BenjagestUiApplication extends Application
             //   - "shifts" eliminado — pasa a sub-pestaña dentro de Labor.
     );
 
+    /** Ventana principal (para guardar su geometría al cerrar; ver {@link #stop()}). */
+    private Stage primaryStage;
+
     @Override
     public void start(Stage stage) {
         root = new BorderPane();
@@ -239,13 +242,61 @@ public class BenjagestUiApplication extends Application
         stage.setMinHeight(Math.min(640, vb.getHeight()));
         stage.setScene(scene);
         showInitialScreen();
-        // Centrar en la pantalla primaria ANTES de mostrar (el tamaño ya está acotado
-        // a sus límites visibles arriba). NO añadimos ningún listener dinámico: el
-        // usuario debe poder mover la ventana entre pantallas y maximizar libremente.
-        // El único objetivo es no ABRIR más grande que la pantalla.
-        stage.setX(vb.getMinX() + Math.max(0, (vb.getWidth() - w) / 2));
-        stage.setY(vb.getMinY() + Math.max(0, (vb.getHeight() - h) / 2));
+        this.primaryStage = stage;
+        // La X de la ventana principal debe comportarse como "Salir": GUARDAR la
+        // geometría (con la ventana aún posicionada, antes de cerrarse) y salir
+        // limpio. Sin esto, cerrar por X no registraba de forma fiable dónde quedó
+        // la app y el vigilante no la reabría en ese monitor.
+        stage.setOnCloseRequest(ev -> {
+            com.benjagest.ui.support.WindowGeometry.save(stage);
+            javafx.application.Platform.exit();
+            System.exit(0);
+        });
+        // MULTIMON — Reabrir en la pantalla/posición donde se cerró la app, si esa
+        // pantalla sigue conectada. Si no hay dato guardado o esa pantalla ya no
+        // existe, se centra en la primaria (comportamiento anterior). El tamaño ya
+        // viene acotado arriba; restore() también acota a la pantalla destino.
+        boolean restored = com.benjagest.ui.support.WindowGeometry.restore(stage, w, h);
+        if (!restored) {
+            stage.setX(vb.getMinX() + Math.max(0, (vb.getWidth() - w) / 2));
+            stage.setY(vb.getMinY() + Math.max(0, (vb.getHeight() - h) / 2));
+        }
+        // Recordar la geometría (mientras no esté maximizada) para guardarla al cerrar.
+        com.benjagest.ui.support.WindowGeometry.track(stage);
+        // DOBLE-PANTALLA (MULTIMON) — registrar la ventana principal como owner
+        // por defecto de los diálogos, para que aparezcan en el MISMO monitor
+        // que la app (no siempre en el primario).
+        com.benjagest.ui.support.Dialogs.setPrimaryWindow(stage);
+        // MULTIMON — Vigilante global: recoloca en el monitor de la app cualquier
+        // diálogo que se abra en otro monitor (validar, reclasificar, editores…),
+        // sin tener que tocar cada ventana. Se instala una sola vez.
+        com.benjagest.ui.support.Dialogs.installGlobalPositioner();
+        // CERT-SWEEP (2026-07-18) — Barrer al arrancar cualquier certificado de
+        // cliente que BENJAGEST importó y que un cierre abrupto (crash, cerrar la
+        // app con el gestor abierto) dejó colgado en el almacén de Windows: eso
+        // contaminaba Chrome (la AEAT ofrecía el cert equivocado). Solo quita los
+        // marcados por BENJAGEST, nunca el propio del usuario. En hilo aparte para
+        // no retrasar el arranque (lanza PowerShell). Y un shutdown hook por si el
+        // cierre normal no ejecuta la limpieza del gestor.
+        Thread certSweep = new Thread(
+                com.benjagest.ui.service.WindowsCertImporter::sweepManagedCerts, "cert-sweep");
+        certSweep.setDaemon(true);
+        certSweep.start();
+        Runtime.getRuntime().addShutdownHook(new Thread(
+                com.benjagest.ui.service.WindowsCertImporter::sweepManagedCerts,
+                "cert-sweep-shutdown"));
         stage.show();
+    }
+
+    /**
+     * MULTIMON — Al cerrar la app, guardar en qué pantalla/posición quedó la
+     * ventana principal para reabrirla ahí la próxima vez (ver
+     * {@link com.benjagest.ui.support.WindowGeometry}). JavaFX llama a stop() al
+     * cerrar la última ventana o en Platform.exit().
+     */
+    @Override
+    public void stop() {
+        com.benjagest.ui.support.WindowGeometry.save(primaryStage);
     }
 
     // ===================================================================
@@ -663,6 +714,7 @@ public class BenjagestUiApplication extends Application
             }
             // Cerrarse YA: mientras esta app viva, sus jar están bloqueados y
             // msiexec aplazaría el reemplazo al reinicio (el bug de hoy).
+            com.benjagest.ui.support.WindowGeometry.save(primaryStage); // MULTIMON: antes de morir la JVM
             javafx.application.Platform.exit();
             System.exit(0);
         });
@@ -686,6 +738,46 @@ public class BenjagestUiApplication extends Application
 
         dlg.show();
         start(dl, "update-download");
+    }
+
+    /**
+     * SYS-INFO — Consulta al backend a qué BD está conectado y lo refleja en el
+     * título de la ventana: "BENJAGEST — PRUEBA · localhost:3307/benjagest" o
+     * "BENJAGEST — PRODUCCIÓN · 127.0.0.1:13307/benjagest". Best-effort: si el
+     * backend no responde, el título se queda como "BENJAGEST".
+     */
+    private void applyEnvironmentTitle() {
+        Task<com.benjagest.ui.service.AltaApiClient.SystemInfo> tk = new Task<>() {
+            @Override
+            protected com.benjagest.ui.service.AltaApiClient.SystemInfo call() throws Exception {
+                return altaApiClient.fetchSystemInfo();
+            }
+        };
+        tk.setOnSucceeded(e -> {
+            com.benjagest.ui.service.AltaApiClient.SystemInfo info = tk.getValue();
+            if (info == null || root == null || root.getScene() == null) return;
+            javafx.stage.Window w = root.getScene().getWindow();
+            if (w instanceof javafx.stage.Stage stage) {
+                stage.setTitle("BENJAGEST — " + environmentLabel(info));
+            }
+        });
+        tk.setOnFailed(e -> { /* sin info → título por defecto */ });
+        start(tk, "system-info");
+    }
+
+    private static String environmentLabel(com.benjagest.ui.service.AltaApiClient.SystemInfo info) {
+        String db = info.database() == null ? "" : info.database();
+        // 13307 = MariaDB embebida del instalable = PRODUCCIÓN; 3307 = BD de prueba.
+        if (info.embedded() || db.contains(":13307")) return "PRODUCCIÓN · " + shortDb(db);
+        if (db.contains(":3307")) return "PRUEBA · " + shortDb(db);
+        return shortDb(db);
+    }
+
+    /** jdbc:mariadb://host:puerto/bd → host:puerto/bd (para el título). */
+    private static String shortDb(String jdbc) {
+        if (jdbc == null || jdbc.isBlank()) return "?";
+        int i = jdbc.indexOf("//");
+        return i >= 0 ? jdbc.substring(i + 2) : jdbc;
     }
 
     private void handleLoginSuccess() {
@@ -717,6 +809,10 @@ public class BenjagestUiApplication extends Application
                 deriveDefaultMode(auth.activeCompanyType())
         );
         appMode = AppMode.from(session.defaultMode());
+        // SYS-INFO — Poner en el título a qué BD está conectada (PRUEBA 3307 vs
+        // PRODUCCIÓN embebida 13307). Evita el susto de operar sobre datos reales
+        // creyendo estar en pruebas.
+        applyEnvironmentTitle();
         // Antes de pintar el shell, intentamos cargar los modulos activos
         // de esta empresa. Si falla (sin red, sin permiso, etc.), el
         // sidebar usa la lista hardcodeada como fallback.
@@ -1129,6 +1225,10 @@ public class BenjagestUiApplication extends Application
         javafx.scene.control.ListView<com.benjagest.ui.model.AdvisoryNotificationEntry> list =
                 new javafx.scene.control.ListView<>();
         list.setPrefHeight(420);
+        // Nombre del cliente por id (cartera de la asesoría). Se rellena async; hasta
+        // entonces la campana funciona igual, solo que sin el nombre del cliente.
+        final java.util.Map<String, com.benjagest.ui.model.ManagedClientEntry> notifClientsById =
+                new java.util.HashMap<>();
         list.setCellFactory(lv -> new javafx.scene.control.ListCell<com.benjagest.ui.model.AdvisoryNotificationEntry>() {
             @Override
             protected void updateItem(com.benjagest.ui.model.AdvisoryNotificationEntry n, boolean empty) {
@@ -1143,13 +1243,19 @@ public class BenjagestUiApplication extends Application
                         + severityColor(n.severity()) + ";");
                 Label title = new Label(n.title());
                 title.setStyle("-fx-font-weight: " + (n.unread() ? "bold" : "normal") + ";");
+                // Subtítulo: tipo · cliente (si la notificación es de uno) · fecha legible.
+                String clientName = null;
+                if (n.clientCompanyId() != null && !n.clientCompanyId().isBlank()) {
+                    com.benjagest.ui.model.ManagedClientEntry c =
+                            notifClientsById.get(n.clientCompanyId());
+                    if (c != null) clientName = c.legalName();
+                }
+                String dateStr = formatNotifDate(n.createdAt());
                 Label sub = new Label(humanizeNotifType(n.notificationType())
-                        + (n.createdAt() == null || n.createdAt().isBlank()
-                                ? "" : "  ·  " + n.createdAt()));
+                        + (clientName == null ? "" : "  ·  " + clientName)
+                        + (dateStr.isBlank() ? "" : "  ·  " + dateStr));
                 sub.getStyleClass().add("settings-hint");
-                Label msg = new Label(n.message() == null ? "" : n.message());
-                msg.setWrapText(true);
-                msg.setMaxWidth(440);
+                javafx.scene.Node msg = notifMessageNode(n.message());
                 VBox texts = new VBox(2, title, sub, msg);
                 HBox row = new HBox(10, sevDot, texts);
                 row.setAlignment(javafx.geometry.Pos.TOP_LEFT);
@@ -1166,13 +1272,31 @@ public class BenjagestUiApplication extends Application
         dismissAll.setGraphic(icon("fas-broom"));
         Button markRead = new Button(t("advisory.notif.mark_read"));
         Button dismiss = new Button(t("advisory.notif.dismiss"));
+        // Ir directo al cliente de la notificación (solo si es de uno y está en cartera).
+        Button openClient = new Button(t("pending.open_client"));
+        openClient.setGraphic(icon("fas-arrow-right"));
         markRead.setDisable(true);
         dismiss.setDisable(true);
+        openClient.setDisable(true);
 
         list.getSelectionModel().selectedItemProperty().addListener((o, a, b) -> {
             boolean has = b != null;
             markRead.setDisable(!has || !b.unread());
             dismiss.setDisable(!has);
+            openClient.setDisable(!has || appMode != AppMode.ADVISORY
+                    || b.clientCompanyId() == null || b.clientCompanyId().isBlank()
+                    || notifClientsById.get(b.clientCompanyId()) == null);
+        });
+        openClient.setOnAction(e -> {
+            com.benjagest.ui.model.AdvisoryNotificationEntry sel =
+                    list.getSelectionModel().getSelectedItem();
+            if (sel == null || sel.clientCompanyId() == null) return;
+            com.benjagest.ui.model.ManagedClientEntry entry =
+                    notifClientsById.get(sel.clientCompanyId());
+            if (entry == null) return;
+            dlg.close();
+            boolean linked = "CLIENT".equalsIgnoreCase(entry.companyType());
+            switchToClient(entry, linked);
         });
 
         final boolean advisoryMode = appMode == AppMode.ADVISORY;
@@ -1247,7 +1371,7 @@ public class BenjagestUiApplication extends Application
         toolbarTop.setAlignment(javafx.geometry.Pos.CENTER_LEFT);
         Region sp = new Region();
         HBox.setHgrow(sp, Priority.ALWAYS);
-        HBox toolbarBot = new HBox(8, markRead, dismiss, sp, close);
+        HBox toolbarBot = new HBox(8, markRead, dismiss, openClient, sp, close);
         toolbarBot.setAlignment(javafx.geometry.Pos.CENTER_LEFT);
         VBox toolbar = new VBox(8, toolbarTop, toolbarBot);
 
@@ -1289,6 +1413,25 @@ public class BenjagestUiApplication extends Application
             scene.getStylesheets().addAll(advisoryNotificationsBell.getScene().getStylesheets());
         }
         dlg.setScene(scene);
+        // Cargar la cartera para poner NOMBRE al cliente de cada notificación y
+        // habilitar "Abrir cliente". Best-effort: si falla, la campana va igual.
+        if (advisoryMode) {
+            Task<java.util.List<com.benjagest.ui.model.ManagedClientEntry>> ck = new Task<>() {
+                @Override
+                protected java.util.List<com.benjagest.ui.model.ManagedClientEntry> call()
+                        throws Exception {
+                    return altaApiClient.listManagedClients();
+                }
+            };
+            ck.setOnSucceeded(e -> {
+                notifClientsById.clear();
+                for (com.benjagest.ui.model.ManagedClientEntry c : ck.getValue()) {
+                    notifClientsById.put(c.id(), c);
+                }
+                list.refresh();
+            });
+            start(ck, "notif-clients");
+        }
         reload.run();
         dlg.show();
     }
@@ -1300,6 +1443,53 @@ public class BenjagestUiApplication extends Application
             case "WARNING" -> "#fb8c00";
             default        -> "#1e88e5";
         };
+    }
+
+    /** Fecha de notificación (Instant ISO del backend) → "dd/MM/yyyy HH:mm". Crudo si no parsea. */
+    private static String formatNotifDate(String iso) {
+        if (iso == null || iso.isBlank()) return "";
+        try {
+            java.time.Instant inst = java.time.Instant.parse(iso);
+            return java.time.LocalDateTime.ofInstant(inst, java.time.ZoneId.systemDefault())
+                    .format(java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm"));
+        } catch (Exception ex) {
+            return iso;
+        }
+    }
+
+    /**
+     * Cuerpo de una notificación con los enlaces (http/https) convertidos en
+     * hipervínculos clicables que abren el navegador del sistema. Lo usa la campana
+     * para que el enlace del BOE sea pulsable (antes era texto plano en un Label).
+     */
+    private javafx.scene.Node notifMessageNode(String message) {
+        javafx.scene.text.TextFlow flow = new javafx.scene.text.TextFlow();
+        flow.setMaxWidth(440);
+        if (message == null || message.isBlank()) return flow;
+        java.util.regex.Matcher m =
+                java.util.regex.Pattern.compile("https?://\\S+").matcher(message);
+        int idx = 0;
+        while (m.find()) {
+            if (m.start() > idx) {
+                flow.getChildren().add(new javafx.scene.text.Text(message.substring(idx, m.start())));
+            }
+            String url = m.group();
+            javafx.scene.control.Hyperlink link = new javafx.scene.control.Hyperlink(url);
+            link.setPadding(javafx.geometry.Insets.EMPTY);
+            link.setOnAction(ev -> {
+                try {
+                    getHostServices().showDocument(url);
+                } catch (Exception ignored) {
+                    // sin navegador disponible → no rompemos la campana
+                }
+            });
+            flow.getChildren().add(link);
+            idx = m.end();
+        }
+        if (idx < message.length()) {
+            flow.getChildren().add(new javafx.scene.text.Text(message.substring(idx)));
+        }
+        return flow;
     }
 
     private String humanizeNotifType(String type) {
@@ -1515,6 +1705,7 @@ public class BenjagestUiApplication extends Application
             // con la BD embebida ya apagada → ni contraseña ni PIN funcionaban.
             // Salir = CERRAR el programa entero (mismo camino ordenado que el
             // cierre de ventana); para reentrar se vuelve a abrir la app.
+            com.benjagest.ui.support.WindowGeometry.save(primaryStage); // MULTIMON: antes de morir la JVM
             javafx.application.Platform.exit();
             System.exit(0);
         });
@@ -1653,6 +1844,14 @@ public class BenjagestUiApplication extends Application
         } else {
             base = appMode == AppMode.ADVISORY ? ADVISORY_MODULES : BUSINESS_MODULES;
         }
+        // BUZÓN DEHú FUERA DEL SIDEBAR (decisión Benjamin 2026-07-18) — el módulo
+        // 'notifications' (buzón DEHú) se retira del menú: el conector DEHú exige
+        // persona jurídica y nunca se conectó el pull automático; la pantalla y sus
+        // datos SIGUEN en el código (showDehuModule) por si se retoma, solo se
+        // oculta el acceso. Filtrado aquí para que valga en todos los modos.
+        base = base.stream()
+                .filter(m -> !"notifications".equals(m.id()))
+                .toList();
         // 2026-06-15 (decisión Benjamin): en el cockpit PROPIO de la asesoría
         // (modo ADVISORY y NO actuando por un cliente) el sidebar es de
         // ADMINISTRACIÓN. La operativa del propio negocio (Fiscal, Laboral,
@@ -9333,6 +9532,7 @@ public class BenjagestUiApplication extends Application
             stage.close();
             try { authApiClient.logout(); } catch (Exception ignore) {}
             AuthSession.get().clear();
+            com.benjagest.ui.support.WindowGeometry.save(primaryStage); // MULTIMON: antes de morir la JVM
             javafx.application.Platform.exit();
             System.exit(0);
         });
@@ -9342,13 +9542,16 @@ public class BenjagestUiApplication extends Application
         // ANTES del fondo para poder dimensionar el logo respecto a la pantalla.
         javafx.geometry.Rectangle2D area = javafx.stage.Screen.getPrimary().getBounds();
         try {
-            javafx.stage.Window owner = (root != null && root.getScene() != null)
-                    ? root.getScene().getWindow() : null;
+            javafx.stage.Window owner = primaryStage != null ? primaryStage
+                    : (root != null && root.getScene() != null ? root.getScene().getWindow() : null);
             if (owner != null && owner.getWidth() > 0 && owner.getHeight() > 0) {
                 double cx = owner.getX() + owner.getWidth() / 2;
                 double cy = owner.getY() + owner.getHeight() / 2;
-                var screens = javafx.stage.Screen.getScreensForRectangle(cx, cy, 1, 1);
-                if (!screens.isEmpty()) area = screens.get(0).getBounds();
+                // Buscar la pantalla que CONTIENE el centro (bounds directos, sin
+                // getScreensForRectangle, que con escalados distintos mapea mal).
+                for (javafx.stage.Screen s : javafx.stage.Screen.getScreens()) {
+                    if (s.getBounds().contains(cx, cy)) { area = s.getBounds(); break; }
+                }
             }
         } catch (Exception ignored) {
         }

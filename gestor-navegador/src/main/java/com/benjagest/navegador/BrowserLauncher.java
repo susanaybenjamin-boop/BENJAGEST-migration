@@ -21,6 +21,11 @@ import org.cef.CefApp;
 import org.cef.CefApp.CefAppState;
 import org.cef.CefClient;
 import org.cef.browser.CefBrowser;
+import org.cef.browser.CefFrame;
+import org.cef.callback.CefBeforeDownloadCallback;
+import org.cef.callback.CefDownloadItem;
+import org.cef.handler.CefDownloadHandlerAdapter;
+import org.cef.handler.CefLifeSpanHandlerAdapter;
 
 /**
  * GESTOR-NAVEGADOR — Navegador embebido (Chromium real vía JCEF) que la app
@@ -121,6 +126,44 @@ public final class BrowserLauncher {
 
         CefApp cefApp = builder.build(); // bloqueante: descarga/instala en el 1er arranque
         CefClient client = cefApp.createClient();
+        final String windowTitle = title;
+
+        // DESCARGAS (GESTOR-DL) — Sin un CefDownloadHandler, Chromium CANCELA por
+        // defecto TODA descarga (los PDF de la AEAT no bajaban). Registramos uno
+        // que continúa la descarga mostrando el diálogo nativo "Guardar como",
+        // sugiriendo la carpeta Descargas del usuario. Al ir en el CefClient
+        // compartido, aplica a las pestañas Y a las ventanas emergentes.
+        client.addDownloadHandler(new CefDownloadHandlerAdapter() {
+            @Override
+            public boolean onBeforeDownload(CefBrowser browserRef, CefDownloadItem item,
+                    String suggestedName, CefBeforeDownloadCallback callback) {
+                File downloads = new File(System.getProperty("user.home"), "Downloads");
+                String name = (suggestedName == null || suggestedName.isBlank())
+                        ? "descarga" : suggestedName;
+                if (callback != null) {
+                    // showDialog=true → el usuario elige dónde guardar (diálogo del SO).
+                    callback.Continue(new File(downloads, name).getAbsolutePath(), true);
+                }
+                return true;
+            }
+        });
+
+        // VENTANAS EMERGENTES (GESTOR-POPUP) — Sin LifeSpanHandler, Chromium abría
+        // los window.open()/target=_blank como una ventana NATIVA suya, fuera del
+        // control de la app: ahí las descargas no funcionaban y AL MAXIMIZARLA se
+        // cerraba la aplicación entera. Cancelamos ese popup nativo (return true) y
+        // reabrimos la URL en una VENTANA GESTIONADA por nosotros (mismo CefClient →
+        // hereda el handler de descargas; decorada por el SO → maximizar es seguro).
+        client.addLifeSpanHandler(new CefLifeSpanHandlerAdapter() {
+            @Override
+            public boolean onBeforePopup(CefBrowser browserRef, CefFrame frame,
+                    String targetUrl, String targetFrameName) {
+                final String url = (targetUrl == null || targetUrl.isBlank())
+                        ? "about:blank" : targetUrl;
+                SwingUtilities.invokeLater(() -> openPopupWindow(client, url, windowTitle));
+                return true; // cancela el popup NATIVO (origen del cierre al maximizar)
+            }
+        });
 
         final JFrame frame = new JFrame(title);
         final JTabbedPane pane = new JTabbedPane();
@@ -149,6 +192,24 @@ public final class BrowserLauncher {
             }
         });
         SwingUtilities.invokeLater(() -> frame.setVisible(true));
+    }
+
+    /**
+     * GESTOR-POPUP — Abre una URL emergente (window.open/target=_blank) como una
+     * VENTANA GESTIONADA por nosotros, en lugar del popup nativo de Chromium.
+     * Reusa el mismo {@link CefClient} (hereda el handler de descargas) y monta la
+     * misma barra que las pestañas. Al ser un {@link JFrame} decorado por el SO,
+     * maximizar es seguro (el popup nativo cerraba la app). El botón "✕" de la
+     * barra cierra solo esta ventana (dispose del ancestro), no la app.
+     */
+    private static void openPopupWindow(CefClient client, String url, String title) {
+        CefBrowser browser = client.createBrowser(url, false, false);
+        JFrame popup = new JFrame(title);
+        popup.getContentPane().add(buildTab(browser), BorderLayout.CENTER);
+        popup.setSize(1100, 800);
+        popup.setLocationByPlatform(true); // cascada del SO; no todas encima
+        popup.setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
+        popup.setVisible(true);
     }
 
     /** Una pestaña = barra (atrás/adelante/recargar + dirección + cerrar) + navegador. */

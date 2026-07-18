@@ -219,6 +219,31 @@ public class AccountingScreen {
                });
         });
 
+        // DUP-DESCARTAR (2026-07-18, pedido Benjamin) — Botón "Descartar" en Por
+        // validar: cuando confirmas que un borrador es duplicado (o no lo quieres),
+        // lo anulas (VOIDED) directamente, sin depender del aviso emergente que
+        // desaparecía al cerrarlo. Sale de "Por validar" y refresca solo. Nota: si
+        // es una factura de COMPRA duplicada, la factura se elimina en Compras (o
+        // con el aviso "Eliminar"); esto descarta el ASIENTO borrador.
+        Button discard = new Button(tt.apply("accounting.action.discard"));
+        discard.setOnAction(e -> {
+            DiaryEntry sel = pendingTable.getSelectionModel().getSelectedItem();
+            if (sel == null) return;
+            Alert confirm = new Alert(AlertType.CONFIRMATION,
+                    tt.apply("accounting.confirm.discard"),
+                    ButtonType.YES, ButtonType.NO);
+            confirm.setHeaderText(tt.apply("accounting.action.discard"));
+            confirm.showAndWait().ifPresent(bt -> {
+                if (bt != ButtonType.YES) return;
+                async(() -> {
+                    api.voidEntry(sel.id(), tt.apply("accounting.discard.reason"));
+                    return null;
+                }, ok -> com.benjagest.ui.support.RefreshBus.emit(
+                        com.benjagest.ui.support.RefreshBus.TOPIC_JOURNAL),
+                   err -> showError(tt.apply("accounting.action.discard"), err));
+            });
+        });
+
         // Botón "Regenerar asientos faltantes" — recorre facturas guardadas
         // sin asiento y las pasa por el service auto-generador. Útil cuando
         // el cliente tenía facturas anteriores al PGC o sin fiscal_year.
@@ -287,7 +312,7 @@ public class AccountingScreen {
         // los envuelve manteniendo el texto entero (se pierde el espaciador que
         // empujaba reclasificar/backfill a la derecha; el envoltorio lo compensa).
         javafx.scene.layout.FlowPane actions = com.benjagest.ui.support.UiBuilders.actionFlow(
-                refresh, validate, accept, validateBatch, reclassify, backfill);
+                refresh, validate, accept, validateBatch, discard, reclassify, backfill);
 
         // validate y accept solo cuando hay 1; validateBatch cuando hay >=1
         // DRAFT seleccionado.
@@ -300,10 +325,15 @@ public class AccountingScreen {
             boolean anyDraft = sel.stream().anyMatch(
                     en -> en != null && "DRAFT".equalsIgnoreCase(en.status()));
             validateBatch.setDisable(!anyDraft);
+            // Descartar: exactamente 1 y en DRAFT (un POSTED se anula por otra vía).
+            boolean oneDraft = exactlyOne && sel.get(0) != null
+                    && "DRAFT".equalsIgnoreCase(sel.get(0).status());
+            discard.setDisable(!oneDraft);
         });
         validate.setDisable(true);
         accept.setDisable(true);
         validateBatch.setDisable(true);
+        discard.setDisable(true);
 
         VBox box = new VBox(8, hint, actions, pendingTable);
         VBox.setVgrow(pendingTable, Priority.ALWAYS);
