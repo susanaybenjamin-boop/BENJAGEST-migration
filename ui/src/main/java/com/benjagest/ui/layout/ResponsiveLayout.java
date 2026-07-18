@@ -189,6 +189,10 @@ public final class ResponsiveLayout {
      */
     public static void installDialog(Dialog<?> dialog, Node content,
                                        boolean wrapInScroll) {
+        // DOBLE-PANTALLA (MULTIMON) — anclar el diálogo a la ventana activa para
+        // que JavaFX lo abra en el MISMO monitor que la app (no en el primario).
+        // No pisa un owner que el caller ya hubiera fijado.
+        com.benjagest.ui.support.Dialogs.own(dialog);
         DialogPane pane = dialog.getDialogPane();
         // Máscara de fecha automática (dd-MM-yyyy) en TODOS los DatePicker del diálogo.
         // La escena del diálogo no existe hasta mostrarse → la enganchamos por
@@ -206,7 +210,7 @@ public final class ResponsiveLayout {
                     vb.getHeight() - 80);
             pane.setMaxHeight(paneMaxHRaw);
             dialog.setResizable(true);
-            installStageCap(dialog, vb);
+            installStageCap(dialog);
             return;
         }
 
@@ -235,7 +239,7 @@ public final class ResponsiveLayout {
         pane.setMaxHeight(paneMaxH);
 
         dialog.setResizable(true);
-        installStageCap(dialog, vb);
+        installStageCap(dialog);
     }
 
     /**
@@ -253,23 +257,41 @@ public final class ResponsiveLayout {
         });
     }
 
-    private static void installStageCap(Dialog<?> dialog, Rectangle2D vb) {
+    private static void installStageCap(Dialog<?> dialog) {
         DialogPane pane = dialog.getDialogPane();
         dialog.setOnShown(ev -> {
             Scene scene = pane.getScene();
             if (scene == null) return;
             Window w = scene.getWindow();
             if (!(w instanceof Stage stage)) return;
+            // DOBLE-PANTALLA (MULTIMON) — acotar/centrar contra la pantalla REAL
+            // donde ha aparecido el diálogo (sobre su owner), NO la primaria. Antes
+            // usaba Screen.getPrimary() y forzaba la Y al monitor primario, de modo
+            // que el diálogo saltaba al principal aunque la app estuviera en el 2º.
+            Rectangle2D vb = screenBoundsFor(stage);
             stage.setMaxHeight(vb.getHeight());
             if (stage.getHeight() > vb.getHeight()) {
                 stage.setHeight(vb.getHeight() - 10);
             }
             double freeSpace = vb.getHeight() - stage.getHeight();
+            // Solo ajustamos la Y (centrado vertical dentro de SU pantalla); la X la
+            // deja JavaFX centrada sobre el owner → en el monitor correcto.
             if (freeSpace > 0) {
                 stage.setY(vb.getMinY() + freeSpace / 2);
             } else {
                 stage.setY(vb.getMinY());
             }
         });
+    }
+
+    /** Límites (visualBounds) de la pantalla donde está ahora mismo el Stage. */
+    private static Rectangle2D screenBoundsFor(Stage stage) {
+        javafx.collections.ObservableList<Screen> screens = Screen.getScreensForRectangle(
+                stage.getX(), stage.getY(),
+                Math.max(1, stage.getWidth()), Math.max(1, stage.getHeight()));
+        if (!screens.isEmpty()) {
+            return screens.get(0).getVisualBounds();
+        }
+        return Screen.getPrimary().getVisualBounds();
     }
 }

@@ -12,12 +12,76 @@ public final class Dialogs {
 
     private Dialogs() {}
 
+    // DOBLE-PANTALLA (MULTIMON) — ventana principal de la app. La fija
+    // BenjagestUiApplication.start(). Sirve de owner por defecto para que los
+    // diálogos aparezcan en el MISMO monitor que la app y no siempre en el
+    // primario. Sin owner, JavaFX centra todo Alert/Dialog en la pantalla
+    // primaria (bug reportado: el editor abría en el monitor principal aunque
+    // la app estuviera en el segundo).
+    private static javafx.stage.Window primary;
+
+    /** La fija {@code start(Stage)} una vez al arrancar. */
+    public static void setPrimaryWindow(javafx.stage.Window w) {
+        primary = w;
+    }
+
+    /**
+     * Ventana sobre la que anclar un diálogo nuevo: la ENFOCADA (donde está el
+     * usuario ahora mismo, en el monitor que sea); si no, la principal; si no,
+     * cualquiera visible. Resolver en el momento de mostrar → cae en el monitor
+     * correcto aunque la app se haya movido de pantalla.
+     */
+    public static javafx.stage.Window activeOwner() {
+        java.util.List<javafx.stage.Window> ws = javafx.stage.Window.getWindows();
+        javafx.stage.Window focused = ws.stream()
+                .filter(w -> w instanceof javafx.stage.Stage)
+                .filter(javafx.stage.Window::isFocused)
+                .findFirst().orElse(null);
+        if (focused != null) return focused;
+        if (primary != null && primary.isShowing()) return primary;
+        return ws.stream()
+                .filter(w -> w instanceof javafx.stage.Stage)
+                .filter(javafx.stage.Window::isShowing)
+                .findFirst().orElse(null);
+    }
+
+    /** Ancla un Dialog (Alert/ChoiceDialog/TextInputDialog) a la ventana activa. */
+    public static void own(javafx.scene.control.Dialog<?> dialog) {
+        if (dialog != null && dialog.getOwner() == null) {
+            javafx.stage.Window o = activeOwner();
+            if (o != null) dialog.initOwner(o);
+        }
+    }
+
+    /**
+     * Ancla un Stage hijo a la ventana activa y lo centra sobre ella (mismo
+     * monitor). Llamar ANTES de {@code show()}. No pisa una posición si el Stage
+     * ya trae owner (lo dejamos como está).
+     */
+    public static void ownAndCenter(javafx.stage.Stage child) {
+        if (child == null || child.getOwner() != null) return;
+        javafx.stage.Window o = activeOwner();
+        if (o == null) return;
+        try {
+            child.initOwner(o);
+        } catch (IllegalStateException alreadyShown) {
+            return; // ya visible: no forzamos nada
+        }
+        child.setOnShown(ev -> {
+            double x = o.getX() + Math.max(0, (o.getWidth() - child.getWidth()) / 2);
+            double y = o.getY() + Math.max(0, (o.getHeight() - child.getHeight()) / 2);
+            child.setX(x);
+            child.setY(y);
+        });
+    }
+
     /** Alerta de error modal. {@code message} ya humanizado por el caller. */
     public static void error(String title, String message) {
         Platform.runLater(() -> {
             Alert alert = new Alert(Alert.AlertType.ERROR, message, ButtonType.OK);
             alert.setTitle("BENJAGEST");
             alert.setHeaderText(title);
+            own(alert); // DOBLE-PANTALLA: aparece sobre la app, no en el primario
             alert.showAndWait();
         });
     }
@@ -26,6 +90,7 @@ public final class Dialogs {
     public static void info(String title, String body) {
         Alert a = new Alert(Alert.AlertType.INFORMATION, body);
         a.setHeaderText(title);
+        own(a); // DOBLE-PANTALLA
         a.showAndWait();
     }
 
