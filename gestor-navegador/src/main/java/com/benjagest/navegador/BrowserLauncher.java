@@ -91,6 +91,13 @@ public final class BrowserLauncher {
     private static void setupLookAndFeel() {
         try {
             com.formdev.flatlaf.FlatLightLaf.setup();
+            // GESTOR-DECOR (2026-07-18) — Barra de título dibujada por FlatLaf en vez
+            // de la NATIVA de Windows: la nativa PIERDE los botones minimizar/maximizar/
+            // cerrar al llevar la ventana a un monitor con distinta escala (bug conocido
+            // de Swing multi-monitor). La de FlatLaf se pinta en Swing y se ve siempre.
+            // Hay que fijarlo ANTES de crear los JFrame (main frame y popups).
+            javax.swing.JFrame.setDefaultLookAndFeelDecorated(true);
+            javax.swing.JDialog.setDefaultLookAndFeelDecorated(true);
             java.awt.Color accent = new java.awt.Color(0x25, 0x63, 0xEB); // azul BENJAGEST
             javax.swing.UIManager.put("Component.accentColor", accent);
             javax.swing.UIManager.put("Component.focusColor", accent);
