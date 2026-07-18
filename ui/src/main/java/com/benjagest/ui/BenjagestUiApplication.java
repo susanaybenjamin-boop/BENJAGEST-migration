@@ -9542,13 +9542,16 @@ public class BenjagestUiApplication extends Application
         // ANTES del fondo para poder dimensionar el logo respecto a la pantalla.
         javafx.geometry.Rectangle2D area = javafx.stage.Screen.getPrimary().getBounds();
         try {
-            javafx.stage.Window owner = (root != null && root.getScene() != null)
-                    ? root.getScene().getWindow() : null;
+            javafx.stage.Window owner = primaryStage != null ? primaryStage
+                    : (root != null && root.getScene() != null ? root.getScene().getWindow() : null);
             if (owner != null && owner.getWidth() > 0 && owner.getHeight() > 0) {
                 double cx = owner.getX() + owner.getWidth() / 2;
                 double cy = owner.getY() + owner.getHeight() / 2;
-                var screens = javafx.stage.Screen.getScreensForRectangle(cx, cy, 1, 1);
-                if (!screens.isEmpty()) area = screens.get(0).getBounds();
+                // Buscar la pantalla que CONTIENE el centro (bounds directos, sin
+                // getScreensForRectangle, que con escalados distintos mapea mal).
+                for (javafx.stage.Screen s : javafx.stage.Screen.getScreens()) {
+                    if (s.getBounds().contains(cx, cy)) { area = s.getBounds(); break; }
+                }
             }
         } catch (Exception ignored) {
         }

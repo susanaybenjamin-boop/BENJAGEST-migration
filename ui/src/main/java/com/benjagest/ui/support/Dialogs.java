@@ -126,14 +126,16 @@ public final class Dialogs {
         stage.setY(appVb.getMinY() + Math.max(0, (appVb.getHeight() - h) / 2));
     }
 
-    /** visualBounds de la pantalla donde está ahora mismo la ventana (null si aún sin posición). */
+    /** visualBounds de la pantalla que CONTIENE el centro de la ventana (null si sin posición). */
     private static javafx.geometry.Rectangle2D screenBoundsOf(javafx.stage.Window w) {
-        if (Double.isNaN(w.getX()) || Double.isNaN(w.getY())) return null;
-        javafx.collections.ObservableList<javafx.stage.Screen> screens =
-                javafx.stage.Screen.getScreensForRectangle(w.getX(), w.getY(),
-                        Math.max(1, w.getWidth()), Math.max(1, w.getHeight()));
-        if (screens.isEmpty()) return javafx.stage.Screen.getPrimary().getVisualBounds();
-        return screens.get(0).getVisualBounds();
+        if (w == null || Double.isNaN(w.getX()) || Double.isNaN(w.getY())) return null;
+        double cx = w.getX() + Math.max(1, w.getWidth()) / 2;
+        double cy = w.getY() + Math.max(1, w.getHeight()) / 2;
+        // bounds.contains directo (getScreensForRectangle mapea mal con escalados distintos).
+        for (javafx.stage.Screen s : javafx.stage.Screen.getScreens()) {
+            if (s.getBounds().contains(cx, cy)) return s.getVisualBounds();
+        }
+        return javafx.stage.Screen.getPrimary().getVisualBounds();
     }
 
     /** Alerta de error modal. {@code message} ya humanizado por el caller. */

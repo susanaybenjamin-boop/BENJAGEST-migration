@@ -136,19 +136,21 @@ public final class WindowGeometry {
             double w = parse(p.getProperty("w"), defW);
             double h = parse(p.getProperty("h"), defH);
             boolean max = Boolean.parseBoolean(p.getProperty("maximized", "false"));
-            if (Double.isNaN(x) || Double.isNaN(y)) return false;
-            var screens = Screen.getScreensForRectangle(x, y, Math.max(1, w), Math.max(1, h));
+            if (Double.isNaN(x) || Double.isNaN(y) || w <= 0 || h <= 0) return false;
+            // LENIENTE (como VS Code / WhatsApp): solo descartamos si el rectángulo
+            // guardado NO toca NINGUNA pantalla conectada (monitor desenchufado).
+            // Antes usábamos getScreensForRectangle + clamp a esa pantalla: con
+            // escalados distintos JavaFX asignaba el monitor equivocado y el clamp
+            // ARRASTRABA la ventana al primario. Ahora aplicamos lo guardado TAL CUAL.
+            boolean visible = intersectsAnyScreen(x, y, w, h);
             System.out.println("[MULTIMON-RESTORE] saved x=" + x + " y=" + y + " w=" + w + " h=" + h
-                    + " max=" + max + " -> " + (screens.isEmpty() ? "RECHAZADO (ninguna pantalla) -> primaria" : "OK")
+                    + " max=" + max + " -> " + (visible ? "APLICAR tal cual" : "RECHAZADO (fuera de toda pantalla) -> primaria")
                     + " |" + screensDebug());
-            if (screens.isEmpty()) return false; // esa pantalla ya no está conectada
-            Rectangle2D vb = screens.get(0).getVisualBounds();
-            double fw = Math.min(w, vb.getWidth());
-            double fh = Math.min(h, vb.getHeight());
-            stage.setWidth(fw);
-            stage.setHeight(fh);
-            stage.setX(clamp(x, vb.getMinX(), vb.getMaxX() - fw));
-            stage.setY(clamp(y, vb.getMinY(), vb.getMaxY() - fh));
+            if (!visible) return false;
+            stage.setX(x);
+            stage.setY(y);
+            stage.setWidth(w);
+            stage.setHeight(h);
             if (max) stage.setMaximized(true);
             return true;
         } catch (Exception ignored) {
@@ -165,8 +167,12 @@ public final class WindowGeometry {
         }
     }
 
-    private static double clamp(double v, double min, double max) {
-        double hi = Math.max(min, max);
-        return Math.max(min, Math.min(v, hi));
+    /** ¿El rectángulo (x,y,w,h) toca alguna pantalla conectada? (bounds directos, sin mapear). */
+    private static boolean intersectsAnyScreen(double x, double y, double w, double h) {
+        Rectangle2D r = new Rectangle2D(x, y, Math.max(1, w), Math.max(1, h));
+        for (Screen s : Screen.getScreens()) {
+            if (s.getBounds().intersects(r)) return true;
+        }
+        return false;
     }
 }
