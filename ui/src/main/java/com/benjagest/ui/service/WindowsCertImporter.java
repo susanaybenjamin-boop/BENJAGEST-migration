@@ -29,9 +29,26 @@ public final class WindowsCertImporter {
 
     private static final long TIMEOUT_SECONDS = 60;
 
+    /**
+     * Marca (FriendlyName) que BENJAGEST pone a los certificados que ÉL importa al
+     * almacén. Sirve para dos cosas: (1) distinguir "lo que planté yo" de los certs
+     * PROPIOS del usuario, para no borrar nunca los suyos; (2) barrer los que un
+     * cierre abrupto haya dejado colgados ({@link #sweepManagedCerts()}).
+     */
+    private static final String FRIENDLY_NAME = "BENJAGEST-managed";
+
     private WindowsCertImporter() {}
 
-    /** Importa el .p12 a Cert:\CurrentUser\My del usuario y devuelve la huella (40 hex), o null. */
+    /**
+     * Importa el .p12 a Cert:\CurrentUser\My del usuario y devuelve la huella (40
+     * hex) SOLO si lo ha añadido él (para quitarlo al cerrar el gestor).
+     *
+     * <p>CERT-NO-BORRAR-PROPIO (2026-07-18) — Si el certificado YA estaba en el
+     * almacén (típico: es el certificado PROPIO del usuario, que usa también en
+     * Chrome para la AEAT), NO lo añade ni lo marca, y devuelve {@code null} para
+     * que el llamante NO lo borre al cerrar. Antes lo borraba siempre → dejaba al
+     * usuario sin su certificado en Windows.
+     */
     public static String importToUserStore(byte[] p12, String password) {
         if (!isWindows()) {
             return null;
@@ -48,15 +65,33 @@ public final class WindowsCertImporter {
                     + " -ArgumentList $bytes,$env:BG_PFX_PW,$flags;"
                     + "$store=New-Object System.Security.Cryptography.X509Certificates.X509Store"
                     + " -ArgumentList 'My','CurrentUser';"
-                    + "$store.Open('ReadWrite');$store.Add($cert);$store.Close();"
-                    + "Write-Output $cert.Thumbprint";
+                    + "$store.Open('ReadWrite');"
+                    // ¿Ya estaba? (mismo thumbprint) → NO tocar; es del usuario.
+                    + "$existing=$store.Certificates.Find("
+                    + "[System.Security.Cryptography.X509Certificates.X509FindType]::FindByThumbprint,"
+                    + "$cert.Thumbprint,$false);"
+                    + "if($existing.Count -gt 0){$store.Close();Write-Output ('ALREADY:'+$cert.Thumbprint)}"
+                    + "else{$cert.FriendlyName='" + FRIENDLY_NAME + "';"
+                    + "$store.Add($cert);$store.Close();Write-Output ('ADDED:'+$cert.Thumbprint)}";
             String out = runPowerShell(script, password, true);
-            String thumb = lastNonEmptyLine(out);
-            if (thumb == null || !thumb.matches("[0-9A-Fa-f]{40}")) {
-                System.err.println("[ui-cert] Import al almacen sin huella valida.");
+            String line = lastNonEmptyLine(out);
+            if (line == null) {
+                System.err.println("[ui-cert] Import al almacen sin respuesta.");
                 return null;
             }
-            return thumb.toUpperCase(Locale.ROOT);
+            if (line.startsWith("ALREADY:")) {
+                // Ya estaba (el propio del usuario): el navegador lo verá igual y
+                // NO debemos quitarlo al cerrar. Señalamos "no borrar" con null.
+                return null;
+            }
+            if (line.startsWith("ADDED:")) {
+                String thumb = line.substring("ADDED:".length()).trim();
+                if (thumb.matches("[0-9A-Fa-f]{40}")) {
+                    return thumb.toUpperCase(Locale.ROOT);
+                }
+            }
+            System.err.println("[ui-cert] Import al almacen sin huella valida.");
+            return null;
         } catch (IOException ex) {
             System.err.println("[ui-cert] Error preparando el certificado: " + ex.getMessage());
             return null;
@@ -68,6 +103,32 @@ public final class WindowsCertImporter {
                     System.err.println("[ui-cert] No se pudo borrar el .pfx temporal " + tmp);
                 }
             }
+        }
+    }
+
+    /**
+     * Barre del almacén del usuario TODOS los certificados que BENJAGEST importó
+     * (los que llevan la marca {@link #FRIENDLY_NAME}). Red de seguridad: si un
+     * cierre abrupto (crash, cerrar la app con el gestor abierto) dejó el cert de
+     * un cliente colgado, esto lo limpia. NUNCA toca los certificados PROPIOS del
+     * usuario, porque esos no llevan la marca. Best-effort; solo Windows.
+     */
+    public static void sweepManagedCerts() {
+        if (!isWindows()) {
+            return;
+        }
+        String script = "$ErrorActionPreference='SilentlyContinue';"
+                + "$store=New-Object System.Security.Cryptography.X509Certificates.X509Store"
+                + " -ArgumentList 'My','CurrentUser';"
+                + "$store.Open('ReadWrite');"
+                + "foreach($c in @($store.Certificates)){"
+                + "if($c.FriendlyName -eq '" + FRIENDLY_NAME + "'){$store.Remove($c)}};"
+                + "$store.Close()";
+        try {
+            runPowerShell(script, null, false);
+        } catch (RuntimeException ex) {
+            System.err.println("[ui-cert] No se pudo barrer certificados gestionados: "
+                    + ex.getMessage());
         }
     }
 
