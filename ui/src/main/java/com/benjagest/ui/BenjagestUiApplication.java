@@ -9555,11 +9555,6 @@ public class BenjagestUiApplication extends Application
             }
         } catch (Exception ignored) {
         }
-        System.out.println("[MULTIMON-LOCK] area=(" + area.getMinX() + "," + area.getMinY()
-                + " " + area.getWidth() + "x" + area.getHeight() + ") "
-                + com.benjagest.ui.support.WindowGeometry.windowDebug("root",
-                        root != null && root.getScene() != null ? root.getScene().getWindow() : null)
-                + " " + com.benjagest.ui.support.WindowGeometry.windowDebug("primaryStage", primaryStage));
 
         // ---- Fondo según salvapantallas ----
         StackPane background = new StackPane();
