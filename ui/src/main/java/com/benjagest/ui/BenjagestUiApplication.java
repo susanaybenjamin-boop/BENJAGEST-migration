@@ -217,6 +217,10 @@ public class BenjagestUiApplication extends Application
     /** Ventana principal (para guardar su geometría al cerrar; ver {@link #stop()}). */
     private Stage primaryStage;
 
+    /** SYS-INFO — true solo si estamos en entorno de PRUEBA (BD 3307). En producción
+     *  (embebida) queda false → título "BENJAGEST" y pie LIMPIO. Lo fija applyEnvironmentTitle. */
+    private boolean envKnownDev = false;
+
     @Override
     public void start(Stage stage) {
         root = new BorderPane();
@@ -741,10 +745,11 @@ public class BenjagestUiApplication extends Application
     }
 
     /**
-     * SYS-INFO — Consulta al backend a qué BD está conectado y lo refleja en el
-     * título de la ventana: "BENJAGEST — PRUEBA · localhost:3307/benjagest" o
-     * "BENJAGEST — PRODUCCIÓN · 127.0.0.1:13307/benjagest". Best-effort: si el
-     * backend no responde, el título se queda como "BENJAGEST".
+     * SYS-INFO — Consulta al backend a qué BD está conectado. SOLO señaliza el
+     * entorno cuando es DEV (BD de prueba, 3307): título "BENJAGEST — PRUEBA · …"
+     * y pie con la info técnica. En PRODUCCIÓN (embebida 13307, o cualquier otra)
+     * NO se muestra nada del entorno: título "BENJAGEST" y pie LIMPIO. Decisión
+     * Benjamin 2026-07-18: producción debe verse limpia. Best-effort.
      */
     private void applyEnvironmentTitle() {
         Task<com.benjagest.ui.service.AltaApiClient.SystemInfo> tk = new Task<>() {
@@ -755,22 +760,28 @@ public class BenjagestUiApplication extends Application
         };
         tk.setOnSucceeded(e -> {
             com.benjagest.ui.service.AltaApiClient.SystemInfo info = tk.getValue();
-            if (info == null || root == null || root.getScene() == null) return;
-            javafx.stage.Window w = root.getScene().getWindow();
-            if (w instanceof javafx.stage.Stage stage) {
-                stage.setTitle("BENJAGEST — " + environmentLabel(info));
+            if (info == null) return;
+            envKnownDev = isDevEnvironment(info);
+            if (root != null && root.getScene() != null
+                    && root.getScene().getWindow() instanceof javafx.stage.Stage stage) {
+                stage.setTitle(envKnownDev
+                        ? "BENJAGEST — PRUEBA · " + shortDb(info.database())
+                        : "BENJAGEST");
+            }
+            // Refrescar el pie: en dev aparece la info técnica, en producción se
+            // queda limpio (si el shell ya está montado).
+            if (root != null && root.getCenter() != null) {
+                applyFooter();
             }
         });
-        tk.setOnFailed(e -> { /* sin info → título por defecto */ });
+        tk.setOnFailed(e -> { /* sin info → título por defecto "BENJAGEST", pie limpio */ });
         start(tk, "system-info");
     }
 
-    private static String environmentLabel(com.benjagest.ui.service.AltaApiClient.SystemInfo info) {
+    /** Entorno de PRUEBA = BD 3307 y NO embebida. Cualquier otra cosa se trata como producción. */
+    private static boolean isDevEnvironment(com.benjagest.ui.service.AltaApiClient.SystemInfo info) {
         String db = info.database() == null ? "" : info.database();
-        // 13307 = MariaDB embebida del instalable = PRODUCCIÓN; 3307 = BD de prueba.
-        if (info.embedded() || db.contains(":13307")) return "PRODUCCIÓN · " + shortDb(db);
-        if (db.contains(":3307")) return "PRUEBA · " + shortDb(db);
-        return shortDb(db);
+        return !info.embedded() && db.contains(":3307");
     }
 
     /** jdbc:mariadb://host:puerto/bd → host:puerto/bd (para el título). */
@@ -963,7 +974,7 @@ public class BenjagestUiApplication extends Application
         sidebarScroll.setVbarPolicy(ScrollPane.ScrollBarPolicy.AS_NEEDED);
         sidebarScroll.getStyleClass().add("sidebar-scroll");
         root.setLeft(sidebarScroll);
-        root.setBottom(footer());
+        applyFooter();
         startInvitationsPolling();
         startAdvisoryClientsPolling();
         startRealtime();
@@ -7818,6 +7829,17 @@ public class BenjagestUiApplication extends Application
     }
 
     /**
+     * Coloca el pie SOLO en entorno de PRUEBA (dev). En PRODUCCIÓN el pie va
+     * limpio del todo (sin "BENJAGEST" ni "Backend Java + MariaDB"): setBottom(null).
+     * Por defecto, hasta que SYS-INFO confirme que es dev, se trata como producción
+     * (no aparece nada) — así en producción no parpadea el pie.
+     */
+    private void applyFooter() {
+        if (root == null) return;
+        root.setBottom(envKnownDev ? footer() : null);
+    }
+
+    /**
      * Icono coloreado para cabeceras de Tab del TabPane. El styleClass
      * "font-icon" deja el icono sin color explícito y queda invisible
      * sobre el fondo claro/blanco de los tabs activos. Forzamos un
@@ -10431,6 +10453,13 @@ public class BenjagestUiApplication extends Application
         cmd.add("-jar");
         cmd.add(jar.getAbsolutePath());
         cmd.add("--title=" + (clientName == null || clientName.isBlank() ? "Cliente" : clientName));
+        // GESTOR-MONITOR: pasar el centro de la ventana de la app para que el gestor
+        // (proceso aparte) abra en el MISMO monitor, no siempre en el principal.
+        if (primaryStage != null && primaryStage.getWidth() > 0 && primaryStage.getHeight() > 0) {
+            int ax = (int) Math.round(primaryStage.getX() + primaryStage.getWidth() / 2);
+            int ay = (int) Math.round(primaryStage.getY() + primaryStage.getHeight() / 2);
+            cmd.add("--anchor=" + ax + "," + ay);
+        }
         cmd.add("AEAT=https://sede.agenciatributaria.gob.es");
         cmd.add("DEHú=https://dehu.redsara.es/");
         cmd.add("Import@ss=https://portal.seg-social.gob.es/");
