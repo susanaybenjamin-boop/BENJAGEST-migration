@@ -705,6 +705,7 @@ public class BenjagestUiApplication extends Application
             }
             // Cerrarse YA: mientras esta app viva, sus jar están bloqueados y
             // msiexec aplazaría el reemplazo al reinicio (el bug de hoy).
+            com.benjagest.ui.support.WindowGeometry.save(primaryStage); // MULTIMON: antes de morir la JVM
             javafx.application.Platform.exit();
             System.exit(0);
         });
@@ -1695,6 +1696,7 @@ public class BenjagestUiApplication extends Application
             // con la BD embebida ya apagada → ni contraseña ni PIN funcionaban.
             // Salir = CERRAR el programa entero (mismo camino ordenado que el
             // cierre de ventana); para reentrar se vuelve a abrir la app.
+            com.benjagest.ui.support.WindowGeometry.save(primaryStage); // MULTIMON: antes de morir la JVM
             javafx.application.Platform.exit();
             System.exit(0);
         });
@@ -9521,6 +9523,7 @@ public class BenjagestUiApplication extends Application
             stage.close();
             try { authApiClient.logout(); } catch (Exception ignore) {}
             AuthSession.get().clear();
+            com.benjagest.ui.support.WindowGeometry.save(primaryStage); // MULTIMON: antes de morir la JVM
             javafx.application.Platform.exit();
             System.exit(0);
         });

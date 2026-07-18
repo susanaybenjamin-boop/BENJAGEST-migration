@@ -57,10 +57,21 @@ public final class WindowGeometry {
     public static void save(Stage stage) {
         if (stage == null) return;
         try {
-            double x = tracking && !Double.isNaN(lastX) ? lastX : stage.getX();
-            double y = tracking && !Double.isNaN(lastY) ? lastY : stage.getY();
-            double w = tracking && lastW > 0 ? lastW : stage.getWidth();
-            double h = tracking && lastH > 0 ? lastH : stage.getHeight();
+            boolean max = stage.isMaximized();
+            // Posición ACTUAL (getX/getY): identifica la pantalla donde está la
+            // ventana, INCLUSO maximizada (apuntan al origen de esa pantalla). Antes
+            // usábamos lastX/lastY (última NO-maximizada), que no se actualizan si la
+            // ventana se movió al 2º monitor ya maximizada → se reabría en el monitor
+            // equivocado y el login/PIN no salía donde se cerró.
+            double x = stage.getX();
+            double y = stage.getY();
+            if (Double.isNaN(x) || Double.isNaN(y)) return;
+            // Tamaño "restaurado" (para que al des-maximizar no quede a pantalla
+            // completa): el último NO-maximizado si está maximizada; el actual si no.
+            double w = !max && stage.getWidth() > 0 ? stage.getWidth()
+                    : (lastW > 0 ? lastW : stage.getWidth());
+            double h = !max && stage.getHeight() > 0 ? stage.getHeight()
+                    : (lastH > 0 ? lastH : stage.getHeight());
             Properties p = new Properties();
             p.setProperty("x", Double.toString(x));
             p.setProperty("y", Double.toString(y));
