@@ -243,6 +243,15 @@ public class BenjagestUiApplication extends Application
         stage.setScene(scene);
         showInitialScreen();
         this.primaryStage = stage;
+        // La X de la ventana principal debe comportarse como "Salir": GUARDAR la
+        // geometría (con la ventana aún posicionada, antes de cerrarse) y salir
+        // limpio. Sin esto, cerrar por X no registraba de forma fiable dónde quedó
+        // la app y el vigilante no la reabría en ese monitor.
+        stage.setOnCloseRequest(ev -> {
+            com.benjagest.ui.support.WindowGeometry.save(stage);
+            javafx.application.Platform.exit();
+            System.exit(0);
+        });
         // MULTIMON — Reabrir en la pantalla/posición donde se cerró la app, si esa
         // pantalla sigue conectada. Si no hay dato guardado o esa pantalla ya no
         // existe, se centra en la primaria (comportamiento anterior). El tamaño ya
