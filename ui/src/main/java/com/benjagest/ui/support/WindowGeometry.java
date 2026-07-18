@@ -27,6 +27,36 @@ public final class WindowGeometry {
 
     private WindowGeometry() {}
 
+    /** DIAG MULTIMON — describe todas las pantallas (bounds + escala) para el log. */
+    public static String screensDebug() {
+        StringBuilder sb = new StringBuilder();
+        int i = 0;
+        for (Screen s : Screen.getScreens()) {
+            Rectangle2D b = s.getBounds();
+            Rectangle2D v = s.getVisualBounds();
+            sb.append(String.format(java.util.Locale.ROOT,
+                    " [scr%d bounds=(%.0f,%.0f %.0fx%.0f) visual=(%.0f,%.0f %.0fx%.0f) scale=%.2f]",
+                    i++, b.getMinX(), b.getMinY(), b.getWidth(), b.getHeight(),
+                    v.getMinX(), v.getMinY(), v.getWidth(), v.getHeight(), s.getOutputScaleX()));
+        }
+        return sb.toString();
+    }
+
+    /** DIAG MULTIMON — describe una ventana (posición/tamaño) y la pantalla que le asigna JavaFX. */
+    public static String windowDebug(String tag, javafx.stage.Window w) {
+        if (w == null) return "[" + tag + " win=null]";
+        double cx = w.getX() + Math.max(1, w.getWidth()) / 2;
+        double cy = w.getY() + Math.max(1, w.getHeight()) / 2;
+        var scr = Screen.getScreensForRectangle(cx, cy, 1, 1);
+        String scrIdx = scr.isEmpty() ? "NONE"
+                : String.format(java.util.Locale.ROOT, "(%.0f,%.0f %.0fx%.0f)",
+                        scr.get(0).getBounds().getMinX(), scr.get(0).getBounds().getMinY(),
+                        scr.get(0).getBounds().getWidth(), scr.get(0).getBounds().getHeight());
+        return String.format(java.util.Locale.ROOT,
+                "[%s win=(%.0f,%.0f %.0fx%.0f) center=(%.0f,%.0f) -> screen=%s]",
+                tag, w.getX(), w.getY(), w.getWidth(), w.getHeight(), cx, cy, scrIdx);
+    }
+
     private static final Path FILE = Paths.get(
             System.getProperty("user.home"), ".benjagest", "ui-window.properties");
 
@@ -72,6 +102,8 @@ public final class WindowGeometry {
                     : (lastW > 0 ? lastW : stage.getWidth());
             double h = !max && stage.getHeight() > 0 ? stage.getHeight()
                     : (lastH > 0 ? lastH : stage.getHeight());
+            System.out.println("[MULTIMON-SAVE] x=" + x + " y=" + y + " w=" + w + " h=" + h
+                    + " max=" + max + " |" + screensDebug());
             Properties p = new Properties();
             p.setProperty("x", Double.toString(x));
             p.setProperty("y", Double.toString(y));
@@ -106,6 +138,9 @@ public final class WindowGeometry {
             boolean max = Boolean.parseBoolean(p.getProperty("maximized", "false"));
             if (Double.isNaN(x) || Double.isNaN(y)) return false;
             var screens = Screen.getScreensForRectangle(x, y, Math.max(1, w), Math.max(1, h));
+            System.out.println("[MULTIMON-RESTORE] saved x=" + x + " y=" + y + " w=" + w + " h=" + h
+                    + " max=" + max + " -> " + (screens.isEmpty() ? "RECHAZADO (ninguna pantalla) -> primaria" : "OK")
+                    + " |" + screensDebug());
             if (screens.isEmpty()) return false; // esa pantalla ya no está conectada
             Rectangle2D vb = screens.get(0).getVisualBounds();
             double fw = Math.min(w, vb.getWidth());
