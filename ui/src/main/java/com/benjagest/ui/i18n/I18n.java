@@ -3181,6 +3181,13 @@ public final class I18n {
             case "settings.session.lock.zero_hint" -> "0 disables auto-lock. To unlock you need a session PIN — define one below.";
             case "settings.session.pin.title" -> "Session PIN";
             case "settings.session.pin.hint" -> "Numeric PIN (4–8 digits) used only to unlock after auto-lock. Different from the device pairing PIN of multi-station mode.";
+            case "settings.session.devices.title" -> "Paired devices (multi-station)";
+            case "settings.session.devices.hint" -> "Computers paired to enter with PIN. Max 5. If you hit the limit, revoke one you no longer use to pair a new one.";
+            case "settings.session.devices.empty" -> "No paired devices.";
+            case "settings.session.devices.last_seen" -> "last seen:";
+            case "settings.session.devices.never" -> "never";
+            case "settings.session.devices.revoke" -> "Revoke";
+            case "settings.session.devices.revoke.confirm" -> "Revoke this device? It won't be able to enter with PIN until it is paired again.";
             case "settings.session.pin.status.unknown" -> "Checking…";
             case "settings.session.pin.status.configured" -> "✓ PIN configured.";
             case "settings.session.pin.status.missing" -> "⚠ No PIN configured — auto-lock can't actually lock you.";
@@ -3502,6 +3509,13 @@ public final class I18n {
             case "settings.session.lock.zero_hint" -> "0 desactiva el bloqueo automático. Para desbloquear necesitas un PIN de sesión — defínelo abajo.";
             case "settings.session.pin.title" -> "PIN de sesión";
             case "settings.session.pin.hint" -> "PIN numérico (4–8 dígitos) usado solo para desbloquear tras el auto-bloqueo. Distinto del PIN de vinculación de equipo en modo multi-puesto.";
+            case "settings.session.devices.title" -> "Equipos vinculados (multi-puesto)";
+            case "settings.session.devices.hint" -> "Equipos emparejados para entrar con PIN. Máximo 5. Si llegas al límite, revoca uno que ya no uses para poder vincular uno nuevo.";
+            case "settings.session.devices.empty" -> "No hay equipos vinculados.";
+            case "settings.session.devices.last_seen" -> "último acceso:";
+            case "settings.session.devices.never" -> "nunca";
+            case "settings.session.devices.revoke" -> "Revocar";
+            case "settings.session.devices.revoke.confirm" -> "¿Revocar este equipo? No podrá entrar con PIN hasta que se vuelva a vincular.";
             case "settings.session.pin.status.unknown" -> "Comprobando…";
             case "settings.session.pin.status.configured" -> "✓ PIN configurado.";
             case "settings.session.pin.status.missing" -> "⚠ Sin PIN configurado — el auto-bloqueo no podrá bloquear realmente.";

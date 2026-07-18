@@ -950,6 +950,31 @@ public class AltaApiClient {
      * mostrar en el título PRUEBA (3307) vs PRODUCCIÓN (embebida 13307) y no
      * operar por error sobre datos reales.
      */
+    // ============================================================
+    //  Equipos vinculados por PIN (multi-puesto) — /api/auth/devices
+    // ============================================================
+
+    /** Lista los equipos emparejados de la asesoría (para Configuración → Sesión). */
+    public List<com.benjagest.ui.model.PairedDeviceEntry> listPairedDevices()
+            throws IOException, InterruptedException {
+        HttpResponse<String> r = sendAsOwner(req(baseUrl + "/auth/devices").GET());
+        List<com.benjagest.ui.model.PairedDeviceEntry> out = new ArrayList<>();
+        for (String obj : splitTopLevelObjects(r.body())) {
+            out.add(new com.benjagest.ui.model.PairedDeviceEntry(
+                    textField(obj, "id"),
+                    textField(obj, "name"),
+                    textField(obj, "tokenPrefix"),
+                    textField(obj, "pairedAt"),
+                    textField(obj, "lastSeenAt")));
+        }
+        return out;
+    }
+
+    /** Revoca (desvincula) un equipo. Solo el OWNER de la asesoría. Irreversible. */
+    public void revokePairedDevice(String deviceId) throws IOException, InterruptedException {
+        sendAsOwner(req(baseUrl + "/auth/devices/" + deviceId).DELETE());
+    }
+
     public SystemInfo fetchSystemInfo() throws IOException, InterruptedException {
         HttpResponse<String> r = sendAsOwner(req(baseUrl + "/system/info").GET());
         String db = textField(r.body(), "database");

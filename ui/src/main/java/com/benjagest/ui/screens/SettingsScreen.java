@@ -765,6 +765,73 @@ public class SettingsScreen extends ScreenBase {
         VBox pinSection = new VBox(8, pinTitle, pinHint, pinStatus, pinActions);
         pinSection.getStyleClass().add("settings-section");
 
+        // --- Sección 3: Equipos vinculados (multi-puesto por PIN) ---
+        // Antes no había forma de ver/quitar los equipos emparejados: al llegar al
+        // límite (5) no se podía emparejar ninguno más y no aparecían en ningún sitio.
+        Label devTitle = label(t("settings.session.devices.title"), "settings-section-title");
+        Label devHint = new Label(t("settings.session.devices.hint"));
+        devHint.setWrapText(true);
+        devHint.getStyleClass().add("settings-hint");
+        javafx.scene.control.ListView<com.benjagest.ui.model.PairedDeviceEntry> devList =
+                new javafx.scene.control.ListView<>();
+        devList.setPrefHeight(150);
+        devList.setPlaceholder(new Label(t("settings.session.devices.empty")));
+        devList.setCellFactory(lv -> new javafx.scene.control.ListCell<>() {
+            @Override protected void updateItem(com.benjagest.ui.model.PairedDeviceEntry d, boolean empty) {
+                super.updateItem(d, empty);
+                if (empty || d == null) { setText(null); return; }
+                String name = d.name() == null || d.name().isBlank() ? "—" : d.name();
+                String seen = d.lastSeenAt() == null || d.lastSeenAt().isBlank()
+                        ? t("settings.session.devices.never") : d.lastSeenAt();
+                setText(name + "   ·   " + t("settings.session.devices.last_seen") + " " + seen);
+            }
+        });
+        Button devRefresh = new Button(t("refresh"));
+        devRefresh.setGraphic(icon("fas-sync-alt"));
+        Button devRevoke = new Button(t("settings.session.devices.revoke"));
+        devRevoke.setGraphic(icon("fas-unlink"));
+        devRevoke.setDisable(true);
+        devList.getSelectionModel().selectedItemProperty().addListener(
+                (o, a, b) -> devRevoke.setDisable(b == null));
+        HBox devActions = new HBox(8, devRefresh, devRevoke);
+        devActions.setAlignment(Pos.CENTER_LEFT);
+        VBox devSection = new VBox(8, devTitle, devHint, devList, devActions);
+        devSection.getStyleClass().add("settings-section");
+
+        Runnable reloadDevices = () -> {
+            Task<java.util.List<com.benjagest.ui.model.PairedDeviceEntry>> dtask = new Task<>() {
+                @Override protected java.util.List<com.benjagest.ui.model.PairedDeviceEntry> call()
+                        throws Exception {
+                    return altaApiClient.listPairedDevices();
+                }
+            };
+            dtask.setOnSucceeded(ev -> devList.getItems().setAll(dtask.getValue()));
+            dtask.setOnFailed(ev -> { /* silencioso: no bloquea la pestaña Sesión */ });
+            start(dtask, "list-devices");
+        };
+        devRefresh.setOnAction(e -> reloadDevices.run());
+        devRevoke.setOnAction(e -> {
+            com.benjagest.ui.model.PairedDeviceEntry sel = devList.getSelectionModel().getSelectedItem();
+            if (sel == null) return;
+            Alert confirm = new Alert(Alert.AlertType.CONFIRMATION,
+                    t("settings.session.devices.revoke.confirm"), ButtonType.YES, ButtonType.NO);
+            confirm.setHeaderText(t("settings.session.devices.revoke"));
+            confirm.showAndWait().ifPresent(bt -> {
+                if (bt != ButtonType.YES) return;
+                Task<Void> rtask = new Task<>() {
+                    @Override protected Void call() throws Exception {
+                        altaApiClient.revokePairedDevice(sel.id());
+                        return null;
+                    }
+                };
+                rtask.setOnSucceeded(ev -> reloadDevices.run());
+                rtask.setOnFailed(ev -> showError(t("settings.session.devices.revoke"),
+                        rtask.getException() == null ? "" : rtask.getException().getMessage()));
+                start(rtask, "revoke-device");
+            });
+        });
+        reloadDevices.run();
+
         // --- Sección 3: Salvapantallas ---
         // SALVAPANTALLAS: único estilo = reloj sobre fondo azul (decisión Benjamin
         // 2026-06-27 — el logo/carrusel provocaba crash nativo D3D en Windows).
@@ -777,7 +844,7 @@ public class SettingsScreen extends ScreenBase {
         HBox footer = new HBox(saveBtn);
         footer.setAlignment(Pos.CENTER_RIGHT);
 
-        body.getChildren().addAll(lockSection, pinSection, footer);
+        body.getChildren().addAll(lockSection, pinSection, devSection, footer);
 
         // --- Carga + handlers ---
         Runnable reload = () -> {
