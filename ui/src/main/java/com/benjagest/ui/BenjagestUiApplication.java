@@ -214,6 +214,9 @@ public class BenjagestUiApplication extends Application
             //   - "shifts" eliminado — pasa a sub-pestaña dentro de Labor.
     );
 
+    /** Ventana principal (para guardar su geometría al cerrar; ver {@link #stop()}). */
+    private Stage primaryStage;
+
     @Override
     public void start(Stage stage) {
         root = new BorderPane();
@@ -239,12 +242,18 @@ public class BenjagestUiApplication extends Application
         stage.setMinHeight(Math.min(640, vb.getHeight()));
         stage.setScene(scene);
         showInitialScreen();
-        // Centrar en la pantalla primaria ANTES de mostrar (el tamaño ya está acotado
-        // a sus límites visibles arriba). NO añadimos ningún listener dinámico: el
-        // usuario debe poder mover la ventana entre pantallas y maximizar libremente.
-        // El único objetivo es no ABRIR más grande que la pantalla.
-        stage.setX(vb.getMinX() + Math.max(0, (vb.getWidth() - w) / 2));
-        stage.setY(vb.getMinY() + Math.max(0, (vb.getHeight() - h) / 2));
+        this.primaryStage = stage;
+        // MULTIMON — Reabrir en la pantalla/posición donde se cerró la app, si esa
+        // pantalla sigue conectada. Si no hay dato guardado o esa pantalla ya no
+        // existe, se centra en la primaria (comportamiento anterior). El tamaño ya
+        // viene acotado arriba; restore() también acota a la pantalla destino.
+        boolean restored = com.benjagest.ui.support.WindowGeometry.restore(stage, w, h);
+        if (!restored) {
+            stage.setX(vb.getMinX() + Math.max(0, (vb.getWidth() - w) / 2));
+            stage.setY(vb.getMinY() + Math.max(0, (vb.getHeight() - h) / 2));
+        }
+        // Recordar la geometría (mientras no esté maximizada) para guardarla al cerrar.
+        com.benjagest.ui.support.WindowGeometry.track(stage);
         // DOBLE-PANTALLA (MULTIMON) — registrar la ventana principal como owner
         // por defecto de los diálogos, para que aparezcan en el MISMO monitor
         // que la app (no siempre en el primario).
@@ -268,6 +277,17 @@ public class BenjagestUiApplication extends Application
                 com.benjagest.ui.service.WindowsCertImporter::sweepManagedCerts,
                 "cert-sweep-shutdown"));
         stage.show();
+    }
+
+    /**
+     * MULTIMON — Al cerrar la app, guardar en qué pantalla/posición quedó la
+     * ventana principal para reabrirla ahí la próxima vez (ver
+     * {@link com.benjagest.ui.support.WindowGeometry}). JavaFX llama a stop() al
+     * cerrar la última ventana o en Platform.exit().
+     */
+    @Override
+    public void stop() {
+        com.benjagest.ui.support.WindowGeometry.save(primaryStage);
     }
 
     // ===================================================================

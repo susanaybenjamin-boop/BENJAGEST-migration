@@ -1,0 +1,126 @@
+package com.benjagest.ui.support;
+
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.Properties;
+import javafx.geometry.Rectangle2D;
+import javafx.stage.Screen;
+import javafx.stage.Stage;
+
+/**
+ * MULTIMON — Recuerda en qué pantalla y posición se cerró la ventana principal y
+ * la reabre AHÍ si esa pantalla sigue conectada; si no hay dato o esa pantalla ya
+ * no existe, cae al comportamiento por defecto (centrada en la primaria).
+ *
+ * <p>Persistencia en {@code ~/.benjagest/ui-window.properties} (la UI corre como
+ * el usuario interactivo). Todo best-effort: si algo falla, no rompe el arranque.
+ *
+ * <p>Guarda SIEMPRE la geometría "restaurada" (no la de maximizado): unos
+ * listeners recuerdan la última posición/tamaño mientras la ventana NO está
+ * maximizada, y aparte se guarda el flag {@code maximized} para re-maximizar en
+ * la pantalla correcta.
+ */
+public final class WindowGeometry {
+
+    private WindowGeometry() {}
+
+    private static final Path FILE = Paths.get(
+            System.getProperty("user.home"), ".benjagest", "ui-window.properties");
+
+    // Última geometría con la ventana NO maximizada (la que queremos persistir).
+    private static double lastX = Double.NaN, lastY = Double.NaN, lastW, lastH;
+    private static boolean tracking;
+
+    /** Engancha listeners para recordar la geometría restaurada. Llamar tras {@link #restore}. */
+    public static void track(Stage stage) {
+        Runnable update = () -> {
+            if (!stage.isMaximized() && !stage.isIconified()
+                    && stage.getWidth() > 0 && stage.getHeight() > 0) {
+                lastX = stage.getX();
+                lastY = stage.getY();
+                lastW = stage.getWidth();
+                lastH = stage.getHeight();
+            }
+        };
+        stage.xProperty().addListener((o, a, b) -> update.run());
+        stage.yProperty().addListener((o, a, b) -> update.run());
+        stage.widthProperty().addListener((o, a, b) -> update.run());
+        stage.heightProperty().addListener((o, a, b) -> update.run());
+        tracking = true;
+        update.run();
+    }
+
+    /** Guarda la geometría restaurada + el flag de maximizado. Best-effort. */
+    public static void save(Stage stage) {
+        if (stage == null) return;
+        try {
+            double x = tracking && !Double.isNaN(lastX) ? lastX : stage.getX();
+            double y = tracking && !Double.isNaN(lastY) ? lastY : stage.getY();
+            double w = tracking && lastW > 0 ? lastW : stage.getWidth();
+            double h = tracking && lastH > 0 ? lastH : stage.getHeight();
+            Properties p = new Properties();
+            p.setProperty("x", Double.toString(x));
+            p.setProperty("y", Double.toString(y));
+            p.setProperty("w", Double.toString(w));
+            p.setProperty("h", Double.toString(h));
+            p.setProperty("maximized", Boolean.toString(stage.isMaximized()));
+            Files.createDirectories(FILE.getParent());
+            try (OutputStream os = Files.newOutputStream(FILE)) {
+                p.store(os, "BENJAGEST UI window geometry");
+            }
+        } catch (Exception ignored) {
+            // best-effort: no pasa nada si no se puede guardar
+        }
+    }
+
+    /**
+     * Coloca la ventana en la posición guardada si cae en una pantalla CONECTADA.
+     * Devuelve {@code true} si restauró (el caller NO debe centrar en la primaria);
+     * {@code false} si no había dato válido o la pantalla ya no existe.
+     */
+    public static boolean restore(Stage stage, double defW, double defH) {
+        try {
+            if (!Files.exists(FILE)) return false;
+            Properties p = new Properties();
+            try (InputStream is = Files.newInputStream(FILE)) {
+                p.load(is);
+            }
+            double x = parse(p.getProperty("x"), Double.NaN);
+            double y = parse(p.getProperty("y"), Double.NaN);
+            double w = parse(p.getProperty("w"), defW);
+            double h = parse(p.getProperty("h"), defH);
+            boolean max = Boolean.parseBoolean(p.getProperty("maximized", "false"));
+            if (Double.isNaN(x) || Double.isNaN(y)) return false;
+            var screens = Screen.getScreensForRectangle(x, y, Math.max(1, w), Math.max(1, h));
+            if (screens.isEmpty()) return false; // esa pantalla ya no está conectada
+            Rectangle2D vb = screens.get(0).getVisualBounds();
+            double fw = Math.min(w, vb.getWidth());
+            double fh = Math.min(h, vb.getHeight());
+            stage.setWidth(fw);
+            stage.setHeight(fh);
+            stage.setX(clamp(x, vb.getMinX(), vb.getMaxX() - fw));
+            stage.setY(clamp(y, vb.getMinY(), vb.getMaxY() - fh));
+            if (max) stage.setMaximized(true);
+            return true;
+        } catch (Exception ignored) {
+            return false;
+        }
+    }
+
+    private static double parse(String s, double def) {
+        if (s == null) return def;
+        try {
+            return Double.parseDouble(s);
+        } catch (NumberFormatException ex) {
+            return def;
+        }
+    }
+
+    private static double clamp(double v, double min, double max) {
+        double hi = Math.max(min, max);
+        return Math.max(min, Math.min(v, hi));
+    }
+}
