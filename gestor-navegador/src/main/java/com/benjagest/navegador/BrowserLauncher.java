@@ -56,9 +56,20 @@ public final class BrowserLauncher {
     public static void main(String[] args) {
         String title = "Gestor Navegador — BENJAGEST";
         Map<String, String> tabs = new LinkedHashMap<>();
+        // GESTOR-MONITOR: la app JavaFX nos pasa el centro (x,y) de su ventana para
+        // que abramos en ESE monitor (el vigilante JavaFX no llega a este proceso).
+        int anchorX = Integer.MIN_VALUE, anchorY = Integer.MIN_VALUE;
         for (String arg : args) {
             if (arg.startsWith("--title=")) {
                 title = arg.substring("--title=".length());
+            } else if (arg.startsWith("--anchor=")) {
+                String[] parts = arg.substring("--anchor=".length()).split(",");
+                if (parts.length == 2) {
+                    try {
+                        anchorX = Integer.parseInt(parts[0].trim());
+                        anchorY = Integer.parseInt(parts[1].trim());
+                    } catch (NumberFormatException ignored) { /* sin anchor válido */ }
+                }
             } else {
                 int eq = arg.indexOf('=');
                 if (eq > 0) tabs.put(arg.substring(0, eq), arg.substring(eq + 1));
@@ -68,7 +79,7 @@ public final class BrowserLauncher {
 
         setupLookAndFeel();
         try {
-            launch(title, tabs);
+            launch(title, tabs, anchorX, anchorY);
         } catch (Exception ex) {
             System.err.println("[gestor-navegador] No se pudo iniciar JCEF: " + ex.getMessage());
             ex.printStackTrace();
@@ -90,7 +101,8 @@ public final class BrowserLauncher {
         }
     }
 
-    private static void launch(String title, Map<String, String> tabs) throws Exception {
+    private static void launch(String title, Map<String, String> tabs,
+                                int anchorX, int anchorY) throws Exception {
         // 1) Bootstrap de CEF. En el PRIMER arranque descarga e instala el bundle
         //    nativo de Chromium (~150-200 MB) en installDir; luego reutiliza.
         CefAppBuilder builder = new CefAppBuilder();
@@ -182,7 +194,7 @@ public final class BrowserLauncher {
 
         frame.getContentPane().add(pane, BorderLayout.CENTER);
         frame.setSize(1280, 860);
-        frame.setLocationRelativeTo(null);
+        positionOnAnchorScreen(frame, anchorX, anchorY);
         frame.setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
         frame.addWindowListener(new WindowAdapter() {
             @Override
@@ -210,6 +222,33 @@ public final class BrowserLauncher {
         popup.setLocationByPlatform(true); // cascada del SO; no todas encima
         popup.setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
         popup.setVisible(true);
+    }
+
+    /**
+     * GESTOR-MONITOR — Centra el frame en el monitor (AWT) que CONTIENE el punto
+     * (anchorX, anchorY) que nos pasó la app JavaFX (centro de su ventana). Así el
+     * gestor abre en la misma pantalla que la app, no siempre en la principal. Si
+     * no hay anchor válido o ningún monitor lo contiene, centra en la principal.
+     */
+    private static void positionOnAnchorScreen(JFrame frame, int anchorX, int anchorY) {
+        try {
+            if (anchorX != Integer.MIN_VALUE && anchorY != Integer.MIN_VALUE) {
+                java.awt.GraphicsEnvironment ge =
+                        java.awt.GraphicsEnvironment.getLocalGraphicsEnvironment();
+                for (java.awt.GraphicsDevice gd : ge.getScreenDevices()) {
+                    java.awt.Rectangle b = gd.getDefaultConfiguration().getBounds();
+                    if (b.contains(anchorX, anchorY)) {
+                        int x = b.x + Math.max(0, (b.width - frame.getWidth()) / 2);
+                        int y = b.y + Math.max(0, (b.height - frame.getHeight()) / 2);
+                        frame.setLocation(x, y);
+                        return;
+                    }
+                }
+            }
+        } catch (Exception ignored) {
+            // cualquier fallo -> centrado en la principal (comportamiento anterior)
+        }
+        frame.setLocationRelativeTo(null);
     }
 
     /** Una pestaña = barra (atrás/adelante/recargar + dirección + cerrar) + navegador. */
