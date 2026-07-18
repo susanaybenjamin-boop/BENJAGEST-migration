@@ -945,6 +945,21 @@ public class AltaApiClient {
         send(req(baseUrl + "/tax/filings/" + id).DELETE());
     }
 
+    /**
+     * SYS-INFO — Entorno de BD del backend al que está conectada la UI, para
+     * mostrar en el título PRUEBA (3307) vs PRODUCCIÓN (embebida 13307) y no
+     * operar por error sobre datos reales.
+     */
+    public SystemInfo fetchSystemInfo() throws IOException, InterruptedException {
+        HttpResponse<String> r = sendAsOwner(req(baseUrl + "/system/info").GET());
+        String db = textField(r.body(), "database");
+        boolean embedded = java.util.regex.Pattern
+                .compile("\"embedded\"\\s*:\\s*true").matcher(r.body()).find();
+        return new SystemInfo(db, embedded);
+    }
+
+    public record SystemInfo(String database, boolean embedded) {}
+
     public List<TaxDueDateEntry> calendar(int year) throws IOException, InterruptedException {
         HttpResponse<String> r = send(req(baseUrl + "/tax/calendar?year=" + year).GET());
         return parseObjects(r.body(), "taxModelCode", obj -> new TaxDueDateEntry(

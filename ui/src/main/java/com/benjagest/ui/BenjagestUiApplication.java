@@ -706,6 +706,46 @@ public class BenjagestUiApplication extends Application
         start(dl, "update-download");
     }
 
+    /**
+     * SYS-INFO — Consulta al backend a qué BD está conectado y lo refleja en el
+     * título de la ventana: "BENJAGEST — PRUEBA · localhost:3307/benjagest" o
+     * "BENJAGEST — PRODUCCIÓN · 127.0.0.1:13307/benjagest". Best-effort: si el
+     * backend no responde, el título se queda como "BENJAGEST".
+     */
+    private void applyEnvironmentTitle() {
+        Task<com.benjagest.ui.service.AltaApiClient.SystemInfo> tk = new Task<>() {
+            @Override
+            protected com.benjagest.ui.service.AltaApiClient.SystemInfo call() throws Exception {
+                return altaApiClient.fetchSystemInfo();
+            }
+        };
+        tk.setOnSucceeded(e -> {
+            com.benjagest.ui.service.AltaApiClient.SystemInfo info = tk.getValue();
+            if (info == null || root == null || root.getScene() == null) return;
+            javafx.stage.Window w = root.getScene().getWindow();
+            if (w instanceof javafx.stage.Stage stage) {
+                stage.setTitle("BENJAGEST — " + environmentLabel(info));
+            }
+        });
+        tk.setOnFailed(e -> { /* sin info → título por defecto */ });
+        start(tk, "system-info");
+    }
+
+    private static String environmentLabel(com.benjagest.ui.service.AltaApiClient.SystemInfo info) {
+        String db = info.database() == null ? "" : info.database();
+        // 13307 = MariaDB embebida del instalable = PRODUCCIÓN; 3307 = BD de prueba.
+        if (info.embedded() || db.contains(":13307")) return "PRODUCCIÓN · " + shortDb(db);
+        if (db.contains(":3307")) return "PRUEBA · " + shortDb(db);
+        return shortDb(db);
+    }
+
+    /** jdbc:mariadb://host:puerto/bd → host:puerto/bd (para el título). */
+    private static String shortDb(String jdbc) {
+        if (jdbc == null || jdbc.isBlank()) return "?";
+        int i = jdbc.indexOf("//");
+        return i >= 0 ? jdbc.substring(i + 2) : jdbc;
+    }
+
     private void handleLoginSuccess() {
         AuthSession auth = AuthSession.get();
         if (auth.memberships().size() > 1) {
@@ -735,6 +775,10 @@ public class BenjagestUiApplication extends Application
                 deriveDefaultMode(auth.activeCompanyType())
         );
         appMode = AppMode.from(session.defaultMode());
+        // SYS-INFO — Poner en el título a qué BD está conectada (PRUEBA 3307 vs
+        // PRODUCCIÓN embebida 13307). Evita el susto de operar sobre datos reales
+        // creyendo estar en pruebas.
+        applyEnvironmentTitle();
         // Antes de pintar el shell, intentamos cargar los modulos activos
         // de esta empresa. Si falla (sin red, sin permiso, etc.), el
         // sidebar usa la lista hardcodeada como fallback.
