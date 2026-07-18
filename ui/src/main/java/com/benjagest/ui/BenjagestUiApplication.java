@@ -249,6 +249,10 @@ public class BenjagestUiApplication extends Application
         // por defecto de los diálogos, para que aparezcan en el MISMO monitor
         // que la app (no siempre en el primario).
         com.benjagest.ui.support.Dialogs.setPrimaryWindow(stage);
+        // MULTIMON — Vigilante global: recoloca en el monitor de la app cualquier
+        // diálogo que se abra en otro monitor (validar, reclasificar, editores…),
+        // sin tener que tocar cada ventana. Se instala una sola vez.
+        com.benjagest.ui.support.Dialogs.installGlobalPositioner();
         // CERT-SWEEP (2026-07-18) — Barrer al arrancar cualquier certificado de
         // cliente que BENJAGEST importó y que un cierre abrupto (crash, cerrar la
         // app con el gestor abierto) dejó colgado en el almacén de Windows: eso

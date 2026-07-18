@@ -75,6 +75,59 @@ public final class Dialogs {
         });
     }
 
+    /**
+     * MULTIMON (red de seguridad GLOBAL) — Instala UNA vez un vigilante sobre las
+     * ventanas de la app: cuando aparece cualquier ventana de diálogo en un
+     * monitor DISTINTO al de la app, la recoloca centrada sobre la pantalla de la
+     * app. Cubre de golpe TODOS los diálogos que abren sin owner (validar,
+     * reclasificar, editores, avisos…) sin tener que tocarlos uno a uno, y también
+     * los que se creen en el futuro.
+     *
+     * <p>Solo actúa sobre {@link javafx.stage.Stage} (Alert/Dialog/Stage propio);
+     * NO sobre los popups tipo desplegable de combo, tooltip o menú contextual
+     * (son {@link javafx.stage.PopupWindow}, que van anclados a su control y NO se
+     * deben mover). Y solo recoloca si la ventana cayó en OTRA pantalla — si ya
+     * está en la de la app, no la toca (sin parpadeo en monitor único).
+     */
+    public static void installGlobalPositioner() {
+        javafx.stage.Window.getWindows().addListener(
+                (javafx.collections.ListChangeListener<javafx.stage.Window>) change -> {
+            while (change.next()) {
+                for (javafx.stage.Window w : change.getAddedSubList()) {
+                    if (!(w instanceof javafx.stage.Stage stage)) continue; // no popups
+                    if (stage == primary) continue;                          // no la ventana principal
+                    stage.addEventHandler(javafx.stage.WindowEvent.WINDOW_SHOWN,
+                            ev -> rescueToAppScreen(stage));
+                }
+            }
+        });
+    }
+
+    /** Si {@code stage} aparecio en otra pantalla que la de la app, lo centra en la de la app. */
+    private static void rescueToAppScreen(javafx.stage.Stage stage) {
+        javafx.stage.Window ref = stage.getOwner() != null
+                ? stage.getOwner()
+                : (primary != null && primary.isShowing() ? primary : null);
+        if (ref == null) return;
+        javafx.geometry.Rectangle2D appVb = screenBoundsOf(ref);
+        javafx.geometry.Rectangle2D curVb = screenBoundsOf(stage);
+        if (appVb == null || curVb == null || appVb.equals(curVb)) return; // ya está bien
+        double w = stage.getWidth() > 0 ? stage.getWidth() : 400;
+        double h = stage.getHeight() > 0 ? stage.getHeight() : 300;
+        stage.setX(appVb.getMinX() + Math.max(0, (appVb.getWidth() - w) / 2));
+        stage.setY(appVb.getMinY() + Math.max(0, (appVb.getHeight() - h) / 2));
+    }
+
+    /** visualBounds de la pantalla donde está ahora mismo la ventana (null si aún sin posición). */
+    private static javafx.geometry.Rectangle2D screenBoundsOf(javafx.stage.Window w) {
+        if (Double.isNaN(w.getX()) || Double.isNaN(w.getY())) return null;
+        javafx.collections.ObservableList<javafx.stage.Screen> screens =
+                javafx.stage.Screen.getScreensForRectangle(w.getX(), w.getY(),
+                        Math.max(1, w.getWidth()), Math.max(1, w.getHeight()));
+        if (screens.isEmpty()) return javafx.stage.Screen.getPrimary().getVisualBounds();
+        return screens.get(0).getVisualBounds();
+    }
+
     /** Alerta de error modal. {@code message} ya humanizado por el caller. */
     public static void error(String title, String message) {
         Platform.runLater(() -> {
