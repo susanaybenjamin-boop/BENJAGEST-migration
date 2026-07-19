@@ -1184,6 +1184,14 @@ public class PayslipService {
 
     @Transactional
     public void delete(String id) {
+        String companyId = tenantContext.getCurrentCompanyId();
+        // Periodo de la nómina ANTES de borrarla, para limpiar después sus
+        // cotizaciones de SS y que no queden huérfanas (ver más abajo).
+        java.util.List<java.util.Map<String, Object>> rows = jdbcTemplate.queryForList("""
+                SELECT employee_id, period_year, period_month
+                  FROM payslips WHERE id = ? AND company_id = ?
+                """, id, companyId);
+
         // Revertir asientos (devengo + pago) antes de borrar la nómina.
         try {
             journalService.reverseAll(id);
@@ -1193,10 +1201,36 @@ public class PayslipService {
         int n = jdbcTemplate.update("""
                 DELETE FROM payslips
                  WHERE id = ? AND company_id = ? AND status IN ('DRAFT', 'CALCULATED', 'CANCELLED')
-                """, id, tenantContext.getCurrentCompanyId());
+                """, id, companyId);
         if (n == 0) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "Solo se pueden borrar nominas no pagadas");
+        }
+
+        // Limpiar las cotizaciones de SS del periodo si ya no queda NINGUNA
+        // nómina viva del empleado ese mes. Antes no se hacía: borrar una nómina
+        // dejaba sus cuotas TC colgadas en social_security_contributions, y la
+        // liquidación de SS acababa proponiendo pagar meses de nóminas deshechas.
+        // Solo se borran las DRAFT: las FILED (enviadas al RED) son inalterables.
+        if (!rows.isEmpty()) {
+            java.util.Map<String, Object> r = rows.get(0);
+            Object emp = r.get("employee_id");
+            Object y = r.get("period_year");
+            Object m = r.get("period_month");
+            Integer remaining = jdbcTemplate.queryForObject("""
+                    SELECT COUNT(*) FROM payslips
+                     WHERE company_id = ? AND employee_id = ?
+                       AND period_year = ? AND period_month = ?
+                       AND status <> 'CANCELLED'
+                    """, Integer.class, companyId, emp, y, m);
+            if (remaining != null && remaining == 0) {
+                jdbcTemplate.update("""
+                        DELETE FROM social_security_contributions
+                         WHERE company_id = ? AND employee_id = ?
+                           AND period_year = ? AND period_month = ?
+                           AND status = 'DRAFT'
+                        """, companyId, emp, y, m);
+            }
         }
     }
 
