@@ -412,14 +412,20 @@ public class PayslipJournalEntryService {
                         """,
                         revId, companyId, (String) e[2], (java.sql.Date) e[3],
                         "Contraasiento nómina", entryId);
-                jdbcTemplate.query("""
+                // Copiar las líneas invertidas (debe<->haber). OJO: antes esto
+                // usaba jdbcTemplate.query(sql, rs -> {...; return null;}, id): al
+                // devolver la lambda un valor, Spring la tomaba como
+                // ResultSetExtractor (que NO avanza el cursor) en vez de
+                // RowCallbackHandler -> "wrong row position" y el contraasiento
+                // reventaba SIEMPRE. Con RowMapper + bucle es inequívoco.
+                List<java.util.Map<String, Object>> srcLines = jdbcTemplate.queryForList("""
                         SELECT account_id, description, debit, credit FROM journal_entry_lines
                          WHERE journal_entry_id = ?
-                        """, rs -> {
-                    insertLine(revId, rs.getString("account_id"), rs.getString("description"),
-                            rs.getBigDecimal("credit"), rs.getBigDecimal("debit"));
-                    return null;
-                }, entryId);
+                        """, entryId);
+                for (java.util.Map<String, Object> ln : srcLines) {
+                    insertLine(revId, (String) ln.get("account_id"), (String) ln.get("description"),
+                            (BigDecimal) ln.get("credit"), (BigDecimal) ln.get("debit"));
+                }
             }
         }
     }
