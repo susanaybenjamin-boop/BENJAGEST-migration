@@ -37,6 +37,7 @@ class SocialSecurityLedgerIntegrationTest {
     private static final String COMPANY = "c0555111-0000-0000-0000-000000000476";
     private static final String ACC_476 = "a4760000-0000-0000-0000-000000000476";
     private static final String ACC_572 = "a5720000-0000-0000-0000-000000000476";
+    private static final String EMP = "e0000000-0000-0000-0000-000000000476";
 
     private static DB db;
     private static JdbcTemplate jdbc;
@@ -89,13 +90,23 @@ class SocialSecurityLedgerIntegrationTest {
                 """, UUID.randomUUID().toString(), COMPANY,
                 Date.valueOf("2026-01-01"), Date.valueOf("2026-12-31"));
 
+        jdbc.update("INSERT INTO employees (id, company_id, full_name) VALUES (?, ?, ?)",
+                EMP, COMPANY, "Empleado SS");
+
         // Meses distintos por test (comparten BD; el orden de JUnit no se garantiza).
+        // Cada mes con cuota lleva su NÓMINA (si no, la cuota se considera huérfana).
         // Abril: empresa 300,00 + trabajador 100,00 = 400,00.
+        insertPayslip(2026, 4);
         insertContribution(2026, 4, "EMPLOYER_COMMON", "300.00");
         insertContribution(2026, 4, "EMPLOYEE_COMMON", "100.00");
         // Mayo: empresa 200,00 + trabajador 50,00 = 250,00.
+        insertPayslip(2026, 5);
         insertContribution(2026, 5, "EMPLOYER_COMMON", "200.00");
         insertContribution(2026, 5, "EMPLOYEE_COMMON", "50.00");
+        // Junio: cotizaciones SIN nómina (huérfanas, como las de Benjamin tras
+        // borrar la nómina). NO se deben pagar.
+        insertContribution(2026, 6, "EMPLOYER_COMMON", "500.00");
+        insertContribution(2026, 6, "EMPLOYEE_COMMON", "77.81");
     }
 
     private static void insertContribution(int year, int month, String type, String amount) {
@@ -103,9 +114,17 @@ class SocialSecurityLedgerIntegrationTest {
                 INSERT INTO social_security_contributions (id, company_id, employee_id,
                         period_year, period_month, contribution_type, base_amount,
                         contribution_amount, status)
-                VALUES (?, ?, NULL, ?, ?, ?, 0, ?, 'CALCULATED')
-                """, UUID.randomUUID().toString(), COMPANY, year, month, type,
+                VALUES (?, ?, ?, ?, ?, ?, 0, ?, 'DRAFT')
+                """, UUID.randomUUID().toString(), COMPANY, EMP, year, month, type,
                 new BigDecimal(amount));
+    }
+
+    private static void insertPayslip(int year, int month) {
+        jdbc.update("""
+                INSERT INTO payslips (id, company_id, employee_id, period_year, period_month,
+                        payslip_type, gross_amount, irpf_amount, status)
+                VALUES (?, ?, ?, ?, ?, 'MONTHLY', 1000, 0, 'CALCULATED')
+                """, UUID.randomUUID().toString(), COMPANY, EMP, year, month);
     }
 
     @Test
@@ -152,5 +171,15 @@ class SocialSecurityLedgerIntegrationTest {
         var abril = pend.stream().filter(p -> p.month() == 4).findFirst().orElse(null);
         assertNotNull(abril, "abril aparece en el preview");
         assertEquals(0, new BigDecimal("400.00").compareTo(abril.amount()), "cuota de abril = 400,00");
+    }
+
+    @Test
+    void cotizacionesHuerfanas_sinNomina_noSePagan() {
+        // Junio tiene cotizaciones (577,81) pero NO nómina: no se debe pagar.
+        assertEquals(0, BigDecimal.ZERO.compareTo(service.amountForMonth(COMPANY, 2026, 6)),
+                "las cuotas huérfanas de junio no cuentan");
+        var pend = service.previewPending(2026);
+        assertNull(pend.stream().filter(p -> p.month() == 6).findFirst().orElse(null),
+                "junio (huérfano) no aparece en el preview");
     }
 }

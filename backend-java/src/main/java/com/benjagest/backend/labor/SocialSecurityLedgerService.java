@@ -73,12 +73,26 @@ public class SocialSecurityLedgerService {
     public record PendingSsMonth(int year, int month, BigDecimal amount,
             LocalDate paymentDate, boolean alreadyPaid, String motivo) {}
 
-    /** Cuota total de SS del mes (empresa + trabajador). */
+    /**
+     * Cuota total de SS del mes (empresa + trabajador). Solo cuenta las
+     * cotizaciones respaldadas por una NÓMINA viva del mismo empleado y periodo:
+     * si se borró la nómina pero quedaron sus cotizaciones huérfanas (borrar una
+     * nómina no las limpiaba — bug histórico), NO se pagan. Así la liquidación de
+     * SS refleja lo que de verdad hay que ingresar, no restos de nóminas
+     * deshechas.
+     */
     public BigDecimal amountForMonth(String companyId, int year, int month) {
         BigDecimal v = jdbcTemplate.queryForObject("""
-                SELECT COALESCE(SUM(contribution_amount), 0)
-                  FROM social_security_contributions
-                 WHERE company_id = ? AND period_year = ? AND period_month = ?
+                SELECT COALESCE(SUM(c.contribution_amount), 0)
+                  FROM social_security_contributions c
+                 WHERE c.company_id = ? AND c.period_year = ? AND c.period_month = ?
+                   AND EXISTS (
+                        SELECT 1 FROM payslips p
+                         WHERE p.company_id = c.company_id
+                           AND p.employee_id = c.employee_id
+                           AND p.period_year = c.period_year
+                           AND p.period_month = c.period_month
+                           AND p.status <> 'CANCELLED')
                 """, BigDecimal.class, companyId, year, month);
         return v == null ? BigDecimal.ZERO : v;
     }
