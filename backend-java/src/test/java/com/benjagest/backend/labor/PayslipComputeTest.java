@@ -65,7 +65,7 @@ class PayslipComputeTest {
             List<PayslipService.ExtraConcept> extraConcepts) {
         return new PayslipService.EngineInputs(
                 type, contract(), concepts(), extraConcepts, null,
-                prorated != null ? prorated : false, otherDeductions,
+                prorated != null ? prorated : false, null, otherDeductions,
                 List.of(), rates2026(),
                 new BigDecimal[]{ bd("1424.40"), bd("5101.20") },
                 false, null, false, null,
@@ -141,7 +141,7 @@ class PayslipComputeTest {
         var rec = List.of(new PayslipService.ExtraConcept(
                 PayslipService.MEJORA_CONCEPT, bd("199.16"), true, true));
         var c = PayslipService.computePayslip(new PayslipService.EngineInputs(
-                "MONTHLY", contract(), concepts(), null, rec, false, null,
+                "MONTHLY", contract(), concepts(), null, rec, false, null, null,
                 List.of(), rates2026(),
                 new BigDecimal[]{ bd("1424.40"), bd("5101.20") },
                 false, null, false, null,
@@ -154,5 +154,21 @@ class PayslipComputeTest {
         assertAmount("126.69", c.ssEmployee());
         assertAmount("208.18", c.irpf());
         assertAmount("1500.00", c.net());
+    }
+
+    @Test
+    void mensualProrrateadaMedioMes_prorrateaElDevengoDelSalario() {
+        // F2R-1: factor 0,5 (medio mes de cese) prorratea el salario base y los
+        // complementos del CONTRATO. base 1285,71×0,5=642,86 + plus 250×0,5=125 +
+        // dietas 100×0,5=50 = 817,86.
+        var c = PayslipService.computePayslip(new PayslipService.EngineInputs(
+                "MONTHLY", contract(), concepts(), null, null, false, bd("0.5"), null,
+                List.of(), rates2026(),
+                new BigDecimal[]{ bd("1424.40"), bd("5101.20") },
+                false, null, false, null,
+                () -> { throw new AssertionError("overtimeRates no debe usarse"); },
+                null,
+                () -> { throw new AssertionError("irpfFallback no debe usarse"); }));
+        assertAmount("817.86", c.gross());
     }
 }
