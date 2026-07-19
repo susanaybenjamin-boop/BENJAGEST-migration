@@ -1,6 +1,7 @@
 package com.benjagest.backend.labor;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.mock;
@@ -137,6 +138,40 @@ class PayslipReversalIntegrationTest {
                 "el haber del contra = el debe original (640 revertido)");
         assertEquals(0, new BigDecimal("1000.00").compareTo((BigDecimal) totals.get("debe")),
                 "el debe del contra = el haber original");
+    }
+
+    @Test
+    void reverseAll_esIdempotente_noDuplicaElContraasiento() {
+        String[] ids = accrualPosted(2026, 8);
+        service.reverseAll(ids[0]);
+        service.reverseAll(ids[0]); // segunda vez (p.ej. otro borrado/recálculo)
+        assertEquals(1, contraCount(ids[1]),
+                "un asiento ya contrarrestado no se contrarresta otra vez");
+    }
+
+    @Test
+    void recalcularNominaValidada_contrarrestaElViejo_noLoDuplica() {
+        // createAccrual dos veces sobre el MISMO payslip, validando en medio =
+        // el flujo de "recalcular una nómina ya validada".
+        String payslipId = UUID.randomUUID().toString();
+        var p = new PayslipJournalEntryService.PayslipAccrual(
+                payslipId, EMP, "Empleado Rev", 2026, 9,
+                new BigDecimal("1000.00"), new BigDecimal("100.00"));
+        String a1 = service.createAccrual(p, null);
+        assertNotNull(a1);
+        jdbc.update("UPDATE journal_entries SET status='POSTED' WHERE id=?", a1);
+
+        // Recalcular: debe contrarrestar A1 (una vez) y crear un devengo NUEVO.
+        String a2 = service.createAccrual(p, null);
+        assertNotNull(a2, "el recálculo crea un devengo nuevo");
+        assertNotEquals(a1, a2, "es un asiento distinto, no reusa el validado");
+        assertEquals(1, contraCount(a1),
+                "el devengo viejo se contrarresta UNA vez (antes se quedaba sumando -> 640 doblado)");
+
+        // Un tercer recálculo no debe re-contrarrestar A1 (idempotencia).
+        jdbc.update("UPDATE journal_entries SET status='POSTED' WHERE id=?", a2);
+        service.createAccrual(p, null);
+        assertEquals(1, contraCount(a1), "A1 sigue con un solo contra tras otro recálculo");
     }
 
     @Test
