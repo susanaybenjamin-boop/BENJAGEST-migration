@@ -599,6 +599,42 @@ public class LaborApiClient {
         return b.toString();
     }
 
+    // ---- LIQ-SS: liquidación mensual de la Seguridad Social (476 → 572) ----
+
+    /** Meses del año con cuota de SS y su estado (pagada o no). */
+    public java.util.List<com.benjagest.ui.model.SsMonthEntry> ssPending(int year)
+            throws java.io.IOException, InterruptedException {
+        HttpResponse<String> r = send(req(baseUrl + "/labor/social-security/pending?year=" + year).GET());
+        java.util.List<com.benjagest.ui.model.SsMonthEntry> out = new ArrayList<>();
+        for (String o : splitTopLevelObjects(r.body())) {
+            out.add(new com.benjagest.ui.model.SsMonthEntry(
+                    bigDec(o, "year").intValue(),
+                    bigDec(o, "month").intValue(),
+                    bigDec(o, "amount"),
+                    boolField(o, "alreadyPaid"),
+                    emptyToNull(textField(o, "motivo"))));
+        }
+        return out;
+    }
+
+    /** Paga la SS de un mes (asiento 476 → 572, fecha hoy). Devuelve si se creó. */
+    public boolean ssPay(int year, int month) throws java.io.IOException, InterruptedException {
+        HttpResponse<String> r = send(req(baseUrl + "/labor/social-security/pay?year=" + year
+                + "&month=" + month).POST(HttpRequest.BodyPublishers.ofString("{}")));
+        return boolField(r.body(), "created");
+    }
+
+    /** Paga TODOS los meses pendientes del año. Devuelve cuántos se pagaron. */
+    public int ssPayAll(int year) throws java.io.IOException, InterruptedException {
+        HttpResponse<String> r = send(req(baseUrl + "/labor/social-security/pay-all?year=" + year)
+                .POST(HttpRequest.BodyPublishers.ofString("{}")));
+        return bigDec(r.body(), "paid").intValue();
+    }
+
+    private static String emptyToNull(String s) {
+        return s == null || s.isBlank() ? null : s;
+    }
+
     private ContractEntry mapContract(String obj) {
         return new ContractEntry(
                 textField(obj, "id"),

@@ -194,6 +194,10 @@ public class PayslipsScreen extends ScreenBase {
         settlementBtn.setGraphic(icon("fas-handshake"));
         settlementBtn.setOnAction(ev -> showSettlementDialog(bundle));
 
+        Button ssBtn = new Button(t("labor.payslips.action.ss"));
+        ssBtn.setGraphic(icon("fas-building-columns"));
+        ssBtn.setOnAction(ev -> showSocialSecurityDialog(bundle.currentYear()));
+
         Button payBtn = new Button(t("labor.payslips.action.pay"));
         payBtn.setGraphic(icon("fas-money-check-alt"));
         payBtn.setDisable(true);
@@ -247,7 +251,7 @@ public class PayslipsScreen extends ScreenBase {
         // pantallas estrechas. actionFlow (FlowPane) los envuelve a la línea
         // siguiente y mantiene el texto entero.
         javafx.scene.layout.FlowPane actions = actionFlow(
-                calcBtn, genMonthBtn, batchBtn, extraBtn, settlementBtn,
+                calcBtn, genMonthBtn, batchBtn, extraBtn, settlementBtn, ssBtn,
                 payBtn, deliverBtn, pdfBtn, emailBtn, delBtn);
 
         Label hint = new Label(t("labor.payslips.hint"));
@@ -275,6 +279,113 @@ public class PayslipsScreen extends ScreenBase {
                 },
                 payslipsTable);
         return screenScroll(body);
+    }
+
+    /**
+     * LIQ-SS-UI — Liquidación mensual de la Seguridad Social. Lista los meses del
+     * año con cuota (empresa + trabajador) y su estado, y permite pagarlos: cada
+     * pago genera el asiento {@code 476 → 572} que salda la cuota a la TGSS.
+     * "Pagar todos los pendientes" liquida de una vez los meses sin asiento.
+     * Refresca Labor + Contabilidad tras pagar (el usuario no pulsa "Refrescar").
+     */
+    private void showSocialSecurityDialog(int currentYear) {
+        Dialog<ButtonType> d = new Dialog<>();
+        d.setTitle(t("labor.ss.title"));
+        d.getDialogPane().getButtonTypes().add(ButtonType.CLOSE);
+
+        ComboBox<Integer> yearCombo = new ComboBox<>();
+        int yNow = java.time.LocalDate.now().getYear();
+        for (int y = yNow + 1; y >= yNow - 5; y--) yearCombo.getItems().add(y);
+        yearCombo.getSelectionModel().select(Integer.valueOf(currentYear));
+
+        TableView<com.benjagest.ui.model.SsMonthEntry> table = new TableView<>();
+        table.getStyleClass().add("data-table");
+        table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+        table.setPlaceholder(new Label(t("labor.ss.empty")));
+
+        TableColumn<com.benjagest.ui.model.SsMonthEntry, String> cMonth =
+                new TableColumn<>(t("labor.ss.col.month"));
+        cMonth.setCellValueFactory(c -> new SimpleStringProperty(
+                String.format("%02d/%d", c.getValue().month(), c.getValue().year())));
+        TableColumn<com.benjagest.ui.model.SsMonthEntry, String> cAmount =
+                new TableColumn<>(t("labor.ss.col.amount"));
+        cAmount.setCellValueFactory(c -> new SimpleStringProperty(
+                c.getValue().amount().setScale(2, java.math.RoundingMode.HALF_UP).toPlainString() + " €"));
+        TableColumn<com.benjagest.ui.model.SsMonthEntry, String> cStatus =
+                new TableColumn<>(t("labor.ss.col.status"));
+        cStatus.setCellValueFactory(c -> {
+            var e = c.getValue();
+            String s = e.alreadyPaid() ? t("labor.ss.status.paid")
+                    : (e.motivo() != null ? e.motivo() : t("labor.ss.status.pending"));
+            return new SimpleStringProperty(s);
+        });
+        table.getColumns().addAll(java.util.List.of(cMonth, cAmount, cStatus));
+
+        Runnable reload = () -> {
+            int y = yearCombo.getValue();
+            Task<java.util.List<com.benjagest.ui.model.SsMonthEntry>> tk = new Task<>() {
+                @Override protected java.util.List<com.benjagest.ui.model.SsMonthEntry> call() throws Exception {
+                    return laborApiClient.ssPending(y);
+                }
+            };
+            tk.setOnSucceeded(ev -> table.setItems(FXCollections.observableArrayList(tk.getValue())));
+            tk.setOnFailed(ev -> showError(t("labor.ss.title"), humanizeBackendError(
+                    tk.getException() == null ? "" : tk.getException().getMessage())));
+            start(tk, "ss-pending");
+        };
+        yearCombo.valueProperty().addListener((o, ov, nv) -> reload.run());
+
+        Button payBtn = new Button(t("labor.ss.pay"));
+        payBtn.setGraphic(icon("fas-money-check-alt"));
+        payBtn.setDisable(true);
+        Button payAllBtn = new Button(t("labor.ss.pay_all"));
+        payAllBtn.setGraphic(icon("fas-check-double"));
+
+        table.getSelectionModel().selectedItemProperty().addListener((o, ov, nv) ->
+                payBtn.setDisable(nv == null || nv.alreadyPaid() || nv.motivo() != null));
+
+        payBtn.setOnAction(ev -> {
+            var sel = table.getSelectionModel().getSelectedItem();
+            if (sel == null) return;
+            Task<Boolean> tk = new Task<>() {
+                @Override protected Boolean call() throws Exception {
+                    return laborApiClient.ssPay(sel.year(), sel.month());
+                }
+            };
+            tk.setOnSucceeded(ev2 -> { refreshLaborAndJournal(); reload.run(); });
+            tk.setOnFailed(ev2 -> showError(t("labor.ss.title"), humanizeBackendError(
+                    tk.getException() == null ? "" : tk.getException().getMessage())));
+            start(tk, "ss-pay");
+        });
+        payAllBtn.setOnAction(ev -> {
+            int y = yearCombo.getValue();
+            Task<Integer> tk = new Task<>() {
+                @Override protected Integer call() throws Exception {
+                    return laborApiClient.ssPayAll(y);
+                }
+            };
+            tk.setOnSucceeded(ev2 -> {
+                showInfo(t("labor.ss.title"),
+                        t("labor.ss.paid_n").replace("{n}", String.valueOf(tk.getValue())));
+                refreshLaborAndJournal();
+                reload.run();
+            });
+            tk.setOnFailed(ev2 -> showError(t("labor.ss.title"), humanizeBackendError(
+                    tk.getException() == null ? "" : tk.getException().getMessage())));
+            start(tk, "ss-pay-all");
+        });
+
+        Label hint = new Label(t("labor.ss.pay_hint"));
+        hint.setWrapText(true); hint.getStyleClass().add("settings-hint");
+        HBox top = new HBox(8, new Label(t("labor.payslips.calc.year")), yearCombo, payBtn, payAllBtn);
+        top.setAlignment(Pos.CENTER_LEFT);
+        VBox box = new VBox(10, hint, top, table);
+        VBox.setVgrow(table, Priority.ALWAYS);
+        box.setPrefSize(560, 420);
+        installDialog(d, box);
+        d.setResizable(true);
+        reload.run();
+        d.showAndWait();
     }
 
     /**
