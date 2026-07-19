@@ -1193,11 +1193,13 @@ public class PayslipService {
                 """, id, companyId);
 
         // Revertir asientos (devengo + pago) antes de borrar la nómina.
-        try {
-            journalService.reverseAll(id);
-        } catch (Exception ex) {
-            // Si no había asientos, seguimos con el borrado.
-        }
+        // NO se traga la excepción: si la reversión falla (p.ej. el asiento está
+        // en un ejercicio LOCKED/CLOSED y el fiscalGuard lanza 409), al ser este
+        // método @Transactional se aborta TODO el borrado y la nómina se conserva.
+        // Antes un catch(Exception) genérico se comía ese 409 y borraba la nómina
+        // igual, dejando el asiento de devengo POSTED huérfano SIN contraasiento
+        // (640 inflado). reverseAll no lanza cuando simplemente no hay asientos.
+        journalService.reverseAll(id);
         int n = jdbcTemplate.update("""
                 DELETE FROM payslips
                  WHERE id = ? AND company_id = ? AND status IN ('DRAFT', 'CALCULATED', 'CANCELLED')
