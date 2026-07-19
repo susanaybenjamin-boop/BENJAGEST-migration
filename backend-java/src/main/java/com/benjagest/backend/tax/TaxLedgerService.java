@@ -204,16 +204,13 @@ public class TaxLedgerService {
         String model = String.valueOf(f.get("tax_model_code"));
         // 303 -> cancela la deuda de la 4750 (HP acreedora por IVA).
         // 130 -> pago a cuenta del IRPF del titular (473, activo).
-        // 111 -> vacía la retención practicada acumulada en la 4751 (HP acreedora
-        //        por retenciones practicadas), que la nómina fue abonando.
-        String debeCode = paymentAccountCode(model);
-        String accDebe = "4750".equals(debeCode)
-                ? accountByCode(companyId, debeCode)
-                : accountByPrefix(companyId, debeCode);
+        // 111 -> vacía la retención practicada, que la nómina fue abonando a la
+        //        4751 o, si esa subcuenta no existe, a su padre 475.
+        String accDebe = paymentDebitAccount(companyId, model);
         String accBanco = accountByPrefix(companyId, "572");
         if (accDebe == null || accBanco == null) {
             throw new IllegalStateException("faltan cuentas para el pago ("
-                    + debeCode + " / 572)");
+                    + paymentAccountCode(model) + " / 572)");
         }
 
         String concept = "Pago modelo " + model + " " + periodLabel(f);
@@ -332,7 +329,7 @@ public class TaxLedgerService {
                 String motivo = null;
                 if (importe == null || importe.signum() <= 0) {
                     motivo = "La declaración no sale a pagar: no hay pago que contabilizar.";
-                } else if (accountFor(companyId, cuenta) == null) {
+                } else if (paymentDebitAccount(companyId, model) == null) {
                     motivo = "Falta la cuenta " + cuenta + " en el plan contable.";
                 } else if (accountByPrefix(companyId, "572") == null) {
                     motivo = "Falta la cuenta 572 (bancos) en el plan contable.";
@@ -347,19 +344,32 @@ public class TaxLedgerService {
         return out;
     }
 
-    /** La 4750 va por código exacto; la 473/4751 por prefijo (ver createPayment). */
-    private String accountFor(String companyId, String code) {
-        return "4750".equals(code) || "4700".equals(code)
-                ? accountByCode(companyId, code)
-                : accountByPrefix(companyId, code);
-    }
-
-    /** Cuenta de cargo del asiento de pago de cada modelo (contra 572). */
+    /** Cuenta de cargo del asiento de pago de cada modelo (contra 572). Es el
+     *  código CANÓNICO, para etiquetas y mensajes; la resolución real (que tolera
+     *  subcuentas ausentes) la hace {@link #paymentDebitAccount}. */
     private static String paymentAccountCode(String model) {
         return switch (model) {
             case "303" -> "4750"; // HP acreedora por IVA
             case "111" -> "4751"; // HP acreedora por retenciones practicadas
             default    -> "473";  // 130: HP retenciones y pagos a cuenta (activo)
+        };
+    }
+
+    /**
+     * Resuelve la cuenta de cargo REAL del pago en el plan de la empresa. Para el
+     * 111 tolera que no exista la subcuenta 4751 y cae a su padre 475 ("HP
+     * acreedora por conceptos fiscales") — que es lo que la plantilla permanente
+     * (V147) siembra y a lo que la nómina abona la retención cuando no hay 4751.
+     * Devuelve null si no hay ninguna, y el caller decide.
+     */
+    private String paymentDebitAccount(String companyId, String model) {
+        return switch (model) {
+            case "303" -> accountByCode(companyId, "4750");
+            case "111" -> {
+                String a = accountByPrefix(companyId, "4751");
+                yield a != null ? a : accountByPrefix(companyId, "475");
+            }
+            default -> accountByPrefix(companyId, "473"); // 130
         };
     }
 

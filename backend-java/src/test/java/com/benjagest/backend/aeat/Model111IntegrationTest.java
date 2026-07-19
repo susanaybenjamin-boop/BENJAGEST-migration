@@ -44,7 +44,9 @@ import org.springframework.jdbc.datasource.DriverManagerDataSource;
 class Model111IntegrationTest {
 
     private static final String COMPANY = "c0111111-0000-0000-0000-000000000111";
-    private static final String ACC_4751 = "a4751000-0000-0000-0000-000000000111";
+    // La empresa real usa la 475 genérica (la que siembra V147), NO la subcuenta
+    // 4751 — así el test prueba el mismo plan contable que tiene Benjamin.
+    private static final String ACC_475 = "a0475000-0000-0000-0000-000000000111";
     private static final String ACC_572 = "a5720000-0000-0000-0000-000000000111";
 
     private static DB db;
@@ -101,8 +103,8 @@ class Model111IntegrationTest {
                 """, COMPANY);
         jdbc.update("""
                 INSERT INTO accounting_accounts (id, company_id, code, name, account_type, active)
-                VALUES (?, ?, '4751', 'HP acreedora por retenciones practicadas', 'LIABILITY', TRUE)
-                """, ACC_4751, COMPANY);
+                VALUES (?, ?, '475', 'Hacienda Pública, acreedora por conceptos fiscales', 'LIABILITY', TRUE)
+                """, ACC_475, COMPANY);
         jdbc.update("""
                 INSERT INTO accounting_accounts (id, company_id, code, name, account_type, active)
                 VALUES (?, ?, '572', 'Bancos', 'ASSET', TRUE)
@@ -176,13 +178,14 @@ class Model111IntegrationTest {
                 """, entryId);
 
         assertEquals(2, lines.size(), "el asiento tiene dos líneas");
-        boolean debe4751 = lines.stream().anyMatch(r ->
-                String.valueOf(r.get("code")).startsWith("4751")
+        // La empresa tiene la 475 (no la 4751): el pago debe caer a la 475.
+        boolean debe475 = lines.stream().anyMatch(r ->
+                String.valueOf(r.get("code")).startsWith("475")
                         && new BigDecimal("30.07").compareTo((BigDecimal) r.get("debit")) == 0);
         boolean haber572 = lines.stream().anyMatch(r ->
                 String.valueOf(r.get("code")).startsWith("572")
                         && new BigDecimal("30.07").compareTo((BigDecimal) r.get("credit")) == 0);
-        assertTrue(debe4751, "Debe 4751 por 30,07 (vacía la retención practicada)");
+        assertTrue(debe475, "Debe 475/4751 por 30,07 (vacía la retención practicada)");
         assertTrue(haber572, "Haber 572 por 30,07 (sale del banco)");
     }
 
