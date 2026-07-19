@@ -1307,6 +1307,26 @@ public class AltaApiClient {
         return d;
     }
 
+    /** LIQ-111-UI — prefill del 111 desde las nóminas del trimestre (I. Trabajo)
+     *  y las facturas de profesionales con retención (II. Actividades). */
+    public com.benjagest.ui.model.Aeat111Data preview111(int year, int quarter)
+            throws IOException, InterruptedException {
+        HttpResponse<String> r = send(req(baseUrl + "/aeat/extras/111/" + year + "/" + quarter + "/preview").GET());
+        if (r.statusCode() < 200 || r.statusCode() >= 300) {
+            throw new IOException("HTTP " + r.statusCode() + ": " + r.body());
+        }
+        String j = r.body();
+        com.benjagest.ui.model.Aeat111Data d = new com.benjagest.ui.model.Aeat111Data();
+        d.trabajoPerceptores = numberField(j, "trabajoPerceptores");
+        d.trabajoBase = numberField(j, "trabajoBase");
+        d.trabajoRetencion = numberField(j, "trabajoRetencion");
+        d.actividadesPerceptores = numberField(j, "actividadesPerceptores");
+        d.actividadesBase = numberField(j, "actividadesBase");
+        d.actividadesRetencion = numberField(j, "actividadesRetencion");
+        d.total = numberField(j, "resultado");
+        return d;
+    }
+
     // ---- IVA-COMP: saldo inicial de cuotas de IVA a compensar (303) ----
 
     /** Devuelve [openingBalance, asOfYear, asOfQuarter] o null si no hay saldo configurado. */

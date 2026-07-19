@@ -82,6 +82,19 @@ public class AeatExtraModelsController {
         return service.generate190(year, true);
     }
 
+    // -- 111 (retenciones IRPF, trimestral) --
+    @GetMapping("/111/{year}/{quarter}/preview")
+    public AeatExtraModelsService.Model111View preview111(
+            @PathVariable("year") int year, @PathVariable("quarter") int quarter) {
+        return service.generate111(year, quarter, false);
+    }
+
+    @PostMapping("/111/{year}/{quarter}/generate")
+    public AeatExtraModelsService.Model111View generate111(
+            @PathVariable("year") int year, @PathVariable("quarter") int quarter) {
+        return service.generate111(year, quarter, true);
+    }
+
     // ---- Modelo 303 (IVA trimestral) ----
     @GetMapping("/303/{year}/{quarter}/preview")
     public AeatExtraModelsService.Model303View preview303(

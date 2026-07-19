@@ -412,6 +412,104 @@ public class AeatExtraModelsService {
     }
 
     // ====================================================================
+    //  Modelo 111 — Retenciones IRPF (trabajo + actividades económicas)
+    // ====================================================================
+
+    /**
+     * LIQ-111-CALC — Calcula las casillas del Modelo 111 de un trimestre.
+     *
+     * <p><b>I. Rendimientos del trabajo</b> (casillas 01/02/03) desde las
+     * NÓMINAS del trimestre ({@code payslips}, todas menos las anuladas):
+     * <ul>
+     *   <li>01 nº de perceptores = empleados distintos con nómina en el periodo.</li>
+     *   <li>02 importe de las percepciones = Σ bruto.</li>
+     *   <li>03 importe de las retenciones = Σ IRPF retenido.</li>
+     * </ul>
+     * Es la fuente correcta: el 111 declara lo retenido a los trabajadores, y el
+     * bruto/IRPF viven en la propia nómina, exista o no su asiento y esté validado
+     * o no (a diferencia del 190, que hoy solo mira facturas de proveedores — ver
+     * backlog). Se cuentan todas las nóminas del trimestre menos las CANCELLED.
+     *
+     * <p><b>II. Rendimientos de actividades económicas</b> (07/08/09) desde las
+     * FACTURAS RECIBIDAS con retención (profesionales, clave G): base y retención
+     * (Σ abono a la 4751 de sus asientos POSTED del trimestre). Benjamin hoy no
+     * factura con retención, pero el modelo lo contempla — igual que A3 lee
+     * "Nóminas" + "Facturas Recibidas".
+     *
+     * <p>Casilla 28 = 03 + 09; casilla 30 (resultado a ingresar) = 28 (no
+     * modelamos complementarias, casilla 29 = 0). {@code total_amount} del filing
+     * = casilla 30, que es lo que el asiento de pago vaciará de la 4751.
+     */
+    @Transactional
+    public Model111View generate111(int year, int quarter, boolean persist) {
+        String companyId = tenantContext.getCurrentCompanyId();
+        if (quarter < 1 || quarter > 4) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "El modelo 111 es trimestral: el trimestre debe ser 1..4");
+        }
+        int fromMonth = (quarter - 1) * 3 + 1;
+        int toMonth = quarter * 3;
+
+        // I. Trabajo — desde las nóminas del trimestre (todas menos las anuladas).
+        Map<String, Object> trabajo = jdbcTemplate.queryForMap("""
+                SELECT COUNT(DISTINCT employee_id) AS perceptores,
+                       COALESCE(SUM(gross_amount), 0) AS base,
+                       COALESCE(SUM(irpf_amount), 0)  AS retencion
+                  FROM payslips
+                 WHERE company_id = ?
+                   AND period_year = ?
+                   AND period_month BETWEEN ? AND ?
+                   AND status <> 'CANCELLED'
+                """, companyId, year, fromMonth, toMonth);
+        int trabajoPerceptores = ((Number) trabajo.get("perceptores")).intValue();
+        BigDecimal trabajoBase = toBigDecimal(trabajo.get("base"));
+        BigDecimal trabajoRetencion = toBigDecimal(trabajo.get("retencion"));
+
+        // II. Actividades económicas — facturas recibidas con retención en el
+        // trimestre. Retención = Σ abono a la 4751 de sus asientos POSTED.
+        Map<String, Object> actividades = jdbcTemplate.queryForMap("""
+                SELECT COUNT(*) AS perceptores,
+                       COALESCE(SUM(p.base_amount), 0) AS base,
+                       COALESCE(SUM(ret.retencion), 0) AS retencion
+                  FROM purchase_invoices p
+                  JOIN (
+                        SELECT je.source_id AS pid, SUM(l.credit) AS retencion
+                          FROM journal_entries je
+                          JOIN journal_entry_lines l ON l.journal_entry_id = je.id
+                          JOIN accounting_accounts a ON a.id = l.account_id AND a.code LIKE '4751%'
+                         WHERE je.company_id = ? AND je.status = 'POSTED'
+                           AND je.source_type = 'PURCHASE_INVOICE'
+                         GROUP BY je.source_id
+                       ) ret ON ret.pid = p.id
+                 WHERE p.company_id = ?
+                   AND YEAR(p.invoice_date) = ?
+                   AND QUARTER(p.invoice_date) = ?
+                   AND ret.retencion > 0
+                """, companyId, companyId, year, quarter);
+        int actPerceptores = ((Number) actividades.get("perceptores")).intValue();
+        BigDecimal actBase = toBigDecimal(actividades.get("base"));
+        BigDecimal actRetencion = toBigDecimal(actividades.get("retencion"));
+
+        BigDecimal total = trabajoRetencion.add(actRetencion); // casilla 28 = 30
+
+        Model111View view = new Model111View(year, quarter,
+                trabajoPerceptores, trabajoBase, trabajoRetencion,
+                actPerceptores, actBase, actRetencion,
+                total, total);
+        if (persist) persistFiling("111", year, quarter, view, total);
+        return view;
+    }
+
+    /** SUM(DECIMAL) puede volver como BigDecimal, o como Long/Integer cuando el
+     *  COALESCE cae en el literal 0. Coerción robusta a BigDecimal para no
+     *  arriesgar un ClassCastException según cómo tipe MariaDB la columna. */
+    private static BigDecimal toBigDecimal(Object o) {
+        if (o == null) return BigDecimal.ZERO;
+        if (o instanceof BigDecimal b) return b;
+        return new BigDecimal(o.toString());
+    }
+
+    // ====================================================================
     //  IVA desde la contabilidad (asientos POSTED), por tipo (vat_rate)
     // ====================================================================
 
@@ -1159,6 +1257,19 @@ public class AeatExtraModelsService {
             int year, int perceptoresCount,
             BigDecimal totalBase, BigDecimal totalRetenciones,
             List<Model190Row> rows
+    ) {}
+
+    /**
+     * Modelo 111 (trimestral). Casillas: I. Trabajo (01/02/03) y II. Actividades
+     * económicas (07/08/09); casilla 28 = total retenciones; casilla 30 =
+     * resultado a ingresar. El resto de bloques del 111 (premios, forestales,
+     * imagen) no se modelan: no aplican al caso de una asesoría/pyme normal.
+     */
+    public record Model111View(
+            int year, int quarter,
+            int trabajoPerceptores, BigDecimal trabajoBase, BigDecimal trabajoRetencion,
+            int actividadesPerceptores, BigDecimal actividadesBase, BigDecimal actividadesRetencion,
+            BigDecimal totalRetenciones, BigDecimal resultado
     ) {}
 
     public record Model303View(

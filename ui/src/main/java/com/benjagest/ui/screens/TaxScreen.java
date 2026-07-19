@@ -455,6 +455,8 @@ public class TaxScreen extends ScreenBase {
             show390Editor(existing);
         } else if ("190".equals(modelCode)) {
             show190Editor(existing);
+        } else if ("111".equals(modelCode)) {
+            show111Editor(existing);
         } else {
             showGenericFilingEditor(existing, catalog);
         }
@@ -766,6 +768,116 @@ public class TaxScreen extends ScreenBase {
             if (previa == null || previa.signum() < 0) previa = java.math.BigDecimal.ZERO;
             java.math.BigDecimal aplicada = regimen.signum() > 0 ? previa.min(regimen) : java.math.BigDecimal.ZERO;
             java.math.BigDecimal total = regimen.subtract(aplicada).setScale(2, java.math.RoundingMode.HALF_UP);
+            saveFiling(existing, statusCombo.getValue(), encodeDataMap(data), total,
+                    csvField.getText(), existing.notes(), java.util.List.of());
+        });
+    }
+
+    /**
+     * LIQ-111-UI — Editor del modelo 111 (retenciones IRPF trimestrales).
+     *
+     * <p>Las casillas se calculan desde las NÓMINAS del trimestre (I. Trabajo,
+     * 01/02/03) y las facturas de profesionales con retención (II. Actividades,
+     * 07/08/09). El asesor puede recalcular y ajustar antes de presentar. Al
+     * marcar el modelo PAGADO, el backend ({@code TaxLedgerService.onPaid})
+     * genera el asiento {@code 4751 → 572} que vacía la retención acumulada.
+     */
+    private void show111Editor(com.benjagest.ui.model.TaxFilingEntry existing) {
+        Dialog<ButtonType> dialog = new Dialog<>();
+        dialog.setTitle("Modelo 111 — " + formatPeriod(existing));
+        ButtonType saveBt = new ButtonType(t("tax.editor.save"), ButtonBar.ButtonData.OK_DONE);
+        dialog.getDialogPane().getButtonTypes().addAll(saveBt, ButtonType.CANCEL);
+
+        java.util.Map<String, String> parsed = parseDataMap(existing.dataJson());
+        // I. Rendimientos del trabajo (01/02/03).
+        TextField trabPerc = new TextField(parsed.getOrDefault("trabajoPerceptores", ""));
+        TextField trabBase = new TextField(parsed.getOrDefault("trabajoBase", ""));
+        TextField trabRet = new TextField(parsed.getOrDefault("trabajoRetencion", ""));
+        // II. Rendimientos de actividades económicas (07/08/09).
+        TextField actPerc = new TextField(parsed.getOrDefault("actividadesPerceptores", ""));
+        TextField actBase = new TextField(parsed.getOrDefault("actividadesBase", ""));
+        TextField actRet = new TextField(parsed.getOrDefault("actividadesRetencion", ""));
+
+        Label totalLabel = new Label();
+        totalLabel.getStyleClass().add("settings-section-title");
+        Runnable recompute = () -> {
+            java.math.BigDecimal r = dec347(trabRet.getText()).add(dec347(actRet.getText()))
+                    .setScale(2, java.math.RoundingMode.HALF_UP);
+            totalLabel.setText(t("aeat111.total") + " " + r.toPlainString() + " €");
+        };
+        trabRet.textProperty().addListener((o, ov, nv) -> recompute.run());
+        actRet.textProperty().addListener((o, ov, nv) -> recompute.run());
+
+        ComboBox<String> statusCombo = new ComboBox<>();
+        statusCombo.getItems().addAll("DRAFT", "READY", "PRESENTED", "PAID", "REJECTED", "CANCELLED");
+        applyFilingStatusLabels(statusCombo);
+        statusCombo.getSelectionModel().select(existing.status());
+        TextField csvField = new TextField(existing.csvAeat());
+
+        java.util.function.Consumer<com.benjagest.ui.model.Aeat111Data> apply111 = d -> {
+            trabPerc.setText(d.trabajoPerceptores); trabBase.setText(d.trabajoBase);
+            trabRet.setText(d.trabajoRetencion);
+            actPerc.setText(d.actividadesPerceptores); actBase.setText(d.actividadesBase);
+            actRet.setText(d.actividadesRetencion);
+            recompute.run();
+        };
+        Runnable recalc111 = () -> {
+            Integer q = existing.periodQuarter();
+            if (q == null) return;
+            Task<com.benjagest.ui.model.Aeat111Data> tk = new Task<>() {
+                @Override protected com.benjagest.ui.model.Aeat111Data call() throws Exception {
+                    return altaApiClient.preview111(existing.periodYear(), q);
+                }
+            };
+            tk.setOnSucceeded(ev -> apply111.accept(tk.getValue()));
+            tk.setOnFailed(ev -> showError(t("tax.editor.fail.title"), t("tax.editor.fail.body")));
+            start(tk, "aeat111-recalc");
+        };
+        Button recalcBtn = new Button(t("aeat111.recalc"));
+        recalcBtn.setGraphic(icon("fas-sync"));
+        recalcBtn.setOnAction(e -> recalc111.run());
+
+        GridPane grid = new GridPane();
+        grid.setHgap(10); grid.setVgap(8); grid.setPadding(new Insets(10));
+        int r = 0;
+        grid.add(label(t("aeat111.section.trabajo"), "settings-section-title"), 0, r++, 3, 1);
+        grid.add(new Label(t("aeat111.perceptores")), 0, r); grid.add(trabPerc, 1, r++);
+        grid.add(new Label(t("aeat111.percepciones")), 0, r); grid.add(trabBase, 1, r++);
+        grid.add(new Label(t("aeat111.retenciones")), 0, r); grid.add(trabRet, 1, r++);
+        grid.add(label(t("aeat111.section.actividades"), "settings-section-title"), 0, r++, 3, 1);
+        grid.add(new Label(t("aeat111.perceptores")), 0, r); grid.add(actPerc, 1, r++);
+        grid.add(new Label(t("aeat111.percepciones")), 0, r); grid.add(actBase, 1, r++);
+        grid.add(new Label(t("aeat111.retenciones")), 0, r); grid.add(actRet, 1, r++);
+
+        recompute.run();
+        // Prefill automático si el modelo aún no tiene datos.
+        boolean vacio = isBlankOrZero(trabRet.getText()) && isBlankOrZero(actRet.getText())
+                && isBlankOrZero(trabBase.getText());
+        if (vacio) recalc111.run();
+
+        Label hint = new Label(t("aeat111.hint"));
+        hint.setWrapText(true); hint.getStyleClass().add("settings-hint");
+        HBox foot = new HBox(8, new Label(t("tax.editor.status")), statusCombo,
+                new Label(t("tax.editor.csv")), csvField);
+        foot.setAlignment(Pos.CENTER_LEFT);
+        VBox box = new VBox(10, hint, recalcBtn, grid, totalLabel, new Separator(), foot);
+        box.setPrefWidth(560);
+        installDialog(dialog, box);
+        dialog.setResizable(true);
+
+        dialog.showAndWait().ifPresent(bt -> {
+            if (bt != saveBt) return;
+            java.math.BigDecimal total = dec347(trabRet.getText()).add(dec347(actRet.getText()))
+                    .setScale(2, java.math.RoundingMode.HALF_UP);
+            java.util.Map<String, String> data = new java.util.LinkedHashMap<>();
+            data.put("trabajoPerceptores", trabPerc.getText().trim());
+            data.put("trabajoBase", trabBase.getText().trim());
+            data.put("trabajoRetencion", trabRet.getText().trim());
+            data.put("actividadesPerceptores", actPerc.getText().trim());
+            data.put("actividadesBase", actBase.getText().trim());
+            data.put("actividadesRetencion", actRet.getText().trim());
+            data.put("totalRetenciones", total.toPlainString());
+            data.put("resultado", total.toPlainString());
             saveFiling(existing, statusCombo.getValue(), encodeDataMap(data), total,
                     csvField.getText(), existing.notes(), java.util.List.of());
         });
