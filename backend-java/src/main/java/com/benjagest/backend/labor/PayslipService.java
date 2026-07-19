@@ -593,6 +593,17 @@ public class PayslipService {
         BigDecimal[] caps = in.groupCaps();
         BigDecimal minCap = caps != null ? caps[0] : rates.baseMinMonthly();
         BigDecimal maxCap = caps != null ? caps[1] : rates.baseMaxMonthly();
+        // F2R: el FINIQUITO no lleva suelo de base mínima MENSUAL — sus extras
+        // (vacaciones) cotizan sobre su importe; el mínimo ya se aplicó en la
+        // mensual. Sin esto, un finiquito de 96 € se clampaba a 1.424,40 y la SS
+        // (93 €) se comía el devengo -> líquido NEGATIVO. En una MENSUAL parcial
+        // (mes de cese) el mínimo y el máximo se prorratean por los días trabajados.
+        if (isSettlement) {
+            minCap = null;
+        } else if (partialMonthly) {
+            if (minCap != null) minCap = minCap.multiply(factor).setScale(2, RoundingMode.HALF_UP);
+            if (maxCap != null) maxCap = maxCap.multiply(factor).setScale(2, RoundingMode.HALF_UP);
+        }
         if (maxCap != null && maxCap.signum() > 0
                 && cotizationBase.compareTo(maxCap) > 0) {
             cotizationBase = maxCap;
