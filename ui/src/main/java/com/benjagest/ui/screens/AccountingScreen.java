@@ -2645,11 +2645,10 @@ public class AccountingScreen {
                 col(tt.apply("accounting.col.balance"), m -> eur(m.runningBalance()), 120)));
         VBox.setVgrow(table, Priority.ALWAYS);
 
-        Button view = new Button(tt.apply("accounting.action.view"));
-        view.getStyleClass().add("primary-button");
         // runLedger(showErrors): resuelve la cuenta del campo y trae el mayor.
         // showErrors=false en las auto-ejecuciones (cambio de fecha) para no soltar
-        // un diálogo si aún no hay cuenta elegida.
+        // un diálogo si aún no hay cuenta elegida. Ya NO hay botón "Ver": el mayor
+        // se trae solo al elegir cuenta y al cambiar las fechas.
         java.util.function.Consumer<Boolean> runLedger = showErrors -> {
             AccountSummary sel = accountsByLabel.get(accountField.getText());
             if (sel == null) {
@@ -2711,7 +2710,6 @@ public class AccountingScreen {
         // Auto-ejecución: al cambiar las fechas (silenciosa si aún no hay cuenta).
         from.valueProperty().addListener((o, ov, nv) -> runLedger.accept(false));
         to.valueProperty().addListener((o, ov, nv) -> runLedger.accept(false));
-        view.setOnAction(e -> runLedger.accept(true));
 
         Button clear = new Button(tt.apply("accounting.filter.clear"));
         clear.setOnAction(e -> {
@@ -2732,13 +2730,13 @@ public class AccountingScreen {
             final String accId = sel.id();
             final String code = sel.code();
             savePdf(() -> api.ledgerPdf(accId, from.getValue(), to.getValue()),
-                    "mayor-" + code + ".pdf", view);
+                    "mayor-" + code + ".pdf", accountField);
         });
 
         HBox filters = new HBox(8,
                 new Label(tt.apply("accounting.ledger.account")), accountField,
                 new Label(tt.apply("accounting.filter.from")), from,
-                new Label(tt.apply("accounting.filter.to")), to, view, clear, exportPdf);
+                new Label(tt.apply("accounting.filter.to")), to, clear, exportPdf);
         filters.setAlignment(Pos.CENTER_LEFT);
         // Saldos de apertura/final ARRIBA de la tabla: siempre visibles sin
         // hacer scroll hasta el fondo (la tabla de movimientos puede ser larga).
