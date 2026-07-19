@@ -171,4 +171,25 @@ class PayslipComputeTest {
                 () -> { throw new AssertionError("irpfFallback no debe usarse"); }));
         assertAmount("817.86", c.gross());
     }
+
+    @Test
+    void finiquitoPequeno_noClampaBaseMinima_yLiquidoPositivo() {
+        // F2R: un finiquito con solo vacaciones (96,30 cotizable) NO se clampa a la
+        // base mínima del grupo (1.424,40). Antes se clampaba y la SS (~93 €) se
+        // comía el devengo -> líquido NEGATIVO. Ahora cotiza sobre su importe.
+        var extras = List.of(new PayslipService.ExtraConcept(
+                "Vacaciones no disfrutadas", bd("96.30"), true, true));
+        var c = PayslipService.computePayslip(new PayslipService.EngineInputs(
+                "SETTLEMENT", contract(), concepts(), extras, null, false, null, null,
+                List.of(), rates2026(),
+                new BigDecimal[]{ bd("1424.40"), bd("5101.20") },
+                false, null, false, null,
+                () -> { throw new AssertionError("overtimeRates no debe usarse"); },
+                null,
+                () -> bd("0.02")));
+        // La base es el importe cotizable del finiquito, NO la mínima mensual.
+        assertAmount("96.30", c.cotizationBase());
+        // SS trabajador ~6,50% de 96,30 = 6,26 (no 93). Líquido positivo.
+        assertEquals(1, c.net().signum(), "el líquido del finiquito es positivo, no negativo");
+    }
 }
