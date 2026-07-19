@@ -63,6 +63,8 @@ import org.springframework.web.server.ResponseStatusException;
 @Service
 public class PayslipService {
 
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(PayslipService.class);
+
     // Los tipos de cotización SS ya NO van a fuego aquí: se leen por año de
     // ss_contribution_rates (SsContributionRatesService), bloque PARAM-YEAR.
 
@@ -344,9 +346,15 @@ public class PayslipService {
         java.util.function.Supplier<com.benjagest.backend.labor.ss.OvertimeRatesService.Rates> overtimeRates =
                 () -> overtimeRatesService.ratesForYear(req.year());
 
+        // F2R — log de diagnóstico del cálculo (se quita antes de compilar el MSI).
+        if (log.isInfoEnabled() && ("SETTLEMENT".equals(type) || req.factorOrOne().compareTo(BigDecimal.ONE) < 0)) {
+            log.info("F2R calc: emp={} {}/{} type={} factor={} prorated={} extraConcepts={}",
+                    req.employeeId(), req.year(), req.month(), type, req.factorOrOne(), prorated,
+                    req.extraConcepts() == null ? 0 : req.extraConcepts().size());
+        }
         return computePayslip(new EngineInputs(type, contract,
                 loadSalaryConcepts(contract.id), req.extraConcepts(),
-                req.recurringConcepts(), prorated, req.otherDeductions(),
+                req.recurringConcepts(), prorated, req.factorOrOne(), req.otherDeductions(),
                 incidencias, ssRates, groupCaps, temporalUnemp, unempTemporal,
                 formativo, formativoQuotas, overtimeRates, irpfLegalMinFn,
                 irpfFallbackPct));
@@ -366,6 +374,7 @@ public class PayslipService {
             List<ExtraConcept> extraConcepts,
             List<ExtraConcept> recurringConcepts,
             boolean prorated,
+            BigDecimal proratedFactor,
             BigDecimal otherDeductions,
             List<com.benjagest.backend.labor.incidencias.NominaIncidenciaService.IncidenciaView> incidencias,
             SsContributionRatesService.Rates rates,
@@ -392,6 +401,12 @@ public class PayslipService {
         // No se añaden los conceptos del contrato como líneas; los totales anuales
         // SÍ se acumulan para calcular el tipo de IRPF (rate anual normal).
         boolean isSettlement = "SETTLEMENT".equals(type);
+
+        // F2R-1: factor de prorrateo por días trabajados para la mensual del mes de
+        // cese (worked/díasDelMes). Solo afecta al devengo del salario y a la base de
+        // cotización de una MONTHLY; 1 = mes completo (todo lo demás igual que antes).
+        BigDecimal factor = in.proratedFactor() == null ? BigDecimal.ONE : in.proratedFactor();
+        boolean partialMonthly = "MONTHLY".equals(type) && factor.compareTo(BigDecimal.ONE) < 0;
 
         // Prorrateo de pagas extras (art. 31 ET): 12 pagas -> anual/12; 14 pagas
         // (default legal) -> anual/(12+extras) y las extras como nóminas EXTRA_*.
@@ -437,6 +452,7 @@ public class PayslipService {
                 // se cobran en 12 mensualidades (importe anual/12), no por pagas.
                 int periodDivisor = isBase ? divisor : 12;
                 BigDecimal lineAmount = a.divide(BigDecimal.valueOf(periodDivisor), 2, RoundingMode.HALF_UP);
+                if (partialMonthly) lineAmount = lineAmount.multiply(factor).setScale(2, RoundingMode.HALF_UP);
                 // En la paga extra el devengo del salario base se identifica como
                 // gratificación extraordinaria (verano/Navidad), no "Salario base".
                 String lineName = (isExtra && isBase) ? extraPagaLabel(type) : c.name();
@@ -448,6 +464,7 @@ public class PayslipService {
             taxableAnnual = contract.grossSalary;
             if (!isSettlement) {
                 BigDecimal base = contract.grossSalary.divide(BigDecimal.valueOf(divisor), 2, RoundingMode.HALF_UP);
+                if (partialMonthly) base = base.multiply(factor).setScale(2, RoundingMode.HALF_UP);
                 lines.add(new PayslipLine(isExtra ? extraPagaLabel(type) : "Salario bruto del periodo",
                         "SALARY_BASE", base));
                 taxableDevengo = base;
@@ -545,8 +562,14 @@ public class PayslipService {
             // INC-3: las ausencias NO retribuidas reducen la base proporcionalmente
             // (no se cotiza por los días no trabajados). El clamp de mín/máx se aplica
             // después; la proración del mínimo por mes parcial queda a validar.
-            cotizationBase = cotizableAnnual.divide(BigDecimal.valueOf(12), 2, RoundingMode.HALF_UP)
-                    .add(extraCotizable).subtract(absenceUnpaid);
+            // F2R-SS: en el mes de cese (parcial) la base mensual se prorratea por
+            // los días trabajados. OJO (limitación conocida): los PERMISOS SIN SUELDO
+            // reducen el devengo pero mantienen la base (se cotiza durante el permiso);
+            // eso NO se modela aún, así que en un mes parcial CON permisos sin sueldo
+            // la base saldrá igual al devengo, no mayor. Sin permisos, cuadra.
+            BigDecimal monthlyBase = cotizableAnnual.divide(BigDecimal.valueOf(12), 2, RoundingMode.HALF_UP);
+            if (partialMonthly) monthlyBase = monthlyBase.multiply(factor).setScale(2, RoundingMode.HALF_UP);
+            cotizationBase = monthlyBase.add(extraCotizable).subtract(absenceUnpaid);
             if (cotizationBase.signum() < 0) cotizationBase = BigDecimal.ZERO;
         } else if ("EXTRA_SUMMER".equals(type) || "EXTRA_CHRISTMAS".equals(type) || isSettlement) {
             // Pagas extra y finiquito: solo cotizan los conceptos marcados como
@@ -709,7 +732,7 @@ public class PayslipService {
                     new ExtraConcept(MEJORA_CONCEPT, x, true, true));
             return compute(new CalculateRequest(tr.employeeId(), tr.year(), tr.month(),
                     tr.payslipType(), tr.includeExtraProrated(), null, null,
-                    tr.extraConcepts(), rec));
+                    tr.extraConcepts(), rec, null));
         };
 
         BigDecimal plus;
@@ -758,6 +781,17 @@ public class PayslipService {
      *    IRPF; NO cotiza de nuevo (ya cotizó prorrateada mes a mes).
      */
     public List<ExtraConcept> settlementConcepts(SettlementRequest r) {
+        return settlementConcepts(r, false);
+    }
+
+    /**
+     * F2R-2: con {@code onlyExtras=true} devuelve SOLO los extras del finiquito
+     * (vacaciones no disfrutadas + prorrata pagas extra), SIN el salario de días
+     * trabajados — ese va en la nómina MENSUAL prorrateada del mes de cese, como
+     * hace la asesoría (dos recibos). Con {@code false} = comportamiento clásico
+     * (todo en un recibo), que conservan otros llamadores.
+     */
+    public List<ExtraConcept> settlementConcepts(SettlementRequest r, boolean onlyExtras) {
         ContractData c = resolveActiveContract(r.employeeId(), r.year(), r.month());
         if (c == null || c.grossSalary == null) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
@@ -772,16 +806,20 @@ public class PayslipService {
         java.util.List<ExtraConcept> out = new java.util.ArrayList<>();
         List<SalaryConcept> concepts = loadSalaryConcepts(c.id);
         BigDecimal baseAnnual = c.grossSalary;
+        // El salario de días trabajados: solo si NO es "solo extras" (con dos
+        // recibos va en la mensual prorrateada). El baseAnnual lo necesitamos igual
+        // para la prorrata de pagas extra de abajo, así que lo resolvemos siempre.
         if (!concepts.isEmpty()) {
             for (SalaryConcept sc : concepts) {
                 boolean isBase = "SALARY_BASE".equals(sc.kind());
                 BigDecimal annual = sc.annual() == null ? BigDecimal.ZERO : sc.annual();
                 if (isBase) baseAnnual = annual;
+                if (onlyExtras) continue;
                 BigDecimal monthly = annual.divide(BigDecimal.valueOf(isBase ? divisor : 12), 8, RoundingMode.HALF_UP);
                 BigDecimal amt = monthly.multiply(workedFactor).setScale(2, RoundingMode.HALF_UP);
                 out.add(new ExtraConcept(sc.name() + " (" + worked + " días)", amt, sc.cotizes(), sc.taxable()));
             }
-        } else {
+        } else if (!onlyExtras) {
             BigDecimal monthly = c.grossSalary.divide(BigDecimal.valueOf(divisor), 8, RoundingMode.HALF_UP);
             out.add(new ExtraConcept("Salario (" + worked + " días)",
                     monthly.multiply(workedFactor).setScale(2, RoundingMode.HALF_UP), true, true));
@@ -880,7 +918,7 @@ public class PayslipService {
             if (exists != null && exists > 0) { skipped++; continue; }
             try {
                 calculate(new CalculateRequest(e[0], year, month, "MONTHLY",
-                        null, null, null, null, null));
+                        null, null, null, null, null, null));
                 generated++;
             } catch (Exception ex) {
                 errors.add(e[1] + ": " + ex.getMessage());
@@ -1663,12 +1701,22 @@ public class PayslipService {
             // Complementos MENSUALES recurrentes (anualizan en base SS e IRPF).
             // Lo usa el solver de objetivo para simular la mejora antes de
             // guardarla en el contrato; null en el flujo normal de cálculo.
-            List<ExtraConcept> recurringConcepts
+            List<ExtraConcept> recurringConcepts,
+            // F2R-1: prorrateo de la nómina MENSUAL a los días trabajados del mes
+            // (worked/díasDelMes), para la mensual del mes de cese. null o >=1 =
+            // mes completo (comportamiento normal). Solo lo usa el flujo de baja.
+            BigDecimal proratedFactor
     ) {
         public boolean extraProratedOrDefault() {
             // Default legal: 14 pagas (NO prorrateado) salvo que el convenio
             // lo permita y se marque la casilla. Art. 31 ET.
             return includeExtraProrated != null && includeExtraProrated;
+        }
+        /** Factor de prorrateo en (0,1]; 1 si no se especifica (mes completo). */
+        public BigDecimal factorOrOne() {
+            if (proratedFactor == null || proratedFactor.signum() <= 0
+                    || proratedFactor.compareTo(BigDecimal.ONE) >= 0) return BigDecimal.ONE;
+            return proratedFactor;
         }
     }
 

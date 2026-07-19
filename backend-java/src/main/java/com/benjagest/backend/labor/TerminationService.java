@@ -31,6 +31,8 @@ import org.springframework.web.server.ResponseStatusException;
 @Service
 public class TerminationService {
 
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(TerminationService.class);
+
     /** RD-Ley 3/2012: el tramo de 45 días/año aplica a servicios anteriores.
      *  Es un hito legal fijo (no parámetro por año), se queda en código. */
     private static final LocalDate REFORM_2012 = LocalDate.of(2012, 2, 12);
@@ -149,16 +151,43 @@ public class TerminationService {
                 r.extrasAccrual(), r.otherDeductions(), r.notes());
     }
 
+    /** F2R: factor de prorrateo del mes de cese (días trabajados / días del mes). */
+    private BigDecimal workedFactor(TerminationRequest r) {
+        int daysInMonth = java.time.YearMonth.of(
+                r.ceseDate().getYear(), r.ceseDate().getMonthValue()).lengthOfMonth();
+        int worked = Math.max(1, Math.min(r.ceseDate().getDayOfMonth(), daysInMonth));
+        return BigDecimal.valueOf(worked).divide(BigDecimal.valueOf(daysInMonth), 8, RoundingMode.HALF_UP);
+    }
+
+    /**
+     * F2R-2/3: los EXTRAS del finiquito (vacaciones no disfrutadas + prorrata de
+     * pagas extra, SIN el sueldo, que va en la mensual) + la INDEMNIZACIÓN como
+     * percepción no salarial. La indemnización NO cotiza (art. 23.2 LGSS) y tributa
+     * solo la parte NO exenta. OJO: el tratamiento exacto (cotización/IRPF) de la
+     * indemnización queda a VERIFICAR en dev con los logs; el defecto legal es no
+     * cotizar y tributar la parte gravable.
+     */
+    private List<PayslipService.ExtraConcept> finiquitoExtras(TerminationRequest r, Severance sev) {
+        List<PayslipService.ExtraConcept> extras = new java.util.ArrayList<>(
+                payslipService.settlementConcepts(settlementReq(r), true));
+        if (sev != null && sev.gross() != null && sev.gross().signum() > 0) {
+            boolean taxable = sev.taxable() != null && sev.taxable().signum() > 0;
+            extras.add(new PayslipService.ExtraConcept(
+                    "Indemnización fin de contrato", sev.gross(), false, taxable));
+        }
+        return extras;
+    }
+
     public TerminationPreview preview(TerminationRequest r) {
         validate(r);
         ActiveContract c = loadActiveContract(r.employeeId(), r.ceseDate());
         if (c == null) throw new ResponseStatusException(HttpStatus.CONFLICT,
                 "El empleado no tiene un contrato activo a la fecha de cese.");
-        List<PayslipService.ExtraConcept> concepts = payslipService.settlementConcepts(settlementReq(r));
+        Severance sev = computeSeverance(r.type(), c.grossSalary(), c.antiquityFrom(), r.ceseDate());
+        List<PayslipService.ExtraConcept> concepts = finiquitoExtras(r, sev);
         PayslipService.PreviewResult settlement = payslipService.preview(new PayslipService.CalculateRequest(
                 r.employeeId(), r.ceseDate().getYear(), r.ceseDate().getMonthValue(), "SETTLEMENT",
-                false, r.otherDeductions(), r.notes(), concepts, null));
-        Severance sev = computeSeverance(r.type(), c.grossSalary(), c.antiquityFrom(), r.ceseDate());
+                false, r.otherDeductions(), r.notes(), concepts, null, null));
         return new TerminationPreview(concepts, settlement, sev);
     }
 
@@ -168,11 +197,22 @@ public class TerminationService {
         ActiveContract c = loadActiveContract(r.employeeId(), r.ceseDate());
         if (c == null) throw new ResponseStatusException(HttpStatus.CONFLICT,
                 "El empleado no tiene un contrato activo a la fecha de cese.");
-        List<PayslipService.ExtraConcept> concepts = payslipService.settlementConcepts(settlementReq(r));
-        PayslipService.PayslipView settlement = payslipService.calculate(new PayslipService.CalculateRequest(
-                r.employeeId(), r.ceseDate().getYear(), r.ceseDate().getMonthValue(), "SETTLEMENT",
-                false, r.otherDeductions(), r.notes(), concepts, null));
+        int y = r.ceseDate().getYear(), m = r.ceseDate().getMonthValue();
+        BigDecimal factor = workedFactor(r);
+        log.info("F2R baja: emp={} cese={} factor={} (dos recibos: mensual prorrateada + finiquito)",
+                r.employeeId(), r.ceseDate(), factor);
+
+        // 1) NÓMINA MENSUAL del mes de cese, prorrateada a los días trabajados (el
+        //    sueldo). Se genera con el contrato aún ACTIVO (antes del TERMINATED).
+        payslipService.calculate(new PayslipService.CalculateRequest(
+                r.employeeId(), y, m, "MONTHLY", null, null, r.notes(), null, null, factor));
+
+        // 2) FINIQUITO: solo extras (vacaciones + prorrata) + indemnización. Sin sueldo.
         Severance sev = computeSeverance(r.type(), c.grossSalary(), c.antiquityFrom(), r.ceseDate());
+        List<PayslipService.ExtraConcept> concepts = finiquitoExtras(r, sev);
+        PayslipService.PayslipView settlement = payslipService.calculate(new PayslipService.CalculateRequest(
+                r.employeeId(), y, m, "SETTLEMENT",
+                false, r.otherDeductions(), r.notes(), concepts, null, null));
         // Cierra el contrato con el motivo de baja.
         jdbc.update("""
                 UPDATE employment_contracts
