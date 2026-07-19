@@ -31,8 +31,6 @@ import org.springframework.web.server.ResponseStatusException;
 @Service
 public class TerminationService {
 
-    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(TerminationService.class);
-
     /** RD-Ley 3/2012: el tramo de 45 días/año aplica a servicios anteriores.
      *  Es un hito legal fijo (no parámetro por año), se queda en código. */
     private static final LocalDate REFORM_2012 = LocalDate.of(2012, 2, 12);
@@ -191,8 +189,6 @@ public class TerminationService {
                 "El empleado no tiene un contrato activo a la fecha de cese.");
         int y = r.ceseDate().getYear(), m = r.ceseDate().getMonthValue();
         BigDecimal factor = workedFactor(r);
-        log.info("F2R baja: emp={} cese={} factor={} (dos recibos: mensual prorrateada + finiquito)",
-                r.employeeId(), r.ceseDate(), factor);
 
         // 1) NÓMINA MENSUAL del mes de cese, prorrateada a los días trabajados (el
         //    sueldo). Se genera con el contrato aún ACTIVO (antes del TERMINATED).
