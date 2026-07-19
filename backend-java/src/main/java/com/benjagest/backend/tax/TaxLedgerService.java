@@ -103,13 +103,13 @@ public class TaxLedgerService {
         return safely("liquidación", filingId, () -> createLiquidation303(f));
     }
 
-    /** Asiento de PAGO al pasar a pagado. 303 → 4750; 130 → 473. */
+    /** Asiento de PAGO al pasar a pagado. 303 → 4750; 130 → 473; 111 → 4751. */
     @Transactional
     public String onPaid(String filingId) {
         Map<String, Object> f = loadFiling(filingId);
         if (f == null) return null;
         String model = String.valueOf(f.get("tax_model_code"));
-        if (!"303".equals(model) && !"130".equals(model)) return null;
+        if (!"303".equals(model) && !"130".equals(model) && !"111".equals(model)) return null;
         // Flujo normal: se marca PAGADO ahora -> el dinero sale hoy.
         return safely("pago", filingId, () -> createPayment(f, LocalDate.now()));
     }
@@ -202,14 +202,18 @@ public class TaxLedgerService {
         fiscalGuard.requireOpenForDate(date, "contabilizar el pago del modelo");
 
         String model = String.valueOf(f.get("tax_model_code"));
-        // 303 -> cancela la deuda de la 4750. 130 -> pago a cuenta del IRPF (473).
-        String accDebe = "303".equals(model)
-                ? accountByCode(companyId, "4750")
-                : accountByPrefix(companyId, "473");
+        // 303 -> cancela la deuda de la 4750 (HP acreedora por IVA).
+        // 130 -> pago a cuenta del IRPF del titular (473, activo).
+        // 111 -> vacía la retención practicada acumulada en la 4751 (HP acreedora
+        //        por retenciones practicadas), que la nómina fue abonando.
+        String debeCode = paymentAccountCode(model);
+        String accDebe = "4750".equals(debeCode)
+                ? accountByCode(companyId, debeCode)
+                : accountByPrefix(companyId, debeCode);
         String accBanco = accountByPrefix(companyId, "572");
         if (accDebe == null || accBanco == null) {
             throw new IllegalStateException("faltan cuentas para el pago ("
-                    + ("303".equals(model) ? "4750" : "473") + " / 572)");
+                    + debeCode + " / 572)");
         }
 
         String concept = "Pago modelo " + model + " " + periodLabel(f);
@@ -283,7 +287,7 @@ public class TaxLedgerService {
                 SELECT id, tax_model_code, period_year, period_quarter, period_month,
                        total_amount, status, deadline_at
                   FROM tax_filings
-                 WHERE company_id = ? AND tax_model_code IN ('303', '130')
+                 WHERE company_id = ? AND tax_model_code IN ('303', '130', '111')
                    AND period_year = ?
                    AND status IN ('PRESENTED', 'PAID')
                    AND period_quarter IS NOT NULL
@@ -323,7 +327,7 @@ public class TaxLedgerService {
                     && existingEntry(SRC_PAYMENT, filingId) == null) {
                 BigDecimal importe = (BigDecimal) f.get("total_amount");
                 LocalDate fecha = backfillPaymentDate(f);
-                String cuenta = "303".equals(model) ? "4750" : "473";
+                String cuenta = paymentAccountCode(model);
 
                 String motivo = null;
                 if (importe == null || importe.signum() <= 0) {
@@ -343,11 +347,20 @@ public class TaxLedgerService {
         return out;
     }
 
-    /** La 4750 va por código exacto; la 473 por prefijo (ver createPayment). */
+    /** La 4750 va por código exacto; la 473/4751 por prefijo (ver createPayment). */
     private String accountFor(String companyId, String code) {
         return "4750".equals(code) || "4700".equals(code)
                 ? accountByCode(companyId, code)
                 : accountByPrefix(companyId, code);
+    }
+
+    /** Cuenta de cargo del asiento de pago de cada modelo (contra 572). */
+    private static String paymentAccountCode(String model) {
+        return switch (model) {
+            case "303" -> "4750"; // HP acreedora por IVA
+            case "111" -> "4751"; // HP acreedora por retenciones practicadas
+            default    -> "473";  // 130: HP retenciones y pagos a cuenta (activo)
+        };
     }
 
     /**
@@ -374,7 +387,7 @@ public class TaxLedgerService {
         List<String> distinct = filingIds.stream().distinct().toList();
         List<Map<String, Object>> ordered = jdbcTemplate.queryForList("""
                 SELECT id FROM tax_filings
-                 WHERE company_id = ? AND tax_model_code IN ('303', '130')
+                 WHERE company_id = ? AND tax_model_code IN ('303', '130', '111')
                    AND id IN (%s)
                  ORDER BY period_year, period_quarter, tax_model_code
                 """.formatted(distinct.stream().map(x -> "?").collect(java.util.stream.Collectors.joining(","))),
