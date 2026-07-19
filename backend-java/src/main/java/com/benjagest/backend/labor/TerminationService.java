@@ -160,22 +160,14 @@ public class TerminationService {
     }
 
     /**
-     * F2R-2/3: los EXTRAS del finiquito (vacaciones no disfrutadas + prorrata de
-     * pagas extra, SIN el sueldo, que va en la mensual) + la INDEMNIZACIÓN como
-     * percepción no salarial. La indemnización NO cotiza (art. 23.2 LGSS) y tributa
-     * solo la parte NO exenta. OJO: el tratamiento exacto (cotización/IRPF) de la
-     * indemnización queda a VERIFICAR en dev con los logs; el defecto legal es no
-     * cotizar y tributar la parte gravable.
+     * F2R-2/3: los EXTRAS del finiquito = vacaciones no disfrutadas + prorrata de
+     * pagas extra pendientes, SIN el sueldo (va en la mensual prorrateada). La
+     * INDEMNIZACIÓN NO se mete aquí: el recibo de finiquito
+     * ({@link TerminationDocsService}) ya la pinta como "INDEM. FIN CONTRATO" desde
+     * la {@link Severance}, y meterla también como concepto la DUPLICABA.
      */
-    private List<PayslipService.ExtraConcept> finiquitoExtras(TerminationRequest r, Severance sev) {
-        List<PayslipService.ExtraConcept> extras = new java.util.ArrayList<>(
-                payslipService.settlementConcepts(settlementReq(r), true));
-        if (sev != null && sev.gross() != null && sev.gross().signum() > 0) {
-            boolean taxable = sev.taxable() != null && sev.taxable().signum() > 0;
-            extras.add(new PayslipService.ExtraConcept(
-                    "Indemnización fin de contrato", sev.gross(), false, taxable));
-        }
-        return extras;
+    private List<PayslipService.ExtraConcept> finiquitoExtras(TerminationRequest r) {
+        return payslipService.settlementConcepts(settlementReq(r), true);
     }
 
     public TerminationPreview preview(TerminationRequest r) {
@@ -184,7 +176,7 @@ public class TerminationService {
         if (c == null) throw new ResponseStatusException(HttpStatus.CONFLICT,
                 "El empleado no tiene un contrato activo a la fecha de cese.");
         Severance sev = computeSeverance(r.type(), c.grossSalary(), c.antiquityFrom(), r.ceseDate());
-        List<PayslipService.ExtraConcept> concepts = finiquitoExtras(r, sev);
+        List<PayslipService.ExtraConcept> concepts = finiquitoExtras(r);
         PayslipService.PreviewResult settlement = payslipService.preview(new PayslipService.CalculateRequest(
                 r.employeeId(), r.ceseDate().getYear(), r.ceseDate().getMonthValue(), "SETTLEMENT",
                 false, r.otherDeductions(), r.notes(), concepts, null, null));
@@ -207,9 +199,10 @@ public class TerminationService {
         payslipService.calculate(new PayslipService.CalculateRequest(
                 r.employeeId(), y, m, "MONTHLY", null, null, r.notes(), null, null, factor));
 
-        // 2) FINIQUITO: solo extras (vacaciones + prorrata) + indemnización. Sin sueldo.
+        // 2) FINIQUITO: solo extras (vacaciones + prorrata), SIN sueldo. La
+        //    indemnización la pinta el recibo aparte (no se duplica como concepto).
         Severance sev = computeSeverance(r.type(), c.grossSalary(), c.antiquityFrom(), r.ceseDate());
-        List<PayslipService.ExtraConcept> concepts = finiquitoExtras(r, sev);
+        List<PayslipService.ExtraConcept> concepts = finiquitoExtras(r);
         PayslipService.PayslipView settlement = payslipService.calculate(new PayslipService.CalculateRequest(
                 r.employeeId(), y, m, "SETTLEMENT",
                 false, r.otherDeductions(), r.notes(), concepts, null, null));

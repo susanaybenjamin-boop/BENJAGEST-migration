@@ -858,7 +858,11 @@ public class PayslipService {
             java.time.LocalDate cese = java.time.LocalDate.of(r.year(), r.month(), worked);
             BigDecimal prorrata;
             if ("ANNUAL".equalsIgnoreCase(r.extrasAccrual())) {
+                // FIX (F2R): la prorrata se devenga desde el ALTA, no desde el 1-ene.
+                // Antes contaba todo el año aunque el empleado entrara a mitad -> un
+                // trabajador de 23 días cobraba casi una paga extra entera.
                 java.time.LocalDate y0 = java.time.LocalDate.of(r.year(), 1, 1);
+                if (c.startDate != null && c.startDate.isAfter(y0)) y0 = c.startDate;
                 long dias = java.time.temporal.ChronoUnit.DAYS.between(y0, cese) + 1;
                 int diasAnio = java.time.Year.of(r.year()).length();
                 prorrata = importePaga.multiply(BigDecimal.valueOf(c.annualBonuses))
@@ -869,6 +873,8 @@ public class PayslipService {
                         ? java.time.LocalDate.of(r.year(), 1, 1) : java.time.LocalDate.of(r.year(), 7, 1);
                 java.time.LocalDate semEnd = r.month() <= 6
                         ? java.time.LocalDate.of(r.year(), 6, 30) : java.time.LocalDate.of(r.year(), 12, 31);
+                // FIX (F2R): desde el ALTA si entró dentro del semestre.
+                if (c.startDate != null && c.startDate.isAfter(semStart)) semStart = c.startDate;
                 long dias = java.time.temporal.ChronoUnit.DAYS.between(semStart, cese) + 1;
                 long diasSem = java.time.temporal.ChronoUnit.DAYS.between(semStart, semEnd) + 1;
                 prorrata = importePaga.multiply(BigDecimal.valueOf(dias))
