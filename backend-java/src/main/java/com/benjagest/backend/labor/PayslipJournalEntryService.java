@@ -85,9 +85,12 @@ public class PayslipJournalEntryService {
      *
      * <p>NO lleva {@code @Transactional}: se invoca siempre dentro de la
      * transacción del caller ({@code PayslipService.calculate/markPaid/
-     * delete}). Si fuera transaccional y lanzara una excepción, Spring
-     * marcaría la transacción de la nómina como rollback-only y el cálculo
-     * reventaría aunque la nómina fuese correcta.
+     * delete}). Por diseño devuelve {@code null} (no lanza) ante causas benignas
+     * —falta una cuenta o el ejercicio— para no reventar un cálculo correcto.
+     * <b>Excepción intencionada</b>: recalcular una nómina cuyo devengo ya está
+     * VALIDADO en un ejercicio LOCKED/CLOSED sí lanza (vía {@code fiscalGuard} al
+     * contrarrestarlo) — no se pueden reescribir libros cerrados, así que el
+     * recálculo se aborta, que es lo correcto.
      */
     public String createAccrual(PayslipAccrual p, String userId) {
         return createAccrual(p, BigDecimal.ZERO, userId);
@@ -135,8 +138,12 @@ public class PayslipJournalEntryService {
             return null;
         }
 
-        // Idempotencia: borrar devengo previo (solo si está en DRAFT).
-        reverseBySource(companyId, p.payslipId(), SRC_ACCRUAL);
+        // Idempotencia (fix recálculo duplicado): revierte el devengo previo antes
+        // de crear el nuevo. Si era DRAFT lo BORRA; si ya estaba VALIDADO (POSTED) le
+        // crea un CONTRAasiento (una sola vez, idempotente) en vez de dejarlo sumando.
+        // Antes solo borraba DRAFT, así que recalcular una nómina ya validada dejaba
+        // el devengo viejo colgado y creaba otro -> 640 doblado.
+        reverseOrContraBySource(companyId, p.payslipId(), SRC_ACCRUAL);
 
         String name = (p.employeeName() == null || p.employeeName().isBlank())
                 ? "Empleado" : p.employeeName();
@@ -206,7 +213,7 @@ public class PayslipJournalEntryService {
         if (acc572 == null) acc572 = findAccountByPrefix(companyId, "57");
         if (acc465 == null || acc572 == null) return null;
 
-        reverseBySource(companyId, p.payslipId(), SRC_PAYMENT);
+        reverseOrContraBySource(companyId, p.payslipId(), SRC_PAYMENT);
 
         String name = (p.employeeName() == null || p.employeeName().isBlank())
                 ? "Empleado" : p.employeeName();
@@ -250,7 +257,7 @@ public class PayslipJournalEntryService {
         String acc465 = findAccountByPrefix(companyId, "465");
         if (acc640 == null || acc465 == null) return null;
 
-        reverseBySource(companyId, payslipId, SRC_EXTRA_PROVISION);
+        reverseOrContraBySource(companyId, payslipId, SRC_EXTRA_PROVISION);
         String name = (employeeName == null || employeeName.isBlank()) ? "Empleado" : employeeName;
         String period = String.format("%02d/%d", month, year);
         String entryId = UUID.randomUUID().toString();
@@ -290,7 +297,7 @@ public class PayslipJournalEntryService {
         String acc465 = findAccountByPrefix(companyId, "465");
         if (acc640 == null || acc465 == null) return null;
 
-        reverseBySource(companyId, payslipId, SRC_EXTRA_ACCRUAL);
+        reverseOrContraBySource(companyId, payslipId, SRC_EXTRA_ACCRUAL);
         String name = (employeeName == null || employeeName.isBlank()) ? "Empleado" : employeeName;
         String period = String.format("%02d/%d", month, year);
         String entryId = UUID.randomUUID().toString();
@@ -333,7 +340,7 @@ public class PayslipJournalEntryService {
         if (acc572 == null) acc572 = findAccountByPrefix(companyId, "57");
         if (acc465 == null || acc572 == null || acc4751 == null) return null;
 
-        reverseBySource(companyId, p.payslipId(), SRC_EXTRA_PAYMENT);
+        reverseOrContraBySource(companyId, p.payslipId(), SRC_EXTRA_PAYMENT);
         String name = (p.employeeName() == null || p.employeeName().isBlank()) ? "Empleado" : p.employeeName();
         String period = String.format("%02d/%d", p.month(), p.year());
         String entryId = UUID.randomUUID().toString();
@@ -386,22 +393,32 @@ public class PayslipJournalEntryService {
         for (Object[] e : entries) {
             String entryId = (String) e[0];
             String status = (String) e[1];
-            // LOCK (2026-07-07): un asiento POSTED de un ejercicio
-            // LOCKED/CLOSED ni se borra ni se contrarresta con un
-            // contraasiento fechado dentro de ese ejercicio (jamás podría
-            // validarse). Borrar una nómina de un ejercicio cerrado se
-            // bloquea entero con 409.
-            if ("POSTED".equals(status) && e[3] != null) {
-                fiscalGuard.requireOpenForDate(companyId,
-                        ((java.sql.Date) e[3]).toLocalDate(),
-                        "revertir el asiento de esta nómina");
-            }
             if (!"POSTED".equals(status)) {
                 jdbcTemplate.update("DELETE FROM accounting_learning_events WHERE journal_entry_id = ? AND company_id = ?",
                         entryId, companyId);
                 jdbcTemplate.update("DELETE FROM journal_entry_lines WHERE journal_entry_id = ?", entryId);
                 jdbcTemplate.update("DELETE FROM journal_entries WHERE id = ? AND company_id = ?", entryId, companyId);
             } else {
+                // IDEMPOTENCIA (fix recálculo): si este asiento POSTED YA tiene su
+                // contraasiento (de un recálculo o borrado previo), no crear otro.
+                // El contra guarda source_id = id del asiento original. Sin esto, un
+                // segundo recálculo/borrado lo contrarrestaría dos veces y descuadraría
+                // (y al usar reverseOrContraBySource en createAccrual, cada recálculo
+                // re-contrarrestaría TODOS los POSTED, multiplicándolos).
+                Integer yaContra = jdbcTemplate.queryForObject("""
+                        SELECT COUNT(*) FROM journal_entries
+                         WHERE company_id = ? AND source_type = 'MANUAL_REVERSAL' AND source_id = ?
+                        """, Integer.class, companyId, entryId);
+                if (yaContra != null && yaContra > 0) continue;
+                // LOCK (2026-07-07): un asiento POSTED de un ejercicio LOCKED/CLOSED
+                // ni se borra ni se contrarresta con un contra fechado dentro de ese
+                // ejercicio (jamás podría validarse). Solo se comprueba para los que SÍ
+                // vamos a contrarrestar (los ya revertidos se saltan arriba).
+                if (e[3] != null) {
+                    fiscalGuard.requireOpenForDate(companyId,
+                            ((java.sql.Date) e[3]).toLocalDate(),
+                            "revertir el asiento de esta nómina");
+                }
                 // Contrasiento por validar: no se borra un asiento validado.
                 String revId = UUID.randomUUID().toString();
                 jdbcTemplate.update("""
@@ -431,20 +448,6 @@ public class PayslipJournalEntryService {
     }
 
     // ---- helpers ----------------------------------------------------------
-
-    private void reverseBySource(String companyId, String payslipId, String sourceType) {
-        List<String> entryIds = jdbcTemplate.query("""
-                SELECT id FROM journal_entries
-                 WHERE source_type = ? AND source_id = ? AND company_id = ?
-                   AND status = 'DRAFT'
-                """, (rs, n) -> rs.getString("id"),
-                sourceType, payslipId, companyId);
-        for (String entryId : entryIds) {
-            jdbcTemplate.update("DELETE FROM journal_entry_lines WHERE journal_entry_id = ?", entryId);
-            jdbcTemplate.update("DELETE FROM journal_entries WHERE id = ? AND company_id = ?",
-                    entryId, companyId);
-        }
-    }
 
     /**
      * Suma las cuotas TC del periodo cuyo {@code contribution_type}
