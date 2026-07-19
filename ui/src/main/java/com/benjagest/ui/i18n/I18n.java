@@ -7343,6 +7343,7 @@ public final class I18n {
             case "accounting.action.run_now" -> "Run now";
             case "accounting.filter.from" -> "From";
             case "accounting.filter.to" -> "To";
+            case "accounting.filter.clear" -> "Clear filter";
             case "accounting.filter.status" -> "Status";
             case "accounting.filter.source" -> "Source";
             case "accounting.filter.search" -> "Search";
@@ -8732,6 +8733,7 @@ public final class I18n {
             case "accounting.action.run_now" -> "Ejecutar ahora";
             case "accounting.filter.from" -> "Desde";
             case "accounting.filter.to" -> "Hasta";
+            case "accounting.filter.clear" -> "Limpiar filtro";
             case "accounting.filter.status" -> "Estado";
             case "accounting.filter.source" -> "Origen";
             case "accounting.filter.search" -> "Buscar";

@@ -2563,14 +2563,26 @@ public class AccountingScreen {
      * TODAS las opciones; al escribir filtra por subcadena (código o nombre). Es
      * la versión local del helper de la app (AccountingScreen es clase aparte).
      */
-    private void installAccountFilter(ComboBox<String> combo, List<String> master) {
+    /**
+     * Combo de cuenta editable + filtrable con teclado usable:
+     * <ul>
+     *   <li>Al teclear filtra por código/nombre y abre el desplegable.</li>
+     *   <li>↑/↓ navegan el desplegable (el campo muestra la cuenta resaltada).</li>
+     *   <li>Enter selecciona la cuenta resaltada (o la primera coincidencia) y
+     *       dispara {@code onEnter} — así no hace falta el ratón ni el botón "Ver".</li>
+     * </ul>
+     * {@code suppress} es un flag COMPARTIDO con el llamador: se pone a true durante
+     * los cambios PROGRAMÁTICos (navegación con flechas, selección) para que ni el
+     * filtro ni la auto-ejecución se disparen por ellos, solo por acciones reales.
+     */
+    private void installAccountFilter(ComboBox<String> combo, List<String> master,
+                                      boolean[] suppress, Runnable onEnter) {
         // 'master' es la lista VIVA del llamador: al recargar cuentas (import) basta
         // con mutarla y hacer setAll; el listener del filtro se instala una sola vez.
         combo.getItems().setAll(master);
-        final boolean[] guard = {false};
         combo.getEditor().textProperty().addListener((obs, ov, nv) -> {
-            if (guard[0]) return;
-            guard[0] = true;
+            if (suppress[0]) return;
+            suppress[0] = true;
             try {
                 String q = nv == null ? "" : nv.toLowerCase().trim();
                 if (q.isEmpty()) {
@@ -2579,12 +2591,51 @@ public class AccountingScreen {
                     List<String> f = new ArrayList<>();
                     for (String it : master) if (it.toLowerCase().contains(q)) f.add(it);
                     combo.getItems().setAll(f);
-                    if (!combo.isShowing()) combo.show();
+                    if (!combo.isShowing() && !f.isEmpty()) combo.show();
                 }
-                combo.getEditor().setText(nv);
                 combo.getEditor().positionCaret(nv == null ? 0 : nv.length());
             } finally {
-                guard[0] = false;
+                suppress[0] = false;
+            }
+        });
+        combo.getEditor().addEventFilter(javafx.scene.input.KeyEvent.KEY_PRESSED, e -> {
+            var items = combo.getItems();
+            switch (e.getCode()) {
+                case DOWN, UP -> {
+                    if (items.isEmpty()) return;
+                    if (!combo.isShowing()) combo.show();
+                    int i = combo.getSelectionModel().getSelectedIndex();
+                    int next = e.getCode() == javafx.scene.input.KeyCode.DOWN
+                            ? (i < 0 ? 0 : Math.min(i + 1, items.size() - 1))
+                            : (i < 0 ? items.size() - 1 : Math.max(i - 1, 0));
+                    suppress[0] = true;
+                    try {
+                        combo.getSelectionModel().select(next);
+                        combo.getEditor().setText(items.get(next));
+                        combo.getEditor().positionCaret(items.get(next).length());
+                    } finally {
+                        suppress[0] = false;
+                    }
+                    e.consume();
+                }
+                case ENTER -> {
+                    String pick = combo.getSelectionModel().getSelectedItem();
+                    if (pick == null && !items.isEmpty()) pick = items.get(0);
+                    if (pick != null) {
+                        suppress[0] = true;
+                        try {
+                            combo.getSelectionModel().select(pick);
+                            combo.getEditor().setText(pick);
+                            combo.getEditor().positionCaret(pick.length());
+                        } finally {
+                            suppress[0] = false;
+                        }
+                        combo.hide();
+                        if (onEnter != null) onEnter.run();
+                    }
+                    e.consume();
+                }
+                default -> { }
             }
         });
     }
@@ -2598,7 +2649,10 @@ public class AccountingScreen {
         accountCombo.setPrefWidth(360);
         final java.util.Map<String, AccountSummary> accountsByLabel = new java.util.LinkedHashMap<>();
         final List<String> accountLabels = new ArrayList<>();
-        installAccountFilter(accountCombo, accountLabels); // filtro una sola vez, sobre la lista viva
+        // Flag compartido: suprime filtro/auto-run durante cambios programáticos
+        // (flechas, limpiar). El filtro con teclado se instala más abajo, cuando ya
+        // existe runLedger (Enter dispara la consulta sin ratón ni botón "Ver").
+        final boolean[] suppress = {false};
         Runnable loadAccounts = () -> async(() -> api.listAccounts(null), accts -> {
             accountsByLabel.clear();
             accountLabels.clear();
@@ -2637,19 +2691,50 @@ public class AccountingScreen {
 
         Button view = new Button(tt.apply("accounting.action.view"));
         view.getStyleClass().add("primary-button");
-        Runnable run = () -> {
+        // runLedger(showErrors): resuelve la cuenta del campo y trae el mayor.
+        // showErrors=false en las auto-ejecuciones (cambio de fecha) para no soltar
+        // un diálogo si aún no hay cuenta elegida.
+        java.util.function.Consumer<Boolean> runLedger = showErrors -> {
             String label = accountCombo.getEditor().getText();
             AccountSummary sel = accountsByLabel.get(label);
             if (sel == null) sel = accountsByLabel.get(accountCombo.getValue());
-            if (sel == null) { showError(tt.apply("accounting.report.fail"), tt.apply("accounting.ledger.pick_account")); return; }
+            if (sel == null) {
+                if (showErrors) showError(tt.apply("accounting.report.fail"), tt.apply("accounting.ledger.pick_account"));
+                return;
+            }
             final String accId = sel.id();
             async(() -> api.ledger(accId, from.getValue(), to.getValue()), lv -> {
                 table.setItems(FXCollections.observableArrayList(lv.movements()));
                 opening.setText(tt.apply("accounting.ledger.opening") + " " + eur(lv.openingBalance()));
                 closing.setText(tt.apply("accounting.ledger.closing") + " " + eur(lv.closingBalance()));
-            }, err -> showError(tt.apply("accounting.report.fail"), err));
+            }, err -> { if (showErrors) showError(tt.apply("accounting.report.fail"), err); });
         };
-        view.setOnAction(e -> run.run());
+        // Filtro de cuenta con teclado; Enter dispara la consulta (sin ratón ni "Ver").
+        installAccountFilter(accountCombo, accountLabels, suppress, () -> runLedger.accept(true));
+        // Auto-ejecución: al elegir cuenta con el ratón y al cambiar las fechas. El
+        // guard 'suppress' evita que la navegación con flechas la dispare en cada paso.
+        accountCombo.setOnAction(e -> { if (!suppress[0]) runLedger.accept(true); });
+        from.valueProperty().addListener((o, ov, nv) -> runLedger.accept(false));
+        to.valueProperty().addListener((o, ov, nv) -> runLedger.accept(false));
+        view.setOnAction(e -> runLedger.accept(true));
+
+        Button clear = new Button(tt.apply("accounting.filter.clear"));
+        clear.setOnAction(e -> {
+            suppress[0] = true;
+            try {
+                accountCombo.getSelectionModel().clearSelection();
+                accountCombo.getEditor().clear();
+                accountCombo.getItems().setAll(accountLabels);
+                accountCombo.hide();
+            } finally {
+                suppress[0] = false;
+            }
+            from.setValue(LocalDate.now().withDayOfYear(1));
+            to.setValue(LocalDate.now().withMonth(12).withDayOfMonth(31));
+            table.getItems().clear();
+            opening.setText("");
+            closing.setText("");
+        });
 
         Button exportPdf = new Button(tt.apply("accounting.fin.export_pdf"));
         exportPdf.setOnAction(e -> {
@@ -2666,7 +2751,7 @@ public class AccountingScreen {
         HBox filters = new HBox(8,
                 new Label(tt.apply("accounting.ledger.account")), accountCombo,
                 new Label(tt.apply("accounting.filter.from")), from,
-                new Label(tt.apply("accounting.filter.to")), to, view, exportPdf);
+                new Label(tt.apply("accounting.filter.to")), to, view, clear, exportPdf);
         filters.setAlignment(Pos.CENTER_LEFT);
         // Saldos de apertura/final ARRIBA de la tabla: siempre visibles sin
         // hacer scroll hasta el fondo (la tabla de movimientos puede ser larga).
