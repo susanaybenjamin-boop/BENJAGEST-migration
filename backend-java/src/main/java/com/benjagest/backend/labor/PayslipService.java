@@ -63,8 +63,6 @@ import org.springframework.web.server.ResponseStatusException;
 @Service
 public class PayslipService {
 
-    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(PayslipService.class);
-
     // Los tipos de cotización SS ya NO van a fuego aquí: se leen por año de
     // ss_contribution_rates (SsContributionRatesService), bloque PARAM-YEAR.
 
@@ -346,12 +344,6 @@ public class PayslipService {
         java.util.function.Supplier<com.benjagest.backend.labor.ss.OvertimeRatesService.Rates> overtimeRates =
                 () -> overtimeRatesService.ratesForYear(req.year());
 
-        // F2R — log de diagnóstico del cálculo (se quita antes de compilar el MSI).
-        if (log.isInfoEnabled() && ("SETTLEMENT".equals(type) || req.factorOrOne().compareTo(BigDecimal.ONE) < 0)) {
-            log.info("F2R calc: emp={} {}/{} type={} factor={} prorated={} extraConcepts={}",
-                    req.employeeId(), req.year(), req.month(), type, req.factorOrOne(), prorated,
-                    req.extraConcepts() == null ? 0 : req.extraConcepts().size());
-        }
         return computePayslip(new EngineInputs(type, contract,
                 loadSalaryConcepts(contract.id), req.extraConcepts(),
                 req.recurringConcepts(), prorated, req.factorOrOne(), req.otherDeductions(),
