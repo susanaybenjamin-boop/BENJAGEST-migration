@@ -438,6 +438,7 @@ public class AccountingScreen {
                 "BANK_MOVEMENT", "DUE_DATE_PAYMENT",
                 "PAYSLIP_ACCRUAL", "PAYSLIP_PAYMENT",
                 "PAYSLIP_EXTRA_PROVISION", "PAYSLIP_EXTRA_PAYMENT",
+                "SS_PAYMENT",
                 "LOAN_INSTALLMENT",
                 "ASSET_ACQUISITION", "ASSET_DEPRECIATION", "ASSET_DISPOSAL",
                 "YEAR_CLOSE_REGULARIZATION", "YEAR_CLOSE_CLOSING",

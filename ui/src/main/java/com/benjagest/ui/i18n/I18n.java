@@ -7583,6 +7583,7 @@ public final class I18n {
             case "accounting.source_type.HISTORICAL_IMPORT" -> "Historical import";
             case "accounting.source_type.PAYSLIP_ACCRUAL" -> "Payroll (accrual)";
             case "accounting.source_type.PAYSLIP_PAYMENT" -> "Payroll (payment)";
+            case "accounting.source_type.SS_PAYMENT" -> "Social Security payment";
             case "accounting.source_type.PAYSLIP_EXTRA_PROVISION" -> "Extra-pay provision";
             case "accounting.source_type.PAYSLIP_EXTRA_PAYMENT" -> "Extra-pay payment";
             case "accounting.source_type.DUE_DATE_PAYMENT" -> "Due-date payment";
@@ -8974,6 +8975,7 @@ public final class I18n {
             case "accounting.source_type.HISTORICAL_IMPORT" -> "Importación histórica";
             case "accounting.source_type.PAYSLIP_ACCRUAL" -> "Nómina (devengo)";
             case "accounting.source_type.PAYSLIP_PAYMENT" -> "Nómina (pago)";
+            case "accounting.source_type.SS_PAYMENT" -> "Pago Seguridad Social";
             case "accounting.source_type.PAYSLIP_EXTRA_PROVISION" -> "Provisión pagas extra";
             case "accounting.source_type.PAYSLIP_EXTRA_PAYMENT" -> "Pago paga extra";
             case "accounting.source_type.DUE_DATE_PAYMENT" -> "Pago de vencimiento";
