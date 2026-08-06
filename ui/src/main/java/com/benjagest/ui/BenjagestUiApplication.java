@@ -14739,6 +14739,10 @@ public class BenjagestUiApplication extends Application
         cStatus.setPrefWidth(95);
         table.getColumns().addAll(java.util.List.of(cDate, cEmp, cCust, cDesc, cUnit, cAmount, cStatus));
 
+        // TRB-TOTAL — suma de los trabajos listados (con los filtros aplicados).
+        final Label totalLbl = new Label();
+        totalLbl.getStyleClass().add("settings-hint");
+
         Runnable reload = () -> {
             java.time.LocalDate from = fromPick.getValue(), to = toPick.getValue();
             if (from == null || to == null) return;
@@ -14750,7 +14754,16 @@ public class BenjagestUiApplication extends Application
                     return altaApiClient.listWorkLogs(from, to, custId, st, pend);
                 }
             };
-            task.setOnSucceeded(ev -> table.setItems(FXCollections.observableArrayList(task.getValue())));
+            task.setOnSucceeded(ev -> {
+                java.util.List<com.benjagest.ui.model.WorkLogEntry> rows = task.getValue();
+                table.setItems(FXCollections.observableArrayList(rows));
+                java.math.BigDecimal tot = rows.stream()
+                        .map(w -> w.billableAmount() == null ? java.math.BigDecimal.ZERO : w.billableAmount())
+                        .reduce(java.math.BigDecimal.ZERO, java.math.BigDecimal::add);
+                totalLbl.setText(t("trabajos.footer.total")
+                        .replace("{total}", money(tot.toPlainString()))
+                        .replace("{n}", String.valueOf(rows.size())));
+            });
             task.setOnFailed(ev -> showError(t("trabajos.fail.title"),
                     task.getException() == null ? "" : humanizeBackendError(task.getException().getMessage())));
             start(task, "worklogs-load");
@@ -14786,6 +14799,15 @@ public class BenjagestUiApplication extends Application
         editBtn.setOnAction(e -> {
             var sel = table.getSelectionModel().getSelectedItem();
             if (sel != null) showWorkLogForm(sel, empById, custIdByName, reload);
+        });
+        // TRB-DUP — duplicar el trabajo seleccionado (formulario prellenado, se guarda
+        // como trabajo NUEVO; vale también para los ya facturados).
+        Button dupBtn = new Button(t("trabajos.action.duplicate"));
+        dupBtn.setGraphic(icon("fas-copy"));
+        dupBtn.setDisable(true);
+        dupBtn.setOnAction(e -> {
+            var sel = table.getSelectionModel().getSelectedItem();
+            if (sel != null) showWorkLogForm(sel, true, empById, custIdByName, reload);
         });
         Button delBtn = new Button(t("trabajos.action.delete"));
         delBtn.setGraphic(icon("fas-trash"));
@@ -14823,6 +14845,7 @@ public class BenjagestUiApplication extends Application
             boolean editable = one && !"BILLED".equals(nv.status())
                     && (nv.billedInvoiceLineId() == null || nv.billedInvoiceLineId().isBlank());
             editBtn.setDisable(!editable);
+            dupBtn.setDisable(!one);
             delBtn.setDisable(!editable);
             approveBtn.setDisable(!one || "BILLED".equals(nv.status()));
             approveBtn.setText("APPROVED".equals(nv != null ? nv.status() : "")
@@ -14834,7 +14857,7 @@ public class BenjagestUiApplication extends Application
                 (javafx.collections.ListChangeListener<com.benjagest.ui.model.WorkLogEntry>) ch ->
                         billBtn.setDisable(!sameCustomerBillable(table.getSelectionModel().getSelectedItems())));
 
-        javafx.scene.layout.FlowPane actions = actionFlow(editBtn, approveBtn, delBtn, billBtn);
+        javafx.scene.layout.FlowPane actions = actionFlow(editBtn, dupBtn, approveBtn, delBtn, billBtn, totalLbl);
         javafx.scene.layout.FlowPane filters = actionFlow(
                 filterGroup(t("accounting.filter.from"), fromPick),
                 filterGroup(t("accounting.filter.to"), toPick),
@@ -14888,8 +14911,25 @@ public class BenjagestUiApplication extends Application
                                  java.util.Map<String, String> empById,
                                  java.util.LinkedHashMap<String, String> custIdByName,
                                  Runnable onSaved) {
+        showWorkLogForm(existing, false, empById, custIdByName, onSaved);
+    }
+
+    /**
+     * Alta/edición/duplicado de un trabajo. Con {@code duplicate}=true el formulario
+     * se prellena con {@code existing} pero al guardar CREA un trabajo nuevo (DRAFT),
+     * cambiando lo que se quiera (fecha, cliente…). TRB-MULTI: al crear (alta o
+     * duplicado) se puede repetir el mismo trabajo hasta una fecha (un trabajo por
+     * día, opcionalmente saltando fines de semana).
+     */
+    private void showWorkLogForm(com.benjagest.ui.model.WorkLogEntry existing,
+                                 boolean duplicate,
+                                 java.util.Map<String, String> empById,
+                                 java.util.LinkedHashMap<String, String> custIdByName,
+                                 Runnable onSaved) {
+        final boolean isNew = existing == null || duplicate;
         Stage dlg = new Stage();
-        dlg.setTitle(existing == null ? t("trabajos.form.add") : t("trabajos.form.edit"));
+        dlg.setTitle(existing == null ? t("trabajos.form.add")
+                : duplicate ? t("trabajos.form.duplicate") : t("trabajos.form.edit"));
         dlg.initModality(javafx.stage.Modality.APPLICATION_MODAL);
 
         // "Yo / titular" = trabajo SIN empleado (autónomo que trabaja solo). Va el
@@ -14963,6 +15003,13 @@ public class BenjagestUiApplication extends Application
         }
         refreshUnitFields.run();
 
+        // TRB-MULTI — solo al crear: repetir el trabajo hasta una fecha (un
+        // trabajo por día). Vacío = solo el día indicado.
+        DatePicker repeatUntil = new DatePicker();
+        com.benjagest.ui.support.EditableCells.installFlexibleConverter(repeatUntil);
+        CheckBox skipWeekends = new CheckBox(t("trabajos.field.skip_weekends"));
+        skipWeekends.setSelected(true);
+
         // TRB-4 — carga de tarifas del cliente (+ generales) y autorrelleno.
         Runnable refreshRateCombo = () -> {
             String u = unitCombo.getValue();
@@ -15011,6 +15058,10 @@ public class BenjagestUiApplication extends Application
         g.add(new Label(t("trabajos.field.employee")), 0, r); g.add(empCombo, 1, r++);
         g.add(new Label(t("trabajos.field.customer")), 0, r); g.add(custCombo, 1, r++);
         g.add(new Label(t("trabajos.field.date")), 0, r); g.add(dateP, 1, r++);
+        if (isNew) {
+            g.add(new Label(t("trabajos.field.repeat_until")), 0, r); g.add(repeatUntil, 1, r++);
+            g.add(skipWeekends, 1, r++);
+        }
         g.add(new Label(t("trabajos.field.description")), 0, r); g.add(desc, 1, r++);
         g.add(billable, 1, r++);
         g.add(new Label(t("trabajos.field.unit")), 0, r); g.add(unitCombo, 1, r++);
@@ -15032,14 +15083,44 @@ public class BenjagestUiApplication extends Application
             java.math.BigDecimal q = bill && !"FIXED".equals(unit) ? parseDecSafe(qty.getText()) : null;
             java.math.BigDecimal p = bill && !"FIXED".equals(unit) ? parseDecSafe(price.getText()) : null;
             java.math.BigDecimal fixed = bill && "FIXED".equals(unit) ? parseDecSafe(fixedAmount.getText()) : null;
-            com.benjagest.ui.model.WorkLogEntry payload = new com.benjagest.ui.model.WorkLogEntry(
-                    existing == null ? null : existing.id(), empId, null,
-                    dateP.getValue().toString(), 0, custId, null,
-                    desc.getText(), bill, unit, q, p, fixed,
-                    existing == null ? "DRAFT" : existing.status(), null);
+
+            if (!isNew) {
+                com.benjagest.ui.model.WorkLogEntry payload = new com.benjagest.ui.model.WorkLogEntry(
+                        existing.id(), empId, null,
+                        dateP.getValue().toString(), 0, custId, null,
+                        desc.getText(), bill, unit, q, p, fixed,
+                        existing.status(), null);
+                runWorkLogTask(() -> altaApiClient.updateWorkLog(existing.id(), payload),
+                        () -> { dlg.close(); onSaved.run(); });
+                return;
+            }
+
+            // TRB-MULTI — lista de días a crear: solo la fecha, o el rango hasta
+            // "Repetir hasta" (máx. 92 días), saltando fines de semana si procede.
+            java.time.LocalDate firstDay = dateP.getValue();
+            java.time.LocalDate until = repeatUntil.getValue();
+            java.time.LocalDate end = until == null ? firstDay : until;
+            if (end.isBefore(firstDay) || firstDay.plusDays(92).isBefore(end)) {
+                showError(t("trabajos.fail.title"), t("trabajos.fail.repeat_range"));
+                return;
+            }
+            boolean skipWk = until != null && skipWeekends.isSelected();
+            java.util.List<java.time.LocalDate> days = new java.util.ArrayList<>();
+            for (java.time.LocalDate d = firstDay; !d.isAfter(end); d = d.plusDays(1)) {
+                if (skipWk && (d.getDayOfWeek() == java.time.DayOfWeek.SATURDAY
+                        || d.getDayOfWeek() == java.time.DayOfWeek.SUNDAY)) continue;
+                days.add(d);
+            }
+            if (days.isEmpty()) {
+                showError(t("trabajos.fail.title"), t("trabajos.fail.repeat_range"));
+                return;
+            }
             runWorkLogTask(() -> {
-                if (existing == null) altaApiClient.createWorkLog(payload);
-                else altaApiClient.updateWorkLog(existing.id(), payload);
+                for (java.time.LocalDate d : days) {
+                    altaApiClient.createWorkLog(new com.benjagest.ui.model.WorkLogEntry(
+                            null, empId, null, d.toString(), 0, custId, null,
+                            desc.getText(), bill, unit, q, p, fixed, "DRAFT", null));
+                }
             }, () -> { dlg.close(); onSaved.run(); });
         });
         Button cancel = new Button(t("dialog.cancel"));
