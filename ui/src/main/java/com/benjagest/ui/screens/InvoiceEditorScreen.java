@@ -1412,7 +1412,10 @@ public class InvoiceEditorScreen extends ScreenBase {
                         java.time.LocalDate.now(), customer.id(), null, true);
             }
         };
-        load.setOnSucceeded(ev -> table.setItems(FXCollections.observableArrayList(load.getValue())));
+        // FAC-MERGE: los trabajos ya importados a esta factura (aún sin guardar) no se
+        // vuelven a ofrecer — reabrir el diálogo los duplicaba como líneas nuevas.
+        load.setOnSucceeded(ev -> table.setItems(FXCollections.observableArrayList(
+                load.getValue().stream().filter(w -> !editorPendingWorkLogIds.contains(w.id())).toList())));
         load.setOnFailed(ev -> showError(t("trabajos.fail.title"),
                 load.getException() == null ? "" : com.benjagest.ui.support.BackendErrors.humanize(load.getException().getMessage())));
         start(load, "import-works-load");
@@ -1433,6 +1436,12 @@ public class InvoiceEditorScreen extends ScreenBase {
         add.setOnAction(e -> {
             var sel = new java.util.ArrayList<>(table.getSelectionModel().getSelectedItems());
             if (sel.isEmpty()) { showError(t("trabajos.fail.title"), t("editor.import_works.none")); return; }
+            // FAC-MERGE: la línea vacía con la que arranca una factura nueva se retira al
+            // importar (bloqueaba el guardado con "línea sin descripción" y empujaba a
+            // reimportar los mismos trabajos).
+            editorLinesTable.getItems().removeIf(l ->
+                    (l.getDescription() == null || l.getDescription().isBlank())
+                            && l.getUnitPrice().signum() == 0);
             if (merge.isSelected()) {
                 java.math.BigDecimal sum = sel.stream()
                         .map(w -> w.billableAmount() == null ? java.math.BigDecimal.ZERO : w.billableAmount())
@@ -1440,11 +1449,13 @@ public class InvoiceEditorScreen extends ScreenBase {
                 String concept = mergedConcept.getText() == null || mergedConcept.getText().isBlank()
                         ? t("trabajos.bill.merged_default") : mergedConcept.getText().trim();
                 editorLinesTable.getItems().add(new InvoiceLineDraft(
-                        concept, java.math.BigDecimal.ONE, sum, new java.math.BigDecimal("21"), java.math.BigDecimal.ZERO));
+                        concept, java.math.BigDecimal.ONE, sum, editorDefaultVat, editorDefaultRetention));
             } else {
                 for (var w : sel) editorLinesTable.getItems().add(lineFromWork(w));
             }
-            for (var w : sel) editorPendingWorkLogIds.add(w.id());
+            for (var w : sel) {
+                if (!editorPendingWorkLogIds.contains(w.id())) editorPendingWorkLogIds.add(w.id());
+            }
             recomputeEditorTotals();
             dlg.close();
         });
@@ -1453,7 +1464,10 @@ public class InvoiceEditorScreen extends ScreenBase {
         HBox btns = new HBox(10, cancel, add);
         btns.setAlignment(Pos.CENTER_RIGHT);
 
-        VBox root = new VBox(12, hint, table, new Separator(), perLine, merge, mergedConcept, btns);
+        // FAC-MERGE: el modo (una línea por trabajo / agrupar) va ARRIBA de la tabla
+        // (patrón Slice 3V) — debajo pasaba desapercibido y se importaba con el modo
+        // equivocado.
+        VBox root = new VBox(12, hint, perLine, merge, mergedConcept, new Separator(), table, btns);
         root.setPadding(new javafx.geometry.Insets(16));
         root.setPrefSize(640, 520);
         Scene scene = new Scene(root);
@@ -1465,13 +1479,13 @@ public class InvoiceEditorScreen extends ScreenBase {
     /** Línea de factura a partir de un trabajo (preserva cantidad×precio; cerrado = 1×importe). */
     private InvoiceLineDraft lineFromWork(com.benjagest.ui.model.WorkLogEntry w) {
         String d = (w.description() == null || w.description().isBlank()) ? t("trabajos.title") : w.description();
-        java.math.BigDecimal vat = new java.math.BigDecimal("21");
+        java.math.BigDecimal vat = editorDefaultVat;
         if (w.quantity() != null && w.unitPrice() != null && !"FIXED".equals(w.billingUnit())) {
-            return new InvoiceLineDraft(d, w.quantity(), w.unitPrice(), vat, java.math.BigDecimal.ZERO);
+            return new InvoiceLineDraft(d, w.quantity(), w.unitPrice(), vat, editorDefaultRetention);
         }
         return new InvoiceLineDraft(d, java.math.BigDecimal.ONE,
                 w.billableAmount() == null ? java.math.BigDecimal.ZERO : w.billableAmount(),
-                vat, java.math.BigDecimal.ZERO);
+                vat, editorDefaultRetention);
     }
 
     /** Valoración legible de un trabajo (copia compartida con la tabla de Trabajos del shell). */

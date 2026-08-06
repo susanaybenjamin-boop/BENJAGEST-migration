@@ -3392,6 +3392,12 @@ public final class I18n {
             case "trabajos.rates.fail" -> "Could not save the rate";
             case "trabajos.rates.fail_concept" -> "Enter a concept.";
             case "trabajos.rates.fail_price" -> "Enter a valid price.";
+            case "trabajos.action.duplicate" -> "Duplicate";
+            case "trabajos.form.duplicate" -> "Duplicate job";
+            case "trabajos.field.repeat_until" -> "Repeat until:";
+            case "trabajos.field.skip_weekends" -> "Skip Saturdays and Sundays";
+            case "trabajos.fail.repeat_range" -> "\"Repeat until\" must be on or after the job date (92 days max) and include at least one day.";
+            case "trabajos.footer.total" -> "Shown total: {total} · {n} job(s)";
             case "labor.schedule.hint" -> "Work-schedule templates: one template = several time blocks per weekday, assignable to several employees with an effective date.";
             case "labor.schedule.empty" -> "No templates yet.";
             case "labor.schedule.col.name" -> "Name";
@@ -3717,6 +3723,12 @@ public final class I18n {
             case "trabajos.rates.fail" -> "No se pudo guardar la tarifa";
             case "trabajos.rates.fail_concept" -> "Introduce un concepto.";
             case "trabajos.rates.fail_price" -> "Introduce un precio válido.";
+            case "trabajos.action.duplicate" -> "Duplicar";
+            case "trabajos.form.duplicate" -> "Duplicar trabajo";
+            case "trabajos.field.repeat_until" -> "Repetir hasta:";
+            case "trabajos.field.skip_weekends" -> "Saltar sábados y domingos";
+            case "trabajos.fail.repeat_range" -> "\"Repetir hasta\" debe ser igual o posterior a la fecha del trabajo (máximo 92 días) e incluir al menos un día.";
+            case "trabajos.footer.total" -> "Total mostrado: {total} · {n} trabajo(s)";
             case "labor.schedule.hint" -> "Plantillas de horario: 1 plantilla = varios bloques horarios por día de la semana, asignable a varios empleados con fecha de efecto.";
             case "labor.schedule.empty" -> "Aún no hay plantillas.";
             case "labor.schedule.col.name" -> "Nombre";
