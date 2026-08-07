@@ -148,10 +148,10 @@ public class InvoicePdfGenerator {
 
     /**
      * VF-QR-TOGGLE: variante con {@code qrSuppressed}. Cuando la empresa
-     * apaga el QR (y aun no esta obligada), no se pinta NI el QR NI su
-     * etiqueta NI el placeholder — la zona queda vacia como en las
-     * proformas. La huella VeriFactu se conserva (la cadena hash existe
-     * en ambas modalidades y no es el QR).
+     * apaga el QR (y aun no esta obligada), no se pinta NADA del bloque
+     * VeriFactu — ni QR, ni etiqueta, ni placeholder, ni la linea de
+     * huella — la zona queda vacia como en las proformas. La cadena hash
+     * sigue registrandose en BD; solo se deja de imprimir.
      */
     public byte[] generate(SalesInvoice invoice, CompanyDataResponse company, InvoiceTexts texts,
                            String verifactuHash, byte[] qrPng, String complianceLabel,
@@ -178,10 +178,12 @@ public class InvoicePdfGenerator {
             // tanto a borradores como a "validaciones" de proforma (si
             // tuviera serie PROFORMA emitida).
             boolean isProforma = "PROFORMA".equals(invoice.invoiceType());
-            // VF-QR-TOGGLE: con el QR apagado la zona QR va vacia (sin
-            // placeholder), pero la huella se mantiene (no es proforma).
+            // VF-QR-TOGGLE: con el QR apagado la zona queda LIMPIA del todo
+            // (ni QR, ni etiqueta, ni placeholder, ni linea de huella) —
+            // pedido por Benjamin 2026-08-07. La huella sigue existiendo en
+            // BD/registro; solo se deja de imprimir mientras dure el plazo.
             boolean hideQrZone = isProforma || qrSuppressed;
-            String effHash = isProforma ? null : verifactuHash;
+            String effHash = hideQrZone ? null : verifactuHash;
             byte[] effQr = hideQrZone ? null : qrPng;
             String effLabel = hideQrZone ? null : complianceLabel;
 
