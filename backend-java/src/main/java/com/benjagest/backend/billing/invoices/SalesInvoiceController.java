@@ -341,6 +341,7 @@ public class SalesInvoiceController {
                 .orElse(null);
         var company = companyDataService.getCurrent();
         VerifactuConfig vfConfig = verifactuConfigRepository.findCurrent().orElse(null);
+        boolean qrOff = qrService.qrSuppressed(vfConfig, company);
         byte[] qrPng = qrService.generatePng(invoice, company, vfConfig);
         String complianceLabel = qrService.complianceLabel(vfConfig);
         return pdfGenerator.generate(invoice,
@@ -348,6 +349,7 @@ public class SalesInvoiceController {
                 invoiceTextsService.get(),
                 verifactuHash,
                 qrPng,
-                complianceLabel);
+                complianceLabel,
+                qrOff);
     }
 }

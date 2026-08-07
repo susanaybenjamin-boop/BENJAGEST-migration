@@ -140,10 +140,11 @@ public class InvoiceEmailService {
         CompanyDataResponse company = companyDataService.getCurrent();
         String hash = verifactuRegistryService.findCurrentHashForPdf(invoice.id()).orElse(null);
         VerifactuConfig vfConfig = verifactuConfigRepository.findCurrent().orElse(null);
+        boolean qrOff = qrService.qrSuppressed(vfConfig, company);
         byte[] qrPng = qrService.generatePng(invoice, company, vfConfig);
         String label = qrService.complianceLabel(vfConfig);
         return pdfGenerator.generate(invoice, company, invoiceTextsService.get(),
-                hash, qrPng, label);
+                hash, qrPng, label, qrOff);
     }
 
     private String defaultSubject(SalesInvoice invoice, CompanyDataResponse company) {

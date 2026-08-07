@@ -33,7 +33,9 @@ public class VerifactuConfigRepository {
                        c.verifactu_certificate_id AS certificate_id,
                        cert.alias AS certificate_alias,
                        c.invoice_footer_template AS invoice_footer_template,
-                       c.invoice_storage_root AS invoice_storage_root
+                       c.invoice_storage_root AS invoice_storage_root,
+                       c.verifactu_print_qr AS print_qr,
+                       c.tax_identifier AS tax_identifier
                   FROM companies c
                   LEFT JOIN digital_certificates cert ON cert.id = c.verifactu_certificate_id
                  WHERE c.id = ?
@@ -42,14 +44,16 @@ public class VerifactuConfigRepository {
     }
 
     public int update(String modality, String mode, String certificateId,
-                       String invoiceFooterTemplate, String invoiceStorageRoot) {
+                       String invoiceFooterTemplate, String invoiceStorageRoot,
+                       boolean printQr) {
         return jdbcTemplate.update("""
                 UPDATE companies
                    SET verifactu_modality = ?,
                        verifactu_mode = ?,
                        verifactu_certificate_id = ?,
                        invoice_footer_template = ?,
-                       invoice_storage_root = ?
+                       invoice_storage_root = ?,
+                       verifactu_print_qr = ?
                  WHERE id = ?
                 """,
                 modality,
@@ -57,6 +61,7 @@ public class VerifactuConfigRepository {
                 blankToNull(certificateId),
                 blankToNull(invoiceFooterTemplate),
                 blankToNull(invoiceStorageRoot),
+                printQr,
                 tenantContext.getCurrentCompanyId()
         );
     }
@@ -68,7 +73,9 @@ public class VerifactuConfigRepository {
                 rs.getString("certificate_id"),
                 rs.getString("certificate_alias"),
                 rs.getString("invoice_footer_template"),
-                rs.getString("invoice_storage_root")
+                rs.getString("invoice_storage_root"),
+                rs.getBoolean("print_qr"),
+                VerifactuDates.qrOptOutDeadline(rs.getString("tax_identifier")).toString()
         );
     }
 

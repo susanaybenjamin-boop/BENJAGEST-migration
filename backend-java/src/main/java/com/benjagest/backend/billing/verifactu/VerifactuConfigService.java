@@ -39,7 +39,8 @@ public class VerifactuConfigService {
                 request.mode(),
                 request.certificateId(),
                 request.invoiceFooterTemplate(),
-                request.invoiceStorageRoot());
+                request.invoiceStorageRoot(),
+                request.printQr() == null || request.printQr());
         return get();
     }
 }

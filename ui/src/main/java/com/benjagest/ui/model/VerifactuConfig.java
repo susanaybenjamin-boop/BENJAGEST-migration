@@ -13,6 +13,10 @@ public record VerifactuConfig(
         String certificateId,
         String certificateAlias,
         String invoiceFooterTemplate,
-        String invoiceStorageRoot
+        String invoiceStorageRoot,
+        /** VF-QR-TOGGLE: imprimir el QR AEAT en los PDF (false = apagado). */
+        boolean printQr,
+        /** Fecha ISO hasta la que se permite emitir sin QR (computa el backend). */
+        String qrOptOutUntil
 ) {
 }
