@@ -29,6 +29,12 @@ package com.benjagest.backend.billing.verifactu;
  *                    validar (slice F-STORAGE). NULL = usar el default
  *                    del backend (`benjagest.invoices.storage-root`).
  *                    Estructura: {root}/{companyId}/{YYYY}/T{q}/{nº}.pdf.
+ *   - printQr (VF-QR-TOGGLE): si FALSE, los PDF de factura NO llevan el
+ *                    QR oficial AEAT ni su etiqueta — SOLO mientras la
+ *                    empresa no este obligada (ver qrOptOutUntil). Desde
+ *                    esa fecha el backend ignora el toggle.
+ *   - qrOptOutUntil: fecha (ISO, computada del NIF via VerifactuDates)
+ *                    hasta la que se permite emitir sin QR. Solo lectura.
  */
 public record VerifactuConfig(
         String modality,
@@ -36,6 +42,8 @@ public record VerifactuConfig(
         String certificateId,
         String certificateAlias,
         String invoiceFooterTemplate,
-        String invoiceStorageRoot
+        String invoiceStorageRoot,
+        Boolean printQr,
+        String qrOptOutUntil
 ) {
 }

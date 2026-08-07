@@ -143,6 +143,19 @@ public class InvoicePdfGenerator {
      */
     public byte[] generate(SalesInvoice invoice, CompanyDataResponse company, InvoiceTexts texts,
                            String verifactuHash, byte[] qrPng, String complianceLabel) {
+        return generate(invoice, company, texts, verifactuHash, qrPng, complianceLabel, false);
+    }
+
+    /**
+     * VF-QR-TOGGLE: variante con {@code qrSuppressed}. Cuando la empresa
+     * apaga el QR (y aun no esta obligada), no se pinta NI el QR NI su
+     * etiqueta NI el placeholder — la zona queda vacia como en las
+     * proformas. La huella VeriFactu se conserva (la cadena hash existe
+     * en ambas modalidades y no es el QR).
+     */
+    public byte[] generate(SalesInvoice invoice, CompanyDataResponse company, InvoiceTexts texts,
+                           String verifactuHash, byte[] qrPng, String complianceLabel,
+                           boolean qrSuppressed) {
         try {
             ByteArrayOutputStream bos = new ByteArrayOutputStream();
             // Top margin reducido (30) para subir el título cerca del
@@ -165,12 +178,15 @@ public class InvoicePdfGenerator {
             // tanto a borradores como a "validaciones" de proforma (si
             // tuviera serie PROFORMA emitida).
             boolean isProforma = "PROFORMA".equals(invoice.invoiceType());
+            // VF-QR-TOGGLE: con el QR apagado la zona QR va vacia (sin
+            // placeholder), pero la huella se mantiene (no es proforma).
+            boolean hideQrZone = isProforma || qrSuppressed;
             String effHash = isProforma ? null : verifactuHash;
-            byte[] effQr = isProforma ? null : qrPng;
-            String effLabel = isProforma ? null : complianceLabel;
+            byte[] effQr = hideQrZone ? null : qrPng;
+            String effLabel = hideQrZone ? null : complianceLabel;
 
             addTitle(document, invoice);
-            addTopBlock(document, invoice, company, effHash, effQr, effLabel);
+            addTopBlock(document, invoice, company, effHash, effQr, effLabel, hideQrZone);
             addLinesTable(document, invoice);
 
             document.close();
@@ -201,7 +217,8 @@ public class InvoicePdfGenerator {
     }
 
     private void addTopBlock(Document document, SalesInvoice invoice, CompanyDataResponse company,
-                              String verifactuHash, byte[] qrPng, String complianceLabel) throws DocumentException {
+                              String verifactuHash, byte[] qrPng, String complianceLabel,
+                              boolean suppressQrZone) throws DocumentException {
         Font fEmpName = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 12, INK);
         Font fMeta = FontFactory.getFont(FontFactory.HELVETICA, 9, INK_LIGHT);
         Font fNumber = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 14, INK);
@@ -290,8 +307,7 @@ public class InvoicePdfGenerator {
         // cumplimiento + huella VeriFactu abreviada. Si no llega QR
         // real (factura aun en borrador, o problema generando), cae al
         // placeholder visual como antes.
-        // PROFORMA: ni QR ni placeholder ni huella — solo celda vacia.
-        boolean isProforma = "PROFORMA".equals(invoice.invoiceType());
+        // PROFORMA o QR apagado (VF-QR-TOGGLE): ni QR ni placeholder.
         PdfPCell qrCell = new PdfPCell();
         qrCell.setBorder(Rectangle.NO_BORDER);
         qrCell.setPadding(2f);
@@ -314,7 +330,7 @@ public class InvoicePdfGenerator {
                         .warn("No se pudo embeber el QR en el PDF; uso placeholder", ex);
             }
         }
-        if (!qrRendered && !isProforma) {
+        if (!qrRendered && !suppressQrZone) {
             qrCell.addElement(qrPlaceholder());
         }
         if (complianceLabel != null && !complianceLabel.isBlank()) {

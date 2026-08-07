@@ -55,7 +55,20 @@ public class InvoiceQrService {
     private static final DateTimeFormatter FECHA = DateTimeFormatter.ofPattern("dd-MM-yyyy");
     private static final int QR_PX = 200;
 
+    /**
+     * VF-QR-TOGGLE: true si la empresa ha APAGADO el QR en su config
+     * ({@code printQr=false}) y ademas aun esta dentro del plazo legal
+     * (antes de su fecha de obligacion VERI*FACTU, deducida del NIF).
+     * Desde esa fecha el toggle caduca y esto devuelve siempre false.
+     */
+    public boolean qrSuppressed(VerifactuConfig config, CompanyDataResponse company) {
+        if (config == null || config.printQr() == null || config.printQr()) return false;
+        String taxId = company == null ? null : company.taxIdentifier();
+        return com.benjagest.backend.billing.verifactu.VerifactuDates.qrOptOutStillAllowed(taxId);
+    }
+
     public byte[] generatePng(SalesInvoice invoice, CompanyDataResponse company, VerifactuConfig config) {
+        if (qrSuppressed(config, company)) return null;
         if (invoice == null || company == null) return null;
         if (invoice.invoiceNumber() == null || invoice.invoiceNumber().isBlank()) return null;
         if (invoice.invoiceDate() == null) return null;

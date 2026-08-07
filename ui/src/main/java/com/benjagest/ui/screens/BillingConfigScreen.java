@@ -72,6 +72,7 @@ public class BillingConfigScreen extends ScreenBase {
     private javafx.scene.control.TextArea textRectifyingArea;
     private javafx.scene.control.TextArea textLegalTermsArea;
     private CheckBox showIbanCheck;
+    private CheckBox printQrCheck;
 
     public BillingConfigScreen(BillingApiClient billingApiClient,
                                Function<String, String> tt, Router router, Host host) {
@@ -150,6 +151,32 @@ public class BillingConfigScreen extends ScreenBase {
                 t("billing.config.field.storage_root.prompt"));
         verifactuStorageRootField.setPrefColumnCount(50);
 
+        // VF-QR-TOGGLE: imprimir (o no) el QR AEAT en los PDF. Solo se puede
+        // apagar mientras la empresa no este obligada (fecha que computa el
+        // backend a partir del NIF); desde esa fecha el toggle caduca y se
+        // fuerza encendido.
+        printQrCheck = new CheckBox(t("billing.config.field.print_qr"));
+        boolean qrOptOutExpired = false;
+        String deadlineIso = config.qrOptOutUntil();
+        if (deadlineIso != null && !deadlineIso.isBlank()) {
+            try {
+                qrOptOutExpired = !java.time.LocalDate.now()
+                        .isBefore(java.time.LocalDate.parse(deadlineIso));
+            } catch (java.time.format.DateTimeParseException ignored) {
+                // fecha ilegible -> tratamos como no caducado (el backend manda)
+            }
+        }
+        printQrCheck.setSelected(qrOptOutExpired || config.printQr());
+        printQrCheck.setDisable(qrOptOutExpired);
+        String deadlineHuman = deadlineIso == null || deadlineIso.isBlank()
+                ? "" : formatIsoDate(deadlineIso);
+        Label printQrHint = new Label(qrOptOutExpired
+                ? t("billing.config.print_qr.hint.expired").replace("{date}", deadlineHuman)
+                : t("billing.config.print_qr.hint").replace("{date}", deadlineHuman));
+        printQrHint.setWrapText(true);
+        printQrHint.getStyleClass().add("settings-hint");
+        VBox printQrBox = new VBox(2, printQrCheck, printQrHint);
+
         // Botón "Examinar…" que abre el DirectoryChooser del sistema
         // operativo (en Windows = Explorador; macOS = Finder; Linux =
         // GTK/QT según escritorio). El DirectoryChooser permite navegar
@@ -167,6 +194,7 @@ public class BillingConfigScreen extends ScreenBase {
         addFormRow(grid, 1, t("billing.config.field.mode"), verifactuModeCombo);
         addFormRow(grid, 2, t("billing.config.field.cert"), verifactuCertCombo);
         addFormRow(grid, 3, t("billing.config.field.storage_root"), storageRow);
+        addFormRow(grid, 4, "", printQrBox);
 
         Label certHint = new Label(certificates.isEmpty()
                 ? t("billing.config.cert.hint.empty")
@@ -981,6 +1009,16 @@ public class BillingConfigScreen extends ScreenBase {
         start(task, "billing-texts-save");
     }
 
+    /** dd/MM/yyyy legible a partir de una fecha ISO; si no parsea, tal cual. */
+    private String formatIsoDate(String iso) {
+        try {
+            return java.time.LocalDate.parse(iso)
+                    .format(java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy"));
+        } catch (java.time.format.DateTimeParseException e) {
+            return iso;
+        }
+    }
+
     private void saveVerifactuConfig() {
         saveVerifactuConfig(true);
     }
@@ -1002,11 +1040,12 @@ public class BillingConfigScreen extends ScreenBase {
         // (ambos guardan companies.invoice_footer_template).
         String footer = textPieArea == null ? null : textPieArea.getText();
         String storageRoot = verifactuStorageRootField == null ? null : verifactuStorageRootField.getText();
+        boolean printQr = printQrCheck == null || printQrCheck.isSelected();
 
         Task<VerifactuConfig> task = new Task<>() {
             @Override
             protected VerifactuConfig call() throws Exception {
-                return billingApiClient.updateVerifactuConfig(modality, mode, certId, footer, storageRoot);
+                return billingApiClient.updateVerifactuConfig(modality, mode, certId, footer, storageRoot, printQr);
             }
         };
         task.setOnSucceeded(event -> {

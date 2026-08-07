@@ -847,11 +847,12 @@ public class SalesInvoiceService {
                 .findCurrentHashForPdf(validated.id()).orElse(null);
         com.benjagest.backend.billing.verifactu.VerifactuConfig vfConfig =
                 verifactuConfigRepository.findCurrent().orElse(null);
+        boolean qrOff = qrService.qrSuppressed(vfConfig, company);
         byte[] qrPng = qrService.generatePng(validated, company, vfConfig);
         String complianceLabel = qrService.complianceLabel(vfConfig);
         byte[] pdfBytes = pdfGenerator.generate(
                 validated, company, invoiceTextsService.get(),
-                currentHash, qrPng, complianceLabel);
+                currentHash, qrPng, complianceLabel, qrOff);
         String storageRoot = vfConfig == null ? null : vfConfig.invoiceStorageRoot();
         String absPath = storageService.writePdf(
                 storageRoot, company.id(),

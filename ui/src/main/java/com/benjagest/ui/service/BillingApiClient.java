@@ -952,10 +952,12 @@ public class BillingApiClient {
     public VerifactuConfig updateVerifactuConfig(String modality, String mode,
                                                  String certificateIdOrNull,
                                                  String footerTemplate,
-                                                 String invoiceStorageRoot) throws IOException, InterruptedException {
+                                                 String invoiceStorageRoot,
+                                                 boolean printQr) throws IOException, InterruptedException {
         StringBuilder body = new StringBuilder("{");
         body.append(field("modality", modality));
         body.append(",").append(field("mode", mode));
+        body.append(",\"printQr\":").append(printQr);
         if (certificateIdOrNull != null && !certificateIdOrNull.isBlank()) {
             body.append(",").append(field("certificateId", certificateIdOrNull));
         }
@@ -1223,7 +1225,9 @@ public class BillingApiClient {
                 textField(json, "certificateId"),
                 textField(json, "certificateAlias"),
                 textField(json, "invoiceFooterTemplate"),
-                textField(json, "invoiceStorageRoot")
+                textField(json, "invoiceStorageRoot"),
+                boolField(json, "printQr"),
+                textField(json, "qrOptOutUntil")
         );
     }
 

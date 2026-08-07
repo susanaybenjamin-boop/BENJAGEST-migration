@@ -21,6 +21,8 @@ public record VerifactuConfigUpdateRequest(
         @NotBlank @Pattern(regexp = "TEST|PROD") String mode,
         String certificateId,
         String invoiceFooterTemplate,
-        String invoiceStorageRoot
+        String invoiceStorageRoot,
+        /** VF-QR-TOGGLE: imprimir el QR en los PDF. null = TRUE (default legal). */
+        Boolean printQr
 ) {
 }
