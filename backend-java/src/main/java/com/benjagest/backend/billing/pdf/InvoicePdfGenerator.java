@@ -90,8 +90,16 @@ public class InvoicePdfGenerator {
      *  facturación tiene que estar". */
     private final org.springframework.jdbc.core.JdbcTemplate jdbcTemplate;
 
-    public InvoicePdfGenerator(org.springframework.jdbc.core.JdbcTemplate jdbcTemplate) {
+    /** PDF-LOGO (2026-08-07) — el logo de empresa (PORT-4) por fin se
+     *  pinta en la factura. El service lee companies.logo_path del
+     *  tenant actual; los tres caminos (validar, previsualizar, email)
+     *  corren en request scope, asi que TenantContext esta disponible. */
+    private final com.benjagest.backend.settings.CompanyLogoService companyLogoService;
+
+    public InvoicePdfGenerator(org.springframework.jdbc.core.JdbcTemplate jdbcTemplate,
+                               com.benjagest.backend.settings.CompanyLogoService companyLogoService) {
         this.jdbcTemplate = jdbcTemplate;
+        this.companyLogoService = companyLogoService;
     }
 
     private static final NumberFormat MONEY = NumberFormat.getCurrencyInstance(Locale.forLanguageTag("es-ES"));
@@ -245,9 +253,12 @@ public class InvoicePdfGenerator {
 
         // === FILA 1 ===
 
-        // Col 1: hueco para el logo. PORT-4 LOGO (2026-06-10) — la columna
+        // Col 1: logo de la empresa (PDF-LOGO 2026-08-07). Si la empresa
+        // tiene logo subido (companies.logo_path) se pinta escalado a la
+        // zona reservada; si no, la celda queda en blanco como antes.
+        // Historia: PORT-4 LOGO (2026-06-10) — la columna
         // companies.logo_path ya existe (V87) y el endpoint
-        // /api/settings/company/logo guarda/devuelve los bytes. Falta el
+        // /api/settings/company/logo guarda/devuelve los bytes. Faltaba el
         // último paso: el generator necesita acceso a esos bytes. Como
         // cambiar la firma rompe 3 callers (InvoiceEmailService,
         // SalesInvoiceController, SalesInvoiceService), dejamos el slice
@@ -255,6 +266,30 @@ public class InvoicePdfGenerator {
         PdfPCell logoCell = new PdfPCell(new Phrase(" ", fMeta));
         logoCell.setBorder(Rectangle.NO_BORDER);
         logoCell.setMinimumHeight(50f);
+        byte[] logoBytes = null;
+        try {
+            logoBytes = companyLogoService.read();
+        } catch (Exception ignored) {
+            // sin tenant o sin logo -> celda en blanco, como siempre
+        }
+        if (logoBytes != null && logoBytes.length > 0) {
+            try {
+                Image logo = Image.getInstance(logoBytes);
+                // La zona del logo mide ~180pt de ancho de columna; 140x50pt
+                // mantiene la cabecera equilibrada. scaleToFit conserva la
+                // proporcion (el service ya limita el origen a 400px de ancho).
+                logo.scaleToFit(140f, 50f);
+                logo.setAlignment(Element.ALIGN_LEFT);
+                logoCell = new PdfPCell();
+                logoCell.setBorder(Rectangle.NO_BORDER);
+                logoCell.setMinimumHeight(50f);
+                logoCell.setVerticalAlignment(Element.ALIGN_TOP);
+                logoCell.addElement(logo);
+            } catch (Exception ex) {
+                org.slf4j.LoggerFactory.getLogger(InvoicePdfGenerator.class)
+                        .warn("No se pudo embeber el logo en el PDF; celda en blanco", ex);
+            }
+        }
         top.addCell(logoCell);
 
         // Col 2: vacío en fila 1.
