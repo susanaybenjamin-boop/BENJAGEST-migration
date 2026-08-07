@@ -320,7 +320,24 @@ public class SalesInvoiceController {
                 // disco corrupto). Caemos a regeneracion en vez de 500.
                 bytes = regenerate(invoice, id);
             }
+        } else if ("VALIDATED".equals(invoice.status())
+                && !"HISTORICAL".equals(invoice.invoiceType())) {
+            // PDF-RESTORE (2026-08-07, pedido de Benjamin): la factura
+            // validada tenia su PDF en la ruta configurada pero ya no
+            // esta (movido/borrado a mano). Antes se regeneraba SOLO en
+            // memoria y se servia sin dejar rastro ("lo abre de la
+            // nada"). Ahora se regenera Y se vuelve a guardar en la
+            // ruta, actualizando pdf_path — asi el archivo reaparece y
+            // ademas recoge mejoras del generador (p.ej. el logo).
+            String abs = service.storePdfNow(id);
+            try {
+                bytes = storageService.read(abs);
+            } catch (IOException ioe) {
+                bytes = regenerate(invoice, id);
+            }
         } else {
+            // Borradores, proformas sin validar e historicas: al vuelo,
+            // sin persistir (no hay documento legal que restaurar).
             bytes = regenerate(invoice, id);
         }
 
