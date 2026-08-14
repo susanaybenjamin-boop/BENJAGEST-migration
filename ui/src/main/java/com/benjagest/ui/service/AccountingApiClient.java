@@ -1302,7 +1302,8 @@ public class AccountingApiClient {
                 decField(json, "pendingCollections"), intField(json, "overdueInvoices"),
                 decField(json, "pendingPayments"),
                 decField(json, "marginPct"), decField(json, "expenseRatioPct"),
-                decField(json, "personnelRatioPct"), intField(json, "draftCount"));
+                decField(json, "personnelRatioPct"), intField(json, "draftCount"),
+                intField(json, "unpaidPurchaseInvoices"));
     }
 
     public List<AccountingModels.MonthPoint> financialsMonthly(int year)

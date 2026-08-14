@@ -84,6 +84,13 @@ public class AccountingScreen {
 
     private final AccountingApiClient api;
     private final Function<String, String> tt;
+    /**
+     * PAGO-2 — Navegación del shell. Esta pantalla no se extrajo con
+     * {@code ScreenBase}/{@code Router}, así que se le inyecta aparte para que
+     * los KPIs del cuadro de mando puedan llevar a su detalle. Si es null (uso
+     * en pruebas), las tarjetas simplemente no navegan.
+     */
+    private com.benjagest.ui.support.Router router;
 
     public AccountingScreen(AccountingApiClient api) {
         this(api, key -> key);
@@ -92,6 +99,12 @@ public class AccountingScreen {
     public AccountingScreen(AccountingApiClient api, Function<String, String> translator) {
         this.api = api;
         this.tt = translator;
+    }
+
+    /** PAGO-2 — Inyecta la navegación del shell (opcional). */
+    public AccountingScreen withRouter(com.benjagest.ui.support.Router router) {
+        this.router = router;
+        return this;
     }
 
     /** Devuelve el nodo raíz para encajar en el viewport. */
@@ -1645,13 +1658,23 @@ public class AccountingScreen {
                 kpiCard(tt.apply("accounting.fin.vat_borne"), money(f.vatBorne()), null, "#6e6e6e"),
                 kpiCard(tt.apply("accounting.fin.model303"), money(f.model303Estimated()),
                         tt.apply("accounting.fin.estimated"), "#6e6e6e"),
-                kpiCard(tt.apply("accounting.fin.pending_collections"), money(f.pendingCollections()),
+                // Los subtítulos van CORTOS a propósito: la tarjeta mide 210px y
+                // un texto largo se corta con "..." (visto en el smoke). Si ya
+                // hay un dato que contar (vencidas / sin pagar), ese manda; el
+                // "pulsa" solo aparece cuando no hay nada más que decir.
+                kpiCardLink(tt.apply("accounting.fin.pending_collections"), money(f.pendingCollections()),
                         f.overdueInvoices() > 0
                                 ? tt.apply("accounting.fin.overdue").replace("{n}", String.valueOf(f.overdueInvoices()))
-                                : null,
-                        f.overdueInvoices() > 0 ? "#c62828" : "#1565c0"),
-                kpiCard(tt.apply("accounting.fin.pending_payments"), money(f.pendingPayments()),
-                        tt.apply("accounting.fin.suppliers"), "#1565c0")
+                                : tt.apply("accounting.fin.see_invoices"),
+                        f.overdueInvoices() > 0 ? "#c62828" : "#1565c0",
+                        () -> router.navigateTo("billing", "PENDING")),
+                kpiCardLink(tt.apply("accounting.fin.pending_payments"), money(f.pendingPayments()),
+                        f.unpaidPurchaseInvoices() > 0
+                                ? tt.apply("accounting.fin.unpaid_bills")
+                                        .replace("{n}", String.valueOf(f.unpaidPurchaseInvoices()))
+                                : tt.apply("accounting.fin.suppliers"),
+                        "#1565c0",
+                        () -> router.navigateTo("purchases", "PENDING"))
         );
         if (f.draftCount() > 0) {
             finDraftWarn.setText(tt.apply("accounting.fin.draft_warn")
@@ -1724,6 +1747,27 @@ public class AccountingScreen {
         HBox.setHgrow(msg, Priority.ALWAYS);
         h.setAlignment(Pos.TOP_LEFT);
         return h;
+    }
+
+    /**
+     * PAGO-2 — Tarjeta KPI CLICABLE: además de la cifra, lleva a la pantalla
+     * donde está el detalle que la explica.
+     *
+     * <p>El motivo (Benjamin, 2026-08-14): "el cobro es fácil saber cuál es la
+     * factura, pero el pago no". El importe pendiente de pago es un saldo
+     * contable (400/410), no una lista, así que la tarjeta por sí sola no
+     * responde "¿qué facturas me faltan por pagar?". Pulsándola se abre
+     * Compras y Gastos ya filtrado por pendientes.
+     */
+    private Node kpiCardLink(String title, String value, String subtitle, String accent,
+                             Runnable onClick) {
+        Node card = kpiCard(title, value, subtitle, accent);
+        if (router == null) {
+            return card; // sin shell no hay a dónde ir: tarjeta normal
+        }
+        card.setCursor(javafx.scene.Cursor.HAND);
+        card.setOnMouseClicked(e -> onClick.run());
+        return card;
     }
 
     /** Tarjeta KPI: título arriba, valor grande con color de acento, subtítulo opcional. */

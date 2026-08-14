@@ -341,7 +341,9 @@ public final class AccountingModels {
             BigDecimal pendingCollections, int overdueInvoices,
             BigDecimal pendingPayments,
             BigDecimal marginPct, BigDecimal expenseRatioPct, BigDecimal personnelRatioPct,
-            int draftCount
+            int draftCount,
+            /** PAGO-2 — nº de facturas de proveedor sin pagar (para ir a verlas). */
+            int unpaidPurchaseInvoices
     ) {}
 
     /** FIN-2 — un punto de la serie mensual (mes 1-12). */
