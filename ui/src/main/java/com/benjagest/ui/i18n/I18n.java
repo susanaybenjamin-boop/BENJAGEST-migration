@@ -9252,6 +9252,15 @@ public final class I18n {
             case "concepts.form.retention" -> "Withholding %";
             case "concepts.form.name_required" -> "The concept needs a name.";
             case "concepts.form.hint" -> "The name is the short label you will see in the picker. The invoice text is what gets copied into the line (leave it empty to use the name). Leave VAT/withholding at 0 to take the customer's ones.";
+            // PAGO-2 — pagos pendientes a proveedores
+            case "purchases.filter.payment" -> "Payment:";
+            case "purchases.paid.filter.pending" -> "Unpaid";
+            case "purchases.paid.filter.paid" -> "Paid";
+            case "purchases.col.paid" -> "Paid";
+            case "purchases.paid.no" -> "Unpaid";
+            case "purchases.paid.yes" -> "Paid";
+            case "accounting.fin.see_invoices" -> "Click to see them";
+            case "accounting.fin.unpaid_bills" -> "{n} unpaid · click here";
             default -> null;
         };
     }
@@ -9294,6 +9303,15 @@ public final class I18n {
             case "concepts.form.retention" -> "Retención %";
             case "concepts.form.name_required" -> "El concepto necesita un nombre.";
             case "concepts.form.hint" -> "El nombre es la etiqueta corta que verás en el selector. El texto de la factura es lo que se copia en la línea (déjalo vacío para usar el nombre). Deja IVA/retención a 0 para que tome los del cliente.";
+            // PAGO-2 — pagos pendientes a proveedores
+            case "purchases.filter.payment" -> "Pago:";
+            case "purchases.paid.filter.pending" -> "Pendientes de pago";
+            case "purchases.paid.filter.paid" -> "Pagadas";
+            case "purchases.col.paid" -> "Pagado";
+            case "purchases.paid.no" -> "Pendiente";
+            case "purchases.paid.yes" -> "Pagado";
+            case "accounting.fin.see_invoices" -> "Pulsa para verlas";
+            case "accounting.fin.unpaid_bills" -> "{n} sin pagar · pulsa aquí";
             default -> null;
         };
     }

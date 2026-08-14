@@ -60,6 +60,13 @@ public class BillingInvoicesScreen extends ScreenBase {
     private final BillingApiClient billingApiClient;
     private final Host host;
 
+    /**
+     * PAGO-2 — Estado de cobro con el que debe aterrizar la pantalla cuando se
+     * llega desde el KPI "Pendiente de cobro". Lo fija el shell antes de
+     * construir la pestaña; se consume UNA vez.
+     */
+    private String paymentFilterIntent;
+
     private ComboBox<String> billingStatusFilter;
     private ComboBox<String> billingPaymentFilter;
     private ComboBox<String> billingTypeFilter;
@@ -70,6 +77,11 @@ public class BillingInvoicesScreen extends ScreenBase {
         super(tt, router);
         this.billingApiClient = billingApiClient;
         this.host = host;
+    }
+
+    /** PAGO-2 — Fija el estado de cobro con el que aterrizar (antes de buildTab). */
+    public void setPaymentFilterIntent(String paymentStatus) {
+        this.paymentFilterIntent = paymentStatus;
     }
 
     public Node buildTab(List<SalesInvoiceSummary> initialList) {
@@ -132,6 +144,15 @@ public class BillingInvoicesScreen extends ScreenBase {
                 setText(empty || item == null ? "" : localizedInvoiceTypeLabel(item));
             }
         });
+
+        // PAGO-2 — Llegada con intención desde el KPI "Pendiente de cobro" del
+        // cuadro de mando: aterrizamos con ese estado de cobro ya filtrado.
+        boolean landedWithIntent = false;
+        if (paymentFilterIntent != null && billingPaymentFilter.getItems().contains(paymentFilterIntent)) {
+            billingPaymentFilter.getSelectionModel().select(paymentFilterIntent);
+            landedWithIntent = true;
+        }
+        paymentFilterIntent = null;
 
         Button apply = new Button(t("list.filter.apply"));
         apply.setGraphic(icon("fas-filter"));
@@ -230,6 +251,11 @@ public class BillingInvoicesScreen extends ScreenBase {
 
         billingTable.getColumns().addAll(List.of(colNumber, colCustomer, colDate, colDue, colStatus, colPayment, colTotal, colReflejo));
         billingTable.setItems(FXCollections.observableArrayList(initialList));
+        // PAGO-2 — la lista inicial que trae el shell viene SIN filtrar; si
+        // hemos aterrizado con intención hay que volver a pedirla ya filtrada.
+        if (landedWithIntent) {
+            reloadInvoices();
+        }
         // Cargar las facturas reflejadas y refrescar la columna.
         Task<java.util.List<java.util.Map<String, String>>> reflTask = new Task<>() {
             @Override protected java.util.List<java.util.Map<String, String>> call() throws Exception {

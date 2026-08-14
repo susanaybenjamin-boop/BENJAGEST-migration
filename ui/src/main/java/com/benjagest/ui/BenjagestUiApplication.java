@@ -2945,6 +2945,21 @@ public class BenjagestUiApplication extends Application
 
     // ---- Router (UIR-4): adaptadores del shell para las pantallas extraídas ----
     @Override public void navigateTo(String module) { showModule(module); }
+
+    /**
+     * PAGO-2 — Navegación con intención. Hoy la entiende Compras
+     * ({@code purchases:PENDING|PAID} → filtro de estado de pago) y
+     * Facturación ({@code billing:PENDING|...} → filtro de cobro). Se guarda
+     * en el campo "pending*" que la pantalla lee y limpia al construirse.
+     */
+    @Override public void navigateTo(String module, String intent) {
+        if ("purchases".equals(module)) {
+            pendingPurchasesPaidFilter = intent;
+        } else if ("billing".equals(module)) {
+            pendingBillingPaymentFilter = intent;
+        }
+        showModule(module);
+    }
     @Override public void setCenter(Node node) { setCenterAnimated(node); }
     @Override public void runTask(Task<?> task, String name) { start(task, name); }
     @Override public String currentModule() { return currentModule; }
@@ -3570,6 +3585,26 @@ public class BenjagestUiApplication extends Application
     private ComboBox<String> purchaseYearFilter;
     private ComboBox<String> purchaseQuarterFilter;
     private TextField purchaseSupplierFilter;
+    /** PAGO-2 — Filtro de estado de pago (todos / PENDING / PAID). */
+    private ComboBox<String> purchasePaidFilter;
+    /**
+     * PAGO-2 — "Intención" con la que se abre Compras: si viene informada, la
+     * pantalla aterriza con ese estado de pago ya filtrado y la limpia. Mismo
+     * patrón que {@code pendingBillingTab}.
+     */
+    private String pendingPurchasesPaidFilter;
+    /** PAGO-2 — Ídem para Facturación: estado de cobro con el que aterrizar. */
+    private String pendingBillingPaymentFilter;
+
+    /** PAGO-2 — Etiqueta traducida del estado de pago de un gasto. */
+    private String localizedPurchasePaid(String code) {
+        if (code == null) return "";
+        return switch (code) {
+            case "PENDING" -> t("purchases.paid.filter.pending");
+            case "PAID" -> t("purchases.paid.filter.paid");
+            default -> code; // "(todos)" ya viene traducido
+        };
+    }
     // Caché para filtrar localmente sin re-pegar al backend en cada
     // cambio de combo (el endpoint solo soporta year+supplierNif).
     private java.util.List<com.benjagest.ui.model.PurchaseInvoiceEntry> purchaseInvoicesCache = java.util.List.of();
@@ -3911,6 +3946,35 @@ public class BenjagestUiApplication extends Application
         purchaseSupplierFilter.setPrefColumnCount(14);
         purchaseSupplierFilter.textProperty().addListener((o, ov, nv) -> applyClientSideFilters());
 
+        // PAGO-2 — Filtro por estado de pago: es lo que faltaba para poder
+        // responder "¿qué facturas me quedan por pagar?". Los items son códigos
+        // técnicos y se pintan traducidos, como el filtro de cobro de Ventas.
+        purchasePaidFilter = new ComboBox<>();
+        purchasePaidFilter.getItems().addAll(t("list.filter.all"), "PENDING", "PAID");
+        purchasePaidFilter.getSelectionModel().selectFirst();
+        purchasePaidFilter.setCellFactory(lv -> new javafx.scene.control.ListCell<>() {
+            @Override protected void updateItem(String item, boolean empty) {
+                super.updateItem(item, empty);
+                setText(empty || item == null ? "" : localizedPurchasePaid(item));
+            }
+        });
+        purchasePaidFilter.setButtonCell(new javafx.scene.control.ListCell<>() {
+            @Override protected void updateItem(String item, boolean empty) {
+                super.updateItem(item, empty);
+                setText(empty || item == null ? "" : localizedPurchasePaid(item));
+            }
+        });
+        purchasePaidFilter.setOnAction(ev -> applyClientSideFilters());
+        // Llegada con intención desde el cuadro de mando ("Pendiente de pago"):
+        // aterrizamos con el filtro ya aplicado. Se consume una sola vez.
+        if (pendingPurchasesPaidFilter != null) {
+            purchasePaidFilter.getSelectionModel().select(pendingPurchasesPaidFilter);
+            // El importe pendiente es histórico: si dejáramos el año actual, el
+            // usuario vería menos facturas de las que suma el KPI.
+            purchaseYearFilter.getSelectionModel().selectFirst();
+            pendingPurchasesPaidFilter = null;
+        }
+
         Button reloadBtn = new Button(t("purchases.action.refresh"));
         reloadBtn.setGraphic(icon("fas-sync"));
         reloadBtn.setOnAction(ev -> reloadPurchaseInvoices());
@@ -3923,6 +3987,7 @@ public class BenjagestUiApplication extends Application
         HBox filters = new HBox(8,
                 new Label(t("purchases.filter.year")), purchaseYearFilter,
                 new Label(t("purchases.filter.quarter")), purchaseQuarterFilter,
+                new Label(t("purchases.filter.payment")), purchasePaidFilter,
                 new Label(t("purchases.filter.supplier")), purchaseSupplierFilter,
                 reloadBtn, filtersSpacer, importMultiBtn);
         filters.setAlignment(Pos.CENTER_LEFT);
@@ -4000,9 +4065,20 @@ public class BenjagestUiApplication extends Application
                 c.getValue().hasJournal() ? "✓" : ""));
         colJournal.setPrefWidth(80);
 
+        // PAGO-2 — Columna "Pagado": el dato ya venía del backend y la UI lo
+        // tiraba, así que no se podía saber qué gasto estaba pendiente sin
+        // abrir sus vencimientos uno a uno. Muestra la fecha si está pagado.
+        TableColumn<com.benjagest.ui.model.PurchaseInvoiceEntry, String> colPaid =
+                new TableColumn<>(t("purchases.col.paid"));
+        colPaid.setCellValueFactory(c -> new SimpleStringProperty(
+                !c.getValue().paid() ? t("purchases.paid.no")
+                        : (c.getValue().paidDate() == null ? t("purchases.paid.yes")
+                                : c.getValue().paidDate().toString())));
+        colPaid.setPrefWidth(110);
+
         purchaseInvoicesTable.getColumns().setAll(
                 colDate, colSupplier, colNif, colNumber, colBase, colVat, colTotal,
-                colStatus, colJournal);
+                colStatus, colPaid, colJournal);
 
         // Multiselección para validar lotes de DRAFT.
         purchaseInvoicesTable.getSelectionModel().setSelectionMode(
@@ -4196,6 +4272,8 @@ public class BenjagestUiApplication extends Application
                 : purchaseSupplierFilter.getText();
         String supplierLower = (supplier == null || supplier.isBlank())
                 ? null : supplier.trim().toLowerCase();
+        String paidRaw = purchasePaidFilter == null ? null : purchasePaidFilter.getValue();
+        String paidFilter = (paidRaw == null || t("list.filter.all").equals(paidRaw)) ? null : paidRaw;
         var filtered = new java.util.ArrayList<com.benjagest.ui.model.PurchaseInvoiceEntry>();
         for (var inv : purchaseInvoicesCache) {
             if (q != null && !q.equals(t("list.filter.all"))
@@ -4208,6 +4286,11 @@ public class BenjagestUiApplication extends Application
                 String nif = inv.supplierNif() == null ? "" : inv.supplierNif().toLowerCase();
                 String name = inv.supplierName() == null ? "" : inv.supplierName().toLowerCase();
                 if (!nif.contains(supplierLower) && !name.contains(supplierLower)) continue;
+            }
+            // PAGO-2 — estado de pago (pendiente / pagada).
+            if (paidFilter != null) {
+                if ("PENDING".equals(paidFilter) && inv.paid()) continue;
+                if ("PAID".equals(paidFilter) && !inv.paid()) continue;
             }
             filtered.add(inv);
         }
@@ -6515,7 +6598,7 @@ public class BenjagestUiApplication extends Application
      * acciones compartidas / diálogos grandes que siguen aquí.
      */
     private Node billingInvoicesTab(List<SalesInvoiceSummary> initialList) {
-        return new com.benjagest.ui.screens.BillingInvoicesScreen(
+        com.benjagest.ui.screens.BillingInvoicesScreen screen = new com.benjagest.ui.screens.BillingInvoicesScreen(
                 billingApiClient, this::t, this,
                 new com.benjagest.ui.screens.BillingInvoicesScreen.Host() {
                     @Override public void showInvoiceEditor(String invoiceId) {
@@ -6553,7 +6636,11 @@ public class BenjagestUiApplication extends Application
                     @Override public void showSalesClassificationDialog(String invoiceId) {
                         BenjagestUiApplication.this.showSalesClassificationDialog(invoiceId);
                     }
-                }).buildTab(initialList);
+                });
+        // PAGO-2 — intención de llegada desde el KPI "Pendiente de cobro".
+        screen.setPaymentFilterIntent(pendingBillingPaymentFilter);
+        pendingBillingPaymentFilter = null;
+        return screen.buildTab(initialList);
     }
 
     /**
@@ -8095,7 +8182,8 @@ public class BenjagestUiApplication extends Application
      */
     private void showAccountingModule() {
         com.benjagest.ui.screens.AccountingScreen screen =
-                new com.benjagest.ui.screens.AccountingScreen(accountingApiClient, this::t);
+                new com.benjagest.ui.screens.AccountingScreen(accountingApiClient, this::t)
+                        .withRouter(this);
         // El módulo es responsivo internamente con TabPane; no necesita
         // scroll externo (es preferible que cada tab maneje su propio
         // scroll en el contenido si lo necesita).
@@ -10749,7 +10837,8 @@ public class BenjagestUiApplication extends Application
         // ejecuta recurrentes desde aquí, sin salir del contexto del
         // cliente.
         com.benjagest.ui.screens.AccountingScreen accountingScreen =
-                new com.benjagest.ui.screens.AccountingScreen(accountingApiClient, this::t);
+                new com.benjagest.ui.screens.AccountingScreen(accountingApiClient, this::t)
+                        .withRouter(this);
         // FICHA-TABS (2026-06-15): Contabilidad se agrupa (Diario/Validar, Bancos,
         // Préstamos, Inmovilizado) como sub-tabs — ver el bloque de añadido.
         com.benjagest.ui.screens.ClientFinancialsScreen financials =

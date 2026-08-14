@@ -16,6 +16,16 @@ public interface Router {
     /** Navega a un modulo por su slug (equivale al antiguo showModule). */
     void navigateTo(String module);
 
+    /**
+     * PAGO-2 — Navega a un modulo pidiendole que aterrice con una intencion
+     * (p.ej. Compras filtrado por "pendiente de pago" al pulsar el KPI del
+     * cuadro de mando). El shell la consume UNA vez y la limpia; una pantalla
+     * que no la entienda navega normal.
+     */
+    default void navigateTo(String module, String intent) {
+        navigateTo(module);
+    }
+
     /** Monta un nodo en el centro del shell, con la animacion estandar. */
     void setCenter(Node node);
 

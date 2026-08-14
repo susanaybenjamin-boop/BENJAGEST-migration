@@ -342,8 +342,15 @@ public class PurchaseInvoiceApiClient {
                 strField(json, "status"),
                 strField(json, "journalEntryId"),
                 strField(json, "notes"),
-                instantField(json, "createdAt")
+                instantField(json, "createdAt"),
+                boolField(json, "paid"),
+                localDateField(json, "paidDate")
         );
+    }
+
+    private boolean boolField(String json, String key) {
+        Matcher m = Pattern.compile("\"" + key + "\"\\s*:\\s*(true|false)").matcher(json);
+        return m.find() && "true".equals(m.group(1));
     }
 
     private String strField(String json, String key) {

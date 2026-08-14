@@ -174,6 +174,9 @@ public class PaymentScheduleService {
             reflectionService.reflectPayment(dd.invoiceId(), dd.amount(), payDate,
                     method, dueDateId, safeUserId());
         } else if ("PURCHASE".equals(dd.invoiceKind())) {
+            // PAGO-1: proyectar a purchase_invoices.paid (si no, el gasto seguía
+            // figurando como pendiente de pago en los listados).
+            syncPurchasePaidFlag(dd.invoiceId());
             // REFLEJO-4b (inverso): si el gasto pagado es un reflejo, reflejar el
             // COBRO en los libros del emisor (la asesoría) — por validar.
             reflectionService.reflectCollection(dd.invoiceId(), dd.amount(), payDate,
@@ -207,6 +210,62 @@ public class PaymentScheduleService {
                     """, st, p, invoiceId, companyId);
         } catch (Exception ex) {
             // best-effort: el cobro cuenta por el asiento aunque no se proyecte.
+        }
+    }
+
+    /**
+     * PAGO-1 — Lo mismo que {@link #syncSalesPaymentStatus} pero para COMPRAS:
+     * proyecta a {@code purchase_invoices.paid} el estado de sus vencimientos.
+     *
+     * <p>Sin esto había DOS verdades desincronizadas sobre si un gasto está
+     * pagado: el flag {@code paid} (que escribe "Registrar pago", GAS-2) y los
+     * vencimientos (que escribe este servicio, PV-1). Pagar por vencimientos
+     * dejaba la factura con {@code paid = FALSE} para siempre, así que cualquier
+     * listado de "pendientes de pago" mentía — y encima se podía volver a pagar
+     * por el otro camino, duplicando el asiento.
+     *
+     * <p>Criterio: pagada cuando tiene vencimientos y TODOS están PAID (aquí no
+     * hay pago parcial: {@code paid} es booleano). Best-effort, igual que en
+     * ventas: el pago ya cuenta por su asiento aunque la proyección falle.
+     */
+    private void syncPurchasePaidFlag(String invoiceId) {
+        try {
+            String companyId = tenant.getCurrentCompanyId();
+            Integer total = jdbc.queryForObject("""
+                    SELECT COUNT(*) FROM invoice_due_dates
+                     WHERE company_id = ? AND invoice_kind = 'PURCHASE' AND invoice_id = ?
+                    """, Integer.class, companyId, invoiceId);
+            Integer pending = jdbc.queryForObject("""
+                    SELECT COUNT(*) FROM invoice_due_dates
+                     WHERE company_id = ? AND invoice_kind = 'PURCHASE' AND invoice_id = ?
+                       AND status <> 'PAID'
+                    """, Integer.class, companyId, invoiceId);
+            if (total == null || total == 0) {
+                return; // sin vencimientos no hay nada que proyectar
+            }
+            boolean fullyPaid = pending != null && pending == 0;
+            if (fullyPaid) {
+                jdbc.update("""
+                        UPDATE purchase_invoices
+                           SET paid = TRUE,
+                               paid_date = (SELECT MAX(paid_date) FROM invoice_due_dates
+                                             WHERE company_id = ? AND invoice_kind = 'PURCHASE'
+                                               AND invoice_id = ?),
+                               payment_account_code = COALESCE(payment_account_code,
+                                   (SELECT MAX(treasury_account_code) FROM invoice_due_dates
+                                     WHERE company_id = ? AND invoice_kind = 'PURCHASE'
+                                       AND invoice_id = ?))
+                         WHERE id = ? AND company_id = ?
+                        """, companyId, invoiceId, companyId, invoiceId, invoiceId, companyId);
+            } else {
+                jdbc.update("""
+                        UPDATE purchase_invoices
+                           SET paid = FALSE, paid_date = NULL
+                         WHERE id = ? AND company_id = ?
+                        """, invoiceId, companyId);
+            }
+        } catch (Exception ex) {
+            // best-effort: el pago cuenta por el asiento aunque no se proyecte.
         }
     }
 
@@ -255,7 +314,11 @@ public class PaymentScheduleService {
                         "TRANSFER", dd.id(), safeUserId());
             }
         }
-        if ("SALES".equals(invoiceKind)) syncSalesPaymentStatus(invoiceId);
+        if ("SALES".equals(invoiceKind)) {
+            syncSalesPaymentStatus(invoiceId);
+        } else if ("PURCHASE".equals(invoiceKind)) {
+            syncPurchasePaidFlag(invoiceId); // PAGO-1
+        }
     }
 
     /** Revierte el pago de un vencimiento (borra el asiento, vuelve a PENDING). */
@@ -282,6 +345,8 @@ public class PaymentScheduleService {
             // REFLEJO-3b: deshacer el cobro de VENTA revierte el PAGO reflejado en el cliente.
             reflectionService.reflectUnpayPayment(dd.invoiceId(), dueDateId, safeUserId());
         } else if ("PURCHASE".equals(dd.invoiceKind())) {
+            // PAGO-1: al deshacer, el gasto vuelve a contar como pendiente.
+            syncPurchasePaidFlag(dd.invoiceId());
             // REFLEJO-3b: deshacer el pago de un gasto reflejado revierte el COBRO en el emisor.
             reflectionService.reflectUnpayCollection(dd.invoiceId(), dd.amount(), dueDateId, safeUserId());
         }

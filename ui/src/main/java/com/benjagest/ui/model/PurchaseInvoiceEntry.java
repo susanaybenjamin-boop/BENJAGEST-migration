@@ -24,7 +24,14 @@ public record PurchaseInvoiceEntry(
         String status,
         String journalEntryId,
         String notes,
-        Instant createdAt
+        Instant createdAt,
+        /**
+         * PAGO-2 — Estado de pago del gasto. El backend ya los devolvía desde
+         * GAS-2 (V167) pero la UI los tiraba, así que no había forma de ver ni
+         * de filtrar lo que queda por pagar.
+         */
+        boolean paid,
+        LocalDate paidDate
 ) {
     public boolean hasJournal() { return journalEntryId != null && !journalEntryId.isBlank(); }
 }
