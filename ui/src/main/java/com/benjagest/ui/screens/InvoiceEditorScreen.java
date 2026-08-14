@@ -517,7 +517,37 @@ public class InvoiceEditorScreen extends ScreenBase {
             showImportWorkLogsToInvoice(cust);
         });
 
-        HBox lineasActions = new HBox(8, importWorks, addLine, removeLine);
+        // CONC-2 — Elegir un concepto ya usado en facturas anteriores o guardado
+        // en el catálogo, en vez de reescribirlo a mano cada vez.
+        Button pickConcept = new Button(t("editor.line.concepts"));
+        pickConcept.setGraphic(icon("fas-list-ul"));
+        pickConcept.getStyleClass().add("button-secondary");
+        pickConcept.setOnAction(event -> showConceptPicker());
+
+        // CONC-2 — El camino inverso: la línea que acabo de escribir la guardo
+        // como concepto para reutilizarla tal cual en las próximas facturas.
+        Button saveConcept = new Button(t("editor.line.save_concept"));
+        saveConcept.setGraphic(icon("fas-bookmark"));
+        saveConcept.getStyleClass().add("button-secondary");
+        saveConcept.setOnAction(event -> saveSelectedLineAsConcept());
+
+        // FlowPane en vez de HBox: con 5 botones, en una ventana estrecha un HBox
+        // los encogería y truncaría el texto con "..." (el bug de "botones
+        // cortados" del 17-jul). NO se usa la clase .settings-actions a
+        // propósito: encogería los botones que ya había.
+        //
+        // OJO con prefWrapLength (fallo cazado en el smoke de la UI): con
+        // Double.MAX_VALUE el ancho PREFERIDO del FlowPane se vuelve enorme, la
+        // HBox de la cabecera no puede dárselo y lo encoge hasta su MÍNIMO (el
+        // botón más ancho) => los 5 botones salían apilados en vertical y el
+        // título de la tarjeta truncado. Con un ancho holgado y finito caben en
+        // UNA fila cuando hay sitio, y solo envuelven cuando de verdad no cabe.
+        javafx.scene.layout.FlowPane lineasActions = new javafx.scene.layout.FlowPane(
+                8, 8, importWorks, pickConcept, saveConcept, addLine, removeLine);
+        lineasActions.setPrefWrapLength(1200);
+        for (Node b : lineasActions.getChildren()) {
+            if (b instanceof Region r) r.setMinWidth(Region.USE_PREF_SIZE);
+        }
         lineasActions.setAlignment(Pos.CENTER_RIGHT);
         Node lineasCard = invoiceCardWithActions(t("editor.card.lines"), "fas-calculator",
                 lineasActions, editorLinesTable);
@@ -1486,6 +1516,314 @@ public class InvoiceEditorScreen extends ScreenBase {
         return new InvoiceLineDraft(d, java.math.BigDecimal.ONE,
                 w.billableAmount() == null ? java.math.BigDecimal.ZERO : w.billableAmount(),
                 vat, editorDefaultRetention);
+    }
+
+    // ==================== CONC-2 — conceptos reutilizables ====================
+
+    /**
+     * Selector de conceptos: mezcla los GUARDADOS en el catálogo con los ya
+     * USADOS en facturas anteriores (el backend los devuelve juntos, marcados
+     * con {@code source}). Elegir uno o varios los añade como líneas.
+     */
+    private void showConceptPicker() {
+        Stage dlg = new Stage();
+        dlg.setTitle(t("concepts.title"));
+        dlg.initModality(javafx.stage.Modality.APPLICATION_MODAL);
+        com.benjagest.ui.support.Dialogs.ownAndCenter(dlg);
+
+        TableView<ConceptEntry> table = new TableView<>();
+        table.getStyleClass().add("data-table");
+        table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+        table.getSelectionModel().setSelectionMode(javafx.scene.control.SelectionMode.MULTIPLE);
+        table.setPlaceholder(new Label(t("concepts.empty")));
+        VBox.setVgrow(table, Priority.ALWAYS);
+
+        TableColumn<ConceptEntry, String> cName = new TableColumn<>(t("concepts.col.concept"));
+        cName.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().name()));
+        cName.setPrefWidth(300);
+        TableColumn<ConceptEntry, String> cPrice = new TableColumn<>(t("concepts.col.price"));
+        cPrice.setCellValueFactory(c -> new SimpleStringProperty(money(c.getValue().unitPrice().toPlainString())));
+        cPrice.setComparator(NUMERIC_STRING_COMPARATOR); cPrice.setPrefWidth(100);
+        TableColumn<ConceptEntry, String> cVat = new TableColumn<>(t("concepts.col.vat"));
+        cVat.setCellValueFactory(c -> new SimpleStringProperty(
+                formatDecimalForCell(c.getValue().vatPercent()) + " %"));
+        cVat.setPrefWidth(70);
+        TableColumn<ConceptEntry, String> cRet = new TableColumn<>(t("concepts.col.retention"));
+        cRet.setCellValueFactory(c -> new SimpleStringProperty(
+                formatDecimalForCell(c.getValue().retentionPercent()) + " %"));
+        cRet.setPrefWidth(70);
+        TableColumn<ConceptEntry, String> cUses = new TableColumn<>(t("concepts.col.uses"));
+        cUses.setCellValueFactory(c -> new SimpleStringProperty(String.valueOf(c.getValue().usageCount())));
+        cUses.setComparator(NUMERIC_STRING_COMPARATOR); cUses.setPrefWidth(70);
+        TableColumn<ConceptEntry, String> cLast = new TableColumn<>(t("concepts.col.last_used"));
+        cLast.setCellValueFactory(c -> new SimpleStringProperty(shortIso(c.getValue().lastUsedAt())));
+        cLast.setComparator(ISO_DATE_COMPARATOR); cLast.setPrefWidth(110);
+        TableColumn<ConceptEntry, String> cSource = new TableColumn<>(t("concepts.col.source"));
+        cSource.setCellValueFactory(c -> new SimpleStringProperty(
+                t("concepts.source." + c.getValue().source())));
+        cSource.setPrefWidth(100);
+        table.getColumns().addAll(java.util.List.of(cName, cPrice, cVat, cRet, cUses, cLast, cSource));
+
+        Label hint = new Label(t("concepts.hint"));
+        hint.setWrapText(true); hint.getStyleClass().add("settings-hint");
+        // Sin minHeight propio, la VBox del diálogo lo encoge a UNA línea y el
+        // texto sale cortado con "..." (visto en el smoke de la UI).
+        hint.setMinHeight(Region.USE_PREF_SIZE);
+        TextField search = new TextField();
+        search.setPromptText(t("concepts.search"));
+
+        java.util.List<ConceptEntry> loaded = new java.util.ArrayList<>();
+        Runnable applyFilter = () -> {
+            String q = stripDiacritics(search.getText() == null ? "" : search.getText().trim().toLowerCase());
+            table.setItems(FXCollections.observableArrayList(loaded.stream()
+                    .filter(c -> q.isEmpty() || conceptText(c).contains(q))
+                    .toList()));
+        };
+        search.textProperty().addListener((obs, old, val) -> applyFilter.run());
+
+        Runnable reload = () -> {
+            Task<java.util.List<ConceptEntry>> load = new Task<>() {
+                @Override protected java.util.List<ConceptEntry> call() throws Exception {
+                    return billingApiClient.listConcepts();
+                }
+            };
+            load.setOnSucceeded(ev -> {
+                loaded.clear();
+                loaded.addAll(load.getValue());
+                applyFilter.run();
+            });
+            load.setOnFailed(ev -> showError(t("concepts.fail.title"),
+                    load.getException() == null ? "" : load.getException().getMessage()));
+            start(load, "concepts-load");
+        };
+        reload.run();
+
+        Button newConcept = new Button(t("concepts.action.new"));
+        newConcept.setGraphic(icon("fas-plus"));
+        newConcept.setOnAction(e -> showConceptForm(dlg, null, reload));
+
+        // Un concepto del HISTÓRICO no tiene fila que editar: se GUARDA (POST).
+        // Uno del catálogo ya existe: se EDITA (PUT) o se quita.
+        Button saveToCatalog = new Button(t("concepts.action.save_to_catalog"));
+        saveToCatalog.setGraphic(icon("fas-bookmark"));
+        Button editConcept = new Button(t("concepts.action.edit"));
+        editConcept.setGraphic(icon("fas-edit"));
+        Button removeConcept = new Button(t("concepts.action.remove"));
+        removeConcept.setGraphic(icon("fas-trash-alt"));
+
+        Runnable syncButtons = () -> {
+            ConceptEntry sel = table.getSelectionModel().getSelectedItem();
+            boolean one = sel != null && table.getSelectionModel().getSelectedItems().size() == 1;
+            saveToCatalog.setDisable(!(one && !sel.saved()));
+            editConcept.setDisable(!(one && sel.saved()));
+            removeConcept.setDisable(!(one && sel.saved()));
+        };
+        table.getSelectionModel().getSelectedItems().addListener(
+                (javafx.collections.ListChangeListener<ConceptEntry>) change -> syncButtons.run());
+        syncButtons.run();
+
+        saveToCatalog.setOnAction(e -> showConceptForm(dlg, table.getSelectionModel().getSelectedItem(), reload));
+        editConcept.setOnAction(e -> showConceptForm(dlg, table.getSelectionModel().getSelectedItem(), reload));
+        removeConcept.setOnAction(e -> {
+            ConceptEntry sel = table.getSelectionModel().getSelectedItem();
+            if (sel == null || !sel.saved()) return;
+            javafx.scene.control.Alert confirm = new javafx.scene.control.Alert(
+                    javafx.scene.control.Alert.AlertType.CONFIRMATION,
+                    t("concepts.remove.body").replace("{name}", sel.name()),
+                    javafx.scene.control.ButtonType.CANCEL, javafx.scene.control.ButtonType.OK);
+            confirm.setHeaderText(t("concepts.remove.title"));
+            confirm.initOwner(dlg);
+            if (confirm.showAndWait().orElse(javafx.scene.control.ButtonType.CANCEL)
+                    != javafx.scene.control.ButtonType.OK) {
+                return;
+            }
+            Task<Void> del = new Task<>() {
+                @Override protected Void call() throws Exception {
+                    billingApiClient.deleteConcept(sel.id());
+                    return null;
+                }
+            };
+            del.setOnSucceeded(ev -> { toast(dlg, t("concepts.removed")); reload.run(); });
+            del.setOnFailed(ev -> showError(t("concepts.fail.title"),
+                    del.getException() == null ? "" : del.getException().getMessage()));
+            start(del, "concept-delete");
+        });
+
+        Button add = new Button(t("concepts.action.add"));
+        add.setGraphic(icon("fas-plus")); add.getStyleClass().add("button-primary");
+        add.setOnAction(e -> {
+            var sel = new java.util.ArrayList<>(table.getSelectionModel().getSelectedItems());
+            if (sel.isEmpty()) { showError(t("concepts.fail.title"), t("concepts.none_selected")); return; }
+            // Igual que al importar trabajos: la línea vacía con la que arranca
+            // una factura nueva se retira (si no, bloquea el guardado con
+            // "línea sin descripción").
+            editorLinesTable.getItems().removeIf(l ->
+                    (l.getDescription() == null || l.getDescription().isBlank())
+                            && l.getUnitPrice().signum() == 0);
+            for (ConceptEntry c : sel) {
+                editorLinesTable.getItems().add(lineFromConcept(c));
+            }
+            recomputeEditorTotals();
+            dlg.close();
+        });
+        Button cancel = new Button(t("dialog.cancel"));
+        cancel.setOnAction(e -> dlg.close());
+
+        Region btnSpacer = new Region();
+        HBox.setHgrow(btnSpacer, Priority.ALWAYS);
+        HBox btns = new HBox(10, newConcept, saveToCatalog, editConcept, removeConcept,
+                btnSpacer, cancel, add);
+        btns.setAlignment(Pos.CENTER_LEFT);
+
+        // Controles ARRIBA del listado (patrón Slice 3V): buscador y acciones
+        // visibles sin hacer scroll.
+        VBox root = new VBox(12, hint, search, new Separator(), table, btns);
+        root.setPadding(new javafx.geometry.Insets(16));
+        root.setPrefSize(860, 560);
+        Scene scene = new Scene(root);
+        scene.getStylesheets().add(getClass().getResource("/com/benjagest/ui/app.css").toExternalForm());
+        dlg.setScene(scene);
+        dlg.setResizable(true);
+        dlg.showAndWait();
+    }
+
+    /** Texto normalizado del concepto para el buscador (sin tildes, minúsculas). */
+    private String conceptText(ConceptEntry c) {
+        String raw = (c.name() == null ? "" : c.name()) + " "
+                + (c.description() == null ? "" : c.description());
+        return stripDiacritics(raw.toLowerCase());
+    }
+
+    /** Línea de factura a partir de un concepto elegido. */
+    private InvoiceLineDraft lineFromConcept(ConceptEntry c) {
+        // Si el concepto no trae IVA/retención propios (0 por defecto en un
+        // concepto recién creado a mano), se usan los del cliente de la
+        // factura, que es lo que espera el usuario.
+        java.math.BigDecimal vat = c.vatPercent().signum() == 0 ? editorDefaultVat : c.vatPercent();
+        java.math.BigDecimal ret = c.retentionPercent().signum() == 0
+                ? editorDefaultRetention : c.retentionPercent();
+        InvoiceLineDraft line = new InvoiceLineDraft(
+                c.invoiceText(), java.math.BigDecimal.ONE, c.unitPrice(), vat, ret);
+        if (c.vatRateId() != null && !c.vatRateId().isBlank()) {
+            line.setVatRateId(c.vatRateId());
+        }
+        return line;
+    }
+
+    /** Guarda como concepto la línea seleccionada en la factura. */
+    private void saveSelectedLineAsConcept() {
+        InvoiceLineDraft sel = editorLinesTable.getSelectionModel().getSelectedItem();
+        if (sel == null || sel.getDescription() == null || sel.getDescription().isBlank()) {
+            showError(t("concepts.fail.title"), t("concepts.no_line_selected"));
+            return;
+        }
+        ConceptEntry prefill = new ConceptEntry(
+                null, ConceptEntry.SOURCE_HISTORY, sel.getDescription(), sel.getDescription(),
+                sel.getUnitPrice(), sel.getVatPercent(), sel.getRetentionPercent(),
+                sel.getVatRateId(), 0, "");
+        showConceptForm(null, prefill, null);
+    }
+
+    /**
+     * Formulario de un concepto. Con {@code existing} nulo o sin id, GUARDA uno
+     * nuevo (POST); con id, actualiza el guardado (PUT).
+     */
+    private void showConceptForm(Stage owner, ConceptEntry existing, Runnable onSaved) {
+        boolean editing = existing != null && existing.saved();
+        Stage dlg = new Stage();
+        dlg.setTitle(editing ? t("concepts.form.title.edit") : t("concepts.form.title.new"));
+        dlg.initModality(javafx.stage.Modality.APPLICATION_MODAL);
+        if (owner != null) {
+            dlg.initOwner(owner);
+        } else {
+            com.benjagest.ui.support.Dialogs.ownAndCenter(dlg);
+        }
+
+        TextField name = new TextField(existing == null ? "" : existing.name());
+        name.setPromptText(t("concepts.form.name"));
+        javafx.scene.control.TextArea description = new javafx.scene.control.TextArea(
+                existing == null ? "" : existing.invoiceText());
+        description.setPromptText(t("concepts.form.description"));
+        description.setPrefRowCount(3);
+        TextField price = new TextField(existing == null ? "" : formatDecimalForCell(existing.unitPrice()));
+        TextField vat = new TextField(existing == null ? "" : formatDecimalForCell(existing.vatPercent()));
+        TextField retention = new TextField(existing == null ? "" : formatDecimalForCell(existing.retentionPercent()));
+
+        javafx.scene.layout.GridPane grid = new javafx.scene.layout.GridPane();
+        grid.getStyleClass().add("form-grid");
+        grid.setHgap(12); grid.setVgap(10);
+        // Sin estas restricciones la columna de las etiquetas se encoge para dar
+        // sitio a los campos y salen cortadas ("No...", "Tex..."): visto en el
+        // smoke de la UI.
+        javafx.scene.layout.ColumnConstraints labelCol = new javafx.scene.layout.ColumnConstraints();
+        labelCol.setMinWidth(Region.USE_PREF_SIZE);
+        labelCol.setHalignment(javafx.geometry.HPos.LEFT);
+        javafx.scene.layout.ColumnConstraints fieldCol = new javafx.scene.layout.ColumnConstraints();
+        fieldCol.setHgrow(Priority.ALWAYS);
+        fieldCol.setFillWidth(true);
+        grid.getColumnConstraints().addAll(labelCol, fieldCol);
+        grid.addRow(0, label(t("concepts.form.name"), "invoice-field-label"), name);
+        grid.addRow(1, label(t("concepts.form.description"), "invoice-field-label"), description);
+        grid.addRow(2, label(t("concepts.form.price"), "invoice-field-label"), price);
+        grid.addRow(3, label(t("concepts.form.vat"), "invoice-field-label"), vat);
+        grid.addRow(4, label(t("concepts.form.retention"), "invoice-field-label"), retention);
+        for (Node n : java.util.List.of(name, description, price, vat, retention)) {
+            n.getStyleClass().add("form-input");
+            javafx.scene.layout.GridPane.setHgrow(n, Priority.ALWAYS);
+        }
+
+        Label help = new Label(t("concepts.form.hint"));
+        help.setWrapText(true); help.getStyleClass().add("settings-hint");
+        help.setMinHeight(Region.USE_PREF_SIZE);
+
+        Button save = new Button(t("dialog.save"));
+        save.setGraphic(icon("fas-save")); save.getStyleClass().add("button-primary");
+        save.setOnAction(e -> {
+            String theName = name.getText() == null ? "" : name.getText().trim();
+            if (theName.isBlank()) {
+                showError(t("concepts.fail.title"), t("concepts.form.name_required"));
+                return;
+            }
+            java.math.BigDecimal p = parseDecSafe(price.getText());
+            java.math.BigDecimal v = parseDecSafe(vat.getText());
+            java.math.BigDecimal r = parseDecSafe(retention.getText());
+            String body = description.getText() == null ? "" : description.getText().trim();
+            Task<Void> task = new Task<>() {
+                @Override protected Void call() throws Exception {
+                    if (editing) {
+                        billingApiClient.updateConcept(existing.id(), theName, body, p, v, r,
+                                existing.vatRateId());
+                    } else {
+                        billingApiClient.saveConcept(theName, body, p, v, r,
+                                existing == null ? null : existing.vatRateId());
+                    }
+                    return null;
+                }
+            };
+            task.setOnSucceeded(ev -> {
+                dlg.close();
+                toast(t("concepts.saved"));
+                if (onSaved != null) onSaved.run();
+            });
+            task.setOnFailed(ev -> showError(t("concepts.fail.title"),
+                    task.getException() == null ? "" : task.getException().getMessage()));
+            start(task, "concept-save");
+        });
+        Button cancel = new Button(t("dialog.cancel"));
+        cancel.setOnAction(e -> dlg.close());
+        Region spacer = new Region();
+        HBox.setHgrow(spacer, Priority.ALWAYS);
+        HBox btns = new HBox(10, spacer, cancel, save);
+        btns.setAlignment(Pos.CENTER_RIGHT);
+
+        VBox root = new VBox(12, help, grid, btns);
+        root.setPadding(new javafx.geometry.Insets(16));
+        root.setPrefSize(620, 440);
+        Scene scene = new Scene(root);
+        scene.getStylesheets().add(getClass().getResource("/com/benjagest/ui/app.css").toExternalForm());
+        dlg.setScene(scene);
+        dlg.setResizable(true);
+        dlg.showAndWait();
     }
 
     /** Valoración legible de un trabajo (copia compartida con la tabla de Trabajos del shell). */
