@@ -1275,6 +1275,7 @@ public final class I18n {
                     if (v == null) v = tCliEditorEn(key);
                     if (v == null) v = tTcCalEn(key);
                     if (v == null) v = tSessionEn(key);
+                    if (v == null) v = tConceptsEn(key);
                     yield v != null ? v : (key.startsWith("column.") ? key.substring(7) : key);
                 }
             };
@@ -2500,6 +2501,7 @@ public final class I18n {
                 if (v == null) v = tCliEditorEs(key);
                 if (v == null) v = tTcCalEs(key);
                 if (v == null) v = tSessionEs(key);
+                if (v == null) v = tConceptsEs(key);
                 if (v != null) yield v;
                 yield key.startsWith("column.") ? key.substring(7) : switch (key) {
                 case "field.name" -> "Nombre";
@@ -9206,6 +9208,92 @@ public final class I18n {
             case "client_mode.banner.title" -> "Trabajando sobre el cliente:";
             case "client_mode.banner.title_generic" -> "Trabajando sobre un cliente";
             case "client_mode.banner.exit" -> "Salir del modo cliente";
+            default -> null;
+        };
+    }
+
+    // ===================== CONC-2 — conceptos de factura =====================
+
+    static String tConceptsEn(String key) {
+        return switch (key) {
+            case "editor.line.concepts" -> "Concepts";
+            case "editor.line.save_concept" -> "Save concept";
+            case "concepts.title" -> "Invoice concepts";
+            case "concepts.hint" -> "Concepts you already used in previous invoices, plus the ones you saved yourself. Pick one or more to add them as invoice lines (you can still edit the line afterwards).";
+            case "concepts.search" -> "Search concept...";
+            case "concepts.empty" -> "No concepts yet. Invoice something, or create one with 'New concept'.";
+            case "concepts.col.concept" -> "Concept";
+            case "concepts.col.price" -> "Price";
+            case "concepts.col.vat" -> "VAT";
+            case "concepts.col.retention" -> "Withh.";
+            case "concepts.col.uses" -> "Uses";
+            case "concepts.col.last_used" -> "Last used";
+            case "concepts.col.source" -> "Source";
+            case "concepts.source.CATALOG" -> "Saved";
+            case "concepts.source.HISTORY" -> "Already invoiced";
+            case "concepts.action.new" -> "New concept";
+            case "concepts.action.save_to_catalog" -> "Save to catalogue";
+            case "concepts.action.edit" -> "Edit";
+            case "concepts.action.remove" -> "Remove";
+            case "concepts.action.add" -> "Add to invoice";
+            case "concepts.none_selected" -> "Select at least one concept.";
+            case "concepts.no_line_selected" -> "Select in the invoice the line you want to save as a concept (it must have a description).";
+            case "concepts.saved" -> "Concept saved";
+            case "concepts.removed" -> "Concept removed from the catalogue";
+            case "concepts.remove.title" -> "Remove concept";
+            case "concepts.remove.body" -> "Remove '{name}' from the catalogue? Invoices already issued are not affected, and it will still show up if you used it before.";
+            case "concepts.fail.title" -> "Concepts";
+            case "concepts.form.title.new" -> "Save concept";
+            case "concepts.form.title.edit" -> "Edit concept";
+            case "concepts.form.name" -> "Name *";
+            case "concepts.form.description" -> "Invoice text";
+            case "concepts.form.price" -> "Unit price";
+            case "concepts.form.vat" -> "VAT %";
+            case "concepts.form.retention" -> "Withholding %";
+            case "concepts.form.name_required" -> "The concept needs a name.";
+            case "concepts.form.hint" -> "The name is the short label you will see in the picker. The invoice text is what gets copied into the line (leave it empty to use the name). Leave VAT/withholding at 0 to take the customer's ones.";
+            default -> null;
+        };
+    }
+
+    static String tConceptsEs(String key) {
+        return switch (key) {
+            case "editor.line.concepts" -> "Conceptos";
+            case "editor.line.save_concept" -> "Guardar concepto";
+            case "concepts.title" -> "Conceptos de factura";
+            case "concepts.hint" -> "Conceptos que ya usaste en facturas anteriores, más los que te hayas guardado tú. Elige uno o varios para añadirlos como líneas (luego puedes seguir editando la línea).";
+            case "concepts.search" -> "Buscar concepto...";
+            case "concepts.empty" -> "Todavía no hay conceptos. Factura algo, o créate uno con 'Nuevo concepto'.";
+            case "concepts.col.concept" -> "Concepto";
+            case "concepts.col.price" -> "Precio";
+            case "concepts.col.vat" -> "IVA";
+            case "concepts.col.retention" -> "Ret.";
+            case "concepts.col.uses" -> "Usos";
+            case "concepts.col.last_used" -> "Último uso";
+            case "concepts.col.source" -> "Origen";
+            case "concepts.source.CATALOG" -> "Guardado";
+            case "concepts.source.HISTORY" -> "Ya facturado";
+            case "concepts.action.new" -> "Nuevo concepto";
+            case "concepts.action.save_to_catalog" -> "Guardar en catálogo";
+            case "concepts.action.edit" -> "Editar";
+            case "concepts.action.remove" -> "Quitar";
+            case "concepts.action.add" -> "Añadir a la factura";
+            case "concepts.none_selected" -> "Selecciona al menos un concepto.";
+            case "concepts.no_line_selected" -> "Selecciona en la factura la línea que quieres guardar como concepto (tiene que tener descripción).";
+            case "concepts.saved" -> "Concepto guardado";
+            case "concepts.removed" -> "Concepto quitado del catálogo";
+            case "concepts.remove.title" -> "Quitar concepto";
+            case "concepts.remove.body" -> "¿Quitar '{name}' del catálogo? Las facturas ya emitidas no se tocan, y si lo usaste antes seguirá apareciendo como ya facturado.";
+            case "concepts.fail.title" -> "Conceptos";
+            case "concepts.form.title.new" -> "Guardar concepto";
+            case "concepts.form.title.edit" -> "Editar concepto";
+            case "concepts.form.name" -> "Nombre *";
+            case "concepts.form.description" -> "Texto de la factura";
+            case "concepts.form.price" -> "Precio unitario";
+            case "concepts.form.vat" -> "IVA %";
+            case "concepts.form.retention" -> "Retención %";
+            case "concepts.form.name_required" -> "El concepto necesita un nombre.";
+            case "concepts.form.hint" -> "El nombre es la etiqueta corta que verás en el selector. El texto de la factura es lo que se copia en la línea (déjalo vacío para usar el nombre). Deja IVA/retención a 0 para que tome los del cliente.";
             default -> null;
         };
     }

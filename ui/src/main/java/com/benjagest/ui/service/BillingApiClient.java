@@ -555,6 +555,92 @@ public class BillingApiClient {
         );
     }
 
+    // ----- CONC-2: conceptos reutilizables de las líneas de factura -----
+
+    /**
+     * Conceptos disponibles para el editor: los guardados en el catálogo
+     * MÁS los ya usados en facturas anteriores (el backend los mezcla y
+     * marca cada uno con {@code source}).
+     */
+    public List<com.benjagest.ui.model.ConceptEntry> listConcepts() throws IOException, InterruptedException {
+        HttpResponse<String> response = sendAuthorized(HttpRequest.newBuilder(
+                URI.create(baseUrl + "/billing/catalog-items"))
+                .timeout(Duration.ofSeconds(10))
+                .GET());
+        ensureOk(response);
+        List<com.benjagest.ui.model.ConceptEntry> list = new ArrayList<>();
+        for (String obj : splitJsonObjects(response.body())) {
+            if (!obj.contains("\"source\"")) continue;
+            list.add(new com.benjagest.ui.model.ConceptEntry(
+                    textField(obj, "id"),
+                    textField(obj, "source"),
+                    textField(obj, "name"),
+                    textField(obj, "description"),
+                    decimalField(obj, "unitPrice"),
+                    decimalField(obj, "vatPercent"),
+                    decimalField(obj, "retentionPercent"),
+                    textField(obj, "vatRateId"),
+                    intFieldOrZero(obj, "usageCount"),
+                    textField(obj, "lastUsedAt")
+            ));
+        }
+        return list;
+    }
+
+    /** Guarda un concepto en el catálogo (idempotente por nombre en el backend). */
+    public void saveConcept(String name, String description, java.math.BigDecimal unitPrice,
+                            java.math.BigDecimal vatPercent, java.math.BigDecimal retentionPercent,
+                            String vatRateId) throws IOException, InterruptedException {
+        HttpResponse<String> response = sendAuthorized(HttpRequest.newBuilder(
+                URI.create(baseUrl + "/billing/catalog-items"))
+                .timeout(Duration.ofSeconds(8))
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(
+                        conceptBody(name, description, unitPrice, vatPercent, retentionPercent, vatRateId))));
+        ensureOk(response);
+    }
+
+    /** Edita un concepto YA guardado (solo los de {@code source=CATALOG}). */
+    public void updateConcept(String id, String name, String description, java.math.BigDecimal unitPrice,
+                              java.math.BigDecimal vatPercent, java.math.BigDecimal retentionPercent,
+                              String vatRateId) throws IOException, InterruptedException {
+        HttpResponse<String> response = sendAuthorized(HttpRequest.newBuilder(
+                URI.create(baseUrl + "/billing/catalog-items/" + id))
+                .timeout(Duration.ofSeconds(8))
+                .header("Content-Type", "application/json")
+                .PUT(HttpRequest.BodyPublishers.ofString(
+                        conceptBody(name, description, unitPrice, vatPercent, retentionPercent, vatRateId))));
+        ensureOk(response);
+    }
+
+    /** Quita el concepto del catálogo (baja lógica; las facturas no se tocan). */
+    public void deleteConcept(String id) throws IOException, InterruptedException {
+        HttpResponse<String> response = sendAuthorized(HttpRequest.newBuilder(
+                URI.create(baseUrl + "/billing/catalog-items/" + id))
+                .timeout(Duration.ofSeconds(8))
+                .DELETE());
+        ensureOk(response);
+    }
+
+    private String conceptBody(String name, String description, java.math.BigDecimal unitPrice,
+                               java.math.BigDecimal vatPercent, java.math.BigDecimal retentionPercent,
+                               String vatRateId) {
+        StringBuilder body = new StringBuilder("{")
+                .append(field("name", name)).append(",")
+                .append(field("description", description)).append(",")
+                .append("\"unitPrice\":").append(nullSafeDecimal(unitPrice)).append(",")
+                .append("\"vatPercent\":").append(nullSafeDecimal(vatPercent)).append(",")
+                .append("\"retentionPercent\":").append(nullSafeDecimal(retentionPercent));
+        if (vatRateId != null && !vatRateId.isBlank()) {
+            body.append(",").append(field("vatRateId", vatRateId));
+        }
+        return body.append("}").toString();
+    }
+
+    private String nullSafeDecimal(java.math.BigDecimal value) {
+        return value == null ? "0" : value.toPlainString();
+    }
+
     // VAT-REGIME — régimen de IVA de la empresa.
     public record VatRegime(String regime, String prorrataPercent) {}
 
