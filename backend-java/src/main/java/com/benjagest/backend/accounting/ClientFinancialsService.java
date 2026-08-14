@@ -61,7 +61,16 @@ public class ClientFinancialsService {
             BigDecimal marginPct,         // result / income * 100
             BigDecimal expenseRatioPct,   // expenses / income * 100
             BigDecimal personnelRatioPct, // personnelCost / income * 100
-            int draftCount                // asientos sin validar (aviso fiabilidad)
+            int draftCount,               // asientos sin validar (aviso fiabilidad)
+            /**
+             * PAGO-2 — Cuántas facturas de proveedor están SIN PAGAR. El importe
+             * de arriba ({@code pendingPayments}) es el saldo contable 400/410 y
+             * puede incluir cosas que no son facturas (apuntes manuales), así que
+             * NO son dos formas de decir lo mismo: este contador existe para
+             * poder ir a VERLAS ("¿qué facturas me faltan por pagar?", que es lo
+             * que el saldo por sí solo no responde).
+             */
+            int unpaidPurchaseInvoices
     ) {}
 
     public ClientFinancials compute(LocalDate from, LocalDate to) {
@@ -82,7 +91,21 @@ public class ClientFinancialsService {
                 nz(k.vatCharged()), nz(k.vatBorne()), nz(k.model303Estimated()),
                 pending, overdue, pendingPay,
                 pct(result, income), pct(expenses, income), pct(personnel, income),
-                pendingValidationCount(companyId));
+                pendingValidationCount(companyId),
+                unpaidPurchaseInvoices(companyId));
+    }
+
+    /**
+     * PAGO-2 — Nº de facturas de proveedor SIN PAGAR (vivas: se excluyen las
+     * anuladas). Con PAGO-1 el flag {@code paid} ya es fiable: lo escriben los
+     * dos caminos de pago (Registrar pago y Vencimientos).
+     */
+    private int unpaidPurchaseInvoices(String companyId) {
+        Integer c = jdbc.queryForObject("""
+                SELECT COUNT(*) FROM purchase_invoices
+                 WHERE company_id = ? AND paid = FALSE AND status <> 'VOID'
+                """, Integer.class, companyId);
+        return c == null ? 0 : c;
     }
 
     /**

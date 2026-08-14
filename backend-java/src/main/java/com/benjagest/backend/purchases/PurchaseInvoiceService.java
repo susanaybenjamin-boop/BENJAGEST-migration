@@ -182,9 +182,44 @@ public class PurchaseInvoiceService {
         // El pago debe caer en un ejercicio abierto (mismo criterio que el devengo).
         fiscalGuard.requireOpenForDate(paymentDate, "registrar el pago");
         AuthenticatedUser user = currentUserService.require();
-        journalService.createPaymentForPurchase(existing, paymentDate, bankAccountCode, user.userId());
+        String entryId = journalService.createPaymentForPurchase(
+                existing, paymentDate, bankAccountCode, user.userId());
         repository.markPaid(id, paymentDate, bankAccountCode);
+        settleDueDates(id, paymentDate, bankAccountCode, entryId);
         return repository.findById(id).orElseThrow();
+    }
+
+    /**
+     * PAGO-1 — Da por saldados los vencimientos PENDIENTES del gasto que se
+     * acaba de pagar por "Registrar pago".
+     *
+     * <p>Hay dos caminos de pago que no se hablaban: este (GAS-2, escribe
+     * {@code purchase_invoices.paid}) y el de vencimientos (PV-1, escribe
+     * {@code invoice_due_dates.status}). Sin esto, tras pagar aquí el
+     * vencimiento seguía PENDING y el diálogo "Vencimientos / Pago" dejaba
+     * volver a pagarlo, generando un SEGUNDO asiento 400→572 por el mismo
+     * gasto (la familia de bugs de BANK-DUP).
+     *
+     * <p>Se enlazan al asiento que ya se ha creado aquí; NO se genera otro.
+     * Best-effort: el pago y su asiento son lo importante.
+     */
+    private void settleDueDates(String invoiceId, LocalDate paymentDate,
+                                String bankAccountCode, String journalEntryId) {
+        try {
+            jdbcTemplate.update("""
+                    UPDATE invoice_due_dates
+                       SET status = 'PAID', paid_date = ?,
+                           treasury_account_code = COALESCE(treasury_account_code, ?),
+                           journal_entry_id = COALESCE(journal_entry_id, ?)
+                     WHERE company_id = ? AND invoice_kind = 'PURCHASE'
+                       AND invoice_id = ? AND status <> 'PAID'
+                    """,
+                    paymentDate == null ? null : java.sql.Date.valueOf(paymentDate),
+                    bankAccountCode, journalEntryId,
+                    tenantContext.getCurrentCompanyId(), invoiceId);
+        } catch (Exception ignored) {
+            // best-effort: el gasto queda pagado igual, con su asiento.
+        }
     }
 
     /**
