@@ -741,7 +741,9 @@ public class InvoiceEditorScreen extends ScreenBase {
 
         TableColumn<InvoiceLineDraft, String> colDesc = liveTextColumn(t("editor.lines.col.description"),
                 InvoiceLineDraft::getDescription, InvoiceLineDraft::setDescription);
-        colDesc.setPrefWidth(280);
+        // CONC-3: la descripción es lo que más se lee de la línea; se le da más
+        // ancho para que quepa el concepto sin depender del tooltip.
+        colDesc.setPrefWidth(360);
 
         TableColumn<InvoiceLineDraft, String> colQty = decimalColumn(t("editor.lines.col.qty"), InvoiceLineDraft::getQuantity, InvoiceLineDraft::setQuantity);
         TableColumn<InvoiceLineDraft, String> colPrice = decimalColumn(t("editor.lines.col.price"), InvoiceLineDraft::getUnitPrice, InvoiceLineDraft::setUnitPrice);
@@ -1134,13 +1136,41 @@ public class InvoiceEditorScreen extends ScreenBase {
             return new SimpleStringProperty(value == null ? "" : value);
         });
         col.setCellFactory(cv -> new javafx.scene.control.TableCell<InvoiceLineDraft, String>() {
-            private final TextField field = new TextField();
+            /**
+             * CONC-3 — TextArea (no TextField) para que un concepto largo se
+             * LEA entero, envuelto en varias líneas, en vez de tener que mover
+             * el cursor adelante y atrás dentro de una sola línea.
+             *
+             * <p>Sigue siendo texto de UNA línea a efectos de dato: Enter no
+             * inserta salto y el pegado los convierte en espacios (ver
+             * {@link #pasteAsSingleLine}). Los saltos dentro de la descripción
+             * no aportan nada al PDF y sí dan problemas.
+             */
+            private final javafx.scene.control.TextArea field = new javafx.scene.control.TextArea() {
+                @Override
+                public void paste() {
+                    pasteAsSingleLine(this);
+                }
+            };
+            private final javafx.scene.control.Tooltip fullText = new javafx.scene.control.Tooltip();
             private boolean syncing = false;
             private InvoiceLineDraft boundRow;
             {
                 field.setMaxWidth(Double.MAX_VALUE);
+                field.setWrapText(true);
+                field.setPrefRowCount(2);
                 field.getStyleClass().add("invoice-line-input");
+                // Enter en una celda de tabla no debe partir la descripción.
+                field.addEventFilter(javafx.scene.input.KeyEvent.KEY_PRESSED, e -> {
+                    if (e.getCode() == javafx.scene.input.KeyCode.ENTER) e.consume();
+                });
+                fullText.setWrapText(true);
+                fullText.setMaxWidth(520);
                 field.textProperty().addListener((obs, oldV, newV) -> {
+                    // Aunque el texto sea largo, el tooltip lo enseña completo.
+                    fullText.setText(newV == null ? "" : newV);
+                    javafx.scene.control.Tooltip.install(field,
+                            newV == null || newV.isBlank() ? null : fullText);
                     if (syncing) return;
                     if (getTableRow() == null) return;
                     InvoiceLineDraft row = getTableRow().getItem();
@@ -1168,6 +1198,43 @@ public class InvoiceEditorScreen extends ScreenBase {
         });
         col.setEditable(false);
         return col;
+    }
+
+    /**
+     * CONC-3 — Pega el portapapeles como UNA sola línea.
+     *
+     * <p>El bug (Benjamin 2026-08-15): copió de un PDF un concepto que ocupaba
+     * tres líneas y al pegarlo la última palabra de cada línea quedó pegada a
+     * la primera de la siguiente ("…mantenimientoy revisión…"). La causa es de
+     * JavaFX: un control de una línea DESCARTA los saltos al pegar, sin poner
+     * nada en su lugar. Aquí se sustituyen por un espacio ANTES de insertar.
+     */
+    private void pasteAsSingleLine(javafx.scene.control.TextInputControl target) {
+        javafx.scene.input.Clipboard cb = javafx.scene.input.Clipboard.getSystemClipboard();
+        if (!cb.hasString() || cb.getString() == null) {
+            return;
+        }
+        target.replaceSelection(singleLine(cb.getString()));
+    }
+
+    /**
+     * CONC-3 — Texto de varias líneas a una sola, sin pegar palabras.
+     *
+     * <p>Un guion al final de línea es una palabra PARTIDA por el ancho de la
+     * página ("manteni-\nmiento"): ahí no se mete espacio, o quedaría
+     * "manteni- miento". No se le quita el guion: quitarlo acertaría con las
+     * palabras partidas pero rompería las que llevan guion de verdad
+     * ("pre-\nventa"), y este código no puede distinguirlas.
+     */
+    static String singleLine(String raw) {
+        if (raw == null) return "";
+        String joined = raw
+                // "palabra-\n" + "resto"  ->  "palabra-resto"
+                .replaceAll("-[ \\t]*\\R[ \\t]*", "-")
+                // cualquier otro salto (con lo que lo rodee) -> UN espacio
+                .replaceAll("[ \\t]*\\R[ \\t]*", " ");
+        // Espacios repetidos (típicos al copiar de un PDF) -> uno solo.
+        return joined.replaceAll("[ \\t]{2,}", " ").trim();
     }
 
     private java.math.BigDecimal lineSubtotal(InvoiceLineDraft line) {
@@ -1508,7 +1575,8 @@ public class InvoiceEditorScreen extends ScreenBase {
 
     /** Línea de factura a partir de un trabajo (preserva cantidad×precio; cerrado = 1×importe). */
     private InvoiceLineDraft lineFromWork(com.benjagest.ui.model.WorkLogEntry w) {
-        String d = (w.description() == null || w.description().isBlank()) ? t("trabajos.title") : w.description();
+        String d = (w.description() == null || w.description().isBlank())
+                ? t("trabajos.title") : singleLine(w.description()); // CONC-3
         java.math.BigDecimal vat = editorDefaultVat;
         if (w.quantity() != null && w.unitPrice() != null && !"FIXED".equals(w.billingUnit())) {
             return new InvoiceLineDraft(d, w.quantity(), w.unitPrice(), vat, editorDefaultRetention);
@@ -1702,8 +1770,10 @@ public class InvoiceEditorScreen extends ScreenBase {
         java.math.BigDecimal vat = c.vatPercent().signum() == 0 ? editorDefaultVat : c.vatPercent();
         java.math.BigDecimal ret = c.retentionPercent().signum() == 0
                 ? editorDefaultRetention : c.retentionPercent();
+        // CONC-3: un concepto guardado puede traer saltos de línea; en la
+        // línea de factura van como UN párrafo, sin pegar palabras.
         InvoiceLineDraft line = new InvoiceLineDraft(
-                c.invoiceText(), java.math.BigDecimal.ONE, c.unitPrice(), vat, ret);
+                singleLine(c.invoiceText()), java.math.BigDecimal.ONE, c.unitPrice(), vat, ret);
         if (c.vatRateId() != null && !c.vatRateId().isBlank()) {
             line.setVatRateId(c.vatRateId());
         }
@@ -1739,7 +1809,11 @@ public class InvoiceEditorScreen extends ScreenBase {
             com.benjagest.ui.support.Dialogs.ownAndCenter(dlg);
         }
 
-        TextField name = new TextField(existing == null ? "" : existing.name());
+        // CONC-3: pegar aquí un texto de varias líneas tampoco debe pegar
+        // palabras (mismo motivo que en la línea de factura).
+        TextField name = new TextField(existing == null ? "" : existing.name()) {
+            @Override public void paste() { pasteAsSingleLine(this); }
+        };
         name.setPromptText(t("concepts.form.name"));
         javafx.scene.control.TextArea description = new javafx.scene.control.TextArea(
                 existing == null ? "" : existing.invoiceText());
