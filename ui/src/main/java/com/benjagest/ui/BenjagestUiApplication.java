@@ -92,6 +92,8 @@ import javafx.scene.control.TabPane;
 import javafx.scene.control.Separator;
 import javafx.scene.control.TableColumn;
 import javafx.scene.control.TableView;
+import javafx.scene.control.TreeTableColumn;
+import javafx.scene.control.TreeTableView;
 import javafx.scene.control.TextArea;
 import javafx.scene.control.TextField;
 import javafx.scene.control.Tooltip;
@@ -14740,6 +14742,13 @@ public class BenjagestUiApplication extends Application
         setCenterAnimated(buildWorkLogsModule());
     }
 
+    /**
+     * TRB-G1/G2/G3 — Trabajos agrupados por CLIENTE en un arbol plegable.
+     * Cada cliente es una fila cabecera con sus agregados (nº de trabajos,
+     * pendiente de facturar y total del rango); al clicar encima se despliega
+     * su detalle. Seleccionar la cabecera = seleccionar todos sus trabajos
+     * pendientes, para facturarlos de una vez.
+     */
     private Node buildWorkLogsModule() {
         VBox content = content();
 
@@ -14767,6 +14776,14 @@ public class BenjagestUiApplication extends Application
         // Caches de nombres (empleado/cliente) y mapa nombre->id de clientes.
         final java.util.Map<String, String> empById = new java.util.HashMap<>();
         final java.util.LinkedHashMap<String, String> custIdByName = new java.util.LinkedHashMap<>();
+        // TRB-G1 — clientes desplegados ("" = grupo "Sin cliente"). Se conserva
+        // entre refrescos para que una accion no te cierre el arbol en la cara.
+        final java.util.Set<String> expandedCustomers = new java.util.HashSet<>();
+        // TRB-G3 — pendiente de facturar que queda FUERA del rango de fechas,
+        // por cliente. Es el error de lectura mas facil de cometer: ver "0 €
+        // pendiente" en un cliente que si lo tiene, pero de otro mes.
+        final java.util.Map<String, java.math.BigDecimal> outsideByCustomer = new java.util.HashMap<>();
+        final java.util.List<com.benjagest.ui.model.WorkLogEntry> allPending = new java.util.ArrayList<>();
 
         java.time.LocalDate now = java.time.LocalDate.now();
         DatePicker fromPick = new DatePicker(now.withDayOfMonth(1));
@@ -14791,46 +14808,96 @@ public class BenjagestUiApplication extends Application
         Button reloadBtn = new Button(t("accounting.action.refresh"));
         reloadBtn.setGraphic(icon("fas-sync-alt"));
 
-        TableView<com.benjagest.ui.model.WorkLogEntry> table = new TableView<>();
-        table.getStyleClass().add("data-table");
-        table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
-        table.setPlaceholder(new Label(t("trabajos.empty")));
-        VBox.setVgrow(table, Priority.ALWAYS);
-        table.getSelectionModel().setSelectionMode(javafx.scene.control.SelectionMode.MULTIPLE);
+        TreeTableView<WorkLogNode> tree = new TreeTableView<>();
+        tree.getStyleClass().add("data-table");
+        tree.setShowRoot(false);
+        tree.setColumnResizePolicy(TreeTableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+        tree.setPlaceholder(new Label(t("trabajos.empty")));
+        VBox.setVgrow(tree, Priority.ALWAYS);
+        tree.getSelectionModel().setSelectionMode(javafx.scene.control.SelectionMode.MULTIPLE);
+        // Fila de cliente: se marca con su clase CSS y alterna plegado al clicar
+        // encima (es lo que se pidio); la flechita se ignora porque ya alterna sola.
+        tree.setRowFactory(tv -> {
+            javafx.scene.control.TreeTableRow<WorkLogNode> row = new javafx.scene.control.TreeTableRow<>() {
+                @Override protected void updateItem(WorkLogNode item, boolean empty) {
+                    super.updateItem(item, empty);
+                    getStyleClass().remove("worklog-group-row");
+                    if (!empty && item != null && item.group()) getStyleClass().add("worklog-group-row");
+                }
+            };
+            row.setOnMouseClicked(ev -> {
+                if (ev.getButton() != javafx.scene.input.MouseButton.PRIMARY) return;
+                if (row.isEmpty() || row.getItem() == null || !row.getItem().group()) return;
+                if (isDisclosureTarget(ev.getTarget())) return;
+                javafx.scene.control.TreeItem<WorkLogNode> ti = row.getTreeItem();
+                if (ti != null) ti.setExpanded(!ti.isExpanded());
+            });
+            return row;
+        });
 
-        TableColumn<com.benjagest.ui.model.WorkLogEntry, String> cDate = new TableColumn<>(t("trabajos.col.date"));
-        cDate.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().logDate()));
+        // Columna del arbol (la de la flechita) = el cliente. En las filas de
+        // detalle va vacia: el cliente ya lo dice la cabecera de la que cuelgan.
+        TreeTableColumn<WorkLogNode, String> cCust = workLogCol(t("trabajos.col.customer"),
+                n -> n.group() ? n.customerName : "", 210);
+        TreeTableColumn<WorkLogNode, String> cDate = workLogCol(t("trabajos.col.date"),
+                n -> n.group() ? n.lastDate : n.entry.logDate(), 100);
         cDate.setComparator(ISO_DATE_COMPARATOR);
-        cDate.setPrefWidth(100);
-        TableColumn<com.benjagest.ui.model.WorkLogEntry, String> cEmp = new TableColumn<>(t("trabajos.col.employee"));
-        cEmp.setCellValueFactory(c -> new SimpleStringProperty(
-                c.getValue().employeeId() == null ? t("trabajos.field.owner")
-                        : (c.getValue().employeeName() != null && !c.getValue().employeeName().isBlank()
-                                ? c.getValue().employeeName()
-                                : empById.getOrDefault(c.getValue().employeeId(), shortId(c.getValue().employeeId())))));
-        cEmp.setPrefWidth(150);
-        TableColumn<com.benjagest.ui.model.WorkLogEntry, String> cCust = new TableColumn<>(t("trabajos.col.customer"));
-        cCust.setCellValueFactory(c -> new SimpleStringProperty(
-                c.getValue().customerName() == null ? "—" : c.getValue().customerName()));
-        cCust.setPrefWidth(160);
-        TableColumn<com.benjagest.ui.model.WorkLogEntry, String> cDesc = new TableColumn<>(t("trabajos.col.description"));
-        cDesc.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().description()));
-        TableColumn<com.benjagest.ui.model.WorkLogEntry, String> cUnit = new TableColumn<>(t("trabajos.col.valuation"));
-        cUnit.setCellValueFactory(c -> new SimpleStringProperty(workLogValuationLabel(c.getValue())));
-        cUnit.setPrefWidth(170);
-        TableColumn<com.benjagest.ui.model.WorkLogEntry, String> cAmount = new TableColumn<>(t("trabajos.col.amount"));
-        cAmount.setCellValueFactory(c -> new SimpleStringProperty(
-                c.getValue().billableAmount() == null ? "" : money(c.getValue().billableAmount().toPlainString())));
-        cAmount.setComparator(NUMERIC_STRING_COMPARATOR);
-        cAmount.setPrefWidth(100);
-        TableColumn<com.benjagest.ui.model.WorkLogEntry, String> cStatus = new TableColumn<>(t("trabajos.col.status"));
-        cStatus.setCellValueFactory(c -> new SimpleStringProperty(t("worklog_status." + c.getValue().status())));
-        cStatus.setPrefWidth(95);
-        table.getColumns().addAll(java.util.List.of(cDate, cEmp, cCust, cDesc, cUnit, cAmount, cStatus));
+        TreeTableColumn<WorkLogNode, String> cEmp = workLogCol(t("trabajos.col.employee"), n -> {
+            if (n.group()) return t("trabajos.group.jobs").replace("{n}", String.valueOf(n.jobs.size()));
+            // OJO: el parser devuelve "" (no null) para los campos nulos. Comprobar
+            // solo != null dejaba la celda Empleado VACIA en los trabajos del
+            // titular, en vez de poner "Yo / titular".
+            String empId = n.entry.employeeId();
+            if (empId == null || empId.isBlank()) return t("trabajos.field.owner");
+            String empName = n.entry.employeeName();
+            if (empName != null && !empName.isBlank()) return empName;
+            return empById.getOrDefault(empId, shortId(empId));
+        }, 150);
+        TreeTableColumn<WorkLogNode, String> cDesc = workLogCol(t("trabajos.col.description"), n -> {
+            if (!n.group()) return n.entry.description();
+            String s = workLogGroupStatuses(n);
+            java.math.BigDecimal out = outsideByCustomer.get(n.customerId);
+            if (out != null && out.signum() > 0) {
+                s = (s.isEmpty() ? "" : s + " · ")
+                        + t("trabajos.group.outside").replace("{amount}", money(out.toPlainString()));
+            }
+            return s;
+        }, 340);
+        TreeTableColumn<WorkLogNode, String> cUnit = workLogCol(t("trabajos.col.valuation"),
+                n -> n.group() ? "" : workLogValuationLabel(n.entry), 170);
+        // Pendiente de facturar y total: los dos numeros que se quieren ver de un
+        // vistazo con el cliente plegado. En cero se deja en blanco, para que el
+        // ojo vaya directo a los clientes que si tienen algo pendiente.
+        TreeTableColumn<WorkLogNode, String> cPending = workLogCol(t("trabajos.col.pending"), n -> {
+            java.math.BigDecimal v = n.group() ? n.pending
+                    : (workLogPending(n.entry) && n.entry.billableAmount() != null
+                            ? n.entry.billableAmount() : java.math.BigDecimal.ZERO);
+            return v.signum() == 0 ? "" : money(v.toPlainString());
+        }, 105);
+        cPending.setComparator(NUMERIC_STRING_COMPARATOR);
+        TreeTableColumn<WorkLogNode, String> cTotal = workLogCol(t("trabajos.col.total"), n -> {
+            java.math.BigDecimal v = n.group() ? n.total
+                    : (n.entry.billableAmount() == null ? java.math.BigDecimal.ZERO : n.entry.billableAmount());
+            return v.signum() == 0 ? "" : money(v.toPlainString());
+        }, 105);
+        cTotal.setComparator(NUMERIC_STRING_COMPARATOR);
+        TreeTableColumn<WorkLogNode, String> cStatus = workLogCol(t("trabajos.col.status"),
+                n -> n.group() ? (n.pending.signum() > 0 ? t("trabajos.group.to_bill") : t("trabajos.group.up_to_date"))
+                        : t("worklog_status." + n.entry.status()), 110);
+        tree.getColumns().addAll(java.util.List.of(cCust, cDate, cEmp, cDesc, cUnit, cPending, cTotal, cStatus));
 
         // TRB-TOTAL — suma de los trabajos listados (con los filtros aplicados).
         final Label totalLbl = new Label();
         totalLbl.getStyleClass().add("settings-hint");
+        // TRB-G3 — aviso de pendiente fuera del rango filtrado.
+        final Label outsideLbl = new Label();
+        outsideLbl.getStyleClass().add("settings-hint");
+        outsideLbl.setVisible(false);
+        outsideLbl.setManaged(false);
+
+        // Al mover fechas con el boton "todo lo pendiente" se cambian varios
+        // filtros de golpe; esto evita encadenar una recarga por cada uno.
+        final boolean[] suppressReload = {false};
 
         Runnable reload = () -> {
             java.time.LocalDate from = fromPick.getValue(), to = toPick.getValue();
@@ -14840,27 +14907,118 @@ public class BenjagestUiApplication extends Application
             boolean pend = pendingOnly.isSelected();
             Task<java.util.List<com.benjagest.ui.model.WorkLogEntry>> task = new Task<>() {
                 @Override protected java.util.List<com.benjagest.ui.model.WorkLogEntry> call() throws Exception {
-                    return altaApiClient.listWorkLogs(from, to, custId, st, pend);
+                    java.util.List<com.benjagest.ui.model.WorkLogEntry> rows =
+                            altaApiClient.listWorkLogs(from, to, custId, st, pend);
+                    // TRB-G3 — segunda llamada: TODO lo pendiente de facturar, sin
+                    // rango de fechas. Si falla NO se rompe el listado: solo se
+                    // pierde el aviso de "hay pendiente fuera del rango".
+                    outsideByCustomer.clear();
+                    allPending.clear();
+                    try {
+                        java.util.List<com.benjagest.ui.model.WorkLogEntry> pendingAll = altaApiClient.listWorkLogs(
+                                WORKLOG_MIN_DATE, java.time.LocalDate.now().plusYears(5), custId, null, true);
+                        allPending.addAll(pendingAll);
+                        String fromIso = from.toString(), toIso = to.toString();
+                        for (com.benjagest.ui.model.WorkLogEntry w : pendingAll) {
+                            if (w.logDate() == null || w.logDate().isBlank()) continue;
+                            if (w.logDate().compareTo(fromIso) >= 0 && w.logDate().compareTo(toIso) <= 0) continue;
+                            String key = w.customerId() == null || w.customerId().isBlank() ? "" : w.customerId();
+                            outsideByCustomer.merge(key,
+                                    w.billableAmount() == null ? java.math.BigDecimal.ZERO : w.billableAmount(),
+                                    java.math.BigDecimal::add);
+                        }
+                    } catch (Exception ignored) {
+                        // sin aviso de fuera de rango; el listado principal manda
+                    }
+                    return rows;
                 }
             };
             task.setOnSucceeded(ev -> {
                 java.util.List<com.benjagest.ui.model.WorkLogEntry> rows = task.getValue();
-                table.setItems(FXCollections.observableArrayList(rows));
-                java.math.BigDecimal tot = rows.stream()
-                        .map(w -> w.billableAmount() == null ? java.math.BigDecimal.ZERO : w.billableAmount())
-                        .reduce(java.math.BigDecimal.ZERO, java.math.BigDecimal::add);
+                java.util.List<WorkLogNode> groups = groupWorkLogsByCustomer(rows);
+                // Si el filtro aisla un cliente, o solo hay uno, se abre solo:
+                // plegado con un unico grupo no aporta nada.
+                if (custId != null) expandedCustomers.add(custId);
+                if (groups.size() == 1) expandedCustomers.add(groups.get(0).customerId);
+                javafx.scene.control.TreeItem<WorkLogNode> root = new javafx.scene.control.TreeItem<>();
+                root.setExpanded(true);
+                for (WorkLogNode g : groups) {
+                    javafx.scene.control.TreeItem<WorkLogNode> gi = new javafx.scene.control.TreeItem<>(g);
+                    for (com.benjagest.ui.model.WorkLogEntry w : g.jobs) {
+                        gi.getChildren().add(new javafx.scene.control.TreeItem<>(new WorkLogNode(w)));
+                    }
+                    gi.setExpanded(expandedCustomers.contains(g.customerId));
+                    gi.expandedProperty().addListener((o, a, b) -> {
+                        if (Boolean.TRUE.equals(b)) expandedCustomers.add(g.customerId);
+                        else expandedCustomers.remove(g.customerId);
+                    });
+                    root.getChildren().add(gi);
+                }
+                tree.setRoot(root);
+
+                java.math.BigDecimal tot = java.math.BigDecimal.ZERO, pendTot = java.math.BigDecimal.ZERO;
+                for (WorkLogNode g : groups) {
+                    tot = tot.add(g.total);
+                    pendTot = pendTot.add(g.pending);
+                }
                 totalLbl.setText(t("trabajos.footer.total")
                         .replace("{total}", money(tot.toPlainString()))
+                        .replace("{pending}", money(pendTot.toPlainString()))
                         .replace("{n}", String.valueOf(rows.size())));
+                java.math.BigDecimal outside = java.math.BigDecimal.ZERO;
+                for (java.math.BigDecimal v : outsideByCustomer.values()) outside = outside.add(v);
+                boolean hasOutside = outside.signum() > 0;
+                outsideLbl.setText(t("trabajos.footer.outside")
+                        .replace("{amount}", money(outside.toPlainString())));
+                outsideLbl.setVisible(hasOutside);
+                outsideLbl.setManaged(hasOutside);
             });
             task.setOnFailed(ev -> showError(t("trabajos.fail.title"),
                     task.getException() == null ? "" : humanizeBackendError(task.getException().getMessage())));
             start(task, "worklogs-load");
         };
+        Runnable maybeReload = () -> { if (!suppressReload[0]) reload.run(); };
         reloadBtn.setOnAction(e -> reload.run());
-        custFilter.valueProperty().addListener((o, a, b) -> reload.run());
-        statusFilter.valueProperty().addListener((o, a, b) -> reload.run());
-        pendingOnly.selectedProperty().addListener((o, a, b) -> reload.run());
+        custFilter.valueProperty().addListener((o, a, b) -> maybeReload.run());
+        statusFilter.valueProperty().addListener((o, a, b) -> maybeReload.run());
+        pendingOnly.selectedProperty().addListener((o, a, b) -> maybeReload.run());
+
+        // TRB-G3 — llevar el rango de fechas a TODO lo que hay pendiente de facturar.
+        Button allPendingBtn = new Button(t("trabajos.action.all_pending"));
+        allPendingBtn.setGraphic(icon("fas-calendar-alt"));
+        allPendingBtn.getStyleClass().add("button-secondary");
+        allPendingBtn.setOnAction(e -> {
+            String min = null, max = null;
+            for (com.benjagest.ui.model.WorkLogEntry w : allPending) {
+                if (w.logDate() == null || w.logDate().isBlank()) continue;
+                if (min == null || w.logDate().compareTo(min) < 0) min = w.logDate();
+                if (max == null || w.logDate().compareTo(max) > 0) max = w.logDate();
+            }
+            if (min == null) { showInfo(t("trabajos.title"), t("trabajos.all_pending.none")); return; }
+            suppressReload[0] = true;
+            try {
+                fromPick.setValue(java.time.LocalDate.parse(min));
+                toPick.setValue(java.time.LocalDate.parse(max));
+                statusFilter.setValue("");
+                pendingOnly.setSelected(true);
+            } finally {
+                suppressReload[0] = false;
+            }
+            reload.run();
+        });
+
+        java.util.function.Consumer<Boolean> setAllExpanded = v -> {
+            if (tree.getRoot() == null) return;
+            for (javafx.scene.control.TreeItem<WorkLogNode> ti : tree.getRoot().getChildren()) ti.setExpanded(v);
+        };
+        Button expandAllBtn = new Button(t("trabajos.action.expand_all"));
+        expandAllBtn.setGraphic(icon("fas-angle-double-down"));
+        expandAllBtn.getStyleClass().add("button-secondary");
+        expandAllBtn.setOnAction(e -> setAllExpanded.accept(true));
+        Button collapseAllBtn = new Button(t("trabajos.action.collapse_all"));
+        collapseAllBtn.setGraphic(icon("fas-angle-double-up"));
+        collapseAllBtn.getStyleClass().add("button-secondary");
+        collapseAllBtn.setOnAction(e -> setAllExpanded.accept(false));
 
         // Carga inicial de empleados + clientes (para combos), luego refresca.
         Task<Void> meta = new Task<>() {
@@ -14871,9 +15029,14 @@ public class BenjagestUiApplication extends Application
             }
         };
         meta.setOnSucceeded(ev -> {
-            custFilter.getItems().setAll(t("trabajos.filter.all_customers"));
-            custFilter.getItems().addAll(custIdByName.keySet());
-            custFilter.getSelectionModel().selectFirst();
+            suppressReload[0] = true;
+            try {
+                custFilter.getItems().setAll(t("trabajos.filter.all_customers"));
+                custFilter.getItems().addAll(custIdByName.keySet());
+                custFilter.getSelectionModel().selectFirst();
+            } finally {
+                suppressReload[0] = false;
+            }
             reload.run();
         });
         meta.setOnFailed(ev -> reload.run());
@@ -14882,11 +15045,34 @@ public class BenjagestUiApplication extends Application
         newBtn.setOnAction(e -> showWorkLogForm(null, empById, custIdByName, reload));
         ratesBtn.setOnAction(e -> showWorkRatesManager(custIdByName));
 
+        // El trabajo seleccionado (null si lo seleccionado es una cabecera de cliente).
+        java.util.function.Supplier<com.benjagest.ui.model.WorkLogEntry> selectedJob = () -> {
+            javafx.scene.control.TreeItem<WorkLogNode> ti = tree.getSelectionModel().getSelectedItem();
+            return ti == null || ti.getValue() == null || ti.getValue().group() ? null : ti.getValue().entry;
+        };
+        // TRB-G2 — que se factura: lo seleccionado, y si hay una CABECERA de
+        // cliente seleccionada, todos sus trabajos pendientes de golpe.
+        java.util.function.Supplier<java.util.List<com.benjagest.ui.model.WorkLogEntry>> billingSelection = () -> {
+            java.util.LinkedHashMap<String, com.benjagest.ui.model.WorkLogEntry> out = new java.util.LinkedHashMap<>();
+            for (javafx.scene.control.TreeItem<WorkLogNode> ti : tree.getSelectionModel().getSelectedItems()) {
+                if (ti == null || ti.getValue() == null) continue;
+                WorkLogNode n = ti.getValue();
+                if (n.group()) {
+                    for (com.benjagest.ui.model.WorkLogEntry w : n.jobs) {
+                        if (workLogPending(w)) out.put(w.id(), w);
+                    }
+                } else {
+                    out.put(n.entry.id(), n.entry);
+                }
+            }
+            return new java.util.ArrayList<>(out.values());
+        };
+
         Button editBtn = new Button(t("trabajos.action.edit"));
         editBtn.setGraphic(icon("fas-edit"));
         editBtn.setDisable(true);
         editBtn.setOnAction(e -> {
-            var sel = table.getSelectionModel().getSelectedItem();
+            var sel = selectedJob.get();
             if (sel != null) showWorkLogForm(sel, empById, custIdByName, reload);
         });
         // TRB-DUP — duplicar el trabajo seleccionado (formulario prellenado, se guarda
@@ -14895,14 +15081,14 @@ public class BenjagestUiApplication extends Application
         dupBtn.setGraphic(icon("fas-copy"));
         dupBtn.setDisable(true);
         dupBtn.setOnAction(e -> {
-            var sel = table.getSelectionModel().getSelectedItem();
+            var sel = selectedJob.get();
             if (sel != null) showWorkLogForm(sel, true, empById, custIdByName, reload);
         });
         Button delBtn = new Button(t("trabajos.action.delete"));
         delBtn.setGraphic(icon("fas-trash"));
         delBtn.setDisable(true);
         delBtn.setOnAction(e -> {
-            var sel = table.getSelectionModel().getSelectedItem();
+            var sel = selectedJob.get();
             if (sel == null) return;
             Alert c = new Alert(Alert.AlertType.CONFIRMATION, t("trabajos.delete.confirm"),
                     ButtonType.OK, ButtonType.CANCEL);
@@ -14916,7 +15102,7 @@ public class BenjagestUiApplication extends Application
         approveBtn.setGraphic(icon("fas-check"));
         approveBtn.setDisable(true);
         approveBtn.setOnAction(e -> {
-            var sel = table.getSelectionModel().getSelectedItem();
+            var sel = selectedJob.get();
             if (sel == null) return;
             // APPROVED → DRAFT (desaprobar); DRAFT o SUBMITTED → APPROVED (aprobar).
             String next = "APPROVED".equals(sel.status()) ? "DRAFT" : "APPROVED";
@@ -14926,36 +15112,151 @@ public class BenjagestUiApplication extends Application
         billBtn.setGraphic(icon("fas-file-invoice-dollar"));
         billBtn.getStyleClass().add("button-primary");
         billBtn.setDisable(true);
-        billBtn.setOnAction(e -> showWorkLogBillingDialog(
-                new java.util.ArrayList<>(table.getSelectionModel().getSelectedItems()), reload));
+        billBtn.setOnAction(e -> showWorkLogBillingDialog(billingSelection.get(), reload));
 
-        table.getSelectionModel().selectedItemProperty().addListener((o, ov, nv) -> {
-            boolean one = nv != null;
-            boolean editable = one && !"BILLED".equals(nv.status())
-                    && (nv.billedInvoiceLineId() == null || nv.billedInvoiceLineId().isBlank());
+        tree.getSelectionModel().selectedItemProperty().addListener((o, ov, nv) -> {
+            var sel = selectedJob.get();
+            boolean one = sel != null;
+            boolean editable = one && !"BILLED".equals(sel.status())
+                    && (sel.billedInvoiceLineId() == null || sel.billedInvoiceLineId().isBlank());
             editBtn.setDisable(!editable);
             dupBtn.setDisable(!one);
             delBtn.setDisable(!editable);
-            approveBtn.setDisable(!one || "BILLED".equals(nv.status()));
-            approveBtn.setText("APPROVED".equals(nv != null ? nv.status() : "")
+            approveBtn.setDisable(!one || "BILLED".equals(sel.status()));
+            approveBtn.setText(one && "APPROVED".equals(sel.status())
                     ? t("trabajos.action.unapprove") : t("trabajos.action.approve"));
         });
-        // El botón Facturar se habilita si TODAS las seleccionadas son facturables,
+        // El botón Facturar se habilita si TODO lo que se va a facturar es facturable,
         // sin facturar y del MISMO cliente (se factura por cliente).
-        table.getSelectionModel().getSelectedItems().addListener(
-                (javafx.collections.ListChangeListener<com.benjagest.ui.model.WorkLogEntry>) ch ->
-                        billBtn.setDisable(!sameCustomerBillable(table.getSelectionModel().getSelectedItems())));
+        tree.getSelectionModel().getSelectedItems().addListener(
+                (javafx.collections.ListChangeListener<javafx.scene.control.TreeItem<WorkLogNode>>) ch ->
+                        billBtn.setDisable(!sameCustomerBillable(billingSelection.get())));
 
-        javafx.scene.layout.FlowPane actions = actionFlow(editBtn, dupBtn, approveBtn, delBtn, billBtn, totalLbl);
+        javafx.scene.layout.FlowPane actions = actionFlow(
+                editBtn, dupBtn, approveBtn, delBtn, billBtn, totalLbl, outsideLbl);
         javafx.scene.layout.FlowPane filters = actionFlow(
                 filterGroup(t("accounting.filter.from"), fromPick),
                 filterGroup(t("accounting.filter.to"), toPick),
                 filterGroup(t("trabajos.col.customer"), custFilter),
                 filterGroup(t("trabajos.col.status"), statusFilter),
-                pendingOnly, reloadBtn);
+                pendingOnly, allPendingBtn, expandAllBtn, collapseAllBtn, reloadBtn);
 
-        content.getChildren().addAll(header, hint, filters, actions, table);
+        content.getChildren().addAll(header, hint, filters, actions, tree);
         return content;
+    }
+
+    /** TRB-G3 — fecha de inicio para "todo lo pendiente" (antes no hay nada). */
+    private static final java.time.LocalDate WORKLOG_MIN_DATE = java.time.LocalDate.of(2000, 1, 1);
+
+    /**
+     * TRB-G1 — nodo del arbol de Trabajos. Tiene dos caras: CABECERA de cliente
+     * (con los agregados del grupo) o TRABAJO (fila de detalle). Las columnas son
+     * las mismas para las dos, asi que cada celda decide segun {@link #group()}.
+     */
+    private static final class WorkLogNode {
+        final com.benjagest.ui.model.WorkLogEntry entry;   // null en las cabeceras
+        final String customerId;                           // "" = sin cliente
+        final String customerName;
+        final java.util.List<com.benjagest.ui.model.WorkLogEntry> jobs = new java.util.ArrayList<>();
+        final java.util.Map<String, Integer> byStatus = new java.util.LinkedHashMap<>();
+        java.math.BigDecimal pending = java.math.BigDecimal.ZERO;
+        java.math.BigDecimal total = java.math.BigDecimal.ZERO;
+        String lastDate = "";
+
+        /** Fila de detalle. */
+        WorkLogNode(com.benjagest.ui.model.WorkLogEntry entry) {
+            this.entry = entry;
+            this.customerId = null;
+            this.customerName = null;
+        }
+
+        /** Cabecera de cliente. */
+        WorkLogNode(String customerId, String customerName) {
+            this.entry = null;
+            this.customerId = customerId;
+            this.customerName = customerName;
+        }
+
+        boolean group() { return entry == null; }
+
+        void add(com.benjagest.ui.model.WorkLogEntry w) {
+            jobs.add(w);
+            java.math.BigDecimal amount = w.billableAmount() == null
+                    ? java.math.BigDecimal.ZERO : w.billableAmount();
+            total = total.add(amount);
+            if (workLogPending(w)) pending = pending.add(amount);
+            if (w.logDate() != null && w.logDate().compareTo(lastDate) > 0) lastDate = w.logDate();
+            byStatus.merge(w.status() == null ? "" : w.status(), 1, Integer::sum);
+        }
+    }
+
+    /** TRB-G1 — true si el trabajo esta pendiente de facturar (facturable y sin factura). */
+    private static boolean workLogPending(com.benjagest.ui.model.WorkLogEntry w) {
+        if (w == null || !w.billable() || "BILLED".equals(w.status())) return false;
+        return w.billedInvoiceLineId() == null || w.billedInvoiceLineId().isBlank();
+    }
+
+    /**
+     * TRB-G1 — agrupa los trabajos por cliente. Orden: primero el cliente con mas
+     * PENDIENTE de facturar (que es lo que hay que atacar), luego por total y por
+     * nombre; el grupo "Sin cliente" siempre al final.
+     */
+    private java.util.List<WorkLogNode> groupWorkLogsByCustomer(
+            java.util.List<com.benjagest.ui.model.WorkLogEntry> rows) {
+        java.util.LinkedHashMap<String, WorkLogNode> byCustomer = new java.util.LinkedHashMap<>();
+        for (com.benjagest.ui.model.WorkLogEntry w : rows) {
+            String id = w.customerId() == null || w.customerId().isBlank() ? "" : w.customerId();
+            String name = w.customerName() != null && !w.customerName().isBlank() ? w.customerName()
+                    : (id.isEmpty() ? t("trabajos.group.no_customer") : shortId(id));
+            byCustomer.computeIfAbsent(id, k -> new WorkLogNode(k, name)).add(w);
+        }
+        java.util.List<WorkLogNode> out = new java.util.ArrayList<>(byCustomer.values());
+        out.sort((a, b) -> {
+            if (a.customerId.isEmpty() != b.customerId.isEmpty()) return a.customerId.isEmpty() ? 1 : -1;
+            int c = b.pending.compareTo(a.pending);
+            if (c != 0) return c;
+            c = b.total.compareTo(a.total);
+            if (c != 0) return c;
+            return a.customerName.compareToIgnoreCase(b.customerName);
+        });
+        return out;
+    }
+
+    /** TRB-G1 — desglose de estados de una cabecera: "3 Borrador · 2 Aprobado". */
+    private String workLogGroupStatuses(WorkLogNode g) {
+        StringBuilder sb = new StringBuilder();
+        for (String s : java.util.List.of("DRAFT", "SUBMITTED", "APPROVED", "BILLED")) {
+            Integer n = g.byStatus.get(s);
+            if (n == null || n == 0) continue;
+            if (sb.length() > 0) sb.append(" · ");
+            sb.append(n).append(" ").append(t("worklog_status." + s));
+        }
+        return sb.toString();
+    }
+
+    /** TRB-G1 — columna del arbol de Trabajos (mismo texto para cabecera y detalle). */
+    private TreeTableColumn<WorkLogNode, String> workLogCol(
+            String title, java.util.function.Function<WorkLogNode, String> value, double width) {
+        TreeTableColumn<WorkLogNode, String> col = new TreeTableColumn<>(title);
+        col.setCellValueFactory(c -> {
+            WorkLogNode n = c.getValue() == null ? null : c.getValue().getValue();
+            String v = n == null ? "" : value.apply(n);
+            return new SimpleStringProperty(v == null ? "" : v);
+        });
+        if (width > 0) col.setPrefWidth(width);
+        return col;
+    }
+
+    /** True si el click cayo en la flechita de desplegar (que ya alterna sola). */
+    private static boolean isDisclosureTarget(javafx.event.EventTarget target) {
+        javafx.scene.Node n = target instanceof javafx.scene.Node node ? node : null;
+        while (n != null) {
+            if (n.getStyleClass().contains("tree-disclosure-node") || n.getStyleClass().contains("arrow")) {
+                return true;
+            }
+            n = n.getParent();
+        }
+        return false;
     }
 
     /** Etiqueta de valoración: "8 h × 30 €" o "Precio cerrado". */
