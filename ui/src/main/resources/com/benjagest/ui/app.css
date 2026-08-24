@@ -615,6 +615,39 @@
     -fx-fill: #0f172a;
 }
 
+/* TRB-G1 — arbol de Trabajos agrupado por cliente. Las filas de un
+   TreeTableView NO llevan .table-row-cell, asi que hay que repetir aqui los
+   estilos de .data-table para que el arbol se vea igual que las tablas. */
+.data-table .tree-table-row-cell {
+    -fx-cell-size: 34px;
+}
+
+.data-table .tree-table-row-cell:odd {
+    -fx-background-color: #f8fbff;
+}
+
+.data-table .tree-table-row-cell:selected {
+    -fx-background-color: #d7eff6;
+}
+
+.data-table .tree-table-row-cell:selected .tree-table-cell {
+    -fx-text-fill: #0f172a;
+}
+
+.data-table .tree-table-row-cell:selected .text {
+    -fx-fill: #0f172a;
+}
+
+/* Fila de cabecera de cliente: destacada para distinguirla del detalle. */
+.data-table .tree-table-row-cell.worklog-group-row {
+    -fx-background-color: #eef4fb;
+    -fx-font-weight: bold;
+}
+
+.data-table .tree-table-row-cell.worklog-group-row:selected {
+    -fx-background-color: #d7eff6;
+}
+
 .calendar-modes {
     -fx-background-color: #ffffff;
     -fx-background-radius: 12;
