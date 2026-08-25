@@ -3418,6 +3418,8 @@ public final class I18n {
             case "trabajos.action.collapse_all" -> "Fold all";
             case "trabajos.action.all_pending" -> "All pending";
             case "trabajos.all_pending.none" -> "There is nothing pending to bill.";
+            case "trabajos.action.all_jobs" -> "All jobs";
+            case "trabajos.all_jobs.none" -> "There is no job recorded yet.";
             case "labor.schedule.hint" -> "Work-schedule templates: one template = several time blocks per weekday, assignable to several employees with an effective date.";
             case "labor.schedule.empty" -> "No templates yet.";
             case "labor.schedule.col.name" -> "Name";
@@ -3761,6 +3763,8 @@ public final class I18n {
             case "trabajos.action.collapse_all" -> "Plegar todo";
             case "trabajos.action.all_pending" -> "Todo lo pendiente";
             case "trabajos.all_pending.none" -> "No hay nada pendiente de facturar.";
+            case "trabajos.action.all_jobs" -> "Todos los trabajos";
+            case "trabajos.all_jobs.none" -> "No hay ningún trabajo registrado.";
             case "labor.schedule.hint" -> "Plantillas de horario: 1 plantilla = varios bloques horarios por día de la semana, asignable a varios empleados con fecha de efecto.";
             case "labor.schedule.empty" -> "Aún no hay plantillas.";
             case "labor.schedule.col.name" -> "Nombre";
