@@ -14936,10 +14936,9 @@ public class BenjagestUiApplication extends Application
             task.setOnSucceeded(ev -> {
                 java.util.List<com.benjagest.ui.model.WorkLogEntry> rows = task.getValue();
                 java.util.List<WorkLogNode> groups = groupWorkLogsByCustomer(rows);
-                // Si el filtro aisla un cliente, o solo hay uno, se abre solo:
-                // plegado con un unico grupo no aporta nada.
-                if (custId != null) expandedCustomers.add(custId);
-                if (groups.size() == 1) expandedCustomers.add(groups.get(0).customerId);
+                // TRB-G4 (peticion de Benjamin): NUNCA se despliega solo, ni cuando
+                // hay un unico cliente ni al filtrar por uno. Solo queda abierto lo
+                // que el usuario haya abierto (expandedCustomers).
                 javafx.scene.control.TreeItem<WorkLogNode> root = new javafx.scene.control.TreeItem<>();
                 root.setExpanded(true);
                 for (WorkLogNode g : groups) {
@@ -15005,6 +15004,45 @@ public class BenjagestUiApplication extends Application
                 suppressReload[0] = false;
             }
             reload.run();
+        });
+
+        // TRB-G4 — el hermano del anterior: estirar el rango a TODOS los trabajos
+        // (no solo los pendientes) y quitar los filtros, para poder verlo todo sin
+        // tener que saberte la fecha del primer trabajo. Consulta el rango completo
+        // al pulsarlo, no en cada refresco.
+        Button allJobsBtn = new Button(t("trabajos.action.all_jobs"));
+        allJobsBtn.setGraphic(icon("fas-list"));
+        allJobsBtn.getStyleClass().add("button-secondary");
+        allJobsBtn.setOnAction(e -> {
+            String custId = custIdByName.get(custFilter.getValue());
+            Task<java.util.List<com.benjagest.ui.model.WorkLogEntry>> tk = new Task<>() {
+                @Override protected java.util.List<com.benjagest.ui.model.WorkLogEntry> call() throws Exception {
+                    return altaApiClient.listWorkLogs(WORKLOG_MIN_DATE,
+                            java.time.LocalDate.now().plusYears(5), custId, null, false);
+                }
+            };
+            tk.setOnSucceeded(ev -> {
+                String min = null, max = null;
+                for (com.benjagest.ui.model.WorkLogEntry w : tk.getValue()) {
+                    if (w.logDate() == null || w.logDate().isBlank()) continue;
+                    if (min == null || w.logDate().compareTo(min) < 0) min = w.logDate();
+                    if (max == null || w.logDate().compareTo(max) > 0) max = w.logDate();
+                }
+                if (min == null) { showInfo(t("trabajos.title"), t("trabajos.all_jobs.none")); return; }
+                suppressReload[0] = true;
+                try {
+                    fromPick.setValue(java.time.LocalDate.parse(min));
+                    toPick.setValue(java.time.LocalDate.parse(max));
+                    statusFilter.setValue("");
+                    pendingOnly.setSelected(false);
+                } finally {
+                    suppressReload[0] = false;
+                }
+                reload.run();
+            });
+            tk.setOnFailed(ev -> showError(t("trabajos.fail.title"),
+                    tk.getException() == null ? "" : humanizeBackendError(tk.getException().getMessage())));
+            start(tk, "worklogs-all");
         });
 
         java.util.function.Consumer<Boolean> setAllExpanded = v -> {
@@ -15139,7 +15177,7 @@ public class BenjagestUiApplication extends Application
                 filterGroup(t("accounting.filter.to"), toPick),
                 filterGroup(t("trabajos.col.customer"), custFilter),
                 filterGroup(t("trabajos.col.status"), statusFilter),
-                pendingOnly, allPendingBtn, expandAllBtn, collapseAllBtn, reloadBtn);
+                pendingOnly, allPendingBtn, allJobsBtn, expandAllBtn, collapseAllBtn, reloadBtn);
 
         content.getChildren().addAll(header, hint, filters, actions, tree);
         return content;

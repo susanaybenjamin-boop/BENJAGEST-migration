@@ -77,7 +77,7 @@ public class WorkLogService {
         if (empIds.isEmpty()) return List.of();
         return jdbcTemplate.query(SELECT + """
                  WHERE w.employee_id = ? AND w.log_date BETWEEN ? AND ?
-                 ORDER BY w.log_date DESC LIMIT 200
+                 ORDER BY w.log_date DESC
                 """, mapper, empIds.get(0), from, to);
     }
 
@@ -107,7 +107,10 @@ public class WorkLogService {
             sql.append(" AND w.is_billable = TRUE AND w.billed_invoice_line_id IS NULL"
                     + " AND w.status <> 'BILLED'");
         }
-        sql.append(" ORDER BY w.log_date DESC, employee_name LIMIT 500");
+        // Sin LIMIT (decision de Benjamin, 2026-08-24): con el tope de 500 los
+        // botones "Todo lo pendiente" / "Todos los trabajos" de la UI mentirian
+        // en cuanto hubiera mas de 500 trabajos en el rango consultado.
+        sql.append(" ORDER BY w.log_date DESC, employee_name");
         return jdbcTemplate.query(sql.toString(), mapper, args.toArray());
     }
 
