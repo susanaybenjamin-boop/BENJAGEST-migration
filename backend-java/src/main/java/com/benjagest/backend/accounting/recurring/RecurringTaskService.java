@@ -264,7 +264,8 @@ public class RecurringTaskService {
      */
     public List<DueTask> findDueGlobally(LocalDate today) {
         return jdbcTemplate.query("""
-                SELECT id, company_id, kind, next_run_date
+                SELECT id, company_id, kind, next_run_date, created_by_user_id,
+                       name, last_run_status
                   FROM recurring_tasks
                  WHERE active = TRUE
                    AND next_run_date <= ?
@@ -275,7 +276,9 @@ public class RecurringTaskService {
                 (rs, n) -> new DueTask(
                         rs.getString("id"), rs.getString("company_id"),
                         rs.getString("kind"),
-                        rs.getDate("next_run_date").toLocalDate()),
+                        rs.getDate("next_run_date").toLocalDate(),
+                        rs.getString("created_by_user_id"),
+                        rs.getString("name"), rs.getString("last_run_status")),
                 java.sql.Date.valueOf(today));
     }
 
@@ -393,7 +396,18 @@ public class RecurringTaskService {
                 status, generatedId, generatedKind, message, (int) duration);
 
         // Avanzar next_run_date y contadores.
-        LocalDate nextRun = computeNextRun(task, scheduledDate);
+        //
+        // REC-RETRY (2026-09-02) — un ERROR ya NO avanza la fecha. Antes sí, y
+        // el periodo fallido se perdía en silencio para siempre: la cuota de
+        // autónomo que falló el 2026-08-01 saltó directamente al 09-01 y ese
+        // gasto nunca se generó. Dejando next_run_date en la fecha programada,
+        // el cron del día siguiente lo reintenta hasta que el asesor arregle la
+        // causa (y mientras tanto recibe el aviso que emite el scheduler).
+        // OK y SKIPPED sí avanzan: SKIPPED es una decisión del motor (kind no
+        // implementado, nada que generar), no un fallo recuperable.
+        LocalDate nextRun = "ERROR".equals(status)
+                ? scheduledDate
+                : computeNextRun(task, scheduledDate);
         jdbcTemplate.update("""
                 UPDATE recurring_tasks
                    SET last_run_date = ?, last_run_status = ?, last_run_message = ?,
@@ -1054,5 +1068,14 @@ public class RecurringTaskService {
             String message, int durationMs
     ) {}
 
-    public record DueTask(String id, String companyId, String kind, LocalDate nextRunDate) {}
+    /**
+     * REC-CRON-AUTH — {@code createdByUserId} viaja hasta el scheduler para
+     * poder montar el SecurityContext del creador antes de ejecutar la tarea
+     * (ver {@link RecurringRunIdentity}). {@code name} y {@code lastRunStatus}
+     * los usa el aviso de fallo: el nombre para el texto, y el estado ANTERIOR
+     * para avisar solo en la transición a fallo y no un aviso cada día
+     * mientras la tarea siga rota (ahora los ERROR se reintentan).
+     */
+    public record DueTask(String id, String companyId, String kind, LocalDate nextRunDate,
+                          String createdByUserId, String name, String lastRunStatus) {}
 }
