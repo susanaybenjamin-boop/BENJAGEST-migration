@@ -14783,11 +14783,23 @@ public class BenjagestUiApplication extends Application
         // por cliente. Es el error de lectura mas facil de cometer: ver "0 €
         // pendiente" en un cliente que si lo tiene, pero de otro mes.
         final java.util.Map<String, java.math.BigDecimal> outsideByCustomer = new java.util.HashMap<>();
+        // TRB-G5 — los MISMOS trabajos que suma outsideByCustomer, para poder
+        // colgarlos de la cabecera del cliente al desplegar.
+        final java.util.Map<String, java.util.List<com.benjagest.ui.model.WorkLogEntry>>
+                outsideJobsByCustomer = new java.util.HashMap<>();
         final java.util.List<com.benjagest.ui.model.WorkLogEntry> allPending = new java.util.ArrayList<>();
 
-        java.time.LocalDate now = java.time.LocalDate.now();
-        DatePicker fromPick = new DatePicker(now.withDayOfMonth(1));
-        DatePicker toPick = new DatePicker(now.withDayOfMonth(1).plusMonths(1).minusDays(1));
+        // TRB-G5 (peticion de Benjamin, 2026-09-02): las fechas arrancan EN BLANCO
+        // y en blanco = SIN filtro de fechas (se ve TODO). Antes salian con el mes
+        // en curso y eso escondia trabajos sin que se notara: un trabajo duplicado
+        // que caia en otro mes desaparecia del listado aunque la cabecera del
+        // cliente si avisara de el. Como buildWorkLogsModule() se reconstruye cada
+        // vez que se entra a Trabajos, salir y volver deja las fechas en blanco
+        // otra vez — que es justo lo que se pidio.
+        DatePicker fromPick = new DatePicker();
+        fromPick.setPromptText(t("trabajos.filter.date_any"));
+        DatePicker toPick = new DatePicker();
+        toPick.setPromptText(t("trabajos.filter.date_any"));
         com.benjagest.ui.support.EditableCells.installFlexibleConverter(fromPick);
         com.benjagest.ui.support.EditableCells.installFlexibleConverter(toPick);
 
@@ -14821,8 +14833,10 @@ public class BenjagestUiApplication extends Application
             javafx.scene.control.TreeTableRow<WorkLogNode> row = new javafx.scene.control.TreeTableRow<>() {
                 @Override protected void updateItem(WorkLogNode item, boolean empty) {
                     super.updateItem(item, empty);
-                    getStyleClass().remove("worklog-group-row");
-                    if (!empty && item != null && item.group()) getStyleClass().add("worklog-group-row");
+                    getStyleClass().removeAll("worklog-group-row", "worklog-outside-row");
+                    if (empty || item == null) return;
+                    if (item.group()) getStyleClass().add("worklog-group-row");
+                    else if (item.outside) getStyleClass().add("worklog-outside-row");
                 }
             };
             row.setOnMouseClicked(ev -> {
@@ -14843,7 +14857,14 @@ public class BenjagestUiApplication extends Application
                 n -> n.group() ? n.lastDate : n.entry.logDate(), 100);
         cDate.setComparator(ISO_DATE_COMPARATOR);
         TreeTableColumn<WorkLogNode, String> cEmp = workLogCol(t("trabajos.col.employee"), n -> {
-            if (n.group()) return t("trabajos.group.jobs").replace("{n}", String.valueOf(n.jobs.size()));
+            if (n.group()) {
+                String s = t("trabajos.group.jobs").replace("{n}", String.valueOf(n.jobs.size()));
+                if (!n.outsideJobs.isEmpty()) {
+                    s += " " + t("trabajos.group.jobs_outside")
+                            .replace("{n}", String.valueOf(n.outsideJobs.size()));
+                }
+                return s;
+            }
             // OJO: el parser devuelve "" (no null) para los campos nulos. Comprobar
             // solo != null dejaba la celda Empleado VACIA en los trabajos del
             // titular, en vez de poner "Yo / titular".
@@ -14854,7 +14875,10 @@ public class BenjagestUiApplication extends Application
             return empById.getOrDefault(empId, shortId(empId));
         }, 150);
         TreeTableColumn<WorkLogNode, String> cDesc = workLogCol(t("trabajos.col.description"), n -> {
-            if (!n.group()) return n.entry.description();
+            if (!n.group()) {
+                String d = n.entry.description() == null ? "" : n.entry.description();
+                return n.outside ? d + "  · " + t("trabajos.row.outside") : d;
+            }
             String s = workLogGroupStatuses(n);
             java.math.BigDecimal out = outsideByCustomer.get(n.customerId);
             if (out != null && out.signum() > 0) {
@@ -14900,8 +14924,12 @@ public class BenjagestUiApplication extends Application
         final boolean[] suppressReload = {false};
 
         Runnable reload = () -> {
-            java.time.LocalDate from = fromPick.getValue(), to = toPick.getValue();
-            if (from == null || to == null) return;
+            // TRB-G5 — fecha en blanco = extremo abierto. Con las dos en blanco
+            // (el arranque) se listan TODOS los trabajos, sin rango.
+            java.time.LocalDate from = fromPick.getValue() == null
+                    ? WORKLOG_MIN_DATE : fromPick.getValue();
+            java.time.LocalDate to = toPick.getValue() == null
+                    ? java.time.LocalDate.now().plusYears(5) : toPick.getValue();
             String custId = custIdByName.get(custFilter.getValue());
             String st = statusFilter.getValue();
             boolean pend = pendingOnly.isSelected();
@@ -14913,6 +14941,7 @@ public class BenjagestUiApplication extends Application
                     // rango de fechas. Si falla NO se rompe el listado: solo se
                     // pierde el aviso de "hay pendiente fuera del rango".
                     outsideByCustomer.clear();
+                    outsideJobsByCustomer.clear();
                     allPending.clear();
                     try {
                         java.util.List<com.benjagest.ui.model.WorkLogEntry> pendingAll = altaApiClient.listWorkLogs(
@@ -14926,6 +14955,9 @@ public class BenjagestUiApplication extends Application
                             outsideByCustomer.merge(key,
                                     w.billableAmount() == null ? java.math.BigDecimal.ZERO : w.billableAmount(),
                                     java.math.BigDecimal::add);
+                            outsideJobsByCustomer
+                                    .computeIfAbsent(key, k -> new java.util.ArrayList<>())
+                                    .add(w);
                         }
                     } catch (Exception ignored) {
                         // sin aviso de fuera de rango; el listado principal manda
@@ -14935,7 +14967,8 @@ public class BenjagestUiApplication extends Application
             };
             task.setOnSucceeded(ev -> {
                 java.util.List<com.benjagest.ui.model.WorkLogEntry> rows = task.getValue();
-                java.util.List<WorkLogNode> groups = groupWorkLogsByCustomer(rows);
+                java.util.List<WorkLogNode> groups =
+                        groupWorkLogsByCustomer(rows, outsideJobsByCustomer);
                 // TRB-G4 (peticion de Benjamin): NUNCA se despliega solo, ni cuando
                 // hay un unico cliente ni al filtrar por uno. Solo queda abierto lo
                 // que el usuario haya abierto (expandedCustomers).
@@ -14945,6 +14978,17 @@ public class BenjagestUiApplication extends Application
                     javafx.scene.control.TreeItem<WorkLogNode> gi = new javafx.scene.control.TreeItem<>(g);
                     for (com.benjagest.ui.model.WorkLogEntry w : g.jobs) {
                         gi.getChildren().add(new javafx.scene.control.TreeItem<>(new WorkLogNode(w)));
+                    }
+                    // TRB-G5 — al final, los pendientes de fuera del rango (fila
+                    // atenuada y marcada). Ordenados por fecha para que no queden
+                    // sueltos en medio del detalle del cliente.
+                    g.outsideJobs.sort((a, b) -> {
+                        String da = a.logDate() == null ? "" : a.logDate();
+                        String db = b.logDate() == null ? "" : b.logDate();
+                        return db.compareTo(da);
+                    });
+                    for (com.benjagest.ui.model.WorkLogEntry w : g.outsideJobs) {
+                        gi.getChildren().add(new javafx.scene.control.TreeItem<>(new WorkLogNode(w, true)));
                     }
                     gi.setExpanded(expandedCustomers.contains(g.customerId));
                     gi.expandedProperty().addListener((o, a, b) -> {
@@ -15195,7 +15239,19 @@ public class BenjagestUiApplication extends Application
         final com.benjagest.ui.model.WorkLogEntry entry;   // null en las cabeceras
         final String customerId;                           // "" = sin cliente
         final String customerName;
+        /** TRB-G5 — true si esta fila de detalle cae FUERA del rango filtrado. */
+        final boolean outside;
         final java.util.List<com.benjagest.ui.model.WorkLogEntry> jobs = new java.util.ArrayList<>();
+        /**
+         * TRB-G5 — pendientes de facturar de ESTE cliente que caen fuera del rango
+         * de fechas. Cuelgan de la cabecera como filas atenuadas para que lo que
+         * avisa la cabecera se VEA al desplegar (antes solo salia el aviso y el
+         * trabajo no aparecia por ningun lado). Van aparte de {@code jobs} a
+         * proposito: no suman en los agregados ni entran en la seleccion masiva
+         * de la cabecera, porque el filtro de fechas sigue mandando en lo que se
+         * factura de golpe. Se pueden seleccionar una a una.
+         */
+        final java.util.List<com.benjagest.ui.model.WorkLogEntry> outsideJobs = new java.util.ArrayList<>();
         final java.util.Map<String, Integer> byStatus = new java.util.LinkedHashMap<>();
         java.math.BigDecimal pending = java.math.BigDecimal.ZERO;
         java.math.BigDecimal total = java.math.BigDecimal.ZERO;
@@ -15203,9 +15259,15 @@ public class BenjagestUiApplication extends Application
 
         /** Fila de detalle. */
         WorkLogNode(com.benjagest.ui.model.WorkLogEntry entry) {
+            this(entry, false);
+        }
+
+        /** Fila de detalle, marcando si cae fuera del rango filtrado. */
+        WorkLogNode(com.benjagest.ui.model.WorkLogEntry entry, boolean outside) {
             this.entry = entry;
             this.customerId = null;
             this.customerName = null;
+            this.outside = outside;
         }
 
         /** Cabecera de cliente. */
@@ -15213,6 +15275,7 @@ public class BenjagestUiApplication extends Application
             this.entry = null;
             this.customerId = customerId;
             this.customerName = customerName;
+            this.outside = false;
         }
 
         boolean group() { return entry == null; }
@@ -15240,7 +15303,8 @@ public class BenjagestUiApplication extends Application
      * nombre; el grupo "Sin cliente" siempre al final.
      */
     private java.util.List<WorkLogNode> groupWorkLogsByCustomer(
-            java.util.List<com.benjagest.ui.model.WorkLogEntry> rows) {
+            java.util.List<com.benjagest.ui.model.WorkLogEntry> rows,
+            java.util.Map<String, java.util.List<com.benjagest.ui.model.WorkLogEntry>> outsideJobs) {
         java.util.LinkedHashMap<String, WorkLogNode> byCustomer = new java.util.LinkedHashMap<>();
         for (com.benjagest.ui.model.WorkLogEntry w : rows) {
             String id = w.customerId() == null || w.customerId().isBlank() ? "" : w.customerId();
@@ -15248,6 +15312,17 @@ public class BenjagestUiApplication extends Application
                     : (id.isEmpty() ? t("trabajos.group.no_customer") : shortId(id));
             byCustomer.computeIfAbsent(id, k -> new WorkLogNode(k, name)).add(w);
         }
+        // TRB-G5 — engancha a cada cliente sus pendientes de fuera del rango. Si un
+        // cliente SOLO tiene trabajos fuera del rango se le crea la cabecera igual:
+        // si no, se avisaria de un pendiente que no se puede ver por ningun lado.
+        outsideJobs.forEach((id, list) -> {
+            if (list == null || list.isEmpty()) return;
+            com.benjagest.ui.model.WorkLogEntry first = list.get(0);
+            String name = first.customerName() != null && !first.customerName().isBlank()
+                    ? first.customerName()
+                    : (id.isEmpty() ? t("trabajos.group.no_customer") : shortId(id));
+            byCustomer.computeIfAbsent(id, k -> new WorkLogNode(k, name)).outsideJobs.addAll(list);
+        });
         java.util.List<WorkLogNode> out = new java.util.ArrayList<>(byCustomer.values());
         out.sort((a, b) -> {
             if (a.customerId.isEmpty() != b.customerId.isEmpty()) return a.customerId.isEmpty() ? 1 : -1;

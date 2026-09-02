@@ -3335,7 +3335,7 @@ public final class I18n {
             case "inc.unit.days" -> "days";
             case "trabajos.title" -> "Jobs";
             case "trabajos.subtitle" -> "Track jobs and turn them into invoices";
-            case "trabajos.hint" -> "Jobs are grouped by customer: click a customer to fold or unfold its detail. Select a customer to bill everything it has pending in one go. Collection is handled by the invoice.";
+            case "trabajos.hint" -> "Jobs are grouped by customer: click a customer to fold or unfold its detail. Select a customer to bill everything it has pending in one go. With both dates empty you see every job; anything pending outside the dates you set is still listed, dimmed. Collection is handled by the invoice.";
             case "trabajos.empty" -> "No jobs in this range.";
             case "trabajos.action.new" -> "New job";
             case "trabajos.action.edit" -> "Edit";
@@ -3413,6 +3413,9 @@ public final class I18n {
             case "trabajos.group.to_bill" -> "To bill";
             case "trabajos.group.up_to_date" -> "Up to date";
             case "trabajos.group.outside" -> "+{amount} outside the range";
+            case "trabajos.group.jobs_outside" -> "(+{n} outside the range)";
+            case "trabajos.row.outside" -> "outside the filtered dates";
+            case "trabajos.filter.date_any" -> "Any date";
             case "trabajos.footer.outside" -> "Careful: {amount} pending to bill falls outside the filtered dates.";
             case "trabajos.action.expand_all" -> "Unfold all";
             case "trabajos.action.collapse_all" -> "Fold all";
@@ -3680,7 +3683,7 @@ public final class I18n {
             case "inc.unit.days" -> "días";
             case "trabajos.title" -> "Trabajos";
             case "trabajos.subtitle" -> "Controla los trabajos y conviértelos en facturas";
-            case "trabajos.hint" -> "Los trabajos se agrupan por cliente: clica en el cliente para plegar o desplegar su detalle. Selecciona un cliente para facturar de una vez todo lo que tiene pendiente. El cobro lo lleva la factura.";
+            case "trabajos.hint" -> "Los trabajos se agrupan por cliente: clica en el cliente para plegar o desplegar su detalle. Selecciona un cliente para facturar de una vez todo lo que tiene pendiente. Con las dos fechas en blanco se ven todos los trabajos; lo que quede pendiente fuera de las fechas que pongas sale igualmente, atenuado. El cobro lo lleva la factura.";
             case "trabajos.empty" -> "No hay trabajos en este rango.";
             case "trabajos.action.new" -> "Nuevo trabajo";
             case "trabajos.action.edit" -> "Editar";
@@ -3758,6 +3761,9 @@ public final class I18n {
             case "trabajos.group.to_bill" -> "Por facturar";
             case "trabajos.group.up_to_date" -> "Al día";
             case "trabajos.group.outside" -> "+{amount} fuera del rango";
+            case "trabajos.group.jobs_outside" -> "(+{n} fuera del rango)";
+            case "trabajos.row.outside" -> "fuera de las fechas filtradas";
+            case "trabajos.filter.date_any" -> "Cualquier fecha";
             case "trabajos.footer.outside" -> "Ojo: hay {amount} pendiente de facturar fuera de las fechas filtradas.";
             case "trabajos.action.expand_all" -> "Desplegar todo";
             case "trabajos.action.collapse_all" -> "Plegar todo";
