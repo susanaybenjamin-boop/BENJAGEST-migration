@@ -648,6 +648,24 @@
     -fx-background-color: #d7eff6;
 }
 
+/* TRB-G5 - trabajo pendiente que cae FUERA del rango de fechas filtrado.
+   Se ve al desplegar el cliente (antes solo salia el aviso en la cabecera y el
+   trabajo no aparecia), pero atenuado y en cursiva para que se lea distinto de
+   los del rango. Sigue siendo seleccionable de una en una. */
+.data-table .tree-table-row-cell.worklog-outside-row {
+    -fx-background-color: #f7f7f9;
+    -fx-text-fill: #7a8798;
+    -fx-font-style: italic;
+}
+
+.data-table .tree-table-row-cell.worklog-outside-row .text {
+    -fx-fill: #7a8798;
+}
+
+.data-table .tree-table-row-cell.worklog-outside-row:selected {
+    -fx-background-color: #d7eff6;
+}
+
 .calendar-modes {
     -fx-background-color: #ffffff;
     -fx-background-radius: 12;
