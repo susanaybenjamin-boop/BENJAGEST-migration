@@ -38,11 +38,15 @@ public class PaymentScheduleService {
     private final CurrentUserService currentUser;
     private final com.benjagest.backend.billing.reflection.CrossInvoiceReflectionService reflectionService;
     private final com.benjagest.backend.billing.tpb.BillingAgreementGuard billingAgreementGuard;
+    /** CONTA-1 — cuenta de tercero real de la factura (no la generica). */
+    private final InvoiceCounterpartyAccountResolver counterpartyResolver;
 
     public PaymentScheduleService(JdbcTemplate jdbc, TenantContext tenant,
                                     CurrentUserService currentUser,
                                     com.benjagest.backend.billing.reflection.CrossInvoiceReflectionService reflectionService,
-                                    com.benjagest.backend.billing.tpb.BillingAgreementGuard billingAgreementGuard) {
+                                    com.benjagest.backend.billing.tpb.BillingAgreementGuard billingAgreementGuard,
+                                    InvoiceCounterpartyAccountResolver counterpartyResolver) {
+        this.counterpartyResolver = counterpartyResolver;
         this.jdbc = jdbc;
         this.tenant = tenant;
         this.currentUser = currentUser;
@@ -146,9 +150,11 @@ public class PaymentScheduleService {
 
         String treasuryId = resolveAccount(companyId, req.treasuryAccountCode());
         if (treasuryId == null) throw bad("La cuenta de tesorería " + req.treasuryAccountCode() + " no existe.");
-        String counterPrefix = "SALES".equals(dd.invoiceKind()) ? "430" : "400";
-        String counterId = findAccountByPrefix(companyId, counterPrefix);
-        if (counterId == null) throw bad("No se encontró cuenta " + counterPrefix + " de contrapartida.");
+        String counterId = counterpartyResolver.resolve(companyId, dd.invoiceKind(), dd.invoiceId());
+        if (counterId == null) {
+            throw bad("No se encontró la cuenta de contrapartida del "
+                    + ("SALES".equals(dd.invoiceKind()) ? "cliente" : "proveedor") + ".");
+        }
 
         String fiscalYearId = findFiscalYearId(companyId, payDate);
         if (fiscalYearId == null) {

@@ -85,7 +85,9 @@ class CobroConceptoYModelo130IntegrationTest {
         payments = new PaymentScheduleService(jdbc, tenant,
                 Mockito.mock(com.benjagest.backend.auth.CurrentUserService.class),
                 Mockito.mock(com.benjagest.backend.billing.reflection.CrossInvoiceReflectionService.class),
-                Mockito.mock(com.benjagest.backend.billing.tpb.BillingAgreementGuard.class));
+                Mockito.mock(com.benjagest.backend.billing.tpb.BillingAgreementGuard.class),
+                // CONTA-1: el cobro salda la cuenta de tercero que uso la factura.
+                new InvoiceCounterpartyAccountResolver(jdbc));
         kpis = new SalesAndExpensesKpiService(jdbc, tenant);
 
         seed();
@@ -196,6 +198,12 @@ class CobroConceptoYModelo130IntegrationTest {
     /** Asiento POSTED de una sola linea (basta para los sumatorios del 130). */
     private static void entryConLinea(String companyId, String date, String concept,
                                       String accountCode, String debit, String credit) {
+        entryConLinea(companyId, date, concept, accountCode, debit, credit, null);
+    }
+
+    private static void entryConLinea(String companyId, String date, String concept,
+                                      String accountCode, String debit, String credit,
+                                      String sourceType) {
         String fiscalYearId = jdbc.queryForObject(
                 "SELECT id FROM fiscal_years WHERE company_id = ?", String.class, companyId);
         Integer max = jdbc.queryForObject("""
@@ -204,10 +212,10 @@ class CobroConceptoYModelo130IntegrationTest {
         String entryId = UUID.randomUUID().toString();
         jdbc.update("""
                 INSERT INTO journal_entries (id, company_id, fiscal_year_id, entry_number,
-                        entry_date, concept, status)
-                VALUES (?, ?, ?, ?, ?, ?, 'POSTED')
+                        entry_date, concept, source_type, status)
+                VALUES (?, ?, ?, ?, ?, ?, ?, 'POSTED')
                 """, entryId, companyId, fiscalYearId, (max == null ? 0 : max) + 1,
-                Date.valueOf(date), concept);
+                Date.valueOf(date), concept, sourceType);
         String accountId = jdbc.queryForObject(
                 "SELECT id FROM accounting_accounts WHERE company_id = ? AND code = ?",
                 String.class, companyId, accountCode);
@@ -303,6 +311,36 @@ class CobroConceptoYModelo130IntegrationTest {
         var mayo = kpis.compute(LocalDate.of(2026, 5, 1), LocalDate.of(2026, 5, 31));
         assertEquals(2, mayo.model130Quarter(), "mayo cae en T2");
         assertEquals(0, BigDecimal.ZERO.compareTo(mayo.model130Estimated()));
+    }
+
+    /**
+     * CONTA-2 — Los pagos del propio 130 se contabilizan en la 473, la MISMA
+     * cuenta que las retenciones que practican los clientes. Si se suma la 473
+     * entera como "retenciones", esos pagos se restan DOS VECES: una como
+     * retencion y otra como pago fraccionado previo.
+     *
+     * <p>Bug real de Benjamin ("el 130 en produccion me sale a cero"): su 473
+     * tenia EXACTAMENTE los dos pagos del 130 (827,04 + 693,36 = 1.520,40) y
+     * ninguna retencion de cliente, asi que se restaban 3.040,80 en vez de
+     * 1.520,40 y el resultado se iba a 0.
+     */
+    @Test
+    void losPagosDelPropio130NoCuentanComoRetenciones() {
+        tenant.setCurrentCompanyId(AUTONOMO);
+        // Mismo importe que ya hay de retencion real (200), pero como PAGO del
+        // modelo: no debe alterar el resultado.
+        entryConLinea(AUTONOMO, "2026-03-10", "Pago modelo 130 1T 2026",
+                "473", "300.00", null, "TAX_PAYMENT");
+        try {
+            var t1 = kpis.compute(LocalDate.of(2026, 1, 1), LocalDate.of(2026, 3, 31));
+            assertEquals(0, new BigDecimal("940.00").compareTo(t1.model130Estimated()),
+                    "un asiento TAX_PAYMENT en la 473 NO es una retencion soportada: "
+                            + "si se cuenta, se resta dos veces y el 130 se va a cero");
+        } finally {
+            jdbc.update("DELETE l FROM journal_entry_lines l JOIN journal_entries e "
+                    + "ON e.id = l.journal_entry_id WHERE e.source_type = 'TAX_PAYMENT'");
+            jdbc.update("DELETE FROM journal_entries WHERE source_type = 'TAX_PAYMENT'");
+        }
     }
 
     /**

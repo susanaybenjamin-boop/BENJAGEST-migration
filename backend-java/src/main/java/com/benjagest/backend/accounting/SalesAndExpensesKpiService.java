@@ -166,7 +166,18 @@ public class SalesAndExpensesKpiService {
 
         BigDecimal ingresos = sumLineAmount(companyId, ytdFrom, ytdTo, "7", true);
         BigDecimal gastos = sumLineAmount(companyId, ytdFrom, ytdTo, "6", false);
-        BigDecimal retenciones = sumLineAmount(companyId, ytdFrom, ytdTo, "473", false);
+        // CONTA-2 (2026-09-05) — Retenciones que le practicaron al autonomo, SIN
+        // contar los pagos fraccionados del propio 130.
+        //
+        // Bug encontrado por Benjamin en produccion ("el 130 en produccion me
+        // sale a cero"): la 473 "H.P. retenciones y pagos a cuenta" recoge DOS
+        // cosas distintas —las retenciones de los clientes Y los pagos del 130—
+        // y aqui se sumaba entera. Como los pagos previos ya se restan aparte
+        // (desde tax_filings), los pagos del 130 se restaban DOS VECES y el
+        // resultado se iba a 0. En su BD la 473 tenia exactamente los dos pagos
+        // del 130 (827,04 del 1T + 693,36 del 2T = 1.520,40) y ninguna retencion
+        // real: se restaban 3.040,80 en vez de 1.520,40.
+        BigDecimal retenciones = sumRetentionsExcludingTaxPayments(companyId, ytdFrom, ytdTo);
 
         return com.benjagest.backend.aeat.AeatExtraModelsService
                 .compute130(ingresos, gastos, retenciones, pagosPrevios)
@@ -217,6 +228,29 @@ public class SalesAndExpensesKpiService {
         if (legalFormSet && !"AUTONOMO".equalsIgnoreCase(legalForm)) return false;
         if (regimeSet && !"ESTIMACION_DIRECTA".equalsIgnoreCase(taxRegime)) return false;
         return true;
+    }
+
+    /**
+     * CONTA-2 — Suma del DEBE de la 473 excluyendo los asientos de pago o
+     * liquidacion de impuestos ({@code TAX_PAYMENT} / {@code TAX_LIQUIDATION},
+     * las constantes de {@code TaxLedgerService}). Lo que queda son las
+     * retenciones que los clientes le practicaron, que es lo que pide la
+     * casilla de retenciones del 130.
+     */
+    private BigDecimal sumRetentionsExcludingTaxPayments(String companyId, Date from, Date to) {
+        BigDecimal v = jdbcTemplate.queryForObject("""
+                SELECT COALESCE(SUM(l.debit), 0)
+                  FROM journal_entry_lines l
+                  JOIN journal_entries e ON e.id = l.journal_entry_id
+                  JOIN accounting_accounts a ON a.id = l.account_id
+                 WHERE e.company_id = ?
+                   AND e.status = 'POSTED'
+                   AND e.entry_date BETWEEN ? AND ?
+                   AND a.code LIKE '473%'
+                   AND (e.source_type IS NULL
+                        OR e.source_type NOT IN ('TAX_PAYMENT', 'TAX_LIQUIDATION'))
+                """, BigDecimal.class, companyId, from, to);
+        return v == null ? BigDecimal.ZERO : v;
     }
 
     /**

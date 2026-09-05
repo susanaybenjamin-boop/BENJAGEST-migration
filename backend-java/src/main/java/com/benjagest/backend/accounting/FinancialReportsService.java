@@ -174,10 +174,13 @@ public class FinancialReportsService {
     // ====================================================================
 
     private List<AccountBalance> balancesAt(String companyId, LocalDate asOf) {
+        // CONTA-4 - mismo fallo que en Sumas y saldos: con el estado en el ON de
+        // un LEFT JOIN, las lineas de asientos ANULADOS seguian sumando. Se
+        // agrega con CASE sobre je.id IS NULL ("no cumplio el join").
         return jdbcTemplate.query("""
                 SELECT a.code, a.name,
-                       COALESCE(SUM(l.debit), 0) AS d,
-                       COALESCE(SUM(l.credit), 0) AS c
+                       COALESCE(SUM(CASE WHEN je.id IS NULL THEN 0 ELSE l.debit END), 0) AS d,
+                       COALESCE(SUM(CASE WHEN je.id IS NULL THEN 0 ELSE l.credit END), 0) AS c
                   FROM accounting_accounts a
                   LEFT JOIN journal_entry_lines l ON l.account_id = a.id
                   LEFT JOIN journal_entries je ON je.id = l.journal_entry_id
@@ -193,20 +196,22 @@ public class FinancialReportsService {
     }
 
     private List<AccountBalance> balancesBetween(String companyId, LocalDate from, LocalDate to) {
+        // CONTA-4 - idem: los asientos anulados no cuentan, y una linea fuera del
+        // rango tampoco (antes se colaba porque je.entry_date quedaba a NULL).
         StringBuilder sql = new StringBuilder("""
                 SELECT a.code, a.name,
-                       COALESCE(SUM(l.debit), 0) AS d,
-                       COALESCE(SUM(l.credit), 0) AS c
+                       COALESCE(SUM(CASE WHEN je.id IS NULL THEN 0 ELSE l.debit END), 0) AS d,
+                       COALESCE(SUM(CASE WHEN je.id IS NULL THEN 0 ELSE l.credit END), 0) AS c
                   FROM accounting_accounts a
                   LEFT JOIN journal_entry_lines l ON l.account_id = a.id
                   LEFT JOIN journal_entries je ON je.id = l.journal_entry_id
                                               AND je.status = 'POSTED'
                 """);
         List<Object> args = new ArrayList<>();
+        if (from != null) { sql.append(" AND je.entry_date >= ?"); args.add(Date.valueOf(from)); }
+        if (to != null)   { sql.append(" AND je.entry_date <= ?"); args.add(Date.valueOf(to)); }
         sql.append(" WHERE a.company_id = ?");
         args.add(companyId);
-        if (from != null) { sql.append(" AND (je.entry_date IS NULL OR je.entry_date >= ?)"); args.add(Date.valueOf(from)); }
-        if (to != null)   { sql.append(" AND (je.entry_date IS NULL OR je.entry_date <= ?)"); args.add(Date.valueOf(to)); }
         sql.append(" GROUP BY a.id, a.code, a.name ORDER BY a.code");
         return jdbcTemplate.query(sql.toString(),
                 (rs, n) -> new AccountBalance(rs.getString("code"), rs.getString("name"),

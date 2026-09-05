@@ -44,18 +44,22 @@ public class BankMovementService {
     private final FiscalYearGuardService fiscalGuard;
     private final CurrentUserService currentUserService;
     private final PaymentScheduleService paymentSchedule;
+    /** CONTA-1 — cuenta de tercero real de la factura (no la generica). */
+    private final InvoiceCounterpartyAccountResolver counterpartyResolver;
 
     public BankMovementService(JdbcTemplate jdbcTemplate, TenantContext tenantContext,
                                  BankAccountService bankAccounts,
                                  FiscalYearGuardService fiscalGuard,
                                  CurrentUserService currentUserService,
-                                 PaymentScheduleService paymentSchedule) {
+                                 PaymentScheduleService paymentSchedule,
+                                 InvoiceCounterpartyAccountResolver counterpartyResolver) {
         this.jdbcTemplate = jdbcTemplate;
         this.tenantContext = tenantContext;
         this.bankAccounts = bankAccounts;
         this.fiscalGuard = fiscalGuard;
         this.currentUserService = currentUserService;
         this.paymentSchedule = paymentSchedule;
+        this.counterpartyResolver = counterpartyResolver;
     }
 
     // ====================================================================
@@ -127,10 +131,17 @@ public class BankMovementService {
         // Cuenta contrapartida: 430 (clientes) si SALES, 400 (proveedores) si PURCHASE.
         String contrapartida = req.counterpartyAccountId();
         if (contrapartida == null || contrapartida.isBlank()) {
-            String prefix = "SALES".equals(req.invoiceKind()) ? "430" : "400";
-            contrapartida = findAccountByPrefix(companyId, prefix);
+            // CONTA-1 — la cuenta del TERCERO que uso la factura, no la
+            // generica. Antes se buscaba solo por prefijo y el asiento de
+            // conciliacion saldaba la 400/430 generica mientras la factura habia
+            // cargado la subcuenta del proveedor/cliente: el tercero se quedaba
+            // con saldo y la generica acumulaba el contrario.
+            contrapartida = counterpartyResolver.resolve(
+                    companyId, req.invoiceKind(), req.invoiceId());
             if (contrapartida == null) {
-                throw bad("No se encontró cuenta " + prefix + " para contrapartida.");
+                throw bad("No se encontró cuenta "
+                        + InvoiceCounterpartyAccountResolver.genericPrefix(req.invoiceKind())
+                        + " para contrapartida.");
             }
         }
 

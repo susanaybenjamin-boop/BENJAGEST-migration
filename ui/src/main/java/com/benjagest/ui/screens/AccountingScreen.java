@@ -181,6 +181,8 @@ public class AccountingScreen {
 
     private TableView<DiaryEntry> pendingTable;
     private TabPane accountingTabs;
+    /** DIA-IMP - filtro por importe del Diario. */
+    private TextField diaryAmount;
     private Tab pendingTab;
 
     /** Selecciona la pestaña "Por validar" y recarga su contenido. */
@@ -467,6 +469,15 @@ public class AccountingScreen {
         diarySearch.setPrefColumnCount(20);
         diarySearch.textProperty().addListener((o, a, b) -> applyDiarySearch());
 
+        // DIA-IMP (2026-09-05, peticion Benjamin) - filtro por IMPORTE. Caso real:
+        // ve una cifra en Sumas y saldos o en el Balance y quiere saber de que
+        // asiento sale; por texto no hay manera si no recuerda el concepto.
+        // Acepta "1.724,25", "1724.25" o "1724" (solo la parte entera).
+        diaryAmount = new TextField();
+        diaryAmount.setPromptText(tt.apply("accounting.filter.amount_prompt"));
+        diaryAmount.setPrefColumnCount(9);
+        diaryAmount.textProperty().addListener((o, a, b) -> applyDiarySearch());
+
         Button reload = new Button(tt.apply("accounting.action.refresh"));
         reload.setOnAction(e -> loadDiary());
 
@@ -476,6 +487,7 @@ public class AccountingScreen {
                 new Label(tt.apply("accounting.filter.status")), statusFilter,
                 new Label(tt.apply("accounting.filter.source")), sourceFilter,
                 new Label(tt.apply("accounting.filter.search")), diarySearch,
+                new Label(tt.apply("accounting.filter.amount")), diaryAmount,
                 reload);
         filters.setAlignment(Pos.CENTER_LEFT);
 
@@ -717,23 +729,72 @@ public class AccountingScreen {
     private void applyDiarySearch() {
         String q = diarySearch == null || diarySearch.getText() == null
                 ? "" : diarySearch.getText().trim().toLowerCase();
-        if (q.isEmpty()) {
+        BigDecimal amount = parseAmountFilter(
+                diaryAmount == null ? null : diaryAmount.getText());
+        if (q.isEmpty() && amount == null) {
             diaryTable.setItems(FXCollections.observableArrayList(diaryAll));
             return;
         }
         javafx.collections.ObservableList<DiaryEntry> filtered =
                 FXCollections.observableArrayList();
         for (DiaryEntry e : diaryAll) {
-            String concept = e.concept() == null ? "" : e.concept().toLowerCase();
-            String num = String.valueOf(e.entryNumber());
-            String src = e.sourceType() == null ? "" : e.sourceType().toLowerCase();
-            String srcLabel = translateSourceType(e.sourceType()).toLowerCase();
-            if (concept.contains(q) || num.contains(q)
-                    || src.contains(q) || srcLabel.contains(q)) {
-                filtered.add(e);
+            if (!q.isEmpty()) {
+                String concept = e.concept() == null ? "" : e.concept().toLowerCase();
+                String num = String.valueOf(e.entryNumber());
+                String src = e.sourceType() == null ? "" : e.sourceType().toLowerCase();
+                String srcLabel = translateSourceType(e.sourceType()).toLowerCase();
+                if (!(concept.contains(q) || num.contains(q)
+                        || src.contains(q) || srcLabel.contains(q))) {
+                    continue;
+                }
             }
+            if (amount != null && !matchesAmount(e, amount)) continue;
+            filtered.add(e);
         }
         diaryTable.setItems(filtered);
+    }
+
+    /**
+     * DIA-IMP - Interpreta lo tecleado en el filtro de importe. Acepta el
+     * formato espanol ("1.724,25"), el ingles ("1724.25") y solo la parte
+     * entera ("1724"). Devuelve null si no hay nada usable, que es lo que
+     * apaga el filtro (asi, mientras se teclea "1.7", la tabla no se vacia).
+     */
+    private BigDecimal parseAmountFilter(String raw) {
+        if (raw == null) return null;
+        String t = raw.trim();
+        if (t.isEmpty()) return null;
+        // Con coma, es separador decimal espanol y el punto son miles.
+        if (t.indexOf(',') >= 0) t = t.replace(".", "").replace(',', '.');
+        t = t.replace(" ", "").replace("\u20ac", "");
+        try {
+            return new BigDecimal(t).abs();
+        } catch (NumberFormatException ex) {
+            return null;
+        }
+    }
+
+    /**
+     * DIA-IMP - Si el asiento mueve ese importe. Se compara contra el total del
+     * debe y del haber (iguales en un asiento cuadrado). Tecleando solo la
+     * parte entera vale cualquier centimo de ese euro: "1724" encuentra
+     * 1.724,25 sin acordarse de los decimales.
+     */
+    private boolean matchesAmount(DiaryEntry e, BigDecimal amount) {
+        boolean soloEntero = amount.scale() <= 0;
+        for (BigDecimal v : new BigDecimal[]{e.totalDebit(), e.totalCredit()}) {
+            if (v == null) continue;
+            BigDecimal abs = v.abs();
+            if (soloEntero) {
+                if (abs.setScale(0, java.math.RoundingMode.FLOOR)
+                        .compareTo(amount.setScale(0, java.math.RoundingMode.FLOOR)) == 0) {
+                    return true;
+                }
+            } else if (abs.subtract(amount).abs().compareTo(new BigDecimal("0.005")) < 0) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /** Traduce un source_type al idioma activo (ej. PURCHASE_INVOICE → "Compra"). */
@@ -2848,7 +2909,7 @@ public class AccountingScreen {
 
         Button view = new Button(tt.apply("accounting.action.view"));
         view.getStyleClass().add("primary-button");
-        view.setOnAction(e -> async(() -> api.trialBalance(from.getValue(), to.getValue(),
+        Runnable reloadTrial = () -> async(() -> api.trialBalance(from.getValue(), to.getValue(),
                 prefix.getText() == null ? null : prefix.getText().trim()), rows -> {
             table.setItems(FXCollections.observableArrayList(rows));
             BigDecimal td = BigDecimal.ZERO, tc = BigDecimal.ZERO, sd = BigDecimal.ZERO, sa = BigDecimal.ZERO;
@@ -2861,7 +2922,53 @@ public class AccountingScreen {
             totals.setText(tt.apply("accounting.trial.totals")
                     .replace("{debit}", eur(td)).replace("{credit}", eur(tc))
                     .replace("{debtor}", eur(sd)).replace("{creditor}", eur(sa)));
-        }, err -> showError(tt.apply("accounting.report.fail"), err)));
+        }, err -> showError(tt.apply("accounting.report.fail"), err));
+        view.setOnAction(e -> reloadTrial.run());
+        // AUTO-REFRESH (CLAUDE.md §4) — Benjamin, 2026-09-05: "lo he reclasificado
+        // al banco, pero no se actualiza en sumas y saldos, en cambio en balance
+        // de situacion si sale actualizado". La accion SI emitia TOPIC_JOURNAL
+        // (showReclassifyDialog); lo que faltaba era que estas pestanas
+        // ESCUCHARAN. Se quedaban con lo cargado y el asesor veia un apunte que
+        // ya no existia (uno anulado al reclasificar) hasta volver a pulsar Ver.
+        // Solo se recarga si ya se habia consultado: si no hay nada en pantalla,
+        // no hay nada que refrescar.
+        com.benjagest.ui.support.RefreshBus.subscribe(
+                com.benjagest.ui.support.RefreshBus.TOPIC_JOURNAL,
+                () -> { if (!table.getItems().isEmpty()) reloadTrial.run(); }, table);
+
+        // SYS-DESGLOSE (2026-09-05, peticion Benjamin) - "cuando miro la cuenta
+        // en sumas y saldos, o balance de situacion, no me salen las facturas
+        // [...] podemos hacer que nos ensene en sumas y saldos a que se refiere
+        // ese importe, cuando por ejemplo tenemos en generico un importe y
+        // pertenece a varios terceros".
+        //
+        // Doble clic en la fila = de que se compone ese saldo. Reusa el endpoint
+        // del Libro Mayor, que ya devuelve movimiento a movimiento con su saldo
+        // acumulado; lo que faltaba era poder llegar a el desde aqui sin tener
+        // que cambiar de pestana y volver a teclear la cuenta.
+        table.setRowFactory(tv -> {
+            javafx.scene.control.TableRow<AccountingModels.TrialBalanceRow> row =
+                    new javafx.scene.control.TableRow<>();
+            row.setOnMouseClicked(ev -> {
+                if (ev.getClickCount() == 2 && !row.isEmpty()) {
+                    showAccountBreakdown(row.getItem(), from.getValue(), to.getValue());
+                }
+            });
+            return row;
+        });
+        // Boton explicito ADEMAS del doble clic: un doble clic sin nada que lo
+        // anuncie no lo encuentra nadie (lo comprobo Benjamin: "hago doble clic
+        // y no abre ningun apunte"). El boton se enciende al seleccionar fila.
+        Button breakdownBtn = new Button(tt.apply("accounting.trial.breakdown"));
+        breakdownBtn.setDisable(true);
+        table.getSelectionModel().selectedItemProperty().addListener(
+                (o, ov, nv) -> breakdownBtn.setDisable(nv == null));
+        breakdownBtn.setOnAction(e -> showAccountBreakdown(
+                table.getSelectionModel().getSelectedItem(), from.getValue(), to.getValue()));
+
+        Label dblHint = new Label(tt.apply("accounting.trial.dblclick_hint"));
+        dblHint.setWrapText(true);
+        dblHint.getStyleClass().add("settings-hint");
 
         Button exportPdf = new Button(tt.apply("accounting.fin.export_pdf"));
         exportPdf.setOnAction(e -> savePdf(() -> api.trialBalancePdf(from.getValue(), to.getValue(),
@@ -2871,16 +2978,72 @@ public class AccountingScreen {
         HBox filters = new HBox(8,
                 new Label(tt.apply("accounting.filter.from")), from,
                 new Label(tt.apply("accounting.filter.to")), to,
-                new Label(tt.apply("accounting.trial.prefix")), prefix, view, exportPdf);
+                new Label(tt.apply("accounting.trial.prefix")), prefix,
+                view, breakdownBtn, exportPdf);
         filters.setAlignment(Pos.CENTER_LEFT);
         // Totales ARRIBA de la tabla: siempre visibles sin scroll al fondo.
-        VBox box = new VBox(10, filters, totals, table);
+        // dblHint explica el atajo del doble clic, que si no es invisible.
+        VBox box = new VBox(10, filters, totals, dblHint, table);
         box.setPadding(new Insets(8));
         VBox.setVgrow(box, Priority.ALWAYS);
         return box;
     }
 
     /** Balance de Situación a una fecha: Activo vs Pasivo + PN por masas. */
+    /**
+     * SYS-DESGLOSE - Movimientos que componen el saldo de una cuenta, tal cual
+     * los devuelve el Libro Mayor. Responde a la pregunta de Benjamin: cuando la
+     * cuenta es una generica y su saldo viene de varios terceros, aqui se ve
+     * asiento a asiento de donde sale cada euro.
+     */
+    private void showAccountBreakdown(AccountingModels.TrialBalanceRow account,
+                                      LocalDate from, LocalDate to) {
+        if (account == null) return;
+        Dialog<ButtonType> dlg = new Dialog<>();
+        dlg.setResizable(true);
+        dlg.setTitle(account.code() + "  " + account.name());
+        dlg.getDialogPane().getButtonTypes().add(ButtonType.CLOSE);
+
+        TableView<AccountingModels.LedgerLineView> t = new TableView<>();
+        t.getStyleClass().add("data-table");
+        t.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
+        t.setPlaceholder(new Label(tt.apply("accounting.report.empty")));
+        t.getColumns().addAll(List.of(
+                col(tt.apply("accounting.col.date"),
+                        m -> m.entryDate() == null ? "" : m.entryDate().toString(), 100),
+                col(tt.apply("accounting.col.number"), m -> String.valueOf(m.entryNumber()), 70),
+                col(tt.apply("accounting.col.concept"),
+                        m -> m.lineDescription() != null && !m.lineDescription().isBlank()
+                                ? m.lineDescription() : m.concept(), 300),
+                col(tt.apply("accounting.col.debit"), m -> money(m.debit()), 110),
+                col(tt.apply("accounting.col.credit"), m -> money(m.credit()), 110),
+                col(tt.apply("accounting.col.balance"), m -> money(m.runningBalance()), 110)));
+
+        Label totals = new Label("");
+        totals.setStyle("-fx-font-weight: bold;");
+        Label hint = new Label(tt.apply("accounting.breakdown.hint"));
+        hint.setWrapText(true);
+        hint.getStyleClass().add("settings-hint");
+
+        VBox box = new VBox(10, hint, totals, t);
+        box.setPadding(new Insets(12));
+        VBox.setVgrow(t, Priority.ALWAYS);
+        dlg.getDialogPane().setContent(box);
+        dlg.getDialogPane().setPrefSize(900, 560);
+        dlg.getDialogPane().setMinWidth(700);
+
+        async(() -> api.ledger(account.accountId(), from, to), view -> {
+            t.setItems(FXCollections.observableArrayList(
+                    view.movements() == null ? List.of() : view.movements()));
+            totals.setText(tt.apply("accounting.breakdown.totals")
+                    .replace("{n}", String.valueOf(
+                            view.movements() == null ? 0 : view.movements().size()))
+                    .replace("{balance}", eur(view.closingBalance())));
+        }, err -> showError(tt.apply("accounting.report.fail"), err));
+
+        dlg.showAndWait();
+    }
+
     private Node buildBalanceSheetTab() {
         DatePicker asOf = new DatePicker(LocalDate.now());
         com.benjagest.ui.support.EditableCells.installFlexibleConverter(asOf);
@@ -2892,12 +3055,19 @@ public class AccountingScreen {
 
         Button view = new Button(tt.apply("accounting.action.view"));
         view.getStyleClass().add("primary-button");
-        view.setOnAction(e -> async(() -> api.balanceSheet(asOf.getValue()), bs -> {
+        Runnable reloadBalance = () -> async(() -> api.balanceSheet(asOf.getValue()), bs -> {
             content.getChildren().setAll(
                     sectionGroup(tt.apply("accounting.balance.activo"), bs.activo(), bs.totalActivo()),
                     new javafx.scene.control.Separator(),
                     sectionGroup(tt.apply("accounting.balance.pasivo"), bs.pasivo(), bs.totalPasivo()));
-        }, err -> showError(tt.apply("accounting.report.fail"), err)));
+        }, err -> showError(tt.apply("accounting.report.fail"), err));
+        view.setOnAction(e -> reloadBalance.run());
+        // AUTO-REFRESH (CLAUDE.md §4) — igual que Sumas y saldos: al reclasificar
+        // o validar un asiento, este informe se quedaba con lo cargado. Solo se
+        // recarga si ya se habia consultado.
+        com.benjagest.ui.support.RefreshBus.subscribe(
+                com.benjagest.ui.support.RefreshBus.TOPIC_JOURNAL,
+                () -> { if (!content.getChildren().isEmpty()) reloadBalance.run(); }, content);
 
         Button exportPdf = new Button(tt.apply("accounting.fin.export_pdf"));
         exportPdf.setOnAction(e -> savePdf(() -> api.balanceSheetPdf(asOf.getValue()),
@@ -2954,7 +3124,7 @@ public class AccountingScreen {
 
         Button view = new Button(tt.apply("accounting.action.view"));
         view.getStyleClass().add("primary-button");
-        view.setOnAction(e -> async(() -> api.profitAndLoss(from.getValue(), to.getValue()), pl -> {
+        Runnable reloadPyg = () -> async(() -> api.profitAndLoss(from.getValue(), to.getValue()), pl -> {
             Label result = new Label(tt.apply("accounting.pyg.result") + " " + eur(pl.resultadoExplotacion()));
             result.setStyle("-fx-font-weight: bold; -fx-font-size: 14px;");
             content.getChildren().setAll(
@@ -2962,7 +3132,14 @@ public class AccountingScreen {
                     new javafx.scene.control.Separator(),
                     sectionGroup(tt.apply("accounting.pyg.gastos"), pl.gastos(), pl.totalGastos()),
                     new javafx.scene.control.Separator(), result);
-        }, err -> showError(tt.apply("accounting.report.fail"), err)));
+        }, err -> showError(tt.apply("accounting.report.fail"), err));
+        view.setOnAction(e -> reloadPyg.run());
+        // AUTO-REFRESH (CLAUDE.md §4) — igual que Sumas y saldos: al reclasificar
+        // o validar un asiento, este informe se quedaba con lo cargado. Solo se
+        // recarga si ya se habia consultado.
+        com.benjagest.ui.support.RefreshBus.subscribe(
+                com.benjagest.ui.support.RefreshBus.TOPIC_JOURNAL,
+                () -> { if (!content.getChildren().isEmpty()) reloadPyg.run(); }, content);
 
         Button exportPdf = new Button(tt.apply("accounting.fin.export_pdf"));
         exportPdf.setOnAction(e -> savePdf(() -> api.profitAndLossPdf(from.getValue(), to.getValue()),
