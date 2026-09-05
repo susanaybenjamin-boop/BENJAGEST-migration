@@ -289,6 +289,18 @@ public class PurchaseJournalEntryService {
                                            LocalDate paymentDate,
                                            String bankAccountCode,
                                            String userId) {
+        return createPaymentForPurchase(purchase, paymentDate, bankAccountCode, userId, null);
+    }
+
+    /**
+     * COB-4 — variante con concepto a medida. {@code customConcept} null o en
+     * blanco = el concepto automatico de siempre ({@link #defaultPaymentConcept}).
+     */
+    public String createPaymentForPurchase(PurchaseInvoice purchase,
+                                           LocalDate paymentDate,
+                                           String bankAccountCode,
+                                           String userId,
+                                           String customConcept) {
         String companyId = tenantContext.getCurrentCompanyId();
         if (paymentDate == null) {
             throw new org.springframework.web.server.ResponseStatusException(
@@ -330,9 +342,11 @@ public class PurchaseJournalEntryService {
         String supplierName = purchase.supplierName() != null && !purchase.supplierName().isBlank()
                 ? purchase.supplierName()
                 : (purchase.supplierNif() != null ? purchase.supplierNif() : "Proveedor");
-        String concept = "Pago"
-                + (purchase.invoiceNumber() != null ? " Fra. " + purchase.invoiceNumber() : "")
-                + " - " + supplierName;
+        // COB-4 — concepto del asesor si lo escribio; si no, el automatico de
+        // siempre. Mismo criterio que PaymentScheduleService (COB-3).
+        String concept = customConcept != null && !customConcept.isBlank()
+                ? customConcept.trim()
+                : defaultPaymentConcept(purchase, supplierName);
         if (concept.length() > 240) concept = concept.substring(0, 240);
         // GAS-6: el pago manual entra VALIDADO directo (POSTED con número).
         int entryNumber = nextPostedEntryNumber(companyId, fiscalYearId);
@@ -353,6 +367,20 @@ public class PurchaseJournalEntryService {
         insertLine(entryId, acc400, supplierName, amount, java.math.BigDecimal.ZERO);
         insertLine(entryId, acc572, concept, java.math.BigDecimal.ZERO, amount);
         return entryId;
+    }
+
+    /**
+     * COB-4 — Concepto automatico del asiento de pago de un gasto. Es el que
+     * se ha usado siempre; ahora vive en un metodo con nombre porque la UI
+     * prerrellena el campo editable con este MISMO texto (ver
+     * {@code openRegisterPaymentDialog}), de forma que quien no lo toque
+     * obtiene exactamente el asiento de antes. Si se cambia aqui, cambiarlo
+     * alli.
+     */
+    public static String defaultPaymentConcept(PurchaseInvoice purchase, String supplierName) {
+        return "Pago"
+                + (purchase.invoiceNumber() != null ? " Fra. " + purchase.invoiceNumber() : "")
+                + " - " + supplierName;
     }
 
     /**

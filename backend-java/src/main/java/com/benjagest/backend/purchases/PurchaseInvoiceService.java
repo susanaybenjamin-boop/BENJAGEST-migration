@@ -173,6 +173,13 @@ public class PurchaseInvoiceService {
      */
     @Transactional
     public PurchaseInvoice registerPayment(String id, LocalDate paymentDate, String bankAccountCode) {
+        return registerPayment(id, paymentDate, bankAccountCode, null);
+    }
+
+    /** COB-4 — variante con concepto del asesor (null = el automatico de siempre). */
+    @Transactional
+    public PurchaseInvoice registerPayment(String id, LocalDate paymentDate,
+                                           String bankAccountCode, String concept) {
         billingAgreementGuard.requireAgreementOrOwn(
                 com.benjagest.backend.billing.tpb.BillingAgreementGuard.Scope.PURCHASES);
         PurchaseInvoice existing = get(id);
@@ -183,7 +190,7 @@ public class PurchaseInvoiceService {
         fiscalGuard.requireOpenForDate(paymentDate, "registrar el pago");
         AuthenticatedUser user = currentUserService.require();
         String entryId = journalService.createPaymentForPurchase(
-                existing, paymentDate, bankAccountCode, user.userId());
+                existing, paymentDate, bankAccountCode, user.userId(), concept);
         repository.markPaid(id, paymentDate, bankAccountCode);
         settleDueDates(id, paymentDate, bankAccountCode, entryId);
         return repository.findById(id).orElseThrow();
@@ -624,7 +631,12 @@ public class PurchaseInvoiceService {
     ) {}
 
     /** GAS-2 — Petición de pago de un gasto (fecha + cuenta de banco 572). */
-    public record PayRequest(LocalDate paymentDate, String bankAccountCode) {}
+    /**
+     * COB-4 — {@code concept} es OPCIONAL, igual que en el cuadro de
+     * vencimientos: en blanco (o ausente, cliente antiguo) el asiento sigue
+     * llevando el concepto automatico "Pago Fra. N - Proveedor".
+     */
+    public record PayRequest(LocalDate paymentDate, String bankAccountCode, String concept) {}
 
     public record BatchValidateRequest(java.util.List<String> ids) {}
 

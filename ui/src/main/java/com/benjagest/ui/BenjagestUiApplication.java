@@ -4572,10 +4572,29 @@ public class BenjagestUiApplication extends Application
 
         javafx.scene.layout.GridPane grid = new javafx.scene.layout.GridPane();
         grid.setHgap(10); grid.setVgap(10);
+        // COB-4 — concepto del asiento de pago, editable (mismo criterio que el
+        // cuadro de vencimientos). Prerrellenado con EXACTAMENTE el texto que
+        // genera el backend (PurchaseJournalEntryService.defaultPaymentConcept):
+        // quien no lo toque obtiene el asiento de siempre. Si se cambia el
+        // formato alli, cambiarlo aqui.
+        String supplierForConcept = sel.supplierName() != null && !sel.supplierName().isBlank()
+                ? sel.supplierName()
+                : (sel.supplierNif() != null ? sel.supplierNif() : "Proveedor");
+        TextField conceptField = new TextField("Pago"
+                + (sel.invoiceNumber() != null ? " Fra. " + sel.invoiceNumber() : "")
+                + " - " + supplierForConcept);
+        conceptField.setMaxWidth(Double.MAX_VALUE);
+
         int row = 0;
         grid.add(new Label(t("pay.field.date")), 0, row); grid.add(dateField, 1, row++);
         grid.add(new Label(t("pay.field.bank")), 0, row); grid.add(bankCombo, 1, row++);
+        grid.add(new Label(t("duedates.pay.concept")), 0, row); grid.add(conceptField, 1, row++);
+        Label payConceptHint = new Label(t("duedates.pay.concept.hint"));
+        payConceptHint.setWrapText(true);
+        payConceptHint.getStyleClass().add("settings-hint");
+        grid.add(payConceptHint, 1, row++);
         javafx.scene.layout.GridPane.setHgrow(bankCombo, Priority.ALWAYS);
+        javafx.scene.layout.GridPane.setHgrow(conceptField, Priority.ALWAYS);
 
         Button payBtn = new Button(t("pay.action.confirm"));
         payBtn.getStyleClass().add("button-primary");
@@ -4592,7 +4611,7 @@ public class BenjagestUiApplication extends Application
             payBtn.setDisable(true);
             Task<Void> payTask = new Task<>() {
                 @Override protected Void call() throws Exception {
-                    purchasesApi.pay(sel.id(), date, bank.code());
+                    purchasesApi.pay(sel.id(), date, bank.code(), conceptField.getText());
                     return null;
                 }
             };
@@ -4616,7 +4635,8 @@ public class BenjagestUiApplication extends Application
         root.setPadding(new Insets(18));
         dlg.setScene(new javafx.scene.Scene(root));
         dlg.setResizable(true);
-        dlg.setWidth(440);
+        // COB-4: el campo de concepto pide algo mas de ancho que los 440 de antes.
+        dlg.setWidth(520);
         dlg.show();
     }
 
