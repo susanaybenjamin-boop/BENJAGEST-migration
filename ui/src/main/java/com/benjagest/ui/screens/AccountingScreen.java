@@ -2848,7 +2848,7 @@ public class AccountingScreen {
 
         Button view = new Button(tt.apply("accounting.action.view"));
         view.getStyleClass().add("primary-button");
-        view.setOnAction(e -> async(() -> api.trialBalance(from.getValue(), to.getValue(),
+        Runnable reloadTrial = () -> async(() -> api.trialBalance(from.getValue(), to.getValue(),
                 prefix.getText() == null ? null : prefix.getText().trim()), rows -> {
             table.setItems(FXCollections.observableArrayList(rows));
             BigDecimal td = BigDecimal.ZERO, tc = BigDecimal.ZERO, sd = BigDecimal.ZERO, sa = BigDecimal.ZERO;
@@ -2861,7 +2861,19 @@ public class AccountingScreen {
             totals.setText(tt.apply("accounting.trial.totals")
                     .replace("{debit}", eur(td)).replace("{credit}", eur(tc))
                     .replace("{debtor}", eur(sd)).replace("{creditor}", eur(sa)));
-        }, err -> showError(tt.apply("accounting.report.fail"), err)));
+        }, err -> showError(tt.apply("accounting.report.fail"), err));
+        view.setOnAction(e -> reloadTrial.run());
+        // AUTO-REFRESH (CLAUDE.md §4) — Benjamin, 2026-09-05: "lo he reclasificado
+        // al banco, pero no se actualiza en sumas y saldos, en cambio en balance
+        // de situacion si sale actualizado". La accion SI emitia TOPIC_JOURNAL
+        // (showReclassifyDialog); lo que faltaba era que estas pestanas
+        // ESCUCHARAN. Se quedaban con lo cargado y el asesor veia un apunte que
+        // ya no existia (uno anulado al reclasificar) hasta volver a pulsar Ver.
+        // Solo se recarga si ya se habia consultado: si no hay nada en pantalla,
+        // no hay nada que refrescar.
+        com.benjagest.ui.support.RefreshBus.subscribe(
+                com.benjagest.ui.support.RefreshBus.TOPIC_JOURNAL,
+                () -> { if (!table.getItems().isEmpty()) reloadTrial.run(); }, table);
 
         Button exportPdf = new Button(tt.apply("accounting.fin.export_pdf"));
         exportPdf.setOnAction(e -> savePdf(() -> api.trialBalancePdf(from.getValue(), to.getValue(),
@@ -2892,12 +2904,19 @@ public class AccountingScreen {
 
         Button view = new Button(tt.apply("accounting.action.view"));
         view.getStyleClass().add("primary-button");
-        view.setOnAction(e -> async(() -> api.balanceSheet(asOf.getValue()), bs -> {
+        Runnable reloadBalance = () -> async(() -> api.balanceSheet(asOf.getValue()), bs -> {
             content.getChildren().setAll(
                     sectionGroup(tt.apply("accounting.balance.activo"), bs.activo(), bs.totalActivo()),
                     new javafx.scene.control.Separator(),
                     sectionGroup(tt.apply("accounting.balance.pasivo"), bs.pasivo(), bs.totalPasivo()));
-        }, err -> showError(tt.apply("accounting.report.fail"), err)));
+        }, err -> showError(tt.apply("accounting.report.fail"), err));
+        view.setOnAction(e -> reloadBalance.run());
+        // AUTO-REFRESH (CLAUDE.md §4) — igual que Sumas y saldos: al reclasificar
+        // o validar un asiento, este informe se quedaba con lo cargado. Solo se
+        // recarga si ya se habia consultado.
+        com.benjagest.ui.support.RefreshBus.subscribe(
+                com.benjagest.ui.support.RefreshBus.TOPIC_JOURNAL,
+                () -> { if (!content.getChildren().isEmpty()) reloadBalance.run(); }, content);
 
         Button exportPdf = new Button(tt.apply("accounting.fin.export_pdf"));
         exportPdf.setOnAction(e -> savePdf(() -> api.balanceSheetPdf(asOf.getValue()),
@@ -2954,7 +2973,7 @@ public class AccountingScreen {
 
         Button view = new Button(tt.apply("accounting.action.view"));
         view.getStyleClass().add("primary-button");
-        view.setOnAction(e -> async(() -> api.profitAndLoss(from.getValue(), to.getValue()), pl -> {
+        Runnable reloadPyg = () -> async(() -> api.profitAndLoss(from.getValue(), to.getValue()), pl -> {
             Label result = new Label(tt.apply("accounting.pyg.result") + " " + eur(pl.resultadoExplotacion()));
             result.setStyle("-fx-font-weight: bold; -fx-font-size: 14px;");
             content.getChildren().setAll(
@@ -2962,7 +2981,14 @@ public class AccountingScreen {
                     new javafx.scene.control.Separator(),
                     sectionGroup(tt.apply("accounting.pyg.gastos"), pl.gastos(), pl.totalGastos()),
                     new javafx.scene.control.Separator(), result);
-        }, err -> showError(tt.apply("accounting.report.fail"), err)));
+        }, err -> showError(tt.apply("accounting.report.fail"), err));
+        view.setOnAction(e -> reloadPyg.run());
+        // AUTO-REFRESH (CLAUDE.md §4) — igual que Sumas y saldos: al reclasificar
+        // o validar un asiento, este informe se quedaba con lo cargado. Solo se
+        // recarga si ya se habia consultado.
+        com.benjagest.ui.support.RefreshBus.subscribe(
+                com.benjagest.ui.support.RefreshBus.TOPIC_JOURNAL,
+                () -> { if (!content.getChildren().isEmpty()) reloadPyg.run(); }, content);
 
         Button exportPdf = new Button(tt.apply("accounting.fin.export_pdf"));
         exportPdf.setOnAction(e -> savePdf(() -> api.profitAndLossPdf(from.getValue(), to.getValue()),
