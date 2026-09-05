@@ -426,11 +426,55 @@ public class SeriesService {
             }
         }
 
+        // NUM-1 (2026-09-05) — SALTAR los numeros ya ocupados en la empresa.
+        //
+        // El problema real que arregla: las facturas HISTORICAS entran por SQL
+        // directo (import de PDF y de CONTENDO) con el numero que traia el papel
+        // y series_id NULL, sin tocar este contador — es a proposito, no pueden
+        // pasar por SalesInvoiceService (linea roja VeriFactu/SIF). Resultado:
+        // el contador va por detras de la realidad y al validar una factura
+        // nueva se choca con la unica (company_id, invoice_number), la
+        // transaccion hace rollback, el contador VUELVE ATRAS y el reintento
+        // pide el mismo numero. La serie se queda atascada para siempre.
+        // Caso real de Benjamin: serie FRA con next=8 y FRA-2026-0008 ocupado
+        // por una historica -> imposible emitir ninguna factura nueva.
+        //
+        // Saltar NO abre un hueco en la numeracion: ese numero existe, lo tiene
+        // la factura historica. La serie completa (historicas + nuevas) sigue
+        // siendo correlativa, que es lo que exige la norma. Emitir el 9 cuando
+        // el 8 ya esta emitido es justamente lo correcto.
+        String formatted = formatNumber(series.formatTemplate(), series.code(), numberToEmit, year);
+        int skipped = 0;
+        while (numberAlreadyUsed(formatted)) {
+            numberToEmit++;
+            formatted = formatNumber(series.formatTemplate(), series.code(), numberToEmit, year);
+            if (++skipped > 10000) {
+                // Cinturon: si el formato no distingue numeros (plantilla sin
+                // {0000}, por ejemplo) esto no terminaria nunca.
+                throw new ResponseStatusException(HttpStatus.CONFLICT,
+                        "No se encontro un numero libre para la serie " + series.code()
+                        + ". Revisa el formato de la serie y los numeros ya usados.");
+            }
+        }
+
         int newNext = numberToEmit + 1;
         repository.updateCounter(series.id(), newNext, newCurrentYear);
 
-        String formatted = formatNumber(series.formatTemplate(), series.code(), numberToEmit, year);
         return new ClaimedNumber(series.id(), series.code(), numberToEmit, year, formatted, yearReset);
+    }
+
+    /**
+     * NUM-1 — ¿ese numero de factura ya existe en la empresa? Se mira contra
+     * TODA la tabla, no solo contra la serie, porque la unica que revienta es
+     * {@code uk_sales_invoices_company_number (company_id, invoice_number)} y
+     * las historicas importadas ni siquiera tienen series_id.
+     */
+    private boolean numberAlreadyUsed(String formatted) {
+        Integer n = jdbc.queryForObject("""
+                SELECT COUNT(*) FROM sales_invoices
+                 WHERE company_id = ? AND invoice_number = ?
+                """, Integer.class, tenant.getCurrentCompanyId(), formatted);
+        return n != null && n > 0;
     }
 
     /**

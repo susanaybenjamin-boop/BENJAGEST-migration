@@ -1643,6 +1643,11 @@ public class AccountingScreen {
     }
 
     private void renderFinancials(AccountingModels.ClientFinancials f) {
+        // M130-2 — se guarda la referencia para poder colar la tarjeta del 130
+        // JUSTO detras de la del 303 (van juntas: son las dos estimaciones
+        // fiscales del periodo).
+        Node card303 = kpiCard(tt.apply("accounting.fin.model303"), money(f.model303Estimated()),
+                tt.apply("accounting.fin.estimated"), "#6e6e6e");
         finCards.getChildren().clear();
         finCards.getChildren().addAll(
                 kpiCard(tt.apply("accounting.fin.income"), money(f.income()), null, "#2e7d32"),
@@ -1656,8 +1661,7 @@ public class AccountingScreen {
                         tt.apply("accounting.fin.over_income"), "#6e6e6e"),
                 kpiCard(tt.apply("accounting.fin.vat_charged"), money(f.vatCharged()), null, "#6e6e6e"),
                 kpiCard(tt.apply("accounting.fin.vat_borne"), money(f.vatBorne()), null, "#6e6e6e"),
-                kpiCard(tt.apply("accounting.fin.model303"), money(f.model303Estimated()),
-                        tt.apply("accounting.fin.estimated"), "#6e6e6e"),
+                card303,
                 // Los subtítulos van CORTOS a propósito: la tarjeta mide 210px y
                 // un texto largo se corta con "..." (visto en el smoke). Si ya
                 // hay un dato que contar (vencidas / sin pagar), ese manda; el
@@ -1676,6 +1680,15 @@ public class AccountingScreen {
                         "#1565c0",
                         () -> router.navigateTo("purchases", "PENDING"))
         );
+        // M130-2 — el 130 solo lo presenta el autonomo en estimacion directa; en
+        // una SL o en modulos la tarjeta NO se pinta (un "IRPF a pagar" ahi seria
+        // informacion falsa). Lo decide el backend, misma regla que en el cuadro
+        // del cliente no vinculado.
+        if (f.model130Applicable()) {
+            finCards.getChildren().add(finCards.getChildren().indexOf(card303) + 1,
+                    kpiCard(tt.apply("accounting.fin.model130"), money(f.model130Estimated()),
+                            tt.apply("accounting.fin.estimated"), "#6e6e6e"));
+        }
         if (f.draftCount() > 0) {
             finDraftWarn.setText(tt.apply("accounting.fin.draft_warn")
                     .replace("{n}", String.valueOf(f.draftCount())));

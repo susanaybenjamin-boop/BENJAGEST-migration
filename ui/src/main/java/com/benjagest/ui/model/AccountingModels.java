@@ -345,6 +345,8 @@ public final class AccountingModels {
             BigDecimal income, BigDecimal expenses, BigDecimal result,
             BigDecimal personnelCost, BigDecimal vatCharged, BigDecimal vatBorne,
             BigDecimal model303Estimated,
+            /** M130-2 — pago fraccionado IRPF estimado + si el cliente lo presenta. */
+            BigDecimal model130Estimated, boolean model130Applicable,
             BigDecimal pendingCollections, int overdueInvoices,
             BigDecimal pendingPayments,
             BigDecimal marginPct, BigDecimal expenseRatioPct, BigDecimal personnelRatioPct,
