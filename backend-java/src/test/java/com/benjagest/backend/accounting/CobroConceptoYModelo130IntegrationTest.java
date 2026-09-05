@@ -294,6 +294,59 @@ class CobroConceptoYModelo130IntegrationTest {
     }
 
     // ====================================================================
+    //  COB-4 — el OTRO camino de pago: "Registrar pago" de Compras
+    // ====================================================================
+
+    /**
+     * Hay dos caminos de pago en la app y los dos fijaban el concepto. Este es
+     * el de Compras (GAS-2), que no pasa por el cuadro de vencimientos.
+     * Se prueba el metodo que construye el asiento, que es donde vivia el
+     * texto fijo.
+     */
+    @Test
+    void enComprasElConceptoDelPagoTambienEsEditable() {
+        var purchase = Mockito.mock(
+                com.benjagest.backend.purchases.PurchaseInvoice.class);
+        Mockito.when(purchase.invoiceNumber()).thenReturn("F-2026-77");
+
+        assertEquals("Pago Fra. F-2026-77 - Ferreteria Paco",
+                com.benjagest.backend.purchases.PurchaseJournalEntryService
+                        .defaultPaymentConcept(purchase, "Ferreteria Paco"),
+                "el concepto automatico debe seguir siendo EXACTAMENTE el de antes: "
+                        + "es el que la UI prerrellena en el campo editable");
+    }
+
+    /** Un gasto sin numero de factura tampoco cambia de formato. */
+    @Test
+    void elConceptoAutomaticoDeComprasAguantaSinNumeroDeFactura() {
+        var purchase = Mockito.mock(
+                com.benjagest.backend.purchases.PurchaseInvoice.class);
+        Mockito.when(purchase.invoiceNumber()).thenReturn(null);
+
+        assertEquals("Pago - Ferreteria Paco",
+                com.benjagest.backend.purchases.PurchaseJournalEntryService
+                        .defaultPaymentConcept(purchase, "Ferreteria Paco"));
+    }
+
+    /** El PayRequest de Compras tambien tiene que mapear el campo nuevo. */
+    @Test
+    void elJsonDePagoDeComprasMapeaElConcepto() throws Exception {
+        var mapper = new com.fasterxml.jackson.databind.ObjectMapper()
+                .registerModule(new com.fasterxml.jackson.datatype.jsr310.JavaTimeModule());
+        var req = mapper.readValue(
+                "{\"paymentDate\":\"2026-03-15\",\"bankAccountCode\":\"572\","
+                        + "\"concept\":\"Pago ferreteria obra Lopez\"}",
+                com.benjagest.backend.purchases.PurchaseInvoiceService.PayRequest.class);
+        assertEquals("Pago ferreteria obra Lopez", req.concept());
+
+        var viejo = mapper.readValue(
+                "{\"paymentDate\":\"2026-03-15\",\"bankAccountCode\":\"572\"}",
+                com.benjagest.backend.purchases.PurchaseInvoiceService.PayRequest.class);
+        org.junit.jupiter.api.Assertions.assertNull(viejo.concept(),
+                "un cliente antiguo que no manda el campo debe seguir funcionando");
+    }
+
+    // ====================================================================
     //  Contrato JSON con la UI (lo que viaja de verdad por el cable)
     // ====================================================================
 

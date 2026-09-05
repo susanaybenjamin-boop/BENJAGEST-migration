@@ -79,11 +79,22 @@ public class PurchaseInvoiceApiClient {
      */
     public void pay(String id, LocalDate paymentDate, String bankAccountCode)
             throws IOException, InterruptedException {
+        pay(id, paymentDate, bankAccountCode, null);
+    }
+
+    /**
+     * COB-4 — {@code concept} opcional: null o en blanco deja el concepto
+     * automatico del backend ("Pago Fra. N - Proveedor").
+     */
+    public void pay(String id, LocalDate paymentDate, String bankAccountCode, String concept)
+            throws IOException, InterruptedException {
         StringBuilder json = new StringBuilder("{");
         json.append("\"paymentDate\":")
                 .append(paymentDate == null ? "null" : "\"" + paymentDate + "\"");
         json.append(",\"bankAccountCode\":")
                 .append(bankAccountCode == null ? "null" : "\"" + escape(bankAccountCode) + "\"");
+        json.append(",\"concept\":")
+                .append(concept == null ? "null" : "\"" + escape(concept) + "\"");
         json.append("}");
         HttpRequest.Builder b = HttpRequest.newBuilder(
                         URI.create(baseUrl + "/purchases/invoices/" + id + "/pay"))

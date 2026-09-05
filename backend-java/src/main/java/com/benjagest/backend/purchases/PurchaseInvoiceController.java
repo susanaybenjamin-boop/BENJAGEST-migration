@@ -107,7 +107,8 @@ public class PurchaseInvoiceController {
     @PostMapping("/{id}/pay")
     public PurchaseInvoice pay(@PathVariable("id") String id,
                                @RequestBody PurchaseInvoiceService.PayRequest body) {
-        return service.registerPayment(id, body.paymentDate(), body.bankAccountCode());
+        return service.registerPayment(id, body.paymentDate(), body.bankAccountCode(),
+                body.concept());
     }
 
     /**
