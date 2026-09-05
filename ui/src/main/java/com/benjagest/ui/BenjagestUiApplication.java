@@ -4585,6 +4585,16 @@ public class BenjagestUiApplication extends Application
                 + " - " + supplierForConcept);
         conceptField.setMaxWidth(Double.MAX_VALUE);
 
+        // COB-4 — mismas restricciones de columna que el dialogo de vencimientos:
+        // la columna de etiquetas no se encoge, la de campos absorbe el sobrante.
+        javafx.scene.layout.ColumnConstraints payLabelCol = new javafx.scene.layout.ColumnConstraints();
+        payLabelCol.setMinWidth(javafx.scene.layout.Region.USE_PREF_SIZE);
+        payLabelCol.setHgrow(Priority.NEVER);
+        javafx.scene.layout.ColumnConstraints payFieldCol = new javafx.scene.layout.ColumnConstraints();
+        payFieldCol.setHgrow(Priority.ALWAYS);
+        payFieldCol.setFillWidth(true);
+        grid.getColumnConstraints().setAll(payLabelCol, payFieldCol);
+
         int row = 0;
         grid.add(new Label(t("pay.field.date")), 0, row); grid.add(dateField, 1, row++);
         grid.add(new Label(t("pay.field.bank")), 0, row); grid.add(bankCombo, 1, row++);
@@ -4592,6 +4602,7 @@ public class BenjagestUiApplication extends Application
         Label payConceptHint = new Label(t("duedates.pay.concept.hint"));
         payConceptHint.setWrapText(true);
         payConceptHint.getStyleClass().add("settings-hint");
+        payConceptHint.setMaxWidth(320);
         grid.add(payConceptHint, 1, row++);
         javafx.scene.layout.GridPane.setHgrow(bankCombo, Priority.ALWAYS);
         javafx.scene.layout.GridPane.setHgrow(conceptField, Priority.ALWAYS);
@@ -4928,6 +4939,20 @@ public class BenjagestUiApplication extends Application
 
         GridPane g = new GridPane();
         g.setHgap(8); g.setVgap(8);
+        // COB-3 fix (Benjamin, captura 2026-09-05: "no se leen las cabeceras de
+        // las lineas en el cuadro de pago"). Sin restricciones de columna, el
+        // texto de ayuda —que es largo y va con wrapText— reclamaba todo el
+        // ancho y aplastaba la columna de etiquetas hasta dejarla en "...".
+        // Col 0 = etiquetas, NUNCA se encogen por debajo de su tamanio; col 1 =
+        // los campos, que son los que absorben el espacio sobrante.
+        javafx.scene.layout.ColumnConstraints labelCol = new javafx.scene.layout.ColumnConstraints();
+        labelCol.setMinWidth(javafx.scene.layout.Region.USE_PREF_SIZE);
+        labelCol.setHgrow(Priority.NEVER);
+        javafx.scene.layout.ColumnConstraints fieldCol = new javafx.scene.layout.ColumnConstraints();
+        fieldCol.setHgrow(Priority.ALWAYS);
+        fieldCol.setFillWidth(true);
+        g.getColumnConstraints().setAll(labelCol, fieldCol);
+
         g.addRow(0, new Label(t("duedates.col.amount")), new Label(eur(dd.amount())));
         g.addRow(1, new Label(t("duedates.pay.treasury")), treasury);
         g.addRow(2, new Label(t("duedates.pay.date")), datePicker);
@@ -4936,13 +4961,17 @@ public class BenjagestUiApplication extends Application
         Label conceptHint = new Label(t("duedates.pay.concept.hint"));
         conceptHint.setWrapText(true);
         conceptHint.getStyleClass().add("settings-hint");
+        // Tope de ancho: sin el, un Label con wrapText pide de ancho TODO el
+        // texto en una linea y vuelve a descuadrar la rejilla.
+        conceptHint.setMaxWidth(320);
         g.add(conceptHint, 1, 5);
         for (Node n : java.util.List.of(treasury, datePicker, method, conceptField)) {
             GridPane.setHgrow(n, Priority.ALWAYS);
         }
         g.setPadding(new Insets(10));
         dlg.getDialogPane().setContent(g);
-        dlg.getDialogPane().setPrefWidth(460);
+        dlg.getDialogPane().setPrefWidth(520);
+        dlg.getDialogPane().setMinWidth(460);
 
         dlg.showAndWait().ifPresent(bt -> {
             if (bt != okBt) return;
