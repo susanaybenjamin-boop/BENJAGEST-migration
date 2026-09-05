@@ -14568,6 +14568,11 @@ public class BenjagestUiApplication extends Application
                             String partyName, java.math.BigDecimal total, java.time.LocalDate invoiceDate) {
                         BenjagestUiApplication.this.openRecurringEditorFromInvoice(kind, partyNif, partyName, total, invoiceDate);
                     }
+                    // COB-5 — mismo dialogo de vencimientos que el resto de listados.
+                    @Override public void openDueDatesDialog(String kind, String invoiceId,
+                            String partyName, java.math.BigDecimal total) {
+                        BenjagestUiApplication.this.openDueDatesDialog(kind, invoiceId, partyName, total);
+                    }
                     @Override public void applyBillingGate(boolean sales, javafx.scene.layout.VBox bannerHolder,
                             javafx.scene.control.ButtonBase... toDisable) {
                         BenjagestUiApplication.this.applyBillingGate(sales, bannerHolder, toDisable);

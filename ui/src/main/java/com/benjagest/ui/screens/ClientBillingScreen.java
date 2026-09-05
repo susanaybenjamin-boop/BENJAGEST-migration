@@ -30,6 +30,13 @@ public class ClientBillingScreen extends ScreenBase {
         void importSalesPdfsMulti();
         void openRecurringEditorFromInvoice(String kind, String partyNif, String partyName,
                                             java.math.BigDecimal total, LocalDate invoiceDate);
+        /**
+         * COB-5 — cuadro de vencimientos (cobro) de la factura de venta. Mismo
+         * dialogo que Facturacion y que Ventas archivadas; lo guarda el shell
+         * porque lo comparten las tres pantallas.
+         */
+        void openDueDatesDialog(String kind, String invoiceId, String partyName,
+                                java.math.BigDecimal total);
         void applyBillingGate(boolean sales, javafx.scene.layout.VBox bannerHolder,
                               javafx.scene.control.ButtonBase... toDisable);
     }
@@ -214,6 +221,32 @@ public class ClientBillingScreen extends ScreenBase {
                     invDate);
         });
 
+        // COB-5 — Cobrar la factura del cliente VINCULADO. COB-2 solo llego al
+        // listado del NO vinculado (Ventas archivadas); aqui, que es donde acaba
+        // la factura de un cliente vinculado, seguia sin poder cobrarse sin irse
+        // a Facturacion. Aviso de Benjamin: "lo que no esta apareciendo es el
+        // cobro de la factura en los clientes vinculados".
+        //
+        // Aqui las filas YA son facturas (no asientos), asi que basta con su id:
+        // no hace falta el rodeo por source_id que si necesitaba COB-2.
+        Button dueDatesBtn = new Button(t("duedates.action.open_sales"));
+        dueDatesBtn.setGraphic(icon("fas-calendar-check"));
+        dueDatesBtn.setDisable(true);
+        table.getSelectionModel().selectedItemProperty().addListener((o, ov, nv) -> {
+            // Un borrador no tiene nada que cobrar. Se acepta POSTED ademas de
+            // VALIDATED por el mismo criterio defensivo que "Hacer recurrente".
+            boolean cobrable = nv != null
+                    && ("VALIDATED".equalsIgnoreCase(nv.status())
+                        || "POSTED".equalsIgnoreCase(nv.status()));
+            dueDatesBtn.setDisable(!cobrable);
+        });
+        dueDatesBtn.setOnAction(ev -> {
+            var sel = table.getSelectionModel().getSelectedItem();
+            if (sel == null) return;
+            host.openDueDatesDialog("SALES", sel.id(),
+                    sel.customerLegalName(), sel.total());
+        });
+
         // Fila muy cargada (3 filtros etiqueta+control + 5 botones): en un HBox
         // los botones se encogían y cortaban el texto. actionFlow envuelve; cada
         // filtro va en su propio grupo para que la etiqueta no se separe del control.
@@ -225,7 +258,8 @@ public class ClientBillingScreen extends ScreenBase {
         typeGroup.setAlignment(Pos.CENTER_LEFT);
         javafx.scene.layout.FlowPane actions = actionFlow(
                 searchGroup, statusGroup, typeGroup,
-                validateBtn, makeRecurringBtnBilling, refresh, importSalesPdfsBtn, newInvoiceBtn);
+                validateBtn, dueDatesBtn, makeRecurringBtnBilling, refresh,
+                importSalesPdfsBtn, newInvoiceBtn);
 
         com.benjagest.ui.support.RefreshBus.subscribe(
                 com.benjagest.ui.support.RefreshBus.TOPIC_SALES,
