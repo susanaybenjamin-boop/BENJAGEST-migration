@@ -1687,7 +1687,9 @@ public class AccountingScreen {
         if (f.model130Applicable()) {
             finCards.getChildren().add(finCards.getChildren().indexOf(card303) + 1,
                     kpiCard(tt.apply("accounting.fin.model130"), money(f.model130Estimated()),
-                            tt.apply("accounting.fin.estimated"), "#6e6e6e"));
+                            tt.apply("accounting.fin.model130.quarter")
+                                    .replace("{q}", String.valueOf(f.model130Quarter())),
+                            "#6e6e6e"));
         }
         if (f.draftCount() > 0) {
             finDraftWarn.setText(tt.apply("accounting.fin.draft_warn")

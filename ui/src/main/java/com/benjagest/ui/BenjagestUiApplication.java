@@ -11559,11 +11559,16 @@ public class BenjagestUiApplication extends Application
                 model130Card.setVisible(k.model130Applicable());
                 model130Card.setManaged(k.model130Applicable());
                 model130Value.setText(formatMoney(k.model130Estimated()));
-                // El 130 nunca sale negativo (un trimestre en pérdidas se declara
-                // a 0 y se arrastra), así que solo hay dos leyendas posibles.
-                model130Caption.setText(k.model130Estimated().signum() > 0
-                        ? t("client.kpi.model_130.to_pay")
-                        : t("client.kpi.model_130.nothing"));
+                // M130-3 — la leyenda dice a QUÉ TRIMESTRE corresponde la cifra.
+                // Sin esto parecía congelada al cambiar el filtro (aviso de
+                // Benjamin: "está fijo en todo el año"). El 130 nunca sale
+                // negativo — un trimestre en pérdidas se declara a 0 y se
+                // arrastra —, así que solo hay dos leyendas posibles.
+                model130Caption.setText(
+                        (k.model130Estimated().signum() > 0
+                                ? t("client.kpi.model_130.to_pay")
+                                : t("client.kpi.model_130.nothing"))
+                        .replace("{q}", String.valueOf(k.model130Quarter())));
                 draftsValue.setText(String.valueOf(k.draftCount()));
             });
             task.setOnFailed(ev -> {

@@ -272,14 +272,61 @@ class CobroConceptoYModelo130IntegrationTest {
         assertTrue(k.model130Applicable(), "un autonomo en estimacion directa SI presenta 130");
     }
 
+    /**
+     * M130-3 — Benjamin: "cuando filtro las fechas el 303 se actualiza de lujo,
+     * pero el 130 no, esta fijo en todo el anio". La cifra debe ser el pago DEL
+     * TRIMESTRE del "hasta": acumulado de enero, menos los trimestres anteriores.
+     *
+     * <p>T1 dio 940. En T2 no hay movimientos nuevos, asi que el acumulado sigue
+     * siendo 940 y, restado lo de T1, en T2 no hay nada que pagar. Antes de este
+     * arreglo la tarjeta repetia 940 en los cuatro trimestres.
+     */
     @Test
-    void elSumatorioDel130EsAcumuladoDelAnio_noDelTrimestreSuelto() {
+    void elTrimestreSiguienteDescuentaLoDelAnterior() {
         tenant.setCurrentCompanyId(AUTONOMO);
-        // Segundo trimestre SIN movimientos propios: si el calculo mirase solo el
-        // trimestre daria 0. Como es acumulado del anio, sigue saliendo 940.
-        var k = kpis.compute(LocalDate.of(2026, 4, 1), LocalDate.of(2026, 6, 30));
-        assertEquals(0, new BigDecimal("940.00").compareTo(k.model130Estimated()),
-                "el 130 se declara acumulado desde enero, no por trimestre suelto");
+
+        var t1 = kpis.compute(LocalDate.of(2026, 1, 1), LocalDate.of(2026, 3, 31));
+        assertEquals(0, new BigDecimal("940.00").compareTo(t1.model130Estimated()));
+        assertEquals(1, t1.model130Quarter());
+
+        var t2 = kpis.compute(LocalDate.of(2026, 4, 1), LocalDate.of(2026, 6, 30));
+        assertEquals(0, BigDecimal.ZERO.compareTo(t2.model130Estimated()),
+                "sin ingresos nuevos en T2 y con los 940 de T1 ya descontados, "
+                        + "en T2 no hay nada que pagar");
+        assertEquals(2, t2.model130Quarter(), "la cifra debe decir a que trimestre va");
+    }
+
+    /** Un mes suelto muestra lo que llevas de SU trimestre, no del anio. */
+    @Test
+    void unMesSueltoSeInterpretaDentroDeSuTrimestre() {
+        tenant.setCurrentCompanyId(AUTONOMO);
+        var mayo = kpis.compute(LocalDate.of(2026, 5, 1), LocalDate.of(2026, 5, 31));
+        assertEquals(2, mayo.model130Quarter(), "mayo cae en T2");
+        assertEquals(0, BigDecimal.ZERO.compareTo(mayo.model130Estimated()));
+    }
+
+    /**
+     * Si el 130 de T1 esta PRESENTADO en Fiscal, manda ESE importe y no el
+     * calculado (decision Benjamin: la estimacion no debe contradecir a lo que
+     * ya se mando a Hacienda).
+     */
+    @Test
+    void elImportePresentadoEnFiscalManda() {
+        tenant.setCurrentCompanyId(AUTONOMO);
+        jdbc.update("""
+                INSERT INTO tax_filings (id, company_id, tax_model_code, period_year,
+                        period_quarter, status, total_amount)
+                VALUES (?, ?, '130', 2026, 1, 'PRESENTED', 500.00)
+                """, UUID.randomUUID().toString(), AUTONOMO);
+        try {
+            // Acumulado 940; presentado en T1 = 500 -> en T2 quedan 440.
+            var t2 = kpis.compute(LocalDate.of(2026, 4, 1), LocalDate.of(2026, 6, 30));
+            assertEquals(0, new BigDecimal("440.00").compareTo(t2.model130Estimated()),
+                    "debe descontar los 500 PRESENTADOS, no los 940 calculados");
+        } finally {
+            jdbc.update("DELETE FROM tax_filings WHERE company_id = ? AND tax_model_code = '130'",
+                    AUTONOMO);
+        }
     }
 
     @Test
