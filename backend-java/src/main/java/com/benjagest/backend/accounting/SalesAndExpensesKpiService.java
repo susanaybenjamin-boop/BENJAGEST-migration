@@ -4,6 +4,7 @@ import com.benjagest.backend.tenant.TenantContext;
 import java.math.BigDecimal;
 import java.sql.Date;
 import java.time.LocalDate;
+import java.util.List;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
@@ -51,7 +52,13 @@ public class SalesAndExpensesKpiService {
             // M130-1 (2026-09-05, peticion Benjamin): pago fraccionado de IRPF
             // estimado. ACUMULADO del anio hasta el fin del rango, no del
             // trimestre suelto: el modelo 130 se declara asi.
+            // M130-3: es el pago DEL TRIMESTRE (acumulado del anio menos los
+            // trimestres anteriores), no el acumulado a secas.
             BigDecimal model130Estimated,
+            // Trimestre (1-4) al que corresponde esa cifra, derivado de la fecha
+            // "hasta" del filtro. La UI lo pinta para que se vea a que periodo
+            // se refiere y no parezca una cifra congelada.
+            int model130Quarter,
             // El 130 solo lo presenta el autonomo en estimacion directa. Si el
             // cliente es SL/SA o esta en modulos, la tarjeta no se pinta (un
             // "IRPF a pagar" en la ficha de una sociedad seria informacion falsa).
@@ -103,7 +110,8 @@ public class SalesAndExpensesKpiService {
         return new Kpis(salesTotal, salesCount, expensesTotal, expensesCount,
                 vatCharged, vatBorne, model303,
                 drafts == null ? 0 : drafts,
-                model130, isModel130Applicable(companyId));
+                model130, (to.getMonthValue() - 1) / 3 + 1,
+                isModel130Applicable(companyId));
     }
 
     /**
@@ -124,6 +132,35 @@ public class SalesAndExpensesKpiService {
     private BigDecimal computeModel130Estimate(String companyId, LocalDate to) {
         int year = to.getYear();
         int quarter = (to.getMonthValue() - 1) / 3 + 1;
+
+        // M130-3 — pagos fraccionados de los trimestres ANTERIORES del mismo
+        // anio, en cascada. Para cada uno:
+        //   - si su 130 esta PRESENTADO/PAGADO en Fiscal, manda ESE importe
+        //     (decision Benjamin: la estimacion no debe contradecir a lo que ya
+        //     se mando a Hacienda);
+        //   - si no existe, se calcula con la propia contabilidad, en vez de
+        //     contarlo como 0 e inflar el resultado del trimestre en curso.
+        BigDecimal pagosPrevios = BigDecimal.ZERO;
+        for (int q = 1; q < quarter; q++) {
+            BigDecimal presentado = presentedFiling130(companyId, year, q);
+            BigDecimal pagoDelQ = presentado != null
+                    ? presentado
+                    : model130PaymentUpTo(companyId, year, endOfQuarter(year, q), pagosPrevios);
+            pagosPrevios = pagosPrevios.add(pagoDelQ);
+        }
+
+        // El resultado del trimestre en curso: acumulado de enero hasta la fecha
+        // "hasta" del filtro, menos lo de los trimestres anteriores.
+        return model130PaymentUpTo(companyId, year, to, pagosPrevios);
+    }
+
+    /**
+     * Resultado del modelo 130 acumulando de 1 de enero hasta {@code to} y
+     * descontando {@code pagosPrevios}. La formula es la legal y NO se duplica:
+     * se reusa {@code AeatExtraModelsService.compute130}.
+     */
+    private BigDecimal model130PaymentUpTo(String companyId, int year, LocalDate to,
+                                            BigDecimal pagosPrevios) {
         Date ytdFrom = Date.valueOf(LocalDate.of(year, 1, 1));
         Date ytdTo = Date.valueOf(to);
 
@@ -131,16 +168,26 @@ public class SalesAndExpensesKpiService {
         BigDecimal gastos = sumLineAmount(companyId, ytdFrom, ytdTo, "6", false);
         BigDecimal retenciones = sumLineAmount(companyId, ytdFrom, ytdTo, "473", false);
 
-        BigDecimal pagosPrevios = jdbcTemplate.queryForObject("""
-                SELECT COALESCE(SUM(total_amount), 0) FROM tax_filings
-                 WHERE company_id = ? AND tax_model_code = '130'
-                   AND period_year = ? AND period_quarter < ?
-                   AND status IN ('PRESENTED', 'PAID')
-                """, BigDecimal.class, companyId, year, quarter);
-
         return com.benjagest.backend.aeat.AeatExtraModelsService
                 .compute130(ingresos, gastos, retenciones, pagosPrevios)
                 .pago();
+    }
+
+    /** Importe del 130 de ese trimestre si ya esta presentado o pagado; null si no. */
+    private BigDecimal presentedFiling130(String companyId, int year, int quarter) {
+        List<BigDecimal> rows = jdbcTemplate.query("""
+                SELECT total_amount FROM tax_filings
+                 WHERE company_id = ? AND tax_model_code = '130'
+                   AND period_year = ? AND period_quarter = ?
+                   AND status IN ('PRESENTED', 'PAID')
+                 LIMIT 1
+                """, (rs, n) -> rs.getBigDecimal("total_amount"), companyId, year, quarter);
+        return rows.isEmpty() ? null : rows.get(0);
+    }
+
+    private static LocalDate endOfQuarter(int year, int quarter) {
+        return LocalDate.of(year, quarter * 3, 1)
+                .withDayOfMonth(LocalDate.of(year, quarter * 3, 1).lengthOfMonth());
     }
 
     /**

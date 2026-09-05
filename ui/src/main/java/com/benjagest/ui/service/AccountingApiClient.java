@@ -67,8 +67,10 @@ public class AccountingApiClient {
                 decField(json, "vatBorne"),
                 decField(json, "model303Estimated"),
                 intField(json, "draftCount"),
-                // M130-1 — pago fraccionado IRPF estimado + si aplica al cliente.
+                // M130-1/3 — pago fraccionado IRPF del trimestre + a que trimestre
+                // corresponde + si aplica al cliente.
                 decField(json, "model130Estimated"),
+                intField(json, "model130Quarter"),
                 boolField(json, "model130Applicable"));
     }
 
@@ -132,6 +134,7 @@ public class AccountingApiClient {
             java.math.BigDecimal model303Estimated,
             int draftCount,
             java.math.BigDecimal model130Estimated,
+            int model130Quarter,
             boolean model130Applicable) {}
 
     private java.math.BigDecimal decField(String json, String field) {
@@ -1304,7 +1307,8 @@ public class AccountingApiClient {
                 decField(json, "income"), decField(json, "expenses"), decField(json, "result"),
                 decField(json, "personnelCost"), decField(json, "vatCharged"),
                 decField(json, "vatBorne"), decField(json, "model303Estimated"),
-                decField(json, "model130Estimated"), boolField(json, "model130Applicable"),
+                decField(json, "model130Estimated"), intField(json, "model130Quarter"),
+                boolField(json, "model130Applicable"),
                 decField(json, "pendingCollections"), intField(json, "overdueInvoices"),
                 decField(json, "pendingPayments"),
                 decField(json, "marginPct"), decField(json, "expenseRatioPct"),

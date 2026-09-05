@@ -7032,8 +7032,8 @@ public final class I18n {
             // M130-1 — pago fraccionado de IRPF estimado (solo autonomo en
             // estimacion directa). Acumulado del anio hasta el trimestre.
             case "client.kpi.model_130" -> "MODEL 130 (est.)";
-            case "client.kpi.model_130.to_pay" -> "to pay, year to date";
-            case "client.kpi.model_130.nothing" -> "nothing to pay this quarter";
+            case "client.kpi.model_130.to_pay" -> "to pay in Q{q}";
+            case "client.kpi.model_130.nothing" -> "nothing to pay in Q{q}";
             case "client.kpi.drafts" -> "PENDING";
             case "client.kpi.invoices" -> "invoices";
             case "client.filter.search" -> "Search:";
@@ -7232,6 +7232,7 @@ public final class I18n {
             case "accounting.fin.model303" -> "Form 303 (est.)";
             // M130-2 — estimacion del pago fraccionado de IRPF, junto a la del 303.
             case "accounting.fin.model130" -> "Form 130 (est.)";
+            case "accounting.fin.model130.quarter" -> "estimated, Q{q}";
             case "accounting.fin.estimated" -> "estimated";
             case "accounting.fin.pending_collections" -> "Pending collections";
             case "accounting.fin.pending_payments" -> "Pending payments";
@@ -8435,8 +8436,8 @@ public final class I18n {
             // M130-1 — pago fraccionado de IRPF estimado (solo autonomo en
             // estimacion directa). Acumulado del anio hasta el trimestre.
             case "client.kpi.model_130" -> "MODELO 130 (est.)";
-            case "client.kpi.model_130.to_pay" -> "a pagar, acumulado del año";
-            case "client.kpi.model_130.nothing" -> "nada a pagar este trimestre";
+            case "client.kpi.model_130.to_pay" -> "a pagar en T{q}";
+            case "client.kpi.model_130.nothing" -> "nada a pagar en T{q}";
             case "client.kpi.drafts" -> "POR VALIDAR";
             case "client.kpi.invoices" -> "facturas";
             case "client.filter.search" -> "Buscar:";
@@ -8635,6 +8636,7 @@ public final class I18n {
             case "accounting.fin.model303" -> "Modelo 303 (est.)";
             // M130-2 — estimacion del pago fraccionado de IRPF, junto a la del 303.
             case "accounting.fin.model130" -> "Modelo 130 (est.)";
+            case "accounting.fin.model130.quarter" -> "estimado, T{q}";
             case "accounting.fin.estimated" -> "estimado";
             case "accounting.fin.pending_collections" -> "Pendiente de cobro";
             case "accounting.fin.pending_payments" -> "Pendiente de pago";

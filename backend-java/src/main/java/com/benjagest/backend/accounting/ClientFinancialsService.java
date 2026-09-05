@@ -60,6 +60,7 @@ public class ClientFinancialsService {
             // Sale del mismo SalesAndExpensesKpiService que el 303, asi que las
             // dos tarjetas del cuadro miden lo mismo y con el mismo criterio.
             BigDecimal model130Estimated,
+            int model130Quarter,          // M130-3: trimestre al que se refiere la cifra
             boolean model130Applicable,   // solo autonomo en estimacion directa
             BigDecimal pendingCollections,// pendiente de cobro (ventas)
             int overdueInvoices,          // facturas de venta vencidas sin cobrar
@@ -95,7 +96,7 @@ public class ClientFinancialsService {
         return new ClientFinancials(
                 from, to, income, expenses, result, personnel,
                 nz(k.vatCharged()), nz(k.vatBorne()), nz(k.model303Estimated()),
-                nz(k.model130Estimated()), k.model130Applicable(),
+                nz(k.model130Estimated()), k.model130Quarter(), k.model130Applicable(),
                 pending, overdue, pendingPay,
                 pct(result, income), pct(expenses, income), pct(personnel, income),
                 pendingValidationCount(companyId),
