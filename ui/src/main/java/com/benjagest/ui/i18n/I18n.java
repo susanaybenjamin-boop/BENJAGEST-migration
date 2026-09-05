@@ -7230,6 +7230,8 @@ public final class I18n {
             case "accounting.fin.vat_charged" -> "Output VAT";
             case "accounting.fin.vat_borne" -> "Input VAT";
             case "accounting.fin.model303" -> "Form 303 (est.)";
+            // M130-2 — estimacion del pago fraccionado de IRPF, junto a la del 303.
+            case "accounting.fin.model130" -> "Form 130 (est.)";
             case "accounting.fin.estimated" -> "estimated";
             case "accounting.fin.pending_collections" -> "Pending collections";
             case "accounting.fin.pending_payments" -> "Pending payments";
@@ -8631,6 +8633,8 @@ public final class I18n {
             case "accounting.fin.vat_charged" -> "IVA repercutido";
             case "accounting.fin.vat_borne" -> "IVA soportado";
             case "accounting.fin.model303" -> "Modelo 303 (est.)";
+            // M130-2 — estimacion del pago fraccionado de IRPF, junto a la del 303.
+            case "accounting.fin.model130" -> "Modelo 130 (est.)";
             case "accounting.fin.estimated" -> "estimado";
             case "accounting.fin.pending_collections" -> "Pendiente de cobro";
             case "accounting.fin.pending_payments" -> "Pendiente de pago";

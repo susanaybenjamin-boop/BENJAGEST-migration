@@ -55,6 +55,12 @@ public class ClientFinancialsService {
             BigDecimal vatCharged,        // IVA repercutido (477)
             BigDecimal vatBorne,          // IVA soportado (472)
             BigDecimal model303Estimated, // 477 − 472
+            // M130-2 (2026-09-05, Benjamin: "en los clientes vinculados, en cuadro
+            // de mando de contabilidad no hemos incorporado el card del 130").
+            // Sale del mismo SalesAndExpensesKpiService que el 303, asi que las
+            // dos tarjetas del cuadro miden lo mismo y con el mismo criterio.
+            BigDecimal model130Estimated,
+            boolean model130Applicable,   // solo autonomo en estimacion directa
             BigDecimal pendingCollections,// pendiente de cobro (ventas)
             int overdueInvoices,          // facturas de venta vencidas sin cobrar
             BigDecimal pendingPayments,   // pendiente de pago (saldo acreedor 400/410)
@@ -89,6 +95,7 @@ public class ClientFinancialsService {
         return new ClientFinancials(
                 from, to, income, expenses, result, personnel,
                 nz(k.vatCharged()), nz(k.vatBorne()), nz(k.model303Estimated()),
+                nz(k.model130Estimated()), k.model130Applicable(),
                 pending, overdue, pendingPay,
                 pct(result, income), pct(expenses, income), pct(personnel, income),
                 pendingValidationCount(companyId),
